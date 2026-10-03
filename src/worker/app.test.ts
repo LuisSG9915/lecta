@@ -22,6 +22,30 @@ describe("GET /api/lexicon/lookup", () => {
   });
 });
 
+describe("POST /api/lexicon/batch", () => {
+  it("rejects requests without forms", async () => {
+    const response = await app.request("/api/lexicon/batch", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ language: "es" }),
+    });
+    expect(response.status).toBe(400);
+  });
+
+  it("reports a missing catalog configuration", async () => {
+    const response = await app.request(
+      "/api/lexicon/batch",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ forms: ["perenne", "estrecha"] }),
+      },
+      {},
+    );
+    expect(response.status).toBe(503);
+  });
+});
+
 describe("POST /api/lexicon/enrich", () => {
   it("rejects requests without a form", async () => {
     const response = await app.request("/api/lexicon/enrich", {

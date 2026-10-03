@@ -7,6 +7,7 @@ import { extractUniqueWords } from "../lib/segmenter";
 import { sanitizeSectionDocument } from "../lib/sanitize";
 import { markSavedWords } from "../lib/marks";
 import { listSavedWords, loadBookPosition, saveBookPosition, type SavedWord } from "../lib/idb";
+import { batchLookup, enrichWord, type LexiconEntry } from "../lib/lexicon";
 import WordPanel from "./WordPanel";
 
 type ReaderState = "idle" | "opening" | "ready" | "error";
@@ -41,6 +42,14 @@ const getBookAuthor = (book: EpubBook) =>
 const getBookLanguage = (book: EpubBook) =>
   flattenMetadataValue(book.metadata?.language) || "es";
 
+type BookVocabulary = {
+  known: { form: string; entries: LexiconEntry[] }[];
+  missing: string[];
+  total: number;
+};
+
+const MAX_ENRICHED_PER_CLICK = 20;
+
 export default function Reader({ bookHash, file, fileName, onError, onStatus }: ReaderProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const bookRef = useRef<EpubBook | null>(null);
@@ -54,6 +63,9 @@ export default function Reader({ bookHash, file, fileName, onError, onStatus }: 
   const [wordCount, setWordCount] = useState(0);
   const [language, setLanguage] = useState("es");
   const [selection, setSelection] = useState<WordHit | null>(null);
+  const [bookVocab, setBookVocab] = useState<BookVocabulary | null>(null);
+  const [showBookVocab, setShowBookVocab] = useState(false);
+  const [enriching, setEnriching] = useState<{ done: number; total: number } | null>(null);
   const savedForms = useRef<Set<string>>(new Set());
 
   const loadSection = useCallback(
@@ -70,8 +82,10 @@ export default function Reader({ bookHash, file, fileName, onError, onStatus }: 
         const source = await section.createDocument();
         const sanitized = sanitizeSectionDocument(source);
         markSavedWords(sanitized, savedForms.current, getBookLanguage(book));
+        const text = [...sanitized.childNodes]
+          .map((node) => node.textContent ?? "")
+          .join("\n");
         container.replaceChildren(sanitized);
-        const text = sanitized.textContent ?? "";
         const words = await extractUniqueWords(text, getBookLanguage(book));
         const tocLabel = flattenToc(book.toc ?? []).find(
           (item) => item.href?.split("#")[0] === section.id,
@@ -124,6 +138,34 @@ export default function Reader({ bookHash, file, fileName, onError, onStatus }: 
         setSectionTotal(book.sections.length);
         const saved = await loadBookPosition(bookHash);
         await loadSection(Math.min(saved?.sectionIndex ?? 0, book.sections.length - 1), saved?.scrollTop);
+
+        void (async () => {
+          const seen = new Set<string>();
+          for (const bookSection of book.sections) {
+            if (disposed) return;
+            try {
+              const doc = sanitizeSectionDocument(await bookSection.createDocument());
+              const text = [...doc.childNodes]
+                .map((node) => node.textContent ?? "")
+                .join("\n");
+              const words = await extractUniqueWords(text, bookLanguage);
+              for (const word of words) seen.add(word.toLowerCase());
+            } catch {
+              // sección omitida del análisis
+            }
+          }
+          if (disposed) return;
+          const forms = [...seen].slice(0, 500);
+          const result = await batchLookup(forms, bookLanguage);
+          if (disposed || !result.ok) return;
+          setBookVocab({
+            known: forms
+              .filter((form) => result.entries[form]?.length)
+              .map((form) => ({ form, entries: result.entries[form] })),
+            missing: forms.filter((form) => !result.entries[form]?.length),
+            total: forms.length,
+          });
+        })();
       } catch {
         if (!disposed) {
           setState("error");
@@ -149,6 +191,30 @@ export default function Reader({ bookHash, file, fileName, onError, onStatus }: 
     onStatus(`«${word.form}» guardada para practicar.`);
   };
 
+  const enrichMissing = async () => {
+    if (!bookVocab || enriching) return;
+    const pending = bookVocab.missing.slice(0, MAX_ENRICHED_PER_CLICK);
+    setEnriching({ done: 0, total: pending.length });
+    for (const form of pending) {
+      const result = await enrichWord(form, language);
+      setEnriching((progress) =>
+        progress ? { done: progress.done + 1, total: progress.total } : progress,
+      );
+      if (result.ok && result.entries.length) {
+        setBookVocab((vocab) =>
+          vocab
+            ? {
+                ...vocab,
+                known: [...vocab.known, { form, entries: result.entries }],
+                missing: vocab.missing.filter((missing) => missing !== form),
+              }
+            : vocab,
+        );
+      }
+    }
+    setEnriching(null);
+  };
+
   const persistScroll = () => {
     window.clearTimeout(scrollTimer.current);
     scrollTimer.current = window.setTimeout(() => {
@@ -171,6 +237,14 @@ export default function Reader({ bookHash, file, fileName, onError, onStatus }: 
         <p className="reader-meta" aria-live="polite">
           {sectionTitle} · {wordCount} formas
         </p>
+        <button
+          type="button"
+          onClick={() => setShowBookVocab(true)}
+          disabled={!bookVocab}
+          aria-label="Palabras del libro"
+        >
+          {bookVocab ? `Palabras ${bookVocab.known.length}/${bookVocab.total}` : "Analizando…"}
+        </button>
       </header>
 
       <div
@@ -187,6 +261,55 @@ export default function Reader({ bookHash, file, fileName, onError, onStatus }: 
         aria-busy={state === "opening"}
         aria-label="Contenido de la sección"
       />
+
+      {showBookVocab && bookVocab ? (
+        <div className="word-panel" role="dialog" aria-modal="true" aria-label="Palabras del libro">
+          <div className="word-panel-header">
+            <strong>Palabras del libro</strong>
+            <button
+              type="button"
+              onClick={() => setShowBookVocab(false)}
+              aria-label="Cerrar palabras del libro"
+            >
+              Cerrar
+            </button>
+          </div>
+          <p className="reader-meta">
+            {bookVocab.known.length} con ficha · {bookVocab.missing.length} sin ficha ·{" "}
+            {bookVocab.total} formas únicas
+          </p>
+          {bookVocab.known.length ? (
+            <ul className="word-list">
+              {bookVocab.known.slice(0, 60).map(({ form, entries }) => (
+                <li key={form}>
+                  <strong>{form}</strong>
+                  {entries[0]?.pos ? <span className="reader-meta"> {entries[0].pos}</span> : null}
+                  {entries[0]?.senses[0]?.definition
+                    ? ` — ${entries[0].senses[0].definition}`
+                    : ""}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {bookVocab.missing.length ? (
+            <>
+              <p className="reader-meta">
+                Sin ficha: {bookVocab.missing.slice(0, 40).join(", ")}
+                {bookVocab.missing.length > 40 ? "…" : ""}
+              </p>
+              <button
+                type="button"
+                disabled={Boolean(enriching)}
+                onClick={() => void enrichMissing()}
+              >
+                {enriching
+                  ? `Definiendo ${enriching.done} de ${enriching.total}…`
+                  : `Definir ${Math.min(MAX_ENRICHED_PER_CLICK, bookVocab.missing.length)} con IA`}
+              </button>
+            </>
+          ) : null}
+        </div>
+      ) : null}
 
       {selection ? (
         <WordPanel

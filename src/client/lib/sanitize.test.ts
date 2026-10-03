@@ -11,6 +11,12 @@ const parse = (html: string) =>
 const sanitize = (html: string) => sanitizeSectionDocument(parse(html));
 
 describe("sanitizeSectionDocument", () => {
+  it("no mueve nodos vivos del documento fuente", () => {
+    const source = parse('<p>Texto</p><img src="x" onerror="window.__xss=1"/>');
+    sanitizeSectionDocument(source);
+    expect(source.documentElement.textContent).toContain("Texto");
+  });
+
   it("conserva texto y estructura básica", () => {
     const clean = sanitize("<h1>Título</h1><p>Un párrafo con <em>énfasis</em>.</p>");
     expect(clean.querySelector("h1")?.textContent).toBe("Título");
@@ -19,32 +25,32 @@ describe("sanitizeSectionDocument", () => {
   });
 
   it("elimina elementos script", () => {
-    const clean = sanitize("<p>Texto</p><script>alert(1)</script>");
+    const clean = sanitize("<p>Texto</p><script>window.__xss=1</script>");
     expect(clean.querySelector("script")).toBeNull();
     expect(clean.textContent).toContain("Texto");
   });
 
   it("elimina handlers de eventos inline", () => {
-    const clean = sanitize('<p onclick="alert(1)" onmouseover="alert(2)">Texto</p>');
+    const clean = sanitize('<p onclick="window.__xss=1" onmouseover="window.__xss=2">Texto</p>');
     const p = clean.querySelector("p");
     expect(p?.hasAttribute("onclick")).toBe(false);
     expect(p?.hasAttribute("onmouseover")).toBe(false);
   });
 
   it("elimina enlaces y su href javascript:", () => {
-    const clean = sanitize('<a href="javascript:alert(1)">enlace</a>');
+    const clean = sanitize('<a href="javascript:window.__xss=1">enlace</a>');
     expect(clean.querySelector("a")).toBeNull();
     expect(clean.textContent).toBe("enlace");
   });
 
   it("elimina imágenes e iframes de la sección", () => {
-    const clean = sanitize('<img src="x" onerror="alert(1)"><iframe src="https://evil.example"></iframe>');
+    const clean = sanitize('<img src="x" onerror="window.__xss=1"/><iframe src="https://evil.example"></iframe>');
     expect(clean.querySelector("img")).toBeNull();
     expect(clean.querySelector("iframe")).toBeNull();
   });
 
   it("elimina SVG con contenido activo", () => {
-    const clean = sanitize('<svg><script>alert(1)</script><circle r="4"/></svg>');
+    const clean = sanitize('<svg><script>window.__xss=1</script><circle r="4"/></svg>');
     expect(clean.querySelector("svg")).toBeNull();
     expect(clean.querySelector("script")).toBeNull();
   });

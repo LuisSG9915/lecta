@@ -47,6 +47,34 @@ export async function findEntries(client: pg.Client, language: string, form: str
   return groupEntries(rows);
 }
 
+const BATCH_SQL = `
+  SELECT f.form AS queried_form, e.lemma, e.pos, e.freq_rank, s.definition, s.example, s.sense_order
+  FROM lexicon_forms f
+  JOIN lexicon_entries e ON e.id = f.entry_id
+  LEFT JOIN lexicon_senses s ON s.entry_id = e.id
+  WHERE f.language = $1 AND f.form = ANY($2)
+  ORDER BY f.form, e.freq_rank NULLS LAST, s.sense_order
+  LIMIT 2000
+`;
+
+export async function findEntriesForForms(client: pg.Client, language: string, forms: string[]) {
+  const normalized = [...new Set(forms.map((form) => form.trim().toLowerCase()).filter(Boolean))];
+  if (!normalized.length) return {};
+  const { rows } = await client.query<LookupRow & { queried_form: string }>(BATCH_SQL, [
+    language,
+    normalized,
+  ]);
+  const byForm = new Map<string, LookupRow[]>();
+  for (const row of rows) {
+    const list = byForm.get(row.queried_form);
+    if (list) list.push(row);
+    else byForm.set(row.queried_form, [row]);
+  }
+  return Object.fromEntries(
+    [...byForm.entries()].map(([form, grouped]) => [form, groupEntries(grouped)]),
+  );
+}
+
 export type ValidatedEnrichment = {
   lemma: string;
   pos: string;

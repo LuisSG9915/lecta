@@ -1,9 +1,24 @@
 import { useEffect, useState } from "react";
 import { isDue, Rating, scheduleReview, type Grade } from "../lib/fsrs";
 import { listSavedWords, updateSavedWord, type SavedWord } from "../lib/idb";
+import { blankWordInContext } from "../lib/practice";
 
 type VocabularyProps = {
   onClose: () => void;
+};
+
+type PracticeMode = "meaning" | "form" | "cloze";
+
+const MODES: { id: PracticeMode; label: string }[] = [
+  { id: "meaning", label: "Significado" },
+  { id: "form", label: "Palabra" },
+  { id: "cloze", label: "Oración" },
+];
+
+const MODE_REQUIREMENTS: Record<PracticeMode, string> = {
+  meaning: "",
+  form: "Este modo necesita palabras con significado guardado.",
+  cloze: "Este modo necesita palabras con una oración de contexto guardada.",
 };
 
 const GRADES: { rating: Grade; label: string }[] = [
@@ -16,8 +31,18 @@ const GRADES: { rating: Grade; label: string }[] = [
 const formatDue = (word: SavedWord) =>
   !word.card ? "Nueva" : new Date(word.card.due) <= new Date() ? "Para hoy" : "Programada";
 
+const clozeTextFor = (word: SavedWord) =>
+  word.context ? blankWordInContext(word.context, word.form, word.language) : null;
+
+const isEligible = (word: SavedWord, mode: PracticeMode) => {
+  if (mode === "form") return Boolean(word.meaning);
+  if (mode === "cloze") return Boolean(clozeTextFor(word));
+  return true;
+};
+
 export default function Vocabulary({ onClose }: VocabularyProps) {
   const [words, setWords] = useState<SavedWord[] | null>(null);
+  const [mode, setMode] = useState<PracticeMode>("meaning");
   const [practice, setPractice] = useState<SavedWord[] | null>(null);
   const [revealed, setRevealed] = useState(false);
 
@@ -36,8 +61,9 @@ export default function Vocabulary({ onClose }: VocabularyProps) {
     };
   }, [onClose]);
 
-  const startPractice = () => {
-    const due = (words ?? []).filter((word) => isDue(word.card));
+  const startPractice = (chosen: PracticeMode) => {
+    setMode(chosen);
+    const due = (words ?? []).filter((word) => isDue(word.card) && isEligible(word, chosen));
     setPractice(due);
     setRevealed(false);
   };
@@ -57,6 +83,7 @@ export default function Vocabulary({ onClose }: VocabularyProps) {
 
   const dueCount = (words ?? []).filter((word) => isDue(word.card)).length;
   const current = practice?.[0];
+  const cloze = current ? clozeTextFor(current) : null;
 
   return (
     <div className="word-panel" role="dialog" aria-modal="true" aria-label="Vocabulario guardado">
@@ -86,27 +113,49 @@ export default function Vocabulary({ onClose }: VocabularyProps) {
             ))}
           </ul>
           {dueCount > 0 ? (
-            <button type="button" onClick={startPractice}>
-              Practicar {dueCount}
-            </button>
+            <div className="practice-modes" role="group" aria-label="Modo de práctica">
+              {MODES.map(({ id, label }) => (
+                <button key={id} type="button" onClick={() => startPractice(id)}>
+                  {label}
+                </button>
+              ))}
+            </div>
           ) : null}
         </>
       ) : null}
 
-      {practice && practice.length === 0 ? <p>Terminaste el repaso de hoy.</p> : null}
+      {practice && practice.length === 0 ? <p>{MODE_REQUIREMENTS[mode] || "Nada que repasar."}</p> : null}
 
       {current ? (
         <div className="practice-card">
-          <p>
-            <strong>{current.form}</strong>
-            {current.pos ? <span className="reader-meta"> {current.pos}</span> : null}
-          </p>
-          {current.context ? <p className="word-context">“{current.context}”</p> : null}
+          {mode === "form" ? (
+            <p>{current.meaning}</p>
+          ) : mode === "cloze" ? (
+            <p className="word-context">“{cloze}”</p>
+          ) : (
+            <>
+              <p>
+                <strong>{current.form}</strong>
+                {current.pos ? <span className="reader-meta"> {current.pos}</span> : null}
+              </p>
+              {current.context ? <p className="word-context">“{current.context}”</p> : null}
+            </>
+          )}
+
           {revealed ? (
-            <p>{current.meaning ?? "Sin significado guardado."}</p>
+            <p>
+              {mode === "meaning" ? (
+                (current.meaning ?? "Sin significado guardado.")
+              ) : (
+                <>
+                  <strong>{current.form}</strong>
+                  {mode === "cloze" && current.meaning ? ` — ${current.meaning}` : ""}
+                </>
+              )}
+            </p>
           ) : (
             <button type="button" onClick={() => setRevealed(true)}>
-              Mostrar significado
+              Mostrar respuesta
             </button>
           )}
           {revealed ? (

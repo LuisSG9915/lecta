@@ -56,9 +56,11 @@ const READER_ATTRS = ["dir", "lang", "rowspan", "colspan", "scope", "headers", "
 
 export function sanitizeSectionDocument(source: Document) {
   const body = source.body ?? source.getElementsByTagName("body")[0] ?? source.documentElement;
-  const container = document.createElement("div");
-  container.append(...body.childNodes);
-  const fragment = DOMPurify.sanitize(container, {
+  const serializer = new XMLSerializer();
+  const dirty = [...body.childNodes]
+    .map((node) => serializer.serializeToString(node))
+    .join("");
+  const fragment = DOMPurify.sanitize(dirty, {
     ALLOWED_TAGS: READER_TAGS,
     ALLOWED_ATTR: READER_ATTRS,
     FORBID_TAGS: ["a"],

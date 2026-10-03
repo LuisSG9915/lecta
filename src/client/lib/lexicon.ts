@@ -22,6 +22,26 @@ export async function lookupWord(form: string, language = "es"): Promise<LookupR
   }
 }
 
+export type BatchLookupResult =
+  | { ok: true; entries: Record<string, LexiconEntry[]> }
+  | { ok: false; error: string; entries: Record<string, never> };
+
+export async function batchLookup(forms: string[], language = "es"): Promise<BatchLookupResult> {
+  try {
+    const response = await fetch("/api/lexicon/batch", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ forms, language }),
+    });
+    const data = await response.json();
+    if (!response.ok)
+      return { ok: false, error: data.error ?? "No se pudo consultar el catálogo.", entries: {} };
+    return { ok: true, entries: data.entries ?? {} };
+  } catch {
+    return { ok: false, error: "Sin conexión con el catálogo.", entries: {} };
+  }
+}
+
 export async function enrichWord(
   form: string,
   language = "es",

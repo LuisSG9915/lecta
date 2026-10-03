@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { withClient, type WorkerEnv } from "./db";
-import { findEntries, insertEnrichment } from "./lexicon";
+import { findEntries, findEntriesForForms, insertEnrichment } from "./lexicon";
 import { requestEnrichment } from "./ai";
 
 export const app = new Hono<{ Bindings: WorkerEnv }>();
@@ -24,6 +24,27 @@ app.get("/api/lexicon/lookup", async (context) => {
     { found: entries.length > 0, entries },
     entries.length > 0 ? 200 : 404,
   );
+});
+
+app.post("/api/lexicon/batch", async (context) => {
+  const body = await context.req.json().catch(() => null);
+  const forms = Array.isArray(body?.forms)
+    ? body.forms.filter((form: unknown) => typeof form === "string").slice(0, 500)
+    : [];
+  const language = typeof body?.language === "string" ? body.language.trim() : "es";
+  if (!forms.length) return context.json({ error: "Faltan las palabras." }, 400);
+
+  let entries;
+  try {
+    entries = await withClient(context.env, (client) =>
+      findEntriesForForms(client, language, forms),
+    );
+  } catch {
+    return context.json({ error: "No se pudo consultar el catálogo." }, 502);
+  }
+
+  if (!entries) return context.json({ error: "El catálogo no está configurado." }, 503);
+  return context.json({ entries });
 });
 
 app.post("/api/lexicon/enrich", async (context) => {
