@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { authClient } from "../lib/auth";
 import Dialog from "./Dialog";
 
@@ -18,7 +18,37 @@ export default function Account({ onClose, resetToken, onResetDone }: AccountPro
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [showChange, setShowChange] = useState(false);
+  const [credentialInfo, setCredentialInfo] = useState<{
+    userId: string;
+    has: boolean;
+  } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const userId = session?.user?.id;
+  useEffect(() => {
+    if (!userId) return;
+    let cancelled = false;
+    void fetch("/api/auth/list-accounts", { credentials: "include" })
+      .then((response) => (response.ok ? response.json() : []))
+      .then((list: unknown) => {
+        if (cancelled) return;
+        const accounts = Array.isArray(list) ? list : [];
+        setCredentialInfo({
+          userId,
+          has: accounts.some(
+            (account) => (account as { providerId?: string }).providerId === "credential",
+          ),
+        });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
+  const hasCredential =
+    credentialInfo && credentialInfo.userId === userId ? credentialInfo.has : null;
 
   const run = async (action: () => Promise<{ error?: { message?: string } | null }>) => {
     setBusy(true);
@@ -70,6 +100,36 @@ export default function Account({ onClose, resetToken, onResetDone }: AccountPro
         setNewPassword("");
         onResetDone?.();
       }
+      return result;
+    });
+  };
+
+  const changePassword = (event: FormEvent) => {
+    event.preventDefault();
+    void run(async () => {
+      const result = await authClient.changePassword({
+        currentPassword,
+        newPassword,
+        revokeOtherSessions: true,
+      });
+      if (!result?.error) {
+        setMessage("Contraseña actualizada. Las demás sesiones se cerraron.");
+        setCurrentPassword("");
+        setNewPassword("");
+        setShowChange(false);
+      }
+      return result;
+    });
+  };
+
+  const sendSetPasswordLink = () => {
+    void run(async () => {
+      const result = await authClient.requestPasswordReset({
+        email: session?.user?.email ?? "",
+        redirectTo: "/",
+      });
+      if (!result?.error)
+        setMessage("Te enviamos un correo para definir tu contraseña.");
       return result;
     });
   };
@@ -127,6 +187,65 @@ export default function Account({ onClose, resetToken, onResetDone }: AccountPro
               Cerrar sesión
             </button>
           </div>
+          {hasCredential ? (
+            showChange ? (
+              <form className="field" onSubmit={changePassword}>
+                <label htmlFor="current-password">Contraseña actual</label>
+                <input
+                  id="current-password"
+                  type="password"
+                  required
+                  autoComplete="current-password"
+                  value={currentPassword}
+                  onChange={(event) => setCurrentPassword(event.target.value)}
+                />
+                <label htmlFor="new-password">Nueva contraseña</label>
+                <input
+                  id="new-password"
+                  type="password"
+                  required
+                  minLength={8}
+                  autoComplete="new-password"
+                  value={newPassword}
+                  onChange={(event) => setNewPassword(event.target.value)}
+                />
+                <div className="actions">
+                  <button type="submit" className="btn" disabled={busy}>
+                    Guardar
+                  </button>
+                  <button
+                    type="button"
+                    className="btn--quiet"
+                    onClick={() => setShowChange(false)}
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <div className="actions">
+                <button
+                  type="button"
+                  className="btn--quiet"
+                  disabled={busy}
+                  onClick={() => setShowChange(true)}
+                >
+                  Cambiar contraseña
+                </button>
+              </div>
+            )
+          ) : hasCredential === false ? (
+            <div className="actions">
+              <button
+                type="button"
+                className="btn--quiet"
+                disabled={busy}
+                onClick={sendSetPasswordLink}
+              >
+                Definir contraseña por correo
+              </button>
+            </div>
+          ) : null}
           <div className="actions">
             <button
               type="button"
