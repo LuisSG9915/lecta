@@ -73,13 +73,13 @@ app.post("/api/lexicon/enrich", async (context) => {
   const language = typeof body?.language === "string" ? body.language.trim() : "es";
   const contextText = typeof body?.context === "string" ? body.context.slice(0, 500) : undefined;
   if (!form || form.length > 100) return context.json({ error: "Falta la palabra." }, 400);
-  if (isStopword(form, language))
-    return context.json({ error: "«" + form + "» es una palabra muy común; no necesita ficha de IA." }, 400);
   if (!getConnectionString(context.env))
     return context.json({ error: "El catálogo no está configurado." }, 503);
 
   const session = await getSession(context);
   if (!session) return context.json({ error: "Inicia sesión para definir palabras con IA." }, 401);
+  if (isStopword(form, language))
+    return context.json({ error: "«" + form + "» es una palabra muy común; no necesita ficha de IA." }, 400);
 
   let result;
   try {
@@ -127,11 +127,14 @@ app.post("/api/lexicon/enrich", async (context) => {
 
 app.post("/api/lexicon/enrich-batch", async (context) => {
   const body = await context.req.json().catch(() => null);
-  const forms = Array.isArray(body?.forms)
-    ? body.forms.filter((form: unknown) => typeof form === "string").slice(0, 50)
-    : [];
   const language = typeof body?.language === "string" ? body.language.trim() : "es";
-  if (!forms.length) return context.json({ error: "Faltan las palabras." }, 400);
+  const rawForms: string[] = Array.isArray(body?.forms)
+    ? body.forms.filter((f: unknown): f is string => typeof f === "string").slice(0, 200)
+    : [];
+  // Las stopwords no gastan cuota ni IA: el workflow las omitiría igual.
+  const forms = [...new Set(rawForms.map((f) => f.trim().toLowerCase()))]
+    .filter((f) => f && !isStopword(f, language))
+    .slice(0, 50);
   if (!getConnectionString(context.env))
     return context.json({ error: "El catálogo no está configurado." }, 503);
   if (!context.env.ENRICHMENT_WORKFLOW)
@@ -139,6 +142,7 @@ app.post("/api/lexicon/enrich-batch", async (context) => {
 
   const session = await getSession(context);
   if (!session) return context.json({ error: "Inicia sesión para definir palabras con IA." }, 401);
+  if (!forms.length) return context.json({ count: 0, skipped: rawForms.length });
   const allowed = await consumeRateUnits(context.env, session.user.id, forms.length);
   if (!allowed)
     return context.json(

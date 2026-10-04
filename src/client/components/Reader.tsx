@@ -7,7 +7,7 @@ import { extractUniqueWords } from "../lib/segmenter";
 import { sanitizeSectionDocument } from "../lib/sanitize";
 import { markSavedWords } from "../lib/marks";
 import { listSavedWords, loadBookPosition, saveBookPosition, type SavedWord } from "../lib/idb";
-import { batchLookup, enrichWord, type LexiconEntry } from "../lib/lexicon";
+import { batchLookup, enrichBatch, type LexiconEntry } from "../lib/lexicon";
 import { isStopword } from "../../shared/stopwords";
 import WordPanel from "./WordPanel";
 
@@ -49,7 +49,7 @@ type BookVocabulary = {
   total: number;
 };
 
-const MAX_ENRICHED_PER_CLICK = 20;
+const MAX_ENRICHED_PER_CLICK = 50;
 
 export default function Reader({ bookHash, file, fileName, onError, onStatus }: ReaderProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -199,22 +199,44 @@ export default function Reader({ bookHash, file, fileName, onError, onStatus }: 
     if (!bookVocab || enriching) return;
     const pending = bookVocab.missing.slice(0, MAX_ENRICHED_PER_CLICK);
     setEnriching({ done: 0, total: pending.length });
-    for (const form of pending) {
-      const result = await enrichWord(form, language);
-      setEnriching((progress) =>
-        progress ? { done: progress.done + 1, total: progress.total } : progress,
+
+    const batch = await enrichBatch(pending, language);
+    if (!batch.ok) {
+      setEnriching(null);
+      onError(batch.error ?? "No se pudo programar el lote de definiciones.");
+      return;
+    }
+    if (batch.count === 0) {
+      setEnriching(null);
+      return;
+    }
+
+    // El workflow corre en segundo plano: consultamos varias veces
+    // hasta que las fichas nuevas empiecen a aparecer en el catálogo.
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+      const result = await batchLookup(pending, language);
+      if (!result.ok) continue;
+      const foundNow = pending.filter((form) => result.entries[form]?.length);
+      if (!foundNow.length && attempt < 5) continue;
+      setBookVocab((vocab) =>
+        vocab
+          ? {
+              ...vocab,
+              known: [
+                ...vocab.known,
+                ...foundNow
+                  .filter((form) => !vocab.known.some((item) => item.form === form))
+                  .map((form) => ({ form, entries: result.entries[form] })),
+              ],
+              missing: vocab.missing.filter((form) => !foundNow.includes(form)),
+            }
+          : vocab,
       );
-      if (result.ok && result.entries.length) {
-        setBookVocab((vocab) =>
-          vocab
-            ? {
-                ...vocab,
-                known: [...vocab.known, { form, entries: result.entries }],
-                missing: vocab.missing.filter((missing) => missing !== form),
-              }
-            : vocab,
-        );
-      }
+      setEnriching((progress) =>
+        progress ? { done: foundNow.length, total: progress.total } : progress,
+      );
+      if (foundNow.length >= pending.length) break;
     }
     setEnriching(null);
   };

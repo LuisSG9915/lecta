@@ -48,6 +48,31 @@ export async function batchLookup(forms: string[], language = "es"): Promise<Bat
   }
 }
 
+export type EnrichBatchResult =
+  | { ok: true; instanceId?: string; count: number; error?: undefined }
+  | { ok: false; error: string };
+
+export async function enrichBatch(forms: string[], language = "es"): Promise<EnrichBatchResult> {
+  try {
+    const response = await fetch("/api/lexicon/enrich-batch", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ forms, language }),
+    });
+    const data = (await response.json()) as {
+      instanceId?: string;
+      count?: number;
+      error?: string;
+    };
+    if (!response.ok) {
+      return { ok: false, error: data.error ?? "No se pudo programar el lote." };
+    }
+    return { ok: true, instanceId: data.instanceId, count: data.count ?? 0 };
+  } catch {
+    return { ok: false, error: "Sin conexión con el catálogo." };
+  }
+}
+
 export async function enrichWord(
   form: string,
   language = "es",
