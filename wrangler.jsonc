@@ -11,7 +11,8 @@
       "BETTER_AUTH_SECRET",
       "RESEND_API_KEY",
       "RESEND_FROM_EMAIL",
-      "AI_GATEWAY_KEY"
+      "AI_GATEWAY_KEY",
+      "AI_GATEWAY_URL"
     ]
   },
   "assets": {

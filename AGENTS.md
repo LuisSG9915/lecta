@@ -15,9 +15,16 @@
   usuario recién registrado. Además una sesión revocada podía seguir válida
   desde el cache. No reactivar el caching sin aislar auth de las lecturas.
 - Secrets en el worker: `DATABASE_URL`, `BETTER_AUTH_SECRET`, `DEEPSEEK_API_KEY`,
-  `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `AI_GATEWAY_KEY`. `secrets.required` en
-  `wrangler.jsonc` controla cuáles llegan al `env` en dev — si una var no está
-  ahí, el worker no la ve (bug ya corregido con Resend).
+  `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `AI_GATEWAY_KEY`, `AI_GATEWAY_URL`.
+  `secrets.required` en `wrangler.jsonc` controla cuáles llegan al `env` en dev
+  — si una var no está ahí, el worker no la ve (bug ya corregido con Resend).
+- AI Gateway `lecta` (`gateway.ai.cloudflare.com/v1/<account>/lecta/deepseek`):
+  sin auth propia (cada request lleva `DEEPSEEK_API_KEY`), `byok_only` para no
+  tocar facturación unificada, cache apagado y rate limit solo como tope de
+  emergencia. El `cfut_` de `AI_GATEWAY_KEY` quedó huérfano de un gateway que no
+  existe y hoy es decorativo — si se activa `authentication` en el gateway hay
+  que generar un token nuevo desde el dashboard. `AI_GATEWAY_URL` vacío cae a
+  `api.deepseek.com` directo.
 - `RESEND_FROM_EMAIL` usa `onboarding@resend.dev`: Resend solo entrega al
   correo dueño de la cuenta hasta verificar un dominio propio.
 - `BETTER_AUTH_URL` no se fija en prod: el código cae al origen de la petición.
