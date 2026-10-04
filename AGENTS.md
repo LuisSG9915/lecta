@@ -41,7 +41,13 @@
 
 ## Datos
 
-- Base CockroachDB dedicada `lecta` (compartida entre dev y prod).
+- Bases separadas: **prod usa `lecta`** (vía Hyperdrive) y **dev usa `lecta_dev`**.
+  `.env` apunta `DATABASE_URL` a `lecta_dev` y define
+  `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE` — sin esa var, el
+  binding de Hyperdrive en dev túnelaba a la base de producción.
+  `pnpm dev` debe reiniciarse tras cambiar `.env` (las vars se leen al arrancar).
+- `lecta_dev` arrancó con esquema + auth + seed, sin usuarios: en dev hay que
+  registrarse de nuevo (el correo es el mismo dominio, es solo otra base).
 - `defaultdb` pertenece a otro proyecto (POS): no tocar sus tablas.
 - EPUBs de prueba con copyright están en `.gitignore` (`/src/*.epub`,
   `/fixtures/*.epub` salvo `minimal.epub`).
