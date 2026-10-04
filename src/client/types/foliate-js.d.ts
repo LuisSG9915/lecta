@@ -37,5 +37,6 @@ declare module "foliate-js/epub.js" {
     metadata?: Record<string, unknown>;
     rendition?: Record<string, unknown>;
     dir?: string;
+    getCover?: () => Promise<Blob | null>;
   };
 }

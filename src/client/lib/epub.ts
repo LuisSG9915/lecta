@@ -37,3 +37,25 @@ export async function openEpub(file: Blob) {
   const book = await new EPUB(loader).init();
   return { book, close };
 }
+
+export const flattenMetadataValue = (value: unknown): string => {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) return flattenMetadataValue(value[0]);
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return flattenMetadataValue(record.name ?? Object.values(record)[0]);
+  }
+  return "";
+};
+
+export const flattenToc = (items: EpubTocItem[]): EpubTocItem[] =>
+  items.flatMap((item) => [item, ...(item.subitems ? flattenToc(item.subitems) : [])]);
+
+export const getBookTitle = (book: EpubBook) =>
+  flattenMetadataValue(book.metadata?.title) || "Libro sin título";
+
+export const getBookAuthor = (book: EpubBook) =>
+  flattenMetadataValue(book.metadata?.author) || flattenMetadataValue(book.metadata?.creator);
+
+export const getBookLanguage = (book: EpubBook) =>
+  flattenMetadataValue(book.metadata?.language) || "es";

@@ -1,0 +1,484 @@
+/* Lector inmersivo: el libro ocupa la ventana; las barras se retiran
+   al bajar y vuelven al subir. La posición vive en el scroll del
+   documento, no en una caja interna. */
+
+.reader {
+  min-height: 100svh;
+}
+
+/* ---------- Barra superior ---------- */
+
+.reader-bar {
+  position: fixed;
+  inset-block-start: 0;
+  inset-inline: 0;
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  min-height: 3.25rem;
+  padding-inline: var(--s-4);
+  background: var(--paper);
+  border-bottom: var(--border);
+  transition: transform var(--dur-3) var(--ease-out);
+}
+
+.reader-bar[data-hidden] {
+  transform: translateY(-105%);
+}
+
+.reader-back {
+  flex: none;
+}
+
+.reader-bar-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.reader-bar-author {
+  color: var(--ink-faint);
+}
+
+.reader-bar-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+  flex: none;
+}
+
+/* ---------- Cuerpo del libro ---------- */
+
+.reader-body {
+  padding-block-start: 4.5rem;
+  padding-block-end: 8rem;
+  padding-inline: var(--s-5);
+}
+
+.reader-loading,
+.reader-error {
+  max-inline-size: var(--read-measure);
+  margin-inline: auto;
+}
+
+.reader-loading {
+  padding-block-start: var(--s-7);
+  font-family: var(--font-book);
+  font-style: italic;
+  font-size: var(--fs-lg);
+  color: var(--ink-soft);
+}
+
+.reader-error {
+  padding-block-start: var(--s-7);
+}
+
+.reader-error .actions {
+  margin-block-start: var(--s-4);
+}
+
+.chapter-title {
+  max-inline-size: var(--read-measure);
+  margin: 0 auto var(--s-6);
+  font-family: var(--font-book);
+  font-weight: 400;
+  font-size: var(--fs-3xl);
+  letter-spacing: -0.015em;
+  line-height: var(--lh-display);
+  color: var(--ink);
+}
+
+/* El contenido inyectado del EPUB */
+
+.book-content {
+  font-family: var(--read-font);
+  font-size: var(--read-size);
+  line-height: var(--read-leading);
+  font-optical-sizing: auto;
+  color: var(--ink);
+}
+
+.book-content > * {
+  max-inline-size: var(--read-measure);
+  margin-inline: auto;
+}
+
+.book-content p,
+.book-content blockquote,
+.book-content ul,
+.book-content ol,
+.book-content figure,
+.book-content pre {
+  margin-block-end: 1em;
+}
+
+.book-content p,
+.book-content li {
+  hyphens: auto;
+  -webkit-hyphens: auto;
+}
+
+.book-content h1,
+.book-content h2,
+.book-content h3,
+.book-content h4,
+.book-content h5,
+.book-content h6 {
+  font-family: var(--read-font);
+  font-weight: 500;
+  line-height: var(--lh-display);
+  margin-block: 1.8em 0.7em;
+}
+
+.book-content h1 {
+  font-size: 1.55em;
+  letter-spacing: -0.01em;
+}
+
+.book-content h2 {
+  font-size: 1.3em;
+}
+
+.book-content h3,
+.book-content h4,
+.book-content h5,
+.book-content h6 {
+  font-size: 1.1em;
+}
+
+.book-content blockquote {
+  padding-inline-start: var(--s-4);
+  border-inline-start: 2px solid var(--rule-strong);
+  font-style: italic;
+  color: var(--ink-soft);
+}
+
+.book-content img {
+  display: block;
+  max-inline-size: 100%;
+  height: auto;
+  margin-block: var(--s-4);
+}
+
+.book-content figure {
+  text-align: center;
+}
+
+.book-content figcaption {
+  margin-block-start: var(--s-2);
+  font-family: var(--font-ui);
+  font-size: 0.8em;
+  color: var(--ink-soft);
+}
+
+.book-content a {
+  color: var(--vermilion);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.18em;
+}
+
+.book-content hr {
+  border: none;
+  margin-block: var(--s-6);
+  text-align: center;
+}
+
+/* El asterismo clásico de los libros, en lugar de una raya gris. */
+.book-content hr::after {
+  content: "⁂";
+  color: var(--ink-faint);
+  letter-spacing: 1em;
+  padding-inline-start: 1em;
+}
+
+.book-content table {
+  display: block;
+  max-inline-size: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  font-size: 0.9em;
+  margin-block-end: 1em;
+}
+
+.book-content th,
+.book-content td {
+  padding: var(--s-1) var(--s-3);
+  border-bottom: var(--border);
+  text-align: start;
+  vertical-align: top;
+}
+
+.book-content sup {
+  font-size: 0.7em;
+  line-height: 0;
+}
+
+/* Fundido al cambiar de sección */
+.section-enter {
+  animation: section-in var(--dur-2) var(--ease-out);
+}
+
+@keyframes section-in {
+  from {
+    opacity: 0.35;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Ajustes del panel Aa */
+
+.reader[data-justify] .book-content p {
+  text-align: justify;
+}
+
+.reader[data-dropcap] .book-content > p:first-of-type::first-letter,
+.reader[data-dropcap] .book-content > div:first-of-type > p:first-of-type::first-letter {
+  float: inline-start;
+  font-family: var(--font-book);
+  font-size: 3.2em;
+  line-height: 0.78;
+  padding: 0.05em 0.14em 0 0;
+  font-weight: 500;
+  color: var(--vermilion);
+}
+
+/* ---------- Fin de sección ---------- */
+
+.reader-end {
+  max-inline-size: var(--read-measure);
+  margin: var(--s-7) auto 0;
+  padding-block-start: var(--s-5);
+  border-top: var(--border);
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--s-4);
+}
+
+.reader-end-link {
+  max-inline-size: 46%;
+  padding: var(--s-2) 0;
+  border: none;
+  background: none;
+  font-family: var(--font-book);
+  font-size: var(--fs-md);
+  color: var(--vermilion);
+  text-align: start;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 0.18em;
+  cursor: pointer;
+  transition: text-decoration-color var(--dur-1) var(--ease-out);
+}
+
+.reader-end-link:last-child {
+  text-align: end;
+}
+
+.reader-end-link:hover {
+  text-decoration-color: var(--vermilion);
+}
+
+.reader-end-done {
+  font-family: var(--font-book);
+  font-style: italic;
+}
+
+/* ---------- Pie con hebra y tiempo ---------- */
+
+.reader-foot {
+  position: fixed;
+  inset-block-end: 0;
+  inset-inline: 0;
+  z-index: 15;
+  background: var(--paper);
+  border-top: var(--border);
+  padding-block-end: env(safe-area-inset-bottom, 0px);
+  transition: transform var(--dur-3) var(--ease-out);
+}
+
+.reader-foot[data-hidden] {
+  transform: translateY(105%);
+}
+
+.reader-foot .thread {
+  margin-block-start: -1px;
+}
+
+.reader-foot-meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-4);
+  padding: var(--s-2) var(--s-4) var(--s-3);
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+}
+
+.reader-foot-meta > span:first-child {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.reader-status {
+  flex: none;
+  font-size: var(--fs-xs);
+  color: var(--ink-faint);
+  animation: status-fade 5s linear forwards;
+}
+
+@keyframes status-fade {
+  0%,
+  70% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* ---------- Índice ---------- */
+
+.toc-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.toc-item {
+  display: block;
+  inline-size: 100%;
+  padding: var(--s-2) 0;
+  border: none;
+  border-bottom: 1px solid var(--rule);
+  background: none;
+  font-family: var(--font-book);
+  font-size: var(--fs-md);
+  color: var(--ink);
+  text-align: start;
+  cursor: pointer;
+  transition: color var(--dur-1) var(--ease-out);
+}
+
+.toc-item:hover {
+  color: var(--vermilion);
+}
+
+.toc-item[data-current] {
+  color: var(--vermilion);
+  font-style: italic;
+}
+
+.toc-item[data-current]::before {
+  content: "— ";
+}
+
+.toc-vocab {
+  display: block;
+  margin-block-start: var(--s-4);
+  padding-block-start: var(--s-4);
+  border-top: var(--border);
+  inline-size: 100%;
+  text-align: start;
+}
+
+/* ---------- Panel Aa ---------- */
+
+.setting-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-4);
+  padding-block: var(--s-3);
+  border-bottom: 1px solid var(--rule);
+}
+
+.setting-row:last-child {
+  border-bottom: none;
+}
+
+.setting-label {
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+  letter-spacing: 0.04em;
+  color: var(--ink-soft);
+}
+
+.setting-stepper {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+}
+
+.setting-stepper .btn {
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  padding: var(--s-1) var(--s-2);
+  font-size: var(--fs-lg);
+}
+
+.setting-value {
+  min-inline-size: 3ch;
+  font-family: var(--font-book);
+  font-size: var(--fs-md);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Móvil ---------- */
+
+@media (max-width: 40rem) {
+  .reader-bar {
+    min-height: 3rem;
+    padding-inline: var(--s-2);
+    gap: var(--s-1);
+  }
+
+  .reader-bar .btn--quiet {
+    padding-inline: var(--s-2);
+    font-size: var(--fs-sm);
+  }
+
+  .reader-bar-title {
+    font-size: var(--fs-xs);
+  }
+
+  .reader-bar-author {
+    display: none;
+  }
+
+  .reader-body {
+    padding-block-start: 3.75rem;
+    padding-block-end: 7rem;
+    padding-inline: var(--s-4);
+  }
+
+  .chapter-title {
+    font-size: var(--fs-2xl);
+  }
+
+  .reader-foot-meta {
+    padding-inline: var(--s-3);
+    font-size: var(--fs-xs);
+  }
+
+  .reader-end-link {
+    font-size: var(--fs-base);
+  }
+}

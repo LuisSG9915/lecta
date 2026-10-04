@@ -6,12 +6,23 @@ export interface StoredBook {
   name: string;
   addedAt: number;
   data: Blob;
+  // Metadatos leídos del EPUB (se rellenan de forma perezosa).
+  title?: string;
+  author?: string;
+  language?: string;
+  sectionCount?: number;
+  cover?: Blob;
+  // Marca de que ya intentamos leer los metadatos (aunque haya fallado).
+  metaVersion?: number;
 }
 
 export interface SavedBookPosition {
   bookHash: string;
   sectionIndex: number;
   scrollTop: number;
+  // Fracción leída de la sección (0–1); restaura mejor que scrollTop
+  // cuando cambian tamaño de letra o ventana.
+  ratio?: number;
   updatedAt: number;
 }
 
@@ -144,14 +155,52 @@ export async function loadLatestBook() {
   return hash ? db.get("books", hash) : undefined;
 }
 
+export async function loadLatestBookHash() {
+  const db = await getDb();
+  return db.get("session", SESSION_KEY);
+}
+
 export async function listStoredBooks() {
   const db = await getDb();
   return db.getAll("books");
 }
 
+export async function getStoredBook(hash: string) {
+  const db = await getDb();
+  return db.get("books", hash);
+}
+
+// Guarda los metadatos del EPUB (título, autor, portada) sin tocar el
+// archivo; metaVersion evita releer libros cuyo intento ya falló.
+export async function updateBookMeta(
+  hash: string,
+  meta: Pick<StoredBook, "title" | "author" | "language" | "sectionCount" | "cover" | "metaVersion">,
+) {
+  const db = await getDb();
+  const book = await db.get("books", hash);
+  if (!book) return;
+  await db.put("books", { ...book, ...meta });
+}
+
+export async function listPositions() {
+  const db = await getDb();
+  return db.getAll("positions");
+}
+
 export async function saveBookPosition(position: SavedBookPosition) {
   const db = await getDb();
   await db.put("positions", position);
+}
+
+// Pequeños valores por cuenta (velocidad de lectura medida, etc.).
+export async function saveSessionValue(key: string, value: string) {
+  const db = await getDb();
+  await db.put("session", value, key);
+}
+
+export async function loadSessionValue(key: string) {
+  const db = await getDb();
+  return db.get("session", key);
 }
 
 export async function loadBookPosition(bookHash: string) {

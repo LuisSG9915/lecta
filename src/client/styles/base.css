@@ -1,0 +1,134 @@
+/* Base: reset suave, papel con grano, tipografía global. */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+* {
+  margin: 0;
+}
+
+html {
+  font-family: var(--font-ui);
+  font-size: 100%;
+  line-height: var(--lh-ui);
+  color: var(--ink);
+  background: var(--paper);
+  text-rendering: optimizeLegibility;
+  font-synthesis: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Grano de papel: ruido de luminancia en SVG inline, ~4% de alfa. */
+body {
+  min-height: 100vh;
+  margin: 0;
+  background-color: var(--paper);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='linear' slope='0.045'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-book);
+  font-weight: 500;
+  font-optical-sizing: auto;
+  line-height: var(--lh-display);
+  overflow-wrap: break-word;
+}
+
+p {
+  line-height: var(--lh-ui);
+  overflow-wrap: break-word;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+img,
+svg,
+video {
+  display: block;
+  max-inline-size: 100%;
+}
+
+ul[role="list"],
+ol[role="list"] {
+  list-style: none;
+  padding: 0;
+}
+
+a {
+  color: var(--vermilion);
+  text-underline-offset: 0.15em;
+}
+
+::selection {
+  background: var(--ochre-wash);
+}
+
+/* Foco visible: bermellón con respiro, nunca el anillo azul del sistema. */
+:focus-visible {
+  outline: 2px solid var(--vermilion);
+  outline-offset: 2px;
+}
+
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Oculto visualmente pero presente para lectores de pantalla. */
+.visually-hidden {
+  inline-size: 1px;
+  block-size: 1px;
+  position: absolute;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@media (prefers-contrast: more) {
+  body {
+    background-image: none;
+  }
+
+  :root {
+    --rule: var(--rule-strong);
+  }
+}
+
+@media (forced-colors: active) {
+  body {
+    background-image: none;
+  }
+}

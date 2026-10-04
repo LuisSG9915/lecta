@@ -1,0 +1,291 @@
+/* Estantería: portadas, seguir leyendo, repisa, hueco para añadir. */
+
+.shelf {
+  display: grid;
+  gap: var(--s-7);
+  padding-block: var(--s-4);
+}
+
+/* ---------- Portada ---------- */
+
+.cover {
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  border-radius: var(--r-1);
+  box-shadow: var(--shadow-cover);
+  container-type: inline-size;
+}
+
+.cover--generated {
+  background: var(--cover-paper);
+  color: var(--cover-ink);
+  padding: 7%;
+}
+
+.cover-frame {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  block-size: 100%;
+  border: 1px solid
+    color-mix(in srgb, var(--cover-accent) 55%, var(--cover-ink));
+  padding: 10% 8%;
+}
+
+.cover-title {
+  font-family: var(--font-book);
+  font-weight: 500;
+  font-size: 10cqw;
+  line-height: 1.2;
+  text-align: center;
+  margin-block-start: 8%;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.cover-ornament {
+  inline-size: 6cqw;
+  block-size: 6cqw;
+  background: var(--cover-accent);
+  transform: rotate(45deg);
+}
+
+.cover-author {
+  font-family: var(--font-ui);
+  font-size: 5.5cqw;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  text-align: center;
+  margin-block-end: 6%;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+/* ---------- Seguir leyendo ---------- */
+
+.shelf-hero {
+  display: flex;
+  gap: var(--s-6);
+  align-items: end;
+}
+
+.shelf-hero-cover {
+  flex: none;
+  inline-size: 10rem;
+  block-size: 15rem;
+  padding: 0;
+  border: none;
+  background: none;
+  border-radius: var(--r-1);
+}
+
+.shelf-hero-info {
+  display: grid;
+  gap: var(--s-2);
+  padding-block-end: var(--s-2);
+  min-inline-size: 0;
+}
+
+.shelf-hero-title {
+  font-size: var(--fs-2xl);
+  font-weight: 400;
+  letter-spacing: -0.015em;
+}
+
+.shelf-hero-progress {
+  margin-block-start: var(--s-2);
+}
+
+.shelf-hero-thread {
+  max-inline-size: 24rem;
+  margin-block: var(--s-2) var(--s-3);
+}
+
+.shelf-hero-info .actions {
+  margin-block-start: var(--s-2);
+}
+
+/* ---------- Repisa ---------- */
+
+.shelf-eyebrow {
+  margin-block-end: var(--s-3);
+}
+
+.shelf-row {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-5) var(--s-4);
+  align-items: end;
+  border-block-end: var(--border);
+  padding-block-end: var(--s-4);
+}
+
+.shelf-book {
+  display: grid;
+  gap: var(--s-2);
+  inline-size: 8rem;
+  justify-items: start;
+}
+
+.shelf-book-cover {
+  inline-size: 8rem;
+  block-size: 12rem;
+  padding: 0;
+  border: none;
+  background: none;
+  border-radius: var(--r-1);
+  transition: transform var(--dur-2) var(--ease-out);
+}
+
+.shelf-book-cover:hover {
+  transform: translateY(-2px);
+}
+
+.shelf-book-meta {
+  font-variant-numeric: oldstyle-nums;
+}
+
+.shelf-book-remove {
+  min-height: auto;
+  padding: 0;
+  font-size: var(--fs-sm);
+}
+
+@media (hover: hover) {
+  .shelf-book-remove {
+    opacity: 0;
+    transition: opacity var(--dur-1) var(--ease-out);
+  }
+
+  .shelf-book:hover .shelf-book-remove,
+  .shelf-book:focus-within .shelf-book-remove {
+    opacity: 1;
+  }
+}
+
+.shelf-book-thread {
+  inline-size: 100%;
+}
+
+/* ---------- Hueco para añadir ---------- */
+
+.add-slot {
+  display: grid;
+  place-items: center;
+  gap: var(--s-3);
+  inline-size: 8rem;
+  block-size: 12rem;
+  border: 1.5px dashed var(--rule-strong);
+  border-radius: var(--r-1);
+  background: none;
+  color: var(--ink-soft);
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  transition:
+    border-color var(--dur-1) var(--ease-out),
+    color var(--dur-1) var(--ease-out),
+    background-color var(--dur-1) var(--ease-out);
+}
+
+.add-slot:hover,
+.add-slot[data-dragging] {
+  border-color: var(--vermilion);
+  color: var(--vermilion);
+  background: var(--vermilion-wash);
+}
+
+.add-slot-mark {
+  inline-size: 1.5rem;
+  block-size: 1.5rem;
+  position: relative;
+}
+
+.add-slot-mark::before,
+.add-slot-mark::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  background: currentColor;
+}
+
+.add-slot-mark::before {
+  inline-size: 100%;
+  block-size: 1.5px;
+}
+
+.add-slot-mark::after {
+  inline-size: 1.5px;
+  block-size: 100%;
+}
+
+.add-slot--large {
+  inline-size: min(20rem, 100%);
+  block-size: 13rem;
+  font-size: var(--fs-md);
+}
+
+/* ---------- Vacío ---------- */
+
+.shelf-empty {
+  display: grid;
+  gap: var(--s-6);
+  justify-items: start;
+  padding-block: var(--s-6);
+}
+
+.shelf-empty-text {
+  font-family: var(--font-book);
+  font-size: var(--fs-xl);
+  color: var(--ink-soft);
+  max-inline-size: 30ch;
+}
+
+/* ---------- Días con lectura ---------- */
+
+.shelf-week .dot--day {
+  inline-size: 7px;
+  block-size: 7px;
+}
+
+/* ---------- Pequeña ---------- */
+
+@media (max-width: 40rem) {
+  .shelf-hero {
+    gap: var(--s-4);
+  }
+
+  .shelf-hero-cover {
+    inline-size: 7.5rem;
+    block-size: 11.25rem;
+  }
+
+  .shelf-hero-title {
+    font-size: var(--fs-xl);
+  }
+
+  .shelf-book,
+  .shelf-book-cover,
+  .add-slot {
+    inline-size: 6.5rem;
+  }
+
+  .shelf-book-cover,
+  .add-slot {
+    block-size: 9.75rem;
+  }
+}

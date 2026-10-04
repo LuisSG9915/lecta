@@ -1,0 +1,67 @@
+/* Estilos heredados, adaptados a tokens, mientras cada pantalla se
+   rehace en su fase. Este archivo se vacía progresivamente. */
+
+/* Interior de hojas y diálogos */
+
+.card-context {
+  font-family: var(--font-book);
+  font-style: italic;
+  color: var(--ink-soft);
+}
+
+.card-context::before {
+  content: "— ";
+}
+
+.card-pos {
+  font-family: var(--font-ui);
+  font-style: italic;
+  font-size: var(--fs-sm);
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+  color: var(--ink-soft);
+}
+
+.senses {
+  margin: var(--s-3) 0;
+  padding-inline-start: var(--s-5);
+  font-family: var(--font-book);
+  font-size: var(--fs-base);
+  line-height: var(--lh-read);
+}
+
+.senses li + li {
+  margin-block-start: var(--s-2);
+}
+
+.word-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.word-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s-2);
+  padding-block: var(--s-3);
+  border-bottom: var(--border);
+}
+
+.word-list strong {
+  font-family: var(--font-book);
+  font-weight: 500;
+  font-size: var(--fs-md);
+}
+
+.practice-modes,
+.practice-grades {
+  display: flex;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+}
+
+.practice-card {
+  padding-block: var(--s-4);
+}

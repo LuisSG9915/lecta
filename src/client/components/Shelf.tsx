@@ -1,0 +1,322 @@
+import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import {
+  listPositions,
+  listSavedWords,
+  loadLatestBookHash,
+  updateBookMeta,
+  type SavedBookPosition,
+  type StoredBook,
+} from "../lib/idb";
+import { displayTitle, readBookMeta } from "../lib/cover";
+import { relativeDay } from "../lib/relative-time";
+import BookCover from "./BookCover";
+
+type ShelfProps = {
+  library: StoredBook[];
+  checking: boolean;
+  onOpen: (book: StoredBook) => void;
+  onRemove: (hash: string) => void;
+  onAdd: (file: File) => void;
+  onLibraryChange: () => void;
+};
+
+const DAY_MS = 86_400_000;
+const startOfDay = (ts: number) => {
+  const d = new Date(ts);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+};
+
+const progressOf = (position: SavedBookPosition | undefined, sectionCount: number | undefined) =>
+  position && sectionCount ? Math.max(0.02, position.sectionIndex / sectionCount) : 0;
+
+export default function Shelf({ library, checking, onOpen, onRemove, onAdd, onLibraryChange }: ShelfProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [positions, setPositions] = useState<SavedBookPosition[]>([]);
+  const [wordCounts, setWordCounts] = useState<Map<string, number>>(new Map());
+  const [latestHash, setLatestHash] = useState<string | undefined>(undefined);
+  const [weekDays, setWeekDays] = useState<{ day: number; read: boolean }[]>([]);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.all([listPositions(), listSavedWords(), loadLatestBookHash()]).then(
+      ([positionList, words, hash]) => {
+        if (cancelled) return;
+        setPositions(positionList);
+        const counts = new Map<string, number>();
+        for (const word of words) {
+          if (!word.bookHash) continue;
+          counts.set(word.bookHash, (counts.get(word.bookHash) ?? 0) + 1);
+        }
+        setWordCounts(counts);
+        setLatestHash(hash);
+        const readDays = new Set(positionList.map((p) => startOfDay(p.updatedAt)));
+        const today = startOfDay(Date.now());
+        setWeekDays(
+          Array.from({ length: 7 }, (_, i) => {
+            const day = today - (6 - i) * DAY_MS;
+            return { day, read: readDays.has(day) };
+          }),
+        );
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [library]);
+
+  // Rellena título, autor y portada de los libros que aún no los tienen.
+  // Uno a la vez para no competir con la lectura.
+  useEffect(() => {
+    let cancelled = false;
+    const pending = library.filter((book) => !book.metaVersion).slice(0, 5);
+    if (!pending.length) return;
+    void (async () => {
+      for (const book of pending) {
+        const meta = await readBookMeta(book.data);
+        if (cancelled) return;
+        await updateBookMeta(book.hash, {
+          title: meta?.title,
+          author: meta?.author,
+          language: meta?.language,
+          sectionCount: meta?.sectionCount,
+          cover: meta?.cover ?? undefined,
+          metaVersion: 1,
+        });
+        onLibraryChange();
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [library, onLibraryChange]);
+
+  const positionByHash = useMemo(
+    () => new Map(positions.map((position) => [position.bookHash, position])),
+    [positions],
+  );
+
+  const current = useMemo(() => {
+    const hero = latestHash ? library.find((book) => book.hash === latestHash) : undefined;
+    if (hero) return hero;
+    const [freshest] = [...positions].sort((a, b) => b.updatedAt - a.updatedAt);
+    return freshest ? library.find((book) => book.hash === freshest.bookHash) : undefined;
+  }, [latestHash, library, positions]);
+
+  const pickFile = () => fileInputRef.current?.click();
+
+  const onDrop = (event: DragEvent) => {
+    event.preventDefault();
+    setDragging(false);
+    const file = event.dataTransfer.files?.[0];
+    if (file && (file.name.endsWith(".epub") || file.type === "application/epub+zip")) {
+      onAdd(file);
+    }
+  };
+
+  const remove = (hash: string) => {
+    if (confirmDelete !== hash) {
+      setConfirmDelete(hash);
+      return;
+    }
+    setConfirmDelete(null);
+    onRemove(hash);
+  };
+
+  if (checking) {
+    return <p className="status">Preparando tu estantería…</p>;
+  }
+
+  const heroPosition = current ? positionByHash.get(current.hash) : undefined;
+
+  return (
+    <div className="shelf" onDragOver={(e) => e.preventDefault()}>
+      <input
+        ref={fileInputRef}
+        className="visually-hidden"
+        type="file"
+        accept=".epub,application/epub+zip"
+        aria-label="Elige un libro EPUB"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (file) onAdd(file);
+          event.currentTarget.value = "";
+        }}
+      />
+
+      {library.length === 0 ? (
+        <section className="shelf-empty">
+          <p className="shelf-empty-text">
+            Tu estantería está vacía. Trae un EPUB y lo abrimos aquí.
+          </p>
+          <button
+            type="button"
+            className="add-slot add-slot--large"
+            onClick={pickFile}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragging(true);
+            }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={onDrop}
+            data-dragging={dragging || undefined}
+          >
+            <span className="add-slot-mark" aria-hidden="true" />
+            Añadir libro
+          </button>
+        </section>
+      ) : (
+        <>
+          {current ? (
+            <section className="shelf-hero" aria-label="Seguir leyendo">
+              <button
+                type="button"
+                className="shelf-hero-cover"
+                onClick={() => onOpen(current)}
+                aria-label={`Continuar ${displayTitle(current.name, current.title)}`}
+              >
+                <BookCover book={current} />
+              </button>
+              <div className="shelf-hero-info">
+                <p className="eyebrow">Seguir leyendo</p>
+                <h2 className="shelf-hero-title">{displayTitle(current.name, current.title)}</h2>
+                {current.author ? <p className="meta">{current.author}</p> : null}
+                {heroPosition ? (
+                  <p className="meta shelf-hero-progress">
+                    {current.sectionCount
+                      ? `Capítulo ${heroPosition.sectionIndex + 1} de ${current.sectionCount}`
+                      : "Lectura en curso"}
+                    {" · "}
+                    te quedaste aquí {relativeDay(heroPosition.updatedAt)}
+                  </p>
+                ) : null}
+                {current.sectionCount && heroPosition ? (
+                  <div
+                    className="thread shelf-hero-thread"
+                    role="progressbar"
+                    aria-valuenow={Math.round(progressOf(heroPosition, current.sectionCount) * 100)}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                  >
+                    <div
+                      className="thread-fill"
+                      style={
+                        {
+                          "--thread-value": `${progressOf(heroPosition, current.sectionCount) * 100}%`,
+                        } as React.CSSProperties
+                      }
+                    />
+                  </div>
+                ) : null}
+                <div className="actions">
+                  <button type="button" className="btn btn--primary" onClick={() => onOpen(current)}>
+                    Continuar
+                  </button>
+                  {(wordCounts.get(current.hash) ?? 0) > 0 ? (
+                    <span className="meta">
+                      {wordCounts.get(current.hash) === 1
+                        ? "1 palabra de este libro en tu cuaderno"
+                        : `${wordCounts.get(current.hash)} palabras de este libro en tu cuaderno`}
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+            </section>
+          ) : null}
+
+          <section aria-label="Tu estantería">
+            <h2 className="eyebrow shelf-eyebrow">Tu estantería</h2>
+            <ul className="shelf-row">
+              {library.map((book) => {
+                const position = positionByHash.get(book.hash);
+                const total = book.sectionCount ?? 0;
+                const chapter = position ? position.sectionIndex : -1;
+                return (
+                  <li key={book.hash} className="shelf-book">
+                    <button
+                      type="button"
+                      className="shelf-book-cover"
+                      onClick={() => onOpen(book)}
+                      aria-label={`Abrir ${displayTitle(book.name, book.title)}`}
+                      title={displayTitle(book.name, book.title)}
+                    >
+                      <BookCover book={book} />
+                    </button>
+                    {total > 0 && total <= 40 ? (
+                      <span className="dots" aria-hidden="true">
+                        {Array.from({ length: total }, (_, i) => (
+                          <span
+                            key={i}
+                            className={`dot${i < chapter ? " dot--done" : i === chapter ? " dot--current" : ""}`}
+                          />
+                        ))}
+                      </span>
+                    ) : total > 0 ? (
+                      <span className="thread shelf-book-thread" aria-hidden="true">
+                        <span
+                          className="thread-fill"
+                          style={
+                            {
+                              "--thread-value": `${Math.round((Math.max(0, chapter) / total) * 100)}%`,
+                            } as React.CSSProperties
+                          }
+                        />
+                      </span>
+                    ) : null}
+                    <span className="shelf-book-meta meta">
+                      {position && total
+                        ? `${Math.round(progressOf(position, total) * 100)}% leído`
+                        : "Sin empezar"}
+                    </span>
+                    <button
+                      type="button"
+                      className="btn--quiet shelf-book-remove"
+                      aria-label={`Quitar ${displayTitle(book.name, book.title)}`}
+                      onClick={() => remove(book.hash)}
+                    >
+                      {confirmDelete === book.hash ? "¿Seguro?" : "Quitar"}
+                    </button>
+                  </li>
+                );
+              })}
+              <li>
+                <button
+                  type="button"
+                  className="add-slot"
+                  onClick={pickFile}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    setDragging(true);
+                  }}
+                  onDragLeave={() => setDragging(false)}
+                  onDrop={onDrop}
+                  data-dragging={dragging || undefined}
+                >
+                  <span className="add-slot-mark" aria-hidden="true" />
+                  Añadir libro
+                </button>
+              </li>
+            </ul>
+          </section>
+
+          <section aria-label="Días con lectura esta semana">
+            <h2 className="eyebrow shelf-eyebrow">Días con lectura</h2>
+            <div className="dots shelf-week">
+              {weekDays.map(({ day, read }) => (
+                <span
+                  key={day}
+                  className={`dot dot--day${read ? " dot--done" : ""}`}
+                  title={new Date(day).toLocaleDateString("es-MX", { weekday: "long" })}
+                  aria-label={`${new Date(day).toLocaleDateString("es-MX", { weekday: "long" })}: ${read ? "con lectura" : "sin lectura"}`}
+                  role="img"
+                />
+              ))}
+            </div>
+          </section>
+        </>
+      )}
+    </div>
+  );
+}

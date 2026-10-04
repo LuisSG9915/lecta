@@ -1,0 +1,745 @@
+LECTA · PLAN DE DISEÑO «CUADERNO DE LECTOR»
+=============================================================================
+Versión 1 · 4 de octubre de 2026
+Decisiones ya tomadas con Luis:
+  - Dirección: «Cuaderno de lector», con tema «Noche» de primera clase
+    (se puede usar como tema principal en toda la app, no solo al leer).
+  - Alcance: las 6 fases, verificando cada una.
+  - Tipografía autoalojada: Literata (variable) + Alegreya Sans.
+  - «Vocabulario» pasa a llamarse «Cuaderno» en toda la interfaz.
+
+
+0. ÍNDICE
+-----------------------------------------------------------------------------
+  1. Punto de partida
+  2. Investigación: hallazgos que guían el diseño
+  3. Concepto
+  4. Sistema de diseño (color, tipografía, espacio, forma, movimiento,
+     textura, voz)
+  5. Pantallas y estados
+  6. Pequeñeces que enamoran al lector
+  7. Lo que NO vamos a hacer (antipatrones «se nota que es IA»)
+  8. Accesibilidad
+  9. Arquitectura técnica de la implementación
+ 10. Fases, entregables y verificación
+ 11. Riesgos y límites
+ 12. Oportunidades fuera de alcance (no se implementan en esta ronda)
+ 13. Glosario de interfaz
+ 14. Fuentes consultadas
+
+
+1. PUNTO DE PARTIDA
+-----------------------------------------------------------------------------
+Qué es Lecta hoy: lector EPUB (foliate-js + zip.js, saneado con DOMPurify)
+donde tocar una palabra abre su ficha (catálogo léxico en CockroachDB,
+ampliable con IA), se guarda y se repasa con FSRS. Todo se guarda en
+IndexedDB por cuenta y se sincroniza con el Worker (Hono) y R2.
+
+Stack de interfaz: React 19 + TypeScript + Vite + CSS plano (un solo
+styles.css). Sin librería de componentes, sin Tailwind, sin router.
+CSP estricta en public/_headers: font-src 'self' data:, img-src 'self'
+data: blob:, script-src 'self' (sin scripts inline).
+
+Lo que funciona y se conserva:
+  - Lógica de lectura, saneado, extracción de palabra bajo el cursor,
+    marcado de palabras guardadas, FSRS, sincronización, Better Auth.
+  - Patrones de accesibilidad ya presentes: role=dialog, aria-live,
+    Escape para cerrar, foco al abrir panel, inputs de 44px, reduced-motion.
+  - Confirmación en dos toques para borrar («¿Seguro?»).
+
+Lo que se rediseña:
+  - Tipografía del sistema, botones del navegador, sin color propio.
+  - El libro vive en una caja de 62vh con scroll interno.
+  - Un mismo panel inferior sirve para palabra, vocabulario y cuenta.
+  - La biblioteca es una lista de nombres de archivo, sin portadas,
+    sin progreso, sin «seguir leyendo».
+  - No hay tema nocturno, ajustes de lectura, índice ni progreso.
+
+
+2. INVESTIGACIÓN: HALLAZGOS QUE GUÍAN EL DISEÑO
+-----------------------------------------------------------------------------
+2.1 Por qué una interfaz «parece IA»
+  Análisis de más de 10,000 páginas generadas (Sailop, Superdesign,
+  Taste Profile, CSS DNA, Rottoways). Los 20 patrones más frecuentes,
+  con el porcentaje de sitios que los presentan:
+    Inter 78% · primario azul/índigo 72% · rounded-lg/xl en tarjetas 69%
+    · shadow-md/lg 68% · grid de 3 columnas 64% · hero centrado + CTA 62%
+    · fondo blanco/gray-50 59% · texto gray-600 58% · padding simétrico
+    py-24 55% · gradiente azul→morado 52% · listas con palomitas 50%
+    · contenedor max-w-7xl 47% · hover:shadow-xl 46% · «Get started» 43%
+    · badges/píldoras 39% · skeleton shimmer, fade-up al hacer scroll,
+    transition 300ms ease-in-out en todo, contadores animados.
+  Causa: el modelo devuelve el promedio estadístico de su corpus
+  (Tailwind + shadcn + SaaS). Cura: decisiones específicas que el
+  promedio no tomaría: paleta cálida con profundidad (8–12 valores),
+  dos familias tipográficas elegidas con intención, asimetría, jerarquía
+  por tipografía y espacio en lugar de por cajas con sombra.
+
+2.2 Qué valoran los lectores (Kindle, Kobo, Matter, Readest, justRead,
+    Aurora, foros MobileRead, reseñas de LingQ y Readlang)
+  - La tipografía ES el producto. Matter perdió suscriptores al cambiar
+    Bookerly por otra fuente; la reseña lo describe como «la app más
+    bonita del mundo» por la fuente y los márgenes.
+  - Parámetros con respaldo: serif optimizada para pantalla, 18–20px,
+    55–70 caracteres por línea (WCAG tope 80), interlineado 1.6–1.7,
+    tracking 0 en párrafos, márgenes generosos.
+  - Temas Papel/Crema/Noche y controles de tamaño e interlineado.
+    Los temas «noche» buenos no son negro puro: fondo oscuro cálido y
+    texto crema con contraste moderado.
+  - Orientación: «capítulo 3 de 24», «12 min restantes en el capítulo»
+    (Kindle Time to Read), barra de progreso fina (Kobo, muy extrañada
+    por quienes pasan a Kindle), puntos de progreso bajo el título
+    (pantalla de inicio del Kindle), retomar justo donde se quedó.
+  - La interfaz debe desaparecer: texto a pantalla completa, barra solo
+    cuando se pide. Queja #1 de LingQ: demasiada interfaz entre el
+    lector y el texto.
+  - Para quien aprende idiomas, lo más satisfactorio es ver cómo el
+    resaltado de una palabra se desvanece conforme la aprende (LingQ) y
+    ver crecer el conteo de palabras conocidas. Readlang gana por
+    «limpio y de baja fricción».
+  - Flashcards: quienes usan Anki valoran ver el intervalo resultante
+    bajo cada calificación («en 10 min», «en 4 días»).
+
+2.3 Tipografías
+  - Literata (TypeTogether, OFL): diseñada para Google Play Books;
+    variable con ejes de peso y tamaño óptico (texto, titulares y
+    pies con la misma familia). Hecha para leer horas en pantalla.
+  - Alegreya Sans (Juan Pablo del Peral, Huerta Tipográfica, Argentina,
+    OFL): humanista, caligráfica, pensada para literatura. Lejos de
+    Inter/Roboto/Geist. Tiene versalitas (Alegreya Sans SC).
+  Ambas existen en npm como @fontsource-variable/literata 5.3.0 y
+  @fontsource/alegreya-sans 5.3.0 (publicadas en julio de 2026).
+
+
+3. CONCEPTO
+-----------------------------------------------------------------------------
+Lecta no es una app de flashcards con un lector pegado. Es un libro y el
+cuaderno donde el lector apunta palabras, como los «commonplace books»
+que los lectores han llevado durante siglos.
+
+  - El libro es el protagonista: ocupa la pantalla, la interfaz se retira.
+  - Las fichas aparecen en el margen (marginalia), no en una ventana
+    encima del texto.
+  - Lo guardado se vuelve un Cuaderno con la oración donde encontraste
+    cada palabra (su «hábitat»). Repasar es volver a tus apuntes.
+  - El color de acento viene de la historia del libro: el bermellón de la
+    rubricación, la tinta roja con la que los copistas marcaban títulos.
+  - La textura es papel: grano casi imperceptible, filetes de 1px,
+    cantos rectos. Nada de vidrio, sombras ni gradientes.
+
+Nombre interno del tema oscuro: «Noche». Es una paleta diseñada aparte
+(no una inversión) y puede ser el tema principal de toda la app.
+
+
+4. SISTEMA DE DISEÑO
+-----------------------------------------------------------------------------
+4.1 Color (tokens CSS en :root, con [data-theme] para cada tema;
+    valores en hex, con oklch donde aporte; contraste verificado contra
+    el fondo del tema)
+
+  Tema PAPEL (claro, predeterminado)
+    --paper            #F6F1E7   fondo general (no #F9FAFB)
+    --paper-raised     #FBF8F1   superficie de página / hoja
+    --paper-sunken     #EFE8DA   campos de texto, zonas hundidas
+    --ink              #2B2520   texto principal (negro cálido)
+    --ink-soft         #5E554B   texto secundario            6.5:1
+    --ink-faint        #8A7F72   solo decorativo o ≥ 1.25rem  3.5:1
+    --rule             #DDD4C4   filetes de 1px
+    --rule-strong      #C9BEAA   bordes de botón secundario
+    --vermilion        #9E3A23   enlaces, texto de acento, foco   6.0:1
+    --vermilion-bright #C2452D   subrayados, hebra de progreso (no texto)
+    --vermilion-wash   #F3DDD5   fondo de estado seleccionado/presionado
+    --ochre            #D4A43A   base del resaltador
+    --ochre-wash       rgba(212,164,58,.28)  palabra nueva
+    --ochre-soft       rgba(212,164,58,.14)  palabra aprendiendo
+    --graphite         #6B6E66   punteado «lápiz» de palabra asentada
+    --sage             #43694D   éxito                          5.5:1
+    --amber            #8A6A1E   aviso
+    --danger           = --vermilion (el bermellón ya es la tinta de
+                         corrección; no se añade un rojo distinto)
+
+  Tema CREMA (atardecer)
+    --paper #EFE3CF · --paper-raised #F5EBD9 · --paper-sunken #E6D8BE
+    --ink #3B2F25 · --ink-soft #675647 · --rule #D6C7AA
+    --rule-strong #C2B08F · --vermilion #933621 · resto igual que Papel.
+
+  Tema NOCHE
+    --paper            #1C1916   marrón-negro cálido (no #000, no zinc)
+    --paper-raised     #242019
+    --paper-sunken     #15120F
+    --ink              #DCD3C3   crema, contraste moderado    ≈12:1
+    --ink-soft         #A89D8E                                6.6:1
+    --ink-faint        #7C7266
+    --rule             #3A342C
+    --rule-strong      #4A4238
+    --vermilion        #E07A5F   más claro y menos saturado   5.9:1
+    --vermilion-bright #E8886E
+    --vermilion-wash   rgba(224,122,95,.18)
+    --ochre-wash       rgba(233,196,106,.22)
+    --ochre-soft       rgba(233,196,106,.11)
+    --graphite         #8C8F86
+    --sage             #8FB996
+    --amber            #D9B65C
+
+  Selección de tema: Automático (sigue prefers-color-scheme) · Papel ·
+  Crema · Noche. Se guarda en localStorage y se aplica como
+  data-theme en <html> antes del primer render (main.tsx). Como la CSP
+  prohíbe scripts inline, el CSS trae el valor «automático» por defecto
+  con @media (prefers-color-scheme: dark) para que no haya destello.
+  color-scheme: light dark para que formularios y scrollbars acompañen.
+
+4.2 Tipografía
+  Familias
+    --font-book  "Literata Variable", Literata, Georgia, serif
+                 texto del libro, títulos de pantalla, entradas de
+                 diccionario, nombre «Lecta».
+                 Ejes: wght 200–900, opsz 7–72. Romana e itálica.
+    --font-ui    "Alegreya Sans", "Gill Sans", "Trebuchet MS", sans-serif
+                 etiquetas, botones, metadatos, formularios.
+                 Pesos 400, 500, 700 + itálica 400.
+    Fuente de lectura alternativa para el usuario: Alegreya Sans
+    (sans). Más familias quedan como oportunidad (ver §12).
+  Escala (razón 1.25, base 16px)
+    --fs-xs   .72rem   rótulos en versalitas       tracking +.08em
+    --fs-sm   .85rem   metadatos, pies             tracking +.01em
+    --fs-base 1rem     interfaz                    tracking 0
+    --fs-md   1.125rem lectura predeterminada (18px)
+    --fs-lg   1.25rem  entrada de palabra en lista
+    --fs-xl   1.5625rem título de sección (opsz 24)
+    --fs-2xl  1.953rem entrada de diccionario, título de libro
+    --fs-3xl  2.441rem título de capítulo en el lector (opsz 72,
+              peso 400, tracking -.015em)
+  Interlineado: display 1.1 · interfaz 1.45 · lectura 1.65 (ajustable
+  1.5–1.9) · pequeño 1.4.
+  Pesos: títulos de pantalla en 400 itálica o 500; nunca todo en 700.
+  font-feature-settings: "kern", "liga", "onum" (números elzevirianos
+  en metadatos: fechas, «capítulo 7 de 24») y "smcp" para rótulos
+  cuando la fuente lo soporte; "lnum" en cifras de repaso.
+  Lectura: hyphens: auto con lang del EPUB, text-wrap: pretty donde
+  exista, max-inline-size 65ch, orphans/widows 2, text-rendering:
+  optimizeLegibility. Letra capital opcional en el primer párrafo de
+  cada sección (::first-letter con Literata opsz 72). Comillas
+  españolas «» en interfaz; raya — en citas.
+
+4.3 Espacio y retícula
+  Escala en rem: .25 .5 .75 1 1.5 2 3 4 6. Ritmo vertical asimétrico a
+  propósito (p. ej. 3rem arriba / 2rem abajo), nunca el mismo padding
+  en todas las secciones.
+  Anchos: estantería max 72rem alineada a la izquierda; lector 65ch
+  centrado; cuaderno 48rem. En ≥ 1100px el lector reserva una columna
+  de margen de 22rem a la derecha para la ficha.
+
+4.4 Forma
+  Radios: --r-1 2px (botones, campos) · --r-2 4px (portada generada,
+  fichas) · --r-sheet 14px solo en las esquinas superiores de la hoja
+  móvil. Bordes de 1px con --rule. Sin sombras, salvo:
+    --shadow-sheet  0 -8px 30px rgba(43,37,32,.14)  hoja móvil
+    --shadow-cover  1px 1px 0 rgba(0,0,0,.08),
+                    4px 6px 14px -6px rgba(43,37,32,.35)  portadas
+  (la portada es un objeto físico; la interfaz no).
+
+4.5 Movimiento
+  --ease-out cubic-bezier(.22,1,.36,1) · --ease-in cubic-bezier(.55,0,1,.45)
+  --dur-1 120ms hover y foco · --dur-2 180ms fundidos de contenido ·
+  --dur-3 260ms hojas y paneles. Nada se anima solo: ni pulsos, ni
+  flotar, ni contadores, ni fade-up al hacer scroll. Con
+  prefers-reduced-motion: reduce todas las duraciones pasan a 0 y la
+  hoja aparece sin desplazamiento.
+
+4.6 Textura
+  Grano de papel: SVG inline con feTurbulence en data: URI, opacidad
+  3–4%, como capa fija detrás de todo (permitido por img-src data:).
+  Se desactiva con prefers-contrast: more y en Noche baja a 2%.
+  Sin fotos, sin gradientes, sin blobs desenfocados, sin vidrio.
+
+4.7 Iconografía
+  Casi nula y textual: «‹ Estantería», «Aa», «×». Los pocos glifos
+  necesarios (índice, ajustes) son SVG inline de trazo 1.5px dibujados
+  a mano para este proyecto, sin círculos de color detrás.
+
+4.8 Voz y texto
+  Español de México, tuteo, tono de bibliotecario sereno: dice lo que
+  pasa, no celebra. Sin signos de exclamación, sin emojis, sin
+  «¡Genial!». Ejemplos:
+    «Tu estantería está vacía. Trae un EPUB y lo abrimos aquí.»
+    «Te quedaste en el capítulo 7, hace dos días.»
+    «“imperturbable” ya está en tu cuaderno.»
+    «Nada que repasar hoy. Vuelve mañana o sigue leyendo.»
+    «No pudimos abrir este EPUB. Puede estar protegido o dañado.»
+  Los textos de error existentes se conservan; solo se ajusta el nombre
+  «Vocabulario» → «Cuaderno» (ver §13).
+
+
+5. PANTALLAS Y ESTADOS
+-----------------------------------------------------------------------------
+5.1 Estantería (inicio)
+  Anatomía
+    - Cabecera: «Lecta» en Literata itálica (fs-lg) a la izquierda;
+      a la derecha, selector de tema (Automático/Papel/Crema/Noche) y
+      «Entrar» o el correo de la cuenta como texto con subrayado
+      bermellón, no como botón. «Cuaderno · 23» con el conteo de
+      palabras para hoy si lo hay.
+    - Bloque «Seguir leyendo» (solo si hay libro en curso): portada
+      real del EPUB a la izquierda a proporción natural (altura 15rem,
+      sombra de libro), y a la derecha título (fs-2xl, 400), autor en
+      --ink-soft, «Capítulo 7 de 24 · te quedaste aquí hace dos días»,
+      hebra de progreso de 2px y botón primario «Continuar».
+      Debajo, en --fs-sm: «12 palabras de este libro en tu cuaderno».
+    - Rótulo «TU ESTANTERÍA» en versalitas con tracking; debajo las
+      portadas en flujo (flex-wrap, altura 12rem, ancho natural) sobre
+      una línea de repisa de 1px. Cada portada lleva debajo los puntos
+      de progreso por capítulo (hasta 40 secciones; si hay más, una
+      barra continua). Al pasar el cursor o enfocar aparecen «Abrir» y
+      «Quitar» (con «¿Seguro?»). Un hueco punteado con «Añadir libro»
+      que también acepta arrastrar y soltar un EPUB.
+    - Línea de estado (role=status) al pie, en texto plano.
+  Estados
+    - Carga: «Preparando tu estantería…» con un punto que respira
+      (opacidad), sin skeleton.
+    - Vacío: rótulo, el hueco «Añadir libro» grande y el texto
+      «Tu estantería está vacía. Trae un EPUB y lo abrimos aquí.»
+    - Sin portada: portada tipográfica generada (título y autor en
+      Literata sobre un papel tintado elegido a partir del hash entre 6
+      tintas cálidas: ocre, terracota, salvia, pizarra, ciruela, arena).
+    - Título muy largo: 3 líneas máximo con elipsis; el nombre
+      completo en title y aria-label.
+    - Error: línea role=alert en --vermilion, nunca una tarjeta roja.
+    - Sin conexión: la estantería funciona igual; «Entrar» muestra
+      «sin conexión» como meta.
+
+5.2 Lector
+  Anatomía
+    - El libro ocupa toda la ventana; el scroll es el del documento
+      (mejor en móvil: la barra del navegador se repliega).
+    - Barra superior (altura 3rem, fondo --paper sólido, filete abajo):
+      «‹ Estantería» · título del libro en versalitas centrado (se
+      trunca) · «Índice» · «Aa» · «Cuaderno». Se oculta al bajar y
+      reaparece al subir, al tocar el texto fuera de una palabra o al
+      pulsar Tab.
+    - Pie: hebra de progreso de 2px a lo ancho (bermellón sobre --rule)
+      que marca el avance ponderado por tamaño de sección, y debajo en
+      --fs-sm: «Capítulo 7 de 24 · 12 min restantes». Se oculta junto
+      con la barra. El tiempo usa el total de palabras de la sección y
+      tu velocidad medida (predeterminado 180 ppm; media móvil acotada
+      100–600 ppm, guardada por cuenta).
+    - Título de capítulo (del índice) al inicio de cada sección en
+      fs-3xl, 400, con 3rem arriba y 1.5rem abajo.
+    - Columna de 65ch; márgenes 1.25rem en móvil.
+    - Al final de cada sección: «Siguiente: Capítulo 8 · Título →» y
+      «← Anterior» como enlaces grandes en --font-book. Teclado: ← →
+      cambian de sección; Espacio y Av Pág desplazan. No hay zonas de
+      toque en los bordes: chocan con tocar palabras y no se descubren.
+    - Panel «Índice»: lista del TOC con jerarquía por sangría; la
+      sección actual en bermellón; en escritorio como panel lateral
+      izquierdo, en móvil como hoja.
+    - Panel «Aa»: Tema (Automático/Papel/Crema/Noche) · Letra
+      (Literata/Alegreya Sans) · Tamaño (16–24) · Interlineado
+      (1.5–1.9) · Ancho (55/65/75ch) · Justificar · Letra capital.
+      Los cambios se aplican en vivo y se guardan en el dispositivo.
+    - Palabras guardadas marcadas con intensidad según FSRS (ver §6).
+  Estados
+    - Abriendo: «Abriendo libro…» centrado en --font-book con el punto
+      que respira; la barra ya visible para poder volver.
+    - Cambio de sección: fundido de 180ms del contenido.
+    - Error de sección: texto en línea con «Intentar de nuevo» y
+      «Volver a la estantería».
+    - Sección vacía o solo imágenes: «Esta sección no tiene texto.»
+    - Análisis del libro: «Analizando…» en el pie como meta, nunca un
+      spinner; al terminar, «Palabras del libro» en el menú «Cuaderno».
+
+5.3 Ficha de palabra
+  Comportamiento
+    - ≥ 1100px: aparece en la columna de margen derecha, pegada (sticky)
+      a la altura del scroll; el texto no se mueve.
+    - < 1100px: hoja inferior con asa, máx. 60vh, fondo --paper-raised,
+      sombra cálida; arrastrar hacia abajo o Escape la cierra.
+  Anatomía (formato de diccionario)
+    - Entrada en Literata fs-2xl 500; al lado la categoría en versalitas
+      itálicas («sustantivo», «verbo»); si es forma flexionada,
+      «forma de «lemma»» en --ink-soft.
+    - Acepciones numeradas (1., 2.) en --font-book fs-base, ejemplo en
+      itálica si existe.
+    - Oración donde la encontraste como cita con raya, con la palabra en
+      bermellón.
+    - Acciones: «Guardar palabra» (primario, tinta) → al guardar cambia
+      a «En tu cuaderno» sin animación de celebración; «Definir con IA»
+      (secundario) cuando no hay ficha; «×» para cerrar.
+  Estados
+    - Buscando: «Buscando en el catálogo…»
+    - Sin ficha: «Aún no está en el catálogo.» + «Definir con IA».
+    - Definiendo: «Consultando la ficha…» con el botón deshabilitado.
+    - Error / sin conexión: texto role=alert; «Guardar palabra» sigue
+      disponible (guarda sin significado).
+    - Ya guardada: entra con «En tu cuaderno» y opción «Quitar».
+    - Definición muy larga: la hoja hace scroll interno; la entrada y
+      las acciones quedan fijas.
+
+5.4 Cuaderno (antes «Vocabulario»)
+  Pantalla completa (no panel), con «‹ Volver» a donde estabas.
+  Anatomía
+    - Título «Cuaderno» en Literata 400 itálica; meta: «84 palabras ·
+      23 para hoy».
+    - Botón primario «Repasar 23» si hay pendientes; selector del modo
+      debajo como texto con subrayado: Significado · Palabra · Oración
+      (con el aviso de requisitos del modo cuando aplique).
+    - Lista agrupada por libro (rótulo en versalitas con título del
+      libro, o «Sin libro»), cada palabra como entrada: forma (fs-lg),
+      lemma entre paréntesis si difiere, significado en --font-book,
+      oración en itálica --ink-soft, estado en versalitas con un punto
+      cuyo relleno sigue la misma escala de intensidad que el subrayado:
+      Nueva · Aprendiendo · Para hoy · Asentada. «Quitar» aparece al
+      pasar el cursor/enfocar.
+    - Filtro simple por texto; orden por fecha (predeterminado), libro
+      o estado.
+  Estados
+    - Carga: «Abriendo tu cuaderno…»
+    - Vacío: «Aún no has apuntado palabras. Toca cualquier palabra
+      mientras lees.»
+    - Sin pendientes: «Nada que repasar hoy. Vuelve mañana o sigue
+      leyendo.»
+    - Lista larga (300+): virtualización sencilla por grupos
+      plegables; búsqueda.
+
+5.5 Repaso
+  - Ficha rayada: superficie --paper-raised con rayas horizontales de
+    1px cada 1.65rem (como tarjeta de índice), margen izquierdo con una
+    línea bermellón fina. Lado A: forma (fs-3xl) o significado u
+    oración con hueco según el modo; lado B: respuesta.
+  - «Mostrar respuesta» (primario) → cuatro calificaciones en una fila
+    (Otra vez · Difícil · Bien · Fácil), cada una con su intervalo
+    resultante calculado con ts-fsrs («en 10 min», «en 4 días», «en 3
+    semanas»). Atajos 1–4 y Espacio.
+  - Progreso de la sesión como «7 de 23» en el pie; al terminar:
+    «Listo por hoy. Próxima tanda: mañana (12 palabras).»
+
+5.6 Cuenta
+  Diálogo centrado en escritorio (max 26rem), hoja en móvil. Campos con
+  --paper-sunken, botones «Entrar» (primario), «Crear cuenta»,
+  «Enlace por correo» como enlaces. Sesión abierta: «Sesión de
+  luis@…» y «Cerrar sesión». Estado de sincronización en una línea:
+  «Cuaderno sincronizado hace 2 min» / «Sin conexión: se sincroniza al
+  volver». Mensajes de error se conservan.
+
+5.7 Navegación y botón «atrás»
+  Vistas: estantería · lector · cuaderno. Cada cambio de vista hace
+  history.pushState para que el botón atrás del móvil regrese a la
+  estantería en vez de salir de la app; las hojas (ficha, índice, Aa)
+  también se cierran con atrás.
+
+5.8 Responsivo
+  - 360px: una columna, portadas de 9rem, barra del lector con texto
+    abreviado, hojas inferiores.
+  - 768px: estantería en dos bloques, lector igual.
+  - ≥ 1100px: columna de margen para la ficha, índice lateral.
+  - Zoom 200%: todo fluye en rem; nada de alturas fijas en texto.
+
+
+6. PEQUEÑECES QUE ENAMORAN AL LECTOR
+-----------------------------------------------------------------------------
+  1. La portada real como pieza central, con sombra de objeto físico.
+  2. «Te quedaste en el capítulo 7, hace dos días» (Intl.RelativeTimeFormat).
+  3. Minutos restantes del capítulo con tu velocidad real de lectura.
+  4. Hebra de progreso de 2px, como el listón de un libro.
+  5. Puntos de progreso por capítulo bajo cada portada (Kindle).
+  6. El subrayado de una palabra se desvanece conforme la aprendes:
+       sin tarjeta FSRS          → lavado ocre (--ochre-wash)
+       Learning / Relearning     → lavado tenue (--ochre-soft)
+       Review, estabilidad < 21d → punteado de lápiz (--graphite)
+       Review, estabilidad ≥ 21d → sin marca (sigue siendo tocable)
+     Se implementa con data-level en el <mark>; misma escala en el
+     punto de estado del Cuaderno.
+  7. Intervalo resultante bajo cada calificación del repaso.
+  8. Cada palabra guarda la oración donde la encontraste; se muestra
+     como cita con raya en ficha, cuaderno y repaso.
+  9. «12 palabras de este libro en tu cuaderno» en Seguir leyendo.
+ 10. Título de capítulo en grande al inicio de cada sección; letra
+     capital opcional.
+ 11. Números elzevirianos en metadatos; versalitas reales en rótulos.
+ 12. Tema automático según el sistema, con cambio manual en dos toques.
+ 13. Portadas tipográficas para EPUB sin portada, al estilo de las
+     ediciones clásicas: dos libros sin portada no se ven iguales.
+ 14. Estados vacíos escritos como un bibliotecario, no como un sistema.
+ 15. Fila de siete puntos «días con lectura esta semana» en la
+     estantería: discreta, sin rachas, sin alertas ni culpa.
+ 16. Foco visible en bermellón con 2px de separación, no un anillo azul.
+ 17. Al guardar una palabra, el <mark> aparece en el texto en el acto
+     con un fundido de 180ms.
+ 18. Al volver a un libro, un aviso breve: «Volviste al capítulo 7».
+
+
+7. LO QUE NO VAMOS A HACER
+-----------------------------------------------------------------------------
+Lista de rechazo para usar en revisión de código y de pantallas:
+  - Inter, Roboto, Geist o system-ui como fuente.
+  - Azul o índigo como color primario; gradientes de cualquier tipo.
+  - Tarjetas blancas con sombra sobre gris; rounded-lg en todo.
+  - Grid de tres columnas iguales; texto centrado por defecto; hero.
+  - Iconos dentro de círculos de color; listas con palomitas.
+  - Badges/píldoras de colores; «Comenzar» como CTA genérico.
+  - Skeleton shimmer; fade-up al hacer scroll; contadores animados;
+    pulsos infinitos; hover con scale(1.05) + sombra.
+  - transition: all 300ms ease-in-out.
+  - Confeti, trofeos, rachas con fuego, notificaciones de culpa.
+  - Barra pegajosa con backdrop-blur.
+  - Tema oscuro por inversión (negro puro / zinc-950 con blanco puro).
+
+
+8. ACCESIBILIDAD
+-----------------------------------------------------------------------------
+  - Contraste: texto ≥ 4.5:1 en los tres temas (tabla en §4.1);
+    --ink-faint solo decorativo o en ≥ 1.25rem. Elementos no textuales
+    (hebra, puntos, bordes de foco) ≥ 3:1.
+  - Objetivos táctiles ≥ 44×44px; separación ≥ 8px.
+  - Teclado: todo alcanzable; hojas y diálogos con atrapado de foco,
+    Escape para cerrar y retorno del foco al disparador; ← → entre
+    secciones; 1–4 y Espacio en repaso.
+  - Lector de pantalla: títulos en orden; role=dialog con aria-label;
+    role=status para avisos, role=alert para errores; progressbar con
+    aria-valuenow/-valuetext («Capítulo 7 de 24, 12 minutos
+    restantes»); lang del EPUB en el contenedor del texto para la
+    pronunciación correcta; portadas con alt del título.
+  - Zoom 200% y texto grande del sistema: todo en rem, sin alturas
+    fijas en bloques de texto, columnas que colapsan.
+  - prefers-reduced-motion: duraciones 0; prefers-contrast: more:
+    filetes más oscuros, sin grano; forced-colors: bordes visibles en
+    botones y marcas con outline.
+  - El significado nunca se comunica solo con color: cada estado lleva
+    su palabra (Nueva, Aprendiendo…), cada marca tiene subrayado
+    además de lavado.
+
+
+9. ARQUITECTURA TÉCNICA DE LA IMPLEMENTACIÓN
+-----------------------------------------------------------------------------
+9.1 Dependencias nuevas (pnpm add)
+  @fontsource-variable/literata@5.3.0 (ejes wght+opsz, romana e
+  itálica, subset latin) y @fontsource/alegreya-sans@5.3.0 (400, 500,
+  700, 400 itálica). Importadas desde CSS; Vite las copia a /assets con
+  hash, lo que cumple font-src 'self'. Preload de los dos woff2
+  principales vía import ?url en main.tsx (sin HTML inline).
+
+9.2 Estilos
+  src/client/styles.css pasa a importar:
+    styles/tokens.css      colores por tema, tipografía, espacio,
+                           movimiento, sombras
+    styles/base.css        reset, grano, foco, tipografía global,
+                           color-scheme, media queries de preferencia
+    styles/components.css  botón (primario/secundario/enlace/peligro),
+                           hoja, diálogo, rótulo, campo, línea de
+                           estado, hebra, puntos
+    styles/shelf.css · styles/reader.css · styles/notebook.css
+  Sin preprocesador ni Tailwind. Clases con prefijo por pantalla
+  (shelf-, reader-, card-, notebook-). Variables de lectura
+  (--read-size, --read-leading, --read-measure, --read-font) en el
+  contenedor del lector, cambiadas desde el panel Aa.
+
+9.3 Datos locales (src/client/lib/idb.ts)
+  - StoredBook gana campos opcionales: title, author, cover?: Blob,
+    language, sectionCount, metaVersion. No requiere subir DB_VERSION
+    (los valores son objetos libres); se rellenan de forma perezosa
+    la primera vez que la estantería los necesita (una apertura ligera
+    del EPUB: directorio zip + OPF + portada) con concurrencia 1.
+  - session store: readingWpm (string) y lastView.
+  - SavedBookPosition se mantiene; scrollTop pasa a medir window.scrollY.
+  - Preferencias de lectura y tema en localStorage (son del
+    dispositivo, no de la cuenta): lecta:theme, lecta:reader.
+
+9.4 Módulos nuevos (todos con prueba unitaria donde hay lógica pura)
+  lib/settings.ts     lectura y escritura de preferencias con valores
+                      por defecto y validación; aplica data-theme.
+  lib/progress.ts     progreso ponderado por section.size, palabras
+                      totales de una sección, minutos restantes, media
+                      móvil de ppm acotada.
+  lib/cover.ts        extractCover(file) con foliate getCover();
+                      metadatos (título, autor, idioma); paleta
+                      determinista hash → tinta para portada generada.
+  lib/marks.ts        pasa de Set<string> a Map<string, Level>; escribe
+                      data-level; mantiene la prueba existente y añade
+                      casos por nivel.
+  lib/relative-time.ts «hace dos días», «ayer», «hoy» en es-MX.
+  lib/intervals.ts    etiqueta «en 10 min / en 4 días» a partir de
+                      scheduler.repeat de ts-fsrs para las 4 calificaciones.
+  lib/history.ts      vistas y hojas sincronizadas con pushState/popstate.
+  types/foliate-js.d.ts añade getCover(): Promise<Blob | null>.
+
+9.5 Componentes
+  App.tsx             estado de vista (shelf | reader | notebook),
+                      tema, sesión; deja de renderizar la lista.
+  components/Shelf.tsx        estantería completa (hero + repisa + añadir)
+  components/BookCover.tsx    portada real o tipográfica + puntos
+  components/Reader.tsx       se reorganiza: ReaderBar, ReaderFooter,
+                              TocPanel, ReaderSettings, SectionNav
+  components/WordCard.tsx     contenido de la ficha (sustituye WordPanel)
+  components/Sheet.tsx        contenedor responsivo: margen en ≥1100px,
+                              hoja inferior en móvil; foco, Escape, atrás
+  components/Dialog.tsx       para Cuenta
+  components/Notebook.tsx     sustituye Vocabulary.tsx (lista + filtros)
+  components/Practice.tsx     repaso con ficha rayada e intervalos
+  components/Account.tsx      mismo flujo, nueva piel
+  components/StatusLine.tsx   línea role=status/alert compartida
+  components/ThemeMenu.tsx    selector de tema
+
+9.6 Rendimiento
+  - Fuentes: 2 familias, subset latin, font-display: swap; ≈ 350 KB
+    una vez, cacheadas por hash.
+  - Portadas: extracción perezosa y guardada; miniaturas como Blob
+    URL revocadas al desmontar.
+  - Hide-on-scroll con listener pasivo + requestAnimationFrame.
+  - El análisis del libro sigue en segundo plano como hoy.
+  - Sin librerías de animación ni de iconos.
+
+9.7 Seguridad
+  - Nada de scripts inline (CSP). El tema se aplica en main.tsx.
+  - El grano es un data: URI estático en CSS; no se genera desde datos
+    del usuario.
+  - El contenido del EPUB sigue pasando por sanitizeSectionDocument;
+    los títulos de capítulo se insertan como textContent.
+
+
+10. FASES, ENTREGABLES Y VERIFICACIÓN
+-----------------------------------------------------------------------------
+Verificación común al cierre de cada fase: pnpm typecheck · pnpm lint ·
+pnpm test · pnpm build; dev corriendo con vista previa para revisión de
+Luis; comprobación manual de teclado y de 360px/escritorio; cálculo de
+contraste de los pares nuevos.
+
+Fase 1 · Fundamentos (tokens, fuentes, temas, base de componentes)
+  - pnpm add de las dos fuentes; tokens.css, base.css, components.css.
+  - settings.ts + ThemeMenu; data-theme aplicado antes del render.
+  - Botones, campos, rótulos, línea de estado, hebra, puntos.
+  - Pruebas: settings.ts (defaults, validación, persistencia).
+  - Resultado visible: la app actual con la nueva piel y los temas.
+
+Fase 2 · Estantería
+  - cover.ts, BookCover (real + tipográfica), relleno perezoso de
+    metadatos en IDB, Shelf con Seguir leyendo, repisa, añadir con
+    arrastrar y soltar, estados vacío/carga/error, siete puntos de
+    días con lectura.
+  - Pruebas: paleta determinista, relative-time, lectura de metadatos
+    con fixtures/minimal.epub.
+
+Fase 3 · Lector inmersivo
+  - Scroll de documento, barra que se oculta, pie con hebra y tiempo,
+    título de capítulo, navegación al final de sección, teclado,
+    panel Índice, panel Aa con todos los ajustes, fundido de sección,
+    history.ts para atrás.
+  - Pruebas: progress.ts (ponderación, minutos, media acotada).
+
+Fase 4 · Ficha en el margen y marcas por aprendizaje
+  - Sheet responsivo, WordCard con formato de diccionario, marks.ts con
+    niveles, aparición inmediata del mark al guardar.
+  - Pruebas: marks.ts por nivel; WordCard estados.
+
+Fase 5 · Cuaderno y Repaso
+  - Notebook (agrupado por libro, filtro, orden, estados), Practice
+    con ficha rayada e intervalos, atajos de teclado, cierre de sesión
+    de repaso.
+  - Pruebas: intervals.ts.
+
+Fase 6 · Cuenta, pulido y auditoría
+  - Dialog de Cuenta, estado de sincronización, revisión de todos los
+    estados (carga, vacío, error, éxito, deshabilitado, contenido
+    largo), auditoría de accesibilidad (contraste, teclado, lector de
+    pantalla, zoom 200%, reduced-motion, forced-colors), revisión en
+    360px/768px/1280px, revisión final contra la lista de §7.
+  - Resumen de cierre con lo cambiado, verificado y pendiente.
+
+
+11. RIESGOS Y LÍMITES
+-----------------------------------------------------------------------------
+  - Metadatos de EPUB irregulares: foliate devuelve título/autor en
+    formas variadas (string, array, objeto); ya existe
+    flattenMetadataValue y se reutiliza. Sin portada → tipográfica.
+  - getCover() puede fallar en EPUB con manifiestos raros; se captura y
+    se marca coverChecked para no reintentar en cada visita.
+  - hyphens: auto en español depende de diccionarios del navegador
+    (Chrome, Safari y Firefox lo soportan; requiere lang correcto).
+  - Pasar del scroll interno al scroll del documento cambia el
+    significado de scrollTop guardado; las posiciones previas se
+    restauran como aproximación (misma sección, scroll 0 si no cuadra).
+  - La estimación de minutos es aproximada; se presenta como «≈ 12 min».
+  - document.caretRangeFromPoint no existe en Firefox (limitación
+    actual, no la introduce este plan; ver §12).
+  - +350 KB de fuentes en la primera carga; después, caché.
+  - Remontar el Reader por vocabVersion (comportamiento actual) resetea
+    el scroll; en la Fase 3 se evita remontar y se actualizan las marcas
+    en sitio.
+  - El renombre a «Cuaderno» afecta textos y aria-labels; se revisa que
+    ninguna prueba dependa de «Vocabulario».
+
+
+12. OPORTUNIDADES FUERA DE ALCANCE (no se implementan ahora)
+-----------------------------------------------------------------------------
+  - Modo paginado (una o dos columnas) además del scroll.
+  - Más familias de lectura (Source Serif 4, Atkinson Hyperlegible Next
+    para accesibilidad, OpenDyslexic) con carga perezosa.
+  - Ajustes de lectura por libro.
+  - Búsqueda dentro del libro; marcadores y resaltados de pasajes.
+  - Compatibilidad con Firefox en la selección de palabra
+    (caretPositionFromPoint).
+  - Manifest PWA, icono de la app (propuesta: ligadura «Le» en Literata
+    bermellón sobre papel) y pantalla de instalación.
+  - Estadísticas de lectura (minutos por día, palabras por libro) como
+    página del Cuaderno, sin gamificación.
+  - Exportar el Cuaderno (CSV/Anki).
+  - En la pantalla «Palabras del libro», diferenciar «con ficha en el
+    catálogo» de «palabras que ya conoces» (hoy se mezclan en el
+    nombre; el dato actual es cobertura del catálogo, no conocimiento).
+
+
+13. GLOSARIO DE INTERFAZ (fuente de verdad para textos)
+-----------------------------------------------------------------------------
+  Estantería          la biblioteca del usuario (antes «Tu biblioteca»)
+  Seguir leyendo      bloque del libro en curso
+  Añadir libro        acción de cargar un EPUB (antes «Elegir archivo»)
+  Abrir · Quitar · ¿Seguro?   acciones sobre un libro (se conservan)
+  Capítulo N de M     posición; si el TOC no da título: «Sección N»
+  Índice              tabla de contenidos del libro
+  Aa / Ajustes de lectura     panel de tipografía y tema
+  Tema: Automático · Papel · Crema · Noche
+  Letra · Tamaño · Interlineado · Ancho · Justificar · Letra capital
+  Cuaderno            lo guardado (antes «Vocabulario»)
+  Ficha               definición de una palabra en el catálogo
+  Guardar palabra → En tu cuaderno     acción y estado tras guardar
+  Definir con IA      se conserva
+  Catálogo            el léxico compartido (se conserva en mensajes)
+  Repasar / Repaso    práctica con FSRS
+  Significado · Palabra · Oración      modos de repaso (se conservan)
+  Otra vez · Difícil · Bien · Fácil    calificaciones (se conservan)
+  Nueva · Aprendiendo · Para hoy · Asentada   estados de una palabra
+  Cuenta · Entrar · Crear cuenta · Enlace por correo · Cerrar sesión
+  Sincronizado hace N / Sin conexión   estado de sincronización
+
+
+14. FUENTES CONSULTADAS
+-----------------------------------------------------------------------------
+  - Sailop, «Why Every AI-Generated Website Looks the Same» y «90+ AI
+    Design Patterns to Avoid»; «State of AI Web Design 2026».
+    https://sailop.com/blog/why-every-ai-generated-website-looks-the-same
+    https://sailop.com/blog/90-plus-ai-design-patterns-to-avoid-definitive-list
+  - Superdesign, «Why AI Design Looks Generic».
+    https://superdesign.dev/blog/why-ai-design-looks-generic
+  - Taste Profile, «Why AI-generated UI looks generic».
+    https://tasteprofile.io/blog/why-ai-generated-ui-looks-generic
+  - byronwade/ui, «Readability» (65ch, 1.6–1.7, 18px serif, tracking 0).
+    https://ui.byronwade.com/docs/readability
+  - font.news, «Typography in Reading Apps».
+    https://font.news/the-typography-behind-popular-reading-apps-design-functional
+  - The Sweet Setup y The Newsprint sobre Matter (tipografía como producto).
+    https://thesweetsetup.com/is-matter-or-readwise-reader-the-read-later-app-for-you/
+    https://thenewsprint.co/2023/02/03/its-not-you-matter-its-me/
+  - Readest, justRead, Aurora Reader (ajustes que esperan los lectores).
+    https://readest.com/docs/customization
+    https://justread.app/en/customization
+  - MobileRead (progreso Kobo vs Kindle) y Kindle Time to Read.
+    https://www.mobileread.com/forums/showthread.php?t=352470
+    https://www.justkindlebooks.com/article_jkb/how-to-use-kindle-time-to-read/
+  - FluentU, reseña de LingQ (resaltado que se desvanece); Simply Fluent,
+    LingQ vs Readlang.
+    https://www.fluentu.com/blog/reviews/lingq/
+    https://www.simplyfluent.com/blog/lingq-vs-readlang/
+  - Literata (TypeTogether / Google Fonts) y Source Serif (Adobe).
+    https://github.com/googlefonts/literata/
+    https://www.type-together.com/demos/literata/literata.html
+  - THERIF (arXiv 2303.04221): temas de lectura preconfigurados mejoran
+    comodidad y velocidad frente a ajustes sueltos.
+    https://export.arxiv.org/pdf/2303.04221v1.pdf

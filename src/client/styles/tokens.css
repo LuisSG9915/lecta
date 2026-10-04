@@ -1,0 +1,167 @@
+/* Tokens de diseño «Cuaderno de lector».
+   Tres temas: papel (claro), crema (atardecer) y noche.
+   Sin [data-theme], el tema sigue a prefers-color-scheme. */
+
+:root {
+  /* Familias */
+  --font-book: "Literata Variable", Literata, Georgia, "Times New Roman", serif;
+  --font-ui: "Alegreya Sans", "Gill Sans", "Segoe UI", "Trebuchet MS", sans-serif;
+  --font-sans-alt: "Alegreya Sans", "Gill Sans", "Segoe UI", sans-serif;
+
+  /* Escala tipográfica (razón 1.25) */
+  --fs-xs: 0.72rem;
+  --fs-sm: 0.85rem;
+  --fs-base: 1rem;
+  --fs-md: 1.125rem;
+  --fs-lg: 1.25rem;
+  --fs-xl: 1.5625rem;
+  --fs-2xl: 1.953rem;
+  --fs-3xl: 2.441rem;
+
+  /* Interlineado */
+  --lh-display: 1.1;
+  --lh-ui: 1.45;
+  --lh-read: 1.65;
+  --lh-small: 1.4;
+
+  /* Espacio */
+  --s-1: 0.25rem;
+  --s-2: 0.5rem;
+  --s-3: 0.75rem;
+  --s-4: 1rem;
+  --s-5: 1.5rem;
+  --s-6: 2rem;
+  --s-7: 3rem;
+  --s-8: 4rem;
+  --s-9: 6rem;
+
+  /* Forma */
+  --r-1: 2px;
+  --r-2: 4px;
+  --r-sheet: 14px;
+  --border: 1px solid var(--rule);
+  --border-strong: 1px solid var(--rule-strong);
+  --shadow-sheet: 0 -8px 30px var(--shadow-sheet-color);
+  --shadow-cover:
+    1px 1px 0 rgba(0, 0, 0, 0.08), 4px 6px 14px -6px rgba(43, 37, 32, 0.35);
+
+  /* Movimiento */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in: cubic-bezier(0.55, 0, 1, 0.45);
+  --dur-1: 120ms;
+  --dur-2: 180ms;
+  --dur-3: 260ms;
+
+  /* Lector (valores por defecto; el panel Aa los ajusta) */
+  --read-font: var(--font-book);
+  --read-size: 1.125rem;
+  --read-leading: 1.65;
+  --read-measure: 65ch;
+}
+
+/* Tema papel (predeterminado claro) */
+:root,
+:root[data-theme="papel"] {
+  color-scheme: light;
+  --paper: #f6f1e7;
+  --paper-raised: #fbf8f1;
+  --paper-sunken: #efe8da;
+  --ink: #2b2520;
+  --ink-soft: #5e554b;
+  --ink-faint: #8a7f72;
+  --rule: #ddd4c4;
+  --rule-strong: #c9beaa;
+  --vermilion: #9e3a23;
+  --vermilion-bright: #c2452d;
+  --vermilion-wash: #f3ddd5;
+  --ochre: #d4a43a;
+  --ochre-wash: rgba(212, 164, 58, 0.28);
+  --ochre-soft: rgba(212, 164, 58, 0.14);
+  --graphite: #6b6e66;
+  --sage: #43694d;
+  --amber: #8a6a1e;
+  --shadow-sheet-color: rgba(43, 37, 32, 0.14);
+  --scrim: rgba(43, 37, 32, 0.32);
+  --grain-opacity: 1;
+}
+
+/* Tema crema (atardecer) */
+:root[data-theme="crema"] {
+  color-scheme: light;
+  --paper: #efe3cf;
+  --paper-raised: #f5ebd9;
+  --paper-sunken: #e6d8be;
+  --ink: #3b2f25;
+  --ink-soft: #675647;
+  --ink-faint: #8f7d68;
+  --rule: #d6c7aa;
+  --rule-strong: #c2b08f;
+  --vermilion: #933621;
+  --vermilion-bright: #c2452d;
+  --vermilion-wash: #eedacc;
+  --ochre: #d4a43a;
+  --ochre-wash: rgba(212, 164, 58, 0.3);
+  --ochre-soft: rgba(212, 164, 58, 0.16);
+  --graphite: #6b6e66;
+  --sage: #43694d;
+  --amber: #8a6a1e;
+  --shadow-sheet-color: rgba(59, 47, 37, 0.16);
+  --scrim: rgba(59, 47, 37, 0.34);
+  --grain-opacity: 1;
+}
+
+/* Tema noche */
+:root[data-theme="noche"] {
+  color-scheme: dark;
+  --paper: #1c1916;
+  --paper-raised: #242019;
+  --paper-sunken: #15120f;
+  --ink: #dcd3c3;
+  --ink-soft: #a89d8e;
+  --ink-faint: #7c7266;
+  --rule: #3a342c;
+  --rule-strong: #4a4238;
+  --vermilion: #e07a5f;
+  --vermilion-bright: #e8886e;
+  --vermilion-wash: rgba(224, 122, 95, 0.18);
+  --ochre: #e9c46a;
+  --ochre-wash: rgba(233, 196, 106, 0.22);
+  --ochre-soft: rgba(233, 196, 106, 0.11);
+  --graphite: #8c8f86;
+  --sage: #8fb996;
+  --amber: #d9b65c;
+  --shadow-sheet-color: rgba(0, 0, 0, 0.5);
+  --scrim: rgba(0, 0, 0, 0.55);
+  --grain-opacity: 0.6;
+  --shadow-cover:
+    1px 1px 0 rgba(0, 0, 0, 0.4), 4px 6px 16px -6px rgba(0, 0, 0, 0.7);
+}
+
+/* Sin elección manual: noche cuando el sistema está oscuro */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    color-scheme: dark;
+    --paper: #1c1916;
+    --paper-raised: #242019;
+    --paper-sunken: #15120f;
+    --ink: #dcd3c3;
+    --ink-soft: #a89d8e;
+    --ink-faint: #7c7266;
+    --rule: #3a342c;
+    --rule-strong: #4a4238;
+    --vermilion: #e07a5f;
+    --vermilion-bright: #e8886e;
+    --vermilion-wash: rgba(224, 122, 95, 0.18);
+    --ochre: #e9c46a;
+    --ochre-wash: rgba(233, 196, 106, 0.22);
+    --ochre-soft: rgba(233, 196, 106, 0.11);
+    --graphite: #8c8f86;
+    --sage: #8fb996;
+    --amber: #d9b65c;
+    --shadow-sheet-color: rgba(0, 0, 0, 0.5);
+    --scrim: rgba(0, 0, 0, 0.55);
+    --grain-opacity: 0.6;
+    --shadow-cover:
+      1px 1px 0 rgba(0, 0, 0, 0.4), 4px 6px 16px -6px rgba(0, 0, 0, 0.7);
+  }
+}

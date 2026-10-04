@@ -1,0 +1,95 @@
+/* Layout general y piezas de la cabecera. */
+
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-4);
+  padding: var(--s-4) var(--s-5);
+}
+
+.app-header-nav {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-5);
+}
+
+.app-main {
+  flex: 1;
+  inline-size: min(72rem, calc(100% - 2.5rem));
+  margin-inline: auto;
+  padding-block-end: var(--s-7);
+}
+
+.tagline {
+  font-family: var(--font-book);
+  font-style: italic;
+  font-size: var(--fs-md);
+  color: var(--ink-soft);
+  margin-block: var(--s-5) var(--s-4);
+}
+
+/* Selector de tema: opciones de texto; la activa lleva raya bermellón. */
+.theme-menu {
+  display: flex;
+  gap: var(--s-4);
+  flex-wrap: wrap;
+}
+
+.theme-option {
+  min-height: 44px;
+  padding: var(--s-2) 0;
+  border: none;
+  background: none;
+  color: var(--ink-soft);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  text-decoration-line: underline;
+  text-decoration-color: transparent;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 0.3em;
+  transition:
+    color var(--dur-1) var(--ease-out),
+    text-decoration-color var(--dur-1) var(--ease-out);
+}
+
+.theme-option:hover {
+  color: var(--ink);
+}
+
+.theme-option[data-active] {
+  color: var(--ink);
+  text-decoration-color: var(--vermilion);
+}
+
+@media (max-width: 40rem) {
+  .app-header {
+    flex-wrap: wrap;
+    row-gap: 0;
+  }
+
+  .app-header-nav {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: var(--s-4);
+  }
+
+  .theme-menu {
+    order: 3;
+    flex-basis: 100%;
+    justify-content: flex-end;
+    gap: var(--s-3);
+  }
+
+  .theme-option {
+    min-height: 2rem;
+    padding-block: 0;
+    font-size: var(--fs-xs);
+  }
+}
