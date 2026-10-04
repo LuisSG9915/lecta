@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import Reader from "./components/Reader";
 import Vocabulary from "./components/Vocabulary";
+import Account from "./components/Account";
 import { sha256Hex } from "./lib/hash";
-import { loadLatestBook, saveBook } from "./lib/idb";
+import { listStoredBooks, loadLatestBook, saveBook } from "./lib/idb";
+import { downloadBook, listRemoteBooks, uploadBook } from "./lib/books";
+import { authClient } from "./lib/auth";
 
 type BookSelection = {
   hash: string;
@@ -17,6 +20,9 @@ export default function App() {
   const [error, setError] = useState("");
   const [checkingLibrary, setCheckingLibrary] = useState(true);
   const [showVocabulary, setShowVocabulary] = useState(false);
+  const [showAccount, setShowAccount] = useState(false);
+  const { data: session } = authClient.useSession();
+  const sessionUserId = session?.user?.id;
 
   useEffect(() => {
     let cancelled = false;
@@ -41,6 +47,48 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!sessionUserId) return;
+    let cancelled = false;
+    void (async () => {
+      const [remote, stored] = await Promise.all([listRemoteBooks(), listStoredBooks()]);
+      if (cancelled) return;
+      const remoteHashes = new Set(remote.map((item) => item.hash));
+      const storedHashes = new Set(stored.map((item) => item.hash));
+
+      for (const storedBook of stored) {
+        if (!remoteHashes.has(storedBook.hash)) {
+          void uploadBook(
+            storedBook.hash,
+            new File([storedBook.data], storedBook.name, { type: "application/epub+zip" }),
+          );
+        }
+      }
+
+      const missing = remote
+        .filter((item) => !storedHashes.has(item.hash))
+        .sort((a, b) => +new Date(b.uploaded) - +new Date(a.uploaded));
+      let first: { hash: string; file: File } | null = null;
+      for (const item of missing.slice(0, 3)) {
+        const file = await downloadBook(item);
+        if (!file) continue;
+        await saveBook({
+          hash: item.hash,
+          name: file.name,
+          data: file,
+          addedAt: new Date(item.uploaded).getTime() || Date.now(),
+        });
+        first ??= { hash: item.hash, file };
+      }
+      if (cancelled || !first) return;
+      const { hash, file } = first;
+      setBook((current) => current ?? { hash, name: file.name, file });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionUserId]);
+
   const selectBook = async (file: File) => {
     setError("");
     setMessage("Comprobando el archivo…");
@@ -51,6 +99,7 @@ export default function App() {
       void saveBook({ hash, name: file.name, data: file, addedAt: Date.now() })
         .then(() => setMessage("Libro guardado en este dispositivo."))
         .catch(() => setError("El libro se abrió, pero no se pudo guardar en este dispositivo."));
+      if (sessionUserId) void uploadBook(hash, file);
     } catch {
       setBook(null);
       setError("No pudimos leer el archivo elegido.");
@@ -83,6 +132,9 @@ export default function App() {
         <button type="button" onClick={() => setShowVocabulary(true)}>
           Vocabulario
         </button>
+        <button type="button" onClick={() => setShowAccount(true)}>
+          Cuenta
+        </button>
       </div>
 
       <p role="status">{checkingLibrary ? "Preparando tu biblioteca…" : message}</p>
@@ -104,6 +156,7 @@ export default function App() {
       ) : null}
 
       {showVocabulary ? <Vocabulary onClose={() => setShowVocabulary(false)} /> : null}
+      {showAccount ? <Account onClose={() => setShowAccount(false)} /> : null}
     </main>
   );
 }

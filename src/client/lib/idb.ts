@@ -64,6 +64,11 @@ export async function loadLatestBook() {
   return hash ? db.get("books", hash) : undefined;
 }
 
+export async function listStoredBooks() {
+  const db = await dbPromise;
+  return db.getAll("books");
+}
+
 export async function saveBookPosition(position: SavedBookPosition) {
   const db = await dbPromise;
   await db.put("positions", position);

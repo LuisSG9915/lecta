@@ -9,17 +9,20 @@
     "build": "vite build",
     "preview": "vite preview",
     "deploy": "vite build && wrangler deploy",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc -p tsconfig.client.json && tsc -p tsconfig.worker.json",
     "lint": "eslint .",
     "test": "vitest run",
-    "db:setup": "node --env-file=.env scripts/db-setup.mjs"
+    "db:setup": "node --env-file=.env scripts/db-setup.mjs",
+    "db:auth": "node --env-file=.env scripts/auth-migrate.mjs"
   },
   "dependencies": {
     "@zip.js/zip.js": "2.18.2",
+    "better-auth": "1.7.6",
     "dompurify": "3.4.16",
     "foliate-js": "1.0.1",
     "hono": "4.13.9",
     "idb": "8.0.3",
+    "kysely": "0.29.6",
     "pg": "8.23.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
@@ -27,6 +30,7 @@
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "1.60.2",
+    "@cloudflare/workers-types": "5.20260925.2",
     "@eslint/js": "10.0.1",
     "@types/node": "24.19.0",
     "@types/pg": "^8.23.1",

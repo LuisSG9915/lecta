@@ -9,14 +9,20 @@ export type LookupResult =
   | { ok: true; found: boolean; entries: LexiconEntry[] }
   | { ok: false; error: string };
 
+type LexiconResponseBody = {
+  found?: boolean;
+  entries?: LexiconEntry[] | Record<string, LexiconEntry[]>;
+  error?: string;
+};
+
 export async function lookupWord(form: string, language = "es"): Promise<LookupResult> {
   const params = new URLSearchParams({ form, lang: language });
   try {
     const response = await fetch(`/api/lexicon/lookup?${params}`);
     if (response.status === 404) return { ok: true, found: false, entries: [] };
-    const data = await response.json();
+    const data = (await response.json()) as LexiconResponseBody;
     if (!response.ok) return { ok: false, error: data.error ?? "No se pudo consultar el catálogo." };
-    return { ok: true, found: data.found, entries: data.entries ?? [] };
+    return { ok: true, found: Boolean(data.found), entries: (data.entries as LexiconEntry[]) ?? [] };
   } catch {
     return { ok: false, error: "Sin conexión con el catálogo." };
   }
@@ -33,10 +39,10 @@ export async function batchLookup(forms: string[], language = "es"): Promise<Bat
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ forms, language }),
     });
-    const data = await response.json();
+    const data = (await response.json()) as LexiconResponseBody;
     if (!response.ok)
       return { ok: false, error: data.error ?? "No se pudo consultar el catálogo.", entries: {} };
-    return { ok: true, entries: data.entries ?? {} };
+    return { ok: true, entries: (data.entries as Record<string, LexiconEntry[]>) ?? {} };
   } catch {
     return { ok: false, error: "Sin conexión con el catálogo.", entries: {} };
   }
@@ -53,9 +59,9 @@ export async function enrichWord(
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ form, language, context }),
     });
-    const data = await response.json();
+    const data = (await response.json()) as LexiconResponseBody;
     if (!response.ok) return { ok: false, error: data.error ?? "La IA no pudo definir la palabra." };
-    return { ok: true, found: true, entries: data.entries ?? [] };
+    return { ok: true, found: true, entries: (data.entries as LexiconEntry[]) ?? [] };
   } catch {
     return { ok: false, error: "Sin conexión con el catálogo." };
   }

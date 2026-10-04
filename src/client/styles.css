@@ -70,6 +70,19 @@ input:focus-visible,
   white-space: nowrap;
 }
 
+.word-panel form {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.word-panel form input {
+  font: inherit;
+  min-height: 44px;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #c9c4b8;
+  border-radius: 0.5rem;
+}
+
 .reader-header {
   display: flex;
   justify-content: space-between;
