@@ -7,6 +7,10 @@
   --font-book: "Literata Variable", Literata, Georgia, "Times New Roman", serif;
   --font-ui: "Alegreya Sans", "Gill Sans", "Segoe UI", "Trebuchet MS", sans-serif;
   --font-sans-alt: "Alegreya Sans", "Gill Sans", "Segoe UI", sans-serif;
+  /* Letras opcionales del lector: se descargan solo al elegirlas. */
+  --font-source-serif: "Source Serif 4 Variable", Georgia, "Times New Roman", serif;
+  --font-atkinson: "Atkinson Hyperlegible Next", "Alegreya Sans", "Gill Sans", sans-serif;
+  --font-dyslexic: "OpenDyslexic", "Alegreya Sans", sans-serif;
 
   /* Escala tipográfica (razón 1.25) */
   --fs-xs: 0.72rem;
@@ -82,7 +86,7 @@
   --amber: #8a6a1e;
   --shadow-sheet-color: rgba(43, 37, 32, 0.14);
   --scrim: rgba(43, 37, 32, 0.32);
-  --grain-opacity: 1;
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='linear' slope='0.045'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
 /* Tema crema (atardecer) */
@@ -107,7 +111,6 @@
   --amber: #8a6a1e;
   --shadow-sheet-color: rgba(59, 47, 37, 0.16);
   --scrim: rgba(59, 47, 37, 0.34);
-  --grain-opacity: 1;
 }
 
 /* Tema noche */
@@ -132,7 +135,7 @@
   --amber: #d9b65c;
   --shadow-sheet-color: rgba(0, 0, 0, 0.5);
   --scrim: rgba(0, 0, 0, 0.55);
-  --grain-opacity: 0.6;
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='linear' slope='0.025'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   --shadow-cover:
     1px 1px 0 rgba(0, 0, 0, 0.4), 4px 6px 16px -6px rgba(0, 0, 0, 0.7);
 }
@@ -160,7 +163,7 @@
     --amber: #d9b65c;
     --shadow-sheet-color: rgba(0, 0, 0, 0.5);
     --scrim: rgba(0, 0, 0, 0.55);
-    --grain-opacity: 0.6;
+    --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='linear' slope='0.025'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
     --shadow-cover:
       1px 1px 0 rgba(0, 0, 0, 0.4), 4px 6px 16px -6px rgba(0, 0, 0, 0.7);
   }

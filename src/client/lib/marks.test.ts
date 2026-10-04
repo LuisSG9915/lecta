@@ -53,4 +53,31 @@ describe("markSavedWords", () => {
     markSavedWords(div, new Set());
     expect(div.innerHTML).toBe("<p>Texto.</p>");
   });
+
+  it("con Map pone data-level según el nivel", () => {
+    const div = root("<p>La casa y la puerta y el tejado.</p>");
+    markSavedWords(
+      div,
+      new Map<string, "new" | "learning" | "settled">([
+        ["casa", "new"],
+        ["puerta", "learning"],
+        ["tejado", "settled"],
+      ]),
+    );
+    const marks = div.querySelectorAll("mark.saved-word");
+    expect(marks[0]?.hasAttribute("data-level")).toBe(false);
+    expect(marks[1]?.getAttribute("data-level")).toBe("learning");
+    expect(marks[2]?.getAttribute("data-level")).toBe("settled");
+  });
+
+  it("al remarcar actualiza niveles y quita las que salieron del mapa", () => {
+    const div = root("<p>La casa y la puerta.</p>");
+    markSavedWords(div, new Map([["casa", "learning" as const]]));
+    markSavedWords(div, new Map([["puerta", "settled" as const]]));
+    const marks = div.querySelectorAll("mark.saved-word");
+    expect(marks.length).toBe(1);
+    expect(marks[0]?.textContent).toBe("puerta");
+    expect(marks[0]?.getAttribute("data-level")).toBe("settled");
+    expect(div.textContent).toBe("La casa y la puerta.");
+  });
 });

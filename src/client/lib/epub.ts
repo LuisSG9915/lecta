@@ -1,11 +1,7 @@
-import {
-  BlobReader,
-  BlobWriter,
-  TextWriter,
-  ZipReader,
-  type FileEntry,
-} from "@zip.js/zip.js";
-import { EPUB } from "foliate-js/epub.js";
+// foliate-js y zip.js solo se cargan al abrir un libro: imports
+// dinámicos para no inflar el chunk inicial. Los tipos quedan estáticos.
+import type { FileEntry } from "@zip.js/zip.js";
+import type { EPUB } from "foliate-js/epub.js";
 
 export type EpubBook = Awaited<ReturnType<EPUB["init"]>>;
 export type EpubTocItem = NonNullable<EpubBook["toc"]>[number];
@@ -17,6 +13,9 @@ type EpubLoader = {
 };
 
 export async function createEpubLoader(file: Blob) {
+  const { BlobReader, BlobWriter, TextWriter, ZipReader } = await import(
+    "@zip.js/zip.js"
+  );
   const reader = new ZipReader(new BlobReader(file));
   const entries = await reader.getEntries();
   const files = entries.filter((entry): entry is FileEntry => !entry.directory);
@@ -33,6 +32,7 @@ export async function createEpubLoader(file: Blob) {
 }
 
 export async function openEpub(file: Blob) {
+  const { EPUB } = await import("foliate-js/epub.js");
   const { loader, close } = await createEpubLoader(file);
   const book = await new EPUB(loader).init();
   return { book, close };

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import {
   listPositions,
+  listReadingDays,
   listSavedWords,
   loadLatestBookHash,
   updateBookMeta,
@@ -9,6 +10,7 @@ import {
 } from "../lib/idb";
 import { displayTitle, readBookMeta } from "../lib/cover";
 import { relativeDay } from "../lib/relative-time";
+import { loadActivityHidden } from "../lib/settings";
 import BookCover from "./BookCover";
 
 type ShelfProps = {
@@ -27,8 +29,12 @@ const startOfDay = (ts: number) => {
   return d.getTime();
 };
 
+// La misma fracción que guarda el lector; posiciones antiguas sin
+// «progress» caen al índice de sección, sin mínimos inventados.
 const progressOf = (position: SavedBookPosition | undefined, sectionCount: number | undefined) =>
-  position && sectionCount ? Math.max(0.02, position.sectionIndex / sectionCount) : 0;
+  position && sectionCount
+    ? (position.progress ?? Math.min(1, position.sectionIndex / sectionCount))
+    : 0;
 
 export default function Shelf({ library, checking, onOpen, onRemove, onAdd, onLibraryChange }: ShelfProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -38,11 +44,14 @@ export default function Shelf({ library, checking, onOpen, onRemove, onAdd, onLi
   const [weekDays, setWeekDays] = useState<{ day: number; read: boolean }[]>([]);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
+  // La preferencia se lee una vez: cambiarla en el Cuaderno se aplica
+  // la próxima vez que la estantería se monta.
+  const [activityHidden] = useState(() => loadActivityHidden());
 
   useEffect(() => {
     let cancelled = false;
-    void Promise.all([listPositions(), listSavedWords(), loadLatestBookHash()]).then(
-      ([positionList, words, hash]) => {
+    void Promise.all([listPositions(), listSavedWords(), loadLatestBookHash(), listReadingDays()]).then(
+      ([positionList, words, hash, readDayList]) => {
         if (cancelled) return;
         setPositions(positionList);
         const counts = new Map<string, number>();
@@ -52,7 +61,9 @@ export default function Shelf({ library, checking, onOpen, onRemove, onAdd, onLi
         }
         setWordCounts(counts);
         setLatestHash(hash);
-        const readDays = new Set(positionList.map((p) => startOfDay(p.updatedAt)));
+        // Días donde hubo lectura real (registrada al guardar posición),
+        // no deducidos de la última posición de cada libro.
+        const readDays = new Set(readDayList);
         const today = startOfDay(Date.now());
         setWeekDays(
           Array.from({ length: 7 }, (_, i) => {
@@ -259,7 +270,7 @@ export default function Shelf({ library, checking, onOpen, onRemove, onAdd, onLi
                           className="thread-fill"
                           style={
                             {
-                              "--thread-value": `${Math.round((Math.max(0, chapter) / total) * 100)}%`,
+                              "--thread-value": `${Math.round(progressOf(position, total) * 100)}%`,
                             } as React.CSSProperties
                           }
                         />
@@ -301,6 +312,7 @@ export default function Shelf({ library, checking, onOpen, onRemove, onAdd, onLi
             </ul>
           </section>
 
+          {activityHidden ? null : (
           <section aria-label="Días con lectura esta semana">
             <h2 className="eyebrow shelf-eyebrow">Días con lectura</h2>
             <div className="dots shelf-week">
@@ -315,6 +327,7 @@ export default function Shelf({ library, checking, onOpen, onRemove, onAdd, onLi
               ))}
             </div>
           </section>
+          )}
         </>
       )}
     </div>

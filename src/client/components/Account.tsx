@@ -1,8 +1,11 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { authClient } from "../lib/auth";
+import { PENDING_DELETE_KEY } from "../lib/account-cleanup";
+import { loadSessionValue } from "../lib/idb";
+import { timeAgo } from "../lib/relative-time";
 import Dialog from "./Dialog";
 
-export const PENDING_DELETE_KEY = "lecta:pending-delete";
+export { PENDING_DELETE_KEY };
 
 type AccountProps = {
   onClose: () => void;
@@ -25,8 +28,29 @@ export default function Account({ onClose, resetToken, onResetDone }: AccountPro
     has: boolean;
   } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [lastSync, setLastSync] = useState<number | null>(null);
+  const [online, setOnline] = useState(() => navigator.onLine);
 
   const userId = session?.user?.id;
+
+  // Última sincronización del cuaderno y estado de conexión, para
+  // decirle a la persona dónde están sus palabras sin adivinar.
+  useEffect(() => {
+    if (!userId) return;
+    let cancelled = false;
+    void loadSessionValue("vocabLastSyncAt").then((raw) => {
+      if (!cancelled) setLastSync(raw ? Number(raw) : null);
+    });
+    const on = () => setOnline(true);
+    const off = () => setOnline(false);
+    window.addEventListener("online", on);
+    window.addEventListener("offline", off);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("online", on);
+      window.removeEventListener("offline", off);
+    };
+  }, [userId]);
   useEffect(() => {
     if (!userId) return;
     let cancelled = false;
@@ -140,7 +164,9 @@ export default function Account({ onClose, resetToken, onResetDone }: AccountPro
       return;
     }
     void run(async () => {
-      const result = await authClient.deleteUser({ callbackURL: "/" });
+      // El correo confirma el borrado y redirige aquí: esa marca es la
+      // única evidencia de que la cuenta se eliminó (la sesión se revoca).
+      const result = await authClient.deleteUser({ callbackURL: "/?cuenta=eliminada" });
       if (!result?.error) {
         if (session?.user?.id) localStorage.setItem(PENDING_DELETE_KEY, session.user.id);
         setConfirmDelete(false);
@@ -154,7 +180,8 @@ export default function Account({ onClose, resetToken, onResetDone }: AccountPro
 
   const signOut = () => {
     void run(async () => {
-      await authClient.signOut();
+      const result = await authClient.signOut();
+      if (result?.error) return result;
       onClose();
       return {};
     });
@@ -181,6 +208,13 @@ export default function Account({ onClose, resetToken, onResetDone }: AccountPro
         <>
           <p>
             Sesión iniciada como <strong>{session.user.email}</strong>
+          </p>
+          <p className="meta">
+            {!online
+              ? "Sin conexión: el cuaderno se sincroniza al volver."
+              : lastSync
+                ? `Cuaderno sincronizado ${timeAgo(lastSync)}.`
+                : "Este dispositivo aún no sincroniza tu cuaderno."}
           </p>
           <div className="actions">
             <button type="button" className="btn" disabled={busy} onClick={signOut}>

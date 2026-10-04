@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { relativeDay } from "./relative-time";
+import { formatInterval, relativeDay, timeAgo } from "./relative-time";
 
 const NOW = new Date("2026-10-04T15:00:00").getTime();
 const DAY = 86_400_000;
@@ -21,5 +21,34 @@ describe("relativeDay", () => {
     expect(relativeDay(NOW - 15 * DAY, NOW)).toBe("hace 2 semanas");
     expect(relativeDay(NOW - 40 * DAY, NOW)).toBe("el mes pasado");
     expect(relativeDay(NOW - 400 * DAY, NOW)).toBe("el año pasado");
+  });
+});
+
+describe("timeAgo", () => {
+  it("minutos y horas del mismo día", () => {
+    expect(timeAgo(NOW - 20_000, NOW)).toBe("hace un momento");
+    expect(timeAgo(NOW - 3 * 60_000, NOW)).toBe("hace 3 min");
+    expect(timeAgo(NOW - 2 * 3_600_000, NOW)).toBe("hace 2 h");
+  });
+
+  it("cruza la medianoche con relativeDay", () => {
+    const dawn = new Date("2026-10-04T01:00:00").getTime();
+    const beforeMidnight = new Date("2026-10-03T23:00:00").getTime();
+    expect(timeAgo(beforeMidnight, dawn)).toBe("ayer");
+  });
+});
+
+describe("formatInterval", () => {
+  it("minutos, horas y días", () => {
+    expect(formatInterval(10 * 60_000)).toBe("10 min");
+    expect(formatInterval(6 * 3_600_000)).toBe("6 h");
+    expect(formatInterval(4 * DAY)).toBe("4 d");
+  });
+
+  it("bordes", () => {
+    expect(formatInterval(0)).toBe("ahora");
+    expect(formatInterval(30 * 60_000)).toBe("30 min");
+    expect(formatInterval(60 * 60_000)).toBe("1 h");
+    expect(formatInterval(35 * DAY)).toBe("1 mes");
   });
 });

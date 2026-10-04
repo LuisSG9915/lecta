@@ -159,7 +159,7 @@
 }
 
 .shelf-book-remove {
-  min-height: auto;
+  min-height: 2.75rem;
   padding: 0;
   font-size: var(--fs-sm);
 }

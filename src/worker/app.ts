@@ -4,21 +4,13 @@ import { findEntries, findEntriesForForms, insertEnrichment } from "./lexicon";
 import { requestEnrichment } from "./ai";
 import { createAuth } from "./auth";
 import { isStopword } from "../shared/stopwords";
+import { getSession } from "./session";
+import { readingData } from "./reading-data";
 
 export const app = new Hono<{ Bindings: WorkerEnv }>();
+app.route("/", readingData);
 
 app.get("/api/health", (context) => context.json({ status: "ok" }));
-
-const getSession = async (context: {
-  env: WorkerEnv;
-  req: { raw: Request; url: string };
-}) => {
-  if (!getConnectionString(context.env)) return null;
-  const baseURL = context.env.BETTER_AUTH_URL ?? new URL(context.req.url).origin;
-  return createAuth(context.env, baseURL).api
-    .getSession({ headers: context.req.raw.headers })
-    .catch(() => null);
-};
 
 app.on(["GET", "POST"], "/api/auth/*", (context) => {
   if (!getConnectionString(context.env))

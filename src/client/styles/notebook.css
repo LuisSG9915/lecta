@@ -1,0 +1,443 @@
+/* Cuaderno: pantalla completa con las palabras apuntadas,
+   agrupadas por libro, y el repaso sobre ficha rayada. */
+
+.notebook {
+  position: fixed;
+  inset: 0;
+  z-index: 25;
+  background-color: var(--paper);
+  background-image: var(--grain);
+  overflow-y: auto;
+  animation: nb-in var(--dur-3) var(--ease-out);
+}
+
+@keyframes nb-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.notebook-bar {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 1;
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-4);
+  min-height: 3.5rem;
+  padding: var(--s-2) var(--s-4);
+  background: var(--paper);
+  border-bottom: var(--border);
+}
+
+.notebook-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  font-family: var(--font-book);
+  font-style: italic;
+  font-weight: 400;
+  font-size: var(--fs-lg);
+  color: var(--ink);
+  text-align: center;
+}
+
+.notebook-count {
+  flex: none;
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.notebook-main {
+  max-inline-size: 44rem;
+  margin-inline: auto;
+  padding: var(--s-5) var(--s-5) var(--s-9);
+}
+
+.nb-empty {
+  margin-block-start: var(--s-7);
+  font-family: var(--font-book);
+  font-style: italic;
+  font-size: var(--fs-lg);
+  line-height: var(--lh-read);
+  color: var(--ink-soft);
+  text-align: center;
+}
+
+/* ---------- Repaso ---------- */
+
+.nb-review {
+  padding-block-end: var(--s-5);
+  border-bottom: var(--border);
+}
+
+.nb-review .practice-modes {
+  margin-block-start: var(--s-3);
+}
+
+.nb-practice-meta {
+  margin-block-end: var(--s-2);
+}
+
+.nb-card {
+  margin-block: var(--s-4) var(--s-5);
+  padding-inline-start: var(--s-7);
+}
+
+.nb-card-front {
+  font-family: var(--font-book);
+  font-size: var(--fs-xl);
+  line-height: var(--lh-read);
+  margin-block: var(--s-2) var(--s-3);
+}
+
+.nb-card-front strong {
+  font-weight: 500;
+}
+
+.nb-card-back {
+  font-family: var(--font-book);
+  font-size: var(--fs-md);
+  line-height: var(--lh-read);
+  margin-block: var(--s-3) var(--s-2);
+  padding-block-start: var(--s-3);
+  border-top: 1px dashed var(--rule-strong);
+}
+
+.practice-grades {
+  display: flex;
+  gap: var(--s-2);
+}
+
+.grade-col {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+}
+
+.grade-col .btn {
+  inline-size: 100%;
+  padding-inline: var(--s-2);
+}
+
+.grade-interval {
+  text-align: center;
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+  min-block-size: 1em;
+}
+
+.nb-keys-hint {
+  margin-block-start: var(--s-3);
+  font-size: var(--fs-xs);
+  text-align: center;
+}
+
+.nb-quit {
+  margin-block-start: var(--s-4);
+}
+
+.nb-done {
+  margin-block-start: var(--s-7);
+  text-align: center;
+}
+
+.nb-done-title {
+  font-family: var(--font-book);
+  font-style: italic;
+  font-size: var(--fs-2xl);
+  margin-block-end: var(--s-2);
+}
+
+/* ---------- Actividad ---------- */
+
+/* Pestañas Palabras/Actividad: mismo tratamiento que los filtros. */
+.nb-tabs {
+  margin-block-start: 0;
+}
+
+.act-eyebrow {
+  margin-block: var(--s-5) var(--s-2);
+}
+
+.act-days {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.act-day {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-3);
+  padding-block: var(--s-2);
+  border-bottom: 1px solid var(--rule);
+}
+
+.act-day-label {
+  min-inline-size: 4.5ch;
+  font-size: var(--fs-sm);
+  color: var(--ink);
+}
+
+/* Tirita de tinta proporcional al día de más lectura: referencia
+   visual sin números que competir entre sí. */
+.act-day-bar {
+  flex: 1;
+  display: block;
+  block-size: 0.5rem;
+  border-radius: var(--r-1);
+  background: var(--paper-sunken, var(--surface));
+}
+
+.act-day-fill {
+  display: block;
+  block-size: 100%;
+  border-radius: inherit;
+  background: var(--vermilion);
+}
+
+.act-day-fill[data-empty] {
+  background: transparent;
+}
+
+.act-day-time {
+  min-inline-size: 7ch;
+  text-align: end;
+  font-size: var(--fs-sm);
+}
+
+.act-books {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.act-book {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding-block: var(--s-2);
+  border-bottom: 1px solid var(--rule);
+  font-size: var(--fs-sm);
+}
+
+.act-book-title {
+  font-family: var(--font-book);
+  font-size: var(--fs-md);
+  color: var(--ink);
+}
+
+.act-actions {
+  margin-block-start: var(--s-4);
+}
+
+/* ---------- Lista ---------- */
+
+/* Búsqueda, filtros, orden y exportación en una misma zona. */
+.nb-tools {
+  margin-block: var(--s-5) var(--s-2);
+}
+
+.nb-search {
+  display: block;
+  margin-block-end: var(--s-3);
+}
+
+.nb-search input {
+  inline-size: 100%;
+  min-height: 44px;
+  padding: var(--s-2) var(--s-3);
+  border: var(--border);
+  border-radius: var(--r-1);
+  background: var(--paper-sunken);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--fs-base);
+}
+
+.nb-search input:focus {
+  border-color: var(--vermilion);
+}
+
+.nb-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-3);
+  margin-block: var(--s-3) var(--s-2);
+}
+
+.nb-filters .theme-option {
+  min-height: 2.75rem;
+  padding-block: var(--s-1);
+  font-size: var(--fs-sm);
+}
+
+.nb-export {
+  display: flex;
+  gap: var(--s-3);
+  margin-block-start: var(--s-2);
+}
+
+.nb-export .btn--quiet {
+  min-height: 2.75rem;
+  font-size: var(--fs-sm);
+}
+
+/* «Deshacer» tras quitar una palabra. */
+.nb-undo {
+  margin-block: var(--s-3) 0;
+  padding: var(--s-2) var(--s-3);
+  border: var(--border);
+  border-radius: var(--r-2);
+  background: var(--paper-raised, var(--surface));
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+}
+
+.nb-undo .btn--quiet {
+  min-height: 2.25rem;
+  padding: 0 var(--s-1);
+}
+
+/* Grupo plegable: el título del libro es el botón. */
+.nb-group-toggle {
+  border: none;
+  background: none;
+  padding: var(--s-1) 0;
+  font: inherit;
+  color: inherit;
+  text-align: start;
+  cursor: pointer;
+  min-height: 2.75rem;
+}
+
+.nb-group-toggle:hover {
+  color: var(--vermilion);
+}
+
+.nb-more {
+  min-height: 2.75rem;
+  margin-block-start: var(--s-2);
+  font-size: var(--fs-sm);
+}
+
+.nb-group {
+  margin-block-start: var(--s-5);
+}
+
+.nb-group-title {
+  margin: 0 0 var(--s-1);
+  padding-block-end: var(--s-2);
+  border-bottom: 1px solid var(--rule-strong);
+  font-family: var(--font-book);
+  font-weight: 400;
+  font-size: var(--fs-md);
+  color: var(--ink);
+}
+
+.nb-words {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.nb-word {
+  padding-block: var(--s-3);
+  border-bottom: 1px solid var(--rule);
+}
+
+.nb-word-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+.nb-word-form {
+  font-family: var(--font-book);
+  font-weight: 500;
+  font-size: var(--fs-md);
+}
+
+.nb-state {
+  font-size: var(--fs-xs);
+  letter-spacing: 0.04em;
+  color: var(--ink-soft);
+}
+
+/* El punto del estado repite la paleta de las marcas en el texto. */
+.nb-state::before {
+  content: "●";
+  margin-inline-end: var(--s-1);
+  font-size: 0.75em;
+  color: var(--ochre);
+}
+
+.nb-state[data-level="learning"]::before {
+  color: var(--ochre);
+  opacity: 0.55;
+}
+
+.nb-state[data-level="settled"]::before {
+  color: var(--graphite);
+}
+
+.nb-state[data-level="due"]::before {
+  color: var(--vermilion-bright);
+}
+
+.nb-remove {
+  margin-inline-start: auto;
+  min-height: 2.75rem;
+  padding-block: 0;
+  font-size: var(--fs-sm);
+}
+
+.nb-meaning {
+  margin: var(--s-1) 0 0;
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+  color: var(--ink);
+}
+
+.nb-context {
+  margin: var(--s-1) 0 0;
+  font-family: var(--font-book);
+  font-style: italic;
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+}
+
+@media (max-width: 40rem) {
+  .notebook-main {
+    padding-inline: var(--s-4);
+  }
+
+  .notebook-count {
+    font-size: var(--fs-xs);
+    max-inline-size: 7rem;
+    text-align: end;
+  }
+
+  .practice-grades {
+    flex-wrap: wrap;
+  }
+
+  .grade-col {
+    flex-basis: calc(50% - var(--s-2) / 2);
+  }
+}
+
+@media (forced-colors: active) {
+  .notebook {
+    background-image: none;
+  }
+}

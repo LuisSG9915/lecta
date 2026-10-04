@@ -13,6 +13,12 @@
   content: "— ";
 }
 
+/* La palabra buscada, en bermellón dentro de su oración. */
+.card-context .ctx-word {
+  color: var(--vermilion);
+  background: none;
+}
+
 .card-pos {
   font-family: var(--font-ui);
   font-style: italic;

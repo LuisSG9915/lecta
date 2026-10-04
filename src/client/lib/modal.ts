@@ -1,4 +1,4 @@
-import { useEffect, type RefObject } from "react";
+import { useEffect, useRef, type RefObject } from "react";
 
 const FOCUSABLE =
   'a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])';
@@ -6,6 +6,14 @@ const FOCUSABLE =
 // Comportamiento común de hojas y diálogos: enfoca al abrir, atrapa Tab,
 // cierra con Escape y devuelve el foco a quien lo tenía.
 export function useModalBehavior(ref: RefObject<HTMLElement | null>, onClose: () => void) {
+  // onClose cambia en cada render; el ref lo estabiliza para que el
+  // efecto de abajo corra una sola vez por apertura y no reenfoque
+  // al usuario mientras escribe.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  });
+
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
@@ -22,7 +30,7 @@ export function useModalBehavior(ref: RefObject<HTMLElement | null>, onClose: ()
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.stopPropagation();
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (event.key !== "Tab") return;
@@ -47,5 +55,6 @@ export function useModalBehavior(ref: RefObject<HTMLElement | null>, onClose: ()
       document.removeEventListener("keydown", onKeyDown, true);
       previouslyFocused?.focus();
     };
-  }, [ref, onClose]);
+    // Solo por montaje: reenfocar en cada render quita el foco al usuario.
+  }, [ref]);
 }

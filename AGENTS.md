@@ -5,6 +5,8 @@
 - `pnpm typecheck` (cliente + worker), `pnpm lint`, `pnpm test`, `pnpm build`.
 - `pnpm smoke:auth` corre contra un server vivo; `SMOKE_URL=<url>` para producción.
 - `pnpm db:setup` / `pnpm db:auth` aplican esquema y tablas de Better Auth (usan `DATABASE_URL` de `.env`).
+- `pnpm db:migrate` aplica `db/migrations/*.sql` en orden a la base del `.env` (idempotente, registra en `lecta_schema_migrations`). Migraciones nuevas van solo a `lecta_dev` salvo autorización.
+- `pnpm db:migrate` aplica `db/migrations/*.sql` en orden (registra lo aplicado en `lecta_schema_migrations`; idempotente).
 
 ## Producción
 

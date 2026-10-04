@@ -88,7 +88,7 @@
   }
 
   .theme-option {
-    min-height: 2rem;
+    min-height: 2.75rem;
     padding-block: 0;
     font-size: var(--fs-xs);
   }

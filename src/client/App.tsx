@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import Reader from "./components/Reader";
-import Vocabulary from "./components/Vocabulary";
-import Account, { PENDING_DELETE_KEY } from "./components/Account";
+// El Cuaderno lleva fsrs: carga diferida para no pagar ese costo al arrancar.
+const Vocabulary = lazy(() => import("./components/Vocabulary"));
+import Account from "./components/Account";
 import ThemeMenu from "./components/ThemeMenu";
 import Shelf from "./components/Shelf";
 import { applyTheme, loadTheme, saveTheme, type ThemeChoice } from "./lib/settings";
+import { decidePendingDelete, PENDING_DELETE_KEY } from "./lib/account-cleanup";
 import { pushOverlay, type OverlayHandle } from "./lib/history";
 import { sha256Hex } from "./lib/hash";
 import {
@@ -17,6 +19,7 @@ import {
 } from "./lib/idb";
 import { deleteBook, downloadBook, listRemoteBooks, uploadBook } from "./lib/books";
 import { syncSavedWords } from "./lib/vocab";
+import { syncActivity, syncAnnotations } from "./lib/reading-sync";
 import { authClient } from "./lib/auth";
 
 type BookSelection = {
@@ -32,10 +35,11 @@ export default function App() {
     const params = new URLSearchParams(window.location.search);
     const token = params.get("token") ?? undefined;
     const urlError = params.get("error") ?? undefined;
-    if (token || urlError) {
+    const deleted = params.get("cuenta") === "eliminada";
+    if (token || urlError || deleted) {
       window.history.replaceState(null, "", window.location.pathname);
     }
-    return { token, urlError };
+    return { token, urlError, deleted };
   });
   const [book, setBook] = useState<BookSelection | null>(null);
   const [message, setMessage] = useState("");
@@ -51,7 +55,7 @@ export default function App() {
   const [theme, setTheme] = useState<ThemeChoice>(() => loadTheme());
   const bookRelease = useRef<OverlayHandle | null>(null);
   const panelRelease = useRef<OverlayHandle | null>(null);
-  const { data: session } = authClient.useSession();
+  const { data: session, isPending: sessionPending } = authClient.useSession();
   const sessionUserId = session?.user?.id;
 
   const changeTheme = (choice: ThemeChoice) => {
@@ -121,17 +125,35 @@ export default function App() {
   }, [authLink]);
 
   useEffect(() => {
+    // Mientras la sesión no resuelve, no sabemos si hay cuenta: tocar
+    // bases locales o marcadores de borrado en ese momento es inseguro.
+    if (sessionPending) return;
     let cancelled = false;
     void (async () => {
       await setDbUser(sessionUserId ?? null);
       if (cancelled) return;
 
-      // Si el correo de confirmación borró la cuenta, limpia su base
-      // local en este dispositivo; si la sesión sigue viva, se canceló.
+      // La base local solo se limpia si el correo de confirmación
+      // redirigió aquí; cerrar sesión o un enlace vencido no bastan.
       const pendingDelete = localStorage.getItem(PENDING_DELETE_KEY);
       if (pendingDelete) {
-        localStorage.removeItem(PENDING_DELETE_KEY);
-        if (!sessionUserId) await deleteAccountDb(pendingDelete);
+        const decision = decidePendingDelete({
+          confirmed: authLink.deleted,
+          urlError: authLink.urlError,
+          pendingUserId: pendingDelete,
+          sessionUserId,
+        });
+        if (decision.clearMarker) localStorage.removeItem(PENDING_DELETE_KEY);
+        if (decision.cleanupUserId) {
+          const removed = await deleteAccountDb(decision.cleanupUserId);
+          if (!cancelled) {
+            if (removed) {
+              setMessage("Tu cuenta y sus datos en este dispositivo fueron eliminados.");
+            } else {
+              setError("Tu cuenta se eliminó, pero no se pudo limpiar este dispositivo.");
+            }
+          }
+        }
       }
 
       setCheckingLibrary(false);
@@ -143,6 +165,13 @@ export default function App() {
         setMessage(`Cuaderno sincronizado: ${pulled} palabra(s) nueva(s) en este dispositivo.`);
         setVocabVersion((v) => v + 1);
       }
+      // Marcadores y pasajes: mismo ciclo, sin bloquear la estantería.
+      const pulledMarks = await syncAnnotations().catch(() => null);
+      if (!cancelled && pulledMarks) {
+        setMessage(`Marcadores sincronizados: ${pulledMarks} nuevo(s) en este dispositivo.`);
+      }
+      // Actividad de lectura: mismas reglas, anexable por id.
+      void syncActivity().catch(() => null);
       const [remote, localBooks] = await Promise.all([listRemoteBooks(), listStoredBooks()]);
       if (cancelled) return;
       const remoteHashes = new Set(remote.map((item) => item.hash));
@@ -175,13 +204,17 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [sessionUserId]);
+  }, [sessionUserId, sessionPending, authLink]);
 
   // Si la sesión sigue abierta y vuelve la conexión, re-sincroniza el
   // vocabulario (los cambios hechos sin conexión se suben aquí).
   useEffect(() => {
     if (!sessionUserId) return;
-    const onOnline = () => void syncSavedWords();
+    const onOnline = () => {
+      void syncSavedWords();
+      void syncAnnotations();
+      void syncActivity();
+    };
     window.addEventListener("online", onOnline);
     return () => window.removeEventListener("online", onOnline);
   }, [sessionUserId]);
@@ -237,7 +270,9 @@ export default function App() {
           onStatus={setMessage}
           onBack={closeReader}
           onOpenNotebook={() => openPanel("vocab")}
-          statusText={error || message}
+          statusText={message}
+          errorText={error}
+          panelsOpen={showVocabulary || showAccount}
           theme={theme}
           onThemeChange={changeTheme}
           vocabVersion={vocabVersion}
@@ -279,7 +314,11 @@ export default function App() {
         </>
       )}
 
-      {showVocabulary ? <Vocabulary onClose={closePanel} books={library} /> : null}
+      {showVocabulary ? (
+        <Suspense fallback={<p className="status">Abriendo tu cuaderno…</p>}>
+          <Vocabulary onClose={closePanel} books={library} />
+        </Suspense>
+      ) : null}
       {showAccount ? (
         <Account onClose={closePanel} resetToken={resetToken} onResetDone={() => setResetToken(undefined)} />
       ) : null}

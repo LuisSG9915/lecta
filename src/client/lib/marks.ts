@@ -1,7 +1,23 @@
+import type { MarkLevel } from "./word-level";
+
 const MARK_CLASS = "saved-word";
 
-export function markSavedWords(root: HTMLElement, forms: Set<string>, language = "es") {
+// Marca las formas guardadas en el texto del libro. Recibe un Set
+// (todas al nivel «nueva») o un Map forma → nivel, que pinta
+// data-level para el desvanecimiento progresivo. Primero quita las
+// marcas anteriores para reflejar cambios de nivel o dominio.
+export function markSavedWords(
+  root: HTMLElement | DocumentFragment,
+  forms: Set<string> | Map<string, MarkLevel>,
+  language = "es",
+) {
+  // Desenrolla marcas previas (p. ej. una palabra que pasó a dominada).
+  root.querySelectorAll(`.${MARK_CLASS}`).forEach((mark) => {
+    mark.replaceWith(...mark.childNodes);
+  });
+  root.normalize();
   if (!forms.size) return;
+
   const segmenter = new Intl.Segmenter(language, { granularity: "word" });
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
     acceptNode: (node) =>
@@ -29,6 +45,8 @@ export function markSavedWords(root: HTMLElement, forms: Set<string>, language =
       current = marked.splitText(match.segment.length);
       const mark = document.createElement("mark");
       mark.className = MARK_CLASS;
+      const level = forms instanceof Map ? forms.get(match.segment.toLowerCase()) : undefined;
+      if (level && level !== "new") mark.dataset.level = level;
       mark.textContent = marked.nodeValue;
       marked.parentNode?.replaceChild(mark, marked);
       consumed = match.index + match.segment.length;

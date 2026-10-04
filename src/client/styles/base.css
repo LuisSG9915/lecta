@@ -21,12 +21,15 @@ html {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Grano de papel: ruido de luminancia en SVG inline, ~4% de alfa. */
+/* Grano de papel compartido: el cuerpo y el cuaderno a pantalla
+   completa usan la misma textura de ruido (~4% de alfa en Papel,
+   ~2% en Noche; definido por tema en tokens.css). */
+
 body {
   min-height: 100vh;
   margin: 0;
   background-color: var(--paper);
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='linear' slope='0.045'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-image: var(--grain);
 }
 
 h1,

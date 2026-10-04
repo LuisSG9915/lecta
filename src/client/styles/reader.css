@@ -48,7 +48,14 @@
 }
 
 .reader-bar-author {
-  color: var(--ink-faint);
+  color: var(--ink-soft);
+}
+
+/* Si el foco entra a una barra oculta (Tab del teclado), la barra
+   reaparece para no atrapar el foco fuera de pantalla. */
+.reader-bar[data-hidden]:focus-within,
+.reader-foot[data-hidden]:focus-within {
+  transform: none;
 }
 
 .reader-bar-actions {
@@ -64,6 +71,15 @@
   padding-block-start: 4.5rem;
   padding-block-end: 8rem;
   padding-inline: var(--s-5);
+}
+
+/* En pantalla ancha el riel del margen derecho existe siempre:
+   la ficha aparece ahí sin mover ni estrechar el texto. Debe vivir
+   aquí, después de padding-inline, o la regla base lo pisa. */
+@media (min-width: 64rem) {
+  .reader-body {
+    padding-inline-end: calc(min(24rem, 34vw) + var(--s-6));
+  }
 }
 
 .reader-loading,
@@ -123,8 +139,11 @@
   margin-block-end: 1em;
 }
 
+/* El interlineado se decide en .book-content; los párrafos lo heredan
+   para que el ajuste Aa mande sobre la regla global de párrafos. */
 .book-content p,
 .book-content li {
+  line-height: inherit;
   hyphens: auto;
   -webkit-hyphens: auto;
 }
@@ -339,8 +358,22 @@
 .reader-status {
   flex: none;
   font-size: var(--fs-xs);
-  color: var(--ink-faint);
+  color: var(--ink-soft);
   animation: status-fade 5s linear forwards;
+}
+
+/* Los errores no se desvanecen: permanecen hasta que se resuelven. */
+.reader-error-text {
+  flex: none;
+  font-size: var(--fs-xs);
+  color: var(--vermilion);
+}
+
+/* Sección sin texto extraíble (EPUB con páginas en imagen, p. ej.) */
+.reader-empty {
+  padding-block-start: var(--s-7);
+  font-style: italic;
+  color: var(--ink-soft);
 }
 
 @keyframes status-fade {
@@ -364,7 +397,7 @@
 .toc-item {
   display: block;
   inline-size: 100%;
-  padding: var(--s-2) 0;
+  padding: var(--s-3) 0;
   border: none;
   border-bottom: 1px solid var(--rule);
   background: none;
@@ -396,6 +429,344 @@
   border-top: var(--border);
   inline-size: 100%;
   text-align: start;
+}
+
+/* ---------- Búsqueda en el libro ---------- */
+
+.search-input {
+  inline-size: 100%;
+  min-height: 2.75rem;
+  padding: var(--s-2) var(--s-3);
+  border: var(--border);
+  border-radius: var(--r-1);
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--fs-base);
+}
+
+.search-input:focus {
+  outline: 2px solid var(--vermilion);
+  outline-offset: 1px;
+}
+
+.search-status {
+  margin-block: var(--s-2) var(--s-3);
+  font-size: var(--fs-sm);
+}
+
+.search-results {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.search-hit {
+  inline-size: 100%;
+  padding: var(--s-3);
+  border: var(--border);
+  border-radius: var(--r-1);
+  background: var(--paper);
+  text-align: start;
+  cursor: pointer;
+}
+
+.search-hit:hover {
+  border-color: var(--ink-soft);
+  background: var(--paper-raised);
+}
+
+.search-hit:focus-visible {
+  outline: 2px solid var(--vermilion);
+  outline-offset: 1px;
+}
+
+.search-hit-label {
+  display: block;
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  margin-bottom: var(--s-1);
+}
+
+.search-hit-context {
+  font-family: var(--font-book);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-body);
+  color: var(--ink);
+}
+
+.search-hit-context mark {
+  background: var(--vermilion-wash);
+  color: inherit;
+  border-radius: 2px;
+  padding-inline: 1px;
+}
+
+/* ---------- Marcadores y pasajes ---------- */
+
+.sheet-subtitle {
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  margin-block: var(--s-5) var(--s-2);
+}
+
+.mark-bookmark {
+  padding: var(--s-3);
+  border: var(--border);
+  border-radius: var(--r-1);
+  background: var(--paper);
+}
+
+.mark-bookmark p {
+  margin: 0 0 var(--s-2);
+  font-family: var(--font-book);
+}
+
+.marks-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.mark-item {
+  padding: var(--s-3);
+  border: var(--border);
+  border-radius: var(--r-1);
+  background: var(--paper);
+}
+
+.mark-jump {
+  display: block;
+  inline-size: 100%;
+  text-align: start;
+  cursor: pointer;
+}
+
+.mark-jump:hover .mark-text {
+  color: var(--vermilion);
+}
+
+.mark-text {
+  display: block;
+  font-family: var(--font-book);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-body);
+  color: var(--ink);
+}
+
+.mark-note {
+  margin-block: var(--s-2) 0;
+  padding-inline-start: var(--s-3);
+  border-inline-start: 2px solid var(--vermilion-wash);
+  font-family: var(--font-book);
+  font-style: italic;
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+}
+
+.mark-note-edit textarea {
+  inline-size: 100%;
+  margin-block-start: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  border: var(--border);
+  border-radius: var(--r-1);
+  background: var(--paper-raised);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+  resize: vertical;
+}
+
+.mark-note-edit textarea:focus {
+  outline: 2px solid var(--vermilion);
+  outline-offset: 1px;
+}
+
+.mark-actions {
+  display: flex;
+  gap: var(--s-4);
+  margin-block-start: var(--s-2);
+}
+
+.mark-actions .btn--quiet,
+.mark-bookmark .btn--quiet {
+  min-height: 2.75rem;
+}
+
+.mark-remove {
+  color: var(--ink-soft);
+}
+
+/* ---------- Pasajes marcados en el texto ---------- */
+
+mark.saved-passage {
+  background: var(--vermilion-wash);
+  color: inherit;
+}
+
+::highlight(lecta-passage) {
+  background-color: var(--vermilion-wash);
+}
+
+/* Destello al saltar a un resultado: el ojo encuentra el bloque. */
+@keyframes search-flash {
+  0% {
+    background-color: var(--vermilion-wash);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+.search-flash {
+  animation: search-flash 2.4s var(--ease-out);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .search-flash {
+    animation-duration: 0.6s;
+  }
+}
+
+/* ---------- «Volver a donde estaba» ---------- */
+
+.reader-return {
+  position: fixed;
+  z-index: 15;
+  inset-inline-end: var(--s-4);
+  inset-block-end: calc(3.5rem + env(safe-area-inset-bottom));
+  display: flex;
+  align-items: stretch;
+  border: var(--border);
+  border-radius: var(--r-pill, 999px);
+  background: var(--paper-raised);
+  box-shadow: var(--shadow-sheet);
+  overflow: hidden;
+  animation: fade-in var(--dur-2) var(--ease-out);
+}
+
+.reader-return-btn,
+.reader-return-dismiss {
+  min-height: 2.75rem;
+  padding: var(--s-2) var(--s-4);
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+  color: var(--ink);
+}
+
+.reader-return-btn:hover {
+  color: var(--vermilion);
+}
+
+.reader-return-dismiss {
+  border-inline-start: var(--border);
+  color: var(--ink-soft);
+}
+
+/* ---------- Modo paginado ---------- */
+
+.measure-probe {
+  position: absolute;
+  visibility: hidden;
+  pointer-events: none;
+  inline-size: var(--read-measure);
+  block-size: 1px;
+}
+
+/* En modo desplazamiento el visor no existe para el layout. */
+.page-viewport {
+  display: contents;
+}
+
+.reader[data-layout="pages"] {
+  block-size: 100svh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.reader[data-layout="pages"] .reader-body {
+  flex: 1;
+  min-block-size: 0;
+  display: flex;
+  flex-direction: column;
+  /* El pie es fijo: su altura (~3.5rem) se reserva para que no tape
+     la navegación de páginas. */
+  padding-block-end: calc(3.75rem + env(safe-area-inset-bottom, 0px));
+  overflow: hidden;
+}
+
+.reader[data-layout="pages"] .page-viewport {
+  display: block;
+  flex: 1;
+  min-block-size: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+.reader[data-layout="pages"] .book-content {
+  max-inline-size: none;
+  margin-inline: auto;
+  padding-inline: 0;
+  transition: transform var(--dur-3) var(--ease-out);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reader[data-layout="pages"] .book-content {
+    transition: none;
+  }
+}
+
+/* Evitar cortes feos: tablas, citas y código prefieren no partirse
+   entre columnas cuando caben enteras en una. */
+.reader[data-layout="pages"] .book-content :is(table, pre, figure, blockquote) {
+  break-inside: avoid;
+}
+
+.page-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-4);
+  max-inline-size: 48rem;
+  margin-inline: auto;
+  inline-size: 100%;
+  padding-block-start: var(--s-3);
+  border-top: 1px solid var(--rule);
+}
+
+.page-nav-count {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Botón «Guardar pasaje» sobre la selección ---------- */
+
+.selection-save {
+  position: fixed;
+  z-index: 25;
+  transform: translate(-50%, calc(-100% - var(--s-2)));
+  min-height: 2.5rem;
+  padding: var(--s-1) var(--s-4);
+  border: var(--border);
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--paper);
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+  box-shadow: var(--shadow-sheet);
+  cursor: pointer;
+  animation: fade-in var(--dur-2) var(--ease-out);
+}
+
+.selection-save:hover {
+  background: var(--vermilion);
 }
 
 /* ---------- Panel Aa ---------- */

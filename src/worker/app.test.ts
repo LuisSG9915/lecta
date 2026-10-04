@@ -46,6 +46,46 @@ describe("POST /api/lexicon/batch", () => {
   });
 });
 
+describe("/api/annotations", () => {
+  it("GET reports a missing storage configuration", async () => {
+    const response = await app.request("/api/annotations", {}, {});
+    expect(response.status).toBe(503);
+  });
+
+  it("PUT reports a missing storage configuration", async () => {
+    const response = await app.request(
+      "/api/annotations",
+      {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ annotations: [] }),
+      },
+      {},
+    );
+    expect(response.status).toBe(503);
+  });
+});
+
+describe("/api/activity", () => {
+  it("GET reports a missing storage configuration", async () => {
+    const response = await app.request("/api/activity", {}, {});
+    expect(response.status).toBe(503);
+  });
+
+  it("PUT reports a missing storage configuration", async () => {
+    const response = await app.request(
+      "/api/activity",
+      {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ intervals: [] }),
+      },
+      {},
+    );
+    expect(response.status).toBe(503);
+  });
+});
+
 describe("POST /api/lexicon/enrich", () => {
   it("rejects requests without a form", async () => {
     const response = await app.request("/api/lexicon/enrich", {

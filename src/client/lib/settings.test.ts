@@ -1,9 +1,14 @@
-import { describe, expect, it } from "vitest";
+// @vitest-environment jsdom
+import { beforeEach, describe, expect, it } from "vitest";
 import {
+  clearBookReaderSettings,
+  hasBookReaderSettings,
+  loadReaderSettings,
   parseReaderSettings,
   parseTheme,
   readerCssVars,
   resolveTheme,
+  saveReaderSettings,
   READER_DEFAULTS,
 } from "./settings";
 
@@ -50,7 +55,25 @@ describe("parseReaderSettings", () => {
       parseReaderSettings(
         JSON.stringify({ font: "sans", size: 20, leading: 1.8, measure: 75, justify: true }),
       ),
-    ).toEqual({ font: "sans", size: 20, leading: 1.8, measure: 75, justify: true, dropCap: false });
+    ).toEqual({
+      font: "sans",
+      size: 20,
+      leading: 1.8,
+      measure: 75,
+      justify: true,
+      dropCap: false,
+      layout: "scroll",
+      pageColumns: 2,
+    });
+  });
+
+  it("acepta modo paginado y cae a scroll con valores desconocidos", () => {
+    expect(
+      parseReaderSettings(JSON.stringify({ layout: "pages", pageColumns: 1 })),
+    ).toMatchObject({ layout: "pages", pageColumns: 1 });
+    expect(
+      parseReaderSettings(JSON.stringify({ layout: "flip", pageColumns: 3 })),
+    ).toMatchObject({ layout: "scroll", pageColumns: 2 });
   });
 
   it("acota tamaño e interlineado fuera de rango", () => {
@@ -61,6 +84,13 @@ describe("parseReaderSettings", () => {
 
   it("rechaza medidas que no son 55, 65 o 75", () => {
     expect(parseReaderSettings(JSON.stringify({ measure: 70 })).measure).toBe(65);
+  });
+
+  it("acepta las letras opcionales y rechaza desconocidas", () => {
+    for (const font of ["serif", "atkinson", "dyslexic"] as const) {
+      expect(parseReaderSettings(JSON.stringify({ font })).font).toBe(font);
+    }
+    expect(parseReaderSettings(JSON.stringify({ font: "comic" })).font).toBe("literata");
   });
 });
 
@@ -73,10 +103,42 @@ describe("readerCssVars", () => {
       measure: 55,
       justify: false,
       dropCap: true,
+      layout: "scroll",
+      pageColumns: 2,
     });
     expect(vars["--read-font"]).toBe("var(--font-sans-alt)");
     expect(vars["--read-size"]).toBe("20px");
     expect(vars["--read-leading"]).toBe("1.7");
     expect(vars["--read-measure"]).toBe("55ch");
+  });
+});
+
+describe("ajustes por libro", () => {
+  beforeEach(() => localStorage.clear());
+
+  it("guarda con clave propia sin tocar la global", () => {
+    saveReaderSettings({ ...READER_DEFAULTS, size: 22 }, "hash1");
+    expect(loadReaderSettings("hash1").size).toBe(22);
+    expect(loadReaderSettings().size).toBe(READER_DEFAULTS.size);
+    expect(hasBookReaderSettings("hash1")).toBe(true);
+    expect(hasBookReaderSettings("otro")).toBe(false);
+  });
+
+  it("sin ajuste propio hereda la global", () => {
+    saveReaderSettings({ ...READER_DEFAULTS, size: 19 });
+    expect(loadReaderSettings("hash2").size).toBe(19);
+  });
+
+  it("al limpiar el ajuste propio el libro vuelve a heredar", () => {
+    saveReaderSettings({ ...READER_DEFAULTS, size: 22 }, "hash3");
+    clearBookReaderSettings("hash3");
+    expect(hasBookReaderSettings("hash3")).toBe(false);
+    expect(loadReaderSettings("hash3")).toEqual(loadReaderSettings());
+  });
+
+  it("un ajuste propio corrupto no rompe: cae a los valores por defecto", () => {
+    localStorage.setItem("lecta:reader:hash4", "{no json");
+    saveReaderSettings({ ...READER_DEFAULTS, size: 19 });
+    expect(loadReaderSettings("hash4").size).toBe(READER_DEFAULTS.size);
   });
 });

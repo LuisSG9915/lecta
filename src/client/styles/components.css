@@ -170,6 +170,56 @@
   }
 }
 
+/* Ficha acoplada al margen: en pantallas anchas vive junto al texto
+   como una nota al margen, sin tapar la lectura. El riel del margen
+   derecho se reserva siempre, para que abrir la ficha no mueva ni
+   estreche el texto. */
+@media (min-width: 64rem) {
+  .sheet--docked {
+    inset-inline: auto var(--s-4);
+    inset-block-end: calc(4.25rem + env(safe-area-inset-bottom));
+    inline-size: min(24rem, 34vw);
+    margin-inline: 0;
+    max-height: calc(100svh - 7.5rem);
+    border: var(--border);
+    border-radius: var(--r-2);
+    animation: dock-in var(--dur-3) var(--ease-out);
+  }
+
+  .sheet--docked::before {
+    display: none;
+  }
+
+  /* El índice se acopla al margen izquierdo como panel flotante;
+     el texto queda donde estaba. */
+  .sheet--docked-left {
+    inset-inline: var(--s-4) auto;
+    animation-name: dock-in-left;
+  }
+}
+
+@keyframes dock-in-left {
+  from {
+    transform: translateX(-1.5rem);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes dock-in {
+  from {
+    transform: translateX(1.5rem);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
 .sheet-head {
   display: flex;
   align-items: baseline;
@@ -313,6 +363,29 @@ mark.saved-word[data-level="settled"] {
     background: Mark;
     color: MarkText;
     text-decoration: underline;
+  }
+
+  /* La hebra y los puntos conservan su lectura con colores del sistema. */
+  .thread {
+    background: none;
+    border-block-start: 1px solid CanvasText;
+  }
+
+  .thread-fill {
+    background: Highlight;
+  }
+
+  .dots .dot {
+    border: 1px solid CanvasText;
+    background: none;
+  }
+
+  .dots .dot--done {
+    background: CanvasText;
+  }
+
+  .dots .dot--current {
+    background: Highlight;
   }
 }
 

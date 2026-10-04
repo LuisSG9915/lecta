@@ -13,7 +13,15 @@ export const THEME_LABELS: Record<ThemeChoice, string> = {
 const THEME_KEY = "lecta:theme";
 const READER_KEY = "lecta:reader";
 
-export type ReaderFont = "literata" | "sans";
+export type ReaderFont = "literata" | "sans" | "serif" | "atkinson" | "dyslexic";
+
+export const READER_FONTS: { id: ReaderFont; label: string }[] = [
+  { id: "literata", label: "Literata" },
+  { id: "sans", label: "Alegreya Sans" },
+  { id: "serif", label: "Source Serif" },
+  { id: "atkinson", label: "Atkinson" },
+  { id: "dyslexic", label: "OpenDyslexic" },
+];
 
 export interface ReaderSettings {
   font: ReaderFont;
@@ -25,6 +33,10 @@ export interface ReaderSettings {
   measure: 55 | 65 | 75;
   justify: boolean;
   dropCap: boolean;
+  /** Desplazamiento continuo o páginas de una/dos columnas. */
+  layout: "scroll" | "pages";
+  /** Columnas por página en modo paginado (degrada a 1 en móvil). */
+  pageColumns: 1 | 2;
 }
 
 export const READER_DEFAULTS: ReaderSettings = {
@@ -34,6 +46,8 @@ export const READER_DEFAULTS: ReaderSettings = {
   measure: 65,
   justify: false,
   dropCap: false,
+  layout: "scroll",
+  pageColumns: 2,
 };
 
 export const READER_LIMITS = {
@@ -57,7 +71,7 @@ export function parseReaderSettings(raw: string | null): ReaderSettings {
   try {
     const v = JSON.parse(raw) as Partial<ReaderSettings>;
     return {
-      font: v.font === "sans" ? "sans" : "literata",
+      font: READER_FONTS.some((f) => f.id === v.font) ? (v.font as ReaderFont) : "literata",
       size:
         typeof v.size === "number"
           ? clamp(v.size, READER_LIMITS.size.min, READER_LIMITS.size.max)
@@ -69,16 +83,26 @@ export function parseReaderSettings(raw: string | null): ReaderSettings {
       measure: v.measure === 55 || v.measure === 65 || v.measure === 75 ? v.measure : 65,
       justify: v.justify === true,
       dropCap: v.dropCap === true,
+      layout: v.layout === "pages" ? "pages" : "scroll",
+      pageColumns: v.pageColumns === 1 ? 1 : 2,
     };
   } catch {
     return READER_DEFAULTS;
   }
 }
 
+const READ_FONT_VARS: Record<ReaderFont, string> = {
+  literata: "var(--font-book)",
+  sans: "var(--font-sans-alt)",
+  serif: "var(--font-source-serif)",
+  atkinson: "var(--font-atkinson)",
+  dyslexic: "var(--font-dyslexic)",
+};
+
 // Variables CSS que aplica el contenedor del lector.
 export function readerCssVars(s: ReaderSettings): Record<string, string> {
   return {
-    "--read-font": s.font === "sans" ? "var(--font-sans-alt)" : "var(--font-book)",
+    "--read-font": READ_FONT_VARS[s.font] ?? READ_FONT_VARS.literata,
     "--read-size": `${s.size}px`,
     "--read-leading": String(s.leading),
     "--read-measure": `${s.measure}ch`,
@@ -99,13 +123,56 @@ export function saveTheme(choice: ThemeChoice) {
   }
 }
 
-export function loadReaderSettings(): ReaderSettings {
+// Ajustes de lectura por libro: `lecta:reader:<hash>` guarda la
+// preferencia de ese libro; sin clave propia hereda la global.
+const readerKeyFor = (bookHash?: string) =>
+  bookHash ? `${READER_KEY}:${bookHash}` : READER_KEY;
+
+export function loadReaderSettings(bookHash?: string): ReaderSettings {
+  if (bookHash) {
+    const own = storage()?.getItem(readerKeyFor(bookHash));
+    if (own !== null && own !== undefined) return parseReaderSettings(own);
+  }
   return parseReaderSettings(storage()?.getItem(READER_KEY) ?? null);
 }
 
-export function saveReaderSettings(settings: ReaderSettings) {
+export function saveReaderSettings(settings: ReaderSettings, bookHash?: string) {
   try {
-    storage()?.setItem(READER_KEY, JSON.stringify(settings));
+    storage()?.setItem(readerKeyFor(bookHash), JSON.stringify(settings));
+  } catch {
+    // mismo criterio que saveTheme
+  }
+}
+
+export function hasBookReaderSettings(bookHash: string): boolean {
+  return storage()?.getItem(readerKeyFor(bookHash)) != null;
+}
+
+// «Usar mis ajustes generales»: el libro vuelve a heredar la global.
+export function clearBookReaderSettings(bookHash: string) {
+  try {
+    storage()?.removeItem(readerKeyFor(bookHash));
+  } catch {
+    // mismo criterio que saveTheme
+  }
+}
+
+const ACTIVITY_HIDDEN_KEY = "lecta:activity:hidden";
+
+// Preferencia discreta: quien no quiera ver sus estadísticas las apaga
+// aquí; el panel del Cuaderno y los puntos de la semana se ocultan.
+export function loadActivityHidden(): boolean {
+  try {
+    return storage()?.getItem(ACTIVITY_HIDDEN_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function saveActivityHidden(hidden: boolean) {
+  try {
+    if (hidden) storage()?.setItem(ACTIVITY_HIDDEN_KEY, "1");
+    else storage()?.removeItem(ACTIVITY_HIDDEN_KEY);
   } catch {
     // mismo criterio que saveTheme
   }

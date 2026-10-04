@@ -5,15 +5,24 @@ type SheetProps = {
   label: string;
   onClose: () => void;
   children: ReactNode;
+  // En pantallas anchas la hoja se acopla al margen indicado como
+  // marginalia; en pantallas estrechas sigue siendo hoja inferior.
+  side?: "right" | "left";
 };
 
-// Hoja inferior con asa. En fases siguientes gana la variante de
-// margen para pantallas anchas.
-export default function Sheet({ label, onClose, children }: SheetProps) {
+export default function Sheet({ label, onClose, children, side }: SheetProps) {
   const ref = useRef<HTMLDivElement>(null);
   useModalBehavior(ref, onClose);
+  const docked =
+    side === "left" ? " sheet--docked sheet--docked-left" : side === "right" ? " sheet--docked" : "";
   return (
-    <div ref={ref} className="sheet" role="dialog" aria-modal="true" aria-label={label}>
+    <div
+      ref={ref}
+      className={`sheet${docked}`}
+      role="dialog"
+      aria-modal="true"
+      aria-label={label}
+    >
       {children}
     </div>
   );

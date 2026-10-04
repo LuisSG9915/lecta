@@ -11,13 +11,25 @@ const findSentence = (text: string, word: string, language: string) => {
   return undefined;
 };
 
+// caretRangeFromPoint es de WebKit/Chromium; Firefox expone la API
+// estándar caretPositionFromPoint y hay que convertirla a Range.
+function caretAtPoint(clientX: number, clientY: number): Range | null {
+  if (document.caretRangeFromPoint) return document.caretRangeFromPoint(clientX, clientY);
+  const position = document.caretPositionFromPoint?.(clientX, clientY);
+  if (!position) return null;
+  const range = document.createRange();
+  range.setStart(position.offsetNode, position.offset);
+  range.collapse(true);
+  return range;
+}
+
 export function extractWordAtPoint(
   clientX: number,
   clientY: number,
   root: HTMLElement,
   language = "es",
 ): WordHit | null {
-  const caret = document.caretRangeFromPoint(clientX, clientY);
+  const caret = caretAtPoint(clientX, clientY);
   const node = caret?.startContainer;
   if (!caret || !node || node.nodeType !== Node.TEXT_NODE || !root.contains(node)) return null;
 

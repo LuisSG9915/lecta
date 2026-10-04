@@ -17,3 +17,28 @@ export function relativeDay(ts: number, now = Date.now()): string {
   if (days < 365) return rtf.format(-Math.floor(days / 30), "month");
   return rtf.format(-Math.floor(days / 365), "year");
 }
+
+// «hace un momento», «hace 3 min», «hace 2 h», y para más de un día
+// cae a relativeDay. Pensado para «Sincronizado hace…» en Cuenta.
+export function timeAgo(ts: number, now = Date.now()): string {
+  const minutes = Math.floor(Math.max(0, now - ts) / 60_000);
+  if (minutes < 1) return "hace un momento";
+  if (minutes < 60) return `hace ${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  if (startOfDay(ts) === startOfDay(now)) return `hace ${hours} h`;
+  return relativeDay(ts, now);
+}
+
+// Intervalo corto para las calificaciones del repaso: «10 min»,
+// «6 h», «4 d», «2 meses».
+export function formatInterval(ms: number): string {
+  const min = Math.round(ms / 60_000);
+  if (min < 1) return "ahora";
+  if (min < 60) return `${min} min`;
+  const hours = Math.round(min / 60);
+  if (hours < 24) return `${hours} h`;
+  const days = Math.round(hours / 24);
+  if (days < 30) return `${days} d`;
+  const months = Math.round(days / 30);
+  return `${months} ${months === 1 ? "mes" : "meses"}`;
+}
