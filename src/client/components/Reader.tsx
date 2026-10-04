@@ -141,7 +141,10 @@ export default function Reader({ bookHash, file, fileName, onError, onStatus }: 
         const saved = await loadBookPosition(bookHash);
         await loadSection(Math.min(saved?.sectionIndex ?? 0, book.sections.length - 1), saved?.scrollTop);
 
+        // Va después del primer render y cede el hilo entre secciones
+        // para que el análisis no compita con la lectura.
         void (async () => {
+          await new Promise((resolve) => setTimeout(resolve, 1500));
           const seen = new Set<string>();
           for (const bookSection of book.sections) {
             if (disposed) return;
@@ -158,9 +161,10 @@ export default function Reader({ bookHash, file, fileName, onError, onStatus }: 
             } catch {
               // sección omitida del análisis
             }
+            await new Promise((resolve) => setTimeout(resolve, 0));
           }
           if (disposed) return;
-          const forms = [...seen].slice(0, 500);
+          const forms = [...seen].slice(0, 2000);
           const result = await batchLookup(forms, bookLanguage);
           if (disposed || !result.ok) return;
           setBookVocab({

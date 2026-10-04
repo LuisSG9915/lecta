@@ -49,7 +49,7 @@ app.get("/api/lexicon/lookup", async (context) => {
 app.post("/api/lexicon/batch", async (context) => {
   const body = await context.req.json().catch(() => null);
   const forms = Array.isArray(body?.forms)
-    ? body.forms.filter((form: unknown) => typeof form === "string").slice(0, 500)
+    ? body.forms.filter((form: unknown) => typeof form === "string").slice(0, 2000)
     : [];
   const language = typeof body?.language === "string" ? body.language.trim() : "es";
   if (!forms.length) return context.json({ error: "Faltan las palabras." }, 400);

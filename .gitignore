@@ -5,3 +5,10 @@ dist/
 .env
 .env.*
 !.env.example
+
+# EPUBs de prueba locales (no versionar contenido con copyright)
+/src/*.epub
+/fixtures/*.epub
+!/fixtures/minimal.epub
+
+.DS_Store
