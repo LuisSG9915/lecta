@@ -67,6 +67,7 @@ export default function Reader({ bookHash, file, fileName, onError, onStatus }: 
   const [bookVocab, setBookVocab] = useState<BookVocabulary | null>(null);
   const [showBookVocab, setShowBookVocab] = useState(false);
   const [enriching, setEnriching] = useState<{ done: number; total: number } | null>(null);
+  const [defsPending, setDefsPending] = useState(false);
   const savedForms = useRef<Set<string>>(new Set());
 
   const loadSection = useCallback(
@@ -210,6 +211,7 @@ export default function Reader({ bookHash, file, fileName, onError, onStatus }: 
       setEnriching(null);
       return;
     }
+    setDefsPending(true);
 
     // El workflow corre en segundo plano: consultamos varias veces
     // hasta que las fichas nuevas empiecen a aparecer en el catálogo.
@@ -239,6 +241,12 @@ export default function Reader({ bookHash, file, fileName, onError, onStatus }: 
       if (foundNow.length >= pending.length) break;
     }
     setEnriching(null);
+    // Si todo el lote ya tiene ficha, ya no hay nada pendiente en
+    // segundo plano; si no, avisamos que seguirán llegando.
+    setBookVocab((vocab) => {
+      if (vocab && !vocab.missing.length) setDefsPending(false);
+      return vocab;
+    });
   };
 
   const persistScroll = () => {
@@ -316,6 +324,11 @@ export default function Reader({ bookHash, file, fileName, onError, onStatus }: 
                 </li>
               ))}
             </ul>
+          ) : null}
+          {defsPending && bookVocab.missing.length ? (
+            <p className="reader-meta">
+              Las definiciones faltantes se siguen generando en segundo plano.
+            </p>
           ) : null}
           {bookVocab.missing.length ? (
             <>

@@ -31,6 +31,7 @@ export default function App() {
   const [showAccount, setShowAccount] = useState(false);
   const [library, setLibrary] = useState<StoredBook[]>([]);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [vocabVersion, setVocabVersion] = useState(0);
   const { data: session } = authClient.useSession();
   const sessionUserId = session?.user?.id;
 
@@ -66,6 +67,7 @@ export default function App() {
       const pulled = await syncSavedWords().catch(() => null);
       if (!cancelled && pulled) {
         setMessage(`Vocabulario sincronizado: ${pulled} palabra(s) nueva(s) en este dispositivo.`);
+        setVocabVersion((v) => v + 1);
       }
       const [remote, localBooks] = await Promise.all([listRemoteBooks(), listStoredBooks()]);
       if (cancelled) return;
@@ -105,6 +107,15 @@ export default function App() {
     return () => {
       cancelled = true;
     };
+  }, [sessionUserId]);
+
+  // Si la sesión sigue abierta y vuelve la conexión, re-sincroniza el
+  // vocabulario (los cambios hechos sin conexión se suben aquí).
+  useEffect(() => {
+    if (!sessionUserId) return;
+    const onOnline = () => void syncSavedWords();
+    window.addEventListener("online", onOnline);
+    return () => window.removeEventListener("online", onOnline);
   }, [sessionUserId]);
 
   const selectBook = async (file: File) => {
@@ -216,7 +227,7 @@ export default function App() {
 
       {book ? (
         <Reader
-          key={`${sessionUserId ?? "anon"}:${book.hash}`}
+          key={`${sessionUserId ?? "anon"}:${book.hash}:${vocabVersion}`}
           bookHash={book.hash}
           file={book.file}
           fileName={book.name}
