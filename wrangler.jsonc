@@ -5,7 +5,13 @@
   "compatibility_date": "2026-10-02",
   "compatibility_flags": ["nodejs_compat"],
   "secrets": {
-    "required": ["DATABASE_URL", "DEEPSEEK_API_KEY", "BETTER_AUTH_SECRET"]
+    "required": [
+      "DATABASE_URL",
+      "DEEPSEEK_API_KEY",
+      "BETTER_AUTH_SECRET",
+      "RESEND_API_KEY",
+      "RESEND_FROM_EMAIL"
+    ]
   },
   "assets": {
     "not_found_handling": "single-page-application",

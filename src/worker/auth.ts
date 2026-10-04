@@ -25,8 +25,8 @@ async function sendViaResend(env: WorkerEnv, email: string, url: string) {
   });
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
-    console.error(`[magic-link] Resend falló para ${email}: ${response.status}`);
-    throw new Error(`No se pudo enviar el enlace (${response.status})${detail ? "." : ""}`);
+    console.error(`[magic-link] Resend falló para ${email}: ${response.status} ${detail}`);
+    throw new Error(`No se pudo enviar el enlace (${response.status})`);
   }
 }
 
