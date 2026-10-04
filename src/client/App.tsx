@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import Reader from "./components/Reader";
 import Vocabulary from "./components/Vocabulary";
-import Account from "./components/Account";
+import Account, { PENDING_DELETE_KEY } from "./components/Account";
 import ThemeMenu from "./components/ThemeMenu";
 import Shelf from "./components/Shelf";
 import { applyTheme, loadTheme, saveTheme, type ThemeChoice } from "./lib/settings";
 import { pushOverlay, type OverlayHandle } from "./lib/history";
 import { sha256Hex } from "./lib/hash";
 import {
+  deleteAccountDb,
   deleteStoredBook,
   listStoredBooks,
   saveBook,
@@ -25,14 +26,28 @@ type BookSelection = {
 };
 
 export default function App() {
+  // Enlace de restablecer contraseña (o error de enlace) leído una vez
+  // al montar; la URL queda limpia desde el inicio.
+  const [authLink] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get("token") ?? undefined;
+    const urlError = params.get("error") ?? undefined;
+    if (token || urlError) {
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+    return { token, urlError };
+  });
   const [book, setBook] = useState<BookSelection | null>(null);
   const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
+  const [error, setError] = useState(
+    authLink.urlError ? "El enlace ya venció o fue usado. Pide uno nuevo." : "",
+  );
   const [checkingLibrary, setCheckingLibrary] = useState(true);
   const [showVocabulary, setShowVocabulary] = useState(false);
-  const [showAccount, setShowAccount] = useState(false);
+  const [showAccount, setShowAccount] = useState(Boolean(authLink.token || authLink.urlError));
   const [library, setLibrary] = useState<StoredBook[]>([]);
   const [vocabVersion, setVocabVersion] = useState(0);
+  const [resetToken, setResetToken] = useState<string | undefined>(authLink.token);
   const [theme, setTheme] = useState<ThemeChoice>(() => loadTheme());
   const bookRelease = useRef<OverlayHandle | null>(null);
   const panelRelease = useRef<OverlayHandle | null>(null);
@@ -94,11 +109,30 @@ export default function App() {
     setLibrary(books.sort((a, b) => b.addedAt - a.addedAt));
   };
 
+  // El panel abierto por el enlace también es una capa del historial:
+  // el botón atrás lo cierra como a cualquier otro panel.
+  useEffect(() => {
+    if (!authLink.token && !authLink.urlError) return;
+    panelRelease.current = pushOverlay(() => {
+      panelRelease.current = null;
+      setShowVocabulary(false);
+      setShowAccount(false);
+    });
+  }, [authLink]);
+
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       await setDbUser(sessionUserId ?? null);
       if (cancelled) return;
+
+      // Si el correo de confirmación borró la cuenta, limpia su base
+      // local en este dispositivo; si la sesión sigue viva, se canceló.
+      const pendingDelete = localStorage.getItem(PENDING_DELETE_KEY);
+      if (pendingDelete) {
+        localStorage.removeItem(PENDING_DELETE_KEY);
+        if (!sessionUserId) await deleteAccountDb(pendingDelete);
+      }
 
       setCheckingLibrary(false);
       void refreshLibrary();
@@ -245,8 +279,10 @@ export default function App() {
         </>
       )}
 
-      {showVocabulary ? <Vocabulary onClose={closePanel} /> : null}
-      {showAccount ? <Account onClose={closePanel} /> : null}
+      {showVocabulary ? <Vocabulary onClose={closePanel} books={library} /> : null}
+      {showAccount ? (
+        <Account onClose={closePanel} resetToken={resetToken} onResetDone={() => setResetToken(undefined)} />
+      ) : null}
     </div>
   );
 }

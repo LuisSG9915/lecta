@@ -10,7 +10,8 @@
       "DEEPSEEK_API_KEY",
       "BETTER_AUTH_SECRET",
       "RESEND_API_KEY",
-      "RESEND_FROM_EMAIL"
+      "RESEND_FROM_EMAIL",
+      "AI_GATEWAY_KEY"
     ]
   },
   "assets": {

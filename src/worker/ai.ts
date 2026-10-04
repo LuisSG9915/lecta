@@ -63,6 +63,9 @@ export async function requestEnrichment(
     headers: {
       "content-type": "application/json",
       authorization: `Bearer ${env.DEEPSEEK_API_KEY}`,
+      ...(env.AI_GATEWAY_KEY
+        ? { "cf-aig-authorization": `Bearer ${env.AI_GATEWAY_KEY}` }
+        : {}),
     },
     body: JSON.stringify({
       model: "deepseek-chat",

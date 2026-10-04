@@ -2,17 +2,23 @@ import { useState, type FormEvent } from "react";
 import { authClient } from "../lib/auth";
 import Dialog from "./Dialog";
 
+export const PENDING_DELETE_KEY = "lecta:pending-delete";
+
 type AccountProps = {
   onClose: () => void;
+  resetToken?: string;
+  onResetDone?: () => void;
 };
 
-export default function Account({ onClose }: AccountProps) {
+export default function Account({ onClose, resetToken, onResetDone }: AccountProps) {
   const { data: session, isPending } = authClient.useSession();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const run = async (action: () => Promise<{ error?: { message?: string } | null }>) => {
     setBusy(true);
@@ -42,6 +48,46 @@ export default function Account({ onClose }: AccountProps) {
     void run(async () => {
       const result = await authClient.signIn.magicLink({ email, callbackURL: "/" });
       if (!result?.error) setMessage("Si el correo está registrado, enviamos un enlace de acceso.");
+      return result;
+    });
+  };
+
+  const sendResetLink = () => {
+    void run(async () => {
+      const result = await authClient.requestPasswordReset({ email, redirectTo: "/" });
+      if (!result?.error)
+        setMessage("Si el correo está registrado, enviamos un enlace para restablecer la contraseña.");
+      return result;
+    });
+  };
+
+  const resetPassword = (event: FormEvent) => {
+    event.preventDefault();
+    void run(async () => {
+      const result = await authClient.resetPassword({ newPassword, token: resetToken ?? "" });
+      if (!result?.error) {
+        setMessage("Contraseña actualizada. Ya puedes entrar con ella.");
+        setNewPassword("");
+        onResetDone?.();
+      }
+      return result;
+    });
+  };
+
+  const requestDelete = () => {
+    if (!confirmDelete) {
+      setConfirmDelete(true);
+      return;
+    }
+    void run(async () => {
+      const result = await authClient.deleteUser({ callbackURL: "/" });
+      if (!result?.error) {
+        if (session?.user?.id) localStorage.setItem(PENDING_DELETE_KEY, session.user.id);
+        setConfirmDelete(false);
+        setMessage(
+          "Te enviamos un correo para confirmar el borrado. Tu cuenta se elimina al abrir ese enlace.",
+        );
+      }
       return result;
     });
   };
@@ -81,10 +127,40 @@ export default function Account({ onClose }: AccountProps) {
               Cerrar sesión
             </button>
           </div>
+          <div className="actions">
+            <button
+              type="button"
+              className="btn--quiet"
+              disabled={busy}
+              onClick={requestDelete}
+            >
+              {confirmDelete ? "¿Seguro? Borra cuenta, libros y vocabulario" : "Eliminar cuenta"}
+            </button>
+          </div>
         </>
       ) : null}
 
-      {!isPending && !session?.user ? (
+      {resetToken && !session?.user ? (
+        <form className="field" onSubmit={resetPassword}>
+          <label htmlFor="reset-password">Nueva contraseña</label>
+          <input
+            id="reset-password"
+            type="password"
+            required
+            minLength={8}
+            autoComplete="new-password"
+            value={newPassword}
+            onChange={(event) => setNewPassword(event.target.value)}
+          />
+          <div className="actions">
+            <button type="submit" className="btn btn--primary" disabled={busy}>
+              Guardar contraseña
+            </button>
+          </div>
+        </form>
+      ) : null}
+
+      {!resetToken && !isPending && !session?.user ? (
         <form className="field" onSubmit={signInWithPassword}>
           <label htmlFor="account-email">Correo</label>
           <input
@@ -120,6 +196,14 @@ export default function Account({ onClose }: AccountProps) {
               Enlace por correo
             </button>
           </div>
+          <button
+            type="button"
+            className="btn--quiet"
+            disabled={busy || !email}
+            onClick={sendResetLink}
+          >
+            Olvidé mi contraseña
+          </button>
         </form>
       ) : null}
 

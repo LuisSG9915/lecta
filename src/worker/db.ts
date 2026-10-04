@@ -5,6 +5,7 @@ export type WorkerEnv = {
   HYPERDRIVE?: { connectionString: string };
   DEEPSEEK_API_KEY?: string;
   AI_GATEWAY_URL?: string;
+  AI_GATEWAY_KEY?: string;
   BETTER_AUTH_SECRET?: string;
   BETTER_AUTH_URL?: string;
   RESEND_API_KEY?: string;

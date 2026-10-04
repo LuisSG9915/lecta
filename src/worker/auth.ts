@@ -4,9 +4,16 @@ import { Kysely, PostgresDialect } from "kysely";
 import pg from "pg";
 import { getConnectionString, type WorkerEnv } from "./db";
 
-async function sendViaResend(env: WorkerEnv, email: string, url: string) {
+type EmailContent = { subject: string; intro: string };
+
+async function sendViaResend(
+  env: WorkerEnv,
+  email: string,
+  url: string,
+  content: EmailContent,
+) {
   if (!env.RESEND_API_KEY) {
-    console.log(`[magic-link] para ${email}: ${url}`);
+    console.log(`[correo] para ${email}: ${url}`);
     return;
   }
   const response = await fetch("https://api.resend.com/emails", {
@@ -19,13 +26,13 @@ async function sendViaResend(env: WorkerEnv, email: string, url: string) {
       from:
         env.RESEND_FROM_EMAIL ?? env.RESEND_FROM ?? "Lecta <onboarding@resend.dev>",
       to: [email],
-      subject: "Tu enlace para entrar a Lecta",
-      html: `<p>Hola,</p><p>Usa este enlace para entrar a Lecta:</p><p><a href="${url}">${url}</a></p><p>Si no lo pediste, ignora este correo.</p>`,
+      subject: content.subject,
+      html: `<p>Hola,</p><p>${content.intro}</p><p><a href="${url}">${url}</a></p><p>Si no lo pediste, ignora este correo.</p>`,
     }),
   });
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
-    console.error(`[magic-link] Resend falló para ${email}: ${response.status} ${detail}`);
+    console.error(`[correo] Resend falló para ${email}: ${response.status} ${detail}`);
     throw new Error(`No se pudo enviar el enlace (${response.status})`);
   }
 }
@@ -39,12 +46,41 @@ export function createAuth(env: WorkerEnv, baseURL: string) {
     },
     secret: env.BETTER_AUTH_SECRET,
     baseURL,
-    emailAndPassword: { enabled: true },
+    emailAndPassword: {
+      enabled: true,
+      sendResetPassword: async ({ user, url }) => {
+        await sendViaResend(env, user.email, url, {
+          subject: "Restablece tu contraseña de Lecta",
+          intro: "Usa este enlace para elegir una nueva contraseña:",
+        });
+      },
+    },
+    user: {
+      deleteUser: {
+        enabled: true,
+        sendDeleteAccountVerification: async ({ user, url }) => {
+          await sendViaResend(env, user.email, url, {
+            subject: "Confirma el borrado de tu cuenta de Lecta",
+            intro:
+              "Confirma que quieres borrar tu cuenta. Se eliminarán tus libros, tu vocabulario y tus sesiones:",
+          });
+        },
+        beforeDelete: async (user) => {
+          const bucket = env.BOOKS;
+          if (!bucket) return;
+          const listed = await bucket.list({ prefix: `books/${user.id}/` });
+          await Promise.all(listed.objects.map((object) => bucket.delete(object.key)));
+        },
+      },
+    },
     plugins: [
       magicLink({
         expiresIn: 600,
         sendMagicLink: async ({ email, url }) => {
-          await sendViaResend(env, email, url);
+          await sendViaResend(env, email, url, {
+            subject: "Tu enlace para entrar a Lecta",
+            intro: "Usa este enlace para entrar a Lecta:",
+          });
         },
       }),
     ],

@@ -82,6 +82,18 @@ export function getActiveUserId() {
   return activeUserId;
 }
 
+// Borra por completo la base local de una cuenta (al eliminar la
+// cuenta o al confirmar el borrado desde el correo).
+export async function deleteAccountDb(userId: string) {
+  if (activeUserId === userId) await setDbUser(null);
+  await new Promise<void>((resolve) => {
+    const request = indexedDB.deleteDatabase(dbNameFor(userId));
+    request.onsuccess = () => resolve();
+    request.onblocked = () => resolve();
+    request.onerror = () => resolve();
+  });
+}
+
 // Cambia la base activa según la sesión. Al iniciar sesión migra lo
 // guardado como invitado hacia la cuenta y limpia el espacio anónimo,
 // para que otra persona que use el dispositivo no lo reciba.
