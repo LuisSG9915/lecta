@@ -91,6 +91,12 @@ app.post("/api/lexicon/enrich", async (context) => {
     if (existing.length) {
       result = { status: "existing" as const, entries: existing };
     } else {
+      const allowed = await consumeRateUnits(context.env, session.user.id, 1);
+      if (!allowed)
+        return context.json(
+          { error: "Llegaste al límite de definiciones con IA por hora. Intenta más tarde." },
+          429,
+        );
       const ai = await requestEnrichment(context.env, { form, language, context: contextText });
       if (!ai.ok) {
         result = { status: ai.reason } as const;
@@ -133,12 +139,43 @@ app.post("/api/lexicon/enrich-batch", async (context) => {
 
   const session = await getSession(context);
   if (!session) return context.json({ error: "Inicia sesión para definir palabras con IA." }, 401);
+  const allowed = await consumeRateUnits(context.env, session.user.id, forms.length);
+  if (!allowed)
+    return context.json(
+      { error: "Llegaste al límite de definiciones con IA por hora. Intenta más tarde." },
+      429,
+    );
 
   const instance = await context.env.ENRICHMENT_WORKFLOW.create({
     params: { forms, language },
   });
   return context.json({ instanceId: instance.id, count: forms.length }, 202);
 });
+
+const ENRICH_UNITS_PER_HOUR = 60;
+const HOUR_MS = 3_600_000;
+
+// Suma `units` a la ventana de la última hora y la registra en la misma
+// consulta; devuelve false cuando la cuenta ya llegó al límite.
+async function consumeRateUnits(env: WorkerEnv, userId: string, units: number) {
+  const now = Date.now();
+  const result = await withClient(env, (client) =>
+    client.query(
+      `WITH cnt AS (
+         SELECT COALESCE(SUM(units), 0)::int8 AS total
+         FROM lecta_rate_log
+         WHERE user_id = $1 AND created_at > $2
+       ), ins AS (
+         INSERT INTO lecta_rate_log (user_id, units, created_at)
+         SELECT $1, $3, $4 FROM cnt WHERE cnt.total + $3 <= $5
+         RETURNING 1
+       )
+       SELECT EXISTS (SELECT 1 FROM ins) AS allowed`,
+      [userId, now - HOUR_MS, units, now, ENRICH_UNITS_PER_HOUR],
+    ),
+  );
+  return result?.rows[0]?.allowed === true;
+}
 
 const bookKey = (userId: string, hash: string) => `books/${userId}/${hash}.epub`;
 const HASH_PATTERN = /^[a-f0-9]{64}$/;

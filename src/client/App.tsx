@@ -63,7 +63,10 @@ export default function App() {
       }
       if (!sessionUserId) return;
 
-      void syncSavedWords();
+      const pulled = await syncSavedWords().catch(() => null);
+      if (!cancelled && pulled) {
+        setMessage(`Vocabulario sincronizado: ${pulled} palabra(s) nueva(s) en este dispositivo.`);
+      }
       const [remote, localBooks] = await Promise.all([listRemoteBooks(), listStoredBooks()]);
       if (cancelled) return;
       const remoteHashes = new Set(remote.map((item) => item.hash));

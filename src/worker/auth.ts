@@ -16,7 +16,8 @@ async function sendViaResend(env: WorkerEnv, email: string, url: string) {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      from: env.RESEND_FROM ?? "Lecta <onboarding@resend.dev>",
+      from:
+        env.RESEND_FROM_EMAIL ?? env.RESEND_FROM ?? "Lecta <onboarding@resend.dev>",
       to: [email],
       subject: "Tu enlace para entrar a Lecta",
       html: `<p>Hola,</p><p>Usa este enlace para entrar a Lecta:</p><p><a href="${url}">${url}</a></p><p>Si no lo pediste, ignora este correo.</p>`,

@@ -11,6 +11,9 @@ const handler: ExportedHandler<WorkerEnv> = {
       (withClient(env, async (client) => {
         await client.query('DELETE FROM "session" WHERE "expiresAt" < NOW()');
         await client.query('DELETE FROM "verification" WHERE "expiresAt" < NOW()');
+        await client.query("DELETE FROM lecta_rate_log WHERE created_at < $1", [
+          Date.now() - 48 * 3_600_000,
+        ]);
       }) ?? Promise.resolve()),
     );
   },

@@ -43,3 +43,11 @@ CREATE TABLE IF NOT EXISTS lecta_user_words (
 );
 CREATE INDEX IF NOT EXISTS lecta_user_words_user ON lecta_user_words (user_id, language);
 ALTER TABLE lecta_user_words ADD COLUMN IF NOT EXISTS deleted BOOL NOT NULL DEFAULT false;
+
+-- Consumo de IA por cuenta (ventana deslizante); el Cron lo depura.
+CREATE TABLE IF NOT EXISTS lecta_rate_log (
+  user_id STRING NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+  units INT8 NOT NULL,
+  created_at INT8 NOT NULL
+);
+CREATE INDEX IF NOT EXISTS lecta_rate_log_window ON lecta_rate_log (user_id, created_at);
