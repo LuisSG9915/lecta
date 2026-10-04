@@ -206,3 +206,107 @@ app.delete("/api/books/:hash", async (context) => {
   await context.env.BOOKS.delete(bookKey(session.user.id, hash));
   return context.json({ ok: true });
 });
+
+type UserWordInput = {
+  form?: unknown;
+  language?: unknown;
+  lemma?: unknown;
+  pos?: unknown;
+  meaning?: unknown;
+  context?: unknown;
+  bookHash?: unknown;
+  card?: unknown;
+  savedAt?: unknown;
+  updatedAt?: unknown;
+};
+
+const cleanText = (value: unknown, max: number) =>
+  typeof value === "string" ? value.slice(0, max) : undefined;
+const cleanNumber = (value: unknown) =>
+  typeof value === "number" && Number.isFinite(value) ? value : undefined;
+
+app.get("/api/vocab", async (context) => {
+  if (!getConnectionString(context.env))
+    return context.json({ error: "El vocabulario no está configurado." }, 503);
+  const session = await getSession(context);
+  if (!session) return context.json({ error: "Inicia sesión para ver tu vocabulario." }, 401);
+  const language = context.req.query("lang")?.trim() || "es";
+
+  const rows = await withClient(context.env, (client) =>
+    client
+      .query(
+        `SELECT language, form, lemma, pos, meaning, context, book_hash AS "bookHash",
+                card, saved_at AS "savedAt", updated_at AS "updatedAt"
+         FROM lecta_user_words WHERE user_id = $1 AND language = $2`,
+        [session.user.id, language],
+      )
+      .then((result) => result.rows),
+  );
+  if (rows === undefined)
+    return context.json({ error: "El vocabulario no está configurado." }, 503);
+  return context.json({
+    words: rows.map((row) => ({
+      ...row,
+      key: `${row.language}:${row.form.toLowerCase()}`,
+      savedAt: Number(row.savedAt),
+      updatedAt: Number(row.updatedAt),
+      card: typeof row.card === "string" ? JSON.parse(row.card) : row.card,
+    })),
+  });
+});
+
+app.put("/api/vocab", async (context) => {
+  if (!getConnectionString(context.env))
+    return context.json({ error: "El vocabulario no está configurado." }, 503);
+  const session = await getSession(context);
+  if (!session)
+    return context.json({ error: "Inicia sesión para guardar tu vocabulario." }, 401);
+
+  const body = await context.req.json().catch(() => null);
+  const inputs = Array.isArray(body?.words) ? (body.words as UserWordInput[]) : [];
+  const words = inputs
+    .map((input) => {
+      const form = cleanText(input.form, 100)?.trim().toLowerCase();
+      const language = cleanText(input.language, 10)?.trim() || "es";
+      const updatedAt = cleanNumber(input.updatedAt) ?? Date.now();
+      if (!form) return null;
+      return {
+        form,
+        language,
+        lemma: cleanText(input.lemma, 100) ?? null,
+        pos: cleanText(input.pos, 30) ?? null,
+        meaning: cleanText(input.meaning, 500) ?? null,
+        context: cleanText(input.context, 500) ?? null,
+        bookHash: cleanText(input.bookHash, 80) ?? null,
+        card: input.card ?? null,
+        savedAt: cleanNumber(input.savedAt) ?? updatedAt,
+        updatedAt,
+      };
+    })
+    .filter((word): word is NonNullable<typeof word> => word !== null)
+    .slice(0, 500);
+  if (!words.length) return context.json({ error: "Faltan las palabras." }, 400);
+
+  const upserted = await withClient(context.env, async (client) => {
+    const result = await client.query(
+      `INSERT INTO lecta_user_words
+         (user_id, language, form, lemma, pos, meaning, context, book_hash, card, saved_at, updated_at)
+       SELECT $1,
+              j.value ->> 'language', j.value ->> 'form', j.value ->> 'lemma',
+              j.value ->> 'pos', j.value ->> 'meaning', j.value ->> 'context',
+              j.value ->> 'bookHash', j.value -> 'card',
+              (j.value ->> 'savedAt')::int8, (j.value ->> 'updatedAt')::int8
+       FROM jsonb_array_elements($2::jsonb) AS j(value)
+       ON CONFLICT (user_id, language, form) DO UPDATE SET
+         lemma = excluded.lemma, pos = excluded.pos, meaning = excluded.meaning,
+         context = excluded.context, book_hash = excluded.book_hash,
+         card = excluded.card, updated_at = excluded.updated_at
+       WHERE lecta_user_words.updated_at < excluded.updated_at`,
+      [session.user.id, JSON.stringify(words)],
+    );
+    return result.rowCount ?? 0;
+  });
+  if (upserted === undefined)
+    return context.json({ error: "El vocabulario no está configurado." }, 503);
+  return context.json({ ok: true, upserted });
+});

@@ -3,8 +3,9 @@ import Reader from "./components/Reader";
 import Vocabulary from "./components/Vocabulary";
 import Account from "./components/Account";
 import { sha256Hex } from "./lib/hash";
-import { listStoredBooks, loadLatestBook, saveBook } from "./lib/idb";
+import { listStoredBooks, loadLatestBook, saveBook, setDbUser } from "./lib/idb";
 import { downloadBook, listRemoteBooks, uploadBook } from "./lib/books";
+import { syncSavedWords } from "./lib/vocab";
 import { authClient } from "./lib/auth";
 
 type BookSelection = {
@@ -26,37 +27,34 @@ export default function App() {
 
   useEffect(() => {
     let cancelled = false;
-    void loadLatestBook()
-      .then(async (stored) => {
-        if (cancelled || !stored) return;
-        setBook({
-          hash: stored.hash,
-          name: stored.name,
-          file: new File([stored.data], stored.name, { type: "application/epub+zip" }),
-        });
-        setMessage("Libro restaurado desde este dispositivo.");
-      })
-      .catch(() => {
-        if (!cancelled) setError("No pudimos recuperar el libro guardado en este dispositivo.");
-      })
-      .finally(() => {
-        if (!cancelled) setCheckingLibrary(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!sessionUserId) return;
-    let cancelled = false;
     void (async () => {
-      const [remote, stored] = await Promise.all([listRemoteBooks(), listStoredBooks()]);
+      await setDbUser(sessionUserId ?? null);
+      if (cancelled) return;
+
+      const stored = await loadLatestBook().catch(() => undefined);
+      if (!cancelled) {
+        setCheckingLibrary(false);
+        setBook(
+          stored
+            ? {
+                hash: stored.hash,
+                name: stored.name,
+                file: new File([stored.data], stored.name, {
+                  type: "application/epub+zip",
+                }),
+              }
+            : null,
+        );
+      }
+      if (!sessionUserId) return;
+
+      void syncSavedWords();
+      const [remote, localBooks] = await Promise.all([listRemoteBooks(), listStoredBooks()]);
       if (cancelled) return;
       const remoteHashes = new Set(remote.map((item) => item.hash));
-      const storedHashes = new Set(stored.map((item) => item.hash));
+      const storedHashes = new Set(localBooks.map((item) => item.hash));
 
-      for (const storedBook of stored) {
+      for (const storedBook of localBooks) {
         if (!remoteHashes.has(storedBook.hash)) {
           void uploadBook(
             storedBook.hash,
@@ -146,7 +144,7 @@ export default function App() {
 
       {book ? (
         <Reader
-          key={book.hash}
+          key={`${sessionUserId ?? "anon"}:${book.hash}`}
           bookHash={book.hash}
           file={book.file}
           fileName={book.name}

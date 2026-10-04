@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { isDue, Rating, scheduleReview, type Grade } from "../lib/fsrs";
 import { listSavedWords, updateSavedWord, type SavedWord } from "../lib/idb";
+import { pushWordsToServer } from "../lib/vocab";
 import { blankWordInContext } from "../lib/practice";
 
 type VocabularyProps = {
@@ -71,8 +72,9 @@ export default function Vocabulary({ onClose }: VocabularyProps) {
   const grade = async (word: SavedWord, rating: Grade) => {
     const card = scheduleReview(word.card, rating);
     const updated = { ...word, card };
-    await updateSavedWord(updated);
-    setWords((list) => list?.map((w) => (w.key === word.key ? updated : w)) ?? list);
+    const stored = await updateSavedWord(updated);
+    void pushWordsToServer([stored]);
+    setWords((list) => list?.map((w) => (w.key === word.key ? stored : w)) ?? list);
     setPractice((queue) => {
       const next = queue?.slice(1) ?? [];
       if (!next.length) return null;

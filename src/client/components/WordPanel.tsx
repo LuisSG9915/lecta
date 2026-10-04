@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { LexiconEntry } from "../lib/lexicon";
 import { enrichWord, lookupWord } from "../lib/lexicon";
 import { loadSavedWord, saveWord, type SavedWord } from "../lib/idb";
+import { pushWordsToServer } from "../lib/vocab";
 
 type WordPanelProps = {
   word: string;
@@ -66,6 +67,7 @@ export default function WordPanel({ word, context, language, bookHash, onClose, 
       bookHash,
     });
     setSaved(true);
+    void pushWordsToServer([entry]);
     onSaved(entry);
   };
 

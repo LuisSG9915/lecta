@@ -23,3 +23,21 @@ CREATE TABLE IF NOT EXISTS lexicon_senses (
   example STRING,
   PRIMARY KEY (entry_id, sense_order)
 );
+
+-- Vocabulario guardado por cuenta (sincronización entre dispositivos).
+-- Prefijo lecta_ porque esta base se comparte con otros proyectos.
+CREATE TABLE IF NOT EXISTS lecta_user_words (
+  user_id STRING NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+  language STRING NOT NULL,
+  form STRING NOT NULL,
+  lemma STRING,
+  pos STRING,
+  meaning STRING,
+  context STRING,
+  book_hash STRING,
+  card JSONB,
+  saved_at INT8 NOT NULL,
+  updated_at INT8 NOT NULL,
+  PRIMARY KEY (user_id, language, form)
+);
+CREATE INDEX IF NOT EXISTS lecta_user_words_user ON lecta_user_words (user_id, language);
