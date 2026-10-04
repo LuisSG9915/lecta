@@ -7,6 +7,8 @@ export type WorkerEnv = {
   AI_GATEWAY_URL?: string;
   BETTER_AUTH_SECRET?: string;
   BETTER_AUTH_URL?: string;
+  RESEND_API_KEY?: string;
+  RESEND_FROM?: string;
   BOOKS?: R2Bucket;
   ENRICHMENT_WORKFLOW?: Workflow<{ forms: string[]; language?: string }>;
 };

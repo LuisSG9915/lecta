@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { isDue, Rating, scheduleReview, type Grade } from "../lib/fsrs";
 import { listSavedWords, updateSavedWord, type SavedWord } from "../lib/idb";
-import { pushWordsToServer } from "../lib/vocab";
+import { pushWordsToServer, removeWord } from "../lib/vocab";
 import { blankWordInContext } from "../lib/practice";
 
 type VocabularyProps = {
@@ -83,6 +83,11 @@ export default function Vocabulary({ onClose }: VocabularyProps) {
     setRevealed(false);
   };
 
+  const remove = async (key: string) => {
+    await removeWord(key);
+    setWords((list) => list?.filter((w) => w.key !== key) ?? list);
+  };
+
   const dueCount = (words ?? []).filter((word) => isDue(word.card)).length;
   const current = practice?.[0];
   const cloze = current ? clozeTextFor(current) : null;
@@ -111,6 +116,14 @@ export default function Vocabulary({ onClose }: VocabularyProps) {
                 {word.lemma && word.lemma !== word.form ? ` (${word.lemma})` : ""}
                 {word.meaning ? ` — ${word.meaning}` : ""}
                 <span className="reader-meta"> {formatDue(word)}</span>
+                <button
+                  type="button"
+                  className="word-remove"
+                  aria-label={`Quitar ${word.form}`}
+                  onClick={() => void remove(word.key)}
+                >
+                  Quitar
+                </button>
               </li>
             ))}
           </ul>

@@ -3,6 +3,7 @@ import { getConnectionString, withClient, type WorkerEnv } from "./db";
 import { findEntries, findEntriesForForms, insertEnrichment } from "./lexicon";
 import { requestEnrichment } from "./ai";
 import { createAuth } from "./auth";
+import { isStopword } from "../shared/stopwords";
 
 export const app = new Hono<{ Bindings: WorkerEnv }>();
 
@@ -72,6 +73,8 @@ app.post("/api/lexicon/enrich", async (context) => {
   const language = typeof body?.language === "string" ? body.language.trim() : "es";
   const contextText = typeof body?.context === "string" ? body.context.slice(0, 500) : undefined;
   if (!form || form.length > 100) return context.json({ error: "Falta la palabra." }, 400);
+  if (isStopword(form, language))
+    return context.json({ error: "«" + form + "» es una palabra muy común; no necesita ficha de IA." }, 400);
   if (!getConnectionString(context.env))
     return context.json({ error: "El catálogo no está configurado." }, 503);
 
@@ -218,6 +221,7 @@ type UserWordInput = {
   card?: unknown;
   savedAt?: unknown;
   updatedAt?: unknown;
+  deleted?: unknown;
 };
 
 const cleanText = (value: unknown, max: number) =>
@@ -236,7 +240,7 @@ app.get("/api/vocab", async (context) => {
     client
       .query(
         `SELECT language, form, lemma, pos, meaning, context, book_hash AS "bookHash",
-                card, saved_at AS "savedAt", updated_at AS "updatedAt"
+                card, saved_at AS "savedAt", updated_at AS "updatedAt", deleted
          FROM lecta_user_words WHERE user_id = $1 AND language = $2`,
         [session.user.id, language],
       )
@@ -281,6 +285,7 @@ app.put("/api/vocab", async (context) => {
         card: input.card ?? null,
         savedAt: cleanNumber(input.savedAt) ?? updatedAt,
         updatedAt,
+        deleted: input.deleted === true,
       };
     })
     .filter((word): word is NonNullable<typeof word> => word !== null)
@@ -290,17 +295,19 @@ app.put("/api/vocab", async (context) => {
   const upserted = await withClient(context.env, async (client) => {
     const result = await client.query(
       `INSERT INTO lecta_user_words
-         (user_id, language, form, lemma, pos, meaning, context, book_hash, card, saved_at, updated_at)
+         (user_id, language, form, lemma, pos, meaning, context, book_hash, card, saved_at, updated_at, deleted)
        SELECT $1,
               j.value ->> 'language', j.value ->> 'form', j.value ->> 'lemma',
               j.value ->> 'pos', j.value ->> 'meaning', j.value ->> 'context',
               j.value ->> 'bookHash', j.value -> 'card',
-              (j.value ->> 'savedAt')::int8, (j.value ->> 'updatedAt')::int8
+              (j.value ->> 'savedAt')::int8, (j.value ->> 'updatedAt')::int8,
+              COALESCE((j.value ->> 'deleted')::bool, false)
        FROM jsonb_array_elements($2::jsonb) AS j(value)
        ON CONFLICT (user_id, language, form) DO UPDATE SET
          lemma = excluded.lemma, pos = excluded.pos, meaning = excluded.meaning,
          context = excluded.context, book_hash = excluded.book_hash,
-         card = excluded.card, updated_at = excluded.updated_at
+         card = excluded.card, updated_at = excluded.updated_at,
+         deleted = excluded.deleted
        WHERE lecta_user_words.updated_at < excluded.updated_at`,
       [session.user.id, JSON.stringify(words)],
     );

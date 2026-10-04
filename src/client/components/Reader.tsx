@@ -8,6 +8,7 @@ import { sanitizeSectionDocument } from "../lib/sanitize";
 import { markSavedWords } from "../lib/marks";
 import { listSavedWords, loadBookPosition, saveBookPosition, type SavedWord } from "../lib/idb";
 import { batchLookup, enrichWord, type LexiconEntry } from "../lib/lexicon";
+import { isStopword } from "../../shared/stopwords";
 import WordPanel from "./WordPanel";
 
 type ReaderState = "idle" | "opening" | "ready" | "error";
@@ -149,7 +150,10 @@ export default function Reader({ bookHash, file, fileName, onError, onStatus }: 
                 .map((node) => node.textContent ?? "")
                 .join("\n");
               const words = await extractUniqueWords(text, bookLanguage);
-              for (const word of words) seen.add(word.toLowerCase());
+              for (const word of words) {
+                const form = word.toLowerCase();
+                if (!isStopword(form, bookLanguage)) seen.add(form);
+              }
             } catch {
               // sección omitida del análisis
             }

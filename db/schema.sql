@@ -38,6 +38,8 @@ CREATE TABLE IF NOT EXISTS lecta_user_words (
   card JSONB,
   saved_at INT8 NOT NULL,
   updated_at INT8 NOT NULL,
+  deleted BOOL NOT NULL DEFAULT false,
   PRIMARY KEY (user_id, language, form)
 );
 CREATE INDEX IF NOT EXISTS lecta_user_words_user ON lecta_user_words (user_id, language);
+ALTER TABLE lecta_user_words ADD COLUMN IF NOT EXISTS deleted BOOL NOT NULL DEFAULT false;

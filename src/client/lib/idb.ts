@@ -27,6 +27,7 @@ export interface SavedWord {
   savedAt: number;
   updatedAt?: number;
   card?: Card;
+  deleted?: boolean;
 }
 
 interface LectaDB {
@@ -177,13 +178,32 @@ export async function saveWord(word: Omit<SavedWord, "key" | "savedAt">) {
 
 export async function loadSavedWord(language: string, form: string) {
   const db = await getDb();
-  return db.get("savedWords", wordKey(language, form));
+  const word = await db.get("savedWords", wordKey(language, form));
+  return word?.deleted ? undefined : word;
 }
 
+// Palabras visibles (sin lápidas). Para sincronización usa
+// listAllSavedWords, que incluye los borrados pendientes de propagar.
 export async function listSavedWords(language?: string) {
+  const all = await listAllSavedWords(language);
+  return all.filter((word) => !word.deleted);
+}
+
+export async function listAllSavedWords(language?: string) {
   const db = await getDb();
   const all = await db.getAll("savedWords");
   return language ? all.filter((word) => word.language === language) : all;
+}
+
+// Borrado lógico: queda una lápida con updatedAt nuevo para que la
+// sincronización propague el borrado incluso si se hizo sin conexión.
+export async function removeSavedWord(key: string) {
+  const db = await getDb();
+  const word = await db.get("savedWords", key);
+  if (!word) return undefined;
+  const tombstone = { ...word, deleted: true, updatedAt: Date.now() };
+  await db.put("savedWords", tombstone);
+  return tombstone;
 }
 
 export async function putSavedWord(word: SavedWord) {
@@ -196,4 +216,18 @@ export async function updateSavedWord(word: SavedWord) {
   const updated = { ...word, updatedAt: Date.now() };
   await db.put("savedWords", updated);
   return updated;
+}
+
+// Borra el archivo, su posición guardada y la referencia de último
+// libro si apuntaba a este.
+export async function deleteStoredBook(hash: string) {
+  const db = await getDb();
+  const transaction = db.transaction(["books", "positions", "session"], "readwrite");
+  const latest = await transaction.objectStore("session").get(SESSION_KEY);
+  await Promise.all([
+    transaction.objectStore("books").delete(hash),
+    transaction.objectStore("positions").delete(hash),
+    latest === hash ? transaction.objectStore("session").delete(SESSION_KEY) : undefined,
+    transaction.done,
+  ]);
 }

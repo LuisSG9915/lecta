@@ -2,6 +2,7 @@ import { WorkflowEntrypoint, type WorkflowEvent, type WorkflowStep } from "cloud
 import { withClient, type WorkerEnv } from "./db";
 import { findEntries, insertEnrichment } from "./lexicon";
 import { requestEnrichment } from "./ai";
+import { isStopword } from "../shared/stopwords";
 
 export type EnrichmentParams = { forms: string[]; language?: string };
 
@@ -14,7 +15,10 @@ export class EnrichmentWorkflow extends WorkflowEntrypoint<WorkerEnv, Enrichment
 
     for (const raw of forms.slice(0, MAX_FORMS_PER_RUN)) {
       const form = raw.trim().toLowerCase();
-      if (!form) continue;
+      if (!form || isStopword(form, language)) {
+        results[form] = "stopword";
+        continue;
+      }
       results[form] = await step.do(`enrich:${form}`, async () => {
         const existing = await withClient(this.env, (client) =>
           findEntries(client, language, form),

@@ -3,8 +3,15 @@ import Reader from "./components/Reader";
 import Vocabulary from "./components/Vocabulary";
 import Account from "./components/Account";
 import { sha256Hex } from "./lib/hash";
-import { listStoredBooks, loadLatestBook, saveBook, setDbUser } from "./lib/idb";
-import { downloadBook, listRemoteBooks, uploadBook } from "./lib/books";
+import {
+  deleteStoredBook,
+  listStoredBooks,
+  loadLatestBook,
+  saveBook,
+  setDbUser,
+  type StoredBook,
+} from "./lib/idb";
+import { deleteBook, downloadBook, listRemoteBooks, uploadBook } from "./lib/books";
 import { syncSavedWords } from "./lib/vocab";
 import { authClient } from "./lib/auth";
 
@@ -22,8 +29,15 @@ export default function App() {
   const [checkingLibrary, setCheckingLibrary] = useState(true);
   const [showVocabulary, setShowVocabulary] = useState(false);
   const [showAccount, setShowAccount] = useState(false);
+  const [library, setLibrary] = useState<StoredBook[]>([]);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const { data: session } = authClient.useSession();
   const sessionUserId = session?.user?.id;
+
+  const refreshLibrary = async () => {
+    const books = await listStoredBooks().catch(() => []);
+    setLibrary(books.sort((a, b) => b.addedAt - a.addedAt));
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -45,6 +59,7 @@ export default function App() {
               }
             : null,
         );
+        void refreshLibrary();
       }
       if (!sessionUserId) return;
 
@@ -78,7 +93,9 @@ export default function App() {
         });
         first ??= { hash: item.hash, file };
       }
-      if (cancelled || !first) return;
+      if (cancelled) return;
+      void refreshLibrary();
+      if (!first) return;
       const { hash, file } = first;
       setBook((current) => current ?? { hash, name: file.name, file });
     })();
@@ -95,13 +112,41 @@ export default function App() {
       const selection = { hash, name: file.name, file };
       setBook(selection);
       void saveBook({ hash, name: file.name, data: file, addedAt: Date.now() })
-        .then(() => setMessage("Libro guardado en este dispositivo."))
+        .then(() => {
+          setMessage("Libro guardado en este dispositivo.");
+          void refreshLibrary();
+        })
         .catch(() => setError("El libro se abrió, pero no se pudo guardar en este dispositivo."));
       if (sessionUserId) void uploadBook(hash, file);
     } catch {
       setBook(null);
       setError("No pudimos leer el archivo elegido.");
     }
+  };
+
+  const openStoredBook = (item: StoredBook) => {
+    setError("");
+    setBook({
+      hash: item.hash,
+      name: item.name,
+      file: new File([item.data], item.name, { type: "application/epub+zip" }),
+    });
+    setMessage(`Abriendo «${item.name}»…`);
+  };
+
+  const removeBook = async (hash: string) => {
+    if (confirmDelete !== hash) {
+      setConfirmDelete(hash);
+      return;
+    }
+    setConfirmDelete(null);
+    await deleteStoredBook(hash).catch(() => undefined);
+    if (sessionUserId) void deleteBook(hash);
+    if (book?.hash === hash) {
+      setBook(null);
+      setMessage("Libro eliminado. Elige otro para seguir leyendo.");
+    }
+    void refreshLibrary();
   };
 
   const openFilePicker = () => fileInputRef.current?.click();
@@ -134,6 +179,30 @@ export default function App() {
           Cuenta
         </button>
       </div>
+
+      {library.length ? (
+        <ul className="word-list" aria-label="Tu biblioteca">
+          {library.map((item) => (
+            <li key={item.hash}>
+              <strong>{item.name}</strong>
+              <span className="reader-meta">
+                {" "}
+                {new Date(item.addedAt).toLocaleDateString("es-MX")}
+              </span>
+              <button type="button" onClick={() => openStoredBook(item)}>
+                Abrir
+              </button>
+              <button
+                type="button"
+                aria-label={`Eliminar ${item.name}`}
+                onClick={() => void removeBook(item.hash)}
+              >
+                {confirmDelete === item.hash ? "¿Seguro?" : "Eliminar"}
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
 
       <p role="status">{checkingLibrary ? "Preparando tu biblioteca…" : message}</p>
       {error ? (

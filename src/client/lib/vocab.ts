@@ -1,4 +1,10 @@
-import { getActiveUserId, listSavedWords, putSavedWord, type SavedWord } from "./idb";
+import {
+  getActiveUserId,
+  listAllSavedWords,
+  putSavedWord,
+  removeSavedWord,
+  type SavedWord,
+} from "./idb";
 
 const stamp = (word: SavedWord) => word.updatedAt ?? word.savedAt;
 
@@ -15,6 +21,13 @@ export async function pushWordsToServer(words: SavedWord[]) {
   } catch {
     // Fuera de línea: la próxima sincronización lo reintenta.
   }
+}
+
+// Borra la palabra localmente (lápida) y propaga el borrado si hay sesión.
+export async function removeWord(key: string) {
+  const tombstone = await removeSavedWord(key);
+  if (tombstone) void pushWordsToServer([tombstone]);
+  return tombstone;
 }
 
 // Fusiona vocabulario local y remoto por clave; el registro con
@@ -34,7 +47,7 @@ export async function syncSavedWords(language = "es") {
   }
   if (!remote) return null;
 
-  const local = await listSavedWords(language);
+  const local = await listAllSavedWords(language);
   const localByKey = new Map(local.map((word) => [word.key, word]));
   const remoteByKey = new Map(remote.map((word) => [word.key, word]));
 
