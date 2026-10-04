@@ -42,6 +42,7 @@ export function createAuth(env: WorkerEnv, baseURL: string) {
     emailAndPassword: { enabled: true },
     plugins: [
       magicLink({
+        expiresIn: 600,
         sendMagicLink: async ({ email, url }) => {
           await sendViaResend(env, email, url);
         },
