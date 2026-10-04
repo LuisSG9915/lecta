@@ -440,4 +440,14 @@
   .notebook {
     background-image: none;
   }
+
+  /* Las barras de actividad usan colores del sistema, como la hebra. */
+  .act-day-bar {
+    border: 1px solid CanvasText;
+    background: none;
+  }
+
+  .act-day-fill {
+    background: Highlight;
+  }
 }
