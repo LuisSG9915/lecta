@@ -2,11 +2,14 @@ import { useEffect, useRef, useState } from "react";
 import Reader from "./components/Reader";
 import Vocabulary from "./components/Vocabulary";
 import Account from "./components/Account";
+import ThemeMenu from "./components/ThemeMenu";
+import Shelf from "./components/Shelf";
+import { applyTheme, loadTheme, saveTheme, type ThemeChoice } from "./lib/settings";
+import { pushOverlay, type OverlayHandle } from "./lib/history";
 import { sha256Hex } from "./lib/hash";
 import {
   deleteStoredBook,
   listStoredBooks,
-  loadLatestBook,
   saveBook,
   setDbUser,
   type StoredBook,
@@ -22,18 +25,69 @@ type BookSelection = {
 };
 
 export default function App() {
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [book, setBook] = useState<BookSelection | null>(null);
-  const [message, setMessage] = useState("Elige un libro EPUB para empezar.");
+  const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [checkingLibrary, setCheckingLibrary] = useState(true);
   const [showVocabulary, setShowVocabulary] = useState(false);
   const [showAccount, setShowAccount] = useState(false);
   const [library, setLibrary] = useState<StoredBook[]>([]);
-  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [vocabVersion, setVocabVersion] = useState(0);
+  const [theme, setTheme] = useState<ThemeChoice>(() => loadTheme());
+  const bookRelease = useRef<OverlayHandle | null>(null);
+  const panelRelease = useRef<OverlayHandle | null>(null);
   const { data: session } = authClient.useSession();
   const sessionUserId = session?.user?.id;
+
+  const changeTheme = (choice: ThemeChoice) => {
+    setTheme(choice);
+    saveTheme(choice);
+    applyTheme(choice);
+  };
+
+  const releaseBook = () => {
+    bookRelease.current?.release();
+    bookRelease.current = null;
+  };
+
+  const openBook = (selection: BookSelection) => {
+    if (!bookRelease.current) {
+      bookRelease.current = pushOverlay(() => {
+        bookRelease.current = null;
+        setBook(null);
+      });
+    }
+    setBook(selection);
+  };
+
+  const closeReader = () => {
+    releaseBook();
+    setBook(null);
+  };
+
+  const openPanel = (kind: "vocab" | "account") => {
+    if (!panelRelease.current) {
+      panelRelease.current = pushOverlay(() => {
+        panelRelease.current = null;
+        setShowVocabulary(false);
+        setShowAccount(false);
+      });
+    }
+    if (kind === "vocab") {
+      setShowAccount(false);
+      setShowVocabulary(true);
+    } else {
+      setShowVocabulary(false);
+      setShowAccount(true);
+    }
+  };
+
+  const closePanel = () => {
+    panelRelease.current?.release();
+    panelRelease.current = null;
+    setShowVocabulary(false);
+    setShowAccount(false);
+  };
 
   const refreshLibrary = async () => {
     const books = await listStoredBooks().catch(() => []);
@@ -46,27 +100,13 @@ export default function App() {
       await setDbUser(sessionUserId ?? null);
       if (cancelled) return;
 
-      const stored = await loadLatestBook().catch(() => undefined);
-      if (!cancelled) {
-        setCheckingLibrary(false);
-        setBook(
-          stored
-            ? {
-                hash: stored.hash,
-                name: stored.name,
-                file: new File([stored.data], stored.name, {
-                  type: "application/epub+zip",
-                }),
-              }
-            : null,
-        );
-        void refreshLibrary();
-      }
+      setCheckingLibrary(false);
+      void refreshLibrary();
       if (!sessionUserId) return;
 
       const pulled = await syncSavedWords().catch(() => null);
       if (!cancelled && pulled) {
-        setMessage(`Vocabulario sincronizado: ${pulled} palabra(s) nueva(s) en este dispositivo.`);
+        setMessage(`Cuaderno sincronizado: ${pulled} palabra(s) nueva(s) en este dispositivo.`);
         setVocabVersion((v) => v + 1);
       }
       const [remote, localBooks] = await Promise.all([listRemoteBooks(), listStoredBooks()]);
@@ -86,7 +126,6 @@ export default function App() {
       const missing = remote
         .filter((item) => !storedHashes.has(item.hash))
         .sort((a, b) => +new Date(b.uploaded) - +new Date(a.uploaded));
-      let first: { hash: string; file: File } | null = null;
       for (const item of missing.slice(0, 3)) {
         const file = await downloadBook(item);
         if (!file) continue;
@@ -96,13 +135,8 @@ export default function App() {
           data: file,
           addedAt: new Date(item.uploaded).getTime() || Date.now(),
         });
-        first ??= { hash: item.hash, file };
       }
-      if (cancelled) return;
-      void refreshLibrary();
-      if (!first) return;
-      const { hash, file } = first;
-      setBook((current) => current ?? { hash, name: file.name, file });
+      if (!cancelled) void refreshLibrary();
     })();
     return () => {
       cancelled = true;
@@ -123,8 +157,7 @@ export default function App() {
     setMessage("Comprobando el archivo…");
     try {
       const hash = await sha256Hex(file);
-      const selection = { hash, name: file.name, file };
-      setBook(selection);
+      openBook({ hash, name: file.name, file });
       void saveBook({ hash, name: file.name, data: file, addedAt: Date.now() })
         .then(() => {
           setMessage("Libro guardado en este dispositivo.");
@@ -140,104 +173,80 @@ export default function App() {
 
   const openStoredBook = (item: StoredBook) => {
     setError("");
-    setBook({
+    openBook({
       hash: item.hash,
       name: item.name,
       file: new File([item.data], item.name, { type: "application/epub+zip" }),
     });
-    setMessage(`Abriendo «${item.name}»…`);
+    setMessage(`Abriendo «${item.title ?? item.name}»…`);
   };
 
   const removeBook = async (hash: string) => {
-    if (confirmDelete !== hash) {
-      setConfirmDelete(hash);
-      return;
-    }
-    setConfirmDelete(null);
     await deleteStoredBook(hash).catch(() => undefined);
     if (sessionUserId) void deleteBook(hash);
     if (book?.hash === hash) {
-      setBook(null);
+      closeReader();
       setMessage("Libro eliminado. Elige otro para seguir leyendo.");
     }
     void refreshLibrary();
   };
 
-  const openFilePicker = () => fileInputRef.current?.click();
-
   return (
-    <main>
-      <h1>Lecta</h1>
-      <p>Un espacio para leer y aprender vocabulario.</p>
-
-      <div className="upload-panel">
-        <label htmlFor="book-file">Elige un libro EPUB</label>
-        <input
-          ref={fileInputRef}
-          id="book-file"
-          type="file"
-          accept=".epub,application/epub+zip"
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            if (file) void selectBook(file);
-            event.currentTarget.value = "";
-          }}
-        />
-        <button type="button" onClick={openFilePicker}>
-          Elegir archivo
-        </button>
-        <button type="button" onClick={() => setShowVocabulary(true)}>
-          Vocabulario
-        </button>
-        <button type="button" onClick={() => setShowAccount(true)}>
-          Cuenta
-        </button>
-      </div>
-
-      {library.length ? (
-        <ul className="word-list" aria-label="Tu biblioteca">
-          {library.map((item) => (
-            <li key={item.hash}>
-              <strong>{item.name}</strong>
-              <span className="reader-meta">
-                {" "}
-                {new Date(item.addedAt).toLocaleDateString("es-MX")}
-              </span>
-              <button type="button" onClick={() => openStoredBook(item)}>
-                Abrir
-              </button>
-              <button
-                type="button"
-                aria-label={`Eliminar ${item.name}`}
-                onClick={() => void removeBook(item.hash)}
-              >
-                {confirmDelete === item.hash ? "¿Seguro?" : "Eliminar"}
-              </button>
-            </li>
-          ))}
-        </ul>
-      ) : null}
-
-      <p role="status">{checkingLibrary ? "Preparando tu biblioteca…" : message}</p>
-      {error ? (
-        <p role="alert" className="error">
-          {error}
-        </p>
-      ) : null}
-
+    <div className="app">
       {book ? (
         <Reader
-          key={`${sessionUserId ?? "anon"}:${book.hash}:${vocabVersion}`}
+          key={`${sessionUserId ?? "anon"}:${book.hash}`}
           bookHash={book.hash}
           file={book.file}
           fileName={book.name}
           onError={setError}
           onStatus={setMessage}
+          onBack={closeReader}
+          onOpenNotebook={() => openPanel("vocab")}
+          statusText={error || message}
+          theme={theme}
+          onThemeChange={changeTheme}
+          vocabVersion={vocabVersion}
         />
-      ) : null}
+      ) : (
+        <>
+          <header className="app-header">
+            <span className="brand">Lecta</span>
+            <nav className="app-header-nav" aria-label="Secciones">
+              <button type="button" className="btn--quiet" onClick={() => openPanel("vocab")}>
+                Cuaderno
+              </button>
+              <button type="button" className="btn--quiet" onClick={() => openPanel("account")}>
+                Cuenta
+              </button>
+              <ThemeMenu value={theme} onChange={changeTheme} />
+            </nav>
+          </header>
+          <main className="app-main">
+            <Shelf
+              library={library}
+              checking={checkingLibrary}
+              onOpen={openStoredBook}
+              onRemove={removeBook}
+              onAdd={(file) => void selectBook(file)}
+              onLibraryChange={() => void refreshLibrary()}
+            />
+            {message ? (
+              <p className="status" role="status">
+                {message}
+              </p>
+            ) : null}
+            {error ? (
+              <p role="alert" className="status">
+                {error}
+              </p>
+            ) : null}
+          </main>
+        </>
+      )}
 
-      {showVocabulary ? <Vocabulary onClose={() => setShowVocabulary(false)} /> : null}
-      {showAccount ? <Account onClose={() => setShowAccount(false)} /> : null}
-    </main>
+      {showVocabulary ? <Vocabulary onClose={closePanel} /> : null}
+      {showAccount ? <Account onClose={closePanel} /> : null}
+    </div>
   );
 }

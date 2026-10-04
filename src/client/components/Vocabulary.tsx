@@ -3,6 +3,7 @@ import { isDue, Rating, scheduleReview, type Grade } from "../lib/fsrs";
 import { listSavedWords, updateSavedWord, type SavedWord } from "../lib/idb";
 import { pushWordsToServer, removeWord } from "../lib/vocab";
 import { blankWordInContext } from "../lib/practice";
+import Sheet from "./Sheet";
 
 type VocabularyProps = {
   onClose: () => void;
@@ -30,7 +31,7 @@ const GRADES: { rating: Grade; label: string }[] = [
 ];
 
 const formatDue = (word: SavedWord) =>
-  !word.card ? "Nueva" : new Date(word.card.due) <= new Date() ? "Para hoy" : "Programada";
+  !word.card ? "Nueva" : new Date(word.card.due) <= new Date() ? "Para hoy" : "Asentada";
 
 const clozeTextFor = (word: SavedWord) =>
   word.context ? blankWordInContext(word.context, word.form, word.language) : null;
@@ -52,15 +53,10 @@ export default function Vocabulary({ onClose }: VocabularyProps) {
     void listSavedWords().then((list) => {
       if (!cancelled) setWords(list.sort((a, b) => b.savedAt - a.savedAt));
     });
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", onKeyDown);
     return () => {
       cancelled = true;
-      document.removeEventListener("keydown", onKeyDown);
     };
-  }, [onClose]);
+  }, []);
 
   const startPractice = (chosen: PracticeMode) => {
     setMode(chosen);
@@ -93,20 +89,28 @@ export default function Vocabulary({ onClose }: VocabularyProps) {
   const cloze = current ? clozeTextFor(current) : null;
 
   return (
-    <div className="word-panel" role="dialog" aria-modal="true" aria-label="Vocabulario guardado">
-      <div className="word-panel-header">
-        <strong>{practice ? "Repaso" : "Vocabulario"}</strong>
-        <button type="button" onClick={onClose} aria-label="Cerrar vocabulario">
+    <Sheet label="Cuaderno" onClose={onClose}>
+      <div className="sheet-head">
+        <strong className="sheet-title">{practice ? "Repaso" : "Cuaderno"}</strong>
+        <button
+          type="button"
+          className="btn--quiet"
+          onClick={onClose}
+          aria-label="Cerrar cuaderno"
+          data-autofocus
+        >
           Cerrar
         </button>
       </div>
 
-      {words === null ? <p>Cargando…</p> : null}
-      {words?.length === 0 ? <p>Todavía no guardas palabras.</p> : null}
+      {words === null ? <p className="meta">Abriendo tu cuaderno…</p> : null}
+      {words?.length === 0 ? (
+        <p className="meta">Aún no has apuntado palabras. Toca cualquier palabra mientras lees.</p>
+      ) : null}
 
       {!practice && words && words.length > 0 ? (
         <>
-          <p className="reader-meta">
+          <p className="meta">
             {words.length} guardadas · {dueCount} para repasar hoy
           </p>
           <ul className="word-list">
@@ -115,10 +119,10 @@ export default function Vocabulary({ onClose }: VocabularyProps) {
                 <strong>{word.form}</strong>
                 {word.lemma && word.lemma !== word.form ? ` (${word.lemma})` : ""}
                 {word.meaning ? ` — ${word.meaning}` : ""}
-                <span className="reader-meta"> {formatDue(word)}</span>
+                <span className="meta"> {formatDue(word)}</span>
                 <button
                   type="button"
-                  className="word-remove"
+                  className="btn--quiet"
                   aria-label={`Quitar ${word.form}`}
                   onClick={() => void remove(word.key)}
                 >
@@ -128,9 +132,9 @@ export default function Vocabulary({ onClose }: VocabularyProps) {
             ))}
           </ul>
           {dueCount > 0 ? (
-            <div className="practice-modes" role="group" aria-label="Modo de práctica">
+            <div className="practice-modes" role="group" aria-label="Modo de repaso">
               {MODES.map(({ id, label }) => (
-                <button key={id} type="button" onClick={() => startPractice(id)}>
+                <button key={id} type="button" className="btn" onClick={() => startPractice(id)}>
                   {label}
                 </button>
               ))}
@@ -139,21 +143,23 @@ export default function Vocabulary({ onClose }: VocabularyProps) {
         </>
       ) : null}
 
-      {practice && practice.length === 0 ? <p>{MODE_REQUIREMENTS[mode] || "Nada que repasar."}</p> : null}
+      {practice && practice.length === 0 ? (
+        <p className="meta">{MODE_REQUIREMENTS[mode] || "Nada que repasar."}</p>
+      ) : null}
 
       {current ? (
-        <div className="practice-card">
+        <div className="index-card practice-card">
           {mode === "form" ? (
             <p>{current.meaning}</p>
           ) : mode === "cloze" ? (
-            <p className="word-context">“{cloze}”</p>
+            <p className="card-context">“{cloze}”</p>
           ) : (
             <>
               <p>
                 <strong>{current.form}</strong>
-                {current.pos ? <span className="reader-meta"> {current.pos}</span> : null}
+                {current.pos ? <span className="card-pos"> · {current.pos}</span> : null}
               </p>
-              {current.context ? <p className="word-context">“{current.context}”</p> : null}
+              {current.context ? <p className="card-context">“{current.context}”</p> : null}
             </>
           )}
 
@@ -169,14 +175,19 @@ export default function Vocabulary({ onClose }: VocabularyProps) {
               )}
             </p>
           ) : (
-            <button type="button" onClick={() => setRevealed(true)}>
+            <button type="button" className="btn btn--primary" onClick={() => setRevealed(true)}>
               Mostrar respuesta
             </button>
           )}
           {revealed ? (
             <div className="practice-grades">
               {GRADES.map(({ rating, label }) => (
-                <button key={rating} type="button" onClick={() => void grade(current, rating)}>
+                <button
+                  key={rating}
+                  type="button"
+                  className="btn"
+                  onClick={() => void grade(current, rating)}
+                >
                   {label}
                 </button>
               ))}
@@ -184,6 +195,6 @@ export default function Vocabulary({ onClose }: VocabularyProps) {
           ) : null}
         </div>
       ) : null}
-    </div>
+    </Sheet>
   );
 }

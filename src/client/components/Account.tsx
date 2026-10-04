@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { authClient } from "../lib/auth";
+import Dialog from "./Dialog";
 
 type AccountProps = {
   onClose: () => void;
@@ -54,29 +55,37 @@ export default function Account({ onClose }: AccountProps) {
   };
 
   return (
-    <div className="word-panel" role="dialog" aria-modal="true" aria-label="Tu cuenta">
-      <div className="word-panel-header">
-        <strong>Cuenta</strong>
-        <button type="button" onClick={onClose} aria-label="Cerrar cuenta">
+    <Dialog label="Tu cuenta" onClose={onClose}>
+      <div className="sheet-head">
+        <strong className="sheet-title">Cuenta</strong>
+        <button
+          type="button"
+          className="btn--quiet"
+          onClick={onClose}
+          aria-label="Cerrar cuenta"
+          data-autofocus
+        >
           Cerrar
         </button>
       </div>
 
-      {isPending ? <p>Cargando…</p> : null}
+      {isPending ? <p className="meta">Cargando…</p> : null}
 
       {!isPending && session?.user ? (
         <>
           <p>
             Sesión iniciada como <strong>{session.user.email}</strong>
           </p>
-          <button type="button" disabled={busy} onClick={signOut}>
-            Cerrar sesión
-          </button>
+          <div className="actions">
+            <button type="button" className="btn" disabled={busy} onClick={signOut}>
+              Cerrar sesión
+            </button>
+          </div>
         </>
       ) : null}
 
       {!isPending && !session?.user ? (
-        <form onSubmit={signInWithPassword}>
+        <form className="field" onSubmit={signInWithPassword}>
           <label htmlFor="account-email">Correo</label>
           <input
             id="account-email"
@@ -95,26 +104,35 @@ export default function Account({ onClose }: AccountProps) {
             value={password}
             onChange={(event) => setPassword(event.target.value)}
           />
-          <div className="practice-modes">
-            <button type="submit" disabled={busy}>
+          <div className="actions">
+            <button type="submit" className="btn btn--primary" disabled={busy}>
               Entrar
             </button>
-            <button type="button" disabled={busy || !password} onClick={signUp}>
+            <button type="button" className="btn" disabled={busy || !password} onClick={signUp}>
               Crear cuenta
             </button>
-            <button type="button" disabled={busy || !email} onClick={sendMagicLink}>
+            <button
+              type="button"
+              className="btn--quiet"
+              disabled={busy || !email}
+              onClick={sendMagicLink}
+            >
               Enlace por correo
             </button>
           </div>
         </form>
       ) : null}
 
-      {message ? <p role="status">{message}</p> : null}
+      {message ? (
+        <p role="status" className="status">
+          {message}
+        </p>
+      ) : null}
       {error ? (
-        <p role="alert" className="error">
+        <p role="alert" className="status">
           {error}
         </p>
       ) : null}
-    </div>
+    </Dialog>
   );
 }
