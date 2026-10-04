@@ -20,6 +20,9 @@
   "r2_buckets": [
     { "binding": "BOOKS", "bucket_name": "lecta-books" }
   ],
+  "hyperdrive": [
+    { "binding": "HYPERDRIVE", "id": "0b4288d943744e1ca438deb90ac235e9" }
+  ],
   "workflows": [
     {
       "name": "lecta-enrichment",
