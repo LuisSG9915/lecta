@@ -155,6 +155,10 @@
   font-weight: 400;
   block-size: auto;
   white-space: normal;
+  transition:
+    border-color var(--dur-1) var(--ease-out),
+    color var(--dur-1) var(--ease-out),
+    background-color var(--dur-1) var(--ease-out);
 }
 
 .choice-option.is-correct {
@@ -189,6 +193,10 @@
   font-weight: 400;
   block-size: auto;
   white-space: normal;
+  transition:
+    border-color var(--dur-1) var(--ease-out),
+    color var(--dur-1) var(--ease-out),
+    opacity var(--dur-2) var(--ease-out);
 }
 
 .match-option[aria-pressed="true"] {
@@ -301,6 +309,18 @@
   block-size: 100%;
   border-radius: inherit;
   background: var(--vermilion);
+  transform-origin: left;
+  animation: bar-in var(--dur-3) var(--ease-out);
+}
+
+/* La tirita de tinta crece desde cero al montar la pestaña Actividad. */
+@keyframes bar-in {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: none;
+  }
 }
 
 .act-day-fill[data-empty] {
@@ -400,6 +420,7 @@
   background: var(--paper-raised, var(--surface));
   font-size: var(--fs-sm);
   color: var(--ink-soft);
+  animation: fade-in var(--dur-2) var(--ease-out);
 }
 
 .nb-undo .btn--quiet {
@@ -417,6 +438,7 @@
   text-align: start;
   cursor: pointer;
   min-height: 2.75rem;
+  transition: color var(--dur-1) var(--ease-out);
 }
 
 .nb-group-toggle:hover {
@@ -452,6 +474,12 @@
 .nb-word {
   padding-block: var(--s-3);
   border-bottom: 1px solid var(--rule);
+  transition: background-color var(--dur-1) var(--ease-out);
+}
+
+/* Lavado apenas visible al pasar el cursor: ayuda a seguir la fila. */
+.nb-word:hover {
+  background-color: var(--paper-raised);
 }
 
 .nb-word-head {

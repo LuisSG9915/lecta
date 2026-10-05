@@ -53,6 +53,9 @@
   color: inherit;
   font: inherit;
   text-align: start;
+  transition:
+    border-color var(--dur-1) var(--ease-out),
+    background-color var(--dur-1) var(--ease-out);
 }
 
 .sense-option:hover {
@@ -78,6 +81,9 @@
   background: none;
   color: inherit;
   font: inherit;
+  transition:
+    border-color var(--dur-1) var(--ease-out),
+    background-color var(--dur-1) var(--ease-out);
 }
 
 .cal-choice.is-selected {

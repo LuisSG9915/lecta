@@ -49,11 +49,18 @@
   transition:
     background-color var(--dur-1) var(--ease-out),
     border-color var(--dur-1) var(--ease-out),
-    color var(--dur-1) var(--ease-out);
+    color var(--dur-1) var(--ease-out),
+    transform var(--dur-1) var(--ease-out);
 }
 
 .btn:hover:not(:disabled) {
   border-color: var(--ink-soft);
+}
+
+/* La presión baja el botón un punto: responde al tacto sin mover el
+   flujo (transform no reacomoda nada). */
+.btn:active:not(:disabled) {
+  transform: translateY(1px);
 }
 
 .btn--primary {
@@ -120,10 +127,16 @@
   border-radius: var(--r-1);
   background: var(--paper-sunken);
   color: var(--ink);
+  transition:
+    border-color var(--dur-1) var(--ease-out),
+    box-shadow var(--dur-1) var(--ease-out);
 }
 
-.field input:focus {
+/* Anillo lavado además del borde: el foco se siente sin endurecer. */
+.field input:focus,
+.field select:focus {
   border-color: var(--vermilion);
+  box-shadow: 0 0 0 3px var(--vermilion-wash);
 }
 
 /* ---------- Elección de inicio de libro ---------- */
@@ -402,6 +415,19 @@ mark.saved-word {
   text-decoration-thickness: 1.5px;
   text-underline-offset: 0.18em;
   cursor: pointer;
+  transition:
+    background-color var(--dur-2) var(--ease-out),
+    text-decoration-color var(--dur-2) var(--ease-out);
+}
+
+/* Hover: el subrayado se enciende en bermellón y el lavado sube un
+   paso (la marca asentada conserva su calma: solo cambia la raya). */
+mark.saved-word:hover {
+  text-decoration-color: var(--vermilion);
+}
+
+mark.saved-word:not([data-level="settled"]):hover {
+  background: var(--ochre-wash);
 }
 
 mark.saved-word[data-level="learning"] {

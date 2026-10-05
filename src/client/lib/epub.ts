@@ -35,7 +35,85 @@ export async function openEpub(file: Blob) {
   const { EPUB } = await import("foliate-js/epub.js");
   const { loader, close } = await createEpubLoader(file);
   const book = await new EPUB(loader).init();
-  return { book, close };
+  // loadBlob sale del loader del zip: EPUB no lo expone en su tipo.
+  return { book, close, loadBlob: loader.loadBlob };
+}
+
+// ---------- Imágenes del EPUB ----------
+
+// Rutas con esquema propio (http:, data:) o relativas al host no viven
+// en el zip: se respetan tal cual. Las demás son rutas internas del
+// EPUB y hay que servirlas como blob.
+const EXTERNAL_SRC = /^([a-z][a-z0-9+.-]*:|\/\/)/i;
+
+type ImageJob = {
+  src: string;
+  set: (url: string) => void;
+};
+
+// Sustituye las rutas internas del EPUB por blob: URLs. Primero quita
+// los `src`/`href` que no resuelven (una petición al origen por cada
+// imagen sería 404 seguro), luego las rellena en segundo plano: el
+// texto ya se pintó y la lectura nunca espera por una imagen.
+//
+// `urls` es la bolsa del llamador: se vacía (revocando las URL de la
+// sección anterior) y se rellena con las nuevas, que el llamador
+// revoca al desmontar.
+export async function hydrateSectionImages(
+  root: ParentNode,
+  section: { resolveHref: (href: string) => string },
+  loadBlob: (name: string) => Promise<Blob | null>,
+  urls: string[],
+  options: {
+    isCurrent: () => boolean;
+    onSettled?: () => void;
+  },
+) {
+  for (const url of urls.splice(0)) URL.revokeObjectURL(url);
+
+  const pending: ImageJob[] = [];
+  for (const img of root.querySelectorAll("img")) {
+    const raw = img.getAttribute("src") ?? "";
+    if (!raw || EXTERNAL_SRC.test(raw)) continue;
+    img.removeAttribute("src");
+    pending.push({ src: raw, set: (url) => img.setAttribute("src", url) });
+  }
+  // Portadas y figuras envueltas en <svg><image>.
+  for (const image of root.querySelectorAll("image")) {
+    const raw =
+      image.getAttribute("xlink:href") ?? image.getAttribute("href") ?? "";
+    if (!raw || EXTERNAL_SRC.test(raw)) continue;
+    image.removeAttribute("xlink:href");
+    image.removeAttribute("href");
+    pending.push({ src: raw, set: (url) => image.setAttribute("href", url) });
+  }
+  if (!pending.length) return;
+
+  const cache = new Map<string, Promise<string | null>>();
+  const urlFor = (src: string) => {
+    let job = cache.get(src);
+    if (!job) {
+      job = loadBlob(section.resolveHref(src))
+        .then((blob) => {
+          if (!blob) return null;
+          const url = URL.createObjectURL(blob);
+          urls.push(url);
+          return url;
+        })
+        .catch(() => null);
+      cache.set(src, job);
+    }
+    return job;
+  };
+
+  await Promise.allSettled(
+    pending.map(({ src, set }) =>
+      urlFor(src).then((url) => {
+        if (url && options.isCurrent()) set(url);
+      }),
+    ),
+  );
+  if (options.isCurrent()) options.onSettled?.();
 }
 
 export const flattenMetadataValue = (value: unknown): string => {

@@ -4,6 +4,7 @@
   display: grid;
   gap: var(--s-7);
   padding-block: var(--s-4);
+  animation: fade-in var(--dur-3) var(--ease-out);
 }
 
 /* ---------- Portada ---------- */
@@ -87,6 +88,12 @@
   border: none;
   background: none;
   border-radius: var(--r-1);
+  transition: transform var(--dur-2) var(--ease-out);
+}
+
+/* La portada en curso se levanta como las de la repisa. */
+.shelf-hero-cover:hover {
+  transform: translateY(-3px);
 }
 
 .shelf-hero-info {
@@ -152,6 +159,11 @@
 
 .shelf-book-cover:hover {
   transform: translateY(-2px);
+}
+
+.shelf-book-cover:active,
+.shelf-hero-cover:active {
+  transform: translateY(0);
 }
 
 .shelf-book-meta {

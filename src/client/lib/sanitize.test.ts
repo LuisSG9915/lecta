@@ -43,16 +43,24 @@ describe("sanitizeSectionDocument", () => {
     expect(clean.textContent).toBe("enlace");
   });
 
-  it("elimina imágenes e iframes de la sección", () => {
+  it("conserva imágenes pero elimina sus handlers, e iframes", () => {
     const clean = sanitize('<img src="x" onerror="window.__xss=1"/><iframe src="https://evil.example"></iframe>');
-    expect(clean.querySelector("img")).toBeNull();
+    const img = clean.querySelector("img");
+    expect(img).not.toBeNull();
+    expect(img?.hasAttribute("onerror")).toBe(false);
     expect(clean.querySelector("iframe")).toBeNull();
   });
 
-  it("elimina SVG con contenido activo", () => {
-    const clean = sanitize('<svg><script>window.__xss=1</script><circle r="4"/></svg>');
-    expect(clean.querySelector("svg")).toBeNull();
+  it("conserva SVG pero elimina el contenido activo", () => {
+    const clean = sanitize('<svg><script>window.__xss=1</script><image href="cover.png"/></svg>');
+    expect(clean.querySelector("svg")).not.toBeNull();
     expect(clean.querySelector("script")).toBeNull();
+  });
+
+  it("elimina encabezados vacíos (metadato sin contenido)", () => {
+    const clean = sanitize('<h1 title="Portada"></h1><p>Texto</p><h2>Real</h2>');
+    expect(clean.querySelector("h1")).toBeNull();
+    expect(clean.querySelector("h2")?.textContent).toBe("Real");
   });
 
   it("elimina class y style del libro y renombra id a data-frag-id", () => {

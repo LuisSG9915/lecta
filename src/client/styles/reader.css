@@ -192,6 +192,21 @@
   max-inline-size: 100%;
   height: auto;
   margin-block: var(--s-4);
+  margin-inline: auto;
+}
+
+/* Portadas y figuras que vienen envueltas en <svg><image>: el viewBox
+   conserva la proporción y ocupa la medida de lectura. */
+.book-content svg {
+  display: block;
+  inline-size: 100%;
+  block-size: auto;
+  margin-block: var(--s-4);
+}
+
+.book-content svg image {
+  inline-size: 100%;
+  block-size: 100%;
 }
 
 .book-content figure {
@@ -390,6 +405,19 @@
   }
 }
 
+/* Entrada suave con subida breve para avisos y tarjetas que aparecen
+   sobre el texto (más presencia que el fundido, sin mover la lectura). */
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.5rem);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 /* ---------- Índice ---------- */
 
 .toc-list {
@@ -410,11 +438,14 @@
   color: var(--ink);
   text-align: start;
   cursor: pointer;
-  transition: color var(--dur-1) var(--ease-out);
+  transition:
+    color var(--dur-1) var(--ease-out),
+    transform var(--dur-1) var(--ease-out);
 }
 
 .toc-item:hover {
   color: var(--vermilion);
+  transform: translateX(3px);
 }
 
 .toc-item[data-current] {
@@ -473,6 +504,9 @@
   background: var(--paper);
   text-align: start;
   cursor: pointer;
+  transition:
+    border-color var(--dur-1) var(--ease-out),
+    background-color var(--dur-1) var(--ease-out);
 }
 
 .search-hit:hover {
@@ -563,6 +597,7 @@
   font-size: var(--fs-sm);
   line-height: var(--lh-body);
   color: var(--ink);
+  transition: color var(--dur-1) var(--ease-out);
 }
 
 .mark-note {
@@ -659,7 +694,7 @@ mark.saved-passage {
   background: var(--paper-raised);
   box-shadow: var(--shadow-sheet);
   font-size: var(--fs-sm);
-  animation: fade-in var(--dur-2) var(--ease-out);
+  animation: rise-in var(--dur-3) var(--ease-out);
 }
 
 .reader-prep-text {
@@ -688,7 +723,7 @@ mark.saved-passage {
   background: var(--paper-raised);
   box-shadow: var(--shadow-sheet);
   overflow: hidden;
-  animation: fade-in var(--dur-2) var(--ease-out);
+  animation: rise-in var(--dur-3) var(--ease-out);
 }
 
 .reader-return-btn,
@@ -763,10 +798,32 @@ mark.saved-passage {
   }
 }
 
-/* Evitar cortes feos: tablas, citas y código prefieren no partirse
-   entre columnas cuando caben enteras en una. */
-.reader[data-layout="pages"] .book-content :is(table, pre, figure, blockquote) {
+/* Evitar cortes feos: tablas, citas, código e imágenes prefieren no
+   partirse entre columnas cuando caben enteras en una. */
+.reader[data-layout="pages"] .book-content :is(table, pre, figure, blockquote, img, svg) {
   break-inside: avoid;
+}
+
+/* En páginas la imagen nunca supera la altura real de la columna
+   (--page-col-h la fija computeMetrics; el descuento cubre el margen
+   del elemento contenedor): sin el tope, una figura alta saltaba de
+   columna y dejaba una hoja vacía. El margen propio va a cero para
+   que el alto total quepa justo en la columna. */
+.reader[data-layout="pages"] .book-content img {
+  max-block-size: calc(var(--page-col-h, 100svh - 12rem) - var(--s-6));
+  inline-size: auto;
+  max-inline-size: 100%;
+  margin-block: 0;
+  object-fit: contain;
+}
+
+/* Un <svg> necesita caja explícita: con alto variable el <image>
+   interno quedaba a tamaño natural y el viewport lo recortaba. La
+   caja ancha×baja + preserveAspectRatio centra la figura entera. */
+.reader[data-layout="pages"] .book-content svg {
+  inline-size: 100%;
+  block-size: calc(var(--page-col-h, 100svh - 12rem) - var(--s-6));
+  margin-block: 0;
 }
 
 .page-nav {
@@ -910,6 +967,12 @@ mark.predicted-word {
   text-decoration-color: var(--ink-faint);
   text-underline-offset: 0.18em;
   cursor: pointer;
+  transition: text-decoration-color var(--dur-1) var(--ease-out);
+}
+
+/* La raya punteada se enciende en bermellón: indica que responde. */
+mark.predicted-word:hover {
+  text-decoration-color: var(--vermilion);
 }
 
 @media (forced-colors: active) {
@@ -930,6 +993,7 @@ mark.predicted-word {
   font-family: var(--font-ui);
   font-size: var(--fs-sm);
   line-height: var(--lh-ui);
+  animation: rise-in var(--dur-3) var(--ease-out);
 }
 
 .section-preview .meta {
@@ -998,6 +1062,7 @@ mark.predicted-word {
   font-size: var(--fs-md);
   font-weight: 500;
   color: var(--ink);
+  transition: color var(--dur-1) var(--ease-out);
 }
 
 .section-preview-open:hover strong {

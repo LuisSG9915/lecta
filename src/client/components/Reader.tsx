@@ -14,6 +14,7 @@ import {
   getBookAuthor,
   getBookLanguage,
   getBookTitle,
+  hydrateSectionImages,
 } from "../lib/epub";
 import { sanitizeSectionDocument } from "../lib/sanitize";
 import { markWords } from "../lib/marks";
@@ -195,8 +196,15 @@ const WPM_KEY = "readingWpm";
 // y preferencia por libro de no mostrar la tarjeta «Antes de leer».
 const PROFILE_ADJUST_KEY = "profileAdjust";
 const previewHiddenKey = (hash: string) => `previewHidden:${hash}`;
-// Tope del lote automático de definiciones con IA por sección.
-const AUTO_ENRICH_CAP = 20;
+// Tope del lote automático de definiciones con IA por sección. El
+// catálogo ya cubre lo común (Wikcionario); el lote solo cierra
+// huecos — 8 bastan para no dejar la hoja llena de «sin definición»
+// sin abrir el gasto (cada palabra cuesta ~400–600 tokens).
+const AUTO_ENRICH_CAP = 8;
+// El lote de palabras guardadas sin definición es una pasada única
+// por apertura de libro, acotado por el cuaderno real del lector —
+// no es gasto recurrente como el de secciones, así que conserva más.
+const SAVED_ENRICH_CAP = 20;
 
 const clampNumber = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
 
@@ -330,6 +338,11 @@ export default function Reader({
   // Intención del último salto — la preparación (T19) la consulta al
   // decidir qué interponer.
   const navIntentRef = useRef<NavIntent>("initial");
+  // blob: URLs de las imágenes de la sección visible: se revocan al
+  // cambiar de sección (en hydrateSectionImages) y al desmontar.
+  const imgUrlsRef = useRef<string[]>([]);
+  // loadBlob del zip del EPUB (EPUB no lo declara en su tipo público).
+  const loadBlobRef = useRef<((name: string) => Promise<Blob | null>) | null>(null);
 
   const [state, setState] = useState<ReaderState>("idle");
   const [title, setTitle] = useState("");
@@ -339,6 +352,7 @@ export default function Reader({
   const [sectionTitle, setSectionTitle] = useState("");
   const [sectionSizes, setSectionSizes] = useState<number[]>([]);
   const [sectionWords, setSectionWords] = useState(0);
+  const [sectionHasImages, setSectionHasImages] = useState(false);
   const [showChapterTitle, setShowChapterTitle] = useState(false);
   const [tocRows, setTocRows] = useState<TocRow[]>([]);
   // Catálogo de destinos (T10/T11); no cambia tras la carga del libro.
@@ -608,6 +622,10 @@ export default function Reader({
     const one = settings.pageColumns === 1;
     const boxW = one ? Math.min(availW, measurePx) : availW;
     const metrics = pageLayout(boxW, one ? boxW : measurePx, PAGE_GAP);
+    // La altura real de la columna: el tope de las imágenes en modo
+    // páginas (una figura más alta que la columna salta de página y
+    // deja una hoja vacía).
+    container.style.setProperty("--page-col-h", `${viewport.clientHeight}px`);
     metricsRef.current = metrics;
     setPageMetrics(metrics);
     return metrics;
@@ -1371,6 +1389,25 @@ export default function Reader({
           new Set((prediction?.predicted ?? []).map((item) => item.form)),
           lang,
         );
+        // Las imágenes del EPUB viajan como blob: URLs: las rutas
+        // internas se quitan antes de montar (evita 404 contra el
+        // origen) y se rellenan ya pintado el texto. En modo paginado
+        // el recuento se repite cuando todas asientan.
+        const loadBlob = loadBlobRef.current;
+        if (loadBlob)
+          void hydrateSectionImages(
+            sanitized,
+            section,
+            loadBlob,
+            imgUrlsRef.current,
+            {
+              isCurrent: () =>
+                bookRef.current === book && sectionIndexRef.current === index,
+              onSettled: () => {
+                if (layoutRef.current === "pages") computeMetrics();
+              },
+            },
+          );
         const first = sanitized.firstElementChild;
         const ownHeading = first ? /^H[1-6]$/i.test(first.tagName) : false;
         const text = [...sanitized.childNodes]
@@ -1397,6 +1434,9 @@ export default function Reader({
         const tocLabel = tocRowsRef.current.find((row) => row.index === index)?.label;
 
         setSectionWords(total);
+        // La nota «sin texto legible» solo aplica si tampoco hay
+        // imagen: una sección de portada o mapa sí tiene contenido.
+        setSectionHasImages(Boolean(sanitized.querySelector("img, image")));
         setSectionIndex(index);
         sectionIndexRef.current = index;
         // Las marcas muestran la predicción cacheada si la hay; el
@@ -1517,6 +1557,9 @@ export default function Reader({
   useEffect(() => {
     let disposed = false;
     let cleanup: (() => void) | undefined;
+    // El array se muta por sección pero su identidad es estable:
+    // capturarlo aquí permite drenarlo al desmontar sin leer el ref.
+    const imgUrls = imgUrlsRef.current;
 
     const loadBook = async () => {
       setState("opening");
@@ -1550,13 +1593,14 @@ export default function Reader({
       setAnalyzing(false);
       setEnriching(null);
       try {
-        const { book, close } = await openEpub(file);
+        const { book, close, loadBlob } = await openEpub(file);
         if (disposed) {
           void close();
           return;
         }
         cleanup = close;
         bookRef.current = book;
+        loadBlobRef.current = loadBlob;
         const bookLanguage = getBookLanguage(book);
         const storedWords = await listSavedWords(bookLanguage);
         savedForms.current = savedFormLevels(storedWords);
@@ -1669,6 +1713,7 @@ export default function Reader({
       finalizeTiming(currentRatioNow());
       cleanup?.();
       window.clearTimeout(scrollTimer.current);
+      for (const url of imgUrls.splice(0)) URL.revokeObjectURL(url);
     };
     // tocRows se usa dentro de loadSection pero se calcula aquí; el
     // efecto corre una sola vez por libro.
@@ -1695,7 +1740,7 @@ export default function Reader({
           const forms = selectSavedForEnrichment(
             storedWords,
             new Set(),
-            AUTO_ENRICH_CAP,
+            SAVED_ENRICH_CAP,
           );
           if (forms.length) void enrichBatch(forms, language);
         }
@@ -2337,7 +2382,7 @@ export default function Reader({
             </div>
           </div>
         ) : null}
-        {state === "ready" && sectionWords === 0 ? (
+        {state === "ready" && sectionWords === 0 && !sectionHasImages ? (
           <p className="reader-empty meta">
             Esta sección no tiene texto legible (puede ser una portada o una imagen).
           </p>

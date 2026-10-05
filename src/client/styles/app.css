@@ -25,6 +25,7 @@
   inline-size: min(72rem, calc(100% - 2.5rem));
   margin-inline: auto;
   padding-block-end: var(--s-7);
+  animation: fade-in var(--dur-2) var(--ease-out);
 }
 
 .tagline {
