@@ -56,3 +56,23 @@
 - `defaultdb` pertenece a otro proyecto (POS): no tocar sus tablas.
 - EPUBs de prueba con copyright están en `.gitignore` (`/src/*.epub`,
   `/fixtures/*.epub` salvo `minimal.epub`).
+- Acepciones del catálogo: `lexicon_senses.source` distingue
+  `wiktionary` (carga masiva del Wikcionario en español vía kaikki.org
+  con `node --env-file=.env scripts/lexicon-wiktionary.mjs`, lee
+  `data/lexicon/es-wiktionary.jsonl.gz` — ver docs/licencias-lexico.md),
+  `ai` (enriquecimiento DeepSeek) y NULL (semilla/carga original).
+- **El catálogo léxico vive solo en `lecta_dev`** y es compartido: el
+  worker lo consulta por nombre calificado (`CATALOG = "lecta_dev."`
+  en src/worker/lexicon.ts) desde la misma conexión del cluster —
+  incluye `lexicon_entries/forms/senses/sources/items`. No duplicar
+  estas tablas en `lecta` (cuesta RUs y diverge); las tablas
+  `lexicon_*` que quedaron en `lecta` están dormidas. Ojo: las pruebas
+  destructivas sobre esas tablas en dev pegan a prod.
+- `lecta_user_words.sense_entry_id` guarda ids del catálogo de
+  `lecta_dev`; filas viejas en prod pueden tener ids del catálogo
+  local viejo (ya no referenciables) — el backfill los ignora y cae a
+  la primera acepción disponible.
+- Palabras del Cuaderno sin `meaning`: `backfillWordMeanings`
+  (src/client/lib/word-meanings.ts) las completa desde el catálogo al
+  abrir Vocabulary — el enriquecimiento escribe en el catálogo, no en
+  la palabra guardada, así que este paso es el que las actualiza.

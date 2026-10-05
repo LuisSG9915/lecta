@@ -114,6 +114,37 @@ export async function enrichWord(
   }
 }
 
+export type ExplainResult =
+  | { ok: true; explanation: string }
+  | { ok: false; error: string };
+
+// «Explicar en esta oración»: la acepción del catálogo define la
+// palabra en general; esto dice qué sentido aplica en la oración
+// concreta. Es una llamada IA explícita (cuota propia), efímera y
+// sin escritura al catálogo — el significado de diccionario sigue
+// siendo la respuesta que no gasta tokens.
+export async function explainInContext(
+  form: string,
+  language = "es",
+  context?: string,
+): Promise<ExplainResult> {
+  try {
+    const response = await fetch("/api/lexicon/explain", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ form, language, context }),
+    });
+    const data = (await response.json()) as { explanation?: string; error?: string };
+    if (!response.ok)
+      return { ok: false, error: data.error ?? "La IA no pudo explicar la palabra." };
+    if (!data.explanation)
+      return { ok: false, error: "La IA no devolvió una explicación válida." };
+    return { ok: true, explanation: data.explanation };
+  } catch {
+    return { ok: false, error: "Sin conexión con el catálogo." };
+  }
+}
+
 export type ReportResult = { ok: true } | { ok: false; error: string };
 
 // Marca una acepción del catálogo como «no corresponde» (botón de

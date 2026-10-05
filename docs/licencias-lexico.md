@@ -18,6 +18,7 @@ Esto es análisis de cumplimiento, no asesoría legal.
 | UniMorph `spa` | listas dentro de simplemma | CC BY-SA 3.0 |
 | Wikinflection (Metheniti) | listas dentro de simplemma | CC BY 4.0 |
 | wordfreq (datos) | frecuencias zipf por lema | **CC BY-SA 4.0** |
+| Kaikki eswiktionary | acepciones (definiciones y ejemplos) `es` | **CC BY-SA 4.0 + GFDL** |
 
 La lista `es` de simplemma combina todas las fuentes anteriores; las
 licencias exactas que empaqueta están en `licenses/` de su repo.
@@ -44,6 +45,10 @@ licencias exactas que empaqueta están en `licenses/` de su repo.
    - `forms-es.csv.gz` (forma→lema) bajo **ODbL 1.0**.
    - `lemmas-freq-es.csv.gz` (lema→zipf) bajo **CC BY-SA 4.0**, con
      `LICENSE` y `README` (fuentes, proceso, crédito SUBTLEX).
+   - `senses-es.csv.gz` (acepciones cargadas del Wikcionario en
+     español vía kaikki.org; `lexicon_senses.source='wiktionary'`)
+     bajo **CC BY-SA 4.0 + GFDL**. Las acepciones `source='ai'` son
+     contenido propio generado y no entran en ese archivo.
    - Repo público dedicado `lecta-lexicon-data`, enlazado desde
      «Acerca de». Los TSV generados por `scripts/lexicon-export.py`
      son la fuente de esos archivos.
@@ -58,8 +63,9 @@ licencias exactas que empaqueta están en `licenses/` de su repo.
    > de Robyn Speer (CC BY-SA 4.0; incluye Google Books Ngrams,
    > Wikipedia, ParaCrawl, OpenSubtitles y las listas SUBTLEX de
    > Marc Brysbaert et al.). Contiene información de «Lemmatization
-   > lists» disponible bajo ODbL 1.0. Las tablas derivadas se
-   > publican en [URL del repo].
+   > lists» disponible bajo ODbL 1.0. Las definiciones provienen del
+   > Wikcionario en español vía kaikki.org (CC BY-SA 4.0 / GFDL). Las
+   > tablas derivadas se publican en [URL del repo].
 
 3. No hace falta: licenciar la base entera, abrir el código del Worker
    ni mostrar licencias en cada ficha.

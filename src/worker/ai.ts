@@ -7,6 +7,7 @@ export const ENRICHMENT_MODEL = "deepseek-flash";
 export const ENRICHMENT_PROMPT_VERSION = "enrich-1";
 export const ITEM_PROMPT_VERSION = "item-v1";
 export const VERIFY_PROMPT_VERSION = "verify-v1";
+export const EXPLAIN_PROMPT_VERSION = "explain-v1";
 
 const POS_VALUES = new Set([
   "sustantivo",
@@ -52,16 +53,18 @@ export function validateEnrichment(data: unknown): ValidatedEnrichment | null {
   return { lemma, pos, freqRank, forms, senses };
 }
 
-export type DeepSeekOperation = "enrich" | "item" | "verify";
+export type DeepSeekOperation = "enrich" | "item" | "verify" | "explain";
 
 // Techo de tokens de salida por operación. En la muestra A/B de
 // enriquecimiento el máximo observado fue 343; 768 deja margen sin
-// devolver el default ilimitado. Ítem y verificación siguen acotados
-// a sus respuestas breves; revisar con los eventos lecta.ai_call.
+// devolver el default ilimitado. Ítem, verificación y explicación en
+// contexto siguen acotados a sus respuestas breves; revisar con los
+// eventos lecta.ai_call.
 export const AI_CALL_LIMITS = {
   enrich: 768,
   item: 256,
   verify: 128,
+  explain: 192,
 } as const satisfies Record<DeepSeekOperation, number>;
 
 export type DeepSeekCallOptions = {
@@ -256,6 +259,12 @@ export const VERIFY_CALL_OPTIONS: DeepSeekCallOptions = {
   maxTokens: AI_CALL_LIMITS.verify,
 };
 
+export const EXPLAIN_CALL_OPTIONS: DeepSeekCallOptions = {
+  operation: "explain",
+  promptVersion: EXPLAIN_PROMPT_VERSION,
+  maxTokens: AI_CALL_LIMITS.explain,
+};
+
 export async function requestEnrichment(
   env: WorkerEnv,
   input: { form: string; language: string; context?: string },
@@ -364,4 +373,37 @@ export function parseVerify(raw: string): VerifiedSentence | null {
   const feedback =
     typeof obj.feedback === "string" ? obj.feedback.trim().slice(0, 200) : "";
   return { correct: obj.correct, feedback };
+}
+
+// ---------- Explicación en contexto (opcional, a petición) ----------
+//
+// La acepción del catálogo define la palabra en general; esta
+// operación dice qué sentido aplica en la oración concreta que el
+// usuario está leyendo. Es efímera: no escribe al catálogo ni se
+// guarda — el botón del panel la pide solo cuando hay contexto.
+
+export const EXPLAIN_SYSTEM_PROMPT = `Eres un lexicógrafo de español. Explicas qué significa una palabra en la oración concreta donde aparece — no la definición general de diccionario, sino el sentido que tiene ahí. Devuelve SOLO un objeto JSON válido con esta forma exacta, sin texto extra:
+{"explanation":"<una o dos frases breves en español neutro>"}
+Reglas: máximo 45 palabras. Si la palabra es una forma flexionada, menciona su lema entre paréntesis. Si la palabra tiene varios sentidos, di cuál aplica en esa oración. No repitas la oración completa ni comiences con "La palabra".`;
+
+export function buildExplainPrompt(form: string, language: string, context: string) {
+  return `Palabra: «${form}» (idioma: ${language})\nOración: «${context}»`;
+}
+
+export type Explanation = { explanation: string };
+
+// Valida la explicación: "explanation" no vacía, recortada a 400
+// caracteres por si el modelo se pasa de la regla de las 45 palabras.
+export function parseExplain(raw: string): Explanation | null {
+  let data: unknown;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (typeof data !== "object" || data === null) return null;
+  const obj = data as Record<string, unknown>;
+  const explanation =
+    typeof obj.explanation === "string" ? obj.explanation.trim().slice(0, 400) : "";
+  return explanation ? { explanation } : null;
 }

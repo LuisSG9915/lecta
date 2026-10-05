@@ -553,7 +553,8 @@ export default function Account({
         <h2 className="eyebrow">Acerca de</h2>
         <p className="meta">
           Diccionario base: simplemma (MIT; datos bajo ODbL 1.0 y licencias derivadas) y
-          wordfreq (CC BY-SA 4.0 y fuentes con atribución). Contiene información de
+          wordfreq (CC BY-SA 4.0 y fuentes con atribución). Definiciones del Wikcionario
+          en español vía kaikki.org (CC BY-SA 4.0 / GFDL). Contiene información de
           «Lemmatization Lists» disponible bajo ODbL 1.0.{" "}
           <a
             href="https://github.com/LuisSG9915/lecta-lexicon-data"

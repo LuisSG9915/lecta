@@ -5,6 +5,7 @@ import {
   ENRICHMENT_MODEL,
   ENRICHMENT_PROMPT_VERSION,
   ITEM_PROMPT_VERSION,
+  parseExplain,
   parseItem,
   parseVerify,
   requestEnrichment,
@@ -93,6 +94,27 @@ describe("parseVerify", () => {
     );
     expect(long?.feedback).toHaveLength(200);
     expect(parseVerify('{"correct":true}')).toEqual({ correct: true, feedback: "" });
+  });
+});
+
+describe("parseExplain", () => {
+  it("acepta una explicación válida", () => {
+    expect(
+      parseExplain('{"explanation":"Aquí «férrea» quiere decir firme e inflexible."}'),
+    ).toEqual({ explanation: "Aquí «férrea» quiere decir firme e inflexible." });
+  });
+
+  it("devuelve null con JSON roto o explanation vacía", () => {
+    expect(parseExplain("no es json")).toBeNull();
+    expect(parseExplain("null")).toBeNull();
+    expect(parseExplain('{"explanation":""}')).toBeNull();
+    expect(parseExplain('{"explanation":"   "}')).toBeNull();
+    expect(parseExplain('{"otro":"campo"}')).toBeNull();
+  });
+
+  it("recorta explicaciones pasadas de 400 caracteres", () => {
+    const long = parseExplain(JSON.stringify({ explanation: "x".repeat(500) }));
+    expect(long?.explanation).toHaveLength(400);
   });
 });
 

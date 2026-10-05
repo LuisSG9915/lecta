@@ -66,8 +66,10 @@ describe("insertEnrichment", () => {
     const client = {
       async query(sql: string, params: unknown[] = []) {
         calls.push({ sql, params });
-        if (sql.includes("FROM lexicon_entries")) return { rows: [] };
-        if (sql.includes("INSERT INTO lexicon_entries")) return { rows: [{ id: "42" }] };
+        if (sql.includes("FROM") && sql.includes("lexicon_entries"))
+          return { rows: [] };
+        if (sql.includes("INSERT INTO") && sql.includes("lexicon_entries"))
+          return { rows: [{ id: "42" }] };
         return { rows: [] };
       },
     };
@@ -85,7 +87,9 @@ describe("insertEnrichment", () => {
       "adusta",
     );
 
-    const formInserts = calls.filter(({ sql }) => sql.includes("INSERT INTO lexicon_forms"));
+    const formInserts = calls.filter(
+      ({ sql }) => sql.includes("INSERT INTO") && sql.includes("lexicon_forms"),
+    );
     expect(formInserts.map(({ params }) => params[1])).toEqual(
       expect.arrayContaining(["adusta", "adusto", "adustos"]),
     );

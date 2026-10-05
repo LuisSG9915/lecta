@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { LexiconEntry } from "../lib/lexicon";
-import { enrichWord, lookupWord, reportSense } from "../lib/lexicon";
+import { enrichWord, explainInContext, lookupWord, reportSense } from "../lib/lexicon";
 import { Rating, scheduleReview } from "../lib/fsrs";
 import {
   loadSavedWord,
@@ -84,6 +84,11 @@ export default function WordPanel({
   const [selected, setSelected] = useState({ entryIndex: 0, senseIndex: 0 });
   const [report, setReport] = useState<"idle" | "sending" | "done" | "error">("idle");
   const [reread, setReread] = useState<"idle" | "busy" | "done">("idle");
+  // «Explicar en esta oración»: respuesta IA puntual sobre el sentido
+  // de la palabra en el contexto leído (no escribe al catálogo).
+  const [explanation, setExplanation] = useState<
+    { state: "busy" | "done" | "error"; text: string } | null
+  >(null);
   // Preferencia «Usar IA» (Cuenta): una sola lectura por apertura de
   // la ficha. Con ella apagada «Definir con IA» ni se ofrece; el
   // catálogo (lookupWord) no usa IA y sigue igual.
@@ -111,6 +116,7 @@ export default function WordPanel({
       // Ficha nueva: la acepción elegida vuelve a la primera.
       setSelected({ entryIndex: 0, senseIndex: 0 });
       setReport("idle");
+      setExplanation(null);
       if (!result.ok) setLookup({ kind: "error", message: result.error });
       else if (!result.found) setLookup({ kind: "notFound" });
       else setLookup({ kind: "found", entries: result.entries });
@@ -140,6 +146,17 @@ export default function WordPanel({
     const result = await enrichWord(word, language, context);
     if (!result.ok) setLookup({ kind: "error", message: result.error });
     else setLookup({ kind: "found", entries: result.entries });
+  };
+
+  const explain = async () => {
+    if (!context || explanation?.state === "busy") return;
+    setExplanation({ state: "busy", text: "" });
+    const result = await explainInContext(word, language, context);
+    setExplanation(
+      result.ok
+        ? { state: "done", text: result.explanation }
+        : { state: "error", text: result.error },
+    );
   };
 
   // Guarda la palabra con la acepción elegida junto a su evidencia
@@ -378,6 +395,29 @@ export default function WordPanel({
               </ol>
             </div>
           ))}
+          {useAi && context ? (
+            explanation?.state === "done" ? (
+              <p className="meta">En esta oración: {explanation.text}</p>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="btn--quiet"
+                  disabled={explanation?.state === "busy"}
+                  onClick={() => void explain()}
+                >
+                  {explanation?.state === "busy"
+                    ? "Consultando…"
+                    : "Explicar en esta oración con IA"}
+                </button>
+                {explanation?.state === "error" ? (
+                  <p role="alert" className="status">
+                    {explanation.text}
+                  </p>
+                ) : null}
+              </>
+            )
+          ) : null}
           {chosenEntry?.entryId != null && chosenSense?.senseOrder != null ? (
             report === "done" ? (
               <p className="meta">Gracias, lo anotamos.</p>

@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { getConnectionString, withClient, type WorkerEnv } from "./db";
 import {
+  CATALOG,
   findEntries,
   findEntriesForForms,
   insertEnrichment,
@@ -9,14 +10,18 @@ import {
 } from "./lexicon";
 import {
   ENRICHMENT_MODEL,
+  EXPLAIN_CALL_OPTIONS,
+  EXPLAIN_SYSTEM_PROMPT,
   ITEM_CALL_OPTIONS,
   ITEM_SYSTEM_PROMPT,
   VERIFY_CALL_OPTIONS,
   VERIFY_SYSTEM_PROMPT,
+  buildExplainPrompt,
   buildItemPrompt,
   buildVerifyPrompt,
   callDeepSeek,
   logAiCall,
+  parseExplain,
   parseItem,
   parseVerify,
   requestEnrichment,
@@ -240,7 +245,7 @@ app.post("/api/lexicon/report", async (context) => {
 
   const reports = await withClient(context.env, async (client) => {
     const result = await client.query(
-      `UPDATE lexicon_senses SET reports = reports + 1
+      `UPDATE ${CATALOG}lexicon_senses SET reports = reports + 1
        WHERE entry_id = $1 AND sense_order = $2
        RETURNING reports`,
       [entryId, senseOrder],
@@ -351,8 +356,8 @@ function toItemResponse(row: LexiconItemRow) {
 const ITEM_SELECT_SQL = `
   SELECT i.id, i.entry_id, i.sense_order, i.sentence, i.distractors,
          i.attempts, i.correct, s.definition
-  FROM lexicon_items i
-  JOIN lexicon_senses s
+  FROM ${CATALOG}lexicon_items i
+  JOIN ${CATALOG}lexicon_senses s
     ON s.entry_id = i.entry_id AND s.sense_order = i.sense_order
 `;
 
@@ -410,9 +415,9 @@ app.post("/api/lexicon/items", async (context) => {
                       (j.value ->> 'senseOrder')::int4 AS sense_order
                FROM jsonb_array_elements($1::jsonb) AS j(value)
              ) r
-             JOIN lexicon_senses s
+             JOIN ${CATALOG}lexicon_senses s
                ON s.entry_id = r.entry_id AND s.sense_order = r.sense_order
-             JOIN lexicon_entries e ON e.id = s.entry_id`,
+             JOIN ${CATALOG}lexicon_entries e ON e.id = s.entry_id`,
             [JSON.stringify(missing)],
           )
         : { rows: [] };
@@ -458,7 +463,7 @@ app.post("/api/lexicon/items", async (context) => {
       if (!parsed) continue;
       const row = await withClient(context.env, async (client) => {
         const inserted = await client.query<LexiconItemRow>(
-          `INSERT INTO lexicon_items
+          `INSERT INTO ${CATALOG}lexicon_items
              (id, entry_id, sense_order, sentence, distractors, status,
               model_version, prompt_version, created_at)
            VALUES ($1, $2, $3, $4, $5::jsonb, 'auto_validado', $6, $7, $8)
@@ -510,7 +515,7 @@ app.post("/api/lexicon/items/answer", async (context) => {
 
   const updated = await withClient(context.env, async (client) => {
     const result = await client.query(
-      `UPDATE lexicon_items
+      `UPDATE ${CATALOG}lexicon_items
        SET attempts = attempts + 1, correct = correct + $2
        WHERE id = $1`,
       [id, correct ? 1 : 0],
@@ -579,12 +584,71 @@ app.post("/api/lexicon/verify-sentence", async (context) => {
   return context.json({ correct: parsed.correct, feedback: parsed.feedback });
 });
 
+// Explicación puntual del sentido de una palabra en la oración que el
+// usuario está leyendo (botón «Explicar en esta oración» de la ficha).
+// A diferencia de enrich: no escribe al catálogo ni compone fichas —
+// el diccionario sigue siendo la respuesta gratuita; esto es el extra
+// opcional. Privacidad: viajan solo la forma y la oración.
+app.post("/api/lexicon/explain", async (context) => {
+  const body = await context.req.json().catch(() => null);
+  const form = typeof body?.form === "string" ? body.form.trim() : "";
+  const language = typeof body?.language === "string" ? body.language.trim() : "es";
+  const contextText = typeof body?.context === "string" ? body.context.trim() : "";
+  if (!form || form.length > 100 || !contextText || contextText.length > 500)
+    return context.json({ error: "Faltan la palabra o la oración." }, 400);
+  if (!getConnectionString(context.env))
+    return context.json({ error: "El catálogo no está configurado." }, 503);
+  const session = await getSession(context);
+  if (!session)
+    return context.json({ error: "Inicia sesión para pedir explicaciones." }, 401);
+
+  const allowed = await consumeRateUnits(
+    context.env,
+    session.user.id,
+    1,
+    EXPLAIN_UNITS_PER_HOUR,
+    "explain",
+  );
+  if (!allowed)
+    return context.json(
+      { error: "Llegaste al límite de explicaciones por hora. Intenta más tarde." },
+      429,
+    );
+
+  const ai = await callDeepSeek(
+    context.env,
+    { system: EXPLAIN_SYSTEM_PROMPT, user: buildExplainPrompt(form, language, contextText) },
+    EXPLAIN_CALL_OPTIONS,
+  );
+  const parsed =
+    ai.ok && ai.finishReason !== "length" ? parseExplain(ai.content) : null;
+  logAiCall(
+    EXPLAIN_CALL_OPTIONS,
+    ai,
+    !ai.ok ? ai.reason : ai.finishReason === "length" ? "truncated" : parsed ? "ok" : "invalid",
+  );
+  if (!ai.ok)
+    return context.json(
+      {
+        error:
+          ai.reason === "not-configured"
+            ? "Las explicaciones con IA no están configuradas."
+            : "La IA no pudo explicar la palabra.",
+      },
+      ai.reason === "not-configured" ? 503 : 502,
+    );
+  if (!parsed)
+    return context.json({ error: "La IA no devolvió una explicación válida." }, 502);
+  return context.json({ explanation: parsed.explanation });
+});
+
 // Presupuestos por hora y por alcance: cada función IA gasta de su
 // propia bolsa (columna scope de lecta_rate_log), así una tanda de
 // ítems o de correcciones no consume la cuota de enriquecimiento.
 const ENRICH_UNITS_PER_HOUR = 60;
 const ITEM_UNITS_PER_HOUR = 24;
 const VERIFY_UNITS_PER_HOUR = 30;
+const EXPLAIN_UNITS_PER_HOUR = 30;
 const HOUR_MS = 3_600_000;
 
 // Suma `units` a la ventana de la última hora del scope dado y la

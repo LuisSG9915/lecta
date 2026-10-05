@@ -18,6 +18,7 @@ import {
   type LexiconItem,
 } from "../lib/lexicon";
 import { pushWordsToServer, removeWord } from "../lib/vocab";
+import { backfillWordMeanings } from "../lib/word-meanings";
 import { recordReview } from "../lib/reviews";
 import type { ReviewKind, ReviewRating } from "../../shared/reading-data";
 import {
@@ -260,8 +261,15 @@ export default function Vocabulary({ onClose, books }: VocabularyProps) {
   useEffect(() => {
     let cancelled = false;
     void listSavedWords()
-      .then((list) => {
-        if (!cancelled) setWords(list.sort((a, b) => b.savedAt - a.savedAt));
+      .then(async (list) => {
+        const sorted = list.sort((a, b) => b.savedAt - a.savedAt);
+        if (cancelled) return;
+        setWords(sorted);
+        // Guardadas sin significado: el catálogo puede tener ficha
+        // ya (Wikcionario o una definición IA posterior al guardado);
+        // rellenarlas habilita los repasos por significado.
+        const merged = await backfillWordMeanings(sorted).catch(() => null);
+        if (!cancelled && merged) setWords(merged);
       })
       .catch(() => {
         if (!cancelled) setLoadError(true);

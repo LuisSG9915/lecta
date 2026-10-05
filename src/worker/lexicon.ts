@@ -2,6 +2,13 @@ import type pg from "pg";
 import { ENRICHMENT_MODEL, ENRICHMENT_PROMPT_VERSION } from "./ai";
 import { hasUsableDefinition } from "../shared/lexicon";
 
+// El catálogo léxico es dato de referencia compartido (no datos de
+// usuario): las tablas lexicon_* viven en lecta_dev y producción las
+// consulta por nombre calificado sobre el mismo cluster. Así la
+// carga del Wikcionario (≈2 M de filas) no se duplica ni gasta RUs
+// dos veces; los datos por cuenta siguen en la base de cada entorno.
+export const CATALOG = "lecta_dev.";
+
 export type LookupRow = {
   // lexicon_entries.id es INT8 de unique_rowid() (~1.2e18 > 2^53):
   // node-pg ya lo devuelve como string; convertirlo a number lo
@@ -29,9 +36,9 @@ export type LexiconEntryView = {
 
 const LOOKUP_SQL = `
   SELECT e.id AS entry_id, e.lemma, e.pos, e.freq_rank, e.zipf, s.definition, s.example, s.sense_order
-  FROM lexicon_forms f
-  JOIN lexicon_entries e ON e.id = f.entry_id
-  LEFT JOIN lexicon_senses s ON s.entry_id = e.id
+  FROM ${CATALOG}lexicon_forms f
+  JOIN ${CATALOG}lexicon_entries e ON e.id = f.entry_id
+  LEFT JOIN ${CATALOG}lexicon_senses s ON s.entry_id = e.id
   WHERE f.language = $1 AND f.form = lower($2)
   ORDER BY e.freq_rank NULLS LAST, s.sense_order
   LIMIT 40
@@ -70,9 +77,9 @@ export async function findEntries(client: pg.Client, language: string, form: str
 // un LIMIT aquí recortaba fichas sin aviso.
 const BATCH_SQL = `
   SELECT f.form AS queried_form, e.id AS entry_id, e.lemma, e.pos, e.freq_rank, e.zipf, s.definition, s.example, s.sense_order
-  FROM lexicon_forms f
-  JOIN lexicon_entries e ON e.id = f.entry_id
-  LEFT JOIN lexicon_senses s ON s.entry_id = e.id
+  FROM ${CATALOG}lexicon_forms f
+  JOIN ${CATALOG}lexicon_entries e ON e.id = f.entry_id
+  LEFT JOIN ${CATALOG}lexicon_senses s ON s.entry_id = e.id
   WHERE f.language = $1 AND f.form = ANY($2)
   ORDER BY f.form, e.freq_rank NULLS LAST, s.sense_order
 `;
@@ -125,8 +132,8 @@ const SAMPLE_FETCH_PER_BAND = SAMPLE_TOTAL;
 const SAMPLE_SQL = `
   WITH candidates AS (
     SELECT DISTINCT ON (e.lemma) e.lemma, e.zipf, s.definition
-    FROM lexicon_entries e
-    LEFT JOIN lexicon_senses s
+    FROM ${CATALOG}lexicon_entries e
+    LEFT JOIN ${CATALOG}lexicon_senses s
       ON s.entry_id = e.id AND btrim(s.definition) <> ''
     WHERE e.language = $1
       AND e.zipf >= 2.0 AND e.zipf < 5.0
@@ -227,7 +234,7 @@ export async function insertEnrichment(
   await client.query("BEGIN");
   try {
     const { rows: sameLemma } = await client.query<{ id: string; pos: string | null }>(
-      `SELECT id, pos FROM lexicon_entries
+      `SELECT id, pos FROM ${CATALOG}lexicon_entries
        WHERE language = $1 AND lemma = $2
        ORDER BY id`,
       [language, enrichment.lemma],
@@ -240,7 +247,7 @@ export async function insertEnrichment(
       // La fila cargada desde fuentes puede venir sin pos ni fichas:
       // la completa sin crear un lema duplicado ni tocar su zipf medido.
       await client.query(
-        `UPDATE lexicon_entries
+        `UPDATE ${CATALOG}lexicon_entries
          SET pos = COALESCE(pos, $2),
              freq_rank = COALESCE(freq_rank, $3),
              status = 'ok', model_version = $4, prompt_version = $5
@@ -249,7 +256,7 @@ export async function insertEnrichment(
       );
     } else {
       const { rows: inserted } = await client.query<{ id: string }>(
-        `INSERT INTO lexicon_entries (language, lemma, pos, freq_rank, source, status, model_version, prompt_version)
+        `INSERT INTO ${CATALOG}lexicon_entries (language, lemma, pos, freq_rank, source, status, model_version, prompt_version)
          VALUES ($1, $2, $3, $4, 'ai', 'ok', $5, $6)
          ON CONFLICT DO NOTHING
          RETURNING id`,
@@ -265,7 +272,7 @@ export async function insertEnrichment(
       entryId = inserted[0]?.id;
       if (!entryId) {
         const { rows } = await client.query<{ id: string }>(
-          `SELECT id FROM lexicon_entries
+          `SELECT id FROM ${CATALOG}lexicon_entries
            WHERE language = $1 AND lemma = $2 AND pos IS NOT DISTINCT FROM $3`,
           [language, enrichment.lemma, enrichment.pos],
         );
@@ -281,7 +288,7 @@ export async function insertEnrichment(
     );
     for (const form of linkedForms) {
       await client.query(
-        `INSERT INTO lexicon_forms (language, form, entry_id, source)
+        `INSERT INTO ${CATALOG}lexicon_forms (language, form, entry_id, source)
          VALUES ($1, lower($2), $3, 'ai')
          ON CONFLICT DO NOTHING`,
         [language, form, entryId],
@@ -289,8 +296,8 @@ export async function insertEnrichment(
     }
     for (const [index, sense] of enrichment.senses.entries()) {
       await client.query(
-        `INSERT INTO lexicon_senses (entry_id, sense_order, definition, example, status)
-         VALUES ($1, $2, $3, $4, 'ok')
+        `INSERT INTO ${CATALOG}lexicon_senses (entry_id, sense_order, definition, example, status, source)
+         VALUES ($1, $2, $3, $4, 'ok', 'ai')
          ON CONFLICT DO NOTHING`,
         [entryId, index + 1, sense.definition, sense.example],
       );
