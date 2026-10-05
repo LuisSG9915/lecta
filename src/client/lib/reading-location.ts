@@ -39,6 +39,21 @@ export function scrollToAnchor(container: HTMLElement, anchor: string): boolean 
   return false;
 }
 
+// Lleva un fragmento de destino (como `#s2` del índice) a la vista.
+// El sanitizado conserva los ids del EPUB como `data-frag-id` para que
+// no choquen con identificadores de la interfaz. Devuelve false si la
+// sección no lo contiene — quien llama cae al ancla por texto.
+export function scrollToFragment(
+  container: HTMLElement,
+  fragment: string,
+): boolean {
+  const el = container.querySelector(`[data-frag-id="${CSS.escape(fragment)}"]`);
+  if (!el) return false;
+  el.scrollIntoView({ block: "start" });
+  flash(el);
+  return true;
+}
+
 const flash = (el: Element) => {
   el.classList.remove("search-flash");
   // Forzar reflujo para reiniciar la animación si el bloque ya brilló.

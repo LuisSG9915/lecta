@@ -1,5 +1,7 @@
 node_modules/
 dist/
+data/
+artifacts/
 .wrangler/
 .dev.vars*
 .env

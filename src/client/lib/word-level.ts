@@ -19,7 +19,7 @@ export function markLevel(card: Card | undefined): MarkLevel | null {
 }
 
 // Mapa forma (form y lemma, en minúsculas) → nivel de marca,
-// para pasarlo a markSavedWords.
+// para pasarlo a markWords.
 export function savedFormLevels(words: SavedWord[]): Map<string, MarkLevel> {
   const levels = new Map<string, MarkLevel>();
   for (const word of words) {
@@ -33,4 +33,19 @@ export function savedFormLevels(words: SavedWord[]): Map<string, MarkLevel> {
     }
   }
   return levels;
+}
+
+// Lemas de las palabras dominadas: repasadas al menos una vez y con
+// estabilidad ≥90 días (markLevel null). Sirven como evidencia
+// auxiliar «conocida» del modelo de conocimiento, registrada al
+// cargar el libro. Sin lemma propio se usa la forma; todo en
+// minúsculas y sin repetidos.
+export function dominatedLemmas(words: SavedWord[]): string[] {
+  const lemmas = new Set<string>();
+  for (const word of words) {
+    if ((word.card?.reps ?? 0) === 0 || markLevel(word.card) !== null) continue;
+    const lemma = (word.lemma ?? word.form).toLowerCase();
+    if (lemma) lemmas.add(lemma);
+  }
+  return [...lemmas];
 }

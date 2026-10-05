@@ -139,6 +139,106 @@
   text-align: center;
 }
 
+/* Opciones de «elegir palabra» y «acepción»: columna de botones que
+   hereda el tratamiento .btn; el acierto va en salvia y el error en
+   bermellón, con peso/tachado para no depender solo del color. */
+.choice-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  margin-block: var(--s-3) var(--s-4);
+}
+
+.choice-option {
+  inline-size: 100%;
+  text-align: start;
+  font-weight: 400;
+  block-size: auto;
+  white-space: normal;
+}
+
+.choice-option.is-correct {
+  border-color: var(--sage);
+  color: var(--sage);
+  font-weight: 600;
+}
+
+.choice-option.is-wrong {
+  border-color: var(--vermilion);
+  color: var(--vermilion);
+  text-decoration: line-through;
+}
+
+/* Parejas: dos columnas de botones; el par resuelto se atenúa y se
+   tacha. La forma elegida se marca con el borde bermellón. */
+.match-board {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--s-3);
+  margin-block: var(--s-4) var(--s-3);
+}
+
+.match-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.match-option {
+  text-align: start;
+  font-weight: 400;
+  block-size: auto;
+  white-space: normal;
+}
+
+.match-option[aria-pressed="true"] {
+  border-color: var(--vermilion);
+}
+
+.match-option.is-done {
+  opacity: 0.55;
+  text-decoration: line-through;
+}
+
+.match-option.is-wrong {
+  border-color: var(--vermilion);
+  color: var(--vermilion);
+}
+
+/* «Escribir»: área de texto sobre el papel, con el mismo borde y foco
+   bermellón de los campos del sistema. */
+.write-box textarea {
+  inline-size: 100%;
+  min-block-size: 5rem;
+  margin-block: var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  border: var(--border);
+  border-radius: var(--r-1);
+  background: var(--paper-sunken);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--fs-base);
+  resize: vertical;
+}
+
+.write-box textarea:focus {
+  border-color: var(--vermilion);
+}
+
+/* Respuesta de la corrección IA: línea meta, sin competir con la tarjeta. */
+.verify-feedback {
+  margin-block: var(--s-2) 0;
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+}
+
+/* En «escribir» la autocalificación elegida (o sugerida por la IA) se
+   marca con el borde bermellón, como la selección en «parejas». */
+.write-grades .btn[aria-pressed="true"] {
+  border-color: var(--vermilion);
+  font-weight: 600;
+}
+
 .nb-quit {
   margin-block-start: var(--s-4);
 }
@@ -439,6 +539,12 @@
 @media (forced-colors: active) {
   .notebook {
     background-image: none;
+  }
+
+  /* Los estados de las opciones conservan lectura con colores del sistema. */
+  .choice-option.is-correct,
+  .match-option[aria-pressed="true"] {
+    border-color: Highlight;
   }
 
   /* Las barras de actividad usan colores del sistema, como la hebra. */

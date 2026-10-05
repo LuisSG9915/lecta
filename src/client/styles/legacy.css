@@ -40,6 +40,67 @@
   margin-block-start: var(--s-2);
 }
 
+/* Acepción seleccionable: botón sobrio dentro de .senses; la elegida
+   se marca con el borde bermellón y un lavado apenas visible. */
+.sense-option {
+  display: block;
+  inline-size: 100%;
+  min-height: 44px;
+  padding: var(--s-1) var(--s-2);
+  border: 1px solid transparent;
+  border-radius: var(--r-1);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+}
+
+.sense-option:hover {
+  border-color: var(--rule-strong);
+}
+
+.sense-option.is-selected {
+  border-color: var(--vermilion);
+  background: var(--vermilion-wash);
+}
+
+/* Encuesta: dos respuestas explícitas por palabra. */
+.cal-choices {
+  display: flex;
+  gap: var(--s-1);
+}
+
+.cal-choice {
+  min-height: 44px;
+  padding: var(--s-1) var(--s-2);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--r-1);
+  background: none;
+  color: inherit;
+  font: inherit;
+}
+
+.cal-choice.is-selected {
+  border-color: var(--vermilion);
+  background: var(--vermilion-wash);
+}
+
+/* Repaso en lectura: la pregunta «¿La recordaste…» bajo las acciones. */
+.reread {
+  margin-block-start: var(--s-4);
+}
+
+.reread .actions {
+  margin-block-start: var(--s-2);
+}
+
+@media (forced-colors: active) {
+  .sense-option.is-selected,
+  .cal-choice.is-selected {
+    border-color: Highlight;
+  }
+}
+
 .word-list {
   list-style: none;
   margin: 0;

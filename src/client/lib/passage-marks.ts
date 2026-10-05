@@ -5,7 +5,8 @@ import { foldWithMap } from "./book-search";
 // CSS Custom Highlight API (no toca el DOM, así no rompe las marcas
 // de vocabulario). Alternativa controlada: envolver nodos de texto
 // con <mark class="saved-passage">, sin tocar el interior de las
-// marcas de palabras guardadas.
+// marcas de palabras (guardadas o predichas) ni la tarjeta
+// «Antes de leer».
 
 const PASSAGE_CLASS = "saved-passage";
 const HIGHLIGHT_NAME = "lecta-passage";
@@ -97,7 +98,7 @@ function unwrapPassageMarks(root: HTMLElement) {
 }
 
 // Aplica las marcas de los pasajes visibles de esta sección. Llamar
-// después de markSavedWords: el fallback envuelve nodos vivos y las
+// después de markWords: el fallback envuelve nodos vivos y las
 // marcas de palabras deben existir ya para no pisarlas.
 export function applyPassageMarks(
   container: HTMLElement,
@@ -123,15 +124,21 @@ export function applyPassageMarks(
   }
 
   // Alternativa: envolver nodos de texto completos o parciales que no
-  // estén dentro de una marca de vocabulario. Un pasaje largo queda
-  // como varios <mark> contiguos — visualmente continuo.
+  // estén dentro de una marca de vocabulario ni de la tarjeta «Antes
+  // de leer». Un pasaje largo queda como varios <mark> contiguos —
+  // visualmente continuo.
   const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
   const nodes: Text[] = [];
   while (walker.nextNode()) nodes.push(walker.currentNode as Text);
 
   for (const range of ranges) {
     for (const node of nodes) {
-      if (!node.isConnected || node.parentElement?.closest(`.saved-word`))
+      if (
+        !node.isConnected ||
+        node.parentElement?.closest(
+          `.saved-word, .predicted-word, .section-preview-slot`,
+        )
+      )
         continue;
       if (!range.intersectsNode(node)) continue;
       const start = node === range.startContainer ? range.startOffset : 0;

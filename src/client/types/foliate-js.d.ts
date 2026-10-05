@@ -33,7 +33,9 @@ declare module "foliate-js/epub.js" {
     sections: EpubSection[];
     toc?: EpubTocItem[];
     pageList?: EpubTocItem[];
-    landmarks?: EpubTocItem[];
+    // Landmarks EPUB3 (nav, `type` desde epub:type) o `<guide>` EPUB2
+    // (`type` separado por espacios); en ambos la lista es string[].
+    landmarks?: (EpubTocItem & { type?: string[] })[];
     metadata?: Record<string, unknown>;
     rendition?: Record<string, unknown>;
     dir?: string;

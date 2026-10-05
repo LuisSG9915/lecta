@@ -2,6 +2,8 @@
 // (pnpm dev). Crea dos cuentas temporales y verifica que ni libros ni
 // vocabulario crucen entre usuarios, además de los 401 sin sesión.
 //   node scripts/smoke-auth.mjs  (o SMOKE_URL=http://127.0.0.1:5174 node …)
+import { createHash } from "node:crypto";
+
 const BASE = process.env.SMOKE_URL ?? "http://127.0.0.1:5174";
 const ts = Date.now();
 const USER_A = { email: `a-${ts}@smoke.test`, password: "prueba-smoke-1234", name: "A" };
@@ -41,8 +43,20 @@ const cookieB = await signUp(USER_B);
 console.log("Cuentas A y B creadas.");
 
 // --- libros ---
-const fakeEpub = Buffer.from("PK\x03\x04" + "x".repeat(100));
-const HASH_A = "a".repeat(64);
+// EPUB mínimo válido para el servidor: cabecera local ZIP con la
+// primera entrada "mimetype" sin comprimir. El hash debe corresponder
+// al contenido: el endpoint lo verifica.
+const epubHeader = Buffer.alloc(30);
+epubHeader.writeUInt32LE(0x04034b50, 0);
+epubHeader.writeUInt16LE(20, 4);
+epubHeader.writeUInt16LE(8, 26); // nombre "mimetype" (8 bytes), sin extra
+const fakeEpub = Buffer.concat([
+  epubHeader,
+  Buffer.from("mimetype"),
+  Buffer.from("application/epub+zip"),
+  Buffer.alloc(100),
+]);
+const HASH_A = createHash("sha256").update(fakeEpub).digest("hex");
 
 const upA = await api(`/api/books/${HASH_A}?name=libro-a.epub`, {
   method: "PUT", body: fakeEpub, cookie: cookieA, json: false,
@@ -85,12 +99,135 @@ check(
   `significado de A: "${wordA?.meaning}"`,
 );
 
+// --- posiciones de lectura ---
+const putPos = await api("/api/positions", {
+  method: "PUT", cookie: cookieA,
+  body: {
+    positions: [
+      { bookHash: "smoke", sectionIndex: 2, ratio: 0.5, progress: 0.4, updatedAt: Date.now() },
+    ],
+  },
+});
+check("A puede guardar su posición", putPos.status === 200, `status ${putPos.status}`);
+
+const posA = await api("/api/positions", { cookie: cookieA });
+const posSmoke = posA.data?.positions?.find((p) => p.bookHash === "smoke");
+check(
+  "La posición guardada se recupera",
+  posA.status === 200 && posSmoke?.sectionIndex === 2 && posSmoke?.progress === 0.4,
+  posSmoke ? `sección ${posSmoke.sectionIndex}, avance ${posSmoke.progress}` : "sin posición",
+);
+
+const posB = await api("/api/positions", { cookie: cookieB });
+check(
+  "B no ve la posición de A",
+  posB.status === 200 && !posB.data?.positions?.some((p) => p.bookHash === "smoke"),
+);
+
+// --- repasos del cuaderno ---
+const REVIEW_ID = `smoke-${ts}`;
+const putRev = await api("/api/reviews", {
+  method: "PUT", cookie: cookieA,
+  body: {
+    reviews: [
+      { id: REVIEW_ID, language: "es", form: "perenne", kind: "meaning", rating: "good", hints: 0, createdAt: Date.now() },
+    ],
+  },
+});
+check("A puede guardar un repaso", putRev.status === 200, `status ${putRev.status}`);
+
+const revA = await api("/api/reviews", { cookie: cookieA });
+check(
+  "El repaso guardado se recupera",
+  revA.status === 200 && revA.data?.reviews?.some((r) => r.id === REVIEW_ID),
+);
+
+const revB = await api("/api/reviews", { cookie: cookieB });
+check(
+  "B no ve el repaso de A",
+  revB.status === 200 && !revB.data?.reviews?.some((r) => r.id === REVIEW_ID),
+);
+
+// --- modelo de conocimiento ---
+const putKnow = await api("/api/knowledge", {
+  method: "PUT", cookie: cookieA,
+  body: {
+    rows: [
+      { language: "es", lemma: "perenne", known: true, source: "calibration", updatedAt: 1_000 },
+    ],
+  },
+});
+check("A puede guardar conocimiento", putKnow.status === 200, `status ${putKnow.status}`);
+
+const knowA = await api("/api/knowledge?language=es", { cookie: cookieA });
+const rowA = knowA.data?.rows?.find((r) => r.lemma === "perenne");
+check(
+  "La fila de conocimiento se recupera",
+  knowA.status === 200 && rowA?.known === true && rowA?.source === "calibration",
+);
+
+const knowB = await api("/api/knowledge", { cookie: cookieB });
+check(
+  "B no ve el conocimiento de A",
+  knowB.status === 200 && !knowB.data?.rows?.some((r) => r.lemma === "perenne"),
+);
+
+// Un sello más viejo no pisa la fila: updated_at arbitra como en vocab.
+await api("/api/knowledge", {
+  method: "PUT", cookie: cookieA,
+  body: {
+    rows: [
+      { language: "es", lemma: "perenne", known: false, source: "inferred", updatedAt: 500 },
+    ],
+  },
+});
+const knowAAfter = await api("/api/knowledge?language=es", { cookie: cookieA });
+const rowAAfter = knowAAfter.data?.rows?.find((r) => r.lemma === "perenne");
+check(
+  "El upsert con updatedAt menor no pisa la fila",
+  rowAAfter?.known === true && rowAAfter?.source === "calibration",
+  `known=${rowAAfter?.known} source=${rowAAfter?.source}`,
+);
+
+// --- muestra del catálogo para la calibración (pública) ---
+// Hasta 36 lemas, 6 por banda de zipf; la definición puede venir
+// null — el catálogo de dev casi no tiene acepciones cargadas.
+const sample = await api("/api/lexicon/sample?language=es");
+const sampleWords = Array.isArray(sample.data?.words) ? sample.data.words : [];
+// Se valida forma (lemas únicos, entre 1 y 36) y que el endpoint
+// haya encontrado algo; el conteo real depende de cuántos lemas con
+// zipf medido tenga el catálogo. En producción, con el catálogo
+// completo, debe acercarse a 36.
+check(
+  "GET /api/lexicon/sample devuelve la muestra de calibración",
+  sample.status === 200 &&
+    sampleWords.length >= 1 &&
+    sampleWords.length <= 36 &&
+    new Set(sampleWords.map((w) => w?.lemma)).size === sampleWords.length &&
+    sampleWords.every(
+      (w) => typeof w?.lemma === "string" && w.lemma.trim() !== "",
+    ),
+  `status ${sample.status}, ${sampleWords.length} palabras`,
+);
+const sampleLang = await api("/api/lexicon/sample?language=en");
+check(
+  "GET /api/lexicon/sample rechaza idioma sin muestra",
+  sampleLang.status === 400,
+  `status ${sampleLang.status}`,
+);
+
 // --- sin sesión ---
 for (const [name, path, method] of [
   ["GET /api/books", "/api/books", "GET"],
   ["PUT /api/books/:hash", `/api/books/${HASH_A}`, "PUT"],
   ["GET /api/vocab", "/api/vocab?lang=es", "GET"],
   ["PUT /api/vocab", "/api/vocab", "PUT"],
+  ["GET /api/positions", "/api/positions", "GET"],
+  ["PUT /api/positions", "/api/positions", "PUT"],
+  ["GET /api/reviews", "/api/reviews", "GET"],
+  ["PUT /api/reviews", "/api/reviews", "PUT"],
+  ["GET /api/knowledge", "/api/knowledge", "GET"],
+  ["PUT /api/knowledge", "/api/knowledge", "PUT"],
   ["POST /api/lexicon/enrich", "/api/lexicon/enrich", "POST"],
   ["POST /api/lexicon/enrich-batch", "/api/lexicon/enrich-batch", "POST"],
 ]) {

@@ -15,15 +15,35 @@ export default function Sheet({ label, onClose, children, side }: SheetProps) {
   useModalBehavior(ref, onClose);
   const docked =
     side === "left" ? " sheet--docked sheet--docked-left" : side === "right" ? " sheet--docked" : "";
+  // Cierra solo si el mismo puntero empezó y terminó sobre el fondo:
+  // arrastrar desde dentro o soltar fuera tras empezar dentro no cierra.
+  const downOnScrim = useRef(false);
   return (
     <div
-      ref={ref}
-      className={`sheet${docked}`}
-      role="dialog"
-      aria-modal="true"
-      aria-label={label}
+      className="sheet-scrim"
+      onPointerDown={(event) => {
+        downOnScrim.current = event.target === event.currentTarget;
+      }}
+      onPointerUp={(event) => {
+        if (downOnScrim.current && event.target === event.currentTarget) {
+          onClose();
+        }
+        downOnScrim.current = false;
+      }}
+      onPointerCancel={() => {
+        downOnScrim.current = false;
+      }}
     >
-      {children}
+      <div
+        ref={ref}
+        className={`sheet${docked}`}
+        role="dialog"
+        aria-modal="true"
+        aria-label={label}
+        tabIndex={-1}
+      >
+        {children}
+      </div>
     </div>
   );
 }

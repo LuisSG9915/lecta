@@ -1,4 +1,26 @@
-import type { SavedAnnotation, SavedInterval, SavedWord } from "./idb";
+import {
+  listAllReviews,
+  listAnnotations,
+  listIntervals,
+  listKnowledge,
+  listPositions,
+  listReadingDays,
+  listReadingEvents,
+  listSavedWords,
+  listStoredBooks,
+  listSessionKeys,
+  loadSessionValue,
+  type KnownWord,
+  type ReadingEvent,
+  type SavedAnnotation,
+  type SavedBookPosition,
+  type SavedInterval,
+  type SavedReview,
+  type SavedWord,
+  type StoredBook,
+} from "./idb";
+import { USE_AI_KEY } from "./ai-pref";
+import { HISTORY_KEY } from "./reading-events";
 import { timeByDay } from "./reading-activity";
 
 // Campos que empiezan con =, +, -, @ se interpretan como fórmulas en
@@ -124,4 +146,138 @@ export function activityToCsv(
   }
   rows.sort();
   return "﻿" + [header.map(csvField).join(","), ...rows].join("\r\n");
+}
+
+// ---------- Respaldo completo (JSON) ----------
+
+// Claves del almacén «session» que forman parte del respaldo. Las
+// escriben vocab.ts, reading-sync.ts, positions-sync.ts, Reader.tsx y
+// ai-pref.ts; se listan a mano porque el store es clave-valor abierto
+// y no hay un registro central. «readingDays» también vive ahí pero ya
+// sale como sección propia (listReadingDays).
+const BACKUP_SESSION_KEYS = [
+  "latestBookHash",
+  "vocabLastSyncAt",
+  "annotationsLastSyncAt",
+  "activityLastSyncAt",
+  "reviewsLastSyncAt",
+  "positionsLastSyncAt",
+  "knowledgeLastSyncAt",
+  "suggestionLevel",
+  "readingWpm",
+  "calibrationDone",
+  USE_AI_KEY,
+  HISTORY_KEY,
+] as const;
+
+// Además de la lista explícita salen por prefijo los registros del
+// ciclo del lector: elección de inicio y borrador/resultado de cada
+// preparación (formatos congelados en preparation.ts). Sellos de sync
+// y ajustes internos fuera de la lista no se respaldan.
+const BACKUP_SESSION_PREFIXES = ["bookStart:v1:", "preparation:v1:"] as const;
+
+// Lista definitiva de claves de session a respaldar: las explícitas
+// más las que casen por prefijo, sin duplicadas.
+export function sessionKeysForBackup(allKeys: string[]): string[] {
+  const keys = new Set<string>(BACKUP_SESSION_KEYS);
+  for (const key of allKeys) {
+    if (BACKUP_SESSION_PREFIXES.some((prefix) => key.startsWith(prefix)))
+      keys.add(key);
+  }
+  return [...keys];
+}
+
+// El respaldo lleva solo los metadatos del libro: `data` y `cover` son
+// blobs que no caben en JSON y tampoco hacen falta — con cuenta el
+// archivo se re-sube solo y la portada se regenera al abrirlo.
+export type BackupBookMeta = Omit<StoredBook, "data" | "cover">;
+
+export type BackupData = {
+  words: SavedWord[];
+  reviews: SavedReview[];
+  annotations: SavedAnnotation[];
+  activity: SavedInterval[];
+  positions: SavedBookPosition[];
+  knowledge: KnownWord[];
+  books: BackupBookMeta[];
+  readingDays: number[];
+  // Trayecto local (diagnóstico): entra al respaldo para poder
+  // revisar y mejorar las sugerencias; no se sincroniza al servidor.
+  events: ReadingEvent[];
+  session: Record<string, string>;
+};
+
+// Función pura: recibe los datos ya leídos y devuelve el JSON con
+// versión, para poder interpretarlo si el formato cambia más adelante.
+export function buildBackup(data: BackupData, exportedAt = Date.now()): string {
+  return JSON.stringify(
+    {
+      version: 1,
+      exportedAt: new Date(exportedAt).toISOString(),
+      words: data.words,
+      reviews: data.reviews,
+      annotations: data.annotations,
+      activity: data.activity,
+      positions: data.positions,
+      knowledge: data.knowledge,
+      books: data.books,
+      readingDays: data.readingDays,
+      events: data.events,
+      session: data.session,
+    },
+    null,
+    2,
+  );
+}
+
+// Reúne todo lo del dispositivo y lo descarga como
+// lecta-respaldo-<fecha>.json (Cuenta → «Descargar mis datos»).
+export async function downloadBackup() {
+  const [words, reviews, annotations, activity, positions, knowledge, books, readingDays, events] =
+    await Promise.all([
+      listSavedWords(),
+      listAllReviews(),
+      listAnnotations(),
+      listIntervals(),
+      listPositions(),
+      listKnowledge(),
+      listStoredBooks(),
+      listReadingDays(),
+      listReadingEvents(),
+    ]);
+  const sessionPairs = await Promise.all(
+    sessionKeysForBackup(await listSessionKeys()).map(async (key) => {
+      const value = await loadSessionValue(key);
+      return value === undefined ? null : ([key, value] as const);
+    }),
+  );
+  const session = Object.fromEntries(
+    sessionPairs.filter((pair) => pair !== null),
+  );
+  const booksMeta: BackupBookMeta[] = books.map((book) => ({
+    hash: book.hash,
+    name: book.name,
+    addedAt: book.addedAt,
+    title: book.title,
+    author: book.author,
+    language: book.language,
+    sectionCount: book.sectionCount,
+    metaVersion: book.metaVersion,
+  }));
+  downloadText(
+    `lecta-respaldo-${new Date().toISOString().slice(0, 10)}.json`,
+    buildBackup({
+      words,
+      reviews,
+      annotations,
+      activity,
+      positions,
+      knowledge,
+      books: booksMeta,
+      readingDays,
+      events,
+      session,
+    }),
+    "application/json",
+  );
 }

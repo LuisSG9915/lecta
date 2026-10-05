@@ -9,6 +9,9 @@ import {
 
 const stamp = (word: SavedWord) => word.updatedAt ?? word.savedAt;
 const LAST_SYNC_KEY = "vocabLastSyncAt";
+// El servidor acota cada PUT a 500 palabras: más allá hay que partir
+// el envío en lotes o los registros sobrantes se pierden sin aviso.
+const WORD_BATCH_LIMIT = 500;
 
 // Empuja palabras al servidor cuando hay sesión. Devuelve false si el
 // envío falló o no hubo respuesta válida: quien llama decide cómo
@@ -16,12 +19,15 @@ const LAST_SYNC_KEY = "vocabLastSyncAt";
 export async function pushWordsToServer(words: SavedWord[]): Promise<boolean> {
   if (!getActiveUserId() || !words.length) return true;
   try {
-    const response = await fetch("/api/vocab", {
-      method: "PUT",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ words }),
-    });
-    return response.ok;
+    for (let start = 0; start < words.length; start += WORD_BATCH_LIMIT) {
+      const response = await fetch("/api/vocab", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ words: words.slice(start, start + WORD_BATCH_LIMIT) }),
+      });
+      if (!response.ok) return false;
+    }
+    return true;
   } catch {
     return false;
   }
@@ -84,5 +90,5 @@ export async function syncSavedWords() {
   // Solo sellamos la fecha cuando todos los idiomas sincronizaron:
   // una sincronización parcial no cuenta como «al día».
   if (allOk) await saveSessionValue(LAST_SYNC_KEY, String(Date.now()));
-  return pulled;
+  return allOk ? pulled : null;
 }

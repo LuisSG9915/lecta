@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Card } from "./fsrs";
-import { markLevel, savedFormLevels } from "./word-level";
+import { dominatedLemmas, markLevel, savedFormLevels } from "./word-level";
 
 const card = (s: number, reps = 0) => ({ stability: s, reps }) as unknown as Card;
 
@@ -45,5 +45,29 @@ describe("savedFormLevels", () => {
   it("gana el nivel menos aprendido para la misma forma", () => {
     const levels = savedFormLevels([word("casa", 30), word("Casa", 1)]);
     expect(levels.get("casa")).toBe("new");
+  });
+});
+
+describe("dominatedLemmas", () => {
+  const saved = (form: string, s: number, reps: number, lemma?: string) =>
+    ({ form, lemma, language: "es", key: form, savedAt: 0, card: card(s, reps) }) as const;
+
+  it("devuelve el lemma en minúsculas de las dominadas", () => {
+    expect(dominatedLemmas([saved("Perenne", 120, 3, "PERENNE")])).toEqual(["perenne"]);
+  });
+
+  it("usa la forma cuando no hay lemma", () => {
+    expect(dominatedLemmas([saved("Fácil", 200, 5)])).toEqual(["fácil"]);
+  });
+
+  it("omite las nunca repasadas y las que siguen marcándose", () => {
+    expect(dominatedLemmas([saved("casa", 120, 0)])).toEqual([]);
+    expect(dominatedLemmas([saved("casa", 30, 4)])).toEqual([]);
+    expect(dominatedLemmas([saved("casa", 0, 0)])).toEqual([]);
+  });
+
+  it("no repite un lema compartido por varias formas", () => {
+    const words = [saved("gato", 120, 2), saved("gatas", 150, 3, "Gato")];
+    expect(dominatedLemmas(words)).toEqual(["gato"]);
   });
 });

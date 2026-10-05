@@ -3,7 +3,11 @@
    documento, no en una caja interna. */
 
 .reader {
+  position: relative;
   min-height: 100svh;
+  /* La sonda de medida (65ch) es más ancha que un móvil: sin este
+     corte desborda el documento y el viewport entero se desplaza. */
+  overflow-x: clip;
 }
 
 /* ---------- Barra superior ---------- */
@@ -635,6 +639,41 @@ mark.saved-passage {
   }
 }
 
+/* ---------- Aviso «Palabras del capítulo» ---------- */
+
+/* Franja fija en la zona de controles: vive fuera del flujo del
+   texto, así que aparecer llena de contenido jamás mueve la lectura.
+   Lado opuesto al chip de retorno para que no se pisen. */
+.reader-prep {
+  position: fixed;
+  z-index: 15;
+  inset-inline-start: var(--s-4);
+  inset-block-end: calc(3.5rem + env(safe-area-inset-bottom));
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  max-inline-size: min(26rem, calc(100vw - var(--s-4) * 2));
+  padding: var(--s-1) var(--s-2) var(--s-1) var(--s-4);
+  border: var(--border);
+  border-radius: var(--r-pill, 999px);
+  background: var(--paper-raised);
+  box-shadow: var(--shadow-sheet);
+  font-size: var(--fs-sm);
+  animation: fade-in var(--dur-2) var(--ease-out);
+}
+
+.reader-prep-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink-soft);
+}
+
+.reader-prep-open {
+  flex: none;
+}
+
 /* ---------- «Volver a donde estaba» ---------- */
 
 .reader-return {
@@ -852,4 +891,146 @@ mark.saved-passage {
   .reader-end-link {
     font-size: var(--fs-base);
   }
+}
+
+/* ---------- Tarjeta «Antes de leer» y marcas predichas ---------- */
+
+/* El anfitrión vive dentro del flujo del texto; vacío no ocupa nada. */
+.section-preview-slot {
+  display: block;
+}
+
+mark.predicted-word {
+  background: none;
+  color: inherit;
+  /* Misma idea de subrayado tenue que saved-word, pero punteado y sin
+     cambiar el color del texto ni usar fondo de marca. */
+  text-decoration-line: underline;
+  text-decoration-style: dotted;
+  text-decoration-color: var(--ink-faint);
+  text-underline-offset: 0.18em;
+  cursor: pointer;
+}
+
+@media (forced-colors: active) {
+  mark.predicted-word {
+    background: Mark;
+    color: MarkText;
+    text-decoration: underline;
+  }
+}
+
+.section-preview {
+  margin-block-end: var(--s-6);
+  padding: var(--s-4) var(--s-5);
+  border: var(--border);
+  border-radius: var(--r-2);
+  background: var(--paper-raised);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-ui);
+}
+
+.section-preview .meta {
+  margin: 0;
+}
+
+.section-preview-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-2) var(--s-3);
+}
+
+.section-preview-title {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.section-preview-controls {
+  display: flex;
+  gap: var(--s-2);
+}
+
+.section-preview-controls .btn--quiet,
+.section-preview-actions .btn--quiet,
+.section-preview-foot .btn--quiet {
+  min-height: 2.75rem;
+}
+
+.section-preview-list {
+  list-style: none;
+  margin: var(--s-3) 0 0;
+  padding: 0;
+}
+
+.section-preview-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-1) var(--s-3);
+  padding-block: var(--s-2);
+  border-top: var(--border);
+  break-inside: avoid;
+}
+
+.section-preview-open {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 2.75rem;
+  padding: var(--s-1) 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.section-preview-open strong {
+  font-family: var(--font-book);
+  font-size: var(--fs-md);
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.section-preview-open:hover strong {
+  color: var(--vermilion);
+}
+
+.section-preview-def {
+  color: var(--ink-soft);
+}
+
+.section-preview-actions {
+  display: flex;
+  flex: none;
+  gap: var(--s-1);
+}
+
+.section-preview-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s-2) var(--s-3);
+  margin-block-start: var(--s-3);
+}
+
+/* Hoja de preparación (T16): mismos tokens que la tarjeta histórica. */
+
+.section-preview-group-title {
+  margin: var(--s-4) 0 var(--s-1);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--ink-soft);
+}
+
+.section-preview-item .cal-choices {
+  flex: none;
 }

@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { activityToCsv, passagesToCsv, wordsToCsv, wordsToAnkiTsv } from "./export";
+import {
+  activityToCsv,
+  buildBackup,
+  passagesToCsv,
+  sessionKeysForBackup,
+  wordsToCsv,
+  wordsToAnkiTsv,
+} from "./export";
 import type { SavedAnnotation, SavedInterval, SavedWord } from "./idb";
 
 const bookName = (hash: string | undefined) =>
@@ -116,5 +123,112 @@ describe("activityToCsv", () => {
       "UTC",
     );
     expect(csv.split("\r\n")).toHaveLength(1);
+  });
+});
+
+describe("sessionKeysForBackup", () => {
+  it("incluye preferencias, calibración y registros del ciclo por libro", () => {
+    const keys = sessionKeysForBackup([
+      "bookStart:v1:b1",
+      "preparation:v1:b1:cap1",
+      "preparation:v1:b2:cap9",
+      "unrelated:key",
+      "authState",
+    ]);
+    for (const expected of [
+      "readingWpm",
+      "suggestionLevel",
+      "calibrationDone",
+      "useAi",
+      "bookStart:v1:b1",
+      "preparation:v1:b1:cap1",
+      "preparation:v1:b2:cap9",
+    ])
+      expect(keys).toContain(expected);
+  });
+
+  it("no respalda claves arbitrarias ni duplica", () => {
+    const keys = sessionKeysForBackup(["readingWpm", "unrelated:key"]);
+    expect(keys).not.toContain("unrelated:key");
+    expect(keys.filter((k) => k === "readingWpm")).toHaveLength(1);
+  });
+});
+
+describe("buildBackup", () => {
+  it("genera JSON parseable con todas las secciones y las palabras pasadas", () => {
+    const json = buildBackup(
+      {
+        words: [{ ...base, meaning: "hogar", bookHash: "b1" }],
+        reviews: [
+          {
+            id: "r1",
+            language: "es",
+            form: "casa",
+            kind: "meaning",
+            rating: "good",
+            hints: 0,
+            createdAt: 1_700_000_000_000,
+          },
+        ],
+        annotations: [],
+        activity: [],
+        positions: [
+          {
+            bookHash: "b1",
+            sectionIndex: 2,
+            scrollTop: 0,
+            ratio: 0.4,
+            updatedAt: 1_700_000_000_000,
+          },
+        ],
+        knowledge: [
+          {
+            key: "es:perenne",
+            language: "es",
+            lemma: "perenne",
+            known: true,
+            source: "calibration",
+            updatedAt: 1_700_000_000_000,
+          },
+        ],
+        books: [{ hash: "b1", name: "cien.epub", addedAt: 1, title: "Cien años" }],
+        readingDays: [1_699_200_000_000],
+        events: [],
+        session: { useAi: "1", readingWpm: "240" },
+      },
+      1_700_000_000_000,
+    );
+    const parsed = JSON.parse(json) as Record<string, unknown>;
+    expect(parsed.version).toBe(1);
+    expect(parsed.exportedAt).toBe("2023-11-14T22:13:20.000Z");
+    for (const key of [
+      "words",
+      "reviews",
+      "annotations",
+      "activity",
+      "positions",
+      "knowledge",
+      "books",
+      "readingDays",
+      "events",
+      "session",
+    ])
+      expect(parsed).toHaveProperty(key);
+    expect(parsed.knowledge).toEqual([
+      {
+        key: "es:perenne",
+        language: "es",
+        lemma: "perenne",
+        known: true,
+        source: "calibration",
+        updatedAt: 1_700_000_000_000,
+      },
+    ]);
+    expect(parsed.words).toEqual([{ ...base, meaning: "hogar", bookHash: "b1" }]);
+    expect((parsed.session as Record<string, string>).useAi).toBe("1");
+    // El libro viaja solo como metadatos: nunca blobs (data/cover).
+    expect(parsed.books).toEqual([
+      { hash: "b1", name: "cien.epub", addedAt: 1, title: "Cien años" },
+    ]);
   });
 });

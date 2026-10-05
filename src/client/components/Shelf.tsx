@@ -3,6 +3,7 @@ import {
   listPositions,
   listReadingDays,
   listSavedWords,
+  listStoredBooks,
   loadLatestBookHash,
   updateBookMeta,
   type SavedBookPosition,
@@ -13,10 +14,19 @@ import { relativeDay } from "../lib/relative-time";
 import { loadActivityHidden } from "../lib/settings";
 import BookCover from "./BookCover";
 
+// Ítem de la estantería: lo que hace falta para dibujar la tarjeta,
+// sin el archivo. remoteOnly marca los que existen en la cuenta pero
+// no en este dispositivo (se descargan al abrirlos); pendingUpload
+// marca los que aún tienen una subida encolada.
+export type ShelfItem = Pick<
+  StoredBook,
+  "hash" | "name" | "addedAt" | "title" | "author" | "cover" | "sectionCount" | "language"
+> & { remoteOnly?: boolean; pendingUpload?: boolean };
+
 type ShelfProps = {
-  library: StoredBook[];
+  library: ShelfItem[];
   checking: boolean;
-  onOpen: (book: StoredBook) => void;
+  onOpen: (book: ShelfItem) => void;
   onRemove: (hash: string) => void;
   onAdd: (file: File) => void;
   onLibraryChange: () => void;
@@ -79,12 +89,15 @@ export default function Shelf({ library, checking, onOpen, onRemove, onAdd, onLi
   }, [library]);
 
   // Rellena título, autor y portada de los libros que aún no los tienen.
-  // Uno a la vez para no competir con la lectura.
+  // Uno a la vez para no competir con la lectura. Se leen los registros
+  // completos del almacén (ShelfItem no carga el archivo); los ítems
+  // «solo en la nube» no están guardados aquí y quedan fuera solos —
+  // sus metadatos se leen cuando se descargan.
   useEffect(() => {
     let cancelled = false;
-    const pending = library.filter((book) => !book.metaVersion).slice(0, 5);
-    if (!pending.length) return;
     void (async () => {
+      const stored = await listStoredBooks().catch(() => []);
+      const pending = stored.filter((book) => !book.metaVersion).slice(0, 5);
       for (const book of pending) {
         const meta = await readBookMeta(book.data);
         if (cancelled) return;
@@ -245,7 +258,10 @@ export default function Shelf({ library, checking, onOpen, onRemove, onAdd, onLi
                 const total = book.sectionCount ?? 0;
                 const chapter = position ? position.sectionIndex : -1;
                 return (
-                  <li key={book.hash} className="shelf-book">
+                  <li
+                    key={book.hash}
+                    className={`shelf-book${book.remoteOnly ? " shelf-item--remote" : ""}`}
+                  >
                     <button
                       type="button"
                       className="shelf-book-cover"
@@ -277,9 +293,13 @@ export default function Shelf({ library, checking, onOpen, onRemove, onAdd, onLi
                       </span>
                     ) : null}
                     <span className="shelf-book-meta meta">
-                      {position && total
-                        ? `${Math.round(progressOf(position, total) * 100)}% leído`
-                        : "Sin empezar"}
+                      {book.remoteOnly
+                        ? "En la nube"
+                        : `${
+                            position && total
+                              ? `${Math.round(progressOf(position, total) * 100)}% leído`
+                              : "Sin empezar"
+                          }${book.pendingUpload ? " · Pendiente de subir" : ""}`}
                     </span>
                     <button
                       type="button"
@@ -289,6 +309,11 @@ export default function Shelf({ library, checking, onOpen, onRemove, onAdd, onLi
                     >
                       {confirmDelete === book.hash ? "¿Seguro?" : "Quitar"}
                     </button>
+                    {confirmDelete === book.hash ? (
+                      <p className="meta">
+                        Solo se quita el libro; tus palabras se conservan.
+                      </p>
+                    ) : null}
                   </li>
                 );
               })}

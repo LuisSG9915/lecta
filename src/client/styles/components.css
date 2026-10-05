@@ -126,7 +126,46 @@
   border-color: var(--vermilion);
 }
 
+/* ---------- Elección de inicio de libro ---------- */
+
+.bookstart-options {
+  display: grid;
+  gap: var(--s-2);
+  margin-block: var(--s-3);
+}
+
+.bookstart-option {
+  display: flex;
+  gap: var(--s-2);
+  align-items: center;
+  min-height: 44px;
+}
+
+.bookstart-pick {
+  display: grid;
+  gap: var(--s-2);
+  margin-block: var(--s-2);
+}
+
+.bookstart-pick select {
+  min-height: 44px;
+  padding: var(--s-2) var(--s-3);
+  border: var(--border);
+  border-radius: var(--r-1);
+  background: var(--paper-sunken);
+  color: var(--ink);
+}
+
 /* ---------- Hoja inferior (móvil) y panel ---------- */
+
+/* Fondo de la hoja: tocarlo cierra, igual que el del diálogo. */
+.sheet-scrim {
+  position: fixed;
+  z-index: 20;
+  inset: 0;
+  background: var(--scrim);
+  animation: fade-in var(--dur-2) var(--ease-out);
+}
 
 .sheet {
   position: fixed;
@@ -139,6 +178,7 @@
   display: flex;
   flex-direction: column;
   overflow: auto;
+  overscroll-behavior: contain;
   border: var(--border);
   border-bottom: none;
   border-radius: var(--r-sheet) var(--r-sheet) 0 0;
@@ -146,17 +186,6 @@
   box-shadow: var(--shadow-sheet);
   padding: var(--s-4) var(--s-5) calc(var(--s-5) + env(safe-area-inset-bottom));
   animation: sheet-up var(--dur-3) var(--ease-out);
-}
-
-.sheet::before {
-  content: "";
-  align-self: center;
-  inline-size: 2.5rem;
-  block-size: 3px;
-  border-radius: 2px;
-  background: var(--rule-strong);
-  margin-bottom: var(--s-3);
-  flex: none;
 }
 
 @keyframes sheet-up {
@@ -186,8 +215,10 @@
     animation: dock-in var(--dur-3) var(--ease-out);
   }
 
-  .sheet--docked::before {
-    display: none;
+  /* Acoplada al margen el fondo no oscurece la lectura, pero sigue
+     capturando el toque exterior para cerrar. */
+  .sheet-scrim {
+    background: transparent;
   }
 
   /* El índice se acopla al margen izquierdo como panel flotante;
@@ -220,20 +251,36 @@
   }
 }
 
+/* Encabezado pegajoso: el cierre sigue visible aunque el contenido
+   de la hoja se desplace. El sangrado negativo cubre el relleno de
+   la hoja para que nada se asome detrás al hacer scroll. */
 .sheet-head {
+  position: sticky;
+  top: calc(-1 * var(--s-4));
+  z-index: 1;
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: var(--s-4);
-  margin-bottom: var(--s-3);
+  margin: calc(-1 * var(--s-4)) calc(-1 * var(--s-5)) var(--s-3);
+  padding: var(--s-4) var(--s-5) var(--s-2);
+  background: var(--paper-raised);
 }
 
 .sheet-title {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
   font-family: var(--font-book);
   font-weight: 500;
   font-size: var(--fs-xl);
   line-height: var(--lh-display);
   color: var(--ink);
+}
+
+/* El botón de cierre conserva área táctil completa y no se encoge. */
+.sheet-head button {
+  flex: none;
+  min-block-size: 2.75rem;
 }
 
 /* ---------- Diálogo centrado ---------- */
@@ -253,6 +300,7 @@
   width: min(26rem, 100%);
   max-height: min(38rem, 85vh);
   overflow: auto;
+  overscroll-behavior: contain;
   border: var(--border);
   border-radius: var(--r-2);
   background: var(--paper-raised);
@@ -316,6 +364,18 @@
 
 .dots .dot--current {
   background: var(--vermilion-bright);
+}
+
+/* ---------- Cuenta: privacidad y datos ---------- */
+
+/* Bloque final del diálogo de Cuenta: separado de las acciones de
+   sesión con una raya, y con el aire propio de las filas setting-row. */
+.account-privacy {
+  margin-block-start: var(--s-5);
+  padding-block-start: var(--s-4);
+  border-top: var(--border);
+  display: grid;
+  gap: var(--s-2);
 }
 
 /* ---------- Línea de estado ---------- */

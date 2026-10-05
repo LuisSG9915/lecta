@@ -2,8 +2,10 @@ import type { CSSProperties } from "react";
 import { coverPalette, coverUrlFor, displayTitle } from "../lib/cover";
 import type { StoredBook } from "../lib/idb";
 
+// Solo los campos que la portada usa: la estantería también pasa
+// ítems «solo en la nube», que no tienen el archivo del libro.
 type BookCoverProps = {
-  book: StoredBook;
+  book: Pick<StoredBook, "hash" | "name" | "title" | "author" | "cover">;
   className?: string;
 };
 

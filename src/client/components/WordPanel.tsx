@@ -1,14 +1,21 @@
 import { useEffect, useState } from "react";
 import type { LexiconEntry } from "../lib/lexicon";
-import { enrichWord, lookupWord } from "../lib/lexicon";
+import { enrichWord, lookupWord, reportSense } from "../lib/lexicon";
+import { Rating, scheduleReview } from "../lib/fsrs";
 import {
   loadSavedWord,
   removeSavedWord,
-  saveWord,
+  saveKnowledge,
+  saveWordWithKnowledge,
+  updateSavedWord,
   wordKey,
+  type KnownWord,
   type SavedWord,
 } from "../lib/idb";
 import { pushWordsToServer } from "../lib/vocab";
+import { pushKnowledgeToServer } from "../lib/reading-sync";
+import { recordReview } from "../lib/reviews";
+import { loadUseAi } from "../lib/ai-pref";
 import Sheet from "./Sheet";
 
 type WordPanelProps = {
@@ -19,6 +26,14 @@ type WordPanelProps = {
   onClose: () => void;
   onSaved: (word: SavedWord) => void;
   onRemoved?: (word: SavedWord) => void;
+  // Evidencia persistida (guardada → «saved», «Ya la conocía» →
+  // «declared»): quien lleva el perfil la aplica al modelo y
+  // remarca el texto sin esperar la próxima carga. `kind` conserva
+  // la acción real aunque la fusión haya mantenido una fila previa.
+  onKnowledgeChanged?: (
+    row: KnownWord,
+    context: { form: string; kind: "saved" | "declared" },
+  ) => void;
 };
 
 type LookupState =
@@ -58,30 +73,67 @@ export default function WordPanel({
   onClose,
   onSaved,
   onRemoved,
+  onKnowledgeChanged,
 }: WordPanelProps) {
   const [lookup, setLookup] = useState<LookupState>({ kind: "loading" });
   const [savedEntry, setSavedEntry] = useState<SavedWord | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [syncNote, setSyncNote] = useState(false);
+  // Acepción elegida dentro de la ficha (índice de entrada + acepción).
+  const [selected, setSelected] = useState({ entryIndex: 0, senseIndex: 0 });
+  const [report, setReport] = useState<"idle" | "sending" | "done" | "error">("idle");
+  const [reread, setReread] = useState<"idle" | "busy" | "done">("idle");
+  // Preferencia «Usar IA» (Cuenta): una sola lectura por apertura de
+  // la ficha. Con ella apagada «Definir con IA» ni se ofrece; el
+  // catálogo (lookupWord) no usa IA y sigue igual.
+  const [useAi, setUseAi] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
-    void loadSavedWord(language, word).then((stored) => {
-      if (!cancelled && stored) setSavedEntry(stored);
+    void loadUseAi().then((on) => {
+      if (!cancelled) setUseAi(on);
     });
-    void lookupWord(word, language).then((result) => {
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const [stored, result] = await Promise.all([
+        loadSavedWord(language, word),
+        lookupWord(word, language),
+      ]);
       if (cancelled) return;
+      if (stored) setSavedEntry(stored);
+      // Ficha nueva: la acepción elegida vuelve a la primera.
+      setSelected({ entryIndex: 0, senseIndex: 0 });
+      setReport("idle");
       if (!result.ok) setLookup({ kind: "error", message: result.error });
       else if (!result.found) setLookup({ kind: "notFound" });
       else setLookup({ kind: "found", entries: result.entries });
-    });
+      // Consultar es un acto neutral: no deja evidencia de
+      // conocimiento (el trayecto sí la anota como consulta).
+    })();
     return () => {
       cancelled = true;
     };
   }, [word, language]);
 
   const primary = lookup.kind === "found" ? lookup.entries[0] : undefined;
+  const totalSenses =
+    lookup.kind === "found"
+      ? lookup.entries.reduce((count, entry) => count + entry.senses.length, 0)
+      : 0;
+  const multiSense = totalSenses > 1;
+
+  // Entrada y acepción elegidas (cae a la primera si el índice quedó
+  // fuera de rango tras un nuevo resultado).
+  const entries = lookup.kind === "found" ? lookup.entries : [];
+  const chosenEntry = entries[selected.entryIndex] ?? entries[0];
+  const chosenSense = chosenEntry?.senses[selected.senseIndex] ?? chosenEntry?.senses[0];
 
   const enrich = async () => {
     setLookup({ kind: "enriching" });
@@ -90,29 +142,84 @@ export default function WordPanel({
     else setLookup({ kind: "found", entries: result.entries });
   };
 
+  // Guarda la palabra con la acepción elegida junto a su evidencia
+  // «todavía no la sé» en una sola transacción: nunca queda la
+  // palabra sin la señal para el modelo (ni al revés).
+  const persist = async () => {
+    const { word: entry, knowledge } = await saveWordWithKnowledge({
+      word: {
+        form: word,
+        lemma: chosenEntry?.lemma,
+        pos: chosenEntry?.pos,
+        meaning: chosenSense?.definition,
+        senseEntryId: chosenEntry?.entryId,
+        senseOrder: chosenSense?.senseOrder,
+        language,
+        context,
+        bookHash,
+      },
+      knowledge: {
+        language,
+        lemma: (chosenEntry?.lemma ?? word).toLowerCase(),
+        known: false,
+        source: "saved",
+      },
+    });
+    setSavedEntry(entry);
+    onSaved(entry);
+    if (knowledge) {
+      onKnowledgeChanged?.(knowledge, { form: word, kind: "saved" });
+      void pushKnowledgeToServer([knowledge]);
+    }
+    // La palabra ya está a salvo localmente; si el envío falla lo
+    // decimos sin fingir sincronización.
+    const pushed = await pushWordsToServer([entry]);
+    if (!pushed) setSyncNote(true);
+  };
+
   const save = async () => {
     if (saving) return;
     setSaving(true);
     setSaveError("");
     setSyncNote(false);
     try {
-      const entry = await saveWord({
-        form: word,
-        lemma: primary?.lemma,
-        pos: primary?.pos,
-        meaning: primary?.senses[0]?.definition,
-        language,
-        context,
-        bookHash,
-      });
-      setSavedEntry(entry);
-      onSaved(entry);
-      // La palabra ya está a salvo localmente; si el envío falla lo
-      // decimos sin fingir sincronización.
-      const pushed = await pushWordsToServer([entry]);
-      if (!pushed) setSyncNote(true);
+      await persist();
     } catch {
       setSaveError("No se pudo guardar la palabra. Intenta de nuevo.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // «Ya la conocía»: la palabra NO va al cuaderno ni crea tarjeta —
+  // solo deja la evidencia declarada (alimenta el perfil léxico) y
+  // su anotación en el historial; la ficha se cierra en el acto.
+  const declareKnown = async () => {
+    if (saving) return;
+    setSaving(true);
+    setSaveError("");
+    setSyncNote(false);
+    try {
+      const lemma = (chosenEntry?.lemma ?? word).toLowerCase();
+      const row = await saveKnowledge({
+        language,
+        lemma,
+        known: true,
+        source: "declared",
+      });
+      void pushKnowledgeToServer([row]);
+      void recordReview({
+        language,
+        form: word,
+        kind: "declared",
+        rating: "known",
+      }).catch(() => {
+        /* el historial es auxiliar; no deshace la marca */
+      });
+      onKnowledgeChanged?.(row, { form: word, kind: "declared" });
+      onClose();
+    } catch {
+      setSaveError("No se pudo guardar la marca. Intenta de nuevo.");
     } finally {
       setSaving(false);
     }
@@ -126,6 +233,7 @@ export default function WordPanel({
       const tombstone = await removeSavedWord(wordKey(language, word));
       if (tombstone) {
         setSavedEntry(null);
+        setReread("idle");
         onRemoved?.(tombstone);
         void pushWordsToServer([tombstone]);
       }
@@ -133,6 +241,42 @@ export default function WordPanel({
       setSaveError("No se pudo quitar la palabra. Intenta de nuevo.");
     } finally {
       setSaving(false);
+    }
+  };
+
+  // Reporta que la acepción elegida no corresponde a esta oración.
+  // Requiere entryId y senseOrder del catálogo: sin ellos no hay fila
+  // que marcar y el botón ni se muestra.
+  const reportSelected = async () => {
+    if (chosenEntry?.entryId == null || chosenSense?.senseOrder == null) return;
+    if (report === "sending") return;
+    setReport("sending");
+    const result = await reportSense(chosenEntry.entryId, chosenSense.senseOrder);
+    setReport(result.ok ? "done" : "error");
+  };
+
+  // ¿La recordó al verla marcada? Actualiza la tarjeta como un repaso
+  // más: Sí = Bien, No = Otra vez.
+  const markReread = async (remembered: boolean) => {
+    if (!savedEntry || reread !== "idle") return;
+    setReread("busy");
+    try {
+      const card = scheduleReview(savedEntry.card, remembered ? Rating.Good : Rating.Again);
+      const stored = await updateSavedWord({ ...savedEntry, card });
+      setSavedEntry(stored);
+      void pushWordsToServer([stored]);
+      void recordReview({
+        language,
+        form: word,
+        kind: "reread",
+        rating: remembered ? "good" : "again",
+      }).catch(() => {
+        /* el historial es auxiliar; no deshace el repaso */
+      });
+      setReread("done");
+    } catch {
+      setSaveError("No se pudo anotar el repaso. Intenta de nuevo.");
+      setReread("idle");
     }
   };
 
@@ -182,25 +326,81 @@ export default function WordPanel({
       {lookup.kind === "notFound" ? (
         <>
           <p className="meta">Aún no está en el catálogo.</p>
-          <button type="button" className="btn" onClick={() => void enrich()}>
-            Definir con IA
-          </button>
+          {useAi ? (
+            <button type="button" className="btn" onClick={() => void enrich()}>
+              Definir con IA
+            </button>
+          ) : (
+            <p className="meta">
+              Las definiciones con IA están apagadas; actívalas en Cuenta.
+            </p>
+          )}
         </>
       ) : null}
-      {lookup.kind === "found"
-        ? lookup.entries.map((entry) => (
+      {lookup.kind === "found" ? (
+        <>
+          {multiSense ? (
+            <p className="meta">Elige la acepción que corresponde a esta oración:</p>
+          ) : null}
+          {lookup.entries.map((entry, entryIndex) => (
             <div key={`${entry.lemma}:${entry.pos ?? ""}`} className="word-entry">
               {entry.lemma !== word ? (
                 <p className="meta">Forma de «{entry.lemma}»</p>
               ) : null}
               <ol className="senses">
-                {entry.senses.map((sense, index) => (
-                  <li key={index}>{sense.definition}</li>
-                ))}
+                {entry.senses.map((sense, senseIndex) =>
+                  multiSense ? (
+                    <li key={senseIndex}>
+                      <button
+                        type="button"
+                        className={`sense-option${
+                          selected.entryIndex === entryIndex &&
+                          selected.senseIndex === senseIndex
+                            ? " is-selected"
+                            : ""
+                        }`}
+                        aria-pressed={
+                          selected.entryIndex === entryIndex &&
+                          selected.senseIndex === senseIndex
+                        }
+                        onClick={() => {
+                          setSelected({ entryIndex, senseIndex });
+                          setReport("idle");
+                        }}
+                      >
+                        {sense.definition}
+                      </button>
+                    </li>
+                  ) : (
+                    <li key={senseIndex}>{sense.definition}</li>
+                  ),
+                )}
               </ol>
             </div>
-          ))
-        : null}
+          ))}
+          {chosenEntry?.entryId != null && chosenSense?.senseOrder != null ? (
+            report === "done" ? (
+              <p className="meta">Gracias, lo anotamos.</p>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="btn--quiet"
+                  disabled={report === "sending"}
+                  onClick={() => void reportSelected()}
+                >
+                  {report === "sending" ? "Enviando…" : "Esta explicación no corresponde"}
+                </button>
+                {report === "error" ? (
+                  <p role="alert" className="status">
+                    No se pudo enviar. Intenta de nuevo.
+                  </p>
+                ) : null}
+              </>
+            )
+          ) : null}
+        </>
+      ) : null}
 
       <div className="actions">
         {savedEntry ? (
@@ -218,16 +418,29 @@ export default function WordPanel({
             </button>
           </>
         ) : (
-          <button
-            type="button"
-            className="btn btn--primary"
-            onClick={() => void save()}
-            disabled={saving}
-          >
-            {saving ? "Guardando…" : "Guardar palabra"}
-          </button>
+          <>
+            <button
+              type="button"
+              className="btn btn--primary"
+              onClick={() => void save()}
+              disabled={saving}
+            >
+              {saving ? "Guardando…" : "Guardar palabra"}
+            </button>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => void declareKnown()}
+              disabled={saving}
+            >
+              Ya la conocía
+            </button>
+          </>
         )}
       </div>
+      {!savedEntry && lookup.kind !== "found" ? (
+        <p className="meta">Se guardará sin ficha; podrás repasarla cuando tenga definición.</p>
+      ) : null}
       {saveError ? (
         <p role="alert" className="status">
           {saveError}
@@ -235,6 +448,34 @@ export default function WordPanel({
       ) : null}
       {syncNote ? (
         <p className="meta">Se guardó en este dispositivo; se sincroniza al volver la conexión.</p>
+      ) : null}
+
+      {savedEntry ? (
+        reread === "done" ? (
+          <p className="meta">Anotado.</p>
+        ) : (
+          <div className="reread">
+            <p className="meta">¿La recordaste al verla marcada?</p>
+            <div className="actions">
+              <button
+                type="button"
+                className="btn"
+                disabled={reread === "busy"}
+                onClick={() => void markReread(true)}
+              >
+                Sí
+              </button>
+              <button
+                type="button"
+                className="btn"
+                disabled={reread === "busy"}
+                onClick={() => void markReread(false)}
+              >
+                No
+              </button>
+            </div>
+          </div>
+        )
       ) : null}
     </Sheet>
   );

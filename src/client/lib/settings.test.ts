@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   clearBookReaderSettings,
   hasBookReaderSettings,
+  hasExplicitPreparationMode,
   loadReaderSettings,
   parseReaderSettings,
   parseTheme,
@@ -64,6 +65,7 @@ describe("parseReaderSettings", () => {
       dropCap: false,
       layout: "scroll",
       pageColumns: 2,
+      preparationMode: "auto",
     });
   });
 
@@ -92,6 +94,26 @@ describe("parseReaderSettings", () => {
     }
     expect(parseReaderSettings(JSON.stringify({ font: "comic" })).font).toBe("literata");
   });
+
+  it("acepta los tres modos de preparación y cae a auto", () => {
+    for (const mode of ["auto", "notice", "off"] as const) {
+      expect(
+        parseReaderSettings(JSON.stringify({ preparationMode: mode })).preparationMode,
+      ).toBe(mode);
+    }
+    expect(
+      parseReaderSettings(JSON.stringify({ preparationMode: "siempre" })).preparationMode,
+    ).toBe("auto");
+    expect(
+      parseReaderSettings(JSON.stringify({ preparationMode: 2 })).preparationMode,
+    ).toBe("auto");
+  });
+
+  it("datos antiguos sin el campo resuelven a auto", () => {
+    expect(parseReaderSettings(JSON.stringify({ font: "serif" })).preparationMode).toBe(
+      "auto",
+    );
+  });
 });
 
 describe("readerCssVars", () => {
@@ -105,6 +127,7 @@ describe("readerCssVars", () => {
       dropCap: true,
       layout: "scroll",
       pageColumns: 2,
+      preparationMode: "notice",
     });
     expect(vars["--read-font"]).toBe("var(--font-sans-alt)");
     expect(vars["--read-size"]).toBe("20px");
@@ -140,5 +163,52 @@ describe("ajustes por libro", () => {
     localStorage.setItem("lecta:reader:hash4", "{no json");
     saveReaderSettings({ ...READER_DEFAULTS, size: 19 });
     expect(loadReaderSettings("hash4").size).toBe(READER_DEFAULTS.size);
+  });
+});
+
+describe("hasExplicitPreparationMode", () => {
+  beforeEach(() => localStorage.clear());
+
+  it("sin nada guardado no hay elección", () => {
+    expect(hasExplicitPreparationMode()).toBe(false);
+    expect(hasExplicitPreparationMode("h1")).toBe(false);
+  });
+
+  it("detecta la elección general cuando el libro no tiene archivo", () => {
+    saveReaderSettings({ ...READER_DEFAULTS, preparationMode: "notice" });
+    expect(hasExplicitPreparationMode("h2")).toBe(true);
+  });
+
+  it("un archivo de libro sin el campo no cuenta como elección", () => {
+    localStorage.setItem(
+      "lecta:reader:h3",
+      JSON.stringify({ font: "sans", size: 20 }),
+    );
+    saveReaderSettings({ ...READER_DEFAULTS, preparationMode: "off" });
+    expect(hasExplicitPreparationMode("h3")).toBe(false);
+  });
+
+  it("un archivo de libro con el campo sí cuenta", () => {
+    localStorage.setItem(
+      "lecta:reader:h4",
+      JSON.stringify({ preparationMode: "off" }),
+    );
+    expect(hasExplicitPreparationMode("h4")).toBe(true);
+  });
+
+  it("un JSON corrupto no cuenta como elección", () => {
+    localStorage.setItem("lecta:reader:h5", "{corrupto");
+    expect(hasExplicitPreparationMode("h5")).toBe(false);
+  });
+
+  it("volver a los ajustes generales mantiene la elección del libro", () => {
+    saveReaderSettings(
+      { ...READER_DEFAULTS, preparationMode: "off" },
+      "h6",
+    );
+    clearBookReaderSettings("h6");
+    saveReaderSettings({ ...READER_DEFAULTS, preparationMode: "notice" });
+    expect(loadReaderSettings("h6").preparationMode).toBe("notice");
+    expect(hasExplicitPreparationMode("h6")).toBe(true);
   });
 });

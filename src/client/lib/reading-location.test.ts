@@ -4,6 +4,7 @@ import {
   anchorAtViewTop,
   normalizeBlockText,
   scrollToAnchor,
+  scrollToFragment,
 } from "./reading-location";
 
 // jsdom no implementa scrollIntoView ni geometría real: se simulan.
@@ -74,5 +75,22 @@ describe("scrollToAnchor", () => {
   it("devuelve false cuando el ancla no está en la sección", () => {
     const c = container(block("otro texto", 0));
     expect(scrollToAnchor(c, "un ancla que no existe")).toBe(false);
+  });
+});
+
+describe("scrollToFragment", () => {
+  it("desplaza al elemento con ese id", () => {
+    const target = block("Segunda parte del capítulo", 200);
+    target.setAttribute("data-frag-id", "s2");
+    const c = container(block("primera parte", 0), target);
+    const spy = vi.spyOn(target, "scrollIntoView");
+
+    expect(scrollToFragment(c, "s2")).toBe(true);
+    expect(spy).toHaveBeenCalledWith({ block: "start" });
+  });
+
+  it("devuelve false si el id no existe", () => {
+    const c = container(block("texto", 0));
+    expect(scrollToFragment(c, "inexistente")).toBe(false);
   });
 });

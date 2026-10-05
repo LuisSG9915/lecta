@@ -103,6 +103,21 @@ export function pageForText(
   return null;
 }
 
+// Página donde vive un fragmento (`#s2` del índice; el sanitizado lo
+// conserva como `data-frag-id`). Devuelve null si no está en la sección.
+export function pageForFragment(
+  container: HTMLElement,
+  fragment: string,
+  l: PageLayout,
+): number | null {
+  const el = container.querySelector<HTMLElement>(
+    `[data-frag-id="${CSS.escape(fragment)}"]`,
+  );
+  if (!el) return null;
+  flash(el);
+  return pageOfElement(el, l);
+}
+
 const flash = (el: Element) => {
   el.classList.remove("search-flash");
   void (el as HTMLElement).offsetWidth;

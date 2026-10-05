@@ -37,6 +37,8 @@ export interface ReaderSettings {
   layout: "scroll" | "pages";
   /** Columnas por página en modo paginado (degrada a 1 en móvil). */
   pageColumns: 1 | 2;
+  /** Preparación de vocabulario al entrar a un capítulo nuevo. */
+  preparationMode: PreparationMode;
 }
 
 export const READER_DEFAULTS: ReaderSettings = {
@@ -48,7 +50,16 @@ export const READER_DEFAULTS: ReaderSettings = {
   dropCap: false,
   layout: "scroll",
   pageColumns: 2,
+  preparationMode: "auto",
 };
+
+export type PreparationMode = "auto" | "notice" | "off";
+
+export const PREPARATION_MODES: { id: PreparationMode; label: string }[] = [
+  { id: "auto", label: "Abrir antes de leer" },
+  { id: "notice", label: "Solo avisar" },
+  { id: "off", label: "No mostrar" },
+];
 
 export const READER_LIMITS = {
   size: { min: 16, max: 24 },
@@ -85,6 +96,7 @@ export function parseReaderSettings(raw: string | null): ReaderSettings {
       dropCap: v.dropCap === true,
       layout: v.layout === "pages" ? "pages" : "scroll",
       pageColumns: v.pageColumns === 1 ? 1 : 2,
+      preparationMode: parsePreparationMode(v.preparationMode),
     };
   } catch {
     return READER_DEFAULTS;
@@ -98,6 +110,32 @@ const READ_FONT_VARS: Record<ReaderFont, string> = {
   atkinson: "var(--font-atkinson)",
   dyslexic: "var(--font-dyslexic)",
 };
+
+const parsePreparationMode = (v: unknown): PreparationMode =>
+  v === "notice" || v === "off" ? v : "auto";
+
+// ¿Hay una elección explícita de preparación aplicable a este libro?
+// Lee el dato crudo, no el resuelto: un archivo de libro sin el campo
+// no cuenta como elección, y el default «auto» tampoco.
+export function hasExplicitPreparationMode(bookHash?: string): boolean {
+  const explicit = (raw: string | null) => {
+    try {
+      const v = raw ? (JSON.parse(raw) as { preparationMode?: unknown }) : null;
+      return (
+        v?.preparationMode === "auto" ||
+        v?.preparationMode === "notice" ||
+        v?.preparationMode === "off"
+      );
+    } catch {
+      return false;
+    }
+  };
+  if (bookHash) {
+    const own = storage()?.getItem(readerKeyFor(bookHash));
+    if (own !== null && own !== undefined) return explicit(own);
+  }
+  return explicit(storage()?.getItem(READER_KEY) ?? null);
+}
 
 // Variables CSS que aplica el contenedor del lector.
 export function readerCssVars(s: ReaderSettings): Record<string, string> {

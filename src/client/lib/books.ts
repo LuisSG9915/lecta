@@ -39,7 +39,10 @@ export async function downloadBook(book: RemoteBook) {
 export async function deleteBook(hash: string) {
   try {
     const response = await fetch(`/api/books/${hash}`, { method: "DELETE" });
-    return response.ok;
+    // 404 también cuenta: el libro ya no está en la nube, que es lo que
+    // pedía el borrado (p. ej. otro dispositivo lo quitó antes). Así la
+    // op encolada sale de la cola en vez de reintentar para siempre.
+    return response.ok || response.status === 404;
   } catch {
     return false;
   }

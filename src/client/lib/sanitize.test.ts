@@ -55,13 +55,24 @@ describe("sanitizeSectionDocument", () => {
     expect(clean.querySelector("script")).toBeNull();
   });
 
-  it("elimina atributos id, class y style del libro", () => {
+  it("elimina class y style del libro y renombra id a data-frag-id", () => {
     const clean = sanitize('<p id="x" class="y" style="color:red">Texto</p>');
     const p = clean.querySelector("p");
     expect(p?.hasAttribute("id")).toBe(false);
+    expect(p?.getAttribute("data-frag-id")).toBe("x");
     expect(p?.hasAttribute("class")).toBe(false);
     expect(p?.hasAttribute("style")).toBe(false);
     expect(p?.textContent).toBe("Texto");
+  });
+
+  it("el id renombrado no colisiona con getElementById de la página", () => {
+    const clean = sanitize('<p id="app">Texto</p>');
+    document.body.append(clean);
+    try {
+      expect(document.getElementById("app")).not.toBe(clean.querySelector("p"));
+    } finally {
+      clean.remove();
+    }
   });
 
   it("conserva atributos lingüísticos", () => {

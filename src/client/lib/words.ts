@@ -3,9 +3,17 @@ export type WordHit = {
   context?: string;
 };
 
-const findSentence = (text: string, word: string, language: string) => {
-  const sentences = new Intl.Segmenter(language, { granularity: "sentence" });
-  for (const sentence of sentences.segment(text)) {
+// Elige la oración que cubre la posición del toque (offset dentro de
+// text): una palabra repetida en el bloque debe traer la oración que
+// la rodea a ella, no la primera que la contiene. Si ninguna cubre el
+// offset, se conserva el criterio anterior como respaldo.
+const findSentence = (text: string, word: string, language: string, offset: number) => {
+  const sentences = [...new Intl.Segmenter(language, { granularity: "sentence" }).segment(text)];
+  const covering = sentences.find(
+    (sentence) => sentence.index <= offset && offset < sentence.index + sentence.segment.length,
+  );
+  if (covering) return covering.segment.trim();
+  for (const sentence of sentences) {
     if (sentence.segment.includes(word)) return sentence.segment.trim();
   }
   return undefined;
@@ -47,9 +55,16 @@ export function extractWordAtPoint(
   const block = node.parentElement?.closest(
     "p, h1, h2, h3, h4, h5, h6, li, blockquote, td, th",
   );
-  const context = block?.textContent
-    ? findSentence(block.textContent, word, language)
-    : undefined;
+  let context: string | undefined;
+  if (block?.textContent) {
+    // Posición de la palabra dentro del bloque: un Range desde el
+    // inicio del bloque hasta el inicio del segmento tocado da el
+    // offset en caracteres de textContent, aunque el nodo esté anidado.
+    const range = document.createRange();
+    range.selectNodeContents(block);
+    range.setEnd(node, part.index);
+    context = findSentence(block.textContent, word, language, range.toString().length);
+  }
 
   return { word, context };
 }

@@ -1,25 +1,41 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import Reader from "./components/Reader";
 // El Cuaderno lleva fsrs: carga diferida para no pagar ese costo al arrancar.
 const Vocabulary = lazy(() => import("./components/Vocabulary"));
 import Account from "./components/Account";
+import Calibration from "./components/Calibration";
 import ThemeMenu from "./components/ThemeMenu";
-import Shelf from "./components/Shelf";
+import Shelf, { type ShelfItem } from "./components/Shelf";
+import Dialog from "./components/Dialog";
 import { applyTheme, loadTheme, saveTheme, type ThemeChoice } from "./lib/settings";
 import { decidePendingDelete, PENDING_DELETE_KEY } from "./lib/account-cleanup";
 import { pushOverlay, type OverlayHandle } from "./lib/history";
 import { sha256Hex } from "./lib/hash";
 import {
+  CALIBRATION_DONE_KEY,
+  fetchCalibrationSample,
+  hasCalibrationEvidence,
+  type CalibrationWord,
+} from "./lib/calibration";
+import {
   deleteAccountDb,
   deleteStoredBook,
+  getStoredBook,
+  listBookOps,
   listStoredBooks,
+  loadBookPosition,
+  loadSessionValue,
   saveBook,
+  saveBookPosition,
+  saveSessionValue,
   setDbUser,
-  type StoredBook,
 } from "./lib/idb";
-import { deleteBook, downloadBook, listRemoteBooks, uploadBook } from "./lib/books";
+import { downloadBook, listRemoteBooks } from "./lib/books";
+import { queueBookDelete, queueBookUpload, runBookQueue } from "./lib/book-queue";
+import { syncPositions, type PositionConflict } from "./lib/positions-sync";
+import { checkEpubHeader, EPUB_MAX_BYTES } from "../shared/epub-check";
 import { syncSavedWords } from "./lib/vocab";
-import { syncActivity, syncAnnotations } from "./lib/reading-sync";
+import { syncActivity, syncAnnotations, syncKnowledge, syncReviews } from "./lib/reading-sync";
 import { authClient } from "./lib/auth";
 
 type BookSelection = {
@@ -49,12 +65,28 @@ export default function App() {
   const [checkingLibrary, setCheckingLibrary] = useState(true);
   const [showVocabulary, setShowVocabulary] = useState(false);
   const [showAccount, setShowAccount] = useState(Boolean(authLink.token || authLink.urlError));
-  const [library, setLibrary] = useState<StoredBook[]>([]);
+  const [library, setLibrary] = useState<ShelfItem[]>([]);
   const [vocabVersion, setVocabVersion] = useState(0);
+  // Aviso cuando la posición remota pisó una local que apuntaba a otro
+  // lugar: se resuelve antes de abrir el libro.
+  const [positionPrompt, setPositionPrompt] = useState<{
+    conflict: PositionConflict;
+    open: () => void;
+  } | null>(null);
   const [resetToken, setResetToken] = useState<string | undefined>(authLink.token);
   const [theme, setTheme] = useState<ThemeChoice>(() => loadTheme());
+  // Calibración inicial de vocabulario: se interpone una vez antes del
+  // primer libro; desde Cuenta se reabre sin libro pendiente.
+  const [calibrationWords, setCalibrationWords] = useState<CalibrationWord[] | null>(null);
+  const [calibrationLang, setCalibrationLang] = useState("es");
   const bookRelease = useRef<OverlayHandle | null>(null);
   const panelRelease = useRef<OverlayHandle | null>(null);
+  const calibrationRelease = useRef<OverlayHandle | null>(null);
+  const positionRelease = useRef<OverlayHandle | null>(null);
+  // El libro que esperaba entrar cuando se ofreció la calibración.
+  // Ref y no estado: el cierre puede venir de «atrás» (popstate) con
+  // un callback viejo, y la ref siempre tiene el pendiente actual.
+  const calibrationPending = useRef<BookSelection | null>(null);
   const { data: session, isPending: sessionPending } = authClient.useSession();
   const sessionUserId = session?.user?.id;
 
@@ -79,9 +111,86 @@ export default function App() {
     setBook(selection);
   };
 
+  // Termina el flujo de calibración. Con marca («Listo»/«Saltar») la
+  // prueba queda hecha y no se vuelve a ofrecer; sin marca («Cerrar»
+  // o «atrás») puede reaparecer en la próxima apertura. Si había un
+  // libro esperando entrar, abre al cerrar.
+  const closeCalibration = (markDone: boolean) => {
+    const selection = calibrationPending.current;
+    calibrationPending.current = null;
+    const release = calibrationRelease.current;
+    calibrationRelease.current = null;
+    setCalibrationWords(null);
+    if (markDone) void saveSessionValue(CALIBRATION_DONE_KEY, "1").catch(() => undefined);
+    if (selection) {
+      // Si la entrada de la calibración sigue en la pila pasa a ser la
+      // del libro: «atrás» desde el lector vuelve a la estantería, no
+      // a la prueba. Si ya salió vía popstate, openBook empuja otra.
+      if (release) {
+        bookRelease.current = release;
+        release.swap(() => {
+          bookRelease.current = null;
+          setBook(null);
+        });
+      }
+      openBook(selection);
+    } else {
+      release?.release();
+    }
+  };
+
+  // Cierre por «atrás»: la entrada ya salió de la pila, así que la
+  // ref se libera antes — el cierre no debe intentar soltarla otra
+  // vez y el libro pendiente abre con su propia entrada.
+  const onCalibrationBack = () => {
+    calibrationRelease.current = null;
+    closeCalibration(false);
+  };
+
+  const showCalibration = (
+    words: CalibrationWord[],
+    selection: BookSelection | null,
+    language = "es",
+  ) => {
+    calibrationPending.current = selection;
+    calibrationRelease.current ??= pushOverlay(onCalibrationBack);
+    setCalibrationLang(language);
+    setCalibrationWords(words);
+  };
+
+  // Antes de entrar al primer libro se ofrece la calibración una sola
+  // vez. Si la marca ya existe, hay evidencia de calibración previa
+  // (p. ej. bajada por sincronización) o el catálogo no responde en el
+  // idioma del libro, el libro abre igual: la prueba nunca bloquea la
+  // lectura ni se presenta una muestra de otro idioma como propia.
+  const openBookOfferingCalibration = async (
+    selection: BookSelection,
+    language = "es",
+  ) => {
+    const done = await loadSessionValue(CALIBRATION_DONE_KEY).catch(() => "1");
+    if (done != null) {
+      openBook(selection);
+      return;
+    }
+    if (await hasCalibrationEvidence(language).catch(() => false)) {
+      void saveSessionValue(CALIBRATION_DONE_KEY, "1").catch(() => undefined);
+      openBook(selection);
+      return;
+    }
+    const sample = await fetchCalibrationSample(language);
+    if (!sample.ok || !sample.words.length) {
+      openBook(selection);
+      return;
+    }
+    showCalibration(sample.words, selection, language);
+  };
+
   const closeReader = () => {
     releaseBook();
     setBook(null);
+    // La posición final de la sesión de lectura sale aquí hacia la
+    // cuenta, para que los demás dispositivos continúen donde quedó.
+    void syncPositions().catch(() => null);
   };
 
   const openPanel = (kind: "vocab" | "account") => {
@@ -108,10 +217,43 @@ export default function App() {
     setShowAccount(false);
   };
 
-  const refreshLibrary = async () => {
-    const books = await listStoredBooks().catch(() => []);
-    setLibrary(books.sort((a, b) => b.addedAt - a.addedAt));
-  };
+  // La estantería mezcla los libros del dispositivo con los que solo
+  // están en la cuenta: locales primero (recientes arriba) y los
+  // remotos sin copia local después (recién subidos arriba).
+  // useCallback: captura sessionUserId y se usa dentro de efectos.
+  const refreshLibrary = useCallback(async () => {
+    const [books, ops, remote] = await Promise.all([
+      listStoredBooks().catch(() => []),
+      listBookOps().catch(() => []),
+      sessionUserId ? listRemoteBooks() : Promise.resolve([]),
+    ]);
+    const pendingUploads = new Set(
+      ops.filter((op) => op.kind === "upload").map((op) => op.hash),
+    );
+    const localHashes = new Set(books.map((book) => book.hash));
+    const localItems: ShelfItem[] = books
+      .sort((a, b) => b.addedAt - a.addedAt)
+      .map((book) => ({
+        hash: book.hash,
+        name: book.name,
+        addedAt: book.addedAt,
+        title: book.title,
+        author: book.author,
+        cover: book.cover,
+        sectionCount: book.sectionCount,
+        pendingUpload: pendingUploads.has(book.hash) || undefined,
+      }));
+    const remoteItems: ShelfItem[] = remote
+      .filter((item) => !localHashes.has(item.hash))
+      .sort((a, b) => +new Date(b.uploaded) - +new Date(a.uploaded))
+      .map((item) => ({
+        hash: item.hash,
+        name: item.name || `${item.hash.slice(0, 8)}.epub`,
+        addedAt: +new Date(item.uploaded) || 0,
+        remoteOnly: true,
+      }));
+    setLibrary([...localItems, ...remoteItems]);
+  }, [sessionUserId]);
 
   // El panel abierto por el enlace también es una capa del historial:
   // el botón atrás lo cierra como a cualquier otro panel.
@@ -172,85 +314,228 @@ export default function App() {
       }
       // Actividad de lectura: mismas reglas, anexable por id.
       void syncActivity().catch(() => null);
+      // Repasos del cuaderno: anexables por id, mismo ciclo.
+      void syncReviews().catch(() => null);
+      // Conocimiento del lector: misma fusión por clave con updatedAt
+      // como árbitro, lápidas incluidas. Si bajó algo, el lector
+      // recarga su perfil como cuando llegan palabras nuevas.
+      void syncKnowledge()
+        .then((pulled) => {
+          if (pulled && !cancelled) setVocabVersion((v) => v + 1);
+        })
+        .catch(() => null);
+      // Posiciones de lectura: misma fusión por libro, empuja lo local
+      // y baja lo que otros dispositivos dejaron más reciente.
+      void syncPositions().catch(() => null);
       const [remote, localBooks] = await Promise.all([listRemoteBooks(), listStoredBooks()]);
       if (cancelled) return;
       const remoteHashes = new Set(remote.map((item) => item.hash));
-      const storedHashes = new Set(localBooks.map((item) => item.hash));
 
+      // Lo que falta en la nube entra a la cola persistente: si la
+      // subida falla queda «Pendiente de subir» y se reintenta solo.
       for (const storedBook of localBooks) {
         if (!remoteHashes.has(storedBook.hash)) {
-          void uploadBook(
-            storedBook.hash,
-            new File([storedBook.data], storedBook.name, { type: "application/epub+zip" }),
-          );
+          await queueBookUpload(storedBook.hash, storedBook.name);
         }
       }
-
-      const missing = remote
-        .filter((item) => !storedHashes.has(item.hash))
-        .sort((a, b) => +new Date(b.uploaded) - +new Date(a.uploaded));
-      for (const item of missing.slice(0, 3)) {
-        const file = await downloadBook(item);
-        if (!file) continue;
-        await saveBook({
-          hash: item.hash,
-          name: file.name,
-          data: file,
-          addedAt: new Date(item.uploaded).getTime() || Date.now(),
-        });
-      }
+      await runBookQueue();
+      // Lo que solo está en la nube ya no baja en automático: aparece
+      // en la estantería como «En la nube» y se descarga al tocarlo.
       if (!cancelled) void refreshLibrary();
     })();
     return () => {
       cancelled = true;
     };
-  }, [sessionUserId, sessionPending, authLink]);
+  }, [sessionUserId, sessionPending, authLink, refreshLibrary]);
 
-  // Si la sesión sigue abierta y vuelve la conexión, re-sincroniza el
-  // vocabulario (los cambios hechos sin conexión se suben aquí).
+  // Si la sesión sigue abierta y vuelve la conexión, re-sincroniza todo
+  // (los cambios hechos sin conexión —palabras, posiciones, subidas de
+  // libros encoladas— se suben aquí).
   useEffect(() => {
     if (!sessionUserId) return;
     const onOnline = () => {
       void syncSavedWords();
       void syncAnnotations();
       void syncActivity();
+      void syncReviews();
+      void syncKnowledge().then((pulled) => {
+        if (pulled) setVocabVersion((v) => v + 1);
+      });
+      void syncPositions();
+      void runBookQueue()
+        .then(() => refreshLibrary())
+        .catch(() => undefined);
     };
     window.addEventListener("online", onOnline);
     return () => window.removeEventListener("online", onOnline);
-  }, [sessionUserId]);
+  }, [sessionUserId, refreshLibrary]);
 
   const selectBook = async (file: File) => {
     setError("");
+    if (!file.size || file.size > EPUB_MAX_BYTES) {
+      setMessage("");
+      setError("El archivo está vacío o pesa más de 50 MB.");
+      return;
+    }
     setMessage("Comprobando el archivo…");
     try {
+      // Comprobación mínima antes de guardar: firma ZIP y mimetype,
+      // sin cargar el libro completo todavía.
+      const head = new Uint8Array(await file.slice(0, 4096).arrayBuffer());
+      if (!checkEpubHeader(head).ok) {
+        setMessage("");
+        setError("Este archivo no parece un EPUB válido. Lecta solo acepta .epub de texto adaptable y sin protección.");
+        return;
+      }
       const hash = await sha256Hex(file);
-      openBook({ hash, name: file.name, file });
+      void openBookOfferingCalibration({ hash, name: file.name, file });
       void saveBook({ hash, name: file.name, data: file, addedAt: Date.now() })
         .then(() => {
           setMessage("Libro guardado en este dispositivo.");
           void refreshLibrary();
         })
         .catch(() => setError("El libro se abrió, pero no se pudo guardar en este dispositivo."));
-      if (sessionUserId) void uploadBook(hash, file);
+      // La subida pasa por la cola persistente: sin conexión queda
+      // encolada y la tarjeta se marca «Pendiente de subir».
+      if (sessionUserId) {
+        void queueBookUpload(hash, file.name)
+          .then(() => runBookQueue())
+          .then(() => refreshLibrary());
+      }
     } catch {
       setBook(null);
       setError("No pudimos leer el archivo elegido.");
     }
   };
 
-  const openStoredBook = (item: StoredBook) => {
+  const openStoredBook = async (item: ShelfItem) => {
     setError("");
-    openBook({
-      hash: item.hash,
-      name: item.name,
-      file: new File([item.data], item.name, { type: "application/epub+zip" }),
-    });
-    setMessage(`Abriendo «${item.title ?? item.name}»…`);
+    const stored = await getStoredBook(item.hash).catch(() => undefined);
+    if (!stored) {
+      setError("Este libro ya no está en este dispositivo.");
+      void refreshLibrary();
+      return;
+    }
+    const open = () => {
+      void openBookOfferingCalibration(
+        {
+          hash: stored.hash,
+          name: stored.name,
+          file: new File([stored.data], stored.name, { type: "application/epub+zip" }),
+        },
+        stored.language ?? "es",
+      );
+      setMessage(`Abriendo «${stored.title ?? stored.name}»…`);
+    };
+    // Antes de abrir se fusiona la posición con la cuenta; si lo remoto
+    // pisó una posición local que apuntaba a otro lugar, se pregunta.
+    const sync = await syncPositions().catch(() => null);
+    const conflict = sync?.conflicts.find((entry) => entry.bookHash === item.hash);
+    if (conflict) {
+      showPositionPrompt(conflict, open);
+      return;
+    }
+    open();
+  };
+
+  // Libro solo en la nube: se descarga, se guarda y se abre. La posición
+  // remota baja con el mismo sync; el aviso solo aplica si el dispositivo
+  // ya guardaba una posición de este libro (si no, no hay conflicto).
+  const openRemoteBook = async (item: ShelfItem) => {
+    setError("");
+    setMessage("Descargando…");
+    const file = await downloadBook({ hash: item.hash, uploaded: "", name: item.name });
+    if (!file) {
+      setMessage("");
+      setError("No se pudo descargar el libro. Revisa tu conexión e inténtalo de nuevo.");
+      return;
+    }
+    const hadLocalPosition = Boolean(
+      await loadBookPosition(item.hash).catch(() => undefined),
+    );
+    // eslint-disable-next-line react-hooks/purity -- handler async de clic, no corre en render
+    await saveBook({ hash: item.hash, name: file.name, data: file, addedAt: Date.now() });
+    const open = () => {
+      void openBookOfferingCalibration(
+        { hash: item.hash, name: file.name, file },
+        item.language ?? "es",
+      );
+      setMessage(`Abriendo «${item.title ?? item.name}»…`);
+    };
+    const sync = await syncPositions().catch(() => null);
+    const conflict = hadLocalPosition
+      ? sync?.conflicts.find((entry) => entry.bookHash === item.hash)
+      : undefined;
+    if (conflict) showPositionPrompt(conflict, open);
+    else open();
+    void refreshLibrary();
+  };
+
+  const openShelfItem = (item: ShelfItem) =>
+    item.remoteOnly ? void openRemoteBook(item) : void openStoredBook(item);
+
+  // El aviso de conflicto es una capa del historial como las demás:
+  // «atrás» lo cierra sin abrir el libro. Si elige abrir, su entrada
+  // pasa a ser la del libro (swap, como la calibración): así release()
+  // no dispara un history.back() que se tragaría la entrada nueva.
+  const onPositionPromptBack = () => {
+    positionRelease.current = null;
+    setPositionPrompt(null);
+  };
+
+  const showPositionPrompt = (conflict: PositionConflict, open: () => void) => {
+    positionRelease.current ??= pushOverlay(onPositionPromptBack);
+    setPositionPrompt({ conflict, open });
+  };
+
+  // El aviso se puede cerrar sin abrir (Escape o clic fuera): la
+  // posición remota ya quedó fusionada, así que la próxima vez que se
+  // abra el libro continuará desde ahí sin volver a preguntar.
+  const dismissPositionPrompt = () => {
+    positionRelease.current?.release();
+    positionRelease.current = null;
+    setPositionPrompt(null);
+  };
+
+  const openFromPrompt = (prompt: { open: () => void }) => {
+    const release = positionRelease.current;
+    positionRelease.current = null;
+    setPositionPrompt(null);
+    if (release) {
+      bookRelease.current = release;
+      release.swap(() => {
+        bookRelease.current = null;
+        setBook(null);
+      });
+    }
+    prompt.open();
+  };
+
+  const continueFromRemote = () => {
+    const prompt = positionPrompt;
+    if (prompt) openFromPrompt(prompt);
+  };
+
+  const keepLocalPosition = async () => {
+    const prompt = positionPrompt;
+    if (!prompt) return;
+    // La posición local vuelve a ganar con sello nuevo: en el próximo
+    // empuje también la restaura en los demás dispositivos.
+    await saveBookPosition({ ...prompt.conflict.previous, updatedAt: Date.now() }).catch(
+      () => undefined,
+    );
+    // Mientras se guardaba pudo llegar «atrás»: si el aviso ya se fue,
+    // el libro abre con entrada propia y no se recupera la del aviso.
+    openFromPrompt(prompt);
   };
 
   const removeBook = async (hash: string) => {
     await deleteStoredBook(hash).catch(() => undefined);
-    if (sessionUserId) void deleteBook(hash);
+    // El borrado remoto también pasa por la cola: un 404 o un corte de
+    // red no pierden la operación, se reintenta al volver la conexión.
+    if (sessionUserId) {
+      void queueBookDelete(hash).then(() => runBookQueue());
+    }
     if (book?.hash === hash) {
       closeReader();
       setMessage("Libro eliminado. Elige otro para seguir leyendo.");
@@ -295,7 +580,7 @@ export default function App() {
             <Shelf
               library={library}
               checking={checkingLibrary}
-              onOpen={openStoredBook}
+              onOpen={openShelfItem}
               onRemove={removeBook}
               onAdd={(file) => void selectBook(file)}
               onLibraryChange={() => void refreshLibrary()}
@@ -320,7 +605,66 @@ export default function App() {
         </Suspense>
       ) : null}
       {showAccount ? (
-        <Account onClose={closePanel} resetToken={resetToken} onResetDone={() => setResetToken(undefined)} />
+        <Account
+          onClose={closePanel}
+          resetToken={resetToken}
+          onResetDone={() => setResetToken(undefined)}
+          onOpenCalibration={(words) => {
+            // El diálogo de Cuenta quedaría por encima de la hoja:
+            // se cierra el panel y su entrada del historial pasa a
+            // ser la de la calibración (mismo nivel, sin pushes).
+            setShowAccount(false);
+            if (panelRelease.current) {
+              calibrationRelease.current = panelRelease.current;
+              panelRelease.current = null;
+              calibrationRelease.current.swap(onCalibrationBack);
+            }
+            showCalibration(words, null);
+          }}
+        />
+      ) : null}
+      {calibrationWords ? (
+        <Calibration
+          words={calibrationWords}
+          language={calibrationLang}
+          onDone={() => closeCalibration(true)}
+          onClose={() => closeCalibration(false)}
+        />
+      ) : null}
+      {positionPrompt ? (
+        <Dialog label="Otro dispositivo avanzó más" onClose={dismissPositionPrompt}>
+          <div className="sheet-head">
+            <strong className="sheet-title">Otro dispositivo avanzó más</strong>
+            <button
+              type="button"
+              className="btn--quiet"
+              onClick={dismissPositionPrompt}
+              aria-label="Cerrar aviso"
+            >
+              Cerrar
+            </button>
+          </div>
+          <p>
+            En este libro llegaste al{" "}
+            {positionPrompt.conflict.merged.progress !== undefined
+              ? `${Math.round(positionPrompt.conflict.merged.progress * 100)}%`
+              : `capítulo ${positionPrompt.conflict.merged.sectionIndex + 1}`}{" "}
+            desde otro dispositivo. ¿Continuar desde ahí o quedarte donde estabas aquí?
+          </p>
+          <div className="actions">
+            <button
+              type="button"
+              className="btn btn--primary"
+              data-autofocus
+              onClick={continueFromRemote}
+            >
+              Continuar desde ahí
+            </button>
+            <button type="button" className="btn" onClick={() => void keepLocalPosition()}>
+              Quedarme donde estaba
+            </button>
+          </div>
+        </Dialog>
       ) : null}
     </div>
   );

@@ -1,7 +1,16 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { authClient } from "../lib/auth";
 import { PENDING_DELETE_KEY } from "../lib/account-cleanup";
-import { loadSessionValue } from "../lib/idb";
+import { listKnowledge, listSavedWords, loadSessionValue } from "../lib/idb";
+import { loadUseAi, saveUseAi } from "../lib/ai-pref";
+import { loadHistoryEnabled, saveHistoryEnabled } from "../lib/reading-events";
+import {
+  estimateStoredProfile,
+  isCredibleKnowledge,
+  vocabLevelLabel,
+} from "../lib/knowledge";
+import { fetchCalibrationSample, type CalibrationWord } from "../lib/calibration";
+import { downloadBackup } from "../lib/export";
 import { timeAgo } from "../lib/relative-time";
 import Dialog from "./Dialog";
 
@@ -11,9 +20,18 @@ type AccountProps = {
   onClose: () => void;
   resetToken?: string;
   onResetDone?: () => void;
+  // «Ajustar mi vocabulario»: la muestra se descarga aquí para poder
+  // avisar si falla; la hoja la monta App porque el diálogo de Cuenta
+  // la taparía.
+  onOpenCalibration: (words: CalibrationWord[]) => void;
 };
 
-export default function Account({ onClose, resetToken, onResetDone }: AccountProps) {
+export default function Account({
+  onClose,
+  resetToken,
+  onResetDone,
+  onOpenCalibration,
+}: AccountProps) {
   const { data: session, isPending } = authClient.useSession();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -30,6 +48,16 @@ export default function Account({ onClose, resetToken, onResetDone }: AccountPro
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [lastSync, setLastSync] = useState<number | null>(null);
   const [online, setOnline] = useState(() => navigator.onLine);
+  // Preferencia «Usar IA»: se lee una vez al abrir el panel y el
+  // interruptor la persiste; los demás componentes la releen al montar.
+  const [useAi, setUseAi] = useState(true);
+  // Preferencia «historial de lectura» (trayecto local): misma mecánica.
+  const [historyOn, setHistoryOn] = useState(true);
+  // Resumen del modelo de conocimiento para «Tu vocabulario»: qué
+  // tanto sabe el lector según la evidencia guardada (calibración,
+  // «ya la conocía» y consultas).
+  const [vocabInfo, setVocabInfo] = useState<{ text: string } | null>(null);
+  const [loadingSample, setLoadingSample] = useState(false);
 
   const userId = session?.user?.id;
 
@@ -51,6 +79,56 @@ export default function Account({ onClose, resetToken, onResetDone }: AccountPro
       window.removeEventListener("offline", off);
     };
   }, [userId]);
+  useEffect(() => {
+    let cancelled = false;
+    void loadUseAi().then((on) => {
+      if (!cancelled) setUseAi(on);
+    });
+    void loadHistoryEnabled().then((on) => {
+      if (!cancelled) setHistoryOn(on);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  // La estimación consulta el catálogo para el zipf de cada lema con
+  // evidencia; sin conexión se muestra solo el conteo, sin inventar
+  // un nivel.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const [allRows, savedWords] = await Promise.all([
+        listKnowledge("es").catch(() => []),
+        listSavedWords("es").catch(() => []),
+      ]);
+      // Mismo criterio que el lector: un «inferida como desconocida»
+      // sin palabra guardada que la respalde es rastro de una consulta,
+      // no una declaración — no entra al conteo ni a la estimación.
+      const savedLemmas = new Set<string>();
+      for (const word of savedWords)
+        for (const term of [word.form, word.lemma])
+          if (term) savedLemmas.add(term.toLowerCase());
+      const rows = allRows.filter((row) =>
+        isCredibleKnowledge(row, savedLemmas),
+      );
+      if (!rows.length) {
+        if (!cancelled)
+          setVocabInfo({
+            text: "Aún sin medición; se ofrece una prueba breve al abrir el primer libro.",
+          });
+        return;
+      }
+      const knownCount = rows.filter((row) => row.known).length;
+      const profile = await estimateStoredProfile(rows, "es");
+      const text = profile
+        ? `${knownCount} palabras que ya conoces · nivel estimado: ${vocabLevelLabel(profile.threshold)}`
+        : `${knownCount} palabras que ya conoces · sin conexión no se puede estimar el nivel`;
+      if (!cancelled) setVocabInfo({ text });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   useEffect(() => {
     if (!userId) return;
     let cancelled = false;
@@ -185,6 +263,45 @@ export default function Account({ onClose, resetToken, onResetDone }: AccountPro
       onClose();
       return {};
     });
+  };
+
+  // Si el guardado falla se revierte el interruptor: mostrarla encendida
+  // cuando no quedó escrita fingiría una preferencia que no existe.
+  const toggleUseAi = () => {
+    const next = !useAi;
+    setUseAi(next);
+    void saveUseAi(next).catch(() => {
+      setUseAi(!next);
+      setError("No se pudo guardar la preferencia. Intenta de nuevo.");
+    });
+  };
+
+  const toggleHistory = () => {
+    const next = !historyOn;
+    setHistoryOn(next);
+    void saveHistoryEnabled(next).catch(() => {
+      setHistoryOn(!next);
+      setError("No se pudo guardar la preferencia. Intenta de nuevo.");
+    });
+  };
+
+  // «Ajustar mi vocabulario»: descarga la muestra aquí (para avisar
+  // si falla) y la hoja la abre App. Al terminar allá solo se guarda
+  // y se cierra.
+  const adjustVocabulary = async () => {
+    if (loadingSample) return;
+    setLoadingSample(true);
+    setError("");
+    try {
+      const sample = await fetchCalibrationSample();
+      if (sample.ok && sample.words.length) {
+        onOpenCalibration(sample.words);
+      } else {
+        setError("No se pudo cargar la lista de palabras. Intenta de nuevo con conexión.");
+      }
+    } finally {
+      setLoadingSample(false);
+    }
   };
 
   return (
@@ -359,6 +476,95 @@ export default function Account({ onClose, resetToken, onResetDone }: AccountPro
           </button>
         </form>
       ) : null}
+
+      <section className="account-privacy" aria-label="Tu vocabulario">
+        <h2 className="eyebrow">Tu vocabulario</h2>
+        <p className="meta">
+          {vocabInfo === null ? "Revisando lo que conoces…" : vocabInfo.text}
+        </p>
+        <div className="setting-row">
+          <span className="setting-label">Qué palabras te muestra Lecta</span>
+          <button
+            type="button"
+            className="btn--quiet"
+            disabled={loadingSample}
+            onClick={() => void adjustVocabulary()}
+          >
+            {loadingSample ? "Cargando…" : "Ajustar mi vocabulario"}
+          </button>
+        </div>
+      </section>
+
+      <section className="account-privacy" aria-label="Privacidad y datos">
+        <h2 className="eyebrow">Privacidad y datos</h2>
+        <div className="setting-row">
+          <span className="setting-label">Usar IA para definir y corregir</span>
+          <button
+            type="button"
+            className="theme-option"
+            role="switch"
+            aria-checked={useAi}
+            data-active={useAi || undefined}
+            onClick={toggleUseAi}
+          >
+            {useAi ? "Sí" : "No"}
+          </button>
+        </div>
+        <p className="meta">
+          Solo viaja la palabra y su oración (≤ 500 caracteres). Nunca el libro, tu
+          cuenta ni tu actividad.
+        </p>
+        <div className="setting-row">
+          <span className="setting-label">Guardar el recorrido de lectura</span>
+          <button
+            type="button"
+            className="theme-option"
+            role="switch"
+            aria-checked={historyOn}
+            data-active={historyOn || undefined}
+            onClick={toggleHistory}
+          >
+            {historyOn ? "Sí" : "No"}
+          </button>
+        </div>
+        <p className="meta">
+          Anota en este dispositivo qué secciones abriste y qué palabras se sugirieron,
+          para revisar y mejorar las sugerencias. No se sube a tu cuenta; sale en la
+          copia de tus datos y se borra solo con el tiempo.
+        </p>
+        <div className="setting-row">
+          <span className="setting-label">Copia de tus datos</span>
+          <button
+            type="button"
+            className="btn--quiet"
+            onClick={() =>
+              void downloadBackup().catch(() =>
+                setError("No se pudo preparar el respaldo. Intenta de nuevo."),
+              )
+            }
+          >
+            Descargar mis datos (JSON)
+          </button>
+        </div>
+        <p className="meta">
+          Palabras, repasos, marcadores, posiciones y preferencias de este dispositivo.
+          Los libros se re-suben solos si tienes cuenta.
+        </p>
+        <h2 className="eyebrow">Acerca de</h2>
+        <p className="meta">
+          Diccionario base: simplemma (MIT; datos bajo ODbL 1.0 y licencias derivadas) y
+          wordfreq (CC BY-SA 4.0 y fuentes con atribución). Contiene información de
+          «Lemmatization Lists» disponible bajo ODbL 1.0.{" "}
+          <a
+            href="https://github.com/LuisSG9915/lecta-lexicon-data"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Tablas derivadas y licencias
+          </a>
+          .
+        </p>
+      </section>
 
       {message ? (
         <p role="status" className="status">

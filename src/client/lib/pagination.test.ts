@@ -4,6 +4,7 @@ import {
   anchorAtPage,
   columnOfOffset,
   pageAdvance,
+  pageForFragment,
   pageForText,
   pageLayout,
   pageOfElement,
@@ -113,5 +114,21 @@ describe("pageForText", () => {
     const container = containerWith(block("texto cualquiera", 0));
     expect(pageForText(container, "no existe", layout, "anchor")).toBeNull();
     expect(pageForText(container, "no existe", layout, "snippet")).toBeNull();
+  });
+});
+
+describe("pageForFragment", () => {
+  const layout: PageLayout = { numCols: 2, colW: 676, gap: GAP, boxW: 1400 };
+
+  it("devuelve la página del elemento con ese id", () => {
+    const el = block("Segunda parte del capítulo", 2200);
+    el.setAttribute("data-frag-id", "s2");
+    const container = containerWith(block("primera parte", 0), el);
+    expect(pageForFragment(container, "s2", layout)).toBe(1);
+  });
+
+  it("devuelve null si el id no existe en la sección", () => {
+    const container = containerWith(block("texto", 0));
+    expect(pageForFragment(container, "inexistente", layout)).toBeNull();
   });
 });

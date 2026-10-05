@@ -3,6 +3,7 @@ import { withClient, type WorkerEnv } from "./db";
 import { findEntries, insertEnrichment } from "./lexicon";
 import { requestEnrichment } from "./ai";
 import { isStopword } from "../shared/stopwords";
+import { hasUsableDefinition } from "../shared/lexicon";
 
 export type EnrichmentParams = { forms: string[]; language?: string };
 
@@ -23,12 +24,14 @@ export class EnrichmentWorkflow extends WorkflowEntrypoint<WorkerEnv, Enrichment
         const existing = await withClient(this.env, (client) =>
           findEntries(client, language, form),
         );
-        if (existing?.length) return "existing";
+        if (hasUsableDefinition(existing)) return "existing";
 
         const ai = await requestEnrichment(this.env, { form, language });
         if (!ai.ok) return ai.reason;
 
-        await withClient(this.env, (client) => insertEnrichment(client, language, ai.enrichment));
+        await withClient(this.env, (client) =>
+          insertEnrichment(client, language, ai.enrichment, form),
+        );
         return "created";
       });
     }

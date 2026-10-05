@@ -16,7 +16,8 @@ import { loadActivityHidden, saveActivityHidden } from "../lib/settings";
 import { activityToCsv, downloadText, type BookNamer } from "../lib/export";
 
 type ReadingActivityProps = {
-  books: StoredBook[];
+  // Igual que en Vocabulary: basta hash/título/nombre para nombrar.
+  books: Pick<StoredBook, "hash" | "name" | "title">[];
   words: SavedWord[];
 };
 
