@@ -206,6 +206,14 @@
   box-shadow: var(--shadow-sheet);
   padding: var(--s-2) var(--s-5) calc(var(--s-5) + env(safe-area-inset-bottom));
   animation: sheet-up var(--dur-3) var(--ease-out);
+  /* El swipe fija transform inline; la transición lo regresa a sitio
+     suavemente cuando el gesto no llega a cerrar la hoja. */
+  transition: transform var(--dur-3) var(--ease-out);
+}
+
+/* Arrastre en curso: la hoja sigue al dedo sin desaceleración. */
+.sheet[data-swiping] {
+  transition: none;
 }
 
 /* Asa de agarre centrada sobre el borde superior de la hoja. */
@@ -216,6 +224,11 @@
   margin: 0 auto var(--s-2);
   border-radius: var(--r-pill);
   background: var(--rule-strong);
+  cursor: grab;
+}
+
+.sheet[data-swiping] .sheet-grabber {
+  cursor: grabbing;
 }
 
 @keyframes sheet-up {
@@ -273,22 +286,22 @@
 
 @keyframes dock-in-left {
   from {
-    transform: translateX(-1.5rem);
+    transform: translateX(-1.5rem) scale(0.96);
     opacity: 0;
   }
   to {
-    transform: translateX(0);
+    transform: translateX(0) scale(1);
     opacity: 1;
   }
 }
 
 @keyframes dock-in {
   from {
-    transform: translateX(1.5rem);
+    transform: translateX(1.5rem) scale(0.96);
     opacity: 0;
   }
   to {
-    transform: translateX(0);
+    transform: translateX(0) scale(1);
     opacity: 1;
   }
 }

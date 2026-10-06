@@ -800,7 +800,9 @@ mark.saved-passage {
   max-inline-size: none;
   margin-inline: auto;
   padding-inline: 0;
-  transition: transform var(--dur-3) var(--ease-out);
+  /* Paso de página corto y suave: la curva entra decidida y aterriza
+     sin rebote (160–180 ms según el plan de interacción). */
+  transition: transform var(--dur-2) var(--ease-page);
 }
 
 @media (prefers-reduced-motion: reduce) {

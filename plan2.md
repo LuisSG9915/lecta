@@ -11,7 +11,7 @@ Reglas de operación:
 ## 📊 Progreso General
 - [x] Fase 1: Verificación de Línea Base y Consolidación del Guionado
 - [x] Fase 2: Rediseño Moderno de ThemeMenu y Sistema de Opciones
-- [ ] Fase 3: Animaciones y Micro-interacciones (60 FPS)
+- [x] Fase 3: Animaciones y Micro-interacciones (60 FPS)
 - [ ] Fase 4: Optimización Backend (CockroachDB/Hyperdrive y DeepSeek AI Gateway)
 - [ ] Fase 5: Funcionalidades de Alto Valor Agregado (Explicación Contextual y Exportación)
 - [ ] Fase 6: QA Final, Limpieza de CSS y Verificación PWA
@@ -78,10 +78,10 @@ Reglas de operación:
   - `src/client/styles/app.css`
   - `src/client/styles/reader.css`
 - **Tareas:**
-  - [ ] 3.1 Transición de paso de página en `Reader.tsx`: desplazamiento horizontal suave con curva `cubic-bezier(0.2, 0.8, 0.2, 1)` (160–180 ms) que elimine el salto abrupto de página.
-  - [ ] 3.2 Popover flotante en `WordPanel.tsx`: entrada animada (`scale(0.96) -> scale(1)` con opacidad `0 -> 1`) anclada directamente sobre la palabra seleccionada.
-  - [ ] 3.3 Soporte de gesto de arrastre en `Sheet.tsx`: implementar cierre por deslizamiento táctil hacia abajo (*swipe to close*).
-  - [ ] 3.4 Micro-interacción en `Shelf.tsx`: elevación y suave transición al abrir un libro desde la biblioteca.
+  - [x] 3.1 Transición de paso de página en `Reader.tsx`: desplazamiento horizontal suave con curva `cubic-bezier(0.2, 0.8, 0.2, 1)` (160–180 ms) que elimine el salto abrupto de página.
+  - [x] 3.2 Popover flotante en `WordPanel.tsx`: entrada animada (`scale(0.96) -> scale(1)` con opacidad `0 -> 1`) anclada directamente sobre la palabra seleccionada.
+  - [x] 3.3 Soporte de gesto de arrastre en `Sheet.tsx`: implementar cierre por deslizamiento táctil hacia abajo (*swipe to close*).
+  - [x] 3.4 Micro-interacción en `Shelf.tsx`: elevación y suave transición al abrir un libro desde la biblioteca.
 - **Criterio de Aceptación:**
   - Transiciones fluidas sin degradación de fotogramas ni desbordamientos horizontales.
   - Mensaje de commit: `feat(animations): add smooth page turns, popovers and swipe-to-dismiss sheet`

@@ -88,12 +88,15 @@
   border: none;
   background: none;
   border-radius: var(--r-1);
-  transition: transform var(--dur-2) var(--ease-out);
+  transition:
+    transform var(--dur-2) var(--ease-out),
+    box-shadow var(--dur-2) var(--ease-out);
 }
 
 /* La portada en curso se levanta como las de la repisa. */
 .shelf-hero-cover:hover {
-  transform: translateY(-3px);
+  transform: translateY(-3px) scale(1.02);
+  box-shadow: var(--shadow-cover);
 }
 
 .shelf-hero-info {
@@ -154,16 +157,23 @@
   border: none;
   background: none;
   border-radius: var(--r-1);
-  transition: transform var(--dur-2) var(--ease-out);
+  transition:
+    transform var(--dur-2) var(--ease-out),
+    box-shadow var(--dur-2) var(--ease-out);
 }
 
+/* Al pasar por encima la portada se levanta y gana sombra, como si ya
+   se despegará de la repisa; al pulsar se hunde un punto antes de
+   abrir: la presión confirma el toque. */
 .shelf-book-cover:hover {
-  transform: translateY(-2px);
+  transform: translateY(-3px) scale(1.02);
+  box-shadow: var(--shadow-cover);
 }
 
 .shelf-book-cover:active,
 .shelf-hero-cover:active {
-  transform: translateY(0);
+  transform: scale(0.96);
+  transition-duration: var(--dur-1);
 }
 
 .shelf-book-meta {
