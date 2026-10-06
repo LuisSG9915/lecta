@@ -13,7 +13,7 @@ Reglas de operación:
 - [x] Fase 2: Rediseño Moderno de ThemeMenu y Sistema de Opciones
 - [x] Fase 3: Animaciones y Micro-interacciones (60 FPS)
 - [x] Fase 4: Optimización Backend (CockroachDB/Hyperdrive y DeepSeek AI Gateway)
-- [ ] Fase 5: Funcionalidades de Alto Valor Agregado (Explicación Contextual y Exportación)
+- [x] Fase 5: Funcionalidades de Alto Valor Agregado (Explicación Contextual y Exportación)
 - [ ] Fase 6: QA Final, Limpieza de CSS y Verificación PWA
 
 ---
@@ -115,10 +115,10 @@ Reglas de operación:
   - `src/client/components/Vocabulary.tsx`
   - `src/worker/ai.ts`
 - **Tareas:**
-  - [ ] 5.1 En `WordPanel.tsx`, añadir la acción "Explicar en contexto" que envíe el lema junto con la oración circundante al endpoint de IA para obtener una explicación clara de modismos, figuras retóricas o términos arcaicos.
-  - [ ] 5.2 En `src/client/lib/export.ts`, añadir exportación de vocabulario guardado a formato **Anki (.csv)** con campos: `Palabra`, `Definición`, `Contexto (Oración del libro)`.
-  - [ ] 5.3 En `src/client/lib/export.ts`, añadir exportación de notas y citas en **Markdown (.md)** estructurado para Obsidian y Notion.
-  - [ ] 5.4 En `Vocabulary.tsx`, habilitar modo de repaso FSRS con tarjeta tipo Cloze (oración original con el término oculto).
+  - [x] 5.1 En `WordPanel.tsx`, añadir la acción "Explicar en contexto" que envíe el lema junto con la oración circundante al endpoint de IA para obtener una explicación clara de modismos, figuras retóricas o términos arcaicos.
+  - [x] 5.2 En `src/client/lib/export.ts`, añadir exportación de vocabulario guardado a formato **Anki (.csv)** con campos: `Palabra`, `Definición`, `Contexto (Oración del libro)`.
+  - [x] 5.3 En `src/client/lib/export.ts`, añadir exportación de notas y citas en **Markdown (.md)** estructurado para Obsidian y Notion.
+  - [x] 5.4 En `Vocabulary.tsx`, habilitar modo de repaso FSRS con tarjeta tipo Cloze (oración original con el término oculto).
 - **Criterio de Aceptación:**
   - `pnpm vitest run src/client/lib/export.test.ts` pasa con los nuevos formatos probados.
   - La explicación contextual se muestra de forma concisa sin alterar el diseño de `WordPanel`.

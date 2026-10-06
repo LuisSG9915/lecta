@@ -53,6 +53,7 @@ import { loadUseAi } from "../lib/ai-pref";
 import { GamePanel } from "./GamePanel";
 import { formatInterval } from "../lib/relative-time";
 import {
+  annotationsToMarkdown,
   downloadText,
   passagesToCsv,
   wordsToAnkiTsv,
@@ -1018,6 +1019,16 @@ export default function Vocabulary({ onClose, books, activityVersion }: Vocabula
       "text/csv;charset=utf-8",
     );
   };
+  const exportNotes = async () => {
+    const stored = await listAnnotations(undefined, captureDbScope()).catch(
+      () => [],
+    );
+    downloadText(
+      `notas-lecta-${new Date().toISOString().slice(0, 10)}.md`,
+      annotationsToMarkdown(stored, bookName),
+      "text/markdown;charset=utf-8",
+    );
+  };
 
   return (
     <div ref={ref} className="notebook" role="dialog" aria-modal="true" aria-label="Cuaderno">
@@ -1204,6 +1215,9 @@ export default function Vocabulary({ onClose, books, activityVersion }: Vocabula
                 </button>
                 <button type="button" className="btn--quiet" onClick={() => void exportPassages()}>
                   Exportar pasajes
+                </button>
+                <button type="button" className="btn--quiet" onClick={() => void exportNotes()}>
+                  Notas (.md)
                 </button>
               </div>
             </div>

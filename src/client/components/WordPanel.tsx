@@ -88,8 +88,9 @@ export default function WordPanel({
   const [reread, setReread] = useState<"idle" | "busy" | "done">("idle");
   // «Explicar en esta oración»: respuesta IA puntual sobre el sentido
   // de la palabra en el contexto leído (no escribe al catálogo).
+  // degraded: la IA no respondió y se sirvió la acepción del catálogo.
   const [explanation, setExplanation] = useState<
-    { state: "busy" | "done" | "error"; text: string } | null
+    { state: "busy" | "done" | "error"; text: string; degraded?: boolean } | null
   >(null);
   // Preferencia «Usar IA» (Cuenta): una sola lectura por apertura de
   // la ficha. Con ella apagada «Definir con IA» ni se ofrece; el
@@ -162,7 +163,7 @@ export default function WordPanel({
     );
     setExplanation(
       result.ok
-        ? { state: "done", text: result.explanation }
+        ? { state: "done", text: result.explanation, degraded: result.degraded }
         : { state: "error", text: result.error },
     );
   };
@@ -423,7 +424,12 @@ export default function WordPanel({
           ))}
           {useAi && context ? (
             explanation?.state === "done" ? (
-              <p className="meta">En esta oración: {explanation.text}</p>
+              <p className="meta">
+                {explanation.degraded
+                  ? "La IA no respondió; acepción del catálogo: "
+                  : "En esta oración: "}
+                {explanation.text}
+              </p>
             ) : (
               <>
                 <button

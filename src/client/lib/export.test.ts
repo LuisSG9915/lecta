@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   activityToCsv,
+  annotationsToMarkdown,
   buildBackup,
   passagesToCsv,
   sessionKeysForBackup,
@@ -91,6 +92,74 @@ describe("passagesToCsv", () => {
       bookName,
     );
     expect(csv.split("\r\n")).toHaveLength(2);
+  });
+});
+
+describe("annotationsToMarkdown", () => {
+  const passage = (over: Partial<SavedAnnotation> = {}): SavedAnnotation => ({
+    key: "b1:p1",
+    id: "p1",
+    bookHash: "b1",
+    kind: "passage",
+    sectionIndex: 3,
+    text: "El mundo era tan reciente",
+    createdAt: 1_700_000_000_000,
+    updatedAt: 1_700_000_000_000,
+    ...over,
+  });
+
+  it("agrupa por libro y capítulo con cita en bloque y nota", () => {
+    const md = annotationsToMarkdown(
+      [passage({ note: "inicio memorable" })],
+      bookName,
+      1_700_000_000_000,
+    );
+    expect(md).toContain("# Notas y citas — Lecta");
+    expect(md).toContain("_Exportado el 2023-11-14_");
+    expect(md).toContain("## Cien años de soledad");
+    expect(md).toContain("### Capítulo 4");
+    expect(md).toContain("> El mundo era tan reciente");
+    expect(md).toContain("**Nota:** inicio memorable");
+  });
+
+  it("un pasaje multilínea cita cada línea; la nota queda en una línea", () => {
+    const md = annotationsToMarkdown(
+      [passage({ text: "línea uno\nlínea dos", note: "nota\npartida" })],
+      bookName,
+    );
+    expect(md).toContain("> línea uno\n> línea dos");
+    expect(md).toContain("**Nota:** nota partida");
+  });
+
+  it("un marcador con solo nota exporta la nota sin cita", () => {
+    const md = annotationsToMarkdown(
+      [
+        passage({
+          kind: "bookmark",
+          sectionIndex: 0,
+          text: undefined,
+          note: "retomar aquí",
+        }),
+      ],
+      bookName,
+    );
+    expect(md).not.toContain(">");
+    expect(md).toContain("**Nota:** retomar aquí");
+    // Capítulo 1 no imprime subtítulo: sectionIndex 0 es el inicio.
+    expect(md).not.toContain("### Capítulo");
+  });
+
+  it("omite borradas y entradas sin texto ni nota", () => {
+    const md = annotationsToMarkdown(
+      [
+        passage({ deleted: true }),
+        passage({ id: "p2", text: undefined, note: undefined }),
+        passage({ id: "p3", text: "Sí queda" }),
+      ],
+      bookName,
+    );
+    expect(md).toContain("> Sí queda");
+    expect(md.match(/^> /gm)).toHaveLength(1);
   });
 });
 

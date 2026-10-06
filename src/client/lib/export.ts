@@ -118,6 +118,60 @@ export function passagesToCsv(
   return "﻿" + [header.map(csvField).join(","), ...rows].join("\r\n");
 }
 
+// Notas y citas en Markdown para Obsidian/Notion: un documento con
+// encabezado por libro, capítulo como subtítulo, el pasaje como cita
+// en bloque y la nota del lector debajo. Solo viajan el fragmento
+// elegido y la nota — nunca texto corrido del libro.
+export function annotationsToMarkdown(
+  annotations: SavedAnnotation[],
+  bookName: BookNamer,
+  exportedAt = Date.now(),
+): string {
+  const usable = annotations
+    .filter((item) => !item.deleted && (item.text?.trim() || item.note?.trim()))
+    .sort(
+      (a, b) =>
+        (bookName(a.bookHash) ?? a.bookHash ?? "").localeCompare(
+          bookName(b.bookHash) ?? b.bookHash ?? "",
+          "es",
+        ) ||
+        a.sectionIndex - b.sectionIndex ||
+        a.createdAt - b.createdAt,
+    );
+
+  const quote = (text: string) =>
+    text
+      .replace(/\r\n/g, "\n")
+      .split("\n")
+      .map((line) => `> ${line}`)
+      .join("\n");
+
+  const lines = [
+    "# Notas y citas — Lecta",
+    "",
+    `_Exportado el ${new Date(exportedAt).toISOString().slice(0, 10)}_`,
+    "",
+  ];
+  let book = "";
+  let section = -1;
+  for (const item of usable) {
+    const title = bookName(item.bookHash) ?? "Sin libro";
+    if (title !== book) {
+      book = title;
+      section = -1;
+      lines.push(`## ${title}`, "");
+    }
+    if (item.sectionIndex !== section) {
+      section = item.sectionIndex;
+      if (section > 0) lines.push(`### Capítulo ${section + 1}`, "");
+    }
+    if (item.text?.trim()) lines.push(quote(item.text.trim()), "");
+    const note = item.note?.trim().replace(/\s+/g, " ");
+    if (note) lines.push(`**Nota:** ${note}`, "");
+  }
+  return lines.join("\n").replace(/\n{3,}/g, "\n\n");
+}
+
 // Actividad por día y libro, en minutos enteros. Misma agregación que
 // muestra el panel: los intervalos se unen antes de repartir, así el
 // archivo tampoco duplica tiempo solapado.
