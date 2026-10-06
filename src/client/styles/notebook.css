@@ -111,6 +111,7 @@
 .practice-grades {
   display: flex;
   gap: var(--s-2);
+  flex-wrap: wrap;
 }
 
 .grade-col {

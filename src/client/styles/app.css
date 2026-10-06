@@ -28,14 +28,6 @@
   animation: fade-in var(--dur-2) var(--ease-out);
 }
 
-.tagline {
-  font-family: var(--font-book);
-  font-style: italic;
-  font-size: var(--fs-md);
-  color: var(--ink-soft);
-  margin-block: var(--s-5) var(--s-4);
-}
-
 /* Selector de tema (variante texto): la activa lleva raya bermellón. */
 .theme-menu {
   display: flex;

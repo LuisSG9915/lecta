@@ -128,13 +128,10 @@
   font-size: var(--fs-md);
 }
 
-.practice-modes,
-.practice-grades {
+/* `.practice-grades` vive en notebook.css con el resto del repaso;
+   aquí queda solo la fila de modos/elección. */
+.practice-modes {
   display: flex;
   gap: var(--s-2);
   flex-wrap: wrap;
-}
-
-.practice-card {
-  padding-block: var(--s-4);
 }

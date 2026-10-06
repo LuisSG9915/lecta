@@ -14,7 +14,7 @@ Reglas de operación:
 - [x] Fase 3: Animaciones y Micro-interacciones (60 FPS)
 - [x] Fase 4: Optimización Backend (CockroachDB/Hyperdrive y DeepSeek AI Gateway)
 - [x] Fase 5: Funcionalidades de Alto Valor Agregado (Explicación Contextual y Exportación)
-- [ ] Fase 6: QA Final, Limpieza de CSS y Verificación PWA
+- [x] Fase 6: QA Final, Limpieza de CSS y Verificación PWA
 
 ---
 
@@ -132,10 +132,10 @@ Reglas de operación:
   - `src/client/styles/legacy.css`
   - `src/client/styles/app.css`
 - **Tareas:**
-  - [ ] 6.1 Purgar reglas duplicadas y selectores obsoletos de `legacy.css`.
-  - [ ] 6.2 Ejecutar `pnpm lint` y corregir cualquier advertencia.
-  - [ ] 6.3 Correr la suite de pruebas completa: `pnpm test`.
-  - [ ] 6.4 Validar la compilación para producción con `pnpm run build`.
+  - [x] 6.1 Purgar reglas duplicadas y selectores obsoletos de `legacy.css`.
+  - [x] 6.2 Ejecutar `pnpm lint` y corregir cualquier advertencia.
+  - [x] 6.3 Correr la suite de pruebas completa: `pnpm test`.
+  - [x] 6.4 Validar la compilación para producción con `pnpm run build`.
 - **Criterio de Aceptación:**
   - 100% de las pruebas pasando en verde.
   - Compilación de producción limpia sin errores de bundling.
