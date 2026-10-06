@@ -127,6 +127,9 @@
   line-height: var(--read-leading);
   font-optical-sizing: auto;
   color: var(--ink);
+  /* Sin guionado una palabra larga no debe rebosar la medida:
+     break-word la parte por el borde de la caja. */
+  overflow-wrap: break-word;
 }
 
 .book-content > * {
@@ -144,10 +147,18 @@
 }
 
 /* El interlineado se decide en .book-content; los párrafos lo heredan
-   para que el ajuste Aa mande sobre la regla global de párrafos. */
+   para que el ajuste Aa mande sobre la regla global de párrafos.
+   El guionado queda apagado por defecto: las palabras no se cortan
+   con guión salvo que el ajuste «Guiones» lo pida. */
 .book-content p,
 .book-content li {
   line-height: inherit;
+  hyphens: none;
+  -webkit-hyphens: none;
+}
+
+.reader[data-hyphens] .book-content p,
+.reader[data-hyphens] .book-content li {
   hyphens: auto;
   -webkit-hyphens: auto;
 }

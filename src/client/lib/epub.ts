@@ -39,6 +39,28 @@ export async function openEpub(file: Blob) {
   return { book, close, loadBlob: loader.loadBlob };
 }
 
+// ---------- Texto del EPUB ----------
+
+// Los guiones blandos (\u00AD) que traen algunos EPUB son marcas de
+// corte invisibles: aunque el guionado esté apagado siguen dentro del
+// texto y ensucian todo lo que se deriva de él — la palabra que sale
+// al tocarla, la oración de contexto, los anclas de posición, las
+// marcas y el análisis de vocabulario. Se retiran siempre al cargar
+// la sección, con cualquier ajuste: el toggle «Guiones» decide solo
+// la separación automática del navegador (hyphens: auto), no la
+// presencia de estos caracteres. Así el textContent queda idéntico
+// en todos los dispositivos y los anclas guardadas siguen casando.
+export function stripSoftHyphens(root: ParentNode) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let node = walker.nextNode();
+  while (node) {
+    const text = node as Text;
+    if (text.data.includes("\u00AD"))
+      text.data = text.data.replace(/\u00AD/g, "");
+    node = walker.nextNode();
+  }
+}
+
 // ---------- Imágenes del EPUB ----------
 
 // Rutas con esquema propio (http:, data:) o relativas al host no viven

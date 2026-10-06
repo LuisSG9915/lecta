@@ -66,7 +66,21 @@ describe("parseReaderSettings", () => {
       layout: "scroll",
       pageColumns: 2,
       preparationMode: "auto",
+      enableHyphenation: false,
     });
+  });
+
+  it("lee enableHyphenation solo cuando es true", () => {
+    expect(
+      parseReaderSettings(JSON.stringify({ enableHyphenation: true }))
+        .enableHyphenation,
+    ).toBe(true);
+    for (const value of [false, "sí", 1, null]) {
+      expect(
+        parseReaderSettings(JSON.stringify({ enableHyphenation: value }))
+          .enableHyphenation,
+      ).toBe(false);
+    }
   });
 
   it("acepta modo paginado y cae a scroll con valores desconocidos", () => {
@@ -128,6 +142,7 @@ describe("readerCssVars", () => {
       layout: "scroll",
       pageColumns: 2,
       preparationMode: "notice",
+      enableHyphenation: false,
     });
     expect(vars["--read-font"]).toBe("var(--font-sans-alt)");
     expect(vars["--read-size"]).toBe("20px");

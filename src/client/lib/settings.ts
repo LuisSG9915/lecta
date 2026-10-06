@@ -39,6 +39,8 @@ export interface ReaderSettings {
   pageColumns: 1 | 2;
   /** Preparación de vocabulario al entrar a un capítulo nuevo. */
   preparationMode: PreparationMode;
+  /** Separación silábica automática del navegador (hyphens: auto). */
+  enableHyphenation: boolean;
 }
 
 export const READER_DEFAULTS: ReaderSettings = {
@@ -51,6 +53,7 @@ export const READER_DEFAULTS: ReaderSettings = {
   layout: "scroll",
   pageColumns: 2,
   preparationMode: "auto",
+  enableHyphenation: false,
 };
 
 export type PreparationMode = "auto" | "notice" | "off";
@@ -97,6 +100,7 @@ export function parseReaderSettings(raw: string | null): ReaderSettings {
       layout: v.layout === "pages" ? "pages" : "scroll",
       pageColumns: v.pageColumns === 1 ? 1 : 2,
       preparationMode: parsePreparationMode(v.preparationMode),
+      enableHyphenation: v.enableHyphenation === true,
     };
   } catch {
     return READER_DEFAULTS;

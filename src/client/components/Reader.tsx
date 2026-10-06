@@ -15,6 +15,7 @@ import {
   getBookLanguage,
   getBookTitle,
   hydrateSectionImages,
+  stripSoftHyphens,
 } from "../lib/epub";
 import { sanitizeSectionDocument } from "../lib/sanitize";
 import { markWords } from "../lib/marks";
@@ -1444,6 +1445,9 @@ export default function Reader({
       try {
         const source = await section.createDocument();
         const sanitized = sanitizeSectionDocument(source);
+        // Guiones blandos fuera antes de marcar, medir o anclar: el
+        // texto que queda es el mismo con guionado activo o no.
+        stripSoftHyphens(sanitized);
         const lang = getBookLanguage(book);
         // Si la sección ya estaba analizada, sus marcas (guardadas +
         // predichas) entran desde el primer pintado; si no, llegan al
@@ -2472,6 +2476,7 @@ export default function Reader({
       data-justify={settings.justify || undefined}
       data-dropcap={settings.dropCap || undefined}
       data-layout={settings.layout === "pages" ? "pages" : undefined}
+      data-hyphens={settings.enableHyphenation || undefined}
     >
       <div
         ref={measureProbeRef}
@@ -3190,6 +3195,21 @@ export default function Reader({
               onClick={() => updateSettings({ justify: !settings.justify })}
             >
               {settings.justify ? "Sí" : "No"}
+            </button>
+          </div>
+          <div className="setting-row">
+            <span className="setting-label">Separar con guiones</span>
+            <button
+              type="button"
+              className="theme-option"
+              role="switch"
+              aria-checked={settings.enableHyphenation}
+              data-active={settings.enableHyphenation || undefined}
+              onClick={() =>
+                updateSettings({ enableHyphenation: !settings.enableHyphenation })
+              }
+            >
+              {settings.enableHyphenation ? "Sí" : "No"}
             </button>
           </div>
           <div className="setting-row">
