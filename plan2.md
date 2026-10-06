@@ -12,7 +12,7 @@ Reglas de operación:
 - [x] Fase 1: Verificación de Línea Base y Consolidación del Guionado
 - [x] Fase 2: Rediseño Moderno de ThemeMenu y Sistema de Opciones
 - [x] Fase 3: Animaciones y Micro-interacciones (60 FPS)
-- [ ] Fase 4: Optimización Backend (CockroachDB/Hyperdrive y DeepSeek AI Gateway)
+- [x] Fase 4: Optimización Backend (CockroachDB/Hyperdrive y DeepSeek AI Gateway)
 - [ ] Fase 5: Funcionalidades de Alto Valor Agregado (Explicación Contextual y Exportación)
 - [ ] Fase 6: QA Final, Limpieza de CSS y Verificación PWA
 
@@ -96,9 +96,9 @@ Reglas de operación:
   - `src/worker/reading-data.ts`
   - `src/worker/ai.test.ts`
 - **Tareas:**
-  - [ ] 4.1 En `src/worker/db.ts` y endpoints de sincronización, asegurar que las inserciones/actualizaciones masivas de posiciones y palabras se realicen en lotes fragmentados (*chunking* de 100-150 registros) para optimizar el pool de conexiones de Hyperdrive hacia CockroachDB.
-  - [ ] 4.2 En `src/worker/ai.ts`, implementar caché de significados frecuentes para evitar llamadas repetidas a DeepSeek.
-  - [ ] 4.3 Manejo de timeouts y errores en DeepSeek (AI Gateway): implementar timeout de 8 segundos y reintentos con retraso exponencial; si la IA no responde o devuelve 429/504, degradar limpiamente hacia la definición del catálogo léxico local (`src/worker/lexicon.ts`).
+  - [x] 4.1 En `src/worker/db.ts` y endpoints de sincronización, asegurar que las inserciones/actualizaciones masivas de posiciones y palabras se realicen en lotes fragmentados (*chunking* de 100-150 registros) para optimizar el pool de conexiones de Hyperdrive hacia CockroachDB.
+  - [x] 4.2 En `src/worker/ai.ts`, implementar caché de significados frecuentes para evitar llamadas repetidas a DeepSeek.
+  - [x] 4.3 Manejo de timeouts y errores en DeepSeek (AI Gateway): implementar timeout de 8 segundos y reintentos con retraso exponencial; si la IA no responde o devuelve 429/504, degradar limpiamente hacia la definición del catálogo léxico local (`src/worker/lexicon.ts`).
 - **Criterio de Aceptación:**
   - `pnpm vitest run src/worker/ai.test.ts` pasa sin errores.
   - La sincronización masiva se ejecuta sin agotar conexiones.

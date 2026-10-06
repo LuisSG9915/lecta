@@ -71,7 +71,74 @@ export type DeepSeekCallOptions = {
   operation: DeepSeekOperation;
   promptVersion: string;
   maxTokens: number;
+  // Reintentos: las pruebas inyectan sleep para no esperar de verdad;
+  // en producción se usa el temporizador real.
+  retry?: {
+    maxAttempts?: number;
+    baseDelayMs?: number;
+    sleep?: (ms: number) => Promise<void>;
+  };
 };
+
+// Timeout por intento: todas las operaciones piden respuestas breves;
+// pasado este plazo el intento se corta y se reintenta.
+export const AI_CALL_TIMEOUT_MS = 8_000;
+// Reintentos ante fallos transitorios: saturación del gateway (429),
+// 5xx y cortes de red/timeout. Espera exponencial 400 ms → 800 ms,
+// más lo que pida un Retry-After (acotado). Un 4xx no transitorio
+// (petición mal formada, credencial inválida) no se repite.
+export const AI_MAX_ATTEMPTS = 3;
+export const AI_RETRY_BASE_MS = 400;
+const RETRYABLE_STATUS = new Set([408, 429, 500, 502, 503, 504]);
+const RETRY_AFTER_CAP_MS = 10_000;
+
+const sleepMs = (ms: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+const retryAfterMs = (response: Response | null) => {
+  const raw = response?.headers.get("retry-after");
+  if (!raw) return 0;
+  const seconds = Number(raw);
+  return Number.isFinite(seconds) && seconds > 0
+    ? Math.min(seconds * 1000, RETRY_AFTER_CAP_MS)
+    : 0;
+};
+
+// Caché TTL en memoria del aislante para respuestas IA efímeras (por
+// ejemplo explicaciones en contexto, que no se guardan en el
+// catálogo): sin binding KV, la memoria del worker es el nivel
+// correcto para un dato regenerable. El tope desaloja la entrada más
+// vieja (el Map conserva el orden de inserción).
+export function createTtlCache<V>(options: {
+  maxEntries?: number;
+  ttlMs?: number;
+} = {}) {
+  const maxEntries = options.maxEntries ?? 200;
+  const ttlMs = options.ttlMs ?? 10 * 60_000;
+  const entries = new Map<string, { value: V; expires: number }>();
+  return {
+    get(key: string): V | undefined {
+      const hit = entries.get(key);
+      if (!hit) return undefined;
+      if (hit.expires <= Date.now()) {
+        entries.delete(key);
+        return undefined;
+      }
+      entries.delete(key);
+      entries.set(key, hit);
+      return hit.value;
+    },
+    set(key: string, value: V): void {
+      entries.delete(key);
+      entries.set(key, { value, expires: Date.now() + ttlMs });
+      while (entries.size > maxEntries)
+        entries.delete(entries.keys().next().value!);
+    },
+    get size() {
+      return entries.size;
+    },
+  };
+}
 
 // Contadores de tokens reportados por la API. Cada campo queda en null
 // si la respuesta no lo trae o no es un entero finito >= 0.
@@ -94,8 +161,16 @@ export type DeepSeekResult =
       model: string | null;
       finishReason: string | null;
       durationMs: number;
+      attempts: number;
     }
-  | { ok: false; reason: "not-configured" | "api-error" };
+  | {
+      ok: false;
+      // "rate-limited" distingue un 429 persistente (saturación del
+      // gateway) del resto de fallos de API para observabilidad.
+      reason: "not-configured" | "api-error" | "rate-limited";
+      status: number | null;
+      attempts: number;
+    };
 
 type DeepSeekResponse = {
   model?: string;
@@ -133,13 +208,13 @@ function mapUsage(raw: DeepSeekResponse["usage"]): DeepSeekUsage {
   };
 }
 
-// Llamada JSON única a DeepSeek: todas las funciones IA (fichas,
-// ítems, corrección) pasan por aquí para compartir modelo, gateway y
-// timeout. Devuelve el content crudo; validar el JSON es cosa del
-// llamador (parseItem, parseVerify, validateEnrichment). Las métricas
-// (usage, model, finish_reason, duración) se devuelven al llamador para
-// que decida qué registrar: aquí nunca se registra el prompt, el
-// contenido ni las credenciales.
+// Llamada JSON a DeepSeek: todas las funciones IA (fichas, ítems,
+// corrección) pasan por aquí para compartir modelo, gateway, timeout
+// y reintentos. Devuelve el content crudo; validar el JSON es cosa
+// del llamador (parseItem, parseVerify, validateEnrichment). Las
+// métricas (usage, model, finish_reason, duración, intentos) se
+// devuelven al llamador para que decida qué registrar: aquí nunca se
+// registra el prompt, el contenido ni las credenciales.
 export async function callDeepSeek(
   env: WorkerEnv,
   prompt: { system: string; user: string },
@@ -149,67 +224,109 @@ export async function callDeepSeek(
     throw new Error(
       `callDeepSeek(${options.operation}): maxTokens debe ser un entero positivo`,
     );
-  if (!env.DEEPSEEK_API_KEY) return { ok: false, reason: "not-configured" };
+  if (!env.DEEPSEEK_API_KEY)
+    return { ok: false, reason: "not-configured", status: null, attempts: 0 };
 
   const gatewayUrl = env.AI_GATEWAY_URL?.trim();
   const apiBase = (gatewayUrl || "https://api.deepseek.com").replace(/\/+$/, "");
   const startedAt = Date.now();
+  const maxAttempts = Math.max(
+    1,
+    Math.min(options.retry?.maxAttempts ?? AI_MAX_ATTEMPTS, 5),
+  );
+  const baseDelayMs = options.retry?.baseDelayMs ?? AI_RETRY_BASE_MS;
+  const sleep = options.retry?.sleep ?? sleepMs;
 
-  let response: Response;
-  try {
-    response = await fetch(`${apiBase}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${env.DEEPSEEK_API_KEY}`,
-        ...(env.AI_GATEWAY_KEY
-          ? { "cf-aig-authorization": `Bearer ${env.AI_GATEWAY_KEY}` }
-          : {}),
-        // Solo con AI Gateway: pide no guardar el payload en los logs
-        // del gateway (los prompts pueden contener texto del usuario).
-        ...(gatewayUrl ? { "cf-aig-collect-log-payload": "false" } : {}),
-      },
-      body: JSON.stringify({
-        model: ENRICHMENT_MODEL,
-        temperature: 0.1,
-        max_tokens: options.maxTokens,
-        // El modo thinking viene activado por defecto en la API actual;
-        // para fichas breves en JSON solo encarece y retrasa, y además
-        // ignora temperature.
-        thinking: { type: "disabled" },
-        response_format: { type: "json_object" },
-        messages: [
-          { role: "system", content: prompt.system },
-          { role: "user", content: prompt.user },
-        ],
-      }),
-      signal: AbortSignal.timeout(45_000),
-    });
-  } catch {
-    // Red caída o timeout del AbortSignal: misma categoría que un 5xx.
-    return { ok: false, reason: "api-error" };
+  const init: RequestInit = {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${env.DEEPSEEK_API_KEY}`,
+      ...(env.AI_GATEWAY_KEY
+        ? { "cf-aig-authorization": `Bearer ${env.AI_GATEWAY_KEY}` }
+        : {}),
+      // Solo con AI Gateway: pide no guardar el payload en los logs
+      // del gateway (los prompts pueden contener texto del usuario).
+      ...(gatewayUrl ? { "cf-aig-collect-log-payload": "false" } : {}),
+    },
+    body: JSON.stringify({
+      model: ENRICHMENT_MODEL,
+      temperature: 0.1,
+      max_tokens: options.maxTokens,
+      // El modo thinking viene activado por defecto en la API actual;
+      // para fichas breves en JSON solo encarece y retrasa, y además
+      // ignora temperature.
+      thinking: { type: "disabled" },
+      response_format: { type: "json_object" },
+      messages: [
+        { role: "system", content: prompt.system },
+        { role: "user", content: prompt.user },
+      ],
+    }),
+  };
+
+  let lastStatus: number | null;
+  let attempt: number;
+  for (attempt = 1; ; attempt++) {
+    let response: Response | null;
+    try {
+      response = await fetch(`${apiBase}/chat/completions`, {
+        ...init,
+        signal: AbortSignal.timeout(AI_CALL_TIMEOUT_MS),
+      });
+    } catch {
+      // Red caída o timeout del AbortSignal: misma categoría que un 5xx.
+      response = null;
+    }
+    lastStatus = response?.status ?? null;
+
+    if (response?.ok) {
+      let data: DeepSeekResponse;
+      try {
+        data = (await response.json()) as DeepSeekResponse;
+      } catch {
+        // HTTP 200 con cuerpo que no es JSON válido: no se reintenta,
+        // un cuerpo malformado no se arregla repitiendo la petición.
+        return {
+          ok: false,
+          reason: "api-error",
+          status: response.status,
+          attempts: attempt,
+        };
+      }
+      const choice = data.choices?.[0];
+      const content = choice?.message?.content;
+      if (!content)
+        return {
+          ok: false,
+          reason: "api-error",
+          status: response.status,
+          attempts: attempt,
+        };
+      return {
+        ok: true,
+        content,
+        usage: mapUsage(data.usage),
+        model: typeof data.model === "string" ? data.model : null,
+        finishReason:
+          typeof choice?.finish_reason === "string" ? choice.finish_reason : null,
+        durationMs: Date.now() - startedAt,
+        attempts: attempt,
+      };
+    }
+
+    const retryable = response === null || RETRYABLE_STATUS.has(response.status);
+    if (!retryable || attempt >= maxAttempts) break;
+    await sleep(
+      Math.max(baseDelayMs * 2 ** (attempt - 1), retryAfterMs(response)),
+    );
   }
 
-  if (!response.ok) return { ok: false, reason: "api-error" };
-
-  let data: DeepSeekResponse;
-  try {
-    data = (await response.json()) as DeepSeekResponse;
-  } catch {
-    // HTTP 200 con cuerpo que no es JSON válido.
-    return { ok: false, reason: "api-error" };
-  }
-  const choice = data.choices?.[0];
-  const content = choice?.message?.content;
-  if (!content) return { ok: false, reason: "api-error" };
   return {
-    ok: true,
-    content,
-    usage: mapUsage(data.usage),
-    model: typeof data.model === "string" ? data.model : null,
-    finishReason:
-      typeof choice?.finish_reason === "string" ? choice.finish_reason : null,
-    durationMs: Date.now() - startedAt,
+    ok: false,
+    reason: lastStatus === 429 ? "rate-limited" : "api-error",
+    status: lastStatus,
+    attempts: attempt,
   };
 }
 
@@ -218,7 +335,8 @@ export type AiCallOutcome =
   | "invalid"
   | "truncated"
   | "not-configured"
-  | "api-error";
+  | "api-error"
+  | "rate-limited";
 
 // Evento de consumo para observabilidad: atribución por operación y
 // tokens reportados, jamás prompt, contenido, credenciales ni usuario.
@@ -237,6 +355,8 @@ export function logAiCall(
       finishReason: result.ok ? result.finishReason : null,
       durationMs: result.ok ? result.durationMs : null,
       usage: result.ok ? result.usage : null,
+      status: result.ok ? 200 : result.status,
+      attempts: result.attempts,
     }),
   );
 }

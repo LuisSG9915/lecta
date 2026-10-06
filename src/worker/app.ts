@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { getConnectionString, withClient, type WorkerEnv } from "./db";
+import { chunks, getConnectionString, withClient, type WorkerEnv } from "./db";
 import {
   CATALOG,
   findEntries,
@@ -10,6 +10,7 @@ import {
 } from "./lexicon";
 import {
   ENRICHMENT_MODEL,
+  createTtlCache,
   EXPLAIN_CALL_OPTIONS,
   EXPLAIN_SYSTEM_PROMPT,
   ITEM_CALL_OPTIONS,
@@ -144,7 +145,12 @@ app.post("/api/lexicon/enrich", async (context) => {
         );
       const ai = await requestEnrichment(context.env, { form, language, context: contextText });
       if (!ai.ok) {
-        result = { status: ai.reason } as const;
+        // Degradación limpia: si el catálogo ya tenía fichas de la
+        // palabra (aunque sin acepción útil), se sirven en lugar del
+        // error de IA.
+        result = existing.length
+          ? { status: "existing" as const, entries: existing }
+          : ({ status: ai.reason } as const);
       } else {
         const entries = await withClient(context.env, async (client) => {
           await insertEnrichment(client, language, ai.enrichment, form);
@@ -165,6 +171,8 @@ app.post("/api/lexicon/enrich", async (context) => {
       return context.json({ status: "created", entries: result.entries });
     case "not-configured":
       return context.json({ error: "El enriquecimiento no está configurado." }, 503);
+    case "rate-limited":
+      return context.json({ error: "La IA está saturada. Intenta de nuevo en unos minutos." }, 503);
     default:
       return context.json({ error: "La IA no devolvió una ficha válida." }, 502);
   }
@@ -285,8 +293,9 @@ app.post("/api/lexicon/report", async (context) => {
 // dedupe y las comparaciones internas se hacen con el texto canónico.
 type ItemRef = { entryId: string; senseOrder: string };
 const MAX_ITEM_REFS = 50;
-// Las llamadas a la IA son secuenciales y con timeout de 45 s: generar
-// muchas en una sola petición haría esperar de más al cliente.
+// Las llamadas a la IA son secuenciales y con timeout de 8 s por
+// intento (más reintentos): generar muchas en una sola petición haría
+// esperar de más al cliente.
 const MAX_ITEMS_GENERATED_PER_CALL = 8;
 
 const toItemRef = (value: unknown): ItemRef | null => {
@@ -602,6 +611,13 @@ app.post("/api/lexicon/verify-sentence", async (context) => {
 // A diferencia de enrich: no escribe al catálogo ni compone fichas —
 // el diccionario sigue siendo la respuesta gratuita; esto es el extra
 // opcional. Privacidad: viajan solo la forma y la oración.
+//
+// Caché por aislante: un toque repetido a la misma palabra en la misma
+// oración no vuelve a llamar a la IA ni gasta cuota del usuario. TTL
+// y tope acotados; el dato es regenerable, así que perderlo al rotar
+// el aislante no tiene costo.
+const explainCache = createTtlCache<string>({ maxEntries: 200 });
+
 app.post("/api/lexicon/explain", async (context) => {
   const body = await context.req.json().catch(() => null);
   const form = typeof body?.form === "string" ? body.form.trim() : "";
@@ -614,6 +630,10 @@ app.post("/api/lexicon/explain", async (context) => {
   const session = await getSession(context);
   if (!session)
     return context.json({ error: "Inicia sesión para pedir explicaciones." }, 401);
+
+  const cacheKey = `${language}:${form.toLowerCase()}:${contextText}`;
+  const cached = explainCache.get(cacheKey);
+  if (cached) return context.json({ explanation: cached, cached: true });
 
   const allowed = await consumeRateUnits(
     context.env,
@@ -640,18 +660,32 @@ app.post("/api/lexicon/explain", async (context) => {
     ai,
     !ai.ok ? ai.reason : ai.finishReason === "length" ? "truncated" : parsed ? "ok" : "invalid",
   );
-  if (!ai.ok)
+  if (!ai.ok) {
+    // Degradación limpia: si la IA no responde y el catálogo tiene la
+    // palabra, se sirve su definición general marcada como degradada.
+    const entries = await withClient(context.env, (client) =>
+      findEntries(client, language, form),
+    ).catch(() => undefined);
+    const definition = entries
+      ?.flatMap((entry) => entry.senses)
+      .find((sense) => sense.definition)?.definition;
+    if (definition)
+      return context.json({ explanation: definition, degraded: true });
     return context.json(
       {
         error:
           ai.reason === "not-configured"
             ? "Las explicaciones con IA no están configuradas."
-            : "La IA no pudo explicar la palabra.",
+            : ai.reason === "rate-limited"
+              ? "La IA está saturada. Intenta de nuevo en unos minutos."
+              : "La IA no pudo explicar la palabra.",
       },
-      ai.reason === "not-configured" ? 503 : 502,
+      ai.reason === "api-error" ? 502 : 503,
     );
+  }
   if (!parsed)
     return context.json({ error: "La IA no devolvió una explicación válida." }, 502);
+  explainCache.set(cacheKey, parsed.explanation);
   return context.json({ explanation: parsed.explanation });
 });
 
@@ -873,7 +907,9 @@ app.put("/api/vocab", async (context) => {
   if (!words.length) return context.json({ error: "Faltan las palabras." }, 400);
 
   const upserted = await withClient(context.env, async (client) => {
-    const result = await client.query(
+    let total = 0;
+    for (const chunk of chunks(words)) {
+      const result = await client.query(
       `INSERT INTO lecta_user_words
          (user_id, language, form, lemma, pos, meaning, context, book_hash,
           sense_entry_id, sense_order, card, saved_at, updated_at, deleted)
@@ -895,9 +931,11 @@ app.put("/api/vocab", async (context) => {
          updated_at = excluded.updated_at,
          deleted = excluded.deleted
        WHERE lecta_user_words.updated_at < excluded.updated_at`,
-      [session.user.id, JSON.stringify(words)],
-    );
-    return result.rowCount ?? 0;
+      [session.user.id, JSON.stringify(chunk)],
+      );
+      total += result.rowCount ?? 0;
+    }
+    return total;
   });
   if (upserted === undefined)
     return context.json({ error: "El vocabulario no está configurado." }, 503);

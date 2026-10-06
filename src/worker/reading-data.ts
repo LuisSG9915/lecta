@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { withClient, getConnectionString, type WorkerEnv } from "./db";
+import { withClient, getConnectionString, chunks, type WorkerEnv } from "./db";
 import { getSession } from "./session";
 import {
   cleanAnnotation,
@@ -75,7 +75,9 @@ readingData.put("/api/annotations", async (context) => {
     return context.json({ error: "Faltan las anotaciones." }, 400);
 
   const upserted = await withClient(context.env, async (client) => {
-    const result = await client.query(
+    let total = 0;
+    for (const chunk of chunks(annotations)) {
+      const result = await client.query(
       `INSERT INTO lecta_user_annotations
          (user_id, book_hash, id, kind, section_index, anchor, text, prefix, suffix, note, created_at, updated_at, deleted)
        SELECT $1,
@@ -92,9 +94,11 @@ readingData.put("/api/annotations", async (context) => {
          prefix = excluded.prefix, suffix = excluded.suffix, note = excluded.note,
          updated_at = excluded.updated_at, deleted = excluded.deleted
        WHERE lecta_user_annotations.updated_at < excluded.updated_at`,
-      [session.user.id, JSON.stringify(annotations)],
-    );
-    return result.rowCount ?? 0;
+      [session.user.id, JSON.stringify(chunk)],
+      );
+      total += result.rowCount ?? 0;
+    }
+    return total;
   });
   if (upserted === undefined)
     return context.json({ error: "El almacenamiento no está configurado." }, 503);
@@ -151,7 +155,9 @@ readingData.put("/api/activity", async (context) => {
     return context.json({ error: "Faltan los intervalos." }, 400);
 
   const inserted = await withClient(context.env, async (client) => {
-    const result = await client.query(
+    let total = 0;
+    for (const chunk of chunks(intervals)) {
+      const result = await client.query(
       `INSERT INTO lecta_user_activity
          (user_id, id, book_hash, started_at, ended_at)
        SELECT $1,
@@ -159,9 +165,11 @@ readingData.put("/api/activity", async (context) => {
               (j.value ->> 'startedAt')::int8, (j.value ->> 'endedAt')::int8
        FROM jsonb_array_elements($2::jsonb) AS j(value)
        ON CONFLICT (user_id, id) DO NOTHING`,
-      [session.user.id, JSON.stringify(intervals)],
-    );
-    return result.rowCount ?? 0;
+      [session.user.id, JSON.stringify(chunk)],
+      );
+      total += result.rowCount ?? 0;
+    }
+    return total;
   });
   if (inserted === undefined)
     return context.json({ error: "El almacenamiento no está configurado." }, 503);
@@ -217,7 +225,9 @@ readingData.put("/api/reviews", async (context) => {
     return context.json({ error: "Faltan los repasos." }, 400);
 
   const inserted = await withClient(context.env, async (client) => {
-    const result = await client.query(
+    let total = 0;
+    for (const chunk of chunks(reviews)) {
+      const result = await client.query(
       `INSERT INTO lecta_user_reviews
          (user_id, id, language, form, kind, rating, hints, created_at)
        SELECT $1,
@@ -226,9 +236,11 @@ readingData.put("/api/reviews", async (context) => {
               (j.value ->> 'hints')::int4, (j.value ->> 'createdAt')::int8
        FROM jsonb_array_elements($2::jsonb) AS j(value)
        ON CONFLICT (user_id, id) DO NOTHING`,
-      [session.user.id, JSON.stringify(reviews)],
-    );
-    return result.rowCount ?? 0;
+      [session.user.id, JSON.stringify(chunk)],
+      );
+      total += result.rowCount ?? 0;
+    }
+    return total;
   });
   if (inserted === undefined)
     return context.json({ error: "El almacenamiento no está configurado." }, 503);
@@ -289,7 +301,9 @@ readingData.put("/api/positions", async (context) => {
     return context.json({ error: "Faltan las posiciones." }, 400);
 
   const upserted = await withClient(context.env, async (client) => {
-    const result = await client.query(
+    let total = 0;
+    for (const chunk of chunks(positions)) {
+      const result = await client.query(
       `INSERT INTO lecta_user_positions
          (user_id, book_hash, section_index, scroll_top, ratio, progress, anchor, updated_at)
        SELECT $1,
@@ -309,9 +323,11 @@ readingData.put("/api/positions", async (context) => {
          anchor = excluded.anchor,
          updated_at = excluded.updated_at
        WHERE lecta_user_positions.updated_at < excluded.updated_at`,
-      [session.user.id, JSON.stringify(positions)],
-    );
-    return result.rowCount ?? 0;
+      [session.user.id, JSON.stringify(chunk)],
+      );
+      total += result.rowCount ?? 0;
+    }
+    return total;
   });
   if (upserted === undefined)
     return context.json({ error: "El almacenamiento no está configurado." }, 503);
@@ -375,7 +391,9 @@ readingData.put("/api/knowledge", async (context) => {
     return context.json({ error: "Faltan las palabras conocidas." }, 400);
 
   const upserted = await withClient(context.env, async (client) => {
-    const result = await client.query(
+    let total = 0;
+    for (const chunk of chunks(rows)) {
+      const result = await client.query(
       // Arbitraje convergente: la tupla la genera knowledgeArbSql
       // desde el mismo mapa de pesos que knowledgeArbWins — así el
       // servidor, punto de encuentro de los dispositivos, converge al
@@ -393,9 +411,11 @@ readingData.put("/api/knowledge", async (context) => {
          updated_at = excluded.updated_at, deleted = excluded.deleted
        WHERE ${knowledgeArbSql("excluded")}
          > ${knowledgeArbSql("lecta_user_knowledge")}`,
-      [session.user.id, JSON.stringify(rows)],
-    );
-    return result.rowCount ?? 0;
+      [session.user.id, JSON.stringify(chunk)],
+      );
+      total += result.rowCount ?? 0;
+    }
+    return total;
   });
   if (upserted === undefined)
     return context.json({ error: "El almacenamiento no está configurado." }, 503);

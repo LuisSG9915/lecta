@@ -24,6 +24,19 @@ export function getConnectionString(env: WorkerEnv) {
   return env.DATABASE_URL;
 }
 
+// Tamaño de lote para escrituras de sincronización masiva: en lugar de
+// un único INSERT con un jsonb de 500-1000 filas (declaración pesada
+// que retiene la conexión y roza límites de tamaño), se fragmenta en
+// varios INSERT sobre el mismo cliente. 120 queda dentro del rango
+// 100-150 que Hyperdrive tolera bien por declaración.
+export const SYNC_CHUNK_ROWS = 120;
+
+export function chunks<T>(items: readonly T[], size = SYNC_CHUNK_ROWS): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
+  return out;
+}
+
 export async function withClient<T>(env: WorkerEnv, run: (client: pg.Client) => Promise<T>) {
   const connectionString = getConnectionString(env);
   if (!connectionString) return undefined;
@@ -35,3 +48,4 @@ export async function withClient<T>(env: WorkerEnv, run: (client: pg.Client) => 
     await client.end().catch(() => undefined);
   }
 }
+

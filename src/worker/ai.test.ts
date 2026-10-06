@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   AI_CALL_LIMITS,
+  AI_CALL_TIMEOUT_MS,
   callDeepSeek,
+  createTtlCache,
   ENRICHMENT_MODEL,
   ENRICHMENT_PROMPT_VERSION,
   ITEM_PROMPT_VERSION,
@@ -270,13 +272,20 @@ describe("callDeepSeek", () => {
     }
   });
 
-  it("devuelve api-error con respuesta HTTP no exitosa", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => jsonResponse({ error: "fallo" }, 500)),
-    );
-    const result = await callDeepSeek(fakeEnv(), prompt, itemOptions);
-    expect(result).toEqual({ ok: false, reason: "api-error" });
+  it("devuelve api-error con respuesta HTTP no exitosa tras agotar reintentos", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ error: "fallo" }, 500));
+    vi.stubGlobal("fetch", fetchMock);
+    const result = await callDeepSeek(fakeEnv(), prompt, {
+      ...itemOptions,
+      retry: { sleep: async () => {} },
+    });
+    expect(result).toEqual({
+      ok: false,
+      reason: "api-error",
+      status: 500,
+      attempts: 3,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
   it("devuelve api-error cuando fetch rechaza (red caída o timeout)", async () => {
@@ -286,28 +295,40 @@ describe("callDeepSeek", () => {
         throw new Error("network down");
       }),
     );
-    const result = await callDeepSeek(fakeEnv(), prompt, itemOptions);
-    expect(result).toEqual({ ok: false, reason: "api-error" });
+    const result = await callDeepSeek(fakeEnv(), prompt, {
+      ...itemOptions,
+      retry: { sleep: async () => {} },
+    });
+    expect(result).toEqual({
+      ok: false,
+      reason: "api-error",
+      status: null,
+      attempts: 3,
+    });
   });
 
-  it("devuelve api-error con JSON roto o sin content en choices", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => new Response("esto no es json{{{", { status: 200 })),
+  it("devuelve api-error con JSON roto o sin content en choices, sin reintentar", async () => {
+    const brokenJson = vi.fn(
+      async () => new Response("esto no es json{{{", { status: 200 }),
     );
+    vi.stubGlobal("fetch", brokenJson);
     expect(await callDeepSeek(fakeEnv(), prompt, itemOptions)).toEqual({
       ok: false,
       reason: "api-error",
+      status: 200,
+      attempts: 1,
     });
+    expect(brokenJson).toHaveBeenCalledTimes(1);
 
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => jsonResponse({ choices: [] })),
-    );
+    const emptyChoices = vi.fn(async () => jsonResponse({ choices: [] }));
+    vi.stubGlobal("fetch", emptyChoices);
     expect(await callDeepSeek(fakeEnv(), prompt, itemOptions)).toEqual({
       ok: false,
       reason: "api-error",
+      status: 200,
+      attempts: 1,
     });
+    expect(emptyChoices).toHaveBeenCalledTimes(1);
   });
 
   it("reporta finish_reason 'length' sin convertirlo en otro resultado", async () => {
@@ -334,7 +355,12 @@ describe("callDeepSeek", () => {
       prompt,
       itemOptions,
     );
-    expect(result).toEqual({ ok: false, reason: "not-configured" });
+    expect(result).toEqual({
+      ok: false,
+      reason: "not-configured",
+      status: null,
+      attempts: 0,
+    });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -345,6 +371,119 @@ describe("callDeepSeek", () => {
     await expect(
       callDeepSeek(fakeEnv(), prompt, { ...itemOptions, maxTokens: 1.5 }),
     ).rejects.toThrow();
+  });
+
+  it("usa un timeout de 8 s por intento", async () => {
+    const fetchMock = vi.fn(async (_url: string, init?: RequestInit) => {
+      expect(init?.signal).toBeInstanceOf(AbortSignal);
+      return jsonResponse({
+        choices: [{ message: { content: "ok" } }],
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    await callDeepSeek(fakeEnv(), prompt, itemOptions);
+    expect(AI_CALL_TIMEOUT_MS).toBe(8_000);
+  });
+
+  it("reintenta un 429 y logra el intento siguiente", async () => {
+    const sleep = vi.fn<(ms: number) => Promise<void>>(async () => {});
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ error: "saturado" }, 429))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          choices: [{ message: { content: '{"dato":1}' }, finish_reason: "stop" }],
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await callDeepSeek(fakeEnv(), prompt, {
+      ...itemOptions,
+      retry: { sleep },
+    });
+
+    expect(result).toMatchObject({ ok: true, attempts: 2 });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(sleep).toHaveBeenCalledTimes(1);
+    expect(sleep.mock.calls[0]?.[0]).toBeGreaterThanOrEqual(400);
+  });
+
+  it("agota los intentos ante 429 persistente y reporta rate-limited", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ error: "saturado" }, 429));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await callDeepSeek(fakeEnv(), prompt, {
+      ...itemOptions,
+      retry: { sleep: async () => {} },
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      reason: "rate-limited",
+      status: 429,
+      attempts: 3,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("reintenta 504 y errores de red, pero no un 4xx no transitorio", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ error: "timeout" }, 504))
+      .mockRejectedValueOnce(new Error("socket reset"))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          choices: [{ message: { content: "ok" } }],
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await callDeepSeek(fakeEnv(), prompt, {
+      ...itemOptions,
+      retry: { sleep: async () => {} },
+    });
+    expect(result).toMatchObject({ ok: true, attempts: 3 });
+
+    const badRequest = vi.fn(async () => jsonResponse({ error: "bad" }, 400));
+    vi.stubGlobal("fetch", badRequest);
+    const rejected = await callDeepSeek(fakeEnv(), prompt, {
+      ...itemOptions,
+      retry: { sleep: async () => {} },
+    });
+    expect(rejected).toEqual({
+      ok: false,
+      reason: "api-error",
+      status: 400,
+      attempts: 1,
+    });
+    expect(badRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it("honra Retry-After acotado sobre el backoff exponencial", async () => {
+    const sleep = vi.fn<(ms: number) => Promise<void>>(async () => {});
+    const retryAfter = (seconds: string) =>
+      new Response(JSON.stringify({ error: "saturado" }), {
+        status: 429,
+        headers: { "retry-after": seconds },
+      });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(retryAfter("2"))
+      .mockResolvedValueOnce(retryAfter("600"))
+      .mockResolvedValueOnce(
+        jsonResponse({ choices: [{ message: { content: "ok" } }] }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await callDeepSeek(fakeEnv(), prompt, {
+      ...itemOptions,
+      retry: { sleep },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(sleep.mock.calls[0]?.[0]).toBe(2_000);
+    // 600 s se acota al tope de 10 s.
+    expect(sleep.mock.calls[1]?.[0]).toBe(10_000);
   });
 });
 
@@ -384,5 +523,43 @@ describe("requestEnrichment", () => {
     const [, init] = lastCall(fetchMock);
     const body = JSON.parse(init.body as string) as Record<string, unknown>;
     expect(body.max_tokens).toBe(AI_CALL_LIMITS.enrich);
+  });
+});
+
+describe("createTtlCache", () => {
+  it("sirve lo guardado dentro del TTL y devuelve undefined al vencer", () => {
+    const cache = createTtlCache<string>({ ttlMs: 1_000 });
+    cache.set("es:casa:ctx", "definición");
+    expect(cache.get("es:casa:ctx")).toBe("definición");
+    expect(cache.get("es:otra:ctx")).toBeUndefined();
+
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(Date.now() + 1_001);
+      expect(cache.get("es:casa:ctx")).toBeUndefined();
+      expect(cache.size).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("desaloja la entrada más vieja al superar el tope", () => {
+    const cache = createTtlCache<number>({ maxEntries: 3 });
+    cache.set("a", 1);
+    cache.set("b", 2);
+    cache.set("c", 3);
+    cache.set("d", 4);
+    expect(cache.size).toBe(3);
+    expect(cache.get("a")).toBeUndefined();
+    expect(cache.get("b")).toBe(2);
+    expect(cache.get("d")).toBe(4);
+  });
+
+  it("reescribir una clave la refresca sin duplicarla", () => {
+    const cache = createTtlCache<number>({ maxEntries: 2 });
+    cache.set("a", 1);
+    cache.set("a", 2);
+    expect(cache.size).toBe(1);
+    expect(cache.get("a")).toBe(2);
   });
 });
