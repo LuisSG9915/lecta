@@ -5,9 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Vocabulary from "./Vocabulary";
 import {
   fillSavedWordMeaning,
-  listKnowledge,
   listSavedWords,
-  loadSessionValue,
   saveKnowledge,
   updateSavedWord,
   type SavedWord,
@@ -69,8 +67,6 @@ vi.mock("./GamePanel", () => ({ GamePanel: () => null }));
 vi.mock("./ReadingActivity", () => ({ default: () => null }));
 
 const listWordsMock = vi.mocked(listSavedWords);
-const listKnowledgeMock = vi.mocked(listKnowledge);
-const loadSessionMock = vi.mocked(loadSessionValue);
 const saveKnowledgeMock = vi.mocked(saveKnowledge);
 const updateWordMock = vi.mocked(updateSavedWord);
 const fillMock = vi.mocked(fillSavedWordMeaning);
@@ -179,6 +175,7 @@ describe("Aprender", () => {
           lemma: "casa",
           pos: "sustantivo",
           entryId: "7",
+          freqRank: null,
           senses: [{ senseOrder: 1, definition: "hogar", example: null }],
           zipf: null,
         },
