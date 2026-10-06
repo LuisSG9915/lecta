@@ -202,3 +202,81 @@ export const targetAt = (
     (range) =>
       range.startSection <= sectionIndex && sectionIndex < range.endSection,
   )?.target ?? null;
+
+// ¿El lector llegó al final del rango? Está en su última sección con
+// la vista casi completa (0.98: en desplazamiento el tope real puede
+// no llegar a 1.0) o ya la dejó atrás. No distingue cómo llegó ahí —
+// quien llama decide si antes hubo lectura real del tramo.
+export const reachedRangeEnd = (
+  range: { startSection: number; endSection: number },
+  sectionIndex: number,
+  ratio: number,
+): boolean =>
+  sectionIndex > range.endSection - 1 ||
+  (sectionIndex === range.endSection - 1 && ratio >= 0.98);
+
+// ---------- Invitación a la prueba de vocabulario ----------
+
+// Seguimiento del tramo candidato: dónde se observó lectura real y si
+// su última sección ya se pisó — avanzar a la sección inmediata desde
+// ella también cuenta como terminar (una última sección de una página
+// jamás llega al 0.98 de vista).
+export type CalibrationTrack = {
+  range: { startSection: number; endSection: number };
+  sawLast: boolean;
+};
+
+// ¿La posición está dentro del tramo y antes de su final? Es la única
+// evidencia de lectura: una sección previa del rango, o la última sin
+// haber llegado al tope.
+const insideBeforeEnd = (
+  range: { startSection: number; endSection: number },
+  sectionIndex: number,
+  ratio: number,
+): boolean =>
+  sectionIndex >= range.startSection &&
+  (sectionIndex < range.endSection - 1 ||
+    (sectionIndex === range.endSection - 1 && ratio < 0.98));
+
+// Avanza el seguimiento con cada posición observada y devuelve si la
+// invitación debe aparecer (una sola vez por apertura: quien llama
+// traba tras el primer `offer`). El tramo candidato solo se arma con
+// lectura real — aterrizar directo en el final (retomar la posición,
+// un marcador o un salto del índice) no arma nada. Dispara cuando el
+// tramo armado llega a su fin. Saltar más allá sin pisar la última
+// sección no dispara: el candidato se recalcula donde cayó el lector.
+export function trackCalibrationOffer(
+  track: CalibrationTrack | null,
+  sectionIndex: number,
+  viewRatio: number,
+  rangeFor: (
+    index: number,
+  ) => { startSection: number; endSection: number } | null,
+): { track: CalibrationTrack | null; offer: boolean } {
+  if (track) {
+    const { range } = track;
+    if (sectionIndex === range.endSection - 1) {
+      return viewRatio >= 0.98
+        ? { track, offer: true }
+        : { track: { range, sawLast: true }, offer: false };
+    }
+    if (sectionIndex === range.endSection && track.sawLast)
+      return { track, offer: true };
+    if (insideBeforeEnd(range, sectionIndex, viewRatio))
+      return { track, offer: false };
+    // Cayó fuera del tramo sin completarlo: se reevalúa abajo.
+  }
+  const range = rangeFor(sectionIndex) ?? {
+    startSection: sectionIndex,
+    endSection: sectionIndex + 1,
+  };
+  const atLast = sectionIndex === range.endSection - 1;
+  const armed =
+    sectionIndex >= range.startSection &&
+    sectionIndex < range.endSection &&
+    (!atLast || viewRatio < 0.98);
+  return {
+    track: armed ? { range, sawLast: atLast } : track,
+    offer: false,
+  };
+}

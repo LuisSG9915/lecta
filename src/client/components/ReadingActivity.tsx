@@ -1,17 +1,26 @@
 import { useEffect, useState } from "react";
 import {
+  captureDbScope,
   listIntervals,
+  loadSessionValue,
   type SavedInterval,
   type SavedWord,
   type StoredBook,
 } from "../lib/idb";
 import { isDue } from "../lib/fsrs";
 import {
+  dayKeyOf,
   dayLabel,
   formatDuration,
   msByBook,
   timeByDay,
 } from "../lib/reading-activity";
+import {
+  parseReadingGoal,
+  READING_GOAL_KEY,
+  weeklyGoalProgress,
+  type ReadingGoal,
+} from "../lib/reading-goal";
 import { loadActivityHidden, saveActivityHidden } from "../lib/settings";
 import { activityToCsv, downloadText, type BookNamer } from "../lib/export";
 
@@ -19,24 +28,42 @@ type ReadingActivityProps = {
   // Igual que en Vocabulary: basta hash/título/nombre para nombrar.
   books: Pick<StoredBook, "hash" | "name" | "title">[];
   words: SavedWord[];
+  // Sube cuando la sincronización trae intervalos nuevos: el panel
+  // relee sin que el lector pierda su posición.
+  activityVersion?: number;
 };
 
 const DAY_MS = 86_400_000;
 const WEEK_DAYS = 7;
 
 // Estadísticas discretas: tiempo real medido por el lector, por día y
-// por libro. Sin rachas ni metas — solo lo que pasó desde esta versión.
-export default function ReadingActivity({ books, words }: ReadingActivityProps) {
+// por libro. La meta semanal es opcional y cuenta días, no rachas.
+export default function ReadingActivity({
+  books,
+  words,
+  activityVersion = 0,
+}: ReadingActivityProps) {
   const [intervals, setIntervals] = useState<SavedInterval[] | null>(null);
+  const [goal, setGoal] = useState<ReadingGoal | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [hidden, setHidden] = useState(() => loadActivityHidden());
+  // «Ahora» se captura al cargar los datos, no en cada render: la
+  // meta y la semana se recalculan solo cuando llegan datos nuevos.
+  const [now, setNow] = useState(() => Date.now());
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   useEffect(() => {
     let cancelled = false;
-    void listIntervals()
-      .then((list) => {
-        if (!cancelled) setIntervals(list);
+    const scope = captureDbScope();
+    void Promise.all([
+      listIntervals(scope),
+      loadSessionValue(READING_GOAL_KEY, scope),
+    ])
+      .then(([list, rawGoal]) => {
+        if (cancelled) return;
+        setNow(Date.now());
+        setIntervals(list);
+        setGoal(parseReadingGoal(rawGoal));
       })
       .catch(() => {
         if (!cancelled) setLoadError(true);
@@ -44,7 +71,7 @@ export default function ReadingActivity({ books, words }: ReadingActivityProps) 
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [activityVersion]);
 
   const toggleHidden = () => {
     const next = !hidden;
@@ -85,17 +112,10 @@ export default function ReadingActivity({ books, words }: ReadingActivityProps) 
   // Últimos 7 días naturales, haya o no lectura: los días vacíos también
   // se muestran, igual que los puntos de la estantería.
   const week: { dayKey: string; ms: number }[] = [];
-  const todayKey = (() => {
-    const day = new Date();
-    return [
-      day.getFullYear(),
-      String(day.getMonth() + 1).padStart(2, "0"),
-      String(day.getDate()).padStart(2, "0"),
-    ].join("-");
-  })();
+  const todayKey = dayKeyOf(now, timeZone);
   {
     const byKey = new Map(days.map((day) => [day.dayKey, day.ms]));
-    const cursor = new Date();
+    const cursor = new Date(now);
     cursor.setHours(0, 0, 0, 0);
     for (let i = WEEK_DAYS - 1; i >= 0; i -= 1) {
       const day = new Date(cursor.getTime() - i * DAY_MS);
@@ -108,6 +128,13 @@ export default function ReadingActivity({ books, words }: ReadingActivityProps) 
     }
   }
   const maxDay = Math.max(...week.map((day) => day.ms), 1);
+
+  // Meta de la semana (lunes a domingo): días con al menos un minuto
+  // acumulado. Es una vista distinta de «Últimos 7 días»: rótulo propio.
+  const goalProgress =
+    goal?.daysPerWeek != null
+      ? weeklyGoalProgress(intervals, now, timeZone, goal.daysPerWeek)
+      : null;
 
   const byBook = msByBook(intervals);
   const bookRows = [...byBook.entries()].sort((a, b) => b[1] - a[1]);
@@ -125,6 +152,26 @@ export default function ReadingActivity({ books, words }: ReadingActivityProps) 
 
   return (
     <section aria-label="Actividad" className="act">
+      {goalProgress ? (
+        <section aria-label="Meta de la semana">
+          <h2 className="eyebrow act-eyebrow">Meta de la semana</h2>
+          <div className="dots" role="list" aria-label="Lunes a domingo">
+            {goalProgress.days.map(({ dayKey, read }) => (
+              <span
+                key={dayKey}
+                role="img"
+                className={`dot dot--day${read ? " dot--done" : ""}`}
+                title={dayLabel(dayKey)}
+                aria-label={`${dayLabel(dayKey)}: ${read ? "con lectura" : "sin lectura"}`}
+              />
+            ))}
+          </div>
+          <p className="meta">
+            {goalProgress.readDays} de {goalProgress.target} días con lectura
+            {goalProgress.met ? " · cumplida" : ""}
+          </p>
+        </section>
+      ) : null}
       {intervals.length === 0 ? (
         <p className="nb-empty">
           Aún no hay lectura registrada.

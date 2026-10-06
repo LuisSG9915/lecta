@@ -301,6 +301,81 @@ export const KNOWLEDGE_SOURCES = [
 ] as const;
 export type KnowledgeSource = (typeof KNOWLEDGE_SOURCES)[number];
 
+// Peso de cada fuente al arbitrar escrituras y proyecciones: lo
+// inferido pesa menos que el guardado en el Cuaderno y mucho menos
+// que una respuesta explícita (calibración, «ya la conozco», ronda
+// de preparación). Es la regla única de mergeKnowledgeWrite (idb) y
+// del resolvedor de alias de conocimiento (knowledge): un «inferred»
+// jamás deshace una respuesta explícita.
+export const KNOWLEDGE_SOURCE_STRENGTH: Record<KnowledgeSource, number> = {
+  inferred: 0,
+  saved: 1,
+  calibration: 2,
+  declared: 2,
+  preparation: 2,
+};
+
+// Orden convergente de arbitraje de evidencia: el MISMO criterio en
+// los tres sitios que fusionan (escritura local, sync del cliente y
+// upsert del servidor), para que cualquier orden de llegada converja
+// al mismo ganador. Llave lexicográfica:
+//   1. peso: fuerza de la fuente; una lápida compite con 2 — borrar
+//      es un acto explícito del usuario, no del algoritmo.
+//   2. updatedAt: a peso igual gana lo último decidido.
+//   3. lápida: a llave idéntica gana el borrado — a reloj empatado no
+//      se revive lo que el usuario eliminó.
+//   4. veredicto: conocida = 0, desconocida = 1 — al empate total se
+//      prefiere sobre-enseñar antes que ocultar una palabra.
+export type KnowledgeArbRow = {
+  source: string;
+  updatedAt: number;
+  deleted?: boolean;
+  known: boolean;
+};
+
+export function knowledgeArbKey(
+  row: KnowledgeArbRow,
+): [number, number, number, number] {
+  return [
+    row.deleted === true
+      ? 2
+      : (KNOWLEDGE_SOURCE_STRENGTH[row.source as KnowledgeSource] ?? 0),
+    row.updatedAt,
+    row.deleted === true ? 1 : 0,
+    row.known ? 0 : 1,
+  ];
+}
+
+// ¿La fila entrante desplaza a la existente? Comparación
+// lexicográfica: conmutativa e idempotente, así que merge(a,b) da el
+// mismo ganador sin importar el orden de llegada ni quién fusione.
+export function knowledgeArbWins(
+  incoming: KnowledgeArbRow,
+  existing: KnowledgeArbRow,
+): boolean {
+  const a = knowledgeArbKey(incoming);
+  const b = knowledgeArbKey(existing);
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i] !== b[i]) return a[i] > b[i];
+  }
+  return false;
+}
+
+// El mismo orden como tupla SQL para el ON CONFLICT del worker. Se
+// genera desde KNOWLEDGE_SOURCE_STRENGTH para que el CASE no pueda
+// divergir del comparador de arriba: (peso, sello, lápida, veredicto)
+// comparado por filas, donde la lápida gana a reloj empatado y la
+// desconocida gana al empate total.
+export function knowledgeArbSql(alias: string): string {
+  const weights = KNOWLEDGE_SOURCES.map(
+    (s) => `WHEN '${s}' THEN ${KNOWLEDGE_SOURCE_STRENGTH[s]}`,
+  ).join(" ");
+  const weight =
+    `CASE WHEN ${alias}.deleted THEN 2 ` +
+    `ELSE CASE ${alias}.source ${weights} ELSE 0 END END`;
+  return `(${weight}, ${alias}.updated_at, ${alias}.deleted, NOT ${alias}.known)`;
+}
+
 export type SyncKnowledgeInput = {
   language?: unknown;
   lemma?: unknown;
@@ -349,3 +424,58 @@ export function cleanKnowledge(input: SyncKnowledgeInput): CleanKnowledge | null
     deleted: input.deleted === true,
   };
 }
+
+// ---------- Tarjetas FSRS ----------
+//
+// La tarjeta es el historial del repaso serializado por ts-fsrs: un
+// campo mal formado corrompe la programación del lector. Viaja como
+// jsonb tal cual la escribió el cliente — las fechas llegan como
+// string ISO o número (DateInput), no como Date. El servidor valida
+// la forma antes del SQL: una card malformada rechaza la petición
+// completa en vez de guardarse, y una card ausente/no enviada jamás
+// borra la almacenada (el upsert la preserva). Campos extra se
+// toleran y se conservan: ts-fsrs puede agregar claves entre
+// versiones sin que el validador las pele.
+
+const CARD_REAL_FIELDS = ["stability", "difficulty"] as const;
+const CARD_COUNTER_FIELDS = [
+  "elapsed_days",
+  "scheduled_days",
+  "learning_steps",
+  "reps",
+  "lapses",
+] as const;
+const CARD_STATES = new Set([0, 1, 2, 3]);
+
+const isDateInput = (value: unknown) =>
+  value instanceof Date
+    ? !Number.isNaN(value.getTime())
+    : (typeof value === "string" || typeof value === "number") &&
+      !Number.isNaN(new Date(value).getTime());
+
+// ¿El objeto tiene la forma de una Card de ts-fsrs 5.x? No normaliza
+// ni escribe defaults: solo responde sí/no para que quien recibe
+// decida si rechaza la petición.
+export function isFsrsCardShape(
+  value: unknown,
+): value is Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value))
+    return false;
+  const card = value as Record<string, unknown>;
+  if (!isDateInput(card.due)) return false;
+  if (card.last_review !== undefined && !isDateInput(card.last_review))
+    return false;
+  for (const field of CARD_REAL_FIELDS)
+    if (typeof card[field] !== "number" || !Number.isFinite(card[field] as number))
+      return false;
+  for (const field of CARD_COUNTER_FIELDS)
+    if (
+      typeof card[field] !== "number" ||
+      !Number.isInteger(card[field] as number) ||
+      (card[field] as number) < 0
+    )
+      return false;
+  if (!CARD_STATES.has(card.state as number)) return false;
+  return true;
+}
+

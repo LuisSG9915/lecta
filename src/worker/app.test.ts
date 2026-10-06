@@ -172,6 +172,33 @@ describe("POST /api/lexicon/items", () => {
     expect(response.status).toBe(503);
   });
 
+  it("rejects a numeric entryId above the safe integer range", async () => {
+    // 2^60 como number ya perdió dígitos al serializarse: aceptarlo
+    // ligaría otra acepción; se rechaza en la frontera.
+    const response = await post({ refs: [{ entryId: 2 ** 60, senseOrder: 1 }] });
+    expect(response.status).toBe(400);
+  });
+
+  it("rejects ids outside the int8 range and non-positive ids", async () => {
+    expect(
+      (await post({ refs: [{ entryId: "9223372036854775808", senseOrder: 1 }] })).status,
+    ).toBe(400);
+    expect((await post({ refs: [{ entryId: "0", senseOrder: 1 }] })).status).toBe(400);
+    expect((await post({ refs: [{ entryId: 0, senseOrder: 1 }] })).status).toBe(400);
+  });
+
+  it("rejects a senseOrder outside the int4 range", async () => {
+    const response = await post({
+      refs: [{ entryId: "1234567890123456789", senseOrder: "2147483648" }],
+    });
+    expect(response.status).toBe(400);
+  });
+
+  it("canonicalizes digit strings with leading zeros", async () => {
+    const response = await post({ refs: [{ entryId: "007", senseOrder: "01" }] }, {});
+    expect(response.status).toBe(503);
+  });
+
   it("reports a missing catalog configuration", async () => {
     const response = await post({ refs: [{ entryId: 1, senseOrder: 1 }] }, {});
     expect(response.status).toBe(503);

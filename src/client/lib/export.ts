@@ -1,4 +1,5 @@
 import {
+  captureDbScope,
   listAllReviews,
   listAnnotations,
   listIntervals,
@@ -151,8 +152,9 @@ export function activityToCsv(
 // ---------- Respaldo completo (JSON) ----------
 
 // Claves del almacén «session» que forman parte del respaldo. Las
-// escriben vocab.ts, reading-sync.ts, positions-sync.ts, Reader.tsx y
-// ai-pref.ts; se listan a mano porque el store es clave-valor abierto
+// escriben vocab.ts, reading-sync.ts, positions-sync.ts, Reader.tsx,
+// calibration.ts y ai-pref.ts; se listan a mano porque el store es
+// clave-valor abierto
 // y no hay un registro central. «readingDays» también vive ahí pero ya
 // sale como sección propia (listReadingDays).
 const BACKUP_SESSION_KEYS = [
@@ -166,6 +168,9 @@ const BACKUP_SESSION_KEYS = [
   "suggestionLevel",
   "readingWpm",
   "calibrationDone",
+  "calibrationDraft",
+  "readingGoal:v1",
+  "learnExposure:v1",
   USE_AI_KEY,
   HISTORY_KEY,
 ] as const;
@@ -233,21 +238,25 @@ export function buildBackup(data: BackupData, exportedAt = Date.now()): string {
 // Reúne todo lo del dispositivo y lo descarga como
 // lecta-respaldo-<fecha>.json (Cuenta → «Descargar mis datos»).
 export async function downloadBackup() {
+  // Un solo contexto para todo el respaldo: aunque la cuenta cambie a
+  // mitad de las lecturas, el archivo sale completo de la base que
+  // lo inició — nunca mezcla datos de dos cuentas.
+  const bound = captureDbScope();
   const [words, reviews, annotations, activity, positions, knowledge, books, readingDays, events] =
     await Promise.all([
-      listSavedWords(),
-      listAllReviews(),
-      listAnnotations(),
-      listIntervals(),
-      listPositions(),
-      listKnowledge(),
-      listStoredBooks(),
-      listReadingDays(),
-      listReadingEvents(),
+      listSavedWords(undefined, bound),
+      listAllReviews(bound),
+      listAnnotations(undefined, bound),
+      listIntervals(bound),
+      listPositions(bound),
+      listKnowledge(undefined, bound),
+      listStoredBooks(bound),
+      listReadingDays(bound),
+      listReadingEvents(undefined, bound),
     ]);
   const sessionPairs = await Promise.all(
-    sessionKeysForBackup(await listSessionKeys()).map(async (key) => {
-      const value = await loadSessionValue(key);
+    sessionKeysForBackup(await listSessionKeys(bound)).map(async (key) => {
+      const value = await loadSessionValue(key, bound);
       return value === undefined ? null : ([key, value] as const);
     }),
   );

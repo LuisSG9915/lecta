@@ -33,9 +33,17 @@ import { pushWordsToServer } from "./vocab";
 // sustituye lo que toca la base de datos o la sesión.
 vi.mock("./idb", async (importOriginal) => {
   const mod = await importOriginal<typeof import("./idb")>();
+  const getActiveUserId = vi.fn((): string | null => "u1");
   return {
     ...mod,
-    getActiveUserId: vi.fn(() => "u1"),
+    getActiveUserId,
+    captureDbScope: vi.fn(() => ({
+      userId: getActiveUserId(),
+      generation: 0,
+    })),
+    isDbScopeActive: vi.fn(
+      (scope: { userId: string | null }) => scope.userId === getActiveUserId(),
+    ),
     loadSessionValue: vi.fn(async () => undefined as string | undefined),
     savePreparationBatch: vi.fn(),
     saveSessionValue: vi.fn(async () => undefined),
@@ -310,8 +318,8 @@ describe("confirmPreparation", () => {
     });
     const out = await confirmPreparation(input);
     expect(order).toEqual(["save", "pushK", "pushW"]);
-    expect(pushKMock).toHaveBeenCalledWith(written.knowledge);
-    expect(pushWMock).toHaveBeenCalledWith(written.words);
+    expect(pushKMock).toHaveBeenCalledWith(written.knowledge, expect.anything());
+    expect(pushWMock).toHaveBeenCalledWith(written.words, expect.anything());
     expect(out).toMatchObject({ saved: true, synced: true });
     expect(out.knowledge).toEqual(written.knowledge);
     expect(out.words).toEqual(written.words);
@@ -336,8 +344,8 @@ describe("confirmPreparation", () => {
     batchMock.mockResolvedValue({ knowledge: [], words: [] });
     const out = await confirmPreparation(input);
     expect(out).toMatchObject({ saved: true, synced: true });
-    expect(pushKMock).toHaveBeenCalledWith([]);
-    expect(pushWMock).toHaveBeenCalledWith([]);
+    expect(pushKMock).toHaveBeenCalledWith([], expect.anything());
+    expect(pushWMock).toHaveBeenCalledWith([], expect.anything());
   });
 
   it("cuenta cambiada durante el guardado → no empuja con la sesión nueva", async () => {
@@ -460,6 +468,7 @@ describe("borrador de preparación", () => {
     const store = new Map<string, string>();
     saveSessionMock.mockImplementation(async (key: string, value: string) => {
       store.set(key, value);
+      return key;
     });
     loadSessionMock.mockImplementation(async (key: string) => store.get(key));
 
@@ -476,6 +485,7 @@ describe("borrador de preparación", () => {
     // El borrador cargado no genera evidencia hasta confirmar.
     expect(loadSessionMock).toHaveBeenCalledWith(
       preparationRecordKey("h1", "cap1"),
+      undefined,
     );
   });
 

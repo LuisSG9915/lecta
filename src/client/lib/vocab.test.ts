@@ -8,13 +8,32 @@ import {
 } from "./idb";
 import { pushWordsToServer, syncSavedWords } from "./vocab";
 
-vi.mock("./idb", () => ({
-  getActiveUserId: vi.fn(() => "u1"),
+vi.mock("./idb", () => {
+  const getActiveUserId = vi.fn((): string | null => "u1");
+  const captureDbScope = vi.fn(() => ({
+    userId: getActiveUserId(),
+    generation: 0,
+  }));
+  const isDbScopeActive = vi.fn(
+    (scope: { userId: string | null }) => scope.userId === getActiveUserId(),
+  );
+  class StaleScopeError extends Error {
+    constructor() {
+      super("La cuenta activa cambió durante la operación.");
+      this.name = "StaleScopeError";
+    }
+  }
+  return {
+  captureDbScope,
+  isDbScopeActive,
+  StaleScopeError,
+  getActiveUserId,
   listAllSavedWords: vi.fn(async () => []),
   putSavedWord: vi.fn(async () => undefined),
   removeSavedWord: vi.fn(),
   saveSessionValue: vi.fn(async () => undefined),
-}));
+  };
+});
 
 const word = (key: string, language = "es"): SavedWord => ({
   key,
@@ -107,7 +126,7 @@ describe("syncSavedWords", () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({ words: [] }), { status: 200 }))
       .mockResolvedValueOnce(errorResponse());
     await expect(syncSavedWords()).resolves.toBeNull();
-    expect(fetch).toHaveBeenCalledWith("/api/vocab?lang=es");
+    expect(fetch).toHaveBeenCalledWith("/api/vocab?lang=es", expect.anything());
     expect(saveSessionValue).not.toHaveBeenCalled();
   });
 
@@ -118,7 +137,11 @@ describe("syncSavedWords", () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({ words: [remote] }), { status: 200 }))
       .mockResolvedValueOnce(okResponse());
     await expect(syncSavedWords()).resolves.toBe(1);
-    expect(putSavedWord).toHaveBeenCalledWith(remote);
-    expect(saveSessionValue).toHaveBeenCalledWith("vocabLastSyncAt", expect.any(String));
+    expect(putSavedWord).toHaveBeenCalledWith(remote, expect.anything());
+    expect(saveSessionValue).toHaveBeenCalledWith(
+      "vocabLastSyncAt",
+      expect.any(String),
+      expect.anything(),
+    );
   });
 });

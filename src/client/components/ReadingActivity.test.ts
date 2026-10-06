@@ -1,0 +1,93 @@
+// @vitest-environment jsdom
+import { act, createElement as h } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import ReadingActivity from "./ReadingActivity";
+import { listIntervals, loadSessionValue } from "../lib/idb";
+import { serializeReadingGoal } from "../lib/reading-goal";
+
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
+  true;
+
+vi.mock("../lib/idb", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("../lib/idb")>();
+  return {
+    ...mod,
+    listIntervals: vi.fn(async () => []),
+    loadSessionValue: vi.fn(async () => null),
+  };
+});
+
+const intervalsMock = vi.mocked(listIntervals);
+const loadMock = vi.mocked(loadSessionValue);
+
+let host: HTMLDivElement;
+let root: Root;
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  host = document.createElement("div");
+  document.body.appendChild(host);
+  root = createRoot(host);
+});
+
+afterEach(() => {
+  act(() => root.unmount());
+  host.remove();
+  document.body.innerHTML = "";
+});
+
+// Intervalo de 90 s una hora después de la medianoche local: siempre
+// cae dentro de hoy sin importar a qué hora corre la prueba.
+const todaysReading = () => {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  return [
+    { id: "i1", bookHash: "b1", startedAt: start.getTime() + 3_600_000, endedAt: start.getTime() + 3_690_000 },
+  ];
+};
+
+const render = (activityVersion = 0) =>
+  act(async () => {
+    root.render(h(ReadingActivity, { books: [], words: [], activityVersion }));
+  });
+
+describe("ReadingActivity · meta de la semana", () => {
+  it("sin meta configurada no muestra la sección", async () => {
+    await render();
+    expect(host.querySelector('[aria-label="Meta de la semana"]')).toBeNull();
+  });
+
+  it("con meta muestra progreso derivado de los intervalos", async () => {
+    intervalsMock.mockResolvedValue(todaysReading());
+    loadMock.mockImplementation(async (key) =>
+      key === "readingGoal:v1" ? serializeReadingGoal(3) : null,
+    );
+    await render();
+    expect(host.textContent).toContain("1 de 3 días con lectura");
+    expect(host.querySelectorAll(".dot--done")).toHaveLength(1);
+  });
+
+  it("meta desactivada (daysPerWeek null) tampoco muestra la sección", async () => {
+    loadMock.mockImplementation(async (key) =>
+      key === "readingGoal:v1" ? serializeReadingGoal(null) : null,
+    );
+    await render();
+    expect(host.querySelector('[aria-label="Meta de la semana"]')).toBeNull();
+  });
+
+  it("un cambio en activityVersion relee intervalos y meta", async () => {
+    await render(0);
+    expect(intervalsMock).toHaveBeenCalledTimes(1);
+    intervalsMock.mockResolvedValue(todaysReading());
+    loadMock.mockImplementation(async (key) =>
+      key === "readingGoal:v1" ? serializeReadingGoal(1) : null,
+    );
+    await act(async () => {
+      root.render(h(ReadingActivity, { books: [], words: [], activityVersion: 1 }));
+    });
+    expect(intervalsMock).toHaveBeenCalledTimes(2);
+    expect(host.textContent).toContain("1 de 1 días con lectura");
+    expect(host.textContent).toContain("cumplida");
+  });
+});

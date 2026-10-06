@@ -24,8 +24,26 @@ import {
 } from "./reading-sync";
 import { pushPositionsToServer, syncPositions } from "./positions-sync";
 
-vi.mock("./idb", () => ({
-  getActiveUserId: vi.fn(() => "u1"),
+vi.mock("./idb", () => {
+  const getActiveUserId = vi.fn((): string | null => "u1");
+  const captureDbScope = vi.fn(() => ({
+    userId: getActiveUserId(),
+    generation: 0,
+  }));
+  const isDbScopeActive = vi.fn(
+    (scope: { userId: string | null }) => scope.userId === getActiveUserId(),
+  );
+  class StaleScopeError extends Error {
+    constructor() {
+      super("La cuenta activa cambió durante la operación.");
+      this.name = "StaleScopeError";
+    }
+  }
+  return {
+  captureDbScope,
+  isDbScopeActive,
+  StaleScopeError,
+  getActiveUserId,
   knowledgeKey: vi.fn(
     (language: string, lemma: string) => `${language}:${lemma.toLowerCase()}`,
   ),
@@ -40,7 +58,8 @@ vi.mock("./idb", () => ({
   putReviews: vi.fn(async () => 0),
   saveBookPosition: vi.fn(async () => undefined),
   saveSessionValue: vi.fn(async () => undefined),
-}));
+  };
+});
 
 const annotation = (id: string, over: Partial<SavedAnnotation> = {}): SavedAnnotation => ({
   key: `b1:${id}`,
@@ -210,8 +229,15 @@ describe("syncReviews", () => {
     expect(calls[1][0]).toBe("/api/reviews");
     expect(calls[1][1]?.method).toBe("PUT");
     expect(JSON.parse(calls[1][1]?.body as string).reviews).toEqual([review("local")]);
-    expect(putReviews).toHaveBeenCalledWith([review("remoto")]);
-    expect(saveSessionValue).toHaveBeenCalledWith("reviewsLastSyncAt", expect.any(String));
+    expect(putReviews).toHaveBeenCalledWith(
+      [review("remoto")],
+      expect.anything(),
+    );
+    expect(saveSessionValue).toHaveBeenCalledWith(
+      "reviewsLastSyncAt",
+      expect.any(String),
+      expect.anything(),
+    );
   });
 
   it("devuelve null y no sella la fecha si el servidor no responde", async () => {
@@ -271,10 +297,14 @@ describe("syncPositions", () => {
       pulled: 1,
       conflicts: [{ bookHash: "b1", previous: local, merged: remota }],
     });
-    expect(saveBookPosition).toHaveBeenCalledWith(remota);
+    expect(saveBookPosition).toHaveBeenCalledWith(remota, expect.anything());
     // El local ya estaba cubierto por la remota más nueva: no hay PUT.
     expect(fetch).toHaveBeenCalledTimes(1);
-    expect(saveSessionValue).toHaveBeenCalledWith("positionsLastSyncAt", expect.any(String));
+    expect(saveSessionValue).toHaveBeenCalledWith(
+      "positionsLastSyncAt",
+      expect.any(String),
+      expect.anything(),
+    );
   });
 
   it("una remota nueva se guarda sin conflicto y la local más nueva se sube", async () => {
@@ -288,12 +318,16 @@ describe("syncPositions", () => {
       )
       .mockResolvedValueOnce(okResponse());
     await expect(syncPositions()).resolves.toEqual({ pulled: 1, conflicts: [] });
-    expect(saveBookPosition).toHaveBeenCalledWith(nueva);
+    expect(saveBookPosition).toHaveBeenCalledWith(nueva, expect.anything());
     const calls = vi.mocked(fetch).mock.calls;
     expect(calls[1][0]).toBe("/api/positions");
     expect(calls[1][1]?.method).toBe("PUT");
     expect(JSON.parse(calls[1][1]?.body as string).positions).toEqual([local]);
-    expect(saveSessionValue).toHaveBeenCalledWith("positionsLastSyncAt", expect.any(String));
+    expect(saveSessionValue).toHaveBeenCalledWith(
+      "positionsLastSyncAt",
+      expect.any(String),
+      expect.anything(),
+    );
   });
 
   it("devuelve null y no sella la fecha si el servidor no responde", async () => {
@@ -360,14 +394,18 @@ describe("syncKnowledge", () => {
       .mockResolvedValueOnce(okResponse());
     await expect(syncKnowledge()).resolves.toBe(1);
     // Solo la remota nueva entra; la vieja no pisa al local más nuevo.
-    expect(putKnowledge).toHaveBeenCalledWith(remotaNueva);
+    expect(putKnowledge).toHaveBeenCalledWith(remotaNueva, expect.anything());
     expect(putKnowledge).toHaveBeenCalledTimes(1);
     const calls = vi.mocked(fetch).mock.calls;
     expect(calls[0][0]).toBe("/api/knowledge");
     expect(calls[1][0]).toBe("/api/knowledge");
     expect(calls[1][1]?.method).toBe("PUT");
     expect(JSON.parse(calls[1][1]?.body as string).rows).toEqual([local]);
-    expect(saveSessionValue).toHaveBeenCalledWith("knowledgeLastSyncAt", expect.any(String));
+    expect(saveSessionValue).toHaveBeenCalledWith(
+      "knowledgeLastSyncAt",
+      expect.any(String),
+      expect.anything(),
+    );
   });
 
   it("las lápidas remotas más nuevas también se fusionan", async () => {
@@ -378,8 +416,80 @@ describe("syncKnowledge", () => {
       new Response(JSON.stringify({ rows: [lapida] }), { status: 200 }),
     );
     await expect(syncKnowledge()).resolves.toBe(1);
-    expect(putKnowledge).toHaveBeenCalledWith(lapida);
+    expect(putKnowledge).toHaveBeenCalledWith(lapida, expect.anything());
     expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("una inferencia remota más nueva no destruye la respuesta explícita local", async () => {
+    // El orden de arbitraje es (peso, sello, lápida, veredicto): la
+    // explícita vieja gana a la inferencia nueva y además se sube
+    // para que el servidor converja al mismo ganador.
+    const local = known("perenne", { source: "declared", updatedAt: 100 });
+    const remota = known("perenne", {
+      source: "inferred",
+      known: false,
+      updatedAt: 200,
+    });
+    vi.mocked(listAllKnowledge).mockResolvedValue([local]);
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ rows: [remota] }), { status: 200 }),
+      )
+      .mockResolvedValueOnce(okResponse());
+    await expect(syncKnowledge()).resolves.toBe(0);
+    expect(putKnowledge).not.toHaveBeenCalled();
+    expect((putBodies("rows") as KnownWord[][]).flat()).toEqual([local]);
+  });
+
+  it("una explícita remota más vieja sí desplaza una inferencia local", async () => {
+    const local = known("perenne", {
+      source: "inferred",
+      known: false,
+      updatedAt: 200,
+    });
+    const remota = known("perenne", { source: "declared", updatedAt: 100 });
+    vi.mocked(listAllKnowledge).mockResolvedValue([local]);
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ rows: [remota] }), { status: 200 }),
+    );
+    await expect(syncKnowledge()).resolves.toBe(1);
+    expect(putKnowledge).toHaveBeenCalledWith(remota, expect.anything());
+    // La inferencia local pierde y no se sube.
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("una lápida explícita remota vence a una inferencia local más nueva", async () => {
+    const local = known("perenne", { source: "inferred", updatedAt: 400 });
+    const lapida = known("perenne", {
+      source: "declared",
+      deleted: true,
+      updatedAt: 300,
+    });
+    vi.mocked(listAllKnowledge).mockResolvedValue([local]);
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ rows: [lapida] }), { status: 200 }),
+    );
+    await expect(syncKnowledge()).resolves.toBe(1);
+    expect(putKnowledge).toHaveBeenCalledWith(lapida, expect.anything());
+  });
+
+  it("una lápida local no se pisa por una inferencia remota más nueva", async () => {
+    const local = known("perenne", {
+      source: "declared",
+      deleted: true,
+      updatedAt: 300,
+    });
+    const remota = known("perenne", { source: "inferred", updatedAt: 400 });
+    vi.mocked(listAllKnowledge).mockResolvedValue([local]);
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ rows: [remota] }), { status: 200 }),
+      )
+      .mockResolvedValueOnce(okResponse());
+    await expect(syncKnowledge()).resolves.toBe(0);
+    expect(putKnowledge).not.toHaveBeenCalled();
+    // La lápida se sube para propagar el borrado.
+    expect((putBodies("rows") as KnownWord[][]).flat()).toEqual([local]);
   });
 
   it("reconstruye la clave si la fila remota no la trae", async () => {
@@ -388,10 +498,13 @@ describe("syncKnowledge", () => {
       new Response(JSON.stringify({ rows: [sinClave] }), { status: 200 }),
     );
     await expect(syncKnowledge()).resolves.toBe(1);
-    expect(putKnowledge).toHaveBeenCalledWith({
-      ...sinClave,
-      key: "es:perenne",
-    });
+    expect(putKnowledge).toHaveBeenCalledWith(
+      {
+        ...sinClave,
+        key: "es:perenne",
+      },
+      expect.anything(),
+    );
   });
 
   it("devuelve null y no sella la fecha si el servidor no responde", async () => {

@@ -26,6 +26,10 @@ export type SectionPreviewProps = {
   // Consulta secundaria: formas que el catálogo no sabe medir. Se
   // muestran colapsadas para no saturar la selección principal.
   uncertainRows?: SectionPreviewRow[];
+  // Candidatas que no cupieron en la selección principal: consulta
+  // aparte, colapsada y paginada — no son «sin información» ni se
+  // declaran conocidas por el recorte.
+  deferredRows?: SectionPreviewRow[];
   // El controlador anota qué filas quedaron realmente visibles
   // (trayecto): se dispara al abrir y cada vez que crece lo visible.
   onRowsPresented?: (rows: SectionPreviewRow[]) => void;
@@ -126,6 +130,7 @@ export default function SectionPreview({
   rows,
   answers,
   uncertainRows,
+  deferredRows,
   onRowsPresented,
   saving,
   onAnswer,
@@ -137,6 +142,8 @@ export default function SectionPreview({
 }: SectionPreviewProps) {
   const [showAll, setShowAll] = useState(false);
   const [showUncertain, setShowUncertain] = useState(false);
+  const [showDeferred, setShowDeferred] = useState(false);
+  const [deferredShown, setDeferredShown] = useState(PAGE_SIZE);
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
 
@@ -165,11 +172,12 @@ export default function SectionPreview({
         .filter((group) => group.rows.length);
   const hiddenCount = rows.length - shown;
 
-  // Lo visible en pantalla (grupos principales + secundaria abierta):
+  // Lo visible en pantalla (grupos principales + consultas abiertas):
   // el controlador deduplica por clave, así basta avisar el conjunto.
   const visibleRows = [
     ...visibleGroups.flatMap((group) => group.rows),
     ...(showUncertain ? (uncertainRows ?? []) : []),
+    ...(showDeferred ? (deferredRows ?? []).slice(0, deferredShown) : []),
   ];
   const presentedSigRef = useRef("");
   useEffect(() => {
@@ -295,6 +303,52 @@ export default function SectionPreview({
                       />
                     ))}
                   </ul>
+                </>
+              ) : null}
+            </section>
+          ) : null}
+          {deferredRows?.length ? (
+            <section className="section-preview-group">
+              <h3 className="section-preview-group-title">
+                <button
+                  type="button"
+                  className="btn--quiet"
+                  aria-expanded={showDeferred}
+                  onClick={() => setShowDeferred((v) => !v)}
+                >
+                  {showDeferred ? "Ocultar" : "Ver"} más palabras de esta parte ({deferredRows.length})
+                </button>
+              </h3>
+              {showDeferred ? (
+                <>
+                  <p className="meta">
+                    No cupieron en la selección principal de esta ronda.
+                    Marcadas como desconocidas también irán a tu Cuaderno.
+                  </p>
+                  <ul className="section-preview-list">
+                    {deferredRows.slice(0, deferredShown).map((row) => (
+                      <Row
+                        key={row.key}
+                        row={row}
+                        answer={answers[row.key]}
+                        expanded={expandedKey === row.key}
+                        saving={saving}
+                        onAnswer={onAnswer}
+                        onToggleExpand={toggleExpand}
+                      />
+                    ))}
+                  </ul>
+                  {deferredRows.length > deferredShown ? (
+                    <button
+                      type="button"
+                      className="btn--quiet"
+                      onClick={() =>
+                        setDeferredShown((n) => n + PAGE_SIZE)
+                      }
+                    >
+                      Ver {deferredRows.length - deferredShown} más
+                    </button>
+                  ) : null}
                 </>
               ) : null}
             </section>

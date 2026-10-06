@@ -1,22 +1,41 @@
 import { useEffect, useRef, useState } from "react";
-import { isDue, Rating, scheduleReview, type Card, type Grade } from "../lib/fsrs";
+import { isDue, newCard, Rating, scheduleReview, type Card, type Grade } from "../lib/fsrs";
 import {
+  captureDbScope,
+  fillSavedWordMeaning,
   getActiveUserId,
+  knowledgeKey,
   listAnnotations,
+  listKnowledge,
   listSavedWords,
+  loadSessionValue,
   putSavedWord,
+  saveKnowledge,
+  saveSessionValue,
   updateSavedWord,
+  type KnownWord,
   type SavedWord,
   type StoredBook,
 } from "../lib/idb";
 import {
   answerItem,
   batchLookup,
+  enrichWord,
   fetchItems,
   verifySentence,
   type LexiconEntry,
   type LexiconItem,
 } from "../lib/lexicon";
+import {
+  emptyLearnExposure,
+  isLearnPending,
+  knownKeysFor,
+  LEARN_EXPOSURE_KEY,
+  parseLearnExposure,
+  withExposure,
+  type LearnExposure,
+} from "../lib/learn";
+import { pushKnowledgeToServer } from "../lib/reading-sync";
 import { pushWordsToServer, removeWord } from "../lib/vocab";
 import { backfillWordMeanings } from "../lib/word-meanings";
 import { recordReview } from "../lib/reviews";
@@ -31,6 +50,7 @@ import {
 } from "../lib/practice";
 import { markLevel, type MarkLevel } from "../lib/word-level";
 import { loadUseAi } from "../lib/ai-pref";
+import { GamePanel } from "./GamePanel";
 import { formatInterval } from "../lib/relative-time";
 import {
   downloadText,
@@ -46,6 +66,9 @@ type VocabularyProps = {
   // Solo se usa hash/título/nombre para nombrar libros: la estantería
   // manda ShelfItem, que no carga el archivo.
   books: Pick<StoredBook, "hash" | "name" | "title">[];
+  // Sube cuando la sincronización trae intervalos nuevos; la pestaña
+  // de actividad relee su progreso sin remontar el panel.
+  activityVersion?: number;
 };
 
 type PracticeMode =
@@ -201,7 +224,7 @@ const matchesSearch = (word: SavedWord, query: string) => {
     .every((part) => hay.includes(part));
 };
 
-export default function Vocabulary({ onClose, books }: VocabularyProps) {
+export default function Vocabulary({ onClose, books, activityVersion }: VocabularyProps) {
   const ref = useRef<HTMLDivElement>(null);
   useModalBehavior(ref, onClose);
 
@@ -246,6 +269,17 @@ export default function Vocabulary({ onClose, books }: VocabularyProps) {
   // Apagada, los modos que llaman al generador (contexto, oración
   // nueva) lo avisan y la corrección de «escribir» no se ofrece.
   const [useAi, setUseAi] = useState(true);
+  // «Aprender»: conocimiento vigente (excluye lo ya conocido de la
+  // cola y del repaso), exposiciones registradas y la sesión activa.
+  const [knowledge, setKnowledge] = useState<KnownWord[]>([]);
+  const [exposure, setExposure] = useState<LearnExposure>(emptyLearnExposure());
+  const [learn, setLearn] = useState<{
+    items: SavedWord[];
+    total: number;
+    revealed: boolean;
+  } | null>(null);
+  const [learnBusy, setLearnBusy] = useState<"" | "action" | "enrich">("");
+  const [learnError, setLearnError] = useState("");
 
   // La tarjeta candidata de cada calificación se calcula una sola vez al
   // revelar: el botón guarda exactamente lo que su intervalo anuncia.
@@ -260,7 +294,8 @@ export default function Vocabulary({ onClose, books }: VocabularyProps) {
 
   useEffect(() => {
     let cancelled = false;
-    void listSavedWords()
+    const scope = captureDbScope();
+    void listSavedWords(undefined, scope)
       .then(async (list) => {
         const sorted = list.sort((a, b) => b.savedAt - a.savedAt);
         if (cancelled) return;
@@ -268,14 +303,26 @@ export default function Vocabulary({ onClose, books }: VocabularyProps) {
         // Guardadas sin significado: el catálogo puede tener ficha
         // ya (Wikcionario o una definición IA posterior al guardado);
         // rellenarlas habilita los repasos por significado.
-        const merged = await backfillWordMeanings(sorted).catch(() => null);
+        const merged = await backfillWordMeanings(sorted, {}, scope).catch(
+          () => null,
+        );
         if (!cancelled && merged) setWords(merged);
       })
       .catch(() => {
         if (!cancelled) setLoadError(true);
       });
-    void loadUseAi().then((on) => {
+    void loadUseAi(scope).then((on) => {
       if (!cancelled) setUseAi(on);
+    });
+    void listKnowledge(undefined, scope).then((list) => {
+      if (!cancelled) setKnowledge(list);
+    }).catch(() => {
+      /* sin evidencia cargada la cola de Aprender no excluye nada */
+    });
+    void loadSessionValue(LEARN_EXPOSURE_KEY, scope).then((raw) => {
+      if (!cancelled) setExposure(parseLearnExposure(raw));
+    }).catch(() => {
+      /* sin registro previo: cola completa */
     });
     return () => {
       cancelled = true;
@@ -285,8 +332,19 @@ export default function Vocabulary({ onClose, books }: VocabularyProps) {
   }, []);
 
   const all = words ?? [];
-  const dueWords = all.filter((word) => isDue(word.card));
+  const knownKeys = knownKeysFor(knowledge);
+  // Un lema declarado «ya la conozco» sale del vocabulario activo: ni
+  // la cola de Aprender ni el repaso lo vuelven a ofrecer, aunque la
+  // palabra siga listada en el cuaderno.
+  const isWordKnown = (word: SavedWord) =>
+    knownKeys.has(knowledgeKey(word.language || "es", word.lemma ?? word.form)) ||
+    (word.lemma != null &&
+      knownKeys.has(knowledgeKey(word.language || "es", word.form)));
+  const dueWords = all.filter((word) => isDue(word.card) && !isWordKnown(word));
   const dueCount = dueWords.length;
+  const learnPending = all.filter((word) =>
+    isLearnPending(word, knownKeys, exposure),
+  );
   // «Elegir palabra» necesita cuaderno suficiente para armar
   // distractores (la palabra + 3 opciones); «parejas» necesita una
   // tanda completa de palabras con significado.
@@ -400,7 +458,7 @@ export default function Vocabulary({ onClose, books }: VocabularyProps) {
         ]),
       ).values(),
     ];
-    const result = await fetchItems(refs);
+    const result = await fetchItems(refs, captureDbScope());
     if (!result.ok) return [];
     const itemByRef = new Map(
       result.items.map((item) => [`${item.entryId}:${item.senseOrder}`, item]),
@@ -459,6 +517,149 @@ export default function Vocabulary({ onClose, books }: VocabularyProps) {
     if (items.length) beginQueue(items);
   };
 
+  // ---------- Aprender (primera exposición guiada) ----------
+  // La ficha no califica ni agenda: solo muestra la palabra y su
+  // significado, y la decisión explícita la registra en
+  // learnExposure:v1. «Ya la conozco» escribe evidencia declared;
+  // «Quiero aprenderla» crea la card FSRS que la trae al repaso hoy.
+
+  const startLearn = (first?: SavedWord) => {
+    const items = first
+      ? [first, ...learnPending.filter((word) => word.key !== first.key)]
+      : learnPending;
+    if (!items.length) return;
+    setLearnError("");
+    setLearnBusy("");
+    setLearn({ items, total: items.length, revealed: false });
+  };
+
+  const advanceLearn = () =>
+    setLearn((current) =>
+      current ? { ...current, items: current.items.slice(1), revealed: false } : current,
+    );
+
+  const persistExposure = async (
+    key: string,
+    verdict: "known" | "learn",
+    scope: ReturnType<typeof captureDbScope>,
+  ) => {
+    const next = withExposure(exposure, key, verdict, Date.now());
+    setExposure(next);
+    await saveSessionValue(LEARN_EXPOSURE_KEY, JSON.stringify(next), scope);
+  };
+
+  const learnKnown = async () => {
+    const item = learn?.items[0];
+    if (!item || learnBusy) return;
+    setLearnBusy("action");
+    setLearnError("");
+    try {
+      const scope = captureDbScope();
+      const row = await saveKnowledge(
+        {
+          language: item.language || "es",
+          lemma: (item.lemma ?? item.form).toLowerCase(),
+          known: true,
+          source: "declared",
+        },
+        scope,
+      );
+      setKnowledge((list) => [
+        ...list.filter((entry) => entry.key !== row.key),
+        row,
+      ]);
+      void pushKnowledgeToServer([row], scope);
+      await persistExposure(item.key, "known", scope);
+      advanceLearn();
+    } catch {
+      setLearnError("No se pudo guardar. Intenta de nuevo.");
+    } finally {
+      setLearnBusy("");
+    }
+  };
+
+  const learnKeep = async () => {
+    const item = learn?.items[0];
+    if (!item || learnBusy) return;
+    setLearnBusy("action");
+    setLearnError("");
+    try {
+      const scope = captureDbScope();
+      const stored = await updateSavedWord({ ...item, card: newCard() }, scope);
+      void pushWordsToServer([stored], scope);
+      setWords((list) =>
+        list?.map((word) => (word.key === stored.key ? stored : word)) ?? list,
+      );
+      await persistExposure(item.key, "learn", scope);
+      advanceLearn();
+    } catch {
+      setLearnError("No se pudo guardar. Intenta de nuevo.");
+    } finally {
+      setLearnBusy("");
+    }
+  };
+
+  // Sin significado guardado: la IA define la palabra en el momento
+  // (mismo endpoint que la ficha del lector) y el relleno respeta el
+  // compare-and-set por sello — un repaso o borrado concurrente gana.
+  const learnEnrich = async () => {
+    const item = learn?.items[0];
+    if (!item || learnBusy) return;
+    setLearnBusy("enrich");
+    setLearnError("");
+    try {
+      const scope = captureDbScope();
+      const result = await enrichWord(
+        item.form,
+        item.language || "es",
+        item.context,
+        scope,
+      );
+      if (!result.ok) {
+        setLearnError(result.error);
+        return;
+      }
+      const entry = result.entries[0];
+      const sense = entry?.senses[0];
+      if (!entry || !sense) {
+        setLearnError("La IA no devolvió una definición. Intenta de nuevo.");
+        return;
+      }
+      const stored = await fillSavedWordMeaning(
+        item.key,
+        item.updatedAt,
+        {
+          meaning: sense.definition,
+          lemma: entry.lemma,
+          pos: entry.pos ?? undefined,
+          senseEntryId: entry.entryId ?? undefined,
+          senseOrder: sense.senseOrder,
+        },
+        scope,
+      );
+      if (stored) {
+        void pushWordsToServer([stored], scope);
+        setWords((list) =>
+          list?.map((word) => (word.key === stored.key ? stored : word)) ?? list,
+        );
+        setLearn((current) =>
+          current
+            ? {
+                ...current,
+                items: current.items.map((word) =>
+                  word.key === stored.key ? stored : word,
+                ),
+              }
+            : current,
+        );
+      }
+    } catch {
+      setLearnError("Sin conexión con el catálogo.");
+    } finally {
+      setLearnBusy("");
+    }
+  };
+
   const reveal = () => {
     const current = queue?.items[0];
     if (!current) return;
@@ -483,26 +684,30 @@ export default function Vocabulary({ onClose, books }: VocabularyProps) {
     setGrading(true);
     setSaveError("");
     try {
+      const scope = captureDbScope();
       const { word } = item;
       const card = candidates.current?.get(rating) ?? scheduleReview(word.card, rating);
-      const stored = await updateSavedWord({ ...word, card });
-      void pushWordsToServer([stored]);
+      const stored = await updateSavedWord({ ...word, card }, scope);
+      void pushWordsToServer([stored], scope);
       // El repaso queda en el historial anexable: qué modo se hizo y
       // cómo se calificó. No bloquea el avance de la cola.
-      void recordReview({
-        language: word.language,
-        form: word.form,
-        kind: mapMode(item.mode),
-        rating: ratingString(rating),
-        hints: 0,
-      }).catch(() => {
+      void recordReview(
+        {
+          language: word.language,
+          form: word.form,
+          kind: mapMode(item.mode),
+          rating: ratingString(rating),
+          hints: 0,
+        },
+        scope,
+      ).catch(() => {
         /* el historial es auxiliar; no deshace la calificación */
       });
       // «Oración nueva» se autocalifica con la escala completa, pero al
       // ítem del catálogo solo le importa el acierto: Again es fallo y
       // el resto (difícil/bien/fácil) cuenta como acierto.
       if (item.mode === "clozeNew" && item.item)
-        void answerItem(item.item.id, ratingToCorrect(rating));
+        void answerItem(item.item.id, ratingToCorrect(rating), scope);
       setWords((list) => list?.map((w) => (w.key === word.key ? stored : w)) ?? list);
       setQueue((current) => {
         if (!current) return current;
@@ -536,14 +741,18 @@ export default function Vocabulary({ onClose, books }: VocabularyProps) {
     setAnswered({ picked, correct });
     // Los ejercicios con ítem del catálogo («contexto») también anotan
     // el intento en su estadística editorial; no bloquea el repaso.
-    if (item.item) void answerItem(item.item.id, correct);
-    void recordReview({
-      language: item.word.language,
-      form: item.word.form,
-      kind: mapMode(item.mode),
-      rating: correct ? "correct" : "wrong",
-      hints: 0,
-    }).catch(() => {
+    const scope = captureDbScope();
+    if (item.item) void answerItem(item.item.id, correct, scope);
+    void recordReview(
+      {
+        language: item.word.language,
+        form: item.word.form,
+        kind: mapMode(item.mode),
+        rating: correct ? "correct" : "wrong",
+        hints: 0,
+      },
+      scope,
+    ).catch(() => {
       /* el historial es auxiliar; no deshace el ejercicio */
     });
   };
@@ -560,7 +769,12 @@ export default function Vocabulary({ onClose, books }: VocabularyProps) {
     setVerifyResult(null);
     setVerifyError("");
     writeItemRef.current = item;
-    const result = await verifySentence(item.word.form, item.word.meaning ?? "", sentence);
+    const result = await verifySentence(
+      item.word.form,
+      item.word.meaning ?? "",
+      sentence,
+      captureDbScope(),
+    );
     // Si la tarjeta ya no es la misma (la cola avanzó o se cerró),
     // el veredicto tardío se descarta.
     if (writeItemRef.current !== item) return;
@@ -663,7 +877,7 @@ export default function Vocabulary({ onClose, books }: VocabularyProps) {
 
   const remove = async (word: SavedWord) => {
     try {
-      await removeWord(word.key);
+      await removeWord(word.key, captureDbScope());
       setWords((list) => list?.filter((w) => w.key !== word.key) ?? list);
       window.clearTimeout(undoTimer.current);
       setUndo({ word });
@@ -678,8 +892,9 @@ export default function Vocabulary({ onClose, books }: VocabularyProps) {
     const restored = { ...undo.word, deleted: false, updatedAt: Date.now() };
     setUndo(null);
     try {
-      await putSavedWord(restored);
-      void pushWordsToServer([restored]);
+      const scope = captureDbScope();
+      await putSavedWord(restored, scope);
+      void pushWordsToServer([restored], scope);
       setWords((list) =>
         list ? [...list.filter((w) => w.key !== restored.key), restored] : [restored],
       );
@@ -793,7 +1008,9 @@ export default function Vocabulary({ onClose, books }: VocabularyProps) {
       "text/plain;charset=utf-8",
     );
   const exportPassages = async () => {
-    const stored = await listAnnotations().catch(() => []);
+    const stored = await listAnnotations(undefined, captureDbScope()).catch(
+      () => [],
+    );
     const passages = stored.filter((item) => item.kind === "passage" && !item.deleted);
     downloadText(
       `pasajes-lecta-${new Date().toISOString().slice(0, 10)}.csv`,
@@ -814,18 +1031,22 @@ export default function Vocabulary({ onClose, books }: VocabularyProps) {
         >
           ‹ Volver
         </button>
-        <h1 className="notebook-title">{queue ? "Repaso" : "Cuaderno"}</h1>
+        <h1 className="notebook-title">
+          {learn ? "Aprender" : queue ? "Repaso" : "Cuaderno"}
+        </h1>
         <span className="notebook-count">
-          {queue
-            ? `${Math.min(done + 1, queue.total)} de ${queue.total}`
-            : words
-              ? `${all.length} guardadas · ${dueCount} para hoy`
-              : ""}
+          {learn
+            ? `${Math.min(learn.total - learn.items.length + 1, learn.total)} de ${learn.total}`
+            : queue
+              ? `${Math.min(done + 1, queue.total)} de ${queue.total}`
+              : words
+                ? `${all.length} guardadas · ${dueCount} para hoy`
+                : ""}
         </span>
       </header>
 
       <div className="notebook-main">
-        {!queue ? (
+        {!queue && !learn ? (
           <div className="nb-filters nb-tabs" role="group" aria-label="Secciones del cuaderno">
             <button
               type="button"
@@ -848,11 +1069,13 @@ export default function Vocabulary({ onClose, books }: VocabularyProps) {
           </div>
         ) : null}
 
-        {tab === "activity" && !queue ? (
-          <ReadingActivity books={books} words={all} />
+        {tab === "activity" && !queue && !learn ? (
+          <ReadingActivity books={books} words={all} activityVersion={activityVersion} />
         ) : null}
 
-        {tab === "words" || queue ? (
+        {tab === "words" && !queue && !learn ? <GamePanel /> : null}
+
+        {(tab === "words" || queue) && !learn ? (
           <>
         {loadError ? (
           <p className="nb-empty" role="alert">
@@ -885,6 +1108,25 @@ export default function Vocabulary({ onClose, books }: VocabularyProps) {
 
         {!queue && all.length > 0 ? (
           <>
+            {learnPending.length > 0 ? (
+              <section className="nb-review" aria-label="Palabras por aprender">
+                <p className="eyebrow">Por aprender · {learnPending.length}</p>
+                <p className="meta">
+                  Primera vez que las ves con su significado; decide si ya las
+                  conoces o si entran al repaso.
+                </p>
+                <div className="practice-modes" role="group" aria-label="Aprender">
+                  <button
+                    type="button"
+                    className="btn btn--primary"
+                    onClick={() => startLearn()}
+                  >
+                    Aprender
+                  </button>
+                </div>
+              </section>
+            ) : null}
+
             {dueCount > 0 ? (
               <section className="nb-review" aria-label="Repaso de hoy">
                 <p className="eyebrow">Repasar hoy · {dueCount}</p>
@@ -1003,6 +1245,16 @@ export default function Vocabulary({ onClose, books }: VocabularyProps) {
                                 <span className="nb-state" data-level={state.level}>
                                   {state.label}
                                 </span>
+                                {isLearnPending(word, knownKeys, exposure) ? (
+                                  <button
+                                    type="button"
+                                    className="btn--quiet"
+                                    aria-label={`Aprender ${word.form}`}
+                                    onClick={() => startLearn(word)}
+                                  >
+                                    Aprender
+                                  </button>
+                                ) : null}
                                 <button
                                   type="button"
                                   className="btn--quiet nb-remove"
@@ -1037,6 +1289,120 @@ export default function Vocabulary({ onClose, books }: VocabularyProps) {
           </>
         ) : null}
           </>
+        ) : null}
+
+        {learn ? (
+          learn.items.length === 0 ? (
+            <div className="nb-done">
+              <p className="nb-done-title">Aprender terminado.</p>
+              <p className="meta">
+                {learn.total}{" "}
+                {learn.total === 1 ? "palabra vista" : "palabras vistas"}.
+              </p>
+              <button
+                type="button"
+                className="btn--quiet"
+                onClick={() => setLearn(null)}
+              >
+                Ver el cuaderno
+              </button>
+            </div>
+          ) : (
+            <div className="nb-practice">
+              <p className="meta nb-practice-meta">Primera exposición</p>
+              <div className="index-card nb-card">
+                <p className="nb-card-front">
+                  <strong>{learn.items[0].form}</strong>
+                  {learn.items[0].pos ? (
+                    <span className="card-pos"> · {learn.items[0].pos}</span>
+                  ) : null}
+                </p>
+                {learn.items[0].lemma && learn.items[0].lemma !== learn.items[0].form ? (
+                  <p className="meta">de «{learn.items[0].lemma}»</p>
+                ) : null}
+                {learn.items[0].context ? (
+                  <p className="card-context">“{learn.items[0].context}”</p>
+                ) : null}
+                {learn.revealed ? (
+                  learn.items[0].meaning ? (
+                    <p className="nb-card-back">{learn.items[0].meaning}</p>
+                  ) : (
+                    <>
+                      <p className="nb-card-back meta">
+                        Sin significado guardado.
+                      </p>
+                      {hasSession && useAi ? (
+                        <button
+                          type="button"
+                          className="btn"
+                          disabled={learnBusy === "enrich"}
+                          onClick={() => void learnEnrich()}
+                        >
+                          {learnBusy === "enrich"
+                            ? "Consultando…"
+                            : "Definir con IA"}
+                        </button>
+                      ) : (
+                        <p className="meta">
+                          {hasSession
+                            ? "Las definiciones con IA están apagadas; actívalas en Cuenta."
+                            : "Inicia sesión para definirla con IA."}
+                        </p>
+                      )}
+                    </>
+                  )
+                ) : (
+                  <button
+                    type="button"
+                    className="btn btn--primary"
+                    onClick={() =>
+                      setLearn({ ...learn, revealed: true })
+                    }
+                    ref={revealButtonRef}
+                  >
+                    Mostrar significado
+                  </button>
+                )}
+              </div>
+              {learn.revealed ? (
+                <div className="actions">
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={Boolean(learnBusy)}
+                    onClick={() => void learnKnown()}
+                  >
+                    Ya la conozco
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn--primary"
+                    disabled={Boolean(learnBusy) || !learn.items[0].meaning}
+                    title={
+                      learn.items[0].meaning
+                        ? undefined
+                        : "Necesita un significado para entrar al repaso"
+                    }
+                    onClick={() => void learnKeep()}
+                  >
+                    Quiero aprenderla
+                  </button>
+                </div>
+              ) : null}
+              {learnError ? (
+                <p className="status" role="alert">
+                  {learnError}
+                </p>
+              ) : null}
+              <button
+                type="button"
+                className="btn--quiet nb-quit"
+                onClick={() => setLearn(null)}
+              >
+                Terminar por ahora
+              </button>
+            </div>
+          )
         ) : null}
 
         {queue && !current ? (

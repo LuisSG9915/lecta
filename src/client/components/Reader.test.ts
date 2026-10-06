@@ -56,12 +56,15 @@ describe("recordDominated", () => {
 
   it("registra una dominada sin fila previa como inferida", async () => {
     await recordDominated([word("perenne", dominatedCard)], "es");
-    expect(saveMock).toHaveBeenCalledWith({
-      language: "es",
-      lemma: "perenne",
-      known: true,
-      source: "inferred",
-    });
+    expect(saveMock).toHaveBeenCalledWith(
+      {
+        language: "es",
+        lemma: "perenne",
+        known: true,
+        source: "inferred",
+      },
+      expect.anything(),
+    );
   });
 
   it("no sobrescribe una respuesta explícita «desconocida»", async () => {

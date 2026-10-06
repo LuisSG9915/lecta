@@ -13,8 +13,10 @@ async function sendViaResend(
   content: EmailContent,
 ) {
   if (!env.RESEND_API_KEY) {
-    console.log(`[correo] para ${email}: ${url}`);
-    return;
+    // Sin servicio de correo el enlace no se puede entregar: fallar es
+    // honesto. Nunca registrar el enlace (lleva un token de sesión) ni
+    // el correo del destinatario.
+    throw new Error("El servicio de correo no está configurado.");
   }
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -31,8 +33,9 @@ async function sendViaResend(
     }),
   });
   if (!response.ok) {
-    const detail = await response.text().catch(() => "");
-    console.error(`[correo] Resend falló para ${email}: ${response.status} ${detail}`);
+    // Solo la operación y el código: el cuerpo de Resend puede traer
+    // datos del destinatario y el enlace con token jamás se registra.
+    console.error(`[correo] envío rechazado por Resend (${response.status})`);
     throw new Error(`No se pudo enviar el enlace (${response.status})`);
   }
 }

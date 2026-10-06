@@ -1,16 +1,25 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import {
+  captureDbScope,
+  listIntervals,
   listPositions,
   listReadingDays,
   listSavedWords,
   listStoredBooks,
   loadLatestBookHash,
+  loadSessionValue,
   updateBookMeta,
   type SavedBookPosition,
   type StoredBook,
 } from "../lib/idb";
 import { displayTitle, readBookMeta } from "../lib/cover";
 import { relativeDay } from "../lib/relative-time";
+import {
+  parseReadingGoal,
+  READING_GOAL_KEY,
+  weeklyGoalProgress,
+  type WeeklyGoalProgress,
+} from "../lib/reading-goal";
 import { loadActivityHidden } from "../lib/settings";
 import BookCover from "./BookCover";
 
@@ -30,6 +39,9 @@ type ShelfProps = {
   onRemove: (hash: string) => void;
   onAdd: (file: File) => void;
   onLibraryChange: () => void;
+  // Sube cuando la sincronización trae intervalos nuevos: la meta de
+  // la semana relee su progreso sin recargar la estantería.
+  activityVersion?: number;
 };
 
 const DAY_MS = 86_400_000;
@@ -46,12 +58,13 @@ const progressOf = (position: SavedBookPosition | undefined, sectionCount: numbe
     ? (position.progress ?? Math.min(1, position.sectionIndex / sectionCount))
     : 0;
 
-export default function Shelf({ library, checking, onOpen, onRemove, onAdd, onLibraryChange }: ShelfProps) {
+export default function Shelf({ library, checking, onOpen, onRemove, onAdd, onLibraryChange, activityVersion = 0 }: ShelfProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [positions, setPositions] = useState<SavedBookPosition[]>([]);
   const [wordCounts, setWordCounts] = useState<Map<string, number>>(new Map());
   const [latestHash, setLatestHash] = useState<string | undefined>(undefined);
   const [weekDays, setWeekDays] = useState<{ day: number; read: boolean }[]>([]);
+  const [goalProgress, setGoalProgress] = useState<WeeklyGoalProgress | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   // La preferencia se lee una vez: cambiarla en el Cuaderno se aplica
@@ -60,8 +73,16 @@ export default function Shelf({ library, checking, onOpen, onRemove, onAdd, onLi
 
   useEffect(() => {
     let cancelled = false;
-    void Promise.all([listPositions(), listSavedWords(), loadLatestBookHash(), listReadingDays()]).then(
-      ([positionList, words, hash, readDayList]) => {
+    const scope = captureDbScope();
+    void Promise.all([
+      listPositions(scope),
+      listSavedWords(undefined, scope),
+      loadLatestBookHash(scope),
+      listReadingDays(scope),
+      listIntervals(scope),
+      loadSessionValue(READING_GOAL_KEY, scope),
+    ]).then(
+      ([positionList, words, hash, readDayList, intervalList, rawGoal]) => {
         if (cancelled) return;
         setPositions(positionList);
         const counts = new Map<string, number>();
@@ -81,12 +102,26 @@ export default function Shelf({ library, checking, onOpen, onRemove, onAdd, onLi
             return { day, read: readDays.has(day) };
           }),
         );
+        // La meta semanal se deriva de los intervalos (locales + los
+        // que llegaron por sync); «readingDays» sigue siendo solo el
+        // registro histórico de los puntos de arriba.
+        const goal = parseReadingGoal(rawGoal);
+        setGoalProgress(
+          goal?.daysPerWeek != null
+            ? weeklyGoalProgress(
+                intervalList,
+                Date.now(),
+                Intl.DateTimeFormat().resolvedOptions().timeZone,
+                goal.daysPerWeek,
+              )
+            : null,
+        );
       },
     );
     return () => {
       cancelled = true;
     };
-  }, [library]);
+  }, [library, activityVersion]);
 
   // Rellena título, autor y portada de los libros que aún no los tienen.
   // Uno a la vez para no competir con la lectura. Se leen los registros
@@ -96,19 +131,24 @@ export default function Shelf({ library, checking, onOpen, onRemove, onAdd, onLi
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const stored = await listStoredBooks().catch(() => []);
+      const scope = captureDbScope();
+      const stored = await listStoredBooks(scope).catch(() => []);
       const pending = stored.filter((book) => !book.metaVersion).slice(0, 5);
       for (const book of pending) {
         const meta = await readBookMeta(book.data);
         if (cancelled) return;
-        await updateBookMeta(book.hash, {
-          title: meta?.title,
-          author: meta?.author,
-          language: meta?.language,
-          sectionCount: meta?.sectionCount,
-          cover: meta?.cover ?? undefined,
-          metaVersion: 1,
-        });
+        await updateBookMeta(
+          book.hash,
+          {
+            title: meta?.title,
+            author: meta?.author,
+            language: meta?.language,
+            sectionCount: meta?.sectionCount,
+            cover: meta?.cover ?? undefined,
+            metaVersion: 1,
+          },
+          scope,
+        );
         onLibraryChange();
       }
     })();
@@ -351,6 +391,13 @@ export default function Shelf({ library, checking, onOpen, onRemove, onAdd, onLi
                 />
               ))}
             </div>
+            {goalProgress ? (
+              <p className="meta shelf-goal">
+                Meta de la semana: {goalProgress.readDays} de{" "}
+                {goalProgress.target} días
+                {goalProgress.met ? " · cumplida" : ""}
+              </p>
+            ) : null}
           </section>
           )}
         </>

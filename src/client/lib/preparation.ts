@@ -4,12 +4,14 @@
 // Sin fechas, sin red, sin IndexedDB: las escrituras viven en idb.
 
 import {
-  getActiveUserId,
+  captureDbScope,
+  isDbScopeActive,
   knowledgeKey,
   loadSessionValue,
   savePreparationBatch,
   saveSessionValue,
   wordKey,
+  type DbScope,
   type KnownWord,
   type SavedWord,
 } from "./idb";
@@ -271,9 +273,11 @@ export const acknowledgePreparationEntry = (
 export async function loadPreparationRecord(
   bookHash: string,
   targetId: string,
+  scope?: DbScope,
 ): Promise<PreparationRecord | null> {
   const raw = await loadSessionValue(
     preparationRecordKey(bookHash, targetId),
+    scope,
   ).catch(() => undefined);
   const record = parsePreparationRecord(raw);
   if (!record || record.bookHash !== bookHash || record.targetId !== targetId)
@@ -281,10 +285,14 @@ export async function loadPreparationRecord(
   return record;
 }
 
-export async function savePreparationRecord(record: PreparationRecord) {
+export async function savePreparationRecord(
+  record: PreparationRecord,
+  scope?: DbScope,
+) {
   await saveSessionValue(
     preparationRecordKey(record.bookHash, record.targetId),
     JSON.stringify(record),
+    scope,
   );
 }
 
@@ -303,16 +311,21 @@ export type PreparationConfirmResult = {
 // sincronizar; si la sincronización falla se reporta `synced:false`
 // sin deshacer nada — el lector conserva sus datos y el sync normal
 // los alcanzará después.
-export async function confirmPreparation(input: {
-  record: PreparationRecord;
-  recordKey: string;
-  knowledge: Omit<KnownWord, "key" | "updatedAt">[];
-  words: Omit<SavedWord, "key" | "savedAt">[];
-}): Promise<PreparationConfirmResult> {
-  const userId = getActiveUserId();
+export async function confirmPreparation(
+  input: {
+    record: PreparationRecord;
+    recordKey: string;
+    knowledge: Omit<KnownWord, "key" | "updatedAt">[];
+    words: Omit<SavedWord, "key" | "savedAt">[];
+  },
+  scope?: DbScope,
+): Promise<PreparationConfirmResult> {
+  const bound = scope ?? captureDbScope();
   let batch: { knowledge: KnownWord[]; words: SavedWord[] };
   try {
-    batch = await savePreparationBatch(input);
+    // El lote aterriza en la base dueña del contexto aunque la activa
+    // ya sea otra.
+    batch = await savePreparationBatch(input, bound);
   } catch {
     return { saved: false, synced: false, knowledge: [], words: [] };
   }
@@ -320,13 +333,13 @@ export async function confirmPreparation(input: {
   // La cuenta cambió mientras se guardaba: no empujar con la sesión
   // nueva datos escritos bajo la anterior. La sincronización normal
   // los propagará bajo la cuenta correcta.
-  if (getActiveUserId() !== userId) {
+  if (!isDbScopeActive(bound)) {
     return { saved: true, synced: false, ...batch };
   }
 
   const [knowledgeSynced, wordsSynced] = await Promise.all([
-    pushKnowledgeToServer(batch.knowledge),
-    pushWordsToServer(batch.words),
+    pushKnowledgeToServer(batch.knowledge, bound),
+    pushWordsToServer(batch.words, bound),
   ]);
   return { saved: true, synced: knowledgeSynced && wordsSynced, ...batch };
 }

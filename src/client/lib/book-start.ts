@@ -4,7 +4,11 @@
 // progreso — así reabrir no vuelve a preguntar aunque la posición
 // todavía no exista.
 
-import { loadSessionValue, saveSessionValue } from "./idb";
+import {
+  loadSessionValue,
+  saveSessionValue,
+  type DbScope,
+} from "./idb";
 import type { ChapterCatalog, ChapterTarget } from "./chapters";
 import type { SavedBookPosition } from "./idb";
 
@@ -31,8 +35,9 @@ const isRecord = (value: unknown): value is BookStartRecord =>
 // es preferible volver a preguntar que abrir un lugar inventado.
 export async function loadBookStart(
   bookHash: string,
+  scope?: DbScope,
 ): Promise<BookStartRecord | null> {
-  const raw = await loadSessionValue(key(bookHash));
+  const raw = await loadSessionValue(key(bookHash), scope);
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as unknown;
@@ -45,6 +50,7 @@ export async function loadBookStart(
 export async function saveBookStart(
   bookHash: string,
   choice: { readingTargetId: string; preparationTargetId: string | null },
+  scope?: DbScope,
 ): Promise<void> {
   const record: BookStartRecord = {
     version: 1,
@@ -52,7 +58,7 @@ export async function saveBookStart(
     preparationTargetId: choice.preparationTargetId,
     updatedAt: Date.now(),
   };
-  await saveSessionValue(key(bookHash), JSON.stringify(record));
+  await saveSessionValue(key(bookHash), JSON.stringify(record), scope);
 }
 
 // Decisión pura de entrada: qué abrir al cargar el libro.

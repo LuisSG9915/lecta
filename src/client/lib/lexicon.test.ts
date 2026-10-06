@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { batchLookup, BATCH_LOOKUP_LIMIT } from "./lexicon";
+import { batchLookup, fetchItems, reportSense, BATCH_LOOKUP_LIMIT } from "./lexicon";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -85,5 +85,34 @@ describe("batchLookup", () => {
       error: "Sin conexión con el catálogo.",
       entries: {},
     });
+  });
+});
+
+describe("referencias de acepción", () => {
+  // entryId es int8 > 2^53: debe llegar al servidor como string de
+  // dígitos intacto, nunca truncado por un Number intermedio.
+  it("reportSense envía el entryId como string de dígitos", async () => {
+    const spy = vi.fn<(url: unknown, init?: { body?: string }) => Promise<Response>>(
+      async () => new Response(JSON.stringify({ ok: true }), { status: 200 }),
+    );
+    vi.stubGlobal("fetch", spy);
+    const result = await reportSense("1234567890123456789", 2);
+    expect(result.ok).toBe(true);
+    const body = JSON.parse(String(spy.mock.calls[0]?.[1]?.body));
+    expect(body).toEqual({ entryId: "1234567890123456789", senseOrder: 2 });
+  });
+
+  it("fetchItems conserva el entryId string en los refs", async () => {
+    const spy = vi.fn<(url: unknown, init?: { body?: string }) => Promise<Response>>(
+      async () =>
+        new Response(JSON.stringify({ items: [] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    );
+    vi.stubGlobal("fetch", spy);
+    await fetchItems([{ entryId: "1234567890123456789", senseOrder: 3 }]);
+    const body = JSON.parse(String(spy.mock.calls[0]?.[1]?.body));
+    expect(body.refs).toEqual([{ entryId: "1234567890123456789", senseOrder: 3 }]);
   });
 });

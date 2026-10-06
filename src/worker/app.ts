@@ -29,6 +29,8 @@ import {
 import { createAuth } from "./auth";
 import { isStopword } from "../shared/stopwords";
 import { hasUsableDefinition } from "../shared/lexicon";
+import { isFsrsCardShape } from "../shared/reading-data";
+import { CALIBRATION_BANK_VERSION } from "../shared/calibration-bank";
 import { checkEpubHeader, EPUB_MAX_BYTES } from "../shared/epub-check";
 import { getSession } from "./session";
 import { readingData } from "./reading-data";
@@ -65,9 +67,10 @@ app.get("/api/lexicon/lookup", async (context) => {
 });
 
 // Muestra de lemas para la calibración inicial de vocabulario:
-// lectura pública del catálogo, como lookup/batch (sin sesión).
-// `definition` sale null cuando el lema no tiene acepción cargada —
-// la fila se ofrece igual y al marcarla no hay revelado.
+// lectura pública del catálogo, como lookup/batch (sin sesión). Cada
+// lema de la muestra entra solo con definición cargada y zipf dentro
+// de su banda — el selector verifica la medición real, nada entra a
+// ciegas desde el banco.
 // Hoy solo hay muestra en español — es el único idioma con catálogo
 // y medición zipf completa.
 app.get("/api/lexicon/sample", async (context) => {
@@ -85,7 +88,7 @@ app.get("/api/lexicon/sample", async (context) => {
   }
 
   if (!words) return context.json({ error: "El catálogo no está configurado." }, 503);
-  return context.json({ words });
+  return context.json({ words, version: CALIBRATION_BANK_VERSION });
 });
 
 app.post("/api/lexicon/batch", async (context) => {
@@ -215,18 +218,28 @@ app.post("/api/lexicon/enrich-batch", async (context) => {
 
 // Los ids del catálogo son INT8 de unique_rowid() (~1.2e18 > 2^53):
 // por JSON viajan como string de dígitos, porque un number los
-// truncaría (…305 → …300). Se acepta también un entero y se
+// truncaría (…305 → …300). Se acepta también un entero seguro y se
 // canoniza («007» → «7»); Postgres castea el texto a int8/int4.
 const INT8_MAX = 9223372036854775807n;
-const toCatalogId = (value: unknown): string | null => {
-  if (typeof value === "number" && Number.isInteger(value) && value >= 1)
-    return String(value);
+const INT4_MAX = 2147483647n;
+// Entero positivo en [1, max]: string de dígitos o number. Un number
+// por encima de 2^53 ya perdió dígitos al serializarse — aceptarlo
+// ligaría la acepción equivocada, así que se rechaza.
+const toBoundedDigits = (value: unknown, max: bigint): string | null => {
+  if (typeof value === "number") {
+    return Number.isSafeInteger(value) && value >= 1 && BigInt(value) <= max
+      ? String(value)
+      : null;
+  }
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   if (!/^\d+$/.test(trimmed)) return null;
   const id = BigInt(trimmed);
-  return id >= 1n && id <= INT8_MAX ? id.toString() : null;
+  return id >= 1n && id <= max ? id.toString() : null;
 };
+const toCatalogId = (value: unknown): string | null => toBoundedDigits(value, INT8_MAX);
+// sense_order es INT4 en el catálogo: su rango no es el de los ids.
+const toSenseOrder = (value: unknown): string | null => toBoundedDigits(value, INT4_MAX);
 
 // Reporte «esta acepción no corresponde»: solo sube el contador
 // editorial de la fila de lexicon_senses; no crea ni edita fichas.
@@ -239,7 +252,7 @@ app.post("/api/lexicon/report", async (context) => {
 
   const body = await context.req.json().catch(() => null);
   const entryId = toCatalogId(body?.entryId);
-  const senseOrder = toCatalogId(body?.senseOrder);
+  const senseOrder = toSenseOrder(body?.senseOrder);
   if (entryId === null || senseOrder === null)
     return context.json({ error: "Falta la acepción que reportar." }, 400);
 
@@ -280,7 +293,7 @@ const toItemRef = (value: unknown): ItemRef | null => {
   if (typeof value !== "object" || value === null) return null;
   const raw = value as Record<string, unknown>;
   const entryId = toCatalogId(raw.entryId);
-  const senseOrder = toCatalogId(raw.senseOrder);
+  const senseOrder = toSenseOrder(raw.senseOrder);
   return entryId !== null && senseOrder !== null ? { entryId, senseOrder } : null;
 };
 
@@ -778,15 +791,6 @@ const cleanText = (value: unknown, max: number) =>
   typeof value === "string" ? value.slice(0, max) : undefined;
 const cleanNumber = (value: unknown) =>
   typeof value === "number" && Number.isFinite(value) ? value : undefined;
-// Ids de catálogo opcionales: entero ≥0 o string de dígitos; null si
-// llega otra cosa. sense_entry_id es int8 > 2^53 y viaja como string —
-// el SQL lo castea con ::int8/::int4 al insertar.
-const cleanId = (value: unknown): number | string | null => {
-  const n = cleanNumber(value);
-  if (n != null && n >= 0) return Math.floor(n);
-  if (typeof value === "string" && /^\d+$/.test(value.trim())) return value.trim();
-  return null;
-};
 
 app.get("/api/vocab", async (context) => {
   if (!getConnectionString(context.env))
@@ -831,6 +835,15 @@ app.put("/api/vocab", async (context) => {
 
   const body = await context.req.json().catch(() => null);
   const inputs = Array.isArray(body?.words) ? (body.words as UserWordInput[]) : [];
+  // Una card malformada invalida la petición completa antes del SQL:
+  // guardarla corrompería el historial de repaso y descartarla en
+  // silencio perdería la tarjeta sin avisar al cliente.
+  if (
+    inputs.some(
+      (input) => input.card != null && !isFsrsCardShape(input.card),
+    )
+  )
+    return context.json({ error: "Hay una tarjeta de repaso inválida." }, 400);
   const words = inputs
     .map((input) => {
       const form = cleanText(input.form, 100)?.trim().toLowerCase();
@@ -845,8 +858,10 @@ app.put("/api/vocab", async (context) => {
         meaning: cleanText(input.meaning, 500) ?? null,
         context: cleanText(input.context, 500) ?? null,
         bookHash: cleanText(input.bookHash, 80) ?? null,
-        senseEntryId: cleanId(input.senseEntryId),
-        senseOrder: cleanId(input.senseOrder),
+        // Referencia a la acepción guardada: los mismos validadores del
+        // catálogo (int8/int4 positivos); lo inválido queda en null.
+        senseEntryId: toCatalogId(input.senseEntryId),
+        senseOrder: toSenseOrder(input.senseOrder),
         card: input.card ?? null,
         savedAt: cleanNumber(input.savedAt) ?? updatedAt,
         updatedAt,
@@ -876,7 +891,8 @@ app.put("/api/vocab", async (context) => {
          context = excluded.context, book_hash = excluded.book_hash,
          sense_entry_id = excluded.sense_entry_id,
          sense_order = excluded.sense_order,
-         card = excluded.card, updated_at = excluded.updated_at,
+         card = COALESCE(excluded.card, lecta_user_words.card),
+         updated_at = excluded.updated_at,
          deleted = excluded.deleted
        WHERE lecta_user_words.updated_at < excluded.updated_at`,
       [session.user.id, JSON.stringify(words)],

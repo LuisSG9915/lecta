@@ -2,10 +2,13 @@ import { describe, expect, it } from "vitest";
 import type { LexiconEntry } from "./lexicon";
 import {
   PREDICT_CAP,
+  cliticBaseForms,
+  cliticBasesFor,
   estimateProfile,
   isCredibleKnowledge,
   knowledgeEvidence,
   predictSection,
+  resolveEvidence,
   type KnowledgeEvidence,
 } from "./knowledge";
 
@@ -46,10 +49,20 @@ describe("estimateProfile", () => {
     expect(profile.threshold).toBe(2.0);
   });
 
-  it("desconocidas comunes suben el umbral: hay que anticipar bastante", () => {
-    // Lo contrario del caso anterior: el lector no conoce palabras
-    // frecuentes (zipf ~4.0) y conviene predecir hasta por encima.
+  it("dos desconocidas comunes no bastan para subir el umbral al extremo", () => {
+    // Solo dos evidencias: la regularización no paga alejarse del
+    // valor base — mover el perfil exige más señal que un par de
+    // respuestas.
     const profile = estimateProfile([unknown(4.0), unknown(4.2)]);
+    expect(profile.threshold).toBe(3.0);
+  });
+
+  it("muchas desconocidas comunes sí suben el umbral", () => {
+    // Con suficiente evidencia la regularización se diluye: diez
+    // respuestas sostienen el salto por encima de las frecuentes.
+    const profile = estimateProfile(
+      Array.from({ length: 10 }, (_, i) => unknown(4.0 + i * 0.01)),
+    );
     expect(profile.threshold).toBe(4.5);
   });
 
@@ -83,12 +96,12 @@ describe("estimateProfile", () => {
     expect(profile.threshold).toBe(3.0);
   });
 
-  it("a igual distancia del valor base el empate favorece el menor", () => {
-    // Con una conocida en 2.9 y una desconocida en 3.1, 2.5 y 3.5
-    // empatan con el mínimo de errores a la misma distancia de 3.0;
-    // gana el menor (predecir menos).
+  it("a igual puntaje el empate favorece al más cercano al valor base", () => {
+    // Con una conocida en 2.9 y una desconocida en 3.1, los
+    // candidatos 2.5, 3.0 y 3.5 empatan en puntaje (errores +
+    // regularización); gana el más cercano a 3.0.
     const profile = estimateProfile([known(2.9), unknown(3.1)]);
-    expect(profile.threshold).toBe(2.5);
+    expect(profile.threshold).toBe(3.0);
   });
 
   it("adjust desplaza el umbral y queda acotado a 1.0–5.5", () => {
@@ -355,14 +368,21 @@ describe("predictSection", () => {
     expect(res.uncertain.map((item) => item.form)).toEqual(["d"]);
   });
 
-  it(`recorta la lista a ${PREDICT_CAP} y lo demás cuenta como conocido`, () => {
+  it(`recorta la lista a ${PREDICT_CAP} y lo demás queda diferido, no conocido`, () => {
     const list = Array.from({ length: PREDICT_CAP + 10 }, (_, i) => `r${i}`);
     const entries = Object.fromEntries(
       list.map((form, i) => [form, [entry(2.0, { lemma: `lema${i}` })]]),
     );
     const res = predictSection(list, entries, new Set(), noKnowledge, 3.0);
     expect(res.predicted).toHaveLength(PREDICT_CAP);
-    expect(res.knownCount).toBe(10);
+    // Las que no cupieron son candidatas reales: la hoja las ofrece
+    // aparte; no inflan el conteo de conocidas. Quedan en el orden
+    // de rareza del corte (zipf igualado → alfabético).
+    const rarityOrder = [...list].sort((a, b) => a.localeCompare(b));
+    expect(res.deferred.map((item) => item.form)).toEqual(
+      rarityOrder.slice(PREDICT_CAP),
+    );
+    expect(res.knownCount).toBe(0);
     expect(res.total).toBe(PREDICT_CAP + 10);
   });
 
@@ -448,5 +468,145 @@ describe("knowledgeEvidence", () => {
     );
     expect(first.get("mesa")).toEqual({ zipf: 4.0, known: false });
     expect(again.get("mesa")).toEqual({ zipf: 4.0, known: true });
+  });
+
+  it("una ficha sin medición no oculta la ficha medida del mismo lema", () => {
+    // Regresión de «abrir»: la ficha de IA sin zipf aparecía primero y
+    // la evidencia quedaba sin medición aunque existía la medida.
+    const out = knowledgeEvidence([{ lemma: "abrir", known: true }], {
+      abrir: [entry(null, { lemma: "abrir" }), entry(4.77, { lemma: "abrir" })],
+    });
+    expect(out.get("abrir")).toEqual({ zipf: 4.77, known: true });
+  });
+
+  it("prefiere la ficha medida del propio lema antes que la de otro", () => {
+    // «indigno» trae fichas de «indignar» (medida) y de «indigno»
+    // (medida): la evidencia declarada sobre «indigno» usa la suya.
+    const out = knowledgeEvidence([{ lemma: "indigno", known: true }], {
+      indigno: [
+        entry(2.26, { lemma: "indignar" }),
+        entry(3.28, { lemma: "indigno" }),
+        entry(null, { lemma: "indignarse" }),
+      ],
+    });
+    expect(out.get("indigno")).toEqual({ zipf: 3.28, known: true });
+  });
+
+  it("sin ficha medida del lema cae a la primera lectura medida", () => {
+    // «decirle»: su ficha propia del Wikcionario no trae zipf; la
+    // medición útil es la del lema base «decir».
+    const out = knowledgeEvidence([{ lemma: "decirle", known: false }], {
+      decirle: [entry(null, { lemma: "decirle" }), entry(5.78, { lemma: "decir" })],
+    });
+    expect(out.get("decirle")).toEqual({ zipf: 5.78, known: false });
+  });
+});
+
+describe("cliticBaseForms", () => {
+  it("quita un pronombre enclítico conservando el verbo base", () => {
+    expect(cliticBaseForms("abrirlo")).toEqual(["abrir"]);
+    expect(cliticBaseForms("leerlo")).toEqual(["leer"]);
+    expect(cliticBaseForms("elegirlo")).toEqual(["elegir"]);
+    expect(cliticBaseForms("decirle")).toEqual(["decir"]);
+    expect(cliticBaseForms("reírme")).toEqual(["reir"]);
+  });
+
+  it("quita dos pronombres y normaliza la tilde desplazada", () => {
+    expect(cliticBaseForms("tomármelo")).toEqual(["tomarme", "tomar"]);
+    // «díselo» = «dí» + «se» + «lo»: el residuo queda en dos letras
+    // y se descarta — un imperativo tan corto no es verificable.
+    expect(cliticBaseForms("díselo")).toEqual(["dise"]);
+  });
+
+  it("forma con gerundio acentuado resuelve al gerundio", () => {
+    // El residuo «escribiendol» también sale como candidata ruidosa;
+    // el catálogo la descarta al no existir.
+    expect(cliticBaseForms("escribiéndolos")).toEqual([
+      "escribiendo",
+      "escribiendol",
+    ]);
+  });
+
+  it("palabras sin clítico no producen candidatas", () => {
+    expect(cliticBaseForms("pedacito")).toEqual([]);
+    expect(cliticBaseForms("oenegés")).toEqual([]);
+    expect(cliticBaseForms("guiris")).toEqual([]);
+    expect(cliticBaseForms("cocina")).toEqual([]);
+    // «meollo» produce una candidata falsa («meol») que el catálogo
+    // rechaza al no existir — el ruido es inofensivo.
+    expect(cliticBaseForms("meollo")).toEqual(["meol"]);
+  });
+
+  it("residuos de menos de tres letras se descartan", () => {
+    // «ello» terminaría en «el» si se quitara «lo»: no es verbo y el
+    // residuo es demasiado corto para confiar.
+    expect(cliticBaseForms("ello")).toEqual([]);
+  });
+});
+
+describe("cliticBasesFor", () => {
+  it("solo consulta bases de formas sin ficha, sin repetir", () => {
+    const bases = cliticBasesFor(
+      [{ lemma: "abrirlo" }, { lemma: "casa" }, { lemma: "abrirlo" }],
+      { casa: [entry(4.5, { lemma: "casa" })] },
+    );
+    expect(bases).toEqual(["abrir"]);
+  });
+});
+
+describe("resolveEvidence", () => {
+  it("forma clítica sin ficha se proyecta al lema base verificado", () => {
+    // «abrirlo» no tiene ficha; «abrir» sí. La evidencia queda sobre
+    // «abrir» con su medición — la fila original no se toca.
+    const out = resolveEvidence(
+      [{ lemma: "abrirlo", known: true, source: "declared" }],
+      {},
+      { abrir: [entry(4.77, { lemma: "abrir" })] },
+    );
+    expect([...out.keys()]).toEqual(["abrir"]);
+    expect(out.get("abrir")).toEqual({ lemma: "abrir", known: true, zipf: 4.77 });
+  });
+
+  it("sin base verificable la forma conserva su clave sin medición", () => {
+    const out = resolveEvidence(
+      [{ lemma: "oenegés", known: false }],
+      {},
+      {},
+    );
+    expect(out.get("oenegés")).toEqual({
+      lemma: "oenegés",
+      known: false,
+      zipf: null,
+    });
+  });
+
+  it("la proyección no pisa una declaración directa más fuerte", () => {
+    // «abrir» declarado desconocido (fuente explícita) gana a un
+    // «abrirlo» guardado como conocida (fuente más débil).
+    const out = resolveEvidence(
+      [
+        { lemma: "abrirlo", known: true, source: "saved", updatedAt: 1 },
+        { lemma: "abrir", known: false, source: "declared", updatedAt: 2 },
+      ],
+      { abrir: [entry(4.77, { lemma: "abrir" })] },
+      { abrir: [entry(4.77, { lemma: "abrir" })] },
+    );
+    expect(out.get("abrir")).toEqual({
+      lemma: "abrir",
+      known: false,
+      zipf: 4.77,
+    });
+  });
+
+  it("a igual fuente gana la evidencia más reciente", () => {
+    const out = resolveEvidence(
+      [
+        { lemma: "abrirlo", known: true, source: "declared", updatedAt: 5 },
+        { lemma: "abrir", known: false, source: "declared", updatedAt: 9 },
+      ],
+      { abrir: [entry(4.77, { lemma: "abrir" })] },
+      { abrir: [entry(4.77, { lemma: "abrir" })] },
+    );
+    expect(out.get("abrir")?.known).toBe(false);
   });
 });

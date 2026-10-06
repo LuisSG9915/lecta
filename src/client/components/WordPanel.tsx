@@ -3,6 +3,7 @@ import type { LexiconEntry } from "../lib/lexicon";
 import { enrichWord, explainInContext, lookupWord, reportSense } from "../lib/lexicon";
 import { Rating, scheduleReview } from "../lib/fsrs";
 import {
+  captureDbScope,
   loadSavedWord,
   removeSavedWord,
   saveKnowledge,
@@ -16,6 +17,7 @@ import { pushWordsToServer } from "../lib/vocab";
 import { pushKnowledgeToServer } from "../lib/reading-sync";
 import { recordReview } from "../lib/reviews";
 import { loadUseAi } from "../lib/ai-pref";
+import { award } from "../lib/game";
 import Sheet from "./Sheet";
 
 type WordPanelProps = {
@@ -96,7 +98,7 @@ export default function WordPanel({
 
   useEffect(() => {
     let cancelled = false;
-    void loadUseAi().then((on) => {
+    void loadUseAi(captureDbScope()).then((on) => {
       if (!cancelled) setUseAi(on);
     });
     return () => {
@@ -107,9 +109,10 @@ export default function WordPanel({
   useEffect(() => {
     let cancelled = false;
     void (async () => {
+      const scope = captureDbScope();
       const [stored, result] = await Promise.all([
-        loadSavedWord(language, word),
-        lookupWord(word, language),
+        loadSavedWord(language, word, scope),
+        lookupWord(word, language, scope),
       ]);
       if (cancelled) return;
       if (stored) setSavedEntry(stored);
@@ -143,7 +146,7 @@ export default function WordPanel({
 
   const enrich = async () => {
     setLookup({ kind: "enriching" });
-    const result = await enrichWord(word, language, context);
+    const result = await enrichWord(word, language, context, captureDbScope());
     if (!result.ok) setLookup({ kind: "error", message: result.error });
     else setLookup({ kind: "found", entries: result.entries });
   };
@@ -151,7 +154,12 @@ export default function WordPanel({
   const explain = async () => {
     if (!context || explanation?.state === "busy") return;
     setExplanation({ state: "busy", text: "" });
-    const result = await explainInContext(word, language, context);
+    const result = await explainInContext(
+      word,
+      language,
+      context,
+      captureDbScope(),
+    );
     setExplanation(
       result.ok
         ? { state: "done", text: result.explanation }
@@ -163,6 +171,7 @@ export default function WordPanel({
   // «todavía no la sé» en una sola transacción: nunca queda la
   // palabra sin la señal para el modelo (ni al revés).
   const persist = async () => {
+    const scope = captureDbScope();
     const { word: entry, knowledge } = await saveWordWithKnowledge({
       word: {
         form: word,
@@ -181,16 +190,17 @@ export default function WordPanel({
         known: false,
         source: "saved",
       },
-    });
+    }, scope);
     setSavedEntry(entry);
     onSaved(entry);
+    void award({ kind: "saved", zipf: chosenEntry?.zipf ?? null }, scope);
     if (knowledge) {
       onKnowledgeChanged?.(knowledge, { form: word, kind: "saved" });
-      void pushKnowledgeToServer([knowledge]);
+      void pushKnowledgeToServer([knowledge], scope);
     }
     // La palabra ya está a salvo localmente; si el envío falla lo
     // decimos sin fingir sincronización.
-    const pushed = await pushWordsToServer([entry]);
+    const pushed = await pushWordsToServer([entry], scope);
     if (!pushed) setSyncNote(true);
   };
 
@@ -217,20 +227,27 @@ export default function WordPanel({
     setSaveError("");
     setSyncNote(false);
     try {
+      const scope = captureDbScope();
       const lemma = (chosenEntry?.lemma ?? word).toLowerCase();
-      const row = await saveKnowledge({
-        language,
-        lemma,
-        known: true,
-        source: "declared",
-      });
-      void pushKnowledgeToServer([row]);
-      void recordReview({
-        language,
-        form: word,
-        kind: "declared",
-        rating: "known",
-      }).catch(() => {
+      const row = await saveKnowledge(
+        {
+          language,
+          lemma,
+          known: true,
+          source: "declared",
+        },
+        scope,
+      );
+      void pushKnowledgeToServer([row], scope);
+      void recordReview(
+        {
+          language,
+          form: word,
+          kind: "declared",
+          rating: "known",
+        },
+        scope,
+      ).catch(() => {
         /* el historial es auxiliar; no deshace la marca */
       });
       onKnowledgeChanged?.(row, { form: word, kind: "declared" });
@@ -247,12 +264,13 @@ export default function WordPanel({
     setSaving(true);
     setSaveError("");
     try {
-      const tombstone = await removeSavedWord(wordKey(language, word));
+      const scope = captureDbScope();
+      const tombstone = await removeSavedWord(wordKey(language, word), scope);
       if (tombstone) {
         setSavedEntry(null);
         setReread("idle");
         onRemoved?.(tombstone);
-        void pushWordsToServer([tombstone]);
+        void pushWordsToServer([tombstone], scope);
       }
     } catch {
       setSaveError("No se pudo quitar la palabra. Intenta de nuevo.");
@@ -268,7 +286,11 @@ export default function WordPanel({
     if (chosenEntry?.entryId == null || chosenSense?.senseOrder == null) return;
     if (report === "sending") return;
     setReport("sending");
-    const result = await reportSense(chosenEntry.entryId, chosenSense.senseOrder);
+    const result = await reportSense(
+      chosenEntry.entryId,
+      chosenSense.senseOrder,
+      captureDbScope(),
+    );
     setReport(result.ok ? "done" : "error");
   };
 
@@ -278,16 +300,20 @@ export default function WordPanel({
     if (!savedEntry || reread !== "idle") return;
     setReread("busy");
     try {
+      const scope = captureDbScope();
       const card = scheduleReview(savedEntry.card, remembered ? Rating.Good : Rating.Again);
-      const stored = await updateSavedWord({ ...savedEntry, card });
+      const stored = await updateSavedWord({ ...savedEntry, card }, scope);
       setSavedEntry(stored);
-      void pushWordsToServer([stored]);
-      void recordReview({
-        language,
-        form: word,
-        kind: "reread",
-        rating: remembered ? "good" : "again",
-      }).catch(() => {
+      void pushWordsToServer([stored], scope);
+      void recordReview(
+        {
+          language,
+          form: word,
+          kind: "reread",
+          rating: remembered ? "good" : "again",
+        },
+        scope,
+      ).catch(() => {
         /* el historial es auxiliar; no deshace el repaso */
       });
       setReread("done");

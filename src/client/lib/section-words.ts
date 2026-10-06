@@ -52,19 +52,20 @@ export function firstSentenceWith(
 }
 
 // ¿La forma guardada entra al grupo «por aprender» de la preparación?
-// Solo niveles nuevos/aprendiendo: una asentada (y ni hablar de una
-// dominada, que ni siquiera trae nivel) ya no estorba con la ficha.
-// La evidencia explícita manda sobre el nivel de la tarjeta: un
-// «ya la conozco» la saca del grupo; un «no la conozco» sobre una
-// dominada no pasa por aquí — la forma no está en el mapa de guardadas
-// y la predice la regla de evidencia de predictSection.
+// Niveles nuevos/aprendiendo, y también una asentada que el lector
+// declaró desconocida: la evidencia explícita manda sobre el nivel de
+// la tarjeta — entra sin tocar su estabilidad ni su card. Un
+// «ya la conozco» la saca del grupo sea cual sea el nivel; una
+// dominada (sin nivel) no pasa por aquí — la forma no está en el
+// mapa de guardadas y la predice la regla de evidencia de
+// predictSection.
 export function preparationLearning(
   level: "new" | "learning" | "settled" | null | undefined,
   evidence: { known: boolean } | undefined,
 ): boolean {
-  if (level !== "new" && level !== "learning") return false;
   if (evidence?.known === true) return false;
-  return true;
+  if (level === "new" || level === "learning") return true;
+  return level === "settled" && evidence?.known === false;
 }
 
 // Mapa de evidencia por lema en minúsculas, como lo espera
@@ -104,11 +105,20 @@ export type SuggestionRows = {
   // Consulta secundaria: el catálogo no tiene ficha o medición para
   // decidir — se ofrecen colapsadas, sin declararlas raras ni comunes.
   uncertain: SuggestionRow[];
+  // Candidatas que no cupieron en la selección principal: la hoja las
+  // ofrece en una consulta aparte — no se descartan ni se declaran
+  // conocidas por el recorte.
+  deferred: SuggestionRow[];
 };
 
 // Tope de filas de la consulta secundaria (la lista puede ser larga
 // en capítulos con muchas formas fuera del catálogo).
 export const UNCERTAIN_ROWS_CAP = 40;
+
+// Tope global de la selección principal: incluye predichas, formas
+// sin ficha declaradas y palabras ya guardadas. Lo que no cabe va a
+// `deferred` — jamás «40 predichas más las aprendiendo ilimitadas».
+export const PREPARATION_ROWS_CAP = 40;
 
 // Construye las filas de la hoja desde un análisis listo: predichas
 // con ficha, las que ya están en el Cuaderno («aprendiendo») y, en la
@@ -139,19 +149,32 @@ export function buildSuggestionRows(input: {
     knowledge,
     threshold,
   );
-  const rows: SuggestionRow[] = [];
+  // La selección principal se arma por prioridad: evidencia
+  // desconocida primero, «por aprender» después y rareza al final.
+  // Dentro de cada grupo se conserva el orden de llegada (las
+  // candidatas ya vienen ordenadas por rareza).
+  const explicit: SuggestionRow[] = [];
+  const learning: SuggestionRow[] = [];
+  const rarity: SuggestionRow[] = [];
   const uncertain: SuggestionRow[] = [];
   // Una sola candidata por clave de respuesta (lema): dos formas del
   // mismo lema serían dos filas con la misma evidencia.
   const seenKeys = new Set<string>();
   const pushRow = (
-    target: SuggestionRow[],
     row: PreparationRow,
     extras: { learning?: boolean; reason: PresentedReason; zipf?: number | null },
   ) => {
     const key = preparationAnswerKey(language, row);
     if (seenKeys.has(key)) return;
     seenKeys.add(key);
+    const target =
+      extras.reason === "explicit_unknown"
+        ? explicit
+        : extras.reason === "learning"
+          ? learning
+          : extras.reason === "rarity"
+            ? rarity
+            : uncertain;
     target.push({
       key,
       form: row.form,
@@ -166,16 +189,25 @@ export function buildSuggestionRows(input: {
     if (lex && !lex.has(key)) lex.set(key, row);
   };
 
+  // Las claves de evidencia son lemas en minúsculas; la forma puede
+  // venir capitalizada («Billy» se guarda como «billy»).
+  const evidenceFor = (form: string, lemma?: string | null) =>
+    knowledge.get(lemma ?? form) ??
+    knowledge.get(form) ??
+    knowledge.get(form.toLowerCase());
   const knownExplicitly = (form: string, lemma?: string | null) =>
-    knowledge.get(lemma ?? form)?.known === true || knowledge.get(form)?.known === true;
+    evidenceFor(form, lemma)?.known === true;
   const unknownExplicitly = (form: string, lemma?: string | null) =>
-    knowledge.get(lemma ?? form)?.known === false || knowledge.get(form)?.known === false;
+    evidenceFor(form, lemma)?.known === false;
 
-  for (const item of prediction.predicted) {
+  // Candidatas con ficha: las predichas y las que el tope interno
+  // dejó diferidas compiten aquí por los lugares principales — una
+  // explícita de poca rareza jamás pierde su lugar contra una rara
+  // sin evidencia solo por el orden de la lista.
+  for (const item of [...prediction.predicted, ...prediction.deferred]) {
     const entry = item.entry;
     const sense = entry.senses[0];
     pushRow(
-      rows,
       {
         form: item.form,
         lemma: entry.lemma,
@@ -193,10 +225,12 @@ export function buildSuggestionRows(input: {
       },
     );
   }
-  // Palabras del capítulo ya en el Cuaderno con nivel new/learning:
-  // grupo «aprendiendo». Asentadas/dominadas y declaradas conocidas
-  // se excluyen; un «no la conozco» sobre una dominada no pasa por
-  // aquí — la predice la regla de evidencia.
+  // Palabras del capítulo ya en el Cuaderno: nuevas/aprendiendo, y
+  // también asentadas declaradas desconocidas — la evidencia manda
+  // sin tocar su tarjeta. Conocidas y dominadas se excluyen; un
+  // «no la conozco» sobre una dominada no pasa por aquí — la predice
+  // la regla de evidencia. Con respuesta explícita cuentan en el
+  // grupo de evidencia, no en el de repaso.
   for (const form of forms) {
     const level = saved.get(form);
     if (level == null) continue;
@@ -205,7 +239,6 @@ export function buildSuggestionRows(input: {
     if (!preparationLearning(level, evidence)) continue;
     const sense = entry?.senses[0];
     pushRow(
-      rows,
       {
         form,
         lemma: entry?.lemma,
@@ -215,7 +248,12 @@ export function buildSuggestionRows(input: {
         senseEntryId: entry?.entryId,
         senseOrder: sense?.senseOrder,
       },
-      { learning: true, reason: "learning", zipf: entry?.zipf },
+      {
+        learning: true,
+        reason:
+          evidence?.known === false ? "explicit_unknown" : "learning",
+        zipf: entry?.zipf,
+      },
     );
   }
   // Catálogo sin información suficiente: fichas sin medición y formas
@@ -223,13 +261,14 @@ export function buildSuggestionRows(input: {
   // declaradas conocidas se omiten; el resto ofrece consulta
   // secundaria. Los nombres solo capitalizados se descartan.
   const pushUncertain = (form: string, entry?: LexiconEntry) => {
-    if (capitalOnly.has(form)) return;
-    if (knownExplicitly(form, entry?.lemma)) return;
     const explicit = unknownExplicitly(form, entry?.lemma);
+    // Un «no la conozco» manda sobre el filtro de nombres: si el
+    // lector la declara, la forma entra aunque parezca nombre propio.
+    if (capitalOnly.has(form) && !explicit) return;
+    if (knownExplicitly(form, entry?.lemma)) return;
     if (!explicit && uncertain.length >= UNCERTAIN_ROWS_CAP) return;
     const sense = entry?.senses[0];
     pushRow(
-      explicit ? rows : uncertain,
       {
         form,
         lemma: entry?.lemma,
@@ -247,5 +286,12 @@ export function buildSuggestionRows(input: {
   };
   for (const item of prediction.uncertain) pushUncertain(item.form, item.entry);
   for (const form of prediction.missing) pushUncertain(form);
-  return { rows, uncertain };
+  // Corte global: 40 lugares por prioridad (evidencia, aprendiendo,
+  // rareza); el resto queda consultable en la lista diferida.
+  const all = [...explicit, ...learning, ...rarity];
+  return {
+    rows: all.slice(0, PREPARATION_ROWS_CAP),
+    uncertain,
+    deferred: all.slice(PREPARATION_ROWS_CAP),
+  };
 }

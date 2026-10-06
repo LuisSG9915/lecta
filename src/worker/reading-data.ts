@@ -7,6 +7,7 @@ import {
   cleanReview,
   cleanPosition,
   cleanKnowledge,
+  knowledgeArbSql,
   ANNOTATION_LIMITS,
   ACTIVITY_LIMITS,
   REVIEW_LIMITS,
@@ -375,6 +376,10 @@ readingData.put("/api/knowledge", async (context) => {
 
   const upserted = await withClient(context.env, async (client) => {
     const result = await client.query(
+      // Arbitraje convergente: la tupla la genera knowledgeArbSql
+      // desde el mismo mapa de pesos que knowledgeArbWins — así el
+      // servidor, punto de encuentro de los dispositivos, converge al
+      // mismo ganador sin importar el orden de llegada.
       `INSERT INTO lecta_user_knowledge
          (user_id, language, lemma, known, source, updated_at, deleted)
        SELECT $1,
@@ -386,7 +391,8 @@ readingData.put("/api/knowledge", async (context) => {
        ON CONFLICT (user_id, language, lemma) DO UPDATE SET
          known = excluded.known, source = excluded.source,
          updated_at = excluded.updated_at, deleted = excluded.deleted
-       WHERE lecta_user_knowledge.updated_at < excluded.updated_at`,
+       WHERE ${knowledgeArbSql("excluded")}
+         > ${knowledgeArbSql("lecta_user_knowledge")}`,
       [session.user.id, JSON.stringify(rows)],
     );
     return result.rowCount ?? 0;

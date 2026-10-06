@@ -210,4 +210,55 @@ describe("SectionPreview", () => {
     click("Cerrar");
     expect(props.onClose).toHaveBeenCalled();
   });
+
+  it("las diferidas quedan colapsadas, paginadas por 8 y respondibles", () => {
+    const deferred = Array.from({ length: 10 }, (_, i) =>
+      row(`es:d${i}`, { form: `dif${i}` }),
+    );
+    const props = base({ deferredRows: deferred, answers: {} });
+    render(props);
+    // Colapsadas: no estorban a la selección principal.
+    expect(text()).toContain("más palabras de esta parte (10)");
+    expect(host.querySelectorAll(".section-preview-item")).toHaveLength(2);
+
+    click("Ver más palabras de esta parte (10)");
+    // Paginadas por 8 como la lista principal.
+    expect(host.querySelectorAll(".section-preview-item")).toHaveLength(10);
+    click("Ver 2 más");
+    expect(host.querySelectorAll(".section-preview-item")).toHaveLength(12);
+    // Respondibles: siguen siendo filas con evidencia, no consulta
+    // pasiva — una marcada desconocida entra al mismo lote.
+    const groups = host.querySelectorAll("[role='group']");
+    const last = groups[groups.length - 1];
+    const unknownBtn = [...last.querySelectorAll("button")].find(
+      (b) => b.textContent === "No la conozco",
+    )!;
+    act(() => {
+      unknownBtn.dispatchEvent(
+        new MouseEvent("click", { bubbles: true, cancelable: true }),
+      );
+    });
+    expect(props.onAnswer).toHaveBeenCalledWith("es:d9", "unknown");
+  });
+
+  it("las diferidas solo registran presentación cuando se hacen visibles", () => {
+    const presented: SectionPreviewRow[][] = [];
+    const deferred = Array.from({ length: 10 }, (_, i) =>
+      row(`es:d${i}`, { form: `dif${i}` }),
+    );
+    render(
+      base({
+        deferredRows: deferred,
+        onRowsPresented: (rows) => presented.push(rows),
+      }),
+    );
+    // Sin abrir la consulta no hubo presentación de diferidas.
+    expect(presented.flat().map((row) => row.key)).not.toContain("es:d0");
+    click("Ver más palabras de esta parte (10)");
+    const last = presented[presented.length - 1].map((row) => row.key);
+    // Solo las 8 visibles, no las que siguen paginadas.
+    expect(last).toContain("es:d0");
+    expect(last).toContain("es:d7");
+    expect(last).not.toContain("es:d8");
+  });
 });

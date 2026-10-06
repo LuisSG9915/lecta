@@ -1,13 +1,10 @@
 import {
-  getActiveUserId,
-  listAllSavedWords,
+  captureDbScope,
+  isDbScopeActive,
   listKnowledge,
-  mergePreparationWord,
-  putSavedWord,
-  saveKnowledge,
-  wordKey,
+  saveCalibrationBatch,
+  type DbScope,
   type KnownWord,
-  type SavedWord,
 } from "./idb";
 import { pushKnowledgeToServer } from "./reading-sync";
 import { pushWordsToServer } from "./vocab";
@@ -33,7 +30,7 @@ export type CalibrationAnswers = Record<string, "known" | "unknown">;
 export type CalibrationWord = { lemma: string; definition: string | null };
 
 export type CalibrationSample =
-  | { ok: true; words: CalibrationWord[] }
+  | { ok: true; words: CalibrationWord[]; version?: string }
   | { ok: false };
 
 // Pide la muestra al catálogo con tope de espera: sin conexión, con
@@ -47,7 +44,10 @@ export async function fetchCalibrationSample(
       `/api/lexicon/sample?language=${encodeURIComponent(language)}`,
       { signal: AbortSignal.timeout(8000) },
     );
-    const data = (await response.json()) as { words?: unknown };
+    const data = (await response.json()) as {
+      words?: unknown;
+      version?: unknown;
+    };
     if (!response.ok || !Array.isArray(data.words)) return { ok: false };
     const words = data.words.filter(
       (item): item is CalibrationWord =>
@@ -57,7 +57,9 @@ export async function fetchCalibrationSample(
         ((item as CalibrationWord).definition === null ||
           typeof (item as CalibrationWord).definition === "string"),
     );
-    return { ok: true, words };
+    const version =
+      typeof data.version === "string" ? data.version : undefined;
+    return { ok: true, words, version };
   } catch {
     return { ok: false };
   }
@@ -66,36 +68,110 @@ export async function fetchCalibrationSample(
 // ¿Ya existe evidencia de calibración (local o bajada por sync de
 // otro dispositivo)? Evita volver a ofrecer la prueba aunque la marca
 // local falte — sin esperar a la red: es una lectura del almacén.
-export async function hasCalibrationEvidence(language?: string) {
+export async function hasCalibrationEvidence(language?: string, scope?: DbScope) {
   try {
-    const rows = await listKnowledge(language);
+    const rows = await listKnowledge(language, scope);
     return rows.some((row) => row.source === "calibration");
   } catch {
     return false;
   }
 }
 
-// Restaura las respuestas guardadas en el borrador: solo las válidas
-// y cuyo lema siga en la muestra actual (otra muestra puede repetir
-// lemas). Un borrador corrupto o de otra versión se ignora completo.
+// Versión del borrador en sesión. v2 lleva la muestra completa y el
+// paso donde quedó el lector: reabrir la hoja muestra las mismas
+// palabras en el mismo lugar — la nueva consulta al catálogo podría
+// traer una selección distinta. Un borrador v1 (solo `answers`,
+// formato anterior) restaura las respuestas cuyo lema siga en la
+// muestra actual.
+export const CALIBRATION_DRAFT_VERSION = 2;
+
+export type CalibrationDraft = {
+  answers: CalibrationAnswers;
+  step: number;
+  // La muestra guardada con el borrador; si existe, sustituye a la
+  // recién descargada para conservar la misma selección.
+  words?: CalibrationWord[];
+};
+
+// Serializa el borrador v2: respuestas, paso y muestra completa.
+export function serializeCalibrationDraft(draft: {
+  answers: CalibrationAnswers;
+  step: number;
+  words: CalibrationWord[];
+}): string {
+  return JSON.stringify({
+    v: CALIBRATION_DRAFT_VERSION,
+    answers: draft.answers,
+    step: draft.step,
+    words: draft.words,
+  });
+}
+
+const cleanAnswers = (
+  source: unknown,
+  words: CalibrationWord[],
+): CalibrationAnswers => {
+  if (typeof source !== "object" || source === null || Array.isArray(source))
+    return {};
+  const valid = new Set(words.map((word) => word.lemma));
+  const answers: CalibrationAnswers = {};
+  for (const [lemma, value] of Object.entries(source))
+    if (valid.has(lemma) && (value === "known" || value === "unknown"))
+      answers[lemma] = value;
+  return answers;
+};
+
+const cleanDraftWords = (source: unknown): CalibrationWord[] | undefined => {
+  if (!Array.isArray(source) || !source.length) return undefined;
+  const words = source.filter(
+    (item): item is CalibrationWord =>
+      typeof item === "object" &&
+      item !== null &&
+      typeof (item as CalibrationWord).lemma === "string" &&
+      ((item as CalibrationWord).definition === null ||
+        typeof (item as CalibrationWord).definition === "string"),
+  );
+  return words.length === source.length ? words : undefined;
+};
+
+// Palabras por paso de la hoja (18 lemas en tres pasos de seis).
+export const STEP_SIZE = 6;
+
+// Restaura el borrador: respuestas válidas para la muestra, paso
+// acotado y la muestra misma si el borrador la guardó. `fallback`
+// es la muestra recién descargada — acota las respuestas a lemas que
+// el borrador o la muestra reconozcan.
 export function parseCalibrationDraft(
   raw: string | null | undefined,
-  words: CalibrationWord[],
-): CalibrationAnswers {
-  if (!raw) return {};
+  fallback: CalibrationWord[],
+): CalibrationDraft {
+  const empty: CalibrationDraft = { answers: {}, step: 0 };
+  if (!raw) return empty;
   try {
-    const parsed = JSON.parse(raw) as { answers?: unknown };
-    const source = parsed?.answers;
-    if (typeof source !== "object" || source === null || Array.isArray(source))
-      return {};
-    const valid = new Set(words.map((word) => word.lemma));
-    const answers: CalibrationAnswers = {};
-    for (const [lemma, value] of Object.entries(source))
-      if (valid.has(lemma) && (value === "known" || value === "unknown"))
-        answers[lemma] = value;
-    return answers;
+    const parsed = JSON.parse(raw) as {
+      v?: unknown;
+      answers?: unknown;
+      step?: unknown;
+      words?: unknown;
+    };
+    // Una versión distinta a las conocidas no se interpreta: un v3
+    // futuro no es un v1 sin campo — mejor no restaurar que leer mal.
+    if (parsed?.v != null && parsed.v !== CALIBRATION_DRAFT_VERSION)
+      return empty;
+    if (parsed?.v !== CALIBRATION_DRAFT_VERSION) {
+      // v1: solo respuestas, sin paso ni muestra guardada.
+      const answers = cleanAnswers(parsed?.answers, fallback);
+      return { answers, step: 0 };
+    }
+    const words = cleanDraftWords(parsed.words) ?? fallback;
+    const lastStep = Math.max(0, Math.ceil(words.length / STEP_SIZE) - 1);
+    const step =
+      typeof parsed.step === "number" && Number.isInteger(parsed.step)
+        ? Math.min(Math.max(parsed.step, 0), lastStep)
+        : 0;
+    return { answers: cleanAnswers(parsed.answers, words), step, words };
   } catch {
-    return {};
+    return empty;
   }
 }
 
@@ -124,47 +200,37 @@ export function calibrationRows(
 // Guarda las respuestas explícitas en el dispositivo y empuja al
 // servidor si hay sesión — mismo criterio «local primero» que
 // recordReview: un envío fallido no deshace nada. Las desconocidas
-// además entran al Cuaderno con la operación segura de la preparación
+// además entran al Cuaderno con la regla segura de la preparación
 // (palabra activa intacta, lápida restaurada conservando lo útil).
+// Evidencia y palabras escriben en UNA transacción: un fallo a mitad
+// no deja media ronda (ni filas huérfanas por sincronizar).
 export async function recordCalibration(
   words: CalibrationWord[],
   answers: CalibrationAnswers,
   language = "es",
+  scope?: DbScope,
 ) {
-  const userId = getActiveUserId();
-  const knowledge = await Promise.all(
-    calibrationRows(words, answers, language).map((row) => saveKnowledge(row)),
-  );
-
-  const unknowns = words.filter((word) => answers[word.lemma] === "unknown");
-  const saved: SavedWord[] = [];
-  if (unknowns.length) {
-    const existingByKey = new Map(
-      (await listAllSavedWords(language)).map((word) => [word.key, word]),
-    );
-    const now = Date.now();
-    for (const word of unknowns) {
-      const entry = mergePreparationWord(
-        existingByKey.get(wordKey(language, word.lemma)),
-        {
+  const bound = scope ?? captureDbScope();
+  const { knowledge, words: saved } = await saveCalibrationBatch(
+    {
+      knowledge: calibrationRows(words, answers, language),
+      words: words
+        .filter((word) => answers[word.lemma] === "unknown")
+        .map((word) => ({
           form: word.lemma,
           lemma: word.lemma,
           language,
           meaning: word.definition ?? undefined,
-        },
-        now,
-      );
-      if (!entry) continue;
-      await putSavedWord(entry);
-      saved.push(entry);
-    }
-  }
+        })),
+    },
+    bound,
+  );
 
   // La cuenta cambió mientras se guardaba: no empujar con la sesión
   // nueva respuestas escritas bajo la anterior.
-  if (getActiveUserId() === userId) {
-    void pushKnowledgeToServer(knowledge);
-    void pushWordsToServer(saved);
+  if (isDbScopeActive(bound)) {
+    void pushKnowledgeToServer(knowledge, bound);
+    void pushWordsToServer(saved, bound);
   }
   return { knowledge, words: saved };
 }

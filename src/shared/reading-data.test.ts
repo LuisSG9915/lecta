@@ -3,7 +3,13 @@ import {
   cleanKnowledge,
   cleanPosition,
   cleanReview,
+  isFsrsCardShape,
   KNOWLEDGE_LIMITS,
+  KNOWLEDGE_SOURCE_STRENGTH,
+  KNOWLEDGE_SOURCES,
+  knowledgeArbKey,
+  knowledgeArbSql,
+  knowledgeArbWins,
   POSITION_LIMITS,
   REVIEW_LIMITS,
 } from "./reading-data";
@@ -228,5 +234,143 @@ describe("cleanKnowledge", () => {
   it("las lápidas viajan con deleted en true", () => {
     expect(cleanKnowledge({ ...validKnowledge, deleted: true })?.deleted).toBe(true);
     expect(cleanKnowledge({ ...validKnowledge, deleted: "sí" })?.deleted).toBe(false);
+  });
+});
+
+describe("isFsrsCardShape", () => {
+  const validCard = {
+    due: "2025-01-02T00:00:00.000Z",
+    stability: 3.5,
+    difficulty: 5.1,
+    elapsed_days: 2,
+    scheduled_days: 3,
+    learning_steps: 0,
+    reps: 4,
+    lapses: 1,
+    state: 2,
+    last_review: "2025-01-01T00:00:00.000Z",
+  };
+
+  it("acepta una tarjeta serializada por ts-fsrs", () => {
+    expect(isFsrsCardShape(validCard)).toBe(true);
+    // Fechas como número u objeto Date también son DateInput válido.
+    expect(isFsrsCardShape({ ...validCard, due: 1_700_000_000_000 })).toBe(true);
+    expect(isFsrsCardShape({ ...validCard, due: new Date() })).toBe(true);
+    // last_review es opcional (una tarjeta nunca repasada).
+    const sinReview = { ...validCard };
+    delete (sinReview as Record<string, unknown>).last_review;
+    expect(isFsrsCardShape(sinReview)).toBe(true);
+  });
+
+  it("rechaza tarjetas que no son objetos o son nulos", () => {
+    for (const card of [null, undefined, "tarjeta", 5, []])
+      expect(isFsrsCardShape(card)).toBe(false);
+  });
+
+  it("rechaza fechas inválidas en due o last_review", () => {
+    for (const due of ["no-es-fecha", NaN, null, {}, Infinity])
+      expect(isFsrsCardShape({ ...validCard, due })).toBe(false);
+    expect(
+      isFsrsCardShape({ ...validCard, last_review: "ayer" }),
+    ).toBe(false);
+  });
+
+  it("rechaza métricas no finitas y contadores negativos o fraccionarios", () => {
+    expect(isFsrsCardShape({ ...validCard, stability: NaN })).toBe(false);
+    expect(isFsrsCardShape({ ...validCard, difficulty: Infinity })).toBe(false);
+    expect(isFsrsCardShape({ ...validCard, reps: -1 })).toBe(false);
+    expect(isFsrsCardShape({ ...validCard, lapses: 1.5 })).toBe(false);
+    expect(isFsrsCardShape({ ...validCard, elapsed_days: -3 })).toBe(false);
+  });
+
+  it("rechaza un state fuera del enum de ts-fsrs", () => {
+    for (const state of [-1, 4, 99, "Review", null])
+      expect(isFsrsCardShape({ ...validCard, state })).toBe(false);
+    for (const state of [0, 1, 2, 3])
+      expect(isFsrsCardShape({ ...validCard, state })).toBe(true);
+  });
+
+  it("tolera campos extra: se conservan, no pelean el validador", () => {
+    expect(
+      isFsrsCardShape({ ...validCard, custom: "dato", otra: [1, 2] }),
+    ).toBe(true);
+  });
+});
+
+describe("knowledgeArbWins", () => {
+  const row = (over: Partial<Parameters<typeof knowledgeArbKey>[0]> = {}) => ({
+    source: "inferred",
+    updatedAt: 100,
+    known: true,
+    ...over,
+  });
+
+  it("la fuente fuerte gana aunque la débil tenga sello más nuevo", () => {
+    const declared = row({ source: "declared", updatedAt: 100 });
+    const inferred = row({ source: "inferred", known: false, updatedAt: 999 });
+    expect(knowledgeArbWins(declared, inferred)).toBe(true);
+    expect(knowledgeArbWins(inferred, declared)).toBe(false);
+  });
+
+  it("a fuerza igual gana el sello más reciente", () => {
+    const vieja = row({ source: "declared", updatedAt: 100 });
+    const nueva = row({ source: "preparation", known: false, updatedAt: 200 });
+    expect(knowledgeArbWins(nueva, vieja)).toBe(true);
+    expect(knowledgeArbWins(vieja, nueva)).toBe(false);
+  });
+
+  it("una lápida compite como explícita: una inferencia nueva no resucita", () => {
+    const lapida = row({ source: "declared", deleted: true, updatedAt: 100 });
+    const inferred = row({ source: "inferred", updatedAt: 500 });
+    expect(knowledgeArbWins(lapida, inferred)).toBe(true);
+    expect(knowledgeArbWins(inferred, lapida)).toBe(false);
+  });
+
+  it("una respuesta explícita posterior sí revive una lápida", () => {
+    const lapida = row({ source: "inferred", deleted: true, updatedAt: 300 });
+    const declared = row({ source: "declared", updatedAt: 400 });
+    expect(knowledgeArbWins(declared, lapida)).toBe(true);
+    expect(knowledgeArbWins(lapida, declared)).toBe(false);
+  });
+
+  it("a llave empatada gana la lápida y luego la desconocida", () => {
+    const viva = row({ source: "declared", updatedAt: 100 });
+    const lapida = row({ source: "declared", updatedAt: 100, deleted: true });
+    expect(knowledgeArbWins(lapida, viva)).toBe(true);
+    expect(knowledgeArbWins(viva, lapida)).toBe(false);
+    const desconocida = row({ source: "declared", updatedAt: 100, known: false });
+    expect(knowledgeArbWins(desconocida, viva)).toBe(true);
+  });
+
+  it("el orden de llegada no cambia el ganador", () => {
+    const variants = [
+      row({ source: "inferred", updatedAt: 100 }),
+      row({ source: "declared", updatedAt: 50, known: false }),
+      row({ source: "saved", updatedAt: 200, deleted: true }),
+      row({ source: "declared", updatedAt: 150 }),
+      row({ source: "preparation", updatedAt: 150, known: false }),
+    ];
+    for (const a of variants) {
+      for (const b of variants) {
+        if (a === b) continue;
+        const ka = knowledgeArbKey(a);
+        const kb = knowledgeArbKey(b);
+        const sameKey = ka.every((v, i) => v === kb[i]);
+        expect(knowledgeArbWins(a, b)).toBe(sameKey ? false : !knowledgeArbWins(b, a));
+      }
+    }
+  });
+});
+
+describe("knowledgeArbSql", () => {
+  it("genera la tupla (peso, sello, lápida, veredicto) desde el mapa de fuentes", () => {
+    const sql = knowledgeArbSql("t");
+    expect(sql).toContain("CASE WHEN t.deleted THEN 2");
+    for (const source of KNOWLEDGE_SOURCES)
+      expect(sql).toContain(
+        `WHEN '${source}' THEN ${KNOWLEDGE_SOURCE_STRENGTH[source]}`,
+      );
+    // Misma tupla que knowledgeArbKey: peso, updatedAt, lápida, veredicto.
+    expect(sql).toMatch(/\(CASE.*, t\.updated_at, t\.deleted, NOT t\.known\)/s);
   });
 });

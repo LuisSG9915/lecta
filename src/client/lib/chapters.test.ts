@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { buildChapterCatalog, targetAt } from "./chapters";
+import {
+  buildChapterCatalog,
+  reachedRangeEnd,
+  targetAt,
+  trackCalibrationOffer,
+  type CalibrationTrack,
+} from "./chapters";
 import type { EpubBook, EpubTocItem } from "./epub";
 
 // Libros sintéticos: solo las piezas que buildChapterCatalog lee
@@ -222,5 +228,135 @@ describe("buildChapterCatalog", () => {
       ),
     );
     expect(targets.map((t) => t.kind)).toEqual(["preliminary", "chapter"]);
+  });
+});
+
+describe("reachedRangeEnd", () => {
+  const range = { startSection: 2, endSection: 5 };
+
+  it("dentro del rango o antes de él aún no llega al final", () => {
+    expect(reachedRangeEnd(range, 0, 1)).toBe(false);
+    expect(reachedRangeEnd(range, 3, 1)).toBe(false);
+  });
+
+  it("última sección exige la vista casi completa", () => {
+    expect(reachedRangeEnd(range, 4, 0.5)).toBe(false);
+    expect(reachedRangeEnd(range, 4, 0.98)).toBe(true);
+    expect(reachedRangeEnd(range, 4, 1)).toBe(true);
+  });
+
+  it("una sección posterior al rango cuenta como terminado", () => {
+    expect(reachedRangeEnd(range, 5, 0)).toBe(true);
+    expect(reachedRangeEnd(range, 7, 0.2)).toBe(true);
+  });
+
+  it("rango de una sola sección termina con la vista al final", () => {
+    const single = { startSection: 0, endSection: 1 };
+    expect(reachedRangeEnd(single, 0, 0.4)).toBe(false);
+    expect(reachedRangeEnd(single, 0, 0.99)).toBe(true);
+  });
+});
+
+describe("trackCalibrationOffer", () => {
+  // Catálogo sintético: capítulo A [0,3), capítulo B [3,6).
+  const ranges = [
+    { startSection: 0, endSection: 3 },
+    { startSection: 3, endSection: 6 },
+  ];
+  const rangeFor = (index: number) =>
+    ranges.find((r) => r.startSection <= index && index < r.endSection) ?? null;
+
+  // Simula la secuencia de posiciones observadas; devuelve la última
+  // decisión y el seguimiento que quedó.
+  const run = (
+    positions: [section: number, ratio: number][],
+    start: CalibrationTrack | null = null,
+  ) => {
+    let track = start;
+    let offer = false;
+    for (const [sectionIndex, ratio] of positions) {
+      const next = trackCalibrationOffer(track, sectionIndex, ratio, rangeFor);
+      track = next.track;
+      offer = next.offer;
+    }
+    return { track, offer };
+  };
+
+  it("lectura real del tramo: se arma dentro y dispara al terminar", () => {
+    const seq = run([
+      [0, 0],
+      [1, 0.3],
+      [2, 0.5],
+      [2, 0.99],
+    ]);
+    expect(seq.offer).toBe(true);
+  });
+
+  it("aterrizar directo en el final no dispara (retomar/marcador)", () => {
+    // La posición restaurada cae ya al final de la última sección.
+    const seq = run([[2, 1]]);
+    expect(seq.offer).toBe(false);
+    expect(seq.track).toBeNull();
+    // Y al pasar de página el candidato se recalcula en el capítulo B,
+    // no dispara «a ciegas» sobre el A.
+    const next = run([[3, 0]], seq.track);
+    expect(next.offer).toBe(false);
+    expect(next.track?.range).toEqual({ startSection: 3, endSection: 6 });
+  });
+
+  it("un salto del índice más allá del tramo no dispara", () => {
+    // Abrió en la portada y saltó directo a una sección posterior.
+    const seq = run([
+      [0, 0],
+      [4, 0],
+    ]);
+    expect(seq.offer).toBe(false);
+    // El candidato es ahora el tramo B, donde sí se observa lectura.
+    expect(seq.track?.range).toEqual({ startSection: 3, endSection: 6 });
+    // Terminar B sí ofrece.
+    expect(run([[4, 0.5], [5, 1]], seq.track).offer).toBe(true);
+  });
+
+  it("pisar la última sección sin llegar al final y pasar dispara", () => {
+    // En modo paginado una última sección de una página nunca llega a
+    // 0.98: haberla visto y avanzar a la siguiente cuenta.
+    const seq = run([
+      [0, 0],
+      [2, 0.4],
+      [3, 0],
+    ]);
+    expect(seq.offer).toBe(true);
+  });
+
+  it("saltar sobre la última sección sin pisarla no dispara", () => {
+    // Leyó el inicio del tramo y saltó dos secciones más allá: nunca
+    // estuvo en la última, no hay lectura del final.
+    const seq = run([
+      [0, 0],
+      [4, 0],
+    ]);
+    expect(seq.offer).toBe(false);
+  });
+
+  it("retroceder dentro del tramo conserva el armado", () => {
+    const seq = run([
+      [1, 0],
+      [2, 0.6],
+      [1, 0],
+      [2, 0.5],
+      [2, 1],
+    ]);
+    expect(seq.offer).toBe(true);
+  });
+
+  it("tramo de una sección: vista parcial arma, salir sin verla no", () => {
+    const single = (index: number) =>
+      index === 0 ? { startSection: 0, endSection: 1 } : null;
+    // Aterriza a la mitad, baja al final.
+    let step = trackCalibrationOffer(null, 0, 0.5, single);
+    step = trackCalibrationOffer(step.track, 0, 0.99, single);
+    expect(step.offer).toBe(true);
+    // Aterriza ya al final: no hubo lectura observada.
+    expect(trackCalibrationOffer(null, 0, 1, single).offer).toBe(false);
   });
 });

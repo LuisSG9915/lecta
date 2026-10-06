@@ -1,49 +1,63 @@
+import { accountFetch } from "./account-fetch";
+import { StaleScopeError, type DbScope } from "./idb";
+
 export type RemoteBook = { hash: string; uploaded: string; name: string };
 
-export async function uploadBook(hash: string, file: File) {
+// Las funciones de libros remotos re-lanzan StaleScopeError: «la cuenta
+// cambió a mitad» no es un fallo del servidor y quien encoló la
+// operación debe distinguirlo (book-queue para sin marcar error).
+export async function uploadBook(hash: string, file: File, scope?: DbScope) {
   try {
-    const response = await fetch(`/api/books/${hash}?name=${encodeURIComponent(file.name)}`, {
-      method: "PUT",
-      body: file,
-    });
+    const response = await accountFetch(
+      `/api/books/${hash}?name=${encodeURIComponent(file.name)}`,
+      {
+        method: "PUT",
+        body: file,
+      },
+      scope,
+    );
     return response.ok;
-  } catch {
+  } catch (error) {
+    if (error instanceof StaleScopeError) throw error;
     return false;
   }
 }
 
-export async function listRemoteBooks(): Promise<RemoteBook[]> {
+export async function listRemoteBooks(scope?: DbScope): Promise<RemoteBook[]> {
   try {
-    const response = await fetch("/api/books");
+    const response = await accountFetch("/api/books", undefined, scope);
     if (!response.ok) return [];
     const data = (await response.json()) as { books?: RemoteBook[] };
     return data.books ?? [];
-  } catch {
+  } catch (error) {
+    if (error instanceof StaleScopeError) throw error;
     return [];
   }
 }
 
-export async function downloadBook(book: RemoteBook) {
+export async function downloadBook(book: RemoteBook, scope?: DbScope) {
   try {
-    const response = await fetch(`/api/books/${book.hash}`);
+    const response = await accountFetch(`/api/books/${book.hash}`, undefined, scope);
     if (!response.ok) return null;
     const data = await response.blob();
     return new File([data], book.name || `${book.hash.slice(0, 8)}.epub`, {
       type: "application/epub+zip",
     });
-  } catch {
+  } catch (error) {
+    if (error instanceof StaleScopeError) throw error;
     return null;
   }
 }
 
-export async function deleteBook(hash: string) {
+export async function deleteBook(hash: string, scope?: DbScope) {
   try {
-    const response = await fetch(`/api/books/${hash}`, { method: "DELETE" });
+    const response = await accountFetch(`/api/books/${hash}`, { method: "DELETE" }, scope);
     // 404 también cuenta: el libro ya no está en la nube, que es lo que
     // pedía el borrado (p. ej. otro dispositivo lo quitó antes). Así la
     // op encolada sale de la cola en vez de reintentar para siempre.
     return response.ok || response.status === 404;
-  } catch {
+  } catch (error) {
+    if (error instanceof StaleScopeError) throw error;
     return false;
   }
 }

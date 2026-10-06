@@ -1,6 +1,12 @@
 import type pg from "pg";
 import { ENRICHMENT_MODEL, ENRICHMENT_PROMPT_VERSION } from "./ai";
 import { hasUsableDefinition } from "../shared/lexicon";
+import {
+  CALIBRATION_BANK,
+  CALIBRATION_PER_BAND,
+  calibrationBandIndex,
+  calibrationBankLemmas,
+} from "../shared/calibration-bank";
 
 // El catálogo léxico es dato de referencia compartido (no datos de
 // usuario): las tablas lexicon_* viven en lecta_dev y producción las
@@ -108,81 +114,91 @@ export async function findEntriesForForms(client: pg.Client, language: string, f
 
 // ---------- Muestra para la calibración inicial ----------
 //
-// La prueba de vocabulario necesita lemas repartidos por bandas de
-// frecuencia (zipf); la definición se trae cuando el catálogo la
-// tiene — sin ella la fila igual se ofrece (solo no hay revelado al
-// marcarla). Una sola consulta: DISTINCT ON (lemma) evita que el
-// mismo lema salte dos veces por sus entradas de distinta categoría;
-// ROW_NUMBER por banda con ORDER BY RANDOM() da la selección al azar
-// y `pick <= SAMPLE_FETCH_PER_BAND` deja margen para rellenar las
-// bandas que queden cortas desde las vecinas (abajo).
+// La muestra sale del banco editorial de shared/calibration-bank:
+// lemas revisados con definición cargada, verificados contra su
+// banda zipf en el catálogo. El examen deja así de ofrecer fichas
+// sin sentido para el propósito («step», «jalifa») aunque existan en
+// el catálogo. Una sola consulta trae todas las fichas del banco;
+// para cada lema se elige la ficha dominante — la que tiene más
+// acepciones con definición, criterio que en las homonimias revisadas
+// (ciego, cuarto, paciente, parco) siempre escoge la lectura común—
+// y solo entra a la muestra si su zipf medido cae en la banda que el
+// banco declara: una medición que se mueva no arrastra al lema fuera
+// de lugar silenciosamente.
 
-const SAMPLE_BANDS = 6;
-const SAMPLE_PER_BAND = 6;
-const SAMPLE_TOTAL = SAMPLE_BANDS * SAMPLE_PER_BAND;
-// Límite de candidatas por banda: basta para que una banda pueda
-// cubrir sola toda la muestra si las demás vinieran vacías.
-const SAMPLE_FETCH_PER_BAND = SAMPLE_TOTAL;
-
-// Bandas [2.0,2.5) … [4.5,5.0): floor((zipf-2)/0.5) → 0..5.
-// El LEFT JOIN filtra las acepciones vacías en el ON (no en el
-// WHERE, que eliminaría entradas sin ficha) y el ORDER BY prefiere
-// las filas con definición: cada lema se queda con su primera
-// acepción no vacía si existe, o con null si ninguna la tiene.
-const SAMPLE_SQL = `
-  WITH candidates AS (
-    SELECT DISTINCT ON (e.lemma) e.lemma, e.zipf, s.definition
+const SAMPLE_BANK_SQL = `
+  SELECT e.id, e.lemma, e.pos, e.zipf,
+         (SELECT s.definition FROM ${CATALOG}lexicon_senses s
+           WHERE s.entry_id = e.id AND btrim(coalesce(s.definition, '')) <> ''
+           ORDER BY s.sense_order LIMIT 1) AS definition,
+         (SELECT count(*)::int4 FROM ${CATALOG}lexicon_senses sc
+           WHERE sc.entry_id = e.id
+             AND btrim(coalesce(sc.definition, '')) <> '') AS def_count
     FROM ${CATALOG}lexicon_entries e
-    LEFT JOIN ${CATALOG}lexicon_senses s
-      ON s.entry_id = e.id AND btrim(s.definition) <> ''
-    WHERE e.language = $1
-      AND e.zipf >= 2.0 AND e.zipf < 5.0
-    ORDER BY e.lemma, (s.definition IS NULL), e.id, s.sense_order
-  ),
-  banded AS (
-    SELECT lemma, definition,
-           floor((zipf - 2.0) / 0.5)::int4 AS band,
-           row_number() OVER (
-             PARTITION BY floor((zipf - 2.0) / 0.5)
-             ORDER BY random()
-           ) AS pick
-    FROM candidates
-  )
-  SELECT lemma, definition, band
-  FROM banded
-  WHERE pick <= $2
-  ORDER BY band, pick
+   WHERE e.language = $1 AND e.lemma = ANY($2)
 `;
 
 export type SampleWord = { lemma: string; definition: string | null };
 
-// Devuelve hasta 36 lemas, 6 por banda de zipf, cada uno con su
-// primera acepción no vacía cuando el catálogo la tiene (definition
-// sale null si ninguna la tiene). Si alguna banda no llena su cupo,
-// las sobrantes de las vecinas completan la muestra.
+const shuffle = <T,>(list: T[]): T[] => {
+  for (let i = list.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [list[i], list[j]] = [list[j], list[i]];
+  }
+  return list;
+};
+
+// Devuelve hasta 18 lemas (3 por banda, tres pasos de seis). Si una
+// banda queda corta se devuelve menos — la insuficiencia es visible,
+// no se rellena con lemas de otra banda.
 export async function sampleForCalibration(
   client: pg.Client,
   language: string,
 ): Promise<SampleWord[]> {
   const { rows } = await client.query<{
+    id: string;
     lemma: string;
+    pos: string | null;
+    zipf: number | null;
     definition: string | null;
-    band: number;
-  }>(SAMPLE_SQL, [language, SAMPLE_FETCH_PER_BAND]);
+    def_count: number;
+  }>(SAMPLE_BANK_SQL, [language, calibrationBankLemmas()]);
 
-  const byBand: { lemma: string; definition: string | null }[][] = Array.from(
-    { length: SAMPLE_BANDS },
-    () => [],
-  );
+  const byLemma = new Map<string, typeof rows>();
   for (const row of rows) {
-    if (row.band >= 0 && row.band < SAMPLE_BANDS) byBand[row.band].push(row);
+    const list = byLemma.get(row.lemma);
+    if (list) list.push(row);
+    else byLemma.set(row.lemma, [row]);
   }
-  const picked = byBand.flatMap((band) => band.slice(0, SAMPLE_PER_BAND));
-  if (picked.length < SAMPLE_TOTAL) {
-    const spare = byBand.flatMap((band) => band.slice(SAMPLE_PER_BAND));
-    picked.push(...spare.slice(0, SAMPLE_TOTAL - picked.length));
+
+  const picked: SampleWord[] = [];
+  for (let band = 0; band < CALIBRATION_BANK.length; band++) {
+    const eligible = CALIBRATION_BANK[band].flatMap((lemma) => {
+      const entries = byLemma.get(lemma) ?? [];
+      // La ficha dominante es la de más acepciones con definición; a
+      // empate gana el id de entrada menor — determinista, no depende
+      // del orden en que Postgres devolvió las filas. (Más acepciones
+      // es solo heurística de lectura común, no certeza de sentido.)
+      const dominant = entries
+        .filter((row) => row.definition != null)
+        .sort(
+          (a, b) =>
+            b.def_count - a.def_count ||
+            (BigInt(a.id) < BigInt(b.id)
+              ? -1
+              : BigInt(a.id) > BigInt(b.id)
+                ? 1
+                : 0),
+        )[0];
+      return dominant &&
+        dominant.zipf != null &&
+        calibrationBandIndex(dominant.zipf) === band
+        ? [{ lemma, definition: dominant.definition }]
+        : [];
+    });
+    picked.push(...shuffle(eligible).slice(0, CALIBRATION_PER_BAND));
   }
-  return picked;
+  return shuffle(picked);
 }
 
 export type ValidatedEnrichment = {

@@ -1,15 +1,27 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { authClient } from "../lib/auth";
 import { PENDING_DELETE_KEY } from "../lib/account-cleanup";
-import { listKnowledge, listSavedWords, loadSessionValue } from "../lib/idb";
+import {
+  captureDbScope,
+  listKnowledge,
+  listSavedWords,
+  loadSessionValue,
+  saveSessionValue,
+} from "../lib/idb";
 import { loadUseAi, saveUseAi } from "../lib/ai-pref";
 import { loadHistoryEnabled, saveHistoryEnabled } from "../lib/reading-events";
+import { loadGameEnabled, saveGameEnabled } from "../lib/game";
 import {
   estimateStoredProfile,
   isCredibleKnowledge,
   vocabLevelLabel,
 } from "../lib/knowledge";
 import { fetchCalibrationSample, type CalibrationWord } from "../lib/calibration";
+import {
+  parseReadingGoal,
+  READING_GOAL_KEY,
+  serializeReadingGoal,
+} from "../lib/reading-goal";
 import { downloadBackup } from "../lib/export";
 import { timeAgo } from "../lib/relative-time";
 import Dialog from "./Dialog";
@@ -53,6 +65,11 @@ export default function Account({
   const [useAi, setUseAi] = useState(true);
   // Preferencia «historial de lectura» (trayecto local): misma mecánica.
   const [historyOn, setHistoryOn] = useState(true);
+  // Preferencia «compañero y logros» (el gato del Cuaderno): igual.
+  const [gameOn, setGameOn] = useState(true);
+  // Meta semanal de lectura (días 1–7, null = sin meta): local por
+  // dispositivo; viaja anónimo→cuenta pero no al servidor.
+  const [goalDays, setGoalDays] = useState<number | null>(null);
   // Resumen del modelo de conocimiento para «Tu vocabulario»: qué
   // tanto sabe el lector según la evidencia guardada (calibración,
   // «ya la conocía» y consultas).
@@ -66,7 +83,7 @@ export default function Account({
   useEffect(() => {
     if (!userId) return;
     let cancelled = false;
-    void loadSessionValue("vocabLastSyncAt").then((raw) => {
+    void loadSessionValue("vocabLastSyncAt", captureDbScope()).then((raw) => {
       if (!cancelled) setLastSync(raw ? Number(raw) : null);
     });
     const on = () => setOnline(true);
@@ -81,11 +98,18 @@ export default function Account({
   }, [userId]);
   useEffect(() => {
     let cancelled = false;
-    void loadUseAi().then((on) => {
+    const scope = captureDbScope();
+    void loadUseAi(scope).then((on) => {
       if (!cancelled) setUseAi(on);
     });
-    void loadHistoryEnabled().then((on) => {
+    void loadHistoryEnabled(scope).then((on) => {
       if (!cancelled) setHistoryOn(on);
+    });
+    void loadGameEnabled(scope).then((on) => {
+      if (!cancelled) setGameOn(on);
+    });
+    void loadSessionValue(READING_GOAL_KEY, scope).then((raw) => {
+      if (!cancelled) setGoalDays(parseReadingGoal(raw)?.daysPerWeek ?? null);
     });
     return () => {
       cancelled = true;
@@ -97,9 +121,10 @@ export default function Account({
   useEffect(() => {
     let cancelled = false;
     void (async () => {
+      const scope = captureDbScope();
       const [allRows, savedWords] = await Promise.all([
-        listKnowledge("es").catch(() => []),
-        listSavedWords("es").catch(() => []),
+        listKnowledge("es", scope).catch(() => []),
+        listSavedWords("es", scope).catch(() => []),
       ]);
       // Mismo criterio que el lector: un «inferida como desconocida»
       // sin palabra guardada que la respalde es rastro de una consulta,
@@ -114,7 +139,7 @@ export default function Account({
       if (!rows.length) {
         if (!cancelled)
           setVocabInfo({
-            text: "Aún sin medición; se ofrece una prueba breve al abrir el primer libro.",
+            text: "Aún sin medición; se ofrece una prueba breve al terminar tu primer capítulo.",
           });
         return;
       }
@@ -270,7 +295,7 @@ export default function Account({
   const toggleUseAi = () => {
     const next = !useAi;
     setUseAi(next);
-    void saveUseAi(next).catch(() => {
+    void saveUseAi(next, captureDbScope()).catch(() => {
       setUseAi(!next);
       setError("No se pudo guardar la preferencia. Intenta de nuevo.");
     });
@@ -279,8 +304,32 @@ export default function Account({
   const toggleHistory = () => {
     const next = !historyOn;
     setHistoryOn(next);
-    void saveHistoryEnabled(next).catch(() => {
+    void saveHistoryEnabled(next, captureDbScope()).catch(() => {
       setHistoryOn(!next);
+      setError("No se pudo guardar la preferencia. Intenta de nuevo.");
+    });
+  };
+
+  const toggleGame = () => {
+    const next = !gameOn;
+    setGameOn(next);
+    void saveGameEnabled(next, captureDbScope()).catch(() => {
+      setGameOn(!next);
+      setError("No se pudo guardar la preferencia. Intenta de nuevo.");
+    });
+  };
+
+  const changeGoal = (raw: string) => {
+    const prev = goalDays;
+    const next = raw === "" ? null : Number(raw);
+    if (next !== null && (!Number.isInteger(next) || next < 1 || next > 7)) return;
+    setGoalDays(next);
+    void saveSessionValue(
+      READING_GOAL_KEY,
+      serializeReadingGoal(next),
+      captureDbScope(),
+    ).catch(() => {
+      setGoalDays(prev);
       setError("No se pudo guardar la preferencia. Intenta de nuevo.");
     });
   };
@@ -493,6 +542,51 @@ export default function Account({
             {loadingSample ? "Cargando…" : "Ajustar mi vocabulario"}
           </button>
         </div>
+      </section>
+
+      <section className="account-privacy" aria-label="Meta de lectura">
+        <h2 className="eyebrow">Meta de lectura</h2>
+        <div className="setting-row">
+          <span className="setting-label">Días de lectura por semana</span>
+          <select
+            aria-label="Días de lectura por semana"
+            value={goalDays ?? ""}
+            onChange={(event) => changeGoal(event.target.value)}
+          >
+            <option value="">Sin meta</option>
+            {[1, 2, 3, 4, 5, 6, 7].map((days) => (
+              <option key={days} value={days}>
+                {days === 1 ? "1 día" : `${days} días`}
+              </option>
+            ))}
+          </select>
+        </div>
+        <p className="meta">
+          De lunes a domingo; un día cuenta cuando lees al menos un minuto.
+          La meta se guarda en este dispositivo.
+        </p>
+      </section>
+
+      <section className="account-privacy" aria-label="Compañero y logros">
+        <h2 className="eyebrow">Compañero y logros</h2>
+        <div className="setting-row">
+          <span className="setting-label">El gato del cuaderno</span>
+          <button
+            type="button"
+            className="theme-option"
+            role="switch"
+            aria-checked={gameOn}
+            data-active={gameOn || undefined}
+            onClick={toggleGame}
+          >
+            {gameOn ? "Sí" : "No"}
+          </button>
+        </div>
+        <p className="meta">
+          Un gato de biblioteca crece contigo en el Cuaderno: niveles, logros
+          y cofres por leer y repasar. Todo queda en este dispositivo; apágalo
+          y Lecta se ve igual que siempre.
+        </p>
       </section>
 
       <section className="account-privacy" aria-label="Privacidad y datos">

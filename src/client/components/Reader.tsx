@@ -19,7 +19,7 @@ import {
 import { sanitizeSectionDocument } from "../lib/sanitize";
 import { markWords } from "../lib/marks";
 import {
-  getActiveUserId,
+  captureDbScope,
   listAllKnowledge,
   listKnowledge,
   listSavedWords,
@@ -29,6 +29,7 @@ import {
   saveReadingInterval,
   saveSessionValue,
   loadSessionValue,
+  type DbScope,
   type KnownWord,
   type SavedWord,
   type SavedBookPosition,
@@ -39,19 +40,19 @@ import {
   selectEnrichmentCandidates,
   selectSavedForEnrichment,
 } from "../lib/enrichment-candidates";
-import { hasUsableDefinition } from "../../shared/lexicon";
+import { hasUsableDefinition, measuredZipf } from "../../shared/lexicon";
 import {
+  cliticBasesFor,
   estimateProfile,
   isCredibleKnowledge,
-  knowledgeEvidence,
   predictSection,
+  resolveEvidence,
   type KnowledgeEvidence,
   type SectionPrediction,
   type VocabProfile,
 } from "../lib/knowledge";
 import {
   buildSuggestionRows,
-  toKnowledgeMap,
   type SuggestionRows,
 } from "../lib/section-words";
 import {
@@ -66,6 +67,7 @@ import {
   updateWpm,
   DEFAULT_WPM,
 } from "../lib/progress";
+import { award } from "../lib/game";
 import {
   loadReaderSettings,
   saveReaderSettings,
@@ -117,12 +119,18 @@ import {
   type MarkLevel,
 } from "../lib/word-level";
 import { loadUseAi } from "../lib/ai-pref";
+import {
+  CALIBRATION_DONE_KEY,
+  hasCalibrationEvidence,
+} from "../lib/calibration";
 import WordPanel from "./WordPanel";
 import SectionPreview, { type SectionPreviewRow } from "./SectionPreview";
 import Sheet from "./Sheet";
 import ThemeMenu from "./ThemeMenu";
 import {
   buildChapterCatalog,
+  trackCalibrationOffer,
+  type CalibrationTrack,
   targetAt,
   type ChapterCatalog,
   type ChapterTarget,
@@ -178,6 +186,10 @@ type ReaderProps = {
   theme: ThemeChoice;
   onThemeChange: (choice: ThemeChoice) => void;
   vocabVersion: number;
+  // Descarga la muestra y abre la hoja de calibración (vive en App).
+  // Devuelve si la hoja quedó abierta — el aviso se conserva cuando
+  // no, para reintentar al volver la conexión.
+  onRequestCalibration: (language: string) => Promise<boolean>;
 };
 
 // Caché por sección: la consulta al catálogo se hace una sola vez por
@@ -214,21 +226,25 @@ const clampNumber = (n: number, lo: number, hi: number) => Math.min(hi, Math.max
 // huecos — una respuesta explícita del lector jamás se reescribe y una
 // lápida no se revive. Es auxiliar: corre suelta y un fallo no
 // interrumpe la carga.
-export const recordDominated = (words: SavedWord[], lang: string) =>
+export const recordDominated = (words: SavedWord[], lang: string, scope?: DbScope) =>
   (async () => {
+    const bound = scope ?? captureDbScope();
     const lemmas = dominatedLemmas(words);
     if (!lemmas.length) return;
     const existing = new Set(
-      (await listAllKnowledge(lang)).map((row) => row.lemma),
+      (await listAllKnowledge(lang, bound)).map((row) => row.lemma),
     );
     for (const lemma of lemmas)
       if (!existing.has(lemma))
-        await saveKnowledge({
-          language: lang,
-          lemma,
-          known: true,
-          source: "inferred",
-        });
+        await saveKnowledge(
+          {
+            language: lang,
+            lemma,
+            known: true,
+            source: "inferred",
+          },
+          bound,
+        );
   })().catch(() => undefined);
 
 export default function Reader({
@@ -245,6 +261,7 @@ export default function Reader({
   theme,
   onThemeChange,
   vocabVersion,
+  onRequestCalibration,
 }: ReaderProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -296,6 +313,7 @@ export default function Reader({
     analysis: "loading" | "ready" | "error";
     rows: SectionPreviewRow[];
     uncertain: SectionPreviewRow[];
+    deferred: SectionPreviewRow[];
     answers: PreparationAnswers;
     // Identifica la presentación en el trayecto: cada apertura de la
     // hoja agrupa lo que se mostró y lo que se respondió.
@@ -375,6 +393,7 @@ export default function Reader({
     analysis: "loading" | "ready" | "error";
     rows: SectionPreviewRow[];
     uncertain: SectionPreviewRow[];
+    deferred: SectionPreviewRow[];
     answers: PreparationAnswers;
     presentationId: string;
     saving: boolean;
@@ -388,6 +407,16 @@ export default function Reader({
   } | null>(null);
   const prepDismissed = useRef(new Set<string>());
   const prepEvaluated = useRef<string | null>(null);
+  // Invitación a la prueba de vocabulario: aparece una vez por apertura
+  // del libro al terminar el primer tramo leído, si la cuenta no ha
+  // calibrado ni descartado la oferta («calibrationDone»). La franja
+  // espera; «Ahora no» marca la llave y cierra la vía automática.
+  const [calNotice, setCalNotice] = useState(false);
+  // Tramo candidato a «primer lectura real» de la apertura: se arma
+  // solo viendo el tramo antes de su final — retomar, un marcador o un
+  // salto que aterriza ya en el final no disparan la invitación.
+  const calTrack = useRef<CalibrationTrack | null>(null);
+  const calEvaluated = useRef(false);
   const [language, setLanguage] = useState("es");
   const [selection, setSelection] = useState<WordHit | null>(null);
   // Predicción de la sección visible (marcas punteadas en el texto).
@@ -451,9 +480,13 @@ export default function Reader({
       startedAt: seg.startedAt,
       endedAt,
     };
-    void saveReadingInterval(interval).then(() =>
-      pushActivityToServer([interval]),
+    // El tramo se midió bajo esta cuenta: si la sesión cambia antes de
+    // que el guardado termine, aterriza en su base — nunca en la nueva.
+    const scope = captureDbScope();
+    void saveReadingInterval(interval, scope).then(() =>
+      pushActivityToServer([interval], scope),
     );
+    void award({ kind: "read", ms: endedAt - seg.startedAt }, scope);
   }, [bookHash]);
 
   // Toda señal de lectura real pasa por aquí: scroll, cambio de página,
@@ -489,6 +522,7 @@ export default function Reader({
       form: hit.word,
       origin: "text",
     });
+    void award({ kind: "consulted" }, captureDbScope());
   };
 
   const closeSelection = () => {
@@ -599,12 +633,15 @@ export default function Reader({
   }, [bookHash]);
 
   // Guardado con debounce: igual que al hacer scroll, también sirve al
-  // pasar de página.
+  // pasar de página. El contexto se ata al tick que programó el
+  // guardado: si la cuenta cambia antes de que corra, la posición cae
+  // en la base que leyó — no en la recién activada.
   const saveSoon = useCallback(() => {
+    const scope = captureDbScope();
     window.clearTimeout(scrollTimer.current);
     scrollTimer.current = window.setTimeout(() => {
       const pos = capturePosition();
-      if (pos) void saveBookPosition(pos);
+      if (pos) void saveBookPosition(pos, scope);
     }, 400);
   }, [capturePosition]);
 
@@ -659,7 +696,7 @@ export default function Reader({
       const next = updateWpm(wpm, wordsRead, spent);
       if (next !== null && next !== wpm) {
         setWpm(next);
-        void saveSessionValue(WPM_KEY, String(next));
+        void saveSessionValue(WPM_KEY, String(next), captureDbScope());
       }
     },
     [wpm],
@@ -753,12 +790,13 @@ export default function Reader({
   // fuera del lote; en la hoja siguen como «Sin definición todavía».
   const maybeAutoEnrich = useCallback(
     async (index: number, prediction: SectionPrediction, lang: string) => {
+      const scope = captureDbScope();
       const book = bookRef.current;
       const range = rangeFor(index);
       const analysis = analysisFor(index);
       if (!book || !range || !analysis) return;
       if (enrichedTargets.current.has(range.target.id)) return;
-      if (!useAiRef.current || !getActiveUserId()) return;
+      if (!useAiRef.current || !scope.userId) return;
       const candidates = selectEnrichmentCandidates(
         prediction,
         analysis.capitalOnly,
@@ -768,7 +806,7 @@ export default function Reader({
       if (!candidates.length) return;
       enrichedTargets.current.add(range.target.id);
       setEnriching({ index, done: 0, total: candidates.length });
-      const batch = await enrichBatch(candidates, lang);
+      const batch = await enrichBatch(candidates, lang, scope);
       if (bookRef.current !== book) return;
       if (!batch.ok || batch.count === 0) {
         // Solo el fallo de red libera el cupo para reintentar en otra
@@ -783,7 +821,7 @@ export default function Reader({
       for (let attempt = 0; attempt < 6; attempt += 1) {
         await new Promise((resolve) => setTimeout(resolve, 3000));
         if (bookRef.current !== book) return;
-        const result = await batchLookup(candidates, lang);
+        const result = await batchLookup(candidates, lang, scope);
         if (!result.ok) continue;
         const foundNow = candidates.filter((form) =>
           hasUsableDefinition(result.entries[form]),
@@ -822,7 +860,10 @@ export default function Reader({
   const trackEvent = useCallback(
     (draft: VisitEventDraft) => {
       const visitId = (visitIdRef.current ??= crypto.randomUUID());
-      void trackReadingEvent({ ...draft, visitId, bookHash });
+      void trackReadingEvent(
+        { ...draft, visitId, bookHash },
+        captureDbScope(),
+      );
     },
     [bookHash],
   );
@@ -855,11 +896,10 @@ export default function Reader({
   const zipfForLemma = (lemma: string): number | null => {
     const cached = analysisFor(sectionIndexRef.current);
     if (!cached) return null;
-    for (const entries of Object.values(cached.entries)) {
-      const hit = entries.find((entry) => entry.lemma === lemma);
-      if (hit) return hit.zipf;
-    }
-    return null;
+    const matches = [];
+    for (const entries of Object.values(cached.entries))
+      for (const entry of entries) if (entry.lemma === lemma) matches.push(entry);
+    return measuredZipf(matches, lemma);
   };
 
   // Evidencia recién escrita entra al modelo en memoria y queda
@@ -928,11 +968,14 @@ export default function Reader({
     prepRef.current = null;
     setPrep(null);
     if (current) {
-      void savePreparationRecord({
-        ...current.record,
-        // eslint-disable-next-line react-hooks/purity -- cierre por acción del lector, no corre en render
-        updatedAt: Date.now(),
-      }).catch(() => undefined);
+      void savePreparationRecord(
+        {
+          ...current.record,
+          // eslint-disable-next-line react-hooks/purity -- cierre por acción del lector, no corre en render
+          updatedAt: Date.now(),
+        },
+        captureDbScope(),
+      ).catch(() => undefined);
       if (
         current.record.disposition === "pending" &&
         settingsRef.current?.preparationMode !== "off"
@@ -950,6 +993,7 @@ export default function Reader({
   // análisis compartido con el pipeline del capítulo — deduplicado.
   const openPrepSheet = useCallback(
     async (target: ChapterTarget, record: PreparationRecord | null) => {
+      const scope = captureDbScope();
       const cat = catalogRef.current;
       const analyzer = analyzerRef.current;
       const book = bookRef.current;
@@ -958,7 +1002,7 @@ export default function Reader({
       const lang = getBookLanguage(book);
       const base =
         record ??
-        (await loadPreparationRecord(bookHash, target.id).catch(() => null)) ??
+        (await loadPreparationRecord(bookHash, target.id, scope).catch(() => null)) ??
         // eslint-disable-next-line react-hooks/purity -- apertura por clic, no corre en render
         newPreparationRecord({ bookHash, targetId: target.id, updatedAt: Date.now() });
       const close = () => {
@@ -976,6 +1020,7 @@ export default function Reader({
         analysis: "loading" as const,
         rows: [] as SectionPreviewRow[],
         uncertain: [] as SectionPreviewRow[],
+        deferred: [] as SectionPreviewRow[],
         presentationId: crypto.randomUUID(),
         answers: base.answers,
         saving: false,
@@ -993,6 +1038,7 @@ export default function Reader({
           analysis: "ready" as const,
           rows: suggestion.rows,
           uncertain: suggestion.uncertain,
+          deferred: suggestion.deferred,
         };
         prepRef.current = next;
         setPrep(next);
@@ -1040,7 +1086,8 @@ export default function Reader({
         if (!first && prevTargetId === target.id) return;
         prepEvaluated.current = target.id;
       }
-      const record = await loadPreparationRecord(bookHash, target.id).catch(
+      const scope = captureDbScope();
+      const record = await loadPreparationRecord(bookHash, target.id, scope).catch(
         () => null,
       );
       if (bookRef.current !== book) return;
@@ -1059,6 +1106,7 @@ export default function Reader({
         if (decision.opening === "summary" && record)
           void savePreparationRecord(
             acknowledgePreparationEntry(record, Date.now()),
+            scope,
           ).catch(() => undefined);
         const cached = analyzerRef.current?.cached(target.id);
         setPrepNotice({
@@ -1134,7 +1182,7 @@ export default function Reader({
     const next = { ...current, answers, record };
     prepRef.current = next;
     setPrep(next);
-    void savePreparationRecord(record).catch(() => undefined);
+    void savePreparationRecord(record, captureDbScope()).catch(() => undefined);
     trackEvent({
       kind: "preparation_answered",
       targetId: current.target.id,
@@ -1153,9 +1201,13 @@ export default function Reader({
     prepRef.current = withSaving;
     setPrep(withSaving);
     const lex = prepLexRef.current;
-    const rows: PreparationRow[] = [...current.rows, ...current.uncertain].map(
-      (row) => lex.get(row.key) ?? { form: row.form, lemma: row.lemma },
-    );
+    // Las diferidas también pueden haberse respondido (consulta
+    // aparte): su evidencia y sus palabras entran al mismo lote.
+    const rows: PreparationRow[] = [
+      ...current.rows,
+      ...current.uncertain,
+      ...current.deferred,
+    ].map((row) => lex.get(row.key) ?? { form: row.form, lemma: row.lemma });
     const record: PreparationRecord = {
       ...current.record,
       answers: current.answers,
@@ -1166,12 +1218,15 @@ export default function Reader({
     // La disposición final queda en prepRef antes de cerrar: el
     // persist de closePrepLayer guarda este registro, no el borrador.
     prepRef.current = { ...withSaving, record };
-    const result = await confirmPreparation({
-      record,
-      recordKey: preparationRecordKey(bookHash, current.target.id),
-      knowledge: buildPreparationEvidence(language, rows, current.answers),
-      words: buildPreparationWords(language, rows, current.answers, bookHash),
-    });
+    const result = await confirmPreparation(
+      {
+        record,
+        recordKey: preparationRecordKey(bookHash, current.target.id),
+        knowledge: buildPreparationEvidence(language, rows, current.answers),
+        words: buildPreparationWords(language, rows, current.answers, bookHash),
+      },
+      captureDbScope(),
+    );
     if (!result.saved) {
       const reverted = { ...withSaving, saving: false };
       prepRef.current = reverted;
@@ -1258,6 +1313,7 @@ export default function Reader({
           analysis: "ready" as const,
           rows: suggestion.rows,
           uncertain: suggestion.uncertain,
+          deferred: suggestion.deferred,
         }
       : { ...now, analysis: "error" as const };
     prepRef.current = next;
@@ -1276,7 +1332,7 @@ export default function Reader({
     const next = { ...current, answers: {}, record };
     prepRef.current = next;
     setPrep(next);
-    void savePreparationRecord(record).catch(() => undefined);
+    void savePreparationRecord(record, captureDbScope()).catch(() => undefined);
   };
 
   // Acceso manual «Palabras del capítulo» (modo «off» incluido): abre
@@ -1303,10 +1359,11 @@ export default function Reader({
   // Solo cuenta la evidencia creíble: un «inferred: no la conozco»
   // sin palabra guardada que lo respalde es rastro de una consulta,
   // no una declaración (isCredibleKnowledge).
-  const refreshProfile = useCallback(async (lang: string) => {
+  const refreshProfile = useCallback(async (lang: string, scope?: DbScope) => {
+    const bound = scope ?? captureDbScope();
     const [rows, words] = await Promise.all([
-      listKnowledge(lang).catch(() => [] as KnownWord[]),
-      listSavedWords(lang).catch(() => [] as SavedWord[]),
+      listKnowledge(lang, bound).catch(() => [] as KnownWord[]),
+      listSavedWords(lang, bound).catch(() => [] as SavedWord[]),
     ]);
     const savedLemmas = new Set<string>();
     for (const word of words)
@@ -1316,41 +1373,50 @@ export default function Reader({
     const credible = rows.filter((row) =>
       isCredibleKnowledge(row, savedLemmas),
     );
-    const map = toKnowledgeMap(credible);
-    // Lo escrito esta sesión y todavía no visible en la lectura del
-    // store no se pierde al recargar (el lote de preparación corre
-    // antes de que el put sea observable).
-    const fetched = new Set(credible.map((row) => row.lemma));
-    const localOnly = [...pendingKnowledgeRef.current].filter(
-      (lemma) => !fetched.has(lemma),
-    );
-    for (const lemma of localOnly) {
-      const local = knowledgeMapRef.current.get(lemma);
-      if (local) map.set(lemma, local);
-    }
-    pendingKnowledgeRef.current.clear();
-    knowledgeMapRef.current = map;
-    const items = [...map.values()];
-    const result = items.length
+    const result = credible.length
       ? await batchLookup(
-          items.map((item) => item.lemma),
+          credible.map((item) => item.lemma),
           lang,
+          bound,
         )
       : null;
-    // Catálogo caído: se conservan los lemas sin medición — el umbral
-    // queda en su default, pero el mapa no pierde las respuestas. La
-    // medición ya resuelta localmente (p. ej. por la respuesta de
-    // preparación) sobrevive aunque el catálogo no la traiga aún.
-    const prevEvidence = evidenceRef.current;
-    const nextEvidence = knowledgeEvidence(
-      items,
-      result?.ok ? result.entries : {},
+    const entries = result?.ok ? result.entries : {};
+    // Segunda ronda solo para formas sin ficha cuya base clítica se
+    // verifica en el catálogo («abrirlo» declara sobre «abrir»). Sin
+    // base verificable la forma queda sin medición, como antes.
+    const bases = cliticBasesFor(credible, entries);
+    const baseResult = bases.length
+      ? await batchLookup(bases, lang, bound).catch(() => null)
+      : null;
+    const resolved = resolveEvidence(
+      credible,
+      entries,
+      baseResult?.ok ? baseResult.entries : {},
     );
-    for (const lemma of localOnly) {
-      const prev = prevEvidence.get(lemma);
-      if (prev && nextEvidence.get(lemma)?.zipf == null)
-        nextEvidence.set(lemma, prev);
+    // Lo escrito esta sesión y todavía no visible en la lectura del
+    // store no se pierde al recargar (el lote de preparación corre
+    // antes de que el put sea observable); su medición previa
+    // sobrevive aunque el catálogo no la traiga aún.
+    const prevEvidence = evidenceRef.current;
+    const fetched = new Set(credible.map((row) => row.lemma));
+    for (const lemma of pendingKnowledgeRef.current) {
+      if (fetched.has(lemma)) continue;
+      const local = knowledgeMapRef.current.get(lemma);
+      if (local)
+        resolved.set(lemma, {
+          lemma,
+          known: local.known,
+          zipf: prevEvidence.get(lemma)?.zipf ?? null,
+        });
     }
+    pendingKnowledgeRef.current.clear();
+    const map = new Map<string, { lemma: string; known: boolean }>();
+    const nextEvidence = new Map<string, KnowledgeEvidence>();
+    for (const [lemma, item] of resolved) {
+      map.set(lemma, { lemma, known: item.known });
+      nextEvidence.set(lemma, { zipf: item.zipf, known: item.known });
+    }
+    knowledgeMapRef.current = map;
     evidenceRef.current = nextEvidence;
     const next = estimateProfile([...nextEvidence.values()], adjustRef.current);
     profileRef.current = next;
@@ -1429,6 +1495,11 @@ export default function Reader({
         pageAnchorRef.current = null;
         setPage(0);
         setPageCount(1);
+        // En paginado el destino real lo resuelve el recuento después
+        // del primer «ready»: la posición intermedia (página 0 de 1)
+        // no es evidencia de lectura — el seguimiento de la invitación
+        // ignora observaciones con un aterrizaje pendiente.
+        if (layoutRef.current === "pages") pendingPageRef.current = restore;
 
         const total = countWords(text);
         const tocLabel = tocRowsRef.current.find((row) => row.index === index)?.label;
@@ -1464,7 +1535,6 @@ export default function Reader({
             // destino exacto lo resuelve el recuento, cuando ya hay
             // estilos de columna aplicados y scrollWidth es real.
             computeMetrics();
-            pendingPageRef.current = restore;
           } else {
             const doc = document.documentElement;
             const max = doc.scrollHeight - window.innerHeight;
@@ -1494,7 +1564,7 @@ export default function Reader({
           // posición restaurada.
           if (layoutRef.current !== "pages") {
             const pos = capturePosition();
-            if (pos) void saveBookPosition(pos);
+            if (pos) void saveBookPosition(pos, captureDbScope());
           }
         });
       } catch {
@@ -1562,6 +1632,10 @@ export default function Reader({
     const imgUrls = imgUrlsRef.current;
 
     const loadBook = async () => {
+      // Todo el montaje corre bajo este contexto: si la cuenta cambia
+      // a la mitad, las lecturas siguen saliendo de la base que abrió
+      // el libro — nunca una mezcla de dos cuentas.
+      const scope = captureDbScope();
       setState("opening");
       onStatus("Abriendo libro…");
       // Análisis y preparación del libro anterior no aplican a este:
@@ -1586,7 +1660,7 @@ export default function Reader({
       profileRef.current = null;
       adjustRef.current = 0;
       // Poda perezosa del trayecto: conserva el historial reciente.
-      void pruneReadingHistory();
+      void pruneReadingHistory(undefined, scope);
       setPrediction(null);
       setPrep(null);
       setPrepNotice(null);
@@ -1602,9 +1676,9 @@ export default function Reader({
         bookRef.current = book;
         loadBlobRef.current = loadBlob;
         const bookLanguage = getBookLanguage(book);
-        const storedWords = await listSavedWords(bookLanguage);
+        const storedWords = await listSavedWords(bookLanguage, scope);
         savedForms.current = savedFormLevels(storedWords);
-        recordDominated(storedWords, bookLanguage);
+        recordDominated(storedWords, bookLanguage, scope);
         setLanguage(bookLanguage);
         setTitle(getBookTitle(book));
         setAuthor(getBookAuthor(book));
@@ -1633,16 +1707,16 @@ export default function Reader({
         tocRowsRef.current = rows;
         setTocRows(rows);
 
-        const storedWpm = Number(await loadSessionValue(WPM_KEY));
+        const storedWpm = Number(await loadSessionValue(WPM_KEY, scope));
         if (storedWpm >= 100 && storedWpm <= 600) setWpm(storedWpm);
 
         // Perfil del lector: evidencia por lema + zipf medido. Corre en
         // paralelo con la primera sección; al llegar, reclasifica lo
         // que haya pintado (y marca las predichas). La preferencia de
         // la tarjeta es por libro; el ajuste del umbral, por sesión.
-        const storedAdjust = Number(await loadSessionValue(PROFILE_ADJUST_KEY));
+        const storedAdjust = Number(await loadSessionValue(PROFILE_ADJUST_KEY, scope));
         adjustRef.current = Number.isFinite(storedAdjust) ? storedAdjust : 0;
-        const previewPref = await loadSessionValue(previewHiddenKey(bookHash));
+        const previewPref = await loadSessionValue(previewHiddenKey(bookHash), scope);
         // Migración única de la preferencia antigua «ocultar tarjeta»:
         // si nunca hubo elección nueva, queda como modo «off» del libro.
         // Se guarda el ajuste completo ya resuelto: el archivo del libro
@@ -1655,14 +1729,14 @@ export default function Reader({
           setSettings(loadReaderSettings(bookHash));
           setBookOverride(true);
         }
-        const profileReady = refreshProfile(bookLanguage);
+        const profileReady = refreshProfile(bookLanguage, scope);
 
         // Entrada única (T18): posición → reanudar; registro previo →
         // destino elegido; ninguno → preguntar sin renderizar la
         // sección cero. La elección se guarda como `bookStart:v1`,
         // separada del avance.
-        const saved = await loadBookPosition(bookHash);
-        const start = await loadBookStart(bookHash).catch(() => null);
+        const saved = await loadBookPosition(bookHash, scope);
+        const start = await loadBookStart(bookHash, scope).catch(() => null);
         const entry = resolveEntryTarget(saved, start, catalog, book.sections.length);
         if (disposed) return;
         // El destino de preparación elegido al seleccionar el inicio
@@ -1726,23 +1800,24 @@ export default function Reader({
   useEffect(() => {
     if (!language || state !== "ready") return;
     void (async () => {
-      const storedWords = await listSavedWords(language);
+      const scope = captureDbScope();
+      const storedWords = await listSavedWords(language, scope);
       savedForms.current = savedFormLevels(storedWords);
-      recordDominated(storedWords, language);
-      await refreshProfile(language);
+      recordDominated(storedWords, language, scope);
+      await refreshProfile(language, scope);
       // Guardadas sin definición: un solo lote por apertura del
       // libro — el lector ya dijo que no las sabe, completarlas vale
       // más que perseguir candidatas del análisis.
       if (!savedEnrichSentRef.current) {
         savedEnrichSentRef.current = true;
-        const aiOn = await loadUseAi().catch(() => true);
-        if (aiOn && getActiveUserId()) {
+        const aiOn = await loadUseAi(scope).catch(() => true);
+        if (aiOn && scope.userId) {
           const forms = selectSavedForEnrichment(
             storedWords,
             new Set(),
             SAVED_ENRICH_CAP,
           );
-          if (forms.length) void enrichBatch(forms, language);
+          if (forms.length) void enrichBatch(forms, language, scope);
         }
       }
       // La sección visible se reclasifica con cuaderno y perfil
@@ -1769,7 +1844,7 @@ export default function Reader({
 
   // Marcadores y pasajes del libro (una sola lectura por apertura).
   useEffect(() => {
-    void listAnnotations(bookHash).then(setAnnotations);
+    void listAnnotations(bookHash, captureDbScope()).then(setAnnotations);
   }, [bookHash]);
 
   // Preferencia «Usar IA» (una sola lectura por apertura del libro).
@@ -1777,7 +1852,7 @@ export default function Reader({
   // llama; la tarjeta igual muestra las predichas sin definición.
   useEffect(() => {
     let cancelled = false;
-    void loadUseAi().then((on) => {
+    void loadUseAi(captureDbScope()).then((on) => {
       if (!cancelled) useAiRef.current = on;
     });
     return () => {
@@ -1892,7 +1967,7 @@ export default function Reader({
       if (document.visibilityState === "hidden") closeActivity();
       if (document.visibilityState !== "hidden") return;
       const pos = capturePosition();
-      if (pos) void saveBookPosition(pos);
+      if (pos) void saveBookPosition(pos, captureDbScope());
     };
     window.addEventListener("scroll", onScroll, { passive: true });
     document.addEventListener("visibilitychange", onHide);
@@ -1953,7 +2028,7 @@ export default function Reader({
       // esta captura corrige la posición que la carga dejó en el tope.
       if (pending) {
         const pos = capturePosition();
-        if (pos) void saveBookPosition(pos);
+        if (pos) void saveBookPosition(pos, captureDbScope());
       }
     };
     const handle = document.hidden
@@ -2070,7 +2145,10 @@ export default function Reader({
       if (!latest.current.ready) return;
       const pos = latestPosition.current;
       if (!pos) return;
-      void saveBookPosition({ ...pos, updatedAt: Date.now() });
+      void saveBookPosition(
+        { ...pos, updatedAt: Date.now() },
+        captureDbScope(),
+      );
     };
   }, [bookHash, closeActivity]);
 
@@ -2169,7 +2247,9 @@ export default function Reader({
     );
     if (!target) return;
     setAskStart(false);
-    void saveBookStart(bookHash, choice).catch(() => undefined);
+    void saveBookStart(bookHash, choice, captureDbScope()).catch(
+      () => undefined,
+    );
     // La primera evaluación prepara el destino registrado (p. ej. el
     // primer capítulo) aunque la lectura empiece en la intro.
     bookStartRef.current = {
@@ -2194,13 +2274,14 @@ export default function Reader({
       });
   };
 
-  const refreshAnnotations = async () => {
-    setAnnotations(await listAnnotations(bookHash));
+  const refreshAnnotations = async (scope?: DbScope) => {
+    setAnnotations(await listAnnotations(bookHash, scope ?? captureDbScope()));
   };
 
-  const pushAnnotation = (entry: SavedAnnotation) => {
+  const pushAnnotation = (entry: SavedAnnotation, scope?: DbScope) => {
+    const bound = scope ?? captureDbScope();
     setAnnotations((prev) => [...prev.filter((a) => a.key !== entry.key), entry]);
-    void pushAnnotationsToServer([entry]);
+    void pushAnnotationsToServer([entry], bound);
   };
 
   const bookmark = annotations.find((a) => a.kind === "bookmark");
@@ -2213,23 +2294,32 @@ export default function Reader({
         ? (anchorAtPage(container, metrics, pageRef.current) ?? undefined)
         : (anchorAtViewTop(container) ?? undefined)
       : undefined;
-    pushAnnotation(await saveAnnotation(makeBookmark(bookHash, sectionIndex, anchor)));
+    const scope = captureDbScope();
+    pushAnnotation(
+      await saveAnnotation(makeBookmark(bookHash, sectionIndex, anchor), scope),
+      scope,
+    );
     onStatus("Marcador guardado en este lugar.");
   };
 
   const removeMark = async (key: string) => {
-    const tombstone = await removeAnnotation(key);
-    if (tombstone) void pushAnnotationsToServer([tombstone]);
-    await refreshAnnotations();
+    const scope = captureDbScope();
+    const tombstone = await removeAnnotation(key, scope);
+    if (tombstone) void pushAnnotationsToServer([tombstone], scope);
+    await refreshAnnotations(scope);
     onStatus("Marcado eliminado.");
   };
 
   const saveNote = async (annotation: SavedAnnotation) => {
-    const updated = await updateAnnotation({
-      ...annotation,
-      note: noteDraft.trim() || undefined,
-    });
-    pushAnnotation(updated);
+    const scope = captureDbScope();
+    const updated = await updateAnnotation(
+      {
+        ...annotation,
+        note: noteDraft.trim() || undefined,
+      },
+      scope,
+    );
+    pushAnnotation(updated, scope);
     setEditingNote(null);
   };
 
@@ -2263,7 +2353,8 @@ export default function Reader({
     sel.removeAllRanges();
     setSelButton(null);
     if (!input) return;
-    pushAnnotation(await saveAnnotation(input));
+    const scope = captureDbScope();
+    pushAnnotation(await saveAnnotation(input, scope), scope);
     onStatus("Pasaje guardado en Marcadores.");
   };
 
@@ -2306,6 +2397,71 @@ export default function Reader({
       : scrollRatio;
   const progress = bookProgress(sectionSizes, sectionIndex, viewRatio);
   const minutes = minutesLeft(sectionWords, viewRatio, wpm);
+
+  // El hilo de progreso lleno cuenta como libro terminado; award
+  // deduplica por bookHash así que el efecto puede repetirse.
+  useEffect(() => {
+    if (progress >= 0.995)
+      void award({ kind: "book_finished", bookHash }, captureDbScope());
+  }, [progress, bookHash]);
+
+  // Invitación a la prueba de vocabulario, una vez por apertura del
+  // libro: se ofrece al terminar el primer tramo que el lector leyó
+  // (su última sección con la vista casi completa, o ya más allá).
+  // Todo lo que decide corre en el dispositivo — sin red hasta que la
+  // persona acepta y App descarga la muestra.
+  useEffect(() => {
+    if (state !== "ready" || calEvaluated.current) return;
+    // En paginado la posición aterriza cuando el recuento resuelve el
+    // destino pendiente: observar antes leería un «página 0 de 1»
+    // ficticio — y lo que cuenta es dónde quedó el lector.
+    if (pendingPageRef.current) return;
+    const next = trackCalibrationOffer(
+      calTrack.current,
+      sectionIndex,
+      viewRatio,
+      rangeFor,
+    );
+    calTrack.current = next.track;
+    if (!next.offer) return;
+    calEvaluated.current = true;
+    void (async () => {
+      // Solo hay muestra en español; con otra lengua la invitación
+      // no existiría.
+      if (language !== "es") return;
+      const scope = captureDbScope();
+      const done = await loadSessionValue(CALIBRATION_DONE_KEY, scope).catch(
+        () => "1",
+      );
+      if (done != null) return;
+      // Evidencia de calibración (p. ej. bajada por sincronización)
+      // también cierra la oferta y deja la marca para no releer.
+      if (await hasCalibrationEvidence(language, scope).catch(() => false)) {
+        void saveSessionValue(CALIBRATION_DONE_KEY, "1", scope).catch(
+          () => undefined,
+        );
+        return;
+      }
+      setCalNotice(true);
+    })();
+  }, [state, sectionIndex, viewRatio, language, rangeFor]);
+
+  // «Ajustar mi vocabulario»: la descarga corre por App; si la hoja no
+  // llegó a abrirse (sin conexión o muestra vacía) el aviso se conserva
+  // para reintentar.
+  const acceptCalibrationNotice = async () => {
+    if (await onRequestCalibration(language)) setCalNotice(false);
+  };
+
+  // «Ahora no»: cierra la oferta automática — la prueba queda a mano
+  // desde Cuenta, con el borrador si se empezó.
+  const dismissCalibrationNotice = () => {
+    setCalNotice(false);
+    void saveSessionValue(CALIBRATION_DONE_KEY, "1", captureDbScope()).catch(
+      () => undefined,
+    );
+  };
+
   const nextRow = tocRows.find((row) => row.index === sectionIndex + 1);
   const prevRow = tocRows.find((row) => row.index === sectionIndex - 1);
 
@@ -2505,6 +2661,33 @@ export default function Reader({
             className="reader-return-dismiss"
             onClick={dismissPrepNotice}
             aria-label="Ocultar aviso de vocabulario"
+          >
+            ×
+          </button>
+        </div>
+      ) : null}
+
+      {/* Invitación a la prueba de vocabulario: misma franja fija que
+          el aviso de preparación, fuera del texto; conviven solo una
+          por diseño (la de preparación tiene preferencia). Persiste
+          hasta aceptar o decir «Ahora no». */}
+      {calNotice && !prep && !prepNotice ? (
+        <div className="reader-prep" role="status">
+          <span className="reader-prep-text">
+            Ajusta qué palabras te sugiere Lecta antes de cada capítulo.
+          </span>
+          <button
+            type="button"
+            className="btn reader-prep-open"
+            onClick={() => void acceptCalibrationNotice()}
+          >
+            Ajustar mi vocabulario
+          </button>
+          <button
+            type="button"
+            className="reader-return-dismiss"
+            onClick={dismissCalibrationNotice}
+            aria-label="Ahora no"
           >
             ×
           </button>
@@ -3048,6 +3231,7 @@ export default function Reader({
           analysis={prep.analysis}
           rows={prep.rows}
           uncertainRows={prep.uncertain}
+          deferredRows={prep.deferred}
           onRowsPresented={recordPresented}
           answers={prep.answers}
           saving={prep.saving}

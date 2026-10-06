@@ -6,10 +6,12 @@
 // se apaga en Cuenta; con ella apagada no se escribe nada.
 
 import {
+  captureDbScope,
   loadSessionValue,
   pruneReadingEvents,
   putReadingEvent,
   saveSessionValue,
+  type DbScope,
   type PresentedRow,
   type ReadingEvent,
 } from "./idb";
@@ -20,16 +22,16 @@ export const HISTORY_RETENTION_MS = 90 * 86_400_000;
 
 // Ante un almacén que falla se asume encendido (mismo criterio que
 // «Usar IA»): el interruptor muestra lo real cuando el almacén vuelve.
-export async function loadHistoryEnabled(): Promise<boolean> {
+export async function loadHistoryEnabled(scope?: DbScope): Promise<boolean> {
   try {
-    return (await loadSessionValue(HISTORY_KEY)) !== "0";
+    return (await loadSessionValue(HISTORY_KEY, scope)) !== "0";
   } catch {
     return true;
   }
 }
 
-export async function saveHistoryEnabled(on: boolean) {
-  await saveSessionValue(HISTORY_KEY, on ? "1" : "0");
+export async function saveHistoryEnabled(on: boolean, scope?: DbScope) {
+  await saveSessionValue(HISTORY_KEY, on ? "1" : "0", scope);
 }
 
 // Omit sobre una unión no distribuye (colapsaría a las claves
@@ -53,24 +55,33 @@ export type VisitEventDraft = DistributiveOmit<
 // Registra un evento si el historial está encendido. Es auxiliar:
 // nunca interrumpe lectura, guardado ni navegación — el llamador
 // puede invocarlo con `void` y olvidarse.
-export async function trackReadingEvent(draft: ReadingEventDraft) {
+export async function trackReadingEvent(
+  draft: ReadingEventDraft,
+  scope?: DbScope,
+) {
+  const bound = scope ?? captureDbScope();
   try {
-    if (!(await loadHistoryEnabled())) return;
-    await putReadingEvent({
-      ...draft,
-      id: crypto.randomUUID(),
-      version: 1,
-      createdAt: Date.now(),
-    } as ReadingEvent);
+    if (!(await loadHistoryEnabled(bound))) return;
+    // El evento aterriza en la base dueña del contexto aunque la
+    // cuenta activa haya cambiado mientras se leía la preferencia.
+    await putReadingEvent(
+      {
+        ...draft,
+        id: crypto.randomUUID(),
+        version: 1,
+        createdAt: Date.now(),
+      } as ReadingEvent,
+      bound,
+    );
   } catch {
     /* el trayecto es diagnóstico; un fallo no debe notarse */
   }
 }
 
 // Poda perezosa al abrir un libro: conserva el historial reciente.
-export async function pruneReadingHistory(now = Date.now()) {
+export async function pruneReadingHistory(now = Date.now(), scope?: DbScope) {
   try {
-    await pruneReadingEvents(now - HISTORY_RETENTION_MS);
+    await pruneReadingEvents(now - HISTORY_RETENTION_MS, scope);
   } catch {
     /* mismo criterio: auxiliar, jamás bloquea */
   }

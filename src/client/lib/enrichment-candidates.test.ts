@@ -19,6 +19,7 @@ const prediction = (over: Partial<SectionPrediction>): SectionPrediction => ({
   knownCount: 0,
   missing: [],
   uncertain: [],
+  deferred: [],
   total: 0,
   ...over,
 });

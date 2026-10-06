@@ -57,18 +57,44 @@ describe("planMeaningBackfill", () => {
     });
   });
 
-  it("conserva lema/pos/acepción ya guardados", () => {
+  it("una ficha huérfana no se reasigna a otra entrada", () => {
+    // La pareja entryId+senseOrder apunta a una ficha que ya no está
+    // en el catálogo: mover el significado de otra entrada bajo esos
+    // mismos IDs dejaría una definición que no corresponde a la
+    // acepción guardada. Se devuelve null y queda para revisión.
     const result = planMeaningBackfill(
       word({ lemma: "mio", pos: "sustantivo", senseEntryId: "3", senseOrder: 2 }),
       [entry({ entryId: "9", senses: [sense("Otra.")] })],
     );
-    expect(result).toEqual({
-      meaning: "Otra.",
-      lemma: "mio",
-      pos: "sustantivo",
-      senseEntryId: "3",
-      senseOrder: 2,
-    });
+    expect(result).toBeNull();
+  });
+
+  it("la pareja entryId+senseOrder usa exactamente esa acepción", () => {
+    const result = planMeaningBackfill(
+      word({ senseEntryId: "9", senseOrder: 2 }),
+      [
+        entry({
+          entryId: "9",
+          senses: [sense("Primera acepción.", 1), sense("Segunda acepción.", 2)],
+        }),
+      ],
+    );
+    expect(result?.meaning).toBe("Segunda acepción.");
+    expect(result?.senseOrder).toBe(2);
+    expect(result?.senseEntryId).toBe("9");
+  });
+
+  it("una acepción guardada que ya no existe no toma la primera", () => {
+    const result = planMeaningBackfill(
+      word({ senseEntryId: "9", senseOrder: 7 }),
+      [
+        entry({
+          entryId: "9",
+          senses: [sense("Primera acepción.", 1)],
+        }),
+      ],
+    );
+    expect(result).toBeNull();
   });
 
   it("prefiere la ficha de la acepción guardada cuando sigue en el catálogo", () => {
@@ -94,7 +120,7 @@ describe("planMeaningBackfill", () => {
 describe("backfillWordMeanings", () => {
   it("consulta el catálogo, guarda los cambios y conserva el orden", async () => {
     const saved: string[] = [];
-    const pushed: string[][] = [];
+    const pushed: SavedWord[][] = [];
     const result = await backfillWordMeanings(
       [
         word({ key: "es:con", form: "con", meaning: "ya" }),
@@ -109,24 +135,81 @@ describe("backfillWordMeanings", () => {
             llena: [entry({ senses: [sense("Llena de cosas.")] })],
           },
         }),
-        save: async (w) => void saved.push(w.key),
+        save: async (w, patch) => {
+          saved.push(w.key);
+          return { ...w, ...patch, updatedAt: 42 };
+        },
         push: async (ws) => {
-          pushed.push(ws.map((w) => w.key));
+          pushed.push(ws);
           return true;
         },
       },
     );
     expect(saved).toEqual(["es:llena"]);
-    expect(pushed).toEqual([["es:llena"]]);
     expect(result.map((w) => w.key)).toEqual(["es:con", "es:vacia", "es:llena"]);
     expect(result[2].meaning).toBe("Llena de cosas.");
+    // Lo devuelto y lo empujado es la fila persistida, con su sello
+    // nuevo — no el objeto previo al guardado. El body del PUT lleva
+    // exactamente el updatedAt que quedó en la base local.
+    expect(result[2].updatedAt).toBe(42);
+    expect(pushed).toEqual([[result[2]]]);
+  });
+
+  it("un cambio de sesión durante el flujo aborta el push, no lo local", async () => {
+    // El contexto capturado al iniciar ya no es el activo: las filas
+    // guardadas en su base quedan, pero no se envían a la cuenta
+    // equivocada.
+    const pushed: SavedWord[][] = [];
+    const stale = { userId: null, generation: -1 };
+    const result = await backfillWordMeanings(
+      [word({ key: "es:una", form: "una" })],
+      {
+        lookup: async () => ({
+          ok: true,
+          entries: { una: [entry({ senses: [sense("Indefinido.")] })] },
+        }),
+        save: async (w, patch) => ({ ...w, ...patch, updatedAt: 7 }),
+        push: async (ws) => {
+          pushed.push(ws);
+          return true;
+        },
+      },
+      stale,
+    );
+    expect(pushed).toEqual([]);
+    expect(result[0].meaning).toBe("Indefinido.");
+  });
+
+  it("un guardado que decide no escribir no se empuja ni altera", async () => {
+    // save → null = la fila cambió durante la consulta (repaso,
+    // borrado, edición): no se empuja el objeto viejo al servidor.
+    const pushed: SavedWord[][] = [];
+    const result = await backfillWordMeanings(
+      [word({ key: "es:una", form: "una" })],
+      {
+        lookup: async () => ({
+          ok: true,
+          entries: { una: [entry({ senses: [sense("Indefinido.")] })] },
+        }),
+        save: async () => null,
+        push: async (ws) => {
+          pushed.push(ws);
+          return true;
+        },
+      },
+    );
+    expect(pushed).toEqual([]);
+    expect(result[0].meaning).toBeUndefined();
   });
 
   it("un fallo del catálogo deja todo igual sin escribir nada", async () => {
     let saved = 0;
     const result = await backfillWordMeanings([word()], {
       lookup: async () => ({ ok: false, error: "sin red", entries: {} }),
-      save: async () => void (saved += 1),
+      save: async () => {
+        saved += 1;
+        return null;
+      },
     });
     expect(saved).toBe(0);
     expect(result[0].meaning).toBeUndefined();

@@ -10,6 +10,13 @@ export function scheduleReview(card: Card | undefined, rating: Grade, now = new 
   return scheduler.next(current, now, rating).card;
 }
 
+// Tarjeta nueva que vence de inmediato: la primera exposición guiada
+// («Aprender») la crea así para que la palabra entre a la cola de
+// repaso sin inventar una calificación.
+export function newCard(now = new Date()): Card {
+  return createEmptyCard(now);
+}
+
 export function isDue(card: Card | undefined, now = new Date()) {
   return !card || new Date(card.due).getTime() <= now.getTime();
 }

@@ -1,0 +1,262 @@
+/* Juego del Cuaderno: el gato de biblioteca, barra de XP, cofres y
+   vitrina de logros. Todo tinta y papel — los mismos tokens de
+   movimiento del sistema (--dur-*, --ease-out). */
+
+.game {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.9rem 1rem;
+  margin-bottom: 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper-raised, var(--paper));
+  animation: rise-in var(--dur-2) var(--ease-out);
+}
+
+.game-head {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+}
+
+.game-meta {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.game-level {
+  margin: 0;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.game-xpbar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.game-xpbar > span {
+  display: block;
+  height: 100%;
+  background: var(--vermilion);
+  border-radius: inherit;
+  transform-origin: left;
+  animation: grow-bar var(--dur-3) var(--ease-out);
+  transition: width var(--dur-2) var(--ease-out);
+}
+
+@keyframes grow-bar {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+/* ---------- El gato ---------- */
+
+.cat {
+  flex-shrink: 0;
+  color: var(--ink);
+}
+
+.cat .cat-ink,
+.cat .cat-body {
+  fill: var(--ink);
+  stroke: none;
+}
+
+.cat .cat-tail {
+  stroke: var(--ink);
+}
+
+.cat .cat-eye,
+.cat .cat-eye-line {
+  fill: var(--paper);
+  stroke: var(--paper);
+  stroke-width: 1.4;
+  stroke-linecap: round;
+}
+
+.cat .cat-eye-line {
+  fill: none;
+}
+
+.cat .cat-whisker {
+  stroke: var(--paper);
+  stroke-width: 0.9;
+  stroke-linecap: round;
+  fill: none;
+  opacity: 0.75;
+}
+
+.cat .cat-acc--cloth {
+  fill: var(--vermilion);
+}
+
+.cat .cat-acc--collar {
+  fill: none;
+  stroke: var(--vermilion);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.cat .cat-acc--glasses {
+  fill: none;
+  stroke: var(--paper);
+  stroke-width: 1.1;
+}
+
+.cat-zzz {
+  fill: var(--ink-soft, var(--ink));
+  font-family: var(--font-sans-alt);
+  font-size: 12px;
+  font-style: italic;
+}
+
+/* Respiración suave cuando está despierto; la cola se mece. */
+.cat--awake .cat-body {
+  animation: cat-breathe 4.2s ease-in-out infinite;
+  transform-origin: center bottom;
+}
+
+.cat--awake .cat-tail {
+  animation: cat-tail 5s ease-in-out infinite;
+  transform-origin: 54px 56px;
+}
+
+.cat--sleepy {
+  opacity: 0.75;
+}
+
+.cat--sleepy .cat-tail {
+  animation: cat-tail 8s ease-in-out infinite;
+  transform-origin: 54px 56px;
+}
+
+.cat--asleep {
+  opacity: 0.55;
+  filter: saturate(0.4);
+}
+
+.cat--s0 {
+  opacity: 0.6;
+}
+
+@keyframes cat-breathe {
+  0%,
+  100% {
+    transform: scaleY(1);
+  }
+  50% {
+    transform: scaleY(1.03);
+  }
+}
+
+@keyframes cat-tail {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  50% {
+    transform: rotate(4deg);
+  }
+}
+
+/* ---------- Cofres ---------- */
+
+.game-chests {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.game-chest {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px dashed var(--vermilion);
+  border-radius: var(--radius);
+  background: var(--vermilion-wash, transparent);
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color var(--dur-1) var(--ease-out),
+    transform var(--dur-1) var(--ease-out);
+}
+
+.game-chest:hover {
+  transform: translateY(-1px);
+}
+
+.game-chest:active {
+  transform: translateY(1px);
+}
+
+.game-chest-fig {
+  font-size: 1.3rem;
+  color: var(--vermilion);
+  animation: chest-bob 2.4s ease-in-out infinite;
+}
+
+.game-chest-label {
+  display: block;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+@keyframes chest-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-2px);
+  }
+}
+
+.game-reveal {
+  margin: 0;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius);
+  background: var(--vermilion-wash, var(--paper));
+  font-size: 0.9rem;
+  animation: rise-in var(--dur-2) var(--ease-out);
+}
+
+/* ---------- Vitrina de logros ---------- */
+
+.game-shelf summary {
+  cursor: pointer;
+  user-select: none;
+}
+
+.game-badges {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.game-badge {
+  padding: 0.2rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 0.78rem;
+  color: var(--ink);
+  background: var(--paper);
+  animation: rise-in var(--dur-1) var(--ease-out);
+}

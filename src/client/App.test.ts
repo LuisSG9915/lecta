@@ -43,6 +43,14 @@ vi.mock("./components/Shelf", async () => {
 });
 
 vi.mock("./lib/idb", () => ({
+  captureDbScope: vi.fn(() => ({ userId: null as string | null, generation: 0 })),
+  isDbScopeActive: vi.fn(() => true),
+  StaleScopeError: class StaleScopeError extends Error {
+    constructor() {
+      super("La cuenta activa cambió durante la operación.");
+      this.name = "StaleScopeError";
+    }
+  },
   deleteAccountDb: vi.fn(async () => undefined),
   deleteStoredBook: vi.fn(async () => undefined),
   getStoredBook: vi.fn(async () => undefined),

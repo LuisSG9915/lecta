@@ -49,6 +49,11 @@ describe("preparationLearning", () => {
     expect(preparationLearning("settled", undefined)).toBe(false);
   });
 
+  it("asentada declarada desconocida entra: la evidencia manda sobre el nivel", () => {
+    expect(preparationLearning("settled", { known: false })).toBe(true);
+    expect(preparationLearning("settled", { known: true })).toBe(false);
+  });
+
   it("sin nivel (dominada o no guardada) no aplica al grupo", () => {
     expect(preparationLearning(null, undefined)).toBe(false);
     expect(preparationLearning(undefined, undefined)).toBe(false);
@@ -191,6 +196,33 @@ describe("buildSuggestionRows", () => {
     expect(result.uncertain).toHaveLength(0);
   });
 
+  it("un «no la conozco» explícito manda sobre el filtro de nombres", () => {
+    // «billy» pinta a nombre propio, pero si el lector la declaró
+    // desconocida la respuesta manda: entra a la selección principal.
+    const result = buildSuggestionRows({
+      ...baseInput,
+      forms: ["billy"],
+      entries: {},
+      capitalOnly: new Set(["billy"]),
+      knowledge: new Map([["billy", { lemma: "billy", known: false }]]),
+    });
+    expect(result.rows.map((row) => row.form)).toEqual(["billy"]);
+    expect(result.rows[0].reason).toBe("explicit_unknown");
+    expect(result.uncertain).toHaveLength(0);
+  });
+
+  it("el «ya la conozco» también saca del filtro de nombres", () => {
+    const result = buildSuggestionRows({
+      ...baseInput,
+      forms: ["billy"],
+      entries: {},
+      capitalOnly: new Set(["billy"]),
+      knowledge: new Map([["billy", { lemma: "billy", known: true }]]),
+    });
+    expect(result.rows).toHaveLength(0);
+    expect(result.uncertain).toHaveLength(0);
+  });
+
   it("los datos léxicos completos quedan en el mapa por clave", () => {
     const lex = new Map();
     const result = buildSuggestionRows({
@@ -203,6 +235,127 @@ describe("buildSuggestionRows", () => {
     });
     const row = result.rows[0];
     expect(lex.get(row.key)).toMatchObject({ form: "perenne", lemma: "perenne" });
+  });
+
+  it("una asentada declarada desconocida entra al grupo de aprendiendo", () => {
+    const result = buildSuggestionRows({
+      ...baseInput,
+      forms: ["asentada"],
+      entries: { asentada: [entry(4.5, { lemma: "asentada" })] },
+      saved: new Map([["asentada", "settled" as const]]),
+      knowledge: new Map([["asentada", { lemma: "asentada", known: false }]]),
+    });
+    expect(result.rows.map((row) => row.form)).toEqual(["asentada"]);
+    expect(result.rows[0].learning).toBe(true);
+    // Entra por la declaración explícita, no por su nivel de tarjeta.
+    expect(result.rows[0].reason).toBe("explicit_unknown");
+  });
+
+  it("una asentada sin evidencia o declarada conocida queda fuera", () => {
+    const result = buildSuggestionRows({
+      ...baseInput,
+      forms: ["asentada", "sabida"],
+      entries: {
+        asentada: [entry(4.5, { lemma: "asentada" })],
+        sabida: [entry(4.5, { lemma: "sabida" })],
+      },
+      saved: new Map([
+        ["asentada", "settled" as const],
+        ["sabida", "settled" as const],
+      ]),
+      knowledge: new Map([["sabida", { lemma: "sabida", known: true }]]),
+    });
+    expect(result.rows).toHaveLength(0);
+    expect(result.deferred).toHaveLength(0);
+  });
+
+  it("la selección corta a 40 por prioridad y el resto queda diferido", () => {
+    // 39 explícitas + 1 aprendiendo + 2 raras = 42 candidatas: las
+    // explícitas conservan todas sus plazas; el corte cae en rareza.
+    const explicits = Array.from({ length: 39 }, (_, i) => `exp${i}`);
+    const forms = [...explicits, "aprendiendo", "rara1", "rara2"];
+    const result = buildSuggestionRows({
+      ...baseInput,
+      forms,
+      entries: {
+        ...Object.fromEntries(
+          explicits.map((f) => [f, [entry(4.0, { lemma: f })]]),
+        ),
+        aprendiendo: [entry(2.0, { lemma: "aprendiendo" })],
+        rara1: [entry(1.0, { lemma: "rara1" })],
+        rara2: [entry(0.5, { lemma: "rara2" })],
+      },
+      saved: new Map([["aprendiendo", "new" as const]]),
+      knowledge: new Map(
+        explicits.map((f) => [f, { lemma: f, known: false }]),
+      ),
+    });
+    expect(result.rows).toHaveLength(40);
+    // Las 39 explícitas primero (todas entran aunque el zipf las
+    // pondría después de las raras), luego la aprendiendo: el corte
+    // cae íntegro en rareza.
+    expect(
+      result.rows.slice(0, 39).every(
+        (row) => row.reason === "explicit_unknown",
+      ),
+    ).toBe(true);
+    expect(result.rows.slice(0, 39).map((row) => row.form).sort()).toEqual(
+      [...explicits].sort(),
+    );
+    expect(result.rows[39].form).toBe("aprendiendo");
+    expect(result.deferred.map((row) => row.form)).toEqual([
+      "rara2",
+      "rara1",
+    ]);
+    expect(result.deferred[0].reason).toBe("rarity");
+  });
+
+  it("la evidencia gana sobre la rareza aunque el zipf diga común", () => {
+    const result = buildSuggestionRows({
+      ...baseInput,
+      forms: ["rarisima", "comun"],
+      entries: {
+        rarisima: [entry(0.5, { lemma: "rarisima" })],
+        comun: [entry(4.9, { lemma: "comun" })],
+      },
+      knowledge: new Map([["comun", { lemma: "comun", known: false }]]),
+    });
+    // «comun» no entra por rareza (zipf 4.9) sino por la declaración:
+    // va primero aunque sea la forma más frecuente del tramo.
+    expect(result.rows.map((row) => row.form)).toEqual([
+      "comun",
+      "rarisima",
+    ]);
+    expect(result.rows[0].reason).toBe("explicit_unknown");
+    expect(result.rows[1].reason).toBe("rarity");
+  });
+
+  it("una fila diferida conserva sus datos léxicos y su evidencia", () => {
+    // 41 explícitas: la última queda diferida con su ficha y razón.
+    const explicits = Array.from({ length: 41 }, (_, i) => `exp${i}`);
+    const lex = new Map();
+    const result = buildSuggestionRows({
+      ...baseInput,
+      forms: explicits,
+      entries: Object.fromEntries(
+        explicits.map((f) => [f, [entry(2.0, { lemma: f, entryId: `id-${f}` })]]),
+      ),
+      knowledge: new Map(
+        explicits.map((f) => [f, { lemma: f, known: false }]),
+      ),
+      lex,
+    });
+    expect(result.rows).toHaveLength(40);
+    expect(result.deferred).toHaveLength(1);
+    const deferred = result.deferred[0];
+    expect(deferred.reason).toBe("explicit_unknown");
+    expect(deferred.meaning).toBe("def");
+    // Sus datos léxicos están en el mapa: al confirmar se arma la
+    // evidencia sin volver a buscarlos.
+    expect(lex.get(deferred.key)).toMatchObject({
+      form: deferred.form,
+      lemma: deferred.lemma,
+    });
   });
 });
 

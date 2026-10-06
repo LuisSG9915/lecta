@@ -2,16 +2,25 @@ import { useEffect, useRef, useState } from "react";
 import Sheet from "./Sheet";
 import {
   CALIBRATION_DRAFT_KEY,
+  STEP_SIZE,
   parseCalibrationDraft,
   recordCalibration,
+  serializeCalibrationDraft,
   type CalibrationAnswers,
   type CalibrationWord,
 } from "../lib/calibration";
-import { loadSessionValue, saveSessionValue } from "../lib/idb";
+import {
+  captureDbScope,
+  loadSessionValue,
+  saveSessionValue,
+  type DbScope,
+} from "../lib/idb";
 
 type CalibrationProps = {
   // Muestra del catálogo (lemas repartidos en bandas de frecuencia),
-  // ya descargada por quien monta la hoja.
+  // ya descargada por quien monta la hoja. Si hay borrador con su
+  // propia muestra guardada, esa manda — las respuestas restauradas
+  // pertenecen a ella.
   words: CalibrationWord[];
   language?: string;
   // «Listo» y «Saltar»: el flujo terminó. Quien monta decide si la
@@ -22,11 +31,12 @@ type CalibrationProps = {
   onClose: () => void;
 };
 
-// Prueba general de vocabulario. Cada palabra pide una respuesta
-// explícita — «la conozco» o «no la conozco»; lo no respondido no
-// genera evidencia. Las desconocidas entran al Cuaderno al confirmar.
-// Las respuestas se van guardando en un borrador de sesión: cerrar la
-// hoja por accidente no las pierde.
+// Prueba general de vocabulario, en pasos de seis palabras. Cada
+// palabra pide una respuesta explícita — «la conozco» o «no la
+// conozco»; lo no respondido no genera evidencia. Las desconocidas
+// entran al Cuaderno al confirmar. Las respuestas, la muestra y el
+// paso se van guardando en un borrador de sesión: cerrar la hoja por
+// accidente retoma donde quedó.
 export default function Calibration({
   words,
   language = "es",
@@ -36,46 +46,70 @@ export default function Calibration({
   const [answers, setAnswers] = useState<CalibrationAnswers>({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  // La muestra vigente: la recién descargada o la del borrador. Con
+  // ella se evalúan respuestas y se re-serializa el borrador.
+  const [sampleWords, setSampleWords] = useState<CalibrationWord[]>(words);
+  const [step, setStep] = useState(0);
   // Evita que la hidratación del borrador pise una respuesta que el
   // lector dio mientras cargaba (carrera real en dispositivos lentos).
   const hydrated = useRef(false);
+  const answeredRef = useRef(false);
+  // La hoja entera pertenece a la base que la abrió: si la cuenta
+  // cambia mientras está abierta, borrador y evidencia siguen
+  // aterrizando juntos en la base dueña — nunca repartidos.
+  const [bound] = useState<DbScope>(() => captureDbScope());
 
   useEffect(() => {
-    void loadSessionValue(CALIBRATION_DRAFT_KEY)
+    void loadSessionValue(CALIBRATION_DRAFT_KEY, bound)
       .then((raw) => {
-        if (!hydrated.current)
-          setAnswers((current) =>
-            Object.keys(current).length
-              ? current
-              : parseCalibrationDraft(raw, words),
-          );
+        if (hydrated.current) return;
         hydrated.current = true;
+        const draft = parseCalibrationDraft(raw, words);
+        // Solo con la hoja intacta se restauran muestra y paso: si el
+        // lector ya respondió, su muestra recién descargada se queda.
+        if (!answeredRef.current && draft.words) {
+          setSampleWords(draft.words);
+          setStep(draft.step);
+        }
+        setAnswers((current) =>
+          Object.keys(current).length ? current : draft.answers,
+        );
       })
       .catch(() => undefined);
-  }, [words]);
+  }, [words, bound]);
+
+  const persist = (next: CalibrationAnswers, at: number) =>
+    saveSessionValue(
+      CALIBRATION_DRAFT_KEY,
+      serializeCalibrationDraft({
+        answers: next,
+        step: at,
+        words: sampleWords,
+      }),
+      bound,
+    ).catch(() => undefined);
 
   const setAnswer = (lemma: string, answer: "known" | "unknown") => {
+    answeredRef.current = true;
     setAnswers((prev) => {
       const next = { ...prev };
       // Tocar la misma opción la desmarca — vuelve a pendiente.
       if (next[lemma] === answer) delete next[lemma];
       else next[lemma] = answer;
-      void saveSessionValue(
-        CALIBRATION_DRAFT_KEY,
-        JSON.stringify({ answers: next }),
-      ).catch(() => undefined);
+      void persist(next, step);
       return next;
     });
   };
 
-  const clearDraft = () => saveSessionValue(CALIBRATION_DRAFT_KEY, "").catch(() => undefined);
+  const clearDraft = () =>
+    saveSessionValue(CALIBRATION_DRAFT_KEY, "", bound).catch(() => undefined);
 
   const finish = async () => {
     if (saving) return;
     setSaving(true);
     setError("");
     try {
-      await recordCalibration(words, answers, language);
+      await recordCalibration(sampleWords, answers, language, bound);
       await clearDraft();
       onDone();
     } catch {
@@ -93,6 +127,17 @@ export default function Calibration({
   const unknownCount = Object.values(answers).filter(
     (answer) => answer === "unknown",
   ).length;
+
+  // La lista va en pasos: la muestra barajada ya mezcla bandas, así
+  // que cortar en orden reparte raras y cotidianas parejo.
+  const pageCount = Math.max(1, Math.ceil(sampleWords.length / STEP_SIZE));
+  const page = Math.min(step, pageCount - 1);
+  const pageWords = sampleWords.slice(page * STEP_SIZE, page * STEP_SIZE + STEP_SIZE);
+  const goToStep = (next: number) => {
+    const clamped = Math.min(Math.max(next, 0), pageCount - 1);
+    setStep(clamped);
+    void persist(answers, clamped);
+  };
 
   return (
     <Sheet label="¿Qué palabras conoces?" onClose={onClose}>
@@ -116,7 +161,7 @@ export default function Calibration({
       </p>
 
       <ul className="word-list">
-        {words.map(({ lemma, definition }) => {
+        {pageWords.map(({ lemma, definition }) => {
           const answer = answers[lemma];
           return (
             <li key={lemma}>
@@ -146,6 +191,30 @@ export default function Calibration({
           );
         })}
       </ul>
+
+      {pageCount > 1 ? (
+        <div className="actions">
+          <button
+            type="button"
+            className="btn"
+            disabled={saving || page === 0}
+            onClick={() => goToStep(page - 1)}
+          >
+            Atrás
+          </button>
+          <span className="meta" aria-live="polite">
+            Paso {page + 1} de {pageCount}
+          </span>
+          <button
+            type="button"
+            className="btn"
+            disabled={saving || page === pageCount - 1}
+            onClick={() => goToStep(page + 1)}
+          >
+            Siguiente
+          </button>
+        </div>
+      ) : null}
 
       <p className="meta">
         {answered

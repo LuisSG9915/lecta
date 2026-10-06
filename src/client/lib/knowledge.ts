@@ -1,4 +1,6 @@
 import { batchLookup, type LexiconEntry } from "./lexicon";
+import { measuredZipf } from "../../shared/lexicon";
+import { knowledgeArbWins } from "../../shared/reading-data";
 
 // Modelo de conocimiento del lector: qué palabras conoce. Dos piezas
 // puras y deterministas:
@@ -21,11 +23,19 @@ export type VocabProfile = {
 const DEFAULT_THRESHOLD = 3.0;
 
 // Candidatos a umbral en pasos de 0.5 (las «bandas» del plan). Al
-// empatar en errores gana el más cercano al valor base: un empate no
+// empatar en puntaje gana el más cercano al valor base: un empate no
 // es evidencia de que el perfil sea extremo, y el umbral mínimo
 // dejaba pasar casi nada con calibraciones ambiguas. Si todavía
 // empatan en distancia, el recorrido ascendente favorece al menor.
 const CANDIDATES = [1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0] as const;
+
+// Regularización: cada paso de 0.5 lejos del valor base cuesta λ
+// errores. Con evidencia escasa el umbral se queda cerca de 3.0 en
+// lugar de dejarse arrastrar al extremo por un lote pequeño — la
+// evaluación cronológica sobre datos reales (profile-eval) midió
+// λ=2 como el menor valor que agota la mejora en omisiones sin pagar
+// más falsas alarmas.
+export const PROFILE_REGULARIZATION = 2;
 
 // El ajuste manual («mostrar más / menos») puede salirse de las bandas
 // pero no del tramo útil de la escala zipf. Se exportan para que la
@@ -37,11 +47,13 @@ const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
 
 // Estima el umbral a partir del cual conviene predecir midiendo qué
-// candidato comete menos errores contra la evidencia real: contar como
-// conocida una palabra rara que el lector marcó como desconocida, o al
-// revés, son fallos. La evidencia sin medición (zipf null) no aporta
-// posición en la escala y se ignora — también para confidence, porque
-// no dice nada del nivel del lector. `adjust` desplaza el resultado.
+// candidato comete menos errores contra la evidencia real, con
+// regularización hacia el valor base (PROFILE_REGULARIZATION): contar
+// como conocida una palabra rara que el lector marcó como desconocida,
+// o al revés, son fallos. La evidencia sin medición (zipf null) no
+// aporta posición en la escala y se ignora — también para confidence,
+// porque no dice nada del nivel del lector. `adjust` desplaza el
+// resultado.
 export function estimateProfile(
   evidence: KnowledgeEvidence[],
   adjust = 0,
@@ -51,7 +63,7 @@ export function estimateProfile(
   );
   let best = DEFAULT_THRESHOLD;
   if (usable.length) {
-    let bestErrors = Number.POSITIVE_INFINITY;
+    let bestScore = Number.POSITIVE_INFINITY;
     let bestDistance = Number.POSITIVE_INFINITY;
     for (const t of CANDIDATES) {
       let errors = 0;
@@ -60,11 +72,9 @@ export function estimateProfile(
         if (!item.known && item.zipf >= t) errors += 1;
       }
       const distance = Math.abs(t - DEFAULT_THRESHOLD);
-      if (
-        errors < bestErrors ||
-        (errors === bestErrors && distance < bestDistance)
-      ) {
-        bestErrors = errors;
+      const score = errors + PROFILE_REGULARIZATION * distance;
+      if (score < bestScore || (score === bestScore && distance < bestDistance)) {
+        bestScore = score;
         bestDistance = distance;
         best = t;
       }
@@ -107,6 +117,9 @@ export type SectionPrediction = {
   // sin evidencia explícita: no sabemos si son raras ni comunes, así
   // que no son predichas ni «conocidas» — van a consulta secundaria.
   uncertain: { form: string; entry: LexiconEntry }[];
+  // Candidatas reales que el tope dejó fuera: la hoja las ofrece
+  // diferidas, no las declara conocidas por no caber.
+  deferred: { form: string; entry: LexiconEntry }[];
   total: number; // formas únicas analizadas
 };
 
@@ -195,10 +208,19 @@ export function predictSection(
 
   candidates.sort(compareByRarity);
   const predicted = candidates.slice(0, PREDICT_CAP);
-  // Lo que el tope dejó fuera cuenta como «con ficha, no predicha».
-  knownCount += candidates.length - predicted.length;
+  // Lo que el tope dejó fuera no es «conocida»: son candidatas que
+  // no cupieron y la hoja ofrece aparte.
+  const deferred = candidates.slice(PREDICT_CAP);
 
-  return { predicted, savedCount, knownCount, missing, uncertain, total: forms.length };
+  return {
+    predicted,
+    savedCount,
+    knownCount,
+    missing,
+    uncertain,
+    deferred,
+    total: forms.length,
+  };
 }
 
 // ¿La evidencia cuenta para el perfil y la predicción? Las filas
@@ -218,9 +240,149 @@ export function isCredibleKnowledge(
   );
 }
 
+// ---------- Resolución de evidencia contra el catálogo ----------
+
+// Pronombres enclíticos del español, ordenados para probar las
+// terminaciones más largas primero. Una forma sin ficha puede ser un
+// verbo con pronombres pegados («abrirlo», «tomármelo»): quitarlos da
+// la forma base que el catálogo sí conoce. La lista se limita a
+// pronombres reales — quitar cualquier sufijo produciría lemas
+// inventados.
+const ENCLITIC_PRONOUNS = [
+  "los",
+  "las",
+  "les",
+  "lo",
+  "la",
+  "le",
+  "me",
+  "te",
+  "se",
+  "nos",
+  "os",
+] as const;
+
+const stripAccents = (text: string) =>
+  text.normalize("NFD").replace(/\p{M}/gu, "");
+
+// Candidatas a forma base de un posible clítico, en orden: quita uno
+// o dos pronombres del final y normaliza la tilde que el enclítico
+// desplaza («tomármelo» → «tomar», «escribiéndolos» → «escribiendo»).
+// El resultado no se confía: la verificación real es que la base
+// exista en el catálogo — «pedacito» no produce candidata útil y
+// «guiris» ninguna. Residuos de menos de 3 letras se descartan (la
+// base sería un imperativo de una letra o una palabra truncada).
+export function cliticBaseForms(form: string): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const push = (candidate: string) => {
+    const clean = stripAccents(candidate);
+    if (clean.length >= 3 && clean !== form && !seen.has(clean)) {
+      seen.add(clean);
+      out.push(clean);
+    }
+  };
+  for (const pronoun of ENCLITIC_PRONOUNS) {
+    if (!form.endsWith(pronoun)) continue;
+    const once = form.slice(0, -pronoun.length);
+    push(once);
+    for (const second of ENCLITIC_PRONOUNS) {
+      if (!once.endsWith(second)) continue;
+      push(once.slice(0, -second.length));
+    }
+  }
+  return out;
+}
+
+// Fila de evidencia de entrada: `source` y `updatedAt` arbitran
+// conflictos al proyectar alias (mismo orden que mergeKnowledgeWrite
+// y el sync: knowledgeArbWins de reading-data).
+export type EvidenceInput = {
+  lemma: string;
+  known: boolean;
+  source?: string;
+  updatedAt?: number;
+};
+
+// Evidencia resuelta por lema efectivo: puede ser el propio lema de
+// la fila o el lema base verificado de un clítico («abrirlo» declara
+// sobre «abrir»). La fila original nunca se toca — la proyección es
+// solo para uso del modelo.
+export type ResolvedEvidence = { lemma: string; known: boolean; zipf: number | null };
+
+// Traduce filas de conocimiento a evidencia por lema con su zipf:
+//   · con ficha, la medición sale de measuredZipf (mismo lema primero,
+//     luego la primera lectura medida — «decirle» aprovecha la ficha
+//     medida de «decir» en lugar de quedarse con la propia sin zipf);
+//   · sin ficha, se intenta una base clítica verificada en el
+//     catálogo («abrirlo» → «abrir»); sin ella el zipf queda null.
+// Dos filas pueden resolver al mismo lema (una proyectada y otra
+// directa): el mismo orden convergente del merge —knowledgeArbWins—,
+// así la proyección arbitra como la persistencia.
+export function resolveEvidence(
+  rows: readonly EvidenceInput[],
+  entries: Record<string, LexiconEntry[]>,
+  baseEntries: Record<string, LexiconEntry[]> = {},
+): Map<string, ResolvedEvidence> {
+  const out = new Map<string, ResolvedEvidence>();
+  const owners = new Map<string, EvidenceInput>();
+  const put = (lemma: string, row: EvidenceInput, zipf: number | null) => {
+    const prev = owners.get(lemma);
+    if (
+      prev &&
+      !knowledgeArbWins(
+        { source: row.source ?? "", updatedAt: row.updatedAt ?? 0, known: row.known },
+        { source: prev.source ?? "", updatedAt: prev.updatedAt ?? 0, known: prev.known },
+      )
+    )
+      return;
+    owners.set(lemma, row);
+    out.set(lemma, { lemma, known: row.known, zipf });
+  };
+  for (const row of rows) {
+    const key = row.lemma.toLowerCase();
+    const direct = entries[key] ?? [];
+    if (direct.length) {
+      put(key, row, measuredZipf(direct, key));
+      continue;
+    }
+    const base = cliticBaseForms(key).find(
+      (candidate) => (baseEntries[candidate] ?? []).length > 0,
+    );
+    if (!base) {
+      put(key, row, null);
+      continue;
+    }
+    const baseList = baseEntries[base];
+    const resolved = baseList[0]?.lemma ?? key;
+    put(resolved, row, measuredZipf(baseList, resolved));
+  }
+  return out;
+}
+
+// Formas sin ficha cuyas bases clíticas vale la pena consultar: la
+// segunda ronda de lookup que alimenta `baseEntries` de
+// resolveEvidence. Devuelve las bases únicas en orden de aparición.
+export function cliticBasesFor(
+  rows: readonly { lemma: string }[],
+  entries: Record<string, LexiconEntry[]>,
+): string[] {
+  const bases: string[] = [];
+  const seen = new Set<string>();
+  for (const row of rows) {
+    if ((entries[row.lemma] ?? []).length) continue;
+    for (const base of cliticBaseForms(row.lemma)) {
+      if (seen.has(base)) continue;
+      seen.add(base);
+      bases.push(base);
+    }
+  }
+  return bases;
+}
+
 // Convierte filas de conocimiento + resultado del catálogo en el mapa
 // de evidencia del perfil: una entrada por lema, con su zipf medido
-// (primera acepción — el mismo criterio que Cuenta) y su respuesta en
+// (measuredZipf — el mismo criterio que Cuenta) y su respuesta en
 // cualquiera de las dos direcciones. Es el punto común del lector y de
 // Cuenta para que ambos estimen con la misma evidencia.
 export function knowledgeEvidence(
@@ -230,7 +392,7 @@ export function knowledgeEvidence(
   const evidence = new Map<string, KnowledgeEvidence>();
   for (const row of rows)
     evidence.set(row.lemma, {
-      zipf: entries[row.lemma]?.[0]?.zipf ?? null,
+      zipf: measuredZipf(entries[row.lemma], row.lemma),
       known: row.known,
     });
   return evidence;
@@ -245,7 +407,7 @@ export function knowledgeEvidence(
 // un número (p. ej. el lector sin conexión) puede caer al default con
 // estimateProfile([], adjust).
 export async function estimateStoredProfile(
-  rows: { lemma: string; known: boolean }[],
+  rows: { lemma: string; known: boolean; source?: string; updatedAt?: number }[],
   language = "es",
   adjust = 0,
 ): Promise<VocabProfile | null> {
@@ -255,9 +417,20 @@ export async function estimateStoredProfile(
     language,
   ).catch(() => null);
   if (!result?.ok) return null;
-  const evidence: KnowledgeEvidence[] = rows.map((row) => ({
-    zipf: result.entries[row.lemma]?.[0]?.zipf ?? null,
-    known: row.known,
+  // Segunda consulta solo para formas sin ficha con base clítica
+  // verificable — una sola ronda extra por estimación.
+  const bases = cliticBasesFor(rows, result.entries);
+  const baseResult = bases.length
+    ? await batchLookup(bases, language).catch(() => null)
+    : null;
+  const resolved = resolveEvidence(
+    rows,
+    result.entries,
+    baseResult?.ok ? baseResult.entries : {},
+  );
+  const evidence: KnowledgeEvidence[] = [...resolved.values()].map((item) => ({
+    zipf: item.zipf,
+    known: item.known,
   }));
   return estimateProfile(evidence, adjust);
 }

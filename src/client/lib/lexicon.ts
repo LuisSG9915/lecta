@@ -1,3 +1,6 @@
+import { accountFetch } from "./account-fetch";
+import type { DbScope } from "./idb";
+
 export type LexiconEntry = {
   // int8 de unique_rowid() (~1.2e18 > 2^53): viaja como string por
   // JSON — un number lo truncaría y la acepción dejaría de resolver.
@@ -21,10 +24,14 @@ type LexiconResponseBody = {
   error?: string;
 };
 
-export async function lookupWord(form: string, language = "es"): Promise<LookupResult> {
+export async function lookupWord(
+  form: string,
+  language = "es",
+  scope?: DbScope,
+): Promise<LookupResult> {
   const params = new URLSearchParams({ form, lang: language });
   try {
-    const response = await fetch(`/api/lexicon/lookup?${params}`);
+    const response = await accountFetch(`/api/lexicon/lookup?${params}`, undefined, scope);
     if (response.status === 404) return { ok: true, found: false, entries: [] };
     const data = (await response.json()) as LexiconResponseBody;
     if (!response.ok) return { ok: false, error: data.error ?? "No se pudo consultar el catálogo." };
@@ -44,7 +51,11 @@ export type BatchLookupResult =
 // formas ya servidas no se clasifican a medias.
 export const BATCH_LOOKUP_LIMIT = 2000;
 
-export async function batchLookup(forms: string[], language = "es"): Promise<BatchLookupResult> {
+export async function batchLookup(
+  forms: string[],
+  language = "es",
+  scope?: DbScope,
+): Promise<BatchLookupResult> {
   // Duplicadas exactas se envían una sola vez; las claves de
   // `entries` responden a lo enviado y los llamadores las consultan
   // tal cual.
@@ -54,11 +65,15 @@ export async function batchLookup(forms: string[], language = "es"): Promise<Bat
   for (let i = 0; i < unique.length; i += BATCH_LOOKUP_LIMIT) {
     const chunk = unique.slice(i, i + BATCH_LOOKUP_LIMIT);
     try {
-      const response = await fetch("/api/lexicon/batch", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ forms: chunk, language }),
-      });
+      const response = await accountFetch(
+        "/api/lexicon/batch",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ forms: chunk, language }),
+        },
+        scope,
+      );
       const data = (await response.json()) as LexiconResponseBody;
       if (!response.ok)
         return { ok: false, error: data.error ?? "No se pudo consultar el catálogo.", entries: {} };
@@ -74,13 +89,21 @@ export type EnrichBatchResult =
   | { ok: true; instanceId?: string; count: number; error?: undefined }
   | { ok: false; error: string };
 
-export async function enrichBatch(forms: string[], language = "es"): Promise<EnrichBatchResult> {
+export async function enrichBatch(
+  forms: string[],
+  language = "es",
+  scope?: DbScope,
+): Promise<EnrichBatchResult> {
   try {
-    const response = await fetch("/api/lexicon/enrich-batch", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ forms, language }),
-    });
+    const response = await accountFetch(
+      "/api/lexicon/enrich-batch",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ forms, language }),
+      },
+      scope,
+    );
     const data = (await response.json()) as {
       instanceId?: string;
       count?: number;
@@ -99,13 +122,18 @@ export async function enrichWord(
   form: string,
   language = "es",
   context?: string,
+  scope?: DbScope,
 ): Promise<LookupResult> {
   try {
-    const response = await fetch("/api/lexicon/enrich", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ form, language, context }),
-    });
+    const response = await accountFetch(
+      "/api/lexicon/enrich",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ form, language, context }),
+      },
+      scope,
+    );
     const data = (await response.json()) as LexiconResponseBody;
     if (!response.ok) return { ok: false, error: data.error ?? "La IA no pudo definir la palabra." };
     return { ok: true, found: true, entries: (data.entries as LexiconEntry[]) ?? [] };
@@ -127,13 +155,18 @@ export async function explainInContext(
   form: string,
   language = "es",
   context?: string,
+  scope?: DbScope,
 ): Promise<ExplainResult> {
   try {
-    const response = await fetch("/api/lexicon/explain", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ form, language, context }),
-    });
+    const response = await accountFetch(
+      "/api/lexicon/explain",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ form, language, context }),
+      },
+      scope,
+    );
     const data = (await response.json()) as { explanation?: string; error?: string };
     if (!response.ok)
       return { ok: false, error: data.error ?? "La IA no pudo explicar la palabra." };
@@ -151,15 +184,20 @@ export type ReportResult = { ok: true } | { ok: false; error: string };
 // reporte del panel de palabra). Requiere sesión; el servidor sube el
 // contador editorial de esa fila de lexicon_senses.
 export async function reportSense(
-  entryId: string | number,
+  entryId: string,
   senseOrder: number,
+  scope?: DbScope,
 ): Promise<ReportResult> {
   try {
-    const response = await fetch("/api/lexicon/report", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ entryId, senseOrder }),
-    });
+    const response = await accountFetch(
+      "/api/lexicon/report",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ entryId, senseOrder }),
+      },
+      scope,
+    );
     const data = (await response.json()) as { error?: string };
     if (!response.ok)
       return { ok: false, error: data.error ?? "No se pudo enviar el reporte." };
@@ -190,18 +228,25 @@ export type ItemsResult =
   | { ok: false; error: string };
 
 // Pide ítems para una lista de acepciones (entryId + senseOrder). El
-// servidor sirve los que ya existen y genera con IA los que falten
+// entryId es int8 > 2^53 y viaja como string: quien tenga una fila
+// vieja en number lo convierte con String() al armar el ref.
+// El servidor sirve los que ya existen y genera con IA los que falten
 // (tope por llamada); los que no se puedan generar simplemente no
 // llegan en `items`.
 export async function fetchItems(
-  refs: { entryId: string | number; senseOrder: number }[],
+  refs: { entryId: string; senseOrder: number }[],
+  scope?: DbScope,
 ): Promise<ItemsResult> {
   try {
-    const response = await fetch("/api/lexicon/items", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ refs }),
-    });
+    const response = await accountFetch(
+      "/api/lexicon/items",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ refs }),
+      },
+      scope,
+    );
     const data = (await response.json()) as { items?: LexiconItem[]; error?: string };
     if (!response.ok)
       return { ok: false, error: data.error ?? "No se pudieron cargar los ejercicios." };
@@ -214,13 +259,21 @@ export async function fetchItems(
 // Registra el resultado de un intento de ejercicio (sube attempts y,
 // si acertó, correct). Devuelve false si no se pudo registrar — el
 // contador es estadística editorial, no bloquea la práctica.
-export async function answerItem(id: string, correct: boolean): Promise<boolean> {
+export async function answerItem(
+  id: string,
+  correct: boolean,
+  scope?: DbScope,
+): Promise<boolean> {
   try {
-    const response = await fetch("/api/lexicon/items/answer", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ id, correct }),
-    });
+    const response = await accountFetch(
+      "/api/lexicon/items/answer",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id, correct }),
+      },
+      scope,
+    );
     return response.ok;
   } catch {
     return false;
@@ -238,13 +291,18 @@ export async function verifySentence(
   form: string,
   meaning: string,
   sentence: string,
+  scope?: DbScope,
 ): Promise<VerifyResult> {
   try {
-    const response = await fetch("/api/lexicon/verify-sentence", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ form, meaning, sentence }),
-    });
+    const response = await accountFetch(
+      "/api/lexicon/verify-sentence",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ form, meaning, sentence }),
+      },
+      scope,
+    );
     const data = (await response.json()) as {
       correct?: boolean;
       feedback?: string;

@@ -283,6 +283,10 @@
   block-size: 7px;
 }
 
+.shelf-goal {
+  margin-block-start: var(--s-2);
+}
+
 /* ---------- Pequeña ---------- */
 
 @media (max-width: 40rem) {
