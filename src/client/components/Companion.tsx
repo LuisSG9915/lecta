@@ -4,17 +4,32 @@
 // accesorios salen de los cofres de nivel abiertos.
 
 import type { CatMood } from "../lib/gamification";
+import type { CompanionState } from "../lib/companion-state";
+
+// Rótulo accesible de cada estado de lectura (companion-state).
+const FOCUS_LABELS: Record<CompanionState, string> = {
+  sleep: "El gato descansa junto a tu lectura",
+  reading: "El gato te acompaña mientras lees",
+  deep_focus: "El gato lee contigo en silencio",
+  curious: "El gato se fija en lo que consultas",
+  yawn: "El gato bosteza: tal vez es hora de un descanso",
+  celebrating: "El gato celebra tu lectura",
+};
 
 export function Companion({
   stage,
   mood,
   accessories,
+  focus,
 }: {
   // 0 gatito dormido · 1 gatito · 2 gato · 3 gato con presencia ·
   // 4 bibliotecario. La etapa solo cambia proporciones y presencia.
   stage: number;
   mood: CatMood;
   accessories: string[];
+  // Estado de lectura en vivo (lector); ausente en el Cuaderno,
+  // donde manda el humor de largo plazo.
+  focus?: CompanionState | null;
 }) {
   const kitten = stage <= 1;
   // Cabeza proporcionalmente más grande en gatito.
@@ -23,11 +38,13 @@ export function Companion({
   const bodyRy = kitten ? 14 : 20;
   const bodyCy = 54;
 
+  const sleeping = mood === "asleep" || focus === "sleep";
   const eyes =
-    mood === "asleep" ? "closed" : mood === "sleepy" || stage === 0 ? "half" : "open";
+    sleeping ? "closed" : mood === "sleepy" || stage === 0 ? "half" : "open";
 
-  const label =
-    mood === "asleep"
+  const label = focus
+    ? FOCUS_LABELS[focus]
+    : mood === "asleep"
       ? "El gato del cuaderno duerme"
       : mood === "sleepy"
         ? "El gato del cuaderno tiene sueño"
@@ -35,7 +52,7 @@ export function Companion({
 
   return (
     <svg
-      className={`cat cat--${mood} cat--s${stage}`}
+      className={`cat cat--${mood} cat--s${stage}${focus ? ` cat--f-${focus}` : ""}`}
       viewBox="0 0 72 72"
       width="72"
       height="72"
@@ -118,7 +135,7 @@ export function Companion({
         </g>
       ) : null}
       {/* «zzz» sobre la oreja cuando duerme; se desvanece en CSS. */}
-      {mood === "asleep" ? (
+      {sleeping ? (
         <text className="cat-zzz" x="54" y="20">
           z
         </text>

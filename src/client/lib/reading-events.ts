@@ -102,6 +102,11 @@ export type VisitSummary = {
   consulted: number;
   saved: number;
   declaredKnown: number;
+  // Telemetría de foco: retrocesos, tiempo en pantalla y avisos de
+  // fatiga de la visita.
+  regressed: number;
+  dwellMs: number;
+  fatigueFlags: number;
   // Guardadas que NUNCA aparecieron en una sugerencia presentada:
   // la señal más útil para evaluar qué se le escapó al modelo. Es
   // una cota parcial — un guardado no es censo de lo desconocido.
@@ -120,6 +125,9 @@ export function summarizeReadingEvents(events: ReadingEvent[]): VisitSummary {
   let skipped = 0;
   let consulted = 0;
   let declaredKnown = 0;
+  let regressed = 0;
+  let dwellMs = 0;
+  let fatigueFlags = 0;
 
   for (const event of events) {
     switch (event.kind) {
@@ -150,6 +158,15 @@ export function summarizeReadingEvents(events: ReadingEvent[]): VisitSummary {
         break;
       case "word_declared_known":
         declaredKnown += 1;
+        break;
+      case "page_regressed":
+        regressed += 1;
+        break;
+      case "section_dwell":
+        dwellMs += event.ms;
+        break;
+      case "fatigue_flag":
+        fatigueFlags += 1;
         break;
     }
   }
@@ -183,6 +200,9 @@ export function summarizeReadingEvents(events: ReadingEvent[]): VisitSummary {
     consulted,
     saved: savedForms.size,
     declaredKnown,
+    regressed,
+    dwellMs,
+    fatigueFlags,
     savedNotPresented,
   };
 }

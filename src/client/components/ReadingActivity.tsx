@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
   captureDbScope,
   listIntervals,
+  listReadingEvents,
   loadSessionValue,
   type SavedInterval,
   type SavedWord,
@@ -15,6 +16,11 @@ import {
   msByBook,
   timeByDay,
 } from "../lib/reading-activity";
+import {
+  dayWpm,
+  focusByDay,
+  type DayFocus,
+} from "../lib/focus-telemetry";
 import {
   parseReadingGoal,
   READING_GOAL_KEY,
@@ -45,6 +51,8 @@ export default function ReadingActivity({
 }: ReadingActivityProps) {
   const [intervals, setIntervals] = useState<SavedInterval[] | null>(null);
   const [goal, setGoal] = useState<ReadingGoal | null>(null);
+  // Atención por día desde el trayecto local (readingEvents).
+  const [focusDays, setFocusDays] = useState<DayFocus[]>([]);
   const [loadError, setLoadError] = useState(false);
   const [hidden, setHidden] = useState(() => loadActivityHidden());
   // «Ahora» se captura al cargar los datos, no en cada render: la
@@ -58,12 +66,19 @@ export default function ReadingActivity({
     void Promise.all([
       listIntervals(scope),
       loadSessionValue(READING_GOAL_KEY, scope),
+      listReadingEvents(undefined, scope),
     ])
-      .then(([list, rawGoal]) => {
+      .then(([list, rawGoal, events]) => {
         if (cancelled) return;
         setNow(Date.now());
         setIntervals(list);
         setGoal(parseReadingGoal(rawGoal));
+        setFocusDays(
+          focusByDay(
+            events,
+            Intl.DateTimeFormat().resolvedOptions().timeZone,
+          ),
+        );
       })
       .catch(() => {
         if (!cancelled) setLoadError(true);
@@ -206,6 +221,76 @@ export default function ReadingActivity({
               ))}
             </ul>
           </section>
+
+          {(() => {
+            // Atención y ritmo: dwell real por sección, retrocesos y
+            // consultas del trayecto local. Solo se muestra si algún
+            // día de la semana tiene datos — con el trayecto apagado
+            // la sección simplemente no aparece.
+            const focusMap = new Map(focusDays.map((d) => [d.dayKey, d]));
+            const rows = week.map(
+              ({ dayKey }) =>
+                focusMap.get(dayKey) ?? {
+                  dayKey,
+                  dwellMs: 0,
+                  words: 0,
+                  regressions: 0,
+                  consults: 0,
+                  fatigue: 0,
+                },
+            );
+            if (!rows.some((d) => d.dwellMs > 0 || d.regressions > 0 || d.consults > 0))
+              return null;
+            const maxDwell = Math.max(...rows.map((d) => d.dwellMs), 1);
+            return (
+              <section aria-label="Atención y ritmo">
+                <h2 className="eyebrow act-eyebrow">Atención y ritmo</h2>
+                <ul className="act-days">
+                  {rows.map((day) => {
+                    const w = dayWpm(day);
+                    const bits = [
+                      day.dwellMs ? formatDuration(day.dwellMs) : "—",
+                      day.regressions
+                        ? `${day.regressions} retroceso${day.regressions === 1 ? "" : "s"}`
+                        : null,
+                      day.consults
+                        ? `${day.consults} consulta${day.consults === 1 ? "" : "s"}`
+                        : null,
+                      w ? `≈${w} ppm` : null,
+                      day.fatigue ? "fatiga" : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ");
+                    return (
+                      <li key={day.dayKey} className="act-day">
+                        <span className="act-day-label">
+                          {day.dayKey === todayKey ? "hoy" : dayLabel(day.dayKey)}
+                        </span>
+                        <span
+                          className="act-day-bar"
+                          role="img"
+                          aria-label={bits || "sin lectura"}
+                        >
+                          <span
+                            className="act-day-fill"
+                            style={{
+                              inlineSize: `${Math.round((day.dwellMs / maxDwell) * 100)}%`,
+                            }}
+                            data-empty={day.dwellMs === 0 || undefined}
+                          />
+                        </span>
+                        <span className="act-day-time meta">{bits}</span>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <p className="meta">
+                  Tiempo con el texto en pantalla, retrocesos y consultas
+                  del diccionario. Solo en este dispositivo.
+                </p>
+              </section>
+            );
+          })()}
 
           <section aria-label="Por libro">
             <h2 className="eyebrow act-eyebrow">Por libro</h2>

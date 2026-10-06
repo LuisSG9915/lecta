@@ -29,6 +29,7 @@ import {
   saveKnowledge,
   saveReadingInterval,
   saveSessionValue,
+  listIntervals,
   loadSessionValue,
   type DbScope,
   type KnownWord,
@@ -36,7 +37,7 @@ import {
   type SavedBookPosition,
   type SavedInterval,
 } from "../lib/idb";
-import { batchLookup, enrichBatch } from "../lib/lexicon";
+import { batchLookup, enrichBatch, lookupWord } from "../lib/lexicon";
 import {
   selectEnrichmentCandidates,
   selectSavedForEnrichment,
@@ -67,8 +68,38 @@ import {
   minutesLeft,
   updateWpm,
   DEFAULT_WPM,
+  MAX_SAMPLE_MS,
+  MIN_SAMPLE_MS,
+  MIN_SAMPLE_WORDS,
 } from "../lib/progress";
-import { award } from "../lib/game";
+import {
+  award,
+  loadGame,
+  loadGameEnabled,
+  subscribeGame,
+} from "../lib/game";
+import {
+  catStageForLevel,
+  levelProgress,
+  unlockedAccessories,
+} from "../lib/gamification";
+import {
+  initialCompanion,
+  reduceCompanion,
+  type CompanionMachine,
+  type CompanionSignal,
+  type CompanionState,
+} from "../lib/companion-state";
+import {
+  applySyntacticLines,
+  clearSyntacticLines,
+} from "../lib/syntactic-lines";
+import {
+  detectFatigue,
+  newFocusTracker,
+  recordMove,
+  type FocusTracker,
+} from "../lib/focus-telemetry";
 import {
   loadReaderSettings,
   saveReaderSettings,
@@ -113,7 +144,14 @@ import {
   pushAnnotationsToServer,
   pushActivityToServer,
 } from "../lib/reading-sync";
-import { IDLE_MS, MIN_INTERVAL_MS, ROLL_MS } from "../lib/reading-activity";
+import {
+  dayKeyOf,
+  IDLE_MS,
+  MIN_INTERVAL_MS,
+  ROLL_MS,
+  timeByDay,
+} from "../lib/reading-activity";
+import { DAY_GOAL_MS } from "../lib/reading-goal";
 import { pushOverlay, type OverlayHandle } from "../lib/history";
 import {
   dominatedLemmas,
@@ -129,8 +167,10 @@ import {
 import WordPanel from "./WordPanel";
 import SectionPreview, { type SectionPreviewRow } from "./SectionPreview";
 import Sheet from "./Sheet";
-import ThemeMenu from "./ThemeMenu";
+import ThemeMenu, { FocusModeMenu } from "./ThemeMenu";
 import Toggle from "./Toggle";
+import { Companion } from "./Companion";
+import { FocusRuler, rulerBandPx } from "./FocusRuler";
 import {
   buildChapterCatalog,
   trackCalibrationOffer,
@@ -365,6 +405,13 @@ export default function Reader({
   const imgUrlsRef = useRef<string[]>([]);
   // loadBlob del zip del EPUB (EPUB no lo declara en su tipo público).
   const loadBlobRef = useRef<((name: string) => Promise<Blob | null>) | null>(null);
+  // Máquina del gato acompañante (companion-state): vive en ref —
+  // solo se refleja a estado cuando cambia el estado visible.
+  const companionRef = useRef<CompanionMachine | null>(null);
+  // book_opened se envía una sola vez por apertura del libro.
+  const companionOpenedRef = useRef(false);
+  // Ventana de regresiones para el detector de fatiga (Fase 3).
+  const focusTrackerRef = useRef<FocusTracker | null>(null);
 
   const [state, setState] = useState<ReaderState>("idle");
   const [title, setTitle] = useState("");
@@ -454,6 +501,15 @@ export default function Reader({
   const [page, setPage] = useState(0);
   const [pageCount, setPageCount] = useState(1);
   const [pageMetrics, setPageMetrics] = useState<PageLayout | null>(null);
+  // Gato acompañante en el lector: aspecto (etapa + accesorios del
+  // juego) y estado visible de la máquina (companion-state).
+  const [catInfo, setCatInfo] = useState<{
+    stage: number;
+    accessories: string[];
+  } | null>(null);
+  const [catState, setCatState] = useState<CompanionState | null>(null);
+  // Sugerencia de pausa 20-20-20 cuando la telemetría marca fatiga.
+  const [fatigueNotice, setFatigueNotice] = useState(false);
   const searchAbort = useRef<AbortController | null>(null);
   // Segmento de lectura abierto: empieza con la primera señal real y
   // termina donde quedó la última — el rato que sigue sin señales no
@@ -468,6 +524,46 @@ export default function Reader({
     overlayRelease.current?.release();
     overlayRelease.current = null;
   };
+
+  // Día «leído» ya celebrado: evita repetir la celebración si otro
+  // segmento cruza el umbral el mismo día (la llave es día local).
+  const dayGoalRef = useRef<{ dayKey: string; done: boolean } | null>(null);
+
+  // ---------- Gato acompañante y telemetría de foco ----------
+
+  // Única puerta a la máquina del gato: nunca asigna sin cambiar —
+  // el re-render solo corre cuando cambia el estado visible. La
+  // actividad continua (scroll, páginas) se acota a una señal cada
+  // 4 s: el estado visible no cambia por cada píxel recorrido.
+  const signalCompanion = useCallback(
+    (sig: Omit<CompanionSignal, "at"> & { at?: number }) => {
+      const m = companionRef.current;
+      if (!m) return;
+      const full: CompanionSignal = { ...sig, at: sig.at ?? Date.now() };
+      if (
+        full.kind === "reading_activity" &&
+        (m.state === "reading" || m.state === "deep_focus") &&
+        full.at - m.lastActiveAt < 4_000
+      )
+        return;
+      const next = reduceCompanion(m, full);
+      companionRef.current = next;
+      setCatState((prev) => (prev === next.state ? prev : next.state));
+    },
+    [],
+  );
+
+  // Toda señal de lectura real pasa por aquí: scroll, cambio de página,
+  // flechas, toques en el texto y consultas de palabra. Con hoja,
+  // panel o pestaña oculta la señal se ignora.
+  const noteActivity = useCallback(() => {
+    if (pausedRef.current || document.hidden) return;
+    const now = Date.now();
+    const seg = activityRef.current;
+    if (!seg) activityRef.current = { startedAt: now, lastActiveAt: now };
+    else seg.lastActiveAt = now;
+    signalCompanion({ kind: "reading_activity", at: now });
+  }, [signalCompanion]);
 
   // Cierra el segmento abierto y, si duró lo bastante, lo guarda como
   // intervalo inmutable. Termina en la última señal, no en «ahora»:
@@ -491,18 +587,32 @@ export default function Reader({
       pushActivityToServer([interval], scope),
     );
     void award({ kind: "read", ms: endedAt - seg.startedAt }, scope);
-  }, [bookHash]);
 
-  // Toda señal de lectura real pasa por aquí: scroll, cambio de página,
-  // flechas, toques en el texto y consultas de palabra. Con hoja,
-  // panel o pestaña oculta la señal se ignora.
-  const noteActivity = useCallback(() => {
-    if (pausedRef.current || document.hidden) return;
-    const now = Date.now();
-    const seg = activityRef.current;
-    if (!seg) activityRef.current = { startedAt: now, lastActiveAt: now };
-    else seg.lastActiveAt = now;
-  }, []);
+    // Meta del día: si este tramo lleva al día por encima del mínimo
+    // de «día leído» (60 s), el gato celebra — una sola vez por día.
+    // El total se pide al almacén para no celebrar dos veces cuando el
+    // lector ya había leído hoy en otra sesión; el intervalo en vuelo
+    // se suma por separado (se filtra por id por si ya aterrizó).
+    void listIntervals(scope)
+      .then((list) => {
+        const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        const dayKey = dayKeyOf(endedAt, tz);
+        if (dayGoalRef.current?.dayKey !== dayKey)
+          dayGoalRef.current = { dayKey, done: false };
+        if (dayGoalRef.current.done) return;
+        const saved =
+          timeByDay(
+            list.filter((i) => i.id !== interval.id),
+            tz,
+          ).find((d) => d.dayKey === dayKey)?.ms ?? 0;
+        const segMs = endedAt - seg.startedAt;
+        if (saved < DAY_GOAL_MS && saved + segMs >= DAY_GOAL_MS) {
+          dayGoalRef.current.done = true;
+          signalCompanion({ kind: "goal_completed", at: endedAt });
+        }
+      })
+      .catch(() => undefined);
+  }, [bookHash, signalCompanion]);
 
   // Las capas del lector son mutuamente excluyentes: abrir una cierra
   // la anterior y reutiliza su entrada de historial cuando existe. Si
@@ -527,6 +637,8 @@ export default function Reader({
       origin: "text",
     });
     void award({ kind: "consulted" }, captureDbScope());
+    signalCompanion({ kind: "word_consulted" });
+    recordConsult(hit.word);
   };
 
   const closeSelection = () => {
@@ -580,6 +692,59 @@ export default function Reader({
     }, 30_000);
     return () => window.clearInterval(timer);
   }, [closeActivity]);
+
+  // Compañero de lectura: preferencia «Compañero y logros» y aspecto
+  // se cargan una vez por apertura; subscribeGame refresca etapa y
+  // accesorios cuando el juego cambia (XP de la propia lectura).
+  useEffect(() => {
+    let alive = true;
+    const refresh = async () => {
+      const scope = captureDbScope();
+      const [on, game] = await Promise.all([
+        loadGameEnabled(scope),
+        loadGame(scope),
+      ]);
+      if (!alive) return;
+      if (!on) {
+        companionRef.current = null;
+        setCatInfo(null);
+        setCatState(null);
+        return;
+      }
+      if (!companionRef.current)
+        companionRef.current = initialCompanion(Date.now());
+      setCatInfo({
+        stage: catStageForLevel(levelProgress(game.xp).level),
+        accessories: unlockedAccessories(game),
+      });
+      setCatState(companionRef.current.state);
+    };
+    void refresh();
+    const unsub = subscribeGame(() => void refresh());
+    return () => {
+      alive = false;
+      unsub();
+    };
+  }, []);
+
+  // Al primer «ready» el gato despierta; una sola vez por apertura.
+  useEffect(() => {
+    if (state === "ready" && !companionOpenedRef.current) {
+      companionOpenedRef.current = true;
+      signalCompanion({ kind: "book_opened", at: Date.now() });
+    }
+  }, [state, signalCompanion]);
+
+  // Latido del gato: caduca los transitorios y lo acuesta cuando ya
+  // no llegan señales de lectura.
+  useEffect(() => {
+    if (!catInfo) return;
+    const timer = window.setInterval(
+      () => signalCompanion({ kind: "tick", at: Date.now() }),
+      10_000,
+    );
+    return () => window.clearInterval(timer);
+  }, [catInfo, signalCompanion]);
 
   const scrollRatioNow = () => {
     const doc = document.documentElement;
@@ -690,10 +855,12 @@ export default function Reader({
 
   // Cierra la medición de velocidad de la sección anterior: solo cuenta
   // cuando hubo texto suficiente y una pausa razonable de lectura.
+  // Devuelve el dwell medido para que el llamador lo anote en el
+  // trayecto (loadSection sí conoce trackEvent en sus dependencias).
   const finalizeTiming = useCallback(
-    (endRatio: number) => {
+    (endRatio: number): { ms: number; words: number } | null => {
       const timing = sectionTiming.current;
-      if (!timing) return;
+      if (!timing) return null;
       sectionTiming.current = null;
       const wordsRead = Math.max(0, (endRatio - timing.startRatio) * timing.words);
       const spent = Date.now() - timing.start;
@@ -702,6 +869,7 @@ export default function Reader({
         setWpm(next);
         void saveSessionValue(WPM_KEY, String(next), captureDbScope());
       }
+      return { ms: spent, words: Math.max(0, Math.round(wordsRead)) };
     },
     [wpm],
   );
@@ -929,6 +1097,74 @@ export default function Reader({
       adjustRef.current,
     );
     applyPrediction(sectionIndexRef.current, language);
+  };
+
+  // La consulta del diccionario enlaza con el conocimiento: una
+  // evidencia «desconocida» inferida — la fuente más débil del
+  // arbitraje, que jamás deshace una respuesta explícita del lector.
+  // El lema sale del catálogo; una forma sin lema no escribe nada.
+  // Es auxiliar: corre suelta y un fallo no interrumpe la lectura.
+  const recordConsult = (form: string) => {
+    const scope = captureDbScope();
+    void (async () => {
+      const res = await lookupWord(form, language, scope);
+      if (!res.ok || !res.found) return;
+      const lemma = res.entries[0]?.lemma;
+      if (!lemma) return;
+      const row = await saveKnowledge(
+        { language, lemma, known: false, source: "inferred" },
+        scope,
+      );
+      // Solo se aplica al modelo si la evidencia desconocida quedó
+      // vigente: cuando otra fuente gana el arbitraje, manda ella.
+      if (row && !row.deleted && row.known === false)
+        applyKnowledgeRow({ lemma: row.lemma, known: row.known });
+    })().catch(() => undefined);
+  };
+
+  // Avance o retroceso de navegación hacia la ventana de fatiga; el
+  // retroceso queda además en el trayecto. Si la tasa de regresiones
+  // ya muestra cansancio: bostezo del gato, aviso 20-20-20 y la
+  // muestra que lo provocó en el trayecto.
+  const trackMove = useCallback(
+    (back: boolean) => {
+      const at = Date.now();
+      const t =
+        focusTrackerRef.current ??
+        (focusTrackerRef.current = newFocusTracker(at));
+      recordMove(t, at, back);
+      if (back)
+        trackEvent({
+          kind: "page_regressed",
+          sectionIndex: sectionIndexRef.current,
+        });
+      const hit = detectFatigue(t, at);
+      if (!hit) return;
+      trackEvent({
+        kind: "fatigue_flag",
+        sectionIndex: sectionIndexRef.current,
+        regressions: hit.backs,
+        moves: hit.moves,
+      });
+      signalCompanion({ kind: "fatigue_detected", at });
+      setFatigueNotice(true);
+    },
+    [trackEvent, signalCompanion],
+  );
+
+  // Avanzar a la sección siguiente habiendo llegado casi al final
+  // cuenta como tramo terminado: el gato celebra. Saltar por el
+  // índice o el buscador no celebra — no es «terminar» el capítulo.
+  const navNextSection = (index: number) => {
+    if (currentRatioNow() >= 0.85)
+      signalCompanion({ kind: "goal_completed" });
+    trackMove(false);
+    void navigate("chapter", { index });
+  };
+
+  const navPrevSection = (index: number) => {
+    trackMove(true);
+    void navigate("chapter", { index });
   };
 
   // ---------- Preparación de vocabulario (T19) ----------
@@ -1180,7 +1416,6 @@ export default function Reader({
     const record = {
       ...current.record,
       answers,
-      // eslint-disable-next-line react-hooks/purity -- respuesta por clic, no corre en render
       updatedAt: Date.now(),
     };
     const next = { ...current, answers, record };
@@ -1442,7 +1677,23 @@ export default function Reader({
       const container = containerRef.current;
       if (!book || !section || !container) return;
 
-      finalizeTiming(currentRatioNow());
+      // El dwell medido queda en el trayecto atribuido a la sección
+      // que se está dejando (sectionIndexRef aún no cambia). Misma
+      // barra de credibilidad que la velocidad: pasadas fugaces o
+      // sesiones olvidadas no cuentan como tiempo de lectura.
+      const dwell = finalizeTiming(currentRatioNow());
+      if (
+        dwell &&
+        dwell.ms >= MIN_SAMPLE_MS &&
+        dwell.ms <= MAX_SAMPLE_MS &&
+        dwell.words >= MIN_SAMPLE_WORDS
+      )
+        trackEvent({
+          kind: "section_dwell",
+          sectionIndex: sectionIndexRef.current,
+          ms: Math.round(dwell.ms),
+          words: dwell.words,
+        });
       setState("opening");
       setSelection(null);
       try {
@@ -1462,6 +1713,11 @@ export default function Reader({
           new Set((prediction?.predicted ?? []).map((item) => item.form)),
           lang,
         );
+        // «Líneas sintácticas» envuelve el párrafo en unidades con
+        // sentido antes del primer pintado; las marcas ya puestas
+        // quedan dentro de su línea.
+        if (settingsRef.current?.focusMode === "syntactic")
+          applySyntacticLines(sanitized);
         // Las imágenes del EPUB viajan como blob: URLs: las rutas
         // internas se quitan antes de montar (evita 404 contra el
         // origen) y se rellenan ya pintado el texto. En modo paginado
@@ -1587,6 +1843,7 @@ export default function Reader({
       currentRatioNow,
       classifyCached,
       analyzeSection,
+      trackEvent,
     ],
   );
 
@@ -2086,6 +2343,29 @@ export default function Reader({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings.layout, settings.font, settings.size, settings.measure, settings.leading, state]);
 
+  // «Líneas sintácticas» envuelve el texto ya montado; al salir del
+  // modo se desenrolla. Como en un refluje, después se reubica la
+  // lectura al mismo ancla (página en paginado, scroll en continuo).
+  useEffect(() => {
+    if (state !== "ready") return;
+    const container = containerRef.current;
+    if (!container) return;
+    const raf = requestAnimationFrame(() => {
+      if (settings.focusMode === "syntactic") applySyntacticLines(container);
+      else clearSyntacticLines(container);
+      if (layoutRef.current === "pages") {
+        remeasure();
+      } else {
+        const saved = latestPosition.current;
+        const max =
+          document.documentElement.scrollHeight - window.innerHeight;
+        if (!saved?.anchor || !scrollToAnchor(container, saved.anchor))
+          window.scrollTo(0, (saved?.ratio ?? 0) * Math.max(0, max));
+      }
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [settings.focusMode, state, remeasure]);
+
   useEffect(() => {
     if (settings.layout !== "pages" || state !== "ready") return;
     const viewport = viewportRef.current;
@@ -2109,6 +2389,7 @@ export default function Reader({
   const goPage = useCallback(
     (delta: number) => {
       noteActivity();
+      trackMove(delta < 0);
       const next = pageRef.current + delta;
       if (next < 0) {
         if (sectionIndexRef.current > 0)
@@ -2119,14 +2400,18 @@ export default function Reader({
         return;
       }
       if (next >= pageCountRef.current) {
-        if (sectionIndexRef.current + 1 < sectionTotal)
+        // En la última página el ratio ya es ~1: pasar a la sección
+        // siguiente cuenta como tramo terminado (el gato celebra).
+        if (sectionIndexRef.current + 1 < sectionTotal) {
+          signalCompanion({ kind: "goal_completed", at: Date.now() });
           void navigate("chapter", { index: sectionIndexRef.current + 1 });
+        }
         return;
       }
       setPageIdx(next);
       saveSoon();
     },
-    [navigate, saveSoon, sectionTotal, setPageIdx, noteActivity],
+    [navigate, saveSoon, sectionTotal, setPageIdx, noteActivity, trackMove, signalCompanion],
   );
 
   // Espejo del modo para callbacks estables (guardado, teclado,
@@ -2174,11 +2459,11 @@ export default function Reader({
       if (event.key === "ArrowLeft" || event.key === "ArrowRight") noteActivity();
       if (event.key === "ArrowLeft") {
         if (layoutRef.current === "pages") goPage(-1);
-        else if (sectionIndex > 0) void navigate("chapter", { index: sectionIndex - 1 });
+        else if (sectionIndex > 0) navPrevSection(sectionIndex - 1);
       }
       if (event.key === "ArrowRight") {
         if (layoutRef.current === "pages") goPage(1);
-        else if (sectionIndex + 1 < sectionTotal) void navigate("chapter", { index: sectionIndex + 1 });
+        else if (sectionIndex + 1 < sectionTotal) navNextSection(sectionIndex + 1);
       }
       if (
         (event.key === "d" || event.key === "D") &&
@@ -2236,6 +2521,9 @@ export default function Reader({
       });
     }
     closeSheet();
+    // Saltar a una sección anterior cuenta como retroceso para la
+    // ventana de fatiga (el salto en sí no celebra ni registra).
+    trackMove(index < sectionIndexRef.current);
     navigate(intent, {
       index,
       fragment: locate?.fragment,
@@ -2274,11 +2562,13 @@ export default function Reader({
   const goBack = () => {
     const point = returnPoint;
     setReturnPoint(null);
-    if (point)
+    if (point) {
+      trackMove(point.sectionIndex < sectionIndexRef.current);
       navigate("return", {
         index: point.sectionIndex,
         restore: { ratio: point.ratio, anchor: point.anchor },
       });
+    }
   };
 
   const refreshAnnotations = async (scope?: DbScope) => {
@@ -2406,11 +2696,18 @@ export default function Reader({
   const minutes = minutesLeft(sectionWords, viewRatio, wpm);
 
   // El hilo de progreso lleno cuenta como libro terminado; award
-  // deduplica por bookHash así que el efecto puede repetirse.
+  // deduplica por bookHash así que el efecto puede repetirse. La
+  // celebración también se dispara una sola vez por libro.
+  const bookCheeredRef = useRef<string | null>(null);
   useEffect(() => {
-    if (progress >= 0.995)
+    if (progress >= 0.995) {
       void award({ kind: "book_finished", bookHash }, captureDbScope());
-  }, [progress, bookHash]);
+      if (bookCheeredRef.current !== bookHash) {
+        bookCheeredRef.current = bookHash;
+        signalCompanion({ kind: "goal_completed" });
+      }
+    }
+  }, [progress, bookHash, signalCompanion]);
 
   // Invitación a la prueba de vocabulario, una vez por apertura del
   // libro: se ofrece al terminar el primer tramo que el lector leyó
@@ -2617,7 +2914,7 @@ export default function Reader({
               <button
                 type="button"
                 className="reader-end-link"
-                onClick={() => void navigate("chapter", { index: sectionIndex - 1 })}
+                onClick={() => navPrevSection(sectionIndex - 1)}
               >
                 ← {prevRow?.label ?? "Anterior"}
               </button>
@@ -2628,7 +2925,7 @@ export default function Reader({
               <button
                 type="button"
                 className="reader-end-link"
-                onClick={() => void navigate("chapter", { index: sectionIndex + 1 })}
+                onClick={() => navNextSection(sectionIndex + 1)}
               >
                 Siguiente: {nextRow?.label ?? `Sección ${sectionIndex + 2}`} →
               </button>
@@ -2700,6 +2997,66 @@ export default function Reader({
             ×
           </button>
         </div>
+      ) : null}
+
+      {/* Pausa 20-20-20: el detector de fatiga (retrocesos tras un
+          tramo largo) la dispara; se descarta al entenderla. */}
+      {fatigueNotice ? (
+        <div className="reader-prep" role="status">
+          <span className="reader-prep-text">
+            Has retrocedido varias veces en el último rato. Descansa la
+            vista: mira algo lejano unos 20 segundos.
+          </span>
+          <button
+            type="button"
+            className="btn reader-prep-open"
+            onClick={() => setFatigueNotice(false)}
+          >
+            Entendido
+          </button>
+          <button
+            type="button"
+            className="reader-return-dismiss"
+            onClick={() => setFatigueNotice(false)}
+            aria-label="Ocultar sugerencia de descanso"
+          >
+            ×
+          </button>
+        </div>
+      ) : null}
+
+      {/* Gato acompañante: esquina baja fija; nunca toca el texto ni
+          los controles (pointer-events:none en CSS). */}
+      {catInfo && catState ? (
+        <div className="reader-cat">
+          <Companion
+            stage={catInfo.stage}
+            mood="awake"
+            accessories={catInfo.accessories}
+            focus={catState}
+          />
+        </div>
+      ) : null}
+
+      {/* Regla de enfoque: velo de papel con una franja clara que
+          sigue al puntero; la patita del gato ancla el margen. */}
+      {settings.focusMode === "ruler" && state === "ready" ? (
+        <FocusRuler
+          bandPx={rulerBandPx(
+            settings.rulerSize,
+            settings.size * settings.leading,
+          )}
+          anchor={
+            catInfo ? (
+              <Companion
+                stage={catInfo.stage}
+                mood="awake"
+                accessories={catInfo.accessories}
+                focus={catState ?? "reading"}
+              />
+            ) : undefined
+          }
+        />
       ) : null}
 
       <footer className="reader-foot" data-hidden={!barsShown || undefined}>
@@ -3079,6 +3436,15 @@ export default function Reader({
               label="Separación silábica"
               checked={settings.enableHyphenation}
               onChange={(on) => updateSettings({ enableHyphenation: on })}
+            />
+          </div>
+          <div className="setting-row setting-row--stack">
+            <span className="setting-label">Concentración</span>
+            <FocusModeMenu
+              value={settings.focusMode}
+              rulerSize={settings.rulerSize}
+              onChange={(focusMode) => updateSettings({ focusMode })}
+              onRulerSize={(rulerSize) => updateSettings({ rulerSize })}
             />
           </div>
           {bookOverride ? (

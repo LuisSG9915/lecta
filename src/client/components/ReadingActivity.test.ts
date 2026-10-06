@@ -14,6 +14,7 @@ vi.mock("../lib/idb", async (importOriginal) => {
   return {
     ...mod,
     listIntervals: vi.fn(async () => []),
+    listReadingEvents: vi.fn(async () => []),
     loadSessionValue: vi.fn(async () => null),
   };
 });

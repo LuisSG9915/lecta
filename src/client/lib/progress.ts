@@ -2,6 +2,12 @@ export const DEFAULT_WPM = 180;
 export const MIN_WPM = 100;
 export const MAX_WPM = 600;
 
+// Muestra creíble de una sección: tiempo y texto mínimos para medir
+// ritmo o dwell (una pasada de 5 s o una sesión olvidada no cuentan).
+export const MIN_SAMPLE_WORDS = 40;
+export const MIN_SAMPLE_MS = 15_000;
+export const MAX_SAMPLE_MS = 15 * 60_000;
+
 // Palabras totales (no únicas) de un texto: base del tiempo estimado.
 export function countWords(text: string): number {
   const trimmed = text.trim();
@@ -35,7 +41,12 @@ export function updateWpm(
   wordsRead: number,
   msSpent: number,
 ): number | null {
-  if (wordsRead < 40 || msSpent < 15_000 || msSpent > 15 * 60_000) return current;
+  if (
+    wordsRead < MIN_SAMPLE_WORDS ||
+    msSpent < MIN_SAMPLE_MS ||
+    msSpent > MAX_SAMPLE_MS
+  )
+    return current;
   const observed = Math.min(MAX_WPM, Math.max(MIN_WPM, wordsRead / (msSpent / 60_000)));
   const next = current === null ? observed : current * 0.7 + observed * 0.3;
   return Math.round(Math.min(MAX_WPM, Math.max(MIN_WPM, next)));

@@ -168,6 +168,116 @@
   }
 }
 
+/* ---------- Estados de lectura (companion-state) ----------
+   Animación solo por transform/opacity: el hilo de paginación del
+   libro nunca espera al gato. Las clases llegan como cat--f-*. */
+.cat {
+  will-change: transform;
+}
+
+.cat--f-sleep {
+  opacity: 0.6;
+}
+
+.cat--f-sleep .cat-tail {
+  animation: cat-tail 8s ease-in-out infinite;
+  transform-origin: 54px 56px;
+}
+
+.cat--f-reading .cat-body {
+  animation: cat-breathe 4.2s ease-in-out infinite;
+  transform-origin: center bottom;
+}
+
+.cat--f-reading .cat-tail {
+  animation: cat-tail 5s ease-in-out infinite;
+  transform-origin: 54px 56px;
+}
+
+/* Concentración profunda: casi quieto, solo una cola muy lenta. */
+.cat--f-deep_focus {
+  transform: translateY(2px);
+}
+
+.cat--f-deep_focus .cat-tail {
+  animation: cat-tail 9s ease-in-out infinite;
+  transform-origin: 54px 56px;
+}
+
+.cat--f-curious {
+  animation: cat-tilt 1.2s var(--ease-out) 2;
+}
+
+.cat--f-curious .cat-tail {
+  animation: cat-tail 2.2s ease-in-out infinite;
+  transform-origin: 54px 56px;
+}
+
+.cat--f-yawn {
+  animation: cat-yawn 4s ease-in-out infinite;
+}
+
+.cat--f-celebrating {
+  animation: cat-hop 0.6s var(--ease-out) infinite;
+  translate: 0 0;
+  will-change: transform, translate;
+}
+
+.cat--f-celebrating .cat-body {
+  animation: cat-purr 0.14s linear infinite;
+}
+
+.cat--f-celebrating .cat-tail {
+  animation: cat-tail 1.6s ease-in-out infinite;
+  transform-origin: 54px 56px;
+}
+
+@keyframes cat-tilt {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  40% {
+    transform: rotate(-7deg);
+  }
+  70% {
+    transform: rotate(4deg);
+  }
+}
+
+@keyframes cat-yawn {
+  0%,
+  100% {
+    transform: translateY(0) scaleY(1);
+  }
+  45%,
+  60% {
+    transform: translateY(3px) scaleY(0.96);
+  }
+}
+
+@keyframes cat-hop {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  40% {
+    transform: translateY(-5px);
+  }
+}
+
+/* Ronroneo: vibración mínima del cuerpo (propiedad translate para
+   no pelear con el transform del brinco). */
+@keyframes cat-purr {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+  50% {
+    translate: 0.4px 0;
+  }
+}
+
 /* ---------- Cofres ---------- */
 
 .game-chests {

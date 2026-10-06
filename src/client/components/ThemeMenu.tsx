@@ -1,7 +1,11 @@
 import {
+  FOCUS_MODES,
+  RULER_SIZES,
   THEME_CHOICES,
   THEME_LABELS,
   THEME_SWATCHES,
+  type FocusMode,
+  type RulerSize,
   type ThemeChoice,
 } from "../lib/settings";
 
@@ -61,6 +65,57 @@ export default function ThemeMenu({ value, onChange, variant }: ThemeMenuProps) 
           {THEME_LABELS[choice]}
         </button>
       ))}
+    </div>
+  );
+}
+
+// Selector del modo de concentración: texto normal, líneas
+// sintácticas o regla de foco; con la regla aparece su tamaño.
+export function FocusModeMenu({
+  value,
+  rulerSize,
+  onChange,
+  onRulerSize,
+}: {
+  value: FocusMode;
+  rulerSize: RulerSize;
+  onChange: (mode: FocusMode) => void;
+  onRulerSize: (size: RulerSize) => void;
+}) {
+  return (
+    <div className="focus-menu">
+      <div className="segmented" role="group" aria-label="Modo de concentración">
+        {FOCUS_MODES.map(({ id, label }) => (
+          <button
+            key={id}
+            type="button"
+            data-active={value === id || undefined}
+            aria-pressed={value === id}
+            onClick={() => onChange(id)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      {value === "ruler" ? (
+        <div
+          className="segmented"
+          role="group"
+          aria-label="Tamaño de la regla de foco"
+        >
+          {RULER_SIZES.map(({ id, label }) => (
+            <button
+              key={String(id)}
+              type="button"
+              data-active={rulerSize === id || undefined}
+              aria-pressed={rulerSize === id}
+              onClick={() => onRulerSize(id)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }

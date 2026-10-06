@@ -43,6 +43,24 @@ export const READER_FONTS: { id: ReaderFont; label: string; family: string }[] =
   { id: "dyslexic", label: "OpenDyslexic", family: "var(--font-dyslexic)" },
 ];
 
+// Modo de concentración del lector: texto normal, párrafos cortados
+// en líneas sintácticas o una regla de foco que vela el resto.
+export type FocusMode = "off" | "syntactic" | "ruler";
+// Alto de la franja clara de la regla: 1 o 3 líneas, o un párrafo.
+export type RulerSize = 1 | 3 | "paragraph";
+
+export const FOCUS_MODES: { id: FocusMode; label: string }[] = [
+  { id: "off", label: "Normal" },
+  { id: "syntactic", label: "Líneas sintácticas" },
+  { id: "ruler", label: "Regla de foco" },
+];
+
+export const RULER_SIZES: { id: RulerSize; label: string }[] = [
+  { id: 1, label: "1 línea" },
+  { id: 3, label: "3 líneas" },
+  { id: "paragraph", label: "Párrafo" },
+];
+
 export interface ReaderSettings {
   font: ReaderFont;
   /** Tamaño del texto del libro, en px (16–24). */
@@ -61,6 +79,10 @@ export interface ReaderSettings {
   preparationMode: PreparationMode;
   /** Separación silábica automática del navegador (hyphens: auto). */
   enableHyphenation: boolean;
+  /** Estrategia de concentración visual del texto. */
+  focusMode: FocusMode;
+  /** Alto de la franja clara cuando la regla está activa. */
+  rulerSize: RulerSize;
 }
 
 export const READER_DEFAULTS: ReaderSettings = {
@@ -74,6 +96,8 @@ export const READER_DEFAULTS: ReaderSettings = {
   pageColumns: 2,
   preparationMode: "auto",
   enableHyphenation: false,
+  focusMode: "off",
+  rulerSize: 3,
 };
 
 export type PreparationMode = "auto" | "notice" | "off";
@@ -145,6 +169,14 @@ export function parseReaderSettings(raw: string | null): ReaderSettings {
       pageColumns: v.pageColumns === 1 ? 1 : 2,
       preparationMode: parsePreparationMode(v.preparationMode),
       enableHyphenation: v.enableHyphenation === true,
+      focusMode:
+        v.focusMode === "syntactic" || v.focusMode === "ruler"
+          ? v.focusMode
+          : "off",
+      rulerSize:
+        v.rulerSize === 1 || v.rulerSize === 3 || v.rulerSize === "paragraph"
+          ? v.rulerSize
+          : 3,
     };
   } catch {
     return READER_DEFAULTS;

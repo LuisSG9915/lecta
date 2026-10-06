@@ -199,6 +199,28 @@ export type ReadingEvent = ReadingEventBase &
         lemma: string;
         origin: "text" | "preparation";
       }
+    // Retroceso deliberado de página o sección: materia prima del
+    // detector de fatiga (focus-telemetry).
+    | {
+        kind: "page_regressed";
+        sectionIndex: number;
+      }
+    // Tiempo con la sección en pantalla al dejarla: dwell real por
+    // bloque, con las palabras recorridas para el ritmo estimado.
+    | {
+        kind: "section_dwell";
+        sectionIndex: number;
+        ms: number;
+        words: number;
+      }
+    // Aviso de fatiga emitido (bostezo del gato + sugerencia 20-20-20):
+    // queda la muestra que lo provocó para auditar el umbral.
+    | {
+        kind: "fatigue_flag";
+        sectionIndex: number;
+        regressions: number;
+        moves: number;
+      }
   );
 
 // Operación pendiente sobre un libro remoto (subida o borrado). Es la

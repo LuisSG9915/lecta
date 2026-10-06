@@ -73,7 +73,27 @@ describe("parseReaderSettings", () => {
       pageColumns: 2,
       preparationMode: "auto",
       enableHyphenation: false,
+      focusMode: "off",
+      rulerSize: 3,
     });
+  });
+
+  it("lee modo de concentración y descarta valores desconocidos", () => {
+    expect(
+      parseReaderSettings(
+        JSON.stringify({ focusMode: "syntactic", rulerSize: "paragraph" }),
+      ),
+    ).toMatchObject({ focusMode: "syntactic", rulerSize: "paragraph" });
+    expect(
+      parseReaderSettings(
+        JSON.stringify({ focusMode: "ruler", rulerSize: 1 }),
+      ),
+    ).toMatchObject({ focusMode: "ruler", rulerSize: 1 });
+    expect(
+      parseReaderSettings(
+        JSON.stringify({ focusMode: "lupa", rulerSize: 9 }),
+      ),
+    ).toMatchObject({ focusMode: "off", rulerSize: 3 });
   });
 
   it("lee enableHyphenation solo cuando es true", () => {
@@ -149,6 +169,8 @@ describe("readerCssVars", () => {
       pageColumns: 2,
       preparationMode: "notice",
       enableHyphenation: false,
+      focusMode: "off",
+      rulerSize: 3,
     });
     expect(vars["--read-font"]).toBe("var(--font-sans-alt)");
     expect(vars["--read-size"]).toBe("20px");

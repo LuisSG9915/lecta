@@ -1222,3 +1222,72 @@ mark.predicted-word:hover {
 .section-preview-item .cal-choices {
   flex: none;
 }
+
+/* ---------- Concentración visual ---------- */
+
+/* Líneas sintácticas: cada unidad con sentido ocupa su propia línea
+   de longitud variable; el párrafo conserva su margen inferior. */
+.book-content .syn-line {
+  display: block;
+}
+
+/* Regla de enfoque: velo translúcido del color del papel (sirve en
+   claro y oscuro) con una franja clara que sigue al puntero. Todo es
+   position:fixed + pointer-events:none — jamás estorba la lectura,
+   la selección ni el paso de página. */
+.focus-ruler {
+  position: fixed;
+  inset: 0;
+  z-index: 6;
+  pointer-events: none;
+}
+
+.focus-ruler-veil {
+  position: absolute;
+  inset-inline: 0;
+  background: color-mix(in srgb, var(--paper) 78%, transparent);
+}
+
+.focus-ruler-band {
+  position: absolute;
+  inset-inline: 0;
+  border-block: 1px solid var(--rule-strong);
+}
+
+/* La patita del gato ancla el margen de la franja (Fase 4). */
+.focus-ruler-anchor {
+  position: absolute;
+  inset-block-start: 50%;
+  inset-inline-start: 0.6rem;
+  translate: 0 -50%;
+  inline-size: 30px;
+  display: block;
+}
+
+.focus-ruler-anchor .cat {
+  inline-size: 100%;
+  block-size: auto;
+}
+
+/* Selector del modo de concentración en Ajustes. */
+.focus-menu {
+  display: grid;
+  gap: var(--s-2);
+}
+
+/* Gato acompañante del lector: esquina baja sobre la zona de
+   controles, siempre visible pero discreto. */
+.reader-cat {
+  position: fixed;
+  inset-block-end: 3.4rem;
+  inset-inline-end: 1rem;
+  z-index: 6;
+  inline-size: 46px;
+  pointer-events: none;
+  opacity: 0.85;
+}
+
+.reader-cat .cat {
+  inline-size: 100%;
+  block-size: auto;
+}
