@@ -171,12 +171,15 @@
 
 /* ---------- Hoja inferior (móvil) y panel ---------- */
 
-/* Fondo de la hoja: tocarlo cierra, igual que el del diálogo. */
+/* Fondo de la hoja: tocarlo cierra, igual que el del diálogo. El
+   desenfoque separa la hoja del texto sin ocultarla del todo. */
 .sheet-scrim {
   position: fixed;
   z-index: 20;
   inset: 0;
   background: var(--scrim);
+  backdrop-filter: blur(8px) saturate(1.05);
+  -webkit-backdrop-filter: blur(8px) saturate(1.05);
   animation: fade-in var(--dur-2) var(--ease-out);
 }
 
@@ -195,10 +198,24 @@
   border: var(--border);
   border-bottom: none;
   border-radius: var(--r-sheet) var(--r-sheet) 0 0;
-  background: var(--paper-raised);
+  /* Hoja translúcida: el fondo se filtra apenas para que el cristal
+     lea como material propio sin perder legibilidad. */
+  background: color-mix(in srgb, var(--paper-raised) 92%, transparent);
+  backdrop-filter: blur(14px) saturate(1.3);
+  -webkit-backdrop-filter: blur(14px) saturate(1.3);
   box-shadow: var(--shadow-sheet);
-  padding: var(--s-4) var(--s-5) calc(var(--s-5) + env(safe-area-inset-bottom));
+  padding: var(--s-2) var(--s-5) calc(var(--s-5) + env(safe-area-inset-bottom));
   animation: sheet-up var(--dur-3) var(--ease-out);
+}
+
+/* Asa de agarre centrada sobre el borde superior de la hoja. */
+.sheet-grabber {
+  flex: none;
+  inline-size: 2.5rem;
+  block-size: 0.3rem;
+  margin: 0 auto var(--s-2);
+  border-radius: var(--r-pill);
+  background: var(--rule-strong);
 }
 
 @keyframes sheet-up {
@@ -225,13 +242,25 @@
     max-height: calc(100svh - 7.5rem);
     border: var(--border);
     border-radius: var(--r-2);
+    /* Acoplada no va de cristal: difuminar el texto detrás estorba la
+       lectura que precisamente deja visible. */
+    background: var(--paper-raised);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
     animation: dock-in var(--dur-3) var(--ease-out);
   }
 
-  /* Acoplada al margen el fondo no oscurece la lectura, pero sigue
-     capturando el toque exterior para cerrar. */
+  /* El asa no aplica a un panel de margen. */
+  .sheet--docked .sheet-grabber {
+    display: none;
+  }
+
+  /* Acoplada al margen el fondo no oscurece ni desenfoca la lectura,
+     pero sigue capturando el toque exterior para cerrar. */
   .sheet-scrim {
     background: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
   }
 
   /* El índice se acopla al margen izquierdo como panel flotante;
@@ -269,14 +298,14 @@
    la hoja para que nada se asome detrás al hacer scroll. */
 .sheet-head {
   position: sticky;
-  top: calc(-1 * var(--s-4));
+  top: calc(-1 * var(--s-2));
   z-index: 1;
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: var(--s-4);
-  margin: calc(-1 * var(--s-4)) calc(-1 * var(--s-5)) var(--s-3);
-  padding: var(--s-4) var(--s-5) var(--s-2);
+  margin: 0 calc(-1 * var(--s-5)) var(--s-3);
+  padding: var(--s-2) var(--s-5) var(--s-2);
   background: var(--paper-raised);
 }
 
@@ -296,6 +325,124 @@
   min-block-size: 2.75rem;
 }
 
+/* ---------- Interruptor ---------- */
+
+/* El área táctil mide 44px; la pista visible (dibujada en ::before)
+   queda centrada y más delgada, como un interruptor físico. */
+.switch {
+  position: relative;
+  flex: none;
+  inline-size: 3.25rem;
+  block-size: 2.75rem;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.switch::before {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  inset-block: 8px;
+  border-radius: 999px;
+  background: var(--rule-strong);
+  transition: background-color var(--dur-2) var(--ease-out);
+}
+
+.switch-knob {
+  position: absolute;
+  inset-block-start: 11px;
+  inset-inline-start: 3px;
+  inline-size: 22px;
+  block-size: 22px;
+  border-radius: 50%;
+  background: var(--paper-raised);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  transition: transform var(--dur-2) var(--ease-out);
+}
+
+.switch[aria-checked="true"]::before {
+  background: var(--vermilion-bright);
+}
+
+.switch[aria-checked="true"] .switch-knob {
+  transform: translateX(24px);
+}
+
+.switch:focus-visible::before {
+  box-shadow: 0 0 0 3px var(--vermilion-wash);
+}
+
+@media (forced-colors: active) {
+  .switch::before {
+    border: 1px solid ButtonText;
+    background: none;
+  }
+
+  .switch[aria-checked="true"]::before {
+    background: Highlight;
+  }
+
+  .switch-knob {
+    background: ButtonText;
+    box-shadow: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .switch::before,
+  .switch-knob {
+    transition: none;
+  }
+}
+
+/* ---------- Grupo segmentado ---------- */
+
+/* Opciones excluyentes en una píldora: la activa se levanta con
+   papel y una sombra leve, el resto queda en el fondo hundido. */
+.segmented {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border: var(--border);
+  border-radius: 999px;
+  background: var(--paper-sunken);
+}
+
+.segmented button {
+  min-height: 2.75rem;
+  padding: var(--s-1) var(--s-3);
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-soft);
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  white-space: nowrap;
+  transition:
+    background-color var(--dur-1) var(--ease-out),
+    color var(--dur-1) var(--ease-out);
+}
+
+.segmented button:hover {
+  color: var(--ink);
+}
+
+.segmented button[data-active] {
+  background: var(--paper-raised);
+  color: var(--ink);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+
+@media (forced-colors: active) {
+  .segmented button[data-active] {
+    outline: 2px solid Highlight;
+    box-shadow: none;
+  }
+}
+
 /* ---------- Diálogo centrado ---------- */
 
 .dialog-scrim {
@@ -306,6 +453,8 @@
   place-items: center;
   padding: var(--s-4);
   background: var(--scrim);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   animation: fade-in var(--dur-2) var(--ease-out);
 }
 

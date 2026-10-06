@@ -78,6 +78,8 @@ import {
   readerCssVars,
   READER_LIMITS,
   READER_FONTS,
+  LEADING_OPTIONS,
+  MARGIN_OPTIONS,
   PREPARATION_MODES,
   type ReaderSettings,
   type ThemeChoice,
@@ -128,6 +130,7 @@ import WordPanel from "./WordPanel";
 import SectionPreview, { type SectionPreviewRow } from "./SectionPreview";
 import Sheet from "./Sheet";
 import ThemeMenu from "./ThemeMenu";
+import Toggle from "./Toggle";
 import {
   buildChapterCatalog,
   trackCalibrationOffer,
@@ -2982,18 +2985,19 @@ export default function Reader({
               Cerrar
             </button>
           </div>
-          <div className="setting-row">
+          <div className="setting-row setting-row--stack">
             <span className="setting-label">Tema</span>
-            <ThemeMenu value={theme} onChange={onThemeChange} />
+            <ThemeMenu value={theme} onChange={onThemeChange} variant="swatches" />
           </div>
-          <div className="setting-row">
+          <div className="setting-row setting-row--stack">
             <span className="setting-label">Letra</span>
-            <div className="theme-menu" role="group" aria-label="Letra">
-              {READER_FONTS.map(({ id, label }) => (
+            <div className="font-options" role="group" aria-label="Letra">
+              {READER_FONTS.map(({ id, label, family }) => (
                 <button
                   key={id}
                   type="button"
-                  className="theme-option"
+                  className="font-option"
+                  style={{ fontFamily: family }}
                   data-active={settings.font === id || undefined}
                   aria-pressed={settings.font === id}
                   onClick={() => updateSettings({ font: id })}
@@ -3002,6 +3006,80 @@ export default function Reader({
                 </button>
               ))}
             </div>
+          </div>
+          <div className="setting-row">
+            <span className="setting-label">Tamaño</span>
+            <div className="setting-stepper">
+              <button
+                type="button"
+                className="btn stepper-down"
+                aria-label="Letra más pequeña"
+                disabled={settings.size <= READER_LIMITS.size.min}
+                onClick={() => updateSettings({ size: settings.size - 1 })}
+              >
+                A
+              </button>
+              <span className="setting-value">{settings.size}</span>
+              <button
+                type="button"
+                className="btn stepper-up"
+                aria-label="Letra más grande"
+                disabled={settings.size >= READER_LIMITS.size.max}
+                onClick={() => updateSettings({ size: settings.size + 1 })}
+              >
+                A
+              </button>
+            </div>
+          </div>
+          <div className="setting-row">
+            <span className="setting-label">Interlineado</span>
+            <div className="segmented" role="group" aria-label="Interlineado">
+              {LEADING_OPTIONS.map(({ value, label }) => (
+                <button
+                  key={value}
+                  type="button"
+                  data-active={settings.leading === value || undefined}
+                  aria-pressed={settings.leading === value}
+                  onClick={() => updateSettings({ leading: value })}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="setting-row">
+            <span className="setting-label">Márgenes</span>
+            <div className="segmented" role="group" aria-label="Márgenes">
+              {MARGIN_OPTIONS.map(({ value, label }) => (
+                <button
+                  key={value}
+                  type="button"
+                  data-active={settings.measure === value || undefined}
+                  aria-pressed={settings.measure === value}
+                  onClick={() => updateSettings({ measure: value })}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="setting-row">
+            <span className="setting-label">Lectura por páginas</span>
+            <Toggle
+              label="Lectura por páginas"
+              checked={settings.layout === "pages"}
+              onChange={(on) =>
+                updateSettings({ layout: on ? "pages" : "scroll" })
+              }
+            />
+          </div>
+          <div className="setting-row">
+            <span className="setting-label">Separación silábica (guiones)</span>
+            <Toggle
+              label="Separación silábica"
+              checked={settings.enableHyphenation}
+              onChange={(on) => updateSettings({ enableHyphenation: on })}
+            />
           </div>
           {bookOverride ? (
             <div className="setting-row">
@@ -3016,23 +3094,6 @@ export default function Reader({
             </div>
           ) : null}
           <div className="setting-row">
-            <span className="setting-label">Antes de leer</span>
-            <div className="theme-menu" role="group" aria-label="Preparación de vocabulario">
-              {PREPARATION_MODES.map(({ id, label }) => (
-                <button
-                  key={id}
-                  type="button"
-                  className="theme-option"
-                  data-active={settings.preparationMode === id || undefined}
-                  aria-pressed={settings.preparationMode === id}
-                  onClick={() => updateSettings({ preparationMode: id })}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="setting-row">
             <span className="setting-label">Palabras de este capítulo</span>
             <button
               type="button"
@@ -3045,187 +3106,74 @@ export default function Reader({
               Revisar ahora
             </button>
           </div>
-          <div className="setting-row">
-            <span className="setting-label">Tamaño</span>
-            <div className="setting-stepper">
-              <button
-                type="button"
-                className="btn"
-                aria-label="Letra más pequeña"
-                disabled={settings.size <= READER_LIMITS.size.min}
-                onClick={() => updateSettings({ size: settings.size - 1 })}
-              >
-                −
-              </button>
-              <span className="setting-value">{settings.size}</span>
-              <button
-                type="button"
-                className="btn"
-                aria-label="Letra más grande"
-                disabled={settings.size >= READER_LIMITS.size.max}
-                onClick={() => updateSettings({ size: settings.size + 1 })}
-              >
-                +
-              </button>
-            </div>
-          </div>
-          <div className="setting-row">
-            <span className="setting-label">Interlineado</span>
-            <div className="setting-stepper">
-              <button
-                type="button"
-                className="btn"
-                aria-label="Menos interlineado"
-                disabled={settings.leading <= READER_LIMITS.leading.min}
-                onClick={() =>
-                  updateSettings({
-                    leading: clampNumber(
-                      Number((settings.leading - 0.05).toFixed(2)),
-                      READER_LIMITS.leading.min,
-                      READER_LIMITS.leading.max,
-                    ),
-                  })
-                }
-              >
-                −
-              </button>
-              <span className="setting-value">{settings.leading.toFixed(2)}</span>
-              <button
-                type="button"
-                className="btn"
-                aria-label="Más interlineado"
-                disabled={settings.leading >= READER_LIMITS.leading.max}
-                onClick={() =>
-                  updateSettings({
-                    leading: clampNumber(
-                      Number((settings.leading + 0.05).toFixed(2)),
-                      READER_LIMITS.leading.min,
-                      READER_LIMITS.leading.max,
-                    ),
-                  })
-                }
-              >
-                +
-              </button>
-            </div>
-          </div>
-          <div className="setting-row">
-            <span className="setting-label">Ancho</span>
-            <div className="theme-menu" role="group" aria-label="Ancho de columna">
-              {(
-                [
-                  [55, "Estrecho"],
-                  [65, "Normal"],
-                  [75, "Amplio"],
-                ] as const
-              ).map(([value, label]) => (
-                <button
-                  key={value}
-                  type="button"
-                  className="theme-option"
-                  data-active={settings.measure === value || undefined}
-                  aria-pressed={settings.measure === value}
-                  onClick={() => updateSettings({ measure: value })}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="setting-row">
-            <span className="setting-label">Modo</span>
-            <div className="theme-menu" role="group" aria-label="Modo de lectura">
-              {(
-                [
-                  ["scroll", "Desplazamiento"],
-                  ["pages", "Páginas"],
-                ] as const
-              ).map(([value, label]) => (
-                <button
-                  key={value}
-                  type="button"
-                  className="theme-option"
-                  data-active={settings.layout === value || undefined}
-                  aria-pressed={settings.layout === value}
-                  onClick={() => updateSettings({ layout: value })}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-          {settings.layout === "pages" ? (
-            <>
+          <details className="settings-advanced">
+            <summary>Ajustes avanzados</summary>
+            <div className="settings-advanced-body">
+              {settings.layout === "pages" ? (
+                <>
+                  <div className="setting-row">
+                    <span className="setting-label">Columnas</span>
+                    <div className="segmented" role="group" aria-label="Columnas por página">
+                      {(
+                        [
+                          [1, "Una"],
+                          [2, "Dos"],
+                        ] as const
+                      ).map(([value, label]) => (
+                        <button
+                          key={value}
+                          type="button"
+                          data-active={settings.pageColumns === value || undefined}
+                          aria-pressed={settings.pageColumns === value}
+                          onClick={() => updateSettings({ pageColumns: value })}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <p className="meta">
+                    Las flechas ← → pasan página. Si algo se corta, apaga
+                    «Lectura por páginas» sin perder tu lugar.
+                  </p>
+                </>
+              ) : null}
               <div className="setting-row">
-                <span className="setting-label">Columnas</span>
-                <div className="theme-menu" role="group" aria-label="Columnas por página">
-                  {(
-                    [
-                      [1, "Una"],
-                      [2, "Dos"],
-                    ] as const
-                  ).map(([value, label]) => (
+                <span className="setting-label">Justificar</span>
+                <Toggle
+                  label="Justificar texto"
+                  checked={settings.justify}
+                  onChange={(on) => updateSettings({ justify: on })}
+                />
+              </div>
+              <div className="setting-row">
+                <span className="setting-label">Letra capital</span>
+                <Toggle
+                  label="Letra capital al inicio del capítulo"
+                  checked={settings.dropCap}
+                  onChange={(on) => updateSettings({ dropCap: on })}
+                />
+              </div>
+              <div className="setting-row">
+                <span className="setting-label">Antes de leer</span>
+                <div className="theme-menu" role="group" aria-label="Preparación de vocabulario">
+                  {PREPARATION_MODES.map(({ id, label }) => (
                     <button
-                      key={value}
+                      key={id}
                       type="button"
                       className="theme-option"
-                      data-active={settings.pageColumns === value || undefined}
-                      aria-pressed={settings.pageColumns === value}
-                      onClick={() => updateSettings({ pageColumns: value })}
+                      data-active={settings.preparationMode === id || undefined}
+                      aria-pressed={settings.preparationMode === id}
+                      onClick={() => updateSettings({ preparationMode: id })}
                     >
                       {label}
                     </button>
                   ))}
                 </div>
               </div>
-              <p className="meta">
-                Las flechas ← → pasan página. Si algo se corta, vuelve a
-                Desplazamiento sin perder tu lugar.
-              </p>
-            </>
-          ) : null}
-          <div className="setting-row">
-            <span className="setting-label">Justificar</span>
-            <button
-              type="button"
-              className="theme-option"
-              role="switch"
-              aria-checked={settings.justify}
-              data-active={settings.justify || undefined}
-              onClick={() => updateSettings({ justify: !settings.justify })}
-            >
-              {settings.justify ? "Sí" : "No"}
-            </button>
-          </div>
-          <div className="setting-row">
-            <span className="setting-label">Separar con guiones</span>
-            <button
-              type="button"
-              className="theme-option"
-              role="switch"
-              aria-checked={settings.enableHyphenation}
-              data-active={settings.enableHyphenation || undefined}
-              onClick={() =>
-                updateSettings({ enableHyphenation: !settings.enableHyphenation })
-              }
-            >
-              {settings.enableHyphenation ? "Sí" : "No"}
-            </button>
-          </div>
-          <div className="setting-row">
-            <span className="setting-label">Letra capital</span>
-            <button
-              type="button"
-              className="theme-option"
-              role="switch"
-              aria-checked={settings.dropCap}
-              data-active={settings.dropCap || undefined}
-              onClick={() => updateSettings({ dropCap: !settings.dropCap })}
-            >
-              {settings.dropCap ? "Sí" : "No"}
-            </button>
-          </div>
-          <p className="meta">Pista: con el cursor sobre una palabra, pulsa D para abrir su ficha. Con Tab vuelven las barras.</p>
+              <p className="meta">Pista: con el cursor sobre una palabra, pulsa D para abrir su ficha. Con Tab vuelven las barras.</p>
+            </div>
+          </details>
         </Sheet>
       ) : null}
 

@@ -891,6 +891,14 @@ mark.saved-passage {
   border-bottom: none;
 }
 
+/* Filas con controles anchos (muestras de tema, letras): la etiqueta
+   arriba y el control a todo lo largo, en lugar de orilla a orilla. */
+.setting-row--stack {
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--s-2);
+}
+
 .setting-label {
   font-family: var(--font-ui);
   font-size: var(--fs-sm);
@@ -920,11 +928,21 @@ mark.saved-passage {
   gap: var(--s-3);
 }
 
+/* Botones amplios con la «A» de cada dirección: la pequeña achica la
+   letra, la grande la agranda — se lee sin leer el símbolo. */
 .setting-stepper .btn {
-  min-width: 2.75rem;
+  min-width: 3.5rem;
   min-height: 2.75rem;
-  padding: var(--s-1) var(--s-2);
-  font-size: var(--fs-lg);
+  padding: var(--s-1) var(--s-3);
+}
+
+.stepper-down {
+  font-size: var(--fs-base);
+}
+
+.stepper-up {
+  font-size: var(--fs-xl);
+  line-height: 1;
 }
 
 .setting-value {
@@ -933,6 +951,82 @@ mark.saved-passage {
   font-size: var(--fs-md);
   text-align: center;
   font-variant-numeric: tabular-nums;
+}
+
+/* Letras con vista previa: cada opción se dibuja en su propia
+   tipografía; la activa lleva borde bermellón y tinta plena. */
+.font-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+.font-option {
+  min-height: 2.75rem;
+  padding: var(--s-1) var(--s-3);
+  border: var(--border);
+  border-radius: var(--r-1);
+  background: var(--paper-raised);
+  color: var(--ink-soft);
+  font-size: var(--fs-lg);
+  transition:
+    border-color var(--dur-1) var(--ease-out),
+    color var(--dur-1) var(--ease-out),
+    box-shadow var(--dur-1) var(--ease-out);
+}
+
+.font-option:hover {
+  color: var(--ink);
+}
+
+.font-option[data-active] {
+  border-color: var(--vermilion);
+  color: var(--ink);
+  box-shadow: 0 0 0 3px var(--vermilion-wash);
+}
+
+/* Ajustes avanzados: los parámetros técnicos se pliegan tras un
+   sumario discreto para no competir con los controles de lectura. */
+.settings-advanced {
+  padding-block: var(--s-2);
+}
+
+.settings-advanced > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+  min-height: 2.75rem;
+  cursor: pointer;
+  list-style: none;
+  color: var(--ink-soft);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+
+.settings-advanced > summary::-webkit-details-marker {
+  display: none;
+}
+
+.settings-advanced > summary::after {
+  content: "›";
+  font-size: var(--fs-md);
+  transition: transform var(--dur-1) var(--ease-out);
+}
+
+.settings-advanced[open] > summary::after {
+  transform: rotate(90deg);
+}
+
+.settings-advanced > summary:hover {
+  color: var(--ink);
+}
+
+.settings-advanced > summary:focus-visible {
+  outline: 2px solid var(--vermilion);
+  outline-offset: 2px;
+  border-radius: var(--r-1);
 }
 
 /* ---------- Móvil ---------- */

@@ -14,10 +14,15 @@ import {
 } from "./settings";
 
 describe("parseTheme", () => {
-  it("acepta los temas conocidos", () => {
+  it("acepta las paletas conocidas", () => {
     expect(parseTheme("papel")).toBe("papel");
-    expect(parseTheme("crema")).toBe("crema");
+    expect(parseTheme("blanco")).toBe("blanco");
     expect(parseTheme("noche")).toBe("noche");
+    expect(parseTheme("oled")).toBe("oled");
+  });
+
+  it("migra el «crema» guardado a la paleta sepia", () => {
+    expect(parseTheme("crema")).toBe("papel");
   });
 
   it("cae en auto con valores nulos o desconocidos", () => {
@@ -30,8 +35,9 @@ describe("parseTheme", () => {
 
 describe("resolveTheme", () => {
   it("respeta la elección manual", () => {
-    expect(resolveTheme("crema", true)).toBe("crema");
+    expect(resolveTheme("blanco", true)).toBe("blanco");
     expect(resolveTheme("noche", false)).toBe("noche");
+    expect(resolveTheme("oled", false)).toBe("oled");
   });
 
   it("en auto sigue al sistema", () => {

@@ -10,7 +10,7 @@ Reglas de operación:
 
 ## 📊 Progreso General
 - [x] Fase 1: Verificación de Línea Base y Consolidación del Guionado
-- [ ] Fase 2: Rediseño Moderno de ThemeMenu y Sistema de Opciones
+- [x] Fase 2: Rediseño Moderno de ThemeMenu y Sistema de Opciones
 - [ ] Fase 3: Animaciones y Micro-interacciones (60 FPS)
 - [ ] Fase 4: Optimización Backend (CockroachDB/Hyperdrive y DeepSeek AI Gateway)
 - [ ] Fase 5: Funcionalidades de Alto Valor Agregado (Explicación Contextual y Exportación)
@@ -48,19 +48,19 @@ Reglas de operación:
   - `src/client/styles/tokens.css`
   - `src/client/lib/settings.ts`
 - **Tareas:**
-  - [ ] 2.1 Reestructurar `ThemeMenu.tsx` como un panel inferior moderno con esquinas redondeadas, fondo translúcido (`backdrop-blur-md`) y jerarquía visual clara.
-  - [ ] 2.2 Implementar selector visual de 4 paletas con muestras circulares:
+  - [x] 2.1 Reestructurar `ThemeMenu.tsx` como un panel inferior moderno con esquinas redondeadas, fondo translúcido (`backdrop-blur-md`) y jerarquía visual clara.
+  - [x] 2.2 Implementar selector visual de 4 paletas con muestras circulares:
         - Día Limpio (`#FFFFFF`, texto oscuro)
         - Papel Sepia (`#F8F1E3`, texto cálido)
         - Carbón/Pizarra (`#1F2022`, texto suave)
         - OLED Negro (`#000000`, texto nítido)
-  - [ ] 2.3 Controles de lectura de primer nivel:
+  - [x] 2.3 Controles de lectura de primer nivel:
         - Botones amplios `A-` / `A+` para tamaño de letra.
         - Selector visual de tipografías con vista previa.
         - Deslizadores o toggles para Interlineado (Estrecho, Normal, Amplio) y Márgenes.
         - Switch para el modo de lectura (Paginado horizontal vs. Scroll vertical).
         - Toggle directo para "Permitir separación silábica (Guiones)".
-  - [ ] 2.4 Agrupar parámetros técnicos, calibración y depuración en una sección colapsable "Ajustes Avanzados".
+  - [x] 2.4 Agrupar parámetros técnicos, calibración y depuración en una sección colapsable "Ajustes Avanzados".
 - **Criterio de Aceptación:**
   - Las opciones se aplican en tiempo real al lector sin recargas bruscas ni saltos de maquetación.
   - `pnpm run build` compila sin errores.

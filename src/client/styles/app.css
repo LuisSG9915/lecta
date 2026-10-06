@@ -36,7 +36,7 @@
   margin-block: var(--s-5) var(--s-4);
 }
 
-/* Selector de tema: opciones de texto; la activa lleva raya bermellón. */
+/* Selector de tema (variante texto): la activa lleva raya bermellón. */
 .theme-menu {
   display: flex;
   gap: var(--s-4);
@@ -67,6 +67,60 @@
 .theme-option[data-active] {
   color: var(--ink);
   text-decoration-color: var(--vermilion);
+}
+
+/* Selector de tema como muestras: cada círculo pinta el papel y la
+   tinta de su paleta (colores fijos en THEME_SWATCHES — deben verse
+   aunque otro tema esté activo). La activa lleva aro bermellón. */
+.theme-swatches {
+  display: flex;
+  gap: var(--s-4);
+  flex-wrap: wrap;
+}
+
+.swatch {
+  display: grid;
+  justify-items: center;
+  gap: var(--s-2);
+  min-height: 44px;
+  padding: var(--s-1);
+  border: none;
+  background: none;
+  color: var(--ink-soft);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+
+.swatch-dot {
+  display: grid;
+  place-items: center;
+  inline-size: 3rem;
+  block-size: 3rem;
+  border-radius: 50%;
+  border: 2px solid var(--rule-strong);
+  font-family: var(--font-book);
+  font-size: var(--fs-md);
+  line-height: 1;
+  transition:
+    border-color var(--dur-1) var(--ease-out),
+    box-shadow var(--dur-1) var(--ease-out);
+}
+
+.swatch[data-active] {
+  color: var(--ink);
+}
+
+.swatch[data-active] .swatch-dot {
+  border-color: var(--vermilion);
+  box-shadow: 0 0 0 3px var(--vermilion-wash);
+}
+
+@media (forced-colors: active) {
+  .swatch[data-active] .swatch-dot {
+    border-color: Highlight;
+    box-shadow: none;
+  }
 }
 
 @media (max-width: 40rem) {

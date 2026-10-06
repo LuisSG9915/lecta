@@ -1,13 +1,31 @@
-export type ThemeChoice = "auto" | "papel" | "crema" | "noche";
+export type ThemeChoice = "auto" | "blanco" | "papel" | "noche" | "oled";
 export type ResolvedTheme = Exclude<ThemeChoice, "auto">;
 
-export const THEME_CHOICES: ThemeChoice[] = ["auto", "papel", "crema", "noche"];
+export const THEME_CHOICES: ThemeChoice[] = [
+  "auto",
+  "blanco",
+  "papel",
+  "noche",
+  "oled",
+];
 
 export const THEME_LABELS: Record<ThemeChoice, string> = {
-  auto: "Automático",
-  papel: "Papel",
-  crema: "Crema",
-  noche: "Noche",
+  auto: "Auto",
+  blanco: "Día",
+  papel: "Sepia",
+  noche: "Pizarra",
+  oled: "OLED",
+};
+
+// Muestra de cada paleta: el papel y la tinta tal como se ven al leer.
+// «auto» parte el círculo en las dos caras que el sistema elige y no
+// lleva letra porque ninguna tinta sola se leería sobre ambas mitades.
+export const THEME_SWATCHES: Record<ThemeChoice, { bg: string; fg?: string }> = {
+  auto: { bg: "linear-gradient(135deg, #ffffff 50%, #1f2022 50%)" },
+  blanco: { bg: "#ffffff", fg: "#232019" },
+  papel: { bg: "#f8f1e3", fg: "#2b2520" },
+  noche: { bg: "#1f2022", fg: "#ddd9d3" },
+  oled: { bg: "#000000", fg: "#e8e4dc" },
 };
 
 const THEME_KEY = "lecta:theme";
@@ -15,12 +33,14 @@ const READER_KEY = "lecta:reader";
 
 export type ReaderFont = "literata" | "sans" | "serif" | "atkinson" | "dyslexic";
 
-export const READER_FONTS: { id: ReaderFont; label: string }[] = [
-  { id: "literata", label: "Literata" },
-  { id: "sans", label: "Alegreya Sans" },
-  { id: "serif", label: "Source Serif" },
-  { id: "atkinson", label: "Atkinson" },
-  { id: "dyslexic", label: "OpenDyslexic" },
+// `family` alimenta la vista previa del selector y readerCssVars: la
+// misma fuente de verdad para el nombre y la variable CSS.
+export const READER_FONTS: { id: ReaderFont; label: string; family: string }[] = [
+  { id: "literata", label: "Literata", family: "var(--font-book)" },
+  { id: "sans", label: "Alegreya Sans", family: "var(--font-sans-alt)" },
+  { id: "serif", label: "Source Serif", family: "var(--font-source-serif)" },
+  { id: "atkinson", label: "Atkinson", family: "var(--font-atkinson)" },
+  { id: "dyslexic", label: "OpenDyslexic", family: "var(--font-dyslexic)" },
 ];
 
 export interface ReaderSettings {
@@ -69,10 +89,34 @@ export const READER_LIMITS = {
   leading: { min: 1.5, max: 1.9 },
 } as const;
 
+// Interlineado como tres pasos con nombre; los extremos coinciden con
+// READER_LIMITS.leading para no ofrecer valores que el parseador rechaza.
+export const LEADING_OPTIONS: { value: number; label: string }[] = [
+  { value: 1.5, label: "Estrecho" },
+  { value: 1.65, label: "Normal" },
+  { value: 1.9, label: "Amplio" },
+];
+
+// Margen amplio = columna angosta: el orden de `measure` va al revés
+// del nombre del margen.
+export const MARGIN_OPTIONS: { value: ReaderSettings["measure"]; label: string }[] = [
+  { value: 75, label: "Estrechos" },
+  { value: 65, label: "Normal" },
+  { value: 55, label: "Amplios" },
+];
+
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
 
+// El «crema» guardado migra a «papel»: la paleta sepia actual cubre
+// el mismo papel cálido y la preferencia sigue siendo clara.
 export function parseTheme(raw: string | null): ThemeChoice {
-  return raw === "papel" || raw === "crema" || raw === "noche" ? raw : "auto";
+  if (raw === "crema") return "papel";
+  return raw === "papel" ||
+    raw === "noche" ||
+    raw === "blanco" ||
+    raw === "oled"
+    ? raw
+    : "auto";
 }
 
 export function resolveTheme(choice: ThemeChoice, prefersDark: boolean): ResolvedTheme {
@@ -107,15 +151,7 @@ export function parseReaderSettings(raw: string | null): ReaderSettings {
   }
 }
 
-const READ_FONT_VARS: Record<ReaderFont, string> = {
-  literata: "var(--font-book)",
-  sans: "var(--font-sans-alt)",
-  serif: "var(--font-source-serif)",
-  atkinson: "var(--font-atkinson)",
-  dyslexic: "var(--font-dyslexic)",
-};
-
-const parsePreparationMode = (v: unknown): PreparationMode =>
+export const parsePreparationMode = (v: unknown): PreparationMode =>
   v === "notice" || v === "off" ? v : "auto";
 
 // ¿Hay una elección explícita de preparación aplicable a este libro?
@@ -144,7 +180,8 @@ export function hasExplicitPreparationMode(bookHash?: string): boolean {
 // Variables CSS que aplica el contenedor del lector.
 export function readerCssVars(s: ReaderSettings): Record<string, string> {
   return {
-    "--read-font": READ_FONT_VARS[s.font] ?? READ_FONT_VARS.literata,
+    "--read-font":
+      READER_FONTS.find((f) => f.id === s.font)?.family ?? "var(--font-book)",
     "--read-size": `${s.size}px`,
     "--read-leading": String(s.leading),
     "--read-measure": `${s.measure}ch`,
@@ -229,6 +266,7 @@ export function applyTheme(choice: ThemeChoice) {
     root.style.colorScheme = "light dark";
   } else {
     root.dataset.theme = choice;
-    root.style.colorScheme = choice === "noche" ? "dark" : "light";
+    root.style.colorScheme =
+      choice === "noche" || choice === "oled" ? "dark" : "light";
   }
 }

@@ -42,6 +42,7 @@ export default function Sheet({ label, onClose, children, side }: SheetProps) {
         aria-label={label}
         tabIndex={-1}
       >
+        <div className="sheet-grabber" aria-hidden="true" />
         {children}
       </div>
     </div>

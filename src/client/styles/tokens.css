@@ -1,6 +1,6 @@
 /* Tokens de diseño «Cuaderno de lector».
-   Tres temas: papel (claro), crema (atardecer) y noche.
-   Sin [data-theme], el tema sigue a prefers-color-scheme. */
+   Cuatro paletas: blanco (día limpio), papel (sepia), noche (pizarra)
+   y oled (negro). Sin [data-theme], el tema sigue a prefers-color-scheme. */
 
 :root {
   /* Familias */
@@ -42,6 +42,7 @@
   /* Forma */
   --r-1: 2px;
   --r-2: 4px;
+  --r-pill: 999px;
   --r-sheet: 14px;
   --border: 1px solid var(--rule);
   --border-strong: 1px solid var(--rule-strong);
@@ -63,13 +64,13 @@
   --read-measure: 65ch;
 }
 
-/* Tema papel (predeterminado claro) */
+/* Tema papel sepia (predeterminado claro) */
 :root,
 :root[data-theme="papel"] {
   color-scheme: light;
-  --paper: #f6f1e7;
-  --paper-raised: #fbf8f1;
-  --paper-sunken: #efe8da;
+  --paper: #f8f1e3;
+  --paper-raised: #fdf8ee;
+  --paper-sunken: #f0e7d5;
   --ink: #2b2520;
   --ink-soft: #5e554b;
   --ink-faint: #8a7f72;
@@ -89,41 +90,41 @@
   --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='linear' slope='0.045'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
-/* Tema crema (atardecer) */
-:root[data-theme="crema"] {
+/* Tema blanco (día limpio): papel puro sin tinte cálido */
+:root[data-theme="blanco"] {
   color-scheme: light;
-  --paper: #efe3cf;
-  --paper-raised: #f5ebd9;
-  --paper-sunken: #e6d8be;
-  --ink: #3b2f25;
-  --ink-soft: #675647;
-  --ink-faint: #8f7d68;
-  --rule: #d6c7aa;
-  --rule-strong: #c2b08f;
-  --vermilion: #933621;
+  --paper: #ffffff;
+  --paper-raised: #ffffff;
+  --paper-sunken: #f2f0ea;
+  --ink: #26241f;
+  --ink-soft: #55534c;
+  --ink-faint: #8b877c;
+  --rule: #e3ded3;
+  --rule-strong: #cfc9ba;
+  --vermilion: #9e3a23;
   --vermilion-bright: #c2452d;
-  --vermilion-wash: #eedacc;
+  --vermilion-wash: #f3ddd5;
   --ochre: #d4a43a;
-  --ochre-wash: rgba(212, 164, 58, 0.3);
-  --ochre-soft: rgba(212, 164, 58, 0.16);
+  --ochre-wash: rgba(212, 164, 58, 0.28);
+  --ochre-soft: rgba(212, 164, 58, 0.14);
   --graphite: #6b6e66;
   --sage: #43694d;
   --amber: #8a6a1e;
-  --shadow-sheet-color: rgba(59, 47, 37, 0.16);
-  --scrim: rgba(59, 47, 37, 0.34);
+  --shadow-sheet-color: rgba(43, 37, 32, 0.14);
+  --scrim: rgba(43, 37, 32, 0.3);
 }
 
-/* Tema noche */
+/* Tema noche (pizarra): carbón neutro, tinta suave */
 :root[data-theme="noche"] {
   color-scheme: dark;
-  --paper: #1c1916;
-  --paper-raised: #242019;
-  --paper-sunken: #15120f;
-  --ink: #dcd3c3;
-  --ink-soft: #a89d8e;
-  --ink-faint: #7c7266;
-  --rule: #3a342c;
-  --rule-strong: #4a4238;
+  --paper: #1f2022;
+  --paper-raised: #26282b;
+  --paper-sunken: #17181a;
+  --ink: #d6d9de;
+  --ink-soft: #a3a9b1;
+  --ink-faint: #7b8189;
+  --rule: #3a3d43;
+  --rule-strong: #4b4f56;
   --vermilion: #e07a5f;
   --vermilion-bright: #e8886e;
   --vermilion-wash: rgba(224, 122, 95, 0.18);
@@ -140,18 +141,46 @@
     1px 1px 0 rgba(0, 0, 0, 0.4), 4px 6px 16px -6px rgba(0, 0, 0, 0.7);
 }
 
-/* Sin elección manual: noche cuando el sistema está oscuro */
+/* Tema oled: negro puro para pantallas OLED */
+:root[data-theme="oled"] {
+  color-scheme: dark;
+  --paper: #000000;
+  --paper-raised: #141619;
+  --paper-sunken: #000000;
+  --ink: #e8eaed;
+  --ink-soft: #a7adb5;
+  --ink-faint: #747a82;
+  --rule: #2b2e33;
+  --rule-strong: #3e4248;
+  --vermilion: #e8886e;
+  --vermilion-bright: #f09a80;
+  --vermilion-wash: rgba(232, 136, 110, 0.16);
+  --ochre: #e9c46a;
+  --ochre-wash: rgba(233, 196, 106, 0.2);
+  --ochre-soft: rgba(233, 196, 106, 0.1);
+  --graphite: #8c8f86;
+  --sage: #8fb996;
+  --amber: #d9b65c;
+  --shadow-sheet-color: rgba(0, 0, 0, 0.7);
+  --scrim: rgba(0, 0, 0, 0.7);
+  /* El grano sobre negro puro se lee como artefacto de pantalla. */
+  --grain: none;
+  --shadow-cover:
+    1px 1px 0 rgba(0, 0, 0, 0.5), 4px 6px 16px -6px rgba(0, 0, 0, 0.8);
+}
+
+/* Sin elección manual: pizarra cuando el sistema está oscuro */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]) {
     color-scheme: dark;
-    --paper: #1c1916;
-    --paper-raised: #242019;
-    --paper-sunken: #15120f;
-    --ink: #dcd3c3;
-    --ink-soft: #a89d8e;
-    --ink-faint: #7c7266;
-    --rule: #3a342c;
-    --rule-strong: #4a4238;
+    --paper: #1f2022;
+    --paper-raised: #26282b;
+    --paper-sunken: #17181a;
+    --ink: #d6d9de;
+    --ink-soft: #a3a9b1;
+    --ink-faint: #7b8189;
+    --rule: #3a3d43;
+    --rule-strong: #4b4f56;
     --vermilion: #e07a5f;
     --vermilion-bright: #e8886e;
     --vermilion-wash: rgba(224, 122, 95, 0.18);
