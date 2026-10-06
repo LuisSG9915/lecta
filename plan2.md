@@ -9,7 +9,7 @@ Reglas de operación:
 ---
 
 ## 📊 Progreso General
-- [ ] Fase 1: Verificación de Línea Base y Consolidación del Guionado
+- [x] Fase 1: Verificación de Línea Base y Consolidación del Guionado
 - [ ] Fase 2: Rediseño Moderno de ThemeMenu y Sistema de Opciones
 - [ ] Fase 3: Animaciones y Micro-interacciones (60 FPS)
 - [ ] Fase 4: Optimización Backend (CockroachDB/Hyperdrive y DeepSeek AI Gateway)
@@ -29,10 +29,10 @@ Reglas de operación:
   - `src/client/components/Reader.tsx`
   - `src/client/components/Vocabulary.test.ts`
 - **Tareas:**
-  - [ ] 1.1 Ejecutar `pnpm vitest run src/client/lib/settings.test.ts src/client/lib/epub.test.ts src/client/components/Reader.test.ts`.
-  - [ ] 1.2 Ejecutar la suite completa `pnpm test` para asegurar que ningún test preexistente esté roto.
-  - [ ] 1.3 Verificar que `pnpm run build` compila limpiamente sin errores de TypeScript.
-  - [ ] 1.4 Hacer commit atómico con los cambios locales de la desactivación de guionado y sanitización de `\u00AD`.
+  - [x] 1.1 Ejecutar `pnpm vitest run src/client/lib/settings.test.ts src/client/lib/epub.test.ts src/client/components/Reader.test.ts`.
+  - [x] 1.2 Ejecutar la suite completa `pnpm test` para asegurar que ningún test preexistente esté roto.
+  - [x] 1.3 Verificar que `pnpm run build` compila limpiamente sin errores de TypeScript.
+  - [x] 1.4 Hacer commit atómico con los cambios locales de la desactivación de guionado y sanitización de `\u00AD`.
 - **Criterio de Aceptación:**
   - Tests en verde y working tree limpio en git.
   - Mensaje de commit: `fix(reader): prevent arbitrary hyphen cuts and add hyphenation setting`
@@ -81,4 +81,62 @@ Reglas de operación:
   - [ ] 3.1 Transición de paso de página en `Reader.tsx`: desplazamiento horizontal suave con curva `cubic-bezier(0.2, 0.8, 0.2, 1)` (160–180 ms) que elimine el salto abrupto de página.
   - [ ] 3.2 Popover flotante en `WordPanel.tsx`: entrada animada (`scale(0.96) -> scale(1)` con opacidad `0 -> 1`) anclada directamente sobre la palabra seleccionada.
   - [ ] 3.3 Soporte de gesto de arrastre en `Sheet.tsx`: implementar cierre por deslizamiento táctil hacia abajo (*swipe to close*).
-  - [ ] 3.4 Micro-interacción en `Shelf.tsx`: elev
+  - [ ] 3.4 Micro-interacción en `Shelf.tsx`: elevación y suave transición al abrir un libro desde la biblioteca.
+- **Criterio de Aceptación:**
+  - Transiciones fluidas sin degradación de fotogramas ni desbordamientos horizontales.
+  - Mensaje de commit: `feat(animations): add smooth page turns, popovers and swipe-to-dismiss sheet`
+
+---
+
+## ⚡ FASE 4: Optimización Backend (CockroachDB/Hyperdrive y DeepSeek AI Gateway)
+- **Objetivo:** Evitar bloqueos de conexión y latencia en Hyperdrive ante sincronizaciones masivas, y blindar llamadas a DeepSeek.
+- **Archivos a intervenir:**
+  - `src/worker/db.ts`
+  - `src/worker/ai.ts`
+  - `src/worker/reading-data.ts`
+  - `src/worker/ai.test.ts`
+- **Tareas:**
+  - [ ] 4.1 En `src/worker/db.ts` y endpoints de sincronización, asegurar que las inserciones/actualizaciones masivas de posiciones y palabras se realicen en lotes fragmentados (*chunking* de 100-150 registros) para optimizar el pool de conexiones de Hyperdrive hacia CockroachDB.
+  - [ ] 4.2 En `src/worker/ai.ts`, implementar caché de significados frecuentes para evitar llamadas repetidas a DeepSeek.
+  - [ ] 4.3 Manejo de timeouts y errores en DeepSeek (AI Gateway): implementar timeout de 8 segundos y reintentos con retraso exponencial; si la IA no responde o devuelve 429/504, degradar limpiamente hacia la definición del catálogo léxico local (`src/worker/lexicon.ts`).
+- **Criterio de Aceptación:**
+  - `pnpm vitest run src/worker/ai.test.ts` pasa sin errores.
+  - La sincronización masiva se ejecuta sin agotar conexiones.
+  - Mensaje de commit: `perf(worker): optimize Hyperdrive batching and DeepSeek AI fallback handling`
+
+---
+
+## 💎 FASE 5: Funcionalidades de Alto Valor Agregado
+- **Objetivo:** Integrar explicación contextual con IA y exportación hacia Anki y Obsidian/Notion.
+- **Archivos a intervenir:**
+  - `src/client/components/WordPanel.tsx`
+  - `src/client/lib/export.ts`
+  - `src/client/lib/export.test.ts`
+  - `src/client/components/Vocabulary.tsx`
+  - `src/worker/ai.ts`
+- **Tareas:**
+  - [ ] 5.1 En `WordPanel.tsx`, añadir la acción "Explicar en contexto" que envíe el lema junto con la oración circundante al endpoint de IA para obtener una explicación clara de modismos, figuras retóricas o términos arcaicos.
+  - [ ] 5.2 En `src/client/lib/export.ts`, añadir exportación de vocabulario guardado a formato **Anki (.csv)** con campos: `Palabra`, `Definición`, `Contexto (Oración del libro)`.
+  - [ ] 5.3 En `src/client/lib/export.ts`, añadir exportación de notas y citas en **Markdown (.md)** estructurado para Obsidian y Notion.
+  - [ ] 5.4 En `Vocabulary.tsx`, habilitar modo de repaso FSRS con tarjeta tipo Cloze (oración original con el término oculto).
+- **Criterio de Aceptación:**
+  - `pnpm vitest run src/client/lib/export.test.ts` pasa con los nuevos formatos probados.
+  - La explicación contextual se muestra de forma concisa sin alterar el diseño de `WordPanel`.
+  - Mensaje de commit: `feat(value-add): add AI context explanation, Anki/Markdown export, and cloze review`
+
+---
+
+## 🧪 FASE 6: QA Final, Limpieza de CSS y Verificación PWA
+- **Objetivo:** Consolidar estilos, resolver advertencias de linting y verificar el funcionamiento offline.
+- **Archivos a intervenir:**
+  - `src/client/styles/legacy.css`
+  - `src/client/styles/app.css`
+- **Tareas:**
+  - [ ] 6.1 Purgar reglas duplicadas y selectores obsoletos de `legacy.css`.
+  - [ ] 6.2 Ejecutar `pnpm lint` y corregir cualquier advertencia.
+  - [ ] 6.3 Correr la suite de pruebas completa: `pnpm test`.
+  - [ ] 6.4 Validar la compilación para producción con `pnpm run build`.
+- **Criterio de Aceptación:**
+  - 100% de las pruebas pasando en verde.
+  - Compilación de producción limpia sin errores de bundling.
+  - Mensaje de commit: `chore: complete quality audit, clean legacy CSS, and finalize PLAN2.md`
