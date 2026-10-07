@@ -6,6 +6,15 @@ const startOfDay = (ts: number) => {
   return d.getTime();
 };
 
+// Días naturales completos desde un instante (0 = hoy, 1 = ayer).
+// El marcador de retomar lo usa como umbral y como dato del evento.
+export function daysAgo(ts: number, now = Date.now()): number {
+  return Math.max(
+    0,
+    Math.floor((startOfDay(now) - startOfDay(ts)) / DAY_MS),
+  );
+}
+
 // «hoy», «ayer», «hace 3 días», «hace 2 semanas», «hace 1 mes».
 export function relativeDay(ts: number, now = Date.now()): string {
   const days = Math.floor((startOfDay(now) - startOfDay(ts)) / DAY_MS);

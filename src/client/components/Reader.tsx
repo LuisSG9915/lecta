@@ -62,12 +62,14 @@ import {
 } from "../lib/section-words";
 import {
   chapterSummary,
+  countSavedInRange,
   hasChapterSummary,
   pruneReadingHistory,
   trackReadingEvent,
   type ChapterSummary,
   type VisitEventDraft,
 } from "../lib/reading-events";
+import { daysAgo, relativeDay } from "../lib/relative-time";
 import {
   countWords,
   bookProgress,
@@ -226,6 +228,10 @@ const consultedAwardMeta = () => {
     dayKey: localDayKey(at),
   };
 };
+
+// Días sin abrir el libro para que aparezca el marcador de retomar:
+// una reanudación reciente ya es continua y la tarjeta solo estorba.
+const RESUME_CARD_MIN_DAYS = 3;
 
 // Intención de navegación (coordinador T17): todo salto pasa por
 // `navigate` y deja registrada de dónde vino — la preparación (T19)
@@ -534,6 +540,16 @@ export default function Reader({
   const [catState, setCatState] = useState<CompanionState | null>(null);
   // Sugerencia de pausa 20-20-20 cuando la telemetría marca fatiga.
   const [fatigueNotice, setFatigueNotice] = useState(false);
+  // Marcador de retomar: contexto visible al reabrir el libro tras
+  // días sin leerlo (diseño: plan-marcador-retomar). Máxima prioridad
+  // en la franja de avisos — es el mensaje de apertura.
+  const [resumeCard, setResumeCard] = useState<{
+    label: string | null;
+    lastReadText: string;
+    daysSince: number;
+    savedInRange: number;
+    rereadTo: { index: number; fragment?: string } | null;
+  } | null>(null);
   const searchAbort = useRef<AbortController | null>(null);
   // Segmento de lectura abierto: empieza con la primera señal real y
   // termina donde quedó la última — el rato que sigue sin señales no
@@ -2227,6 +2243,41 @@ export default function Reader({
             index: entry.sectionIndex,
             restore: { ratio: entry.ratio, anchor: entry.anchor },
           });
+          // Marcador de retomar: con la posición quieta ≥3 días el
+          // lector perdió el hilo — la tarjeta le dice dónde quedó y
+          // le da la opción de releer el capítulo desde su inicio.
+          const daysSince = saved ? daysAgo(saved.updatedAt) : 0;
+          if (daysSince >= RESUME_CARD_MIN_DAYS && !disposed) {
+            const range = catalog.ranges.find(
+              (r) =>
+                r.startSection <= entry.sectionIndex &&
+                entry.sectionIndex < r.endSection,
+            );
+            const events = await listReadingEvents(bookHash, scope).catch(
+              () => [],
+            );
+            if (disposed) return;
+            const savedInRange = range ? countSavedInRange(events, range) : 0;
+            const target = range?.target ?? null;
+            setResumeCard({
+              label: target?.label ?? null,
+              lastReadText: saved ? relativeDay(saved.updatedAt) : "",
+              daysSince,
+              savedInRange,
+              rereadTo:
+                target &&
+                (target.sectionIndex < entry.sectionIndex ||
+                  (entry.ratio ?? 0) > 0.02)
+                  ? { index: target.sectionIndex, fragment: target.fragment }
+                  : null,
+            });
+            trackEvent({
+              kind: "resume_shown",
+              sectionIndex: entry.sectionIndex,
+              daysSince,
+              savedInRange,
+            });
+          }
         } else {
           // «target» con destino registrado, o «ask» sin catálogo
           // útil: se abre el inicio físico del libro.
@@ -2781,6 +2832,25 @@ export default function Reader({
     }
   };
 
+  // «Releer el capítulo» del marcador de retomar: salta al inicio del
+  // destino con jumpTo — eso deja «Volver a donde estaba» armado para
+  // regresar a la posición exacta tras el repaso.
+  const rereadChapter = () => {
+    const card = resumeCard;
+    setResumeCard(null);
+    if (!card?.rereadTo) return;
+    trackEvent({
+      kind: "resume_reread",
+      sectionIndex: card.rereadTo.index,
+      daysSince: card.daysSince,
+    });
+    jumpTo(
+      card.rereadTo.index,
+      { fragment: card.rereadTo.fragment },
+      "chapter",
+    );
+  };
+
   const refreshAnnotations = async (scope?: DbScope) => {
     setAnnotations(await listAnnotations(bookHash, scope ?? captureDbScope()));
   };
@@ -3263,11 +3333,45 @@ export default function Reader({
         )}
       </div>
 
+      {/* Marcador de retomar: máxima prioridad en la franja — es el
+          mensaje de apertura cuando el libro llevaba días cerrado.
+          Mientras está visible, el resto de avisos espera; al
+          descartarlo vuelven a su orden normal. */}
+      {resumeCard ? (
+        <div className="reader-prep" role="status">
+          <span className="reader-prep-text">
+            {resumeCard.label
+              ? `Quedaste en «${resumeCard.label}» ${resumeCard.lastReadText}.`
+              : `La última vez que abriste este libro fue ${resumeCard.lastReadText}.`}
+            {resumeCard.savedInRange > 0
+              ? ` Guardaste ${resumeCard.savedInRange} palabra(s) en este tramo.`
+              : ""}
+          </span>
+          {resumeCard.rereadTo ? (
+            <button
+              type="button"
+              className="btn reader-prep-open"
+              onClick={rereadChapter}
+            >
+              Releer el capítulo
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className="reader-return-dismiss"
+            onClick={() => setResumeCard(null)}
+            aria-label="Seguir leyendo"
+          >
+            ×
+          </button>
+        </div>
+      ) : null}
+
       {/* Aviso/acceso «Palabras del capítulo»: franja fija en la zona
           de controles, fuera del texto — persiste hasta atenderla o
           descartarla; nunca empuja la lectura porque vive aquí desde
           la entrada al capítulo. */}
-      {prepNotice && !prep ? (
+      {prepNotice && !prep && !resumeCard ? (
         <div className="reader-prep" role="status">
           <span className="reader-prep-text">
             {prepNotice.summary
@@ -3303,7 +3407,7 @@ export default function Reader({
           el aviso de preparación, fuera del texto; conviven solo una
           por diseño (la de preparación tiene preferencia). Persiste
           hasta aceptar o decir «Ahora no». */}
-      {calNotice && !prep && !prepNotice ? (
+      {calNotice && !prep && !prepNotice && !resumeCard ? (
         <div className="reader-prep" role="status">
           <span className="reader-prep-text">
             Ajusta qué palabras te sugiere Lecta antes de cada capítulo.
@@ -3328,7 +3432,7 @@ export default function Reader({
 
       {/* Pausa 20-20-20: el detector de fatiga (retrocesos tras un
           tramo largo) la dispara; se descarta al entenderla. */}
-      {fatigueNotice ? (
+      {fatigueNotice && !resumeCard ? (
         <div className="reader-prep" role="status">
           <span className="reader-prep-text">
             Has retrocedido varias veces en el último rato. Descansa la

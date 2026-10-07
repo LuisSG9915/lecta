@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   chapterSummary,
+  countSavedInRange,
   hasChapterSummary,
   summarizeReadingEvents,
 } from "./reading-events";
@@ -179,5 +180,34 @@ describe("chapterSummary", () => {
       "v1",
     );
     expect(hasChapterSummary(onlyDwell)).toBe(true);
+  });
+});
+
+describe("countSavedInRange", () => {
+  const range = { startSection: 2, endSection: 5 };
+
+  it("cuenta formas únicas guardadas dentro del tramo", () => {
+    expect(
+      countSavedInRange(
+        [
+          event({ kind: "word_saved", form: "Éter", sectionIndex: 3 }),
+          event({ kind: "word_saved", form: "éter", sectionIndex: 4 }),
+          event({ kind: "word_saved", form: "fulgor", sectionIndex: 4 }),
+          event({ kind: "word_saved", form: "fuera", sectionIndex: 5 }),
+          event({ kind: "word_consulted", form: "otra", sectionIndex: 3 }),
+        ],
+        range,
+      ),
+    ).toBe(2);
+  });
+
+  it("sin guardadas en el tramo devuelve cero", () => {
+    expect(
+      countSavedInRange(
+        [event({ kind: "word_saved", form: "x", sectionIndex: 1 })],
+        range,
+      ),
+    ).toBe(0);
+    expect(countSavedInRange([], range)).toBe(0);
   });
 });

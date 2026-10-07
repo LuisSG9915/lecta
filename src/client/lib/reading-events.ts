@@ -265,3 +265,23 @@ export function hasChapterSummary(summary: ChapterSummary): boolean {
     summary.dwellMs >= 60_000
   );
 }
+
+// Formas únicas guardadas dentro de un tramo físico del libro en
+// cualquier visita — contexto del marcador de retomar. Pura: quien
+// llama ya filtró los eventos por libro (listReadingEvents lo hace).
+export function countSavedInRange(
+  events: ReadingEvent[],
+  range: { startSection: number; endSection: number },
+): number {
+  const forms = new Set<string>();
+  for (const event of events) {
+    if (event.kind !== "word_saved") continue;
+    if (
+      event.sectionIndex < range.startSection ||
+      event.sectionIndex >= range.endSection
+    )
+      continue;
+    forms.add(event.form.toLowerCase());
+  }
+  return forms.size;
+}

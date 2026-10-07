@@ -253,6 +253,19 @@ export type ReadingEvent = ReadingEventBase &
         tipDay: string;
         action: string;
       }
+    // Marcador de retomar mostrado / «Releer el capítulo» elegido:
+    // mide si el contexto de reenganche tras días sin abrir sirve.
+    | {
+        kind: "resume_shown";
+        sectionIndex: number;
+        daysSince: number;
+        savedInRange: number;
+      }
+    | {
+        kind: "resume_reread";
+        sectionIndex: number;
+        daysSince: number;
+      }
   );
 
 // Operación pendiente sobre un libro remoto (subida o borrado). Es la
