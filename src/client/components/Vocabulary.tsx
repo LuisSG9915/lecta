@@ -60,6 +60,7 @@ import {
   wordsToCsv,
 } from "../lib/export";
 import { useModalBehavior } from "../lib/modal";
+import { triggerHaptic } from "../lib/haptics";
 import ReadingActivity from "./ReadingActivity";
 
 type VocabularyProps = {
@@ -571,6 +572,7 @@ export default function Vocabulary({ onClose, books, activityVersion }: Vocabula
       ]);
       void pushKnowledgeToServer([row], scope);
       await persistExposure(item.key, "known", scope);
+      triggerHaptic(12);
       advanceLearn();
     } catch {
       setLearnError("No se pudo guardar. Intenta de nuevo.");
@@ -592,6 +594,7 @@ export default function Vocabulary({ onClose, books, activityVersion }: Vocabula
         list?.map((word) => (word.key === stored.key ? stored : word)) ?? list,
       );
       await persistExposure(item.key, "learn", scope);
+      triggerHaptic(12);
       advanceLearn();
     } catch {
       setLearnError("No se pudo guardar. Intenta de nuevo.");
@@ -709,6 +712,7 @@ export default function Vocabulary({ onClose, books, activityVersion }: Vocabula
       // el resto (difícil/bien/fácil) cuenta como acierto.
       if (item.mode === "clozeNew" && item.item)
         void answerItem(item.item.id, ratingToCorrect(rating), scope);
+      triggerHaptic(rating === Rating.Easy ? 16 : rating === Rating.Good ? 12 : 8);
       setWords((list) => list?.map((w) => (w.key === word.key ? stored : w)) ?? list);
       setQueue((current) => {
         if (!current) return current;
@@ -739,6 +743,7 @@ export default function Vocabulary({ onClose, books, activityVersion }: Vocabula
   const answerOption = (picked: string, correct: boolean) => {
     const item = queue?.items[0];
     if (!item || answered) return;
+    triggerHaptic(correct ? 14 : 24);
     setAnswered({ picked, correct });
     // Los ejercicios con ítem del catálogo («contexto») también anotan
     // el intento en su estadística editorial; no bloquea el repaso.

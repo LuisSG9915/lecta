@@ -227,7 +227,6 @@ function StrokePatch({ s, cls }: { s: Stroke; cls: string }) {
 // para la etapa (las proporciones cambian; las anclas vienen en el
 // StageArt).
 function Wear({ art, accessories }: { art: StageArt; accessories: string[] }) {
-  const scarf = accessories.includes("bufanda");
   const items: ReactNode[] = [];
   if (accessories.includes("chaleco") && art.wear.chaleco)
     items.push(
@@ -237,6 +236,15 @@ function Wear({ art, accessories }: { art: StageArt; accessories: string[] }) {
         ))}
       </g>,
     );
+  else if (accessories.includes("capa") && art.wear.capa)
+    items.push(
+      <g key="capa" className="cat-wear cat-wear--capa">
+        {art.wear.capa.map((d, i) => (
+          <path key={i} d={d} />
+        ))}
+      </g>,
+    );
+
   if (accessories.includes("anteojos") && art.wear.anteojos)
     items.push(
       <g key="anteojos" className="cat-wear cat-wear--anteojos">
@@ -245,6 +253,15 @@ function Wear({ art, accessories }: { art: StageArt; accessories: string[] }) {
         ))}
       </g>,
     );
+  else if (accessories.includes("monoculo") && art.wear.monoculo)
+    items.push(
+      <g key="monoculo" className="cat-wear cat-wear--monoculo">
+        {art.wear.monoculo.map((d, i) => (
+          <path key={i} d={d} />
+        ))}
+      </g>,
+    );
+
   if (accessories.includes("moño") && art.wear.moño)
     items.push(
       <g key="moño" className="cat-wear cat-wear--moño">
@@ -253,7 +270,16 @@ function Wear({ art, accessories }: { art: StageArt; accessories: string[] }) {
         ))}
       </g>,
     );
-  if (scarf && art.wear.bufanda)
+  else if (accessories.includes("boina") && art.wear.boina)
+    items.push(
+      <g key="boina" className="cat-wear cat-wear--boina">
+        {art.wear.boina.map((d, i) => (
+          <path key={i} d={d} />
+        ))}
+      </g>,
+    );
+
+  if (accessories.includes("bufanda") && art.wear.bufanda)
     items.push(
       <g key="bufanda" className="cat-wear cat-wear--bufanda">
         {art.wear.bufanda.map((d, i) => (
@@ -269,6 +295,15 @@ function Wear({ art, accessories }: { art: StageArt; accessories: string[] }) {
         ))}
       </g>,
     );
+  else if (accessories.includes("corbatin") && art.wear.corbatin)
+    items.push(
+      <g key="corbatin" className="cat-wear cat-wear--corbatin">
+        {art.wear.corbatin.map((d, i) => (
+          <path key={i} d={d} />
+        ))}
+      </g>,
+    );
+
   return <>{items}</>;
 }
 
@@ -424,7 +459,7 @@ export function Companion({
         </g>
         {/* Rayas del pelaje atigrado: van sobre el pelaje y bajo la
             ropa para que una bufanda las tape como en la vida real. */}
-        {coat === "pelaje-atigrado" && art.marks.length ? (
+        {(coat === "pelaje-atigrado" || coat === "pelaje-calico") && art.marks.length ? (
           <path className="cat-marks" d={art.marks.join(" ")} />
         ) : null}
         <Wear art={art} accessories={accessories} />

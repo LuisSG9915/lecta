@@ -4,6 +4,7 @@
 // botón. El área mínima de 44×44 vive en .companion-btn (game.css).
 
 import { Companion, type CompanionProps } from "./Companion";
+import { triggerHaptic } from "../lib/haptics";
 
 export function CompanionButton({
   label,
@@ -21,7 +22,10 @@ export function CompanionButton({
       type="button"
       className="companion-btn"
       aria-label={label}
-      onClick={onClick}
+      onClick={() => {
+        triggerHaptic(12);
+        onClick();
+      }}
       disabled={disabled}
     >
       <Companion {...cat} decorative />

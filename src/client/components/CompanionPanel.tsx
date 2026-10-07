@@ -68,13 +68,19 @@ const SLOT_LABELS: Record<EquippedSlot, string> = {
 
 const ARTICLE_LABELS: Record<CompanionArticle, string> = {
   chaleco: "Chaleco",
+  capa: "Capa de terciopelo",
   bufanda: "Bufanda",
   collar: "Collar",
+  corbatin: "Corbatín",
   moño: "Moño",
+  boina: "Boina de poeta",
   anteojos: "Anteojos",
+  monoculo: "Monóculo",
   "pelaje-atigrado": "Atigrado",
   "pelaje-gris": "Gris azulado",
+  "pelaje-calico": "Calicó",
   "pelaje-siames": "Siamés",
+  "pelaje-negro": "Medianoche",
   "pelaje-tuxedo": "Tuxedo",
   "pelaje-dorado": "Dorado",
 };

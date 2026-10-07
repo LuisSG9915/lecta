@@ -35,9 +35,47 @@ export type ChapterAnalysis =
   | { state: "stale" }
   | { state: "cancelled" };
 
-type AnalyzerDeps = {
+export type SerializedChapterAnalysis = {
+  version: 1;
+  forms: string[];
+  entries: Record<string, LexiconEntry[]>;
+  capitalOnly: string[];
+  text: string;
+};
+
+export function serializeChapterAnalysis(analysis: ChapterAnalysis): string | null {
+  if (analysis.state !== "ready") return null;
+  const payload: SerializedChapterAnalysis = {
+    version: 1,
+    forms: analysis.forms,
+    entries: analysis.entries,
+    capitalOnly: Array.from(analysis.capitalOnly),
+    text: analysis.text,
+  };
+  return JSON.stringify(payload);
+}
+
+export function deserializeChapterAnalysis(raw: string): ChapterAnalysis | null {
+  try {
+    const data = JSON.parse(raw) as SerializedChapterAnalysis;
+    if (data.version !== 1 || !Array.isArray(data.forms)) return null;
+    return {
+      state: "ready",
+      forms: data.forms,
+      entries: data.entries ?? {},
+      capitalOnly: new Set(data.capitalOnly ?? []),
+      text: data.text ?? "",
+    };
+  } catch {
+    return null;
+  }
+}
+
+export type AnalyzerDeps = {
   book: EpubBook;
   language: string;
+  loadCached?: (targetId: string) => Promise<ChapterAnalysis | null>;
+  saveCached?: (targetId: string, analysis: ChapterAnalysis) => Promise<void>;
   // Inyectables para pruebas; en producción usan el pipeline real.
   extractWords?: (text: string, lang: string) => Promise<string[]>;
   lookup?: (forms: string[], lang: string) => Promise<BatchLookupResult>;
@@ -155,20 +193,39 @@ export function createChapterAnalyzer(
     }
   };
 
-  const analyze = (
+  const analyze = async (
     range: ChapterRange,
     opts?: { knownSection?: { index: number; text: string } },
   ): Promise<ChapterAnalysis> => {
     const key = range.target.id;
     const cached = cache.get(key);
-    if (cached?.state === "ready") return Promise.resolve(cached);
+    if (cached?.state === "ready") return cached;
+
+    // Si hay cargador persistente, consultar antes de computar
+    if (deps.loadCached) {
+      try {
+        const persisted = await deps.loadCached(key);
+        if (persisted?.state === "ready") {
+          cache.set(key, persisted);
+          return persisted;
+        }
+      } catch {
+        // En caso de error de lectura, continúa con la ejecución normal
+      }
+    }
+
     let pending = inflight.get(key);
     if (!pending) {
       pending = run(range, opts?.knownSection).then((result) => {
         inflight.delete(key);
         // Solo «ready» se cachea: un error o un resultado obsoleto se
         // reintenta en la próxima solicitud, nunca queda congelado.
-        if (result.state === "ready") cache.set(key, result);
+        if (result.state === "ready") {
+          cache.set(key, result);
+          if (deps.saveCached) {
+            void deps.saveCached(key, result).catch(() => undefined);
+          }
+        }
         return result;
       });
       inflight.set(key, pending);

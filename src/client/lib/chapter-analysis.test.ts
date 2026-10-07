@@ -210,4 +210,43 @@ describe("createChapterAnalyzer", () => {
     });
     if (r2.state === "ready") expect(r2.text).toContain("otro");
   });
+
+  it("recupera el resultado de loadCached sin computar", async () => {
+    const book = fakeBook(["texto"]);
+    const cat = catalog([["cap.xhtml", 0, 1]]);
+    const extractWords = vi.fn(async () => ["hola"]);
+    const cachedItem = {
+      state: "ready" as const,
+      forms: ["persistido"],
+      entries: {},
+      capitalOnly: new Set<string>(),
+      text: "texto",
+    };
+    const a = createChapterAnalyzer(cat, {
+      book,
+      language: "es",
+      extractWords,
+      loadCached: async (id) => (id === "cap.xhtml" ? cachedItem : null),
+    });
+    const result = await a.analyze(cat.ranges[0]);
+    expect(result).toEqual(cachedItem);
+    expect(extractWords).not.toHaveBeenCalled();
+  });
+
+  it("guarda en saveCached cuando el resultado está listo", async () => {
+    const book = fakeBook(["texto"]);
+    const cat = catalog([["cap.xhtml", 0, 1]]);
+    const saved = vi.fn(async () => undefined);
+    const a = createChapterAnalyzer(cat, {
+      book,
+      language: "es",
+      extractWords: async () => ["palabra"],
+      lookup: async () => ({ ok: true, entries: {} }),
+      saveCached: saved,
+    });
+    const result = await a.analyze(cat.ranges[0]);
+    expect(result.state).toBe("ready");
+    expect(saved).toHaveBeenCalledWith("cap.xhtml", result);
+  });
 });
+

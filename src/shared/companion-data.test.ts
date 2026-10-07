@@ -624,10 +624,17 @@ describe("validateCompanionBatch", () => {
         receipts: [],
       });
     expect(field("equipped.coat", "pelaje-gris").ok).toBe(true);
+    expect(field("equipped.coat", "pelaje-calico").ok).toBe(true);
+    expect(field("equipped.coat", "pelaje-negro").ok).toBe(true);
     expect(field("equipped.coat", null).ok).toBe(true);
+    expect(field("equipped.head", "boina").ok).toBe(true);
+    expect(field("equipped.body", "capa").ok).toBe(true);
+    expect(field("equipped.neck", "corbatin").ok).toBe(true);
+    expect(field("equipped.face", "monoculo").ok).toBe(true);
     // Una prenda de otra ranura no cuela en la ranura de pelaje.
     expect(field("equipped.coat", "bufanda").ok).toBe(false);
     expect(field("equipped.neck", "pelaje-gris").ok).toBe(false);
+    expect(field("equipped.face", "boina").ok).toBe(false);
   });
 
   it("un baseline corrupto se rechaza (xp negativa, stats incompletos)", () => {

@@ -14,6 +14,9 @@ type SheetProps = {
   // En pantallas anchas la hoja se acopla al margen indicado como
   // marginalia; en pantallas estrechas sigue siendo hoja inferior.
   side?: "right" | "left";
+  // Variante compacta para consulta en lectura: no tapa la página
+  // ni desenfoca el libro en exceso.
+  variant?: "default" | "peek";
 };
 
 // Punto de corte donde la hoja deja de ser hoja inferior (components.css).
@@ -33,11 +36,22 @@ type DragTrack = {
   on: boolean;
 };
 
-export default function Sheet({ label, onClose, children, side }: SheetProps) {
+export default function Sheet({
+  label,
+  onClose,
+  children,
+  side,
+  variant = "default",
+}: SheetProps) {
   const ref = useRef<HTMLDivElement>(null);
   useModalBehavior(ref, onClose);
   const docked =
-    side === "left" ? " sheet--docked sheet--docked-left" : side === "right" ? " sheet--docked" : "";
+    side === "left"
+      ? " sheet--docked sheet--docked-left"
+      : side === "right"
+        ? " sheet--docked"
+        : "";
+  const peekClass = variant === "peek" ? " sheet--peek" : "";
   // Cierra solo si el mismo puntero empezó y terminó sobre el fondo:
   // arrastrar desde dentro o soltar fuera tras empezar dentro no cierra.
   const downOnScrim = useRef(false);
@@ -91,7 +105,7 @@ export default function Sheet({ label, onClose, children, side }: SheetProps) {
     >
       <div
         ref={ref}
-        className={`sheet${docked}`}
+        className={`sheet${docked}${peekClass}`}
         role="dialog"
         aria-modal="true"
         aria-label={label}

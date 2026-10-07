@@ -211,6 +211,19 @@
   transition: transform var(--dur-3) var(--ease-out);
 }
 
+/* Variante Peek: consulta ágil de palabras en lectura sin tapar la página
+   ni aislar al lector con desenfoques fuertes. */
+.sheet--peek {
+  max-height: min(48vh, 24rem);
+  box-shadow: 0 -4px 22px rgba(43, 37, 32, 0.12);
+}
+
+.sheet-scrim:has(.sheet--peek) {
+  background: rgba(43, 37, 32, 0.2);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+
 /* Arrastre en curso: la hoja sigue al dedo sin desaceleración. */
 .sheet[data-swiping] {
   transition: none;

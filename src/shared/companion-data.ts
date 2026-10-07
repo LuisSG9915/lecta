@@ -166,13 +166,19 @@ export type CompanionBatch = {
 // «estampa» es recompensa de logro, no prenda, y no aparece aquí.
 export const COMPANION_ARTICLES = {
   chaleco: "body",
+  capa: "body",
   bufanda: "neck",
   collar: "neck",
+  corbatin: "neck",
   moño: "head",
+  boina: "head",
   anteojos: "face",
+  monoculo: "face",
   "pelaje-atigrado": "coat",
   "pelaje-gris": "coat",
+  "pelaje-calico": "coat",
   "pelaje-siames": "coat",
+  "pelaje-negro": "coat",
   "pelaje-tuxedo": "coat",
   "pelaje-dorado": "coat",
 } as const;

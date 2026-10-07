@@ -85,7 +85,13 @@
 
 .nb-card {
   margin-block: var(--s-4) var(--s-5);
-  padding-inline-start: var(--s-7);
+  padding: var(--s-5) var(--s-5) var(--s-5) var(--s-6);
+  background: var(--paper-raised);
+  border: var(--border);
+  border-radius: var(--r-2);
+  border-inline-start: 3px solid var(--vermilion);
+  box-shadow: 0 4px 14px -4px rgba(43, 37, 32, 0.08);
+  position: relative;
 }
 
 .nb-card-front {

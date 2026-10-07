@@ -137,6 +137,41 @@ describe("Companion render", () => {
     for (const st of STAGES) expect(st.marks.length).toBeGreaterThanOrEqual(5);
   });
 
+  it("renderiza boina, capa, corbatín y monóculo en sus clases", () => {
+    render(
+      h(Companion, {
+        ...base,
+        accessories: ["boina", "capa", "corbatin", "monoculo"],
+      }),
+    );
+    expect(svg().querySelector(".cat-wear--boina")).toBeTruthy();
+    expect(svg().querySelector(".cat-wear--capa")).toBeTruthy();
+    expect(svg().querySelector(".cat-wear--corbatin")).toBeTruthy();
+    expect(svg().querySelector(".cat-wear--monoculo")).toBeTruthy();
+  });
+
+  it("el pelaje calicó enciende la clase y sus manchas", () => {
+    render(h(Companion, { ...base, accessories: ["pelaje-calico"] }));
+    expect(svg().getAttribute("class")).toContain("cat--coat-calico");
+    const marks = svg().querySelector(".cat-marks");
+    expect(marks).toBeTruthy();
+  });
+
+  it("el pelaje negro aplica la clase coat-negro", () => {
+    render(h(Companion, { ...base, accessories: ["pelaje-negro"] }));
+    expect(svg().getAttribute("class")).toContain("cat--coat-negro");
+  });
+
+  it("todas las nuevas prendas están generadas en las cinco etapas", async () => {
+    const { STAGES } = await import("./companion-sprites");
+    for (const st of STAGES) {
+      expect(st.wear.boina?.length).toBeGreaterThan(0);
+      expect(st.wear.capa?.length).toBeGreaterThan(0);
+      expect(st.wear.corbatin?.length).toBeGreaterThan(0);
+      expect(st.wear.monoculo?.length).toBeGreaterThan(0);
+    }
+  });
+
   it("el nombre propio aparece en el rótulo", () => {
     render(h(Companion, { ...base, name: "Michi" }));
     expect(svg().getAttribute("aria-label")).toContain("Michi");

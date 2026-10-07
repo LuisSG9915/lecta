@@ -130,6 +130,11 @@
   /* Sin guionado una palabra larga no debe rebosar la medida:
      break-word la parte por el borde de la caja. */
   overflow-wrap: break-word;
+  text-wrap: pretty;
+  hanging-punctuation: first last;
+  text-rendering: optimizeLegibility;
+  orphans: 2;
+  widows: 2;
 }
 
 .book-content > * {
@@ -405,6 +410,7 @@
   font-family: var(--font-ui);
   font-size: var(--fs-sm);
   color: var(--ink-soft);
+  font-variant-numeric: oldstyle-nums;
 }
 
 .reader-foot-meta > span:first-child {
@@ -1464,4 +1470,32 @@ mark.predicted-word:hover {
   display: flex;
   gap: var(--s-2);
   justify-content: flex-end;
+}
+
+/* Atajos de teclado en el lector */
+.shortcuts-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  margin-top: var(--s-2);
+}
+
+.shortcut-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  font-size: var(--text-sm);
+  color: var(--ink-dim);
+}
+
+.shortcut-row kbd {
+  font-family: var(--font-mono, monospace);
+  font-size: 0.85em;
+  padding: 0.15em 0.45em;
+  border-radius: var(--r-chip, 3px);
+  background: var(--paper-subtle, rgba(0, 0, 0, 0.05));
+  border: 1px solid var(--line-subtle, rgba(0, 0, 0, 0.15));
+  color: var(--ink);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.08);
 }

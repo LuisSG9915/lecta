@@ -77,6 +77,10 @@ export interface StageArt {
     moño?: string[];
     anteojos?: string[];
     chaleco?: string[];
+    boina?: string[];
+    capa?: string[];
+    corbatin?: string[];
+    monoculo?: string[];
   };
   // Ancla de platito/pelota (punto superior izquierdo del atrejo).
   propX: number;
@@ -447,6 +451,59 @@ function makeStage(p: CatParams): StageArt {
         `Q ${n(cx + vOutX)} ${n(vBotY - 1)} ${n(cx + vInX * 1.4)} ${n(vBotY)} ` +
         `L ${n(cx + vInX)} ${n(vBotY - 4)} ` +
         `Q ${n(cx + vInX + 1.5)} ${n(p.bodyCy)} ${n(cx + vInX)} ${n(vTopY + 3)} Z`,
+    ];
+  }
+  // Corbatín: cinta fina bajo el mentón + lazo con alas y nudo central.
+  {
+    const bowY = jawY + 3.8;
+    wear.corbatin = [
+      `M ${n(cx - jawW * 0.72)} ${n(jawY + 0.5)} Q ${n(cx)} ${n(jawY + 5)} ${n(cx + jawW * 0.72)} ${n(jawY + 0.5)} ` +
+        `L ${n(cx + jawW * 0.72)} ${n(jawY + 2.4)} Q ${n(cx)} ${n(jawY + 6.8)} ${n(cx - jawW * 0.72)} ${n(jawY + 2.4)} Z`,
+      `M ${n(cx)} ${n(bowY)} L ${n(cx - 5.4)} ${n(bowY - 3)} L ${n(cx - 5)} ${n(bowY + 3)} Z`,
+      `M ${n(cx)} ${n(bowY)} L ${n(cx + 5.4)} ${n(bowY - 3)} L ${n(cx + 5)} ${n(bowY + 3)} Z`,
+      ell(cx, bowY, 1.8, 1.6),
+    ];
+  }
+  // Boina: gorra francesa inclinada sobre la coronilla + rabito de fieltro.
+  {
+    const bx = cx - hw * 0.08;
+    const by = headTop + p.headR * 0.22;
+    const bw = hw * 0.68;
+    const bh = p.headR * 0.36;
+    wear.boina = [
+      `M ${n(bx - bw)} ${n(by + 1)} ` +
+        `C ${n(bx - bw * 0.9)} ${n(by - bh * 1.5)} ${n(bx + bw * 0.7)} ${n(by - bh * 1.8)} ${n(bx + bw)} ${n(by - bh * 0.4)} ` +
+        `C ${n(bx + bw * 1.05)} ${n(by + bh * 0.6)} ${n(bx + bw * 0.4)} ${n(by + bh * 0.9)} ${n(bx)} ${n(by + bh * 0.7)} ` +
+        `C ${n(bx - bw * 0.6)} ${n(by + bh * 0.6)} ${n(bx - bw * 1.02)} ${n(by + bh * 0.4)} ${n(bx - bw)} ${n(by + 1)} Z`,
+      `M ${n(bx + 1)} ${n(by - bh * 1.25)} Q ${n(bx + 2)} ${n(by - bh * 1.6)} ${n(bx + 4.5)} ${n(by - bh * 1.55)}`,
+    ];
+  }
+  // Monóculo: aro dorado sobre el ojo derecho + cadena descendente.
+  {
+    const fr = Math.max(p.eyeRx, p.eyeRy) + 2.4;
+    const mEyeX = cx + p.eyeDx;
+    wear.monoculo = [
+      ell(mEyeX, eyeY, fr, fr),
+      `M ${n(mEyeX + fr * 0.7)} ${n(eyeY + fr * 0.7)} ` +
+        `Q ${n(mEyeX + fr + 3.5)} ${n(eyeY + fr + 5.5)} ${n(cx + hw * 0.5)} ${n(jawY + 1.5)}`,
+    ];
+  }
+  // Capa de terciopelo: dos alas sobre los hombros + broche dorado central.
+  {
+    const cTopY = jawY + 2;
+    const cBotY = p.bodyCy + p.bodyRy - 2;
+    const cOutX = p.bodyRx + 2.2;
+    const cInX = Math.max(5, p.bodyRx * 0.38);
+    wear.capa = [
+      `M ${n(cx - jawW * 0.55)} ${n(cTopY)} ` +
+        `Q ${n(cx - cOutX - 2)} ${n(p.bodyCy)} ${n(cx - cOutX)} ${n(cBotY)} ` +
+        `L ${n(cx - cInX)} ${n(cBotY)} ` +
+        `Q ${n(cx - cInX - 2)} ${n(p.bodyCy)} ${n(cx - 2.5)} ${n(cTopY + 3.5)} Z`,
+      `M ${n(cx + jawW * 0.55)} ${n(cTopY)} ` +
+        `Q ${n(cx + cOutX + 2)} ${n(p.bodyCy)} ${n(cx + cOutX)} ${n(cBotY)} ` +
+        `L ${n(cx + cInX)} ${n(cBotY)} ` +
+        `Q ${n(cx + cInX + 2)} ${n(p.bodyCy)} ${n(cx + 2.5)} ${n(cTopY + 3.5)} Z`,
+      ell(cx, cTopY + 3.5, 2.3, 2.3),
     ];
   }
 

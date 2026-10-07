@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import Sheet from "./Sheet";
+import { triggerHaptic } from "../lib/haptics";
 import type { PreparationAnswer, PreparationAnswers } from "../lib/preparation";
 import type { SuggestionRow } from "../lib/section-words";
 
@@ -101,7 +102,10 @@ function Row({
           className={`cal-choice${answer === "known" ? " is-selected" : ""}`}
           aria-pressed={answer === "known"}
           disabled={saving}
-          onClick={() => onAnswer(row.key, "known")}
+          onClick={() => {
+            triggerHaptic(10);
+            onAnswer(row.key, "known");
+          }}
         >
           La conozco
         </button>
@@ -110,7 +114,10 @@ function Row({
           className={`cal-choice${answer === "unknown" ? " is-selected" : ""}`}
           aria-pressed={answer === "unknown"}
           disabled={saving}
-          onClick={() => onAnswer(row.key, "unknown")}
+          onClick={() => {
+            triggerHaptic(10);
+            onAnswer(row.key, "unknown");
+          }}
         >
           No la conozco
         </button>

@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
-import Reader from "./components/Reader";
-// El Cuaderno lleva fsrs: carga diferida para no pagar ese costo al arrancar.
+// El Lector y el Cuaderno se cargan diferidos para no inflar la descarga inicial de la estantería.
+const Reader = lazy(() => import("./components/Reader"));
 const Vocabulary = lazy(() => import("./components/Vocabulary"));
 import Account from "./components/Account";
 import Sheet from "./components/Sheet";
@@ -118,6 +118,22 @@ export default function App() {
   // nunca antes): el compañero solo ve datos de la base vigente — un
   // cambio de cuenta lo limpia y recarga con el contexto nuevo.
   const [dbUserId, setDbUserId] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Precarga el Lector durante la holgura del navegador para que abrir un libro sea inmediato.
+    if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+      const id = (window as unknown as { requestIdleCallback: (cb: () => void) => number })
+        .requestIdleCallback(() => void import("./components/Reader"));
+      return () => {
+        if ("cancelIdleCallback" in window) {
+          (window as unknown as { cancelIdleCallback: (id: number) => void })
+            .cancelIdleCallback(id);
+        }
+      };
+    }
+    const timer = setTimeout(() => void import("./components/Reader"), 2500);
+    return () => clearTimeout(timer);
+  }, []);
 
   const changeTheme = (choice: ThemeChoice) => {
     setTheme(choice);
@@ -717,24 +733,26 @@ export default function App() {
     <CompanionProvider userId={dbUserId}>
     <div className="app">
       {book ? (
-        <Reader
-          key={`${sessionUserId ?? "anon"}:${book.hash}`}
-          bookHash={book.hash}
-          file={book.file}
-          fileName={book.name}
-          onError={setError}
-          onStatus={setMessage}
-          onBack={closeReader}
-          onOpenNotebook={() => openPanel("vocab")}
-          statusText={message}
-          errorText={error}
-          panelsOpen={showVocabulary || showAccount}
-          theme={theme}
-          onThemeChange={changeTheme}
-          vocabVersion={vocabVersion}
-          onRequestCalibration={requestCalibration}
-          signedIn={Boolean(sessionUserId)}
-        />
+        <Suspense fallback={<p className="status">Abriendo el libro…</p>}>
+          <Reader
+            key={`${sessionUserId ?? "anon"}:${book.hash}`}
+            bookHash={book.hash}
+            file={book.file}
+            fileName={book.name}
+            onError={setError}
+            onStatus={setMessage}
+            onBack={closeReader}
+            onOpenNotebook={() => openPanel("vocab")}
+            statusText={message}
+            errorText={error}
+            panelsOpen={showVocabulary || showAccount}
+            theme={theme}
+            onThemeChange={changeTheme}
+            vocabVersion={vocabVersion}
+            onRequestCalibration={requestCalibration}
+            signedIn={Boolean(sessionUserId)}
+          />
+        </Suspense>
       ) : (
         <>
           <header className="app-header">

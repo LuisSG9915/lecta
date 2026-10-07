@@ -218,9 +218,13 @@ export const ACHIEVEMENTS: Achievement[] = [
 // Accesorios que regala cada subida de nivel (los cofres de logros
 // guardan estampas). Son cosméticos: se dibujan sobre el gato.
 const LEVEL_REWARDS: Record<number, string> = {
+  1: "corbatin",
   2: "bufanda",
+  3: "boina",
   4: "moño",
+  5: "monoculo",
   6: "collar",
+  7: "capa",
   8: "anteojos",
 };
 
@@ -235,8 +239,10 @@ export function rewardForLevel(level: number): string {
 // umbral tiene su pelaje sin depender de un cofre antiguo.
 export const COAT_LEVELS: Record<string, number> = {
   "pelaje-atigrado": 1,
+  "pelaje-calico": 2,
   "pelaje-gris": 3,
   "pelaje-siames": 5,
+  "pelaje-negro": 6,
   "pelaje-tuxedo": 7,
   "pelaje-dorado": 9,
 };
@@ -255,10 +261,15 @@ export function requiredCoatLevel(article: string): number | null {
 }
 
 export const ACCESSORY_LABELS: Record<string, string> = {
+  chaleco: "Chaleco del gato",
+  capa: "Capa de terciopelo",
   bufanda: "Bufanda del gato",
-  moño: "Moño del gato",
   collar: "Collar del gato",
+  corbatin: "Corbatín del gato",
+  moño: "Moño del gato",
+  boina: "Boina de poeta",
   anteojos: "Anteojos del gato",
+  monoculo: "Monóculo de época",
   estampa: "Estampa conmemorativa",
 };
 
@@ -386,9 +397,15 @@ export function pendingChests(state: GameState): GameChest[] {
   return state.chests.filter((chest) => chest.openedAt === null);
 }
 
-// Accesorios que el gato luce: los regalos de nivel ya abiertos.
+// Accesorios que el gato luce: los regalos de nivel ya abiertos
+// o correspondientes a niveles ya alcanzados en el progreso.
 export function unlockedAccessories(state: GameState): string[] {
-  return state.chests
+  const fromChests = state.chests
     .filter((chest) => chest.source === "level" && chest.openedAt !== null)
     .map((chest) => chest.reward);
+  const currentLvl = levelFor(state.xp);
+  const fromLevel = Object.entries(LEVEL_REWARDS)
+    .filter(([lvl]) => Number(lvl) <= currentLvl)
+    .map(([, reward]) => reward);
+  return [...new Set([...fromChests, ...fromLevel])];
 }

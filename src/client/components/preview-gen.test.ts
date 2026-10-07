@@ -28,8 +28,10 @@ const moods = ["awake", "sleepy", "asleep"] as const;
 const focus = ["reading", "deep_focus", "curious", "yawn", "sleep", "celebrating"] as const;
 const coats = [
   "pelaje-atigrado",
+  "pelaje-calico",
   "pelaje-gris",
   "pelaje-siames",
+  "pelaje-negro",
   "pelaje-tuxedo",
   "pelaje-dorado",
 ];

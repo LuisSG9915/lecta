@@ -215,6 +215,8 @@ import {
 import BookStart from "./BookStart";
 import {
   createChapterAnalyzer,
+  deserializeChapterAnalysis,
+  serializeChapterAnalysis,
   type ChapterAnalyzer,
   type ChapterAnalysis,
 } from "../lib/chapter-analysis";
@@ -1036,7 +1038,6 @@ export default function Reader({
       ratio,
       progress: bookProgress(sizes, index, ratio),
       anchor,
-      // eslint-disable-next-line react-hooks/purity -- captura bajo evento/scroll, no corre en render
       updatedAt: Date.now(),
     };
     latestPosition.current = pos;
@@ -1454,7 +1455,6 @@ export default function Reader({
       void savePreparationRecord(
         {
           ...current.record,
-          // eslint-disable-next-line react-hooks/purity -- cierre por acción del lector, no corre en render
           updatedAt: Date.now(),
         },
         captureDbScope(),
@@ -1486,7 +1486,6 @@ export default function Reader({
       const base =
         record ??
         (await loadPreparationRecord(bookHash, target.id, scope).catch(() => null)) ??
-        // eslint-disable-next-line react-hooks/purity -- apertura por clic, no corre en render
         newPreparationRecord({ bookHash, targetId: target.id, updatedAt: Date.now() });
       const close = () => {
         overlayRelease.current = null;
@@ -1705,7 +1704,6 @@ export default function Reader({
       ...current.record,
       answers: current.answers,
       disposition: "reviewed",
-      // eslint-disable-next-line react-hooks/purity -- handler async de clic, no corre en render
       updatedAt: Date.now(),
     };
     // La disposición final queda en prepRef antes de cerrar: el
@@ -1768,7 +1766,6 @@ export default function Reader({
       answers: current.answers,
       disposition: "skipped",
       entryAcknowledged: true,
-      // eslint-disable-next-line react-hooks/purity -- handler de clic, no corre en render
       updatedAt: Date.now(),
     };
     prepRef.current = { ...current, record };
@@ -2416,6 +2413,14 @@ export default function Reader({
           book,
           language: bookLanguage,
           isCurrent: () => bookRef.current === book,
+          loadCached: async (targetId) => {
+            const raw = await loadSessionValue(`chapAn:${bookHash}:${targetId}`, scope);
+            return raw ? deserializeChapterAnalysis(raw) : null;
+          },
+          saveCached: async (targetId, result) => {
+            const raw = serializeChapterAnalysis(result);
+            if (raw) await saveSessionValue(`chapAn:${bookHash}:${targetId}`, raw, scope);
+          },
         });
         const rows: TocRow[] = catalog.targets.map((target) => ({
           label: target.label,
@@ -2940,18 +2945,72 @@ export default function Reader({
     };
   }, [bookHash, closeActivity]);
 
-  // ← / → cambian de sección cuando no hay hojas, paneles ni campos
-  // enfocados. Tab siempre trae las barras de vuelta.
+  // Atajos de lectura: ← / → / Espacio / AvPág / RePág pasan página o sección.
+  // Ctrl+F abre búsqueda; T abre índice; M abre marcadores; D consulta palabra;
+  // Tab siempre trae las barras de vuelta.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Tab") setBarsVisible(true);
-      if (selection || sheet || panelsOpen) return;
       const target = event.target;
-      if (
+      const inInput =
         target instanceof HTMLElement &&
-        target.closest("input, textarea, select, [contenteditable]")
-      )
+        Boolean(target.closest("input, textarea, select, [contenteditable]"));
+
+      if ((event.ctrlKey || event.metaKey) && (event.key === "f" || event.key === "F")) {
+        if (!inInput) {
+          event.preventDefault();
+          openSheet("search");
+          return;
+        }
+      }
+
+      if (selection || sheet || panelsOpen) return;
+      if (inInput) return;
+
+      if (!event.metaKey && !event.ctrlKey && !event.altKey) {
+        if (event.key === "t" || event.key === "T") {
+          event.preventDefault();
+          openSheet("toc");
+          return;
+        }
+        if (event.key === "m" || event.key === "M") {
+          event.preventDefault();
+          openSheet("marks");
+          return;
+        }
+      }
+
+      if (event.key === " " || event.code === "Space") {
+        event.preventDefault();
+        noteActivity();
+        if (layoutRef.current === "pages") {
+          if (event.shiftKey) goPage(-1);
+          else goPage(1);
+        } else {
+          window.scrollBy({
+            top: (event.shiftKey ? -1 : 1) * Math.round(window.innerHeight * 0.75),
+            behavior: "smooth",
+          });
+        }
         return;
+      }
+
+      if (event.key === "PageDown") {
+        event.preventDefault();
+        noteActivity();
+        if (layoutRef.current === "pages") goPage(1);
+        else window.scrollBy({ top: Math.round(window.innerHeight * 0.75), behavior: "smooth" });
+        return;
+      }
+
+      if (event.key === "PageUp") {
+        event.preventDefault();
+        noteActivity();
+        if (layoutRef.current === "pages") goPage(-1);
+        else window.scrollBy({ top: -Math.round(window.innerHeight * 0.75), behavior: "smooth" });
+        return;
+      }
+
       if (event.key === "ArrowLeft" || event.key === "ArrowRight") noteActivity();
       if (event.key === "ArrowLeft") {
         if (layoutRef.current === "pages") goPage(-1);
@@ -2979,7 +3038,7 @@ export default function Reader({
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selection, sheet, panelsOpen, sectionIndex, sectionTotal, navigate, goPage, noteActivity]);
+  }, [selection, sheet, panelsOpen, sectionIndex, sectionTotal, navigate, goPage, noteActivity, language]);
 
   const onWordSaved = (word: SavedWord) => {
     ttsRef.current?.noteSavedWord();
@@ -3777,7 +3836,11 @@ export default function Reader({
                 ? `${sectionTitle} · ${sectionIndex + 1} de ${sectionTotal}`
                 : `${sectionIndex + 1} de ${sectionTotal}`
               : "Abriendo…"}
-            {minutes > 0 ? ` · ≈${minutes} min` : ""}
+            {minutes > 1
+              ? ` · ${minutes} min restantes`
+              : minutes === 1
+                ? " · 1 min restante"
+                : ""}
           </span>
           {errorText ? (
             <span className="reader-error-text" role="alert">
@@ -4275,7 +4338,39 @@ export default function Reader({
                   ))}
                 </div>
               </div>
-              <p className="meta">Pista: con el cursor sobre una palabra, pulsa D para abrir su ficha. Con Tab vuelven las barras.</p>
+            </div>
+          </details>
+          <details className="settings-advanced">
+            <summary>Atajos de lectura</summary>
+            <div className="settings-advanced-body shortcuts-list">
+              <div className="shortcut-row">
+                <span>Avanzar página</span>
+                <div><kbd>Espacio</kbd> · <kbd>→</kbd></div>
+              </div>
+              <div className="shortcut-row">
+                <span>Retroceder página</span>
+                <div><kbd>Shift</kbd> + <kbd>Espacio</kbd> · <kbd>←</kbd></div>
+              </div>
+              <div className="shortcut-row">
+                <span>Buscar en el libro</span>
+                <div><kbd>Ctrl</kbd> / <kbd>⌘</kbd> + <kbd>F</kbd></div>
+              </div>
+              <div className="shortcut-row">
+                <span>Índice de capítulos</span>
+                <div><kbd>T</kbd></div>
+              </div>
+              <div className="shortcut-row">
+                <span>Marcadores y notas</span>
+                <div><kbd>M</kbd></div>
+              </div>
+              <div className="shortcut-row">
+                <span>Definir palabra bajo el cursor</span>
+                <div><kbd>D</kbd></div>
+              </div>
+              <div className="shortcut-row">
+                <span>Mostrar controles</span>
+                <div><kbd>Tab</kbd></div>
+              </div>
             </div>
           </details>
         </Sheet>

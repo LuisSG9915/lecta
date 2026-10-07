@@ -161,9 +161,9 @@ describe("pelajes del gato", () => {
     expect(unlockedCoats({ ...emptyGameState(), xp: 30 })).toEqual([
       "pelaje-atigrado",
     ]);
-    // Nivel máximo: los cinco pelajes.
-    expect(unlockedCoats({ ...emptyGameState(), xp: 2200 })).toHaveLength(5);
-    // Retroactivo: un usuario ya en nivel 8 tiene cuatro pelajes sin
+    // Nivel máximo: los siete pelajes.
+    expect(unlockedCoats({ ...emptyGameState(), xp: 2200 })).toHaveLength(7);
+    // Retroactivo: un usuario ya en nivel 8 tiene seis pelajes sin
     // tocar ningún cofre.
     expect(unlockedCoats({ ...emptyGameState(), xp: 1150 })).toContain(
       "pelaje-tuxedo",
@@ -173,6 +173,8 @@ describe("pelajes del gato", () => {
   it("requiredCoatLevel da el nivel visible o null", () => {
     expect(requiredCoatLevel("pelaje-dorado")).toBe(10);
     expect(requiredCoatLevel("pelaje-atigrado")).toBe(2);
+    expect(requiredCoatLevel("pelaje-calico")).toBe(3);
+    expect(requiredCoatLevel("pelaje-negro")).toBe(7);
     expect(requiredCoatLevel("bufanda")).toBeNull();
   });
 });

@@ -830,6 +830,41 @@ export async function listReadingDays(scope?: DbScope) {
   );
 }
 
+export interface ShelfBootstrapData {
+  positions: SavedBookPosition[];
+  savedWords: SavedWord[];
+  latestHash?: string;
+  readingDays: number[];
+  intervals: SavedInterval[];
+  rawGoal?: string;
+}
+
+// Carga atómica en una sola transacción readonly de los datos necesarios
+// para montar la estantería (posiciones, palabras, hash reciente, días de lectura,
+// intervalos y meta semanal). Reduce drásticamente los viajes a IndexedDB.
+export async function loadShelfBootstrap(scope?: DbScope): Promise<ShelfBootstrapData> {
+  return withDb(scope, async (db) => {
+    const tx = db.transaction(["positions", "savedWords", "session", "activity"], "readonly");
+    const [positions, savedWords, latestHash, rawDays, intervals, rawGoal] = await Promise.all([
+      tx.objectStore("positions").getAll(),
+      tx.objectStore("savedWords").getAll(),
+      tx.objectStore("session").get(SESSION_KEY),
+      tx.objectStore("session").get(READ_DAYS_KEY),
+      tx.objectStore("activity").getAll(),
+      tx.objectStore("session").get("readingGoal:v1"),
+    ]);
+    await tx.done;
+    return {
+      positions,
+      savedWords: (savedWords as SavedWord[]).filter((w) => !w.deleted),
+      latestHash: typeof latestHash === "string" ? latestHash : undefined,
+      readingDays: parseReadingDays(typeof rawDays === "string" ? rawDays : undefined),
+      intervals: intervals as SavedInterval[],
+      rawGoal: typeof rawGoal === "string" ? rawGoal : undefined,
+    };
+  });
+}
+
 // Pequeños valores por cuenta (velocidad de lectura medida, etc.).
 export async function saveSessionValue(key: string, value: string, scope?: DbScope) {
   return withDb(scope, (db) => db.put("session", value, key));

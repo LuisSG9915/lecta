@@ -18,6 +18,7 @@ import { pushKnowledgeToServer } from "../lib/reading-sync";
 import { recordReview } from "../lib/reviews";
 import { loadUseAi } from "../lib/ai-pref";
 import { award, localDayKey } from "../lib/game";
+import { triggerHaptic } from "../lib/haptics";
 import Sheet from "./Sheet";
 
 import type { PhraseHit } from "../lib/phrases";
@@ -204,6 +205,7 @@ export default function WordPanel({
       },
     }, scope);
     setSavedEntry(entry);
+    triggerHaptic(14);
     onSaved(entry);
     // El premio queda ligado a la fila guardada (key + sello): re-guardar
     // la misma palabra no infla el journal — la fila se fusiona y su
@@ -270,6 +272,7 @@ export default function WordPanel({
       ).catch(() => {
         /* el historial es auxiliar; no deshace la marca */
       });
+      triggerHaptic(10);
       onKnowledgeChanged?.(row, { form: word, kind: "declared" });
       onClose();
     } catch {
@@ -344,7 +347,7 @@ export default function WordPanel({
   };
 
   return (
-    <Sheet label={`Palabra ${word}`} onClose={onClose} side="right">
+    <Sheet label={`Palabra ${word}`} onClose={onClose} side="right" variant="peek">
       <div className="sheet-head">
         <strong className="sheet-title">
           {word}

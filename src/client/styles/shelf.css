@@ -18,6 +18,26 @@
   border-radius: var(--r-1);
   box-shadow: var(--shadow-cover);
   container-type: inline-size;
+  position: relative;
+}
+
+/* Pliegue de lomo de libro encuadernado: aporta volumen físico inmediato */
+.cover::before {
+  content: "";
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  inline-size: 5px;
+  background: linear-gradient(
+    to right,
+    rgba(0, 0, 0, 0.22) 0%,
+    rgba(0, 0, 0, 0.06) 55%,
+    transparent 100%
+  );
+  pointer-events: none;
+  border-start-start-radius: inherit;
+  border-end-start-radius: inherit;
+  z-index: 1;
 }
 
 .cover--generated {
@@ -272,27 +292,120 @@
   font-size: var(--fs-md);
 }
 
-/* ---------- Vacío ---------- */
+/* ---------- Vacío / Bienvenida ---------- */
 
 .shelf-empty {
   display: grid;
   gap: var(--s-6);
   justify-items: start;
-  padding-block: var(--s-6);
+  padding-block: var(--s-5);
+  max-inline-size: 50rem;
 }
 
-.shelf-empty-text {
+.shelf-welcome {
+  display: grid;
+  gap: var(--s-2);
+}
+
+.shelf-welcome-title {
+  font-family: var(--font-book);
+  font-size: var(--fs-2xl);
+  font-weight: 400;
+  color: var(--ink);
+  letter-spacing: -0.015em;
+  margin: 0;
+}
+
+.shelf-welcome-subtitle {
+  font-family: var(--font-ui);
+  font-size: var(--fs-md);
+  color: var(--ink-soft);
+  max-inline-size: 46ch;
+  line-height: var(--lh-ui);
+  margin: 0;
+}
+
+/* Tarjeta editorial de invitación al libro de muestra */
+.shelf-invitation {
+  display: flex;
+  gap: var(--s-5);
+  align-items: center;
+  padding: var(--s-5);
+  background: var(--paper-raised);
+  border: var(--border);
+  border-radius: var(--r-2);
+  box-shadow: 0 4px 16px -4px rgba(43, 37, 32, 0.08);
+  inline-size: 100%;
+}
+
+@media (max-width: 600px) {
+  .shelf-invitation {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+.shelf-invitation-cover {
+  flex: none;
+  inline-size: 8rem;
+  block-size: 12rem;
+}
+
+.shelf-invitation-content {
+  display: grid;
+  gap: var(--s-2);
+  min-inline-size: 0;
+}
+
+.shelf-invitation-book-title {
   font-family: var(--font-book);
   font-size: var(--fs-xl);
-  color: var(--ink-soft);
-  max-inline-size: 30ch;
+  font-weight: 500;
+  color: var(--ink);
+  margin: 0;
 }
 
-.shelf-sample {
+.shelf-invitation-quote {
+  font-family: var(--font-book);
+  font-style: italic;
+  font-size: var(--fs-base);
+  color: var(--ink-soft);
+  line-height: var(--lh-read);
+  margin: 0;
+  border-inline-start: 2px solid var(--vermilion);
+  padding-inline-start: var(--s-3);
+}
+
+.shelf-invitation-actions {
+  display: flex;
+  gap: var(--s-3);
+  margin-block-start: var(--s-2);
+}
+
+.shelf-import-zone {
   display: grid;
   gap: var(--s-3);
-  justify-items: start;
-  max-inline-size: 36ch;
+  inline-size: 100%;
+  margin-block-start: var(--s-2);
+}
+
+.shelf-import-label {
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+  color: var(--ink-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 500;
+  margin: 0;
+}
+
+.add-slot--wide {
+  inline-size: 100%;
+  block-size: 4.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-3);
 }
 
 /* ---------- Días con lectura ---------- */

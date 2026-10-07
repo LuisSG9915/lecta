@@ -829,6 +829,24 @@ describe("saveCalibrationBatch", () => {
     expect(seed.stores.get("knowledge")?.size ?? 0).toBe(0);
     expect(seed.stores.get("savedWords")?.size ?? 0).toBe(0);
   });
+
+  it("loadShelfBootstrap recupera positions, session, savedWords y activity juntos", async () => {
+    const idb = await freshIdb();
+    const scope = idb.captureDbScope();
+    await idb.saveBookPosition(
+      { bookHash: "h1", sectionIndex: 2, scrollTop: 0, updatedAt: 100 },
+      scope,
+    );
+    await idb.saveSessionValue("readingGoal:v1", "4", scope);
+
+    const bootstrap = await idb.loadShelfBootstrap(scope);
+    expect(bootstrap.positions).toEqual([
+      expect.objectContaining({ bookHash: "h1", sectionIndex: 2 }),
+    ]);
+    expect(bootstrap.rawGoal).toBe("4");
+    expect(bootstrap.savedWords).toEqual([]);
+    expect(bootstrap.intervals).toEqual([]);
+  });
 });
 
 describe("accountFetch", () => {

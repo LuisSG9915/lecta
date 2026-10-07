@@ -239,6 +239,59 @@
   stroke-linejoin: round;
 }
 
+.cat .cat-wear--boina path:first-child {
+  fill: #365341;
+  stroke: var(--cat-outline);
+  stroke-width: 1.2;
+  stroke-linejoin: round;
+}
+
+.cat .cat-wear--boina path:last-child {
+  fill: none;
+  stroke: var(--cat-outline);
+  stroke-width: 1.4;
+  stroke-linecap: round;
+}
+
+.cat .cat-wear--corbatin path:nth-child(-n + 3) {
+  fill: var(--vermilion);
+  stroke: var(--cat-outline);
+  stroke-width: 1;
+  stroke-linejoin: round;
+}
+
+.cat .cat-wear--corbatin path:last-child {
+  fill: var(--ochre);
+  stroke: var(--cat-outline);
+  stroke-width: 0.9;
+}
+
+.cat .cat-wear--monoculo path:first-child {
+  fill: color-mix(in srgb, var(--paper) 35%, transparent);
+  stroke: var(--ochre);
+  stroke-width: 1.5;
+}
+
+.cat .cat-wear--monoculo path:last-child {
+  fill: none;
+  stroke: var(--ochre);
+  stroke-width: 1.1;
+  stroke-linecap: round;
+}
+
+.cat .cat-wear--capa path:nth-child(-n + 2) {
+  fill: #73222e;
+  stroke: var(--cat-outline);
+  stroke-width: 1.2;
+  stroke-linejoin: round;
+}
+
+.cat .cat-wear--capa path:last-child {
+  fill: var(--ochre);
+  stroke: var(--cat-outline);
+  stroke-width: 0.9;
+}
+
 /* Pelajes (ranura equipped.coat): el artículo puesto cambia la
    paleta del pelaje solo para este gato — los tokens --cat-* del
    tema siguen mandando en el resto de la interfaz. */
@@ -274,6 +327,21 @@
   fill: #9b7c64;
 }
 
+/* Calicó: base crema con manchas parche naranja */
+.cat.cat--coat-calico {
+  --cat-fur: #fbf5eb;
+  --cat-fur-light: #ffffff;
+  --cat-nose: #ea999d;
+}
+
+.cat.cat--coat-calico .cat-marks {
+  display: block;
+  fill: none;
+  stroke: #c86326;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+}
+
 /* Tuxedo: carbón cálido con pecho y hocico claros. El contorno se
    aclara a gris topo: sobre el pelo oscuro las líneas internas
    (ojos, boca, bigotes) se pierden si quedan casi negras, y en el
@@ -283,6 +351,18 @@
   --cat-fur-light: #f2ebdf;
   --cat-nose: #e09598;
   --cat-outline: #b9ada2;
+}
+
+/* Negro medianoche (Edgar Allan Poe): silueta oscura con ojos de ámbar */
+.cat.cat--coat-negro {
+  --cat-fur: #2c2725;
+  --cat-fur-light: #3d3734;
+  --cat-outline: #6d6259;
+  --cat-nose: #7e575f;
+}
+
+.cat.cat--coat-negro .cat-eye {
+  fill: #e8a838;
 }
 
 /* Dorado: el premio del nivel 10 — cálido y luminoso. */
@@ -956,6 +1036,14 @@
 .companion-btn .cat {
   inline-size: 3rem;
   block-size: 3rem;
+  transition:
+    transform var(--dur-2) var(--ease-out),
+    filter var(--dur-2) var(--ease-out);
+}
+
+.companion-btn:hover:not(:disabled) .cat {
+  transform: translateY(-2px) scale(1.05);
+  filter: drop-shadow(0 0.16em 0.4em var(--ochre));
 }
 
 .companion-btn:focus-visible {

@@ -1,17 +1,13 @@
-import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent } from "react";
 import {
   captureDbScope,
-  listIntervals,
-  listPositions,
-  listReadingDays,
-  listSavedWords,
+  loadShelfBootstrap,
   listStoredBooks,
-  loadLatestBookHash,
-  loadSessionValue,
   updateBookMeta,
   type SavedBookPosition,
   type StoredBook,
 } from "../lib/idb";
+import { triggerHaptic } from "../lib/haptics";
 import { displayTitle, readBookMeta } from "../lib/cover";
 import {
   entriesByFormOf,
@@ -27,7 +23,6 @@ import { analyzeStoredBook, loadBookVocab } from "../lib/book-vocab";
 import { relativeDay } from "../lib/relative-time";
 import {
   parseReadingGoal,
-  READING_GOAL_KEY,
   weeklyGoalProgress,
   type WeeklyGoalProgress,
 } from "../lib/reading-goal";
@@ -93,6 +88,13 @@ export function takeShelfGreeting(): boolean {
 const SAMPLE_BOOK_URL = "/libros/azul-ruben-dario.epub";
 const SAMPLE_BOOK_NAME = "Azul… — Rubén Darío.epub";
 
+export function timeOfDayGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour >= 5 && hour < 12) return "Buenos días";
+  if (hour >= 12 && hour < 20) return "Buenas tardes";
+  return "Buenas noches";
+}
+
 // La misma fracción que guarda el lector; posiciones antiguas sin
 // «progress» caen al índice de sección, sin mínimos inventados.
 const progressOf = (position: SavedBookPosition | undefined, sectionCount: number | undefined) =>
@@ -147,15 +149,15 @@ export default function Shelf({ library, checking, onOpen, onRemove, onAdd, onLi
   useEffect(() => {
     let cancelled = false;
     const scope = captureDbScope();
-    void Promise.all([
-      listPositions(scope),
-      listSavedWords(undefined, scope),
-      loadLatestBookHash(scope),
-      listReadingDays(scope),
-      listIntervals(scope),
-      loadSessionValue(READING_GOAL_KEY, scope),
-    ]).then(
-      ([positionList, words, hash, readDayList, intervalList, rawGoal]) => {
+    void loadShelfBootstrap(scope).then(
+      ({
+        positions: positionList,
+        savedWords: words,
+        latestHash: hash,
+        readingDays: readDayList,
+        intervals: intervalList,
+        rawGoal,
+      }) => {
         if (cancelled) return;
         setPositions(positionList);
         const counts = new Map<string, number>();
@@ -432,44 +434,79 @@ export default function Shelf({ library, checking, onOpen, onRemove, onAdd, onLi
 
       {library.length === 0 ? (
         <section className="shelf-empty">
-          <p className="shelf-empty-text">
-            Tu estantería está vacía. Trae un EPUB y lo abrimos aquí.
-          </p>
-          <button
-            type="button"
-            className="add-slot add-slot--large"
-            onClick={pickFile}
-            onDragOver={(e) => {
-              e.preventDefault();
-              setDragging(true);
-            }}
-            onDragLeave={() => setDragging(false)}
-            onDrop={onDrop}
-            data-dragging={dragging || undefined}
-          >
-            <span className="add-slot-mark" aria-hidden="true" />
-            Añadir libro
-          </button>
-          <div className="shelf-sample">
-            <p className="meta">
-              Toca cualquier palabra mientras lees: Lecta te la explica y
-              la guarda en tu Cuaderno.
+          <div className="shelf-welcome">
+            <h2 className="shelf-welcome-title">{timeOfDayGreeting()}</h2>
+            <p className="shelf-welcome-subtitle">
+              Un rincón sereno para leer libros en español, descubrir palabras y enriquecer tu vocabulario con repetición espaciada.
             </p>
+          </div>
+
+          <div className="shelf-invitation">
+            <div className="shelf-invitation-cover">
+              <div
+                className="cover cover--generated"
+                style={
+                  {
+                    "--cover-paper": "#233342",
+                    "--cover-ink": "#f7f9fa",
+                    "--cover-accent": "#d4a43a",
+                  } as CSSProperties
+                }
+              >
+                <div className="cover-frame">
+                  <p className="cover-title">Azul…</p>
+                  <span className="cover-ornament" aria-hidden="true" />
+                  <p className="cover-author">Rubén Darío</p>
+                </div>
+              </div>
+            </div>
+            <div className="shelf-invitation-content">
+              <p className="eyebrow">Lectura recomendada de inicio</p>
+              <h3 className="shelf-invitation-book-title">Azul…</h3>
+              <p className="meta">Rubén Darío · Cuentos y poemas clásicos</p>
+              <blockquote className="shelf-invitation-quote">
+                «En Chile escribió Rubén Darío los textos que inauguraron el Modernismo. Toca cualquier palabra en el libro para ver su definición y guardarla en tu Cuaderno.»
+              </blockquote>
+              <div className="shelf-invitation-actions">
+                <button
+                  type="button"
+                  className="btn btn--primary"
+                  onClick={() => {
+                    triggerHaptic(12);
+                    void openSample();
+                  }}
+                  disabled={sampleState === "loading"}
+                >
+                  {sampleState === "loading"
+                    ? "Preparando el libro…"
+                    : "Comenzar a leer «Azul…»"}
+                </button>
+              </div>
+              {sampleState === "error" ? (
+                <p className="meta" role="alert">
+                  No pude traer el libro. Revisa tu conexión e inténtalo de nuevo.
+                </p>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="shelf-import-zone">
+            <p className="shelf-import-label">O añade tus propios libros</p>
             <button
               type="button"
-              className="btn"
-              onClick={() => void openSample()}
-              disabled={sampleState === "loading"}
+              className="add-slot add-slot--wide"
+              onClick={pickFile}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragging(true);
+              }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={onDrop}
+              data-dragging={dragging || undefined}
             >
-              {sampleState === "loading"
-                ? "Trayendo el libro…"
-                : "Leer un libro de muestra"}
+              <span className="add-slot-mark" aria-hidden="true" />
+              <span>Arrastra un archivo EPUB o pulsa para elegirlo</span>
             </button>
-            {sampleState === "error" ? (
-              <p className="meta" role="alert">
-                No pude traerlo. Revisa tu conexión e inténtalo de nuevo.
-              </p>
-            ) : null}
           </div>
         </section>
       ) : (
@@ -504,13 +541,16 @@ export default function Shelf({ library, checking, onOpen, onRemove, onAdd, onLi
               <button
                 type="button"
                 className="shelf-hero-cover"
-                onClick={() => onOpen(current)}
+                onClick={() => {
+                  triggerHaptic(10);
+                  onOpen(current);
+                }}
                 aria-label={`Continuar ${displayTitle(current.name, current.title)}`}
               >
                 <BookCover book={current} />
               </button>
               <div className="shelf-hero-info">
-                <p className="eyebrow">Seguir leyendo</p>
+                <p className="eyebrow">{timeOfDayGreeting()} · Seguir leyendo</p>
                 <h2 className="shelf-hero-title">{displayTitle(current.name, current.title)}</h2>
                 {current.author ? <p className="meta">{current.author}</p> : null}
                 {heroPosition ? (
