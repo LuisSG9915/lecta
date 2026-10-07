@@ -1364,11 +1364,23 @@ mark.predicted-word:hover {
 
 /* ---------- «Leer en voz alta» ---------- */
 
-/* Oración hablada: marca suave con el tono de la regla de foco —
-   subraya sin robar la lectura (patrón de las marcas de palabra). */
+/* Oración hablada: tinte claro + raya bermellón inferior para que se
+   distinga en ambos temas; clone repite el acabado al partir líneas. */
 [data-tts-sentence] {
-  background: color-mix(in srgb, var(--rule) 22%, transparent);
+  background: color-mix(in srgb, var(--rule-strong) 40%, transparent);
   border-radius: var(--r-1);
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  padding-block: 0.04em;
+  box-shadow: inset 0 -0.14em 0 color-mix(in srgb, var(--vermilion) 42%, transparent);
+}
+
+@media (forced-colors: active) {
+  [data-tts-sentence] {
+    background: Mark;
+    color: MarkText;
+    box-shadow: none;
+  }
 }
 
 /* Chip de sesión: abajo al centro, discreto — informa el estado y

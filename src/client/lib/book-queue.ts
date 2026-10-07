@@ -45,6 +45,13 @@ export async function runBookQueue(scope?: DbScope): Promise<number> {
           ? await uploadBook(
               op.hash,
               new File([book.data], op.name || book.name),
+              // Los metadatos viajan con el objeto remoto: así otros
+              // dispositivos muestran título y autor sin bajar el EPUB.
+              {
+                title: book.title,
+                author: book.author,
+                sectionCount: book.sectionCount,
+              },
               bound,
             )
           : null;

@@ -310,6 +310,11 @@ export default function App() {
         name: item.name || `${item.hash.slice(0, 8)}.epub`,
         addedAt: +new Date(item.uploaded) || 0,
         remoteOnly: true,
+        // Los metadatos viajan en el objeto remoto: la ficha muestra
+        // título y autor sin tener que descargar el EPUB.
+        title: item.title || undefined,
+        author: item.author || undefined,
+        sectionCount: item.sections || undefined,
       }));
     setLibrary([...localItems, ...remoteItems]);
   }, [sessionUserId]);
@@ -471,7 +476,11 @@ export default function App() {
           await queueBookUpload(storedBook.hash, storedBook.name, scope);
         }
       }
-      await runBookQueue(scope);
+      // La estantería repinta ya con los remotos y las insignias de
+      // pendiente: las subidas corren detrás — son archivos completos
+      // y en datos móviles pueden tardar, no deben retener la lista.
+      if (!cancelled) void refreshLibrary();
+      await runBookQueue(scope).catch(() => 0);
       // Lo que solo está en la nube ya no baja en automático: aparece
       // en la estantería como «En la nube» y se descarga al tocarlo.
       if (!cancelled) void refreshLibrary();

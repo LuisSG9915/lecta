@@ -3443,6 +3443,24 @@ export default function Reader({
           >
             Aa
           </button>
+          {/* Acceso directo a la voz: un toque desde la barra, sin
+              entrar a ajustes. Solo existe donde hay voces del
+              dispositivo (Web Speech API). */}
+          {isTtsSupported() ? (
+            <button
+              type="button"
+              className="btn--quiet"
+              onClick={onTtsRequest}
+              aria-label={
+                ttsSnap.status !== "idle"
+                  ? "Detener lectura en voz alta"
+                  : "Leer en voz alta"
+              }
+              aria-pressed={ttsSnap.status !== "idle"}
+            >
+              {ttsSnap.status !== "idle" ? "Detener" : "Escuchar"}
+            </button>
+          ) : null}
           <button type="button" className="btn--quiet" onClick={onOpenNotebook}>
             Cuaderno
           </button>

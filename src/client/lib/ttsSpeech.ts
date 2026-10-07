@@ -19,12 +19,28 @@ const IS_IOS =
   typeof navigator !== "undefined" &&
   (/iP(hone|ad|od)/.test(navigator.userAgent) ||
     (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1));
+// Chrome en Android tiene el mismo resume() sordo de iOS: tras una
+// pausa la utterance puede no volver jamás (`paused` queda true).
+const IS_ANDROID =
+  typeof navigator !== "undefined" && /android/i.test(navigator.userAgent);
+const RESUME_NEEDS_CHECK = IS_IOS || IS_ANDROID;
 
 // Sin señal de arranque en este margen la utterance se da por
 // atascada; el controlador decide el reintento (uno) o el cierre.
-const STALL_MS = 1_200;
-// Tras resume() en iOS, la voz debe volver en ~350 ms o se re-speak.
+// El margen es generoso: en Android el motor puede tardar >1 s en
+// inicializar la primera utterance.
+const STALL_MS = 2_500;
+// Tras resume() la voz debe volver en ~350 ms o se re-speak.
 const IOS_RESUME_MS = 350;
+
+// Ventana de «utterance zombie» ya arrancada: ~11 letras/segundo de
+// habla española, con margen amplio y pisos/techos razonables. Si la
+// oración excede dos ventanas estimadas sin terminar, está muerta.
+const midWatchMs = (text: string, rate: TtsRate) =>
+  Math.min(
+    60_000,
+    Math.max(10_000, ((text.length / 11) * 1000) / rate) * 2 + 4_000,
+  );
 
 const normalizeLang = (tag: string) => tag.toLowerCase().replace("_", "-");
 
@@ -113,6 +129,9 @@ export function createSpeaker(events: {
   let chunks: string[] = [];
   let chunkIndex = 0;
   let cancelled = false;
+  // Pausa pedida por el lector: con ella, ni onstart tardío ni el
+  // vigilante de mitad pueden «despausar» la cola por su cuenta.
+  let pausedFlag = false;
   let watchdog = 0;
   let generation = 0;
 
@@ -127,25 +146,71 @@ export function createSpeaker(events: {
     }
   };
 
-  const armWatchdog = (gen: number) => {
+  const isIdle = () => {
+    const s = synth();
+    return !s.speaking && !s.pending;
+  };
+
+  // Vigilante de arranque: si en STALL_MS el motor no reporta ni
+  // hablando ni encolada, la utterance se perdió (motores sin voz,
+  // colas muertas). En algunos Android `speaking` llega tarde — por
+  // eso también aceptamos `onstart` como prueba de vida.
+  const armStartWatchdog = (gen: number, started: () => boolean) => {
     clearWatchdog();
     watchdog = window.setTimeout(() => {
       watchdog = 0;
-      if (cancelled || gen !== generation) return;
-      const s = synth();
-      // Ni hablando ni encolada y sin haber terminado: la utterance
-      // se perdió — típico de Chrome con colas largas.
-      if (!s.speaking && !s.pending) events.onStalled("start");
+      if (cancelled || gen !== generation || pausedFlag || started()) return;
+      if (isIdle()) events.onStalled("start");
+      else armMidWatchdog(gen, chunks[chunkIndex] ?? "");
     }, STALL_MS);
+  };
+
+  // Vigilante de mitad: la utterance arrancó pero onend no llega —
+  // Chrome corta motores a los ~15 s, Android puede morir callado.
+  // `paused` en la ventana significa que el propio Chrome aparcó la
+  // cola: se le da un resume() de cortesía antes de rendirse.
+  const armMidWatchdog = (gen: number, text: string, recheck = false) => {
+    clearWatchdog();
+    watchdog = window.setTimeout(() => {
+      watchdog = 0;
+      if (cancelled || gen !== generation || pausedFlag) return;
+      const s = synth();
+      if (s.paused) {
+        try {
+          s.resume();
+        } catch {
+          /* motores sin resume real */
+        }
+        if (!recheck) {
+          armMidWatchdog(gen, text, true);
+          return;
+        }
+      }
+      if (isIdle()) {
+        events.onStalled("mid");
+        return;
+      }
+      // El motor insiste en que sigue hablando: se le cree una vez;
+      // una utterance viva más de dos ventanas estimadas está zombie.
+      if (!recheck) armMidWatchdog(gen, text, true);
+      else events.onStalled("mid");
+    }, midWatchMs(text, rate));
   };
 
   const speakChunk = (gen: number) => {
     if (cancelled || chunkIndex >= chunks.length) return;
     const text = chunks[chunkIndex];
     const utterance = new SpeechSynthesisUtterance(text);
+    let started = false;
     utterance.lang = "es-MX";
     if (voice) utterance.voice = voice;
     utterance.rate = rate;
+    utterance.onstart = () => {
+      if (cancelled || gen !== generation || pausedFlag) return;
+      started = true;
+      // Ya habla: el vigilante cambia a «debe terminar a tiempo».
+      armMidWatchdog(gen, text);
+    };
     utterance.onend = () => {
       if (cancelled || gen !== generation) return;
       clearWatchdog();
@@ -161,7 +226,7 @@ export function createSpeaker(events: {
       if (event.error === "interrupted" || event.error === "canceled") return;
       events.onStalled("mid");
     };
-    armWatchdog(gen);
+    armStartWatchdog(gen, () => started);
     synth().speak(utterance);
   };
 
@@ -169,12 +234,14 @@ export function createSpeaker(events: {
     speak(text, nextRate) {
       rate = nextRate;
       cancelled = false;
+      pausedFlag = false;
       generation += 1;
       chunks = splitForSpeech(text);
       chunkIndex = 0;
       speakChunk(generation);
     },
     pause() {
+      pausedFlag = true;
       clearWatchdog();
       try {
         synth().pause();
@@ -183,17 +250,26 @@ export function createSpeaker(events: {
       }
     },
     resume() {
+      pausedFlag = false;
       const gen = generation;
       try {
         synth().resume();
       } catch {
         /* mismo criterio */
       }
-      if (!IS_IOS) return;
+      // Re-arma el vigilante sobre el trozo en vuelo: si la utterance
+      // reanudada muere a mitad, la sesión no se queda esperando.
+      if (!cancelled && chunkIndex < chunks.length)
+        armMidWatchdog(gen, chunks[chunkIndex]);
+      if (!RESUME_NEEDS_CHECK) return;
       window.setTimeout(() => {
         if (cancelled || gen !== generation) return;
         const s = synth();
-        if (!s.speaking && !s.pending) events.onStalled("resume");
+        // `paused` que no baja tras resume() = motor sordo (iOS y
+        // Chrome/Android); cola vacía = el motor soltó la utterance.
+        // Ambos piden re-speak de la oración activa.
+        if (s.paused || (!s.speaking && !s.pending))
+          events.onStalled("resume");
       }, IOS_RESUME_MS);
     },
     cancel() {

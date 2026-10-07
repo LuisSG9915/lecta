@@ -841,6 +841,11 @@ app.get("/api/books", async (context) => {
       hash: object.key.split("/").pop()?.replace(/\.epub$/, ""),
       uploaded: object.uploaded,
       name: object.customMetadata?.name ?? "",
+      // Metadatos ligeros para pintar la estantería sin descargar el
+      // EPUB (se escriben en la subida; los viejos pueden venir vacíos).
+      title: object.customMetadata?.title ?? "",
+      author: object.customMetadata?.author ?? "",
+      sections: Number(object.customMetadata?.sections) || 0,
     })),
   });
 });
@@ -866,9 +871,17 @@ app.put("/api/books/:hash", async (context) => {
   if (hex !== hash)
     return context.json({ error: "El contenido no coincide con el identificador declarado." }, 400);
 
+  const meta = context.req.query();
   await context.env.BOOKS.put(bookKey(session.user.id, hash), data, {
     httpMetadata: { contentType: "application/epub+zip" },
-    customMetadata: { name: context.req.query("name")?.slice(0, 200) ?? "" },
+    // Título/autor/secciones viajan con el objeto para que otros
+    // dispositivos pinten la ficha sin bajar el EPUB completo.
+    customMetadata: {
+      name: meta.name?.slice(0, 200) ?? "",
+      title: meta.title?.slice(0, 200) ?? "",
+      author: meta.author?.slice(0, 200) ?? "",
+      sections: /^\d{1,5}$/.test(meta.sections ?? "") ? meta.sections! : "",
+    },
   });
   return context.json({ ok: true });
 });

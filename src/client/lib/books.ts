@@ -1,15 +1,39 @@
 import { accountFetch } from "./account-fetch";
 import { StaleScopeError, type DbScope } from "./idb";
 
-export type RemoteBook = { hash: string; uploaded: string; name: string };
+export type RemoteBook = {
+  hash: string;
+  uploaded: string;
+  name: string;
+  // Metadatos guardados en la subida: título, autor y número de
+  // secciones — la estantería los muestra sin descargar el EPUB.
+  title?: string;
+  author?: string;
+  sections?: number;
+};
+
+export type BookUploadMeta = {
+  title?: string;
+  author?: string;
+  sectionCount?: number;
+};
 
 // Las funciones de libros remotos re-lanzan StaleScopeError: «la cuenta
 // cambió a mitad» no es un fallo del servidor y quien encoló la
 // operación debe distinguirlo (book-queue para sin marcar error).
-export async function uploadBook(hash: string, file: File, scope?: DbScope) {
+export async function uploadBook(
+  hash: string,
+  file: File,
+  meta: BookUploadMeta = {},
+  scope?: DbScope,
+) {
   try {
+    const params = new URLSearchParams({ name: file.name });
+    if (meta.title) params.set("title", meta.title);
+    if (meta.author) params.set("author", meta.author);
+    if (meta.sectionCount) params.set("sections", String(meta.sectionCount));
     const response = await accountFetch(
-      `/api/books/${hash}?name=${encodeURIComponent(file.name)}`,
+      `/api/books/${hash}?${params.toString()}`,
       {
         method: "PUT",
         body: file,
