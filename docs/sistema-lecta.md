@@ -6,9 +6,9 @@ proyecto) entienda la arquitectura, los datos y las reglas sin tener
 que releer todo el código. Es un mapa: para el detalle fino, cada
 sección apunta al archivo donde vive la verdad.
 
-Actualizado contra el código al commit `ae1f9ab` (compañero felino
-con sync entre dispositivos). Si algo contradice al código, gana el
-código.
+Actualizado contra el código al commit `e35e1af` (catálogo Descubre
+con insignia de cobertura, consejo diario de IA y marcador de
+retomar). Si algo contradice al código, gana el código.
 
 ---
 
@@ -113,9 +113,10 @@ en `lecta`.
 - DeepSeek (`deepseek-flash` vía `callDeepSeek` en `src/worker/ai.ts`),
   opcionalmente a través de un AI Gateway de Cloudflare
   (`AI_GATEWAY_URL`; vacío = `api.deepseek.com` directo).
-- Cuatro operaciones: `enrich` (fichas nuevas), `item` (ejercicios),
+- Cinco operaciones: `enrich` (fichas nuevas), `item` (ejercicios),
   `verify` (corregir oración escrita por el lector), `explain`
-  (explicación en contexto). Cada una tiene tope de tokens y cuota
+  (explicación en contexto) y `tip` (consejo diario de lectura,
+  proactivo — ver §5.11). Cada una tiene tope de tokens y cuota
   horaria propia.
 
 ---
@@ -226,11 +227,20 @@ Auth (Better Auth, `/api/auth/*`):
   (`bookOps`).
 - **Libro de muestra**: `public/libros/azul-ruben-dario.epub` entra por
   el mismo tubo («Leer un libro de muestra», ver `docs/muestra-azul.md`).
-- **Catálogo público** («Descubre»): `catalog.ts` (cliente) trae
-  `/api/catalog`, guarda índice y manifiestos en `session` para offline
-  y descarga el EPUB por el flujo normal. Curación en
-  `scripts/catalog-curation.json` (dominio público, autores fallecidos
-  ≤ 1924; seed en `scripts/catalog-seed.mjs`).
+- **Catálogo público** («Descubre», `DiscoverRail.tsx`):
+  `catalog.ts` (cliente) trae `/api/catalog`, guarda índice y
+  manifiestos en `session` para offline y descarga el EPUB por el
+  flujo normal. Curación en `scripts/catalog-curation.json` (dominio
+  público, autores fallecidos ≤ 1924; seed en
+  `scripts/catalog-seed.mjs` + `catalog-seed-lib.mjs`).
+- **Insignia de cobertura** (`coverage.ts`): cada libro del rail y de
+  la estantería muestra qué tanto del vocabulario ya cubre el perfil —
+  `coverageOfBook` corre el mismo `predictSection` sobre las formas
+  del `.vocab.json` (catálogo) o del análisis local (`book-vocab.ts`)
+  y `coverageLabel` lo traduce: ≥90 «En tu nivel», ≥75 «Asequible»,
+  ≥60 «Un reto», si no «Exigente»; con confianza `low` no se anuncia
+  etiqueta. Ojo: son **formas únicas**, no tokens — no equivale al
+  95 % de cobertura léxica de la literatura.
 - Solo en la nube: la estantería lista los remotos y los descarga al
   abrirlos.
 
@@ -254,6 +264,16 @@ Auth (Better Auth, `/api/auth/*`):
   párrafo — `FocusRuler`).
 - Búsqueda dentro del libro (`book-search.ts`: plegado de acentos,
   iteración por secciones cancelable).
+- **Marcador de retomar**: al reabrir un libro cuya posición lleva
+  ≥3 días quieta (`RESUME_CARD_MIN_DAYS`), la franja de avisos muestra
+  «Quedaste en «capítulo» hace N días» + cuántas palabras guardaste en
+  ese tramo (`countSavedInRange`) y ofrece «Releer el capítulo» —
+  `jumpTo` al inicio del destino, que arma «Volver a donde estaba»
+  para regresar a la posición exacta. Solo metadatos, nunca texto del
+  libro (anti-spoiler); tiene prioridad máxima sobre los avisos de
+  preparación, calibración y fatiga (no se apilan). Registra
+  `resume_shown`/`resume_reread`. Si el lector paró al inicio mismo
+  del capítulo, no ofrece releer.
 
 ### 5.4 Modelo de conocimiento y «Antes de leer»
 
@@ -322,7 +342,9 @@ estabilidad ya no se marca) y predichas con subrayado punteado.
 - `activity`: intervalos de lectura con `startedAt/endedAt`, sección,
   palabras, regresiones — anexables por `id`, sin edición.
 - `readingEvents`: trayecto local por visita (a qué destinos entró, qué
-  sugirió la hoja, qué hizo con cada palabra). **Solo local**: no se
+  sugirió la hoja, qué hizo con cada palabra) más eventos fuera de
+  visita: `tip_shown`/`tip_accepted` (consejo) y los de retomar —
+  estos llevan `visitId`/`bookHash` `null`. **Solo local**: no se
   sincroniza, se exporta con el respaldo, retención 90 días, se apaga
   en Cuenta.
 - `focus-telemetry.ts`: detecta fatiga — ≥25 min de tramo, ventana de
@@ -384,12 +406,45 @@ Patrón común (`*-sync.ts` + `reading-data.ts` del worker):
   permitido, tope de definiciones/ejemplos, `promptVersion` y
   `modelVersion` guardados por fila, telemetría `lecta.ai_call`.
 - Cuotas por hora y scope (`lecta_rate_log`, ventana de 1 h):
-  enriquecer 60, ítems 24, verificar 30, explicar 30.
+  enriquecer 60, ítems 24, verificar 30, explicar 30, tip 6 (pero la
+  cadencia real es ≤1/día por cuenta — ver §5.11).
 - `catalog-seed.mjs --seed` (`buildResolvedManifest`) resuelve las
   formas de cada libro del catálogo contra `lexicon_forms`/`entries`
   en lotes de 2 000 y emite `.vocab.json` — el mismo análisis que haría
   `predictSection` en vivo, precomputado con bases clíticas/«-mente»
-  como llaves extra.
+  como llaves extra. Usa `pg.Pool` (los workers consultan en paralelo).
+
+### 5.11 El consejo diario («tip», IA proactiva)
+
+La única operación IA que inicia la app (las demás responden a un toque
+del lector). Diseño: `docs/concentracion-y-lectura.md` §4 y
+`~/.devin/plans/plan-tip-lectura-ia.md`.
+
+- **Superficie**: tarjeta en la estantería al montarla (no en el
+  Reader: la franja `.reader-prep` ya la ocupan los avisos de
+  preparación, y un consejo en medio de la lectura contradiría la
+  evidencia). Si la pestaña está oculta al llegar la respuesta, el tip
+  se descarta — una impresión no vista no cuenta.
+- **Elegibilidad** (`tips.ts::tipEligible`): sesión + «Usar IA» +
+  ≥2 días con ≥5 min de lectura en los últimos 14 (`focusByDay`); sin
+  historial suficiente ni siquiera se llama. Timeout 8 s.
+- **Contexto** (`TipContext` en `shared/tip.ts`): solo agregados —
+  minutos/día, regresiones, consultas, avisos de fatiga, PPM, meta —
+  saneado a enteros acotados en el servidor (`sanitizeTipContext`).
+  Nunca texto del libro.
+- **Cadencia**: la *generación* es ≤1 por cuenta y día — `tipCache`
+  (TTL 20 h) marca `userId:dayKey` y un segundo dispositivo recibe
+  silencio, no el mismo consejo. La *visualización* queda por
+  dispositivo (`tipLastDay` en `session`).
+- **Silencio válido**: `{tip: null}` es resultado preferible a un
+  consejo genérico; el prompt lo exige y el cliente no muestra nada.
+  La regla anti-moralización del prompt prohíbe enmarcar días sin
+  leer o la meta como deuda.
+- **Acciones reales**: `action` `focus_ruler`/`syntactic` aplica el
+  ajuste con `saveReaderSettings` (no solo lo sugiere); `none` muestra
+  «Me sirve». Medición local: `tip_shown` / `tip_accepted` —
+  aceptación ≠ eficacia (la eficacia se evalúa offline comparando
+  `DayFocus` post-aceptación contra el baseline).
 
 ---
 
@@ -411,6 +466,7 @@ email+password, request/reset password, delete-user con callback.
 | `POST /api/lexicon/items/answer` | Registra respuesta de un ítem |
 | `POST /api/lexicon/verify-sentence` | Corrige oración escrita (sin contexto del libro) |
 | `POST /api/lexicon/explain` | Explicación en contexto (cacheada en memoria por clave) |
+| `POST /api/lexicon/tip` | Consejo diario; caché de generación por cuenta:día, hit → silencio |
 | `GET/PUT /api/vocab` | Merge del cuaderno (PUT ≤ 500) |
 | `GET/PUT /api/annotations` | Merge marcadores/pasajes |
 | `GET/PUT /api/activity` | Anexar/leer intervalos |
@@ -478,7 +534,8 @@ src/
 │   ├── App.tsx              raíz: vistas, hojas, sync al montar
 │   ├── components/
 │   │   ├── Reader.tsx       lector EPUB (pieza central)
-│   │   ├── Shelf.tsx        estantería + Descubre (catálogo)
+│   │   ├── Shelf.tsx        estantería + tarjeta del consejo diario
+│   │   ├── DiscoverRail.tsx riel «Descubre» + insignia de cobertura
 │   │   ├── WordPanel.tsx    ficha de palabra
 │   │   ├── Vocabulary.tsx   cuaderno, Aprender, modos de práctica
 │   │   ├── Calibration.tsx  calibración por bandas zipf
@@ -500,6 +557,8 @@ src/
 │   │   ├── fsrs.ts / learn.ts / practice.ts / vocab.ts / word-meanings.ts
 │   │   ├── reading-sync.ts / positions-sync.ts / companion-sync.ts
 │   │   ├── reading-events.ts / focus-telemetry.ts / reading-goal.ts
+│   │   ├── tips.ts          consejo diario: contexto, elegibilidad, cadencia
+│   │   ├── relative-time.ts «hoy/ayer/hace N días» + daysAgo
 │   │   ├── books.ts / book-queue.ts / catalog.ts (cliente) / annotations.ts
 │   │   ├── auth.ts          authClient (better-auth/react + magicLink)
 │   │   ├── account-fetch.ts / account-cleanup.ts / last-user.ts
@@ -513,6 +572,7 @@ src/
 │   ├── companion-data.ts    eventos, proyección y merges del juego
 │   ├── gamification.ts      XP, niveles, logros
 │   ├── calibration-bank.ts  banco editorial por bandas
+│   ├── tip.ts               contrato TipContext/TipAction del consejo
 │   ├── stopwords.ts         funcionales que no son vocabulario
 │   └── epub-check.ts        firma ZIP + tope 50 MB
 db/
@@ -523,6 +583,7 @@ scripts/
 ├── db-setup.mjs / auth-migrate.mjs / db-migrate.mjs
 ├── lexicon-wiktionary.mjs   carga masiva del Wikcionario → lexicon_*
 ├── catalog-seed.mjs         curación Gutenberg + manifiestos .vocab.json
+│   └── catalog-seed-lib.mjs lógica del seed (resolveForms usa Map)
 └── catalog-curation.json    lista curada (dominio público, ≤1924)
 public/
 ├── libros/azul-ruben-dario.epub   libro de muestra
@@ -530,6 +591,7 @@ public/
 └── _headers                       CSP estricta, Referrer-Policy no-referrer
 docs/
 ├── sistema-lecta.md         ← este archivo
+├── concentracion-y-lectura.md   evidencia: concentración, lectura y reglas IA
 ├── licencias-lexico.md      obligaciones ODbL/CC BY-SA del léxico
 └── muestra-azul.md          origen del libro de muestra
 wrangler.jsonc               worker `lecta`: BOOKS (R2), HYPERDRIVE,
