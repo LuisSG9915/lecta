@@ -386,6 +386,10 @@
    apretar el contenido. */
 .discover {
   margin-block-start: var(--s-5);
+  /* Ítem del grid .shelf: sin este tope su mínimo automático es el
+     min-content del riel (todas las portadas en fila) y empuja la
+     página fuera del ancho; con 0 el riel desplaza dentro. */
+  min-inline-size: 0;
 }
 
 .discover-rail {
