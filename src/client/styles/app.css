@@ -115,28 +115,24 @@
   }
 }
 
-@media (max-width: 40rem) {
-  .app-header {
-    flex-wrap: wrap;
-    row-gap: 0;
-  }
+/* En pantalla angosta las opciones de tema de texto se cambian por
+   un solo botón «Tema» que abre la hoja con muestras: la cabecera
+   cabe en una fila. */
+.app-theme-btn {
+  display: none;
+}
 
+@media (max-width: 40rem) {
   .app-header-nav {
-    flex-wrap: wrap;
     justify-content: flex-end;
     gap: var(--s-4);
   }
 
-  .theme-menu {
-    order: 3;
-    flex-basis: 100%;
-    justify-content: flex-end;
-    gap: var(--s-3);
+  .app-header-nav .theme-menu {
+    display: none;
   }
 
-  .theme-option {
-    min-height: 2.75rem;
-    padding-block: 0;
-    font-size: var(--fs-xs);
+  .app-theme-btn {
+    display: inline;
   }
 }

@@ -1,6 +1,11 @@
+import type { PhraseHit } from "./phrases";
+
 export type WordHit = {
   word: string;
   context?: string;
+  // Locución detectada en la oración del toque (fase B): la rellena
+  // quien abre la ficha — la extracción en sí no la conoce.
+  phrase?: PhraseHit;
 };
 
 // Elige la oración que cubre la posición del toque (offset dentro de

@@ -20,9 +20,18 @@ import { loadUseAi } from "../lib/ai-pref";
 import { award, localDayKey } from "../lib/game";
 import Sheet from "./Sheet";
 
+import type { PhraseHit } from "../lib/phrases";
+
 type WordPanelProps = {
   word: string;
   context?: string;
+  // Locución del Wikcionario que cubre la palabra en su oración;
+  // es información de contexto — no cambia lo que se guarda ni
+  // el modelo de repaso.
+  phrase?: PhraseHit;
+  // Sesión confirmada: sin ella los botones de IA muestran el aviso
+  // de entrada en vez de fallar tras la espera.
+  canExplain?: boolean;
   language: string;
   bookHash: string;
   onClose: () => void;
@@ -70,6 +79,8 @@ function ContextQuote({ context, word }: { context: string; word: string }) {
 export default function WordPanel({
   word,
   context,
+  phrase,
+  canExplain = true,
   language,
   bookHash,
   onClose,
@@ -352,6 +363,22 @@ export default function WordPanel({
 
       {context ? <ContextQuote context={context} word={word} /> : null}
 
+      {phrase ? (
+        <div className="phrase-hit">
+          <p className="meta">En esta frase</p>
+          <p className="phrase-hit-lemma">
+            «{phrase.lemma}»
+            {phrase.pos ? <span className="card-pos"> · {phrase.pos}</span> : null}
+          </p>
+          <ol className="senses">
+            {phrase.definitions.map((definition, index) => (
+              <li key={index}>{definition}</li>
+            ))}
+          </ol>
+          <p className="meta phrase-hit-source">Wikcionario</p>
+        </div>
+      ) : null}
+
       {lookup.kind === "loading" ? <p className="meta">Buscando en el catálogo…</p> : null}
       {lookup.kind === "enriching" ? <p className="meta">Consultando la ficha…</p> : null}
       {lookup.kind === "error" ? (
@@ -379,9 +406,19 @@ export default function WordPanel({
         <>
           <p className="meta">Aún no está en el catálogo.</p>
           {useAi ? (
-            <button type="button" className="btn" onClick={() => void enrich()}>
-              Definir con IA
-            </button>
+            <>
+              <button
+                type="button"
+                className="btn"
+                disabled={!canExplain}
+                onClick={() => void enrich()}
+              >
+                Definir con IA
+              </button>
+              {!canExplain ? (
+                <p className="meta">Inicia sesión para pedir explicaciones.</p>
+              ) : null}
+            </>
           ) : (
             <p className="meta">
               Las definiciones con IA están apagadas; actívalas en Cuenta.
@@ -443,13 +480,16 @@ export default function WordPanel({
                 <button
                   type="button"
                   className="btn--quiet"
-                  disabled={explanation?.state === "busy"}
+                  disabled={!canExplain || explanation?.state === "busy"}
                   onClick={() => void explain()}
                 >
                   {explanation?.state === "busy"
                     ? "Consultando…"
                     : "Explicar en esta oración con IA"}
                 </button>
+                {!canExplain ? (
+                  <p className="meta">Inicia sesión para pedir explicaciones.</p>
+                ) : null}
                 {explanation?.state === "error" ? (
                   <p role="alert" className="status">
                     {explanation.text}

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { summarizeReadingEvents } from "./reading-events";
+import {
+  chapterSummary,
+  hasChapterSummary,
+  summarizeReadingEvents,
+} from "./reading-events";
 import type { ReadingEvent } from "./idb";
 
 let seq = 0;
@@ -118,5 +122,62 @@ describe("summarizeReadingEvents", () => {
       }),
     ]);
     expect(summary.presented.map((row) => row.key)).toEqual(["es:a", "es:b"]);
+  });
+});
+
+describe("chapterSummary", () => {
+  const range = { startSection: 2, endSection: 5 };
+
+  it("cuenta solo el tramo del capítulo en esta visita", () => {
+    const summary = chapterSummary(
+      [
+        event({ kind: "word_saved", form: "rara", sectionIndex: 3 }),
+        // La misma forma guardada dos veces cuenta una.
+        event({ kind: "word_saved", form: "Rara", sectionIndex: 3 }),
+        event({ kind: "word_consulted", form: "x", sectionIndex: 4 }),
+        event({ kind: "word_consulted", form: "y", sectionIndex: 4 }),
+        event({ kind: "word_declared_known", lemma: "fácil", sectionIndex: 2 }),
+        event({ kind: "section_dwell", sectionIndex: 3, ms: 40_000, words: 300 }),
+        event({ kind: "section_dwell", sectionIndex: 4, ms: 30_000, words: 280 }),
+        // Fuera del tramo: no cuenta.
+        event({ kind: "word_saved", form: "otra", sectionIndex: 1 }),
+        event({ kind: "word_consulted", form: "z", sectionIndex: 5 }),
+        // Otra visita del mismo tramo: tampoco.
+        event({ kind: "word_saved", form: "vieja", sectionIndex: 3, visitId: "v0" }),
+      ],
+      range,
+      "v1",
+    );
+    expect(summary).toEqual({
+      saved: 1,
+      consulted: 2,
+      declaredKnown: 1,
+      dwellMs: 70_000,
+    });
+  });
+
+  it("eventos sin sectionIndex no aplican al tramo", () => {
+    const summary = chapterSummary(
+      [
+        event({ kind: "target_entered", targetId: "t1", sectionIndex: 3 }),
+        event({ kind: "preparation_answered", key: "k", answer: "known" }),
+      ],
+      range,
+      "v1",
+    );
+    expect(summary.saved).toBe(0);
+    expect(summary.consulted).toBe(0);
+    expect(hasChapterSummary(summary)).toBe(false);
+  });
+
+  it("sin nada útil no hay tarjeta; un minuto de lectura basta", () => {
+    const empty = chapterSummary([], range, "v1");
+    expect(hasChapterSummary(empty)).toBe(false);
+    const onlyDwell = chapterSummary(
+      [event({ kind: "section_dwell", sectionIndex: 3, ms: 61_000, words: 400 })],
+      range,
+      "v1",
+    );
+    expect(hasChapterSummary(onlyDwell)).toBe(true);
   });
 });

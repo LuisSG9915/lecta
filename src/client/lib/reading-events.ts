@@ -206,3 +206,62 @@ export function summarizeReadingEvents(events: ReadingEvent[]): VisitSummary {
     savedNotPresented,
   };
 }
+
+// ---------- Resumen de cierre de capítulo ----------
+
+export type ChapterSummary = {
+  // Formas únicas guardadas en el tramo (repetidas cuentan una).
+  saved: number;
+  consulted: number;
+  declaredKnown: number;
+  dwellMs: number;
+};
+
+// Cuenta solo lo ocurrido dentro del tramo físico del capítulo y en
+// esta visita: las lecturas anteriores del mismo libro no se suman.
+// Pura: quien llama ya filtró por libro (listReadingEvents lo hace).
+export function chapterSummary(
+  events: ReadingEvent[],
+  range: { startSection: number; endSection: number },
+  visitId: string,
+): ChapterSummary {
+  const saved = new Set<string>();
+  let consulted = 0;
+  let declaredKnown = 0;
+  let dwellMs = 0;
+  for (const event of events) {
+    if (event.visitId !== visitId) continue;
+    if (!("sectionIndex" in event)) continue;
+    if (
+      event.sectionIndex < range.startSection ||
+      event.sectionIndex >= range.endSection
+    )
+      continue;
+    switch (event.kind) {
+      case "word_saved":
+        saved.add(event.form.toLowerCase());
+        break;
+      case "word_consulted":
+        consulted += 1;
+        break;
+      case "word_declared_known":
+        declaredKnown += 1;
+        break;
+      case "section_dwell":
+        dwellMs += event.ms;
+        break;
+    }
+  }
+  return { saved: saved.size, consulted, declaredKnown, dwellMs };
+}
+
+// ¿Hay algo que contar? La tarjeta no se muestra vacía: sin datos
+// útiles el capítulo simplemente termina como siempre.
+export function hasChapterSummary(summary: ChapterSummary): boolean {
+  return (
+    summary.saved > 0 ||
+    summary.consulted > 0 ||
+    summary.declaredKnown > 0 ||
+    summary.dwellMs >= 60_000
+  );
+}

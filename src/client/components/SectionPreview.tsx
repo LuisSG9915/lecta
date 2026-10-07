@@ -85,7 +85,11 @@ function Row({
         onClick={() => onToggleExpand(row.key)}
       >
         <strong>{row.form}</strong>
-        {row.pos ? <span className="section-preview-def"> · {row.pos}</span> : null}
+        {row.lemma && row.lemma !== row.form.toLowerCase() ? (
+          <span className="section-preview-def"> · forma de «{row.lemma}»</span>
+        ) : row.pos ? (
+          <span className="section-preview-def"> · {row.pos}</span>
+        ) : null}
       </button>
       <span
         className="cal-choices"

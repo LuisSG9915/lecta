@@ -9,6 +9,7 @@ import {
   saveSessionValue,
 } from "../lib/idb";
 import { loadUseAi, saveUseAi } from "../lib/ai-pref";
+import { clearLastUserId } from "../lib/last-user";
 import { loadHistoryEnabled, saveHistoryEnabled } from "../lib/reading-events";
 import {
   loadCompanionDevicePrefs,
@@ -321,6 +322,9 @@ export default function Account({
     void run(async () => {
       const result = await authClient.signOut();
       if (result?.error) return result;
+      // El marcador de arranque optimista solo apunta a sesiones
+      // vigentes: cerrar sesión aquí lo limpia de inmediato.
+      clearLastUserId();
       onClose();
       return {};
     });

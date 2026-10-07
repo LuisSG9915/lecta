@@ -9,8 +9,10 @@ import {
   ITEM_PROMPT_VERSION,
   parseExplain,
   parseItem,
+  parseTip,
   parseVerify,
   requestEnrichment,
+  sanitizeTipContext,
   VERIFY_PROMPT_VERSION,
 } from "./ai";
 import type { WorkerEnv } from "./db";
@@ -117,6 +119,112 @@ describe("parseExplain", () => {
   it("recorta explicaciones pasadas de 400 caracteres", () => {
     const long = parseExplain(JSON.stringify({ explanation: "x".repeat(500) }));
     expect(long?.explanation).toHaveLength(400);
+  });
+});
+
+describe("parseTip", () => {
+  it("acepta un consejo válido con y sin acción", () => {
+    expect(
+      parseTip('{"tip":"Ayer retrocediste más de lo normal: prueba la regla.","action":"focus_ruler"}'),
+    ).toEqual({
+      tip: "Ayer retrocediste más de lo normal: prueba la regla.",
+      action: "focus_ruler",
+    });
+    expect(parseTip('{"tip":"Buen ritmo esta semana."}')).toEqual({
+      tip: "Buen ritmo esta semana.",
+      action: "none",
+    });
+  });
+
+  it("el silencio es un resultado válido", () => {
+    expect(parseTip('{"tip":null,"action":"none"}')).toEqual({
+      tip: null,
+      action: "none",
+    });
+  });
+
+  it("degrada una action desconocida a none sin tirar el tip", () => {
+    expect(
+      parseTip('{"tip":"Descansa la vista.","action":"pomodoro"}'),
+    ).toEqual({ tip: "Descansa la vista.", action: "none" });
+  });
+
+  it("devuelve null con JSON roto, tip que no es string/null o pasado de 240", () => {
+    expect(parseTip("no es json")).toBeNull();
+    expect(parseTip("null")).toBeNull();
+    expect(parseTip("[1,2]")).toBeNull();
+    expect(parseTip('{"tip":42}')).toBeNull();
+    expect(parseTip('{"tip":"   "}')).toBeNull();
+    expect(
+      parseTip(JSON.stringify({ tip: "x".repeat(241), action: "none" })),
+    ).toBeNull();
+  });
+});
+
+describe("sanitizeTipContext", () => {
+  it("exige dayKey y acota el contexto a números y cadenas cortas", () => {
+    expect(sanitizeTipContext(null)).toBeNull();
+    expect(sanitizeTipContext({})).toBeNull();
+    expect(sanitizeTipContext({ dayKey: 7 })).toBeNull();
+
+    const ctx = sanitizeTipContext({
+      dayKey: "2026-10-08",
+      localHour: 27,
+      daysSinceLastRead: 2.7,
+      days: [
+        {
+          dayKey: "2026-10-07",
+          minutes: 99999,
+          regressions: 4,
+          consults: 2,
+          fatigue: 1,
+          wpm: 210,
+        },
+        { dayKey: 5, minutes: "mucho" },
+      ],
+      focusMode: "ruler",
+      weeklyGoalDays: 9,
+    });
+    expect(ctx).toEqual({
+      dayKey: "2026-10-08",
+      localHour: 23,
+      daysSinceLastRead: 3,
+      days: [
+        {
+          dayKey: "2026-10-07",
+          minutes: 1440,
+          regressions: 4,
+          consults: 2,
+          fatigue: 1,
+          wpm: 210,
+        },
+        {
+          dayKey: "",
+          minutes: 0,
+          regressions: 0,
+          consults: 0,
+          fatigue: 0,
+          wpm: 0,
+        },
+      ],
+      focusMode: "ruler",
+      weeklyGoalDays: 7,
+    });
+  });
+
+  it("corta el historial a 14 días y descarta campos extraños", () => {
+    const days = Array.from({ length: 20 }, (_, i) => ({
+      dayKey: `2026-10-${String(i + 1).padStart(2, "0")}`,
+      minutes: 10,
+      regressions: 0,
+      consults: 0,
+      fatigue: 0,
+      wpm: 0,
+    }));
+    const ctx = sanitizeTipContext({ dayKey: "2026-10-08", days });
+    expect(ctx?.days).toHaveLength(14);
+    expect(ctx?.weeklyGoalDays).toBeNull();
+    expect(ctx?.focusMode).toBe("off");
   });
 });
 

@@ -40,6 +40,24 @@
   margin-block-start: var(--s-2);
 }
 
+/* Locución detectada en la oración del toque: bloque sobrio encima
+   de las acepciones — es contexto, no una acepción más de la palabra. */
+.phrase-hit {
+  margin-block: var(--s-3);
+  padding-block-end: var(--s-3);
+  border-block-end: 1px solid var(--line);
+}
+
+.phrase-hit-lemma {
+  font-family: var(--font-book);
+  font-size: var(--fs-base);
+  margin: 0;
+}
+
+.phrase-hit-source {
+  margin: var(--s-1) 0 0;
+}
+
 /* Acepción seleccionable: botón sobrio dentro de .senses; la elegida
    se marca con el borde bermellón y un lavado apenas visible. */
 .sense-option {

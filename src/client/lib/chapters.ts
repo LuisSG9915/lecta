@@ -194,6 +194,67 @@ export function buildChapterCatalog(book: EpubBook): ChapterCatalog {
 
 // Posición física → capítulo lógico: el destino cuyo tramo
 // `[startSection, endSection)` contiene la sección.
+// Rótulos de índice que no son inicio de lectura aunque su sección
+// quede clasificada «chapter» (los landmarks no siempre marcan el
+// cuerpo). Comparación normalizada: minúsculas, sin acentos, sin
+// puntuación de borde — cubre variantes como «Mapa», «Agradecimientos
+// del autor» no entra: la lista es de rótulos completos.
+const FRONT_LABELS = new Set([
+  "cubierta",
+  "portada",
+  "titulo",
+  "mapas",
+  "mapa",
+  "dedicatoria",
+  "epigrafe",
+  "agradecimientos",
+  "indice",
+  "indice de contenido",
+  "contenido",
+  "creditos",
+  "sinopsis",
+  "sobre el autor",
+  "sobre la autora",
+  "biografia",
+  "nota del autor",
+  "nota de la autora",
+  "colofon",
+]);
+
+const normalizeLabel = (label: string) =>
+  label
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .replace(/[«»"'().,;:]/g, "")
+    .trim();
+
+// El «donde empiezas» sugerido: el primer capítulo que no sea
+// material preliminar por rótulo. Además, una entrada de los
+// primeros archivos cuyo rótulo repite el título del libro es casi
+// siempre la portada interna, no un capítulo («Juego de tronos»
+// dentro de «Juego de tronos») — se salta igual. Sin capítulo
+// limpio cae al primer capítulo declarado; sin ninguno, al primer
+// destino — la interfaz siempre deja elegir otro lugar.
+export function suggestedChapterTarget(
+  catalog: ChapterCatalog,
+  bookTitle?: string,
+): ChapterTarget | null {
+  const chapters = catalog.targets.filter((t) => t.kind === "chapter");
+  const title = bookTitle ? normalizeLabel(bookTitle) : "";
+  const isFront = (target: ChapterTarget) =>
+    FRONT_LABELS.has(normalizeLabel(target.label)) ||
+    (title !== "" &&
+      target.sectionIndex <= 3 &&
+      normalizeLabel(target.label) === title);
+  return (
+    chapters.find((t) => !isFront(t)) ??
+    chapters[0] ??
+    catalog.targets[0] ??
+    null
+  );
+}
+
 export const targetAt = (
   ranges: ChapterRange[],
   sectionIndex: number,

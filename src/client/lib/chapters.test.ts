@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildChapterCatalog,
   reachedRangeEnd,
+  suggestedChapterTarget,
   targetAt,
   trackCalibrationOffer,
   type CalibrationTrack,
@@ -228,6 +229,69 @@ describe("buildChapterCatalog", () => {
       ),
     );
     expect(targets.map((t) => t.kind)).toEqual(["preliminary", "chapter"]);
+  });
+});
+
+describe("suggestedChapterTarget", () => {
+  it("salta rótulos preliminares aunque su sección quede «chapter»", () => {
+    // El caso real de «Juego de tronos»: el landmark bodymatter cae
+    // antes de los mapas y «Mapas» hereda kind chapter.
+    const catalog = buildChapterCatalog(
+      book(
+        ["portada.xhtml", "titulo.xhtml", "mapas.xhtml", "prologo.xhtml", "c1.xhtml"],
+        [
+          entry("Cubierta", "portada.xhtml"),
+          entry("Juego de tronos", "titulo.xhtml"),
+          entry("Mapas", "mapas.xhtml"),
+          entry("Prólogo", "prologo.xhtml"),
+          entry("Bran (1)", "c1.xhtml"),
+        ],
+        [{ href: "titulo.xhtml", type: ["bodymatter"] }],
+      ),
+    );
+    expect(
+      suggestedChapterTarget(catalog, "Juego de tronos")?.label,
+    ).toBe("Prólogo");
+  });
+
+  it("un capítulo tardío con el nombre del libro sí se conserva", () => {
+    const catalog = buildChapterCatalog(
+      book(
+        ["p.xhtml", "s1.xhtml", "s2.xhtml", "s3.xhtml", "s4.xhtml", "s5.xhtml", "s6.xhtml", "s7.xhtml"],
+        [entry("Portada", "p.xhtml"), entry("Cap 1", "s1.xhtml"), entry("Novela", "s7.xhtml")],
+        [{ href: "s1.xhtml", type: ["bodymatter"] }],
+      ),
+    );
+    // «Novela» es sección 7: repetir el título ahí no delata portada.
+    expect(suggestedChapterTarget(catalog, "Novela")?.label).toBe("Cap 1");
+  });
+
+  it("rotulado con acentos y signos también se filtra", () => {
+    const catalog = buildChapterCatalog(
+      book(
+        ["a.xhtml", "b.xhtml"],
+        [entry("«Agradecimientos»", "a.xhtml"), entry("Uno", "b.xhtml")],
+        [{ href: "a.xhtml", type: ["bodymatter"] }],
+      ),
+    );
+    expect(suggestedChapterTarget(catalog)?.label).toBe("Uno");
+  });
+
+  it("sin capítulo limpio cae al primer chapter; sin chapters, al primer destino", () => {
+    const allFront = buildChapterCatalog(
+      book(
+        ["a.xhtml", "b.xhtml"],
+        [entry("Mapas", "a.xhtml"), entry("Agradecimientos", "b.xhtml")],
+        [{ href: "a.xhtml", type: ["bodymatter"] }],
+      ),
+    );
+    expect(suggestedChapterTarget(allFront)?.label).toBe("Mapas");
+    const noChapters = buildChapterCatalog(
+      book(["a.xhtml"], [entry("Portada", "a.xhtml")]),
+    );
+    expect(suggestedChapterTarget(noChapters)?.label).toBe("Portada");
+    const empty = buildChapterCatalog(book([], []));
+    expect(suggestedChapterTarget(empty)).toBeNull();
   });
 });
 

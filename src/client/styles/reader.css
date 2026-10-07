@@ -346,6 +346,35 @@
   font-style: italic;
 }
 
+/* Tarjeta de cierre de capítulo: inline sobre el enlace «Siguiente»,
+   no modal — interrumpe lo justo y se siente como avance. */
+.chapter-summary {
+  max-inline-size: var(--read-measure);
+  margin: var(--s-7) auto 0;
+  padding: var(--s-4) var(--s-5);
+  border: var(--border);
+  border-radius: var(--r-2);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-3) var(--s-5);
+  animation: fade-in var(--dur-3) var(--ease-out);
+}
+
+.chapter-summary-text {
+  margin: 0;
+  font-family: var(--font-book);
+  font-size: var(--fs-md);
+  line-height: var(--lh-read);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chapter-summary {
+    animation: none;
+  }
+}
+
 /* ---------- Pie con hebra y tiempo ---------- */
 
 .reader-foot {
