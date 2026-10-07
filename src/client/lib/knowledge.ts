@@ -44,6 +44,11 @@ export const PROFILE_REGULARIZATION = 2;
 export const MIN_THRESHOLD = 1.0;
 export const MAX_THRESHOLD = 5.5;
 
+// Clave de sesión del ajuste manual del perfil («mostrar más/menos»
+// de la tarjeta de preparación). La lee quien estime el umbral fuera
+// del lector — cobertura del catálogo y de libros propios.
+export const PROFILE_ADJUST_KEY = "profileAdjust";
+
 const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
 

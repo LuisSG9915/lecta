@@ -14,3 +14,4 @@ artifacts/
 !/fixtures/minimal.epub
 
 .DS_Store
+catalog-seed/

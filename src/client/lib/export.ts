@@ -249,13 +249,22 @@ const BACKUP_SESSION_KEYS = [
   COMPANION_DEVICE_PREFS_KEY,
   COMPANION_MIGRATION_KEY,
   COMPANION_ACKED_KEY,
+  // Índice del catálogo público: pequeño y mantiene Descubre dibujando
+  // sin conexión tras una importación. Los manifiestos por libro se
+  // quedan fuera — son voluminosos e inmutables, se re-descargan solos.
+  "catalogIndex:v1",
 ] as const;
 
 // Además de la lista explícita salen por prefijo los registros del
-// ciclo del lector: elección de inicio y borrador/resultado de cada
-// preparación (formatos congelados en preparation.ts). Sellos de sync
+// ciclo del lector: elección de inicio, borrador/resultado de cada
+// preparación y el análisis de vocabulario de cada libro (formatos
+// congelados en preparation.ts y book-vocab.ts). Sellos de sync
 // y ajustes internos fuera de la lista no se respaldan.
-const BACKUP_SESSION_PREFIXES = ["bookStart:v1:", "preparation:v1:"] as const;
+const BACKUP_SESSION_PREFIXES = [
+  "bookStart:v1:",
+  "preparation:v1:",
+  "bookVocab:v1:",
+] as const;
 
 // Lista definitiva de claves de session a respaldar: las explícitas
 // más las que casen por prefijo, sin duplicadas.
