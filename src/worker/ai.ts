@@ -557,6 +557,7 @@ Reglas:
 - "action": "focus_ruler" solo si el consejo es probar la regla de foco (banda que vela el texto de alrededor); "syntactic" solo si es probar las líneas sintácticas (texto cortado por unidades de sentido); "none" para cualquier otro consejo o cuando tip es null.
 - Si las señales no justifican un consejo concreto hoy, devuelve {"tip":null,"action":"none"}: el silencio es un resultado válido y preferible a un consejo genérico.
 - Jamás sugieras ni menciones condiciones o diagnósticos (TDAH, dislexia, ansiedad) ni estados emocionales: solo datos observables y conductas.
+- Los días sin leer y la meta semanal NUNCA son deuda, retraso ni incumplimiento: una pausa es un retomo natural, no una falta. Nada de «llegas tarde a tu meta» ni «llevas X días sin leer» como reproche.
 - Las señales son ambiguas: un retroceso puede ser relectura sana y un día lento puede ser un buen día. Propón con humildad; nunca afirmes en qué estado está el lector.`;
 
 // Serializa el contexto como texto breve para el prompt. Todo llega

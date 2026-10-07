@@ -704,7 +704,17 @@ app.post("/api/lexicon/explain", async (context) => {
 // el cliente guarda la cadencia (1/día) y los eventos de aceptación.
 // El silencio ({tip:null}) es un resultado válido y se cachea igual
 // que un consejo: una recarga no vuelve a preguntar.
-const tipCache = createTtlCache<string>({ maxEntries: 200 });
+//
+// La caché es marcador de GENERACIÓN, no de contenido: una vez que la
+// cuenta consultó hoy, cualquier otro dispositivo recibe silencio en
+// vez del mismo tip — la cadencia «una al día» sería por cuenta y no
+// serviría el mismo consejo dos veces. El TTL debe outlast el día: la
+// clave ya lleva el día local, así que una entrada vieja jamás choca
+// con el día siguiente.
+const tipCache = createTtlCache<string>({
+  maxEntries: 200,
+  ttlMs: 20 * 3_600_000,
+});
 
 app.post("/api/lexicon/tip", async (context) => {
   const body = await context.req.json().catch(() => null);
@@ -718,9 +728,15 @@ app.post("/api/lexicon/tip", async (context) => {
     return context.json({ error: "Inicia sesión para recibir consejos." }, 401);
 
   const cacheKey = `${session.user.id}:${tipContext.dayKey}`;
-  const cached = tipCache.get(cacheKey);
-  if (cached) {
-    return context.json({ ...JSON.parse(cached), cached: true });
+  if (tipCache.get(cacheKey)) {
+    // Ya hubo consulta hoy desde otro dispositivo: el consejo del día
+    // ya se entregó (o la IA eligió silencio) — no se repite.
+    return context.json({
+      tip: null,
+      action: "none",
+      version: TIP_PROMPT_VERSION,
+      cached: true,
+    });
   }
 
   const allowed = await consumeRateUnits(

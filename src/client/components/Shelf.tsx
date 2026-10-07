@@ -284,6 +284,10 @@ export default function Shelf({ library, checking, onOpen, onRemove, onAdd, onLi
     const scope = captureDbScope();
     void maybeRequestTip(scope).then((outcome) => {
       if (!outcome || cancelled) return;
+      // Si la pestaña quedó oculta mientras respondía la IA, el tip se
+      // descarta entero: una tarjeta que nadie vio no cuenta como
+      // impresión y reaparecer de la nada al volver confunde.
+      if (document.hidden) return;
       setTip(outcome);
       void trackReadingEvent(
         {

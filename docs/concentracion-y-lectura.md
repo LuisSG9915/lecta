@@ -322,9 +322,17 @@ no intervenir (fase de acomodación, la evidencia → regla más limpia).
 
 **Lo que Lecta NO mide**: comprensión. La instrumentación mínima ya
 existe — `tip_shown`/`tip_accepted` en el riel de `ReadingEvent` —
-pero mide aceptación del consejo, no comprensión; a futuro,
-micro-checks opcionales (el cloze de fin de capítulo ya es
-infraestructura) cerrarían la brecha de verdad.
+pero `tip_accepted` mide intención/adopción, no eficacia: un usuario
+puede activar la regla y apagarla a los dos minutos. La vía de
+evaluación real es offline: comparar los `DayFocus` de las sesiones
+posteriores a la aceptación contra el baseline del mismo lector, sin
+nueva instrumentación. A futuro, micro-checks opcionales (el cloze de
+fin de capítulo ya es infraestructura) cerrarían la brecha de verdad.
+
+Nota de cadencia: la *generación* del tip es a lo sumo una por cuenta
+y día (caché del worker marca «ya se consultó hoy»); la *visualización*
+queda por dispositivo (session store). El segundo dispositivo del día
+recibe silencio, no el mismo consejo repetido.
 
 ### Principios para cualquier mensaje de IA
 
