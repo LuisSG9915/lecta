@@ -296,6 +296,16 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
       if (!(deps.supported ?? isTtsSupported)()) return;
       settings = loadTtsSettings();
       if (!settings.enabled || settings.consentedAt === null) return;
+      // Toca el motor dentro del gesto del lector: el primer speak()
+      // real llega tras la espera de voces (~1 s, ya en async) y en
+      // Android el servicio TTS puede seguir dormido si nada lo despierta
+      // cerca del toque. cancel+resume es inofensivo en motores sanos.
+      try {
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.resume();
+      } catch {
+        /* sin motor real: el gate de soportado ya lo cubrió */
+      }
       ctx = nextCtx;
       startedAt = Date.now();
       sentenceCount = 0;

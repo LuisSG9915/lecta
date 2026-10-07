@@ -32,6 +32,9 @@ const RESUME_NEEDS_CHECK = IS_IOS || IS_ANDROID;
 const STALL_MS = 2_500;
 // Tras resume() la voz debe volver en ~350 ms o se re-speak.
 const IOS_RESUME_MS = 350;
+// speak() en el mismo tick que un cancel() se pierde sin evento en
+// Android (y a veces en iOS): la cola se deja asentar un instante.
+const SPEAK_SETTLE_MS = 120;
 
 // Ventana de «utterance zombie» ya arrancada: ~11 letras/segundo de
 // habla española, con margen amplio y pisos/techos razonables. Si la
@@ -202,9 +205,15 @@ export function createSpeaker(events: {
     const text = chunks[chunkIndex];
     const utterance = new SpeechSynthesisUtterance(text);
     let started = false;
-    utterance.lang = "es-MX";
+    // La voz se elige al momento de hablar (getVoices es síncrono y ya
+    // pobló tras ensureVoices): sin `voice` explícita, varios motores
+    // Android no resuelven el locale y tragan la utterance en silencio.
+    if (!voice) voice = pickSpanishVoice(synth().getVoices());
+    utterance.lang = voice?.lang ?? "es-MX";
     if (voice) utterance.voice = voice;
     utterance.rate = rate;
+    utterance.volume = 1;
+    utterance.pitch = 1;
     utterance.onstart = () => {
       if (cancelled || gen !== generation || pausedFlag) return;
       started = true;
@@ -227,7 +236,24 @@ export function createSpeaker(events: {
       events.onStalled("mid");
     };
     armStartWatchdog(gen, () => started);
-    synth().speak(utterance);
+    try {
+      synth().speak(utterance);
+    } catch {
+      // Un speak() que truena al instante es una utterance que nunca
+      // arrancó: mismo camino que el arranque mudo.
+      clearWatchdog();
+      events.onStalled("start");
+      return;
+    }
+    // Pausa pedida mientras la utterance esperaba el asentamiento:
+    // se encola ya pausada para no soltar la voz a media pausa.
+    if (pausedFlag) {
+      try {
+        synth().pause();
+      } catch {
+        /* motores sin pause real */
+      }
+    }
   };
 
   return {
@@ -238,7 +264,18 @@ export function createSpeaker(events: {
       generation += 1;
       chunks = splitForSpeech(text);
       chunkIndex = 0;
-      speakChunk(generation);
+      const gen = generation;
+      try {
+        // Limpia la cola: una utterance zombie del speaker anterior
+        // puede dejar el motor «hablando» sin sonido en Android.
+        synth().cancel();
+      } catch {
+        /* la cola ya estaba limpia o el motor no existe */
+      }
+      window.setTimeout(() => {
+        if (cancelled || gen !== generation) return;
+        speakChunk(gen);
+      }, SPEAK_SETTLE_MS);
     },
     pause() {
       pausedFlag = true;
