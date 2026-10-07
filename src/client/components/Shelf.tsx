@@ -13,6 +13,17 @@ import {
   type StoredBook,
 } from "../lib/idb";
 import { displayTitle, readBookMeta } from "../lib/cover";
+import {
+  entriesByFormOf,
+  manifestBookForms,
+  type CatalogBook,
+} from "../lib/catalog";
+import {
+  coverageOfBook,
+  inputsForCoverage,
+  type BookCoverage,
+} from "../lib/coverage";
+import { analyzeStoredBook, loadBookVocab } from "../lib/book-vocab";
 import { relativeDay } from "../lib/relative-time";
 import {
   parseReadingGoal,
@@ -20,9 +31,17 @@ import {
   weeklyGoalProgress,
   type WeeklyGoalProgress,
 } from "../lib/reading-goal";
-import { loadActivityHidden } from "../lib/settings";
+import { maybeRequestTip, type TipOutcome } from "../lib/tips";
+import { trackReadingEvent } from "../lib/reading-events";
+import {
+  loadActivityHidden,
+  loadReaderSettings,
+  saveReaderSettings,
+} from "../lib/settings";
+import type { TipAction } from "../../shared/tip";
 import { levelProgress } from "../lib/gamification";
 import BookCover from "./BookCover";
+import DiscoverRail from "./DiscoverRail";
 import { CompanionButton } from "./CompanionButton";
 import { useCompanion } from "./CompanionProvider";
 
@@ -42,6 +61,9 @@ type ShelfProps = {
   onRemove: (hash: string) => void;
   onAdd: (file: File) => void;
   onLibraryChange: () => void;
+  // «Obtener» del riel Descubre: el padre baja el EPUB del catálogo y
+  // lo pasa al flujo normal de añadir libro.
+  onGetCatalogBook?: (item: CatalogBook) => Promise<void> | void;
   // Sube cuando la sincronización trae intervalos nuevos: la meta de
   // la semana relee su progreso sin recargar la estantería.
   activityVersion?: number;
@@ -65,6 +87,12 @@ export function takeShelfGreeting(): boolean {
   return true;
 }
 
+// Libro de muestra incluido con la app (dominio público, ver
+// docs/muestra-azul.md): entra por la tubería normal de «Añadir
+// libro» — se guarda, se sube y se borra como cualquier otro.
+const SAMPLE_BOOK_URL = "/libros/azul-ruben-dario.epub";
+const SAMPLE_BOOK_NAME = "Azul… — Rubén Darío.epub";
+
 // La misma fracción que guarda el lector; posiciones antiguas sin
 // «progress» caen al índice de sección, sin mínimos inventados.
 const progressOf = (position: SavedBookPosition | undefined, sectionCount: number | undefined) =>
@@ -72,7 +100,7 @@ const progressOf = (position: SavedBookPosition | undefined, sectionCount: numbe
     ? (position.progress ?? Math.min(1, position.sectionIndex / sectionCount))
     : 0;
 
-export default function Shelf({ library, checking, onOpen, onRemove, onAdd, onLibraryChange, activityVersion = 0 }: ShelfProps) {
+export default function Shelf({ library, checking, onOpen, onRemove, onAdd, onLibraryChange, onGetCatalogBook, activityVersion = 0 }: ShelfProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [positions, setPositions] = useState<SavedBookPosition[]>([]);
   const [wordCounts, setWordCounts] = useState<Map<string, number>>(new Map());
@@ -81,9 +109,17 @@ export default function Shelf({ library, checking, onOpen, onRemove, onAdd, onLi
   const [goalProgress, setGoalProgress] = useState<WeeklyGoalProgress | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [sampleState, setSampleState] = useState<"idle" | "loading" | "error">(
+    "idle",
+  );
   // La preferencia se lee una vez: cambiarla en el Cuaderno se aplica
   // la próxima vez que la estantería se monta.
   const [activityHidden] = useState(() => loadActivityHidden());
+  // Consejo diario con IA: a lo más uno por día y dispositivo (la
+  // cadencia vive en tips.ts). Se pide al montar la estantería —
+  // breakpoint de inicio de sesión — y queda registrado con
+  // tip_shown/tip_accepted para medir si los consejos sirven.
+  const [tip, setTip] = useState<TipOutcome | null>(null);
   // Compañero del proveedor único: la tarjeta compacta muestra su
   // etapa, ropa equipada, nombre y nivel, y su botón abre la hoja de
   // cuidado compartida — nada se carga aquí.
@@ -194,6 +230,108 @@ export default function Shelf({ library, checking, onOpen, onRemove, onAdd, onLi
     };
   }, [library, onLibraryChange]);
 
+  // Cobertura de vocabulario por libro propio: mismo manifiesto que el
+  // catálogo (bookVocab:v1:{hash}). Primero lo ya analizado; los que
+  // falten se analizan de uno en uno y solo con red — nunca compite
+  // con abrir un libro.
+  const [bookCoverages, setBookCoverages] = useState<
+    Map<string, BookCoverage>
+  >(new Map());
+  useEffect(() => {
+    const connection = (
+      navigator as Navigator & { connection?: { saveData?: boolean } }
+    ).connection;
+    if (connection?.saveData || navigator.onLine === false) return;
+    const hashes = library
+      .filter((book) => !book.remoteOnly)
+      .map((book) => book.hash);
+    if (!hashes.length) return;
+
+    let cancelled = false;
+    void (async () => {
+      const scope = captureDbScope();
+      // El perfil necesita el catálogo (zipfs de la evidencia): si no
+      // hay red no se puede medir nada y el lote entero se omite.
+      const inputs = await inputsForCoverage("es", scope).catch(() => null);
+      if (!inputs || cancelled) return;
+      for (const hash of hashes) {
+        if (cancelled) return;
+        let manifest = await loadBookVocab(hash, scope);
+        if (!manifest) manifest = await analyzeStoredBook(hash, scope);
+        if (!manifest || cancelled) continue;
+        const coverage = coverageOfBook(
+          manifestBookForms(manifest),
+          entriesByFormOf(manifest),
+          inputs,
+        );
+        setBookCoverages((prev) => {
+          const next = new Map(prev);
+          next.set(hash, coverage);
+          return next;
+        });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [library]);
+
+  // Consejo del día: una sola petición por montaje; las puertas de
+  // tips.ts (sesión, «Usar IA», datos mínimos, cadencia) deciden si
+  // siquiera sale la llamada. La tarjeta vive hasta aceptar o cerrar.
+  useEffect(() => {
+    let cancelled = false;
+    const scope = captureDbScope();
+    void maybeRequestTip(scope).then((outcome) => {
+      if (!outcome || cancelled) return;
+      setTip(outcome);
+      void trackReadingEvent(
+        {
+          kind: "tip_shown",
+          tipDay: outcome.tipDay,
+          action: outcome.action,
+          promptVersion: outcome.version,
+          visitId: null,
+          bookHash: null,
+        },
+        scope,
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const acceptTip = () => {
+    if (!tip) return;
+    // Las acciones del enum aplican el ajuste de verdad: la
+    // sugerencia deja de ser texto y se vuelve conducta medible.
+    if (tip.action === "focus_ruler" || tip.action === "syntactic") {
+      const settings = loadReaderSettings();
+      saveReaderSettings({
+        ...settings,
+        focusMode: tip.action === "focus_ruler" ? "ruler" : "syntactic",
+      });
+    }
+    void trackReadingEvent(
+      {
+        kind: "tip_accepted",
+        tipDay: tip.tipDay,
+        action: tip.action,
+        visitId: null,
+        bookHash: null,
+      },
+      captureDbScope(),
+    );
+    setTip(null);
+  };
+
+  const tipActionLabel: Record<TipAction, string> = {
+    none: "Me sirve",
+    focus_ruler: "Activar la regla de foco",
+    syntactic: "Activar las líneas sintácticas",
+  };
+
   const positionByHash = useMemo(
     () => new Map(positions.map((position) => [position.bookHash, position])),
     [positions],
@@ -207,6 +345,20 @@ export default function Shelf({ library, checking, onOpen, onRemove, onAdd, onLi
   }, [latestHash, library, positions]);
 
   const pickFile = () => fileInputRef.current?.click();
+
+  const openSample = async () => {
+    if (sampleState === "loading") return;
+    setSampleState("loading");
+    try {
+      const response = await fetch(SAMPLE_BOOK_URL);
+      if (!response.ok) throw new Error("sample fetch");
+      const data = await response.blob();
+      setSampleState("idle");
+      onAdd(new File([data], SAMPLE_BOOK_NAME, { type: "application/epub+zip" }));
+    } catch {
+      setSampleState("error");
+    }
+  };
 
   const onDrop = (event: DragEvent) => {
     event.preventDefault();
@@ -294,9 +446,55 @@ export default function Shelf({ library, checking, onOpen, onRemove, onAdd, onLi
             <span className="add-slot-mark" aria-hidden="true" />
             Añadir libro
           </button>
+          <div className="shelf-sample">
+            <p className="meta">
+              Toca cualquier palabra mientras lees: Lecta te la explica y
+              la guarda en tu Cuaderno.
+            </p>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => void openSample()}
+              disabled={sampleState === "loading"}
+            >
+              {sampleState === "loading"
+                ? "Trayendo el libro…"
+                : "Leer un libro de muestra"}
+            </button>
+            {sampleState === "error" ? (
+              <p className="meta" role="alert">
+                No pude traerlo. Revisa tu conexión e inténtalo de nuevo.
+              </p>
+            ) : null}
+          </div>
         </section>
       ) : (
         <>
+          {/* Consejo del día (IA): tarjeta transitoria de sesión.
+              Aceptar aplica la acción si la hay y cierra; × solo
+              cierra. Sin consejo la estantería no cambia nada. */}
+          {tip ? (
+            <section className="shelf-tip" role="status">
+              <p className="shelf-tip-text">{tip.tip}</p>
+              <div className="shelf-tip-actions">
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={acceptTip}
+                >
+                  {tipActionLabel[tip.action]}
+                </button>
+                <button
+                  type="button"
+                  className="reader-return-dismiss"
+                  onClick={() => setTip(null)}
+                  aria-label="Descartar consejo"
+                >
+                  ×
+                </button>
+              </div>
+            </section>
+          ) : null}
           {current ? (
             <section className="shelf-hero" aria-label="Seguir leyendo">
               <button
@@ -374,6 +572,14 @@ export default function Shelf({ library, checking, onOpen, onRemove, onAdd, onLi
                       title={displayTitle(book.name, book.title)}
                     >
                       <BookCover book={book} />
+                      {bookCoverages.get(book.hash) ? (
+                        <span
+                          className="discover-badge"
+                          title={`Conoces aproximadamente el ${bookCoverages.get(book.hash)?.percent}% del vocabulario`}
+                        >
+                          ~{bookCoverages.get(book.hash)?.percent}%
+                        </span>
+                      ) : null}
                     </button>
                     {total > 0 && total <= 40 ? (
                       <span className="dots" aria-hidden="true">
@@ -466,6 +672,17 @@ export default function Shelf({ library, checking, onOpen, onRemove, onAdd, onLi
           )}
         </>
       )}
+
+      {/* Riel del catálogo público: bajo la retícula y también con la
+          estantería vacía — Descubre es justamente la respuesta a
+          «no sé qué leer». Se oculta solo si no hay índice. */}
+      {onGetCatalogBook ? (
+        <DiscoverRail
+          library={library}
+          onOpen={onOpen}
+          onGet={onGetCatalogBook}
+        />
+      ) : null}
     </div>
   );
 }

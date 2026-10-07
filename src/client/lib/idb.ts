@@ -162,8 +162,10 @@ export type PresentedRow = {
 type ReadingEventBase = {
   id: string;
   version: 1;
-  visitId: string;
-  bookHash: string;
+  // Los eventos tip_* se escriben desde la estantería, fuera de toda
+  // visita de lectura: ahí visitId y bookHash van en null.
+  visitId: string | null;
+  bookHash: string | null;
   createdAt: number;
 };
 
@@ -235,6 +237,21 @@ export type ReadingEvent = ReadingEventBase &
         sectionIndex: number;
         regressions: number;
         moves: number;
+      }
+    // Consejo diario de la estantería mostrado / aceptado: mide si
+    // las intervenciones IA sirven (sin guardar el texto del tip).
+    // Son los únicos eventos sin visita ni libro: nacen fuera del
+    // lector.
+    | {
+        kind: "tip_shown";
+        tipDay: string;
+        action: string;
+        promptVersion: string;
+      }
+    | {
+        kind: "tip_accepted";
+        tipDay: string;
+        action: string;
       }
   );
 
@@ -759,6 +776,25 @@ export async function listSessionKeys(scope?: DbScope): Promise<string[]> {
   );
 }
 
+// ¿La cuenta tiene alguna evidencia de aprendizaje? (palabras en el
+// Cuaderno, conocimiento declarado/inferido o una preparación ya
+// registrada — la calibración también escribe knowledge, así queda
+// cubierta). La primera hoja «Antes de leer» de una cuenta sin
+// nada de esto pide trabajo a ciegas: por eso existe la consulta.
+export async function hasAnyLearningHistory(scope?: DbScope): Promise<boolean> {
+  return withDb(scope, async (db) => {
+    const [words, knowledge, sessionKeys] = await Promise.all([
+      db.count("savedWords"),
+      db.count("knowledge"),
+      db.getAllKeys("session"),
+    ]);
+    if (words > 0 || knowledge > 0) return true;
+    return sessionKeys.some(
+      (key) => typeof key === "string" && key.startsWith("preparation:v1:"),
+    );
+  });
+}
+
 // ---------- Ciclo de vida del store session ----------
 
 // Claves de session que viajan anónimo→cuenta y al respaldo. Los
@@ -804,12 +840,14 @@ export function mergeSessionValue(
   return existing;
 }
 
-// Claves de session que pertenecen a un libro: su inicio elegido y
-// todas sus preparaciones. El prefijo lleva dos puntos tras el hash —
+// Claves de session que pertenecen a un libro: su inicio elegido,
+// todas sus preparaciones y el análisis de vocabulario que alimenta
+// la insignia de cobertura. El prefijo lleva dos puntos tras el hash —
 // «abc» no borra lo de «abc2».
 export function isBookScopedSessionKey(bookHash: string, key: string): boolean {
   return (
     key === `bookStart:v1:${bookHash}` ||
+    key === `bookVocab:v1:${bookHash}` ||
     key.startsWith(`preparation:v1:${bookHash}:`)
   );
 }

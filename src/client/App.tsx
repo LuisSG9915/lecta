@@ -3,6 +3,7 @@ import Reader from "./components/Reader";
 // El Cuaderno lleva fsrs: carga diferida para no pagar ese costo al arrancar.
 const Vocabulary = lazy(() => import("./components/Vocabulary"));
 import Account from "./components/Account";
+import Sheet from "./components/Sheet";
 import Calibration from "./components/Calibration";
 import { CompanionProvider } from "./components/CompanionProvider";
 import ThemeMenu from "./components/ThemeMenu";
@@ -12,6 +13,8 @@ import { applyTheme, loadTheme, saveTheme, type ThemeChoice } from "./lib/settin
 import { decidePendingDelete, PENDING_DELETE_KEY } from "./lib/account-cleanup";
 import { pushOverlay, type OverlayHandle } from "./lib/history";
 import { sha256Hex } from "./lib/hash";
+import { downloadCatalogEpub, type CatalogBook } from "./lib/catalog";
+import { analyzeStoredBook } from "./lib/book-vocab";
 import {
   CALIBRATION_DONE_KEY,
   fetchCalibrationSample,
@@ -33,6 +36,11 @@ import {
   type DbScope,
 } from "./lib/idb";
 import { resetGameCache } from "./lib/game";
+import {
+  clearLastUserId,
+  loadLastUserId,
+  saveLastUserId,
+} from "./lib/last-user";
 import { downloadBook, listRemoteBooks } from "./lib/books";
 import { queueBookDelete, queueBookUpload, runBookQueue } from "./lib/book-queue";
 import { syncPositions, type PositionConflict } from "./lib/positions-sync";
@@ -69,6 +77,7 @@ export default function App() {
   const [checkingLibrary, setCheckingLibrary] = useState(true);
   const [showVocabulary, setShowVocabulary] = useState(false);
   const [showAccount, setShowAccount] = useState(Boolean(authLink.token || authLink.urlError));
+  const [showThemeSheet, setShowThemeSheet] = useState(false);
   const [library, setLibrary] = useState<ShelfItem[]>([]);
   const [vocabVersion, setVocabVersion] = useState(0);
   const [activityVersion, setActivityVersion] = useState(0);
@@ -86,6 +95,7 @@ export default function App() {
   const [calibrationLang, setCalibrationLang] = useState("es");
   const bookRelease = useRef<OverlayHandle | null>(null);
   const panelRelease = useRef<OverlayHandle | null>(null);
+  const themeRelease = useRef<OverlayHandle | null>(null);
   const calibrationRelease = useRef<OverlayHandle | null>(null);
   const positionRelease = useRef<OverlayHandle | null>(null);
   // El libro que esperaba entrar cuando se ofreció la calibración.
@@ -96,8 +106,14 @@ export default function App() {
   // cerrar cae con la evidencia de la misma cuenta aunque la sesión
   // haya cambiado mientras la prueba estaba abierta.
   const calibrationScope = useRef<DbScope | null>(null);
-  const { data: session, isPending: sessionPending } = authClient.useSession();
+  const { data: session, isPending: sessionPending, error: sessionError } =
+    authClient.useSession();
   const sessionUserId = session?.user?.id;
+  // Arranque optimista: la última cuenta confirmada abre su base
+  // local sin esperar a que resuelva la sesión. Si la sesión llega
+  // con otra identidad (o sin sesión), el efecto principal hace la
+  // transición con las mismas protecciones de scope de siempre.
+  const [optimisticUserId] = useState(() => loadLastUserId());
   // La cuenta cuya base local ya quedó activa (se fija tras setDbUser,
   // nunca antes): el compañero solo ve datos de la base vigente — un
   // cambio de cuenta lo limpia y recarga con el contexto nuevo.
@@ -230,6 +246,22 @@ export default function App() {
     setShowAccount(false);
   };
 
+  const openThemeSheet = () => {
+    if (!themeRelease.current) {
+      themeRelease.current = pushOverlay(() => {
+        themeRelease.current = null;
+        setShowThemeSheet(false);
+      });
+    }
+    setShowThemeSheet(true);
+  };
+
+  const closeThemeSheet = () => {
+    themeRelease.current?.release();
+    themeRelease.current = null;
+    setShowThemeSheet(false);
+  };
+
   // La estantería mezcla los libros del dispositivo con los que solo
   // están en la cuenta: locales primero (recientes arriba) y los
   // remotos sin copia local después (recién subidos arriba).
@@ -293,14 +325,45 @@ export default function App() {
     });
   }, [authLink]);
 
+  // Apertura optimista con marcador: la base local de la última
+  // cuenta confirmada se muestra al instante. La sesión se confirma
+  // después en el efecto de abajo, que reconcilia identidad, syncs
+  // y marcador — este efecto solo pinta lo local.
+  useEffect(() => {
+    if (!optimisticUserId) return;
+    let cancelled = false;
+    void setDbUser(optimisticUserId)
+      .then(() => {
+        if (cancelled) return;
+        resetGameCache();
+        const scope = captureDbScope();
+        setDbUserId(scope.userId);
+        setCheckingLibrary(false);
+        void refreshLibrary();
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [optimisticUserId, refreshLibrary]);
+
   useEffect(() => {
     // Mientras la sesión no resuelve, no sabemos si hay cuenta: tocar
     // bases locales o marcadores de borrado en ese momento es inseguro.
+    // Salvo que el arranque optimista ya haya abierto una base (arriba):
+    // en ese caso este efecto reconcilia cuando la sesión responde.
     if (sessionPending) return;
     let cancelled = false;
+    // Error de sesión no autenticada (red caída, 5xx) sin identidad
+    // disponible: no hay veredicto — se conserva la base que ya estaba
+    // abierta (la del marcador optimista, si la hubo) y el marcador
+    // queda intacto para el próximo arranque. Un 401 o una sesión nula
+    // sin error SÍ son veredicto de «sin sesión».
+    const inconclusive =
+      Boolean(sessionError) && sessionError?.status !== 401 && !sessionUserId;
     void (async () => {
       try {
-        await setDbUser(sessionUserId ?? null);
+        if (!inconclusive) await setDbUser(sessionUserId ?? null);
       } catch (error) {
         // Sin la base local no hay estantería que preparar: soltar el
         // spinner y decir por qué (p. ej. otra pestaña reteniendo una
@@ -316,6 +379,11 @@ export default function App() {
         }
         return;
       }
+      // El marcador sigue el veredicto de la sesión: identidad
+      // confirmada lo graba, «sin sesión» claro lo borra y un error
+      // de red no lo toca.
+      if (sessionUserId) saveLastUserId(sessionUserId);
+      else if (!inconclusive) clearLastUserId();
       // La cuenta cambió: el estado del juego en memoria pertenece a
       // la base anterior — se suelta para no mostrar ni persistir lo
       // ajeno (las tareas encoladas llevan su contexto y abortan solas).
@@ -411,7 +479,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [sessionUserId, sessionPending, authLink, refreshLibrary]);
+  }, [sessionUserId, sessionPending, sessionError, authLink, refreshLibrary]);
 
   // Si la sesión sigue abierta y vuelve la conexión, re-sincroniza todo
   // (los cambios hechos sin conexión —palabras, posiciones, subidas de
@@ -462,6 +530,10 @@ export default function App() {
         .then(() => {
           setMessage("Libro guardado en este dispositivo.");
           void refreshLibrary();
+          // Análisis de vocabulario en segundo plano: alimenta la
+          // insignia ~% de la tarjeta. Sin red sale con null y la
+          // estantería lo reintenta en el próximo montaje.
+          void analyzeStoredBook(hash, scope).catch(() => null);
         })
         .catch(() => setError("El libro se abrió, pero no se pudo guardar en este dispositivo."));
       // La subida pasa por la cola persistente: sin conexión queda
@@ -475,6 +547,15 @@ export default function App() {
       setBook(null);
       setError("No pudimos leer el archivo elegido.");
     }
+  };
+
+  // «Obtener» del riel Descubre: el EPUB del catálogo entra por el
+  // mismo tubo que un archivo elegido a mano — validación, dedup por
+  // hash (si ya está, abre el existente) y subida a la cuenta.
+  const getCatalogBook = async (item: CatalogBook) => {
+    const file = await downloadCatalogEpub(item);
+    if (!file) throw new Error("catalog download failed");
+    await selectBook(file);
   };
 
   const openStoredBook = async (item: ShelfItem) => {
@@ -643,6 +724,7 @@ export default function App() {
           onThemeChange={changeTheme}
           vocabVersion={vocabVersion}
           onRequestCalibration={requestCalibration}
+          signedIn={Boolean(sessionUserId)}
         />
       ) : (
         <>
@@ -655,6 +737,16 @@ export default function App() {
               <button type="button" className="btn--quiet" onClick={() => openPanel("account")}>
                 Cuenta
               </button>
+              {/* En pantalla angosta las cinco opciones de tema rompen la
+                  cabecera en tres filas: ahí un solo botón abre la hoja
+                  con muestras; el menú de texto queda para escritorio. */}
+              <button
+                type="button"
+                className="btn--quiet app-theme-btn"
+                onClick={openThemeSheet}
+              >
+                Tema
+              </button>
               <ThemeMenu value={theme} onChange={changeTheme} />
             </nav>
           </header>
@@ -666,6 +758,7 @@ export default function App() {
               onRemove={removeBook}
               onAdd={(file) => void selectBook(file)}
               onLibraryChange={() => void refreshLibrary()}
+              onGetCatalogBook={getCatalogBook}
               activityVersion={activityVersion}
             />
             {message ? (
@@ -681,6 +774,23 @@ export default function App() {
           </main>
         </>
       )}
+
+      {showThemeSheet ? (
+        <Sheet label="Tema de lectura" onClose={closeThemeSheet}>
+          <div className="sheet-head">
+            <strong className="sheet-title">Tema</strong>
+            <button
+              type="button"
+              className="btn--quiet"
+              onClick={closeThemeSheet}
+              data-autofocus
+            >
+              Listo
+            </button>
+          </div>
+          <ThemeMenu value={theme} onChange={changeTheme} variant="swatches" />
+        </Sheet>
+      ) : null}
 
       {showVocabulary ? (
         <Suspense fallback={<p className="status">Abriendo tu cuaderno…</p>}>

@@ -157,6 +157,8 @@
   border: none;
   background: none;
   border-radius: var(--r-1);
+  /* La insignia de cobertura se posiciona sobre la portada. */
+  position: relative;
   transition:
     transform var(--dur-2) var(--ease-out),
     box-shadow var(--dur-2) var(--ease-out);
@@ -286,6 +288,13 @@
   max-inline-size: 30ch;
 }
 
+.shelf-sample {
+  display: grid;
+  gap: var(--s-3);
+  justify-items: start;
+  max-inline-size: 36ch;
+}
+
 /* ---------- Días con lectura ---------- */
 
 .shelf-week .dot--day {
@@ -328,6 +337,143 @@
 
 .shelf-companion .meta {
   margin: 0;
+}
+
+/* ---------- Consejo del día (IA) ----------
+   Tarjeta transitoria arriba del hero: texto del consejo + acción
+   opcional + descarte. Mismo lenguaje que las franjas reader-prep
+   del lector (estado, no alerta modal). */
+.shelf-tip {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  margin-block-end: var(--s-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-1);
+  background: var(--paper-raised);
+}
+
+.shelf-tip-text {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+  color: var(--ink);
+}
+
+.shelf-tip-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex: none;
+}
+
+@media (max-width: 40rem) {
+  .shelf-tip {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .shelf-tip-actions {
+    justify-content: flex-end;
+  }
+}
+
+/* ---------- Descubre (riel del catálogo) ----------
+   Riel horizontal bajo la estantería: mismas portadas, misma presión
+   al pulsar. Las tarjetas no encogen — el riel desplaza en vez de
+   apretar el contenido. */
+.discover {
+  margin-block-start: var(--s-5);
+}
+
+.discover-rail {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 var(--s-3);
+  display: flex;
+  gap: var(--s-4);
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scroll-snap-type: inline proximity;
+  scrollbar-width: thin;
+}
+
+.discover-book {
+  display: grid;
+  gap: var(--s-2);
+  inline-size: 8rem;
+  flex: none;
+  scroll-snap-align: start;
+  justify-items: start;
+  align-content: start;
+}
+
+.discover-cover {
+  position: relative;
+  inline-size: 8rem;
+  block-size: 12rem;
+  border-radius: var(--r-1);
+}
+
+.discover-cover .cover {
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: cover;
+  border-radius: var(--r-1);
+}
+
+.discover-badge {
+  position: absolute;
+  inset-block-end: var(--s-2);
+  inset-inline-start: var(--s-2);
+  padding: 0.1em 0.45em;
+  border-radius: var(--r-1);
+  background: var(--paper-raised);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  font-variant-numeric: oldstyle-nums;
+  box-shadow: var(--shadow-cover);
+}
+
+.discover-meta {
+  min-width: 0;
+  inline-size: 100%;
+}
+
+.discover-title {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--ink);
+  /* Título a dos líneas con elipsis: el riel no se desordena con
+     títulos largos del catálogo. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.discover-meta .meta {
+  margin: 0;
+}
+
+.discover-label {
+  color: var(--ink-soft);
+}
+
+.discover-action {
+  min-height: 2.75rem;
+}
+
+@media (forced-colors: active) {
+  .discover-badge {
+    border: 1px solid CanvasText;
+  }
 }
 
 /* ---------- Pequeña ---------- */

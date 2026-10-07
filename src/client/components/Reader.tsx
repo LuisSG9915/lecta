@@ -21,7 +21,9 @@ import { sanitizeSectionDocument } from "../lib/sanitize";
 import { markWords } from "../lib/marks";
 import {
   captureDbScope,
+  hasAnyLearningHistory,
   listAllKnowledge,
+  listReadingEvents,
   listKnowledge,
   listSavedWords,
   loadBookPosition,
@@ -48,6 +50,7 @@ import {
   estimateProfile,
   isCredibleKnowledge,
   predictSection,
+  PROFILE_ADJUST_KEY,
   resolveEvidence,
   type KnowledgeEvidence,
   type SectionPrediction,
@@ -58,8 +61,11 @@ import {
   type SuggestionRows,
 } from "../lib/section-words";
 import {
+  chapterSummary,
+  hasChapterSummary,
   pruneReadingHistory,
   trackReadingEvent,
+  type ChapterSummary,
   type VisitEventDraft,
 } from "../lib/reading-events";
 import {
@@ -166,6 +172,7 @@ import { eligibleDelta, useReaderPresence } from "../lib/reader-presence";
 import { FocusRuler, rulerBandPx } from "./FocusRuler";
 import {
   buildChapterCatalog,
+  suggestedChapterTarget,
   trackCalibrationOffer,
   type CalibrationTrack,
   targetAt,
@@ -184,6 +191,12 @@ import {
   type ChapterAnalyzer,
   type ChapterAnalysis,
 } from "../lib/chapter-analysis";
+import {
+  lemmaOfFromEntries,
+  loadPhrases,
+  matchPhrase,
+  type PhraseIndex,
+} from "../lib/phrases";
 import {
   acknowledgePreparationEntry,
   buildPreparationEvidence,
@@ -239,6 +252,10 @@ type ReaderProps = {
   // Devuelve si la hoja quedó abierta — el aviso se conserva cuando
   // no, para reintentar al volver la conexión.
   onRequestCalibration: (language: string) => Promise<boolean>;
+  // Sesión confirmada: las funciones con IA piden cuenta — con ella
+  // falsa la ficha ya anuncia «Inicia sesión» en vez de fallar tras
+  // la espera. La preferencia «Usar IA» se consulta aparte.
+  signedIn: boolean;
 };
 
 // Caché por sección: la consulta al catálogo se hace una sola vez por
@@ -255,7 +272,7 @@ type TocRow = { label: string; index: number; depth: number; target: ChapterTarg
 const WPM_KEY = "readingWpm";
 // Desplazamiento manual del umbral del perfil («Mostrar menos/más»)
 // y preferencia por libro de no mostrar la tarjeta «Antes de leer».
-const PROFILE_ADJUST_KEY = "profileAdjust";
+
 const previewHiddenKey = (hash: string) => `previewHidden:${hash}`;
 // Tope del lote automático de definiciones con IA por sección. El
 // catálogo ya cubre lo común (Wikcionario); el lote solo cierra
@@ -311,6 +328,7 @@ export default function Reader({
   onThemeChange,
   vocabVersion,
   onRequestCalibration,
+  signedIn,
 }: ReaderProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -475,6 +493,10 @@ export default function Reader({
   const calEvaluated = useRef(false);
   const [language, setLanguage] = useState("es");
   const [selection, setSelection] = useState<WordHit | null>(null);
+  // Índice de locuciones (asset estático): se pide al montar el
+  // lector para que el PRIMER toque ya lo tenga en memoria — sin
+  // red ni IA en el camino de la consulta.
+  const phrasesRef = useRef<PhraseIndex | null>(null);
   // Predicción de la sección visible (marcas punteadas en el texto).
   // Null mientras no haya análisis aplicable.
   const [prediction, setPrediction] = useState<SectionPrediction | null>(null);
@@ -551,6 +573,19 @@ export default function Reader({
     document.addEventListener("visibilitychange", onVisibility);
     return () =>
       document.removeEventListener("visibilitychange", onVisibility);
+  }, []);
+
+  // Precarga del índice de locuciones: asset estático, una vez por
+  // montaje del lector; si no estaba listo para el primer toque el
+  // match se omite sin bloquear la ficha.
+  useEffect(() => {
+    let cancelled = false;
+    void loadPhrases().then((index) => {
+      if (!cancelled) phrasesRef.current = index;
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Planificador de presencia (fase 5): recibe señales reales del
@@ -776,6 +811,26 @@ export default function Reader({
   // la siguiente capa empuje una entrada nueva.
   const openSelection = (hit: WordHit) => {
     noteActivity();
+    // Locución en la oración del toque: matching por lema con el
+    // análisis ya en caché del capítulo (capítulo sin analizar →
+    // solo superficie; degradación documentada en phrases.ts).
+    if (hit.context && phrasesRef.current) {
+      const analysis = analyzerRef.current?.cached(
+        targetAt(
+          catalogRef.current?.ranges ?? [],
+          sectionIndexRef.current,
+        )?.id ?? "",
+      );
+      hit.phrase =
+        matchPhrase(
+          phrasesRef.current,
+          hit.context,
+          hit.word,
+          lemmaOfFromEntries(
+            analysis?.state === "ready" ? analysis.entries : undefined,
+          ),
+        ) ?? undefined;
+    }
     const close = () => {
       overlayRelease.current = null;
       setSelection(null);
@@ -1461,13 +1516,14 @@ export default function Reader({
       }
       target ??= targetAt(cat.ranges, index);
       if (!target) return;
+      let firstEval = false;
       if (via === "enter") {
         // Entrar a otra sección del mismo destino no reevalúa: solo
         // la primera evaluación del libro o un cambio real de destino
         // disparan la decisión. `prevTargetId` viene de navigate y
         // distingue «intro → cap1» de «cap1 §2 → cap1 §3».
-        const first = prepEvaluated.current == null;
-        if (!first && prevTargetId === target.id) return;
+        firstEval = prepEvaluated.current == null;
+        if (!firstEval && prevTargetId === target.id) return;
         prepEvaluated.current = target.id;
       }
       const scope = captureDbScope();
@@ -1481,13 +1537,23 @@ export default function Reader({
         record,
         noticeDismissed: prepDismissed.current.has(target.id),
       });
-      if (decision.opening === "prepare") {
+      let opening = decision.opening;
+      // El primer capítulo de una cuenta sin historial: la hoja
+      // pediría clasificar palabras que el perfil aún no sabe usar —
+      // entra directo con el aviso discreto; la calibración después
+      // del primer tramo aprende el nivel sin pedirlo por adelantado.
+      if (opening === "prepare" && firstEval) {
+        if (!(await hasAnyLearningHistory(scope).catch(() => true)))
+          opening = "notice";
+        if (bookRef.current !== book) return;
+      }
+      if (opening === "prepare") {
         setPrepNotice(null);
         void openPrepSheet(target, record);
         return;
       }
-      if (decision.opening === "notice" || decision.opening === "summary") {
-        if (decision.opening === "summary" && record)
+      if (opening === "notice" || opening === "summary") {
+        if (opening === "summary" && record)
           void savePreparationRecord(
             acknowledgePreparationEntry(record, Date.now()),
             scope,
@@ -1495,7 +1561,7 @@ export default function Reader({
         const cached = analyzerRef.current?.cached(target.id);
         setPrepNotice({
           target,
-          summary: decision.opening === "summary",
+          summary: opening === "summary",
           count:
             cached?.state === "ready"
               ? prepRowsFor(cached, getBookLanguage(book)).rows.length
@@ -2932,6 +2998,98 @@ export default function Reader({
   const nextRow = tocRows.find((row) => row.index === sectionIndex + 1);
   const prevRow = tocRows.find((row) => row.index === sectionIndex - 1);
 
+  // ---------- Resumen de cierre de capítulo ----------
+
+  // ¿El lector llegó al final del capítulo? En la última sección del
+  // tramo y con la vista casi completa: en desplazamiento, cerca del
+  // pie (una sección sola ocuparía toda la vista sin este umbral); en
+  // páginas, en la última página. «uncertain» también cuenta: es un
+  // destino del índice sin clasificar — la mayoría de los EPUB no
+  // traen landmarks y sin ellos casi todo cae ahí. Solo se excluyen
+  // preliminares y ajenos.
+  const endTarget = targetAt(catalog?.ranges ?? [], sectionIndex);
+  // En render no se puede leer catalogRef (rangeFor lo hace): el
+  // estado `catalog` refleja el mismo catálogo — línea previa lo usa.
+  const endRange =
+    catalog?.ranges.find(
+      (range) =>
+        range.startSection <= sectionIndex && sectionIndex < range.endSection,
+    ) ?? null;
+  const atChapterEnd =
+    endTarget != null &&
+    endTarget.kind !== "preliminary" &&
+    endTarget.kind !== "other" &&
+    endRange != null &&
+    sectionIndex === endRange.endSection - 1 &&
+    (settings.layout === "pages" ? page + 1 >= pageCount : scrollRatio >= 0.9);
+
+  // El conteo se calcula una sola vez por capítulo y por visita:
+  // volver al final del mismo capítulo no re-consulta el historial
+  // (la tarjeta muestra la foto de cuando se cerró). El «una vez» solo
+  // traba cuando hubo algo que contar: si el lector llegó al final sin
+  // actividad y luego consulta palabras, volver al pie sí reevalúa.
+  const [endSummary, setEndSummary] = useState<{
+    targetId: string;
+    summary: ChapterSummary;
+  } | null>(null);
+  const summaryForRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!atChapterEnd || !endTarget || !endRange) return;
+    if (summaryForRef.current === endTarget.id) return;
+    const range = endRange;
+    const visitId = visitIdRef.current ?? "";
+    void listReadingEvents(bookHash, captureDbScope())
+      .then((events) => {
+        const summary = chapterSummary(events, range, visitId);
+        if (hasChapterSummary(summary)) {
+          summaryForRef.current = endTarget.id;
+          setEndSummary({ targetId: endTarget.id, summary });
+        } else {
+          setEndSummary(null);
+        }
+      })
+      .catch(() => undefined);
+  }, [atChapterEnd, endTarget, endRange, bookHash]);
+
+  const summaryParts = endSummary
+    ? [
+        endSummary.summary.saved > 0 &&
+          `${endSummary.summary.saved} palabra${endSummary.summary.saved === 1 ? "" : "s"} al Cuaderno`,
+        endSummary.summary.consulted > 0 &&
+          `${endSummary.summary.consulted} consulta${endSummary.summary.consulted === 1 ? "" : "s"}`,
+        endSummary.summary.declaredKnown > 0 &&
+          `${endSummary.summary.declaredKnown} conocida${endSummary.summary.declaredKnown === 1 ? "" : "s"}`,
+        endSummary.summary.dwellMs >= 60_000 &&
+          `≈${Math.max(1, Math.round(endSummary.summary.dwellMs / 60_000))} min`,
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : "";
+
+  // Una vez calculado el resumen queda fijo aunque el scroll baje del
+  // umbral (la propia tarjeta empuja el contenido al aparecer). Solo
+  // se muestra en la última sección del tramo — no en las anteriores.
+  const chapterEndCard =
+    endSummary != null &&
+    endSummary.targetId === endTarget?.id &&
+    endRange != null &&
+    sectionIndex === endRange.endSection - 1 &&
+    endTarget ? (
+      <div className="chapter-summary" role="status">
+        <p className="chapter-summary-text">
+          Cerraste «{endTarget.label}»
+          {summaryParts ? ` — ${summaryParts}` : ""}
+        </p>
+        <button
+          type="button"
+          className="btn--quiet"
+          onClick={onOpenNotebook}
+        >
+          Ver Cuaderno
+        </button>
+      </div>
+    ) : null;
+
   return (
     <div
       className="reader"
@@ -3050,6 +3208,8 @@ export default function Reader({
         />
         </div>
         {settings.layout === "pages" ? (
+          <>
+            {chapterEndCard}
           <nav className="page-nav" aria-label="Navegación de páginas">
             <button
               type="button"
@@ -3071,7 +3231,10 @@ export default function Reader({
               Siguiente →
             </button>
           </nav>
+          </>
         ) : (
+          <>
+            {chapterEndCard}
           <nav className="reader-end" aria-label="Navegación de secciones">
             {sectionIndex > 0 ? (
               <button
@@ -3096,6 +3259,7 @@ export default function Reader({
               <span className="reader-end-done meta">Fin del libro</span>
             )}
           </nav>
+          </>
         )}
       </div>
 
@@ -3251,7 +3415,9 @@ export default function Reader({
         <div className="reader-foot-meta">
           <span>
             {sectionTotal
-              ? `${sectionTitle} · ${sectionIndex + 1} de ${sectionTotal}`
+              ? sectionTitle
+                ? `${sectionTitle} · ${sectionIndex + 1} de ${sectionTotal}`
+                : `${sectionIndex + 1} de ${sectionTotal}`
               : "Abriendo…"}
             {minutes > 0 ? ` · ≈${minutes} min` : ""}
           </span>
@@ -3751,11 +3917,7 @@ export default function Reader({
       {askStart && catalog ? (
         <BookStart
           targets={catalog.targets}
-          suggestedStartId={
-            catalog.targets.find((t) => t.kind === "chapter")?.id ??
-            catalog.targets[0]?.id ??
-            null
-          }
+          suggestedStartId={suggestedChapterTarget(catalog, title)?.id ?? null}
           firstChapterId={
             catalog.targets.find((t) => t.kind === "chapter")?.id ?? null
           }
@@ -3825,6 +3987,8 @@ export default function Reader({
           key={selection.word}
           word={selection.word}
           context={selection.context}
+          phrase={selection.phrase}
+          canExplain={signedIn}
           language={language}
           bookHash={bookHash}
           onClose={closeSelection}

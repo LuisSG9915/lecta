@@ -15,17 +15,23 @@ import {
   EXPLAIN_SYSTEM_PROMPT,
   ITEM_CALL_OPTIONS,
   ITEM_SYSTEM_PROMPT,
+  TIP_CALL_OPTIONS,
+  TIP_PROMPT_VERSION,
+  TIP_SYSTEM_PROMPT,
   VERIFY_CALL_OPTIONS,
   VERIFY_SYSTEM_PROMPT,
   buildExplainPrompt,
   buildItemPrompt,
+  buildTipPrompt,
   buildVerifyPrompt,
   callDeepSeek,
   logAiCall,
   parseExplain,
   parseItem,
+  parseTip,
   parseVerify,
   requestEnrichment,
+  sanitizeTipContext,
 } from "./ai";
 import { createAuth } from "./auth";
 import { isStopword } from "../shared/stopwords";
@@ -36,10 +42,12 @@ import { checkEpubHeader, EPUB_MAX_BYTES } from "../shared/epub-check";
 import { getSession } from "./session";
 import { readingData } from "./reading-data";
 import { companion } from "./companion";
+import { catalog } from "./catalog";
 
 export const app = new Hono<{ Bindings: WorkerEnv }>();
 app.route("/", readingData);
 app.route("/", companion);
+app.route("/", catalog);
 
 app.get("/api/health", (context) => context.json({ status: "ok" }));
 
@@ -691,6 +699,78 @@ app.post("/api/lexicon/explain", async (context) => {
   return context.json({ explanation: parsed.explanation });
 });
 
+// Consejo diario de lectura en la estantería (única función IA
+// proactiva — sin gesto del usuario). Viajan solo agregados saneados;
+// el cliente guarda la cadencia (1/día) y los eventos de aceptación.
+// El silencio ({tip:null}) es un resultado válido y se cachea igual
+// que un consejo: una recarga no vuelve a preguntar.
+const tipCache = createTtlCache<string>({ maxEntries: 200 });
+
+app.post("/api/lexicon/tip", async (context) => {
+  const body = await context.req.json().catch(() => null);
+  const tipContext = sanitizeTipContext(body);
+  if (!tipContext)
+    return context.json({ error: "Falta el día local." }, 400);
+  if (!getConnectionString(context.env))
+    return context.json({ error: "El servicio no está configurado." }, 503);
+  const session = await getSession(context);
+  if (!session)
+    return context.json({ error: "Inicia sesión para recibir consejos." }, 401);
+
+  const cacheKey = `${session.user.id}:${tipContext.dayKey}`;
+  const cached = tipCache.get(cacheKey);
+  if (cached) {
+    return context.json({ ...JSON.parse(cached), cached: true });
+  }
+
+  const allowed = await consumeRateUnits(
+    context.env,
+    session.user.id,
+    1,
+    TIP_UNITS_PER_HOUR,
+    "tip",
+  );
+  if (!allowed)
+    return context.json(
+      { error: "Llegaste al límite de consejos por ahora. Intenta más tarde." },
+      429,
+    );
+
+  const ai = await callDeepSeek(
+    context.env,
+    { system: TIP_SYSTEM_PROMPT, user: buildTipPrompt(tipContext) },
+    TIP_CALL_OPTIONS,
+  );
+  const parsed =
+    ai.ok && ai.finishReason !== "length" ? parseTip(ai.content) : null;
+  logAiCall(
+    TIP_CALL_OPTIONS,
+    ai,
+    !ai.ok ? ai.reason : ai.finishReason === "length" ? "truncated" : parsed ? "ok" : "invalid",
+  );
+  if (!ai.ok)
+    return context.json(
+      {
+        error:
+          ai.reason === "not-configured"
+            ? "Los consejos con IA no están configurados."
+            : ai.reason === "rate-limited"
+              ? "La IA está saturada. Intenta de nuevo en unos minutos."
+              : "La IA no pudo pensar un consejo.",
+      },
+      ai.reason === "api-error" ? 502 : 503,
+    );
+  if (!parsed)
+    return context.json({ error: "La IA no devolvió un consejo válido." }, 502);
+  const payload = {
+    tip: parsed.tip,
+    action: parsed.action,
+    version: TIP_PROMPT_VERSION,
+  };
+  tipCache.set(cacheKey, JSON.stringify(payload));
+  return context.json(payload);
+});
+
 // Presupuestos por hora y por alcance: cada función IA gasta de su
 // propia bolsa (columna scope de lecta_rate_log), así una tanda de
 // ítems o de correcciones no consume la cuota de enriquecimiento.
@@ -698,6 +778,7 @@ const ENRICH_UNITS_PER_HOUR = 60;
 const ITEM_UNITS_PER_HOUR = 24;
 const VERIFY_UNITS_PER_HOUR = 30;
 const EXPLAIN_UNITS_PER_HOUR = 30;
+const TIP_UNITS_PER_HOUR = 6;
 const HOUR_MS = 3_600_000;
 
 // Suma `units` a la ventana de la última hora del scope dado y la
