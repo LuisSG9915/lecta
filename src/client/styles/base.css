@@ -110,14 +110,35 @@ a {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
+  /* Con «Animaciones del gato: Completas» (html[data-cat-motion=full])
+     los elementos marcados .cat-anim y su interior conservan su
+     movimiento; el resto de la app sigue reducido como pide el
+     sistema. Sin ese atributo la reducción sigue siendo global. */
+  html:not([data-cat-motion="full"]) *,
+  html:not([data-cat-motion="full"]) *::before,
+  html:not([data-cat-motion="full"]) *::after,
+  html[data-cat-motion="full"] *:not(.cat-anim):not(.cat-anim *),
+  html[data-cat-motion="full"] *:not(.cat-anim):not(.cat-anim *)::before,
+  html[data-cat-motion="full"] *:not(.cat-anim):not(.cat-anim *)::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* «Animaciones del gato: Reducidas»: reduce solo al compañero aunque
+   el sistema operativo permita movimiento — elección del usuario en
+   Cuenta, no del sistema. */
+html[data-cat-motion="reduced"] .cat-anim,
+html[data-cat-motion="reduced"] .cat-anim *,
+html[data-cat-motion="reduced"] .cat-anim::before,
+html[data-cat-motion="reduced"] .cat-anim ::before,
+html[data-cat-motion="reduced"] .cat-anim::after,
+html[data-cat-motion="reduced"] .cat-anim ::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
 }
 
 @media (prefers-contrast: more) {

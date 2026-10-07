@@ -17,7 +17,7 @@ import { pushWordsToServer } from "../lib/vocab";
 import { pushKnowledgeToServer } from "../lib/reading-sync";
 import { recordReview } from "../lib/reviews";
 import { loadUseAi } from "../lib/ai-pref";
-import { award } from "../lib/game";
+import { award, localDayKey } from "../lib/game";
 import Sheet from "./Sheet";
 
 type WordPanelProps = {
@@ -194,7 +194,15 @@ export default function WordPanel({
     }, scope);
     setSavedEntry(entry);
     onSaved(entry);
-    void award({ kind: "saved", zipf: chosenEntry?.zipf ?? null }, scope);
+    // El premio queda ligado a la fila guardada (key + sello): re-guardar
+    // la misma palabra no infla el journal — la fila se fusiona y su
+    // updatedAt solo cambia si hubo algo nuevo que persistir.
+    const awardedAt = Date.now();
+    void award({ kind: "saved", zipf: chosenEntry?.zipf ?? null }, scope, {
+      id: `saved:${entry.key}:${entry.updatedAt ?? entry.savedAt}`,
+      at: awardedAt,
+      dayKey: localDayKey(awardedAt),
+    });
     if (knowledge) {
       onKnowledgeChanged?.(knowledge, { form: word, kind: "saved" });
       void pushKnowledgeToServer([knowledge], scope);

@@ -21,7 +21,10 @@ import {
   type WeeklyGoalProgress,
 } from "../lib/reading-goal";
 import { loadActivityHidden } from "../lib/settings";
+import { levelProgress } from "../lib/gamification";
 import BookCover from "./BookCover";
+import { CompanionButton } from "./CompanionButton";
+import { useCompanion } from "./CompanionProvider";
 
 // Ítem de la estantería: lo que hace falta para dibujar la tarjeta,
 // sin el archivo. remoteOnly marca los que existen en la cuenta pero
@@ -51,6 +54,17 @@ const startOfDay = (ts: number) => {
   return d.getTime();
 };
 
+// El saludo del gato ocurre una sola vez por sesión visible de la
+// app: la estantería se desmonta al abrir un libro, así que la marca
+// vive en el módulo — sobrevive a ese remontaje y muere con la app.
+const SHELF_GREET_MS = 4_000;
+let shelfGreetedThisSession = false;
+export function takeShelfGreeting(): boolean {
+  if (shelfGreetedThisSession) return false;
+  shelfGreetedThisSession = true;
+  return true;
+}
+
 // La misma fracción que guarda el lector; posiciones antiguas sin
 // «progress» caen al índice de sección, sin mínimos inventados.
 const progressOf = (position: SavedBookPosition | undefined, sectionCount: number | undefined) =>
@@ -70,6 +84,29 @@ export default function Shelf({ library, checking, onOpen, onRemove, onAdd, onLi
   // La preferencia se lee una vez: cambiarla en el Cuaderno se aplica
   // la próxima vez que la estantería se monta.
   const [activityHidden] = useState(() => loadActivityHidden());
+  // Compañero del proveedor único: la tarjeta compacta muestra su
+  // etapa, ropa equipada, nombre y nivel, y su botón abre la hoja de
+  // cuidado compartida — nada se carga aquí.
+  const companion = useCompanion();
+  const showCompanion = companion.enabled === true && companion.state !== null;
+  // Saludo una vez por sesión: la primera vez que la estantería
+  // muestra al gato, saluda con la pata unos segundos. Marca en
+  // memoria de módulo — abrir/cerrar el panel no lo repite.
+  const [greeting, setGreeting] = useState(false);
+  // Ajuste durante el render: el primer render que muestra la
+  // tarjeta consume el saludo de la sesión.
+  if (showCompanion && !greeting && takeShelfGreeting()) {
+    setGreeting(true);
+  }
+  // El temporizador solo lo apaga; la marca ya quedó tomada.
+  useEffect(() => {
+    if (!greeting) return;
+    const timer = window.setTimeout(
+      () => setGreeting(false),
+      SHELF_GREET_MS,
+    );
+    return () => window.clearTimeout(timer);
+  }, [greeting]);
 
   useEffect(() => {
     let cancelled = false;
@@ -209,6 +246,33 @@ export default function Shelf({ library, checking, onOpen, onRemove, onAdd, onLi
           event.currentTarget.value = "";
         }}
       />
+
+      {/* Tarjeta compacta del compañero (fase 5): el gato con su
+          etapa y ropa equipada, nombre y nivel breve; el botón abre
+          la hoja de cuidado del proveedor. Solo si el juego está
+          encendido — nunca desplaza ni rompe la estantería. */}
+      {showCompanion && companion.state ? (
+        <section
+          className="shelf-companion"
+          aria-label={`Tu compañero ${companion.name}`}
+        >
+          <CompanionButton
+            stage={companion.stage}
+            mood={companion.mood}
+            accessories={companion.accessories}
+            pose={greeting ? "greet" : undefined}
+            label={`Ver a ${companion.name}`}
+            onClick={companion.openPanel}
+          />
+          <div className="shelf-companion-info">
+            <p className="shelf-companion-name">{companion.name}</p>
+            <p className="meta">
+              Nivel {levelProgress(companion.state.xp).level + 1} ·{" "}
+              {levelProgress(companion.state.xp).name}
+            </p>
+          </div>
+        </section>
+      ) : null}
 
       {library.length === 0 ? (
         <section className="shelf-empty">

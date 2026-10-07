@@ -399,6 +399,135 @@ describe("predictSection", () => {
     );
     expect(forms(res)).toEqual(["vacia"]);
   });
+
+  it("c) las fichas funcionales no son vocabulario: cuentan como conocidas", () => {
+    const res = predictSection(
+      ["diez", "quienquiera", "perenne"],
+      {
+        diez: [entry(0.5, { lemma: "diez", pos: "numeral" })],
+        quienquiera: [entry(0.8, { lemma: "quienquiera", pos: "pronombre" })],
+        perenne: [entry(1.5, { lemma: "perenne" })],
+      },
+      new Set(),
+      noKnowledge,
+      3.0,
+    );
+    expect(forms(res)).toEqual(["perenne"]);
+    expect(res.knownCount).toBe(2);
+    expect(res.missing).toHaveLength(0);
+    expect(res.uncertain).toHaveLength(0);
+  });
+
+  it("las fichas funcionales no tapan una lectura aprendible de la misma forma", () => {
+    // La interjección rara no compite: solo la lectura de vocabulario
+    // decide si la forma se predice.
+    const res = predictSection(
+      ["mixta"],
+      {
+        mixta: [
+          entry(0.5, { entryId: "1", lemma: "mixta", pos: "interjección" }),
+          entry(1.8, { entryId: "2", lemma: "mixto", pos: "adjetivo" }),
+        ],
+      },
+      new Set(),
+      noKnowledge,
+      3.0,
+    );
+    expect(forms(res)).toEqual(["mixta"]);
+    expect(res.predicted[0].entry.entryId).toBe("2");
+  });
+
+  it("b) un -mente de adjetivo común se da por conocido aunque tenga ficha rara", () => {
+    const res = predictSection(
+      ["perfectamente"],
+      {
+        perfectamente: [
+          entry(1.5, { lemma: "perfectamente", pos: "adverbio" }),
+        ],
+        perfecta: [entry(4.5, { lemma: "perfecto", pos: "adjetivo" })],
+      },
+      new Set(),
+      noKnowledge,
+      3.0,
+    );
+    expect(res.predicted).toHaveLength(0);
+    expect(res.knownCount).toBe(1);
+  });
+
+  it("b) el -mente también resuelve por el lema masculino de la raíz", () => {
+    // Si la tabla de formas no enlaza «perfecta», la candidata
+    // «perfecto» sigue verificando la raíz común.
+    const res = predictSection(
+      ["perfectamente"],
+      { perfecto: [entry(4.5, { lemma: "perfecto", pos: "adjetivo" })] },
+      new Set(),
+      noKnowledge,
+      3.0,
+    );
+    expect(res.predicted).toHaveLength(0);
+    expect(res.knownCount).toBe(1);
+    expect(res.missing).toHaveLength(0);
+  });
+
+  it("b) un -mente de raíz rara se evalúa por la raíz", () => {
+    const res = predictSection(
+      ["vehementemente"],
+      {
+        vehemente: [entry(1.8, { lemma: "vehemente", pos: "adjetivo" })],
+      },
+      new Set(),
+      noKnowledge,
+      3.0,
+    );
+    expect(forms(res)).toEqual(["vehementemente"]);
+    expect(res.predicted[0].entry.lemma).toBe("vehemente");
+  });
+
+  it("b) un «no la conozco» explícito rescata el -mente de raíz común", () => {
+    const res = predictSection(
+      ["perfectamente"],
+      {
+        perfectamente: [
+          entry(1.5, { lemma: "perfectamente", pos: "adverbio" }),
+        ],
+        perfecta: [entry(4.5, { lemma: "perfecto", pos: "adjetivo" })],
+      },
+      new Set(),
+      new Map([["perfectamente", { lemma: "perfectamente", known: false }]]),
+      3.0,
+    );
+    expect(forms(res)).toEqual(["perfectamente"]);
+  });
+
+  it("d) un verbo con enclíticos se evalúa por la frecuencia del lema real", () => {
+    const res = predictSection(
+      ["tomándose", "zurrándose"],
+      {
+        tomando: [entry(5.5, { lemma: "tomar", pos: "verbo" })],
+        zurrando: [entry(1.8, { lemma: "zurrar", pos: "verbo" })],
+      },
+      new Set(),
+      noKnowledge,
+      3.0,
+    );
+    // La común queda fuera; la rara se predice con la ficha del lema base.
+    expect(forms(res)).toEqual(["zurrándose"]);
+    expect(res.predicted[0].entry.lemma).toBe("zurrar");
+    expect(res.knownCount).toBe(1);
+    expect(res.missing).toHaveLength(0);
+  });
+
+  it("d) sin base clítica verificable la forma sigue a missing", () => {
+    const res = predictSection(
+      ["zarandéandose"],
+      {},
+      new Set(),
+      noKnowledge,
+      3.0,
+    );
+    expect(res.missing).toEqual(["zarandéandose"]);
+    expect(res.predicted).toHaveLength(0);
+  });
 });
 
 describe("isCredibleKnowledge", () => {

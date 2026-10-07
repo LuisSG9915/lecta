@@ -269,6 +269,34 @@ describe("buildPreparationWords", () => {
   });
 });
 
+describe("filas funcionales", () => {
+  // Numeral, pronombre, interjección… nunca generan evidencia ni
+  // palabras del Cuaderno — incluidas respuestas de borradores
+  // guardados antes del filtro de candidatos.
+  it("numeral, pronombre e interjección se ignoran aunque tengan respuesta", () => {
+    const rows = [
+      row("diez", { pos: "numeral" }),
+      row("quienquiera", { pos: "pronombre" }),
+      row("hola", { pos: "interjección" }),
+      row("perenne", { pos: "adjetivo" }),
+      row("tilde"), // sin pos: vocabulario normal
+    ];
+    const given = answers({
+      "es:diez": "unknown",
+      "es:quienquiera": "unknown",
+      "es:hola": "unknown",
+      "es:perenne": "unknown",
+      "es:tilde": "unknown",
+    });
+    expect(
+      buildPreparationEvidence("es", rows, given).map((e) => e.lemma),
+    ).toEqual(["perenne", "tilde"]);
+    expect(
+      buildPreparationWords("es", rows, given).map((w) => w.form),
+    ).toEqual(["perenne", "tilde"]);
+  });
+});
+
 describe("confirmPreparation", () => {
   const record = {
     version: 1 as const,

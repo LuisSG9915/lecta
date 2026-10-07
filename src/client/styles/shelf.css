@@ -297,6 +297,39 @@
   margin-block-start: var(--s-2);
 }
 
+/* ---------- Tarjeta del compañero (fase 5) ----------
+   Compacta en su propio renglón arriba de la estantería: el gato con
+   su etapa y ropa, nombre y nivel breve; el botón abre su hoja de
+   cuidado compartida. Solo existe con el juego encendido. */
+.shelf-companion {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  border: var(--border);
+  border-radius: var(--r-2);
+  background: var(--paper-raised);
+}
+
+.shelf-companion .companion-btn {
+  flex: none;
+}
+
+.shelf-companion-info {
+  min-width: 0;
+}
+
+.shelf-companion-name {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.shelf-companion .meta {
+  margin: 0;
+}
+
 /* ---------- Pequeña ---------- */
 
 @media (max-width: 40rem) {

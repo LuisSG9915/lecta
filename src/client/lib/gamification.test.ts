@@ -10,7 +10,9 @@ import {
   levelProgress,
   openChest,
   pendingChests,
+  requiredCoatLevel,
   unlockedAccessories,
+  unlockedCoats,
   type GameState,
 } from "./gamification";
 
@@ -149,6 +151,29 @@ describe("logros y cofres", () => {
   it("todos los logros tienen id única", () => {
     const ids = ACHIEVEMENTS.map((a) => a.id);
     expect(new Set(ids).size).toBe(ids.length);
+  });
+});
+
+describe("pelajes del gato", () => {
+  it("se desbloquean por nivel proyectado, no por cofre", () => {
+    expect(unlockedCoats(emptyGameState())).toEqual([]);
+    // Nivel 1 (xp 30, índice 1) regala el atigrado.
+    expect(unlockedCoats({ ...emptyGameState(), xp: 30 })).toEqual([
+      "pelaje-atigrado",
+    ]);
+    // Nivel máximo: los cinco pelajes.
+    expect(unlockedCoats({ ...emptyGameState(), xp: 2200 })).toHaveLength(5);
+    // Retroactivo: un usuario ya en nivel 8 tiene cuatro pelajes sin
+    // tocar ningún cofre.
+    expect(unlockedCoats({ ...emptyGameState(), xp: 1150 })).toContain(
+      "pelaje-tuxedo",
+    );
+  });
+
+  it("requiredCoatLevel da el nivel visible o null", () => {
+    expect(requiredCoatLevel("pelaje-dorado")).toBe(10);
+    expect(requiredCoatLevel("pelaje-atigrado")).toBe(2);
+    expect(requiredCoatLevel("bufanda")).toBeNull();
   });
 });
 

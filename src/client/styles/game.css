@@ -58,94 +58,370 @@
   }
 }
 
-/* ---------- El gato ---------- */
+/* ---------- El gato ----------
+   Caricatura vectorial suave: formas redondas sobre la paleta
+   --cat-* del tema (pelaje naranja, luz de hocico, contorno oscuro
+   legible, nariz rosa), sombra de suelo propia y un halo cálido
+   tenue. Toda la animación vive en transform/opacity: el hilo de
+   paginación del libro nunca espera al gato. */
 
 .cat {
   flex-shrink: 0;
   color: var(--ink);
+  will-change: transform;
+  filter: drop-shadow(0 0.12em 0.35em var(--ochre-soft));
 }
 
-.cat .cat-ink,
-.cat .cat-body {
-  fill: var(--ink);
+/* Pelaje: relleno cálido con contorno fino y uniones suaves. */
+.cat .cat-fur {
+  fill: var(--cat-fur);
+  stroke: var(--cat-outline);
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+}
+
+/* Sombra interior del pelaje: derivada del propio pelaje para que
+   acompañe a cada tema sin token extra. Tenue a propósito — más
+   fuerte se lee como mancha, no como luz. */
+.cat .cat-fur-shade {
+  fill: color-mix(in srgb, var(--cat-fur) 58%, var(--cat-outline));
+  opacity: 0.26;
+}
+
+.cat .cat-fur-light,
+.cat .cat-muzzle,
+.cat .cat-belly {
+  fill: var(--cat-fur-light);
+}
+
+.cat .cat-ear-inner {
+  fill: var(--cat-nose);
+  opacity: 0.7;
+}
+
+/* Ojos: óvalos oscuros con doble brillo de papel (se lee igual en
+   temas claros y oscuros). */
+.cat .cat-eye {
+  fill: var(--cat-outline);
+}
+
+.cat .cat-eye-glint {
+  fill: var(--paper);
+}
+
+.cat .cat-eye-line {
+  fill: none;
+  stroke: var(--cat-outline);
+  stroke-width: 1.7;
+  stroke-linecap: round;
+}
+
+/* Párpado a medio cerrar: casquete del mismo pelaje. */
+.cat .cat-lid {
+  fill: var(--cat-fur);
+}
+
+.cat .cat-blush {
+  fill: var(--cat-nose);
+  opacity: 0.38;
+}
+
+.cat .cat-nose {
+  fill: var(--cat-nose);
+  stroke: var(--cat-outline);
+  stroke-width: 0.7;
+  stroke-linejoin: round;
+}
+
+.cat .cat-mouth-line {
+  fill: none;
+  stroke: var(--cat-outline);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+}
+
+.cat .cat-mouth-open {
+  fill: var(--cat-outline);
+}
+
+.cat .cat-tongue {
+  fill: var(--cat-nose);
   stroke: none;
 }
 
-.cat .cat-tail {
-  stroke: var(--ink);
+.cat .cat-whisker {
+  fill: none;
+  stroke: var(--cat-outline);
+  stroke-width: 1;
+  stroke-linecap: round;
+  opacity: 0.45;
 }
 
-.cat .cat-eye,
-.cat .cat-eye-line {
-  fill: var(--paper);
-  stroke: var(--paper);
+/* Cola y patas en gesto: trazo de pelaje sobre borde de contorno —
+   el par edge+fill da el perfil grueso de la caricatura. */
+.cat .cat-tail-edge,
+.cat .cat-paw-edge {
+  fill: none;
+  stroke: var(--cat-outline);
+  stroke-linecap: round;
+}
+
+.cat .cat-tail-fill,
+.cat .cat-paw-fill {
+  fill: none;
+  stroke: var(--cat-fur);
+  stroke-linecap: round;
+}
+
+.cat .cat-paw-shape {
+  stroke-width: 1.4;
+}
+
+/* Sombra de suelo propia del sprite. */
+.cat .cat-shadow {
+  fill: var(--ink);
+  opacity: 0.12;
+}
+
+/* Ropa por ranura: acentos del tema con el contorno del pelaje. */
+.cat .cat-wear--bufanda path {
+  fill: var(--vermilion);
+  stroke: var(--cat-outline);
+  stroke-width: 1.2;
+  stroke-linejoin: round;
+}
+
+.cat .cat-wear--collar path:first-child {
+  fill: var(--vermilion);
+  stroke: var(--cat-outline);
+  stroke-width: 1;
+  stroke-linejoin: round;
+}
+
+/* Cascabel del collar. */
+.cat .cat-wear--collar path:last-child {
+  fill: var(--ochre);
+  stroke: var(--cat-outline);
+  stroke-width: 0.9;
+}
+
+.cat .cat-wear--moño path:nth-child(-n + 2) {
+  fill: var(--vermilion);
+  stroke: var(--cat-outline);
+  stroke-width: 1;
+  stroke-linejoin: round;
+}
+
+.cat .cat-wear--moño path:last-child {
+  fill: var(--ochre);
+  stroke: var(--cat-outline);
+  stroke-width: 0.9;
+}
+
+/* Anteojos: aros huecos + puente/patillas en una sola clase; el
+   primer par de paths son los aros, el último las líneas. */
+.cat .cat-wear--anteojos path {
+  fill: color-mix(in srgb, var(--paper) 30%, transparent);
+  stroke: var(--cat-outline);
+  stroke-width: 1.5;
+}
+
+.cat .cat-wear--anteojos path:last-child {
+  fill: none;
   stroke-width: 1.4;
   stroke-linecap: round;
 }
 
-.cat .cat-eye-line {
-  fill: none;
-}
-
-.cat .cat-whisker {
-  stroke: var(--paper);
-  stroke-width: 0.9;
-  stroke-linecap: round;
-  fill: none;
-  opacity: 0.75;
-}
-
-.cat .cat-acc--cloth {
-  fill: var(--vermilion);
-}
-
-.cat .cat-acc--collar {
-  fill: none;
-  stroke: var(--vermilion);
-  stroke-width: 2;
-  stroke-linecap: round;
-}
-
-.cat .cat-acc--glasses {
-  fill: none;
-  stroke: var(--paper);
+.cat .cat-wear--chaleco path {
+  fill: var(--ochre);
+  stroke: var(--cat-outline);
   stroke-width: 1.1;
+  stroke-linejoin: round;
 }
 
-.cat-zzz {
-  fill: var(--ink-soft, var(--ink));
-  font-family: var(--font-sans-alt);
-  font-size: 12px;
-  font-style: italic;
+/* Pelajes (ranura equipped.coat): el artículo puesto cambia la
+   paleta del pelaje solo para este gato — los tokens --cat-* del
+   tema siguen mandando en el resto de la interfaz. */
+
+.cat .cat-marks {
+  display: none;
 }
 
-/* Respiración suave cuando está despierto; la cola se mece. */
-.cat--awake .cat-body {
-  animation: cat-breathe 4.2s ease-in-out infinite;
-  transform-origin: center bottom;
+.cat.cat--coat-atigrado .cat-marks {
+  display: block;
+  fill: none;
+  stroke: color-mix(in srgb, var(--cat-fur) 42%, var(--cat-outline));
+  stroke-width: 1.7;
+  stroke-linecap: round;
 }
 
-.cat--awake .cat-tail {
-  animation: cat-tail 5s ease-in-out infinite;
-  transform-origin: 54px 56px;
+/* Gris azulado tipo «azul ruso». */
+.cat.cat--coat-gris {
+  --cat-fur: #8b99ae;
+  --cat-fur-light: #dde4ef;
+  --cat-nose: #c98a94;
 }
 
-.cat--sleepy {
-  opacity: 0.75;
+/* Siamés: cuerpo crema con máscara oscura — el hocico toma un tono
+   más oscuro que el pelaje, al revés del resto de pelajes. */
+.cat.cat--coat-siames {
+  --cat-fur: #ecdcb9;
+  --cat-fur-light: #e4cfa4;
+  --cat-nose: #8a5a52;
 }
 
-.cat--sleepy .cat-tail {
-  animation: cat-tail 8s ease-in-out infinite;
-  transform-origin: 54px 56px;
+.cat.cat--coat-siames .cat-muzzle {
+  fill: #9b7c64;
 }
 
-.cat--asleep {
-  opacity: 0.55;
-  filter: saturate(0.4);
+/* Tuxedo: carbón cálido con pecho y hocico claros. El contorno se
+   aclara a gris topo: sobre el pelo oscuro las líneas internas
+   (ojos, boca, bigotes) se pierden si quedan casi negras, y en el
+   borde exterior funciona como luz de rim. */
+.cat.cat--coat-tuxedo {
+  --cat-fur: #564f4a;
+  --cat-fur-light: #f2ebdf;
+  --cat-nose: #e09598;
+  --cat-outline: #b9ada2;
 }
 
-.cat--s0 {
+/* Dorado: el premio del nivel 10 — cálido y luminoso. */
+.cat.cat--coat-dorado {
+  --cat-fur: #e9b04b;
+  --cat-fur-light: #f9e7bc;
+}
+
+/* Atrejos: platito ocre con croquetas, pelota bermellón con franja. */
+.cat .cat-bowl path:first-child {
+  fill: var(--ochre);
+  stroke: var(--cat-outline);
+  stroke-width: 1.1;
+  stroke-linejoin: round;
+}
+
+.cat .cat-bowl path:last-child {
+  fill: var(--amber);
+}
+
+.cat .cat-ball path:first-child {
+  fill: var(--vermilion);
+  stroke: var(--cat-outline);
+  stroke-width: 1;
+}
+
+.cat .cat-ball path:last-child {
+  fill: var(--ochre);
+}
+
+/* Chispas de evolución/fiesta. */
+.cat .cat-spark {
+  fill: var(--ochre);
+}
+
+/* Libro del bibliotecario: portada bermellón, páginas de papel y
+   renglones de tinta tenue. */
+.cat .cat-book path:first-child {
+  fill: var(--vermilion);
+  stroke: var(--cat-outline);
+  stroke-width: 1;
+  stroke-linejoin: round;
+}
+
+.cat .cat-book path:nth-child(2) {
+  fill: var(--paper-raised, var(--paper));
+  stroke: var(--cat-outline);
+  stroke-width: 0.9;
+  stroke-linejoin: round;
+}
+
+.cat .cat-book path:last-child {
+  fill: none;
+  stroke: var(--cat-outline);
+  stroke-width: 0.8;
   opacity: 0.6;
+}
+
+/* «z z z» de sueño: texto de tinta suave. */
+.cat .cat-z {
+  fill: var(--ink-soft, var(--ink));
+  font: italic 700 8.5px var(--font-sans-alt, var(--font-ui));
+}
+
+/* Grupos con origen propio para inclinaciones y rebotes. */
+.cat .cat-figure,
+.cat .cat-body,
+.cat .cat-head,
+.cat .cat-tail,
+.cat .cat-paw,
+.cat .cat-ball,
+.cat .cat-spark,
+.cat .cat-eyes {
+  transform-box: fill-box;
+}
+
+.cat .cat-figure,
+.cat .cat-body {
+  transform-origin: 50% 100%;
+}
+
+.cat .cat-head {
+  transform-origin: 50% 90%;
+}
+
+/* La cola pivota en su base (abajo a la izquierda del sprite). */
+.cat .cat-tail,
+.cat .cat-tail-edge {
+  transform-origin: 0% 100%;
+}
+
+/* Respiración suave en vigilia y lectura: el pecho se infla. */
+.cat--awake .cat-body,
+.cat--f-reading .cat-body,
+.cat--f-curious .cat-body {
+  animation: cat-breathe 4.2s ease-in-out infinite;
+}
+
+.cat--awake .cat-tail,
+.cat--f-reading .cat-tail {
+  animation: cat-tail 5s ease-in-out infinite;
+}
+
+/* Parpadeo: conviven el sprite abierto y el fotograma cerrado;
+   CSS alterna opacidades con un guiño breve cada ~5.6 s. */
+.cat .cat-eyes--blink {
+  opacity: 0;
+}
+
+.cat .cat-eyes--open {
+  animation: cat-blink-open 5.6s linear infinite;
+}
+
+.cat .cat-eyes--blink {
+  animation: cat-blink-shut 5.6s linear infinite;
+}
+
+@keyframes cat-blink-open {
+  0%,
+  92%,
+  100% {
+    opacity: 1;
+  }
+  94%,
+  96.5% {
+    opacity: 0;
+  }
+}
+
+@keyframes cat-blink-shut {
+  0%,
+  92%,
+  100% {
+    opacity: 0;
+  }
+  94%,
+  96.5% {
+    opacity: 1;
+  }
 }
 
 @keyframes cat-breathe {
@@ -164,72 +440,94 @@
     transform: rotate(0deg);
   }
   50% {
-    transform: rotate(4deg);
+    transform: rotate(5deg);
   }
 }
 
 /* ---------- Estados de lectura (companion-state) ----------
-   Animación solo por transform/opacity: el hilo de paginación del
-   libro nunca espera al gato. Las clases llegan como cat--f-*. */
-.cat {
-  will-change: transform;
+   Las clases llegan como cat--f-*; solo variaciones sutiles sobre
+   el sprite: los ojos/boca ya los eligió el componente. */
+
+.cat--sleepy {
+  opacity: 0.8;
+}
+
+.cat--sleepy .cat-tail {
+  animation: cat-tail 8s ease-in-out infinite;
+}
+
+.cat--asleep {
+  opacity: 0.65;
+  filter: saturate(0.45) drop-shadow(0 0.15em 0.4em var(--ochre-soft));
+}
+
+.cat--asleep .cat-tail,
+.cat--f-sleep .cat-tail {
+  animation: cat-tail 9s ease-in-out infinite;
 }
 
 .cat--f-sleep {
-  opacity: 0.6;
+  opacity: 0.65;
 }
 
-.cat--f-sleep .cat-tail {
-  animation: cat-tail 8s ease-in-out infinite;
-  transform-origin: 54px 56px;
+/* «z z z» pixel: suben y se desvanecen en cascada; el último
+   fotograma queda casi visible para que con movimiento reducido
+   (una iteración) el letrero siga presente. */
+.cat .cat-z {
+  opacity: 0;
+  animation: cat-zzz 2.8s ease-out infinite;
 }
 
-.cat--f-reading .cat-body {
-  animation: cat-breathe 4.2s ease-in-out infinite;
-  transform-origin: center bottom;
+.cat .cat-z:nth-child(2) {
+  animation-delay: 0.9s;
 }
 
-.cat--f-reading .cat-tail {
-  animation: cat-tail 5s ease-in-out infinite;
-  transform-origin: 54px 56px;
+.cat .cat-z:nth-child(3) {
+  animation-delay: 1.8s;
 }
 
-/* Concentración profunda: casi quieto, solo una cola muy lenta. */
-.cat--f-deep_focus {
-  transform: translateY(2px);
+@keyframes cat-zzz {
+  0% {
+    opacity: 0;
+    transform: translateY(1px);
+  }
+  25% {
+    opacity: 1;
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.85;
+    transform: translateY(-2px);
+  }
+}
+
+/* Concentración profunda: casi quieto, cola muy lenta. */
+.cat--f-deep_focus .cat-figure {
+  transform: translateY(1px);
 }
 
 .cat--f-deep_focus .cat-tail {
   animation: cat-tail 9s ease-in-out infinite;
-  transform-origin: 54px 56px;
 }
 
-.cat--f-curious {
+/* Curioso: cabeza ladeada dos veces y la mirada va a un lado. */
+.cat--f-curious .cat-head {
   animation: cat-tilt 1.2s var(--ease-out) 2;
+}
+
+.cat--f-curious .cat-eyes {
+  transform: translateX(1px);
 }
 
 .cat--f-curious .cat-tail {
   animation: cat-tail 2.2s ease-in-out infinite;
-  transform-origin: 54px 56px;
 }
 
-.cat--f-yawn {
+/* Bostezo: ojos cerrados y boca abierta (sprite) + aplaste lento. */
+.cat--f-yawn .cat-figure {
   animation: cat-yawn 4s ease-in-out infinite;
-}
-
-.cat--f-celebrating {
-  animation: cat-hop 0.6s var(--ease-out) infinite;
-  translate: 0 0;
-  will-change: transform, translate;
-}
-
-.cat--f-celebrating .cat-body {
-  animation: cat-purr 0.14s linear infinite;
-}
-
-.cat--f-celebrating .cat-tail {
-  animation: cat-tail 1.6s ease-in-out infinite;
-  transform-origin: 54px 56px;
 }
 
 @keyframes cat-tilt {
@@ -238,7 +536,7 @@
     transform: rotate(0deg);
   }
   40% {
-    transform: rotate(-7deg);
+    transform: rotate(-6deg);
   }
   70% {
     transform: rotate(4deg);
@@ -252,29 +550,296 @@
   }
   45%,
   60% {
-    transform: translateY(3px) scaleY(0.96);
+    transform: translateY(1px) scaleY(0.94);
+  }
+}
+
+/* ---------- Poses transitorias (cat--p-*) ----------
+   Una iteración corta o bucle suave mientras el controlador
+   mantenga la pose; squash & stretch como en el pixel-art moderno. */
+
+/* Saludo: rebote con anticipación + patita arriba que agita. */
+.cat--p-greet .cat-figure {
+  animation: cat-bounce 0.7s var(--ease-out) 2;
+}
+
+.cat--p-greet .cat-paw--wave {
+  transform-origin: 50% 100%;
+  animation: cat-wave 1.15s ease-in-out 2;
+}
+
+/* Caricias: cabeza inclinada de contento y cola ondeando rápido. */
+.cat--p-pet .cat-head {
+  animation: cat-pet 2.4s ease-in-out infinite;
+}
+
+.cat--p-pet .cat-tail {
+  animation: cat-pet-tail 1.1s ease-in-out infinite;
+}
+
+/* Comida: la cabeza baja al platito y las dos bocas ñam alternan. */
+.cat--p-eat .cat-head {
+  animation: cat-eat 1.3s ease-in-out infinite;
+}
+
+.cat--p-eat .cat-eyes {
+  transform: translateY(1px);
+}
+
+.cat .cat-mouth--b {
+  opacity: 0;
+}
+
+.cat--p-eat .cat-mouth--a {
+  animation: cat-munch-a 0.56s steps(1) infinite;
+}
+
+.cat--p-eat .cat-mouth--b {
+  animation: cat-munch-b 0.56s steps(1) infinite;
+}
+
+/* Juego: rebote tras la pelota con squash al aterrizar; la pelota
+   rueda un poco y los ojos la siguen. */
+.cat--p-play .cat-figure {
+  animation: cat-chase 1.05s ease-in-out infinite;
+}
+
+.cat--p-play .cat-eyes {
+  transform: translate(1px, 1px);
+}
+
+.cat--p-play .cat-ball {
+  transform-origin: 50% 50%;
+  animation: cat-ball 1.05s ease-in-out infinite;
+}
+
+/* Fiesta: dos brincos squash-stretch, patas arriba y chispas. */
+.cat--p-celebrate .cat-figure,
+.cat--f-celebrating .cat-figure {
+  animation: cat-hop 0.55s var(--ease-out) 2;
+}
+
+.cat--f-celebrating .cat-figure {
+  animation-iteration-count: infinite;
+}
+
+.cat--p-celebrate .cat-paw--cheer-l {
+  transform-origin: 100% 100%;
+  animation: cat-cheer 0.55s ease-in-out 2;
+}
+
+.cat--p-celebrate .cat-paw--cheer-r {
+  transform-origin: 0% 100%;
+  animation: cat-cheer 0.55s ease-in-out 2;
+}
+
+.cat--f-celebrating .cat-tail {
+  animation: cat-tail 1.6s ease-in-out infinite;
+}
+
+/* La sombra recibe los brincos: se achata al subir. */
+.cat--p-celebrate .cat-shadow,
+.cat--f-celebrating .cat-shadow {
+  animation: cat-shadow-hop 0.55s var(--ease-out) 2;
+}
+
+/* Evolución: crece con un destello mientras las chispas se apagan. */
+.cat--p-evolve .cat-figure {
+  animation: cat-evolve 2.1s var(--ease-out) forwards;
+}
+
+.cat--p-evolve .cat-spark,
+.cat--p-celebrate .cat-spark {
+  opacity: 0;
+  transform-origin: 50% 50%;
+  animation: cat-spark 1.3s ease-out forwards;
+}
+
+.cat--p-evolve .cat-spark:nth-child(2),
+.cat--p-celebrate .cat-spark:nth-child(2) {
+  animation-delay: 0.18s;
+}
+
+.cat--p-evolve .cat-spark:nth-child(3),
+.cat--p-celebrate .cat-spark:nth-child(3) {
+  animation-delay: 0.36s;
+}
+
+.cat--p-evolve .cat-spark:nth-child(4),
+.cat--p-celebrate .cat-spark:nth-child(4) {
+  animation-delay: 0.54s;
+}
+
+@keyframes cat-bounce {
+  0%,
+  100% {
+    transform: scaleY(1);
+  }
+  30% {
+    transform: scaleY(0.85);
+  }
+  55% {
+    transform: scaleY(1.12) translateY(-1px);
+  }
+  75% {
+    transform: scaleY(0.96);
+  }
+}
+
+@keyframes cat-wave {
+  0%,
+  100% {
+    transform: rotate(4deg);
+  }
+  50% {
+    transform: rotate(26deg);
+  }
+}
+
+@keyframes cat-pet {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  45% {
+    transform: rotate(8deg);
+  }
+}
+
+@keyframes cat-pet-tail {
+  0%,
+  100% {
+    transform: rotate(-10deg);
+  }
+  50% {
+    transform: rotate(-20deg);
+  }
+}
+
+@keyframes cat-eat {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  45%,
+  60% {
+    transform: translateY(2px);
+  }
+}
+
+@keyframes cat-munch-a {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes cat-munch-b {
+  0%,
+  49% {
+    opacity: 0;
+  }
+  50%,
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes cat-chase {
+  0%,
+  100% {
+    transform: translateX(0) scaleY(1);
+  }
+  35% {
+    transform: translateX(2px) scaleY(1.06);
+  }
+  60% {
+    transform: translateX(1px) scaleY(0.9);
+  }
+  80% {
+    transform: scaleY(1.02);
+  }
+}
+
+@keyframes cat-ball {
+  0%,
+  100% {
+    transform: translateX(0) rotate(0deg);
+  }
+  50% {
+    transform: translateX(2px) rotate(40deg);
   }
 }
 
 @keyframes cat-hop {
   0%,
   100% {
-    transform: translateY(0);
+    transform: translateY(0) scaleY(1);
   }
-  40% {
-    transform: translateY(-5px);
+  25% {
+    transform: translateY(1px) scaleY(0.88);
+  }
+  55% {
+    transform: translateY(-3px) scaleY(1.1);
+  }
+  80% {
+    transform: translateY(0) scaleY(0.95);
   }
 }
 
-/* Ronroneo: vibración mínima del cuerpo (propiedad translate para
-   no pelear con el transform del brinco). */
-@keyframes cat-purr {
+@keyframes cat-cheer {
   0%,
   100% {
-    translate: 0 0;
+    transform: rotate(0deg);
   }
   50% {
-    translate: 0.4px 0;
+    transform: rotate(14deg);
+  }
+}
+
+@keyframes cat-shadow-hop {
+  0%,
+  100% {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+  55% {
+    transform: scaleX(0.86);
+    opacity: 0.7;
+  }
+}
+
+@keyframes cat-evolve {
+  0% {
+    transform: scale(0.86);
+    filter: brightness(1.7) saturate(0.6);
+  }
+  55% {
+    transform: scale(1.06);
+    filter: brightness(1.15);
+  }
+  100% {
+    transform: scale(1);
+    filter: none;
+  }
+}
+
+@keyframes cat-spark {
+  0% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  35% {
+    opacity: 1;
+    transform: scale(1.1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.7);
   }
 }
 
@@ -369,4 +934,178 @@
   color: var(--ink);
   background: var(--paper);
   animation: rise-in var(--dur-1) var(--ease-out);
+}
+
+/* ---------- Botón del gato ----------
+   Envuelve al Companion decorativo; garantiza el área táctil mínima
+   de 44×44 y foco visible con el acento del tema. */
+.companion-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  min-inline-size: 44px;
+  min-block-size: 44px;
+  background: transparent;
+  border: none;
+  border-radius: var(--r-2);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.companion-btn .cat {
+  inline-size: 3rem;
+  block-size: 3rem;
+}
+
+.companion-btn:focus-visible {
+  outline: 2px solid var(--vermilion);
+  outline-offset: 2px;
+}
+
+.companion-btn:active {
+  transform: translateY(1px);
+}
+
+.companion-btn:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+/* ---------- Hoja del compañero ----------
+   Vista previa grande, acciones de cuidado y el armario por ranuras.
+   Hereda botones (.btn/.btn--quiet), campos (.field) y filas de
+   ajuste (.setting-label) de components.css. */
+.companion-hero {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+  margin-block-end: var(--s-4);
+}
+
+.companion-hero .cat {
+  inline-size: 5.5rem;
+  block-size: 5.5rem;
+}
+
+.companion-status {
+  margin: 0 0 var(--s-2);
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+}
+
+.companion-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  align-items: center;
+  margin-block-end: var(--s-4);
+}
+
+.companion-name {
+  margin-block-start: var(--s-4);
+}
+
+/* Armario por ranura: cada opción es una fila completa de 44px con
+   el nombre a la izquierda y el estado («Puesta», «Nivel N») a la
+   derecha — la marca no depende solo del color del borde. */
+.companion-closet {
+  display: grid;
+  gap: var(--s-4);
+  margin-block-end: var(--s-4);
+}
+
+.companion-slot {
+  display: grid;
+  gap: var(--s-2);
+}
+
+.companion-wears {
+  display: grid;
+  gap: var(--s-2);
+}
+
+.companion-wear {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  inline-size: 100%;
+  min-block-size: 44px;
+  padding: var(--s-2) var(--s-3);
+  border: var(--border);
+  border-radius: var(--r-1);
+  background: var(--paper-raised);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--fs-base);
+  text-align: start;
+  cursor: pointer;
+  transition:
+    border-color var(--dur-1) var(--ease-out),
+    background-color var(--dur-1) var(--ease-out);
+}
+
+.companion-wear:hover:not(:disabled) {
+  border-color: var(--ink-soft);
+}
+
+.companion-wear:focus-visible {
+  outline: 2px solid var(--vermilion);
+  outline-offset: 2px;
+}
+
+.companion-wear[data-active] {
+  border-color: var(--vermilion);
+  background: var(--vermilion-wash);
+}
+
+.companion-wear:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.companion-wear-state {
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+}
+
+/* ---------- Tarjeta del inbox de festejos (fase 5) ----------
+   Una tarjeta pequeña fija en la zona segura inferior — la misma
+   franja donde el lector pone sus avisos, un peldaño arriba para no
+   pisarlos ni al chip de retorno. role="status": anuncia sin robar
+   foco; pointer-events:none — jamás bloquea un toque ni una
+   selección de texto. z 15 queda bajo las hojas (20): con una capa
+   encima el festejo espera oculto tras el scrim, pendiente. */
+.companion-toast {
+  position: fixed;
+  z-index: 15;
+  inset-inline-start: var(--s-4);
+  inset-block-end: calc(7rem + env(safe-area-inset-bottom));
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  max-inline-size: min(26rem, calc(100vw - var(--s-4) * 2));
+  padding: var(--s-1) var(--s-4) var(--s-1) var(--s-2);
+  border: var(--border);
+  border-radius: var(--r-pill, 999px);
+  background: var(--paper-raised);
+  box-shadow: var(--shadow-sheet);
+  font-size: var(--fs-sm);
+  pointer-events: none;
+  animation: rise-in var(--dur-3) var(--ease-out);
+}
+
+.companion-toast .cat {
+  inline-size: 2.6rem;
+  block-size: 2.6rem;
+  flex: none;
+}
+
+.companion-toast-text {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--ink-soft);
 }

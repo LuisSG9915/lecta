@@ -89,6 +89,12 @@
   --shadow-sheet-color: rgba(43, 37, 32, 0.14);
   --scrim: rgba(43, 37, 32, 0.32);
   --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='linear' slope='0.045'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  /* Gato compañero: pelaje naranja cálido, luz de hocico/barriga,
+     contorno legible y nariz rosa. */
+  --cat-fur: #e8833a;
+  --cat-fur-light: #f5c89a;
+  --cat-outline: #4a2e1c;
+  --cat-nose: #d9707e;
 }
 
 /* Tema blanco (día limpio): papel puro sin tinte cálido */
@@ -113,6 +119,11 @@
   --amber: #8a6a1e;
   --shadow-sheet-color: rgba(43, 37, 32, 0.14);
   --scrim: rgba(43, 37, 32, 0.3);
+  /* Gato compañero: misma paleta que en papel. */
+  --cat-fur: #e8833a;
+  --cat-fur-light: #f5c89a;
+  --cat-outline: #4a2e1c;
+  --cat-nose: #d9707e;
 }
 
 /* Tema noche (pizarra): carbón neutro, tinta suave */
@@ -140,6 +151,12 @@
   --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='linear' slope='0.025'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   --shadow-cover:
     1px 1px 0 rgba(0, 0, 0, 0.4), 4px 6px 16px -6px rgba(0, 0, 0, 0.7);
+  /* Gato compañero: pelaje más suave y contorno casi negro sobre
+     papel oscuro. */
+  --cat-fur: #e8925a;
+  --cat-fur-light: #c98f5e;
+  --cat-outline: #1a1410;
+  --cat-nose: #e08a95;
 }
 
 /* Tema oled: negro puro para pantallas OLED */
@@ -168,6 +185,11 @@
   --grain: none;
   --shadow-cover:
     1px 1px 0 rgba(0, 0, 0, 0.5), 4px 6px 16px -6px rgba(0, 0, 0, 0.8);
+  /* Gato compañero: misma paleta oscura que en noche. */
+  --cat-fur: #e8925a;
+  --cat-fur-light: #c98f5e;
+  --cat-outline: #1a1410;
+  --cat-nose: #e08a95;
 }
 
 /* Sin elección manual: pizarra cuando el sistema está oscuro */
@@ -196,5 +218,10 @@
     --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='linear' slope='0.025'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
     --shadow-cover:
       1px 1px 0 rgba(0, 0, 0, 0.4), 4px 6px 16px -6px rgba(0, 0, 0, 0.7);
+    /* Gato compañero: misma paleta oscura que en noche. */
+    --cat-fur: #e8925a;
+    --cat-fur-light: #c98f5e;
+    --cat-outline: #1a1410;
+    --cat-nose: #e08a95;
   }
 }

@@ -215,6 +215,14 @@ describe("sessionKeysForBackup", () => {
       "bookStart:v1:b1",
       "preparation:v1:b1:cap1",
       "preparation:v1:b2:cap9",
+      // El compañero: el rastro v1 sellado y las claves nuevas.
+      "gameState",
+      "companion",
+      "companionBaselines:v1",
+      "companionProfile:v1",
+      "companionDevicePrefs:v1",
+      "companionMigration:v1",
+      "companionAcked:v1",
     ])
       expect(keys).toContain(expected);
   });
@@ -266,6 +274,23 @@ describe("buildBackup", () => {
         books: [{ hash: "b1", name: "cien.epub", addedAt: 1, title: "Cien años" }],
         readingDays: [1_699_200_000_000],
         events: [],
+        companionEvents: [
+          {
+            version: 1,
+            id: "read:i1",
+            at: 1_700_000_000_000,
+            dayKey: "2023-11-14",
+            streakBonus: false,
+            event: { kind: "read", ms: 60_000 },
+            interval: {
+              startedAt: 1_700_000_000_000 - 60_000,
+              endedAt: 1_700_000_000_000,
+            },
+          },
+        ],
+        companionReceipts: [
+          { id: "achievement-credit:palabra_1", at: 1_700_000_000_000 },
+        ],
         session: { useAi: "1", readingWpm: "240" },
       },
       1_700_000_000_000,
@@ -283,9 +308,18 @@ describe("buildBackup", () => {
       "books",
       "readingDays",
       "events",
+      "companionEvents",
+      "companionReceipts",
       "session",
     ])
       expect(parsed).toHaveProperty(key);
+    // Las secciones del compañero viajan tal cual están en los stores.
+    expect(parsed.companionEvents).toEqual([
+      expect.objectContaining({ id: "read:i1" }),
+    ]);
+    expect(parsed.companionReceipts).toEqual([
+      { id: "achievement-credit:palabra_1", at: 1_700_000_000_000 },
+    ]);
     expect(parsed.knowledge).toEqual([
       {
         key: "es:perenne",

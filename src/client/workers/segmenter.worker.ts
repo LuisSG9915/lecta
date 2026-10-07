@@ -1,3 +1,5 @@
+import { isWordToken } from "../../shared/word-form";
+
 export type SegmenterRequest = {
   id: number;
   text: string;
@@ -16,7 +18,10 @@ self.onmessage = (event: MessageEvent<SegmenterRequest>) => {
     const words = new Set<string>();
 
     for (const part of segmenter.segment(text)) {
-      if (part.isWordLike) words.add(part.segment);
+      // isWordLike incluye dígitos («1», «3,5») y secuencias con
+      // puntuación residual: solo las palabras alfabéticas reales
+      // pasan a candidatas.
+      if (part.isWordLike && isWordToken(part.segment)) words.add(part.segment);
     }
 
     const response: SegmenterResponse = { id, ok: true, words: [...words] };

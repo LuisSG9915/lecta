@@ -16,6 +16,7 @@ import {
   type SavedWord,
 } from "./idb";
 import { pushKnowledgeToServer } from "./reading-sync";
+import { isLearnablePos } from "../../shared/lexicon";
 import type { PreparationMode } from "./settings";
 import { pushWordsToServer } from "./vocab";
 
@@ -113,6 +114,10 @@ const answeredRows = (
   for (const row of rows) {
     const lemma = (row.lemma ?? row.form).toLowerCase();
     if (!lemma || !row.form) continue;
+    // Una fila funcional (numeral, pronombre, interjección…) nunca
+    // genera evidencia ni candidata — incluidas respuestas de
+    // borradores guardados antes del filtro de candidatos.
+    if (!isLearnablePos(row.pos)) continue;
     const key = knowledgeKey(language, lemma);
     const answer = answers[key];
     if (!answer || seen.has(key)) continue;

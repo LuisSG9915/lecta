@@ -35,9 +35,11 @@ import { CALIBRATION_BANK_VERSION } from "../shared/calibration-bank";
 import { checkEpubHeader, EPUB_MAX_BYTES } from "../shared/epub-check";
 import { getSession } from "./session";
 import { readingData } from "./reading-data";
+import { companion } from "./companion";
 
 export const app = new Hono<{ Bindings: WorkerEnv }>();
 app.route("/", readingData);
+app.route("/", companion);
 
 app.get("/api/health", (context) => context.json({ status: "ok" }));
 

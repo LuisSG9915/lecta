@@ -10,7 +10,23 @@ import {
 } from "../lib/idb";
 import { loadUseAi, saveUseAi } from "../lib/ai-pref";
 import { loadHistoryEnabled, saveHistoryEnabled } from "../lib/reading-events";
-import { loadGameEnabled, saveGameEnabled } from "../lib/game";
+import {
+  loadCompanionDevicePrefs,
+  loadGameEnabled,
+  readCompanionField,
+  saveCompanionDevicePrefs,
+  saveGameEnabled,
+  writeCompanionField,
+} from "../lib/game";
+import { setSoundEnabled } from "../lib/companion-audio";
+import { applyCatMotion } from "./CompanionProvider";
+import {
+  COMPANION_MOTION,
+  READING_PRESENCE,
+  type CompanionDevicePrefs,
+  type CompanionMotion,
+  type ReadingPresence,
+} from "../../shared/companion-data";
 import {
   estimateStoredProfile,
   isCredibleKnowledge,
@@ -67,6 +83,14 @@ export default function Account({
   const [historyOn, setHistoryOn] = useState(true);
   // Preferencia «compañero y logros» (el gato del Cuaderno): igual.
   const [gameOn, setGameOn] = useState(true);
+  // Presencia del gato al leer — registro del perfil del compañero:
+  // con sesión sincroniza por la cuenta, sin ella queda en el dispositivo.
+  const [presence, setPresence] = useState<ReadingPresence>("visits");
+  // Preferencias del dispositivo (companionDevicePrefs): el sonido
+  // nace apagado y no viaja a otros dispositivos. null = cargando.
+  const [devicePrefs, setDevicePrefs] = useState<CompanionDevicePrefs | null>(
+    null,
+  );
   // Meta semanal de lectura (días 1–7, null = sin meta): local por
   // dispositivo; viaja anónimo→cuenta pero no al servidor.
   const [goalDays, setGoalDays] = useState<number | null>(null);
@@ -107,6 +131,18 @@ export default function Account({
     });
     void loadGameEnabled(scope).then((on) => {
       if (!cancelled) setGameOn(on);
+    });
+    void loadCompanionDevicePrefs(scope).then((prefs) => {
+      if (!cancelled) setDevicePrefs(prefs);
+    });
+    void readCompanionField("readingPresence", scope).then((reg) => {
+      if (cancelled) return;
+      const value = reg?.value;
+      setPresence(
+        (READING_PRESENCE as readonly unknown[]).includes(value)
+          ? (value as ReadingPresence)
+          : "visits",
+      );
     });
     void loadSessionValue(READING_GOAL_KEY, scope).then((raw) => {
       if (!cancelled) setGoalDays(parseReadingGoal(raw)?.daysPerWeek ?? null);
@@ -317,6 +353,73 @@ export default function Account({
       setGameOn(!next);
       setError("No se pudo guardar la preferencia. Intenta de nuevo.");
     });
+  };
+
+  // El sonido del gato es de este dispositivo: se guarda en
+  // companionDevicePrefs y se empuja al módulo de audio al instante —
+  // no hay notify que haga releer al proveedor.
+  const toggleSound = () => {
+    const prev: CompanionDevicePrefs = devicePrefs ?? {
+      version: 1,
+      soundEnabled: false,
+      motion: "system",
+    };
+    const next: CompanionDevicePrefs = {
+      ...prev,
+      soundEnabled: !prev.soundEnabled,
+    };
+    setDevicePrefs(next);
+    setSoundEnabled(next.soundEnabled);
+    void saveCompanionDevicePrefs(next, captureDbScope()).then(
+      // Reafirma tras escribir: una recarga del proveedor que leyó la
+      // preferencia vieja en la ventana del guardado queda corregida.
+      () => setSoundEnabled(next.soundEnabled),
+      () => {
+        setDevicePrefs(prev);
+        setSoundEnabled(prev.soundEnabled);
+        setError("No se pudo guardar la preferencia. Intenta de nuevo.");
+      },
+    );
+  };
+
+  // Las animaciones del compañero también son de este dispositivo:
+  // viven en companionDevicePrefs con el sonido. El atributo de
+  // <html> se aplica al instante y el proveedor lo reafirma cuando
+  // el guardado dispara la recarga (saveCompanionDevicePrefs avisa).
+  const changeMotion = (raw: string) => {
+    if (!(COMPANION_MOTION as readonly string[]).includes(raw)) return;
+    const prev: CompanionDevicePrefs = devicePrefs ?? {
+      version: 1,
+      soundEnabled: false,
+      motion: "system",
+    };
+    const next: CompanionDevicePrefs = {
+      ...prev,
+      motion: raw as CompanionMotion,
+    };
+    setDevicePrefs(next);
+    applyCatMotion(next.motion);
+    void saveCompanionDevicePrefs(next, captureDbScope()).then(
+      () => applyCatMotion(next.motion),
+      () => {
+        setDevicePrefs(prev);
+        applyCatMotion(prev.motion);
+        setError("No se pudo guardar la preferencia. Intenta de nuevo.");
+      },
+    );
+  };
+
+  const changePresence = (raw: string) => {
+    if (!(READING_PRESENCE as readonly string[]).includes(raw)) return;
+    const prev = presence;
+    const next = raw as ReadingPresence;
+    setPresence(next);
+    void writeCompanionField("readingPresence", next, captureDbScope()).catch(
+      () => {
+        setPresence(prev);
+        setError("No se pudo guardar la preferencia. Intenta de nuevo.");
+      },
+    );
   };
 
   const changeGoal = (raw: string) => {
@@ -582,10 +685,63 @@ export default function Account({
             {gameOn ? "Sí" : "No"}
           </button>
         </div>
+        {gameOn ? (
+          <>
+            <div className="setting-row">
+              <span className="setting-label">El gato mientras lees</span>
+              <select
+                aria-label="Presencia del gato al leer"
+                value={presence}
+                onChange={(event) => changePresence(event.target.value)}
+              >
+                <option value="off">No mostrar al leer</option>
+                <option value="visits">Visitas discretas</option>
+                <option value="always">Siempre cerca</option>
+                <option value="playful">Más juguetón</option>
+              </select>
+            </div>
+            <div className="setting-row">
+              <span className="setting-label">Animaciones del gato</span>
+              <select
+                aria-label="Animaciones del gato"
+                value={devicePrefs?.motion ?? "system"}
+                onChange={(event) => changeMotion(event.target.value)}
+              >
+                <option value="system">Según el sistema</option>
+                <option value="reduced">Reducidas</option>
+                <option value="full">Completas</option>
+              </select>
+            </div>
+            <p className="meta">
+              Solo mueve al gato, sus festejos y sus cofres — el resto de
+              Lecta sigue la regla de tu sistema.
+            </p>
+            <div className="setting-row">
+              <span className="setting-label">Sonido del gato</span>
+              <button
+                type="button"
+                className="theme-option"
+                role="switch"
+                aria-checked={devicePrefs?.soundEnabled ?? false}
+                data-active={devicePrefs?.soundEnabled || undefined}
+                onClick={toggleSound}
+              >
+                {devicePrefs?.soundEnabled ? "Sí" : "No"}
+              </button>
+            </div>
+            <p className="meta">
+              Suena solo al abrir su hoja o mientras lo acaricias, y solo en
+              este dispositivo.
+            </p>
+          </>
+        ) : null}
         <p className="meta">
           Un gato de biblioteca crece contigo en el Cuaderno: niveles, logros
-          y cofres por leer y repasar. Todo queda en este dispositivo; apágalo
-          y Lecta se ve igual que siempre.
+          y cofres por leer y repasar.{" "}
+          {session?.user
+            ? "Con sesión se guarda en tu cuenta y te acompaña en tus dispositivos."
+            : "Todo queda en este dispositivo."}{" "}
+          Apágalo y Lecta se ve igual que siempre.
         </p>
       </section>
 

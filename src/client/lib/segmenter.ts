@@ -1,3 +1,4 @@
+import { isWordToken } from "../../shared/word-form";
 import type { SegmenterRequest, SegmenterResponse } from "../workers/segmenter.worker";
 
 let worker: Worker | undefined;
@@ -12,7 +13,10 @@ function getWorker() {
     const request = pending.get(event.data.id);
     if (!request) return;
     pending.delete(event.data.id);
-    if (event.data.ok) request.resolve(event.data.words);
+    // El worker ya filtra por isWordToken; la barrera se repite aquí
+    // como contrato del API: ninguna forma no alfabética sale del
+    // segmentador.
+    if (event.data.ok) request.resolve(event.data.words.filter(isWordToken));
     else request.reject(new Error(event.data.error));
   };
   worker.onerror = () => {

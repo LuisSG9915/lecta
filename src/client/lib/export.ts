@@ -2,6 +2,8 @@ import {
   captureDbScope,
   listAllReviews,
   listAnnotations,
+  listCompanionEvents,
+  listCompanionReceipts,
   listIntervals,
   listKnowledge,
   listPositions,
@@ -11,6 +13,13 @@ import {
   listStoredBooks,
   listSessionKeys,
   loadSessionValue,
+  COMPANION_ACKED_KEY,
+  COMPANION_BASELINES_KEY,
+  COMPANION_DEVICE_PREFS_KEY,
+  COMPANION_MIGRATION_KEY,
+  COMPANION_PROFILE_KEY,
+  GAME_KEY,
+  GAME_STATE_KEY,
   type KnownWord,
   type ReadingEvent,
   type SavedAnnotation,
@@ -20,6 +29,10 @@ import {
   type SavedWord,
   type StoredBook,
 } from "./idb";
+import type {
+  CompanionReceipt,
+  GameJournalEvent,
+} from "../../shared/companion-data";
 import { USE_AI_KEY } from "./ai-pref";
 import { HISTORY_KEY } from "./reading-events";
 import { timeByDay } from "./reading-activity";
@@ -227,6 +240,15 @@ const BACKUP_SESSION_KEYS = [
   "learnExposure:v1",
   USE_AI_KEY,
   HISTORY_KEY,
+  // Compañero: el gameState v1 sellado y el opt-out viejo se conservan
+  // tal cual, junto a las colecciones nuevas del journal y el perfil.
+  GAME_STATE_KEY,
+  GAME_KEY,
+  COMPANION_BASELINES_KEY,
+  COMPANION_PROFILE_KEY,
+  COMPANION_DEVICE_PREFS_KEY,
+  COMPANION_MIGRATION_KEY,
+  COMPANION_ACKED_KEY,
 ] as const;
 
 // Además de la lista explícita salen por prefijo los registros del
@@ -263,6 +285,10 @@ export type BackupData = {
   // Trayecto local (diagnóstico): entra al respaldo para poder
   // revisar y mejorar las sugerencias; no se sincroniza al servidor.
   events: ReadingEvent[];
+  // Compañero: el journal de premios y las recepciones tal cual están
+  // en sus stores (los baselines/registros viajan dentro de session).
+  companionEvents: GameJournalEvent[];
+  companionReceipts: CompanionReceipt[];
   session: Record<string, string>;
 };
 
@@ -282,6 +308,8 @@ export function buildBackup(data: BackupData, exportedAt = Date.now()): string {
       books: data.books,
       readingDays: data.readingDays,
       events: data.events,
+      companionEvents: data.companionEvents,
+      companionReceipts: data.companionReceipts,
       session: data.session,
     },
     null,
@@ -296,7 +324,7 @@ export async function downloadBackup() {
   // mitad de las lecturas, el archivo sale completo de la base que
   // lo inició — nunca mezcla datos de dos cuentas.
   const bound = captureDbScope();
-  const [words, reviews, annotations, activity, positions, knowledge, books, readingDays, events] =
+  const [words, reviews, annotations, activity, positions, knowledge, books, readingDays, events, companionEvents, companionReceipts] =
     await Promise.all([
       listSavedWords(undefined, bound),
       listAllReviews(bound),
@@ -307,6 +335,8 @@ export async function downloadBackup() {
       listStoredBooks(bound),
       listReadingDays(bound),
       listReadingEvents(undefined, bound),
+      listCompanionEvents(bound),
+      listCompanionReceipts(bound),
     ]);
   const sessionPairs = await Promise.all(
     sessionKeysForBackup(await listSessionKeys(bound)).map(async (key) => {
@@ -339,6 +369,8 @@ export async function downloadBackup() {
       books: booksMeta,
       readingDays,
       events,
+      companionEvents,
+      companionReceipts,
       session,
     }),
     "application/json",

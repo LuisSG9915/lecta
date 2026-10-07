@@ -2,6 +2,8 @@ import type { LexiconEntry } from "./lexicon";
 import type { MarkLevel } from "./word-level";
 import type { PresentedReason } from "./idb";
 import { predictSection } from "./knowledge";
+import { isWordToken } from "../../shared/word-form";
+import { isStopword } from "../../shared/stopwords";
 import { preparationAnswerKey, type PreparationRow } from "./preparation";
 
 // Utilidades puras del lector predictivo: preparan entradas para
@@ -141,7 +143,13 @@ export function buildSuggestionRows(input: {
   // armar evidencia y palabras sin volver a buscarlos.
   lex?: Map<string, PreparationRow>;
 }): SuggestionRows {
-  const { language, forms, entries, capitalOnly, text, saved, knowledge, threshold, lex } = input;
+  const { language, entries, capitalOnly, text, saved, knowledge, threshold, lex } = input;
+  // Barrera local además de la del análisis: dígitos, puntuación
+  // residual y palabras funcionales nunca llegan a la hoja, ni a la
+  // selección ni a la consulta secundaria.
+  const forms = input.forms.filter(
+    (form) => isWordToken(form) && !isStopword(form, language),
+  );
   const prediction = predictSection(
     forms,
     entries,

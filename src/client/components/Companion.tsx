@@ -1,145 +1,487 @@
-// El gato de biblioteca: compañero del Cuaderno dibujado en SVG de
-// tinta (una sola tinta + papel, como el resto de Lecta). La etapa
-// crece con el nivel; el humor refleja si hubo lectura reciente; los
-// accesorios salen de los cofres de nivel abiertos.
+// El gato de biblioteca: compañero de Lecta dibujado en SVG de
+// caricatura suave — formas redondas, ojos grandes con brillo,
+// mejillas rosadas y sombreado tenue sobre la paleta --cat-* del
+// tema. Tres cosas independientes definen el dibujo: la etapa
+// (proporciones de verdad distintas por edad — el bebé es casi toda
+// cabeza), el sueño (solo humor o foco de lectura, jamás la edad) y
+// la pose transitoria que un controlador enciende por unos segundos.
+// La ropa llega por ids de accesorios anclados a cada etapa;
+// bufanda/collar comparten la ranura del cuello.
 
+import type { ReactNode } from "react";
 import type { CatMood } from "../lib/gamification";
 import type { CompanionState } from "../lib/companion-state";
+import {
+  CAT_BOX,
+  STAGES,
+  PROPS,
+  type EyeKind,
+  type MouthKind,
+  type StageArt,
+  type Stroke,
+} from "./companion-sprites";
 
-// Rótulo accesible de cada estado de lectura (companion-state).
-const FOCUS_LABELS: Record<CompanionState, string> = {
-  sleep: "El gato descansa junto a tu lectura",
-  reading: "El gato te acompaña mientras lees",
-  deep_focus: "El gato lee contigo en silencio",
-  curious: "El gato se fija en lo que consultas",
-  yawn: "El gato bosteza: tal vez es hora de un descanso",
-  celebrating: "El gato celebra tu lectura",
+// Gestos transitorios: la clase cat--p-* anima una iteración corta o
+// un bucle suave mientras el controlador mantenga la pose; «idle» es
+// el reposo con respiración y parpadeo.
+export type CompanionPose =
+  | "idle"
+  | "greet"
+  | "pet"
+  | "eat"
+  | "play"
+  | "celebrate"
+  | "evolve";
+
+export interface CompanionProps {
+  // 0 gatito bebé · 1 gatito curioso · 2 joven · 3 adulto ·
+  // 4 bibliotecario (adulto con un libro abierto a las patas).
+  stage: number;
+  mood: CatMood;
+  // Ids de artículos puestos: chaleco, bufanda, collar, moño,
+  // anteojos. La bufanda gana la ranura del cuello si llegan las dos.
+  accessories: string[];
+  // Estado de lectura en vivo (lector); ausente en el Cuaderno,
+  // donde manda el humor de largo plazo.
+  focus?: CompanionState | null;
+  // Gesto transitorio con prioridad visual sobre el humor; el sueño
+  // sigue mandando en ojos y opacidad mientras la pose mueve el resto.
+  pose?: CompanionPose;
+  // Nombre propio para el rótulo accesible («Michi te acompaña…»).
+  name?: string;
+  // Dentro de un botón el dibujo es decorativo: sin role ni título,
+  // el label lo pone el elemento interactivo que lo contiene.
+  decorative?: boolean;
+}
+
+// Rótulo accesible: «<sujeto> <sufijo>». El foco describe lo que el
+// gato hace junto a la lectura; la pose, el gesto del momento; el
+// humor solo informa vigilia/sueño cuando no hay nada más activo.
+const FOCUS_SUFFIX: Record<CompanionState, string> = {
+  sleep: "descansa junto a tu lectura",
+  reading: "te acompaña mientras lees",
+  deep_focus: "lee contigo en silencio",
+  curious: "se fija en lo que consultas",
+  yawn: "bosteza: tal vez es hora de un descanso",
+  celebrating: "celebra tu lectura",
 };
+
+const POSE_SUFFIX: Record<Exclude<CompanionPose, "idle">, string> = {
+  greet: "te saluda con la pata",
+  pet: "disfruta las caricias",
+  eat: "come de su platito",
+  play: "juega con su pelota",
+  celebrate: "celebra contigo",
+  evolve: "creció y está orgulloso",
+};
+
+const MOOD_SUFFIX: Record<CatMood, string> = {
+  asleep: "duerme",
+  sleepy: "tiene sueño",
+  awake: "te acompaña",
+};
+
+// Ojos abiertos: óvalos oscuros con dos brillos — el tamaño cambia por
+// etapa (el bebé los lleva enormes). El «blink» convive como capa:
+// CSS alterna opacidades para el guiño.
+function Eyes({ art, kind }: { art: StageArt; kind: EyeKind }) {
+  if (kind === "open") {
+    return (
+      <>
+        <g className="cat-eyes cat-eyes--open">
+          {art.eyesOpen.map((e, i) => (
+            <g key={i}>
+              <ellipse
+                className="cat-eye"
+                cx={e.cx}
+                cy={e.cy}
+                rx={e.rx}
+                ry={e.ry}
+              />
+              <circle
+                className="cat-eye-glint"
+                cx={e.cx - e.rx * 0.3}
+                cy={e.cy - e.ry * 0.35}
+                r={e.rx * 0.34}
+              />
+              <circle
+                className="cat-eye-glint"
+                cx={e.cx + e.rx * 0.34}
+                cy={e.cy + e.ry * 0.3}
+                r={e.rx * 0.16}
+              />
+            </g>
+          ))}
+        </g>
+        <g className="cat-eyes cat-eyes--blink" aria-hidden="true">
+          {art.eyesClosed.map((d, i) => (
+            <path key={i} className="cat-eye-line" d={d} />
+          ))}
+        </g>
+      </>
+    );
+  }
+  if (kind === "happy") {
+    return (
+      <g className="cat-eyes cat-eyes--happy">
+        {art.eyesHappy.map((d, i) => (
+          <path key={i} className="cat-eye-line" d={d} />
+        ))}
+      </g>
+    );
+  }
+  if (kind === "half") {
+    return (
+      <g className="cat-eyes cat-eyes--half">
+        {art.eyesOpen.map((e, i) => (
+          <g key={i}>
+            <ellipse
+              className="cat-eye"
+              cx={e.cx}
+              cy={e.cy}
+              rx={e.rx}
+              ry={e.ry}
+            />
+            <path className="cat-lid" d={art.eyesHalf[i]} />
+          </g>
+        ))}
+      </g>
+    );
+  }
+  // "sleep" y "blink" comparten la línea cerrada.
+  return (
+    <g className={`cat-eyes cat-eyes--${kind}`}>
+      {art.eyesClosed.map((d, i) => (
+        <path key={i} className="cat-eye-line" d={d} />
+      ))}
+    </g>
+  );
+}
+
+// Boca por expresión: gatito («ω»), sonrisa abierta, bostezo, lengua
+// y el ñam-ñam de comer (dos bocas alternando, CSS las mezcla).
+function Mouth({ art, kind }: { art: StageArt; kind: MouthKind }) {
+  const m = art.mouth;
+  if (kind === "eat") {
+    return (
+      <g className="cat-mouths">
+        <g className="cat-mouth cat-mouth--a">
+          <path className="cat-mouth-open" d={m.open} />
+        </g>
+        <g className="cat-mouth cat-mouth--b" aria-hidden="true">
+          <path className="cat-mouth-line" d={m.munch} />
+        </g>
+      </g>
+    );
+  }
+  if (kind === "yawn") {
+    return (
+      <g className="cat-mouth cat-mouth--yawn">
+        <path className="cat-mouth-open" d={m.yawn} />
+        <path className="cat-tongue" d={m.tongueFill} />
+      </g>
+    );
+  }
+  if (kind === "tongue") {
+    return (
+      <g className="cat-mouth cat-mouth--tongue">
+        <path className="cat-mouth-open" d={m.open} />
+        <path className="cat-tongue" d={m.tongueFill} />
+      </g>
+    );
+  }
+  if (kind === "smile") {
+    return (
+      <g className="cat-mouth cat-mouth--smile">
+        <path className="cat-mouth-open" d={m.smile} />
+        <path className="cat-tongue" d={m.tongueFill} />
+      </g>
+    );
+  }
+  return (
+    <g className="cat-mouth cat-mouth--cat">
+      <path className="cat-mouth-line" d={m.cat} />
+    </g>
+  );
+}
+
+// Cola y patas en gesto son trazos: el par borde+pelaje dibuja el
+// perfil grueso de la caricatura (contorno debajo, pelaje encima).
+// El grupo que los envuelve (.cat-tail, .cat-paw--*) es quien recibe
+// las animaciones — las rutas internas llevan -edge/-fill.
+function StrokePatch({ s, cls }: { s: Stroke; cls: string }) {
+  return (
+    <>
+      <path
+        className={`${cls}-edge`}
+        d={s.d}
+        strokeWidth={s.w + 2.2}
+        aria-hidden="true"
+      />
+      <path className={`${cls}-fill`} d={s.d} strokeWidth={s.w} />
+    </>
+  );
+}
+
+// Ropa por ranura: cada artículo es un grupo de paths ya posicionado
+// para la etapa (las proporciones cambian; las anclas vienen en el
+// StageArt).
+function Wear({ art, accessories }: { art: StageArt; accessories: string[] }) {
+  const scarf = accessories.includes("bufanda");
+  const items: ReactNode[] = [];
+  if (accessories.includes("chaleco") && art.wear.chaleco)
+    items.push(
+      <g key="chaleco" className="cat-wear cat-wear--chaleco">
+        {art.wear.chaleco.map((d, i) => (
+          <path key={i} d={d} />
+        ))}
+      </g>,
+    );
+  if (accessories.includes("anteojos") && art.wear.anteojos)
+    items.push(
+      <g key="anteojos" className="cat-wear cat-wear--anteojos">
+        {art.wear.anteojos.map((d, i) => (
+          <path key={i} d={d} />
+        ))}
+      </g>,
+    );
+  if (accessories.includes("moño") && art.wear.moño)
+    items.push(
+      <g key="moño" className="cat-wear cat-wear--moño">
+        {art.wear.moño.map((d, i) => (
+          <path key={i} d={d} />
+        ))}
+      </g>,
+    );
+  if (scarf && art.wear.bufanda)
+    items.push(
+      <g key="bufanda" className="cat-wear cat-wear--bufanda">
+        {art.wear.bufanda.map((d, i) => (
+          <path key={i} d={d} />
+        ))}
+      </g>,
+    );
+  else if (accessories.includes("collar") && art.wear.collar)
+    items.push(
+      <g key="collar" className="cat-wear cat-wear--collar">
+        {art.wear.collar.map((d, i) => (
+          <path key={i} d={d} />
+        ))}
+      </g>,
+    );
+  return <>{items}</>;
+}
 
 export function Companion({
   stage,
   mood,
   accessories,
   focus,
-}: {
-  // 0 gatito dormido · 1 gatito · 2 gato · 3 gato con presencia ·
-  // 4 bibliotecario. La etapa solo cambia proporciones y presencia.
-  stage: number;
-  mood: CatMood;
-  accessories: string[];
-  // Estado de lectura en vivo (lector); ausente en el Cuaderno,
-  // donde manda el humor de largo plazo.
-  focus?: CompanionState | null;
-}) {
-  const kitten = stage <= 1;
-  // Cabeza proporcionalmente más grande en gatito.
-  const headR = kitten ? 15 : 13;
-  const headCy = kitten ? 34 : 30;
-  const bodyRy = kitten ? 14 : 20;
-  const bodyCy = 54;
+  pose,
+  name,
+  decorative = false,
+}: CompanionProps) {
+  const s = Math.min(4, Math.max(0, Math.round(stage)));
+  const art = STAGES[s];
 
   const sleeping = mood === "asleep" || focus === "sleep";
-  const eyes =
-    sleeping ? "closed" : mood === "sleepy" || stage === 0 ? "half" : "open";
+  // La pose manda en la figura; el «celebrating» del foco usa el
+  // mismo brinco de fiesta para no dibujar dos celebraciones.
+  const act: CompanionPose =
+    pose && pose !== "idle"
+      ? pose
+      : focus === "celebrating"
+        ? "celebrate"
+        : "idle";
 
-  const label = focus
-    ? FOCUS_LABELS[focus]
-    : mood === "asleep"
-      ? "El gato del cuaderno duerme"
-      : mood === "sleepy"
-        ? "El gato del cuaderno tiene sueño"
-        : "El gato del cuaderno te acompaña";
+  // El sueño/entrecierre solo viene del humor o del foco: la etapa
+  // nunca cierra ojos ni baja la opacidad.
+  const eyes: EyeKind = sleeping
+    ? "sleep"
+    : act === "pet" || act === "celebrate" || act === "evolve"
+      ? "happy"
+      : focus === "yawn"
+        ? "sleep"
+        : mood === "sleepy"
+          ? "half"
+          : "open";
+  const mouth: MouthKind =
+    act === "eat"
+      ? "eat"
+      : focus === "yawn"
+        ? "yawn"
+        : act === "celebrate" || act === "evolve"
+          ? "smile"
+          : "cat";
+
+  const who = name?.trim() || "El gato";
+  const label =
+    act !== "idle"
+      ? `${who} ${POSE_SUFFIX[act]}`
+      : focus
+        ? `${who} ${FOCUS_SUFFIX[focus]}`
+        : `${who} ${MOOD_SUFFIX[mood]}`;
+
+  // Pelaje: el artículo de la ranura «coat» cambia la paleta del
+  // gato entero (clase cat--coat-*); el atigrado además enciende
+  // las rayas del StageArt.
+  const coat = accessories.find((a) => a.startsWith("pelaje-")) ?? null;
+  // «cat-anim» marca el territorio animable: el modo «Completas» de
+  // Cuenta lo exime de la reducción de movimiento del sistema y el
+  // modo «Reducidas» lo silencia aunque el sistema anime (base.css).
+  const cls =
+    `cat cat-anim cat--${mood} cat--s${s}` +
+    (coat ? ` cat--coat-${coat.slice("pelaje-".length)}` : "") +
+    (focus ? ` cat--f-${focus}` : "") +
+    (pose ? ` cat--p-${pose}` : "");
 
   return (
     <svg
-      className={`cat cat--${mood} cat--s${stage}${focus ? ` cat--f-${focus}` : ""}`}
-      viewBox="0 0 72 72"
+      className={cls}
+      viewBox={`0 0 ${CAT_BOX} ${CAT_BOX}`}
+      // Lienzo lógico 96×96; el tamaño visible lo pone quien lo usa
+      // (46–88px hoy) vía CSS o el ancho por omisión.
       width="72"
       height="72"
-      role="img"
-      aria-label={label}
+      {...(decorative
+        ? { "aria-hidden": true }
+        : { role: "img", "aria-label": label })}
     >
-      <title>{label}</title>
-      {/* Cola: un trazo que se asoma por detrás del cuerpo. */}
-      <path
-        className="cat-tail"
-        d={
-          kitten
-            ? "M52 58 q14 -4 12 -16"
-            : "M54 56 q14 -2 12 -18 q-1 -7 -6 -8"
-        }
-        fill="none"
-        strokeWidth={kitten ? 4 : 5}
-        strokeLinecap="round"
+      {decorative ? null : <title>{label}</title>}
+      {/* Sombra de suelo: no salta con la figura; en fiesta se achata
+          y estira como el piso que recibe al gato. */}
+      <ellipse
+        className="cat-shadow"
+        cx={art.shadow.cx}
+        cy={art.shadow.cy}
+        rx={art.shadow.rx}
+        ry={art.shadow.ry}
       />
-      {/* Cuerpo sentado. */}
-      <ellipse className="cat-body" cx="36" cy={bodyCy} rx={kitten ? 15 : 18} ry={bodyRy} />
-      {/* Orejas. */}
-      <path
-        className="cat-ink"
-        d={`M${36 - headR + 3} ${headCy - headR + 6} l${kitten ? 4 : 5} ${kitten ? -9 : -11} l${kitten ? 6 : 8} 7 Z`}
-      />
-      <path
-        className="cat-ink"
-        d={`M${36 + headR - 3} ${headCy - headR + 6} l${kitten ? -4 : -5} ${kitten ? -9 : -11} l${kitten ? -6 : -8} 7 Z`}
-      />
-      {/* Cabeza. */}
-      <circle className="cat-ink" cx="36" cy={headCy} r={headR} />
-      {/* Ojos: tinta del papel, cambian con el humor. */}
-      {eyes === "open" ? (
-        <>
-          <circle className="cat-eye" cx={36 - 5} cy={headCy} r={1.7} />
-          <circle className="cat-eye" cx={36 + 5} cy={headCy} r={1.7} />
-        </>
-      ) : eyes === "half" ? (
-        <>
-          <path className="cat-eye-line" d={`M${36 - 7} ${headCy} h4`} />
-          <path className="cat-eye-line" d={`M${36 + 3} ${headCy} h4`} />
-        </>
-      ) : (
-        <>
-          <path className="cat-eye-line" d={`M${36 - 7} ${headCy} q2 2 4 0`} />
-          <path className="cat-eye-line" d={`M${36 + 3} ${headCy} q2 2 4 0`} />
-        </>
-      )}
-      {/* Nariz y bigotes. */}
-      <path className="cat-eye" d={`M36 ${headCy + 3} l-1.5 1.6 h3 Z`} />
-      <path
-        className="cat-whisker"
-        d={`M${36 - headR + 1} ${headCy + 3} h-9 M${36 - headR + 1} ${headCy + 6} l-8 2 M${36 + headR - 1} ${headCy + 3} h9 M${36 + headR - 1} ${headCy + 6} l8 2`}
-      />
-      {/* Accesorios de cofre + collar de la etapa bibliotecaria. */}
-      {accessories.includes("bufanda") ? (
-        <path
-          className="cat-acc cat-acc--cloth"
-          d={`M${36 - headR + 2} ${headCy + headR - 3} q${headR - 2} 7 ${headR * 2 - 4} 0 l-2 5 q-${headR - 4} 4 -${headR * 2 - 8} 0 Z`}
-        />
-      ) : null}
-      {(accessories.includes("collar") || stage >= 3) && !accessories.includes("bufanda") ? (
-        <path
-          className="cat-acc cat-acc--collar"
-          d={`M${36 - headR + 3} ${headCy + headR - 2} q${headR - 3} 6 ${headR * 2 - 6} 0`}
-        />
-      ) : null}
-      {accessories.includes("moño") ? (
-        <path
-          className="cat-acc cat-acc--cloth"
-          d={`M${36 + headR - 8} ${headCy - headR - 2} l6 -5 2 7 -6 4 Z M${36 + headR - 8} ${headCy - headR - 2} l-2 -6 7 1 1 7 Z`}
-        />
-      ) : null}
-      {accessories.includes("anteojos") ? (
-        <g className="cat-acc cat-acc--glasses">
-          <circle cx={36 - 5} cy={headCy} r={3.4} />
-          <circle cx={36 + 5} cy={headCy} r={3.4} />
-          <path d={`M${36 - 1.6} ${headCy} h3.2 M${36 - 8.4} ${headCy} l-4 -3 M${36 + 8.4} ${headCy} l4 -3`} />
+      <g className="cat-figure">
+        {/* Cola detrás del cuerpo para que el torso tape su base. */}
+        <g className="cat-tail">
+          <StrokePatch s={art.tail} cls="cat-tail" />
         </g>
-      ) : null}
-      {/* «zzz» sobre la oreja cuando duerme; se desvanece en CSS. */}
-      {sleeping ? (
-        <text className="cat-zzz" x="54" y="20">
-          z
-        </text>
-      ) : null}
+        <g className="cat-body">
+          <path className="cat-fur" d={art.body} />
+          {art.belly ? <path className="cat-fur-light" d={art.belly} /> : null}
+          {art.paws.map((d, i) => (
+            <path key={i} className="cat-fur cat-paw-shape" d={d} />
+          ))}
+        </g>
+        {/* Patas en gesto: saludo a la derecha, fiesta con las dos
+            arriba y la pata fija del joven. */}
+        {act === "celebrate" ? (
+          <g className="cat-paw cat-paw--cheer-l">
+            <StrokePatch s={art.cheerL} cls="cat-paw" />
+          </g>
+        ) : null}
+        {act === "celebrate" ? (
+          <g className="cat-paw cat-paw--cheer-r">
+            <StrokePatch s={art.cheerR} cls="cat-paw" />
+          </g>
+        ) : null}
+        {act === "greet" ? (
+          <g className="cat-paw cat-paw--wave">
+            <StrokePatch s={art.wave} cls="cat-paw" />
+          </g>
+        ) : null}
+        {art.pawUp && act === "idle" ? (
+          <g className="cat-paw cat-paw--up">
+            <StrokePatch s={art.pawUp} cls="cat-paw" />
+          </g>
+        ) : null}
+        <g className="cat-head">
+          <path className="cat-fur" d={art.head} />
+          <path className="cat-fur-shade" d={art.headShade} />
+          {/* Orejas: interior rosa sobre la silueta ya incluida. */}
+          <path className="cat-ear-inner" d={art.earInnerL} />
+          <path className="cat-ear-inner" d={art.earInnerR} />
+          {art.tuft ? <path className="cat-fur-shade" d={art.tuft} /> : null}
+          {/* Mejillas rosadas: la ternura instantánea del cartoon. */}
+          <ellipse
+            className="cat-blush"
+            cx={art.blushL.cx}
+            cy={art.blushL.cy}
+            rx={art.blushL.rx}
+            ry={art.blushL.ry}
+          />
+          <ellipse
+            className="cat-blush"
+            cx={art.blushR.cx}
+            cy={art.blushR.cy}
+            rx={art.blushR.rx}
+            ry={art.blushR.ry}
+          />
+          {/* Hocico claro + nariz + boca. */}
+          <path className="cat-muzzle" d={art.muzzle} />
+          <path className="cat-nose" d={art.nose} />
+          <Eyes art={art} kind={eyes} />
+          <Mouth art={art} kind={mouth} />
+          {/* Bigotes finos a los lados del hocico. */}
+          <path className="cat-whisker" d={art.whiskerL} />
+          <path className="cat-whisker" d={art.whiskerR} />
+        </g>
+        {/* Rayas del pelaje atigrado: van sobre el pelaje y bajo la
+            ropa para que una bufanda las tape como en la vida real. */}
+        {coat === "pelaje-atigrado" && art.marks.length ? (
+          <path className="cat-marks" d={art.marks.join(" ")} />
+        ) : null}
+        <Wear art={art} accessories={accessories} />
+        {art.book ? (
+          <g className="cat-book">
+            {art.book.map((d, i) => (
+              <path key={i} d={d} />
+            ))}
+          </g>
+        ) : null}
+        {act === "eat" ? (
+          <g transform={`translate(${art.propX - 1} ${art.propY - 1}) scale(1.5)`}>
+            <g className="cat-bowl">
+              {PROPS.bowl.map((d, i) => (
+                <path key={i} d={d} />
+              ))}
+            </g>
+          </g>
+        ) : null}
+        {act === "play" ? (
+          <g transform={`translate(${art.propX + 4} ${art.propY}) scale(1.25)`}>
+            <g className="cat-ball">
+              {PROPS.ball.map((d, i) => (
+                <path key={i} d={d} />
+              ))}
+            </g>
+          </g>
+        ) : null}
+        {act === "evolve" || act === "celebrate" ? (
+          <g className="cat-sparks">
+            {PROPS.sparkAt.map((at, i) => (
+              <path
+                key={i}
+                className="cat-spark"
+                d={PROPS.spark}
+                transform={`translate(${at.x} ${at.y})`}
+              />
+            ))}
+          </g>
+        ) : null}
+        {/* «z z z» sobre la oreja cuando duerme; CSS las hace flotar
+            en cascada (o las deja quietas con movimiento reducido). */}
+        {sleeping ? (
+          <g className="cat-zzz">
+            {art.zAt.map((at, i) => (
+              <text
+                key={i}
+                className="cat-z"
+                x={at.x}
+                y={at.y}
+              >
+                z
+              </text>
+            ))}
+          </g>
+        ) : null}
+      </g>
     </svg>
   );
 }

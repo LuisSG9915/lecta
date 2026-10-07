@@ -72,17 +72,7 @@ import {
   MIN_SAMPLE_MS,
   MIN_SAMPLE_WORDS,
 } from "../lib/progress";
-import {
-  award,
-  loadGame,
-  loadGameEnabled,
-  subscribeGame,
-} from "../lib/game";
-import {
-  catStageForLevel,
-  levelProgress,
-  unlockedAccessories,
-} from "../lib/gamification";
+import { award, localDayKey } from "../lib/game";
 import {
   initialCompanion,
   reduceCompanion,
@@ -170,6 +160,9 @@ import Sheet from "./Sheet";
 import ThemeMenu, { FocusModeMenu } from "./ThemeMenu";
 import Toggle from "./Toggle";
 import { Companion } from "./Companion";
+import { CompanionButton } from "./CompanionButton";
+import { useCompanion } from "./CompanionProvider";
+import { eligibleDelta, useReaderPresence } from "../lib/reader-presence";
 import { FocusRuler, rulerBandPx } from "./FocusRuler";
 import {
   buildChapterCatalog,
@@ -208,6 +201,18 @@ import {
 
 type ReaderState = "idle" | "opening" | "ready" | "error";
 type SheetKind = "toc" | "settings" | "search" | "marks";
+
+// Metadata del premio por consulta de palabra: el uuid se genera al
+// abrir la ficha y viaja congelado en el journal. Vive fuera del
+// componente para que reloj/uuid no se lean durante el render.
+const consultedAwardMeta = () => {
+  const at = Date.now();
+  return {
+    id: `consult:${crypto.randomUUID()}`,
+    at,
+    dayKey: localDayKey(at),
+  };
+};
 
 // Intención de navegación (coordinador T17): todo salto pasa por
 // `navigate` y deja registrada de dónde vino — la preparación (T19)
@@ -501,12 +506,9 @@ export default function Reader({
   const [page, setPage] = useState(0);
   const [pageCount, setPageCount] = useState(1);
   const [pageMetrics, setPageMetrics] = useState<PageLayout | null>(null);
-  // Gato acompañante en el lector: aspecto (etapa + accesorios del
-  // juego) y estado visible de la máquina (companion-state).
-  const [catInfo, setCatInfo] = useState<{
-    stage: number;
-    accessories: string[];
-  } | null>(null);
+  // Gato acompañante en el lector: el aspecto (etapa, accesorios,
+  // nombre, presencia) viene del CompanionProvider único — aquí solo
+  // queda el estado visible de la máquina local de lectura.
   const [catState, setCatState] = useState<CompanionState | null>(null);
   // Sugerencia de pausa 20-20-20 cuando la telemetría marca fatiga.
   const [fatigueNotice, setFatigueNotice] = useState(false);
@@ -517,6 +519,134 @@ export default function Reader({
   // oculta: hojas/repaso/inactividad no son lectura.
   const activityRef = useRef<{ startedAt: number; lastActiveAt: number } | null>(null);
   const pausedRef = useRef(true);
+
+  // Compañero desde el proveedor único: preferencia del juego, etapa,
+  // accesorios equipados, nombre y modo de presencia de la cuenta —
+  // el lector no carga estado de perfil propio (eso vive arriba).
+  const companion = useCompanion();
+  const catEnabled = companion.enabled === true;
+  const presenceMode = companion.presence;
+
+  // Cubierta de la lectura para pausa y presencia: hojas del lector,
+  // paneles de la app, preparación/calibración pendiente y la propia
+  // hoja del gato — esta última pausa el tiempo de lectura igual que
+  // cualquier otra capa.
+  const readingPaused =
+    sheet !== null ||
+    panelsOpen ||
+    state !== "ready" ||
+    prep !== null ||
+    companion.open;
+  // Para la presencia además cuenta cualquier capa modal encima
+  // (consulta de palabra, calibración, diálogos) aunque aún no haya
+  // cerrado el segmento: son el mismo concepto de «tapado».
+  const presenceOverlay =
+    readingPaused || selection !== null || askStart || companion.modalOpen;
+
+  // Pestaña oculta para el planificador (aparte del seguimiento de
+  // actividad, que ya la escucha para cerrar el segmento).
+  const [docHidden, setDocHidden] = useState(() => document.hidden);
+  useEffect(() => {
+    const onVisibility = () => setDocHidden(document.hidden);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () =>
+      document.removeEventListener("visibilitychange", onVisibility);
+  }, []);
+
+  // Planificador de presencia (fase 5): recibe señales reales del
+  // lector y decide cuándo se ve el gato según el modo de la cuenta.
+  // Las callbacks devueltas son estables (entran en deps de
+  // noteActivity sin rearmar sus efectos).
+  const {
+    visible: catVisible,
+    greeting: catGreeting,
+    greet: greetCat,
+    suppressed: catSuppressed,
+    setSuppressed: setCatSuppressed,
+    activity: presenceActivity,
+    idle: presenceIdle,
+    react: presenceReact,
+  } = useReaderPresence({
+    enabled: catEnabled,
+    mode: presenceMode,
+    ready: state === "ready",
+    overlay: presenceOverlay,
+    hidden: docHidden,
+    machine: catState,
+  });
+
+  // Los festejos del inbox esperan contexto seguro: con presencia
+  // «off», supresión por libro o cualquier capa encima quedan
+  // pendientes sin marcar como vistos.
+  const setCelebrationBlocked = companion.setCelebrationBlocked;
+  const celebrationBlocked =
+    !catEnabled ||
+    presenceMode === "off" ||
+    catSuppressed ||
+    presenceOverlay;
+  useEffect(() => {
+    setCelebrationBlocked(celebrationBlocked);
+    return () => setCelebrationBlocked(false);
+  }, [celebrationBlocked, setCelebrationBlocked]);
+
+  // Desvanecer al ocultar: la visita queda un instante montada con
+  // data-out (la animación de salida vive en reader.css; con
+  // reduced-motion el navegador la reduce sola y no se nota).
+  const [catRendered, setCatRendered] = useState(false);
+  const [catLeaving, setCatLeaving] = useState(false);
+  // Ajuste durante el render (como `seenStatus` más abajo): sube en
+  // cuanto la presencia lo dice; al ocultar queda en salida un tramo
+  // y el temporizador de abajo la retira.
+  if (catVisible && catLeaving) {
+    // Volvió antes de acabar el fundido: se queda sin transición.
+    setCatLeaving(false);
+  } else if (catVisible && !catRendered) {
+    setCatRendered(true);
+  } else if (!catVisible && catRendered && !catLeaving) {
+    setCatLeaving(true);
+  }
+  useEffect(() => {
+    if (!catLeaving) return;
+    const timer = window.setTimeout(() => {
+      setCatRendered(false);
+      setCatLeaving(false);
+    }, 420);
+    return () => window.clearTimeout(timer);
+  }, [catLeaving]);
+  // Con el juego apagado la máquina se retira en el efecto de abajo;
+  // aquí se suelta su estado visible (ajuste durante el render).
+  if (!catEnabled && catState !== null) setCatState(null);
+  // ¿Se dibuja el gato ahora? Solo si el juego está encendido, la
+  // máquina local existe y el planificador lo dice.
+  const catShown = catEnabled && catRendered && catState !== null;
+
+  // Al tocar al gato del lector reacciona con un brinco antes de
+  // abrir su hoja: el gesto se siente vivo, no como un acceso seco.
+  // El temporizador vive en ref para limpiarlo al desmontar.
+  const catTapTimer = useRef<number | null>(null);
+  const [catTap, setCatTap] = useState(false);
+  const onCatTap = () => {
+    if (catTapTimer.current !== null) return;
+    // Movimiento reducido: el brinco no se anima y la espera de 600ms
+    // sería tiempo muerto — la hoja abre de inmediato.
+    if (companion.reducedMotion) {
+      companion.openPanel();
+      return;
+    }
+    setCatTap(true);
+    catTapTimer.current = window.setTimeout(() => {
+      catTapTimer.current = null;
+      setCatTap(false);
+      companion.openPanel();
+    }, 600);
+  };
+  useEffect(
+    () => () => {
+      if (catTapTimer.current !== null)
+        window.clearTimeout(catTapTimer.current);
+    },
+    [],
+  );
 
   if (seenStatus !== statusText) setSeenStatus(statusText);
 
@@ -549,8 +679,17 @@ export default function Reader({
       const next = reduceCompanion(m, full);
       companionRef.current = next;
       setCatState((prev) => (prev === next.state ? prev : next.state));
+      // Momentos con peso hacen asomar al gato a responder aunque no
+      // toque visita programada: consulta de palabra, meta del día o
+      // fatiga. El enfriamiento propio de react() evita el acoso.
+      if (
+        full.kind === "word_consulted" ||
+        full.kind === "goal_completed" ||
+        full.kind === "fatigue_detected"
+      )
+        presenceReact();
     },
-    [],
+    [presenceReact],
   );
 
   // Toda señal de lectura real pasa por aquí: scroll, cambio de página,
@@ -560,10 +699,16 @@ export default function Reader({
     if (pausedRef.current || document.hidden) return;
     const now = Date.now();
     const seg = activityRef.current;
+    // El planificador de presencia cuenta solo actividad elegible:
+    // el delta entre señales reales, acotado como el seguimiento —
+    // un hueco mayor a IDLE_MS no regala su tiempo completo, y sin
+    // segmento vivo la señal no trae tiempo a cuestas.
+    const delta = eligibleDelta(seg, now, IDLE_MS);
     if (!seg) activityRef.current = { startedAt: now, lastActiveAt: now };
     else seg.lastActiveAt = now;
+    presenceActivity(delta);
     signalCompanion({ kind: "reading_activity", at: now });
-  }, [signalCompanion]);
+  }, [signalCompanion, presenceActivity]);
 
   // Cierra el segmento abierto y, si duró lo bastante, lo guarda como
   // intervalo inmutable. Termina en la última señal, no en «ahora»:
@@ -571,6 +716,9 @@ export default function Reader({
   const closeActivity = useCallback(() => {
     const seg = activityRef.current;
     activityRef.current = null;
+    // Sin segmento vivo el lector está inactivo para la presencia —
+    // las visitas se difieren sin acumular deuda.
+    presenceIdle(true);
     if (!seg) return;
     const endedAt = Math.min(seg.lastActiveAt, Date.now());
     if (endedAt - seg.startedAt < MIN_INTERVAL_MS) return;
@@ -586,7 +734,17 @@ export default function Reader({
     void saveReadingInterval(interval, scope).then(() =>
       pushActivityToServer([interval], scope),
     );
-    void award({ kind: "read", ms: endedAt - seg.startedAt }, scope);
+    // El día del premio se fija con la zona del emisor (la misma de la
+    // meta diaria de abajo): el journal replica la racha con esos
+    // dayKey, no con la zona de quien sincronice.
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const dayKey = dayKeyOf(endedAt, tz);
+    void award({ kind: "read", ms: endedAt - seg.startedAt }, scope, {
+      id: `read:${interval.id}`,
+      at: endedAt,
+      dayKey,
+      interval: { startedAt: seg.startedAt, endedAt },
+    });
 
     // Meta del día: si este tramo lleva al día por encima del mínimo
     // de «día leído» (60 s), el gato celebra — una sola vez por día.
@@ -595,8 +753,6 @@ export default function Reader({
     // se suma por separado (se filtra por id por si ya aterrizó).
     void listIntervals(scope)
       .then((list) => {
-        const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-        const dayKey = dayKeyOf(endedAt, tz);
         if (dayGoalRef.current?.dayKey !== dayKey)
           dayGoalRef.current = { dayKey, done: false };
         if (dayGoalRef.current.done) return;
@@ -612,7 +768,7 @@ export default function Reader({
         }
       })
       .catch(() => undefined);
-  }, [bookHash, signalCompanion]);
+  }, [bookHash, signalCompanion, presenceIdle]);
 
   // Las capas del lector son mutuamente excluyentes: abrir una cierra
   // la anterior y reutiliza su entrada de historial cuando existe. Si
@@ -636,7 +792,8 @@ export default function Reader({
       form: hit.word,
       origin: "text",
     });
-    void award({ kind: "consulted" }, captureDbScope());
+    // Una consulta = un evento del journal, sellado al abrir la ficha.
+    void award({ kind: "consulted" }, captureDbScope(), consultedAwardMeta());
     signalCompanion({ kind: "word_consulted" });
     recordConsult(hit.word);
   };
@@ -664,11 +821,12 @@ export default function Reader({
 
   // Las pausas cierran el segmento en su última señal; al volver, la
   // siguiente señal abre uno nuevo sin arrastrar el tiempo de pausa.
+  // La hoja del gato (vive en el proveedor) también pausa: cuidar al
+  // gato no es lectura.
   useEffect(() => {
-    pausedRef.current =
-      sheet !== null || panelsOpen || state !== "ready" || prep !== null;
+    pausedRef.current = readingPaused;
     if (pausedRef.current) closeActivity();
-  }, [sheet, panelsOpen, state, prep, closeActivity]);
+  }, [readingPaused, closeActivity]);
 
   // Latido del segmento: si pasó el umbral sin señales cierra donde
   // quedó la última; si sigue vivo pero ya es largo lo «rueda» para
@@ -687,64 +845,50 @@ export default function Reader({
         closeActivity();
         if (!pausedRef.current && !document.hidden) {
           activityRef.current = { startedAt: restartAt, lastActiveAt: restartAt };
+          // El segmento sigue vivo tras la ronda: sin esto la
+          // presencia quedaría «inactiva» hasta la próxima señal.
+          presenceIdle(false);
         }
       }
     }, 30_000);
     return () => window.clearInterval(timer);
-  }, [closeActivity]);
+  }, [closeActivity, presenceIdle]);
 
-  // Compañero de lectura: preferencia «Compañero y logros» y aspecto
-  // se cargan una vez por apertura; subscribeGame refresca etapa y
-  // accesorios cuando el juego cambia (XP de la propia lectura).
+  // Compañero de lectura: la máquina local solo existe con el juego
+  // encendido (lo dice el proveedor único, nada se recarga aquí). Al
+  // quedar lista la lectura se le avisa book_opened una vez; si el
+  // juego se apaga la máquina se retira entera — el catState suelto
+  // lo limpia el ajuste de render de abajo.
   useEffect(() => {
-    let alive = true;
-    const refresh = async () => {
-      const scope = captureDbScope();
-      const [on, game] = await Promise.all([
-        loadGameEnabled(scope),
-        loadGame(scope),
-      ]);
-      if (!alive) return;
-      if (!on) {
-        companionRef.current = null;
-        setCatInfo(null);
-        setCatState(null);
-        return;
-      }
-      if (!companionRef.current)
-        companionRef.current = initialCompanion(Date.now());
-      setCatInfo({
-        stage: catStageForLevel(levelProgress(game.xp).level),
-        accessories: unlockedAccessories(game),
-      });
-      setCatState(companionRef.current.state);
-    };
-    void refresh();
-    const unsub = subscribeGame(() => void refresh());
-    return () => {
-      alive = false;
-      unsub();
-    };
-  }, []);
-
-  // Al primer «ready» el gato despierta; una sola vez por apertura.
-  useEffect(() => {
+    if (!catEnabled) {
+      companionRef.current = null;
+      companionOpenedRef.current = false;
+      return;
+    }
+    if (!companionRef.current)
+      companionRef.current = initialCompanion(Date.now());
+    // Publica el estado vigente de la máquina (tick la refleja sin
+    // cambiarla — el setter real vive dentro de signalCompanion).
+    signalCompanion({ kind: "tick", at: Date.now() });
     if (state === "ready" && !companionOpenedRef.current) {
       companionOpenedRef.current = true;
       signalCompanion({ kind: "book_opened", at: Date.now() });
+      // Saludo de bienvenida: asoma con la pata en alto al abrir el
+      // libro (el planificador lo da una sola vez por lectura).
+      greetCat();
     }
-  }, [state, signalCompanion]);
+  }, [catEnabled, state, signalCompanion, greetCat]);
 
   // Latido del gato: caduca los transitorios y lo acuesta cuando ya
   // no llegan señales de lectura.
   useEffect(() => {
-    if (!catInfo) return;
+    if (!catEnabled) return;
     const timer = window.setInterval(
       () => signalCompanion({ kind: "tick", at: Date.now() }),
       10_000,
     );
     return () => window.clearInterval(timer);
-  }, [catInfo, signalCompanion]);
+  }, [catEnabled, signalCompanion]);
 
   const scrollRatioNow = () => {
     const doc = document.documentElement;
@@ -2695,13 +2839,32 @@ export default function Reader({
   const progress = bookProgress(sectionSizes, sectionIndex, viewRatio);
   const minutes = minutesLeft(sectionWords, viewRatio, wpm);
 
-  // El hilo de progreso lleno cuenta como libro terminado; award
-  // deduplica por bookHash así que el efecto puede repetirse. La
+  // El hilo de progreso lleno cuenta como libro terminado; el journal
+  // deduplica el crédito por bookHash así que el efecto puede
+  // repetirse. El evento lleva un uuid por ocurrencia (dos dispositivos
+  // pueden terminar el mismo libro): se congela en la primera
+  // detección para que los re-disparos manden el mismo premio. La
   // celebración también se dispara una sola vez por libro.
   const bookCheeredRef = useRef<string | null>(null);
+  const bookAwardRef = useRef<{ hash: string; meta: { id: string; at: number; dayKey: string } } | null>(null);
   useEffect(() => {
     if (progress >= 0.995) {
-      void award({ kind: "book_finished", bookHash }, captureDbScope());
+      if (bookAwardRef.current?.hash !== bookHash) {
+        const at = Date.now();
+        bookAwardRef.current = {
+          hash: bookHash,
+          meta: {
+            id: `book:${bookHash}:${crypto.randomUUID()}`,
+            at,
+            dayKey: localDayKey(at),
+          },
+        };
+      }
+      void award(
+        { kind: "book_finished", bookHash },
+        captureDbScope(),
+        bookAwardRef.current.meta,
+      );
       if (bookCheeredRef.current !== bookHash) {
         bookCheeredRef.current = bookHash;
         signalCompanion({ kind: "goal_completed" });
@@ -3025,21 +3188,32 @@ export default function Reader({
         </div>
       ) : null}
 
-      {/* Gato acompañante: esquina baja fija; nunca toca el texto ni
-          los controles (pointer-events:none en CSS). */}
-      {catInfo && catState ? (
-        <div className="reader-cat">
-          <Companion
-            stage={catInfo.stage}
+      {/* Gato acompañante: esquina baja fija y solo cuando el
+          planificador de presencia lo dice (modo de la cuenta +
+          supresión por libro). Es un botón real «Ver a [nombre]» que
+          abre la hoja del proveedor — el único punto del área que
+          recibe toques; el resto sigue transparente al texto. */}
+      {catShown && catState ? (
+        <div
+          className="reader-cat cat-anim"
+          data-out={catLeaving || undefined}
+        >
+          <CompanionButton
+            stage={companion.stage}
             mood="awake"
-            accessories={catInfo.accessories}
+            accessories={companion.accessories}
             focus={catState}
+            pose={catTap ? "celebrate" : catGreeting ? "greet" : undefined}
+            label={`Ver a ${companion.name}`}
+            onClick={onCatTap}
           />
         </div>
       ) : null}
 
       {/* Regla de enfoque: velo de papel con una franja clara que
-          sigue al puntero; la patita del gato ancla el margen. */}
+          sigue al puntero; la patita del gato ancla el margen. Con
+          presencia «off» o el gato suprimido por esta lectura la
+          decoración también se va: no queda rastro del gato. */}
       {settings.focusMode === "ruler" && state === "ready" ? (
         <FocusRuler
           bandPx={rulerBandPx(
@@ -3047,12 +3221,13 @@ export default function Reader({
             settings.size * settings.leading,
           )}
           anchor={
-            catInfo ? (
+            catEnabled && presenceMode !== "off" && !catSuppressed ? (
               <Companion
-                stage={catInfo.stage}
+                stage={companion.stage}
                 mood="awake"
-                accessories={catInfo.accessories}
+                accessories={companion.accessories}
                 focus={catState ?? "reading"}
+                decorative
               />
             ) : undefined
           }
@@ -3447,6 +3622,36 @@ export default function Reader({
               onRulerSize={(rulerSize) => updateSettings({ rulerSize })}
             />
           </div>
+          {/* Presencia del gato en este libro: la supresión es solo
+              de esta lectura (vive en el planificador, no se
+              persiste como preferencia de cuenta) y no aparece si el
+              juego está apagado o la presencia ya está en «off».
+              El acceso voluntario «Ver a» siempre queda disponible
+              con el juego encendido — aun suprimido abre su hoja. */}
+          {catEnabled ? (
+            <div className="setting-row">
+              <span className="setting-label">Tu compañero</span>
+              <button
+                type="button"
+                className="btn--quiet"
+                onClick={companion.openPanel}
+              >
+                Ver a {companion.name}
+              </button>
+            </div>
+          ) : null}
+          {catEnabled && presenceMode !== "off" ? (
+            <div className="setting-row">
+              <span className="setting-label">
+                Ocultar al gato en esta lectura
+              </span>
+              <Toggle
+                label="Ocultar al gato en esta lectura"
+                checked={catSuppressed}
+                onChange={setCatSuppressed}
+              />
+            </div>
+          ) : null}
           {bookOverride ? (
             <div className="setting-row">
               <span className="setting-label">Este libro tiene ajustes propios</span>

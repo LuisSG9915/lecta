@@ -1,5 +1,6 @@
 import { batchLookup, type LexiconEntry } from "./lexicon";
-import { measuredZipf } from "../../shared/lexicon";
+import { isLearnablePos, measuredZipf } from "../../shared/lexicon";
+import { menteBaseForms } from "../../shared/word-form";
 import { knowledgeArbWins } from "../../shared/reading-data";
 
 // Modelo de conocimiento del lector: qué palabras conoce. Dos piezas
@@ -127,11 +128,17 @@ export type SectionPrediction = {
 // lector. `knowledge` va por lema en minúsculas (como lo guarda idb).
 // Reglas en orden por forma:
 //   a) ya guardada en el cuaderno → cuenta aparte;
-//   b) sin ficha en el catálogo → `missing`;
-//   c) hay evidencia — por lema de la ficha, o por la forma misma si la
+//   b) adverbio en «-mente» con raíz adjetiva común → conocida: la
+//      derivación es transparente («perfectamente» → «perfecto»);
+//   c) solo fichas funcionales (numeral, pronombre, preposición…) →
+//      conocida: no es vocabulario que se aprende;
+//   d) sin ficha propia: se intenta la base clítica verificada en el
+//      catálogo («tomándose» → «tomando») y se clasifica con la ficha
+//      del lema real; sin ninguna ficha → `missing`;
+//   e) hay evidencia — por lema de la ficha, o por la forma misma si la
 //      registró como lema: un «no la conozco» la predice con la primera
 //      ficha libre; si solo hay «ya la conozco» se da por conocida;
-//   d) sin evidencia: si alguna ficha de la forma es frecuente
+//   f) sin evidencia: si alguna ficha de la forma es frecuente
 //      (zipf ≥ threshold) la forma se asume conocida — lo raro sería
 //      la acepción homógrafa, no la palabra; solo cuando TODAS las
 //      fichas son raras se predice, mostrando la de mayor zipf (la
@@ -156,18 +163,70 @@ export function predictSection(
       savedCount += 1;
       continue;
     }
-    const entries = entriesByForm[form] ?? [];
-    if (!entries.length) {
-      missing.push(form);
-      continue;
-    }
-
+    const rawEntries = entriesByForm[form] ?? [];
+    // Las fichas funcionales (numeral, pronombre, preposición…) no son
+    // vocabulario aunque el catálogo las conozca y estén medidas.
+    let entries = rawEntries.filter((entry) => isLearnablePos(entry.pos));
     const evidenceOf = (entry: LexiconEntry) =>
       knowledge.get(entry.lemma) ?? knowledge.get(form);
 
+    // «-mente»: la raíz sin sufijo es el adjetivo («perfectamente» →
+    // «perfecta»/«perfecto»). Si esa raíz es un adjetivo común para
+    // este lector el adverbio es transparente y no se sugiere — salvo
+    // declaración explícita, que manda como en el resto de reglas.
+    // Con raíz rara o sin ficha propia, la frecuencia se evalúa sobre
+    // la raíz.
+    const roots = menteBaseForms(form);
+    if (roots.length) {
+      const rootEntries = roots.flatMap((root) =>
+        (entriesByForm[root] ?? []).filter((entry) =>
+          isLearnablePos(entry.pos),
+        ),
+      );
+      if (
+        rootEntries.some(
+          (entry) =>
+            entry.pos === "adjetivo" &&
+            entry.zipf != null &&
+            entry.zipf >= threshold,
+        ) &&
+        ![...entries, ...rootEntries].some(
+          (entry) => evidenceOf(entry)?.known === false,
+        )
+      ) {
+        knownCount += 1;
+        continue;
+      }
+      if (!entries.length) entries = rootEntries;
+    }
+
+    if (!entries.length) {
+      if (rawEntries.length) {
+        // Solo tenía fichas funcionales: no es vocabulario, así que
+        // cuenta como conocida sin gastar candidata.
+        knownCount += 1;
+        continue;
+      }
+      // Sin ficha propia puede ser un verbo con enclíticos
+      // («tomándose» → «tomando»): la frecuencia se evalúa con la
+      // primera base verificada en el catálogo.
+      const base = cliticBaseForms(form).find((candidate) =>
+        (entriesByForm[candidate] ?? []).some((entry) =>
+          isLearnablePos(entry.pos),
+        ),
+      );
+      if (!base) {
+        missing.push(form);
+        continue;
+      }
+      entries = (entriesByForm[base] ?? []).filter((entry) =>
+        isLearnablePos(entry.pos),
+      );
+    }
+
     const hasEvidence = entries.some((entry) => evidenceOf(entry) !== undefined);
     const pick = hasEvidence
-      ? // c) con evidencia manda lo explícito: la predice la primera
+      ? // e) con evidencia manda lo explícito: la predice la primera
         // ficha marcada como desconocida que aún no esté predicha; las
         // demás combinaciones cuentan como conocidas (incluido el caso
         // en que la predicción de otra forma ya cubrió esta entrada).
@@ -175,7 +234,7 @@ export function predictSection(
           (entry) =>
             evidenceOf(entry)?.known === false && !predictedKeys.has(dedupeKey(entry)),
         )
-      : // d) sin evidencia: una forma con una lectura frecuente
+      : // f) sin evidencia: una forma con una lectura frecuente
         // («antigua» → antiguo, aunque también exista el lema raro
         // «antiguar») se asume conocida — lo raro es la acepción, no
         // la palabra que el lector tiene delante. Solo si TODAS las

@@ -15,6 +15,8 @@ import type { EpubBook } from "./epub";
 import type { ChapterCatalog, ChapterRange } from "./chapters";
 import { extractUniqueWords } from "./segmenter";
 import { isStopword } from "../../shared/stopwords";
+import { isWordToken, menteBaseForms } from "../../shared/word-form";
+import { cliticBaseForms } from "./knowledge";
 import { capitalOnlyForms } from "./section-words";
 import { sanitizeSectionDocument } from "./sanitize";
 import { batchLookup, type BatchLookupResult, type LexiconEntry } from "./lexicon";
@@ -117,11 +119,20 @@ export function createChapterAnalyzer(
       if (!isCurrent() || signal?.aborted)
         return { state: signal?.aborted ? "cancelled" : "stale" };
       const forms = [...new Set(words.map((word) => word.toLowerCase()))].filter(
-        (form) => !isStopword(form, language),
+        (form) => isWordToken(form) && !isStopword(form, language),
       );
+      // Las bases derivadas (raíz «-mente», verbo sin enclíticos) se
+      // consultan en el mismo lote: predictSection evalúa la frecuencia
+      // del lema real sin una segunda ronda de red. No son formas del
+      // análisis — solo claves de consulta del catálogo.
+      const lookupForms = new Set(forms);
+      for (const form of forms) {
+        for (const base of menteBaseForms(form)) lookupForms.add(base);
+        for (const base of cliticBaseForms(form)) lookupForms.add(base);
+      }
       // Sin formas el análisis está listo sin tocar la red.
-      const result = forms.length
-        ? await lookup(forms, language)
+      const result = lookupForms.size
+        ? await lookup([...lookupForms], language)
         : ({ ok: true, entries: {} } as const);
       if (!isCurrent() || signal?.aborted)
         return { state: signal?.aborted ? "cancelled" : "stale" };

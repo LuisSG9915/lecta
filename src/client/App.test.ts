@@ -3,14 +3,23 @@ import { act, createElement as h } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
-import { getStoredBook, listStoredBooks, loadSessionValue } from "./lib/idb";
+import { authClient } from "./lib/auth";
+import {
+  getStoredBook,
+  listBookOps,
+  listStoredBooks,
+  loadSessionValue,
+} from "./lib/idb";
+import { listRemoteBooks } from "./lib/books";
 import { syncPositions } from "./lib/positions-sync";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
   true;
 
 vi.mock("./lib/auth", () => ({
-  authClient: { useSession: () => ({ data: null, isPending: false }) },
+  authClient: {
+    useSession: vi.fn(() => ({ data: null, isPending: false })),
+  },
 }));
 
 vi.mock("./components/Reader", async () => {
@@ -23,19 +32,38 @@ vi.mock("./components/Reader", async () => {
 vi.mock("./components/Shelf", async () => {
   const { createElement } = await import("react");
   return {
-    default: ({ library, onOpen }: { library: { hash: string; name: string }[]; onOpen: (item: never) => void }) =>
+    default: ({
+      library,
+      onOpen,
+      onRemove,
+    }: {
+      library: { hash: string; name: string }[];
+      onOpen: (item: never) => void;
+      onRemove?: (hash: string) => void;
+    }) =>
       createElement(
         "ul",
         { className: "shelf-stub" },
         library.map((item) =>
           createElement(
-            "button",
-            {
-              key: item.hash,
-              className: "shelf-book-cover",
-              onClick: () => onOpen(item as never),
-            },
-            item.name,
+            "li",
+            { key: item.hash },
+            createElement(
+              "button",
+              {
+                className: "shelf-book-cover",
+                onClick: () => onOpen(item as never),
+              },
+              item.name,
+            ),
+            createElement(
+              "button",
+              {
+                className: "shelf-book-remove",
+                onClick: () => onRemove?.(item.hash),
+              },
+              "Quitar",
+            ),
           ),
         ),
       ),
@@ -51,6 +79,38 @@ vi.mock("./lib/idb", () => ({
       this.name = "StaleScopeError";
     }
   },
+  CompanionEventConflictError: class CompanionEventConflictError extends Error {
+    constructor() {
+      super("companion event conflict");
+      this.name = "CompanionEventConflictError";
+    }
+  },
+  GAME_STATE_KEY: "gameState",
+  GAME_KEY: "companion",
+  COMPANION_BASELINES_KEY: "companionBaselines:v1",
+  COMPANION_PROFILE_KEY: "companionProfile:v1",
+  COMPANION_DEVICE_PREFS_KEY: "companionDevicePrefs:v1",
+  COMPANION_MIGRATION_KEY: "companionMigration:v1",
+  COMPANION_ACKED_KEY: "companionAcked:v1",
+  appendCompanionEvents: vi.fn(async () => undefined),
+  commitCompanionEvent: vi.fn(async () => undefined),
+  listCompanionEvents: vi.fn(async () => []),
+  listCompanionReceipts: vi.fn(async () => []),
+  mergeCompanionReceipts: vi.fn(async () => []),
+  migrateGameStateV1: vi.fn(async () => ({ already: true })),
+  putCompanionBaseline: vi.fn(async () => undefined),
+  putCompanionRegisters: vi.fn(async () => []),
+  readCompanionAcked: vi.fn(async () => ({
+    baselines: [],
+    events: [],
+    fields: [],
+    receipts: [],
+  })),
+  readCompanionBaselines: vi.fn(async () => ({})),
+  readCompanionDevicePrefs: vi.fn(async () => null),
+  readCompanionRegisters: vi.fn(async () => []),
+  saveCompanionAcked: vi.fn(async () => undefined),
+  saveCompanionDevicePrefs: vi.fn(async () => undefined),
   deleteAccountDb: vi.fn(async () => undefined),
   deleteStoredBook: vi.fn(async () => undefined),
   getStoredBook: vi.fn(async () => undefined),
@@ -91,6 +151,12 @@ vi.mock("./lib/reading-sync", () => ({
   syncAnnotations: vi.fn(async () => undefined),
   syncKnowledge: vi.fn(async () => undefined),
   syncReviews: vi.fn(async () => undefined),
+}));
+
+vi.mock("./lib/companion-sync", () => ({
+  scheduleCompanionSync: vi.fn(),
+  requestCompanionSync: vi.fn(),
+  syncCompanion: vi.fn(async () => null),
 }));
 
 vi.mock("./lib/calibration", async (importOriginal) => {
@@ -187,5 +253,63 @@ describe("App · aviso de conflicto de posición", () => {
     await flush();
     expect(host.querySelector(".reader-stub")).toBeNull();
     expect(host.querySelector(".dialog-scrim")).toBeNull();
+  });
+});
+
+describe("App · quitar libro", () => {
+  it("no reaparece como «En la nube» mientras el borrado remoto corre en la cola", async () => {
+    vi.mocked(authClient.useSession).mockReturnValue({
+      data: { user: { id: "u1" } },
+      isPending: false,
+    } as never);
+    // El servidor todavía lista el libro: el DELETE viaja en la cola.
+    vi.mocked(listRemoteBooks).mockResolvedValue([
+      { hash: "h1", uploaded: "2026-10-01T00:00:00Z", name: "b.epub" },
+    ] as never);
+    renderRoot();
+    await flush();
+    expect(host.querySelectorAll(".shelf-book-cover").length).toBe(1);
+
+    // Al quitarlo, la base local ya no lo tiene pero la op de borrado
+    // remoto queda pendiente en bookOps — la respuesta del servidor aún
+    // incluiría el libro.
+    vi.mocked(listStoredBooks).mockResolvedValue([] as never);
+    vi.mocked(listBookOps).mockResolvedValue([
+      { id: "op1", kind: "delete", hash: "h1", createdAt: 1 },
+    ] as never);
+    const remove = host.querySelector<HTMLButtonElement>(".shelf-book-remove");
+    expect(remove).toBeTruthy();
+    await act(async () => remove!.click());
+    await flush();
+
+    expect(host.querySelectorAll(".shelf-book-cover").length).toBe(0);
+  });
+
+  it("sale de la vista sin esperar a la red aunque el GET remoto se cuelgue", async () => {
+    vi.mocked(authClient.useSession).mockReturnValue({
+      data: { user: { id: "u1" } },
+      isPending: false,
+    } as never);
+    // La primera lista remota responde (montaje); la del borrado queda
+    // colgada — el libro debe desaparecer igual, sin esperar la red.
+    let remoteCalls = 0;
+    vi.mocked(listRemoteBooks).mockImplementation(() => {
+      remoteCalls += 1;
+      return remoteCalls === 1
+        ? Promise.resolve([
+            { hash: "h1", uploaded: "2026-10-01T00:00:00Z", name: "b.epub" },
+          ] as never)
+        : new Promise(() => {});
+    });
+    renderRoot();
+    await flush();
+    expect(host.querySelectorAll(".shelf-book-cover").length).toBe(1);
+
+    const remove = host.querySelector<HTMLButtonElement>(".shelf-book-remove");
+    await act(async () => remove!.click());
+    await flush();
+
+    expect(host.querySelectorAll(".shelf-book-cover").length).toBe(0);
+    expect(remoteCalls).toBeGreaterThan(1); // el refresco sí se pidió
   });
 });

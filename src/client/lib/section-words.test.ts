@@ -272,8 +272,10 @@ describe("buildSuggestionRows", () => {
   it("la selección corta a 40 por prioridad y el resto queda diferido", () => {
     // 39 explícitas + 1 aprendiendo + 2 raras = 42 candidatas: las
     // explícitas conservan todas sus plazas; el corte cae en rareza.
-    const explicits = Array.from({ length: 39 }, (_, i) => `exp${i}`);
-    const forms = [...explicits, "aprendiendo", "rara1", "rara2"];
+    const code = (i: number) =>
+      `${String.fromCharCode(97 + (i % 26))}${String.fromCharCode(97 + Math.floor(i / 26))}`;
+    const explicits = Array.from({ length: 39 }, (_, i) => `exp${code(i)}`);
+    const forms = [...explicits, "aprendiendo", "raraa", "rarab"];
     const result = buildSuggestionRows({
       ...baseInput,
       forms,
@@ -282,8 +284,8 @@ describe("buildSuggestionRows", () => {
           explicits.map((f) => [f, [entry(4.0, { lemma: f })]]),
         ),
         aprendiendo: [entry(2.0, { lemma: "aprendiendo" })],
-        rara1: [entry(1.0, { lemma: "rara1" })],
-        rara2: [entry(0.5, { lemma: "rara2" })],
+        raraa: [entry(1.0, { lemma: "raraa" })],
+        rarab: [entry(0.5, { lemma: "rarab" })],
       },
       saved: new Map([["aprendiendo", "new" as const]]),
       knowledge: new Map(
@@ -304,8 +306,8 @@ describe("buildSuggestionRows", () => {
     );
     expect(result.rows[39].form).toBe("aprendiendo");
     expect(result.deferred.map((row) => row.form)).toEqual([
-      "rara2",
-      "rara1",
+      "rarab",
+      "raraa",
     ]);
     expect(result.deferred[0].reason).toBe("rarity");
   });
@@ -332,7 +334,9 @@ describe("buildSuggestionRows", () => {
 
   it("una fila diferida conserva sus datos léxicos y su evidencia", () => {
     // 41 explícitas: la última queda diferida con su ficha y razón.
-    const explicits = Array.from({ length: 41 }, (_, i) => `exp${i}`);
+    const code = (i: number) =>
+      `${String.fromCharCode(97 + (i % 26))}${String.fromCharCode(97 + Math.floor(i / 26))}`;
+    const explicits = Array.from({ length: 41 }, (_, i) => `exp${code(i)}`);
     const lex = new Map();
     const result = buildSuggestionRows({
       ...baseInput,
@@ -356,6 +360,137 @@ describe("buildSuggestionRows", () => {
       form: deferred.form,
       lemma: deferred.lemma,
     });
+  });
+
+  it("dígitos y tokens con puntuación residual nunca son candidatos", () => {
+    // Regresión del prólogo: «1», «10» y «3,5» salían como «palabras
+    // sin información» porque isWordLike los acepta. Aunque traigan
+    // ficha no pueden ser filas — ni principales ni secundarias.
+    const result = buildSuggestionRows({
+      ...baseInput,
+      forms: ["1", "10", "3,5", "sí", "perenne"],
+      entries: {
+        "1": [entry(0.5, { lemma: "uno", pos: "numeral" })],
+        "10": [entry(0.5, { lemma: "diez", pos: "numeral" })],
+        "3,5": [entry(1.0, { lemma: "tres", pos: "numeral" })],
+        perenne: [entry(1.5, { lemma: "perenne" })],
+      },
+      knowledge: new Map([["uno", { lemma: "uno", known: false }]]),
+    });
+    expect(result.rows.map((row) => row.form)).toEqual(["perenne"]);
+    expect(result.uncertain).toHaveLength(0);
+    expect(result.deferred).toHaveLength(0);
+  });
+
+  it("stopwords y numerales en texto nunca llegan a la hoja", () => {
+    // «diez», «hola» y «abajo» son funcionales: ni con ficha ni con
+    // respuesta explícita aparecen como candidatas.
+    const result = buildSuggestionRows({
+      ...baseInput,
+      forms: ["diez", "cincuenta", "hola", "abajo", "obstante", "perenne"],
+      entries: {
+        diez: [entry(0.5, { lemma: "diez", pos: "numeral" })],
+        hola: [entry(0.5, { lemma: "hola", pos: "interjección" })],
+        abajo: [entry(0.5, { lemma: "abajo", pos: "adverbio" })],
+        perenne: [entry(1.5, { lemma: "perenne" })],
+      },
+      knowledge: new Map([
+        ["diez", { lemma: "diez", known: false }],
+        ["hola", { lemma: "hola", known: false }],
+      ]),
+    });
+    expect(result.rows.map((row) => row.form)).toEqual(["perenne"]);
+    expect(result.uncertain).toHaveLength(0);
+    expect(result.deferred).toHaveLength(0);
+  });
+
+  it("las fichas funcionales (pronombre, numeral…) no son candidatas", () => {
+    // «quienquiera» y «suyo» no son stopwords: solo el POS las
+    // excluye, aunque el catálogo las tenga medidas como raras.
+    const result = buildSuggestionRows({
+      ...baseInput,
+      forms: ["quienquiera", "suyo", "doctrina", "perenne"],
+      entries: {
+        quienquiera: [entry(0.8, { lemma: "quienquiera", pos: "pronombre" })],
+        suyo: [entry(1.0, { lemma: "suyo", pos: "pronombre" })],
+        doctrina: [entry(0.9, { lemma: "doctrina", pos: "artículo" })],
+        perenne: [entry(1.5, { lemma: "perenne" })],
+      },
+    });
+    expect(result.rows.map((row) => row.form)).toEqual(["perenne"]);
+    expect(result.uncertain).toHaveLength(0);
+    expect(result.deferred).toHaveLength(0);
+  });
+
+  it("un adverbio en -mente de adjetivo común no se sugiere", () => {
+    // Aunque «perfectamente» tenga ficha propia medida como rara, su
+    // raíz «perfecta» → «perfecto» es un adjetivo común para el lector:
+    // la derivación es transparente.
+    const result = buildSuggestionRows({
+      ...baseInput,
+      forms: ["perfectamente", "perenne"],
+      entries: {
+        perfectamente: [
+          entry(1.5, { lemma: "perfectamente", pos: "adverbio" }),
+        ],
+        perfecta: [entry(4.5, { lemma: "perfecto", pos: "adjetivo" })],
+        perenne: [entry(1.5, { lemma: "perenne" })],
+      },
+    });
+    expect(result.rows.map((row) => row.form)).toEqual(["perenne"]);
+    expect(result.uncertain).toHaveLength(0);
+    expect(result.deferred).toHaveLength(0);
+  });
+
+  it("un -mente de raíz rara se sugiere con el lema real", () => {
+    // Sin ficha propia, la frecuencia se evalúa sobre la raíz
+    // «vehemente» — rara para este lector.
+    const result = buildSuggestionRows({
+      ...baseInput,
+      forms: ["vehementemente"],
+      entries: {
+        vehemente: [entry(1.8, { lemma: "vehemente", pos: "adjetivo" })],
+      },
+    });
+    expect(result.rows.map((row) => row.form)).toEqual(["vehementemente"]);
+    expect(result.rows[0].lemma).toBe("vehemente");
+  });
+
+  it("un verbo con enclíticos se evalúa por el lema real", () => {
+    // «tomándose» → «tomando» → «tomar» (común: fuera); «zurrándose»
+    // → «zurrando» → «zurrar» (raro: candidata con el lema base).
+    const result = buildSuggestionRows({
+      ...baseInput,
+      forms: ["tomándose", "zurrándose", "haberse"],
+      entries: {
+        tomando: [entry(5.5, { lemma: "tomar", pos: "verbo" })],
+        zurrando: [entry(1.8, { lemma: "zurrar", pos: "verbo" })],
+        haber: [entry(6.0, { lemma: "haber", pos: "verbo" })],
+      },
+    });
+    expect(result.rows.map((row) => row.form)).toEqual(["zurrándose"]);
+    expect(result.rows[0].lemma).toBe("zurrar");
+    expect(result.uncertain).toHaveLength(0);
+  });
+
+  it("un «no la conozco» rescata un -mente de raíz común", () => {
+    // La evidencia explícita manda también sobre la transparencia del
+    // adverbio: si el lector la declaró, entra a la selección.
+    const result = buildSuggestionRows({
+      ...baseInput,
+      forms: ["perfectamente"],
+      entries: {
+        perfectamente: [
+          entry(1.5, { lemma: "perfectamente", pos: "adverbio" }),
+        ],
+        perfecta: [entry(4.5, { lemma: "perfecto", pos: "adjetivo" })],
+      },
+      knowledge: new Map([
+        ["perfectamente", { lemma: "perfectamente", known: false }],
+      ]),
+    });
+    expect(result.rows.map((row) => row.form)).toEqual(["perfectamente"]);
+    expect(result.rows[0].reason).toBe("explicit_unknown");
   });
 });
 

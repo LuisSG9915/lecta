@@ -14,6 +14,8 @@ const KEY_PATHS: Record<string, string> = {
   knowledge: "key",
   readingEvents: "id",
   bookOps: "id",
+  companionEvents: "id",
+  companionReceipts: "id",
 };
 
 class FakeDb {
@@ -61,6 +63,12 @@ class FakeDb {
     return {
       objectStore: (name: string) => ({
         get: (key: unknown) => this.get(name, key),
+        // Como IDB real dentro de una transacción… salvo que este mock
+        // solo lee lo ya confirmado: los puts quedan pendientes hasta
+        // `done`, así que el código probado no puede apoyarse en leer
+        // lo que él mismo acaba de encolar.
+        getAll: () => this.getAll(name),
+        getAllKeys: () => this.getAllKeys(name),
         put: (value: unknown, key?: unknown) => {
           if (aborted) return Promise.reject(new Error("tx abortada"));
           if ((value as { fail?: boolean } | null)?.fail === true)
@@ -396,6 +404,12 @@ describe("escrituras con contexto vencido", () => {
 });
 
 describe("aislamiento del juego", () => {
+  const meta = (id: string, at = 1_000) => ({
+    id,
+    at,
+    dayKey: "2025-06-10",
+  });
+
   it("un premio encolado bajo un contexto vencido no toca la cuenta nueva", async () => {
     const idb = await freshIdb();
     const game = await import("./game");
@@ -405,34 +419,167 @@ describe("aislamiento del juego", () => {
     // El premio nace bajo u1; antes de que la cola lo escriba la
     // sesión ya es u2 — aborta sin aterrizar en ninguna base ajena.
     await idb.setDbUser("u2");
-    await game.award({ kind: "read", ms: 60_000 }, scopeU1);
+    await game.award({ kind: "read", ms: 60_000 }, scopeU1, meta("read:i1"));
 
     expect(
-      dbFor("lecta:u:u2").stores.get("session")?.has("gameState") ?? false,
-    ).toBe(false);
+      dbFor("lecta:u:u2").stores.get("companionEvents")?.size ?? 0,
+    ).toBe(0);
     expect(
-      dbFor("lecta:u:u1").stores.get("session")?.has("gameState") ?? false,
-    ).toBe(false);
+      dbFor("lecta:u:u1").stores.get("companionEvents")?.size ?? 0,
+    ).toBe(0);
   });
 
   it("premios de cuentas distintas quedan en bases distintas", async () => {
     const idb = await freshIdb();
     const game = await import("./game");
     await idb.setDbUser("u1");
-    await game.award({ kind: "read", ms: 60_000 }, idb.captureDbScope());
+    await game.award(
+      { kind: "read", ms: 60_000 },
+      idb.captureDbScope(),
+      meta("read:u1"),
+    );
 
     await idb.setDbUser("u2");
     game.resetGameCache();
-    await game.award({ kind: "read", ms: 120_000 }, idb.captureDbScope());
+    await game.award(
+      { kind: "read", ms: 120_000 },
+      idb.captureDbScope(),
+      meta("read:u2"),
+    );
 
-    const u1Raw = dbFor("lecta:u:u1").stores.get("session")?.get("gameState");
-    const u2Raw = dbFor("lecta:u:u2").stores.get("session")?.get("gameState");
-    expect(u1Raw).toBeTruthy();
-    expect(u2Raw).toBeTruthy();
-    // Estados separados: el XP de cada cuenta no se mezcla.
-    const u1 = JSON.parse(u1Raw as string) as { xp: number };
-    const u2 = JSON.parse(u2Raw as string) as { xp: number };
-    expect(u1.xp).not.toBe(u2.xp);
+    const u1Events = dbFor("lecta:u:u1").stores.get("companionEvents");
+    const u2Events = dbFor("lecta:u:u2").stores.get("companionEvents");
+    expect(u1Events?.has("read:u1")).toBe(true);
+    expect(u2Events?.has("read:u2")).toBe(true);
+    // Journals separados: el premio de cada cuenta no se mezcla.
+    expect(u1Events?.has("read:u2") ?? false).toBe(false);
+    expect(u2Events?.has("read:u1") ?? false).toBe(false);
+  });
+});
+
+describe("migración de gameState v1", () => {
+  const gameStateV1 = JSON.stringify({
+    version: 1,
+    xp: 42,
+    stats: {
+      minutes: 40,
+      longestSessionMin: 20,
+      consulted: 3,
+      saved: 2,
+      rareSaved: 0,
+      reviews: 1,
+      booksFinished: 0,
+      streakDays: 2,
+      lastDayKey: "2025-06-09",
+    },
+    achievements: { palabra_1: 1_700_000_000_000 },
+    chests: [],
+    finishedBooks: ["h1"],
+    caredAt: 1_700_000_000_000,
+  });
+
+  it("crea el baseline y conserva el gameState original intacto", async () => {
+    const idb = await freshIdb();
+    dbFor("lecta").stores.set("session", new Map([["gameState", gameStateV1]]));
+
+    const result = await idb.migrateGameStateV1(idb.captureDbScope());
+    expect(result).toMatchObject({
+      already: false,
+      hadState: true,
+      corrupt: false,
+    });
+    const originId = result.originId as string;
+    expect(originId).toBeTruthy();
+
+    const session = dbFor("lecta").stores.get("session")!;
+    // El string original queda byte a byte como estaba.
+    expect(session.get("gameState")).toBe(gameStateV1);
+    const baselines = JSON.parse(
+      session.get("companionBaselines:v1") as string,
+    ) as Record<string, { originId: string; state: { xp: number } }>;
+    expect(Object.keys(baselines)).toEqual([originId]);
+    expect(baselines[originId].state.xp).toBe(42);
+    const marker = JSON.parse(
+      session.get("companionMigration:v1") as string,
+    ) as { originId: string };
+    expect(marker.originId).toBe(originId);
+
+    // Segunda llamada: ya está sellado, no duplica nada.
+    expect(await idb.migrateGameStateV1(idb.captureDbScope())).toEqual({
+      already: true,
+    });
+    expect(Object.keys(baselines)).toHaveLength(1);
+  });
+
+  it("un gameState dañado se conserva y se sella con corrupt", async () => {
+    const idb = await freshIdb();
+    dbFor("lecta").stores.set(
+      "session",
+      new Map([["gameState", "{no es json"]]),
+    );
+
+    const result = await idb.migrateGameStateV1(idb.captureDbScope());
+    expect(result).toMatchObject({
+      already: false,
+      hadState: true,
+      corrupt: true,
+    });
+
+    const session = dbFor("lecta").stores.get("session")!;
+    // Nada de reset silencioso: el valor dañado sigue ahí.
+    expect(session.get("gameState")).toBe("{no es json");
+    expect(session.has("companionBaselines:v1")).toBe(false);
+    expect(session.has("companionMigration:v1")).toBe(true);
+  });
+
+  it("sin gameState también se sella, con originId null", async () => {
+    const idb = await freshIdb();
+    const result = await idb.migrateGameStateV1(idb.captureDbScope());
+    expect(result).toMatchObject({
+      already: false,
+      originId: null,
+      hadState: false,
+      corrupt: false,
+    });
+  });
+
+  it("al entrar sesión el compañero anónimo se copia antes de limpiar", async () => {
+    const idb = await freshIdb();
+    const game = await import("./game");
+    const seed = dbFor("lecta");
+    seed.stores.set("session", new Map([["gameState", gameStateV1]]));
+    // Un premio anónimo: dispara el sellado y deja un evento en el
+    // journal del invitado.
+    await game.award(
+      { kind: "read", ms: 60_000 },
+      idb.captureDbScope(),
+      { id: "read:anon", at: 1_000, dayKey: "2025-06-10" },
+    );
+    await idb.mergeCompanionReceipts(
+      [{ id: "chest-open:level:1", at: 500 }],
+      idb.captureDbScope(),
+    );
+
+    await idb.setDbUser("u1");
+
+    const target = dbFor("lecta:u:u1");
+    const session = target.stores.get("session")!;
+    // El baseline sellado, el sello y el gameState original cruzan a
+    // la cuenta; el journal y las recepciones copian por id.
+    const baselines = JSON.parse(
+      session.get("companionBaselines:v1") as string,
+    ) as Record<string, { state: { xp: number } }>;
+    expect(Object.values(baselines)[0].state.xp).toBe(42);
+    expect(session.has("companionMigration:v1")).toBe(true);
+    expect(session.get("gameState")).toBe(gameStateV1);
+    expect(
+      target.stores.get("companionEvents")?.has("read:anon"),
+    ).toBe(true);
+    expect(
+      target.stores.get("companionReceipts")?.has("chest-open:level:1"),
+    ).toBe(true);
+    // Y la base anónima quedó limpia por completo.
+    for (const store of seed.stores.values()) expect(store.size).toBe(0);
   });
 });
 

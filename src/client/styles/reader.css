@@ -1276,7 +1276,9 @@ mark.predicted-word:hover {
 }
 
 /* Gato acompañante del lector: esquina baja sobre la zona de
-   controles, siempre visible pero discreto. */
+   controles. Lo decide el planificador de presencia — entra y sale
+   suave; solo el botón recibe toques, el resto del área sigue
+   transparente al texto (pointer-events:none del contenedor). */
 .reader-cat {
   position: fixed;
   inset-block-end: 3.4rem;
@@ -1285,9 +1287,48 @@ mark.predicted-word:hover {
   inline-size: 46px;
   pointer-events: none;
   opacity: 0.85;
+  /* Asoma desde abajo de su hueco: el overshoot suave del ease-back
+     lo aterriza con un brinquito de caricatura, no un fade seco. */
+  animation: reader-cat-in 0.5s cubic-bezier(0.34, 1.35, 0.64, 1);
 }
 
-.reader-cat .cat {
+/* Salida suave: el lector lo retira tras este tramo (data-out). */
+.reader-cat[data-out] {
+  animation: reader-cat-out 0.3s var(--ease-in) forwards;
+}
+
+.reader-cat[data-out] .companion-btn {
+  pointer-events: none;
+}
+
+/* El único punto interactivo del área: abre la hoja del gato. */
+.reader-cat .companion-btn {
+  pointer-events: auto;
+  padding: 0;
+}
+
+.reader-cat .companion-btn .cat {
   inline-size: 100%;
   block-size: auto;
+}
+
+@keyframes reader-cat-in {
+  from {
+    opacity: 0;
+    transform: translateY(110%);
+  }
+  to {
+    opacity: 0.85;
+    transform: none;
+  }
+}
+
+@keyframes reader-cat-out {
+  from {
+    opacity: 0.85;
+  }
+  to {
+    opacity: 0;
+    transform: translateY(110%);
+  }
 }

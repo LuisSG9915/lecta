@@ -6,6 +6,21 @@ import {
   KNOWLEDGE_SOURCE_STRENGTH,
   knowledgeArbWins,
 } from "../../shared/reading-data";
+import {
+  mergeCompanionRegister,
+  pendingAchievementCredits,
+  projectGame,
+  receiptIdFor,
+  COMPANION_FIELDS,
+  COMPANION_MOTION,
+  type CompanionDevicePrefs,
+  type CompanionRegister,
+  type CompanionReceipt,
+  type CompanionSnapshot,
+  type GameJournalEvent,
+  type LegacyGameBaseline,
+} from "../../shared/companion-data";
+import type { GameState } from "../../shared/gamification";
 
 export interface StoredBook {
   hash: string;
@@ -246,11 +261,13 @@ interface LectaDB {
   knowledge: { key: string; value: KnownWord };
   readingEvents: { key: string; value: ReadingEvent };
   bookOps: { key: string; value: BookOp };
+  companionEvents: { key: string; value: GameJournalEvent };
+  companionReceipts: { key: string; value: CompanionReceipt };
 }
 
 const SESSION_KEY = "latestBookHash";
 const ANONYMOUS_DB = "lecta";
-const DB_VERSION = 8;
+const DB_VERSION = 9;
 const ALL_STORES = [
   "books",
   "positions",
@@ -262,6 +279,8 @@ const ALL_STORES = [
   "knowledge",
   "readingEvents",
   "bookOps",
+  "companionEvents",
+  "companionReceipts",
 ] as const;
 
 const dbNameFor = (userId: string | null) =>
@@ -305,29 +324,73 @@ export class StaleScopeError extends Error {
   }
 }
 
+// Tope para una apertura bloqueada: si otra pestaña conserva abierta
+// una versión vieja, `openDB` queda pendiente para siempre y con él la
+// estantería («Preparando tu estantería…» sin fin). Pasado este plazo
+// se rechaza y el llamador muestra el error en vez de cargar eterno.
+const OPEN_BLOCKED_MS = 8_000;
+
 function openLectaDB(name: string) {
-  return openDB<LectaDB>(name, DB_VERSION, {
-    upgrade(db) {
-      if (!db.objectStoreNames.contains("books"))
-        db.createObjectStore("books", { keyPath: "hash" });
-      if (!db.objectStoreNames.contains("positions"))
-        db.createObjectStore("positions", { keyPath: "bookHash" });
-      if (!db.objectStoreNames.contains("session")) db.createObjectStore("session");
-      if (!db.objectStoreNames.contains("savedWords"))
-        db.createObjectStore("savedWords", { keyPath: "key" });
-      if (!db.objectStoreNames.contains("annotations"))
-        db.createObjectStore("annotations", { keyPath: "key" });
-      if (!db.objectStoreNames.contains("activity"))
-        db.createObjectStore("activity", { keyPath: "id" });
-      if (!db.objectStoreNames.contains("reviews"))
-        db.createObjectStore("reviews", { keyPath: "id" });
-      if (!db.objectStoreNames.contains("knowledge"))
-        db.createObjectStore("knowledge", { keyPath: "key" });
-      if (!db.objectStoreNames.contains("readingEvents"))
-        db.createObjectStore("readingEvents", { keyPath: "id" });
-      if (!db.objectStoreNames.contains("bookOps"))
-        db.createObjectStore("bookOps", { keyPath: "id" });
+  let gaveUp = false;
+  let blockedTimer: ReturnType<typeof setTimeout> | undefined;
+  return new Promise<IDBPDatabase<LectaDB>>((resolve, reject) => {
+    openDB<LectaDB>(name, DB_VERSION, {
+      upgrade(db) {
+        if (!db.objectStoreNames.contains("books"))
+          db.createObjectStore("books", { keyPath: "hash" });
+        if (!db.objectStoreNames.contains("positions"))
+          db.createObjectStore("positions", { keyPath: "bookHash" });
+        if (!db.objectStoreNames.contains("session"))
+          db.createObjectStore("session");
+        if (!db.objectStoreNames.contains("savedWords"))
+          db.createObjectStore("savedWords", { keyPath: "key" });
+        if (!db.objectStoreNames.contains("annotations"))
+          db.createObjectStore("annotations", { keyPath: "key" });
+        if (!db.objectStoreNames.contains("activity"))
+          db.createObjectStore("activity", { keyPath: "id" });
+        if (!db.objectStoreNames.contains("reviews"))
+          db.createObjectStore("reviews", { keyPath: "id" });
+        if (!db.objectStoreNames.contains("knowledge"))
+          db.createObjectStore("knowledge", { keyPath: "key" });
+        if (!db.objectStoreNames.contains("readingEvents"))
+          db.createObjectStore("readingEvents", { keyPath: "id" });
+        if (!db.objectStoreNames.contains("bookOps"))
+          db.createObjectStore("bookOps", { keyPath: "id" });
+        // El compañero (v9): journal inmutable de premios y recepciones
+        // monotónicas (créditos de logro, cofres abiertos, avisos vistos).
+        if (!db.objectStoreNames.contains("companionEvents"))
+          db.createObjectStore("companionEvents", { keyPath: "id" });
+        if (!db.objectStoreNames.contains("companionReceipts"))
+          db.createObjectStore("companionReceipts", { keyPath: "id" });
+      },
+    // Esta conexión quedó vieja y otra pestaña pide el upgrade:
+    // cerrarla es lo único que libera al otro lado (event.target es
+    // la base; lo que siga usando esta conexión fallará hasta recargar).
+    blocking(_currentVersion, _blockedVersion, event) {
+      (event.target as IDBDatabase).close();
     },
+    // Alguien retiene abierta una versión vieja de esta misma base:
+    // el reloj evita que la apertura quede pendiente sin respuesta.
+    blocked() {
+      blockedTimer ??= setTimeout(() => {
+        gaveUp = true;
+        reject(
+          new Error(
+            `La base local "${name}" sigue abierta en otra pestaña; ciérrala y recarga.`,
+          ),
+        );
+      }, OPEN_BLOCKED_MS);
+    },
+  }).then(
+    (db) => {
+      if (blockedTimer !== undefined) clearTimeout(blockedTimer);
+      // Si llegó tarde tras el tope no se entrega una conexión
+      // fantasma: se cierra y el llamador ya vio el error.
+      if (gaveUp) db.close();
+      else resolve(db);
+    },
+    reject,
+  );
   });
 }
 
@@ -418,7 +481,12 @@ async function migrateAnonymousToUser(userId: string) {
   const target = await openLectaDB(dbNameFor(userId));
   const anon = await openLectaDB(ANONYMOUS_DB);
   try {
-    const [books, positions, words, annotations, intervals, reviews, knowledge, events, ops, latestHash] =
+    // El gameState v1 del invitado se sella como baseline ANTES de
+    // leer nada: así su foto y el sello de migración viajan con el
+    // resto del compañero aunque la cuenta ya estuviera migrada. Es
+    // idempotente — si ya corrió no reescribe nada.
+    await migrateGameStateV1In(anon);
+    const [books, positions, words, annotations, intervals, reviews, knowledge, events, ops, latestHash, companionEvents, companionReceipts] =
       await Promise.all([
         anon.getAll("books"),
         anon.getAll("positions"),
@@ -430,6 +498,8 @@ async function migrateAnonymousToUser(userId: string) {
         anon.getAll("readingEvents"),
         anon.getAll("bookOps"),
         anon.get("session", SESSION_KEY),
+        anon.getAll("companionEvents"),
+        anon.getAll("companionReceipts"),
       ]);
 
     for (const book of books) {
@@ -500,6 +570,76 @@ async function migrateAnonymousToUser(userId: string) {
       const existing = await target.get("session", key);
       const merged = mergeSessionValue(existing, incoming);
       if (merged !== existing) await target.put("session", merged, key);
+    }
+
+    // Compañero: sus claves no pasan por isMigratableSessionKey ni por
+    // mergeSessionValue — cada colección tiene su propia regla de
+    // unión (contratos C y F del plan).
+    // Journal y recepciones: anexables por id, como los intervalos.
+    for (const event of companionEvents) {
+      if (!(await target.get("companionEvents", event.id)))
+        await target.put("companionEvents", event);
+    }
+    for (const receipt of companionReceipts) {
+      if (!(await target.get("companionReceipts", receipt.id)))
+        await target.put("companionReceipts", receipt);
+    }
+    // Baselines: unión por originId — son inmutables, así que uno ya
+    // presente en la cuenta jamás se reescribe.
+    const mergedBaselines = parseCompanionBaselines(
+      await target.get("session", COMPANION_BASELINES_KEY),
+    );
+    let baselinesChanged = false;
+    for (const [originId, baseline] of Object.entries(
+      parseCompanionBaselines(
+        await anon.get("session", COMPANION_BASELINES_KEY),
+      ),
+    )) {
+      if (!mergedBaselines[originId]) {
+        mergedBaselines[originId] = baseline;
+        baselinesChanged = true;
+      }
+    }
+    if (baselinesChanged)
+      await target.put(
+        "session",
+        JSON.stringify(mergedBaselines),
+        COMPANION_BASELINES_KEY,
+      );
+    // Registros del perfil: misma fusión por sello que en cualquier
+    // escritura — gana el (updatedAt, operationId) mayor.
+    const anonRegisters = parseCompanionRegisters(
+      await anon.get("session", COMPANION_PROFILE_KEY),
+    );
+    if (anonRegisters.length) {
+      const merged = mergeCompanionRegister([
+        ...parseCompanionRegisters(
+          await target.get("session", COMPANION_PROFILE_KEY),
+        ),
+        ...anonRegisters,
+      ]);
+      await target.put(
+        "session",
+        JSON.stringify(merged),
+        COMPANION_PROFILE_KEY,
+      );
+    }
+    // Llaves sueltas: solo si la cuenta no tiene las suyas. El
+    // gameState v1 y el «companion» viejo son inertes tras el sello
+    // pero se conservan; el sello de migración y las preferencias de
+    // dispositivo tampoco se pisan.
+    for (const key of [
+      COMPANION_DEVICE_PREFS_KEY,
+      COMPANION_MIGRATION_KEY,
+      GAME_STATE_KEY,
+      GAME_KEY,
+    ]) {
+      const incoming = await anon.get("session", key);
+      if (
+        typeof incoming === "string" &&
+        (await target.get("session", key)) === undefined
+      )
+        await target.put("session", incoming, key);
     }
 
     // La limpieza anónima va dentro del try: si el traslado falla a
@@ -1320,6 +1460,470 @@ export async function saveCalibrationBatch(
       );
       await tx.done;
       return { knowledge, words };
+    } catch (err) {
+      return abortQuietly(tx, err);
+    }
+  });
+}
+
+// ---------- Compañero (journal, baselines, registros, recepciones) ----------
+//
+// El progreso del juego ya no vive como un JSON entero en «gameState»:
+// se proyecta desde cuatro colecciones convergentes (contratos A–D).
+// Aquí solo hay almacenamiento y fusión; las reglas puras de
+// proyección y merge están en shared/companion-data para que el
+// servidor las aplique igual.
+
+// Claves de session del compañero. «gameState» y «companion» son las
+// v1 selladas por la migración; el resto nace con la versión 9 de la
+// base. Las exporta idb (no game.ts) porque la migración anónimo→
+// cuenta las necesita y game.ts ya importa de aquí.
+export const GAME_STATE_KEY = "gameState";
+export const GAME_KEY = "companion";
+export const COMPANION_BASELINES_KEY = "companionBaselines:v1";
+export const COMPANION_PROFILE_KEY = "companionProfile:v1";
+export const COMPANION_DEVICE_PREFS_KEY = "companionDevicePrefs:v1";
+export const COMPANION_MIGRATION_KEY = "companionMigration:v1";
+// Confirmaciones del servidor por categoría: el sync (fase 3) calcula
+// pendientes como local − acked, sin borrar el journal.
+export const COMPANION_ACKED_KEY = "companionAcked:v1";
+
+const isRecord = (v: unknown): v is Record<string, unknown> =>
+  typeof v === "object" && v !== null && !Array.isArray(v);
+
+// Mapa originId → baseline tal como viaja en session. Una entrada sin
+// forma de baseline se descarta (datos dañados no se propagan a la
+// proyección ni al sync); JSON inválido devuelve el mapa vacío.
+function parseCompanionBaselines(
+  raw: string | undefined,
+): Record<string, LegacyGameBaseline> {
+  if (!raw) return {};
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!isRecord(parsed)) return {};
+    const out: Record<string, LegacyGameBaseline> = {};
+    for (const [originId, value] of Object.entries(parsed)) {
+      if (
+        isRecord(value) &&
+        value.version === 1 &&
+        value.originId === originId &&
+        isRecord(value.state)
+      )
+        out[originId] = value as unknown as LegacyGameBaseline;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+function parseCompanionRegisters(raw: string | undefined): CompanionRegister[] {
+  if (!raw) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (item): item is CompanionRegister =>
+        isRecord(item) &&
+        typeof item.field === "string" &&
+        (COMPANION_FIELDS as readonly string[]).includes(item.field) &&
+        typeof item.updatedAt === "number" &&
+        typeof item.operationId === "string",
+    );
+  } catch {
+    return [];
+  }
+}
+
+export async function readCompanionBaselines(
+  scope?: DbScope,
+): Promise<Record<string, LegacyGameBaseline>> {
+  return withDb(scope, async (db) =>
+    parseCompanionBaselines(await db.get("session", COMPANION_BASELINES_KEY)),
+  );
+}
+
+// Inserta el baseline en el mapa por originId: los baselines son
+// inmutables, así que uno ya presente jamás se reescribe.
+export async function putCompanionBaseline(
+  baseline: LegacyGameBaseline,
+  scope?: DbScope,
+) {
+  return withDb(scope, async (db) => {
+    const tx = db.transaction("session", "readwrite");
+    const session = tx.objectStore("session");
+    const map = parseCompanionBaselines(
+      await session.get(COMPANION_BASELINES_KEY),
+    );
+    if (!map[baseline.originId]) {
+      map[baseline.originId] = baseline;
+      await session.put(JSON.stringify(map), COMPANION_BASELINES_KEY);
+    }
+    await tx.done;
+  });
+}
+
+export async function listCompanionEvents(
+  scope?: DbScope,
+): Promise<GameJournalEvent[]> {
+  return withDb(scope, (db) => db.getAll("companionEvents"));
+}
+
+export async function listCompanionReceipts(
+  scope?: DbScope,
+): Promise<CompanionReceipt[]> {
+  return withDb(scope, (db) => db.getAll("companionReceipts"));
+}
+
+// Mismo id con otro contenido: el journal es inmutable y la
+// divergencia es conflicto real, nunca un overwrite silencioso.
+export class CompanionEventConflictError extends Error {
+  constructor(readonly id: string) {
+    super("companion event conflict");
+    this.name = "CompanionEventConflictError";
+  }
+}
+
+// Anexa eventos al journal en una sola transacción. Idempotente: un
+// id ya presente con el mismo contenido es un no-op; con contenido
+// distinto aborta el lote completo.
+export async function appendCompanionEvents(
+  events: GameJournalEvent[],
+  scope?: DbScope,
+): Promise<void> {
+  return withDb(scope, async (db) => {
+    const tx = db.transaction("companionEvents", "readwrite");
+    try {
+      const store = tx.objectStore("companionEvents");
+      for (const event of events) {
+        const existing = await store.get(event.id);
+        if (existing) {
+          if (JSON.stringify(existing) !== JSON.stringify(event))
+            throw new CompanionEventConflictError(event.id);
+          continue;
+        }
+        await store.put(event);
+      }
+      await tx.done;
+    } catch (err) {
+      return abortQuietly(tx, err);
+    }
+  });
+}
+
+// Unión por id conservando el menor sello: una recepción repetida
+// (reenvío, réplica) jamás la borra ni la retrasa.
+export async function mergeCompanionReceipts(
+  receipts: CompanionReceipt[],
+  scope?: DbScope,
+): Promise<void> {
+  return withDb(scope, async (db) => {
+    const tx = db.transaction("companionReceipts", "readwrite");
+    try {
+      const store = tx.objectStore("companionReceipts");
+      for (const receipt of receipts) {
+        const existing = await store.get(receipt.id);
+        if (!existing || receipt.at < existing.at)
+          await store.put({ id: receipt.id, at: receipt.at });
+      }
+      await tx.done;
+    } catch (err) {
+      return abortQuietly(tx, err);
+    }
+  });
+}
+
+export async function readCompanionRegisters(
+  scope?: DbScope,
+): Promise<CompanionRegister[]> {
+  return withDb(scope, async (db) =>
+    parseCompanionRegisters(await db.get("session", COMPANION_PROFILE_KEY)),
+  );
+}
+
+// Fusiona los registros entrantes con los guardados y conserva los
+// ganadores por campo (mayor sello updatedAt, operationId). Así una
+// escritura local y un lote del sync compiten con la misma regla.
+export async function putCompanionRegisters(
+  registers: CompanionRegister[],
+  scope?: DbScope,
+): Promise<void> {
+  if (!registers.length) return;
+  return withDb(scope, async (db) => {
+    const tx = db.transaction("session", "readwrite");
+    const session = tx.objectStore("session");
+    const merged = mergeCompanionRegister([
+      ...parseCompanionRegisters(await session.get(COMPANION_PROFILE_KEY)),
+      ...registers,
+    ]);
+    await session.put(JSON.stringify(merged), COMPANION_PROFILE_KEY);
+    await tx.done;
+  });
+}
+
+export async function readCompanionDevicePrefs(
+  scope?: DbScope,
+): Promise<CompanionDevicePrefs | null> {
+  return withDb(scope, async (db) => {
+    const raw = await db.get("session", COMPANION_DEVICE_PREFS_KEY);
+    if (!raw) return null;
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      if (
+        !isRecord(parsed) ||
+        parsed.version !== 1 ||
+        typeof parsed.soundEnabled !== "boolean" ||
+        !(COMPANION_MOTION as readonly unknown[]).includes(parsed.motion)
+      )
+        return null;
+      return parsed as unknown as CompanionDevicePrefs;
+    } catch {
+      return null;
+    }
+  });
+}
+
+export async function saveCompanionDevicePrefs(
+  prefs: CompanionDevicePrefs,
+  scope?: DbScope,
+) {
+  return withDb(scope, (db) =>
+    db.put("session", JSON.stringify(prefs), COMPANION_DEVICE_PREFS_KEY),
+  );
+}
+
+// Lo ya confirmado por el servidor, por categoría. Es solo un sello
+// de progreso del sync: nunca se usa para podar el journal. Para los
+// registros se guardan los operationId confirmados — el sello del
+// registro es su identidad, no el campo (otro operationId posterior
+// sobre el mismo campo sigue pendiente).
+export interface CompanionAcked {
+  baselines: string[];
+  events: string[];
+  fields: string[];
+  receipts: string[];
+}
+
+const EMPTY_ACKED: CompanionAcked = {
+  baselines: [],
+  events: [],
+  fields: [],
+  receipts: [],
+};
+
+export async function readCompanionAcked(
+  scope?: DbScope,
+): Promise<CompanionAcked> {
+  return withDb(scope, async (db) => {
+    const raw = await db.get("session", COMPANION_ACKED_KEY);
+    if (!raw) return { ...EMPTY_ACKED };
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      if (!isRecord(parsed)) return { ...EMPTY_ACKED };
+      const list = (v: unknown) =>
+        Array.isArray(v)
+          ? v.filter((x): x is string => typeof x === "string")
+          : [];
+      return {
+        baselines: list(parsed.baselines),
+        events: list(parsed.events),
+        fields: list(parsed.fields),
+        receipts: list(parsed.receipts),
+      };
+    } catch {
+      return { ...EMPTY_ACKED };
+    }
+  });
+}
+
+export async function saveCompanionAcked(acked: CompanionAcked, scope?: DbScope) {
+  return withDb(scope, (db) =>
+    db.put("session", JSON.stringify(acked), COMPANION_ACKED_KEY),
+  );
+}
+
+// Un gameState v1 «válido para sellar»: versión 1 con stats objeto y
+// XP numérica — el mismo umbral que usaba loadGame antes de leerlo.
+// Lo que no parsea se conserva tal cual (hadState + corrupt) y se
+// informa, jamás se resetea.
+function parseGameStateV1(raw: string): GameState | null {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (
+      isRecord(parsed) &&
+      parsed.version === 1 &&
+      typeof parsed.xp === "number" &&
+      isRecord(parsed.stats)
+    )
+      return parsed as unknown as GameState;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export interface CompanionMigrationResult {
+  already: boolean;
+  // originId del baseline creado (null si no había nada que sellar).
+  originId?: string | null;
+  // Había un gameState v1 guardado, parseara o no.
+  hadState?: boolean;
+  // Había gameState pero no parseó como v1: se conserva intacto y se
+  // sella igual para no reintentarlo en cada premio.
+  corrupt?: boolean;
+}
+
+// Núcleo de la migración v1→journal sobre una base concreta. Lee y
+// sella en UNA transacción de session: si el sello ya existe no hace
+// nada; si hay un gameState válido lo fotografía como baseline con un
+// originId nuevo y deja el string original intacto. Compartido por la
+// llamada pública (base del contexto) y la migración anónimo→cuenta.
+async function migrateGameStateV1In(
+  db: IDBPDatabase<LectaDB>,
+): Promise<CompanionMigrationResult> {
+  const tx = db.transaction("session", "readwrite");
+  try {
+    const session = tx.objectStore("session");
+    if ((await session.get(COMPANION_MIGRATION_KEY)) !== undefined) {
+      await tx.done;
+      return { already: true };
+    }
+    const raw = await session.get(GAME_STATE_KEY);
+    const hadState = raw !== undefined;
+    let originId: string | null = null;
+    let corrupt = false;
+    if (typeof raw === "string") {
+      const state = parseGameStateV1(raw);
+      if (state) {
+        originId = crypto.randomUUID();
+        const baselines = parseCompanionBaselines(
+          await session.get(COMPANION_BASELINES_KEY),
+        );
+        baselines[originId] = { version: 1, originId, state };
+        await session.put(
+          JSON.stringify(baselines),
+          COMPANION_BASELINES_KEY,
+        );
+      } else {
+        corrupt = true;
+      }
+    }
+    // El sello se escribe siempre: sin gameState (originId null) o con
+    // uno dañado, la migración ya corrió y no se repite.
+    await session.put(
+      JSON.stringify({ migratedAt: Date.now(), originId }),
+      COMPANION_MIGRATION_KEY,
+    );
+    await tx.done;
+    return { already: false, originId, hadState, corrupt };
+  } catch (err) {
+    return abortQuietly(tx, err);
+  }
+}
+
+export function migrateGameStateV1(
+  scope?: DbScope,
+): Promise<CompanionMigrationResult> {
+  return withDb(scope, migrateGameStateV1In);
+}
+
+// Los hechos estables del premio (los que fija el emisor); los flags
+// derivados (racha, elegibilidad del libro) se calculan dentro de la
+// transacción con el snapshot vigente, no con la caché del llamador.
+export interface CompanionEventDraft {
+  id: string;
+  at: number;
+  dayKey: string;
+  event: GameJournalEvent["event"];
+  interval?: { startedAt: number; endedAt: number };
+}
+
+// Anexa el premio al journal y, EN LA MISMA TRANSACCIÓN, los receipts
+// «achievement-credit» que la proyección actualizada deja pendientes:
+// el evento y sus créditos quedan confirmados juntos o no quedan.
+// Si el id ya existe debe ser la misma jugada (mismos hechos): se
+// reusa el evento guardado con sus flags congelados — un reintento no
+// recalcula la racha. Hechos distintos bajo un mismo id es conflicto
+// y aborta sin escribir nada.
+export async function commitCompanionEvent(
+  draft: CompanionEventDraft,
+  scope?: DbScope,
+): Promise<void> {
+  return withDb(scope, async (db) => {
+    const tx = db.transaction(
+      ["session", "companionEvents", "companionReceipts"],
+      "readwrite",
+    );
+    try {
+      const session = tx.objectStore("session");
+      const eventsStore = tx.objectStore("companionEvents");
+      const receiptsStore = tx.objectStore("companionReceipts");
+      const [baselinesRaw, registersRaw, storedEvents, storedReceipts] =
+        await Promise.all([
+          session.get(COMPANION_BASELINES_KEY),
+          session.get(COMPANION_PROFILE_KEY),
+          eventsStore.getAll(),
+          receiptsStore.getAll(),
+        ]);
+      const registers = parseCompanionRegisters(registersRaw);
+      const baselines = Object.values(parseCompanionBaselines(baselinesRaw));
+
+      const existing = storedEvents.find((e) => e.id === draft.id);
+      let event: GameJournalEvent;
+      if (existing) {
+        const sameFacts =
+          existing.at === draft.at &&
+          existing.dayKey === draft.dayKey &&
+          JSON.stringify(existing.event) === JSON.stringify(draft.event) &&
+          JSON.stringify(existing.interval ?? null) ===
+            JSON.stringify(draft.interval ?? null);
+        if (!sameFacts) throw new CompanionEventConflictError(draft.id);
+        event = existing;
+      } else {
+        const projected = projectGame({
+          baselines,
+          events: storedEvents,
+          registers,
+          receipts: storedReceipts,
+        }).state;
+        event = {
+          version: 1,
+          id: draft.id,
+          at: draft.at,
+          dayKey: draft.dayKey,
+          streakBonus: projected.stats.streakDays > 1,
+          event: draft.event,
+        };
+        // El crédito por libro lo congela el emisor: solo si el libro
+        // aún no estaba terminado en el snapshot vigente.
+        if (draft.event.kind === "book_finished")
+          event.bookCreditEligible = !projected.finishedBooks.includes(
+            draft.event.bookHash,
+          );
+        if (draft.interval) event.interval = draft.interval;
+        await eventsStore.put(event);
+      }
+
+      // Créditos de logro pendientes con el evento ya en el journal;
+      // se sellan con el `at` del premio que los descubrió.
+      const snapshot: CompanionSnapshot = {
+        baselines,
+        events: existing ? storedEvents : [...storedEvents, event],
+        registers,
+        receipts: storedReceipts,
+      };
+      const receiptAt = new Map(storedReceipts.map((r) => [r.id, r.at]));
+      for (const achievementId of pendingAchievementCredits(snapshot)) {
+        const id = receiptIdFor("achievement-credit", achievementId);
+        const known = receiptAt.get(id);
+        // La recepción une por sello mínimo: solo se escribe si falta
+        // o si este premio la sella antes de lo ya conocido.
+        if (known === undefined || draft.at < known) {
+          await receiptsStore.put({ id, at: draft.at });
+          receiptAt.set(id, draft.at);
+        }
+      }
+      await tx.done;
     } catch (err) {
       return abortQuietly(tx, err);
     }

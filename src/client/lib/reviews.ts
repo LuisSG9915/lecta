@@ -5,7 +5,7 @@ import {
   type SavedReview,
 } from "./idb";
 import { pushReviewsToServer } from "./reading-sync";
-import { award } from "./game";
+import { award, localDayKey } from "./game";
 import type { ReviewKind, ReviewRating } from "../../shared/reading-data";
 
 export { REVIEW_KINDS, REVIEW_RATINGS } from "../../shared/reading-data";
@@ -35,6 +35,12 @@ export async function recordReview(
     bound,
   );
   void pushReviewsToServer([saved], bound);
-  void award({ kind: "review", rating: input.rating }, bound);
+  // El premio toma el id y la fecha del repaso guardado: estable ante
+  // reintentos y con el día local del emisor congelado.
+  void award({ kind: "review", rating: input.rating }, bound, {
+    id: `review:${saved.id}`,
+    at: saved.createdAt,
+    dayKey: localDayKey(saved.createdAt),
+  });
   return saved;
 }

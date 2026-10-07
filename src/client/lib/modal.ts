@@ -13,6 +13,26 @@ const isUsable = (item: HTMLElement, root: HTMLElement) =>
 type Layer = { el: HTMLElement; onClose: () => void };
 const stack: Layer[] = [];
 
+// Suscriptores del conteo de capas: el inbox de festejos del
+// compañero espera a que no haya ninguna hoja/diálogo abierto para
+// anunciar sus tarjetas.
+const layerListeners = new Set<() => void>();
+
+const notifyLayers = () => {
+  for (const fn of layerListeners) fn();
+};
+
+// Cuántas capas modales están montadas ahora.
+export function modalLayerCount(): number {
+  return stack.length;
+}
+
+// Se llama cada vez que cambia el conteo (push o retiro de una capa).
+export function subscribeModalLayers(fn: () => void): () => void {
+  layerListeners.add(fn);
+  return () => layerListeners.delete(fn);
+}
+
 // Bloqueo del scroll de fondo mientras haya capas abiertas. overflow:hidden
 // conserva la posición (no hay salto al bloquear ni al restaurar) y el
 // contador cubre dos capas o un cierre fuera de orden. La compensación por
@@ -61,6 +81,7 @@ export function useModalBehavior(ref: RefObject<HTMLElement | null>, onClose: ()
 
     const layer: Layer = { el, onClose: () => onCloseRef.current() };
     stack.push(layer);
+    notifyLayers();
     lockScroll();
     const isTop = () => stack[stack.length - 1] === layer;
 
@@ -125,7 +146,10 @@ export function useModalBehavior(ref: RefObject<HTMLElement | null>, onClose: ()
     return () => {
       document.removeEventListener("keydown", onKeyDown, true);
       const at = stack.indexOf(layer);
-      if (at !== -1) stack.splice(at, 1);
+      if (at !== -1) {
+        stack.splice(at, 1);
+        notifyLayers();
+      }
       // Primero se devuelve el fondo al árbol: si el foco cae sobre un
       // elemento aún inerte, el navegador lo rechaza.
       for (const item of inerted) item.inert = false;

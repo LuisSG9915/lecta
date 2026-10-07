@@ -33,3 +33,30 @@ export function measuredZipf(
   }
   return fallback;
 }
+
+// Categorías gramaticales que no son vocabulario aprendible: una
+// ficha con esta pos jamás se sugiere al lector, sea cual sea su
+// medición. «determinante» cubre lo que la IA llama «artículo» (el
+// volcado del Wikcionario mapea article/det → determinante);
+// partículas, contracciones y abreviaturas producen el mismo ruido.
+// Valores del catálogo que sí son vocabulario —sustantivo, verbo,
+// adjetivo, adverbio, locución, participio, proverbio, nombre
+// propio— quedan fuera de la lista a propósito.
+const NON_LEARNABLE_POS = new Set([
+  "numeral",
+  "interjección",
+  "pronombre",
+  "artículo",
+  "determinante",
+  "preposición",
+  "conjunción",
+  "partícula",
+  "contracción",
+  "abreviatura",
+]);
+
+// pos null/vacía no excluye: fichas sin categoría (cargas iniciales
+// o fuentes sin pos) se comportan como vocabulario normal.
+export function isLearnablePos(pos: string | null | undefined): boolean {
+  return pos == null || !NON_LEARNABLE_POS.has(pos.trim().toLowerCase());
+}

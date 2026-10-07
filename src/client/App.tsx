@@ -4,6 +4,7 @@ import Reader from "./components/Reader";
 const Vocabulary = lazy(() => import("./components/Vocabulary"));
 import Account from "./components/Account";
 import Calibration from "./components/Calibration";
+import { CompanionProvider } from "./components/CompanionProvider";
 import ThemeMenu from "./components/ThemeMenu";
 import Shelf, { type ShelfItem } from "./components/Shelf";
 import Dialog from "./components/Dialog";
@@ -38,6 +39,7 @@ import { syncPositions, type PositionConflict } from "./lib/positions-sync";
 import { checkEpubHeader, EPUB_MAX_BYTES } from "../shared/epub-check";
 import { syncSavedWords } from "./lib/vocab";
 import { syncActivity, syncAnnotations, syncKnowledge, syncReviews } from "./lib/reading-sync";
+import { syncCompanion } from "./lib/companion-sync";
 import { authClient } from "./lib/auth";
 
 type BookSelection = {
@@ -96,6 +98,10 @@ export default function App() {
   const calibrationScope = useRef<DbScope | null>(null);
   const { data: session, isPending: sessionPending } = authClient.useSession();
   const sessionUserId = session?.user?.id;
+  // La cuenta cuya base local ya quedó activa (se fija tras setDbUser,
+  // nunca antes): el compañero solo ve datos de la base vigente — un
+  // cambio de cuenta lo limpia y recarga con el contexto nuevo.
+  const [dbUserId, setDbUserId] = useState<string | null>(null);
 
   const changeTheme = (choice: ThemeChoice) => {
     setTheme(choice);
@@ -243,6 +249,12 @@ export default function App() {
     const pendingUploads = new Set(
       ops.filter((op) => op.kind === "upload").map((op) => op.hash),
     );
+    // Un borrado encolado significa «este libro se está quitando»: si el
+    // servidor todavía lo lista (el DELETE corre en la cola, o reintenta
+    // tras un corte de red) no se pinta otra vez como «En la nube».
+    const pendingDeletes = new Set(
+      ops.filter((op) => op.kind === "delete").map((op) => op.hash),
+    );
     const localHashes = new Set(books.map((book) => book.hash));
     const localItems: ShelfItem[] = books
       .sort((a, b) => b.addedAt - a.addedAt)
@@ -257,7 +269,9 @@ export default function App() {
         pendingUpload: pendingUploads.has(book.hash) || undefined,
       }));
     const remoteItems: ShelfItem[] = remote
-      .filter((item) => !localHashes.has(item.hash))
+      .filter(
+        (item) => !localHashes.has(item.hash) && !pendingDeletes.has(item.hash),
+      )
       .sort((a, b) => +new Date(b.uploaded) - +new Date(a.uploaded))
       .map((item) => ({
         hash: item.hash,
@@ -285,7 +299,23 @@ export default function App() {
     if (sessionPending) return;
     let cancelled = false;
     void (async () => {
-      await setDbUser(sessionUserId ?? null);
+      try {
+        await setDbUser(sessionUserId ?? null);
+      } catch (error) {
+        // Sin la base local no hay estantería que preparar: soltar el
+        // spinner y decir por qué (p. ej. otra pestaña reteniendo una
+        // versión vieja de IndexedDB) — cargar eterno escondería el
+        // fallo real.
+        if (!cancelled) {
+          setCheckingLibrary(false);
+          setError(
+            error instanceof Error && error.message
+              ? error.message
+              : "No se pudo abrir la biblioteca local. Recarga la página.",
+          );
+        }
+        return;
+      }
       // La cuenta cambió: el estado del juego en memoria pertenece a
       // la base anterior — se suelta para no mostrar ni persistir lo
       // ajeno (las tareas encoladas llevan su contexto y abortan solas).
@@ -295,6 +325,9 @@ export default function App() {
       // escrituras aterrizan en la base dueña y la red aborta.
       const scope = captureDbScope();
       if (cancelled) return;
+      // Ya es seguro: la base activa es la de esta cuenta — el
+      // compañero recarga con ella (y limpia lo de la cuenta previa).
+      setDbUserId(scope.userId);
 
       // La base local solo se limpia si el correo de confirmación
       // redirigió aquí; cerrar sesión o un enlace vencido no bastan.
@@ -342,6 +375,9 @@ export default function App() {
         .catch(() => null);
       // Repasos del cuaderno: anexables por id, mismo ciclo.
       void syncReviews(scope).catch(() => null);
+      // El compañero: baja lo que otros dispositivos escribieron y
+      // sube journal, registros y recepciones pendientes.
+      void syncCompanion(scope).catch(() => null);
       // Conocimiento del lector: misma fusión por clave con updatedAt
       // como árbitro, lápidas incluidas. Si bajó algo, el lector
       // recarga su perfil como cuando llegan palabras nuevas.
@@ -389,6 +425,7 @@ export default function App() {
         if (pulled) setActivityVersion((v) => v + 1);
       });
       void syncReviews();
+      void syncCompanion();
       void syncKnowledge().then((pulled) => {
         if (pulled) setVocabVersion((v) => v + 1);
       });
@@ -563,11 +600,18 @@ export default function App() {
 
   const removeBook = async (hash: string) => {
     const scope = captureDbScope();
+    // Optimista: la tarjeta sale de la vista ya — el refresco de abajo no
+    // la regresa porque la op de borrado encolada la filtra de la nube.
+    setLibrary((prev) => prev.filter((item) => item.hash !== hash));
     await deleteStoredBook(hash, scope).catch(() => undefined);
     // El borrado remoto también pasa por la cola: un 404 o un corte de
     // red no pierden la operación, se reintenta al volver la conexión.
     if (sessionUserId) {
-      void queueBookDelete(hash, scope).then(() => runBookQueue(scope));
+      // El encolado se espera antes de refrescar: así la op ya está en
+      // bookOps cuando refreshLibrary la lee y el libro no reaparece
+      // como «En la nube» mientras el DELETE corre en segundo plano.
+      await queueBookDelete(hash, scope).catch(() => undefined);
+      void runBookQueue(scope);
     }
     if (book?.hash === hash) {
       closeReader();
@@ -577,6 +621,10 @@ export default function App() {
   };
 
   return (
+    // El compañero vive una sola vez aquí, sobre todo el contenido:
+    // la hoja compartida puede abrirse desde el Cuaderno hoy y desde
+    // Estantería o Lector después sin duplicar instancias ni estado.
+    <CompanionProvider userId={dbUserId}>
     <div className="app">
       {book ? (
         <Reader
@@ -711,5 +759,6 @@ export default function App() {
         </Dialog>
       ) : null}
     </div>
+    </CompanionProvider>
   );
 }

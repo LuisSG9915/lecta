@@ -1,30 +1,67 @@
-// Capa de IO del juego del Cuaderno: preferencia «companion» (mismo
-// patrón que «Usar IA») y el estado en la tienda session de IndexedDB
-// — por cuenta, sin migración, local a este dispositivo. `award` es
-// auxiliar como trackReadingEvent: el llamador lo invoca con `void` y
-// un fallo jamás interrumpe lectura ni repaso.
+// Capa de IO del juego del Cuaderno: la preferencia «companion»
+// (mismo patrón que «Usar IA») y el snapshot del compañero en
+// IndexedDB — journal de premios + baselines v1 + recepciones +
+// registros de perfil, todo por cuenta. El GameState que ve la
+// interfaz es una PROYECCIÓN pura del snapshot (projectGame): ya no
+// se guarda un JSON entero y dos réplicas con el mismo journal
+// convergen al mismo estado. `award` sigue siendo auxiliar como
+// trackReadingEvent: el llamador lo invoca con `void` y un fallo
+// jamás interrumpe lectura ni repaso.
 
 import {
   captureDbScope,
+  commitCompanionEvent,
   isDbScopeActive,
+  listCompanionEvents,
+  listCompanionReceipts,
   loadSessionValue,
+  mergeCompanionReceipts,
+  migrateGameStateV1,
+  putCompanionRegisters,
+  readCompanionBaselines,
+  readCompanionDevicePrefs,
+  readCompanionRegisters,
+  saveCompanionDevicePrefs as writeCompanionDevicePrefs,
   saveSessionValue,
+  GAME_KEY,
   type DbScope,
 } from "./idb";
 import {
-  applyGameEvent,
+  canonicalChestKey,
+  mergeCompanionRegister,
+  projectGame,
+  receiptIdFor,
+  type CompanionDevicePrefs,
+  type CompanionField,
+  type CompanionRegister,
+  type CompanionReceiptKind,
+  type CompanionSnapshot,
+} from "../../shared/companion-data";
+import { dayKeyOf } from "./reading-activity";
+import {
   emptyGameState,
-  openChest,
+  type GameChest,
   type GameEvent,
   type GameState,
 } from "./gamification";
 
-export const GAME_KEY = "companion";
-const GAME_STATE_KEY = "gameState";
+export { GAME_KEY };
+export type { GameEvent, GameState } from "./gamification";
 
-// Encendido por defecto, opt-out en Cuenta — igual que el historial.
+// «YYYY-MM-DD» en la zona local del dispositivo — la misma regla con
+// la que el lector corta su meta diaria (reading-activity). El dayKey
+// viaja congelado en cada evento del journal.
+export function localDayKey(ts: number): string {
+  return dayKeyOf(ts, Intl.DateTimeFormat().resolvedOptions().timeZone);
+}
+
+// Preferencia «enabled»: el registro sincronizado manda cuando
+// existe; si no hay, el «companion» v1 local decide para que un
+// opt-out anterior siga apagado. Encendido por defecto.
 export async function loadGameEnabled(scope?: DbScope): Promise<boolean> {
   try {
+    const reg = await readCompanionField("enabled", scope);
+    if (reg) return reg.value === true;
     return (await loadSessionValue(GAME_KEY, scope)) !== "0";
   } catch {
     return true;
@@ -32,7 +69,13 @@ export async function loadGameEnabled(scope?: DbScope): Promise<boolean> {
 }
 
 export async function saveGameEnabled(on: boolean, scope?: DbScope) {
-  await saveSessionValue(GAME_KEY, on ? "1" : "0", scope);
+  const bound = scope ?? captureDbScope();
+  // El registro sincronizado primero; la llave v1 después, para que
+  // un cliente viejo lea el mismo apagado. Si la primera escritura
+  // falla nada queda a medias y el llamador ve el error.
+  await writeCompanionField("enabled", on, bound);
+  await saveSessionValue(GAME_KEY, on ? "1" : "0", bound);
+  if (isDbScopeActive(bound)) notify();
 }
 
 // ---------- Estado en memoria + persistencia ----------
@@ -42,9 +85,9 @@ export async function saveGameEnabled(on: boolean, scope?: DbScope) {
 // persiste el estado de la cuenta nueva.
 let cache: { scope: DbScope; state: GameState } | null = null;
 // Las escrituras se encolan: lectura (Reader) y repaso (Cuaderno)
-// pueden coincidir y un JSON sobreescrito perdería XP. La cola no se
-// reinicia al cambiar de cuenta — cada tarea encolada lleva su propio
-// contexto y aborta sola si el suyo venció.
+// pueden coincidir y dos commits en vuelo pisarían sellos. La cola no
+// se reinicia al cambiar de cuenta — cada tarea encolada lleva su
+// propio contexto y aborta sola si el suyo venció.
 let queue: Promise<void> = Promise.resolve();
 
 const listeners = new Set<() => void>();
@@ -58,49 +101,104 @@ const notify = () => {
   for (const fn of listeners) fn();
 };
 
+// Lee las cuatro colecciones que alimentan la proyección.
+const readSnapshot = async (scope: DbScope): Promise<CompanionSnapshot> => {
+  const [baselines, events, registers, receipts] = await Promise.all([
+    readCompanionBaselines(scope),
+    listCompanionEvents(scope),
+    readCompanionRegisters(scope),
+    listCompanionReceipts(scope),
+  ]);
+  return { baselines: Object.values(baselines), events, registers, receipts };
+};
+
+// Relee el snapshot tras un commit y refresca caché + suscriptores
+// solo si el contexto sigue vigente: jamás se publica lo de otra
+// cuenta ni se avisa antes de persistir.
+const refreshAfterCommit = async (bound: DbScope) => {
+  const snapshot = await readSnapshot(bound);
+  if (!isDbScopeActive(bound)) return;
+  cache = { scope: bound, state: projectGame(snapshot).state };
+  notify();
+};
+
 export async function loadGame(scope?: DbScope): Promise<GameState> {
   const bound = scope ?? captureDbScope();
-  if (cache && isDbScopeActive(cache.scope) && cache.scope.userId === bound.userId)
+  if (
+    cache &&
+    isDbScopeActive(cache.scope) &&
+    cache.scope.userId === bound.userId
+  )
     return cache.state;
-  let state: GameState;
   try {
-    const raw = await loadSessionValue(GAME_STATE_KEY, bound);
-    const parsed = raw ? (JSON.parse(raw) as GameState) : null;
-    state = parsed && parsed.version === 1 && parsed.stats ? parsed : emptyGameState();
+    // El gameState v1 se sella antes de proyectar (idempotente, una
+    // transacción): así el avance anterior se ve desde la primera
+    // lectura del panel, sin esperar al primer premio nuevo.
+    await migrateGameStateV1(bound);
+    const snapshot = await readSnapshot(bound);
+    const state = projectGame(snapshot).state;
+    // Solo se memoriza el estado del contexto vigente: una lectura
+    // tardía de la cuenta anterior no tapa la de la cuenta activa.
+    if (isDbScopeActive(bound)) cache = { scope: bound, state };
+    return state;
   } catch {
-    /* estado dañado: se reinicia limpio, sin drama */
-    state = emptyGameState();
+    /* estado dañado: se proyecta limpio, sin drama */
+    return emptyGameState();
   }
-  // Solo se memoriza el estado del contexto vigente: una lectura
-  // tardía de la cuenta anterior no tapa la de la cuenta activa.
-  if (isDbScopeActive(bound)) cache = { scope: bound, state };
-  return state;
 }
 
-const persist = (state: GameState, scope: DbScope) =>
-  saveSessionValue(GAME_STATE_KEY, JSON.stringify(state), scope);
+// El snapshot crudo para el sync (fase 3): siempre fresco del disco —
+// la caché proyectada no es autoridad para reconciliar.
+export async function loadGameSnapshot(
+  scope?: DbScope,
+): Promise<CompanionSnapshot> {
+  const bound = scope ?? captureDbScope();
+  return readSnapshot(bound);
+}
 
-// Suma el evento al estado si el juego está encendido. Encola la
-// escritura con el contexto que la originó y aborta en silencio si
-// venció (la cuenta cambió antes de que el premio tocara disco):
-// nunca se aplica a la cuenta nueva. Avisa a quien escuche (el panel
-// del Cuaderno) solo si el estado persistido quedó vigente.
-export function award(event: GameEvent, scope?: DbScope): Promise<void> {
+// Metadata que fija el emisor y viaja congelada en el journal: id
+// estable por jugada, sello de tiempo y día local de SU zona. Con ella
+// el evento es reintentable y la proyección determinista en cualquier
+// réplica.
+export type AwardMeta = {
+  id: string;
+  at: number;
+  dayKey: string;
+  interval?: { startedAt: number; endedAt: number };
+};
+
+// Anexa el evento al journal si el juego está encendido (con el juego
+// apagado no se registra nada, como antes). Encola la escritura con el
+// contexto que la originó y aborta en silencio si venció: nunca se
+// aplica a la cuenta nueva. La migración v1 corre antes del primer
+// premio; el evento y los créditos de logro que descubre confirman en
+// una sola transacción; caché y aviso llegan solo después del commit.
+// Devuelve la promesa de la cola.
+export function award(
+  event: GameEvent,
+  scope: DbScope | undefined,
+  meta: AwardMeta,
+): Promise<void> {
   const bound = scope ?? captureDbScope();
   queue = queue.then(async () => {
     try {
       if (!isDbScopeActive(bound)) return;
       if (!(await loadGameEnabled(bound))) return;
       if (!isDbScopeActive(bound)) return;
-      const prev = await loadGame(bound);
-      const { state } = applyGameEvent(prev, event, Date.now(), () =>
-        crypto.randomUUID(),
+      await migrateGameStateV1(bound);
+      if (!isDbScopeActive(bound)) return;
+      await commitCompanionEvent(
+        {
+          id: meta.id,
+          at: meta.at,
+          dayKey: meta.dayKey,
+          event,
+          interval: meta.interval,
+        },
+        bound,
       );
       if (!isDbScopeActive(bound)) return;
-      cache = { scope: bound, state };
-      await persist(state, bound);
-      if (!isDbScopeActive(bound)) return;
-      notify();
+      await refreshAfterCommit(bound);
     } catch {
       /* el juego es extra: un fallo no debe notarse */
     }
@@ -108,23 +206,144 @@ export function award(event: GameEvent, scope?: DbScope): Promise<void> {
   return queue;
 }
 
+// La proyección ya entrega ids canónicos («achievement:x», «level:n»,
+// «legacy:y»); esos pasan tal cual. Un id suelto de la versión vieja
+// se traduce buscando su cofre y, si no se reconoce, se conserva como
+// «legacy:<id>»: la apertura queda registrada sin adivinar contenido.
+function canonicalChestId(id: string, chests: GameChest[]): string {
+  if (/^(achievement|level|legacy):.+/.test(id)) return id;
+  const chest = chests.find((c) => c.id === id);
+  return chest ? canonicalChestKey(chest) : `legacy:${id}`;
+}
+
+// Abrir un cofre es una recepción «chest-open:<clave canónica>»: la
+// apertura une por id con el sello mínimo y el contenido ya venía
+// resuelto — el receipt solo marca el acto.
 export function openGameChest(id: string, scope?: DbScope): Promise<void> {
   const bound = scope ?? captureDbScope();
   queue = queue.then(async () => {
     try {
       if (!isDbScopeActive(bound)) return;
-      const prev = await loadGame(bound);
-      const state = openChest(prev, id, Date.now());
+      const chests = (await loadGame(bound)).chests;
+      const key = canonicalChestId(id, chests);
+      await mergeCompanionReceipts(
+        [{ id: receiptIdFor("chest-open", key), at: Date.now() }],
+        bound,
+      );
       if (!isDbScopeActive(bound)) return;
-      cache = { scope: bound, state };
-      await persist(state, bound);
-      if (!isDbScopeActive(bound)) return;
-      notify();
+      await refreshAfterCommit(bound);
     } catch {
       /* igual: silencio */
     }
   });
   return queue;
+}
+
+// Marca una recepción genérica (los avisos vistos de logro/etapa de
+// las celebraciones; el cofre lo cubre openGameChest). Monotónica:
+// repetirla une por id quedándose con el sello mínimo.
+export function markCompanionReceipt(
+  kind: CompanionReceiptKind,
+  key: string,
+  scope?: DbScope,
+): Promise<void> {
+  const bound = scope ?? captureDbScope();
+  queue = queue.then(async () => {
+    try {
+      if (!isDbScopeActive(bound)) return;
+      await mergeCompanionReceipts(
+        [{ id: receiptIdFor(kind, key), at: Date.now() }],
+        bound,
+      );
+      await refreshAfterCommit(bound);
+    } catch {
+      /* igual: silencio */
+    }
+  });
+  return queue;
+}
+
+// ---------- Perfil (registros por campo) ----------
+
+// El registro vigente de un campo, ya arbitrado por sello.
+export async function readCompanionField(
+  field: CompanionField,
+  scope?: DbScope,
+): Promise<CompanionRegister | undefined> {
+  const bound = scope ?? captureDbScope();
+  const regs = mergeCompanionRegister(await readCompanionRegisters(bound));
+  return regs.find((reg) => reg.field === field);
+}
+
+// Escribe un campo del perfil con sello monótono local
+// (max(ahora, previo+1)) y operationId nuevo para el desempate entre
+// réplicas. Propaga el error: quien edita nombre/ropa debe poder
+// avisar si el guardado falló — nada de éxito ficticio.
+export async function writeCompanionField(
+  field: CompanionField,
+  value: unknown,
+  scope?: DbScope,
+): Promise<void> {
+  const bound = scope ?? captureDbScope();
+  const prev = await readCompanionField(field, bound);
+  const register: CompanionRegister = {
+    field,
+    value,
+    updatedAt: Math.max(Date.now(), (prev?.updatedAt ?? 0) + 1),
+    operationId: crypto.randomUUID(),
+  };
+  await putCompanionRegisters([register], bound);
+  if (isDbScopeActive(bound)) notify();
+}
+
+// Nombre visible del gato: el registro «name» o «Gato» si aún no se
+// bautiza. La validación de forma (1–24, sin controles) la hace el
+// editor al escribir; aquí solo se lee.
+export async function loadCompanionName(scope?: DbScope): Promise<string> {
+  try {
+    const reg = await readCompanionField("name", scope);
+    return typeof reg?.value === "string" && reg.value ? reg.value : "Gato";
+  } catch {
+    return "Gato";
+  }
+}
+
+const DEFAULT_DEVICE_PREFS: CompanionDevicePrefs = {
+  version: 1,
+  soundEnabled: false,
+  motion: "system",
+};
+
+// Preferencias de ESTE dispositivo (no sincronizan): el sonido nace
+// apagado a propósito y el movimiento sigue al sistema.
+export async function loadCompanionDevicePrefs(
+  scope?: DbScope,
+): Promise<CompanionDevicePrefs> {
+  try {
+    return (await readCompanionDevicePrefs(scope)) ?? DEFAULT_DEVICE_PREFS;
+  } catch {
+    return DEFAULT_DEVICE_PREFS;
+  }
+}
+
+// Guardar preferencias del dispositivo avisa a los suscriptores: el
+// proveedor relee «motion» (y el sonido) al instante — así el cambio
+// de Cuenta se aplica sin esperar a otro commit del juego.
+export async function saveCompanionDevicePrefs(
+  prefs: CompanionDevicePrefs,
+  scope?: DbScope,
+) {
+  const bound = scope ?? captureDbScope();
+  await writeCompanionDevicePrefs(prefs, bound);
+  if (isDbScopeActive(bound)) notify();
+}
+
+// Aviso a los suscriptores sin escritura propia: el sync lo usa tras
+// fusionar lo que bajó del servidor, para que la UI reproyecte sin
+// esperar un commit local. La caché ya debe quedar suelta con
+// resetGameCache antes de avisar.
+export function emitGameChanged() {
+  notify();
 }
 
 // Para pruebas y cambio de cuenta: suelta el estado en memoria. La
