@@ -1,24 +1,29 @@
 // Aplica los archivos db/migrations/*.sql en orden al DATABASE_URL del
 // .env, registrando los ya aplicados en lecta_schema_migrations para no
 // repetirlos. Idempotente: correrlo dos veces no cambia nada.
-// Barrera de entorno: solo corre sobre lecta_dev. Las migraciones
-// nuevas no se aplican a otra base sin autorización expresa.
+// Barrera de entorno: solo corre sobre lecta_dev por omisión. Otra base
+// (p. ej. producción) exige nombrarla expresa en LECTA_MIGRATE_TARGET y
+// que coincida con current_database() — nunca «cualquier base».
 import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import pg from "pg";
 
 const MIGRATIONS_DIR = "db/migrations";
-const ALLOWED_DATABASE = "lecta_dev";
+const DEFAULT_DATABASE = "lecta_dev";
 
-export async function migrate(client, migrationsDir = MIGRATIONS_DIR) {
+export async function migrate(
+  client,
+  migrationsDir = MIGRATIONS_DIR,
+  target = process.env.LECTA_MIGRATE_TARGET || DEFAULT_DATABASE,
+) {
   // current_database() antes de cualquier escritura: si la conexión
   // apunta a otra base se aborta sin ejecutar ni una línea de SQL.
   const { rows } = await client.query("SELECT current_database() AS db");
   const db = rows[0]?.db;
-  if (db !== ALLOWED_DATABASE)
+  if (db !== target)
     throw new Error(
-      `Este migrador solo corre sobre ${ALLOWED_DATABASE}; la conexión apunta a ${db}. Revisa DATABASE_URL.`,
+      `Este migrador solo corre sobre ${target}; la conexión apunta a ${db}. Revisa DATABASE_URL.`,
     );
   console.log(`Conectado a la base ${db}`);
 

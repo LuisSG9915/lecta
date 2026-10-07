@@ -6,6 +6,7 @@
 - `pnpm smoke:auth` corre contra un server vivo; `SMOKE_URL=<url>` para producción.
 - `pnpm db:setup` / `pnpm db:auth` aplican esquema y tablas de Better Auth (usan `DATABASE_URL` de `.env`).
 - `pnpm db:migrate` aplica `db/migrations/*.sql` en orden a la base del `.env` (idempotente, registra en `lecta_schema_migrations`). Migraciones nuevas van solo a `lecta_dev` salvo autorización.
+- El migrador exige que `current_database()` coincida con `LECTA_MIGRATE_TARGET` (default `lecta_dev`). Para producción: `LECTA_MIGRATE_TARGET=lecta` + `DATABASE_URL` con el nombre cambiado a `lecta` — solo con autorización expresa.
 - `pnpm db:migrate` aplica `db/migrations/*.sql` en orden (registra lo aplicado en `lecta_schema_migrations`; idempotente).
 
 ## Producción
@@ -50,9 +51,8 @@
   `pnpm dev` debe reiniciarse tras cambiar `.env` (las vars se leen al arrancar).
 - `lecta_dev` arrancó con esquema + auth + seed, sin usuarios: en dev hay que
   registrarse de nuevo (el correo es el mismo dominio, es solo otra base).
-- `lecta` (prod) tiene `lecta_schema_migrations`, `lecta_user_annotations` y
-  `lecta_user_activity` (aplicadas con `pnpm db:migrate` apuntando `DATABASE_URL`
-  a la base `lecta`, derivada de la de dev cambiando solo el nombre).
+- `lecta` (prod) tiene todas las migraciones hasta `009_user_companion.sql`
+  (las cuatro `lecta_user_companion_*` con FK CASCADE a `user`).
 - `defaultdb` pertenece a otro proyecto (POS): no tocar sus tablas.
 - EPUBs de prueba con copyright están en `.gitignore` (`/src/*.epub`,
   `/fixtures/*.epub` salvo `minimal.epub`).

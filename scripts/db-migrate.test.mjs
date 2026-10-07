@@ -77,4 +77,19 @@ describe("db-migrate", () => {
       expect.stringContaining("FROM lecta_schema_migrations"),
     ]);
   });
+
+  it("un objetivo explícito solo corre si coincide con la base real", async () => {
+    // «lecta» nombrada a propósito sí migra — la barrera no se quita,
+    // exige declarar el destino.
+    const prod = makeClient("lecta", ["001_first.sql"]);
+    await migrate(prod, undefined, "lecta");
+    expect(
+      prod.queries.some((q) => q.includes("CREATE TABLE mig_a")),
+    ).toBe(true);
+
+    // Objetivo declarado ≠ base real: no escribe nada.
+    const dev = makeClient("lecta_dev");
+    await expect(migrate(dev, undefined, "lecta")).rejects.toThrow("lecta");
+    expect(dev.queries).toEqual(["SELECT current_database() AS db"]);
+  });
 });
