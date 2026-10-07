@@ -1361,3 +1361,95 @@ mark.predicted-word:hover {
     transform: translateY(110%);
   }
 }
+
+/* ---------- «Leer en voz alta» ---------- */
+
+/* Oración hablada: marca suave con el tono de la regla de foco —
+   subraya sin robar la lectura (patrón de las marcas de palabra). */
+[data-tts-sentence] {
+  background: color-mix(in srgb, var(--rule) 22%, transparent);
+  border-radius: var(--r-1);
+}
+
+/* Chip de sesión: abajo al centro, discreto — informa el estado y
+   ofrece pausa/velocidad/detener sin interponerse en el texto. */
+.tts-chip {
+  position: fixed;
+  z-index: 18;
+  inset-inline: 0;
+  bottom: calc(var(--s-3) + env(safe-area-inset-bottom));
+  margin-inline: auto;
+  width: fit-content;
+  max-width: calc(100% - 2 * var(--s-4));
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-1) var(--s-3);
+  border: var(--border);
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--paper-raised) 94%, transparent);
+  backdrop-filter: blur(12px) saturate(1.2);
+  -webkit-backdrop-filter: blur(12px) saturate(1.2);
+  box-shadow: var(--shadow-sheet);
+  color: var(--ink-soft);
+  font-size: var(--fs--1);
+  animation: fade-in var(--dur-2) var(--ease-out);
+}
+
+.tts-chip-label {
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.tts-chip-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+}
+
+.tts-chip-actions button {
+  white-space: nowrap;
+}
+
+/* Velocidad: el número es la etiqueta; el aria-label lleva el rol. */
+.tts-chip-rate {
+  min-inline-size: 2.6em;
+}
+
+/* Consentimiento de primer uso: diálogo centrado sobre la lectura
+   con el mismo material que las hojas (scrim + cristal). */
+.tts-consent-backdrop {
+  position: fixed;
+  z-index: 30;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: var(--s-5);
+  background: var(--scrim);
+  backdrop-filter: blur(8px) saturate(1.05);
+  -webkit-backdrop-filter: blur(8px) saturate(1.05);
+  animation: fade-in var(--dur-2) var(--ease-out);
+}
+
+.tts-consent {
+  width: min(26rem, 100%);
+  padding: var(--s-5);
+  border: var(--border);
+  border-radius: var(--r-card, var(--r-sheet));
+  background: color-mix(in srgb, var(--paper-raised) 96%, transparent);
+  backdrop-filter: blur(14px) saturate(1.3);
+  -webkit-backdrop-filter: blur(14px) saturate(1.3);
+  box-shadow: var(--shadow-sheet);
+}
+
+.tts-consent-text {
+  margin: 0 0 var(--s-4);
+  color: var(--ink);
+  line-height: 1.55;
+}
+
+.tts-consent-actions {
+  display: flex;
+  gap: var(--s-2);
+  justify-content: flex-end;
+}

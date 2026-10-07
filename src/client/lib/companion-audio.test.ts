@@ -125,6 +125,21 @@ describe("companion-audio", () => {
     expect(clip.playCalls).toBe(1);
   });
 
+  it("suprimir por TTS corta el clip en curso y silencia los nuevos", () => {
+    audio.setSoundEnabled(true);
+    audio.playCompanionSound("purr");
+    const clip = lastClip();
+    audio.setCompanionAudioSuppressed(true);
+    expect(clip.playing).toBe(false);
+    // Suprimido no inicia sonidos nuevos aunque el gesto lo pida.
+    audio.playCompanionSound("meow");
+    expect(FakeAudio.instances).toHaveLength(1);
+    // Al levantar la supresión la preferencia sigue intacta.
+    audio.setCompanionAudioSuppressed(false);
+    audio.playCompanionSound("meow");
+    expect(FakeAudio.instances).toHaveLength(2);
+  });
+
   it("el rechazo de play() por autoplay se traga sin lanzar", async () => {
     FakeAudio.playError = new DOMException("autoplay", "NotAllowedError");
     audio.setSoundEnabled(true);
@@ -166,17 +181,21 @@ describe("companion-audio", () => {
     expect(FakeAudio.instances).toHaveLength(0);
   });
 
-  it("nada reproduce solo: la superficie son tres funciones explícitas", () => {
+  it("nada reproduce solo: la superficie son funciones explícitas", () => {
     // Visitas del lector, sync, logros y celebraciones jamás llaman a
     // este módulo — el único camino al altavoz es playCompanionSound,
     // que solo se invoca desde el gesto voluntario (abrir la hoja /
-    // acariciar). Ni activar la preferencia ni detener crean audio.
+    // acariciar). Ni activar la preferencia, ni la supresión por TTS
+    // ni detener crean audio.
     expect(Object.keys(audio).sort()).toEqual([
       "playCompanionSound",
+      "setCompanionAudioSuppressed",
       "setSoundEnabled",
       "stopCompanionSound",
     ]);
     audio.setSoundEnabled(true);
+    audio.setCompanionAudioSuppressed(true);
+    audio.setCompanionAudioSuppressed(false);
     audio.stopCompanionSound();
     expect(FakeAudio.instances).toHaveLength(0);
   });

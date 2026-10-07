@@ -266,6 +266,64 @@ export type ReadingEvent = ReadingEventBase &
         sectionIndex: number;
         daysSince: number;
       }
+    // Lectura en voz alta (voz del dispositivo, Web Speech API):
+    // sesión iniciada / pausada / reanudada / terminada y cambio de
+    // ajuste. Los payloads llevan solo identificadores y números —
+    // jamás texto del libro ni la palabra consultada.
+    | {
+        kind: "tts_session_start";
+        sessionId: string;
+        targetId: string;
+        sectionIndex: number;
+        source: "reader_tools";
+        rate: number;
+        highlight: string;
+      }
+    | {
+        kind: "tts_paused";
+        sessionId: string;
+        targetId: string;
+        sectionIndex: number;
+        reason: string;
+        ms: number;
+      }
+    | {
+        kind: "tts_resumed";
+        sessionId: string;
+        targetId: string;
+        sectionIndex: number;
+        ms: number;
+      }
+    | {
+        kind: "tts_section_advance";
+        sessionId: string;
+        targetId: string;
+        sectionIndex: number;
+        ms: number;
+      }
+    | {
+        kind: "tts_session_end";
+        sessionId: string;
+        targetId: string;
+        sectionIndex: number;
+        endReason: string;
+        rate: number;
+        ms: number;
+        sentenceCount: number;
+        lookupCount: number;
+        savedWordCount: number;
+        resumedCount: number;
+        sectionAdvances: number;
+      }
+    // Fuera de visita (el ajuste puede cambiar desde la estantería):
+    // visitId/bookHash quedan en null como los tip_*.
+    | {
+        kind: "tts_setting_changed";
+        enabled: boolean;
+        rate?: number;
+        highlight?: string;
+        source: "settings" | "reader_tools";
+      }
   );
 
 // Operación pendiente sobre un libro remoto (subida o borrado). Es la

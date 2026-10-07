@@ -28,6 +28,10 @@ const SOURCES: Record<CompanionSoundKind, string> = {
 const VOLUME = 0.4;
 
 let enabled = false;
+// La voz del lector («Leer en voz alta») manda: mientras habla, el
+// gato no inicia sonidos nuevos ni deja sonando el que corría. Es
+// supresión temporal — no toca la preferencia `enabled` del usuario.
+let suppressed = false;
 // Un elemento por clip, creado al primer uso; `current` es el único
 // que puede estar sonando — un sonido nuevo siempre corta al que
 // corre.
@@ -55,10 +59,17 @@ export function setSoundEnabled(on: boolean): void {
   if (!on) stopCompanionSound();
 }
 
+// Supresión temporal por TTS activo. Al entrar también corta el clip
+// en curso: dos voces a la vez (gato + lectura) no tienen sentido.
+export function setCompanionAudioSuppressed(on: boolean): void {
+  suppressed = on;
+  if (on) stopCompanionSound();
+}
+
 // Suena un clip si la preferencia lo permite, desde el inicio. El
 // nuevo corta al anterior — jamás hay dos sonidos del gato a la vez.
 export function playCompanionSound(kind: CompanionSoundKind): void {
-  if (!enabled) return;
+  if (!enabled || suppressed) return;
   const el = clipFor(kind);
   if (!el) return;
   stopCompanionSound();

@@ -136,6 +136,7 @@ import {
   anchorAtPage,
   pageForFragment,
   pageForText,
+  pageOfElement,
   type PageLayout,
 } from "../lib/pagination";
 import {
@@ -162,6 +163,30 @@ import {
   CALIBRATION_DONE_KEY,
   hasCalibrationEvidence,
 } from "../lib/calibration";
+import {
+  isTtsProgrammaticNav,
+  isTtsProgrammaticScroll,
+  noteTtsProgrammaticScroll,
+  withTtsProgrammaticNav,
+} from "../lib/ttsGuards";
+import {
+  consentTts,
+  isTtsSupported,
+  loadTtsSettings,
+} from "../lib/ttsSettings";
+import { sentenceIndexForAnchor } from "../lib/ttsSentences";
+import {
+  createTtsController,
+  type TtsController,
+} from "../lib/ttsController";
+import {
+  TTS_IDLE,
+  type TtsSnapshot,
+} from "../lib/ttsTypes";
+import { setCompanionAudioSuppressed } from "../lib/companion-audio";
+import TtsMenuItem from "./TtsMenuItem";
+import TtsConsentDialog from "./TtsConsentDialog";
+import TtsNowPlaying from "./TtsNowPlaying";
 import WordPanel from "./WordPanel";
 import SectionPreview, { type SectionPreviewRow } from "./SectionPreview";
 import Sheet from "./Sheet";
@@ -416,6 +441,9 @@ export default function Reader({
   const pageCountRef = useRef(1);
   const metricsRef = useRef<PageLayout | null>(null);
   const sectionIndexRef = useRef(0);
+  // Espejo del estado de montaje para el controlador TTS (la sección
+  // «terminó de pintar» se consulta al llegar el render, no al decidir).
+  const stateRef = useRef<ReaderState>("idle");
   const pageAnchorRef = useRef<string | null>(null);
   // Destino pendiente de una carga de sección: lo resuelve el recuento
   // de páginas, que corre cuando los estilos de columna ya aplicaron.
@@ -2093,6 +2121,10 @@ export default function Reader({
       },
     ) => {
       navIntentRef.current = intent;
+      // La voz solo cede ante navegación del lector: los avances que
+      // hace el propio TTS dentro del target llegan protegidos por
+      // withTtsProgrammaticNav y no cierran la sesión.
+      if (!isTtsProgrammaticNav()) ttsRef.current?.stop("navigation");
       const restore = { ...dest.restore };
       if (dest.fragment) restore.fragment = dest.fragment;
       const prevTargetId = targetAt(
@@ -2113,6 +2145,203 @@ export default function Reader({
     },
     [loadSection, evaluatePreparation],
   );
+
+  // ---------- «Leer en voz alta» ----------
+  // La sesión vive en un controlador estable creado una vez por
+  // montaje; las funciones del lector que toca se sirven por espejo
+  // (misma razón que sectionIndexRef: evitar cierres de estado viejo
+  // sin rehacer la sesión en cada render).
+  const ttsRef = useRef<TtsController | null>(null);
+  const [ttsSnap, setTtsSnap] = useState<TtsSnapshot>(TTS_IDLE);
+  const [ttsConsentOpen, setTtsConsentOpen] = useState(false);
+  const ttsFns = useRef({
+    navigate,
+    trackEvent,
+    noteActivity,
+    onStatus,
+    reducedMotion: companion.reducedMotion,
+    language,
+    closeSheet,
+  });
+
+  // Los espejos se actualizan tras cada commit: las dependencias del
+  // controlador leen siempre la versión vigente de estas funciones.
+  useEffect(() => {
+    ttsFns.current = {
+      navigate,
+      trackEvent,
+      noteActivity,
+      onStatus,
+      reducedMotion: companion.reducedMotion,
+      language,
+      closeSheet,
+    };
+    stateRef.current = state;
+  });
+
+  useEffect(() => {
+    const ctl = createTtsController({
+      language: () => ttsFns.current.language,
+      root: () => containerRef.current,
+      sectionIndex: () => sectionIndexRef.current,
+      sectionReady: () => stateRef.current === "ready",
+      navigateSection: (index) => {
+        // Salto interno del target: envuelto para que navigate no lo
+        // lea como navegación explícita (que sí detiene la sesión).
+        // Intent «resume» porque la voz continúa el tramo — «chapter»
+        // podría interponer la hoja de preparación a media sesión.
+        withTtsProgrammaticNav(() => {
+          void ttsFns.current.navigate("resume", { index });
+        });
+      },
+      reveal: (el) => {
+        // El scroll que sigue a la voz no es del lector: la ventana
+        // de tiempo lo exime de las señales de actividad.
+        noteTtsProgrammaticScroll();
+        const metrics = metricsRef.current;
+        if (layoutRef.current === "pages" && metrics) {
+          setPageIdx(pageOfElement(el, metrics));
+          return;
+        }
+        el.scrollIntoView({
+          block: "center",
+          behavior: ttsFns.current.reducedMotion ? "auto" : "smooth",
+        });
+      },
+      emit: (draft) =>
+        ttsFns.current.trackEvent(draft as unknown as VisitEventDraft),
+      noteActivity: () => ttsFns.current.noteActivity(),
+      onSnapshot: setTtsSnap,
+      onSessionEnd: (reason) => {
+        if (reason === "error")
+          ttsFns.current.onStatus("No se pudo leer en voz alta.");
+      },
+      resolveStartIndex: (items) => {
+        // Arranca donde el lector tiene la vista: la posición
+        // guardada si cae en esta sección; si no, el bloque visible
+        // más alto; sin ninguna de las dos, la primera oración.
+        const saved = latestPosition.current;
+        const anchor =
+          saved?.sectionIndex === sectionIndexRef.current && saved.anchor
+            ? saved.anchor
+            : containerRef.current
+              ? anchorAtViewTop(containerRef.current)
+              : null;
+        return sentenceIndexForAnchor(items, anchor);
+      },
+    });
+    // La asignación al ref va por función (patrón de analyzerRef):
+    // el lint de react-hooks no admite escrituras directas aquí.
+    const attach = (next: TtsController | null) => {
+      ttsRef.current = next;
+    };
+    attach(ctl);
+    return () => {
+      ctl.destroy();
+      attach(null);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Pausas de la sesión: pestaña oculta («visibility», con cierre
+  // automático prolongado en el controlador) gana siempre; la ficha
+  // de palabra lleva razón propia («word_lookup»); cualquier otra
+  // hoja o capa es «panel_opened»; el aviso de fatiga, «fatigue».
+  // Ninguna reanuda sola: volver es siempre decisión del lector.
+  useEffect(() => {
+    const ctl = ttsRef.current;
+    if (!ctl) return;
+    if (ttsSnap.status !== "speaking" && ttsSnap.status !== "preparing")
+      return;
+    if (docHidden) ctl.pause("visibility");
+    else if (selection) ctl.pause("word_lookup");
+    else if (
+      sheet ||
+      panelsOpen ||
+      prep ||
+      askStart ||
+      companion.open ||
+      companion.modalOpen
+    )
+      ctl.pause("panel_opened");
+    else if (fatigueNotice) ctl.pause("fatigue");
+  }, [
+    ttsSnap.status,
+    docHidden,
+    selection,
+    sheet,
+    panelsOpen,
+    prep,
+    askStart,
+    companion.open,
+    companion.modalOpen,
+    fatigueNotice,
+  ]);
+
+  // La sección que el avance programático pidió terminó de pintar:
+  // el controlador reconstruye el mapa ahí y sigue hablando.
+  useEffect(() => {
+    if (state === "ready") ttsRef.current?.onSectionRendered();
+  }, [state, sectionIndex]);
+
+  // El gato guarda silencio mientras la voz corre — supresión
+  // temporal, no toca su preferencia de sonido ni su celebración.
+  useEffect(() => {
+    setCompanionAudioSuppressed(ttsSnap.status === "speaking");
+    return () => setCompanionAudioSuppressed(false);
+  }, [ttsSnap.status]);
+
+  const startTts = () => {
+    const ctl = ttsRef.current;
+    if (!ctl || state !== "ready") return;
+    closeSheet();
+    const index = sectionIndexRef.current;
+    // El territorio es el rango [startSection, endSection) del
+    // destino que cubre la sección visible; sin catálogo, la sección
+    // sola (lee lo visible y termina con chapter_end).
+    const range = (catalogRef.current?.ranges ?? []).find(
+      (r) => r.startSection <= index && index < r.endSection,
+    );
+    ctl.start(
+      {
+        bookHash,
+        targetId: range?.target.id ?? `s${index}`,
+        startSection: range?.startSection ?? index,
+        endSection: range?.endSection ?? index + 1,
+        sectionIndex: index,
+      },
+      // El índice real lo resuelve resolveStartIndex sobre el mapa
+      // ya construido (posición guardada → bloque visible → 0).
+      0,
+    );
+  };
+
+  const onTtsRequest = () => {
+    const ctl = ttsRef.current;
+    if (!ctl) return;
+    if (ttsSnap.status !== "idle") {
+      ctl.stop("user");
+      return;
+    }
+    // Primer uso del dispositivo: el aviso de privacidad va primero;
+    // cancelarlo no vuelve a insistir (solo reaparece si se toca).
+    if (loadTtsSettings().consentedAt === null) {
+      setTtsConsentOpen(true);
+      return;
+    }
+    startTts();
+  };
+
+  const onTtsConsentAccept = () => {
+    consentTts();
+    setTtsConsentOpen(false);
+    trackEvent({
+      kind: "tts_setting_changed",
+      enabled: true,
+      source: "reader_tools",
+    });
+    startTts();
+  };
 
   useEffect(() => {
     let disposed = false;
@@ -2470,7 +2699,10 @@ export default function Reader({
   // documento no hace scroll, pero el guardado por ocultar sigue vivo.
   useEffect(() => {
     const onScroll = () => {
-      noteActivity();
+      // El auto-scroll que sigue a la voz no es señal de lectura:
+      // no abre ni estira el segmento de actividad. El scroll crudo
+      // del lector sí (adelantar con los ojos es uso bimodal).
+      if (!isTtsProgrammaticScroll()) noteActivity();
       saveSoon();
       if (rafPending.current) return;
       rafPending.current = true;
@@ -2614,6 +2846,9 @@ export default function Reader({
     const raf = requestAnimationFrame(() => {
       if (settings.focusMode === "syntactic") applySyntacticLines(container);
       else clearSyntacticLines(container);
+      // Las líneas sintácticas reenvuelven los nodos de texto: el
+      // mapa de oraciones quedó viejo y se re-ancla por huella.
+      ttsRef.current?.onDomMutated();
       if (layoutRef.current === "pages") {
         remeasure();
       } else {
@@ -2747,6 +2982,7 @@ export default function Reader({
   }, [selection, sheet, panelsOpen, sectionIndex, sectionTotal, navigate, goPage, noteActivity]);
 
   const onWordSaved = (word: SavedWord) => {
+    ttsRef.current?.noteSavedWord();
     for (const form of [word.form, word.lemma]) {
       if (form) savedForms.current.set(form.toLowerCase(), "new");
     }
@@ -3947,6 +4183,15 @@ export default function Reader({
               Revisar ahora
             </button>
           </div>
+          {/* «Leer en voz alta» solo existe donde hay voces del
+              dispositivo (Web Speech API): sin speechSynthesis el
+              ítem ni se ofrece — la función jamás se sugiere sola. */}
+          {isTtsSupported() ? (
+            <TtsMenuItem
+              active={ttsSnap.status !== "idle"}
+              onRequest={onTtsRequest}
+            />
+          ) : null}
           <details className="settings-advanced">
             <summary>Ajustes avanzados</summary>
             <div className="settings-advanced-body">
@@ -4120,6 +4365,27 @@ export default function Reader({
                   },
             );
           }}
+        />
+      ) : null}
+
+      {/* Chip discreto de la sesión de voz: no captura la lectura y
+          en foco profundo se reduce a la etiqueta de estado. */}
+      <TtsNowPlaying
+        snap={ttsSnap}
+        minimal={catState === "deep_focus"}
+        onPauseResume={() => {
+          const ctl = ttsRef.current;
+          if (!ctl) return;
+          if (ttsSnap.status === "speaking") ctl.pause("user");
+          else if (ttsSnap.status === "paused") ctl.resume();
+        }}
+        onCycleRate={() => void ttsRef.current?.cycleRate()}
+        onStop={() => ttsRef.current?.stop("user")}
+      />
+      {ttsConsentOpen ? (
+        <TtsConsentDialog
+          onAccept={onTtsConsentAccept}
+          onDismiss={() => setTtsConsentOpen(false)}
         />
       ) : null}
     </div>
