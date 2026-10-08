@@ -228,3 +228,57 @@ describe("Aprender", () => {
     expect(text()).not.toContain("Por aprender");
   });
 });
+
+describe("Filtros por idioma y libro", () => {
+  it("muestra selector de idioma si hay palabras en más de un idioma y filtra la lista", async () => {
+    listWordsMock.mockResolvedValue([
+      word({ form: "casa", lemma: "casa", language: "es", key: "es:casa", meaning: "hogar" }),
+      word({ form: "wander", lemma: "wander", language: "en", key: "en:wander", meaning: "vagar" }),
+    ]);
+    await render();
+    expect(button("Todos (2)")).toBeTruthy();
+    expect(button("Español (1)")).toBeTruthy();
+    expect(button("Inglés (1)")).toBeTruthy();
+    const wordsList = () => host.querySelector(".nb-words")?.textContent ?? "";
+    expect(wordsList()).toContain("casa");
+    expect(wordsList()).toContain("wander");
+
+    await click("Inglés (1)");
+    expect(wordsList()).toContain("wander");
+    expect(wordsList()).not.toContain("casa");
+
+    await click("Español (1)");
+    expect(wordsList()).toContain("casa");
+    expect(wordsList()).not.toContain("wander");
+  });
+
+  it("permite filtrar palabras por libro específico", async () => {
+    const books = [
+      { hash: "h-es", name: "libro-es.epub", title: "Libro Español", author: "Autor ES", language: "es" },
+      { hash: "h-en", name: "book-en.epub", title: "Book English", author: "Author EN", language: "en" },
+    ];
+    listWordsMock.mockResolvedValue([
+      word({ form: "reloj", lemma: "reloj", bookHash: "h-es", language: "es", meaning: "tiempo" }),
+      word({ form: "clock", lemma: "clock", bookHash: "h-en", language: "en", meaning: "time" }),
+    ]);
+    await act(async () => {
+      root.render(h(Vocabulary, { onClose: vi.fn(), books }));
+      for (let i = 0; i < 6; i++) await Promise.resolve();
+    });
+
+    const select = host.querySelector("#nb-book-select") as HTMLSelectElement;
+    expect(select).toBeTruthy();
+    const wordsList = () => [...host.querySelectorAll(".nb-words")].map((el) => el.textContent).join(" ");
+    expect(wordsList()).toContain("reloj");
+    expect(wordsList()).toContain("clock");
+
+    await act(async () => {
+      select.value = "h-en";
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+      for (let i = 0; i < 6; i++) await Promise.resolve();
+    });
+
+    expect(wordsList()).toContain("clock");
+    expect(wordsList()).not.toContain("reloj");
+  });
+});

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import { stripSoftHyphens } from "./epub";
+import { languageName, normalizeLanguage, stripSoftHyphens } from "./epub";
 
 const div = (html: string) => {
   const el = document.createElement("div");
@@ -34,5 +34,53 @@ describe("stripSoftHyphens", () => {
     const before = root.innerHTML;
     stripSoftHyphens(root);
     expect(root.innerHTML).toBe(before);
+  });
+});
+
+describe("normalizeLanguage", () => {
+  it("normaliza variantes de inglés a 'en'", () => {
+    expect(normalizeLanguage("en-US")).toBe("en");
+    expect(normalizeLanguage("en-GB")).toBe("en");
+    expect(normalizeLanguage("en_US")).toBe("en");
+    expect(normalizeLanguage("eng")).toBe("en");
+    expect(normalizeLanguage("EN")).toBe("en");
+  });
+
+  it("normaliza variantes de español a 'es'", () => {
+    expect(normalizeLanguage("es-ES")).toBe("es");
+    expect(normalizeLanguage("es-MX")).toBe("es");
+    expect(normalizeLanguage("spa")).toBe("es");
+    expect(normalizeLanguage("ES")).toBe("es");
+  });
+
+  it("normaliza códigos de 3 letras comunes", () => {
+    expect(normalizeLanguage("fra")).toBe("fr");
+    expect(normalizeLanguage("fre")).toBe("fr");
+    expect(normalizeLanguage("deu")).toBe("de");
+    expect(normalizeLanguage("ger")).toBe("de");
+    expect(normalizeLanguage("ita")).toBe("it");
+    expect(normalizeLanguage("por")).toBe("pt");
+  });
+
+  it("recae a 'es' ante entradas vacías o inválidas", () => {
+    expect(normalizeLanguage("")).toBe("es");
+    expect(normalizeLanguage(null)).toBe("es");
+    expect(normalizeLanguage(undefined)).toBe("es");
+    expect(normalizeLanguage("12345")).toBe("es");
+  });
+});
+
+describe("languageName", () => {
+  it("devuelve los nombres comunes en español", () => {
+    expect(languageName("es")).toBe("Español");
+    expect(languageName("en")).toBe("Inglés");
+    expect(languageName("fr")).toBe("Francés");
+    expect(languageName("de")).toBe("Alemán");
+    expect(languageName("it")).toBe("Italiano");
+    expect(languageName("pt")).toBe("Portugués");
+  });
+
+  it("muestra el código en mayúsculas si no está en la lista", () => {
+    expect(languageName("nl")).toBe("NL");
   });
 });

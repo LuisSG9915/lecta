@@ -211,6 +211,43 @@
   font-size: var(--fs-sm);
 }
 
+.shelf-lang-badge {
+  position: absolute;
+  inset-block-start: var(--s-2);
+  inset-inline-end: var(--s-2);
+  padding: 0.1em 0.4em;
+  border-radius: var(--r-1);
+  background: var(--paper-raised);
+  color: var(--ink-soft);
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  box-shadow: var(--shadow-cover);
+  text-transform: uppercase;
+}
+
+.shelf-book-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  inline-size: 100%;
+  gap: var(--s-2);
+}
+
+.shelf-book-lang-select {
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--ink-soft);
+  background: var(--paper-sunken);
+  border: var(--border);
+  border-radius: var(--r-1);
+  padding: 0.2em 0.4em;
+  min-height: 2rem;
+  cursor: pointer;
+}
+
 .shelf-book-thread {
   inline-size: 100%;
 }

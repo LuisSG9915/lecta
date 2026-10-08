@@ -69,8 +69,65 @@ const SPANISH_STOPWORDS = [
   "estaba", "hay", "ha", "han", "he", "has", "hemos", "había",
 ];
 
-const stopwordSet = new Set(SPANISH_STOPWORDS);
+// Palabras funcionales del inglés (artículos, preposiciones, pronombres,
+// conjunciones, auxiliares, números y adverbios gramaticales comunes).
+const ENGLISH_STOPWORDS = [
+  // artículos
+  "the", "a", "an",
+  // preposiciones
+  "of", "in", "to", "for", "with", "on", "at", "from", "by", "about",
+  "as", "into", "like", "through", "after", "over", "between", "out",
+  "against", "during", "without", "before", "under", "around", "among",
+  "upon", "off", "across", "behind", "beyond", "within", "along",
+  "towards", "toward", "near", "despite", "above", "below", "throughout",
+  // conjunciones
+  "and", "but", "or", "nor", "so", "yet", "because", "although", "though",
+  "while", "whereas", "if", "unless", "whether", "since", "than",
+  // pronombres personales, reflexivos y posesivos
+  "i", "you", "he", "she", "it", "we", "they", "me", "him", "her",
+  "us", "them", "my", "your", "his", "its", "our", "their", "mine",
+  "yours", "hers", "ours", "theirs", "myself", "yourself", "himself",
+  "herself", "itself", "ourselves", "yourselves", "themselves",
+  // demostrativos e interrogativos/relativos
+  "this", "that", "these", "those", "who", "whom", "whose", "which",
+  "what", "whatever", "whoever", "whomever", "whichever",
+  // indefinidos y cuantificadores
+  "all", "some", "any", "no", "every", "each", "both", "either", "neither",
+  "another", "other", "others", "such", "someone", "somebody", "something",
+  "anyone", "anybody", "anything", "everyone", "everybody", "everything",
+  "nobody", "nothing", "none", "many", "much", "few", "fewer", "little",
+  "more", "most", "less", "least", "several", "enough",
+  // numerales cardinales y ordinales
+  "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
+  "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen",
+  "seventeen", "eighteen", "nineteen", "twenty", "thirty", "forty", "fifty",
+  "sixty", "seventy", "eighty", "ninety", "hundred", "thousand", "million",
+  "billion", "first", "second", "third", "fourth", "fifth", "last", "next",
+  // auxiliares, modales y formas de be / have / do
+  "be", "am", "is", "are", "was", "were", "been", "being",
+  "have", "has", "had", "having",
+  "do", "does", "did", "doing", "done",
+  "will", "would", "shall", "should", "can", "could", "may", "might", "must",
+  // contracciones frecuentes normalizadas
+  "don", "doesn", "didn", "won", "wouldn", "can", "couldn", "shouldn",
+  "isn", "aren", "wasn", "weren", "hasn", "haven", "hadn",
+  // adverbios locativos, temporales y de modo comunes
+  "not", "too", "very", "also", "just", "only", "now", "then", "there",
+  "here", "where", "when", "why", "how", "again", "always", "never",
+  "sometimes", "often", "already", "still", "ever", "even", "rather",
+  "quite", "almost", "together", "well", "back", "away", "far", "soon",
+  "today", "yesterday", "tomorrow", "tonight", "perhaps", "maybe",
+  // saludos e interjecciones comunes
+  "hello", "hi", "hey", "bye", "goodbye", "yes", "yeah", "yep", "nope",
+  "oh", "ah", "wow", "please", "thanks", "thank",
+];
+
+const spanishStopwordSet = new Set(SPANISH_STOPWORDS);
+const englishStopwordSet = new Set(ENGLISH_STOPWORDS);
 
 export function isStopword(form: string, language = "es") {
-  return language === "es" && stopwordSet.has(form.trim().toLowerCase());
+  const normalized = form.trim().toLowerCase();
+  if (language === "en") return englishStopwordSet.has(normalized);
+  if (language === "es") return spanishStopwordSet.has(normalized);
+  return false;
 }

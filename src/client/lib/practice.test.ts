@@ -2,10 +2,13 @@ import { describe, expect, it } from "vitest";
 import { Rating } from "./fsrs";
 import {
   blankWordInContext,
+  conciseMeaning,
   modeForWord,
   pickDistractors,
   ratingToCorrect,
+  scrambleWord,
   shuffleStable,
+  smartContextSnippet,
 } from "./practice";
 import type { SavedWord } from "./idb";
 
@@ -44,6 +47,56 @@ describe("blankWordInContext", () => {
     expect(blankWordInContext("Otra oración.", "perenne")).toBeNull();
     expect(blankWordInContext("", "perenne")).toBeNull();
     expect(blankWordInContext("Texto.", "  ")).toBeNull();
+  });
+});
+
+describe("smartContextSnippet", () => {
+  it("keeps short context intact without trimming", () => {
+    const short = "El hidalgo leyó despacio una palabra nueva.";
+    const res = smartContextSnippet(short, "palabra");
+    expect(res.isTrimmed).toBe(false);
+    expect(res.snippet).toBe(short);
+  });
+
+  it("handles empty or null text safely", () => {
+    expect(smartContextSnippet("")).toEqual({ snippet: "", isTrimmed: false });
+    expect(smartContextSnippet(null)).toEqual({ snippet: "", isTrimmed: false });
+    expect(smartContextSnippet("   ")).toEqual({ snippet: "", isTrimmed: false });
+  });
+
+  it("trims long context and centers around the target word", () => {
+    const long =
+      "En un lugar de la Mancha de cuyo nombre no quiero acordarme vivía un hidalgo que coleccionaba palabras raras como inmarcesible en sus viejos cuadernos de estudio bajo la luz tenue.";
+    const res = smartContextSnippet(long, "inmarcesible", {
+      maxWordsBefore: 3,
+      maxWordsAfter: 3,
+    });
+    expect(res.isTrimmed).toBe(true);
+    expect(res.snippet).toContain("inmarcesible");
+    expect(res.snippet.startsWith("… ")).toBe(true);
+    expect(res.snippet.endsWith(" …")).toBe(true);
+  });
+
+  it("centers around blank _____ when practicing cloze", () => {
+    const long =
+      "En un lugar de la Mancha de cuyo nombre no quiero acordarme vivía un hidalgo que coleccionaba palabras raras como _____ en sus viejos cuadernos de estudio bajo la luz tenue.";
+    const res = smartContextSnippet(long, "_____", {
+      maxWordsBefore: 2,
+      maxWordsAfter: 2,
+    });
+    expect(res.isTrimmed).toBe(true);
+    expect(res.snippet).toBe("… raras como _____ en sus …");
+  });
+
+  it("preserves trailing punctuation if next segment is a punctuation mark", () => {
+    const long =
+      "Muchos años después frente al pelotón de fusilamiento el coronel Aureliano Buendía había de recordar aquella tarde remota en que su padre lo llevó a conocer el hielo.";
+    const res = smartContextSnippet(long, "fusilamiento", {
+      maxWordsBefore: 3,
+      maxWordsAfter: 2,
+    });
+    expect(res.isTrimmed).toBe(true);
+    expect(res.snippet).toContain("fusilamiento");
   });
 });
 
@@ -149,5 +202,57 @@ describe("modeForWord", () => {
     for (let index = 0; index < 8; index++) {
       expect(modeForWord(withContext, index)).not.toBe("sense");
     }
+  });
+});
+
+describe("conciseMeaning", () => {
+  it("keeps short definitions intact", () => {
+    expect(conciseMeaning("Dicho breve y agudo.")).toBe("Dicho breve y agudo.");
+  });
+
+  it("removes parenthesis category markers and boilerplate", () => {
+    expect(conciseMeaning("(Bot.) Planta herbácea vivaz de flores amarillas.")).toBe(
+      "Planta herbácea vivaz de flores amarillas.",
+    );
+    expect(
+      conciseMeaning("Dicho de una persona: Que habla con excesiva pedantería."),
+    ).toBe("Que habla con excesiva pedantería.");
+  });
+
+  it("trims long text at word boundaries with ellipsis", () => {
+    const long =
+      "Persona que tiene por oficio recoger, seleccionar y preparar noticias para publicarlas en un periódico o difundirlas en la radio.";
+    const trimmed = conciseMeaning(long, 50);
+    expect(trimmed.endsWith("…")).toBe(true);
+    expect(trimmed.length).toBeLessThanOrEqual(51);
+  });
+
+  it("returns empty string for empty input", () => {
+    expect(conciseMeaning("")).toBe("");
+  });
+});
+
+describe("scrambleWord", () => {
+  it("scrambles letters and ensures result is different from original for multi-letter words", () => {
+    const res = scrambleWord("palabra", 42);
+    expect(res.original).toBe("palabra");
+    expect(res.letters.join("")).not.toBe("PALABRA");
+    expect(res.letters.sort().join("")).toBe([..."PALABRA"].sort().join(""));
+  });
+
+  it("handles single-letter word and empty string", () => {
+    expect(scrambleWord("").letters).toEqual([]);
+    expect(scrambleWord("a").letters).toEqual(["A"]);
+  });
+
+  it("handles words with repeated letters like aaa", () => {
+    const res = scrambleWord("aaa");
+    expect(res.letters).toEqual(["A", "A", "A"]);
+  });
+
+  it("works with random shuffle without seed", () => {
+    const res = scrambleWord("gato");
+    expect(res.letters.join("")).not.toBe("GATO");
+    expect(res.letters).toHaveLength(4);
   });
 });

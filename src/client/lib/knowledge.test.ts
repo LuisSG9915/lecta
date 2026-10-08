@@ -738,4 +738,27 @@ describe("resolveEvidence", () => {
     );
     expect(out.get("abrir")?.known).toBe(false);
   });
+
+  it("palabra del banco de calibración en inglés resuelve su zipf de banda cuando no hay catálogo", () => {
+    const out = resolveEvidence(
+      [
+        { lemma: "clandestine", known: false },
+        { lemma: "awkward", known: true },
+      ],
+      {},
+      {},
+      "en",
+    );
+    expect(out.get("clandestine")).toEqual({
+      lemma: "clandestine",
+      known: false,
+      zipf: 2.25,
+    });
+    expect(out.get("awkward")).toEqual({
+      lemma: "awkward",
+      known: true,
+      zipf: 2.75,
+    });
+  });
 });
+

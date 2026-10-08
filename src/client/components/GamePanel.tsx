@@ -203,20 +203,29 @@ export function GamePanel() {
         </ul>
       ) : null}
 
-      {earned.length ? (
-        <details className="game-shelf">
-          <summary className="meta">
-            Logros · {earned.length} de {ACHIEVEMENTS.length}
-          </summary>
-          <ul className="game-badges">
-            {earned.map((a) => (
-              <li key={a.id} className="game-badge" title={a.desc}>
-                {a.title}
+      <details className="game-shelf">
+        <summary className="meta">
+          Logros · {earned.length} de {ACHIEVEMENTS.length}
+        </summary>
+        <ul className="game-badges">
+          {ACHIEVEMENTS.map((a) => {
+            const isEarned = Boolean(state.achievements[a.id]);
+            return (
+              <li
+                key={a.id}
+                className={`game-badge${isEarned ? " is-earned" : " is-locked"}`}
+                title={a.desc}
+              >
+                <span className="game-badge-icon" aria-hidden="true">
+                  {isEarned ? "🏆" : "🔒"}
+                </span>
+                <span className="game-badge-title">{a.title}</span>
+                <span className="game-badge-xp">+{a.xp} XP</span>
               </li>
-            ))}
-          </ul>
-        </details>
-      ) : null}
+            );
+          })}
+        </ul>
+      </details>
     </section>
   );
 }

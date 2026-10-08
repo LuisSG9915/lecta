@@ -1127,7 +1127,27 @@
   font-size: 0.78rem;
   color: var(--ink);
   background: var(--paper);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
   animation: rise-in var(--dur-1) var(--ease-out);
+}
+
+.game-badge.is-earned {
+  border-color: var(--ochre);
+  background: var(--ochre-wash);
+  font-weight: 600;
+}
+
+.game-badge.is-locked {
+  opacity: 0.55;
+  border-style: dashed;
+}
+
+.game-badge-xp {
+  font-size: 0.7rem;
+  color: var(--ink-soft);
+  margin-inline-start: 2px;
 }
 
 /* ---------- Botón del gato ----------

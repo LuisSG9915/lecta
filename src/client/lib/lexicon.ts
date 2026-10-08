@@ -7,6 +7,10 @@ import {
   saveCachedLexiconBatch,
   type DbScope,
 } from "./idb";
+import {
+  calibrationFallbackDefinition,
+  calibrationBankZipf,
+} from "../../shared/calibration-bank";
 
 export type LexiconEntry = {
   // int8 de unique_rowid() (~1.2e18 > 2^53): viaja como string por
@@ -30,6 +34,26 @@ type LexiconResponseBody = {
   entries?: LexiconEntry[] | Record<string, LexiconEntry[]>;
   error?: string;
 };
+
+function getCalibrationBankFallbackEntry(form: string, language: string): LexiconEntry | null {
+  const normalized = form.trim().toLowerCase();
+  const def = calibrationFallbackDefinition(normalized, language);
+  if (!def) return null;
+  return {
+    entryId: null,
+    lemma: normalized,
+    pos: null,
+    freqRank: null,
+    zipf: calibrationBankZipf(normalized, language),
+    senses: [
+      {
+        definition: def,
+        example: null,
+        senseOrder: 1,
+      },
+    ],
+  };
+}
 
 export async function lookupWord(
   form: string,
@@ -60,6 +84,10 @@ export async function lookupWord(
       };
       return { ok: true, found: true, entries: [fallbackEntry], offline: true };
     }
+    const bankFallback = getCalibrationBankFallbackEntry(form, language);
+    if (bankFallback) {
+      return { ok: true, found: true, entries: [bankFallback], offline: true };
+    }
     return {
       ok: false,
       error: "Sin conexión con el catálogo. Esta palabra aún no está en la memoria local.",
@@ -70,12 +98,22 @@ export async function lookupWord(
   const params = new URLSearchParams({ form, lang: language });
   try {
     const response = await accountFetch(`/api/lexicon/lookup?${params}`, undefined, scope);
-    if (response.status === 404) return { ok: true, found: false, entries: [] };
+    if (response.status === 404) {
+      const bankFallback = getCalibrationBankFallbackEntry(form, language);
+      if (bankFallback) {
+        return { ok: true, found: true, entries: [bankFallback], offline: true };
+      }
+      return { ok: true, found: false, entries: [] };
+    }
     const data = (await response.json()) as LexiconResponseBody;
     if (!response.ok) {
       const cached = await getCachedLexicon(language, form, scope).catch(() => null);
       if (cached && cached.length > 0) {
         return { ok: true, found: true, entries: cached, offline: true };
+      }
+      const bankFallback = getCalibrationBankFallbackEntry(form, language);
+      if (bankFallback) {
+        return { ok: true, found: true, entries: [bankFallback], offline: true };
       }
       return { ok: false, error: data.error ?? "No se pudo consultar el catálogo." };
     }
@@ -83,6 +121,11 @@ export async function lookupWord(
     const entries = (data.entries as LexiconEntry[]) ?? [];
     if (found && entries.length > 0) {
       void saveCachedLexicon(language, form, entries, scope).catch(() => undefined);
+      return { ok: true, found, entries };
+    }
+    const bankFallback = getCalibrationBankFallbackEntry(form, language);
+    if (bankFallback) {
+      return { ok: true, found: true, entries: [bankFallback], offline: true };
     }
     return { ok: true, found, entries };
   } catch {
@@ -109,6 +152,10 @@ export async function lookupWord(
         ],
       };
       return { ok: true, found: true, entries: [fallbackEntry], offline: true };
+    }
+    const bankFallback = getCalibrationBankFallbackEntry(form, language);
+    if (bankFallback) {
+      return { ok: true, found: true, entries: [bankFallback], offline: true };
     }
     return {
       ok: false,
@@ -217,6 +264,7 @@ export async function enrichWord(
   language = "es",
   context?: string,
   scope?: DbScope,
+  nativeLanguage?: string,
 ): Promise<LookupResult> {
   try {
     const response = await accountFetch(
@@ -224,7 +272,7 @@ export async function enrichWord(
       {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ form, language, context }),
+        body: JSON.stringify({ form, language, context, nativeLanguage }),
       },
       scope,
     );
@@ -256,6 +304,7 @@ export async function explainInContext(
   language = "es",
   context?: string,
   scope?: DbScope,
+  nativeLanguage?: string,
 ): Promise<ExplainResult> {
   try {
     const response = await accountFetch(
@@ -263,7 +312,7 @@ export async function explainInContext(
       {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ form, language, context }),
+        body: JSON.stringify({ form, language, context, nativeLanguage }),
       },
       scope,
     );
@@ -396,6 +445,8 @@ export async function verifySentence(
   meaning: string,
   sentence: string,
   scope?: DbScope,
+  language = "es",
+  nativeLanguage = "es",
 ): Promise<VerifyResult> {
   try {
     const response = await accountFetch(
@@ -403,7 +454,7 @@ export async function verifySentence(
       {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ form, meaning, sentence }),
+        body: JSON.stringify({ form, meaning, sentence, language, nativeLanguage }),
       },
       scope,
     );

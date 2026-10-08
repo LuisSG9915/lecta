@@ -24,9 +24,23 @@ const POS_VALUES = new Set([
   "locución",
 ]);
 
-const SYSTEM_PROMPT = `Eres un lexicógrafo de español. Para una palabra dada, devuelve SOLO un objeto JSON válido con esta forma exacta, sin texto extra:
+export const SYSTEM_PROMPT = `Eres un lexicógrafo de español. Para una palabra dada, devuelve SOLO un objeto JSON válido con esta forma exacta, sin texto extra:
 {"lemma":"<lema en minúsculas>","pos":"<categoría>","freqRank":<número entero estimado de frecuencia: 1 es la palabra más común; null si no sabes>,"forms":["<formas flexionadas comunes, en minúsculas>"],"senses":[{"definition":"<definición breve en español>","example":"<oración de ejemplo en español>"}]}
 Reglas: "pos" debe ser una de: sustantivo, verbo, adjetivo, adverbio, pronombre, preposición, conjunción, interjección, determinante, locución. Incluye de 1 a 3 acepciones, de la más común a la menos. No inventes acepciones raras. Si la forma es flexionada (plural, conjugación, género), "lemma" es la forma base e incluye la forma consultada en "forms".`;
+
+export function buildEnrichmentSystemPrompt(language = "es", nativeLanguage = "es"): string {
+  if (language === "en" && nativeLanguage === "es") {
+    return `Eres un lexicógrafo bilingüe inglés-español enfocado en estudiantes hispanohablantes de inglés. Para una palabra dada en inglés, devuelve SOLO un objeto JSON válido con esta forma exacta, sin texto extra:
+{"lemma":"<lema en inglés en minúsculas>","pos":"<categoría>","freqRank":<número entero estimado de frecuencia en inglés: 1 es la palabra más común; null si no sabes>,"forms":["<formas flexionadas comunes en inglés, en minúsculas>"],"senses":[{"definition":"<definición breve y clara en español>","example":"<oración natural de ejemplo en inglés>"}]}
+Reglas: "pos" debe ser una de: sustantivo, verbo, adjetivo, adverbio, pronombre, preposición, conjunción, interjección, determinante, locución. Las definiciones deben estar redactadas en español para que el estudiante las entienda con claridad. Las oraciones de ejemplo deben estar en inglés natural. Incluye de 1 a 3 acepciones, de la más común a la menos. Si la forma consultada es flexionada (plural, conjugación, irregular), "lemma" es la forma base en inglés e incluye la forma consultada en "forms".`;
+  }
+  if (language === "es" && nativeLanguage === "en") {
+    return `You are a bilingual Spanish-English lexicographer helping English native speakers learning Spanish. For a given Spanish word, return ONLY a valid JSON object in this exact format, with no extra text:
+{"lemma":"<lowercase Spanish base lemma>","pos":"<category in Spanish>","freqRank":<estimated integer frequency rank in Spanish; null if unknown>,"forms":["<common inflected forms in Spanish, lowercase>"],"senses":[{"definition":"<short clear definition in English>","example":"<natural example sentence in Spanish>"}]}
+Rules: "pos" must be one of: sustantivo, verbo, adjetivo, adverbio, pronombre, preposición, conjunción, interjección, determinante, locución. Definitions must be in English. Examples must be in Spanish. Include 1 to 3 senses, most common first.`;
+  }
+  return SYSTEM_PROMPT;
+}
 
 export function validateEnrichment(data: unknown): ValidatedEnrichment | null {
   if (typeof data !== "object" || data === null) return null;
@@ -401,14 +415,19 @@ export const TIP_CALL_OPTIONS: DeepSeekCallOptions = {
 
 export async function requestEnrichment(
   env: WorkerEnv,
-  input: { form: string; language: string; context?: string },
+  input: { form: string; language: string; context?: string; nativeLanguage?: string },
 ) {
-  const userPrompt = `Palabra: «${input.form}» (idioma: ${input.language})` +
+  const nativeLanguage = input.nativeLanguage ?? "es";
+  const systemPrompt = buildEnrichmentSystemPrompt(input.language, nativeLanguage);
+  const langDetails = input.nativeLanguage && input.nativeLanguage !== input.language
+    ? ` (idioma: ${input.language}, lengua materna del lector: ${nativeLanguage})`
+    : ` (idioma: ${input.language})`;
+  const userPrompt = `Palabra: «${input.form}»${langDetails}` +
     (input.context ? `\nAparece en esta oración: «${input.context}»` : "");
 
   const result = await callDeepSeek(
     env,
-    { system: SYSTEM_PROMPT, user: userPrompt },
+    { system: systemPrompt, user: userPrompt },
     ENRICH_CALL_OPTIONS,
   );
   if (!result.ok) {
@@ -437,6 +456,15 @@ export async function requestEnrichment(
 export const ITEM_SYSTEM_PROMPT = `Eres un lexicógrafo de español que redacta ejercicios de vocabulario. Para una palabra y una acepción concretas, devuelve SOLO un objeto JSON válido con esta forma exacta, sin texto extra:
 {"sentence":"<oración>","distractors":["<definición breve incorrecta>","<definición breve incorrecta>","<definición breve incorrecta>"]}
 Reglas: "sentence" es una oración en español neutro de 6 a 18 palabras que usa la palabra en ESE sentido, sin definirla y sin contener la definición (la oración no puede hacer spoiler del sentido). "distractors" son exactamente 3 definiciones breves, incorrectas pero plausibles, de la misma categoría gramatical que la palabra, distintas entre sí y de la acepción dada.`;
+
+export function buildItemSystemPrompt(language = "es", nativeLanguage = "es"): string {
+  if (language === "en" && nativeLanguage === "es") {
+    return `Eres un creador de ejercicios de inglés para hispanohablantes. Para una palabra en inglés y su definición en español, devuelve SOLO un objeto JSON válido con esta forma exacta, sin texto extra:
+{"sentence":"<oración en inglés>","distractors":["<definición breve en español incorrecta>","<definición breve en español incorrecta>","<definición breve en español incorrecta>"]}
+Reglas: "sentence" es una oración en inglés natural de 6 a 18 palabras que usa la palabra en ESE sentido, sin definirla y sin contener la definición. "distractors" son exactamente 3 definiciones breves en español, incorrectas pero plausibles, de la misma categoría gramatical que la palabra, distintas entre sí y de la definición dada.`;
+  }
+  return ITEM_SYSTEM_PROMPT;
+}
 
 export function buildItemPrompt(lemma: string, pos: string | null, definition: string) {
   return (
@@ -482,9 +510,24 @@ export const VERIFY_SYSTEM_PROMPT = `Eres un corrector de español. Evalúas si 
 {"correct":true|false,"feedback":"<una línea>"}
 Reglas: "correct" es true solo si la palabra aparece en la oración usada con ese sentido y la gramática es aceptable. "feedback" es una sola línea en español neutro, amable y concreta (qué falla o por qué está bien).`;
 
-export function buildVerifyPrompt(form: string, meaning: string, sentence: string) {
+export function buildVerifySystemPrompt(language = "es", nativeLanguage = "es"): string {
+  if (language === "en" && nativeLanguage === "es") {
+    return `Eres un profesor de inglés para hispanohablantes. Evalúas si una oración en inglés escrita por un estudiante usa correctamente una palabra dada con el sentido esperado. Devuelve SOLO un objeto JSON válido con esta forma exacta, sin texto extra:
+{"correct":true|false,"feedback":"<una línea en español>"}
+Reglas: "correct" es true solo si la palabra en inglés aparece en la oración usada con ese sentido y la gramática inglesa es aceptable. "feedback" es una sola línea en español neutro, amable y concreta explicando qué falla o por qué está bien.`;
+  }
+  return VERIFY_SYSTEM_PROMPT;
+}
+
+export function buildVerifyPrompt(
+  form: string,
+  meaning: string,
+  sentence: string,
+  language = "es",
+) {
+  const langLabel = language === "en" ? " (inglés)" : "";
   return (
-    `Palabra: «${form}»\n` +
+    `Palabra: «${form}»${langLabel}\n` +
     `Sentido esperado: «${meaning}»\n` +
     `Oración del estudiante: «${sentence}»`
   );
@@ -520,8 +563,28 @@ export const EXPLAIN_SYSTEM_PROMPT = `Eres un lexicógrafo de español. Explicas
 {"explanation":"<una o dos frases breves en español neutro>"}
 Reglas: máximo 45 palabras. Si la palabra es una forma flexionada, menciona su lema entre paréntesis. Si la palabra tiene varios sentidos, di cuál aplica en esa oración. No repitas la oración completa ni comiences con "La palabra".`;
 
-export function buildExplainPrompt(form: string, language: string, context: string) {
-  return `Palabra: «${form}» (idioma: ${language})\nOración: «${context}»`;
+export function buildExplainSystemPrompt(language = "es", nativeLanguage = "es"): string {
+  if (language === "en" && nativeLanguage === "es") {
+    return `Eres un profesor bilingüe inglés-español. Explicas en español a un hispanohablante qué significa una palabra en inglés en la oración concreta donde aparece — el sentido contextual exacto y su traducción natural ahí. Devuelve SOLO un objeto JSON válido con esta forma exacta, sin texto extra:
+{"explanation":"<una o dos frases breves en español neutro>"}
+Reglas: máximo 45 palabras. La explicación debe estar en español. Si la palabra es una forma flexionada o modismo, menciona su lema o forma base entre paréntesis (ej. «pasado de look for»). Di qué significa en esa oración exacta. No repitas la oración completa ni comiences con "La palabra".`;
+  }
+  if (language === "es" && nativeLanguage === "en") {
+    return `You are a bilingual Spanish-English language tutor. Explain in English to an English speaker what a Spanish word means in the specific sentence where it appears. Return ONLY a valid JSON object in this exact format:
+{"explanation":"<one or two brief sentences in English>"}
+Rules: maximum 45 words. Explanation must be in English. If inflected, mention its base lemma in parentheses. Explain what it means in that specific sentence. Do not repeat the entire sentence or start with "The word".`;
+  }
+  return EXPLAIN_SYSTEM_PROMPT;
+}
+
+export function buildExplainPrompt(
+  form: string,
+  language: string,
+  context: string,
+  nativeLanguage = "es",
+) {
+  const target = nativeLanguage !== language ? ` (explicar en: ${nativeLanguage})` : "";
+  return `Palabra: «${form}» (idioma: ${language}${target})\nOración: «${context}»`;
 }
 
 export type Explanation = { explanation: string };

@@ -12,18 +12,18 @@ import {
   ENRICHMENT_MODEL,
   createTtlCache,
   EXPLAIN_CALL_OPTIONS,
-  EXPLAIN_SYSTEM_PROMPT,
   ITEM_CALL_OPTIONS,
-  ITEM_SYSTEM_PROMPT,
   TIP_CALL_OPTIONS,
   TIP_PROMPT_VERSION,
   TIP_SYSTEM_PROMPT,
   VERIFY_CALL_OPTIONS,
-  VERIFY_SYSTEM_PROMPT,
   buildExplainPrompt,
+  buildExplainSystemPrompt,
   buildItemPrompt,
+  buildItemSystemPrompt,
   buildTipPrompt,
   buildVerifyPrompt,
+  buildVerifySystemPrompt,
   callDeepSeek,
   logAiCall,
   parseExplain,
@@ -37,7 +37,7 @@ import { createAuth } from "./auth";
 import { isStopword } from "../shared/stopwords";
 import { hasUsableDefinition } from "../shared/lexicon";
 import { isFsrsCardShape } from "../shared/reading-data";
-import { CALIBRATION_BANK_VERSION } from "../shared/calibration-bank";
+import { calibrationBankVersion } from "../shared/calibration-bank";
 import { checkEpubHeader, EPUB_MAX_BYTES } from "../shared/epub-check";
 import { getSession } from "./session";
 import { readingData } from "./reading-data";
@@ -82,12 +82,11 @@ app.get("/api/lexicon/lookup", async (context) => {
 // lema de la muestra entra solo con definición cargada y zipf dentro
 // de su banda — el selector verifica la medición real, nada entra a
 // ciegas desde el banco.
-// Hoy solo hay muestra en español — es el único idioma con catálogo
-// y medición zipf completa.
+// Disponible en español e inglés.
 app.get("/api/lexicon/sample", async (context) => {
   const language = context.req.query("language")?.trim() || "es";
-  if (language !== "es")
-    return context.json({ error: "La muestra solo existe en español por ahora." }, 400);
+  if (language !== "es" && language !== "en")
+    return context.json({ error: "La muestra solo existe en español e inglés por ahora." }, 400);
 
   let words;
   try {
@@ -99,7 +98,7 @@ app.get("/api/lexicon/sample", async (context) => {
   }
 
   if (!words) return context.json({ error: "El catálogo no está configurado." }, 503);
-  return context.json({ words, version: CALIBRATION_BANK_VERSION });
+  return context.json({ words, version: calibrationBankVersion(language) });
 });
 
 app.post("/api/lexicon/batch", async (context) => {
@@ -127,6 +126,7 @@ app.post("/api/lexicon/enrich", async (context) => {
   const body = await context.req.json().catch(() => null);
   const form = typeof body?.form === "string" ? body.form.trim() : "";
   const language = typeof body?.language === "string" ? body.language.trim() : "es";
+  const nativeLanguage = typeof body?.nativeLanguage === "string" ? body.nativeLanguage.trim() : "es";
   const contextText = typeof body?.context === "string" ? body.context.slice(0, 500) : undefined;
   if (!form || form.length > 100) return context.json({ error: "Falta la palabra." }, 400);
   if (!getConnectionString(context.env))
@@ -153,7 +153,7 @@ app.post("/api/lexicon/enrich", async (context) => {
           { error: "Llegaste al límite de definiciones con IA por hora. Intenta más tarde." },
           429,
         );
-      const ai = await requestEnrichment(context.env, { form, language, context: contextText });
+      const ai = await requestEnrichment(context.env, { form, language, context: contextText, nativeLanguage });
       if (!ai.ok) {
         // Degradación limpia: si el catálogo ya tenía fichas de la
         // palabra (aunque sin acepción útil), se sirven en lugar del
@@ -439,9 +439,10 @@ app.post("/api/lexicon/items", async (context) => {
             sense_order: string | number;
             lemma: string;
             pos: string | null;
+            language?: string;
             definition: string;
           }>(
-            `SELECT r.entry_id, r.sense_order, e.lemma, e.pos, s.definition
+            `SELECT r.entry_id, r.sense_order, e.lemma, e.pos, e.language, s.definition
              FROM (
                SELECT (j.value ->> 'entryId')::int8 AS entry_id,
                       (j.value ->> 'senseOrder')::int4 AS sense_order
@@ -481,7 +482,7 @@ app.post("/api/lexicon/items", async (context) => {
       );
       if (!allowed) break;
       const ai = await callDeepSeek(context.env, {
-        system: ITEM_SYSTEM_PROMPT,
+        system: buildItemSystemPrompt(sense.language ?? "es", "es"),
         user: buildItemPrompt(sense.lemma, sense.pos, sense.definition),
       }, ITEM_CALL_OPTIONS);
       const parsed =
@@ -569,6 +570,8 @@ app.post("/api/lexicon/verify-sentence", async (context) => {
   const form = typeof body?.form === "string" ? body.form.trim() : "";
   const meaning = typeof body?.meaning === "string" ? body.meaning.trim() : "";
   const sentence = typeof body?.sentence === "string" ? body.sentence.trim() : "";
+  const language = typeof body?.language === "string" ? body.language.trim() : "es";
+  const nativeLanguage = typeof body?.nativeLanguage === "string" ? body.nativeLanguage.trim() : "es";
   if (!form || form.length > 100 || !meaning || meaning.length > 500 || !sentence || sentence.length > 300)
     return context.json({ error: "Falta la oración o la palabra." }, 400);
   if (!getConnectionString(context.env))
@@ -591,8 +594,8 @@ app.post("/api/lexicon/verify-sentence", async (context) => {
     );
 
   const ai = await callDeepSeek(context.env, {
-    system: VERIFY_SYSTEM_PROMPT,
-    user: buildVerifyPrompt(form, meaning, sentence),
+    system: buildVerifySystemPrompt(language, nativeLanguage),
+    user: buildVerifyPrompt(form, meaning, sentence, language),
   }, VERIFY_CALL_OPTIONS);
   const parsed =
     ai.ok && ai.finishReason !== "length" ? parseVerify(ai.content) : null;
@@ -632,6 +635,7 @@ app.post("/api/lexicon/explain", async (context) => {
   const body = await context.req.json().catch(() => null);
   const form = typeof body?.form === "string" ? body.form.trim() : "";
   const language = typeof body?.language === "string" ? body.language.trim() : "es";
+  const nativeLanguage = typeof body?.nativeLanguage === "string" ? body.nativeLanguage.trim() : "es";
   const contextText = typeof body?.context === "string" ? body.context.trim() : "";
   if (!form || form.length > 100 || !contextText || contextText.length > 500)
     return context.json({ error: "Faltan la palabra o la oración." }, 400);
@@ -641,7 +645,7 @@ app.post("/api/lexicon/explain", async (context) => {
   if (!session)
     return context.json({ error: "Inicia sesión para pedir explicaciones." }, 401);
 
-  const cacheKey = `${language}:${form.toLowerCase()}:${contextText}`;
+  const cacheKey = `${language}:${nativeLanguage}:${form.toLowerCase()}:${contextText}`;
   const cached = explainCache.get(cacheKey);
   if (cached) return context.json({ explanation: cached, cached: true });
 
@@ -660,7 +664,10 @@ app.post("/api/lexicon/explain", async (context) => {
 
   const ai = await callDeepSeek(
     context.env,
-    { system: EXPLAIN_SYSTEM_PROMPT, user: buildExplainPrompt(form, language, contextText) },
+    {
+      system: buildExplainSystemPrompt(language, nativeLanguage),
+      user: buildExplainPrompt(form, language, contextText, nativeLanguage),
+    },
     EXPLAIN_CALL_OPTIONS,
   );
   const parsed =

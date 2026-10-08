@@ -2,6 +2,7 @@ import { batchLookup, type LexiconEntry } from "./lexicon";
 import { isLearnablePos, measuredZipf } from "../../shared/lexicon";
 import { menteBaseForms } from "../../shared/word-form";
 import { knowledgeArbWins } from "../../shared/reading-data";
+import { calibrationBankZipf } from "../../shared/calibration-bank";
 
 // Modelo de conocimiento del lector: qué palabras conoce. Dos piezas
 // puras y deterministas:
@@ -387,6 +388,7 @@ export function resolveEvidence(
   rows: readonly EvidenceInput[],
   entries: Record<string, LexiconEntry[]>,
   baseEntries: Record<string, LexiconEntry[]> = {},
+  language = "es",
 ): Map<string, ResolvedEvidence> {
   const out = new Map<string, ResolvedEvidence>();
   const owners = new Map<string, EvidenceInput>();
@@ -407,19 +409,23 @@ export function resolveEvidence(
     const key = row.lemma.toLowerCase();
     const direct = entries[key] ?? [];
     if (direct.length) {
-      put(key, row, measuredZipf(direct, key));
+      put(key, row, measuredZipf(direct, key) ?? calibrationBankZipf(key, language));
       continue;
     }
     const base = cliticBaseForms(key).find(
       (candidate) => (baseEntries[candidate] ?? []).length > 0,
     );
     if (!base) {
-      put(key, row, null);
+      put(key, row, calibrationBankZipf(key, language));
       continue;
     }
     const baseList = baseEntries[base];
     const resolved = baseList[0]?.lemma ?? key;
-    put(resolved, row, measuredZipf(baseList, resolved));
+    put(
+      resolved,
+      row,
+      measuredZipf(baseList, resolved) ?? calibrationBankZipf(resolved, language),
+    );
   }
   return out;
 }
@@ -452,11 +458,14 @@ export function cliticBasesFor(
 export function knowledgeEvidence(
   rows: { lemma: string; known: boolean }[],
   entries: Record<string, LexiconEntry[]>,
+  language = "es",
 ): Map<string, KnowledgeEvidence> {
   const evidence = new Map<string, KnowledgeEvidence>();
   for (const row of rows)
     evidence.set(row.lemma, {
-      zipf: measuredZipf(entries[row.lemma], row.lemma),
+      zipf:
+        measuredZipf(entries[row.lemma], row.lemma) ??
+        calibrationBankZipf(row.lemma, language),
       known: row.known,
     });
   return evidence;
@@ -480,7 +489,16 @@ export async function estimateStoredProfile(
     rows.map((row) => row.lemma),
     language,
   ).catch(() => null);
-  if (!result?.ok) return null;
+  if (!result?.ok) {
+    const fallbackEvidence: KnowledgeEvidence[] = rows.map((r) => ({
+      zipf: calibrationBankZipf(r.lemma, language),
+      known: r.known,
+    }));
+    if (fallbackEvidence.some((e) => e.zipf != null)) {
+      return estimateProfile(fallbackEvidence, adjust);
+    }
+    return null;
+  }
   // Segunda consulta solo para formas sin ficha con base clítica
   // verificable — una sola ronda extra por estimación.
   const bases = cliticBasesFor(rows, result.entries);
@@ -491,6 +509,7 @@ export async function estimateStoredProfile(
     rows,
     result.entries,
     baseResult?.ok ? baseResult.entries : {},
+    language,
   );
   const evidence: KnowledgeEvidence[] = [...resolved.values()].map((item) => ({
     zipf: item.zipf,

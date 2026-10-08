@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { isDue, newCard, Rating, scheduleReview, type Card, type Grade } from "../lib/fsrs";
 import {
   captureDbScope,
@@ -25,6 +25,7 @@ import {
   answerItem,
   batchLookup,
   enrichWord,
+  explainInContext,
   fetchItems,
   verifySentence,
   type LexiconEntry,
@@ -46,6 +47,7 @@ import { recordReview } from "../lib/reviews";
 import type { ReviewKind, ReviewRating } from "../../shared/reading-data";
 import {
   blankWordInContext,
+  conciseMeaning,
   EXERCISE_RATING,
   modeForWord,
   pickDistractors,
@@ -65,14 +67,31 @@ import {
   wordsToCsv,
 } from "../lib/export";
 import { useModalBehavior } from "../lib/modal";
-import { triggerHaptic } from "../lib/haptics";
+import { triggerHaptic, triggerPurrHaptic } from "../lib/haptics";
+import { playCompanionSound } from "../lib/companion-audio";
+import type { CompanionPose } from "./Companion";
 import ReadingActivity from "./ReadingActivity";
+import { PracticeContext } from "./PracticeContext";
+import { PracticeCompanionHeader } from "./PracticeCompanionHeader";
+import {
+  loadNativeLanguage,
+  loadPracticeCompanionMode,
+  savePracticeCompanionMode,
+  type PracticeCompanionMode,
+} from "../lib/settings";
+import { useCompanionSafe } from "./CompanionProvider";
+import { levelProgress } from "../lib/gamification";
+import { WordScrambleGame } from "./WordScrambleGame";
+import { GrammarGame } from "./GrammarGame";
+import { SentenceBuilderGame } from "./SentenceBuilderGame";
+import { isGrammarEligible, isSentenceEligible } from "../lib/grammar";
+import { languageName } from "../lib/epub";
 
 type VocabularyProps = {
   onClose: () => void;
-  // Solo se usa hash/título/nombre para nombrar libros: la estantería
-  // manda ShelfItem, que no carga el archivo.
-  books: Pick<StoredBook, "hash" | "name" | "title" | "author">[];
+  // Solo se usa hash/título/nombre/idioma para nombrar y filtrar libros:
+  // la estantería manda ShelfItem, que no carga el archivo.
+  books: Pick<StoredBook, "hash" | "name" | "title" | "author" | "language">[];
   // Sube cuando la sincronización trae intervalos nuevos; la pestaña
   // de actividad relee su progreso sin remontar el panel.
   activityVersion?: number;
@@ -84,6 +103,9 @@ type PracticeMode =
   | "cloze"
   | "choose"
   | "match"
+  | "scramble"
+  | "grammar"
+  | "syntax"
   | "sense"
   | "context"
   | "clozeNew"
@@ -109,6 +131,9 @@ const MODES: { id: PracticeMode; label: string; needs: string }[] = [
   { id: "cloze", label: "Oración", needs: "oración" },
   { id: "choose", label: "Elegir palabra", needs: "oración" },
   { id: "match", label: "Parejas", needs: "significado" },
+  { id: "scramble", label: "Descifrar", needs: "significado" },
+  { id: "grammar", label: "Categoría", needs: "categoría gramatical" },
+  { id: "syntax", label: "Ordenar frase", needs: "oración" },
   { id: "sense", label: "Acepción", needs: "acepción guardada" },
   { id: "context", label: "Contexto", needs: "acepción guardada" },
   { id: "clozeNew", label: "Oración nueva", needs: "acepción guardada" },
@@ -120,6 +145,9 @@ const MODES: { id: PracticeMode; label: string; needs: string }[] = [
 const EXERCISE_MODES: ReadonlySet<PracticeMode> = new Set([
   "choose",
   "match",
+  "scramble",
+  "grammar",
+  "syntax",
   "sense",
   "context",
   "write",
@@ -135,6 +163,9 @@ const KIND_BY_MODE: Record<PracticeMode, ReviewKind> = {
   cloze: "cloze",
   choose: "choose",
   match: "match",
+  scramble: "word",
+  grammar: "word",
+  syntax: "cloze",
   sense: "sense",
   context: "context",
   clozeNew: "clozeNew",
@@ -216,6 +247,10 @@ const isEligible = (word: SavedWord, mode: PracticeMode) => {
   if (mode === "sense") return word.senseEntryId != null;
   if (mode === "context" || mode === "clozeNew")
     return word.senseEntryId != null && word.senseOrder != null;
+  if (mode === "scramble")
+    return Boolean(word.meaning) && word.form.trim().length >= 2;
+  if (mode === "grammar") return isGrammarEligible(word);
+  if (mode === "syntax") return isSentenceEligible(word);
   return Boolean(word.meaning);
 };
 
@@ -248,6 +283,8 @@ export default function Vocabulary({ onClose, books, activityVersion }: Vocabula
   const [glossaryBookHash, setGlossaryBookHash] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterId>("all");
   const [order, setOrder] = useState<OrderId>("fecha");
+  const [languageFilter, setLanguageFilter] = useState<string>("all");
+  const [bookFilter, setBookFilter] = useState<string>("all");
   const [query, setQuery] = useState("");
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -306,6 +343,31 @@ export default function Vocabulary({ onClose, books, activityVersion }: Vocabula
   const firstGradeRef = useRef<HTMLButtonElement>(null);
   const continueRef = useRef<HTMLButtonElement>(null);
   const writeAreaRef = useRef<HTMLTextAreaElement>(null);
+  const companion = useCompanionSafe();
+
+  // Compañero en juegos y repasos (animado / tranquilo / oculto) y su interactividad.
+  const [companionMode, setCompanionMode] = useState<PracticeCompanionMode>(() =>
+    loadPracticeCompanionMode(),
+  );
+  const [catPose, setCatPose] = useState<CompanionPose>("idle");
+  const [catSpeech, setCatSpeech] = useState<string>("¡Vamos a repasar!");
+  const [combo, setCombo] = useState(0);
+  const [hintText, setHintText] = useState<string | null>(null);
+  const [hintBusy, setHintBusy] = useState(false);
+  const catPoseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearCatTimer = () => {
+    if (catPoseTimer.current !== null) {
+      clearTimeout(catPoseTimer.current);
+      catPoseTimer.current = null;
+    }
+  };
+  useEffect(() => clearCatTimer, []);
+
+  const updateCompanionMode = (mode: PracticeCompanionMode) => {
+    setCompanionMode(mode);
+    savePracticeCompanionMode(mode);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -346,7 +408,64 @@ export default function Vocabulary({ onClose, books, activityVersion }: Vocabula
     };
   }, []);
 
-  const all = words ?? [];
+  const all = useMemo(() => words ?? [], [words]);
+
+  const availableLanguages = useMemo(() => {
+    const langs = new Set<string>();
+    for (const w of all) {
+      langs.add(w.language || "es");
+    }
+    for (const b of books) {
+      if (b.language) langs.add(b.language);
+    }
+    return [...langs].sort();
+  }, [all, books]);
+
+  const availableBooks = useMemo(() => {
+    if (languageFilter === "all") return books;
+    return books.filter((b) => (b.language || "es") === languageFilter);
+  }, [books, languageFilter]);
+
+  const scopedWords = useMemo(() => {
+    return all.filter((word) => {
+      if (languageFilter !== "all" && (word.language || "es") !== languageFilter) {
+        return false;
+      }
+      if (bookFilter !== "all" && word.bookHash !== bookFilter) {
+        return false;
+      }
+      return true;
+    });
+  }, [all, languageFilter, bookFilter]);
+
+  // Estadísticas de maestría y avance de aprendizaje de vocabulario
+  const masteryStats = useMemo(() => {
+    const list = scopedWords.filter((w) => !w.deleted);
+    let mastered = 0;
+    let settled = 0;
+    let learning = 0;
+    let newWords = 0;
+
+    for (const w of list) {
+      const lvl = markLevel(w.card);
+      const reps = w.card?.reps ?? 0;
+      if (lvl === null && reps > 0) {
+        mastered += 1;
+      } else if (lvl === "settled") {
+        settled += 1;
+      } else if (lvl === "learning") {
+        learning += 1;
+      } else {
+        newWords += 1;
+      }
+    }
+
+    const total = list.length;
+    const score = mastered + settled * 0.6 + learning * 0.25;
+    const pct = total > 0 ? Math.round((score / total) * 100) : 0;
+    return { total, mastered, settled, learning, newWords, pct };
+  }, [scopedWords]);
+
   const knownKeys = knownKeysFor(knowledge);
   // Un lema declarado «ya la conozco» sale del vocabulario activo: ni
   // la cola de Aprender ni el repaso lo vuelven a ofrecer, aunque la
@@ -355,9 +474,9 @@ export default function Vocabulary({ onClose, books, activityVersion }: Vocabula
     knownKeys.has(knowledgeKey(word.language || "es", word.lemma ?? word.form)) ||
     (word.lemma != null &&
       knownKeys.has(knowledgeKey(word.language || "es", word.form)));
-  const dueWords = all.filter((word) => isDue(word.card) && !isWordKnown(word));
+  const dueWords = scopedWords.filter((word) => isDue(word.card) && !isWordKnown(word));
   const dueCount = dueWords.length;
-  const learnPending = all.filter((word) =>
+  const learnPending = scopedWords.filter((word) =>
     isLearnPending(word, knownKeys, exposure),
   );
   // «Elegir palabra» necesita cuaderno suficiente para armar
@@ -365,7 +484,7 @@ export default function Vocabulary({ onClose, books, activityVersion }: Vocabula
   // tanda completa de palabras con significado.
   const eligibleDue = (mode: PracticeMode) => {
     const count = dueWords.filter((word) => isEligible(word, mode)).length;
-    if (mode === "choose" && all.length < 4) return 0;
+    if (mode === "choose" && scopedWords.length < 4) return 0;
     if (mode === "match" && count < MATCH_TANDA) return 0;
     return count;
   };
@@ -375,6 +494,7 @@ export default function Vocabulary({ onClose, books, activityVersion }: Vocabula
     setPreviews(null);
     setSaveError("");
     setAnswered(null);
+    setHintText(null);
     setMatchSel(null);
     setMatchDone(new Set());
     setMatchFails({});
@@ -399,13 +519,31 @@ export default function Vocabulary({ onClose, books, activityVersion }: Vocabula
   // cuando no hay cuaderno suficiente para armar distractores.
   const buildMixItems = (): QueueItem[] =>
     dueWords.flatMap((word, index) => {
-      let mode = modeForWord(word, index);
-      if (mode === "choose" && all.length < 4) mode = "cloze";
+      const raw = modeForWord(word, index);
+      let mode: PracticeMode = raw === "word" ? "form" : raw;
+      if (mode === "choose" && scopedWords.length < 4) mode = "cloze";
       if ((mode === "cloze" || mode === "choose") && !clozeTextFor(word)) {
-        mode = index % 2 === 0 ? "meaning" : "word";
+        mode = index % 2 === 0 ? "meaning" : "form";
       }
-      if ((mode === "meaning" || mode === "word") && !word.meaning) return [];
-      return [{ word, mode: mode === "word" ? "form" : mode }];
+      if (mode === "form" && word.form.trim().length >= 3 && index % 4 === 1) {
+        mode = "scramble";
+      }
+      if (mode === "form" && isGrammarEligible(word) && index % 4 === 3) {
+        mode = "grammar";
+      }
+      if (mode === "cloze" && isSentenceEligible(word) && index % 4 === 2) {
+        mode = "syntax";
+      }
+      if (
+        (mode === "meaning" ||
+          mode === "form" ||
+          mode === "scramble" ||
+          mode === "grammar") &&
+        !word.meaning &&
+        !word.pos
+      )
+        return [];
+      return [{ word, mode }];
     });
 
   // «Acepción» necesita la ficha completa de cada palabra guardada
@@ -631,6 +769,7 @@ export default function Vocabulary({ onClose, books, activityVersion }: Vocabula
         item.language || "es",
         item.context,
         scope,
+        loadNativeLanguage(),
       );
       if (!result.ok) {
         setLearnError(result.error);
@@ -725,7 +864,35 @@ export default function Vocabulary({ onClose, books, activityVersion }: Vocabula
       // el resto (difícil/bien/fácil) cuenta como acierto.
       if (item.mode === "clozeNew" && item.item)
         void answerItem(item.item.id, ratingToCorrect(rating), scope);
-      triggerHaptic(rating === Rating.Easy ? 16 : rating === Rating.Good ? 12 : 8);
+
+      const isCorrect = ratingToCorrect(rating);
+      if (isCorrect) {
+        setCombo((prev) => {
+          const next = prev + 1;
+          if (next >= 3) {
+            setCatPose("celebrate");
+            setCatSpeech(`¡Imparable! Racha de ${next} aciertos 🔥`);
+          } else {
+            setCatPose("celebrate");
+            setCatSpeech(rating === Rating.Easy ? "¡Pan comido! ✨" : "¡Muy bien! 🐾");
+          }
+          return next;
+        });
+        triggerHaptic("success");
+        triggerPurrHaptic();
+        playCompanionSound("purr");
+      } else {
+        setCombo(0);
+        setCatPose("idle");
+        setCatSpeech("Casi... la repasaremos de nuevo 🌿");
+        triggerHaptic(rating === Rating.Again ? 8 : 12);
+      }
+      clearCatTimer();
+      catPoseTimer.current = setTimeout(() => {
+        setCatPose("idle");
+        catPoseTimer.current = null;
+      }, 2200);
+
       setWords((list) => list?.map((w) => (w.key === word.key ? stored : w)) ?? list);
       setQueue((current) => {
         if (!current) return current;
@@ -735,6 +902,7 @@ export default function Vocabulary({ onClose, books, activityVersion }: Vocabula
       setRevealed(false);
       setPreviews(null);
       setAnswered(null);
+      setHintText(null);
       setWriteText("");
       setWritePick(null);
       setVerifyResult(null);
@@ -758,6 +926,30 @@ export default function Vocabulary({ onClose, books, activityVersion }: Vocabula
     if (!item || answered) return;
     triggerHaptic(correct ? 14 : 24);
     setAnswered({ picked, correct });
+    if (correct) {
+      setCombo((prev) => {
+        const next = prev + 1;
+        if (next >= 3) {
+          setCatPose("celebrate");
+          setCatSpeech(`¡En racha! x${next} 🔥`);
+        } else {
+          setCatPose("celebrate");
+          setCatSpeech("¡Exacto! 🎯");
+        }
+        return next;
+      });
+      triggerPurrHaptic();
+      playCompanionSound("purr");
+    } else {
+      setCombo(0);
+      setCatPose("idle");
+      setCatSpeech("¡Ánimo! Vamos con la siguiente 🌿");
+    }
+    clearCatTimer();
+    catPoseTimer.current = setTimeout(() => {
+      setCatPose("idle");
+      catPoseTimer.current = null;
+    }, 2200);
     // Los ejercicios con ítem del catálogo («contexto») también anotan
     // el intento en su estadística editorial; no bloquea el repaso.
     const scope = captureDbScope();
@@ -793,6 +985,8 @@ export default function Vocabulary({ onClose, books, activityVersion }: Vocabula
       item.word.meaning ?? "",
       sentence,
       captureDbScope(),
+      item.word.language,
+      loadNativeLanguage(),
     );
     // Si la tarjeta ya no es la misma (la cola avanzó o se cerró),
     // el veredicto tardío se descarta.
@@ -813,12 +1007,34 @@ export default function Vocabulary({ onClose, books, activityVersion }: Vocabula
     if (!queue || !matchSel || matchDone.has(meaningKey)) return;
     const tanda = queue.items.slice(0, MATCH_TANDA);
     if (meaningKey === matchSel) {
+      triggerPurrHaptic();
+      playCompanionSound("purr");
+      setCatPose("celebrate");
+      clearCatTimer();
+      catPoseTimer.current = setTimeout(() => {
+        setCatPose("idle");
+        catPoseTimer.current = null;
+      }, 1500);
       const nextDone = new Set(matchDone).add(meaningKey);
       setMatchDone(nextDone);
       setMatchSel(null);
+      setCombo((prev) => {
+        const next = prev + 1;
+        if (nextDone.size === tanda.length) {
+          setCatSpeech("¡Tanda de parejas completada con éxito! 🧩🎉");
+        } else if (next >= 3) {
+          setCatSpeech(`¡Parejas en racha! x${next} 🔥`);
+        } else {
+          setCatSpeech("¡Pareja encontrada! ✨");
+        }
+        return next;
+      });
       if (tanda.length > 0 && nextDone.size === tanda.length)
         void finishMatchTanda(tanda, matchFails);
     } else {
+      setCombo(0);
+      setCatPose("greet");
+      setCatSpeech("Ese no corresponde... ¡sigue buscando! 🌿");
       setMatchFails((fails) => ({ ...fails, [matchSel]: (fails[matchSel] ?? 0) + 1 }));
       setMatchFlash(meaningKey);
       window.clearTimeout(matchFlashTimer.current);
@@ -893,6 +1109,35 @@ export default function Vocabulary({ onClose, books, activityVersion }: Vocabula
     else if (currentMode === "write") writeAreaRef.current?.focus();
     else if (currentKey) revealButtonRef.current?.focus();
   }, [revealed, answered, writePick, currentKey, currentMode]);
+
+  const askCatHint = () => {
+    if (!current || hintBusy) return;
+    setHintBusy(true);
+    setCatSpeech("Pensando en una pista… 🤔");
+    const scope = captureDbScope();
+    void explainInContext(current.word.form, current.word.language, current.word.context, scope, loadNativeLanguage())
+      .then((res) => {
+        if (res.ok && res.explanation) {
+          setHintText(res.explanation);
+          setCatSpeech("¡Aquí tienes una pista!");
+          setCatPose("greet");
+        } else {
+          const fallback = current.word.meaning
+            ? `Significado: «${current.word.meaning.slice(0, 50)}…»`
+            : "Intenta recordar el pasaje del libro.";
+          setHintText(fallback);
+          setCatSpeech("Pista del cuaderno 📖");
+        }
+      })
+      .catch(() => {
+        const fallback = current.word.meaning
+          ? `Significado: «${current.word.meaning.slice(0, 50)}…»`
+          : "Intenta recordar el pasaje del libro.";
+        setHintText(fallback);
+        setCatSpeech("Pista del cuaderno 📖");
+      })
+      .finally(() => setHintBusy(false));
+  };
 
   const remove = async (word: SavedWord) => {
     try {
@@ -970,7 +1215,7 @@ export default function Vocabulary({ onClose, books, activityVersion }: Vocabula
     }
   };
 
-  const filtered = all.filter(
+  const filtered = scopedWords.filter(
     (word) => matchesFilter(word, filter) && matchesSearch(word, query),
   );
 
@@ -1103,7 +1348,7 @@ export default function Vocabulary({ onClose, books, activityVersion }: Vocabula
             : queue
               ? `${Math.min(done + 1, queue.total)} de ${queue.total}`
               : words
-                ? `${all.length} guardadas · ${dueCount} para hoy`
+                ? `${scopedWords.length === all.length ? all.length : `${scopedWords.length} de ${all.length}`} guardadas · ${dueCount} para hoy`
                 : ""}
         </span>
       </header>
@@ -1255,6 +1500,110 @@ export default function Vocabulary({ onClose, books, activityVersion }: Vocabula
 
         {!queue && all.length > 0 ? (
           <>
+            <div className="vocab-mastery-card" aria-label="Progreso de vocabulario">
+              <div className="vocab-mastery-header">
+                <div className="vocab-mastery-info">
+                  <span className="vocab-mastery-label">Progreso del cuaderno</span>
+                  <h3 className="vocab-mastery-title">
+                    {masteryStats.mastered} {masteryStats.mastered === 1 ? "palabra dominada" : "palabras dominadas"} · {masteryStats.pct}% maestría
+                  </h3>
+                </div>
+                {companion?.enabled && companion.state ? (
+                  <div
+                    className="vocab-mastery-companion"
+                    title={`Nivel ${levelProgress(companion.state.xp).name}`}
+                  >
+                    <span className="vocab-mastery-cat-icon" aria-hidden="true">🐱</span>
+                    <span>{levelProgress(companion.state.xp).name}</span>
+                    <span className="vocab-mastery-cat-xp">⭐ {Math.round(companion.state.xp)} XP</span>
+                  </div>
+                ) : null}
+              </div>
+
+              <div
+                className="vocab-mastery-track"
+                role="progressbar"
+                aria-valuenow={masteryStats.pct}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-label="Barra de maestría de vocabulario"
+              >
+                <div
+                  className="vocab-mastery-seg vocab-mastery-seg--mastered"
+                  style={{ inlineSize: `${masteryStats.total > 0 ? (masteryStats.mastered / masteryStats.total) * 100 : 0}%` }}
+                  title={`${masteryStats.mastered} dominadas`}
+                />
+                <div
+                  className="vocab-mastery-seg vocab-mastery-seg--settled"
+                  style={{ inlineSize: `${masteryStats.total > 0 ? (masteryStats.settled / masteryStats.total) * 100 : 0}%` }}
+                  title={`${masteryStats.settled} consolidándose`}
+                />
+                <div
+                  className="vocab-mastery-seg vocab-mastery-seg--learning"
+                  style={{ inlineSize: `${masteryStats.total > 0 ? (masteryStats.learning / masteryStats.total) * 100 : 0}%` }}
+                  title={`${masteryStats.learning} en aprendizaje`}
+                />
+              </div>
+
+              <div className="vocab-mastery-chips" role="group" aria-label="Filtrar por nivel de aprendizaje">
+                <button
+                  type="button"
+                  className={`vocab-chip${filter === "all" ? " is-active" : ""}`}
+                  onClick={() => setFilter("all")}
+                >
+                  <span className="vocab-chip-icon" aria-hidden="true">📚</span>
+                  <span>Total</span>
+                  <strong>{masteryStats.total}</strong>
+                </button>
+
+                <button
+                  type="button"
+                  className={`vocab-chip vocab-chip--mastered${filter === "settled" ? " is-active" : ""}`}
+                  onClick={() => setFilter("settled")}
+                  title="Palabras con alta estabilidad o consolidadas"
+                >
+                  <span className="vocab-chip-icon" aria-hidden="true">💎</span>
+                  <span>Dominadas</span>
+                  <strong>{masteryStats.mastered + masteryStats.settled}</strong>
+                </button>
+
+                <button
+                  type="button"
+                  className={`vocab-chip vocab-chip--learning${filter === "learning" ? " is-active" : ""}`}
+                  onClick={() => setFilter("learning")}
+                  title="Palabras en proceso de repaso activo"
+                >
+                  <span className="vocab-chip-icon" aria-hidden="true">🌿</span>
+                  <span>En repaso</span>
+                  <strong>{masteryStats.learning}</strong>
+                </button>
+
+                <button
+                  type="button"
+                  className={`vocab-chip vocab-chip--new${filter === "new" ? " is-active" : ""}`}
+                  onClick={() => setFilter("new")}
+                  title="Palabras recién guardadas"
+                >
+                  <span className="vocab-chip-icon" aria-hidden="true">✨</span>
+                  <span>Nuevas</span>
+                  <strong>{masteryStats.newWords}</strong>
+                </button>
+
+                {dueCount > 0 ? (
+                  <button
+                    type="button"
+                    className={`vocab-chip vocab-chip--due${filter === "due" ? " is-active" : ""}`}
+                    onClick={() => setFilter("due")}
+                    title="Palabras pendientes de repasar hoy"
+                  >
+                    <span className="vocab-chip-icon" aria-hidden="true">🔔</span>
+                    <span>Para hoy</span>
+                    <strong>{dueCount}</strong>
+                  </button>
+                ) : null}
+              </div>
+            </div>
+
             {learnPending.length > 0 ? (
               <section className="nb-review" aria-label="Palabras por aprender">
                 <p className="eyebrow">Por aprender · {learnPending.length}</p>
@@ -1339,6 +1688,67 @@ export default function Vocabulary({ onClose, books, activityVersion }: Vocabula
                   autoComplete="off"
                 />
               </label>
+
+              {availableLanguages.length > 1 ? (
+                <div className="nb-filters nb-filters--lang" role="group" aria-label="Filtrar por idioma">
+                  <button
+                    type="button"
+                    className="theme-option"
+                    data-active={languageFilter === "all" || undefined}
+                    aria-pressed={languageFilter === "all"}
+                    onClick={() => {
+                      setLanguageFilter("all");
+                      setBookFilter("all");
+                    }}
+                  >
+                    Todos ({all.length})
+                  </button>
+                  {availableLanguages.map((lang) => {
+                    const count = all.filter((w) => (w.language || "es") === lang).length;
+                    return (
+                      <button
+                        key={lang}
+                        type="button"
+                        className="theme-option"
+                        data-active={languageFilter === lang || undefined}
+                        aria-pressed={languageFilter === lang}
+                        onClick={() => {
+                          setLanguageFilter(lang);
+                          setBookFilter("all");
+                        }}
+                      >
+                        {languageName(lang)} ({count})
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
+
+              {books.length > 0 ? (
+                <div className="nb-book-filter">
+                  <label htmlFor="nb-book-select" className="visually-hidden">
+                    Filtrar por libro
+                  </label>
+                  <select
+                    id="nb-book-select"
+                    className="nb-select"
+                    value={bookFilter}
+                    onChange={(event) => setBookFilter(event.target.value)}
+                  >
+                    <option value="all">
+                      {languageFilter === "all"
+                        ? "Todos los libros"
+                        : `Todos los libros en ${languageName(languageFilter)}`}
+                    </option>
+                    {availableBooks.map((b) => (
+                      <option key={b.hash} value={b.hash}>
+                        {b.title ?? b.name} {b.language ? `(${b.language.toUpperCase()})` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
+
               <div className="nb-filters" role="group" aria-label="Filtrar palabras">
                 {FILTERS.map(({ id, label }) => (
                   <button
@@ -1519,6 +1929,13 @@ export default function Vocabulary({ onClose, books, activityVersion }: Vocabula
             </div>
           ) : (
             <div className="nb-practice">
+              <PracticeCompanionHeader
+                pose={catPose}
+                speech={catSpeech}
+                combo={combo}
+                mode={companionMode}
+                onModeChange={updateCompanionMode}
+              />
               <p className="meta nb-practice-meta">Primera exposición</p>
               <div className="index-card nb-card">
                 <p className="nb-card-front">
@@ -1531,7 +1948,12 @@ export default function Vocabulary({ onClose, books, activityVersion }: Vocabula
                   <p className="meta">de «{learn.items[0].lemma}»</p>
                 ) : null}
                 {learn.items[0].context ? (
-                  <p className="card-context">“{learn.items[0].context}”</p>
+                  <PracticeContext
+                    key={learn.items[0].key}
+                    text={learn.items[0].context}
+                    target={learn.items[0].form}
+                    language={learn.items[0].language}
+                  />
                 ) : null}
                 {learn.revealed ? (
                   learn.items[0].meaning ? (
@@ -1617,6 +2039,13 @@ export default function Vocabulary({ onClose, books, activityVersion }: Vocabula
 
         {queue && !current ? (
           <div className="nb-done">
+            <PracticeCompanionHeader
+              pose="celebrate"
+              speech="¡Repaso terminado! Has practicado todas las palabras de hoy 🎉"
+              combo={combo}
+              mode={companionMode}
+              onModeChange={updateCompanionMode}
+            />
             <p className="nb-done-title">Repaso terminado.</p>
             <p className="meta">
               {queue.total} {queue.total === 1 ? "palabra repasada" : "palabras repasadas"}.
@@ -1624,6 +2053,40 @@ export default function Vocabulary({ onClose, books, activityVersion }: Vocabula
                 ? ` Vuelve en ${formatInterval(nextDue - finishedAt)}.`
                 : " Nada pendiente por ahora."}
             </p>
+
+            {companion?.enabled && companion.state ? (
+              <div className="nb-done-progress">
+                <div className="nb-done-stats">
+                  <span className="nb-done-badge">
+                    ⭐ {Math.round(companion.state.xp)} XP
+                  </span>
+                  <span className="nb-done-level">
+                    Nivel: {levelProgress(companion.state.xp).name}
+                  </span>
+                </div>
+                {levelProgress(companion.state.xp).ceil !== null ? (
+                  <div
+                    className="nb-done-bar"
+                    role="progressbar"
+                    aria-valuenow={Math.round(
+                      levelProgress(companion.state.xp).ratio * 100,
+                    )}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                  >
+                    <div
+                      className="nb-done-fill"
+                      style={{
+                        inlineSize: `${Math.round(
+                          levelProgress(companion.state.xp).ratio * 100,
+                        )}%`,
+                      }}
+                    />
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
             <button type="button" className="btn--quiet" onClick={() => setQueue(null)}>
               Ver el cuaderno
             </button>
@@ -1632,12 +2095,38 @@ export default function Vocabulary({ onClose, books, activityVersion }: Vocabula
 
         {current ? (
           <div className="nb-practice">
-            <p className="meta nb-practice-meta">
-              Modo {MODES.find((m) => m.id === current.mode)?.label.toLowerCase()}
-            </p>
+            <PracticeCompanionHeader
+              pose={catPose}
+              speech={catSpeech}
+              combo={combo}
+              mode={companionMode}
+              onModeChange={updateCompanionMode}
+              onAskHint={hasSession && current.mode !== "write" ? askCatHint : undefined}
+              hintBusy={hintBusy}
+              hintText={hintText}
+            />
+            <div className="nb-practice-progress-row">
+              <p className="meta nb-practice-meta">
+                Modo {MODES.find((m) => m.id === current.mode)?.label.toLowerCase()}
+              </p>
+              <span className="nb-practice-counter meta">
+                {queue.total - queue.items.length + 1} de {queue.total}
+              </span>
+            </div>
 
             {current.mode === "match" ? (
               <>
+                <div className="match-header-tracker">
+                  <span>Parejas: {matchDone.size} de {tanda.length}</span>
+                  <div className="match-dots" aria-hidden="true">
+                    {tanda.map((item, idx) => (
+                      <span
+                        key={item.word.key}
+                        className={`match-dot${matchDone.size > idx ? " is-done" : ""}`}
+                      />
+                    ))}
+                  </div>
+                </div>
                 <div className="match-board">
                   <div className="match-col" role="group" aria-label="Palabras">
                     {matchLeft.map((item) => (
@@ -1667,14 +2156,131 @@ export default function Vocabulary({ onClose, books, activityVersion }: Vocabula
                         }${matchFlash === item.word.key ? " is-wrong" : ""}`}
                         disabled={matchDone.has(item.word.key) || grading}
                         onClick={() => pickMeaning(item.word.key)}
+                        title={item.word.meaning ?? undefined}
                       >
-                        {item.word.meaning}
+                        {conciseMeaning(item.word.meaning ?? "", 68)}
                       </button>
                     ))}
                   </div>
                 </div>
                 <p className="meta nb-keys-hint">Toca una palabra y luego su significado.</p>
               </>
+            ) : current.mode === "scramble" ? (
+              <WordScrambleGame
+                key={current.word.key}
+                targetWord={current.word.form}
+                meaning={current.word.meaning}
+                pos={current.word.pos}
+                context={current.word.context}
+                language={current.word.language}
+                disabled={grading}
+                hintText={hintText}
+                hintBusy={hintBusy}
+                onAskHint={hasSession ? askCatHint : undefined}
+                onSolve={() => {
+                  setCombo((prev) => {
+                    const next = prev + 1;
+                    setCatPose("celebrate");
+                    setCatSpeech(
+                      next >= 3 ? `¡En racha! x${next} 🔥` : "¡Palabra descifrada! ✨🎯",
+                    );
+                    return next;
+                  });
+                  void recordReview(
+                    {
+                      language: current.word.language,
+                      form: current.word.form,
+                      kind: "word",
+                      rating: "correct",
+                      hints: 0,
+                    },
+                    captureDbScope(),
+                  ).catch(() => {});
+                  void grade(current, EXERCISE_RATING.correct);
+                }}
+                onWrong={() => {
+                  setCatPose("greet");
+                  setCatSpeech("Casi... ¡revisa el orden de las letras! 🐾");
+                  setCombo(0);
+                }}
+              />
+            ) : current.mode === "grammar" ? (
+              <GrammarGame
+                key={current.word.key}
+                targetWord={current.word.form}
+                meaning={current.word.meaning}
+                pos={current.word.pos}
+                context={current.word.context}
+                language={current.word.language}
+                disabled={grading}
+                hintText={hintText}
+                hintBusy={hintBusy}
+                onAskHint={hasSession ? askCatHint : undefined}
+                onSolve={() => {
+                  setCombo((prev) => {
+                    const next = prev + 1;
+                    setCatPose("celebrate");
+                    setCatSpeech(
+                      next >= 3 ? `¡Gramática en racha! x${next} 🔥` : "¡Categoría acertada! 🏛️✨",
+                    );
+                    return next;
+                  });
+                  void recordReview(
+                    {
+                      language: current.word.language,
+                      form: current.word.form,
+                      kind: "word",
+                      rating: "correct",
+                      hints: 0,
+                    },
+                    captureDbScope(),
+                  ).catch(() => {});
+                  void grade(current, EXERCISE_RATING.correct);
+                }}
+                onWrong={() => {
+                  setCatPose("greet");
+                  setCatSpeech("Casi... revisa la función de la palabra 🐾");
+                  setCombo(0);
+                }}
+              />
+            ) : current.mode === "syntax" ? (
+              <SentenceBuilderGame
+                key={current.word.key}
+                targetWord={current.word.form}
+                meaning={current.word.meaning}
+                sentence={current.word.context ?? ""}
+                language={current.word.language}
+                disabled={grading}
+                hintText={hintText}
+                hintBusy={hintBusy}
+                onAskHint={hasSession ? askCatHint : undefined}
+                onSolve={() => {
+                  setCombo((prev) => {
+                    const next = prev + 1;
+                    setCatPose("celebrate");
+                    setCatSpeech(
+                      next >= 3 ? `¡Sintaxis en racha! x${next} 🔥` : "¡Oración ordenada! 🎯✨",
+                    );
+                    return next;
+                  });
+                  void recordReview(
+                    {
+                      language: current.word.language,
+                      form: current.word.form,
+                      kind: "word",
+                      rating: "correct",
+                      hints: 0,
+                    },
+                    captureDbScope(),
+                  ).catch(() => {});
+                  void grade(current, EXERCISE_RATING.correct);
+                }}
+                onWrong={() => {
+                  setCatPose("greet");
+                  setCatSpeech("Revisa el orden de las palabras 🐾");
+                  setCombo(0);
+                }}
+              />
             ) : current.mode === "write" ? (
               <>
                 <div className="index-card nb-card">
@@ -1788,14 +2394,28 @@ export default function Vocabulary({ onClose, books, activityVersion }: Vocabula
                 <div className="index-card nb-card">
                   {current.mode === "choose" ? (
                     <>
-                      <p className="card-context">“{cloze}”</p>
+                      {cloze ? (
+                        <PracticeContext
+                          key={`${current.word.key}:choose`}
+                          text={cloze}
+                          target="_____"
+                          language={current.word.language}
+                        />
+                      ) : null}
                       <p className="meta">Toca la palabra que falta.</p>
                     </>
                   ) : current.mode === "context" ? (
                     <>
                       {/* La palabra NO se oculta: se mide reconocer el
                           sentido en una oración nueva del catálogo. */}
-                      <p className="card-context">“{current.item?.sentence}”</p>
+                      {current.item?.sentence ? (
+                        <PracticeContext
+                          key={`${current.word.key}:context`}
+                          text={current.item.sentence}
+                          target={current.word.form}
+                          language={current.word.language}
+                        />
+                      ) : null}
                       <p className="meta">
                         ¿Qué significa «{current.word.form}» en esta oración?
                       </p>
@@ -1809,7 +2429,12 @@ export default function Vocabulary({ onClose, books, activityVersion }: Vocabula
                         ) : null}
                       </p>
                       {current.word.context ? (
-                        <p className="card-context">“{current.word.context}”</p>
+                        <PracticeContext
+                          key={`${current.word.key}:sense`}
+                          text={current.word.context}
+                          target={current.word.form}
+                          language={current.word.language}
+                        />
                       ) : null}
                       <p className="meta">¿Qué acepción corresponde aquí?</p>
                     </>
@@ -1889,9 +2514,14 @@ export default function Vocabulary({ onClose, books, activityVersion }: Vocabula
                   {current.mode === "form" ? (
                     <p className="nb-card-front">{current.word.meaning}</p>
                   ) : current.mode === "cloze" || current.mode === "clozeNew" ? (
-                    <p className="card-context">
-                      “{current.mode === "clozeNew" ? clozeNewText : cloze}”
-                    </p>
+                    (current.mode === "clozeNew" ? clozeNewText : cloze) ? (
+                      <PracticeContext
+                        key={`${current.word.key}:${current.mode}`}
+                        text={(current.mode === "clozeNew" ? clozeNewText : cloze) ?? ""}
+                        target="_____"
+                        language={current.word.language}
+                      />
+                    ) : null
                   ) : (
                     <>
                       <p className="nb-card-front">
@@ -1901,7 +2531,12 @@ export default function Vocabulary({ onClose, books, activityVersion }: Vocabula
                         ) : null}
                       </p>
                       {current.word.context ? (
-                        <p className="card-context">“{current.word.context}”</p>
+                        <PracticeContext
+                          key={`${current.word.key}:meaning`}
+                          text={current.word.context}
+                          target={current.word.form}
+                          language={current.word.language}
+                        />
                       ) : null}
                     </>
                   )}

@@ -24,13 +24,15 @@ describe("GET /api/lexicon/lookup", () => {
 
 describe("GET /api/lexicon/sample", () => {
   it("rejects languages without a sample", async () => {
-    const response = await app.request("/api/lexicon/sample?language=en");
+    const response = await app.request("/api/lexicon/sample?language=fr");
     expect(response.status).toBe(400);
   });
 
   it("reports a missing catalog configuration", async () => {
-    const response = await app.request("/api/lexicon/sample?language=es", {}, {});
-    expect(response.status).toBe(503);
+    const responseEs = await app.request("/api/lexicon/sample?language=es", {}, {});
+    expect(responseEs.status).toBe(503);
+    const responseEn = await app.request("/api/lexicon/sample?language=en", {}, {});
+    expect(responseEn.status).toBe(503);
   });
 });
 

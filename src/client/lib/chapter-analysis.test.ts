@@ -248,5 +248,23 @@ describe("createChapterAnalyzer", () => {
     expect(result.state).toBe("ready");
     expect(saved).toHaveBeenCalledWith("cap.xhtml", result);
   });
+
+  it("filtra stopwords en inglés para libros en inglés", async () => {
+    const book = fakeBook(["The quick brown fox and the whisper"]);
+    const cat = catalog([["cap.xhtml", 0, 1]]);
+    const a = createChapterAnalyzer(cat, {
+      book,
+      language: "en",
+      extractWords: async () => ["the", "quick", "brown", "fox", "and", "whisper"],
+      lookup: async () => ({ ok: true, entries: {} }),
+    });
+    const result = await a.analyze(cat.ranges[0]);
+    expect(result.state).toBe("ready");
+    if (result.state === "ready") {
+      expect(result.forms).toEqual(expect.arrayContaining(["quick", "brown", "fox", "whisper"]));
+      expect(result.forms).not.toContain("the");
+      expect(result.forms).not.toContain("and");
+    }
+  });
 });
 

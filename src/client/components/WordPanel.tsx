@@ -17,6 +17,7 @@ import { pushWordsToServer } from "../lib/vocab";
 import { pushKnowledgeToServer } from "../lib/reading-sync";
 import { recordReview } from "../lib/reviews";
 import { loadUseAi } from "../lib/ai-pref";
+import { loadNativeLanguage } from "../lib/settings";
 import { award, localDayKey } from "../lib/game";
 import { triggerHaptic } from "../lib/haptics";
 import Sheet from "./Sheet";
@@ -159,7 +160,7 @@ export default function WordPanel({
 
   const enrich = async () => {
     setLookup({ kind: "enriching" });
-    const result = await enrichWord(word, language, context, captureDbScope());
+    const result = await enrichWord(word, language, context, captureDbScope(), loadNativeLanguage());
     if (!result.ok) setLookup({ kind: "error", message: result.error });
     else setLookup({ kind: "found", entries: result.entries });
   };
@@ -172,6 +173,7 @@ export default function WordPanel({
       language,
       context,
       captureDbScope(),
+      loadNativeLanguage(),
     );
     setExplanation(
       result.ok

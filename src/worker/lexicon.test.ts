@@ -7,6 +7,7 @@ import {
 } from "./lexicon";
 import {
   CALIBRATION_BANK,
+  CALIBRATION_BANK_EN,
   CALIBRATION_PER_BAND,
 } from "../shared/calibration-bank";
 
@@ -176,4 +177,14 @@ describe("sampleForCalibration", () => {
     );
     expect(words[0].definition).toBe("habitación");
   });
+
+  it("devuelve muestra completa de 18 lemas para inglés", async () => {
+    const words = await sampleForCalibration(clientWith([]), "en");
+    expect(words).toHaveLength(CALIBRATION_BANK_EN.length * CALIBRATION_PER_BAND);
+    for (const w of words) {
+      expect(typeof w.definition).toBe("string");
+      expect(w.definition!.length).toBeGreaterThan(0);
+    }
+  });
 });
+

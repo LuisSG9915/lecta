@@ -207,6 +207,10 @@ export function useCompanion(): CompanionContextValue {
   return ctx;
 }
 
+export function useCompanionSafe(): CompanionContextValue | null {
+  return useContext(CompanionContext);
+}
+
 type Loaded = {
   // La cuenta cuyo contexto produjo estos datos — lo que se muestra
   // se filtra por ella, así un cambio de cuenta jamás exhibe lo de

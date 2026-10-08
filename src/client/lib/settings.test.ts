@@ -10,6 +10,10 @@ import {
   readerCssVars,
   resolveTheme,
   saveReaderSettings,
+  loadPracticeCompanionMode,
+  savePracticeCompanionMode,
+  loadNativeLanguage,
+  saveNativeLanguage,
   READER_DEFAULTS,
 } from "./settings";
 
@@ -253,5 +257,45 @@ describe("hasExplicitPreparationMode", () => {
     saveReaderSettings({ ...READER_DEFAULTS, preparationMode: "notice" });
     expect(loadReaderSettings("h6").preparationMode).toBe("notice");
     expect(hasExplicitPreparationMode("h6")).toBe(true);
+  });
+});
+
+describe("PracticeCompanionMode", () => {
+  it("defaults to animated when nothing is saved", () => {
+    localStorage.clear();
+    expect(loadPracticeCompanionMode()).toBe("animated");
+  });
+
+  it("persists calm and off modes", () => {
+    savePracticeCompanionMode("calm");
+    expect(loadPracticeCompanionMode()).toBe("calm");
+    savePracticeCompanionMode("off");
+    expect(loadPracticeCompanionMode()).toBe("off");
+  });
+
+  it("clears storage when set back to animated default", () => {
+    savePracticeCompanionMode("off");
+    savePracticeCompanionMode("animated");
+    expect(loadPracticeCompanionMode()).toBe("animated");
+    expect(localStorage.getItem("lecta:companion:practice")).toBeNull();
+  });
+});
+
+describe("NativeLanguage", () => {
+  it("defaults to 'es' when nothing is saved", () => {
+    localStorage.clear();
+    expect(loadNativeLanguage()).toBe("es");
+  });
+
+  it("persists chosen language", () => {
+    saveNativeLanguage("en");
+    expect(loadNativeLanguage()).toBe("en");
+  });
+
+  it("removes storage key when reset to default 'es'", () => {
+    saveNativeLanguage("en");
+    saveNativeLanguage("es");
+    expect(loadNativeLanguage()).toBe("es");
+    expect(localStorage.getItem("lecta:nativeLanguage")).toBeNull();
   });
 });

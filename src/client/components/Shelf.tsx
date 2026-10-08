@@ -9,6 +9,7 @@ import {
 } from "../lib/idb";
 import { triggerHaptic } from "../lib/haptics";
 import { displayTitle, readBookMeta } from "../lib/cover";
+import { languageName } from "../lib/epub";
 import {
   entriesByFormOf,
   manifestBookForms,
@@ -384,6 +385,12 @@ export default function Shelf({ library, checking, onOpen, onRemove, onAdd, onLi
     onRemove(hash);
   };
 
+  const changeBookLanguage = async (hash: string, language: string) => {
+    const scope = captureDbScope();
+    await updateBookMeta(hash, { language }, scope);
+    onLibraryChange();
+  };
+
   if (checking) {
     return <p className="status">Preparando tu estantería…</p>;
   }
@@ -548,6 +555,9 @@ export default function Shelf({ library, checking, onOpen, onRemove, onAdd, onLi
                 aria-label={`Continuar ${displayTitle(current.name, current.title)}`}
               >
                 <BookCover book={current} />
+                <span className="shelf-lang-badge" title={`Idioma: ${languageName(current.language || "es")}`}>
+                  {(current.language || "es").toUpperCase()}
+                </span>
               </button>
               <div className="shelf-hero-info">
                 <p className="eyebrow">{timeOfDayGreeting()} · Seguir leyendo</p>
@@ -616,6 +626,9 @@ export default function Shelf({ library, checking, onOpen, onRemove, onAdd, onLi
                       title={displayTitle(book.name, book.title)}
                     >
                       <BookCover book={book} />
+                      <span className="shelf-lang-badge" title={`Idioma: ${languageName(book.language || "es")}`}>
+                        {(book.language || "es").toUpperCase()}
+                      </span>
                       {bookCoverages.get(book.hash) ? (
                         <span
                           className="discover-badge"
@@ -655,14 +668,30 @@ export default function Shelf({ library, checking, onOpen, onRemove, onAdd, onLi
                               : "Sin empezar"
                           }${book.pendingUpload ? " · Pendiente de subir" : ""}`}
                     </span>
-                    <button
-                      type="button"
-                      className="btn--quiet shelf-book-remove"
-                      aria-label={`Quitar ${displayTitle(book.name, book.title)}`}
-                      onClick={() => remove(book.hash)}
-                    >
-                      {confirmDelete === book.hash ? "¿Seguro?" : "Quitar"}
-                    </button>
+                    <div className="shelf-book-controls">
+                      <select
+                        className="shelf-book-lang-select"
+                        aria-label={`Idioma de ${displayTitle(book.name, book.title)}`}
+                        title="Cambiar idioma del libro"
+                        value={book.language || "es"}
+                        onChange={(event) => void changeBookLanguage(book.hash, event.target.value)}
+                      >
+                        <option value="es">ES</option>
+                        <option value="en">EN</option>
+                        <option value="fr">FR</option>
+                        <option value="de">DE</option>
+                        <option value="it">IT</option>
+                        <option value="pt">PT</option>
+                      </select>
+                      <button
+                        type="button"
+                        className="btn--quiet shelf-book-remove"
+                        aria-label={`Quitar ${displayTitle(book.name, book.title)}`}
+                        onClick={() => remove(book.hash)}
+                      >
+                        {confirmDelete === book.hash ? "¿Seguro?" : "Quitar"}
+                      </button>
+                    </div>
                     {confirmDelete === book.hash ? (
                       <p className="meta">
                         Solo se quita el libro; tus palabras se conservan.

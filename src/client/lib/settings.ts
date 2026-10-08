@@ -289,6 +289,52 @@ export function saveActivityHidden(hidden: boolean) {
   }
 }
 
+export type PracticeCompanionMode = "animated" | "calm" | "off";
+
+const PRACTICE_COMPANION_KEY = "lecta:companion:practice";
+
+// Preferencia del compañero en los juegos y repasos del Cuaderno:
+// «animated» (por defecto): reacciona con saltos, poses y combos en vivo.
+// «calm»: acompaña en reposo (idle) sin interrumpir el ritmo y festeja al terminar.
+// «off»: se oculta durante los ejercicios para máxima sobriedad.
+export function loadPracticeCompanionMode(): PracticeCompanionMode {
+  try {
+    const val = storage()?.getItem(PRACTICE_COMPANION_KEY);
+    if (val === "calm" || val === "off" || val === "animated") return val;
+    return "animated";
+  } catch {
+    return "animated";
+  }
+}
+
+export function savePracticeCompanionMode(mode: PracticeCompanionMode): void {
+  try {
+    if (mode === "animated") storage()?.removeItem(PRACTICE_COMPANION_KEY);
+    else storage()?.setItem(PRACTICE_COMPANION_KEY, mode);
+  } catch {
+    // almacenamiento lleno o deshabilitado
+  }
+}
+
+const NATIVE_LANGUAGE_KEY = "lecta:nativeLanguage";
+
+export function loadNativeLanguage(): string {
+  try {
+    return storage()?.getItem(NATIVE_LANGUAGE_KEY) || "es";
+  } catch {
+    return "es";
+  }
+}
+
+export function saveNativeLanguage(language: string): void {
+  try {
+    if (language === "es") storage()?.removeItem(NATIVE_LANGUAGE_KEY);
+    else storage()?.setItem(NATIVE_LANGUAGE_KEY, language);
+  } catch {
+    // almacenamiento lleno o deshabilitado
+  }
+}
+
 // Sin elección manual ("auto") no se pone data-theme y la media query de
 // prefers-color-scheme decide; así el cambio del sistema se refleja solo.
 export function applyTheme(choice: ThemeChoice) {

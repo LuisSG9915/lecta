@@ -13,6 +13,7 @@
 // Versión: se guarda con el borrador del examen; al cambiar la lista
 // se sube la versión para no restaurar respuestas contra otra muestra.
 export const CALIBRATION_BANK_VERSION = "es-bank-v1";
+export const CALIBRATION_BANK_EN_VERSION = "en-bank-v1";
 
 // Bandas del examen: [desde, hasta) en zipf. La última queda
 // abierta en 5.0 — más frecuente sería trivial para casi cualquier
@@ -123,12 +124,217 @@ export const CALIBRATION_BANK: readonly (readonly string[])[] = [
   ],
 ];
 
+// Banco editorial en inglés repartido en las mismas 6 bandas zipf.
+export const CALIBRATION_BANK_EN: readonly (readonly string[])[] = [
+  // [2.0, 2.5) — infrecuentes / literarias (CEFR C1–C2).
+  [
+    "clandestine",
+    "surreptitious",
+    "ephemeral",
+    "blunder",
+    "aloof",
+    "haughty",
+    "kindle",
+    "fathom",
+    "ponder",
+    "yearn",
+    "solace",
+    "uncanny",
+  ],
+  // [2.5, 3.0) — avanzadas / menos cotidianas (CEFR B2–C1).
+  [
+    "awkward",
+    "bewilder",
+    "clumsy",
+    "stubborn",
+    "gloomy",
+    "reckless",
+    "thrive",
+    "glimpse",
+    "scarce",
+    "tedious",
+    "tremble",
+    "subtle",
+  ],
+  // [3.0, 3.5) — intermedias altas (CEFR B1–B2).
+  [
+    "whisper",
+    "wander",
+    "delight",
+    "harsh",
+    "grief",
+    "sorrow",
+    "bargain",
+    "praise",
+    "venture",
+    "conceal",
+    "scatter",
+    "damp",
+  ],
+  // [3.5, 4.0) — intermedias / cotidianas (CEFR B1).
+  [
+    "afraid",
+    "narrow",
+    "smooth",
+    "proud",
+    "lonely",
+    "afford",
+    "sudden",
+    "hollow",
+    "gentle",
+    "brave",
+    "crowd",
+    "threat",
+  ],
+  // [4.0, 4.5) — elementales comunes (CEFR A2–B1).
+  [
+    "village",
+    "bridge",
+    "silver",
+    "garden",
+    "shadow",
+    "quiet",
+    "clever",
+    "hungry",
+    "pocket",
+    "danger",
+    "winter",
+    "trouble",
+  ],
+  // [4.5, 5.0) — básicas / alta frecuencia (CEFR A1–A2).
+  [
+    "friend",
+    "summer",
+    "father",
+    "river",
+    "sleep",
+    "happy",
+    "window",
+    "doctor",
+    "travel",
+    "simple",
+    "yellow",
+    "water",
+  ],
+];
+
+// Definiciones bilingües / de apoyo para los lemas en inglés del banco.
+export const CALIBRATION_DEFINITIONS_EN: Readonly<Record<string, string>> = {
+  // [2.0, 2.5)
+  clandestine: "Hecho en secreto o de forma oculta.",
+  surreptitious: "Obtenido o realizado con disimulo y a escondidas.",
+  ephemeral: "Que dura muy poco tiempo o es pasajero.",
+  blunder: "Error o equivocación torpe y grave.",
+  aloof: "Distante, reservado o poco comunicativo.",
+  haughty: "Arrogante, orgulloso y con desdén hacia los demás.",
+  kindle: "Encender fuego o avivar un sentimiento o pasión.",
+  fathom: "Comprender o penetrar el sentido profundo de algo.",
+  ponder: "Pensar detenidamente y con calma sobre algo.",
+  yearn: "Sentir un deseo profundo o anhelo vehemente.",
+  solace: "Consuelo o alivio en medio del dolor o la tristeza.",
+  uncanny: "Misterioso, extraño o inquietante.",
+  // [2.5, 3.0)
+  awkward: "Incómodo, torpe o difícil de manejar.",
+  bewilder: "Desconcertar o confundir por completo a alguien.",
+  clumsy: "Torpe en movimientos o en el trato.",
+  stubborn: "Terco, obstinado o difícil de doblegar.",
+  gloomy: "Sombrío, oscuro o desanimado.",
+  reckless: "Temerario, imprudente o descuidado ante el peligro.",
+  thrive: "Prosperar, florecer o desarrollarse con éxito.",
+  glimpse: "Vistazo rápido o visión fugaz de algo.",
+  scarce: "Escaso o difícil de encontrar.",
+  tedious: "Tedioso, aburrido y pesado por su monotonía.",
+  tremble: "Temblar de frío, miedo o emoción.",
+  subtle: "Sutil, delicado o difícil de percibir a simple vista.",
+  // [3.0, 3.5)
+  whisper: "Susurrar o hablar en voz muy baja.",
+  wander: "Vagar, pasear sin rumbo o perderse en pensamientos.",
+  delight: "Gran placer, satisfacción o deleite.",
+  harsh: "Áspero, severo o desagradable al oído o tacto.",
+  grief: "Pena profunda o tristeza por una gran pérdida.",
+  sorrow: "Dolor del alma, pesar o aflicción.",
+  bargain: "Trato ventajoso o compra a buen precio.",
+  praise: "Elogiar, alabar o aplaudir las cualidades de alguien.",
+  venture: "Aventurarse a hacer algo arriesgado o nueva empresa.",
+  conceal: "Ocultar o esconder algo a la vista o conocimiento de otros.",
+  scatter: "Esparcir, dispersar o desparramar en varias direcciones.",
+  damp: "Ligeramente húmedo o mojado.",
+  // [3.5, 4.0)
+  afraid: "Temeroso, asustado o con miedo.",
+  narrow: "Estrecho o de poca anchura.",
+  smooth: "Liso, suave o sin asperezas ni sobresaltos.",
+  proud: "Orgulloso o satisfecho de sus logros o seres queridos.",
+  lonely: "Solitario o triste por falta de compañía.",
+  afford: "Poder permitirse pagar o hacer algo.",
+  sudden: "Repentino, imprevisto o rápido.",
+  hollow: "Hueco, vacío por dentro.",
+  gentle: "Amable, dócil, suave o cariñoso.",
+  brave: "Valiente, decidido ante el miedo o peligro.",
+  crowd: "Multitud o grupo grande de personas reunidas.",
+  threat: "Amenaza o anuncio de un mal inminente.",
+  // [4.0, 4.5)
+  village: "Pueblo o aldea pequeña.",
+  bridge: "Puente que cruza un río, camino o vía.",
+  silver: "Plata o de color plateado.",
+  garden: "Jardín o terreno donde se cultivan flores o plantas.",
+  shadow: "Sombra que proyecta un cuerpo al tapar la luz.",
+  quiet: "Silencioso, tranquilo o en calma.",
+  clever: "Listo, ingenioso o hábil para resolver problemas.",
+  hungry: "Hambriento o con ganas de comer.",
+  pocket: "Bolsillo de una prenda para guardar objetos.",
+  danger: "Peligro o riesgo de daño.",
+  winter: "Invierno, la estación más fría del año.",
+  trouble: "Problema, dificultad o molestia.",
+  // [4.5, 5.0)
+  friend: "Amigo o persona cercana con afecto mutuo.",
+  summer: "Verano, la estación más calurosa del año.",
+  father: "Padre o progenitor masculino.",
+  river: "Río o corriente natural de agua.",
+  sleep: "Dormir o estado de reposo natural del cuerpo.",
+  happy: "Feliz, alegre o contento.",
+  window: "Ventana que da luz y ventilación a una habitación.",
+  doctor: "Médico o persona dedicada a curar enfermos.",
+  travel: "Viajar o trasladarse a otros lugares.",
+  simple: "Sencillo, fácil de entender o sin adornos excesivos.",
+  yellow: "Amarillo o de color semejante al del oro o el sol.",
+  water: "Agua, líquido vital transparente e inodoro.",
+};
+
+// Banco correspondiente según idioma.
+export function calibrationBank(language = "es"): readonly (readonly string[])[] {
+  return language === "en" ? CALIBRATION_BANK_EN : CALIBRATION_BANK;
+}
+
+// Versión del banco para asociar al borrador de calibración.
+export function calibrationBankVersion(language = "es"): string {
+  return language === "en" ? CALIBRATION_BANK_EN_VERSION : CALIBRATION_BANK_VERSION;
+}
+
+// Definición de respaldo cuando el catálogo no tenga acepción cargada.
+export function calibrationFallbackDefinition(lemma: string, language = "es"): string | null {
+  if (language === "en") return CALIBRATION_DEFINITIONS_EN[lemma] ?? null;
+  return null;
+}
+
+// Medición zipf estimada a partir de la banda editorial para lemas del banco.
+export function calibrationBankZipf(lemma: string, language = "es"): number | null {
+  const bank = calibrationBank(language);
+  const normalized = lemma.trim().toLowerCase();
+  for (let band = 0; band < bank.length; band++) {
+    if (bank[band].includes(normalized)) {
+      return 2.0 + band * 0.5 + 0.25;
+    }
+  }
+  return null;
+}
+
 // Índice de banda para una medición zipf; -1 fuera del rango.
 export function calibrationBandIndex(zipf: number): number {
   return CALIBRATION_BANDS.findIndex(([lo, hi]) => zipf >= lo && zipf < hi);
 }
 
 // Lista plana de lemas del banco (para el WHERE del catálogo).
-export function calibrationBankLemmas(): string[] {
-  return CALIBRATION_BANK.flat();
+export function calibrationBankLemmas(language = "es"): string[] {
+  return calibrationBank(language).flat();
 }
+

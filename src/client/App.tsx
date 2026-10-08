@@ -17,6 +17,7 @@ import { downloadCatalogEpub, type CatalogBook } from "./lib/catalog";
 import { analyzeStoredBook } from "./lib/book-vocab";
 import {
   CALIBRATION_DONE_KEY,
+  calibrationDoneKey,
   fetchCalibrationSample,
   type CalibrationWord,
 } from "./lib/calibration";
@@ -169,9 +170,14 @@ export default function App() {
     calibrationScope.current = null;
     setCalibrationWords(null);
     if (markDone) {
-      void saveSessionValue(CALIBRATION_DONE_KEY, "1", scope).catch(
+      void saveSessionValue(calibrationDoneKey(calibrationLang), "1", scope).catch(
         () => undefined,
       );
+      if (calibrationLang === "es") {
+        void saveSessionValue(CALIBRATION_DONE_KEY, "1", scope).catch(
+          () => undefined,
+        );
+      }
       // Si el lector está montado detrás (la prueba se abrió desde su
       // aviso al final del capítulo), recarga perfil y Cuaderno con
       // lo que acaba de escribirse, sin perder la posición.
@@ -837,7 +843,7 @@ export default function App() {
           onClose={closePanel}
           resetToken={resetToken}
           onResetDone={() => setResetToken(undefined)}
-          onOpenCalibration={(words) => {
+          onOpenCalibration={(words, lang = "es") => {
             // El diálogo de Cuenta quedaría por encima de la hoja:
             // se cierra el panel y su entrada del historial pasa a
             // ser la de la calibración (mismo nivel, sin pushes).
@@ -847,7 +853,7 @@ export default function App() {
               panelRelease.current = null;
               calibrationRelease.current.swap(onCalibrationBack);
             }
-            showCalibration(words, null);
+            showCalibration(words, null, lang);
           }}
         />
       ) : null}

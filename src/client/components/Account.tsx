@@ -7,6 +7,7 @@ import {
   listSavedWords,
   loadSessionValue,
   saveSessionValue,
+  type DbScope,
 } from "../lib/idb";
 import { loadUseAi, saveUseAi } from "../lib/ai-pref";
 import { clearLastUserId } from "../lib/last-user";
@@ -41,10 +42,8 @@ import {
 } from "../lib/reading-goal";
 import { downloadBackup } from "../lib/export";
 import { timeAgo } from "../lib/relative-time";
-import {
-  getDictionaryCacheWordCount,
-  emptyDictionaryCache,
-} from "../lib/offline-dictionary";
+import { getDictionaryCacheWordCount, emptyDictionaryCache } from "../lib/offline-dictionary";
+import { loadNativeLanguage, saveNativeLanguage } from "../lib/settings";
 import Dialog from "./Dialog";
 import Toggle from "./Toggle";
 
@@ -57,8 +56,30 @@ type AccountProps = {
   // «Ajustar mi vocabulario»: la muestra se descarga aquí para poder
   // avisar si falla; la hoja la monta App porque el diálogo de Cuenta
   // la taparía.
-  onOpenCalibration: (words: CalibrationWord[]) => void;
+  onOpenCalibration: (words: CalibrationWord[], language?: string) => void;
 };
+
+async function loadVocabSummary(language: string, scope: DbScope): Promise<string> {
+  const [allRows, savedWords] = await Promise.all([
+    listKnowledge(language, scope).catch(() => []),
+    listSavedWords(language, scope).catch(() => []),
+  ]);
+  const savedLemmas = new Set<string>();
+  for (const word of savedWords)
+    for (const term of [word.form, word.lemma])
+      if (term) savedLemmas.add(term.toLowerCase());
+  const rows = allRows.filter((row) =>
+    isCredibleKnowledge(row, savedLemmas),
+  );
+  if (!rows.length) {
+    return "Aún sin medición; se ofrece una prueba breve al terminar tu primer capítulo.";
+  }
+  const knownCount = rows.filter((row) => row.known).length;
+  const profile = await estimateStoredProfile(rows, language);
+  return profile
+    ? `${knownCount} palabras que ya conoces · nivel estimado: ${vocabLevelLabel(profile.threshold)}`
+    : `${knownCount} palabras que ya conoces · sin conexión no se puede estimar el nivel`;
+}
 
 export default function Account({
   onClose,
@@ -101,11 +122,17 @@ export default function Account({
   // dispositivo; viaja anónimo→cuenta pero no al servidor.
   const [goalDays, setGoalDays] = useState<number | null>(null);
   // Resumen del modelo de conocimiento para «Tu vocabulario»: qué
-  // tanto sabe el lector según la evidencia guardada (calibración,
-  // «ya la conocía» y consultas).
-  const [vocabInfo, setVocabInfo] = useState<{ text: string } | null>(null);
-  const [loadingSample, setLoadingSample] = useState(false);
+  // tanto sabe el lector según la evidencia guardada en cada idioma.
+  const [vocabInfoEs, setVocabInfoEs] = useState<string | null>(null);
+  const [vocabInfoEn, setVocabInfoEn] = useState<string | null>(null);
+  const [loadingSampleLang, setLoadingSampleLang] = useState<string | null>(null);
   const [cachedDictWords, setCachedDictWords] = useState<number | null>(null);
+  const [nativeLanguage, setNativeLanguage] = useState<string>(() => loadNativeLanguage());
+
+  const changeNativeLanguage = (val: string) => {
+    setNativeLanguage(val);
+    saveNativeLanguage(val);
+  };
 
   const userId = session?.user?.id;
 
@@ -168,33 +195,14 @@ export default function Account({
     let cancelled = false;
     void (async () => {
       const scope = captureDbScope();
-      const [allRows, savedWords] = await Promise.all([
-        listKnowledge("es", scope).catch(() => []),
-        listSavedWords("es", scope).catch(() => []),
+      const [esText, enText] = await Promise.all([
+        loadVocabSummary("es", scope),
+        loadVocabSummary("en", scope),
       ]);
-      // Mismo criterio que el lector: un «inferida como desconocida»
-      // sin palabra guardada que la respalde es rastro de una consulta,
-      // no una declaración — no entra al conteo ni a la estimación.
-      const savedLemmas = new Set<string>();
-      for (const word of savedWords)
-        for (const term of [word.form, word.lemma])
-          if (term) savedLemmas.add(term.toLowerCase());
-      const rows = allRows.filter((row) =>
-        isCredibleKnowledge(row, savedLemmas),
-      );
-      if (!rows.length) {
-        if (!cancelled)
-          setVocabInfo({
-            text: "Aún sin medición; se ofrece una prueba breve al terminar tu primer capítulo.",
-          });
-        return;
+      if (!cancelled) {
+        setVocabInfoEs(esText);
+        setVocabInfoEn(enText);
       }
-      const knownCount = rows.filter((row) => row.known).length;
-      const profile = await estimateStoredProfile(rows, "es");
-      const text = profile
-        ? `${knownCount} palabras que ya conoces · nivel estimado: ${vocabLevelLabel(profile.threshold)}`
-        : `${knownCount} palabras que ya conoces · sin conexión no se puede estimar el nivel`;
-      if (!cancelled) setVocabInfo({ text });
     })();
     return () => {
       cancelled = true;
@@ -463,19 +471,19 @@ export default function Account({
   // «Ajustar mi vocabulario»: descarga la muestra aquí (para avisar
   // si falla) y la hoja la abre App. Al terminar allá solo se guarda
   // y se cierra.
-  const adjustVocabulary = async () => {
-    if (loadingSample) return;
-    setLoadingSample(true);
+  const adjustVocabulary = async (lang = "es") => {
+    if (loadingSampleLang) return;
+    setLoadingSampleLang(lang);
     setError("");
     try {
-      const sample = await fetchCalibrationSample();
+      const sample = await fetchCalibrationSample(lang);
       if (sample.ok && sample.words.length) {
-        onOpenCalibration(sample.words);
+        onOpenCalibration(sample.words, lang);
       } else {
         setError("No se pudo cargar la lista de palabras. Intenta de nuevo con conexión.");
       }
     } finally {
-      setLoadingSample(false);
+      setLoadingSampleLang(null);
     }
   };
 
@@ -654,20 +662,64 @@ export default function Account({
 
       <section className="account-privacy" aria-label="Tu vocabulario">
         <h2 className="eyebrow">Tu vocabulario</h2>
-        <p className="meta">
-          {vocabInfo === null ? "Revisando lo que conoces…" : vocabInfo.text}
-        </p>
-        <div className="setting-row">
-          <span className="setting-label">Qué palabras te muestra Lecta</span>
-          <button
-            type="button"
-            className="btn--quiet"
-            disabled={loadingSample}
-            onClick={() => void adjustVocabulary()}
-          >
-            {loadingSample ? "Cargando…" : "Ajustar mi vocabulario"}
-          </button>
+
+        <div style={{ marginBottom: "1rem" }}>
+          <strong>Español</strong>
+          <p className="meta">
+            {vocabInfoEs === null ? "Revisando lo que conoces…" : vocabInfoEs}
+          </p>
+          <div className="setting-row">
+            <span className="setting-label">Ajustar vocabulario en español</span>
+            <button
+              type="button"
+              className="btn--quiet"
+              disabled={loadingSampleLang !== null}
+              onClick={() => void adjustVocabulary("es")}
+            >
+              {loadingSampleLang === "es" ? "Cargando…" : "Ajustar vocabulario"}
+            </button>
+          </div>
         </div>
+
+        <div>
+          <strong>Inglés</strong>
+          <p className="meta">
+            {vocabInfoEn === null ? "Revisando lo que conoces…" : vocabInfoEn}
+          </p>
+          <div className="setting-row">
+            <span className="setting-label">Ajustar vocabulario en inglés</span>
+            <button
+              type="button"
+              className="btn--quiet"
+              disabled={loadingSampleLang !== null}
+              onClick={() => void adjustVocabulary("en")}
+            >
+              {loadingSampleLang === "en" ? "Cargando…" : "Ajustar vocabulario"}
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <section className="account-privacy" aria-label="Idiomas">
+        <h2 className="eyebrow">Idiomas</h2>
+        <div className="setting-row">
+          <span className="setting-label">Lengua materna</span>
+          <select
+            aria-label="Lengua materna"
+            value={nativeLanguage}
+            onChange={(event) => changeNativeLanguage(event.target.value)}
+          >
+            <option value="es">Español</option>
+            <option value="en">Inglés</option>
+            <option value="fr">Francés</option>
+            <option value="de">Alemán</option>
+            <option value="pt">Portugués</option>
+            <option value="it">Italiano</option>
+          </select>
+        </div>
+        <p className="meta">
+          Se usa para adaptar las explicaciones y traducciones cuando leas en otros idiomas.
+        </p>
       </section>
 
       <section className="account-privacy" aria-label="Meta de lectura">

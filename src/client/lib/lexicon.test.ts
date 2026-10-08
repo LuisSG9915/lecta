@@ -1,6 +1,15 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { batchLookup, fetchItems, reportSense, BATCH_LOOKUP_LIMIT } from "./lexicon";
+import {
+  batchLookup,
+  enrichWord,
+  explainInContext,
+  fetchItems,
+  lookupWord,
+  reportSense,
+  verifySentence,
+  BATCH_LOOKUP_LIMIT,
+} from "./lexicon";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -114,5 +123,75 @@ describe("referencias de acepción", () => {
     await fetchItems([{ entryId: "1234567890123456789", senseOrder: 3 }]);
     const body = JSON.parse(String(spy.mock.calls[0]?.[1]?.body));
     expect(body.refs).toEqual([{ entryId: "1234567890123456789", senseOrder: 3 }]);
+  });
+});
+
+describe("lexicon language learning and AI endpoints", () => {
+  it("lookupWord devuelve definición editorial de respaldo para palabras del banco de calibración en inglés", async () => {
+    // 404 del catálogo
+    const spy = vi.fn(async () => new Response(JSON.stringify({ error: "no encontrado" }), { status: 404 }));
+    vi.stubGlobal("fetch", spy);
+
+    const result = await lookupWord("wander", "en");
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.found).toBe(true);
+      expect(result.entries[0]?.lemma).toBe("wander");
+      expect(result.entries[0]?.senses[0]?.definition.toLowerCase()).toContain("vagar");
+    }
+  });
+
+  it("enrichWord envía nativeLanguage en el cuerpo de la petición", async () => {
+    let capturedBody: Record<string, unknown> | null = null;
+    const spy = vi.fn(async (_url: unknown, init?: { body?: string }) => {
+      capturedBody = JSON.parse(init?.body ?? "{}");
+      return new Response(JSON.stringify({ entries: [] }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", spy);
+
+    await enrichWord("wander", "en", "He wandered around.", undefined, "es");
+    expect(capturedBody).toMatchObject({
+      form: "wander",
+      language: "en",
+      context: "He wandered around.",
+      nativeLanguage: "es",
+    });
+  });
+
+  it("explainInContext envía nativeLanguage en el cuerpo de la petición", async () => {
+    let capturedBody: Record<string, unknown> | null = null;
+    const spy = vi.fn(async (_url: unknown, init?: { body?: string }) => {
+      capturedBody = JSON.parse(init?.body ?? "{}");
+      return new Response(JSON.stringify({ explanation: "Significa caminar sin rumbo." }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", spy);
+
+    const result = await explainInContext("wander", "en", "He wandered.", undefined, "es");
+    expect(result.ok).toBe(true);
+    expect(capturedBody).toMatchObject({
+      form: "wander",
+      language: "en",
+      context: "He wandered.",
+      nativeLanguage: "es",
+    });
+  });
+
+  it("verifySentence envía language y nativeLanguage en el cuerpo", async () => {
+    let capturedBody: Record<string, unknown> | null = null;
+    const spy = vi.fn(async (_url: unknown, init?: { body?: string }) => {
+      capturedBody = JSON.parse(init?.body ?? "{}");
+      return new Response(JSON.stringify({ correct: true, feedback: "¡Bien hecho!" }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", spy);
+
+    const result = await verifySentence("wander", "vagar", "I wander in the woods.", undefined, "en", "es");
+    expect(result.ok).toBe(true);
+    expect(capturedBody).toMatchObject({
+      form: "wander",
+      meaning: "vagar",
+      sentence: "I wander in the woods.",
+      language: "en",
+      nativeLanguage: "es",
+    });
   });
 });

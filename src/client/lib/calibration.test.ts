@@ -6,6 +6,10 @@ import {
   type KnownWord,
 } from "./idb";
 import {
+  CALIBRATION_DONE_KEY,
+  CALIBRATION_DRAFT_KEY,
+  calibrationDoneKey,
+  calibrationDraftKey,
   calibrationRows,
   hasCalibrationEvidence,
   parseCalibrationDraft,
@@ -14,7 +18,6 @@ import {
   type CalibrationAnswers,
   type CalibrationWord,
 } from "./calibration";
-import { vocabLevelLabel } from "./knowledge";
 import { pushKnowledgeToServer } from "./reading-sync";
 import { pushWordsToServer } from "./vocab";
 
@@ -274,13 +277,15 @@ describe("recordCalibration", () => {
   });
 });
 
-describe("vocabLevelLabel", () => {
-  it("umbrales: <2.5 amplio, <3.5 medio, el resto en desarrollo", () => {
-    expect(vocabLevelLabel(1.5)).toBe("amplio");
-    expect(vocabLevelLabel(2.4)).toBe("amplio");
-    expect(vocabLevelLabel(2.5)).toBe("medio");
-    expect(vocabLevelLabel(3.4)).toBe("medio");
-    expect(vocabLevelLabel(3.5)).toBe("en desarrollo");
-    expect(vocabLevelLabel(5.5)).toBe("en desarrollo");
+describe("calibrationDoneKey and calibrationDraftKey", () => {
+  it("usa la clave base para español por compatibilidad y añade sufijo para otros idiomas", () => {
+    expect(calibrationDoneKey("es")).toBe(CALIBRATION_DONE_KEY);
+    expect(calibrationDoneKey()).toBe(CALIBRATION_DONE_KEY);
+    expect(calibrationDoneKey("en")).toBe(`${CALIBRATION_DONE_KEY}:en`);
+
+    expect(calibrationDraftKey("es")).toBe(CALIBRATION_DRAFT_KEY);
+    expect(calibrationDraftKey()).toBe(CALIBRATION_DRAFT_KEY);
+    expect(calibrationDraftKey("en")).toBe(`${CALIBRATION_DRAFT_KEY}:en`);
   });
 });
+

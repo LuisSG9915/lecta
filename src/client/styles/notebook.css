@@ -138,6 +138,178 @@
   border-top: 1px dashed var(--rule-strong);
 }
 
+/* Contextos ligeros en tarjetas de repaso: micro-extracto con
+   desplegable opcional si la cita del libro es larga. */
+.card-context-box {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+}
+
+.card-context-toggle {
+  align-self: flex-start;
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+  padding: 0.15rem 0.45rem;
+  margin-block-start: -0.15rem;
+  margin-block-end: var(--s-1);
+  border-radius: var(--r-1);
+  opacity: 0.85;
+  transition: opacity var(--dur-1) var(--ease-out), color var(--dur-1) var(--ease-out);
+}
+
+.card-context-toggle:hover {
+  opacity: 1;
+  color: var(--ink);
+  background: var(--paper-subtle, rgba(0, 0, 0, 0.03));
+}
+
+.card-context--full {
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+  opacity: 0.95;
+  border-inline-start: 2px solid var(--vermilion-soft, var(--line));
+  padding-inline-start: var(--s-2);
+  margin-block: var(--s-1) var(--s-2);
+  animation: rise-in var(--dur-2) var(--ease-out);
+}
+
+/* Barra del compañero durante los juegos y repasos */
+.practice-cat-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  margin-block-end: var(--s-3);
+  background: var(--paper-raised, var(--paper));
+  border: var(--border);
+  border-radius: var(--r-2);
+  box-shadow: 0 2px 8px -2px rgba(43, 37, 32, 0.05);
+  animation: rise-in var(--dur-2) var(--ease-out);
+  position: relative;
+}
+
+.practice-cat-bar--collapsed {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  margin-block-end: var(--s-2);
+}
+
+.practice-cat-reopen {
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+  padding: 0.2rem 0.5rem;
+  border-radius: var(--r-1);
+}
+
+.practice-cat-avatar {
+  inline-size: 52px;
+  block-size: 52px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.practice-cat-avatar svg {
+  inline-size: 100%;
+  block-size: 100%;
+}
+
+.practice-cat-content {
+  flex: 1;
+  min-inline-size: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.practice-cat-speech-bubble {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.practice-cat-meta-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.practice-cat-name {
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--ink-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.practice-cat-text {
+  margin: 0;
+  font-family: var(--font-book);
+  font-size: var(--fs-sm);
+  color: var(--ink);
+  line-height: 1.35;
+}
+
+.practice-cat-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex-shrink: 0;
+}
+
+.practice-cat-combo {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  color: var(--vermilion);
+  background: var(--paper-warm, var(--paper));
+  border: 1px solid var(--vermilion-soft, var(--line));
+  padding: 0.1rem 0.4rem;
+  border-radius: var(--r-full, 9999px);
+  animation: pop-bounce var(--dur-2) var(--ease-out);
+}
+
+@keyframes pop-bounce {
+  0% { transform: scale(0.85); }
+  60% { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+
+.practice-cat-hint-btn {
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  padding: 0.25rem 0.55rem;
+  border: 1px solid var(--ochre-soft, var(--line));
+  border-radius: var(--r-1);
+  color: var(--ink);
+  background: var(--paper-raised, var(--paper));
+}
+
+.practice-cat-mode-btn {
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+  opacity: 0.8;
+  padding: 0.2rem 0.4rem;
+  border-radius: var(--r-1);
+}
+
+.practice-cat-mode-btn:hover {
+  opacity: 1;
+  color: var(--ink);
+}
+
 .practice-grades {
   display: flex;
   gap: var(--s-2);
@@ -205,12 +377,42 @@
 }
 
 /* Parejas: dos columnas de botones; el par resuelto se atenúa y se
-   tacha. La forma elegida se marca con el borde bermellón. */
+/* Parejas: tablero de dos columnas interactivo con contador de progreso,
+   fichas compactas, feedback táctil y animación festiva al emparejar. */
+.match-header-tracker {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-block: var(--s-2) var(--s-1);
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+}
+
+.match-dots {
+  display: flex;
+  gap: 5px;
+}
+
+.match-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--rule-strong);
+  opacity: 0.45;
+  transition: all var(--dur-2) var(--ease-out);
+}
+
+.match-dot.is-done {
+  background: var(--sage);
+  opacity: 1;
+  transform: scale(1.15);
+}
+
 .match-board {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: var(--s-3);
-  margin-block: var(--s-4) var(--s-3);
+  margin-block: var(--s-2) var(--s-3);
 }
 
 .match-col {
@@ -224,24 +426,50 @@
   font-weight: 400;
   block-size: auto;
   white-space: normal;
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-2);
+  line-height: var(--lh-small);
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
   transition:
+    transform var(--dur-1) var(--ease-out),
     border-color var(--dur-1) var(--ease-out),
+    background var(--dur-1) var(--ease-out),
     color var(--dur-1) var(--ease-out),
     opacity var(--dur-2) var(--ease-out);
 }
 
 .match-option[aria-pressed="true"] {
   border-color: var(--vermilion);
+  background: var(--paper-raised);
+  transform: translateY(-2px);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.08);
 }
 
 .match-option.is-done {
-  opacity: 0.55;
-  text-decoration: line-through;
+  border-color: var(--sage);
+  background: rgba(67, 105, 77, 0.08);
+  color: var(--sage);
+  opacity: 0.88;
+  cursor: default;
+  text-decoration: none;
+}
+
+.match-option.is-done::after {
+  content: "✓";
+  font-weight: 700;
+  color: var(--sage);
+  margin-inline-start: auto;
+  font-size: var(--fs-sm);
 }
 
 .match-option.is-wrong {
   border-color: var(--vermilion);
   color: var(--vermilion);
+  animation: lecta-shake 0.4s ease;
 }
 
 /* «Escribir»: área de texto sobre el papel, con el mismo borde y foco
@@ -429,6 +657,27 @@
   min-height: 2.75rem;
   padding-block: var(--s-1);
   font-size: var(--fs-sm);
+}
+
+.nb-book-filter {
+  margin-block: var(--s-2);
+}
+
+.nb-select {
+  inline-size: 100%;
+  min-height: 44px;
+  padding: var(--s-2) var(--s-3);
+  border: var(--border);
+  border-radius: var(--r-1);
+  background: var(--paper-sunken);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--fs-base);
+  cursor: pointer;
+}
+
+.nb-select:focus {
+  border-color: var(--vermilion);
 }
 
 .nb-export {
@@ -678,4 +927,649 @@
   gap: var(--s-2);
   flex-wrap: wrap;
 }
+
+/* ---------- Barra de progreso de la tanda de repaso ---------- */
+
+.nb-practice-progress-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-block-end: var(--s-2);
+}
+
+.nb-practice-progress-row .nb-practice-meta {
+  margin: 0;
+}
+
+.nb-practice-counter {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--ink-soft);
+  background: var(--paper-sunken);
+  padding: 2px 8px;
+  border-radius: var(--r-pill);
+}
+
+/* ---------- Minijuego Descifrar (Word Scramble) ---------- */
+
+.scramble-game {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  margin-block-start: var(--s-2);
+}
+
+.scramble-card {
+  margin-block-end: 0;
+}
+
+.scramble-card-prompt {
+  font-weight: 600;
+}
+
+.scramble-meaning {
+  margin-block: var(--s-2) 0;
+  font-size: var(--fs-md);
+  color: var(--ink);
+  font-style: italic;
+}
+
+.scramble-slots {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  background: var(--paper-sunken);
+  border: var(--border);
+  border-radius: var(--r-2);
+  min-height: 3.5rem;
+  transition: border-color var(--dur-2) var(--ease-out), background-color var(--dur-2) var(--ease-out);
+}
+
+.scramble-slots.is-shaking {
+  animation: lecta-shake 0.45s ease;
+  border-color: var(--vermilion);
+}
+
+.scramble-slots.is-solved {
+  border-color: var(--sage);
+  background: rgba(67, 105, 77, 0.08);
+}
+
+.scramble-slot {
+  width: 2.5rem;
+  height: 2.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-ui);
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  border-radius: var(--r-2);
+  background: var(--paper-raised);
+  border: 2px dashed var(--rule-strong);
+  color: var(--ink);
+  transition: all var(--dur-1) var(--ease-out);
+  cursor: default;
+}
+
+.scramble-slot.is-filled {
+  border: 2px solid var(--rule-strong);
+  border-bottom-width: 3px;
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
+  animation: slot-pop 0.18s var(--ease-out);
+}
+
+.scramble-slot.is-filled:hover {
+  border-color: var(--vermilion);
+  transform: translateY(-1px);
+}
+
+.scramble-slot.is-correct {
+  border-color: var(--sage);
+  background: rgba(67, 105, 77, 0.15);
+  color: var(--sage);
+  animation: tile-bounce 0.5s var(--ease-out);
+}
+
+.scramble-pool {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--s-2);
+  margin-block: var(--s-2);
+}
+
+.scramble-tile {
+  width: 2.5rem;
+  height: 2.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-ui);
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  border-radius: var(--r-2);
+  background: var(--paper-raised);
+  border: 1px solid var(--rule-strong);
+  border-bottom: 3px solid var(--rule-strong);
+  color: var(--ink);
+  cursor: pointer;
+  transition: all var(--dur-1) var(--ease-out);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.06);
+}
+
+.scramble-tile:hover:not(:disabled) {
+  border-color: var(--vermilion);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.scramble-tile:active:not(:disabled) {
+  transform: translateY(1px);
+  border-bottom-width: 1px;
+}
+
+.scramble-tile.is-used {
+  opacity: 0.18;
+  cursor: default;
+  pointer-events: none;
+  border-style: dashed;
+}
+
+.scramble-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--s-2);
+  margin-block-start: var(--s-2);
+}
+
+.scramble-action-btn {
+  font-size: var(--fs-sm);
+  padding: var(--s-1) var(--s-3);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+}
+
+.scramble-hint-box {
+  margin-block: var(--s-2) 0;
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-2);
+  background: var(--ochre-wash);
+  border: 1px solid var(--ochre);
+  font-size: var(--fs-sm);
+  color: var(--ink);
+}
+
+/* ---------- Minijuego de Categoría Gramatical ---------- */
+.grammar-game {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  margin-block: var(--s-2) var(--s-4);
+}
+
+.grammar-card {
+  text-align: center;
+  padding: var(--s-4) var(--s-3);
+}
+
+.grammar-card-prompt {
+  font-size: var(--fs-xs);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  margin-block-end: var(--s-1);
+}
+
+.grammar-target-word {
+  font-family: var(--font-book);
+  font-size: var(--fs-2xl);
+  font-weight: 600;
+  color: var(--vermilion);
+  margin-block: var(--s-1) var(--s-2);
+}
+
+.grammar-meaning {
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+  max-inline-size: 38ch;
+  margin-inline: auto;
+  line-height: var(--lh-small);
+}
+
+.grammar-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--s-3);
+}
+
+.grammar-cat-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: start;
+  padding: var(--s-3) var(--s-4);
+  border-radius: var(--r-2);
+  background: var(--paper-raised);
+  border: 1px solid var(--rule-strong);
+  border-bottom: 3px solid var(--rule-strong);
+  transition: all var(--dur-1) var(--ease-out);
+  cursor: pointer;
+}
+
+.grammar-cat-btn:hover:not(:disabled) {
+  border-color: var(--vermilion);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+}
+
+.grammar-cat-btn:active:not(:disabled) {
+  transform: translateY(1px);
+  border-bottom-width: 1px;
+}
+
+.grammar-cat-btn.is-correct {
+  border-color: var(--sage);
+  border-bottom-color: var(--sage);
+  background: var(--sage-wash);
+  color: var(--sage-ink);
+  animation: pop-match var(--dur-2) var(--ease-out);
+}
+
+.grammar-cat-btn.is-wrong {
+  border-color: var(--vermilion);
+  border-bottom-color: var(--vermilion);
+  background: var(--vermilion-wash);
+  color: var(--vermilion);
+  animation: lecta-shake var(--dur-3) var(--ease-out);
+}
+
+.grammar-cat-head {
+  display: flex;
+  inline-size: 100%;
+  justify-content: space-between;
+  align-items: center;
+  margin-block-end: var(--s-1);
+}
+
+.grammar-cat-icon {
+  font-size: var(--fs-lg);
+}
+
+.grammar-cat-shortcut {
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+  font-family: monospace;
+}
+
+.grammar-cat-label {
+  font-size: var(--fs-base);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.grammar-cat-desc {
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+  line-height: var(--lh-small);
+  margin-block-start: 2px;
+}
+
+.grammar-feedback {
+  text-align: center;
+  font-size: var(--fs-sm);
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-2);
+  animation: rise-in var(--dur-2) var(--ease-out);
+}
+
+.grammar-feedback.is-correct {
+  background: var(--sage-wash);
+  color: var(--sage-ink);
+  border: 1px solid var(--sage);
+}
+
+.grammar-feedback.is-wrong {
+  background: var(--vermilion-wash);
+  color: var(--vermilion);
+  border: 1px solid var(--vermilion);
+}
+
+.grammar-actions {
+  display: flex;
+  justify-content: center;
+  gap: var(--s-2);
+}
+
+.grammar-hint-btn {
+  font-size: var(--fs-sm);
+}
+
+/* ---------- Minijuego de Ordenar la Oración (Sintaxis) ---------- */
+.sentence-builder-game {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  margin-block: var(--s-2) var(--s-4);
+}
+
+.sentence-builder-card {
+  padding: var(--s-4) var(--s-3);
+}
+
+.sentence-card-prompt {
+  font-size: var(--fs-sm);
+  margin-block-end: var(--s-1);
+}
+
+.sentence-meaning {
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+  margin-block-end: var(--s-3);
+}
+
+.sentence-construction-zone {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  align-items: center;
+  min-height: 3.5rem;
+  padding: var(--s-2) var(--s-3);
+  border: 2px dashed var(--rule-strong);
+  border-radius: var(--r-2);
+  background: var(--paper);
+  transition: all var(--dur-2) var(--ease-out);
+}
+
+.sentence-construction-zone.is-shaking {
+  animation: lecta-shake var(--dur-3) var(--ease-out);
+  border-color: var(--vermilion);
+}
+
+.sentence-construction-zone.is-correct {
+  border-color: var(--sage);
+  background: var(--sage-wash);
+}
+
+.sentence-empty-placeholder {
+  font-size: var(--fs-sm);
+  font-style: italic;
+}
+
+.sentence-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: var(--s-1) var(--s-2);
+  border-radius: var(--r-2);
+  background: var(--paper-raised);
+  border: 1px solid var(--rule-strong);
+  font-size: var(--fs-sm);
+  color: var(--ink);
+  cursor: pointer;
+  transition: all var(--dur-1) var(--ease-out);
+}
+
+.sentence-chip.is-placed:hover:not(:disabled) {
+  border-color: var(--vermilion);
+  transform: translateY(-1px);
+}
+
+.sentence-chip.is-target-word {
+  font-weight: 600;
+  border-color: var(--ochre);
+  background: var(--ochre-wash);
+}
+
+.sentence-chip-num {
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.sentence-pool {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  justify-content: center;
+  margin-block: var(--s-1);
+}
+
+.sentence-pool-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-2);
+  background: var(--paper-raised);
+  border: 1px solid var(--rule-strong);
+  border-bottom: 2px solid var(--rule-strong);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--ink);
+  cursor: pointer;
+  transition: all var(--dur-1) var(--ease-out);
+}
+
+.sentence-pool-btn:hover:not(:disabled) {
+  border-color: var(--vermilion);
+  transform: translateY(-2px);
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.08);
+}
+
+.sentence-pool-key {
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+  font-family: monospace;
+}
+
+.sentence-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--s-2);
+  margin-block-start: var(--s-1);
+}
+
+.sentence-action-btn {
+  font-size: var(--fs-sm);
+  padding: var(--s-1) var(--s-3);
+}
+
+/* ---------- Resumen de progreso al finalizar repaso ---------- */
+
+.nb-done-progress {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  margin-block: var(--s-3);
+  padding: var(--s-3);
+  background: var(--paper-raised);
+  border: var(--border);
+  border-radius: var(--r-2);
+  text-align: start;
+}
+
+.nb-done-stats {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+}
+
+.nb-done-badge {
+  font-weight: 700;
+  color: var(--vermilion);
+  font-size: var(--fs-md);
+}
+
+.nb-done-level {
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+}
+
+.nb-done-bar {
+  inline-size: 100%;
+  block-size: 8px;
+  background: var(--paper-sunken);
+  border-radius: var(--r-pill);
+  overflow: hidden;
+}
+
+.nb-done-fill {
+  block-size: 100%;
+  background: var(--sage);
+  border-radius: var(--r-pill);
+  transition: inline-size var(--dur-3) var(--ease-out);
+}
+
+@keyframes slot-pop {
+  0% { transform: scale(0.85); }
+  60% { transform: scale(1.08); }
+  100% { transform: scale(1); }
+}
+
+@keyframes tile-bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+@keyframes lecta-shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-4px); }
+  40%, 80% { transform: translateX(4px); }
+}
+
+/* ---------- Hub de Maestría y Progreso de Vocabulario ---------- */
+
+.vocab-mastery-card {
+  margin-block: var(--s-2) var(--s-4);
+  padding: var(--s-4);
+  background: var(--paper-raised);
+  border: var(--border);
+  border-radius: var(--r-2);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.vocab-mastery-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+}
+
+.vocab-mastery-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.vocab-mastery-label {
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 700;
+  color: var(--vermilion);
+}
+
+.vocab-mastery-title {
+  margin: 0;
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.vocab-mastery-companion {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: 4px 10px;
+  background: var(--paper-sunken);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-pill);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.vocab-mastery-cat-xp {
+  color: var(--ochre);
+}
+
+.vocab-mastery-track {
+  inline-size: 100%;
+  block-size: 10px;
+  background: var(--paper-sunken);
+  border-radius: var(--r-pill);
+  overflow: hidden;
+  display: flex;
+}
+
+.vocab-mastery-seg {
+  block-size: 100%;
+  transition: inline-size var(--dur-3) var(--ease-out);
+}
+
+.vocab-mastery-seg--mastered {
+  background: var(--sage);
+}
+
+.vocab-mastery-seg--settled {
+  background: var(--ochre);
+}
+
+.vocab-mastery-seg--learning {
+  background: var(--vermilion-bright);
+}
+
+.vocab-mastery-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+.vocab-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  padding: var(--s-1) var(--s-3);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-pill);
+  background: var(--paper);
+  color: var(--ink);
+  font-size: var(--fs-xs);
+  cursor: pointer;
+  transition: all var(--dur-1) var(--ease-out);
+}
+
+.vocab-chip:hover {
+  border-color: var(--rule-strong);
+  background: var(--paper-raised);
+  transform: translateY(-1px);
+}
+
+.vocab-chip.is-active {
+  border-color: var(--vermilion);
+  background: var(--vermilion-wash);
+  color: var(--vermilion);
+  font-weight: 600;
+}
+
+.vocab-chip strong {
+  margin-inline-start: 2px;
+}
+
+.vocab-chip--due {
+  border-color: var(--vermilion);
+  color: var(--vermilion);
+}
+
 

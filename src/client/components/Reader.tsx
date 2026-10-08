@@ -160,9 +160,10 @@ import {
 } from "../lib/word-level";
 import { loadUseAi } from "../lib/ai-pref";
 import {
-  CALIBRATION_DONE_KEY,
+  calibrationDoneKey,
   hasCalibrationEvidence,
 } from "../lib/calibration";
+import { calibrationBankZipf } from "../../shared/calibration-bank";
 import {
   isTtsProgrammaticNav,
   isTtsProgrammaticScroll,
@@ -1342,11 +1343,11 @@ export default function Reader({
   // batchLookup de refreshProfile para pesar en el perfil.
   const zipfForLemma = (lemma: string): number | null => {
     const cached = analysisFor(sectionIndexRef.current);
-    if (!cached) return null;
+    if (!cached) return calibrationBankZipf(lemma, language);
     const matches = [];
     for (const entries of Object.values(cached.entries))
       for (const entry of entries) if (entry.lemma === lemma) matches.push(entry);
-    return measuredZipf(matches, lemma);
+    return measuredZipf(matches, lemma) ?? calibrationBankZipf(lemma, language);
   };
 
   // Evidencia recién escrita entra al modelo en memoria y queda
@@ -1913,6 +1914,7 @@ export default function Reader({
       credible,
       entries,
       baseResult?.ok ? baseResult.entries : {},
+      lang,
     );
     // Lo escrito esta sesión y todavía no visible en la lectura del
     // store no se pierde al recargar (el lote de preparación corre
@@ -3491,18 +3493,19 @@ export default function Reader({
     if (!next.offer) return;
     calEvaluated.current = true;
     void (async () => {
-      // Solo hay muestra en español; con otra lengua la invitación
+      // Disponible en español e inglés; con otra lengua la invitación
       // no existiría.
-      if (language !== "es") return;
+      if (language !== "es" && language !== "en") return;
       const scope = captureDbScope();
-      const done = await loadSessionValue(CALIBRATION_DONE_KEY, scope).catch(
+      const doneKey = calibrationDoneKey(language);
+      const done = await loadSessionValue(doneKey, scope).catch(
         () => "1",
       );
       if (done != null) return;
       // Evidencia de calibración (p. ej. bajada por sincronización)
       // también cierra la oferta y deja la marca para no releer.
       if (await hasCalibrationEvidence(language, scope).catch(() => false)) {
-        void saveSessionValue(CALIBRATION_DONE_KEY, "1", scope).catch(
+        void saveSessionValue(doneKey, "1", scope).catch(
           () => undefined,
         );
         return;
@@ -3522,7 +3525,7 @@ export default function Reader({
   // desde Cuenta, con el borrador si se empezó.
   const dismissCalibrationNotice = () => {
     setCalNotice(false);
-    void saveSessionValue(CALIBRATION_DONE_KEY, "1", captureDbScope()).catch(
+    void saveSessionValue(calibrationDoneKey(language), "1", captureDbScope()).catch(
       () => undefined,
     );
   };

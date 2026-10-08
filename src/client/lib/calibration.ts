@@ -23,6 +23,14 @@ export const CALIBRATION_DONE_KEY = "calibrationDone";
 // accidental no las pierde — se restauran en la próxima oferta.
 export const CALIBRATION_DRAFT_KEY = "calibrationDraft";
 
+export function calibrationDoneKey(language = "es"): string {
+  return language === "es" ? CALIBRATION_DONE_KEY : `${CALIBRATION_DONE_KEY}:${language}`;
+}
+
+export function calibrationDraftKey(language = "es"): string {
+  return language === "es" ? CALIBRATION_DRAFT_KEY : `${CALIBRATION_DRAFT_KEY}:${language}`;
+}
+
 export type CalibrationAnswers = Record<string, "known" | "unknown">;
 
 // `definition` puede ser null: el catálogo ofrece lemas aunque no

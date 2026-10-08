@@ -157,5 +157,47 @@ export const getBookTitle = (book: EpubBook) =>
 export const getBookAuthor = (book: EpubBook) =>
   flattenMetadataValue(book.metadata?.author) || flattenMetadataValue(book.metadata?.creator);
 
-export const getBookLanguage = (book: EpubBook) =>
-  flattenMetadataValue(book.metadata?.language) || "es";
+export const normalizeLanguage = (raw: unknown): string => {
+  if (typeof raw !== "string") return "es";
+  const trimmed = raw.trim().toLowerCase();
+  if (!trimmed) return "es";
+  const primary = trimmed.split(/[-_]/)[0]?.trim();
+  if (!primary) return "es";
+  if (primary === "spa") return "es";
+  if (primary === "eng") return "en";
+  if (primary === "fra" || primary === "fre") return "fr";
+  if (primary === "deu" || primary === "ger") return "de";
+  if (primary === "ita") return "it";
+  if (primary === "por") return "pt";
+  if (/^[a-z]{2,3}$/.test(primary)) return primary;
+  return "es";
+};
+
+export const languageName = (code: string): string => {
+  const norm = code.trim().toLowerCase();
+  switch (norm) {
+    case "es":
+      return "Español";
+    case "en":
+      return "Inglés";
+    case "fr":
+      return "Francés";
+    case "de":
+      return "Alemán";
+    case "it":
+      return "Italiano";
+    case "pt":
+      return "Portugués";
+    case "ca":
+      return "Catalán";
+    case "gl":
+      return "Gallego";
+    case "eu":
+      return "Euskera";
+    default:
+      return norm.toUpperCase();
+  }
+};
+
+export const getBookLanguage = (book: EpubBook): string =>
+  normalizeLanguage(flattenMetadataValue(book.metadata?.language));

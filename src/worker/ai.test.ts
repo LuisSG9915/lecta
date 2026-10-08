@@ -2,6 +2,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   AI_CALL_LIMITS,
   AI_CALL_TIMEOUT_MS,
+  buildEnrichmentSystemPrompt,
+  buildExplainPrompt,
+  buildExplainSystemPrompt,
+  buildItemSystemPrompt,
+  buildVerifyPrompt,
+  buildVerifySystemPrompt,
   callDeepSeek,
   createTtlCache,
   ENRICHMENT_MODEL,
@@ -631,6 +637,107 @@ describe("requestEnrichment", () => {
     const [, init] = lastCall(fetchMock);
     const body = JSON.parse(init.body as string) as Record<string, unknown>;
     expect(body.max_tokens).toBe(AI_CALL_LIMITS.enrich);
+  });
+
+  it("emplea el prompt de enriquecimiento bilingüe para inglés con lengua materna español", async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                lemma: "wander",
+                pos: "verbo",
+                freqRank: 800,
+                forms: ["wandered", "wandering", "wanders"],
+                senses: [
+                  {
+                    definition: "Caminar o vagar sin rumbo fijo.",
+                    example: "He loved to wander through the quiet streets.",
+                  },
+                ],
+              }),
+            },
+            finish_reason: "stop",
+          },
+        ],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await requestEnrichment(fakeEnv(), {
+      form: "wandering",
+      language: "en",
+      nativeLanguage: "es",
+      context: "He was wandering through the forest.",
+    });
+
+    expect(result.ok).toBe(true);
+    const [, init] = lastCall(fetchMock);
+    const body = JSON.parse(init.body as string) as {
+      messages: { role: string; content: string }[];
+    };
+    expect(body.messages[0].content).toContain("lexicógrafo bilingüe");
+    expect(body.messages[0].content).toContain("definición breve y clara en español");
+    expect(body.messages[0].content).toContain("en inglés natural");
+    expect(body.messages[1].content).toContain("idioma: en, lengua materna del lector: es");
+  });
+});
+
+describe("Language learning prompts", () => {
+  it("buildEnrichmentSystemPrompt adapta las instrucciones al par de idiomas", () => {
+    const esPrompt = buildEnrichmentSystemPrompt("es", "es");
+    expect(esPrompt).toContain("Eres un lexicógrafo de español");
+
+    const enForEsPrompt = buildEnrichmentSystemPrompt("en", "es");
+    expect(enForEsPrompt).toContain("lexicógrafo bilingüe inglés-español");
+    expect(enForEsPrompt).toContain("definición breve y clara en español");
+
+    const esForEnPrompt = buildEnrichmentSystemPrompt("es", "en");
+    expect(esForEnPrompt).toContain("bilingual Spanish-English lexicographer");
+  });
+
+  it("buildExplainSystemPrompt adapta el rol de tutor al idioma del lector", () => {
+    const esPrompt = buildExplainSystemPrompt("es", "es");
+    expect(esPrompt).toContain("Eres un lexicógrafo de español");
+
+    const enForEs = buildExplainSystemPrompt("en", "es");
+    expect(enForEs).toContain("profesor bilingüe inglés-español");
+    expect(enForEs).toContain("Explicas en español");
+
+    const esForEn = buildExplainSystemPrompt("es", "en");
+    expect(esForEn).toContain("bilingual Spanish-English language tutor");
+  });
+
+  it("buildExplainPrompt incluye instrucción de idioma de destino cuando difiere", () => {
+    expect(buildExplainPrompt("casa", "es", "Vivo en una casa.", "es")).toBe(
+      "Palabra: «casa» (idioma: es)\nOración: «Vivo en una casa.»",
+    );
+    expect(buildExplainPrompt("wander", "en", "He began to wander.", "es")).toBe(
+      "Palabra: «wander» (idioma: en (explicar en: es))\nOración: «He began to wander.»",
+    );
+  });
+
+  it("buildItemSystemPrompt adapta los distractores y la oración para estudiantes de inglés", () => {
+    const esPrompt = buildItemSystemPrompt("es", "es");
+    expect(esPrompt).toContain("oración en español neutro");
+
+    const enPrompt = buildItemSystemPrompt("en", "es");
+    expect(enPrompt).toContain("oración en inglés natural");
+    expect(enPrompt).toContain('"distractors" son exactamente 3 definiciones breves en español');
+  });
+
+  it("buildVerifySystemPrompt y buildVerifyPrompt adaptan la revisión a inglés", () => {
+    const esPrompt = buildVerifySystemPrompt("es", "es");
+    expect(esPrompt).toContain("Eres un corrector de español");
+
+    const enPrompt = buildVerifySystemPrompt("en", "es");
+    expect(enPrompt).toContain("profesor de inglés para hispanohablantes");
+    expect(enPrompt).toContain("feedback\" es una sola línea en español");
+
+    expect(buildVerifyPrompt("wander", "vagar", "I wandered alone.", "en")).toContain(
+      "Palabra: «wander» (inglés)",
+    );
   });
 });
 

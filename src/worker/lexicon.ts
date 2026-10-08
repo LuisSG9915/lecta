@@ -2,10 +2,11 @@ import type pg from "pg";
 import { ENRICHMENT_MODEL, ENRICHMENT_PROMPT_VERSION } from "./ai";
 import { hasUsableDefinition } from "../shared/lexicon";
 import {
-  CALIBRATION_BANK,
   CALIBRATION_PER_BAND,
   calibrationBandIndex,
+  calibrationBank,
   calibrationBankLemmas,
+  calibrationFallbackDefinition,
 } from "../shared/calibration-bank";
 
 // El catálogo léxico es dato de referencia compartido (no datos de
@@ -155,6 +156,7 @@ export async function sampleForCalibration(
   client: pg.Client,
   language: string,
 ): Promise<SampleWord[]> {
+  const bank = calibrationBank(language);
   const { rows } = await client.query<{
     id: string;
     lemma: string;
@@ -162,7 +164,7 @@ export async function sampleForCalibration(
     zipf: number | null;
     definition: string | null;
     def_count: number;
-  }>(SAMPLE_BANK_SQL, [language, calibrationBankLemmas()]);
+  }>(SAMPLE_BANK_SQL, [language, calibrationBankLemmas(language)]);
 
   const byLemma = new Map<string, typeof rows>();
   for (const row of rows) {
@@ -172,8 +174,8 @@ export async function sampleForCalibration(
   }
 
   const picked: SampleWord[] = [];
-  for (let band = 0; band < CALIBRATION_BANK.length; band++) {
-    const eligible = CALIBRATION_BANK[band].flatMap((lemma) => {
+  for (let band = 0; band < bank.length; band++) {
+    const eligible = bank[band].flatMap((lemma) => {
       const entries = byLemma.get(lemma) ?? [];
       // La ficha dominante es la de más acepciones con definición; a
       // empate gana el id de entrada menor — determinista, no depende
@@ -190,11 +192,20 @@ export async function sampleForCalibration(
                 ? 1
                 : 0),
         )[0];
-      return dominant &&
+      if (
+        dominant &&
         dominant.zipf != null &&
         calibrationBandIndex(dominant.zipf) === band
-        ? [{ lemma, definition: dominant.definition }]
-        : [];
+      ) {
+        return [{ lemma, definition: dominant.definition }];
+      }
+      if (language === "en") {
+        const fallbackDef = calibrationFallbackDefinition(lemma, "en");
+        if (fallbackDef) {
+          return [{ lemma, definition: fallbackDef }];
+        }
+      }
+      return [];
     });
     picked.push(...shuffle(eligible).slice(0, CALIBRATION_PER_BAND));
   }

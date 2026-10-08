@@ -22,6 +22,87 @@ export function blankWordInContext(
   return replaced ? result : null;
 }
 
+export interface ContextSnippetResult {
+  snippet: string;
+  isTrimmed: boolean;
+}
+
+// Ventana de micro-contexto para ejercicios: si la cita del libro
+// es un párrafo largo (muchas palabras), aísla solo unas pocas
+// palabras antes y después de la palabra clave (o del hueco «_____»).
+// Así el repaso es ágil e instantáneo sin abrumar con paredes de texto.
+export function smartContextSnippet(
+  text: string | null | undefined,
+  target?: string,
+  options: {
+    maxWordsBefore?: number;
+    maxWordsAfter?: number;
+    maxTotalWords?: number;
+    language?: string;
+  } = {},
+): ContextSnippetResult {
+  if (!text || !text.trim()) {
+    return { snippet: "", isTrimmed: false };
+  }
+  const {
+    maxWordsBefore = 5,
+    maxWordsAfter = 5,
+    maxTotalWords = 14,
+    language = "es",
+  } = options;
+
+  const segmenter = new Intl.Segmenter(language, { granularity: "word" });
+  const segments = [...segmenter.segment(text)];
+  const wordSegments = segments.filter((s) => s.isWordLike);
+
+  // Si la cita completa ya es breve, se conserva íntegra.
+  if (wordSegments.length <= maxTotalWords) {
+    return { snippet: text.trim(), isTrimmed: false };
+  }
+
+  const targetLower = target?.trim().toLowerCase() ?? "";
+  let targetIdx = -1;
+  if (targetLower) {
+    targetIdx = wordSegments.findIndex(
+      (s) =>
+        s.segment.toLowerCase() === targetLower ||
+        s.segment.toLowerCase().includes(targetLower),
+    );
+  }
+
+  let startWord = 0;
+  let endWord = Math.min(wordSegments.length - 1, maxTotalWords - 1);
+  if (targetIdx !== -1) {
+    startWord = Math.max(0, targetIdx - maxWordsBefore);
+    endWord = Math.min(wordSegments.length - 1, targetIdx + maxWordsAfter);
+  }
+
+  const startSegment = wordSegments[startWord];
+  const endSegment = wordSegments[endWord];
+  const rawStart = startSegment.index;
+  let rawEnd = endSegment.index + endSegment.segment.length;
+
+  const nextSeg = segments.find((s) => s.index === rawEnd);
+  if (nextSeg && !nextSeg.isWordLike && /^[,.;:!?»”]/.test(nextSeg.segment)) {
+    rawEnd += nextSeg.segment.length;
+  }
+
+  let slice = text.slice(rawStart, rawEnd).trim();
+  const trimmedBefore = startWord > 0;
+  const trimmedAfter = endWord < wordSegments.length - 1;
+
+  if (trimmedBefore) {
+    slice = slice.replace(/^[\u201C\u201D"'\s]+/, "");
+    slice = `… ${slice}`;
+  }
+  if (trimmedAfter) {
+    slice = slice.replace(/[\u201C\u201D"'\s]+$/, "");
+    slice = `${slice} …`;
+  }
+
+  return { snippet: slice, isTrimmed: true };
+}
+
 // ---------- Ejercicios con opciones ----------
 
 // Acertar eligiendo entre opciones vale menos que recordar la
@@ -97,4 +178,68 @@ export function modeForWord(
   const even = index % 2 === 0;
   if (word.context) return even ? "cloze" : "choose";
   return even ? "meaning" : "word";
+}
+
+// Recorta definiciones largas para tarjetas y chips de minijuegos
+// (como «Parejas»), eliminando prefijos pesados y cortando limpiamente
+// en la frontera de palabra.
+export function conciseMeaning(meaning: string, maxChars = 75): string {
+  if (!meaning) return "";
+  let text = meaning.trim();
+  text = text.replace(/^(?:\([^)]+\)\s*)+/, "");
+  text = text.replace(/^Dicho de [^:]+:\s*/i, "");
+  if (text.length <= maxChars) return text;
+  const sliced = text.slice(0, maxChars);
+  const lastSpace = sliced.lastIndexOf(" ");
+  return (lastSpace > 20 ? sliced.slice(0, lastSpace) : sliced).trim() + "…";
+}
+
+// Mezcla las letras de una palabra para el minijuego de descifrar,
+// garantizando que el resultado no sea idéntico a la palabra original
+// (a menos que tenga una sola letra o todas iguales).
+export function scrambleWord(
+  word: string,
+  seed?: number,
+): { original: string; letters: string[] } {
+  const clean = word.trim();
+  if (!clean) return { original: "", letters: [] };
+  const chars = [...clean].map((c) => c.toUpperCase());
+  if (chars.length <= 1) {
+    return { original: clean, letters: chars };
+  }
+
+  const allSame = chars.every((c) => c === chars[0]);
+  if (allSame) {
+    return { original: clean, letters: chars };
+  }
+
+  const scrambled = seed !== undefined ? shuffleStable(chars, seed) : [...chars];
+  if (seed === undefined) {
+    for (let i = scrambled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [scrambled[i], scrambled[j]] = [scrambled[j], scrambled[i]];
+    }
+  }
+
+  if (scrambled.join("") === chars.join("")) {
+    for (let i = 0; i < scrambled.length - 1; i++) {
+      if (scrambled[i] !== scrambled[i + 1]) {
+        [scrambled[i], scrambled[i + 1]] = [scrambled[i + 1], scrambled[i]];
+        break;
+      }
+    }
+    if (scrambled.join("") === chars.join("")) {
+      for (let i = 0; i < scrambled.length; i++) {
+        for (let j = i + 1; j < scrambled.length; j++) {
+          if (scrambled[i] !== scrambled[j]) {
+            [scrambled[i], scrambled[j]] = [scrambled[j], scrambled[i]];
+            break;
+          }
+        }
+        if (scrambled.join("") !== chars.join("")) break;
+      }
+    }
+  }
+
+  return { original: clean, letters: scrambled };
 }

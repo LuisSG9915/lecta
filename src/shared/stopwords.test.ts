@@ -33,8 +33,30 @@ describe("isStopword", () => {
       expect(isStopword(form)).toBe(false);
   });
 
-  it("solo aplica al español por ahora", () => {
-    expect(isStopword("the", "en")).toBe(false);
+  it("reconoce palabras funcionales frecuentes en inglés", () => {
+    for (const form of [
+      "the", "a", "an", "of", "in", "to", "for", "with", "and", "but",
+      "he", "she", "it", "they", "this", "that", "what", "is", "was",
+      "were", "have", "had", "will", "would", "can", "could", "not",
+      "very", "one", "two", "ten", "first", "hello",
+    ])
+      expect(isStopword(form, "en")).toBe(true);
+  });
+
+  it("ignora mayúsculas y espacios en inglés", () => {
+    expect(isStopword("  The  ", "en")).toBe(true);
+    expect(isStopword("AND", "en")).toBe(true);
+  });
+
+  it("no marca vocabulario aprendible en inglés", () => {
+    for (const form of ["perennial", "awkward", "whisper", "clandestine", "shadow"])
+      expect(isStopword(form, "en")).toBe(false);
+  });
+
+  it("respeta el idioma indicado y no cruza listas", () => {
+    expect(isStopword("the", "es")).toBe(false);
     expect(isStopword("la", "en")).toBe(false);
+    expect(isStopword("the", "fr")).toBe(false);
   });
 });
+

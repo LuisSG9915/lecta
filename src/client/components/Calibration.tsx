@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import Sheet from "./Sheet";
 import {
-  CALIBRATION_DRAFT_KEY,
   STEP_SIZE,
+  calibrationDraftKey,
   parseCalibrationDraft,
   recordCalibration,
   serializeCalibrationDraft,
@@ -60,7 +60,7 @@ export default function Calibration({
   const [bound] = useState<DbScope>(() => captureDbScope());
 
   useEffect(() => {
-    void loadSessionValue(CALIBRATION_DRAFT_KEY, bound)
+    void loadSessionValue(calibrationDraftKey(language), bound)
       .then((raw) => {
         if (hydrated.current) return;
         hydrated.current = true;
@@ -76,11 +76,11 @@ export default function Calibration({
         );
       })
       .catch(() => undefined);
-  }, [words, bound]);
+  }, [words, language, bound]);
 
   const persist = (next: CalibrationAnswers, at: number) =>
     saveSessionValue(
-      CALIBRATION_DRAFT_KEY,
+      calibrationDraftKey(language),
       serializeCalibrationDraft({
         answers: next,
         step: at,
@@ -102,7 +102,7 @@ export default function Calibration({
   };
 
   const clearDraft = () =>
-    saveSessionValue(CALIBRATION_DRAFT_KEY, "", bound).catch(() => undefined);
+    saveSessionValue(calibrationDraftKey(language), "", bound).catch(() => undefined);
 
   const finish = async () => {
     if (saving) return;
@@ -155,7 +155,7 @@ export default function Calibration({
       </div>
 
       <p className="meta">
-        Prueba general{language === "es" ? " de vocabulario en español" : " de vocabulario"}:
+        Prueba general{language === "es" ? " de vocabulario en español" : language === "en" ? " de vocabulario en inglés" : " de vocabulario"}:
         marca cada palabra y Lecta ajusta qué palabras prepararte antes de cada
         capítulo. Puedes dejar algunas sin responder.
       </p>
