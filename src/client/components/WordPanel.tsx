@@ -50,10 +50,10 @@ type WordPanelProps = {
 
 type LookupState =
   | { kind: "loading" }
-  | { kind: "found"; entries: LexiconEntry[] }
+  | { kind: "found"; entries: LexiconEntry[]; offline?: boolean }
   | { kind: "notFound" }
   | { kind: "enriching" }
-  | { kind: "error"; message: string };
+  | { kind: "error"; message: string; offline?: boolean };
 
 const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -133,9 +133,9 @@ export default function WordPanel({
       setSelected({ entryIndex: 0, senseIndex: 0 });
       setReport("idle");
       setExplanation(null);
-      if (!result.ok) setLookup({ kind: "error", message: result.error });
+      if (!result.ok) setLookup({ kind: "error", message: result.error, offline: result.offline });
       else if (!result.found) setLookup({ kind: "notFound" });
-      else setLookup({ kind: "found", entries: result.entries });
+      else setLookup({ kind: "found", entries: result.entries, offline: result.offline });
       // Consultar es un acto neutral: no deja evidencia de
       // conocimiento (el trayecto sí la anota como consulta).
     })();
@@ -386,18 +386,23 @@ export default function WordPanel({
       {lookup.kind === "enriching" ? <p className="meta">Consultando la ficha…</p> : null}
       {lookup.kind === "error" ? (
         <>
-          <p role="alert" className="status">
+          <p role="alert" className={`status${lookup.offline ? " status--offline" : ""}`}>
             {lookup.message}
           </p>
+          {lookup.offline ? (
+            <p className="meta">
+              Puedes guardar la palabra en tu Cuaderno; su definición se completará automáticamente al reconectarte.
+            </p>
+          ) : null}
           <button
             type="button"
             className="btn--quiet"
             onClick={() => {
               setLookup({ kind: "loading" });
-              void lookupWord(word, language).then((result) => {
-                if (!result.ok) setLookup({ kind: "error", message: result.error });
+              void lookupWord(word, language, captureDbScope()).then((result) => {
+                if (!result.ok) setLookup({ kind: "error", message: result.error, offline: result.offline });
                 else if (!result.found) setLookup({ kind: "notFound" });
-                else setLookup({ kind: "found", entries: result.entries });
+                else setLookup({ kind: "found", entries: result.entries, offline: result.offline });
               });
             }}
           >
@@ -408,7 +413,11 @@ export default function WordPanel({
       {lookup.kind === "notFound" ? (
         <>
           <p className="meta">Aún no está en el catálogo.</p>
-          {useAi ? (
+          {typeof navigator !== "undefined" && !navigator.onLine ? (
+            <p className="meta">
+              Sin conexión a internet. Puedes guardar la palabra para definirla al reconectar.
+            </p>
+          ) : useAi ? (
             <>
               <button
                 type="button"
@@ -431,6 +440,11 @@ export default function WordPanel({
       ) : null}
       {lookup.kind === "found" ? (
         <>
+          {lookup.offline ? (
+            <p className="meta meta--offline">
+              <span className="offline-dot" aria-hidden="true">●</span> Memoria local · Disponible sin conexión
+            </p>
+          ) : null}
           {multiSense ? (
             <p className="meta">Elige la acepción que corresponde a esta oración:</p>
           ) : null}
@@ -483,14 +497,16 @@ export default function WordPanel({
                 <button
                   type="button"
                   className="btn--quiet"
-                  disabled={!canExplain || explanation?.state === "busy"}
+                  disabled={!canExplain || explanation?.state === "busy" || (typeof navigator !== "undefined" && !navigator.onLine)}
                   onClick={() => void explain()}
                 >
                   {explanation?.state === "busy"
                     ? "Consultando…"
                     : "Explicar en esta oración con IA"}
                 </button>
-                {!canExplain ? (
+                {typeof navigator !== "undefined" && !navigator.onLine ? (
+                  <p className="meta">Las explicaciones con IA requieren conexión a internet.</p>
+                ) : !canExplain ? (
                   <p className="meta">Inicia sesión para pedir explicaciones.</p>
                 ) : null}
                 {explanation?.state === "error" ? (

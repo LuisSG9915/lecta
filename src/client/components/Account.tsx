@@ -41,7 +41,12 @@ import {
 } from "../lib/reading-goal";
 import { downloadBackup } from "../lib/export";
 import { timeAgo } from "../lib/relative-time";
+import {
+  getDictionaryCacheWordCount,
+  emptyDictionaryCache,
+} from "../lib/offline-dictionary";
 import Dialog from "./Dialog";
+import Toggle from "./Toggle";
 
 export { PENDING_DELETE_KEY };
 
@@ -100,6 +105,7 @@ export default function Account({
   // «ya la conocía» y consultas).
   const [vocabInfo, setVocabInfo] = useState<{ text: string } | null>(null);
   const [loadingSample, setLoadingSample] = useState(false);
+  const [cachedDictWords, setCachedDictWords] = useState<number | null>(null);
 
   const userId = session?.user?.id;
 
@@ -135,6 +141,9 @@ export default function Account({
     });
     void loadCompanionDevicePrefs(scope).then((prefs) => {
       if (!cancelled) setDevicePrefs(prefs);
+    });
+    void getDictionaryCacheWordCount(scope).then((count) => {
+      if (!cancelled) setCachedDictWords(count);
     });
     void readCompanionField("readingPresence", scope).then((reg) => {
       if (cancelled) return;
@@ -441,6 +450,16 @@ export default function Account({
     });
   };
 
+  const handleClearDict = async () => {
+    try {
+      await emptyDictionaryCache(captureDbScope());
+      setCachedDictWords(0);
+      setMessage("Se limpió la memoria local del diccionario.");
+    } catch {
+      setError("No se pudo limpiar la memoria del diccionario.");
+    }
+  };
+
   // «Ajustar mi vocabulario»: descarga la muestra aquí (para avisar
   // si falla) y la hoja la abre App. Al terminar allá solo se guarda
   // y se cierra.
@@ -678,43 +697,68 @@ export default function Account({
         <h2 className="eyebrow">Compañero y logros</h2>
         <div className="setting-row">
           <span className="setting-label">El gato del cuaderno</span>
-          <button
-            type="button"
-            className="theme-option"
-            role="switch"
-            aria-checked={gameOn}
-            data-active={gameOn || undefined}
-            onClick={toggleGame}
-          >
-            {gameOn ? "Sí" : "No"}
-          </button>
+          <Toggle
+            label="El gato del cuaderno"
+            checked={gameOn}
+            onChange={toggleGame}
+          />
         </div>
         {gameOn ? (
           <>
-            <div className="setting-row">
+            <div className="setting-row setting-row--stack">
               <span className="setting-label">El gato mientras lees</span>
-              <select
+              <div
+                className="segmented segmented--wrap"
+                role="group"
                 aria-label="Presencia del gato al leer"
-                value={presence}
-                onChange={(event) => changePresence(event.target.value)}
               >
-                <option value="off">No mostrar al leer</option>
-                <option value="visits">Visitas discretas</option>
-                <option value="always">Siempre cerca</option>
-                <option value="playful">Más juguetón</option>
-              </select>
+                {(
+                  [
+                    ["off", "No mostrar"],
+                    ["visits", "Visitas discretas"],
+                    ["always", "Siempre cerca"],
+                    ["playful", "Más juguetón"],
+                  ] as const
+                ).map(([val, label]) => (
+                  <button
+                    key={val}
+                    type="button"
+                    data-active={presence === val || undefined}
+                    aria-pressed={presence === val}
+                    onClick={() => void changePresence(val)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
-            <div className="setting-row">
+            <div className="setting-row setting-row--stack">
               <span className="setting-label">Animaciones del gato</span>
-              <select
+              <div
+                className="segmented segmented--wrap"
+                role="group"
                 aria-label="Animaciones del gato"
-                value={devicePrefs?.motion ?? "system"}
-                onChange={(event) => changeMotion(event.target.value)}
               >
-                <option value="system">Según el sistema</option>
-                <option value="reduced">Reducidas</option>
-                <option value="full">Completas</option>
-              </select>
+                {(
+                  [
+                    ["system", "Según el sistema"],
+                    ["reduced", "Reducidas"],
+                    ["full", "Completas"],
+                  ] as const
+                ).map(([val, label]) => (
+                  <button
+                    key={val}
+                    type="button"
+                    data-active={
+                      (devicePrefs?.motion ?? "system") === val || undefined
+                    }
+                    aria-pressed={(devicePrefs?.motion ?? "system") === val}
+                    onClick={() => void changeMotion(val)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
             <p className="meta">
               Solo mueve al gato, sus festejos y sus cofres — el resto de
@@ -722,16 +766,11 @@ export default function Account({
             </p>
             <div className="setting-row">
               <span className="setting-label">Sonido del gato</span>
-              <button
-                type="button"
-                className="theme-option"
-                role="switch"
-                aria-checked={devicePrefs?.soundEnabled ?? false}
-                data-active={devicePrefs?.soundEnabled || undefined}
-                onClick={toggleSound}
-              >
-                {devicePrefs?.soundEnabled ? "Sí" : "No"}
-              </button>
+              <Toggle
+                label="Sonido del gato"
+                checked={devicePrefs?.soundEnabled ?? false}
+                onChange={toggleSound}
+              />
             </div>
             <p className="meta">
               Suena solo al abrir su hoja o mientras lo acaricias, y solo en
@@ -753,16 +792,11 @@ export default function Account({
         <h2 className="eyebrow">Privacidad y datos</h2>
         <div className="setting-row">
           <span className="setting-label">Usar IA para definir y corregir</span>
-          <button
-            type="button"
-            className="theme-option"
-            role="switch"
-            aria-checked={useAi}
-            data-active={useAi || undefined}
-            onClick={toggleUseAi}
-          >
-            {useAi ? "Sí" : "No"}
-          </button>
+          <Toggle
+            label="Usar IA para definir y corregir"
+            checked={useAi}
+            onChange={toggleUseAi}
+          />
         </div>
         <p className="meta">
           Solo viaja la palabra y su oración (≤ 500 caracteres). Nunca el libro, tu
@@ -770,16 +804,11 @@ export default function Account({
         </p>
         <div className="setting-row">
           <span className="setting-label">Guardar el recorrido de lectura</span>
-          <button
-            type="button"
-            className="theme-option"
-            role="switch"
-            aria-checked={historyOn}
-            data-active={historyOn || undefined}
-            onClick={toggleHistory}
-          >
-            {historyOn ? "Sí" : "No"}
-          </button>
+          <Toggle
+            label="Guardar el recorrido de lectura"
+            checked={historyOn}
+            onChange={toggleHistory}
+          />
         </div>
         <p className="meta">
           Anota en este dispositivo qué secciones abriste y qué palabras se sugirieron,
@@ -803,6 +832,25 @@ export default function Account({
         <p className="meta">
           Palabras, repasos, marcadores, posiciones y preferencias de este dispositivo.
           Los libros se re-suben solos si tienes cuenta.
+        </p>
+        <div className="setting-row">
+          <span className="setting-label">Memoria del diccionario</span>
+          {cachedDictWords && cachedDictWords > 0 ? (
+            <button
+              type="button"
+              className="btn--quiet"
+              onClick={() => void handleClearDict()}
+            >
+              Liberar memoria ({cachedDictWords} palabras)
+            </button>
+          ) : (
+            <span className="meta">Sin palabras cacheadas</span>
+          )}
+        </div>
+        <p className="meta">
+          {cachedDictWords && cachedDictWords > 0
+            ? `${cachedDictWords} definiciones guardadas en este dispositivo para consulta sin conexión.`
+            : "Las definiciones consultadas o descargadas se conservan aquí para que puedas leer sin conexión."}
         </p>
         <h2 className="eyebrow">Acerca de</h2>
         <p className="meta">

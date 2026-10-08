@@ -488,6 +488,39 @@ export function Companion({
             </g>
           </g>
         ) : null}
+        {focus === "reading" && act === "idle" ? (
+          <g
+            className="cat-prop cat-prop--tea"
+            transform={`translate(${art.propX + 27} ${art.propY - 1}) scale(1.2)`}
+          >
+            <g className="cat-tea">
+              <path className="cat-dish" d={PROPS.tea.saucer} />
+              <path className="cat-cup" d={PROPS.tea.cup} />
+              <path className="cat-tea-liquid" d={PROPS.tea.liquid} />
+              <path className="cat-cup-handle" d={PROPS.tea.handle} />
+              <g className="cat-tea-steam">
+                {PROPS.tea.steam.map((d, i) => (
+                  <path key={i} className="cat-steam-line" d={d} />
+                ))}
+              </g>
+            </g>
+          </g>
+        ) : null}
+        {focus === "deep_focus" && act === "idle" ? (
+          <g
+            className="cat-prop cat-prop--candle"
+            transform={`translate(${art.propX + 27} ${art.propY - 1}) scale(1.2)`}
+          >
+            <g className="cat-candle">
+              <ellipse className="cat-candle-halo" cx="0" cy="-5.5" rx="7" ry="7" />
+              <path className="cat-dish" d={PROPS.candle.dish} />
+              <path className="cat-dish-handle" d={PROPS.candle.handle} />
+              <path className="cat-wax" d={PROPS.candle.wax} />
+              <path className="cat-wick" d={PROPS.candle.wick} />
+              <path className="cat-flame" d={PROPS.candle.flame} />
+            </g>
+          </g>
+        ) : null}
         {act === "evolve" || act === "celebrate" ? (
           <g className="cat-sparks">
             {PROPS.sparkAt.map((at, i) => (

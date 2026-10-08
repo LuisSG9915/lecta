@@ -176,4 +176,21 @@ describe("Companion render", () => {
     render(h(Companion, { ...base, name: "Michi" }));
     expect(svg().getAttribute("aria-label")).toContain("Michi");
   });
+
+  it("focus=reading dibuja la taza de té con volutas de vapor", () => {
+    render(h(Companion, { ...base, focus: "reading" }));
+    const tea = svg().querySelector(".cat-prop--tea");
+    expect(tea).toBeTruthy();
+    expect(tea!.querySelector(".cat-dish")).toBeTruthy();
+    expect(tea!.querySelector(".cat-cup")).toBeTruthy();
+    expect(tea!.querySelectorAll(".cat-steam-line")).toHaveLength(2);
+  });
+
+  it("focus=deep_focus dibuja la velita nocturna con llama y halo", () => {
+    render(h(Companion, { ...base, focus: "deep_focus" }));
+    const candle = svg().querySelector(".cat-prop--candle");
+    expect(candle).toBeTruthy();
+    expect(candle!.querySelector(".cat-flame")).toBeTruthy();
+    expect(candle!.querySelector(".cat-candle-halo")).toBeTruthy();
+  });
 });

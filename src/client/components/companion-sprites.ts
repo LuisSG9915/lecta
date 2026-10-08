@@ -567,6 +567,25 @@ export const PROPS = {
     `M -5 5 A 5 5 0 1 0 5 5 A 5 5 0 1 0 -5 5 Z`,
     `M -4.6 3.2 A 5.4 5.4 0 0 0 4.6 3.2 L 4.2 5 A 4.2 4.2 0 0 1 -4.2 5 Z`,
   ],
+  // Taza de té humeante (lectura diurna): platito, pocillo, infusión, asa y volutas de vapor.
+  tea: {
+    saucer: `M -8 5 Q 0 6.6 8 5 L 6.6 6.8 Q 0 7.8 -6.6 6.8 Z`,
+    cup: `M -5.8 0 L 5.8 0 L 4.6 4.6 Q 0 5.6 -4.6 4.6 Z`,
+    liquid: `M -4.8 0.4 Q 0 1.2 4.8 0.4 Q 0 -0.4 -4.8 0.4 Z`,
+    handle: `M 5 0.8 Q 8 0.8 7.6 2.8 Q 7.2 4.5 4.4 4.2`,
+    steam: [
+      `M -1.8 -1.8 Q -3.6 -4.5 -1.8 -7 Q 0 -9.5 -1.2 -12`,
+      `M 1.8 -2.2 Q 3.6 -5 1.8 -7.8 Q 0.2 -10.2 1.4 -13`,
+    ],
+  },
+  // Velita nocturna (lectura nocturna / foco profundo): palmatoria, cera, mecha, llama.
+  candle: {
+    dish: `M -7 4.5 Q 0 6 7 4.5 L 5.5 6 Q 0 7 -5.5 6 Z`,
+    handle: `M 5.5 3.5 Q 8.5 2.5 7.5 5.5 Q 6.5 6 5 5.2`,
+    wax: `M -3.2 -1 L 3.2 -1 L 3.2 4.6 L -3.2 4.6 Z`,
+    wick: `M 0 -1 L 0 -2.8`,
+    flame: `M 0 -3 C -1.6 -4.6 -1.2 -6.6 0 -8.4 C 1.2 -6.6 1.6 -4.6 0 -3 Z`,
+  },
   // Chispa de cuatro puntas (evolución/fiesta).
   spark:
     `M 0 -4.4 L 1.2 -1.2 L 4.4 0 L 1.2 1.2 L 0 4.4 ` +

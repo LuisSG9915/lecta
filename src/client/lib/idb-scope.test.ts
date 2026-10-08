@@ -16,6 +16,7 @@ const KEY_PATHS: Record<string, string> = {
   bookOps: "id",
   companionEvents: "id",
   companionReceipts: "id",
+  lexiconCache: "key",
 };
 
 class FakeDb {

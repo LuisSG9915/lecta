@@ -339,6 +339,15 @@ describe("projectGame", () => {
       events: [ev("far", T0 + 5 * DAY, "2025-06-15", { kind: "consulted" })],
     });
     expect(projectGame(s2).state.stats.streakDays).toBe(1);
+
+    // Pero si la racha previa es >= 3 y el hueco es de un solo día (gap === 2), el marcapáginas la salva.
+    const sShield = snap({
+      baselines: [
+        baseline("a", makeState({}, { lastDayKey: "2025-06-10", streakDays: 3 })),
+      ],
+      events: [ev("skip1", T0 + 2 * DAY, "2025-06-12", { kind: "consulted" })],
+    });
+    expect(projectGame(sShield).state.stats.streakDays).toBe(4);
   });
 
   it("caredAt es el máximo entre baseline y eventos", () => {
@@ -419,6 +428,22 @@ describe("projectChests", () => {
       source: "achievement",
       label: "Primera palabra",
       reward: "Estampa · Primera palabra",
+      createdAt: T0,
+      openedAt: null,
+    });
+  });
+
+  it("un crédito de libro genera cofre con Exlibris conmemorativo", () => {
+    const s = snap({
+      receipts: [{ id: "achievement-credit:libro_1", at: T0 }],
+    });
+    const chests = projectChests(s);
+    const exlibris = chests.find((c) => c.id === "achievement:libro_1");
+    expect(exlibris).toMatchObject({
+      id: "achievement:libro_1",
+      source: "achievement",
+      label: "Primer libro cerrado",
+      reward: "Exlibris conmemorativo",
       createdAt: T0,
       openedAt: null,
     });

@@ -2,8 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   activityToCsv,
   annotationsToMarkdown,
+  bookReadingNoteToMarkdown,
   buildBackup,
+  formatReadingDuration,
+  fullNotebookToMarkdown,
   passagesToCsv,
+  sanitizeFilename,
   sessionKeysForBackup,
   wordsToCsv,
   wordsToAnkiTsv,
@@ -336,5 +340,171 @@ describe("buildBackup", () => {
     expect(parsed.books).toEqual([
       { hash: "b1", name: "cien.epub", addedAt: 1, title: "Cien años" },
     ]);
+  });
+});
+
+describe("sanitizeFilename", () => {
+  it("normaliza títulos con acentos y espacios", () => {
+    expect(sanitizeFilename("Cien años de soledad")).toBe("cien-anos-de-soledad");
+    expect(sanitizeFilename("El Aleph (Edición Crítica)")).toBe("el-aleph-edicion-critica");
+  });
+
+  it("ofrece fallback para nombres vacíos", () => {
+    expect(sanitizeFilename("")).toBe("lectura");
+    expect(sanitizeFilename("---")).toBe("lectura");
+  });
+});
+
+describe("formatReadingDuration", () => {
+  it("formatea minutos y horas", () => {
+    expect(formatReadingDuration(0)).toBe("< 1 min");
+    expect(formatReadingDuration(25)).toBe("25 min");
+    expect(formatReadingDuration(60)).toBe("1 h");
+    expect(formatReadingDuration(95)).toBe("1 h 35 min");
+  });
+});
+
+describe("bookReadingNoteToMarkdown", () => {
+  const sampleBook = {
+    hash: "b1",
+    title: "Cien años de soledad",
+    author: "Gabriel García Márquez",
+    language: "es",
+  };
+
+  const sampleWords: SavedWord[] = [
+    {
+      key: "es:diáfano",
+      form: "diáfana",
+      lemma: "diáfano",
+      pos: "adj.",
+      meaning: "Claro, que deja pasar la luz",
+      context: "El mundo era tan reciente y diáfana la luz.",
+      language: "es",
+      bookHash: "b1",
+      savedAt: 1_700_000_000_000,
+    },
+  ];
+
+  const sampleAnnotations: SavedAnnotation[] = [
+    {
+      key: "b1:p1",
+      id: "p1",
+      bookHash: "b1",
+      kind: "passage",
+      sectionIndex: 0,
+      text: "Muchos años después, frente al pelotón de fusilamiento...",
+      note: "Inicio memorable.",
+      createdAt: 1_700_000_000_000,
+      updatedAt: 1_700_000_000_000,
+    },
+  ];
+
+  const sampleIntervals: SavedInterval[] = [
+    {
+      id: "i1",
+      bookHash: "b1",
+      startedAt: 1_700_000_000_000,
+      endedAt: 1_700_000_000_000 + 45 * 60_000,
+    },
+  ];
+
+  it("genera YAML frontmatter estructurado y secciones enriquecidas", () => {
+    const md = bookReadingNoteToMarkdown({
+      book: sampleBook,
+      words: sampleWords,
+      annotations: sampleAnnotations,
+      intervals: sampleIntervals,
+      position: {
+        bookHash: "b1",
+        sectionIndex: 2,
+        progress: 0.85,
+        ratio: 0.5,
+        scrollTop: 100,
+        updatedAt: 1_700_000_000_000,
+      },
+      exportedAt: 1_700_000_000_000,
+    });
+
+    expect(md.startsWith("---")).toBe(true);
+    expect(md).toContain('title: "Cien años de soledad"');
+    expect(md).toContain('author: "Gabriel García Márquez"');
+    expect(md).toContain("source: Lecta");
+    expect(md).toContain('progress: "85%"');
+    expect(md).toContain('reading_time: "45 min"');
+    expect(md).toContain("words_saved: 1");
+    expect(md).toContain("passages_saved: 1");
+    expect(md).toContain("lecta/libro");
+
+    // Título y metadatos
+    expect(md).toContain("# Cien años de soledad");
+    expect(md).toContain("*Autor:* **Gabriel García Márquez**");
+
+    // Citas con callout
+    expect(md).toContain("## Citas y pasajes destacados");
+    expect(md).toContain("> Muchos años después, frente al pelotón de fusilamiento...");
+    expect(md).toContain("> [!note] Reflexión");
+    expect(md).toContain("> Inicio memorable.");
+
+    // Vocabulario
+    expect(md).toContain("## Vocabulario adquirido");
+    expect(md).toContain("- **diáfana** *(adj.)* — lema: *diáfano*");
+    expect(md).toContain("- **Significado:** Claro, que deja pasar la luz");
+    expect(md).toContain("- *«El mundo era tan reciente y diáfana la luz.»*");
+
+    // Sesiones
+    expect(md).toContain("## Sesiones de lectura");
+    expect(md).toContain("- **Tiempo total registrado:** 45 min");
+    expect(md).toContain("- **Sesiones completadas:** 1");
+  });
+});
+
+describe("fullNotebookToMarkdown", () => {
+  it("genera consolidado con índice y múltiples libros", () => {
+    const md = fullNotebookToMarkdown({
+      books: [
+        { hash: "b1", title: "El Aleph", author: "Borges", language: "es" },
+        { hash: "b2", title: "Ficciones", author: "Borges", language: "es" },
+      ],
+      words: [
+        {
+          key: "es:laberinto",
+          form: "laberinto",
+          meaning: "Lugar confuso",
+          language: "es",
+          bookHash: "b1",
+          savedAt: 1_700_000_000_000,
+        },
+        {
+          key: "es:suelta",
+          form: "suelta",
+          meaning: "Palabra sin libro",
+          language: "es",
+          savedAt: 1_700_000_000_000,
+        },
+      ],
+      annotations: [
+        {
+          key: "b1:a1",
+          id: "a1",
+          bookHash: "b1",
+          kind: "passage",
+          sectionIndex: 1,
+          text: "Vi el populoso mar...",
+          createdAt: 1_700_000_000_000,
+          updatedAt: 1_700_000_000_000,
+        },
+      ],
+      exportedAt: 1_700_000_000_000,
+    });
+
+    expect(md).toContain('title: "Cuaderno de Lectura — Lecta"');
+    expect(md).toContain("## Índice de obras");
+    expect(md).toContain("- **El Aleph** (Borges) · 1 palabra(s) · 1 pasaje(s)");
+    expect(md).toContain("## El Aleph");
+    expect(md).toContain("> Vi el populoso mar...");
+    expect(md).toContain("- **laberinto**");
+    expect(md).toContain("## Otras notas y palabras");
+    expect(md).toContain("- **suelta**: Palabra sin libro");
   });
 });

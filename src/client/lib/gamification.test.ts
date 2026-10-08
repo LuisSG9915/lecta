@@ -108,6 +108,21 @@ describe("racha de días", () => {
     const r = applyGameEvent(s, { kind: "consulted" }, NOW + 3 * DAY, idFor);
     expect(r.state.stats.streakDays).toBe(1);
   });
+
+  it("marcapáginas protector salva un día saltado cuando racha >= 3", () => {
+    const s0 = play(emptyGameState(), [{ kind: "consulted" }]);
+    const s1 = applyGameEvent(s0, { kind: "consulted" }, NOW + DAY, idFor).state;
+    const s2 = applyGameEvent(s1, { kind: "consulted" }, NOW + 2 * DAY, idFor).state;
+    expect(s2.stats.streakDays).toBe(3);
+
+    // Salto de 1 día (gap 2): el protector sostiene la racha
+    const rProtected = applyGameEvent(s2, { kind: "consulted" }, NOW + 4 * DAY, idFor);
+    expect(rProtected.state.stats.streakDays).toBe(4);
+
+    // Salto mayor (gap 3): reinicia a 1
+    const rLost = applyGameEvent(s2, { kind: "consulted" }, NOW + 5 * DAY, idFor);
+    expect(rLost.state.stats.streakDays).toBe(1);
+  });
 });
 
 describe("logros y cofres", () => {
@@ -116,6 +131,16 @@ describe("logros y cofres", () => {
     expect(r.unlocked.map((a) => a.id)).toContain("palabra_1");
     expect(r.state.achievements.palabra_1).toBe(NOW);
     expect(r.newChests.some((c) => c.source === "achievement")).toBe(true);
+  });
+
+  it("terminar un libro genera cofre con Exlibris conmemorativo", () => {
+    const s = emptyGameState();
+    const r = applyGameEvent(s, { kind: "book_finished", bookHash: "book-1" }, NOW, idFor);
+    const exlibris = r.newChests.find(
+      (c) => c.source === "achievement" && c.reward === "Exlibris conmemorativo",
+    );
+    expect(exlibris).toBeTruthy();
+    expect(exlibris?.label).toBe("Primer libro cerrado");
   });
 
   it("subir de nivel genera cofre con accesorio", () => {

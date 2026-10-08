@@ -12,11 +12,15 @@ import {
   putSavedWord,
   saveKnowledge,
   saveSessionValue,
+  updateAnnotation,
   updateSavedWord,
   type KnownWord,
+  type SavedAnnotation,
   type SavedWord,
   type StoredBook,
 } from "../lib/idb";
+import QuoteCardModal from "./QuoteCardModal";
+import BookGlossaryModal from "./BookGlossaryModal";
 import {
   answerItem,
   batchLookup,
@@ -53,7 +57,8 @@ import { loadUseAi } from "../lib/ai-pref";
 import { GamePanel } from "./GamePanel";
 import { formatInterval } from "../lib/relative-time";
 import {
-  annotationsToMarkdown,
+  downloadBookMarkdown,
+  downloadNotebookMarkdown,
   downloadText,
   passagesToCsv,
   wordsToAnkiTsv,
@@ -67,7 +72,7 @@ type VocabularyProps = {
   onClose: () => void;
   // Solo se usa hash/título/nombre para nombrar libros: la estantería
   // manda ShelfItem, que no carga el archivo.
-  books: Pick<StoredBook, "hash" | "name" | "title">[];
+  books: Pick<StoredBook, "hash" | "name" | "title" | "author">[];
   // Sube cuando la sincronización trae intervalos nuevos; la pestaña
   // de actividad relee su progreso sin remontar el panel.
   activityVersion?: number;
@@ -232,7 +237,15 @@ export default function Vocabulary({ onClose, books, activityVersion }: Vocabula
 
   const [words, setWords] = useState<SavedWord[] | null>(null);
   const [loadError, setLoadError] = useState(false);
-  const [tab, setTab] = useState<"words" | "activity">("words");
+  const [tab, setTab] = useState<"words" | "quotes" | "activity">("words");
+  const [quotes, setQuotes] = useState<SavedAnnotation[] | null>(null);
+  const [quoteModal, setQuoteModal] = useState<{
+    text: string;
+    bookTitle?: string;
+    author?: string;
+    chapterTitle?: string;
+  } | null>(null);
+  const [glossaryBookHash, setGlossaryBookHash] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterId>("all");
   const [order, setOrder] = useState<OrderId>("fecha");
   const [query, setQuery] = useState("");
@@ -914,8 +927,48 @@ export default function Vocabulary({ onClose, books, activityVersion }: Vocabula
     const found = books.find((item) => item.hash === hash);
     return found ? (found.title ?? found.name) : "Libro que ya no está";
   };
+  const bookAuthor = (hash: string | undefined) => {
+    if (!hash) return undefined;
+    const found = books.find((item) => item.hash === hash);
+    return found?.author;
+  };
   const bookName = (hash: string | undefined) =>
     hash ? bookTitle(hash) : undefined;
+
+  useEffect(() => {
+    if (tab !== "quotes" || quotes !== null) return;
+    let cancelled = false;
+    const scope = captureDbScope();
+    void listAnnotations(undefined, scope)
+      .then((stored) => {
+        if (cancelled) return;
+        const list = stored.filter((item) => item.kind === "passage" && !item.deleted);
+        list.sort((a, b) => b.createdAt - a.createdAt);
+        setQuotes(list);
+      })
+      .catch(() => {
+        if (!cancelled) setQuotes([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [tab, quotes]);
+
+  const removeQuote = async (item: SavedAnnotation) => {
+    triggerHaptic("light");
+    const scope = captureDbScope();
+    await updateAnnotation({ ...item, deleted: true }, scope).catch(() => undefined);
+    setQuotes((prev) => (prev ? prev.filter((q) => q.key !== item.key) : []));
+  };
+
+  const copyQuoteText = async (text: string) => {
+    triggerHaptic("selection");
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      // noop
+    }
+  };
 
   const filtered = all.filter(
     (word) => matchesFilter(word, filter) && matchesSearch(word, query),
@@ -1024,15 +1077,9 @@ export default function Vocabulary({ onClose, books, activityVersion }: Vocabula
       "text/csv;charset=utf-8",
     );
   };
-  const exportNotes = async () => {
-    const stored = await listAnnotations(undefined, captureDbScope()).catch(
-      () => [],
-    );
-    downloadText(
-      `notas-lecta-${new Date().toISOString().slice(0, 10)}.md`,
-      annotationsToMarkdown(stored, bookName),
-      "text/markdown;charset=utf-8",
-    );
+  const exportMarkdownNotebook = () => {
+    triggerHaptic("selection");
+    void downloadNotebookMarkdown();
   };
 
   return (
@@ -1076,6 +1123,15 @@ export default function Vocabulary({ onClose, books, activityVersion }: Vocabula
             <button
               type="button"
               className="theme-option"
+              data-active={tab === "quotes" || undefined}
+              aria-pressed={tab === "quotes"}
+              onClick={() => setTab("quotes")}
+            >
+              Citas
+            </button>
+            <button
+              type="button"
+              className="theme-option"
               data-active={tab === "activity" || undefined}
               aria-pressed={tab === "activity"}
               onClick={() => setTab("activity")}
@@ -1087,6 +1143,81 @@ export default function Vocabulary({ onClose, books, activityVersion }: Vocabula
 
         {tab === "activity" && !queue && !learn ? (
           <ReadingActivity books={books} words={all} activityVersion={activityVersion} />
+        ) : null}
+
+        {tab === "quotes" && !queue && !learn ? (
+          <section aria-label="Citas guardadas">
+            <div className="nb-actions-bar" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "var(--s-3)" }}>
+              <span className="meta">{quotes ? `${quotes.length} cita(s) guardada(s)` : "Cargando…"}</span>
+              {quotes && quotes.length > 0 ? (
+                <button type="button" className="btn--quiet" onClick={() => void exportPassages()}>
+                  Exportar CSV
+                </button>
+              ) : null}
+            </div>
+
+            {quotes === null ? (
+              <p className="meta">Leyendo tus citas…</p>
+            ) : quotes.length === 0 ? (
+              <p className="nb-empty">
+                Aún no has guardado citas.
+                <br />
+                Al leer, selecciona cualquier fragmento que te conmueva para guardarlo aquí o crear una tarjeta de cita.
+              </p>
+            ) : (
+              <ul className="nb-quotes-list" style={{ listStyle: "none", padding: 0, margin: 0 }}>
+                {quotes.map((quote) => {
+                  const bTitle = bookTitle(quote.bookHash);
+                  const bAuthor = bookAuthor(quote.bookHash);
+                  return (
+                    <li key={quote.key} className="nb-quote-card">
+                      <blockquote className="nb-quote-text">
+                        “{quote.text}”
+                      </blockquote>
+                      <div className="nb-quote-meta">
+                        {[bTitle, bAuthor].filter(Boolean).join(" · ")}
+                      </div>
+                      {quote.note ? (
+                        <div className="nb-quote-note">
+                          <strong>Nota:</strong> {quote.note}
+                        </div>
+                      ) : null}
+                      <div className="nb-quote-actions">
+                        <button
+                          type="button"
+                          className="btn btn--primary"
+                          onClick={() => {
+                            triggerHaptic("selection");
+                            setQuoteModal({
+                              text: quote.text ?? "",
+                              bookTitle: bTitle,
+                              author: bAuthor,
+                            });
+                          }}
+                        >
+                          Tarjeta de cita
+                        </button>
+                        <button
+                          type="button"
+                          className="btn"
+                          onClick={() => void copyQuoteText(quote.text ?? "")}
+                        >
+                          Copiar texto
+                        </button>
+                        <button
+                          type="button"
+                          className="btn--quiet"
+                          onClick={() => void removeQuote(quote)}
+                        >
+                          Eliminar
+                        </button>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
         ) : null}
 
         {tab === "words" && !queue && !learn ? <GamePanel /> : null}
@@ -1146,28 +1277,53 @@ export default function Vocabulary({ onClose, books, activityVersion }: Vocabula
             {dueCount > 0 ? (
               <section className="nb-review" aria-label="Repaso de hoy">
                 <p className="eyebrow">Repasar hoy · {dueCount}</p>
-                <div className="practice-modes" role="group" aria-label="Modo de repaso">
-                  {mixCount > 0 ? (
-                    <button type="button" className="btn btn--primary" onClick={startMix}>
-                      Repasar hoy
-                    </button>
-                  ) : null}
-                  {MODES.map(({ id, label, needs }) => {
-                    const count = eligibleDue(id);
-                    return (
-                      <button
-                        key={id}
-                        type="button"
-                        className="btn"
-                        disabled={count === 0}
-                        title={count === 0 ? `Sin pendientes con ${needs}` : undefined}
-                        onClick={() => void startPractice(id)}
-                      >
-                        {label} · {count}
+                {mixCount > 0 ? (
+                  <>
+                    <div className="practice-modes" role="group" aria-label="Modo de repaso">
+                      <button type="button" className="btn btn--primary" onClick={startMix}>
+                        Repasar hoy
                       </button>
-                    );
-                  })}
-                </div>
+                    </div>
+                    <details className="practice-more">
+                      <summary className="meta">Elegir un tipo de ejercicio específico</summary>
+                      <div className="practice-modes practice-modes--sub" role="group" aria-label="Ejercicios específicos">
+                        {MODES.map(({ id, label, needs }) => {
+                          const count = eligibleDue(id);
+                          return (
+                            <button
+                              key={id}
+                              type="button"
+                              className="btn"
+                              disabled={count === 0}
+                              title={count === 0 ? `Sin pendientes con ${needs}` : undefined}
+                              onClick={() => void startPractice(id)}
+                            >
+                              {label} · {count}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </details>
+                  </>
+                ) : (
+                  <div className="practice-modes" role="group" aria-label="Modo de repaso">
+                    {MODES.map(({ id, label, needs }) => {
+                      const count = eligibleDue(id);
+                      return (
+                        <button
+                          key={id}
+                          type="button"
+                          className="btn"
+                          disabled={count === 0}
+                          title={count === 0 ? `Sin pendientes con ${needs}` : undefined}
+                          onClick={() => void startPractice(id)}
+                        >
+                          {label} · {count}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
                 {practiceNote ? <p className="meta">{practiceNote}</p> : null}
               </section>
             ) : null}
@@ -1219,10 +1375,15 @@ export default function Vocabulary({ onClose, books, activityVersion }: Vocabula
                   Para Anki
                 </button>
                 <button type="button" className="btn--quiet" onClick={() => void exportPassages()}>
-                  Exportar pasajes
+                  Pasajes CSV
                 </button>
-                <button type="button" className="btn--quiet" onClick={() => void exportNotes()}>
-                  Notas (.md)
+                <button
+                  type="button"
+                  className="btn--quiet"
+                  onClick={exportMarkdownNotebook}
+                  title="Exportar cuaderno completo en Markdown para Obsidian, Notion o PKM"
+                >
+                  Cuaderno (.md)
                 </button>
               </div>
             </div>
@@ -1248,6 +1409,36 @@ export default function Vocabulary({ onClose, books, activityVersion }: Vocabula
                         {bookTitle(hash || undefined)}
                       </button>
                       <span className="meta"> · {group.length}</span>
+                      {hash ? (
+                        <>
+                          <button
+                            type="button"
+                            className="btn--quiet nb-group-export"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              triggerHaptic("selection");
+                              setGlossaryBookHash(hash);
+                            }}
+                            title={`Explorar glosario de ${bookTitle(hash)}`}
+                            aria-label={`Explorar glosario de ${bookTitle(hash)}`}
+                          >
+                            Glosario
+                          </button>
+                          <button
+                            type="button"
+                            className="btn--quiet nb-group-export"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              triggerHaptic("selection");
+                              void downloadBookMarkdown(hash, bookTitle(hash));
+                            }}
+                            title={`Exportar ficha en Markdown de ${bookTitle(hash)}`}
+                            aria-label={`Exportar ficha en Markdown de ${bookTitle(hash)}`}
+                          >
+                            Ficha (.md)
+                          </button>
+                        </>
+                      ) : null}
                     </h2>
                     {isCollapsed ? null : (
                       <ul className="nb-words">
@@ -1776,6 +1967,31 @@ export default function Vocabulary({ onClose, books, activityVersion }: Vocabula
           </div>
         ) : null}
       </div>
+
+      {quoteModal ? (
+        <QuoteCardModal
+          text={quoteModal.text}
+          bookTitle={quoteModal.bookTitle}
+          author={quoteModal.author}
+          chapterTitle={quoteModal.chapterTitle}
+          alreadySaved={true}
+          onClose={() => setQuoteModal(null)}
+        />
+      ) : null}
+      {glossaryBookHash ? (
+        <BookGlossaryModal
+          bookHash={glossaryBookHash}
+          bookTitle={bookTitle(glossaryBookHash)}
+          onClose={() => setGlossaryBookHash(null)}
+          onWordSaved={(savedWord) => {
+            setWords((prev) =>
+              prev
+                ? [savedWord, ...prev.filter((w) => w.key !== savedWord.key)]
+                : [savedWord],
+            );
+          }}
+        />
+      ) : null}
     </div>
   );
 }

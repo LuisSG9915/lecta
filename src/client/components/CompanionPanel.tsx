@@ -24,6 +24,7 @@ import {
 import {
   LEVELS,
   catStageForLevel,
+  dayKeyOf,
   levelProgress,
   requiredCoatLevel,
   rewardForLevel,
@@ -32,6 +33,7 @@ import {
   type CatMood,
   type GameState,
 } from "../lib/gamification";
+import { triggerPurrHaptic } from "../lib/haptics";
 import {
   CARE_POSES,
   CARE_STATUS,
@@ -156,6 +158,7 @@ export function CompanionPanel({
 
   const doCare = (kind: CareKind) => {
     if (activeCare) return;
+    if (kind === "pet") triggerPurrHaptic();
     setCareError("");
     void onCare(kind).catch(() => {
       // El error real llega por la promesa; aquí solo se muestra.
@@ -264,24 +267,72 @@ export function CompanionPanel({
       ) : (
         <>
           <div className="companion-hero">
-            <Companion
-              stage={catStageForLevel(prog.level)}
-              mood={mood}
-              accessories={accessories}
-              pose={
-                activeCare
-                  ? CARE_POSES[activeCare]
-                  : waving
-                    ? "greet"
+            <button
+              type="button"
+              className="companion-hero-cat"
+              onClick={() => doCare("pet")}
+              disabled={activeCare !== null}
+              aria-label={`Acariciar a ${name}`}
+              title={`Acariciar a ${name}`}
+            >
+              <Companion
+                stage={catStageForLevel(prog.level)}
+                mood={mood}
+                accessories={accessories}
+                focus={
+                  !activeCare &&
+                  !waving &&
+                  arrival &&
+                  state.stats.lastDayKey === dayKeyOf(arrival.at.getTime())
+                    ? "reading"
                     : undefined
-              }
-              name={name}
-            />
+                }
+                pose={
+                  activeCare
+                    ? CARE_POSES[activeCare]
+                    : waving
+                      ? "greet"
+                      : undefined
+                }
+                name={name}
+                decorative
+              />
+              {activeCare === "pet" ? (
+                <span className="companion-pet-hearts" aria-hidden="true">
+                  ♥
+                </span>
+              ) : null}
+            </button>
             <div className="game-meta">
               <p className="game-level">
                 Nivel {prog.level + 1} · {prog.name}
               </p>
               <p className="meta">{Math.floor(state.xp)} puntos</p>
+              {arrival && state.stats.lastDayKey === dayKeyOf(arrival.at.getTime()) ? (
+                <p className="companion-goal-badge" role="status">
+                  <span className="companion-goal-icon" aria-hidden="true">🥣</span> Plato lleno hoy · Racha de {state.stats.streakDays} {state.stats.streakDays === 1 ? "día" : "días"}
+                  {state.stats.streakDays >= 3 ? (
+                    <span
+                      className="companion-shield-hint"
+                      title="Marcapáginas protector activo: si un día no lees, tu gato cuidará tu racha"
+                    >
+                      {" "}· 🔖 Activo
+                    </span>
+                  ) : null}
+                </p>
+              ) : (
+                <p className="companion-goal-badge companion-goal-badge--pending">
+                  <span className="companion-goal-icon" aria-hidden="true">📖</span> Lectura pendiente hoy
+                  {state.stats.streakDays >= 3 ? (
+                    <span
+                      className="companion-shield-hint"
+                      title="Marcapáginas protector activo: si un día no lees, tu gato cuidará tu racha"
+                    >
+                      {" "}· 🔖 Activo
+                    </span>
+                  ) : null}
+                </p>
+              )}
             </div>
           </div>
 

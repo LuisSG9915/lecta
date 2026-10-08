@@ -393,6 +393,120 @@
   fill: var(--ochre);
 }
 
+/* Atrejos de lectura: taza de té humeante y velita nocturna */
+.cat .cat-tea .cat-dish,
+.cat .cat-tea .cat-cup {
+  fill: var(--paper-raised, var(--paper));
+  stroke: var(--cat-outline);
+  stroke-width: 0.9;
+  stroke-linejoin: round;
+}
+
+.cat .cat-tea .cat-cup-handle {
+  fill: none;
+  stroke: var(--cat-outline);
+  stroke-width: 0.95;
+  stroke-linecap: round;
+}
+
+.cat .cat-tea .cat-tea-liquid {
+  fill: #a65e2e;
+  opacity: 0.9;
+}
+
+.cat .cat-tea-steam {
+  transform-origin: 0 0;
+}
+
+.cat .cat-steam-line {
+  fill: none;
+  stroke: var(--ink-soft, var(--ink));
+  stroke-width: 0.8;
+  stroke-linecap: round;
+  opacity: 0.45;
+  animation: cat-steam 2.8s ease-in-out infinite;
+}
+
+.cat .cat-steam-line:nth-child(2) {
+  animation-delay: 1.4s;
+}
+
+.cat .cat-candle .cat-dish {
+  fill: var(--ochre);
+  stroke: var(--cat-outline);
+  stroke-width: 0.9;
+  stroke-linejoin: round;
+}
+
+.cat .cat-candle .cat-dish-handle {
+  fill: none;
+  stroke: var(--ochre);
+  stroke-width: 0.95;
+  stroke-linecap: round;
+}
+
+.cat .cat-candle .cat-wax {
+  fill: #faf6eb;
+  stroke: var(--cat-outline);
+  stroke-width: 0.9;
+  stroke-linejoin: round;
+}
+
+.cat .cat-candle .cat-wick {
+  fill: none;
+  stroke: var(--cat-outline);
+  stroke-width: 0.8;
+  stroke-linecap: round;
+}
+
+.cat .cat-candle .cat-flame {
+  fill: var(--amber);
+  stroke: var(--vermilion);
+  stroke-width: 0.7;
+  transform-origin: 0% 0%;
+  animation: cat-flame 1.4s ease-in-out infinite alternate;
+}
+
+.cat .cat-candle .cat-candle-halo {
+  fill: var(--amber);
+  opacity: 0.18;
+  animation: cat-halo 2.2s ease-in-out infinite alternate;
+}
+
+@keyframes cat-steam {
+  0% {
+    opacity: 0;
+    transform: translateY(1px) scaleX(0.85);
+  }
+  40% {
+    opacity: 0.5;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-4px) scaleX(1.15);
+  }
+}
+
+@keyframes cat-flame {
+  0% {
+    transform: scale(0.92) rotate(-3deg);
+  }
+  100% {
+    transform: scale(1.08) rotate(3deg);
+  }
+}
+
+@keyframes cat-halo {
+  0% {
+    opacity: 0.12;
+    transform: scale(0.95);
+  }
+  100% {
+    opacity: 0.22;
+    transform: scale(1.05);
+  }
+}
+
 /* Chispas de evolución/fiesta. */
 .cat .cat-spark {
   fill: var(--ochre);
@@ -1046,6 +1160,11 @@
   filter: drop-shadow(0 0.16em 0.4em var(--ochre));
 }
 
+.companion-btn:hover:not(:disabled) .cat-head {
+  transform: rotate(-3deg);
+  transition: transform var(--dur-2) var(--ease-out);
+}
+
 .companion-btn:focus-visible {
   outline: 2px solid var(--vermilion);
   outline-offset: 2px;
@@ -1071,6 +1190,90 @@
   margin-block-end: var(--s-4);
 }
 
+.companion-hero-cat {
+  position: relative;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  border-radius: var(--r-2);
+  transition: transform var(--dur-2) var(--ease-out);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.companion-hero-cat:hover:not(:disabled) {
+  transform: scale(1.06);
+}
+
+.companion-hero-cat:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.companion-hero-cat:focus-visible {
+  outline: 2px solid var(--vermilion);
+  outline-offset: 4px;
+}
+
+.companion-pet-hearts {
+  position: absolute;
+  top: -6px;
+  right: -4px;
+  font-size: 1.35rem;
+  color: var(--vermilion);
+  animation: float-heart 1.2s ease-out infinite;
+  pointer-events: none;
+}
+
+@keyframes float-heart {
+  0% {
+    opacity: 0;
+    transform: translateY(6px) scale(0.6);
+  }
+  35% {
+    opacity: 1;
+    transform: translateY(-4px) scale(1.15);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-20px) scale(0.9);
+  }
+}
+
+.companion-goal-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: var(--s-1) 0 0;
+  padding: 0.2rem 0.55rem;
+  border-radius: var(--r-pill, 999px);
+  font-size: var(--fs-xs);
+  background: var(--ochre-wash, rgba(217, 142, 4, 0.12));
+  color: var(--ink);
+  font-weight: 500;
+  border: 1px solid var(--ochre-soft, var(--line));
+}
+
+.companion-goal-badge--pending {
+  background: var(--paper-raised);
+  color: var(--ink-soft);
+  border: 1px dashed var(--line);
+}
+
+.companion-goal-icon {
+  font-size: 0.95rem;
+}
+
+.companion-shield-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: 0.9em;
+  color: var(--vermilion);
+  font-weight: 600;
+}
+
 .companion-hero .cat {
   inline-size: 5.5rem;
   block-size: 5.5rem;
@@ -1094,7 +1297,7 @@
   margin-block-start: var(--s-4);
 }
 
-/* Armario por ranura: cada opción es una fila completa de 44px con
+/* Armario por ranura: cada opción es una tarjeta visual adaptativa con
    el nombre a la izquierda y el estado («Puesta», «Nivel N») a la
    derecha — la marca no depende solo del color del borde. */
 .companion-closet {
@@ -1110,6 +1313,7 @@
 
 .companion-wears {
   display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
   gap: var(--s-2);
 }
 
@@ -1117,25 +1321,27 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--s-3);
+  gap: var(--s-2);
   inline-size: 100%;
-  min-block-size: 44px;
+  min-block-size: 42px;
   padding: var(--s-2) var(--s-3);
   border: var(--border);
-  border-radius: var(--r-1);
+  border-radius: var(--r-2);
   background: var(--paper-raised);
   color: var(--ink);
   font-family: var(--font-ui);
-  font-size: var(--fs-base);
+  font-size: var(--fs-sm);
   text-align: start;
   cursor: pointer;
   transition:
     border-color var(--dur-1) var(--ease-out),
-    background-color var(--dur-1) var(--ease-out);
+    background-color var(--dur-1) var(--ease-out),
+    transform var(--dur-1) var(--ease-out);
 }
 
 .companion-wear:hover:not(:disabled) {
   border-color: var(--ink-soft);
+  transform: translateY(-1px);
 }
 
 .companion-wear:focus-visible {

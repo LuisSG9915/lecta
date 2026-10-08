@@ -79,6 +79,30 @@
   margin-block-start: var(--s-3);
 }
 
+.practice-more {
+  margin-block-start: var(--s-3);
+}
+
+.practice-more > summary {
+  cursor: pointer;
+  user-select: none;
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+  transition: color var(--dur-1) var(--ease-out);
+}
+
+.practice-more > summary:hover {
+  color: var(--ink);
+}
+
+.practice-more[open] > summary {
+  margin-block-end: var(--s-2);
+}
+
+.practice-modes--sub {
+  margin-block-start: var(--s-1);
+}
+
 .nb-practice-meta {
   margin-block-end: var(--s-2);
 }
@@ -463,6 +487,10 @@
 }
 
 .nb-group-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s-1);
   margin: 0 0 var(--s-1);
   padding-block-end: var(--s-2);
   border-bottom: 1px solid var(--rule-strong);
@@ -470,6 +498,20 @@
   font-weight: 400;
   font-size: var(--fs-md);
   color: var(--ink);
+}
+
+.nb-group-export {
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  padding: 2px 8px;
+  margin-inline-start: auto;
+  opacity: 0.75;
+  border-radius: var(--r-pill);
+}
+
+.nb-group-export:hover {
+  opacity: 1;
+  color: var(--vermilion);
 }
 
 .nb-words {
@@ -592,3 +634,48 @@
     background: Highlight;
   }
 }
+
+/* ---------- Citas guardadas en el Cuaderno ---------- */
+
+.nb-quote-card {
+  margin-block: var(--s-4);
+  padding: var(--s-4) var(--s-5);
+  background: var(--paper-raised);
+  border: var(--border);
+  border-radius: var(--r-2);
+  border-inline-start: 3px solid var(--vermilion);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.nb-quote-text {
+  font-family: var(--font-book);
+  font-style: italic;
+  font-size: var(--fs-md);
+  line-height: var(--lh-read);
+  color: var(--ink);
+  margin: 0 0 var(--s-2);
+}
+
+.nb-quote-meta {
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+  margin-bottom: var(--s-3);
+}
+
+.nb-quote-note {
+  font-size: var(--fs-sm);
+  color: var(--ink);
+  background: var(--paper-sunken);
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-1);
+  margin-bottom: var(--s-3);
+  font-style: normal;
+}
+
+.nb-quote-actions {
+  display: flex;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+}
+

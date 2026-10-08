@@ -915,6 +915,53 @@ mark.saved-passage {
 
 /* ---------- Panel Aa ---------- */
 
+/* Pestañas de categorías del panel de ajustes (Apariencia, Maquetación, Herramientas) */
+.sheet-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  margin-block: calc(-1 * var(--s-1)) var(--s-3);
+  border: var(--border);
+  border-radius: 999px;
+  background: var(--paper-sunken);
+}
+
+.sheet-tab {
+  flex: 1;
+  min-height: 2.5rem;
+  padding: var(--s-1) var(--s-2);
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ink-soft);
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  text-align: center;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color var(--dur-1) var(--ease-out),
+    color var(--dur-1) var(--ease-out);
+}
+
+.sheet-tab:hover {
+  color: var(--ink);
+}
+
+.sheet-tab[data-active] {
+  background: var(--paper-raised);
+  color: var(--ink);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+
+@media (forced-colors: active) {
+  .sheet-tab[data-active] {
+    outline: 2px solid Highlight;
+    box-shadow: none;
+  }
+}
+
 .setting-row {
   display: flex;
   align-items: baseline;

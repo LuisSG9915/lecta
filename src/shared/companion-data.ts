@@ -533,14 +533,16 @@ function computeProjection(
 
   // Racha: se replican los dayKey capturados por cada emisor (no la
   // zona del receptor) con la regla de applyGameEvent — día siguiente
-  // suma uno, cualquier otro hueco reinicia. La pareja del baseline es
-  // el frente sellado: un día anterior o igual no rebobina la racha.
+  // suma uno, un salto de un solo día con racha ≥ 3 lo salva el
+  // marcapáginas protector, cualquier otro hueco reinicia. La pareja del
+  // baseline es el frente sellado: un día anterior o igual no rebobina la racha.
   let { lastDayKey, streakDays } = base.stats;
   const days = [...new Set(unique.map((e) => e.dayKey))].sort();
   for (const day of days) {
     if (lastDayKey !== null && day <= lastDayKey) continue;
     const gap = lastDayKey ? daysBetween(day, lastDayKey) : Infinity;
-    streakDays = gap === 1 ? streakDays + 1 : 1;
+    const savedByShield = gap === 2 && streakDays >= 3;
+    streakDays = gap === 1 || savedByShield ? streakDays + 1 : 1;
     lastDayKey = day;
   }
   stats.streakDays = streakDays;
@@ -615,7 +617,7 @@ function computeProjection(
         id: key,
         source: "achievement",
         label: a.title,
-        reward: `Estampa · ${a.title}`,
+        reward: a.id.startsWith("libro_") ? "Exlibris conmemorativo" : `Estampa · ${a.title}`,
         createdAt: creditAt.get(id)!,
         openedAt: openReceiptAt(key),
       });

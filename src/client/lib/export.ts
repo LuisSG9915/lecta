@@ -1,5 +1,6 @@
 import {
   captureDbScope,
+  getStoredBook,
   listAllReviews,
   listAnnotations,
   listCompanionEvents,
@@ -12,6 +13,7 @@ import {
   listSavedWords,
   listStoredBooks,
   listSessionKeys,
+  loadBookPosition,
   loadSessionValue,
   COMPANION_ACKED_KEY,
   COMPANION_BASELINES_KEY,
@@ -20,6 +22,7 @@ import {
   COMPANION_PROFILE_KEY,
   GAME_KEY,
   GAME_STATE_KEY,
+  type DbScope,
   type KnownWord,
   type ReadingEvent,
   type SavedAnnotation,
@@ -183,6 +186,423 @@ export function annotationsToMarkdown(
     if (note) lines.push(`**Nota:** ${note}`, "");
   }
   return lines.join("\n").replace(/\n{3,}/g, "\n\n");
+}
+
+function escapeYaml(val: string | null | undefined): string {
+  return String(val ?? "").replace(/"/g, '\\"').replace(/[\r\n]+/g, " ").trim();
+}
+
+export function sanitizeFilename(name: string): string {
+  return (
+    name
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9_-]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "lectura"
+  );
+}
+
+export function formatReadingDuration(minutes: number): string {
+  if (minutes < 1) return "< 1 min";
+  if (minutes < 60) return `${minutes} min`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m > 0 ? `${h} h ${m} min` : `${h} h`;
+}
+
+export interface BookExportOptions {
+  book: {
+    hash: string;
+    title?: string;
+    author?: string;
+    language?: string;
+    sectionCount?: number;
+  };
+  words: SavedWord[];
+  annotations: SavedAnnotation[];
+  intervals?: SavedInterval[];
+  position?: SavedBookPosition | null;
+  exportedAt?: number;
+}
+
+/**
+ * Ficha de lectura completa de una obra en formato Markdown para Obsidian, Notion o PKM.
+ * Incluye frontmatter YAML estructurado, citas en bloque/callouts, notas personales y vocabulario.
+ */
+export function bookReadingNoteToMarkdown(options: BookExportOptions): string {
+  const {
+    book,
+    words,
+    annotations,
+    intervals = [],
+    position,
+    exportedAt = Date.now(),
+  } = options;
+
+  const title = book.title?.trim() || "Sin título";
+  const author = book.author?.trim() || "";
+  const language = book.language?.trim() || "es";
+  const dateIso = new Date(exportedAt).toISOString().slice(0, 10);
+
+  const totalMinutes = Math.round(
+    intervals.reduce(
+      (sum, int) => sum + Math.max(0, int.endedAt - int.startedAt),
+      0,
+    ) / 60_000,
+  );
+  const readingTime = formatReadingDuration(totalMinutes);
+  const progressPercent =
+    position?.progress != null ? Math.round(position.progress * 100) : 0;
+
+  const usableAnnotations = annotations
+    .filter((item) => !item.deleted && (item.text?.trim() || item.note?.trim()))
+    .sort((a, b) => a.sectionIndex - b.sectionIndex || a.createdAt - b.createdAt);
+
+  const usableWords = words
+    .filter((w) => !w.deleted && w.form.trim())
+    .sort((a, b) => a.form.localeCompare(b.form, "es"));
+
+  const quote = (text: string) =>
+    text
+      .replace(/\r\n/g, "\n")
+      .split("\n")
+      .map((line) => `> ${line}`)
+      .join("\n");
+
+  const lines: string[] = [
+    "---",
+    `title: "${escapeYaml(title)}"`,
+    ...(author ? [`author: "${escapeYaml(author)}"`] : []),
+    "source: Lecta",
+    `language: "${escapeYaml(language)}"`,
+    `date_exported: "${dateIso}"`,
+    ...(progressPercent > 0 ? [`progress: "${progressPercent}%"`] : []),
+    ...(totalMinutes > 0 ? [`reading_time: "${readingTime}"`] : []),
+    `words_saved: ${usableWords.length}`,
+    `passages_saved: ${usableAnnotations.length}`,
+    "tags:",
+    "  - lecta/libro",
+    "  - lectura",
+    "  - pkm",
+    "---",
+    "",
+    `# ${title}`,
+    "",
+  ];
+
+  if (author) lines.push(`*Autor:* **${author}**  `);
+  lines.push(`*Fecha de exportación:* ${dateIso}  `);
+  if (progressPercent > 0) lines.push(`*Progreso en Lecta:* ${progressPercent}%  `);
+  if (totalMinutes > 0) lines.push(`*Tiempo dedicado:* ${readingTime}  `);
+  lines.push("");
+
+  // Citas y pasajes
+  if (usableAnnotations.length > 0) {
+    lines.push("## Citas y pasajes destacados", "");
+    let currentSection = -1;
+    for (const item of usableAnnotations) {
+      if (item.sectionIndex !== currentSection) {
+        currentSection = item.sectionIndex;
+        lines.push(
+          currentSection > 0
+            ? `### Capítulo ${currentSection + 1}`
+            : "### Inicio",
+          "",
+        );
+      }
+      if (item.text?.trim()) {
+        lines.push(quote(item.text.trim()), "");
+      }
+      const note = item.note?.trim();
+      if (note) {
+        lines.push(`> [!note] Reflexión`, `> ${note.replace(/\n/g, "\n> ")}`, "");
+      }
+    }
+  }
+
+  // Vocabulario adquirido
+  if (usableWords.length > 0) {
+    lines.push("## Vocabulario adquirido", "");
+    for (const w of usableWords) {
+      const posTag = w.pos ? ` *(${w.pos})*` : "";
+      const lemmaTag = w.lemma && w.lemma !== w.form ? ` — lema: *${w.lemma}*` : "";
+      lines.push(`- **${w.form}**${posTag}${lemmaTag}`);
+      if (w.meaning?.trim()) {
+        lines.push(`  - **Significado:** ${w.meaning.trim()}`);
+      }
+      if (w.context?.trim()) {
+        lines.push(`  - *«${w.context.trim()}»*`);
+      }
+    }
+    lines.push("");
+  }
+
+  // Resumen de sesiones si existen intervalos
+  if (intervals.length > 0) {
+    lines.push("## Sesiones de lectura", "");
+    lines.push(`- **Tiempo total registrado:** ${readingTime}`);
+    lines.push(`- **Sesiones completadas:** ${intervals.length}`);
+    lines.push("");
+  }
+
+  lines.push("---", "*Exportado desde [Lecta](https://lecta.app) · Cuaderno de lectura*", "");
+  return lines.join("\n").replace(/\n{3,}/g, "\n\n");
+}
+
+export interface NotebookExportOptions {
+  books: {
+    hash: string;
+    title?: string;
+    author?: string;
+    language?: string;
+  }[];
+  words: SavedWord[];
+  annotations: SavedAnnotation[];
+  intervals?: SavedInterval[];
+  exportedAt?: number;
+}
+
+/**
+ * Cuaderno integral consolidado de lectura en Markdown para Obsidian, Notion o PKM.
+ * Incluye índice de obras, citas organizadas por libro y diccionario de vocabulario personal.
+ */
+export function fullNotebookToMarkdown(options: NotebookExportOptions): string {
+  const {
+    books,
+    words,
+    annotations,
+    intervals = [],
+    exportedAt = Date.now(),
+  } = options;
+
+  const dateIso = new Date(exportedAt).toISOString().slice(0, 10);
+  const bookMap = new Map<string, { hash: string; title: string; author?: string; language?: string }>();
+  for (const b of books) {
+    bookMap.set(b.hash, {
+      hash: b.hash,
+      title: b.title?.trim() || "Sin título",
+      author: b.author?.trim(),
+      language: b.language?.trim() || "es",
+    });
+  }
+
+  const usableWords = words.filter((w) => !w.deleted && w.form.trim());
+  const usableAnnotations = annotations.filter(
+    (a) => !a.deleted && (a.text?.trim() || a.note?.trim()),
+  );
+
+  const totalMinutes = Math.round(
+    intervals.reduce(
+      (sum, int) => sum + Math.max(0, int.endedAt - int.startedAt),
+      0,
+    ) / 60_000,
+  );
+  const readingTime = formatReadingDuration(totalMinutes);
+
+  const lines: string[] = [
+    "---",
+    `title: "Cuaderno de Lectura — Lecta"`,
+    "source: Lecta",
+    `date_exported: "${dateIso}"`,
+    ...(totalMinutes > 0 ? [`total_reading_time: "${readingTime}"`] : []),
+    `total_books: ${books.length}`,
+    `total_words: ${usableWords.length}`,
+    `total_passages: ${usableAnnotations.length}`,
+    "tags:",
+    "  - lecta/cuaderno",
+    "  - lectura",
+    "  - pkm",
+    "---",
+    "",
+    "# Cuaderno de Lectura — Lecta",
+    "",
+    `_Exportado el ${dateIso} · ${books.length} obra(s) · ${usableWords.length} palabra(s) · ${usableAnnotations.length} pasaje(s)_`,
+    "",
+  ];
+
+  // Índice de obras
+  if (books.length > 0) {
+    lines.push("## Índice de obras", "");
+    for (const b of books) {
+      const bWords = usableWords.filter((w) => w.bookHash === b.hash);
+      const bAnn = usableAnnotations.filter((a) => a.bookHash === b.hash);
+      const t = b.title || "Sin título";
+      lines.push(`- **${t}**${b.author ? ` (${b.author})` : ""} · ${bWords.length} palabra(s) · ${bAnn.length} pasaje(s)`);
+    }
+    lines.push("");
+  }
+
+  const quote = (text: string) =>
+    text
+      .replace(/\r\n/g, "\n")
+      .split("\n")
+      .map((line) => `> ${line}`)
+      .join("\n");
+
+  const hashesWithContent = new Set<string>([
+    ...books.map((b) => b.hash),
+    ...usableWords.map((w) => w.bookHash ?? ""),
+    ...usableAnnotations.map((a) => a.bookHash ?? ""),
+  ]);
+
+  for (const hash of hashesWithContent) {
+    if (!hash) continue;
+    const b = bookMap.get(hash);
+    const title = b?.title || "Libro sin título";
+    const author = b?.author;
+
+    const bWords = usableWords
+      .filter((w) => w.bookHash === hash)
+      .sort((a, b) => a.form.localeCompare(b.form, "es"));
+    const bAnn = usableAnnotations
+      .filter((a) => a.bookHash === hash)
+      .sort((a, b) => a.sectionIndex - b.sectionIndex || a.createdAt - b.createdAt);
+
+    if (bWords.length === 0 && bAnn.length === 0) continue;
+
+    lines.push(`## ${title}`, "");
+    if (author) lines.push(`*Autor:* ${author}  `);
+    lines.push(`*Contenido:* ${bWords.length} palabra(s) · ${bAnn.length} pasaje(s)`, "");
+
+    if (bAnn.length > 0) {
+      lines.push("### Citas y pasajes", "");
+      let currentSection = -1;
+      for (const item of bAnn) {
+        if (item.sectionIndex !== currentSection) {
+          currentSection = item.sectionIndex;
+          lines.push(
+            currentSection > 0
+              ? `#### Capítulo ${currentSection + 1}`
+              : "#### Inicio",
+            "",
+          );
+        }
+        if (item.text?.trim()) {
+          lines.push(quote(item.text.trim()), "");
+        }
+        if (item.note?.trim()) {
+          lines.push(`> [!note] Reflexión`, `> ${item.note.trim().replace(/\n/g, "\n> ")}`, "");
+        }
+      }
+    }
+
+    if (bWords.length > 0) {
+      lines.push("### Vocabulario", "");
+      for (const w of bWords) {
+        const posTag = w.pos ? ` *(${w.pos})*` : "";
+        const lemmaTag = w.lemma && w.lemma !== w.form ? ` — lema: *${w.lemma}*` : "";
+        lines.push(`- **${w.form}**${posTag}${lemmaTag}`);
+        if (w.meaning?.trim()) {
+          lines.push(`  - **Significado:** ${w.meaning.trim()}`);
+        }
+        if (w.context?.trim()) {
+          lines.push(`  - *«${w.context.trim()}»*`);
+        }
+      }
+      lines.push("");
+    }
+  }
+
+  // Palabras huérfanas sin libro asociado
+  const orphanWords = usableWords
+    .filter((w) => !w.bookHash)
+    .sort((a, b) => a.form.localeCompare(b.form, "es"));
+  const orphanAnn = usableAnnotations
+    .filter((a) => !a.bookHash)
+    .sort((a, b) => a.createdAt - b.createdAt);
+
+  if (orphanWords.length > 0 || orphanAnn.length > 0) {
+    lines.push("## Otras notas y palabras", "");
+    if (orphanAnn.length > 0) {
+      lines.push("### Pasajes", "");
+      for (const item of orphanAnn) {
+        if (item.text?.trim()) lines.push(quote(item.text.trim()), "");
+        if (item.note?.trim()) lines.push(`> [!note] Reflexión\n> ${item.note.trim()}`, "");
+      }
+    }
+    if (orphanWords.length > 0) {
+      lines.push("### Vocabulario", "");
+      for (const w of orphanWords) {
+        lines.push(`- **${w.form}**${w.meaning ? `: ${w.meaning}` : ""}`);
+      }
+      lines.push("");
+    }
+  }
+
+  lines.push("---", "*Exportado desde [Lecta](https://lecta.app) · Cuaderno de lectura*", "");
+  return lines.join("\n").replace(/\n{3,}/g, "\n\n");
+}
+
+export async function downloadBookMarkdown(
+  bookHash: string,
+  bookTitle?: string,
+  scope?: DbScope,
+): Promise<void> {
+  const bound = scope ?? captureDbScope();
+  const [stored, position, allWords, allAnnotations, allIntervals] =
+    await Promise.all([
+      getStoredBook(bookHash, bound).catch(() => null),
+      loadBookPosition(bookHash, bound).catch(() => null),
+      listSavedWords(undefined, bound).catch(() => []),
+      listAnnotations(undefined, bound).catch(() => []),
+      listIntervals(bound).catch(() => []),
+    ]);
+
+  const bookWords = allWords.filter(
+    (w) => w.bookHash === bookHash && !w.deleted,
+  );
+  const bookAnnotations = allAnnotations.filter(
+    (a) => a.bookHash === bookHash && !a.deleted,
+  );
+  const bookIntervals = allIntervals.filter((i) => i.bookHash === bookHash);
+
+  const title = stored?.title || bookTitle || stored?.name || "Libro";
+  const author = stored?.author;
+  const language = stored?.language || "es";
+
+  const md = bookReadingNoteToMarkdown({
+    book: {
+      hash: bookHash,
+      title,
+      author,
+      language,
+      sectionCount: stored?.sectionCount,
+    },
+    words: bookWords,
+    annotations: bookAnnotations,
+    intervals: bookIntervals,
+    position,
+  });
+
+  const slug = sanitizeFilename(title);
+  const date = new Date().toISOString().slice(0, 10);
+  downloadText(`${slug}-lecta-${date}.md`, md, "text/markdown;charset=utf-8");
+}
+
+export async function downloadNotebookMarkdown(scope?: DbScope): Promise<void> {
+  const bound = scope ?? captureDbScope();
+  const [books, words, annotations, intervals] = await Promise.all([
+    listStoredBooks(bound).catch(() => []),
+    listSavedWords(undefined, bound).catch(() => []),
+    listAnnotations(undefined, bound).catch(() => []),
+    listIntervals(bound).catch(() => []),
+  ]);
+
+  const md = fullNotebookToMarkdown({
+    books: books.map((b) => ({
+      hash: b.hash,
+      title: b.title || b.name,
+      author: b.author,
+      language: b.language,
+    })),
+    words: words.filter((w) => !w.deleted),
+    annotations: annotations.filter((a) => !a.deleted),
+    intervals,
+  });
+
+  const date = new Date().toISOString().slice(0, 10);
+  downloadText(`cuaderno-lectura-lecta-${date}.md`, md, "text/markdown;charset=utf-8");
 }
 
 // Actividad por día y libro, en minutos enteros. Misma agregación que

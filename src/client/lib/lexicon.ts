@@ -1,5 +1,12 @@
 import { accountFetch } from "./account-fetch";
-import type { DbScope } from "./idb";
+import {
+  getCachedLexicon,
+  getCachedLexiconBatch,
+  loadSavedWord,
+  saveCachedLexicon,
+  saveCachedLexiconBatch,
+  type DbScope,
+} from "./idb";
 
 export type LexiconEntry = {
   // int8 de unique_rowid() (~1.2e18 > 2^53): viaja como string por
@@ -15,8 +22,8 @@ export type LexiconEntry = {
 };
 
 export type LookupResult =
-  | { ok: true; found: boolean; entries: LexiconEntry[] }
-  | { ok: false; error: string };
+  | { ok: true; found: boolean; entries: LexiconEntry[]; offline?: boolean }
+  | { ok: false; error: string; offline?: boolean };
 
 type LexiconResponseBody = {
   found?: boolean;
@@ -29,15 +36,85 @@ export async function lookupWord(
   language = "es",
   scope?: DbScope,
 ): Promise<LookupResult> {
+  // Si el navegador avisa que no hay red, consultar memoria local de inmediato
+  if (typeof navigator !== "undefined" && !navigator.onLine) {
+    const cached = await getCachedLexicon(language, form, scope).catch(() => null);
+    if (cached && cached.length > 0) {
+      return { ok: true, found: true, entries: cached, offline: true };
+    }
+    const saved = await loadSavedWord(language, form, scope).catch(() => null);
+    if (saved?.meaning?.trim()) {
+      const fallbackEntry: LexiconEntry = {
+        entryId: saved.senseEntryId ?? null,
+        lemma: saved.lemma ?? saved.form,
+        pos: saved.pos ?? null,
+        freqRank: null,
+        zipf: null,
+        senses: [
+          {
+            definition: saved.meaning,
+            example: saved.context ?? null,
+            senseOrder: saved.senseOrder ?? 1,
+          },
+        ],
+      };
+      return { ok: true, found: true, entries: [fallbackEntry], offline: true };
+    }
+    return {
+      ok: false,
+      error: "Sin conexión con el catálogo. Esta palabra aún no está en la memoria local.",
+      offline: true,
+    };
+  }
+
   const params = new URLSearchParams({ form, lang: language });
   try {
     const response = await accountFetch(`/api/lexicon/lookup?${params}`, undefined, scope);
     if (response.status === 404) return { ok: true, found: false, entries: [] };
     const data = (await response.json()) as LexiconResponseBody;
-    if (!response.ok) return { ok: false, error: data.error ?? "No se pudo consultar el catálogo." };
-    return { ok: true, found: Boolean(data.found), entries: (data.entries as LexiconEntry[]) ?? [] };
+    if (!response.ok) {
+      const cached = await getCachedLexicon(language, form, scope).catch(() => null);
+      if (cached && cached.length > 0) {
+        return { ok: true, found: true, entries: cached, offline: true };
+      }
+      return { ok: false, error: data.error ?? "No se pudo consultar el catálogo." };
+    }
+    const found = Boolean(data.found);
+    const entries = (data.entries as LexiconEntry[]) ?? [];
+    if (found && entries.length > 0) {
+      void saveCachedLexicon(language, form, entries, scope).catch(() => undefined);
+    }
+    return { ok: true, found, entries };
   } catch {
-    return { ok: false, error: "Sin conexión con el catálogo." };
+    // Sin conexión: consultar memoria local de fichas cacheadas
+    const cached = await getCachedLexicon(language, form, scope).catch(() => null);
+    if (cached && cached.length > 0) {
+      return { ok: true, found: true, entries: cached, offline: true };
+    }
+    // Segundo respaldo: palabras guardadas en el Cuaderno
+    const saved = await loadSavedWord(language, form, scope).catch(() => null);
+    if (saved?.meaning?.trim()) {
+      const fallbackEntry: LexiconEntry = {
+        entryId: saved.senseEntryId ?? null,
+        lemma: saved.lemma ?? saved.form,
+        pos: saved.pos ?? null,
+        freqRank: null,
+        zipf: null,
+        senses: [
+          {
+            definition: saved.meaning,
+            example: saved.context ?? null,
+            senseOrder: saved.senseOrder ?? 1,
+          },
+        ],
+      };
+      return { ok: true, found: true, entries: [fallbackEntry], offline: true };
+    }
+    return {
+      ok: false,
+      error: "Sin conexión con el catálogo. Esta palabra aún no está en la memoria local.",
+      offline: true,
+    };
   }
 }
 
@@ -56,11 +133,15 @@ export async function batchLookup(
   language = "es",
   scope?: DbScope,
 ): Promise<BatchLookupResult> {
-  // Duplicadas exactas se envían una sola vez; las claves de
-  // `entries` responden a lo enviado y los llamadores las consultan
-  // tal cual.
   const unique = [...new Set(forms.filter(Boolean))];
   if (!unique.length) return { ok: true, entries: {} };
+
+  // Si no hay conexión evidente en el navegador, resolver con memoria local
+  if (typeof navigator !== "undefined" && !navigator.onLine) {
+    const cached = await getCachedLexiconBatch(language, unique, scope).catch(() => ({}));
+    return { ok: true, entries: cached };
+  }
+
   const entries: Record<string, LexiconEntry[]> = {};
   for (let i = 0; i < unique.length; i += BATCH_LOOKUP_LIMIT) {
     const chunk = unique.slice(i, i + BATCH_LOOKUP_LIMIT);
@@ -75,10 +156,23 @@ export async function batchLookup(
         scope,
       );
       const data = (await response.json()) as LexiconResponseBody;
-      if (!response.ok)
+      if (!response.ok) {
+        const cached = await getCachedLexiconBatch(language, chunk, scope).catch(() => ({}));
+        if (Object.keys(cached).length > 0) {
+          Object.assign(entries, cached);
+          continue;
+        }
         return { ok: false, error: data.error ?? "No se pudo consultar el catálogo.", entries: {} };
-      Object.assign(entries, (data.entries as Record<string, LexiconEntry[]>) ?? {});
+      }
+      const chunkEntries = (data.entries as Record<string, LexiconEntry[]>) ?? {};
+      Object.assign(entries, chunkEntries);
+      void saveCachedLexiconBatch(language, chunkEntries, scope).catch(() => undefined);
     } catch {
+      const cached = await getCachedLexiconBatch(language, chunk, scope).catch(() => ({}));
+      if (Object.keys(cached).length > 0) {
+        Object.assign(entries, cached);
+        continue;
+      }
       return { ok: false, error: "Sin conexión con el catálogo.", entries: {} };
     }
   }
@@ -136,7 +230,11 @@ export async function enrichWord(
     );
     const data = (await response.json()) as LexiconResponseBody;
     if (!response.ok) return { ok: false, error: data.error ?? "La IA no pudo definir la palabra." };
-    return { ok: true, found: true, entries: (data.entries as LexiconEntry[]) ?? [] };
+    const entries = (data.entries as LexiconEntry[]) ?? [];
+    if (entries.length > 0) {
+      void saveCachedLexicon(language, form, entries, scope).catch(() => undefined);
+    }
+    return { ok: true, found: true, entries };
   } catch {
     return { ok: false, error: "Sin conexión con el catálogo." };
   }

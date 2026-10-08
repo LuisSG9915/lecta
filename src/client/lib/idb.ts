@@ -1,6 +1,7 @@
 import { openDB, type IDBPDatabase } from "idb";
 import type { Card } from "./fsrs";
 import type { PreparationRecord } from "./preparation";
+import type { LexiconEntry } from "./lexicon";
 import type { ReviewKind, ReviewRating } from "../../shared/reading-data";
 import {
   KNOWLEDGE_SOURCE_STRENGTH,
@@ -351,11 +352,20 @@ interface LectaDB {
   bookOps: { key: string; value: BookOp };
   companionEvents: { key: string; value: GameJournalEvent };
   companionReceipts: { key: string; value: CompanionReceipt };
+  lexiconCache: { key: string; value: CachedLexiconEntry };
+}
+
+export interface CachedLexiconEntry {
+  key: string;
+  form: string;
+  language: string;
+  entries: LexiconEntry[];
+  cachedAt: number;
 }
 
 const SESSION_KEY = "latestBookHash";
 const ANONYMOUS_DB = "lecta";
-const DB_VERSION = 9;
+const DB_VERSION = 10;
 const ALL_STORES = [
   "books",
   "positions",
@@ -369,6 +379,7 @@ const ALL_STORES = [
   "bookOps",
   "companionEvents",
   "companionReceipts",
+  "lexiconCache",
 ] as const;
 
 const dbNameFor = (userId: string | null) =>
@@ -450,6 +461,10 @@ function openLectaDB(name: string) {
           db.createObjectStore("companionEvents", { keyPath: "id" });
         if (!db.objectStoreNames.contains("companionReceipts"))
           db.createObjectStore("companionReceipts", { keyPath: "id" });
+        // Diccionario sin conexión (v10): almacén de fichas del catálogo
+        // cacheadas localmente para consulta instantánea offline.
+        if (!db.objectStoreNames.contains("lexiconCache"))
+          db.createObjectStore("lexiconCache", { keyPath: "key" });
       },
     // Esta conexión quedó vieja y otra pestaña pide el upgrade:
     // cerrarla es lo único que libera al otro lado (event.target es
@@ -574,7 +589,7 @@ async function migrateAnonymousToUser(userId: string) {
     // resto del compañero aunque la cuenta ya estuviera migrada. Es
     // idempotente — si ya corrió no reescribe nada.
     await migrateGameStateV1In(anon);
-    const [books, positions, words, annotations, intervals, reviews, knowledge, events, ops, latestHash, companionEvents, companionReceipts] =
+    const [books, positions, words, annotations, intervals, reviews, knowledge, events, ops, latestHash, companionEvents, companionReceipts, cachedLexicon] =
       await Promise.all([
         anon.getAll("books"),
         anon.getAll("positions"),
@@ -588,6 +603,7 @@ async function migrateAnonymousToUser(userId: string) {
         anon.get("session", SESSION_KEY),
         anon.getAll("companionEvents"),
         anon.getAll("companionReceipts"),
+        anon.getAll("lexiconCache"),
       ]);
 
     for (const book of books) {
@@ -671,6 +687,11 @@ async function migrateAnonymousToUser(userId: string) {
     for (const receipt of companionReceipts) {
       if (!(await target.get("companionReceipts", receipt.id)))
         await target.put("companionReceipts", receipt);
+    }
+    // Fichas cacheadas del diccionario local: se trasladan si no existen en la cuenta.
+    for (const cached of cachedLexicon) {
+      if (!(await target.get("lexiconCache", cached.key)))
+        await target.put("lexiconCache", cached);
     }
     // Baselines: unión por originId — son inmutables, así que uno ya
     // presente en la cuenta jamás se reescribe.
@@ -2073,3 +2094,108 @@ export async function commitCompanionEvent(
     }
   });
 }
+
+// ---------- Memoria local del diccionario (lexiconCache) ----------
+
+export const lexiconCacheKey = (language: string, form: string) =>
+  `${language}:${form.trim().toLowerCase()}`;
+
+export async function getCachedLexicon(
+  language: string,
+  form: string,
+  scope?: DbScope,
+): Promise<LexiconEntry[] | null> {
+  return withDb(scope, async (db) => {
+    const row = await db.get("lexiconCache", lexiconCacheKey(language, form));
+    return row ? row.entries : null;
+  });
+}
+
+export async function saveCachedLexicon(
+  language: string,
+  form: string,
+  entries: LexiconEntry[],
+  scope?: DbScope,
+): Promise<void> {
+  if (!entries.length) return;
+  const key = lexiconCacheKey(language, form);
+  return withDb(scope, async (db) => {
+    await db.put("lexiconCache", {
+      key,
+      form: form.trim().toLowerCase(),
+      language,
+      entries,
+      cachedAt: Date.now(),
+    });
+  });
+}
+
+export async function saveCachedLexiconBatch(
+  language: string,
+  entriesByForm: Record<string, LexiconEntry[]>,
+  scope?: DbScope,
+): Promise<void> {
+  const forms = Object.keys(entriesByForm);
+  if (!forms.length) return;
+  return withDb(scope, async (db) => {
+    const tx = db.transaction("lexiconCache", "readwrite");
+    const store = tx.objectStore("lexiconCache");
+    const now = Date.now();
+    for (const form of forms) {
+      const entries = entriesByForm[form];
+      if (!entries || !entries.length) continue;
+      await store.put({
+        key: lexiconCacheKey(language, form),
+        form: form.trim().toLowerCase(),
+        language,
+        entries,
+        cachedAt: now,
+      });
+    }
+    await tx.done;
+  });
+}
+
+export async function getCachedLexiconBatch(
+  language: string,
+  forms: string[],
+  scope?: DbScope,
+): Promise<Record<string, LexiconEntry[]>> {
+  if (!forms.length) return {};
+  return withDb(scope, async (db) => {
+    const tx = db.transaction("lexiconCache", "readonly");
+    const store = tx.objectStore("lexiconCache");
+    const result: Record<string, LexiconEntry[]> = {};
+    for (const form of forms) {
+      const row = await store.get(lexiconCacheKey(language, form));
+      if (row && row.entries?.length) {
+        result[form] = row.entries;
+      }
+    }
+    await tx.done;
+    return result;
+  });
+}
+
+export async function countCachedLexicon(
+  language?: string,
+  scope?: DbScope,
+): Promise<number> {
+  return withDb(scope, async (db) => {
+    if (!language) {
+      const all = await db.getAllKeys("lexiconCache");
+      return all.length;
+    }
+    const all = await db.getAll("lexiconCache");
+    return all.filter((item) => item.language === language).length;
+  });
+}
+
+export async function clearCachedLexicon(scope?: DbScope): Promise<void> {
+  return withDb(scope, async (db) => {
+    const tx = db.transaction("lexiconCache", "readwrite");
+    await tx.objectStore("lexiconCache").clear();
+    await tx.done;
+  });
+}
+

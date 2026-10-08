@@ -302,11 +302,13 @@ export function applyGameEvent(
   const stats = state.stats;
 
   // Racha de días: se evalúa en cada evento para que cualquier
-  // actividad la alimente.
+  // actividad la alimente. Un salto de un solo día con racha previa
+  // ≥ 3 días queda protegido por el marcapáginas del compañero.
   const today = dayKeyOf(now);
   if (stats.lastDayKey !== today) {
     const gap = stats.lastDayKey ? daysBetween(today, stats.lastDayKey) : Infinity;
-    stats.streakDays = gap === 1 ? stats.streakDays + 1 : 1;
+    const savedByShield = gap === 2 && stats.streakDays >= 3;
+    stats.streakDays = gap === 1 || savedByShield ? stats.streakDays + 1 : 1;
     stats.lastDayKey = today;
   }
 
@@ -360,7 +362,7 @@ export function applyGameEvent(
       id: idFor(),
       source: "achievement",
       label: a.title,
-      reward: `Estampa · ${a.title}`,
+      reward: a.id.startsWith("libro_") ? "Exlibris conmemorativo" : `Estampa · ${a.title}`,
       createdAt: now,
       openedAt: null,
     });
