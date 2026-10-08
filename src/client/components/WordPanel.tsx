@@ -20,6 +20,7 @@ import { loadUseAi } from "../lib/ai-pref";
 import { loadNativeLanguage } from "../lib/settings";
 import { award, localDayKey } from "../lib/game";
 import { triggerHaptic } from "../lib/haptics";
+import { speakWord } from "../lib/speech";
 import Sheet from "./Sheet";
 
 import type { PhraseHit } from "../lib/phrases";
@@ -354,6 +355,15 @@ export default function WordPanel({
         <strong className="sheet-title">
           {word}
           {primary?.pos ? <span className="card-pos"> · {primary.pos}</span> : null}
+          <button
+            type="button"
+            className="btn--pronounce"
+            aria-label={`Pronunciar ${word}`}
+            title="Escuchar pronunciación"
+            onClick={() => void speakWord(word, language)}
+          >
+            <span aria-hidden="true">🔊</span>
+          </button>
         </strong>
         <button
           type="button"

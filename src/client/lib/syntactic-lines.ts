@@ -160,5 +160,22 @@ export function applySyntacticLines(root: ParentNode) {
       }
       span.appendChild(child);
     }
+
+    // Decoración sintáctica: sangría en cascada para conectores dependientes
+    // y respiro rítmico tras signos de puntuación fuerte.
+    const spans = el.querySelectorAll<HTMLSpanElement>(`.${SYNTACTIC_LINE_CLASS}`);
+    let prevEndsWithStrong = false;
+    spans.forEach((s, idx) => {
+      const text = s.textContent?.trim() ?? "";
+      if (idx > 0 && !prevEndsWithStrong && CONNECTOR.test(text)) {
+        s.dataset.sub = "true";
+      } else if (idx > 0 && prevEndsWithStrong) {
+        s.dataset.newSentence = "true";
+      }
+      const rawText = s.textContent ?? "";
+      const trimmedEnd = rawText.trimEnd();
+      const lastChar = trimmedEnd.length > 0 ? trimmedEnd[trimmedEnd.length - 1] : "";
+      prevEndsWithStrong = STRONG.includes(lastChar);
+    });
   });
 }

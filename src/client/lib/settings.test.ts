@@ -90,6 +90,16 @@ describe("parseReaderSettings", () => {
     ).toMatchObject({ focusMode: "syntactic", rulerSize: "paragraph" });
     expect(
       parseReaderSettings(
+        JSON.stringify({ focusMode: "paragraph" }),
+      ),
+    ).toMatchObject({ focusMode: "paragraph", rulerSize: 3 });
+    expect(
+      parseReaderSettings(
+        JSON.stringify({ focusMode: "chromatic" }),
+      ),
+    ).toMatchObject({ focusMode: "chromatic", rulerSize: 3 });
+    expect(
+      parseReaderSettings(
         JSON.stringify({ focusMode: "ruler", rulerSize: 1 }),
       ),
     ).toMatchObject({ focusMode: "ruler", rulerSize: 1 });

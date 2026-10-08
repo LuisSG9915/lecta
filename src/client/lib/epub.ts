@@ -162,7 +162,7 @@ export const normalizeLanguage = (raw: unknown): string => {
   const trimmed = raw.trim().toLowerCase();
   if (!trimmed) return "es";
   const primary = trimmed.split(/[-_]/)[0]?.trim();
-  if (!primary) return "es";
+  if (!primary || primary === "und" || primary === "zxx" || primary === "mul") return "es";
   if (primary === "spa") return "es";
   if (primary === "eng") return "en";
   if (primary === "fra" || primary === "fre") return "fr";
@@ -199,5 +199,80 @@ export const languageName = (code: string): string => {
   }
 };
 
+// Detección heurística rápida de idioma (inglés vs español) analizando
+// palabras funcionales y stopwords distintivas en una muestra de texto.
+export function detectLanguageFromText(text: string): "es" | "en" | null {
+  if (!text || text.length < 30) return null;
+  const words = text.toLowerCase().match(/\b[a-záéíóúüñ]+\b/g) ?? [];
+  if (words.length < 8) return null;
+
+  const englishMarkers = new Set([
+    "the", "and", "that", "have", "for", "not", "with", "you", "this", "but",
+    "his", "from", "they", "say", "her", "she", "will", "one", "all", "would",
+    "there", "their", "what", "out", "about", "who", "which", "when", "make",
+    "can", "like", "time", "just", "him", "know", "take", "people", "into",
+    "year", "your", "good", "some", "could", "them", "see", "other", "than",
+    "then", "now", "look", "only", "come", "its", "over", "think", "also",
+    "was", "were", "been", "had", "has", "are", "is", "my", "our", "how",
+    "or", "in", "to", "on", "at", "by", "as", "if", "an",
+  ]);
+
+  const spanishMarkers = new Set([
+    "de", "la", "que", "el", "en", "los", "del", "se", "las", "por",
+    "un", "para", "con", "una", "su", "al", "lo", "como", "más",
+    "pero", "sus", "le", "ya", "fue", "este", "ha", "sí", "porque",
+    "esta", "son", "entre", "cuando", "muy", "sin", "sobre", "también",
+    "hasta", "hay", "donde", "quien", "desde", "todo", "nos",
+    "durante", "todos", "uno", "les", "ni", "contra", "otros", "ese",
+    "había", "tiene", "estaba", "está", "estos", "estas", "hacia",
+  ]);
+
+  let enScore = 0;
+  let esScore = 0;
+
+  for (const w of words) {
+    if (englishMarkers.has(w)) enScore++;
+    if (spanishMarkers.has(w)) esScore++;
+  }
+
+  if (enScore === 0 && esScore === 0) return null;
+  if (enScore > esScore * 1.5 && enScore >= 3) return "en";
+  if (esScore > enScore * 1.5 && esScore >= 3) return "es";
+  return null;
+}
+
 export const getBookLanguage = (book: EpubBook): string =>
   normalizeLanguage(flattenMetadataValue(book.metadata?.language));
+
+// Detecta el idioma del libro combinando metadatos OPF y análisis
+// heurístico del texto si los metadatos faltan o declaran "und" (indeterminado).
+export async function detectBookLanguage(book: EpubBook): Promise<string> {
+  const rawLang = flattenMetadataValue(book.metadata?.language);
+  const trimmed = typeof rawLang === "string" ? rawLang.trim().toLowerCase() : "";
+  const isAmbiguous = !trimmed || trimmed === "und" || trimmed === "zxx" || trimmed === "mul";
+
+  if (!isAmbiguous) {
+    const norm = normalizeLanguage(rawLang);
+    if (norm) return norm;
+  }
+
+  // Comprobar descripción si existe
+  const desc = flattenMetadataValue(book.metadata?.description);
+  const descDetected = detectLanguageFromText(desc);
+  if (descDetected) return descDetected;
+
+  // Muestrear las primeras secciones de lectura reales del libro
+  const sections = book.sections ?? [];
+  for (let i = 0; i < Math.min(sections.length, 4); i++) {
+    try {
+      const doc = await sections[i]?.createDocument?.();
+      const content = doc?.body?.textContent ?? "";
+      const textDetected = detectLanguageFromText(content);
+      if (textDetected) return textDetected;
+    } catch {
+      // Ignorar fallo de sección en la heurística
+    }
+  }
+
+  return normalizeLanguage(rawLang) || "es";
+}

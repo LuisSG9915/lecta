@@ -253,7 +253,7 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
   const makeSpeaker = (): TtsSpeaker =>
     deps.makeSpeaker
       ? deps.makeSpeaker({ onEnded, onStalled })
-      : createSpeaker({ onEnded, onStalled });
+      : createSpeaker({ onEnded, onStalled }, { language: deps.language() });
 
   const buildMapForCurrent = () => {
     const root = deps.root();

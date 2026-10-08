@@ -720,6 +720,52 @@ mark.saved-passage {
   }
 }
 
+/* Ancla metacognitiva de reanudación («Dónde te quedaste») */
+.resume-anchor {
+  position: relative;
+}
+
+.resume-anchor::before {
+  content: "Continuar aquí";
+  position: absolute;
+  inset-block-start: -1.75rem;
+  inset-inline-start: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.15rem 0.55rem;
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs, 0.72rem);
+  font-weight: 600;
+  color: var(--vermilion);
+  background: var(--paper-raised);
+  border: 1px solid var(--vermilion-wash);
+  border-radius: 999px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  pointer-events: none;
+  animation: resume-badge-fade 5s forwards var(--ease-out);
+  z-index: 5;
+}
+
+@keyframes resume-badge-fade {
+  0% {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  12% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  75% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
 /* ---------- Aviso «Palabras del capítulo» ---------- */
 
 /* Franja fija en la zona de controles: vive fuera del flujo del
@@ -1313,6 +1359,77 @@ mark.predicted-word:hover {
   display: block;
 }
 
+/* Sangría en cascada: las cláusulas dependientes o conectores dan un paso
+   hacia la derecha para visualizar la jerarquía del árbol de la oración. */
+.book-content .syn-line[data-sub] {
+  padding-inline-start: 1.1rem;
+}
+
+/* Respiración rítmica: una separación mayor tras punto o pausa fuerte
+   delimita el paquete de pensamiento completo. */
+.book-content .syn-line[data-new-sentence] {
+  margin-block-start: 0.38em;
+}
+
+/* Guía cromática (BeeLine): gradiente continuo que conecta el final de
+   cada línea con el color de arranque de la siguiente para asistir el
+   salto de retorno sin distorsionar el texto. */
+.book-content[data-focus-mode="chromatic"] .syn-line:nth-child(3n + 1) {
+  background: linear-gradient(to right, var(--ink) 25%, var(--chroma-blue) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+.book-content[data-focus-mode="chromatic"] .syn-line:nth-child(3n + 2) {
+  background: linear-gradient(to right, var(--chroma-blue) 0%, var(--chroma-crimson) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+.book-content[data-focus-mode="chromatic"] .syn-line:nth-child(3n) {
+  background: linear-gradient(to right, var(--chroma-crimson) 0%, var(--ink) 75%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+/* Foco de párrafo: atenúa los bloques fuera de la altura focal de lectura
+   para que el párrafo activo brille al 100% mientras el resto desciende a
+   un contraste suave. Se mueve naturalmente con el scroll sin tocar el puntero. */
+.book-content[data-focus-mode="paragraph"] p,
+.book-content[data-focus-mode="paragraph"] blockquote,
+.book-content[data-focus-mode="paragraph"] li {
+  opacity: 0.38;
+  transition: opacity var(--dur-2, 0.25s) var(--ease-out);
+}
+
+.book-content[data-focus-mode="paragraph"] p.is-focused,
+.book-content[data-focus-mode="paragraph"] blockquote.is-focused,
+.book-content[data-focus-mode="paragraph"] li.is-focused {
+  opacity: 1;
+}
+
+@media (hover: hover) {
+  .book-content[data-focus-mode="paragraph"] p:hover,
+  .book-content[data-focus-mode="paragraph"] blockquote:hover,
+  .book-content[data-focus-mode="paragraph"] li:hover {
+    opacity: 0.82;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .book-content[data-focus-mode="paragraph"] p,
+  .book-content[data-focus-mode="paragraph"] blockquote,
+  .book-content[data-focus-mode="paragraph"] li {
+    transition: none;
+  }
+}
+
 /* Regla de enfoque: velo translúcido del color del papel (sirve en
    claro y oscuro) con una franja clara que sigue al puntero. Todo es
    position:fixed + pointer-events:none — jamás estorba la lectura,
@@ -1355,6 +1472,18 @@ mark.predicted-word:hover {
 .focus-menu {
   display: grid;
   gap: var(--s-2);
+}
+
+.focus-menu .segmented {
+  display: flex;
+  flex-wrap: wrap;
+  border-radius: var(--r-2);
+}
+
+.focus-menu .segmented button {
+  flex: 1 1 auto;
+  text-align: center;
+  border-radius: var(--r-1);
 }
 
 /* Gato acompañante del lector: esquina baja sobre la zona de

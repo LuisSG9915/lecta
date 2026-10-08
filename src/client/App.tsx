@@ -34,6 +34,7 @@ import {
   saveBookPosition,
   saveSessionValue,
   setDbUser,
+  updateBookMeta,
   type DbScope,
 } from "./lib/idb";
 import { resetGameCache } from "./lib/game";
@@ -42,6 +43,7 @@ import {
   loadLastUserId,
   saveLastUserId,
 } from "./lib/last-user";
+import { displayTitle, readBookMeta } from "./lib/cover";
 import { downloadBook, listRemoteBooks } from "./lib/books";
 import { queueBookDelete, queueBookUpload, runBookQueue } from "./lib/book-queue";
 import { syncPositions, type PositionConflict } from "./lib/positions-sync";
@@ -79,6 +81,7 @@ export default function App() {
   const [showVocabulary, setShowVocabulary] = useState(false);
   const [showAccount, setShowAccount] = useState(Boolean(authLink.token || authLink.urlError));
   const [showThemeSheet, setShowThemeSheet] = useState(false);
+  const [downloadingHash, setDownloadingHash] = useState<string | null>(null);
   const [library, setLibrary] = useState<ShelfItem[]>([]);
   const [vocabVersion, setVocabVersion] = useState(0);
   const [activityVersion, setActivityVersion] = useState(0);
@@ -334,8 +337,14 @@ export default function App() {
         remoteOnly: true,
         // Los metadatos viajan en el objeto remoto: la ficha muestra
         // título y autor sin tener que descargar el EPUB.
-        title: item.title || undefined,
-        author: item.author || undefined,
+        title:
+          item.title ||
+          (!item.name || /^[a-f0-9]{8}\.epub$/i.test(item.name)
+            ? "Libro en la nube"
+            : undefined),
+        author:
+          item.author ||
+          (item.title ? undefined : "Toca para descargar"),
         sectionCount: item.sections || undefined,
       }));
     setLibrary([...localItems, ...remoteItems]);
@@ -620,35 +629,61 @@ export default function App() {
   // Libro solo en la nube: se descarga, se guarda y se abre. La posición
   // remota baja con el mismo sync; el aviso solo aplica si el dispositivo
   // ya guardaba una posición de este libro (si no, no hay conflicto).
-  const openRemoteBook = async (item: ShelfItem) => {
+  const openRemoteBook = async (item: ShelfItem, openAfter = true) => {
     setError("");
-    const scope = captureDbScope();
-    setMessage("Descargando…");
-    const file = await downloadBook(
-      { hash: item.hash, uploaded: "", name: item.name },
-      scope,
-    ).catch(() => null);
-    if (!file) {
-      setMessage("");
-      setError("No se pudo descargar el libro. Revisa tu conexión e inténtalo de nuevo.");
-      return;
+    setDownloadingHash(item.hash);
+    setMessage(`Descargando «${displayTitle(item.name, item.title)}»…`);
+    try {
+      const scope = captureDbScope();
+      const file = await downloadBook(
+        { hash: item.hash, uploaded: "", name: item.name },
+        scope,
+      ).catch(() => null);
+      if (!file) {
+        setMessage("");
+        setError(`No se pudo descargar «${displayTitle(item.name, item.title)}». Revisa tu conexión e inténtalo de nuevo.`);
+        return;
+      }
+      const hadLocalPosition = Boolean(
+        await loadBookPosition(item.hash, scope).catch(() => undefined),
+      );
+      await saveBook({ hash: item.hash, name: file.name, data: file, addedAt: Date.now() }, scope);
+
+      const meta = await readBookMeta(file).catch(() => null);
+      if (meta) {
+        await updateBookMeta(
+          item.hash,
+          {
+            title: meta.title,
+            author: meta.author,
+            language: meta.language,
+            sectionCount: meta.sectionCount,
+            cover: meta.cover ?? undefined,
+            metaVersion: 1,
+          },
+          scope,
+        ).catch(() => null);
+      }
+
+      await refreshLibrary();
+
+      if (openAfter) {
+        const open = () => {
+          openBook({ hash: item.hash, name: file.name, file });
+          setMessage(`Abriendo «${meta?.title ?? item.title ?? item.name}»…`);
+        };
+        const sync = await syncPositions(scope).catch(() => null);
+        const conflict = hadLocalPosition
+          ? sync?.conflicts.find((entry) => entry.bookHash === item.hash)
+          : undefined;
+        if (conflict) showPositionPrompt(conflict, open);
+        else open();
+      } else {
+        setMessage(`«${meta?.title ?? item.title ?? item.name}» guardado en este dispositivo.`);
+      }
+    } finally {
+      setDownloadingHash(null);
     }
-    const hadLocalPosition = Boolean(
-      await loadBookPosition(item.hash, scope).catch(() => undefined),
-    );
-    // eslint-disable-next-line react-hooks/purity -- handler async de clic, no corre en render
-    await saveBook({ hash: item.hash, name: file.name, data: file, addedAt: Date.now() }, scope);
-    const open = () => {
-      openBook({ hash: item.hash, name: file.name, file });
-      setMessage(`Abriendo «${item.title ?? item.name}»…`);
-    };
-    const sync = await syncPositions(scope).catch(() => null);
-    const conflict = hadLocalPosition
-      ? sync?.conflicts.find((entry) => entry.bookHash === item.hash)
-      : undefined;
-    if (conflict) showPositionPrompt(conflict, open);
-    else open();
-    void refreshLibrary();
   };
 
   const openShelfItem = (item: ShelfItem) =>
@@ -792,6 +827,8 @@ export default function App() {
               onAdd={(file) => void selectBook(file)}
               onLibraryChange={() => void refreshLibrary()}
               onGetCatalogBook={getCatalogBook}
+              onDownloadBook={(item) => void openRemoteBook(item, false)}
+              downloadingHash={downloadingHash}
               activityVersion={activityVersion}
             />
             {message ? (

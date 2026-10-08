@@ -21,10 +21,25 @@ export function anchorAtViewTop(container: HTMLElement): string | null {
   return null;
 }
 
+// Muestra una insignia sutil («Continuar aquí») sobre el bloque restaurado.
+export function showResumeAnchor(el: Element): void {
+  document.querySelectorAll(".resume-anchor").forEach((node) => {
+    node.classList.remove("resume-anchor");
+  });
+  el.classList.add("resume-anchor");
+  window.setTimeout(() => {
+    el.classList.remove("resume-anchor");
+  }, 6000);
+}
+
 // Busca el bloque cuyo texto arranca como el ancla y lo lleva arriba.
 // Devuelve false si no se encuentra (la sección cambió de contenido):
 // quien llama cae a la restauración por fracción.
-export function scrollToAnchor(container: HTMLElement, anchor: string): boolean {
+export function scrollToAnchor(
+  container: HTMLElement,
+  anchor: string,
+  options?: { markResume?: boolean },
+): boolean {
   const target = normalizeBlockText(anchor).slice(0, 40);
   if (!target) return false;
   for (const el of container.querySelectorAll(BLOCK_SELECTOR)) {
@@ -33,6 +48,9 @@ export function scrollToAnchor(container: HTMLElement, anchor: string): boolean 
     // texto completo (más larga): basta que una sea prefijo de la otra.
     if (text && (text.startsWith(target) || target.startsWith(text))) {
       el.scrollIntoView({ block: "start" });
+      if (options?.markResume) {
+        showResumeAnchor(el);
+      }
       return true;
     }
   }

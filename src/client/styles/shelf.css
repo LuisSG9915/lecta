@@ -165,8 +165,10 @@
 
 .shelf-book {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--s-2);
   inline-size: 8rem;
+  min-inline-size: 0;
   justify-items: start;
 }
 
@@ -198,8 +200,55 @@
   transition-duration: var(--dur-1);
 }
 
+.shelf-book-dots {
+  max-inline-size: 100%;
+  overflow: hidden;
+}
+
 .shelf-book-meta {
   font-variant-numeric: oldstyle-nums;
+  max-inline-size: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shelf-book-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  inline-size: 100%;
+  gap: var(--s-1);
+  min-inline-size: 0;
+}
+
+.shelf-book-footer .shelf-book-meta {
+  flex: 1;
+  min-inline-size: 0;
+}
+
+.shelf-book-more {
+  flex: none;
+  inline-size: 2rem;
+  min-height: 2rem;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-ui);
+  font-size: var(--fs-md);
+  font-weight: 700;
+  line-height: 1;
+  color: var(--ink-soft);
+  border-radius: var(--r-1);
+  cursor: pointer;
+  transition:
+    color var(--dur-1) var(--ease-out),
+    background-color var(--dur-1) var(--ease-out);
+}
+
+.shelf-book-more:hover {
+  color: var(--ink);
+  background: var(--paper-raised);
 }
 
 /* «Quitar» queda siempre visible: esconderla tras hover pedía descubrir
@@ -209,6 +258,7 @@
   min-height: 2.75rem;
   padding: 0;
   font-size: var(--fs-sm);
+  white-space: nowrap;
 }
 
 .shelf-lang-badge {
@@ -227,25 +277,152 @@
   text-transform: uppercase;
 }
 
-.shelf-book-controls {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  inline-size: 100%;
-  gap: var(--s-2);
-}
-
-.shelf-book-lang-select {
+.shelf-cloud-badge {
+  position: absolute;
+  inset-block-end: var(--s-2);
+  inset-inline-end: var(--s-2);
+  padding: 0.1em 0.35em;
+  border-radius: var(--r-1);
+  background: var(--paper-raised);
+  color: var(--ink-soft);
   font-family: var(--font-ui);
   font-size: var(--fs-xs);
+  box-shadow: var(--shadow-cover);
+}
+
+.shelf-book[data-downloading] .shelf-book-cover {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.shelf-cloud-badge--loading {
+  animation: pulse-badge 0.9s infinite alternate ease-in-out;
+  color: var(--vermilion);
+  background: var(--paper-sunken);
+}
+
+@keyframes pulse-badge {
+  from {
+    transform: scale(0.92);
+    opacity: 0.6;
+  }
+  to {
+    transform: scale(1.15);
+    opacity: 1;
+  }
+}
+
+.shelf-book-meta--downloading {
+  color: var(--vermilion);
   font-weight: 600;
+  animation: fade-download 1.1s infinite alternate ease-in-out;
+}
+
+@keyframes fade-download {
+  from { opacity: 0.45; }
+  to { opacity: 1; }
+}
+
+.shelf-options-download-btn {
+  inline-size: 100%;
+  min-height: 2.75rem;
+  justify-content: center;
+}
+
+/* ---------- Hoja de opciones del libro ---------- */
+
+.shelf-options-body {
+  display: grid;
+  gap: var(--s-4);
+  padding-block: var(--s-2);
+}
+
+.shelf-options-summary {
+  display: flex;
+  gap: var(--s-4);
+  align-items: center;
+}
+
+.shelf-options-cover {
+  flex: none;
+  inline-size: 4.5rem;
+  block-size: 6.75rem;
+}
+
+.shelf-options-details {
+  display: grid;
+  gap: var(--s-1);
+  min-inline-size: 0;
+}
+
+.shelf-options-title {
+  font-family: var(--font-book);
+  font-size: var(--fs-lg);
+  font-weight: 500;
+  color: var(--ink);
+  margin: 0;
+  line-height: var(--lh-display);
+}
+
+.shelf-options-author {
+  margin: 0;
+}
+
+.shelf-options-progress {
+  margin: 0;
+}
+
+.shelf-options-section {
+  display: grid;
+  gap: var(--s-2);
+  padding-block-start: var(--s-3);
+  border-block-start: var(--border);
+}
+
+.shelf-options-label {
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--ink);
+  margin: 0;
+}
+
+.shelf-options-hint {
+  margin: 0;
+  font-size: var(--fs-xs);
   color: var(--ink-soft);
+}
+
+.shelf-options-select {
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+  color: var(--ink);
   background: var(--paper-sunken);
   border: var(--border);
   border-radius: var(--r-1);
-  padding: 0.2em 0.4em;
-  min-height: 2rem;
+  padding: var(--s-2) var(--s-3);
+  min-height: 2.75rem;
   cursor: pointer;
+  inline-size: 100%;
+}
+
+.shelf-options-danger-zone {
+  padding-block-start: var(--s-3);
+  border-block-start: var(--border);
+}
+
+.shelf-options-confirm {
+  display: grid;
+  gap: var(--s-3);
+  padding: var(--s-3);
+  background: var(--paper-sunken);
+  border-radius: var(--r-1);
+  border: 1px solid var(--rule-strong);
+}
+
+.shelf-options-confirm-actions {
+  display: flex;
+  gap: var(--s-2);
 }
 
 .shelf-book-thread {

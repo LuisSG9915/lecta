@@ -80,9 +80,10 @@ repasarlas con FSRS hasta aprenderlas.
 ### Sistema de foco existente
 
 - **`focusMode`**: «Normal» | «Líneas sintácticas» (reparte el párrafo
-  en unidades con sentido — cortes tras puntuación o antes de
-  conectores; equivale al VSTF de la literatura) | «Regla de foco»
-  (franja clara de 1/3/6 líneas que sigue al puntero y vela el resto).
+  en unidades con sentido con sangría en cascada y respiración rítmica; VSTF) |
+  «Foco de párrafo» (atenúa bloques ajenos al tercio focal al hacer scroll) |
+  «Guía cromática» (gradiente continuo tipo BeeLine que asiste el retorno) |
+  «Regla de foco» (franja clara de 1/3/6 líneas que sigue al puntero y vela el resto).
 - **Telemetría de foco** (`focus-telemetry.ts`): ventana deslizante
   5 min de movimientos; tras ≥25 min de tramo continuo, ≥8 movimientos
   y ≥35 % de retrocesos → `fatigue_flag` (cooldown 10 min) → aviso

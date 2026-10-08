@@ -1,6 +1,13 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import { languageName, normalizeLanguage, stripSoftHyphens } from "./epub";
+import {
+  detectBookLanguage,
+  detectLanguageFromText,
+  languageName,
+  normalizeLanguage,
+  stripSoftHyphens,
+  type EpubBook,
+} from "./epub";
 
 const div = (html: string) => {
   const el = document.createElement("div");
@@ -82,5 +89,51 @@ describe("languageName", () => {
 
   it("muestra el código en mayúsculas si no está en la lista", () => {
     expect(languageName("nl")).toBe("NL");
+  });
+});
+
+describe("detectLanguageFromText", () => {
+  it("identifica texto en inglés mediante stopwords características", () => {
+    const englishText =
+      "It was a bright cold day in April, and the clocks were striking thirteen. Winston Smith kept his chin into his breast.";
+    expect(detectLanguageFromText(englishText)).toBe("en");
+  });
+
+  it("identifica texto en español mediante stopwords características", () => {
+    const spanishText =
+      "En un lugar de la Mancha, de cuyo nombre no quiero acordarme, no ha mucho tiempo que vivía un hidalgo de los de lanza en astillero.";
+    expect(detectLanguageFromText(spanishText)).toBe("es");
+  });
+
+  it("devuelve null ante texto muy corto o sin suficientes stopwords", () => {
+    expect(detectLanguageFromText("Hello world")).toBeNull();
+    expect(detectLanguageFromText("")).toBeNull();
+  });
+});
+
+describe("detectBookLanguage", () => {
+  it("prioriza metadatos válidos de idioma", async () => {
+    const book = {
+      metadata: { language: "en-US" },
+      sections: [],
+    } as unknown as EpubBook;
+    expect(await detectBookLanguage(book)).toBe("en");
+  });
+
+  it("detecta a partir del texto cuando los metadatos declaran 'und' o faltan", async () => {
+    const book = {
+      metadata: { language: "und" },
+      sections: [
+        {
+          createDocument: async () => ({
+            body: {
+              textContent:
+                "Call me Ishmael. Some years ago—never mind how long precisely—having little or no money in my purse, and nothing particular to interest me on shore.",
+            },
+          }),
+        },
+      ],
+    } as unknown as EpubBook;
+    expect(await detectBookLanguage(book)).toBe("en");
   });
 });

@@ -61,6 +61,46 @@ export function pickSpanishVoice(
   );
 }
 
+// en-US > en-GB > en-* > null.
+export function pickEnglishVoice(
+  voices: SpeechSynthesisVoice[],
+): SpeechSynthesisVoice | null {
+  const exact = (tag: string) =>
+    voices.find((v) => normalizeLang(v.lang) === tag) ?? null;
+  return (
+    exact("en-us") ??
+    exact("en-gb") ??
+    voices.find((v) => normalizeLang(v.lang).startsWith("en")) ??
+    null
+  );
+}
+
+export function defaultSpanishLangTag(): string {
+  if (typeof navigator !== "undefined" && navigator.language) {
+    const nav = normalizeLang(navigator.language);
+    if (nav.startsWith("es")) return nav;
+  }
+  return "es-MX";
+}
+
+// Resuelve la voz y tag BCP 47 idóneo para el idioma especificado.
+export function pickVoiceForLanguage(
+  voices: SpeechSynthesisVoice[],
+  language = "es",
+): { voice: SpeechSynthesisVoice | null; defaultLangTag: string } {
+  const isEn = language.toLowerCase().startsWith("en");
+  if (isEn) {
+    return {
+      voice: pickEnglishVoice(voices),
+      defaultLangTag: "en-US",
+    };
+  }
+  return {
+    voice: pickSpanishVoice(voices),
+    defaultLangTag: defaultSpanishLangTag(),
+  };
+}
+
 // getVoices() puede llegar vacío al primer uso: se espera un solo
 // voiceschanged con tope corto antes de rendirse a la voz default.
 export function ensureVoices(timeoutMs = 1_000): Promise<SpeechSynthesisVoice[]> {
@@ -119,14 +159,18 @@ export type TtsSpeaker = {
   setRate(rate: TtsRate): void;
 };
 
-export function createSpeaker(events: {
-  // La oración completa terminó de sonar (todos sus trozos).
-  onEnded(): void;
-  // Estado inconsistente: utterance que no arranca, error en medio o
-  // resume mudo en iOS. El controlador decide reintentar o cerrar.
-  onStalled(kind: SpeechStall): void;
-}): TtsSpeaker {
+export function createSpeaker(
+  events: {
+    // La oración completa terminó de sonar (todos sus trozos).
+    onEnded(): void;
+    // Estado inconsistente: utterance que no arranca, error en medio o
+    // resume mudo en iOS. El controlador decide reintentar o cerrar.
+    onStalled(kind: SpeechStall): void;
+  },
+  options?: { language?: string },
+): TtsSpeaker {
   const synth = () => window.speechSynthesis;
+  const targetLanguage = options?.language ?? "es";
   let voice: SpeechSynthesisVoice | null = null;
   let rate: TtsRate = 1;
   let chunks: string[] = [];
@@ -139,7 +183,7 @@ export function createSpeaker(events: {
   let generation = 0;
 
   void ensureVoices().then((voices) => {
-    voice = pickSpanishVoice(voices);
+    voice = pickVoiceForLanguage(voices, targetLanguage).voice;
   });
 
   const clearWatchdog = () => {
@@ -208,8 +252,9 @@ export function createSpeaker(events: {
     // La voz se elige al momento de hablar (getVoices es síncrono y ya
     // pobló tras ensureVoices): sin `voice` explícita, varios motores
     // Android no resuelven el locale y tragan la utterance en silencio.
-    if (!voice) voice = pickSpanishVoice(synth().getVoices());
-    utterance.lang = voice?.lang ?? "es-MX";
+    const selection = pickVoiceForLanguage(synth().getVoices(), targetLanguage);
+    if (!voice) voice = selection.voice;
+    utterance.lang = voice?.lang ?? selection.defaultLangTag;
     if (voice) utterance.voice = voice;
     utterance.rate = rate;
     utterance.volume = 1;
@@ -236,6 +281,11 @@ export function createSpeaker(events: {
       events.onStalled("mid");
     };
     armStartWatchdog(gen, () => started);
+    try {
+      synth().resume();
+    } catch {
+      /* motores sin resume */
+    }
     try {
       synth().speak(utterance);
     } catch {
@@ -265,10 +315,19 @@ export function createSpeaker(events: {
       chunks = splitForSpeech(text);
       chunkIndex = 0;
       const gen = generation;
+      const s = synth();
+      // Si la cola estaba inactiva (arranque por pulsación del usuario),
+      // hablamos en el mismo tick para no perder el token de activación
+      // de usuario (Brave y Chromium en Android silencian audio si se demora
+      // en un timeout fuera del gesto).
+      if (isIdle()) {
+        speakChunk(gen);
+        return;
+      }
       try {
         // Limpia la cola: una utterance zombie del speaker anterior
         // puede dejar el motor «hablando» sin sonido en Android.
-        synth().cancel();
+        s.cancel();
       } catch {
         /* la cola ya estaba limpia o el motor no existe */
       }

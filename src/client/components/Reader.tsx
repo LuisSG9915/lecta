@@ -11,6 +11,7 @@ import type { WordHit } from "../lib/words";
 import { extractWordAtPoint } from "../lib/words";
 import {
   openEpub,
+  detectBookLanguage,
   getBookAuthor,
   getBookLanguage,
   getBookTitle,
@@ -92,6 +93,11 @@ import {
   applySyntacticLines,
   clearSyntacticLines,
 } from "../lib/syntactic-lines";
+import {
+  clearParagraphFocus,
+  focusBlock,
+  updateParagraphFocus,
+} from "../lib/paragraph-focus";
 import {
   detectFatigue,
   newFocusTracker,
@@ -2000,7 +2006,10 @@ export default function Reader({
         // «Líneas sintácticas» envuelve el párrafo en unidades con
         // sentido antes del primer pintado; las marcas ya puestas
         // quedan dentro de su línea.
-        if (settingsRef.current?.focusMode === "syntactic")
+        if (
+          settingsRef.current?.focusMode === "syntactic" ||
+          settingsRef.current?.focusMode === "chromatic"
+        )
           applySyntacticLines(sanitized);
         // Las imágenes del EPUB viajan como blob: URLs: las rutas
         // internas se quitan antes de montar (evita 404 contra el
@@ -2092,7 +2101,7 @@ export default function Reader({
               : restore.fragment
                 ? scrollToFragment(container, restore.fragment)
                 : restore.anchor
-                  ? scrollToAnchor(container, restore.anchor)
+                  ? scrollToAnchor(container, restore.anchor, { markResume: true })
                   : false;
             if (anchored) {
               // listo
@@ -2424,7 +2433,7 @@ export default function Reader({
         cleanup = close;
         bookRef.current = book;
         loadBlobRef.current = loadBlob;
-        const bookLanguage = getBookLanguage(book);
+        const bookLanguage = await detectBookLanguage(book).catch(() => getBookLanguage(book));
         const storedWords = await listSavedWords(bookLanguage, scope);
         savedForms.current = savedFormLevels(storedWords);
         recordDominated(storedWords, bookLanguage, scope);
@@ -2755,6 +2764,12 @@ export default function Reader({
         if (y < 90 || delta < -4) setBarsVisible(true);
         else if (delta > 4 && y > 160) setBarsVisible(false);
         setScrollRatio(scrollRatioNow());
+        if (
+          settingsRef.current?.focusMode === "paragraph" &&
+          containerRef.current
+        ) {
+          updateParagraphFocus(containerRef.current);
+        }
       });
     };
     // Al salir de la página no hay debounce que esperar: guardar ya.
@@ -2882,8 +2897,15 @@ export default function Reader({
     const container = containerRef.current;
     if (!container) return;
     const raf = requestAnimationFrame(() => {
-      if (settings.focusMode === "syntactic") applySyntacticLines(container);
+      const needsLines =
+        settings.focusMode === "syntactic" ||
+        settings.focusMode === "chromatic";
+      if (needsLines) applySyntacticLines(container);
       else clearSyntacticLines(container);
+
+      if (settings.focusMode === "paragraph") updateParagraphFocus(container);
+      else clearParagraphFocus(container);
+
       // Las líneas sintácticas reenvuelven los nodos de texto: el
       // mapa de oraciones quedó viejo y se re-ancla por huella.
       ttsRef.current?.onDomMutated();
@@ -2899,6 +2921,17 @@ export default function Reader({
     });
     return () => cancelAnimationFrame(raf);
   }, [settings.focusMode, state, remeasure]);
+
+  // En modo foco de párrafo, reenfocar al cambiar de sección o de página.
+  useEffect(() => {
+    if (state !== "ready" || settings.focusMode !== "paragraph") return;
+    const container = containerRef.current;
+    if (!container) return;
+    const raf = requestAnimationFrame(() => {
+      updateParagraphFocus(container);
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [settings.focusMode, state, page, sectionIndex]);
 
   useEffect(() => {
     if (settings.layout !== "pages" || state !== "ready") return;
@@ -3736,6 +3769,7 @@ export default function Reader({
           <div
             ref={containerRef}
             className="book-content"
+            data-focus-mode={settings.focusMode}
             style={
               settings.layout === "pages" && pageMetrics
                 ? ({
@@ -3752,6 +3786,12 @@ export default function Reader({
           onClick={(event: MouseEvent<HTMLDivElement>) => {
             const container = containerRef.current;
             if (!container) return;
+            if (settings.focusMode === "paragraph") {
+              const block = (event.target as HTMLElement).closest("p, blockquote, li");
+              if (block && container.contains(block)) {
+                focusBlock(container, block);
+              }
+            }
             // Los enlaces internos del EPUB (notas al pie, índice)
             // apuntan a rutas que no existen en la app: no navegar.
             if ((event.target as HTMLElement).closest("a")) event.preventDefault();

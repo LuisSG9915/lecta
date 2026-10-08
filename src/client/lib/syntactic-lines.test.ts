@@ -124,4 +124,23 @@ describe("applySyntacticLines / clearSyntacticLines", () => {
     expect(root.querySelector("mark.saved-word")?.textContent).toBe("Marcada");
     expect(p.textContent).toContain("Llegó muy tarde");
   });
+
+  it("marca data-sub en conectores subordinados y data-new-sentence en oraciones nuevas", () => {
+    const root = document.createElement("div");
+    const p = document.createElement("p");
+    p.textContent =
+      "El gato dormía sobre los libros viejos, porque la tarde estaba fría. Despertó con calma.";
+    root.append(p);
+    applySyntacticLines(root);
+    const lines = p.querySelectorAll(`.${SYNTACTIC_LINE_CLASS}`);
+    const subLine = Array.from(lines).find((l) =>
+      l.textContent?.trim().startsWith("porque"),
+    );
+    expect(subLine?.hasAttribute("data-sub")).toBe(true);
+
+    const newSentLine = Array.from(lines).find((l) =>
+      l.textContent?.trim().startsWith("Despertó"),
+    );
+    expect(newSentLine?.hasAttribute("data-new-sentence")).toBe(true);
+  });
 });

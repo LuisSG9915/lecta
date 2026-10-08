@@ -2,7 +2,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildSentenceMap, sentenceFingerprint } from "./ttsSentences";
 import { clearTtsMarks, markSentence, ttsMarkElement } from "./ttsMarks";
-import { pickSpanishVoice, splitForSpeech } from "./ttsSpeech";
+import {
+  pickEnglishVoice,
+  pickSpanishVoice,
+  pickVoiceForLanguage,
+  splitForSpeech,
+} from "./ttsSpeech";
 import {
   consentTts,
   isTtsSupported,
@@ -142,6 +147,32 @@ describe("ttsSpeech", () => {
       "es-AR",
     );
     expect(pickSpanishVoice([voice("en-US")])).toBeNull();
+  });
+
+  it("prefiere en-US, luego en-GB, luego cualquier en-*", () => {
+    const voice = (lang: string) => ({ lang }) as SpeechSynthesisVoice;
+    expect(pickEnglishVoice([voice("es-MX"), voice("en-US")])?.lang).toBe(
+      "en-US",
+    );
+    expect(pickEnglishVoice([voice("en-GB"), voice("en-AU")])?.lang).toBe(
+      "en-GB",
+    );
+    expect(pickEnglishVoice([voice("es-ES"), voice("en-CA")])?.lang).toBe(
+      "en-CA",
+    );
+    expect(pickEnglishVoice([voice("es-ES")])).toBeNull();
+  });
+
+  it("selecciona la voz y tag de fallback según el idioma", () => {
+    const voice = (lang: string) => ({ lang }) as SpeechSynthesisVoice;
+    const voices = [voice("es-MX"), voice("en-US")];
+    const enResult = pickVoiceForLanguage(voices, "en");
+    expect(enResult.voice?.lang).toBe("en-US");
+    expect(enResult.defaultLangTag).toBe("en-US");
+
+    const esResult = pickVoiceForLanguage(voices, "es");
+    expect(esResult.voice?.lang).toBe("es-MX");
+    expect(esResult.defaultLangTag).toBe("es-MX");
   });
 });
 

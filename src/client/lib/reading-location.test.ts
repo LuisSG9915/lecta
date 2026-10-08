@@ -72,6 +72,15 @@ describe("scrollToAnchor", () => {
     expect(spy).toHaveBeenCalledWith({ block: "start" });
   });
 
+  it("aplica la clase resume-anchor si markResume es true", () => {
+    const p = block("Párrafo de reanudación", 100);
+    const c = container(p);
+    vi.spyOn(p, "scrollIntoView");
+
+    scrollToAnchor(c, "Párrafo de reanudación", { markResume: true });
+    expect(p.classList.contains("resume-anchor")).toBe(true);
+  });
+
   it("devuelve false cuando el ancla no está en la sección", () => {
     const c = container(block("otro texto", 0));
     expect(scrollToAnchor(c, "un ancla que no existe")).toBe(false);

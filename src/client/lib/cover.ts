@@ -1,4 +1,4 @@
-import { openEpub, getBookAuthor, getBookLanguage, getBookTitle } from "./epub";
+import { openEpub, getBookAuthor, getBookLanguage, getBookTitle, detectBookLanguage } from "./epub";
 
 export type BookMeta = {
   title: string;
@@ -15,10 +15,11 @@ export async function readBookMeta(file: Blob): Promise<BookMeta | null> {
     const { book, close } = await openEpub(file);
     try {
       const cover = (await book.getCover?.().catch(() => null)) ?? null;
+      const language = await detectBookLanguage(book).catch(() => getBookLanguage(book));
       return {
         title: getBookTitle(book),
         author: getBookAuthor(book),
-        language: getBookLanguage(book),
+        language,
         sectionCount: book.sections.length,
         cover,
       };

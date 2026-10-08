@@ -852,6 +852,37 @@ mark.saved-word[data-level="settled"] {
   transition: width var(--dur-2) var(--ease-out);
 }
 
+/* Botón de pronunciación de palabra */
+.btn--pronounce {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0 4px;
+  margin: 0 2px;
+  font-size: 1.05rem;
+  line-height: 1;
+  color: var(--ink-muted);
+  vertical-align: middle;
+  border-radius: var(--r-sm);
+  min-inline-size: auto;
+  min-block-size: auto !important;
+  opacity: 0.75;
+  transition: transform var(--dur-1) var(--ease-out), opacity var(--dur-1) var(--ease-out);
+}
+
+.btn--pronounce:hover,
+.btn--pronounce:focus-visible {
+  opacity: 1;
+  transform: scale(1.15);
+}
+
+.btn--pronounce:active {
+  transform: scale(0.95);
+}
+
 /* Retiro de Lectura */
 .segmented-grid {
   display: grid;

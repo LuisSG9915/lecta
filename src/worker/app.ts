@@ -39,6 +39,7 @@ import { hasUsableDefinition } from "../shared/lexicon";
 import { isFsrsCardShape } from "../shared/reading-data";
 import { calibrationBankVersion } from "../shared/calibration-bank";
 import { checkEpubHeader, EPUB_MAX_BYTES } from "../shared/epub-check";
+import { extractEpubMeta } from "../shared/epub-meta";
 import { getSession } from "./session";
 import { readingData } from "./reading-data";
 import { companion } from "./companion";
@@ -837,24 +838,67 @@ const bookKey = (userId: string, hash: string) => `books/${userId}/${hash}.epub`
 const HASH_PATTERN = /^[a-f0-9]{64}$/;
 
 app.get("/api/books", async (context) => {
-  if (!context.env.BOOKS)
+  const booksBucket = context.env.BOOKS;
+  if (!booksBucket)
     return context.json({ error: "El almacenamiento no está configurado." }, 503);
   const session = await getSession(context);
   if (!session) return context.json({ error: "Inicia sesión para ver tus libros." }, 401);
 
-  const listed = await context.env.BOOKS.list({ prefix: `books/${session.user.id}/` });
-  return context.json({
-    books: listed.objects.map((object) => ({
-      hash: object.key.split("/").pop()?.replace(/\.epub$/, ""),
-      uploaded: object.uploaded,
-      name: object.customMetadata?.name ?? "",
-      // Metadatos ligeros para pintar la estantería sin descargar el
-      // EPUB (se escriben en la subida; los viejos pueden venir vacíos).
-      title: object.customMetadata?.title ?? "",
-      author: object.customMetadata?.author ?? "",
-      sections: Number(object.customMetadata?.sections) || 0,
-    })),
-  });
+  const listed = await booksBucket.list({ prefix: `books/${session.user.id}/` });
+  const books = await Promise.all(
+    listed.objects.map(async (object) => {
+      const hash = object.key.split("/").pop()?.replace(/\.epub$/, "") ?? "";
+      let title = object.customMetadata?.title ?? "";
+      let author = object.customMetadata?.author ?? "";
+      let name = object.customMetadata?.name ?? "";
+      let sections = Number(object.customMetadata?.sections) || 0;
+
+      // Si el libro remoto no tiene título guardado, intentamos extraerlo
+      // del EPUB en R2 para que la estantería siempre lo muestre antes de descargarlo.
+      if (!title) {
+        try {
+          const r2Obj = await booksBucket.get(object.key);
+          if (r2Obj) {
+            const data = new Uint8Array(await r2Obj.arrayBuffer());
+            const meta = await extractEpubMeta(data);
+            if (meta?.title) {
+              title = meta.title;
+              author = author || (meta.author ?? "");
+              sections = sections || (meta.sections ?? 0);
+              name = name || `${title}.epub`;
+
+              // Actualiza metadatos en segundo plano para que las siguientes peticiones
+              // no tengan que releer el archivo.
+              context.executionCtx?.waitUntil?.(
+                booksBucket.put(object.key, data, {
+                  httpMetadata: { contentType: "application/epub+zip" },
+                  customMetadata: {
+                    name,
+                    title,
+                    author,
+                    sections: sections ? String(sections) : "",
+                  },
+                }).catch(() => null),
+              );
+            }
+          }
+        } catch {
+          // Ignora fallos silenciosos y responde con lo que haya
+        }
+      }
+
+      return {
+        hash,
+        uploaded: object.uploaded,
+        name: name || (title ? `${title}.epub` : ""),
+        title,
+        author,
+        sections,
+      };
+    }),
+  );
+
+  return context.json({ books });
 });
 
 app.put("/api/books/:hash", async (context) => {
@@ -879,15 +923,30 @@ app.put("/api/books/:hash", async (context) => {
     return context.json({ error: "El contenido no coincide con el identificador declarado." }, 400);
 
   const meta = context.req.query();
+  let title = meta.title?.slice(0, 200) ?? "";
+  let author = meta.author?.slice(0, 200) ?? "";
+  let sections = /^\d{1,5}$/.test(meta.sections ?? "") ? meta.sections! : "";
+  let name = meta.name?.slice(0, 200) ?? "";
+
+  if (!title) {
+    const extracted = await extractEpubMeta(data).catch(() => null);
+    if (extracted?.title) {
+      title = extracted.title.slice(0, 200);
+      author = author || (extracted.author?.slice(0, 200) ?? "");
+      sections = sections || (extracted.sections ? String(extracted.sections) : "");
+      name = name || `${title}.epub`;
+    }
+  }
+
   await context.env.BOOKS.put(bookKey(session.user.id, hash), data, {
     httpMetadata: { contentType: "application/epub+zip" },
     // Título/autor/secciones viajan con el objeto para que otros
     // dispositivos pinten la ficha sin bajar el EPUB completo.
     customMetadata: {
-      name: meta.name?.slice(0, 200) ?? "",
-      title: meta.title?.slice(0, 200) ?? "",
-      author: meta.author?.slice(0, 200) ?? "",
-      sections: /^\d{1,5}$/.test(meta.sections ?? "") ? meta.sections! : "",
+      name,
+      title,
+      author,
+      sections,
     },
   });
   return context.json({ ok: true });

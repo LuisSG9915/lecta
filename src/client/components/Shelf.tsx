@@ -40,6 +40,7 @@ import BookCover from "./BookCover";
 import DiscoverRail from "./DiscoverRail";
 import { CompanionButton } from "./CompanionButton";
 import { useCompanion } from "./CompanionProvider";
+import Sheet from "./Sheet";
 
 // Ítem de la estantería: lo que hace falta para dibujar la tarjeta,
 // sin el archivo. remoteOnly marca los que existen en la cuenta pero
@@ -60,6 +61,10 @@ type ShelfProps = {
   // «Obtener» del riel Descubre: el padre baja el EPUB del catálogo y
   // lo pasa al flujo normal de añadir libro.
   onGetCatalogBook?: (item: CatalogBook) => Promise<void> | void;
+  // Descarga un libro remoto a IndexedDB sin necesidad de abrirlo
+  onDownloadBook?: (item: ShelfItem) => Promise<void> | void;
+  // Hash del libro que se está descargando actualmente
+  downloadingHash?: string | null;
   // Sube cuando la sincronización trae intervalos nuevos: la meta de
   // la semana relee su progreso sin recargar la estantería.
   activityVersion?: number;
@@ -103,7 +108,18 @@ const progressOf = (position: SavedBookPosition | undefined, sectionCount: numbe
     ? (position.progress ?? Math.min(1, position.sectionIndex / sectionCount))
     : 0;
 
-export default function Shelf({ library, checking, onOpen, onRemove, onAdd, onLibraryChange, onGetCatalogBook, activityVersion = 0 }: ShelfProps) {
+export default function Shelf({
+  library,
+  checking,
+  onOpen,
+  onRemove,
+  onAdd,
+  onLibraryChange,
+  onGetCatalogBook,
+  onDownloadBook,
+  downloadingHash,
+  activityVersion = 0,
+}: ShelfProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [positions, setPositions] = useState<SavedBookPosition[]>([]);
   const [wordCounts, setWordCounts] = useState<Map<string, number>>(new Map());
@@ -111,6 +127,7 @@ export default function Shelf({ library, checking, onOpen, onRemove, onAdd, onLi
   const [weekDays, setWeekDays] = useState<{ day: number; read: boolean }[]>([]);
   const [goalProgress, setGoalProgress] = useState<WeeklyGoalProgress | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [optionsBook, setOptionsBook] = useState<ShelfItem | null>(null);
   const [dragging, setDragging] = useState(false);
   const [sampleState, setSampleState] = useState<"idle" | "loading" | "error">(
     "idle",
@@ -377,17 +394,15 @@ export default function Shelf({ library, checking, onOpen, onRemove, onAdd, onLi
   };
 
   const remove = (hash: string) => {
-    if (confirmDelete !== hash) {
-      setConfirmDelete(hash);
-      return;
-    }
     setConfirmDelete(null);
+    setOptionsBook(null);
     onRemove(hash);
   };
 
   const changeBookLanguage = async (hash: string, language: string) => {
     const scope = captureDbScope();
     await updateBookMeta(hash, { language }, scope);
+    setOptionsBook((prev) => (prev && prev.hash === hash ? { ...prev, language } : prev));
     onLibraryChange();
   };
 
@@ -613,14 +628,17 @@ export default function Shelf({ library, checking, onOpen, onRemove, onAdd, onLi
                 const position = positionByHash.get(book.hash);
                 const total = book.sectionCount ?? 0;
                 const chapter = position ? position.sectionIndex : -1;
+                const isDownloading = downloadingHash === book.hash;
                 return (
                   <li
                     key={book.hash}
                     className={`shelf-book${book.remoteOnly ? " shelf-item--remote" : ""}`}
+                    data-downloading={isDownloading || undefined}
                   >
                     <button
                       type="button"
                       className="shelf-book-cover"
+                      disabled={isDownloading}
                       onClick={() => onOpen(book)}
                       aria-label={`Abrir ${displayTitle(book.name, book.title)}`}
                       title={displayTitle(book.name, book.title)}
@@ -629,6 +647,15 @@ export default function Shelf({ library, checking, onOpen, onRemove, onAdd, onLi
                       <span className="shelf-lang-badge" title={`Idioma: ${languageName(book.language || "es")}`}>
                         {(book.language || "es").toUpperCase()}
                       </span>
+                      {book.remoteOnly ? (
+                        <span
+                          className={`shelf-cloud-badge${isDownloading ? " shelf-cloud-badge--loading" : ""}`}
+                          title={isDownloading ? "Descargando libro…" : "Disponible en la nube · Toca para descargar"}
+                          aria-label={isDownloading ? "Descargando" : "En la nube"}
+                        >
+                          {isDownloading ? "⏳" : "☁"}
+                        </span>
+                      ) : null}
                       {bookCoverages.get(book.hash) ? (
                         <span
                           className="discover-badge"
@@ -638,8 +665,8 @@ export default function Shelf({ library, checking, onOpen, onRemove, onAdd, onLi
                         </span>
                       ) : null}
                     </button>
-                    {total > 0 && total <= 40 ? (
-                      <span className="dots" aria-hidden="true">
+                    {total > 0 && total <= 8 ? (
+                      <span className="dots shelf-book-dots" aria-hidden="true">
                         {Array.from({ length: total }, (_, i) => (
                           <span
                             key={i}
@@ -659,44 +686,32 @@ export default function Shelf({ library, checking, onOpen, onRemove, onAdd, onLi
                         />
                       </span>
                     ) : null}
-                    <span className="shelf-book-meta meta">
-                      {book.remoteOnly
-                        ? "En la nube"
-                        : `${
-                            position && total
-                              ? `${Math.round(progressOf(position, total) * 100)}% leído`
-                              : "Sin empezar"
-                          }${book.pendingUpload ? " · Pendiente de subir" : ""}`}
-                    </span>
-                    <div className="shelf-book-controls">
-                      <select
-                        className="shelf-book-lang-select"
-                        aria-label={`Idioma de ${displayTitle(book.name, book.title)}`}
-                        title="Cambiar idioma del libro"
-                        value={book.language || "es"}
-                        onChange={(event) => void changeBookLanguage(book.hash, event.target.value)}
-                      >
-                        <option value="es">ES</option>
-                        <option value="en">EN</option>
-                        <option value="fr">FR</option>
-                        <option value="de">DE</option>
-                        <option value="it">IT</option>
-                        <option value="pt">PT</option>
-                      </select>
+                    <div className="shelf-book-footer">
+                      <span className={`shelf-book-meta meta${isDownloading ? " shelf-book-meta--downloading" : ""}`}>
+                        {isDownloading
+                          ? "Descargando…"
+                          : book.remoteOnly
+                            ? "Toca para descargar"
+                            : `${
+                                position && total
+                                  ? `${Math.round(progressOf(position, total) * 100)}% leído`
+                                  : "Sin empezar"
+                              }${book.pendingUpload ? " · Subiendo…" : ""}`}
+                      </span>
                       <button
                         type="button"
-                        className="btn--quiet shelf-book-remove"
-                        aria-label={`Quitar ${displayTitle(book.name, book.title)}`}
-                        onClick={() => remove(book.hash)}
+                        className="btn--quiet shelf-book-more"
+                        disabled={isDownloading}
+                        aria-label={`Opciones de ${displayTitle(book.name, book.title)}`}
+                        title="Opciones del libro"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setOptionsBook(book);
+                        }}
                       >
-                        {confirmDelete === book.hash ? "¿Seguro?" : "Quitar"}
+                        ⋯
                       </button>
                     </div>
-                    {confirmDelete === book.hash ? (
-                      <p className="meta">
-                        Solo se quita el libro; tus palabras se conservan.
-                      </p>
-                    ) : null}
                   </li>
                 );
               })}
@@ -719,6 +734,135 @@ export default function Shelf({ library, checking, onOpen, onRemove, onAdd, onLi
               </li>
             </ul>
           </section>
+
+          {optionsBook ? (
+            <Sheet
+              label={`Opciones de ${displayTitle(optionsBook.name, optionsBook.title)}`}
+              onClose={() => {
+                setOptionsBook(null);
+                setConfirmDelete(null);
+              }}
+            >
+              <div className="sheet-head">
+                <strong className="sheet-title">Opciones del libro</strong>
+                <button
+                  type="button"
+                  className="btn--quiet"
+                  onClick={() => {
+                    setOptionsBook(null);
+                    setConfirmDelete(null);
+                  }}
+                  aria-label="Cerrar opciones"
+                >
+                  Cerrar
+                </button>
+              </div>
+
+              <div className="shelf-options-body">
+                <div className="shelf-options-summary">
+                  <div className="shelf-options-cover">
+                    <BookCover book={optionsBook} />
+                  </div>
+                  <div className="shelf-options-details">
+                    <h3 className="shelf-options-title">
+                      {displayTitle(optionsBook.name, optionsBook.title)}
+                    </h3>
+                    {optionsBook.author ? (
+                      <p className="meta shelf-options-author">{optionsBook.author}</p>
+                    ) : null}
+                    <p className="meta shelf-options-progress">
+                      {optionsBook.remoteOnly
+                        ? "Disponible en tu cuenta · Listo para descargar"
+                        : (() => {
+                            const pos = positionByHash.get(optionsBook.hash);
+                            const tot = optionsBook.sectionCount ?? 0;
+                            return pos && tot
+                              ? `Capítulo ${pos.sectionIndex + 1} de ${tot} · ${Math.round(progressOf(pos, tot) * 100)}% leído`
+                              : "Sin empezar";
+                          })()}
+                    </p>
+                  </div>
+                </div>
+
+                {optionsBook.remoteOnly ? (
+                  <div className="shelf-options-section">
+                    <button
+                      type="button"
+                      className="btn btn--primary shelf-options-download-btn"
+                      disabled={downloadingHash === optionsBook.hash}
+                      onClick={() => {
+                        if (onDownloadBook) {
+                          void onDownloadBook(optionsBook);
+                        } else {
+                          onOpen(optionsBook);
+                        }
+                      }}
+                    >
+                      {downloadingHash === optionsBook.hash
+                        ? "Descargando libro…"
+                        : "Descargar libro a este dispositivo"}
+                    </button>
+                  </div>
+                ) : null}
+
+                <div className="shelf-options-section">
+                  <label htmlFor="shelf-book-lang-picker" className="shelf-options-label">
+                    Idioma del libro
+                  </label>
+                  <p className="meta shelf-options-hint">
+                    Determina el diccionario, lemas de palabras y enriquecimiento.
+                  </p>
+                  <select
+                    id="shelf-book-lang-picker"
+                    className="shelf-options-select"
+                    value={optionsBook.language || "es"}
+                    onChange={(event) => void changeBookLanguage(optionsBook.hash, event.target.value)}
+                  >
+                    <option value="es">Español (ES)</option>
+                    <option value="en">Inglés (EN)</option>
+                    <option value="fr">Francés (FR)</option>
+                    <option value="de">Alemán (DE)</option>
+                    <option value="it">Italiano (IT)</option>
+                    <option value="pt">Portugués (PT)</option>
+                  </select>
+                </div>
+
+                <div className="shelf-options-danger-zone">
+                  {confirmDelete === optionsBook.hash ? (
+                    <div className="shelf-options-confirm" role="alert">
+                      <p className="meta">
+                        ¿Seguro que quieres quitar «{displayTitle(optionsBook.name, optionsBook.title)}»? Tus palabras guardadas en el Cuaderno se conservan.
+                      </p>
+                      <div className="shelf-options-confirm-actions">
+                        <button
+                          type="button"
+                          className="btn btn--primary"
+                          onClick={() => remove(optionsBook.hash)}
+                        >
+                          Sí, quitar libro
+                        </button>
+                        <button
+                          type="button"
+                          className="btn"
+                          onClick={() => setConfirmDelete(null)}
+                        >
+                          Cancelar
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn--quiet shelf-book-remove"
+                      onClick={() => setConfirmDelete(optionsBook.hash)}
+                    >
+                      Quitar de la estantería…
+                    </button>
+                  )}
+                </div>
+              </div>
+            </Sheet>
+          ) : null}
 
           {activityHidden ? null : (
           <section aria-label="Días con lectura esta semana">

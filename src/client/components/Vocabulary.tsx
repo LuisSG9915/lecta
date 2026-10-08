@@ -86,6 +86,7 @@ import { GrammarGame } from "./GrammarGame";
 import { SentenceBuilderGame } from "./SentenceBuilderGame";
 import { isGrammarEligible, isSentenceEligible } from "../lib/grammar";
 import { languageName } from "../lib/epub";
+import { speakWord } from "../lib/speech";
 
 type VocabularyProps = {
   onClose: () => void;
@@ -1858,6 +1859,15 @@ export default function Vocabulary({ onClose, books, activityVersion }: Vocabula
                             <li key={word.key} className="nb-word">
                               <div className="nb-word-head">
                                 <strong className="nb-word-form">{word.form}</strong>
+                                <button
+                                  type="button"
+                                  className="btn--pronounce"
+                                  aria-label={`Pronunciar ${word.form}`}
+                                  title="Escuchar pronunciación"
+                                  onClick={() => void speakWord(word.form, word.language)}
+                                >
+                                  <span aria-hidden="true">🔊</span>
+                                </button>
                                 {word.pos ? <span className="card-pos">{word.pos}</span> : null}
                                 {word.lemma && word.lemma !== word.form ? (
                                   <span className="meta">de «{word.lemma}»</span>
@@ -1940,6 +1950,15 @@ export default function Vocabulary({ onClose, books, activityVersion }: Vocabula
               <div className="index-card nb-card">
                 <p className="nb-card-front">
                   <strong>{learn.items[0].form}</strong>
+                  <button
+                    type="button"
+                    className="btn--pronounce"
+                    aria-label={`Pronunciar ${learn.items[0].form}`}
+                    title="Escuchar pronunciación"
+                    onClick={() => void speakWord(learn.items[0].form, learn.items[0].language)}
+                  >
+                    <span aria-hidden="true">🔊</span>
+                  </button>
                   {learn.items[0].pos ? (
                     <span className="card-pos"> · {learn.items[0].pos}</span>
                   ) : null}
@@ -2424,6 +2443,15 @@ export default function Vocabulary({ onClose, books, activityVersion }: Vocabula
                     <>
                       <p className="nb-card-front">
                         <strong>{current.word.form}</strong>
+                        <button
+                          type="button"
+                          className="btn--pronounce"
+                          aria-label={`Pronunciar ${current.word.form}`}
+                          title="Escuchar pronunciación"
+                          onClick={() => void speakWord(current.word.form, current.word.language)}
+                        >
+                          <span aria-hidden="true">🔊</span>
+                        </button>
                         {current.word.pos ? (
                           <span className="card-pos"> · {current.word.pos}</span>
                         ) : null}
@@ -2526,6 +2554,15 @@ export default function Vocabulary({ onClose, books, activityVersion }: Vocabula
                     <>
                       <p className="nb-card-front">
                         <strong>{current.word.form}</strong>
+                        <button
+                          type="button"
+                          className="btn--pronounce"
+                          aria-label={`Pronunciar ${current.word.form}`}
+                          title="Escuchar pronunciación"
+                          onClick={() => void speakWord(current.word.form, current.word.language)}
+                        >
+                          <span aria-hidden="true">🔊</span>
+                        </button>
                         {current.word.pos ? (
                           <span className="card-pos"> · {current.word.pos}</span>
                         ) : null}
@@ -2548,6 +2585,15 @@ export default function Vocabulary({ onClose, books, activityVersion }: Vocabula
                       ) : (
                         <>
                           <strong>{current.word.form}</strong>
+                          <button
+                            type="button"
+                            className="btn--pronounce"
+                            aria-label={`Pronunciar ${current.word.form}`}
+                            title="Escuchar pronunciación"
+                            onClick={() => void speakWord(current.word.form, current.word.language)}
+                          >
+                            <span aria-hidden="true">🔊</span>
+                          </button>
                           {(current.mode === "cloze" || current.mode === "clozeNew") &&
                           current.word.meaning
                             ? ` — ${current.word.meaning}`

@@ -44,14 +44,16 @@ export const READER_FONTS: { id: ReaderFont; label: string; family: string }[] =
 ];
 
 // Modo de concentración del lector: texto normal, párrafos cortados
-// en líneas sintácticas o una regla de foco que vela el resto.
-export type FocusMode = "off" | "syntactic" | "ruler";
+// en líneas sintácticas, foco de párrafo atenuado, guía cromática o regla de foco.
+export type FocusMode = "off" | "syntactic" | "paragraph" | "chromatic" | "ruler";
 // Alto de la franja clara de la regla: 1 o 3 líneas, o un párrafo.
 export type RulerSize = 1 | 3 | "paragraph";
 
 export const FOCUS_MODES: { id: FocusMode; label: string }[] = [
   { id: "off", label: "Normal" },
   { id: "syntactic", label: "Líneas sintácticas" },
+  { id: "paragraph", label: "Foco de párrafo" },
+  { id: "chromatic", label: "Guía cromática" },
   { id: "ruler", label: "Regla de foco" },
 ];
 
@@ -170,7 +172,10 @@ export function parseReaderSettings(raw: string | null): ReaderSettings {
       preparationMode: parsePreparationMode(v.preparationMode),
       enableHyphenation: v.enableHyphenation === true,
       focusMode:
-        v.focusMode === "syntactic" || v.focusMode === "ruler"
+        v.focusMode === "syntactic" ||
+        v.focusMode === "paragraph" ||
+        v.focusMode === "chromatic" ||
+        v.focusMode === "ruler"
           ? v.focusMode
           : "off",
       rulerSize:

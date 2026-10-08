@@ -10,6 +10,7 @@ import {
   type DbScope,
 } from "./idb";
 import { deleteBook, uploadBook } from "./books";
+import { readBookMeta } from "./cover";
 
 // Encola la subida de un libro local a la cuenta; se procesa con
 // runBookQueue (al iniciar sesión o cuando vuelve la conexión).
@@ -41,20 +42,33 @@ export async function runBookQueue(scope?: DbScope): Promise<number> {
       let ok: boolean | null;
       if (op.kind === "upload") {
         const book = await getStoredBook(op.hash, bound);
-        ok = book
-          ? await uploadBook(
-              op.hash,
-              new File([book.data], op.name || book.name),
-              // Los metadatos viajan con el objeto remoto: así otros
-              // dispositivos muestran título y autor sin bajar el EPUB.
-              {
-                title: book.title,
-                author: book.author,
-                sectionCount: book.sectionCount,
-              },
-              bound,
-            )
-          : null;
+        if (book) {
+          let title = book.title;
+          let author = book.author;
+          let sectionCount = book.sectionCount;
+          if (!title || !author) {
+            const meta = await readBookMeta(book.data).catch(() => null);
+            if (meta) {
+              title = meta.title || title;
+              author = meta.author || author;
+              sectionCount = meta.sectionCount ?? sectionCount;
+            }
+          }
+          ok = await uploadBook(
+            op.hash,
+            new File([book.data], op.name || book.name),
+            // Los metadatos viajan con el objeto remoto: así otros
+            // dispositivos muestran título y autor sin bajar el EPUB.
+            {
+              title,
+              author,
+              sectionCount,
+            },
+            bound,
+          );
+        } else {
+          ok = null;
+        }
       } else {
         ok = await deleteBook(op.hash, bound);
       }
