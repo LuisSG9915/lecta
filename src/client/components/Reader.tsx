@@ -3673,8 +3673,14 @@ export default function Reader({
         className="measure-probe"
       />
       <header className="reader-bar" data-hidden={!barsShown || undefined}>
-        <button type="button" className="btn--quiet reader-back" onClick={onBack}>
-          ‹ Estantería
+        <button
+          type="button"
+          className="btn--quiet reader-back"
+          onClick={onBack}
+          aria-label="Volver a la estantería"
+        >
+          <span className="reader-back-icon" aria-hidden="true">‹</span>
+          <span className="reader-back-label"> Estantería</span>
         </button>
         <p className="reader-bar-title" title={title || fileName}>
           {title || fileName}
@@ -3683,36 +3689,43 @@ export default function Reader({
         <div className="reader-bar-actions">
           <button
             type="button"
-            className="btn--quiet"
+            className="btn--quiet reader-bar-btn"
             onClick={() => openSheet("search")}
             aria-label="Buscar en el libro"
+            title="Buscar"
           >
-            Buscar
+            <span className="reader-btn-icon" aria-hidden="true">🔍</span>
+            <span className="reader-btn-text">Buscar</span>
           </button>
           <button
             type="button"
-            className="btn--quiet"
+            className="btn--quiet reader-bar-btn"
             onClick={() => openSheet("toc")}
             aria-label="Índice del libro"
+            title="Índice"
           >
-            Índice
+            <span className="reader-btn-icon" aria-hidden="true">☰</span>
+            <span className="reader-btn-text">Índice</span>
           </button>
           <button
             type="button"
-            className="btn--quiet"
+            className="btn--quiet reader-bar-btn reader-bar-btn--settings"
             onClick={() => openSheet("settings")}
             aria-label="Ajustes de lectura"
+            title="Ajustes de lectura (Aa)"
           >
-            Aa
+            <span className="reader-btn-icon reader-btn-icon--aa" aria-hidden="true">Aa</span>
+            <span className="reader-btn-text">Ajustes</span>
           </button>
           <button
             type="button"
-            className="btn--quiet"
+            className="btn--quiet reader-bar-btn"
             onClick={() => setDeepModal(true)}
             aria-label="Iniciar modo retiro de lectura"
             title="Retiro de lectura"
           >
-            Retiro
+            <span className="reader-btn-icon" aria-hidden="true">🕯️</span>
+            <span className="reader-btn-text">Retiro</span>
           </button>
           {/* Acceso directo a la voz: un toque desde la barra, sin
               entrar a ajustes. Solo existe donde hay voces del
@@ -3720,7 +3733,7 @@ export default function Reader({
           {isTtsSupported() ? (
             <button
               type="button"
-              className="btn--quiet"
+              className="btn--quiet reader-bar-btn"
               onClick={onTtsRequest}
               aria-label={
                 ttsSnap.status !== "idle"
@@ -3728,12 +3741,25 @@ export default function Reader({
                   : "Leer en voz alta"
               }
               aria-pressed={ttsSnap.status !== "idle"}
+              title={ttsSnap.status !== "idle" ? "Detener voz" : "Escuchar"}
             >
-              {ttsSnap.status !== "idle" ? "Detener" : "Escuchar"}
+              <span className="reader-btn-icon" aria-hidden="true">
+                {ttsSnap.status !== "idle" ? "⏹️" : "🎧"}
+              </span>
+              <span className="reader-btn-text">
+                {ttsSnap.status !== "idle" ? "Detener" : "Escuchar"}
+              </span>
             </button>
           ) : null}
-          <button type="button" className="btn--quiet" onClick={onOpenNotebook}>
-            Cuaderno
+          <button
+            type="button"
+            className="btn--quiet reader-bar-btn"
+            onClick={onOpenNotebook}
+            aria-label="Abrir Cuaderno de vocabulario"
+            title="Cuaderno"
+          >
+            <span className="reader-btn-icon" aria-hidden="true">📓</span>
+            <span className="reader-btn-text">Cuaderno</span>
           </button>
         </div>
       </header>
@@ -3796,10 +3822,25 @@ export default function Reader({
             // apuntan a rutas que no existen en la app: no navegar.
             if ((event.target as HTMLElement).closest("a")) event.preventDefault();
             const hit = extractWordAtPoint(event.clientX, event.clientY, container, language);
-            if (hit) openSelection(hit);
-            // Tocar el texto fuera de una palabra también trae las
-            // barras de vuelta, como en los lectores de libro físico.
-            else setBarsVisible(true);
+            if (hit) {
+              openSelection(hit);
+            } else {
+              // Tocar fuera de una palabra: en lectura por páginas los márgenes
+              // izquierdo y derecho avanzan o retroceden página, y el centro
+              // conmuta las barras del lector. En desplazamiento muestra barras.
+              if (settings.layout === "pages") {
+                const w = window.innerWidth;
+                if (event.clientX > w * 0.78) {
+                  goPage(1);
+                } else if (event.clientX < w * 0.22) {
+                  goPage(-1);
+                } else {
+                  setBarsVisible((v) => !v);
+                }
+              } else {
+                setBarsVisible(true);
+              }
+            }
           }}
           onPointerMove={(event) => {
             lastPoint.current = { x: event.clientX, y: event.clientY };
@@ -4610,6 +4651,7 @@ export default function Reader({
 
           {settingsTab === "tools" ? (
             <div role="tabpanel" aria-label="Herramientas">
+              <h3 className="settings-group-title">Inmersión y Enfoque</h3>
               <div className="setting-row setting-row--stack">
                 <span className="setting-label">Concentración</span>
                 <FocusModeMenu
@@ -4632,6 +4674,8 @@ export default function Reader({
                   Iniciar sesión
                 </button>
               </div>
+
+              <h3 className="settings-group-title">Audio y Asistencia</h3>
               {/* «Leer en voz alta» solo existe donde hay voces del
                   dispositivo (Web Speech API): sin speechSynthesis el
                   ítem ni se ofrece — la función jamás se sugiere sola. */}
@@ -4641,6 +4685,15 @@ export default function Reader({
                   onRequest={onTtsRequest}
                 />
               ) : null}
+              <div className="setting-row setting-row--stack">
+                <span className="setting-label">Lectura sin conexión</span>
+                <OfflineDictionaryControl
+                  bookHash={bookHash}
+                  language={language}
+                />
+              </div>
+
+              <h3 className="settings-group-title">Vocabulario de la Obra</h3>
               <div className="setting-row setting-row--stack">
                 <span className="setting-label">Antes de leer</span>
                 <div className="theme-menu" role="group" aria-label="Preparación de vocabulario">
@@ -4684,42 +4737,33 @@ export default function Reader({
                   Explorar léxico
                 </button>
               </div>
-              <div className="setting-row setting-row--stack">
-                <span className="setting-label">Lectura sin conexión</span>
-                <OfflineDictionaryControl
-                  bookHash={bookHash}
-                  language={language}
-                />
-              </div>
-              {/* Presencia del gato en este libro: la supresión es solo
-                  de esta lectura (vive en el planificador, no se
-                  persiste como preferencia de cuenta) y no aparece si el
-                  juego está apagado o la presencia ya está en «off».
-                  El acceso voluntario «Ver a» siempre queda disponible
-                  con el juego encendido — aun suprimido abre su hoja. */}
+
               {catEnabled ? (
-                <div className="setting-row">
-                  <span className="setting-label">Tu compañero</span>
-                  <button
-                    type="button"
-                    className="btn--quiet"
-                    onClick={companion.openPanel}
-                  >
-                    Ver a {companion.name}
-                  </button>
-                </div>
-              ) : null}
-              {catEnabled && presenceMode !== "off" ? (
-                <div className="setting-row">
-                  <span className="setting-label">
-                    Ocultar al gato en esta lectura
-                  </span>
-                  <Toggle
-                    label="Ocultar al gato en esta lectura"
-                    checked={catSuppressed}
-                    onChange={setCatSuppressed}
-                  />
-                </div>
+                <>
+                  <h3 className="settings-group-title">Compañero Lector</h3>
+                  <div className="setting-row">
+                    <span className="setting-label">Tu compañero</span>
+                    <button
+                      type="button"
+                      className="btn--quiet"
+                      onClick={companion.openPanel}
+                    >
+                      Ver a {companion.name}
+                    </button>
+                  </div>
+                  {presenceMode !== "off" ? (
+                    <div className="setting-row">
+                      <span className="setting-label">
+                        Ocultar al gato en esta lectura
+                      </span>
+                      <Toggle
+                        label="Ocultar al gato en esta lectura"
+                        checked={catSuppressed}
+                        onChange={setCatSuppressed}
+                      />
+                    </div>
+                  ) : null}
+                </>
               ) : null}
               <details className="settings-advanced">
                 <summary>Atajos de lectura</summary>

@@ -57,6 +57,36 @@ export function extractWordAtPoint(
   if (!part) return null;
 
   const word = part.segment;
+
+  // Validación de proximidad geométrica: en navegadores reales, caretAtPoint
+  // al pulsar en el margen derecho o fuera del texto cae al final del nodo
+  // de texto y seleccionaba erróneamente la última palabra de la línea.
+  // Si el navegador provee rectángulos de trazado para la palabra, verificamos
+  // que el toque (clientX, clientY) esté dentro o inmediatamente adyacente
+  // a la palabra (con margen de tolerancia para dedos en pantallas táctiles).
+  try {
+    const wordRange = document.createRange();
+    wordRange.setStart(node, part.index);
+    wordRange.setEnd(node, part.index + part.segment.length);
+    const rects = wordRange.getClientRects();
+    if (rects && rects.length > 0) {
+      const hasLayout = Array.from(rects).some((r) => r.width > 0 || r.height > 0);
+      if (hasLayout) {
+        const padX = 14;
+        const padY = 8;
+        const hitInside = Array.from(rects).some(
+          (r) =>
+            clientX >= r.left - padX &&
+            clientX <= r.right + padX &&
+            clientY >= r.top - padY &&
+            clientY <= r.bottom + padY,
+        );
+        if (!hitInside) return null;
+      }
+    }
+  } catch {
+    // Si la medición falla por el entorno, se conserva el resultado textual.
+  }
   const block = node.parentElement?.closest(
     "p, h1, h2, h3, h4, h5, h6, li, blockquote, td, th",
   );

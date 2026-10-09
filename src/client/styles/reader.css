@@ -25,6 +25,9 @@
   background: var(--paper);
   border-bottom: var(--border);
   transition: transform var(--dur-3) var(--ease-out);
+  box-sizing: border-box;
+  max-inline-size: 100vw;
+  overflow: hidden;
 }
 
 .reader-bar[data-hidden] {
@@ -33,6 +36,14 @@
 
 .reader-back {
   flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+.reader-back-icon {
+  font-size: 1.15rem;
+  line-height: 1;
 }
 
 .reader-bar-title {
@@ -67,6 +78,58 @@
   align-items: center;
   gap: var(--s-1);
   flex: none;
+  max-inline-size: 100%;
+}
+
+.reader-bar-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  min-height: 36px;
+  padding: 0.25rem 0.55rem;
+  border-radius: var(--r-1);
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+  transition:
+    background-color var(--dur-1) var(--ease-out),
+    color var(--dur-1) var(--ease-out),
+    border-color var(--dur-1) var(--ease-out);
+}
+
+.reader-bar-btn:hover {
+  color: var(--ink);
+  background: var(--paper-raised);
+}
+
+.reader-bar-btn:focus-visible {
+  outline: 2px solid var(--vermilion);
+  outline-offset: 2px;
+}
+
+.reader-bar-btn[aria-pressed="true"] {
+  color: var(--vermilion);
+  background: var(--vermilion-wash);
+}
+
+.reader-btn-icon {
+  font-size: 0.95rem;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.reader-btn-icon--aa {
+  font-family: var(--font-book);
+  font-weight: 700;
+  font-size: 1.05rem;
+  letter-spacing: -0.05em;
+  color: var(--ink);
+}
+
+.reader-btn-text {
+  font-size: var(--fs-sm);
 }
 
 /* ---------- Cuerpo del libro ---------- */
@@ -959,6 +1022,24 @@ mark.saved-passage {
   background: var(--vermilion);
 }
 
+/* Encabezados de grupo en los paneles de ajustes */
+.settings-group-title {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-block: var(--s-4) var(--s-1);
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.settings-group-title:first-child {
+  margin-block-start: var(--s-1);
+}
+
 /* ---------- Panel Aa ---------- */
 
 /* Pestañas de categorías del panel de ajustes (Apariencia, Maquetación, Herramientas) */
@@ -1161,6 +1242,16 @@ mark.saved-passage {
 
 /* ---------- Móvil ---------- */
 
+@media (max-width: 52rem) {
+  .reader-btn-text {
+    display: none;
+  }
+  .reader-bar-btn {
+    padding-inline: 0.45rem;
+    min-width: 2.25rem;
+  }
+}
+
 @media (max-width: 40rem) {
   .reader-bar {
     min-height: 3rem;
@@ -1168,8 +1259,22 @@ mark.saved-passage {
     gap: var(--s-1);
   }
 
-  .reader-bar .btn--quiet {
+  .reader-back-label {
+    display: none;
+  }
+
+  .reader-back {
     padding-inline: var(--s-2);
+    font-size: var(--fs-base);
+  }
+
+  .reader-bar-btn {
+    padding-inline: 0.35rem;
+    min-width: 2rem;
+  }
+
+  .reader-bar .btn--quiet {
+    padding-inline: var(--s-1);
     font-size: var(--fs-sm);
   }
 

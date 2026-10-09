@@ -73,4 +73,32 @@ describe("extractWordAtPoint", () => {
     document.caretRangeFromPoint = vi.fn(() => null);
     expect(extractWordAtPoint(0, 0, root)).toBeNull();
   });
+
+  it("toque alejado en el margen derecho devuelve null cuando hay geometría de layout", () => {
+    const root = render("<p>Palabra en el borde</p>");
+    const node = textNode(root.querySelector("p"));
+    pointCaretAt(node, (node.textContent ?? "").length);
+    const origCreateRange = document.createRange;
+    vi.spyOn(document, "createRange").mockImplementation(() => {
+      const range = origCreateRange.call(document);
+      range.getClientRects = () =>
+        [
+          {
+            left: 50,
+            right: 120,
+            top: 100,
+            bottom: 120,
+            width: 70,
+            height: 20,
+          },
+        ] as unknown as DOMRectList;
+      return range;
+    });
+
+    // Clic en x=300 (muy a la derecha, fuera de la palabra)
+    expect(extractWordAtPoint(300, 110, root)).toBeNull();
+
+    // Clic en x=80 (dentro de la palabra)
+    expect(extractWordAtPoint(80, 110, root)?.word).toBe("borde");
+  });
 });

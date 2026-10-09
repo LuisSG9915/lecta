@@ -478,4 +478,54 @@ describe("CompanionPanel", () => {
     const after = await game.loadGame(scope);
     expect(after).toEqual(before);
   });
+
+  it("la pestaña de recompensas permite abrir cofres pendientes", async () => {
+    const pending = chest("level:2", "bufanda", false);
+    const state = makeState({
+      chests: [pending],
+    });
+
+    act(() =>
+      root.render(
+        h(CompanionPanel, baseProps({ state })),
+      ),
+    );
+    await flush();
+
+    // Cambiar a la pestaña de recompensas
+    click(button("Recompensas")!);
+    await flush();
+
+    expect(host.textContent).toContain("Cofre level:2");
+    const openBtn = button("Abrir cofre")!;
+    expect(openBtn).toBeTruthy();
+
+    click(openBtn);
+    await flush();
+
+    // Muestra la revelación del cofre
+    expect(host.textContent).toContain("¡Tesoro abierto!");
+    expect(host.textContent).toContain("Bufanda");
+    expect(button("Vestir a Michi ahora")).toBeTruthy();
+  });
+
+  it("la pestaña de vitrina lista las estampas de logros y su estado", async () => {
+    const state = makeState({
+      achievements: { palabra_1: 1000 },
+    });
+
+    act(() =>
+      root.render(
+        h(CompanionPanel, baseProps({ state })),
+      ),
+    );
+    await flush();
+
+    click(button("Vitrina")!);
+    await flush();
+
+    expect(host.textContent).toContain("Álbum de Estampas de Lectura");
+    expect(host.textContent).toContain("Primera palabra");
+    expect(host.textContent).toContain("1 de 24 conseguidas");
+  });
 });
