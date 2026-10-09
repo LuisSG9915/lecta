@@ -4,10 +4,16 @@ import { useModalBehavior } from "../lib/modal";
 type DialogProps = {
   label: string;
   onClose: () => void;
+  className?: string;
   children: ReactNode;
 };
 
-export default function Dialog({ label, onClose, children }: DialogProps) {
+export default function Dialog({
+  label,
+  onClose,
+  className,
+  children,
+}: DialogProps) {
   const ref = useRef<HTMLDivElement>(null);
   useModalBehavior(ref, onClose);
   // Misma regla que la hoja: cierra solo si el puntero empezó y terminó
@@ -31,7 +37,7 @@ export default function Dialog({ label, onClose, children }: DialogProps) {
     >
       <div
         ref={ref}
-        className="dialog"
+        className={className ? `dialog ${className}` : "dialog"}
         role="dialog"
         aria-modal="true"
         aria-label={label}

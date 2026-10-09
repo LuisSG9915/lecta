@@ -12,12 +12,52 @@ export interface GlossaryTerm {
 }
 
 export type GlossaryFilter = "cultisms" | "all" | "saved" | "learning";
-export type GlossarySort = "rarity" | "alpha";
+export type GlossarySort = "rarity" | "alpha" | "alpha-desc" | "frequency";
 
 /**
  * Umbral de escala Zipf para considerar un término como cultismo o rareza literaria singular.
  */
 export const CULTISM_ZIPF_THRESHOLD = 3.8;
+
+/**
+ * Extrae la letra inicial en mayúsculas, normalizando tildes pero conservando la Ñ.
+ */
+export function getInitialLetter(word: string): string {
+  const trimmed = word.trim();
+  if (!trimmed) return "";
+  const first = trimmed.charAt(0).toUpperCase();
+  if (first === "Ñ") return "Ñ";
+  const normalized = first.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  if (/^[A-Z]$/.test(normalized)) {
+    return normalized;
+  }
+  return "#";
+}
+
+/**
+ * Normaliza la categoría gramatical para filtros generales (sustantivo, adjetivo, verbo, etc.).
+ */
+export function normalizePosCategory(pos: string | null | undefined): string | null {
+  if (!pos) return null;
+  const p = pos.toLowerCase();
+  if (p.includes("sust") || p.includes("nombre")) return "sustantivo";
+  if (p.includes("adj")) return "adjetivo";
+  if (p.includes("verb") || p.startsWith("v.") || p === "v") return "verbo";
+  if (p.includes("adv")) return "adverbio";
+  return "otro";
+}
+
+/**
+ * Obtiene el conjunto de letras iniciales disponibles en una lista de términos.
+ */
+export function getAvailableLetters(terms: GlossaryTerm[]): Set<string> {
+  const letters = new Set<string>();
+  for (const t of terms) {
+    const l = getInitialLetter(t.form);
+    if (l) letters.add(l);
+  }
+  return letters;
+}
 
 /**
  * Extrae y organiza los términos del vocabulario de un libro a partir de su manifiesto.
@@ -90,13 +130,16 @@ export function extractGlossaryTerms(
 }
 
 /**
- * Filtra y ordena los términos del glosario según búsqueda, categoría y criterio de orden.
+ * Filtra y ordena los términos del glosario según búsqueda, categoría y criterio de orden,
+ * con soporte opcional para letra inicial y categoría gramatical.
  */
 export function filterAndSortGlossary(
   terms: GlossaryTerm[],
   query: string,
   filter: GlossaryFilter,
   sort: GlossarySort,
+  letter?: string | null,
+  posCategory?: string | null,
 ): GlossaryTerm[] {
   const q = query.trim().toLowerCase();
 
@@ -118,6 +161,16 @@ export function filterAndSortGlossary(
     list = list.filter((t) => !t.isKnown && !t.isSaved);
   }
 
+  // Filtrado por letra inicial
+  if (letter) {
+    list = list.filter((t) => getInitialLetter(t.form) === letter);
+  }
+
+  // Filtrado por categoría gramatical (POS)
+  if (posCategory && posCategory !== "all") {
+    list = list.filter((t) => normalizePosCategory(t.pos) === posCategory);
+  }
+
   // Ordenación
   const sorted = [...list];
   if (sort === "rarity") {
@@ -128,8 +181,18 @@ export function filterAndSortGlossary(
       if (za !== zb) return za - zb;
       return a.form.localeCompare(b.form, "es");
     });
+  } else if (sort === "frequency") {
+    sorted.sort((a, b) => {
+      // Mayor Zipf primero (frecuentes primero). Nulos al final
+      const za = a.zipf ?? -1;
+      const zb = b.zipf ?? -1;
+      if (za !== zb) return zb - za;
+      return a.form.localeCompare(b.form, "es");
+    });
+  } else if (sort === "alpha-desc") {
+    sorted.sort((a, b) => b.form.localeCompare(a.form, "es"));
   } else {
-    // Alfabético
+    // Alfabético A–Z
     sorted.sort((a, b) => a.form.localeCompare(b.form, "es"));
   }
 
