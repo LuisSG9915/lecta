@@ -37,18 +37,28 @@ import { createAuth } from "./auth";
 import { isStopword } from "../shared/stopwords";
 import { hasUsableDefinition } from "../shared/lexicon";
 import { isFsrsCardShape } from "../shared/reading-data";
-import { calibrationBankVersion } from "../shared/calibration-bank";
+import {
+  calibrationBankVersion,
+  type CalibrationProfile,
+} from "../shared/calibration-bank";
 import { checkEpubHeader, EPUB_MAX_BYTES } from "../shared/epub-check";
 import { extractEpubMeta } from "../shared/epub-meta";
 import { getSession } from "./session";
 import { readingData } from "./reading-data";
 import { companion } from "./companion";
 import { catalog } from "./catalog";
+import { kindleRoutes } from "./kindle/routes";
 
 export const app = new Hono<{ Bindings: WorkerEnv }>();
 app.route("/", readingData);
 app.route("/", companion);
 app.route("/", catalog);
+app.route("/k", kindleRoutes);
+app.get("/kindle", (context) => context.redirect("/k"));
+app.get("/kindle/*", (context) => {
+  const p = context.req.path.replace(/^\/kindle/, "/k");
+  return context.redirect(p);
+});
 
 app.get("/api/health", (context) => context.json({ status: "ok" }));
 
