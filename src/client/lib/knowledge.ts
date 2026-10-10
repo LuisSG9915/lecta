@@ -20,9 +20,10 @@ export type VocabProfile = {
   confidence: "low" | "mid" | "high";
 };
 
-// Sin evidencia el perfil arranca en el «Normal» histórico de las
-// sugerencias (zipf < 3.0 se consideraba rara para preparar).
-const DEFAULT_THRESHOLD = 3.0;
+// Umbrales base por defecto según el perfil del lector.
+export const DEFAULT_THRESHOLD_NATIVE = 2.0;
+export const DEFAULT_THRESHOLD_LEARNER = 3.0;
+export const DEFAULT_THRESHOLD = DEFAULT_THRESHOLD_LEARNER;
 
 // Candidatos a umbral en pasos de 0.5 (las «bandas» del plan). Al
 // empatar en puntaje gana el más cercano al valor base: un empate no
@@ -32,7 +33,7 @@ const DEFAULT_THRESHOLD = 3.0;
 const CANDIDATES = [1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0] as const;
 
 // Regularización: cada paso de 0.5 lejos del valor base cuesta λ
-// errores. Con evidencia escasa el umbral se queda cerca de 3.0 en
+// errores. Con evidencia escasa el umbral se queda cerca del base en
 // lugar de dejarse arrastrar al extremo por un lote pequeño — la
 // evaluación cronológica sobre datos reales (profile-eval) midió
 // λ=2 como el menor valor que agota la mejora en omisiones sin pagar
@@ -64,11 +65,12 @@ const clamp = (value: number, min: number, max: number) =>
 export function estimateProfile(
   evidence: KnowledgeEvidence[],
   adjust = 0,
+  baseThreshold = DEFAULT_THRESHOLD,
 ): VocabProfile {
   const usable = evidence.flatMap((item) =>
     item.zipf == null ? [] : [{ zipf: item.zipf, known: item.known }],
   );
-  let best = DEFAULT_THRESHOLD;
+  let best = baseThreshold;
   if (usable.length) {
     let bestScore = Number.POSITIVE_INFINITY;
     let bestDistance = Number.POSITIVE_INFINITY;
@@ -78,7 +80,7 @@ export function estimateProfile(
         if (item.known && item.zipf < t) errors += 1;
         if (!item.known && item.zipf >= t) errors += 1;
       }
-      const distance = Math.abs(t - DEFAULT_THRESHOLD);
+      const distance = Math.abs(t - baseThreshold);
       const score = errors + PROFILE_REGULARIZATION * distance;
       if (score < bestScore || (score === bestScore && distance < bestDistance)) {
         bestScore = score;
@@ -483,8 +485,9 @@ export async function estimateStoredProfile(
   rows: { lemma: string; known: boolean; source?: string; updatedAt?: number }[],
   language = "es",
   adjust = 0,
+  baseThreshold = DEFAULT_THRESHOLD,
 ): Promise<VocabProfile | null> {
-  if (!rows.length) return estimateProfile([], adjust);
+  if (!rows.length) return estimateProfile([], adjust, baseThreshold);
   const result = await batchLookup(
     rows.map((row) => row.lemma),
     language,
@@ -495,7 +498,7 @@ export async function estimateStoredProfile(
       known: r.known,
     }));
     if (fallbackEvidence.some((e) => e.zipf != null)) {
-      return estimateProfile(fallbackEvidence, adjust);
+      return estimateProfile(fallbackEvidence, adjust, baseThreshold);
     }
     return null;
   }
@@ -515,14 +518,22 @@ export async function estimateStoredProfile(
     zipf: item.zipf,
     known: item.known,
   }));
-  return estimateProfile(evidence, adjust);
+  return estimateProfile(evidence, adjust, baseThreshold);
 }
 
 // Etiqueta humana del umbral para mostrar en Cuenta: neutra y sin
 // juicio — un umbral bajo significa que casi nada se predice porque
 // el vocabulario ya cubre hasta lo raro; uno alto, que conviene
 // anticipar bastante.
-export function vocabLevelLabel(threshold: number): string {
+export function vocabLevelLabel(
+  threshold: number,
+  profile: "native" | "learner" = "learner",
+): string {
+  if (profile === "native") {
+    if (threshold < 1.8) return "amplio";
+    if (threshold < 2.4) return "medio";
+    return "en desarrollo";
+  }
   if (threshold < 2.5) return "amplio";
   if (threshold < 3.5) return "medio";
   return "en desarrollo";

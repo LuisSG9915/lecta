@@ -9,7 +9,14 @@ import { CompanionProvider } from "./components/CompanionProvider";
 import ThemeMenu from "./components/ThemeMenu";
 import Shelf, { type ShelfItem } from "./components/Shelf";
 import Dialog from "./components/Dialog";
-import { applyTheme, loadTheme, saveTheme, type ThemeChoice } from "./lib/settings";
+import {
+  applyTheme,
+  loadNativeLanguage,
+  loadTheme,
+  readerProfileFor,
+  saveTheme,
+  type ThemeChoice,
+} from "./lib/settings";
 import { decidePendingDelete, PENDING_DELETE_KEY } from "./lib/account-cleanup";
 import { pushOverlay, type OverlayHandle } from "./lib/history";
 import { sha256Hex } from "./lib/hash";
@@ -230,7 +237,8 @@ export default function App() {
   // abierta — el aviso se mantiene para reintentar cuando no.
   const requestCalibration = async (language = "es"): Promise<boolean> => {
     if (calibrationWords) return true;
-    const sample = await fetchCalibrationSample(language);
+    const profile = readerProfileFor(loadNativeLanguage(), language);
+    const sample = await fetchCalibrationSample(language, profile);
     if (!sample.ok || !sample.words.length) {
       setError("No se pudo cargar la lista de palabras. Intenta de nuevo con conexión.");
       return false;

@@ -52,28 +52,7 @@ export async function releaseScreenWakeLock(
   }
 }
 
-/**
- * Alterna el modo de pantalla completa en el navegador.
- */
-export async function toggleFullscreen(enter: boolean): Promise<boolean> {
-  if (typeof document === "undefined") return false;
-  try {
-    if (enter) {
-      if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
-        await document.documentElement.requestFullscreen();
-        return true;
-      }
-    } else {
-      if (document.fullscreenElement && document.exitFullscreen) {
-        await document.exitFullscreen();
-        return false;
-      }
-    }
-  } catch {
-    // Si el usuario o el navegador bloquea pantalla completa, no fallar
-  }
-  return Boolean(document.fullscreenElement);
-}
+export { toggleFullscreen } from "./fullscreen";
 
 /**
  * Formatea el tiempo restante para sesiones con meta (ej. "14:25").

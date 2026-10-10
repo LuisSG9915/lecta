@@ -48,6 +48,8 @@ import {
 import { hasUsableDefinition, measuredZipf } from "../../shared/lexicon";
 import {
   cliticBasesFor,
+  DEFAULT_THRESHOLD_LEARNER,
+  DEFAULT_THRESHOLD_NATIVE,
   estimateProfile,
   isCredibleKnowledge,
   predictSection,
@@ -105,11 +107,13 @@ import {
   type FocusTracker,
 } from "../lib/focus-telemetry";
 import {
+  loadNativeLanguage,
   loadReaderSettings,
   saveReaderSettings,
   hasBookReaderSettings,
   clearBookReaderSettings,
   hasExplicitPreparationMode,
+  readerProfileFor,
   readerCssVars,
   READER_LIMITS,
   READER_FONTS,
@@ -208,12 +212,17 @@ import {
   formatElapsedMinutes,
   requestScreenWakeLock,
   releaseScreenWakeLock,
-  toggleFullscreen,
   triggerHaptic,
   type DeepReadingConfig,
   type DeepReadingState,
   type DeepReadingSummary,
 } from "../lib/deep-reading";
+import {
+  isFullscreen,
+  isFullscreenSupported,
+  subscribeFullscreenChange,
+  toggleFullscreen,
+} from "../lib/fullscreen";
 import { playCompanionSound } from "../lib/companion-audio";
 import ThemeMenu, { FocusModeMenu } from "./ThemeMenu";
 import Toggle from "./Toggle";
@@ -405,6 +414,7 @@ export default function Reader({
   // Perfil léxico del lector: umbral zipf estimado con la evidencia
   // «conozco / no conozco» más el ajuste manual (knowledge.ts).
   const profileRef = useRef<VocabProfile | null>(null);
+  const baseThresholdRef = useRef(DEFAULT_THRESHOLD_NATIVE);
   // Ajuste manual del umbral (session: profileAdjust).
   const adjustRef = useRef(0);
   // Evidencia por lema que alimenta estimateProfile; crece con cada
@@ -570,6 +580,7 @@ export default function Reader({
   const [sheet, setSheet] = useState<SheetKind | null>(null);
   const [settingsTab, setSettingsTab] = useState<"appearance" | "layout" | "tools">("appearance");
   const [barsVisible, setBarsVisible] = useState(true);
+  const [isFullscreenActive, setIsFullscreenActive] = useState(() => isFullscreen());
   const [scrollRatio, setScrollRatio] = useState(0);
   const [wpm, setWpm] = useState(DEFAULT_WPM);
   const [settings, setSettings] = useState<ReaderSettings>(() => loadReaderSettings(bookHash));
@@ -1377,6 +1388,7 @@ export default function Reader({
     profileRef.current = estimateProfile(
       [...evidenceRef.current.values()],
       adjustRef.current,
+      baseThresholdRef.current,
     );
     applyPrediction(sectionIndexRef.current, language);
   };
@@ -1473,8 +1485,11 @@ export default function Reader({
         knowledge: knowledgeMapRef.current,
         threshold:
           profileRef.current?.threshold ??
-          estimateProfile([...evidenceRef.current.values()], adjustRef.current)
-            .threshold,
+          estimateProfile(
+            [...evidenceRef.current.values()],
+            adjustRef.current,
+            baseThresholdRef.current,
+          ).threshold,
         lex,
       }),
     [],
@@ -1781,6 +1796,7 @@ export default function Reader({
     const next = estimateProfile(
       [...evidenceRef.current.values()],
       adjustRef.current,
+      baseThresholdRef.current,
     );
     profileRef.current = next;
     applyPrediction(sectionIndexRef.current, language);
@@ -1947,7 +1963,11 @@ export default function Reader({
     }
     knowledgeMapRef.current = map;
     evidenceRef.current = nextEvidence;
-    const next = estimateProfile([...nextEvidence.values()], adjustRef.current);
+    const next = estimateProfile(
+      [...nextEvidence.values()],
+      adjustRef.current,
+      baseThresholdRef.current,
+    );
     profileRef.current = next;
   }, []);
 
@@ -2416,6 +2436,7 @@ export default function Reader({
       lastTargetEnteredRef.current = null;
       savedEnrichSentRef.current = false;
       profileRef.current = null;
+      baseThresholdRef.current = DEFAULT_THRESHOLD_NATIVE;
       adjustRef.current = 0;
       // Poda perezosa del trayecto: conserva el historial reciente.
       void pruneReadingHistory(undefined, scope);
@@ -2434,6 +2455,12 @@ export default function Reader({
         bookRef.current = book;
         loadBlobRef.current = loadBlob;
         const bookLanguage = await detectBookLanguage(book).catch(() => getBookLanguage(book));
+        const nativeLanguage = loadNativeLanguage();
+        const readerProfile = readerProfileFor(nativeLanguage, bookLanguage);
+        baseThresholdRef.current =
+          readerProfile === "native"
+            ? DEFAULT_THRESHOLD_NATIVE
+            : DEFAULT_THRESHOLD_LEARNER;
         const storedWords = await listSavedWords(bookLanguage, scope);
         savedForms.current = savedFormLevels(storedWords);
         recordDominated(storedWords, bookLanguage, scope);
@@ -3100,6 +3127,19 @@ export default function Reader({
     return () => clearInterval(interval);
   }, [deepReading?.active, deepReading?.startedAt, deepReading?.targetEndedAt, finishDeepReading]);
 
+  // Sincronización del estado de pantalla completa
+  useEffect(() => {
+    return subscribeFullscreenChange(() => {
+      setIsFullscreenActive(isFullscreen());
+    });
+  }, []);
+
+  const handleToggleFullscreen = useCallback(async () => {
+    triggerHaptic("selection");
+    const next = await toggleFullscreen();
+    setIsFullscreenActive(next);
+  }, []);
+
   // Limpieza de pantalla completa y wake lock al desmontar el lector
   useEffect(() => {
     return () => {
@@ -3112,7 +3152,7 @@ export default function Reader({
 
   // Atajos de lectura: ← / → / Espacio / AvPág / RePág pasan página o sección.
   // Ctrl+F abre búsqueda; T abre índice; M abre marcadores; D consulta palabra;
-  // Tab siempre trae las barras de vuelta.
+  // F / F11 alterna pantalla completa; Tab siempre trae las barras de vuelta.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Tab") setBarsVisible(true);
@@ -3149,6 +3189,17 @@ export default function Reader({
           openSheet("marks");
           return;
         }
+        if (event.key === "f" || event.key === "F") {
+          event.preventDefault();
+          void handleToggleFullscreen();
+          return;
+        }
+      }
+
+      if (event.key === "F11") {
+        event.preventDefault();
+        void handleToggleFullscreen();
+        return;
       }
 
       if (event.key === " " || event.code === "Space") {
@@ -3209,7 +3260,7 @@ export default function Reader({
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selection, sheet, panelsOpen, sectionIndex, sectionTotal, navigate, goPage, noteActivity, language]);
+  }, [selection, sheet, panelsOpen, sectionIndex, sectionTotal, navigate, goPage, noteActivity, language, handleToggleFullscreen]);
 
   const onWordSaved = (word: SavedWord) => {
     ttsRef.current?.noteSavedWord();
@@ -3458,10 +3509,10 @@ export default function Reader({
     setBookOverride(false);
   };
 
-  // En modo paginado el documento no hace scroll: sin scroll-up no hay
-  // forma de recuperar barras ocultas, así que siempre se muestran.
-  // En Retiro de lectura las barras siempre se ocultan para máxima inmersión.
-  const barsShown = !isDeepReading && (barsVisible || settings.layout === "pages");
+  // En modo paginado el documento no hace scroll: sin scroll-up se mantienen
+  // visibles salvo en pantalla completa o retiro para permitir inmersión total.
+  const barsShown =
+    !isDeepReading && (barsVisible || (!isFullscreenActive && settings.layout === "pages"));
 
   const viewRatio =
     settings.layout === "pages"
@@ -3666,6 +3717,7 @@ export default function Reader({
       data-dropcap={settings.dropCap || undefined}
       data-layout={settings.layout === "pages" ? "pages" : undefined}
       data-hyphens={settings.enableHyphenation || undefined}
+      data-fullscreen={isFullscreenActive || undefined}
     >
       <div
         ref={measureProbeRef}
@@ -3687,80 +3739,145 @@ export default function Reader({
           {author ? <span className="reader-bar-author"> · {author}</span> : null}
         </p>
         <div className="reader-bar-actions">
-          <button
-            type="button"
-            className="btn--quiet reader-bar-btn"
-            onClick={() => openSheet("search")}
-            aria-label="Buscar en el libro"
-            title="Buscar"
-          >
-            <span className="reader-btn-icon" aria-hidden="true">🔍</span>
-            <span className="reader-btn-text">Buscar</span>
-          </button>
-          <button
-            type="button"
-            className="btn--quiet reader-bar-btn"
-            onClick={() => openSheet("toc")}
-            aria-label="Índice del libro"
-            title="Índice"
-          >
-            <span className="reader-btn-icon" aria-hidden="true">☰</span>
-            <span className="reader-btn-text">Índice</span>
-          </button>
-          <button
-            type="button"
-            className="btn--quiet reader-bar-btn reader-bar-btn--settings"
-            onClick={() => openSheet("settings")}
-            aria-label="Ajustes de lectura"
-            title="Ajustes de lectura (Aa)"
-          >
-            <span className="reader-btn-icon reader-btn-icon--aa" aria-hidden="true">Aa</span>
-            <span className="reader-btn-text">Ajustes</span>
-          </button>
-          <button
-            type="button"
-            className="btn--quiet reader-bar-btn"
-            onClick={() => setDeepModal(true)}
-            aria-label="Iniciar modo retiro de lectura"
-            title="Retiro de lectura"
-          >
-            <span className="reader-btn-icon" aria-hidden="true">🕯️</span>
-            <span className="reader-btn-text">Retiro</span>
-          </button>
-          {/* Acceso directo a la voz: un toque desde la barra, sin
-              entrar a ajustes. Solo existe donde hay voces del
-              dispositivo (Web Speech API). */}
-          {isTtsSupported() ? (
+          {/* Grupo 1: Navegación y estructura del libro */}
+          <div className="reader-bar-group" role="group" aria-label="Navegación del libro">
             <button
               type="button"
               className="btn--quiet reader-bar-btn"
-              onClick={onTtsRequest}
-              aria-label={
-                ttsSnap.status !== "idle"
-                  ? "Detener lectura en voz alta"
-                  : "Leer en voz alta"
-              }
-              aria-pressed={ttsSnap.status !== "idle"}
-              title={ttsSnap.status !== "idle" ? "Detener voz" : "Escuchar"}
+              onClick={() => openSheet("toc")}
+              aria-label="Índice del libro"
+              title="Índice (T)"
             >
-              <span className="reader-btn-icon" aria-hidden="true">
-                {ttsSnap.status !== "idle" ? "⏹️" : "🎧"}
-              </span>
-              <span className="reader-btn-text">
-                {ttsSnap.status !== "idle" ? "Detener" : "Escuchar"}
-              </span>
+              <span className="reader-btn-icon" aria-hidden="true">☰</span>
+              <span className="reader-btn-text">Índice</span>
             </button>
-          ) : null}
-          <button
-            type="button"
-            className="btn--quiet reader-bar-btn"
-            onClick={onOpenNotebook}
-            aria-label="Abrir Cuaderno de vocabulario"
-            title="Cuaderno"
-          >
-            <span className="reader-btn-icon" aria-hidden="true">📓</span>
-            <span className="reader-btn-text">Cuaderno</span>
-          </button>
+            <button
+              type="button"
+              className="btn--quiet reader-bar-btn"
+              onClick={() => openSheet("search")}
+              aria-label="Buscar en el libro"
+              title="Buscar (Ctrl+F)"
+            >
+              <span className="reader-btn-icon" aria-hidden="true">🔍</span>
+              <span className="reader-btn-text">Buscar</span>
+            </button>
+          </div>
+
+          <span className="reader-bar-divider" aria-hidden="true" />
+
+          {/* Grupo 2: Visualización y pantalla */}
+          <div className="reader-bar-group" role="group" aria-label="Visualización y pantalla">
+            <button
+              type="button"
+              className="btn--quiet reader-bar-btn reader-bar-btn--settings"
+              onClick={() => openSheet("settings")}
+              aria-label="Ajustes de lectura"
+              title="Ajustes de lectura (Aa)"
+            >
+              <span className="reader-btn-icon reader-btn-icon--aa" aria-hidden="true">Aa</span>
+              <span className="reader-btn-text">Ajustes</span>
+            </button>
+            {isFullscreenSupported() ? (
+              <button
+                type="button"
+                className="btn--quiet reader-bar-btn reader-bar-btn--fullscreen"
+                onClick={() => void handleToggleFullscreen()}
+                aria-label={
+                  isFullscreenActive
+                    ? "Salir de pantalla completa"
+                    : "Pantalla completa"
+                }
+                aria-pressed={isFullscreenActive}
+                title={
+                  isFullscreenActive
+                    ? "Salir de pantalla completa (F)"
+                    : "Pantalla completa (F)"
+                }
+              >
+                <span className="reader-btn-icon" aria-hidden="true">
+                  {isFullscreenActive ? (
+                    <svg
+                      className="reader-icon-svg"
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3" />
+                    </svg>
+                  ) : (
+                    <svg
+                      className="reader-icon-svg"
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
+                    </svg>
+                  )}
+                </span>
+                <span className="reader-btn-text">
+                  {isFullscreenActive ? "Ventana" : "Completa"}
+                </span>
+              </button>
+            ) : null}
+          </div>
+
+          <span className="reader-bar-divider" aria-hidden="true" />
+
+          {/* Grupo 3: Herramientas de lectura */}
+          <div className="reader-bar-group" role="group" aria-label="Herramientas de lectura">
+            <button
+              type="button"
+              className="btn--quiet reader-bar-btn"
+              onClick={onOpenNotebook}
+              aria-label="Abrir Cuaderno de vocabulario"
+              title="Cuaderno (Vocabulario)"
+            >
+              <span className="reader-btn-icon" aria-hidden="true">📓</span>
+              <span className="reader-btn-text">Cuaderno</span>
+            </button>
+            {isTtsSupported() ? (
+              <button
+                type="button"
+                className="btn--quiet reader-bar-btn"
+                onClick={onTtsRequest}
+                aria-label={
+                  ttsSnap.status !== "idle"
+                    ? "Detener lectura en voz alta"
+                    : "Leer en voz alta"
+                }
+                aria-pressed={ttsSnap.status !== "idle"}
+                title={ttsSnap.status !== "idle" ? "Detener voz" : "Escuchar"}
+              >
+                <span className="reader-btn-icon" aria-hidden="true">
+                  {ttsSnap.status !== "idle" ? "⏹️" : "🎧"}
+                </span>
+                <span className="reader-btn-text">
+                  {ttsSnap.status !== "idle" ? "Detener" : "Escuchar"}
+                </span>
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="btn--quiet reader-bar-btn"
+              onClick={() => setDeepModal(true)}
+              aria-label="Iniciar modo retiro de lectura"
+              title="Retiro de lectura"
+            >
+              <span className="reader-btn-icon" aria-hidden="true">🕯️</span>
+              <span className="reader-btn-text">Retiro</span>
+            </button>
+          </div>
         </div>
       </header>
 
@@ -3856,22 +3973,30 @@ export default function Reader({
           <nav className="page-nav" aria-label="Navegación de páginas">
             <button
               type="button"
-              className="reader-end-link"
+              className="page-nav-btn"
               disabled={sectionIndex === 0 && page === 0}
-              onClick={() => goPage(-1)}
+              onClick={() => {
+                triggerHaptic("selection");
+                goPage(-1);
+              }}
+              aria-label="Página anterior"
             >
-              ← Anterior
+              <span aria-hidden="true">‹</span> Anterior
             </button>
             <span className="page-nav-count meta" aria-live="polite">
               {pageCount ? `Página ${page + 1} de ${pageCount}` : ""}
             </span>
             <button
               type="button"
-              className="reader-end-link"
+              className="page-nav-btn"
               disabled={sectionIndex + 1 >= sectionTotal && page + 1 >= pageCount}
-              onClick={() => goPage(1)}
+              onClick={() => {
+                triggerHaptic("selection");
+                goPage(1);
+              }}
+              aria-label="Página siguiente"
             >
-              Siguiente →
+              Siguiente <span aria-hidden="true">›</span>
             </button>
           </nav>
           </>
@@ -3905,6 +4030,62 @@ export default function Reader({
           </>
         )}
       </div>
+
+      {/* Botones de navegación lateral flotantes */}
+      {state === "ready" && !isDeepReading ? (
+        <>
+          <button
+            type="button"
+            className="reader-nav-edge reader-nav-prev"
+            disabled={
+              settings.layout === "pages"
+                ? sectionIndex === 0 && page === 0
+                : sectionIndex === 0
+            }
+            onClick={() => {
+              triggerHaptic("selection");
+              if (settings.layout === "pages") {
+                goPage(-1);
+              } else if (sectionIndex > 0) {
+                navPrevSection(sectionIndex - 1);
+              }
+            }}
+            aria-label={settings.layout === "pages" ? "Página anterior" : "Sección anterior"}
+            title={
+              settings.layout === "pages"
+                ? "Página anterior (←)"
+                : `Sección anterior: ${prevRow?.label ?? "Anterior"}`
+            }
+          >
+            <span aria-hidden="true">‹</span>
+          </button>
+          <button
+            type="button"
+            className="reader-nav-edge reader-nav-next"
+            disabled={
+              settings.layout === "pages"
+                ? sectionIndex + 1 >= sectionTotal && page + 1 >= pageCount
+                : sectionIndex + 1 >= sectionTotal
+            }
+            onClick={() => {
+              triggerHaptic("selection");
+              if (settings.layout === "pages") {
+                goPage(1);
+              } else if (sectionIndex + 1 < sectionTotal) {
+                navNextSection(sectionIndex + 1);
+              }
+            }}
+            aria-label={settings.layout === "pages" ? "Página siguiente" : "Sección siguiente"}
+            title={
+              settings.layout === "pages"
+                ? "Página siguiente (→)"
+                : `Sección siguiente: ${nextRow?.label ?? "Siguiente"}`
+            }
+          >
+            <span aria-hidden="true">›</span>
+          </button>
+        </>
+      ) : null}
 
       {/* Marcador de retomar: máxima prioridad en la franja — es el
           mensaje de apertura cuando el libro llevaba días cerrado.
@@ -4634,6 +4815,16 @@ export default function Reader({
                   onChange={(on) => updateSettings({ dropCap: on })}
                 />
               </div>
+              {isFullscreenSupported() ? (
+                <div className="setting-row">
+                  <span className="setting-label">Pantalla completa</span>
+                  <Toggle
+                    label="Modo pantalla completa"
+                    checked={isFullscreenActive}
+                    onChange={() => void handleToggleFullscreen()}
+                  />
+                </div>
+              ) : null}
               {bookOverride ? (
                 <div className="setting-row">
                   <span className="setting-label">Este libro tiene ajustes propios</span>

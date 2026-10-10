@@ -26,7 +26,15 @@ vi.mock("../lib/idb", async (importOriginal) => {
 });
 vi.mock("../lib/calibration", async (importOriginal) => {
   const mod = await importOriginal<typeof import("../lib/calibration")>();
-  return { ...mod, recordCalibration: vi.fn(async () => ({ knowledge: [], words: [] })) };
+  return {
+    ...mod,
+    recordCalibration: vi.fn(async () => ({ knowledge: [], words: [] })),
+    fetchCalibrationSample: vi.fn(async (_lang, profile) => ({
+      ok: true,
+      profile: profile ?? "native",
+      words: sample,
+    })),
+  };
 });
 vi.mock("../lib/reading-sync", () => ({
   pushKnowledgeToServer: vi.fn(async () => true),
@@ -47,6 +55,8 @@ let root: Root;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  localStorage.clear();
+  localStorage.setItem("lecta:nativeLanguageConfirmed", "1");
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);
@@ -56,6 +66,7 @@ afterEach(() => {
   act(() => root.unmount());
   host.remove();
   document.body.innerHTML = "";
+  localStorage.clear();
 });
 
 // Render + hidratación del borrador dentro de un solo act asíncrono:
@@ -239,5 +250,61 @@ describe("Calibration", () => {
     expect(onDone).not.toHaveBeenCalled();
     expect(recordMock).not.toHaveBeenCalled();
     expect(saveMock.mock.calls.every((call) => call[1] !== "")).toBe(true);
+  });
+
+  it("muestra la pregunta de lengua materna cuando no está confirmada", async () => {
+    localStorage.removeItem("lecta:nativeLanguageConfirmed");
+    localStorage.removeItem("lecta:nativeLanguage");
+    await render();
+    expect(text()).toContain("¿Cuál es tu lengua materna?");
+    expect(text()).toContain("Español (lengua materna)");
+    expect(text()).toContain("Otro idioma (estudiante de español)");
+  });
+
+  it("elegir 'Español (lengua materna)' guarda confirmación y arranca calibración", async () => {
+    localStorage.removeItem("lecta:nativeLanguageConfirmed");
+    localStorage.removeItem("lecta:nativeLanguage");
+    await render();
+    expect(text()).toContain("¿Cuál es tu lengua materna?");
+    const nativeBtn = [...host.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("Español (lengua materna)"),
+    )!;
+    await act(async () => {
+      nativeBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(localStorage.getItem("lecta:nativeLanguageConfirmed")).toBe("1");
+    expect(text()).toContain("Paso 1 de 3");
+  });
+
+  it("elegir 'Otro idioma' guarda la preferencia como no nativo y arranca calibración", async () => {
+    localStorage.removeItem("lecta:nativeLanguageConfirmed");
+    localStorage.removeItem("lecta:nativeLanguage");
+    await render();
+    const learnerBtn = [...host.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("Otro idioma"),
+    )!;
+    await act(async () => {
+      learnerBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(localStorage.getItem("lecta:nativeLanguageConfirmed")).toBe("1");
+    expect(localStorage.getItem("lecta:nativeLanguage")).toBe("other");
+    expect(text()).toContain("Paso 1 de 3");
+  });
+
+  it("saltar en la pregunta de lengua materna cierra la calibración", async () => {
+    const onDone = vi.fn();
+    localStorage.removeItem("lecta:nativeLanguageConfirmed");
+    await render({ onDone });
+    const skipBtn = [...host.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("Saltar prueba"),
+    )!;
+    await act(async () => {
+      skipBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+    expect(onDone).toHaveBeenCalled();
   });
 });

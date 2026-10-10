@@ -96,20 +96,22 @@ app.get("/api/lexicon/lookup", async (context) => {
 // Disponible en español e inglés.
 app.get("/api/lexicon/sample", async (context) => {
   const language = context.req.query("language")?.trim() || "es";
+  const rawProfile = context.req.query("profile")?.trim();
+  const profile: CalibrationProfile = rawProfile === "learner" ? "learner" : "native";
   if (language !== "es" && language !== "en")
     return context.json({ error: "La muestra solo existe en español e inglés por ahora." }, 400);
 
   let words;
   try {
     words = await withClient(context.env, (client) =>
-      sampleForCalibration(client, language),
+      sampleForCalibration(client, language, profile),
     );
   } catch {
     return context.json({ error: "No se pudo consultar el catálogo." }, 502);
   }
 
   if (!words) return context.json({ error: "El catálogo no está configurado." }, 503);
-  return context.json({ words, version: calibrationBankVersion(language) });
+  return context.json({ words, version: calibrationBankVersion(language, profile) });
 });
 
 app.post("/api/lexicon/batch", async (context) => {

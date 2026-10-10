@@ -81,6 +81,22 @@
   max-inline-size: 100%;
 }
 
+.reader-bar-group {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+}
+
+.reader-bar-divider {
+  display: inline-block;
+  inline-size: 1px;
+  block-size: 1.25rem;
+  background-color: var(--rule);
+  margin-inline: 0.15rem;
+  flex: none;
+  opacity: 0.75;
+}
+
 .reader-bar-btn {
   display: inline-flex;
   align-items: center;
@@ -128,8 +144,15 @@
   color: var(--ink);
 }
 
+.reader-icon-svg {
+  display: block;
+  inline-size: 1.05rem;
+  block-size: 1.05rem;
+}
+
 .reader-btn-text {
   font-size: var(--fs-sm);
+  white-space: nowrap;
 }
 
 /* ---------- Cuerpo del libro ---------- */
@@ -407,6 +430,13 @@
 
 .reader-end-link:hover {
   text-decoration-color: var(--vermilion);
+}
+
+.reader-end-link:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  pointer-events: none;
+  text-decoration: none;
 }
 
 .reader-end-done {
@@ -999,6 +1029,100 @@ mark.saved-passage {
   font-variant-numeric: tabular-nums;
 }
 
+.page-nav-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.75rem;
+  border: 1px solid transparent;
+  border-radius: var(--r-1);
+  background: none;
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition:
+    color var(--dur-1) var(--ease-out),
+    background-color var(--dur-1) var(--ease-out),
+    border-color var(--dur-1) var(--ease-out);
+}
+
+.page-nav-btn:hover:not(:disabled) {
+  color: var(--vermilion);
+  background: var(--paper-raised);
+  border-color: var(--rule);
+}
+
+.page-nav-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* ---------- Botones de navegación lateral flotantes ---------- */
+
+.reader-nav-edge {
+  position: fixed;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 12;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 2.75rem;
+  block-size: 2.75rem;
+  padding: 0;
+  border-radius: 9999px;
+  border: 1px solid var(--rule);
+  background: var(--paper);
+  color: var(--ink-soft);
+  font-size: 1.75rem;
+  font-family: var(--font-ui);
+  line-height: 1;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+  cursor: pointer;
+  opacity: 0.35;
+  transition:
+    opacity var(--dur-2) var(--ease-out),
+    background-color var(--dur-1) var(--ease-out),
+    color var(--dur-1) var(--ease-out),
+    transform var(--dur-1) var(--ease-out),
+    box-shadow var(--dur-1) var(--ease-out);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.reader-nav-edge:hover:not(:disabled) {
+  opacity: 1;
+  color: var(--ink);
+  background: var(--paper-raised);
+  transform: translateY(-50%) scale(1.08);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+}
+
+.reader-nav-edge:active:not(:disabled) {
+  transform: translateY(-50%) scale(0.95);
+}
+
+.reader-nav-edge:focus-visible {
+  opacity: 1;
+  outline: 2px solid var(--vermilion);
+  outline-offset: 2px;
+}
+
+.reader-nav-prev {
+  inset-inline-start: var(--s-3);
+}
+
+.reader-nav-next {
+  inset-inline-end: var(--s-3);
+}
+
+.reader-nav-edge:disabled {
+  opacity: 0;
+  pointer-events: none;
+}
+
 /* ---------- Botón «Guardar pasaje» sobre la selección ---------- */
 
 .selection-save {
@@ -1242,13 +1366,16 @@ mark.saved-passage {
 
 /* ---------- Móvil ---------- */
 
-@media (max-width: 52rem) {
+@media (max-width: 56rem) {
   .reader-btn-text {
     display: none;
   }
   .reader-bar-btn {
     padding-inline: 0.45rem;
     min-width: 2.25rem;
+  }
+  .reader-nav-edge {
+    display: none;
   }
 }
 
@@ -1257,6 +1384,14 @@ mark.saved-passage {
     min-height: 3rem;
     padding-inline: var(--s-2);
     gap: var(--s-1);
+  }
+
+  .reader-bar-divider {
+    display: none;
+  }
+
+  .reader-bar-group {
+    gap: 2px;
   }
 
   .reader-back-label {

@@ -1,3 +1,5 @@
+import type { CalibrationProfile } from "../../shared/calibration-bank";
+
 export type ThemeChoice = "auto" | "blanco" | "papel" | "noche" | "oled";
 export type ResolvedTheme = Exclude<ThemeChoice, "auto">;
 
@@ -322,6 +324,7 @@ export function savePracticeCompanionMode(mode: PracticeCompanionMode): void {
 }
 
 const NATIVE_LANGUAGE_KEY = "lecta:nativeLanguage";
+const NATIVE_CONFIRMED_KEY = "lecta:nativeLanguageConfirmed";
 
 export function loadNativeLanguage(): string {
   try {
@@ -331,13 +334,29 @@ export function loadNativeLanguage(): string {
   }
 }
 
+export function hasExplicitNativeLanguage(): boolean {
+  try {
+    return storage()?.getItem(NATIVE_CONFIRMED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
 export function saveNativeLanguage(language: string): void {
   try {
+    storage()?.setItem(NATIVE_CONFIRMED_KEY, "1");
     if (language === "es") storage()?.removeItem(NATIVE_LANGUAGE_KEY);
     else storage()?.setItem(NATIVE_LANGUAGE_KEY, language);
   } catch {
     // almacenamiento lleno o deshabilitado
   }
+}
+
+export function readerProfileFor(
+  nativeLanguage = loadNativeLanguage(),
+  bookLanguage = "es",
+): CalibrationProfile {
+  return nativeLanguage === bookLanguage ? "native" : "learner";
 }
 
 // Sin elección manual ("auto") no se pone data-theme y la media query de

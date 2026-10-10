@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { LexiconEntry } from "./lexicon";
 import {
+  DEFAULT_THRESHOLD_LEARNER,
+  DEFAULT_THRESHOLD_NATIVE,
   PREDICT_CAP,
   cliticBaseForms,
   cliticBasesFor,
@@ -9,6 +11,7 @@ import {
   knowledgeEvidence,
   predictSection,
   resolveEvidence,
+  vocabLevelLabel,
   type KnowledgeEvidence,
 } from "./knowledge";
 
@@ -759,6 +762,37 @@ describe("resolveEvidence", () => {
       known: true,
       zipf: 2.75,
     });
+  });
+});
+
+describe("estimateProfile baseThreshold", () => {
+  it("usa DEFAULT_THRESHOLD_NATIVE por defecto para lectores nativos", () => {
+    const profile = estimateProfile([], 0, DEFAULT_THRESHOLD_NATIVE);
+    expect(profile.threshold).toBe(2.0);
+  });
+
+  it("usa DEFAULT_THRESHOLD_LEARNER para estudiantes", () => {
+    const profile = estimateProfile([], 0, DEFAULT_THRESHOLD_LEARNER);
+    expect(profile.threshold).toBe(3.0);
+  });
+
+  it("aplica el ajuste de sensibilidad sobre el umbral base", () => {
+    const profile = estimateProfile([], 0.3, DEFAULT_THRESHOLD_NATIVE);
+    expect(profile.threshold).toBe(2.3);
+  });
+});
+
+describe("vocabLevelLabel", () => {
+  it("etiqueta perfiles nativos según umbrales de vocabulario literario", () => {
+    expect(vocabLevelLabel(1.6, "native")).toBe("amplio");
+    expect(vocabLevelLabel(2.0, "native")).toBe("medio");
+    expect(vocabLevelLabel(2.6, "native")).toBe("en desarrollo");
+  });
+
+  it("etiqueta perfiles aprendices con escalas tradicionales", () => {
+    expect(vocabLevelLabel(2.2, "learner")).toBe("amplio");
+    expect(vocabLevelLabel(3.0, "learner")).toBe("medio");
+    expect(vocabLevelLabel(3.8, "learner")).toBe("en desarrollo");
   });
 });
 

@@ -3,6 +3,7 @@ import Sheet from "./Sheet";
 import {
   STEP_SIZE,
   calibrationDraftKey,
+  fetchCalibrationSample,
   parseCalibrationDraft,
   recordCalibration,
   serializeCalibrationDraft,
@@ -15,6 +16,12 @@ import {
   saveSessionValue,
   type DbScope,
 } from "../lib/idb";
+import {
+  hasExplicitNativeLanguage,
+  loadNativeLanguage,
+  readerProfileFor,
+  saveNativeLanguage,
+} from "../lib/settings";
 
 type CalibrationProps = {
   // Muestra del catálogo (lemas repartidos en bandas de frecuencia),
@@ -46,6 +53,11 @@ export default function Calibration({
   const [answers, setAnswers] = useState<CalibrationAnswers>({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [nativeLang, setNativeLang] = useState<string>(() => loadNativeLanguage());
+  const [showPrompt, setShowPrompt] = useState(
+    () => language === "es" && !hasExplicitNativeLanguage(),
+  );
+  const [loadingWords, setLoadingWords] = useState(false);
   // La muestra vigente: la recién descargada o la del borrador. Con
   // ella se evalúan respuestas y se re-serializa el borrador.
   const [sampleWords, setSampleWords] = useState<CalibrationWord[]>(words);
@@ -58,6 +70,35 @@ export default function Calibration({
   // cambia mientras está abierta, borrador y evidencia siguen
   // aterrizando juntos en la base dueña — nunca repartidos.
   const [bound] = useState<DbScope>(() => captureDbScope());
+
+  const handleSelectProfile = async (chosen: string) => {
+    saveNativeLanguage(chosen);
+    setNativeLang(chosen);
+    setShowPrompt(false);
+    const profile = readerProfileFor(chosen, language);
+    setLoadingWords(true);
+    try {
+      const res = await fetchCalibrationSample(language, profile);
+      if (res.ok && res.words.length) {
+        setSampleWords(res.words);
+        setAnswers({});
+        setStep(0);
+        void saveSessionValue(
+          calibrationDraftKey(language),
+          serializeCalibrationDraft({
+            answers: {},
+            step: 0,
+            words: res.words,
+          }),
+          bound,
+        ).catch(() => undefined);
+      }
+    } catch {
+      // Si falla la red se mantiene la muestra existente
+    } finally {
+      setLoadingWords(false);
+    }
+  };
 
   useEffect(() => {
     void loadSessionValue(calibrationDraftKey(language), bound)
@@ -139,6 +180,75 @@ export default function Calibration({
     void persist(answers, clamped);
   };
 
+  if (showPrompt) {
+    return (
+      <Sheet label="¿Cuál es tu lengua materna?" onClose={onClose}>
+        <div className="sheet-head">
+          <strong className="sheet-title">¿Cuál es tu lengua materna?</strong>
+          <button
+            type="button"
+            className="btn--quiet"
+            onClick={onClose}
+            aria-label="Cerrar calibración"
+            data-autofocus
+          >
+            Cerrar
+          </button>
+        </div>
+
+        <p className="meta">
+          Para adaptar la prueba a tu nivel real, indícanos si el español es tu lengua materna o estás aprendiéndolo:
+        </p>
+
+        <div style={{ display: "grid", gap: "1rem", marginBlock: "1.5rem" }}>
+          <button
+            type="button"
+            className="btn"
+            style={{
+              textAlign: "left",
+              padding: "1rem",
+              display: "grid",
+              gap: "0.25rem",
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius-md)",
+            }}
+            onClick={() => void handleSelectProfile("es")}
+          >
+            <strong style={{ fontSize: "var(--fs-md)" }}>Español (lengua materna)</strong>
+            <span className="meta">
+              Vocabulario literario, culto y expresivo. Se omiten palabras elementales.
+            </span>
+          </button>
+
+          <button
+            type="button"
+            className="btn"
+            style={{
+              textAlign: "left",
+              padding: "1rem",
+              display: "grid",
+              gap: "0.25rem",
+              border: "1px solid var(--border)",
+              borderRadius: "var(--radius-md)",
+            }}
+            onClick={() => void handleSelectProfile("other")}
+          >
+            <strong style={{ fontSize: "var(--fs-md)" }}>Otro idioma (estudiante de español)</strong>
+            <span className="meta">
+              Vocabulario graduado desde el uso habitual y descriptivo hasta avanzado.
+            </span>
+          </button>
+        </div>
+
+        <div className="actions">
+          <button type="button" className="btn" onClick={skip}>
+            Saltar prueba
+          </button>
+        </div>
+      </Sheet>
+    );
+  }
+
   return (
     <Sheet label="¿Qué palabras conoces?" onClose={onClose}>
       <div className="sheet-head">
@@ -154,43 +264,75 @@ export default function Calibration({
         </button>
       </div>
 
+      {language === "es" ? (
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            padding: "0.5rem 0.75rem",
+            marginBottom: "0.75rem",
+            background: "var(--surface-sunken, rgba(0, 0, 0, 0.04))",
+            borderRadius: "var(--radius-sm)",
+          }}
+        >
+          <span className="meta">
+            Perfil: <strong>{readerProfileFor(nativeLang, "es") === "native" ? "Español nativo" : "Estudiante de español"}</strong>
+          </span>
+          <button
+            type="button"
+            className="btn--quiet"
+            style={{ fontSize: "var(--fs-sm)", padding: 0 }}
+            onClick={() => setShowPrompt(true)}
+          >
+            Cambiar
+          </button>
+        </div>
+      ) : null}
+
       <p className="meta">
         Prueba general{language === "es" ? " de vocabulario en español" : language === "en" ? " de vocabulario en inglés" : " de vocabulario"}:
         marca cada palabra y Lecta ajusta qué palabras prepararte antes de cada
         capítulo. Puedes dejar algunas sin responder.
       </p>
 
-      <ul className="word-list">
-        {pageWords.map(({ lemma, definition }) => {
-          const answer = answers[lemma];
-          return (
-            <li key={lemma}>
-              <strong>{lemma}</strong>
-              <span className="cal-choices" role="group" aria-label={`Respuesta para ${lemma}`}>
-                <button
-                  type="button"
-                  className={`cal-choice${answer === "known" ? " is-selected" : ""}`}
-                  aria-pressed={answer === "known"}
-                  onClick={() => setAnswer(lemma, "known")}
-                >
-                  La conozco
-                </button>
-                <button
-                  type="button"
-                  className={`cal-choice${answer === "unknown" ? " is-selected" : ""}`}
-                  aria-pressed={answer === "unknown"}
-                  onClick={() => setAnswer(lemma, "unknown")}
-                >
-                  No la conozco
-                </button>
-              </span>
-              {answer === "unknown" && definition ? (
-                <span className="meta">{definition}</span>
-              ) : null}
-            </li>
-          );
-        })}
-      </ul>
+      {loadingWords ? (
+        <p className="meta" aria-live="polite" style={{ paddingBlock: "2rem", textAlign: "center" }}>
+          Cargando palabras…
+        </p>
+      ) : (
+        <ul className="word-list">
+          {pageWords.map(({ lemma, definition }) => {
+            const answer = answers[lemma];
+            return (
+              <li key={lemma}>
+                <strong>{lemma}</strong>
+                <span className="cal-choices" role="group" aria-label={`Respuesta para ${lemma}`}>
+                  <button
+                    type="button"
+                    className={`cal-choice${answer === "known" ? " is-selected" : ""}`}
+                    aria-pressed={answer === "known"}
+                    onClick={() => setAnswer(lemma, "known")}
+                  >
+                    La conozco
+                  </button>
+                  <button
+                    type="button"
+                    className={`cal-choice${answer === "unknown" ? " is-selected" : ""}`}
+                    aria-pressed={answer === "unknown"}
+                    onClick={() => setAnswer(lemma, "unknown")}
+                  >
+                    No la conozco
+                  </button>
+                </span>
+                {answer === "unknown" && definition ? (
+                  <span className="meta">{definition}</span>
+                ) : null}
+              </li>
+            );
+          })}
+        </ul>
+      )}
 
       {pageCount > 1 ? (
         <div className="actions">

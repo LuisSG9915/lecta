@@ -14,6 +14,8 @@ import {
   savePracticeCompanionMode,
   loadNativeLanguage,
   saveNativeLanguage,
+  hasExplicitNativeLanguage,
+  readerProfileFor,
   READER_DEFAULTS,
 } from "./settings";
 
@@ -295,17 +297,26 @@ describe("NativeLanguage", () => {
   it("defaults to 'es' when nothing is saved", () => {
     localStorage.clear();
     expect(loadNativeLanguage()).toBe("es");
+    expect(hasExplicitNativeLanguage()).toBe(false);
   });
 
-  it("persists chosen language", () => {
+  it("persists chosen language and marks as confirmed", () => {
     saveNativeLanguage("en");
     expect(loadNativeLanguage()).toBe("en");
+    expect(hasExplicitNativeLanguage()).toBe(true);
   });
 
-  it("removes storage key when reset to default 'es'", () => {
+  it("removes storage key when reset to default 'es' but remains confirmed", () => {
     saveNativeLanguage("en");
     saveNativeLanguage("es");
     expect(loadNativeLanguage()).toBe("es");
     expect(localStorage.getItem("lecta:nativeLanguage")).toBeNull();
+    expect(hasExplicitNativeLanguage()).toBe(true);
+  });
+
+  it("resolves readerProfileFor based on nativeLanguage and bookLanguage", () => {
+    expect(readerProfileFor("es", "es")).toBe("native");
+    expect(readerProfileFor("en", "es")).toBe("learner");
+    expect(readerProfileFor("es", "en")).toBe("learner");
   });
 });

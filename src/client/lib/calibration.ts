@@ -8,6 +8,7 @@ import {
 } from "./idb";
 import { pushKnowledgeToServer } from "./reading-sync";
 import { pushWordsToServer } from "./vocab";
+import type { CalibrationProfile } from "../../shared/calibration-bank";
 
 // Calibración inicial del vocabulario: una muestra del catálogo
 // (lemas repartidos en bandas de frecuencia, servida por
@@ -46,10 +47,11 @@ export type CalibrationSample =
 // llama abre el libro igual — la calibración nunca bloquea la lectura.
 export async function fetchCalibrationSample(
   language = "es",
+  profile: CalibrationProfile = "native",
 ): Promise<CalibrationSample> {
   try {
     const response = await fetch(
-      `/api/lexicon/sample?language=${encodeURIComponent(language)}`,
+      `/api/lexicon/sample?language=${encodeURIComponent(language)}&profile=${encodeURIComponent(profile)}`,
       { signal: AbortSignal.timeout(8000) },
     );
     const data = (await response.json()) as {

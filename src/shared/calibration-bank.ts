@@ -12,13 +12,23 @@
 //
 // Versión: se guarda con el borrador del examen; al cambiar la lista
 // se sube la versión para no restaurar respuestas contra otra muestra.
-export const CALIBRATION_BANK_VERSION = "es-bank-v1";
+export type CalibrationProfile = "native" | "learner";
+
+export const CALIBRATION_BANK_VERSION = "es-bank-v2";
 export const CALIBRATION_BANK_EN_VERSION = "en-bank-v1";
 
-// Bandas del examen: [desde, hasta) en zipf. La última queda
-// abierta en 5.0 — más frecuente sería trivial para casi cualquier
-// lector y no aporta señal.
-export const CALIBRATION_BANDS: readonly (readonly [number, number])[] = [
+// Bandas del examen para lectores nativos (vocabulario culto y literario).
+export const CALIBRATION_BANDS_NATIVE: readonly (readonly [number, number])[] = [
+  [1.5, 1.8],
+  [1.8, 2.1],
+  [2.1, 2.4],
+  [2.4, 2.7],
+  [2.7, 3.0],
+  [3.0, 3.3],
+];
+
+// Bandas del examen para aprendices de español como lengua extranjera.
+export const CALIBRATION_BANDS_LEARNER: readonly (readonly [number, number])[] = [
   [2.0, 2.5],
   [2.5, 3.0],
   [3.0, 3.5],
@@ -27,12 +37,110 @@ export const CALIBRATION_BANDS: readonly (readonly [number, number])[] = [
   [4.5, 5.0],
 ];
 
+// Bandas por defecto (retrocompatibilidad).
+export const CALIBRATION_BANDS = CALIBRATION_BANDS_LEARNER;
+
 // Cuántas palabras por banda salen en la muestra (6 × 3 = 18, en
 // tres pasos de seis).
 export const CALIBRATION_PER_BAND = 3;
 
-export const CALIBRATION_BANK: readonly (readonly string[])[] = [
-  // [2.0, 2.5) — raras pero reconocibles para un lector general.
+// Banco para hispanohablantes nativos (vocabulario literario, culto y expresivo).
+export const CALIBRATION_BANK_NATIVE: readonly (readonly string[])[] = [
+  // [1.5, 1.8) — vocabulario literario avanzado, arcaísmos o cultismos
+  [
+    "desperezarse",
+    "inmarcesible",
+    "zarandeo",
+    "lóbrego",
+    "mendaz",
+    "inane",
+    "beldad",
+    "zahorí",
+    "turgente",
+    "achacoso",
+    "abrevar",
+    "beodo",
+  ],
+  // [1.8, 2.1) — cultas y expresivas
+  [
+    "atavismo",
+    "omnímodo",
+    "acerbo",
+    "zalamero",
+    "concupiscencia",
+    "prebenda",
+    "truculento",
+    "resquemor",
+    "alborozo",
+    "circunspecto",
+    "tartán",
+    "diletante",
+  ],
+  // [2.1, 2.4) — literarias intermedias
+  [
+    "altivez",
+    "purpúreo",
+    "cimitarra",
+    "pesadumbre",
+    "hilaridad",
+    "hibernar",
+    "amargor",
+    "advenedizo",
+    "trivialidad",
+    "pestañeo",
+    "pertinaz",
+    "displicente",
+  ],
+  // [2.4, 2.7) — narrativa expresiva
+  [
+    "zancada",
+    "subyugar",
+    "baladí",
+    "congoja",
+    "desparpajo",
+    "pusilánime",
+    "ignominia",
+    "sagaz",
+    "torniquete",
+    "tedio",
+    "resbalón",
+    "tropezón",
+  ],
+  // [2.7, 3.0) — emociones y actitudes narrativas
+  [
+    "aflicción",
+    "suspicacia",
+    "cautela",
+    "zozobra",
+    "vehemencia",
+    "afán",
+    "titubeo",
+    "melancolía",
+    "apacible",
+    "desazón",
+    "sobresalto",
+    "sosiego",
+  ],
+  // [3.0, 3.3) — literarias comunes
+  [
+    "soslayar",
+    "abulia",
+    "desdén",
+    "regocijo",
+    "perplejo",
+    "efímero",
+    "taciturno",
+    "anhelo",
+    "recelo",
+    "júbilo",
+    "desolación",
+    "estupor",
+  ],
+];
+
+// Banco editorial para estudiantes de español (graduado desde cotidiano).
+export const CALIBRATION_BANK_LEARNER: readonly (readonly string[])[] = [
+  // [2.0, 2.5) — raras pero reconocibles para un estudiante intermedio/avanzado.
   [
     "subyugar",
     "zancada",
@@ -123,6 +231,9 @@ export const CALIBRATION_BANK: readonly (readonly string[])[] = [
     "propósito",
   ],
 ];
+
+// Alias para retrocompatibilidad
+export const CALIBRATION_BANK = CALIBRATION_BANK_NATIVE;
 
 // Banco editorial en inglés repartido en las mismas 6 bandas zipf.
 export const CALIBRATION_BANK_EN: readonly (readonly string[])[] = [
@@ -300,14 +411,39 @@ export const CALIBRATION_DEFINITIONS_EN: Readonly<Record<string, string>> = {
   water: "Agua, líquido vital transparente e inodoro.",
 };
 
-// Banco correspondiente según idioma.
-export function calibrationBank(language = "es"): readonly (readonly string[])[] {
-  return language === "en" ? CALIBRATION_BANK_EN : CALIBRATION_BANK;
+// Bandas correspondientes según perfil e idioma.
+export function calibrationBandsFor(
+  profile: CalibrationProfile = "native",
+  language = "es",
+): readonly (readonly [number, number])[] {
+  if (language === "en") return CALIBRATION_BANDS_LEARNER;
+  return profile === "native" ? CALIBRATION_BANDS_NATIVE : CALIBRATION_BANDS_LEARNER;
+}
+
+// Banco correspondiente según perfil e idioma.
+export function calibrationBankFor(
+  profile: CalibrationProfile = "native",
+  language = "es",
+): readonly (readonly string[])[] {
+  if (language === "en") return CALIBRATION_BANK_EN;
+  return profile === "native" ? CALIBRATION_BANK_NATIVE : CALIBRATION_BANK_LEARNER;
+}
+
+// Banco correspondiente según idioma (por defecto perfil nativo para español).
+export function calibrationBank(
+  language = "es",
+  profile: CalibrationProfile = "native",
+): readonly (readonly string[])[] {
+  return calibrationBankFor(profile, language);
 }
 
 // Versión del banco para asociar al borrador de calibración.
-export function calibrationBankVersion(language = "es"): string {
-  return language === "en" ? CALIBRATION_BANK_EN_VERSION : CALIBRATION_BANK_VERSION;
+export function calibrationBankVersion(
+  language = "es",
+  profile: CalibrationProfile = "native",
+): string {
+  if (language === "en") return CALIBRATION_BANK_EN_VERSION;
+  return `${CALIBRATION_BANK_VERSION}:${profile}`;
 }
 
 // Definición de respaldo cuando el catálogo no tenga acepción cargada.
@@ -317,24 +453,50 @@ export function calibrationFallbackDefinition(lemma: string, language = "es"): s
 }
 
 // Medición zipf estimada a partir de la banda editorial para lemas del banco.
-export function calibrationBankZipf(lemma: string, language = "es"): number | null {
-  const bank = calibrationBank(language);
+export function calibrationBankZipf(
+  lemma: string,
+  language = "es",
+  profile: CalibrationProfile = "native",
+): number | null {
   const normalized = lemma.trim().toLowerCase();
-  for (let band = 0; band < bank.length; band++) {
-    if (bank[band].includes(normalized)) {
-      return 2.0 + band * 0.5 + 0.25;
+  const primaryBank = calibrationBankFor(profile, language);
+  const primaryBands = calibrationBandsFor(profile, language);
+  for (let band = 0; band < primaryBank.length; band++) {
+    if (primaryBank[band].includes(normalized)) {
+      const [lo, hi] = primaryBands[band];
+      return Number(((lo + hi) / 2).toFixed(2));
+    }
+  }
+  // Fallback al otro banco si es español para asegurar mediciones de respaldo
+  if (language === "es") {
+    const otherProfile = profile === "native" ? "learner" : "native";
+    const otherBank = calibrationBankFor(otherProfile, language);
+    const otherBands = calibrationBandsFor(otherProfile, language);
+    for (let band = 0; band < otherBank.length; band++) {
+      if (otherBank[band].includes(normalized)) {
+        const [lo, hi] = otherBands[band];
+        return Number(((lo + hi) / 2).toFixed(2));
+      }
     }
   }
   return null;
 }
 
 // Índice de banda para una medición zipf; -1 fuera del rango.
-export function calibrationBandIndex(zipf: number): number {
-  return CALIBRATION_BANDS.findIndex(([lo, hi]) => zipf >= lo && zipf < hi);
+export function calibrationBandIndex(
+  zipf: number,
+  profile: CalibrationProfile = "native",
+  language = "es",
+): number {
+  const bands = calibrationBandsFor(profile, language);
+  return bands.findIndex(([lo, hi]) => zipf >= lo && zipf < hi);
 }
 
 // Lista plana de lemas del banco (para el WHERE del catálogo).
-export function calibrationBankLemmas(language = "es"): string[] {
-  return calibrationBank(language).flat();
+export function calibrationBankLemmas(
+  language = "es",
+  profile: CalibrationProfile = "native",
+): string[] {
+  return calibrationBankFor(profile, language).flat();
 }
 

@@ -30,6 +30,8 @@ import {
   type ReadingPresence,
 } from "../../shared/companion-data";
 import {
+  DEFAULT_THRESHOLD_LEARNER,
+  DEFAULT_THRESHOLD_NATIVE,
   estimateStoredProfile,
   isCredibleKnowledge,
   vocabLevelLabel,
@@ -43,7 +45,11 @@ import {
 import { downloadBackup } from "../lib/export";
 import { timeAgo } from "../lib/relative-time";
 import { getDictionaryCacheWordCount, emptyDictionaryCache } from "../lib/offline-dictionary";
-import { loadNativeLanguage, saveNativeLanguage } from "../lib/settings";
+import {
+  loadNativeLanguage,
+  readerProfileFor,
+  saveNativeLanguage,
+} from "../lib/settings";
 import Dialog from "./Dialog";
 import Toggle from "./Toggle";
 
@@ -59,7 +65,11 @@ type AccountProps = {
   onOpenCalibration: (words: CalibrationWord[], language?: string) => void;
 };
 
-async function loadVocabSummary(language: string, scope: DbScope): Promise<string> {
+async function loadVocabSummary(
+  language: string,
+  scope: DbScope,
+  nativeLang = loadNativeLanguage(),
+): Promise<string> {
   const [allRows, savedWords] = await Promise.all([
     listKnowledge(language, scope).catch(() => []),
     listSavedWords(language, scope).catch(() => []),
@@ -75,9 +85,14 @@ async function loadVocabSummary(language: string, scope: DbScope): Promise<strin
     return "Aún sin medición; se ofrece una prueba breve al terminar tu primer capítulo.";
   }
   const knownCount = rows.filter((row) => row.known).length;
-  const profile = await estimateStoredProfile(rows, language);
+  const readerProf = readerProfileFor(nativeLang, language);
+  const baseThreshold =
+    readerProf === "native"
+      ? DEFAULT_THRESHOLD_NATIVE
+      : DEFAULT_THRESHOLD_LEARNER;
+  const profile = await estimateStoredProfile(rows, language, 0, baseThreshold);
   return profile
-    ? `${knownCount} palabras que ya conoces · nivel estimado: ${vocabLevelLabel(profile.threshold)}`
+    ? `${knownCount} palabras que ya conoces · nivel estimado: ${vocabLevelLabel(profile.threshold, readerProf)}`
     : `${knownCount} palabras que ya conoces · sin conexión no se puede estimar el nivel`;
 }
 
@@ -196,8 +211,8 @@ export default function Account({
     void (async () => {
       const scope = captureDbScope();
       const [esText, enText] = await Promise.all([
-        loadVocabSummary("es", scope),
-        loadVocabSummary("en", scope),
+        loadVocabSummary("es", scope, nativeLanguage),
+        loadVocabSummary("en", scope, nativeLanguage),
       ]);
       if (!cancelled) {
         setVocabInfoEs(esText);
@@ -207,7 +222,7 @@ export default function Account({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [nativeLanguage]);
   useEffect(() => {
     if (!userId) return;
     let cancelled = false;
@@ -476,7 +491,8 @@ export default function Account({
     setLoadingSampleLang(lang);
     setError("");
     try {
-      const sample = await fetchCalibrationSample(lang);
+      const profile = readerProfileFor(nativeLanguage, lang);
+      const sample = await fetchCalibrationSample(lang, profile);
       if (sample.ok && sample.words.length) {
         onOpenCalibration(sample.words, lang);
       } else {
@@ -718,7 +734,7 @@ export default function Account({
           </select>
         </div>
         <p className="meta">
-          Se usa para adaptar las explicaciones y traducciones cuando leas en otros idiomas.
+          Se usa para calibrar tu nivel de vocabulario, evitar falsas alarmas en palabras comunes y adaptar las explicaciones.
         </p>
       </section>
 
@@ -903,6 +919,14 @@ export default function Account({
           {cachedDictWords && cachedDictWords > 0
             ? `${cachedDictWords} definiciones guardadas en este dispositivo para consulta sin conexión.`
             : "Las definiciones consultadas o descargadas se conservan aquí para que puedas leer sin conexión."}
+        </p>
+        <h2 className="eyebrow">Lectura en Kindle y Tinta Electrónica</h2>
+        <p className="meta">
+          ¿Tienes un Kindle o lector de tinta electrónica? Abre{" "}
+          <a href="/k" target="_blank" rel="noreferrer">
+            /k
+          </a>{" "}
+          desde su navegador para leer tus libros en una interfaz ultra-ligera, sin JavaScript y sincronizada con tu cuenta.
         </p>
         <h2 className="eyebrow">Acerca de</h2>
         <p className="meta">

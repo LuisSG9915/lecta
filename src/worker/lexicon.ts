@@ -4,9 +4,10 @@ import { hasUsableDefinition } from "../shared/lexicon";
 import {
   CALIBRATION_PER_BAND,
   calibrationBandIndex,
-  calibrationBank,
+  calibrationBankFor,
   calibrationBankLemmas,
   calibrationFallbackDefinition,
+  type CalibrationProfile,
 } from "../shared/calibration-bank";
 
 // El catálogo léxico es dato de referencia compartido (no datos de
@@ -155,8 +156,9 @@ const shuffle = <T,>(list: T[]): T[] => {
 export async function sampleForCalibration(
   client: pg.Client,
   language: string,
+  profile: CalibrationProfile = "native",
 ): Promise<SampleWord[]> {
-  const bank = calibrationBank(language);
+  const bank = calibrationBankFor(profile, language);
   const { rows } = await client.query<{
     id: string;
     lemma: string;
@@ -164,7 +166,7 @@ export async function sampleForCalibration(
     zipf: number | null;
     definition: string | null;
     def_count: number;
-  }>(SAMPLE_BANK_SQL, [language, calibrationBankLemmas(language)]);
+  }>(SAMPLE_BANK_SQL, [language, calibrationBankLemmas(language, profile)]);
 
   const byLemma = new Map<string, typeof rows>();
   for (const row of rows) {
@@ -195,7 +197,7 @@ export async function sampleForCalibration(
       if (
         dominant &&
         dominant.zipf != null &&
-        calibrationBandIndex(dominant.zipf) === band
+        calibrationBandIndex(dominant.zipf, profile, language) === band
       ) {
         return [{ lemma, definition: dominant.definition }];
       }
