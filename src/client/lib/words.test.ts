@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { extractWordAtPoint } from "./words";
+import { extractWordAtPoint, wordHitFromRange } from "./words";
 
 // jsdom no implementa caretRangeFromPoint: se stubbea en cada prueba
 // y se restaura el valor original (undefined) al terminar.
@@ -100,5 +100,67 @@ describe("extractWordAtPoint", () => {
 
     // Clic en x=80 (dentro de la palabra)
     expect(extractWordAtPoint(80, 110, root)?.word).toBe("borde");
+  });
+});
+
+describe("wordHitFromRange", () => {
+  it("devuelve hit con palabra y contexto cuando la selección cubre exactamente una palabra", () => {
+    const root = render("<p>La casa antigua. La casa nueva.</p>");
+    const node = textNode(root.querySelector("p"));
+    const text = node.textContent ?? "";
+    const start = text.indexOf("antigua");
+    const range = document.createRange();
+    range.setStart(node, start);
+    range.setEnd(node, start + "antigua".length);
+
+    const hit = wordHitFromRange(range, root, "es");
+    expect(hit).not.toBeNull();
+    expect(hit?.word).toBe("antigua");
+    expect(hit?.context).toBe("La casa antigua.");
+  });
+
+  it("devuelve null cuando la selección abarca múltiples palabras", () => {
+    const root = render("<p>La casa antigua. La casa nueva.</p>");
+    const node = textNode(root.querySelector("p"));
+    const text = node.textContent ?? "";
+    const start = text.indexOf("casa antigua");
+    const range = document.createRange();
+    range.setStart(node, start);
+    range.setEnd(node, start + "casa antigua".length);
+
+    expect(wordHitFromRange(range, root, "es")).toBeNull();
+  });
+
+  it("devuelve null cuando la selección es solo puntuación o espacios", () => {
+    const root = render("<p>Hola... mundo</p>");
+    const node = textNode(root.querySelector("p"));
+    const text = node.textContent ?? "";
+    const start = text.indexOf("...");
+    const range = document.createRange();
+    range.setStart(node, start);
+    range.setEnd(node, start + 3);
+
+    expect(wordHitFromRange(range, root, "es")).toBeNull();
+  });
+
+  it("devuelve null si el range está colapsado", () => {
+    const root = render("<p>Palabra única</p>");
+    const node = textNode(root.querySelector("p"));
+    const range = document.createRange();
+    range.setStart(node, 0);
+    range.collapse(true);
+
+    expect(wordHitFromRange(range, root, "es")).toBeNull();
+  });
+
+  it("devuelve null si el range pertenece a otro contenedor fuera de root", () => {
+    const root = render("<p>Dentro</p>");
+    const other = render("<p>Fuera</p>");
+    const node = textNode(other.querySelector("p"));
+    const range = document.createRange();
+    range.setStart(node, 0);
+    range.setEnd(node, 5);
+
+    expect(wordHitFromRange(range, root, "es")).toBeNull();
   });
 });

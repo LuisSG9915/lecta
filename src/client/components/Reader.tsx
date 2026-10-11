@@ -8,7 +8,9 @@ import {
 } from "react";
 import type { EpubBook } from "../lib/epub";
 import type { WordHit } from "../lib/words";
-import { extractWordAtPoint } from "../lib/words";
+import { extractWordAtPoint, wordHitFromRange } from "../lib/words";
+import { tapZone } from "../lib/page-gesture";
+import { usePageGesture } from "../lib/use-page-gesture";
 import {
   openEpub,
   detectBookLanguage,
@@ -595,7 +597,14 @@ export default function Reader({
     ratio: number;
     anchor?: string;
   } | null>(null);
-  const [selButton, setSelButton] = useState<{ x: number; y: number } | null>(null);
+  const [selButton, setSelButton] = useState<{
+    x: number;
+    y: number;
+    placement: "top" | "bottom";
+    singleWordHit: WordHit | null;
+  } | null>(null);
+  const lastPointerTypeRef = useRef<string>("mouse");
+  const [showLongPressHint, setShowLongPressHint] = useState(false);
   const [editingNote, setEditingNote] = useState<string | null>(null);
   const [noteDraft, setNoteDraft] = useState("");
   const [quoteCard, setQuoteCard] = useState<{
@@ -2055,6 +2064,17 @@ export default function Reader({
         const text = [...sanitized.childNodes]
           .map((node) => node.textContent ?? "")
           .join("\n");
+        const enterFrom =
+          sectionIndexRef.current >= 0 && index !== sectionIndexRef.current
+            ? index > sectionIndexRef.current
+              ? "next"
+              : "prev"
+            : null;
+        if (enterFrom) {
+          container.dataset.enterFrom = enterFrom;
+        } else {
+          delete container.dataset.enterFrom;
+        }
         container.replaceChildren(sanitized);
         container.classList.remove("section-enter");
         void container.offsetWidth;
@@ -2732,7 +2752,7 @@ export default function Reader({
     };
   }, [searchQ]);
 
-  // Botón flotante «Guardar pasaje» sobre la selección del usuario.
+  // Menú flotante sobre la selección del usuario.
   useEffect(() => {
     let timer: number | undefined;
     const update = () => {
@@ -2752,7 +2772,29 @@ export default function Reader({
         setSelButton(null);
         return;
       }
-      setSelButton({ x: rect.left + rect.width / 2, y: rect.top });
+
+      const singleWordHit = wordHitFromRange(range, container, language);
+      const isTouch =
+        lastPointerTypeRef.current === "touch" ||
+        lastPointerTypeRef.current === "pen" ||
+        (typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches);
+
+      let placement: "top" | "bottom" = isTouch ? "bottom" : "top";
+      let y = isTouch ? rect.bottom : rect.top;
+
+      if (placement === "bottom" && rect.bottom + 64 > window.innerHeight && rect.top > 64) {
+        placement = "top";
+        y = rect.top;
+      } else if (placement === "top" && rect.top < 64 && rect.bottom + 64 <= window.innerHeight) {
+        placement = "bottom";
+        y = rect.bottom;
+      }
+
+      const centerX = rect.left + rect.width / 2;
+      const menuHalfW = singleWordHit ? 140 : 110;
+      const clampedX = Math.max(menuHalfW + 12, Math.min(centerX, window.innerWidth - menuHalfW - 12));
+
+      setSelButton({ x: clampedX, y, placement, singleWordHit });
     };
     const onSelection = () => {
       window.clearTimeout(timer);
@@ -2766,7 +2808,30 @@ export default function Reader({
       window.removeEventListener("scroll", hide);
       window.clearTimeout(timer);
     };
-  }, []);
+  }, [language]);
+
+  // Aviso único de descubrimiento para la pulsación larga en táctil (clave por cuenta)
+  useEffect(() => {
+    if (state !== "ready") return;
+    const isTouchDevice =
+      typeof window !== "undefined" &&
+      (window.matchMedia("(pointer: coarse)").matches || "ontouchstart" in window);
+    if (!isTouchDevice) return;
+
+    const key = "hint:longPress:v1";
+    const scope = captureDbScope();
+    let timer: number | undefined;
+    void loadSessionValue(key, scope).then((seen) => {
+      if (!seen) {
+        setShowLongPressHint(true);
+        timer = window.setTimeout(() => {
+          setShowLongPressHint(false);
+          void saveSessionValue(key, "1", scope).catch(() => undefined);
+        }, 6000);
+      }
+    });
+    return () => window.clearTimeout(timer);
+  }, [state]);
 
   // Barras que se retiran al bajar y vuelven al subir, y guardado de
   // posición con la fracción leída de la sección. En modo paginado el
@@ -2987,26 +3052,40 @@ export default function Reader({
       const next = pageRef.current + delta;
       if (next < 0) {
         if (sectionIndexRef.current > 0)
-          void navigate("chapter", {
+          return navigate("chapter", {
             index: sectionIndexRef.current - 1,
             restore: { at: "end" },
           });
-        return;
+        return Promise.resolve();
       }
       if (next >= pageCountRef.current) {
         // En la última página el ratio ya es ~1: pasar a la sección
         // siguiente cuenta como tramo terminado (el gato celebra).
         if (sectionIndexRef.current + 1 < sectionTotal) {
           signalCompanion({ kind: "goal_completed", at: Date.now() });
-          void navigate("chapter", { index: sectionIndexRef.current + 1 });
+          return navigate("chapter", { index: sectionIndexRef.current + 1 });
         }
-        return;
+        return Promise.resolve();
       }
       setPageIdx(next);
       saveSoon();
+      return Promise.resolve();
     },
     [navigate, saveSoon, sectionTotal, setPageIdx, noteActivity, trackMove, signalCompanion],
   );
+
+  usePageGesture({
+    viewportRef,
+    containerRef,
+    layout: settings.layout,
+    page,
+    pageCount,
+    pageAdvance: pageMetrics ? pageAdvance(pageMetrics.boxW, pageMetrics.gap) : 0,
+    isFirstPageInBook: sectionIndex === 0,
+    isLastPageInBook: sectionIndex + 1 >= sectionTotal,
+    reducedMotion: companion.reducedMotion,
+    onTurnPage: goPage,
+  });
 
   // Espejo del modo para callbacks estables (guardado, teclado,
   // restauración): leen refs, no estado que cierra viejo.
@@ -3509,10 +3588,8 @@ export default function Reader({
     setBookOverride(false);
   };
 
-  // En modo paginado el documento no hace scroll: sin scroll-up se mantienen
-  // visibles salvo en pantalla completa o retiro para permitir inmersión total.
-  const barsShown =
-    !isDeepReading && (barsVisible || (!isFullscreenActive && settings.layout === "pages"));
+  // Las barras se ocultan en retiro de lectura o cuando el usuario las conmuta.
+  const barsShown = !isDeepReading && barsVisible;
 
   const viewRatio =
     settings.layout === "pages"
@@ -3921,7 +3998,7 @@ export default function Reader({
                     columnWidth: `${pageMetrics.colW}px`,
                     columnGap: `${pageMetrics.gap}px`,
                     columnFill: "auto",
-                    transform: `translateX(${-page * pageAdvance(pageMetrics.boxW, pageMetrics.gap)}px)`,
+                    "--page-x": `${-page * pageAdvance(pageMetrics.boxW, pageMetrics.gap)}px`,
                   } as CSSProperties)
                 : undefined
             }
@@ -3938,31 +4015,76 @@ export default function Reader({
             // Los enlaces internos del EPUB (notas al pie, índice)
             // apuntan a rutas que no existen en la app: no navegar.
             if ((event.target as HTMLElement).closest("a")) event.preventDefault();
-            const hit = extractWordAtPoint(event.clientX, event.clientY, container, language);
-            if (hit) {
-              openSelection(hit);
-            } else {
-              // Tocar fuera de una palabra: en lectura por páginas los márgenes
-              // izquierdo y derecho avanzan o retroceden página, y el centro
-              // conmuta las barras del lector. En desplazamiento muestra barras.
+
+            const isTouch =
+              lastPointerTypeRef.current === "touch" ||
+              lastPointerTypeRef.current === "pen" ||
+              (typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches);
+            const sel = window.getSelection();
+            const hasSelection = sel && !sel.isCollapsed && sel.rangeCount > 0;
+
+            if (isTouch) {
+              // En táctil (modelo Kindle):
+              // 1. Si hay una selección de texto activa, el toque solo la limpia
+              if (hasSelection) {
+                sel.removeAllRanges();
+                return;
+              }
+
+              // 2. Navegación táctil en páginas: 25% bordes pasa página, centro alterna barras
               if (settings.layout === "pages") {
-                const w = window.innerWidth;
-                if (event.clientX > w * 0.78) {
-                  goPage(1);
-                } else if (event.clientX < w * 0.22) {
-                  goPage(-1);
+                const viewport = viewportRef.current ?? container;
+                const rect = viewport.getBoundingClientRect();
+                const zone = tapZone(event.clientX, rect);
+                if (zone === "next") {
+                  void goPage(1);
+                } else if (zone === "prev") {
+                  void goPage(-1);
                 } else {
                   setBarsVisible((v) => !v);
                 }
               } else {
-                setBarsVisible(true);
+                setBarsVisible((v) => !v);
+              }
+            } else {
+              // En ratón (escritorio):
+              // Riesgo 5: al soltar tras seleccionar texto, no abrir la ficha de palabra
+              if (hasSelection) {
+                return;
+              }
+
+              const hit = extractWordAtPoint(event.clientX, event.clientY, container, language);
+              if (hit) {
+                openSelection(hit);
+              } else {
+                if (settings.layout === "pages") {
+                  const viewport = viewportRef.current ?? container;
+                  const rect = viewport.getBoundingClientRect();
+                  const zone = tapZone(event.clientX, rect);
+                  if (zone === "next") {
+                    void goPage(1);
+                  } else if (zone === "prev") {
+                    void goPage(-1);
+                  } else {
+                    setBarsVisible((v) => !v);
+                  }
+                } else {
+                  setBarsVisible(true);
+                }
               }
             }
           }}
           onPointerMove={(event) => {
             lastPoint.current = { x: event.clientX, y: event.clientY };
           }}
-          onPointerDown={noteActivity}
+          onPointerDown={(event) => {
+            noteActivity();
+            lastPointerTypeRef.current = event.pointerType;
+            if (showLongPressHint) {
+              setShowLongPressHint(false);
+              void saveSessionValue("hint:longPress:v1", "1", captureDbScope()).catch(() => undefined);
+            }
+          }}
           aria-busy={state === "opening"}
           aria-label="Contenido de la sección"
         />
@@ -3977,22 +4099,32 @@ export default function Reader({
               disabled={sectionIndex === 0 && page === 0}
               onClick={() => {
                 triggerHaptic("selection");
-                goPage(-1);
+                void goPage(-1);
               }}
               aria-label="Página anterior"
             >
               <span aria-hidden="true">‹</span> Anterior
             </button>
-            <span className="page-nav-count meta" aria-live="polite">
-              {pageCount ? `Página ${page + 1} de ${pageCount}` : ""}
-            </span>
+            <div className="page-nav-center">
+              <span className="page-nav-count meta" aria-live="polite">
+                {pageCount ? `Página ${page + 1} de ${pageCount}` : ""}
+              </span>
+              {pageCount > 1 ? (
+                <div className="thread page-nav-thread" aria-hidden="true">
+                  <div
+                    className="thread-fill"
+                    style={{ "--thread-value": `${Math.round(((page + 1) / pageCount) * 100)}%` } as CSSProperties}
+                  />
+                </div>
+              ) : null}
+            </div>
             <button
               type="button"
               className="page-nav-btn"
               disabled={sectionIndex + 1 >= sectionTotal && page + 1 >= pageCount}
               onClick={() => {
                 triggerHaptic("selection");
-                goPage(1);
+                void goPage(1);
               }}
               aria-label="Página siguiente"
             >
@@ -5051,8 +5183,24 @@ export default function Reader({
       {selButton ? (
         <div
           className="selection-menu"
+          data-placement={selButton.placement}
           style={{ left: selButton.x, top: selButton.y }}
         >
+          {selButton.singleWordHit ? (
+            <button
+              type="button"
+              className="selection-define"
+              onPointerDown={(event) => event.preventDefault()}
+              onClick={() => {
+                const hit = selButton.singleWordHit;
+                window.getSelection()?.removeAllRanges();
+                setSelButton(null);
+                if (hit) openSelection(hit);
+              }}
+            >
+              Definir
+            </button>
+          ) : null}
           <button
             type="button"
             className="selection-save"
@@ -5069,6 +5217,12 @@ export default function Reader({
           >
             Tarjeta de cita
           </button>
+        </div>
+      ) : null}
+
+      {showLongPressHint ? (
+        <div className="reader-hint-toast" role="status" aria-live="polite">
+          Mantén presionada una palabra para ver qué significa.
         </div>
       ) : null}
 

@@ -810,11 +810,39 @@ mark.saved-word[data-level="settled"] {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
   padding: 3px;
   transform: translate(-50%, -100%) translateY(-8px);
-  animation: fade-in var(--dur-1) var(--ease-out);
+  animation: selection-menu-in var(--dur-2) var(--ease-out);
+}
+
+.selection-menu[data-placement="bottom"] {
+  transform: translate(-50%, 0) translateY(8px);
+  animation-name: selection-menu-in-bottom;
+}
+
+@keyframes selection-menu-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -100%) translateY(-4px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -100%) translateY(-8px) scale(1);
+  }
+}
+
+@keyframes selection-menu-in-bottom {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 0) translateY(4px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0) translateY(8px) scale(1);
+  }
 }
 
 .selection-menu button {
   padding: 6px 12px;
+  min-height: 2rem;
   font-family: var(--font-ui);
   font-size: var(--fs-xs);
   font-weight: 500;
@@ -824,11 +852,26 @@ mark.saved-word[data-level="settled"] {
   border-radius: var(--r-pill);
   cursor: pointer;
   white-space: nowrap;
+  transition:
+    background-color var(--dur-1) var(--ease-out),
+    color var(--dur-1) var(--ease-out);
 }
 
 .selection-menu button:hover {
   background: var(--paper-sunken);
   color: var(--vermilion);
+}
+
+@media (pointer: coarse) {
+  .selection-menu {
+    padding: 4px;
+    gap: 4px;
+  }
+  .selection-menu button {
+    min-height: 2.75rem; /* 44px táctil */
+    padding: 0.65rem 1rem;
+    font-size: var(--fs-sm);
+  }
 }
 
 /* Indicadores de diccionario sin conexión */

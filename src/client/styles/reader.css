@@ -378,6 +378,43 @@
   }
 }
 
+.reader[data-layout="pages"] .book-content.section-enter[data-enter-from="next"] {
+  animation: section-enter-next var(--dur-3) var(--ease-out);
+}
+
+.reader[data-layout="pages"] .book-content.section-enter[data-enter-from="prev"] {
+  animation: section-enter-prev var(--dur-3) var(--ease-out);
+}
+
+@keyframes section-enter-next {
+  from {
+    opacity: 0.35;
+    translate: 16px 0;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
+@keyframes section-enter-prev {
+  from {
+    opacity: 0.35;
+    translate: -16px 0;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reader[data-layout="pages"] .book-content.section-enter[data-enter-from] {
+    animation: section-in var(--dur-2) var(--ease-out);
+    translate: none;
+  }
+}
+
 /* Ajustes del panel Aa */
 
 .reader[data-justify] .book-content p {
@@ -947,6 +984,7 @@ mark.saved-passage {
 .reader[data-layout="pages"] {
   block-size: 100svh;
   overflow: hidden;
+  overscroll-behavior-x: none;
   display: flex;
   flex-direction: column;
 }
@@ -968,15 +1006,22 @@ mark.saved-passage {
   min-block-size: 0;
   overflow: hidden;
   position: relative;
+  touch-action: pan-y pinch-zoom;
+  overscroll-behavior-x: none;
 }
 
 .reader[data-layout="pages"] .book-content {
   max-inline-size: none;
   margin-inline: auto;
   padding-inline: 0;
+  transform: translateX(calc(var(--page-x, 0px) + var(--drag-x, 0px)));
   /* Paso de página corto y suave: la curva entra decidida y aterriza
      sin rebote (160–180 ms según el plan de interacción). */
   transition: transform var(--dur-2) var(--ease-page);
+}
+
+.reader[data-layout="pages"] .book-content[data-dragging] {
+  transition: none !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1025,15 +1070,29 @@ mark.saved-passage {
   border-top: 1px solid var(--rule);
 }
 
+.page-nav-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-1);
+}
+
 .page-nav-count {
   font-variant-numeric: tabular-nums;
+}
+
+.page-nav-thread {
+  inline-size: 5rem;
+  block-size: 2px;
 }
 
 .page-nav-btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 0.35rem;
-  padding: 0.35rem 0.75rem;
+  min-height: 2.75rem; /* 44px táctil */
+  padding: 0.5rem 0.85rem;
   border: 1px solid transparent;
   border-radius: var(--r-1);
   background: none;
@@ -1056,6 +1115,25 @@ mark.saved-passage {
 .page-nav-btn:disabled {
   opacity: 0.35;
   cursor: not-allowed;
+  pointer-events: none;
+}
+
+/* Aviso de descubrimiento para pulsación larga en táctil */
+.reader-hint-toast {
+  position: fixed;
+  bottom: calc(4.75rem + env(safe-area-inset-bottom, 0px));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  padding: var(--s-2) var(--s-4);
+  background: var(--paper-raised);
+  color: var(--ink-soft);
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  border: var(--border);
+  border-radius: var(--r-pill);
+  box-shadow: var(--shadow-sheet);
+  animation: fade-in var(--dur-2) var(--ease-out);
   pointer-events: none;
 }
 
@@ -1121,29 +1199,6 @@ mark.saved-passage {
 .reader-nav-edge:disabled {
   opacity: 0;
   pointer-events: none;
-}
-
-/* ---------- Botón «Guardar pasaje» sobre la selección ---------- */
-
-.selection-save {
-  position: fixed;
-  z-index: 25;
-  transform: translate(-50%, calc(-100% - var(--s-2)));
-  min-height: 2.5rem;
-  padding: var(--s-1) var(--s-4);
-  border: var(--border);
-  border-radius: 999px;
-  background: var(--ink);
-  color: var(--paper);
-  font-family: var(--font-ui);
-  font-size: var(--fs-sm);
-  box-shadow: var(--shadow-sheet);
-  cursor: pointer;
-  animation: fade-in var(--dur-2) var(--ease-out);
-}
-
-.selection-save:hover {
-  background: var(--vermilion);
 }
 
 /* Encabezados de grupo en los paneles de ajustes */

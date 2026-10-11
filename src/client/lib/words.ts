@@ -12,7 +12,12 @@ export type WordHit = {
 // text): una palabra repetida en el bloque debe traer la oración que
 // la rodea a ella, no la primera que la contiene. Si ninguna cubre el
 // offset, se conserva el criterio anterior como respaldo.
-const findSentence = (text: string, word: string, language: string, offset: number) => {
+export const findSentence = (
+  text: string,
+  word: string,
+  language: string,
+  offset: number,
+) => {
   const sentences = [...new Intl.Segmenter(language, { granularity: "sentence" }).segment(text)];
   const covering = sentences.find(
     (sentence) => sentence.index <= offset && offset < sentence.index + sentence.segment.length,
@@ -99,6 +104,53 @@ export function extractWordAtPoint(
     range.selectNodeContents(block);
     range.setEnd(node, part.index);
     context = findSentence(block.textContent, word, language, range.toString().length);
+  }
+
+  return { word, context };
+}
+
+/**
+ * Extrae un WordHit a partir de un Range del DOM si y solo si la selección
+ * contiene exactamente una sola palabra (para mostrar «Definir» en el menú).
+ * Si contiene múltiples palabras o ninguna, devuelve null.
+ */
+export function wordHitFromRange(
+  range: Range,
+  root: HTMLElement,
+  language = "es",
+): WordHit | null {
+  if (range.collapsed) return null;
+  if (!root.contains(range.commonAncestorContainer)) return null;
+
+  const text = range.toString().trim();
+  if (!text) return null;
+
+  // Segmentar el texto seleccionado en palabras
+  const segments = [...new Intl.Segmenter(language, { granularity: "word" }).segment(text)];
+  const wordLikes = segments.filter((s) => s.isWordLike);
+
+  // Exactamente una sola palabra seleccionada
+  if (wordLikes.length !== 1) return null;
+
+  const word = wordLikes[0].segment;
+  const startNode = range.startContainer;
+  const block = (
+    startNode.nodeType === Node.ELEMENT_NODE
+      ? (startNode as Element)
+      : startNode.parentElement
+  )?.closest("p, h1, h2, h3, h4, h5, h6, li, blockquote, td, th");
+
+  let context: string | undefined;
+  if (block?.textContent) {
+    try {
+      const preRange = document.createRange();
+      preRange.selectNodeContents(block);
+      preRange.setEnd(range.startContainer, range.startOffset);
+      const offset = preRange.toString().length;
+      context = findSentence(block.textContent, word, language, offset);
+    } catch {
+      context = findSentence(block.textContent, word, language, 0);
+    }
   }
 
   return { word, context };
