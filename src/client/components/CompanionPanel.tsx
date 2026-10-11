@@ -17,8 +17,11 @@ import {
   CompanionCloset,
   ARTICLE_LABELS,
 } from "./CompanionCloset";
+import { ProgressInk } from "./ProgressInk";
+import { Seal, toRoman } from "./Seal";
 import { openGameChest, writeCompanionField } from "../lib/game";
-import { captureDbScope } from "../lib/idb";
+import { captureDbScope, listStoredBooks } from "../lib/idb";
+import { listRemoteBooks } from "../lib/books";
 import {
   COMPANION_ARTICLES,
   type CompanionArticle,
@@ -33,6 +36,7 @@ import {
   catStageForLevel,
   dayKeyOf,
   levelProgress,
+  listFamilyProgress,
   pendingChests,
   rewardForLevel,
   unlockedAccessories,
@@ -65,13 +69,12 @@ export type CompanionPanelProps = {
 
 export type CompanionTab = "care" | "rewards" | "closet" | "collection";
 
-export const COMPANION_TABS: { id: CompanionTab; label: string; icon: string }[] =
-  [
-    { id: "care", label: "Cuidado", icon: "🐾" },
-    { id: "rewards", label: "Recompensas", icon: "🎁" },
-    { id: "closet", label: "Armario", icon: "🎩" },
-    { id: "collection", label: "Vitrina", icon: "📜" },
-  ];
+export const COMPANION_TABS: { id: CompanionTab; label: string }[] = [
+  { id: "care", label: "Cuidado" },
+  { id: "rewards", label: "Recompensas" },
+  { id: "closet", label: "Armario" },
+  { id: "collection", label: "Vitrina" },
+];
 
 function withTryOn(
   accessories: string[],
@@ -122,6 +125,47 @@ export function CompanionPanel({
 
   // Reacción local de ojos felices tras equipar
   const [happyReaction, setHappyReaction] = useState(false);
+
+  // Metadatos de libros para los exlibris de libros completados
+  const [booksMap, setBooksMap] = useState<
+    Map<string, { title?: string; author?: string; cover?: string }>
+  >(new Map());
+
+  useEffect(() => {
+    if (!state?.finishedBooks.length) return;
+    const scope = captureDbScope();
+    let cancelled = false;
+    void (async () => {
+      const [local, remote] = await Promise.all([
+        listStoredBooks(scope).catch(() => []),
+        listRemoteBooks(scope).catch(() => []),
+      ]);
+      if (cancelled) return;
+      const map = new Map<
+        string,
+        { title?: string; author?: string; cover?: string }
+      >();
+      for (const b of local) {
+        map.set(b.hash, {
+          title: b.title || b.name,
+          author: b.author,
+          cover: b.cover,
+        });
+      }
+      for (const r of remote) {
+        if (!map.has(r.hash)) {
+          map.set(r.hash, {
+            title: r.title || r.name,
+            author: r.author,
+          });
+        }
+      }
+      setBooksMap(map);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [state?.finishedBooks]);
 
   // Saludo de llegada inicial (~2.4s)
   const [arrival, setArrival] = useState<{ mood: CatMood; at: Date } | null>(
@@ -484,7 +528,6 @@ export function CompanionPanel({
                   }}
                   onKeyDown={(e) => handleTabKeyDown(e, idx)}
                 >
-                  <span aria-hidden="true">{t.icon} </span>
                   {t.label}
                   {t.id === "rewards" && chests.length > 0 ? (
                     <span
@@ -584,7 +627,10 @@ export function CompanionPanel({
                 >
                   <div className="companion-stat-item">
                     <span className="companion-stat-icon" aria-hidden="true">
-                      ⏱️
+                      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round">
+                        <circle cx="12" cy="12" r="9" />
+                        <path d="M12 7v5l3 3" />
+                      </svg>
                     </span>
                     <div>
                       <span className="companion-stat-val">
@@ -595,7 +641,10 @@ export function CompanionPanel({
                   </div>
                   <div className="companion-stat-item">
                     <span className="companion-stat-icon" aria-hidden="true">
-                      📚
+                      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z" />
+                        <path d="M6 6h10M6 10h10" />
+                      </svg>
                     </span>
                     <div>
                       <span className="companion-stat-val">
@@ -606,7 +655,10 @@ export function CompanionPanel({
                   </div>
                   <div className="companion-stat-item">
                     <span className="companion-stat-icon" aria-hidden="true">
-                      📖
+                      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+                        <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
+                      </svg>
                     </span>
                     <div>
                       <span className="companion-stat-val">
@@ -619,7 +671,9 @@ export function CompanionPanel({
                   </div>
                   <div className="companion-stat-item">
                     <span className="companion-stat-icon" aria-hidden="true">
-                      🔖
+                      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+                      </svg>
                     </span>
                     <div>
                       <span className="companion-stat-val">
@@ -638,7 +692,12 @@ export function CompanionPanel({
                   >
                     <div className="companion-chest-info">
                       <span className="companion-chest-icon" aria-hidden="true">
-                        🎁
+                        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="3" y="8" width="18" height="13" rx="1.5" />
+                          <path d="M2 8h20" />
+                          <path d="M12 8v13" />
+                          <path d="M7.5 8a2.5 2.5 0 0 1 0-5c2.5 0 4.5 5 4.5 5s2-5 4.5-5a2.5 2.5 0 0 1 0 5" />
+                        </svg>
                       </span>
                       <div>
                         <p className="companion-chest-title">
@@ -754,7 +813,12 @@ export function CompanionPanel({
                             className="companion-chest-icon"
                             aria-hidden="true"
                           >
-                            🎁
+                            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                              <rect x="3" y="8" width="18" height="13" rx="1.5" />
+                              <path d="M2 8h20" />
+                              <path d="M12 8v13" />
+                              <path d="M7.5 8a2.5 2.5 0 0 1 0-5c2.5 0 4.5 5 4.5 5s2-5 4.5-5a2.5 2.5 0 0 1 0 5" />
+                            </svg>
                           </span>
                           <div>
                             <p className="companion-chest-title">{c.label}</p>
@@ -781,7 +845,7 @@ export function CompanionPanel({
                       <span className="companion-item-badge">Al día</span>
                     </div>
                     <p className="meta" style={{ margin: 0 }}>
-                      ✨ ¡Todos tus cofres están abiertos! Sigue leyendo y
+                      ¡Todos tus cofres están abiertos! Sigue leyendo y
                       subiendo de nivel para encontrar nuevos tesoros.
                     </p>
                   </div>
@@ -793,7 +857,7 @@ export function CompanionPanel({
                     <div className="companion-next-reward-head">
                       <span className="setting-label">Próximo botín en camino</span>
                       <span className="companion-item-badge">
-                        Faltan {pointsRemaining} XP
+                        Faltan {pointsRemaining} puntos
                       </span>
                     </div>
                     <p style={{ margin: "0 0 var(--s-2)", fontWeight: 600 }}>
@@ -850,7 +914,7 @@ export function CompanionPanel({
                                 gap: "0.4rem",
                               }}
                             >
-                              <span>{isAchieved ? "✓" : isNext ? "🎯" : "🔒"}</span>
+                              <span aria-hidden="true">{isAchieved ? "✓" : isNext ? "→" : "—"}</span>
                               <strong>
                                 Nivel {idx + 1} · {lvl.name}
                               </strong>
@@ -859,7 +923,7 @@ export function CompanionPanel({
                               className="meta"
                               style={{ fontSize: "var(--fs-xs)" }}
                             >
-                              {lvl.xp} XP{" "}
+                              {lvl.xp} puntos{" "}
                               {reward ? `· ${ARTICLE_LABELS[reward]}` : ""}
                               {coat ? ` · ${ARTICLE_LABELS[coat]}` : ""}
                             </span>
@@ -924,25 +988,84 @@ export function CompanionPanel({
                   </span>
                 </div>
 
-                <div className="companion-stamps-grid">
-                  {ACHIEVEMENTS.map((a) => {
-                    const isEarned = Boolean(state.achievements[a.id]);
+                <div className="vitrina-families">
+                  {listFamilyProgress(state).map((famProg) => {
+                    const isMax = famProg.nextAchievement === null;
+                    const rankText = isMax
+                      ? "Rango máximo"
+                      : famProg.ranksEarned === 0
+                        ? "Sin iniciar"
+                        : `Rango ${toRoman(famProg.ranksEarned)} de ${toRoman(famProg.ranksTotal)}`;
+                    const hintText = isMax
+                      ? `${Math.floor(famProg.current)} ${Math.floor(famProg.current) === 1 ? famProg.info.unit.singular : famProg.info.unit.plural} en total`
+                      : `${Math.floor(famProg.current)} de ${famProg.goal} ${famProg.goal === 1 ? famProg.info.unit.singular : famProg.info.unit.plural}`;
+
                     return (
-                      <div
-                        key={a.id}
-                        className="companion-stamp"
-                        data-earned={isEarned}
-                        title={a.desc}
-                      >
-                        <span
-                          className="companion-stamp-icon"
-                          aria-hidden="true"
-                        >
-                          {isEarned ? "💮" : "🔒"}
-                        </span>
-                        <p className="companion-stamp-title">{a.title}</p>
-                        <p className="companion-stamp-desc">{a.desc}</p>
-                        <span className="companion-stamp-xp">+{a.xp} XP</span>
+                      <div key={famProg.family} className="family-card">
+                        <div className="family-card-head">
+                          <Seal
+                            family={famProg.family}
+                            rank={famProg.ranksEarned}
+                            maxRank={famProg.ranksTotal}
+                            size={48}
+                          />
+                          <div className="family-card-info">
+                            <div className="family-card-title-row">
+                              <h4 className="family-card-name">{famProg.info.name}</h4>
+                              <span className="family-card-rank-text">
+                                {rankText}
+                              </span>
+                            </div>
+                            <ProgressInk
+                              value={famProg.current}
+                              max={famProg.goal}
+                              variant={isMax ? "ink" : "ochre"}
+                              reducedMotion={reducedMotion}
+                            />
+                            <p className="family-card-hint">{hintText}</p>
+                          </div>
+                        </div>
+
+                        <details className="family-ranks-details">
+                          <summary>
+                            {isMax
+                              ? "Ver todos los rangos (completada)"
+                              : "Ver rangos de esta familia"}
+                          </summary>
+                          <ul className="family-ranks-list">
+                            {famProg.achievements.map((ach, idx) => {
+                              const earnedAt = state.achievements[ach.id];
+                              const isEarned = Boolean(earnedAt);
+                              const isNew = Boolean(
+                                earnedAt && Date.now() - earnedAt <= 7 * 86_400_000,
+                              );
+                              return (
+                                <li
+                                  key={ach.id}
+                                  className="family-rank-item"
+                                  data-earned={isEarned}
+                                >
+                                  <div className="family-rank-item-meta">
+                                    <span className="family-rank-roman">
+                                      {toRoman(idx + 1)}
+                                    </span>
+                                    <span className="family-rank-title">
+                                      {ach.title}
+                                    </span>
+                                    {isNew ? (
+                                      <span className="family-badge-new">
+                                        Nuevo
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                  <span className="family-rank-points">
+                                    +{ach.xp} puntos
+                                  </span>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        </details>
                       </div>
                     );
                   })}
@@ -950,19 +1073,70 @@ export function CompanionPanel({
 
                 {state.finishedBooks.length > 0 ? (
                   <div style={{ marginBlockStart: "var(--s-5)" }}>
-                    <h3 className="settings-group-title">
-                      Exlibris de Libros Completados
-                    </h3>
-                    <div className="companion-next-reward-card">
-                      <p style={{ margin: "0 0 var(--s-1)", fontWeight: 600 }}>
-                        📜 {state.finishedBooks.length} libro
-                        {state.finishedBooks.length === 1 ? "" : "s"} terminado
-                        {state.finishedBooks.length === 1 ? "" : "s"}
-                      </p>
-                      <p className="meta" style={{ margin: 0 }}>
-                        Cada obra que concluyes queda sellada en la historia de
-                        tu biblioteca personal.
-                      </p>
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        marginBlockEnd: "var(--s-3)",
+                      }}
+                    >
+                      <h3 className="settings-group-title" style={{ margin: 0 }}>
+                        Exlibris de Libros Completados
+                      </h3>
+                      <span className="companion-item-badge">
+                        {state.finishedBooks.length} libro{state.finishedBooks.length === 1 ? "" : "s"}
+                      </span>
+                    </div>
+
+                    <div className="exlibris-grid">
+                      {state.finishedBooks.map((hash) => {
+                        const meta = booksMap.get(hash);
+                        if (meta && meta.title) {
+                          return (
+                            <div key={hash} className="exlibris-card">
+                              <div className="exlibris-frame">
+                                {meta.cover ? (
+                                  <img
+                                    src={meta.cover}
+                                    alt={`Portada de ${meta.title}`}
+                                    className="exlibris-cover"
+                                  />
+                                ) : (
+                                  <div className="exlibris-seal-icon">
+                                    <Seal
+                                      family="libros"
+                                      rank={1}
+                                      maxRank={1}
+                                      size={40}
+                                    />
+                                  </div>
+                                )}
+                                <p className="exlibris-title">{meta.title}</p>
+                                {meta.author ? (
+                                  <p className="exlibris-author">{meta.author}</p>
+                                ) : null}
+                              </div>
+                            </div>
+                          );
+                        }
+                        return (
+                          <div key={hash} className="exlibris-card">
+                            <div className="exlibris-frame">
+                              <div className="exlibris-seal-icon">
+                                <Seal
+                                  family="libros"
+                                  rank={1}
+                                  maxRank={1}
+                                  size={40}
+                                />
+                              </div>
+                              <p className="exlibris-title">Libro terminado</p>
+                              <p className="exlibris-author">Biblioteca de Lecta</p>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 ) : null}

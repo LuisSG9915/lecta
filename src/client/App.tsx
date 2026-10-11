@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react"
 // El Lector y el Cuaderno se cargan diferidos para no inflar la descarga inicial de la estantería.
 const Reader = lazy(() => import("./components/Reader"));
 const Vocabulary = lazy(() => import("./components/Vocabulary"));
+const Journey = lazy(() => import("./components/Journey"));
 import Account from "./components/Account";
 import Sheet from "./components/Sheet";
 import Calibration from "./components/Calibration";
@@ -86,6 +87,7 @@ export default function App() {
   );
   const [checkingLibrary, setCheckingLibrary] = useState(true);
   const [showVocabulary, setShowVocabulary] = useState(false);
+  const [showJourney, setShowJourney] = useState(false);
   const [showAccount, setShowAccount] = useState(Boolean(authLink.token || authLink.urlError));
   const [showThemeSheet, setShowThemeSheet] = useState(false);
   const [downloadingHash, setDownloadingHash] = useState<string | null>(null);
@@ -255,21 +257,18 @@ export default function App() {
     void syncPositions().catch(() => null);
   };
 
-  const openPanel = (kind: "vocab" | "account") => {
+  const openPanel = (kind: "vocab" | "account" | "journey") => {
     if (!panelRelease.current) {
       panelRelease.current = pushOverlay(() => {
         panelRelease.current = null;
         setShowVocabulary(false);
         setShowAccount(false);
+        setShowJourney(false);
       });
     }
-    if (kind === "vocab") {
-      setShowAccount(false);
-      setShowVocabulary(true);
-    } else {
-      setShowVocabulary(false);
-      setShowAccount(true);
-    }
+    setShowVocabulary(kind === "vocab");
+    setShowAccount(kind === "account");
+    setShowJourney(kind === "journey");
   };
 
   const closePanel = () => {
@@ -277,6 +276,7 @@ export default function App() {
     panelRelease.current = null;
     setShowVocabulary(false);
     setShowAccount(false);
+    setShowJourney(false);
   };
 
   const openThemeSheet = () => {
@@ -366,6 +366,7 @@ export default function App() {
       panelRelease.current = null;
       setShowVocabulary(false);
       setShowAccount(false);
+      setShowJourney(false);
     });
   }, [authLink]);
 
@@ -810,6 +811,9 @@ export default function App() {
               <button type="button" className="btn--quiet" onClick={() => openPanel("vocab")}>
                 Cuaderno
               </button>
+              <button type="button" className="btn--quiet" onClick={() => openPanel("journey")}>
+                Recorrido
+              </button>
               <button type="button" className="btn--quiet" onClick={() => openPanel("account")}>
                 Cuenta
               </button>
@@ -838,6 +842,7 @@ export default function App() {
               onDownloadBook={(item) => void openRemoteBook(item, false)}
               downloadingHash={downloadingHash}
               activityVersion={activityVersion}
+              onOpenJourney={() => openPanel("journey")}
             />
             {message ? (
               <p className="status" role="status">
@@ -879,6 +884,16 @@ export default function App() {
             onClose={closePanel}
             books={library}
             activityVersion={activityVersion}
+            onOpenJourney={() => openPanel("journey")}
+          />
+        </Suspense>
+      ) : null}
+      {showJourney ? (
+        <Suspense fallback={<p className="status">Abriendo tu recorrido…</p>}>
+          <Journey
+            key={sessionUserId ?? "anon"}
+            onClose={closePanel}
+            books={library}
           />
         </Suspense>
       ) : null}

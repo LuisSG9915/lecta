@@ -353,8 +353,19 @@ estabilidad ya no se marca) y predichas con subrayado punteado.
 - `reading-goal.ts` + `ReadingActivity`: días con lectura, meta semanal,
   dwell, PPM estimado (`progress.ts`, base 180 ppm), avisos de fatiga.
 
-### 5.8 El gato compañero (`Companion*.tsx` + `companion-*`)
+### 5.8 El compañero, recompensas y «Tu recorrido» (`Companion*.tsx`, `Seal.tsx`, `ProgressInk.tsx`, `Journey.tsx`)
 
+- **Estilo tinta y papel**: sellos vectoriales grabados en SVG (`Seal.tsx`), números romanos y exlibris; sin emojis de trofeos (`🏆`), fuego (`🔥`) ni confeti.
+- **Logros en 8 familias con rangos**: `palabras`, `raras`, `consultas`, `lectura`, `sesion`, `racha`, `repasos`, `libros`. Total de 36 logros (los 24 históricos intactos para compatibilidad de deduplicación de cofres + 12 logros nuevos retroactivos).
+- **Barra de tinta continua** (`ProgressInk.tsx`): desaceleración suave (`--ease-settle`), sin rebotes de resorte y respetuosa con `prefers-reduced-motion`.
+- **Festejos sobrios y agrupados** (`companion-inbox.ts`, `CompanionCelebration.tsx`):
+  - Saltos múltiples de nivel se agrupan en una única tarjeta con el nivel alcanzado y evolución si coincide.
+  - Al verse, se persisten los recibos correspondientes (`level-seen:<lvl>`, `stage-seen:<stage>`) para evitar repeticiones.
+- **Exlibris de libros terminados**: vincula la portada y título real de libros en el dispositivo o en la nube; si el libro ya no está en la biblioteca cae a un sello genérico sobrio sin inventar metadatos.
+- **Pantalla «Tu recorrido»** (`Journey.tsx` + `journey.ts`):
+  - Vista general accesible desde la estantería, cuaderno y cabecera de la app.
+  - Totalmente independiente del compañero: si el compañero está desactivado en preferencias, la sección de gamificación no se muestra.
+  - Deriva al vuelo sin tablas nuevas: horas totales de lectura, 4 etapas de consolidación FSRS (`wordStages`), 4 récords personales reales (`readingRecords`: día más lector, sesión continua más larga, día con más palabras y día con más repasos), gráfico de las últimas 8 semanas y colección de exlibris.
 - Estados (`companion-data.ts` shared): SLEEP, READING, DEEP_FOCUS,
   CURIOUS, YAWN, CELEBRATING… Reacciona a apertura/cierre del lector,
   consultas, fatiga, meta semanal, fin de capítulo y fin de libro.
@@ -362,7 +373,7 @@ estabilidad ya no se marca) y predichas con subrayado punteado.
   (`companionEvents`) con id estable + sello + `dayKey` de la zona del
   emisor; la proyección es determinista en cualquier réplica.
   `companionReceipts` une monotónicamente lo ya visto (cofres, logros
-  anunciados) — un baseline importado nunca celebra.
+  anunciados, niveles vistos `level-seen`) — un baseline importado nunca celebra.
 - Sync dedicado (`companion-sync.ts` + `src/worker/companion.ts`):
   PUT transaccional por lotes con detección de conflictos y GET con
   paginación keyset (nunca OFFSET). Preferencias de sonido y animación

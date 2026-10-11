@@ -1,7 +1,8 @@
 // Pruebas del inbox de festejos: qué premios quedan pendientes según
 // proyección, baseline importada y recibos de visto. Las reglas duras
 // son las del diseño: lo importado no celebra, lo visto no se repite,
-// varios logros se agrupan y la etapa celebra solo el cambio.
+// varios logros se agrupan, las subidas de nivel se agrupan en el nivel
+// más alto con su evolución si coincide.
 import { describe, expect, it } from "vitest";
 import { pendingCelebrations } from "./companion-inbox";
 import { receiptIdFor } from "../../shared/companion-data";
@@ -101,17 +102,29 @@ describe("pendingCelebrations", () => {
     ]);
   });
 
-  it("cambio de etapa proyectado queda pendiente", () => {
+  it("subida de nivel simple sin evolución", () => {
+    // 35 xp → nivel «Lector curioso» (índice 1) → etapa 0 (sin evolución).
+    const items = pendingCelebrations({
+      state: state({ xp: 35 }),
+      baselines: [],
+      receipts: [],
+    });
+    expect(items).toEqual([{ kind: "level", level: 1, crossed: [1] }]);
+  });
+
+  it("cambio de etapa proyectado se agrupa en la tarjeta de nivel", () => {
     // 90 xp → nivel «Lector constante» (índice 2) → etapa 1.
     const items = pendingCelebrations({
       state: state({ xp: 95 }),
       baselines: [],
       receipts: [],
     });
-    expect(items).toEqual([{ kind: "stage", stage: 1 }]);
+    expect(items).toEqual([
+      { kind: "level", level: 2, crossed: [1, 2], stage: 1 },
+    ]);
   });
 
-  it("la etapa de la baseline no celebra", () => {
+  it("la etapa y nivel de la baseline no celebran", () => {
     const items = pendingCelebrations({
       state: state({ xp: 95 }),
       baselines: [baseline({ xp: 95 })],
@@ -120,32 +133,51 @@ describe("pendingCelebrations", () => {
     expect(items).toEqual([]);
   });
 
-  it("una etapa ya celebrada (recibo) no se repite", () => {
+  it("un nivel y etapa ya celebrados (recibo) no se repiten", () => {
     const items = pendingCelebrations({
       state: state({ xp: 95 }),
       baselines: [],
-      receipts: [receipt("stage-seen", "1")],
+      receipts: [
+        receipt("level-seen", "1"),
+        receipt("level-seen", "2"),
+        receipt("stage-seen", "1"),
+      ],
     });
     expect(items).toEqual([]);
   });
 
-  it("crecer dos etapas muestra solo la vigente — sustituye la vieja", () => {
+  it("si los niveles ya se vieron pero la etapa no, celebra stage como fallback", () => {
+    const items = pendingCelebrations({
+      state: state({ xp: 95 }),
+      baselines: [],
+      receipts: [receipt("level-seen", "1"), receipt("level-seen", "2")],
+    });
+    expect(items).toEqual([{ kind: "stage", stage: 1 }]);
+  });
+
+  it("salto de varios niveles muestra el nivel más alto y agrupa la etapa", () => {
     // xp suficiente para etapa 3 (nivel ≥6 → 800 xp).
     const items = pendingCelebrations({
       state: state({ xp: 900 }),
       baselines: [],
       receipts: [],
     });
-    const stages = items.filter((i) => i.kind === "stage");
-    expect(stages).toEqual([{ kind: "stage", stage: 3 }]);
+    expect(items).toEqual([
+      {
+        kind: "level",
+        level: 6,
+        crossed: [1, 2, 3, 4, 5, 6],
+        stage: 3,
+      },
+    ]);
   });
 
-  it("logro + etapa pendientes salen como dos tarjetas en cola", () => {
+  it("logro + nivel pendientes salen como dos tarjetas en cola", () => {
     const items = pendingCelebrations({
       state: state({ xp: 95, achievements: { "palabra_1": 100 } }),
       baselines: [],
       receipts: [],
     });
-    expect(items.map((i) => i.kind)).toEqual(["achievements", "stage"]);
+    expect(items.map((i) => i.kind)).toEqual(["achievements", "level"]);
   });
 });

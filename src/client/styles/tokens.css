@@ -59,6 +59,8 @@
   --dur-2: 180ms;
   --dur-3: 260ms;
   --dur-4: 220ms;
+  --dur-5: 320ms;
+  --dur-6: 480ms;
 
   /* Lector (valores por defecto; el panel Aa los ajusta) */
   --read-font: var(--font-book);

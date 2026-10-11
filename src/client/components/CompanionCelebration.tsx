@@ -6,22 +6,24 @@
 // encima (hoja de cuidado, modales, lectura suprimida).
 //
 // Contrato de «visto»: al MOSTRARSE de verdad una tarjeta se persiste
-// su recibo (achievement-seen:<id> por cada logro, stage-seen:<n>
-// para la etapa) — monotónico e idempotente. Si la superficie está
-// bloqueada (overlay, «off», supresión por libro), la tarjeta queda
-// PENDIENTE sin marcar: se verá cuando haya contexto seguro. La
-// memoria local `shown` evita repetir dentro de la sesión mientras el
+// su recibo (achievement-seen:<id> por cada logro, level-seen:<n>
+// para niveles, stage-seen:<n> para la etapa) — monotónico e idempotente.
+// Si la superficie está bloqueada (overlay, «off», supresión por libro),
+// la tarjeta queda PENDIENTE sin marcar: se verá cuando haya contexto seguro.
+// La memoria local `shown` evita repetir dentro de la sesión mientras el
 // recibo aterriza; la remontaje por cambio de cuenta (key en el
 // proveedor) la limpia.
 
 import { useEffect, useState } from "react";
 import { Companion } from "./Companion";
+import { LEVELS } from "../lib/gamification";
 import type { CelebrationItem } from "../lib/companion-inbox";
 
 // Duración en pantalla por clase de festejo (ms).
 export const CELEBRATION_MS: Record<CelebrationItem["kind"], number> = {
   achievements: 4_000,
   stage: 3_000,
+  level: 3_500,
 };
 
 // Nombres de etapa del gato, alineados con catStageForLevel.
@@ -33,10 +35,16 @@ const STAGE_LABELS = [
   "gato bibliotecario",
 ];
 
-const itemKey = (item: CelebrationItem): string =>
-  item.kind === "stage"
-    ? `stage:${item.stage}`
-    : `achievements:${item.ids.join(",")}`;
+const itemKey = (item: CelebrationItem): string => {
+  switch (item.kind) {
+    case "stage":
+      return `stage:${item.stage}`;
+    case "level":
+      return `level:${item.level}:${item.crossed.join(",")}${item.stage !== undefined ? `:stage:${item.stage}` : ""}`;
+    case "achievements":
+      return `achievements:${item.ids.join(",")}`;
+  }
+};
 
 export function CompanionCelebration({
   items,
@@ -100,11 +108,29 @@ export function CompanionCelebration({
 
   if (blocked || !display) return null;
 
-  const text =
-    display.kind === "stage"
-      ? `${name} ha crecido: ${STAGE_LABELS[display.stage] ?? "nueva etapa"}`
-      : display.titles[0] +
-        (display.ids.length > 1 ? ` y ${display.ids.length - 1} más` : "");
+  let text: string;
+  if (display.kind === "stage") {
+    text = `${name} ha crecido: ${STAGE_LABELS[display.stage] ?? "nueva etapa"}`;
+  } else if (display.kind === "level") {
+    const levelName =
+      LEVELS[display.level]?.name ?? `Nivel ${display.level + 1}`;
+    const levelText = `¡Nivel ${display.level + 1}! ${levelName}`;
+    const stageText =
+      display.stage !== undefined
+        ? ` · ${name} ha crecido: ${STAGE_LABELS[display.stage] ?? "nueva etapa"}`
+        : "";
+    text = `${levelText}${stageText}`;
+  } else {
+    text =
+      display.titles[0] +
+      (display.ids.length > 1 ? ` y ${display.ids.length - 1} más` : "");
+  }
+
+  const pose =
+    display.kind === "stage" ||
+    (display.kind === "level" && display.stage !== undefined)
+      ? "evolve"
+      : "celebrate";
 
   return (
     <div
@@ -116,7 +142,7 @@ export function CompanionCelebration({
         stage={stage}
         mood="awake"
         accessories={accessories}
-        pose={display.kind === "stage" ? "evolve" : "celebrate"}
+        pose={pose}
         decorative
       />
       <p className="companion-toast-text">{text}</p>

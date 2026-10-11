@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   ACHIEVEMENTS,
+  ACHIEVEMENT_FAMILY_ORDER,
+  familyProgress,
+  listFamilyProgress,
   applyGameEvent,
   catMood,
   catStageForLevel,
@@ -213,5 +216,164 @@ describe("humor del gato", () => {
     // Cualquier evento lo despierta.
     const r = applyGameEvent(base, { kind: "consulted" }, NOW + 5 * 86_400_000, idFor);
     expect(catMood(r.state, NOW + 5 * 86_400_000)).toBe("awake");
+  });
+});
+
+describe("familias y catálogo de logros", () => {
+  const ORIGINAL_24 = [
+    { id: "palabra_1", title: "Primera palabra", desc: "Guarda tu primera palabra", xp: 10, goal: 1 },
+    { id: "palabras_10", title: "Vocabulario joven", desc: "Guarda 10 palabras", xp: 20, goal: 10 },
+    { id: "palabras_50", title: "Vocabulario firme", desc: "Guarda 50 palabras", xp: 60, goal: 50 },
+    { id: "palabras_100", title: "Cien en el cuaderno", desc: "Guarda 100 palabras", xp: 120, goal: 100 },
+    { id: "palabras_500", title: "Diccionario propio", desc: "Guarda 500 palabras", xp: 250, goal: 500 },
+    { id: "raras_5", title: "Cazarraras", desc: "Guarda 5 palabras raras", xp: 50, goal: 5 },
+    { id: "raras_25", title: "Ojo de filólogo", desc: "Guarda 25 palabras raras", xp: 150, goal: 25 },
+    { id: "curioso_50", title: "Curioso", desc: "Consulta 50 palabras", xp: 40, goal: 50 },
+    { id: "curioso_200", title: "No suelta el diccionario", desc: "Consulta 200 palabras", xp: 100, goal: 200 },
+    { id: "lectura_1h", title: "Primera hora", desc: "Lee 1 hora en total", xp: 30, goal: 1 },
+    { id: "lectura_10h", title: "Lector de oficio", desc: "Lee 10 horas en total", xp: 150, goal: 10 },
+    { id: "lectura_50h", title: "Habitante del estante", desc: "Lee 50 horas en total", xp: 400, goal: 50 },
+    { id: "maraton", title: "Maratón", desc: "Lee 30 minutos de una sentada", xp: 40, goal: 30 },
+    { id: "racha_3", title: "Tres días seguidos", desc: "Lee 3 días en racha", xp: 30, goal: 3 },
+    { id: "racha_7", title: "Semana lectora", desc: "Lee 7 días en racha", xp: 80, goal: 7 },
+    { id: "racha_30", title: "Mes de tinta", desc: "Lee 30 días en racha", xp: 300, goal: 30 },
+    { id: "repasos_5", title: "Primeros repasos", desc: "Haz 5 repasos de vocabulario", xp: 15, goal: 5 },
+    { id: "repasos_25", title: "Memoria en marcha", desc: "Haz 25 repasos de vocabulario", xp: 40, goal: 25 },
+    { id: "repasos_50", title: "Mente en forma", desc: "Haz 50 repasos de vocabulario", xp: 70, goal: 50 },
+    { id: "repasos_100", title: "Memoria de acero", desc: "Haz 100 repasos de vocabulario", xp: 120, goal: 100 },
+    { id: "repasos_200", title: "Léxico de hierro", desc: "Haz 200 repasos de vocabulario", xp: 180, goal: 200 },
+    { id: "repasos_400", title: "Archivo viviente", desc: "Haz 400 repasos de vocabulario", xp: 300, goal: 400 },
+    { id: "libro_1", title: "Primer libro cerrado", desc: "Termina un libro", xp: 80, goal: 1 },
+    { id: "libro_3", title: "Devoralibros", desc: "Termina 3 libros", xp: 200, goal: 3 },
+  ];
+
+  it("los 24 logros originales conservan exactamente id, título, desc, xp y umbrales (invariante)", () => {
+    expect(ACHIEVEMENTS.length).toBe(36);
+    for (let i = 0; i < ORIGINAL_24.length; i++) {
+      const orig = ORIGINAL_24[i];
+      const actual = ACHIEVEMENTS[i];
+      expect(actual.id).toBe(orig.id);
+      expect(actual.title).toBe(orig.title);
+      expect(actual.desc).toBe(orig.desc);
+      expect(actual.xp).toBe(orig.xp);
+      expect(actual.goal).toBe(orig.goal);
+
+      // Verificación de check en goal - ε y en goal
+      const statsBelow = emptyGameState().stats;
+      const statsAt = emptyGameState().stats;
+
+      if (actual.family === "palabras") {
+        statsBelow.saved = orig.goal - 1;
+        statsAt.saved = orig.goal;
+      } else if (actual.family === "raras") {
+        statsBelow.rareSaved = orig.goal - 1;
+        statsAt.rareSaved = orig.goal;
+      } else if (actual.family === "consultas") {
+        statsBelow.consulted = orig.goal - 1;
+        statsAt.consulted = orig.goal;
+      } else if (actual.family === "lectura") {
+        statsBelow.minutes = orig.goal * 60 - 1;
+        statsAt.minutes = orig.goal * 60;
+      } else if (actual.family === "sesion") {
+        statsBelow.longestSessionMin = orig.goal - 1;
+        statsAt.longestSessionMin = orig.goal;
+      } else if (actual.family === "racha") {
+        statsBelow.streakDays = orig.goal - 1;
+        statsAt.streakDays = orig.goal;
+      } else if (actual.family === "repasos") {
+        statsBelow.reviews = orig.goal - 1;
+        statsAt.reviews = orig.goal;
+      } else if (actual.family === "libros") {
+        statsBelow.booksFinished = orig.goal - 1;
+        statsAt.booksFinished = orig.goal;
+      }
+
+      expect(actual.check(statsBelow)).toBe(false);
+      expect(actual.check(statsAt)).toBe(true);
+    }
+  });
+
+  it("los 12 logros nuevos tienen títulos, descripciones y puntos correctos", () => {
+    const newOnes = ACHIEVEMENTS.slice(24);
+    expect(newOnes).toHaveLength(12);
+
+    const map = new Map(newOnes.map((a) => [a.id, a]));
+    expect(map.get("palabras_250")).toMatchObject({ title: "Cuaderno lleno", xp: 180, goal: 250 });
+    expect(map.get("palabras_1000")).toMatchObject({ title: "Mil palabras propias", xp: 400, goal: 1000 });
+    expect(map.get("raras_75")).toMatchObject({ title: "Coleccionista de rarezas", xp: 250, goal: 75 });
+    expect(map.get("curioso_500")).toMatchObject({ title: "Lector con lupa", xp: 180, goal: 500 });
+    expect(map.get("lectura_25h")).toMatchObject({ title: "Lector de tardes largas", xp: 250, goal: 25 });
+    expect(map.get("lectura_100h")).toMatchObject({ title: "Cien horas de tinta", xp: 600, goal: 100 });
+    expect(map.get("sesion_60")).toMatchObject({ title: "Hora sin interrupciones", xp: 70, goal: 60 });
+    expect(map.get("racha_14")).toMatchObject({ title: "Dos semanas seguidas", xp: 150, goal: 14 });
+    expect(map.get("racha_100")).toMatchObject({ title: "Cien días de lectura", xp: 700, goal: 100 });
+    expect(map.get("repasos_800")).toMatchObject({ title: "Memoria de archivo", xp: 450, goal: 800 });
+    expect(map.get("libro_5")).toMatchObject({ title: "Estante propio", xp: 300, goal: 5 });
+    expect(map.get("libro_10")).toMatchObject({ title: "Diez libros cerrados", xp: 500, goal: 10 });
+  });
+
+  it("cada familia tiene logros con metas estrictamente crecientes", () => {
+    for (const fam of ACHIEVEMENT_FAMILY_ORDER) {
+      const famAchievements = ACHIEVEMENTS.filter((a) => a.family === fam).sort((a, b) => a.goal - b.goal);
+      expect(famAchievements.length).toBeGreaterThanOrEqual(2);
+      for (let i = 0; i < famAchievements.length - 1; i++) {
+        expect(famAchievements[i].goal).toBeLessThan(famAchievements[i + 1].goal);
+      }
+    }
+  });
+
+  describe("familyProgress", () => {
+    it("con estado vacío calcula progreso 0 y apunta al primer logro", () => {
+      const empty = emptyGameState();
+      const prog = familyProgress(empty);
+      expect(Object.keys(prog)).toEqual(ACHIEVEMENT_FAMILY_ORDER);
+
+      const pal = prog.palabras;
+      expect(pal.ranksEarned).toBe(0);
+      expect(pal.ranksTotal).toBe(7); // 1, 10, 50, 100, 250, 500, 1000
+      expect(pal.current).toBe(0);
+      expect(pal.goal).toBe(1);
+      expect(pal.ratio).toBe(0);
+      expect(pal.nextAchievement?.id).toBe("palabra_1");
+    });
+
+    it("calcula horas fraccionarias y ratios correctamente", () => {
+      const state = emptyGameState();
+      // 90 minutos = 1.5 horas.
+      // Logros ganados: lectura_1h (meta 1h).
+      state.stats.minutes = 90;
+      state.achievements["lectura_1h"] = NOW;
+
+      const prog = familyProgress(state);
+      const lec = prog.lectura;
+      expect(lec.ranksEarned).toBe(1);
+      expect(lec.ranksTotal).toBe(5); // 1, 10, 25, 50, 100
+      expect(lec.current).toBe(1.5);
+      expect(lec.goal).toBe(10); // siguiente logro es lectura_10h
+      expect(lec.ratio).toBeCloseTo(1.5 / 10);
+      expect(lec.nextAchievement?.id).toBe("lectura_10h");
+    });
+
+    it("cuando una familia está completa reporta ratio 1 y nextAchievement null", () => {
+      const state = emptyGameState();
+      state.stats.booksFinished = 15;
+      for (const id of ["libro_1", "libro_3", "libro_5", "libro_10"]) {
+        state.achievements[id] = NOW;
+      }
+
+      const prog = familyProgress(state);
+      const lib = prog.libros;
+      expect(lib.ranksEarned).toBe(4);
+      expect(lib.ranksTotal).toBe(4);
+      expect(lib.nextAchievement).toBeNull();
+      expect(lib.current).toBe(15);
+      expect(lib.goal).toBe(10);
+      expect(lib.ratio).toBe(1);
+    });
+
+    it("listFamilyProgress devuelve las familias en el orden canónico", () => {
+      const list = listFamilyProgress(emptyGameState());
+      expect(list.map((f) => f.family)).toEqual(ACHIEVEMENT_FAMILY_ORDER);
+    });
   });
 });

@@ -96,6 +96,7 @@ type VocabularyProps = {
   // Sube cuando la sincronización trae intervalos nuevos; la pestaña
   // de actividad relee su progreso sin remontar el panel.
   activityVersion?: number;
+  onOpenJourney?: () => void;
 };
 
 type PracticeMode =
@@ -267,7 +268,12 @@ const matchesSearch = (word: SavedWord, query: string) => {
     .every((part) => hay.includes(part));
 };
 
-export default function Vocabulary({ onClose, books, activityVersion }: VocabularyProps) {
+export default function Vocabulary({
+  onClose,
+  books,
+  activityVersion,
+  onOpenJourney,
+}: VocabularyProps) {
   const ref = useRef<HTMLDivElement>(null);
   useModalBehavior(ref, onClose);
 
@@ -1388,7 +1394,12 @@ export default function Vocabulary({ onClose, books, activityVersion }: Vocabula
         ) : null}
 
         {tab === "activity" && !queue && !learn ? (
-          <ReadingActivity books={books} words={all} activityVersion={activityVersion} />
+          <ReadingActivity
+            books={books}
+            words={all}
+            activityVersion={activityVersion}
+            onOpenJourney={onOpenJourney}
+          />
         ) : null}
 
         {tab === "quotes" && !queue && !learn ? (

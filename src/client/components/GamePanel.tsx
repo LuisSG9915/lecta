@@ -1,27 +1,30 @@
 // Panel del juego dentro del Cuaderno: el gato de biblioteca, nivel
-// con su barra de tinta, racha de días, cofres pendientes y la vitrina
-// de logros. Si la preferencia «Compañero y logros» está apagada en
-// Cuenta, este panel no existe — ni compañero ni XP visible.
+// con su barra de tinta continua (ProgressInk), racha de días, cofres
+// pendientes y la meta próxima hacia el siguiente rango de logro.
+// Si la preferencia «Compañero y logros» está apagada en Cuenta, este
+// panel no existe — ni compañero ni XP visible.
 //
 // El gato es un botón que abre la hoja del CompanionProvider (cuidado,
-// nombre, armario) — el estado lo comparte ese mismo proveedor, así
-// que aquí solo se consume por contexto y no hay otra carga ni otro
-// gato. Los cofres se comprometen ANTES de revelar: primero se
-// persiste la recepción y solo entonces se muestra el contenido.
+// nombre, armario, vitrina) — el estado lo comparte ese mismo proveedor,
+// así que aquí solo se consume por contexto y no hay otra carga ni otro
+// gato. Los cofres se comprometen ANTES de revelar: primero se persiste
+// la recepción y solo entonces se muestra el contenido.
 
 import { useEffect, useRef, useState } from "react";
 import { loadGame, openGameChest, writeCompanionField } from "../lib/game";
 import { captureDbScope } from "../lib/idb";
 import { useCompanion } from "./CompanionProvider";
 import { CompanionButton } from "./CompanionButton";
+import { ProgressInk } from "./ProgressInk";
+import { Seal, toRoman } from "./Seal";
 import {
   COMPANION_ARTICLES,
   type CompanionArticle,
 } from "../../shared/companion-data";
 import {
   ACCESSORY_LABELS,
-  ACHIEVEMENTS,
   levelProgress,
+  listFamilyProgress,
   pendingChests,
   type GameChest,
 } from "../lib/gamification";
@@ -31,8 +34,16 @@ import {
 const REVEAL_MS = 2500;
 
 export function GamePanel() {
-  const { enabled, state, name, accessories, mood, stage, openPanel } =
-    useCompanion();
+  const {
+    enabled,
+    state,
+    name,
+    accessories,
+    mood,
+    stage,
+    openPanel,
+    reducedMotion = false,
+  } = useCompanion();
   const [chestBusy, setChestBusy] = useState<string | null>(null);
   const [chestError, setChestError] = useState("");
   const [revealed, setRevealed] = useState<GameChest | null>(null);
@@ -51,10 +62,18 @@ export function GamePanel() {
 
   const prog = levelProgress(state.xp);
   const chests = pendingChests(state);
-  const earned = ACHIEVEMENTS.filter((a) => state.achievements[a.id]);
   const revealedArticle =
     revealed && Object.hasOwn(COMPANION_ARTICLES, revealed.reward)
       ? (revealed.reward as CompanionArticle)
+      : null;
+
+  // Meta próxima: familia con mayor progreso relativo al siguiente rango
+  const pendingFamilies = listFamilyProgress(state).filter(
+    (f) => f.nextAchievement !== null,
+  );
+  const nextGoal =
+    pendingFamilies.length > 0
+      ? [...pendingFamilies].sort((a, b) => b.ratio - a.ratio)[0]
       : null;
 
   const open = (chest: GameChest) => {
@@ -123,20 +142,23 @@ export function GamePanel() {
           <p className="game-level">
             Nivel {prog.level + 1} · {prog.name}
           </p>
-          <div
-            className="game-xpbar"
-            role="progressbar"
-            aria-valuenow={Math.floor(state.xp)}
-            aria-valuemin={prog.floor}
-            aria-valuemax={prog.ceil ?? Math.floor(state.xp)}
-            aria-label="Progreso al siguiente nivel"
-          >
-            <span style={{ width: `${prog.ratio * 100}%` }} />
-          </div>
+          <ProgressInk
+            value={state.xp}
+            max={prog.ceil ?? state.xp}
+            floor={prog.floor}
+            level={prog.level}
+            label="Progreso al siguiente nivel"
+            variant="vermilion"
+            reducedMotion={reducedMotion}
+          />
           <p className="meta">
             {Math.floor(state.xp)} puntos
-            {prog.ceil !== null ? ` · ${prog.ceil - Math.floor(state.xp)} para el siguiente` : " · nivel máximo"}
-            {state.stats.streakDays > 1 ? ` · racha de ${state.stats.streakDays} días` : ""}
+            {prog.ceil !== null
+              ? ` · ${prog.ceil - Math.floor(state.xp)} para el siguiente`
+              : " · nivel máximo"}
+            {state.stats.streakDays > 1
+              ? ` · racha de ${state.stats.streakDays} días`
+              : ""}
           </p>
           {mood === "asleep" ? (
             <p className="meta">El gato duerme; una lectura lo despierta.</p>
@@ -145,7 +167,9 @@ export function GamePanel() {
       </div>
 
       {revealed ? (
-        <div className="game-reveal">
+        <div
+          className={`game-reveal ${reducedMotion ? "" : "game-reveal-stamped"}`.trim()}
+        >
           <p role="status">
             El cofre tenía: {ACCESSORY_LABELS[revealed.reward] ?? revealed.reward}.
           </p>
@@ -190,9 +214,37 @@ export function GamePanel() {
                 disabled={chestBusy !== null}
                 onClick={() => open(chest)}
               >
-                <span className="game-chest-fig" aria-hidden="true">
-                  ▣
-                </span>
+                <svg
+                  viewBox="0 0 24 24"
+                  width="22"
+                  height="22"
+                  className={`game-chest-svg ${chestBusy === chest.id ? "is-opening" : ""}`.trim()}
+                  aria-hidden="true"
+                >
+                  <path
+                    d="M3 10 H21 V19 C21 20.1 20.1 21 19 21 H5 C3.9 21 3 20.1 3 19 Z"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinejoin="round"
+                  />
+                  <rect
+                    x="10.5"
+                    y="10"
+                    width="3"
+                    height="4"
+                    rx="0.5"
+                    fill="currentColor"
+                  />
+                  <path
+                    className="game-chest-lid"
+                    d="M2.5 10 C2.5 7 5 5 12 5 C19 5 21.5 7 21.5 10 Z"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinejoin="round"
+                  />
+                </svg>
                 <span>
                   <span className="game-chest-label">{chest.label}</span>
                   <span className="meta">Toca para abrir</span>
@@ -203,29 +255,42 @@ export function GamePanel() {
         </ul>
       ) : null}
 
-      <details className="game-shelf">
-        <summary className="meta">
-          Logros · {earned.length} de {ACHIEVEMENTS.length}
-        </summary>
-        <ul className="game-badges">
-          {ACHIEVEMENTS.map((a) => {
-            const isEarned = Boolean(state.achievements[a.id]);
-            return (
-              <li
-                key={a.id}
-                className={`game-badge${isEarned ? " is-earned" : " is-locked"}`}
-                title={a.desc}
-              >
-                <span className="game-badge-icon" aria-hidden="true">
-                  {isEarned ? "🏆" : "🔒"}
-                </span>
-                <span className="game-badge-title">{a.title}</span>
-                <span className="game-badge-xp">+{a.xp} XP</span>
-              </li>
-            );
-          })}
-        </ul>
-      </details>
+      {nextGoal ? (
+        <div
+          className="game-next-goal"
+          aria-label={`Siguiente meta: ${nextGoal.info.name}`}
+        >
+          <Seal
+            family={nextGoal.family}
+            rank={nextGoal.ranksEarned}
+            maxRank={nextGoal.ranksTotal}
+            size={40}
+          />
+          <div className="game-next-goal-meta">
+            <div className="game-next-goal-title">
+              <span>{nextGoal.info.name}</span>
+              <span className="game-next-goal-rank">
+                Rango {toRoman(nextGoal.ranksEarned + 1)}
+              </span>
+            </div>
+            <ProgressInk
+              value={nextGoal.current}
+              max={nextGoal.goal}
+              variant="ochre"
+              reducedMotion={reducedMotion}
+            />
+            <p className="game-next-goal-hint">
+              {Math.floor(nextGoal.current)} de {nextGoal.goal}{" "}
+              {nextGoal.goal === 1
+                ? nextGoal.info.unit.singular
+                : nextGoal.info.unit.plural}
+              {nextGoal.nextAchievement
+                ? ` · «${nextGoal.nextAchievement.title}»`
+                : ""}
+            </p>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

@@ -68,6 +68,7 @@ type ShelfProps = {
   // Sube cuando la sincronización trae intervalos nuevos: la meta de
   // la semana relee su progreso sin recargar la estantería.
   activityVersion?: number;
+  onOpenJourney?: () => void;
 };
 
 const DAY_MS = 86_400_000;
@@ -119,6 +120,7 @@ export default function Shelf({
   onDownloadBook,
   downloadingHash,
   activityVersion = 0,
+  onOpenJourney,
 }: ShelfProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [positions, setPositions] = useState<SavedBookPosition[]>([]);
@@ -884,6 +886,17 @@ export default function Shelf({
                 {goalProgress.target} días
                 {goalProgress.met ? " · cumplida" : ""}
               </p>
+            ) : null}
+            {onOpenJourney ? (
+              <div className="shelf-journey-access" style={{ marginTop: "var(--s-2)" }}>
+                <button
+                  type="button"
+                  className="btn--quiet"
+                  onClick={onOpenJourney}
+                >
+                  Tu recorrido completo…
+                </button>
+              </div>
             ) : null}
           </section>
           )}

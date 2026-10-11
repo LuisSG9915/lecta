@@ -104,6 +104,7 @@ export const RECEIPT_KINDS = [
   "chest-open",
   "achievement-seen",
   "stage-seen",
+  "level-seen",
 ] as const;
 export type CompanionReceiptKind = (typeof RECEIPT_KINDS)[number];
 
@@ -684,6 +685,36 @@ export function pendingAchievementCredits(
   ).map((a) => a.id);
 }
 
+// Mejor racha histórica: parte de la racha sellada en los baselines y
+// recorre los días activos del journal aplicando la misma regla de
+// continuidad y marcapáginas protector (salto de 1 día con racha ≥ 3).
+// Devuelve el máximo valor que alcanzó la racha.
+export function bestStreak(snapshot: CompanionSnapshot): number {
+  const base = mergeLegacyBaselines(snapshot.baselines);
+  let maxStreak = base.stats.streakDays;
+  let { lastDayKey, streakDays } = base.stats;
+
+  const seen = new Set<string>();
+  const unique: GameJournalEvent[] = [];
+  for (const e of snapshot.events) {
+    if (!seen.has(e.id)) {
+      seen.add(e.id);
+      unique.push(e);
+    }
+  }
+
+  const days = [...new Set(unique.map((e) => e.dayKey))].sort();
+  for (const day of days) {
+    if (lastDayKey !== null && day <= lastDayKey) continue;
+    const gap = lastDayKey ? daysBetween(day, lastDayKey) : Infinity;
+    const savedByShield = gap === 2 && streakDays >= 3;
+    streakDays = gap === 1 || savedByShield ? streakDays + 1 : 1;
+    lastDayKey = day;
+    if (streakDays > maxStreak) maxStreak = streakDays;
+  }
+  return maxStreak;
+}
+
 // ---------- Validación del lote (PUT /api/companion) ----------
 //
 // El servidor rechaza el lote completo si algo no cuadra — sin recorte
@@ -954,22 +985,55 @@ function cleanRegister(v: unknown): CompanionRegister | null {
   };
 }
 
-function cleanReceipt(v: unknown): CompanionReceipt | null {
+export interface ValidateCompanionBatchOptions {
+  unknownCatalog?: "reject" | "keep";
+}
+
+function cleanReceipt(
+  v: unknown,
+  options?: ValidateCompanionBatchOptions,
+): CompanionReceipt | null {
   if (!isObj(v) || !isId(v.id) || !isStamp(v.at)) return null;
   const parsed = parseReceiptId(v.id);
-  if (!parsed) return null;
+  if (!parsed) {
+    if (options?.unknownCatalog === "keep") {
+      const cut = v.id.indexOf(":");
+      if (cut > 0 && v.id.slice(cut + 1).length > 0) {
+        return { id: v.id, at: v.at };
+      }
+    }
+    return null;
+  }
   switch (parsed.kind) {
     case "achievement-credit":
     case "achievement-seen":
       // Solo ids del catálogo: el XP siempre sale de ACHIEVEMENTS.
-      if (!ACHIEVEMENTS.some((a) => a.id === parsed.key)) return null;
+      if (!ACHIEVEMENTS.some((a) => a.id === parsed.key)) {
+        if (options?.unknownCatalog === "keep") return { id: v.id, at: v.at };
+        return null;
+      }
       break;
     case "chest-open":
-      if (!parseChestKey(parsed.key)) return null;
+      if (!parseChestKey(parsed.key)) {
+        if (options?.unknownCatalog === "keep") return { id: v.id, at: v.at };
+        return null;
+      }
       break;
     case "stage-seen": {
       // Etapas del gato: índices 0..4 en decimal canónico.
-      if (!/^[0-4]$/.test(parsed.key)) return null;
+      if (!/^[0-4]$/.test(parsed.key)) {
+        if (options?.unknownCatalog === "keep") return { id: v.id, at: v.at };
+        return null;
+      }
+      break;
+    }
+    case "level-seen": {
+      // Niveles del juego: índices 1..LEVELS.length - 1 en decimal canónico.
+      const n = Number(parsed.key);
+      if (!/^[1-9]$/.test(parsed.key) || n >= LEVELS.length) {
+        if (options?.unknownCatalog === "keep") return { id: v.id, at: v.at };
+        return null;
+      }
       break;
     }
   }
@@ -983,6 +1047,7 @@ function cleanReceipt(v: unknown): CompanionReceipt | null {
 // el servidor lo reporta como conflicto, no como duplicado inocuo.
 export function validateCompanionBatch(
   body: unknown,
+  options?: ValidateCompanionBatchOptions,
 ): { ok: true; batch: CompanionBatch } | { ok: false; reason: string } {
   const fail = (reason: string) => ({ ok: false as const, reason });
   if (!isObj(body) || body.version !== 1) return fail("bad batch version");
@@ -1040,7 +1105,7 @@ export function validateCompanionBatch(
   }
 
   for (const raw of receipts) {
-    const clean = cleanReceipt(raw);
+    const clean = cleanReceipt(raw, options);
     if (!clean) return fail("bad receipt");
     out.receipts.push(clean);
   }

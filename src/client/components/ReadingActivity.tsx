@@ -37,6 +37,7 @@ type ReadingActivityProps = {
   // Sube cuando la sincronización trae intervalos nuevos: el panel
   // relee sin que el lector pierda su posición.
   activityVersion?: number;
+  onOpenJourney?: () => void;
 };
 
 const DAY_MS = 86_400_000;
@@ -48,6 +49,7 @@ export default function ReadingActivity({
   books,
   words,
   activityVersion = 0,
+  onOpenJourney,
 }: ReadingActivityProps) {
   const [intervals, setIntervals] = useState<SavedInterval[] | null>(null);
   const [goal, setGoal] = useState<ReadingGoal | null>(null);
@@ -315,6 +317,11 @@ export default function ReadingActivity({
       )}
 
       <div className="nb-export act-actions">
+        {onOpenJourney ? (
+          <button type="button" className="btn--quiet" onClick={onOpenJourney}>
+            Ver recorrido completo…
+          </button>
+        ) : null}
         {intervals.length > 0 ? (
           <button type="button" className="btn--quiet" onClick={exportCsv}>
             Exportar actividad CSV

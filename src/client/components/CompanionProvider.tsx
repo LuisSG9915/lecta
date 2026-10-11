@@ -474,14 +474,20 @@ export function CompanionProvider({
     surfaceBlocked;
 
   // La tarjeta se mostró de verdad: persiste el recibo (monotónico
-  // e idempotente) — achievement-seen por cada logro del grupo o
-  // stage-seen:<etapa> para la evolución.
+  // e idempotente) — achievement-seen por cada logro del grupo,
+  // level-seen:<n> por cada nivel cruzado (y stage-seen si coincide
+  // con evolución) o stage-seen:<etapa> para la evolución suelta.
   const markCelebrationSeen = useCallback((item: CelebrationItem) => {
     const scope = captureDbScope();
     if (item.kind === "achievements") {
       for (const id of item.ids)
         void markCompanionReceipt("achievement-seen", id, scope);
-    } else {
+    } else if (item.kind === "level") {
+      for (const lvl of item.crossed)
+        void markCompanionReceipt("level-seen", String(lvl), scope);
+      if (item.stage !== undefined)
+        void markCompanionReceipt("stage-seen", String(item.stage), scope);
+    } else if (item.kind === "stage") {
       void markCompanionReceipt("stage-seen", String(item.stage), scope);
     }
   }, []);

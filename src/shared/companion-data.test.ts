@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  bestStreak,
   canonicalChestKey,
   getEquippedItems,
   mergeCompanionRegister,
@@ -763,5 +764,133 @@ describe("validateCompanionBatch", () => {
         ).toBe(true);
       }
     }
+  });
+
+  it("level-seen solo acepta índices válidos de nivel (1..9)", () => {
+    // Índices válidos 1..9
+    for (let i = 1; i <= 9; i++) {
+      expect(
+        validateCompanionBatch({
+          version: 1,
+          baselines: [],
+          events: [],
+          fields: [],
+          receipts: [{ id: `level-seen:${i}`, at: T0 }],
+        }).ok,
+      ).toBe(true);
+    }
+
+    // Inválidos: 0 (Inicio no se festeja), >= 10, no canónicos o negativos
+    for (const bad of ["0", "10", "foo", "-1", "01"]) {
+      expect(
+        validateCompanionBatch({
+          version: 1,
+          baselines: [],
+          events: [],
+          fields: [],
+          receipts: [{ id: `level-seen:${bad}`, at: T0 }],
+        }).ok,
+      ).toBe(false);
+    }
+  });
+
+  it("sync tolerante hacia adelante conserva recibos desconocidos al bajar y el PUT los rechaza", () => {
+    const batchWithUnknown = {
+      version: 1,
+      baselines: [],
+      events: [],
+      fields: [],
+      receipts: [
+        { id: "achievement-seen:logro_futuro_999", at: T0 },
+        { id: "categoria-futura:clave_nueva", at: T0 },
+      ],
+    };
+
+    // Modo estricto (servidor / PUT predeterminado): rechaza
+    const strictResult = validateCompanionBatch(batchWithUnknown);
+    expect(strictResult.ok).toBe(false);
+
+    // Modo tolerante (pull / cleanPage con unknownCatalog: "keep"): acepta
+    const tolerantResult = validateCompanionBatch(batchWithUnknown, { unknownCatalog: "keep" });
+    expect(tolerantResult.ok).toBe(true);
+    if (tolerantResult.ok) {
+      expect(tolerantResult.batch.receipts).toHaveLength(2);
+      expect(tolerantResult.batch.receipts.map((r) => r.id)).toEqual([
+        "achievement-seen:logro_futuro_999",
+        "categoria-futura:clave_nueva",
+      ]);
+    }
+  });
+});
+
+describe("bestStreak", () => {
+  it("conserva la racha inicial del baseline si no hay eventos", () => {
+    const s = snap({
+      baselines: [baseline("b1", makeState({}, { streakDays: 7, lastDayKey: "2025-06-10" }))],
+    });
+    expect(bestStreak(s)).toBe(7);
+  });
+
+  it("sube con días consecutivos y protege huecos con marcapáginas", () => {
+    // Baseline con racha 3 al 2025-06-10
+    const b = baseline("b1", makeState({}, { streakDays: 3, lastDayKey: "2025-06-10" }));
+    const events = [
+      ev("e1", T0 + 1 * DAY, "2025-06-11", { kind: "read", ms: 60_000 }), // día 4
+      ev("e2", T0 + 2 * DAY, "2025-06-12", { kind: "read", ms: 60_000 }), // día 5
+      // Hueco de un día: salta el 2025-06-13, lee el 2025-06-14 (gap = 2, racha >= 3 protegida por marcapáginas)
+      ev("e3", T0 + 4 * DAY, "2025-06-14", { kind: "read", ms: 60_000 }), // día 6
+      // Hueco de 3 días: salta 15, 16, 17 y lee el 18 -> reinicia a 1
+      ev("e4", T0 + 8 * DAY, "2025-06-18", { kind: "read", ms: 60_000 }), // día 1
+      ev("e5", T0 + 9 * DAY, "2025-06-19", { kind: "read", ms: 60_000 }), // día 2
+    ];
+
+    const s = snap({ baselines: [b], events });
+    // La racha actual en la proyección será 2, pero bestStreak debe ser 6
+    expect(projectGame(s).state.stats.streakDays).toBe(2);
+    expect(bestStreak(s)).toBe(6);
+  });
+});
+
+describe("retroactividad de logros", () => {
+  it("un usuario con historial acredita los logros nuevos una sola vez", () => {
+    // Usuario con 300 palabras guardadas y 100 horas leídas en el baseline
+    const b = baseline(
+      "b1",
+      makeState(
+        {
+          achievements: { palabra_1: T0, palabras_10: T0, palabras_50: T0, palabras_100: T0 },
+        },
+        { saved: 300, minutes: 6000 },
+      ),
+    );
+
+    // Sin eventos nuevos, no hay créditos pendientes
+    const s0 = snap({ baselines: [b], events: [] });
+    expect(pendingAchievementCredits(s0)).toEqual([]);
+
+    // Al llegar un evento nuevo posterior a la migración
+    const event = ev("e1", T0 + 1000, "2025-06-11", { kind: "consulted" });
+    const s1 = snap({ baselines: [b], events: [event] });
+
+    const pending = pendingAchievementCredits(s1);
+    // Debe acreditar palabras_250, lectura_1h, lectura_10h, lectura_25h, lectura_50h, lectura_100h
+    expect(pending).toContain("palabras_250");
+    expect(pending).toContain("lectura_25h");
+    expect(pending).toContain("lectura_100h");
+
+    // Una vez que se agrega el recibo achievement-credit, ya no queda pendiente
+    const s2 = snap({
+      baselines: [b],
+      events: [event],
+      receipts: [
+        { id: "achievement-credit:palabras_250", at: T0 + 1000 },
+        { id: "achievement-credit:lectura_25h", at: T0 + 1000 },
+        { id: "achievement-credit:lectura_100h", at: T0 + 1000 },
+      ],
+    });
+    const remainingPending = pendingAchievementCredits(s2);
+    expect(remainingPending).not.toContain("palabras_250");
+    expect(remainingPending).not.toContain("lectura_25h");
+    expect(remainingPending).not.toContain("lectura_100h");
   });
 });

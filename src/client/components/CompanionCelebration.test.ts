@@ -172,6 +172,16 @@ const stageItem = (stage: number): CelebrationItem => ({
   kind: "stage",
   stage,
 });
+const levelItem = (
+  level: number,
+  crossed: number[],
+  stage?: number,
+): CelebrationItem => ({
+  kind: "level",
+  level,
+  crossed,
+  ...(stage !== undefined ? { stage } : {}),
+});
 
 // ---------- Componente aislado ----------
 
@@ -226,6 +236,40 @@ describe("CompanionCelebration (componente)", () => {
       ),
     );
     expect(toastText()).toBe("Michi ha crecido: gatito atento");
+  });
+
+  it("subida de nivel: «¡Nivel [n]! [nombre]»", () => {
+    const onSeen = vi.fn();
+    act(() =>
+      root.render(
+        h(CompanionCelebration, {
+          ...props,
+          items: [levelItem(1, [1])],
+          blocked: false,
+          onSeen,
+        }),
+      ),
+    );
+    expect(toastText()).toBe("¡Nivel 2! Apuntador");
+    expect(onSeen).toHaveBeenCalledWith(levelItem(1, [1]));
+  });
+
+  it("subida de nivel con evolución agrupada: anuncia nivel y crecimiento en la misma tarjeta", () => {
+    const onSeen = vi.fn();
+    act(() =>
+      root.render(
+        h(CompanionCelebration, {
+          ...props,
+          items: [levelItem(2, [1, 2], 1)],
+          blocked: false,
+          onSeen,
+        }),
+      ),
+    );
+    expect(toastText()).toBe(
+      "¡Nivel 3! Lector constante · Michi ha crecido: gatito atento",
+    );
+    expect(onSeen).toHaveBeenCalledWith(levelItem(2, [1, 2], 1));
   });
 
   it("bloqueado no muestra ni marca: queda pendiente", () => {
@@ -367,6 +411,28 @@ describe("inbox de festejos dentro del proveedor", () => {
     root = createRoot(host);
     renderProvider(null);
     await flush();
+    expect(toast()).toBeNull();
+  });
+
+  it("subida de nivel real: tarjeta → recibos level-seen persistidos", async () => {
+    // 40 min leídos = 40 XP cruza al nivel 2 (índice 1: «Apuntador») y
+    // además desbloquea logros de lectura/sesión.
+    await game.award(
+      { kind: "read", ms: 40 * 60_000 },
+      idb.captureDbScope(),
+      { id: "read:level:1", at: 1_000, dayKey: "2025-06-10" },
+    );
+    renderProvider(null);
+    await flush();
+    // La primera tarjeta de la cola anuncia los logros desbloqueados
+    expect(toastText()).toContain("Maratón");
+    // Al vencer la de logros, sale la tarjeta de nivel
+    act(() => void vi.advanceTimersByTime(CELEBRATION_MS.achievements));
+    expect(toastText()).toContain("¡Nivel 2! Apuntador");
+    await flush();
+    const receipts = await idb.listCompanionReceipts(idb.captureDbScope());
+    expect(receipts.map((r) => r.id)).toContain("level-seen:1");
+    act(() => void vi.advanceTimersByTime(CELEBRATION_MS.level));
     expect(toast()).toBeNull();
   });
 

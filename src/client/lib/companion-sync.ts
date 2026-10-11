@@ -223,7 +223,7 @@ function cleanPage(
     receipts: [],
   };
   (batch[kind] as unknown[]) = items;
-  const validated = validateCompanionBatch(batch);
+  const validated = validateCompanionBatch(batch, { unknownCatalog: "keep" });
   if (!validated.ok) return null;
   return {
     items: validated.batch[kind] as never[],

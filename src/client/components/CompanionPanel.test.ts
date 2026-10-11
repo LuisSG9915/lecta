@@ -564,7 +564,58 @@ describe("CompanionPanel", () => {
 
     expect(host.textContent).toContain("Álbum de Estampas de Lectura");
     expect(host.textContent).toContain("Primera palabra");
-    expect(host.textContent).toContain("1 de 24 conseguidas");
+    expect(host.textContent).toContain("1 de 36 conseguidas");
+  });
+
+  it("la vitrina muestra las 8 familias con sus sellos y marca «Nuevo» para logros recientes", async () => {
+    const now = Date.now();
+    const state = makeState({
+      achievements: {
+        palabra_1: now - 2 * 86_400_000, // 2 días atrás: nuevo
+        palabra_10: now - 30 * 86_400_000, // 30 días atrás: no nuevo
+      },
+    });
+
+    act(() =>
+      root.render(
+        h(CompanionPanel, baseProps({ state })),
+      ),
+    );
+    await flush();
+
+    click(button("Vitrina")!);
+    await flush();
+
+    const familyCards = host.querySelectorAll(".family-card");
+    expect(familyCards.length).toBe(8);
+
+    const seals = host.querySelectorAll(".seal");
+    expect(seals.length).toBeGreaterThanOrEqual(8);
+
+    // Badge "Nuevo" presente para palabra_1
+    const newBadges = host.querySelectorAll(".family-badge-new");
+    expect(newBadges.length).toBe(1);
+    expect(newBadges[0]?.textContent).toBe("Nuevo");
+  });
+
+  it("los libros terminados muestran exlibris con sello genérico si no están en la biblioteca", async () => {
+    const state = makeState({
+      finishedBooks: ["hash_libro_desconocido"],
+    });
+
+    act(() =>
+      root.render(
+        h(CompanionPanel, baseProps({ state })),
+      ),
+    );
+    await flush();
+
+    click(button("Vitrina")!);
+    await flush();
+
+    expect(host.textContent).toContain("Exlibris de Libros Completados");
+    expect(host.textContent).toContain("Libro terminado");
+    expect(host.textContent).toContain("Biblioteca de Lecta");
   });
 
   it("las flechas del teclado en la lista de pestañas cambian de sección", async () => {

@@ -49,6 +49,36 @@
   transition: width var(--dur-2) var(--ease-out);
 }
 
+/* Barra de progreso de tinta continua (ProgressInk) */
+.progress-ink {
+  height: 6px;
+  border-radius: var(--r-1, 2px);
+  background: var(--rule, var(--line));
+  overflow: hidden;
+  position: relative;
+  width: 100%;
+}
+
+.progress-ink-fill {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  width: 100%;
+  height: 100%;
+}
+
+.progress-ink--vermilion .progress-ink-fill {
+  background: var(--vermilion);
+}
+
+.progress-ink--ochre .progress-ink-fill {
+  background: var(--ochre);
+}
+
+.progress-ink--ink .progress-ink-fill {
+  background: var(--ink);
+}
+
 @keyframes grow-bar {
   from {
     transform: scaleX(0);
@@ -56,6 +86,81 @@
   to {
     transform: scaleX(1);
   }
+}
+
+/* Sello clásico de tinta grabado (Seal) */
+.seal {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.seal-svg {
+  display: block;
+  overflow: visible;
+}
+
+.seal-ring {
+  transition: stroke var(--dur-2) var(--ease-out);
+}
+
+.seal-ring--outer {
+  stroke-width: 1.4;
+  stroke: var(--rule, var(--line));
+}
+
+.seal-ring--inner {
+  stroke-width: 1;
+  stroke: var(--rule, var(--line));
+}
+
+.seal-roman {
+  font-family: var(--font-book, serif);
+  font-size: 8px;
+  font-weight: 600;
+  fill: currentColor;
+  letter-spacing: 0.05em;
+}
+
+.seal-dot-locked {
+  fill: var(--rule);
+}
+
+.seal--locked {
+  color: var(--ink-faint, #a8a29e);
+  opacity: 0.55;
+}
+
+.seal--locked .seal-ring--inner {
+  stroke-dasharray: 2 3;
+}
+
+.seal--earned {
+  color: var(--vermilion, #9e3a23);
+}
+
+.seal--earned .seal-ring--outer {
+  stroke: var(--vermilion, #9e3a23);
+  stroke-width: 1.6;
+}
+
+.seal--earned .seal-ring--inner {
+  stroke: color-mix(in srgb, var(--vermilion, #9e3a23) 35%, transparent);
+}
+
+.seal--max {
+  color: var(--ochre, #b8860b);
+}
+
+.seal--max .seal-ring--outer {
+  stroke: var(--ochre, #b8860b);
+  stroke-width: 2;
+}
+
+.seal--max .seal-ring--inner {
+  stroke: var(--amber, #d97706);
 }
 
 /* ---------- El gato ----------
@@ -1023,12 +1128,8 @@
 
 @keyframes cat-evolve {
   0% {
-    transform: scale(0.86);
-    filter: brightness(1.7) saturate(0.6);
-  }
-  55% {
-    transform: scale(1.06);
-    filter: brightness(1.15);
+    transform: scale(0.88);
+    filter: brightness(1.4) saturate(0.8);
   }
   100% {
     transform: scale(1);
@@ -1039,15 +1140,15 @@
 @keyframes cat-spark {
   0% {
     opacity: 0;
-    transform: scale(0.4);
+    transform: scale(0.5);
   }
-  35% {
+  40% {
     opacity: 1;
-    transform: scale(1.1);
+    transform: scale(0.9);
   }
   100% {
     opacity: 0;
-    transform: scale(0.7);
+    transform: scale(1);
   }
 }
 
@@ -1076,15 +1177,16 @@
   cursor: pointer;
   transition:
     border-color var(--dur-1) var(--ease-out),
-    transform var(--dur-1) var(--ease-out);
+    background-color var(--dur-1) var(--ease-out);
 }
 
 .game-chest:hover {
-  transform: translateY(-1px);
+  border-color: var(--vermilion-bright, var(--vermilion));
+  background: var(--paper-raised);
 }
 
 .game-chest:active {
-  transform: translateY(1px);
+  background: var(--vermilion-wash);
 }
 
 .game-chest-fig {
@@ -1092,20 +1194,25 @@
   color: var(--vermilion);
 }
 
+.game-chest-svg {
+  flex-shrink: 0;
+  overflow: visible;
+  color: var(--vermilion);
+}
+
+.game-chest-lid {
+  transform-origin: 2.5px 10px;
+  transition: transform var(--dur-5, 320ms) var(--ease-settle, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+.game-chest-svg.is-opening .game-chest-lid {
+  transform: rotate(-32deg);
+}
+
 .game-chest-label {
   display: block;
   font-weight: 600;
   font-size: 0.9rem;
-}
-
-@keyframes chest-bob {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-2px);
-  }
 }
 
 .game-reveal {
@@ -1115,6 +1222,68 @@
   background: var(--vermilion-wash, var(--paper));
   font-size: 0.9rem;
   animation: rise-in var(--dur-2) var(--ease-out);
+}
+
+.game-reveal-stamped {
+  clip-path: circle(0% at 50% 50%);
+  animation: stamped-reveal var(--dur-6, 480ms) var(--ease-settle, cubic-bezier(0.16, 1, 0.3, 1)) forwards;
+}
+
+@keyframes stamped-reveal {
+  from {
+    clip-path: circle(0% at 50% 50%);
+  }
+  to {
+    clip-path: circle(120% at 50% 50%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .game-reveal-stamped {
+    clip-path: none;
+    animation: rise-in var(--dur-2) var(--ease-out);
+  }
+}
+
+/* Meta próxima en GamePanel */
+.game-next-goal {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-2);
+  background: var(--paper-raised);
+}
+
+.game-next-goal-meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.game-next-goal-title {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--ink);
+  margin: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.game-next-goal-rank {
+  font-size: 0.68rem;
+  color: var(--ink-soft);
+  font-weight: 500;
+}
+
+.game-next-goal-hint {
+  font-size: 0.72rem;
+  color: var(--ink-soft);
+  margin: 0;
 }
 
 /* ---------- Vitrina de logros ---------- */
@@ -1908,12 +2077,12 @@
   background: var(--paper-raised);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
   transition:
-    transform var(--dur-1) var(--ease-out),
-    border-color var(--dur-1) var(--ease-out);
+    border-color var(--dur-1) var(--ease-out),
+    background-color var(--dur-1) var(--ease-out);
 }
 
 .companion-stamp:hover {
-  transform: translateY(-2px);
+  border-color: var(--rule-strong);
 }
 
 .companion-stamp[data-earned="true"] {
@@ -1947,3 +2116,473 @@
   font-weight: 600;
   color: var(--vermilion);
 }
+
+/* Vitrina de familias de logros (tinta y papel) */
+.vitrina-families {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.family-card {
+  padding: var(--s-3);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-2);
+  background: var(--paper-raised);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  transition: border-color var(--dur-2) var(--ease-out);
+}
+
+.family-card:hover {
+  border-color: var(--rule-strong, var(--line));
+}
+
+.family-card-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+}
+
+.family-card-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.family-card-title-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-2);
+}
+
+.family-card-name {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--ink);
+  margin: 0;
+}
+
+.family-card-rank-text {
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+  font-family: var(--font-ui);
+}
+
+.family-card-hint {
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+  margin: 0;
+}
+
+.family-ranks-details {
+  border-top: 1px dashed var(--rule);
+  padding-top: var(--s-2);
+  margin-top: var(--s-1);
+}
+
+.family-ranks-details summary {
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+  cursor: pointer;
+  user-select: none;
+  padding: 2px 0;
+}
+
+.family-ranks-details summary:hover {
+  color: var(--ink);
+}
+
+.family-ranks-list {
+  list-style: none;
+  padding: 0;
+  margin: var(--s-2) 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.family-rank-item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-2);
+  font-size: var(--fs-xs);
+  padding: var(--s-1) var(--s-2);
+  border-radius: var(--r-1);
+  background: var(--paper-sunken);
+}
+
+.family-rank-item[data-earned="true"] {
+  background: color-mix(in srgb, var(--ochre) 8%, var(--paper-raised));
+}
+
+.family-rank-item-meta {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+}
+
+.family-rank-roman {
+  font-family: var(--font-book, serif);
+  font-weight: 600;
+  color: var(--ink-soft);
+  min-width: 1.2rem;
+}
+
+.family-rank-title {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.family-rank-item[data-earned="false"] .family-rank-title {
+  color: var(--ink-soft);
+}
+
+.family-badge-new {
+  font-size: 0.65rem;
+  padding: 1px 5px;
+  border-radius: var(--r-pill, 999px);
+  background: var(--vermilion);
+  color: var(--paper-raised, #fff);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.family-rank-points {
+  color: var(--ink-soft);
+  font-size: 0.7rem;
+  white-space: nowrap;
+}
+
+.family-rank-item[data-earned="true"] .family-rank-points {
+  color: var(--vermilion);
+  font-weight: 600;
+}
+
+/* Exlibris para libros concluidos */
+.exlibris-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: var(--s-3);
+  margin-top: var(--s-2);
+}
+
+.exlibris-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: var(--s-3) var(--s-2);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-2);
+  background: var(--paper-raised);
+  position: relative;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+  transition: border-color var(--dur-1) var(--ease-out);
+}
+
+.exlibris-card:hover {
+  border-color: var(--rule-strong);
+}
+
+.exlibris-frame {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-2);
+  border: 1px solid var(--rule);
+  padding: var(--s-2);
+  border-radius: var(--r-1);
+}
+
+.exlibris-cover {
+  width: 48px;
+  height: 68px;
+  object-fit: cover;
+  border-radius: 2px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.12);
+}
+
+.exlibris-seal-icon {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ochre);
+}
+
+.exlibris-title {
+  font-family: var(--font-book, serif);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.25;
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.exlibris-author {
+  font-size: 0.68rem;
+  color: var(--ink-soft);
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+/* ---------- Tu recorrido (fase 5) ---------- */
+
+.journey-sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: var(--bg-paper, #fdfbf7);
+  color: var(--ink);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.journey-head {
+  position: sticky;
+  top: 0;
+  background: var(--bg-paper, #fdfbf7);
+  border-bottom: 1px solid var(--rule);
+  padding: var(--s-3) var(--s-4);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  z-index: 10;
+}
+
+.journey-title {
+  font-family: var(--font-display, serif);
+  font-size: var(--fs-xl);
+  margin: 0;
+}
+
+.journey-content {
+  max-width: 46rem;
+  width: 100%;
+  margin: 0 auto;
+  padding: var(--s-4) var(--s-3) var(--s-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-5);
+  box-sizing: border-box;
+}
+
+.journey-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: var(--s-3);
+}
+
+.journey-stat-card {
+  padding: var(--s-3);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-1);
+  background: var(--bg, #fff);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+}
+
+.journey-stat-value {
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  font-family: var(--font-book, serif);
+  color: var(--ink);
+}
+
+.journey-stat-label {
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.journey-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.journey-section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--s-2);
+}
+
+.journey-section-title {
+  font-family: var(--font-book, serif);
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--ink);
+  margin: 0;
+}
+
+.journey-stages-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: var(--s-2);
+}
+
+.journey-stage-item {
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-1);
+  background: var(--bg, #fff);
+  display: flex;
+  flex-direction: column;
+}
+
+.journey-stage-count {
+  font-size: var(--fs-md);
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.journey-stage-name {
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+}
+
+.journey-records-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--s-2);
+}
+
+.journey-record-card {
+  padding: var(--s-3);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-1);
+  background: var(--bg, #fff);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.journey-record-title {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-soft);
+  margin-bottom: 2px;
+}
+
+.journey-record-value {
+  font-size: var(--fs-md);
+  font-weight: 600;
+  font-family: var(--font-book, serif);
+  color: var(--ink);
+}
+
+.journey-record-sub {
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+}
+
+.journey-weeks-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--s-2);
+  height: 130px;
+  padding: var(--s-3) 0 var(--s-1);
+  border-bottom: 1px solid var(--rule);
+  margin-top: var(--s-2);
+}
+
+.journey-week-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.journey-week-bar-wrap {
+  width: 100%;
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.journey-week-bar {
+  width: 50%;
+  max-width: 24px;
+  border-radius: 2px 2px 0 0;
+  background: var(--accent, #a66a38);
+  opacity: 0.85;
+  transition: height var(--dur-5) var(--ease-settle);
+}
+
+.journey-week-time {
+  font-size: 0.65rem;
+  color: var(--ink-soft);
+  white-space: nowrap;
+  height: 1em;
+}
+
+.journey-week-label {
+  font-size: 0.68rem;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+.journey-companion-section {
+  padding: var(--s-3);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-1);
+  background: var(--bg, #fff);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.journey-companion-stats {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.journey-seals-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-3);
+  justify-content: center;
+  padding-top: var(--s-2);
+}
+
+.journey-seal-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 4px;
+  max-width: 72px;
+}
+
+.journey-seal-label {
+  font-size: 0.68rem;
+  color: var(--ink-soft);
+  line-height: 1.15;
+}
+

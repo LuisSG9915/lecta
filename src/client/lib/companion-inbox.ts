@@ -1,6 +1,6 @@
 // Inbox de festejos del compañero (fase 5): lo que el juego ya ganó
-// — logros nuevos o un cambio de etapa — y la interfaz aún no
-// anuncia. Módulo puro: entra la proyección vigente más lo ya
+// — logros nuevos, subidas de nivel o un cambio de etapa — y la interfaz
+// aún no anuncia. Módulo puro: entra la proyección vigente más lo ya
 // importado (baselines) y lo ya visto (receipts), y sale la cola de
 // pendientes. No toca XP, estadísticas ni logros: solo decide qué
 // tarjeta falta por mostrarse.
@@ -8,10 +8,12 @@
 // Reglas duras:
 // - Un premio importado en un baseline v1 NUNCA celebra (ya existía
 //   cuando se migró).
-// - Lo que ya tiene recibo «achievement-seen:<id>» o
+// - Lo que ya tiene recibo «achievement-seen:<id>», «level-seen:<n>» o
 //   «stage-seen:<etapa>» no se repite — ni tras remontar ni tras
 //   sincronizar desde otro dispositivo.
 // - Varios logros pendientes se agrupan en UNA tarjeta.
+// - Saltos de varios niveles se agrupan en UNA tarjeta con el nivel
+//   más alto; si coincide con una evolución de etapa, se celebra junta.
 // - La evolución es una sola: la etapa actual proyectada; si ya se
 //   celebró con recibo, nada pendiente.
 // - El pull/sync no genera festejos ficticios: solo llegan logros o
@@ -32,7 +34,9 @@ import {
 export type CelebrationItem =
   // Logros pendientes agrupados: ids (para el recibo) + títulos.
   | { kind: "achievements"; ids: string[]; titles: string[] }
-  // Cambio de etapa proyectado y aún no celebrado.
+  // Subida de nivel proyectada y aún no vista (con salto de varios niveles agrupado).
+  | { kind: "level"; level: number; crossed: number[]; stage?: number }
+  // Cambio de etapa proyectado y aún no celebrado (fallback si no se agrupó con nivel).
   | { kind: "stage"; stage: number };
 
 export function pendingCelebrations(input: {
@@ -75,12 +79,33 @@ export function pendingCelebrations(input: {
     });
   }
 
-  const stage = catStageForLevel(levelFor(input.state.xp));
-  const baseStage = catStageForLevel(levelFor(baselineXp));
-  if (
+  const currentLevel = levelFor(input.state.xp);
+  const baseLevel = levelFor(baselineXp);
+
+  const unseenCrossed: number[] = [];
+  for (let lvl = baseLevel + 1; lvl <= currentLevel; lvl++) {
+    if (!seen.has(receiptIdFor("level-seen", String(lvl)))) {
+      unseenCrossed.push(lvl);
+    }
+  }
+
+  const stage = catStageForLevel(currentLevel);
+  const baseStage = catStageForLevel(baseLevel);
+  const hasPendingStage =
     stage > baseStage &&
-    !seen.has(receiptIdFor("stage-seen", String(stage)))
-  )
+    !seen.has(receiptIdFor("stage-seen", String(stage)));
+
+  if (unseenCrossed.length > 0) {
+    const highestLevel = Math.max(...unseenCrossed);
+    items.push({
+      kind: "level",
+      level: highestLevel,
+      crossed: unseenCrossed,
+      ...(hasPendingStage ? { stage } : {}),
+    });
+  } else if (hasPendingStage) {
     items.push({ kind: "stage", stage });
+  }
+
   return items;
 }

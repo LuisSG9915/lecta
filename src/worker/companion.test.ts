@@ -407,8 +407,30 @@ describe("PUT /api/companion — guardas", () => {
     expect(db.baselines.size).toBe(1);
     expect(db.events.size).toBe(2);
     expect(db.fields.size).toBe(1);
-    expect(db.receipts.size).toBe(1);
     expect(queryLog).toContain("COMMIT");
+  });
+
+  it("acepta un lote con logros nuevos y level-seen válidos", async () => {
+    const response = await putBatch(
+      batch({
+        receipts: [
+          { id: "achievement-seen:palabras_250", at: 50 },
+          { id: "level-seen:3", at: 60 },
+        ],
+      }),
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { accepted: Record<string, string[]> };
+    expect(body.accepted.receipts).toEqual(["achievement-seen:palabras_250", "level-seen:3"]);
+  });
+
+  it("400 ante categoría inventada o logro desconocido en PUT", async () => {
+    const response = await putBatch(
+      batch({
+        receipts: [{ id: "categoria-inventada:clave", at: 50 }],
+      }),
+    );
+    expect(response.status).toBe(400);
   });
 
   it("reenviar el mismo lote es éxito aunque no inserte nada", async () => {

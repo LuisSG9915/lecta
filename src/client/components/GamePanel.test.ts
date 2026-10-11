@@ -260,4 +260,17 @@ describe("GamePanel", () => {
     expect(host.querySelector(".companion-btn")).toBeNull();
     expect(host.querySelector(".game")).toBeNull();
   });
+
+  it("muestra la barra de progreso de tinta y la meta próxima con sello sin trofeos", async () => {
+    await renderPanel();
+    // Progreso con ProgressInk
+    expect(host.querySelector(".progress-ink")).toBeTruthy();
+    // Meta próxima presente con Seal
+    const nextGoal = host.querySelector(".game-next-goal");
+    expect(nextGoal).toBeTruthy();
+    expect(nextGoal?.querySelector(".seal")).toBeTruthy();
+    // No hay lista plana ni emojis de trofeo
+    expect(host.querySelector(".game-badges")).toBeNull();
+    expect(host.textContent).not.toContain("🏆");
+  });
 });

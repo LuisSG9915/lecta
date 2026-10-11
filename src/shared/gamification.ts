@@ -181,42 +181,213 @@ export function catMood(state: GameState, now: number): CatMood {
   return "asleep";
 }
 
-// ---------- Logros ----------
+// ---------- Logros y familias ----------
+
+export type AchievementFamily =
+  | "palabras"
+  | "raras"
+  | "consultas"
+  | "lectura"
+  | "sesion"
+  | "racha"
+  | "repasos"
+  | "libros";
+
+export interface AchievementFamilyInfo {
+  id: AchievementFamily;
+  order: number;
+  name: string;
+  unit: { singular: string; plural: string };
+  glyph:
+    | "pluma"
+    | "gema"
+    | "lupa"
+    | "reloj"
+    | "reloj-arena"
+    | "calendario"
+    | "tarjeta"
+    | "libro";
+}
+
+export const ACHIEVEMENT_FAMILIES: Record<AchievementFamily, AchievementFamilyInfo> = {
+  palabras: {
+    id: "palabras",
+    order: 0,
+    name: "Palabras guardadas",
+    unit: { singular: "palabra", plural: "palabras" },
+    glyph: "pluma",
+  },
+  raras: {
+    id: "raras",
+    order: 1,
+    name: "Palabras raras",
+    unit: { singular: "palabra rara", plural: "palabras raras" },
+    glyph: "gema",
+  },
+  consultas: {
+    id: "consultas",
+    order: 2,
+    name: "Consultas",
+    unit: { singular: "consulta", plural: "consultas" },
+    glyph: "lupa",
+  },
+  lectura: {
+    id: "lectura",
+    order: 3,
+    name: "Horas leídas",
+    unit: { singular: "hora", plural: "horas" },
+    glyph: "reloj",
+  },
+  sesion: {
+    id: "sesion",
+    order: 4,
+    name: "Sesión larga",
+    unit: { singular: "minuto", plural: "minutos" },
+    glyph: "reloj-arena",
+  },
+  racha: {
+    id: "racha",
+    order: 5,
+    name: "Racha",
+    unit: { singular: "día", plural: "días" },
+    glyph: "calendario",
+  },
+  repasos: {
+    id: "repasos",
+    order: 6,
+    name: "Repasos",
+    unit: { singular: "repaso", plural: "repasos" },
+    glyph: "tarjeta",
+  },
+  libros: {
+    id: "libros",
+    order: 7,
+    name: "Libros concluidos",
+    unit: { singular: "libro", plural: "libros" },
+    glyph: "libro",
+  },
+};
+
+export const ACHIEVEMENT_FAMILY_ORDER: AchievementFamily[] = [
+  "palabras",
+  "raras",
+  "consultas",
+  "lectura",
+  "sesion",
+  "racha",
+  "repasos",
+  "libros",
+];
+
+export const FAMILY_METRIC: Record<AchievementFamily, (s: GameStats) => number> = {
+  palabras: (s) => s.saved,
+  raras: (s) => s.rareSaved,
+  consultas: (s) => s.consulted,
+  lectura: (s) => s.minutes / 60,
+  sesion: (s) => s.longestSessionMin,
+  racha: (s) => s.streakDays,
+  repasos: (s) => s.reviews,
+  libros: (s) => s.booksFinished,
+};
 
 export interface Achievement {
   id: string;
   title: string;
   desc: string;
   xp: number;
+  family: AchievementFamily;
+  goal: number;
   check: (stats: GameStats) => boolean;
 }
 
 export const ACHIEVEMENTS: Achievement[] = [
-  { id: "palabra_1", title: "Primera palabra", desc: "Guarda tu primera palabra", xp: 10, check: (s) => s.saved >= 1 },
-  { id: "palabras_10", title: "Vocabulario joven", desc: "Guarda 10 palabras", xp: 20, check: (s) => s.saved >= 10 },
-  { id: "palabras_50", title: "Vocabulario firme", desc: "Guarda 50 palabras", xp: 60, check: (s) => s.saved >= 50 },
-  { id: "palabras_100", title: "Cien en el cuaderno", desc: "Guarda 100 palabras", xp: 120, check: (s) => s.saved >= 100 },
-  { id: "palabras_500", title: "Diccionario propio", desc: "Guarda 500 palabras", xp: 250, check: (s) => s.saved >= 500 },
-  { id: "raras_5", title: "Cazarraras", desc: "Guarda 5 palabras raras", xp: 50, check: (s) => s.rareSaved >= 5 },
-  { id: "raras_25", title: "Ojo de filólogo", desc: "Guarda 25 palabras raras", xp: 150, check: (s) => s.rareSaved >= 25 },
-  { id: "curioso_50", title: "Curioso", desc: "Consulta 50 palabras", xp: 40, check: (s) => s.consulted >= 50 },
-  { id: "curioso_200", title: "No suelta el diccionario", desc: "Consulta 200 palabras", xp: 100, check: (s) => s.consulted >= 200 },
-  { id: "lectura_1h", title: "Primera hora", desc: "Lee 1 hora en total", xp: 30, check: (s) => s.minutes >= 60 },
-  { id: "lectura_10h", title: "Lector de oficio", desc: "Lee 10 horas en total", xp: 150, check: (s) => s.minutes >= 600 },
-  { id: "lectura_50h", title: "Habitante del estante", desc: "Lee 50 horas en total", xp: 400, check: (s) => s.minutes >= 3000 },
-  { id: "maraton", title: "Maratón", desc: "Lee 30 minutos de una sentada", xp: 40, check: (s) => s.longestSessionMin >= 30 },
-  { id: "racha_3", title: "Tres días seguidos", desc: "Lee 3 días en racha", xp: 30, check: (s) => s.streakDays >= 3 },
-  { id: "racha_7", title: "Semana lectora", desc: "Lee 7 días en racha", xp: 80, check: (s) => s.streakDays >= 7 },
-  { id: "racha_30", title: "Mes de tinta", desc: "Lee 30 días en racha", xp: 300, check: (s) => s.streakDays >= 30 },
-  { id: "repasos_5", title: "Primeros repasos", desc: "Haz 5 repasos de vocabulario", xp: 15, check: (s) => s.reviews >= 5 },
-  { id: "repasos_25", title: "Memoria en marcha", desc: "Haz 25 repasos de vocabulario", xp: 40, check: (s) => s.reviews >= 25 },
-  { id: "repasos_50", title: "Mente en forma", desc: "Haz 50 repasos de vocabulario", xp: 70, check: (s) => s.reviews >= 50 },
-  { id: "repasos_100", title: "Memoria de acero", desc: "Haz 100 repasos de vocabulario", xp: 120, check: (s) => s.reviews >= 100 },
-  { id: "repasos_200", title: "Léxico de hierro", desc: "Haz 200 repasos de vocabulario", xp: 180, check: (s) => s.reviews >= 200 },
-  { id: "repasos_400", title: "Archivo viviente", desc: "Haz 400 repasos de vocabulario", xp: 300, check: (s) => s.reviews >= 400 },
-  { id: "libro_1", title: "Primer libro cerrado", desc: "Termina un libro", xp: 80, check: (s) => s.booksFinished >= 1 },
-  { id: "libro_3", title: "Devoralibros", desc: "Termina 3 libros", xp: 200, check: (s) => s.booksFinished >= 3 },
+  // 24 logros originales conservando id, título, desc, xp e invariante de canonicalChestKey
+  { id: "palabra_1", title: "Primera palabra", desc: "Guarda tu primera palabra", xp: 10, family: "palabras", goal: 1, check: (s) => s.saved >= 1 },
+  { id: "palabras_10", title: "Vocabulario joven", desc: "Guarda 10 palabras", xp: 20, family: "palabras", goal: 10, check: (s) => s.saved >= 10 },
+  { id: "palabras_50", title: "Vocabulario firme", desc: "Guarda 50 palabras", xp: 60, family: "palabras", goal: 50, check: (s) => s.saved >= 50 },
+  { id: "palabras_100", title: "Cien en el cuaderno", desc: "Guarda 100 palabras", xp: 120, family: "palabras", goal: 100, check: (s) => s.saved >= 100 },
+  { id: "palabras_500", title: "Diccionario propio", desc: "Guarda 500 palabras", xp: 250, family: "palabras", goal: 500, check: (s) => s.saved >= 500 },
+  { id: "raras_5", title: "Cazarraras", desc: "Guarda 5 palabras raras", xp: 50, family: "raras", goal: 5, check: (s) => s.rareSaved >= 5 },
+  { id: "raras_25", title: "Ojo de filólogo", desc: "Guarda 25 palabras raras", xp: 150, family: "raras", goal: 25, check: (s) => s.rareSaved >= 25 },
+  { id: "curioso_50", title: "Curioso", desc: "Consulta 50 palabras", xp: 40, family: "consultas", goal: 50, check: (s) => s.consulted >= 50 },
+  { id: "curioso_200", title: "No suelta el diccionario", desc: "Consulta 200 palabras", xp: 100, family: "consultas", goal: 200, check: (s) => s.consulted >= 200 },
+  { id: "lectura_1h", title: "Primera hora", desc: "Lee 1 hora en total", xp: 30, family: "lectura", goal: 1, check: (s) => s.minutes >= 60 },
+  { id: "lectura_10h", title: "Lector de oficio", desc: "Lee 10 horas en total", xp: 150, family: "lectura", goal: 10, check: (s) => s.minutes >= 600 },
+  { id: "lectura_50h", title: "Habitante del estante", desc: "Lee 50 horas en total", xp: 400, family: "lectura", goal: 50, check: (s) => s.minutes >= 3000 },
+  { id: "maraton", title: "Maratón", desc: "Lee 30 minutos de una sentada", xp: 40, family: "sesion", goal: 30, check: (s) => s.longestSessionMin >= 30 },
+  { id: "racha_3", title: "Tres días seguidos", desc: "Lee 3 días en racha", xp: 30, family: "racha", goal: 3, check: (s) => s.streakDays >= 3 },
+  { id: "racha_7", title: "Semana lectora", desc: "Lee 7 días en racha", xp: 80, family: "racha", goal: 7, check: (s) => s.streakDays >= 7 },
+  { id: "racha_30", title: "Mes de tinta", desc: "Lee 30 días en racha", xp: 300, family: "racha", goal: 30, check: (s) => s.streakDays >= 30 },
+  { id: "repasos_5", title: "Primeros repasos", desc: "Haz 5 repasos de vocabulario", xp: 15, family: "repasos", goal: 5, check: (s) => s.reviews >= 5 },
+  { id: "repasos_25", title: "Memoria en marcha", desc: "Haz 25 repasos de vocabulario", xp: 40, family: "repasos", goal: 25, check: (s) => s.reviews >= 25 },
+  { id: "repasos_50", title: "Mente en forma", desc: "Haz 50 repasos de vocabulario", xp: 70, family: "repasos", goal: 50, check: (s) => s.reviews >= 50 },
+  { id: "repasos_100", title: "Memoria de acero", desc: "Haz 100 repasos de vocabulario", xp: 120, family: "repasos", goal: 100, check: (s) => s.reviews >= 100 },
+  { id: "repasos_200", title: "Léxico de hierro", desc: "Haz 200 repasos de vocabulario", xp: 180, family: "repasos", goal: 200, check: (s) => s.reviews >= 200 },
+  { id: "repasos_400", title: "Archivo viviente", desc: "Haz 400 repasos de vocabulario", xp: 300, family: "repasos", goal: 400, check: (s) => s.reviews >= 400 },
+  { id: "libro_1", title: "Primer libro cerrado", desc: "Termina un libro", xp: 80, family: "libros", goal: 1, check: (s) => s.booksFinished >= 1 },
+  { id: "libro_3", title: "Devoralibros", desc: "Termina 3 libros", xp: 200, family: "libros", goal: 3, check: (s) => s.booksFinished >= 3 },
+  // 12 logros nuevos agregados al final
+  { id: "palabras_250", title: "Cuaderno lleno", desc: "Guarda 250 palabras", xp: 180, family: "palabras", goal: 250, check: (s) => s.saved >= 250 },
+  { id: "palabras_1000", title: "Mil palabras propias", desc: "Guarda 1000 palabras", xp: 400, family: "palabras", goal: 1000, check: (s) => s.saved >= 1000 },
+  { id: "raras_75", title: "Coleccionista de rarezas", desc: "Guarda 75 palabras raras", xp: 250, family: "raras", goal: 75, check: (s) => s.rareSaved >= 75 },
+  { id: "curioso_500", title: "Lector con lupa", desc: "Consulta 500 palabras", xp: 180, family: "consultas", goal: 500, check: (s) => s.consulted >= 500 },
+  { id: "lectura_25h", title: "Lector de tardes largas", desc: "Lee 25 horas en total", xp: 250, family: "lectura", goal: 25, check: (s) => s.minutes / 60 >= 25 },
+  { id: "lectura_100h", title: "Cien horas de tinta", desc: "Lee 100 horas en total", xp: 600, family: "lectura", goal: 100, check: (s) => s.minutes / 60 >= 100 },
+  { id: "sesion_60", title: "Hora sin interrupciones", desc: "Lee 60 minutos de una sentada", xp: 70, family: "sesion", goal: 60, check: (s) => s.longestSessionMin >= 60 },
+  { id: "racha_14", title: "Dos semanas seguidas", desc: "Lee 14 días en racha", xp: 150, family: "racha", goal: 14, check: (s) => s.streakDays >= 14 },
+  { id: "racha_100", title: "Cien días de lectura", desc: "Lee 100 días en racha", xp: 700, family: "racha", goal: 100, check: (s) => s.streakDays >= 100 },
+  { id: "repasos_800", title: "Memoria de archivo", desc: "Haz 800 repasos de vocabulario", xp: 450, family: "repasos", goal: 800, check: (s) => s.reviews >= 800 },
+  { id: "libro_5", title: "Estante propio", desc: "Termina 5 libros", xp: 300, family: "libros", goal: 5, check: (s) => s.booksFinished >= 5 },
+  { id: "libro_10", title: "Diez libros cerrados", desc: "Termina 10 libros", xp: 500, family: "libros", goal: 10, check: (s) => s.booksFinished >= 10 },
 ];
+
+export interface FamilyProgress {
+  family: AchievementFamily;
+  info: AchievementFamilyInfo;
+  ranksEarned: number;
+  ranksTotal: number;
+  achievements: Achievement[];
+  nextAchievement: Achievement | null;
+  current: number;
+  goal: number;
+  ratio: number;
+}
+
+export function familyProgress(state: GameState): Record<AchievementFamily, FamilyProgress> {
+  const result = {} as Record<AchievementFamily, FamilyProgress>;
+  for (const fam of ACHIEVEMENT_FAMILY_ORDER) {
+    const info = ACHIEVEMENT_FAMILIES[fam];
+    const achievements = ACHIEVEMENTS.filter((a) => a.family === fam).sort((a, b) => a.goal - b.goal);
+    const ranksTotal = achievements.length;
+    const ranksEarned = achievements.filter((a) => Boolean(state.achievements[a.id])).length;
+    const nextAchievement = achievements.find((a) => !state.achievements[a.id]) ?? null;
+    const current = FAMILY_METRIC[fam](state.stats);
+    const maxGoal = achievements[achievements.length - 1]?.goal ?? 0;
+    const goal = nextAchievement ? nextAchievement.goal : maxGoal;
+    const ratio = nextAchievement
+      ? goal > 0
+        ? Math.min(1, Math.max(0, current / goal))
+        : 0
+      : 1;
+    result[fam] = {
+      family: fam,
+      info,
+      ranksEarned,
+      ranksTotal,
+      achievements,
+      nextAchievement,
+      current,
+      goal,
+      ratio,
+    };
+  }
+  return result;
+}
+
+export function listFamilyProgress(state: GameState): FamilyProgress[] {
+  const map = familyProgress(state);
+  return ACHIEVEMENT_FAMILY_ORDER.map((fam) => map[fam]);
+}
 
 // Accesorios que regala cada subida de nivel (los cofres de logros
 // guardan estampas). Son cosméticos: se dibujan sobre el gato.
