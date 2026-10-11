@@ -192,20 +192,20 @@ describe("Kindle Routes (/k and /kindle)", () => {
       expect(res.headers.get("Location")).toContain("/k/login");
     });
 
-    it("sin parámetro section, consulta la última posición y redirige", async () => {
+    it("sin parámetro section, consulta la última posición y redirige incluyendo la página", async () => {
       getSessionMock.mockResolvedValue({
         user: { id: "user-1", email: "lector@example.com" },
       });
       dbQueryMock.mockResolvedValue({
-        rows: [{ sectionIndex: 1 }],
+        rows: [{ sectionIndex: 1, scrollTop: 2 }],
       });
 
       const res = await app.request("/k/read/mock-hash-1", {}, env);
       expect(res.status).toBe(302);
-      expect(res.headers.get("Location")).toBe("/k/read/mock-hash-1?section=1");
+      expect(res.headers.get("Location")).toBe("/k/read/mock-hash-1?section=1&page=2");
     });
 
-    it("con section=0 muestra el capítulo 1 y actualiza la posición", async () => {
+    it("con section=0 muestra el capítulo 1 paginado con cabecera compacta y botón para pasar página", async () => {
       getSessionMock.mockResolvedValue({
         user: { id: "user-1", email: "lector@example.com" },
       });
@@ -214,9 +214,74 @@ describe("Kindle Routes (/k and /kindle)", () => {
       expect(res.status).toBe(200);
       const html = await res.text();
       expect(html).toContain("Capítulo uno");
-      expect(html).toContain("La casa antigua tenía una puerta estrecha.");
-      expect(html).toContain("Capítulo 1 de 2");
-      expect(html).toContain("Siguiente →");
+      // Cabecera compacta con título y autor
+      expect(html).toContain("reader-header");
+      expect(html).toContain("Libro de prueba");
+      expect(html).toContain("Equipo Lecta");
+      // Las palabras se convierten en enlaces a consulta inline en la misma página
+      expect(html).toContain("lookup=antigua");
+      expect(html).toContain("lookup=estrecha");
+      expect(html).toContain("lookup=perenne");
+      // Botón directo para pasar página o avanzar al siguiente capítulo
+      expect(html).toMatch(/Siguiente (página|capítulo) →/);
+      // El contenido del libro se presenta limpio sin cajas inferiores de vocabulario
+      expect(html).toContain("epub-content");
+      expect(html).toContain("turn-page-bar");
+    });
+
+    it("con parámetro lookup muestra la definición inline sin salir del libro", async () => {
+      getSessionMock.mockResolvedValue({
+        user: { id: "user-1", email: "lector@example.com" },
+      });
+      dbQueryMock.mockResolvedValue({
+        rows: [
+          {
+            entry_id: "1001",
+            lemma: "perenne",
+            pos: "adjetivo",
+            definition: "Que dura indefinidamente.",
+            example: "Un árbol de hoja perenne.",
+            sense_order: 1,
+          },
+        ],
+      });
+
+      const res = await app.request("/k/read/mock-hash-1?section=0&page=0&lookup=perenne", {}, env);
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).toContain("inline-lookup-card");
+      expect(html).toContain("perenne");
+      expect(html).toContain("adjetivo");
+      expect(html).toContain("Que dura indefinidamente.");
+      expect(html).toContain("✕ Cerrar");
+      expect(html).toContain("+ Guardar en mi Cuaderno");
+    });
+
+    it("con prep=1 muestra la preparación previa al capítulo con palabras y botón de comenzar capítulo", async () => {
+      getSessionMock.mockResolvedValue({
+        user: { id: "user-1", email: "lector@example.com" },
+      });
+      dbQueryMock.mockResolvedValue({
+        rows: [
+          {
+            entry_id: "1001",
+            lemma: "perenne",
+            pos: "adjetivo",
+            definition: "Que dura indefinidamente.",
+            example: "Un árbol de hoja perenne.",
+            sense_order: 1,
+            queried_form: "perenne",
+          },
+        ],
+      });
+
+      const res = await app.request("/k/read/mock-hash-1?section=0&prep=1", {}, env);
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).toContain("Antes de leer");
+      expect(html).toContain("Capítulo uno");
+      expect(html).toContain("Comenzar capítulo 1 →");
+      expect(html).toContain("section=0&amp;page=0");
     });
   });
 
@@ -271,7 +336,7 @@ describe("Kindle Routes (/k and /kindle)", () => {
   });
 
   describe("POST /k/vocab/add (Guardar en Cuaderno)", () => {
-    it("guarda la palabra en la base de datos y redirige con saved=1", async () => {
+    it("guarda la palabra desde el lector y redirige de vuelta al lector con savedWord", async () => {
       getSessionMock.mockResolvedValue({
         user: { id: "user-1", email: "lector@example.com" },
       });
@@ -282,18 +347,63 @@ describe("Kindle Routes (/k and /kindle)", () => {
       formData.append("pos", "adjetivo");
       formData.append("meaning", "Que dura indefinidamente.");
       formData.append("bookHash", "mock-hash-1");
-      formData.append("returnTo", "/k/read/mock-hash-1?section=0");
+      formData.append("returnTo", "/k/read/mock-hash-1?section=0&page=0");
 
       const res = await app.request("/k/vocab/add", { method: "POST", body: formData }, env);
       expect(res.status).toBe(302);
       const location = res.headers.get("Location");
-      expect(location).toContain("saved=1");
-      expect(location).toContain("q=perenne");
+      expect(location).toContain("/k/read/mock-hash-1?section=0&page=0");
+      expect(location).toContain("savedWord=perenne");
 
       // Verificar que se insertó en la base de datos
       expect(dbQueryMock).toHaveBeenCalledWith(
         expect.stringContaining("INSERT INTO lecta_user_words"),
         expect.arrayContaining(["user-1", "perenne", "perenne", "adjetivo"]),
+      );
+    });
+
+    it("guarda la palabra desde el diccionario y redirige a /k/lookup con saved=1", async () => {
+      getSessionMock.mockResolvedValue({
+        user: { id: "user-1", email: "lector@example.com" },
+      });
+
+      const formData = new FormData();
+      formData.append("form", "perenne");
+      formData.append("lemma", "perenne");
+      formData.append("pos", "adjetivo");
+      formData.append("meaning", "Que dura indefinidamente.");
+      formData.append("bookHash", "mock-hash-1");
+      formData.append("returnTo", "/k/lookup?q=perenne");
+
+      const res = await app.request("/k/vocab/add", { method: "POST", body: formData }, env);
+      expect(res.status).toBe(302);
+      const location = res.headers.get("Location");
+      expect(location).toContain("/k/lookup");
+      expect(location).toContain("saved=1");
+      expect(location).toContain("q=perenne");
+    });
+  });
+
+  describe("POST /k/knowledge/mark", () => {
+    it("marca un lema como conocido e inserta en lecta_user_knowledge", async () => {
+      getSessionMock.mockResolvedValue({
+        user: { id: "user-1", email: "lector@example.com" },
+      });
+
+      const formData = new FormData();
+      formData.append("lemma", "perenne");
+      formData.append("known", "1");
+      formData.append("returnTo", "/k/read/mock-hash-1?section=0&prep=1");
+
+      const res = await app.request("/k/knowledge/mark", { method: "POST", body: formData }, env);
+      expect(res.status).toBe(302);
+      const location = res.headers.get("Location");
+      expect(location).toContain("/k/read/mock-hash-1?section=0&prep=1");
+      expect(location).toContain("markedKnown=perenne");
+
+      expect(dbQueryMock).toHaveBeenCalledWith(
+        expect.stringContaining("INSERT INTO lecta_user_knowledge"),
+        expect.arrayContaining(["user-1", "perenne", true]),
       );
     });
   });

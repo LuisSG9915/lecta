@@ -16,7 +16,7 @@ type SheetProps = {
   side?: "right" | "left";
   // Variante compacta para consulta en lectura: no tapa la página
   // ni desenfoca el libro en exceso.
-  variant?: "default" | "peek";
+  variant?: "default" | "peek" | "stage";
 };
 
 // Punto de corte donde la hoja deja de ser hoja inferior (components.css).
@@ -27,8 +27,18 @@ const DOCKED_QUERY = "(min-width: 64rem)";
 const INTERACTIVE =
   "button, a, input, select, textarea, summary, [role='switch'], [role='radio'], [contenteditable='true']";
 
+function hasScrolledAncestor(target: Element | null, root: Element): boolean {
+  let curr = target;
+  while (curr && curr !== root) {
+    if (curr.scrollTop > 0) return true;
+    curr = curr.parentElement;
+  }
+  return false;
+}
+
 type DragTrack = {
   id: number;
+  startX: number;
   startY: number;
   lastY: number;
   lastT: number;
@@ -51,7 +61,12 @@ export default function Sheet({
       : side === "right"
         ? " sheet--docked"
         : "";
-  const peekClass = variant === "peek" ? " sheet--peek" : "";
+  const variantClass =
+    variant === "peek"
+      ? " sheet--peek"
+      : variant === "stage"
+        ? " sheet--stage"
+        : "";
   // Cierra solo si el mismo puntero empezó y terminó sobre el fondo:
   // arrastrar desde dentro o soltar fuera tras empezar dentro no cierra.
   const downOnScrim = useRef(false);
@@ -105,7 +120,7 @@ export default function Sheet({
     >
       <div
         ref={ref}
-        className={`sheet${docked}${peekClass}`}
+        className={`sheet${docked}${variantClass}`}
         role="dialog"
         aria-modal="true"
         aria-label={label}
@@ -120,12 +135,14 @@ export default function Sheet({
           if (side !== undefined && window.matchMedia(DOCKED_QUERY).matches)
             return;
           const el = ref.current;
-          // Con contenido desplazado el gesto es del scroll, no de la hoja.
-          if (!el || el.scrollTop > 0) return;
-          const target = event.target;
-          if (target instanceof Element && target.closest(INTERACTIVE)) return;
+          const target = event.target instanceof Element ? event.target : null;
+          // Con contenido desplazado (en la hoja o en un contenedor interior)
+          // el gesto es del scroll, no de la hoja.
+          if (!el || el.scrollTop > 0 || hasScrolledAncestor(target, el)) return;
+          if (target?.closest(INTERACTIVE)) return;
           drag.current = {
             id: event.pointerId,
+            startX: event.clientX,
             startY: event.clientY,
             lastY: event.clientY,
             lastT: event.timeStamp,
@@ -137,18 +154,26 @@ export default function Sheet({
           const d = drag.current;
           if (!d || event.pointerId !== d.id) return;
           const el = ref.current;
+          const dx = event.clientX - d.startX;
           const dy = event.clientY - d.startY;
           if (!d.on) {
+            // Si el gesto es más horizontal que vertical, pertenece a un
+            // carrusel o bandeja interior; se cancela el arrastre de la hoja.
+            if (Math.abs(dx) > Math.abs(dy)) {
+              drag.current = null;
+              return;
+            }
             // Tirón hacia arriba o contenido que se movió: el gesto es
             // del scroll; el candidato muere y la hoja quieta.
-            if (dy < -4 || (el && el.scrollTop > 0)) {
+            const target = event.target instanceof Element ? event.target : null;
+            if (dy < -4 || (el && (el.scrollTop > 0 || hasScrolledAncestor(target, el)))) {
               drag.current = null;
               return;
             }
             // Histeresis de 8px para no secuestrar toques ni selecciones.
             if (dy < 8) return;
             d.on = true;
-            el?.setPointerCapture(event.pointerId);
+            el?.setPointerCapture?.(event.pointerId);
             setSwiping(true);
           }
           const dt = event.timeStamp - d.lastT;

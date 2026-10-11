@@ -5,15 +5,29 @@ import { Hono } from "hono";
 import { getConnectionString, withClient, type WorkerEnv } from "../db";
 import { getSession } from "../session";
 import { createAuth } from "../auth";
-import { findEntries } from "../lexicon";
-import { getEpubChapter, getEpubResource } from "./epub-reader";
+import { findEntries, findEntriesForForms } from "../lexicon";
 import {
+  extractChapterPrepCandidates,
+  extractPageWords,
+  findSentenceWithWord,
+  getEpubChapter,
+  getEpubResource,
+  paginateChapter,
+  parseEpub,
+  stripHtml,
+  wrapWordsWithLinks,
+} from "./epub-reader";
+import {
+  renderChapterPrepView,
   renderHomeView,
   renderLoginView,
   renderReaderView,
   renderLookupView,
   type KindleBookItem,
   type KindleUser,
+  type PageWordItem,
+  type PrepWordItem,
+  type InlineLookupResult,
 } from "./views";
 
 export const kindleRoutes = new Hono<{ Bindings: WorkerEnv }>();
@@ -37,7 +51,7 @@ kindleRoutes.get("/", async (c) => {
   const positionRows = await withClient(c.env, (client) =>
     client
       .query(
-        `SELECT book_hash AS "bookHash", section_index AS "sectionIndex", progress
+        `SELECT book_hash AS "bookHash", section_index AS "sectionIndex", scroll_top AS "scrollTop", progress
          FROM lecta_user_positions WHERE user_id = $1`,
         [user.id],
       )
@@ -45,32 +59,80 @@ kindleRoutes.get("/", async (c) => {
       .catch(() => []),
   );
 
-  const positionMap = new Map<string, { sectionIndex: number; progress: number }>();
+  const positionMap = new Map<string, { sectionIndex: number; pageIndex: number; progress: number }>();
   if (Array.isArray(positionRows)) {
     for (const row of positionRows) {
       positionMap.set(row.bookHash, {
         sectionIndex: Number(row.sectionIndex) || 0,
+        pageIndex: Number(row.scrollTop) || 0,
         progress: row.progress != null ? Number(row.progress) : 0,
       });
     }
   }
 
-  const books: KindleBookItem[] = objects.map((obj) => {
-    const hash = obj.key.split("/").pop()?.replace(/\.epub$/, "") ?? "";
-    const title = obj.customMetadata?.title || obj.customMetadata?.name || "Libro sin título";
-    const author = obj.customMetadata?.author || "Autor desconocido";
-    const sections = Number(obj.customMetadata?.sections) || 0;
-    const pos = positionMap.get(hash);
+  const books: KindleBookItem[] = await Promise.all(
+    objects.map(async (obj) => {
+      const hash = obj.key.split("/").pop()?.replace(/\.epub$/, "") ?? "";
+      let title = obj.customMetadata?.title || "";
+      let author = obj.customMetadata?.author || "";
+      let sections = Number(obj.customMetadata?.sections) || 0;
 
-    return {
-      hash,
-      title,
-      author,
-      sections,
-      currentSection: pos ? pos.sectionIndex : null,
-      progressPercent: pos ? pos.progress : null,
-    };
-  });
+      // Si el libro remoto no tiene título o autor guardado en los metadatos de R2,
+      // lo extraemos directamente del archivo EPUB para que se muestre correctamente.
+      if (!title || !author || !sections) {
+        try {
+          const r2Obj = await c.env.BOOKS!.get(obj.key);
+          if (r2Obj) {
+            const data = new Uint8Array(await r2Obj.arrayBuffer());
+            const parsed = await parseEpub(data);
+            if (parsed) {
+              title = title || parsed.title;
+              author = author || parsed.author;
+              sections = sections || parsed.spine.length;
+
+              // Actualiza los metadatos en R2 para que las siguientes peticiones sean inmediatas
+              const saveMetaPromise = c.env.BOOKS!.put(obj.key, data, {
+                httpMetadata: { contentType: "application/epub+zip" },
+                customMetadata: {
+                  name: obj.customMetadata?.name || `${title}.epub`,
+                  title,
+                  author,
+                  sections: String(sections),
+                },
+              }).catch(() => null);
+
+              try {
+                c.executionCtx.waitUntil(saveMetaPromise);
+              } catch {
+                void saveMetaPromise;
+              }
+            }
+          }
+        } catch {
+          // Ignorar fallos de lectura
+        }
+      }
+
+      if (!title) {
+        title = obj.customMetadata?.name?.replace(/\.epub$/i, "") || "Libro sin título";
+      }
+      if (!author) {
+        author = "Autor desconocido";
+      }
+
+      const pos = positionMap.get(hash);
+
+      return {
+        hash,
+        title,
+        author,
+        sections,
+        currentSection: pos ? pos.sectionIndex : null,
+        currentPage: pos ? pos.pageIndex : null,
+        progressPercent: pos ? pos.progress : null,
+      };
+    }),
+  );
 
   return c.html(renderHomeView({ user, books }));
 });
@@ -215,13 +277,18 @@ kindleRoutes.get("/read/:hash", async (c) => {
 
   const user = { id: session.user.id, email: session.user.email, name: session.user.name };
   const requestedSection = c.req.query("section");
+  const requestedPage = c.req.query("page");
+  const savedWord = c.req.query("savedWord");
+  const markedKnown = c.req.query("markedKnown");
+  const lookupWord = c.req.query("lookup")?.trim() || "";
+  const isPrep = c.req.query("prep") === "1";
 
-  // Si no se especifica la sección en la URL, cargar la última posición guardada
+  // Si no se especifica la sección en la URL, cargar la última posición guardada (sección y página)
   if (requestedSection === undefined) {
     const lastPos = await withClient(c.env, (client) =>
       client
         .query(
-          `SELECT section_index AS "sectionIndex" FROM lecta_user_positions
+          `SELECT section_index AS "sectionIndex", scroll_top AS "scrollTop" FROM lecta_user_positions
            WHERE user_id = $1 AND book_hash = $2`,
           [user.id, hash],
         )
@@ -230,7 +297,8 @@ kindleRoutes.get("/read/:hash", async (c) => {
     );
 
     const targetSection = lastPos ? Number(lastPos.sectionIndex) || 0 : 0;
-    return c.redirect(`/k/read/${encodeURIComponent(hash)}?section=${targetSection}`);
+    const targetPage = lastPos && lastPos.scrollTop != null ? Math.max(0, Number(lastPos.scrollTop) || 0) : 0;
+    return c.redirect(`/k/read/${encodeURIComponent(hash)}?section=${targetSection}&page=${targetPage}`);
   }
 
   const sectionIndex = Math.max(0, parseInt(requestedSection, 10) || 0);
@@ -254,23 +322,211 @@ kindleRoutes.get("/read/:hash", async (c) => {
     );
   }
 
-  // Guardar la posición de lectura actualizada en la base de datos de forma sincronizada
+  // Vista de preparación previa al capítulo («Antes de leer»)
+  if (isPrep) {
+    const cleanText = stripHtml(chapter.contentHtml);
+    const candidateForms = extractChapterPrepCandidates(chapter.contentHtml, "es");
+
+    const queryRes = await withClient(c.env, (client) =>
+      Promise.all([
+        client
+          .query(
+            `SELECT LOWER(lemma) AS lemma FROM lecta_user_knowledge
+             WHERE user_id = $1 AND language = 'es' AND known = true AND deleted = false`,
+            [user.id],
+          )
+          .then((res) => res.rows)
+          .catch(() => []),
+        client
+          .query(
+            `SELECT LOWER(form) AS form FROM lecta_user_words
+             WHERE user_id = $1 AND deleted = false`,
+            [user.id],
+          )
+          .then((res) => res.rows)
+          .catch(() => []),
+      ]),
+    );
+
+    const knownRows = queryRes ? queryRes[0] : [];
+    const savedRows = queryRes ? queryRes[1] : [];
+
+    const knownSet = new Set<string>();
+    for (const row of knownRows) {
+      if (row.lemma) knownSet.add(row.lemma);
+    }
+    const savedSet = new Set<string>();
+    for (const row of savedRows) {
+      if (row.form) savedSet.add(row.form);
+    }
+
+    const filteredCandidates = candidateForms.filter((f) => !knownSet.has(f));
+
+    const entriesMap: Record<string, import("../lexicon").LexiconEntryView[]> =
+      filteredCandidates.length > 0
+        ? ((await withClient(c.env, (client) =>
+            findEntriesForForms(client, "es", filteredCandidates.slice(0, 150)),
+          ).catch(() => ({}))) ?? {})
+        : {};
+
+    const prepItems: PrepWordItem[] = [];
+    const seenLemmas = new Set<string>();
+
+    for (const form of filteredCandidates) {
+      const entries = entriesMap[form];
+      if (!entries || entries.length === 0) continue;
+      const entry = entries[0];
+      const lemmaLower = (entry.lemma || form).toLowerCase();
+      if (knownSet.has(lemmaLower)) continue;
+      if (seenLemmas.has(lemmaLower)) continue;
+
+      const firstMeaning = entry.senses && entry.senses.length > 0
+        ? entry.senses[0].definition?.trim()
+        : null;
+      if (!firstMeaning) continue;
+
+      seenLemmas.add(lemmaLower);
+      const isSaved = savedSet.has(form) || savedSet.has(lemmaLower);
+      const example = findSentenceWithWord(cleanText, form);
+
+      prepItems.push({
+        form,
+        lemma: entry.lemma || form,
+        pos: entry.pos || null,
+        meaning: firstMeaning,
+        exampleSentence: example,
+        saved: isSaved,
+        zipf: entry.zipf,
+      });
+    }
+
+    // Ordenar: primero las que ya tiene guardadas en Cuaderno, luego por rareza (zipf menor primero)
+    prepItems.sort((a, b) => {
+      if (a.saved && !b.saved) return -1;
+      if (!a.saved && b.saved) return 1;
+      const zipfA = a.zipf ?? 999;
+      const zipfB = b.zipf ?? 999;
+      return zipfA - zipfB;
+    });
+
+    const topWords = prepItems.slice(0, 7);
+
+    let savedNotice: string | null = null;
+    if (savedWord) {
+      savedNotice = `✓ Palabra «${savedWord}» guardada en tu Cuaderno.`;
+    } else if (markedKnown) {
+      savedNotice = `✓ Palabra «${markedKnown}» marcada como conocida.`;
+    }
+
+    const nextUrl = `/k/read/${encodeURIComponent(hash)}?section=${chapter.sectionIndex}&page=0`;
+    const prevUrl = chapter.sectionIndex > 0
+      ? `/k/read/${encodeURIComponent(hash)}?section=${chapter.sectionIndex - 1}&page=last`
+      : `/k`;
+
+    return c.html(
+      renderChapterPrepView({
+        user,
+        bookHash: hash,
+        bookTitle: chapter.bookTitle,
+        bookAuthor: chapter.bookAuthor,
+        chapterTitle: chapter.chapterTitle,
+        sectionIndex: chapter.sectionIndex,
+        totalSections: chapter.totalSections,
+        words: topWords,
+        savedNotice,
+        nextUrl,
+        prevUrl,
+      }),
+    );
+  }
+
+  // Paginación del capítulo en pantallas discretas
+  const pages = paginateChapter(chapter.contentHtml);
+  const totalPages = pages.length;
+
+  let pageIndex = 0;
+  if (requestedPage === "last") {
+    pageIndex = Math.max(0, totalPages - 1);
+  } else if (requestedPage !== undefined) {
+    pageIndex = Math.min(Math.max(0, parseInt(requestedPage, 10) || 0), totalPages - 1);
+  }
+
+  const rawPageHtml = pages[pageIndex] || "<p>Sin contenido.</p>";
+
+  // Obtener palabras guardadas por el usuario en su Cuaderno para resaltarlas
+  const savedWordsRows = await withClient(c.env, (client) =>
+    client
+      .query(
+        `SELECT LOWER(form) AS form FROM lecta_user_words
+         WHERE user_id = $1 AND deleted = false`,
+        [user.id],
+      )
+      .then((res) => res.rows)
+      .catch(() => []),
+  );
+  const savedWordsSet = new Set<string>();
+  if (Array.isArray(savedWordsRows)) {
+    for (const row of savedWordsRows) {
+      if (row.form) savedWordsSet.add(row.form);
+    }
+  }
+
+  const currentUrl = `/k/read/${encodeURIComponent(hash)}?section=${chapter.sectionIndex}&page=${pageIndex}`;
+
+  // Extraer palabras candidatas de esta página para el bloque de vocabulario
+  const candidateWords = extractPageWords(rawPageHtml);
+  const pageWords: PageWordItem[] = candidateWords.map((form) => ({
+    form,
+    saved: savedWordsSet.has(form.toLowerCase()),
+  }));
+
+  // Enlazar cada palabra en el texto para permitir consulta con un toque
+  const interactivePageHtml = wrapWordsWithLinks(
+    rawPageHtml,
+    hash,
+    currentUrl,
+    savedWordsSet,
+  );
+
+  // Consulta de definición en línea si se pulsó una palabra
+  let lookupResult: InlineLookupResult | null = null;
+  if (lookupWord) {
+    try {
+      const entries = await withClient(c.env, (client) =>
+        findEntries(client, "es", lookupWord.toLowerCase()),
+      );
+      lookupResult = {
+        word: lookupWord,
+        entries: entries || [],
+      };
+    } catch {
+      lookupResult = {
+        word: lookupWord,
+        entries: [],
+      };
+    }
+  }
+
+  // Guardar la posición de lectura actualizada (sección y página) en la base de datos
+  const pageRatio = totalPages > 1 ? pageIndex / (totalPages - 1) : 0;
   const progress = chapter.totalSections > 1
-    ? Math.min(1, Math.max(0, chapter.sectionIndex / (chapter.totalSections - 1)))
-    : 1;
+    ? Math.min(1, Math.max(0, (chapter.sectionIndex + pageRatio) / (chapter.totalSections - 1)))
+    : pageRatio;
 
   const now = Date.now();
   const savePositionPromise = withClient(c.env, (client) =>
     client.query(
       `INSERT INTO lecta_user_positions
          (user_id, book_hash, section_index, scroll_top, ratio, progress, updated_at)
-       VALUES ($1, $2, $3, 0, 0, $4, $5)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        ON CONFLICT (user_id, book_hash) DO UPDATE SET
          section_index = excluded.section_index,
+         scroll_top = excluded.scroll_top,
+         ratio = excluded.ratio,
          progress = excluded.progress,
          updated_at = excluded.updated_at
-       WHERE lecta_user_positions.updated_at < excluded.updated_at`,
-      [user.id, hash, chapter.sectionIndex, progress, now],
+       WHERE lecta_user_positions.updated_at <= excluded.updated_at`,
+      [user.id, hash, chapter.sectionIndex, pageIndex, pageRatio, progress, now],
     ),
   ).catch(() => null);
 
@@ -280,6 +536,8 @@ kindleRoutes.get("/read/:hash", async (c) => {
     await savePositionPromise;
   }
 
+  const savedNotice = savedWord ? `✓ Palabra «${savedWord}» guardada en tu Cuaderno.` : null;
+
   return c.html(
     renderReaderView({
       user,
@@ -287,9 +545,14 @@ kindleRoutes.get("/read/:hash", async (c) => {
       bookTitle: chapter.bookTitle,
       bookAuthor: chapter.bookAuthor,
       chapterTitle: chapter.chapterTitle,
-      contentHtml: chapter.contentHtml,
+      contentHtml: interactivePageHtml,
       sectionIndex: chapter.sectionIndex,
       totalSections: chapter.totalSections,
+      pageIndex,
+      totalPages,
+      pageWords,
+      savedNotice,
+      lookupResult,
     }),
   );
 });
@@ -375,14 +638,30 @@ kindleRoutes.post("/vocab/add", async (c) => {
 
   const body = (await c.req.parseBody().catch(() => ({}))) as Record<string, unknown>;
   const form = typeof body.form === "string" ? body.form.trim() : "";
-  const lemma = typeof body.lemma === "string" ? body.lemma.trim() : form;
-  const pos = typeof body.pos === "string" ? body.pos.trim() : null;
-  const meaning = typeof body.meaning === "string" ? body.meaning.trim() : null;
+  let lemma = typeof body.lemma === "string" ? body.lemma.trim() : form;
+  let pos = typeof body.pos === "string" ? body.pos.trim() : null;
+  let meaning = typeof body.meaning === "string" ? body.meaning.trim() : null;
   const bookHash = typeof body.bookHash === "string" ? body.bookHash.trim() : null;
   const returnTo = typeof body.returnTo === "string" ? body.returnTo : "/k";
 
   if (!form) {
     return c.redirect(returnTo);
+  }
+
+  // Si no se proporcionó significado, buscarlo en el catálogo léxico
+  if (!meaning) {
+    try {
+      const entries = await withClient(c.env, (client) =>
+        findEntries(client, "es", form.toLowerCase()),
+      );
+      if (entries && entries.length > 0) {
+        lemma = entries[0].lemma || lemma;
+        pos = entries[0].pos || pos;
+        meaning = entries[0].senses[0]?.definition || null;
+      }
+    } catch {
+      // Ignorar fallo de búsqueda
+    }
   }
 
   const now = Date.now();
@@ -402,6 +681,46 @@ kindleRoutes.post("/vocab/add", async (c) => {
     );
   }).catch(() => null);
 
+  // Si la petición vino del lector directamente, volver al lector con aviso de confirmación
+  if (returnTo.includes("/k/read/")) {
+    const separator = returnTo.includes("?") ? "&" : "?";
+    return c.redirect(`${returnTo}${separator}savedWord=${encodeURIComponent(form)}`);
+  }
+
   const redirectUrl = `/k/lookup?q=${encodeURIComponent(form)}&saved=1&returnTo=${encodeURIComponent(returnTo)}&bookHash=${encodeURIComponent(bookHash || "")}`;
   return c.redirect(redirectUrl);
 });
+
+// 8. Marcar palabra como conocida o desconocida en la preparación
+kindleRoutes.post("/knowledge/mark", async (c) => {
+  const session = await getSession(c);
+  if (!session?.user) {
+    return c.redirect("/k/login");
+  }
+
+  const body = (await c.req.parseBody().catch(() => ({}))) as Record<string, unknown>;
+  const lemma = typeof body.lemma === "string" ? body.lemma.trim().toLowerCase() : "";
+  const known = body.known === "1" || body.known === "true";
+  const returnTo = typeof body.returnTo === "string" ? body.returnTo : "/k";
+
+  if (lemma) {
+    const now = Date.now();
+    await withClient(c.env, (client) =>
+      client.query(
+        `INSERT INTO lecta_user_knowledge
+           (user_id, language, lemma, known, source, updated_at, deleted)
+         VALUES ($1, 'es', $2, $3, 'kindle_prep', $4, false)
+         ON CONFLICT (user_id, language, lemma) DO UPDATE SET
+           known = excluded.known,
+           source = excluded.source,
+           updated_at = excluded.updated_at,
+           deleted = false`,
+        [session.user.id, lemma, known, now],
+      ),
+    ).catch(() => null);
+  }
+
+  const separator = returnTo.includes("?") ? "&" : "?";
+  return c.redirect(`${returnTo}${separator}markedKnown=${encodeURIComponent(lemma)}`);
+});
+

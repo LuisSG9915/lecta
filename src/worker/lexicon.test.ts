@@ -136,9 +136,9 @@ describe("sampleForCalibration", () => {
     const words = await sampleForCalibration(
       clientWith([
         row("subyugar"),
-        row("zancada", { zipf: 3.9 }), // medido fuera de su banda [2.4, 2.7)
+        row("zancada", { zipf: 3.9 }), // medido fuera de su banda [2.3, 2.6)
         row("hibernar", { zipf: null }),
-        row("lóbrego", { definition: null }),
+        row("altivez", { definition: null }),
       ]),
       "es",
       "native",

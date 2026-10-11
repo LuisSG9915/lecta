@@ -518,6 +518,7 @@ export function CompanionProvider({
           activeCare={activeCare}
           onCare={care}
           onClose={closePanel}
+          reducedMotion={reducedMotion}
         />
       ) : null}
       {/* Inbox de festejos: montado mientras el juego está encendido

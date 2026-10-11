@@ -48,7 +48,8 @@ function Modal({
 const render = (node: ReactNode) => act(() => root.render(node));
 const key = (k: string, shift = false) =>
   act(() => {
-    document.dispatchEvent(
+    const target = document.activeElement ?? document;
+    target.dispatchEvent(
       new KeyboardEvent("keydown", {
         key: k,
         shiftKey: shift,
@@ -230,4 +231,24 @@ describe("useModalBehavior", () => {
     // Borra la propia: vuelve a leerse del prototipo.
     delete (de as { clientWidth?: number }).clientWidth;
   });
+
+  it("no cierra si Escape se pulsa dentro de un elemento [data-escape='local']", () => {
+    const onClose = vi.fn();
+    render(
+      h(
+        Modal,
+        { onClose },
+        h(
+          "form",
+          { "data-escape": "local" },
+          h("input", { "data-autofocus": true, placeholder: "editar" }),
+        ),
+      ),
+    );
+    const input = host.querySelector("input")!;
+    input.focus();
+    key("Escape");
+    expect(onClose).not.toHaveBeenCalled();
+  });
 });
+

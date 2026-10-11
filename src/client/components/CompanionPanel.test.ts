@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
-// Pruebas de la hoja del compañero: nombre validado, armario por
-// ranuras (equipar, «Sin prenda» = null explícito, bloqueos con
-// requisito real, prenda remota conservada pero no dibujada) y el
-// cuidado real que deja lastCare sin tocar el juego. IndexedDB va con
-// el mismo Map por base que game.test.ts.
+// Pruebas de la hoja del compañero: nombre validado (editor inline con ✎,
+// Cancelar y Escape sin cerrar la hoja), pestañas con teclado, rincón con
+// globo contextual, armario con bandeja por ranura y prueba temporal de
+// prendas bloqueadas sin persistir.
+
 import { act, createElement as h } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -161,10 +161,6 @@ const click = (el: Element) =>
 const buttons = () => [...host.querySelectorAll("button")];
 const button = (label: string) =>
   buttons().find((b) => b.textContent?.includes(label));
-const buttonIn = (scope: Element, label: string) =>
-  [...scope.querySelectorAll("button")].find((b) =>
-    b.textContent?.includes(label),
-  );
 
 // Input controlado de React: el setter nativo + evento «input».
 const typeInto = (el: HTMLInputElement, value: string) =>
@@ -217,8 +213,18 @@ const baseProps = (
   ...over,
 });
 
-const openCloset = async () => {
-  click(button("Cambiar ropa")!);
+const openCloset = async (slotLabel?: string) => {
+  click(button("Armario")!);
+  await flush();
+  if (slotLabel) {
+    click(button(slotLabel)!);
+    await flush();
+  }
+};
+
+const openNameEdit = async () => {
+  const btn = host.querySelector(".companion-rename-btn")!;
+  click(btn);
   await flush();
 };
 
@@ -236,6 +242,7 @@ describe("CompanionPanel", () => {
     const scope = idb.captureDbScope();
     act(() => root.render(h(CompanionPanel, baseProps())));
     await flush();
+    await openNameEdit();
 
     const input = host.querySelector("#companion-name") as HTMLInputElement;
     typeInto(input, "   ");
@@ -256,6 +263,7 @@ describe("CompanionPanel", () => {
     const scope = idb.captureDbScope();
     act(() => root.render(h(CompanionPanel, baseProps())));
     await flush();
+    await openNameEdit();
 
     typeInto(
       host.querySelector("#companion-name") as HTMLInputElement,
@@ -265,6 +273,45 @@ describe("CompanionPanel", () => {
     await flush();
     const reg = await game.readCompanionField("name", scope);
     expect(reg?.value).toBe("Pelusa");
+  });
+
+  it("cancelar la edición restaura el nombre sin guardar", async () => {
+    const scope = idb.captureDbScope();
+    act(() => root.render(h(CompanionPanel, baseProps({ name: "Michi" }))));
+    await flush();
+    await openNameEdit();
+
+    const input = host.querySelector("#companion-name") as HTMLInputElement;
+    typeInto(input, "NuevoNombre");
+    click(button("Cancelar")!);
+    await flush();
+
+    expect(host.querySelector("#companion-name")).toBeNull();
+    expect(host.querySelector(".companion-title")?.textContent).toBe("Michi");
+    expect(await game.readCompanionField("name", scope)).toBeUndefined();
+  });
+
+  it("Escape dentro de la edición de nombre cancela sin cerrar la hoja", async () => {
+    const onClose = vi.fn();
+    act(() => root.render(h(CompanionPanel, baseProps({ onClose }))));
+    await flush();
+    await openNameEdit();
+
+    const input = host.querySelector("#companion-name") as HTMLInputElement;
+    input.focus();
+    act(() => {
+      input.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "Escape",
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    });
+    await flush();
+
+    expect(onClose).not.toHaveBeenCalled();
+    expect(host.querySelector("#companion-name")).toBeNull();
   });
 
   it("equipar una prenda disponible escribe equipped.<ranura>", async () => {
@@ -278,11 +325,9 @@ describe("CompanionPanel", () => {
       ),
     );
     await flush();
-    await openCloset();
+    await openCloset("Cabeza");
 
-    const cabeza = host.querySelector("#companion-slot-head")!
-      .parentElement as HTMLElement;
-    const mono = buttonIn(cabeza, "Moño")! as HTMLButtonElement;
+    const mono = button("Moño")! as HTMLButtonElement;
     expect(mono.disabled).toBe(false);
     click(mono);
     await flush();
@@ -304,68 +349,76 @@ describe("CompanionPanel", () => {
       ),
     );
     await flush();
-    await openCloset();
+    await openCloset("Cabeza");
 
-    const cabeza = host.querySelector("#companion-slot-head")!
-      .parentElement as HTMLElement;
-    click(buttonIn(cabeza, "Sin prenda")!);
+    click(button("Sin prenda")!);
     await flush();
     const reg = await game.readCompanionField("equipped.head", scope);
-    // null persistido como dato, no como borrado del registro.
     expect(reg).toBeTruthy();
     expect(reg!.value).toBeNull();
   });
 
-  it("la prenda bloqueada está deshabilitada y muestra su nivel", async () => {
-    const state = makeState(); // sin cofres: nada desbloqueado
+  it("la prenda bloqueada muestra su nivel y probarla no persiste", async () => {
+    const scope = idb.captureDbScope();
+    const state = makeState();
     act(() =>
       root.render(h(CompanionPanel, baseProps({ state }))),
     );
     await flush();
-    await openCloset();
+    await openCloset("Cuello");
 
-    const cuello = host.querySelector("#companion-slot-neck")!
-      .parentElement as HTMLElement;
-    const collar = buttonIn(cuello, "Collar")! as HTMLButtonElement;
-    expect(collar.disabled).toBe(true);
+    const collar = button("Collar")! as HTMLButtonElement;
+    expect(collar.getAttribute("aria-disabled")).toBe("true");
     expect(collar.textContent).toContain("Nivel 7");
-    const bufanda = buttonIn(cuello, "Bufanda")! as HTMLButtonElement;
-    expect(bufanda.disabled).toBe(true);
+
+    const bufanda = button("Bufanda")! as HTMLButtonElement;
+    expect(bufanda.getAttribute("aria-disabled")).toBe("true");
     expect(bufanda.textContent).toContain("Nivel 3");
-    // «Sin prenda» nunca se bloquea: siempre hay una opción usable.
+
+    // Al tocar la prenda bloqueada se prueba sin escribir nada
+    click(collar);
+    await flush();
+    expect(await game.readCompanionField("equipped.neck", scope)).toBeUndefined();
+    expect(host.querySelector(".companion-bubble")?.textContent).toContain("Se desbloquea en el nivel 7");
+
+    // Botón de quitar prueba
+    const quitarBtn = button("Quitar prueba");
+    expect(quitarBtn).toBeTruthy();
+    click(quitarBtn!);
+    await flush();
+    expect(button("Quitar prueba")).toBeFalsy();
+
+    // «Sin prenda» nunca se bloquea
     expect(
-      (buttonIn(cuello, "Sin prenda")! as HTMLButtonElement).disabled,
+      (button("Sin prenda")! as HTMLButtonElement).disabled,
     ).toBe(false);
   });
 
   it("prenda remota puesta se conserva marcada pero no se dibuja", async () => {
-    // El registro dice «moño» en la cabeza, pero el cofre del moño
-    // no está abierto en esta copia: el armario lo muestra puesto y
-    // bloqueado; el gato no lo dibuja hasta abrir su cofre.
     const state = makeState();
     act(() =>
       root.render(
         h(CompanionPanel, baseProps({
           state,
           equipped: { body: null, neck: null, head: "moño", face: null, coat: null },
-          accessories: [], // lo que el proveedor decidió dibujar
+          accessories: [],
         })),
       ),
     );
     await flush();
-    await openCloset();
+    await openCloset("Cabeza");
 
-    expect(host.querySelector(".cat-wear--mono, .cat-wear--moño")).toBeNull();
-    const cabeza = host.querySelector("#companion-slot-head")!
-      .parentElement as HTMLElement;
-    const mono = buttonIn(cabeza, "Moño")! as HTMLButtonElement;
+    // El gato grande del escenario no dibuja la prenda remota porque
+    // está bloqueada localmente (accessories=[]).
+    expect(
+      host.querySelector(".companion-stage .cat-wear--mono, .companion-stage .cat-wear--moño"),
+    ).toBeNull();
+    const mono = button("Moño")! as HTMLButtonElement;
     expect(mono.getAttribute("aria-checked")).toBe("true");
     expect(mono.textContent).toContain("Puesta");
-    // Bloqueada localmente: no se puede reelegir, pero «Sin prenda»
-    // sigue disponible para quitarla.
-    expect(mono.disabled).toBe(true);
+    expect(mono.getAttribute("aria-disabled")).toBe("true");
     expect(
-      (buttonIn(cabeza, "Sin prenda")! as HTMLButtonElement).disabled,
+      (button("Sin prenda")! as HTMLButtonElement).disabled,
     ).toBe(false);
   });
 
@@ -374,70 +427,59 @@ describe("CompanionPanel", () => {
       root.render(h(CompanionPanel, baseProps({ mood: "asleep" }))),
     );
     await flush();
-    // La patita de saludo está arriba al abrir (pose «greet»).
     expect(
       host.querySelector("svg.cat")?.getAttribute("class"),
     ).toContain("cat--p-greet");
-    // Y el texto conserva el humor de llegada.
-    const greeting = host.querySelector(".companion-greeting");
-    expect(greeting?.textContent).toContain("te extrañó");
+    const bubble = host.querySelector(".companion-bubble");
+    expect(bubble?.textContent).toContain("te extrañó");
   });
 
   it("el saludo de un gato despierto lleva su nombre", async () => {
     act(() => root.render(h(CompanionPanel, baseProps())));
     await flush();
     expect(
-      host.querySelector(".companion-greeting")?.textContent,
+      host.querySelector(".companion-bubble")?.textContent,
     ).toContain("Michi");
   });
 
   it("la ranura Pelaje ofrece Natural y bloquea con su nivel", async () => {
-    // Nivel 1 (sin xp): solo «Natural» está usable; cada pelaje
-    // muestra el nivel que lo desbloquea.
     act(() =>
       root.render(h(CompanionPanel, baseProps({ state: makeState() }))),
     );
     await flush();
-    await openCloset();
+    await openCloset("Pelaje");
 
-    const pelaje = host.querySelector("#companion-slot-coat")!
-      .parentElement as HTMLElement;
-    const natural = buttonIn(pelaje, "Natural")! as HTMLButtonElement;
+    const natural = button("Natural")! as HTMLButtonElement;
     expect(natural.disabled).toBe(false);
-    const atigrado = buttonIn(pelaje, "Atigrado")! as HTMLButtonElement;
-    expect(atigrado.disabled).toBe(true);
+    const atigrado = button("Atigrado")! as HTMLButtonElement;
+    expect(atigrado.getAttribute("aria-disabled")).toBe("true");
     expect(atigrado.textContent).toContain("Nivel 2");
-    const dorado = buttonIn(pelaje, "Dorado")! as HTMLButtonElement;
+    const dorado = button("Dorado")! as HTMLButtonElement;
     expect(dorado.textContent).toContain("Nivel 10");
   });
 
   it("un pelaje desbloqueado se equipa y «Natural» lo quita", async () => {
     const scope = idb.captureDbScope();
-    // xp 1150 = nivel 8: atigrado, gris, siamés y tuxedo libres.
     const state = makeState({ xp: 1150 });
     act(() =>
       root.render(h(CompanionPanel, baseProps({ state }))),
     );
     await flush();
-    await openCloset();
+    await openCloset("Pelaje");
 
-    const pelaje = host.querySelector("#companion-slot-coat")!
-      .parentElement as HTMLElement;
-    const tuxedo = buttonIn(pelaje, "Tuxedo")! as HTMLButtonElement;
-    expect(tuxedo.disabled).toBe(false);
+    const tuxedo = button("Tuxedo")! as HTMLButtonElement;
+    expect(tuxedo.getAttribute("aria-disabled")).toBeNull();
     click(tuxedo);
     await flush();
     expect(
       (await game.readCompanionField("equipped.coat", scope))?.value,
     ).toBe("pelaje-tuxedo");
 
-    // El dorado (nivel 10) sigue bloqueado a este nivel.
     expect(
-      (buttonIn(pelaje, "Dorado")! as HTMLButtonElement).disabled,
-    ).toBe(true);
+      (button("Dorado")! as HTMLButtonElement).getAttribute("aria-disabled"),
+    ).toBe("true");
 
-    // «Natural» escribe null explícito — quita el pelaje.
-    click(buttonIn(pelaje, "Natural")!);
+    click(button("Natural")!);
     await flush();
     const reg = await game.readCompanionField("equipped.coat", scope);
     expect(reg).toBeTruthy();
@@ -457,8 +499,6 @@ describe("CompanionPanel", () => {
       root.render(
         h(CompanionPanel, baseProps({
           state: before,
-          // El camino real: el proveedor haría lo mismo con sus
-          // opciones de movimiento reducido.
           onCare: (kind) => {
             const handle = startCare(kind, {
               scope,
@@ -492,7 +532,6 @@ describe("CompanionPanel", () => {
     );
     await flush();
 
-    // Cambiar a la pestaña de recompensas
     click(button("Recompensas")!);
     await flush();
 
@@ -503,7 +542,6 @@ describe("CompanionPanel", () => {
     click(openBtn);
     await flush();
 
-    // Muestra la revelación del cofre
     expect(host.textContent).toContain("¡Tesoro abierto!");
     expect(host.textContent).toContain("Bufanda");
     expect(button("Vestir a Michi ahora")).toBeTruthy();
@@ -527,5 +565,40 @@ describe("CompanionPanel", () => {
     expect(host.textContent).toContain("Álbum de Estampas de Lectura");
     expect(host.textContent).toContain("Primera palabra");
     expect(host.textContent).toContain("1 de 24 conseguidas");
+  });
+
+  it("las flechas del teclado en la lista de pestañas cambian de sección", async () => {
+    act(() => root.render(h(CompanionPanel, baseProps())));
+    await flush();
+
+    const careTab = host.querySelector("#companion-tab-care") as HTMLButtonElement;
+    expect(careTab.getAttribute("aria-selected")).toBe("true");
+
+    act(() => {
+      careTab.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "ArrowRight",
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    });
+    await flush();
+
+    const rewardsTab = host.querySelector("#companion-tab-rewards") as HTMLButtonElement;
+    expect(rewardsTab.getAttribute("aria-selected")).toBe("true");
+    expect(host.querySelector("#companion-panel-rewards")).toBeTruthy();
+  });
+
+  it("el globo muestra el estado del cuidado durante una acción activa", async () => {
+    act(() =>
+      root.render(
+        h(CompanionPanel, baseProps({ activeCare: "feed" })),
+      ),
+    );
+    await flush();
+
+    const bubble = host.querySelector(".companion-bubble");
+    expect(bubble?.textContent).toContain("comiendo");
   });
 });

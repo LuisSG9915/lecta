@@ -96,6 +96,33 @@ async function loadVocabSummary(
     : `${knownCount} palabras que ya conoces · sin conexión no se puede estimar el nivel`;
 }
 
+function translateAuthError(message?: string): string {
+  if (!message) return "No se pudo completar la acción.";
+  const lower = message.toLowerCase();
+  if (lower.includes("invalid email or password") || lower.includes("invalid_email_or_password")) {
+    return "Correo o contraseña incorrectos.";
+  }
+  if (lower.includes("invalid email") || lower.includes("invalid_email")) {
+    return "El correo electrónico no tiene un formato válido.";
+  }
+  if (lower.includes("user not found") || lower.includes("user_not_found")) {
+    return "No se encontró ningún usuario con este correo.";
+  }
+  if (lower.includes("password is too short") || lower.includes("password_too_short")) {
+    return "La contraseña debe tener al menos 8 caracteres.";
+  }
+  if (lower.includes("password is too long") || lower.includes("password_too_long")) {
+    return "La contraseña es demasiado larga.";
+  }
+  if (lower.includes("invalid token") || lower.includes("invalid_token")) {
+    return "El enlace ya venció o no es válido. Pide uno nuevo.";
+  }
+  if (lower.includes("user already exists") || lower.includes("user_already_exists")) {
+    return "Ya existe una cuenta con este correo. Inicia sesión o pide un enlace.";
+  }
+  return message;
+}
+
 export default function Account({
   onClose,
   resetToken,
@@ -246,13 +273,16 @@ export default function Account({
   const hasCredential =
     credentialInfo && credentialInfo.userId === userId ? credentialInfo.has : null;
 
-  const run = async (action: () => Promise<{ error?: { message?: string } | null }>) => {
+  const run = async (
+    action: () => Promise<{ error?: { message?: string } | null } | undefined>,
+  ) => {
     setBusy(true);
     setError("");
     setMessage("");
     try {
       const result = await action();
-      if (result?.error) setError(result.error.message ?? "No se pudo completar la acción.");
+      if (result?.error) setError(translateAuthError(result.error.message));
+      return result;
     } catch {
       setError("Sin conexión con el servidor.");
     } finally {
@@ -262,25 +292,65 @@ export default function Account({
 
   const signInWithPassword = (event: FormEvent) => {
     event.preventDefault();
-    void run(() => authClient.signIn.email({ email, password }));
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail) {
+      setError("Por favor, introduce tu correo.");
+      return;
+    }
+    if (!password) {
+      setError("Por favor, introduce tu contraseña.");
+      return;
+    }
+    void run(async () => {
+      const result = await authClient.signIn.email({ email: cleanEmail, password });
+      if (!result?.error) {
+        onClose();
+      }
+      return result;
+    });
   };
 
   const signUp = () => {
-    const name = email.split("@")[0] || "Lector";
-    void run(() => authClient.signUp.email({ email, password, name }));
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail) {
+      setError("Por favor, introduce tu correo para registrarte.");
+      return;
+    }
+    if (!password || password.length < 8) {
+      setError("La contraseña debe tener al menos 8 caracteres.");
+      return;
+    }
+    const name = cleanEmail.split("@")[0] || "Lector";
+    void run(async () => {
+      const result = await authClient.signUp.email({ email: cleanEmail, password, name });
+      if (!result?.error) {
+        onClose();
+      }
+      return result;
+    });
   };
 
   const sendMagicLink = () => {
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail) {
+      setError("Por favor, introduce tu correo para enviarte el enlace.");
+      return;
+    }
     void run(async () => {
-      const result = await authClient.signIn.magicLink({ email, callbackURL: "/" });
+      const result = await authClient.signIn.magicLink({ email: cleanEmail, callbackURL: "/" });
       if (!result?.error) setMessage("Si el correo está registrado, enviamos un enlace de acceso.");
       return result;
     });
   };
 
   const sendResetLink = () => {
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail) {
+      setError("Por favor, introduce tu correo para enviarte el enlace de restablecimiento.");
+      return;
+    }
     void run(async () => {
-      const result = await authClient.requestPasswordReset({ email, redirectTo: "/" });
+      const result = await authClient.requestPasswordReset({ email: cleanEmail, redirectTo: "/" });
       if (!result?.error)
         setMessage("Si el correo está registrado, enviamos un enlace para restablecer la contraseña.");
       return result;
@@ -289,10 +359,26 @@ export default function Account({
 
   const resetPassword = (event: FormEvent) => {
     event.preventDefault();
+    if (newPassword.length < 8) {
+      setError("La nueva contraseña debe tener al menos 8 caracteres.");
+      return;
+    }
     void run(async () => {
       const result = await authClient.resetPassword({ newPassword, token: resetToken ?? "" });
       if (!result?.error) {
+        const cleanEmail = email.trim().toLowerCase();
+        if (cleanEmail) {
+          const loginResult = await authClient.signIn.email({
+            email: cleanEmail,
+            password: newPassword,
+          });
+          if (!loginResult?.error) {
+            onClose();
+            return loginResult;
+          }
+        }
         setMessage("Contraseña actualizada. Ya puedes entrar con ella.");
+        setPassword(newPassword);
         setNewPassword("");
         onResetDone?.();
       }
@@ -519,6 +605,17 @@ export default function Account({
       </div>
 
       {isPending ? <p className="meta">Cargando…</p> : null}
+
+      {message ? (
+        <p role="status" className="status">
+          {message}
+        </p>
+      ) : null}
+      {error ? (
+        <p role="alert" className="status">
+          {error}
+        </p>
+      ) : null}
 
       {!isPending && session?.user ? (
         <>
@@ -944,17 +1041,6 @@ export default function Account({
           .
         </p>
       </section>
-
-      {message ? (
-        <p role="status" className="status">
-          {message}
-        </p>
-      ) : null}
-      {error ? (
-        <p role="alert" className="status">
-          {error}
-        </p>
-      ) : null}
     </Dialog>
   );
 }

@@ -31,7 +31,8 @@ export type CompanionPose =
   | "eat"
   | "play"
   | "celebrate"
-  | "evolve";
+  | "evolve"
+  | "walk";
 
 export interface CompanionProps {
   // 0 gatito bebé · 1 gatito curioso · 2 joven · 3 adulto ·
@@ -73,6 +74,7 @@ const POSE_SUFFIX: Record<Exclude<CompanionPose, "idle">, string> = {
   play: "juega con su pelota",
   celebrate: "celebra contigo",
   evolve: "creció y está orgulloso",
+  walk: "pasea por su rincón",
 };
 
 const MOOD_SUFFIX: Record<CatMood, string> = {

@@ -14,17 +14,17 @@
 // se sube la versión para no restaurar respuestas contra otra muestra.
 export type CalibrationProfile = "native" | "learner";
 
-export const CALIBRATION_BANK_VERSION = "es-bank-v2";
+export const CALIBRATION_BANK_VERSION = "es-bank-v3";
 export const CALIBRATION_BANK_EN_VERSION = "en-bank-v1";
 
-// Bandas del examen para lectores nativos (vocabulario culto y literario).
+// Bandas del examen para lectores nativos (vocabulario literario y expresivo graduado).
 export const CALIBRATION_BANDS_NATIVE: readonly (readonly [number, number])[] = [
-  [1.5, 1.8],
-  [1.8, 2.1],
-  [2.1, 2.4],
-  [2.4, 2.7],
-  [2.7, 3.0],
-  [3.0, 3.3],
+  [2.0, 2.3],
+  [2.3, 2.6],
+  [2.6, 2.9],
+  [2.9, 3.2],
+  [3.2, 3.5],
+  [3.5, 3.8],
 ];
 
 // Bandas del examen para aprendices de español como lengua extranjera.
@@ -44,97 +44,97 @@ export const CALIBRATION_BANDS = CALIBRATION_BANDS_LEARNER;
 // tres pasos de seis).
 export const CALIBRATION_PER_BAND = 3;
 
-// Banco para hispanohablantes nativos (vocabulario literario, culto y expresivo).
+// Banco para hispanohablantes nativos (vocabulario literario y expresivo graduado).
 export const CALIBRATION_BANK_NATIVE: readonly (readonly string[])[] = [
-  // [1.5, 1.8) — vocabulario literario avanzado, arcaísmos o cultismos
+  // [2.0, 2.3) — cultas y literarias selectas
   [
-    "desperezarse",
-    "inmarcesible",
-    "zarandeo",
-    "lóbrego",
-    "mendaz",
-    "inane",
-    "beldad",
-    "zahorí",
-    "turgente",
-    "achacoso",
-    "abrevar",
-    "beodo",
-  ],
-  // [1.8, 2.1) — cultas y expresivas
-  [
-    "atavismo",
-    "omnímodo",
-    "acerbo",
-    "zalamero",
-    "concupiscencia",
-    "prebenda",
+    "diletante",
     "truculento",
     "resquemor",
     "alborozo",
-    "circunspecto",
-    "tartán",
-    "diletante",
-  ],
-  // [2.1, 2.4) — literarias intermedias
-  [
     "altivez",
     "purpúreo",
-    "cimitarra",
-    "pesadumbre",
-    "hilaridad",
     "hibernar",
-    "amargor",
+    "cimitarra",
     "advenedizo",
-    "trivialidad",
-    "pestañeo",
-    "pertinaz",
-    "displicente",
+    "escenificar",
+    "amargor",
+    "hilaridad",
   ],
-  // [2.4, 2.7) — narrativa expresiva
-  [
-    "zancada",
-    "subyugar",
-    "baladí",
-    "congoja",
-    "desparpajo",
-    "pusilánime",
-    "ignominia",
-    "sagaz",
-    "torniquete",
-    "tedio",
-    "resbalón",
-    "tropezón",
-  ],
-  // [2.7, 3.0) — emociones y actitudes narrativas
-  [
-    "aflicción",
-    "suspicacia",
-    "cautela",
-    "zozobra",
-    "vehemencia",
-    "afán",
-    "titubeo",
-    "melancolía",
-    "apacible",
-    "desazón",
-    "sobresalto",
-    "sosiego",
-  ],
-  // [3.0, 3.3) — literarias comunes
+  // [2.3, 2.6) — narrativa expresiva y literaria
   [
     "soslayar",
-    "abulia",
-    "desdén",
+    "displicente",
+    "congoja",
+    "taciturno",
+    "zancada",
+    "baladí",
+    "subyugar",
+    "parco",
+    "desparpajo",
+    "inacabado",
+    "sobresalto",
+    "batacazo",
+  ],
+  // [2.6, 2.9) — emociones, tensión y matices narrativos
+  [
+    "pusilánime",
+    "tedio",
+    "sagaz",
+    "ignominia",
+    "torniquete",
+    "suspicacia",
+    "zarpar",
+    "camisón",
+    "zozobra",
+    "pescuezo",
+    "desazón",
+    "sosiego",
+  ],
+  // [2.9, 3.2) — literarias comunes
+  [
+    "estupor",
+    "vestigio",
+    "vehemencia",
+    "aflicción",
     "regocijo",
     "perplejo",
-    "efímero",
-    "taciturno",
-    "anhelo",
-    "recelo",
-    "júbilo",
+    "reproche",
+    "apacible",
     "desolación",
-    "estupor",
+    "desdén",
+    "recelo",
+    "destello",
+  ],
+  // [3.2, 3.5) — narrativa descriptiva y figurativa
+  [
+    "saborear",
+    "efímero",
+    "desmayo",
+    "conjetura",
+    "orfanato",
+    "júbilo",
+    "simular",
+    "esquivar",
+    "melancolía",
+    "aislar",
+    "cautela",
+    "tarro",
+  ],
+  // [3.5, 3.8) — vocabulario expresivo estándar
+  [
+    "alejar",
+    "alboroto",
+    "anhelo",
+    "asombro",
+    "delirio",
+    "fatiga",
+    "ubicar",
+    "desigual",
+    "percibir",
+    "inquietud",
+    "mudo",
+    "dilema",
   ],
 ];
 

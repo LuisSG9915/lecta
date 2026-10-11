@@ -864,6 +864,20 @@
   animation-delay: 0.54s;
 }
 
+/* Paseo: vaivén sutil de 1px mientras camina por el rincón */
+.cat--p-walk .cat-figure {
+  animation: cat-walk 0.45s ease-in-out infinite alternate;
+}
+
+@keyframes cat-walk {
+  0% {
+    transform: translateY(0);
+  }
+  100% {
+    transform: translateY(-1px);
+  }
+}
+
 @keyframes cat-bounce {
   0%,
   100% {
@@ -1076,7 +1090,6 @@
 .game-chest-fig {
   font-size: 1.3rem;
   color: var(--vermilion);
-  animation: chest-bob 2.4s ease-in-out infinite;
 }
 
 .game-chest-label {
@@ -1200,109 +1213,267 @@
 }
 
 /* ---------- Hoja del compañero ----------
-   Vista previa grande, acciones de cuidado y el armario por ranuras.
+   Escenario con gato protagonista, acciones de cuidado y armario.
    Hereda botones (.btn/.btn--quiet), campos (.field) y filas de
    ajuste (.setting-label) de components.css. */
-.companion-hero {
-  display: flex;
-  align-items: center;
-  gap: var(--s-4);
-  margin-block-end: var(--s-4);
+:root {
+  --cat-size: clamp(5.5rem, 16vh, 8rem);
 }
 
-.companion-hero-cat {
+@media (max-height: 42rem) {
+  :root {
+    --cat-size: 5.5rem;
+  }
+}
+
+.companion-stage {
   position: relative;
-  background: transparent;
-  border: none;
-  padding: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: var(--s-1) var(--s-2) 0;
+  margin-block-end: var(--s-2);
+  min-height: calc(var(--cat-size) + 1.75rem);
+}
+
+.companion-bubble {
+  position: absolute;
+  top: -0.25rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: 0.2rem var(--s-3);
+  background: var(--paper-raised);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--r-pill, 999px);
+  box-shadow: 0 2px 8px rgba(43, 37, 32, 0.08);
+  font-size: var(--fs-xs);
+  color: var(--ink);
+  max-inline-size: calc(100% - var(--s-4));
+  pointer-events: auto;
+}
+
+.companion-bubble-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.companion-bubble-action {
+  font-size: var(--fs-xs);
+  padding: 0.1rem 0.4rem;
+  color: var(--vermilion);
+  font-weight: 600;
   cursor: pointer;
-  border-radius: var(--r-2);
-  transition: transform var(--dur-2) var(--ease-out);
+}
+
+.companion-stage-track {
+  position: relative;
+  width: 100%;
+  height: var(--cat-size);
+}
+
+.companion-stage-actor {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: var(--cat-size);
+  height: var(--cat-size);
+  will-change: transform;
+}
+
+.companion-stage-cat {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  transform-origin: 50% 90%;
 }
 
-.companion-hero-cat:hover:not(:disabled) {
-  transform: scale(1.06);
-}
-
-.companion-hero-cat:active:not(:disabled) {
-  transform: scale(0.97);
-}
-
-.companion-hero-cat:focus-visible {
+.companion-stage-cat:focus-visible {
   outline: 2px solid var(--vermilion);
   outline-offset: 4px;
 }
 
-.companion-pet-hearts {
+.companion-stage-cat[data-lifted] {
+  cursor: grabbing;
+  filter: drop-shadow(0 8px 12px rgba(43, 37, 32, 0.16));
+}
+
+.companion-stage-cat .cat {
+  inline-size: 100%;
+  block-size: 100%;
+}
+
+.companion-stage-floor {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-block-start: 2px;
+}
+
+.companion-stage-line {
   position: absolute;
-  top: -6px;
-  right: -4px;
-  font-size: 1.35rem;
-  color: var(--vermilion);
-  animation: float-heart 1.2s ease-out infinite;
-  pointer-events: none;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 1px;
+  background: var(--rule);
 }
 
-@keyframes float-heart {
-  0% {
-    opacity: 0;
-    transform: translateY(6px) scale(0.6);
-  }
-  35% {
-    opacity: 1;
-    transform: translateY(-4px) scale(1.15);
-  }
-  100% {
-    opacity: 0;
-    transform: translateY(-20px) scale(0.9);
-  }
+.companion-stage-status {
+  position: relative;
+  z-index: 1;
 }
 
-.companion-goal-badge {
+/* Cabecera compacta con edición de nombre */
+.companion-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-block-end: var(--s-1);
+  padding-inline: var(--s-4);
+}
+
+.companion-head-name {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
-  margin: var(--s-1) 0 0;
-  padding: 0.2rem 0.55rem;
-  border-radius: var(--r-pill, 999px);
-  font-size: var(--fs-xs);
-  background: var(--ochre-wash, rgba(217, 142, 4, 0.12));
-  color: var(--ink);
-  font-weight: 500;
-  border: 1px solid var(--ochre-soft, var(--line));
+  gap: var(--s-2);
+  min-inline-size: 0;
 }
 
-.companion-goal-badge--pending {
-  background: var(--paper-raised);
-  color: var(--ink-soft);
-  border: 1px dashed var(--line);
+.companion-title {
+  max-inline-size: 10rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.companion-goal-icon {
-  font-size: 0.95rem;
-}
-
-.companion-shield-hint {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.2rem;
-  font-size: 0.9em;
-  color: var(--vermilion);
-  font-weight: 600;
-}
-
-.companion-hero .cat {
-  inline-size: 5.5rem;
-  block-size: 5.5rem;
-}
-
-.companion-status {
-  margin: 0 0 var(--s-2);
+.companion-rename-btn {
+  padding: 0.1rem 0.35rem;
   font-size: var(--fs-sm);
   color: var(--ink-soft);
+  cursor: pointer;
+}
+
+.companion-rename-btn:hover {
+  color: var(--ink);
+}
+
+.companion-head-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-3);
+}
+
+.companion-head-level {
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+.companion-head-edit {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  padding: var(--s-2) var(--s-4);
+  background: var(--paper-raised);
+  border-block-end: 1px solid var(--rule);
+}
+
+.companion-head-edit-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.companion-name-input {
+  flex: 1;
+  min-inline-size: 0;
+  font-size: var(--fs-sm);
+  padding: var(--s-1) var(--s-2);
+}
+
+.companion-head-edit-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+/* Barra XP fina anclada a la cabecera */
+.game-xpbar--fine {
+  block-size: 3px;
+  margin: 0 calc(-1 * var(--s-5)) var(--s-2);
+  border-radius: 0;
+  background: var(--rule);
+}
+
+.game-xpbar--fine span {
+  background: var(--vermilion);
+}
+
+/* Distribución del escenario: rincón arriba, secciones abajo;
+   en pantallas bajas apaisadas (horizontal) se reorganiza en 2 columnas */
+.companion-stage-layout {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+@media (max-height: 30rem) {
+  .companion-stage-layout {
+    display: grid;
+    grid-template-columns: minmax(180px, 35%) 1fr;
+    grid-template-rows: auto 1fr;
+    gap: 0 var(--s-4);
+    height: 100%;
+  }
+  .companion-stage-layout > .companion-stage {
+    grid-row: 1 / -1;
+    grid-column: 1;
+    height: 100%;
+  }
+  .companion-stage-layout > .companion-sheet-tabs {
+    grid-row: 1;
+    grid-column: 2;
+  }
+  .companion-stage-layout > .companion-sections-container {
+    grid-row: 2;
+    grid-column: 2;
+  }
+}
+
+.companion-sections-container {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.companion-tabpanel {
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-block-start: var(--s-2);
+  padding-inline: 2px;
 }
 
 .companion-actions {
@@ -1313,75 +1484,153 @@
   margin-block-end: var(--s-4);
 }
 
-.companion-name {
-  margin-block-start: var(--s-4);
-}
-
-/* Armario por ranura: cada opción es una tarjeta visual adaptativa con
-   el nombre a la izquierda y el estado («Puesta», «Nivel N») a la
-   derecha — la marca no depende solo del color del borde. */
-.companion-closet {
-  display: grid;
-  gap: var(--s-4);
-  margin-block-end: var(--s-4);
-}
-
-.companion-slot {
-  display: grid;
-  gap: var(--s-2);
-}
-
-.companion-wears {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
-  gap: var(--s-2);
-}
-
-.companion-wear {
-  display: flex;
+.companion-action-btn {
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
   gap: var(--s-2);
-  inline-size: 100%;
-  min-block-size: 42px;
-  padding: var(--s-2) var(--s-3);
-  border: var(--border);
+  min-height: 2.75rem;
+  padding: var(--s-2) var(--s-4);
+}
+
+.companion-action-icon {
+  font-size: 1.15em;
+  line-height: 1;
+}
+
+/* ---------- Armario con bandeja horizontal ---------- */
+.companion-closet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.companion-slot-chips {
+  display: flex;
+  gap: var(--s-2);
+  overflow-x: auto;
+  padding-block-end: var(--s-1);
+  scrollbar-width: none;
+}
+
+.companion-slot-chips::-webkit-scrollbar {
+  display: none;
+}
+
+.companion-chip {
+  flex: none;
+  padding: var(--s-1) var(--s-3);
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  border-radius: var(--r-pill, 999px);
+  border: 1px solid var(--rule);
+  background: var(--paper-raised);
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition:
+    background-color var(--dur-1) var(--ease-out),
+    color var(--dur-1) var(--ease-out),
+    border-color var(--dur-1) var(--ease-out);
+}
+
+.companion-chip:hover {
+  color: var(--ink);
+  border-color: var(--rule-strong);
+}
+
+.companion-chip[data-active] {
+  background: var(--ink);
+  color: var(--paper-raised);
+  border-color: var(--ink);
+}
+
+.companion-tray {
+  display: flex;
+  gap: var(--s-3);
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  overscroll-behavior-x: contain;
+  padding-block: var(--s-2) var(--s-3);
+  padding-inline-end: var(--s-3);
+}
+
+.companion-card {
+  flex: 0 0 7rem;
+  scroll-snap-align: start;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: var(--s-2);
+  border: 1px solid var(--rule);
   border-radius: var(--r-2);
   background: var(--paper-raised);
   color: var(--ink);
   font-family: var(--font-ui);
-  font-size: var(--fs-sm);
-  text-align: start;
   cursor: pointer;
   transition:
     border-color var(--dur-1) var(--ease-out),
-    background-color var(--dur-1) var(--ease-out),
     transform var(--dur-1) var(--ease-out);
 }
 
-.companion-wear:hover:not(:disabled) {
-  border-color: var(--ink-soft);
+.companion-card:hover:not(:disabled) {
+  border-color: var(--rule-strong);
   transform: translateY(-1px);
 }
 
-.companion-wear:focus-visible {
-  outline: 2px solid var(--vermilion);
-  outline-offset: 2px;
-}
-
-.companion-wear[data-active] {
+.companion-card[data-active] {
   border-color: var(--vermilion);
-  background: var(--vermilion-wash);
+  box-shadow: 0 0 0 1px var(--vermilion);
 }
 
-.companion-wear:disabled {
-  opacity: 0.55;
-  cursor: default;
+.companion-card[data-trying] {
+  border-style: dashed;
 }
 
-.companion-wear-state {
+.companion-card[aria-disabled="true"] {
+  opacity: 0.85;
+}
+
+.companion-card-title {
   font-size: var(--fs-xs);
+  font-weight: 500;
+  margin-block-start: var(--s-1);
+  line-height: 1.2;
+}
+
+.companion-card-state {
+  font-size: 0.68rem;
+  margin-block-start: 2px;
+  color: var(--ink-faint);
+}
+
+.companion-card-state[data-state="equipped"] {
+  color: var(--vermilion);
+  font-weight: 600;
+}
+
+.companion-card-state[data-state="locked"] {
   color: var(--ink-soft);
+}
+
+/* Miniatura en tarjeta: gato completo a 48px sin animaciones */
+.companion-thumb {
+  inline-size: 3rem;
+  block-size: 3rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.companion-thumb .cat {
+  inline-size: 100%;
+  block-size: 100%;
+}
+
+.companion-thumb,
+.companion-thumb * {
+  animation: none !important;
+  transition: none !important;
 }
 
 /* ---------- Tarjeta del inbox de festejos (fase 5) ----------
@@ -1473,19 +1722,6 @@
   block-size: 6px;
   border-radius: 50%;
   background: var(--vermilion);
-  animation: pulse-dot 1.8s ease-in-out infinite;
-}
-
-@keyframes pulse-dot {
-  0%,
-  100% {
-    transform: scale(1);
-    opacity: 0.9;
-  }
-  50% {
-    transform: scale(1.3);
-    opacity: 1;
-  }
 }
 
 /* Tarjetas estadísticas en Cuidado */
@@ -1556,7 +1792,6 @@
 
 .companion-chest-icon {
   font-size: 1.6rem;
-  animation: chest-bob 2.4s ease-in-out infinite;
 }
 
 .companion-chest-title {

@@ -193,4 +193,11 @@ describe("Companion render", () => {
     expect(candle!.querySelector(".cat-flame")).toBeTruthy();
     expect(candle!.querySelector(".cat-candle-halo")).toBeTruthy();
   });
+
+  it("pose=walk aplica la clase cat--p-walk y describe que pasea por su rincón", () => {
+    render(h(Companion, { ...base, pose: "walk", name: "Pelusa" }));
+    expect(svg().getAttribute("class")).toContain("cat--p-walk");
+    expect(svg().getAttribute("aria-label")).toContain("pasea por su rincón");
+  });
 });
+

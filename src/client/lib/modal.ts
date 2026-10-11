@@ -119,6 +119,14 @@ export function useModalBehavior(ref: RefObject<HTMLElement | null>, onClose: ()
       // Las capas de abajo ignoran el teclado mientras exista una encima.
       if (!isTop()) return;
       if (event.key === "Escape") {
+        const target = event.target;
+        if (
+          target instanceof Element &&
+          target.closest('[data-escape="local"]')
+        ) {
+          // El control interior maneja su propio Escape (ej. cancelar edición).
+          return;
+        }
         // Consume el evento: no debe llegar a la capa de abajo.
         event.stopPropagation();
         event.preventDefault();

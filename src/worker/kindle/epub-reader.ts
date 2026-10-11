@@ -2,6 +2,9 @@
 // Sin dependencias pesadas: lee el ZIP con DecompressionStream nativo
 // y extrae secciones limpias sin JavaScript para dispositivos de tinta electrónica.
 
+import { isStopword } from "../../shared/stopwords";
+import { isWordToken } from "../../shared/word-form";
+
 export type EpubSpineItem = {
   id: string;
   href: string;
@@ -377,4 +380,243 @@ export async function getEpubResource(
 
   const mimeType = mimeTypes[ext] || "application/octet-stream";
   return { data, mimeType };
+}
+
+export function stripHtml(html: string): string {
+  return html.replace(/<[^>]+>/g, "").replace(/&[a-z0-9#]+;/gi, " ").trim();
+}
+
+export function splitHtmlIntoBlocks(html: string): string[] {
+  let clean = html.replace(/<!--[\s\S]*?-->/g, "").trim();
+
+  // Desenvolver recursivamente contenedores (div, section, article) que encierran bloques hijos
+  let prev = "";
+  const containerRegex = /<(?:div|section|article|header|footer|main)\b[^>]*>([\s\S]*?)<\/(?:div|section|article|header|footer|main)>/gi;
+  const childBlockRegex = /<(?:p|h[1-6]|blockquote|ul|ol|table|figure|div|section)\b/i;
+
+  let iterations = 0;
+  while (clean !== prev && iterations < 5) {
+    prev = clean;
+    clean = clean.replace(containerRegex, (full, inner) => {
+      if (childBlockRegex.test(inner)) {
+        return inner.trim();
+      }
+      return full;
+    });
+    iterations++;
+  }
+
+  // Extraer bloques independientes
+  const blockRegex = /<(?:p|h[1-6]|blockquote|ul|ol|table|figure|div)\b[\s\S]*?<\/(?:p|h[1-6]|blockquote|ul|ol|table|figure|div)>|<(?:img|hr)\b[^>]*\/?>/gi;
+  const blocks: string[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = blockRegex.exec(clean)) !== null) {
+    const intervening = clean.slice(lastIndex, match.index).trim();
+    if (intervening) {
+      const stripped = stripHtml(intervening);
+      if (stripped.length > 0) {
+        blocks.push(`<p>${intervening}</p>`);
+      }
+    }
+    blocks.push(match[0].trim());
+    lastIndex = match.index + match[0].length;
+  }
+
+  const trailing = clean.slice(lastIndex).trim();
+  if (trailing) {
+    const stripped = stripHtml(trailing);
+    if (stripped.length > 0) {
+      blocks.push(`<p>${trailing}</p>`);
+    }
+  }
+
+  if (blocks.length === 0 && clean.length > 0) {
+    blocks.push(`<p>${clean}</p>`);
+  }
+
+  return blocks;
+}
+
+function splitLongParagraph(blockHtml: string, maxLen = 850): string[] {
+  const pMatch = blockHtml.match(/^<p\b([^>]*)>([\s\S]*?)<\/p>$/i);
+  if (!pMatch) return [blockHtml];
+  const attrs = pMatch[1];
+  const content = pMatch[2];
+  const textLen = stripHtml(content).length;
+  if (textLen <= maxLen) return [blockHtml];
+
+  // Dividir en límites de oraciones (. , ! , ? )
+  const sentences = content.split(/(?<=[.!?])\s+/);
+  const parts: string[] = [];
+  let current = "";
+
+  for (const sentence of sentences) {
+    if (current && (current.length + sentence.length > maxLen)) {
+      parts.push(`<p${attrs}>${current.trim()}</p>`);
+      current = sentence;
+    } else {
+      current = current ? `${current} ${sentence}` : sentence;
+    }
+  }
+  if (current.trim()) {
+    parts.push(`<p${attrs}>${current.trim()}</p>`);
+  }
+
+  return parts.length > 0 ? parts : [blockHtml];
+}
+
+export function paginateChapter(contentHtml: string, maxCharsPerPage = 850): string[] {
+  const rawBlocks = splitHtmlIntoBlocks(contentHtml);
+  if (rawBlocks.length === 0) return [contentHtml || "<p>Sin contenido.</p>"];
+
+  const expandedBlocks: string[] = [];
+  for (const b of rawBlocks) {
+    expandedBlocks.push(...splitLongParagraph(b, maxCharsPerPage));
+  }
+
+  const pages: string[] = [];
+  let currentPageBlocks: string[] = [];
+  let currentLen = 0;
+
+  for (const block of expandedBlocks) {
+    const blockLen = stripHtml(block).length || 50;
+    if (currentPageBlocks.length > 0 && (currentLen + blockLen > maxCharsPerPage)) {
+      pages.push(currentPageBlocks.join("\n"));
+      currentPageBlocks = [block];
+      currentLen = blockLen;
+    } else {
+      currentPageBlocks.push(block);
+      currentLen += blockLen;
+    }
+  }
+
+  if (currentPageBlocks.length > 0) {
+    pages.push(currentPageBlocks.join("\n"));
+  }
+
+  return pages.length > 0 ? pages : [contentHtml];
+}
+
+export function extractPageWords(pageHtml: string, language = "es"): string[] {
+  const text = stripHtml(pageHtml);
+  const wordRegex = /[\p{L}\p{M}]{3,}/gu;
+  const matches = text.match(wordRegex) || [];
+
+  const seen = new Set<string>();
+  const candidates: string[] = [];
+
+  for (const match of matches) {
+    const lower = match.toLowerCase();
+    if (seen.has(lower)) continue;
+    seen.add(lower);
+
+    if (!isWordToken(match)) continue;
+    if (isStopword(lower, language)) continue;
+
+    candidates.push(match);
+  }
+
+  return candidates;
+}
+
+export function wrapWordsWithLinks(
+  html: string,
+  _bookHash: string,
+  currentUrl: string,
+  savedWords: Set<string>,
+): string {
+  const tokens = html.split(/(<[^>]+>)/g);
+  let inAnchor = false;
+  let inScriptOrStyle = false;
+
+  const wordRegex = /([\p{L}\p{M}]{2,}(?:['’][\p{L}\p{M}]+)?)/gu;
+  const safeUrl = currentUrl.replace(/&(?!amp;|lt;|gt;|quot;|#\d+;)/g, "&amp;");
+  const sep = safeUrl.includes("?") ? "&amp;" : "?";
+
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i];
+    if (i % 2 === 1) {
+      if (/^<a\b/i.test(token)) {
+        inAnchor = true;
+      } else if (/^<\/a>/i.test(token)) {
+        inAnchor = false;
+      } else if (/^<(script|style)\b/i.test(token)) {
+        inScriptOrStyle = true;
+      } else if (/^<\/(script|style)>/i.test(token)) {
+        inScriptOrStyle = false;
+      }
+    } else {
+      if (!inAnchor && !inScriptOrStyle && token.length > 0) {
+        tokens[i] = token.replace(wordRegex, (word) => {
+          const lower = word.toLowerCase();
+          const isSaved = savedWords.has(lower);
+          const href = `${safeUrl}${sep}lookup=${encodeURIComponent(lower)}`;
+          const cls = isSaved ? "w saved" : "w";
+          return `<a href="${href}" class="${cls}">${word}</a>`;
+        });
+      }
+    }
+  }
+
+  return tokens.join("");
+}
+
+export function extractChapterPrepCandidates(
+  chapterHtml: string,
+  language = "es",
+): string[] {
+  const text = stripHtml(chapterHtml);
+  const wordRegex = /[\p{L}\p{M}]{3,}/gu;
+  const matches = text.match(wordRegex) || [];
+
+  const capitalized = new Set<string>();
+  const lowercased = new Set<string>();
+
+  for (const word of matches) {
+    const first = word.charAt(0);
+    const lower = word.toLowerCase();
+    if (first.toLowerCase() === first) {
+      lowercased.add(lower);
+    } else {
+      capitalized.add(lower);
+    }
+  }
+
+  const capitalOnly = new Set<string>();
+  for (const form of capitalized) {
+    if (!lowercased.has(form)) capitalOnly.add(form);
+  }
+
+  const seen = new Set<string>();
+  const candidates: string[] = [];
+
+  for (const match of matches) {
+    const lower = match.toLowerCase();
+    if (seen.has(lower)) continue;
+    seen.add(lower);
+
+    if (!isWordToken(match)) continue;
+    if (isStopword(lower, language)) continue;
+    if (capitalOnly.has(lower)) continue;
+
+    candidates.push(lower);
+  }
+
+  return candidates;
+}
+
+export function findSentenceWithWord(text: string, word: string): string | null {
+  const lowerWord = word.toLowerCase();
+  const sentences = text.split(/(?<=[.!?])\s+|\n+/);
+  for (const s of sentences) {
+    const clean = s.trim().replace(/\s+/g, " ");
+    if (clean.length < 10 || clean.length > 280) continue;
+    const words: string[] = clean.toLowerCase().match(/[\p{L}\p{M}]{2,}/gu) || [];
+    if (words.includes(lowerWord)) {
+      return clean;
+    }
+  }
+  return null;
 }

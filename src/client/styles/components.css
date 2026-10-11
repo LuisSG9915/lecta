@@ -224,6 +224,23 @@
   -webkit-backdrop-filter: blur(2px);
 }
 
+/* Variante Stage: hoja para el compañero donde el gato es protagonista.
+   Tiene un alto definido (min(70svh, 36rem)), no scrollea toda la hoja
+   (overflow: hidden), y el scroll pertenece a la sección activa. */
+.sheet--stage {
+  height: min(70svh, 36rem);
+  max-height: min(70svh, 36rem);
+  overflow: hidden;
+  padding-bottom: calc(var(--s-2) + env(safe-area-inset-bottom));
+}
+
+@media (max-height: 30rem) {
+  .sheet--stage {
+    height: 92svh;
+    max-height: 92svh;
+  }
+}
+
 /* Arrastre en curso: la hoja sigue al dedo sin desaceleración. */
 .sheet[data-swiping] {
   transition: none;

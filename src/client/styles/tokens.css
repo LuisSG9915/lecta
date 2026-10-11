@@ -54,9 +54,11 @@
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-in: cubic-bezier(0.55, 0, 1, 0.45);
   --ease-page: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-settle: cubic-bezier(0.16, 1, 0.3, 1);
   --dur-1: 120ms;
   --dur-2: 180ms;
   --dur-3: 260ms;
+  --dur-4: 220ms;
 
   /* Lector (valores por defecto; el panel Aa los ajusta) */
   --read-font: var(--font-book);

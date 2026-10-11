@@ -93,4 +93,130 @@ describe("Sheet toque exterior", () => {
     fire(sheet(), "pointerup");
     expect(onClose).not.toHaveBeenCalled();
   });
+
+  it("la variante stage aplica la clase sheet--stage", () => {
+    render(
+      h(Sheet, {
+        label: "Escenario",
+        variant: "stage",
+        onClose: () => {},
+        children: h("div", null, "contenido"),
+      }),
+    );
+    expect(sheet().classList.contains("sheet--stage")).toBe(true);
+  });
+
+  it("un gesto más horizontal que vertical no cierra la hoja", () => {
+    const onClose = vi.fn();
+    render(sheetFor(onClose));
+    const target = sheet();
+    act(() => {
+      target.dispatchEvent(
+        new PointerEvent("pointerdown", {
+          bubbles: true,
+          pointerId: 1,
+          clientX: 100,
+          clientY: 100,
+        }),
+      );
+      target.dispatchEvent(
+        new PointerEvent("pointermove", {
+          bubbles: true,
+          pointerId: 1,
+          clientX: 160,
+          clientY: 110,
+        }),
+      );
+      target.dispatchEvent(
+        new PointerEvent("pointerup", {
+          bubbles: true,
+          pointerId: 1,
+          clientX: 160,
+          clientY: 110,
+        }),
+      );
+    });
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("arrastre vertical hacia abajo sin scroll interior cierra la hoja", () => {
+    const onClose = vi.fn();
+    render(sheetFor(onClose));
+    const target = sheet();
+    // jsdom no tiene layout real; simulamos offsetHeight
+    Object.defineProperty(target, "offsetHeight", { value: 300, configurable: true });
+    act(() => {
+      target.dispatchEvent(
+        new PointerEvent("pointerdown", {
+          bubbles: true,
+          pointerId: 1,
+          clientX: 100,
+          clientY: 50,
+        }),
+      );
+      target.dispatchEvent(
+        new PointerEvent("pointermove", {
+          bubbles: true,
+          pointerId: 1,
+          clientX: 100,
+          clientY: 200,
+        }),
+      );
+      target.dispatchEvent(
+        new PointerEvent("pointerup", {
+          bubbles: true,
+          pointerId: 1,
+          clientX: 100,
+          clientY: 200,
+        }),
+      );
+    });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("con un contenedor interior desplazado (scrollTop > 0) no inicia arrastre", () => {
+    const onClose = vi.fn();
+    render(
+      h(Sheet, {
+        label: "Interior scrolleado",
+        onClose,
+        children: h(
+          "div",
+          { className: "scroll-child" },
+          h("div", { className: "leaf" }, "texto"),
+        ),
+      }),
+    );
+    const scrollChild = host.querySelector(".scroll-child") as HTMLElement;
+    Object.defineProperty(scrollChild, "scrollTop", { value: 40, configurable: true });
+    const leaf = host.querySelector(".leaf") as HTMLElement;
+    act(() => {
+      leaf.dispatchEvent(
+        new PointerEvent("pointerdown", {
+          bubbles: true,
+          pointerId: 1,
+          clientX: 100,
+          clientY: 50,
+        }),
+      );
+      leaf.dispatchEvent(
+        new PointerEvent("pointermove", {
+          bubbles: true,
+          pointerId: 1,
+          clientX: 100,
+          clientY: 250,
+        }),
+      );
+      leaf.dispatchEvent(
+        new PointerEvent("pointerup", {
+          bubbles: true,
+          pointerId: 1,
+          clientX: 100,
+          clientY: 250,
+        }),
+      );
+    });
+    expect(onClose).not.toHaveBeenCalled();
+  });
 });
+
