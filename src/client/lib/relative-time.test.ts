@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   daysAgo,
   formatInterval,
+  futureRelativeDay,
   relativeDay,
   timeAgo,
 } from "./relative-time";
@@ -26,6 +27,26 @@ describe("relativeDay", () => {
     expect(relativeDay(NOW - 15 * DAY, NOW)).toBe("hace 2 semanas");
     expect(relativeDay(NOW - 40 * DAY, NOW)).toBe("el mes pasado");
     expect(relativeDay(NOW - 400 * DAY, NOW)).toBe("el año pasado");
+  });
+});
+
+describe("futureRelativeDay", () => {
+  it("hoy, mañana y pasado mañana tienen nombre propio", () => {
+    expect(futureRelativeDay(NOW + 2 * 3_600_000, NOW)).toBe("hoy");
+    expect(futureRelativeDay(NOW + DAY, NOW)).toBe("mañana");
+    expect(futureRelativeDay(NOW + 2 * DAY, NOW)).toBe("pasado mañana");
+  });
+
+  it("cuenta días hasta una semana", () => {
+    expect(futureRelativeDay(NOW + 3 * DAY, NOW)).toBe("dentro de 3 días");
+    expect(futureRelativeDay(NOW + 6 * DAY, NOW)).toBe("dentro de 6 días");
+  });
+
+  it("después pasa a semanas y meses", () => {
+    expect(futureRelativeDay(NOW + 9 * DAY, NOW)).toBe("la semana próxima");
+    expect(futureRelativeDay(NOW + 15 * DAY, NOW)).toBe("dentro de 2 semanas");
+    expect(futureRelativeDay(NOW + 40 * DAY, NOW)).toBe("el mes próximo");
+    expect(futureRelativeDay(NOW + 400 * DAY, NOW)).toBe("el año próximo");
   });
 });
 

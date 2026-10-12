@@ -2342,13 +2342,13 @@
   max-width: 100%;
 }
 
-/* ---------- Tu recorrido (fase 5) ---------- */
+/* ---------- Tu recorrido ---------- */
 
 .journey-sheet {
   position: fixed;
   inset: 0;
   z-index: 50;
-  background: var(--bg-paper, #fdfbf7);
+  background: var(--paper);
   color: var(--ink);
   overflow-y: auto;
   display: flex;
@@ -2358,8 +2358,8 @@
 .journey-head {
   position: sticky;
   top: 0;
-  background: var(--bg-paper, #fdfbf7);
-  border-bottom: 1px solid var(--rule);
+  background: var(--paper);
+  border-bottom: var(--border);
   padding: var(--s-3) var(--s-4);
   display: flex;
   justify-content: space-between;
@@ -2368,52 +2368,75 @@
 }
 
 .journey-title {
-  font-family: var(--font-display, serif);
+  font-family: var(--font-book);
   font-size: var(--fs-xl);
+  font-style: italic;
+  font-weight: 400;
+  color: var(--ink);
   margin: 0;
 }
 
 .journey-content {
-  max-width: 46rem;
+  max-width: 44rem;
   width: 100%;
   margin: 0 auto;
-  padding: var(--s-4) var(--s-3) var(--s-6);
+  padding: var(--s-4) var(--s-4) var(--s-7);
   display: flex;
   flex-direction: column;
   gap: var(--s-5);
   box-sizing: border-box;
 }
 
-.journey-summary {
+/* 1. Resumen Hero (tarjeta unificada en vez de 3 cajas SaaS) */
+.journey-hero-card {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-  gap: var(--s-3);
+  grid-template-columns: repeat(3, 1fr);
+  background: var(--paper-raised);
+  border: var(--border);
+  border-radius: var(--r-2);
+  box-shadow: var(--shadow-1);
 }
 
-.journey-stat-card {
-  padding: var(--s-3);
-  border: 1px solid var(--rule);
-  border-radius: var(--r-1);
-  background: var(--bg, #fff);
+.journey-hero-stat {
+  padding: var(--s-4) var(--s-3);
   display: flex;
   flex-direction: column;
+  align-items: center;
+  text-align: center;
   gap: var(--s-1);
 }
 
-.journey-stat-value {
-  font-size: var(--fs-lg);
-  font-weight: 700;
-  font-family: var(--font-book, serif);
-  color: var(--ink);
+.journey-hero-stat + .journey-hero-stat {
+  border-inline-start: 1px solid var(--rule);
 }
 
-.journey-stat-label {
+.journey-hero-value {
+  font-size: var(--fs-xl);
+  font-weight: 600;
+  font-family: var(--font-book);
+  color: var(--ink);
+  line-height: 1.2;
+}
+
+.journey-hero-label {
   font-size: var(--fs-xs);
+  font-family: var(--font-ui);
   color: var(--ink-soft);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
 }
 
+@media (max-width: 520px) {
+  .journey-hero-card {
+    grid-template-columns: 1fr;
+  }
+  .journey-hero-stat + .journey-hero-stat {
+    border-inline-start: none;
+    border-top: 1px solid var(--rule);
+  }
+}
+
+/* Secciones generales */
 .journey-section {
   display: flex;
   flex-direction: column;
@@ -2425,62 +2448,59 @@
   justify-content: space-between;
   align-items: baseline;
   gap: var(--s-2);
+  flex-wrap: wrap;
 }
 
 .journey-section-title {
-  font-family: var(--font-book, serif);
+  font-family: var(--font-book);
   font-size: var(--fs-md);
   font-weight: 600;
   color: var(--ink);
   margin: 0;
 }
 
-.journey-stages-grid {
+/* 3. Récords personales en tarjeta unificada */
+.journey-records-card {
+  background: var(--paper-raised);
+  border: var(--border);
+  border-radius: var(--r-2);
+  box-shadow: var(--shadow-1);
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: var(--s-2);
+  grid-template-columns: repeat(2, 1fr);
 }
 
-.journey-stage-item {
-  padding: var(--s-2) var(--s-3);
-  border: 1px solid var(--rule);
-  border-radius: var(--r-1);
-  background: var(--bg, #fff);
-  display: flex;
-  flex-direction: column;
-}
-
-.journey-stage-count {
-  font-size: var(--fs-md);
-  font-weight: 700;
-  color: var(--ink);
-}
-
-.journey-stage-name {
-  font-size: var(--fs-xs);
-  color: var(--ink-soft);
-}
-
-.journey-records-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: var(--s-2);
-}
-
-.journey-record-card {
-  padding: var(--s-3);
-  border: 1px solid var(--rule);
-  border-radius: var(--r-1);
-  background: var(--bg, #fff);
+.journey-record-item {
+  padding: var(--s-3) var(--s-4);
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
 
+.journey-record-item:nth-child(odd) {
+  border-inline-end: 1px solid var(--rule);
+}
+
+.journey-record-item:nth-child(-n+2) {
+  border-bottom: 1px solid var(--rule);
+}
+
+@media (max-width: 520px) {
+  .journey-records-card {
+    grid-template-columns: 1fr;
+  }
+  .journey-record-item:nth-child(odd) {
+    border-inline-end: none;
+  }
+  .journey-record-item:not(:last-child) {
+    border-bottom: 1px solid var(--rule);
+  }
+}
+
 .journey-record-title {
-  font-size: 0.72rem;
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
   color: var(--ink-soft);
   margin-bottom: 2px;
 }
@@ -2488,8 +2508,9 @@
 .journey-record-value {
   font-size: var(--fs-md);
   font-weight: 600;
-  font-family: var(--font-book, serif);
+  font-family: var(--font-book);
   color: var(--ink);
+  line-height: 1.25;
 }
 
 .journey-record-sub {
@@ -2497,14 +2518,21 @@
   color: var(--ink-soft);
 }
 
+/* 4. Historial semanas en tarjeta */
+.journey-chart-card {
+  padding: var(--s-4);
+  background: var(--paper-raised);
+  border: var(--border);
+  border-radius: var(--r-2);
+  box-shadow: var(--shadow-1);
+}
+
 .journey-weeks-chart {
   display: flex;
   align-items: flex-end;
   gap: var(--s-2);
-  height: 130px;
-  padding: var(--s-3) 0 var(--s-1);
-  border-bottom: 1px solid var(--rule);
-  margin-top: var(--s-2);
+  height: 120px;
+  padding: var(--s-2) 0 0;
 }
 
 .journey-week-col {
@@ -2526,32 +2554,44 @@
 }
 
 .journey-week-bar {
-  width: 50%;
-  max-width: 24px;
-  border-radius: 2px 2px 0 0;
-  background: var(--accent, #a66a38);
+  width: 44%;
+  max-width: 22px;
+  border-radius: var(--r-1) var(--r-1) 0 0;
+  background: var(--vermilion);
   opacity: 0.85;
   transition: height var(--dur-5) var(--ease-settle);
 }
 
+.journey-week-col:hover .journey-week-bar {
+  opacity: 1;
+}
+
 .journey-week-time {
-  font-size: 0.65rem;
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
   color: var(--ink-soft);
   white-space: nowrap;
-  height: 1em;
+  height: 1.2em;
 }
 
 .journey-week-label {
-  font-size: 0.68rem;
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
   color: var(--ink-soft);
   white-space: nowrap;
+  border-top: 1px solid var(--rule);
+  width: 100%;
+  text-align: center;
+  padding-top: 4px;
 }
 
+/* 6. Sección de Compañero */
 .journey-companion-section {
-  padding: var(--s-3);
-  border: 1px solid var(--rule);
-  border-radius: var(--r-1);
-  background: var(--bg, #fff);
+  padding: var(--s-4);
+  border: var(--border);
+  border-radius: var(--r-2);
+  background: var(--paper-raised);
+  box-shadow: var(--shadow-1);
   display: flex;
   flex-direction: column;
   gap: var(--s-3);
@@ -2581,8 +2621,10 @@
 }
 
 .journey-seal-label {
-  font-size: 0.68rem;
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
   color: var(--ink-soft);
   line-height: 1.15;
 }
+
 

@@ -128,8 +128,9 @@ describe("Journey (Tu recorrido)", () => {
 
     // Vocabulario por etapas
     expect(container?.textContent).toContain("Vocabulario por etapas");
-    expect(container?.textContent).toContain("Dominadas");
-    expect(container?.textContent).toContain("Por repasar");
+    expect(container?.textContent).toContain("Asentada");
+    expect(container?.textContent).toContain("Aprendiendo");
+    expect(container?.textContent).toContain("Nueva");
   });
 
   it("llama a onClose al pulsar el botón Cerrar", async () => {

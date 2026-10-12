@@ -250,5 +250,27 @@ describe("useModalBehavior", () => {
     key("Escape");
     expect(onClose).not.toHaveBeenCalled();
   });
+
+  it("no bloquea ni atrapa foco si enabled es false", () => {
+    const trigger = document.createElement("button");
+    document.body.appendChild(trigger);
+    trigger.focus();
+
+    function DisabledModal({ onClose }: { onClose: () => void }) {
+      const ref = useRef<HTMLDivElement>(null);
+      useModalBehavior(ref, onClose, { enabled: false });
+      // eslint-disable-next-line react-hooks/refs
+      return h("div", { ref, className: "disabled-modal" }, button("interior"));
+    }
+
+    const onClose = vi.fn();
+    render(h(DisabledModal, { onClose }));
+    // El foco no se roba al primer control
+    expect(document.activeElement).toBe(trigger);
+    // Escape no dispara onClose
+    key("Escape");
+    expect(onClose).not.toHaveBeenCalled();
+    trigger.remove();
+  });
 });
 

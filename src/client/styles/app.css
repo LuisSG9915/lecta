@@ -9,26 +9,451 @@
 .app-header {
   display: flex;
   align-items: baseline;
-  justify-content: space-between;
-  gap: var(--s-4);
+  justify-content: flex-start;
   padding: var(--s-4) var(--s-5);
-}
-
-.app-header-nav {
-  display: flex;
-  align-items: baseline;
-  gap: var(--s-5);
+  transition: margin-left var(--dur-2) var(--ease-out);
 }
 
 .app-main {
   flex: 1;
   inline-size: min(72rem, calc(100% - 2.5rem));
   margin-inline: auto;
-  padding-block-end: var(--s-7);
+  padding-block-end: calc(56px + env(safe-area-inset-bottom) + var(--s-4));
   animation: fade-in var(--dur-2) var(--ease-out);
+  transition: margin-left var(--dur-2) var(--ease-out);
 }
 
-/* Selector de tema (variante texto): la activa lleva raya bermellón. */
+/* ---------- Barra de navegación principal (AppNav) ---------- */
+
+.app-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: calc(56px + env(safe-area-inset-bottom));
+  padding: 0 var(--s-2) env(safe-area-inset-bottom);
+  background: var(--paper-raised);
+  border-top: var(--border);
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  z-index: 15;
+}
+
+.app-nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 4.5rem;
+  min-height: 48px;
+  padding: var(--s-1) var(--s-2);
+  background: transparent;
+  border: none;
+  color: var(--ink-soft);
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  cursor: pointer;
+  position: relative;
+  transition: color var(--dur-1) var(--ease-out);
+}
+
+.app-nav-item:hover {
+  color: var(--ink);
+}
+
+.app-nav-item.is-active,
+.app-nav-item[aria-current="page"] {
+  color: var(--vermilion);
+  font-weight: 600;
+}
+
+.app-nav-item.is-active::after,
+.app-nav-item[aria-current="page"]::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 24px;
+  height: 3px;
+  border-radius: 0 0 2px 2px;
+  background: var(--vermilion);
+}
+
+/* En escritorio (≥ 64rem), la barra pasa a ser un riel lateral izquierdo */
+@media (min-width: 64rem) {
+  .app-nav {
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: auto;
+    width: 5rem;
+    height: 100vh;
+    flex-direction: column;
+    justify-content: flex-start;
+    padding-top: var(--s-7);
+    padding-inline: var(--s-2);
+    gap: var(--s-4);
+    border-top: none;
+    border-right: var(--border);
+  }
+
+  .app-nav-item {
+    min-width: 4rem;
+    min-height: 52px;
+  }
+
+  .app-nav-item.is-active::after,
+  .app-nav-item[aria-current="page"]::after {
+    top: 50%;
+    left: 0;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 24px;
+    border-radius: 0 2px 2px 0;
+  }
+
+  .app-header {
+    margin-left: 5rem;
+  }
+
+  .app-main {
+    margin-left: calc(5rem + (100% - 5rem - min(72rem, calc(100% - 5rem - 2.5rem))) / 2);
+    inline-size: min(72rem, calc(100% - 5rem - 2.5rem));
+    padding-block-end: var(--s-7);
+  }
+}
+
+/* Ocultar barra durante sesión de repaso / aprender */
+.app:has(.notebook[data-session]) .app-nav {
+  display: none;
+}
+
+/* Teclado virtual en pantalla táctil: evitar solapar inputs */
+@media (pointer: coarse) {
+  .app:has(:is(input, textarea, select):focus) .app-nav {
+    display: none;
+  }
+}
+
+/* ---------- Avisos flotantes (Notice) ---------- */
+
+.app-notices {
+  position: fixed;
+  z-index: 18;
+  bottom: calc(56px + env(safe-area-inset-bottom) + var(--s-3));
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-2);
+  max-width: min(90vw, 36rem);
+  pointer-events: none;
+  transition: bottom var(--dur-2) var(--ease-out);
+}
+
+.app:has(.notebook[data-session]) .app-notices {
+  bottom: calc(env(safe-area-inset-bottom) + var(--s-3));
+}
+
+@media (pointer: coarse) {
+  .app:has(:is(input, textarea, select):focus) .app-notices {
+    bottom: calc(env(safe-area-inset-bottom) + var(--s-3));
+  }
+}
+
+@media (min-width: 64rem) {
+  .app-notices {
+    bottom: var(--s-5);
+    left: calc(5rem + (100% - 5rem) / 2);
+  }
+}
+
+.app-notice {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-4);
+  border-radius: var(--r-pill);
+  box-shadow: var(--shadow-2);
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+  animation: rise-in var(--dur-2) var(--ease-out);
+}
+
+.app-notice--status {
+  background: var(--paper-raised);
+  border: 1px solid var(--rule-strong);
+  color: var(--ink);
+}
+
+.app-notice--alert {
+  background: color-mix(in srgb, var(--vermilion) 12%, var(--paper-raised));
+  border: 1px solid var(--vermilion);
+  color: var(--vermilion);
+  font-weight: 500;
+}
+
+.app-notice-text {
+  line-height: var(--lh-ui);
+}
+
+.app-notice-close {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.8;
+  transition: opacity var(--dur-1) var(--ease-out);
+}
+
+.app-notice-close:hover {
+  opacity: 1;
+}
+
+/* ---------- Cuaderno y Tú en modo página ---------- */
+
+.notebook--page {
+  padding-block: var(--s-4);
+}
+
+.notebook--page .notebook-bar {
+  border-bottom: none;
+  padding-inline: 0;
+}
+
+.account-page {
+  inline-size: min(44rem, 100%);
+  margin-inline: auto;
+  padding-block: var(--s-4) var(--s-7);
+}
+
+.account-page-header {
+  margin-bottom: var(--s-5);
+}
+
+.account-page-title {
+  font-family: var(--font-book);
+  font-size: var(--fs-2xl);
+  font-weight: 500;
+  color: var(--ink);
+  margin: 0;
+}
+
+.account-journey-row {
+  margin-bottom: var(--s-5);
+}
+
+.account-journey-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  width: 100%;
+  padding: var(--s-3) var(--s-4);
+  background: var(--paper-raised);
+  border: var(--border);
+  border-radius: var(--r-2);
+  box-shadow: var(--shadow-1);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color var(--dur-1) var(--ease-out),
+    transform var(--dur-1) var(--ease-out),
+    box-shadow var(--dur-1) var(--ease-out);
+}
+
+.account-journey-btn:hover {
+  border-color: var(--vermilion);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-2);
+}
+
+.account-journey-btn-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--vermilion-wash);
+  color: var(--vermilion);
+  flex-shrink: 0;
+}
+
+.account-journey-btn-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.account-journey-btn-title {
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.account-journey-btn-sub {
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+}
+
+.account-journey-btn-arrow {
+  font-size: 1.5rem;
+  color: var(--ink-faint);
+}
+
+/* Tarjeta de cuenta y sesión en Tú */
+.account-card {
+  background: var(--paper-raised);
+  border: var(--border);
+  border-radius: var(--r-2);
+  padding: var(--s-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  box-shadow: var(--shadow-1);
+  margin-bottom: var(--s-5);
+}
+
+.account-card-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+}
+
+.account-card-title {
+  font-family: var(--font-book);
+  font-size: var(--fs-md);
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.account-card-desc {
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+  margin: 0;
+  line-height: 1.45;
+}
+
+.account-card-email {
+  font-size: var(--fs-md);
+  color: var(--ink);
+}
+
+/* Secciones principales de Tú */
+.account-section {
+  margin-block-start: var(--s-5);
+  padding-block-start: var(--s-4);
+  border-top: var(--border);
+  display: grid;
+  gap: var(--s-3);
+}
+
+.setting-block {
+  display: grid;
+  gap: var(--s-2);
+  margin-block-start: var(--s-2);
+}
+
+.setting-vocab-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding-block: var(--s-1);
+}
+
+.setting-vocab-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* Bloque desplegable de opciones avanzadas */
+.account-advanced-details {
+  margin-block-start: var(--s-6);
+  padding-block-start: var(--s-4);
+  border-top: var(--border);
+}
+
+.account-advanced-summary {
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--ink-soft);
+  cursor: pointer;
+  user-select: none;
+  padding-block: var(--s-2);
+  transition: color var(--dur-1) var(--ease-out);
+}
+
+.account-advanced-summary:hover {
+  color: var(--ink);
+}
+
+.account-advanced-content {
+  display: grid;
+  gap: var(--s-4);
+  padding-block-start: var(--s-3);
+}
+
+/* Pestañas de autenticación en el diálogo modal */
+.auth-tabs {
+  display: flex;
+  gap: var(--s-2);
+  margin-bottom: var(--s-4);
+  border-bottom: var(--border);
+  padding-bottom: var(--s-2);
+}
+
+.auth-tab-btn {
+  font-family: var(--font-ui);
+  font-size: var(--fs-base);
+  font-weight: 500;
+  background: none;
+  border: none;
+  color: var(--ink-soft);
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-1);
+  cursor: pointer;
+  transition:
+    color var(--dur-1) var(--ease-out),
+    background-color var(--dur-1) var(--ease-out);
+}
+
+.auth-tab-btn:hover {
+  color: var(--ink);
+}
+
+.auth-tab-btn[aria-selected="true"] {
+  color: var(--vermilion);
+  background: var(--vermilion-wash);
+  font-weight: 600;
+}
+
+.auth-aux-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-1);
+  margin-top: var(--s-3);
+}
+
+/* Selector de tema (variante texto y swatches) */
 .theme-menu {
   display: flex;
   gap: var(--s-4);
@@ -61,9 +486,6 @@
   text-decoration-color: var(--vermilion);
 }
 
-/* Selector de tema como muestras: cada círculo pinta el papel y la
-   tinta de su paleta (colores fijos en THEME_SWATCHES — deben verse
-   aunque otro tema esté activo). La activa lleva aro bermellón. */
 .theme-swatches {
   display: flex;
   gap: var(--s-4);
@@ -115,24 +537,11 @@
   }
 }
 
-/* En pantalla angosta las opciones de tema de texto se cambian por
-   un solo botón «Tema» que abre la hoja con muestras: la cabecera
-   cabe en una fila. */
-.app-theme-btn {
-  display: none;
-}
-
-@media (max-width: 40rem) {
-  .app-header-nav {
-    justify-content: flex-end;
-    gap: var(--s-4);
-  }
-
-  .app-header-nav .theme-menu {
-    display: none;
-  }
-
-  .app-theme-btn {
-    display: inline;
+/* Transiciones de vista y reducción de movimiento */
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
   }
 }

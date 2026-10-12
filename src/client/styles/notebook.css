@@ -2,13 +2,54 @@
    agrupadas por libro, y el repaso sobre ficha rayada. */
 
 .notebook {
+  background-color: var(--paper);
+  background-image: var(--grain);
+}
+
+/* Modo overlay (capa sobre el libro al abrir desde el lector) */
+.notebook--overlay,
+.notebook:not(.notebook--page) {
   position: fixed;
   inset: 0;
   z-index: 25;
-  background-color: var(--paper);
-  background-image: var(--grain);
   overflow-y: auto;
   animation: nb-in var(--dur-3) var(--ease-out);
+}
+
+/* Modo página (destino principal «Cuaderno» dentro de la navegación) */
+.notebook--page {
+  position: static;
+  inset: auto;
+  z-index: auto;
+  overflow: visible;
+  background: transparent;
+  animation: none;
+  inline-size: min(44rem, 100%);
+  margin-inline: auto;
+  padding-block: var(--s-4) var(--s-7);
+}
+
+.notebook--page .notebook-bar {
+  position: static;
+  background: transparent;
+  border-bottom: none;
+  padding: 0 0 var(--s-4);
+  gap: var(--s-3);
+}
+
+.notebook--page .notebook-title {
+  font-family: var(--font-book);
+  font-size: var(--fs-2xl);
+  font-style: normal;
+  font-weight: 500;
+  color: var(--ink);
+  text-align: left;
+}
+
+.notebook--page .notebook-main {
+  max-inline-size: 100%;
+  padding-inline: 0;
+  padding-block: 0 var(--s-7);
 }
 
 @keyframes nb-in {
@@ -114,7 +155,7 @@
   border: var(--border);
   border-radius: var(--r-2);
   border-inline-start: 3px solid var(--vermilion);
-  box-shadow: 0 4px 14px -4px rgba(43, 37, 32, 0.08);
+  box-shadow: var(--shadow-1);
   position: relative;
 }
 
@@ -162,7 +203,7 @@
 .card-context-toggle:hover {
   opacity: 1;
   color: var(--ink);
-  background: var(--paper-subtle, rgba(0, 0, 0, 0.03));
+  background: var(--paper-sunken);
 }
 
 .card-context--full {
@@ -185,7 +226,7 @@
   background: var(--paper-raised, var(--paper));
   border: var(--border);
   border-radius: var(--r-2);
-  box-shadow: 0 2px 8px -2px rgba(43, 37, 32, 0.05);
+  box-shadow: var(--shadow-1);
   animation: rise-in var(--dur-2) var(--ease-out);
   position: relative;
 }
@@ -446,13 +487,13 @@
   border-color: var(--vermilion);
   background: var(--paper-raised);
   transform: translateY(-2px);
-  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--shadow-1);
 }
 
 .match-option.is-done {
-  border-color: var(--sage);
-  background: rgba(67, 105, 77, 0.08);
-  color: var(--sage);
+  border-color: var(--success);
+  background: var(--success-wash);
+  color: var(--success);
   opacity: 0.88;
   cursor: default;
   text-decoration: none;
@@ -461,7 +502,7 @@
 .match-option.is-done::after {
   content: "✓";
   font-weight: 700;
-  color: var(--sage);
+  color: var(--success);
   margin-inline-start: auto;
   font-size: var(--fs-sm);
 }
@@ -680,15 +721,112 @@
   border-color: var(--vermilion);
 }
 
-.nb-export {
+.nb-more-filters {
+  margin-block: var(--s-2);
+}
+
+.nb-more-filters summary {
+  cursor: pointer;
+  user-select: none;
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+  padding-block: var(--s-1);
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.nb-more-filters summary:hover {
+  color: var(--vermilion);
+}
+
+.nb-more-filters summary:focus-visible {
+  outline: 2px solid var(--vermilion);
+  outline-offset: 2px;
+}
+
+.nb-more-filters-content {
+  padding-block-start: var(--s-2);
   display: flex;
-  gap: var(--s-3);
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.nb-export {
   margin-block-start: var(--s-2);
 }
 
-.nb-export .btn--quiet {
-  min-height: 2.75rem;
+.nb-export summary {
+  cursor: pointer;
+  user-select: none;
   font-size: var(--fs-sm);
+  color: var(--ink-soft);
+  padding-block: var(--s-1);
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.nb-export summary:hover {
+  color: var(--vermilion);
+}
+
+.nb-export summary:focus-visible {
+  outline: 2px solid var(--vermilion);
+  outline-offset: 2px;
+}
+
+.nb-export-menu {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  padding-block-start: var(--s-2);
+}
+
+.nb-export-menu .btn--quiet {
+  min-height: 44px;
+  font-size: var(--fs-sm);
+}
+
+.nb-today-empty {
+  margin-block: var(--s-5);
+  padding: var(--s-4);
+  text-align: center;
+  border-radius: var(--r-2);
+  background: var(--paper-raised);
+  border: var(--border);
+}
+
+.nb-today-empty-title {
+  font-family: var(--font-book);
+  font-size: var(--fs-lg);
+  font-weight: 500;
+  color: var(--ink);
+  margin: 0 0 var(--s-2);
+}
+
+.nb-today-empty .meta {
+  margin: 0;
+}
+
+.nb-scope-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  margin-block: var(--s-2) var(--s-3);
+  background: var(--paper-sunken);
+  border: var(--border);
+  border-radius: var(--r-2);
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+}
+
+.nb-scope-notice .btn--quiet {
+  min-height: 44px;
+  font-weight: 500;
+  color: var(--vermilion);
 }
 
 /* «Deshacer» tras quitar una palabra. */
@@ -842,6 +980,82 @@
   color: var(--ink-soft);
 }
 
+/* Fila compacta que se abre */
+.nb-word-row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  inline-size: 100%;
+  min-height: 44px;
+  padding: var(--s-1) 0;
+  background: none;
+  border: none;
+  text-align: start;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+
+.nb-word-row:focus-visible {
+  outline: 2px solid var(--vermilion);
+  outline-offset: 2px;
+  border-radius: var(--r-1);
+}
+
+.nb-word-row-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  inline-size: 100%;
+}
+
+.nb-word-preview {
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+  margin-block-start: var(--s-1);
+  inline-size: 100%;
+  text-align: start;
+}
+
+.nb-word-detail {
+  padding-block: var(--s-2) var(--s-3);
+  animation: fade-in var(--dur-2) var(--ease-out);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nb-word-detail {
+    animation: none;
+    transition: none;
+  }
+}
+
+.nb-word-detail-meta {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  margin-block-end: var(--s-1);
+}
+
+.nb-word-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-block-start: var(--s-3);
+  flex-wrap: wrap;
+}
+
+.nb-word-actions .btn--quiet,
+.nb-word-actions .btn--pronounce {
+  min-height: 44px;
+}
+
 @media (max-width: 40rem) {
   .notebook-main {
     padding-inline: var(--s-4);
@@ -893,7 +1107,7 @@
   border: var(--border);
   border-radius: var(--r-2);
   border-inline-start: 3px solid var(--vermilion);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  box-shadow: var(--shadow-1);
 }
 
 .nb-quote-text {
@@ -993,8 +1207,8 @@
 }
 
 .scramble-slots.is-solved {
-  border-color: var(--sage);
-  background: rgba(67, 105, 77, 0.08);
+  border-color: var(--success);
+  background: var(--success-wash);
 }
 
 .scramble-slot {
@@ -1018,7 +1232,7 @@
   border: 2px solid var(--rule-strong);
   border-bottom-width: 3px;
   cursor: pointer;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
+  box-shadow: var(--shadow-1);
   animation: slot-pop 0.18s var(--ease-out);
 }
 
@@ -1028,9 +1242,9 @@
 }
 
 .scramble-slot.is-correct {
-  border-color: var(--sage);
-  background: rgba(67, 105, 77, 0.15);
-  color: var(--sage);
+  border-color: var(--success);
+  background: var(--success-wash);
+  color: var(--success);
   animation: tile-bounce 0.5s var(--ease-out);
 }
 
@@ -1058,13 +1272,13 @@
   color: var(--ink);
   cursor: pointer;
   transition: all var(--dur-1) var(--ease-out);
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.06);
+  box-shadow: var(--shadow-1);
 }
 
 .scramble-tile:hover:not(:disabled) {
   border-color: var(--vermilion);
   transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-2);
 }
 
 .scramble-tile:active:not(:disabled) {
@@ -1164,7 +1378,7 @@
 .grammar-cat-btn:hover:not(:disabled) {
   border-color: var(--vermilion);
   transform: translateY(-2px);
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--shadow-2);
 }
 
 .grammar-cat-btn:active:not(:disabled) {
@@ -1358,7 +1572,7 @@
 .sentence-pool-btn:hover:not(:disabled) {
   border-color: var(--vermilion);
   transform: translateY(-2px);
-  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--shadow-1);
 }
 
 .sentence-pool-key {
@@ -1444,67 +1658,23 @@
   40%, 80% { transform: translateX(4px); }
 }
 
-/* ---------- Hub de Maestría y Progreso de Vocabulario ---------- */
+/* ---------- Hub de Progreso de Vocabulario (simplificado) ---------- */
 
-.vocab-mastery-card {
+.vocab-mastery-card,
+.vocab-progress-card {
   margin-block: var(--s-2) var(--s-4);
   padding: var(--s-4);
   background: var(--paper-raised);
   border: var(--border);
   border-radius: var(--r-2);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  box-shadow: var(--shadow-1);
   display: flex;
   flex-direction: column;
   gap: var(--s-3);
 }
 
-.vocab-mastery-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--s-3);
-  flex-wrap: wrap;
-}
-
-.vocab-mastery-info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.vocab-mastery-label {
-  font-size: var(--fs-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  font-weight: 700;
-  color: var(--vermilion);
-}
-
-.vocab-mastery-title {
-  margin: 0;
-  font-size: var(--fs-md);
-  font-weight: 600;
-  color: var(--ink);
-}
-
-.vocab-mastery-companion {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--s-2);
-  padding: 4px 10px;
-  background: var(--paper-sunken);
-  border: 1px solid var(--rule);
-  border-radius: var(--r-pill);
-  font-size: var(--fs-xs);
-  font-weight: 600;
-  color: var(--ink);
-}
-
-.vocab-mastery-cat-xp {
-  color: var(--ochre);
-}
-
-.vocab-mastery-track {
+.vocab-mastery-track,
+.vocab-progress-track {
   inline-size: 100%;
   block-size: 10px;
   background: var(--paper-sunken);
@@ -1513,63 +1683,64 @@
   display: flex;
 }
 
-.vocab-mastery-seg {
+.vocab-mastery-seg,
+.vocab-progress-seg {
   block-size: 100%;
   transition: inline-size var(--dur-3) var(--ease-out);
 }
 
-.vocab-mastery-seg--mastered {
+.vocab-mastery-seg--settled,
+.vocab-progress-seg--settled {
   background: var(--sage);
 }
 
-.vocab-mastery-seg--settled {
+.vocab-mastery-seg--learning,
+.vocab-progress-seg--learning {
   background: var(--ochre);
 }
 
-.vocab-mastery-seg--learning {
-  background: var(--vermilion-bright);
+.vocab-mastery-seg--new,
+.vocab-progress-seg--new {
+  background: var(--rule-strong);
 }
 
-.vocab-mastery-chips {
+.vocab-progress-legend {
   display: flex;
   flex-wrap: wrap;
+  gap: var(--s-3) var(--s-4);
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+}
+
+.vocab-progress-item {
+  display: inline-flex;
+  align-items: center;
   gap: var(--s-2);
 }
 
-.vocab-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--s-1);
-  padding: var(--s-1) var(--s-3);
-  border: 1px solid var(--rule);
-  border-radius: var(--r-pill);
-  background: var(--paper);
-  color: var(--ink);
-  font-size: var(--fs-xs);
-  cursor: pointer;
-  transition: all var(--dur-1) var(--ease-out);
+.vocab-progress-dot {
+  inline-size: 8px;
+  block-size: 8px;
+  border-radius: 50%;
+  display: inline-block;
 }
 
-.vocab-chip:hover {
-  border-color: var(--rule-strong);
-  background: var(--paper-raised);
-  transform: translateY(-1px);
+.vocab-progress-item--settled .vocab-progress-dot {
+  background: var(--sage);
 }
 
-.vocab-chip.is-active {
-  border-color: var(--vermilion);
-  background: var(--vermilion-wash);
-  color: var(--vermilion);
+.vocab-progress-item--learning .vocab-progress-dot {
+  background: var(--ochre);
+}
+
+.vocab-progress-item--new .vocab-progress-dot {
+  background: var(--rule-strong);
+}
+
+.vocab-progress-count {
   font-weight: 600;
+  color: var(--ink);
 }
 
-.vocab-chip strong {
-  margin-inline-start: 2px;
-}
-
-.vocab-chip--due {
-  border-color: var(--vermilion);
-  color: var(--vermilion);
-}
 
 

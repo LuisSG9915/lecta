@@ -88,6 +88,16 @@ export default function Journey({ onClose, books }: JourneyProps) {
 
   const totalMs = useMemo(() => totalReadingMs(intervals), [intervals]);
   const stages = useMemo(() => wordStages(words), [words]);
+  const settledTotal = stages.settledCount + stages.masteredCount;
+  const settledPct =
+    stages.total > 0 ? Math.round((settledTotal / stages.total) * 100) : 0;
+  const learningPct =
+    stages.total > 0
+      ? Math.round((stages.learningCount / stages.total) * 100)
+      : 0;
+  const newPct =
+    stages.total > 0 ? Math.max(0, 100 - settledPct - learningPct) : 0;
+
   const records = useMemo(
     () => readingRecords(intervals, words, reviews),
     [intervals, words, reviews],
@@ -145,28 +155,28 @@ export default function Journey({ onClose, books }: JourneyProps) {
           <>
             {/* 1. Métricas clave en resumen */}
             <section
-              className="journey-summary"
+              className="journey-hero-card"
               aria-label="Resumen de lectura"
             >
-              <div className="journey-stat-card">
-                <span className="journey-stat-value">
+              <div className="journey-hero-stat">
+                <span className="journey-hero-value">
                   {formatMinutes(Math.round(totalMs / 60_000))}
                 </span>
-                <span className="journey-stat-label">Tiempo leído</span>
+                <span className="journey-hero-label">Tiempo leído</span>
               </div>
-              <div className="journey-stat-card">
-                <span className="journey-stat-value">
+              <div className="journey-hero-stat">
+                <span className="journey-hero-value">
                   {finishedHashes.length}
                 </span>
-                <span className="journey-stat-label">
+                <span className="journey-hero-label">
                   {finishedHashes.length === 1
                     ? "Libro terminado"
                     : "Libros terminados"}
                 </span>
               </div>
-              <div className="journey-stat-card">
-                <span className="journey-stat-value">{words.length}</span>
-                <span className="journey-stat-label">Palabras guardadas</span>
+              <div className="journey-hero-stat">
+                <span className="journey-hero-value">{words.length}</span>
+                <span className="journey-hero-label">Palabras guardadas</span>
               </div>
             </section>
 
@@ -177,36 +187,71 @@ export default function Journey({ onClose, books }: JourneyProps) {
             >
               <div className="journey-section-head">
                 <h2 className="journey-section-title">Vocabulario por etapas</h2>
-                <span className="meta">{stages.total} palabras en total</span>
+                <span className="meta">
+                  {stages.total} {stages.total === 1 ? "palabra" : "palabras"} en total
+                </span>
               </div>
               <p className="meta">
                 Estado de consolidación de tus palabras según el algoritmo de
                 repetición espaciada FSRS.
               </p>
 
-              <div className="journey-stages-grid">
-                <div className="journey-stage-item">
-                  <span className="journey-stage-count">
-                    {stages.masteredCount}
-                  </span>
-                  <span className="journey-stage-name">Dominadas</span>
-                </div>
-                <div className="journey-stage-item">
-                  <span className="journey-stage-count">
-                    {stages.settledCount}
-                  </span>
-                  <span className="journey-stage-name">En consolidación</span>
-                </div>
-                <div className="journey-stage-item">
-                  <span className="journey-stage-count">
-                    {stages.learningCount}
-                  </span>
-                  <span className="journey-stage-name">En aprendizaje</span>
-                </div>
-                <div className="journey-stage-item">
-                  <span className="journey-stage-count">{stages.newCount}</span>
-                  <span className="journey-stage-name">Por repasar</span>
-                </div>
+              <div className="vocab-progress-card">
+                {stages.total > 0 ? (
+                  <>
+                    <div
+                      className="vocab-progress-track"
+                      role="progressbar"
+                      aria-valuenow={settledTotal}
+                      aria-valuemax={stages.total}
+                      aria-label="Progreso de vocabulario"
+                    >
+                      {settledPct > 0 ? (
+                        <div
+                          className="vocab-progress-seg vocab-progress-seg--settled"
+                          style={{ inlineSize: `${settledPct}%` }}
+                          title={`Asentada: ${settledTotal}`}
+                        />
+                      ) : null}
+                      {learningPct > 0 ? (
+                        <div
+                          className="vocab-progress-seg vocab-progress-seg--learning"
+                          style={{ inlineSize: `${learningPct}%` }}
+                          title={`Aprendiendo: ${stages.learningCount}`}
+                        />
+                      ) : null}
+                      {newPct > 0 ? (
+                        <div
+                          className="vocab-progress-seg vocab-progress-seg--new"
+                          style={{ inlineSize: `${newPct}%` }}
+                          title={`Nueva: ${stages.newCount}`}
+                        />
+                      ) : null}
+                    </div>
+
+                    <div className="vocab-progress-legend">
+                      <span className="vocab-progress-item vocab-progress-item--settled">
+                        <span className="vocab-progress-dot" aria-hidden="true" />
+                        <span className="vocab-progress-name">Asentada</span>
+                        <strong className="vocab-progress-count">{settledTotal}</strong>
+                      </span>
+                      <span className="vocab-progress-item vocab-progress-item--learning">
+                        <span className="vocab-progress-dot" aria-hidden="true" />
+                        <span className="vocab-progress-name">Aprendiendo</span>
+                        <strong className="vocab-progress-count">{stages.learningCount}</strong>
+                      </span>
+                      <span className="vocab-progress-item vocab-progress-item--new">
+                        <span className="vocab-progress-dot" aria-hidden="true" />
+                        <span className="vocab-progress-name">Nueva</span>
+                        <strong className="vocab-progress-count">{stages.newCount}</strong>
+                      </span>
+                    </div>
+                  </>
+                ) : (
+                  <p className="meta">
+                    Aún no has guardado palabras en tu cuaderno. Toca cualquier palabra mientras lees.
+                  </p>
+                )}
               </div>
             </section>
 
@@ -216,8 +261,8 @@ export default function Journey({ onClose, books }: JourneyProps) {
               aria-label="Récords personales"
             >
               <h2 className="journey-section-title">Récords personales</h2>
-              <div className="journey-records-grid">
-                <div className="journey-record-card">
+              <div className="journey-records-card">
+                <div className="journey-record-item">
                   <span className="journey-record-title">Día más lector</span>
                   <span className="journey-record-value">
                     {records.bestReadingDay
@@ -231,7 +276,7 @@ export default function Journey({ onClose, books }: JourneyProps) {
                   ) : null}
                 </div>
 
-                <div className="journey-record-card">
+                <div className="journey-record-item">
                   <span className="journey-record-title">
                     Sesión más larga
                   </span>
@@ -245,7 +290,7 @@ export default function Journey({ onClose, books }: JourneyProps) {
                   </span>
                 </div>
 
-                <div className="journey-record-card">
+                <div className="journey-record-item">
                   <span className="journey-record-title">
                     Día con más palabras
                   </span>
@@ -261,7 +306,7 @@ export default function Journey({ onClose, books }: JourneyProps) {
                   ) : null}
                 </div>
 
-                <div className="journey-record-card">
+                <div className="journey-record-item">
                   <span className="journey-record-title">
                     Día con más repasos
                   </span>
@@ -285,37 +330,39 @@ export default function Journey({ onClose, books }: JourneyProps) {
               aria-label="Historial de lectura"
             >
               <h2 className="journey-section-title">Últimas 8 semanas</h2>
-              <div
-                className="journey-weeks-chart"
-                role="region"
-                aria-label="Minutos leídos por semana"
-              >
-                {weeks.map((item) => {
-                  const percent = Math.round(
-                    (item.minutes / maxWeekMinutes) * 100,
-                  );
-                  return (
-                    <div
-                      key={item.weekIndex}
-                      className="journey-week-col"
-                      title={`${item.label}: ${formatMinutes(item.minutes)}`}
-                    >
-                      <span className="journey-week-time">
-                        {item.minutes > 0 ? `${item.minutes}m` : ""}
-                      </span>
-                      <div className="journey-week-bar-wrap">
-                        <div
-                          className="journey-week-bar"
-                          style={{
-                            height: `${percent}%`,
-                            minHeight: item.minutes > 0 ? "4px" : "1px",
-                          }}
-                        />
+              <div className="journey-chart-card">
+                <div
+                  className="journey-weeks-chart"
+                  role="region"
+                  aria-label="Minutos leídos por semana"
+                >
+                  {weeks.map((item) => {
+                    const percent = Math.round(
+                      (item.minutes / maxWeekMinutes) * 100,
+                    );
+                    return (
+                      <div
+                        key={item.weekIndex}
+                        className="journey-week-col"
+                        title={`${item.label}: ${formatMinutes(item.minutes)}`}
+                      >
+                        <span className="journey-week-time">
+                          {item.minutes > 0 ? `${item.minutes}m` : ""}
+                        </span>
+                        <div className="journey-week-bar-wrap">
+                          <div
+                            className="journey-week-bar"
+                            style={{
+                              height: `${percent}%`,
+                              minHeight: item.minutes > 0 ? "4px" : "1px",
+                            }}
+                          />
+                        </div>
+                        <span className="journey-week-label">{item.label}</span>
                       </div>
-                      <span className="journey-week-label">{item.label}</span>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
             </section>
 

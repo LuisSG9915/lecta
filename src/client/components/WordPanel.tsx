@@ -22,6 +22,7 @@ import { award, localDayKey } from "../lib/game";
 import { triggerHaptic } from "../lib/haptics";
 import { speakWord } from "../lib/speech";
 import Sheet from "./Sheet";
+import Icon from "./Icon";
 
 import type { PhraseHit } from "../lib/phrases";
 
@@ -362,7 +363,7 @@ export default function WordPanel({
             title="Escuchar pronunciación"
             onClick={() => void speakWord(word, language)}
           >
-            <span aria-hidden="true">🔊</span>
+            <Icon name="speaker" size={16} />
           </button>
         </strong>
         <button

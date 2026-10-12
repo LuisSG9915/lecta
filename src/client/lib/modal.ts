@@ -60,9 +60,19 @@ const unlockScroll = () => {
   de.style.paddingRight = savedPaddingRight;
 };
 
+export type ModalBehaviorOptions = {
+  enabled?: boolean;
+};
+
 // Comportamiento común de hojas y diálogos: enfoca al abrir, atrapa Tab,
 // cierra con Escape y devuelve el foco a quien lo tenía.
-export function useModalBehavior(ref: RefObject<HTMLElement | null>, onClose: () => void) {
+export function useModalBehavior(
+  ref: RefObject<HTMLElement | null>,
+  onClose: () => void,
+  options?: ModalBehaviorOptions,
+) {
+  const enabled = options?.enabled ?? true;
+
   // onClose cambia en cada render; el ref lo estabiliza para que el
   // efecto de abajo corra una sola vez por apertura y no reenfoque
   // al usuario mientras escribe.
@@ -72,6 +82,7 @@ export function useModalBehavior(ref: RefObject<HTMLElement | null>, onClose: ()
   });
 
   useEffect(() => {
+    if (!enabled) return;
     const el = ref.current;
     if (!el) return;
 
@@ -164,6 +175,6 @@ export function useModalBehavior(ref: RefObject<HTMLElement | null>, onClose: ()
       unlockScroll();
       previouslyFocused?.focus({ preventScroll: true });
     };
-    // Solo por montaje: reenfocar en cada render quita el foco al usuario.
-  }, [ref]);
+    // Solo por montaje / cambio de activación: reenfocar en cada render quita el foco al usuario.
+  }, [ref, enabled]);
 }

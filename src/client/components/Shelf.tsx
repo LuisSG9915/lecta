@@ -38,6 +38,7 @@ import type { TipAction } from "../../shared/tip";
 import { levelProgress } from "../lib/gamification";
 import BookCover from "./BookCover";
 import DiscoverRail from "./DiscoverRail";
+import Icon from "./Icon";
 import { CompanionButton } from "./CompanionButton";
 import { useCompanion } from "./CompanionProvider";
 import Sheet from "./Sheet";
@@ -655,7 +656,7 @@ export default function Shelf({
                           title={isDownloading ? "Descargando libro…" : "Disponible en la nube · Toca para descargar"}
                           aria-label={isDownloading ? "Descargando" : "En la nube"}
                         >
-                          {isDownloading ? "⏳" : "☁"}
+                          <Icon name={isDownloading ? "clock" : "cloud"} size={13} />
                         </span>
                       ) : null}
                       {bookCoverages.get(book.hash) ? (

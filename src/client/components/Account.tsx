@@ -49,9 +49,14 @@ import {
   loadNativeLanguage,
   readerProfileFor,
   saveNativeLanguage,
+  type ThemeChoice,
 } from "../lib/settings";
+import { levelProgress } from "../lib/gamification";
 import Dialog from "./Dialog";
 import Toggle from "./Toggle";
+import Icon from "./Icon";
+import ThemeMenu from "./ThemeMenu";
+import { useCompanionSafe } from "./CompanionProvider";
 
 export { PENDING_DELETE_KEY };
 
@@ -63,6 +68,10 @@ type AccountProps = {
   // avisar si falla; la hoja la monta App porque el diálogo de Cuenta
   // la taparía.
   onOpenCalibration: (words: CalibrationWord[], language?: string) => void;
+  presentation?: "overlay" | "page";
+  onOpenJourney?: () => void;
+  theme?: ThemeChoice;
+  onThemeChange?: (theme: ThemeChoice) => void;
 };
 
 async function loadVocabSummary(
@@ -128,7 +137,19 @@ export default function Account({
   resetToken,
   onResetDone,
   onOpenCalibration,
+  presentation = "overlay",
+  onOpenJourney,
+  theme,
+  onThemeChange,
 }: AccountProps) {
+  const isPage = presentation === "page";
+  const companion = useCompanionSafe();
+  const progress = companion?.state ? levelProgress(companion.state.xp) : null;
+  const journeySummary =
+    progress?.level != null
+      ? `Nivel ${progress.level} · ${companion?.state?.stats.streakDays ?? 0} días en racha`
+      : "Hitos, ritmo y progreso de lectura";
+
   const { data: session, isPending } = authClient.useSession();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -138,6 +159,20 @@ export default function Account({
   const [newPassword, setNewPassword] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
   const [showChange, setShowChange] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(Boolean(resetToken));
+  const [authMode, setAuthMode] = useState<"signin" | "signup" | "magic" | "forgot" | "reset">(
+    resetToken ? "reset" : "signin",
+  );
+
+  const [prevResetToken, setPrevResetToken] = useState(resetToken);
+  if (prevResetToken !== resetToken) {
+    setPrevResetToken(resetToken);
+    if (resetToken) {
+      setAuthMode("reset");
+      setShowAuthModal(true);
+    }
+  }
+
   const [credentialInfo, setCredentialInfo] = useState<{
     userId: string;
     has: boolean;
@@ -304,13 +339,15 @@ export default function Account({
     void run(async () => {
       const result = await authClient.signIn.email({ email: cleanEmail, password });
       if (!result?.error) {
-        onClose();
+        setShowAuthModal(false);
+        if (!isPage) onClose();
       }
       return result;
     });
   };
 
-  const signUp = () => {
+  const signUp = (event?: FormEvent) => {
+    event?.preventDefault();
     const cleanEmail = email.trim().toLowerCase();
     if (!cleanEmail) {
       setError("Por favor, introduce tu correo para registrarte.");
@@ -324,7 +361,8 @@ export default function Account({
     void run(async () => {
       const result = await authClient.signUp.email({ email: cleanEmail, password, name });
       if (!result?.error) {
-        onClose();
+        setShowAuthModal(false);
+        if (!isPage) onClose();
       }
       return result;
     });
@@ -373,7 +411,8 @@ export default function Account({
             password: newPassword,
           });
           if (!loginResult?.error) {
-            onClose();
+            setShowAuthModal(false);
+            if (!isPage) onClose();
             return loginResult;
           }
         }
@@ -381,6 +420,8 @@ export default function Account({
         setPassword(newPassword);
         setNewPassword("");
         onResetDone?.();
+        setShowAuthModal(false);
+        if (!isPage) onClose();
       }
       return result;
     });
@@ -589,22 +630,72 @@ export default function Account({
     }
   };
 
-  return (
-    <Dialog label="Tu cuenta" onClose={onClose}>
+  const authModalNode = (
+    <Dialog
+      label="Tu cuenta"
+      onClose={() => {
+        setShowAuthModal(false);
+        if (resetToken) onResetDone?.();
+        if (!isPage) onClose();
+      }}
+    >
       <div className="sheet-head">
-        <strong className="sheet-title">Cuenta</strong>
+        <strong className="sheet-title">
+          {authMode === "reset"
+            ? "Restablecer contraseña"
+            : authMode === "forgot"
+              ? "Recuperar acceso"
+              : authMode === "magic"
+                ? "Enlace por correo"
+                : authMode === "signup"
+                  ? "Crear cuenta"
+                  : "Iniciar sesión"}
+        </strong>
         <button
           type="button"
           className="btn--quiet"
-          onClick={onClose}
-          aria-label="Cerrar cuenta"
+          onClick={() => {
+            setShowAuthModal(false);
+            if (resetToken) onResetDone?.();
+            if (!isPage) onClose();
+          }}
+          aria-label="Cerrar"
           data-autofocus
         >
           Cerrar
         </button>
       </div>
 
-      {isPending ? <p className="meta">Cargando…</p> : null}
+      {authMode === "signin" || authMode === "signup" ? (
+        <div className="auth-tabs" role="tablist">
+          <button
+            type="button"
+            role="tab"
+            className="auth-tab-btn"
+            aria-selected={authMode === "signin"}
+            onClick={() => {
+              setError("");
+              setMessage("");
+              setAuthMode("signin");
+            }}
+          >
+            Iniciar sesión
+          </button>
+          <button
+            type="button"
+            role="tab"
+            className="auth-tab-btn"
+            aria-selected={authMode === "signup"}
+            onClick={() => {
+              setError("");
+              setMessage("");
+              setAuthMode("signup");
+            }}
+          >
+            Crear cuenta
+          </button>
+        </div>
+      ) : null}
 
       {message ? (
         <p role="status" className="status">
@@ -617,72 +708,404 @@ export default function Account({
         </p>
       ) : null}
 
-      {!isPending && session?.user ? (
-        <>
-          <p>
-            Sesión iniciada como <strong>{session.user.email}</strong>
-          </p>
+      {authMode === "signin" ? (
+        <form className="field" onSubmit={signInWithPassword}>
+          <label htmlFor="modal-email">Correo</label>
+          <input
+            id="modal-email"
+            type="email"
+            required
+            autoComplete="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+          />
+          <label htmlFor="modal-password">Contraseña</label>
+          <input
+            id="modal-password"
+            type="password"
+            required
+            autoComplete="current-password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+          />
+          <div className="actions" style={{ marginTop: "var(--s-2)" }}>
+            <button
+              type="submit"
+              className="btn btn--primary"
+              disabled={busy}
+              style={{ width: "100%" }}
+            >
+              Entrar
+            </button>
+          </div>
+          <div className="auth-aux-actions">
+            <button
+              type="button"
+              className="btn--quiet"
+              onClick={() => {
+                setError("");
+                setMessage("");
+                setAuthMode("forgot");
+              }}
+            >
+              ¿Olvidaste tu contraseña?
+            </button>
+            <button
+              type="button"
+              className="btn--quiet"
+              onClick={() => {
+                setError("");
+                setMessage("");
+                setAuthMode("magic");
+              }}
+            >
+              Entrar con enlace por correo
+            </button>
+          </div>
+        </form>
+      ) : null}
+
+      {authMode === "signup" ? (
+        <form className="field" onSubmit={signUp}>
+          <label htmlFor="modal-signup-email">Correo</label>
+          <input
+            id="modal-signup-email"
+            type="email"
+            required
+            autoComplete="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+          />
+          <label htmlFor="modal-signup-password">Contraseña</label>
+          <input
+            id="modal-signup-password"
+            type="password"
+            required
+            minLength={8}
+            autoComplete="new-password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+          />
+          <span className="meta">Mínimo 8 caracteres.</span>
+          <div className="actions" style={{ marginTop: "var(--s-2)" }}>
+            <button
+              type="submit"
+              className="btn btn--primary"
+              disabled={busy}
+              style={{ width: "100%" }}
+            >
+              Crear cuenta
+            </button>
+          </div>
+          <div className="auth-aux-actions">
+            <button
+              type="button"
+              className="btn--quiet"
+              onClick={() => {
+                setError("");
+                setMessage("");
+                setAuthMode("signin");
+              }}
+            >
+              ¿Ya tienes cuenta? Inicia sesión
+            </button>
+          </div>
+        </form>
+      ) : null}
+
+      {authMode === "magic" ? (
+        <form
+          className="field"
+          onSubmit={(e) => {
+            e.preventDefault();
+            sendMagicLink();
+          }}
+        >
           <p className="meta">
-            {!online
-              ? "Sin conexión: el cuaderno se sincroniza al volver."
-              : lastSync
-                ? `Cuaderno sincronizado ${timeAgo(lastSync)}.`
-                : "Este dispositivo aún no sincroniza tu cuaderno."}
+            Acceso sin contraseña. Te enviaremos un enlace a tu correo para entrar directamente.
           </p>
+          <label htmlFor="modal-magic-email">Correo</label>
+          <input
+            id="modal-magic-email"
+            type="email"
+            required
+            autoComplete="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+          />
+          <div className="actions" style={{ marginTop: "var(--s-2)" }}>
+            <button
+              type="submit"
+              className="btn btn--primary"
+              disabled={busy || !email.trim()}
+              style={{ width: "100%" }}
+            >
+              Enviar enlace de acceso
+            </button>
+          </div>
+          <div className="auth-aux-actions">
+            <button
+              type="button"
+              className="btn--quiet"
+              onClick={() => {
+                setError("");
+                setMessage("");
+                setAuthMode("signin");
+              }}
+            >
+              Volver a entrar con contraseña
+            </button>
+          </div>
+        </form>
+      ) : null}
+
+      {authMode === "forgot" ? (
+        <form
+          className="field"
+          onSubmit={(e) => {
+            e.preventDefault();
+            sendResetLink();
+          }}
+        >
+          <p className="meta">
+            Escribe tu correo y te enviaremos las instrucciones para restablecer tu contraseña.
+          </p>
+          <label htmlFor="modal-forgot-email">Correo</label>
+          <input
+            id="modal-forgot-email"
+            type="email"
+            required
+            autoComplete="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+          />
+          <div className="actions" style={{ marginTop: "var(--s-2)" }}>
+            <button
+              type="submit"
+              className="btn btn--primary"
+              disabled={busy || !email.trim()}
+              style={{ width: "100%" }}
+            >
+              Enviar instrucciones
+            </button>
+          </div>
+          <div className="auth-aux-actions">
+            <button
+              type="button"
+              className="btn--quiet"
+              onClick={() => {
+                setError("");
+                setMessage("");
+                setAuthMode("signin");
+              }}
+            >
+              Volver a iniciar sesión
+            </button>
+          </div>
+        </form>
+      ) : null}
+
+      {authMode === "reset" ? (
+        <form className="field" onSubmit={resetPassword}>
+          <p className="meta">Introduce tu nueva contraseña (mínimo 8 caracteres).</p>
+          <label htmlFor="modal-reset-password">Nueva contraseña</label>
+          <input
+            id="modal-reset-password"
+            type="password"
+            required
+            minLength={8}
+            autoComplete="new-password"
+            value={newPassword}
+            onChange={(event) => setNewPassword(event.target.value)}
+          />
+          <div className="actions" style={{ marginTop: "var(--s-2)" }}>
+            <button
+              type="submit"
+              className="btn btn--primary"
+              disabled={busy}
+              style={{ width: "100%" }}
+            >
+              Guardar contraseña
+            </button>
+          </div>
+        </form>
+      ) : null}
+    </Dialog>
+  );
+
+  if (!isPage) {
+    if (!session?.user) {
+      return authModalNode;
+    }
+    return (
+      <Dialog label="Tu cuenta" onClose={onClose}>
+        <div className="sheet-head">
+          <strong className="sheet-title">Cuenta</strong>
+          <button
+            type="button"
+            className="btn--quiet"
+            onClick={onClose}
+            aria-label="Cerrar cuenta"
+            data-autofocus
+          >
+            Cerrar
+          </button>
+        </div>
+        {message ? (
+          <p role="status" className="status">
+            {message}
+          </p>
+        ) : null}
+        {error ? (
+          <p role="alert" className="status">
+            {error}
+          </p>
+        ) : null}
+        <p>
+          Sesión iniciada como <strong>{session.user.email}</strong>
+        </p>
+        <p className="meta">
+          {!online
+            ? "Sin conexión: el cuaderno se sincroniza al volver."
+            : lastSync
+              ? `Cuaderno sincronizado ${timeAgo(lastSync)}.`
+              : "Este dispositivo aún no sincroniza tu cuaderno."}
+        </p>
+        <div className="actions">
+          <button type="button" className="btn" disabled={busy} onClick={signOut}>
+            Cerrar sesión
+          </button>
+          {hasCredential ? (
+            <button
+              type="button"
+              className="btn--quiet"
+              disabled={busy}
+              onClick={() => setShowChange(!showChange)}
+            >
+              {showChange ? "Cancelar" : "Cambiar contraseña"}
+            </button>
+          ) : hasCredential === false ? (
+            <button
+              type="button"
+              className="btn--quiet"
+              disabled={busy}
+              onClick={sendSetPasswordLink}
+            >
+              Definir contraseña por correo
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className="btn--quiet btn--danger"
+            disabled={busy}
+            onClick={requestDelete}
+          >
+            {confirmDelete ? "¿Seguro? Borra cuenta, libros y vocabulario" : "Eliminar cuenta"}
+          </button>
+        </div>
+        {showChange ? (
+          <form className="field" onSubmit={changePassword} style={{ marginTop: "var(--s-3)" }}>
+            <label htmlFor="current-password">Contraseña actual</label>
+            <input
+              id="current-password"
+              type="password"
+              required
+              autoComplete="current-password"
+              value={currentPassword}
+              onChange={(event) => setCurrentPassword(event.target.value)}
+            />
+            <label htmlFor="new-password">Nueva contraseña</label>
+            <input
+              id="new-password"
+              type="password"
+              required
+              minLength={8}
+              autoComplete="new-password"
+              value={newPassword}
+              onChange={(event) => setNewPassword(event.target.value)}
+            />
+            <div className="actions">
+              <button type="submit" className="btn btn--primary" disabled={busy}>
+                Guardar
+              </button>
+              <button
+                type="button"
+                className="btn--quiet"
+                onClick={() => setShowChange(false)}
+              >
+                Cancelar
+              </button>
+            </div>
+          </form>
+        ) : null}
+      </Dialog>
+    );
+  }
+
+  return (
+    <section className="account-page" aria-label="Tú">
+      <header className="account-page-header">
+        <h1 className="account-page-title">Tú</h1>
+      </header>
+
+      {onOpenJourney ? (
+        <section className="account-journey-row">
+          <button
+            type="button"
+            className="account-journey-btn"
+            onClick={onOpenJourney}
+          >
+            <div className="account-journey-btn-icon">
+              <Icon name="journey" size={24} />
+            </div>
+            <div className="account-journey-btn-info">
+              <strong className="account-journey-btn-title">Tu recorrido</strong>
+              <span className="account-journey-btn-sub">{journeySummary}</span>
+            </div>
+            <span className="account-journey-btn-arrow" aria-hidden="true">›</span>
+          </button>
+        </section>
+      ) : null}
+
+      {isPending ? <p className="meta">Cargando…</p> : null}
+
+      {message && !showAuthModal ? (
+        <p role="status" className="status">
+          {message}
+        </p>
+      ) : null}
+      {error && !showAuthModal ? (
+        <p role="alert" className="status">
+          {error}
+        </p>
+      ) : null}
+
+      {!isPending && session?.user ? (
+        <section className="account-card" aria-label="Tu cuenta">
+          <div className="account-card-header">
+            <strong className="account-card-email">{session.user.email}</strong>
+            <span className="meta">
+              {!online
+                ? "Sin conexión: el cuaderno se sincroniza al volver."
+                : lastSync
+                  ? `Cuaderno sincronizado ${timeAgo(lastSync)}.`
+                  : "Sincronización activa en este dispositivo."}
+            </span>
+          </div>
           <div className="actions">
             <button type="button" className="btn" disabled={busy} onClick={signOut}>
               Cerrar sesión
             </button>
-          </div>
-          {hasCredential ? (
-            showChange ? (
-              <form className="field" onSubmit={changePassword}>
-                <label htmlFor="current-password">Contraseña actual</label>
-                <input
-                  id="current-password"
-                  type="password"
-                  required
-                  autoComplete="current-password"
-                  value={currentPassword}
-                  onChange={(event) => setCurrentPassword(event.target.value)}
-                />
-                <label htmlFor="new-password">Nueva contraseña</label>
-                <input
-                  id="new-password"
-                  type="password"
-                  required
-                  minLength={8}
-                  autoComplete="new-password"
-                  value={newPassword}
-                  onChange={(event) => setNewPassword(event.target.value)}
-                />
-                <div className="actions">
-                  <button type="submit" className="btn" disabled={busy}>
-                    Guardar
-                  </button>
-                  <button
-                    type="button"
-                    className="btn--quiet"
-                    onClick={() => setShowChange(false)}
-                  >
-                    Cancelar
-                  </button>
-                </div>
-              </form>
-            ) : (
-              <div className="actions">
-                <button
-                  type="button"
-                  className="btn--quiet"
-                  disabled={busy}
-                  onClick={() => setShowChange(true)}
-                >
-                  Cambiar contraseña
-                </button>
-              </div>
-            )
-          ) : hasCredential === false ? (
-            <div className="actions">
+            {hasCredential ? (
+              <button
+                type="button"
+                className="btn--quiet"
+                disabled={busy}
+                onClick={() => setShowChange(!showChange)}
+              >
+                {showChange ? "Cancelar cambio" : "Cambiar contraseña"}
+              </button>
+            ) : hasCredential === false ? (
               <button
                 type="button"
                 className="btn--quiet"
@@ -691,130 +1114,92 @@ export default function Account({
               >
                 Definir contraseña por correo
               </button>
-            </div>
-          ) : null}
-          <div className="actions">
+            ) : null}
             <button
               type="button"
-              className="btn--quiet"
+              className="btn--quiet btn--danger"
               disabled={busy}
               onClick={requestDelete}
             >
               {confirmDelete ? "¿Seguro? Borra cuenta, libros y vocabulario" : "Eliminar cuenta"}
             </button>
           </div>
-        </>
-      ) : null}
-
-      {resetToken && !session?.user ? (
-        <form className="field" onSubmit={resetPassword}>
-          <label htmlFor="reset-password">Nueva contraseña</label>
-          <input
-            id="reset-password"
-            type="password"
-            required
-            minLength={8}
-            autoComplete="new-password"
-            value={newPassword}
-            onChange={(event) => setNewPassword(event.target.value)}
-          />
+          {showChange ? (
+            <form className="field" onSubmit={changePassword} style={{ marginTop: "var(--s-3)" }}>
+              <label htmlFor="current-password">Contraseña actual</label>
+              <input
+                id="current-password"
+                type="password"
+                required
+                autoComplete="current-password"
+                value={currentPassword}
+                onChange={(event) => setCurrentPassword(event.target.value)}
+              />
+              <label htmlFor="new-password">Nueva contraseña</label>
+              <input
+                id="new-password"
+                type="password"
+                required
+                minLength={8}
+                autoComplete="new-password"
+                value={newPassword}
+                onChange={(event) => setNewPassword(event.target.value)}
+              />
+              <div className="actions">
+                <button type="submit" className="btn btn--primary" disabled={busy}>
+                  Guardar
+                </button>
+                <button
+                  type="button"
+                  className="btn--quiet"
+                  onClick={() => setShowChange(false)}
+                >
+                  Cancelar
+                </button>
+              </div>
+            </form>
+          ) : null}
+        </section>
+      ) : !isPending ? (
+        <section className="account-card" aria-label="Tu cuenta">
+          <div className="account-card-header">
+            <strong className="account-card-title">Sincronización en la nube</strong>
+            <p className="account-card-desc">
+              Guarda tus libros, tu avance y tu cuaderno para leer en cualquier dispositivo.
+            </p>
+          </div>
           <div className="actions">
-            <button type="submit" className="btn btn--primary" disabled={busy}>
-              Guardar contraseña
+            <button
+              type="button"
+              className="btn btn--primary"
+              onClick={() => {
+                setError("");
+                setMessage("");
+                setAuthMode("signin");
+                setShowAuthModal(true);
+              }}
+            >
+              Iniciar sesión o crear cuenta
             </button>
           </div>
-        </form>
+        </section>
       ) : null}
 
-      {!resetToken && !isPending && !session?.user ? (
-        <form className="field" onSubmit={signInWithPassword}>
-          <label htmlFor="account-email">Correo</label>
-          <input
-            id="account-email"
-            type="email"
-            required
-            autoComplete="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-          />
-          <label htmlFor="account-password">Contraseña</label>
-          <input
-            id="account-password"
-            type="password"
-            autoComplete="current-password"
-            minLength={8}
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-          />
-          <div className="actions">
-            <button type="submit" className="btn btn--primary" disabled={busy}>
-              Entrar
-            </button>
-            <button type="button" className="btn" disabled={busy || !password} onClick={signUp}>
-              Crear cuenta
-            </button>
-            <button
-              type="button"
-              className="btn--quiet"
-              disabled={busy || !email}
-              onClick={sendMagicLink}
-            >
-              Enlace por correo
-            </button>
+      <section className="account-section" aria-label="Lectura y vocabulario">
+        <h2 className="eyebrow">Lectura y vocabulario</h2>
+
+        {theme && onThemeChange ? (
+          <div className="setting-block">
+            <span className="setting-label">Apariencia</span>
+            <p className="meta">
+              Elige el fondo y el contraste que mejor se adapte a tu entorno de lectura.
+            </p>
+            <div style={{ marginTop: "var(--s-2)" }}>
+              <ThemeMenu value={theme} onChange={onThemeChange} variant="swatches" />
+            </div>
           </div>
-          <button
-            type="button"
-            className="btn--quiet"
-            disabled={busy || !email}
-            onClick={sendResetLink}
-          >
-            Olvidé mi contraseña
-          </button>
-        </form>
-      ) : null}
+        ) : null}
 
-      <section className="account-privacy" aria-label="Tu vocabulario">
-        <h2 className="eyebrow">Tu vocabulario</h2>
-
-        <div style={{ marginBottom: "1rem" }}>
-          <strong>Español</strong>
-          <p className="meta">
-            {vocabInfoEs === null ? "Revisando lo que conoces…" : vocabInfoEs}
-          </p>
-          <div className="setting-row">
-            <span className="setting-label">Ajustar vocabulario en español</span>
-            <button
-              type="button"
-              className="btn--quiet"
-              disabled={loadingSampleLang !== null}
-              onClick={() => void adjustVocabulary("es")}
-            >
-              {loadingSampleLang === "es" ? "Cargando…" : "Ajustar vocabulario"}
-            </button>
-          </div>
-        </div>
-
-        <div>
-          <strong>Inglés</strong>
-          <p className="meta">
-            {vocabInfoEn === null ? "Revisando lo que conoces…" : vocabInfoEn}
-          </p>
-          <div className="setting-row">
-            <span className="setting-label">Ajustar vocabulario en inglés</span>
-            <button
-              type="button"
-              className="btn--quiet"
-              disabled={loadingSampleLang !== null}
-              onClick={() => void adjustVocabulary("en")}
-            >
-              {loadingSampleLang === "en" ? "Cargando…" : "Ajustar vocabulario"}
-            </button>
-          </div>
-        </div>
-      </section>
-
-      <section className="account-privacy" aria-label="Idiomas">
-        <h2 className="eyebrow">Idiomas</h2>
         <div className="setting-row">
           <span className="setting-label">Lengua materna</span>
           <select
@@ -833,12 +1218,45 @@ export default function Account({
         <p className="meta">
           Se usa para calibrar tu nivel de vocabulario, evitar falsas alarmas en palabras comunes y adaptar las explicaciones.
         </p>
-      </section>
 
-      <section className="account-privacy" aria-label="Meta de lectura">
-        <h2 className="eyebrow">Meta de lectura</h2>
+        <div className="setting-block">
+          <span className="setting-label">Calibración de vocabulario</span>
+          <div className="setting-vocab-row">
+            <div className="setting-vocab-info">
+              <strong>Español</strong>
+              <span className="meta">
+                {vocabInfoEs === null ? "Revisando lo que conoces…" : vocabInfoEs}
+              </span>
+            </div>
+            <button
+              type="button"
+              className="btn--quiet"
+              disabled={loadingSampleLang !== null}
+              onClick={() => void adjustVocabulary("es")}
+            >
+              {loadingSampleLang === "es" ? "Cargando…" : "Ajustar"}
+            </button>
+          </div>
+          <div className="setting-vocab-row">
+            <div className="setting-vocab-info">
+              <strong>Inglés</strong>
+              <span className="meta">
+                {vocabInfoEn === null ? "Revisando lo que conoces…" : vocabInfoEn}
+              </span>
+            </div>
+            <button
+              type="button"
+              className="btn--quiet"
+              disabled={loadingSampleLang !== null}
+              onClick={() => void adjustVocabulary("en")}
+            >
+              {loadingSampleLang === "en" ? "Cargando…" : "Ajustar"}
+            </button>
+          </div>
+        </div>
+
         <div className="setting-row">
-          <span className="setting-label">Días de lectura por semana</span>
+          <span className="setting-label">Meta semanal de lectura</span>
           <select
             aria-label="Días de lectura por semana"
             value={goalDays ?? ""}
@@ -853,12 +1271,11 @@ export default function Account({
           </select>
         </div>
         <p className="meta">
-          De lunes a domingo; un día cuenta cuando lees al menos un minuto.
-          La meta se guarda en este dispositivo.
+          De lunes a domingo; un día cuenta cuando lees al menos un minuto. La meta se guarda en este dispositivo.
         </p>
       </section>
 
-      <section className="account-privacy" aria-label="Compañero y logros">
+      <section className="account-section" aria-label="Compañero y logros">
         <h2 className="eyebrow">Compañero y logros</h2>
         <div className="setting-row">
           <span className="setting-label">El gato del cuaderno</span>
@@ -926,8 +1343,7 @@ export default function Account({
               </div>
             </div>
             <p className="meta">
-              Solo mueve al gato, sus festejos y sus cofres — el resto de
-              Lecta sigue la regla de tu sistema.
+              Solo mueve al gato, sus festejos y sus cofres — el resto de Lecta sigue la regla de tu sistema.
             </p>
             <div className="setting-row">
               <span className="setting-label">Sonido del gato</span>
@@ -938,14 +1354,12 @@ export default function Account({
               />
             </div>
             <p className="meta">
-              Suena solo al abrir su hoja o mientras lo acaricias, y solo en
-              este dispositivo.
+              Suena solo al abrir su hoja o mientras lo acaricias, y solo en este dispositivo.
             </p>
           </>
         ) : null}
         <p className="meta">
-          Un gato de biblioteca crece contigo en el Cuaderno: niveles, logros
-          y cofres por leer y repasar.{" "}
+          Un gato de biblioteca crece contigo en el Cuaderno: niveles, logros y cofres por leer y repasar.{" "}
           {session?.user
             ? "Con sesión se guarda en tu cuenta y te acompaña en tus dispositivos."
             : "Todo queda en este dispositivo."}{" "}
@@ -953,94 +1367,109 @@ export default function Account({
         </p>
       </section>
 
-      <section className="account-privacy" aria-label="Privacidad y datos">
-        <h2 className="eyebrow">Privacidad y datos</h2>
-        <div className="setting-row">
-          <span className="setting-label">Usar IA para definir y corregir</span>
-          <Toggle
-            label="Usar IA para definir y corregir"
-            checked={useAi}
-            onChange={toggleUseAi}
-          />
+      <details className="account-advanced-details">
+        <summary className="account-advanced-summary">
+          Avanzado y privacidad
+        </summary>
+        <div className="account-advanced-content">
+          <div className="setting-block">
+            <h3 className="eyebrow">Privacidad y datos</h3>
+            <div className="setting-row">
+              <span className="setting-label">Usar IA para definir y corregir</span>
+              <Toggle
+                label="Usar IA para definir y corregir"
+                checked={useAi}
+                onChange={toggleUseAi}
+              />
+            </div>
+            <p className="meta">
+              Solo viaja la palabra y su oración (≤ 500 caracteres). Nunca el libro, tu
+              cuenta ni tu actividad.
+            </p>
+            <div className="setting-row">
+              <span className="setting-label">Guardar el recorrido de lectura</span>
+              <Toggle
+                label="Guardar el recorrido de lectura"
+                checked={historyOn}
+                onChange={toggleHistory}
+              />
+            </div>
+            <p className="meta">
+              Anota en este dispositivo qué secciones abriste y qué palabras se sugirieron,
+              para revisar y mejorar las sugerencias. No se sube a tu cuenta; sale en la
+              copia de tus datos y se borra solo con el tiempo.
+            </p>
+            <div className="setting-row">
+              <span className="setting-label">Copia de tus datos</span>
+              <button
+                type="button"
+                className="btn--quiet"
+                onClick={() =>
+                  void downloadBackup().catch(() =>
+                    setError("No se pudo preparar el respaldo. Intenta de nuevo."),
+                  )
+                }
+              >
+                Descargar mis datos (JSON)
+              </button>
+            </div>
+            <p className="meta">
+              Palabras, repasos, marcadores, posiciones y preferencias de este dispositivo.
+              Los libros se re-suben solos si tienes cuenta.
+            </p>
+            <div className="setting-row">
+              <span className="setting-label">Memoria del diccionario</span>
+              {cachedDictWords && cachedDictWords > 0 ? (
+                <button
+                  type="button"
+                  className="btn--quiet"
+                  onClick={() => void handleClearDict()}
+                >
+                  Liberar memoria ({cachedDictWords} palabras)
+                </button>
+              ) : (
+                <span className="meta">Sin palabras cacheadas</span>
+              )}
+            </div>
+            <p className="meta">
+              {cachedDictWords && cachedDictWords > 0
+                ? `${cachedDictWords} definiciones guardadas en este dispositivo para consulta sin conexión.`
+                : "Las definiciones consultadas o descargadas se conservan aquí para que puedas leer sin conexión."}
+            </p>
+          </div>
+
+          <div className="setting-block">
+            <h3 className="eyebrow">Lectura en Kindle y Tinta Electrónica</h3>
+            <p className="meta">
+              ¿Tienes un Kindle o lector de tinta electrónica? Abre{" "}
+              <a href="/k" target="_blank" rel="noreferrer">
+                /k
+              </a>{" "}
+              desde su navegador para leer tus libros en una interfaz ultra-ligera, sin JavaScript y sincronizada con tu cuenta.
+            </p>
+          </div>
+
+          <div className="setting-block">
+            <h3 className="eyebrow">Acerca de</h3>
+            <p className="meta">
+              Diccionario base: simplemma (MIT; datos bajo ODbL 1.0 y licencias derivadas) y
+              wordfreq (CC BY-SA 4.0 y fuentes con atribución). Definiciones del Wikcionario
+              en español vía kaikki.org (CC BY-SA 4.0 / GFDL). Contiene información de
+              «Lemmatization Lists» disponible bajo ODbL 1.0.{" "}
+              <a
+                href="https://github.com/LuisSG9915/lecta-lexicon-data"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Tablas derivadas y licencias
+              </a>
+              .
+            </p>
+          </div>
         </div>
-        <p className="meta">
-          Solo viaja la palabra y su oración (≤ 500 caracteres). Nunca el libro, tu
-          cuenta ni tu actividad.
-        </p>
-        <div className="setting-row">
-          <span className="setting-label">Guardar el recorrido de lectura</span>
-          <Toggle
-            label="Guardar el recorrido de lectura"
-            checked={historyOn}
-            onChange={toggleHistory}
-          />
-        </div>
-        <p className="meta">
-          Anota en este dispositivo qué secciones abriste y qué palabras se sugirieron,
-          para revisar y mejorar las sugerencias. No se sube a tu cuenta; sale en la
-          copia de tus datos y se borra solo con el tiempo.
-        </p>
-        <div className="setting-row">
-          <span className="setting-label">Copia de tus datos</span>
-          <button
-            type="button"
-            className="btn--quiet"
-            onClick={() =>
-              void downloadBackup().catch(() =>
-                setError("No se pudo preparar el respaldo. Intenta de nuevo."),
-              )
-            }
-          >
-            Descargar mis datos (JSON)
-          </button>
-        </div>
-        <p className="meta">
-          Palabras, repasos, marcadores, posiciones y preferencias de este dispositivo.
-          Los libros se re-suben solos si tienes cuenta.
-        </p>
-        <div className="setting-row">
-          <span className="setting-label">Memoria del diccionario</span>
-          {cachedDictWords && cachedDictWords > 0 ? (
-            <button
-              type="button"
-              className="btn--quiet"
-              onClick={() => void handleClearDict()}
-            >
-              Liberar memoria ({cachedDictWords} palabras)
-            </button>
-          ) : (
-            <span className="meta">Sin palabras cacheadas</span>
-          )}
-        </div>
-        <p className="meta">
-          {cachedDictWords && cachedDictWords > 0
-            ? `${cachedDictWords} definiciones guardadas en este dispositivo para consulta sin conexión.`
-            : "Las definiciones consultadas o descargadas se conservan aquí para que puedas leer sin conexión."}
-        </p>
-        <h2 className="eyebrow">Lectura en Kindle y Tinta Electrónica</h2>
-        <p className="meta">
-          ¿Tienes un Kindle o lector de tinta electrónica? Abre{" "}
-          <a href="/k" target="_blank" rel="noreferrer">
-            /k
-          </a>{" "}
-          desde su navegador para leer tus libros en una interfaz ultra-ligera, sin JavaScript y sincronizada con tu cuenta.
-        </p>
-        <h2 className="eyebrow">Acerca de</h2>
-        <p className="meta">
-          Diccionario base: simplemma (MIT; datos bajo ODbL 1.0 y licencias derivadas) y
-          wordfreq (CC BY-SA 4.0 y fuentes con atribución). Definiciones del Wikcionario
-          en español vía kaikki.org (CC BY-SA 4.0 / GFDL). Contiene información de
-          «Lemmatization Lists» disponible bajo ODbL 1.0.{" "}
-          <a
-            href="https://github.com/LuisSG9915/lecta-lexicon-data"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Tablas derivadas y licencias
-          </a>
-          .
-        </p>
-      </section>
-    </Dialog>
+      </details>
+
+      {showAuthModal ? authModalNode : null}
+    </section>
   );
 }

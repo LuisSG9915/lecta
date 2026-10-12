@@ -1,15 +1,26 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import {
+  Activity,
+  lazy,
+  startTransition,
+  Suspense,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  ViewTransition,
+} from "react";
 // El Lector y el Cuaderno se cargan diferidos para no inflar la descarga inicial de la estantería.
 const Reader = lazy(() => import("./components/Reader"));
 const Vocabulary = lazy(() => import("./components/Vocabulary"));
 const Journey = lazy(() => import("./components/Journey"));
 import Account from "./components/Account";
-import Sheet from "./components/Sheet";
 import Calibration from "./components/Calibration";
 import { CompanionProvider } from "./components/CompanionProvider";
-import ThemeMenu from "./components/ThemeMenu";
 import Shelf, { type ShelfItem } from "./components/Shelf";
 import Dialog from "./components/Dialog";
+import AppNav, { type NavDestination } from "./components/AppNav";
+import Notice from "./components/Notice";
 import {
   applyTheme,
   loadNativeLanguage,
@@ -88,8 +99,13 @@ export default function App() {
   const [checkingLibrary, setCheckingLibrary] = useState(true);
   const [showVocabulary, setShowVocabulary] = useState(false);
   const [showJourney, setShowJourney] = useState(false);
-  const [showAccount, setShowAccount] = useState(Boolean(authLink.token || authLink.urlError));
-  const [showThemeSheet, setShowThemeSheet] = useState(false);
+  const [showAccount, setShowAccount] = useState(
+    Boolean(authLink.token || authLink.urlError || authLink.deleted),
+  );
+  const [hasVisitedVocab, setHasVisitedVocab] = useState(false);
+  const scrollPositions = useRef<Partial<Record<NavDestination, number>>>({});
+  const journeyOrigin = useRef<"shelf" | "vocab" | "account">("shelf");
+  const journeyRelease = useRef<OverlayHandle | null>(null);
   const [downloadingHash, setDownloadingHash] = useState<string | null>(null);
   const [library, setLibrary] = useState<ShelfItem[]>([]);
   const [vocabVersion, setVocabVersion] = useState(0);
@@ -108,7 +124,6 @@ export default function App() {
   const [calibrationLang, setCalibrationLang] = useState("es");
   const bookRelease = useRef<OverlayHandle | null>(null);
   const panelRelease = useRef<OverlayHandle | null>(null);
-  const themeRelease = useRef<OverlayHandle | null>(null);
   const calibrationRelease = useRef<OverlayHandle | null>(null);
   const positionRelease = useRef<OverlayHandle | null>(null);
   // El libro que esperaba entrar cuando se ofreció la calibración.
@@ -160,6 +175,10 @@ export default function App() {
   };
 
   const openBook = (selection: BookSelection) => {
+    setHasVisitedVocab(false);
+    setShowVocabulary(false);
+    setShowAccount(false);
+    setShowJourney(false);
     if (!bookRelease.current) {
       bookRelease.current = pushOverlay(() => {
         bookRelease.current = null;
@@ -257,42 +276,90 @@ export default function App() {
     void syncPositions().catch(() => null);
   };
 
-  const openPanel = (kind: "vocab" | "account" | "journey") => {
-    if (!panelRelease.current) {
-      panelRelease.current = pushOverlay(() => {
+  const activeNav: NavDestination = showVocabulary
+    ? "vocab"
+    : showAccount
+      ? "account"
+      : "shelf";
+
+  useLayoutEffect(() => {
+    if (book) return;
+    const targetY = scrollPositions.current[activeNav] ?? 0;
+    window.scrollTo(0, targetY);
+  }, [activeNav, book]);
+
+  const navigateTo = (dest: NavDestination) => {
+    if (dest === activeNav) {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+    scrollPositions.current[activeNav] = window.scrollY;
+
+    startTransition(() => {
+      if (dest === "shelf") {
+        panelRelease.current?.release();
         panelRelease.current = null;
         setShowVocabulary(false);
         setShowAccount(false);
         setShowJourney(false);
-      });
-    }
-    setShowVocabulary(kind === "vocab");
-    setShowAccount(kind === "account");
-    setShowJourney(kind === "journey");
+        return;
+      }
+
+      if (!panelRelease.current) {
+        panelRelease.current = pushOverlay(() => {
+          startTransition(() => {
+            panelRelease.current = null;
+            setShowVocabulary(false);
+            setShowAccount(false);
+            setShowJourney(false);
+          });
+        });
+      }
+
+      if (dest === "vocab") {
+        setHasVisitedVocab(true);
+        setShowVocabulary(true);
+        setShowAccount(false);
+        setShowJourney(false);
+      } else if (dest === "account") {
+        setShowAccount(true);
+        setShowVocabulary(false);
+        setShowJourney(false);
+      }
+    });
   };
 
-  const closePanel = () => {
+  const openNotebookOverlay = () => {
+    if (!panelRelease.current) {
+      panelRelease.current = pushOverlay(() => {
+        panelRelease.current = null;
+        setShowVocabulary(false);
+      });
+    }
+    setShowVocabulary(true);
+  };
+
+  const closeNotebookOverlay = () => {
     panelRelease.current?.release();
     panelRelease.current = null;
     setShowVocabulary(false);
-    setShowAccount(false);
-    setShowJourney(false);
   };
 
-  const openThemeSheet = () => {
-    if (!themeRelease.current) {
-      themeRelease.current = pushOverlay(() => {
-        themeRelease.current = null;
-        setShowThemeSheet(false);
+  const openJourneyFrom = (origin: "shelf" | "vocab" | "account") => {
+    journeyOrigin.current = origin;
+    if (!journeyRelease.current) {
+      journeyRelease.current = pushOverlay(() => {
+        journeyRelease.current = null;
+        setShowJourney(false);
       });
     }
-    setShowThemeSheet(true);
+    setShowJourney(true);
   };
 
-  const closeThemeSheet = () => {
-    themeRelease.current?.release();
-    themeRelease.current = null;
-    setShowThemeSheet(false);
+  const closeJourney = () => {
+    journeyRelease.current?.release();
+    journeyRelease.current = null;
+    setShowJourney(false);
   };
 
   // La estantería mezcla los libros del dispositivo con los que solo
@@ -783,139 +850,115 @@ export default function App() {
     <CompanionProvider userId={dbUserId}>
     <div className="app">
       {book ? (
-        <Suspense fallback={<p className="status">Abriendo el libro…</p>}>
-          <Reader
-            key={`${sessionUserId ?? "anon"}:${book.hash}`}
-            bookHash={book.hash}
-            file={book.file}
-            fileName={book.name}
-            onError={setError}
-            onStatus={setMessage}
-            onBack={closeReader}
-            onOpenNotebook={() => openPanel("vocab")}
-            statusText={message}
-            errorText={error}
-            panelsOpen={showVocabulary || showAccount}
-            theme={theme}
-            onThemeChange={changeTheme}
-            vocabVersion={vocabVersion}
-            onRequestCalibration={requestCalibration}
-            signedIn={Boolean(sessionUserId)}
-          />
-        </Suspense>
+        <>
+          <Suspense fallback={<p className="status">Abriendo el libro…</p>}>
+            <Reader
+              key={`${sessionUserId ?? "anon"}:${book.hash}`}
+              bookHash={book.hash}
+              file={book.file}
+              fileName={book.name}
+              onError={setError}
+              onStatus={setMessage}
+              onBack={closeReader}
+              onOpenNotebook={openNotebookOverlay}
+              statusText={message}
+              errorText={error}
+              panelsOpen={showVocabulary || showAccount}
+              theme={theme}
+              onThemeChange={changeTheme}
+              vocabVersion={vocabVersion}
+              onRequestCalibration={requestCalibration}
+              signedIn={Boolean(sessionUserId)}
+            />
+          </Suspense>
+
+          {showVocabulary ? (
+            <Suspense fallback={<p className="status">Abriendo tu cuaderno…</p>}>
+              <Vocabulary
+                key={sessionUserId ?? "anon"}
+                presentation="overlay"
+                backLabel="‹ Volver al libro"
+                onClose={closeNotebookOverlay}
+                books={library}
+                activityVersion={activityVersion}
+                onOpenJourney={() => openJourneyFrom("vocab")}
+              />
+            </Suspense>
+          ) : null}
+        </>
       ) : (
         <>
           <header className="app-header">
             <span className="brand">Lecta</span>
-            <nav className="app-header-nav" aria-label="Secciones">
-              <button type="button" className="btn--quiet" onClick={() => openPanel("vocab")}>
-                Cuaderno
-              </button>
-              <button type="button" className="btn--quiet" onClick={() => openPanel("journey")}>
-                Recorrido
-              </button>
-              <button type="button" className="btn--quiet" onClick={() => openPanel("account")}>
-                Cuenta
-              </button>
-              {/* En pantalla angosta las cinco opciones de tema rompen la
-                  cabecera en tres filas: ahí un solo botón abre la hoja
-                  con muestras; el menú de texto queda para escritorio. */}
-              <button
-                type="button"
-                className="btn--quiet app-theme-btn"
-                onClick={openThemeSheet}
-              >
-                Tema
-              </button>
-              <ThemeMenu value={theme} onChange={changeTheme} />
-            </nav>
           </header>
-          <main className="app-main">
-            <Shelf
-              library={library}
-              checking={checkingLibrary}
-              onOpen={openShelfItem}
-              onRemove={removeBook}
-              onAdd={(file) => void selectBook(file)}
-              onLibraryChange={() => void refreshLibrary()}
-              onGetCatalogBook={getCatalogBook}
-              onDownloadBook={(item) => void openRemoteBook(item, false)}
-              downloadingHash={downloadingHash}
-              activityVersion={activityVersion}
-              onOpenJourney={() => openPanel("journey")}
-            />
-            {message ? (
-              <p className="status" role="status">
-                {message}
-              </p>
-            ) : null}
-            {error ? (
-              <p role="alert" className="status">
-                {error}
-              </p>
-            ) : null}
-          </main>
+          <ViewTransition name="app-main">
+            <main className="app-main">
+              <Activity mode={activeNav === "shelf" ? "visible" : "hidden"}>
+                <Shelf
+                  library={library}
+                  checking={checkingLibrary}
+                  onOpen={openShelfItem}
+                  onRemove={removeBook}
+                  onAdd={(file) => void selectBook(file)}
+                  onLibraryChange={() => void refreshLibrary()}
+                  onGetCatalogBook={getCatalogBook}
+                  onDownloadBook={(item) => void openRemoteBook(item, false)}
+                  downloadingHash={downloadingHash}
+                  activityVersion={activityVersion}
+                  onOpenJourney={() => openJourneyFrom("shelf")}
+                />
+              </Activity>
+
+              {hasVisitedVocab ? (
+                <Activity mode={activeNav === "vocab" ? "visible" : "hidden"}>
+                  <Suspense fallback={<p className="status">Abriendo tu cuaderno…</p>}>
+                    <Vocabulary
+                      key={sessionUserId ?? "anon"}
+                      presentation="page"
+                      onClose={() => navigateTo("shelf")}
+                      books={library}
+                      activityVersion={activityVersion}
+                      onOpenJourney={() => openJourneyFrom("vocab")}
+                    />
+                  </Suspense>
+                </Activity>
+              ) : null}
+
+              {showAccount ? (
+                <Account
+                  key={sessionUserId ?? "anon"}
+                  presentation="page"
+                  theme={theme}
+                  onThemeChange={changeTheme}
+                  onClose={() => navigateTo("shelf")}
+                  onOpenJourney={() => openJourneyFrom("account")}
+                  resetToken={resetToken}
+                  onResetDone={() => setResetToken(undefined)}
+                  onOpenCalibration={(words, lang = "es") => {
+                    showCalibration(words, null, lang);
+                  }}
+                />
+              ) : null}
+            </main>
+          </ViewTransition>
+          <AppNav active={activeNav} onNavigate={navigateTo} />
+          <Notice
+            message={message}
+            error={error}
+            onDismissMessage={() => setMessage("")}
+            onDismissError={() => setError("")}
+          />
         </>
       )}
 
-      {showThemeSheet ? (
-        <Sheet label="Tema de lectura" onClose={closeThemeSheet}>
-          <div className="sheet-head">
-            <strong className="sheet-title">Tema</strong>
-            <button
-              type="button"
-              className="btn--quiet"
-              onClick={closeThemeSheet}
-              data-autofocus
-            >
-              Listo
-            </button>
-          </div>
-          <ThemeMenu value={theme} onChange={changeTheme} variant="swatches" />
-        </Sheet>
-      ) : null}
-
-      {showVocabulary ? (
-        <Suspense fallback={<p className="status">Abriendo tu cuaderno…</p>}>
-          {/* Remontar al cambiar de cuenta: el estado y las tareas del
-              panel pertenecen a quien estaba activo al abrirlo. */}
-          <Vocabulary
-            key={sessionUserId ?? "anon"}
-            onClose={closePanel}
-            books={library}
-            activityVersion={activityVersion}
-            onOpenJourney={() => openPanel("journey")}
-          />
-        </Suspense>
-      ) : null}
       {showJourney ? (
         <Suspense fallback={<p className="status">Abriendo tu recorrido…</p>}>
           <Journey
             key={sessionUserId ?? "anon"}
-            onClose={closePanel}
+            onClose={closeJourney}
             books={library}
           />
         </Suspense>
-      ) : null}
-      {showAccount ? (
-        <Account
-          key={sessionUserId ?? "anon"}
-          onClose={closePanel}
-          resetToken={resetToken}
-          onResetDone={() => setResetToken(undefined)}
-          onOpenCalibration={(words, lang = "es") => {
-            // El diálogo de Cuenta quedaría por encima de la hoja:
-            // se cierra el panel y su entrada del historial pasa a
-            // ser la de la calibración (mismo nivel, sin pushes).
-            setShowAccount(false);
-            if (panelRelease.current) {
-              calibrationRelease.current = panelRelease.current;
-              panelRelease.current = null;
-              calibrationRelease.current.swap(onCalibrationBack);
-            }
-            showCalibration(words, null, lang);
-          }}
-        />
       ) : null}
       {calibrationWords ? (
         <Calibration

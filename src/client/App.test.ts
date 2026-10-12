@@ -115,6 +115,10 @@ vi.mock("./lib/idb", () => ({
   deleteStoredBook: vi.fn(async () => undefined),
   getStoredBook: vi.fn(async () => undefined),
   listBookOps: vi.fn(async () => []),
+  getActiveUserId: vi.fn(() => null),
+  listKnowledge: vi.fn(async () => []),
+  countCachedLexicon: vi.fn(async () => 0),
+  clearDictionaryCache: vi.fn(async () => undefined),
   listPositions: vi.fn(async () => []),
   listReadingDays: vi.fn(async () => []),
   listSavedWords: vi.fn(async () => []),
@@ -184,6 +188,7 @@ const CONFLICT = {
 };
 
 beforeEach(() => {
+  window.scrollTo = vi.fn();
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);
@@ -201,10 +206,13 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  act(() => root.unmount());
+  act(() => {
+    history.replaceState({}, "");
+    window.dispatchEvent(new Event("popstate"));
+    root.unmount();
+  });
   host.remove();
   document.body.innerHTML = "";
-  history.replaceState({}, "");
 });
 
 const openConflict = async () => {
@@ -313,3 +321,140 @@ describe("App · quitar libro", () => {
     expect(remoteCalls).toBeGreaterThan(1); // el refresco sí se pidió
   });
 });
+
+describe("App · navegación principal (Fase 2)", () => {
+  it("cabecera solo contiene la marca Lecta y no tiene botones de navegación ni menú de tema", async () => {
+    renderRoot();
+    await flush();
+    const header = host.querySelector("header.app-header");
+    expect(header).toBeTruthy();
+    expect(header?.querySelector(".brand")?.textContent).toBe("Lecta");
+    expect(header?.querySelector("nav")).toBeNull();
+    expect(header?.querySelector("button")).toBeNull();
+  });
+
+  it("barra de navegación tiene 3 destinos y Estantería está activa inicialmente", async () => {
+    renderRoot();
+    await flush();
+    const nav = host.querySelector("nav.app-nav");
+    expect(nav).toBeTruthy();
+    const items = nav?.querySelectorAll(".app-nav-item");
+    expect(items?.length).toBe(3);
+
+    const shelfBtn = nav?.querySelector<HTMLButtonElement>('[data-dest="shelf"]');
+    const vocabBtn = nav?.querySelector<HTMLButtonElement>('[data-dest="vocab"]');
+    const accountBtn = nav?.querySelector<HTMLButtonElement>('[data-dest="account"]');
+
+    expect(shelfBtn?.getAttribute("aria-current")).toBe("page");
+    expect(vocabBtn?.getAttribute("aria-current")).toBeNull();
+    expect(accountBtn?.getAttribute("aria-current")).toBeNull();
+  });
+
+  it("Estantería → Cuaderno → Tú → atrás vuelve a Estantería con un solo paso de historial", async () => {
+    renderRoot();
+    await flush();
+    const nav = host.querySelector("nav.app-nav");
+    const vocabBtn = nav?.querySelector<HTMLButtonElement>('[data-dest="vocab"]');
+    const accountBtn = nav?.querySelector<HTMLButtonElement>('[data-dest="account"]');
+    const shelfBtn = nav?.querySelector<HTMLButtonElement>('[data-dest="shelf"]');
+
+    // Navegar a Cuaderno
+    await act(async () => vocabBtn!.click());
+    await flush();
+    expect(vocabBtn?.getAttribute("aria-current")).toBe("page");
+    expect(shelfBtn?.getAttribute("aria-current")).toBeNull();
+
+    // Navegar a Tú
+    await act(async () => accountBtn!.click());
+    await flush();
+    expect(accountBtn?.getAttribute("aria-current")).toBe("page");
+    expect(vocabBtn?.getAttribute("aria-current")).toBeNull();
+    expect(shelfBtn?.getAttribute("aria-current")).toBeNull();
+    expect(host.querySelector(".account-page")).toBeTruthy();
+
+    // Atrás del navegador debe regresar a Estantería en un solo paso
+    popBack();
+    await flush();
+    expect(shelfBtn?.getAttribute("aria-current")).toBe("page");
+    expect(accountBtn?.getAttribute("aria-current")).toBeNull();
+    expect(host.querySelector(".account-page")).toBeNull();
+  });
+
+  it("Tu recorrido abierto desde Tú regresa a Tú al cerrarse", async () => {
+    renderRoot();
+    await flush();
+    const nav = host.querySelector("nav.app-nav");
+    const accountBtn = nav?.querySelector<HTMLButtonElement>('[data-dest="account"]');
+
+    // Abrir Tú
+    await act(async () => accountBtn!.click());
+    await flush();
+    expect(host.querySelector(".account-page")).toBeTruthy();
+
+    const idBeforeJourney =
+      (history.state as { lecta?: number } | null)?.lecta ?? 0;
+
+    // Abrir Journey desde la fila de recorrido en Tú
+    const journeyRow = host.querySelector<HTMLButtonElement>(".account-journey-row");
+    expect(journeyRow).toBeTruthy();
+    await act(async () => journeyRow!.click());
+    await flush();
+
+    // Cerrar Journey con atrás
+    act(() => {
+      const cur = history.state as { s?: string } | null;
+      history.replaceState({ lecta: idBeforeJourney, s: cur?.s }, "");
+      window.dispatchEvent(new Event("popstate"));
+    });
+    await flush();
+
+    // Tú sigue visible
+    expect(host.querySelector(".account-page")).toBeTruthy();
+    expect(accountBtn?.getAttribute("aria-current")).toBe("page");
+  });
+
+  it("enlace con token abre directamente el destino Tú", async () => {
+    window.history.replaceState({}, "", "/?token=reset123");
+    renderRoot();
+    await flush();
+
+    const nav = host.querySelector("nav.app-nav");
+    const accountBtn = nav?.querySelector<HTMLButtonElement>('[data-dest="account"]');
+    expect(accountBtn?.getAttribute("aria-current")).toBe("page");
+    expect(host.querySelector(".account-page")).toBeTruthy();
+  });
+
+  it("Cuaderno se preserva con Activity al alternar a Estantería y de vuelta", async () => {
+    renderRoot();
+    await flush();
+
+    const nav = host.querySelector("nav.app-nav");
+    const vocabBtn = nav?.querySelector<HTMLButtonElement>('[data-dest="vocab"]');
+    const shelfBtn = nav?.querySelector<HTMLButtonElement>('[data-dest="shelf"]');
+
+    // Inicialmente Cuaderno no está montado
+    expect(host.querySelector(".notebook--page")).toBeNull();
+
+    // Navegar a Cuaderno
+    await act(async () => vocabBtn!.click());
+    await act(async () => {
+      await import("./components/Vocabulary");
+    });
+    await flush();
+    expect(host.querySelector(".notebook--page")).toBeTruthy();
+
+    // Alternar a Estantería: Cuaderno se conserva en el DOM (en Activity hidden)
+    await act(async () => shelfBtn!.click());
+    await flush();
+    expect(shelfBtn?.getAttribute("aria-current")).toBe("page");
+    expect(host.querySelector(".shelf-stub")).toBeTruthy();
+    expect(host.querySelector(".notebook--page")).toBeTruthy();
+
+    // Volver a Cuaderno: sigue ahí sin perder estado
+    await act(async () => vocabBtn!.click());
+    await flush();
+    expect(vocabBtn?.getAttribute("aria-current")).toBe("page");
+    expect(host.querySelector(".notebook--page")).toBeTruthy();
+  });
+});
+

@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useRef,
   useState,
@@ -54,7 +55,42 @@ export default function Sheet({
   variant = "default",
 }: SheetProps) {
   const ref = useRef<HTMLDivElement>(null);
-  useModalBehavior(ref, onClose);
+  const [closing, setClosing] = useState(false);
+  const closingRef = useRef(false);
+
+  const requestClose = useCallback(() => {
+    if (closingRef.current) return;
+    closingRef.current = true;
+    setClosing(true);
+  }, []);
+
+  useModalBehavior(ref, requestClose);
+
+  useEffect(() => {
+    if (!closing) return;
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      onClose();
+    };
+
+    const el = ref.current;
+    const handleAnimationEnd = (e: AnimationEvent) => {
+      if (e.target === el) {
+        finish();
+      }
+    };
+
+    el?.addEventListener("animationend", handleAnimationEnd);
+    const timer = setTimeout(finish, 200);
+
+    return () => {
+      el?.removeEventListener("animationend", handleAnimationEnd);
+      clearTimeout(timer);
+    };
+  }, [closing, onClose]);
+
   const docked =
     side === "left"
       ? " sheet--docked sheet--docked-left"
@@ -98,35 +134,48 @@ export default function Sheet({
     const height = ref.current?.offsetHeight ?? 0;
     const dy = event.clientY - d.startY;
     // Cierra si pasó el 28% de la hoja, o si venía rápido aunque corto.
-    if (dy > height * 0.28 || (d.vel > 0.5 && dy > 40)) onClose();
+    if (dy > height * 0.28 || (d.vel > 0.5 && dy > 40)) requestClose();
     else setDragY(0);
   };
 
   return (
     <div
       className="sheet-scrim"
+      data-closing={closing ? "true" : undefined}
       onPointerDown={(event) => {
         downOnScrim.current = event.target === event.currentTarget;
       }}
       onPointerUp={(event) => {
         if (downOnScrim.current && event.target === event.currentTarget) {
-          onClose();
+          requestClose();
         }
         downOnScrim.current = false;
       }}
       onPointerCancel={() => {
         downOnScrim.current = false;
       }}
+      onClickCapture={(event) => {
+        const target = event.target as HTMLElement | null;
+        const closeBtn = target?.closest?.(
+          "button[data-sheet-close], [data-sheet-close], button.sheet-close"
+        );
+        if (closeBtn) {
+          event.stopPropagation();
+          event.preventDefault();
+          requestClose();
+        }
+      }}
     >
       <div
         ref={ref}
         className={`sheet${docked}${variantClass}`}
+        data-closing={closing ? "true" : undefined}
         role="dialog"
         aria-modal="true"
         aria-label={label}
         tabIndex={-1}
         data-swiping={swiping || undefined}
-        style={dragY ? { transform: `translateY(${dragY}px)` } : undefined}
+        style={dragY && !closing ? { transform: `translateY(${dragY}px)` } : undefined}
         onPointerDown={(event) => {
           // La hoja acoplada al margen no se arrastra: ahí es panel
           // lateral, no hoja inferior.

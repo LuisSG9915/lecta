@@ -236,6 +236,7 @@ describe("Filtros por idioma y libro", () => {
       word({ form: "wander", lemma: "wander", language: "en", key: "en:wander", meaning: "vagar" }),
     ]);
     await render();
+    await click("Palabras");
     expect(button("Todos (2)")).toBeTruthy();
     expect(button("Español (1)")).toBeTruthy();
     expect(button("Inglés (1)")).toBeTruthy();
@@ -266,6 +267,7 @@ describe("Filtros por idioma y libro", () => {
       for (let i = 0; i < 6; i++) await Promise.resolve();
     });
 
+    await click("Palabras");
     const select = host.querySelector("#nb-book-select") as HTMLSelectElement;
     expect(select).toBeTruthy();
     const wordsList = () => [...host.querySelectorAll(".nb-words")].map((el) => el.textContent).join(" ");
@@ -280,5 +282,171 @@ describe("Filtros por idioma y libro", () => {
 
     expect(wordsList()).toContain("clock");
     expect(wordsList()).not.toContain("reloj");
+  });
+
+  it("en overlay tiene role='dialog' y botón volver; en page no tiene role='dialog' ni botón volver", async () => {
+    // 1. Overlay (default)
+    await act(async () => {
+      root.render(h(Vocabulary, { onClose: vi.fn(), books: [] }));
+      for (let i = 0; i < 4; i++) await Promise.resolve();
+    });
+    const overlayNotebook = host.querySelector(".notebook");
+    expect(overlayNotebook?.getAttribute("role")).toBe("dialog");
+    expect(overlayNotebook?.getAttribute("aria-modal")).toBe("true");
+    const backBtn = host.querySelector("button[aria-label='Volver']");
+    expect(backBtn).not.toBeNull();
+
+    // 2. Page
+    await act(async () => {
+      root.render(h(Vocabulary, { onClose: vi.fn(), books: [], presentation: "page" }));
+      for (let i = 0; i < 4; i++) await Promise.resolve();
+    });
+    const pageNotebook = host.querySelector(".notebook");
+    expect(pageNotebook?.getAttribute("role")).toBeNull();
+    expect(pageNotebook?.getAttribute("aria-modal")).toBeNull();
+    const pageBackBtn = host.querySelector("button[aria-label='Volver']");
+    expect(pageBackBtn).toBeNull();
+  });
+});
+
+describe("Reestructura del Cuaderno", () => {
+  it("Hoy es la pestaña inicial, muestra Aprender/Repasar y no muestra la lista", async () => {
+    listWordsMock.mockResolvedValue([
+      word({ form: "cantar", lemma: "cantar", meaning: "entonar" }),
+    ]);
+    await render();
+    const activeTab = host.querySelector(".nb-tabs button[aria-pressed='true']");
+    expect(activeTab?.textContent).toBe("Hoy");
+    expect(text()).toContain("Por aprender · 1");
+    expect(host.querySelector(".nb-words")).toBeNull();
+  });
+
+  it("El vacío «Estás al día.» aparece cuando no hay pendientes", async () => {
+    const futureDue = new Date(Date.now() + 86_400_000 * 2).toISOString();
+    listWordsMock.mockResolvedValue([
+      word({
+        form: "cantar",
+        lemma: "cantar",
+        meaning: "entonar",
+        card: { reps: 2, stability: 30, due: futureDue } as never,
+      }),
+    ]);
+    await render();
+    expect(text()).toContain("Estás al día.");
+    expect(text()).toContain("El próximo repaso: pasado mañana");
+  });
+
+  it("El aviso de alcance aparece con un filtro de libro y «Ver todas» lo reinicia", async () => {
+    const books = [
+      { hash: "h-es", name: "libro-es.epub", title: "Libro Español", author: "Autor ES", language: "es" },
+    ];
+    listWordsMock.mockResolvedValue([
+      word({ form: "reloj", lemma: "reloj", bookHash: "h-es", meaning: "tiempo" }),
+    ]);
+    await act(async () => {
+      root.render(h(Vocabulary, { onClose: vi.fn(), books }));
+      for (let i = 0; i < 6; i++) await Promise.resolve();
+    });
+
+    await click("Palabras");
+    const select = host.querySelector("#nb-book-select") as HTMLSelectElement;
+    await act(async () => {
+      select.value = "h-es";
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+      for (let i = 0; i < 6; i++) await Promise.resolve();
+    });
+
+    await click("Hoy");
+    expect(text()).toContain("Solo palabras de «Libro Español»");
+    expect(button("Ver todas")).toBeTruthy();
+
+    await click("Ver todas");
+    expect(text()).not.toContain("Solo palabras de «Libro Español»");
+  });
+
+  it("Los números de la fila de estados coinciden con la lista filtrada", async () => {
+    listWordsMock.mockResolvedValue([
+      word({ form: "nueva", lemma: "nueva", meaning: "m1", card: { reps: 0, stability: 1 } as never }),
+      word({ form: "aprendiendo", lemma: "aprendiendo", meaning: "m2", card: { reps: 1, stability: 5 } as never }),
+      word({ form: "asentada", lemma: "asentada", meaning: "m3", card: { reps: 3, stability: 40 } as never }),
+    ]);
+    await render();
+    await click("Palabras");
+
+    expect(button("Todas (3)")).toBeTruthy();
+    expect(button("Nueva (1)")).toBeTruthy();
+    expect(button("Aprendiendo (1)")).toBeTruthy();
+    expect(button("Asentada (1)")).toBeTruthy();
+
+    await click("Aprendiendo (1)");
+    const wordsList = () => host.querySelector(".nb-words")?.textContent ?? "";
+    expect(wordsList()).toContain("aprendiendo");
+    expect(wordsList()).not.toContain("nueva");
+    expect(wordsList()).not.toContain("asentada");
+  });
+
+  it("El menú Exportar tiene 3 opciones y Palabras ya no ofrece «Pasajes CSV»", async () => {
+    listWordsMock.mockResolvedValue([word({ meaning: "hogar" })]);
+    await render();
+    await click("Palabras");
+
+    const exportDetails = host.querySelector("details.nb-export");
+    expect(exportDetails).toBeTruthy();
+    const exportButtons = exportDetails?.querySelectorAll("button");
+    const exportLabels = [...(exportButtons ?? [])].map((b) => b.textContent?.trim());
+    expect(exportLabels).toEqual(["CSV", "Para Anki", "Cuaderno (.md)"]);
+    expect(exportLabels).not.toContain("Pasajes CSV");
+  });
+
+  it("Ordenar por Libro muestra grupos y por Fecha una lista sin grupos, de más reciente a más antigua", async () => {
+    listWordsMock.mockResolvedValue([
+      word({ form: "antigua", savedAt: 100, meaning: "m1", bookHash: "h1" }),
+      word({ form: "reciente", savedAt: 500, meaning: "m2", bookHash: "h2" }),
+    ]);
+    await render();
+    await click("Palabras");
+
+    // Por defecto es fecha: no hay nb-group, y la lista está ordenada de más reciente a más antigua
+    expect(host.querySelector(".nb-group")).toBeNull();
+    const rows = [...host.querySelectorAll(".nb-word .nb-word-form")].map((el) => el.textContent);
+    expect(rows).toEqual(["reciente", "antigua"]);
+
+    // Ordenar por Libro: muestra secciones nb-group
+    await click("Libro");
+    expect(host.querySelectorAll(".nb-group").length).toBeGreaterThan(0);
+  });
+
+  it("La fila abre y cierra (aria-expanded) y muestra la oración y Quitar", async () => {
+    listWordsMock.mockResolvedValue([
+      word({ form: "espejo", meaning: "superficie que refleja", context: "El espejo de la sala", lemma: "espejo" }),
+    ]);
+    await render();
+    await click("Palabras");
+
+    const rowBtn = host.querySelector(".nb-word-row") as HTMLButtonElement;
+    expect(rowBtn).toBeTruthy();
+    expect(rowBtn.getAttribute("aria-expanded")).toBe("false");
+    expect(host.querySelector(".nb-word-detail")).toBeNull();
+    expect(button("Quitar")).toBeUndefined();
+    expect(text()).not.toContain("El espejo de la sala");
+
+    // Abre al tocarla
+    await act(async () => {
+      rowBtn.click();
+      for (let i = 0; i < 6; i++) await Promise.resolve();
+    });
+    expect(rowBtn.getAttribute("aria-expanded")).toBe("true");
+    expect(host.querySelector(".nb-word-detail")).toBeTruthy();
+    expect(button("Quitar")).toBeTruthy();
+    expect(text()).toContain("El espejo de la sala");
+
+    // Cierra al tocarla de nuevo
+    await act(async () => {
+      rowBtn.click();
+      for (let i = 0; i < 6; i++) await Promise.resolve();
+    });
+    expect(rowBtn.getAttribute("aria-expanded")).toBe("false");
+    expect(host.querySelector(".nb-word-detail")).toBeNull();
+    expect(button("Quitar")).toBeUndefined();
   });
 });

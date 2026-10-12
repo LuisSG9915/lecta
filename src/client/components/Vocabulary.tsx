@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isDue, newCard, Rating, scheduleReview, type Card, type Grade } from "../lib/fsrs";
 import {
   captureDbScope,
@@ -57,7 +57,7 @@ import {
 import { markLevel, type MarkLevel } from "../lib/word-level";
 import { loadUseAi } from "../lib/ai-pref";
 import { GamePanel } from "./GamePanel";
-import { formatInterval } from "../lib/relative-time";
+import { formatInterval, futureRelativeDay } from "../lib/relative-time";
 import {
   downloadBookMarkdown,
   downloadNotebookMarkdown,
@@ -87,6 +87,7 @@ import { SentenceBuilderGame } from "./SentenceBuilderGame";
 import { isGrammarEligible, isSentenceEligible } from "../lib/grammar";
 import { languageName } from "../lib/epub";
 import { speakWord } from "../lib/speech";
+import Icon from "./Icon";
 
 type VocabularyProps = {
   onClose: () => void;
@@ -97,6 +98,8 @@ type VocabularyProps = {
   // de actividad relee su progreso sin remontar el panel.
   activityVersion?: number;
   onOpenJourney?: () => void;
+  presentation?: "overlay" | "page";
+  backLabel?: string;
 };
 
 type PracticeMode =
@@ -268,18 +271,116 @@ const matchesSearch = (word: SavedWord, query: string) => {
     .every((part) => hay.includes(part));
 };
 
+function WordRow({
+  word,
+  state,
+  isOpen,
+  onToggle,
+  canLearn,
+  onLearn,
+  onRemove,
+  onSpeak,
+}: {
+  word: SavedWord;
+  state: { label: string; level: MarkLevel | "due" };
+  isOpen: boolean;
+  onToggle: () => void;
+  canLearn: boolean;
+  onLearn: () => void;
+  onRemove: () => void;
+  onSpeak: () => void;
+}) {
+  const detailId = `word-detail-${word.key.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+  return (
+    <li className="nb-word">
+      <button
+        type="button"
+        className="nb-word-row"
+        aria-expanded={isOpen}
+        aria-controls={detailId}
+        onClick={onToggle}
+      >
+        <span className="nb-word-row-head">
+          <strong className="nb-word-form">{word.form}</strong>
+          <span className="nb-state" data-level={state.level}>
+            {state.label}
+          </span>
+        </span>
+        {word.meaning ? (
+          <span className="nb-word-preview">{word.meaning}</span>
+        ) : null}
+      </button>
+
+      {isOpen ? (
+        <div id={detailId} className="nb-word-detail">
+          <div className="nb-word-detail-meta">
+            {word.lemma && word.lemma !== word.form ? (
+              <span className="meta">de «{word.lemma}»</span>
+            ) : null}
+            {word.pos ? <span className="card-pos">{word.pos}</span> : null}
+          </div>
+          {word.meaning ? <p className="nb-meaning">{word.meaning}</p> : null}
+          {word.context ? <p className="nb-context">“{word.context}”</p> : null}
+          <div className="nb-word-actions">
+            <button
+              type="button"
+              className="btn--pronounce"
+              aria-label={`Pronunciar ${word.form}`}
+              title="Escuchar pronunciación"
+              onClick={onSpeak}
+            >
+              <Icon name="speaker" size={16} />
+            </button>
+            {canLearn ? (
+              <button
+                type="button"
+                className="btn--quiet"
+                aria-label={`Aprender ${word.form}`}
+                onClick={onLearn}
+              >
+                Aprender
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="btn--quiet nb-remove"
+              aria-label={`Quitar ${word.form}`}
+              onClick={onRemove}
+            >
+              Quitar
+            </button>
+          </div>
+        </div>
+      ) : null}
+    </li>
+  );
+}
+
 export default function Vocabulary({
   onClose,
   books,
   activityVersion,
   onOpenJourney,
+  presentation = "overlay",
+  backLabel,
 }: VocabularyProps) {
   const ref = useRef<HTMLDivElement>(null);
-  useModalBehavior(ref, onClose);
+  const isOverlay = presentation !== "page";
+  useModalBehavior(ref, onClose, { enabled: isOverlay });
 
   const [words, setWords] = useState<SavedWord[] | null>(null);
   const [loadError, setLoadError] = useState(false);
-  const [tab, setTab] = useState<"words" | "quotes" | "activity">("words");
+  const [tab, setTab] = useState<"today" | "words" | "quotes" | "activity">("today");
+  const [listLimit, setListLimit] = useState(GROUP_PAGE);
+  const [openWords, setOpenWords] = useState<Set<string>>(() => new Set());
+  const toggleWordOpen = (key: string) => {
+    setOpenWords((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
   const [quotes, setQuotes] = useState<SavedAnnotation[] | null>(null);
   const [quoteModal, setQuoteModal] = useState<{
     text: string;
@@ -445,20 +546,17 @@ export default function Vocabulary({
     });
   }, [all, languageFilter, bookFilter]);
 
-  // Estadísticas de maestría y avance de aprendizaje de vocabulario
-  const masteryStats = useMemo(() => {
-    const list = scopedWords.filter((w) => !w.deleted);
-    let mastered = 0;
+  const activeScoped = useMemo(() => scopedWords.filter((w) => !w.deleted), [scopedWords]);
+
+  // Estadísticas de progreso del cuaderno (Asentada / Aprendiendo / Nueva)
+  const progressStats = useMemo(() => {
     let settled = 0;
     let learning = 0;
     let newWords = 0;
 
-    for (const w of list) {
+    for (const w of activeScoped) {
       const lvl = markLevel(w.card);
-      const reps = w.card?.reps ?? 0;
-      if (lvl === null && reps > 0) {
-        mastered += 1;
-      } else if (lvl === "settled") {
+      if (lvl === "settled" || lvl === null) {
         settled += 1;
       } else if (lvl === "learning") {
         learning += 1;
@@ -467,20 +565,26 @@ export default function Vocabulary({
       }
     }
 
-    const total = list.length;
-    const score = mastered + settled * 0.6 + learning * 0.25;
-    const pct = total > 0 ? Math.round((score / total) * 100) : 0;
-    return { total, mastered, settled, learning, newWords, pct };
-  }, [scopedWords]);
+    return { total: activeScoped.length, settled, learning, newWords };
+  }, [activeScoped]);
 
-  const knownKeys = knownKeysFor(knowledge);
+  const knownKeys = useMemo(() => knownKeysFor(knowledge), [knowledge]);
   // Un lema declarado «ya la conozco» sale del vocabulario activo: ni
   // la cola de Aprender ni el repaso lo vuelven a ofrecer, aunque la
   // palabra siga listada en el cuaderno.
-  const isWordKnown = (word: SavedWord) =>
-    knownKeys.has(knowledgeKey(word.language || "es", word.lemma ?? word.form)) ||
-    (word.lemma != null &&
-      knownKeys.has(knowledgeKey(word.language || "es", word.form)));
+  const isWordKnown = useCallback(
+    (word: SavedWord) =>
+      knownKeys.has(knowledgeKey(word.language || "es", word.lemma ?? word.form)) ||
+      (word.lemma != null &&
+        knownKeys.has(knowledgeKey(word.language || "es", word.form))),
+    [knownKeys],
+  );
+  const nextDueTs = useMemo(() => {
+    const futureTimestamps = scopedWords
+      .filter((w) => !w.deleted && w.card?.due && !isDue(w.card) && !isWordKnown(w))
+      .map((w) => new Date(w.card!.due).getTime());
+    return futureTimestamps.length > 0 ? Math.min(...futureTimestamps) : null;
+  }, [scopedWords, isWordKnown]);
   const dueWords = scopedWords.filter((word) => isDue(word.card) && !isWordKnown(word));
   const dueCount = dueWords.length;
   const learnPending = scopedWords.filter((word) =>
@@ -1226,28 +1330,43 @@ export default function Vocabulary({
     (word) => matchesFilter(word, filter) && matchesSearch(word, query),
   );
 
-  const groups = new Map<string, SavedWord[]>();
-  for (const word of filtered) {
-    const key = word.bookHash ?? "";
-    const group = groups.get(key);
-    if (group) group.push(word);
-    else groups.set(key, [word]);
-  }
-
   const byForm = (a: SavedWord, b: SavedWord) => a.form.localeCompare(b.form, "es");
   const stateRank = (word: SavedWord) => STATE_RANK[stateOf(word).level] ?? 3;
+
+  const groups = new Map<string, SavedWord[]>();
   if (order === "libro") {
+    for (const word of filtered) {
+      const key = word.bookHash ?? "";
+      const group = groups.get(key);
+      if (group) group.push(word);
+      else groups.set(key, [word]);
+    }
     for (const list of groups.values()) list.sort(byForm);
-  } else if (order === "estado") {
-    for (const list of groups.values())
-      list.sort((a, b) => stateRank(a) - stateRank(b) || byForm(a, b));
   }
 
-  const groupEntries = [...groups.entries()].sort(([hashA, listA], [hashB, listB]) => {
-    if (order === "fecha")
-      return Math.max(...listB.map((w) => w.savedAt)) - Math.max(...listA.map((w) => w.savedAt));
+  const groupEntries = [...groups.entries()].sort(([hashA], [hashB]) => {
     return bookTitle(hashA || undefined).localeCompare(bookTitle(hashB || undefined), "es");
   });
+
+  const flatWords = useMemo(() => {
+    if (order === "fecha") {
+      return [...filtered].sort((a, b) => b.savedAt - a.savedAt || byForm(a, b));
+    }
+    if (order === "estado") {
+      return [...filtered].sort((a, b) => stateRank(a) - stateRank(b) || byForm(a, b));
+    }
+    return filtered;
+  }, [filtered, order]);
+
+  const shownWords = flatWords.slice(0, listLimit);
+
+  const activeExtraFiltersCount =
+    (languageFilter !== "all" ? 1 : 0) +
+    (bookFilter !== "all" ? 1 : 0) +
+    (order !== "fecha" ? 1 : 0);
+
+  const countForFilter = (id: FilterId) =>
+    activeScoped.filter((w) => matchesFilter(w, id)).length;
 
   const toggle = (set: Set<string>, key: string, apply: (next: Set<string>) => void) => {
     const next = new Set(set);
@@ -1335,17 +1454,26 @@ export default function Vocabulary({
   };
 
   return (
-    <div ref={ref} className="notebook" role="dialog" aria-modal="true" aria-label="Cuaderno">
+    <div
+      ref={ref}
+      className={`notebook ${isOverlay ? "notebook--overlay" : "notebook--page"}`}
+      role={isOverlay ? "dialog" : undefined}
+      aria-modal={isOverlay ? "true" : undefined}
+      aria-label="Cuaderno"
+      data-session={queue ? "queue" : learn ? "learn" : undefined}
+    >
       <header className="notebook-bar">
-        <button
-          type="button"
-          className="btn--quiet"
-          onClick={onClose}
-          aria-label="Volver"
-          data-autofocus
-        >
-          ‹ Volver
-        </button>
+        {isOverlay ? (
+          <button
+            type="button"
+            className="btn--quiet"
+            onClick={onClose}
+            aria-label="Volver"
+            data-autofocus
+          >
+            {backLabel ?? "‹ Volver"}
+          </button>
+        ) : null}
         <h1 className="notebook-title">
           {learn ? "Aprender" : queue ? "Repaso" : "Cuaderno"}
         </h1>
@@ -1362,10 +1490,17 @@ export default function Vocabulary({
 
       <div className="notebook-main">
         {!queue && !learn ? (
-          <div className="nb-filters nb-tabs" role="group" aria-label="Secciones del cuaderno">
+          <div className="segmented nb-tabs" role="group" aria-label="Secciones del cuaderno">
             <button
               type="button"
-              className="theme-option"
+              data-active={tab === "today" || undefined}
+              aria-pressed={tab === "today"}
+              onClick={() => setTab("today")}
+            >
+              Hoy
+            </button>
+            <button
+              type="button"
               data-active={tab === "words" || undefined}
               aria-pressed={tab === "words"}
               onClick={() => setTab("words")}
@@ -1374,7 +1509,6 @@ export default function Vocabulary({
             </button>
             <button
               type="button"
-              className="theme-option"
               data-active={tab === "quotes" || undefined}
               aria-pressed={tab === "quotes"}
               onClick={() => setTab("quotes")}
@@ -1383,7 +1517,6 @@ export default function Vocabulary({
             </button>
             <button
               type="button"
-              className="theme-option"
               data-active={tab === "activity" || undefined}
               aria-pressed={tab === "activity"}
               onClick={() => setTab("activity")}
@@ -1477,144 +1610,35 @@ export default function Vocabulary({
           </section>
         ) : null}
 
-        {tab === "words" && !queue && !learn ? <GamePanel /> : null}
-
-        {(tab === "words" || queue) && !learn ? (
+        {!queue && !learn ? (
           <>
-        {loadError ? (
-          <p className="nb-empty" role="alert">
-            No se pudo abrir tu cuaderno en este dispositivo.
-          </p>
-        ) : null}
-        {words === null && !loadError ? <p className="meta">Abriendo tu cuaderno…</p> : null}
-        {words?.length === 0 ? (
-          <p className="nb-empty">
-            Aún no has apuntado palabras.
-            <br />
-            Toca cualquier palabra mientras lees y aparecerá aquí, con su oración.
-          </p>
-        ) : null}
-
-        {saveError ? (
-          <p className="status" role="alert">
-            {saveError}
-          </p>
-        ) : null}
-
-        {undo ? (
-          <p className="nb-undo" role="status">
-            «{undo.word.form}» se quitó del cuaderno.{" "}
-            <button type="button" className="btn--quiet" onClick={() => void restore()}>
-              Deshacer
-            </button>
-          </p>
+            {loadError ? (
+              <p className="nb-empty" role="alert">
+                No se pudo abrir tu cuaderno en este dispositivo.
+              </p>
+            ) : null}
+            {words === null && !loadError ? (
+              <p className="meta">Abriendo tu cuaderno…</p>
+            ) : null}
+            {saveError ? (
+              <p className="status" role="alert">
+                {saveError}
+              </p>
+            ) : null}
+            {undo ? (
+              <p className="nb-undo" role="status">
+                «{undo.word.form}» se quitó del cuaderno.{" "}
+                <button type="button" className="btn--quiet" onClick={() => void restore()}>
+                  Deshacer
+                </button>
+              </p>
+            ) : null}
+          </>
         ) : null}
 
-        {!queue && all.length > 0 ? (
-          <>
-            <div className="vocab-mastery-card" aria-label="Progreso de vocabulario">
-              <div className="vocab-mastery-header">
-                <div className="vocab-mastery-info">
-                  <span className="vocab-mastery-label">Progreso del cuaderno</span>
-                  <h3 className="vocab-mastery-title">
-                    {masteryStats.mastered} {masteryStats.mastered === 1 ? "palabra dominada" : "palabras dominadas"} · {masteryStats.pct}% maestría
-                  </h3>
-                </div>
-                {companion?.enabled && companion.state ? (
-                  <div
-                    className="vocab-mastery-companion"
-                    title={`Nivel ${levelProgress(companion.state.xp).name}`}
-                  >
-                    <span className="vocab-mastery-cat-icon" aria-hidden="true">🐱</span>
-                    <span>{levelProgress(companion.state.xp).name}</span>
-                    <span className="vocab-mastery-cat-xp">⭐ {Math.round(companion.state.xp)} XP</span>
-                  </div>
-                ) : null}
-              </div>
-
-              <div
-                className="vocab-mastery-track"
-                role="progressbar"
-                aria-valuenow={masteryStats.pct}
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-label="Barra de maestría de vocabulario"
-              >
-                <div
-                  className="vocab-mastery-seg vocab-mastery-seg--mastered"
-                  style={{ inlineSize: `${masteryStats.total > 0 ? (masteryStats.mastered / masteryStats.total) * 100 : 0}%` }}
-                  title={`${masteryStats.mastered} dominadas`}
-                />
-                <div
-                  className="vocab-mastery-seg vocab-mastery-seg--settled"
-                  style={{ inlineSize: `${masteryStats.total > 0 ? (masteryStats.settled / masteryStats.total) * 100 : 0}%` }}
-                  title={`${masteryStats.settled} consolidándose`}
-                />
-                <div
-                  className="vocab-mastery-seg vocab-mastery-seg--learning"
-                  style={{ inlineSize: `${masteryStats.total > 0 ? (masteryStats.learning / masteryStats.total) * 100 : 0}%` }}
-                  title={`${masteryStats.learning} en aprendizaje`}
-                />
-              </div>
-
-              <div className="vocab-mastery-chips" role="group" aria-label="Filtrar por nivel de aprendizaje">
-                <button
-                  type="button"
-                  className={`vocab-chip${filter === "all" ? " is-active" : ""}`}
-                  onClick={() => setFilter("all")}
-                >
-                  <span className="vocab-chip-icon" aria-hidden="true">📚</span>
-                  <span>Total</span>
-                  <strong>{masteryStats.total}</strong>
-                </button>
-
-                <button
-                  type="button"
-                  className={`vocab-chip vocab-chip--mastered${filter === "settled" ? " is-active" : ""}`}
-                  onClick={() => setFilter("settled")}
-                  title="Palabras con alta estabilidad o consolidadas"
-                >
-                  <span className="vocab-chip-icon" aria-hidden="true">💎</span>
-                  <span>Dominadas</span>
-                  <strong>{masteryStats.mastered + masteryStats.settled}</strong>
-                </button>
-
-                <button
-                  type="button"
-                  className={`vocab-chip vocab-chip--learning${filter === "learning" ? " is-active" : ""}`}
-                  onClick={() => setFilter("learning")}
-                  title="Palabras en proceso de repaso activo"
-                >
-                  <span className="vocab-chip-icon" aria-hidden="true">🌿</span>
-                  <span>En repaso</span>
-                  <strong>{masteryStats.learning}</strong>
-                </button>
-
-                <button
-                  type="button"
-                  className={`vocab-chip vocab-chip--new${filter === "new" ? " is-active" : ""}`}
-                  onClick={() => setFilter("new")}
-                  title="Palabras recién guardadas"
-                >
-                  <span className="vocab-chip-icon" aria-hidden="true">✨</span>
-                  <span>Nuevas</span>
-                  <strong>{masteryStats.newWords}</strong>
-                </button>
-
-                {dueCount > 0 ? (
-                  <button
-                    type="button"
-                    className={`vocab-chip vocab-chip--due${filter === "due" ? " is-active" : ""}`}
-                    onClick={() => setFilter("due")}
-                    title="Palabras pendientes de repasar hoy"
-                  >
-                    <span className="vocab-chip-icon" aria-hidden="true">🔔</span>
-                    <span>Para hoy</span>
-                    <strong>{dueCount}</strong>
-                  </button>
-                ) : null}
-              </div>
-            </div>
+        {tab === "today" && !queue && !learn ? (
+          <section aria-label="Hoy">
+            <GamePanel />
 
             {learnPending.length > 0 ? (
               <section className="nb-review" aria-label="Palabras por aprender">
@@ -1689,247 +1713,375 @@ export default function Vocabulary({
               </section>
             ) : null}
 
-            <div className="nb-tools">
-              <label className="nb-search">
-                <span className="visually-hidden">Buscar en el cuaderno</span>
-                <input
-                  type="search"
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Buscar palabra, significado u oración…"
-                  autoComplete="off"
-                />
-              </label>
+            {learnPending.length === 0 && dueCount === 0 ? (
+              all.length === 0 ? (
+                <p className="nb-empty">
+                  Aún no has apuntado palabras.
+                  <br />
+                  Toca cualquier palabra mientras lees y aparecerá aquí, con su oración.
+                </p>
+              ) : (
+                <div className="nb-today-empty">
+                  <p className="nb-today-empty-title">Estás al día.</p>
+                  {nextDueTs !== null ? (
+                    <p className="meta">El próximo repaso: {futureRelativeDay(nextDueTs)}</p>
+                  ) : null}
+                </div>
+              )
+            ) : null}
 
-              {availableLanguages.length > 1 ? (
-                <div className="nb-filters nb-filters--lang" role="group" aria-label="Filtrar por idioma">
-                  <button
-                    type="button"
-                    className="theme-option"
-                    data-active={languageFilter === "all" || undefined}
-                    aria-pressed={languageFilter === "all"}
-                    onClick={() => {
-                      setLanguageFilter("all");
-                      setBookFilter("all");
+            {all.length > 0 ? (
+              <div className="vocab-progress-card" aria-label="Progreso del cuaderno">
+                <div
+                  className="vocab-progress-track"
+                  role="progressbar"
+                  aria-label="Progreso del cuaderno"
+                  aria-valuenow={progressStats.settled}
+                  aria-valuemin={0}
+                  aria-valuemax={progressStats.total}
+                >
+                  <div
+                    className="vocab-progress-seg vocab-progress-seg--settled"
+                    style={{
+                      inlineSize: `${progressStats.total > 0 ? (progressStats.settled / progressStats.total) * 100 : 0}%`,
                     }}
-                  >
-                    Todos ({all.length})
-                  </button>
-                  {availableLanguages.map((lang) => {
-                    const count = all.filter((w) => (w.language || "es") === lang).length;
-                    return (
-                      <button
-                        key={lang}
-                        type="button"
-                        className="theme-option"
-                        data-active={languageFilter === lang || undefined}
-                        aria-pressed={languageFilter === lang}
-                        onClick={() => {
-                          setLanguageFilter(lang);
-                          setBookFilter("all");
-                        }}
-                      >
-                        {languageName(lang)} ({count})
-                      </button>
-                    );
-                  })}
+                    title={`${progressStats.settled} asentadas`}
+                  />
+                  <div
+                    className="vocab-progress-seg vocab-progress-seg--learning"
+                    style={{
+                      inlineSize: `${progressStats.total > 0 ? (progressStats.learning / progressStats.total) * 100 : 0}%`,
+                    }}
+                    title={`${progressStats.learning} aprendiendo`}
+                  />
+                  <div
+                    className="vocab-progress-seg vocab-progress-seg--new"
+                    style={{
+                      inlineSize: `${progressStats.total > 0 ? (progressStats.newWords / progressStats.total) * 100 : 0}%`,
+                    }}
+                    title={`${progressStats.newWords} nuevas`}
+                  />
                 </div>
-              ) : null}
-
-              {books.length > 0 ? (
-                <div className="nb-book-filter">
-                  <label htmlFor="nb-book-select" className="visually-hidden">
-                    Filtrar por libro
-                  </label>
-                  <select
-                    id="nb-book-select"
-                    className="nb-select"
-                    value={bookFilter}
-                    onChange={(event) => setBookFilter(event.target.value)}
-                  >
-                    <option value="all">
-                      {languageFilter === "all"
-                        ? "Todos los libros"
-                        : `Todos los libros en ${languageName(languageFilter)}`}
-                    </option>
-                    {availableBooks.map((b) => (
-                      <option key={b.hash} value={b.hash}>
-                        {b.title ?? b.name} {b.language ? `(${b.language.toUpperCase()})` : ""}
-                      </option>
-                    ))}
-                  </select>
+                <div className="vocab-progress-legend">
+                  <span className="vocab-progress-item vocab-progress-item--settled">
+                    <span className="vocab-progress-dot" aria-hidden="true" />
+                    <span className="vocab-progress-name">Asentada</span>
+                    <strong className="vocab-progress-count">{progressStats.settled}</strong>
+                  </span>
+                  <span className="vocab-progress-item vocab-progress-item--learning">
+                    <span className="vocab-progress-dot" aria-hidden="true" />
+                    <span className="vocab-progress-name">Aprendiendo</span>
+                    <strong className="vocab-progress-count">{progressStats.learning}</strong>
+                  </span>
+                  <span className="vocab-progress-item vocab-progress-item--new">
+                    <span className="vocab-progress-dot" aria-hidden="true" />
+                    <span className="vocab-progress-name">Nueva</span>
+                    <strong className="vocab-progress-count">{progressStats.newWords}</strong>
+                  </span>
                 </div>
-              ) : null}
+              </div>
+            ) : null}
 
-              <div className="nb-filters" role="group" aria-label="Filtrar palabras">
-                {FILTERS.map(({ id, label }) => (
-                  <button
-                    key={id}
-                    type="button"
-                    className="theme-option"
-                    data-active={filter === id || undefined}
-                    aria-pressed={filter === id}
-                    onClick={() => setFilter(id)}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-              <div className="nb-filters" role="group" aria-label="Ordenar palabras">
-                {ORDERS.map(({ id, label }) => (
-                  <button
-                    key={id}
-                    type="button"
-                    className="theme-option"
-                    data-active={order === id || undefined}
-                    aria-pressed={order === id}
-                    onClick={() => setOrder(id)}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-              <div className="nb-export">
-                <button type="button" className="btn--quiet" onClick={exportCsv}>
-                  Exportar CSV
-                </button>
-                <button type="button" className="btn--quiet" onClick={exportTsv}>
-                  Para Anki
-                </button>
-                <button type="button" className="btn--quiet" onClick={() => void exportPassages()}>
-                  Pasajes CSV
-                </button>
+            {languageFilter !== "all" || bookFilter !== "all" ? (
+              <div className="nb-scope-notice">
+                <span>
+                  {bookFilter !== "all"
+                    ? `Solo palabras de «${bookTitle(bookFilter)}»`
+                    : `Solo palabras en ${languageName(languageFilter)}`}
+                </span>
                 <button
                   type="button"
                   className="btn--quiet"
-                  onClick={exportMarkdownNotebook}
-                  title="Exportar cuaderno completo en Markdown para Obsidian, Notion o PKM"
+                  onClick={() => {
+                    setLanguageFilter("all");
+                    setBookFilter("all");
+                    setListLimit(GROUP_PAGE);
+                  }}
                 >
-                  Cuaderno (.md)
+                  Ver todas
                 </button>
               </div>
-            </div>
+            ) : null}
+          </section>
+        ) : null}
 
-            {filtered.length === 0 ? (
-              <p className="meta">
-                {query ? `Nada coincide con «${query}».` : "Nada en este filtro por ahora."}
+        {tab === "words" && !queue && !learn ? (
+          <section aria-label="Palabras guardadas">
+            {words?.length === 0 ? (
+              <p className="nb-empty">
+                Aún no has apuntado palabras.
+                <br />
+                Toca cualquier palabra mientras lees y aparecerá aquí, con su oración.
               </p>
             ) : (
-              groupEntries.map(([hash, group]) => {
-                const isCollapsed = collapsed.has(hash);
-                const shown = expanded.has(hash) ? group : group.slice(0, GROUP_PAGE);
-                return (
-                  <section key={hash || "sin-libro"} className="nb-group">
-                    <h2 className="nb-group-title">
+              <>
+                <div className="nb-tools">
+                  <label className="nb-search">
+                    <span className="visually-hidden">Buscar en el cuaderno</span>
+                    <input
+                      type="search"
+                      value={query}
+                      onChange={(event) => {
+                        setQuery(event.target.value);
+                        setListLimit(GROUP_PAGE);
+                      }}
+                      placeholder="Buscar palabra, significado u oración…"
+                      autoComplete="off"
+                    />
+                  </label>
+
+                  <div className="nb-filters" role="group" aria-label="Filtrar palabras">
+                    {FILTERS.map(({ id, label }) => {
+                      const count = countForFilter(id);
+                      if (id === "due" && count === 0 && filter !== "due") return null;
+                      return (
+                        <button
+                          key={id}
+                          type="button"
+                          className="theme-option"
+                          data-active={filter === id || undefined}
+                          aria-pressed={filter === id}
+                          onClick={() => {
+                            setFilter(id);
+                            setListLimit(GROUP_PAGE);
+                          }}
+                        >
+                          {label} ({count})
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <details className="nb-more-filters">
+                    <summary className="meta">
+                      Más filtros
+                      {activeExtraFiltersCount > 0
+                        ? ` · ${activeExtraFiltersCount} activo${activeExtraFiltersCount === 1 ? "" : "s"}`
+                        : ""}
+                    </summary>
+                    <div className="nb-more-filters-content">
+                      {availableLanguages.length > 1 ? (
+                        <div
+                          className="nb-filters nb-filters--lang"
+                          role="group"
+                          aria-label="Filtrar por idioma"
+                        >
+                          <button
+                            type="button"
+                            className="theme-option"
+                            data-active={languageFilter === "all" || undefined}
+                            aria-pressed={languageFilter === "all"}
+                            onClick={() => {
+                              setLanguageFilter("all");
+                              setBookFilter("all");
+                              setListLimit(GROUP_PAGE);
+                            }}
+                          >
+                            Todos ({all.length})
+                          </button>
+                          {availableLanguages.map((lang) => {
+                            const count = all.filter((w) => (w.language || "es") === lang).length;
+                            return (
+                              <button
+                                key={lang}
+                                type="button"
+                                className="theme-option"
+                                data-active={languageFilter === lang || undefined}
+                                aria-pressed={languageFilter === lang}
+                                onClick={() => {
+                                  setLanguageFilter(lang);
+                                  setBookFilter("all");
+                                  setListLimit(GROUP_PAGE);
+                                }}
+                              >
+                                {languageName(lang)} ({count})
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : null}
+
+                      {books.length > 0 ? (
+                        <div className="nb-book-filter">
+                          <label htmlFor="nb-book-select" className="visually-hidden">
+                            Filtrar por libro
+                          </label>
+                          <select
+                            id="nb-book-select"
+                            className="nb-select"
+                            value={bookFilter}
+                            onChange={(event) => {
+                              setBookFilter(event.target.value);
+                              setListLimit(GROUP_PAGE);
+                            }}
+                          >
+                            <option value="all">
+                              {languageFilter === "all"
+                                ? "Todos los libros"
+                                : `Todos los libros en ${languageName(languageFilter)}`}
+                            </option>
+                            {availableBooks.map((b) => (
+                              <option key={b.hash} value={b.hash}>
+                                {b.title ?? b.name} {b.language ? `(${b.language.toUpperCase()})` : ""}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      ) : null}
+
+                      <div className="nb-filters" role="group" aria-label="Ordenar palabras">
+                        {ORDERS.map(({ id, label }) => (
+                          <button
+                            key={id}
+                            type="button"
+                            className="theme-option"
+                            data-active={order === id || undefined}
+                            aria-pressed={order === id}
+                            onClick={() => {
+                              setOrder(id);
+                              setListLimit(GROUP_PAGE);
+                            }}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </details>
+
+                  <details className="nb-export">
+                    <summary className="meta">Exportar</summary>
+                    <div className="nb-export-menu">
+                      <button type="button" className="btn--quiet" onClick={exportCsv}>
+                        CSV
+                      </button>
+                      <button type="button" className="btn--quiet" onClick={exportTsv}>
+                        Para Anki
+                      </button>
                       <button
                         type="button"
-                        className="nb-group-toggle"
-                        aria-expanded={!isCollapsed}
-                        onClick={() => toggle(collapsed, hash, setCollapsed)}
+                        className="btn--quiet"
+                        onClick={exportMarkdownNotebook}
+                        title="Exportar cuaderno completo en Markdown para Obsidian, Notion o PKM"
                       >
-                        <span aria-hidden="true">{isCollapsed ? "▸ " : "▾ "}</span>
-                        {bookTitle(hash || undefined)}
+                        Cuaderno (.md)
                       </button>
-                      <span className="meta"> · {group.length}</span>
-                      {hash ? (
-                        <>
+                    </div>
+                  </details>
+                </div>
+
+                {filtered.length === 0 ? (
+                  <p className="meta">
+                    {query ? `Nada coincide con «${query}».` : "Nada en este filtro por ahora."}
+                  </p>
+                ) : order === "libro" ? (
+                  groupEntries.map(([hash, group]) => {
+                    const isCollapsed = collapsed.has(hash);
+                    const shown = expanded.has(hash) ? group : group.slice(0, GROUP_PAGE);
+                    return (
+                      <section key={hash || "sin-libro"} className="nb-group">
+                        <h2 className="nb-group-title">
                           <button
                             type="button"
-                            className="btn--quiet nb-group-export"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              triggerHaptic("selection");
-                              setGlossaryBookHash(hash);
-                            }}
-                            title={`Explorar glosario de ${bookTitle(hash)}`}
-                            aria-label={`Explorar glosario de ${bookTitle(hash)}`}
+                            className="nb-group-toggle"
+                            aria-expanded={!isCollapsed}
+                            onClick={() => toggle(collapsed, hash, setCollapsed)}
                           >
-                            Glosario
+                            <span aria-hidden="true">{isCollapsed ? "▸ " : "▾ "}</span>
+                            {bookTitle(hash || undefined)}
                           </button>
+                          <span className="meta"> · {group.length}</span>
+                          {hash ? (
+                            <>
+                              <button
+                                type="button"
+                                className="btn--quiet nb-group-export"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  triggerHaptic("selection");
+                                  setGlossaryBookHash(hash);
+                                }}
+                                title={`Explorar glosario de ${bookTitle(hash)}`}
+                                aria-label={`Explorar glosario de ${bookTitle(hash)}`}
+                              >
+                                Glosario
+                              </button>
+                              <button
+                                type="button"
+                                className="btn--quiet nb-group-export"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  triggerHaptic("selection");
+                                  void downloadBookMarkdown(hash, bookTitle(hash));
+                                }}
+                                title={`Exportar ficha en Markdown de ${bookTitle(hash)}`}
+                                aria-label={`Exportar ficha en Markdown de ${bookTitle(hash)}`}
+                              >
+                                Ficha (.md)
+                              </button>
+                            </>
+                          ) : null}
+                        </h2>
+                        {isCollapsed ? null : (
+                          <ul className="nb-words">
+                            {shown.map((word) => (
+                              <WordRow
+                                key={word.key}
+                                word={word}
+                                state={stateOf(word)}
+                                isOpen={openWords.has(word.key)}
+                                onToggle={() => toggleWordOpen(word.key)}
+                                canLearn={isLearnPending(word, knownKeys, exposure)}
+                                onLearn={() => startLearn(word)}
+                                onRemove={() => void remove(word)}
+                                onSpeak={() => void speakWord(word.form, word.language)}
+                              />
+                            ))}
+                          </ul>
+                        )}
+                        {!isCollapsed && group.length > shown.length ? (
                           <button
                             type="button"
-                            className="btn--quiet nb-group-export"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              triggerHaptic("selection");
-                              void downloadBookMarkdown(hash, bookTitle(hash));
-                            }}
-                            title={`Exportar ficha en Markdown de ${bookTitle(hash)}`}
-                            aria-label={`Exportar ficha en Markdown de ${bookTitle(hash)}`}
+                            className="btn--quiet nb-more"
+                            onClick={() => toggle(expanded, hash, setExpanded)}
                           >
-                            Ficha (.md)
+                            Mostrar {group.length - shown.length} más
                           </button>
-                        </>
-                      ) : null}
-                    </h2>
-                    {isCollapsed ? null : (
-                      <ul className="nb-words">
-                        {shown.map((word) => {
-                          const state = stateOf(word);
-                          return (
-                            <li key={word.key} className="nb-word">
-                              <div className="nb-word-head">
-                                <strong className="nb-word-form">{word.form}</strong>
-                                <button
-                                  type="button"
-                                  className="btn--pronounce"
-                                  aria-label={`Pronunciar ${word.form}`}
-                                  title="Escuchar pronunciación"
-                                  onClick={() => void speakWord(word.form, word.language)}
-                                >
-                                  <span aria-hidden="true">🔊</span>
-                                </button>
-                                {word.pos ? <span className="card-pos">{word.pos}</span> : null}
-                                {word.lemma && word.lemma !== word.form ? (
-                                  <span className="meta">de «{word.lemma}»</span>
-                                ) : null}
-                                <span className="nb-state" data-level={state.level}>
-                                  {state.label}
-                                </span>
-                                {isLearnPending(word, knownKeys, exposure) ? (
-                                  <button
-                                    type="button"
-                                    className="btn--quiet"
-                                    aria-label={`Aprender ${word.form}`}
-                                    onClick={() => startLearn(word)}
-                                  >
-                                    Aprender
-                                  </button>
-                                ) : null}
-                                <button
-                                  type="button"
-                                  className="btn--quiet nb-remove"
-                                  aria-label={`Quitar ${word.form}`}
-                                  onClick={() => void remove(word)}
-                                >
-                                  Quitar
-                                </button>
-                              </div>
-                              {word.meaning ? <p className="nb-meaning">{word.meaning}</p> : null}
-                              {word.context ? (
-                                <p className="nb-context">“{word.context}”</p>
-                              ) : null}
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    )}
-                    {!isCollapsed && group.length > shown.length ? (
+                        ) : null}
+                      </section>
+                    );
+                  })
+                ) : (
+                  <>
+                    <ul className="nb-words">
+                      {shownWords.map((word) => (
+                        <WordRow
+                          key={word.key}
+                          word={word}
+                          state={stateOf(word)}
+                          isOpen={openWords.has(word.key)}
+                          onToggle={() => toggleWordOpen(word.key)}
+                          canLearn={isLearnPending(word, knownKeys, exposure)}
+                          onLearn={() => startLearn(word)}
+                          onRemove={() => void remove(word)}
+                          onSpeak={() => void speakWord(word.form, word.language)}
+                        />
+                      ))}
+                    </ul>
+                    {flatWords.length > shownWords.length ? (
                       <button
                         type="button"
                         className="btn--quiet nb-more"
-                        onClick={() => toggle(expanded, hash, setExpanded)}
+                        onClick={() => setListLimit((curr) => curr + GROUP_PAGE)}
                       >
-                        Mostrar {group.length - shown.length} más
+                        Mostrar {Math.min(GROUP_PAGE, flatWords.length - shownWords.length)} más
                       </button>
                     ) : null}
-                  </section>
-                );
-              })
+                  </>
+                )}
+              </>
             )}
-          </>
-        ) : null}
-          </>
+          </section>
         ) : null}
 
         {learn ? (
@@ -1968,7 +2120,7 @@ export default function Vocabulary({
                     title="Escuchar pronunciación"
                     onClick={() => void speakWord(learn.items[0].form, learn.items[0].language)}
                   >
-                    <span aria-hidden="true">🔊</span>
+                    <Icon name="speaker" size={16} />
                   </button>
                   {learn.items[0].pos ? (
                     <span className="card-pos"> · {learn.items[0].pos}</span>
@@ -2461,7 +2613,7 @@ export default function Vocabulary({
                           title="Escuchar pronunciación"
                           onClick={() => void speakWord(current.word.form, current.word.language)}
                         >
-                          <span aria-hidden="true">🔊</span>
+                          <Icon name="speaker" size={16} />
                         </button>
                         {current.word.pos ? (
                           <span className="card-pos"> · {current.word.pos}</span>
@@ -2572,7 +2724,7 @@ export default function Vocabulary({
                           title="Escuchar pronunciación"
                           onClick={() => void speakWord(current.word.form, current.word.language)}
                         >
-                          <span aria-hidden="true">🔊</span>
+                          <Icon name="speaker" size={16} />
                         </button>
                         {current.word.pos ? (
                           <span className="card-pos"> · {current.word.pos}</span>
@@ -2603,7 +2755,7 @@ export default function Vocabulary({
                             title="Escuchar pronunciación"
                             onClick={() => void speakWord(current.word.form, current.word.language)}
                           >
-                            <span aria-hidden="true">🔊</span>
+                            <Icon name="speaker" size={16} />
                           </button>
                           {(current.mode === "cloze" || current.mode === "clozeNew") &&
                           current.word.meaning

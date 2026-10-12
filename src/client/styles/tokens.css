@@ -55,12 +55,14 @@
   --ease-in: cubic-bezier(0.55, 0, 1, 0.45);
   --ease-page: cubic-bezier(0.2, 0.8, 0.2, 1);
   --ease-settle: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
   --dur-1: 120ms;
   --dur-2: 180ms;
   --dur-3: 260ms;
   --dur-4: 220ms;
   --dur-5: 320ms;
   --dur-6: 480ms;
+  --dur-exit: 160ms;
 
   /* Lector (valores por defecto; el panel Aa los ajusta) */
   --read-font: var(--font-book);
@@ -92,6 +94,13 @@
   --amber: #8a6a1e;
   --chroma-blue: #1d4ed8;
   --chroma-crimson: #b45309;
+  --success: #3d7a4e;
+  --success-wash: rgba(61, 122, 78, 0.14);
+  --warning: #8a6a1e;
+  --warning-wash: rgba(138, 106, 30, 0.16);
+  --on-accent: #ffffff;
+  --shadow-1: 0 1px 3px rgba(43, 37, 32, 0.08), 0 1px 2px rgba(43, 37, 32, 0.05);
+  --shadow-2: 0 4px 12px -2px rgba(43, 37, 32, 0.12), 0 2px 6px -1px rgba(43, 37, 32, 0.08);
   --shadow-sheet-color: rgba(43, 37, 32, 0.14);
   --scrim: rgba(43, 37, 32, 0.32);
   --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='linear' slope='0.045'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
@@ -125,6 +134,13 @@
   --amber: #8a6a1e;
   --chroma-blue: #1d4ed8;
   --chroma-crimson: #b45309;
+  --success: #3d7a4e;
+  --success-wash: rgba(61, 122, 78, 0.14);
+  --warning: #8a6a1e;
+  --warning-wash: rgba(138, 106, 30, 0.16);
+  --on-accent: #ffffff;
+  --shadow-1: 0 1px 3px rgba(38, 36, 31, 0.08), 0 1px 2px rgba(38, 36, 31, 0.05);
+  --shadow-2: 0 4px 12px -2px rgba(38, 36, 31, 0.12), 0 2px 6px -1px rgba(38, 36, 31, 0.08);
   --shadow-sheet-color: rgba(43, 37, 32, 0.14);
   --scrim: rgba(43, 37, 32, 0.3);
   /* Gato compañero: misma paleta que en papel. */
@@ -156,6 +172,13 @@
   --amber: #d9b65c;
   --chroma-blue: #38bdf8;
   --chroma-crimson: #fb923c;
+  --success: #8fb996;
+  --success-wash: rgba(143, 185, 150, 0.18);
+  --warning: #d9b65c;
+  --warning-wash: rgba(217, 182, 92, 0.18);
+  --on-accent: #17181a;
+  --shadow-1: 0 1px 3px rgba(0, 0, 0, 0.35), 0 1px 2px rgba(0, 0, 0, 0.25);
+  --shadow-2: 0 4px 14px -2px rgba(0, 0, 0, 0.5), 0 2px 6px -1px rgba(0, 0, 0, 0.35);
   --shadow-sheet-color: rgba(0, 0, 0, 0.5);
   --scrim: rgba(0, 0, 0, 0.55);
   --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='linear' slope='0.025'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
@@ -191,6 +214,13 @@
   --amber: #d9b65c;
   --chroma-blue: #38bdf8;
   --chroma-crimson: #fb923c;
+  --success: #8fb996;
+  --success-wash: rgba(143, 185, 150, 0.18);
+  --warning: #d9b65c;
+  --warning-wash: rgba(217, 182, 92, 0.18);
+  --on-accent: #000000;
+  --shadow-1: 0 1px 3px rgba(0, 0, 0, 0.5), 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-2: 0 4px 16px -2px rgba(0, 0, 0, 0.7), 0 2px 6px -1px rgba(0, 0, 0, 0.5);
   --shadow-sheet-color: rgba(0, 0, 0, 0.7);
   --scrim: rgba(0, 0, 0, 0.7);
   /* El grano sobre negro puro se lee como artefacto de pantalla. */
@@ -225,6 +255,15 @@
     --graphite: #8c8f86;
     --sage: #8fb996;
     --amber: #d9b65c;
+    --chroma-blue: #38bdf8;
+    --chroma-crimson: #fb923c;
+    --success: #8fb996;
+    --success-wash: rgba(143, 185, 150, 0.18);
+    --warning: #d9b65c;
+    --warning-wash: rgba(217, 182, 92, 0.18);
+    --on-accent: #17181a;
+    --shadow-1: 0 1px 3px rgba(0, 0, 0, 0.35), 0 1px 2px rgba(0, 0, 0, 0.25);
+    --shadow-2: 0 4px 14px -2px rgba(0, 0, 0, 0.5), 0 2px 6px -1px rgba(0, 0, 0, 0.35);
     --shadow-sheet-color: rgba(0, 0, 0, 0.5);
     --scrim: rgba(0, 0, 0, 0.55);
     --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='linear' slope='0.025'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");

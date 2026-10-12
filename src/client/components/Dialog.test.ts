@@ -46,12 +46,64 @@ describe("Dialog toque exterior", () => {
     expect(dialog().getAttribute("tabindex")).toBe("-1");
   });
 
-  it("cierra cuando el puntero empieza y termina en el fondo", () => {
+  it("marca data-closing al tocar el fondo y completa onClose tras animationend", () => {
     const onClose = vi.fn();
     render(dialogFor(onClose));
     fire(scrim(), "pointerdown");
     fire(scrim(), "pointerup");
+    expect(scrim().getAttribute("data-closing")).toBe("true");
+    expect(dialog().getAttribute("data-closing")).toBe("true");
+    expect(onClose).not.toHaveBeenCalled();
+    fire(dialog(), "animationend");
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("marca data-closing al presionar Escape y cierra tras animationend", () => {
+    const onClose = vi.fn();
+    render(dialogFor(onClose));
+    act(() => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    });
+    expect(scrim().getAttribute("data-closing")).toBe("true");
+    expect(dialog().getAttribute("data-closing")).toBe("true");
+    expect(onClose).not.toHaveBeenCalled();
+    fire(dialog(), "animationend");
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("marca data-closing al hacer click en un botón con data-dialog-close y cierra tras animationend", () => {
+    const onClose = vi.fn();
+    render(
+      h(Dialog, {
+        label: "Prueba botón",
+        onClose,
+        children: h("button", { type: "button", "aria-label": "Cerrar", "data-dialog-close": "" }, "✕"),
+      }),
+    );
+    const closeBtn = host.querySelector("button[data-dialog-close]") as HTMLElement;
+    fire(closeBtn, "click");
+    expect(scrim().getAttribute("data-closing")).toBe("true");
+    expect(dialog().getAttribute("data-closing")).toBe("true");
+    expect(onClose).not.toHaveBeenCalled();
+    fire(dialog(), "animationend");
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("completa onClose por temporizador de seguridad si no hay animationend", () => {
+    vi.useFakeTimers();
+    try {
+      const onClose = vi.fn();
+      render(dialogFor(onClose));
+      fire(scrim(), "pointerdown");
+      fire(scrim(), "pointerup");
+      expect(onClose).not.toHaveBeenCalled();
+      act(() => {
+        vi.advanceTimersByTime(200);
+      });
+      expect(onClose).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("no cierra si el puntero empezó dentro aunque termine fuera", () => {

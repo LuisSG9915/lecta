@@ -64,14 +64,14 @@
 }
 
 .btn--primary {
-  background: var(--ink);
-  border-color: var(--ink);
-  color: var(--paper);
+  background: var(--vermilion);
+  border-color: var(--vermilion);
+  color: var(--on-accent);
 }
 
 .btn--primary:hover:not(:disabled) {
-  background: var(--vermilion);
-  border-color: var(--vermilion);
+  background: color-mix(in srgb, var(--vermilion) 88%, var(--ink));
+  border-color: color-mix(in srgb, var(--vermilion) 88%, var(--ink));
 }
 
 .btn--quiet {
@@ -183,6 +183,11 @@
   animation: fade-in var(--dur-2) var(--ease-out);
 }
 
+.sheet-scrim[data-closing="true"] {
+  animation: fade-out var(--dur-exit) var(--ease-exit) forwards;
+  pointer-events: none;
+}
+
 .sheet {
   position: fixed;
   z-index: 20;
@@ -211,15 +216,20 @@
   transition: transform var(--dur-3) var(--ease-out);
 }
 
+.sheet[data-closing="true"] {
+  animation: sheet-down var(--dur-exit) var(--ease-exit) forwards;
+  pointer-events: none;
+}
+
 /* Variante Peek: consulta ágil de palabras en lectura sin tapar la página
    ni aislar al lector con desenfoques fuertes. */
 .sheet--peek {
   max-height: min(48vh, 24rem);
-  box-shadow: 0 -4px 22px rgba(43, 37, 32, 0.12);
+  box-shadow: var(--shadow-2);
 }
 
 .sheet-scrim:has(.sheet--peek) {
-  background: rgba(43, 37, 32, 0.2);
+  background: color-mix(in srgb, var(--scrim) 60%, transparent);
   backdrop-filter: blur(2px);
   -webkit-backdrop-filter: blur(2px);
 }
@@ -272,6 +282,17 @@
   }
 }
 
+@keyframes sheet-down {
+  from {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateY(1.5rem);
+    opacity: 0;
+  }
+}
+
 /* Ficha acoplada al margen: en pantallas anchas vive junto al texto
    como una nota al margen, sin tapar la lectura. El riel del margen
    derecho se reserva siempre, para que abrir la ficha no mueva ni
@@ -312,6 +333,14 @@
     inset-inline: var(--s-4) auto;
     animation-name: dock-in-left;
   }
+
+  .sheet--docked[data-closing="true"] {
+    animation: dock-out var(--dur-exit) var(--ease-exit) forwards;
+  }
+
+  .sheet--docked-left[data-closing="true"] {
+    animation: dock-out-left var(--dur-exit) var(--ease-exit) forwards;
+  }
 }
 
 @keyframes dock-in-left {
@@ -325,6 +354,17 @@
   }
 }
 
+@keyframes dock-out-left {
+  from {
+    transform: translateX(0) scale(1);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(-1.5rem) scale(0.96);
+    opacity: 0;
+  }
+}
+
 @keyframes dock-in {
   from {
     transform: translateX(1.5rem) scale(0.96);
@@ -333,6 +373,17 @@
   to {
     transform: translateX(0) scale(1);
     opacity: 1;
+  }
+}
+
+@keyframes dock-out {
+  from {
+    transform: translateX(0) scale(1);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(1.5rem) scale(0.96);
+    opacity: 0;
   }
 }
 
@@ -401,7 +452,7 @@
   block-size: 22px;
   border-radius: 50%;
   background: var(--paper-raised);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--shadow-1);
   transition: transform var(--dur-2) var(--ease-out);
 }
 
@@ -476,7 +527,7 @@
 .segmented button[data-active] {
   background: var(--paper-raised);
   color: var(--ink);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+  box-shadow: var(--shadow-1);
 }
 
 @media (forced-colors: active) {
@@ -511,6 +562,11 @@
   animation: fade-in var(--dur-2) var(--ease-out);
 }
 
+.dialog-scrim[data-closing="true"] {
+  animation: fade-out var(--dur-exit) var(--ease-exit) forwards;
+  pointer-events: none;
+}
+
 .dialog {
   width: min(26rem, 100%);
   max-height: min(38rem, 85vh);
@@ -523,12 +579,26 @@
   animation: dialog-in var(--dur-3) var(--ease-out);
 }
 
+.dialog[data-closing="true"] {
+  animation: dialog-out var(--dur-exit) var(--ease-exit) forwards;
+  pointer-events: none;
+}
+
 @keyframes fade-in {
   from {
     opacity: 0;
   }
   to {
     opacity: 1;
+  }
+}
+
+@keyframes fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
   }
 }
 
@@ -540,6 +610,28 @@
   to {
     transform: translateY(0);
     opacity: 1;
+  }
+}
+
+@keyframes dialog-out {
+  from {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+  to {
+    transform: translateY(0.75rem) scale(0.96);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sheet[data-closing="true"],
+  .sheet--docked[data-closing="true"],
+  .sheet--docked-left[data-closing="true"],
+  .sheet-scrim[data-closing="true"],
+  .dialog[data-closing="true"],
+  .dialog-scrim[data-closing="true"] {
+    animation: none !important;
   }
 }
 
@@ -735,7 +827,7 @@ mark.saved-word[data-level="settled"] {
   border: var(--border);
   border-radius: var(--r-2);
   padding: var(--s-3);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--shadow-2);
   overflow: hidden;
 }
 
@@ -745,7 +837,7 @@ mark.saved-word[data-level="settled"] {
   width: auto;
   height: auto;
   border-radius: var(--r-1);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--shadow-1);
   display: block;
 }
 
@@ -807,7 +899,7 @@ mark.saved-word[data-level="settled"] {
   background: var(--paper-raised);
   border: var(--border);
   border-radius: var(--r-pill);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+  box-shadow: var(--shadow-2);
   padding: 3px;
   transform: translate(-50%, -100%) translateY(-8px);
   animation: selection-menu-in var(--dur-2) var(--ease-out);
@@ -885,7 +977,7 @@ mark.saved-word[data-level="settled"] {
 }
 
 .offline-dot {
-  color: #3d7a4e;
+  color: var(--success);
   font-size: 0.65rem;
 }
 
@@ -1001,7 +1093,7 @@ mark.saved-word[data-level="settled"] {
   background: var(--paper-raised);
   border: var(--border);
   border-radius: var(--r-pill);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--shadow-2);
   opacity: 0.45;
   transition: opacity var(--dur-2) var(--ease-out);
 }
@@ -1031,7 +1123,7 @@ mark.saved-word[data-level="settled"] {
 
 .reader-deep-indicator-btn:hover {
   background: var(--vermilion);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 /* Hilo ultrafino de lectura profunda */
@@ -1213,12 +1305,12 @@ mark.saved-word[data-level="settled"] {
 }
 
 .glossary-stat-chip--saved {
-  background: color-mix(in srgb, #2e7d32 8%, var(--paper-sunken));
-  border-color: color-mix(in srgb, #2e7d32 24%, var(--rule));
+  background: var(--success-wash);
+  border-color: color-mix(in srgb, var(--success) 24%, var(--rule));
 }
 
 .glossary-stat-chip--saved .glossary-stat-value {
-  color: #2e7d32;
+  color: var(--success);
 }
 
 /* Buscador */
@@ -1313,7 +1405,7 @@ mark.saved-word[data-level="settled"] {
 
 .glossary-tab[data-active] {
   background: var(--vermilion);
-  color: #fff;
+  color: var(--on-accent);
   border-color: var(--vermilion);
   font-weight: 600;
 }
@@ -1447,12 +1539,12 @@ mark.saved-word[data-level="settled"] {
 
 .glossary-card:hover {
   border-color: var(--rule-strong);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+  box-shadow: var(--shadow-1);
 }
 
 .glossary-card[data-expanded] {
   border-color: var(--vermilion);
-  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--shadow-2);
 }
 
 .glossary-card[data-cultism] {
@@ -1532,9 +1624,9 @@ mark.saved-word[data-level="settled"] {
 }
 
 .glossary-status-pill--saved {
-  background: color-mix(in srgb, #2e7d32 12%, transparent);
-  color: #2e7d32;
-  border: 1px solid color-mix(in srgb, #2e7d32 30%, transparent);
+  background: var(--success-wash);
+  color: var(--success);
+  border: 1px solid color-mix(in srgb, var(--success) 30%, transparent);
 }
 
 .glossary-status-pill--known {
@@ -1614,13 +1706,13 @@ mark.saved-word[data-level="settled"] {
 
 .glossary-save-btn {
   font-size: var(--fs-sm);
-  min-height: 36px;
-  padding: 4px 14px;
+  min-height: 44px;
+  padding: 8px 14px;
 }
 
 .glossary-saved-notice {
   font-size: var(--fs-sm);
-  color: #2e7d32;
+  color: var(--success);
   font-weight: 500;
 }
 
@@ -1709,7 +1801,7 @@ mark.saved-word[data-level="settled"] {
 
 .glossary-page-num[data-active] {
   background: var(--vermilion);
-  color: #fff;
+  color: var(--on-accent);
   border-color: var(--vermilion);
   font-weight: 700;
 }

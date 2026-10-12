@@ -27,6 +27,19 @@ export function relativeDay(ts: number, now = Date.now()): string {
   return rtf.format(-Math.floor(days / 365), "year");
 }
 
+// «hoy», «mañana», «pasado mañana», «dentro de 3 días», «dentro de 2 semanas»...
+export function futureRelativeDay(ts: number, now = Date.now()): string {
+  const days = Math.floor((startOfDay(ts) - startOfDay(now)) / DAY_MS);
+  if (days <= 0) return "hoy";
+  if (days === 1) return "mañana";
+  if (days === 2) return "pasado mañana";
+  const rtf = new Intl.RelativeTimeFormat("es-MX", { numeric: "auto" });
+  if (days < 7) return rtf.format(days, "day");
+  if (days < 30) return rtf.format(Math.floor(days / 7), "week");
+  if (days < 365) return rtf.format(Math.floor(days / 30), "month");
+  return rtf.format(Math.floor(days / 365), "year");
+}
+
 // «hace un momento», «hace 3 min», «hace 2 h», y para más de un día
 // cae a relativeDay. Pensado para «Sincronizado hace…» en Cuenta.
 export function timeAgo(ts: number, now = Date.now()): string {

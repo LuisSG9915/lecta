@@ -229,8 +229,8 @@
 
 .shelf-book-more {
   flex: none;
-  inline-size: 2rem;
-  min-height: 2rem;
+  inline-size: 2.75rem;
+  min-height: 2.75rem;
   padding: 0;
   display: grid;
   place-items: center;
@@ -548,7 +548,7 @@
   background: var(--paper-raised);
   border: var(--border);
   border-radius: var(--r-2);
-  box-shadow: 0 4px 16px -4px rgba(43, 37, 32, 0.08);
+  box-shadow: var(--shadow-1);
   inline-size: 100%;
 }
 

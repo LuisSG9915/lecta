@@ -51,12 +51,68 @@ describe("Sheet toque exterior", () => {
     expect(sheet().getAttribute("tabindex")).toBe("-1");
   });
 
-  it("cierra cuando el puntero empieza y termina en el fondo", () => {
+  it("marca data-closing al tocar el fondo y completa onClose tras animationend", () => {
     const onClose = vi.fn();
     render(sheetFor(onClose));
     fire(scrim(), "pointerdown");
     fire(scrim(), "pointerup");
+    expect(scrim().getAttribute("data-closing")).toBe("true");
+    expect(sheet().getAttribute("data-closing")).toBe("true");
+    expect(onClose).not.toHaveBeenCalled();
+    fire(sheet(), "animationend");
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("marca data-closing al presionar Escape y cierra tras animationend", () => {
+    const onClose = vi.fn();
+    render(sheetFor(onClose));
+    act(() => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    });
+    expect(scrim().getAttribute("data-closing")).toBe("true");
+    expect(sheet().getAttribute("data-closing")).toBe("true");
+    expect(onClose).not.toHaveBeenCalled();
+    fire(sheet(), "animationend");
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("marca data-closing al hacer click en un botón de cierre y cierra tras animationend", () => {
+    const onClose = vi.fn();
+    render(
+      h(Sheet, {
+        label: "Prueba botón",
+        onClose,
+        children: h(
+          "div",
+          { className: "sheet-head" },
+          h("button", { type: "button", "aria-label": "Cerrar", "data-sheet-close": "" }, "✕"),
+        ),
+      }),
+    );
+    const closeBtn = host.querySelector("button[aria-label='Cerrar']") as HTMLElement;
+    fire(closeBtn, "click");
+    expect(scrim().getAttribute("data-closing")).toBe("true");
+    expect(sheet().getAttribute("data-closing")).toBe("true");
+    expect(onClose).not.toHaveBeenCalled();
+    fire(sheet(), "animationend");
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("completa onClose por temporizador de seguridad si no hay animationend", () => {
+    vi.useFakeTimers();
+    try {
+      const onClose = vi.fn();
+      render(sheetFor(onClose));
+      fire(scrim(), "pointerdown");
+      fire(scrim(), "pointerup");
+      expect(onClose).not.toHaveBeenCalled();
+      act(() => {
+        vi.advanceTimersByTime(200);
+      });
+      expect(onClose).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("no cierra si el puntero empezó dentro aunque termine fuera", () => {
@@ -171,6 +227,9 @@ describe("Sheet toque exterior", () => {
         }),
       );
     });
+    expect(sheet().getAttribute("data-closing")).toBe("true");
+    expect(onClose).not.toHaveBeenCalled();
+    fire(sheet(), "animationend");
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 

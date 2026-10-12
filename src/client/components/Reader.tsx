@@ -203,6 +203,8 @@ import TtsNowPlaying from "./TtsNowPlaying";
 import WordPanel from "./WordPanel";
 import SectionPreview, { type SectionPreviewRow } from "./SectionPreview";
 import Sheet from "./Sheet";
+import Icon from "./Icon";
+import ReaderMoreMenu from "./ReaderMoreMenu";
 import QuoteCardModal from "./QuoteCardModal";
 import OfflineDictionaryControl from "./OfflineDictionaryControl";
 import DeepReadingModal from "./DeepReadingModal";
@@ -566,6 +568,7 @@ export default function Reader({
   const calEvaluated = useRef(false);
   const [language, setLanguage] = useState("es");
   const [selection, setSelection] = useState<WordHit | null>(null);
+  const [isMoreOpen, setIsMoreOpen] = useState(false);
   // Índice de locuciones (asset estático): se pide al montar el
   // lector para que el PRIMER toque ya lo tenga en memoria — sin
   // red ni IA en el camino de la consulta.
@@ -3808,7 +3811,7 @@ export default function Reader({
           onClick={onBack}
           aria-label="Volver a la estantería"
         >
-          <span className="reader-back-icon" aria-hidden="true">‹</span>
+          <Icon name="back" size={18} />
           <span className="reader-back-label"> Estantería</span>
         </button>
         <p className="reader-bar-title" title={title || fileName}>
@@ -3816,145 +3819,69 @@ export default function Reader({
           {author ? <span className="reader-bar-author"> · {author}</span> : null}
         </p>
         <div className="reader-bar-actions">
-          {/* Grupo 1: Navegación y estructura del libro */}
-          <div className="reader-bar-group" role="group" aria-label="Navegación del libro">
-            <button
-              type="button"
-              className="btn--quiet reader-bar-btn"
-              onClick={() => openSheet("toc")}
-              aria-label="Índice del libro"
-              title="Índice (T)"
-            >
-              <span className="reader-btn-icon" aria-hidden="true">☰</span>
-              <span className="reader-btn-text">Índice</span>
-            </button>
-            <button
-              type="button"
-              className="btn--quiet reader-bar-btn"
-              onClick={() => openSheet("search")}
-              aria-label="Buscar en el libro"
-              title="Buscar (Ctrl+F)"
-            >
-              <span className="reader-btn-icon" aria-hidden="true">🔍</span>
-              <span className="reader-btn-text">Buscar</span>
-            </button>
-          </div>
-
-          <span className="reader-bar-divider" aria-hidden="true" />
-
-          {/* Grupo 2: Visualización y pantalla */}
-          <div className="reader-bar-group" role="group" aria-label="Visualización y pantalla">
-            <button
-              type="button"
-              className="btn--quiet reader-bar-btn reader-bar-btn--settings"
-              onClick={() => openSheet("settings")}
-              aria-label="Ajustes de lectura"
-              title="Ajustes de lectura (Aa)"
-            >
-              <span className="reader-btn-icon reader-btn-icon--aa" aria-hidden="true">Aa</span>
-              <span className="reader-btn-text">Ajustes</span>
-            </button>
-            {isFullscreenSupported() ? (
-              <button
-                type="button"
-                className="btn--quiet reader-bar-btn reader-bar-btn--fullscreen"
-                onClick={() => void handleToggleFullscreen()}
-                aria-label={
-                  isFullscreenActive
-                    ? "Salir de pantalla completa"
-                    : "Pantalla completa"
-                }
-                aria-pressed={isFullscreenActive}
-                title={
-                  isFullscreenActive
-                    ? "Salir de pantalla completa (F)"
-                    : "Pantalla completa (F)"
-                }
-              >
-                <span className="reader-btn-icon" aria-hidden="true">
-                  {isFullscreenActive ? (
-                    <svg
-                      className="reader-icon-svg"
-                      width="16"
-                      height="16"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3" />
-                    </svg>
-                  ) : (
-                    <svg
-                      className="reader-icon-svg"
-                      width="16"
-                      height="16"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
-                    </svg>
-                  )}
-                </span>
-                <span className="reader-btn-text">
-                  {isFullscreenActive ? "Ventana" : "Completa"}
-                </span>
-              </button>
-            ) : null}
-          </div>
-
-          <span className="reader-bar-divider" aria-hidden="true" />
-
-          {/* Grupo 3: Herramientas de lectura */}
-          <div className="reader-bar-group" role="group" aria-label="Herramientas de lectura">
-            <button
-              type="button"
-              className="btn--quiet reader-bar-btn"
-              onClick={onOpenNotebook}
-              aria-label="Abrir Cuaderno de vocabulario"
-              title="Cuaderno (Vocabulario)"
-            >
-              <span className="reader-btn-icon" aria-hidden="true">📓</span>
-              <span className="reader-btn-text">Cuaderno</span>
-            </button>
-            {isTtsSupported() ? (
-              <button
-                type="button"
-                className="btn--quiet reader-bar-btn"
-                onClick={onTtsRequest}
-                aria-label={
-                  ttsSnap.status !== "idle"
-                    ? "Detener lectura en voz alta"
-                    : "Leer en voz alta"
-                }
-                aria-pressed={ttsSnap.status !== "idle"}
-                title={ttsSnap.status !== "idle" ? "Detener voz" : "Escuchar"}
-              >
-                <span className="reader-btn-icon" aria-hidden="true">
-                  {ttsSnap.status !== "idle" ? "⏹️" : "🎧"}
-                </span>
-                <span className="reader-btn-text">
-                  {ttsSnap.status !== "idle" ? "Detener" : "Escuchar"}
-                </span>
-              </button>
-            ) : null}
-            <button
-              type="button"
-              className="btn--quiet reader-bar-btn"
-              onClick={() => setDeepModal(true)}
-              aria-label="Iniciar modo retiro de lectura"
-              title="Retiro de lectura"
-            >
-              <span className="reader-btn-icon" aria-hidden="true">🕯️</span>
-              <span className="reader-btn-text">Retiro</span>
-            </button>
-          </div>
+          <button
+            type="button"
+            className="btn--quiet reader-bar-btn"
+            onClick={() => {
+              setIsMoreOpen(false);
+              openSheet("toc");
+            }}
+            aria-label="Índice del libro"
+            title="Índice (T)"
+          >
+            <Icon name="index" size={20} />
+            <span className="reader-btn-text">Índice</span>
+          </button>
+          <button
+            type="button"
+            className="btn--quiet reader-bar-btn reader-bar-btn--settings"
+            onClick={() => {
+              setIsMoreOpen(false);
+              openSheet("settings");
+            }}
+            aria-label="Ajustes de lectura"
+            title="Ajustes de lectura (Aa)"
+          >
+            <span className="reader-btn-icon reader-btn-icon--aa" aria-hidden="true">Aa</span>
+            <span className="reader-btn-text">Aa</span>
+          </button>
+          <button
+            type="button"
+            className="btn--quiet reader-bar-btn"
+            onClick={() => {
+              setIsMoreOpen(false);
+              onOpenNotebook();
+            }}
+            aria-label="Abrir Cuaderno de vocabulario"
+            title="Cuaderno"
+          >
+            <Icon name="notebook" size={20} />
+            <span className="reader-btn-text">Cuaderno</span>
+          </button>
+          <button
+            type="button"
+            className="btn--quiet reader-bar-btn reader-bar-btn--more"
+            onClick={() => setIsMoreOpen((v) => !v)}
+            aria-label="Más opciones"
+            aria-expanded={isMoreOpen}
+            aria-haspopup="menu"
+            title="Más opciones"
+          >
+            <Icon name="more" size={20} />
+            <span className="reader-btn-text">Más</span>
+          </button>
+          <ReaderMoreMenu
+            isOpen={isMoreOpen}
+            onClose={() => setIsMoreOpen(false)}
+            onSearch={() => openSheet("search")}
+            onToggleTts={onTtsRequest}
+            ttsActive={ttsSnap.status !== "idle"}
+            ttsSupported={isTtsSupported()}
+            onToggleFullscreen={() => void handleToggleFullscreen()}
+            isFullscreen={isFullscreenActive}
+            fullscreenSupported={isFullscreenSupported()}
+            onOpenRetreat={() => setDeepModal(true)}
+          />
         </div>
       </header>
 
