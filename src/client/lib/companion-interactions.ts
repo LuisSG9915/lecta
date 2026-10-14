@@ -159,3 +159,60 @@ export function cleanCompanionName(raw: string): string | null {
   }
   return trimmed;
 }
+
+const BOND_STORAGE_KEY = "lecta_companion_bond_level";
+
+function getStorage(): Storage | null {
+  try {
+    if (typeof localStorage !== "undefined") return localStorage;
+    if (typeof window !== "undefined" && window.localStorage) return window.localStorage;
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+export function getCompanionBondLevel(): number {
+  const s = getStorage();
+  if (!s) return 0;
+  try {
+    const val = s.getItem(BOND_STORAGE_KEY);
+    return val ? parseInt(val, 10) || 0 : 0;
+  } catch {
+    return 0;
+  }
+}
+
+export function incrementCompanionBondLevel(by = 1): number {
+  const s = getStorage();
+  if (!s) return by;
+  try {
+    const current = getCompanionBondLevel();
+    const updated = current + by;
+    s.setItem(BOND_STORAGE_KEY, String(updated));
+    return updated;
+  } catch {
+    return by;
+  }
+}
+
+export function getCompanionContextualGreeting(
+  name: string,
+  streakDays: number,
+  bookTitle?: string | null,
+): string {
+  const hour = new Date().getHours();
+  if (bookTitle) {
+    return `¡A ${name} le fascina «${bookTitle}» contigo!`;
+  }
+  if (streakDays >= 7) {
+    return `¡${streakDays} días en racha! ${name} ronronea orgulloso.`;
+  }
+  if (streakDays >= 3) {
+    return `¡Racha de ${streakDays} días! ${name} cuida tu marcapáginas.`;
+  }
+  if (hour < 6) return `${name} te acompaña en tu lectura de madrugada.`;
+  if (hour < 12) return `${name} te desea un día lleno de ricas lecturas.`;
+  if (hour < 20) return `${name} se acomoda a leer contigo esta tarde.`;
+  return `${name} disfruta la calma de leer de noche.`;
+}

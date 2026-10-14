@@ -19,11 +19,25 @@ import {
   walkDuration,
   xFromPointer,
 } from "../lib/companion-stage";
-import { triggerPurrHaptic } from "../lib/haptics";
-import type { CareKind } from "../lib/companion-interactions";
-import type { CatMood } from "../lib/gamification";
+import { triggerHaptic, triggerPurrHaptic } from "../lib/haptics";
+import { playCompanionSound } from "../lib/companion-audio";
+import {
+  getCompanionContextualGreeting,
+  incrementCompanionBondLevel,
+  type CareKind,
+} from "../lib/companion-interactions";
+import { ITEM_ACHIEVEMENT_REWARDS, type CatMood } from "../../shared/gamification";
 import type { CompanionState } from "../lib/companion-state";
 import type { CompanionArticle } from "../../shared/companion-data";
+import Icon from "./Icon";
+
+interface PetParticle {
+  id: number;
+  x: number;
+  y: number;
+  symbol: string;
+  delay: number;
+}
 
 export interface CompanionStageProps {
   name: string;
@@ -43,6 +57,7 @@ export interface CompanionStageProps {
   tryOnLevel: number | null;
   onClearTryOn: () => void;
   inCloset?: boolean;
+  bookTitle?: string | null;
 }
 
 export function CompanionStage({
@@ -63,6 +78,7 @@ export function CompanionStage({
   tryOnLevel,
   onClearTryOn,
   inCloset = false,
+  bookTitle,
 }: CompanionStageProps) {
   // Posición normalizada en la pista [0, 1]. Solo estado local en memoria.
   const [catX, setCatX] = useState(0.5);
@@ -72,6 +88,9 @@ export function CompanionStage({
   const [isWandering, setIsWandering] = useState(false);
   const [wanderDuration, setWanderDuration] = useState(1200);
   const [isSettling, setIsSettling] = useState(false);
+  const [tapGreeting, setTapGreeting] = useState<string | null>(null);
+  const [hopPose, setHopPose] = useState(false);
+  const [particles, setParticles] = useState<PetParticle[]>([]);
 
   const trackRef = useRef<HTMLDivElement>(null);
   const catBtnRef = useRef<HTMLButtonElement>(null);
@@ -198,10 +217,15 @@ export function CompanionStage({
 
     if (!track.hasLifted) {
       const gesture = classifyGesture({ elapsedMs, movedPx });
-      if (gesture === "rub") {
+      // Acariciar: frotar continuo durante >= 600ms o classifyGesture === "rub"
+      if (gesture === "rub" || (elapsedMs >= 600 && movedPx >= 15)) {
         if (liftTimerRef.current) clearTimeout(liftTimerRef.current);
         if (!track.hasRubbed) {
           track.hasRubbed = true;
+          triggerPurrHaptic();
+          playCompanionSound("purr");
+          spawnParticles();
+          incrementCompanionBondLevel(1);
           onCare("pet");
         }
       }
@@ -228,6 +252,24 @@ export function CompanionStage({
     }
   };
 
+  const spawnParticles = useCallback(() => {
+    const count = 3 + Math.floor(Math.random() * 3); // 3 a 5 partículas
+    const newParticles: PetParticle[] = [];
+    for (let i = 0; i < count; i++) {
+      newParticles.push({
+        id: Date.now() + i,
+        x: 35 + Math.random() * 30,
+        y: 15 + Math.random() * 35,
+        symbol: Math.random() > 0.35 ? "♥" : "✦",
+        delay: i * 120,
+      });
+    }
+    setParticles((prev) => [...prev, ...newParticles]);
+    setTimeout(() => {
+      setParticles((prev) => prev.filter((p) => !newParticles.includes(p)));
+    }, 1800);
+  }, []);
+
   const endDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
     const track = pointerTrackRef.current;
     if (!track || track.id !== event.pointerId) return;
@@ -245,10 +287,22 @@ export function CompanionStage({
       return;
     }
 
-    // Toque corto sin arrastre ni frote previo = Acariciar
+    // Toque corto sin arrastre ni frote previo = Toque simple
     if (!wasRubbed && activeCare === null) {
+      playCompanionSound("meow");
+      triggerHaptic(15);
+      const greeting = getCompanionContextualGreeting(name, streakDays, bookTitle);
+      setTapGreeting(greeting);
+      setTimeout(() => setTapGreeting(null), 4000);
       onCare("pet");
     }
+  };
+
+  const handleDoubleClick = () => {
+    markInteraction();
+    triggerHaptic(20);
+    setHopPose(true);
+    setTimeout(() => setHopPose(false), 700);
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
@@ -267,23 +321,40 @@ export function CompanionStage({
     }
   };
 
-  // Mensaje en el globo: prioridad 1 prueba de ropa, 2 estado de cuidado, 3 saludo
+  // Mensaje en el globo: prioridad 1 prueba de ropa, 2 estado de cuidado, 3 saludo por toque o llegada
   let bubbleContent: { text: string; hasAction?: boolean } | null = null;
   if (tryOnArticle) {
+    const ach = ITEM_ACHIEVEMENT_REWARDS[tryOnArticle];
+    const hint = ach
+      ? `Se desbloquea con el logro: ${ach.title}`
+      : tryOnLevel !== null
+        ? `Se desbloquea en el nivel ${tryOnLevel}`
+        : "Prenda de prueba";
     bubbleContent = {
-      text: `Así se vería. Se desbloquea en el nivel ${tryOnLevel ?? ""}`.trim(),
+      text: `Así se vería · ${hint}`,
       hasAction: true,
     };
   } else if (careStatusText) {
     bubbleContent = { text: careStatusText };
+  } else if (tapGreeting) {
+    bubbleContent = { text: tapGreeting };
   } else if (greetingText) {
     bubbleContent = { text: greetingText };
   }
 
   // Determinación de la pose efectiva
   const effectivePose: CompanionPose | undefined =
-    externalPose ??
-    (isWandering ? "walk" : activeCare ? undefined : "idle");
+    hopPose
+      ? "playful_hop"
+      : externalPose ??
+        (isWandering ? "walk" : activeCare ? undefined : "idle");
+
+  const hasRainyWindow =
+    accessories.includes("stage_rainy_window") ||
+    tryOnArticle === "stage_rainy_window";
+  const hasAncientLibrary =
+    accessories.includes("stage_ancient_library") ||
+    tryOnArticle === "stage_ancient_library";
 
   return (
     <div className="companion-stage">
@@ -305,6 +376,58 @@ export function CompanionStage({
 
       {/* Pista horizontal donde se mueve el gato */}
       <div ref={trackRef} className="companion-stage-track">
+        {/* Fondos de Escenario */}
+        {hasRainyWindow ? (
+          <div className="companion-stage-backdrop companion-stage-backdrop--rain" aria-hidden="true">
+            <svg className="companion-stage-backdrop-svg" viewBox="0 0 320 80" preserveAspectRatio="none">
+              <rect x="0" y="0" width="320" height="80" fill="currentColor" opacity="0.04" />
+              <line x1="80" y1="0" x2="80" y2="80" stroke="currentColor" strokeWidth="1.5" opacity="0.15" />
+              <line x1="240" y1="0" x2="240" y2="80" stroke="currentColor" strokeWidth="1.5" opacity="0.15" />
+              <line x1="0" y1="35" x2="320" y2="35" stroke="currentColor" strokeWidth="1.5" opacity="0.15" />
+              <path
+                d="M40 10 L35 22 M120 18 L115 30 M200 8 L195 20 M280 25 L275 37 M90 48 L85 60 M170 52 L165 64 M250 45 L245 57 M300 12 L295 24 M30 50 L25 62"
+                stroke="var(--cat-rain, #7da5c2)"
+                strokeWidth="1.2"
+                strokeLinecap="round"
+                opacity="0.5"
+              />
+            </svg>
+          </div>
+        ) : null}
+        {hasAncientLibrary ? (
+          <div className="companion-stage-backdrop companion-stage-backdrop--library" aria-hidden="true">
+            <svg className="companion-stage-backdrop-svg" viewBox="0 0 320 80" preserveAspectRatio="none">
+              <rect x="0" y="0" width="320" height="80" fill="currentColor" opacity="0.04" />
+              <line x1="0" y1="58" x2="320" y2="58" stroke="var(--cat-wood, #8d5b3a)" strokeWidth="3" opacity="0.25" />
+              <rect x="25" y="24" width="10" height="34" rx="1" fill="#7a3e3e" opacity="0.35" />
+              <rect x="37" y="18" width="12" height="40" rx="1" fill="#3a5a7a" opacity="0.35" />
+              <rect x="51" y="26" width="9" height="32" rx="1" fill="#8a6e3a" opacity="0.35" />
+              <rect x="62" y="21" width="14" height="37" rx="1" fill="#4a6a4a" opacity="0.35" />
+              <rect x="235" y="20" width="11" height="38" rx="1" fill="#8a5a3a" opacity="0.35" />
+              <rect x="248" y="25" width="10" height="33" rx="1" fill="#5a3a6a" opacity="0.35" />
+              <rect x="260" y="17" width="13" height="41" rx="1" fill="#7a4a3a" opacity="0.35" />
+              <line x1="292" y1="48" x2="292" y2="58" stroke="#d97706" strokeWidth="2.5" />
+              <ellipse cx="292" cy="45" rx="1.5" ry="3" fill="#f59e0b" opacity="0.8" />
+            </svg>
+          </div>
+        ) : null}
+
+        {/* Partículas flotantes de cariño / afinidad */}
+        {particles.map((p) => (
+          <span
+            key={p.id}
+            className="companion-stage-particle"
+            style={{
+              left: `${p.x}%`,
+              top: `${p.y}%`,
+              animationDelay: `${p.delay}ms`,
+            }}
+            aria-hidden="true"
+          >
+            {p.symbol}
+          </span>
+        ))}
+
         <div
           className="companion-stage-actor"
           style={{
@@ -328,10 +451,16 @@ export function CompanionStage({
             onPointerMove={handlePointerMove}
             onPointerUp={endDrag}
             onPointerCancel={endDrag}
+            onDoubleClick={handleDoubleClick}
             onKeyDown={handleKeyDown}
             onContextMenu={(e) => e.preventDefault()}
             aria-label={`Compañero ${name}. Arrástralo o usa las flechas para moverlo; presiona para acariciar.`}
           >
+            {tryOnArticle ? (
+              <span className="companion-tryon-badge" aria-label="Prenda en prueba">
+                <Icon name="lock" size={11} />
+              </span>
+            ) : null}
             <Companion
               stage={stage}
               mood={mood}

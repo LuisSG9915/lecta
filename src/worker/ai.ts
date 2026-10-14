@@ -10,6 +10,9 @@ export const ITEM_PROMPT_VERSION = "item-v1";
 export const VERIFY_PROMPT_VERSION = "verify-v1";
 export const EXPLAIN_PROMPT_VERSION = "explain-v1";
 export const TIP_PROMPT_VERSION = "tip-v1";
+export const EVALUATE_PROMPT_VERSION = "evaluate-v1";
+export const STORY_PROMPT_VERSION = "story-v1";
+export const EXPLAIN_PASSAGE_PROMPT_VERSION = "explain-passage-v1";
 
 const POS_VALUES = new Set([
   "sustantivo",
@@ -74,19 +77,24 @@ export type DeepSeekOperation =
   | "item"
   | "verify"
   | "explain"
-  | "tip";
+  | "tip"
+  | "evaluate"
+  | "story"
+  | "explain_passage";
 
 // Techo de tokens de salida por operación. En la muestra A/B de
 // enriquecimiento el máximo observado fue 343; 768 deja margen sin
-// devolver el default ilimitado. Ítem, verificación y explicación en
-// contexto siguen acotados a sus respuestas breves; revisar con los
-// eventos lecta.ai_call.
+// devolver el default ilimitado. Ítem, verificación, evaluación de
+// frase y micro-cuento siguen acotados a sus respuestas breves (180 máx).
 export const AI_CALL_LIMITS = {
   enrich: 768,
   item: 256,
   verify: 128,
   explain: 192,
   tip: 160,
+  evaluate: 180,
+  story: 180,
+  explain_passage: 192,
 } as const satisfies Record<DeepSeekOperation, number>;
 
 export type DeepSeekCallOptions = {
@@ -413,6 +421,24 @@ export const TIP_CALL_OPTIONS: DeepSeekCallOptions = {
   maxTokens: AI_CALL_LIMITS.tip,
 };
 
+export const EVALUATE_CALL_OPTIONS: DeepSeekCallOptions = {
+  operation: "evaluate",
+  promptVersion: EVALUATE_PROMPT_VERSION,
+  maxTokens: AI_CALL_LIMITS.evaluate,
+};
+
+export const STORY_CALL_OPTIONS: DeepSeekCallOptions = {
+  operation: "story",
+  promptVersion: STORY_PROMPT_VERSION,
+  maxTokens: AI_CALL_LIMITS.story,
+};
+
+export const EXPLAIN_PASSAGE_CALL_OPTIONS: DeepSeekCallOptions = {
+  operation: "explain_passage",
+  promptVersion: EXPLAIN_PASSAGE_PROMPT_VERSION,
+  maxTokens: AI_CALL_LIMITS.explain_passage,
+};
+
 export async function requestEnrichment(
   env: WorkerEnv,
   input: { form: string; language: string; context?: string; nativeLanguage?: string },
@@ -705,5 +731,194 @@ export function sanitizeTipContext(body: unknown): TipContext | null {
       typeof raw.weeklyGoalDays === "number" && Number.isFinite(raw.weeklyGoalDays)
         ? Math.max(0, Math.min(7, Math.round(raw.weeklyGoalDays)))
         : null,
+  };
+}
+
+// ---------- Evaluación de frases ("El Reto del Escritor") ----------
+
+export const EVALUATE_SYSTEM_PROMPT = `Eres el gato compañero literario de Lecta. Evalúa si el usuario utilizó correctamente la palabra dada (con el significado esperado) en su oración. Responde estrictamente SOLO un objeto JSON válido con esta forma exacta, sin texto extra ni markdown:
+{"isCorrect":true|false,"score":<entero de 0 a 100>,"catReaction":"purring"|"curious"|"thinking","feedback":"<una o dos frases en tono cálido y literario del gato>","improvedVersion":<"oración sugerida"|null>}
+Reglas:
+- Si la palabra está bien usada en ese sentido: isCorrect: true, score >= 60, catReaction: "purring", improvedVersion: null.
+- Si el uso es incorrecto o confuso (score < 60): isCorrect: false, catReaction: "curious" o "thinking", improvedVersion: una sugerencia de cómo sonaría mejor la frase conservando la idea original del usuario.
+- El feedback debe tener personalidad de gato cómplice de lectura ("¡Miau!", observaciones con calidez y precisión literaria).`;
+
+export function buildEvaluatePrompt(
+  word: string,
+  targetSense: string,
+  userSentence: string,
+  bookTitle?: string,
+): string {
+  return [
+    `Palabra: «${word}»`,
+    `Acepción esperada: «${targetSense}»`,
+    `Oración del lector: «${userSentence}»`,
+    bookTitle ? `Libro de origen: «${bookTitle}»` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+export interface EvaluatedSentence {
+  isCorrect: boolean;
+  score: number;
+  catReaction: "purring" | "curious" | "thinking";
+  feedback: string;
+  improvedVersion: string | null;
+}
+
+export function parseEvaluateSentence(raw: string): EvaluatedSentence | null {
+  let data: unknown;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (typeof data !== "object" || data === null) return null;
+  const obj = data as Record<string, unknown>;
+  if (typeof obj.isCorrect !== "boolean") return null;
+  const score =
+    typeof obj.score === "number" && Number.isFinite(obj.score)
+      ? Math.max(0, Math.min(100, Math.round(obj.score)))
+      : obj.isCorrect
+        ? 100
+        : 40;
+  const catReaction =
+    obj.catReaction === "purring" ||
+    obj.catReaction === "curious" ||
+    obj.catReaction === "thinking"
+      ? obj.catReaction
+      : obj.isCorrect
+        ? "purring"
+        : "curious";
+  const feedback =
+    typeof obj.feedback === "string" ? obj.feedback.trim().slice(0, 300) : "";
+  if (!feedback) return null;
+  const improvedVersion =
+    typeof obj.improvedVersion === "string" && obj.improvedVersion.trim()
+      ? obj.improvedVersion.trim().slice(0, 300)
+      : null;
+  return {
+    isCorrect: obj.isCorrect,
+    score,
+    catReaction,
+    feedback,
+    improvedVersion,
+  };
+}
+
+// ---------- Micro-relato interactivo ("Cuento de Tinta del Día") ----------
+
+export const STORY_SYSTEM_PROMPT = `Eres el gato compañero literario de Lecta. Escribe un micro-relato envolvente en español de 45 a 65 palabras que integre las palabras solicitadas marcadas exactamente entre corchetes dobles [[palabra]]. Responde estrictamente SOLO un objeto JSON válido con esta forma exacta, sin texto extra ni markdown:
+{"title":"<título evocador breve>","story":"<micro-relato de 45 a 65 palabras con [[palabra]]>","wordsUsed":["<palabra1>","<palabra2>"]}
+Reglas:
+- Narrativa poética o de misterio literario con ritmo fluido y envolvente.
+- Cada palabra solicitada debe aparecer exactamente una vez dentro de story, envuelta en corchetes dobles [[palabra]].
+- "wordsUsed" es la lista de palabras integradas.`;
+
+export function buildStoryPrompt(
+  words: Array<{ word: string; meaning?: string }>,
+  styleHint?: string,
+): string {
+  const wordsList = words
+    .map((w) => `• «${w.word}»${w.meaning ? `: ${w.meaning}` : ""}`)
+    .join("\n");
+  return [
+    "Palabras a integrar en el micro-relato:",
+    wordsList,
+    styleHint ? `Estilo o tono: ${styleHint}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+export interface MicroStory {
+  title: string;
+  story: string;
+  wordsUsed: string[];
+}
+
+export function parseMicroStory(raw: string): MicroStory | null {
+  let data: unknown;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (typeof data !== "object" || data === null) return null;
+  const obj = data as Record<string, unknown>;
+  const title =
+    typeof obj.title === "string" ? obj.title.trim().slice(0, 100) : "";
+  const story =
+    typeof obj.story === "string" ? obj.story.trim().slice(0, 600) : "";
+  if (!title || !story) return null;
+  if (!/\[\[.+?\]\]/.test(story)) return null;
+  const wordsUsed = Array.isArray(obj.wordsUsed)
+    ? obj.wordsUsed
+        .filter((w): w is string => typeof w === "string" && Boolean(w.trim()))
+        .map((w) => w.trim())
+    : [];
+  return { title, story, wordsUsed };
+}
+
+// ---------- Explicación literaria en pasaje (B.3.3 & B.4) ----------
+
+export const EXPLAIN_PASSAGE_SYSTEM_PROMPT = `Eres el gato compañero literario de Lecta, un lector erudito, poético y cálido. Explicas el significado contextual, tono y matices literarios de una palabra o pasaje en su contexto exacto. Devuelve estrictamente SOLO un objeto JSON válido con esta forma exacta, sin texto extra ni markdown:
+{"contextualMeaning":"<significado preciso en este contexto, no definición general>","toneAndNuance":"<tono y matiz literario, ej. irónico, solemne, poético y elevado>","catTip":"<comentario cómplice o apunte curioso del gato sobre el estilo o uso del autor>"}
+Reglas:
+- Máximo 150 tokens / respuestas breves y directas (1-2 frases por campo).
+- Si se indica una palabra concreta, "contextualMeaning" explica qué significa esa palabra en esa oración específica.
+- Si no se indica palabra concreta o se pide explicar el pasaje completo, "contextualMeaning" resume la metáfora, imagen o idea central del pasaje.
+- "toneAndNuance" identifica el registro emocional o literario (máx. 10 palabras).
+- "catTip" es un apunte cercano y perspicaz del gato sobre el libro, autor o estilo.`;
+
+export function buildExplainInPassagePrompt(input: {
+  word?: string;
+  sentence: string;
+  bookTitle?: string;
+  author?: string;
+  language?: string;
+}): string {
+  const parts: string[] = [];
+  if (input.word && input.word.trim()) {
+    parts.push(`Palabra o expresión a explicar: «${input.word.trim()}»`);
+  }
+  parts.push(`Pasaje u oración: «${input.sentence.trim()}»`);
+  if (input.bookTitle?.trim()) {
+    parts.push(`Obra: «${input.bookTitle.trim()}»`);
+  }
+  if (input.author?.trim()) {
+    parts.push(`Autor: «${input.author.trim()}»`);
+  }
+  return parts.join("\n");
+}
+
+export interface PassageExplanation {
+  contextualMeaning: string;
+  toneAndNuance: string;
+  catTip: string;
+}
+
+export function parsePassageExplanation(raw: string): PassageExplanation | null {
+  let data: unknown;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (typeof data !== "object" || data === null) return null;
+  const obj = data as Record<string, unknown>;
+  const contextualMeaning =
+    typeof obj.contextualMeaning === "string" ? obj.contextualMeaning.trim().slice(0, 300) : "";
+  const toneAndNuance =
+    typeof obj.toneAndNuance === "string" ? obj.toneAndNuance.trim().slice(0, 150) : "";
+  const catTip =
+    typeof obj.catTip === "string" ? obj.catTip.trim().slice(0, 300) : "";
+
+  if (!contextualMeaning) return null;
+  return {
+    contextualMeaning,
+    toneAndNuance: toneAndNuance || "Literario",
+    catTip: catTip || "Fíjate en cómo resuena esta frase en el resto del capítulo.",
   };
 }

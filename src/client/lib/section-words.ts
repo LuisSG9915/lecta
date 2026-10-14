@@ -83,6 +83,57 @@ export function toKnowledgeMap(
   return map;
 }
 
+// ---------- Utilidad de siguiente capítulo (Next-Chapter Utility) ----------
+
+export interface NextChapterUtilityOptions {
+  zipf: number | null | undefined;
+  userTheta?: number;
+  threshold?: number;
+  chapterFreq?: number;
+  bookFreq?: number;
+  isPhrase?: boolean;
+  alpha?: number;
+}
+
+/**
+ * Función de utilidad Next-Chapter Utility U(w):
+ * U(w) = P(unknown | w, theta) * (1 + 1.4 ln(1 + f_cap) + 0.6 ln(1 + f_libro)) * W_zona * B_locucion
+ */
+export function nextChapterUtility(opts: NextChapterUtilityOptions): number {
+  const theta =
+    opts.userTheta ??
+    (opts.threshold != null ? Math.max(0, 7.0 - opts.threshold) : 4.0);
+  const bw =
+    opts.zipf != null && Number.isFinite(opts.zipf)
+      ? Math.max(0, 7.0 - opts.zipf)
+      : 4.0;
+  const alpha = opts.alpha ?? 1.0;
+
+  // P(unknown | w, theta) = 1 / (1 + exp(alpha * (theta - bw)))
+  const pUnknown = 1 / (1 + Math.exp(alpha * (theta - bw)));
+
+  // Recompensa de Frecuencia en la Obra: 1 + 1.4 * ln(1 + f_cap) + 0.6 * ln(1 + f_libro)
+  const fCap = Math.max(1, opts.chapterFreq ?? 1);
+  const fBook = Math.max(fCap, opts.bookFreq ?? fCap);
+  const freqReward = 1 + 1.4 * Math.log(1 + fCap) + 0.6 * Math.log(1 + fBook);
+
+  // W_zona: campana de Zona de Desarrollo Próximo (i+1)
+  // Premia con 1.25x si 0 <= bw - theta <= 1.2
+  // Penaliza con 0.6x si bw - theta > 2.5
+  const delta = bw - theta;
+  let wZona = 1.0;
+  if (delta >= 0 && delta <= 1.2) {
+    wZona = 1.25;
+  } else if (delta > 2.5) {
+    wZona = 0.6;
+  }
+
+  // B_locucion: 1.3 si es locución o frase hecha, 1.0 si palabra individual
+  const bLocucion = opts.isPhrase ? 1.3 : 1.0;
+
+  return pUnknown * freqReward * wZona * bLocucion;
+}
+
 // ---------- Filas de la preparación ----------
 
 // Fila de la hoja: la PreparationRow completa vive aparte (por clave)
@@ -137,13 +188,30 @@ export function buildSuggestionRows(input: {
   capitalOnly: ReadonlySet<string>;
   text: string;
   saved: ReadonlyMap<string, MarkLevel>;
-  knowledge: ReadonlyMap<string, { lemma: string; known: boolean }>;
+  knowledge: ReadonlyMap<
+    string,
+    {
+      lemma: string;
+      known: boolean;
+      status?: "unknown" | "familiar" | "known";
+      passiveSeenCount?: number;
+      estimatedKnownProb?: number;
+    }
+  >;
   threshold: number;
   // Datos léxicos completos por clave: los necesita el confirmar para
   // armar evidencia y palabras sin volver a buscarlos.
   lex?: Map<string, PreparationRow>;
+  userTheta?: number;
+  bookFrequencies?: ReadonlyMap<string, number>;
 }): SuggestionRows {
   const { language, entries, capitalOnly, text, saved, knowledge, threshold, lex } = input;
+  // Frecuencias de aparición de formas en el capítulo para Next-Chapter Utility
+  const chapterFrequencies = new Map<string, number>();
+  for (const f of input.forms) {
+    const lower = f.toLowerCase();
+    chapterFrequencies.set(lower, (chapterFrequencies.get(lower) ?? 0) + 1);
+  }
   // Barrera local además de la del análisis: dígitos, puntuación
   // residual y palabras funcionales nunca llegan a la hoja, ni a la
   // selección ni a la consulta secundaria.
@@ -294,6 +362,31 @@ export function buildSuggestionRows(input: {
   };
   for (const item of prediction.uncertain) pushUncertain(item.form, item.entry);
   for (const form of prediction.missing) pushUncertain(form);
+
+  // Ordenamiento contextual Next-Chapter Utility de las candidatas de rareza:
+  // Combina probabilidad logística de desconocimiento, recompensa por frecuencia
+  // en la obra, campana de Zona de Desarrollo Próximo (i+1) y bonificación de locución.
+  const utilityOf = (row: SuggestionRow) =>
+    nextChapterUtility({
+      zipf: row.zipf,
+      userTheta: input.userTheta,
+      threshold,
+      chapterFreq: chapterFrequencies.get(row.form.toLowerCase()) ?? 1,
+      bookFreq: input.bookFrequencies?.get(row.form.toLowerCase()),
+      isPhrase:
+        row.pos === "locución" ||
+        row.pos?.includes("locución") ||
+        row.form.includes(" "),
+    });
+
+  rarity.sort((a, b) => {
+    const diff = utilityOf(b) - utilityOf(a);
+    if (Math.abs(diff) > 1e-6) return diff;
+    const za = a.zipf ?? Number.POSITIVE_INFINITY;
+    const zb = b.zipf ?? Number.POSITIVE_INFINITY;
+    return za - zb || a.form.localeCompare(b.form);
+  });
+
   // Corte global: 40 lugares por prioridad (evidencia, aprendiendo,
   // rareza); el resto queda consultable en la lista diferida.
   const all = [...explicit, ...learning, ...rarity];

@@ -28,12 +28,26 @@ import {
   pendingChests,
   type GameChest,
 } from "../lib/gamification";
+import {
+  evaluateSentenceWithAi,
+  generateMicroStoryWithAi,
+  type EvaluateSentenceResult,
+  type MicroStoryResult,
+} from "../lib/learn";
 
 // Contenido recién abierto de un cofre: la ropa ofrece ponérsela sin
 // salir del panel y el resto se retira solo a los segundos.
 const REVEAL_MS = 2500;
 
-export function GamePanel() {
+export interface GamePanelProps {
+  mode?: "dashboard" | "adaptive_flow" | "ai_workshop";
+  onStartAdaptiveFlow?: () => void;
+  words?: Array<{ word: string; meaning?: string; bookTitle?: string; lemma?: string }>;
+  onClose?: () => void;
+}
+
+export function GamePanel(props: GamePanelProps) {
+  const { mode = "dashboard", onStartAdaptiveFlow } = props;
   const {
     enabled,
     state,
@@ -57,6 +71,15 @@ export function GamePanel() {
     }
   };
   useEffect(() => clearRevealTimer, []);
+
+  const [workshopTab, setWorkshopTab] = useState<"challenge" | "story">("challenge");
+  const [selectedWordIndex, setSelectedWordIndex] = useState(0);
+  const [sentenceInput, setSentenceInput] = useState("");
+  const [evaluating, setEvaluating] = useState(false);
+  const [evalResult, setEvalResult] = useState<EvaluateSentenceResult | null>(null);
+  const [styleHint, setStyleHint] = useState("Poético y misterioso");
+  const [generatingStory, setGeneratingStory] = useState(false);
+  const [storyResult, setStoryResult] = useState<MicroStoryResult | null>(null);
 
   if (!enabled || !state) return null;
 
@@ -127,8 +150,303 @@ export function GamePanel() {
       .finally(() => setWearBusy(false));
   };
 
+  if (mode === "ai_workshop") {
+    const availableWords =
+      props?.words && props.words.length > 0
+        ? props.words
+        : [{ word: "perenne", meaning: "Que dura siempre o mucho tiempo" }];
+    const currentWord = availableWords[selectedWordIndex] ?? availableWords[0];
+
+    const handleEvaluate = async () => {
+      const sentence = sentenceInput.trim();
+      if (!sentence || evaluating) return;
+      setEvaluating(true);
+      setEvalResult(null);
+      const scope = captureDbScope();
+      try {
+        const result = await evaluateSentenceWithAi(
+          {
+            word: currentWord.word,
+            targetSense: currentWord.meaning ?? "",
+            userSentence: sentence,
+            bookTitle: currentWord.bookTitle,
+            lemma: currentWord.lemma,
+          },
+          scope,
+        );
+        setEvalResult(result);
+      } finally {
+        setEvaluating(false);
+      }
+    };
+
+    const handleGenerateStory = async () => {
+      if (generatingStory) return;
+      setGeneratingStory(true);
+      setStoryResult(null);
+      const scope = captureDbScope();
+      try {
+        const result = await generateMicroStoryWithAi(
+          {
+            words: availableWords.slice(0, 4).map((w) => ({
+              word: w.word,
+              meaning: w.meaning,
+            })),
+            styleHint: styleHint.trim() || undefined,
+          },
+          scope,
+        );
+        setStoryResult(result);
+      } finally {
+        setGeneratingStory(false);
+      }
+    };
+
+    const catBubbleText = evaluating
+      ? "Leyendo tu frase con atención..."
+      : generatingStory
+        ? "Tejiendo un cuento con tus palabras..."
+        : evalResult
+          ? evalResult.feedback
+          : workshopTab === "challenge"
+            ? `¡Bienvenido al Reto del Escritor! Escribe una oración con «${currentWord.word}» y la revisamos juntos 🐾`
+            : "Selecciona el tono e hilvanemos un microrrelato con las palabras de tu cuaderno 🐾";
+
+    return (
+      <section
+        className="game game-ai-workshop cat-anim"
+        aria-label="Taller con el Gato IA"
+        data-mode="ai_workshop"
+      >
+        <div className="game-ai-header">
+          <CompanionButton
+            stage={stage}
+            mood={mood}
+            pose={evalResult?.catReaction === "purring" ? "celebrate" : undefined}
+            accessories={accessories}
+            name={name}
+            label={`Ver a ${name}`}
+            onClick={openPanel}
+          />
+          <div className="game-ai-speech-bubble" role="status">
+            {catBubbleText}
+          </div>
+          {props?.onClose ? (
+            <button
+              type="button"
+              className="btn--quiet"
+              onClick={props.onClose}
+              aria-label="Cerrar taller"
+            >
+              ✕
+            </button>
+          ) : null}
+        </div>
+
+        <div className="game-ai-tabs" role="tablist" aria-label="Modos del taller">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={workshopTab === "challenge"}
+            data-active={workshopTab === "challenge"}
+            className="game-ai-tab-btn"
+            onClick={() => {
+              setWorkshopTab("challenge");
+            }}
+          >
+            ✍️ El Reto del Escritor
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={workshopTab === "story"}
+            data-active={workshopTab === "story"}
+            className="game-ai-tab-btn"
+            onClick={() => {
+              setWorkshopTab("story");
+            }}
+          >
+            📜 Cuento de Tinta
+          </button>
+        </div>
+
+        {workshopTab === "challenge" ? (
+          <div className="ai-challenge-container">
+            <div className="ai-word-banner">
+              <h3 className="ai-word-title">{currentWord.word}</h3>
+              {currentWord.meaning ? (
+                <p className="ai-word-meaning">
+                  <strong>Sentido:</strong> {currentWord.meaning}
+                </p>
+              ) : null}
+              {availableWords.length > 1 ? (
+                <div style={{ marginTop: "0.5rem", display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
+                  {availableWords.map((w, idx) => (
+                    <button
+                      key={w.word + idx}
+                      type="button"
+                      className="btn--quiet"
+                      style={{
+                        padding: "0.2rem 0.5rem",
+                        fontSize: "0.8rem",
+                        fontWeight: idx === selectedWordIndex ? "700" : "normal",
+                        textDecoration: idx === selectedWordIndex ? "underline" : "none",
+                      }}
+                      onClick={() => {
+                        setSelectedWordIndex(idx);
+                        setEvalResult(null);
+                        setSentenceInput("");
+                      }}
+                    >
+                      {w.word}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+
+            <div>
+              <label htmlFor="ai-writer-sentence" className="visually-hidden">
+                Tu oración con «{currentWord.word}»
+              </label>
+              <textarea
+                id="ai-writer-sentence"
+                className="ai-sentence-textarea"
+                rows={3}
+                placeholder={`Escribe aquí una oración utilizando «${currentWord.word}»…`}
+                value={sentenceInput}
+                onChange={(e) => {
+                  setSentenceInput(e.target.value);
+                  if (evalResult) setEvalResult(null);
+                }}
+                disabled={evaluating}
+              />
+            </div>
+
+            <div className="ai-actions-row">
+              <button
+                type="button"
+                className="btn btn--primary"
+                onClick={handleEvaluate}
+                disabled={evaluating || !sentenceInput.trim()}
+              >
+                {evaluating ? "El gato está leyendo…" : "Revisar con el Gato"}
+              </button>
+              {evalResult?.offlineFallback ? (
+                <span className="ai-fallback-badge">Modo sin conexión</span>
+              ) : null}
+            </div>
+
+            {evalResult ? (
+              <div className="ai-result-panel" role="region" aria-label="Resultado de la evaluación">
+                <div className="ai-result-badges">
+                  <span
+                    className={`ai-score-pill ${evalResult.score >= 60 ? "is-good" : "is-poor"}`}
+                  >
+                    {evalResult.score} / 100
+                  </span>
+                  <span className="ai-reaction-pill">
+                    {evalResult.catReaction === "purring"
+                      ? "😻 Ronroneo"
+                      : evalResult.catReaction === "curious"
+                        ? "😺 Curioso"
+                        : "🤔 Pensativo"}
+                  </span>
+                </div>
+                <p className="ai-feedback">{evalResult.feedback}</p>
+                {evalResult.improvedVersion ? (
+                  <div className="ai-improved-box">
+                    <span className="ai-improved-title">Propuesta de estilo del gato:</span>
+                    <p className="ai-improved-text">«{evalResult.improvedVersion}»</p>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <div className="ai-story-container">
+            <div>
+              <p className="meta" style={{ marginBottom: "0.5rem" }}>
+                Palabras del cuaderno que se integrarán en el cuento:
+              </p>
+              <div className="ai-story-chips">
+                {availableWords.slice(0, 4).map((w, i) => (
+                  <span key={w.word + i} className="ai-story-chip">
+                    «{w.word}»
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <label htmlFor="ai-story-style" className="meta" style={{ whiteSpace: "nowrap" }}>
+                Tono o atmósfera:
+              </label>
+              <input
+                id="ai-story-style"
+                type="text"
+                className="ai-sentence-textarea"
+                style={{ minHeight: "auto", padding: "0.35rem 0.65rem", fontSize: "0.9rem" }}
+                value={styleHint}
+                onChange={(e) => setStyleHint(e.target.value)}
+                placeholder="Ej. Misterio, Poético, Aventura..."
+              />
+            </div>
+
+            <div className="ai-actions-row">
+              <button
+                type="button"
+                className="btn btn--primary"
+                onClick={handleGenerateStory}
+                disabled={generatingStory}
+              >
+                {generatingStory ? "Tejiendo historia…" : "Tejer Cuento con el Gato"}
+              </button>
+              {storyResult?.offlineFallback ? (
+                <span className="ai-fallback-badge">Modo sin conexión</span>
+              ) : null}
+            </div>
+
+            {storyResult ? (
+              <div className="ai-story-card" role="region" aria-label="Cuento generado">
+                <h3 className="ai-story-title">{storyResult.title}</h3>
+                <p className="ai-story-body">
+                  {storyResult.story.split(/(\[\[.+?\]\])/g).map((part, i) => {
+                    if (part.startsWith("[[") && part.endsWith("]]")) {
+                      return (
+                        <mark key={i} className="ai-story-highlight">
+                          {part.slice(2, -2)}
+                        </mark>
+                      );
+                    }
+                    return part;
+                  })}
+                </p>
+              </div>
+            ) : null}
+          </div>
+        )}
+      </section>
+    );
+  }
+
   return (
-    <section className="game cat-anim" aria-label="Tu compañero y progreso">
+    <section
+      className="game cat-anim"
+      aria-label="Tu compañero y progreso"
+      data-mode={mode}
+    >
+      {mode === "adaptive_flow" && onStartAdaptiveFlow ? (
+        <div className="game-adaptive-flow-cta">
+          <button
+            type="button"
+            className="btn btn--primary"
+            onClick={onStartAdaptiveFlow}
+          >
+            Iniciar Sesión Fluida
+          </button>
+        </div>
+      ) : null}
       <div className="game-head">
         <CompanionButton
           stage={stage}

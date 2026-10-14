@@ -6,6 +6,30 @@ export interface PracticeContextProps {
   target?: string;
   language?: string;
   className?: string;
+  slotTarget?: boolean;
+}
+
+function renderContent(
+  rawText: string,
+  target?: string,
+  slotTarget?: boolean,
+) {
+  if (!target || !slotTarget) return rawText;
+  const escaped = target.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const regex = new RegExp(`(${escaped})`, "gi");
+  const parts = rawText.split(regex);
+  if (parts.length <= 1) return rawText;
+
+  const lowerTarget = target.toLowerCase();
+  return parts.map((part, i) =>
+    part.toLowerCase() === lowerTarget ? (
+      <span key={i} className="context-slot-illuminated" title="Palabra a descifrar">
+        &nbsp;______&nbsp;
+      </span>
+    ) : (
+      part
+    ),
+  );
 }
 
 // Muestra el contexto de forma ligera y ágil: si la cita es un
@@ -17,6 +41,7 @@ export function PracticeContext({
   target,
   language = "es",
   className = "",
+  slotTarget = false,
 }: PracticeContextProps) {
   const [expanded, setExpanded] = useState(false);
   const { snippet, isTrimmed } = smartContextSnippet(text, target, { language });
@@ -26,12 +51,12 @@ export function PracticeContext({
   const baseClass = `card-context${className ? ` ${className}` : ""}`;
 
   if (!isTrimmed) {
-    return <p className={baseClass}>“{text}”</p>;
+    return <p className={baseClass}>“{renderContent(text, target, slotTarget)}”</p>;
   }
 
   return (
     <div className="card-context-box">
-      <p className={baseClass}>“{snippet}”</p>
+      <p className={baseClass}>“{renderContent(snippet, target, slotTarget)}”</p>
       <button
         type="button"
         className="btn--quiet card-context-toggle"
@@ -41,7 +66,9 @@ export function PracticeContext({
         {expanded ? "Ocultar contexto completo ▴" : "Ver contexto del libro ▾"}
       </button>
       {expanded ? (
-        <p className={`${baseClass} card-context--full`}>“{text}”</p>
+        <p className={`${baseClass} card-context--full`}>
+          “{renderContent(text, target, slotTarget)}”
+        </p>
       ) : null}
     </div>
   );

@@ -266,3 +266,68 @@ describe("POST /api/lexicon/verify-sentence", () => {
     expect(response.status).toBe(503);
   });
 });
+
+describe("POST /api/ai/evaluate-sentence", () => {
+  const post = (body: unknown, env?: object) =>
+    app.request(
+      "/api/ai/evaluate-sentence",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      },
+      env,
+    );
+
+  it("rejects requests without word, targetSense, or userSentence", async () => {
+    expect((await post({})).status).toBe(400);
+    expect((await post({ word: "efímero" })).status).toBe(400);
+    expect((await post({ word: "efímero", targetSense: "Pasajero" })).status).toBe(400);
+    expect((await post({ word: "efímero", targetSense: "Pasajero", userSentence: "" })).status).toBe(400);
+  });
+
+  it("rejects userSentence over 400 characters", async () => {
+    const response = await post({
+      word: "efímero",
+      targetSense: "Pasajero",
+      userSentence: "x".repeat(401),
+    });
+    expect(response.status).toBe(400);
+  });
+
+  it("requires authenticated session", async () => {
+    const response = await post({
+      word: "efímero",
+      targetSense: "Pasajero",
+      userSentence: "El atardecer fue efímero pero hermoso.",
+    });
+    expect(response.status).toBe(401);
+  });
+});
+
+describe("POST /api/ai/micro-story", () => {
+  const post = (body: unknown, env?: object) =>
+    app.request(
+      "/api/ai/micro-story",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      },
+      env,
+    );
+
+  it("rejects requests without valid words", async () => {
+    expect((await post({})).status).toBe(400);
+    expect((await post({ words: [] })).status).toBe(400);
+    expect((await post({ words: [{ word: "" }] })).status).toBe(400);
+  });
+
+  it("requires authenticated session", async () => {
+    const response = await post({
+      words: [{ word: "tinta", meaning: "Líquido para escribir" }],
+    });
+    expect(response.status).toBe(401);
+  });
+});
+

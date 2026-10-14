@@ -1,5 +1,6 @@
 import { Rating, type Grade } from "./fsrs";
 import type { SavedWord } from "./idb";
+import { markLevel } from "./word-level";
 
 const BLANK = "_____";
 
@@ -243,3 +244,199 @@ export function scrambleWord(
 
   return { original: clean, letters: scrambled };
 }
+
+// ---------- Sesión Fluida y Enrutamiento Cognitivo Adaptativo ----------
+
+export type AdaptiveMechanic =
+  | "contextual_cloze"
+  | "syllable_scramble"
+  | "phrase_weaver"
+  | "grammar_nuance"
+  | "ai_sentence_craft";
+
+export type PracticeItem =
+  | SavedWord
+  | {
+      word: SavedWord;
+      pool?: SavedWord[];
+      useAi?: boolean;
+      hasConnection?: boolean;
+    };
+
+export interface AdaptiveChallenge {
+  id: string;
+  word: SavedWord;
+  level: 1 | 2 | 3;
+  mechanic: AdaptiveMechanic;
+  distractors: string[];
+  clozeSentence: string | null;
+  targetWord: string;
+  rescued?: boolean;
+  originalMechanic?: AdaptiveMechanic;
+  hint?: string;
+}
+
+/**
+ * Selecciona 3 distractores semánticamente plausibles del mismo nivel
+ * léxico/estabilidad (word-level.ts) y categoría gramatical.
+ */
+export function pickLevelDistractors(
+  target: SavedWord,
+  pool: SavedWord[],
+  count = 3,
+): string[] {
+  const targetLevel = markLevel(target.card);
+  const seen = new Set([target.form.toLowerCase()]);
+  const sameLevelSamePos: string[] = [];
+  const sameLevel: string[] = [];
+  const samePos: string[] = [];
+  const others: string[] = [];
+
+  const ordered = [...pool].sort((a, b) =>
+    a.key < b.key ? -1 : a.key > b.key ? 1 : 0,
+  );
+
+  for (const w of ordered) {
+    if (w.key === target.key || w.deleted) continue;
+    const formLower = w.form.toLowerCase();
+    if (seen.has(formLower)) continue;
+    seen.add(formLower);
+
+    const wLevel = markLevel(w.card);
+    const isSameLevel = wLevel === targetLevel;
+    const isSamePos = target.pos != null && w.pos === target.pos;
+
+    if (isSameLevel && isSamePos) {
+      sameLevelSamePos.push(w.form);
+    } else if (isSameLevel) {
+      sameLevel.push(w.form);
+    } else if (isSamePos) {
+      samePos.push(w.form);
+    } else {
+      others.push(w.form);
+    }
+  }
+
+  return [...sameLevelSamePos, ...sameLevel, ...samePos, ...others].slice(0, count);
+}
+
+/**
+ * Algoritmo de Enrutamiento Cognitivo:
+ * Asigna automáticamente la mecánica óptima según la estabilidad S y dificultad D en FSRS:
+ * - Nivel 1 — Reconocimiento (S < 2.5 días o tarjeta nueva): mechanic: 'contextual_cloze'
+ * - Nivel 2 — Reconstrucción Morfológica y Sintáctica (2.5 <= S < 10 días):
+ *             Alterna entre 'syllable_scramble' y 'phrase_weaver'
+ * - Nivel 3 — Dominio Profundo y Producción (S >= 10 días):
+ *             'grammar_nuance' o 'ai_sentence_craft' (si IA está activa y hay conexión)
+ */
+export function buildAdaptivePracticeQueue(
+  items: PracticeItem[],
+  options?: {
+    pool?: SavedWord[];
+    useAi?: boolean;
+    hasConnection?: boolean;
+  },
+): AdaptiveChallenge[] {
+  const allWords: SavedWord[] = items.map((it) => ("word" in it ? it.word : it));
+  const defaultPool = options?.pool ?? allWords;
+
+  let level2Counter = 0;
+
+  return items.map((item, index) => {
+    const word = "word" in item ? item.word : item;
+    const itemPool = ("pool" in item && item.pool) ? item.pool : defaultPool;
+    const useAi =
+      ("useAi" in item ? item.useAi : undefined) ?? options?.useAi ?? false;
+    const hasConnection =
+      ("hasConnection" in item ? item.hasConnection : undefined) ??
+      options?.hasConnection ??
+      true;
+
+    const card = word.card;
+    const stability = card?.stability ?? 0;
+    const reps = card?.reps ?? 0;
+    const isNew = !card || reps === 0;
+
+    let level: 1 | 2 | 3;
+    let mechanic: AdaptiveMechanic;
+
+    if (isNew || stability < 2.5) {
+      level = 1;
+      mechanic = "contextual_cloze";
+    } else if (stability < 10) {
+      level = 2;
+      const wantsWeaver = level2Counter % 2 === 1;
+      level2Counter++;
+      if (wantsWeaver && word.context && word.context.trim().length > 0) {
+        mechanic = "phrase_weaver";
+      } else {
+        mechanic = "syllable_scramble";
+      }
+    } else {
+      level = 3;
+      if (useAi && hasConnection) {
+        mechanic = "ai_sentence_craft";
+      } else {
+        mechanic = "grammar_nuance";
+      }
+    }
+
+    const distractors = pickLevelDistractors(word, itemPool, 3);
+    const clozeSentence = word.context
+      ? blankWordInContext(word.context, word.form, word.language)
+      : null;
+
+    return {
+      id: `challenge-${word.key}-${index}`,
+      word,
+      level,
+      mechanic,
+      distractors,
+      clozeSentence,
+      targetWord: word.form,
+    };
+  });
+}
+
+/**
+ * Regla de Rescate Pedagógico (Anti-Frustración):
+ * Si un usuario falla un reto de Nivel 2 o Nivel 3, degrada inmediatamente el reto
+ * en la misma pantalla al Nivel 1 (mostrar la oración con pistas visuales / distractores)
+ * para que el usuario termine siempre el turno con una respuesta exitosa.
+ */
+export function rescueChallenge(
+  challenge: AdaptiveChallenge,
+  pool: SavedWord[] = [],
+): AdaptiveChallenge {
+  const distractors =
+    challenge.distractors && challenge.distractors.length > 0
+      ? challenge.distractors
+      : pickLevelDistractors(challenge.word, pool, 3);
+
+  const clozeSentence =
+    challenge.clozeSentence ??
+    (challenge.word.context
+      ? blankWordInContext(
+          challenge.word.context,
+          challenge.word.form,
+          challenge.word.language,
+        )
+      : null);
+
+  const prefix = challenge.word.form.slice(
+    0,
+    Math.min(2, challenge.word.form.length),
+  );
+
+  return {
+    ...challenge,
+    level: 1,
+    originalMechanic: challenge.originalMechanic ?? challenge.mechanic,
+    mechanic: "contextual_cloze",
+    rescued: true,
+    distractors,
+    clozeSentence,
+    hint: `Pista de rescate: la palabra empieza por «${prefix.toUpperCase()}»`,
+  };
+}
+

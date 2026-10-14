@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   prepareSentenceBuilder,
   scrambleSentenceTokens,
   type SentenceToken,
 } from "../lib/grammar";
+import { splitSentenceIntoSyntacticChunks } from "../lib/syntactic-lines";
 import { conciseMeaning } from "../lib/practice";
 import { triggerHaptic, triggerPurrHaptic } from "../lib/haptics";
 import { playCompanionSound } from "../lib/companion-audio";
@@ -21,6 +22,26 @@ export interface SentenceBuilderGameProps {
   readonly onWrong?: () => void;
 }
 
+function renderChunkWithHighlight(text: string, targetWord: string) {
+  if (!targetWord?.trim()) return text;
+  const cleanTarget = targetWord.trim();
+  const escaped = cleanTarget.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const regex = new RegExp(`(${escaped})`, "gi");
+  const parts = text.split(regex);
+  if (parts.length <= 1) return text;
+
+  const targetLower = cleanTarget.toLowerCase();
+  return parts.map((part, i) =>
+    part.toLowerCase() === targetLower ? (
+      <span key={i} className="sentence-target-highlight">
+        {part}
+      </span>
+    ) : (
+      part
+    ),
+  );
+}
+
 export function SentenceBuilderGame({
   targetWord,
   meaning,
@@ -32,11 +53,19 @@ export function SentenceBuilderGame({
   onSolve,
   onWrong,
 }: SentenceBuilderGameProps) {
-  const prepared = prepareSentenceBuilder(sentence, targetWord) ?? {
-    originalTokens: sentence.split(/\s+/).slice(0, 6).filter(Boolean),
-    targetWordIndex: 0,
-  };
-  const originalTokens = prepared.originalTokens;
+  // Priorizar siempre la oración real capturada del libro del usuario
+  const effectiveSentence = sentence?.trim()
+    ? sentence
+    : `Encontramos en la lectura la palabra ${targetWord}.`;
+
+  const originalTokens = useMemo(() => {
+    const rawWords = effectiveSentence.trim().split(/\s+/).filter(Boolean);
+    if (rawWords.length > 5) {
+      return splitSentenceIntoSyntacticChunks(effectiveSentence);
+    }
+    const prepared = prepareSentenceBuilder(effectiveSentence, targetWord);
+    return prepared ? prepared.originalTokens : rawWords.slice(0, 6);
+  }, [effectiveSentence, targetWord]);
 
   const [available, setAvailable] = useState<SentenceToken[]>(() =>
     scrambleSentenceTokens(originalTokens),
@@ -45,6 +74,18 @@ export function SentenceBuilderGame({
   const [isCorrect, setIsCorrect] = useState(false);
   const [isShaking, setIsShaking] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
+
+  // Sincronizar estado cuando cambia la oración o palabra objetivo
+  const [prevTokensKey, setPrevTokensKey] = useState(() => originalTokens.join(" "));
+  const currentTokensKey = originalTokens.join(" ");
+  if (currentTokensKey !== prevTokensKey) {
+    setPrevTokensKey(currentTokensKey);
+    setAvailable(scrambleSentenceTokens(originalTokens));
+    setPlaced([]);
+    setIsCorrect(false);
+    setIsShaking(false);
+    setFeedback(null);
+  }
 
   const checkOrder = useCallback(
     (currentPlaced: SentenceToken[]) => {
@@ -174,7 +215,7 @@ export function SentenceBuilderGame({
     <div className="sentence-builder-game" role="region" aria-label="Juego de ordenar la oración">
       <div className="index-card nb-card sentence-builder-card">
         <p className="sentence-card-prompt meta">
-          Ordena la oración para «<strong>{targetWord}</strong>»:
+          <span className="sentence-card-title">Telar de Frases:</span> Ordena los fragmentos para «<strong>{targetWord}</strong>»:
         </p>
         {meaning ? (
           <p className="sentence-meaning" title={meaning}>
@@ -191,7 +232,7 @@ export function SentenceBuilderGame({
         >
           {placed.length === 0 ? (
             <span className="sentence-empty-placeholder meta">
-              Toca las palabras de abajo en el orden gramatical correcto…
+              Toca los fragmentos de abajo en el orden literario correcto…
             </span>
           ) : (
             placed.map((token, idx) => (
@@ -208,7 +249,9 @@ export function SentenceBuilderGame({
                 onClick={() => unplaceToken(token)}
               >
                 <span className="sentence-chip-num">{idx + 1}</span>
-                <span className="sentence-chip-text">{token.text}</span>
+                <span className="sentence-chip-text">
+                  {renderChunkWithHighlight(token.text, targetWord)}
+                </span>
               </button>
             ))
           )}
@@ -219,7 +262,7 @@ export function SentenceBuilderGame({
       <div
         className="sentence-pool"
         role="group"
-        aria-label="Palabras disponibles para ordenar"
+        aria-label="Fragmentos disponibles para ordenar"
       >
         {available.map((token, idx) => (
           <button
@@ -232,7 +275,9 @@ export function SentenceBuilderGame({
             <span className="sentence-pool-key" aria-hidden="true">
               {idx + 1}
             </span>
-            <span className="sentence-pool-text">{token.text}</span>
+            <span className="sentence-pool-text">
+              {renderChunkWithHighlight(token.text, targetWord)}
+            </span>
           </button>
         ))}
       </div>

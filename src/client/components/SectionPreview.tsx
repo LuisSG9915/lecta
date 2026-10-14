@@ -3,6 +3,10 @@ import Sheet from "./Sheet";
 import { triggerHaptic } from "../lib/haptics";
 import type { PreparationAnswer, PreparationAnswers } from "../lib/preparation";
 import type { SuggestionRow } from "../lib/section-words";
+import { useCompanionSafe } from "./CompanionProvider";
+import { Companion } from "./Companion";
+import { ProgressInk } from "./ProgressInk";
+import type { ReadingStrategyPreset } from "../lib/settings";
 
 // Una fila de la preparación: la SuggestionRow que construye el
 // controlador, con razón y medición opcionales en la vista (las usa
@@ -49,6 +53,14 @@ export type SectionPreviewProps = {
   // Descarte explícito del borrador; el componente lo confirma en la
   // misma hoja, sin apilar otro diálogo.
   onDiscard: () => void;
+  // Tiempo estimado de lectura del capítulo (minutos)
+  estimatedMinutes?: number;
+  // Estrategia preseleccionada sugerida para el capítulo
+  initialStrategy?: ReadingStrategyPreset;
+  // Cambio de estrategia desde el pórtico
+  onSelectStrategy?: (preset: ReadingStrategyPreset) => void;
+  // Notificación al desbloquear una joya léxica
+  onUnlockCard?: (row: SectionPreviewRow) => void;
 };
 
 const PAGE_SIZE = 8;
@@ -150,13 +162,26 @@ export default function SectionPreview({
   onRetry,
   onClose,
   onDiscard,
+  estimatedMinutes,
+  initialStrategy,
+  onSelectStrategy,
+  onUnlockCard,
 }: SectionPreviewProps) {
+  const companion = useCompanionSafe();
   const [showAll, setShowAll] = useState(false);
   const [showUncertain, setShowUncertain] = useState(false);
   const [showDeferred, setShowDeferred] = useState(false);
   const [deferredShown, setDeferredShown] = useState(PAGE_SIZE);
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
+
+  // Estado del pórtico: 3 cartas de desbloqueo, tinta extra y selección de estrategia
+  const [flippedKeys, setFlippedKeys] = useState<Set<string>>(() => new Set());
+  const [unlockedKeys, setUnlockedKeys] = useState<Set<string>>(() => new Set());
+  const [bonusInk, setBonusInk] = useState(0);
+  const [selectedStrategy, setSelectedStrategy] = useState<ReadingStrategyPreset>(
+    initialStrategy ?? "focus",
+  );
 
   const answered = Object.keys(answers).length;
   const unknownCount = Object.values(answers).filter(
@@ -198,6 +223,49 @@ export default function SectionPreview({
     onRowsPresented?.(visibleRows);
   });
 
+  const estMin =
+    estimatedMinutes ??
+    Math.max(2, Math.min(30, Math.round((rows.length || 1) * 1.5)));
+  const gemsCount = Math.min(3, rows.length);
+
+  const catMessage =
+    analysis === "loading"
+      ? "Estoy preparando el pórtico y encontrando las joyas léxicas del capítulo..."
+      : analysis === "error"
+        ? "No pude analizar las palabras, pero las puertas del capítulo están abiertas para ti."
+        : gemsCount > 0
+          ? `Este capítulo se lee en ~${estMin} min. Encontré ${gemsCount} ${gemsCount === 1 ? "joya léxica que te hará" : "joyas léxicas que te harán"} disfrutar más la lectura.`
+          : `Este capítulo se lee en ~${estMin} min. ¡Todo despejado para disfrutar la lectura sin tropiezos!`;
+
+  const handleFlipCard = (row: SectionPreviewRow) => {
+    triggerHaptic(12);
+    setFlippedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(row.key)) next.delete(row.key);
+      else next.add(row.key);
+      return next;
+    });
+    if (!unlockedKeys.has(row.key)) {
+      setUnlockedKeys((prev) => new Set(prev).add(row.key));
+      setBonusInk((prev) => prev + 5);
+      onUnlockCard?.(row);
+      window.dispatchEvent(new CustomEvent("lecta:focus-block-completed"));
+    }
+  };
+
+  const STRATEGY_CHIPS: { id: ReadingStrategyPreset; label: string }[] = [
+    { id: "focus", label: "Enfoque de Párrafo" },
+    { id: "lexical", label: "Explorador Léxico" },
+    { id: "immersive", label: "Lectura Inmersiva" },
+    { id: "audio", label: "Audio-Lectura" },
+  ];
+
+  const handleSelectStrategy = (strat: ReadingStrategyPreset) => {
+    setSelectedStrategy(strat);
+    onSelectStrategy?.(strat);
+    triggerHaptic(10);
+  };
+
   return (
     <Sheet label={`Antes de leer — ${title}`} onClose={onClose}>
       <div className="sheet-head">
@@ -211,6 +279,25 @@ export default function SectionPreview({
         >
           Cerrar
         </button>
+      </div>
+
+      {/* Cabecera del Pórtico con el Gato */}
+      <div className="portico-cat-section">
+        <div className="portico-cat-avatar">
+          {companion ? (
+            <Companion
+              stage={companion.stage}
+              mood="awake"
+              accessories={companion.accessories}
+              pose={analysis === "loading" ? "idle" : "greet"}
+            />
+          ) : (
+            <div className="portico-cat-fallback" aria-hidden="true">🐱</div>
+          )}
+        </div>
+        <div className="portico-speech-bubble" role="status">
+          <p>{catMessage}</p>
+        </div>
       </div>
 
       {analysis === "loading" ? (
@@ -252,6 +339,101 @@ export default function SectionPreview({
 
       {analysis === "ready" && rows.length ? (
         <>
+          {/* 3 Cartas Rápidas de Desbloqueo (Flash-Preview) */}
+          <section className="portico-flash-container" aria-label="Desbloqueo rápido de joyas léxicas">
+            <div className="portico-flash-header">
+              <h3 className="portico-subtitle">Desbloqueo rápido de joyas léxicas</h3>
+              <span className="portico-ink-badge" title="Gotas de tinta obtenidas">
+                +{bonusInk} gotas de tinta 💧
+              </span>
+            </div>
+            <div className="portico-flash-grid">
+              {rows.slice(0, 3).map((row) => {
+                const isFlipped = flippedKeys.has(row.key);
+                return (
+                  <div
+                    key={row.key}
+                    className={`portico-card-3d${isFlipped ? " is-flipped" : ""}`}
+                    onClick={() => handleFlipCard(row)}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Carta de joya léxica ${row.form}`}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        handleFlipCard(row);
+                      }
+                    }}
+                  >
+                    <div className="portico-card-inner">
+                      <div className="portico-card-front">
+                        <span className="portico-card-sparkle">✦</span>
+                        <strong className="portico-card-form">{row.form}</strong>
+                        <span className="portico-card-hint">Toca para descubrir</span>
+                      </div>
+                      <div className="portico-card-back">
+                        <strong className="portico-card-form">{row.form}</strong>
+                        <p className="portico-card-meaning">
+                          {row.meaning ?? "Término clave de esta lectura"}
+                        </p>
+                        {row.context ? (
+                          <p className="portico-card-context">“{row.context}”</p>
+                        ) : null}
+                        <span className="portico-card-reward">+5 gotas de tinta</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {bonusInk > 0 ? (
+              <div className="portico-ink-progress" style={{ marginBlockStart: "var(--s-2)" }}>
+                <ProgressInk
+                  value={bonusInk}
+                  max={15}
+                  floor={0}
+                  variant="vermilion"
+                  label="Tinta ganada en el pórtico"
+                />
+              </div>
+            ) : null}
+          </section>
+
+          {/* Selector de Estrategia con 1 Clic */}
+          <div className="portico-strategy-selector">
+            <span className="eyebrow">Estrategia para este capítulo</span>
+            <div className="portico-strategy-chips" role="radiogroup" aria-label="Estrategia sugerida">
+              {STRATEGY_CHIPS.map((chip) => (
+                <button
+                  key={chip.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={selectedStrategy === chip.id}
+                  data-active={selectedStrategy === chip.id || undefined}
+                  className="portico-chip"
+                  onClick={() => handleSelectStrategy(chip.id)}
+                >
+                  {chip.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Botón Hero: Entrar al capítulo → */}
+          <div className="portico-actions-hero">
+            <button
+              type="button"
+              className="btn btn--primary portico-enter-btn"
+              disabled={saving}
+              onClick={() => {
+                onSelectStrategy?.(selectedStrategy);
+                onConfirm();
+              }}
+            >
+              {saving ? "Guardando…" : "Entrar al capítulo →"}
+            </button>
+          </div>
+
           <p className="meta">
             Marca cada palabra: lo que no conozcas se agrega a tu Cuaderno
             al guardar. Puedes dejar algunas sin responder.

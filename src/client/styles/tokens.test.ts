@@ -119,6 +119,11 @@ describe("tokens.css", () => {
     expect(Object.keys(themes["auto-dark"]).length).toBeGreaterThan(0);
   });
 
+  it("define curvas de animación --ease-spring y --ease-soft (Fase 5.1)", () => {
+    expect(cssContent).toContain("--ease-spring: cubic-bezier(0.22, 1, 0.36, 1);");
+    expect(cssContent).toContain("--ease-soft: cubic-bezier(0.4, 0, 0.2, 1);");
+  });
+
   it("mantiene paridad exacta de tokens de color entre todos los temas", () => {
     const getColorVarNames = (theme: ThemeDeclarations) => {
       return Object.entries(theme)

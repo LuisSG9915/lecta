@@ -22,6 +22,9 @@ export interface DeepReadingSummary {
   targetMinutes: DeepReadingDuration;
   sectionsRead: number;
   completedNaturally: boolean;
+  wordsAssimilated?: number;
+  coverageDeltaPercent?: number;
+  bookCoveragePercent?: number;
 }
 
 /**

@@ -32,6 +32,7 @@ import {
   loadBookPosition,
   saveBookPosition,
   saveKnowledge,
+  recordPassiveExposure,
   saveReadingInterval,
   saveSessionValue,
   listIntervals,
@@ -42,7 +43,8 @@ import {
   type SavedBookPosition,
   type SavedInterval,
 } from "../lib/idb";
-import { batchLookup, enrichBatch, lookupWord } from "../lib/lexicon";
+import { loadUserTheta } from "../lib/profile-models";
+import { batchLookup, enrichBatch, explainInPassage, lookupWord } from "../lib/lexicon";
 import {
   selectEnrichmentCandidates,
   selectSavedForEnrichment,
@@ -104,8 +106,14 @@ import {
 } from "../lib/paragraph-focus";
 import {
   detectFatigue,
+  detectDensePassageStall,
+  isReaderIdleSleepy,
+  loadBaselineWpm,
+  newDenseStallDetector,
   newFocusTracker,
   recordMove,
+  resetDenseStallPage,
+  type DenseStallDetector,
   type FocusTracker,
 } from "../lib/focus-telemetry";
 import {
@@ -118,11 +126,15 @@ import {
   readerProfileFor,
   readerCssVars,
   READER_LIMITS,
-  READER_FONTS,
   LEADING_OPTIONS,
   MARGIN_OPTIONS,
   PREPARATION_MODES,
+  READING_STRATEGY_PRESETS,
+  applyStrategyPreset,
+  isStrategyPresetActive,
+  RULER_SIZES,
   type ReaderSettings,
+  type ReadingStrategyPreset,
   type ThemeChoice,
 } from "../lib/settings";
 import {
@@ -139,7 +151,7 @@ import {
   updateAnnotation,
   type SavedAnnotation,
 } from "../lib/idb";
-import { makeBookmark, makePassage } from "../lib/annotations";
+import { makeBookmark, makePassage, type PassageTone } from "../lib/annotations";
 import { applyPassageMarks } from "../lib/passage-marks";
 import {
   pageLayout,
@@ -197,16 +209,16 @@ import {
   type TtsSnapshot,
 } from "../lib/ttsTypes";
 import { setCompanionAudioSuppressed } from "../lib/companion-audio";
-import TtsMenuItem from "./TtsMenuItem";
 import TtsConsentDialog from "./TtsConsentDialog";
 import TtsNowPlaying from "./TtsNowPlaying";
 import WordPanel from "./WordPanel";
 import SectionPreview, { type SectionPreviewRow } from "./SectionPreview";
 import Sheet from "./Sheet";
+import Dialog from "./Dialog";
 import Icon from "./Icon";
+import { ProgressInk } from "./ProgressInk";
 import ReaderMoreMenu from "./ReaderMoreMenu";
 import QuoteCardModal from "./QuoteCardModal";
-import OfflineDictionaryControl from "./OfflineDictionaryControl";
 import DeepReadingModal from "./DeepReadingModal";
 import DeepReadingSummaryModal from "./DeepReadingSummaryModal";
 import BookGlossaryModal from "./BookGlossaryModal";
@@ -228,7 +240,7 @@ import {
   toggleFullscreen,
 } from "../lib/fullscreen";
 import { playCompanionSound } from "../lib/companion-audio";
-import ThemeMenu, { FocusModeMenu } from "./ThemeMenu";
+import ThemeMenu, { FontCarousel, StepperControl } from "./ThemeMenu";
 import Toggle from "./Toggle";
 import { Companion } from "./Companion";
 import { CompanionButton } from "./CompanionButton";
@@ -281,6 +293,7 @@ import {
 
 type ReaderState = "idle" | "opening" | "ready" | "error";
 type SheetKind = "toc" | "settings" | "search" | "marks";
+export type ReaderSettingsTab = "strategy" | "appearance" | "book";
 
 // Metadata del premio por consulta de palabra: el uuid se genera al
 // abrir la ficha y viaja congelado en el journal. Vive fuera del
@@ -384,6 +397,14 @@ export const recordDominated = (words: SavedWord[], lang: string, scope?: DbScop
         );
   })().catch(() => undefined);
 
+export const PRESET_LABELS: Record<ReadingStrategyPreset, string> = {
+  focus: "Enfoque",
+  lexical: "Léxico",
+  immersive: "Inmersivo",
+  audio: "Audio",
+  custom: "Ajustado",
+};
+
 export default function Reader({
   bookHash,
   file,
@@ -425,7 +446,18 @@ export default function Reader({
   // «Ya la conocía» y cada guardado.
   const evidenceRef = useRef(new Map<string, KnowledgeEvidence>());
   // Evidencia explícita por lema para predictSection.
-  const knowledgeMapRef = useRef(new Map<string, { lemma: string; known: boolean }>());
+  const knowledgeMapRef = useRef(
+    new Map<
+      string,
+      {
+        lemma: string;
+        known: boolean;
+        status?: "unknown" | "familiar" | "known";
+        passiveSeenCount?: number;
+        estimatedKnownProb?: number;
+      }
+    >(),
+  );
   // Lemas con evidencia escrita en esta sesión que la próxima
   // recarga del perfil aún podría no ver en el store.
   const pendingKnowledgeRef = useRef(new Set<string>());
@@ -510,6 +542,9 @@ export default function Reader({
   const companionOpenedRef = useRef(false);
   // Ventana de regresiones para el detector de fatiga (Fase 3).
   const focusTrackerRef = useRef<FocusTracker | null>(null);
+  // Rastreo de exposición pasiva por página (Fase 4).
+  const pageEnteredAtRef = useRef<number>(0);
+  const consultedInPageRef = useRef<Set<string>>(new Set());
 
   const [state, setState] = useState<ReaderState>("idle");
   const [title, setTitle] = useState("");
@@ -568,7 +603,6 @@ export default function Reader({
   const calEvaluated = useRef(false);
   const [language, setLanguage] = useState("es");
   const [selection, setSelection] = useState<WordHit | null>(null);
-  const [isMoreOpen, setIsMoreOpen] = useState(false);
   // Índice de locuciones (asset estático): se pide al montar el
   // lector para que el PRIMER toque ya lo tenga en memoria — sin
   // red ni IA en el camino de la consulta.
@@ -583,12 +617,24 @@ export default function Reader({
     total: number;
   } | null>(null);
   const [sheet, setSheet] = useState<SheetKind | null>(null);
-  const [settingsTab, setSettingsTab] = useState<"appearance" | "layout" | "tools">("appearance");
+  const [settingsTab, setSettingsTab] = useState<ReaderSettingsTab>("strategy");
   const [barsVisible, setBarsVisible] = useState(true);
   const [isFullscreenActive, setIsFullscreenActive] = useState(() => isFullscreen());
   const [scrollRatio, setScrollRatio] = useState(0);
   const [wpm, setWpm] = useState(DEFAULT_WPM);
   const [settings, setSettings] = useState<ReaderSettings>(() => loadReaderSettings(bookHash));
+  const [strategyPaused, setStrategyPaused] = useState(false);
+  // Barra Zen auto-desvanecible (B.1)
+  const [isZenFaded, setIsZenFaded] = useState(false);
+  const zenFadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Telemetría de pasaje denso (B.2)
+  const denseStallDetectorRef = useRef<DenseStallDetector>(
+    newDenseStallDetector(0),
+  );
+  const lastActivityAtRef = useRef<number>(0);
+  const [stallBubble, setStallBubble] = useState<string | null>(null);
+  const stallBubbleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [bookOverride, setBookOverride] = useState(() => hasBookReaderSettings(bookHash));
   const [seenStatus, setSeenStatus] = useState(statusText);
   const [annotations, setAnnotations] = useState<SavedAnnotation[]>([]);
@@ -618,9 +664,20 @@ export default function Reader({
     alreadySaved?: boolean;
   } | null>(null);
   const [deepModal, setDeepModal] = useState(false);
+  const [catPassageExplanation, setCatPassageExplanation] = useState<{
+    passage: string;
+    loading: boolean;
+    data: {
+      contextualMeaning: string;
+      toneAndNuance: string;
+      catTip: string;
+    } | null;
+    error: string | null;
+  } | null>(null);
   const [glossaryOpen, setGlossaryOpen] = useState(false);
   const [deepReading, setDeepReading] = useState<DeepReadingState | null>(null);
   const [deepSummary, setDeepSummary] = useState<DeepReadingSummary | null>(null);
+  const isDeepReading = Boolean(deepReading?.active);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
   const [page, setPage] = useState(0);
   const [pageCount, setPageCount] = useState(1);
@@ -629,6 +686,7 @@ export default function Reader({
   // nombre, presencia) viene del CompanionProvider único — aquí solo
   // queda el estado visible de la máquina local de lectura.
   const [catState, setCatState] = useState<CompanionState | null>(null);
+  const [catSleepy, setCatSleepy] = useState(false);
   // Sugerencia de pausa 20-20-20 cuando la telemetría marca fatiga.
   const [fatigueNotice, setFatigueNotice] = useState(false);
   // Marcador de retomar: contexto visible al reabrir el libro tras
@@ -767,7 +825,24 @@ export default function Reader({
   // El temporizador vive en ref para limpiarlo al desmontar.
   const catTapTimer = useRef<number | null>(null);
   const [catTap, setCatTap] = useState(false);
+  const onStallBubbleClick = useCallback(() => {
+    setStallBubble(null);
+    if (stallBubbleTimerRef.current) clearTimeout(stallBubbleTimerRef.current);
+    const updated: ReaderSettings = {
+      ...settings,
+      paragraphFocus: true,
+      focusMode: "paragraph",
+    };
+    setSettings(updated);
+    saveReaderSettings(updated, bookHash);
+    triggerHaptic("success");
+  }, [settings, bookHash]);
+
   const onCatTap = () => {
+    if (stallBubble) {
+      onStallBubbleClick();
+      return;
+    }
     if (catTapTimer.current !== null) return;
     // Movimiento reducido: el brinco no se anima y la espera de 600ms
     // sería tiempo muerto — la hoja abre de inmediato.
@@ -789,6 +864,108 @@ export default function Reader({
     },
     [],
   );
+
+  // Barra Zen auto-desvanecible (B.1): a los 3s de lectura activa o tras cambiar de página,
+  // la barra superior se desvanece suavemente a opacidad 0.15. Un movimiento de ratón o
+  // toque en el tercio superior la restaura al 100%.
+  const resetZenFadeTimer = useCallback(() => {
+    setIsZenFaded(false);
+    if (zenFadeTimerRef.current) clearTimeout(zenFadeTimerRef.current);
+    zenFadeTimerRef.current = setTimeout(() => {
+      setIsZenFaded(true);
+    }, 3000);
+  }, []);
+
+  // Al cambiar de página o sección, reinicia temporizador Zen y limpia pasaje denso
+  const navKey = `${sectionIndex}:${page}`;
+  const [prevNavKey, setPrevNavKey] = useState(navKey);
+  if (navKey !== prevNavKey) {
+    setPrevNavKey(navKey);
+    setIsZenFaded(false);
+    if (stallBubble !== null) {
+      setStallBubble(null);
+    }
+  }
+
+  useEffect(() => {
+    if (zenFadeTimerRef.current) clearTimeout(zenFadeTimerRef.current);
+    zenFadeTimerRef.current = setTimeout(() => {
+      setIsZenFaded(true);
+    }, 3000);
+    if (denseStallDetectorRef.current) {
+      resetDenseStallPage(denseStallDetectorRef.current, Date.now());
+    }
+    if (stallBubbleTimerRef.current) clearTimeout(stallBubbleTimerRef.current);
+  }, [navKey]);
+
+  // Escucha de actividad de puntero y toques para despertar la barra Zen y registrar telemetría
+  useEffect(() => {
+    const onPointerActivity = (e: Event) => {
+      lastActivityAtRef.current = Date.now();
+      let clientY = 0;
+      if ("clientY" in e && typeof (e as { clientY: unknown }).clientY === "number") {
+        clientY = (e as { clientY: number }).clientY;
+      } else if ("touches" in e && (e as TouchEvent).touches.length > 0) {
+        clientY = (e as TouchEvent).touches[0].clientY;
+      }
+      if (isZenFaded) {
+        if ("clientY" in e || clientY < window.innerHeight / 3) {
+          resetZenFadeTimer();
+        }
+      } else {
+        resetZenFadeTimer();
+      }
+    };
+
+    window.addEventListener("pointermove", onPointerActivity, { passive: true });
+    window.addEventListener("touchstart", onPointerActivity, { passive: true });
+    return () => {
+      window.removeEventListener("pointermove", onPointerActivity);
+      window.removeEventListener("touchstart", onPointerActivity);
+      if (zenFadeTimerRef.current) clearTimeout(zenFadeTimerRef.current);
+    };
+  }, [isZenFaded, resetZenFadeTimer]);
+
+  // Chequeo periódico de pasajes densos (B.2)
+  useEffect(() => {
+    const checkDenseStall = () => {
+      if (state !== "ready" || isDeepReading) return;
+      const now = Date.now();
+      const baselineWpm = loadBaselineWpm();
+      const pageWords = Math.max(30, Math.round(sectionWords / (pageCount || 1)));
+      const isStalled = detectDensePassageStall(
+        denseStallDetectorRef.current,
+        now,
+        pageWords,
+        baselineWpm,
+        lastActivityAtRef.current,
+      );
+      if (isStalled) {
+        if (settings.strategyPreset === "immersive") {
+          setStallBubble(
+            "¿Pasaje denso? Tócame para iluminar el párrafo paso a paso.",
+          );
+          if (stallBubbleTimerRef.current)
+            clearTimeout(stallBubbleTimerRef.current);
+          stallBubbleTimerRef.current = setTimeout(() => {
+            setStallBubble(null);
+          }, 6000);
+        }
+      }
+    };
+
+    const interval = setInterval(checkDenseStall, 4000);
+    return () => {
+      clearInterval(interval);
+      if (stallBubbleTimerRef.current) clearTimeout(stallBubbleTimerRef.current);
+    };
+  }, [
+    state,
+    isDeepReading,
+    sectionWords,
+    pageCount,
+    settings.strategyPreset,
+  ]);
 
   if (seenStatus !== statusText) setSeenStatus(statusText);
 
@@ -849,6 +1026,7 @@ export default function Reader({
     if (!seg) activityRef.current = { startedAt: now, lastActiveAt: now };
     else seg.lastActiveAt = now;
     presenceActivity(delta);
+    setCatSleepy(false);
     signalCompanion({ kind: "reading_activity", at: now });
   }, [signalCompanion, presenceActivity]);
 
@@ -946,6 +1124,7 @@ export default function Reader({
     else overlayRelease.current = pushOverlay(close);
     setSheet(null);
     setSelection(hit);
+    consultedInPageRef.current.add(hit.word.toLowerCase());
     // La consulta es un acto neutral para el modelo, pero sí queda en
     // el trayecto: sirve para distinguir curiosidad de guardado.
     trackEvent({
@@ -979,6 +1158,11 @@ export default function Reader({
   const closeSheet = () => {
     releaseOverlay();
     setSheet(null);
+  };
+
+  const openSettings = (tab: ReaderSettingsTab = "strategy") => {
+    setSettingsTab(tab);
+    openSheet("settings");
   };
 
   // Las pausas cierran el segmento en su última señal; al volver, la
@@ -1045,10 +1229,12 @@ export default function Reader({
   // no llegan señales de lectura.
   useEffect(() => {
     if (!catEnabled) return;
-    const timer = window.setInterval(
-      () => signalCompanion({ kind: "tick", at: Date.now() }),
-      10_000,
-    );
+    const timer = window.setInterval(() => {
+      const now = Date.now();
+      signalCompanion({ kind: "tick", at: now });
+      const sleepy = isReaderIdleSleepy(focusTrackerRef.current, now);
+      setCatSleepy(sleepy);
+    }, 10_000);
     return () => window.clearInterval(timer);
   }, [catEnabled, signalCompanion]);
 
@@ -1370,40 +1556,67 @@ export default function Reader({
   // Medición de un lema desde el análisis cacheado del destino
   // visible: la evidencia escrita en sesión no espera al próximo
   // batchLookup de refreshProfile para pesar en el perfil.
-  const zipfForLemma = (lemma: string): number | null => {
-    const cached = analysisFor(sectionIndexRef.current);
-    if (!cached) return calibrationBankZipf(lemma, language);
-    const matches = [];
-    for (const entries of Object.values(cached.entries))
-      for (const entry of entries) if (entry.lemma === lemma) matches.push(entry);
-    return measuredZipf(matches, lemma) ?? calibrationBankZipf(lemma, language);
-  };
+  const zipfForLemma = useCallback(
+    (lemma: string): number | null => {
+      const cached = analysisFor(sectionIndexRef.current);
+      if (!cached) return calibrationBankZipf(lemma, language);
+      const matches = [];
+      for (const entries of Object.values(cached.entries))
+        for (const entry of entries) if (entry.lemma === lemma) matches.push(entry);
+      return measuredZipf(matches, lemma) ?? calibrationBankZipf(lemma, language);
+    },
+    [analysisFor, language],
+  );
 
   // Evidencia recién escrita entra al modelo en memoria y queda
   // marcada como pendiente: refreshProfile no la pisa si el store aún
   // no la refleja al releer.
-  const ingestKnowledgeRow = (row: { lemma: string; known: boolean }) => {
-    const lemma = row.lemma.toLowerCase();
-    knowledgeMapRef.current.set(lemma, { lemma, known: row.known });
-    const prev = evidenceRef.current.get(lemma);
-    evidenceRef.current.set(lemma, {
-      zipf: prev?.zipf ?? zipfForLemma(lemma),
-      known: row.known,
-    });
-    pendingKnowledgeRef.current.add(lemma);
-  };
+  const ingestKnowledgeRow = useCallback(
+    (row: {
+      lemma: string;
+      known: boolean;
+      status?: "unknown" | "familiar" | "known";
+      passiveSeenCount?: number;
+      estimatedKnownProb?: number;
+    }) => {
+      const lemma = row.lemma.toLowerCase();
+      knowledgeMapRef.current.set(lemma, {
+        lemma,
+        known: row.known,
+        status: row.status,
+        passiveSeenCount: row.passiveSeenCount,
+        estimatedKnownProb: row.estimatedKnownProb,
+      });
+      const prev = evidenceRef.current.get(lemma);
+      evidenceRef.current.set(lemma, {
+        zipf: prev?.zipf ?? zipfForLemma(lemma),
+        known: row.known,
+      });
+      pendingKnowledgeRef.current.add(lemma);
+    },
+    [zipfForLemma],
+  );
 
   // Evidencia nueva aplicada de inmediato: perfil reestimado y la
   // sección visible reclasificada sin esperar otra recarga.
-  const applyKnowledgeRow = (row: { lemma: string; known: boolean }) => {
-    ingestKnowledgeRow(row);
-    profileRef.current = estimateProfile(
-      [...evidenceRef.current.values()],
-      adjustRef.current,
-      baseThresholdRef.current,
-    );
-    applyPrediction(sectionIndexRef.current, language);
-  };
+  const applyKnowledgeRow = useCallback(
+    (row: {
+      lemma: string;
+      known: boolean;
+      status?: "unknown" | "familiar" | "known";
+      passiveSeenCount?: number;
+      estimatedKnownProb?: number;
+    }) => {
+      ingestKnowledgeRow(row);
+      profileRef.current = estimateProfile(
+        [...evidenceRef.current.values()],
+        adjustRef.current,
+        baseThresholdRef.current,
+      );
+      applyPrediction(sectionIndexRef.current, language);
+    },
+    [ingestKnowledgeRow, applyPrediction, language],
+  );
 
   // La consulta del diccionario enlaza con el conocimiento: una
   // evidencia «desconocida» inferida — la fuente más débil del
@@ -1502,6 +1715,14 @@ export default function Reader({
             adjustRef.current,
             baseThresholdRef.current,
           ).threshold,
+        userTheta: loadUserTheta(
+          profileRef.current?.threshold ??
+          estimateProfile(
+            [...evidenceRef.current.values()],
+            adjustRef.current,
+            baseThresholdRef.current,
+          ).threshold,
+        ),
         lex,
       }),
     [],
@@ -1966,11 +2187,28 @@ export default function Reader({
           zipf: prevEvidence.get(lemma)?.zipf ?? null,
         });
     }
-    pendingKnowledgeRef.current.clear();
-    const map = new Map<string, { lemma: string; known: boolean }>();
+    const rowByLemma = new Map<string, KnownWord>();
+    for (const r of rows) rowByLemma.set(r.lemma.toLowerCase(), r);
+    const map = new Map<
+      string,
+      {
+        lemma: string;
+        known: boolean;
+        status?: "unknown" | "familiar" | "known";
+        passiveSeenCount?: number;
+        estimatedKnownProb?: number;
+      }
+    >();
     const nextEvidence = new Map<string, KnowledgeEvidence>();
     for (const [lemma, item] of resolved) {
-      map.set(lemma, { lemma, known: item.known });
+      const orig = rowByLemma.get(lemma) ?? knowledgeMapRef.current.get(lemma);
+      map.set(lemma, {
+        lemma,
+        known: item.known,
+        status: orig?.status,
+        passiveSeenCount: orig?.passiveSeenCount,
+        estimatedKnownProb: orig?.estimatedKnownProb,
+      });
       nextEvidence.set(lemma, { zipf: item.zipf, known: item.known });
     }
     knowledgeMapRef.current = map;
@@ -2039,6 +2277,7 @@ export default function Reader({
         // sentido antes del primer pintado; las marcas ya puestas
         // quedan dentro de su línea.
         if (
+          settingsRef.current?.syntacticLines ||
           settingsRef.current?.focusMode === "syntactic" ||
           settingsRef.current?.focusMode === "chromatic"
         )
@@ -2794,7 +3033,7 @@ export default function Reader({
       }
 
       const centerX = rect.left + rect.width / 2;
-      const menuHalfW = singleWordHit ? 140 : 110;
+      const menuHalfW = singleWordHit ? 190 : 170;
       const clampedX = Math.max(menuHalfW + 12, Math.min(centerX, window.innerWidth - menuHalfW - 12));
 
       setSelButton({ x: clampedX, y, placement, singleWordHit });
@@ -2860,7 +3099,8 @@ export default function Reader({
         else if (delta > 4 && y > 160) setBarsVisible(false);
         setScrollRatio(scrollRatioNow());
         if (
-          settingsRef.current?.focusMode === "paragraph" &&
+          (settingsRef.current?.paragraphFocus ||
+            settingsRef.current?.focusMode === "paragraph") &&
           containerRef.current
         ) {
           updateParagraphFocus(containerRef.current);
@@ -2993,12 +3233,15 @@ export default function Reader({
     if (!container) return;
     const raf = requestAnimationFrame(() => {
       const needsLines =
-        settings.focusMode === "syntactic" ||
-        settings.focusMode === "chromatic";
+        !strategyPaused &&
+        (settings.syntacticLines ||
+          settings.focusMode === "syntactic" ||
+          settings.focusMode === "chromatic");
       if (needsLines) applySyntacticLines(container);
       else clearSyntacticLines(container);
 
-      if (settings.focusMode === "paragraph") updateParagraphFocus(container);
+      if (!strategyPaused && (settings.paragraphFocus || settings.focusMode === "paragraph"))
+        updateParagraphFocus(container);
       else clearParagraphFocus(container);
 
       // Las líneas sintácticas reenvuelven los nodos de texto: el
@@ -3015,18 +3258,37 @@ export default function Reader({
       }
     });
     return () => cancelAnimationFrame(raf);
-  }, [settings.focusMode, state, remeasure]);
+  }, [
+    settings.focusMode,
+    settings.syntacticLines,
+    settings.paragraphFocus,
+    strategyPaused,
+    state,
+    remeasure,
+  ]);
 
   // En modo foco de párrafo, reenfocar al cambiar de sección o de página.
   useEffect(() => {
-    if (state !== "ready" || settings.focusMode !== "paragraph") return;
+    if (
+      state !== "ready" ||
+      strategyPaused ||
+      (!settings.paragraphFocus && settings.focusMode !== "paragraph")
+    )
+      return;
     const container = containerRef.current;
     if (!container) return;
     const raf = requestAnimationFrame(() => {
       updateParagraphFocus(container);
     });
     return () => cancelAnimationFrame(raf);
-  }, [settings.focusMode, state, page, sectionIndex]);
+  }, [
+    settings.focusMode,
+    settings.paragraphFocus,
+    strategyPaused,
+    state,
+    page,
+    sectionIndex,
+  ]);
 
   useEffect(() => {
     if (settings.layout !== "pages" || state !== "ready") return;
@@ -3045,6 +3307,65 @@ export default function Reader({
     };
   }, [settings.layout, state, sectionIndex, remeasure]);
 
+  useEffect(() => {
+    pageEnteredAtRef.current = Date.now();
+  }, [page, sectionIndex]);
+
+  // Comprobación de inferencia implícita por exposición pasiva (Fase 4):
+  // Si la permanencia en la página fue válida (>= 8s y < 450 ppm) y no se consultó
+  // la palabra en WordPanel, se actualiza su probabilidad de conocimiento.
+  const checkPassiveExposure = useCallback(() => {
+    const now = Date.now();
+    if (pageEnteredAtRef.current === 0) {
+      pageEnteredAtRef.current = now;
+      return;
+    }
+    const dwellMs = now - pageEnteredAtRef.current;
+    pageEnteredAtRef.current = now;
+    if (dwellMs < 8000) return;
+
+    const totalPages = Math.max(1, pageCountRef.current);
+    const wordsInPage = Math.max(1, Math.round(sectionWords / totalPages));
+    const speedWpm = Math.round(wordsInPage / (dwellMs / 60000));
+    if (speedWpm >= 450) return;
+
+    const analysis = analysisFor(sectionIndexRef.current);
+    if (!analysis) return;
+
+    const book = bookRef.current;
+    const lang = book ? getBookLanguage(book) : "es";
+    const consulted = consultedInPageRef.current;
+
+    const candidates = analysis.forms.filter(
+      (f) => !consulted.has(f.toLowerCase()),
+    );
+    const uniqueLemmas = new Set<string>();
+    for (const f of candidates) {
+      const entry = analysis.entries[f]?.[0];
+      const lemma = (entry?.lemma ?? f).toLowerCase();
+      if (!savedForms.current.has(f) && !savedForms.current.has(lemma)) {
+        uniqueLemmas.add(lemma);
+      }
+      if (uniqueLemmas.size >= 8) break;
+    }
+
+    const scope = captureDbScope();
+    for (const lemma of uniqueLemmas) {
+      void recordPassiveExposure(lang, lemma, scope)
+        .then((updated) => {
+          applyKnowledgeRow({
+            lemma: updated.lemma,
+            known: updated.known,
+            status: updated.status,
+            passiveSeenCount: updated.passiveSeenCount,
+            estimatedKnownProb: updated.estimatedKnownProb,
+          });
+        })
+        .catch(() => {});
+    }
+    consultedInPageRef.current.clear();
+  }, [analysisFor, sectionWords, applyKnowledgeRow]);
+
   // Página siguiente/anterior; en los bordes salta de sección (atrás
   // cae al final de la sección anterior, como al retroceder una página
   // en un libro impreso).
@@ -3052,6 +3373,7 @@ export default function Reader({
     (delta: number) => {
       noteActivity();
       trackMove(delta < 0);
+      checkPassiveExposure();
       const next = pageRef.current + delta;
       if (next < 0) {
         if (sectionIndexRef.current > 0)
@@ -3074,7 +3396,7 @@ export default function Reader({
       saveSoon();
       return Promise.resolve();
     },
-    [navigate, saveSoon, sectionTotal, setPageIdx, noteActivity, trackMove, signalCompanion],
+    [navigate, saveSoon, sectionTotal, setPageIdx, noteActivity, trackMove, signalCompanion, checkPassiveExposure],
   );
 
   usePageGesture({
@@ -3121,7 +3443,6 @@ export default function Reader({
   }, [bookHash, closeActivity]);
 
   // Modo Retiro de lectura: ciclo de sesión inmersiva, bloqueo de pantalla y cierre
-  const isDeepReading = Boolean(deepReading?.active);
   const deepReadingRef = useRef<DeepReadingState | null>(null);
   useEffect(() => {
     deepReadingRef.current = deepReading;
@@ -3152,11 +3473,15 @@ export default function Reader({
 
       // Si duró más de 45 segundos, mostrar resumen de cierre sereno
       if (elapsed >= 45_000) {
+        const wordsAssimilated = Math.max(3, sectionsRead * 4);
+        const coverageDeltaPercent = Math.max(1, Math.min(5, sectionsRead));
         const summary: DeepReadingSummary = {
           durationMinutes,
           targetMinutes: current.targetMinutes,
           sectionsRead,
           completedNaturally: natural,
+          wordsAssimilated,
+          coverageDeltaPercent,
         };
         setDeepSummary(summary);
       }
@@ -3501,7 +3826,7 @@ export default function Reader({
 
   // La selección del usuario se convierte en pasaje con su contexto
   // para reubicarlo aunque cambie la letra o el ancho.
-  const savePassageSelection = async () => {
+  const savePassageSelection = async (color: PassageTone = "amber") => {
     const sel = window.getSelection();
     const container = containerRef.current;
     if (!sel || sel.isCollapsed || !container || !sel.rangeCount) {
@@ -3525,13 +3850,15 @@ export default function Reader({
       sel.toString(),
       before.toString(),
       after.toString(),
+      color,
     );
     sel.removeAllRanges();
     setSelButton(null);
     if (!input) return;
     const scope = captureDbScope();
     pushAnnotation(await saveAnnotation(input, scope), scope);
-    onStatus("Pasaje guardado en Marcadores.");
+    const toneName = color === "salvia" ? "Salvia" : color === "dario" ? "Azul Darío" : "Ámbar";
+    onStatus(`Pasaje resaltado con tinta (${toneName}).`);
   };
 
   const openQuoteCardFromSelection = () => {
@@ -3556,6 +3883,86 @@ export default function Reader({
     setSelButton(null);
   };
 
+  const askCatAboutSelection = async () => {
+    const container = containerRef.current;
+    const sel = window.getSelection();
+    if (!container || !sel || sel.isCollapsed || !sel.rangeCount) {
+      setSelButton(null);
+      return;
+    }
+    const text = sel.toString().replace(/\s+/g, " ").trim();
+    if (text.length < 2) {
+      setSelButton(null);
+      return;
+    }
+    sel.removeAllRanges();
+    setSelButton(null);
+
+    setCatPassageExplanation({
+      passage: text,
+      loading: true,
+      data: null,
+      error: null,
+    });
+
+    if (!signedIn) {
+      setCatPassageExplanation({
+        passage: text,
+        loading: false,
+        data: {
+          contextualMeaning: `Apreciación del fragmento: «${text.slice(0, 100)}...»`,
+          toneAndNuance: "Literario",
+          catTip: "Inicia sesión para recibir lecturas profundas con IA en vivo.",
+        },
+        error: null,
+      });
+      return;
+    }
+
+    try {
+      const scope = captureDbScope();
+      const res = await explainInPassage(
+        {
+          sentence: text,
+          bookTitle: title,
+          author,
+          language,
+        },
+        scope,
+      );
+      if (res.ok) {
+        setCatPassageExplanation({
+          passage: text,
+          loading: false,
+          data: {
+            contextualMeaning: res.contextualMeaning,
+            toneAndNuance: res.toneAndNuance,
+            catTip: res.catTip,
+          },
+          error: null,
+        });
+      } else {
+        setCatPassageExplanation({
+          passage: text,
+          loading: false,
+          data: {
+            contextualMeaning: `Apreciación del fragmento: «${text.slice(0, 120)}»`,
+            toneAndNuance: "Literario",
+            catTip: "No pudimos conectar con la IA en este momento, pero disfruta de este pasaje.",
+          },
+          error: null,
+        });
+      }
+    } catch {
+      setCatPassageExplanation({
+        passage: text,
+        loading: false,
+        data: null,
+        error: "No se pudo consultar al gato literario.",
+      });
+    }
+  };
+
   const savePassageDirectly = async (text: string) => {
     const input = makePassage(bookHash, sectionIndex, text);
     if (!input) return;
@@ -3577,11 +3984,100 @@ export default function Reader({
 
   const updateSettings = (patch: Partial<ReaderSettings>) => {
     setSettings((current) => {
-      const next = { ...current, ...patch };
+      let presetPatch: Partial<ReaderSettings> = {};
+      if (
+        (patch.focusRuler !== undefined ||
+          patch.paragraphFocus !== undefined ||
+          patch.syntacticLines !== undefined) &&
+        patch.strategyPreset === undefined
+      ) {
+        presetPatch = { strategyPreset: "custom" };
+      }
+      const next = { ...current, ...patch, ...presetPatch };
+      if (next.paragraphFocus) {
+        next.focusMode = "paragraph";
+      } else if (next.focusRuler) {
+        next.focusMode = "ruler";
+      } else if (next.syntacticLines) {
+        next.focusMode = "syntactic";
+      } else {
+        next.focusMode = "off";
+      }
       saveReaderSettings(next, bookHash);
       setBookOverride(true);
       return next;
     });
+  };
+
+  const selectStrategyPreset = (preset: ReadingStrategyPreset) => {
+    const updated = applyStrategyPreset(preset, settings);
+    updateSettings(updated);
+    if (preset === "audio") {
+      if (ttsSnap.status === "idle") {
+        onTtsRequest();
+      }
+    } else if (preset === "immersive") {
+      if (ttsSnap.status !== "idle") {
+        ttsRef.current?.stop("user");
+      }
+    }
+  };
+
+  const onToggleFocusRuler = (checked: boolean) => {
+    updateSettings({
+      focusRuler: checked,
+      strategyPreset: "custom",
+    });
+  };
+
+  const onToggleParagraphFocus = (checked: boolean) => {
+    updateSettings({
+      paragraphFocus: checked,
+      strategyPreset: "custom",
+    });
+  };
+
+  const onToggleSyntacticLines = (checked: boolean) => {
+    updateSettings({
+      syntacticLines: checked,
+      strategyPreset: "custom",
+    });
+  };
+
+  const handleCreateQuoteCard = () => {
+    closeSheet();
+    const sel = window.getSelection()?.toString().replace(/\s+/g, " ").trim();
+    if (sel && sel.length >= 2) {
+      setQuoteCard({
+        text: sel,
+        bookTitle: title,
+        author,
+        chapterTitle: sectionTitle ?? sectionLabel(sectionIndex),
+        alreadySaved: false,
+      });
+      return;
+    }
+    const container = containerRef.current;
+    const firstP = container?.querySelector("p, blockquote");
+    const fallbackText =
+      firstP?.textContent?.replace(/\s+/g, " ").trim() ||
+      title ||
+      "Lectura en Lecta";
+    setQuoteCard({
+      text: fallbackText,
+      bookTitle: title,
+      author,
+      chapterTitle: sectionTitle ?? sectionLabel(sectionIndex),
+      alreadySaved: false,
+    });
+  };
+
+  const handleExportBook = async () => {
+    try {
+      await downloadBookMarkdown(bookHash, title);
+    } catch (err) {
+      console.error("Error al exportar libro:", err);
+    }
   };
 
   // El libro vuelve a heredar los ajustes generales del lector.
@@ -3804,7 +4300,11 @@ export default function Reader({
         aria-hidden="true"
         className="measure-probe"
       />
-      <header className="reader-bar" data-hidden={!barsShown || undefined}>
+      <header
+        className={`reader-bar ${isZenFaded ? "reader-head--faded" : ""}`.trim()}
+        data-zen-faded={isZenFaded || undefined}
+        data-hidden={!barsShown || undefined}
+      >
         <button
           type="button"
           className="btn--quiet reader-back"
@@ -3814,18 +4314,23 @@ export default function Reader({
           <Icon name="back" size={18} />
           <span className="reader-back-label"> Estantería</span>
         </button>
-        <p className="reader-bar-title" title={title || fileName}>
-          {title || fileName}
+        <p className="reader-bar-title" title={sectionTitle || title || fileName}>
+          {sectionTitle || title || fileName}
           {author ? <span className="reader-bar-author"> · {author}</span> : null}
         </p>
+        <div className="reader-bar-progress" aria-hidden="true">
+          <ProgressInk
+            value={Math.round(progress * 100)}
+            max={100}
+            variant="vermilion"
+            ariaValueText={`${Math.round(progress * 100)}% del libro`}
+          />
+        </div>
         <div className="reader-bar-actions">
           <button
             type="button"
             className="btn--quiet reader-bar-btn"
-            onClick={() => {
-              setIsMoreOpen(false);
-              openSheet("toc");
-            }}
+            onClick={() => openSheet("toc")}
             aria-label="Índice del libro"
             title="Índice (T)"
           >
@@ -3835,23 +4340,18 @@ export default function Reader({
           <button
             type="button"
             className="btn--quiet reader-bar-btn reader-bar-btn--settings"
-            onClick={() => {
-              setIsMoreOpen(false);
-              openSheet("settings");
-            }}
-            aria-label="Ajustes de lectura"
-            title="Ajustes de lectura (Aa)"
+            onClick={() => openSettings("strategy")}
+            aria-label="Ajustes de lectura y apariencia"
+            title="Ajustes de lectura (Aa / ✨)"
           >
             <span className="reader-btn-icon reader-btn-icon--aa" aria-hidden="true">Aa</span>
-            <span className="reader-btn-text">Aa</span>
+            <Icon name="sparkles" size={14} />
+            <span className="reader-btn-text">Lectura</span>
           </button>
           <button
             type="button"
             className="btn--quiet reader-bar-btn"
-            onClick={() => {
-              setIsMoreOpen(false);
-              onOpenNotebook();
-            }}
+            onClick={onOpenNotebook}
             aria-label="Abrir Cuaderno de vocabulario"
             title="Cuaderno"
           >
@@ -3861,27 +4361,13 @@ export default function Reader({
           <button
             type="button"
             className="btn--quiet reader-bar-btn reader-bar-btn--more"
-            onClick={() => setIsMoreOpen((v) => !v)}
-            aria-label="Más opciones"
-            aria-expanded={isMoreOpen}
-            aria-haspopup="menu"
-            title="Más opciones"
+            onClick={() => openSettings("book")}
+            aria-label="Opciones del libro"
+            title="Opciones del libro"
           >
             <Icon name="more" size={20} />
-            <span className="reader-btn-text">Más</span>
+            <span className="reader-btn-text">Libro</span>
           </button>
-          <ReaderMoreMenu
-            isOpen={isMoreOpen}
-            onClose={() => setIsMoreOpen(false)}
-            onSearch={() => openSheet("search")}
-            onToggleTts={onTtsRequest}
-            ttsActive={ttsSnap.status !== "idle"}
-            ttsSupported={isTtsSupported()}
-            onToggleFullscreen={() => void handleToggleFullscreen()}
-            isFullscreen={isFullscreenActive}
-            fullscreenSupported={isFullscreenSupported()}
-            onOpenRetreat={() => setDeepModal(true)}
-          />
         </div>
       </header>
 
@@ -3916,7 +4402,15 @@ export default function Reader({
           <div
             ref={containerRef}
             className="book-content"
-            data-focus-mode={settings.focusMode}
+            data-focus-mode={strategyPaused ? "off" : settings.focusMode}
+            data-paragraph-focus={
+              (!strategyPaused && (settings.paragraphFocus || settings.focusMode === "paragraph")) || undefined
+            }
+            data-strategy-preset={settings.strategyPreset}
+            data-strategy-paused={strategyPaused || undefined}
+            data-hide-indicators={
+              settings.hideSecondaryIndicators || settings.strategyPreset === "immersive" || undefined
+            }
             style={
               settings.layout === "pages" && pageMetrics
                 ? ({
@@ -3933,7 +4427,7 @@ export default function Reader({
           onClick={(event: MouseEvent<HTMLDivElement>) => {
             const container = containerRef.current;
             if (!container) return;
-            if (settings.focusMode === "paragraph") {
+            if (!strategyPaused && (settings.focusMode === "paragraph" || settings.paragraphFocus)) {
               const block = (event.target as HTMLElement).closest("p, blockquote, li");
               if (block && container.contains(block)) {
                 focusBlock(container, block);
@@ -4269,38 +4763,113 @@ export default function Reader({
         </div>
       ) : null}
 
-      {/* Gato acompañante: esquina baja fija y solo cuando el
-          planificador de presencia lo dice (modo de la cuenta +
-          supresión por libro). Es un botón real «Ver a [nombre]» que
-          abre la hoja del proveedor — el único punto del área que
-          recibe toques; el resto sigue transparente al texto. */}
-      {catShown && catState ? (
-        <div
-          className="reader-cat cat-anim"
-          data-out={catLeaving || undefined}
+      {/* Dock de Lectura Viva (B.1): Dock flotante inferior que reúne contador, interruptor de estrategia y al gato */}
+      {state === "ready" && !isDeepReading ? (
+        <aside
+          className="reader-dock"
+          role="region"
+          aria-label="Dock de lectura viva"
         >
-          <CompanionButton
-            stage={companion.stage}
-            mood="awake"
-            accessories={companion.accessories}
-            focus={isDeepReading ? "deep_focus" : catState}
-            pose={isDeepReading ? undefined : catTap ? "celebrate" : catGreeting ? "greet" : undefined}
-            label={`Ver a ${companion.name}`}
-            onClick={onCatTap}
-          />
-        </div>
+          <span className="reader-dock-counter">
+            {settings.layout === "pages"
+              ? `Pág. ${page + 1} de ${pageCount || 1}`
+              : `Cap. ${sectionIndex + 1} de ${sectionTotal || 1}`}
+            {minutes > 0 ? ` · ~${minutes} min` : ""}
+          </span>
+          <span className="reader-dock-divider" aria-hidden="true" />
+          <button
+            type="button"
+            className="reader-dock-strategy"
+            data-active={!strategyPaused || undefined}
+            onClick={() => {
+              triggerHaptic("selection");
+              setStrategyPaused((v) => !v);
+            }}
+            aria-label={`Estrategia: ${strategyPaused ? "Limpio" : (PRESET_LABELS[settings.strategyPreset] ?? "Enfoque")}. Toque para ${strategyPaused ? "activar" : "pausar"}.`}
+            title="Toque rápido: alternar estrategia / modo limpio"
+          >
+            <Icon
+              name={
+                settings.strategyPreset === "focus"
+                  ? "focus"
+                  : settings.strategyPreset === "lexical"
+                    ? "index"
+                    : settings.strategyPreset === "audio"
+                      ? "speaker"
+                      : settings.strategyPreset === "immersive"
+                        ? "sparkles"
+                        : "strategy"
+              }
+              size={13}
+            />
+            <span>
+              {strategyPaused
+                ? "Limpio"
+                : (PRESET_LABELS[settings.strategyPreset] ?? "Enfoque")}
+            </span>
+          </button>
+          {catShown && catState ? (
+            <>
+              <span className="reader-dock-divider" aria-hidden="true" />
+              <div
+                className="reader-dock-cat cat-anim"
+                data-out={catLeaving || undefined}
+              >
+                {(() => {
+                  const gazeProgress =
+                    settings.layout === "pages"
+                      ? pageCount > 1
+                        ? page / (pageCount - 1)
+                        : 0
+                      : scrollRatio;
+                  return (
+                    <CompanionButton
+                      stage={companion.stage}
+                      mood={catSleepy ? "sleepy" : "awake"}
+                      accessories={companion.accessories}
+                      focus={
+                        isDeepReading
+                          ? "deep_focus"
+                          : catSleepy
+                            ? "sleep"
+                            : selection
+                              ? "curious"
+                              : catState
+                      }
+                      gazeProgress={gazeProgress}
+                      pose={
+                        isDeepReading
+                          ? undefined
+                          : catTap
+                            ? "celebrate"
+                            : catGreeting
+                              ? "greet"
+                              : undefined
+                      }
+                      label={`Ver a ${companion.name}`}
+                      onClick={onCatTap}
+                      bubbleMessage={stallBubble}
+                      onBubbleClick={onStallBubbleClick}
+                    />
+                  );
+                })()}
+              </div>
+            </>
+          ) : null}
+        </aside>
       ) : null}
 
       {/* Regla de enfoque: velo de papel con una franja clara que
           sigue al puntero; la patita del gato ancla el margen. Con
           presencia «off» o el gato suprimido por esta lectura la
           decoración también se va: no queda rastro del gato. */}
-      {settings.focusMode === "ruler" && state === "ready" ? (
+      {!strategyPaused && (settings.focusRuler || settings.focusMode === "ruler") && state === "ready" ? (
         <FocusRuler
           bandPx={rulerBandPx(
             settings.rulerSize,
             settings.size * settings.leading,
           )}
+          lineHeightPx={settings.size * settings.leading}
           anchor={
             catEnabled && presenceMode !== "off" && !catSuppressed ? (
               <Companion
@@ -4669,20 +5238,30 @@ export default function Reader({
       ) : null}
 
       {sheet === "settings" ? (
-        <Sheet label="Ajustes de lectura" onClose={closeSheet}>
+        <Sheet label="Opciones de lectura" onClose={closeSheet}>
           <div className="sheet-head">
-            <strong className="sheet-title">Ajustes de lectura</strong>
+            <strong className="sheet-title">Opciones de lectura</strong>
             <button
               type="button"
               className="btn--quiet"
               onClick={closeSheet}
-              aria-label="Cerrar ajustes"
+              aria-label="Cerrar opciones"
               data-autofocus
             >
               Cerrar
             </button>
           </div>
-          <div className="sheet-tabs" role="tablist" aria-label="Categorías de ajustes">
+          <div className="sheet-tabs" role="tablist" aria-label="Categorías de opciones">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={settingsTab === "strategy"}
+              className="sheet-tab"
+              data-active={settingsTab === "strategy" || undefined}
+              onClick={() => setSettingsTab("strategy")}
+            >
+              Estrategia
+            </button>
             <button
               type="button"
               role="tab"
@@ -4696,307 +5275,379 @@ export default function Reader({
             <button
               type="button"
               role="tab"
-              aria-selected={settingsTab === "layout"}
+              aria-selected={settingsTab === "book"}
               className="sheet-tab"
-              data-active={settingsTab === "layout" || undefined}
-              onClick={() => setSettingsTab("layout")}
+              data-active={settingsTab === "book" || undefined}
+              onClick={() => setSettingsTab("book")}
             >
-              Maquetación
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={settingsTab === "tools"}
-              className="sheet-tab"
-              data-active={settingsTab === "tools" || undefined}
-              onClick={() => setSettingsTab("tools")}
-            >
-              Herramientas
+              Libro
             </button>
           </div>
 
-          {settingsTab === "appearance" ? (
-            <div role="tabpanel" aria-label="Apariencia">
-              <div className="setting-row setting-row--stack">
-                <span className="setting-label">Tema</span>
-                <ThemeMenu value={theme} onChange={onThemeChange} variant="swatches" />
-              </div>
-              <div className="setting-row setting-row--stack">
-                <span className="setting-label">Letra</span>
-                <div className="font-options" role="group" aria-label="Letra">
-                  {READER_FONTS.map(({ id, label, family }) => (
+          {/* Pestaña 1: Estrategia */}
+          {settingsTab === "strategy" ? (
+            <div role="tabpanel" aria-label="Estrategia" className="sheet-panel">
+              <div className="strategy-grid" role="radiogroup" aria-label="Modos de lectura">
+                {READING_STRATEGY_PRESETS.map((preset) => {
+                  const isActive = isStrategyPresetActive(preset.id, settings);
+                  return (
                     <button
-                      key={id}
+                      key={preset.id}
                       type="button"
-                      className="font-option"
-                      style={{ fontFamily: family }}
-                      data-active={settings.font === id || undefined}
-                      aria-pressed={settings.font === id}
-                      onClick={() => updateSettings({ font: id })}
+                      role="radio"
+                      aria-checked={isActive}
+                      data-active={isActive ? "true" : undefined}
+                      className="strategy-card"
+                      onClick={() => selectStrategyPreset(preset.id)}
                     >
-                      {label}
+                      <div className="strategy-card-header">
+                        <Icon name={preset.icon} size={20} />
+                        <strong className="strategy-card-title">{preset.title}</strong>
+                      </div>
+                      <p className="strategy-card-desc">{preset.description}</p>
                     </button>
-                  ))}
-                </div>
+                  );
+                })}
               </div>
-              <div className="setting-row">
-                <span className="setting-label">Tamaño</span>
-                <div className="setting-stepper">
-                  <button
-                    type="button"
-                    className="btn stepper-down"
-                    aria-label="Letra más pequeña"
-                    disabled={settings.size <= READER_LIMITS.size.min}
-                    onClick={() => updateSettings({ size: settings.size - 1 })}
-                  >
-                    A
-                  </button>
-                  <span className="setting-value">{settings.size}</span>
-                  <button
-                    type="button"
-                    className="btn stepper-up"
-                    aria-label="Letra más grande"
-                    disabled={settings.size >= READER_LIMITS.size.max}
-                    onClick={() => updateSettings({ size: settings.size + 1 })}
-                  >
-                    A
-                  </button>
-                </div>
-              </div>
-              <div className="setting-row">
-                <span className="setting-label">Interlineado</span>
-                <div className="segmented" role="group" aria-label="Interlineado">
-                  {LEADING_OPTIONS.map(({ value, label }) => (
-                    <button
-                      key={value}
-                      type="button"
-                      data-active={settings.leading === value || undefined}
-                      aria-pressed={settings.leading === value}
-                      onClick={() => updateSettings({ leading: value })}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          ) : null}
 
-          {settingsTab === "layout" ? (
-            <div role="tabpanel" aria-label="Maquetación">
-              <div className="setting-row">
-                <span className="setting-label">Modo de lectura</span>
-                <div className="segmented" role="group" aria-label="Modo de lectura">
-                  <button
-                    type="button"
-                    data-active={settings.layout === "scroll" || undefined}
-                    aria-pressed={settings.layout === "scroll"}
-                    onClick={() => updateSettings({ layout: "scroll" })}
-                  >
-                    Desplazamiento
-                  </button>
-                  <button
-                    type="button"
-                    data-active={settings.layout === "pages" || undefined}
-                    aria-pressed={settings.layout === "pages"}
-                    onClick={() => updateSettings({ layout: "pages" })}
-                  >
-                    Por páginas
-                  </button>
-                </div>
-              </div>
-              {settings.layout === "pages" ? (
-                <>
+              <details className="strategy-accordion">
+                <summary>
+                  <span>Ajuste fino de estrategias</span>
+                  <span className="strategy-accordion-hint">Personalizar</span>
+                </summary>
+                <div className="strategy-accordion-body">
                   <div className="setting-row">
-                    <span className="setting-label">Columnas</span>
-                    <div className="segmented" role="group" aria-label="Columnas por página">
-                      {(
-                        [
-                          [1, "Una"],
-                          [2, "Dos"],
-                        ] as const
-                      ).map(([value, label]) => (
-                        <button
-                          key={value}
-                          type="button"
-                          data-active={settings.pageColumns === value || undefined}
-                          aria-pressed={settings.pageColumns === value}
-                          onClick={() => updateSettings({ pageColumns: value })}
-                        >
-                          {label}
-                        </button>
-                      ))}
+                    <div className="setting-info">
+                      <span className="setting-label">Regla de Enfoque</span>
+                      <span className="setting-subtext">Franja translúcida que guía el puntero</span>
                     </div>
+                    <Toggle
+                      label="Regla de Enfoque"
+                      checked={settings.focusRuler}
+                      onChange={onToggleFocusRuler}
+                    />
                   </div>
-                  <p className="meta">
-                    Las flechas ← → pasan página. Si algo se corta, apaga
-                    «Lectura por páginas» sin perder tu lugar.
-                  </p>
-                </>
-              ) : null}
-              <div className="setting-row">
-                <span className="setting-label">Márgenes</span>
-                <div className="segmented" role="group" aria-label="Márgenes">
-                  {MARGIN_OPTIONS.map(({ value, label }) => (
-                    <button
-                      key={value}
-                      type="button"
-                      data-active={settings.measure === value || undefined}
-                      aria-pressed={settings.measure === value}
-                      onClick={() => updateSettings({ measure: value })}
-                    >
-                      {label}
-                    </button>
-                  ))}
+                  {settings.focusRuler ? (
+                    <div className="setting-row setting-row--sub">
+                      <span className="setting-label">Alto de la franja</span>
+                      <div
+                        className="segmented"
+                        role="group"
+                        aria-label="Tamaño de la regla de foco"
+                      >
+                        {RULER_SIZES.map(({ id, label }) => (
+                          <button
+                            key={String(id)}
+                            type="button"
+                            data-active={settings.rulerSize === id || undefined}
+                            aria-pressed={settings.rulerSize === id}
+                            onClick={() => updateSettings({ rulerSize: id })}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  <div className="setting-row">
+                    <div className="setting-info">
+                      <span className="setting-label">Enfoque de Párrafo</span>
+                      <span className="setting-subtext">Atenúa párrafos inactivos al 35% de opacidad</span>
+                    </div>
+                    <Toggle
+                      label="Enfoque de Párrafo"
+                      checked={settings.paragraphFocus}
+                      onChange={onToggleParagraphFocus}
+                    />
+                  </div>
+                  <div className="setting-row">
+                    <div className="setting-info">
+                      <span className="setting-label">Líneas Sintácticas</span>
+                      <span className="setting-subtext">Corta el texto en unidades con sentido</span>
+                    </div>
+                    <Toggle
+                      label="Líneas Sintácticas"
+                      checked={settings.syntacticLines}
+                      onChange={onToggleSyntacticLines}
+                    />
+                  </div>
                 </div>
-              </div>
-              <div className="setting-row">
-                <span className="setting-label">Justificar</span>
-                <Toggle
-                  label="Justificar texto"
-                  checked={settings.justify}
-                  onChange={(on) => updateSettings({ justify: on })}
-                />
-              </div>
-              <div className="setting-row">
-                <span className="setting-label">Separación silábica (guiones)</span>
-                <Toggle
-                  label="Separación silábica"
-                  checked={settings.enableHyphenation}
-                  onChange={(on) => updateSettings({ enableHyphenation: on })}
-                />
-              </div>
-              <div className="setting-row">
-                <span className="setting-label">Letra capital</span>
-                <Toggle
-                  label="Letra capital al inicio del capítulo"
-                  checked={settings.dropCap}
-                  onChange={(on) => updateSettings({ dropCap: on })}
-                />
-              </div>
-              {isFullscreenSupported() ? (
+              </details>
+
+              <div className="setting-section">
                 <div className="setting-row">
-                  <span className="setting-label">Pantalla completa</span>
-                  <Toggle
-                    label="Modo pantalla completa"
-                    checked={isFullscreenActive}
-                    onChange={() => void handleToggleFullscreen()}
-                  />
-                </div>
-              ) : null}
-              {bookOverride ? (
-                <div className="setting-row">
-                  <span className="setting-label">Este libro tiene ajustes propios</span>
+                  <div className="setting-info">
+                    <span className="setting-label">Retiro de lectura</span>
+                    <span className="setting-subtext">Sesión inmersiva con tiempo o páginas objetivo</span>
+                  </div>
                   <button
                     type="button"
                     className="btn--quiet"
-                    onClick={useGlobalSettings}
+                    onClick={() => {
+                      closeSheet();
+                      setDeepModal(true);
+                    }}
                   >
-                    Usar mis ajustes generales
+                    Iniciar retiro
                   </button>
                 </div>
-              ) : null}
+              </div>
             </div>
           ) : null}
 
-          {settingsTab === "tools" ? (
-            <div role="tabpanel" aria-label="Herramientas">
-              <h3 className="settings-group-title">Inmersión y Enfoque</h3>
-              <div className="setting-row setting-row--stack">
-                <span className="setting-label">Concentración</span>
-                <FocusModeMenu
-                  value={settings.focusMode}
-                  rulerSize={settings.rulerSize}
-                  onChange={(focusMode) => updateSettings({ focusMode })}
-                  onRulerSize={(rulerSize) => updateSettings({ rulerSize })}
+          {/* Pestaña 2: Apariencia */}
+          {settingsTab === "appearance" ? (
+            <div role="tabpanel" aria-label="Apariencia" className="sheet-panel">
+              <div className="setting-section">
+                <span className="setting-section-label">Tema</span>
+                <ThemeMenu value={theme} onChange={onThemeChange} variant="swatches" />
+              </div>
+
+              <div className="setting-section">
+                <span className="setting-section-label">Tipografía</span>
+                <FontCarousel
+                  value={settings.font}
+                  onChange={(font) => updateSettings({ font })}
                 />
               </div>
-              <div className="setting-row">
-                <span className="setting-label">Retiro de lectura</span>
-                <button
-                  type="button"
-                  className="btn--quiet"
-                  onClick={() => {
-                    closeSheet();
-                    setDeepModal(true);
+
+              <div className="setting-section">
+                <span className="setting-section-label">Tamaño y Espaciado</span>
+                <StepperControl
+                  label="Tamaño de letra"
+                  valueText={`${settings.size} px`}
+                  canDecrement={settings.size > READER_LIMITS.size.min}
+                  canIncrement={settings.size < READER_LIMITS.size.max}
+                  onDecrement={() => updateSettings({ size: settings.size - 1 })}
+                  onIncrement={() => updateSettings({ size: settings.size + 1 })}
+                  ariaDecrementLabel="Letra más pequeña"
+                  ariaIncrementLabel="Letra más grande"
+                />
+
+                <StepperControl
+                  label="Interlineado"
+                  valueText={
+                    LEADING_OPTIONS.find((o) => o.value === settings.leading)?.label ??
+                    String(settings.leading)
+                  }
+                  canDecrement={settings.leading > LEADING_OPTIONS[0].value}
+                  canIncrement={
+                    settings.leading < LEADING_OPTIONS[LEADING_OPTIONS.length - 1].value
+                  }
+                  onDecrement={() => {
+                    const idx = LEADING_OPTIONS.findIndex((o) => o.value === settings.leading);
+                    if (idx > 0) updateSettings({ leading: LEADING_OPTIONS[idx - 1].value });
+                    else if (idx === -1) updateSettings({ leading: LEADING_OPTIONS[0].value });
                   }}
-                >
-                  Iniciar sesión
-                </button>
-              </div>
-
-              <h3 className="settings-group-title">Audio y Asistencia</h3>
-              {/* «Leer en voz alta» solo existe donde hay voces del
-                  dispositivo (Web Speech API): sin speechSynthesis el
-                  ítem ni se ofrece — la función jamás se sugiere sola. */}
-              {isTtsSupported() ? (
-                <TtsMenuItem
-                  active={ttsSnap.status !== "idle"}
-                  onRequest={onTtsRequest}
+                  onIncrement={() => {
+                    const idx = LEADING_OPTIONS.findIndex((o) => o.value === settings.leading);
+                    if (idx >= 0 && idx < LEADING_OPTIONS.length - 1) {
+                      updateSettings({ leading: LEADING_OPTIONS[idx + 1].value });
+                    } else if (idx === -1) {
+                      updateSettings({ leading: LEADING_OPTIONS[LEADING_OPTIONS.length - 1].value });
+                    }
+                  }}
+                  ariaDecrementLabel="Reducir interlineado"
+                  ariaIncrementLabel="Aumentar interlineado"
                 />
-              ) : null}
-              <div className="setting-row setting-row--stack">
-                <span className="setting-label">Lectura sin conexión</span>
-                <OfflineDictionaryControl
-                  bookHash={bookHash}
-                  language={language}
-                />
-              </div>
 
-              <h3 className="settings-group-title">Vocabulario de la Obra</h3>
-              <div className="setting-row setting-row--stack">
-                <span className="setting-label">Antes de leer</span>
-                <div className="theme-menu" role="group" aria-label="Preparación de vocabulario">
-                  {PREPARATION_MODES.map(({ id, label }) => (
-                    <button
-                      key={id}
-                      type="button"
-                      className="theme-option"
-                      data-active={settings.preparationMode === id || undefined}
-                      aria-pressed={settings.preparationMode === id}
-                      onClick={() => updateSettings({ preparationMode: id })}
-                    >
-                      {label}
-                    </button>
-                  ))}
+                <div className="setting-row">
+                  <span className="setting-label">Márgenes</span>
+                  <div className="segmented" role="group" aria-label="Márgenes">
+                    {MARGIN_OPTIONS.map(({ value, label }) => (
+                      <button
+                        key={value}
+                        type="button"
+                        data-active={settings.measure === value || undefined}
+                        aria-pressed={settings.measure === value}
+                        onClick={() => updateSettings({ measure: value })}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
-              <div className="setting-row">
-                <span className="setting-label">Palabras de este capítulo</span>
-                <button
-                  type="button"
-                  className="btn--quiet"
-                  onClick={() => {
-                    closeSheet();
-                    openPrepManual();
-                  }}
-                >
-                  Revisar ahora
-                </button>
+
+              <div className="setting-section">
+                <span className="setting-section-label">Maquetación</span>
+                <div className="setting-row">
+                  <span className="setting-label">Modo de lectura</span>
+                  <div className="segmented" role="group" aria-label="Modo de lectura">
+                    <button
+                      type="button"
+                      data-active={settings.layout === "scroll" || undefined}
+                      aria-pressed={settings.layout === "scroll"}
+                      onClick={() => updateSettings({ layout: "scroll" })}
+                    >
+                      Desplazamiento
+                    </button>
+                    <button
+                      type="button"
+                      data-active={settings.layout === "pages" || undefined}
+                      aria-pressed={settings.layout === "pages"}
+                      onClick={() => updateSettings({ layout: "pages" })}
+                    >
+                      Por páginas
+                    </button>
+                  </div>
+                </div>
+                {settings.layout === "pages" ? (
+                  <>
+                    <div className="setting-row">
+                      <span className="setting-label">Columnas</span>
+                      <div className="segmented" role="group" aria-label="Columnas por página">
+                        {(
+                          [
+                            [1, "Una"],
+                            [2, "Dos"],
+                          ] as const
+                        ).map(([value, label]) => (
+                          <button
+                            key={value}
+                            type="button"
+                            data-active={settings.pageColumns === value || undefined}
+                            aria-pressed={settings.pageColumns === value}
+                            onClick={() => updateSettings({ pageColumns: value })}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <p className="meta">
+                      Las flechas ← → pasan página. Si algo se corta, apaga
+                      «Lectura por páginas» sin perder tu lugar.
+                    </p>
+                  </>
+                ) : null}
+                <div className="setting-row">
+                  <span className="setting-label">Justificar</span>
+                  <Toggle
+                    label="Justificar texto"
+                    checked={settings.justify}
+                    onChange={(on) => updateSettings({ justify: on })}
+                  />
+                </div>
+                <div className="setting-row">
+                  <span className="setting-label">Separación silábica (guiones)</span>
+                  <Toggle
+                    label="Separación silábica"
+                    checked={settings.enableHyphenation}
+                    onChange={(on) => updateSettings({ enableHyphenation: on })}
+                  />
+                </div>
+                <div className="setting-row">
+                  <span className="setting-label">Letra capital</span>
+                  <Toggle
+                    label="Letra capital al inicio del capítulo"
+                    checked={settings.dropCap}
+                    onChange={(on) => updateSettings({ dropCap: on })}
+                  />
+                </div>
+                {isFullscreenSupported() ? (
+                  <div className="setting-row">
+                    <span className="setting-label">Pantalla completa</span>
+                    <Toggle
+                      label="Modo pantalla completa"
+                      checked={isFullscreenActive}
+                      onChange={() => void handleToggleFullscreen()}
+                    />
+                  </div>
+                ) : null}
+                {bookOverride ? (
+                  <div className="setting-row">
+                    <span className="setting-label">Este libro tiene ajustes propios</span>
+                    <button
+                      type="button"
+                      className="btn--quiet"
+                      onClick={useGlobalSettings}
+                    >
+                      Usar mis ajustes generales
+                    </button>
+                  </div>
+                ) : null}
               </div>
-              <div className="setting-row">
-                <span className="setting-label">Glosario de la obra</span>
-                <button
-                  type="button"
-                  className="btn--quiet"
-                  onClick={() => {
-                    closeSheet();
-                    setGlossaryOpen(true);
-                  }}
-                >
-                  Explorar léxico
-                </button>
+            </div>
+          ) : null}
+
+          {/* Pestaña 3: Libro */}
+          {settingsTab === "book" ? (
+            <div role="tabpanel" aria-label="Libro" className="sheet-panel">
+              <ReaderMoreMenu
+                isOpen={true}
+                embedded={true}
+                onSearch={() => {
+                  closeSheet();
+                  openSheet("search");
+                }}
+                onOpenGlossary={() => {
+                  closeSheet();
+                  setGlossaryOpen(true);
+                }}
+                onCreateQuoteCard={handleCreateQuoteCard}
+                onExportBook={handleExportBook}
+                bookHash={bookHash}
+                language={language}
+                onToggleTts={onTtsRequest}
+                ttsActive={ttsSnap.status !== "idle"}
+                ttsSupported={isTtsSupported()}
+                onToggleFullscreen={() => void handleToggleFullscreen()}
+                isFullscreen={isFullscreenActive}
+                fullscreenSupported={isFullscreenSupported()}
+                onOpenRetreat={() => {
+                  closeSheet();
+                  setDeepModal(true);
+                }}
+                onClose={closeSheet}
+              />
+
+              <div className="setting-section">
+                <span className="setting-section-label">Vocabulario de la Obra</span>
+                <div className="setting-row setting-row--stack">
+                  <span className="setting-label">Antes de leer</span>
+                  <div className="theme-menu" role="group" aria-label="Preparación de vocabulario">
+                    {PREPARATION_MODES.map(({ id, label }) => (
+                      <button
+                        key={id}
+                        type="button"
+                        className="theme-option"
+                        data-active={settings.preparationMode === id || undefined}
+                        aria-pressed={settings.preparationMode === id}
+                        onClick={() => updateSettings({ preparationMode: id })}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="setting-row">
+                  <span className="setting-label">Palabras de este capítulo</span>
+                  <button
+                    type="button"
+                    className="btn--quiet"
+                    onClick={() => {
+                      closeSheet();
+                      openPrepManual();
+                    }}
+                  >
+                    Revisar ahora
+                  </button>
+                </div>
               </div>
 
               {catEnabled ? (
-                <>
-                  <h3 className="settings-group-title">Compañero Lector</h3>
+                <div className="setting-section">
+                  <span className="setting-section-label">Compañero Lector</span>
                   <div className="setting-row">
                     <span className="setting-label">Tu compañero</span>
                     <button
                       type="button"
                       className="btn--quiet"
-                      onClick={companion.openPanel}
+                      onClick={() => {
+                        closeSheet();
+                        companion.openPanel();
+                      }}
                     >
                       Ver a {companion.name}
                     </button>
@@ -5013,8 +5664,9 @@ export default function Reader({
                       />
                     </div>
                   ) : null}
-                </>
+                </div>
               ) : null}
+
               <details className="settings-advanced">
                 <summary>Atajos de lectura</summary>
                 <div className="settings-advanced-body shortcuts-list">
@@ -5084,6 +5736,8 @@ export default function Reader({
             closePrepLayer();
           }}
           onDiscard={discardPrep}
+          initialStrategy={settings.strategyPreset}
+          onSelectStrategy={(preset) => selectStrategyPreset(preset)}
         />
       ) : null}
 
@@ -5116,7 +5770,7 @@ export default function Reader({
           {selButton.singleWordHit ? (
             <button
               type="button"
-              className="selection-define"
+              className="selection-menu-btn selection-define"
               onPointerDown={(event) => event.preventDefault()}
               onClick={() => {
                 const hit = selButton.singleWordHit;
@@ -5128,21 +5782,89 @@ export default function Reader({
               Definir
             </button>
           ) : null}
+
+          {/* 1. Resaltar con tinta (3 tonos: Ámbar, Salvia, Azul Darío) */}
+          <div className="selection-highlight-group" role="group" aria-label="Resaltar con tinta">
+            <button
+              type="button"
+              className="selection-menu-btn selection-save"
+              title="Resaltar con tinta ámbar"
+              aria-label="Resaltar con tinta"
+              onPointerDown={(event) => event.preventDefault()}
+              onClick={() => void savePassageSelection("amber")}
+            >
+              <Icon name="highlight" size={14} />
+              <span>Tinta</span>
+            </button>
+            <div className="selection-tones-picker" aria-label="Elegir tono de tinta">
+              <button
+                type="button"
+                className="tone-dot tone-dot--amber"
+                title="Tinta Ámbar"
+                aria-label="Tinta Ámbar"
+                onPointerDown={(event) => event.preventDefault()}
+                onClick={() => void savePassageSelection("amber")}
+              />
+              <button
+                type="button"
+                className="tone-dot tone-dot--salvia"
+                title="Tinta Salvia"
+                aria-label="Tinta Salvia"
+                onPointerDown={(event) => event.preventDefault()}
+                onClick={() => void savePassageSelection("salvia")}
+              />
+              <button
+                type="button"
+                className="tone-dot tone-dot--dario"
+                title="Tinta Azul Darío"
+                aria-label="Tinta Azul Darío"
+                onPointerDown={(event) => event.preventDefault()}
+                onClick={() => void savePassageSelection("dario")}
+              />
+            </div>
+          </div>
+
+          {/* 2. Reflexión Profunda */}
           <button
             type="button"
-            className="selection-save"
+            className="selection-menu-btn selection-deep"
+            title="Reflexión Profunda"
+            aria-label="Reflexión Profunda"
             onPointerDown={(event) => event.preventDefault()}
-            onClick={() => void savePassageSelection()}
+            onClick={() => {
+              window.getSelection()?.removeAllRanges();
+              setSelButton(null);
+              setDeepModal(true);
+            }}
           >
-            Guardar pasaje
+            <Icon name="retreat" size={14} />
+            <span>Reflexión</span>
           </button>
+
+          {/* 3. Crear Postal de Cita */}
           <button
             type="button"
-            className="selection-card"
+            className="selection-menu-btn selection-card"
+            title="Crear postal de cita"
+            aria-label="Crear postal de cita"
             onPointerDown={(event) => event.preventDefault()}
             onClick={openQuoteCardFromSelection}
           >
-            Tarjeta de cita
+            <Icon name="quote" size={14} />
+            <span>Postal</span>
+          </button>
+
+          {/* 4. Preguntar al Gato */}
+          <button
+            type="button"
+            className="selection-menu-btn selection-ask-cat"
+            title="Preguntar al Gato"
+            aria-label="Preguntar al Gato"
+            onPointerDown={(event) => event.preventDefault()}
+            onClick={() => void askCatAboutSelection()}
+          >
+            <Icon name="sparkles" size={14} />
+            <span>Preguntar</span>
           </button>
         </div>
       ) : null}
@@ -5162,6 +5884,8 @@ export default function Reader({
           canExplain={signedIn}
           language={language}
           bookHash={bookHash}
+          bookTitle={title}
+          author={author}
           onClose={closeSelection}
           onSaved={onWordSaved}
           onRemoved={onWordRemoved}
@@ -5188,6 +5912,52 @@ export default function Reader({
             );
           }}
         />
+      ) : null}
+
+      {catPassageExplanation ? (
+        <Dialog
+          label="El apunte del Gato"
+          onClose={() => setCatPassageExplanation(null)}
+          className="dialog--cat-explanation"
+        >
+          <div className="sheet-head">
+            <h2 className="sheet-title">
+              <span className="cat-dialog-avatar" aria-hidden="true">🐾</span> El apunte del Gato
+            </h2>
+            <button
+              type="button"
+              className="btn--quiet"
+              onClick={() => setCatPassageExplanation(null)}
+              aria-label="Cerrar apunte"
+            >
+              Cerrar
+            </button>
+          </div>
+
+          <div className="cat-passage-quote">
+            “{catPassageExplanation.passage}”
+          </div>
+
+          {catPassageExplanation.loading ? (
+            <div className="cat-passage-loading">
+              <span className="cat-spinner" aria-hidden="true">🐾</span>
+              <p className="meta">El gato está leyendo con atención el pasaje…</p>
+            </div>
+          ) : catPassageExplanation.data ? (
+            <div className="cat-passage-result">
+              <div className="passage-badge-tone-row">
+                <span className="passage-badge-tone">{catPassageExplanation.data.toneAndNuance}</span>
+              </div>
+              <p className="passage-meaning-text">{catPassageExplanation.data.contextualMeaning}</p>
+              <div className="cat-literary-tip">
+                <span className="cat-tip-icon" aria-hidden="true">🐾</span>
+                <p className="cat-tip-text"><em>Michi:</em> «{catPassageExplanation.data.catTip}»</p>
+              </div>
+            </div>
+          ) : (
+            <p role="alert" className="status">{catPassageExplanation.error ?? "No se pudo obtener la explicación."}</p>
+          )}
+        </Dialog>
       ) : null}
 
       {/* Chip discreto de la sesión de voz: no captura la lectura y

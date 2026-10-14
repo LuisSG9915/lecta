@@ -75,15 +75,18 @@ const useAiMock = vi.mocked(loadUseAi);
 const saveSessionMock = vi.mocked(saveSessionValue);
 const backfillMock = vi.mocked(backfillWordMeanings);
 
-const word = (over: Partial<SavedWord> = {}): SavedWord => ({
-  key: `es:${over.form ?? "casa"}`,
-  language: "es",
-  form: "casa",
-  lemma: "casa",
-  savedAt: 1,
-  updatedAt: 1,
-  ...over,
-});
+const word = (over: Partial<SavedWord> = {}): SavedWord => {
+  const form = over.form ?? "casa";
+  return {
+    key: `es:${form}`,
+    language: "es",
+    form,
+    lemma: over.lemma ?? form,
+    savedAt: 1,
+    updatedAt: 1,
+    ...over,
+  };
+};
 
 let host: HTMLDivElement;
 let root: Root;
@@ -310,15 +313,17 @@ describe("Filtros por idioma y libro", () => {
 });
 
 describe("Reestructura del Cuaderno", () => {
-  it("Hoy es la pestaña inicial, muestra Aprender/Repasar y no muestra la lista", async () => {
+  it("La Mesa de Estudio y el Herbario se muestran como vista inicial", async () => {
     listWordsMock.mockResolvedValue([
       word({ form: "cantar", lemma: "cantar", meaning: "entonar" }),
     ]);
     await render();
     const activeTab = host.querySelector(".nb-tabs button[aria-pressed='true']");
-    expect(activeTab?.textContent).toBe("Hoy");
+    expect(activeTab?.textContent).toBe("Mi Herbario de Palabras");
+    expect(text()).toContain("La Mesa de Estudio");
+    expect(button("Iniciar Sesión Fluida (~2 min)")).toBeTruthy();
     expect(text()).toContain("Por aprender · 1");
-    expect(host.querySelector(".nb-words")).toBeNull();
+    expect(host.querySelector(".nb-words")).toBeTruthy();
   });
 
   it("El vacío «Estás al día.» aparece cuando no hay pendientes", async () => {
@@ -356,7 +361,6 @@ describe("Reestructura del Cuaderno", () => {
       for (let i = 0; i < 6; i++) await Promise.resolve();
     });
 
-    await click("Hoy");
     expect(text()).toContain("Solo palabras de «Libro Español»");
     expect(button("Ver todas")).toBeTruthy();
 
@@ -371,14 +375,13 @@ describe("Reestructura del Cuaderno", () => {
       word({ form: "asentada", lemma: "asentada", meaning: "m3", card: { reps: 3, stability: 40 } as never }),
     ]);
     await render();
-    await click("Palabras");
 
     expect(button("Todas (3)")).toBeTruthy();
-    expect(button("Nueva (1)")).toBeTruthy();
-    expect(button("Aprendiendo (1)")).toBeTruthy();
-    expect(button("Asentada (1)")).toBeTruthy();
+    expect(button("Nuevas (1)")).toBeTruthy();
+    expect(button("En Práctica (1)")).toBeTruthy();
+    expect(button("Dominadas (1)")).toBeTruthy();
 
-    await click("Aprendiendo (1)");
+    await click("En Práctica (1)");
     const wordsList = () => host.querySelector(".nb-words")?.textContent ?? "";
     expect(wordsList()).toContain("aprendiendo");
     expect(wordsList()).not.toContain("nueva");
@@ -448,5 +451,160 @@ describe("Reestructura del Cuaderno", () => {
     expect(rowBtn.getAttribute("aria-expanded")).toBe("false");
     expect(host.querySelector(".nb-word-detail")).toBeNull();
     expect(button("Quitar")).toBeUndefined();
+  });
+
+  it("muestra en la cabecera píldoras de dominio interactivas (Nuevas, En aprendizaje, Dominadas)", async () => {
+    listWordsMock.mockResolvedValue([
+      word({ form: "nueva", lemma: "nueva", meaning: "m1", card: { reps: 0, stability: 1 } as never }),
+      word({ form: "aprendiendo", lemma: "aprendiendo", meaning: "m2", card: { reps: 1, stability: 5 } as never }),
+      word({ form: "asentada", lemma: "asentada", meaning: "m3", card: { reps: 3, stability: 40 } as never }),
+    ]);
+    await render();
+
+    const pills = host.querySelectorAll(".vocab-progress-pill");
+    expect(pills.length).toBe(3);
+    const pillTexts = [...pills].map((p) => p.textContent?.trim());
+    expect(pillTexts.some((t) => t?.includes("Nuevas"))).toBe(true);
+    expect(pillTexts.some((t) => t?.includes("En aprendizaje"))).toBe(true);
+    expect(pillTexts.some((t) => t?.includes("Dominadas"))).toBe(true);
+
+    // Al tocar la píldora de "Nuevas", salta a la pestaña Palabras con filtro activo
+    const nuevaPill = [...pills].find((p) => p.textContent?.includes("Nuevas")) as HTMLButtonElement;
+    await act(async () => {
+      nuevaPill.click();
+      for (let i = 0; i < 6; i++) await Promise.resolve();
+    });
+    const wordsList = host.querySelector(".nb-words")?.textContent ?? "";
+    expect(wordsList).toContain("nueva");
+    expect(wordsList).not.toContain("aprendiendo");
+  });
+
+  it("la fila de palabra muestra barra de estabilidad FSRS, caja de cita y botón de partida rápida de 3 min", async () => {
+    listWordsMock.mockResolvedValue([
+      word({
+        form: "espejo",
+        meaning: "superficie que refleja",
+        context: "El espejo de la sala",
+        lemma: "espejo",
+        card: { reps: 2, stability: 14 } as never,
+      }),
+    ]);
+    await render();
+    await click("Palabras");
+
+    const rowBtn = host.querySelector(".nb-word-row") as HTMLButtonElement;
+    await act(async () => {
+      rowBtn.click();
+      for (let i = 0; i < 6; i++) await Promise.resolve();
+    });
+
+    // Barra de estabilidad FSRS
+    const stabilityBar = host.querySelector(".word-memory-stability");
+    expect(stabilityBar).toBeTruthy();
+    expect(stabilityBar?.textContent).toContain("Estabilidad en memoria");
+    expect(stabilityBar?.textContent).toContain("14 días");
+
+    // Indicador visual de 4 segmentos
+    const segments = host.querySelectorAll(".word-stability-segment");
+    expect(segments.length).toBe(4);
+    const filledSegments = host.querySelectorAll(".word-stability-segment.is-filled");
+    // Con stability 14 días (>= 14), los 4 segmentos están llenos
+    expect(filledSegments.length).toBe(4);
+
+    // Caja de cita con palabra resaltada en ámbar suave
+    const quoteBox = host.querySelector(".nb-word-quote-box");
+    expect(quoteBox).toBeTruthy();
+    expect(quoteBox?.textContent).toContain("El espejo de la sala");
+    const highlighted = quoteBox?.querySelector(".nb-word-quote-highlight");
+    expect(highlighted).toBeTruthy();
+    expect(highlighted?.textContent).toBe("espejo");
+
+    // Botón de partida rápida
+    const quickGameBtn = host.querySelector(".btn--quick-game");
+    expect(quickGameBtn).toBeTruthy();
+    expect(quickGameBtn?.textContent).toContain("Partida rápida (3 min)");
+  });
+
+  it("Hero Card muestra La Mesa de Estudio con el Gato, energía léxica, CTA y 4 modos libres", async () => {
+    listWordsMock.mockResolvedValue([
+      word({
+        form: "murmullo",
+        meaning: "sonido suave",
+        context: "Un murmullo entre los árboles",
+        card: { reps: 1, stability: 3 } as never,
+      }),
+    ]);
+    await render();
+
+    // 1. Hero Card "La Mesa de Estudio"
+    const heroCard = host.querySelector(".nb-hero-card");
+    expect(heroCard).toBeTruthy();
+    expect(heroCard?.textContent).toContain("La Mesa de Estudio");
+
+    // Gato interactivo
+    const catWrapper = host.querySelector(".nb-hero-cat-wrapper");
+    expect(catWrapper).toBeTruthy();
+
+    // Barra de energía léxica
+    const energyTrack = host.querySelector(".nb-hero-energy-track");
+    expect(energyTrack).toBeTruthy();
+
+    // CTA principal único
+    const flowBtn = host.querySelector(".nb-hero-btn-flow");
+    expect(flowBtn).toBeTruthy();
+    expect(flowBtn?.textContent).toContain("Iniciar Sesión Fluida (~2 min)");
+
+    // 4 tarjetas de modos libres
+    const freeCards = host.querySelectorAll(".nb-free-mode-card");
+    expect(freeCards.length).toBe(4);
+    const freeNames = [...freeCards].map((c) => c.querySelector(".nb-free-mode-name")?.textContent);
+    expect(freeNames).toContain("Hueco en el Libro");
+    expect(freeNames).toContain("Sílabas de Tinta");
+    expect(freeNames).toContain("Telar de Frases");
+    expect(freeNames).toContain("Taller con el Gato IA");
+  });
+
+  it("el control segmentado permite alternar entre Mi Herbario de Palabras y Citas y Hallazgos", async () => {
+    listWordsMock.mockResolvedValue([
+      word({ form: "relicario", meaning: "estuche" }),
+    ]);
+    await render();
+
+    expect(button("Mi Herbario de Palabras")).toBeTruthy();
+    expect(button("Citas y Hallazgos")).toBeTruthy();
+    expect(host.querySelector(".nb-words")).toBeTruthy();
+
+    // Cambiar a Citas y Hallazgos
+    await click("Citas y Hallazgos");
+    expect(host.querySelector(".nb-words")).toBeNull();
+    expect(host.querySelector("section[aria-label='Citas guardadas']")).toBeTruthy();
+
+    // Volver a Mi Herbario de Palabras
+    await click("Mi Herbario de Palabras");
+    expect(host.querySelector(".nb-words")).toBeTruthy();
+  });
+
+  it("al pulsar Iniciar Sesión Fluida activa el flujo de práctica adaptativa", async () => {
+    listWordsMock.mockResolvedValue([
+      word({
+        form: "lucero",
+        meaning: "estrella brillante",
+        context: "El lucero brillaba al amanecer",
+        card: { reps: 2, stability: 5 } as never,
+      }),
+    ]);
+    await render();
+
+    const flowBtn = host.querySelector(".nb-hero-btn-flow") as HTMLButtonElement;
+    expect(flowBtn).toBeTruthy();
+
+    await act(async () => {
+      flowBtn.click();
+      for (let i = 0; i < 6; i++) await Promise.resolve();
+    });
+
+    // Se inicia el modo de práctica
+    expect(host.querySelector(".nb-practice")).toBeTruthy();
+    expect(text()).toContain("Repaso");
   });
 });

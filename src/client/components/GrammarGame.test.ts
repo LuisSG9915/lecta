@@ -126,4 +126,24 @@ describe("GrammarGame", () => {
     });
     expect(onSolve).toHaveBeenCalledTimes(1);
   });
+
+  it("shows intuitive prompt and literary tone note on correct solve", () => {
+    render(
+      h(GrammarGame, {
+        targetWord: "luminoso",
+        pos: "adjetivo",
+        onSolve: vi.fn(),
+        onWrong: vi.fn(),
+      }),
+    );
+
+    const prompt = host.querySelector(".grammar-card-prompt");
+    expect(prompt?.textContent).toContain("¿Qué papel juega «luminoso» en esta escena?");
+
+    const buttons = host.querySelectorAll(".grammar-cat-btn");
+    click(buttons[2]); // Adjetivo
+
+    const feedback = host.querySelector(".grammar-feedback")?.textContent;
+    expect(feedback).toContain("Pinta la atmósfera");
+  });
 });

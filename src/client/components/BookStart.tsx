@@ -1,6 +1,8 @@
 import { useState } from "react";
 import Sheet from "./Sheet";
 import type { ChapterTarget } from "../lib/chapters";
+import { useCompanionSafe } from "./CompanionProvider";
+import { Companion } from "./Companion";
 
 export type BookStartChoice = {
   // Dónde empieza la lectura (destino real del catálogo).
@@ -37,6 +39,7 @@ export default function BookStart({
   onConfirm,
   onClose,
 }: BookStartProps) {
+  const companion = useCompanionSafe();
   const suggested =
     targets.find((t) => t.id === suggestedStartId) ?? targets[0] ?? null;
   const [mode, setMode] = useState<"suggested" | "pick">("suggested");
@@ -84,6 +87,22 @@ export default function BookStart({
           Cerrar
         </button>
       </div>
+
+      {companion ? (
+        <div className="portico-cat-section" style={{ marginBlock: "var(--s-2) var(--s-3)" }}>
+          <div className="portico-cat-avatar">
+            <Companion
+              stage={companion.stage}
+              mood="awake"
+              accessories={companion.accessories}
+              pose="greet"
+            />
+          </div>
+          <div className="portico-speech-bubble" role="status">
+            <p>¡Bienvenido! Elige por dónde abrir el libro y prepararemos juntos el vocabulario clave.</p>
+          </div>
+        </div>
+      ) : null}
 
       <p className="meta">
         Elige por dónde abrir el libro. Antes de leer prepararemos el

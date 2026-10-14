@@ -62,4 +62,17 @@ describe("PracticeContext", () => {
     if (toggle) click(toggle);
     expect(host.querySelector(".card-context--full")).toBeNull();
   });
+
+  it("renders illuminated slot when slotTarget is true", () => {
+    render(
+      h(PracticeContext, {
+        text: "La luna iluminaba el sendero.",
+        target: "sendero",
+        slotTarget: true,
+      }),
+    );
+    const slot = host.querySelector(".context-slot-illuminated");
+    expect(slot).not.toBeNull();
+    expect(slot?.getAttribute("title")).toBe("Palabra a descifrar");
+  });
 });

@@ -47,12 +47,14 @@ import { recordReview } from "../lib/reviews";
 import type { ReviewKind, ReviewRating } from "../../shared/reading-data";
 import {
   blankWordInContext,
+  buildAdaptivePracticeQueue,
   conciseMeaning,
   EXERCISE_RATING,
-  modeForWord,
   pickDistractors,
   ratingToCorrect,
+  rescueChallenge,
   shuffleStable,
+  type AdaptiveChallenge,
 } from "../lib/practice";
 import { markLevel, type MarkLevel } from "../lib/word-level";
 import { loadUseAi } from "../lib/ai-pref";
@@ -69,7 +71,7 @@ import {
 import { useModalBehavior } from "../lib/modal";
 import { triggerHaptic, triggerPurrHaptic } from "../lib/haptics";
 import { playCompanionSound } from "../lib/companion-audio";
-import type { CompanionPose } from "./Companion";
+import { Companion, type CompanionPose } from "./Companion";
 import ReadingActivity from "./ReadingActivity";
 import { PracticeContext } from "./PracticeContext";
 import { PracticeCompanionHeader } from "./PracticeCompanionHeader";
@@ -128,6 +130,7 @@ type QueueItem = {
   entry?: LexiconEntry;
   correctIndex?: number;
   item?: LexiconItem;
+  adaptiveChallenge?: AdaptiveChallenge;
 };
 
 const MODES: { id: PracticeMode; label: string; needs: string }[] = [
@@ -204,9 +207,9 @@ const GRADES: { rating: Grade; label: string; key: string }[] = [
 const FILTERS = [
   { id: "all", label: "Todas" },
   { id: "due", label: "Para hoy" },
-  { id: "new", label: "Nueva" },
-  { id: "learning", label: "Aprendiendo" },
-  { id: "settled", label: "Asentada" },
+  { id: "new", label: "Nuevas" },
+  { id: "learning", label: "En Práctica" },
+  { id: "settled", label: "Dominadas" },
 ] as const;
 
 const ORDERS = [
@@ -218,23 +221,58 @@ const ORDERS = [
 const GROUP_PAGE = 50;
 const UNDO_MS = 6000;
 
-// Etiqueta de estado visible de cada palabra. «Para hoy» gana sobre el
-// nivel de estabilidad: es lo que el lector necesita saber primero.
-const stateOf = (word: SavedWord): { label: string; level: MarkLevel | "due" } =>
-  isDue(word.card)
-    ? { label: "Para hoy", level: "due" }
-    : { label: FILTERS.find((f) => f.id === (markLevel(word.card) ?? "settled"))?.label ?? "Asentada",
-        level: markLevel(word.card) ?? "settled" };
+// Nivel de estabilidad FSRS en 4 segmentos para el indicador visual
+function getStabilitySegments(s: number): number {
+  if (s >= 14) return 4;
+  if (s >= 7) return 3;
+  if (s >= 2) return 2;
+  if (s > 0.5) return 1;
+  return 0;
+}
+
+// Resalta la palabra dentro del contexto del libro con estilo ámbar suave
+function renderHighlightedContext(context: string | null | undefined, form: string) {
+  if (!context) return null;
+  const target = form.trim();
+  if (!target) return context;
+  const lowerTarget = target.toLowerCase();
+  const lowerContext = context.toLowerCase();
+  const idx = lowerContext.indexOf(lowerTarget);
+  if (idx === -1) return context;
+  const before = context.slice(0, idx);
+  const match = context.slice(idx, idx + target.length);
+  const after = context.slice(idx + target.length);
+  return (
+    <>
+      {before}
+      <mark className="nb-word-quote-highlight">{match}</mark>
+      {after}
+    </>
+  );
+}
+
+// Etiqueta de estado visible de cada palabra según estabilidad FSRS (S)
+const stateOf = (word: SavedWord): { label: string; level: MarkLevel | "due" } => {
+  if (isDue(word.card)) return { label: "Para hoy", level: "due" };
+  const card = word.card;
+  const s = card?.stability ?? 0;
+  const isNew = !card || (card.reps ?? 0) === 0 || s < 2;
+  if (isNew) return { label: "Nuevas", level: "new" };
+  if (s < 14) return { label: "En Práctica", level: "learning" };
+  return { label: "Dominadas", level: "settled" };
+};
 
 const STATE_RANK: Record<string, number> = { due: 0, new: 1, learning: 2, settled: 3 };
 
 const matchesFilter = (word: SavedWord, filter: FilterId): boolean => {
   if (filter === "all") return true;
   if (filter === "due") return isDue(word.card);
-  const level = markLevel(word.card);
-  if (filter === "new") return level === "new";
-  if (filter === "learning") return level === "learning";
-  return level === "settled" || level === null;
+  const card = word.card;
+  const s = card?.stability ?? 0;
+  const isNew = !card || (card.reps ?? 0) === 0 || s < 2;
+  if (filter === "new") return isNew;
+  if (filter === "learning") return !isNew && s >= 2 && s < 14;
+  return !isNew && s >= 14;
 };
 
 const clozeTextFor = (word: SavedWord) =>
@@ -280,6 +318,8 @@ function WordRow({
   onLearn,
   onRemove,
   onSpeak,
+  bookTitle,
+  onQuickGame,
 }: {
   word: SavedWord;
   state: { label: string; level: MarkLevel | "due" };
@@ -289,10 +329,20 @@ function WordRow({
   onLearn: () => void;
   onRemove: () => void;
   onSpeak: () => void;
+  bookTitle?: string;
+  onQuickGame?: () => void;
 }) {
   const detailId = `word-detail-${word.key.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+  const cardStability = word.card?.stability ?? 0;
+  const stabilityDays = Math.round(cardStability);
+  const stabilityPercent = Math.min(
+    100,
+    Math.max(word.card ? 5 : 0, Math.round((cardStability / 90) * 100)),
+  );
+  const activeSegments = getStabilitySegments(cardStability);
+
   return (
-    <li className="nb-word">
+    <li className="nb-word nb-editorial-card">
       <button
         type="button"
         className="nb-word-row"
@@ -301,7 +351,8 @@ function WordRow({
         onClick={onToggle}
       >
         <span className="nb-word-row-head">
-          <strong className="nb-word-form">{word.form}</strong>
+          <strong className="nb-word-form nb-word-lemma">{word.lemma || word.form}</strong>
+          {word.pos ? <span className="nb-badge-pos card-pos">{word.pos}</span> : null}
           <span className="nb-state" data-level={state.level}>
             {state.label}
           </span>
@@ -320,7 +371,58 @@ function WordRow({
             {word.pos ? <span className="card-pos">{word.pos}</span> : null}
           </div>
           {word.meaning ? <p className="nb-meaning">{word.meaning}</p> : null}
-          {word.context ? <p className="nb-context">“{word.context}”</p> : null}
+
+          {/* Barra de estabilidad de memoria (FSRS) de 4 segmentos */}
+          <div
+            className="word-memory-stability word-memory-stability--segmented"
+            title={`Estabilidad de memoria FSRS: ${stabilityDays} días`}
+          >
+            <div className="word-stability-header">
+              <span className="word-stability-label">Estabilidad en memoria</span>
+              <span className="word-stability-val">
+                {word.card
+                  ? `${stabilityDays} ${stabilityDays === 1 ? "día" : "días"}`
+                  : "Sin repasar"}
+              </span>
+            </div>
+            <div
+              className="word-stability-bar"
+              role="progressbar"
+              aria-label="Estabilidad de memoria"
+              aria-valuenow={stabilityPercent}
+              aria-valuemin={0}
+              aria-valuemax={100}
+            >
+              <div
+                className="word-stability-fill"
+                style={{ inlineSize: `${stabilityPercent}%` }}
+              />
+            </div>
+            <div className="word-stability-segments" aria-hidden="true">
+              {[1, 2, 3, 4].map((seg) => (
+                <span
+                  key={seg}
+                  className={`word-stability-segment ${seg <= activeSegments ? "is-filled" : ""}`}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Caja de citación del libro donde apareció con palabra resaltada en ámbar suave */}
+          {word.context ? (
+            <div className="nb-word-quote-box">
+              <blockquote className="nb-word-quote">
+                “{renderHighlightedContext(word.context, word.form)}”
+              </blockquote>
+              {bookTitle ? (
+                <cite className="nb-word-cite">
+                  <Icon name="quote" size={13} />
+                  <span>{bookTitle}</span>
+                </cite>
+              ) : null}
+            </div>
+          ) : null}
+
           <div className="nb-word-actions">
             <button
               type="button"
@@ -331,6 +433,17 @@ function WordRow({
             >
               <Icon name="speaker" size={16} />
             </button>
+            {onQuickGame ? (
+              <button
+                type="button"
+                className="btn btn--quick-game"
+                onClick={onQuickGame}
+                title="Partida rápida de repaso (3 min)"
+              >
+                <Icon name="sparkles" size={14} />
+                <span>Partida rápida (3 min)</span>
+              </button>
+            ) : null}
             {canLearn ? (
               <button
                 type="button"
@@ -370,7 +483,7 @@ export default function Vocabulary({
 
   const [words, setWords] = useState<SavedWord[] | null>(null);
   const [loadError, setLoadError] = useState(false);
-  const [tab, setTab] = useState<"today" | "words" | "quotes" | "activity">("today");
+  const [tab, setTab] = useState<"words" | "quotes" | "activity" | "today">("words");
   const [listLimit, setListLimit] = useState(GROUP_PAGE);
   const [openWords, setOpenWords] = useState<Set<string>>(() => new Set());
   const toggleWordOpen = (key: string) => {
@@ -425,6 +538,7 @@ export default function Vocabulary({
   const [matchFlash, setMatchFlash] = useState<string | null>(null);
   // Aviso suave cuando un modo no puede armar su cola (p. ej. acepciones sin conexión).
   const [practiceNote, setPracticeNote] = useState("");
+  const [workshopOpen, setWorkshopOpen] = useState(false);
   // Preferencia «Usar IA» (Cuenta): una lectura al abrir el cuaderno.
   // Apagada, los modos que llaman al generador (contexto, oración
   // nueva) lo avisan y la corrección de «escribir» no se ofrece.
@@ -585,20 +699,13 @@ export default function Vocabulary({
       .map((w) => new Date(w.card!.due).getTime());
     return futureTimestamps.length > 0 ? Math.min(...futureTimestamps) : null;
   }, [scopedWords, isWordKnown]);
-  const dueWords = scopedWords.filter((word) => isDue(word.card) && !isWordKnown(word));
+  const dueWords = scopedWords
+    .filter((word) => isDue(word.card) && !isWordKnown(word))
+    .sort((a, b) => (b.priority ? 1 : 0) - (a.priority ? 1 : 0));
   const dueCount = dueWords.length;
   const learnPending = scopedWords.filter((word) =>
     isLearnPending(word, knownKeys, exposure),
   );
-  // «Elegir palabra» necesita cuaderno suficiente para armar
-  // distractores (la palabra + 3 opciones); «parejas» necesita una
-  // tanda completa de palabras con significado.
-  const eligibleDue = (mode: PracticeMode) => {
-    const count = dueWords.filter((word) => isEligible(word, mode)).length;
-    if (mode === "choose" && scopedWords.length < 4) return 0;
-    if (mode === "match" && count < MATCH_TANDA) return 0;
-    return count;
-  };
 
   const resetExercise = () => {
     setRevealed(false);
@@ -624,38 +731,6 @@ export default function Vocabulary({
     setFinishedAt(null);
     resetExercise();
   };
-
-  // La mezcla decide el modo por palabra (practice.ts): aquí solo se
-  // descartan las que no se pueden ejercitar y se degrada «choose»
-  // cuando no hay cuaderno suficiente para armar distractores.
-  const buildMixItems = (): QueueItem[] =>
-    dueWords.flatMap((word, index) => {
-      const raw = modeForWord(word, index);
-      let mode: PracticeMode = raw === "word" ? "form" : raw;
-      if (mode === "choose" && scopedWords.length < 4) mode = "cloze";
-      if ((mode === "cloze" || mode === "choose") && !clozeTextFor(word)) {
-        mode = index % 2 === 0 ? "meaning" : "form";
-      }
-      if (mode === "form" && word.form.trim().length >= 3 && index % 4 === 1) {
-        mode = "scramble";
-      }
-      if (mode === "form" && isGrammarEligible(word) && index % 4 === 3) {
-        mode = "grammar";
-      }
-      if (mode === "cloze" && isSentenceEligible(word) && index % 4 === 2) {
-        mode = "syntax";
-      }
-      if (
-        (mode === "meaning" ||
-          mode === "form" ||
-          mode === "scramble" ||
-          mode === "grammar") &&
-        !word.meaning &&
-        !word.pos
-      )
-        return [];
-      return [{ word, mode }];
-    });
 
   // «Acepción» necesita la ficha completa de cada palabra guardada
   // con acepción; sin conexión o con menos de dos acepciones la
@@ -775,10 +850,61 @@ export default function Vocabulary({
     beginQueue(items);
   };
 
-  const startMix = () => {
+
+  const startAdaptiveFlow = () => {
     setPracticeNote("");
-    const items = buildMixItems();
-    if (items.length) beginQueue(items);
+    const candidates = dueWords.length > 0 ? dueWords.slice(0, 5) : scopedWords.slice(0, 5);
+    if (!candidates.length) return;
+
+    const challenges = buildAdaptivePracticeQueue(candidates, {
+      pool: scopedWords,
+      useAi,
+      hasConnection: typeof navigator !== "undefined" ? navigator.onLine : true,
+    });
+
+    const queueItems: QueueItem[] = challenges.map((ch) => {
+      let mode: PracticeMode;
+      switch (ch.mechanic) {
+        case "contextual_cloze":
+          mode = "choose";
+          break;
+        case "syllable_scramble":
+          mode = "scramble";
+          break;
+        case "phrase_weaver":
+          mode = "syntax";
+          break;
+        case "grammar_nuance":
+          mode = "grammar";
+          break;
+        case "ai_sentence_craft":
+          mode = "write";
+          break;
+        default:
+          mode = "choose";
+      }
+      return {
+        word: ch.word,
+        mode,
+        adaptiveChallenge: ch,
+      };
+    });
+
+    beginQueue(queueItems);
+  };
+
+  const handleQuickGame = (targetWord: SavedWord) => {
+    triggerHaptic("selection");
+    setPracticeNote("");
+    const targetMode: PracticeMode = targetWord.meaning ? "choose" : "form";
+    const others = scopedWords
+      .filter((w) => w.key !== targetWord.key && isEligible(w, targetMode))
+      .slice(0, 4);
+    const items: QueueItem[] = [
+      { word: targetWord, mode: targetMode },
+      ...others.map((w) => ({ word: w, mode: targetMode })),
+    ];
+    beginQueue(items);
   };
 
   // ---------- Aprender (primera exposición guiada) ----------
@@ -1397,7 +1523,6 @@ export default function Vocabulary({
   // queda en autocalificación directa.
   const hasSession = Boolean(getActiveUserId());
   const done = queue ? queue.total - queue.items.length : 0;
-  const mixCount = buildMixItems().length;
 
   // «Elegir palabra»: la forma correcta más tres distractores del
   // cuaderno, mezclados con semilla estable por palabra.
@@ -1490,40 +1615,290 @@ export default function Vocabulary({
 
       <div className="notebook-main">
         {!queue && !learn ? (
-          <div className="segmented nb-tabs" role="group" aria-label="Secciones del cuaderno">
-            <button
-              type="button"
-              data-active={tab === "today" || undefined}
-              aria-pressed={tab === "today"}
-              onClick={() => setTab("today")}
-            >
-              Hoy
-            </button>
-            <button
-              type="button"
-              data-active={tab === "words" || undefined}
-              aria-pressed={tab === "words"}
-              onClick={() => setTab("words")}
-            >
-              Palabras
-            </button>
-            <button
-              type="button"
-              data-active={tab === "quotes" || undefined}
-              aria-pressed={tab === "quotes"}
-              onClick={() => setTab("quotes")}
-            >
-              Citas
-            </button>
-            <button
-              type="button"
-              data-active={tab === "activity" || undefined}
-              aria-pressed={tab === "activity"}
-              onClick={() => setTab("activity")}
-            >
-              Actividad
-            </button>
-          </div>
+          <>
+            {/* Hero Card: "La Mesa de Estudio con el Gato" */}
+            <section className="nb-hero-card" aria-label="La Mesa de Estudio con el Gato">
+              <div className="nb-hero-study-desk">
+                <div className="nb-hero-companion-pane">
+                  <div
+                    className="nb-hero-cat-wrapper"
+                    onClick={() => {
+                      triggerHaptic("selection");
+                      playCompanionSound("purr");
+                      setCatPose((p) => (p === "idle" ? "greet" : "idle"));
+                      setCatSpeech(
+                        combo > 0
+                          ? `¡Llevas racha x${combo}! 🐾`
+                          : "¡A leer y repasar con ganas! 🐾",
+                      );
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Interactuar con ${companion?.name ?? "el gato"}`}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setCatPose("greet");
+                      }
+                    }}
+                  >
+                    <Companion
+                      stage={companion?.stage ?? 1}
+                      mood={companion?.mood ?? "awake"}
+                      accessories={companion?.accessories ?? []}
+                      pose={catPose}
+                      name={companion?.name ?? "Gato"}
+                    />
+                    {catSpeech ? (
+                      <div className="nb-hero-cat-bubble" role="status">
+                        <span>{catSpeech}</span>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="nb-hero-session-summary">
+                  <div className="nb-hero-header">
+                    <span className="nb-hero-eyebrow">La Mesa de Estudio</span>
+                    <h2 className="nb-hero-title">
+                      {dueCount > 0
+                        ? `Tienes ${dueCount} ${dueCount === 1 ? "palabra lista" : "palabras listas"} para brillar hoy`
+                        : all.length === 0
+                          ? "Tu cuaderno está esperando tus lecturas"
+                          : `Estás al día. ${nextDueTs !== null ? `El próximo repaso: ${futureRelativeDay(nextDueTs)}` : "Tu mente descansa hoy."}`}
+                    </h2>
+                  </div>
+
+                  {all.length > 0 ? (
+                    <div className="vocab-progress-card" aria-label="Progreso del cuaderno">
+                      <div
+                        className="vocab-progress-track"
+                        role="progressbar"
+                        aria-label="Progreso del cuaderno"
+                        aria-valuenow={progressStats.settled}
+                        aria-valuemin={0}
+                        aria-valuemax={progressStats.total}
+                      >
+                        <div
+                          className="vocab-progress-seg vocab-progress-seg--settled"
+                          style={{
+                            inlineSize: `${progressStats.total > 0 ? (progressStats.settled / progressStats.total) * 100 : 0}%`,
+                          }}
+                          title={`${progressStats.settled} asentadas`}
+                        />
+                        <div
+                          className="vocab-progress-seg vocab-progress-seg--learning"
+                          style={{
+                            inlineSize: `${progressStats.total > 0 ? (progressStats.learning / progressStats.total) * 100 : 0}%`,
+                          }}
+                          title={`${progressStats.learning} aprendiendo`}
+                        />
+                        <div
+                          className="vocab-progress-seg vocab-progress-seg--new"
+                          style={{
+                            inlineSize: `${progressStats.total > 0 ? (progressStats.newWords / progressStats.total) * 100 : 0}%`,
+                          }}
+                          title={`${progressStats.newWords} nuevas`}
+                        />
+                      </div>
+                      <div className="vocab-progress-legend" role="group" aria-label="Filtrar por nivel de dominio">
+                        <button
+                          type="button"
+                          className={`vocab-progress-item vocab-progress-pill vocab-progress-item--new ${filter === "new" ? "is-active" : ""}`}
+                          onClick={() => {
+                            triggerHaptic("selection");
+                            setFilter((prev) => (prev === "new" ? "all" : "new"));
+                            setTab("words");
+                          }}
+                          aria-pressed={filter === "new"}
+                        >
+                          <span className="vocab-progress-dot" aria-hidden="true" />
+                          <span className="vocab-progress-name">Nuevas</span>
+                          <strong className="vocab-progress-count">{progressStats.newWords}</strong>
+                        </button>
+                        <button
+                          type="button"
+                          className={`vocab-progress-item vocab-progress-pill vocab-progress-item--learning ${filter === "learning" ? "is-active" : ""}`}
+                          onClick={() => {
+                            triggerHaptic("selection");
+                            setFilter((prev) => (prev === "learning" ? "all" : "learning"));
+                            setTab("words");
+                          }}
+                          aria-pressed={filter === "learning"}
+                        >
+                          <span className="vocab-progress-dot" aria-hidden="true" />
+                          <span className="vocab-progress-name">En aprendizaje</span>
+                          <strong className="vocab-progress-count">{progressStats.learning}</strong>
+                        </button>
+                        <button
+                          type="button"
+                          className={`vocab-progress-item vocab-progress-pill vocab-progress-item--settled ${filter === "settled" ? "is-active" : ""}`}
+                          onClick={() => {
+                            triggerHaptic("selection");
+                            setFilter((prev) => (prev === "settled" ? "all" : "settled"));
+                            setTab("words");
+                          }}
+                          aria-pressed={filter === "settled"}
+                        >
+                          <span className="vocab-progress-dot" aria-hidden="true" />
+                          <span className="vocab-progress-name">Dominadas</span>
+                          <strong className="vocab-progress-count">{progressStats.settled}</strong>
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {/* Barra de Energía Léxica / Racha de Combo */}
+                  <div className="nb-hero-energy" aria-label="Energía Léxica y Racha">
+                    <div className="nb-hero-energy-header">
+                      <span className="nb-hero-energy-label">
+                        <Icon name="sparkles" size={14} />
+                        <span>Energía Léxica</span>
+                      </span>
+                      <span className="nb-hero-energy-streak">
+                        {combo > 0 ? `🔥 Combo x${combo}` : `⚡ ${Math.floor(companion?.state?.xp ?? 0)} pts`}
+                        {companion?.state?.stats?.streakDays && companion.state.stats.streakDays > 1
+                          ? ` · Racha ${companion.state.stats.streakDays} días`
+                          : ""}
+                      </span>
+                    </div>
+                    <div
+                      className="nb-hero-energy-track"
+                      role="progressbar"
+                      aria-label="Energía léxica"
+                      aria-valuenow={Math.min(100, Math.round(((companion?.state?.xp ?? 0) % 100)))}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                    >
+                      <div
+                        className="nb-hero-energy-fill"
+                        style={{
+                          inlineSize: `${Math.max(8, Math.min(100, Math.round(((companion?.state?.xp ?? 0) % 100))))}%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* CTA Principal Único */}
+                  <div className="nb-hero-cta">
+                    <button
+                      type="button"
+                      className="btn btn--primary nb-hero-btn-flow"
+                      onClick={startAdaptiveFlow}
+                      disabled={all.length === 0}
+                    >
+                      <Icon name="sparkles" size={16} />
+                      <span>Iniciar Sesión Fluida (~2 min)</span>
+                    </button>
+                  </div>
+
+                  {/* Selector Secundario de Juegos ("Elegir modo libre") */}
+                  <div className="nb-free-modes">
+                    <span className="nb-free-modes-label">Elegir modo libre:</span>
+                    <div className="nb-free-modes-grid" role="group" aria-label="Modos de juego libres">
+                      <button
+                        type="button"
+                        className="nb-free-mode-card"
+                        onClick={() => void startPractice("cloze")}
+                        disabled={all.filter((w) => isEligible(w, "cloze")).length === 0}
+                        title="Hueco en el Libro · Contexto rápido"
+                      >
+                        <span className="nb-free-mode-icon" aria-hidden="true">📖</span>
+                        <div className="nb-free-mode-info">
+                          <strong className="nb-free-mode-name">Hueco en el Libro</strong>
+                          <span className="nb-free-mode-time">Contexto rápido</span>
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        className="nb-free-mode-card"
+                        onClick={() => void startPractice("scramble")}
+                        disabled={all.filter((w) => isEligible(w, "scramble")).length === 0}
+                        title="Sílabas de Tinta · Descifrar palabra"
+                      >
+                        <span className="nb-free-mode-icon" aria-hidden="true">✒️</span>
+                        <div className="nb-free-mode-info">
+                          <strong className="nb-free-mode-name">Sílabas de Tinta</strong>
+                          <span className="nb-free-mode-time">Descifrar palabra</span>
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        className="nb-free-mode-card"
+                        onClick={() => void startPractice("syntax")}
+                        disabled={all.filter((w) => isEligible(w, "syntax")).length === 0}
+                        title="Telar de Frases · Ordenar oración"
+                      >
+                        <span className="nb-free-mode-icon" aria-hidden="true">🧵</span>
+                        <div className="nb-free-mode-info">
+                          <strong className="nb-free-mode-name">Telar de Frases</strong>
+                          <span className="nb-free-mode-time">Ordenar frase</span>
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        className="nb-free-mode-card"
+                        onClick={() => setWorkshopOpen((prev) => !prev)}
+                        disabled={all.length === 0}
+                        title="Taller con el Gato IA · Generativo"
+                      >
+                        <span className="nb-free-mode-icon" aria-hidden="true">🐾</span>
+                        <div className="nb-free-mode-info">
+                          <strong className="nb-free-mode-name">Taller con el Gato IA</strong>
+                          <span className="nb-free-mode-time">Generativo</span>
+                        </div>
+                      </button>
+                    </div>
+                    {practiceNote ? <p className="meta nb-practice-note">{practiceNote}</p> : null}
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <GamePanel
+              mode={workshopOpen ? "ai_workshop" : "dashboard"}
+              onStartAdaptiveFlow={startAdaptiveFlow}
+              words={all.map((w) => ({
+                word: w.form,
+                meaning: w.meaning,
+                bookTitle: w.bookHash ? bookTitle(w.bookHash) : undefined,
+                lemma: w.lemma,
+              }))}
+              onClose={() => setWorkshopOpen(false)}
+            />
+
+            <div className="segmented nb-tabs" role="group" aria-label="Secciones del cuaderno">
+              <button
+                type="button"
+                data-active={tab === "words" || tab === "today" || undefined}
+                aria-pressed={tab === "words" || tab === "today"}
+                onClick={() => setTab("words")}
+              >
+                Mi Herbario de Palabras
+              </button>
+              <button
+                type="button"
+                data-active={tab === "quotes" || undefined}
+                aria-pressed={tab === "quotes"}
+                onClick={() => setTab("quotes")}
+              >
+                Citas y Hallazgos
+              </button>
+              {onOpenJourney || activityVersion ? (
+                <button
+                  type="button"
+                  data-active={tab === "activity" || undefined}
+                  aria-pressed={tab === "activity"}
+                  onClick={() => setTab("activity")}
+                >
+                  Actividad
+                </button>
+              ) : null}
+            </div>
+          </>
         ) : null}
 
         {tab === "activity" && !queue && !learn ? (
@@ -1636,10 +2011,8 @@ export default function Vocabulary({
           </>
         ) : null}
 
-        {tab === "today" && !queue && !learn ? (
-          <section aria-label="Hoy">
-            <GamePanel />
-
+        {(tab === "words" || tab === "today") && !queue && !learn ? (
+          <section aria-label="Palabras guardadas">
             {learnPending.length > 0 ? (
               <section className="nb-review" aria-label="Palabras por aprender">
                 <p className="eyebrow">Por aprender · {learnPending.length}</p>
@@ -1657,129 +2030,6 @@ export default function Vocabulary({
                   </button>
                 </div>
               </section>
-            ) : null}
-
-            {dueCount > 0 ? (
-              <section className="nb-review" aria-label="Repaso de hoy">
-                <p className="eyebrow">Repasar hoy · {dueCount}</p>
-                {mixCount > 0 ? (
-                  <>
-                    <div className="practice-modes" role="group" aria-label="Modo de repaso">
-                      <button type="button" className="btn btn--primary" onClick={startMix}>
-                        Repasar hoy
-                      </button>
-                    </div>
-                    <details className="practice-more">
-                      <summary className="meta">Elegir un tipo de ejercicio específico</summary>
-                      <div className="practice-modes practice-modes--sub" role="group" aria-label="Ejercicios específicos">
-                        {MODES.map(({ id, label, needs }) => {
-                          const count = eligibleDue(id);
-                          return (
-                            <button
-                              key={id}
-                              type="button"
-                              className="btn"
-                              disabled={count === 0}
-                              title={count === 0 ? `Sin pendientes con ${needs}` : undefined}
-                              onClick={() => void startPractice(id)}
-                            >
-                              {label} · {count}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </details>
-                  </>
-                ) : (
-                  <div className="practice-modes" role="group" aria-label="Modo de repaso">
-                    {MODES.map(({ id, label, needs }) => {
-                      const count = eligibleDue(id);
-                      return (
-                        <button
-                          key={id}
-                          type="button"
-                          className="btn"
-                          disabled={count === 0}
-                          title={count === 0 ? `Sin pendientes con ${needs}` : undefined}
-                          onClick={() => void startPractice(id)}
-                        >
-                          {label} · {count}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-                {practiceNote ? <p className="meta">{practiceNote}</p> : null}
-              </section>
-            ) : null}
-
-            {learnPending.length === 0 && dueCount === 0 ? (
-              all.length === 0 ? (
-                <p className="nb-empty">
-                  Aún no has apuntado palabras.
-                  <br />
-                  Toca cualquier palabra mientras lees y aparecerá aquí, con su oración.
-                </p>
-              ) : (
-                <div className="nb-today-empty">
-                  <p className="nb-today-empty-title">Estás al día.</p>
-                  {nextDueTs !== null ? (
-                    <p className="meta">El próximo repaso: {futureRelativeDay(nextDueTs)}</p>
-                  ) : null}
-                </div>
-              )
-            ) : null}
-
-            {all.length > 0 ? (
-              <div className="vocab-progress-card" aria-label="Progreso del cuaderno">
-                <div
-                  className="vocab-progress-track"
-                  role="progressbar"
-                  aria-label="Progreso del cuaderno"
-                  aria-valuenow={progressStats.settled}
-                  aria-valuemin={0}
-                  aria-valuemax={progressStats.total}
-                >
-                  <div
-                    className="vocab-progress-seg vocab-progress-seg--settled"
-                    style={{
-                      inlineSize: `${progressStats.total > 0 ? (progressStats.settled / progressStats.total) * 100 : 0}%`,
-                    }}
-                    title={`${progressStats.settled} asentadas`}
-                  />
-                  <div
-                    className="vocab-progress-seg vocab-progress-seg--learning"
-                    style={{
-                      inlineSize: `${progressStats.total > 0 ? (progressStats.learning / progressStats.total) * 100 : 0}%`,
-                    }}
-                    title={`${progressStats.learning} aprendiendo`}
-                  />
-                  <div
-                    className="vocab-progress-seg vocab-progress-seg--new"
-                    style={{
-                      inlineSize: `${progressStats.total > 0 ? (progressStats.newWords / progressStats.total) * 100 : 0}%`,
-                    }}
-                    title={`${progressStats.newWords} nuevas`}
-                  />
-                </div>
-                <div className="vocab-progress-legend">
-                  <span className="vocab-progress-item vocab-progress-item--settled">
-                    <span className="vocab-progress-dot" aria-hidden="true" />
-                    <span className="vocab-progress-name">Asentada</span>
-                    <strong className="vocab-progress-count">{progressStats.settled}</strong>
-                  </span>
-                  <span className="vocab-progress-item vocab-progress-item--learning">
-                    <span className="vocab-progress-dot" aria-hidden="true" />
-                    <span className="vocab-progress-name">Aprendiendo</span>
-                    <strong className="vocab-progress-count">{progressStats.learning}</strong>
-                  </span>
-                  <span className="vocab-progress-item vocab-progress-item--new">
-                    <span className="vocab-progress-dot" aria-hidden="true" />
-                    <span className="vocab-progress-name">Nueva</span>
-                    <strong className="vocab-progress-count">{progressStats.newWords}</strong>
-                  </span>
-                </div>
-              </div>
             ) : null}
 
             {languageFilter !== "all" || bookFilter !== "all" ? (
@@ -1802,11 +2052,6 @@ export default function Vocabulary({
                 </button>
               </div>
             ) : null}
-          </section>
-        ) : null}
-
-        {tab === "words" && !queue && !learn ? (
-          <section aria-label="Palabras guardadas">
             {words?.length === 0 ? (
               <p className="nb-empty">
                 Aún no has apuntado palabras.
@@ -2035,6 +2280,8 @@ export default function Vocabulary({
                                 onLearn={() => startLearn(word)}
                                 onRemove={() => void remove(word)}
                                 onSpeak={() => void speakWord(word.form, word.language)}
+                                bookTitle={bookTitle(word.bookHash)}
+                                onQuickGame={() => handleQuickGame(word)}
                               />
                             ))}
                           </ul>
@@ -2065,6 +2312,8 @@ export default function Vocabulary({
                           onLearn={() => startLearn(word)}
                           onRemove={() => void remove(word)}
                           onSpeak={() => void speakWord(word.form, word.language)}
+                          bookTitle={bookTitle(word.bookHash)}
+                          onQuickGame={() => handleQuickGame(word)}
                         />
                       ))}
                     </ul>
@@ -2286,6 +2535,21 @@ export default function Vocabulary({
               onAskHint={hasSession && current.mode !== "write" ? askCatHint : undefined}
               hintBusy={hintBusy}
               hintText={hintText}
+              progress={{
+                current: queue.total - queue.items.length + 1,
+                total: queue.total,
+              }}
+              instruction={
+                current.mode === "scramble"
+                  ? "Toca las fichas en orden para completar la palabra del pasaje."
+                  : current.mode === "syntax"
+                    ? "Ordena los fragmentos con sentido para reconstruir la frase literaria."
+                    : current.mode === "grammar"
+                      ? "Observa la escena e identifica qué papel cumple la palabra."
+                      : current.mode === "match"
+                        ? "Empareja cada término con su significado correspondiente."
+                        : undefined
+              }
             />
             <div className="nb-practice-progress-row">
               <p className="meta nb-practice-meta">
@@ -2381,6 +2645,20 @@ export default function Vocabulary({
                   void grade(current, EXERCISE_RATING.correct);
                 }}
                 onWrong={() => {
+                  if (current.adaptiveChallenge && current.adaptiveChallenge.level > 1) {
+                    const rescued = rescueChallenge(current.adaptiveChallenge, scopedWords);
+                    setQueue((prev) => {
+                      if (!prev) return prev;
+                      const nextItems = [...prev.items];
+                      nextItems[0] = { ...current, mode: "choose", adaptiveChallenge: rescued };
+                      return { ...prev, items: nextItems };
+                    });
+                    setCatPose("greet");
+                    setCatSpeech("¡No pasa nada! El gato te ayuda: inténtalo en contexto 🐾");
+                    setHintText(rescued.hint ?? null);
+                    setCombo(0);
+                    return;
+                  }
                   setCatPose("greet");
                   setCatSpeech("Casi... ¡revisa el orden de las letras! 🐾");
                   setCombo(0);
@@ -2420,6 +2698,20 @@ export default function Vocabulary({
                   void grade(current, EXERCISE_RATING.correct);
                 }}
                 onWrong={() => {
+                  if (current.adaptiveChallenge && current.adaptiveChallenge.level > 1) {
+                    const rescued = rescueChallenge(current.adaptiveChallenge, scopedWords);
+                    setQueue((prev) => {
+                      if (!prev) return prev;
+                      const nextItems = [...prev.items];
+                      nextItems[0] = { ...current, mode: "choose", adaptiveChallenge: rescued };
+                      return { ...prev, items: nextItems };
+                    });
+                    setCatPose("greet");
+                    setCatSpeech("¡Tranquilo! Vamos a ver la palabra en su oración 🐾");
+                    setHintText(rescued.hint ?? null);
+                    setCombo(0);
+                    return;
+                  }
                   setCatPose("greet");
                   setCatSpeech("Casi... revisa la función de la palabra 🐾");
                   setCombo(0);
@@ -2458,6 +2750,20 @@ export default function Vocabulary({
                   void grade(current, EXERCISE_RATING.correct);
                 }}
                 onWrong={() => {
+                  if (current.adaptiveChallenge && current.adaptiveChallenge.level > 1) {
+                    const rescued = rescueChallenge(current.adaptiveChallenge, scopedWords);
+                    setQueue((prev) => {
+                      if (!prev) return prev;
+                      const nextItems = [...prev.items];
+                      nextItems[0] = { ...current, mode: "choose", adaptiveChallenge: rescued };
+                      return { ...prev, items: nextItems };
+                    });
+                    setCatPose("greet");
+                    setCatSpeech("¡No pasa nada! Reconozcamos la palabra primero 🐾");
+                    setHintText(rescued.hint ?? null);
+                    setCombo(0);
+                    return;
+                  }
                   setCatPose("greet");
                   setCatSpeech("Revisa el orden de las palabras 🐾");
                   setCombo(0);

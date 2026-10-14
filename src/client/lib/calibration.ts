@@ -8,12 +8,16 @@ import {
 } from "./idb";
 import { pushKnowledgeToServer } from "./reading-sync";
 import { pushWordsToServer } from "./vocab";
-import type { CalibrationProfile } from "../../shared/calibration-bank";
+import {
+  calibrationFallbackDefinition,
+  calibrationSampleContext,
+  type CalibrationProfile,
+} from "../../shared/calibration-bank";
 
 // Calibración inicial del vocabulario: una muestra del catálogo
 // (lemas repartidos en bandas de frecuencia, servida por
 // GET /api/lexicon/sample) que el lector marca explícitamente como
-// «la conozco / no la conozco». Solo lo respondido queda como
+// «la conozco / me suena dudosa / no la conozco». Solo lo respondido queda como
 // evidencia `calibration` del modelo de conocimiento (knowledge.ts);
 // lo no tocado no es conocido ni desconocido: es pendiente.
 
@@ -32,15 +36,35 @@ export function calibrationDraftKey(language = "es"): string {
   return language === "es" ? CALIBRATION_DRAFT_KEY : `${CALIBRATION_DRAFT_KEY}:${language}`;
 }
 
-export type CalibrationAnswers = Record<string, "known" | "unknown">;
+export type CalibrationAnswerValue = "known" | "unknown" | "unsure";
+export type CalibrationAnswers = Record<string, CalibrationAnswerValue>;
+
+export function calibrationAnswerScore(answer: CalibrationAnswerValue): number {
+  switch (answer) {
+    case "known":
+      return 1.0;
+    case "unsure":
+      return 0.35;
+    case "unknown":
+      return 0.0;
+  }
+}
 
 // `definition` puede ser null: el catálogo ofrece lemas aunque no
 // tengan acepción cargada; al marcarlos no hay revelado.
-export type CalibrationWord = { lemma: string; definition: string | null };
+export type CalibrationWord = {
+  lemma: string;
+  definition: string | null;
+  sampleContext?: string | null;
+  pos?: string;
+  zipf?: number | null;
+};
 
 export type CalibrationSample =
   | { ok: true; words: CalibrationWord[]; version?: string }
   | { ok: false };
+
+export const CALIBRATION_ADAPTIVE_COUNT = 10;
 
 // Pide la muestra al catálogo con tope de espera: sin conexión, con
 // respuesta rara o demasiado lenta devuelve { ok: false } y quien
@@ -59,14 +83,22 @@ export async function fetchCalibrationSample(
       version?: unknown;
     };
     if (!response.ok || !Array.isArray(data.words)) return { ok: false };
-    const words = data.words.filter(
-      (item): item is CalibrationWord =>
-        typeof item === "object" &&
-        item !== null &&
-        typeof (item as CalibrationWord).lemma === "string" &&
-        ((item as CalibrationWord).definition === null ||
-          typeof (item as CalibrationWord).definition === "string"),
-    );
+    const words = data.words
+      .filter(
+        (item): item is CalibrationWord =>
+          typeof item === "object" &&
+          item !== null &&
+          typeof (item as CalibrationWord).lemma === "string" &&
+          ((item as CalibrationWord).definition === null ||
+            typeof (item as CalibrationWord).definition === "string"),
+      )
+      .map((item) => ({
+        ...item,
+        definition:
+          item.definition ?? calibrationFallbackDefinition(item.lemma, language),
+        sampleContext:
+          item.sampleContext ?? calibrationSampleContext(item.lemma, language),
+      }));
     const version =
       typeof data.version === "string" ? data.version : undefined;
     return { ok: true, words, version };
@@ -98,6 +130,7 @@ export const CALIBRATION_DRAFT_VERSION = 2;
 export type CalibrationDraft = {
   answers: CalibrationAnswers;
   step: number;
+  stage?: number;
   // La muestra guardada con el borrador; si existe, sustituye a la
   // recién descargada para conservar la misma selección.
   words?: CalibrationWord[];
@@ -107,12 +140,14 @@ export type CalibrationDraft = {
 export function serializeCalibrationDraft(draft: {
   answers: CalibrationAnswers;
   step: number;
+  stage?: number;
   words: CalibrationWord[];
 }): string {
   return JSON.stringify({
     v: CALIBRATION_DRAFT_VERSION,
     answers: draft.answers,
     step: draft.step,
+    ...(draft.stage !== undefined ? { stage: draft.stage } : {}),
     words: draft.words,
   });
 }
@@ -126,7 +161,10 @@ const cleanAnswers = (
   const valid = new Set(words.map((word) => word.lemma));
   const answers: CalibrationAnswers = {};
   for (const [lemma, value] of Object.entries(source))
-    if (valid.has(lemma) && (value === "known" || value === "unknown"))
+    if (
+      valid.has(lemma) &&
+      (value === "known" || value === "unknown" || value === "unsure")
+    )
       answers[lemma] = value;
   return answers;
 };
@@ -162,6 +200,7 @@ export function parseCalibrationDraft(
       v?: unknown;
       answers?: unknown;
       step?: unknown;
+      stage?: unknown;
       words?: unknown;
     };
     // Una versión distinta a las conocidas no se interpreta: un v3
@@ -179,7 +218,16 @@ export function parseCalibrationDraft(
       typeof parsed.step === "number" && Number.isInteger(parsed.step)
         ? Math.min(Math.max(parsed.step, 0), lastStep)
         : 0;
-    return { answers: cleanAnswers(parsed.answers, words), step, words };
+    const stage =
+      typeof parsed.stage === "number" && [1, 2, 3].includes(parsed.stage)
+        ? parsed.stage
+        : undefined;
+    return {
+      answers: cleanAnswers(parsed.answers, words),
+      step,
+      ...(stage ? { stage } : {}),
+      words,
+    };
   } catch {
     return empty;
   }

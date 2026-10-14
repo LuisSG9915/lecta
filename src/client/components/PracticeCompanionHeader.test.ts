@@ -149,4 +149,54 @@ describe("PracticeCompanionHeader", () => {
     if (modeBtn) click(modeBtn);
     expect(onModeChange).toHaveBeenCalledWith("calm");
   });
+
+  it("permite tocar al gato directamente para solicitar pista y muestra la barra de progreso del reto", () => {
+    vi.spyOn(CompanionProviderModule, "useCompanionSafe").mockReturnValue({
+      enabled: true,
+      state: {} as never,
+      name: "Gato Literario",
+      equipped: { body: null, neck: null, head: null, face: null, coat: null },
+      accessories: [],
+      mood: "awake",
+      stage: 1,
+      presence: "visits",
+      modalOpen: false,
+      reducedMotion: false,
+      activeCare: null,
+      open: false,
+      openPanel: vi.fn(),
+      closePanel: vi.fn(),
+      setCelebrationBlocked: vi.fn(),
+      care: vi.fn(),
+    });
+
+    const onAskHint = vi.fn();
+    render(
+      h(PracticeCompanionHeader, {
+        pose: "idle",
+        speech: "¡Vamos a jugar!",
+        instruction: "Toca las sílabas en orden para completar la palabra",
+        combo: 0,
+        mode: "animated",
+        onModeChange: vi.fn(),
+        onAskHint,
+        progress: { current: 3, total: 5 },
+      }),
+    );
+
+    // Barra de progreso de sesión
+    expect(host.textContent).toContain("Reto 3 de 5");
+    const progressFill = host.querySelector(".practice-progress-fill") as HTMLElement;
+    expect(progressFill).not.toBeNull();
+    expect(progressFill.style.inlineSize).toBe("60%");
+
+    // Instrucción humana en la burbuja
+    expect(host.textContent).toContain("Toca las sílabas en orden para completar la palabra");
+
+    // Al tocar al gato en su avatar, dispara la petición de pista
+    const catAvatar = host.querySelector(".practice-cat-avatar");
+    expect(catAvatar).not.toBeNull();
+    if (catAvatar) click(catAvatar);
+    expect(onAskHint).toHaveBeenCalledTimes(1);
+  });
 });

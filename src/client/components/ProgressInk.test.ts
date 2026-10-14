@@ -160,4 +160,30 @@ describe("ProgressInk", () => {
     expect(fill.style.transform).toBe("scaleX(0.2)");
     expect(fill.style.transition).toBe("none");
   });
+
+  it("activa la animación de onda con pulseWave y con el evento de bloque concentrado", () => {
+    act(() => {
+      root.render(
+        h(ProgressInk, {
+          value: 50,
+          max: 100,
+          pulseWave: true,
+        }),
+      );
+    });
+
+    expect(container.querySelector(".progress-ink-wave-overlay")).toBeTruthy();
+
+    // Después de 1200ms se apaga
+    act(() => {
+      vi.advanceTimersByTime(1250);
+    });
+    expect(container.querySelector(".progress-ink-wave-overlay")).toBeNull();
+
+    // Se dispara vía evento global
+    act(() => {
+      window.dispatchEvent(new CustomEvent("lecta:focus-block-completed"));
+    });
+    expect(container.querySelector(".progress-ink-wave-overlay")).toBeTruthy();
+  });
 });

@@ -17,6 +17,8 @@ import {
   hasExplicitNativeLanguage,
   readerProfileFor,
   READER_DEFAULTS,
+  applyStrategyPreset,
+  isStrategyPresetActive,
 } from "./settings";
 
 describe("parseTheme", () => {
@@ -81,6 +83,12 @@ describe("parseReaderSettings", () => {
       enableHyphenation: false,
       focusMode: "off",
       rulerSize: 3,
+      strategyPreset: "immersive",
+      focusRuler: false,
+      paragraphFocus: false,
+      syntacticLines: false,
+      highlightLexical: false,
+      hideSecondaryIndicators: true,
     });
   });
 
@@ -172,9 +180,73 @@ describe("parseReaderSettings", () => {
   });
 });
 
+describe("applyStrategyPreset y isStrategyPresetActive", () => {
+  it("configura immersive (Lectura Limpia): apaga regla, foco y sintaxis", () => {
+    const initial = {
+      ...READER_DEFAULTS,
+      focusRuler: true,
+      paragraphFocus: true,
+      syntacticLines: true,
+      strategyPreset: "custom" as const,
+    };
+    const result = applyStrategyPreset("immersive", initial);
+    expect(result.strategyPreset).toBe("immersive");
+    expect(result.focusRuler).toBe(false);
+    expect(result.paragraphFocus).toBe(false);
+    expect(result.syntacticLines).toBe(false);
+    expect(result.focusMode).toBe("off");
+    expect(result.hideSecondaryIndicators).toBe(true);
+    expect(isStrategyPresetActive("immersive", result)).toBe(true);
+  });
+
+  it("configura focus (Enfoque Profundo): activa focusRuler y paragraphFocus", () => {
+    const result = applyStrategyPreset("focus", READER_DEFAULTS);
+    expect(result.strategyPreset).toBe("focus");
+    expect(result.focusRuler).toBe(true);
+    expect(result.paragraphFocus).toBe(true);
+    expect(result.syntacticLines).toBe(false);
+    expect(isStrategyPresetActive("focus", result)).toBe(true);
+  });
+
+  it("configura lexical (Explorador Léxico): activa syntacticLines y highlightLexical", () => {
+    const result = applyStrategyPreset("lexical", READER_DEFAULTS);
+    expect(result.strategyPreset).toBe("lexical");
+    expect(result.syntacticLines).toBe(true);
+    expect(result.focusRuler).toBe(false);
+    expect(result.paragraphFocus).toBe(false);
+    expect(result.highlightLexical).toBe(true);
+    expect(isStrategyPresetActive("lexical", result)).toBe(true);
+  });
+
+  it("configura audio (Audio-Lectura Guiada): prepara el modo de audio", () => {
+    const result = applyStrategyPreset("audio", READER_DEFAULTS);
+    expect(result.strategyPreset).toBe("audio");
+    expect(result.focusRuler).toBe(false);
+    expect(result.paragraphFocus).toBe(false);
+    expect(result.syntacticLines).toBe(false);
+    expect(isStrategyPresetActive("audio", result)).toBe(true);
+  });
+
+  it("configura custom: conserva banderas manuales", () => {
+    const initial = {
+      ...READER_DEFAULTS,
+      focusRuler: true,
+      paragraphFocus: false,
+      syntacticLines: true,
+    };
+    const result = applyStrategyPreset("custom", initial);
+    expect(result.strategyPreset).toBe("custom");
+    expect(result.focusRuler).toBe(true);
+    expect(result.paragraphFocus).toBe(false);
+    expect(result.syntacticLines).toBe(true);
+    expect(isStrategyPresetActive("custom", result)).toBe(true);
+  });
+});
+
 describe("readerCssVars", () => {
   it("mapea los ajustes a variables de lectura", () => {
     const vars = readerCssVars({
+      ...READER_DEFAULTS,
       font: "sans",
       size: 20,
       leading: 1.7,

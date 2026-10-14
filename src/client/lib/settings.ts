@@ -13,21 +13,21 @@ export const THEME_CHOICES: ThemeChoice[] = [
 
 export const THEME_LABELS: Record<ThemeChoice, string> = {
   auto: "Auto",
-  blanco: "Día",
-  papel: "Sepia",
-  noche: "Pizarra",
-  oled: "OLED",
+  blanco: "Papel Crema",
+  papel: "Sepia Cálido",
+  noche: "Gris Tarde",
+  oled: "Noche Tinta",
 };
 
 // Muestra de cada paleta: el papel y la tinta tal como se ven al leer.
 // «auto» parte el círculo en las dos caras que el sistema elige y no
 // lleva letra porque ninguna tinta sola se leería sobre ambas mitades.
-export const THEME_SWATCHES: Record<ThemeChoice, { bg: string; fg?: string }> = {
-  auto: { bg: "linear-gradient(135deg, #ffffff 50%, #1f2022 50%)" },
-  blanco: { bg: "#ffffff", fg: "#232019" },
-  papel: { bg: "#f8f1e3", fg: "#2b2520" },
-  noche: { bg: "#1f2022", fg: "#ddd9d3" },
-  oled: { bg: "#000000", fg: "#e8e4dc" },
+export const THEME_SWATCHES: Record<ThemeChoice, { bg: string; fg?: string; border?: string }> = {
+  auto: { bg: "linear-gradient(135deg, #fdfbf7 50%, #1f2022 50%)" },
+  blanco: { bg: "#fdfbf7", fg: "#26241f", border: "#e5ded4" },
+  papel: { bg: "#f8f1e3", fg: "#2b2520", border: "#ddd4c4" },
+  noche: { bg: "#1f2022", fg: "#d6d9de", border: "#3a3d43" },
+  oled: { bg: "#000000", fg: "#e8e4dc", border: "#22252a" },
 };
 
 const THEME_KEY = "lecta:theme";
@@ -35,14 +35,52 @@ const READER_KEY = "lecta:reader";
 
 export type ReaderFont = "literata" | "sans" | "serif" | "atkinson" | "dyslexic";
 
+export interface ReaderFontOption {
+  id: ReaderFont;
+  label: string;
+  family: string;
+  help: string;
+  sample: string;
+}
+
 // `family` alimenta la vista previa del selector y readerCssVars: la
 // misma fuente de verdad para el nombre y la variable CSS.
-export const READER_FONTS: { id: ReaderFont; label: string; family: string }[] = [
-  { id: "literata", label: "Literata", family: "var(--font-book)" },
-  { id: "sans", label: "Alegreya Sans", family: "var(--font-sans-alt)" },
-  { id: "serif", label: "Source Serif", family: "var(--font-source-serif)" },
-  { id: "atkinson", label: "Atkinson", family: "var(--font-atkinson)" },
-  { id: "dyslexic", label: "OpenDyslexic", family: "var(--font-dyslexic)" },
+export const READER_FONTS: ReaderFontOption[] = [
+  {
+    id: "literata",
+    label: "Literata",
+    family: "var(--font-book)",
+    help: "Clásica editorial",
+    sample: "Aa",
+  },
+  {
+    id: "serif",
+    label: "Source Serif 4",
+    family: "var(--font-source-serif)",
+    help: "Elegante y nítida",
+    sample: "Aa",
+  },
+  {
+    id: "sans",
+    label: "Alegreya Sans",
+    family: "var(--font-sans-alt)",
+    help: "Moderna y ágil",
+    sample: "Aa",
+  },
+  {
+    id: "atkinson",
+    label: "Atkinson Next",
+    family: "var(--font-atkinson)",
+    help: "Ideal para fatiga visual",
+    sample: "Aa",
+  },
+  {
+    id: "dyslexic",
+    label: "OpenDyslexic",
+    family: "var(--font-dyslexic)",
+    help: "Especial para dislexia",
+    sample: "Aa",
+  },
 ];
 
 // Modo de concentración del lector: texto normal, párrafos cortados
@@ -65,6 +103,48 @@ export const RULER_SIZES: { id: RulerSize; label: string }[] = [
   { id: "paragraph", label: "Párrafo" },
 ];
 
+// Presets cognitivos de estrategia de lectura.
+export type ReadingStrategyPreset =
+  | "immersive"
+  | "focus"
+  | "lexical"
+  | "audio"
+  | "custom";
+
+export interface ReadingStrategyPresetItem {
+  id: ReadingStrategyPreset;
+  title: string;
+  description: string;
+  icon: "retreat" | "search" | "journey" | "headphones" | "strategy" | "sparkles";
+}
+
+export const READING_STRATEGY_PRESETS: ReadingStrategyPresetItem[] = [
+  {
+    id: "immersive",
+    title: "Inmersivo",
+    description: "Lectura limpia sin distracciones visuales",
+    icon: "retreat",
+  },
+  {
+    id: "focus",
+    title: "Enfoque Profundo",
+    description: "Regla y foco de párrafo activos",
+    icon: "search",
+  },
+  {
+    id: "lexical",
+    title: "Explorador Léxico",
+    description: "Líneas sintácticas y relieve de vocabulario",
+    icon: "journey",
+  },
+  {
+    id: "audio",
+    title: "Audio-Lectura",
+    description: "Voz guiada con resaltado de oraciones",
+    icon: "headphones",
+  },
+];
+
 export interface ReaderSettings {
   font: ReaderFont;
   /** Tamaño del texto del libro, en px (16–24). */
@@ -83,10 +163,22 @@ export interface ReaderSettings {
   preparationMode: PreparationMode;
   /** Separación silábica automática del navegador (hyphens: auto). */
   enableHyphenation: boolean;
-  /** Estrategia de concentración visual del texto. */
+  /** Estrategia de concentración visual del texto (retrocompatibilidad). */
   focusMode: FocusMode;
   /** Alto de la franja clara cuando la regla está activa. */
   rulerSize: RulerSize;
+  /** Modo de estrategia cognitiva activo. */
+  strategyPreset: ReadingStrategyPreset;
+  /** Regla de lectura visual que sigue al puntero. */
+  focusRuler: boolean;
+  /** Foco de párrafo con atenuación del texto inactivo al 35%. */
+  paragraphFocus: boolean;
+  /** Segmentación del párrafo en líneas sintácticas. */
+  syntacticLines: boolean;
+  /** Subrayado sutil de palabras candidatas del capítulo y locuciones. */
+  highlightLexical: boolean;
+  /** Oculta indicadores secundarios para lectura sin distracciones. */
+  hideSecondaryIndicators: boolean;
 }
 
 export const READER_DEFAULTS: ReaderSettings = {
@@ -102,6 +194,12 @@ export const READER_DEFAULTS: ReaderSettings = {
   enableHyphenation: false,
   focusMode: "off",
   rulerSize: 3,
+  strategyPreset: "immersive",
+  focusRuler: false,
+  paragraphFocus: false,
+  syntacticLines: false,
+  highlightLexical: false,
+  hideSecondaryIndicators: true,
 };
 
 export type PreparationMode = "auto" | "notice" | "off";
@@ -152,10 +250,141 @@ export function resolveTheme(choice: ThemeChoice, prefersDark: boolean): Resolve
   return prefersDark ? "noche" : "papel";
 }
 
+export function applyStrategyPreset(
+  preset: ReadingStrategyPreset,
+  currentSettings: ReaderSettings,
+): ReaderSettings {
+  switch (preset) {
+    case "immersive":
+      return {
+        ...currentSettings,
+        strategyPreset: "immersive",
+        focusRuler: false,
+        paragraphFocus: false,
+        syntacticLines: false,
+        focusMode: "off",
+        highlightLexical: false,
+        hideSecondaryIndicators: true,
+      };
+    case "focus":
+      return {
+        ...currentSettings,
+        strategyPreset: "focus",
+        focusRuler: true,
+        paragraphFocus: true,
+        syntacticLines: false,
+        focusMode: "paragraph",
+        highlightLexical: false,
+        hideSecondaryIndicators: false,
+      };
+    case "lexical":
+      return {
+        ...currentSettings,
+        strategyPreset: "lexical",
+        syntacticLines: true,
+        focusRuler: false,
+        paragraphFocus: false,
+        focusMode: "syntactic",
+        highlightLexical: true,
+        hideSecondaryIndicators: false,
+      };
+    case "audio":
+      return {
+        ...currentSettings,
+        strategyPreset: "audio",
+        focusRuler: false,
+        paragraphFocus: false,
+        syntacticLines: false,
+        focusMode: "off",
+        highlightLexical: false,
+        hideSecondaryIndicators: false,
+      };
+    case "custom":
+      return {
+        ...currentSettings,
+        strategyPreset: "custom",
+      };
+  }
+}
+
+export function isStrategyPresetActive(
+  preset: ReadingStrategyPreset,
+  settings: ReaderSettings,
+): boolean {
+  if (preset === "custom") return settings.strategyPreset === "custom";
+  if (preset === "immersive") {
+    return (
+      settings.strategyPreset === "immersive" ||
+      (!settings.focusRuler &&
+        !settings.paragraphFocus &&
+        !settings.syntacticLines &&
+        settings.strategyPreset !== "audio")
+    );
+  }
+  if (preset === "focus") {
+    return (
+      settings.strategyPreset === "focus" ||
+      (settings.focusRuler && settings.paragraphFocus && !settings.syntacticLines)
+    );
+  }
+  if (preset === "lexical") {
+    return (
+      settings.strategyPreset === "lexical" ||
+      (settings.syntacticLines && !settings.focusRuler && !settings.paragraphFocus)
+    );
+  }
+  if (preset === "audio") {
+    return settings.strategyPreset === "audio";
+  }
+  return false;
+}
+
 export function parseReaderSettings(raw: string | null): ReaderSettings {
   if (!raw) return READER_DEFAULTS;
   try {
     const v = JSON.parse(raw) as Partial<ReaderSettings>;
+    const focusMode: FocusMode =
+      v.focusMode === "syntactic" ||
+      v.focusMode === "paragraph" ||
+      v.focusMode === "chromatic" ||
+      v.focusMode === "ruler"
+        ? v.focusMode
+        : "off";
+
+    const focusRuler =
+      typeof v.focusRuler === "boolean"
+        ? v.focusRuler
+        : focusMode === "ruler";
+
+    const paragraphFocus =
+      typeof v.paragraphFocus === "boolean"
+        ? v.paragraphFocus
+        : focusMode === "paragraph";
+
+    const syntacticLines =
+      typeof v.syntacticLines === "boolean"
+        ? v.syntacticLines
+        : focusMode === "syntactic" || focusMode === "chromatic";
+
+    let strategyPreset: ReadingStrategyPreset;
+    if (
+      v.strategyPreset === "immersive" ||
+      v.strategyPreset === "focus" ||
+      v.strategyPreset === "lexical" ||
+      v.strategyPreset === "audio" ||
+      v.strategyPreset === "custom"
+    ) {
+      strategyPreset = v.strategyPreset;
+    } else if (focusRuler && paragraphFocus && !syntacticLines) {
+      strategyPreset = "focus";
+    } else if (syntacticLines && !focusRuler && !paragraphFocus) {
+      strategyPreset = "lexical";
+    } else if (focusRuler || paragraphFocus || syntacticLines) {
+      strategyPreset = "custom";
+    } else {
+      strategyPreset = "immersive";
+    }
+
     return {
       font: READER_FONTS.some((f) => f.id === v.font) ? (v.font as ReaderFont) : "literata",
       size:
@@ -173,17 +402,23 @@ export function parseReaderSettings(raw: string | null): ReaderSettings {
       pageColumns: v.pageColumns === 1 ? 1 : 2,
       preparationMode: parsePreparationMode(v.preparationMode),
       enableHyphenation: v.enableHyphenation === true,
-      focusMode:
-        v.focusMode === "syntactic" ||
-        v.focusMode === "paragraph" ||
-        v.focusMode === "chromatic" ||
-        v.focusMode === "ruler"
-          ? v.focusMode
-          : "off",
+      focusMode,
       rulerSize:
         v.rulerSize === 1 || v.rulerSize === 3 || v.rulerSize === "paragraph"
           ? v.rulerSize
           : 3,
+      strategyPreset,
+      focusRuler,
+      paragraphFocus,
+      syntacticLines,
+      highlightLexical:
+        typeof v.highlightLexical === "boolean"
+          ? v.highlightLexical
+          : strategyPreset === "lexical",
+      hideSecondaryIndicators:
+        typeof v.hideSecondaryIndicators === "boolean"
+          ? v.hideSecondaryIndicators
+          : strategyPreset === "immersive",
     };
   } catch {
     return READER_DEFAULTS;

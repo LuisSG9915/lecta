@@ -18,34 +18,52 @@ export const GRAMMAR_CATEGORIES: readonly GrammarCategoryInfo[] = [
     label: "Sustantivo",
     icon: "🏛️",
     shortcut: "1",
-    question: "¿Nombra una persona, animal, cosa o concepto?",
-    hint: "Nombra un ser, entidad, objeto, lugar o concepto independiente.",
+    question: "Nombra un elemento, ser o idea",
+    hint: "Nombra una entidad, objeto o concepto central.",
   },
   {
     id: "verbo",
     label: "Verbo",
     icon: "⚡",
     shortcut: "2",
-    question: "¿Expresa una acción, proceso o estado?",
-    hint: "Indica una acción, movimiento, cambio o estado.",
+    question: "Es la acción o estado principal",
+    hint: "Expresa el movimiento, proceso o estado de la escena.",
   },
   {
     id: "adjetivo",
     label: "Adjetivo",
     icon: "✨",
     shortcut: "3",
-    question: "¿Describe o califica a un sustantivo?",
-    hint: "Califica o describe cómo es o cómo está algo.",
+    question: "Describe cómo es algo o lo matiza",
+    hint: "Califica o describe los rasgos y la atmósfera.",
   },
   {
     id: "adverbio",
     label: "Adverbio",
     icon: "🧭",
     shortcut: "4",
-    question: "¿Modifica a un verbo, adjetivo u otro adverbio?",
-    hint: "Indica modo, tiempo, lugar, cantidad o afirmación/negación.",
+    question: "Indica cómo, cuándo o cuánto ocurre",
+    hint: "Modula el modo, tiempo o grado de la acción.",
   },
 ] as const;
+
+/**
+ * Breve nota editorial de 1 línea explicando cómo la forma gramatical
+ * influye en el tono del pasaje literario.
+ */
+export function grammarToneNote(category: GrammarCategory, word?: string): string {
+  const target = word ? ` («${word}»)` : "";
+  switch (category) {
+    case "adjetivo":
+      return `Pinta la atmósfera y matiza la cualidad exacta de la escena${target}.`;
+    case "verbo":
+      return `Impulsa el ritmo y marca el pulso dinámico de la acción${target}.`;
+    case "sustantivo":
+      return `Ancla la atención en una presencia o concepto tangible${target}.`;
+    case "adverbio":
+      return `Modula la intensidad o el compás temporal con que ocurre el momento${target}.`;
+  }
+}
 
 /**
  * Normaliza y mapea el campo `pos` de una palabra a una de las 4 categorías

@@ -24,7 +24,7 @@
   padding-inline: var(--s-4);
   background: var(--paper);
   border-bottom: var(--border);
-  transition: transform var(--dur-3) var(--ease-out);
+  transition: transform var(--dur-3) var(--ease-out), opacity var(--dur-3) var(--ease-out);
   box-sizing: border-box;
   max-inline-size: 100vw;
   overflow: hidden;
@@ -32,6 +32,30 @@
 
 .reader-bar[data-hidden] {
   transform: translateY(-105%);
+}
+
+.reader-bar.reader-head--faded,
+.reader-bar[data-zen-faded="true"] {
+  opacity: 0.15;
+}
+
+.reader-bar.reader-head--faded:hover,
+.reader-bar.reader-head--faded:focus-within,
+.reader-bar[data-zen-faded="true"]:hover,
+.reader-bar[data-zen-faded="true"]:focus-within {
+  opacity: 1;
+}
+
+.reader-bar-progress {
+  flex: 0 1 120px;
+  min-width: 60px;
+  max-width: 140px;
+  margin-inline: var(--s-2);
+}
+
+.reader-bar-progress .progress-ink {
+  block-size: 4px;
+  border-radius: 2px;
 }
 
 .reader-back {
@@ -900,15 +924,40 @@
   color: var(--ink-soft);
 }
 
-/* ---------- Pasajes marcados en el texto ---------- */
+/* ---------- Pasajes marcados en el texto (3 tonos) ---------- */
 
 mark.saved-passage {
   background: var(--vermilion-wash);
   color: inherit;
+  border-radius: 2px;
+}
+
+mark.saved-passage--amber {
+  background: rgba(217, 119, 6, 0.24);
+}
+
+mark.saved-passage--salvia {
+  background: rgba(16, 185, 129, 0.24);
+}
+
+mark.saved-passage--dario {
+  background: rgba(59, 130, 246, 0.26);
 }
 
 ::highlight(lecta-passage) {
   background-color: var(--vermilion-wash);
+}
+
+::highlight(lecta-passage-amber) {
+  background-color: rgba(217, 119, 6, 0.24);
+}
+
+::highlight(lecta-passage-salvia) {
+  background-color: rgba(16, 185, 129, 0.24);
+}
+
+::highlight(lecta-passage-dario) {
+  background-color: rgba(59, 130, 246, 0.26);
 }
 
 /* Destello al saltar a un resultado: el ojo encuentra el bloque. */
@@ -1456,6 +1505,323 @@ mark.saved-passage {
   box-shadow: 0 0 0 3px var(--vermilion-wash);
 }
 
+/* =====================================================================
+   FASE 1: MODOS DE LECTURA Y PANEL UNIFICADO
+   ===================================================================== */
+
+/* Panel y secciones dentro del Sheet */
+.sheet-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding-block-end: var(--s-4);
+}
+
+.setting-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding-block: var(--s-2);
+  border-bottom: 1px solid var(--rule);
+}
+
+.setting-section:last-child {
+  border-bottom: none;
+}
+
+.setting-section-label {
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-faint);
+}
+
+/* Cuadrícula 2x2 para Presets de Estrategia */
+.strategy-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--s-3);
+  margin-block: var(--s-2);
+}
+
+@media (max-width: 480px) {
+  .strategy-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.strategy-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  padding: var(--s-3) var(--s-4);
+  background: var(--paper-raised);
+  border: var(--border);
+  border-radius: var(--r-2);
+  cursor: pointer;
+  transition:
+    border-color var(--dur-2) var(--ease-out),
+    box-shadow var(--dur-2) var(--ease-out),
+    background-color var(--dur-2) var(--ease-out);
+  position: relative;
+}
+
+.strategy-card:hover {
+  background: var(--paper);
+  border-color: var(--rule-strong);
+}
+
+.strategy-card[data-active="true"] {
+  border-color: var(--vermilion);
+  box-shadow: 0 0 0 2px var(--vermilion), 0 4px 14px -2px rgba(158, 58, 35, 0.18);
+  background: var(--paper-raised);
+}
+
+.strategy-card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-bottom: var(--s-2);
+  color: var(--ink);
+}
+
+.strategy-card[data-active="true"] .strategy-card-header {
+  color: var(--vermilion);
+}
+
+.strategy-card-title {
+  font-family: var(--font-ui);
+  font-size: var(--fs-base);
+  font-weight: 700;
+  line-height: var(--lh-ui);
+}
+
+.strategy-card-desc {
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+  margin: 0;
+  line-height: 1.4;
+}
+
+/* Acordeón de ajuste fino de estrategias */
+.strategy-accordion {
+  margin-top: var(--s-3);
+  border: var(--border);
+  border-radius: var(--r-2);
+  background: var(--paper-sunken);
+  padding: var(--s-2) var(--s-3);
+}
+
+.strategy-accordion > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--ink);
+  padding-block: var(--s-1);
+  list-style: none;
+}
+
+.strategy-accordion > summary::-webkit-details-marker {
+  display: none;
+}
+
+.strategy-accordion-hint {
+  font-size: var(--fs-xs);
+  color: var(--ink-faint);
+  font-weight: normal;
+}
+
+.strategy-accordion-body {
+  padding-top: var(--s-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  border-top: 1px solid var(--rule);
+  margin-top: var(--s-2);
+}
+
+.setting-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.setting-subtext {
+  font-size: var(--fs-xs);
+  color: var(--ink-faint);
+  line-height: 1.3;
+}
+
+.setting-row--sub {
+  margin-left: var(--s-3);
+  padding-left: var(--s-2);
+  border-left: 2px solid var(--rule);
+}
+
+/* Carrusel horizontal de tipografías */
+.font-carousel {
+  display: flex;
+  gap: var(--s-3);
+  overflow-x: auto;
+  padding: var(--s-1) 2px var(--s-3) 2px;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+
+.font-card {
+  flex: 0 0 135px;
+  scroll-snap-align: start;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--s-3) var(--s-2);
+  border-radius: var(--r-2);
+  border: var(--border);
+  background: var(--paper-raised);
+  cursor: pointer;
+  text-align: center;
+  transition:
+    border-color var(--dur-1) var(--ease-out),
+    box-shadow var(--dur-1) var(--ease-out);
+}
+
+.font-card:hover {
+  border-color: var(--rule-strong);
+}
+
+.font-card[data-active="true"] {
+  border-color: var(--vermilion);
+  box-shadow: 0 0 0 2px var(--vermilion), 0 2px 8px var(--shadow-1);
+}
+
+.font-card-sample {
+  font-size: 1.7rem;
+  line-height: 1.1;
+  margin-bottom: var(--s-1);
+  color: var(--ink);
+}
+
+.font-card-label {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  margin-bottom: 2px;
+  color: var(--ink);
+}
+
+.font-card-help {
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+  line-height: 1.25;
+}
+
+/* Controles numéricos paso a paso (- / +) */
+.stepper-btn {
+  width: 2.5rem;
+  height: 2.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: var(--border);
+  border-radius: var(--r-1);
+  background: var(--paper-raised);
+  font-size: var(--fs-md);
+  font-weight: 700;
+  color: var(--ink);
+  cursor: pointer;
+  transition:
+    background-color var(--dur-1) var(--ease-out),
+    border-color var(--dur-1) var(--ease-out);
+}
+
+.stepper-btn:hover:not(:disabled) {
+  border-color: var(--rule-strong);
+  background: var(--paper);
+}
+
+.stepper-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* Lista de acciones del libro (Pestaña 3) */
+.reader-book-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding-block: var(--s-2);
+}
+
+.reader-book-actions .reader-more-item {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-3);
+  background: var(--paper-raised);
+  border: var(--border);
+  border-radius: var(--r-2);
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  transition:
+    background-color var(--dur-1) var(--ease-out),
+    border-color var(--dur-1) var(--ease-out);
+}
+
+.reader-book-actions .reader-more-item:hover {
+  background: var(--paper);
+  border-color: var(--rule-strong);
+}
+
+.reader-book-actions .reader-more-item .icon {
+  color: var(--vermilion);
+  flex-shrink: 0;
+}
+
+.reader-more-offline-section {
+  margin-top: var(--s-2);
+  padding: var(--s-3);
+  background: var(--paper-raised);
+  border: var(--border);
+  border-radius: var(--r-2);
+}
+
+.reader-more-offline-header {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-bottom: var(--s-2);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+.reader-more-offline-header .icon {
+  color: var(--vermilion);
+}
+
+/* Modo Inmersivo: Ocultar indicadores secundarios */
+.book-content[data-strategy-preset="immersive"] mark.predicted-word {
+  text-decoration: none;
+}
+
+[data-strategy-preset="immersive"] .reader-deep-indicator {
+  display: none !important;
+}
+
 /* Ajustes avanzados: los parámetros técnicos se pliegan tras un
    sumario discreto para no competir con los controles de lectura. */
 .settings-advanced {
@@ -1735,6 +2101,14 @@ mark.predicted-word:hover {
    de longitud variable; el párrafo conserva su margen inferior. */
 .book-content .syn-line {
   display: block;
+  word-spacing: 0.03em;
+  letter-spacing: -0.005em;
+}
+
+/* Conectores complejos para fijaciones sacádicas */
+.book-content [data-connector="true"] {
+  text-decoration: underline dotted var(--accent-subtle, rgba(200, 109, 59, 0.45));
+  text-underline-offset: 3px;
 }
 
 /* Sangría en cascada: las cláusulas dependientes o conectores dan un paso
@@ -1781,21 +2155,30 @@ mark.predicted-word:hover {
    un contraste suave. Se mueve naturalmente con el scroll sin tocar el puntero. */
 .book-content[data-focus-mode="paragraph"] p,
 .book-content[data-focus-mode="paragraph"] blockquote,
-.book-content[data-focus-mode="paragraph"] li {
-  opacity: 0.38;
+.book-content[data-focus-mode="paragraph"] li,
+.book-content[data-paragraph-focus] p,
+.book-content[data-paragraph-focus] blockquote,
+.book-content[data-paragraph-focus] li {
+  opacity: 0.35;
   transition: opacity var(--dur-2, 0.25s) var(--ease-out);
 }
 
 .book-content[data-focus-mode="paragraph"] p.is-focused,
 .book-content[data-focus-mode="paragraph"] blockquote.is-focused,
-.book-content[data-focus-mode="paragraph"] li.is-focused {
+.book-content[data-focus-mode="paragraph"] li.is-focused,
+.book-content[data-paragraph-focus] p.is-focused,
+.book-content[data-paragraph-focus] blockquote.is-focused,
+.book-content[data-paragraph-focus] li.is-focused {
   opacity: 1;
 }
 
 @media (hover: hover) {
   .book-content[data-focus-mode="paragraph"] p:hover,
   .book-content[data-focus-mode="paragraph"] blockquote:hover,
-  .book-content[data-focus-mode="paragraph"] li:hover {
+  .book-content[data-focus-mode="paragraph"] li:hover,
+  .book-content[data-paragraph-focus] p:hover,
+  .book-content[data-paragraph-focus] blockquote:hover,
+  .book-content[data-paragraph-focus] li:hover {
     opacity: 0.82;
   }
 }
@@ -1803,7 +2186,10 @@ mark.predicted-word:hover {
 @media (prefers-reduced-motion: reduce) {
   .book-content[data-focus-mode="paragraph"] p,
   .book-content[data-focus-mode="paragraph"] blockquote,
-  .book-content[data-focus-mode="paragraph"] li {
+  .book-content[data-focus-mode="paragraph"] li,
+  .book-content[data-paragraph-focus] p,
+  .book-content[data-paragraph-focus] blockquote,
+  .book-content[data-paragraph-focus] li {
     transition: none;
   }
 }
@@ -1825,10 +2211,32 @@ mark.predicted-word:hover {
   background: color-mix(in srgb, var(--paper) 78%, transparent);
 }
 
+.focus-ruler-veil--top {
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--paper) 80%, transparent) 0%,
+    color-mix(in srgb, var(--paper) 76%, transparent) 85%,
+    color-mix(in srgb, var(--paper) 50%, transparent) 100%
+  );
+}
+
+.focus-ruler-veil--bottom {
+  background: linear-gradient(
+    to top,
+    color-mix(in srgb, var(--paper) 80%, transparent) 0%,
+    color-mix(in srgb, var(--paper) 76%, transparent) 85%,
+    color-mix(in srgb, var(--paper) 50%, transparent) 100%
+  );
+}
+
 .focus-ruler-band {
   position: absolute;
   inset-inline: 0;
-  border-block: 1px solid var(--rule-strong);
+  border-block: 1px solid var(--ruler-border, rgba(200, 109, 59, 0.28));
+  box-shadow:
+    0 -1px 4px -1px rgba(200, 109, 59, 0.15),
+    0 1px 4px -1px rgba(200, 109, 59, 0.15);
+  transition: inset-block-start 100ms ease-out;
 }
 
 /* La patita del gato ancla el margen de la franja (Fase 4). */
@@ -1919,6 +2327,155 @@ mark.predicted-word:hover {
   to {
     opacity: 0;
     transform: translateY(110%);
+  }
+}
+
+/* ---------- Dock de Lectura Viva (B.1) ---------- */
+
+.reader-dock {
+  position: fixed;
+  inset-block-end: calc(env(safe-area-inset-bottom, 0px) + 1.25rem);
+  inset-inline: 0;
+  margin-inline: auto;
+  inline-size: fit-content;
+  max-inline-size: min(92vw, 540px);
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: 0.35rem 0.75rem 0.35rem 1rem;
+  background: color-mix(in srgb, var(--paper-raised) 85%, transparent);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-full, 9999px);
+  box-shadow: 0 4px 20px -2px rgba(31, 29, 26, 0.08);
+  pointer-events: auto;
+  transition: opacity var(--dur-2, 0.25s) var(--ease-out), transform var(--dur-2, 0.25s) var(--ease-out);
+}
+
+.reader-dock-counter {
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.reader-dock-divider {
+  inline-size: 1px;
+  block-size: 1.15rem;
+  background-color: var(--rule);
+  flex: none;
+  opacity: 0.7;
+}
+
+.reader-dock-strategy {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 32px;
+  padding: 0.25rem 0.65rem;
+  border-radius: var(--r-full, 9999px);
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  color: var(--ink);
+  background: var(--paper-sunken);
+  border: 1px solid var(--rule);
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background-color 250ms var(--ease-out),
+    color 250ms var(--ease-out),
+    border-color 250ms var(--ease-out),
+    transform 250ms var(--ease-out);
+}
+
+.reader-dock-strategy:hover {
+  background: var(--paper);
+  border-color: var(--ink-soft);
+}
+
+.reader-dock-strategy[data-active="true"] {
+  background: var(--vermilion-wash);
+  color: var(--vermilion);
+  border-color: color-mix(in srgb, var(--vermilion) 35%, transparent);
+}
+
+.reader-dock-cat {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  position: relative;
+}
+
+.reader-dock-cat .companion-btn {
+  inline-size: 36px;
+  block-size: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0;
+}
+
+.reader-dock-cat .companion-btn .cat {
+  inline-size: 100%;
+  block-size: 100%;
+}
+
+/* Burbuja no intrusiva del gato ante pasajes densos o avisos */
+.companion-btn-wrapper {
+  position: relative;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.companion-bubble-prompt {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: 0;
+  z-index: 25;
+  width: max-content;
+  max-width: min(260px, 80vw);
+  padding: 0.55rem 0.85rem;
+  background: var(--paper-raised);
+  border: 1px solid var(--vermilion);
+  border-radius: var(--r-2, 12px);
+  box-shadow: 0 4px 18px rgba(31, 29, 26, 0.12);
+  cursor: pointer;
+  text-align: left;
+  animation: companion-bubble-pop 250ms cubic-bezier(0.22, 1, 0.36, 1);
+  pointer-events: auto;
+}
+
+.companion-bubble-text {
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  line-height: 1.35;
+  color: var(--ink);
+  display: block;
+}
+
+.companion-bubble-beak {
+  position: absolute;
+  bottom: -6px;
+  right: 14px;
+  width: 10px;
+  height: 6px;
+  background: var(--paper-raised);
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+  border-bottom: 1px solid var(--vermilion);
+}
+
+@keyframes companion-bubble-pop {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
   }
 }
 
@@ -2053,3 +2610,571 @@ mark.predicted-word:hover {
   color: var(--ink);
   box-shadow: var(--shadow-1);
 }
+
+/* ==========================================================================
+   Ritual Antes de Leer: "El Pórtico del Capítulo" (Fase 2)
+   ========================================================================== */
+
+.portico-cat-section {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  margin-block: var(--s-2) var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  background: var(--paper-sunken);
+  border-radius: var(--r-card, 8px);
+  border: 1px solid var(--rule);
+}
+
+.portico-cat-avatar {
+  inline-size: 52px;
+  block-size: 52px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.portico-cat-avatar .cat {
+  inline-size: 100%;
+  block-size: auto;
+}
+
+.portico-cat-fallback {
+  font-size: 2rem;
+}
+
+.portico-speech-bubble {
+  position: relative;
+  background: var(--paper);
+  padding: var(--s-2) var(--s-3);
+  border-radius: var(--r-card, 8px);
+  border: 1px solid var(--rule);
+  font-size: var(--text-sm);
+  line-height: 1.45;
+  color: var(--ink);
+  box-shadow: var(--shadow-1);
+}
+
+.portico-speech-bubble p {
+  margin: 0;
+}
+
+.portico-flash-container {
+  margin-block: var(--s-2) var(--s-3);
+}
+
+.portico-flash-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-block-end: var(--s-2);
+}
+
+.portico-subtitle {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--ink);
+  margin: 0;
+}
+
+.portico-ink-badge {
+  font-size: var(--text-xs, 0.75rem);
+  font-weight: 600;
+  color: var(--vermilion);
+  background: var(--vermilion-subtle, rgba(184, 51, 42, 0.08));
+  padding: 2px 8px;
+  border-radius: var(--r-full, 999px);
+  border: 1px solid var(--vermilion-soft, rgba(184, 51, 42, 0.2));
+}
+
+.portico-flash-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: var(--s-2);
+}
+
+/* Giro 3D de las cartas de joyas léxicas */
+.portico-card-3d {
+  perspective: 700px;
+  min-height: 110px;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+
+.portico-card-inner {
+  position: relative;
+  inline-size: 100%;
+  block-size: 100%;
+  min-height: 110px;
+  text-align: center;
+  transition: transform 0.55s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transform-style: preserve-3d;
+  border-radius: var(--r-card, 8px);
+}
+
+.portico-card-3d.is-flipped .portico-card-inner {
+  transform: rotateY(180deg);
+}
+
+.portico-card-front,
+.portico-card-back {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  border-radius: var(--r-card, 8px);
+  padding: var(--s-2);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  border: 1px solid var(--rule);
+  box-shadow: var(--shadow-1);
+}
+
+.portico-card-front {
+  background: var(--paper-warm, var(--paper));
+}
+
+.portico-card-front:hover {
+  border-color: var(--vermilion);
+}
+
+.portico-card-back {
+  background: var(--paper-sunken);
+  transform: rotateY(180deg);
+  border-color: var(--vermilion);
+  overflow-y: auto;
+}
+
+.portico-card-sparkle {
+  font-size: 0.85rem;
+  color: var(--vermilion);
+  margin-block-end: 2px;
+}
+
+.portico-card-form {
+  font-size: var(--text-base);
+  color: var(--ink);
+  display: block;
+}
+
+.portico-card-hint {
+  font-size: var(--text-xs, 0.75rem);
+  color: var(--ink-dim);
+  margin-block-start: 4px;
+}
+
+.portico-card-meaning {
+  font-size: var(--text-xs, 0.75rem);
+  color: var(--ink);
+  margin: 3px 0;
+  line-height: 1.3;
+}
+
+.portico-card-context {
+  font-size: 0.7rem;
+  font-style: italic;
+  color: var(--ink-dim);
+  margin: 0;
+}
+
+.portico-card-reward {
+  font-size: 0.7rem;
+  color: var(--vermilion);
+  font-weight: 600;
+  margin-block-start: 4px;
+}
+
+.portico-strategy-selector {
+  margin-block: var(--s-3) var(--s-2);
+}
+
+.portico-strategy-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin-block-start: var(--s-1);
+}
+
+.portico-chip {
+  padding: 6px 12px;
+  font-size: var(--text-xs, 0.75rem);
+  border-radius: var(--r-full, 999px);
+  border: 1px solid var(--rule);
+  background: var(--paper);
+  color: var(--ink);
+  cursor: pointer;
+  transition: all var(--dur-2);
+}
+
+.portico-chip:hover {
+  border-color: var(--ink);
+}
+
+.portico-chip[data-active] {
+  background: var(--ink);
+  color: var(--paper);
+  border-color: var(--ink);
+  font-weight: 600;
+}
+
+.portico-actions-hero {
+  margin-block: var(--s-2) var(--s-4);
+}
+
+.portico-enter-btn {
+  inline-size: 100%;
+  font-size: 1rem;
+  padding: 10px 16px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: var(--s-2);
+  font-weight: 600;
+}
+
+/* ==========================================================================
+   Píldora Flotante de Estrategia (Durante la lectura - Fase 2)
+   ========================================================================== */
+
+.reader-strategy-pill {
+  position: fixed;
+  inset-block-end: 3.4rem;
+  inset-inline-start: 1rem;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  background: var(--paper-warm, var(--paper));
+  border: 1px solid var(--rule);
+  border-radius: var(--r-full, 999px);
+  box-shadow: var(--shadow-2);
+  padding: 2px;
+  animation: strategy-pill-in 0.3s cubic-bezier(0.34, 1.35, 0.64, 1);
+  transition: opacity var(--dur-2), border-color var(--dur-2);
+}
+
+.reader-strategy-pill[data-paused] {
+  opacity: 0.65;
+  border-style: dashed;
+}
+
+.strategy-pill-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: transparent;
+  border: none;
+  border-radius: var(--r-full, 999px);
+  color: var(--ink);
+  font-size: var(--text-xs, 0.75rem);
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.strategy-pill-btn:hover {
+  background: var(--paper-sunken);
+}
+
+.strategy-pill-chevron {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 8px;
+  background: transparent;
+  border: none;
+  border-inline-start: 1px solid var(--rule);
+  color: var(--ink-dim);
+  cursor: pointer;
+  border-radius: 0 var(--r-full, 999px) var(--r-full, 999px) 0;
+}
+
+.strategy-pill-chevron:hover {
+  color: var(--ink);
+  background: var(--paper-sunken);
+}
+
+@keyframes strategy-pill-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ============================================================
+   B.3 & B.4: Consulta en 2 Niveles, Menú de Selección e IA
+   ============================================================ */
+
+/* Botón y contenedor de 4 acciones de selección */
+.selection-menu-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 10px;
+  min-height: 2rem;
+  border: none;
+  background: transparent;
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs, 0.78rem);
+  font-weight: 500;
+  border-radius: var(--r-pill);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color var(--dur-1) var(--ease-out), color var(--dur-1) var(--ease-out);
+}
+
+.selection-menu-btn:hover {
+  background: var(--paper-sunken);
+  color: var(--accent-primary, #b45309);
+}
+
+.selection-highlight-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding-inline-end: 4px;
+  border-inline-end: 1px solid var(--rule);
+}
+
+.selection-tones-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tone-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.7);
+  padding: 0;
+  cursor: pointer;
+  transition: transform var(--dur-1) var(--ease-out), box-shadow var(--dur-1) var(--ease-out);
+}
+
+.tone-dot:hover {
+  transform: scale(1.25);
+}
+
+.tone-dot--amber {
+  background-color: #f59e0b;
+  box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.4);
+}
+
+.tone-dot--salvia {
+  background-color: #10b981;
+  box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.4);
+}
+
+.tone-dot--dario {
+  background-color: #3b82f6;
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.4);
+}
+
+/* WordPanel Nivel 1 (Vistazo Rápido) */
+.word-panel-level-1 {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3, 0.75rem);
+}
+
+.word-panel-level-1-found {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3, 0.75rem);
+}
+
+.word-panel-level-1-sense {
+  background: var(--paper-sunken);
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+
+.word-panel-best-sense-def {
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm, 0.92rem);
+  line-height: 1.45;
+  color: var(--ink);
+  margin: 4px 0 0;
+}
+
+.word-panel-profundizar-row {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.btn--profundizar {
+  background: var(--paper-raised);
+  border: 1px solid var(--rule);
+  color: var(--accent-primary, #b45309);
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs, 0.8rem);
+  font-weight: 600;
+  padding: 6px 14px;
+  border-radius: var(--r-pill);
+  cursor: pointer;
+  transition: all var(--dur-1) var(--ease-out);
+}
+
+.btn--profundizar:hover {
+  background: var(--accent-primary, #b45309);
+  color: var(--paper);
+  border-color: var(--accent-primary, #b45309);
+}
+
+/* WordPanel Nivel 2 (Panel Literario Profundo) */
+.word-panel-level-2 {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3, 0.75rem);
+}
+
+.word-panel-level-2-nav {
+  margin-bottom: -4px;
+}
+
+.btn--back-level-1 {
+  font-size: var(--fs-xs, 0.8rem);
+  color: var(--ink-dim);
+  padding: 2px 6px;
+}
+
+.btn--back-level-1:hover {
+  color: var(--ink);
+}
+
+.word-panel-ai-passage-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: var(--s-2, 0.5rem) 0;
+}
+
+.btn--explain-passage {
+  align-self: flex-start;
+  background: linear-gradient(135deg, rgba(200, 109, 59, 0.12), rgba(217, 119, 6, 0.16));
+  border: 1px solid rgba(200, 109, 59, 0.3);
+  color: var(--accent-primary, #b45309);
+  font-weight: 600;
+  padding: 8px 14px;
+  border-radius: var(--r-pill);
+  cursor: pointer;
+  transition: all var(--dur-2) var(--ease-out);
+}
+
+.btn--explain-passage:hover {
+  background: linear-gradient(135deg, rgba(200, 109, 59, 0.22), rgba(217, 119, 6, 0.28));
+  border-color: rgba(200, 109, 59, 0.5);
+}
+
+.passage-explanation-card {
+  background: var(--paper-raised);
+  border: 1px solid rgba(200, 109, 59, 0.2);
+  border-left: 3px solid var(--accent-primary, #b45309);
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.passage-badge-tone {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(200, 109, 59, 0.15);
+  color: var(--accent-primary, #b45309);
+}
+
+.passage-meaning-text {
+  font-family: var(--font-body, "Literata", serif);
+  font-size: var(--fs-sm, 0.9rem);
+  line-height: 1.45;
+  color: var(--ink);
+  margin: 0;
+}
+
+.cat-literary-tip {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: var(--paper-sunken);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.cat-tip-icon {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.cat-tip-text {
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs, 0.8rem);
+  line-height: 1.4;
+  color: var(--ink-soft);
+  margin: 0;
+}
+
+/* Modal del apunte del gato al seleccionar pasaje */
+.dialog--cat-explanation {
+  max-width: 480px;
+}
+
+.cat-dialog-avatar {
+  font-size: 1.25rem;
+}
+
+.cat-passage-quote {
+  font-family: var(--font-body, "Literata", serif);
+  font-style: italic;
+  font-size: var(--fs-sm, 0.92rem);
+  line-height: 1.45;
+  color: var(--ink-dim);
+  background: var(--paper-sunken);
+  border-left: 3px solid var(--rule);
+  padding: 8px 12px;
+  border-radius: 0 8px 8px 0;
+  margin-bottom: 12px;
+}
+
+.cat-passage-loading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 8px;
+}
+
+.cat-spinner {
+  font-size: 1.5rem;
+  animation: cat-paw-pulse 1.2s infinite ease-in-out;
+}
+
+@keyframes cat-paw-pulse {
+  0%, 100% { transform: scale(1) rotate(0deg); opacity: 0.6; }
+  50% { transform: scale(1.2) rotate(10deg); opacity: 1; }
+}
+
+.cat-passage-result {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 0;
+}
+

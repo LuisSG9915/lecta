@@ -298,46 +298,47 @@ export interface Achievement {
   family: AchievementFamily;
   goal: number;
   check: (stats: GameStats) => boolean;
+  rewardItemId?: string;
 }
 
 export const ACHIEVEMENTS: Achievement[] = [
   // 24 logros originales conservando id, título, desc, xp e invariante de canonicalChestKey
   { id: "palabra_1", title: "Primera palabra", desc: "Guarda tu primera palabra", xp: 10, family: "palabras", goal: 1, check: (s) => s.saved >= 1 },
   { id: "palabras_10", title: "Vocabulario joven", desc: "Guarda 10 palabras", xp: 20, family: "palabras", goal: 10, check: (s) => s.saved >= 10 },
-  { id: "palabras_50", title: "Vocabulario firme", desc: "Guarda 50 palabras", xp: 60, family: "palabras", goal: 50, check: (s) => s.saved >= 50 },
-  { id: "palabras_100", title: "Cien en el cuaderno", desc: "Guarda 100 palabras", xp: 120, family: "palabras", goal: 100, check: (s) => s.saved >= 100 },
+  { id: "palabras_50", title: "Vocabulario firme", desc: "Guarda 50 palabras", xp: 60, family: "palabras", goal: 50, check: (s) => s.saved >= 50, rewardItemId: "monocle_gold" },
+  { id: "palabras_100", title: "Cien en el cuaderno", desc: "Guarda 100 palabras", xp: 120, family: "palabras", goal: 100, check: (s) => s.saved >= 100, rewardItemId: "glasses_round" },
   { id: "palabras_500", title: "Diccionario propio", desc: "Guarda 500 palabras", xp: 250, family: "palabras", goal: 500, check: (s) => s.saved >= 500 },
-  { id: "raras_5", title: "Cazarraras", desc: "Guarda 5 palabras raras", xp: 50, family: "raras", goal: 5, check: (s) => s.rareSaved >= 5 },
+  { id: "raras_5", title: "Cazarraras", desc: "Guarda 5 palabras raras", xp: 50, family: "raras", goal: 5, check: (s) => s.rareSaved >= 5, rewardItemId: "detective_cape" },
   { id: "raras_25", title: "Ojo de filólogo", desc: "Guarda 25 palabras raras", xp: 150, family: "raras", goal: 25, check: (s) => s.rareSaved >= 25 },
-  { id: "curioso_50", title: "Curioso", desc: "Consulta 50 palabras", xp: 40, family: "consultas", goal: 50, check: (s) => s.consulted >= 50 },
+  { id: "curioso_50", title: "Curioso", desc: "Consulta 50 palabras", xp: 40, family: "consultas", goal: 50, check: (s) => s.consulted >= 50, rewardItemId: "bowtie_scholar" },
   { id: "curioso_200", title: "No suelta el diccionario", desc: "Consulta 200 palabras", xp: 100, family: "consultas", goal: 200, check: (s) => s.consulted >= 200 },
-  { id: "lectura_1h", title: "Primera hora", desc: "Lee 1 hora en total", xp: 30, family: "lectura", goal: 1, check: (s) => s.minutes >= 60 },
+  { id: "lectura_1h", title: "Primera hora", desc: "Lee 1 hora en total", xp: 30, family: "lectura", goal: 1, check: (s) => s.minutes >= 60, rewardItemId: "headphones_cozy" },
   { id: "lectura_10h", title: "Lector de oficio", desc: "Lee 10 horas en total", xp: 150, family: "lectura", goal: 10, check: (s) => s.minutes >= 600 },
   { id: "lectura_50h", title: "Habitante del estante", desc: "Lee 50 horas en total", xp: 400, family: "lectura", goal: 50, check: (s) => s.minutes >= 3000 },
-  { id: "maraton", title: "Maratón", desc: "Lee 30 minutos de una sentada", xp: 40, family: "sesion", goal: 30, check: (s) => s.longestSessionMin >= 30 },
+  { id: "maraton", title: "Maratón", desc: "Lee 30 minutos de una sentada", xp: 40, family: "sesion", goal: 30, check: (s) => s.longestSessionMin >= 30, rewardItemId: "beret_poet" },
   { id: "racha_3", title: "Tres días seguidos", desc: "Lee 3 días en racha", xp: 30, family: "racha", goal: 3, check: (s) => s.streakDays >= 3 },
-  { id: "racha_7", title: "Semana lectora", desc: "Lee 7 días en racha", xp: 80, family: "racha", goal: 7, check: (s) => s.streakDays >= 7 },
+  { id: "racha_7", title: "Semana lectora", desc: "Lee 7 días en racha", xp: 80, family: "racha", goal: 7, check: (s) => s.streakDays >= 7, rewardItemId: "scarf_amber" },
   { id: "racha_30", title: "Mes de tinta", desc: "Lee 30 días en racha", xp: 300, family: "racha", goal: 30, check: (s) => s.streakDays >= 30 },
   { id: "repasos_5", title: "Primeros repasos", desc: "Haz 5 repasos de vocabulario", xp: 15, family: "repasos", goal: 5, check: (s) => s.reviews >= 5 },
   { id: "repasos_25", title: "Memoria en marcha", desc: "Haz 25 repasos de vocabulario", xp: 40, family: "repasos", goal: 25, check: (s) => s.reviews >= 25 },
-  { id: "repasos_50", title: "Mente en forma", desc: "Haz 50 repasos de vocabulario", xp: 70, family: "repasos", goal: 50, check: (s) => s.reviews >= 50 },
+  { id: "repasos_50", title: "Mente en forma", desc: "Haz 50 repasos de vocabulario", xp: 70, family: "repasos", goal: 50, check: (s) => s.reviews >= 50, rewardItemId: "wizard_hat" },
   { id: "repasos_100", title: "Memoria de acero", desc: "Haz 100 repasos de vocabulario", xp: 120, family: "repasos", goal: 100, check: (s) => s.reviews >= 100 },
   { id: "repasos_200", title: "Léxico de hierro", desc: "Haz 200 repasos de vocabulario", xp: 180, family: "repasos", goal: 200, check: (s) => s.reviews >= 200 },
   { id: "repasos_400", title: "Archivo viviente", desc: "Haz 400 repasos de vocabulario", xp: 300, family: "repasos", goal: 400, check: (s) => s.reviews >= 400 },
   { id: "libro_1", title: "Primer libro cerrado", desc: "Termina un libro", xp: 80, family: "libros", goal: 1, check: (s) => s.booksFinished >= 1 },
-  { id: "libro_3", title: "Devoralibros", desc: "Termina 3 libros", xp: 200, family: "libros", goal: 3, check: (s) => s.booksFinished >= 3 },
+  { id: "libro_3", title: "Devoralibros", desc: "Termina 3 libros", xp: 200, family: "libros", goal: 3, check: (s) => s.booksFinished >= 3, rewardItemId: "cape_modernist" },
   // 12 logros nuevos agregados al final
   { id: "palabras_250", title: "Cuaderno lleno", desc: "Guarda 250 palabras", xp: 180, family: "palabras", goal: 250, check: (s) => s.saved >= 250 },
   { id: "palabras_1000", title: "Mil palabras propias", desc: "Guarda 1000 palabras", xp: 400, family: "palabras", goal: 1000, check: (s) => s.saved >= 1000 },
   { id: "raras_75", title: "Coleccionista de rarezas", desc: "Guarda 75 palabras raras", xp: 250, family: "raras", goal: 75, check: (s) => s.rareSaved >= 75 },
   { id: "curioso_500", title: "Lector con lupa", desc: "Consulta 500 palabras", xp: 180, family: "consultas", goal: 500, check: (s) => s.consulted >= 500 },
-  { id: "lectura_25h", title: "Lector de tardes largas", desc: "Lee 25 horas en total", xp: 250, family: "lectura", goal: 25, check: (s) => s.minutes / 60 >= 25 },
+  { id: "lectura_25h", title: "Lector de tardes largas", desc: "Lee 25 horas en total", xp: 250, family: "lectura", goal: 25, check: (s) => s.minutes / 60 >= 25, rewardItemId: "stage_ancient_library" },
   { id: "lectura_100h", title: "Cien horas de tinta", desc: "Lee 100 horas en total", xp: 600, family: "lectura", goal: 100, check: (s) => s.minutes / 60 >= 100 },
-  { id: "sesion_60", title: "Hora sin interrupciones", desc: "Lee 60 minutos de una sentada", xp: 70, family: "sesion", goal: 60, check: (s) => s.longestSessionMin >= 60 },
+  { id: "sesion_60", title: "Hora sin interrupciones", desc: "Lee 60 minutos de una sentada", xp: 70, family: "sesion", goal: 60, check: (s) => s.longestSessionMin >= 60, rewardItemId: "stage_rainy_window" },
   { id: "racha_14", title: "Dos semanas seguidas", desc: "Lee 14 días en racha", xp: 150, family: "racha", goal: 14, check: (s) => s.streakDays >= 14 },
   { id: "racha_100", title: "Cien días de lectura", desc: "Lee 100 días en racha", xp: 700, family: "racha", goal: 100, check: (s) => s.streakDays >= 100 },
   { id: "repasos_800", title: "Memoria de archivo", desc: "Haz 800 repasos de vocabulario", xp: 450, family: "repasos", goal: 800, check: (s) => s.reviews >= 800 },
-  { id: "libro_5", title: "Estante propio", desc: "Termina 5 libros", xp: 300, family: "libros", goal: 5, check: (s) => s.booksFinished >= 5 },
+  { id: "libro_5", title: "Estante propio", desc: "Termina 5 libros", xp: 300, family: "libros", goal: 5, check: (s) => s.booksFinished >= 5, rewardItemId: "laurel_crown" },
   { id: "libro_10", title: "Diez libros cerrados", desc: "Termina 10 libros", xp: 500, family: "libros", goal: 10, check: (s) => s.booksFinished >= 10 },
 ];
 
@@ -445,6 +446,45 @@ export const ACCESSORY_LABELS: Record<string, string> = {
   anteojos: "Anteojos del gato",
   monoculo: "Monóculo de época",
   estampa: "Estampa conmemorativa",
+  beret_poet: "Boina de Poeta",
+  wizard_hat: "Sombrero de Sabio",
+  laurel_crown: "Corona de Laurel",
+  headphones_cozy: "Audífonos de Estudio",
+  scarf_amber: "Bufanda de Invierno",
+  cape_modernist: "Capa Azul de Darío",
+  bowtie_scholar: "Moño de Académico",
+  detective_cape: "Esclavina de Detective",
+  glasses_round: "Gafas de Lectura",
+  monocle_gold: "Monóculo de Crítico",
+  stage_rainy_window: "Ventana Lluviosa",
+  stage_ancient_library: "Biblioteca Nocturna",
+};
+
+export const ITEM_ACHIEVEMENT_REWARDS: Partial<Record<string, { id: string; title: string }>> = {
+  beret_poet: { id: "maraton", title: "Maratón" },
+  bowtie_scholar: { id: "curioso_50", title: "Curioso" },
+  wizard_hat: { id: "repasos_50", title: "Mente en forma" },
+  detective_cape: { id: "raras_5", title: "Cazarraras" },
+  cape_modernist: { id: "libro_3", title: "Devoralibros" },
+  headphones_cozy: { id: "lectura_1h", title: "Primera hora" },
+  scarf_amber: { id: "racha_7", title: "Semana lectora" },
+  glasses_round: { id: "palabras_100", title: "Cien en el cuaderno" },
+  monocle_gold: { id: "palabras_50", title: "Vocabulario firme" },
+  stage_rainy_window: { id: "sesion_60", title: "Hora sin interrupciones" },
+  stage_ancient_library: { id: "lectura_25h", title: "Lector de tardes largas" },
+  laurel_crown: { id: "libro_5", title: "Estante propio" },
+};
+
+export const COMPANION_ACHIEVEMENT_ALIASES: Record<string, string> = {
+  first_focus_session: "maraton",
+  syntactic_master: "curioso_50",
+  deep_thinker: "lectura_25h",
+  idiom_hunter: "raras_5",
+  dario_explorer: "libro_3",
+  audio_voyager: "lectura_1h",
+  streak_7_days: "racha_7",
+  vocab_centurion: "palabras_100",
+  cat_best_friend: "palabras_50",
 };
 
 // ---------- Aplicar eventos ----------
@@ -574,14 +614,18 @@ export function pendingChests(state: GameState): GameChest[] {
 }
 
 // Accesorios que el gato luce: los regalos de nivel ya abiertos
-// o correspondientes a niveles ya alcanzados en el progreso.
+// o correspondientes a niveles ya alcanzados en el progreso,
+// más los recompensados por logros completados.
 export function unlockedAccessories(state: GameState): string[] {
   const fromChests = state.chests
-    .filter((chest) => chest.source === "level" && chest.openedAt !== null)
+    .filter((chest) => (chest.source === "level" || chest.source === "achievement") && chest.openedAt !== null)
     .map((chest) => chest.reward);
   const currentLvl = levelFor(state.xp);
   const fromLevel = Object.entries(LEVEL_REWARDS)
     .filter(([lvl]) => Number(lvl) <= currentLvl)
     .map(([, reward]) => reward);
-  return [...new Set([...fromChests, ...fromLevel])];
+  const fromAchievements = Object.entries(ITEM_ACHIEVEMENT_REWARDS)
+    .filter(([, ach]) => Boolean(ach && (state.achievements[ach.id] || (COMPANION_ACHIEVEMENT_ALIASES[ach.id] && state.achievements[COMPANION_ACHIEVEMENT_ALIASES[ach.id]]))))
+    .map(([article]) => article);
+  return [...new Set([...fromChests, ...fromLevel, ...fromAchievements])];
 }

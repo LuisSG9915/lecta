@@ -295,3 +295,45 @@ describe("cleanCompanionName", () => {
     expect(care.cleanCompanionName("ga\u0007to")).toBeNull();
   });
 });
+
+describe("afinidad y saludo contextual (Fase 3)", () => {
+  it("incrementa y lee el nivel de afinidad bondLevel en localStorage", async () => {
+    const { care } = await freshModules();
+    const storage: Record<string, string> = {};
+    const win = {
+      localStorage: {
+        getItem: (k: string) => storage[k] ?? null,
+        setItem: (k: string, v: string) => {
+          storage[k] = v;
+        },
+        removeItem: (k: string) => {
+          delete storage[k];
+        },
+      },
+    };
+    (globalThis as unknown as { window: typeof win }).window = win;
+    try {
+      expect(care.getCompanionBondLevel()).toBe(0);
+
+      const next = care.incrementCompanionBondLevel(3);
+      expect(next).toBe(3);
+      expect(care.getCompanionBondLevel()).toBe(3);
+    } finally {
+      delete (globalThis as unknown as { window?: typeof win }).window;
+    }
+  });
+
+  it("genera saludos contextuales inteligentes según libro y racha", async () => {
+    const { care } = await freshModules();
+    const gBook = care.getCompanionContextualGreeting("Michi", 0, "Don Quijote");
+    expect(gBook).toContain("Don Quijote");
+
+    const gStreak = care.getCompanionContextualGreeting("Michi", 7);
+    expect(gStreak).toContain("7");
+
+    const gDefault = care.getCompanionContextualGreeting("Michi", 0);
+    expect(typeof gDefault).toBe("string");
+    expect(gDefault.length).toBeGreaterThan(0);
+  });
+});
+

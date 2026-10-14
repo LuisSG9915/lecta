@@ -73,6 +73,7 @@ export interface SavedWord {
   updatedAt?: number;
   card?: Card;
   deleted?: boolean;
+  priority?: boolean;
 }
 
 // Marcadores y pasajes guardados del libro. Comparten almacén: ambos
@@ -91,6 +92,7 @@ export interface SavedAnnotation {
   prefix?: string;
   suffix?: string;
   note?: string;
+  color?: "amber" | "salvia" | "dario";
   createdAt: number;
   updatedAt: number;
   deleted?: boolean;
@@ -133,6 +135,9 @@ export type KnownWord = {
   source: string;
   updatedAt: number;
   deleted?: boolean;
+  passiveSeenCount?: number;
+  estimatedKnownProb?: number;
+  status?: "unknown" | "familiar" | "known";
 };
 
 // ---------- Historial de trayecto (readingEvents) ----------
@@ -1435,11 +1440,24 @@ export function mergeKnowledgeWrite(
   now: number,
 ): KnownWord | null {
   if (existing) {
+    // Si la entrada trae un cambio explícito en campos de inferencia pasiva:
+    const statusChanged =
+      row.status !== undefined && row.status !== existing.status;
+    const passiveChanged =
+      row.passiveSeenCount !== undefined &&
+      row.passiveSeenCount !== existing.passiveSeenCount;
+    const probChanged =
+      row.estimatedKnownProb !== undefined &&
+      row.estimatedKnownProb !== existing.estimatedKnownProb;
+
     // Sin cambio semántico no se mueve el sello: misma fuerza y mismo
     // veredicto en fila viva solo generaría ruido de sincronización.
     const noChange =
       !existing.deleted &&
       existing.known === row.known &&
+      !statusChanged &&
+      !passiveChanged &&
+      !probChanged &&
       (SOURCE_STRENGTH[row.source] ?? 0) ===
         (SOURCE_STRENGTH[existing.source] ?? 0);
     if (noChange) return null;
@@ -1451,11 +1469,52 @@ export function mergeKnowledgeWrite(
     )
       return null;
   }
-  return {
+  const out: KnownWord = {
     ...row,
     key: existing?.key ?? knowledgeKey(row.language, row.lemma),
     updatedAt: now,
   };
+  const count = row.passiveSeenCount ?? existing?.passiveSeenCount;
+  if (count !== undefined) out.passiveSeenCount = count;
+  const prob = row.estimatedKnownProb ?? existing?.estimatedKnownProb;
+  if (prob !== undefined) out.estimatedKnownProb = prob;
+  const status = row.status ?? existing?.status;
+  if (status !== undefined) out.status = status;
+  return out;
+}
+
+export async function recordPassiveExposure(
+  language: string,
+  lemma: string,
+  scope?: DbScope,
+): Promise<KnownWord> {
+  return withDb(scope, async (db) => {
+    const key = knowledgeKey(language, lemma);
+    const existing = await db.get("knowledge", key);
+    const count = (existing?.passiveSeenCount ?? 0) + 1;
+    const currentProb = existing?.estimatedKnownProb ?? 0;
+    const nextProb = 1 - (1 - currentProb) * 0.82;
+    const status: "unknown" | "familiar" | "known" =
+      existing?.known
+        ? "known"
+        : count >= 3
+          ? "familiar"
+          : (existing?.status ?? "unknown");
+    const now = Date.now();
+    const updated: KnownWord = {
+      key,
+      language,
+      lemma: lemma.toLowerCase(),
+      known: existing?.known ?? (status === "known"),
+      source: existing?.source ?? "inferred",
+      updatedAt: now,
+      passiveSeenCount: count,
+      estimatedKnownProb: nextProb,
+      status,
+    };
+    await db.put("knowledge", updated);
+    return updated;
+  });
 }
 
 export const mergePreparationKnowledge = mergeKnowledgeWrite;

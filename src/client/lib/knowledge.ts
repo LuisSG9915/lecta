@@ -25,6 +25,36 @@ export const DEFAULT_THRESHOLD_NATIVE = 2.0;
 export const DEFAULT_THRESHOLD_LEARNER = 3.0;
 export const DEFAULT_THRESHOLD = DEFAULT_THRESHOLD_LEARNER;
 
+// Inferencia implícita por exposición pasiva.
+export const GAMMA_PASSIVE = 0.82;
+export const FAMILIAR_PASSIVE_THRESHOLD = 3;
+
+export function updatePassiveExposureState(current: {
+  passiveSeenCount?: number;
+  estimatedKnownProb?: number;
+  status?: "unknown" | "familiar" | "known";
+  known?: boolean;
+}): {
+  passiveSeenCount: number;
+  estimatedKnownProb: number;
+  status: "unknown" | "familiar" | "known";
+} {
+  const count = (current.passiveSeenCount ?? 0) + 1;
+  const currentProb = current.estimatedKnownProb ?? 0;
+  const estimatedKnownProb = 1 - (1 - currentProb) * GAMMA_PASSIVE;
+  const status: "unknown" | "familiar" | "known" =
+    current.known
+      ? "known"
+      : count >= FAMILIAR_PASSIVE_THRESHOLD
+        ? "familiar"
+        : (current.status ?? "unknown");
+  return {
+    passiveSeenCount: count,
+    estimatedKnownProb,
+    status,
+  };
+}
+
 // Candidatos a umbral en pasos de 0.5 (las «bandas» del plan). Al
 // empatar en puntaje gana el más cercano al valor base: un empate no
 // es evidencia de que el perfil sea extremo, y el umbral mínimo
@@ -156,7 +186,16 @@ export function predictSection(
   forms: string[],
   entriesByForm: Record<string, LexiconEntry[]>,
   saved: ReadonlySet<string>,
-  knowledge: ReadonlyMap<string, { lemma: string; known: boolean }>,
+  knowledge: ReadonlyMap<
+    string,
+    {
+      lemma: string;
+      known: boolean;
+      status?: "unknown" | "familiar" | "known";
+      passiveSeenCount?: number;
+      estimatedKnownProb?: number;
+    }
+  >,
   threshold: number,
 ): SectionPrediction {
   const predictedKeys = new Set<string>();
@@ -177,6 +216,18 @@ export function predictSection(
     let entries = rawEntries.filter((entry) => isLearnablePos(entry.pos));
     const evidenceOf = (entry: LexiconEntry) =>
       knowledge.get(entry.lemma) ?? knowledge.get(form);
+
+    const isFamiliarOrKnown = (entry: LexiconEntry) => {
+      const ev = evidenceOf(entry);
+      if (!ev) return false;
+      if (ev.known === true) return true;
+      if (
+        ev.status === "familiar" ||
+        (ev.passiveSeenCount ?? 0) >= FAMILIAR_PASSIVE_THRESHOLD
+      )
+        return true;
+      return false;
+    };
 
     // «-mente»: la raíz sin sufijo es el adjetivo («perfectamente» →
     // «perfecta»/«perfecto»). Si esa raíz es un adjetivo común para
@@ -199,7 +250,7 @@ export function predictSection(
             entry.zipf >= threshold,
         ) &&
         ![...entries, ...rootEntries].some(
-          (entry) => evidenceOf(entry)?.known === false,
+          (entry) => evidenceOf(entry)?.known === false && !isFamiliarOrKnown(entry),
         )
       ) {
         knownCount += 1;
@@ -237,10 +288,13 @@ export function predictSection(
       ? // e) con evidencia manda lo explícito: la predice la primera
         // ficha marcada como desconocida que aún no esté predicha; las
         // demás combinaciones cuentan como conocidas (incluido el caso
-        // en que la predicción de otra forma ya cubrió esta entrada).
+        // en que la predicción de otra forma ya cubrió esta entrada o
+        // la palabra fue asimilada a 'familiar' por exposición pasiva).
         entries.find(
           (entry) =>
-            evidenceOf(entry)?.known === false && !predictedKeys.has(dedupeKey(entry)),
+            evidenceOf(entry)?.known === false &&
+            !isFamiliarOrKnown(entry) &&
+            !predictedKeys.has(dedupeKey(entry)),
         )
       : // f) sin evidencia: una forma con una lectura frecuente
         // («antigua» → antiguo, aunque también exista el lema raro

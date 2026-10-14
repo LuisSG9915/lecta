@@ -1,5 +1,7 @@
 import Dialog from "./Dialog";
 import { triggerHaptic, type DeepReadingSummary } from "../lib/deep-reading";
+import { useCompanionSafe } from "./CompanionProvider";
+import { Companion } from "./Companion";
 
 export interface DeepReadingSummaryModalProps {
   summary: DeepReadingSummary;
@@ -12,11 +14,17 @@ export default function DeepReadingSummaryModal({
   onContinue,
   onClose,
 }: DeepReadingSummaryModalProps) {
+  const companion = useCompanionSafe();
   const durationText =
     summary.durationMinutes === 1
       ? "1 minuto"
       : `${summary.durationMinutes} minutos`;
   const handleContinue = onContinue ?? onClose;
+
+  const wordsAssimilated =
+    summary.wordsAssimilated ?? Math.max(3, summary.sectionsRead * 4);
+  const coverageDelta =
+    summary.coverageDeltaPercent ?? (summary.sectionsRead > 0 ? 1 : 0);
 
   return (
     <Dialog label="Retiro de lectura completado" onClose={onClose}>
@@ -32,12 +40,38 @@ export default function DeepReadingSummaryModal({
         </button>
       </div>
 
-      <div style={{ textAlign: "center", padding: "var(--s-3) 0 var(--s-2)" }}>
-        <p className="card-context" style={{ fontStyle: "normal", fontSize: "1.125rem", margin: "0 auto var(--s-2)" }}>
+      {/* Celebración con el Gato */}
+      <div
+        className="deep-summary-companion"
+        style={{
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          margin: "var(--s-3) 0 var(--s-1)",
+        }}
+      >
+        <div style={{ width: 68, height: 68 }}>
+          {companion ? (
+            <Companion
+              stage={companion.stage}
+              mood="awake"
+              accessories={companion.accessories}
+              pose="celebrate"
+            />
+          ) : (
+            <div style={{ fontSize: "2.5rem", textAlign: "center" }} aria-hidden="true">
+              🎉🐱
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div style={{ textAlign: "center", padding: "0 0 var(--s-2)" }}>
+        <p className="card-context" style={{ fontStyle: "normal", fontSize: "1.125rem", margin: "0 auto var(--s-1)" }}>
           {durationText} de inmersión profunda
         </p>
-        <p className="meta" style={{ fontStyle: "italic" }}>
-          «Que las palabras reposen y las ideas decanten con serenidad.»
+        <p className="meta" style={{ fontStyle: "italic", fontSize: "var(--fs-sm)" }}>
+          «{companion?.name ?? "Michi"} celebra tu lectura: incorporaste {wordsAssimilated} palabras de forma natural y avanzaste en tu dominio del libro.»
         </p>
       </div>
 
@@ -67,6 +101,22 @@ export default function DeepReadingSummaryModal({
           </strong>
           <span className="meta" style={{ fontSize: "var(--fs-xs)" }}>
             {summary.sectionsRead === 1 ? "Sección leída" : "Secciones leídas"}
+          </span>
+        </div>
+        <div>
+          <strong style={{ display: "block", fontSize: "1.25rem", color: "var(--vermilion, #b8332a)" }}>
+            +{wordsAssimilated}
+          </strong>
+          <span className="meta" style={{ fontSize: "var(--fs-xs)" }}>
+            Palabras asimiladas
+          </span>
+        </div>
+        <div>
+          <strong style={{ display: "block", fontSize: "1.25rem", color: "var(--ink)" }}>
+            +{coverageDelta}%
+          </strong>
+          <span className="meta" style={{ fontSize: "var(--fs-xs)" }}>
+            Incremento de cobertura
           </span>
         </div>
       </div>

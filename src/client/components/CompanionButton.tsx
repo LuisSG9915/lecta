@@ -10,14 +10,18 @@ export function CompanionButton({
   label,
   onClick,
   disabled = false,
+  bubbleMessage,
+  onBubbleClick,
   ...cat
 }: Omit<CompanionProps, "decorative"> & {
   // Rótulo del botón («Ver a Michi»); el gato de adentro es mudo.
   label: string;
   onClick: () => void;
   disabled?: boolean;
+  bubbleMessage?: string | null;
+  onBubbleClick?: () => void;
 }) {
-  return (
+  const catButton = (
     <button
       type="button"
       className="companion-btn"
@@ -30,5 +34,29 @@ export function CompanionButton({
     >
       <Companion {...cat} decorative />
     </button>
+  );
+
+  if (!bubbleMessage) {
+    return catButton;
+  }
+
+  return (
+    <div className="companion-btn-wrapper">
+      <button
+        type="button"
+        className="companion-bubble-prompt"
+        role="status"
+        aria-live="polite"
+        onClick={() => {
+          triggerHaptic(12);
+          if (onBubbleClick) onBubbleClick();
+          else onClick();
+        }}
+      >
+        <span className="companion-bubble-text">{bubbleMessage}</span>
+        <span className="companion-bubble-beak" aria-hidden="true" />
+      </button>
+      {catButton}
+    </div>
   );
 }

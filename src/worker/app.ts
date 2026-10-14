@@ -12,6 +12,21 @@ import {
   ENRICHMENT_MODEL,
   createTtlCache,
   EXPLAIN_CALL_OPTIONS,
+  EVALUATE_CALL_OPTIONS,
+  EVALUATE_SYSTEM_PROMPT,
+  EXPLAIN_PASSAGE_CALL_OPTIONS,
+  EXPLAIN_PASSAGE_SYSTEM_PROMPT,
+  STORY_CALL_OPTIONS,
+  STORY_SYSTEM_PROMPT,
+  buildEvaluatePrompt,
+  buildExplainInPassagePrompt,
+  buildStoryPrompt,
+  parseEvaluateSentence,
+  parseMicroStory,
+  parsePassageExplanation,
+  type EvaluatedSentence,
+  type MicroStory,
+  type PassageExplanation,
   ITEM_CALL_OPTIONS,
   TIP_CALL_OPTIONS,
   TIP_PROMPT_VERSION,
@@ -807,6 +822,249 @@ app.post("/api/lexicon/tip", async (context) => {
   return context.json(payload);
 });
 
+// ---------- El Reto del Escritor y Cuento de Tinta IA ----------
+const evaluateCache = createTtlCache<EvaluatedSentence>({ maxEntries: 150, ttlMs: 15 * 60_000 });
+const storyCache = createTtlCache<MicroStory>({ maxEntries: 100, ttlMs: 30 * 60_000 });
+
+app.post("/api/ai/evaluate-sentence", async (context) => {
+  const body = await context.req.json().catch(() => null);
+  const word = typeof body?.word === "string" ? body.word.trim() : "";
+  const targetSense = typeof body?.targetSense === "string" ? body.targetSense.trim() : "";
+  const userSentence = typeof body?.userSentence === "string" ? body.userSentence.trim() : "";
+  const bookTitle = typeof body?.bookTitle === "string" ? body.bookTitle.trim().slice(0, 150) : undefined;
+
+  if (!word || !targetSense || !userSentence) {
+    return context.json({ error: "Faltan la palabra, la acepción o la oración del usuario." }, 400);
+  }
+  if (userSentence.length > 400) {
+    return context.json({ error: "La oración no puede superar 400 caracteres." }, 400);
+  }
+
+  const cacheKey = `${word.toLowerCase()}::${targetSense.toLowerCase()}::${userSentence.toLowerCase()}`;
+  const cached = evaluateCache.get(cacheKey);
+  if (cached) return context.json({ ...cached, cached: true });
+
+  const session = await getSession(context);
+  if (!session) {
+    return context.json({ error: "Inicia sesión para evaluar oraciones con IA." }, 401);
+  }
+
+  const allowed = await consumeRateUnits(
+    context.env,
+    session.user.id,
+    1,
+    EVALUATE_UNITS_PER_HOUR,
+    "evaluate",
+  );
+  if (!allowed) {
+    return context.json(
+      { error: "Llegaste al límite de evaluaciones por hora. Intenta más tarde." },
+      429,
+    );
+  }
+
+  const ai = await callDeepSeek(
+    context.env,
+    {
+      system: EVALUATE_SYSTEM_PROMPT,
+      user: buildEvaluatePrompt(word, targetSense, userSentence, bookTitle),
+    },
+    EVALUATE_CALL_OPTIONS,
+  );
+
+  const parsed = ai.ok && ai.finishReason !== "length" ? parseEvaluateSentence(ai.content) : null;
+  logAiCall(
+    EVALUATE_CALL_OPTIONS,
+    ai,
+    !ai.ok ? ai.reason : ai.finishReason === "length" ? "truncated" : parsed ? "ok" : "invalid",
+  );
+
+  if (!ai.ok) {
+    return context.json(
+      {
+        error:
+          ai.reason === "not-configured"
+            ? "La evaluación de frases con IA no está configurada."
+            : ai.reason === "rate-limited"
+              ? "La IA está saturada. Intenta de nuevo en unos minutos."
+              : "La IA no pudo evaluar la oración.",
+      },
+      ai.reason === "api-error" ? 502 : 503,
+    );
+  }
+
+  if (!parsed) {
+    return context.json({ error: "La IA no devolvió una evaluación válida." }, 502);
+  }
+
+  evaluateCache.set(cacheKey, parsed);
+  return context.json(parsed);
+});
+
+app.post("/api/ai/micro-story", async (context) => {
+  const body = await context.req.json().catch(() => null);
+  const wordsRaw = Array.isArray(body?.words) ? body.words : [];
+  const styleHint = typeof body?.styleHint === "string" ? body.styleHint.trim().slice(0, 100) : undefined;
+
+  const words: Array<{ word: string; meaning?: string }> = wordsRaw
+    .filter(
+      (w: unknown): w is Record<string, unknown> =>
+        typeof w === "object" && w !== null && typeof (w as Record<string, unknown>).word === "string",
+    )
+    .map((w: Record<string, unknown>) => ({
+      word: String(w.word).trim(),
+      meaning: typeof w.meaning === "string" ? String(w.meaning).trim() : undefined,
+    }))
+    .filter((w: { word: string; meaning?: string }) => Boolean(w.word))
+    .slice(0, 4);
+
+  if (!words.length) {
+    return context.json({ error: "Debes proporcionar al menos una palabra para el micro-relato." }, 400);
+  }
+
+  const cacheKey = words.map((w: { word: string }) => w.word.toLowerCase()).sort().join(",") + (styleHint ? `:${styleHint}` : "");
+  const cached = storyCache.get(cacheKey);
+  if (cached) return context.json({ ...cached, cached: true });
+
+  const session = await getSession(context);
+  if (!session) {
+    return context.json({ error: "Inicia sesión para generar micro-relatos con IA." }, 401);
+  }
+
+  const allowed = await consumeRateUnits(
+    context.env,
+    session.user.id,
+    1,
+    STORY_UNITS_PER_HOUR,
+    "story",
+  );
+  if (!allowed) {
+    return context.json(
+      { error: "Llegaste al límite de micro-relatos por hora. Intenta más tarde." },
+      429,
+    );
+  }
+
+  const ai = await callDeepSeek(
+    context.env,
+    {
+      system: STORY_SYSTEM_PROMPT,
+      user: buildStoryPrompt(words, styleHint),
+    },
+    STORY_CALL_OPTIONS,
+  );
+
+  const parsed = ai.ok && ai.finishReason !== "length" ? parseMicroStory(ai.content) : null;
+  logAiCall(
+    STORY_CALL_OPTIONS,
+    ai,
+    !ai.ok ? ai.reason : ai.finishReason === "length" ? "truncated" : parsed ? "ok" : "invalid",
+  );
+
+  if (!ai.ok) {
+    return context.json(
+      {
+        error:
+          ai.reason === "not-configured"
+            ? "Los micro-relatos con IA no están configurados."
+            : ai.reason === "rate-limited"
+              ? "La IA está saturada. Intenta de nuevo en unos minutos."
+              : "La IA no pudo tejer el micro-relato.",
+      },
+      ai.reason === "api-error" ? 502 : 503,
+    );
+  }
+
+  if (!parsed) {
+    return context.json({ error: "La IA no devolvió un micro-relato estructurado correctamente." }, 502);
+  }
+
+  storyCache.set(cacheKey, parsed);
+  return context.json(parsed);
+});
+
+// ---------- Explicación literaria en pasaje (B.3.3 & B.4) ----------
+const explainPassageCache = createTtlCache<PassageExplanation>({
+  maxEntries: 200,
+  ttlMs: 15 * 60_000,
+});
+
+app.post("/api/ai/explain-in-passage", async (context) => {
+  const body = await context.req.json().catch(() => null);
+  const word = typeof body?.word === "string" ? body.word.trim().slice(0, 100) : undefined;
+  const sentence = typeof body?.sentence === "string" ? body.sentence.trim() : "";
+  const bookTitle = typeof body?.bookTitle === "string" ? body.bookTitle.trim().slice(0, 150) : undefined;
+  const author = typeof body?.author === "string" ? body.author.trim().slice(0, 100) : undefined;
+  const language = typeof body?.language === "string" ? body.language.trim().slice(0, 10) : "es";
+
+  if (!sentence) {
+    return context.json({ error: "Falta el pasaje u oración a explicar." }, 400);
+  }
+  if (sentence.length > 800) {
+    return context.json({ error: "El pasaje no puede superar 800 caracteres." }, 400);
+  }
+
+  const cacheKey = `${(word ?? "").toLowerCase()}::${sentence.toLowerCase()}::${(bookTitle ?? "").toLowerCase()}`;
+  const cached = explainPassageCache.get(cacheKey);
+  if (cached) return context.json({ ...cached, cached: true });
+
+  const session = await getSession(context);
+  if (!session) {
+    return context.json({ error: "Inicia sesión para pedir explicaciones literarias con IA." }, 401);
+  }
+
+  const allowed = await consumeRateUnits(
+    context.env,
+    session.user.id,
+    1,
+    EXPLAIN_UNITS_PER_HOUR,
+    "explain",
+  );
+  if (!allowed) {
+    return context.json(
+      { error: "Llegaste al límite de explicaciones por hora. Intenta más tarde." },
+      429,
+    );
+  }
+
+  const ai = await callDeepSeek(
+    context.env,
+    {
+      system: EXPLAIN_PASSAGE_SYSTEM_PROMPT,
+      user: buildExplainInPassagePrompt({ word, sentence, bookTitle, author, language }),
+    },
+    EXPLAIN_PASSAGE_CALL_OPTIONS,
+  );
+
+  const parsed = ai.ok && ai.finishReason !== "length" ? parsePassageExplanation(ai.content) : null;
+  logAiCall(
+    EXPLAIN_PASSAGE_CALL_OPTIONS,
+    ai,
+    !ai.ok ? ai.reason : ai.finishReason === "length" ? "truncated" : parsed ? "ok" : "invalid",
+  );
+
+  if (!ai.ok) {
+    return context.json(
+      {
+        error:
+          ai.reason === "not-configured"
+            ? "Las explicaciones con IA no están configuradas."
+            : ai.reason === "rate-limited"
+              ? "La IA está saturada. Intenta de nuevo en unos minutos."
+              : "La IA no pudo explicar el pasaje.",
+      },
+      ai.reason === "api-error" ? 502 : 503,
+    );
+  }
+
+  if (!parsed) {
+    return context.json({ error: "La IA no devolvió una explicación estructurada correctamente." }, 502);
+  }
+
+  explainPassageCache.set(cacheKey, parsed);
+  return context.json(parsed);
+});
+
 // Presupuestos por hora y por alcance: cada función IA gasta de su
 // propia bolsa (columna scope de lecta_rate_log), así una tanda de
 // ítems o de correcciones no consume la cuota de enriquecimiento.
@@ -815,6 +1073,8 @@ const ITEM_UNITS_PER_HOUR = 24;
 const VERIFY_UNITS_PER_HOUR = 30;
 const EXPLAIN_UNITS_PER_HOUR = 30;
 const TIP_UNITS_PER_HOUR = 6;
+const EVALUATE_UNITS_PER_HOUR = 40;
+const STORY_UNITS_PER_HOUR = 20;
 const HOUR_MS = 3_600_000;
 
 // Suma `units` a la ventana de la última hora del scope dado y la

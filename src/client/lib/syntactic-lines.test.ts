@@ -6,6 +6,7 @@ import {
   SYNTACTIC_LINE_CLASS,
   syntacticBreaks,
   syntacticSegments,
+  splitSentenceIntoSyntacticChunks,
 } from "./syntactic-lines";
 
 const LONG =
@@ -142,5 +143,44 @@ describe("applySyntacticLines / clearSyntacticLines", () => {
       l.textContent?.trim().startsWith("Despertó"),
     );
     expect(newSentLine?.hasAttribute("data-new-sentence")).toBe(true);
+  });
+
+  it("etiqueta conectores complejos con data-connector='true' para fijación sacádica", () => {
+    const root = document.createElement("div");
+    const p = document.createElement("p");
+    p.textContent =
+      "El camino era largo y pedregoso; sin embargo, el viajero continuó sin descanso hasta la cima.";
+    root.append(p);
+    applySyntacticLines(root);
+    const connectors = root.querySelectorAll("[data-connector='true']");
+    expect(connectors.length).toBeGreaterThan(0);
+    expect(Array.from(connectors).some((c) => c.textContent?.toLowerCase() === "sin embargo")).toBe(true);
+
+    // clearSyntacticLines lo limpia todo sin perder el texto
+    clearSyntacticLines(root);
+    expect(root.querySelectorAll("[data-connector='true']")).toHaveLength(0);
+    expect(p.textContent).toBe(
+      "El camino era largo y pedregoso; sin embargo, el viajero continuó sin descanso hasta la cima.",
+    );
+  });
+});
+
+describe("splitSentenceIntoSyntacticChunks", () => {
+  it("mantiene palabras sueltas si la oración tiene 5 o menos palabras", () => {
+    const res = splitSentenceIntoSyntacticChunks("El libro tiene páginas.");
+    expect(res).toEqual(["El", "libro", "tiene", "páginas."]);
+  });
+
+  it("divide oraciones largas en 4 a 6 fragmentos con sentido y puntuación pegada", () => {
+    const sentence =
+      "En aquel jardín silencioso, los cisnes blancos deslizaban su cuello sobre el agua azul.";
+    const chunks = splitSentenceIntoSyntacticChunks(sentence);
+    expect(chunks.length).toBeGreaterThanOrEqual(4);
+    expect(chunks.length).toBeLessThanOrEqual(6);
+    // Unir los fragmentos reconstruye exactamente la oración
+    expect(chunks.join(" ")).toBe(sentence);
+    // Puntuación pegada
+    expect(chunks.some((c) => c.includes("silencioso,"))).toBe(true);
+    expect(chunks[chunks.length - 1].endsWith("azul.")).toBe(true);
   });
 });

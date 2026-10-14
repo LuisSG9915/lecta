@@ -19,6 +19,17 @@ export const FATIGUE_MIN_MOVES = 8;
 export const FATIGUE_REGRESSION_SHARE = 0.35;
 // Un hueco sin navegar reinicia el tramo medido.
 export const TRACK_GAP_MS = 5 * 60_000;
+// Inactividad de más de 60 segundos sin interacción tras la cual el gato duerme.
+export const IDLE_SLEEPY_MS = 60_000;
+
+export function isReaderIdleSleepy(
+  tracker: FocusTracker | null,
+  at: number,
+  thresholdMs: number = IDLE_SLEEPY_MS,
+): boolean {
+  if (!tracker) return false;
+  return at - tracker.lastMoveAt >= thresholdMs;
+}
 
 export type FocusTracker = {
   // Inicio del tramo continuo medido (una pausa larga lo reinicia).
@@ -126,3 +137,85 @@ export function focusByDay(
   }
   return [...byDay.values()].sort((a, b) => a.dayKey.localeCompare(b.dayKey));
 }
+
+// ---------- Velocidad de lectura base (Calibración) ----------
+
+export const BASELINE_WPM_KEY = "lecta:baseline_wpm:v1";
+
+export function loadBaselineWpm(): number {
+  if (typeof window === "undefined" || !window.localStorage) return 200;
+  try {
+    const raw = window.localStorage.getItem(BASELINE_WPM_KEY);
+    if (raw) {
+      const val = parseInt(raw, 10);
+      if (Number.isFinite(val) && val > 0) return val;
+    }
+  } catch {
+    // fallback
+  }
+  return 200;
+}
+
+export function saveBaselineWpm(wpm: number): void {
+  if (typeof window === "undefined" || !window.localStorage) return;
+  try {
+    window.localStorage.setItem(BASELINE_WPM_KEY, Math.round(wpm).toString());
+  } catch {
+    // ignorar error de quota
+  }
+}
+
+// ---------- Detección de pasaje denso (bloqueo / stall) ----------
+
+export const DENSE_STALL_MULTIPLIER = 2.2;
+export const DENSE_STALL_COOLDOWN_MS = 60_000;
+export const DENSE_STALL_MAX_IDLE_MS = 30_000;
+export const DENSE_STALL_MIN_PAGE_WORDS = 30;
+
+export interface DenseStallDetector {
+  pageEnteredAt: number;
+  lastFlaggedAt: number;
+}
+
+export function newDenseStallDetector(now: number): DenseStallDetector {
+  return { pageEnteredAt: now, lastFlaggedAt: 0 };
+}
+
+export function resetDenseStallPage(
+  detector: DenseStallDetector,
+  now: number,
+): void {
+  detector.pageEnteredAt = now;
+}
+
+export function detectDensePassageStall(
+  detector: DenseStallDetector,
+  at: number,
+  pageWords: number,
+  baselineWpm: number,
+  lastActivityAt: number,
+): boolean {
+  if (pageWords < DENSE_STALL_MIN_PAGE_WORDS) return false;
+  const effectiveWpm = baselineWpm > 0 ? baselineWpm : 200;
+
+  const dwellMs = at - detector.pageEnteredAt;
+  const expectedMs = (pageWords / effectiveWpm) * 60_000;
+  const thresholdMs = expectedMs * DENSE_STALL_MULTIPLIER;
+
+  if (dwellMs < thresholdMs) return false;
+
+  // Si no hubo actividad reciente (cursor/scroll), el usuario dejó la pestaña abandonada
+  if (at - lastActivityAt > DENSE_STALL_MAX_IDLE_MS) return false;
+
+  // Enfriamiento entre avisos
+  if (
+    detector.lastFlaggedAt &&
+    at - detector.lastFlaggedAt < DENSE_STALL_COOLDOWN_MS
+  ) {
+    return false;
+  }
+
+  detector.lastFlaggedAt = at;
+  return true;
+}
+

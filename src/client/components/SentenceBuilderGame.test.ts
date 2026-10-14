@@ -95,4 +95,26 @@ describe("SentenceBuilderGame", () => {
     });
     expect(onSolve).toHaveBeenCalledTimes(1);
   });
+
+  it("divides long sentence into 4-6 syntactic chunks and highlights target word", () => {
+    const longSentence =
+      "En aquel jardín silencioso, los cisnes blancos deslizaban su cuello sobre el agua azul.";
+    render(
+      h(SentenceBuilderGame, {
+        targetWord: "cisnes",
+        sentence: longSentence,
+        onSolve: vi.fn(),
+      }),
+    );
+
+    const poolButtons = host.querySelectorAll(".sentence-pool-btn");
+    // Long 14-word sentence should NOT have 14 buttons, but 4 to 6 chunks
+    expect(poolButtons.length).toBeGreaterThanOrEqual(4);
+    expect(poolButtons.length).toBeLessThanOrEqual(6);
+
+    // Target word "cisnes" should be highlighted inside its chunk
+    const highlight = host.querySelector(".sentence-target-highlight");
+    expect(highlight).not.toBeNull();
+    expect(highlight?.textContent).toBe("cisnes");
+  });
 });

@@ -4,6 +4,8 @@ import { createEmptyCard, type Card } from "ts-fsrs";
 import { listAllKnowledge, saveKnowledge, type SavedWord } from "../lib/idb";
 import { recordDominated } from "./Reader";
 
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
 // Solo las llamadas que toca recordDominated; el resto del árbol de
 // módulos carga real (epub/zip se importan perezosos al abrir libro).
 vi.mock("../lib/idb", async (importOriginal) => {
@@ -93,5 +95,148 @@ describe("recordDominated", () => {
       recordDominated([word("perenne", dominatedCard)], "es"),
     ).resolves.toBeUndefined();
     expect(saveMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("Zen HUD & Estrategias (B.1 & B.2)", () => {
+  it("PRESET_LABELS cubre todas las estrategias de lectura", async () => {
+    const { PRESET_LABELS } = await import("./Reader");
+    expect(PRESET_LABELS.focus).toBe("Enfoque");
+    expect(PRESET_LABELS.lexical).toBe("Léxico");
+    expect(PRESET_LABELS.immersive).toBe("Inmersivo");
+    expect(PRESET_LABELS.audio).toBe("Audio");
+    expect(PRESET_LABELS.custom).toBe("Ajustado");
+  });
+
+  it("FocusRuler incluye velos superior e inferior y responde a flechas del teclado", async () => {
+    const { createElement: h } = await import("react");
+    const { createRoot } = await import("react-dom/client");
+    const { act } = await import("react");
+    const { FocusRuler } = await import("./FocusRuler");
+
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(h(FocusRuler, { bandPx: 120, lineHeightPx: 30 }));
+    });
+
+    const topVeil = host.querySelector(".focus-ruler-veil--top");
+    const bottomVeil = host.querySelector(".focus-ruler-veil--bottom");
+    const band = host.querySelector(".focus-ruler-band");
+
+    expect(topVeil).not.toBeNull();
+    expect(bottomVeil).not.toBeNull();
+    expect(band).not.toBeNull();
+
+    // Evento de teclado ArrowDown
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown" }));
+    });
+
+    root.unmount();
+    host.remove();
+  });
+
+  it("CompanionButton muestra burbuja interactiva si se pasa bubbleMessage", async () => {
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    const { createElement: h } = await import("react");
+    const { createRoot } = await import("react-dom/client");
+    const { act } = await import("react");
+    const { CompanionButton } = await import("./CompanionButton");
+
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    const onBubbleClick = vi.fn();
+    const onClick = vi.fn();
+
+    await act(async () => {
+      root.render(
+        h(CompanionButton, {
+          stage: 2,
+          mood: "awake",
+          accessories: [],
+          label: "Ver a Michi",
+          onClick,
+          bubbleMessage: "¿Pasaje denso? Tócame para iluminar el párrafo paso a paso.",
+          onBubbleClick,
+        }),
+      );
+    });
+
+    const prompt = host.querySelector(".companion-bubble-prompt");
+    expect(prompt).not.toBeNull();
+    expect(prompt?.textContent).toContain("¿Pasaje denso?");
+
+    // Clic en la burbuja
+    await act(async () => {
+      prompt?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(onBubbleClick).toHaveBeenCalledTimes(1);
+
+    root.unmount();
+    host.remove();
+  });
+});
+
+describe("Subrayado de Pasajes y Tonos de Tinta (B.4)", () => {
+  it("makePassage asigna los 3 tonos de tinta", async () => {
+    const { makePassage } = await import("../lib/annotations");
+    const p1 = makePassage("b1", 1, "Un texto ámbar", undefined, undefined, "amber");
+    expect(p1?.color).toBe("amber");
+
+    const p2 = makePassage("b1", 1, "Un texto salvia", undefined, undefined, "salvia");
+    expect(p2?.color).toBe("salvia");
+
+    const p3 = makePassage("b1", 1, "Un texto darío", undefined, undefined, "dario");
+    expect(p3?.color).toBe("dario");
+  });
+
+  it("applyPassageMarks aplica las clases correspondientes a los 3 tonos", async () => {
+    const { applyPassageMarks } = await import("../lib/passage-marks");
+    const container = document.createElement("div");
+    container.textContent = "Bajo la bóveda del azur resplandecían los astros sobre la colina.";
+    document.body.appendChild(container);
+
+    const passages = [
+      {
+        key: "b1:1",
+        id: "1",
+        bookHash: "b1",
+        kind: "passage" as const,
+        sectionIndex: 0,
+        text: "azur resplandecían",
+        color: "dario" as const,
+        createdAt: 1,
+        updatedAt: 1,
+      },
+      {
+        key: "b1:2",
+        id: "2",
+        bookHash: "b1",
+        kind: "passage" as const,
+        sectionIndex: 0,
+        text: "sobre la colina",
+        color: "salvia" as const,
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ];
+
+    applyPassageMarks(container, passages);
+
+    const markDario = container.querySelector(".saved-passage--dario");
+    const markSalvia = container.querySelector(".saved-passage--salvia");
+
+    expect(markDario).not.toBeNull();
+    expect(markDario?.textContent).toBe("azur resplandecían");
+    expect(markSalvia).not.toBeNull();
+    expect(markSalvia?.textContent).toBe("sobre la colina");
+
+    container.remove();
   });
 });

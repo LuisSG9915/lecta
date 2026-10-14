@@ -123,4 +123,52 @@ describe("WordScrambleGame", () => {
     expect(slots[0].textContent?.trim()).toBe("S");
     expect(onAskHint).toHaveBeenCalled();
   });
+
+  it("splits words longer than 7 letters into syllable chunks", () => {
+    render(
+      h(WordScrambleGame, {
+        targetWord: "maravilloso",
+        meaning: "Extraordinario",
+        onSolve: vi.fn(),
+      }),
+    );
+
+    const tiles = host.querySelectorAll(".scramble-tile");
+    // "maravilloso" has 11 letters, but in syllable mode it should be fewer chunks (e.g. 4-5)
+    expect(tiles.length).toBeLessThan(11);
+    expect(tiles.length).toBeGreaterThanOrEqual(4);
+
+    const pool = host.querySelector(".scramble-pool");
+    expect(pool?.classList.contains("is-syllables")).toBe(true);
+
+    // All chunks uppercase joined should contain all letters of the word
+    const chunkChars = Array.from(tiles)
+      .map((t) => t.textContent?.trim() ?? "")
+      .join("")
+      .toLowerCase();
+    expect(chunkChars.split("").sort().join("")).toBe(
+      "maravilloso".split("").sort().join(""),
+    );
+  });
+
+  it("adds pulse-hint class to matching tile after 8 seconds of inactivity", () => {
+    render(
+      h(WordScrambleGame, {
+        targetWord: "sol",
+        onSolve: vi.fn(),
+      }),
+    );
+
+    expect(host.querySelector(".pulse-hint")).toBeNull();
+
+    // Advance 8 seconds
+    act(() => {
+      vi.advanceTimersByTime(8000);
+    });
+
+    const hintTile = host.querySelector(".pulse-hint");
+    expect(hintTile).not.toBeNull();
+    // The first slot needs 'S', so the tile with 'S' should have pulse-hint
+    expect(hintTile?.textContent?.trim()).toBe("S");
+  });
 });

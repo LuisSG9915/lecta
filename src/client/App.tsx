@@ -906,6 +906,7 @@ export default function App() {
                   downloadingHash={downloadingHash}
                   activityVersion={activityVersion}
                   onOpenJourney={() => openJourneyFrom("shelf")}
+                  onOpenPractice={() => navigateTo("vocab")}
                 />
               </Activity>
 

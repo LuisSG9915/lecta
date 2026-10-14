@@ -15,7 +15,14 @@ export type IconName =
   | "clock"
   | "speaker"
   | "back"
-  | "close";
+  | "close"
+  | "strategy"
+  | "sparkles"
+  | "quote"
+  | "download"
+  | "focus"
+  | "lock"
+  | "highlight";
 
 export interface IconProps {
   name: IconName;
@@ -171,6 +178,49 @@ function renderIconPath(name: IconName) {
         <>
           <line x1="18" y1="6" x2="6" y2="18" />
           <line x1="6" y1="6" x2="18" y2="18" />
+        </>
+      );
+    case "strategy":
+    case "sparkles":
+      return (
+        <>
+          <path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3z" />
+        </>
+      );
+    case "quote":
+      return (
+        <>
+          <path d="M3 21c3 0 7-1 7-8V5c0-1.25-.75-2-2-2H4c-1.25 0-2 .75-2 2v6c0 1.25.75 2 2 2 1 0 1 0 1 1 0 2-1 4-2 7" />
+          <path d="M15 21c3 0 7-1 7-8V5c0-1.25-.75-2-2-2h-4c-1.25 0-2 .75-2 2v6c0 1.25.75 2 2 2 1 0 1 0 1 1 0 2-1 4-2 7" />
+        </>
+      );
+    case "download":
+      return (
+        <>
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+          <polyline points="7 10 12 15 17 10" />
+          <line x1="12" y1="15" x2="12" y2="3" />
+        </>
+      );
+    case "focus":
+      return (
+        <>
+          <circle cx="12" cy="12" r="3" />
+          <path d="M3 12h3m12 0h3M12 3v3m0 12v3" />
+        </>
+      );
+    case "lock":
+      return (
+        <>
+          <rect x="5" y="11" width="14" height="10" rx="2" />
+          <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+        </>
+      );
+    case "highlight":
+      return (
+        <>
+          <path d="m9 11-6 6v3h3l6-6" />
+          <path d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4" />
         </>
       );
   }

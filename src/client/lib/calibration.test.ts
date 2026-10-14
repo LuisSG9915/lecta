@@ -8,6 +8,7 @@ import {
 import {
   CALIBRATION_DONE_KEY,
   CALIBRATION_DRAFT_KEY,
+  calibrationAnswerScore,
   calibrationDoneKey,
   calibrationDraftKey,
   calibrationRows,
@@ -288,4 +289,99 @@ describe("calibrationDoneKey and calibrationDraftKey", () => {
     expect(calibrationDraftKey("en")).toBe(`${CALIBRATION_DRAFT_KEY}:en`);
   });
 });
+
+describe("calibrationAnswerScore and IRT adaptive engine", () => {
+  it("asigna ponderaciones cognitivas precisas: known=1.0, unsure=0.35, unknown=0.0", () => {
+    expect(calibrationAnswerScore("known")).toBe(1.0);
+    expect(calibrationAnswerScore("unsure")).toBe(0.35);
+    expect(calibrationAnswerScore("unknown")).toBe(0.0);
+  });
+
+  it("probKnown2PL y fisherInformation se comportan según el modelo 2PL", async () => {
+    const { probKnown2PL, fisherInformation } = await import("./profile-models");
+    // En el punto theta == b_i, la probabilidad es exactamente 0.5
+    expect(probKnown2PL(4.0, 4.0)).toBeCloseTo(0.5, 4);
+    // Para theta superior a la dificultad, la probabilidad es > 0.5
+    expect(probKnown2PL(5.0, 4.0)).toBeGreaterThan(0.5);
+    // Para theta inferior a la dificultad, la probabilidad es < 0.5
+    expect(probKnown2PL(3.0, 4.0)).toBeLessThan(0.5);
+
+    // La información de Fisher alcanza su máximo cuando theta == b_i
+    const peakInfo = fisherInformation(4.0, 4.0);
+    const offsetInfo = fisherInformation(4.0, 3.0);
+    expect(peakInfo).toBeGreaterThan(offsetInfo);
+  });
+
+  it("selectNextAdaptiveItem elige el ítem que maximiza la información de Fisher y descarta respondidos", async () => {
+    const { selectNextAdaptiveItem } = await import("./profile-models");
+    const candidates = [
+      { lemma: "facil", difficulty: 2.0 },
+      { lemma: "media", difficulty: 4.0 },
+      { lemma: "dificil", difficulty: 5.5 },
+    ];
+    // Para theta=3.9, la palabra más cercana es "media" (b_i=4.0)
+    const next1 = selectNextAdaptiveItem(candidates, new Set(), 3.9);
+    expect(next1?.lemma).toBe("media");
+
+    // Si "media" ya se respondió, debe elegir la siguiente más informativa (dificil con dist 1.6 vs facil con dist 1.9)
+    const next2 = selectNextAdaptiveItem(candidates, new Set(["media"]), 3.9);
+    expect(next2?.lemma).toBe("dificil");
+  });
+
+  it("estimateThetaMAP actualiza la habilidad según las respuestas Bayesianas", async () => {
+    const { estimateThetaMAP } = await import("./profile-models");
+    // Lector que acierta todas las palabras difíciles (score=1.0)
+    const highResponses = [
+      { b_i: 4.0, score: 1.0 },
+      { b_i: 4.5, score: 1.0 },
+      { b_i: 5.0, score: 1.0 },
+      { b_i: 5.5, score: 1.0 },
+    ];
+    const highTheta = estimateThetaMAP(highResponses);
+    expect(highTheta).toBeGreaterThan(4.5);
+
+    // Lector que desconoce la mayoría (score=0.0)
+    const lowResponses = [
+      { b_i: 4.0, score: 0.0 },
+      { b_i: 3.5, score: 0.0 },
+      { b_i: 3.0, score: 0.0 },
+    ];
+    const lowTheta = estimateThetaMAP(lowResponses);
+    expect(lowTheta).toBeLessThan(3.5);
+
+    // Respuesta "unsure" (0.35) pondera entre unknown y known
+    const unsureResponses = [
+      { b_i: 4.0, score: 0.35 },
+      { b_i: 4.5, score: 0.35 },
+    ];
+    const unsureTheta = estimateThetaMAP(unsureResponses);
+    expect(unsureTheta).toBeLessThan(highTheta);
+  });
+
+  it("applyOverconfidenceCorrection penaliza proporcionalmente según fallos en verificación", async () => {
+    const { applyOverconfidenceCorrection } = await import("./profile-models");
+    const thetaInitial = 4.8;
+    // Si aprueba todas (0 fallos de 2), no hay penalización
+    expect(applyOverconfidenceCorrection(thetaInitial, 0, 2)).toBe(4.8);
+
+    // Si falla 1 de 2 verificaciones: penalización = 0.35 * (1/2) = 0.175 -> 4.8 - 0.175 = 4.625 ~ 4.63
+    const penalized1 = applyOverconfidenceCorrection(thetaInitial, 1, 2);
+    expect(penalized1).toBeCloseTo(4.63, 1);
+
+    // Si falla 2 de 2 verificaciones: penalización = 0.35 * (2/2) = 0.35 -> 4.8 - 0.35 = 4.45
+    const penalized2 = applyOverconfidenceCorrection(thetaInitial, 2, 2);
+    expect(penalized2).toBeCloseTo(4.45, 1);
+  });
+
+  it("recupera frases de contexto natural para palabras del banco", async () => {
+    const { calibrationSampleContext } = await import("../../shared/calibration-bank");
+    const ctx = calibrationSampleContext("diletante");
+    expect(ctx).toContain("diletante");
+    expect(ctx).toContain("salones literarios");
+
+    const ctxEn = calibrationSampleContext("clandestine", "en");
+    expect(ctxEn).toContain("clandestine");
+  });
+});
+
 

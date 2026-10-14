@@ -273,4 +273,93 @@ describe("GamePanel", () => {
     expect(host.querySelector(".game-badges")).toBeNull();
     expect(host.textContent).not.toContain("🏆");
   });
+
+  it("renderiza el Taller con el Gato IA y permite evaluar una frase", async () => {
+    act(() =>
+      root.render(
+        h(CompanionProvider, {
+          userId: null,
+          children: h(GamePanel, {
+            mode: "ai_workshop",
+            words: [
+              {
+                word: "relicario",
+                meaning: "Lugar sagrado o estuche donde se guardan reliquias",
+              },
+            ],
+          }),
+        }),
+      ),
+    );
+    await flush();
+
+    expect(host.querySelector(".game-ai-workshop")).toBeTruthy();
+    expect(host.textContent).toContain("El Reto del Escritor");
+    expect(host.textContent).toContain("Cuento de Tinta");
+    expect(host.textContent).toContain("relicario");
+
+    // Escribir una oración
+    const textarea = host.querySelector("textarea")!;
+    expect(textarea).toBeTruthy();
+    const nativeSetter = Object.getOwnPropertyDescriptor(
+      window.HTMLTextAreaElement.prototype,
+      "value",
+    )?.set;
+    act(() => {
+      nativeSetter?.call(
+        textarea,
+        "Guardó la carta en el viejo relicario de plata.",
+      );
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await flush();
+
+    const reviewBtn = button("Revisar con el Gato")!;
+    expect(reviewBtn).toBeTruthy();
+    click(reviewBtn);
+    await flush();
+    await flush();
+
+    // Se evalúa y muestra la puntuación y retroalimentación
+    expect(host.querySelector(".ai-result-panel")).toBeTruthy();
+    expect(host.textContent).toContain("/ 100");
+    expect(host.textContent).toContain("relicario");
+  });
+
+  it("permite tejer un Cuento de Tinta con las palabras del cuaderno", async () => {
+    act(() =>
+      root.render(
+        h(CompanionProvider, {
+          userId: null,
+          children: h(GamePanel, {
+            mode: "ai_workshop",
+            words: [
+              { word: "sombra" },
+              { word: "antiguo" },
+            ],
+          }),
+        }),
+      ),
+    );
+    await flush();
+
+    // Cambiar a la pestaña de cuento
+    const storyTab = button("Cuento de Tinta")!;
+    expect(storyTab).toBeTruthy();
+    click(storyTab);
+    await flush();
+
+    expect(host.textContent).toContain("Palabras del cuaderno que se integrarán en el cuento");
+    expect(host.textContent).toContain("«sombra»");
+    expect(host.textContent).toContain("«antiguo»");
+
+    const weaveBtn = button("Tejer Cuento con el Gato")!;
+    expect(weaveBtn).toBeTruthy();
+    click(weaveBtn);
+    await flush();
+
+    expect(host.querySelector(".ai-story-card")).toBeTruthy();
+    expect(host.querySelector(".ai-story-highlight")).toBeTruthy();
+  });
 });
+

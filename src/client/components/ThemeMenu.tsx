@@ -1,10 +1,12 @@
 import {
   FOCUS_MODES,
+  READER_FONTS,
   RULER_SIZES,
   THEME_CHOICES,
   THEME_LABELS,
   THEME_SWATCHES,
   type FocusMode,
+  type ReaderFont,
   type RulerSize,
   type ThemeChoice,
 } from "../lib/settings";
@@ -22,22 +24,26 @@ type ThemeMenuProps = {
 export default function ThemeMenu({ value, onChange, variant }: ThemeMenuProps) {
   if (variant === "swatches") {
     return (
-      <div className="theme-swatches" role="radiogroup" aria-label="Tema">
+      <div className="theme-swatches" role="radiogroup" aria-label="Tema de lectura">
         {THEME_CHOICES.map((choice) => {
           const swatch = THEME_SWATCHES[choice];
+          const isSelected = choice === value;
           return (
             <button
               key={choice}
               type="button"
               className="swatch"
               role="radio"
-              aria-checked={choice === value}
-              data-active={choice === value || undefined}
+              aria-checked={isSelected}
+              data-active={isSelected || undefined}
               onClick={() => onChange(choice)}
             >
               <span
                 className="swatch-dot"
-                style={{ background: swatch.bg }}
+                style={{
+                  background: swatch.bg,
+                  borderColor: swatch.border,
+                }}
                 aria-hidden="true"
               >
                 {swatch.fg ? (
@@ -65,6 +71,96 @@ export default function ThemeMenu({ value, onChange, variant }: ThemeMenuProps) 
           {THEME_LABELS[choice]}
         </button>
       ))}
+    </div>
+  );
+}
+
+// Carrusel horizontal de tipografías con vista previa real y etiquetas de ayuda
+export function FontCarousel({
+  value,
+  onChange,
+}: {
+  value: ReaderFont;
+  onChange: (font: ReaderFont) => void;
+}) {
+  return (
+    <div className="font-carousel" role="radiogroup" aria-label="Tipografía">
+      {READER_FONTS.map(({ id, label, family, help, sample }) => {
+        const isSelected = value === id;
+        return (
+          <button
+            key={id}
+            type="button"
+            role="radio"
+            aria-checked={isSelected}
+            data-active={isSelected || undefined}
+            className="font-card"
+            onClick={() => onChange(id)}
+          >
+            <span
+              className="font-card-sample"
+              style={{ fontFamily: family }}
+              aria-hidden="true"
+            >
+              {sample}
+            </span>
+            <strong className="font-card-label" style={{ fontFamily: family }}>
+              {label}
+            </strong>
+            <span className="font-card-help">{help}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// Control paso a paso (- / +) con indicador numérico/visual
+export function StepperControl({
+  label,
+  valueText,
+  onDecrement,
+  onIncrement,
+  canDecrement,
+  canIncrement,
+  ariaDecrementLabel = "Disminuir",
+  ariaIncrementLabel = "Aumentar",
+}: {
+  label: string;
+  valueText: string;
+  onDecrement: () => void;
+  onIncrement: () => void;
+  canDecrement: boolean;
+  canIncrement: boolean;
+  ariaDecrementLabel?: string;
+  ariaIncrementLabel?: string;
+}) {
+  return (
+    <div className="setting-row">
+      <span className="setting-label">{label}</span>
+      <div className="setting-stepper">
+        <button
+          type="button"
+          className="btn stepper-btn"
+          aria-label={ariaDecrementLabel}
+          disabled={!canDecrement}
+          onClick={onDecrement}
+        >
+          −
+        </button>
+        <span className="setting-value" aria-live="polite">
+          {valueText}
+        </span>
+        <button
+          type="button"
+          className="btn stepper-btn"
+          aria-label={ariaIncrementLabel}
+          disabled={!canIncrement}
+          onClick={onIncrement}
+        >
+          +
+        </button>
+      </div>
     </div>
   );
 }

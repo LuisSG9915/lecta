@@ -137,4 +137,29 @@ describe("ReaderMoreMenu", () => {
     expect(items[0].textContent).toContain("Buscar en el libro");
     expect(items[1].textContent).toContain("Retiro de lectura");
   });
+
+  it("renderiza Glosario, Tarjeta de cita y Exportar cuando se proporcionan los callbacks", async () => {
+    const onOpenGlossary = vi.fn();
+    const onCreateQuoteCard = vi.fn();
+    const onExportBook = vi.fn();
+    const onClose = vi.fn();
+    render({ onOpenGlossary, onCreateQuoteCard, onExportBook, onClose });
+
+    const items = host.querySelectorAll<HTMLButtonElement>(".reader-more-item");
+    expect(items.length).toBe(7);
+
+    expect(items[0].textContent).toContain("Glosario del libro");
+    expect(items[2].textContent).toContain("Crear tarjeta de cita");
+    expect(items[3].textContent).toContain("Exportar notas y vocabulario");
+
+    await act(async () => items[0].click());
+    expect(onOpenGlossary).toHaveBeenCalledTimes(1);
+    expect(onClose).toHaveBeenCalledTimes(1);
+
+    await act(async () => items[2].click());
+    expect(onCreateQuoteCard).toHaveBeenCalledTimes(1);
+
+    await act(async () => items[3].click());
+    expect(onExportBook).toHaveBeenCalledTimes(1);
+  });
 });

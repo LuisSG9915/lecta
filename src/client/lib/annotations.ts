@@ -26,6 +26,8 @@ export function makeBookmark(
 const PASSAGE_TEXT_MAX = 3000;
 const CONTEXT_LEN = 60;
 
+export type PassageTone = "amber" | "salvia" | "dario";
+
 // Recorta el fragmento seleccionado respetando límites razonables y
 // conserva contexto para reubicarlo si el texto exacto ya no coincide.
 export function makePassage(
@@ -34,6 +36,7 @@ export function makePassage(
   text: string,
   prefix?: string,
   suffix?: string,
+  color?: PassageTone,
 ): Omit<SavedAnnotation, "key" | "createdAt" | "updatedAt"> | null {
   const clean = text.replace(/\s+/g, " ").trim();
   if (clean.length < 2) return null;
@@ -47,5 +50,6 @@ export function makePassage(
     text: clean.slice(0, PASSAGE_TEXT_MAX),
     prefix: prefix?.slice(-CONTEXT_LEN) || undefined,
     suffix: suffix?.slice(0, CONTEXT_LEN) || undefined,
+    color,
   };
 }

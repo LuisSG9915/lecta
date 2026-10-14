@@ -3,22 +3,30 @@ import {
   AI_CALL_LIMITS,
   AI_CALL_TIMEOUT_MS,
   buildEnrichmentSystemPrompt,
+  buildEvaluatePrompt,
+  buildExplainInPassagePrompt,
   buildExplainPrompt,
   buildExplainSystemPrompt,
   buildItemSystemPrompt,
+  buildStoryPrompt,
   buildVerifyPrompt,
   buildVerifySystemPrompt,
   callDeepSeek,
   createTtlCache,
   ENRICHMENT_MODEL,
   ENRICHMENT_PROMPT_VERSION,
+  EVALUATE_CALL_OPTIONS,
   ITEM_PROMPT_VERSION,
+  parseEvaluateSentence,
   parseExplain,
   parseItem,
+  parseMicroStory,
+  parsePassageExplanation,
   parseTip,
   parseVerify,
   requestEnrichment,
   sanitizeTipContext,
+  STORY_CALL_OPTIONS,
   VERIFY_PROMPT_VERSION,
 } from "./ai";
 import type { WorkerEnv } from "./db";
@@ -358,6 +366,26 @@ describe("callDeepSeek", () => {
     const body = JSON.parse(init.body as string) as Record<string, unknown>;
     expect(body.max_tokens).toBe(AI_CALL_LIMITS.verify);
     expect(result.ok).toBe(true);
+  });
+
+  it("emplea maxTokens 180 para evaluate y story", async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({
+        choices: [{ message: { content: "{}" }, finish_reason: "stop" }],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await callDeepSeek(fakeEnv(), prompt, EVALUATE_CALL_OPTIONS);
+    let [, init] = lastCall(fetchMock);
+    let body = JSON.parse(init.body as string) as Record<string, unknown>;
+    expect(body.max_tokens).toBe(180);
+
+    fetchMock.mockClear();
+    await callDeepSeek(fakeEnv(), prompt, STORY_CALL_OPTIONS);
+    [, init] = lastCall(fetchMock);
+    body = JSON.parse(init.body as string) as Record<string, unknown>;
+    expect(body.max_tokens).toBe(180);
   });
 
   it("deja los campos de usage en null cuando la respuesta no los trae", async () => {
@@ -778,3 +806,239 @@ describe("createTtlCache", () => {
     expect(cache.get("a")).toBe(2);
   });
 });
+
+describe("parseEvaluateSentence", () => {
+  it("acepta una evaluación positiva válida", () => {
+    const raw = JSON.stringify({
+      isCorrect: true,
+      score: 95,
+      catReaction: "purring",
+      feedback: "¡Miau! Has capturado el matiz exacto con mucha elegancia.",
+      improvedVersion: null,
+    });
+    expect(parseEvaluateSentence(raw)).toEqual({
+      isCorrect: true,
+      score: 95,
+      catReaction: "purring",
+      feedback: "¡Miau! Has capturado el matiz exacto con mucha elegancia.",
+      improvedVersion: null,
+    });
+  });
+
+  it("acepta una evaluación con corrección y propuesta mejorada", () => {
+    const raw = JSON.stringify({
+      isCorrect: false,
+      score: 45,
+      catReaction: "curious",
+      feedback: "La palabra se usa para describir ideas duraderas, no un objeto roto.",
+      improvedVersion: "Su devoción por el arte era perenne a pesar de los años.",
+    });
+    expect(parseEvaluateSentence(raw)).toEqual({
+      isCorrect: false,
+      score: 45,
+      catReaction: "curious",
+      feedback: "La palabra se usa para describir ideas duraderas, no un objeto roto.",
+      improvedVersion: "Su devoción por el arte era perenne a pesar de los años.",
+    });
+  });
+
+  it("normaliza score fuera de rango y asigna reaction por defecto si es inválida", () => {
+    const raw = JSON.stringify({
+      isCorrect: true,
+      score: 150,
+      catReaction: "angry",
+      feedback: "Bien hecho.",
+    });
+    const parsed = parseEvaluateSentence(raw);
+    expect(parsed?.score).toBe(100);
+    expect(parsed?.catReaction).toBe("purring");
+
+    const rawUnder = JSON.stringify({
+      isCorrect: false,
+      score: -20,
+      catReaction: "dancing",
+      feedback: "Prueba otra vez.",
+    });
+    const parsedUnder = parseEvaluateSentence(rawUnder);
+    expect(parsedUnder?.score).toBe(0);
+    expect(parsedUnder?.catReaction).toBe("curious");
+  });
+
+  it("asigna score por defecto si score no es número", () => {
+    const parsedOk = parseEvaluateSentence(
+      JSON.stringify({ isCorrect: true, feedback: "Bien." }),
+    );
+    expect(parsedOk?.score).toBe(100);
+
+    const parsedFail = parseEvaluateSentence(
+      JSON.stringify({ isCorrect: false, feedback: "Mal." }),
+    );
+    expect(parsedFail?.score).toBe(40);
+  });
+
+  it("devuelve null con JSON roto, no objeto, sin isCorrect o con feedback vacío", () => {
+    expect(parseEvaluateSentence("roto")).toBeNull();
+    expect(parseEvaluateSentence("null")).toBeNull();
+    expect(parseEvaluateSentence("[]")).toBeNull();
+    expect(parseEvaluateSentence(JSON.stringify({ isCorrect: "si", feedback: "ok" }))).toBeNull();
+    expect(parseEvaluateSentence(JSON.stringify({ isCorrect: true, feedback: "" }))).toBeNull();
+    expect(parseEvaluateSentence(JSON.stringify({ isCorrect: true, feedback: "   " }))).toBeNull();
+  });
+
+  it("recorta feedback e improvedVersion a 300 caracteres", () => {
+    const long = parseEvaluateSentence(
+      JSON.stringify({
+        isCorrect: true,
+        feedback: "f".repeat(400),
+        improvedVersion: "v".repeat(400),
+      }),
+    );
+    expect(long?.feedback).toHaveLength(300);
+    expect(long?.improvedVersion).toHaveLength(300);
+  });
+});
+
+describe("parseMicroStory", () => {
+  it("acepta un micro-relato válido con palabras entre corchetes dobles", () => {
+    const raw = JSON.stringify({
+      title: "La sombra del jardín",
+      story: "El viento traía un perfume [[antiguo]] mientras caminaba por la colina de olivos.",
+      wordsUsed: ["antiguo"],
+    });
+    expect(parseMicroStory(raw)).toEqual({
+      title: "La sombra del jardín",
+      story: "El viento traía un perfume [[antiguo]] mientras caminaba por la colina de olivos.",
+      wordsUsed: ["antiguo"],
+    });
+  });
+
+  it("devuelve null si no contiene corchetes dobles en la historia", () => {
+    const raw = JSON.stringify({
+      title: "Sin corchetes",
+      story: "El viento traía un perfume antiguo mientras caminaba por la colina.",
+      wordsUsed: ["antiguo"],
+    });
+    expect(parseMicroStory(raw)).toBeNull();
+  });
+
+  it("devuelve null con JSON roto, título vacío o historia vacía", () => {
+    expect(parseMicroStory("no es json")).toBeNull();
+    expect(parseMicroStory("null")).toBeNull();
+    expect(parseMicroStory(JSON.stringify({ title: "", story: "[[hola]]" }))).toBeNull();
+    expect(parseMicroStory(JSON.stringify({ title: "Título", story: "" }))).toBeNull();
+  });
+
+  it("filtra elementos vacíos o no-strings en wordsUsed", () => {
+    const raw = JSON.stringify({
+      title: "Cuento",
+      story: "Una historia con [[perenne]] y [[sombra]].",
+      wordsUsed: ["perenne", "", null, 42, " sombra "],
+    });
+    const parsed = parseMicroStory(raw);
+    expect(parsed?.wordsUsed).toEqual(["perenne", "sombra"]);
+  });
+
+  it("recorta el título a 100 caracteres y la historia a 600", () => {
+    const raw = JSON.stringify({
+      title: "t".repeat(150),
+      story: "[[palabra]] " + "s".repeat(700),
+      wordsUsed: ["palabra"],
+    });
+    const parsed = parseMicroStory(raw);
+    expect(parsed?.title).toHaveLength(100);
+    expect(parsed?.story).toHaveLength(600);
+  });
+});
+
+describe("buildEvaluatePrompt & buildStoryPrompt", () => {
+  it("buildEvaluatePrompt incluye palabra, acepción, oración y libro si existe", () => {
+    const promptWithoutBook = buildEvaluatePrompt(
+      "perenne",
+      "Que dura siempre",
+      "Los pinos tienen hojas perennes.",
+    );
+    expect(promptWithoutBook).toContain("Palabra: «perenne»");
+    expect(promptWithoutBook).toContain("Acepción esperada: «Que dura siempre»");
+    expect(promptWithoutBook).toContain("Oración del lector: «Los pinos tienen hojas perennes.»");
+    expect(promptWithoutBook).not.toContain("Libro de origen");
+
+    const promptWithBook = buildEvaluatePrompt(
+      "perenne",
+      "Que dura siempre",
+      "Los pinos tienen hojas perennes.",
+      "Cien años de soledad",
+    );
+    expect(promptWithBook).toContain("Libro de origen: «Cien años de soledad»");
+  });
+
+  it("buildStoryPrompt lista las palabras solicitadas y el tono", () => {
+    const prompt = buildStoryPrompt(
+      [
+        { word: "efímero", meaning: "Que dura poco" },
+        { word: "tintineo" },
+      ],
+      "Misterio nocturno",
+    );
+    expect(prompt).toContain("• «efímero»: Que dura poco");
+    expect(prompt).toContain("• «tintineo»");
+    expect(prompt).toContain("Estilo o tono: Misterio nocturno");
+  });
+});
+
+describe("parsePassageExplanation & buildExplainInPassagePrompt", () => {
+  it("acepta una explicación válida en pasaje", () => {
+    const raw = JSON.stringify({
+      contextualMeaning: "Aquí «azur» no es solo el color azul, sino el ideal artístico.",
+      toneAndNuance: "Poético y elevado",
+      catTip: "Rubén Darío usa esta palabra como emblema.",
+    });
+    expect(parsePassageExplanation(raw)).toEqual({
+      contextualMeaning: "Aquí «azur» no es solo el color azul, sino el ideal artístico.",
+      toneAndNuance: "Poético y elevado",
+      catTip: "Rubén Darío usa esta palabra como emblema.",
+    });
+  });
+
+  it("devuelve null con JSON inválido o sin contextualMeaning", () => {
+    expect(parsePassageExplanation("no-json")).toBeNull();
+    expect(parsePassageExplanation("null")).toBeNull();
+    expect(parsePassageExplanation(JSON.stringify({ toneAndNuance: "Poético" }))).toBeNull();
+    expect(parsePassageExplanation(JSON.stringify({ contextualMeaning: "" }))).toBeNull();
+  });
+
+  it("aplica valores por defecto si toneAndNuance o catTip están vacíos", () => {
+    const raw = JSON.stringify({
+      contextualMeaning: "Significado concreto.",
+      toneAndNuance: "",
+      catTip: "",
+    });
+    const parsed = parsePassageExplanation(raw);
+    expect(parsed?.contextualMeaning).toBe("Significado concreto.");
+    expect(parsed?.toneAndNuance).toBe("Literario");
+    expect(parsed?.catTip).toBeTruthy();
+  });
+
+  it("buildExplainInPassagePrompt formatea palabra, pasaje, obra y autor", () => {
+    const prompt = buildExplainInPassagePrompt({
+      word: "azur",
+      sentence: "Bajo la bóveda del azur resplandecían los astros.",
+      bookTitle: "Azul...",
+      author: "Rubén Darío",
+    });
+    expect(prompt).toContain("Palabra o expresión a explicar: «azur»");
+    expect(prompt).toContain("Pasaje u oración: «Bajo la bóveda del azur resplandecían los astros.»");
+    expect(prompt).toContain("Obra: «Azul...»");
+    expect(prompt).toContain("Autor: «Rubén Darío»");
+  });
+
+  it("buildExplainInPassagePrompt omite campos opcionales no provistos", () => {
+    const prompt = buildExplainInPassagePrompt({
+      sentence: "Una frase solitaria.",
+    });
+    expect(prompt).not.toContain("Palabra o expresión a explicar");
+    expect(prompt).toContain("Pasaje u oración: «Una frase solitaria.»");
+    expect(prompt).not.toContain("Obra:");
+    expect(prompt).not.toContain("Autor:");
+  });
+});
+

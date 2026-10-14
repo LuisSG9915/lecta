@@ -331,6 +331,61 @@ export async function explainInContext(
   }
 }
 
+export interface ExplainInPassageInput {
+  word?: string;
+  sentence: string;
+  bookTitle?: string;
+  author?: string;
+  language?: string;
+}
+
+export type ExplainInPassageResult =
+  | {
+      ok: true;
+      contextualMeaning: string;
+      toneAndNuance: string;
+      catTip: string;
+      degraded?: boolean;
+    }
+  | { ok: false; error: string };
+
+export async function explainInPassage(
+  input: ExplainInPassageInput,
+  scope?: DbScope,
+): Promise<ExplainInPassageResult> {
+  try {
+    const response = await accountFetch(
+      "/api/ai/explain-in-passage",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(input),
+      },
+      scope,
+    );
+    const data = (await response.json()) as {
+      contextualMeaning?: string;
+      toneAndNuance?: string;
+      catTip?: string;
+      error?: string;
+    };
+    if (!response.ok) {
+      return { ok: false, error: data.error ?? "No se pudo obtener la explicación." };
+    }
+    if (!data.contextualMeaning) {
+      return { ok: false, error: "La IA no devolvió una explicación válida." };
+    }
+    return {
+      ok: true,
+      contextualMeaning: data.contextualMeaning,
+      toneAndNuance: data.toneAndNuance || "Literario",
+      catTip: data.catTip || "Una resonancia sutil en el texto.",
+    };
+  } catch {
+    return { ok: false, error: "Sin conexión con el servicio de IA." };
+  }
+}
+
 export type ReportResult = { ok: true } | { ok: false; error: string };
 
 // Marca una acepción del catálogo como «no corresponde» (botón de

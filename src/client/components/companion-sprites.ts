@@ -81,6 +81,16 @@ export interface StageArt {
     capa?: string[];
     corbatin?: string[];
     monoculo?: string[];
+    beret_poet?: string[];
+    wizard_hat?: string[];
+    laurel_crown?: string[];
+    headphones_cozy?: string[];
+    scarf_amber?: string[];
+    cape_modernist?: string[];
+    bowtie_scholar?: string[];
+    detective_cape?: string[];
+    glasses_round?: string[];
+    monocle_gold?: string[];
   };
   // Ancla de platito/pelota (punto superior izquierdo del atrejo).
   propX: number;
@@ -504,6 +514,125 @@ function makeStage(p: CatParams): StageArt {
         `L ${n(cx + cInX)} ${n(cBotY)} ` +
         `Q ${n(cx + cInX + 2)} ${n(p.bodyCy)} ${n(cx + 2.5)} ${n(cTopY + 3.5)} Z`,
       ell(cx, cTopY + 3.5, 2.3, 2.3),
+    ];
+  }
+  // Boina de Poeta (head)
+  {
+    const bpx = cx - hw * 0.12;
+    const bpy = headTop + p.headR * 0.2;
+    const bpw = hw * 0.72;
+    const bph = p.headR * 0.38;
+    wear.beret_poet = [
+      `M ${n(bpx - bpw)} ${n(bpy + 2)} ` +
+        `C ${n(bpx - bpw * 0.95)} ${n(bpy - bph * 1.6)} ${n(bpx + bpw * 0.65)} ${n(bpy - bph * 1.9)} ${n(bpx + bpw)} ${n(bpy - bph * 0.3)} ` +
+        `C ${n(bpx + bpw * 1.05)} ${n(bpy + bph * 0.7)} ${n(bpx + bpw * 0.35)} ${n(bpy + bph * 0.9)} ${n(bpx)} ${n(bpy + bph * 0.75)} ` +
+        `C ${n(bpx - bpw * 0.65)} ${n(bpy + bph * 0.65)} ${n(bpx - bpw * 1.02)} ${n(bpy + bph * 0.4)} ${n(bpx - bpw)} ${n(bpy + 2)} Z`,
+      `M ${n(bpx)} ${n(bpy - bph * 1.4)} Q ${n(bpx + 1)} ${n(bpy - bph * 1.8)} ${n(bpx + 3)} ${n(bpy - bph * 1.7)}`,
+    ];
+  }
+  // Sombrero de Sabio (head)
+  {
+    const whBaseY = headTop + p.headR * 0.25;
+    const whBrimW = hw * 0.95;
+    wear.wizard_hat = [
+      `M ${n(cx - whBrimW)} ${n(whBaseY + 2)} Q ${n(cx)} ${n(whBaseY - 3)} ${n(cx + whBrimW)} ${n(whBaseY + 2)} ` +
+        `Q ${n(cx)} ${n(whBaseY + 6)} ${n(cx - whBrimW)} ${n(whBaseY + 2)} Z`,
+      `M ${n(cx - whBrimW * 0.65)} ${n(whBaseY)} ` +
+        `Q ${n(cx - 10)} ${n(whBaseY - p.headR * 1.1)} ${n(cx - 16)} ${n(whBaseY - p.headR * 1.7)} ` +
+        `Q ${n(cx - 2)} ${n(whBaseY - p.headR * 1.3)} ${n(cx + whBrimW * 0.65)} ${n(whBaseY)} Z`,
+      `M ${n(cx - 10)} ${n(whBaseY - p.headR * 0.9)} l 1.5 2 l 2.5 0.5 l -2 1.8 l 0.5 2.5 l -2.5 -1.5 l -2.5 1.5 l 0.5 -2.5 l -2 -1.8 l 2.5 -0.5 Z`,
+    ];
+  }
+  // Corona de Laurel (head)
+  {
+    const lcY = headTop + p.headR * 0.45;
+    const lcW = hw * 0.65;
+    wear.laurel_crown = [
+      `M ${n(cx - lcW)} ${n(lcY)} Q ${n(cx)} ${n(lcY + 5)} ${n(cx + lcW)} ${n(lcY)}`,
+      `M ${n(cx - lcW * 0.8)} ${n(lcY - 1)} Q ${n(cx - lcW * 0.9)} ${n(lcY - 5)} ${n(cx - lcW * 0.65)} ${n(lcY - 4)} Z ` +
+        `M ${n(cx - lcW * 0.5)} ${n(lcY + 1)} Q ${n(cx - lcW * 0.6)} ${n(lcY - 4)} ${n(cx - lcW * 0.35)} ${n(lcY - 2)} Z`,
+      `M ${n(cx + lcW * 0.8)} ${n(lcY - 1)} Q ${n(cx + lcW * 0.9)} ${n(lcY - 5)} ${n(cx + lcW * 0.65)} ${n(lcY - 4)} Z ` +
+        `M ${n(cx + lcW * 0.5)} ${n(lcY + 1)} Q ${n(cx + lcW * 0.6)} ${n(lcY - 4)} ${n(cx + lcW * 0.35)} ${n(lcY - 2)} Z`,
+    ];
+  }
+  // Audífonos de Estudio (head)
+  {
+    const hpY = headTop + p.headR * 0.15;
+    const hpW = hw * 0.85;
+    wear.headphones_cozy = [
+      `M ${n(cx - hpW + 2)} ${n(hpY + 10)} Q ${n(cx)} ${n(headTop - 5)} ${n(cx + hpW - 2)} ${n(hpY + 10)}`,
+      ell(cx - hpW, hpY + 10, 3.5, 6),
+      ell(cx + hpW, hpY + 10, 3.5, 6),
+    ];
+  }
+  // Bufanda de Invierno ámbar (neck)
+  {
+    wear.scarf_amber = [
+      `M ${n(cx - jawW * 1.05)} ${n(jawY)} Q ${n(cx)} ${n(jawY + 8)} ${n(cx + jawW * 1.05)} ${n(jawY)} ` +
+        `L ${n(cx + jawW - 1)} ${n(jawY + 6)} Q ${n(cx)} ${n(jawY + 14)} ${n(cx - jawW + 1)} ${n(jawY + 6)} Z`,
+      `M ${n(cx - jawW * 0.4)} ${n(jawY + 5)} L ${n(cx - jawW * 0.4 + 9)} ${n(jawY + 4)} ` +
+        `L ${n(cx - jawW * 0.4 + 8)} ${n(jawY + 16)} L ${n(cx - jawW * 0.4 - 1)} ${n(jawY + 16)} Z`,
+    ];
+  }
+  // Capa Azul de Darío (neck)
+  {
+    const cmTopY = jawY + 2.5;
+    const cmBotY = p.bodyCy + p.bodyRy;
+    const cmOutX = p.bodyRx + 3;
+    const cmInX = Math.max(4, p.bodyRx * 0.3);
+    wear.cape_modernist = [
+      `M ${n(cx - jawW * 0.6)} ${n(cmTopY)} Q ${n(cx - cmOutX - 3)} ${n(p.bodyCy)} ${n(cx - cmOutX)} ${n(cmBotY)} ` +
+        `L ${n(cx - cmInX)} ${n(cmBotY)} Q ${n(cx - cmInX - 2)} ${n(p.bodyCy)} ${n(cx - 2)} ${n(cmTopY + 3.5)} Z`,
+      `M ${n(cx + jawW * 0.6)} ${n(cmTopY)} Q ${n(cx + cmOutX + 3)} ${n(p.bodyCy)} ${n(cx + cmOutX)} ${n(cmBotY)} ` +
+        `L ${n(cx + cmInX)} ${n(cmBotY)} Q ${n(cx + cmInX + 2)} ${n(p.bodyCy)} ${n(cx + 2)} ${n(cmTopY + 3.5)} Z`,
+      ell(cx, cmTopY + 3.5, 2.5, 2.5),
+    ];
+  }
+  // Moño de Académico (neck)
+  {
+    const bwsY = jawY + 3.5;
+    wear.bowtie_scholar = [
+      `M ${n(cx - jawW * 0.75)} ${n(jawY + 1)} Q ${n(cx)} ${n(jawY + 5)} ${n(cx + jawW * 0.75)} ${n(jawY + 1)} ` +
+        `L ${n(cx + jawW * 0.75)} ${n(jawY + 2.8)} Q ${n(cx)} ${n(jawY + 6.8)} ${n(cx - jawW * 0.75)} ${n(jawY + 2.8)} Z`,
+      `M ${n(cx)} ${n(bwsY)} L ${n(cx - 7)} ${n(bwsY - 4)} L ${n(cx - 6)} ${n(bwsY + 4)} Z`,
+      `M ${n(cx)} ${n(bwsY)} L ${n(cx + 7)} ${n(bwsY - 4)} L ${n(cx + 6)} ${n(bwsY + 4)} Z`,
+      ell(cx, bwsY, 2, 1.8),
+    ];
+  }
+  // Esclavina de Detective (neck)
+  {
+    const detTopY = jawY + 1.5;
+    const detBotY = p.bodyCy + p.bodyRy * 0.65;
+    const detOutX = p.bodyRx + 2.5;
+    wear.detective_cape = [
+      `M ${n(cx - jawW * 0.7)} ${n(detTopY - 1)} Q ${n(cx)} ${n(detTopY + 2)} ${n(cx + jawW * 0.7)} ${n(detTopY - 1)} ` +
+        `L ${n(cx + jawW * 0.6)} ${n(detTopY + 3)} Q ${n(cx)} ${n(detTopY + 4.5)} ${n(cx - jawW * 0.6)} ${n(detTopY + 3)} Z`,
+      `M ${n(cx - jawW * 0.55)} ${n(detTopY + 2)} Q ${n(cx - detOutX - 1)} ${n(p.bodyCy * 0.8)} ${n(cx - detOutX)} ${n(detBotY)} ` +
+        `Q ${n(cx)} ${n(detBotY + 4)} ${n(cx + detOutX)} ${n(detBotY)} ` +
+        `Q ${n(cx + detOutX + 1)} ${n(p.bodyCy * 0.8)} ${n(cx + jawW * 0.55)} ${n(detTopY + 2)} Z`,
+      ell(cx, detTopY + 6, 1.1, 1.1),
+      ell(cx, detTopY + 11, 1.1, 1.1),
+    ];
+  }
+  // Gafas de Lectura (face)
+  {
+    const rfr = Math.max(p.eyeRx, p.eyeRy) + 2.2;
+    wear.glasses_round = [
+      ell(cx - p.eyeDx, eyeY, rfr, rfr),
+      ell(cx + p.eyeDx, eyeY, rfr, rfr),
+      `M ${n(cx - p.eyeDx + rfr)} ${n(eyeY - 0.5)} Q ${n(cx)} ${n(eyeY - 2.5)} ${n(cx + p.eyeDx - rfr)} ${n(eyeY - 0.5)} ` +
+        `M ${n(cx - p.eyeDx - rfr)} ${n(eyeY - 0.5)} L ${n(cx - hw)} ${n(eyeY - 3)} ` +
+        `M ${n(cx + p.eyeDx + rfr)} ${n(eyeY - 0.5)} L ${n(cx + hw)} ${n(eyeY - 3)}`,
+    ];
+  }
+  // Monóculo de Crítico (face)
+  {
+    const mfr = Math.max(p.eyeRx, p.eyeRy) + 2.6;
+    const mgEyeX = cx + p.eyeDx;
+    wear.monocle_gold = [
+      ell(mgEyeX, eyeY, mfr, mfr),
+      `M ${n(mgEyeX + mfr * 0.8)} ${n(eyeY + mfr * 0.6)} ` +
+        `Q ${n(mgEyeX + mfr + 4)} ${n(eyeY + mfr + 5)} ${n(cx + hw * 0.45)} ${n(jawY + 3)}`,
     ];
   }
 

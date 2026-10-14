@@ -1,6 +1,8 @@
 import { Companion, type CompanionPose } from "./Companion";
 import { useCompanionSafe } from "./CompanionProvider";
 import type { PracticeCompanionMode } from "../lib/settings";
+import { triggerHaptic } from "../lib/haptics";
+import { playCompanionSound } from "../lib/companion-audio";
 
 export interface PracticeCompanionHeaderProps {
   pose: CompanionPose;
@@ -11,6 +13,8 @@ export interface PracticeCompanionHeaderProps {
   onAskHint?: () => void;
   hintBusy?: boolean;
   hintText?: string | null;
+  progress?: { current: number; total: number };
+  instruction?: string;
 }
 
 export function PracticeCompanionHeader({
@@ -22,6 +26,8 @@ export function PracticeCompanionHeader({
   onAskHint,
   hintBusy = false,
   hintText,
+  progress,
+  instruction,
 }: PracticeCompanionHeaderProps) {
   const companion = useCompanionSafe();
 
@@ -50,6 +56,14 @@ export function PracticeCompanionHeader({
     else onModeChange("animated");
   };
 
+  const handleCatClick = () => {
+    triggerHaptic("selection");
+    playCompanionSound("purr");
+    if (onAskHint && !hintBusy) {
+      onAskHint();
+    }
+  };
+
   const modeLabel =
     mode === "animated"
       ? "Animado"
@@ -57,35 +71,76 @@ export function PracticeCompanionHeader({
         ? "Tranquilo"
         : "Oculto";
 
-  const displayText = hintText ? `💡 ${hintText}` : speech;
+  const displayText = hintText ? `💡 ${hintText}` : (instruction ?? speech);
 
   return (
     <aside className="practice-cat-bar" aria-label={`Compañero ${name}`}>
-      <div className="practice-cat-avatar" aria-hidden="true">
-        <Companion
-          stage={stage}
-          mood={mood}
-          accessories={accessories}
-          name={name}
-          pose={mode === "animated" ? pose : "idle"}
-          decorative={true}
-        />
-      </div>
-
-      <div className="practice-cat-content">
-        <div className="practice-cat-speech-bubble" role="status">
-          <div className="practice-cat-meta-row">
-            <strong className="practice-cat-name">{name}</strong>
-            {combo >= 2 && mode === "animated" ? (
-              <span
-                className="practice-cat-combo"
-                aria-label={`Racha de ${combo} aciertos`}
-              >
-                <span aria-hidden="true">🔥</span> x{combo} racha
-              </span>
-            ) : null}
+      {/* Barra de progreso de sesión integrada si se proporciona */}
+      {progress && progress.total > 0 ? (
+        <div
+          className="practice-header-progress"
+          aria-label={`Progreso: Reto ${progress.current} de ${progress.total}`}
+        >
+          <span className="practice-progress-text">
+            Reto {progress.current} de {progress.total}
+          </span>
+          <div
+            className="practice-progress-track"
+            role="progressbar"
+            aria-valuenow={progress.current}
+            aria-valuemin={1}
+            aria-valuemax={progress.total}
+          >
+            <div
+              className="practice-progress-fill"
+              style={{
+                inlineSize: `${Math.min(100, Math.max(5, (progress.current / progress.total) * 100))}%`,
+              }}
+            />
           </div>
-          <p className="practice-cat-text">{displayText}</p>
+        </div>
+      ) : null}
+
+      <div className="practice-cat-main-row">
+        <div
+          className="practice-cat-avatar"
+          role="button"
+          tabIndex={0}
+          onClick={handleCatClick}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              handleCatClick();
+            }
+          }}
+          aria-label={`Tocar a ${name} para pedir pista o interactuar`}
+          title={`Toca a ${name} para pedir una pista`}
+        >
+          <Companion
+            stage={stage}
+            mood={mood}
+            accessories={accessories}
+            name={name}
+            pose={mode === "animated" ? pose : "idle"}
+            decorative={false}
+          />
+        </div>
+
+        <div className="practice-cat-content">
+          <div className="practice-cat-speech-bubble" role="status">
+            <div className="practice-cat-meta-row">
+              <strong className="practice-cat-name">{name}</strong>
+              {combo >= 2 && mode === "animated" ? (
+                <span
+                  className={`practice-cat-combo ${combo >= 3 ? "is-blazing pulse-combo" : ""}`}
+                  aria-label={`Racha de ${combo} aciertos`}
+                >
+                  <span aria-hidden="true">🔥</span> x{combo} racha
+                </span>
+              ) : null}
+            </div>
+            <p className="practice-cat-text">{displayText}</p>
+          </div>
         </div>
       </div>
 

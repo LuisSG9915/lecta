@@ -2,10 +2,13 @@ import { describe, expect, it } from "vitest";
 import { Rating } from "./fsrs";
 import {
   blankWordInContext,
+  buildAdaptivePracticeQueue,
   conciseMeaning,
   modeForWord,
   pickDistractors,
+  pickLevelDistractors,
   ratingToCorrect,
+  rescueChallenge,
   scrambleWord,
   shuffleStable,
   smartContextSnippet,
@@ -256,3 +259,175 @@ describe("scrambleWord", () => {
     expect(res.letters).toHaveLength(4);
   });
 });
+
+describe("pickLevelDistractors", () => {
+  it("prioritizes distractors of the same FSRS level and same POS", () => {
+    const target = word({
+      key: "es:perenne",
+      form: "perenne",
+      pos: "adjetivo",
+      card: { reps: 4, stability: 12 } as never,
+    });
+    const sameLevelAndPos = word({
+      key: "es:efimero",
+      form: "efímero",
+      pos: "adjetivo",
+      card: { reps: 3, stability: 10 } as never,
+    });
+    const diffPos = word({
+      key: "es:montana",
+      form: "montaña",
+      pos: "sustantivo",
+      card: { reps: 3, stability: 11 } as never,
+    });
+    const diffLevel = word({
+      key: "es:canto",
+      form: "canto",
+      pos: "sustantivo",
+      card: { reps: 1, stability: 1 } as never,
+    });
+
+    const pool = [target, diffLevel, diffPos, sameLevelAndPos];
+    const picked = pickLevelDistractors(target, pool, 2);
+    expect(picked).toHaveLength(2);
+    expect(picked[0]).toBe("efímero");
+  });
+});
+
+describe("buildAdaptivePracticeQueue", () => {
+  it("enruta palabras nuevas o con S < 2.5 a Nivel 1 (contextual_cloze)", () => {
+    const newWord = word({
+      key: "es:alondra",
+      form: "alondra",
+      context: "El canto de la alondra en el alba.",
+    });
+    const lowSWord = word({
+      key: "es:susurro",
+      form: "susurro",
+      context: "Un suave susurro nocturno.",
+      card: { reps: 1, stability: 1.8 } as never,
+    });
+    const pool = [
+      newWord,
+      lowSWord,
+      word({ key: "es:brisa", form: "brisa" }),
+      word({ key: "es:canto", form: "canto" }),
+    ];
+
+    const queue = buildAdaptivePracticeQueue([newWord, lowSWord], { pool });
+    expect(queue).toHaveLength(2);
+    expect(queue[0].level).toBe(1);
+    expect(queue[0].mechanic).toBe("contextual_cloze");
+    expect(queue[0].clozeSentence).toBe("El canto de la _____ en el alba.");
+    expect(queue[0].distractors.length).toBeGreaterThanOrEqual(1);
+
+    expect(queue[1].level).toBe(1);
+    expect(queue[1].mechanic).toBe("contextual_cloze");
+    expect(queue[1].clozeSentence).toBe("Un suave _____ nocturno.");
+  });
+
+  it("enruta palabras con 2.5 <= S < 10 a Nivel 2 alternando syllable_scramble y phrase_weaver", () => {
+    const w1 = word({
+      key: "es:inmarcesible",
+      form: "inmarcesible",
+      card: { reps: 3, stability: 4.5 } as never,
+      context: "Una gloria inmarcesible en la historia.",
+    });
+    const w2 = word({
+      key: "es:efimero",
+      form: "efímero",
+      card: { reps: 4, stability: 7.2 } as never,
+      context: "Un instante efímero pero eterno.",
+    });
+    const w3 = word({
+      key: "es:quimera",
+      form: "quimera",
+      card: { reps: 3, stability: 5.0 } as never,
+      context: "Persiguiendo una quimera lejana.",
+    });
+
+    const queue = buildAdaptivePracticeQueue([w1, w2, w3]);
+    expect(queue[0].level).toBe(2);
+    expect(queue[0].mechanic).toBe("syllable_scramble");
+
+    expect(queue[1].level).toBe(2);
+    expect(queue[1].mechanic).toBe("phrase_weaver");
+
+    expect(queue[2].level).toBe(2);
+    expect(queue[2].mechanic).toBe("syllable_scramble");
+  });
+
+  it("enruta palabras con S >= 10 a Nivel 3 (grammar_nuance o ai_sentence_craft)", () => {
+    const highS = word({
+      key: "es:melancolia",
+      form: "melancolía",
+      card: { reps: 6, stability: 18 } as never,
+      pos: "sustantivo",
+      context: "La melancolía del otoño.",
+    });
+
+    // Sin IA activa
+    const queueNoAi = buildAdaptivePracticeQueue([highS], { useAi: false });
+    expect(queueNoAi[0].level).toBe(3);
+    expect(queueNoAi[0].mechanic).toBe("grammar_nuance");
+
+    // Con IA activa y conexión
+    const queueWithAi = buildAdaptivePracticeQueue([highS], { useAi: true, hasConnection: true });
+    expect(queueWithAi[0].level).toBe(3);
+    expect(queueWithAi[0].mechanic).toBe("ai_sentence_craft");
+  });
+});
+
+describe("rescueChallenge (Regla de Rescate Pedagógico)", () => {
+  it("degrada reto de Nivel 2 a Nivel 1 contextual_cloze con pista visual", () => {
+    const challenge = {
+      id: "ch-1",
+      word: word({
+        key: "es:crepusculo",
+        form: "crepúsculo",
+        context: "La luz suave del crepúsculo caía.",
+      }),
+      level: 2 as const,
+      mechanic: "syllable_scramble" as const,
+      distractors: ["amanecer", "mediodía", "noche"],
+      clozeSentence: null,
+      targetWord: "crepúsculo",
+    };
+
+    const rescued = rescueChallenge(challenge);
+    expect(rescued.level).toBe(1);
+    expect(rescued.mechanic).toBe("contextual_cloze");
+    expect(rescued.originalMechanic).toBe("syllable_scramble");
+    expect(rescued.rescued).toBe(true);
+    expect(rescued.clozeSentence).toBe("La luz suave del _____ caía.");
+    expect(rescued.hint).toContain("CR");
+  });
+
+  it("degrada reto de Nivel 3 a Nivel 1 contextual_cloze conservando originalMechanic", () => {
+    const challenge = {
+      id: "ch-2",
+      word: word({
+        key: "es:vasto",
+        form: "vasto",
+        context: "Miraron el vasto océano.",
+      }),
+      level: 3 as const,
+      mechanic: "grammar_nuance" as const,
+      distractors: [],
+      clozeSentence: null,
+      targetWord: "vasto",
+    };
+
+    const rescued = rescueChallenge(challenge, [
+      word({ key: "es:hondo", form: "hondo" }),
+      word({ key: "es:claro", form: "claro" }),
+    ]);
+    expect(rescued.level).toBe(1);
+    expect(rescued.mechanic).toBe("contextual_cloze");
+    expect(rescued.originalMechanic).toBe("grammar_nuance");
+    expect(rescued.rescued).toBe(true);
+    expect(rescued.hint).toContain("VA");
+    expect(rescued.distractors.length).toBeGreaterThan(0);
+  });
+});
+

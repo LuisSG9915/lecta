@@ -6,9 +6,15 @@ import {
   FATIGUE_MIN_MOVES,
   FATIGUE_WINDOW_MS,
   dayWpm,
+  detectDensePassageStall,
+  DENSE_STALL_COOLDOWN_MS,
+  DENSE_STALL_MAX_IDLE_MS,
+  DENSE_STALL_MULTIPLIER,
   focusByDay,
+  newDenseStallDetector,
   newFocusTracker,
   recordMove,
+  resetDenseStallPage,
   TRACK_GAP_MS,
 } from "./focus-telemetry";
 import type { ReadingEvent } from "./idb";
@@ -134,5 +140,72 @@ describe("focusByDay", () => {
     expect(dayWpm({ dwellMs: 5_000, words: 500 })).toBe(0);
     expect(dayWpm({ dwellMs: 60_000, words: 10 })).toBe(0);
     expect(dayWpm({ dwellMs: 60_000, words: 300 })).toBe(300);
+  });
+});
+
+describe("detectDensePassageStall", () => {
+  const WORDS = 100;
+  const BASELINE_WPM = 200;
+  // expectedMs = (100 / 200) * 60_000 = 30_000 ms.
+  // thresholdMs = 30_000 * 2.2 = 66_000 ms.
+
+  it("no se dispara si el tiempo en la página es inferior a 2.2x lo esperado", () => {
+    expect(DENSE_STALL_MULTIPLIER).toBe(2.2);
+    const detector = newDenseStallDetector(T0);
+    const at = T0 + 65_000;
+    const hit = detectDensePassageStall(detector, at, WORDS, BASELINE_WPM, at);
+    expect(hit).toBe(false);
+  });
+
+  it("se dispara cuando supera 2.2x lo esperado con actividad de usuario", () => {
+    const detector = newDenseStallDetector(T0);
+    const at = T0 + 67_000;
+    // Actividad reciente (hace 2 segundos)
+    const hit = detectDensePassageStall(detector, at, WORDS, BASELINE_WPM, at - 2000);
+    expect(hit).toBe(true);
+    expect(detector.lastFlaggedAt).toBe(at);
+  });
+
+  it("no se dispara si el usuario dejó la pestaña abandonada (inactivo > 30s)", () => {
+    const detector = newDenseStallDetector(T0);
+    const at = T0 + 70_000;
+    // Inactivo hace 35s
+    const hit = detectDensePassageStall(
+      detector,
+      at,
+      WORDS,
+      BASELINE_WPM,
+      at - (DENSE_STALL_MAX_IDLE_MS + 5000),
+    );
+    expect(hit).toBe(false);
+  });
+
+  it("respeta el enfriamiento de 60s antes de volver a dispararse", () => {
+    const detector = newDenseStallDetector(T0);
+    const at1 = T0 + 67_000;
+    expect(detectDensePassageStall(detector, at1, WORDS, BASELINE_WPM, at1)).toBe(true);
+
+    // 10s después, aún en la misma página con actividad, está en cooldown
+    const at2 = at1 + 10_000;
+    expect(detectDensePassageStall(detector, at2, WORDS, BASELINE_WPM, at2)).toBe(false);
+
+    // Tras el cooldown de 60s, vuelve a dispararse
+    const at3 = at1 + DENSE_STALL_COOLDOWN_MS + 1000;
+    expect(detectDensePassageStall(detector, at3, WORDS, BASELINE_WPM, at3)).toBe(true);
+  });
+
+  it("resetDenseStallPage reinicia la marca de tiempo de entrada a la página", () => {
+    const detector = newDenseStallDetector(T0);
+    // Cambiamos de página en T0 + 60_000
+    resetDenseStallPage(detector, T0 + 60_000);
+    // En T0 + 67_000 solo lleva 7s en la nueva página
+    const hit = detectDensePassageStall(
+      detector,
+      T0 + 67_000,
+      WORDS,
+      BASELINE_WPM,
+      T0 + 67_000,
+    );
+    expect(hit).toBe(false);
   });
 });

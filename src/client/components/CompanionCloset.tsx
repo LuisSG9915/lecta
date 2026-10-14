@@ -1,7 +1,3 @@
-// Armario del compañero: selector de ranuras en una fila superior
-// y bandeja horizontal deslizable con tarjetas de prendas, miniaturas
-// del gato completo a escala reducida y soporte para probarse ropa bloqueada.
-
 import { useState } from "react";
 import { Companion } from "./Companion";
 import {
@@ -11,26 +7,39 @@ import {
   type EquippedSlot,
 } from "../../shared/companion-data";
 import {
+  ITEM_ACHIEVEMENT_REWARDS,
   LEVELS,
   requiredCoatLevel,
   rewardForLevel,
 } from "../lib/gamification";
+import Icon from "./Icon";
 
 export const SLOT_ORDER: EquippedSlot[] = [
-  "body",
-  "neck",
   "head",
+  "neck",
   "face",
+  "body",
   "coat",
 ];
 
 export const SLOT_LABELS: Record<EquippedSlot, string> = {
-  body: "Cuerpo",
-  neck: "Cuello",
   head: "Cabeza",
-  face: "Cara",
+  neck: "Cuello",
+  face: "Ojos",
+  body: "Escenario",
   coat: "Pelaje",
 };
+
+export type ClosetFilter = "all" | "head" | "neck" | "face" | "body" | "coat";
+
+export const CLOSET_FILTERS: { id: ClosetFilter; label: string; slot?: EquippedSlot }[] = [
+  { id: "all", label: "Todo" },
+  { id: "head", label: "Cabeza", slot: "head" },
+  { id: "neck", label: "Cuello", slot: "neck" },
+  { id: "face", label: "Ojos", slot: "face" },
+  { id: "body", label: "Escenario", slot: "body" },
+  { id: "coat", label: "Pelaje", slot: "coat" },
+];
 
 export const ARTICLE_LABELS: Record<CompanionArticle, string> = {
   chaleco: "Chaleco",
@@ -49,6 +58,18 @@ export const ARTICLE_LABELS: Record<CompanionArticle, string> = {
   "pelaje-negro": "Medianoche",
   "pelaje-tuxedo": "Tuxedo",
   "pelaje-dorado": "Dorado",
+  beret_poet: "Boina de Poeta",
+  wizard_hat: "Sombrero de Sabio",
+  laurel_crown: "Corona de Laurel",
+  headphones_cozy: "Audífonos de Estudio",
+  scarf_amber: "Bufanda de Invierno",
+  cape_modernist: "Capa Azul de Darío",
+  bowtie_scholar: "Moño de Académico",
+  detective_cape: "Esclavina de Detective",
+  glasses_round: "Gafas de Lectura",
+  monocle_gold: "Monóculo de Crítico",
+  stage_rainy_window: "Ventana Lluviosa",
+  stage_ancient_library: "Biblioteca Nocturna",
 };
 
 export function requiredLevel(article: CompanionArticle): number | null {
@@ -86,76 +107,93 @@ export function CompanionCloset({
   onTryOn,
   tryOnArticle,
 }: CompanionClosetProps) {
-  const [selectedSlot, setSelectedSlot] = useState<EquippedSlot>("body");
+  const [filter, setFilter] = useState<ClosetFilter>("all");
 
   // El pelaje actual para dibujarlo de fondo en prendas de otras ranuras
   const currentCoat = equipped.coat ?? null;
 
+  const currentArticles: (CompanionArticle | null)[] =
+    filter === "all"
+      ? (Object.keys(COMPANION_ARTICLES) as CompanionArticle[])
+      : [null, ...articlesFor(filter as EquippedSlot)];
+
   return (
     <section className="companion-closet" aria-label="Armario">
-      {/* Fichas de ranuras en una sola fila */}
+      {/* Fichas de filtros / ranuras: Todo, Cabeza, Cuello, Ojos, Escenario, Pelaje */}
       <div
         className="companion-slot-chips"
         role="radiogroup"
-        aria-label="Ranuras del armario"
+        aria-label="Filtros del armario"
       >
-        {SLOT_ORDER.map((slot) => {
-          const isSelected = selectedSlot === slot;
+        {CLOSET_FILTERS.map((f) => {
+          const isSelected = filter === f.id;
           return (
             <button
-              key={slot}
-              id={`companion-slot-${slot}`}
+              key={f.id}
+              id={`companion-slot-${f.id}`}
               type="button"
               role="radio"
               aria-checked={isSelected}
               className="companion-chip"
               data-active={isSelected || undefined}
-              onClick={() => setSelectedSlot(slot)}
+              onClick={() => setFilter(f.id)}
             >
-              {SLOT_LABELS[slot]}
+              {f.label}
             </button>
           );
         })}
       </div>
 
-      {/* Bandeja horizontal de prendas de la ranura activa */}
+      {/* Bandeja horizontal de prendas según el filtro activo */}
       <div
         className="companion-tray"
         role="radiogroup"
-        aria-labelledby={`companion-slot-${selectedSlot}`}
+        aria-labelledby={`companion-slot-${filter}`}
       >
-        {[null, ...articlesFor(selectedSlot)].map((article) => {
-          const isEquipped = equipped[selectedSlot] === article;
+        {currentArticles.map((article) => {
+          const itemSlot: EquippedSlot =
+            article === null
+              ? (filter === "all" ? "body" : (filter as EquippedSlot))
+              : COMPANION_ARTICLES[article];
+
+          const isEquipped = article !== null && equipped[itemSlot] === article;
           const isTrying = tryOnArticle === article;
           const isBlocked =
             article !== null && !owned.has(article as CompanionArticle);
           const req = isBlocked
             ? requiredLevel(article as CompanionArticle)
             : null;
+          const ach = isBlocked && article !== null
+            ? ITEM_ACHIEVEMENT_REWARDS[article as CompanionArticle]
+            : undefined;
 
           const label =
             article === null
-              ? selectedSlot === "coat"
+              ? filter === "coat"
                 ? "Natural"
                 : "Sin prenda"
               : ARTICLE_LABELS[article as CompanionArticle];
 
           const stateText = isEquipped
             ? "Puesta"
-            : req !== null
-              ? `Nivel ${req}`
-              : "";
+            : ach
+              ? ach.title
+              : req !== null
+                ? `Nivel ${req}`
+                : isBlocked
+                  ? "Bloqueado"
+                  : "";
 
           // Miniatura: gato completo a ~48px sin animaciones
           const thumbAccessories: string[] = [];
           if (article !== null) {
-            if (selectedSlot === "coat") {
+            if (itemSlot === "coat") {
               thumbAccessories.push(article);
             } else {
               thumbAccessories.push(article);
               if (currentCoat) thumbAccessories.push(currentCoat);
             }
-          } else if (selectedSlot !== "coat" && currentCoat) {
+          } else if (itemSlot !== "coat" && currentCoat) {
             thumbAccessories.push(currentCoat);
           }
 
@@ -169,12 +207,13 @@ export function CompanionCloset({
               aria-disabled={isBlocked || undefined}
               data-active={isEquipped || isTrying || undefined}
               data-trying={isTrying || undefined}
+              data-locked={isBlocked || undefined}
               disabled={equipBusy}
               onClick={() => {
-                if (isBlocked) {
+                if (isBlocked && article !== null) {
                   onTryOn(article as CompanionArticle, req);
                 } else {
-                  void onChoose(selectedSlot, article);
+                  void onChoose(itemSlot, article);
                 }
               }}
             >
@@ -185,12 +224,17 @@ export function CompanionCloset({
                   accessories={thumbAccessories}
                   decorative
                 />
+                {isBlocked ? (
+                  <span className="companion-card-lock" aria-hidden="true">
+                    <Icon name="lock" size={13} />
+                  </span>
+                ) : null}
               </div>
               <span className="companion-card-title">{label}</span>
               {stateText ? (
                 <span
                   className="companion-card-state"
-                  data-state={isEquipped ? "equipped" : "locked"}
+                  data-state={isEquipped ? "equipped" : isBlocked ? "locked" : undefined}
                 >
                   {stateText}
                 </span>

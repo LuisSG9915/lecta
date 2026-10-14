@@ -106,20 +106,35 @@ export function applyPassageMarks(
 ) {
   if (typeof CSS !== "undefined" && CSS.highlights) {
     CSS.highlights.delete(HIGHLIGHT_NAME);
+    CSS.highlights.delete("lecta-passage-amber");
+    CSS.highlights.delete("lecta-passage-salvia");
+    CSS.highlights.delete("lecta-passage-dario");
   }
   unwrapPassageMarks(container);
-
-  const ranges = passages
-    .map((passage) => findPassageRange(container, passage))
-    .filter((range): range is Range => range !== null);
-  if (!ranges.length) return;
 
   if (
     typeof CSS !== "undefined" &&
     CSS.highlights &&
     typeof Highlight !== "undefined"
   ) {
-    CSS.highlights.set(HIGHLIGHT_NAME, new Highlight(...ranges));
+    const matched = passages
+      .map((passage) => {
+        const range = findPassageRange(container, passage);
+        return range ? { passage, range } : null;
+      })
+      .filter((item): item is { passage: SavedAnnotation; range: Range } => item !== null);
+    if (!matched.length) return;
+
+    const allRanges = matched.map((m) => m.range);
+    CSS.highlights.set(HIGHLIGHT_NAME, new Highlight(...allRanges));
+
+    const amber = matched.filter((m) => (m.passage.color ?? "amber") === "amber").map((m) => m.range);
+    const salvia = matched.filter((m) => m.passage.color === "salvia").map((m) => m.range);
+    const dario = matched.filter((m) => m.passage.color === "dario").map((m) => m.range);
+
+    if (amber.length) CSS.highlights.set("lecta-passage-amber", new Highlight(...amber));
+    if (salvia.length) CSS.highlights.set("lecta-passage-salvia", new Highlight(...salvia));
+    if (dario.length) CSS.highlights.set("lecta-passage-dario", new Highlight(...dario));
     return;
   }
 
@@ -127,11 +142,15 @@ export function applyPassageMarks(
   // estén dentro de una marca de vocabulario ni de la tarjeta «Antes
   // de leer». Un pasaje largo queda como varios <mark> contiguos —
   // visualmente continuo.
-  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
-  const nodes: Text[] = [];
-  while (walker.nextNode()) nodes.push(walker.currentNode as Text);
+  for (const passage of passages) {
+    const range = findPassageRange(container, passage);
+    if (!range) continue;
+    const toneClass = passage.color ? `saved-passage--${passage.color}` : "saved-passage--amber";
 
-  for (const range of ranges) {
+    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+    const nodes: Text[] = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode as Text);
+
     for (const node of nodes) {
       if (
         !node.isConnected ||
@@ -147,7 +166,7 @@ export function applyPassageMarks(
       if (end < (node.nodeValue ?? "").length) node.splitText(end);
       const mid = start > 0 ? node.splitText(start) : node;
       const mark = document.createElement("mark");
-      mark.className = PASSAGE_CLASS;
+      mark.className = `${PASSAGE_CLASS} ${toneClass}`;
       mid.parentNode?.replaceChild(mark, mid);
       mark.appendChild(mid);
     }

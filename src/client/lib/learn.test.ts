@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   emptyLearnExposure,
   isLearnPending,
@@ -108,3 +108,207 @@ describe("learnQueue", () => {
     expect(isLearnPending(w, knownKeysFor([]), exposure)).toBe(true);
   });
 });
+
+import {
+  evaluateSentenceLocally,
+  evaluateSentenceWithAi,
+  generateMicroStoryLocally,
+  generateMicroStoryWithAi,
+} from "./learn";
+
+describe("evaluateSentenceLocally", () => {
+  it("da resultado positivo cuando la oración contiene la palabra y tiene al menos 5 palabras", () => {
+    const res = evaluateSentenceLocally({
+      word: "perenne",
+      targetSense: "Que dura siempre",
+      userSentence: "El bosque tiene una vegetación perenne y frondosa.",
+    });
+    expect(res.ok).toBe(true);
+    expect(res.isCorrect).toBe(true);
+    expect(res.score).toBe(95);
+    expect(res.catReaction).toBe("purring");
+    expect(res.feedback).toContain("perenne");
+    expect(res.offlineFallback).toBe(true);
+  });
+
+  it("reconoce el lema si la forma flexionada no coincide exactamente", () => {
+    const res = evaluateSentenceLocally({
+      word: "cantó",
+      lemma: "cantar",
+      targetSense: "Emitir sonidos melodiosos",
+      userSentence: "A todos nos gusta cantar bajo la lluvia.",
+    });
+    expect(res.ok).toBe(true);
+    expect(res.isCorrect).toBe(true);
+    expect(res.score).toBe(95);
+  });
+
+  it("rechaza si la palabra u oración no la contiene", () => {
+    const res = evaluateSentenceLocally({
+      word: "efímero",
+      targetSense: "Pasajero",
+      userSentence: "El cielo azul reflejaba la luz del sol.",
+    });
+    expect(res.ok).toBe(true);
+    expect(res.isCorrect).toBe(false);
+    expect(res.score).toBe(40);
+    expect(res.catReaction).toBe("curious");
+    expect(res.feedback).toContain("no veo la palabra «efímero»");
+  });
+
+  it("rechaza si la oración tiene menos de 5 palabras", () => {
+    const res = evaluateSentenceLocally({
+      word: "efímero",
+      targetSense: "Pasajero",
+      userSentence: "Es muy efímero.",
+    });
+    expect(res.ok).toBe(true);
+    expect(res.isCorrect).toBe(false);
+    expect(res.score).toBe(50);
+    expect(res.catReaction).toBe("curious");
+    expect(res.feedback).toContain("es un poco breve");
+  });
+});
+
+describe("generateMicroStoryLocally", () => {
+  it("genera un micro-relato poético con las palabras marcadas en [[palabra]]", () => {
+    const res = generateMicroStoryLocally({
+      words: [{ word: "antiguo" }, { word: "silencio" }],
+    });
+    expect(res.ok).toBe(true);
+    expect(res.title).toBe("Cuento de Tinta y Sombras");
+    expect(res.story).toContain("[[antiguo]]");
+    expect(res.story).toContain("[[silencio]]");
+    expect(res.wordsUsed).toEqual(["antiguo", "silencio"]);
+    expect(res.offlineFallback).toBe(true);
+  });
+
+  it("maneja lista vacía de palabras con elegancia", () => {
+    const res = generateMicroStoryLocally({ words: [] });
+    expect(res.ok).toBe(true);
+    expect(res.title).toBe("Página en Blanco");
+    expect(res.wordsUsed).toEqual([]);
+  });
+
+  it("maneja hasta 4 palabras correctamente", () => {
+    const res = generateMicroStoryLocally({
+      words: [
+        { word: "viento" },
+        { word: "lejano" },
+        { word: "libro" },
+        { word: "dorado" },
+      ],
+    });
+    expect(res.wordsUsed).toHaveLength(4);
+    expect(res.story).toContain("[[viento]]");
+    expect(res.story).toContain("[[lejano]]");
+    expect(res.story).toContain("[[libro]]");
+    expect(res.story).toContain("[[dorado]]");
+  });
+});
+
+describe("evaluateSentenceWithAi", () => {
+  it("llama a la API y devuelve la respuesta parseada cuando tiene éxito", async () => {
+    const mockPayload = {
+      isCorrect: true,
+      score: 98,
+      catReaction: "purring",
+      feedback: "¡Sublime uso de la palabra!",
+      improvedVersion: null,
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify(mockPayload), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      ),
+    );
+
+    const res = await evaluateSentenceWithAi({
+      word: "efímero",
+      targetSense: "Pasajero",
+      userSentence: "El destello fue efímero en la noche.",
+    });
+
+    expect(res.ok).toBe(true);
+    expect(res.isCorrect).toBe(true);
+    expect(res.score).toBe(98);
+    expect(res.catReaction).toBe("purring");
+    expect(res.feedback).toBe("¡Sublime uso de la palabra!");
+    expect(res.offlineFallback).toBeUndefined();
+    vi.unstubAllGlobals();
+  });
+
+  it("degrada limpiamente al fallback local si la API devuelve error HTTP", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ error: "Saturado" }), {
+          status: 502,
+          headers: { "content-type": "application/json" },
+        }),
+      ),
+    );
+
+    const res = await evaluateSentenceWithAi({
+      word: "efímero",
+      targetSense: "Pasajero",
+      userSentence: "El destello fue efímero en la noche oscura.",
+    });
+
+    expect(res.ok).toBe(true);
+    expect(res.offlineFallback).toBe(true);
+    expect(res.isCorrect).toBe(true);
+    vi.unstubAllGlobals();
+  });
+});
+
+describe("generateMicroStoryWithAi", () => {
+  it("llama a la API y devuelve el cuento", async () => {
+    const mockStory = {
+      title: "La lámpara del tiempo",
+      story: "En el rincón más [[antiguo]] de la sala, un suspiro detuvo el reloj.",
+      wordsUsed: ["antiguo"],
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify(mockStory), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      ),
+    );
+
+    const res = await generateMicroStoryWithAi({
+      words: [{ word: "antiguo" }],
+    });
+
+    expect(res.ok).toBe(true);
+    expect(res.title).toBe("La lámpara del tiempo");
+    expect(res.story).toContain("[[antiguo]]");
+    expect(res.offlineFallback).toBeUndefined();
+    vi.unstubAllGlobals();
+  });
+
+  it("degrada al cuento local si la red falla", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockRejectedValue(new Error("Network down")),
+    );
+
+    const res = await generateMicroStoryWithAi({
+      words: [{ word: "perenne" }, { word: "brisa" }],
+    });
+
+    expect(res.ok).toBe(true);
+    expect(res.offlineFallback).toBe(true);
+    expect(res.story).toContain("[[perenne]]");
+    expect(res.story).toContain("[[brisa]]");
+    vi.unstubAllGlobals();
+  });
+});
+
+

@@ -261,4 +261,55 @@ describe("SectionPreview", () => {
     expect(last).toContain("es:d7");
     expect(last).not.toContain("es:d8");
   });
+
+  describe("El Pórtico del Capítulo", () => {
+    it("muestra la burbuja del gato con la estimación de tiempo y joyas léxicas", () => {
+      render(base({ estimatedMinutes: 6, rows: [row("es:aurora"), row("es:candor")] }));
+      expect(text()).toContain("Este capítulo se lee en ~6 min");
+      expect(text()).toContain("Encontré 2 joyas léxicas");
+    });
+
+    it("el desbloqueo rápido de cartas revela el significado y suma +5 gotas de tinta", () => {
+      const onUnlock = vi.fn();
+      render(
+        base({
+          rows: [row("es:refulgente", { form: "refulgente", meaning: "Que emite resplandor" })],
+          onUnlockCard: onUnlock,
+        }),
+      );
+
+      const card = host.querySelector(".portico-card-3d") as HTMLElement;
+      expect(card).toBeTruthy();
+      expect(card.classList.contains("is-flipped")).toBe(false);
+
+      // Al tocar la carta, gira y desbloquea +5 gotas de tinta
+      act(() => {
+        card.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      });
+
+      expect(card.classList.contains("is-flipped")).toBe(true);
+      expect(text()).toContain("+5 gotas de tinta");
+      expect(text()).toContain("Que emite resplandor");
+      expect(onUnlock).toHaveBeenCalledWith(expect.objectContaining({ form: "refulgente" }));
+    });
+
+    it("permite seleccionar una estrategia con 1 clic y entrar al capítulo", () => {
+      const onSelectStrategy = vi.fn();
+      const props = base({ onSelectStrategy });
+      render(props);
+
+      const chip = [...host.querySelectorAll(".portico-chip")].find(
+        (c) => c.textContent?.includes("Explorador Léxico"),
+      ) as HTMLButtonElement;
+      expect(chip).toBeTruthy();
+
+      act(() => {
+        chip.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      });
+      expect(onSelectStrategy).toHaveBeenCalledWith("lexical");
+
+      click("Entrar al capítulo →");
+      expect(props.onConfirm).toHaveBeenCalled();
+    });
+  });
 });

@@ -18,10 +18,10 @@ export type WorkerEnv = {
 // La conexión vive solo dentro de la petición: los Workers no pueden
 // compartir sockets entre invocaciones. En producción se usa el
 // connectionString de Hyperdrive; en desarrollo local, DATABASE_URL.
-export function getConnectionString(env: WorkerEnv) {
-  const hyperdrive = env.HYPERDRIVE?.connectionString;
+export function getConnectionString(env?: WorkerEnv) {
+  const hyperdrive = env?.HYPERDRIVE?.connectionString;
   if (hyperdrive?.startsWith("postgres")) return hyperdrive;
-  return env.DATABASE_URL;
+  return env?.DATABASE_URL;
 }
 
 // Tamaño de lote para escrituras de sincronización masiva: en lugar de

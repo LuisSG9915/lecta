@@ -11,6 +11,7 @@ export interface ProgressInkProps {
   variant?: "vermilion" | "ink" | "ochre";
   className?: string;
   style?: React.CSSProperties;
+  pulseWave?: boolean;
 }
 
 export function ProgressInk({
@@ -24,6 +25,7 @@ export function ProgressInk({
   variant = "vermilion",
   className = "",
   style,
+  pulseWave = false,
 }: ProgressInkProps) {
   const targetRatio =
     max > floor ? Math.min(1, Math.max(0, (value - floor) / (max - floor))) : 0;
@@ -31,11 +33,40 @@ export function ProgressInk({
   // Seguimiento de escala para animar sin reiniciar desde 0 en cada render.
   const [scale, setScale] = useState(() => targetRatio);
   const [transitioning, setTransitioning] = useState(false);
+  const [waveActive, setWaveActive] = useState(false);
   const prevLevel = useRef<number | undefined>(level);
   const prevRatio = useRef(targetRatio);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const waveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const displayScale = reducedMotion ? targetRatio : scale;
+
+  // Animación de onda al completar bloques de lectura concentrada
+  useEffect(() => {
+    if (reducedMotion) return;
+
+    const triggerWave = () => {
+      setWaveActive(true);
+      if (waveTimerRef.current) clearTimeout(waveTimerRef.current);
+      waveTimerRef.current = setTimeout(() => {
+        setWaveActive(false);
+      }, 1200);
+    };
+
+    if (pulseWave) {
+      triggerWave();
+    }
+
+    const handleFocusEvent = () => triggerWave();
+    window.addEventListener("lecta:focus-block-completed", handleFocusEvent);
+    window.addEventListener("lecta:reading-block-completed", handleFocusEvent);
+
+    return () => {
+      if (waveTimerRef.current) clearTimeout(waveTimerRef.current);
+      window.removeEventListener("lecta:focus-block-completed", handleFocusEvent);
+      window.removeEventListener("lecta:reading-block-completed", handleFocusEvent);
+    };
+  }, [pulseWave, reducedMotion]);
 
   useEffect(() => {
     // Si se pide movimiento reducido, solo actualiza referencias sin animar ni causar renders adicionales.
@@ -108,8 +139,13 @@ export function ProgressInk({
       aria-valuemax={max}
       aria-valuetext={formattedAriaText}
       style={style}
+      data-wave={waveActive ? "true" : undefined}
     >
-      <div className="progress-ink-fill" style={fillStyle} />
+      <div className="progress-ink-fill" style={fillStyle}>
+        {waveActive && !reducedMotion ? (
+          <span className="progress-ink-wave-overlay" aria-hidden="true" />
+        ) : null}
+      </div>
     </div>
   );
 }

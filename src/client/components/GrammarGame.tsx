@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   canonicalGrammarCategory,
   GRAMMAR_CATEGORIES,
+  grammarToneNote,
   type GrammarCategory,
 } from "../lib/grammar";
 import { conciseMeaning } from "../lib/practice";
@@ -51,7 +52,10 @@ export function GrammarGame({
         triggerPurrHaptic();
         playCompanionSound("purr");
         const info = GRAMMAR_CATEGORIES.find((c) => c.id === catId);
-        setFeedback(`¡Exacto! «${targetWord}» es un ${info?.label.toLowerCase() ?? catId}. ✨`);
+        const toneNote = grammarToneNote(catId, targetWord);
+        setFeedback(
+          `¡Exacto! «${targetWord}» es un ${info?.label.toLowerCase() ?? catId}. ${toneNote} ✨`,
+        );
         window.setTimeout(() => {
           onSolve();
         }, 500);
@@ -103,7 +107,7 @@ export function GrammarGame({
     <div className="grammar-game" role="region" aria-label="Juego de categoría gramatical">
       <div className="index-card nb-card grammar-card">
         <p className="grammar-card-prompt meta">
-          ¿Qué tipo de palabra es?
+          ¿Qué papel juega «<strong>{targetWord}</strong>» en esta escena?
         </p>
         <p className="grammar-target-word">
           <strong>{targetWord}</strong>

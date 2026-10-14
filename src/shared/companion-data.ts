@@ -182,6 +182,19 @@ export const COMPANION_ARTICLES = {
   "pelaje-negro": "coat",
   "pelaje-tuxedo": "coat",
   "pelaje-dorado": "coat",
+  // Nuevos accesorios Fase 3:
+  beret_poet: "head",
+  wizard_hat: "head",
+  laurel_crown: "head",
+  headphones_cozy: "head",
+  scarf_amber: "neck",
+  cape_modernist: "neck",
+  bowtie_scholar: "neck",
+  detective_cape: "neck",
+  glasses_round: "face",
+  monocle_gold: "face",
+  stage_rainy_window: "body",
+  stage_ancient_library: "body",
 } as const;
 export type CompanionArticle = keyof typeof COMPANION_ARTICLES;
 export type EquippedSlot = (typeof COMPANION_ARTICLES)[CompanionArticle];

@@ -27,6 +27,7 @@ import {
   weeklyGoalProgress,
   type WeeklyGoalProgress,
 } from "../lib/reading-goal";
+import { dayKeyOf } from "../lib/reading-activity";
 import { maybeRequestTip, type TipOutcome } from "../lib/tips";
 import { trackReadingEvent } from "../lib/reading-events";
 import {
@@ -36,10 +37,12 @@ import {
 } from "../lib/settings";
 import type { TipAction } from "../../shared/tip";
 import { levelProgress } from "../lib/gamification";
+import { isDue } from "../lib/fsrs";
 import BookCover from "./BookCover";
 import DiscoverRail from "./DiscoverRail";
 import Icon from "./Icon";
 import { CompanionButton } from "./CompanionButton";
+import { CompanionStage } from "./CompanionStage";
 import { useCompanion } from "./CompanionProvider";
 import Sheet from "./Sheet";
 
@@ -70,6 +73,7 @@ type ShelfProps = {
   // la semana relee su progreso sin recargar la estantería.
   activityVersion?: number;
   onOpenJourney?: () => void;
+  onOpenPractice?: () => void;
 };
 
 const DAY_MS = 86_400_000;
@@ -122,10 +126,12 @@ export default function Shelf({
   downloadingHash,
   activityVersion = 0,
   onOpenJourney,
+  onOpenPractice,
 }: ShelfProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [positions, setPositions] = useState<SavedBookPosition[]>([]);
   const [wordCounts, setWordCounts] = useState<Map<string, number>>(new Map());
+  const [dueWordsCount, setDueWordsCount] = useState(0);
   const [latestHash, setLatestHash] = useState<string | undefined>(undefined);
   const [weekDays, setWeekDays] = useState<{ day: number; read: boolean }[]>([]);
   const [goalProgress, setGoalProgress] = useState<WeeklyGoalProgress | null>(null);
@@ -143,6 +149,7 @@ export default function Shelf({
   // breakpoint de inicio de sesión — y queda registrado con
   // tip_shown/tip_accepted para medir si los consejos sirven.
   const [tip, setTip] = useState<TipOutcome | null>(null);
+  const [todayKey, setTodayKey] = useState<string>("");
   // Compañero del proveedor único: la tarjeta compacta muestra su
   // etapa, ropa equipada, nombre y nivel, y su botón abre la hoja de
   // cuidado compartida — nada se carga aquí.
@@ -182,16 +189,25 @@ export default function Shelf({
         if (cancelled) return;
         setPositions(positionList);
         const counts = new Map<string, number>();
+        let dueTotal = 0;
         for (const word of words) {
-          if (!word.bookHash) continue;
-          counts.set(word.bookHash, (counts.get(word.bookHash) ?? 0) + 1);
+          if (word.bookHash) {
+            counts.set(word.bookHash, (counts.get(word.bookHash) ?? 0) + 1);
+          }
+          if (isDue(word.card)) {
+            dueTotal += 1;
+          }
         }
         setWordCounts(counts);
+        setDueWordsCount(dueTotal);
         setLatestHash(hash);
         // Días donde hubo lectura real (registrada al guardar posición),
         // no deducidos de la última posición de cada libro.
         const readDays = new Set(readDayList);
-        const today = startOfDay(Date.now());
+        const now = Date.now();
+        const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        setTodayKey(dayKeyOf(now, tz));
+        const today = startOfDay(now);
         setWeekDays(
           Array.from({ length: 7 }, (_, i) => {
             const day = today - (6 - i) * DAY_MS;
@@ -206,8 +222,8 @@ export default function Shelf({
           goal?.daysPerWeek != null
             ? weeklyGoalProgress(
                 intervalList,
-                Date.now(),
-                Intl.DateTimeFormat().resolvedOptions().timeZone,
+                now,
+                tz,
                 goal.daysPerWeek,
               )
             : null,
@@ -371,6 +387,30 @@ export default function Shelf({
     return freshest ? library.find((book) => book.hash === freshest.bookHash) : undefined;
   }, [latestHash, library, positions]);
 
+  const activeModeLabel = useMemo(() => {
+    if (!current) return "Modo Estándar";
+    const settings = loadReaderSettings(current.hash);
+    if (settings.strategyPreset === "focus" || settings.focusMode === "paragraph") {
+      return "Modo Enfoque";
+    }
+    if (settings.strategyPreset === "lexical") {
+      return "Modo Léxico";
+    }
+    if (settings.strategyPreset === "audio") {
+      return "Modo Audio";
+    }
+    if (settings.strategyPreset === "immersive") {
+      return "Lectura Inmersiva";
+    }
+    if (settings.focusMode === "ruler") {
+      return "Regla de Foco";
+    }
+    if (settings.focusMode === "syntactic") {
+      return "Líneas Sintácticas";
+    }
+    return "Modo Estándar";
+  }, [current]);
+
   const pickFile = () => fileInputRef.current?.click();
 
   const openSample = async () => {
@@ -434,7 +474,7 @@ export default function Shelf({
           etapa y ropa equipada, nombre y nivel breve; el botón abre
           la hoja de cuidado del proveedor. Solo si el juego está
           encendido — nunca desplaza ni rompe la estantería. */}
-      {showCompanion && companion.state ? (
+      {showCompanion && companion.state && !current ? (
         <section
           className="shelf-companion"
           aria-label={`Tu compañero ${companion.name}`}
@@ -562,62 +602,141 @@ export default function Shelf({
             </section>
           ) : null}
           {current ? (
-            <section className="shelf-hero" aria-label="Seguir leyendo">
-              <button
-                type="button"
-                className="shelf-hero-cover"
-                onClick={() => {
-                  triggerHaptic(10);
-                  onOpen(current);
-                }}
-                aria-label={`Continuar ${displayTitle(current.name, current.title)}`}
-              >
-                <BookCover book={current} />
-                <span className="shelf-lang-badge" title={`Idioma: ${languageName(current.language || "es")}`}>
-                  {(current.language || "es").toUpperCase()}
-                </span>
-              </button>
-              <div className="shelf-hero-info">
-                <p className="eyebrow">{timeOfDayGreeting()} · Seguir leyendo</p>
-                <h2 className="shelf-hero-title">{displayTitle(current.name, current.title)}</h2>
-                {current.author ? <p className="meta">{current.author}</p> : null}
-                {heroPosition ? (
-                  <p className="meta shelf-hero-progress">
-                    {current.sectionCount
-                      ? `Capítulo ${heroPosition.sectionIndex + 1} de ${current.sectionCount}`
-                      : "Lectura en curso"}
-                    {" · "}
-                    te quedaste aquí {relativeDay(heroPosition.updatedAt)}
-                  </p>
-                ) : null}
-                {current.sectionCount && heroPosition ? (
-                  <div
-                    className="thread shelf-hero-thread"
-                    role="progressbar"
-                    aria-valuenow={Math.round(progressOf(heroPosition, current.sectionCount) * 100)}
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                  >
+            <section className="shelf-hero shelf-reading-table" aria-label="Tu Mesa de Lectura">
+              <div className="shelf-hero-left">
+                <button
+                  type="button"
+                  className="shelf-hero-cover shelf-book-spine"
+                  onClick={() => {
+                    triggerHaptic(10);
+                    onOpen(current);
+                  }}
+                  aria-label={`Continuar ${displayTitle(current.name, current.title)}`}
+                >
+                  <BookCover book={current} />
+                  <span className="shelf-lang-badge" title={`Idioma: ${languageName(current.language || "es")}`}>
+                    {(current.language || "es").toUpperCase()}
+                  </span>
+                </button>
+                <div className="shelf-hero-info">
+                  <p className="eyebrow">Tu Mesa de Lectura</p>
+                  <h2 className="shelf-hero-title">{displayTitle(current.name, current.title)}</h2>
+                  {current.author ? <p className="meta">{current.author}</p> : null}
+                  {heroPosition ? (
+                    <p className="meta shelf-hero-progress">
+                      {current.sectionCount
+                        ? `Capítulo ${heroPosition.sectionIndex + 1} de ${current.sectionCount}`
+                        : "Lectura en curso"}
+                      {" · "}
+                      te quedaste aquí {relativeDay(heroPosition.updatedAt)}
+                    </p>
+                  ) : null}
+                  {current.sectionCount && heroPosition ? (
                     <div
-                      className="thread-fill"
-                      style={
-                        {
-                          "--thread-value": `${progressOf(heroPosition, current.sectionCount) * 100}%`,
-                        } as React.CSSProperties
+                      className="thread shelf-hero-thread"
+                      role="progressbar"
+                      aria-valuenow={Math.round(progressOf(heroPosition, current.sectionCount) * 100)}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                    >
+                      <div
+                        className="thread-fill"
+                        style={
+                          {
+                            "--thread-value": `${progressOf(heroPosition, current.sectionCount) * 100}%`,
+                          } as CSSProperties
+                        }
+                      />
+                    </div>
+                  ) : null}
+                  <div className="actions">
+                    <button
+                      type="button"
+                      className="btn btn--primary btn--hero-continue"
+                      onClick={() => {
+                        triggerHaptic(10);
+                        onOpen(current);
+                      }}
+                    >
+                      Continuar leyendo · {activeModeLabel}
+                    </button>
+                    {(wordCounts.get(current.hash) ?? 0) > 0 ? (
+                      <span className="meta">
+                        {wordCounts.get(current.hash) === 1
+                          ? "1 palabra de este libro en tu cuaderno"
+                          : `${wordCounts.get(current.hash)} palabras de este libro en tu cuaderno`}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+
+              <div className="shelf-hero-right">
+                {showCompanion && companion.state ? (
+                  <div className="shelf-hero-companion">
+                    <CompanionStage
+                      name={companion.name}
+                      stage={companion.stage}
+                      mood={companion.mood}
+                      accessories={companion.accessories}
+                      activeCare={companion.activeCare}
+                      onCare={(k) => void companion.care(k)}
+                      reducedMotion={companion.reducedMotion}
+                      streakDays={companion.state.stats.streakDays ?? 0}
+                      hasReadToday={
+                        Boolean(todayKey) &&
+                        companion.state.stats.lastDayKey === todayKey
                       }
+                      greetingText={greeting ? timeOfDayGreeting() : null}
+                      careStatusText={null}
+                      tryOnArticle={null}
+                      tryOnLevel={null}
+                      onClearTryOn={() => {}}
+                      bookTitle={displayTitle(current.name, current.title)}
                     />
                   </div>
                 ) : null}
-                <div className="actions">
-                  <button type="button" className="btn btn--primary" onClick={() => onOpen(current)}>
-                    Continuar
-                  </button>
-                  {(wordCounts.get(current.hash) ?? 0) > 0 ? (
-                    <span className="meta">
-                      {wordCounts.get(current.hash) === 1
-                        ? "1 palabra de este libro en tu cuaderno"
-                        : `${wordCounts.get(current.hash)} palabras de este libro en tu cuaderno`}
-                    </span>
+
+                <div className="shelf-hero-activity-bar">
+                  {goalProgress ? (
+                    <div
+                      className="shelf-goal-ring-widget"
+                      title={`Meta semanal: ${goalProgress.readDays} de ${goalProgress.target} días cumplidos`}
+                    >
+                      <svg className="shelf-goal-ring-svg" viewBox="0 0 36 36" aria-hidden="true">
+                        <path
+                          className="goal-ring-bg"
+                          d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                        />
+                        <path
+                          className="goal-ring-fill"
+                          strokeDasharray={`${Math.min(100, Math.round((goalProgress.readDays / Math.max(1, goalProgress.target)) * 100))}, 100`}
+                          d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                        />
+                      </svg>
+                      <div className="shelf-goal-ring-info">
+                        <div className="shelf-goal-ring-counts">
+                          <strong>{goalProgress.readDays}/{goalProgress.target}</strong>
+                          <span>días</span>
+                        </div>
+                        <span className="meta">{goalProgress.met ? "Meta cumplida 🎉" : "Meta semanal"}</span>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {dueWordsCount > 0 ? (
+                    <button
+                      type="button"
+                      className="btn btn--quick-practice"
+                      onClick={() => {
+                        triggerHaptic(12);
+                        if (onOpenPractice) onOpenPractice();
+                        else if (onOpenJourney) onOpenJourney();
+                      }}
+                    >
+                      <Icon name="sparkles" size={16} />
+                      <span>Practicar {dueWordsCount} palabra{dueWordsCount === 1 ? "" : "s"} pendiente{dueWordsCount === 1 ? "" : "s"}</span>
+                    </button>
                   ) : null}
                 </div>
               </div>

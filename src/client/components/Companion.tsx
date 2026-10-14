@@ -32,7 +32,8 @@ export type CompanionPose =
   | "play"
   | "celebrate"
   | "evolve"
-  | "walk";
+  | "walk"
+  | "playful_hop";
 
 export interface CompanionProps {
   // 0 gatito bebé · 1 gatito curioso · 2 joven · 3 adulto ·
@@ -53,6 +54,9 @@ export interface CompanionProps {
   // Dentro de un botón el dibujo es decorativo: sin role ni título,
   // el label lo pone el elemento interactivo que lo contiene.
   decorative?: boolean;
+  // Fracción leída [0, 1] o desplazamiento horizontal [-2, 2] px para seguimiento ocular
+  gazeProgress?: number;
+  gazeOffset?: number;
 }
 
 // Rótulo accesible: «<sujeto> <sufijo>». El foco describe lo que el
@@ -75,6 +79,7 @@ const POSE_SUFFIX: Record<Exclude<CompanionPose, "idle">, string> = {
   celebrate: "celebra contigo",
   evolve: "creció y está orgulloso",
   walk: "pasea por su rincón",
+  playful_hop: "da un salto juguetón",
 };
 
 const MOOD_SUFFIX: Record<CatMood, string> = {
@@ -86,11 +91,22 @@ const MOOD_SUFFIX: Record<CatMood, string> = {
 // Ojos abiertos: óvalos oscuros con dos brillos — el tamaño cambia por
 // etapa (el bebé los lleva enormes). El «blink» convive como capa:
 // CSS alterna opacidades para el guiño.
-function Eyes({ art, kind }: { art: StageArt; kind: EyeKind }) {
+function Eyes({
+  art,
+  kind,
+  gazeOffset = 0,
+}: {
+  art: StageArt;
+  kind: EyeKind;
+  gazeOffset?: number;
+}) {
+  const gazeStyle =
+    gazeOffset !== 0 ? { transform: `translateX(${gazeOffset}px)` } : undefined;
+
   if (kind === "open") {
     return (
       <>
-        <g className="cat-eyes cat-eyes--open">
+        <g className="cat-eyes cat-eyes--open" style={gazeStyle}>
           {art.eyesOpen.map((e, i) => (
             <g key={i}>
               <ellipse
@@ -134,7 +150,7 @@ function Eyes({ art, kind }: { art: StageArt; kind: EyeKind }) {
   }
   if (kind === "half") {
     return (
-      <g className="cat-eyes cat-eyes--half">
+      <g className="cat-eyes cat-eyes--half" style={gazeStyle}>
         {art.eyesOpen.map((e, i) => (
           <g key={i}>
             <ellipse
@@ -230,6 +246,8 @@ function StrokePatch({ s, cls }: { s: Stroke; cls: string }) {
 // StageArt).
 function Wear({ art, accessories }: { art: StageArt; accessories: string[] }) {
   const items: ReactNode[] = [];
+
+  // Ranura cuerpo (body)
   if (accessories.includes("chaleco") && art.wear.chaleco)
     items.push(
       <g key="chaleco" className="cat-wear cat-wear--chaleco">
@@ -247,6 +265,7 @@ function Wear({ art, accessories }: { art: StageArt; accessories: string[] }) {
       </g>,
     );
 
+  // Ranura ojos / cara (face)
   if (accessories.includes("anteojos") && art.wear.anteojos)
     items.push(
       <g key="anteojos" className="cat-wear cat-wear--anteojos">
@@ -263,7 +282,24 @@ function Wear({ art, accessories }: { art: StageArt; accessories: string[] }) {
         ))}
       </g>,
     );
+  else if (accessories.includes("glasses_round") && art.wear.glasses_round)
+    items.push(
+      <g key="glasses_round" className="cat-wear cat-wear--glasses_round">
+        {art.wear.glasses_round.map((d, i) => (
+          <path key={i} d={d} />
+        ))}
+      </g>,
+    );
+  else if (accessories.includes("monocle_gold") && art.wear.monocle_gold)
+    items.push(
+      <g key="monocle_gold" className="cat-wear cat-wear--monocle_gold">
+        {art.wear.monocle_gold.map((d, i) => (
+          <path key={i} d={d} />
+        ))}
+      </g>,
+    );
 
+  // Ranura cabeza (head)
   if (accessories.includes("moño") && art.wear.moño)
     items.push(
       <g key="moño" className="cat-wear cat-wear--moño">
@@ -280,7 +316,40 @@ function Wear({ art, accessories }: { art: StageArt; accessories: string[] }) {
         ))}
       </g>,
     );
+  else if (accessories.includes("beret_poet") && art.wear.beret_poet)
+    items.push(
+      <g key="beret_poet" className="cat-wear cat-wear--beret_poet">
+        {art.wear.beret_poet.map((d, i) => (
+          <path key={i} d={d} />
+        ))}
+      </g>,
+    );
+  else if (accessories.includes("wizard_hat") && art.wear.wizard_hat)
+    items.push(
+      <g key="wizard_hat" className="cat-wear cat-wear--wizard_hat">
+        {art.wear.wizard_hat.map((d, i) => (
+          <path key={i} d={d} />
+        ))}
+      </g>,
+    );
+  else if (accessories.includes("laurel_crown") && art.wear.laurel_crown)
+    items.push(
+      <g key="laurel_crown" className="cat-wear cat-wear--laurel_crown">
+        {art.wear.laurel_crown.map((d, i) => (
+          <path key={i} d={d} />
+        ))}
+      </g>,
+    );
+  else if (accessories.includes("headphones_cozy") && art.wear.headphones_cozy)
+    items.push(
+      <g key="headphones_cozy" className="cat-wear cat-wear--headphones_cozy">
+        {art.wear.headphones_cozy.map((d, i) => (
+          <path key={i} d={d} />
+        ))}
+      </g>,
+    );
 
+  // Ranura cuello (neck)
   if (accessories.includes("bufanda") && art.wear.bufanda)
     items.push(
       <g key="bufanda" className="cat-wear cat-wear--bufanda">
@@ -305,6 +374,38 @@ function Wear({ art, accessories }: { art: StageArt; accessories: string[] }) {
         ))}
       </g>,
     );
+  else if (accessories.includes("scarf_amber") && art.wear.scarf_amber)
+    items.push(
+      <g key="scarf_amber" className="cat-wear cat-wear--scarf_amber">
+        {art.wear.scarf_amber.map((d, i) => (
+          <path key={i} d={d} />
+        ))}
+      </g>,
+    );
+  else if (accessories.includes("cape_modernist") && art.wear.cape_modernist)
+    items.push(
+      <g key="cape_modernist" className="cat-wear cat-wear--cape_modernist">
+        {art.wear.cape_modernist.map((d, i) => (
+          <path key={i} d={d} />
+        ))}
+      </g>,
+    );
+  else if (accessories.includes("bowtie_scholar") && art.wear.bowtie_scholar)
+    items.push(
+      <g key="bowtie_scholar" className="cat-wear cat-wear--bowtie_scholar">
+        {art.wear.bowtie_scholar.map((d, i) => (
+          <path key={i} d={d} />
+        ))}
+      </g>,
+    );
+  else if (accessories.includes("detective_cape") && art.wear.detective_cape)
+    items.push(
+      <g key="detective_cape" className="cat-wear cat-wear--detective_cape">
+        {art.wear.detective_cape.map((d, i) => (
+          <path key={i} d={d} />
+        ))}
+      </g>,
+    );
 
   return <>{items}</>;
 }
@@ -317,7 +418,16 @@ export function Companion({
   pose,
   name,
   decorative = false,
+  gazeProgress,
+  gazeOffset,
 }: CompanionProps) {
+  const computedGaze =
+    typeof gazeOffset === "number"
+      ? Math.max(-2, Math.min(2, gazeOffset))
+      : typeof gazeProgress === "number"
+        ? Math.max(-2, Math.min(2, Math.round((gazeProgress - 0.5) * 4 * 10) / 10))
+        : 0;
+
   const s = Math.min(4, Math.max(0, Math.round(stage)));
   const art = STAGES[s];
 
@@ -453,7 +563,7 @@ export function Companion({
           {/* Hocico claro + nariz + boca. */}
           <path className="cat-muzzle" d={art.muzzle} />
           <path className="cat-nose" d={art.nose} />
-          <Eyes art={art} kind={eyes} />
+          <Eyes art={art} kind={eyes} gazeOffset={computedGaze} />
           <Mouth art={art} kind={mouth} />
           {/* Bigotes finos a los lados del hocico. */}
           <path className="cat-whisker" d={art.whiskerL} />
