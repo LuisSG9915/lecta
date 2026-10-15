@@ -45,6 +45,7 @@ export type BookCoverage = {
   total: number; // formas únicas analizadas
   missing: number; // sin ficha en el catálogo
   uncertain: number; // con ficha pero sin medición ni evidencia
+  newWordsCount?: number; // nuevas palabras útiles que aportaría al cuaderno
 };
 
 // Reúne las tres fuentes del perfil — cuaderno, conocimiento declarado/
@@ -129,6 +130,8 @@ export function coverageOfBook(
   // predichas y diferidas son vocabulario que el lector aún no tiene;
   // missing/uncertain no se pueden afirmar conocidas tampoco.
   const covered = prediction.savedCount + prediction.knownCount;
+  const newWordsCount =
+    prediction.predicted.length + (prediction.deferred?.length ?? 0);
   return {
     percent: prediction.total
       ? Math.round((covered / prediction.total) * 100)
@@ -136,6 +139,7 @@ export function coverageOfBook(
     total: prediction.total,
     missing: prediction.missing.length,
     uncertain: prediction.uncertain.length,
+    newWordsCount,
   };
 }
 
@@ -149,4 +153,18 @@ export function coverageLabel(percent: number, confidence: "low" | "mid" | "high
   if (percent >= 75) return "Asequible";
   if (percent >= 60) return "Un reto";
   return "Exigente";
+}
+
+export type AffinityTier = "fluida" | "reto" | "rico";
+
+export function affinityTierOf(percent: number): AffinityTier {
+  if (percent >= 95) return "fluida";
+  if (percent >= 88) return "reto";
+  return "rico";
+}
+
+export function affinityBadgeLabel(percent: number): string {
+  if (percent >= 95) return "Lectura Fluida";
+  if (percent >= 88) return "Reto Ideal (i+1)";
+  return "Rico en Vocabulario";
 }

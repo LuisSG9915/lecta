@@ -283,6 +283,28 @@ describe("Kindle Routes (/k and /kindle)", () => {
       expect(html).toContain("Comenzar capítulo 1 →");
       expect(html).toContain("section=0&amp;page=0");
     });
+
+    it("con mode=paragraphs muestra la clase mode-paragraphs y números de párrafo", async () => {
+      getSessionMock.mockResolvedValue({
+        user: { id: "user-1", email: "lector@example.com" },
+      });
+      const res = await app.request("/k/read/mock-hash-1?section=0&page=0&mode=paragraphs", {}, env);
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).toContain("mode-paragraphs");
+      expect(html).toContain("p-num");
+    });
+
+    it("con mode=lexicon muestra la clase mode-lexicon", async () => {
+      getSessionMock.mockResolvedValue({
+        user: { id: "user-1", email: "lector@example.com" },
+      });
+      const res = await app.request("/k/read/mock-hash-1?section=0&page=0&mode=lexicon", {}, env);
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).toContain("mode-lexicon");
+      expect(html).toContain("[ Modo Léxico ]");
+    });
   });
 
   describe("GET /k/read/:hash/resource", () => {
@@ -405,6 +427,76 @@ describe("Kindle Routes (/k and /kindle)", () => {
         expect.stringContaining("INSERT INTO lecta_user_knowledge"),
         expect.arrayContaining(["user-1", "perenne", true]),
       );
+    });
+  });
+
+  describe("GET y POST /k/practice (Práctica de Vocabulario)", () => {
+    it("GET /k/practice redirige a login si no hay sesión iniciada", async () => {
+      const res = await app.request("/k/practice", {}, env);
+      expect(res.status).toBe(302);
+      expect(res.headers.get("Location")).toContain("/k/login");
+    });
+
+    it("GET /k/practice muestra pantalla de práctica para usuario autenticado", async () => {
+      getSessionMock.mockResolvedValue({
+        user: { id: "user-1", email: "lector@example.com" },
+      });
+      dbQueryMock.mockResolvedValue({
+        rows: [
+          {
+            form: "perenne",
+            meaning: "Que dura indefinidamente.",
+            card: null,
+          },
+        ],
+      });
+
+      const res = await app.request("/k/practice", {}, env);
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).toContain("Práctica");
+    });
+
+    it("POST /k/practice/answer procesa respuesta y redirige a la siguiente pregunta", async () => {
+      getSessionMock.mockResolvedValue({
+        user: { id: "user-1", email: "lector@example.com" },
+      });
+
+      const formData = new FormData();
+      formData.append("word", "perenne");
+      formData.append("selectedOption", "B");
+      formData.append("questionIndex", "0");
+      formData.append("totalQuestions", "3");
+      formData.append("correctCount", "0");
+      formData.append("bookHash", "mock-hash-1");
+      formData.append("returnTo", "/k/read/mock-hash-1?section=0&page=0");
+
+      const res = await app.request("/k/practice/answer", { method: "POST", body: formData }, env);
+      expect(res.status).toBe(302);
+      const location = res.headers.get("Location");
+      expect(location).toContain("/k/practice?q=1");
+      expect(location).toContain("score=1");
+    });
+
+    it("POST /k/practice/answer al terminar redirige con done=1", async () => {
+      getSessionMock.mockResolvedValue({
+        user: { id: "user-1", email: "lector@example.com" },
+      });
+
+      const formData = new FormData();
+      formData.append("word", "perenne");
+      formData.append("selectedOption", "C");
+      formData.append("questionIndex", "2");
+      formData.append("totalQuestions", "3");
+      formData.append("correctCount", "2");
+      formData.append("bookHash", "mock-hash-1");
+      formData.append("returnTo", "/k/read/mock-hash-1?section=0&page=0");
+
+      const res = await app.request("/k/practice/answer", { method: "POST", body: formData }, env);
+      expect(res.status).toBe(302);
+      const location = res.headers.get("Location");
+      expect(location).toContain("/k/practice?done=1");
+      expect(location).toContain("score=3");
     });
   });
 });

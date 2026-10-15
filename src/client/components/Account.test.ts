@@ -284,4 +284,30 @@ describe("Account componente Tú y Login", () => {
     expect(modal?.querySelector('label[for="modal-reset-password"]')?.textContent).toBe("Nueva contraseña");
     expect(modal?.querySelector('button[type="submit"]')?.textContent).toBe("Guardar contraseña");
   });
+
+  it("muestra el bloque de enlace con Kindle y el estado de calibración con botón de recalibrar", async () => {
+    render(
+      h(Account, {
+        presentation: "page",
+        onClose: vi.fn(),
+        onOpenCalibration: vi.fn(),
+      }),
+    );
+    await flush();
+
+    // Bloque Kindle
+    const kindleGuide = host.querySelector(".account-kindle-guide");
+    expect(kindleGuide).toBeTruthy();
+    expect(kindleGuide?.textContent).toContain("Modo Kindle");
+    expect(kindleGuide?.textContent).toContain("/k");
+
+    // Tarjeta de Nivel y Calibración
+    const levelCard = host.querySelector(".account-card--level");
+    expect(levelCard).toBeTruthy();
+    expect(levelCard?.textContent).toContain("Tu nivel y calibración");
+    const recalibrateBtn = Array.from(levelCard?.querySelectorAll("button") ?? []).find(
+      (b) => b.textContent?.includes("Recalibrar mi vocabulario"),
+    );
+    expect(recalibrateBtn).toBeTruthy();
+  });
 });

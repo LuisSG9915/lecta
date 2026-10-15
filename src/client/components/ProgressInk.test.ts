@@ -186,4 +186,32 @@ describe("ProgressInk", () => {
     });
     expect(container.querySelector(".progress-ink-wave-overlay")).toBeTruthy();
   });
+
+  it("activa flash y gotas al alcanzar un checkpoint vía prop y evento", () => {
+    act(() => {
+      root.render(
+        h(ProgressInk, {
+          value: 25,
+          max: 100,
+          checkpointReached: true,
+        }),
+      );
+    });
+
+    const bar = container.querySelector('[role="progressbar"]');
+    expect(bar?.getAttribute("data-checkpoint-flash")).toBe("true");
+    expect(container.querySelector(".progress-ink-drops")).toBeTruthy();
+
+    act(() => {
+      vi.advanceTimersByTime(1250);
+    });
+    expect(bar?.getAttribute("data-checkpoint-flash")).toBeNull();
+
+    // Se dispara vía evento lecta:checkpoint-reached
+    act(() => {
+      window.dispatchEvent(new CustomEvent("lecta:checkpoint-reached"));
+    });
+    expect(bar?.getAttribute("data-checkpoint-flash")).toBe("true");
+  });
 });
+

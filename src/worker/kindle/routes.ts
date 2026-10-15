@@ -5,11 +5,13 @@ import { Hono } from "hono";
 import { getConnectionString, withClient, type WorkerEnv } from "../db";
 import { getSession } from "../session";
 import { createAuth } from "../auth";
-import { findEntries, findEntriesForForms } from "../lexicon";
+import { findEntries, findEntriesForForms, type LexiconEntryView } from "../lexicon";
+import { createEmptyCard, fsrs, generatorParameters, Rating, type Card } from "ts-fsrs";
 import {
   extractChapterPrepCandidates,
   extractPageWords,
   findSentenceWithWord,
+  formatChapterHtmlForMode,
   getEpubChapter,
   getEpubResource,
   paginateChapter,
@@ -23,11 +25,13 @@ import {
   renderLoginView,
   renderReaderView,
   renderLookupView,
+  renderPracticeView,
   type KindleBookItem,
   type KindleUser,
   type PageWordItem,
   type PrepWordItem,
   type InlineLookupResult,
+  type CatPageNoteItem,
 } from "./views";
 
 export const kindleRoutes = new Hono<{ Bindings: WorkerEnv }>();
@@ -282,6 +286,14 @@ kindleRoutes.get("/read/:hash", async (c) => {
   const markedKnown = c.req.query("markedKnown");
   const lookupWord = c.req.query("lookup")?.trim() || "";
   const isPrep = c.req.query("prep") === "1";
+  const rawMode = c.req.query("mode");
+  const rawSize = c.req.query("size");
+  const rawGloss = c.req.query("gloss");
+  const mode = (rawMode as "clean" | "paragraphs" | "lexicon") || "clean";
+  const size = (rawSize as "sm" | "md" | "lg" | "xl") || "md";
+  const gloss = rawGloss !== "0";
+  const querySuffix = `${rawMode ? `&mode=${encodeURIComponent(rawMode)}` : ""}${rawSize ? `&size=${encodeURIComponent(rawSize)}` : ""}${rawGloss !== undefined ? `&gloss=${encodeURIComponent(rawGloss)}` : ""}`;
+  const renderQuerySuffix = `&mode=${encodeURIComponent(mode)}&size=${encodeURIComponent(size)}&gloss=${gloss ? "1" : "0"}`;
 
   // Si no se especifica la sección en la URL, cargar la última posición guardada (sección y página)
   if (requestedSection === undefined) {
@@ -298,7 +310,7 @@ kindleRoutes.get("/read/:hash", async (c) => {
 
     const targetSection = lastPos ? Number(lastPos.sectionIndex) || 0 : 0;
     const targetPage = lastPos && lastPos.scrollTop != null ? Math.max(0, Number(lastPos.scrollTop) || 0) : 0;
-    return c.redirect(`/k/read/${encodeURIComponent(hash)}?section=${targetSection}&page=${targetPage}`);
+    return c.redirect(`/k/read/${encodeURIComponent(hash)}?section=${targetSection}&page=${targetPage}${querySuffix}`);
   }
 
   const sectionIndex = Math.max(0, parseInt(requestedSection, 10) || 0);
@@ -453,17 +465,28 @@ kindleRoutes.get("/read/:hash", async (c) => {
 
   const rawPageHtml = pages[pageIndex] || "<p>Sin contenido.</p>";
 
-  // Obtener palabras guardadas por el usuario en su Cuaderno para resaltarlas
-  const savedWordsRows = await withClient(c.env, (client) =>
-    client
-      .query(
-        `SELECT LOWER(form) AS form FROM lecta_user_words
-         WHERE user_id = $1 AND deleted = false`,
-        [user.id],
-      )
-      .then((res) => res.rows)
-      .catch(() => []),
-  );
+  // Obtener palabras guardadas y conocimiento del usuario
+  const [savedWordsRows, knownWordsRows] = (await withClient(c.env, (client) =>
+    Promise.all([
+      client
+        .query<{ form: string }>(
+          `SELECT LOWER(form) AS form FROM lecta_user_words
+           WHERE user_id = $1 AND deleted = false`,
+          [user.id],
+        )
+        .then((res) => res.rows)
+        .catch(() => []),
+      client
+        .query<{ lemma: string }>(
+          `SELECT LOWER(lemma) AS lemma FROM lecta_user_knowledge
+           WHERE user_id = $1 AND language = 'es' AND known = true AND deleted = false`,
+          [user.id],
+        )
+        .then((res) => res.rows)
+        .catch(() => []),
+    ]),
+  )) ?? [[], []];
+
   const savedWordsSet = new Set<string>();
   if (Array.isArray(savedWordsRows)) {
     for (const row of savedWordsRows) {
@@ -471,21 +494,71 @@ kindleRoutes.get("/read/:hash", async (c) => {
     }
   }
 
-  const currentUrl = `/k/read/${encodeURIComponent(hash)}?section=${chapter.sectionIndex}&page=${pageIndex}`;
+  const knownSet = new Set<string>();
+  if (Array.isArray(knownWordsRows)) {
+    for (const row of knownWordsRows) {
+      if (row.lemma) knownSet.add(row.lemma);
+    }
+  }
 
-  // Extraer palabras candidatas de esta página para el bloque de vocabulario
-  const candidateWords = extractPageWords(rawPageHtml);
+  const currentUrl = `/k/read/${encodeURIComponent(hash)}?section=${chapter.sectionIndex}&page=${pageIndex}${renderQuerySuffix}`;
+
+  // Extraer palabras candidatas de esta página
+  const candidateWords = extractPageWords(rawPageHtml, "es");
   const pageWords: PageWordItem[] = candidateWords.map((form) => ({
     form,
     saved: savedWordsSet.has(form.toLowerCase()),
   }));
 
-  // Enlazar cada palabra en el texto para permitir consulta con un toque
+  // Extraer hasta 4 palabras desconocidas para las Notas del Gato
+  const unknownCandidates = candidateWords.filter((w) => !knownSet.has(w.toLowerCase()));
+  const catNotes: CatPageNoteItem[] = [];
+  if (unknownCandidates.length > 0) {
+    const entriesMap: Record<string, LexiconEntryView[]> =
+      (await withClient(c.env, (client) =>
+        findEntriesForForms(client, "es", unknownCandidates.slice(0, 50)),
+      ).catch(() => ({}))) ?? {};
+
+    const seenLemmas = new Set<string>();
+    let noteIdx = 1;
+    for (const form of unknownCandidates) {
+      const entries = entriesMap?.[form] || entriesMap?.[form.toLowerCase()];
+      if (!entries || entries.length === 0) continue;
+      const entry = entries[0];
+      const lemma = entry.lemma || form;
+      const lemmaLower = lemma.toLowerCase();
+      if (knownSet.has(lemmaLower) || seenLemmas.has(lemmaLower)) continue;
+      const firstMeaning = entry.senses?.[0]?.definition?.trim();
+      if (!firstMeaning) continue;
+
+      seenLemmas.add(lemmaLower);
+      catNotes.push({
+        form,
+        lemma,
+        pos: entry.pos || null,
+        meaning: firstMeaning,
+        noteIndex: noteIdx++,
+        saved: savedWordsSet.has(form.toLowerCase()) || savedWordsSet.has(lemmaLower),
+      });
+      if (catNotes.length >= 4) break;
+    }
+  }
+
+  const notedWordsMap = new Map<string, number>();
+  if (mode === "lexicon") {
+    for (const note of catNotes) {
+      notedWordsMap.set(note.form.toLowerCase(), note.noteIndex);
+    }
+  }
+
+  // Formatear texto según modo y enlazar palabras interactivas
+  const formattedHtml = formatChapterHtmlForMode(rawPageHtml, mode);
   const interactivePageHtml = wrapWordsWithLinks(
-    rawPageHtml,
+    formattedHtml,
     hash,
     currentUrl,
     savedWordsSet,
+    mode === "lexicon" ? notedWordsMap : undefined,
   );
 
   // Consulta de definición en línea si se pulsó una palabra
@@ -507,15 +580,15 @@ kindleRoutes.get("/read/:hash", async (c) => {
     }
   }
 
-  // Guardar la posición de lectura actualizada (sección y página) en la base de datos
+  // Guardar la posición de lectura actualizada y registrar actividad en la base de datos
   const pageRatio = totalPages > 1 ? pageIndex / (totalPages - 1) : 0;
   const progress = chapter.totalSections > 1
     ? Math.min(1, Math.max(0, (chapter.sectionIndex + pageRatio) / (chapter.totalSections - 1)))
     : pageRatio;
 
   const now = Date.now();
-  const savePositionPromise = withClient(c.env, (client) =>
-    client.query(
+  const savePositionPromise = withClient(c.env, async (client) => {
+    await client.query(
       `INSERT INTO lecta_user_positions
          (user_id, book_hash, section_index, scroll_top, ratio, progress, updated_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -527,8 +600,15 @@ kindleRoutes.get("/read/:hash", async (c) => {
          updated_at = excluded.updated_at
        WHERE lecta_user_positions.updated_at <= excluded.updated_at`,
       [user.id, hash, chapter.sectionIndex, pageIndex, pageRatio, progress, now],
-    ),
-  ).catch(() => null);
+    );
+    const actId = `k_${hash}_${chapter.sectionIndex}_${pageIndex}_${now}`;
+    await client.query(
+      `INSERT INTO lecta_user_activity (user_id, id, book_hash, started_at, ended_at)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (user_id, id) DO NOTHING`,
+      [user.id, actId, hash, Math.max(0, now - 60000), now],
+    ).catch(() => null);
+  }).catch(() => null);
 
   try {
     c.executionCtx.waitUntil(savePositionPromise);
@@ -536,7 +616,12 @@ kindleRoutes.get("/read/:hash", async (c) => {
     await savePositionPromise;
   }
 
-  const savedNotice = savedWord ? `✓ Palabra «${savedWord}» guardada en tu Cuaderno.` : null;
+  let savedNotice: string | null = null;
+  if (savedWord) {
+    savedNotice = `¡Guardé «${savedWord}» en tu cuaderno! 🐾`;
+  } else if (markedKnown) {
+    savedNotice = `¡Anotado! Ya conoces «${markedKnown}». 🐾`;
+  }
 
   return c.html(
     renderReaderView({
@@ -553,6 +638,10 @@ kindleRoutes.get("/read/:hash", async (c) => {
       pageWords,
       savedNotice,
       lookupResult,
+      mode,
+      size,
+      gloss,
+      catNotes,
     }),
   );
 });
@@ -723,4 +812,222 @@ kindleRoutes.post("/knowledge/mark", async (c) => {
   const separator = returnTo.includes("?") ? "&" : "?";
   return c.redirect(`${returnTo}${separator}markedKnown=${encodeURIComponent(lemma)}`);
 });
+
+// 9. Práctica rápida de vocabulario E-ink
+kindleRoutes.get("/practice", async (c) => {
+  const session = await getSession(c);
+  if (!session?.user) {
+    return c.redirect(`/k/login?returnTo=${encodeURIComponent(c.req.url)}`);
+  }
+
+  const user = { id: session.user.id, email: session.user.email, name: session.user.name };
+  const qIndex = Math.max(0, parseInt(c.req.query("q") || "0", 10) || 0);
+  const correctCount = Math.max(0, parseInt(c.req.query("score") || "0", 10) || 0);
+  const bookHash = c.req.query("bookHash") || "";
+  const returnTo = c.req.query("returnTo") || (bookHash ? `/k/read/${encodeURIComponent(bookHash)}` : "/k");
+  const isDone = c.req.query("done") === "1" || qIndex >= 3;
+
+  if (isDone) {
+    return c.html(
+      renderPracticeView({
+        user,
+        isFinished: true,
+        correctCount,
+        totalQuestions: 3,
+        returnTo,
+        bookHash,
+      }),
+    );
+  }
+
+  // Cargar palabras guardadas del usuario para practicar
+  const wordsRows = await withClient(c.env, (client) =>
+    client
+      .query(
+        `SELECT form, lemma, pos, meaning, card FROM lecta_user_words
+         WHERE user_id = $1 AND deleted = false AND meaning IS NOT NULL
+         ORDER BY updated_at DESC LIMIT 15`,
+        [user.id],
+      )
+      .then((res) => res.rows)
+      .catch(() => []),
+  );
+
+  const FALLBACK_WORDS = [
+    { form: "perenne", lemma: "perenne", pos: "adjetivo", meaning: "Que dura indefinidamente o no se extingue." },
+    { form: "inefable", lemma: "inefable", pos: "adjetivo", meaning: "Que no se puede explicar con palabras." },
+    { form: "prístino", lemma: "prístino", pos: "adjetivo", meaning: "Antiguo, primero, primitivo o inalterado." },
+    { form: "efímero", lemma: "efímero", pos: "adjetivo", meaning: "Que dura un solo día o que es pasajero y breve." },
+  ];
+
+  const pool = Array.isArray(wordsRows) && wordsRows.length >= 3 ? wordsRows : FALLBACK_WORDS;
+  const targetWord = pool[qIndex % pool.length];
+
+  const otherMeanings = pool
+    .filter((w) => w.lemma !== targetWord.lemma && w.meaning !== targetWord.meaning)
+    .map((w) => w.meaning);
+
+  const fallbackDistractors = [
+    "Dicho de una persona o cosa que se encuentra en todas partes a la vez.",
+    "Sosiego, tranquilidad y templanza del ánimo ante las dificultades.",
+    "Sentimiento de afecto o nostalgia profunda por el pasado.",
+  ];
+
+  const distractor1 = otherMeanings[0] || fallbackDistractors[0];
+  const distractor2 = otherMeanings[1] || fallbackDistractors[1];
+
+  const correctKey: "A" | "B" | "C" = qIndex === 0 ? "B" : qIndex === 1 ? "A" : "C";
+  const optionsList: { key: "A" | "B" | "C"; text: string; correct: boolean }[] = [];
+  if (correctKey === "A") {
+    optionsList.push(
+      { key: "A", text: targetWord.meaning, correct: true },
+      { key: "B", text: distractor1, correct: false },
+      { key: "C", text: distractor2, correct: false },
+    );
+  } else if (correctKey === "B") {
+    optionsList.push(
+      { key: "A", text: distractor1, correct: false },
+      { key: "B", text: targetWord.meaning, correct: true },
+      { key: "C", text: distractor2, correct: false },
+    );
+  } else {
+    optionsList.push(
+      { key: "A", text: distractor1, correct: false },
+      { key: "B", text: distractor2, correct: false },
+      { key: "C", text: targetWord.meaning, correct: true },
+    );
+  }
+
+  return c.html(
+    renderPracticeView({
+      user,
+      question: {
+        word: targetWord.form,
+        lemma: targetWord.lemma || targetWord.form,
+        pos: targetWord.pos,
+        options: optionsList,
+        questionIndex: qIndex,
+        totalQuestions: 3,
+      },
+      correctCount,
+      totalQuestions: 3,
+      returnTo,
+      bookHash,
+    }),
+  );
+});
+
+// 10. Responder pregunta de práctica
+kindleRoutes.post("/practice/answer", async (c) => {
+  const session = await getSession(c);
+  if (!session?.user) {
+    return c.redirect("/k/login");
+  }
+
+  const body = (await c.req.parseBody().catch(() => ({}))) as Record<string, unknown>;
+  const word = typeof body.word === "string" ? body.word.trim() : "";
+  const selectedOption = typeof body.selectedOption === "string" ? body.selectedOption.trim() : "";
+  const questionIndex = parseInt(String(body.questionIndex || "0"), 10) || 0;
+  const totalQuestions = parseInt(String(body.totalQuestions || "3"), 10) || 3;
+  let correctCount = parseInt(String(body.correctCount || "0"), 10) || 0;
+  const bookHash = typeof body.bookHash === "string" ? body.bookHash.trim() : "";
+  const returnTo = typeof body.returnTo === "string" ? body.returnTo : "/k";
+
+  const expectedKey = questionIndex === 0 ? "B" : questionIndex === 1 ? "A" : "C";
+  const isCorrect = selectedOption === expectedKey;
+  if (isCorrect) {
+    correctCount++;
+  }
+
+  const now = Date.now();
+  const rating = isCorrect ? "good" : "again";
+  const reviewId = `kr_${now}_${Math.random().toString(36).slice(2, 8)}`;
+  const actId = `ka_${now}_${Math.random().toString(36).slice(2, 8)}`;
+  const eventId = `ke_${now}_${Math.random().toString(36).slice(2, 8)}`;
+
+  await withClient(c.env, async (client) => {
+    // 1. FSRS en lecta_user_words
+    const existing = await client
+      .query(`SELECT card FROM lecta_user_words WHERE user_id = $1 AND form = $2`, [
+        session.user.id,
+        word,
+      ])
+      .then((res) => res.rows[0]?.card)
+      .catch(() => null);
+
+    const scheduler = fsrs(generatorParameters({ enable_fuzz: true }));
+    let cardObj: Card;
+    try {
+      cardObj =
+        existing && typeof existing === "object"
+          ? (existing as Card)
+          : createEmptyCard(new Date(now));
+      cardObj.due = new Date(cardObj.due);
+      if (cardObj.last_review) cardObj.last_review = new Date(cardObj.last_review);
+    } catch {
+      cardObj = createEmptyCard(new Date(now));
+    }
+
+    const scheduled = scheduler.next(
+      cardObj,
+      new Date(now),
+      isCorrect ? Rating.Good : Rating.Again,
+    );
+    const updatedCard = scheduled.card;
+
+    await client
+      .query(
+        `UPDATE lecta_user_words SET card = $1, updated_at = $2 WHERE user_id = $3 AND form = $4`,
+        [JSON.stringify(updatedCard), now, session.user.id, word],
+      )
+      .catch(() => null);
+
+    // 2. Insertar en lecta_user_reviews
+    await client
+      .query(
+        `INSERT INTO lecta_user_reviews (user_id, id, language, form, kind, rating, hints, created_at)
+         VALUES ($1, $2, 'es', $3, 'practice', $4, 0, $5)
+         ON CONFLICT (user_id, id) DO NOTHING`,
+        [session.user.id, reviewId, word, rating, now],
+      )
+      .catch(() => null);
+
+    // 3. Registrar actividad en lecta_user_activity
+    await client
+      .query(
+        `INSERT INTO lecta_user_activity (user_id, id, book_hash, started_at, ended_at)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (user_id, id) DO NOTHING`,
+        [session.user.id, actId, bookHash || "practice", Math.max(0, now - 30000), now],
+      )
+      .catch(() => null);
+
+    // 4. Registrar evento de compañero en lecta_user_companion_events
+    const eventPayload = {
+      id: eventId,
+      at: now,
+      dayKey: new Date(now).toISOString().slice(0, 10),
+      kind: "review",
+      rating,
+    };
+    await client
+      .query(
+        `INSERT INTO lecta_user_companion_events (user_id, id, payload)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (user_id, id) DO NOTHING`,
+        [session.user.id, eventId, JSON.stringify(eventPayload)],
+      )
+      .catch(() => null);
+  }).catch(() => null);
+
+  const nextIndex = questionIndex + 1;
+  const isFinished = nextIndex >= totalQuestions;
+
+  const redirectUrl = isFinished
+    ? `/k/practice?done=1&score=${correctCount}&bookHash=${encodeURIComponent(bookHash)}&returnTo=${encodeURIComponent(returnTo)}`
+    : `/k/practice?q=${nextIndex}&score=${correctCount}&bookHash=${encodeURIComponent(bookHash)}&returnTo=${encodeURIComponent(returnTo)}`;
+
+  return c.redirect(redirectUrl);
+});
+
 

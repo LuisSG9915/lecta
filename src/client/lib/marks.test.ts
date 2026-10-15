@@ -142,4 +142,18 @@ describe("markWords con predichas", () => {
     expect(marks[0]?.parentElement?.tagName).toBe("P");
     expect(div.querySelector(".section-preview-slot")?.textContent).toBe("perenne");
   });
+
+  it("aplica clases semánticas lecta-saved-word y lecta-unknown-word", () => {
+    const div = root("<p>La casa y la perenne discusión.</p>");
+    markWords(div, new Set(["casa"]), new Set(["perenne"]));
+    const saved = div.querySelector("mark.lecta-saved-word");
+    const predicted = div.querySelector("mark.lecta-unknown-word");
+    expect(saved).toBeTruthy();
+    expect(saved?.classList.contains("saved-word")).toBe(true);
+    expect(saved?.textContent).toBe("casa");
+    expect(predicted).toBeTruthy();
+    expect(predicted?.classList.contains("predicted-word")).toBe(true);
+    expect(predicted?.textContent).toBe("perenne");
+  });
 });
+

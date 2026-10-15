@@ -9,19 +9,29 @@ import {
   buildExplainSystemPrompt,
   buildItemSystemPrompt,
   buildStoryPrompt,
+  buildPageRecapPrompt,
+  buildCharacterRecapPrompt,
   buildVerifyPrompt,
   buildVerifySystemPrompt,
   callDeepSeek,
   createTtlCache,
+  deterministicPageRecapFallback,
+  deterministicCharacterRecapFallback,
   ENRICHMENT_MODEL,
   ENRICHMENT_PROMPT_VERSION,
   EVALUATE_CALL_OPTIONS,
   ITEM_PROMPT_VERSION,
+  PAGE_RECAP_CALL_OPTIONS,
+  PAGE_RECAP_PROMPT_VERSION,
+  CHARACTER_RECAP_CALL_OPTIONS,
+  CHARACTER_RECAP_PROMPT_VERSION,
+  parseCharacterRecap,
   parseEvaluateSentence,
   parseExplain,
   parseItem,
   parseMicroStory,
   parsePassageExplanation,
+  parsePageRecap,
   parseTip,
   parseVerify,
   requestEnrichment,
@@ -1040,5 +1050,116 @@ describe("parsePassageExplanation & buildExplainInPassagePrompt", () => {
     expect(prompt).not.toContain("Obra:");
     expect(prompt).not.toContain("Autor:");
   });
+
+  it("buildExplainInPassagePrompt incluye instrucción L1/L2 para libros en inglés con lector hispanohablante", () => {
+    const prompt = buildExplainInPassagePrompt({
+      word: "wander",
+      sentence: "He began to wander across the silent moors.",
+      language: "en",
+      nativeLanguage: "es",
+    });
+    expect(prompt).toContain("Instrucción L1/L2");
+    expect(prompt).toContain("El libro está en inglés y el lector es hispanohablante");
+  });
 });
+
+describe("page_recap (Recuperar el hilo)", () => {
+  it("respeta el límite de 90 tokens y versión de prompt", () => {
+    expect(PAGE_RECAP_CALL_OPTIONS.maxTokens).toBe(90);
+    expect(PAGE_RECAP_CALL_OPTIONS.promptVersion).toBe(PAGE_RECAP_PROMPT_VERSION);
+    expect(PAGE_RECAP_PROMPT_VERSION).toBe("page-recap-v1");
+  });
+
+  it("parsePageRecap valida JSON correcto con bullets y hookQuestion", () => {
+    const raw = JSON.stringify({
+      bullets: ["El héroe llega a la cumbre.", "Encuentra la puerta cerrada."],
+      hookQuestion: "¿Cómo logrará entrar?",
+    });
+    const parsed = parsePageRecap(raw);
+    expect(parsed).toEqual({
+      bullets: ["El héroe llega a la cumbre.", "Encuentra la puerta cerrada."],
+      hookQuestion: "¿Cómo logrará entrar?",
+    });
+  });
+
+  it("parsePageRecap devuelve null para JSON inválido o sin contenido", () => {
+    expect(parsePageRecap("no json")).toBeNull();
+    expect(parsePageRecap("null")).toBeNull();
+    expect(parsePageRecap(JSON.stringify({}))).toBeNull();
+  });
+
+  it("buildPageRecapPrompt incluye texto, libro y capítulo", () => {
+    const prompt = buildPageRecapPrompt({
+      text: "Caminaba sin rumbo por la calle desierta.",
+      bookTitle: "La Ciudad Invisible",
+      chapterTitle: "Capítulo 1",
+    });
+    expect(prompt).toContain("Libro: «La Ciudad Invisible»");
+    expect(prompt).toContain("Capítulo: «Capítulo 1»");
+    expect(prompt).toContain("Caminaba sin rumbo por la calle desierta.");
+  });
+
+  it("deterministicPageRecapFallback genera bullets y pregunta a partir del texto", () => {
+    const text =
+      "El sol brillaba con una fuerza inusual sobre la llanura. A lo lejos se divisaban las primeras torres de la ciudad.";
+    const fallback = deterministicPageRecapFallback(text);
+    expect(fallback.bullets).toHaveLength(2);
+    expect(fallback.bullets[0]).toContain("El sol brillaba");
+    expect(fallback.hookQuestion).toBeTruthy();
+    expect(fallback.fallback).toBe(true);
+  });
+});
+
+describe("character-recap (Innovación 2)", () => {
+  it("parseCharacterRecap acepta un JSON válido", () => {
+    const raw = JSON.stringify({
+      summary: "Aureliano es el segundo hijo de la familia, silencioso y retraído.",
+      role: "Protagonista / Coronel",
+    });
+    const parsed = parseCharacterRecap(raw);
+    expect(parsed).toEqual({
+      summary: "Aureliano es el segundo hijo de la familia, silencioso y retraído.",
+      role: "Protagonista / Coronel",
+    });
+  });
+
+  it("parseCharacterRecap devuelve null para JSON roto o vacío", () => {
+    expect(parseCharacterRecap("invalido")).toBeNull();
+    expect(parseCharacterRecap(JSON.stringify({}))).toBeNull();
+    expect(parseCharacterRecap(JSON.stringify({ summary: "" }))).toBeNull();
+  });
+
+  it("buildCharacterRecapPrompt incluye entidad, libro, capítulo y fragmentos", () => {
+    const prompt = buildCharacterRecapPrompt({
+      entityName: "Aureliano",
+      bookTitle: "Cien años de soledad",
+      currentChapterTitle: "Capítulo 2",
+      excerptsSoFar: [
+        "Aureliano aprendió a leer con los pergaminos.",
+        "Pasaba las tardes en el taller.",
+      ],
+    });
+    expect(prompt).toContain("«Aureliano»");
+    expect(prompt).toContain("«Cien años de soledad»");
+    expect(prompt).toContain("«Capítulo 2»");
+    expect(prompt).toContain("1. «Aureliano aprendió a leer con los pergaminos.»");
+  });
+
+  it("deterministicCharacterRecapFallback provee resumen sin red", () => {
+    const fallback = deterministicCharacterRecapFallback("Melquíades", [
+      "Melquíades era un gitano corpulento de barba montaraz.",
+    ]);
+    expect(fallback.summary).toContain("Melquíades");
+    expect(fallback.summary).toContain("Primera aparición registrada");
+    expect(fallback.fallback).toBe(true);
+  });
+
+  it("expone constantes de versión y opciones de llamada para character recap", () => {
+    expect(CHARACTER_RECAP_PROMPT_VERSION).toBe("character-recap-v1");
+    expect(CHARACTER_RECAP_CALL_OPTIONS.operation).toBe("character_recap");
+    expect(CHARACTER_RECAP_CALL_OPTIONS.maxTokens).toBe(256);
+  });
+});
+
+
 

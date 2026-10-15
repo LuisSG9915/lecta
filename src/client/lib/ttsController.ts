@@ -84,7 +84,10 @@ export type TtsController = {
   start(ctx: TtsTargetContext, startIndex: number): void;
   pause(reason: TtsPauseReason): void;
   resume(): void;
-  cycleRate(): TtsRate;
+  cycleRate(rates?: TtsRate[]): TtsRate;
+  prevSentence(): void;
+  nextSentence(): void;
+  getCurrentSentence(): string | null;
   stop(reason: TtsEndReason): void;
   // La sección que pidió el avance programático terminó de pintar.
   onSectionRendered(): void;
@@ -398,9 +401,10 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
       armHeartbeat();
     },
 
-    cycleRate() {
-      const at = TTS_RATES.indexOf(settings.rate);
-      const rate = TTS_RATES[(at + 1) % TTS_RATES.length] ?? 1;
+    cycleRate(rates?: TtsRate[]) {
+      const rateList = rates && rates.length > 0 ? rates : TTS_RATES;
+      const at = rateList.indexOf(settings.rate);
+      const rate = rateList[(at + 1) % rateList.length] ?? 1;
       settings = { ...settings, rate };
       saveTtsSettings(settings);
       publish({ rate });
@@ -420,6 +424,56 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
         source: "reader_tools",
       });
       return rate;
+    },
+
+    prevSentence() {
+      if (snap.status !== "speaking" && snap.status !== "paused") return;
+      if (cursor > 0) {
+        cursor -= 1;
+        if (snap.status === "speaking") {
+          speaker?.cancel();
+          speaker = makeSpeaker();
+          speakCurrent();
+        } else if (snap.status === "paused") {
+          const root = deps.root();
+          if (root && items[cursor]) {
+            clearTtsMarks(root);
+            if (markSentence(root, items[cursor])) {
+              const el = ttsMarkElement(root);
+              if (el) deps.reveal(el);
+            }
+          }
+        }
+      }
+    },
+
+    nextSentence() {
+      if (snap.status !== "speaking" && snap.status !== "paused") return;
+      if (cursor < items.length - 1) {
+        cursor += 1;
+        sentenceCount += 1;
+        if (snap.status === "speaking") {
+          speaker?.cancel();
+          speaker = makeSpeaker();
+          speakCurrent();
+        } else if (snap.status === "paused") {
+          const root = deps.root();
+          if (root && items[cursor]) {
+            clearTtsMarks(root);
+            if (markSentence(root, items[cursor])) {
+              const el = ttsMarkElement(root);
+              if (el) deps.reveal(el);
+            }
+          }
+        }
+      } else {
+        advanceOrEnd();
+      }
+    },
+
+    getCurrentSentence(): string | null {
+      if (snap.status === "idle" || snap.status === "stopping") return null;
+      return items[cursor]?.text ?? null;
     },
 
     stop(reason) {

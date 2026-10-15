@@ -163,6 +163,59 @@ describe("applySyntacticLines / clearSyntacticLines", () => {
       "El camino era largo y pedregoso; sin embargo, el viajero continuó sin descanso hasta la cima.",
     );
   });
+
+  it("asigna ciclo 0..3 a los chunks cuando chromaticGuide está activo", () => {
+    const root = document.createElement("div");
+    root.append(para(LONG));
+    applySyntacticLines(root, { chromaticGuide: true, syntacticLines: true });
+    const chunks = root.querySelectorAll(".lecta-syntactic-chunk");
+    expect(chunks.length).toBeGreaterThan(2);
+    expect(chunks[0].getAttribute("data-chunk-cycle")).toBe("0");
+    expect(chunks[1].getAttribute("data-chunk-cycle")).toBe("1");
+    if (chunks.length > 2) expect(chunks[2].getAttribute("data-chunk-cycle")).toBe("2");
+    if (chunks.length > 3) expect(chunks[3].getAttribute("data-chunk-cycle")).toBe("3");
+  });
+
+  it("soporta guía cromática inline cuando syntacticLines es false", () => {
+    const root = document.createElement("div");
+    root.append(para(LONG));
+    applySyntacticLines(root, { chromaticGuide: true, syntacticLines: false });
+    // No debe tener syn-line (no saltos de bloque)
+    expect(root.querySelectorAll(`.${SYNTACTIC_LINE_CLASS}`)).toHaveLength(0);
+    const inlineChunks = root.querySelectorAll(".lecta-syntactic-chunk[data-inline='true']");
+    expect(inlineChunks.length).toBeGreaterThan(0);
+    expect(inlineChunks[0].hasAttribute("data-chunk-cycle")).toBe(true);
+  });
+
+  it("inyecta anclajes biónicos en palabras clave omitiendo stopwords y elementos mark", () => {
+    const root = document.createElement("div");
+    const p = document.createElement("p");
+    p.innerHTML =
+      "El gato dormía tranquilamente sobre la alfombra. <mark class='target'>Biblioteca</mark> cerrada.";
+    root.append(p);
+    applySyntacticLines(root, { bionicAnchors: true, syntacticLines: true });
+
+    const anchors = root.querySelectorAll(".lecta-fixation-anchor");
+    expect(anchors.length).toBeGreaterThan(0);
+    // Palabras como "gato" o "tranquilamente" deben tener ancla de 1 a 3 letras
+    const anchorTexts = Array.from(anchors).map((a) => a.textContent);
+    expect(anchorTexts).toContain("ga");
+    // "El" o "sobre" o "la" son stopwords y no deben ser anclas
+    expect(anchorTexts).not.toContain("El");
+    expect(anchorTexts).not.toContain("sobre");
+
+    // Dentro del elemento mark no debe haberse inyectado anclaje
+    const markEl = p.querySelector("mark.target");
+    expect(markEl?.querySelector(".lecta-fixation-anchor")).toBeNull();
+
+    // clearSyntacticLines restaura el texto perfectamente sin alterar nada
+    clearSyntacticLines(root);
+    expect(root.querySelectorAll(".lecta-fixation-anchor")).toHaveLength(0);
+    expect(p.querySelector("mark.target")?.textContent).toBe("Biblioteca");
+    expect(p.textContent).toBe(
+      "El gato dormía tranquilamente sobre la alfombra. Biblioteca cerrada.",
+    );
+  });
 });
 
 describe("splitSentenceIntoSyntacticChunks", () => {

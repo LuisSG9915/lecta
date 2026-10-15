@@ -20,7 +20,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { CompanionPanel } from "./CompanionPanel";
+import { CompanionPanel, type CompanionTab } from "./CompanionPanel";
 import { CompanionCelebration } from "./CompanionCelebration";
 import {
   loadCompanionDevicePrefs,
@@ -185,7 +185,7 @@ type CompanionContextValue = {
   // para deshabilitar botones y anunciar el estado.
   activeCare: CareKind | null;
   open: boolean;
-  openPanel: () => void;
+  openPanel: (tab?: CompanionTab) => void;
   closePanel: () => void;
   // La superficie visible (hoy solo el lector) reporta cuándo los
   // festejos deben quedar pendientes: presencia «off», supresión por
@@ -278,20 +278,33 @@ export function CompanionProvider({
     setOpen(false);
   }, []);
 
-  const openPanel = useCallback(() => {
-    // Gesto voluntario (presionar al gato): maúlla si el sonido está
-    // activo en este dispositivo; el módulo decide y no hace nada si
-    // está apagado.
-    playCompanionSound("meow");
-    // El overlay integra la hoja con «atrás» del navegador; si ya
-    // estaba abierta no se apila otra entrada de historial.
-    overlayRef.current ??= pushOverlay(() => {
-      overlayRef.current = null;
-      setOpen(false);
-    });
-    setPanelUserId(userId);
-    setOpen(true);
-  }, [userId]);
+  const [panelTab, setPanelTab] = useState<CompanionTab>("care");
+
+  const openPanel = useCallback(
+    (tab?: CompanionTab | unknown) => {
+      if (
+        typeof tab === "string" &&
+        (tab === "care" || tab === "rewards" || tab === "closet" || tab === "collection")
+      ) {
+        setPanelTab(tab);
+      } else {
+        setPanelTab("care");
+      }
+      // Gesto voluntario (presionar al gato): maúlla si el sonido está
+      // activo en este dispositivo; el módulo decide y no hace nada si
+      // está apagado.
+      playCompanionSound("meow");
+      // El overlay integra la hoja con «atrás» del navegador; si ya
+      // estaba abierta no se apila otra entrada de historial.
+      overlayRef.current ??= pushOverlay(() => {
+        overlayRef.current = null;
+        setOpen(false);
+      });
+      setPanelUserId(userId);
+      setOpen(true);
+    },
+    [userId],
+  );
 
   // Al desmontar el provider la hoja se va sin tocar el historial —
   // el entry se libera por flujo normal si la app sigue viva.
@@ -525,6 +538,7 @@ export function CompanionProvider({
           onCare={care}
           onClose={closePanel}
           reducedMotion={reducedMotion}
+          initialTab={panelTab}
         />
       ) : null}
       {/* Inbox de festejos: montado mientras el juego está encendido

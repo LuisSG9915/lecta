@@ -244,10 +244,21 @@ export function detectLanguageFromText(text: string): "es" | "en" | null {
 export const getBookLanguage = (book: EpubBook): string =>
   normalizeLanguage(flattenMetadataValue(book.metadata?.language));
 
+import { detectBookLanguage as detectSharedBookLanguage } from "../../shared/epub-meta";
+
+export { detectSharedBookLanguage };
+
 // Detecta el idioma del libro combinando metadatos OPF y análisis
 // heurístico del texto si los metadatos faltan o declaran "und" (indeterminado).
-export async function detectBookLanguage(book: EpubBook): Promise<string> {
-  const rawLang = flattenMetadataValue(book.metadata?.language);
+export async function detectBookLanguage(
+  bookOrOpf?: EpubBook | string,
+  sampleText?: string,
+): Promise<string> {
+  if (typeof bookOrOpf === "string" || (!bookOrOpf && sampleText)) {
+    return detectSharedBookLanguage(bookOrOpf, sampleText);
+  }
+  const book = bookOrOpf as EpubBook;
+  const rawLang = flattenMetadataValue(book?.metadata?.language);
   const trimmed = typeof rawLang === "string" ? rawLang.trim().toLowerCase() : "";
   const isAmbiguous = !trimmed || trimmed === "und" || trimmed === "zxx" || trimmed === "mul";
 
@@ -257,12 +268,12 @@ export async function detectBookLanguage(book: EpubBook): Promise<string> {
   }
 
   // Comprobar descripción si existe
-  const desc = flattenMetadataValue(book.metadata?.description);
+  const desc = flattenMetadataValue(book?.metadata?.description);
   const descDetected = detectLanguageFromText(desc);
   if (descDetected) return descDetected;
 
   // Muestrear las primeras secciones de lectura reales del libro
-  const sections = book.sections ?? [];
+  const sections = book?.sections ?? [];
   for (let i = 0; i < Math.min(sections.length, 4); i++) {
     try {
       const doc = await sections[i]?.createDocument?.();

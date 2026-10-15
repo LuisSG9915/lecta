@@ -126,6 +126,14 @@ vi.mock("./lib/idb", () => ({
   loadBookPosition: vi.fn(async () => undefined),
   loadLatestBookHash: vi.fn(async () => undefined),
   loadSessionValue: vi.fn(async () => "1"),
+  loadShelfBootstrap: vi.fn(async () => ({
+    positions: [],
+    savedWords: [],
+    latestHash: undefined,
+    readingDays: [],
+    intervals: [],
+    rawGoal: null,
+  })),
   saveBook: vi.fn(async () => undefined),
   saveBookPosition: vi.fn(async () => undefined),
   saveSessionValue: vi.fn(async () => undefined),
@@ -188,10 +196,12 @@ const CONFLICT = {
 };
 
 beforeEach(() => {
+  window.history.replaceState({}, "", "/");
   window.scrollTo = vi.fn();
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);
+  vi.mocked(authClient.useSession).mockReturnValue({ data: null, isPending: false } as never);
   vi.mocked(listStoredBooks).mockResolvedValue([
     { hash: "h1", name: "b.epub", addedAt: 1, data: new Blob() },
   ] as never);
@@ -201,13 +211,15 @@ beforeEach(() => {
     addedAt: 1,
     data: new Blob(),
   } as never);
+  vi.mocked(listBookOps).mockResolvedValue([] as never);
+  vi.mocked(listRemoteBooks).mockResolvedValue([] as never);
   vi.mocked(loadSessionValue).mockResolvedValue("1");
   vi.mocked(syncPositions).mockResolvedValue({ conflicts: [CONFLICT] } as never);
 });
 
 afterEach(() => {
   act(() => {
-    history.replaceState({}, "");
+    history.replaceState({}, "", "/");
     window.dispatchEvent(new Event("popstate"));
     root.unmount();
   });
@@ -333,28 +345,30 @@ describe("App · navegación principal (Fase 2)", () => {
     expect(header?.querySelector("button")).toBeNull();
   });
 
-  it("barra de navegación tiene 3 destinos y Estantería está activa inicialmente", async () => {
+  it("barra de navegación tiene 4 destinos y Biblioteca está activa inicialmente", async () => {
     renderRoot();
     await flush();
     const nav = host.querySelector("nav.app-nav");
     expect(nav).toBeTruthy();
     const items = nav?.querySelectorAll(".app-nav-item");
-    expect(items?.length).toBe(3);
+    expect(items?.length).toBe(4);
 
     const shelfBtn = nav?.querySelector<HTMLButtonElement>('[data-dest="shelf"]');
-    const vocabBtn = nav?.querySelector<HTMLButtonElement>('[data-dest="vocab"]');
+    const vocabBtn = nav?.querySelector<HTMLButtonElement>('[data-dest="vocabulary"]');
+    const journeyBtn = nav?.querySelector<HTMLButtonElement>('[data-dest="journey"]');
     const accountBtn = nav?.querySelector<HTMLButtonElement>('[data-dest="account"]');
 
     expect(shelfBtn?.getAttribute("aria-current")).toBe("page");
     expect(vocabBtn?.getAttribute("aria-current")).toBeNull();
+    expect(journeyBtn?.getAttribute("aria-current")).toBeNull();
     expect(accountBtn?.getAttribute("aria-current")).toBeNull();
   });
 
-  it("Estantería → Cuaderno → Tú → atrás vuelve a Estantería con un solo paso de historial", async () => {
+  it("Biblioteca → Cuaderno → Perfil → atrás vuelve a Biblioteca con un solo paso de historial", async () => {
     renderRoot();
     await flush();
     const nav = host.querySelector("nav.app-nav");
-    const vocabBtn = nav?.querySelector<HTMLButtonElement>('[data-dest="vocab"]');
+    const vocabBtn = nav?.querySelector<HTMLButtonElement>('[data-dest="vocabulary"]');
     const accountBtn = nav?.querySelector<HTMLButtonElement>('[data-dest="account"]');
     const shelfBtn = nav?.querySelector<HTMLButtonElement>('[data-dest="shelf"]');
 
@@ -364,7 +378,7 @@ describe("App · navegación principal (Fase 2)", () => {
     expect(vocabBtn?.getAttribute("aria-current")).toBe("page");
     expect(shelfBtn?.getAttribute("aria-current")).toBeNull();
 
-    // Navegar a Tú
+    // Navegar a Perfil
     await act(async () => accountBtn!.click());
     await flush();
     expect(accountBtn?.getAttribute("aria-current")).toBe("page");
@@ -372,7 +386,7 @@ describe("App · navegación principal (Fase 2)", () => {
     expect(shelfBtn?.getAttribute("aria-current")).toBeNull();
     expect(host.querySelector(".account-page")).toBeTruthy();
 
-    // Atrás del navegador debe regresar a Estantería en un solo paso
+    // Atrás del navegador debe regresar a Biblioteca en un solo paso
     popBack();
     await flush();
     expect(shelfBtn?.getAttribute("aria-current")).toBe("page");
@@ -380,13 +394,13 @@ describe("App · navegación principal (Fase 2)", () => {
     expect(host.querySelector(".account-page")).toBeNull();
   });
 
-  it("Tu recorrido abierto desde Tú regresa a Tú al cerrarse", async () => {
+  it("Tu recorrido abierto desde Perfil regresa a Perfil al cerrarse", async () => {
     renderRoot();
     await flush();
     const nav = host.querySelector("nav.app-nav");
     const accountBtn = nav?.querySelector<HTMLButtonElement>('[data-dest="account"]');
 
-    // Abrir Tú
+    // Abrir Perfil
     await act(async () => accountBtn!.click());
     await flush();
     expect(host.querySelector(".account-page")).toBeTruthy();
@@ -394,7 +408,7 @@ describe("App · navegación principal (Fase 2)", () => {
     const idBeforeJourney =
       (history.state as { lecta?: number } | null)?.lecta ?? 0;
 
-    // Abrir Journey desde la fila de recorrido en Tú
+    // Abrir Journey desde la fila de recorrido en Perfil
     const journeyRow = host.querySelector<HTMLButtonElement>(".account-journey-row");
     expect(journeyRow).toBeTruthy();
     await act(async () => journeyRow!.click());
@@ -408,12 +422,12 @@ describe("App · navegación principal (Fase 2)", () => {
     });
     await flush();
 
-    // Tú sigue visible
+    // Perfil sigue visible
     expect(host.querySelector(".account-page")).toBeTruthy();
     expect(accountBtn?.getAttribute("aria-current")).toBe("page");
   });
 
-  it("enlace con token abre directamente el destino Tú", async () => {
+  it("enlace con token abre directamente el destino Perfil", async () => {
     window.history.replaceState({}, "", "/?token=reset123");
     renderRoot();
     await flush();
@@ -424,12 +438,12 @@ describe("App · navegación principal (Fase 2)", () => {
     expect(host.querySelector(".account-page")).toBeTruthy();
   });
 
-  it("Cuaderno se preserva con Activity al alternar a Estantería y de vuelta", async () => {
+  it("Cuaderno se preserva con Activity al alternar a Biblioteca y de vuelta", async () => {
     renderRoot();
     await flush();
 
     const nav = host.querySelector("nav.app-nav");
-    const vocabBtn = nav?.querySelector<HTMLButtonElement>('[data-dest="vocab"]');
+    const vocabBtn = nav?.querySelector<HTMLButtonElement>('[data-dest="vocabulary"]');
     const shelfBtn = nav?.querySelector<HTMLButtonElement>('[data-dest="shelf"]');
 
     // Inicialmente Cuaderno no está montado
@@ -443,7 +457,7 @@ describe("App · navegación principal (Fase 2)", () => {
     await flush();
     expect(host.querySelector(".notebook--page")).toBeTruthy();
 
-    // Alternar a Estantería: Cuaderno se conserva en el DOM (en Activity hidden)
+    // Alternar a Biblioteca: Cuaderno se conserva en el DOM (en Activity hidden)
     await act(async () => shelfBtn!.click());
     await flush();
     expect(shelfBtn?.getAttribute("aria-current")).toBe("page");
@@ -455,6 +469,47 @@ describe("App · navegación principal (Fase 2)", () => {
     await flush();
     expect(vocabBtn?.getAttribute("aria-current")).toBe("page");
     expect(host.querySelector(".notebook--page")).toBeTruthy();
+  });
+
+  it("muestra la MiniReaderBar al cambiar de pestaña si hay un libro activo", async () => {
+    vi.mocked(syncPositions).mockResolvedValue({ conflicts: [] } as never);
+    renderRoot();
+    await flush();
+
+    // Abrir el libro desde la estantería
+    const openBtn = host.querySelector<HTMLButtonElement>(".shelf-book-cover");
+    expect(openBtn).toBeTruthy();
+    await act(async () => openBtn!.click());
+    await flush();
+    await flush();
+    expect(host.querySelector(".reader-stub")).toBeTruthy();
+
+    // Volver / cerrar lector para regresar a la vista general
+    popBack();
+    await flush();
+    expect(host.querySelector(".reader-stub")).toBeNull();
+
+    // En Biblioteca no se muestra MiniReaderBar porque ya está el héroe
+    expect(host.querySelector(".mini-reader-bar")).toBeNull();
+
+    // Al cambiar a Cuaderno (o Perfil), la MiniReaderBar aparece
+    const nav = host.querySelector("nav.app-nav");
+    const vocabBtn = nav?.querySelector<HTMLButtonElement>('[data-dest="vocabulary"]');
+    await act(async () => vocabBtn!.click());
+    await flush();
+
+    const bar = host.querySelector(".mini-reader-bar");
+    expect(bar).toBeTruthy();
+    expect(bar?.textContent).toContain("b.epub");
+    expect(bar?.textContent).toContain("Continuar leyendo →");
+
+    // Al pulsar «Continuar leyendo →», reabre el lector
+    const resumeBtn = bar?.querySelector<HTMLButtonElement>(".mini-reader-resume");
+    expect(resumeBtn).toBeTruthy();
+    await act(async () => resumeBtn!.click());
+    await flush();
+
+    expect(host.querySelector(".reader-stub")).toBeTruthy();
   });
 });
 

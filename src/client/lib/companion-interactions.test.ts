@@ -335,5 +335,35 @@ describe("afinidad y saludo contextual (Fase 3)", () => {
     expect(typeof gDefault).toBe("string");
     expect(gDefault.length).toBeGreaterThan(0);
   });
+
+  it("handleCompanionZoneAction responde adecuadamente a caricias, boop y choca la patita", async () => {
+    const { care } = await freshModules();
+
+    // Zona 1: Cabeza (toque corto y caricia prolongada)
+    const tapHead = care.handleCompanionZoneAction("head", "tap");
+    expect(tapHead.zone).toBe("head");
+    expect(tapHead.reactionMood).toBe("happy");
+    expect(tapHead.hapticPattern).toBe(15);
+
+    const petHead = care.handleCompanionZoneAction("head", "pet");
+    expect(petHead.zone).toBe("head");
+    expect(petHead.reactionMood).toBe("purring");
+    expect(petHead.reactionPose).toBe("pet");
+    expect(petHead.message).toContain("Mrrr");
+
+    // Zona 2: Nariz ("¡Boop!")
+    const boopNose = care.handleCompanionZoneAction("nose", "boop");
+    expect(boopNose.zone).toBe("nose");
+    expect(boopNose.reactionMood).toBe("curious");
+    expect(boopNose.message).toContain("cosquillas");
+
+    // Zona 3: Patitas ("Choca la patita")
+    const highFivePaws = care.handleCompanionZoneAction("paws", "highfive");
+    expect(highFivePaws.zone).toBe("paws");
+    expect(highFivePaws.reactionMood).toBe("excited");
+    expect(highFivePaws.reactionPose).toBe("greet");
+    expect(highFivePaws.message).toContain("Choca esa patita");
+  });
 });
+
 

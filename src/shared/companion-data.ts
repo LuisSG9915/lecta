@@ -182,6 +182,12 @@ export const COMPANION_ARTICLES = {
   "pelaje-negro": "coat",
   "pelaje-tuxedo": "coat",
   "pelaje-dorado": "coat",
+  // Cinco pelajes principales (coatId):
+  tuxedo: "coat",
+  latte: "coat",
+  ginger: "coat",
+  mist: "coat",
+  calico: "coat",
   // Nuevos accesorios Fase 3:
   beret_poet: "head",
   wizard_hat: "head",
@@ -198,6 +204,124 @@ export const COMPANION_ARTICLES = {
 } as const;
 export type CompanionArticle = keyof typeof COMPANION_ARTICLES;
 export type EquippedSlot = (typeof COMPANION_ARTICLES)[CompanionArticle];
+
+// Pelajes del gato compañero (Bloque 1): 5 paletas de pelaje con alto contraste
+export type CompanionCoatId = "tuxedo" | "latte" | "ginger" | "mist" | "calico";
+
+export interface CompanionCoatDef {
+  id: CompanionCoatId;
+  name: string;
+  description: string;
+  fur: string;
+  chest: string;
+  accent: string;
+  eyes: string;
+  nose: string;
+  earInner: string;
+  pawPads: string;
+  rimLight?: string;
+  articleId: string;
+}
+
+export const COMPANION_COATS: Record<CompanionCoatId, CompanionCoatDef> = {
+  tuxedo: {
+    id: "tuxedo",
+    name: "Tinta y Crema",
+    description: "Pelaje negro azulado aterciopelado con borde de luz y pecho blanco crema",
+    fur: "#232730",
+    chest: "#FAF3E8",
+    accent: "#FAF3E8",
+    eyes: "#E8A838",
+    nose: "#E07A72",
+    earInner: "#F4A698",
+    pawPads: "#F4A698",
+    rimLight: "#4A5264",
+    articleId: "pelaje-tuxedo",
+  },
+  latte: {
+    id: "latte",
+    name: "Crema Canela",
+    description: "Cuerpo crema tostado con orejas y patitas café canela y ojos azul zafiro",
+    fur: "#F3E3CE",
+    chest: "#FAF4EB",
+    accent: "#8C6246",
+    eyes: "#5B9BD5",
+    nose: "#8A5A52",
+    earInner: "#D9A78F",
+    pawPads: "#D9A78F",
+    articleId: "pelaje-siames",
+  },
+  ginger: {
+    id: "ginger",
+    name: "Naranja Miel",
+    description: "Pelaje naranja cálido con rayitas frontales y ojos verde esmeralda",
+    fur: "#E88846",
+    chest: "#FFF6EA",
+    accent: "#B85A22",
+    eyes: "#4EA874",
+    nose: "#E07A72",
+    earInner: "#F4A698",
+    pawPads: "#F4A698",
+    articleId: "pelaje-atigrado",
+  },
+  mist: {
+    id: "mist",
+    name: "Gris Neblina",
+    description: "Pelaje gris perla claro con sombras lavanda y ojos miel",
+    fur: "#B8C2CC",
+    chest: "#FFFFFF",
+    accent: "#7E8896",
+    eyes: "#D4A054",
+    nose: "#C98A94",
+    earInner: "#E2BAC2",
+    pawPads: "#E2BAC2",
+    articleId: "pelaje-gris",
+  },
+  calico: {
+    id: "calico",
+    name: "Calicó Literario",
+    description: "Base crema marfil con manchas orgánicas en terracota y carbón suave",
+    fur: "#FAF4EB",
+    chest: "#FFFFFF",
+    accent: "#D97941",
+    eyes: "#4EA874",
+    nose: "#E07A72",
+    earInner: "#F4A698",
+    pawPads: "#F4A698",
+    articleId: "pelaje-calico",
+  },
+};
+
+export const COMPANION_COAT_IDS: readonly CompanionCoatId[] = [
+  "tuxedo",
+  "latte",
+  "ginger",
+  "mist",
+  "calico",
+] as const;
+
+export function resolveCoatId(articleOrCoatId?: string | null): CompanionCoatId {
+  if (!articleOrCoatId) return "tuxedo";
+  if (
+    articleOrCoatId === "tuxedo" ||
+    articleOrCoatId === "pelaje-tuxedo" ||
+    articleOrCoatId === "pelaje-negro"
+  )
+    return "tuxedo";
+  if (articleOrCoatId === "latte" || articleOrCoatId === "pelaje-siames")
+    return "latte";
+  if (
+    articleOrCoatId === "ginger" ||
+    articleOrCoatId === "pelaje-atigrado" ||
+    articleOrCoatId === "pelaje-dorado"
+  )
+    return "ginger";
+  if (articleOrCoatId === "mist" || articleOrCoatId === "pelaje-gris")
+    return "mist";
+  if (articleOrCoatId === "calico" || articleOrCoatId === "pelaje-calico")
+    return "calico";
+  return "tuxedo";
+}
 
 // ---------- Claves canónicas de cofres ----------
 

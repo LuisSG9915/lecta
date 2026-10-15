@@ -19,7 +19,10 @@ import {
   type SavedWord,
 } from "./idb";
 import { hasUsableDefinition } from "../../shared/lexicon";
+import { inferContextualPos, findLexicalFamily, type ContextualPos } from "../../shared/word-form";
 import { pushWordsToServer } from "./vocab";
+
+export { inferContextualPos, findLexicalFamily, type ContextualPos };
 
 const usableSenses = (entry: LexiconEntry) =>
   entry.senses.filter((sense) => sense.definition?.trim());
@@ -35,8 +38,9 @@ type MeaningPatch = Pick<
 // exactamente ese sentido (si ya no existe o quedó vacío no se
 // reasigna otra — queda para revisión manual); con solo entryId se
 // completa el orden con el primer sentido útil de esa ficha; sin
-// referencia se prefiere la ficha del propio lema y luego la primera
-// con definición. Nunca pisa campos ya guardados.
+// referencia se prefiere la ficha del propio lema (o la sugerida por
+// desambiguación sintáctica en contexto) y luego la primera con
+// definición. Nunca pisa campos ya guardados.
 export function planMeaningBackfill(
   word: SavedWord,
   entries: LexiconEntry[] | undefined,
@@ -70,12 +74,34 @@ export function planMeaningBackfill(
     return fill(entry, sense);
   }
 
+  // Desambiguador sintáctico en contexto
+  const preferredPos = word.context
+    ? inferContextualPos(word.form, word.context, word.language)
+    : null;
+
+  let candidates = usable;
+  if (preferredPos) {
+    candidates = [...usable].sort((a, b) => {
+      const aMatches =
+        a.pos?.toLowerCase() === preferredPos ||
+        (preferredPos === "sustantivo" &&
+          a.lemma.toLowerCase() === word.form.toLowerCase());
+      const bMatches =
+        b.pos?.toLowerCase() === preferredPos ||
+        (preferredPos === "sustantivo" &&
+          b.lemma.toLowerCase() === word.form.toLowerCase());
+      if (aMatches && !bMatches) return -1;
+      if (!aMatches && bMatches) return 1;
+      return 0;
+    });
+  }
+
   const own = word.lemma
-    ? usable.find(
+    ? candidates.find(
         (entry) => entry.lemma.toLowerCase() === word.lemma!.toLowerCase(),
       )
     : undefined;
-  const entry = own ?? usable[0];
+  const entry = own ?? candidates[0];
   const sense = usableSenses(entry)[0];
   if (!sense) return null;
   return fill(entry, sense);

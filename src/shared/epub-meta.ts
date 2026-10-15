@@ -1,3 +1,5 @@
+import { isStopword } from "./stopwords";
+
 export type ExtractedEpubMeta = {
   title?: string;
   author?: string;
@@ -142,7 +144,31 @@ export async function extractEpubMeta(
   return {
     title: titleMatch ? decodeXmlEntities(titleMatch[1]) : undefined,
     author: authorMatch ? decodeXmlEntities(authorMatch[1]) : undefined,
-    language: langMatch ? decodeXmlEntities(langMatch[1]) : undefined,
+    language: langMatch ? decodeXmlEntities(langMatch[1]) : detectBookLanguage(opfXml),
     sections,
   };
+}
+
+export function detectBookLanguage(opfXml?: string, sampleText?: string): "es" | "en" {
+  if (opfXml) {
+    const match = opfXml.match(/<dc:language[^>]*>([\s\S]*?)<\/dc:language>/i);
+    const raw = (match ? decodeXmlEntities(match[1]) : opfXml).trim().toLowerCase();
+    const primary = raw.split(/[-_]/)[0]?.trim();
+    if (primary === "en" || primary === "eng") return "en";
+    if (primary === "es" || primary === "spa") return "es";
+  }
+
+  if (sampleText && sampleText.trim().length >= 10) {
+    const words = sampleText.toLowerCase().match(/\b[a-záéíóúüñ]+\b/g) ?? [];
+    let enScore = 0;
+    let esScore = 0;
+    for (const w of words) {
+      if (isStopword(w, "en")) enScore++;
+      if (isStopword(w, "es")) esScore++;
+    }
+    if (enScore > esScore && enScore >= 2) return "en";
+    if (esScore > enScore && esScore >= 2) return "es";
+  }
+
+  return "es";
 }

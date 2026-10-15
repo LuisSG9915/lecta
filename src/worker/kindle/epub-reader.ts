@@ -521,11 +521,40 @@ export function extractPageWords(pageHtml: string, language = "es"): string[] {
   return candidates;
 }
 
+export function formatChapterHtmlForMode(
+  html: string,
+  mode: "clean" | "paragraphs" | "lexicon",
+): string {
+  if (mode !== "paragraphs") return html;
+
+  let pIndex = 1;
+  return html.replace(/<p(\b[^>]*)>([\s\S]*?)<\/p>/gi, (_match, attrs, content) => {
+    const textLen = stripHtml(content).length;
+    const isLong = textLen > 250;
+    const classAttrMatch = attrs.match(/\bclass="([^"]*)"/i);
+    let newAttrs: string;
+    const addedClass = isLong ? "p-guided" : "";
+    if (classAttrMatch) {
+      const existing = classAttrMatch[1];
+      const combined = `${existing} ${addedClass}`.trim();
+      newAttrs = attrs.replace(/\bclass="[^"]*"/i, `class="${combined}"`);
+    } else if (addedClass) {
+      newAttrs = `${attrs} class="${addedClass}"`;
+    } else {
+      newAttrs = attrs;
+    }
+    const numSpan = `<span class="p-num">§${pIndex}</span>`;
+    pIndex++;
+    return `<p${newAttrs}>${numSpan}${content}</p>`;
+  });
+}
+
 export function wrapWordsWithLinks(
   html: string,
   _bookHash: string,
   currentUrl: string,
   savedWords: Set<string>,
+  notedWordsMap?: Map<string, number>,
 ): string {
   const tokens = html.split(/(<[^>]+>)/g);
   let inAnchor = false;
@@ -552,9 +581,15 @@ export function wrapWordsWithLinks(
         tokens[i] = token.replace(wordRegex, (word) => {
           const lower = word.toLowerCase();
           const isSaved = savedWords.has(lower);
+          const noteIndex = notedWordsMap?.get(lower);
           const href = `${safeUrl}${sep}lookup=${encodeURIComponent(lower)}`;
-          const cls = isSaved ? "w saved" : "w";
-          return `<a href="${href}" class="${cls}">${word}</a>`;
+          let cls = isSaved ? "w saved" : "w";
+          let sup = "";
+          if (noteIndex != null) {
+            cls += " w-lexicon";
+            sup = `<sup>${noteIndex}</sup>`;
+          }
+          return `<a href="${href}" class="${cls}">${word}${sup}</a>`;
         });
       }
     }

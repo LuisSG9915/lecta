@@ -6,6 +6,10 @@ import {
   finishedBookHashes,
   weeksHistory,
   bookLabel,
+  calculateInkPoints,
+  literaryRankFor,
+  inkPathNodes,
+  LITERARY_RANKS,
 } from "./journey";
 import type { Card } from "./fsrs";
 import type { SavedReview, SavedWord } from "./idb";
@@ -169,5 +173,62 @@ describe("bookLabel", () => {
       title: "Libro terminado",
       author: "",
     });
+  });
+});
+
+describe("Rangos Literarios (Lecta v2.0)", () => {
+  it("contiene los 6 rangos literarios progresivos definidos en la especificación", () => {
+    expect(LITERARY_RANKS).toHaveLength(6);
+    expect(LITERARY_RANKS[0].name).toBe("Caminante de Papel");
+    expect(LITERARY_RANKS[1].name).toBe("Aprendiz de Tinta");
+    expect(LITERARY_RANKS[2].name).toBe("Tejedor de Frases");
+    expect(LITERARY_RANKS[3].name).toBe("Explorador de Sintaxis");
+    expect(LITERARY_RANKS[4].name).toBe("Alquimista Léxico");
+    expect(LITERARY_RANKS[5].name).toBe("Maestro de la Biblioteca");
+  });
+
+  it("calculateInkPoints combina minutos, palabras dominadas y estrategias", () => {
+    // 30 min (60 pts) + 5 palabras (50 pts) + 1 estrategia (25 pts) = 135 pts
+    const points = calculateInkPoints(30, 5, 1);
+    expect(points).toBe(135);
+  });
+
+  it("literaryRankFor calcula el rango actual y el progreso hacia el siguiente", () => {
+    // 0 puntos -> Caminante de Papel
+    const r0 = literaryRankFor(0);
+    expect(r0.currentRank.name).toBe("Caminante de Papel");
+    expect(r0.nextRank?.name).toBe("Aprendiz de Tinta");
+    expect(r0.progressPct).toBe(0);
+    expect(r0.pointsToNext).toBe(100);
+
+    // 50 puntos -> Caminante de Papel al 50%
+    const r50 = literaryRankFor(50);
+    expect(r50.currentRank.name).toBe("Caminante de Papel");
+    expect(r50.progressPct).toBe(50);
+    expect(r50.pointsToNext).toBe(50);
+
+    // 1500 puntos -> Maestro de la Biblioteca (rango máximo)
+    const rMax = literaryRankFor(1600);
+    expect(rMax.currentRank.name).toBe("Maestro de la Biblioteca");
+    expect(rMax.nextRank).toBeNull();
+    expect(rMax.progressPct).toBe(100);
+    expect(rMax.pointsToNext).toBe(0);
+  });
+});
+
+describe("Sendero de Tinta (Ink Path Milestones)", () => {
+  it("inkPathNodes clasifica los nodos en completados, actual y próximos", () => {
+    const { nodes, currentNode, nextNode, remainingText } = inkPathNodes(75);
+    expect(nodes.length).toBeGreaterThanOrEqual(7);
+
+    // 75 pts: m1 (50) completado, m2 (100) es el siguiente objetivo
+    expect(nodes[0].status).toBe("completed");
+    expect(nodes[1].status).toBe("current");
+    expect(currentNode.id).toBe("m1");
+    expect(nextNode?.id).toBe("m2");
+
+    // Texto con estimación de lectura o palabras faltantes
+    expect(remainingText).toContain("Gafas de Lectura");
+    expect(remainingText).toContain("min de lectura");
   });
 });

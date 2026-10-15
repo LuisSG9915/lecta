@@ -353,7 +353,7 @@ export default function SectionPreview({
                 return (
                   <div
                     key={row.key}
-                    className={`portico-card-3d${isFlipped ? " is-flipped" : ""}`}
+                    className={`portico-card-3d section-preview__flash-card${isFlipped ? " is-flipped section-preview__flash-card--expanded" : ""}`}
                     onClick={() => handleFlipCard(row)}
                     role="button"
                     tabIndex={0}
@@ -365,14 +365,17 @@ export default function SectionPreview({
                       }
                     }}
                   >
-                    <div className="portico-card-inner">
-                      <div className="portico-card-front">
+                    <div className="portico-card-inner section-preview__flash-inner">
+                      <div className="portico-card-front section-preview__flash-face section-preview__flash-face--front">
                         <span className="portico-card-sparkle">✦</span>
                         <strong className="portico-card-form">{row.form}</strong>
                         <span className="portico-card-hint">Toca para descubrir</span>
                       </div>
-                      <div className="portico-card-back">
-                        <strong className="portico-card-form">{row.form}</strong>
+                      <div className="portico-card-back section-preview__flash-face section-preview__flash-face--back">
+                        <div className="section-preview__flash-back-header">
+                          <strong className="section-preview__flash-word--back">{row.lemma || row.form}</strong>
+                          <span className="section-preview__flash-flip-hint" aria-hidden="true" title="Volver a girar">↺</span>
+                        </div>
                         <p className="portico-card-meaning">
                           {row.meaning ?? "Término clave de esta lectura"}
                         </p>
@@ -420,7 +423,7 @@ export default function SectionPreview({
           </div>
 
           {/* Botón Hero: Entrar al capítulo → */}
-          <div className="portico-actions-hero">
+          <div className="portico-actions-hero section-preview__actions">
             <button
               type="button"
               className="btn btn--primary portico-enter-btn"

@@ -1,11 +1,19 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { LexiconEntry } from "../lib/lexicon";
 import {
   enrichWord,
   explainInPassage,
   lookupWord,
   reportSense,
+  requestCharacterRecap,
 } from "../lib/lexicon";
+import {
+  searchBookSpoilerFree,
+  type SearchSection,
+  type SearchTocRow,
+  type SpoilerFreeEntitySummary,
+} from "../lib/book-search";
+import { inferContextualPos, findLexicalFamily } from "../lib/word-meanings";
 import { Rating, scheduleReview } from "../lib/fsrs";
 import {
   captureDbScope,
@@ -35,6 +43,7 @@ import {
 } from "../lib/profile-models";
 import Sheet from "./Sheet";
 import Icon from "./Icon";
+import { syllabifySpanish } from "../lib/syllables";
 
 import type { PhraseHit } from "../lib/phrases";
 
@@ -53,6 +62,12 @@ type WordPanelProps = {
   bookTitle?: string;
   author?: string;
   initialLevel?: 1 | 2;
+  compactMode?: boolean;
+  sections?: SearchSection[];
+  toc?: SearchTocRow[];
+  currentSectionIndex?: number;
+  currentChapterTitle?: string;
+  onSelectWord?: (word: string) => void;
   onClose: () => void;
   onSaved: (word: SavedWord) => void;
   onRemoved?: (word: SavedWord) => void;
@@ -102,6 +117,12 @@ export default function WordPanel({
   bookTitle,
   author,
   initialLevel = 1,
+  compactMode = false,
+  sections,
+  toc,
+  currentSectionIndex,
+  currentChapterTitle,
+  onSelectWord,
   onClose,
   onSaved,
   onRemoved,
@@ -109,6 +130,7 @@ export default function WordPanel({
   onNotice,
 }: WordPanelProps) {
   const [level, setLevel] = useState<1 | 2>(initialLevel);
+  const [isExpanded, setIsExpanded] = useState(!compactMode);
   const [lookup, setLookup] = useState<LookupState>({ kind: "loading" });
   const [savedEntry, setSavedEntry] = useState<SavedWord | null>(null);
   const [saving, setSaving] = useState(false);
@@ -131,6 +153,83 @@ export default function WordPanel({
   // catálogo (lookupWord) no usa IA y sigue igual.
   const [useAi, setUseAi] = useState(true);
 
+  // Innovación 2: Atlas sin spoilers
+  const isProperNoun = useMemo(() => /^[A-ZÁÉÍÓÚÜÑ]/.test(word.trim()), [word]);
+  const [characterSummary, setCharacterSummary] = useState<SpoilerFreeEntitySummary | null>(null);
+  const [characterRecap, setCharacterRecap] = useState<{
+    state: "idle" | "busy" | "done" | "error";
+    summary?: string;
+    role?: string;
+    error?: string;
+  }>({ state: "idle" });
+
+  useEffect(() => {
+    let cancelled = false;
+    if (sections && sections.length > 0 && (isProperNoun || lookup.kind === "notFound")) {
+      void searchBookSpoilerFree(
+        sections,
+        toc ?? [],
+        word,
+        currentSectionIndex ?? 0,
+      ).then((res) => {
+        if (!cancelled) setCharacterSummary(res);
+      }).catch(() => {});
+    } else if (context && (isProperNoun || lookup.kind === "notFound")) {
+      queueMicrotask(() => {
+        if (!cancelled) {
+          setCharacterSummary({
+            query: word,
+            firstMention: {
+              sectionIndex: currentSectionIndex ?? 0,
+              chapterLabel: currentChapterTitle ?? `Capítulo ${(currentSectionIndex ?? 0) + 1}`,
+              sentence: context,
+            },
+            recentMentions: [
+              {
+                sectionIndex: currentSectionIndex ?? 0,
+                chapterLabel: currentChapterTitle ?? `Capítulo ${(currentSectionIndex ?? 0) + 1}`,
+                sentence: context,
+              },
+            ],
+            totalMentionsSoFar: 1,
+            excerptsSoFar: [context],
+          });
+        }
+      });
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [word, sections, toc, currentSectionIndex, currentChapterTitle, isProperNoun, lookup.kind, context]);
+
+  const handleCharacterRecap = async () => {
+    if (characterRecap.state === "busy") return;
+    setCharacterRecap({ state: "busy" });
+    const excerpts = characterSummary?.excerptsSoFar?.length
+      ? characterSummary.excerptsSoFar
+      : context
+        ? [context]
+        : [];
+    const res = await requestCharacterRecap({
+      entityName: word,
+      bookTitle,
+      currentChapterTitle,
+      excerptsSoFar: excerpts,
+    }, captureDbScope());
+    if (res.ok) {
+      setCharacterRecap({
+        state: "done",
+        summary: res.summary,
+        role: res.role,
+      });
+    } else {
+      setCharacterRecap({
+        state: "error",
+        error: res.error,
+      });
+    }
+  };
+
   useEffect(() => {
     let cancelled = false;
     void loadUseAi(captureDbScope()).then((on) => {
@@ -151,34 +250,51 @@ export default function WordPanel({
       ]);
       if (cancelled) return;
       if (stored) setSavedEntry(stored);
-      // Ficha nueva: la acepción elegida vuelve a la primera.
       setSelected({ entryIndex: 0, senseIndex: 0 });
       setReport("idle");
       setPassageExplanation(null);
+      setCharacterRecap({ state: "idle" });
       setLevel(initialLevel);
       if (!result.ok) setLookup({ kind: "error", message: result.error, offline: result.offline });
       else if (!result.found) setLookup({ kind: "notFound" });
       else setLookup({ kind: "found", entries: result.entries, offline: result.offline });
-      // Consultar es un acto neutral: no deja evidencia de
-      // conocimiento (el trayecto sí la anota como consulta).
     })();
     return () => {
       cancelled = true;
     };
   }, [word, language, initialLevel]);
 
-  const primary = lookup.kind === "found" ? lookup.entries[0] : undefined;
-  const totalSenses =
-    lookup.kind === "found"
-      ? lookup.entries.reduce((count, entry) => count + entry.senses.length, 0)
-      : 0;
+  // Innovación 1: Desambiguador sintáctico y reordenación de entradas
+  const preferredPos = useMemo(() => {
+    return context ? inferContextualPos(word, context, language) : null;
+  }, [word, context, language]);
+
+  const entries = useMemo(() => {
+    const rawEntries = lookup.kind === "found" ? lookup.entries : [];
+    if (!preferredPos || rawEntries.length <= 1) return rawEntries;
+    return [...rawEntries].sort((a, b) => {
+      const aMatches =
+        a.pos?.toLowerCase() === preferredPos ||
+        (preferredPos === "sustantivo" &&
+          a.lemma.toLowerCase() === word.toLowerCase());
+      const bMatches =
+        b.pos?.toLowerCase() === preferredPos ||
+        (preferredPos === "sustantivo" &&
+          b.lemma.toLowerCase() === word.toLowerCase());
+      if (aMatches && !bMatches) return -1;
+      if (!aMatches && bMatches) return 1;
+      return 0;
+    });
+  }, [lookup, preferredPos, word]);
+
+  const primary = entries[0];
+  const totalSenses = entries.reduce((count, entry) => count + entry.senses.length, 0);
   const multiSense = totalSenses > 1;
 
-  // Entrada y acepción elegidas (cae a la primera si el índice quedó
-  // fuera de rango tras un nuevo resultado).
-  const entries = lookup.kind === "found" ? lookup.entries : [];
   const chosenEntry = entries[selected.entryIndex] ?? entries[0];
   const chosenSense = chosenEntry?.senses[selected.senseIndex] ?? chosenEntry?.senses[0];
+
+  const lexicalFamily = useMemo(() => findLexicalFamily(word, language), [word, language]);
 
   const enrich = async () => {
     setLookup({ kind: "enriching" });
@@ -207,6 +323,7 @@ export default function WordPanel({
         bookTitle,
         author,
         language,
+        nativeLanguage: loadNativeLanguage(),
       },
       captureDbScope(),
     );
@@ -381,47 +498,6 @@ export default function WordPanel({
     }
   };
 
-  // «Ya la conocía»: la palabra NO va al cuaderno ni crea tarjeta —
-  // solo deja la evidencia declarada (alimenta el perfil léxico) y
-  // su anotación en el historial; la ficha se cierra en el acto.
-  const declareKnown = async () => {
-    if (saving) return;
-    setSaving(true);
-    setSaveError("");
-    setSyncNote(false);
-    try {
-      const scope = captureDbScope();
-      const lemma = (chosenEntry?.lemma ?? word).toLowerCase();
-      const row = await saveKnowledge(
-        {
-          language,
-          lemma,
-          known: true,
-          source: "declared",
-        },
-        scope,
-      );
-      void pushKnowledgeToServer([row], scope);
-      void recordReview(
-        {
-          language,
-          form: word,
-          kind: "declared",
-          rating: "known",
-        },
-        scope,
-      ).catch(() => {
-        /* el historial es auxiliar; no deshace la marca */
-      });
-      triggerHaptic(10);
-      onKnowledgeChanged?.(row, { form: word, kind: "declared" });
-      onClose();
-    } catch {
-      setSaveError("No se pudo guardar la marca. Intenta de nuevo.");
-    } finally {
-      setSaving(false);
-    }
-  };
 
   const remove = async () => {
     if (saving) return;
@@ -487,6 +563,68 @@ export default function WordPanel({
     }
   };
 
+  if (compactMode && !isExpanded) {
+    const syllables = syllabifySpanish(word, "·");
+    let briefSense = "Buscando definición...";
+    if (lookup.kind === "found") {
+      const def = chosenSense?.definition || lookup.entries[0]?.senses[0]?.definition;
+      if (def) {
+        const words = def.split(/\s+/);
+        briefSense = words.slice(0, 8).join(" ") + (words.length > 8 ? "..." : "");
+      } else {
+        briefSense = "Sin definición disponible.";
+      }
+    } else if (lookup.kind === "notFound") {
+      briefSense = "Sin definición en catálogo.";
+    } else if (lookup.kind === "error") {
+      briefSense = "Sin conexión al catálogo.";
+    }
+
+    const isAlreadySaved = Boolean(savedEntry);
+
+    return (
+      <div
+        className="micro-gloss-panel"
+        role="dialog"
+        aria-label={`Micro-glosa de ${word}`}
+      >
+        <div
+          className="micro-gloss-info"
+          onClick={() => setIsExpanded(true)}
+          style={{ cursor: "pointer" }}
+          title="Toca para ver ficha completa"
+        >
+          <div className="micro-gloss-syllables">{syllables}</div>
+          <div className="micro-gloss-meaning">{briefSense}</div>
+        </div>
+        <div className="micro-gloss-actions">
+          <button
+            type="button"
+            className="micro-gloss-btn"
+            disabled={saving}
+            onClick={() => {
+              if (isAlreadySaved) {
+                void remove();
+              } else {
+                void save();
+              }
+            }}
+          >
+            {isAlreadySaved ? "Guardada ✓" : "+ Guardar"}
+          </button>
+          <button
+            type="button"
+            className="micro-gloss-close"
+            aria-label="Cerrar micro-glosa"
+            onClick={onClose}
+          >
+            ✕
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <Sheet label={`Palabra ${word}`} onClose={onClose} side="right" variant="peek">
       <div className="sheet-head">
@@ -503,27 +641,55 @@ export default function WordPanel({
             <Icon name="speaker" size={16} />
           </button>
         </strong>
-        <div className="word-panel-quick-actions">
-          <button
-            type="button"
-            className="btn--quick-action btn--quick-known"
-            aria-label="✓ Ya la sé"
-            title="Marcar como conocida y recalibrar perfil"
-            disabled={saving}
-            onClick={() => void handleQuickKnown()}
-          >
-            ✓ Ya la sé
-          </button>
-          <button
-            type="button"
-            className={`btn--quick-action btn--pin-notebook${savedEntry?.priority ? " is-pinned" : ""}`}
-            aria-label="★ Fijar en mi cuaderno"
-            title="Fijar en cuaderno con prioridad"
-            disabled={saving}
-            onClick={() => void handlePinNotebook()}
-          >
-            {savedEntry?.priority ? "★ Fijada en mi cuaderno" : "★ Fijar en mi cuaderno"}
-          </button>
+        <div className="word-panel-quick-actions word-panel-status-bar">
+          {savedEntry ? (
+            <>
+              <span className="word-panel-saved-badge">★ Guardada en tu cuaderno</span>
+              <button
+                type="button"
+                className="btn--quick-action btn--remove-word"
+                disabled={saving}
+                onClick={() => void remove()}
+                aria-label="Quitar de mi cuaderno"
+              >
+                Quitar
+              </button>
+              <button
+                type="button"
+                className="btn--quick-action btn--view-notebook"
+                onClick={() => {
+                  onClose();
+                  window.location.hash = "#vocabulary";
+                }}
+                aria-label="Ver en cuaderno"
+              >
+                Ver en cuaderno →
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                className="btn--quick-action btn--pin-notebook btn btn--primary"
+                aria-label="★ Guardar en mi cuaderno"
+                title="Guardar en cuaderno"
+                disabled={saving}
+                onClick={() => void handlePinNotebook()}
+              >
+                ★ Guardar en mi cuaderno
+              </button>
+              <button
+                type="button"
+                className="btn--quick-action btn--quick-known btn"
+                aria-label="✓ Ya la sé"
+                title="Marcar como conocida y recalibrar perfil"
+                disabled={saving}
+                onClick={() => void handleQuickKnown()}
+              >
+                ✓ Ya la sé
+              </button>
+            </>
+          )}
         </div>
         <button
           type="button"
@@ -630,6 +796,71 @@ export default function WordPanel({
                 ) : null}
               </div>
 
+              {lexicalFamily.length > 0 ? (
+                <div className="word-panel-lexical-family">
+                  <span className="eyebrow">Familia léxica</span>
+                  <div className="lexical-family-chips">
+                    {lexicalFamily.map((rel) => (
+                      <button
+                        key={rel}
+                        type="button"
+                        className="lexical-chip"
+                        onClick={() => onSelectWord?.(rel)}
+                        title={`Explorar «${rel}»`}
+                      >
+                        {rel}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {characterSummary && isProperNoun ? (
+                <div className="spoiler-free-card" role="region" aria-label="Atlas del libro sin spoilers">
+                  <div className="spoiler-free-header">
+                    <span className="spoiler-free-badge">🧭 Personaje / Lugar (Sin Spoilers)</span>
+                    <span className="spoiler-free-mentions">
+                      {characterSummary.totalMentionsSoFar} menci{characterSummary.totalMentionsSoFar === 1 ? "ón" : "ones"} hasta aquí
+                    </span>
+                  </div>
+
+                  {characterSummary.firstMention ? (
+                    <div className="spoiler-free-section">
+                      <p className="meta">Primera aparición: <strong>{characterSummary.firstMention.chapterLabel}</strong></p>
+                      <p className="spoiler-free-quote">«{characterSummary.firstMention.sentence}»</p>
+                    </div>
+                  ) : null}
+
+                  {characterSummary.recentMentions.length > 1 ? (
+                    <div className="spoiler-free-section">
+                      <p className="meta">Aparición reciente: <strong>{characterSummary.recentMentions[characterSummary.recentMentions.length - 1].chapterLabel}</strong></p>
+                      <p className="spoiler-free-quote">«{characterSummary.recentMentions[characterSummary.recentMentions.length - 1].sentence}»</p>
+                    </div>
+                  ) : null}
+
+                  <button
+                    type="button"
+                    className="btn btn--character-recap"
+                    disabled={characterRecap.state === "busy"}
+                    onClick={() => void handleCharacterRecap()}
+                  >
+                    {characterRecap.state === "busy" ? "Consultando al gato…" : "🐱 ¿Quién es hasta este capítulo?"}
+                  </button>
+
+                  {characterRecap.state === "done" && characterRecap.summary ? (
+                    <div className="character-recap-result">
+                      {characterRecap.role ? (
+                        <span className="character-recap-role">{characterRecap.role}</span>
+                      ) : null}
+                      <p className="character-recap-summary">{characterRecap.summary}</p>
+                    </div>
+                  ) : null}
+                  {characterRecap.state === "error" ? (
+                    <p role="alert" className="status">{characterRecap.error}</p>
+                  ) : null}
+                </div>
+              ) : null}
+
               <div className="word-panel-profundizar-row">
                 <button
                   type="button"
@@ -641,7 +872,43 @@ export default function WordPanel({
                 </button>
               </div>
             </div>
-          ) : null}
+          ) : (
+            characterSummary && (isProperNoun || lookup.kind === "notFound") ? (
+              <div className="spoiler-free-card" role="region" aria-label="Atlas del libro sin spoilers">
+                <div className="spoiler-free-header">
+                  <span className="spoiler-free-badge">🧭 Personaje / Lugar (Sin Spoilers)</span>
+                  <span className="spoiler-free-mentions">
+                    {characterSummary.totalMentionsSoFar} menci{characterSummary.totalMentionsSoFar === 1 ? "ón" : "ones"} hasta aquí
+                  </span>
+                </div>
+
+                {characterSummary.firstMention ? (
+                  <div className="spoiler-free-section">
+                    <p className="meta">Primera aparición: <strong>{characterSummary.firstMention.chapterLabel}</strong></p>
+                    <p className="spoiler-free-quote">«{characterSummary.firstMention.sentence}»</p>
+                  </div>
+                ) : null}
+
+                <button
+                  type="button"
+                  className="btn btn--character-recap"
+                  disabled={characterRecap.state === "busy"}
+                  onClick={() => void handleCharacterRecap()}
+                >
+                  {characterRecap.state === "busy" ? "Consultando al gato…" : "🐱 ¿Quién es hasta este capítulo?"}
+                </button>
+
+                {characterRecap.state === "done" && characterRecap.summary ? (
+                  <div className="character-recap-result">
+                    {characterRecap.role ? (
+                      <span className="character-recap-role">{characterRecap.role}</span>
+                    ) : null}
+                    <p className="character-recap-summary">{characterRecap.summary}</p>
+                  </div>
+                ) : null}
+              </div>
+            ) : null
+          )}
         </div>
       ) : (
         <div className="word-panel-level-2">
@@ -720,7 +987,7 @@ export default function WordPanel({
               {multiSense ? (
                 <p className="meta">Elige la acepción que corresponde a esta oración:</p>
               ) : null}
-              {lookup.entries.map((entry, entryIndex) => (
+              {entries.map((entry, entryIndex) => (
                 <div key={`${entry.lemma}:${entry.pos ?? ""}`} className="word-entry">
                   {entry.lemma !== word ? (
                     <p className="meta">Forma de «{entry.lemma}»</p>
@@ -757,6 +1024,19 @@ export default function WordPanel({
                 </div>
               ))}
 
+              {lexicalFamily.length > 0 ? (
+                <div className="word-panel-lexical-family">
+                  <span className="eyebrow">Familia léxica</span>
+                  <div className="lexical-family-chips">
+                    {lexicalFamily.map((rel) => (
+                      <span key={rel} className="lexical-chip">
+                        {rel}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
               {/* Botón: ✨ Explicar en este pasaje (IA) */}
               <div className="word-panel-ai-passage-section">
                 <button
@@ -789,6 +1069,52 @@ export default function WordPanel({
                 ) : null}
               </div>
 
+              {characterSummary && isProperNoun ? (
+                <div className="spoiler-free-card" role="region" aria-label="Atlas del libro sin spoilers">
+                  <div className="spoiler-free-header">
+                    <span className="spoiler-free-badge">🧭 Personaje / Lugar (Sin Spoilers)</span>
+                    <span className="spoiler-free-mentions">
+                      {characterSummary.totalMentionsSoFar} menci{characterSummary.totalMentionsSoFar === 1 ? "ón" : "ones"} hasta aquí
+                    </span>
+                  </div>
+
+                  {characterSummary.firstMention ? (
+                    <div className="spoiler-free-section">
+                      <p className="meta">Primera aparición: <strong>{characterSummary.firstMention.chapterLabel}</strong></p>
+                      <p className="spoiler-free-quote">«{characterSummary.firstMention.sentence}»</p>
+                    </div>
+                  ) : null}
+
+                  {characterSummary.recentMentions.length > 1 ? (
+                    <div className="spoiler-free-section">
+                      <p className="meta">Aparición reciente: <strong>{characterSummary.recentMentions[characterSummary.recentMentions.length - 1].chapterLabel}</strong></p>
+                      <p className="spoiler-free-quote">«{characterSummary.recentMentions[characterSummary.recentMentions.length - 1].sentence}»</p>
+                    </div>
+                  ) : null}
+
+                  <button
+                    type="button"
+                    className="btn btn--character-recap"
+                    disabled={characterRecap.state === "busy"}
+                    onClick={() => void handleCharacterRecap()}
+                  >
+                    {characterRecap.state === "busy" ? "Consultando al gato…" : "🐱 ¿Quién es hasta este capítulo?"}
+                  </button>
+
+                  {characterRecap.state === "done" && characterRecap.summary ? (
+                    <div className="character-recap-result">
+                      {characterRecap.role ? (
+                        <span className="character-recap-role">{characterRecap.role}</span>
+                      ) : null}
+                      <p className="character-recap-summary">{characterRecap.summary}</p>
+                    </div>
+                  ) : null}
+                  {characterRecap.state === "error" ? (
+                    <p role="alert" className="status">{characterRecap.error}</p>
+                  ) : null}
+                </div>
+              ) : null}
+
               {chosenEntry?.entryId != null && chosenSense?.senseOrder != null ? (
                 report === "done" ? (
                   <p className="meta">Gracias, lo anotamos.</p>
@@ -815,42 +1141,6 @@ export default function WordPanel({
         </div>
       )}
 
-      <div className="actions">
-        {savedEntry ? (
-          <>
-            <button type="button" className="btn btn--primary" disabled>
-              En tu cuaderno
-            </button>
-            <button
-              type="button"
-              className="btn--quiet"
-              onClick={() => void remove()}
-              disabled={saving}
-            >
-              Quitar
-            </button>
-          </>
-        ) : (
-          <>
-            <button
-              type="button"
-              className="btn btn--primary"
-              onClick={() => void save()}
-              disabled={saving}
-            >
-              {saving ? "Guardando…" : "Guardar palabra"}
-            </button>
-            <button
-              type="button"
-              className="btn"
-              onClick={() => void declareKnown()}
-              disabled={saving}
-            >
-              Ya la conocía
-            </button>
-          </>
-        )}
-      </div>
       {!savedEntry && lookup.kind !== "found" ? (
         <p className="meta">Se guardará sin ficha; podrás repasarla cuando tenga definición.</p>
       ) : null}

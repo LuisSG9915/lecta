@@ -87,8 +87,15 @@ describe("parseReaderSettings", () => {
       focusRuler: false,
       paragraphFocus: false,
       syntacticLines: false,
+      chromaticGuide: false,
+      chromaticPalette: "editorial",
+      bionicAnchors: false,
+      ambientPurr: false,
+      soundscape: "none",
       highlightLexical: false,
       hideSecondaryIndicators: true,
+      visualPacer: false,
+      pacerWpm: 210,
     });
   });
 
@@ -152,6 +159,28 @@ describe("parseReaderSettings", () => {
     expect(parseReaderSettings(JSON.stringify({ measure: 70 })).measure).toBe(65);
   });
 
+  it("lee y acota visualPacer y pacerWpm", () => {
+    const active = parseReaderSettings(
+      JSON.stringify({ visualPacer: true, pacerWpm: 250 }),
+    );
+    expect(active.visualPacer).toBe(true);
+    expect(active.pacerWpm).toBe(250);
+
+    const clamped = parseReaderSettings(
+      JSON.stringify({ visualPacer: false, pacerWpm: 9999 }),
+    );
+    expect(clamped.visualPacer).toBe(false);
+    expect(clamped.pacerWpm).toBe(210);
+  });
+
+  it("lee y valida soundscape aceptando paisajes procedurales", () => {
+    expect(parseReaderSettings(JSON.stringify({ soundscape: "rain" })).soundscape).toBe("rain");
+    expect(parseReaderSettings(JSON.stringify({ soundscape: "hearth" })).soundscape).toBe("hearth");
+    expect(parseReaderSettings(JSON.stringify({ soundscape: "night_library" })).soundscape).toBe("night_library");
+    expect(parseReaderSettings(JSON.stringify({ ambientPurr: true })).soundscape).toBe("purr");
+    expect(parseReaderSettings(JSON.stringify({ soundscape: "unknown" })).soundscape).toBe("none");
+  });
+
   it("acepta las letras opcionales y rechaza desconocidas", () => {
     for (const font of ["serif", "atkinson", "dyslexic"] as const) {
       expect(parseReaderSettings(JSON.stringify({ font })).font).toBe(font);
@@ -178,6 +207,21 @@ describe("parseReaderSettings", () => {
       "auto",
     );
   });
+
+  it("lee opciones de guía cromática, anclas biónicas y ronroneo ambiental", () => {
+    const s = parseReaderSettings(
+      JSON.stringify({
+        chromaticGuide: true,
+        chromaticPalette: "ocean_amber",
+        bionicAnchors: true,
+        ambientPurr: true,
+      }),
+    );
+    expect(s.chromaticGuide).toBe(true);
+    expect(s.chromaticPalette).toBe("ocean_amber");
+    expect(s.bionicAnchors).toBe(true);
+    expect(s.ambientPurr).toBe(true);
+  });
 });
 
 describe("applyStrategyPreset y isStrategyPresetActive", () => {
@@ -199,12 +243,12 @@ describe("applyStrategyPreset y isStrategyPresetActive", () => {
     expect(isStrategyPresetActive("immersive", result)).toBe(true);
   });
 
-  it("configura focus (Enfoque Profundo): activa focusRuler y paragraphFocus", () => {
+  it("configura focus (Modo Neuro-Enfoque / TDAH): activa syntacticLines, chromaticGuide y paragraphFocus", () => {
     const result = applyStrategyPreset("focus", READER_DEFAULTS);
     expect(result.strategyPreset).toBe("focus");
-    expect(result.focusRuler).toBe(true);
+    expect(result.syntacticLines).toBe(true);
+    expect(result.chromaticGuide).toBe(true);
     expect(result.paragraphFocus).toBe(true);
-    expect(result.syntacticLines).toBe(false);
     expect(isStrategyPresetActive("focus", result)).toBe(true);
   });
 

@@ -4,7 +4,11 @@
 // varios logros se agrupan, las subidas de nivel se agrupan en el nivel
 // más alto con su evolución si coincide.
 import { describe, expect, it } from "vitest";
-import { pendingCelebrations } from "./companion-inbox";
+import {
+  generateDeterministicCompanionLetter,
+  parseCompanionLetters,
+  pendingCelebrations,
+} from "./companion-inbox";
 import { receiptIdFor } from "../../shared/companion-data";
 import type {
   CompanionReceipt,
@@ -179,5 +183,42 @@ describe("pendingCelebrations", () => {
       receipts: [],
     });
     expect(items.map((i) => i.kind)).toEqual(["achievements", "level"]);
+  });
+});
+
+describe("Cartas y Notas del Buzón del Gato (Lecta v2.0)", () => {
+  it("genera carta determinista interpolando libro y palabra aprendida", () => {
+    const letter = generateDeterministicCompanionLetter({
+      catName: "Sombra",
+      bookTitle: "Azul...",
+      masteredWord: "alegoría",
+    });
+
+    expect(letter.title).toContain("alegoría");
+    expect(letter.note).toContain("alegoría");
+    expect(letter.note).toContain("Azul...");
+    expect(letter.signOff).toContain("Sombra");
+    expect(letter.fromCat).toBe(true);
+    expect(letter.read).toBe(false);
+  });
+
+  it("genera carta para logros alcanzados", () => {
+    const letter = generateDeterministicCompanionLetter({
+      catName: "Michi",
+      achievementTitle: "Primera palabra",
+    });
+
+    expect(letter.title).toContain("Primera palabra");
+    expect(letter.note).toContain("Primera palabra");
+  });
+
+  it("parseCompanionLetters maneja entradas válidas e inválidas", () => {
+    expect(parseCompanionLetters(null)).toEqual([]);
+    expect(parseCompanionLetters("invalid-json")).toEqual([]);
+
+    const sample = [
+      { id: "l1", note: "Hola", title: "Nota", signOff: "Gato", read: false, fromCat: true, date: 100 },
+    ];
+    expect(parseCompanionLetters(JSON.stringify(sample))).toHaveLength(1);
   });
 });

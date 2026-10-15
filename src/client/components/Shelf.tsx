@@ -2,11 +2,13 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEven
 import {
   captureDbScope,
   loadShelfBootstrap,
+  loadSessionValue,
   listStoredBooks,
   updateBookMeta,
   type SavedBookPosition,
   type StoredBook,
 } from "../lib/idb";
+import { CALIBRATION_DONE_KEY } from "../lib/calibration";
 import { triggerHaptic } from "../lib/haptics";
 import { displayTitle, readBookMeta } from "../lib/cover";
 import { languageName } from "../lib/epub";
@@ -16,10 +18,13 @@ import {
   type CatalogBook,
 } from "../lib/catalog";
 import {
+  affinityBadgeLabel,
+  affinityTierOf,
   coverageOfBook,
   inputsForCoverage,
   type BookCoverage,
 } from "../lib/coverage";
+import { playCompanionSound } from "../lib/companion-audio";
 import { analyzeStoredBook, loadBookVocab } from "../lib/book-vocab";
 import { relativeDay } from "../lib/relative-time";
 import {
@@ -34,6 +39,7 @@ import {
   loadActivityHidden,
   loadReaderSettings,
   saveReaderSettings,
+  type StrategyPreset,
 } from "../lib/settings";
 import type { TipAction } from "../../shared/tip";
 import { levelProgress } from "../lib/gamification";
@@ -74,6 +80,7 @@ type ShelfProps = {
   activityVersion?: number;
   onOpenJourney?: () => void;
   onOpenPractice?: () => void;
+  onRequestCalibration?: () => void;
 };
 
 const DAY_MS = 86_400_000;
@@ -127,6 +134,7 @@ export default function Shelf({
   activityVersion = 0,
   onOpenJourney,
   onOpenPractice,
+  onRequestCalibration,
 }: ShelfProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [positions, setPositions] = useState<SavedBookPosition[]>([]);
@@ -141,6 +149,14 @@ export default function Shelf({
   const [sampleState, setSampleState] = useState<"idle" | "loading" | "error">(
     "idle",
   );
+  const [calibrationDone, setCalibrationDone] = useState(false);
+  const [onboardingDismissed, setOnboardingDismissed] = useState(() => {
+    try {
+      return localStorage.getItem("lecta_onboarding_dismissed") === "1";
+    } catch {
+      return false;
+    }
+  });
   // La preferencia se lee una vez: cambiarla en el Cuaderno se aplica
   // la próxima vez que la estantería se monta.
   const [activityHidden] = useState(() => loadActivityHidden());
@@ -228,6 +244,11 @@ export default function Shelf({
               )
             : null,
         );
+        void loadSessionValue(CALIBRATION_DONE_KEY, scope)
+          .then((val) => {
+            if (!cancelled) setCalibrationDone(val === "1");
+          })
+          .catch(() => null);
       },
     );
     return () => {
@@ -387,29 +408,48 @@ export default function Shelf({
     return freshest ? library.find((book) => book.hash === freshest.bookHash) : undefined;
   }, [latestHash, library, positions]);
 
+  const [heroStrategy, setHeroStrategy] = useState<StrategyPreset | null>(null);
+  const [catPetQuote, setCatPetQuote] = useState<string | null>(null);
+  type ShelfFilter = "all" | "reading" | "unread" | "finished";
+  const [shelfFilter, setShelfFilter] = useState<ShelfFilter>("all");
+
+  const activeStrategy: StrategyPreset = useMemo(() => {
+    if (heroStrategy) return heroStrategy;
+    if (!current) return "focus";
+    const s = loadReaderSettings(current.hash);
+    return s.strategyPreset ?? "focus";
+  }, [heroStrategy, current]);
+
   const activeModeLabel = useMemo(() => {
+    if (activeStrategy === "focus") return "Modo Enfoque";
+    if (activeStrategy === "lexical") return "Modo Léxico";
+    if (activeStrategy === "audio") return "Modo Audio";
+    if (activeStrategy === "immersive") return "Lectura Inmersiva";
     if (!current) return "Modo Estándar";
     const settings = loadReaderSettings(current.hash);
-    if (settings.strategyPreset === "focus" || settings.focusMode === "paragraph") {
-      return "Modo Enfoque";
-    }
-    if (settings.strategyPreset === "lexical") {
-      return "Modo Léxico";
-    }
-    if (settings.strategyPreset === "audio") {
-      return "Modo Audio";
-    }
-    if (settings.strategyPreset === "immersive") {
-      return "Lectura Inmersiva";
-    }
-    if (settings.focusMode === "ruler") {
-      return "Regla de Foco";
-    }
-    if (settings.focusMode === "syntactic") {
-      return "Líneas Sintácticas";
-    }
+    if (settings.focusMode === "ruler") return "Regla de Foco";
+    if (settings.focusMode === "syntactic") return "Líneas Sintácticas";
     return "Modo Estándar";
-  }, [current]);
+  }, [activeStrategy, current]);
+
+  const filteredLibrary = useMemo(() => {
+    if (shelfFilter === "all") return library;
+    return library.filter((book) => {
+      const pos = positionByHash.get(book.hash);
+      const total = book.sectionCount ?? 0;
+      const progress = progressOf(pos, total);
+      if (shelfFilter === "reading") {
+        return pos && progress > 0 && progress < 0.99;
+      }
+      if (shelfFilter === "unread") {
+        return !pos || progress === 0;
+      }
+      if (shelfFilter === "finished") {
+        return progress >= 0.99;
+      }
+      return true;
+    });
+  }, [library, shelfFilter, positionByHash]);
 
   const pickFile = () => fileInputRef.current?.click();
 
@@ -455,6 +495,33 @@ export default function Shelf({
 
   const heroPosition = current ? positionByHash.get(current.hash) : undefined;
 
+  const step1Done = calibrationDone;
+  const step2Done = positions.length > 0;
+  const step3Done = wordCounts.size > 0 || (companion.state && companion.state.xp > 0);
+  const onboardingAllDone = step1Done && step2Done && step3Done;
+  const isBrandNew = library.length <= 1 && positions.length === 0 && !calibrationDone;
+  const showOnboarding =
+    !onboardingDismissed &&
+    (isBrandNew || !step1Done || !step2Done || !step3Done || onboardingAllDone);
+
+  const skipOnboarding = () => {
+    try {
+      localStorage.setItem("lecta_onboarding_dismissed", "1");
+    } catch {
+      // ignore
+    }
+    setOnboardingDismissed(true);
+  };
+
+  const finishOnboarding = () => {
+    try {
+      localStorage.setItem("lecta_onboarding_dismissed", "1");
+    } catch {
+      // ignore
+    }
+    setOnboardingDismissed(true);
+  };
+
   return (
     <div className="shelf" onDragOver={(e) => e.preventDefault()}>
       <input
@@ -470,13 +537,114 @@ export default function Shelf({
         }}
       />
 
+      {showOnboarding ? (
+        <section className="shelf-onboarding-card" aria-label="Bienvenida a Lecta">
+          <div className="onboarding-header">
+            <div className="onboarding-title-group">
+              <span className="onboarding-badge">Ritual de Bienvenida</span>
+              <h2 className="onboarding-title">Comienza en 3 pasos con tu compañero</h2>
+            </div>
+            <button
+              type="button"
+              className="btn--quiet onboarding-skip-btn"
+              onClick={skipOnboarding}
+            >
+              Saltar por ahora
+            </button>
+          </div>
+
+          {onboardingAllDone ? (
+            <div className="onboarding-celebration">
+              <p className="onboarding-celebration-title">🎉 ¡Ritual de inicio completado!</p>
+              <p className="meta">
+                Has desbloqueado la <strong>Bufanda de Invierno</strong> (<code>scarf_amber</code>) en el clóset de tu compañero.
+              </p>
+              <button
+                type="button"
+                className="btn btn--primary"
+                onClick={finishOnboarding}
+                style={{ marginTop: "12px" }}
+              >
+                Comenzar a disfrutar Lecta →
+              </button>
+            </div>
+          ) : (
+            <ol className="onboarding-steps">
+              <li className={`onboarding-step ${step1Done ? "is-done" : ""}`}>
+                <span className="step-icon">{step1Done ? "✓" : "1"}</span>
+                <div className="step-content">
+                  <strong className="step-title">Afinar mi nivel en 45 seg</strong>
+                  <span className="step-desc">Ajusta la dificultad del vocabulario para tus lecturas.</span>
+                </div>
+                {!step1Done && onRequestCalibration ? (
+                  <button
+                    type="button"
+                    className="btn btn--sm btn--primary"
+                    onClick={onRequestCalibration}
+                  >
+                    Afinar nivel
+                  </button>
+                ) : null}
+              </li>
+
+              <li className={`onboarding-step ${step2Done ? "is-done" : ""}`}>
+                <span className="step-icon">{step2Done ? "✓" : "2"}</span>
+                <div className="step-content">
+                  <strong className="step-title">Abrir mi primer capítulo con una Estrategia</strong>
+                  <span className="step-desc">Elige Azul... de Rubén Darío o añade un EPUB propio.</span>
+                </div>
+                {!step2Done ? (
+                  <button
+                    type="button"
+                    className="btn btn--sm"
+                    onClick={() => {
+                      if (current) onOpen(current);
+                      else if (library[0]) onOpen(library[0]);
+                      else if (onGetCatalogBook) {
+                        void onGetCatalogBook({
+                          id: "azul-ruben-dario",
+                          gutenbergId: 0,
+                          title: "Azul...",
+                          author: "Rubén Darío",
+                          cover: true,
+                          language: "es",
+                        });
+                      }
+                    }}
+                  >
+                    Abrir libro
+                  </button>
+                ) : null}
+              </li>
+
+              <li className={`onboarding-step ${step3Done ? "is-done" : ""}`}>
+                <span className="step-icon">{step3Done ? "✓" : "3"}</span>
+                <div className="step-content">
+                  <strong className="step-title">Tocar una palabra nueva y acariciar al gato</strong>
+                  <span className="step-desc">Descubre notas léxicas y comparte momentos con tu gato.</span>
+                </div>
+                {!step3Done && showCompanion ? (
+                  <button
+                    type="button"
+                    className="btn btn--sm btn--quiet"
+                    onClick={() => companion.openPanel()}
+                  >
+                    Acariciar al gato
+                  </button>
+                ) : null}
+              </li>
+            </ol>
+          )}
+        </section>
+      ) : null}
+
       {/* Tarjeta compacta del compañero (fase 5): el gato con su
           etapa y ropa equipada, nombre y nivel breve; el botón abre
           la hoja de cuidado del proveedor. Solo si el juego está
           encendido — nunca desplaza ni rompe la estantería. */}
       {showCompanion && companion.state && !current ? (
         <section
-          className="shelf-companion"
+          className="shelf-companion shelf__desk-companion"
           aria-label={`Tu compañero ${companion.name}`}
         >
           <CompanionButton
@@ -602,7 +770,7 @@ export default function Shelf({
             </section>
           ) : null}
           {current ? (
-            <section className="shelf-hero shelf-reading-table" aria-label="Tu Mesa de Lectura">
+            <section className="shelf-hero shelf-reading-table shelf__desk-hero" aria-label="Tu Mesa de Lectura">
               <div className="shelf-hero-left">
                 <button
                   type="button"
@@ -613,19 +781,33 @@ export default function Shelf({
                   }}
                   aria-label={`Continuar ${displayTitle(current.name, current.title)}`}
                 >
-                  <BookCover book={current} />
+                  <BookCover
+                    book={current}
+                    progress={progressOf(heroPosition, current.sectionCount)}
+                    showRibbon={Boolean(heroPosition)}
+                  />
                   <span className="shelf-lang-badge" title={`Idioma: ${languageName(current.language || "es")}`}>
                     {(current.language || "es").toUpperCase()}
                   </span>
                 </button>
                 <div className="shelf-hero-info">
-                  <p className="eyebrow">Tu Mesa de Lectura</p>
+                  <div className="shelf-hero-eyebrow-row">
+                    <p className="eyebrow">Tu Mesa de Lectura</p>
+                    {bookCoverages.get(current.hash) ? (
+                      <span
+                        className={`shelf-affinity-badge shelf-affinity-badge--${affinityTierOf(bookCoverages.get(current.hash)!.percent)}`}
+                        title={`Afinidad léxica: ${bookCoverages.get(current.hash)!.percent}%`}
+                      >
+                        {bookCoverages.get(current.hash)!.percent}% vocabulario conocido
+                      </span>
+                    ) : null}
+                  </div>
                   <h2 className="shelf-hero-title">{displayTitle(current.name, current.title)}</h2>
                   {current.author ? <p className="meta">{current.author}</p> : null}
                   {heroPosition ? (
                     <p className="meta shelf-hero-progress">
                       {current.sectionCount
-                        ? `Capítulo ${heroPosition.sectionIndex + 1} de ${current.sectionCount}`
+                        ? `Capítulo ${heroPosition.sectionIndex + 1} de ${current.sectionCount} · Quedan ~5 min en este capítulo`
                         : "Lectura en curso"}
                       {" · "}
                       te quedaste aquí {relativeDay(heroPosition.updatedAt)}
@@ -649,7 +831,32 @@ export default function Shelf({
                       />
                     </div>
                   ) : null}
-                  <div className="actions">
+
+                  {/* Selector Rápido de Estrategia en la Tarjeta */}
+                  <div className="shelf-strategy-selector shelf-hero-strategies" role="group" aria-label="Estrategia para entrar hoy">
+                    {[
+                      { id: "focus", label: "Enfoque Profundo" },
+                      { id: "lexical", label: "Explorador Léxico" },
+                      { id: "audio", label: "Audio-Lectura" },
+                      { id: "immersive", label: "Lectura Limpia" },
+                    ].map((strat) => (
+                      <button
+                        key={strat.id}
+                        type="button"
+                        className={`shelf-strategy-pill${activeStrategy === strat.id ? " shelf-strategy-pill--active" : ""}`}
+                        onClick={() => {
+                          triggerHaptic(8);
+                          setHeroStrategy(strat.id as StrategyPreset);
+                          const curSettings = loadReaderSettings(current.hash);
+                          saveReaderSettings({ ...curSettings, strategyPreset: strat.id as StrategyPreset }, current.hash);
+                        }}
+                      >
+                        {strat.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="actions shelf-hero-actions">
                     <button
                       type="button"
                       className="btn btn--primary btn--hero-continue"
@@ -659,6 +866,17 @@ export default function Shelf({
                       }}
                     >
                       Continuar leyendo · {activeModeLabel}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn--quiet btn--pre-train"
+                      onClick={() => {
+                        triggerHaptic(10);
+                        if (onOpenPractice) onOpenPractice();
+                        else onOpen(current);
+                      }}
+                    >
+                      Pre-entrenar 3 palabras del capítulo
                     </button>
                     {(wordCounts.get(current.hash) ?? 0) > 0 ? (
                       <span className="meta">
@@ -672,8 +890,22 @@ export default function Shelf({
               </div>
 
               <div className="shelf-hero-right">
+                <div className="shelf-hero-lamp" aria-hidden="true" title="Rincón cálido con el gato">
+                  <span className="shelf-lamp-icon">🛋️ 💡</span>
+                </div>
                 {showCompanion && companion.state ? (
-                  <div className="shelf-hero-companion">
+                  <div
+                    className="shelf-hero-companion shelf__desk-companion"
+                    onClick={() => {
+                      triggerHaptic(12);
+                      playCompanionSound("purr");
+                      setCatPetQuote("¡Nos quedamos en la mejor parte del capítulo! ¿Leemos 5 minutos?");
+                      window.setTimeout(() => setCatPetQuote(null), 6000);
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Acariciar a ${companion.name}`}
+                  >
                     <CompanionStage
                       name={companion.name}
                       stage={companion.stage}
@@ -687,13 +919,22 @@ export default function Shelf({
                         Boolean(todayKey) &&
                         companion.state.stats.lastDayKey === todayKey
                       }
-                      greetingText={greeting ? timeOfDayGreeting() : null}
+                      greetingText={catPetQuote ?? (greeting ? timeOfDayGreeting() : null)}
                       careStatusText={null}
                       tryOnArticle={null}
                       tryOnLevel={null}
                       onClearTryOn={() => {}}
                       bookTitle={displayTitle(current.name, current.title)}
                     />
+                  </div>
+                ) : null}
+
+                {dueWordsCount > 0 ? (
+                  <div className="shelf-cat-pending-note" role="status">
+                    <span className="cat-note-icon" aria-hidden="true">🐾 💌</span>
+                    <span className="cat-note-text">
+                      Tienes {dueWordsCount} palabra{dueWordsCount === 1 ? "" : "s"} {dueWordsCount === 1 ? "lista" : "listas"} en tu cuaderno
+                    </span>
                   </div>
                 ) : null}
 
@@ -744,13 +985,62 @@ export default function Shelf({
           ) : null}
 
           <section aria-label="Tu estantería">
-            <h2 className="eyebrow shelf-eyebrow">Tu estantería</h2>
+            <div className="shelf-header-row">
+              <h2 className="eyebrow shelf-eyebrow">Tu estantería</h2>
+              <div className="shelf-filters" role="tablist" aria-label="Filtrar libros">
+                <button
+                  type="button"
+                  className={`shelf-filter-pill${shelfFilter === "all" ? " shelf-filter-pill--active" : ""}`}
+                  onClick={() => setShelfFilter("all")}
+                  role="tab"
+                  aria-selected={shelfFilter === "all"}
+                >
+                  Todos ({library.length})
+                </button>
+                <button
+                  type="button"
+                  className={`shelf-filter-pill${shelfFilter === "reading" ? " shelf-filter-pill--active" : ""}`}
+                  onClick={() => setShelfFilter("reading")}
+                  role="tab"
+                  aria-selected={shelfFilter === "reading"}
+                >
+                  Leyendo ahora
+                </button>
+                <button
+                  type="button"
+                  className={`shelf-filter-pill${shelfFilter === "unread" ? " shelf-filter-pill--active" : ""}`}
+                  onClick={() => setShelfFilter("unread")}
+                  role="tab"
+                  aria-selected={shelfFilter === "unread"}
+                >
+                  Por empezar
+                </button>
+                <button
+                  type="button"
+                  className={`shelf-filter-pill${shelfFilter === "finished" ? " shelf-filter-pill--active" : ""}`}
+                  onClick={() => setShelfFilter("finished")}
+                  role="tab"
+                  aria-selected={shelfFilter === "finished"}
+                >
+                  Terminados
+                </button>
+                <button
+                  type="button"
+                  className="shelf-filter-pill shelf-filter-pill--import"
+                  onClick={pickFile}
+                >
+                  + Importar EPUB
+                </button>
+              </div>
+            </div>
+
             <ul className="shelf-row">
-              {library.map((book) => {
+              {filteredLibrary.map((book) => {
                 const position = positionByHash.get(book.hash);
                 const total = book.sectionCount ?? 0;
                 const chapter = position ? position.sectionIndex : -1;
                 const isDownloading = downloadingHash === book.hash;
+                const cov = bookCoverages.get(book.hash);
                 return (
                   <li
                     key={book.hash}
@@ -765,7 +1055,11 @@ export default function Shelf({
                       aria-label={`Abrir ${displayTitle(book.name, book.title)}`}
                       title={displayTitle(book.name, book.title)}
                     >
-                      <BookCover book={book} />
+                      <BookCover
+                        book={book}
+                        progress={progressOf(position, total)}
+                        showRibbon={Boolean(position && progressOf(position, total) > 0)}
+                      />
                       <span className="shelf-lang-badge" title={`Idioma: ${languageName(book.language || "es")}`}>
                         {(book.language || "es").toUpperCase()}
                       </span>
@@ -778,12 +1072,12 @@ export default function Shelf({
                           <Icon name={isDownloading ? "clock" : "cloud"} size={13} />
                         </span>
                       ) : null}
-                      {bookCoverages.get(book.hash) ? (
+                      {cov ? (
                         <span
-                          className="discover-badge"
-                          title={`Conoces aproximadamente el ${bookCoverages.get(book.hash)?.percent}% del vocabulario`}
+                          className={`shelf-affinity-badge shelf-affinity-badge--${affinityTierOf(cov.percent)}`}
+                          title={`Afinidad léxica: ~${cov.percent}%`}
                         >
-                          ~{bookCoverages.get(book.hash)?.percent}%
+                          {affinityBadgeLabel(cov.percent)}
                         </span>
                       ) : null}
                     </button>

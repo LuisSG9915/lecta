@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isStopword } from "./stopwords";
+import { ENGLISH_STOPWORDS, SPANISH_STOPWORDS, isStopword } from "./stopwords";
 
 describe("isStopword", () => {
   it("reconoce palabras funcionales frecuentes", () => {
@@ -57,6 +57,13 @@ describe("isStopword", () => {
     expect(isStopword("the", "es")).toBe(false);
     expect(isStopword("la", "en")).toBe(false);
     expect(isStopword("the", "fr")).toBe(false);
+  });
+
+  it("exporta las listas completas de stopwords", () => {
+    expect(Array.isArray(SPANISH_STOPWORDS)).toBe(true);
+    expect(SPANISH_STOPWORDS.length).toBeGreaterThan(50);
+    expect(Array.isArray(ENGLISH_STOPWORDS)).toBe(true);
+    expect(ENGLISH_STOPWORDS.length).toBeGreaterThan(50);
   });
 });
 

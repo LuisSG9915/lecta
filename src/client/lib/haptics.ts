@@ -11,9 +11,11 @@ const HAPTIC_DURATIONS: Record<HapticStyle, number> = {
   success: 28,
 };
 
-export function triggerHaptic(durationOrStyle: number | HapticStyle = 12) {
+export function triggerHaptic(
+  durationOrStyle: number | number[] | HapticStyle = 12,
+) {
   const ms =
-    typeof durationOrStyle === "number"
+    typeof durationOrStyle === "number" || Array.isArray(durationOrStyle)
       ? durationOrStyle
       : (HAPTIC_DURATIONS[durationOrStyle] ?? 12);
   if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {

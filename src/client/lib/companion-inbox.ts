@@ -109,3 +109,69 @@ export function pendingCelebrations(input: {
 
   return items;
 }
+
+// ---------- Cartas y Notas del Buzón del Gato (Lecta v2.0 - B.2) ----------
+
+export interface CompanionLetter {
+  id: string;
+  date: number;
+  title: string;
+  note: string;
+  signOff: string;
+  read: boolean;
+  fromCat: boolean;
+  achievementId?: string;
+  rankName?: string;
+  bookTitle?: string;
+  learnedWord?: string;
+}
+
+export const COMPANION_LETTERS_KEY = "companion:letters:v1";
+
+export function generateDeterministicCompanionLetter(input: {
+  catName?: string;
+  achievementTitle?: string;
+  rankName?: string;
+  bookTitle?: string;
+  masteredWord?: string;
+}): CompanionLetter {
+  const catName = input.catName || "Michi";
+  let title = "¡Una nota de tu compañero! 💌";
+  let note = "¡Has tenido una lectura maravillosa hoy! Me encanta acompañarte mientras descubres nuevas historias.";
+
+  if (input.achievementTitle) {
+    title = `¡Logro alcanzado: ${input.achievementTitle}! 🏆`;
+    note = `¡Qué alegría verte alcanzar el sello de «${input.achievementTitle}»! Tu constancia llena nuestro rincón de tinta y orgullo.`;
+  } else if (input.rankName) {
+    title = `¡Nuevo rango: ${input.rankName}! ✨`;
+    note = `¡Ahora eres oficialmente un «${input.rankName}»! Cada página leída eleva tu nivel en el Santuario.`;
+  } else if (input.masteredWord) {
+    title = `¡Dominaste «${input.masteredWord}»! 📖`;
+    note = `La palabra «${input.masteredWord}» ya está grabada en tu memoria. ${input.bookTitle ? `Resonará con fuerza cuando sigas leyendo «${input.bookTitle}».` : "¡Sigue enriqueciendo tu vocabulario!"}`;
+  }
+
+  return {
+    id: `letter-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    date: Date.now(),
+    title,
+    note,
+    signOff: `Con cariño, ${catName} 🐾`,
+    read: false,
+    fromCat: true,
+    achievementId: input.achievementTitle,
+    rankName: input.rankName,
+    bookTitle: input.bookTitle,
+    learnedWord: input.masteredWord,
+  };
+}
+
+export function parseCompanionLetters(raw: string | null | undefined): CompanionLetter[] {
+  if (!raw) return [];
+  try {
+    const list = JSON.parse(raw);
+    if (!Array.isArray(list)) return [];
+    return list.filter((item) => typeof item === "object" && item !== null && typeof item.note === "string");
+  } catch {
+    return [];
+  }
+}

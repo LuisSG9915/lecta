@@ -1080,6 +1080,7 @@ export default function Account({
         </p>
       ) : null}
 
+      {/* Tarjeta 1: Sincronización y Modo Kindle */}
       {!isPending && session?.user ? (
         <section className="account-card" aria-label="Tu cuenta">
           <div className="account-card-header">
@@ -1123,6 +1124,20 @@ export default function Account({
             >
               {confirmDelete ? "¿Seguro? Borra cuenta, libros y vocabulario" : "Eliminar cuenta"}
             </button>
+          </div>
+          <div className="account-kindle-guide" style={{ marginTop: "var(--s-3)", borderTop: "1px solid var(--border-color, #e5e5e5)", paddingTop: "var(--s-3)" }}>
+            <strong style={{ display: "block", marginBottom: "var(--s-1)" }}>Modo Kindle y Tinta Electrónica</strong>
+            <p className="meta" style={{ marginBottom: "var(--s-2)" }}>Guía visual de 2 pasos para sincronizar con tu Kindle:</p>
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              <div style={{ display: "flex", gap: "8px", alignItems: "baseline" }}>
+                <span style={{ fontWeight: "bold" }}>1.</span>
+                <span className="meta">Abre el navegador experimental de tu Kindle e ingresa a <strong>/k</strong> (o lecta.app/k).</span>
+              </div>
+              <div style={{ display: "flex", gap: "8px", alignItems: "baseline" }}>
+                <span style={{ fontWeight: "bold" }}>2.</span>
+                <span className="meta">Inicia sesión con tu correo ({session.user.email}) para sincronizar libros, posición y notas al instante.</span>
+              </div>
+            </div>
           </div>
           {showChange ? (
             <form className="field" onSubmit={changePassword} style={{ marginTop: "var(--s-3)" }}>
@@ -1182,8 +1197,70 @@ export default function Account({
               Iniciar sesión o crear cuenta
             </button>
           </div>
+          <div className="account-kindle-guide" style={{ marginTop: "var(--s-3)", borderTop: "1px solid var(--border-color, #e5e5e5)", paddingTop: "var(--s-3)" }}>
+            <strong style={{ display: "block", marginBottom: "var(--s-1)" }}>Modo Kindle y Tinta Electrónica</strong>
+            <p className="meta" style={{ marginBottom: "var(--s-2)" }}>Guía visual de 2 pasos para sincronizar con tu Kindle:</p>
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              <div style={{ display: "flex", gap: "8px", alignItems: "baseline" }}>
+                <span style={{ fontWeight: "bold" }}>1.</span>
+                <span className="meta">Abre el navegador experimental de tu Kindle e ingresa a <strong>/k</strong> (o lecta.app/k).</span>
+              </div>
+              <div style={{ display: "flex", gap: "8px", alignItems: "baseline" }}>
+                <span style={{ fontWeight: "bold" }}>2.</span>
+                <span className="meta">Inicia sesión con tu cuenta para sincronizar libros, avances y notas al instante.</span>
+              </div>
+            </div>
+          </div>
         </section>
       ) : null}
+
+      {/* Tarjeta 2: Tu Nivel y Calibración */}
+      <section className="account-card account-card--level" aria-label="Tu nivel y calibración">
+        <div className="account-card-header">
+          <strong className="account-card-title">Tu nivel y calibración</strong>
+          <p className="account-card-desc">
+            {vocabInfoEs ? vocabInfoEs : "Aún sin calibrar. Afina tu nivel para que Lecta adapte las ayudas léxicas a tus lecturas."}
+          </p>
+        </div>
+        <div className="actions">
+          <button
+            type="button"
+            className="btn btn--primary"
+            disabled={loadingSampleLang !== null}
+            onClick={() => void adjustVocabulary("es")}
+          >
+            {loadingSampleLang === "es" ? "Cargando…" : "Recalibrar mi vocabulario"}
+          </button>
+        </div>
+      </section>
+
+      {/* Tarjeta 3: Preferencias de Inteligencia Artificial y Datos Offline */}
+      <section className="account-card" aria-label="Preferencias de IA y Datos Offline">
+        <div className="account-card-header">
+          <strong className="account-card-title">Preferencias de Inteligencia Artificial y Datos Offline</strong>
+        </div>
+        <div className="setting-row">
+          <span className="setting-label">Usar IA para definir y corregir</span>
+          <Toggle
+            label="Usar IA para definir y corregir"
+            checked={useAi}
+            onChange={toggleUseAi}
+          />
+        </div>
+        <p className="meta">
+          {useAi
+            ? "Activo: explicaciones contextuales de pasajes y ayuda adaptativa."
+            : "Desactivado: solo definiciones del catálogo local y Wikcionario."}
+        </p>
+        <div className="setting-row" style={{ marginTop: "var(--s-2)" }}>
+          <span className="setting-label">Memoria del diccionario offline</span>
+          <span className="meta">
+            {cachedDictWords && cachedDictWords > 0
+              ? `${cachedDictWords} palabras cacheadas`
+              : "Sin palabras cacheadas"}
+          </span>
+        </div>
+      </section>
 
       <section className="account-section" aria-label="Lectura y vocabulario">
         <h2 className="eyebrow">Lectura y vocabulario</h2>

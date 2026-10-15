@@ -10,7 +10,11 @@ import {
   projectChests,
   projectGame,
   receiptIdFor,
+  resolveCoatId,
   validateCompanionBatch,
+  COMPANION_ARTICLES,
+  COMPANION_COATS,
+  COMPANION_COAT_IDS,
   type CompanionRegister,
   type CompanionSnapshot,
   type GameJournalEvent,
@@ -894,3 +898,64 @@ describe("retroactividad de logros", () => {
     expect(remainingPending).not.toContain("lectura_100h");
   });
 });
+
+describe("catálogo de pelajes y prendas del compañero", () => {
+  it("contiene los 5 pelajes principales con paletas de alto contraste", () => {
+    expect(COMPANION_COAT_IDS).toEqual(["tuxedo", "latte", "ginger", "mist", "calico"]);
+    for (const id of COMPANION_COAT_IDS) {
+      const coat = COMPANION_COATS[id];
+      expect(coat.id).toBe(id);
+      expect(coat.name).toBeTruthy();
+      expect(coat.description).toBeTruthy();
+      expect(coat.fur).toMatch(/^#[0-9a-fA-F]{6}$/);
+      expect(coat.chest).toMatch(/^#[0-9a-fA-F]{6}$/);
+      expect(coat.eyes).toMatch(/^#[0-9a-fA-F]{6}$/);
+      expect(coat.nose).toMatch(/^#[0-9a-fA-F]{6}$/);
+      expect(coat.earInner).toMatch(/^#[0-9a-fA-F]{6}$/);
+      expect(coat.pawPads).toMatch(/^#[0-9a-fA-F]{6}$/);
+    }
+    // Tuxedo tiene rimLight para modo oscuro
+    expect(COMPANION_COATS.tuxedo.rimLight).toBe("#4A5264");
+  });
+
+  it("resolveCoatId resuelve correctamente IDs directos y artículos heredados", () => {
+    expect(resolveCoatId()).toBe("tuxedo");
+    expect(resolveCoatId(null)).toBe("tuxedo");
+    expect(resolveCoatId("tuxedo")).toBe("tuxedo");
+    expect(resolveCoatId("pelaje-tuxedo")).toBe("tuxedo");
+    expect(resolveCoatId("pelaje-negro")).toBe("tuxedo");
+    expect(resolveCoatId("latte")).toBe("latte");
+    expect(resolveCoatId("pelaje-siames")).toBe("latte");
+    expect(resolveCoatId("ginger")).toBe("ginger");
+    expect(resolveCoatId("pelaje-atigrado")).toBe("ginger");
+    expect(resolveCoatId("mist")).toBe("mist");
+    expect(resolveCoatId("pelaje-gris")).toBe("mist");
+    expect(resolveCoatId("calico")).toBe("calico");
+    expect(resolveCoatId("pelaje-calico")).toBe("calico");
+  });
+
+  it("todos los artículos pertenecen a una ranura válida", () => {
+    const validSlots = ["head", "neck", "face", "body", "coat"];
+    for (const [article, slot] of Object.entries(COMPANION_ARTICLES)) {
+      expect(article).toBeTruthy();
+      expect(validSlots).toContain(slot);
+    }
+  });
+
+  it("getEquippedItems asigna cada prenda a su ranura correspondiente", () => {
+    const regs: CompanionRegister[] = [
+      { field: "equipped.head", value: "beret_poet", updatedAt: 100, operationId: "o1" },
+      { field: "equipped.neck", value: "scarf_amber", updatedAt: 100, operationId: "o2" },
+      { field: "equipped.face", value: "glasses_round", updatedAt: 100, operationId: "o3" },
+      { field: "equipped.body", value: "cape_modernist", updatedAt: 100, operationId: "o4" },
+      { field: "equipped.coat", value: "tuxedo", updatedAt: 100, operationId: "o5" },
+    ];
+    const items = getEquippedItems(regs);
+    expect(items.head).toBe("beret_poet");
+    expect(items.neck).toBe("scarf_amber");
+    expect(items.face).toBe("glasses_round");
+    expect(items.body).toBe("cape_modernist");
+    expect(items.coat).toBe("tuxedo");
+  });
+});
+

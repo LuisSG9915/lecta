@@ -11,11 +11,17 @@ export const READING_GOAL_KEY = "readingGoal:v1";
 // mínimo de registro (5 s) sigue siendo cosa de reading-activity.
 export const DAY_GOAL_MS = 60_000;
 
+export const MAX_STREAK_SHIELDS = 2;
+
 export type ReadingGoal = {
   version: 1;
   /** Días con lectura por semana (1–7); null = meta desactivada. */
   daysPerWeek: number | null;
   updatedAt: number;
+  /** Escudos de ronroneo disponibles para proteger la racha (máximo 2). */
+  streakShields?: number;
+  /** Clave del último día protegido por un escudo (ej. «2026-03-10»). */
+  lastShieldUsedDay?: string | null;
 };
 
 export function parseReadingGoal(raw: string | null | undefined): ReadingGoal | null {
@@ -25,6 +31,8 @@ export function parseReadingGoal(raw: string | null | undefined): ReadingGoal | 
       version?: unknown;
       daysPerWeek?: unknown;
       updatedAt?: unknown;
+      streakShields?: unknown;
+      lastShieldUsedDay?: unknown;
     };
     if (v?.version !== 1) return null;
     const days = v.daysPerWeek;
@@ -32,18 +40,138 @@ export function parseReadingGoal(raw: string | null | undefined): ReadingGoal | 
       days === null ||
       (typeof days === "number" && Number.isInteger(days) && days >= 1 && days <= 7);
     if (!valid) return null;
+
+    const streakShields =
+      typeof v.streakShields === "number" && Number.isInteger(v.streakShields)
+        ? Math.min(MAX_STREAK_SHIELDS, Math.max(0, v.streakShields))
+        : 0;
+
+    const lastShieldUsedDay =
+      typeof v.lastShieldUsedDay === "string" ? v.lastShieldUsedDay : null;
+
     return {
       version: 1,
       daysPerWeek: days,
       updatedAt: typeof v.updatedAt === "number" ? v.updatedAt : 0,
+      streakShields,
+      lastShieldUsedDay,
     };
   } catch {
     return null;
   }
 }
 
-export function serializeReadingGoal(daysPerWeek: number | null, now = Date.now()): string {
-  return JSON.stringify({ version: 1, daysPerWeek, updatedAt: now });
+export function serializeReadingGoal(
+  daysPerWeek: number | null,
+  now = Date.now(),
+  streakShields = 0,
+  lastShieldUsedDay: string | null = null,
+): string {
+  return JSON.stringify({
+    version: 1,
+    daysPerWeek,
+    updatedAt: now,
+    streakShields: Math.min(MAX_STREAK_SHIELDS, Math.max(0, streakShields)),
+    lastShieldUsedDay,
+  });
+}
+
+/**
+ * Añade escudos de ronroneo (máximo MAX_STREAK_SHIELDS = 2).
+ */
+export function grantStreakShield(
+  goal: ReadingGoal | null,
+  count = 1,
+  now = Date.now(),
+): ReadingGoal {
+  const current = goal ?? {
+    version: 1,
+    daysPerWeek: null,
+    updatedAt: now,
+    streakShields: 0,
+    lastShieldUsedDay: null,
+  };
+  const streakShields = Math.min(
+    MAX_STREAK_SHIELDS,
+    (current.streakShields ?? 0) + count,
+  );
+  return {
+    ...current,
+    streakShields,
+    updatedAt: now,
+  };
+}
+
+/**
+ * Consume 1 escudo de ronroneo para proteger un día no leído.
+ */
+export function consumeStreakShield(
+  goal: ReadingGoal | null,
+  dayKey: string,
+  now = Date.now(),
+): { goal: ReadingGoal; consumed: boolean } {
+  if (!goal || !goal.streakShields || goal.streakShields <= 0) {
+    return {
+      goal: goal ?? {
+        version: 1,
+        daysPerWeek: null,
+        updatedAt: now,
+        streakShields: 0,
+        lastShieldUsedDay: null,
+      },
+      consumed: false,
+    };
+  }
+  return {
+    goal: {
+      ...goal,
+      streakShields: goal.streakShields - 1,
+      lastShieldUsedDay: dayKey,
+      updatedAt: now,
+    },
+    consumed: true,
+  };
+}
+
+/**
+ * Evalúa si ayer quedó sin lectura y aplica el Escudo de Ronroneo automáticamente.
+ */
+export function evaluateStreakProtection(
+  goal: ReadingGoal | null,
+  readDaysSet: Set<string>,
+  _todayKey: string,
+  yesterdayKey: string,
+  now = Date.now(),
+): {
+  updatedGoal: ReadingGoal | null;
+  protectedYesterday: boolean;
+  catMessage: string | null;
+} {
+  if (!goal) return { updatedGoal: null, protectedYesterday: false, catMessage: null };
+  const readYesterday = readDaysSet.has(yesterdayKey);
+
+  // Si ayer ya fue protegido por un escudo previamente registrado
+  if (goal.lastShieldUsedDay === yesterdayKey) {
+    return {
+      updatedGoal: goal,
+      protectedYesterday: true,
+      catMessage: "¡Cuidé tu racha ayer mientras descansabas!",
+    };
+  }
+
+  // Si ayer no hubo lectura pero hay escudos disponibles, consumir uno
+  if (!readYesterday && (goal.streakShields ?? 0) > 0) {
+    const { goal: updatedGoal, consumed } = consumeStreakShield(goal, yesterdayKey, now);
+    if (consumed) {
+      return {
+        updatedGoal,
+        protectedYesterday: true,
+        catMessage: "¡Cuidé tu racha ayer mientras descansabas!",
+      };
+    }
+  }
+
+  return { updatedGoal: goal, protectedYesterday: false, catMessage: null };
 }
 
 const pad2 = (n: number) => String(n).padStart(2, "0");

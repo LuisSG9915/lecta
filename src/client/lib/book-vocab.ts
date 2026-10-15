@@ -1,4 +1,4 @@
-import { getBookLanguage, openEpub } from "./epub";
+import { detectBookLanguage, getBookLanguage, openEpub } from "./epub";
 import {
   getStoredBook,
   loadSessionValue,
@@ -134,7 +134,10 @@ export async function analyzeStoredBook(
     return null;
   }
   const { book, close } = epub;
-  const language = getBookLanguage(book) || stored.language || "es";
+  const language =
+    (await detectBookLanguage(book).catch(() => getBookLanguage(book))) ||
+    stored.language ||
+    "es";
 
   const parts: string[] = [];
   let wordCount = 0;
@@ -165,9 +168,11 @@ export async function analyzeStoredBook(
     (form) => isWordToken(form) && !isStopword(form, language),
   );
   const lookupForms = new Set(forms);
-  for (const form of forms) {
-    for (const base of menteBaseForms(form)) lookupForms.add(base);
-    for (const base of cliticBaseForms(form)) lookupForms.add(base);
+  if (language === "es") {
+    for (const form of forms) {
+      for (const base of menteBaseForms(form)) lookupForms.add(base);
+      for (const base of cliticBaseForms(form)) lookupForms.add(base);
+    }
   }
   const result = lookupForms.size
     ? await lookup([...lookupForms], language, scope)

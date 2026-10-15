@@ -122,13 +122,25 @@ describe("coverageOfBook", () => {
   });
 });
 
-describe("coverageLabel", () => {
+describe("coverageLabel & affinityBadgeLabel", () => {
   it("anuncia la banda solo con confianza suficiente", () => {
     expect(coverageLabel(92, "high")).toBe("En tu nivel");
     expect(coverageLabel(92, "low")).toBeNull();
     expect(coverageLabel(80, "mid")).toBe("Asequible");
     expect(coverageLabel(65, "mid")).toBe("Un reto");
     expect(coverageLabel(40, "mid")).toBe("Exigente");
+  });
+
+  it("calcula los badges de afinidad según porcentaje (A.2)", async () => {
+    const { affinityBadgeLabel, affinityTierOf } = await import("./coverage");
+    expect(affinityTierOf(96)).toBe("fluida");
+    expect(affinityBadgeLabel(96)).toBe("Lectura Fluida");
+
+    expect(affinityTierOf(91)).toBe("reto");
+    expect(affinityBadgeLabel(91)).toBe("Reto Ideal (i+1)");
+
+    expect(affinityTierOf(84)).toBe("rico");
+    expect(affinityBadgeLabel(84)).toBe("Rico en Vocabulario");
   });
 });
 

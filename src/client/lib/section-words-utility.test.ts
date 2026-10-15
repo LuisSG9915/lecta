@@ -132,4 +132,72 @@ describe("Algoritmo Next-Chapter Utility (Fase 4.2)", () => {
     expect(rows.rows[0].form).toBe("efimero");
     expect(rows.rows[1].form).toBe("obsolescente");
   });
+
+  it("en modo L2 prioriza palabras narrativas de alta utilidad (repeticiones >= 2, B1-C1) sobre hapax legomena oscuras", () => {
+    // Palabra útil recurrente en la narración (ej. 'whisper', B1-C1, repite 3 veces)
+    const repeatedB1 = nextChapterUtility({
+      zipf: 3.5, // bw = 3.5 (sweet spot B1-C1)
+      userTheta: 3.4,
+      chapterFreq: 3,
+      bookFreq: 8,
+      isSecondLanguage: true,
+    });
+
+    // Palabra hapax legomena oscura que solo sale 1 vez (bw = 4.8 / zipf = 2.2)
+    const obscureHapax = nextChapterUtility({
+      zipf: 2.2,
+      userTheta: 3.4,
+      chapterFreq: 1,
+      bookFreq: 1,
+      isSecondLanguage: true,
+    });
+
+    expect(repeatedB1).toBeGreaterThan(obscureHapax);
+  });
+
+  it("buildSuggestionRows en modo L2 ordena palabras en inglés considerando utilidad L2 y filtrando stopwords en inglés", () => {
+    const entries: Record<string, LexiconEntry[]> = {
+      whisper: [
+        {
+          entryId: null,
+          freqRank: null,
+          lemma: "whisper",
+          pos: "verb",
+          zipf: 3.5,
+          senses: [{ definition: "To speak very softly.", example: null, senseOrder: null }],
+        },
+      ],
+      surreptitious: [
+        {
+          entryId: null,
+          freqRank: null,
+          lemma: "surreptitious",
+          pos: "adjective",
+          zipf: 2.0,
+          senses: [{ definition: "Kept secret.", example: null, senseOrder: null }],
+        },
+      ],
+    };
+
+    const rows = buildSuggestionRows({
+      language: "en",
+      // Incluye stopwords de inglés como 'the', 'and' que deben ser filtradas
+      forms: ["the", "whisper", "whisper", "and", "surreptitious"],
+      entries,
+      capitalOnly: new Set(),
+      text: "The whisper was heard in the dark. Another whisper followed. A surreptitious glance.",
+      saved: new Map(),
+      knowledge: new Map(),
+      threshold: 4.0,
+      userTheta: 3.4,
+      isSecondLanguage: true,
+    });
+
+    // 'the' y 'and' deben haber sido filtradas
+    expect(rows.rows.some((r) => r.form === "the" || r.form === "and")).toBe(false);
+    expect(rows.rows.length).toBe(2);
+    // 'whisper' (repetida + sweet spot) precede a 'surreptitious' (hapax C2)
+    expect(rows.rows[0].form).toBe("whisper");
+    expect(rows.rows[1].form).toBe("surreptitious");
+  });
 });

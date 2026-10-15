@@ -199,5 +199,72 @@ describe("Companion render", () => {
     expect(svg().getAttribute("class")).toContain("cat--p-walk");
     expect(svg().getAttribute("aria-label")).toContain("pasea por su rincón");
   });
+
+  it("renderiza el nuevo lienzo 160x160 con todos los grupos anatómicos semánticos", () => {
+    render(h(Companion, { ...base, stage: 3 }));
+    expect(svg().getAttribute("viewBox")).toBe("0 0 160 160");
+    expect(svg().querySelector(".cat-head-group")).toBeTruthy();
+    expect(svg().querySelector(".cat-eyes")).toBeTruthy();
+    expect(svg().querySelector(".cat-pupils")).toBeTruthy();
+    expect(svg().querySelector(".cat-tail-group")).toBeTruthy();
+    expect(svg().querySelector(".cat-body-group")).toBeTruthy();
+    expect(svg().querySelector(".cat-paws")).toBeTruthy();
+    expect(svg().querySelector(".cat-blush")).toBeTruthy();
+    expect(svg().querySelector(".cat-ground-shadow")).toBeTruthy();
+  });
+
+  it("renderiza pupilas con doble brillo especular (catchlights)", () => {
+    render(h(Companion, { ...base, stage: 2, mood: "awake" }));
+    const glintsMain = svg().querySelectorAll(".cat-eye-glint--main");
+    const glintsSub = svg().querySelectorAll(".cat-eye-glint--sub");
+    expect(glintsMain.length).toBe(2);
+    expect(glintsSub.length).toBe(2);
+  });
+
+  it("aplica las 5 paletas de pelaje coatId con clases de alto contraste", () => {
+    const coats = ["tuxedo", "latte", "ginger", "mist", "calico"] as const;
+    for (const coatId of coats) {
+      render(h(Companion, { ...base, coatId }));
+      expect(svg().getAttribute("class")).toContain(`cat--coat-${coatId}`);
+    }
+  });
+
+  it("renderiza las 3 zonas táctiles (head, nose, paws) y dispara onHitboxClick", () => {
+    const onHitboxClick = vi.fn();
+    render(h(Companion, { ...base, onHitboxClick }));
+
+    const headHitbox = svg().querySelector('[data-hitbox="head"]');
+    const noseHitbox = svg().querySelector('[data-hitbox="nose"]');
+    const pawsHitbox = svg().querySelector('[data-hitbox="paws"]');
+
+    expect(headHitbox).toBeTruthy();
+    expect(noseHitbox).toBeTruthy();
+    expect(pawsHitbox).toBeTruthy();
+
+    act(() => {
+      noseHitbox?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(onHitboxClick).toHaveBeenCalledWith("nose");
+
+    act(() => {
+      pawsHitbox?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(onHitboxClick).toHaveBeenCalledWith("paws");
+  });
+
+  it("muestra almohadillas rosadas (toe beans) al saludar o en pose greet", () => {
+    render(h(Companion, { ...base, pose: "greet" }));
+    const toeBeans = svg().querySelector(".cat-toe-beans");
+    expect(toeBeans).toBeTruthy();
+    expect(toeBeans?.querySelector(".cat-paw-pad")).toBeTruthy();
+    expect(toeBeans?.querySelectorAll(".cat-toe-bean").length).toBe(3);
+  });
+
+  it("el estado purring muestra corazones flotantes", () => {
+    render(h(Companion, { ...base, mood: "purring" }));
+    expect(svg().querySelector(".cat-hearts")).toBeTruthy();
+    expect(svg().querySelectorAll(".cat-heart").length).toBeGreaterThanOrEqual(2);
+  });
 });
+
 

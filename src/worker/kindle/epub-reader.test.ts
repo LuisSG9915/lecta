@@ -5,6 +5,7 @@ import {
   extractChapterPrepCandidates,
   extractPageWords,
   findSentenceWithWord,
+  formatChapterHtmlForMode,
   getEpubChapter,
   getEpubResource,
   paginateChapter,
@@ -208,6 +209,38 @@ describe("epub-reader (Kindle E-ink)", () => {
     it("devuelve null si la palabra no está presente", () => {
       const text = "Frase simple sin coincidencias.";
       expect(findSentenceWithWord(text, "inexistente")).toBeNull();
+    });
+  });
+
+  describe("formatChapterHtmlForMode", () => {
+    it("deja el html sin cambios en modo clean o lexicon", () => {
+      const html = "<p>Primer párrafo.</p><p>Segundo párrafo.</p>";
+      expect(formatChapterHtmlForMode(html, "clean")).toBe(html);
+      expect(formatChapterHtmlForMode(html, "lexicon")).toBe(html);
+    });
+
+    it("numera los párrafos con §1, §2 en modo paragraphs", () => {
+      const html = "<p>Primer párrafo.</p><p>Segundo párrafo.</p>";
+      const formatted = formatChapterHtmlForMode(html, "paragraphs");
+      expect(formatted).toContain('<span class="p-num">§1</span>Primer párrafo.');
+      expect(formatted).toContain('<span class="p-num">§2</span>Segundo párrafo.');
+    });
+
+    it("agrega p-guided en párrafos largos de más de 300 caracteres", () => {
+      const longText = "A".repeat(350);
+      const html = `<p>${longText}</p>`;
+      const formatted = formatChapterHtmlForMode(html, "paragraphs");
+      expect(formatted).toContain('class="p-guided"');
+    });
+  });
+
+  describe("wrapWordsWithLinks con notedWordsMap (Modo Léxico)", () => {
+    it("añade la clase w-lexicon y superíndice a las palabras anotadas", () => {
+      const html = "<p>Un silencio perenne inundó la estancia.</p>";
+      const noted = new Map<string, number>([["perenne", 1]]);
+      const wrapped = wrapWordsWithLinks(html, "book123", "/k/read/book123", new Set(), noted);
+      expect(wrapped).toContain('class="w w-lexicon"');
+      expect(wrapped).toContain("perenne<sup>1</sup>");
     });
   });
 });

@@ -179,5 +179,69 @@ describe("Shelf - Tu Mesa de Lectura (Fase 5.2)", () => {
       for (let i = 0; i < 4; i++) await Promise.resolve();
     });
     expect(onOpenPractice).toHaveBeenCalledTimes(1);
+
+    // Selector rápido de estrategia: cambiar a Explorador Léxico
+    const lexicalPill = Array.from(host.querySelectorAll(".shelf-strategy-pill")).find(
+      (btn) => btn.textContent?.includes("Explorador Léxico"),
+    ) as HTMLButtonElement;
+    expect(lexicalPill).toBeTruthy();
+
+    await act(async () => {
+      lexicalPill.click();
+      for (let i = 0; i < 4; i++) await Promise.resolve();
+    });
+
+    expect(continueBtn.textContent).toContain("Continuar leyendo · Modo Léxico");
+
+    // Botón secundario de pre-entrenar palabras
+    const preTrainBtn = host.querySelector(".btn--pre-train") as HTMLButtonElement;
+    expect(preTrainBtn).toBeTruthy();
+    expect(preTrainBtn.textContent).toContain("Pre-entrenar 3 palabras del capítulo");
+
+    await act(async () => {
+      preTrainBtn.click();
+      for (let i = 0; i < 4; i++) await Promise.resolve();
+    });
+    expect(onOpenPractice).toHaveBeenCalledTimes(2);
+
+    // Rincón del gato e interactividad al acariciar
+    const catContainer = host.querySelector(".shelf-hero-companion") as HTMLDivElement;
+    expect(catContainer).toBeTruthy();
+    expect(host.querySelector(".shelf-cat-pending-note")?.textContent).toContain(
+      "Tienes 1 palabra lista en tu cuaderno",
+    );
+
+    await act(async () => {
+      catContainer.click();
+      for (let i = 0; i < 4; i++) await Promise.resolve();
+    });
+
+    // Clases semánticas de biblioteca móvil
+    expect(host.querySelector(".shelf__desk-hero")).toBeTruthy();
+    expect(host.querySelector(".shelf-hero-strategies")).toBeTruthy();
+    expect(host.querySelector(".shelf__desk-companion")).toBeTruthy();
+
+    // Filtros de estantería
+    const filterPills = Array.from(host.querySelectorAll(".shelf-filter-pill"));
+    expect(filterPills.length).toBeGreaterThanOrEqual(4);
+    const readingPill = filterPills.find((p) => p.textContent?.includes("Leyendo ahora")) as HTMLButtonElement;
+    const finishedPill = filterPills.find((p) => p.textContent?.includes("Terminados")) as HTMLButtonElement;
+    expect(readingPill).toBeTruthy();
+    expect(finishedPill).toBeTruthy();
+
+    // Actualmente Don Quijote está en progreso (0.45), debe estar en Leyendo ahora
+    await act(async () => {
+      readingPill.click();
+      for (let i = 0; i < 4; i++) await Promise.resolve();
+    });
+    expect(host.querySelectorAll(".shelf-row .shelf-book").length).toBe(1);
+
+    // En Terminados no debe haber libros
+    await act(async () => {
+      finishedPill.click();
+      for (let i = 0; i < 4; i++) await Promise.resolve();
+    });
+    expect(host.querySelectorAll(".shelf-row .shelf-book").length).toBe(0);
   });
 });
+

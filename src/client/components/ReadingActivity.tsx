@@ -4,6 +4,7 @@ import {
   listIntervals,
   listReadingEvents,
   loadSessionValue,
+  saveSessionValue,
   type SavedInterval,
   type SavedWord,
   type StoredBook,
@@ -22,8 +23,11 @@ import {
   type DayFocus,
 } from "../lib/focus-telemetry";
 import {
+  evaluateStreakProtection,
+  MAX_STREAK_SHIELDS,
   parseReadingGoal,
   READING_GOAL_KEY,
+  serializeReadingGoal,
   weeklyGoalProgress,
   type ReadingGoal,
 } from "../lib/reading-goal";
@@ -53,6 +57,7 @@ export default function ReadingActivity({
 }: ReadingActivityProps) {
   const [intervals, setIntervals] = useState<SavedInterval[] | null>(null);
   const [goal, setGoal] = useState<ReadingGoal | null>(null);
+  const [shieldMsg, setShieldMsg] = useState<string | null>(null);
   // Atención por día desde el trayecto local (readingEvents).
   const [focusDays, setFocusDays] = useState<DayFocus[]>([]);
   const [loadError, setLoadError] = useState(false);
@@ -74,7 +79,41 @@ export default function ReadingActivity({
         if (cancelled) return;
         setNow(Date.now());
         setIntervals(list);
-        setGoal(parseReadingGoal(rawGoal));
+        const parsedGoal = parseReadingGoal(rawGoal);
+        let activeGoal = parsedGoal;
+        if (parsedGoal) {
+          const readDays = new Set(
+            timeByDay(list, timeZone)
+              .filter((d) => d.ms >= 60_000)
+              .map((d) => d.dayKey),
+          );
+          const today = dayKeyOf(Date.now(), timeZone);
+          const [y, m, d] = today.split("-").map(Number);
+          const yesterday = dayKeyOf(Date.UTC(y, m - 1, d - 1, 12), timeZone);
+          const { updatedGoal, protectedYesterday, catMessage } = evaluateStreakProtection(
+            parsedGoal,
+            readDays,
+            today,
+            yesterday,
+          );
+          if (protectedYesterday && catMessage) {
+            setShieldMsg(catMessage);
+            if (updatedGoal && updatedGoal !== parsedGoal) {
+              activeGoal = updatedGoal;
+              void saveSessionValue(
+                READING_GOAL_KEY,
+                serializeReadingGoal(
+                  updatedGoal.daysPerWeek,
+                  updatedGoal.updatedAt,
+                  updatedGoal.streakShields,
+                  updatedGoal.lastShieldUsedDay,
+                ),
+                scope,
+              );
+            }
+          }
+        }
+        setGoal(activeGoal);
         setFocusDays(
           focusByDay(
             events,
@@ -88,7 +127,7 @@ export default function ReadingActivity({
     return () => {
       cancelled = true;
     };
-  }, [activityVersion]);
+  }, [activityVersion, timeZone]);
 
   const toggleHidden = () => {
     const next = !hidden;
@@ -146,6 +185,23 @@ export default function ReadingActivity({
   }
   const maxDay = Math.max(...week.map((day) => day.ms), 1);
 
+  // Mapa de tinta: últimos 28 días naturales (4 semanas compactas)
+  const monthDays: { dayKey: string; ms: number }[] = [];
+  {
+    const byKey = new Map(days.map((day) => [day.dayKey, day.ms]));
+    const cursor = new Date(now);
+    cursor.setHours(0, 0, 0, 0);
+    for (let i = 27; i >= 0; i -= 1) {
+      const day = new Date(cursor.getTime() - i * DAY_MS);
+      const key = [
+        day.getFullYear(),
+        String(day.getMonth() + 1).padStart(2, "0"),
+        String(day.getDate()).padStart(2, "0"),
+      ].join("-");
+      monthDays.push({ dayKey: key, ms: byKey.get(key) ?? 0 });
+    }
+  }
+
   // Meta de la semana (lunes a domingo): días con al menos un minuto
   // acumulado. Es una vista distinta de «Últimos 7 días»: rótulo propio.
   const goalProgress =
@@ -169,19 +225,46 @@ export default function ReadingActivity({
 
   return (
     <section aria-label="Actividad" className="act">
+      {goal ? (
+        <section className="act-streak-shield" aria-label="Escudo de Ronroneo">
+          <div className="act-shield-badge">
+            <span className="act-shield-icon" aria-hidden="true">🛡️ 🐾</span>
+            <div className="act-shield-details">
+              <strong className="act-shield-title">
+                Escudo de Ronroneo: {goal.streakShields ?? 0}/{MAX_STREAK_SHIELDS}
+              </strong>
+              {shieldMsg ? (
+                <p className="act-shield-quote" role="status">{shieldMsg}</p>
+              ) : (
+                <p className="meta">
+                  {(goal.streakShields ?? 0) > 0
+                    ? "Tu racha está protegida si un día no puedes leer."
+                    : "Completa 3 días seguidos de lectura para recargar un escudo."}
+                </p>
+              )}
+            </div>
+          </div>
+        </section>
+      ) : null}
+
       {goalProgress ? (
         <section aria-label="Meta de la semana">
           <h2 className="eyebrow act-eyebrow">Meta de la semana</h2>
-          <div className="dots" role="list" aria-label="Lunes a domingo">
-            {goalProgress.days.map(({ dayKey, read }) => (
-              <span
-                key={dayKey}
-                role="img"
-                className={`dot dot--day${read ? " dot--done" : ""}`}
-                title={dayLabel(dayKey)}
-                aria-label={`${dayLabel(dayKey)}: ${read ? "con lectura" : "sin lectura"}`}
-              />
-            ))}
+          <div className="dots act-ink-drops" role="list" aria-label="Lunes a domingo">
+            {goalProgress.days.map(({ dayKey, read }) => {
+              const dayMs = days.find((d) => d.dayKey === dayKey)?.ms ?? 0;
+              const fillPct = Math.min(100, Math.round((dayMs / (15 * 60_000)) * 100));
+              return (
+                <span
+                  key={dayKey}
+                  role="img"
+                  className={`dot dot--day act-ink-drop${read ? " dot--done act-ink-drop--read" : ""}`}
+                  title={`${dayLabel(dayKey)}: ${formatDuration(dayMs)}`}
+                  aria-label={`${dayLabel(dayKey)}: ${read ? "con lectura" : "sin lectura"}`}
+                  data-fill={fillPct}
+                />
+              );
+            })}
           </div>
           <p className="meta">
             {goalProgress.readDays} de {goalProgress.target} días con lectura
@@ -222,6 +305,33 @@ export default function ReadingActivity({
                 </li>
               ))}
             </ul>
+          </section>
+
+          {/* Mapa de tinta: últimos 28 días con 4 tonos de terracota según intensidad */}
+          <section aria-label="Mapa de tinta mensual" className="act-month-map-section">
+            <h2 className="eyebrow act-eyebrow">Mapa de tinta (últimos 28 días)</h2>
+            <div className="act-month-grid" role="grid" aria-label="Mapa de calor de lectura">
+              {monthDays.map(({ dayKey, ms }) => {
+                const intensity =
+                  ms === 0 ? 0 : ms < 10 * 60_000 ? 1 : ms < 30 * 60_000 ? 2 : 3;
+                return (
+                  <div
+                    key={dayKey}
+                    className={`act-month-cell act-month-cell--level-${intensity}`}
+                    title={`${dayLabel(dayKey)}: ${ms ? formatDuration(ms) : "sin lectura"}`}
+                    role="gridcell"
+                  />
+                );
+              })}
+            </div>
+            <div className="act-month-legend">
+              <span className="meta">Menos</span>
+              <span className="act-month-swatch act-month-cell--level-0" title="Sin lectura" />
+              <span className="act-month-swatch act-month-cell--level-1" title="1-10 min" />
+              <span className="act-month-swatch act-month-cell--level-2" title="10-30 min" />
+              <span className="act-month-swatch act-month-cell--level-3" title="Más de 30 min" />
+              <span className="meta">Más tinta</span>
+            </div>
           </section>
 
           {(() => {

@@ -578,6 +578,7 @@ export default function BookGlossaryModal({
                     <option value="adjetivo">Adjetivos</option>
                     <option value="verbo">Verbos</option>
                     <option value="adverbio">Adverbios</option>
+                    <option value="propio">Personajes / Propios</option>
                   </select>
                 </label>
 

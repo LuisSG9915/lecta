@@ -240,3 +240,50 @@ describe("Subrayado de Pasajes y Tonos de Tinta (B.4)", () => {
     container.remove();
   });
 });
+
+describe("Guía Cromática y Modo de Concentración TDAH", () => {
+  it("el preset 'focus' activa Líneas Sintácticas, Guía Cromática, Enfoque de Párrafo y Anclajes Biónicos", async () => {
+    const { applyStrategyPreset, READER_DEFAULTS } = await import("../lib/settings");
+    const focusSettings = applyStrategyPreset("focus", READER_DEFAULTS);
+
+    expect(focusSettings.syntacticLines).toBe(true);
+    expect(focusSettings.chromaticGuide).toBe(true);
+    expect(focusSettings.paragraphFocus).toBe(true);
+    expect(focusSettings.bionicAnchors).toBe(true);
+    expect(focusSettings.chromaticPalette).toBe("editorial");
+  });
+
+  it("recuperar el hilo genera resumen determinista si no hay respuesta de IA", async () => {
+    const { deterministicPageRecapFallback } = await import("../lib/page-recap");
+    const text = "Aquel hidalgo leía libros de caballerías día y noche. Sus amigos el cura y el barbero lo visitaban a menudo.";
+    const recap = deterministicPageRecapFallback(text);
+
+    expect(recap.bullets).toHaveLength(2);
+    expect(recap.bullets[0]).toContain("Aquel hidalgo leía libros");
+    expect(recap.hookQuestion).toBe("¿Cómo continúa el hilo de este pasaje?");
+    expect(recap.fallback).toBe(true);
+  });
+
+  it("despacha evento lecta:checkpoint-reached al cruzar los hitos 25%, 50%, 75%, 100%", () => {
+    const events: number[] = [];
+    const handler = (e: Event) => {
+      const custom = e as CustomEvent<{ checkpoint: number }>;
+      events.push(custom.detail.checkpoint);
+    };
+    window.addEventListener("lecta:checkpoint-reached", handler);
+
+    window.dispatchEvent(new CustomEvent("lecta:checkpoint-reached", { detail: { checkpoint: 0.25 } }));
+    window.dispatchEvent(new CustomEvent("lecta:checkpoint-reached", { detail: { checkpoint: 0.50 } }));
+
+    expect(events).toEqual([0.25, 0.5]);
+
+    window.removeEventListener("lecta:checkpoint-reached", handler);
+  });
+
+  it("activa y detiene el ronroneo ambiental procedural sin errores", async () => {
+    const { startAmbientPurr, stopAmbientPurr, isAmbientPurrActive } = await import("../lib/companion-audio");
+    startAmbientPurr();
+    stopAmbientPurr();
+    expect(isAmbientPurrActive()).toBe(false);
+  });
+});

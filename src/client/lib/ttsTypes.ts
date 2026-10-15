@@ -3,8 +3,10 @@
 // plan-tts-readalong + docs/concentracion-y-lectura.md. Sin IA, sin
 // texto hacia servidores — los eventos solo llevan identificadores.
 
-export type TtsRate = 0.8 | 1 | 1.2;
+export type TtsRate = 0.8 | 0.9 | 1 | 1.15 | 1.2 | 1.3;
 export const TTS_RATES: TtsRate[] = [0.8, 1, 1.2];
+export const TTS_PLAYER_RATES: TtsRate[] = [0.9, 1, 1.15, 1.3];
+export const TTS_ALL_RATES: TtsRate[] = [0.8, 0.9, 1, 1.15, 1.2, 1.3];
 
 // Resaltado del MVP: oración. `line_focus` queda como fase opcional
 // posterior (gated por foco + regla activos).

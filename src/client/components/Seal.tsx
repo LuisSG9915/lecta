@@ -1,4 +1,25 @@
+import { useState } from "react";
 import type { AchievementFamily } from "../../shared/gamification";
+import { triggerHaptic } from "../lib/haptics";
+
+export type SealCategory = "strategies" | "words" | "companion";
+
+export const FAMILY_TO_SEAL_CATEGORY: Record<AchievementFamily, SealCategory> = {
+  sesion: "strategies",
+  lectura: "strategies",
+  consultas: "strategies",
+  palabras: "words",
+  raras: "words",
+  repasos: "words",
+  racha: "companion",
+  libros: "companion",
+};
+
+export const SEAL_CATEGORY_LABELS: Record<SealCategory, string> = {
+  strategies: "Estrategias de Lectura",
+  words: "Dominio de Palabras",
+  companion: "Vínculo con el Gato",
+};
 
 export interface SealProps {
   family: AchievementFamily;
@@ -7,6 +28,11 @@ export interface SealProps {
   size?: number;
   label?: string;
   className?: string;
+  category?: SealCategory;
+  progressText?: string;
+  rewardIcon?: string;
+  earnedDate?: string | number;
+  onClick?: () => void;
 }
 
 const ROMAN_NUMERALS = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
@@ -105,7 +131,13 @@ export function Seal({
   size = 56,
   label,
   className = "",
+  category = FAMILY_TO_SEAL_CATEGORY[family],
+  progressText,
+  rewardIcon,
+  earnedDate,
+  onClick,
 }: SealProps) {
+  const [shining, setShining] = useState(false);
   const isEarned = rank > 0;
   const isMax = rank >= maxRank;
   const status = !isEarned ? "locked" : isMax ? "max" : "earned";
@@ -113,17 +145,35 @@ export function Seal({
   const accessibleLabel =
     label ??
     (!isEarned
-      ? `Sello ${family}: Bloqueado`
+      ? `Sello ${family}: Bloqueado${progressText ? ` (${progressText})` : ""}`
       : isMax
         ? `Sello ${family}: Rango máximo (${toRoman(rank)} de ${toRoman(maxRank)})`
         : `Sello ${family}: Rango ${toRoman(rank)} de ${toRoman(maxRank)}`);
 
+  const handleClick = () => {
+    if (isEarned) {
+      triggerHaptic(8);
+      setShining(true);
+      window.setTimeout(() => setShining(false), 900);
+    }
+    if (onClick) onClick();
+  };
+
+  const formattedDate = earnedDate
+    ? typeof earnedDate === "number"
+      ? new Date(earnedDate).toLocaleDateString("es-MX", { day: "numeric", month: "short", year: "numeric" })
+      : String(earnedDate)
+    : null;
+
   return (
     <div
-      className={`seal seal--${status} seal--${family} ${className}`.trim()}
+      className={`seal seal--${status} seal--${family} seal--cat-${category}${shining ? " seal--shining" : ""} ${className}`.trim()}
       role="img"
       aria-label={accessibleLabel}
       style={{ width: size, height: size }}
+      onClick={handleClick}
+      tabIndex={onClick || isEarned ? 0 : undefined}
+      title={formattedDate ? `Obtenido: ${formattedDate}` : undefined}
     >
       <svg
         viewBox="0 0 64 64"
@@ -132,11 +182,28 @@ export function Seal({
         className="seal-svg"
         aria-hidden="true"
       >
+        <defs>
+          <radialGradient id={`seal-lacquer-${family}`} cx="35%" cy="30%" r="70%">
+            <stop offset="0%" stopColor="rgba(255, 255, 255, 0.35)" />
+            <stop offset="50%" stopColor="transparent" />
+            <stop offset="100%" stopColor="rgba(0, 0, 0, 0.28)" />
+          </radialGradient>
+        </defs>
+
+        {/* Medallón de lacre con relieve */}
+        <circle
+          cx="32"
+          cy="32"
+          r="30"
+          className="seal-lacquer-relief"
+          fill={`url(#seal-lacquer-${family})`}
+        />
+
         {/* Anillo exterior decorativo */}
         <circle
           cx="32"
           cy="32"
-          r="29"
+          r="28.5"
           className="seal-ring seal-ring--outer"
           fill="none"
         />
@@ -145,7 +212,7 @@ export function Seal({
         <circle
           cx="32"
           cy="32"
-          r="25.5"
+          r="25"
           className="seal-ring seal-ring--inner"
           fill="none"
         />
@@ -169,6 +236,27 @@ export function Seal({
           <circle cx="32" cy="51" r="2" className="seal-dot-locked" />
         )}
       </svg>
+
+      {/* Barra o texto de progreso para sellos bloqueados */}
+      {!isEarned && progressText ? (
+        <span className="seal-progress-badge" title={`Progreso: ${progressText}`}>
+          {progressText}
+        </span>
+      ) : null}
+
+      {/* Icono de prenda otorgada como premio */}
+      {rewardIcon ? (
+        <span className="seal-reward-icon" title="Premio de prenda">
+          {rewardIcon}
+        </span>
+      ) : null}
+
+      {/* Fecha de obtención al hacer clic o inspeccionar */}
+      {isEarned && formattedDate ? (
+        <span className="seal-date-tooltip" aria-hidden="true">
+          {formattedDate}
+        </span>
+      ) : null}
     </div>
   );
 }

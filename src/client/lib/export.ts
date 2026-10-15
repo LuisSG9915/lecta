@@ -111,6 +111,74 @@ export function wordsToAnkiTsv(words: SavedWord[], bookName: BookNamer): string 
     .join("\n");
 }
 
+export interface AnkiTsvOptions {
+  cloze?: boolean;
+}
+
+/**
+ * Exporta el mazo de vocabulario a formato TSV para Anki.
+ * Con cloze=true (por defecto), transforma la oración del contexto en una tarjeta
+ * de supresión de partes con formato {{c1::palabra}}, permitiendo estudiar en contexto real.
+ */
+export function exportAnkiTsv(
+  words: SavedWord[],
+  bookName: BookNamer,
+  options?: AnkiTsvOptions,
+): string {
+  const cloze = options?.cloze !== false;
+  return words
+    .filter((w) => !w.deleted && w.form.trim())
+    .map((word) => {
+      let front: string;
+      const cleanForm = word.form.trim();
+      const cleanCtx = word.context?.trim();
+
+      if (cloze && cleanCtx) {
+        const escReg = cleanForm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const regex = new RegExp(`\\b${escReg}\\b`, "i");
+        if (regex.test(cleanCtx)) {
+          front = htmlEsc(cleanCtx.replace(regex, (m) => `{{c1::${m}}}`));
+        } else {
+          const lax = new RegExp(escReg, "i");
+          if (lax.test(cleanCtx)) {
+            front = htmlEsc(cleanCtx.replace(lax, (m) => `{{c1::${m}}}`));
+          } else {
+            front = `{{c1::${htmlEsc(cleanForm)}}} — <i>«${htmlEsc(cleanCtx)}»</i>`;
+          }
+        }
+      } else if (cloze) {
+        front = `{{c1::${htmlEsc(cleanForm)}}}`;
+      } else {
+        front = htmlEsc(cleanForm);
+      }
+
+      const backParts: string[] = [];
+      if (word.meaning?.trim()) {
+        backParts.push(htmlEsc(word.meaning.trim()));
+      }
+      if (word.lemma && word.lemma !== word.form) {
+        backParts.push(`<br><small><b>Lema:</b> ${htmlEsc(word.lemma)}</small>`);
+      }
+      if (word.pos) {
+        backParts.push(`<br><small><b>Categoría:</b> ${htmlEsc(word.pos)}</small>`);
+      }
+      const title = bookName(word.bookHash);
+      if (title) {
+        backParts.push(`<br><small><b>Libro:</b> ${htmlEsc(title)}</small>`);
+      }
+      const back = backParts.join("");
+
+      const tagParts: string[] = [];
+      if (word.language) tagParts.push(`Lecta::${word.language}`);
+      if (title) tagParts.push(`Lecta::${sanitizeFilename(title)}`);
+      if (word.pos) tagParts.push(word.pos.replace(/\s+/g, "_"));
+      const tags = tagParts.join(" ");
+
+      return `${front}\t${back}\t${tags}`;
+    })
+    .join("\n");
+}
+
 // Pasajes guardados: solo el fragmento que eligió el lector y su nota,
 // nunca texto corrido del libro.
 export function passagesToCsv(
@@ -224,6 +292,7 @@ export interface BookExportOptions {
   intervals?: SavedInterval[];
   position?: SavedBookPosition | null;
   exportedAt?: number;
+  vocabFormat?: "table" | "list";
 }
 
 /**
@@ -324,15 +393,36 @@ export function bookReadingNoteToMarkdown(options: BookExportOptions): string {
   // Vocabulario adquirido
   if (usableWords.length > 0) {
     lines.push("## Vocabulario adquirido", "");
-    for (const w of usableWords) {
-      const posTag = w.pos ? ` *(${w.pos})*` : "";
-      const lemmaTag = w.lemma && w.lemma !== w.form ? ` — lema: *${w.lemma}*` : "";
-      lines.push(`- **${w.form}**${posTag}${lemmaTag}`);
-      if (w.meaning?.trim()) {
-        lines.push(`  - **Significado:** ${w.meaning.trim()}`);
+    if (options.vocabFormat === "list") {
+      for (const w of usableWords) {
+        const posTag = w.pos ? ` *(${w.pos})*` : "";
+        const lemmaTag = w.lemma && w.lemma !== w.form ? ` — lema: *${w.lemma}*` : "";
+        lines.push(`- **${w.form}**${posTag}${lemmaTag}`);
+        if (w.meaning?.trim()) {
+          lines.push(`  - **Significado:** ${w.meaning.trim()}`);
+        }
+        if (w.context?.trim()) {
+          lines.push(`  - *«${w.context.trim()}»*`);
+        }
       }
-      if (w.context?.trim()) {
-        lines.push(`  - *«${w.context.trim()}»*`);
+    } else {
+      const cell = (str: string | null | undefined) =>
+        String(str ?? "")
+          .replace(/\|/g, "\\|")
+          .replace(/[\r\n]+/g, " ")
+          .trim();
+
+      lines.push(
+        "| Palabra | Lema | Categoría | Significado | Oración en el libro |",
+        "| :--- | :--- | :--- | :--- | :--- |",
+      );
+      for (const w of usableWords) {
+        const form = `**${cell(w.form)}**`;
+        const lemma = cell(w.lemma || w.form);
+        const pos = cell(w.pos || "—");
+        const meaning = cell(w.meaning || "—");
+        const context = cell(w.context || "—");
+        lines.push(`| ${form} | ${lemma} | ${pos} | ${meaning} | ${context} |`);
       }
     }
     lines.push("");

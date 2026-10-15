@@ -97,6 +97,9 @@
   --amber: #8a6a1e;
   --chroma-blue: #3b6e8c;
   --chroma-crimson: #b45309;
+  --chroma-anchor-a: #1D4E89;
+  --chroma-anchor-b: #9E3B24;
+  --chroma-ink-base: var(--ink);
   --success: #3d7a5a;
   --success-wash: rgba(61, 122, 90, 0.14);
   --warning: #8a6a1e;
@@ -140,6 +143,9 @@
   --amber: #8a6a1e;
   --chroma-blue: #1d4ed8;
   --chroma-crimson: #b45309;
+  --chroma-anchor-a: #1D4E89;
+  --chroma-anchor-b: #9E3B24;
+  --chroma-ink-base: var(--ink);
   --success: #3d7a4e;
   --success-wash: rgba(61, 122, 78, 0.14);
   --warning: #8a6a1e;
@@ -182,6 +188,9 @@
   --amber: #d9b65c;
   --chroma-blue: #38bdf8;
   --chroma-crimson: #fb923c;
+  --chroma-anchor-a: #7CC2FF;
+  --chroma-anchor-b: #FFB07C;
+  --chroma-ink-base: var(--ink);
   --success: #8fb996;
   --success-wash: rgba(143, 185, 150, 0.18);
   --warning: #d9b65c;
@@ -227,6 +236,9 @@
   --amber: #d9b65c;
   --chroma-blue: #38bdf8;
   --chroma-crimson: #fb923c;
+  --chroma-anchor-a: #7CC2FF;
+  --chroma-anchor-b: #FFB07C;
+  --chroma-ink-base: var(--ink);
   --success: #8fb996;
   --success-wash: rgba(143, 185, 150, 0.18);
   --warning: #d9b65c;
@@ -274,6 +286,9 @@
     --amber: #d9b65c;
     --chroma-blue: #38bdf8;
     --chroma-crimson: #fb923c;
+    --chroma-anchor-a: #7CC2FF;
+    --chroma-anchor-b: #FFB07C;
+    --chroma-ink-base: var(--ink);
     --success: #8fb996;
     --success-wash: rgba(143, 185, 150, 0.18);
     --warning: #d9b65c;
@@ -296,3 +311,79 @@
     --cat-nose: #e08a95;
   }
 }
+
+/* =====================================================================
+   Paletas de la Guía Cromática (BeeLine / Retorno Ocular)
+   ===================================================================== */
+:root,
+[data-chroma-palette="editorial"] {
+  --chroma-anchor-a: #1D4E89;
+  --chroma-anchor-b: #9E3B24;
+}
+:root[data-theme="noche"] [data-chroma-palette="editorial"],
+:root[data-theme="oled"] [data-chroma-palette="editorial"],
+[data-theme="noche"][data-chroma-palette="editorial"],
+[data-theme="oled"][data-chroma-palette="editorial"] {
+  --chroma-anchor-a: #7CC2FF;
+  --chroma-anchor-b: #FFB07C;
+}
+
+[data-chroma-palette="ocean_amber"] {
+  --chroma-anchor-a: #0E7490;
+  --chroma-anchor-b: #D97706;
+}
+:root[data-theme="noche"] [data-chroma-palette="ocean_amber"],
+:root[data-theme="oled"] [data-chroma-palette="ocean_amber"],
+[data-theme="noche"][data-chroma-palette="ocean_amber"],
+[data-theme="oled"][data-chroma-palette="ocean_amber"] {
+  --chroma-anchor-a: #38BDF8;
+  --chroma-anchor-b: #FBBF24;
+}
+
+[data-chroma-palette="forest_plum"] {
+  --chroma-anchor-a: #2D6A4F;
+  --chroma-anchor-b: #7B2CBF;
+}
+:root[data-theme="noche"] [data-chroma-palette="forest_plum"],
+:root[data-theme="oled"] [data-chroma-palette="forest_plum"],
+[data-theme="noche"][data-chroma-palette="forest_plum"],
+[data-theme="oled"][data-chroma-palette="forest_plum"] {
+  --chroma-anchor-a: #74C69D;
+  --chroma-anchor-b: #DDA0DD;
+}
+
+[data-chroma-palette="high_contrast"] {
+  --chroma-anchor-a: #003566;
+  --chroma-anchor-b: #851D1D;
+}
+:root[data-theme="noche"] [data-chroma-palette="high_contrast"],
+:root[data-theme="oled"] [data-chroma-palette="high_contrast"],
+[data-theme="noche"][data-chroma-palette="high_contrast"],
+[data-theme="oled"][data-chroma-palette="high_contrast"] {
+  --chroma-anchor-a: #60A5FA;
+  --chroma-anchor-b: #F87171;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) [data-chroma-palette="editorial"],
+  :root:not([data-theme])[data-chroma-palette="editorial"] {
+    --chroma-anchor-a: #7CC2FF;
+    --chroma-anchor-b: #FFB07C;
+  }
+  :root:not([data-theme]) [data-chroma-palette="ocean_amber"],
+  :root:not([data-theme])[data-chroma-palette="ocean_amber"] {
+    --chroma-anchor-a: #38BDF8;
+    --chroma-anchor-b: #FBBF24;
+  }
+  :root:not([data-theme]) [data-chroma-palette="forest_plum"],
+  :root:not([data-theme])[data-chroma-palette="forest_plum"] {
+    --chroma-anchor-a: #74C69D;
+    --chroma-anchor-b: #DDA0DD;
+  }
+  :root:not([data-theme]) [data-chroma-palette="high_contrast"],
+  :root:not([data-theme])[data-chroma-palette="high_contrast"] {
+    --chroma-anchor-a: #60A5FA;
+    --chroma-anchor-b: #F87171;
+  }
+}
+

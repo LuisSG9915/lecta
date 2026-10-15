@@ -115,6 +115,32 @@ describe("planMeaningBackfill", () => {
     expect(result?.meaning).toBe("Útil.");
     expect(result?.senseEntryId).toBe("b");
   });
+
+  it("prioriza sustantivo sobre verbo cuando el contexto sintáctico lo indica", () => {
+    const w = word({
+      form: "afrenta",
+      context: "Dejar al chico como pupilo de cualquier otro sería una afrenta",
+    });
+    const verbEntry = entry({
+      entryId: "v1",
+      lemma: "afrentar",
+      pos: "verbo",
+      senses: [sense("Forma de afrentar.")],
+    });
+    const nounEntry = entry({
+      entryId: "n1",
+      lemma: "afrenta",
+      pos: "sustantivo",
+      senses: [sense("Hecho o dicho que ofende.")],
+    });
+
+    // Aunque la entrada verbal venga primero en el catálogo:
+    const result = planMeaningBackfill(w, [verbEntry, nounEntry]);
+    expect(result?.pos).toBe("sustantivo");
+    expect(result?.lemma).toBe("afrenta");
+    expect(result?.meaning).toBe("Hecho o dicho que ofende.");
+    expect(result?.senseEntryId).toBe("n1");
+  });
 });
 
 describe("backfillWordMeanings", () => {

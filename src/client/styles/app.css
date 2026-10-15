@@ -545,3 +545,109 @@
     animation: none !important;
   }
 }
+
+/* Micro-badges de navegación */
+.app-nav-badge {
+  position: absolute;
+  top: -4px;
+  right: -8px;
+  background: var(--vermilion, #b83a24);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 2px 5px;
+  border-radius: 999px;
+  min-width: 15px;
+  text-align: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.app-nav-sparkle {
+  position: absolute;
+  top: -3px;
+  right: -6px;
+  color: var(--amber-rich, #c98818);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: pulse-sparkle 2s infinite ease-in-out;
+}
+
+@keyframes pulse-sparkle {
+  0%, 100% { transform: scale(1); opacity: 0.9; }
+  50% { transform: scale(1.2); opacity: 1; }
+}
+
+/* Píldora persistente de Lectura en Curso (MiniReaderBar) */
+.mini-reader-bar {
+  position: fixed;
+  bottom: calc(56px + env(safe-area-inset-bottom) + 8px);
+  left: var(--s-3, 12px);
+  right: var(--s-3, 12px);
+  max-width: calc(100vw - 24px);
+  background: var(--paper-raised, #ffffff);
+  border: 1px solid var(--border-color, #e2ded5);
+  border-radius: var(--radius-m, 12px);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.12);
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  z-index: 20;
+}
+
+@media (min-width: 64rem) {
+  .mini-reader-bar {
+    left: auto;
+    right: 24px;
+    bottom: 24px;
+    max-width: 380px;
+  }
+}
+
+.mini-reader-cover {
+  width: 34px;
+  height: 46px;
+  flex-shrink: 0;
+  border-radius: 3px;
+  overflow: hidden;
+  box-shadow: 1px 1px 4px rgba(0, 0, 0, 0.18);
+}
+
+.mini-reader-cover .cover {
+  width: 100%;
+  height: 100%;
+}
+
+.mini-reader-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mini-reader-title {
+  font-family: var(--font-title, Georgia, serif);
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--ink, #1a1a1a);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mini-reader-progress {
+  font-size: 0.78rem;
+  color: var(--ink-soft, #666666);
+}
+
+.mini-reader-resume {
+  flex-shrink: 0;
+  font-size: 0.84rem;
+  padding: 6px 14px;
+  min-height: 36px;
+  border-radius: 999px;
+  white-space: nowrap;
+}

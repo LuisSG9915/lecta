@@ -103,7 +103,7 @@ const click = (el: Element) =>
   });
 
 describe("WordPanel - Acciones Rápidas (Fase 4.3)", () => {
-  it("renderiza botones rápidos '✓ Ya la sé' y '★ Fijar en mi cuaderno'", async () => {
+  it("renderiza botones unificados '★ Guardar en mi cuaderno' y '✓ Ya la sé'", async () => {
     render(
       h(WordPanel, {
         word: "efimero",
@@ -126,7 +126,45 @@ describe("WordPanel - Acciones Rápidas (Fase 4.3)", () => {
 
     const pinBtn = host.querySelector<HTMLButtonElement>(".btn--pin-notebook");
     expect(pinBtn).not.toBeNull();
-    expect(pinBtn?.textContent).toContain("★ Fijar en mi cuaderno");
+    expect(pinBtn?.textContent).toContain("★ Guardar en mi cuaderno");
+  });
+
+  it("cuando la palabra ya está guardada muestra badge, Quitar y Ver en cuaderno", async () => {
+    const { loadSavedWord } = await import("../lib/idb");
+    vi.mocked(loadSavedWord).mockResolvedValueOnce({
+      key: "es:efimero",
+      form: "efimero",
+      language: "es",
+      savedAt: Date.now(),
+      card: { state: 1, due: Date.now(), stability: 1, difficulty: 1, elapsed_days: 0, scheduled_days: 1, reps: 1, lapses: 0, last_review: Date.now() },
+    });
+
+    render(
+      h(WordPanel, {
+        word: "efimero",
+        context: "Un momento efimero.",
+        language: "es",
+        bookHash: "book123",
+        onClose: vi.fn(),
+        onSaved: vi.fn(),
+      }),
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const badge = host.querySelector(".word-panel-saved-badge");
+    expect(badge).not.toBeNull();
+    expect(badge?.textContent).toContain("★ Guardada en tu cuaderno");
+
+    const removeBtn = host.querySelector<HTMLButtonElement>(".btn--remove-word");
+    expect(removeBtn).not.toBeNull();
+    expect(removeBtn?.textContent).toContain("Quitar");
+
+    const viewBtn = host.querySelector<HTMLButtonElement>(".btn--view-notebook");
+    expect(viewBtn).not.toBeNull();
+    expect(viewBtn?.textContent).toContain("Ver en cuaderno →");
   });
 
   it("al tocar '✓ Ya la sé' muestra aviso de recalibración de perfil y llama a onClose", async () => {
@@ -278,4 +316,89 @@ describe("WordPanel - Acciones Rápidas (Fase 4.3)", () => {
       "El autor emplea esta palabra para enfatizar el paso del tiempo.",
     );
   });
+
+  it("en compactMode renderiza la micro-glosa ultracompacta con silabeo y permite expandir", async () => {
+    render(
+      h(WordPanel, {
+        word: "hegemonía",
+        language: "es",
+        bookHash: "book123",
+        compactMode: true,
+        onClose: vi.fn(),
+        onSaved: vi.fn(),
+      }),
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const microPanel = host.querySelector(".micro-gloss-panel");
+    expect(microPanel).not.toBeNull();
+    expect(microPanel?.querySelector(".micro-gloss-syllables")?.textContent).toBe("he·ge·mo·ní·a");
+
+    // Al hacer clic en la info, se expande a la ficha completa
+    const info = host.querySelector<HTMLElement>(".micro-gloss-info")!;
+    await act(async () => {
+      click(info);
+    });
+
+    expect(host.querySelector(".micro-gloss-panel")).toBeNull();
+    expect(host.querySelector(".sheet")).not.toBeNull();
+  });
+
+  it("para palabras en inglés, envía nativeLanguage a explainInPassage y pronuncia con voz en inglés", async () => {
+    const { explainInPassage } = await import("../lib/lexicon");
+    const { speakWord } = await import("../lib/speech");
+
+    render(
+      h(WordPanel, {
+        word: "wander",
+        language: "en",
+        context: "He began to wander across the fields.",
+        bookHash: "bookEng",
+        onClose: vi.fn(),
+        onSaved: vi.fn(),
+      }),
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // Probar pronunciación
+    const audioBtn = host.querySelector<HTMLButtonElement>(".btn--pronounce");
+    expect(audioBtn).not.toBeNull();
+    await act(async () => {
+      click(audioBtn!);
+    });
+    expect(speakWord).toHaveBeenCalledWith("wander", "en");
+
+    // Abrir nivel 2 (profundizar) para ver el botón de explicación
+    const deepenBtn = host.querySelector<HTMLButtonElement>(".btn--profundizar")!;
+    expect(deepenBtn).not.toBeNull();
+    await act(async () => {
+      click(deepenBtn);
+    });
+
+    // Probar explicación en pasaje con nativeLanguage
+    const explainBtn = host.querySelector<HTMLButtonElement>(".btn--explain-passage");
+    expect(explainBtn).not.toBeNull();
+    await act(async () => {
+      click(explainBtn!);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(explainInPassage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        word: "wander",
+        language: "en",
+        nativeLanguage: "es",
+      }),
+      expect.anything(),
+    );
+  });
 });
+

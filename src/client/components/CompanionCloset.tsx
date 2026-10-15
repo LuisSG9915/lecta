@@ -2,6 +2,9 @@ import { useState } from "react";
 import { Companion } from "./Companion";
 import {
   COMPANION_ARTICLES,
+  COMPANION_COATS,
+  COMPANION_COAT_IDS,
+  resolveCoatId,
   type CompanionArticle,
   type EquippedItems,
   type EquippedSlot,
@@ -12,6 +15,7 @@ import {
   requiredCoatLevel,
   rewardForLevel,
 } from "../lib/gamification";
+import { triggerHaptic } from "../lib/haptics";
 import Icon from "./Icon";
 
 export const SLOT_ORDER: EquippedSlot[] = [
@@ -58,6 +62,11 @@ export const ARTICLE_LABELS: Record<CompanionArticle, string> = {
   "pelaje-negro": "Medianoche",
   "pelaje-tuxedo": "Tuxedo",
   "pelaje-dorado": "Dorado",
+  tuxedo: "Tuxedo",
+  latte: "Crema Canela",
+  ginger: "Naranja Miel",
+  mist: "Gris Neblina",
+  calico: "Calicó Literario",
   beret_poet: "Boina de Poeta",
   wizard_hat: "Sombrero de Sabio",
   laurel_crown: "Corona de Laurel",
@@ -111,6 +120,7 @@ export function CompanionCloset({
 
   // El pelaje actual para dibujarlo de fondo en prendas de otras ranuras
   const currentCoat = equipped.coat ?? null;
+  const activeCoatId = resolveCoatId(currentCoat);
 
   const currentArticles: (CompanionArticle | null)[] =
     filter === "all"
@@ -119,6 +129,53 @@ export function CompanionCloset({
 
   return (
     <section className="companion-closet" aria-label="Armario">
+      {/* Selector superior de 5 Pelajes (Bloque 4.3) */}
+      <div
+        className="companion-coat-swatches"
+        role="radiogroup"
+        aria-label="Elegir pelaje"
+      >
+        <div className="companion-coat-swatches__header">
+          <span className="companion-coat-swatches__title">Pelaje</span>
+          <span className="companion-coat-swatches__current">
+            {COMPANION_COATS[activeCoatId].name}
+          </span>
+        </div>
+        <div className="companion-coat-swatches__row">
+          {COMPANION_COAT_IDS.map((cId) => {
+            const coat = COMPANION_COATS[cId];
+            const isSelected = activeCoatId === cId;
+            return (
+              <button
+                key={cId}
+                type="button"
+                role="radio"
+                aria-checked={isSelected}
+                className="companion-coat-swatch"
+                data-active={isSelected || undefined}
+                title={`${coat.name} — ${coat.description}`}
+                aria-label={`${coat.name}: ${coat.description}`}
+                disabled={equipBusy}
+                onClick={() => {
+                  triggerHaptic(12);
+                  void onChoose("coat", coat.articleId || cId);
+                }}
+              >
+                <span
+                  className="companion-coat-swatch__disc"
+                  style={{
+                    background: `linear-gradient(135deg, ${coat.fur} 50%, ${coat.chest} 50%)`,
+                    border: isSelected
+                      ? "2px solid var(--vermilion)"
+                      : "1.5px solid var(--border-color, rgba(128, 128, 128, 0.3))",
+                  }}
+                />
+                <span className="companion-coat-swatch__label">{coat.name}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
       {/* Fichas de filtros / ranuras: Todo, Cabeza, Cuello, Ojos, Escenario, Pelaje */}
       <div
         className="companion-slot-chips"

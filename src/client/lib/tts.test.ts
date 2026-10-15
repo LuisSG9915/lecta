@@ -492,4 +492,45 @@ describe("ttsController", () => {
     expect(speakers[0].resumeCount).toBe(0);
     expect(speakers[0].spoken.at(-1)).toBe("Una.");
   });
+
+  it("avanza y retrocede de frase con nextSentence y prevSentence", async () => {
+    consent();
+    const { deps, speakers } = makeDeps([section("<p>Primera. Segunda. Tercera.</p>")]);
+    const ctl = createTtsController(deps);
+    ctl.start(CTX, 0);
+    await flush();
+
+    expect(ctl.getCurrentSentence()).toBe("Primera.");
+    ctl.nextSentence();
+    expect(ctl.getCurrentSentence()).toBe("Segunda.");
+    expect(speakers.at(-1)?.spoken.at(-1)).toBe("Segunda.");
+
+    ctl.nextSentence();
+    expect(ctl.getCurrentSentence()).toBe("Tercera.");
+
+    ctl.prevSentence();
+    expect(ctl.getCurrentSentence()).toBe("Segunda.");
+    expect(speakers.at(-1)?.spoken.at(-1)).toBe("Segunda.");
+
+    ctl.prevSentence();
+    expect(ctl.getCurrentSentence()).toBe("Primera.");
+
+    // prevSentence en el inicio no se desborda
+    ctl.prevSentence();
+    expect(ctl.getCurrentSentence()).toBe("Primera.");
+  });
+
+  it("permite ciclar velocidades personalizadas con cycleRate(customRates)", async () => {
+    consent();
+    const { deps } = makeDeps([section("<p>Frase.</p>")]);
+    const ctl = createTtsController(deps);
+    ctl.start(CTX, 0);
+    await flush();
+
+    const customRates: [0.9, 1, 1.15, 1.3] = [0.9, 1, 1.15, 1.3];
+    expect(ctl.cycleRate(customRates)).toBe(1.15);
+    expect(ctl.cycleRate(customRates)).toBe(1.3);
+    expect(ctl.cycleRate(customRates)).toBe(0.9);
+    expect(ctl.cycleRate(customRates)).toBe(1);
+  });
 });

@@ -288,9 +288,32 @@ describe("SectionPreview", () => {
       });
 
       expect(card.classList.contains("is-flipped")).toBe(true);
+      expect(card.classList.contains("section-preview__flash-card--expanded")).toBe(true);
+      expect(host.querySelector(".section-preview__flash-word--back")?.textContent).toBe("refulgente");
       expect(text()).toContain("+5 gotas de tinta");
       expect(text()).toContain("Que emite resplandor");
       expect(onUnlock).toHaveBeenCalledWith(expect.objectContaining({ form: "refulgente" }));
+    });
+
+    it("al voltear una tarjeta se muestra el lema en la cara trasera y se aplica la clase expandida", () => {
+      render(
+        base({
+          rows: [row("es:abigarrado", { form: "abigarrados", lemma: "abigarrado", meaning: "De varios colores mal combinados" })],
+        }),
+      );
+
+      const card = host.querySelector(".section-preview__flash-card") as HTMLElement;
+      expect(card).toBeTruthy();
+      expect(card.classList.contains("section-preview__flash-card--expanded")).toBe(false);
+
+      act(() => {
+        card.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      });
+
+      expect(card.classList.contains("section-preview__flash-card--expanded")).toBe(true);
+      const backWord = host.querySelector(".section-preview__flash-word--back");
+      expect(backWord).toBeTruthy();
+      expect(backWord?.textContent).toBe("abigarrado");
     });
 
     it("permite seleccionar una estrategia con 1 clic y entrar al capítulo", () => {

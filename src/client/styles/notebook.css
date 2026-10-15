@@ -730,6 +730,128 @@
   margin-block-start: var(--s-4);
 }
 
+/* Racha viva y Escudos de Ronroneo */
+.act-streak-card {
+  padding: var(--s-3);
+  border: var(--border);
+  border-radius: var(--r-2);
+  background: var(--paper-raised);
+  margin-block-end: var(--s-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.act-streak-shields {
+  display: flex;
+  align-items: center;
+  gap: var(--s-1);
+}
+
+.act-streak-shield {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: var(--fs-xs);
+  padding: 0.15rem 0.45rem;
+  border-radius: 9999px;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  color: #c2410c;
+}
+
+.act-streak-shield--active {
+  background: #fef3c7;
+  border-color: #fde68a;
+  color: #b45309;
+}
+
+.act-streak-quote {
+  margin: 0;
+  font-size: var(--fs-xs);
+  font-style: italic;
+  color: var(--ochre, #b86200);
+  background: rgba(224, 138, 39, 0.08);
+  padding: var(--s-2);
+  border-radius: 6px;
+}
+
+/* Gotas de tinta semanales */
+.act-ink-drops {
+  display: flex;
+  gap: var(--s-2);
+  align-items: center;
+  margin-block: var(--s-2);
+}
+
+.act-ink-drop {
+  width: 24px;
+  height: 32px;
+  border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+  border: 1.5px solid var(--line);
+  position: relative;
+  overflow: hidden;
+  background: var(--paper-sunken);
+}
+
+.act-ink-drop-fill {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--vermilion, #b83d1c);
+  transition: height var(--dur-2) var(--ease-out);
+}
+
+/* Mapa de calor mensual (28 días) */
+.act-month-heatmap {
+  margin-block: var(--s-4);
+}
+
+.act-month-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  margin-block-start: var(--s-2);
+}
+
+.act-month-cell {
+  aspect-ratio: 1;
+  border-radius: 4px;
+  background: var(--paper-sunken);
+  border: 1px solid var(--line);
+  transition: transform var(--dur-1) var(--ease-out);
+}
+
+.act-month-cell:hover {
+  transform: scale(1.15);
+}
+
+.act-month-cell--level-0 {
+  background: var(--paper-sunken, #f0eee6);
+  opacity: 0.6;
+}
+
+.act-month-cell--level-1 {
+  background: #ffedd5;
+  border-color: #fed7aa;
+}
+
+.act-month-cell--level-2 {
+  background: #fdba74;
+  border-color: #fb923c;
+}
+
+.act-month-cell--level-3 {
+  background: #f97316;
+  border-color: #ea580c;
+}
+
+.act-month-cell--level-4 {
+  background: var(--vermilion, #b83d1c);
+  border-color: #991b1b;
+}
+
 /* ---------- Lista ---------- */
 
 /* Búsqueda, filtros, orden y exportación en una misma zona. */
@@ -2328,6 +2450,67 @@
   color: var(--ink-soft);
 }
 
+/* Tira deslizable de palabras capturadas recientemente (Caso 2) */
+.nb-recent-rail {
+  margin-block: var(--s-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
 
+.nb-recent-label {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--ink-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
 
+.nb-recent-track {
+  display: flex;
+  gap: var(--s-2);
+  overflow-x: auto;
+  padding-block: 2px var(--s-2);
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
 
+.nb-recent-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--paper-raised, #FAF8F5);
+  border: 1px solid var(--border-soft, rgba(0, 0, 0, 0.1));
+  border-radius: 999px;
+  font-size: var(--fs-xs);
+  font-family: var(--font-book, serif);
+  font-weight: 500;
+  color: var(--ink);
+  white-space: nowrap;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+}
+
+.nb-recent-chip:hover {
+  background: var(--paper, #FFFFFF);
+  border-color: var(--accent-primary, #E08A58);
+  transform: translateY(-1px);
+}
+
+.nb-recent-chip:active {
+  transform: translateY(0);
+}
+
+.nb-recent-chip-star {
+  color: var(--accent-primary, #E08A58);
+  font-size: 0.8em;
+}
+
+.nb-recent-chip-text {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

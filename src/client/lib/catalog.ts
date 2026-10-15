@@ -29,6 +29,7 @@ export type CatalogBook = {
   // «Abrir» salen de esta comparación sin descargar nada.
   epubSha256?: string;
   cover: boolean;
+  moodTags?: string[];
 };
 
 export type CatalogIndex = {
@@ -174,6 +175,44 @@ export async function catalogVocab(
 }
 
 export const catalogCoverUrl = (id: string) => `/api/catalog/${id}/cover`;
+
+export const CURATED_MOOD_TAGS: Record<string, string[]> = {
+  quijote: ["Vocabulario Elevado", "Clásico Universal"],
+  celestina: ["Teatro y Drama", "Vocabulario Elevado"],
+  lazarillo: ["Ideal para sesiones de 10 min", "Picaresca"],
+  regenta: ["Narrativa Profunda", "Vocabulario Elevado"],
+  "fortunata-jacinta": ["Novela de Época", "Vocabulario Elevado"],
+  marianela: ["Ideal para sesiones de 10 min", "Realismo"],
+  "cuentos-amor": ["Ideal para sesiones de 10 min", "Cuentos de Amor"],
+  "poemas-dario": ["Poesía y Modernismo", "Ideal para sesiones de 10 min"],
+  "obras-becquer": ["Poesía y Modernismo", "Ideal para sesiones de 10 min"],
+  "fuente-ovejuna": ["Ideal para sesiones de 10 min", "Teatro Clásico"],
+  "si-de-las-ninas": ["Ideal para sesiones de 10 min", "Comedia"],
+  buscon: ["Picaresca", "Vocabulario Elevado"],
+  "amistad-funesta": ["Ideal para sesiones de 10 min", "Romántica"],
+  ariel: ["Vocabulario Elevado", "Ensayo Filosófico"],
+  "navidad-montanas": ["Ideal para sesiones de 10 min", "Costumbrismo"],
+  "cuentos-mi-tiempo": ["Ideal para sesiones de 10 min", "Cuentos"],
+  "cuentos-ingenuos": ["Ideal para sesiones de 10 min", "Narrativa Breve"],
+};
+
+export function getBookMoodTags(book: CatalogBook): string[] {
+  if (book.moodTags && book.moodTags.length > 0) return book.moodTags;
+  if (CURATED_MOOD_TAGS[book.id]) return CURATED_MOOD_TAGS[book.id];
+  const tags: string[] = [];
+  if (book.wordCount && book.wordCount < 25_000) {
+    tags.push("Ideal para sesiones de 10 min");
+  } else if (book.wordCount && book.wordCount > 90_000) {
+    tags.push("Vocabulario Elevado");
+  }
+  if (book.subjects?.some((s) => /poes[ií]a|modernism/i.test(s))) {
+    tags.push("Poesía y Modernismo");
+  }
+  if (tags.length === 0) {
+    tags.push("Clásico Literario");
+  }
+  return tags;
+}
 
 // Descarga el EPUB del catálogo y lo devuelve como File listo para el
 // flujo normal de «Añadir libro» (misma validación y dedup por hash que

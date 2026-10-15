@@ -64,7 +64,7 @@ export function CompanionStage({
   name,
   stage,
   mood,
-  accessories,
+  accessories = [],
   focus,
   pose: externalPose,
   activeCare,

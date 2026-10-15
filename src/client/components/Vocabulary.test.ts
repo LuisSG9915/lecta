@@ -607,4 +607,27 @@ describe("Reestructura del Cuaderno", () => {
     expect(host.querySelector(".nb-practice")).toBeTruthy();
     expect(text()).toContain("Repaso");
   });
+
+  it("renderiza la tira de capturadas recientemente y abre la ficha al pulsar el chip", async () => {
+    listWordsMock.mockResolvedValue([
+      word({ form: "efímero", lemma: "efímero", savedAt: 100 }),
+      word({ form: "resplandor", lemma: "resplandor", savedAt: 200 }),
+    ]);
+    await render();
+
+    const rail = host.querySelector(".nb-recent-rail");
+    expect(rail).toBeTruthy();
+    const chips = host.querySelectorAll(".nb-recent-chip");
+    expect(chips.length).toBe(2);
+    expect(chips[0].textContent).toContain("resplandor");
+    expect(chips[1].textContent).toContain("efímero");
+
+    await act(async () => {
+      (chips[0] as HTMLButtonElement).click();
+      for (let i = 0; i < 4; i++) await Promise.resolve();
+    });
+
+    expect(host.querySelector(".nb-word-detail")).toBeTruthy();
+  });
 });
+

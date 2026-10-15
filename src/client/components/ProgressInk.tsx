@@ -12,6 +12,7 @@ export interface ProgressInkProps {
   className?: string;
   style?: React.CSSProperties;
   pulseWave?: boolean;
+  checkpointReached?: boolean;
 }
 
 export function ProgressInk({
@@ -26,6 +27,7 @@ export function ProgressInk({
   className = "",
   style,
   pulseWave = false,
+  checkpointReached = false,
 }: ProgressInkProps) {
   const targetRatio =
     max > floor ? Math.min(1, Math.max(0, (value - floor) / (max - floor))) : 0;
@@ -34,10 +36,12 @@ export function ProgressInk({
   const [scale, setScale] = useState(() => targetRatio);
   const [transitioning, setTransitioning] = useState(false);
   const [waveActive, setWaveActive] = useState(false);
+  const [checkpointFlash, setCheckpointFlash] = useState(false);
   const prevLevel = useRef<number | undefined>(level);
   const prevRatio = useRef(targetRatio);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const waveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const checkpointTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const displayScale = reducedMotion ? targetRatio : scale;
 
@@ -67,6 +71,31 @@ export function ProgressInk({
       window.removeEventListener("lecta:reading-block-completed", handleFocusEvent);
     };
   }, [pulseWave, reducedMotion]);
+
+  // Animación de destello y gotas al alcanzar un micro-tramo / checkpoint
+  useEffect(() => {
+    if (reducedMotion) return;
+
+    const triggerFlash = () => {
+      setCheckpointFlash(true);
+      if (checkpointTimerRef.current) clearTimeout(checkpointTimerRef.current);
+      checkpointTimerRef.current = setTimeout(() => {
+        setCheckpointFlash(false);
+      }, 1200);
+    };
+
+    if (checkpointReached) {
+      triggerFlash();
+    }
+
+    const handleCheckpointEvent = () => triggerFlash();
+    window.addEventListener("lecta:checkpoint-reached", handleCheckpointEvent);
+
+    return () => {
+      if (checkpointTimerRef.current) clearTimeout(checkpointTimerRef.current);
+      window.removeEventListener("lecta:checkpoint-reached", handleCheckpointEvent);
+    };
+  }, [checkpointReached, reducedMotion]);
 
   useEffect(() => {
     // Si se pide movimiento reducido, solo actualiza referencias sin animar ni causar renders adicionales.
@@ -140,12 +169,19 @@ export function ProgressInk({
       aria-valuetext={formattedAriaText}
       style={style}
       data-wave={waveActive ? "true" : undefined}
+      data-checkpoint-flash={checkpointFlash ? "true" : undefined}
+      data-checkpoint-reached={checkpointFlash || checkpointReached ? "true" : undefined}
     >
       <div className="progress-ink-fill" style={fillStyle}>
         {waveActive && !reducedMotion ? (
           <span className="progress-ink-wave-overlay" aria-hidden="true" />
         ) : null}
       </div>
+      {checkpointFlash && !reducedMotion ? (
+        <span className="progress-ink-drops" aria-hidden="true">
+          +3 💧
+        </span>
+      ) : null}
     </div>
   );
 }

@@ -22,6 +22,14 @@ export type CompanionState =
   | "yawn"
   | "celebrating";
 
+export {
+  COMPANION_COATS,
+  COMPANION_COAT_IDS,
+  resolveCoatId,
+  type CompanionCoatDef,
+  type CompanionCoatId,
+} from "../../shared/companion-data";
+
 export type CompanionSignal =
   | { kind: "book_opened"; at: number }
   | { kind: "book_closed"; at: number }

@@ -13,6 +13,8 @@ export const TIP_PROMPT_VERSION = "tip-v1";
 export const EVALUATE_PROMPT_VERSION = "evaluate-v1";
 export const STORY_PROMPT_VERSION = "story-v1";
 export const EXPLAIN_PASSAGE_PROMPT_VERSION = "explain-passage-v1";
+export const PAGE_RECAP_PROMPT_VERSION = "page-recap-v1";
+export const CHARACTER_RECAP_PROMPT_VERSION = "character-recap-v1";
 
 const POS_VALUES = new Set([
   "sustantivo",
@@ -80,7 +82,10 @@ export type DeepSeekOperation =
   | "tip"
   | "evaluate"
   | "story"
-  | "explain_passage";
+  | "explain_passage"
+  | "companion_note"
+  | "page_recap"
+  | "character_recap";
 
 // Techo de tokens de salida por operación. En la muestra A/B de
 // enriquecimiento el máximo observado fue 343; 768 deja margen sin
@@ -95,6 +100,9 @@ export const AI_CALL_LIMITS = {
   evaluate: 180,
   story: 180,
   explain_passage: 192,
+  companion_note: 120,
+  page_recap: 90,
+  character_recap: 256,
 } as const satisfies Record<DeepSeekOperation, number>;
 
 export type DeepSeekCallOptions = {
@@ -437,6 +445,12 @@ export const EXPLAIN_PASSAGE_CALL_OPTIONS: DeepSeekCallOptions = {
   operation: "explain_passage",
   promptVersion: EXPLAIN_PASSAGE_PROMPT_VERSION,
   maxTokens: AI_CALL_LIMITS.explain_passage,
+};
+
+export const PAGE_RECAP_CALL_OPTIONS: DeepSeekCallOptions = {
+  operation: "page_recap",
+  promptVersion: PAGE_RECAP_PROMPT_VERSION,
+  maxTokens: AI_CALL_LIMITS.page_recap,
 };
 
 export async function requestEnrichment(
@@ -878,6 +892,7 @@ export function buildExplainInPassagePrompt(input: {
   bookTitle?: string;
   author?: string;
   language?: string;
+  nativeLanguage?: string;
 }): string {
   const parts: string[] = [];
   if (input.word && input.word.trim()) {
@@ -889,6 +904,17 @@ export function buildExplainInPassagePrompt(input: {
   }
   if (input.author?.trim()) {
     parts.push(`Autor: «${input.author.trim()}»`);
+  }
+  const isEn = input.language?.toLowerCase().startsWith("en");
+  const isNativeEs = !input.nativeLanguage || input.nativeLanguage.toLowerCase().startsWith("es");
+  if (isEn && isNativeEs) {
+    parts.push(
+      "Instrucción L1/L2: El libro está en inglés y el lector es hispanohablante. Explica el significado contextual en español con el matiz preciso del inglés, resaltando la traducción contextual y matiz literario.",
+    );
+  } else if (input.language && input.nativeLanguage && input.language !== input.nativeLanguage) {
+    parts.push(
+      `Instrucción L1/L2: El texto está en ${input.language} y la lengua del lector es ${input.nativeLanguage}. Redacta la explicación en ${input.nativeLanguage}.`,
+    );
   }
   return parts.join("\n");
 }
@@ -922,3 +948,199 @@ export function parsePassageExplanation(raw: string): PassageExplanation | null 
     catTip: catTip || "Fíjate en cómo resuena esta frase en el resto del capítulo.",
   };
 }
+
+// ---------- Cartas y Notas del Compañero (Lecta v2.0 - B.2) ----------
+
+export const COMPANION_NOTE_PROMPT_VERSION = "companion-note-v1";
+
+export const COMPANION_NOTE_CALL_OPTIONS: DeepSeekCallOptions = {
+  operation: "companion_note",
+  promptVersion: COMPANION_NOTE_PROMPT_VERSION,
+  maxTokens: AI_CALL_LIMITS.companion_note,
+};
+
+export const COMPANION_NOTE_SYSTEM_PROMPT = `Eres el gato compañero lector de Lecta. Redacta una carta o nota muy breve (exactamente 2 oraciones) y entrañable firmada por ti. Felicita al lector por su logro, rango o lectura reciente e integra con naturalidad la palabra indicada o el libro actual. Devuelve estrictamente SOLO un objeto JSON válido con esta forma exacta:
+{"title":"<título corto y cálido de la carta>","note":"<exactamente 2 oraciones cariñosas y motivadoras>","signOff":"<firma del gato con huellitas>"}`;
+
+export function buildCompanionNotePrompt(input: {
+  catName?: string;
+  achievement?: string;
+  bookTitle?: string;
+  masteredWord?: string;
+  rankName?: string;
+}): string {
+  const parts: string[] = [];
+  parts.push(`Nombre del gato: ${input.catName || "Michi"}`);
+  if (input.achievement) parts.push(`Logro alcanzado: ${input.achievement}`);
+  if (input.rankName) parts.push(`Nuevo rango literario: ${input.rankName}`);
+  if (input.bookTitle) parts.push(`Libro actual: «${input.bookTitle}»`);
+  if (input.masteredWord) parts.push(`Palabra aprendida: «${input.masteredWord}»`);
+  return parts.join("\n");
+}
+
+export interface CompanionNoteResponse {
+  title: string;
+  note: string;
+  signOff: string;
+}
+
+export function parseCompanionNote(raw: string): CompanionNoteResponse | null {
+  let data: unknown;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (typeof data !== "object" || data === null) return null;
+  const obj = data as Record<string, unknown>;
+  const title = typeof obj.title === "string" ? obj.title.trim().slice(0, 80) : "";
+  const note = typeof obj.note === "string" ? obj.note.trim().slice(0, 300) : "";
+  const signOff = typeof obj.signOff === "string" ? obj.signOff.trim().slice(0, 60) : "Tu gato lector 🐾";
+  if (!note) return null;
+  return {
+    title: title || "¡Carta de tu compañero!",
+    note,
+    signOff,
+  };
+}
+
+// ---------- Rescate de lectura / Recuperar el hilo (Lecta TDAH) ----------
+
+export const PAGE_RECAP_SYSTEM_PROMPT = `Eres el gato compañero lector de Lecta. Ayudas a un lector que se distrajo o leyó en piloto automático a recuperar el hilo de la página actual sin abrumarlo. Devuelve estrictamente SOLO un objeto JSON válido con esta forma exacta, sin texto extra ni markdown:
+{"bullets":["<idea clave 1 en máx 15 palabras>","<idea clave 2 en máx 15 palabras>"],"hookQuestion":"<pregunta intrigante de 1 oración sobre lo que está pasando o por venir>"}
+Reglas:
+- "bullets": exactamente 2 puntos clave ultra sintéticos que resuman la acción o pensamiento de la página.
+- "hookQuestion": una pregunta sugerente que despierte la curiosidad para seguir leyendo sin spoilers.
+- Máximo 90 tokens en total. Tono empático, lúcido y literario.`;
+
+export function buildPageRecapPrompt(input: {
+  text: string;
+  bookTitle?: string;
+  chapterTitle?: string;
+}): string {
+  const parts: string[] = [];
+  if (input.bookTitle) parts.push(`Libro: «${input.bookTitle}»`);
+  if (input.chapterTitle) parts.push(`Capítulo: «${input.chapterTitle}»`);
+  parts.push(`Texto actual de la página:\n«${input.text.trim().slice(0, 1500)}»`);
+  return parts.join("\n");
+}
+
+export interface PageRecapResponse {
+  bullets: string[];
+  hookQuestion: string;
+  fallback?: boolean;
+}
+
+export function parsePageRecap(raw: string): PageRecapResponse | null {
+  let data: unknown;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (typeof data !== "object" || data === null) return null;
+  const obj = data as Record<string, unknown>;
+  const bullets = Array.isArray(obj.bullets)
+    ? obj.bullets
+        .filter((b): b is string => typeof b === "string" && Boolean(b.trim()))
+        .map((b) => b.trim().slice(0, 140))
+        .slice(0, 2)
+    : [];
+  const hookQuestion =
+    typeof obj.hookQuestion === "string" ? obj.hookQuestion.trim().slice(0, 160) : "";
+  if (bullets.length === 0 && !hookQuestion) return null;
+  return {
+    bullets: bullets.length > 0 ? bullets : ["El texto avanza en el pensamiento central del autor."],
+    hookQuestion: hookQuestion || "¿Hacia dónde nos llevará el siguiente paso?",
+  };
+}
+
+export function deterministicPageRecapFallback(text: string): PageRecapResponse {
+  const clean = text.replace(/\s+/g, " ").trim();
+  const sentences = clean
+    .split(/(?<=[.!?])\s+/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 15);
+  const b1 = sentences[0]
+    ? (sentences[0].length > 80 ? sentences[0].slice(0, 77) + "..." : sentences[0])
+    : "La lectura transcurre en este punto de la obra.";
+  const b2 = sentences[1]
+    ? (sentences[1].length > 80 ? sentences[1].slice(0, 77) + "..." : sentences[1])
+    : "Los personajes y reflexiones continúan desenvolviéndose.";
+  return {
+    bullets: [b1, b2],
+    hookQuestion: "¿Cómo continúa el hilo de este pasaje?",
+    fallback: true,
+  };
+}
+
+// ---------- Atlas del libro sin spoilers: Resumen de personaje/lugar (Innovación 2) ----------
+export const CHARACTER_RECAP_CALL_OPTIONS = {
+  operation: "character_recap" as const,
+  promptVersion: CHARACTER_RECAP_PROMPT_VERSION,
+  maxTokens: AI_CALL_LIMITS.character_recap,
+};
+
+export const CHARACTER_RECAP_SYSTEM_PROMPT = `Eres el gato bibliotecario de Lecta, un lector cómplice y sensible. Tu labor es refrescarle la memoria al lector sobre un personaje o lugar sin hacer NINGÚN SPOILER.
+REGLA INVIOLABLE: El lector está actualmente leyendo el libro. Está ESTRICTAMENTE PROHIBIDO revelar hechos, destinos, identidades secretas o giros futuros que no estén explícitamente contenidos en los fragmentos proporcionados (los cuales abarcan ÚNICAMENTE hasta el capítulo actual).
+Escribe un resumen cálido, evocador y conciso (1 a 2 párrafos breves) explicando quién es o qué representa según lo leído hasta ahora.
+Devuelve SOLO un objeto JSON válido con esta forma exacta, sin texto extra:
+{"summary":"<resumen cálido de 1-2 párrafos>","role":"<rol breve, ej: Amigo de la infancia / Mentor>"}`;
+
+export interface CharacterRecapInput {
+  entityName: string;
+  bookTitle?: string;
+  currentChapterTitle?: string;
+  excerptsSoFar: string[];
+}
+
+export function buildCharacterRecapPrompt(input: CharacterRecapInput): string {
+  const parts: string[] = [];
+  parts.push(`Entidad / Personaje / Lugar a recordar: «${input.entityName.trim()}»`);
+  if (input.bookTitle) parts.push(`Libro: «${input.bookTitle.trim()}»`);
+  if (input.currentChapterTitle) parts.push(`Capítulo actual del lector: «${input.currentChapterTitle.trim()}»`);
+  parts.push("Fragmentos donde aparece hasta este momento del libro:");
+  const excerpts = input.excerptsSoFar.slice(0, 5).map((e, i) => `${i + 1}. «${e.trim().slice(0, 280)}»`);
+  parts.push(excerpts.join("\n"));
+  return parts.join("\n\n");
+}
+
+export interface CharacterRecapResponse {
+  summary: string;
+  role?: string;
+  fallback?: boolean;
+}
+
+export function parseCharacterRecap(raw: string): CharacterRecapResponse | null {
+  let data: unknown;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (typeof data !== "object" || data === null) return null;
+  const obj = data as Record<string, unknown>;
+  const summary = typeof obj.summary === "string" ? obj.summary.trim().slice(0, 600) : "";
+  const role = typeof obj.role === "string" ? obj.role.trim().slice(0, 100) : undefined;
+  if (!summary) return null;
+  return { summary, role };
+}
+
+export function deterministicCharacterRecapFallback(
+  entityName: string,
+  excerpts: string[],
+): CharacterRecapResponse {
+  const cleanName = entityName.trim();
+  const first = excerpts[0]?.trim();
+  let summary = `${cleanName} ha aparecido en la lectura previa hasta tu capítulo actual.`;
+  if (first) {
+    summary += ` Primera aparición registrada: «${first.length > 140 ? first.slice(0, 137) + "…" : first}».`;
+  }
+  return {
+    summary,
+    role: "Personaje / Lugar de la obra",
+    fallback: true,
+  };
+}
+
+

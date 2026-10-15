@@ -73,4 +73,22 @@ describe("speech", () => {
     await speakWord("   ", "es");
     expect(speakMock).not.toHaveBeenCalled();
   });
+
+  it("selecciona voz en-GB si no hay en-US", async () => {
+    vi.stubGlobal("speechSynthesis", {
+      getVoices: () => [
+        { lang: "en-GB", name: "British English" } as SpeechSynthesisVoice,
+      ],
+      speak: speakMock,
+      cancel: cancelMock,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    });
+
+    await speakWord("water", "en");
+    expect(speakMock).toHaveBeenCalled();
+    const utterance = speakMock.mock.calls[speakMock.mock.calls.length - 1][0] as SpeechSynthesisUtterance;
+    expect(utterance.text).toBe("water");
+    expect(utterance.lang).toBe("en-GB");
+  });
 });

@@ -11,6 +11,8 @@ import {
   type QuoteCardTheme,
 } from "../lib/quote-card";
 import { triggerHaptic } from "../lib/haptics";
+import { useCompanionSafe } from "./CompanionProvider";
+import { resolveCoatId } from "../../shared/companion-data";
 
 type QuoteCardModalProps = {
   text: string;
@@ -31,12 +33,17 @@ export default function QuoteCardModal({
   onSavePassage,
   alreadySaved = false,
 }: QuoteCardModalProps) {
-  const [format, setFormat] = useState<QuoteCardFormat>("story");
-  const [theme, setTheme] = useState<QuoteCardTheme>("papel");
+  const companion = useCompanionSafe();
+  const companionCoat = resolveCoatId(companion?.equipped.coat);
+  const companionAvailable = Boolean(companion && companion.enabled !== false);
+
+  const [format, setFormat] = useState<QuoteCardFormat>("portrait");
+  const [theme, setTheme] = useState<QuoteCardTheme>("clasico_crema");
   const [showAuthor, setShowAuthor] = useState(Boolean(author));
   const [showBookTitle, setShowBookTitle] = useState(Boolean(bookTitle));
   const [showChapter, setShowChapter] = useState(Boolean(chapterTitle));
   const [showBranding, setShowBranding] = useState(true);
+  const [includeCompanion, setIncludeCompanion] = useState(companionAvailable);
   const [busy, setBusy] = useState(false);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [savedLocal, setSavedLocal] = useState(alreadySaved);
@@ -55,6 +62,8 @@ export default function QuoteCardModal({
       showBookTitle,
       showChapter,
       showBranding,
+      includeCompanion: includeCompanion && companionAvailable,
+      coatId: companionCoat,
     }),
     [
       text,
@@ -67,6 +76,9 @@ export default function QuoteCardModal({
       showBookTitle,
       showChapter,
       showBranding,
+      includeCompanion,
+      companionAvailable,
+      companionCoat,
     ],
   );
 
@@ -181,6 +193,17 @@ export default function QuoteCardModal({
               <div className="segmented" role="group" aria-label="Formato de la tarjeta">
                 <button
                   type="button"
+                  data-active={format === "portrait" || undefined}
+                  aria-pressed={format === "portrait"}
+                  onClick={() => {
+                    triggerHaptic("light");
+                    setFormat("portrait");
+                  }}
+                >
+                  Postal (4:5)
+                </button>
+                <button
+                  type="button"
                   data-active={format === "story" || undefined}
                   aria-pressed={format === "story"}
                   onClick={() => {
@@ -209,9 +232,10 @@ export default function QuoteCardModal({
               <div className="segmented quote-theme-chips" role="group" aria-label="Tema de color">
                 {(
                   [
+                    ["clasico_crema", "Clásico Crema"],
+                    ["noche_tinta", "Noche Tinta"],
+                    ["azul_modernista", "Azul Modernista"],
                     ["papel", "Papel"],
-                    ["blanco", "Blanco"],
-                    ["noche", "Noche"],
                     ["bermellon", "Bermellón"],
                   ] as const
                 ).map(([id, label]) => (
@@ -264,6 +288,17 @@ export default function QuoteCardModal({
                       onChange={(e) => setShowChapter(e.target.checked)}
                     />
                     <span>Capítulo</span>
+                  </label>
+                ) : null}
+
+                {companionAvailable ? (
+                  <label className="quote-toggle-item">
+                    <input
+                      type="checkbox"
+                      checked={includeCompanion}
+                      onChange={(e) => setIncludeCompanion(e.target.checked)}
+                    />
+                    <span>🐱 Incluir a mi gato compañero en la postal</span>
                   </label>
                 ) : null}
 

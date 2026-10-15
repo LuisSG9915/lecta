@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import { foldWithMap, searchBookSections } from "./book-search";
+import { foldWithMap, searchBookSections, searchBookSpoilerFree } from "./book-search";
 
 const section = (html: string) => ({
   createDocument: async () =>
@@ -106,3 +106,62 @@ describe("searchBookSections", () => {
     expect(hits[0].label).toBe("Capítulo uno");
   });
 });
+
+describe("searchBookSpoilerFree", () => {
+  it("encuentra menciones previas sin acceder a capítulos posteriores", async () => {
+    let futureAccessed = false;
+    const sections = [
+      section("<p>Apareció Aureliano Buendía por primera vez en Macondo.</p>"),
+      section("<p>Aureliano organizó el taller de orfebrería.</p>"),
+      {
+        createDocument: async () => {
+          futureAccessed = true;
+          return new DOMParser().parseFromString(
+            "<body><p>SPOILER: Aureliano morirá mucho después frente al pelotón.</p></body>",
+            "text/html",
+          );
+        },
+      },
+    ];
+
+    const toc = [
+      { index: 0, label: "Capítulo 1" },
+      { index: 1, label: "Capítulo 2" },
+      { index: 2, label: "Capítulo 3" },
+    ];
+
+    // El lector está en el capítulo 2 (índice 1):
+    const summary = await searchBookSpoilerFree(sections, toc, "Aureliano", 1);
+
+    expect(summary.totalMentionsSoFar).toBe(2);
+    expect(summary.firstMention?.chapterLabel).toBe("Capítulo 1");
+    expect(summary.firstMention?.sentence).toContain("Apareció Aureliano Buendía");
+    expect(summary.recentMentions).toHaveLength(2);
+    expect(summary.recentMentions[1].chapterLabel).toBe("Capítulo 2");
+    expect(summary.excerptsSoFar.length).toBeGreaterThan(0);
+
+    // Verificación estricta: el capítulo 3 NUNCA fue llamado ni abierto
+    expect(futureAccessed).toBe(false);
+  });
+
+  it("respeta el límite de párrafos/bloques dentro de la sección actual", async () => {
+    const sections = [
+      section(
+        "<p>Párrafo 0: Úrsula cocinaba animalitos de caramelo.</p>" +
+        "<p>Párrafo 1: Úrsula miraba por la ventana.</p>" +
+        "<p>Párrafo 2: Úrsula descubre un secreto.</p>",
+      ),
+    ];
+
+    // Lector en el párrafo 1: el párrafo 2 no debe incluirse
+    const summary = await searchBookSpoilerFree(sections, [], "Úrsula", 0, 1);
+    expect(summary.totalMentionsSoFar).toBe(2);
+    expect(summary.recentMentions[summary.recentMentions.length - 1].sentence).toContain(
+      "miraba por la ventana",
+    );
+    expect(
+      summary.recentMentions.some((m) => m.sentence.includes("descubre un secreto")),
+    ).toBe(false);
+  });
+});
+

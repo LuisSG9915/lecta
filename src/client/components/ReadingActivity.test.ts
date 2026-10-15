@@ -3,7 +3,7 @@ import { act, createElement as h } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import ReadingActivity from "./ReadingActivity";
-import { listIntervals, loadSessionValue } from "../lib/idb";
+import { listIntervals, loadSessionValue, saveSessionValue } from "../lib/idb";
 import { serializeReadingGoal } from "../lib/reading-goal";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
@@ -16,11 +16,13 @@ vi.mock("../lib/idb", async (importOriginal) => {
     listIntervals: vi.fn(async () => []),
     listReadingEvents: vi.fn(async () => []),
     loadSessionValue: vi.fn(async () => null),
+    saveSessionValue: vi.fn(async () => undefined),
   };
 });
 
 const intervalsMock = vi.mocked(listIntervals);
 const loadMock = vi.mocked(loadSessionValue);
+const saveMock = vi.mocked(saveSessionValue);
 
 let host: HTMLDivElement;
 let root: Root;
@@ -90,5 +92,29 @@ describe("ReadingActivity · meta de la semana", () => {
     expect(intervalsMock).toHaveBeenCalledTimes(2);
     expect(host.textContent).toContain("1 de 1 días con lectura");
     expect(host.textContent).toContain("cumplida");
+  });
+
+  it("muestra el Escudo de Ronroneo y mensaje de protección si ayer no hubo lectura", async () => {
+    // Sin intervalos leídos (ayer no hubo lectura)
+    intervalsMock.mockResolvedValue([]);
+    // Meta con 1 escudo disponible
+    loadMock.mockImplementation(async (key) =>
+      key === "readingGoal:v1" ? serializeReadingGoal(3, 1000, 1) : null,
+    );
+    await render();
+
+    expect(host.textContent).toContain("Escudo de Ronroneo");
+    // Al no haber leído ayer, el escudo protegió la racha automáticamente
+    expect(host.textContent).toContain("¡Cuidé tu racha ayer mientras descansabas!");
+    expect(saveMock).toHaveBeenCalled();
+  });
+
+  it("renderiza el Mapa de tinta mensual con celdas de actividad", async () => {
+    intervalsMock.mockResolvedValue(todaysReading());
+    await render();
+
+    const monthMap = host.querySelector('[aria-label="Mapa de tinta mensual"]');
+    expect(monthMap).toBeTruthy();
+    expect(monthMap?.querySelectorAll(".act-month-cell").length).toBeGreaterThanOrEqual(28);
   });
 });

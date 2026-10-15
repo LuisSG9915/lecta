@@ -7,20 +7,48 @@ import type { StoredBook } from "../lib/idb";
 type BookCoverProps = {
   book: Pick<StoredBook, "hash" | "name" | "title" | "author" | "cover">;
   className?: string;
+  progress?: number;
+  showRibbon?: boolean;
 };
 
 // Portada real del EPUB o, si no trae, una portada tipográfica
-// generada con una tinta elegida por el hash del libro.
-export default function BookCover({ book, className }: BookCoverProps) {
+// generada con una tinta elegida por el hash del libro. Incluye
+// efecto de volumen físico 3D, textura sutil de papel y cinta marcapáginas.
+export default function BookCover({
+  book,
+  className,
+  progress,
+  showRibbon,
+}: BookCoverProps) {
   const title = displayTitle(book.name, book.title);
+  const hasRibbon = showRibbon ?? (progress !== undefined && progress > 0);
+  const ribbonOffset =
+    progress !== undefined
+      ? Math.min(85, Math.max(15, Math.round(progress * 100)))
+      : 50;
 
   if (book.cover) {
     return (
-      <img
-        className={`cover ${className ?? ""}`}
-        src={coverUrlFor(book.cover)}
-        alt={`Portada de ${title}`}
-      />
+      <div
+        className={`cover cover--3d cover--image ${className ?? ""}`}
+        role="img"
+        aria-label={`Portada de ${title}`}
+      >
+        <img
+          className="cover-img"
+          src={coverUrlFor(book.cover)}
+          alt={`Portada de ${title}`}
+        />
+        <span className="cover-spine-fold" aria-hidden="true" />
+        <span className="cover-paper-texture" aria-hidden="true" />
+        {hasRibbon ? (
+          <span
+            className="cover-bookmark-ribbon"
+            style={{ "--ribbon-x": `${ribbonOffset}%` } as CSSProperties}
+            aria-hidden="true"
+          />
+        ) : null}
+      </div>
     );
   }
 
@@ -33,7 +61,7 @@ export default function BookCover({ book, className }: BookCoverProps) {
 
   return (
     <div
-      className={`cover cover--generated ${className ?? ""}`}
+      className={`cover cover--3d cover--generated ${className ?? ""}`}
       style={vars}
       role="img"
       aria-label={`Portada de ${title}`}
@@ -43,6 +71,15 @@ export default function BookCover({ book, className }: BookCoverProps) {
         <span className="cover-ornament" aria-hidden="true" />
         <span className="cover-author">{book.author ?? ""}</span>
       </span>
+      <span className="cover-spine-fold" aria-hidden="true" />
+      <span className="cover-paper-texture" aria-hidden="true" />
+      {hasRibbon ? (
+        <span
+          className="cover-bookmark-ribbon"
+          style={{ "--ribbon-x": `${ribbonOffset}%` } as CSSProperties}
+          aria-hidden="true"
+        />
+      ) : null}
     </div>
   );
 }

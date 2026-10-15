@@ -65,7 +65,7 @@ import {
   downloadNotebookMarkdown,
   downloadText,
   passagesToCsv,
-  wordsToAnkiTsv,
+  exportAnkiTsv,
   wordsToCsv,
 } from "../lib/export";
 import { useModalBehavior } from "../lib/modal";
@@ -631,6 +631,32 @@ export default function Vocabulary({
   }, []);
 
   const all = useMemo(() => words ?? [], [words]);
+
+  const recentWords = useMemo(() => {
+    return [...all]
+      .sort((a, b) => (b.savedAt ?? 0) - (a.savedAt ?? 0))
+      .slice(0, 8);
+  }, [all]);
+
+  const handleRecentChipClick = (word: SavedWord) => {
+    if (tab !== "words") setTab("words");
+    const bh = word.bookHash;
+    if (bh && collapsed.has(bh)) {
+      setCollapsed((prev) => {
+        const next = new Set(prev);
+        next.delete(bh);
+        return next;
+      });
+    }
+    setOpenWords((prev) => new Set(prev).add(word.key));
+    setTimeout(() => {
+      const detailId = `word-detail-${word.key.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+      const el = document.getElementById(detailId)?.parentElement || document.getElementById(detailId);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }, 100);
+  };
 
   const availableLanguages = useMemo(() => {
     const langs = new Set<string>();
@@ -1556,10 +1582,10 @@ export default function Vocabulary({
       wordsToCsv(filtered.filter((w) => !w.deleted), bookName),
       "text/csv;charset=utf-8",
     );
-  const exportTsv = () =>
+  const exportAnkiCloze = () =>
     downloadText(
-      `cuaderno-lecta-${new Date().toISOString().slice(0, 10)}.txt`,
-      wordsToAnkiTsv(filtered.filter((w) => !w.deleted), bookName),
+      `cuaderno-lecta-cloze-${new Date().toISOString().slice(0, 10)}.txt`,
+      exportAnkiTsv(filtered.filter((w) => !w.deleted), bookName, { cloze: true }),
       "text/plain;charset=utf-8",
     );
   const exportPassages = async () => {
@@ -1857,6 +1883,27 @@ export default function Vocabulary({
                 </div>
               </div>
             </section>
+
+            {recentWords.length > 0 ? (
+              <div className="nb-recent-rail" aria-label="Capturadas recientemente">
+                <span className="nb-recent-label">Capturadas recientemente:</span>
+                <div className="nb-recent-track" role="list">
+                  {recentWords.map((w) => (
+                    <button
+                      key={w.key}
+                      type="button"
+                      role="listitem"
+                      className="nb-recent-chip"
+                      onClick={() => handleRecentChipClick(w)}
+                      title={`Ver ficha de ${w.lemma || w.form}`}
+                    >
+                      <span className="nb-recent-chip-star" aria-hidden="true">★</span>
+                      <span className="nb-recent-chip-text">{w.lemma || w.form}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
 
             <GamePanel
               mode={workshopOpen ? "ai_workshop" : "dashboard"}
@@ -2200,7 +2247,12 @@ export default function Vocabulary({
                       <button type="button" className="btn--quiet" onClick={exportCsv}>
                         CSV
                       </button>
-                      <button type="button" className="btn--quiet" onClick={exportTsv}>
+                      <button
+                        type="button"
+                        className="btn--quiet"
+                        onClick={exportAnkiCloze}
+                        title="Exportar para Anki con supresión de partes (Cloze) en la oración del libro"
+                      >
                         Para Anki
                       </button>
                       <button

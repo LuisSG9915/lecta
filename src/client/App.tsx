@@ -18,6 +18,7 @@ import Account from "./components/Account";
 import Calibration from "./components/Calibration";
 import { CompanionProvider } from "./components/CompanionProvider";
 import Shelf, { type ShelfItem } from "./components/Shelf";
+import BookCover from "./components/BookCover";
 import Dialog from "./components/Dialog";
 import AppNav, { type NavDestination } from "./components/AppNav";
 import Notice from "./components/Notice";
@@ -34,6 +35,11 @@ import { pushOverlay, type OverlayHandle } from "./lib/history";
 import { sha256Hex } from "./lib/hash";
 import { downloadCatalogEpub, type CatalogBook } from "./lib/catalog";
 import { analyzeStoredBook } from "./lib/book-vocab";
+import { isDue } from "./lib/fsrs";
+import {
+  COMPANION_LETTERS_KEY,
+  parseCompanionLetters,
+} from "./lib/companion-inbox";
 import {
   CALIBRATION_DONE_KEY,
   calibrationDoneKey,
@@ -47,8 +53,11 @@ import {
   getStoredBook,
   isDbScopeActive,
   listBookOps,
+  listSavedWords,
   listStoredBooks,
   loadBookPosition,
+  loadSessionValue,
+  loadShelfBootstrap,
   saveBook,
   saveBookPosition,
   saveSessionValue,
@@ -174,6 +183,16 @@ export default function App() {
     bookRelease.current = null;
   };
 
+  const [lastReadBook, setLastReadBook] = useState<{
+    hash: string;
+    name: string;
+    file?: File;
+    title?: string;
+    author?: string;
+    cover?: Blob;
+    progress?: number;
+  } | null>(null);
+
   const openBook = (selection: BookSelection) => {
     setHasVisitedVocab(false);
     setShowVocabulary(false);
@@ -186,6 +205,16 @@ export default function App() {
       });
     }
     setBook(selection);
+    const libItem = library.find((item) => item.hash === selection.hash);
+    setLastReadBook({
+      hash: selection.hash,
+      name: selection.name,
+      file: selection.file,
+      title: libItem?.title ?? selection.name,
+      author: libItem?.author,
+      cover: libItem?.cover,
+      progress: 0,
+    });
   };
 
   // Termina el flujo de calibración. Con marca («Listo»/«Saltar») la
@@ -276,11 +305,60 @@ export default function App() {
     void syncPositions().catch(() => null);
   };
 
-  const activeNav: NavDestination = showVocabulary
-    ? "vocab"
-    : showAccount
-      ? "account"
-      : "shelf";
+  const [dueReviewsCount, setDueReviewsCount] = useState(0);
+  const [hasJourneyAlert, setHasJourneyAlert] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const scope = captureDbScope();
+    void Promise.all([
+      listSavedWords(undefined, scope).catch(() => []),
+      loadSessionValue(COMPANION_LETTERS_KEY, scope).catch(() => null),
+    ]).then(([savedWords, rawLetters]) => {
+      if (cancelled) return;
+      let count = 0;
+      for (const w of savedWords) {
+        if (isDue(w.card)) count++;
+      }
+      setDueReviewsCount(count);
+      const letters = parseCompanionLetters(rawLetters);
+      setHasJourneyAlert(letters.some((l) => !l.read));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [vocabVersion, activityVersion, dbUserId]);
+
+  useEffect(() => {
+    if (lastReadBook || library.length === 0) return;
+    const scope = captureDbScope();
+    void loadShelfBootstrap(scope).then(({ positions, latestHash }) => {
+      const targetHash = latestHash || positions[0]?.bookHash;
+      if (!targetHash) return;
+      const item = library.find((b) => b.hash === targetHash);
+      if (!item) return;
+      const pos = positions.find((p) => p.bookHash === targetHash);
+      const prog = pos && item.sectionCount
+        ? (pos.progress ?? Math.min(1, pos.sectionIndex / item.sectionCount))
+        : (pos?.progress ?? 0);
+      setLastReadBook({
+        hash: item.hash,
+        name: item.name,
+        title: item.title,
+        author: item.author,
+        cover: item.cover,
+        progress: prog,
+      });
+    }).catch(() => null);
+  }, [library, lastReadBook]);
+
+  const activeNav: NavDestination = showJourney
+    ? "journey"
+    : showVocabulary
+      ? "vocabulary"
+      : showAccount
+        ? "account"
+        : "shelf";
 
   useLayoutEffect(() => {
     if (book) return;
@@ -316,11 +394,15 @@ export default function App() {
         });
       }
 
-      if (dest === "vocab") {
+      if (dest === "vocab" || dest === "vocabulary") {
         setHasVisitedVocab(true);
         setShowVocabulary(true);
         setShowAccount(false);
         setShowJourney(false);
+      } else if (dest === "journey") {
+        setShowJourney(true);
+        setShowVocabulary(false);
+        setShowAccount(false);
       } else if (dest === "account") {
         setShowAccount(true);
         setShowVocabulary(false);
@@ -906,12 +988,13 @@ export default function App() {
                   downloadingHash={downloadingHash}
                   activityVersion={activityVersion}
                   onOpenJourney={() => openJourneyFrom("shelf")}
-                  onOpenPractice={() => navigateTo("vocab")}
+                  onOpenPractice={() => navigateTo("vocabulary")}
+                  onRequestCalibration={() => void requestCalibration()}
                 />
               </Activity>
 
               {hasVisitedVocab ? (
-                <Activity mode={activeNav === "vocab" ? "visible" : "hidden"}>
+                <Activity mode={activeNav === "vocabulary" ? "visible" : "hidden"}>
                   <Suspense fallback={<p className="status">Abriendo tu cuaderno…</p>}>
                     <Vocabulary
                       key={sessionUserId ?? "anon"}
@@ -942,7 +1025,56 @@ export default function App() {
               ) : null}
             </main>
           </ViewTransition>
-          <AppNav active={activeNav} onNavigate={navigateTo} />
+          {lastReadBook && !book && activeNav !== "shelf" ? (
+            <aside className="mini-reader-bar" aria-label="Lectura en curso">
+              <div className="mini-reader-cover">
+                <BookCover
+                  book={{
+                    hash: lastReadBook.hash,
+                    name: lastReadBook.name,
+                    title: lastReadBook.title,
+                    author: lastReadBook.author,
+                    cover: lastReadBook.cover,
+                  }}
+                  progress={lastReadBook.progress}
+                />
+              </div>
+              <div className="mini-reader-info">
+                <strong className="mini-reader-title">
+                  {lastReadBook.title || lastReadBook.name}
+                </strong>
+                <span className="mini-reader-progress">
+                  {Math.round((lastReadBook.progress ?? 0) * 100)}% leído
+                </span>
+              </div>
+              <button
+                type="button"
+                className="btn btn--primary mini-reader-resume"
+                onClick={() => {
+                  if (lastReadBook.file) {
+                    openBook({
+                      hash: lastReadBook.hash,
+                      name: lastReadBook.name,
+                      file: lastReadBook.file,
+                    });
+                  } else {
+                    const item = library.find((b) => b.hash === lastReadBook.hash);
+                    if (item) {
+                      void openShelfItem(item);
+                    }
+                  }
+                }}
+              >
+                Continuar leyendo →
+              </button>
+            </aside>
+          ) : null}
+          <AppNav
+            active={activeNav}
+            onNavigate={navigateTo}
+            dueCount={dueReviewsCount}
+            hasJourneyAlert={hasJourneyAlert}
+          />
           <Notice
             message={message}
             error={error}

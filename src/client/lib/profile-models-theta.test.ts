@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import {
   adjustThetaOnKnown,
@@ -7,6 +8,10 @@ import {
   sigmoid,
   thetaFromThreshold,
   wordDifficulty,
+  loadUserTheta,
+  saveUserTheta,
+  loadThetaByLang,
+  saveThetaForLang,
 } from "./profile-models";
 
 describe("Recalibración en Vivo y Modelo de Nivel de Usuario Theta (Fase 4.3)", () => {
@@ -70,5 +75,22 @@ describe("Recalibración en Vivo y Modelo de Nivel de Usuario Theta (Fase 4.3)",
     const res = adjustThetaOnEasyPin(theta, bw, 0.04);
     expect(res.adjusted).toBe(false);
     expect(res.newTheta).toBe(theta);
+  });
+
+  it("persiste y recupera theta por idioma de forma independiente", () => {
+    saveUserTheta(4.15, "es");
+    saveUserTheta(3.40, "en");
+
+    expect(loadUserTheta(3.0, "es")).toBeCloseTo(4.15, 2);
+    expect(loadUserTheta(3.0, "en")).toBeCloseTo(3.40, 2);
+
+    const thetaByLang = loadThetaByLang(3.0);
+    expect(thetaByLang.es).toBeCloseTo(4.15, 2);
+    expect(thetaByLang.en).toBeCloseTo(3.40, 2);
+
+    saveThetaForLang("en", 4.25);
+    expect(loadUserTheta(3.0, "en")).toBeCloseTo(4.25, 2);
+    // Español no debe verse afectado por el cambio en inglés
+    expect(loadUserTheta(3.0, "es")).toBeCloseTo(4.15, 2);
   });
 });

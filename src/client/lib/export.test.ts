@@ -11,6 +11,7 @@ import {
   sessionKeysForBackup,
   wordsToCsv,
   wordsToAnkiTsv,
+  exportAnkiTsv,
 } from "./export";
 import type { SavedAnnotation, SavedInterval, SavedWord } from "./idb";
 
@@ -65,6 +66,50 @@ describe("wordsToAnkiTsv", () => {
   it("sin libro ni contexto quedan vacíos", () => {
     const tsv = wordsToAnkiTsv([{ ...base, meaning: "hogar" }], bookName);
     expect(tsv).toBe("casa\thogar\tes");
+  });
+});
+
+describe("exportAnkiTsv", () => {
+  it("genera tarjetas con supresión de partes Cloze en contexto", () => {
+    const tsv = exportAnkiTsv(
+      [
+        {
+          ...base,
+          form: "afrenta",
+          lemma: "afrentar",
+          pos: "sustantivo",
+          meaning: "Ofensa grave que humilla",
+          context: "Sería una afrenta para todo el reino.",
+          bookHash: "b1",
+        },
+      ],
+      bookName,
+    );
+    const [front, back, tags] = tsv.split("\t");
+    expect(front).toBe("Sería una {{c1::afrenta}} para todo el reino.");
+    expect(back).toContain("Ofensa grave que humilla");
+    expect(back).toContain("<b>Lema:</b> afrentar");
+    expect(back).toContain("<b>Categoría:</b> sustantivo");
+    expect(back).toContain("<b>Libro:</b> Cien años de soledad");
+    expect(tags).toBe("Lecta::es Lecta::cien-anos-de-soledad sustantivo");
+  });
+
+  it("ofrece fallback sin contexto a supresión directa de la palabra", () => {
+    const tsv = exportAnkiTsv([{ ...base, form: "afrenta", meaning: "Ofensa" }], bookName);
+    const [front, back, tags] = tsv.split("\t");
+    expect(front).toBe("{{c1::afrenta}}");
+    expect(back).toBe("Ofensa");
+    expect(tags).toBe("Lecta::es");
+  });
+
+  it("respeta cloze: false generando tarjeta estándar", () => {
+    const tsv = exportAnkiTsv(
+      [{ ...base, form: "afrenta", meaning: "Ofensa", context: "Una afrenta total" }],
+      bookName,
+      { cloze: false },
+    );
+    const [front] = tsv.split("\t");
+    expect(front).toBe("afrenta");
   });
 });
 
@@ -446,16 +491,28 @@ describe("bookReadingNoteToMarkdown", () => {
     expect(md).toContain("> [!note] Reflexión");
     expect(md).toContain("> Inicio memorable.");
 
-    // Vocabulario
+    // Vocabulario en tabla estructurada (Lecta v3.0)
     expect(md).toContain("## Vocabulario adquirido");
-    expect(md).toContain("- **diáfana** *(adj.)* — lema: *diáfano*");
-    expect(md).toContain("- **Significado:** Claro, que deja pasar la luz");
-    expect(md).toContain("- *«El mundo era tan reciente y diáfana la luz.»*");
+    expect(md).toContain("| Palabra | Lema | Categoría | Significado | Oración en el libro |");
+    expect(md).toContain("| **diáfana** | diáfano | adj. | Claro, que deja pasar la luz | El mundo era tan reciente y diáfana la luz. |");
 
     // Sesiones
     expect(md).toContain("## Sesiones de lectura");
     expect(md).toContain("- **Tiempo total registrado:** 45 min");
     expect(md).toContain("- **Sesiones completadas:** 1");
+  });
+
+  it("permite exportar vocabulario en formato de lista clásica si se solicita", () => {
+    const md = bookReadingNoteToMarkdown({
+      book: sampleBook,
+      words: sampleWords,
+      annotations: [],
+      vocabFormat: "list",
+    });
+    expect(md).toContain("## Vocabulario adquirido");
+    expect(md).toContain("- **diáfana** *(adj.)* — lema: *diáfano*");
+    expect(md).toContain("- **Significado:** Claro, que deja pasar la luz");
+    expect(md).toContain("- *«El mundo era tan reciente y diáfana la luz.»*");
   });
 });
 

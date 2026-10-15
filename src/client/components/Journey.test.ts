@@ -13,13 +13,20 @@ let mockWords: SavedWord[] = [];
 let mockPositions: SavedBookPosition[] = [];
 let mockReviews: SavedReview[] = [];
 
-vi.mock("../lib/idb", () => ({
-  captureDbScope: vi.fn(() => ({ dbName: "lecta", userId: null })),
-  listIntervals: vi.fn(async () => mockIntervals),
-  listSavedWords: vi.fn(async () => mockWords),
-  listPositions: vi.fn(async () => mockPositions),
-  listAllReviews: vi.fn(async () => mockReviews),
-}));
+vi.mock("../lib/idb", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("../lib/idb")>();
+  return {
+    ...mod,
+    captureDbScope: vi.fn(() => ({ dbName: "lecta", userId: null })),
+    listIntervals: vi.fn(async () => mockIntervals),
+    listSavedWords: vi.fn(async () => mockWords),
+    listPositions: vi.fn(async () => mockPositions),
+    listAllReviews: vi.fn(async () => mockReviews),
+    listReadingEvents: vi.fn(async () => []),
+    loadSessionValue: vi.fn(async () => null),
+    saveSessionValue: vi.fn(async () => {}),
+  };
+});
 
 // Mock de CompanionProvider
 let mockCompanionContext: {
@@ -227,6 +234,155 @@ describe("Journey (Tu recorrido)", () => {
 
     expect(container?.textContent).toContain("Libros concluidos");
     expect(container?.textContent).toContain("Aún no has terminado ningún libro");
+  });
+
+  it("renderiza el Rango Literario y el Sendero de Tinta con sus hitos", async () => {
+    await act(async () => {
+      root?.render(h(Journey, { onClose: vi.fn(), books: sampleBooks }));
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(container?.textContent).toContain("Rango Literario");
+    expect(container?.textContent).toContain("El Sendero de Tinta");
+    expect(container?.textContent).toContain("pts de tinta");
+    expect(container?.querySelector(".journey-milestone-banner")).toBeTruthy();
+
+    const nodes = container?.querySelectorAll(".ink-node-btn");
+    expect(nodes?.length).toBe(7);
+  });
+
+  it("muestra los botones de acción del santuario y abre el buzón de cartas", async () => {
+    const baseState = emptyGameState();
+    const openPanelMock = vi.fn();
+    mockCompanionContext = {
+      enabled: true,
+      name: "Michi",
+      stage: 2,
+      mood: "happy",
+      state: baseState,
+      openPanel: openPanelMock,
+    } as unknown as typeof mockCompanionContext;
+
+    await act(async () => {
+      root?.render(h(Journey, { onClose: vi.fn(), books: sampleBooks }));
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(container?.textContent).toContain("Vestidor del Gato");
+    expect(container?.textContent).toContain("Buzón del Gato");
+    expect(container?.textContent).toContain("Ajustar Meta Diaria");
+
+    // Abrir buzón
+    const inboxBtn = container?.querySelector("button[aria-label^='Buzón del Gato']");
+    expect(inboxBtn).toBeTruthy();
+    await act(async () => {
+      inboxBtn?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(container?.textContent).toContain("Buzón de Tinta 💌");
+    expect(container?.textContent).toContain("Correspondencia");
+
+    // Cerrar buzón
+    const closeInboxBtn = container?.querySelector("button[aria-label='Cerrar buzón']");
+    expect(closeInboxBtn).toBeTruthy();
+    await act(async () => {
+      closeInboxBtn?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(container?.textContent).not.toContain("Correspondencia");
+  });
+
+  it("permite ajustar la meta de lectura diaria desde el santuario", async () => {
+    const baseState = emptyGameState();
+    mockCompanionContext = {
+      enabled: true,
+      name: "Michi",
+      stage: 1,
+      mood: "awake",
+      state: baseState,
+    } as unknown as typeof mockCompanionContext;
+
+    await act(async () => {
+      root?.render(h(Journey, { onClose: vi.fn(), books: sampleBooks }));
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const goalBtn = container?.querySelector("button[aria-label='Ajustar meta de lectura diaria']");
+    expect(goalBtn).toBeTruthy();
+    await act(async () => {
+      goalBtn?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(container?.textContent).toContain("Meta de Lectura Diaria 🎯");
+    expect(container?.textContent).toContain("5");
+    expect(container?.textContent).toContain("10");
+    expect(container?.textContent).toContain("15");
+
+    const saveGoalBtn = [...(container?.querySelectorAll("button") ?? [])].find((b) =>
+      b.textContent?.includes("Guardar meta"),
+    );
+    expect(saveGoalBtn).toBeTruthy();
+    await act(async () => {
+      saveGoalBtn?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(container?.textContent).not.toContain("Hábito Sostenible");
+  });
+
+  it("al tocar un hito del sendero despliega su popover de detalle", async () => {
+    await act(async () => {
+      root?.render(h(Journey, { onClose: vi.fn(), books: sampleBooks }));
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const firstNode = container?.querySelector(".ink-node-btn");
+    expect(firstNode).toBeTruthy();
+    await act(async () => {
+      firstNode?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(container?.querySelector(".ink-node-popover")).toBeTruthy();
+    expect(container?.textContent).toContain("Recompensa:");
+
+    const closePopoverBtn = container?.querySelector("button[aria-label='Cerrar detalle de hito']");
+    expect(closePopoverBtn).toBeTruthy();
+    await act(async () => {
+      closePopoverBtn?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(container?.querySelector(".ink-node-popover")).toBeFalsy();
+  });
+
+  it("renderiza el mapa de sendero con clases mobile-safe y nodos entre 24% y 74%", async () => {
+    await act(async () => {
+      root?.render(h(Journey, { onClose: vi.fn(), books: sampleBooks }));
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const trailMap = container?.querySelector(".journey__trail-map");
+    expect(trailMap).toBeTruthy();
+
+    const labels = container?.querySelectorAll(".journey__node-label");
+    expect(labels?.length).toBeGreaterThan(0);
+
+    const wrappers = container?.querySelectorAll(".ink-node-wrapper");
+    expect(wrappers?.length).toBe(7);
+
+    wrappers?.forEach((w) => {
+      const leftStr = (w as HTMLElement).style.left;
+      const leftVal = parseFloat(leftStr);
+      expect(leftVal).toBeGreaterThanOrEqual(24);
+      expect(leftVal).toBeLessThanOrEqual(74);
+    });
   });
 });
 

@@ -575,68 +575,87 @@
   stroke-linecap: round;
 }
 
-/* Pelajes (ranura equipped.coat): el artículo puesto cambia la
-   paleta del pelaje solo para este gato — los tokens --cat-* del
-   tema siguen mandando en el resto de la interfaz. */
+/* Pelajes (ranura equipped.coat): 5 paletas de alto contraste (Bloque 1.2) */
 
 .cat .cat-marks {
   display: none;
 }
 
-.cat.cat--coat-atigrado .cat-marks {
+.cat.cat--coat-atigrado .cat-marks,
+.cat.cat--coat-ginger .cat-marks {
   display: block;
   fill: none;
-  stroke: color-mix(in srgb, var(--cat-fur) 42%, var(--cat-outline));
-  stroke-width: 1.7;
+  stroke: #b85a22;
+  stroke-width: 2.2;
   stroke-linecap: round;
 }
 
-/* Gris azulado tipo «azul ruso». */
-.cat.cat--coat-gris {
-  --cat-fur: #8b99ae;
-  --cat-fur-light: #dde4ef;
-  --cat-nose: #c98a94;
+/* Tuxedo (Tinta y Crema — Por defecto): Pelaje negro azulado con rim-light */
+.cat.cat--coat-tuxedo {
+  --cat-fur: #232730;
+  --cat-fur-light: #faf3e8;
+  --cat-nose: #e07a72;
+  --cat-outline: #4a5264;
+  --cat-eye: #e8a838;
 }
 
-/* Siamés: cuerpo crema con máscara oscura — el hocico toma un tono
-   más oscuro que el pelaje, al revés del resto de pelajes. */
+.cat.cat--coat-tuxedo .cat-whisker {
+  stroke: #8f9ba8;
+}
+
+/* Latte (Crema Canela / Siamés) */
+.cat.cat--coat-latte,
 .cat.cat--coat-siames {
-  --cat-fur: #ecdcb9;
-  --cat-fur-light: #e4cfa4;
+  --cat-fur: #f3e3ce;
+  --cat-fur-light: #faf4eb;
   --cat-nose: #8a5a52;
+  --cat-outline: #8c6246;
+  --cat-eye: #5b9bd5;
 }
 
+.cat.cat--coat-latte .cat-muzzle,
 .cat.cat--coat-siames .cat-muzzle {
-  fill: #9b7c64;
+  fill: #8c6246;
 }
 
-/* Calicó: base crema con manchas parche naranja */
-.cat.cat--coat-calico {
-  --cat-fur: #fbf5eb;
+/* Ginger (Naranja Miel Atigrado) */
+.cat.cat--coat-ginger,
+.cat.cat--coat-atigrado {
+  --cat-fur: #e88846;
+  --cat-fur-light: #fff6ea;
+  --cat-nose: #e07a72;
+  --cat-outline: #b85a22;
+  --cat-eye: #4ea874;
+}
+
+/* Mist (Gris Neblina Platinado) */
+.cat.cat--coat-mist,
+.cat.cat--coat-gris {
+  --cat-fur: #b8c2cc;
   --cat-fur-light: #ffffff;
-  --cat-nose: #ea999d;
+  --cat-nose: #c98a94;
+  --cat-outline: #7e8896;
+  --cat-eye: #d4a054;
+}
+
+/* Calico (Calicó Literario) */
+.cat.cat--coat-calico {
+  --cat-fur: #faf4eb;
+  --cat-fur-light: #ffffff;
+  --cat-nose: #e07a72;
+  --cat-outline: #7a6f68;
+  --cat-eye: #4ea874;
 }
 
 .cat.cat--coat-calico .cat-marks {
   display: block;
   fill: none;
-  stroke: #c86326;
-  stroke-width: 2.2;
+  stroke: #d97941;
+  stroke-width: 2.4;
   stroke-linecap: round;
 }
 
-/* Tuxedo: carbón cálido con pecho y hocico claros. El contorno se
-   aclara a gris topo: sobre el pelo oscuro las líneas internas
-   (ojos, boca, bigotes) se pierden si quedan casi negras, y en el
-   borde exterior funciona como luz de rim. */
-.cat.cat--coat-tuxedo {
-  --cat-fur: #564f4a;
-  --cat-fur-light: #f2ebdf;
-  --cat-nose: #e09598;
-  --cat-outline: #b9ada2;
-}
-
-/* Negro medianoche (Edgar Allan Poe): silueta oscura con ojos de ámbar */
+/* Negro medianoche */
 .cat.cat--coat-negro {
   --cat-fur: #2c2725;
   --cat-fur-light: #3d3734;
@@ -648,7 +667,7 @@
   fill: #e8a838;
 }
 
-/* Dorado: el premio del nivel 10 — cálido y luminoso. */
+/* Dorado */
 .cat.cat--coat-dorado {
   --cat-fur: #e9b04b;
   --cat-fur-light: #f9e7bc;
@@ -1359,6 +1378,120 @@
   }
 }
 
+/* Animaciones autónomas y reactivas (Bloque 2 y 3) */
+.cat .cat-ear--left.cat-ear--twitch {
+  animation: cat-ear-twitch-l 0.22s ease-in-out;
+}
+
+.cat .cat-ear--right.cat-ear--twitch {
+  animation: cat-ear-twitch-r 0.22s ease-in-out;
+}
+
+@keyframes cat-ear-twitch-l {
+  0%, 100% {
+    transform: rotate(0deg);
+  }
+  40% {
+    transform: rotate(-14deg);
+  }
+}
+
+@keyframes cat-ear-twitch-r {
+  0%, 100% {
+    transform: rotate(0deg);
+  }
+  40% {
+    transform: rotate(14deg);
+  }
+}
+
+/* Boop en la nariz: squash & stretch */
+.cat--boop .cat-head {
+  animation: cat-boop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes cat-boop {
+  0% {
+    transform: scale(1, 1);
+  }
+  30% {
+    transform: scale(1.1, 0.9);
+  }
+  60% {
+    transform: scale(0.96, 1.05);
+  }
+  100% {
+    transform: scale(1, 1);
+  }
+}
+
+/* Corazones flotantes durante el ronroneo */
+.cat .cat-hearts {
+  pointer-events: none;
+}
+
+.cat .cat-heart--1 {
+  animation: cat-float-heart 2.2s ease-out infinite;
+  transform-origin: 64px 36px;
+}
+
+.cat .cat-heart--2 {
+  animation: cat-float-heart 2.2s ease-out 0.65s infinite;
+  transform-origin: 96px 28px;
+}
+
+@keyframes cat-float-heart {
+  0% {
+    opacity: 0;
+    transform: translateY(6px) scale(0.6);
+  }
+  20% {
+    opacity: 0.95;
+    transform: translateY(0) scale(1);
+  }
+  80% {
+    opacity: 0.85;
+    transform: translateY(-16px) scale(1.08);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-24px) scale(1.15);
+  }
+}
+
+/* Ronroneo: micro-vibración y balanceo */
+.cat--mood-purring .cat-head {
+  animation: cat-purr 0.25s ease-in-out infinite alternate;
+}
+
+.cat--mood-purring .cat-tail {
+  animation: cat-pet-tail 0.9s ease-in-out infinite;
+}
+
+@keyframes cat-purr {
+  0% {
+    transform: rotate(7.5deg) translateY(0);
+  }
+  100% {
+    transform: rotate(8.5deg) translateY(-0.8px);
+  }
+}
+
+/* Curioso: cabeza ladeada */
+.cat--mood-curious .cat-head {
+  transform: rotate(-10deg);
+}
+
+/* Pensando (think): rítmico suave */
+.cat--mood-thinking .cat-tail {
+  animation: cat-tail 7s ease-in-out infinite;
+}
+
+/* Emocionado: salto elástico */
+.cat--mood-excited .cat-figure {
+  animation: cat-playful-hop 0.8s var(--ease-out) infinite;
+}
+
 /* ---------- Cofres ---------- */
 
 .game-chests {
@@ -1971,6 +2104,96 @@
   display: flex;
   flex-direction: column;
   gap: var(--s-3);
+}
+
+/* Selector de 5 pelajes principales (Bloque 4.3) */
+.companion-coat-swatches {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  background: var(--paper-raised);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-2, 12px);
+}
+
+.companion-coat-swatches__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.companion-coat-swatches__title {
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.companion-coat-swatches__current {
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  color: var(--vermilion);
+}
+
+.companion-coat-swatches__row {
+  display: flex;
+  gap: var(--s-2);
+  align-items: center;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding-block: 2px;
+}
+
+.companion-coat-swatches__row::-webkit-scrollbar {
+  display: none;
+}
+
+.companion-coat-swatch {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  padding: 4px;
+  border-radius: var(--r-1, 8px);
+  cursor: pointer;
+  transition: transform var(--dur-1) var(--ease-out);
+}
+
+.companion-coat-swatch:hover:not(:disabled) {
+  transform: translateY(-2px);
+}
+
+.companion-coat-swatch__disc {
+  display: block;
+  inline-size: 28px;
+  block-size: 28px;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+  transition: transform var(--dur-1) var(--ease-out), box-shadow var(--dur-1) var(--ease-out);
+}
+
+.companion-coat-swatch[data-active] .companion-coat-swatch__disc {
+  transform: scale(1.12);
+  box-shadow: 0 0 0 2px var(--paper), 0 0 0 4px var(--vermilion);
+}
+
+.companion-coat-swatch__label {
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+.companion-coat-swatch[data-active] .companion-coat-swatch__label {
+  color: var(--ink);
+  font-weight: 600;
 }
 
 .companion-slot-chips {
@@ -2661,15 +2884,26 @@
 
 /* ---------- Tu recorrido ---------- */
 
-.journey-sheet {
+.journey-sheet,
+.journey {
   position: fixed;
   inset: 0;
   z-index: 50;
   background: var(--paper);
   color: var(--ink);
   overflow-y: auto;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
+}
+
+.journey__intro {
+  padding-inline: 12px;
+}
+
+.journey__trail-map {
+  padding-inline: 12px;
+  box-sizing: border-box;
 }
 
 .journey-head {
@@ -2942,6 +3176,507 @@
   font-size: var(--fs-xs);
   color: var(--ink-soft);
   line-height: 1.15;
+}
+
+/* Santuario del Gato en Journey */
+.journey-sanctuary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-4);
+  border: var(--border);
+  border-radius: var(--r-3, 16px);
+  background: radial-gradient(circle at 50% 30%, #fff7ed 0%, var(--paper-raised, #ffffff) 100%);
+  box-shadow: 0 4px 20px -2px rgba(31, 29, 26, 0.06);
+}
+
+.journey-sanctuary-scene {
+  position: relative;
+  min-height: 220px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.journey-sanctuary-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  justify-content: center;
+}
+
+.journey-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.5rem 0.9rem;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  border-radius: 9999px;
+  position: relative;
+}
+
+.journey-badge-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding: 0 0.35rem;
+  background: var(--vermilion, #b83d1c);
+  color: #fff;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+/* Tarjeta de Rango Literario */
+.journey-rank-card {
+  padding: var(--s-4);
+  border: var(--border);
+  border-radius: var(--r-2, 12px);
+  background: var(--paper-raised, #ffffff);
+  box-shadow: var(--shadow-1);
+}
+
+.journey-rank-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--s-3);
+}
+
+.journey-rank-name {
+  margin: 0;
+  font-family: var(--font-display, "Literata", serif);
+  font-size: var(--fs-lg, 1.25rem);
+  font-weight: 700;
+  color: var(--ink, #1f1d1a);
+}
+
+.journey-rank-points-badge {
+  font-family: var(--font-mono, monospace);
+  font-size: var(--fs-xs, 0.8rem);
+  font-weight: 600;
+  color: var(--ochre, #b86200);
+  background: rgba(184, 98, 0, 0.1);
+  padding: 0.25rem 0.6rem;
+  border-radius: 9999px;
+}
+
+.journey-rank-progress {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  margin-top: var(--s-2);
+}
+
+.journey-rank-progress-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--fs-xs);
+}
+
+/* El Sendero de Tinta (Odisea) */
+.journey-ink-section {
+  position: relative;
+}
+
+.journey-milestone-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: 0.75rem 1rem;
+  border-radius: var(--r-2, 8px);
+  background: var(--paper-sunken, #fbf7ee);
+  border: 1px dashed var(--vermilion, #b83d1c);
+  margin-block: var(--s-3);
+}
+
+.milestone-banner-icon {
+  font-size: 1.25rem;
+}
+
+.milestone-banner-text {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--ink, #2a2723);
+  line-height: 1.4;
+}
+
+.journey-ink-path {
+  position: relative;
+  width: 100%;
+  height: 520px;
+  background: radial-gradient(circle at 50% 50%, #fffdfa 0%, #f7f3ea 100%);
+  border: var(--border);
+  border-radius: var(--r-3, 16px);
+  overflow: hidden;
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.03);
+}
+
+.ink-path-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.ink-path-stroke {
+  opacity: 0.65;
+}
+
+.ink-path-nodes {
+  position: absolute;
+  inset: 0;
+}
+
+.ink-node-wrapper {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  z-index: 2;
+}
+
+.ink-node-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--paper-raised, #ffffff);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.12);
+  cursor: pointer;
+  transition: transform var(--dur-1) var(--ease-out);
+}
+
+.ink-node-btn:hover {
+  transform: scale(1.1);
+}
+
+.ink-node-btn--completed {
+  background: #fdf5e6;
+  border-color: #d4a373;
+}
+
+.ink-node-btn--current {
+  background: #fff;
+  border-color: var(--vermilion, #b83d1c);
+  animation: ink-node-pulse 2s infinite;
+}
+
+.ink-node-btn--upcoming {
+  background: #f0eee6;
+  border-color: var(--line, #ddd);
+  opacity: 0.85;
+}
+
+@keyframes ink-node-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(184, 61, 28, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(184, 61, 28, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(184, 61, 28, 0);
+  }
+}
+
+.ink-node-badge {
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+.ink-node-badge--completed {
+  color: #b86200;
+}
+
+.ink-node-badge--current {
+  color: var(--vermilion, #b83d1c);
+}
+
+.ink-node-badge--upcoming {
+  color: var(--ink-soft, #888);
+}
+
+.ink-node-label,
+.journey__node-label,
+.journey-node-label {
+  font-family: var(--font-ui);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--ink, #1f1d1a);
+  background: #FFFFFF;
+  border: 1px solid var(--border-soft, rgba(0, 0, 0, 0.08));
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  white-space: nowrap;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+:root[data-theme="noche"] .ink-node-label,
+:root[data-theme="noche"] .journey__node-label,
+:root[data-theme="noche"] .journey-node-label,
+:root[data-theme="oled"] .ink-node-label,
+:root[data-theme="oled"] .journey__node-label,
+:root[data-theme="oled"] .journey-node-label {
+  background: #242933;
+  color: #FFFFFF;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) .ink-node-label,
+  :root:not([data-theme]) .journey__node-label,
+  :root:not([data-theme]) .journey-node-label {
+    background: #242933;
+    color: #FFFFFF;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+  }
+}
+
+/* Popover del Hito */
+.ink-node-popover {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(340px, 90%);
+  background: var(--paper-raised, #ffffff);
+  border: var(--border);
+  border-radius: var(--r-2, 12px);
+  padding: var(--s-3);
+  box-shadow: 0 12px 32px -4px rgba(31, 29, 26, 0.2);
+  z-index: 10;
+  animation: rise-in var(--dur-2) var(--ease-out);
+}
+
+.ink-popover-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.ink-popover-title {
+  margin: 0;
+  font-size: var(--fs-md);
+  font-weight: 700;
+}
+
+.ink-popover-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-block: var(--s-2);
+}
+
+.ink-popover-reward {
+  margin: 0 0 var(--s-2);
+  font-size: var(--fs-sm);
+}
+
+.ink-popover-tip {
+  margin: 0;
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+  background: var(--paper-sunken);
+  padding: var(--s-2);
+  border-radius: 6px;
+}
+
+/* Sellos agrupados en 3 categorías */
+.journey-seals-categories {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  margin-top: var(--s-2);
+}
+
+.journey-seals-category-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  border-radius: var(--r-2);
+  background: var(--paper-sunken, #f8f6f0);
+}
+
+.journey-category-title {
+  margin: 0;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  color: var(--ink-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Modales: Buzón de Cartas y Meta Diaria */
+.journey-inbox-overlay,
+.journey-goal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: var(--s-4);
+}
+
+.journey-inbox-card,
+.journey-goal-card {
+  width: 100%;
+  max-width: 480px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--paper-raised, #ffffff);
+  border: var(--border);
+  border-radius: var(--r-3, 16px);
+  padding: var(--s-4);
+  box-shadow: 0 16px 40px -8px rgba(0, 0, 0, 0.25);
+  animation: rise-in var(--dur-2) var(--ease-out);
+  overflow-y: auto;
+}
+
+.journey-inbox-head,
+.journey-goal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: var(--s-3);
+}
+
+.journey-inbox-title,
+.journey-goal-title {
+  margin: 0;
+  font-family: var(--font-display, "Literata", serif);
+  font-size: var(--fs-lg, 1.25rem);
+}
+
+.journey-inbox-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  overflow-y: auto;
+  margin-block: var(--s-2);
+}
+
+.journey-letter-card {
+  padding: var(--s-3);
+  border-radius: var(--r-2);
+  background: var(--paper-sunken, #fbf9f4);
+  border: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.journey-letter-card--unread {
+  border-left: 4px solid var(--vermilion, #b83d1c);
+  background: #fff8f5;
+}
+
+.journey-letter-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.journey-letter-title {
+  font-weight: 700;
+  font-size: var(--fs-sm);
+}
+
+.journey-letter-body {
+  margin: 0;
+  font-family: var(--font-book, "Literata", serif);
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+.journey-letter-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: var(--fs-xs);
+}
+
+.journey-letter-sign {
+  font-style: italic;
+  color: var(--ink-soft);
+}
+
+.journey-inbox-actions,
+.journey-goal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--s-2);
+  margin-top: var(--s-4);
+}
+
+/* Opciones de Meta Diaria */
+.journey-goal-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+  gap: var(--s-2);
+  margin-block: var(--s-3);
+}
+
+.journey-goal-pill {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0.75rem 0.5rem;
+  border-radius: var(--r-2, 10px);
+  border: 1px solid var(--line);
+  background: var(--paper-raised, #ffffff);
+  cursor: pointer;
+  transition: all var(--dur-1) var(--ease-out);
+}
+
+.journey-goal-pill--active {
+  border-color: var(--vermilion, #b83d1c);
+  background: #fff6f3;
+  box-shadow: 0 0 0 2px var(--vermilion, #b83d1c);
+}
+
+.goal-pill-mins {
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: var(--ink);
+}
+
+.goal-pill-unit {
+  font-size: 0.75rem;
+  color: var(--ink-soft);
+}
+
+.journey-goal-quote {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+  background: var(--paper-sunken);
+  padding: var(--s-2) var(--s-3);
+  border-radius: 8px;
+  margin-top: var(--s-2);
 }
 
 /* 7. Taller con el Gato IA (AI Workshop) */

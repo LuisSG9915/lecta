@@ -188,9 +188,66 @@ describe("DiscoverRail", () => {
     expect(host.querySelector('[role="alert"]')?.textContent).toContain(
       "No se pudo descargar",
     );
-    // La tarjeta recupera su acción: el error no bloquea el reintento.
     expect(
       host.querySelector<HTMLButtonElement>(".discover-action")?.textContent,
     ).toBe("Obtener");
+  });
+
+  it("filtra por etiquetas de estado de ánimo / tiempo (A.4)", async () => {
+    const books = [
+      book("quijote", { title: "Don Quijote" }),
+      book("lazarillo", { title: "El Lazarillo" }),
+      book("poemas-dario", { title: "Poemas de Darío" }),
+    ];
+
+    await act(async () => {
+      root.render(
+        h(DiscoverRail, {
+          library: [],
+          onOpen: vi.fn(),
+          onGet: vi.fn(),
+          fetchIndex: async () => index(books),
+          fetchVocab: async () => null,
+          loadInputs: async () => null,
+        }),
+      );
+    });
+
+    expect(titles()).toEqual(["Don Quijote", "El Lazarillo", "Poemas de Darío"]);
+
+    // Clic en el filtro "Poesía y Modernismo"
+    const pills = host.querySelectorAll<HTMLButtonElement>(".discover-filter-pill");
+    const poesiaPill = [...pills].find((p) => p.textContent === "Poesía y Modernismo");
+    expect(poesiaPill).toBeTruthy();
+
+    await act(async () => {
+      poesiaPill!.click();
+    });
+
+    expect(titles()).toEqual(["Poemas de Darío"]);
+  });
+
+  it("muestra el contador de palabras nuevas útiles cuando se mide la cobertura (A.4)", async () => {
+    const books = [book("a")];
+    const vocabs = {
+      a: vocab([["perenne", 2.1]], ["rara"]),
+    };
+
+    await act(async () => {
+      root.render(
+        h(DiscoverRail, {
+          library: [],
+          onOpen: vi.fn(),
+          onGet: vi.fn(),
+          fetchIndex: async () => index(books),
+          fetchVocab: async (id: string) => vocabs[id as keyof typeof vocabs] ?? null,
+          loadInputs: async () => INPUTS,
+        }),
+      );
+    });
+
+    const newWords = host.querySelector(".discover-new-words");
+    expect(newWords).toBeTruthy();
+    expect(newWords?.textContent).toContain("palabras útiles");
   });
 });

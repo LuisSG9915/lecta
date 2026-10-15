@@ -16,6 +16,9 @@ import {
   EVALUATE_SYSTEM_PROMPT,
   EXPLAIN_PASSAGE_CALL_OPTIONS,
   EXPLAIN_PASSAGE_SYSTEM_PROMPT,
+  COMPANION_NOTE_SYSTEM_PROMPT,
+  buildCompanionNotePrompt,
+  parseCompanionNote,
   STORY_CALL_OPTIONS,
   STORY_SYSTEM_PROMPT,
   buildEvaluatePrompt,
@@ -40,6 +43,18 @@ import {
   buildVerifyPrompt,
   buildVerifySystemPrompt,
   callDeepSeek,
+  COMPANION_NOTE_CALL_OPTIONS,
+  PAGE_RECAP_CALL_OPTIONS,
+  PAGE_RECAP_SYSTEM_PROMPT,
+  buildPageRecapPrompt,
+  parsePageRecap,
+  deterministicPageRecapFallback,
+  CHARACTER_RECAP_CALL_OPTIONS,
+  CHARACTER_RECAP_SYSTEM_PROMPT,
+  buildCharacterRecapPrompt,
+  parseCharacterRecap,
+  deterministicCharacterRecapFallback,
+  type CharacterRecapResponse,
   logAiCall,
   parseExplain,
   parseItem,
@@ -73,6 +88,11 @@ app.get("/kindle", (context) => context.redirect("/k"));
 app.get("/kindle/*", (context) => {
   const p = context.req.path.replace(/^\/kindle/, "/k");
   return context.redirect(p);
+});
+app.post("/kindle/*", async (context) => {
+  const url = new URL(context.req.url);
+  url.pathname = url.pathname.replace(/^\/kindle/, "/k");
+  return app.fetch(new Request(url.toString(), context.req.raw), context.env, context.executionCtx);
 });
 
 app.get("/api/health", (context) => context.json({ status: "ok" }));
@@ -996,6 +1016,7 @@ app.post("/api/ai/explain-in-passage", async (context) => {
   const bookTitle = typeof body?.bookTitle === "string" ? body.bookTitle.trim().slice(0, 150) : undefined;
   const author = typeof body?.author === "string" ? body.author.trim().slice(0, 100) : undefined;
   const language = typeof body?.language === "string" ? body.language.trim().slice(0, 10) : "es";
+  const nativeLanguage = typeof body?.nativeLanguage === "string" ? body.nativeLanguage.trim().slice(0, 10) : "es";
 
   if (!sentence) {
     return context.json({ error: "Falta el pasaje u oración a explicar." }, 400);
@@ -1004,7 +1025,7 @@ app.post("/api/ai/explain-in-passage", async (context) => {
     return context.json({ error: "El pasaje no puede superar 800 caracteres." }, 400);
   }
 
-  const cacheKey = `${(word ?? "").toLowerCase()}::${sentence.toLowerCase()}::${(bookTitle ?? "").toLowerCase()}`;
+  const cacheKey = `${(word ?? "").toLowerCase()}::${sentence.toLowerCase()}::${(bookTitle ?? "").toLowerCase()}::${language}::${nativeLanguage}`;
   const cached = explainPassageCache.get(cacheKey);
   if (cached) return context.json({ ...cached, cached: true });
 
@@ -1031,7 +1052,7 @@ app.post("/api/ai/explain-in-passage", async (context) => {
     context.env,
     {
       system: EXPLAIN_PASSAGE_SYSTEM_PROMPT,
-      user: buildExplainInPassagePrompt({ word, sentence, bookTitle, author, language }),
+      user: buildExplainInPassagePrompt({ word, sentence, bookTitle, author, language, nativeLanguage }),
     },
     EXPLAIN_PASSAGE_CALL_OPTIONS,
   );
@@ -1062,6 +1083,140 @@ app.post("/api/ai/explain-in-passage", async (context) => {
   }
 
   explainPassageCache.set(cacheKey, parsed);
+  return context.json(parsed);
+});
+
+app.post("/api/ai/companion-note", async (context) => {
+  const body = await context.req.json().catch(() => null);
+  const catName = typeof body?.catName === "string" ? body.catName.trim().slice(0, 50) : "Michi";
+  const achievement = typeof body?.achievement === "string" ? body.achievement.trim().slice(0, 100) : undefined;
+  const rankName = typeof body?.rankName === "string" ? body.rankName.trim().slice(0, 100) : undefined;
+  const bookTitle = typeof body?.bookTitle === "string" ? body.bookTitle.trim().slice(0, 150) : undefined;
+  const masteredWord = typeof body?.masteredWord === "string" ? body.masteredWord.trim().slice(0, 100) : undefined;
+
+  const session = await getSession(context);
+  if (!session) {
+    return context.json({ error: "Inicia sesión para recibir cartas del compañero." }, 401);
+  }
+
+  const ai = await callDeepSeek(
+    context.env,
+    {
+      system: COMPANION_NOTE_SYSTEM_PROMPT,
+      user: buildCompanionNotePrompt({ catName, achievement, rankName, bookTitle, masteredWord }),
+    },
+    COMPANION_NOTE_CALL_OPTIONS,
+  );
+
+  const parsed = ai.ok ? parseCompanionNote(ai.content) : null;
+  if (!parsed) {
+    return context.json({
+      title: "¡Felicidades por tu lectura, amigo!",
+      note: `¡Qué gran paso diste hoy con tu lectura! Me encanta ver cómo sigues enriqueciendo tus libros día a día.`,
+      signOff: `Con cariño, ${catName} 🐾`,
+      fallback: true,
+    });
+  }
+
+  return context.json(parsed);
+});
+
+app.post("/api/ai/page-recap", async (context) => {
+  const body = await context.req.json().catch(() => null);
+  const text = typeof body?.text === "string" ? body.text.trim() : "";
+  const bookTitle = typeof body?.bookTitle === "string" ? body.bookTitle.trim().slice(0, 150) : undefined;
+  const chapterTitle = typeof body?.chapterTitle === "string" ? body.chapterTitle.trim().slice(0, 150) : undefined;
+
+  if (!text) {
+    return context.json({ error: "Se requiere el texto de la página para resumir." }, 400);
+  }
+
+  if (!context.env.DEEPSEEK_API_KEY) {
+    return context.json(deterministicPageRecapFallback(text));
+  }
+
+  const ai = await callDeepSeek(
+    context.env,
+    {
+      system: PAGE_RECAP_SYSTEM_PROMPT,
+      user: buildPageRecapPrompt({ text, bookTitle, chapterTitle }),
+    },
+    PAGE_RECAP_CALL_OPTIONS,
+  );
+
+  const parsed = ai.ok ? parsePageRecap(ai.content) : null;
+  if (!parsed) {
+    return context.json(deterministicPageRecapFallback(text));
+  }
+
+  return context.json(parsed);
+});
+
+const characterRecapCache = createTtlCache<CharacterRecapResponse>({
+  maxEntries: 200,
+  ttlMs: 20 * 60_000,
+});
+
+app.post("/api/ai/character-recap", async (context) => {
+  const body = await context.req.json().catch(() => null);
+  const entityName = typeof body?.entityName === "string" ? body.entityName.trim().slice(0, 100) : "";
+  const bookTitle = typeof body?.bookTitle === "string" ? body.bookTitle.trim().slice(0, 150) : undefined;
+  const currentChapterTitle = typeof body?.currentChapterTitle === "string" ? body.currentChapterTitle.trim().slice(0, 150) : undefined;
+  const excerptsRaw: unknown[] = Array.isArray(body?.excerptsSoFar) ? body.excerptsSoFar : [];
+  const excerptsSoFar = excerptsRaw
+    .filter((e: unknown): e is string => typeof e === "string" && Boolean(e.trim()))
+    .map((e: string) => e.trim().slice(0, 300))
+    .slice(0, 6);
+
+  if (!entityName) {
+    return context.json({ error: "Se requiere el nombre del personaje o lugar." }, 400);
+  }
+
+  const cacheKey = `${entityName.toLowerCase()}::${(bookTitle ?? "").toLowerCase()}::${excerptsSoFar.join("|").toLowerCase()}`;
+  const cached = characterRecapCache.get(cacheKey);
+  if (cached) return context.json({ ...cached, cached: true });
+
+  if (!context.env.DEEPSEEK_API_KEY) {
+    return context.json(deterministicCharacterRecapFallback(entityName, excerptsSoFar));
+  }
+
+  const session = await getSession(context);
+  if (!session) {
+    return context.json(deterministicCharacterRecapFallback(entityName, excerptsSoFar));
+  }
+
+  const allowed = await consumeRateUnits(
+    context.env,
+    session.user.id,
+    1,
+    EXPLAIN_UNITS_PER_HOUR,
+    "explain",
+  );
+  if (!allowed) {
+    return context.json(deterministicCharacterRecapFallback(entityName, excerptsSoFar));
+  }
+
+  const ai = await callDeepSeek(
+    context.env,
+    {
+      system: CHARACTER_RECAP_SYSTEM_PROMPT,
+      user: buildCharacterRecapPrompt({ entityName, bookTitle, currentChapterTitle, excerptsSoFar }),
+    },
+    CHARACTER_RECAP_CALL_OPTIONS,
+  );
+
+  const parsed = ai.ok && ai.finishReason !== "length" ? parseCharacterRecap(ai.content) : null;
+  logAiCall(
+    CHARACTER_RECAP_CALL_OPTIONS,
+    ai,
+    !ai.ok ? ai.reason : ai.finishReason === "length" ? "truncated" : parsed ? "ok" : "invalid",
+  );
+
+  if (!ai.ok || !parsed) {
+    return context.json(deterministicCharacterRecapFallback(entityName, excerptsSoFar));
+  }
+
+  characterRecapCache.set(cacheKey, parsed);
   return context.json(parsed);
 });
 

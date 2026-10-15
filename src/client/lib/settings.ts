@@ -103,6 +103,39 @@ export const RULER_SIZES: { id: RulerSize; label: string }[] = [
   { id: "paragraph", label: "Párrafo" },
 ];
 
+export type ChromaticPalette = "editorial" | "ocean_amber" | "forest_plum" | "high_contrast";
+
+export const CHROMATIC_PALETTES: {
+  id: ChromaticPalette;
+  label: string;
+  preview: readonly [string, string];
+}[] = [
+  { id: "editorial", label: "Editorial", preview: ["#1D4E89", "#9E3B24"] },
+  { id: "ocean_amber", label: "Océano y Ámbar", preview: ["#0077B6", "#D97706"] },
+  { id: "forest_plum", label: "Bosque y Ciruela", preview: ["#2D6A4F", "#7209B7"] },
+  { id: "high_contrast", label: "Alto Contraste", preview: ["#000000", "#C81D25"] },
+];
+
+export type SoundscapeSetting =
+  | "none"
+  | "purr"
+  | "rain"
+  | "hearth"
+  | "night_library";
+
+export interface ConcentrationSettings {
+  syntacticLines: boolean; // Agrupación/cascada por sintagmas semánticos
+  chromaticGuide: boolean; // Gradiente cromático de barrido ocular (Return Sweep)
+  chromaticPalette: ChromaticPalette;
+  bionicAnchors: boolean; // Resaltado sutil de las primeras letras en palabras léxicas clave
+  paragraphFocus: boolean; // Atenuación de párrafos inactivos
+  focusRuler: boolean; // Regla de lectura deslizable
+  ambientPurr: boolean; // Ronroneo ambiental suave de concentración (Body Doubling)
+  soundscape: SoundscapeSetting; // Paisaje sonoro procedural Web Audio o ronroneo
+  visualPacer: boolean; // Marcapasos visual suave ("Ritmo Guiado" para TDAH)
+  pacerWpm: number; // Velocidad del marcapasos en palabras por minuto (WPM)
+}
+
 // Presets cognitivos de estrategia de lectura.
 export type ReadingStrategyPreset =
   | "immersive"
@@ -110,6 +143,8 @@ export type ReadingStrategyPreset =
   | "lexical"
   | "audio"
   | "custom";
+
+export type StrategyPreset = ReadingStrategyPreset;
 
 export interface ReadingStrategyPresetItem {
   id: ReadingStrategyPreset;
@@ -127,9 +162,9 @@ export const READING_STRATEGY_PRESETS: ReadingStrategyPresetItem[] = [
   },
   {
     id: "focus",
-    title: "Enfoque Profundo",
-    description: "Regla y foco de párrafo activos",
-    icon: "search",
+    title: "Neuro-Enfoque (TDAH)",
+    description: "Guía cromática, líneas sintácticas y foco de párrafo",
+    icon: "sparkles",
   },
   {
     id: "lexical",
@@ -175,10 +210,24 @@ export interface ReaderSettings {
   paragraphFocus: boolean;
   /** Segmentación del párrafo en líneas sintácticas. */
   syntacticLines: boolean;
+  /** Guía cromática continua de barrido ocular para asistir el retorno sacádico. */
+  chromaticGuide: boolean;
+  /** Paleta de color calibrada para la guía cromática. */
+  chromaticPalette: ChromaticPalette;
+  /** Resaltado tipográfico sutil de fijación en la primera parte de palabras clave (TDAH). */
+  bionicAnchors: boolean;
+  /** Ronroneo ambiental suave de concentración (Body Doubling). */
+  ambientPurr: boolean;
+  /** Paisaje sonoro procedural Web Audio o ronroneo. */
+  soundscape: SoundscapeSetting;
   /** Subrayado sutil de palabras candidatas del capítulo y locuciones. */
   highlightLexical: boolean;
   /** Oculta indicadores secundarios para lectura sin distracciones. */
   hideSecondaryIndicators: boolean;
+  /** Marcapasos visual suave ("Ritmo Guiado") para concentración TDAH. */
+  visualPacer: boolean;
+  /** Velocidad del marcapasos visual en palabras por minuto (WPM). */
+  pacerWpm: number;
 }
 
 export const READER_DEFAULTS: ReaderSettings = {
@@ -198,8 +247,15 @@ export const READER_DEFAULTS: ReaderSettings = {
   focusRuler: false,
   paragraphFocus: false,
   syntacticLines: false,
+  chromaticGuide: false,
+  chromaticPalette: "editorial",
+  bionicAnchors: false,
+  ambientPurr: false,
+  soundscape: "none",
   highlightLexical: false,
   hideSecondaryIndicators: true,
+  visualPacer: false,
+  pacerWpm: 210,
 };
 
 export type PreparationMode = "auto" | "notice" | "off";
@@ -270,10 +326,12 @@ export function applyStrategyPreset(
       return {
         ...currentSettings,
         strategyPreset: "focus",
-        focusRuler: true,
+        focusRuler: false,
         paragraphFocus: true,
-        syntacticLines: false,
-        focusMode: "paragraph",
+        syntacticLines: true,
+        chromaticGuide: true,
+        bionicAnchors: true,
+        focusMode: "chromatic",
         highlightLexical: false,
         hideSecondaryIndicators: false,
       };
@@ -318,19 +376,21 @@ export function isStrategyPresetActive(
       (!settings.focusRuler &&
         !settings.paragraphFocus &&
         !settings.syntacticLines &&
+        !settings.chromaticGuide &&
         settings.strategyPreset !== "audio")
     );
   }
   if (preset === "focus") {
     return (
       settings.strategyPreset === "focus" ||
+      (settings.syntacticLines && settings.chromaticGuide && settings.paragraphFocus) ||
       (settings.focusRuler && settings.paragraphFocus && !settings.syntacticLines)
     );
   }
   if (preset === "lexical") {
     return (
       settings.strategyPreset === "lexical" ||
-      (settings.syntacticLines && !settings.focusRuler && !settings.paragraphFocus)
+      (settings.syntacticLines && !settings.focusRuler && !settings.paragraphFocus && !settings.chromaticGuide)
     );
   }
   if (preset === "audio") {
@@ -366,6 +426,28 @@ export function parseReaderSettings(raw: string | null): ReaderSettings {
         ? v.syntacticLines
         : focusMode === "syntactic" || focusMode === "chromatic";
 
+    const chromaticGuide =
+      typeof v.chromaticGuide === "boolean"
+        ? v.chromaticGuide
+        : focusMode === "chromatic";
+
+    const chromaticPalette: ChromaticPalette =
+      v.chromaticPalette === "ocean_amber" ||
+      v.chromaticPalette === "forest_plum" ||
+      v.chromaticPalette === "high_contrast"
+        ? v.chromaticPalette
+        : "editorial";
+
+    const bionicAnchors =
+      typeof v.bionicAnchors === "boolean"
+        ? v.bionicAnchors
+        : false;
+
+    const ambientPurr =
+      typeof v.ambientPurr === "boolean"
+        ? v.ambientPurr
+        : false;
+
     let strategyPreset: ReadingStrategyPreset;
     if (
       v.strategyPreset === "immersive" ||
@@ -375,11 +457,14 @@ export function parseReaderSettings(raw: string | null): ReaderSettings {
       v.strategyPreset === "custom"
     ) {
       strategyPreset = v.strategyPreset;
-    } else if (focusRuler && paragraphFocus && !syntacticLines) {
+    } else if (
+      (syntacticLines && chromaticGuide && paragraphFocus) ||
+      (focusRuler && paragraphFocus && !syntacticLines)
+    ) {
       strategyPreset = "focus";
     } else if (syntacticLines && !focusRuler && !paragraphFocus) {
       strategyPreset = "lexical";
-    } else if (focusRuler || paragraphFocus || syntacticLines) {
+    } else if (focusRuler || paragraphFocus || syntacticLines || chromaticGuide) {
       strategyPreset = "custom";
     } else {
       strategyPreset = "immersive";
@@ -411,6 +496,19 @@ export function parseReaderSettings(raw: string | null): ReaderSettings {
       focusRuler,
       paragraphFocus,
       syntacticLines,
+      chromaticGuide,
+      chromaticPalette,
+      bionicAnchors,
+      ambientPurr,
+      soundscape:
+        v.soundscape === "purr" ||
+        v.soundscape === "rain" ||
+        v.soundscape === "hearth" ||
+        v.soundscape === "night_library"
+          ? v.soundscape
+          : ambientPurr
+            ? "purr"
+            : "none",
       highlightLexical:
         typeof v.highlightLexical === "boolean"
           ? v.highlightLexical
@@ -419,6 +517,11 @@ export function parseReaderSettings(raw: string | null): ReaderSettings {
         typeof v.hideSecondaryIndicators === "boolean"
           ? v.hideSecondaryIndicators
           : strategyPreset === "immersive",
+      visualPacer: v.visualPacer === true,
+      pacerWpm:
+        typeof v.pacerWpm === "number" && v.pacerWpm >= 60 && v.pacerWpm <= 600
+          ? v.pacerWpm
+          : 210,
     };
   } catch {
     return READER_DEFAULTS;
@@ -558,12 +661,14 @@ export function savePracticeCompanionMode(mode: PracticeCompanionMode): void {
   }
 }
 
+export type NativeLanguage = "es" | "en" | string;
+
 const NATIVE_LANGUAGE_KEY = "lecta:nativeLanguage";
 const NATIVE_CONFIRMED_KEY = "lecta:nativeLanguageConfirmed";
 
-export function loadNativeLanguage(): string {
+export function loadNativeLanguage(): NativeLanguage {
   try {
-    return storage()?.getItem(NATIVE_LANGUAGE_KEY) || "es";
+    return (storage()?.getItem(NATIVE_LANGUAGE_KEY) as NativeLanguage) || "es";
   } catch {
     return "es";
   }

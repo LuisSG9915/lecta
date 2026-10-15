@@ -111,3 +111,105 @@ export async function* searchBookSections(
     await new Promise((resolve) => setTimeout(resolve, 0));
   }
 }
+
+export type SpoilerFreeMention = {
+  sectionIndex: number;
+  chapterLabel: string;
+  sentence: string;
+  paragraphIndex?: number;
+};
+
+export type SpoilerFreeEntitySummary = {
+  query: string;
+  firstMention: SpoilerFreeMention | null;
+  recentMentions: SpoilerFreeMention[];
+  totalMentionsSoFar: number;
+  excerptsSoFar: string[];
+};
+
+/**
+ * Búsqueda de personajes o entidades sin spoilers:
+ * Busca estrictamente desde el inicio de la obra hasta el capítulo actual
+ * (currentSectionIndex) y bloque opcional (currentBlockIndex).
+ * NUNCA inspecciona secciones ni párrafos posteriores al avance del lector.
+ */
+export async function searchBookSpoilerFree(
+  sections: SearchSection[],
+  toc: SearchTocRow[],
+  query: string,
+  currentSectionIndex: number,
+  currentBlockIndex?: number,
+  options: { signal?: AbortSignal } = {},
+): Promise<SpoilerFreeEntitySummary> {
+  const needle = foldQuery(query);
+  const result: SpoilerFreeEntitySummary = {
+    query,
+    firstMention: null,
+    recentMentions: [],
+    totalMentionsSoFar: 0,
+    excerptsSoFar: [],
+  };
+
+  if (needle.length < 2 || sections.length === 0) return result;
+
+  const maxSec = Math.min(Math.max(0, currentSectionIndex), sections.length - 1);
+  const allMentions: SpoilerFreeMention[] = [];
+  const excerptsSet = new Set<string>();
+
+  for (let index = 0; index <= maxSec; index += 1) {
+    if (options.signal?.aborted) break;
+    let sanitized: HTMLDivElement;
+    try {
+      sanitized = sanitizeSectionDocument(await sections[index].createDocument());
+    } catch {
+      continue;
+    }
+
+    const chapterLabel =
+      toc.find((row) => row.index === index)?.label ?? `Capítulo ${index + 1}`;
+
+    const blocks = Array.from(sanitized.querySelectorAll(BLOCK_SELECTOR));
+    const blockLimit =
+      index === maxSec && typeof currentBlockIndex === "number" && currentBlockIndex >= 0
+        ? Math.min(blocks.length, currentBlockIndex + 1)
+        : blocks.length;
+
+    for (let bIdx = 0; bIdx < blockLimit; bIdx += 1) {
+      if (options.signal?.aborted) break;
+      const printed = normalizeBlockText(blocks[bIdx].textContent ?? "");
+      if (!printed) continue;
+      const { folded, map } = foldWithMap(printed);
+
+      let at = folded.indexOf(needle);
+      while (at !== -1) {
+        const start = map[at];
+        const lastFolded = at + needle.length - 1;
+        const end = map[lastFolded] + 1;
+        const { before, match, after } = excerpt(printed, start, end);
+        const sentence = `${before}${match}${after}`.trim();
+
+        const mention: SpoilerFreeMention = {
+          sectionIndex: index,
+          chapterLabel,
+          sentence,
+          paragraphIndex: bIdx,
+        };
+
+        allMentions.push(mention);
+        if (excerptsSet.size < 6 && sentence.length >= 15) {
+          excerptsSet.add(sentence);
+        }
+
+        at = folded.indexOf(needle, at + 1);
+      }
+    }
+  }
+
+  result.totalMentionsSoFar = allMentions.length;
+  result.firstMention = allMentions.length > 0 ? allMentions[0] : null;
+  result.recentMentions = allMentions.slice(-3);
+  result.excerptsSoFar = Array.from(excerptsSet);
+
+  return result;
+}
+

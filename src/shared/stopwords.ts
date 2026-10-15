@@ -2,7 +2,7 @@
 // pronombres, auxiliares y sus formas comunes): no son vocabulario que se
 // aprende, así que se excluyen del análisis de "palabras difíciles" y del
 // enriquecimiento por IA. Compartido entre cliente y worker.
-const SPANISH_STOPWORDS = [
+export const SPANISH_STOPWORDS = [
   // artículos y contracciones
   "el", "la", "los", "las", "un", "una", "unos", "unas", "lo", "al", "del",
   // preposiciones
@@ -71,7 +71,7 @@ const SPANISH_STOPWORDS = [
 
 // Palabras funcionales del inglés (artículos, preposiciones, pronombres,
 // conjunciones, auxiliares, números y adverbios gramaticales comunes).
-const ENGLISH_STOPWORDS = [
+export const ENGLISH_STOPWORDS = [
   // artículos
   "the", "a", "an",
   // preposiciones
@@ -125,7 +125,7 @@ const ENGLISH_STOPWORDS = [
 const spanishStopwordSet = new Set(SPANISH_STOPWORDS);
 const englishStopwordSet = new Set(ENGLISH_STOPWORDS);
 
-export function isStopword(form: string, language = "es") {
+export function isStopword(form: string, language: "es" | "en" | string = "es"): boolean {
   const normalized = form.trim().toLowerCase();
   if (language === "en") return englishStopwordSet.has(normalized);
   if (language === "es") return spanishStopwordSet.has(normalized);

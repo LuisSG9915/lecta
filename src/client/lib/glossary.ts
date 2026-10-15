@@ -40,6 +40,7 @@ export function getInitialLetter(word: string): string {
 export function normalizePosCategory(pos: string | null | undefined): string | null {
   if (!pos) return null;
   const p = pos.toLowerCase();
+  if (p === "propio" || p.includes("personaje")) return "propio";
   if (p.includes("sust") || p.includes("nombre")) return "sustantivo";
   if (p.includes("adj")) return "adjetivo";
   if (p.includes("verb") || p.startsWith("v.") || p === "v") return "verbo";
@@ -115,10 +116,11 @@ export function extractGlossaryTerms(
     }
 
     // Término sin ficha en el catálogo: neologismo, voz propia o arcaísmo de la obra
+    const isCap = /^[A-ZÁÉÍÓÚÜÑ]/.test(form.trim());
     terms.push({
       form,
       lemma: form,
-      pos: null,
+      pos: isCap ? "propio" : null,
       zipf: null,
       isCultism: true, // Términos ausentes del catálogo estándar suelen ser arcaísmos o nombres propios
       isSaved: savedForms.has(form) || savedForms.has(formLow),

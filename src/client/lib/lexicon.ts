@@ -337,6 +337,7 @@ export interface ExplainInPassageInput {
   bookTitle?: string;
   author?: string;
   language?: string;
+  nativeLanguage?: string;
 }
 
 export type ExplainInPassageResult =
@@ -383,6 +384,64 @@ export async function explainInPassage(
     };
   } catch {
     return { ok: false, error: "Sin conexión con el servicio de IA." };
+  }
+}
+
+export interface CharacterRecapInput {
+  entityName: string;
+  bookTitle?: string;
+  currentChapterTitle?: string;
+  excerptsSoFar: string[];
+}
+
+export type CharacterRecapResult =
+  | { ok: true; summary: string; role?: string; fallback?: boolean }
+  | { ok: false; error: string };
+
+export async function requestCharacterRecap(
+  input: CharacterRecapInput,
+  scope?: DbScope,
+): Promise<CharacterRecapResult> {
+  try {
+    const response = await accountFetch(
+      "/api/ai/character-recap",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(input),
+      },
+      scope,
+    );
+    const data = (await response.json()) as {
+      summary?: string;
+      role?: string;
+      fallback?: boolean;
+      error?: string;
+    };
+    if (!response.ok) {
+      return { ok: false, error: data.error ?? "No se pudo obtener el resumen del personaje." };
+    }
+    if (!data.summary) {
+      return { ok: false, error: "La IA no devolvió un resumen válido." };
+    }
+    return {
+      ok: true,
+      summary: data.summary,
+      role: data.role,
+      fallback: data.fallback,
+    };
+  } catch {
+    const first = input.excerptsSoFar[0]?.trim();
+    let summary = `${input.entityName.trim()} ha aparecido en la lectura previa hasta este capítulo.`;
+    if (first) {
+      summary += ` Primera aparición registrada: «${first.length > 140 ? first.slice(0, 137) + "…" : first}».`;
+    }
+    return {
+      ok: true,
+      summary,
+      role: "Personaje / Lugar de la obra",
+      fallback: true,
+    };
   }
 }
 

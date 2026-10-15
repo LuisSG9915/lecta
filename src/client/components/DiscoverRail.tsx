@@ -4,6 +4,7 @@ import {
   catalogCoverUrl,
   catalogVocab,
   entriesByFormOf,
+  getBookMoodTags,
   listCatalog,
   manifestBookForms,
   type CatalogBook,
@@ -47,6 +48,13 @@ type DiscoverRailProps = {
 // insignias visibles sin descargar el catálogo completo cada vez.
 const VOCAB_PREFETCH_LIMIT = 24;
 
+export const DISCOVER_MOOD_FILTERS = [
+  "Todos",
+  "Ideal para sesiones de 10 min",
+  "Poesía y Modernismo",
+  "Vocabulario Elevado",
+];
+
 export default function DiscoverRail({
   library,
   onOpen,
@@ -65,6 +73,7 @@ export default function DiscoverRail({
   const [getting, setGetting] = useState<string | null>(null);
   const [errorId, setErrorId] = useState<string | null>(null);
   const [coverBroken, setCoverBroken] = useState<Set<string>>(new Set());
+  const [activeFilter, setActiveFilter] = useState<string>("Todos");
   const cancelledRef = useRef(false);
 
   useEffect(() => {
@@ -146,6 +155,12 @@ export default function DiscoverRail({
     return [...measured, ...rest];
   }, [books, coverages]);
 
+  // Filtrado por tag / estado de ánimo
+  const filtered = useMemo(() => {
+    if (!activeFilter || activeFilter === "Todos") return ordered;
+    return ordered.filter((b) => getBookMoodTags(b).includes(activeFilter));
+  }, [ordered, activeFilter]);
+
   if (!books) return null;
 
   const get = async (book: CatalogBook) => {
@@ -163,9 +178,26 @@ export default function DiscoverRail({
 
   return (
     <section aria-label="Descubre" className="discover">
-      <h2 className="eyebrow shelf-eyebrow">Descubre</h2>
+      <div className="discover-head">
+        <h2 className="eyebrow shelf-eyebrow">Descubre</h2>
+        <div className="discover-filters" role="tablist" aria-label="Filtros de catálogo">
+          {DISCOVER_MOOD_FILTERS.map((filter) => (
+            <button
+              key={filter}
+              type="button"
+              className={`discover-filter-pill${activeFilter === filter ? " discover-filter-pill--active" : ""}`}
+              onClick={() => setActiveFilter(filter)}
+              role="tab"
+              aria-selected={activeFilter === filter}
+            >
+              {filter}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <ul className="discover-rail">
-        {ordered.map((book) => {
+        {filtered.map((book) => {
           const coverage = coverages.get(book.id);
           const owned = book.epubSha256
             ? ownedByHash.get(book.epubSha256)
@@ -175,6 +207,7 @@ export default function DiscoverRail({
             : null;
           const palette = coverPalette(book.id);
           const showCover = book.cover && !coverBroken.has(book.id);
+          const tags = getBookMoodTags(book);
           return (
             <li key={book.id} className="discover-book">
               <div className="discover-cover">
@@ -218,11 +251,21 @@ export default function DiscoverRail({
                 ) : null}
               </div>
               <div className="discover-meta">
+                <div className="discover-tags" aria-label="Etiquetas">
+                  {tags.slice(0, 2).map((t) => (
+                    <span key={t} className="discover-tag-pill">{t}</span>
+                  ))}
+                </div>
                 <p className="discover-title" title={book.title}>
                   {book.title}
                 </p>
                 <p className="meta">{book.author}</p>
                 {label ? <p className="meta discover-label">{label}</p> : null}
+                {coverage?.newWordsCount != null && coverage.newWordsCount > 0 ? (
+                  <p className="meta discover-new-words">
+                    +{coverage.newWordsCount} palabras útiles
+                  </p>
+                ) : null}
               </div>
               {owned ? (
                 <button

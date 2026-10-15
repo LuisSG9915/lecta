@@ -5,7 +5,17 @@
 // Envuelve cada unidad en <span class="syn-line"> (display:block);
 // quitar el modo desenrolla esos spans sin perder marcas ni notas.
 
+import { isStopword } from "../../shared/stopwords";
+
 export const SYNTACTIC_LINE_CLASS = "syn-line";
+export const SYNTACTIC_CHUNK_CLASS = "lecta-syntactic-chunk";
+export const FIXATION_ANCHOR_CLASS = "lecta-fixation-anchor";
+
+export interface SyntacticLinesOptions {
+  chromaticGuide?: boolean;
+  syntacticLines?: boolean;
+  bionicAnchors?: boolean;
+}
 
 // Contenido que nunca se reparte: no es prosa o ya está intervenido.
 const SKIP_INSIDE =
@@ -101,27 +111,104 @@ export function syntacticSegments(text: string): string[] {
 export const COMPLEX_CONNECTORS =
   /\b(sin embargo|no obstante|por consiguiente|por lo tanto|por tanto|en consecuencia|de modo que|así que|a pesar de|en cambio)\b/gi;
 
-// Desenrolla las líneas: cada span devuelve sus hijos al flujo y el
-// normalize vuelve a unir el texto (las marcas <mark> se conservan).
+// Desenrolla las líneas y anclajes: cada span devuelve sus hijos al flujo
+// y el normalize vuelve a unir el texto (las marcas <mark> se conservan).
 export function clearSyntacticLines(root: ParentNode) {
+  root.querySelectorAll(`.${FIXATION_ANCHOR_CLASS}`).forEach((span) => {
+    span.replaceWith(...span.childNodes);
+  });
   root.querySelectorAll(`[data-connector="true"]`).forEach((span) => {
     span.replaceWith(...span.childNodes);
   });
   root.querySelectorAll(`.${SYNTACTIC_LINE_CLASS}`).forEach((span) => {
     span.replaceWith(...span.childNodes);
   });
+  root.querySelectorAll(`.${SYNTACTIC_CHUNK_CLASS}`).forEach((span) => {
+    span.replaceWith(...span.childNodes);
+  });
   if (root instanceof Element || root instanceof DocumentFragment)
     root.normalize();
 }
 
-// Envuelve cada párrafo en líneas sintácticas. Idempotente: primero
-// limpia un reparto anterior. Solo corta dentro de nodos de texto
-// directos del párrafo — un corte que caería dentro de <em>, <mark>
-// o <a> se descarta, así ningún elemento queda rasgado entre líneas.
-export function applySyntacticLines(root: ParentNode) {
+function applyBionicAnchorsToTextNode(tNode: Text) {
+  const val = tNode.nodeValue;
+  if (!val || val.length < 3) return;
+  const WORD_RE = /[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]+/gu;
+  let match: RegExpExecArray | null;
+  let lastIdx = 0;
+  let hasAnchor = false;
+  const frag = document.createDocumentFragment();
+
+  while ((match = WORD_RE.exec(val)) !== null) {
+    const word = match[0];
+    if (word.length >= 3 && !isStopword(word, "es")) {
+      hasAnchor = true;
+      if (match.index > lastIdx) {
+        frag.appendChild(document.createTextNode(val.slice(lastIdx, match.index)));
+      }
+      const anchorLen = word.length <= 3 ? 1 : word.length <= 6 ? 2 : 3;
+      const anchorSpan = document.createElement("span");
+      anchorSpan.className = FIXATION_ANCHOR_CLASS;
+      anchorSpan.textContent = word.slice(0, anchorLen);
+      frag.appendChild(anchorSpan);
+      frag.appendChild(document.createTextNode(word.slice(anchorLen)));
+      lastIdx = match.index + word.length;
+    }
+  }
+  if (!hasAnchor) return;
+  if (lastIdx < val.length) {
+    frag.appendChild(document.createTextNode(val.slice(lastIdx)));
+  }
+  tNode.replaceWith(frag);
+}
+
+function applyBionicToElement(container: Element) {
+  const textNodes: Text[] = [];
+  const walk = (node: Node) => {
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      const el = node as Element;
+      if (
+        el.tagName.toLowerCase() === "mark" ||
+        el.getAttribute("data-connector") === "true" ||
+        el.classList.contains(FIXATION_ANCHOR_CLASS)
+      ) {
+        return;
+      }
+      for (const child of el.childNodes) {
+        walk(child);
+      }
+    } else if (node.nodeType === Node.TEXT_NODE && node.nodeValue?.trim()) {
+      textNodes.push(node as Text);
+    }
+  };
+  for (const child of container.childNodes) {
+    walk(child);
+  }
+  for (const t of textNodes) {
+    applyBionicAnchorsToTextNode(t);
+  }
+}
+
+// Envuelve cada párrafo en líneas sintácticas o tramos cromáticos. Idempotente:
+// primero limpia un reparto anterior. Solo corta dentro de nodos de texto directos
+// del párrafo — ningún elemento anidado como <mark> queda rasgado entre líneas.
+export function applySyntacticLines(
+  root: ParentNode,
+  options?: SyntacticLinesOptions,
+) {
   clearSyntacticLines(root);
+
+  const enableSyntactic = options?.syntacticLines ?? true;
+  const enableChromatic = options?.chromaticGuide ?? false;
+  const enableBionic = options?.bionicAnchors ?? false;
+
+  if (!enableSyntactic && !enableChromatic && !enableBionic) return;
+
+  let globalChunkCycle = 0;
+
   root.querySelectorAll("p, li").forEach((el) => {
     if (el.closest(SKIP_ANCESTOR) || el.querySelector(SKIP_INSIDE)) return;
+
     // Nodos de texto directos con su rango en el plano concatenado.
     const nodes: { node: Text; start: number; end: number }[] = [];
     let flat = "";
@@ -132,91 +219,161 @@ export function applySyntacticLines(root: ParentNode) {
       nodes.push({ node: child as Text, start, end: flat.length });
     }
     if (!flat.trim()) return;
+
     const breaks = syntacticBreaks(flat);
-    if (!breaks.length) return;
 
-    // Cada corte en borde de nodo empieza línea directamente; cada
-    // corte interno parte el nodo y el fragmento derecho la empieza.
-    const starters = new Set<Node>([el.firstChild as Node]);
-    for (const pos of breaks) {
-      const boundary = nodes.find((t) => pos === t.start);
-      if (boundary) {
-        starters.add(boundary.node);
-        continue;
-      }
-      const hit = nodes.find((t) => pos > t.start && pos < t.end);
-      if (!hit) continue;
-      const tail = hit.node.splitText(pos - hit.start);
-      // El nodo queda partido: actualiza el plano para los cortes que
-      // sigan, o su offset caería fuera del texto restante.
-      nodes.splice(
-        nodes.indexOf(hit),
-        1,
-        { node: hit.node, start: hit.start, end: pos },
-        { node: tail, start: pos, end: hit.end },
-      );
-      starters.add(tail);
-    }
-
-    let span: HTMLSpanElement | null = null;
-    for (const child of [...el.childNodes]) {
-      if (starters.has(child) || !span) {
-        span = document.createElement("span");
-        span.className = SYNTACTIC_LINE_CLASS;
-        el.insertBefore(span, child);
-      }
-      span.appendChild(child);
-    }
-
-    // Decoración sintáctica: sangría en cascada para conectores dependientes,
-    // respiro rítmico tras signos de puntuación fuerte y etiquetado de conectores complejos.
-    const spans = el.querySelectorAll<HTMLSpanElement>(`.${SYNTACTIC_LINE_CLASS}`);
-    let prevEndsWithStrong = false;
-    spans.forEach((s, idx) => {
-      const text = s.textContent?.trim() ?? "";
-      if (idx > 0 && !prevEndsWithStrong && CONNECTOR.test(text)) {
-        s.dataset.sub = "true";
-      } else if (idx > 0 && prevEndsWithStrong) {
-        s.dataset.newSentence = "true";
-      }
-      const rawText = s.textContent ?? "";
-      const trimmedEnd = rawText.trimEnd();
-      const lastChar = trimmedEnd.length > 0 ? trimmedEnd[trimmedEnd.length - 1] : "";
-      prevEndsWithStrong = STRONG.includes(lastChar);
-
-      // Identificar conectores complejos en nodos de texto directos para fijación sacádica
-      const textNodes: Text[] = [];
-      for (const child of s.childNodes) {
-        if (child.nodeType === Node.TEXT_NODE && child.nodeValue) {
-          textNodes.push(child as Text);
-        }
-      }
-      for (const tNode of textNodes) {
-        const val = tNode.nodeValue;
-        if (!val) continue;
-        COMPLEX_CONNECTORS.lastIndex = 0;
-        if (!COMPLEX_CONNECTORS.test(val)) continue;
-        COMPLEX_CONNECTORS.lastIndex = 0;
-
-        const frag = document.createDocumentFragment();
-        let lastIdx = 0;
-        let match: RegExpExecArray | null;
-        while ((match = COMPLEX_CONNECTORS.exec(val)) !== null) {
-          if (match.index > lastIdx) {
-            frag.appendChild(document.createTextNode(val.slice(lastIdx, match.index)));
+    if (enableSyntactic) {
+      if (breaks.length > 0) {
+        const starters = new Set<Node>([el.firstChild as Node]);
+        for (const pos of breaks) {
+          const boundary = nodes.find((t) => pos === t.start);
+          if (boundary) {
+            starters.add(boundary.node);
+            continue;
           }
-          const cSpan = document.createElement("span");
-          cSpan.dataset.connector = "true";
-          cSpan.textContent = match[0];
-          frag.appendChild(cSpan);
-          lastIdx = match.index + match[0].length;
+          const hit = nodes.find((t) => pos > t.start && pos < t.end);
+          if (!hit) continue;
+          const tail = hit.node.splitText(pos - hit.start);
+          nodes.splice(
+            nodes.indexOf(hit),
+            1,
+            { node: hit.node, start: hit.start, end: pos },
+            { node: tail, start: pos, end: hit.end },
+          );
+          starters.add(tail);
         }
-        if (lastIdx < val.length) {
-          frag.appendChild(document.createTextNode(val.slice(lastIdx)));
+
+        let span: HTMLSpanElement | null = null;
+        for (const child of [...el.childNodes]) {
+          if (starters.has(child) || !span) {
+            span = document.createElement("span");
+            span.className = `${SYNTACTIC_LINE_CLASS} ${SYNTACTIC_CHUNK_CLASS}`;
+            if (enableChromatic) {
+              span.dataset.chunkCycle = String(globalChunkCycle % 4);
+              globalChunkCycle++;
+            }
+            el.insertBefore(span, child);
+          }
+          span.appendChild(child);
         }
-        tNode.replaceWith(frag);
+      } else {
+        const span = document.createElement("span");
+        span.className = `${SYNTACTIC_LINE_CLASS} ${SYNTACTIC_CHUNK_CLASS}`;
+        if (enableChromatic) {
+          span.dataset.chunkCycle = String(globalChunkCycle % 4);
+          globalChunkCycle++;
+        }
+        while (el.firstChild) {
+          span.appendChild(el.firstChild);
+        }
+        el.appendChild(span);
       }
-    });
+
+      // Decoración sintáctica: cascada para subordinadas, respiración rítmica y conectores complejos
+      const spans = el.querySelectorAll<HTMLSpanElement>(`.${SYNTACTIC_LINE_CLASS}`);
+      let prevEndsWithStrong = false;
+      spans.forEach((s, idx) => {
+        const text = s.textContent?.trim() ?? "";
+        if (idx > 0 && !prevEndsWithStrong && CONNECTOR.test(text)) {
+          s.dataset.sub = "true";
+        } else if (idx > 0 && prevEndsWithStrong) {
+          s.dataset.newSentence = "true";
+        }
+        const rawText = s.textContent ?? "";
+        const trimmedEnd = rawText.trimEnd();
+        const lastChar = trimmedEnd.length > 0 ? trimmedEnd[trimmedEnd.length - 1] : "";
+        prevEndsWithStrong = STRONG.includes(lastChar);
+
+        // Identificar conectores complejos en nodos de texto directos para fijación sacádica
+        const textNodes: Text[] = [];
+        for (const child of s.childNodes) {
+          if (child.nodeType === Node.TEXT_NODE && child.nodeValue) {
+            textNodes.push(child as Text);
+          }
+        }
+        for (const tNode of textNodes) {
+          const val = tNode.nodeValue;
+          if (!val) continue;
+          COMPLEX_CONNECTORS.lastIndex = 0;
+          if (!COMPLEX_CONNECTORS.test(val)) continue;
+          COMPLEX_CONNECTORS.lastIndex = 0;
+
+          const frag = document.createDocumentFragment();
+          let lastIdx = 0;
+          let match: RegExpExecArray | null;
+          while ((match = COMPLEX_CONNECTORS.exec(val)) !== null) {
+            if (match.index > lastIdx) {
+              frag.appendChild(document.createTextNode(val.slice(lastIdx, match.index)));
+            }
+            const cSpan = document.createElement("span");
+            cSpan.dataset.connector = "true";
+            cSpan.textContent = match[0];
+            frag.appendChild(cSpan);
+            lastIdx = match.index + match[0].length;
+          }
+          if (lastIdx < val.length) {
+            frag.appendChild(document.createTextNode(val.slice(lastIdx)));
+          }
+          tNode.replaceWith(frag);
+        }
+
+        if (enableBionic) {
+          applyBionicToElement(s);
+        }
+      });
+    } else if (enableChromatic) {
+      // syntacticLines: false pero chromaticGuide: true -> agrupar inline
+      if (breaks.length > 0) {
+        const starters = new Set<Node>([el.firstChild as Node]);
+        for (const pos of breaks) {
+          const boundary = nodes.find((t) => pos === t.start);
+          if (boundary) {
+            starters.add(boundary.node);
+            continue;
+          }
+          const hit = nodes.find((t) => pos > t.start && pos < t.end);
+          if (!hit) continue;
+          const tail = hit.node.splitText(pos - hit.start);
+          nodes.splice(
+            nodes.indexOf(hit),
+            1,
+            { node: hit.node, start: hit.start, end: pos },
+            { node: tail, start: pos, end: hit.end },
+          );
+          starters.add(tail);
+        }
+
+        let span: HTMLSpanElement | null = null;
+        for (const child of [...el.childNodes]) {
+          if (starters.has(child) || !span) {
+            span = document.createElement("span");
+            span.className = SYNTACTIC_CHUNK_CLASS;
+            span.dataset.chunkCycle = String(globalChunkCycle % 4);
+            span.dataset.inline = "true";
+            globalChunkCycle++;
+            el.insertBefore(span, child);
+          }
+          span.appendChild(child);
+        }
+      } else {
+        const span = document.createElement("span");
+        span.className = SYNTACTIC_CHUNK_CLASS;
+        span.dataset.chunkCycle = String(globalChunkCycle % 4);
+        span.dataset.inline = "true";
+        globalChunkCycle++;
+        while (el.firstChild) {
+          span.appendChild(el.firstChild);
+        }
+        el.appendChild(span);
+      }
+
+      if (enableBionic) {
+        applyBionicToElement(el);
+      }
+    } else if (enableBionic) {
+      // Solo bionicAnchors sin syntacticLines ni chromaticGuide
+      applyBionicToElement(el);
+    }
   });
 }
 

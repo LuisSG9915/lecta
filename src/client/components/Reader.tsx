@@ -32,6 +32,7 @@ import {
   loadBookPosition,
   saveBookPosition,
   saveKnowledge,
+  saveWordWithKnowledge,
   recordPassiveExposure,
   saveReadingInterval,
   saveSessionValue,
@@ -65,6 +66,7 @@ import {
 } from "../lib/knowledge";
 import {
   buildSuggestionRows,
+  extractKeyWordFromSentence,
   type SuggestionRows,
 } from "../lib/section-words";
 import {
@@ -130,11 +132,13 @@ import {
   MARGIN_OPTIONS,
   PREPARATION_MODES,
   READING_STRATEGY_PRESETS,
+  CHROMATIC_PALETTES,
   applyStrategyPreset,
   isStrategyPresetActive,
-  RULER_SIZES,
+  type ChromaticPalette,
   type ReaderSettings,
   type ReadingStrategyPreset,
+  type SoundscapeSetting,
   type ThemeChoice,
 } from "../lib/settings";
 import {
@@ -206,9 +210,18 @@ import {
 } from "../lib/ttsController";
 import {
   TTS_IDLE,
+  TTS_PLAYER_RATES,
   type TtsSnapshot,
 } from "../lib/ttsTypes";
-import { setCompanionAudioSuppressed } from "../lib/companion-audio";
+import {
+  setCompanionAudioSuppressed,
+  startAmbientPurr,
+  stopAmbientPurr,
+  startSoundscape,
+  stopSoundscape,
+  type SoundscapeKind,
+} from "../lib/companion-audio";
+import { requestPageRecap, type PageRecapResult } from "../lib/page-recap";
 import TtsConsentDialog from "./TtsConsentDialog";
 import TtsNowPlaying from "./TtsNowPlaying";
 import WordPanel from "./WordPanel";
@@ -559,6 +572,7 @@ export default function Reader({
   const [tocRows, setTocRows] = useState<TocRow[]>([]);
   // Catálogo de destinos (T10/T11); no cambia tras la carga del libro.
   const [catalog, setCatalog] = useState<ChapterCatalog | null>(null);
+  const [bookSections, setBookSections] = useState<EpubBook["sections"] | undefined>(undefined);
   const catalogRef = useRef<ChapterCatalog | null>(null);
   // Elección inicial pendiente (T18): sin posición ni registro se
   // pregunta dónde empezar antes de renderizar una sección.
@@ -624,6 +638,9 @@ export default function Reader({
   const [wpm, setWpm] = useState(DEFAULT_WPM);
   const [settings, setSettings] = useState<ReaderSettings>(() => loadReaderSettings(bookHash));
   const [strategyPaused, setStrategyPaused] = useState(false);
+  const [pacerPaused, setPacerPaused] = useState(false);
+  const pacerIndexRef = useRef<number>(0);
+  const [ttsCapturedToast, setTtsCapturedToast] = useState<string | null>(null);
   // Barra Zen auto-desvanecible (B.1)
   const [isZenFaded, setIsZenFaded] = useState(false);
   const zenFadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -672,6 +689,11 @@ export default function Reader({
       toneAndNuance: string;
       catTip: string;
     } | null;
+    error: string | null;
+  } | null>(null);
+  const [pageRecap, setPageRecap] = useState<{
+    loading: boolean;
+    data: PageRecapResult | null;
     error: string | null;
   } | null>(null);
   const [glossaryOpen, setGlossaryOpen] = useState(false);
@@ -825,6 +847,8 @@ export default function Reader({
   // El temporizador vive en ref para limpiarlo al desmontar.
   const catTapTimer = useRef<number | null>(null);
   const [catTap, setCatTap] = useState(false);
+  const [catSavedWord, setCatSavedWord] = useState(false);
+  const catSavedWordTimer = useRef<number | null>(null);
   const onStallBubbleClick = useCallback(() => {
     setStallBubble(null);
     if (stallBubbleTimerRef.current) clearTimeout(stallBubbleTimerRef.current);
@@ -861,6 +885,8 @@ export default function Reader({
     () => () => {
       if (catTapTimer.current !== null)
         window.clearTimeout(catTapTimer.current);
+      if (catSavedWordTimer.current !== null)
+        window.clearTimeout(catSavedWordTimer.current);
     },
     [],
   );
@@ -1722,7 +1748,9 @@ export default function Reader({
             adjustRef.current,
             baseThresholdRef.current,
           ).threshold,
+          lang,
         ),
+        isSecondLanguage: lang !== loadNativeLanguage(),
         lex,
       }),
     [],
@@ -2276,12 +2304,21 @@ export default function Reader({
         // «Líneas sintácticas» envuelve el párrafo en unidades con
         // sentido antes del primer pintado; las marcas ya puestas
         // quedan dentro de su línea.
+        const isChromaInit =
+          Boolean(settingsRef.current?.chromaticGuide || settingsRef.current?.focusMode === "chromatic");
         if (
           settingsRef.current?.syntacticLines ||
           settingsRef.current?.focusMode === "syntactic" ||
-          settingsRef.current?.focusMode === "chromatic"
-        )
-          applySyntacticLines(sanitized);
+          isChromaInit ||
+          settingsRef.current?.bionicAnchors ||
+          settingsRef.current?.visualPacer
+        ) {
+          applySyntacticLines(sanitized, {
+            syntacticLines: settingsRef.current?.syntacticLines,
+            chromaticGuide: isChromaInit,
+            bionicAnchors: settingsRef.current?.bionicAnchors,
+          });
+        }
         // Las imágenes del EPUB viajan como blob: URLs: las rutas
         // internas se quitan antes de montar (evita 404 contra el
         // origen) y se rellenan ya pintado el texto. En modo paginado
@@ -2707,6 +2744,7 @@ export default function Reader({
       setPrepNotice(null);
       setAnalyzing(false);
       setEnriching(null);
+      setBookSections(undefined);
       try {
         const { book, close, loadBlob } = await openEpub(file);
         if (disposed) {
@@ -2737,6 +2775,7 @@ export default function Reader({
         // filas sobre los targets — la posición sigue siendo física.
         const catalog = buildChapterCatalog(book);
         setCatalog(catalog);
+        setBookSections(book.sections);
         catalogRef.current = catalog;
         // Analizador por rango (T13): deduplica por destino y extrae
         // solo el texto del tramo. La lectura nunca espera por él.
@@ -3015,28 +3054,50 @@ export default function Reader({
         return;
       }
 
+      const rawText = sel.toString().trim();
+      const words = rawText.split(/\s+/).filter(Boolean);
       const singleWordHit = wordHitFromRange(range, container, language);
-      const isTouch =
-        lastPointerTypeRef.current === "touch" ||
-        lastPointerTypeRef.current === "pen" ||
-        (typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches);
 
-      let placement: "top" | "bottom" = isTouch ? "bottom" : "top";
-      let y = isTouch ? rect.bottom : rect.top;
-
-      if (placement === "bottom" && rect.bottom + 64 > window.innerHeight && rect.top > 64) {
-        placement = "top";
-        y = rect.top;
-      } else if (placement === "top" && rect.top < 64 && rect.bottom + 64 <= window.innerHeight) {
-        placement = "bottom";
-        y = rect.bottom;
+      // Si la selección tiene exactamente 1 palabra (o coincide con toque de palabra),
+      // abrir directamente la ficha léxica y NO desplegar la barra de pasajes
+      if (words.length === 1 || (words.length === 0 && singleWordHit)) {
+        const hit = singleWordHit || {
+          word: words[0].replace(/[.,;:!?¡¿"«»()]/g, ""),
+          context: rawText,
+        };
+        if (hit.word) {
+          openSelection(hit);
+          setSelButton(null);
+          return;
+        }
       }
 
-      const centerX = rect.left + rect.width / 2;
-      const menuHalfW = singleWordHit ? 190 : 170;
-      const clampedX = Math.max(menuHalfW + 12, Math.min(centerX, window.innerWidth - menuHalfW - 12));
+      // Si la selección tiene 2 o más palabras, desplegar la barra de pasajes
+      if (words.length >= 2) {
+        const isTouch =
+          lastPointerTypeRef.current === "touch" ||
+          lastPointerTypeRef.current === "pen" ||
+          (typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches);
 
-      setSelButton({ x: clampedX, y, placement, singleWordHit });
+        let placement: "top" | "bottom" = isTouch ? "bottom" : "top";
+        let y = isTouch ? rect.bottom : rect.top;
+
+        if (placement === "bottom" && rect.bottom + 64 > window.innerHeight && rect.top > 64) {
+          placement = "top";
+          y = rect.top;
+        } else if (placement === "top" && rect.top < 64 && rect.bottom + 64 <= window.innerHeight) {
+          placement = "bottom";
+          y = rect.bottom;
+        }
+
+        const centerX = rect.left + rect.width / 2;
+        const menuHalfW = 170;
+        const clampedX = Math.max(menuHalfW + 12, Math.min(centerX, window.innerWidth - menuHalfW - 12));
+
+        setSelButton({ x: clampedX, y, placement, singleWordHit: null });
+      } else {
+        setSelButton(null);
+      }
     };
     const onSelection = () => {
       window.clearTimeout(timer);
@@ -3050,6 +3111,7 @@ export default function Reader({
       window.removeEventListener("scroll", hide);
       window.clearTimeout(timer);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [language]);
 
   // Aviso único de descubrimiento para la pulsación larga en táctil (clave por cuenta)
@@ -3232,13 +3294,28 @@ export default function Reader({
     const container = containerRef.current;
     if (!container) return;
     const raf = requestAnimationFrame(() => {
+      const isChroma =
+        Boolean(settings.chromaticGuide || settings.focusMode === "chromatic");
       const needsLines =
         !strategyPaused &&
         (settings.syntacticLines ||
           settings.focusMode === "syntactic" ||
-          settings.focusMode === "chromatic");
-      if (needsLines) applySyntacticLines(container);
-      else clearSyntacticLines(container);
+          isChroma ||
+          settings.bionicAnchors ||
+          settings.visualPacer);
+      if (needsLines) {
+        applySyntacticLines(container, {
+          syntacticLines: settings.syntacticLines,
+          chromaticGuide: isChroma,
+          bionicAnchors: settings.bionicAnchors,
+        });
+      } else {
+        clearSyntacticLines(container);
+      }
+
+      container.dataset.chromaPalette = settings.chromaticPalette || "editorial";
+      container.dataset.chromaticGuide = isChroma && !strategyPaused ? "true" : "false";
+      container.dataset.bionicAnchors = settings.bionicAnchors && !strategyPaused ? "true" : "false";
 
       if (!strategyPaused && (settings.paragraphFocus || settings.focusMode === "paragraph"))
         updateParagraphFocus(container);
@@ -3261,7 +3338,11 @@ export default function Reader({
   }, [
     settings.focusMode,
     settings.syntacticLines,
+    settings.chromaticGuide,
+    settings.chromaticPalette,
+    settings.bionicAnchors,
     settings.paragraphFocus,
+    settings.visualPacer,
     strategyPaused,
     state,
     remeasure,
@@ -3612,6 +3693,10 @@ export default function Reader({
       if (event.key === " " || event.code === "Space") {
         event.preventDefault();
         noteActivity();
+        if (settings.visualPacer) {
+          setPacerPaused((p) => !p);
+          return;
+        }
         if (layoutRef.current === "pages") {
           if (event.shiftKey) goPage(-1);
           else goPage(1);
@@ -3669,16 +3754,67 @@ export default function Reader({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selection, sheet, panelsOpen, sectionIndex, sectionTotal, navigate, goPage, noteActivity, language, handleToggleFullscreen]);
 
-  const onWordSaved = (word: SavedWord) => {
+  const onWordSaved = useCallback((word: SavedWord) => {
     ttsRef.current?.noteSavedWord();
     for (const form of [word.form, word.lemma]) {
       if (form) savedForms.current.set(form.toLowerCase(), "new");
     }
+    // Reacción afectuosa y alegre del gato al guardar una joya léxica
+    setCatSavedWord(true);
+    if (catSavedWordTimer.current !== null)
+      window.clearTimeout(catSavedWordTimer.current);
+    catSavedWordTimer.current = window.setTimeout(() => {
+      catSavedWordTimer.current = null;
+      setCatSavedWord(false);
+    }, 2400);
     // Reclasifica la sección visible: la palabra pasa a «guardada»
     // tanto en la tarjeta como en las marcas del texto.
     applyPrediction(sectionIndexRef.current, language);
     onStatus(`«${word.form}» ya está en tu cuaderno.`);
-  };
+  }, [language, applyPrediction, onStatus]);
+
+  const handleTtsCaptureWord = useCallback(async () => {
+    const ctl = ttsRef.current;
+    if (!ctl) return;
+    const currentSentence = ctl.getCurrentSentence();
+    if (!currentSentence) return;
+
+    const keyWord = extractKeyWordFromSentence(
+      currentSentence,
+      language,
+    );
+    if (!keyWord || !keyWord.form) return;
+
+    triggerHaptic("selection");
+    const scope = captureDbScope();
+    try {
+      const { word: savedWord } = await saveWordWithKnowledge(
+        {
+          word: {
+            form: keyWord.form,
+            lemma: keyWord.lemma || keyWord.form.toLowerCase(),
+            pos: keyWord.pos,
+            language,
+            context: currentSentence,
+            bookHash,
+          },
+          knowledge: {
+            language,
+            lemma: (keyWord.lemma || keyWord.form).toLowerCase(),
+            known: false,
+            source: "saved",
+            status: "unknown",
+          },
+        },
+        scope,
+      );
+      onWordSaved(savedWord);
+      setTtsCapturedToast(keyWord.form);
+      setTimeout(() => setTtsCapturedToast(null), 2500);
+    } catch {
+      // fallback silencioso
+    }
+  }, [language, bookHash, onWordSaved]);
 
   const onWordRemoved = (word: SavedWord) => {
     for (const form of [word.form, word.lemma]) {
@@ -3994,7 +4130,23 @@ export default function Reader({
         presetPatch = { strategyPreset: "custom" };
       }
       const next = { ...current, ...patch, ...presetPatch };
-      if (next.paragraphFocus) {
+      if (patch.focusRuler === true) {
+        next.focusRuler = true;
+        next.paragraphFocus = false;
+        next.focusMode = "ruler";
+      } else if (patch.paragraphFocus === true) {
+        next.paragraphFocus = true;
+        next.focusRuler = false;
+        next.focusMode = "paragraph";
+      } else if (patch.focusRuler === false && patch.paragraphFocus === false) {
+        next.focusRuler = false;
+        next.paragraphFocus = false;
+        if (next.syntacticLines) {
+          next.focusMode = "syntactic";
+        } else {
+          next.focusMode = "off";
+        }
+      } else if (next.paragraphFocus) {
         next.focusMode = "paragraph";
       } else if (next.focusRuler) {
         next.focusMode = "ruler";
@@ -4023,25 +4175,86 @@ export default function Reader({
     }
   };
 
-  const onToggleFocusRuler = (checked: boolean) => {
-    updateSettings({
-      focusRuler: checked,
-      strategyPreset: "custom",
-    });
-  };
-
-  const onToggleParagraphFocus = (checked: boolean) => {
-    updateSettings({
-      paragraphFocus: checked,
-      strategyPreset: "custom",
-    });
-  };
 
   const onToggleSyntacticLines = (checked: boolean) => {
     updateSettings({
       syntacticLines: checked,
       strategyPreset: "custom",
     });
+  };
+
+  const onToggleChromaticGuide = (checked: boolean) => {
+    updateSettings({
+      chromaticGuide: checked,
+      strategyPreset: "custom",
+    });
+  };
+
+  const onSelectChromaPalette = (palette: ChromaticPalette) => {
+    updateSettings({
+      chromaticPalette: palette,
+      strategyPreset: "custom",
+    });
+  };
+
+  const onToggleBionicAnchors = (checked: boolean) => {
+    updateSettings({
+      bionicAnchors: checked,
+      strategyPreset: "custom",
+    });
+  };
+
+  const handleRecapClick = async () => {
+    triggerHaptic("selection");
+    setPageRecap({ loading: true, data: null, error: null });
+
+    const container = containerRef.current;
+    let pageText = "";
+    if (container) {
+      if (settings.layout === "pages" && pageMetrics) {
+        const paras = Array.from(
+          container.querySelectorAll<HTMLElement>("p, h1, h2, h3, h4, blockquote, li"),
+        );
+        const pageParas = paras.filter((p) => pageOfElement(p, pageMetrics) === page);
+        if (pageParas.length > 0) {
+          pageText = pageParas.map((p) => p.textContent ?? "").join("\n\n");
+        }
+      }
+      if (!pageText) {
+        const paras = Array.from(
+          container.querySelectorAll<HTMLElement>("p, h1, h2, h3, h4, blockquote, li"),
+        );
+        const viewH = window.innerHeight;
+        const visible = paras.filter((p) => {
+          const rect = p.getBoundingClientRect();
+          return rect.bottom >= 0 && rect.top <= viewH;
+        });
+        if (visible.length > 0) {
+          pageText = visible.map((p) => p.textContent ?? "").join("\n\n");
+        }
+      }
+      if (!pageText) {
+        pageText = container.textContent?.slice(0, 1500) || "";
+      }
+    }
+
+    try {
+      const result = await requestPageRecap(
+        {
+          text: pageText,
+          bookTitle: title,
+          chapterTitle: sectionTitle ?? sectionLabel(sectionIndex),
+        },
+        captureDbScope(),
+      );
+      setPageRecap({ loading: false, data: result, error: null });
+    } catch {
+      setPageRecap({
+        loading: false,
+        data: null,
+        error: "No se pudo recuperar el hilo de la página.",
+      });
+    }
   };
 
   const handleCreateQuoteCard = () => {
@@ -4131,6 +4344,144 @@ export default function Reader({
       }
     }
   }, [progress, bookHash, signalCompanion]);
+
+  // Micro-hitos de página (25%, 50%, 75%, 100%) para dopamina visual y retención TDAH
+  const lastCheckpointRef = useRef<number>(0);
+  const lastSectionForCheckpointRef = useRef<number>(sectionIndex);
+  useEffect(() => {
+    if (lastSectionForCheckpointRef.current !== sectionIndex) {
+      lastSectionForCheckpointRef.current = sectionIndex;
+      lastCheckpointRef.current = 0;
+    }
+    if (state !== "ready") return;
+    const checkpoints = [0.25, 0.5, 0.75, 1.0];
+    for (const cp of checkpoints) {
+      if (viewRatio >= cp && lastCheckpointRef.current < cp) {
+        lastCheckpointRef.current = cp;
+        window.dispatchEvent(
+          new CustomEvent("lecta:checkpoint-reached", {
+            detail: { checkpoint: cp },
+          }),
+        );
+        presenceReact();
+        break;
+      }
+    }
+  }, [viewRatio, sectionIndex, state, presenceReact]);
+
+  // Paisajes sonoros procedurales Web Audio y ronroneo ambiental («Body Doubling» acústico)
+  useEffect(() => {
+    const activeSound =
+      settings.soundscape || (settings.ambientPurr ? "purr" : "none");
+    const shouldPlay =
+      activeSound !== "none" &&
+      !strategyPaused &&
+      state === "ready" &&
+      !readingPaused &&
+      ttsSnap.status !== "speaking";
+
+    if (shouldPlay) {
+      if (activeSound === "purr") {
+        startAmbientPurr();
+      } else {
+        startSoundscape(activeSound as SoundscapeKind);
+      }
+    } else {
+      stopAmbientPurr();
+      stopSoundscape();
+    }
+    return () => {
+      stopAmbientPurr();
+      stopSoundscape();
+    };
+  }, [
+    settings.soundscape,
+    settings.ambientPurr,
+    strategyPaused,
+    state,
+    readingPaused,
+    ttsSnap.status,
+  ]);
+
+  // Marcapasos Visual ("Ritmo Guiado" para TDAH)
+  useEffect(() => {
+    const container = containerRef.current;
+    if (
+      !settings.visualPacer ||
+      strategyPaused ||
+      pacerPaused ||
+      state !== "ready" ||
+      readingPaused
+    ) {
+      if (container) {
+        container.querySelectorAll(".lecta-pacer-active").forEach((el) => {
+          el.classList.remove("lecta-pacer-active");
+        });
+      }
+      return;
+    }
+
+    if (!container) return;
+
+    let timer: number | null = null;
+    let destroyed = false;
+
+    const stepPacer = () => {
+      if (destroyed) return;
+      const chunks = Array.from(
+        container.querySelectorAll<HTMLElement>(".lecta-syntactic-chunk"),
+      );
+      if (chunks.length === 0) return;
+
+      if (pacerIndexRef.current >= chunks.length) {
+        pacerIndexRef.current = 0;
+      }
+      const activeChunk = chunks[pacerIndexRef.current];
+
+      chunks.forEach((chunk, i) => {
+        if (i === pacerIndexRef.current) {
+          chunk.classList.add("lecta-pacer-active");
+        } else {
+          chunk.classList.remove("lecta-pacer-active");
+        }
+      });
+
+      if (activeChunk) {
+        const rect = activeChunk.getBoundingClientRect();
+        if (rect.bottom > window.innerHeight - 80 || rect.top < 60) {
+          activeChunk.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+      }
+
+      const text = activeChunk?.textContent || "";
+      const words = Math.max(1, text.trim().split(/\s+/).filter(Boolean).length);
+      const wpm = settings.pacerWpm || 210;
+      const durationMs = Math.max(200, Math.min(5000, Math.round((words / wpm) * 60_000)));
+
+      pacerIndexRef.current += 1;
+      timer = window.setTimeout(stepPacer, durationMs);
+    };
+
+    stepPacer();
+
+    return () => {
+      destroyed = true;
+      if (timer) window.clearTimeout(timer);
+      if (container) {
+        container.querySelectorAll(".lecta-pacer-active").forEach((el) => {
+          el.classList.remove("lecta-pacer-active");
+        });
+      }
+    };
+  }, [
+    settings.visualPacer,
+    settings.pacerWpm,
+    strategyPaused,
+    pacerPaused,
+    state,
+    readingPaused,
+    sectionIndex,
+  ]);
 
   // Invitación a la prueba de vocabulario, una vez por apertura del
   // libro: se ofrece al terminar el primer tramo que el lector leyó
@@ -4431,6 +4782,20 @@ export default function Reader({
               const block = (event.target as HTMLElement).closest("p, blockquote, li");
               if (block && container.contains(block)) {
                 focusBlock(container, block);
+              }
+            }
+            if (settings.visualPacer) {
+              const chunk = (event.target as HTMLElement).closest<HTMLElement>(".lecta-syntactic-chunk");
+              if (chunk && container.contains(chunk)) {
+                const allChunks = Array.from(container.querySelectorAll<HTMLElement>(".lecta-syntactic-chunk"));
+                const idx = allChunks.indexOf(chunk);
+                if (idx >= 0) {
+                  pacerIndexRef.current = idx;
+                  allChunks.forEach((c, i) => {
+                    if (i === idx) c.classList.add("lecta-pacer-active");
+                    else c.classList.remove("lecta-pacer-active");
+                  });
+                }
               }
             }
             // Los enlaces internos del EPUB (notas al pie, índice)
@@ -4808,6 +5173,16 @@ export default function Reader({
                 : (PRESET_LABELS[settings.strategyPreset] ?? "Enfoque")}
             </span>
           </button>
+          <button
+            type="button"
+            className="reader-dock-recap"
+            onClick={handleRecapClick}
+            aria-label="Recuperar el hilo de esta página"
+            title="Recuperar el hilo (resumen de atención)"
+          >
+            <span aria-hidden="true">🧭</span>
+            <span>Hilo</span>
+          </button>
           {catShown && catState ? (
             <>
               <span className="reader-dock-divider" aria-hidden="true" />
@@ -4825,16 +5200,24 @@ export default function Reader({
                   return (
                     <CompanionButton
                       stage={companion.stage}
-                      mood={catSleepy ? "sleepy" : "awake"}
+                      mood={
+                        catSavedWord
+                          ? "happy"
+                          : catSleepy
+                            ? "sleepy"
+                            : "awake"
+                      }
                       accessories={companion.accessories}
                       focus={
-                        isDeepReading
-                          ? "deep_focus"
-                          : catSleepy
-                            ? "sleep"
-                            : selection
-                              ? "curious"
-                              : catState
+                        catSavedWord
+                          ? "celebrating"
+                          : isDeepReading
+                            ? "deep_focus"
+                            : catSleepy
+                              ? "sleep"
+                              : selection
+                                ? "curious"
+                                : catState
                       }
                       gazeProgress={gazeProgress}
                       pose={
@@ -4842,9 +5225,11 @@ export default function Reader({
                           ? undefined
                           : catTap
                             ? "celebrate"
-                            : catGreeting
-                              ? "greet"
-                              : undefined
+                            : catSavedWord
+                              ? "celebrate"
+                              : catGreeting
+                                ? "greet"
+                                : undefined
                       }
                       label={`Ver a ${companion.name}`}
                       onClick={onCatTap}
@@ -4863,7 +5248,7 @@ export default function Reader({
           sigue al puntero; la patita del gato ancla el margen. Con
           presencia «off» o el gato suprimido por esta lectura la
           decoración también se va: no queda rastro del gato. */}
-      {!strategyPaused && (settings.focusRuler || settings.focusMode === "ruler") && state === "ready" ? (
+      {!strategyPaused && (settings.focusRuler || settings.focusMode === "ruler") && !settings.paragraphFocus && state === "ready" ? (
         <FocusRuler
           bandPx={rulerBandPx(
             settings.rulerSize,
@@ -4924,43 +5309,45 @@ export default function Reader({
         </>
       ) : null}
 
-      <footer className="reader-foot" data-hidden={!barsShown || undefined}>
-        <div
-          className="thread"
-          role="progressbar"
-          aria-valuenow={Math.round(progress * 100)}
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuetext={`${Math.round(progress * 100)}% del libro`}
-        >
+      {!(state === "ready" && !isDeepReading) ? (
+        <footer className="reader-foot reader__footer" data-hidden={!barsShown || undefined}>
           <div
-            className="thread-fill"
-            style={{ "--thread-value": `${progress * 100}%` } as CSSProperties}
-          />
-        </div>
-        <div className="reader-foot-meta">
-          <span>
-            {sectionTotal
-              ? sectionTitle
-                ? `${sectionTitle} · ${sectionIndex + 1} de ${sectionTotal}`
-                : `${sectionIndex + 1} de ${sectionTotal}`
-              : "Abriendo…"}
-            {minutes > 1
-              ? ` · ${minutes} min restantes`
-              : minutes === 1
-                ? " · 1 min restante"
-                : ""}
-          </span>
-          {errorText ? (
-            <span className="reader-error-text" role="alert">
-              {errorText}
+            className="thread"
+            role="progressbar"
+            aria-valuenow={Math.round(progress * 100)}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuetext={`${Math.round(progress * 100)}% del libro`}
+          >
+            <div
+              className="thread-fill"
+              style={{ "--thread-value": `${progress * 100}%` } as CSSProperties}
+            />
+          </div>
+          <div className="reader-foot-meta">
+            <span>
+              {sectionTotal
+                ? sectionTitle
+                  ? `${sectionTitle} · ${sectionIndex + 1} de ${sectionTotal}`
+                  : `${sectionIndex + 1} de ${sectionTotal}`
+                : "Abriendo…"}
+              {minutes > 1
+                ? ` · ${minutes} min restantes`
+                : minutes === 1
+                  ? " · 1 min restante"
+                  : ""}
             </span>
-          ) : null}
-          <span key={seenStatus} className="reader-status" role="status">
-            {statusText}
-          </span>
-        </div>
-      </footer>
+            {errorText ? (
+              <span className="reader-error-text" role="alert">
+                {errorText}
+              </span>
+            ) : null}
+            <span key={seenStatus} className="reader-status" role="status">
+              {statusText}
+            </span>
+          </div>
+        </footer>
+      ) : null}
 
       {sheet === "toc" ? (
         <Sheet label="Índice" onClose={closeSheet} side="left">
@@ -5318,58 +5705,349 @@ export default function Reader({
                 <div className="strategy-accordion-body">
                   <div className="setting-row">
                     <div className="setting-info">
-                      <span className="setting-label">Regla de Enfoque</span>
-                      <span className="setting-subtext">Franja translúcida que guía el puntero</span>
+                      <span className="setting-label">Guía Cromática (BeeLine)</span>
+                      <span className="setting-subtext">Gradiente de barrido ocular para retorno de línea</span>
                     </div>
                     <Toggle
-                      label="Regla de Enfoque"
-                      checked={settings.focusRuler}
-                      onChange={onToggleFocusRuler}
+                      label="Guía Cromática"
+                      checked={settings.chromaticGuide}
+                      onChange={onToggleChromaticGuide}
                     />
                   </div>
-                  {settings.focusRuler ? (
+                  {settings.chromaticGuide ? (
                     <div className="setting-row setting-row--sub">
-                      <span className="setting-label">Alto de la franja</span>
+                      <span className="setting-label">Paleta cromática</span>
                       <div
-                        className="segmented"
+                        className="segmented segmented--palette"
                         role="group"
-                        aria-label="Tamaño de la regla de foco"
+                        aria-label="Paleta cromática"
                       >
-                        {RULER_SIZES.map(({ id, label }) => (
+                        {CHROMATIC_PALETTES.map((p) => (
                           <button
-                            key={String(id)}
+                            key={p.id}
                             type="button"
-                            data-active={settings.rulerSize === id || undefined}
-                            aria-pressed={settings.rulerSize === id}
-                            onClick={() => updateSettings({ rulerSize: id })}
+                            data-active={settings.chromaticPalette === p.id || undefined}
+                            aria-pressed={settings.chromaticPalette === p.id}
+                            onClick={() => onSelectChromaPalette(p.id)}
+                            style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}
                           >
-                            {label}
+                            <span
+                              style={{
+                                display: "inline-block",
+                                width: "10px",
+                                height: "10px",
+                                borderRadius: "50%",
+                                background: `linear-gradient(135deg, ${p.preview[0]}, ${p.preview[1]})`,
+                              }}
+                              aria-hidden="true"
+                            />
+                            <span>{p.label}</span>
                           </button>
                         ))}
                       </div>
                     </div>
                   ) : null}
-                  <div className="setting-row">
-                    <div className="setting-info">
-                      <span className="setting-label">Enfoque de Párrafo</span>
-                      <span className="setting-subtext">Atenúa párrafos inactivos al 35% de opacidad</span>
-                    </div>
-                    <Toggle
-                      label="Enfoque de Párrafo"
-                      checked={settings.paragraphFocus}
-                      onChange={onToggleParagraphFocus}
-                    />
-                  </div>
+
                   <div className="setting-row">
                     <div className="setting-info">
                       <span className="setting-label">Líneas Sintácticas</span>
-                      <span className="setting-subtext">Corta el texto en unidades con sentido</span>
+                      <span className="setting-subtext">
+                        Corta el texto en unidades con sentido (recomendado junto a Guía Cromática para TDAH)
+                      </span>
                     </div>
                     <Toggle
                       label="Líneas Sintácticas"
                       checked={settings.syntacticLines}
                       onChange={onToggleSyntacticLines}
                     />
+                  </div>
+
+                  <div className="setting-row">
+                    <div className="setting-info">
+                      <span className="setting-label">Anclajes Biónicos</span>
+                      <span className="setting-subtext">Resalta las letras iniciales para fijación ocular ágil</span>
+                    </div>
+                    <Toggle
+                      label="Anclajes Biónicos"
+                      checked={settings.bionicAnchors}
+                      onChange={onToggleBionicAnchors}
+                    />
+                  </div>
+
+                  <div className="setting-row setting-row--stack">
+                    <div className="setting-info">
+                      <span className="setting-label">Foco de Iluminación</span>
+                      <span className="setting-subtext">Aísla el texto y guía la atención visual sin colisiones</span>
+                    </div>
+                    <div
+                      className="segmented segmented--wrap segmented--illumination"
+                      role="group"
+                      aria-label="Foco de Iluminación"
+                    >
+                      <button
+                        type="button"
+                        data-active={
+                          !settings.paragraphFocus && !settings.focusRuler
+                            ? true
+                            : undefined
+                        }
+                        aria-pressed={!settings.paragraphFocus && !settings.focusRuler}
+                        onClick={() =>
+                          updateSettings({
+                            focusRuler: false,
+                            paragraphFocus: false,
+                            strategyPreset: "custom",
+                          })
+                        }
+                      >
+                        Sin máscara
+                      </button>
+                      <button
+                        type="button"
+                        data-active={
+                          !settings.paragraphFocus &&
+                          settings.focusRuler &&
+                          settings.rulerSize === 1
+                            ? true
+                            : undefined
+                        }
+                        aria-pressed={
+                          !settings.paragraphFocus &&
+                          settings.focusRuler &&
+                          settings.rulerSize === 1
+                        }
+                        onClick={() =>
+                          updateSettings({
+                            focusRuler: true,
+                            rulerSize: 1,
+                            paragraphFocus: false,
+                            strategyPreset: "custom",
+                          })
+                        }
+                      >
+                        Franja 1 línea
+                      </button>
+                      <button
+                        type="button"
+                        data-active={
+                          !settings.paragraphFocus &&
+                          settings.focusRuler &&
+                          (settings.rulerSize === 3 || (!settings.rulerSize && settings.rulerSize !== 1))
+                            ? true
+                            : undefined
+                        }
+                        aria-pressed={
+                          !settings.paragraphFocus &&
+                          settings.focusRuler &&
+                          (settings.rulerSize === 3 || (!settings.rulerSize && settings.rulerSize !== 1))
+                        }
+                        onClick={() =>
+                          updateSettings({
+                            focusRuler: true,
+                            rulerSize: 3,
+                            paragraphFocus: false,
+                            strategyPreset: "custom",
+                          })
+                        }
+                      >
+                        Franja 3 líneas
+                      </button>
+                      <button
+                        type="button"
+                        data-active={
+                          settings.paragraphFocus ||
+                          (settings.focusRuler && settings.rulerSize === "paragraph")
+                            ? true
+                            : undefined
+                        }
+                        aria-pressed={
+                          settings.paragraphFocus ||
+                          (settings.focusRuler && settings.rulerSize === "paragraph")
+                        }
+                        onClick={() =>
+                          updateSettings({
+                            paragraphFocus: true,
+                            focusRuler: false,
+                            strategyPreset: "custom",
+                          })
+                        }
+                      >
+                        Párrafo activo
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="setting-row setting-row--stack">
+                    <div className="setting-info">
+                      <span className="setting-label">Paisaje Sonoro de Concentración</span>
+                      <span className="setting-subtext">Sonidos ambientales procedurales para TDAH y flujo inmersivo</span>
+                    </div>
+                    <div
+                      className="segmented segmented--wrap segmented--soundscape"
+                      role="group"
+                      aria-label="Paisaje Sonoro de Concentración"
+                    >
+                      {[
+                        { id: "none", label: "Sin sonido" },
+                        { id: "purr", label: "Ronroneo" },
+                        { id: "rain", label: "Lluvia" },
+                        { id: "hearth", label: "Chimenea" },
+                        { id: "night_library", label: "Biblioteca" },
+                      ].map((item) => {
+                        const currentSound =
+                          settings.soundscape || (settings.ambientPurr ? "purr" : "none");
+                        const active = currentSound === item.id;
+                        return (
+                          <button
+                            key={item.id}
+                            type="button"
+                            data-active={active ? true : undefined}
+                            aria-pressed={active}
+                            onClick={() => {
+                              updateSettings({
+                                soundscape: item.id as SoundscapeSetting,
+                                ambientPurr: item.id === "purr",
+                                strategyPreset: "custom",
+                              });
+                            }}
+                          >
+                            {item.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="setting-row">
+                    <div className="setting-info">
+                      <span className="setting-label">Ritmo Guiado (Marcapasos Visual)</span>
+                      <span className="setting-subtext">
+                        Acompaña la lectura saltando entre unidades sintácticas a velocidad constante (TDAH)
+                      </span>
+                    </div>
+                    <Toggle
+                      label="Ritmo Guiado"
+                      checked={settings.visualPacer}
+                      onChange={(checked) => {
+                        updateSettings({
+                          visualPacer: checked,
+                          strategyPreset: "custom",
+                        });
+                      }}
+                    />
+                  </div>
+
+                  {settings.visualPacer ? (
+                    <div className="setting-row setting-row--stack">
+                      <div className="setting-info">
+                        <span className="setting-label">Velocidad del Ritmo Guiado</span>
+                        <span className="setting-subtext">{settings.pacerWpm || 210} palabras por minuto (WPM)</span>
+                      </div>
+                      <div
+                        className="segmented segmented--wpm"
+                        role="group"
+                        aria-label="Velocidad en palabras por minuto"
+                      >
+                        {[
+                          { wpm: 160, label: "160 WPM" },
+                          { wpm: 210, label: "210 WPM" },
+                          { wpm: 260, label: "260 WPM" },
+                          { wpm: 320, label: "320 WPM" },
+                        ].map((item) => (
+                          <button
+                            key={item.wpm}
+                            type="button"
+                            data-active={(settings.pacerWpm || 210) === item.wpm ? true : undefined}
+                            aria-pressed={(settings.pacerWpm || 210) === item.wpm}
+                            onClick={() => {
+                              updateSettings({
+                                pacerWpm: item.wpm,
+                                strategyPreset: "custom",
+                              });
+                            }}
+                          >
+                            {item.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {/* Previsualización en vivo */}
+                  <div
+                    className="strategy-preview-box"
+                    data-chroma-palette={settings.chromaticPalette || "editorial"}
+                    data-chromatic-guide={settings.chromaticGuide ? "true" : "false"}
+                    data-bionic-anchors={settings.bionicAnchors ? "true" : "false"}
+                    aria-label="Previsualización de lectura"
+                  >
+                    {settings.syntacticLines ? (
+                      <>
+                        <span
+                          className="syn-line lecta-syntactic-chunk"
+                          data-chunk-cycle="0"
+                        >
+                          {settings.bionicAnchors ? (
+                            <>
+                              <span className="lecta-fixation-anchor">En</span> un{" "}
+                              <span className="lecta-fixation-anchor">lug</span>ar de la{" "}
+                              <span className="lecta-fixation-anchor">Man</span>cha,
+                            </>
+                          ) : (
+                            "En un lugar de la Mancha,"
+                          )}
+                        </span>
+                        <span
+                          className="syn-line lecta-syntactic-chunk"
+                          data-chunk-cycle="1"
+                        >
+                          {settings.bionicAnchors ? (
+                            <>
+                              de <span className="lecta-fixation-anchor">cuy</span>o{" "}
+                              <span className="lecta-fixation-anchor">nom</span>bre no{" "}
+                              <span className="lecta-fixation-anchor">qui</span>ero{" "}
+                              <span className="lecta-fixation-anchor">acor</span>darme...
+                            </>
+                          ) : (
+                            "de cuyo nombre no quiero acordarme..."
+                          )}
+                        </span>
+                      </>
+                    ) : (
+                      <p>
+                        <span
+                          className="lecta-syntactic-chunk"
+                          data-inline="true"
+                          data-chunk-cycle="0"
+                        >
+                          {settings.bionicAnchors ? (
+                            <>
+                              <span className="lecta-fixation-anchor">En</span> un{" "}
+                              <span className="lecta-fixation-anchor">lug</span>ar de la{" "}
+                              <span className="lecta-fixation-anchor">Man</span>cha,{" "}
+                            </>
+                          ) : (
+                            "En un lugar de la Mancha, "
+                          )}
+                        </span>
+                        <span
+                          className="lecta-syntactic-chunk"
+                          data-inline="true"
+                          data-chunk-cycle="1"
+                        >
+                          {settings.bionicAnchors ? (
+                            <>
+                              de <span className="lecta-fixation-anchor">cuy</span>o{" "}
+                              <span className="lecta-fixation-anchor">nom</span>bre no{" "}
+                              <span className="lecta-fixation-anchor">qui</span>ero{" "}
+                              <span className="lecta-fixation-anchor">acor</span>darme...
+                            </>
+                          ) : (
+                            "de cuyo nombre no quiero acordarme..."
+                          )}
+                        </span>
+                      </p>
+                    )}
                   </div>
                 </div>
               </details>
@@ -5763,7 +6441,7 @@ export default function Reader({
 
       {selButton ? (
         <div
-          className="selection-menu"
+          className="selection-menu reader__passage-bar"
           data-placement={selButton.placement}
           style={{ left: selButton.x, top: selButton.y }}
         >
@@ -5799,7 +6477,7 @@ export default function Reader({
             <div className="selection-tones-picker" aria-label="Elegir tono de tinta">
               <button
                 type="button"
-                className="tone-dot tone-dot--amber"
+                className="tone-dot tone-dot--amber reader__passage-color--amber"
                 title="Tinta Ámbar"
                 aria-label="Tinta Ámbar"
                 onPointerDown={(event) => event.preventDefault()}
@@ -5807,7 +6485,7 @@ export default function Reader({
               />
               <button
                 type="button"
-                className="tone-dot tone-dot--salvia"
+                className="tone-dot tone-dot--salvia reader__passage-color--sage"
                 title="Tinta Salvia"
                 aria-label="Tinta Salvia"
                 onPointerDown={(event) => event.preventDefault()}
@@ -5815,7 +6493,7 @@ export default function Reader({
               />
               <button
                 type="button"
-                className="tone-dot tone-dot--dario"
+                className="tone-dot tone-dot--dario reader__passage-color--dario-blue"
                 title="Tinta Azul Darío"
                 aria-label="Tinta Azul Darío"
                 onPointerDown={(event) => event.preventDefault()}
@@ -5886,6 +6564,18 @@ export default function Reader({
           bookHash={bookHash}
           bookTitle={title}
           author={author}
+          sections={bookSections}
+          toc={catalog?.targets?.map((t) => ({ index: t.sectionIndex, label: t.label }))}
+          currentSectionIndex={sectionIndex}
+          currentChapterTitle={catalog?.targets?.find((t) => t.sectionIndex === sectionIndex)?.label ?? sectionTitle}
+          compactMode={
+            !strategyPaused &&
+            (settings.strategyPreset === "focus" ||
+              settings.focusMode === "chromatic" ||
+              settings.paragraphFocus ||
+              settings.syntacticLines ||
+              settings.chromaticGuide)
+          }
           onClose={closeSelection}
           onSaved={onWordSaved}
           onRemoved={onWordRemoved}
@@ -5912,6 +6602,64 @@ export default function Reader({
             );
           }}
         />
+      ) : null}
+
+      {pageRecap ? (
+        <Dialog
+          label="Recuperar el hilo"
+          onClose={() => setPageRecap(null)}
+          className="dialog--page-recap"
+        >
+          <div className="sheet-head">
+            <h2 className="sheet-title">
+              <span aria-hidden="true">🧭</span> Recuperar el hilo
+            </h2>
+            <button
+              type="button"
+              className="btn--quiet"
+              onClick={() => setPageRecap(null)}
+              aria-label="Cerrar hilo"
+            >
+              Cerrar
+            </button>
+          </div>
+
+          {pageRecap.loading ? (
+            <div className="cat-passage-loading">
+              <span className="cat-spinner" aria-hidden="true">🧭</span>
+              <p className="meta">Reconstruyendo el hilo de atención de esta página…</p>
+            </div>
+          ) : pageRecap.data ? (
+            <div className="page-recap-content">
+              <ul className="page-recap-bullets">
+                {pageRecap.data.bullets.map((b, idx) => (
+                  <li key={idx} className="page-recap-bullet">
+                    <span className="bullet-dot" aria-hidden="true">•</span>
+                    <span>{b}</span>
+                  </li>
+                ))}
+              </ul>
+              {pageRecap.data.hookQuestion ? (
+                <div className="page-recap-hook">
+                  <span className="hook-icon" aria-hidden="true">✨</span>
+                  <p className="hook-text"><em>{pageRecap.data.hookQuestion}</em></p>
+                </div>
+              ) : null}
+              <div className="page-recap-actions" style={{ marginTop: "1rem", textAlign: "right" }}>
+                <button
+                  type="button"
+                  className="btn btn--primary"
+                  onClick={() => setPageRecap(null)}
+                  autoFocus
+                >
+                  Continuar leyendo →
+                </button>
+              </div>
+            </div>
+          ) : (
+            <p role="alert" className="status">{pageRecap.error ?? "No se pudo recuperar el hilo."}</p>
+          )}
+        </Dialog>
       ) : null}
 
       {catPassageExplanation ? (
@@ -5971,9 +6719,17 @@ export default function Reader({
           if (ttsSnap.status === "speaking") ctl.pause("user");
           else if (ttsSnap.status === "paused") ctl.resume();
         }}
-        onCycleRate={() => void ttsRef.current?.cycleRate()}
+        onPrevSentence={() => ttsRef.current?.prevSentence()}
+        onNextSentence={() => ttsRef.current?.nextSentence()}
+        onCycleRate={() => void ttsRef.current?.cycleRate(TTS_PLAYER_RATES)}
+        onCaptureWord={handleTtsCaptureWord}
         onStop={() => ttsRef.current?.stop("user")}
       />
+      {ttsCapturedToast ? (
+        <div className="reader-hint-toast reader-hint-toast--captured" role="status" aria-live="polite">
+          ★ Guardada en Cuaderno: <strong>{ttsCapturedToast}</strong>
+        </div>
+      ) : null}
       {ttsConsentOpen ? (
         <TtsConsentDialog
           onAccept={onTtsConsentAccept}

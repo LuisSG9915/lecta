@@ -65,6 +65,7 @@ export type CompanionPanelProps = {
   onCare: (kind: CareKind) => Promise<void>;
   onClose: () => void;
   reducedMotion?: boolean;
+  initialTab?: CompanionTab;
 };
 
 export type CompanionTab = "care" | "rewards" | "closet" | "collection";
@@ -99,8 +100,9 @@ export function CompanionPanel({
   onCare,
   onClose,
   reducedMotion = false,
+  initialTab = "care",
 }: CompanionPanelProps) {
-  const [tab, setTab] = useState<CompanionTab>("care");
+  const [tab, setTab] = useState<CompanionTab>(initialTab);
   const [equipBusy, setEquipBusy] = useState(false);
   const [closetError, setClosetError] = useState("");
   const [careError, setCareError] = useState("");

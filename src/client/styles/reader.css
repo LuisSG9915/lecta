@@ -318,6 +318,7 @@
   line-height: var(--read-leading);
   font-optical-sizing: auto;
   color: var(--ink);
+  padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px));
   /* Sin guionado una palabra larga no debe rebosar la medida:
      break-word la parte por el borde de la caja. */
   overflow-wrap: break-word;
@@ -1267,6 +1268,14 @@ mark.saved-passage--dario {
   pointer-events: none;
 }
 
+.reader-hint-toast--captured {
+  background: color-mix(in srgb, var(--paper-raised) 92%, var(--accent-primary, #c86d3b));
+  border-color: color-mix(in srgb, var(--accent-primary, #c86d3b) 45%, transparent);
+  color: var(--ink);
+  font-weight: 500;
+  z-index: 35;
+}
+
 /* ---------- Botones de navegación lateral flotantes ---------- */
 
 .reader-nav-edge {
@@ -1970,6 +1979,17 @@ mark.predicted-word:hover {
   text-decoration-color: var(--vermilion);
 }
 
+/* Marca persistente de palabra en el cuaderno */
+.lecta-saved-word {
+  text-decoration: underline solid var(--accent-primary, #E08A58);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
+  background: rgba(224, 138, 88, 0.10);
+  border-radius: 3px;
+  padding-inline: 1px;
+  transition: background-color 0.25s ease;
+}
+
 @media (forced-colors: active) {
   mark.predicted-word {
     background: Mark;
@@ -2124,30 +2144,102 @@ mark.predicted-word:hover {
 }
 
 /* Guía cromática (BeeLine): gradiente continuo que conecta el final de
-   cada línea con el color de arranque de la siguiente para asistir el
-   salto de retorno sin distorsionar el texto. */
-.book-content[data-focus-mode="chromatic"] .syn-line:nth-child(3n + 1) {
-  background: linear-gradient(to right, var(--ink) 25%, var(--chroma-blue) 100%);
+   cada línea o fragmento con el color de arranque de la siguiente para asistir
+   el salto de retorno ocular (Return Sweep) sin fatiga visual. */
+.lecta-syntactic-chunk[data-chunk-cycle="0"],
+.book-content[data-focus-mode="chromatic"] .syn-line[data-chunk-cycle="0"],
+.book-content[data-chromatic-guide="true"] .lecta-syntactic-chunk[data-chunk-cycle="0"] {
+  background: linear-gradient(to right, var(--chroma-ink-base, var(--ink)) 15%, var(--chroma-anchor-a) 100%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
   color: transparent;
 }
 
-.book-content[data-focus-mode="chromatic"] .syn-line:nth-child(3n + 2) {
-  background: linear-gradient(to right, var(--chroma-blue) 0%, var(--chroma-crimson) 100%);
+.lecta-syntactic-chunk[data-chunk-cycle="1"],
+.book-content[data-focus-mode="chromatic"] .syn-line[data-chunk-cycle="1"],
+.book-content[data-chromatic-guide="true"] .lecta-syntactic-chunk[data-chunk-cycle="1"] {
+  background: linear-gradient(to right, var(--chroma-anchor-a) 0%, var(--chroma-ink-base, var(--ink)) 85%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
   color: transparent;
 }
 
-.book-content[data-focus-mode="chromatic"] .syn-line:nth-child(3n) {
-  background: linear-gradient(to right, var(--chroma-crimson) 0%, var(--ink) 75%);
+.lecta-syntactic-chunk[data-chunk-cycle="2"],
+.book-content[data-focus-mode="chromatic"] .syn-line[data-chunk-cycle="2"],
+.book-content[data-chromatic-guide="true"] .lecta-syntactic-chunk[data-chunk-cycle="2"] {
+  background: linear-gradient(to right, var(--chroma-ink-base, var(--ink)) 15%, var(--chroma-anchor-b) 100%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
   color: transparent;
+}
+
+.lecta-syntactic-chunk[data-chunk-cycle="3"],
+.book-content[data-focus-mode="chromatic"] .syn-line[data-chunk-cycle="3"],
+.book-content[data-chromatic-guide="true"] .lecta-syntactic-chunk[data-chunk-cycle="3"] {
+  background: linear-gradient(to right, var(--chroma-anchor-b) 0%, var(--chroma-ink-base, var(--ink)) 85%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+/* Fallback de compatibilidad para selector 3n sin data-chunk-cycle */
+.book-content[data-focus-mode="chromatic"] .syn-line:not([data-chunk-cycle]):nth-child(3n + 1) {
+  background: linear-gradient(to right, var(--ink) 25%, var(--chroma-anchor-a, var(--chroma-blue)) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+.book-content[data-focus-mode="chromatic"] .syn-line:not([data-chunk-cycle]):nth-child(3n + 2) {
+  background: linear-gradient(to right, var(--chroma-anchor-a, var(--chroma-blue)) 0%, var(--chroma-anchor-b, var(--chroma-crimson)) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+.book-content[data-focus-mode="chromatic"] .syn-line:not([data-chunk-cycle]):nth-child(3n) {
+  background: linear-gradient(to right, var(--chroma-anchor-b, var(--chroma-crimson)) 0%, var(--ink) 75%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+/* Modo inline (conserva el flujo natural de párrafo si syntacticLines es false) */
+.lecta-syntactic-chunk[data-inline="true"] {
+  display: inline;
+}
+
+/* Anclajes de fijación biónicos */
+.lecta-fixation-anchor {
+  font-weight: 600;
+  color: inherit;
+  -webkit-text-fill-color: inherit;
+}
+
+/* Marcapasos Visual ("Ritmo Guiado" para TDAH) */
+.lecta-pacer-active {
+  background: color-mix(in srgb, var(--accent-primary, #c86d3b) 18%, transparent) !important;
+  border-radius: var(--r-sm, 4px);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-primary, #c86d3b) 32%, transparent);
+  transition: background 0.15s ease-out, box-shadow 0.15s ease-out;
+}
+
+/* Regla de No-Colisión: marcas de vocabulario y notas nunca pierden legibilidad */
+.lecta-syntactic-chunk mark,
+.syn-line mark,
+.book-content[data-focus-mode="chromatic"] mark,
+.book-content[data-chromatic-guide="true"] mark {
+  -webkit-text-fill-color: initial !important;
+  color: var(--ink) !important;
+  text-decoration: underline dotted var(--accent-primary, #c86d3b);
+  text-underline-offset: 3px;
 }
 
 /* Foco de párrafo: atenúa los bloques fuera de la altura focal de lectura
@@ -2161,6 +2253,32 @@ mark.predicted-word:hover {
 .book-content[data-paragraph-focus] li {
   opacity: 0.35;
   transition: opacity var(--dur-2, 0.25s) var(--ease-out);
+}
+
+:root[data-theme="noche"] .book-content[data-focus-mode="paragraph"] p,
+:root[data-theme="noche"] .book-content[data-focus-mode="paragraph"] blockquote,
+:root[data-theme="noche"] .book-content[data-focus-mode="paragraph"] li,
+:root[data-theme="noche"] .book-content[data-paragraph-focus] p,
+:root[data-theme="noche"] .book-content[data-paragraph-focus] blockquote,
+:root[data-theme="noche"] .book-content[data-paragraph-focus] li,
+:root[data-theme="oled"] .book-content[data-focus-mode="paragraph"] p,
+:root[data-theme="oled"] .book-content[data-focus-mode="paragraph"] blockquote,
+:root[data-theme="oled"] .book-content[data-focus-mode="paragraph"] li,
+:root[data-theme="oled"] .book-content[data-paragraph-focus] p,
+:root[data-theme="oled"] .book-content[data-paragraph-focus] blockquote,
+:root[data-theme="oled"] .book-content[data-paragraph-focus] li {
+  opacity: 0.52;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) .book-content[data-focus-mode="paragraph"] p,
+  :root:not([data-theme]) .book-content[data-focus-mode="paragraph"] blockquote,
+  :root:not([data-theme]) .book-content[data-focus-mode="paragraph"] li,
+  :root:not([data-theme]) .book-content[data-paragraph-focus] p,
+  :root:not([data-theme]) .book-content[data-paragraph-focus] blockquote,
+  :root:not([data-theme]) .book-content[data-paragraph-focus] li {
+    opacity: 0.52;
+  }
 }
 
 .book-content[data-focus-mode="paragraph"] p.is-focused,
@@ -2208,25 +2326,86 @@ mark.predicted-word:hover {
 .focus-ruler-veil {
   position: absolute;
   inset-inline: 0;
-  background: color-mix(in srgb, var(--paper) 78%, transparent);
+  background: rgba(31, 29, 26, 0.18);
 }
 
 .focus-ruler-veil--top {
   background: linear-gradient(
     to bottom,
-    color-mix(in srgb, var(--paper) 80%, transparent) 0%,
-    color-mix(in srgb, var(--paper) 76%, transparent) 85%,
-    color-mix(in srgb, var(--paper) 50%, transparent) 100%
+    rgba(31, 29, 26, 0.22) 0%,
+    rgba(31, 29, 26, 0.18) 85%,
+    rgba(31, 29, 26, 0.08) 100%
   );
 }
 
 .focus-ruler-veil--bottom {
   background: linear-gradient(
     to top,
-    color-mix(in srgb, var(--paper) 80%, transparent) 0%,
-    color-mix(in srgb, var(--paper) 76%, transparent) 85%,
-    color-mix(in srgb, var(--paper) 50%, transparent) 100%
+    rgba(31, 29, 26, 0.22) 0%,
+    rgba(31, 29, 26, 0.18) 85%,
+    rgba(31, 29, 26, 0.08) 100%
   );
+}
+
+:root[data-theme="noche"] .focus-ruler-veil,
+:root[data-theme="oled"] .focus-ruler-veil {
+  background: rgba(10, 12, 16, 0.42);
+}
+
+:root[data-theme="noche"] .focus-ruler-veil--top,
+:root[data-theme="oled"] .focus-ruler-veil--top {
+  background: linear-gradient(
+    to bottom,
+    rgba(10, 12, 16, 0.48) 0%,
+    rgba(10, 12, 16, 0.42) 85%,
+    rgba(10, 12, 16, 0.18) 100%
+  );
+}
+
+:root[data-theme="noche"] .focus-ruler-veil--bottom,
+:root[data-theme="oled"] .focus-ruler-veil--bottom {
+  background: linear-gradient(
+    to top,
+    rgba(10, 12, 16, 0.48) 0%,
+    rgba(10, 12, 16, 0.42) 85%,
+    rgba(10, 12, 16, 0.18) 100%
+  );
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) .focus-ruler-veil {
+    background: rgba(10, 12, 16, 0.42);
+  }
+  :root:not([data-theme]) .focus-ruler-veil--top {
+    background: linear-gradient(
+      to bottom,
+      rgba(10, 12, 16, 0.48) 0%,
+      rgba(10, 12, 16, 0.42) 85%,
+      rgba(10, 12, 16, 0.18) 100%
+    );
+  }
+  :root:not([data-theme]) .focus-ruler-veil--bottom {
+    background: linear-gradient(
+      to top,
+      rgba(10, 12, 16, 0.48) 0%,
+      rgba(10, 12, 16, 0.42) 85%,
+      rgba(10, 12, 16, 0.18) 100%
+    );
+  }
+}
+
+.segmented--illumination {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.segmented--illumination button {
+  flex: 1 1 calc(50% - 4px);
+  min-width: 110px;
+  text-align: center;
+  font-size: var(--fs-xs);
+  padding: var(--s-2) var(--s-1);
 }
 
 .focus-ruler-band {
@@ -2403,24 +2582,42 @@ mark.predicted-word:hover {
   border-color: color-mix(in srgb, var(--vermilion) 35%, transparent);
 }
 
-.reader-dock-cat {
+.reader-dock-cat,
+.reader__dock-companion {
   flex: none;
   display: inline-flex;
   align-items: center;
   position: relative;
 }
 
-.reader-dock-cat .companion-btn {
-  inline-size: 36px;
-  block-size: 36px;
-  min-width: 36px;
-  min-height: 36px;
+.reader-dock-cat .companion-btn,
+.reader__dock-companion .companion-btn {
+  inline-size: 44px;
+  block-size: 44px;
+  min-width: 44px;
+  min-height: 44px;
   padding: 0;
+  border-radius: var(--r-2, 12px);
+  background: transparent;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  overflow: visible;
+  transition: transform var(--dur-1) var(--ease-out);
 }
 
-.reader-dock-cat .companion-btn .cat {
-  inline-size: 100%;
-  block-size: 100%;
+.reader-dock-cat .companion-btn .cat,
+.reader__dock-companion .companion-btn .cat {
+  inline-size: 44px;
+  block-size: 44px;
+  transform: translateY(2px);
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.18));
+  transition: transform var(--dur-1) var(--ease-out);
+}
+
+.reader-dock-cat .companion-btn:hover:not(:disabled) .cat,
+.reader__dock-companion .companion-btn:hover:not(:disabled) .cat {
+  transform: translateY(-1px) scale(1.06);
 }
 
 /* Burbuja no intrusiva del gato ante pasajes densos o avisos */
@@ -2543,6 +2740,56 @@ mark.predicted-word:hover {
 /* Velocidad: el número es la etiqueta; el aria-label lleva el rol. */
 .tts-chip-rate {
   min-inline-size: 2.6em;
+}
+
+.tts-chip--expanded {
+  gap: var(--s-2);
+  padding: var(--s-1) var(--s-3);
+}
+
+.tts-chip--minimal {
+  padding: 4px 12px;
+  font-size: var(--fs-xs);
+  opacity: 0.85;
+}
+
+.tts-btn-step {
+  font-size: 0.9em;
+  padding: 2px 6px;
+  opacity: 0.85;
+}
+
+.tts-btn-step:hover:not(:disabled) {
+  opacity: 1;
+}
+
+.tts-btn-playpause {
+  font-weight: 500;
+  padding: 2px 6px;
+}
+
+.tts-chip-capture {
+  font-weight: 600;
+  color: var(--accent-primary, #c86d3b);
+  background: color-mix(in srgb, var(--accent-primary, #c86d3b) 12%, transparent);
+  border-radius: var(--r-pill);
+  padding: 2px 8px;
+  transition: all 0.2s ease;
+}
+
+.tts-chip-capture:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent-primary, #c86d3b) 20%, transparent);
+}
+
+.tts-chip-capture--active {
+  background: var(--accent-primary, #c86d3b) !important;
+  color: #fff !important;
+}
+
+.segmented--soundscape button,
+.segmented--wpm button {
+  font-size: var(--fs-xs);
+  padding: var(--s-1) var(--s-2);
 }
 
 /* Consentimiento de primer uso: diálogo centrado sobre la lectura
@@ -2695,16 +2942,24 @@ mark.predicted-word:hover {
 }
 
 /* Giro 3D de las cartas de joyas léxicas */
-.portico-card-3d {
+.portico-card-3d,
+.section-preview__flash-card {
   perspective: 700px;
   min-height: 110px;
   cursor: pointer;
   background: transparent;
   border: none;
   padding: 0;
+  transition: all 0.3s var(--ease-out);
 }
 
-.portico-card-inner {
+.section-preview__flash-card--expanded {
+  grid-column: 1 / -1 !important;
+  min-height: auto;
+}
+
+.portico-card-inner,
+.section-preview__flash-inner {
   position: relative;
   inline-size: 100%;
   block-size: 100%;
@@ -2715,12 +2970,14 @@ mark.predicted-word:hover {
   border-radius: var(--r-card, 8px);
 }
 
-.portico-card-3d.is-flipped .portico-card-inner {
+.portico-card-3d.is-flipped .portico-card-inner,
+.section-preview__flash-card--expanded .section-preview__flash-inner {
   transform: rotateY(180deg);
 }
 
 .portico-card-front,
-.portico-card-back {
+.portico-card-back,
+.section-preview__flash-face {
   position: absolute;
   inset: 0;
   backface-visibility: hidden;
@@ -2733,6 +2990,49 @@ mark.predicted-word:hover {
   align-items: center;
   border: 1px solid var(--rule);
   box-shadow: var(--shadow-1);
+}
+
+.section-preview__flash-card--expanded .section-preview__flash-face--front {
+  display: none;
+}
+
+.section-preview__flash-card--expanded .section-preview__flash-face--back {
+  position: relative;
+  max-height: 220px;
+  overflow-y: auto;
+  justify-content: flex-start;
+  text-align: left;
+  align-items: stretch;
+  padding: var(--s-3);
+}
+
+.section-preview__flash-back-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-block-end: 4px;
+}
+
+.section-preview__flash-word--back {
+  font-size: var(--text-base);
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.section-preview__flash-flip-hint {
+  font-size: 0.9rem;
+  opacity: 0.65;
+  color: var(--vermilion);
+}
+
+.portico-actions-hero,
+.section-preview__actions {
+  position: sticky;
+  bottom: 0;
+  background: var(--paper-warm, var(--paper));
+  padding-top: 10px;
+  padding-bottom: 8px;
+  z-index: 5;
 }
 
 .portico-card-front {
@@ -2953,9 +3253,12 @@ mark.predicted-word:hover {
   gap: 4px;
 }
 
-.tone-dot {
-  width: 14px;
-  height: 14px;
+.tone-dot,
+.reader__passage-color--amber,
+.reader__passage-color--sage,
+.reader__passage-color--dario-blue {
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
   border: 1.5px solid rgba(255, 255, 255, 0.7);
   padding: 0;
@@ -2963,23 +3266,88 @@ mark.predicted-word:hover {
   transition: transform var(--dur-1) var(--ease-out), box-shadow var(--dur-1) var(--ease-out);
 }
 
-.tone-dot:hover {
-  transform: scale(1.25);
+.tone-dot:hover,
+.reader__passage-color--amber:hover,
+.reader__passage-color--sage:hover,
+.reader__passage-color--dario-blue:hover {
+  transform: scale(1.2);
 }
 
-.tone-dot--amber {
+.tone-dot--amber,
+.reader__passage-color--amber {
   background-color: #f59e0b;
   box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.4);
 }
 
-.tone-dot--salvia {
+.tone-dot--salvia,
+.reader__passage-color--sage {
   background-color: #10b981;
   box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.4);
 }
 
-.tone-dot--dario {
+.tone-dot--dario,
+.reader__passage-color--dario-blue {
   background-color: #3b82f6;
   box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.4);
+}
+
+/* Adaptación táctil y móvil de la barra de pasajes (Caso 5) */
+@media (max-width: 640px) {
+  .selection-menu,
+  .reader__passage-bar {
+    left: 12px !important;
+    right: 12px !important;
+    max-width: calc(100vw - 24px) !important;
+    width: auto !important;
+    transform: none !important;
+    justify-content: center;
+    flex-wrap: wrap;
+    box-sizing: border-box;
+  }
+
+  .selection-menu[data-placement="bottom"],
+  .reader__passage-bar[data-placement="bottom"] {
+    transform: none !important;
+  }
+
+  .selection-menu-btn,
+  .selection-menu button {
+    min-height: 44px;
+    padding: 8px 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .selection-tones-picker {
+    gap: 8px;
+    padding-inline: 4px;
+  }
+
+  .tone-dot,
+  .reader__passage-color--amber,
+  .reader__passage-color--sage,
+  .reader__passage-color--dario-blue {
+    position: relative;
+    width: 24px;
+    height: 24px;
+    min-width: 24px;
+    min-height: 24px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .tone-dot::before,
+  .reader__passage-color--amber::before,
+  .reader__passage-color--sage::before,
+  .reader__passage-color--dario-blue::before {
+    content: "";
+    position: absolute;
+    inset: -10px;
+    min-width: 44px;
+    min-height: 44px;
+  }
 }
 
 /* WordPanel Nivel 1 (Vistazo Rápido) */
@@ -3132,6 +3500,124 @@ mark.predicted-word:hover {
   margin: 0;
 }
 
+/* Familia léxica (Innovación 1) */
+.word-panel-lexical-family {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: var(--s-2, 0.5rem) 0;
+  padding: 8px 10px;
+  background: var(--paper-sunken);
+  border-radius: var(--r-md, 8px);
+  border: 1px dashed rgba(200, 109, 59, 0.25);
+}
+
+.lexical-family-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.lexical-chip {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs, 0.8rem);
+  font-weight: 500;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--paper-raised);
+  border: 1px solid var(--border-soft);
+  color: var(--ink);
+}
+
+/* Atlas sin spoilers (Innovación 2) */
+.spoiler-free-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: var(--s-3, 0.75rem) 0;
+  padding: 12px;
+  background: var(--paper-raised);
+  border: 1px solid rgba(24, 144, 255, 0.25);
+  border-left: 3px solid #1890ff;
+  border-radius: var(--r-md, 8px);
+}
+
+.spoiler-free-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.spoiler-free-badge {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #1890ff;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.spoiler-free-mentions {
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+}
+
+.spoiler-free-quote {
+  font-family: var(--font-body, "Literata", serif);
+  font-size: var(--fs-xs, 0.82rem);
+  font-style: italic;
+  color: var(--ink);
+  line-height: 1.4;
+  margin: 0;
+  padding: 4px 8px;
+  background: var(--paper-sunken);
+  border-radius: 4px;
+}
+
+.btn--character-recap {
+  align-self: flex-start;
+  background: linear-gradient(135deg, rgba(24, 144, 255, 0.1), rgba(56, 189, 248, 0.15));
+  border: 1px solid rgba(24, 144, 255, 0.3);
+  color: #0284c7;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: var(--r-pill);
+  cursor: pointer;
+  font-size: 0.8rem;
+  transition: all var(--dur-2) var(--ease-out);
+}
+
+.btn--character-recap:hover {
+  background: linear-gradient(135deg, rgba(24, 144, 255, 0.2), rgba(56, 189, 248, 0.25));
+}
+
+.character-recap-result {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  background: var(--paper-sunken);
+  border-radius: 6px;
+  border-left: 2px solid #0284c7;
+}
+
+.character-recap-role {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #0284c7;
+  text-transform: uppercase;
+}
+
+.character-recap-summary {
+  font-family: var(--font-body, "Literata", serif);
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: var(--ink);
+  margin: 0;
+}
+
 /* Modal del apunte del gato al seleccionar pasaje */
 .dialog--cat-explanation {
   max-width: 480px;
@@ -3177,4 +3663,244 @@ mark.predicted-word:hover {
   gap: 10px;
   padding: 4px 0;
 }
+
+/* =====================================================================
+   Micro-glosas al paso en Modo Neuro-Enfoque / TDAH (< 70px)
+   ===================================================================== */
+.micro-gloss-panel {
+  position: fixed;
+  bottom: calc(var(--s-4, 1rem) + 48px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 45;
+  width: min(calc(100vw - 2rem), 420px);
+  min-height: 48px;
+  max-height: 68px;
+  background: var(--paper-raised, #ffffff);
+  border: 1px solid var(--rule-strong, #c9beaa);
+  border-radius: var(--r-sheet, 14px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.4rem 0.85rem;
+  gap: var(--s-2, 0.5rem);
+  box-sizing: border-box;
+  animation: micro-gloss-in var(--dur-2, 180ms) var(--ease-out);
+}
+
+@keyframes micro-gloss-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 10px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+.micro-gloss-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.micro-gloss-syllables {
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs, 0.75rem);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: var(--vermilion, #9e3a23);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.micro-gloss-meaning {
+  font-family: var(--font-book);
+  font-size: var(--fs-sm, 0.85rem);
+  color: var(--ink, #1f1d1a);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.25;
+}
+
+.micro-gloss-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex: none;
+}
+
+.micro-gloss-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.3rem 0.6rem;
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs, 0.75rem);
+  font-weight: 600;
+  border-radius: var(--r-pill, 999px);
+  background: var(--vermilion-wash, #f3ddd5);
+  color: var(--vermilion, #9e3a23);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all var(--dur-1) var(--ease-out);
+}
+
+.micro-gloss-btn:hover {
+  background: var(--vermilion, #9e3a23);
+  color: #ffffff;
+}
+
+.micro-gloss-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: transparent;
+  border: none;
+  color: var(--ink-soft, #5c554d);
+  cursor: pointer;
+}
+
+/* =====================================================================
+   Caja de previsualización en vivo en el selector de ajustes
+   ===================================================================== */
+.strategy-preview-box {
+  padding: var(--s-3, 0.75rem);
+  border-radius: var(--r-2, 4px);
+  background: var(--paper-sunken, #f0e7d5);
+  border: 1px solid var(--rule, rgba(120, 95, 70, 0.12));
+  margin-top: var(--s-3, 0.75rem);
+  font-family: var(--font-book);
+  font-size: var(--fs-sm, 0.85rem);
+  line-height: var(--lh-read, 1.65);
+}
+
+.strategy-preview-box .syn-line {
+  display: block;
+}
+
+/* =====================================================================
+   Flash de Checkpoint en barra de lectura
+   ===================================================================== */
+.progress-ink[data-checkpoint-flash="true"] {
+  animation: progress-checkpoint-flash 1.2s var(--ease-out);
+}
+
+@keyframes progress-checkpoint-flash {
+  0% {
+    box-shadow: 0 0 0 0 rgba(200, 109, 59, 0.8);
+  }
+  30% {
+    box-shadow: 0 0 12px 3px rgba(200, 109, 59, 0.9);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(200, 109, 59, 0);
+  }
+}
+
+.progress-ink-drops {
+  position: absolute;
+  top: -18px;
+  right: -6px;
+  font-size: 0.75rem;
+  color: var(--vermilion, #9e3a23);
+  animation: ink-drops-float 1.2s var(--ease-out) forwards;
+  pointer-events: none;
+}
+@keyframes ink-drops-float {
+  0% {
+    opacity: 0;
+    transform: translateY(4px) scale(0.8);
+  }
+  25% {
+    opacity: 1;
+    transform: translateY(-2px) scale(1.1);
+  }
+  75% {
+    opacity: 1;
+    transform: translateY(-8px) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-14px) scale(0.9);
+  }
+}
+
+/* =====================================================================
+   Botón de rescate de atención ("Recuperar el hilo") y Diálogo
+   ===================================================================== */
+.reader-dock-recap {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 32px;
+  padding: 0.25rem 0.65rem;
+  border-radius: var(--r-full, 9999px);
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  color: var(--ink);
+  background: var(--paper-elevated, var(--paper));
+  border: 1px solid var(--rule);
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background-color 250ms var(--ease-out),
+    color 250ms var(--ease-out),
+    border-color 250ms var(--ease-out);
+}
+
+.reader-dock-recap:hover {
+  background: var(--paper);
+  border-color: var(--ink-soft);
+}
+
+.dialog--page-recap .page-recap-bullets {
+  list-style: none;
+  padding: 0;
+  margin: var(--s-3) 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.dialog--page-recap .page-recap-bullet {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+  line-height: var(--lh-normal, 1.5);
+  font-size: var(--fs-sm);
+  color: var(--ink);
+}
+
+.dialog--page-recap .bullet-dot {
+  color: var(--vermilion, #9e3a23);
+  font-weight: bold;
+}
+
+.dialog--page-recap .page-recap-hook {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  background: var(--paper-sunken);
+  border-radius: var(--r-2);
+  border-left: 3px solid var(--vermilion, #9e3a23);
+  margin-top: var(--s-3);
+  font-size: var(--fs-sm);
+}
+
+.dialog--page-recap .hook-text {
+  margin: 0;
+  color: var(--ink);
+}
+
 

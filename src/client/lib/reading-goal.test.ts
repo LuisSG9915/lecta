@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   DAY_GOAL_MS,
+  MAX_STREAK_SHIELDS,
+  consumeStreakShield,
+  evaluateStreakProtection,
+  grantStreakShield,
   parseReadingGoal,
   serializeReadingGoal,
   weekStartKey,
@@ -174,5 +178,58 @@ describe("parseReadingGoal / serializeReadingGoal", () => {
   it("conserva updatedAt para el arbitraje de la migración", () => {
     const raw = serializeReadingGoal(4, 1_700_000_000_000);
     expect(parseReadingGoal(raw)?.updatedAt).toBe(1_700_000_000_000);
+  });
+
+  it("parsea y serializa streakShields correctamente y respeta MAX_STREAK_SHIELDS", () => {
+    expect(MAX_STREAK_SHIELDS).toBe(2);
+    const raw = serializeReadingGoal(3, 1000, 2, "2026-03-09");
+    const parsed = parseReadingGoal(raw);
+    expect(parsed?.streakShields).toBe(2);
+    expect(parsed?.lastShieldUsedDay).toBe("2026-03-09");
+  });
+});
+
+describe("Escudo de Ronroneo (Streak Shields)", () => {
+  it("grantStreakShield añade escudos hasta el máximo de 2", () => {
+    const goal = parseReadingGoal(serializeReadingGoal(3));
+    const withOne = grantStreakShield(goal, 1);
+    expect(withOne.streakShields).toBe(1);
+
+    const withTwo = grantStreakShield(withOne, 1);
+    expect(withTwo.streakShields).toBe(2);
+
+    // No debe superar MAX_STREAK_SHIELDS (2)
+    const withThree = grantStreakShield(withTwo, 1);
+    expect(withThree.streakShields).toBe(2);
+  });
+
+  it("consumeStreakShield reduce los escudos y marca el día protegido", () => {
+    const goal = grantStreakShield(null, 2);
+    const { goal: afterUse, consumed } = consumeStreakShield(goal, "2026-03-09");
+    expect(consumed).toBe(true);
+    expect(afterUse.streakShields).toBe(1);
+    expect(afterUse.lastShieldUsedDay).toBe("2026-03-09");
+
+    const { goal: afterEmpty, consumed: secondConsumed } = consumeStreakShield(afterUse, "2026-03-10");
+    expect(secondConsumed).toBe(true);
+    expect(afterEmpty.streakShields).toBe(0);
+
+    const { consumed: failConsumed } = consumeStreakShield(afterEmpty, "2026-03-11");
+    expect(failConsumed).toBe(false);
+  });
+
+  it("evaluateStreakProtection protege automáticamente el día de ayer si no hubo lectura", () => {
+    const goal = grantStreakShield(null, 1);
+    const readDays = new Set(["2026-03-08"]); // No leyó el 2026-03-09 (ayer), hoy es 2026-03-10
+    const res = evaluateStreakProtection(goal, readDays, "2026-03-10", "2026-03-09");
+
+    expect(res.protectedYesterday).toBe(true);
+    expect(res.updatedGoal?.streakShields).toBe(0);
+    expect(res.catMessage).toBe("¡Cuidé tu racha ayer mientras descansabas!");
+
+    // Si ya fue protegido previamente, no vuelve a consumir otro escudo
+    const secondEval = evaluateStreakProtection(res.updatedGoal, readDays, "2026-03-10", "2026-03-09");
+    expect(secondEval.protectedYesterday).toBe(true);
+    expect(secondEval.updatedGoal?.streakShields).toBe(0);
   });
 });

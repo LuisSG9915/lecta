@@ -93,11 +93,12 @@ export interface NextChapterUtilityOptions {
   bookFreq?: number;
   isPhrase?: boolean;
   alpha?: number;
+  isSecondLanguage?: boolean;
 }
 
 /**
  * Función de utilidad Next-Chapter Utility U(w):
- * U(w) = P(unknown | w, theta) * (1 + 1.4 ln(1 + f_cap) + 0.6 ln(1 + f_libro)) * W_zona * B_locucion
+ * U(w) = P(unknown | w, theta) * (1 + 1.4 ln(1 + f_cap) + 0.6 ln(1 + f_libro)) * W_zona * B_locucion * W_l2
  */
 export function nextChapterUtility(opts: NextChapterUtilityOptions): number {
   const theta =
@@ -131,7 +132,29 @@ export function nextChapterUtility(opts: NextChapterUtilityOptions): number {
   // B_locucion: 1.3 si es locución o frase hecha, 1.0 si palabra individual
   const bLocucion = opts.isPhrase ? 1.3 : 1.0;
 
-  return pUnknown * freqReward * wZona * bLocucion;
+  // Ponderación de utilidad narrativa L2 (segunda lengua):
+  // Prioriza palabras con repetición (frecuencia >= 2) y vocabulario útil (B1-C1)
+  // sobre hapax legomena oscuras de una sola aparición.
+  let wL2 = 1.0;
+  if (opts.isSecondLanguage) {
+    const isRepeated = fCap >= 2 || fBook >= 2;
+    const isSweetSpotB1C1 =
+      (opts.zipf != null && opts.zipf >= 2.5 && opts.zipf <= 4.2) ||
+      (bw >= 2.8 && bw <= 4.5);
+    const isObscureHapax = !isRepeated && (bw > 4.5 || (opts.zipf != null && opts.zipf < 2.5));
+
+    if (isRepeated) {
+      wL2 *= 1.35;
+    }
+    if (isSweetSpotB1C1) {
+      wL2 *= 1.2;
+    }
+    if (isObscureHapax) {
+      wL2 *= 0.65;
+    }
+  }
+
+  return pUnknown * freqReward * wZona * bLocucion * wL2;
 }
 
 // ---------- Filas de la preparación ----------
@@ -204,6 +227,7 @@ export function buildSuggestionRows(input: {
   lex?: Map<string, PreparationRow>;
   userTheta?: number;
   bookFrequencies?: ReadonlyMap<string, number>;
+  isSecondLanguage?: boolean;
 }): SuggestionRows {
   const { language, entries, capitalOnly, text, saved, knowledge, threshold, lex } = input;
   // Frecuencias de aparición de formas en el capítulo para Next-Chapter Utility
@@ -377,6 +401,7 @@ export function buildSuggestionRows(input: {
         row.pos === "locución" ||
         row.pos?.includes("locución") ||
         row.form.includes(" "),
+      isSecondLanguage: input.isSecondLanguage,
     });
 
   rarity.sort((a, b) => {
@@ -396,3 +421,75 @@ export function buildSuggestionRows(input: {
     deferred: all.slice(PREPARATION_ROWS_CAP),
   };
 }
+
+/**
+ * Extrae la palabra de mayor utilidad léxica de una oración para la captura al vuelo en TTS (Innovación 4).
+ * Descarta stopwords, signos de puntuación y números, priorizando términos de mayor rareza/utilidad.
+ */
+export function extractKeyWordFromSentence(
+  sentence: string,
+  language = "es",
+  catalogEntries?: Map<string, LexiconEntry | null>,
+): { form: string; lemma?: string; pos?: string } | null {
+  if (!sentence || typeof sentence !== "string") return null;
+  const clean = sentence.trim();
+  if (!clean) return null;
+
+  const segmenter =
+    typeof Intl !== "undefined" && Intl.Segmenter
+      ? new Intl.Segmenter(language, { granularity: "word" })
+      : null;
+
+  const rawTokens: string[] = [];
+  if (segmenter) {
+    for (const part of segmenter.segment(clean)) {
+      if (part.isWordLike && isWordToken(part.segment)) {
+        rawTokens.push(part.segment);
+      }
+    }
+  } else {
+    const matches = clean.match(/[\p{L}\p{M}]+/gu) ?? [];
+    for (const m of matches) {
+      if (isWordToken(m)) rawTokens.push(m);
+    }
+  }
+
+  // Filtrar stopwords y palabras demasiado cortas (< 3 letras)
+  const candidates = rawTokens.filter((token) => {
+    const lower = token.toLowerCase();
+    return lower.length >= 3 && !isStopword(lower, language);
+  });
+
+  if (candidates.length === 0) {
+    const fallback = rawTokens.filter((t) => t.length >= 2).sort((a, b) => b.length - a.length)[0];
+    if (!fallback) return null;
+    return { form: fallback };
+  }
+
+  // Puntuación por rareza / catálogo / longitud
+  const scored = candidates.map((form) => {
+    const lower = form.toLowerCase();
+    const entry = catalogEntries?.get(lower);
+    let score = 0;
+    if (entry?.zipf != null) {
+      score += Math.max(0, 7.5 - entry.zipf) * 10;
+    } else {
+      score += 15;
+    }
+    score += Math.min(10, form.length);
+    if (form[0] === form[0].toUpperCase() && form[0] !== form[0].toLowerCase()) {
+      score += 4;
+    }
+    return {
+      form,
+      lemma: entry?.lemma ?? form.toLowerCase(),
+      pos: entry?.pos ?? undefined,
+      score,
+    };
+  });
+
+  scored.sort((a, b) => b.score - a.score);
+  const best = scored[0];
+  return { form: best.form, lemma: best.lemma, pos: best.pos };
+}
+

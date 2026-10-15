@@ -227,15 +227,26 @@ export function adjustThetaOnEasyPin(
   return { newTheta: currentTheta, adjusted: false, delta: 0 };
 }
 
+export type ThetaByLang = { es: number; en: number; [lang: string]: number };
+
+export function userThetaKeyForLang(lang = "es"): string {
+  return `lecta:user_theta:${lang.toLowerCase().split(/[-_]/)[0] || "es"}:v1`;
+}
+
 /**
- * Carga el theta_user persistido o lo inicializa a partir del umbral actual.
+ * Carga el theta_user persistido para el idioma especificado o lo inicializa a partir del umbral actual.
  */
-export function loadUserTheta(fallbackThreshold = 3.0): number {
+export function loadUserTheta(fallbackThreshold = 3.0, language = "es"): number {
   if (typeof window === "undefined" || !window.localStorage) {
     return thetaFromThreshold(fallbackThreshold);
   }
   try {
-    const raw = window.localStorage.getItem(USER_THETA_KEY);
+    const langKey = userThetaKeyForLang(language);
+    const raw =
+      window.localStorage.getItem(langKey) ??
+      (language.toLowerCase().startsWith("es")
+        ? window.localStorage.getItem(USER_THETA_KEY)
+        : null);
     if (raw) {
       const val = parseFloat(raw);
       if (Number.isFinite(val)) return val;
@@ -246,13 +257,29 @@ export function loadUserTheta(fallbackThreshold = 3.0): number {
   return thetaFromThreshold(fallbackThreshold);
 }
 
-export function saveUserTheta(theta: number): void {
+export function saveUserTheta(theta: number, language = "es"): void {
   if (typeof window === "undefined" || !window.localStorage) return;
   try {
-    window.localStorage.setItem(USER_THETA_KEY, theta.toFixed(4));
+    const val = theta.toFixed(4);
+    const langKey = userThetaKeyForLang(language);
+    window.localStorage.setItem(langKey, val);
+    if (language.toLowerCase().startsWith("es")) {
+      window.localStorage.setItem(USER_THETA_KEY, val);
+    }
   } catch {
     // ignorar error de quota
   }
+}
+
+export function loadThetaByLang(fallbackThreshold = 3.0): ThetaByLang {
+  return {
+    es: loadUserTheta(fallbackThreshold, "es"),
+    en: loadUserTheta(fallbackThreshold, "en"),
+  };
+}
+
+export function saveThetaForLang(language: string, theta: number): void {
+  saveUserTheta(theta, language);
 }
 
 // ---------- Motor Adaptativo IRT (Calibración 2.0) ----------

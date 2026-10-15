@@ -7,25 +7,39 @@ import {
   copyQuoteCardToClipboard,
   downloadQuoteCard,
   shareQuoteCard,
+  drawCompanionCat,
   type QuoteCardConfig,
 } from "./quote-card";
 
 describe("quote-card", () => {
-  it("contiene dimensiones correctas para historias (9:16) y cuadrado (1:1)", () => {
+  it("contiene dimensiones correctas para postal (4:5), historias (9:16) y cuadrado (1:1)", () => {
+    expect(FORMAT_DIMENSIONS.portrait.width).toBe(1080);
+    expect(FORMAT_DIMENSIONS.portrait.height).toBe(1350);
     expect(FORMAT_DIMENSIONS.story.width).toBe(1080);
     expect(FORMAT_DIMENSIONS.story.height).toBe(1920);
     expect(FORMAT_DIMENSIONS.square.width).toBe(1080);
     expect(FORMAT_DIMENSIONS.square.height).toBe(1080);
   });
 
-  it("define paletas completas para cada tema", () => {
-    const themes = ["papel", "blanco", "noche", "bermellon"] as const;
+  it("define paletas completas para cada tema editorial y clásico", () => {
+    const themes = [
+      "clasico_crema",
+      "noche_tinta",
+      "azul_modernista",
+      "papel",
+      "blanco",
+      "noche",
+      "bermellon",
+    ] as const;
     for (const theme of themes) {
       const palette = THEME_PALETTES[theme];
       expect(palette).toBeDefined();
       expect(palette.bg).toMatch(/^#/);
       expect(palette.text).toMatch(/^#/);
       expect(palette.quoteMark).toMatch(/^#/);
+      expect(palette.border).toMatch(/^#/);
+      expect(palette.meta).toMatch(/^#/);
+      expect(palette.brand).toMatch(/^#/);
     }
   });
 
@@ -108,4 +122,29 @@ describe("quote-card", () => {
     URL.revokeObjectURL = originalRevokeObjectURL;
     vi.restoreAllMocks();
   });
+
+  it("drawCompanionCat dibuja los trazados del gato para diferentes pelajes sin error", () => {
+    const mockCtx = {
+      save: vi.fn(),
+      restore: vi.fn(),
+      beginPath: vi.fn(),
+      closePath: vi.fn(),
+      ellipse: vi.fn(),
+      arc: vi.fn(),
+      moveTo: vi.fn(),
+      lineTo: vi.fn(),
+      quadraticCurveTo: vi.fn(),
+      bezierCurveTo: vi.fn(),
+      stroke: vi.fn(),
+      fill: vi.fn(),
+    } as unknown as CanvasRenderingContext2D;
+
+    expect(() => drawCompanionCat(mockCtx, 540, 900, 1.4, "tuxedo")).not.toThrow();
+    expect(() => drawCompanionCat(mockCtx, 540, 900, 1.4, "calico")).not.toThrow();
+    expect(() => drawCompanionCat(mockCtx, 540, 900, 1.4, "ginger")).not.toThrow();
+    expect(mockCtx.save).toHaveBeenCalled();
+    expect(mockCtx.restore).toHaveBeenCalled();
+    expect(mockCtx.fill).toHaveBeenCalled();
+  });
 });
+

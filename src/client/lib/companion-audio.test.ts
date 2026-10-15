@@ -188,10 +188,17 @@ describe("companion-audio", () => {
     // acariciar). Ni activar la preferencia, ni la supresión por TTS
     // ni detener crean audio.
     expect(Object.keys(audio).sort()).toEqual([
+      "getCurrentSoundscape",
+      "isAmbientPurrActive",
+      "isSoundscapeActive",
       "playCompanionSound",
       "setCompanionAudioSuppressed",
       "setSoundEnabled",
+      "startAmbientPurr",
+      "startSoundscape",
+      "stopAmbientPurr",
       "stopCompanionSound",
+      "stopSoundscape",
     ]);
     audio.setSoundEnabled(true);
     audio.setCompanionAudioSuppressed(true);
@@ -199,4 +206,28 @@ describe("companion-audio", () => {
     audio.stopCompanionSound();
     expect(FakeAudio.instances).toHaveLength(0);
   });
+
+  it("startAmbientPurr y stopAmbientPurr gestionan el estado activo sin romper en entornos sin Web Audio", () => {
+    expect(audio.isAmbientPurrActive()).toBe(false);
+    audio.startAmbientPurr();
+    // En jsdom sin AudioContext no lanza error
+    expect(() => audio.stopAmbientPurr()).not.toThrow();
+    expect(audio.isAmbientPurrActive()).toBe(false);
+  });
+
+  it("startSoundscape y stopSoundscape gestionan paisajes sonoros procedurales (rain, hearth, night_library)", () => {
+    expect(audio.isSoundscapeActive()).toBe(false);
+    expect(audio.getCurrentSoundscape()).toBeNull();
+
+    audio.startSoundscape("rain");
+    expect(() => audio.stopSoundscape()).not.toThrow();
+    expect(audio.isSoundscapeActive()).toBe(false);
+
+    audio.startSoundscape("hearth");
+    expect(() => audio.stopSoundscape()).not.toThrow();
+
+    audio.startSoundscape("night_library");
+    expect(() => audio.stopSoundscape()).not.toThrow();
+  });
 });
+

@@ -216,3 +216,58 @@ export function getCompanionContextualGreeting(
   if (hour < 20) return `${name} se acomoda a leer contigo esta tarde.`;
   return `${name} disfruta la calma de leer de noche.`;
 }
+
+// Bloque 3: Interactividad táctil por zonas del cuerpo
+export type CompanionHitboxZone = "head" | "nose" | "paws";
+
+export interface HitboxInteractionResult {
+  zone: CompanionHitboxZone;
+  message: string;
+  reactionMood: "happy" | "purring" | "curious" | "excited";
+  reactionPose?: "pet" | "greet" | "celebrate";
+  hapticPattern: number | number[];
+  bondIncrement: number;
+}
+
+export function handleCompanionZoneAction(
+  zone: CompanionHitboxZone,
+  type: "tap" | "pet" | "boop" | "highfive",
+): HitboxInteractionResult {
+  if (zone === "head") {
+    if (type === "pet") {
+      incrementCompanionBondLevel(1);
+      return {
+        zone: "head",
+        message: "Mrrr... qué rico descanso antes del próximo párrafo",
+        reactionMood: "purring",
+        reactionPose: "pet",
+        hapticPattern: [12, 40, 12, 40, 12],
+        bondIncrement: 1,
+      };
+    }
+    return {
+      zone: "head",
+      message: "¡Prrr! Te escucho con atención.",
+      reactionMood: "happy",
+      hapticPattern: 15,
+      bondIncrement: 0,
+    };
+  }
+  if (zone === "nose") {
+    return {
+      zone: "nose",
+      message: "¡Miau! ¡Me hiciste cosquillas en los bigotes!",
+      reactionMood: "curious",
+      hapticPattern: 10,
+      bondIncrement: 0,
+    };
+  }
+  return {
+    zone: "paws",
+    message: "¡Choca esa patita! Vamos con buen ritmo",
+    reactionMood: "excited",
+    reactionPose: "greet",
+    hapticPattern: 12,
+    bondIncrement: 1,
+  };
+}

@@ -41,6 +41,25 @@ export type PrepWordItem = {
   zipf?: number | null;
 };
 
+export type CatPageNoteItem = {
+  form: string;
+  lemma: string;
+  pos: string | null;
+  meaning: string;
+  noteIndex: number;
+  saved: boolean;
+  known?: boolean;
+};
+
+export type PracticeQuestionItem = {
+  word: string;
+  lemma: string;
+  pos: string | null;
+  options: { key: "A" | "B" | "C"; text: string; correct: boolean }[];
+  questionIndex: number;
+  totalQuestions: number;
+};
+
 function escapeHtml(str: string | null | undefined): string {
   if (!str) return "";
   return str
@@ -51,18 +70,114 @@ function escapeHtml(str: string | null | undefined): string {
     .replace(/'/g, "&#39;");
 }
 
+export function renderKindleCatSvg(mood: string, equippedItems: string[] = []): string {
+  const isHappy = mood === "happy" || mood === "celebrating";
+  const isCurious = mood === "curious";
+  const isReading = mood === "reading";
+  const hasScarf = equippedItems.some((i) => i.toLowerCase().includes("scarf"));
+
+  // Expresión de los ojos (trazo limpio de tinta electrónica)
+  let eyesSvg: string;
+  if (isHappy) {
+    eyesSvg = `
+      <path d="M28 38 Q33 33 38 38" fill="none" stroke="#000000" stroke-width="2.5" stroke-linecap="round" />
+      <path d="M42 38 Q47 33 52 38" fill="none" stroke="#000000" stroke-width="2.5" stroke-linecap="round" />
+    `;
+  } else if (isReading) {
+    eyesSvg = `
+      <path d="M28 37 Q33 42 38 39" fill="none" stroke="#000000" stroke-width="2.5" stroke-linecap="round" />
+      <path d="M42 39 Q47 42 52 37" fill="none" stroke="#000000" stroke-width="2.5" stroke-linecap="round" />
+    `;
+  } else if (isCurious) {
+    eyesSvg = `
+      <circle cx="33" cy="37" r="4.5" fill="#000000" />
+      <circle cx="47" cy="37" r="3" fill="#000000" />
+    `;
+  } else {
+    eyesSvg = `
+      <circle cx="33" cy="37" r="3.5" fill="#000000" />
+      <circle cx="47" cy="37" r="3.5" fill="#000000" />
+    `;
+  }
+
+  const mouthSvg = isHappy
+    ? `<path d="M36 45 Q38 48 40 45 Q42 48 44 45" fill="none" stroke="#000000" stroke-width="2" stroke-linecap="round" />`
+    : `<path d="M37 45 Q40 47 43 45" fill="none" stroke="#000000" stroke-width="2" stroke-linecap="round" />`;
+
+  let scarfSvg = "";
+  if (hasScarf) {
+    scarfSvg = `
+      <!-- Bufanda Kindle -->
+      <path d="M26 53 Q40 58 54 53 L53 61 Q40 66 27 61 Z" fill="#ffffff" stroke="#000000" stroke-width="2" />
+      <path d="M43 60 L43 74 L50 74 L50 59 Z" fill="#ffffff" stroke="#000000" stroke-width="2" />
+      <line x1="43" y1="64" x2="50" y2="64" stroke="#000000" stroke-width="1.5" />
+      <line x1="43" y1="68" x2="50" y2="68" stroke="#000000" stroke-width="1.5" />
+      <line x1="43" y1="72" x2="50" y2="72" stroke="#000000" stroke-width="1.5" />
+      <line x1="32" y1="56" x2="35" y2="60" stroke="#000000" stroke-width="1.5" />
+      <line x1="37" y1="57" x2="40" y2="61" stroke="#000000" stroke-width="1.5" />
+    `;
+  }
+
+  let extraSvg = "";
+  if (isReading) {
+    extraSvg = `
+      <!-- Libro abierto en regazo -->
+      <path d="M28 66 L40 63 L52 66 L52 74 L40 71 L28 74 Z" fill="#ffffff" stroke="#000000" stroke-width="2" />
+      <line x1="40" y1="63" x2="40" y2="71" stroke="#000000" stroke-width="2" />
+      <line x1="31" y1="68" x2="37" y2="67" stroke="#000000" stroke-width="1.5" />
+      <line x1="43" y1="67" x2="49" y2="68" stroke="#000000" stroke-width="1.5" />
+    `;
+  } else if (mood === "celebrating") {
+    extraSvg = `
+      <!-- Destellos de celebración -->
+      <path d="M16 22 L18 16 L20 22 L26 24 L20 26 L18 32 L16 26 L10 24 Z" fill="#000000" />
+      <path d="M60 20 L62 15 L64 20 L69 22 L64 24 L62 29 L60 24 L55 22 Z" fill="#000000" />
+    `;
+  }
+
+  return `
+    <svg width="80" height="80" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="Gato Lecta (${escapeHtml(mood)})" role="img">
+      <!-- Orejas -->
+      <polygon points="22,32 15,14 34,22" fill="#ffffff" stroke="#000000" stroke-width="2" stroke-linejoin="round" />
+      <polygon points="58,32 65,14 46,22" fill="#ffffff" stroke="#000000" stroke-width="2" stroke-linejoin="round" />
+      <!-- Cabeza -->
+      <ellipse cx="40" cy="38" rx="22" ry="19" fill="#ffffff" stroke="#000000" stroke-width="2" />
+      <!-- Ojos -->
+      ${eyesSvg}
+      <!-- Nariz -->
+      <polygon points="38,42 42,42 40,44" fill="#000000" stroke="#000000" stroke-width="1" />
+      <!-- Boca -->
+      ${mouthSvg}
+      <!-- Bigotes -->
+      <line x1="16" y1="39" x2="27" y2="40" stroke="#000000" stroke-width="1.5" />
+      <line x1="15" y1="44" x2="26" y2="43" stroke="#000000" stroke-width="1.5" />
+      <line x1="64" y1="39" x2="53" y2="40" stroke="#000000" stroke-width="1.5" />
+      <line x1="65" y1="44" x2="54" y2="43" stroke="#000000" stroke-width="1.5" />
+      <!-- Cuerpo / Pecho -->
+      <path d="M25 54 Q40 56 55 54 L58 75 Q40 78 22 75 Z" fill="#ffffff" stroke="#000000" stroke-width="2" />
+      <!-- Patitas -->
+      <ellipse cx="32" cy="74" rx="5" ry="3" fill="#ffffff" stroke="#000000" stroke-width="2" />
+      <ellipse cx="48" cy="74" rx="5" ry="3" fill="#ffffff" stroke="#000000" stroke-width="2" />
+      ${scarfSvg}
+      ${extraSvg}
+    </svg>
+  `.trim();
+}
+
 const KINDLE_CSS = `
   *, *:before, *:after {
     box-sizing: border-box;
     transition: none !important;
     animation: none !important;
+    box-shadow: none !important;
+    background-image: none !important;
   }
   html, body {
     margin: 0;
     padding: 0;
     background: #ffffff;
     color: #000000;
-    font-family: Georgia, "Source Serif", "Literata", "Times New Roman", serif;
+    font-family: Georgia, "Bookerly", "Amazon Ember", serif;
     font-size: 19px;
     line-height: 1.6;
     -webkit-text-size-adjust: 100%;
@@ -90,17 +205,22 @@ const KINDLE_CSS = `
     letter-spacing: -0.5px;
   }
   .nav-links a {
-    display: inline-block;
-    padding: 6px 10px;
-    border: 1px solid #000000;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 6px 12px;
+    border: 1.5px solid #000000;
     text-decoration: none;
     color: #000000;
     font-size: 0.95rem;
     margin-left: 4px;
     background: #ffffff;
+    min-height: 44px;
   }
   .btn {
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     padding: 10px 16px;
     border: 2px solid #000000;
     background: #ffffff;
@@ -110,8 +230,9 @@ const KINDLE_CSS = `
     font-size: 1rem;
     cursor: pointer;
     text-align: center;
-    min-height: 44px;
+    min-height: 52px;
     line-height: 1.2;
+    box-sizing: border-box;
   }
   .btn-primary {
     background: #000000;
@@ -120,7 +241,7 @@ const KINDLE_CSS = `
   .btn-sm {
     padding: 6px 12px;
     font-size: 0.9rem;
-    min-height: 36px;
+    min-height: 44px;
   }
   .btn:disabled, .btn.disabled {
     border-color: #888888;
@@ -450,55 +571,214 @@ const KINDLE_CSS = `
     margin-bottom: 8px;
     color: #111111;
   }
-  /* Barra para pasar página con un toque */
+  /* Modos de lectura */
+  .mode-selector {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .mode-tab {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    padding: 6px 12px;
+    border: 1.5px solid #000000;
+    background: #ffffff;
+    color: #000000;
+    text-decoration: none;
+    font-size: 0.88rem;
+  }
+  .mode-tab.is-active {
+    background: #000000;
+    color: #ffffff;
+    border: 2px solid #000000;
+    font-weight: bold;
+  }
+  .size-selector {
+    display: inline-flex;
+    gap: 4px;
+    margin-left: auto;
+    align-items: center;
+  }
+  .size-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 38px;
+    min-width: 38px;
+    padding: 4px 8px;
+    border: 1.5px solid #000000;
+    background: #ffffff;
+    color: #000000;
+    text-decoration: none;
+    font-size: 0.82rem;
+    font-weight: bold;
+  }
+  .size-btn.is-active {
+    background: #000000;
+    color: #ffffff;
+  }
+  /* Estilos según modo */
+  .epub-content.mode-clean p {
+    margin: 0;
+    text-indent: 1.35em;
+  }
+  .epub-content.mode-clean > p:first-of-type,
+  .epub-content.mode-clean h1 + p,
+  .epub-content.mode-clean h2 + p {
+    text-indent: 0;
+  }
+  .epub-content.mode-paragraphs p {
+    margin: 0 0 1.4em 0;
+    text-indent: 0;
+    line-height: 1.6;
+  }
+  .epub-content.mode-paragraphs .p-num {
+    font-size: 0.8em;
+    font-weight: bold;
+    color: #000000;
+    margin-right: 6px;
+    user-select: none;
+  }
+  .epub-content.mode-paragraphs p.p-guided {
+    border-left: 2px solid #000000;
+    padding-left: 10px;
+    margin-left: -2px;
+  }
+  .epub-content.mode-lexicon p {
+    margin: 0 0 0.8em 0;
+    text-indent: 1.2em;
+  }
+  .epub-content.mode-lexicon > p:first-of-type {
+    text-indent: 0;
+  }
+  /* Palabras en modo léxico */
+  a.w.w-lexicon {
+    border-bottom: 2px dotted #000000;
+    text-decoration: none;
+    font-weight: bold;
+  }
+  a.w.w-lexicon sup {
+    font-size: 0.72em;
+    line-height: 0;
+    vertical-align: super;
+    font-weight: bold;
+    margin-left: 1px;
+  }
+  /* Tamaños de fuente */
+  .epub-content.size-sm { font-size: 1.0rem; line-height: 1.5; }
+  .epub-content.size-md { font-size: 1.18rem; line-height: 1.58; }
+  .epub-content.size-lg { font-size: 1.35rem; line-height: 1.65; }
+  .epub-content.size-xl { font-size: 1.55rem; line-height: 1.72; }
+
+  /* Bloque de Notas del Gato */
+  .cat-notes-box {
+    margin-top: 24px;
+    border: 2px solid #000000;
+    padding: 14px 16px;
+    background: #ffffff;
+  }
+  .cat-notes-title {
+    font-size: 1.08rem;
+    font-weight: bold;
+    border-bottom: 2px solid #000000;
+    padding-bottom: 6px;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .cat-note-item {
+    border-bottom: 1px solid #000000;
+    padding: 10px 0;
+  }
+  .cat-note-item:last-child {
+    border-bottom: none;
+  }
+  .cat-note-term {
+    font-weight: bold;
+    font-size: 1.05rem;
+  }
+  .cat-note-pos {
+    font-style: italic;
+    font-size: 0.88rem;
+    margin-left: 6px;
+    color: #444444;
+  }
+  .cat-note-def {
+    margin: 4px 0 8px 0;
+    font-size: 0.95rem;
+    line-height: 1.4;
+  }
+  .cat-note-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  /* Barra para pasar página con un toque ergonómica (25% / 50% / 25%) */
   .turn-page-bar {
     display: flex;
     align-items: stretch;
-    gap: 10px;
+    gap: 8px;
     margin-top: 24px;
     padding-top: 14px;
-    border-top: 1px solid #e5e5e5;
+    border-top: 2px solid #000000;
+    width: 100%;
   }
   .turn-btn {
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 12px 14px;
+    padding: 10px 8px;
     border: 2px solid #000000;
     text-decoration: none;
     font-weight: bold;
-    font-size: 1rem;
+    font-size: 0.95rem;
     cursor: pointer;
     min-height: 52px;
     text-align: center;
+    box-sizing: border-box;
   }
   .turn-btn-prev {
     background: #ffffff;
     color: #000000;
-    flex: 1;
-    font-weight: normal;
+    flex: 0 0 25%;
+    width: 25%;
+  }
+  .turn-page-indicator {
+    flex: 0 0 50%;
+    width: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.88rem;
+    font-weight: bold;
+    color: #000000;
+    padding: 4px 6px;
+    text-align: center;
+    border: 2px solid #000000;
+    background: #ffffff;
+    box-sizing: border-box;
+    min-height: 52px;
+    line-height: 1.3;
   }
   .turn-btn-next {
     background: #000000;
     color: #ffffff;
-    flex: 2;
+    flex: 0 0 25%;
+    width: 25%;
     letter-spacing: 0.02em;
   }
   .turn-btn.disabled {
-    border-color: #cccccc;
-    color: #999999;
-    background: #fafafa;
+    border-color: #888888;
+    color: #888888;
+    background: #ffffff;
     cursor: not-allowed;
-  }
-  .turn-page-indicator {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.85rem;
-    color: #444444;
-    padding: 0 6px;
-    white-space: nowrap;
-    text-align: center;
   }
   /* Preparación previa al capítulo (Glosario de apertura) */
   .prep-title {
@@ -603,6 +883,7 @@ function renderBaseHtml(options: {
       <a href="/k" class="brand">Lecta <span style="font-size:0.8rem; font-weight:normal;">[Kindle]</span></a>
       <nav class="nav-links">
         <a href="/k">Biblioteca</a>
+        <a href="/k/practice">Práctica</a>
         <a href="/k/lookup">Diccionario</a>
         ${
           user
@@ -758,6 +1039,10 @@ export function renderReaderView(options: {
   pageWords?: PageWordItem[];
   savedNotice?: string | null;
   lookupResult?: InlineLookupResult | null;
+  mode?: "clean" | "paragraphs" | "lexicon";
+  size?: "sm" | "md" | "lg" | "xl";
+  gloss?: boolean;
+  catNotes?: CatPageNoteItem[];
 }): string {
   const {
     user,
@@ -772,27 +1057,28 @@ export function renderReaderView(options: {
     totalPages,
     savedNotice,
     lookupResult,
+    mode = "clean",
+    size = "md",
+    gloss = true,
+    catNotes = [],
   } = options;
 
-  const cleanPageUrl = `/k/read/${encodeURIComponent(bookHash)}?section=${sectionIndex}&page=${pageIndex}`;
+  const querySuffix = `&mode=${encodeURIComponent(mode)}&size=${encodeURIComponent(size)}&gloss=${gloss ? "1" : "0"}`;
+  const cleanPageUrl = `/k/read/${encodeURIComponent(bookHash)}?section=${sectionIndex}&page=${pageIndex}${querySuffix}`;
 
   const prevUrl =
     pageIndex > 0
-      ? `/k/read/${encodeURIComponent(bookHash)}?section=${sectionIndex}&page=${pageIndex - 1}`
-      : `/k/read/${encodeURIComponent(bookHash)}?section=${sectionIndex}&prep=1`;
+      ? `/k/read/${encodeURIComponent(bookHash)}?section=${sectionIndex}&page=${pageIndex - 1}${querySuffix}`
+      : sectionIndex > 0
+        ? `/k/read/${encodeURIComponent(bookHash)}?section=${sectionIndex - 1}&page=last${querySuffix}`
+        : null;
 
   let nextUrl: string | null = null;
   if (pageIndex < totalPages - 1) {
-    nextUrl = `/k/read/${encodeURIComponent(bookHash)}?section=${sectionIndex}&page=${pageIndex + 1}`;
+    nextUrl = `/k/read/${encodeURIComponent(bookHash)}?section=${sectionIndex}&page=${pageIndex + 1}${querySuffix}`;
   } else if (sectionIndex < totalSections - 1) {
-    // Al terminar el capítulo, pasar al siguiente lleva a su preparación
-    nextUrl = `/k/read/${encodeURIComponent(bookHash)}?section=${sectionIndex + 1}&prep=1`;
+    nextUrl = `/k/read/${encodeURIComponent(bookHash)}?section=${sectionIndex + 1}&page=0${querySuffix}`;
   }
-
-  const pageRatio = totalPages > 1 ? pageIndex / (totalPages - 1) : 0;
-  const percent = totalSections > 1
-    ? Math.round(((sectionIndex + pageRatio) / totalSections) * 100)
-    : Math.round(pageRatio * 100);
 
   const hasPrev = prevUrl !== null;
   const hasNext = nextUrl !== null;
@@ -833,7 +1119,7 @@ export function renderReaderView(options: {
                 <input type="hidden" name="meaning" value="${escapeHtml(firstMeaning)}" />
                 <input type="hidden" name="bookHash" value="${escapeHtml(bookHash)}" />
                 <input type="hidden" name="returnTo" value="${escapeHtml(cleanPageUrl)}" />
-                <button type="submit" class="btn-xs" style="padding:4px 10px; font-size:0.85rem;">+ Guardar en mi Cuaderno</button>
+                <button type="submit" class="btn btn-sm btn-primary" style="padding:6px 12px; font-size:0.85rem; min-height:44px;">+ Guardar en mi Cuaderno</button>
               </form>
             `
             : ""
@@ -842,6 +1128,58 @@ export function renderReaderView(options: {
     `;
   }
 
+  // Bloque "🐾 Notas del Gato en esta página"
+  let catNotesHtml = "";
+  if ((mode === "lexicon" || gloss) && catNotes && catNotes.length > 0) {
+    catNotesHtml = `
+      <div class="cat-notes-box">
+        <div class="cat-notes-title">
+          <span>🐾 Notas del Gato en esta página</span>
+        </div>
+        <div class="cat-notes-list">
+          ${catNotes
+            .map(
+              (n) => `
+            <div class="cat-note-item">
+              <div>
+                <span class="cat-note-term"><sup>${n.noteIndex}</sup> ${escapeHtml(n.form)}</span>
+                ${n.pos ? `<span class="cat-note-pos">(${escapeHtml(n.pos)})</span>` : ""}
+                ${n.saved ? `<span class="badge-saved" style="margin-left:6px;">✓ En tu Cuaderno</span>` : ""}
+              </div>
+              <div class="cat-note-def">${escapeHtml(n.meaning)}</div>
+              <div class="cat-note-actions">
+                <form method="POST" action="/k/knowledge/mark" style="display:inline;">
+                  <input type="hidden" name="lemma" value="${escapeHtml(n.lemma)}" />
+                  <input type="hidden" name="known" value="1" />
+                  <input type="hidden" name="returnTo" value="${escapeHtml(cleanPageUrl)}" />
+                  <button type="submit" class="btn btn-sm" style="min-height:44px; padding:6px 12px; font-size:0.85rem;">[ ✓ Ya la sé ]</button>
+                </form>
+                ${
+                  !n.saved
+                    ? `
+                  <form method="POST" action="/k/vocab/add" style="display:inline;">
+                    <input type="hidden" name="form" value="${escapeHtml(n.form)}" />
+                    <input type="hidden" name="lemma" value="${escapeHtml(n.lemma)}" />
+                    <input type="hidden" name="pos" value="${escapeHtml(n.pos || "")}" />
+                    <input type="hidden" name="meaning" value="${escapeHtml(n.meaning)}" />
+                    <input type="hidden" name="bookHash" value="${escapeHtml(bookHash)}" />
+                    <input type="hidden" name="returnTo" value="${escapeHtml(cleanPageUrl)}" />
+                    <button type="submit" class="btn btn-sm btn-primary" style="min-height:44px; padding:6px 12px; font-size:0.85rem;">[ ★ A mi cuaderno ]</button>
+                  </form>
+                `
+                    : ""
+                }
+              </div>
+            </div>
+          `,
+            )
+            .join("")}
+        </div>
+      </div>
+    `;
+  }
+
+  const baseParamUrl = `/k/read/${encodeURIComponent(bookHash)}?section=${sectionIndex}&page=${pageIndex}`;
 
   return `<!DOCTYPE html>
 <html lang="es">
@@ -862,9 +1200,24 @@ export function renderReaderView(options: {
       </div>
       <div class="reader-header-meta">
         Cap. ${sectionIndex + 1}/${totalSections}
+        <a href="/k/practice?bookHash=${encodeURIComponent(bookHash)}&amp;returnTo=${encodeURIComponent(cleanPageUrl)}" class="reader-header-prep" title="Practicar vocabulario">🎯 Práctica</a>
         <a href="/k/read/${encodeURIComponent(bookHash)}?section=${sectionIndex}&amp;prep=1" class="reader-header-prep" title="Ver vocabulario del capítulo">📖 Prep</a>
       </div>
     </header>
+
+    <div class="mode-selector">
+      <span style="font-size:0.85rem; font-weight:bold; margin-right:4px;">Modo:</span>
+      <a href="${baseParamUrl}&amp;mode=clean&amp;size=${size}&amp;gloss=${gloss ? 1 : 0}" class="mode-tab ${mode === "clean" ? "is-active" : ""}">[ Modo Limpio ]</a>
+      <a href="${baseParamUrl}&amp;mode=paragraphs&amp;size=${size}&amp;gloss=${gloss ? 1 : 0}" class="mode-tab ${mode === "paragraphs" ? "is-active" : ""}">[ Modo Párrafos ]</a>
+      <a href="${baseParamUrl}&amp;mode=lexicon&amp;size=${size}&amp;gloss=${gloss ? 1 : 0}" class="mode-tab ${mode === "lexicon" ? "is-active" : ""}">[ Modo Léxico ]</a>
+      <div class="size-selector">
+        <span style="font-size:0.82rem; margin-right:2px;">Letra:</span>
+        <a href="${baseParamUrl}&amp;mode=${mode}&amp;size=sm&amp;gloss=${gloss ? 1 : 0}" class="size-btn ${size === "sm" ? "is-active" : ""}">P</a>
+        <a href="${baseParamUrl}&amp;mode=${mode}&amp;size=md&amp;gloss=${gloss ? 1 : 0}" class="size-btn ${size === "md" ? "is-active" : ""}">M</a>
+        <a href="${baseParamUrl}&amp;mode=${mode}&amp;size=lg&amp;gloss=${gloss ? 1 : 0}" class="size-btn ${size === "lg" ? "is-active" : ""}">G</a>
+        <a href="${baseParamUrl}&amp;mode=${mode}&amp;size=xl&amp;gloss=${gloss ? 1 : 0}" class="size-btn ${size === "xl" ? "is-active" : ""}">XG</a>
+      </div>
+    </div>
 
     ${flashHtml}
 
@@ -872,29 +1225,29 @@ export function renderReaderView(options: {
 
     ${pageIndex === 0 && chapterTitle ? `<h2 class="chapter-heading">${escapeHtml(chapterTitle)}</h2>` : ""}
 
-    <div class="epub-content">
+    <div class="epub-content mode-${escapeHtml(mode)} size-${escapeHtml(size)}">
       ${contentHtml}
     </div>
+
+    ${catNotesHtml}
 
     <nav class="turn-page-bar">
       ${
         hasPrev && prevUrl
-          ? `<a href="${escapeHtml(prevUrl)}" class="turn-btn turn-btn-prev">${
-              pageIndex === 0 ? "← Antes de leer" : "← Anterior"
-            }</a>`
-          : `<span class="turn-btn turn-btn-prev disabled">← Anterior</span>`
+          ? `<a href="${escapeHtml(prevUrl)}" class="turn-btn turn-btn-prev">[ ← Anterior ]</a>`
+          : `<span class="turn-btn turn-btn-prev disabled">[ ← Anterior ]</span>`
       }
       <div class="turn-page-indicator">
-        Pág. ${pageIndex + 1} de ${totalPages} (${percent}%)
+        Pág. ${pageIndex + 1} de ${totalPages} · Cap. ${sectionIndex + 1}${chapterTitle ? `: ${escapeHtml(chapterTitle)}` : ""}
       </div>
       ${
         hasNext && nextUrl
-          ? `<a href="${escapeHtml(nextUrl)}" class="turn-btn turn-btn-next">${
+          ? `<a href="${escapeHtml(nextUrl)}" class="turn-btn turn-btn-next">[ ${
               pageIndex === totalPages - 1 && sectionIndex < totalSections - 1
                 ? "Siguiente capítulo →"
                 : "Siguiente página →"
-            }</a>`
-          : `<span class="turn-btn turn-btn-next disabled">Fin del libro</span>`
+            } ]</a>`
+          : `<span class="turn-btn turn-btn-next disabled">[ Fin del libro ]</span>`
       }
     </nav>
   </div>
@@ -1146,6 +1499,127 @@ export function renderLookupView(options: {
 
   return renderBaseHtml({
     title: query ? `Definición de ${query}` : "Diccionario",
+    user,
+    bodyHtml,
+    returnTo,
+  });
+}
+
+export function renderPracticeView(options: {
+  user: KindleUser | null;
+  question?: PracticeQuestionItem | null;
+  isFinished?: boolean;
+  correctCount?: number;
+  totalQuestions?: number;
+  returnTo?: string;
+  bookHash?: string;
+  equippedItems?: string[];
+}): string {
+  const {
+    user,
+    question,
+    isFinished,
+    correctCount = 0,
+    totalQuestions = 3,
+    returnTo = "/k",
+    bookHash = "",
+    equippedItems = [],
+  } = options;
+
+  let bodyHtml: string;
+
+  if (isFinished) {
+    const earnedXp = correctCount * 15;
+    bodyHtml = `
+      <div class="card" style="text-align: center; padding: 24px 16px;">
+        <div style="margin-bottom: 16px;">
+          ${renderKindleCatSvg("celebrating", equippedItems)}
+        </div>
+        <h1 style="margin-top: 0; font-size: 1.5rem;">¡Sesión de Práctica Completada!</h1>
+        <p style="font-size: 1.1rem; margin: 12px 0;">
+          Acertaste <strong>${correctCount} de ${totalQuestions}</strong> palabras.
+        </p>
+        <p style="font-size: 1rem; color: #333; margin-bottom: 24px;">
+          Tu compañero ronronea con satisfacción (+${earnedXp} XP para el gato).
+        </p>
+        <div style="display: flex; flex-direction: column; gap: 10px; max-width: 380px; margin: 0 auto;">
+          <a href="${escapeHtml(returnTo)}" class="btn btn-primary" style="font-size: 1.1rem;">[ Volver a leer → ]</a>
+          <a href="/k/practice${bookHash ? `?bookHash=${encodeURIComponent(bookHash)}` : ""}" class="btn">[ Practicar 3 más ]</a>
+          <a href="/k" class="btn">[ Ir a la Biblioteca ]</a>
+        </div>
+      </div>
+    `;
+  } else if (question) {
+    bodyHtml = `
+      <div class="card" style="padding: 20px 16px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #000000; padding-bottom: 10px; margin-bottom: 16px;">
+          <span style="font-weight: bold; font-size: 0.95rem;">
+            Palabra ${question.questionIndex + 1} de ${question.totalQuestions}
+          </span>
+          <span style="font-size: 0.85rem; color: #444;">
+            Aciertos: ${correctCount}
+          </span>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 16px;">
+          <div>${renderKindleCatSvg("curious", equippedItems)}</div>
+          <div>
+            <span style="font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; color: #555;">Pregunta de vocabulario</span>
+            <h2 style="margin: 2px 0 0 0; font-size: 1.5rem;">
+              «${escapeHtml(question.word)}»
+            </h2>
+            ${question.pos ? `<span style="font-style: italic; font-size: 0.9rem; color: #444;">(${escapeHtml(question.pos)})</span>` : ""}
+          </div>
+        </div>
+
+        <p style="font-size: 1.05rem; margin: 0 0 16px 0; font-weight: bold;">
+          ¿Cuál es la definición correcta?
+        </p>
+
+        <form method="POST" action="/k/practice/answer">
+          <input type="hidden" name="word" value="${escapeHtml(question.word)}" />
+          <input type="hidden" name="lemma" value="${escapeHtml(question.lemma)}" />
+          <input type="hidden" name="questionIndex" value="${question.questionIndex}" />
+          <input type="hidden" name="totalQuestions" value="${question.totalQuestions}" />
+          <input type="hidden" name="correctCount" value="${correctCount}" />
+          <input type="hidden" name="bookHash" value="${escapeHtml(bookHash)}" />
+          <input type="hidden" name="returnTo" value="${escapeHtml(returnTo)}" />
+
+          <div style="display: flex; flex-direction: column; gap: 12px;">
+            ${question.options
+              .map(
+                (opt) => `
+              <button type="submit" name="selectedOption" value="${opt.key}" class="btn" style="min-height: 56px; text-align: left; justify-content: flex-start; padding: 12px 14px; font-size: 0.98rem; line-height: 1.35; width: 100%;">
+                <span style="display: inline-block; min-width: 32px; font-weight: bold; font-size: 1.05rem;">[ ${opt.key} ]</span>
+                <span style="flex: 1;">${escapeHtml(opt.text)}</span>
+              </button>
+            `,
+              )
+              .join("")}
+          </div>
+        </form>
+      </div>
+
+      <div style="margin-top: 14px; text-align: center;">
+        <a href="${escapeHtml(returnTo)}" style="color: #444; font-size: 0.9rem; text-decoration: underline;">
+          Saltar práctica y volver a la lectura
+        </a>
+      </div>
+    `;
+  } else {
+    bodyHtml = `
+      <div class="card" style="text-align: center; padding: 24px 16px;">
+        <h2>No hay palabras pendientes para practicar</h2>
+        <p>¡Tu cuaderno está al día! Puedes volver a tu libro o explorar tu biblioteca.</p>
+        <p style="margin-top: 18px;">
+          <a href="/k" class="btn btn-primary">[ Ir a la Biblioteca ]</a>
+        </p>
+      </div>
+    `;
+  }
+
+  return renderBaseHtml({
+    title: "Práctica de Vocabulario",
     user,
     bodyHtml,
     returnTo,

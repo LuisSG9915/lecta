@@ -1,8 +1,18 @@
-// Generador y renderizador de tarjetas de citas tipográficas de Lecta.
-// Formatos para historias de WhatsApp (9:16) y cuadrado (1:1).
+import {
+  COMPANION_COATS,
+  resolveCoatId,
+  type CompanionCoatId,
+} from "../../shared/companion-data";
 
-export type QuoteCardFormat = "story" | "square";
-export type QuoteCardTheme = "papel" | "blanco" | "noche" | "bermellon";
+export type QuoteCardFormat = "portrait" | "story" | "square";
+export type QuoteCardTheme =
+  | "clasico_crema"
+  | "noche_tinta"
+  | "azul_modernista"
+  | "papel"
+  | "blanco"
+  | "noche"
+  | "bermellon";
 
 export type QuoteCardConfig = {
   text: string;
@@ -15,6 +25,9 @@ export type QuoteCardConfig = {
   showBookTitle: boolean;
   showChapter: boolean;
   showBranding: boolean;
+  includeCompanion?: boolean;
+  coatId?: CompanionCoatId;
+  readingDate?: string;
 };
 
 export const THEME_PALETTES: Record<
@@ -28,13 +41,37 @@ export const THEME_PALETTES: Record<
     brand: string;
   }
 > = {
+  clasico_crema: {
+    bg: "#F8F3EA",
+    border: "#E3D8C6",
+    quoteMark: "#8C3B24",
+    text: "#2C2621",
+    meta: "#786B61",
+    brand: "#8C3B24",
+  },
+  noche_tinta: {
+    bg: "#18191B",
+    border: "#2D3139",
+    quoteMark: "#E07A5F",
+    text: "#E5E7EB",
+    meta: "#9CA3AF",
+    brand: "#E07A5F",
+  },
+  azul_modernista: {
+    bg: "#1E293B",
+    border: "#334155",
+    quoteMark: "#38BDF8",
+    text: "#F8FAFC",
+    meta: "#94A3B8",
+    brand: "#38BDF8",
+  },
   papel: {
-    bg: "#f8f1e3",
-    border: "#ddd4c4",
-    quoteMark: "#c2452d", // bermellón
-    text: "#2b2520",
-    meta: "#6e6457",
-    brand: "#9e3a23",
+    bg: "#F8F3EA",
+    border: "#E3D8C6",
+    quoteMark: "#8C3B24",
+    text: "#2C2621",
+    meta: "#786B61",
+    brand: "#8C3B24",
   },
   blanco: {
     bg: "#ffffff",
@@ -45,17 +82,17 @@ export const THEME_PALETTES: Record<
     brand: "#9e3a23",
   },
   noche: {
-    bg: "#1a1b1d",
-    border: "#33363c",
-    quoteMark: "#e07a5f",
-    text: "#e6e9ee",
-    meta: "#969ca6",
-    brand: "#e07a5f",
+    bg: "#18191B",
+    border: "#2D3139",
+    quoteMark: "#E07A5F",
+    text: "#E5E7EB",
+    meta: "#9CA3AF",
+    brand: "#E07A5F",
   },
   bermellon: {
     bg: "#8c2e19",
     border: "#a83b22",
-    quoteMark: "#f4d06f", // ocre suave
+    quoteMark: "#f4d06f",
     text: "#fbf6ec",
     meta: "#e6cfc5",
     brand: "#fbf6ec",
@@ -66,6 +103,7 @@ export const FORMAT_DIMENSIONS: Record<
   QuoteCardFormat,
   { width: number; height: number; label: string }
 > = {
+  portrait: { width: 1080, height: 1350, label: "Postal (4:5)" },
   story: { width: 1080, height: 1920, label: "Historia (9:16)" },
   square: { width: 1080, height: 1080, label: "Cuadrado (1:1)" },
 };
@@ -235,7 +273,23 @@ export async function renderQuoteCardToCanvas(
     if (config.showChapter && config.chapterTitle) {
       ctx.font = `normal 400 ${metaFontSize - 4}px ${metaFontFamily}`;
       ctx.fillText(config.chapterTitle, width / 2, curY);
+      curY += 28;
     }
+
+    if (config.readingDate) {
+      ctx.font = `italic 400 ${metaFontSize - 6}px ${quoteFontFamily}`;
+      ctx.fillStyle = palette.meta;
+      ctx.fillText(config.readingDate, width / 2, curY);
+    }
+  }
+
+  // Gato compañero personalizado en la postal si está activado
+  if (config.includeCompanion) {
+    const catScale = config.format === "story" ? 1.5 : 1.35;
+    const catY = config.showBranding
+      ? height - innerInset - 110
+      : height - innerInset - 70;
+    drawCompanionCat(ctx, width / 2, catY, catScale, config.coatId);
   }
 
   // Firma discreta de Lecta en el pie
@@ -248,6 +302,178 @@ export async function renderQuoteCardToCanvas(
   }
 
   return canvas;
+}
+
+/**
+ * Dibuja al gato compañero de forma procedimental en el canvas 2D
+ * respetando la silueta acogedora ("Cozy Editorial") y la paleta del pelaje activo.
+ */
+export function drawCompanionCat(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  scale: number,
+  coatId?: CompanionCoatId,
+): void {
+  const coatKey = resolveCoatId(coatId);
+  const coat = COMPANION_COATS[coatKey] ?? COMPANION_COATS.tuxedo;
+
+  ctx.save();
+
+  // Sombra de piso
+  ctx.beginPath();
+  ctx.ellipse(cx, cy + 30 * scale, 32 * scale, 7 * scale, 0, 0, Math.PI * 2);
+  ctx.fillStyle = "rgba(0, 0, 0, 0.12)";
+  ctx.fill();
+
+  // Cola articulada en S a la derecha
+  ctx.beginPath();
+  ctx.moveTo(cx + 18 * scale, cy + 22 * scale);
+  ctx.bezierCurveTo(
+    cx + 36 * scale,
+    cy + 22 * scale,
+    cx + 42 * scale,
+    cy + 6 * scale,
+    cx + 34 * scale,
+    cy - 2 * scale,
+  );
+  ctx.strokeStyle = coat.fur;
+  ctx.lineWidth = 6 * scale;
+  ctx.lineCap = "round";
+  ctx.stroke();
+
+  // Punta de la cola en acento si aplica
+  if (coat.id === "calico" || coat.id === "latte") {
+    ctx.beginPath();
+    ctx.arc(cx + 34 * scale, cy - 2 * scale, 3.2 * scale, 0, Math.PI * 2);
+    ctx.fillStyle = coat.accent;
+    ctx.fill();
+  }
+
+  // Cuerpo redondeado acogedor
+  ctx.beginPath();
+  ctx.ellipse(cx, cy + 14 * scale, 22 * scale, 19 * scale, 0, 0, Math.PI * 2);
+  ctx.fillStyle = coat.fur;
+  ctx.fill();
+
+  // Medallón de pecho esponjoso (cat-chest-fluff)
+  ctx.beginPath();
+  ctx.ellipse(cx, cy + 13 * scale, 11 * scale, 13 * scale, 0, 0, Math.PI * 2);
+  ctx.fillStyle = coat.chest;
+  ctx.fill();
+
+  // Cabeza con mejillas abullonadas
+  ctx.beginPath();
+  ctx.ellipse(cx, cy - 11 * scale, 21 * scale, 17 * scale, 0, 0, Math.PI * 2);
+  ctx.fillStyle = coat.fur;
+  ctx.fill();
+
+  // Oreja izquierda
+  ctx.beginPath();
+  ctx.moveTo(cx - 16 * scale, cy - 18 * scale);
+  ctx.quadraticCurveTo(cx - 18 * scale, cy - 32 * scale, cx - 11 * scale, cy - 33 * scale);
+  ctx.quadraticCurveTo(cx - 5 * scale, cy - 26 * scale, cx - 4 * scale, cy - 20 * scale);
+  ctx.closePath();
+  ctx.fillStyle = coat.fur;
+  ctx.fill();
+
+  // Interior oreja izquierda
+  ctx.beginPath();
+  ctx.moveTo(cx - 14 * scale, cy - 19 * scale);
+  ctx.quadraticCurveTo(cx - 16 * scale, cy - 29 * scale, cx - 11 * scale, cy - 30 * scale);
+  ctx.quadraticCurveTo(cx - 7 * scale, cy - 25 * scale, cx - 6 * scale, cy - 20 * scale);
+  ctx.closePath();
+  ctx.fillStyle = coat.earInner;
+  ctx.fill();
+
+  // Oreja derecha
+  ctx.beginPath();
+  ctx.moveTo(cx + 4 * scale, cy - 20 * scale);
+  ctx.quadraticCurveTo(cx + 5 * scale, cy - 26 * scale, cx + 11 * scale, cy - 33 * scale);
+  ctx.quadraticCurveTo(cx + 18 * scale, cy - 32 * scale, cx + 16 * scale, cy - 18 * scale);
+  ctx.closePath();
+  ctx.fillStyle = coat.fur;
+  ctx.fill();
+
+  // Interior oreja derecha
+  ctx.beginPath();
+  ctx.moveTo(cx + 6 * scale, cy - 20 * scale);
+  ctx.quadraticCurveTo(cx + 7 * scale, cy - 25 * scale, cx + 11 * scale, cy - 30 * scale);
+  ctx.quadraticCurveTo(cx + 16 * scale, cy - 29 * scale, cx + 14 * scale, cy - 19 * scale);
+  ctx.closePath();
+  ctx.fillStyle = coat.earInner;
+  ctx.fill();
+
+  // Marcas de pelaje atigrado o calicó
+  if (coat.id === "ginger" || coat.id === "calico") {
+    ctx.strokeStyle = coat.accent;
+    ctx.lineWidth = 1.6 * scale;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy - 22 * scale);
+    ctx.lineTo(cx, cy - 17 * scale);
+    ctx.moveTo(cx - 4 * scale, cy - 21 * scale);
+    ctx.lineTo(cx - 3 * scale, cy - 17 * scale);
+    ctx.moveTo(cx + 4 * scale, cy - 21 * scale);
+    ctx.lineTo(cx + 3 * scale, cy - 17 * scale);
+    ctx.stroke();
+  }
+
+  // Ojos grandes expresivos con doble catchlight
+  const eyeY = cy - 12 * scale;
+  const eyeR = 3.8 * scale;
+  const leftEyeX = cx - 8 * scale;
+  const rightEyeX = cx + 8 * scale;
+
+  // Iris
+  ctx.fillStyle = coat.eyes;
+  ctx.beginPath();
+  ctx.arc(leftEyeX, eyeY, eyeR, 0, Math.PI * 2);
+  ctx.arc(rightEyeX, eyeY, eyeR, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Pupilas
+  ctx.fillStyle = "#1E2024";
+  ctx.beginPath();
+  ctx.arc(leftEyeX, eyeY, eyeR * 0.65, 0, Math.PI * 2);
+  ctx.arc(rightEyeX, eyeY, eyeR * 0.65, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Brillos especulares (catchlights): principal grande y secundario pequeño
+  ctx.fillStyle = "#FFFFFF";
+  ctx.beginPath();
+  ctx.arc(leftEyeX - 1.1 * scale, eyeY - 1.1 * scale, 1.2 * scale, 0, Math.PI * 2);
+  ctx.arc(rightEyeX - 1.1 * scale, eyeY - 1.1 * scale, 1.2 * scale, 0, Math.PI * 2);
+  ctx.arc(leftEyeX + 1.2 * scale, eyeY + 1.2 * scale, 0.6 * scale, 0, Math.PI * 2);
+  ctx.arc(rightEyeX + 1.2 * scale, eyeY + 1.2 * scale, 0.6 * scale, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Nariz pequeña triangular
+  ctx.beginPath();
+  ctx.moveTo(cx - 2.2 * scale, cy - 6 * scale);
+  ctx.lineTo(cx + 2.2 * scale, cy - 6 * scale);
+  ctx.lineTo(cx, cy - 3.5 * scale);
+  ctx.closePath();
+  ctx.fillStyle = coat.nose;
+  ctx.fill();
+
+  // Boquita suave de gato
+  ctx.beginPath();
+  ctx.moveTo(cx - 4.5 * scale, cy - 2.5 * scale);
+  ctx.quadraticCurveTo(cx - 2.2 * scale, cy - 0.8 * scale, cx, cy - 2.5 * scale);
+  ctx.quadraticCurveTo(cx + 2.2 * scale, cy - 0.8 * scale, cx + 4.5 * scale, cy - 2.5 * scale);
+  ctx.strokeStyle = coat.accent;
+  ctx.lineWidth = 1.2 * scale;
+  ctx.stroke();
+
+  // Patitas delanteras
+  const pawY = cy + 28 * scale;
+  ctx.fillStyle = coat.fur;
+  ctx.beginPath();
+  ctx.ellipse(cx - 9 * scale, pawY, 5.5 * scale, 3.8 * scale, 0, 0, Math.PI * 2);
+  ctx.ellipse(cx + 9 * scale, pawY, 5.5 * scale, 3.8 * scale, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
 }
 
 /**

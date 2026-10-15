@@ -2,7 +2,7 @@
 // (localStorage, no por cuenta): la voz sale del dispositivo y el
 // consentimiento habla de este dispositivo concreto.
 
-import { TTS_RATES, type TtsHighlightMode, type TtsRate } from "./ttsTypes";
+import { TTS_ALL_RATES, type TtsHighlightMode, type TtsRate } from "./ttsTypes";
 
 const TTS_KEY = "lecta:tts";
 
@@ -29,7 +29,7 @@ const parse = (raw: string | null): TtsSettings => {
     return {
       enabled: v.enabled === true && typeof v.consentedAt === "number",
       consentedAt: typeof v.consentedAt === "number" ? v.consentedAt : null,
-      rate: TTS_RATES.includes(v.rate as TtsRate) ? (v.rate as TtsRate) : 1,
+      rate: TTS_ALL_RATES.includes(v.rate as TtsRate) ? (v.rate as TtsRate) : 1,
       highlight: "sentence",
     };
   } catch {
