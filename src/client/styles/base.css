@@ -19,6 +19,7 @@ html {
   text-rendering: optimizeLegibility;
   font-synthesis: none;
   -webkit-font-smoothing: antialiased;
+  overflow-x: clip;
 }
 
 /* Grano de papel compartido: el cuerpo y el cuaderno a pantalla
@@ -30,6 +31,7 @@ body {
   margin: 0;
   background-color: var(--paper);
   background-image: var(--grain);
+  overflow-x: clip;
 }
 
 h1,

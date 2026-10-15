@@ -2,6 +2,8 @@
 
 .app {
   min-height: 100vh;
+  min-inline-size: 0;
+  overflow-x: clip;
   display: flex;
   flex-direction: column;
 }
@@ -16,11 +18,16 @@
 
 .app-main {
   flex: 1;
+  min-inline-size: 0;
   inline-size: min(72rem, calc(100% - 2.5rem));
   margin-inline: auto;
   padding-block-end: calc(56px + env(safe-area-inset-bottom) + var(--s-4));
   animation: fade-in var(--dur-2) var(--ease-out);
   transition: margin-left var(--dur-2) var(--ease-out);
+}
+
+.app:has(.mini-reader-bar) .app-main {
+  padding-block-end: calc(124px + env(safe-area-inset-bottom) + var(--s-4));
 }
 
 /* ---------- Barra de navegación principal (AppNav) ---------- */
@@ -41,12 +48,14 @@
 }
 
 .app-nav-item {
+  flex: 1 1 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 2px;
-  min-width: 4.5rem;
+  min-width: 0;
+  max-width: 7rem;
   min-height: 48px;
   padding: var(--s-1) var(--s-2);
   background: transparent;
@@ -102,6 +111,7 @@
   }
 
   .app-nav-item {
+    flex: none;
     min-width: 4rem;
     min-height: 52px;
   }
@@ -120,7 +130,8 @@
     margin-left: 5rem;
   }
 
-  .app-main {
+  .app-main,
+  .app:has(.mini-reader-bar) .app-main {
     margin-left: calc(5rem + (100% - 5rem - min(72rem, calc(100% - 5rem - 2.5rem))) / 2);
     inline-size: min(72rem, calc(100% - 5rem - 2.5rem));
     padding-block-end: var(--s-7);
@@ -156,6 +167,10 @@
   transition: bottom var(--dur-2) var(--ease-out);
 }
 
+.app:has(.mini-reader-bar) .app-notices {
+  bottom: calc(124px + env(safe-area-inset-bottom) + var(--s-3));
+}
+
 .app:has(.notebook[data-session]) .app-notices {
   bottom: calc(env(safe-area-inset-bottom) + var(--s-3));
 }
@@ -167,7 +182,8 @@
 }
 
 @media (min-width: 64rem) {
-  .app-notices {
+  .app-notices,
+  .app:has(.mini-reader-bar) .app-notices {
     bottom: var(--s-5);
     left: calc(5rem + (100% - 5rem) / 2);
   }
@@ -373,6 +389,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: var(--s-3);
   padding-block: var(--s-1);
 }
@@ -381,6 +398,8 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
+  flex: 1 1 14rem;
+  min-inline-size: 0;
 }
 
 /* Bloque desplegable de opciones avanzadas */

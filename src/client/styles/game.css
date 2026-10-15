@@ -1942,6 +1942,19 @@
   z-index: 1;
 }
 
+.companion-goal-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0;
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+}
+
+.companion-goal-icon {
+  line-height: 1;
+}
+
 /* Cabecera compacta con edición de nombre */
 .companion-head {
   display: flex;
@@ -2391,6 +2404,14 @@
   border: var(--border);
   border-radius: var(--r-pill, 999px);
   background: var(--paper-sunken);
+  max-inline-size: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: none;
+}
+
+.companion-sheet-tabs::-webkit-scrollbar {
+  display: none;
 }
 
 .companion-tab-btn {
@@ -3186,7 +3207,11 @@
   padding: var(--s-4);
   border: var(--border);
   border-radius: var(--r-3, 16px);
-  background: radial-gradient(circle at 50% 30%, #fff7ed 0%, var(--paper-raised, #ffffff) 100%);
+  background: radial-gradient(
+    circle at 50% 30%,
+    color-mix(in srgb, var(--ochre-soft) 55%, var(--paper-raised)) 0%,
+    var(--paper-raised, #ffffff) 100%
+  );
   box-shadow: 0 4px 20px -2px rgba(31, 29, 26, 0.06);
 }
 
@@ -3262,6 +3287,8 @@
   background: rgba(184, 98, 0, 0.1);
   padding: 0.25rem 0.6rem;
   border-radius: 9999px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .journey-rank-progress {

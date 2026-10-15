@@ -791,46 +791,48 @@ export default function Shelf({
                   </span>
                 </button>
                 <div className="shelf-hero-info">
-                  <div className="shelf-hero-eyebrow-row">
-                    <p className="eyebrow">Tu Mesa de Lectura</p>
-                    {bookCoverages.get(current.hash) ? (
-                      <span
-                        className={`shelf-affinity-badge shelf-affinity-badge--${affinityTierOf(bookCoverages.get(current.hash)!.percent)}`}
-                        title={`Afinidad léxica: ${bookCoverages.get(current.hash)!.percent}%`}
+                  <div className="shelf-hero-summary">
+                    <div className="shelf-hero-eyebrow-row">
+                      <p className="eyebrow">Tu Mesa de Lectura</p>
+                      {bookCoverages.get(current.hash) ? (
+                        <span
+                          className={`shelf-affinity-badge shelf-affinity-badge--${affinityTierOf(bookCoverages.get(current.hash)!.percent)}`}
+                          title={`Afinidad léxica: ${bookCoverages.get(current.hash)!.percent}%`}
+                        >
+                          {bookCoverages.get(current.hash)!.percent}% vocabulario conocido
+                        </span>
+                      ) : null}
+                    </div>
+                    <h2 className="shelf-hero-title">{displayTitle(current.name, current.title)}</h2>
+                    {current.author ? <p className="meta">{current.author}</p> : null}
+                    {heroPosition ? (
+                      <p className="meta shelf-hero-progress">
+                        {current.sectionCount
+                          ? `Capítulo ${heroPosition.sectionIndex + 1} de ${current.sectionCount} · Quedan ~5 min en este capítulo`
+                          : "Lectura en curso"}
+                        {" · "}
+                        te quedaste aquí {relativeDay(heroPosition.updatedAt)}
+                      </p>
+                    ) : null}
+                    {current.sectionCount && heroPosition ? (
+                      <div
+                        className="thread shelf-hero-thread"
+                        role="progressbar"
+                        aria-valuenow={Math.round(progressOf(heroPosition, current.sectionCount) * 100)}
+                        aria-valuemin={0}
+                        aria-valuemax={100}
                       >
-                        {bookCoverages.get(current.hash)!.percent}% vocabulario conocido
-                      </span>
+                        <div
+                          className="thread-fill"
+                          style={
+                            {
+                              "--thread-value": `${progressOf(heroPosition, current.sectionCount) * 100}%`,
+                            } as CSSProperties
+                          }
+                        />
+                      </div>
                     ) : null}
                   </div>
-                  <h2 className="shelf-hero-title">{displayTitle(current.name, current.title)}</h2>
-                  {current.author ? <p className="meta">{current.author}</p> : null}
-                  {heroPosition ? (
-                    <p className="meta shelf-hero-progress">
-                      {current.sectionCount
-                        ? `Capítulo ${heroPosition.sectionIndex + 1} de ${current.sectionCount} · Quedan ~5 min en este capítulo`
-                        : "Lectura en curso"}
-                      {" · "}
-                      te quedaste aquí {relativeDay(heroPosition.updatedAt)}
-                    </p>
-                  ) : null}
-                  {current.sectionCount && heroPosition ? (
-                    <div
-                      className="thread shelf-hero-thread"
-                      role="progressbar"
-                      aria-valuenow={Math.round(progressOf(heroPosition, current.sectionCount) * 100)}
-                      aria-valuemin={0}
-                      aria-valuemax={100}
-                    >
-                      <div
-                        className="thread-fill"
-                        style={
-                          {
-                            "--thread-value": `${progressOf(heroPosition, current.sectionCount) * 100}%`,
-                          } as CSSProperties
-                        }
-                      />
-                    </div>
-                  ) : null}
 
                   {/* Selector Rápido de Estrategia en la Tarjeta */}
                   <div className="shelf-strategy-selector shelf-hero-strategies" role="group" aria-label="Estrategia para entrar hoy">
