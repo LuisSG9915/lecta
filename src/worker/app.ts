@@ -78,7 +78,12 @@ import { getSession } from "./session";
 import { readingData } from "./reading-data";
 import { companion } from "./companion";
 import { catalog } from "./catalog";
-import { kindleRoutes } from "./kindle/routes";
+import {
+  kindleRoutes,
+  handleKindleLinkPage,
+  handleKindleStatus,
+  handleKindleLinkAction,
+} from "./kindle/routes";
 
 export const app = new Hono<{ Bindings: WorkerEnv }>();
 
@@ -97,7 +102,9 @@ app.route("/", readingData);
 app.route("/", companion);
 app.route("/", catalog);
 app.route("/k", kindleRoutes);
-app.get("/kindle", (context) => context.redirect("/k"));
+app.get("/kindle", handleKindleLinkPage);
+app.get("/api/kindle/status", handleKindleStatus);
+app.post("/api/kindle/link", handleKindleLinkAction);
 app.get("/kindle/*", (context) => {
   const p = context.req.path.replace(/^\/kindle/, "/k");
   return context.redirect(p);
@@ -1188,6 +1195,37 @@ app.post("/api/ai/page-recap", async (context) => {
   }
 
   return context.json(parsed);
+});
+
+app.post("/api/ai/translate", async (context) => {
+  const body = await context.req.json().catch(() => null);
+  const text = typeof body?.text === "string" ? body.text.trim() : "";
+  const from = typeof body?.from === "string" ? body.from : "en";
+  const to = typeof body?.to === "string" ? body.to : "es";
+
+  if (!text) {
+    return context.json({ error: "Se requiere texto para traducir." }, 400);
+  }
+
+  if (!context.env.DEEPSEEK_API_KEY) {
+    return context.json({ translation: text });
+  }
+
+  const ai = await callDeepSeek(
+    context.env,
+    {
+      system: `Eres un traductor literario bilingüe de ${from} a ${to}. Traduce el siguiente párrafo con fluidez, elegancia y fidelidad literaria. Devuelve ÚNICAMENTE la traducción directa, sin notas ni explicaciones.`,
+      user: text,
+    },
+    {
+      operation: "explain_passage",
+      promptVersion: "bilingual_v1",
+      maxTokens: 512,
+    },
+  );
+
+  const translation = ai.ok && ai.content ? ai.content.trim() : text;
+  return context.json({ translation });
 });
 
 const characterRecapCache = createTtlCache<CharacterRecapResponse>({

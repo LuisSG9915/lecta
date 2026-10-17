@@ -69,11 +69,57 @@ describe("Kindle Routes (/k and /kindle)", () => {
     dbQueryMock.mockResolvedValue({ rows: [] });
   });
 
-  describe("Redirección /kindle -> /k", () => {
-    it("/kindle redirige a /k", async () => {
+  describe("Portal Kindle y vinculación por código de 4 letras", () => {
+    it("GET /kindle sin sesión genera y muestra el código de 4 letras para e-readers", async () => {
+      getSessionMock.mockResolvedValueOnce(null);
+      const res = await app.request("/kindle", {}, env);
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).toContain("Vincular tu Kindle");
+      expect(html).toMatch(/[A-Z0-9]{4}/);
+    });
+
+    it("GET /kindle con sesión redirige a /k", async () => {
+      getSessionMock.mockResolvedValueOnce({
+        user: { id: "user-1", email: "lector@example.com" },
+      });
       const res = await app.request("/kindle", {}, env);
       expect(res.status).toBe(302);
       expect(res.headers.get("Location")).toBe("/k");
+    });
+
+    it("POST /api/kindle/link vincula el código con la sesión del usuario", async () => {
+      // 1. Obtener código
+      getSessionMock.mockResolvedValueOnce(null);
+      const kindleRes = await app.request("/kindle", {}, env);
+      const html = await kindleRes.text();
+      const codeMatch = html.match(/<div[^>]*font-size:\s*3\.5rem[^>]*>\s*([A-Z0-9]{4})\s*<\/div>/);
+      const code = codeMatch ? codeMatch[1] : "";
+      expect(code).toHaveLength(4);
+
+      // 2. Vincular desde móvil
+      getSessionMock.mockResolvedValueOnce({
+        user: { id: "user-1", email: "lector@example.com" },
+      });
+      const linkRes = await app.request(
+        "/api/kindle/link",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ code, userSessionToken: "mock-session-tok-123" }),
+        },
+        env,
+      );
+      expect(linkRes.status).toBe(200);
+      const linkJson = (await linkRes.json()) as { success: boolean };
+      expect(linkJson.success).toBe(true);
+
+      // 3. Kindle consulta estado
+      const statusRes = await app.request(`/api/kindle/status?code=${code}`, {}, env);
+      expect(statusRes.status).toBe(200);
+      const statusJson = (await statusRes.json()) as { linked: boolean };
+      expect(statusJson.linked).toBe(true);
+      expect(statusRes.headers.get("set-cookie")).toContain("better-auth.session_token");
     });
 
     it("/kindle/read/123 redirige a /k/read/123", async () => {

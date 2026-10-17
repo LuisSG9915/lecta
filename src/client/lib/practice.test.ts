@@ -12,6 +12,8 @@ import {
   scrambleWord,
   shuffleStable,
   smartContextSnippet,
+  buildOneMinuteReviewSession,
+  type SavedWordItem,
 } from "./practice";
 import type { SavedWord } from "./idb";
 
@@ -430,4 +432,46 @@ describe("rescueChallenge (Regla de Rescate Pedagógico)", () => {
     expect(rescued.distractors.length).toBeGreaterThan(0);
   });
 });
+
+describe("buildOneMinuteReviewSession (Track 4)", () => {
+  it("selecciona hasta 5 palabras priorizando vencidas y ordenadas por fecha de repaso", () => {
+    const now = 10000;
+    const items: SavedWordItem[] = [
+      { id: "1", word: "w1", shortDefinition: "d1", dueTimestamp: now + 5000, stability: 1 },
+      { id: "2", word: "w2", shortDefinition: "d2", dueTimestamp: now - 1000, stability: 3 },
+      { id: "3", word: "w3", shortDefinition: "d3", dueTimestamp: now - 3000, stability: 8, sentenceContext: "Contexto w3." },
+      { id: "4", word: "w4", shortDefinition: "d4", dueTimestamp: now + 1000, stability: 1 },
+      { id: "5", word: "w5", shortDefinition: "d5", dueTimestamp: now - 2000, stability: 4 },
+      { id: "6", word: "w6", shortDefinition: "d6", dueTimestamp: now + 8000, stability: 2 },
+    ];
+
+    const session = buildOneMinuteReviewSession(items, now);
+    expect(session.length).toBe(5);
+    // Vencidas primero (now - 3000, now - 2000, now - 1000)
+    expect(session[0].item.id).toBe("3");
+    expect(session[1].item.id).toBe("5");
+    expect(session[2].item.id).toBe("2");
+    // No vencidas por dueTimestamp ascendente (now + 1000, now + 5000)
+    expect(session[3].item.id).toBe("4");
+    expect(session[4].item.id).toBe("1");
+  });
+
+  it("asigna la dinámica correcta según la estabilidad FSRS de cada palabra", () => {
+    const now = 10000;
+    const items: SavedWordItem[] = [
+      { id: "1", word: "fragil", shortDefinition: "def", dueTimestamp: now, stability: 1.2 },
+      { id: "2", word: "media", shortDefinition: "def", dueTimestamp: now, stability: 3.5 },
+      { id: "3", word: "consolidada", shortDefinition: "def", dueTimestamp: now, stability: 7.0, sentenceContext: "Frase con palabra consolidada." },
+      { id: "4", word: "sinFrase", shortDefinition: "def", dueTimestamp: now, stability: 8.0 },
+    ];
+
+    const session = buildOneMinuteReviewSession(items, now);
+    expect(session.find((s) => s.item.id === "1")?.assignedGame).toBe("flash-choice");
+    expect(session.find((s) => s.item.id === "2")?.assignedGame).toBe("word-scramble");
+    expect(session.find((s) => s.item.id === "3")?.assignedGame).toBe("sentence-builder");
+    // Si stability >= 6 pero sin sentenceContext, cae a flash-choice
+    expect(session.find((s) => s.item.id === "4")?.assignedGame).toBe("flash-choice");
+  });
+});
+
 

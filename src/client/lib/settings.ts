@@ -140,7 +140,44 @@ export interface ConcentrationSettings {
 }
 
 // Presets cognitivos de estrategia de lectura.
+export type ReadingPreset = "clean" | "adhd" | "guided" | "custom";
+
+export interface ReaderModePresetConfig {
+  id: ReadingPreset;
+  icon: string;
+  label: string;
+  shortLabel: string;
+  description: string;
+}
+
+export const READING_PRESETS: ReaderModePresetConfig[] = [
+  {
+    id: "clean",
+    icon: "📖",
+    label: "Lectura Limpia",
+    shortLabel: "Limpia",
+    description: "Editorial clásico sin ayudas visuales",
+  },
+  {
+    id: "adhd",
+    icon: "⚡",
+    label: "Enfoque TDAH",
+    shortLabel: "Enfoque",
+    description: "Párrafo activo nítido + anclas de atención",
+  },
+  {
+    id: "guided",
+    icon: "🌊",
+    label: "Ritmo Guiado",
+    shortLabel: "Ritmo",
+    description: "Frases cortas + guía cromática de alto contraste",
+  },
+];
+
 export type ReadingStrategyPreset =
+  | "clean"
+  | "adhd"
+  | "guided"
   | "immersive"
   | "focus"
   | "lexical"
@@ -312,11 +349,105 @@ export function resolveTheme(choice: ThemeChoice, prefersDark: boolean): Resolve
   return prefersDark ? "noche" : "papel";
 }
 
+export function applyReadingPreset(
+  current: ReaderSettings,
+  preset: Exclude<ReadingPreset, "custom">,
+): ReaderSettings {
+  switch (preset) {
+    case "clean":
+      return {
+        ...current,
+        strategyPreset: "clean",
+        focusRuler: false,
+        paragraphFocus: false,
+        syntacticLines: false,
+        chromaticGuide: false,
+        bionicAnchors: false,
+        focusMode: "off",
+        visualPacer: false,
+        highlightLexical: false,
+        hideSecondaryIndicators: true,
+      };
+
+    case "adhd":
+      return {
+        ...current,
+        strategyPreset: "adhd",
+        paragraphFocus: true,
+        bionicAnchors: true,
+        focusRuler: false,
+        syntacticLines: false,
+        chromaticGuide: false,
+        focusMode: "paragraph",
+        visualPacer: false,
+        highlightLexical: false,
+        hideSecondaryIndicators: false,
+      };
+
+    case "guided":
+      return {
+        ...current,
+        strategyPreset: "guided",
+        syntacticLines: true,
+        chromaticGuide: true,
+        paragraphFocus: false,
+        focusRuler: false,
+        bionicAnchors: false,
+        focusMode: "chromatic",
+        visualPacer: false,
+        highlightLexical: false,
+        hideSecondaryIndicators: false,
+      };
+
+    default:
+      return current;
+  }
+}
+
+export function detectActiveReadingPreset(settings: ReaderSettings): ReadingPreset {
+  if (
+    !settings.focusRuler &&
+    !settings.paragraphFocus &&
+    !settings.syntacticLines &&
+    !settings.chromaticGuide &&
+    !settings.bionicAnchors &&
+    !settings.visualPacer
+  ) {
+    return "clean";
+  }
+  if (
+    settings.paragraphFocus &&
+    settings.bionicAnchors &&
+    !settings.syntacticLines &&
+    !settings.chromaticGuide
+  ) {
+    return "adhd";
+  }
+  if (
+    settings.syntacticLines &&
+    settings.chromaticGuide &&
+    !settings.paragraphFocus &&
+    !settings.focusRuler
+  ) {
+    return "guided";
+  }
+  if (settings.strategyPreset === "clean" || settings.strategyPreset === "immersive") return "clean";
+  if (settings.strategyPreset === "adhd" || settings.strategyPreset === "focus") return "adhd";
+  if (settings.strategyPreset === "guided") return "guided";
+  return "custom";
+}
+
 export function applyStrategyPreset(
   preset: ReadingStrategyPreset,
   currentSettings: ReaderSettings,
 ): ReaderSettings {
   switch (preset) {
+    case "clean":
+      return applyReadingPreset(currentSettings, "clean");
+    case "adhd":
+      return applyReadingPreset(currentSettings, "adhd");
+    case "guided":
+      return applyReadingPreset(currentSettings, "guided");
     case "immersive":
       return {
         ...currentSettings,
@@ -368,6 +499,8 @@ export function applyStrategyPreset(
         ...currentSettings,
         strategyPreset: "custom",
       };
+    default:
+      return currentSettings;
   }
 }
 
@@ -376,14 +509,27 @@ export function isStrategyPresetActive(
   settings: ReaderSettings,
 ): boolean {
   if (preset === "custom") return settings.strategyPreset === "custom";
-  if (preset === "immersive") {
+  if (preset === "clean" || preset === "immersive") {
     return (
+      settings.strategyPreset === "clean" ||
       settings.strategyPreset === "immersive" ||
       (!settings.focusRuler &&
         !settings.paragraphFocus &&
         !settings.syntacticLines &&
         !settings.chromaticGuide &&
         settings.strategyPreset !== "audio")
+    );
+  }
+  if (preset === "adhd") {
+    return (
+      settings.strategyPreset === "adhd" ||
+      (settings.paragraphFocus && settings.bionicAnchors && !settings.syntacticLines)
+    );
+  }
+  if (preset === "guided") {
+    return (
+      settings.strategyPreset === "guided" ||
+      (settings.syntacticLines && settings.chromaticGuide && !settings.paragraphFocus)
     );
   }
   if (preset === "focus") {
@@ -463,6 +609,9 @@ export function parseReaderSettings(raw: string | null): ReaderSettings {
 
     let strategyPreset: ReadingStrategyPreset;
     if (
+      v.strategyPreset === "clean" ||
+      v.strategyPreset === "adhd" ||
+      v.strategyPreset === "guided" ||
       v.strategyPreset === "immersive" ||
       v.strategyPreset === "focus" ||
       v.strategyPreset === "lexical" ||

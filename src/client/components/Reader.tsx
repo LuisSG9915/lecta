@@ -137,6 +137,8 @@ import {
   READING_STRATEGY_PRESETS,
   CHROMATIC_PALETTES,
   applyStrategyPreset,
+  applyReadingPreset,
+  detectActiveReadingPreset,
   isStrategyPresetActive,
   type ChromaticPalette,
   type ReaderSettings,
@@ -226,9 +228,21 @@ import {
   stopSoundscape,
   type SoundscapeKind,
 } from "../lib/companion-audio";
-import { requestPageRecap, type PageRecapResult } from "../lib/page-recap";
+import {
+  requestPageRecap,
+  requestLastPagesRecap,
+  type PageRecapResult,
+} from "../lib/page-recap";
+import { checkHasInactivityGap } from "../lib/reading-activity";
+import {
+  registerBookSections,
+  unregisterBookSections,
+} from "../lib/book-search";
+import { translateParagraph } from "../lib/translate";
+import { ReaderRecapBubble } from "./ReaderRecapBubble";
+import { BilingueParagraph } from "./BilingueParagraph";
 import TtsConsentDialog from "./TtsConsentDialog";
-import TtsNowPlaying from "./TtsNowPlaying";
+import SmartReaderDock from "./SmartReaderDock";
 import WordPanel from "./WordPanel";
 import SectionPreview, { type SectionPreviewRow } from "./SectionPreview";
 import Sheet from "./Sheet";
@@ -417,6 +431,9 @@ export const recordDominated = (words: SavedWord[], lang: string, scope?: DbScop
   })().catch(() => undefined);
 
 export const PRESET_LABELS: Record<ReadingStrategyPreset, string> = {
+  clean: "Limpia",
+  adhd: "Enfoque",
+  guided: "Ritmo",
   focus: "Enfoque",
   lexical: "Léxico",
   immersive: "Inmersivo",
@@ -661,6 +678,15 @@ export default function Reader({
   const [bookOverride, setBookOverride] = useState(() => hasBookReaderSettings(bookHash));
   const [seenStatus, setSeenStatus] = useState(statusText);
   const [annotations, setAnnotations] = useState<SavedAnnotation[]>([]);
+
+  // Track 5: Burbuja "¿En qué me quedé?" tras > 6 horas de inactividad
+  const [recapBubbleVisible, setRecapBubbleVisible] = useState(false);
+  const [recapBubbleBullets, setRecapBubbleBullets] = useState<string[]>([]);
+  const [recapBubbleLoading, setRecapBubbleLoading] = useState(false);
+  const recapCheckedRef = useRef(false);
+
+  // Track 5: Doble toque para traducir párrafo
+  const lastTapRef = useRef<{ time: number; element: HTMLElement | null }>({ time: 0, element: null });
   const [searchQ, setSearchQ] = useState("");
   const [searchHits, setSearchHits] = useState<SearchHit[]>([]);
   const [searchDone, setSearchDone] = useState(true);
@@ -1166,6 +1192,158 @@ export default function Reader({
       })
       .catch(() => undefined);
   }, [bookHash, signalCompanion, presenceIdle]);
+
+  // Track 5: Detección de inactividad > 6h para "¿En qué me quedé?"
+  useEffect(() => {
+    if (recapCheckedRef.current || !bookHash) return;
+    recapCheckedRef.current = true;
+    const scope = captureDbScope();
+    void listIntervals(scope)
+      .then((intervals) => {
+        if (checkHasInactivityGap(intervals, bookHash)) {
+          setRecapBubbleVisible(true);
+        }
+      })
+      .catch(() => undefined);
+  }, [bookHash]);
+
+  const handleTriggerReturnRecap = async () => {
+    setRecapBubbleLoading(true);
+    try {
+      const container = containerRef.current;
+      const lastPages: string[] = [];
+      if (container) {
+        if (settings.layout === "pages" && pageMetrics) {
+          const paras = Array.from(
+            container.querySelectorAll<HTMLElement>("p, h1, h2, h3, h4, blockquote, li"),
+          );
+          for (let pIdx = Math.max(0, page - 2); pIdx <= page; pIdx++) {
+            const pageParas = paras.filter((el) => pageOfElement(el, pageMetrics) === pIdx);
+            if (pageParas.length > 0) {
+              lastPages.push(pageParas.map((el) => el.textContent ?? "").join("\n\n"));
+            }
+          }
+        }
+        if (lastPages.length === 0) {
+          const paras = Array.from(
+            container.querySelectorAll<HTMLElement>("p, h1, h2, h3, h4, blockquote, li"),
+          );
+          const text = paras.slice(-15).map((el) => el.textContent ?? "").join("\n\n");
+          if (text) lastPages.push(text);
+        }
+      }
+
+      const res = await requestLastPagesRecap(
+        {
+          lastPagesText: lastPages,
+          bookTitle: title,
+          chapterTitle: currentChapterTarget?.label ?? sectionTitle ?? sectionLabel(sectionIndex),
+        },
+        captureDbScope(),
+      );
+
+      setRecapBubbleBullets(res.bullets.slice(0, 3));
+    } catch {
+      setRecapBubbleBullets([
+        "La lectura retoma en este punto de la obra.",
+        "Los personajes y reflexiones continúan desenvolviéndose.",
+      ]);
+    } finally {
+      setRecapBubbleLoading(false);
+    }
+  };
+
+  // Track 5: Registrar secciones en book-search para búsquedas sin spoilers
+  useEffect(() => {
+    if (bookHash && bookRef.current?.sections) {
+      registerBookSections(bookHash, bookRef.current.sections, tocRowsRef.current);
+    }
+    return () => {
+      if (bookHash) unregisterBookSections(bookHash);
+    };
+  }, [bookHash, state]);
+
+  // Track 5: Contexto de lectura para el gato (personajes sin spoilers en la página visible)
+  useEffect(() => {
+    if (!companion?.setReaderContext) return;
+    const container = containerRef.current;
+    let pageText = "";
+    if (container) {
+      if (settings.layout === "pages" && pageMetrics) {
+        const paras = Array.from(
+          container.querySelectorAll<HTMLElement>("p, h1, h2, h3, h4, blockquote, li"),
+        );
+        const pageParas = paras.filter((p) => pageOfElement(p, pageMetrics) === page);
+        if (pageParas.length > 0) {
+          pageText = pageParas.map((p) => p.textContent ?? "").join("\n\n");
+        }
+      }
+      if (!pageText) {
+        const paras = Array.from(
+          container.querySelectorAll<HTMLElement>("p, h1, h2, h3, h4, blockquote, li"),
+        );
+        const viewH = window.innerHeight;
+        const visible = paras.filter((p) => {
+          const rect = p.getBoundingClientRect();
+          return rect.bottom >= 0 && rect.top <= viewH;
+        });
+        if (visible.length > 0) {
+          pageText = visible.map((p) => p.textContent ?? "").join("\n\n");
+        }
+      }
+    }
+
+    companion.setReaderContext({
+      pageText,
+      currentChapterIndex: sectionIndex,
+      bookId: bookHash,
+      sections: bookRef.current?.sections,
+      toc: tocRowsRef.current,
+    });
+  }, [companion, page, sectionIndex, bookHash, settings.layout, pageMetrics, state]);
+
+  // Track 5: Doble toque para traducir párrafo (modo bilingüe fluido en inglés)
+  const toggleParagraphTranslation = async (p: HTMLElement) => {
+    if (language !== "en") return;
+    const existing = p.querySelector(".paragraph-inline-translation");
+    if (existing) {
+      existing.remove();
+      return;
+    }
+    if (p.querySelector(".paragraph-translating-indicator")) return;
+
+    const originalText = (p.textContent ?? "").replace(/\s+/g, " ").trim();
+    if (!originalText) return;
+
+    const indicator = document.createElement("span");
+    indicator.className = "paragraph-translating-indicator";
+    indicator.textContent = " ⏳ Traduciendo...";
+    p.appendChild(indicator);
+
+    try {
+      const translation = await translateParagraph(originalText, "en", "es", captureDbScope());
+      indicator.remove();
+      if (translation && translation !== originalText) {
+        const span = document.createElement("span");
+        span.className = "paragraph-inline-translation";
+        const em = document.createElement("em");
+        em.textContent = translation;
+        span.appendChild(em);
+        p.appendChild(span);
+      }
+    } catch {
+      indicator.remove();
+    }
+  };
+
+  const handleContainerDoubleClick = (event: MouseEvent<HTMLDivElement>) => {
+    if (language !== "en") return;
+    const target = event.target as HTMLElement;
+    const p = target.closest<HTMLElement>("p, blockquote");
+    if (p && containerRef.current?.contains(p)) {
+      void toggleParagraphTranslation(p);
+    }
+  };
 
   // Las capas del lector son mutuamente excluyentes: abrir una cierra
   // la anterior y reutiliza su entrada de historial cuando existe. Si
@@ -4965,6 +5143,14 @@ export default function Reader({
           </p>
         ) : null}
         {showChapterTitle ? <h1 className="chapter-title">{sectionTitle}</h1> : null}
+        {recapBubbleVisible ? (
+          <ReaderRecapBubble
+            recapBullets={recapBubbleBullets}
+            isLoading={recapBubbleLoading}
+            onDismiss={() => setRecapBubbleVisible(false)}
+            onTriggerRecap={handleTriggerReturnRecap}
+          />
+        ) : null}
         <div className="page-viewport" ref={viewportRef}>
           <div
             ref={containerRef}
@@ -4993,6 +5179,7 @@ export default function Reader({
                 : undefined
             }
             lang={language}
+            onDoubleClick={handleContainerDoubleClick}
           onClick={(event: MouseEvent<HTMLDivElement>) => {
             const container = containerRef.current;
             if (!container) return;
@@ -5029,6 +5216,24 @@ export default function Reader({
 
             if (isTouch) {
               // En táctil (modelo Kindle):
+              // Track 5: Detección de doble toque en táctil para traducir párrafo si el libro está en inglés
+              if (language === "en") {
+                const target = event.target as HTMLElement;
+                const p = target.closest<HTMLElement>("p, blockquote");
+                const now = Date.now();
+                if (p && lastTapRef.current.element === p && now - lastTapRef.current.time < 350) {
+                  lastTapRef.current = { time: 0, element: null };
+                  void toggleParagraphTranslation(p);
+                  return;
+                }
+                lastTapRef.current = { time: now, element: p };
+              }
+
+              if (selection) {
+                setSelection(null);
+                return;
+              }
+
               // 1. Si hay una selección de texto activa, el toque solo la limpia
               if (hasSelection) {
                 sel.removeAllRanges();
@@ -5273,36 +5478,35 @@ export default function Reader({
         </div>
       ) : null}
 
-      {/* Aviso/acceso «Palabras del capítulo»: franja fija en la zona
-          de controles, fuera del texto — persiste hasta atenderla o
-          descartarla; nunca empuja la lectura porque vive aquí desde
-          la entrada al capítulo. */}
-      {prepNotice && !prep && !resumeCard && !isDeepReading ? (
-        <div className="reader-prep" role="status">
-          <span className="reader-prep-text">
-            {prepNotice.summary
-              ? `Ya preparaste el vocabulario de ${prepNotice.target.label}.`
-              : prepNotice.count != null
-                ? `${prepNotice.count} palabra(s) por revisar en ${prepNotice.target.label}.`
-                : analyzing
-                  ? `Preparando vocabulario de ${prepNotice.target.label}…`
-                  : `Vocabulario por preparar en ${prepNotice.target.label}.`}
-            {enriching && enriching.index === sectionIndex
-              ? ` Definiendo ${enriching.done} de ${enriching.total}…`
-              : ""}
-          </span>
+      {/* Pastilla discreta "Antes de leer" arriba del texto del capítulo (Regla 2 Zero-Friction) */}
+      {prepNotice && !prep && !resumeCard && !isDeepReading && barsShown ? (
+        <div className="reader-section-preview-pill-container" role="status">
           <button
             type="button"
-            className="btn reader-prep-open"
+            className="reader-section-preview-pill"
             onClick={openPrepManual}
+            aria-label={`Ver vocabulario clave de ${prepNotice.target.label}`}
           >
-            {prepNotice.summary ? "Ver palabras" : "Preparar"}
+            <span>
+              ✨{" "}
+              {enriching && enriching.index === sectionIndex
+                ? `Definiendo ${enriching.done} de ${enriching.total}…`
+                : analyzing
+                  ? `Preparando vocabulario de ${prepNotice.target.label}…`
+                  : prepNotice.summary
+                    ? `Vocabulario revisado de ${prepNotice.target.label}`
+                    : prepNotice.count != null
+                      ? `${prepNotice.count} palabras clave en este capítulo`
+                      : `Palabras clave de ${prepNotice.target.label}`}
+            </span>
+            <span className="pill-cta">· Ver</span>
           </button>
           <button
             type="button"
             className="reader-return-dismiss"
             onClick={dismissPrepNotice}
             aria-label="Ocultar aviso de vocabulario"
+            style={{ marginLeft: "0.25rem" }}
           >
             ×
           </button>
@@ -5362,128 +5566,97 @@ export default function Reader({
         </div>
       ) : null}
 
-      {/* Dock de Lectura Viva (B.1): Dock flotante inferior que reúne contador, interruptor de estrategia y al gato */}
+      {/* SmartReaderDock (Track 2): Dock Inteligente Único que muta entre Lectura, Audio y Lienzo Puro */}
       {state === "ready" && !isDeepReading ? (
-        <aside
-          className="reader-dock reader__dock"
-          role="region"
-          aria-label="Dock de lectura viva"
-        >
-          <span className="reader-dock-counter">
-            {settings.layout === "pages"
-              ? `Pág. ${page + 1} de ${pageCount || 1}`
-              : `Cap. ${sectionIndex + 1} de ${sectionTotal || 1}`}
-            {minutes > 0 ? ` · ~${minutes} min` : ""}
-          </span>
-          {errorText ? (
-            <>
-              <span className="reader-dock-divider" aria-hidden="true" />
-              <span className="reader-error-text" role="alert" style={{ fontSize: "0.75rem", color: "var(--vermilion)" }}>
-                {errorText}
-              </span>
-            </>
-          ) : null}
-          <span className="reader-dock-divider" aria-hidden="true" />
-          <button
-            type="button"
-            className="reader-dock-strategy"
-            data-active={!strategyPaused || undefined}
-            onClick={() => {
-              triggerHaptic("selection");
-              setStrategyPaused((v) => !v);
-            }}
-            aria-label={`Estrategia: ${strategyPaused ? "Limpio" : (PRESET_LABELS[settings.strategyPreset] ?? "Enfoque")}. Toque para ${strategyPaused ? "activar" : "pausar"}.`}
-            title="Toque rápido: alternar estrategia / modo limpio"
-          >
-            <Icon
-              name={
-                settings.strategyPreset === "focus"
-                  ? "focus"
-                  : settings.strategyPreset === "lexical"
-                    ? "index"
-                    : settings.strategyPreset === "audio"
-                      ? "speaker"
-                      : settings.strategyPreset === "immersive"
-                        ? "sparkles"
-                        : "strategy"
-              }
-              size={13}
-            />
-            <span>
-              {strategyPaused
-                ? "Limpio"
-                : (PRESET_LABELS[settings.strategyPreset] ?? "Enfoque")}
-            </span>
-          </button>
-          <button
-            type="button"
-            className="reader-dock-recap"
-            onClick={handleRecapClick}
-            aria-label="Recuperar el hilo de esta página"
-            title="Recuperar el hilo (resumen de atención)"
-          >
-            <span aria-hidden="true">🧭</span>
-            <span>Hilo</span>
-          </button>
-          {catShown && catState ? (
-            <>
-              <span className="reader-dock-divider" aria-hidden="true" />
+        <SmartReaderDock
+          progressText={
+            settings.layout === "pages"
+              ? `Pág. ${page + 1} de ${pageCount || 1}${minutes > 0 ? ` · ~${minutes} min` : ""}`
+              : `Cap. ${sectionIndex + 1} de ${sectionTotal || 1}${minutes > 0 ? ` · ~${minutes} min` : ""}`
+          }
+          errorText={errorText ?? undefined}
+          isPureCanvas={!barsShown}
+          onExitPureCanvas={() => setBarsVisible(true)}
+          activePreset={detectActiveReadingPreset(settings)}
+          onSelectPreset={(preset) => {
+            triggerHaptic("selection");
+            setStrategyPaused(false);
+            updateSettings(applyReadingPreset(settings, preset));
+          }}
+          onOpenAdvancedSettings={() => {
+            setSettingsTab("strategy");
+            setSheet("settings");
+          }}
+          onStartAudio={onTtsRequest}
+          onRecap={handleRecapClick}
+          companionSlot={
+            catShown && catState ? (
               <div
                 className="reader-dock-cat cat-anim"
                 data-out={catLeaving || undefined}
               >
-                {(() => {
-                  const gazeProgress =
+                <CompanionButton
+                  stage={companion.stage}
+                  mood={
+                    catSavedWord
+                      ? "happy"
+                      : catSleepy
+                        ? "sleepy"
+                        : "awake"
+                  }
+                  accessories={companion.accessories}
+                  focus={
+                    catSavedWord
+                      ? "celebrating"
+                      : isDeepReading
+                        ? "deep_focus"
+                        : catSleepy
+                          ? "sleep"
+                          : selection
+                            ? "curious"
+                            : catState
+                  }
+                  gazeProgress={
                     settings.layout === "pages"
                       ? pageCount > 1
                         ? page / (pageCount - 1)
                         : 0
-                      : scrollRatio;
-                  return (
-                    <CompanionButton
-                      stage={companion.stage}
-                      mood={
-                        catSavedWord
-                          ? "happy"
-                          : catSleepy
-                            ? "sleepy"
-                            : "awake"
-                      }
-                      accessories={companion.accessories}
-                      focus={
-                        catSavedWord
-                          ? "celebrating"
-                          : isDeepReading
-                            ? "deep_focus"
-                            : catSleepy
-                              ? "sleep"
-                              : selection
-                                ? "curious"
-                                : catState
-                      }
-                      gazeProgress={gazeProgress}
-                      pose={
-                        isDeepReading
-                          ? undefined
-                          : catTap
-                            ? "celebrate"
-                            : catSavedWord
-                              ? "celebrate"
-                              : catGreeting
-                                ? "greet"
-                                : undefined
-                      }
-                      label={`Ver a ${companion.name}`}
-                      onClick={onCatTap}
-                      bubbleMessage={stallBubble}
-                      onBubbleClick={onStallBubbleClick}
-                    />
-                  );
-                })()}
+                      : scrollRatio
+                  }
+                  pose={
+                    isDeepReading
+                      ? undefined
+                      : catTap
+                        ? "celebrate"
+                        : catSavedWord
+                          ? "celebrate"
+                          : catGreeting
+                            ? "greet"
+                            : undefined
+                  }
+                  label={`Ver a ${companion.name}`}
+                  onClick={onCatTap}
+                  bubbleMessage={stallBubble}
+                  onBubbleClick={onStallBubbleClick}
+                />
               </div>
-            </>
-          ) : null}
-        </aside>
+            ) : null
+          }
+          ttsSnap={ttsSnap}
+          onTogglePlayPause={() => {
+            const ctl = ttsRef.current;
+            if (!ctl) return;
+            if (ttsSnap.status === "speaking") ctl.pause("user");
+            else if (ttsSnap.status === "paused") ctl.resume();
+          }}
+          onPrevSentence={() => ttsRef.current?.prevSentence()}
+          onNextSentence={() => ttsRef.current?.nextSentence()}
+          onCycleSpeed={() => void ttsRef.current?.cycleRate(TTS_PLAYER_RATES)}
+          onOpenVoiceSelector={() => setTtsConsentOpen(true)}
+          onCaptureWord={handleTtsCaptureWord}
+          onStopAudio={() => ttsRef.current?.stop("user")}
+          onOpenCatCorner={onCatTap}
+        />
       ) : null}
 
       {/* Regla de enfoque: velo de papel con una franja clara que
@@ -7007,24 +7180,6 @@ export default function Reader({
         </div>
       ) : null}
 
-      {/* Chip discreto de la sesión de voz: no captura la lectura y
-          en foco profundo se reduce a la etiqueta de estado. */}
-      <TtsNowPlaying
-        snap={ttsSnap}
-        minimal={catState === "deep_focus"}
-        onPauseResume={() => {
-          const ctl = ttsRef.current;
-          if (!ctl) return;
-          if (ttsSnap.status === "speaking") ctl.pause("user");
-          else if (ttsSnap.status === "paused") ctl.resume();
-        }}
-        onPrevSentence={() => ttsRef.current?.prevSentence()}
-        onNextSentence={() => ttsRef.current?.nextSentence()}
-        onCycleRate={() => void ttsRef.current?.cycleRate(TTS_PLAYER_RATES)}
-        onCaptureWord={handleTtsCaptureWord}
-        onSelectKittenVoice={(voiceId) => ttsRef.current?.setKittenVoice?.(voiceId)}
-        onStop={() => ttsRef.current?.stop("user")}
-      />
       {ttsCapturedToast ? (
         <div className="reader-hint-toast reader-hint-toast--captured" role="status" aria-live="polite">
           ★ Guardada en Cuaderno: <strong>{ttsCapturedToast}</strong>
@@ -7081,3 +7236,5 @@ export default function Reader({
     </div>
   );
 }
+
+export { BilingueParagraph };

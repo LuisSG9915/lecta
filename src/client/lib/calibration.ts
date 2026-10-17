@@ -292,3 +292,6 @@ export async function recordCalibration(
   }
   return { knowledge, words: saved };
 }
+
+export { recordSilentCalibration } from "./knowledge";
+

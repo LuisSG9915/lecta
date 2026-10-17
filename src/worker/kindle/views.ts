@@ -919,7 +919,9 @@ export function renderHomeView(options: {
         <h1 style="margin-top:0;">Lecta para Kindle y E-ink</h1>
         <p>Lee tu biblioteca sin sobrecargar el procesador del Kindle. Páginas limpias, sincronización automática de posición y consulta rápida de definiciones.</p>
         <p style="margin-top: 20px;">
-          <a href="/k/login" class="btn btn-primary" style="font-size: 1.15rem; padding: 12px 24px;">Iniciar sesión en mi cuenta</a>
+          <a href="/kindle" class="btn btn-primary" style="font-size: 1.15rem; padding: 12px 24px; display: inline-block;">Vincular con código (1 toque)</a>
+          <br /><br />
+          <a href="/k/login" style="font-size: 0.95rem; color: #555; text-decoration: underline;">O entrar con correo y contraseña</a>
         </p>
       </div>
     `;
@@ -1020,6 +1022,54 @@ export function renderLoginView(options: {
 
   return renderBaseHtml({
     title: "Iniciar sesión",
+    user,
+    bodyHtml,
+  });
+}
+
+export function renderKindleLinkView(options: {
+  code: string;
+  user?: KindleUser | null;
+}): string {
+  const { code, user = null } = options;
+
+  const bodyHtml = `
+    <div class="card" style="max-width: 520px; margin: 2rem auto; text-align: center; padding: 2.5rem 1.5rem;">
+      <h1 style="font-size: 1.6rem; margin-top: 0; color: #111;">Vincular tu Kindle</h1>
+      <p style="color: #444; font-size: 1rem; line-height: 1.5; margin: 1rem 0;">
+        Introduce este código de 4 letras en tu celular o PC (donde tengas abierta tu sesión de Lecta en <strong>Cuenta → Conectar mi Kindle</strong>):
+      </p>
+      <div style="font-size: 3.5rem; font-weight: bold; letter-spacing: 0.6rem; margin: 1.5rem 0; color: #d97706; font-family: monospace;">
+        ${escapeHtml(code)}
+      </div>
+      <p style="color: #666; font-size: 0.9rem;">
+        El dispositivo se conectará automáticamente al instante.<br/>
+        <a href="/k/login" style="display: inline-block; margin-top: 1rem; color: #555; text-decoration: underline;">O inicia sesión con correo y contraseña</a>
+      </p>
+    </div>
+    <script>
+      (function poll() {
+        fetch('/api/kindle/status?code=${encodeURIComponent(code)}')
+          .then(function(r) { return r.json(); })
+          .then(function(data) {
+            if (data && data.linked) {
+              window.location.href = data.redirectUrl || '/k';
+            } else {
+              setTimeout(poll, 3000);
+            }
+          })
+          .catch(function() {
+            setTimeout(poll, 4000);
+          });
+      })();
+    </script>
+    <noscript>
+      <meta http-equiv="refresh" content="5" />
+    </noscript>
+  `;
+
+  return renderBaseHtml({
+    title: "Vincular Kindle",
     user,
     bodyHtml,
   });

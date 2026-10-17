@@ -392,3 +392,56 @@ export function createSpeaker(
     },
   };
 }
+
+export function stopSystemVoice(): void {
+  if (typeof window !== "undefined" && "speechSynthesis" in window) {
+    try {
+      window.speechSynthesis.cancel();
+    } catch {
+      // ignore
+    }
+  }
+}
+
+export async function speakWithSystemVoice(
+  text: string,
+  options?: { voiceId?: string; rate?: number; language?: string },
+): Promise<void> {
+  if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+    return;
+  }
+  const synth = window.speechSynthesis;
+  try {
+    synth.cancel();
+  } catch {
+    // ignore
+  }
+
+  const voices = await ensureVoices(500);
+  const { voice, defaultLangTag } = pickVoiceForLanguage(voices, options?.language ?? "es");
+
+  return new Promise<void>((resolve) => {
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = voice?.lang ?? defaultLangTag;
+    if (voice) utterance.voice = voice;
+    if (options?.rate) utterance.rate = options.rate;
+
+    let settled = false;
+    const settle = () => {
+      if (!settled) {
+        settled = true;
+        resolve();
+      }
+    };
+
+    utterance.onend = settle;
+    utterance.onerror = settle;
+    setTimeout(settle, 10_000);
+
+    try {
+      synth.speak(utterance);
+    } catch {
+      settle();
+    }
+  });
+}

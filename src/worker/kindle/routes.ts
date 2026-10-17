@@ -22,6 +22,7 @@ import {
 import {
   renderChapterPrepView,
   renderHomeView,
+  renderKindleLinkView,
   renderLoginView,
   renderReaderView,
   renderLookupView,
@@ -34,7 +35,177 @@ import {
   type CatPageNoteItem,
 } from "./views";
 
+export interface KindleLinkRecord {
+  code: string;
+  status: "pending" | "linked" | "expired";
+  createdAt: number;
+  userToken?: string;
+  userId?: string;
+  redirectUrl?: string;
+}
+
+export const kindleLinkCodes = new Map<string, KindleLinkRecord>();
+
+export function cleanExpiredKindleCodes() {
+  const cutoff = Date.now() - 10 * 60_000;
+  for (const [code, rec] of kindleLinkCodes.entries()) {
+    if (rec.createdAt < cutoff) {
+      kindleLinkCodes.delete(code);
+    }
+  }
+}
+
+export async function handleKindleLinkPage(c: any) {
+  cleanExpiredKindleCodes();
+  const session = await getSession(c);
+  if (session?.user) {
+    return c.redirect("/k");
+  }
+
+  // Generar código temporal de 4 letras al entrar a /kindle desde el e-reader
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // Sin O/0 ni I/1 para evitar confusiones
+  let code = "";
+  for (let i = 0; i < 4; i++) {
+    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+
+  const record: KindleLinkRecord = {
+    code,
+    status: "pending",
+    createdAt: Date.now(),
+  };
+  kindleLinkCodes.set(code, record);
+
+  const db = (c.env as any).DB;
+  if (db?.prepare) {
+    try {
+      await db.prepare(
+        `INSERT INTO kindle_link_codes (code, status, created_at) VALUES (?, 'pending', unixepoch())`
+      ).bind(code).run();
+    } catch {}
+  }
+
+  return c.html(renderKindleLinkView({ code, user: null }));
+}
+
+export async function handleKindleLinkAction(c: any) {
+  cleanExpiredKindleCodes();
+  const body = await c.req.json().catch(() => null);
+  const code = typeof body?.code === "string" ? body.code.trim().toUpperCase() : "";
+  let userSessionToken = typeof body?.userSessionToken === "string" ? body.userSessionToken.trim() : "";
+
+  const session = await getSession(c);
+  if (!userSessionToken && session?.session?.token) {
+    userSessionToken = session.session.token;
+  }
+  if (!userSessionToken) {
+    const cookieHeader = c.req.header("cookie") || "";
+    const match = cookieHeader.match(/(?:better-auth\.session_token|__Secure-better-auth\.session_token)=([^;]+)/);
+    if (match) userSessionToken = match[1];
+  }
+
+  let record = kindleLinkCodes.get(code);
+  const db = (c.env as any).DB;
+  if (!record && db?.prepare) {
+    try {
+      const d1Record = await db.prepare(
+        `SELECT * FROM kindle_link_codes WHERE code = ? AND status = 'pending'`
+      ).bind(code).first();
+      if (d1Record) {
+        record = {
+          code,
+          status: "pending",
+          createdAt: Number(d1Record.created_at) * 1000 || Date.now(),
+        };
+      }
+    } catch {}
+  }
+
+  if (!record || record.status !== "pending") {
+    return c.json({ error: "Código inválido o expirado" }, 400);
+  }
+
+  // Redirigir a la página exacta del libro actual si el usuario tiene posición previa
+  let redirectUrl = "/k";
+  if (session?.user?.id) {
+    try {
+      const pos = await withClient(c.env, (client) =>
+        client.query(
+          `SELECT book_hash AS "bookHash" FROM lecta_user_positions WHERE user_id = $1 ORDER BY updated_at DESC LIMIT 1`,
+          [session.user.id],
+        ).then((res) => res.rows[0]),
+      );
+      if (pos?.bookHash) {
+        redirectUrl = `/k/read/${pos.bookHash}`;
+      }
+    } catch {}
+  }
+
+  record.status = "linked";
+  record.userToken = userSessionToken;
+  record.userId = session?.user?.id;
+  record.redirectUrl = redirectUrl;
+  kindleLinkCodes.set(code, record);
+
+  if (db?.prepare) {
+    try {
+      await db.prepare(
+        `UPDATE kindle_link_codes SET status = 'linked', user_token = ? WHERE code = ?`
+      ).bind(userSessionToken, code).run();
+    } catch {}
+  }
+
+  return c.json({ success: true, redirectUrl });
+}
+
+export async function handleKindleStatus(c: any) {
+  cleanExpiredKindleCodes();
+  const code = (c.req.query("code") || "").trim().toUpperCase();
+  if (!code) {
+    return c.json({ error: "Código no proporcionado" }, 400);
+  }
+
+  let record = kindleLinkCodes.get(code);
+  const db = (c.env as any).DB;
+  if (!record && db?.prepare) {
+    try {
+      const d1Record = await db.prepare(
+        `SELECT * FROM kindle_link_codes WHERE code = ?`
+      ).bind(code).first();
+      if (d1Record) {
+        record = {
+          code,
+          status: d1Record.status as any,
+          createdAt: Number(d1Record.created_at) * 1000 || Date.now(),
+          userToken: d1Record.user_token,
+        };
+      }
+    } catch {}
+  }
+
+  if (!record) {
+    return c.json({ error: "Código no encontrado" }, 404);
+  }
+
+  if (record.status === "linked") {
+    if (record.userToken) {
+      c.header(
+        "Set-Cookie",
+        `better-auth.session_token=${encodeURIComponent(record.userToken)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000`,
+      );
+    }
+    return c.json({ linked: true, redirectUrl: record.redirectUrl || "/k" });
+  }
+
+  return c.json({ linked: false, status: record.status });
+}
+
 export const kindleRoutes = new Hono<{ Bindings: WorkerEnv }>();
+
+kindleRoutes.get("/kindle", handleKindleLinkPage);
+kindleRoutes.get("/link", handleKindleLinkPage);
+kindleRoutes.get("/api/kindle/status", handleKindleStatus);
+kindleRoutes.post("/api/kindle/link", handleKindleLinkAction);
 
 // Cabeceras anti-caché para todas las vistas HTML del Kindle:
 // garantiza que al refrescar en el Kindle siempre se vean los últimos cambios.

@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { deterministicPageRecapFallback, requestPageRecap } from "./page-recap";
+import {
+  deterministicPageRecapFallback,
+  requestPageRecap,
+  requestLastPagesRecap,
+} from "./page-recap";
 import * as accountFetchModule from "./account-fetch";
 
 describe("page-recap", () => {
@@ -54,4 +58,39 @@ describe("page-recap", () => {
     expect(res.bullets.length).toBeGreaterThanOrEqual(1);
     expect(res.hookQuestion).toBe("¿Cómo continúa el hilo de este pasaje?");
   });
+
+  it("requestLastPagesRecap strictly limits analysis to the last 3 pages", async () => {
+    let capturedBody = "";
+    vi.spyOn(accountFetchModule, "accountFetch").mockImplementationOnce(async (_url, init) => {
+      capturedBody = String(init?.body ?? "");
+      return {
+        ok: true,
+        json: async () => ({
+          bullets: ["Punto 1", "Punto 2", "Punto 3"],
+          hookQuestion: "¿Qué pasará ahora?",
+        }),
+      } as unknown as Response;
+    });
+
+    const pages = [
+      "Página 1: muy antigua que no debe incluirse.",
+      "Página 2: también antigua que debe quedar excluida.",
+      "Página 3: la antepenúltima página leída.",
+      "Página 4: la penúltima página leída.",
+      "Página 5: la última página leída.",
+    ];
+
+    const res = await requestLastPagesRecap({
+      lastPagesText: pages,
+      bookTitle: "Libro Mágico",
+    });
+
+    expect(capturedBody).toContain("Página 3");
+    expect(capturedBody).toContain("Página 4");
+    expect(capturedBody).toContain("Página 5");
+    expect(capturedBody).not.toContain("Página 1");
+    expect(capturedBody).not.toContain("Página 2");
+    expect(res.bullets).toHaveLength(3);
+  });
 });
+

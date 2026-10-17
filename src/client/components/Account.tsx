@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { authClient } from "../lib/auth";
+import { accountFetch } from "../lib/account-fetch";
 import { PENDING_DELETE_KEY } from "../lib/account-cleanup";
 import {
   captureDbScope,
@@ -205,6 +206,43 @@ export default function Account({
   const [loadingSampleLang, setLoadingSampleLang] = useState<string | null>(null);
   const [cachedDictWords, setCachedDictWords] = useState<number | null>(null);
   const [nativeLanguage, setNativeLanguage] = useState<string>(() => loadNativeLanguage());
+
+  // Track 5: Vinculación instantánea con Kindle
+  const [kindleCode, setKindleCode] = useState("");
+  const [kindlePairLoading, setKindlePairLoading] = useState(false);
+  const [kindlePairMessage, setKindlePairMessage] = useState("");
+  const [kindlePairError, setKindlePairError] = useState("");
+  const [showKindlePairForm, setShowKindlePairForm] = useState(false);
+
+  const handleLinkKindle = async (e: FormEvent) => {
+    e.preventDefault();
+    const cleanCode = kindleCode.trim().toUpperCase();
+    if (cleanCode.length !== 4) {
+      setKindlePairError("El código debe tener exactamente 4 caracteres.");
+      return;
+    }
+    setKindlePairLoading(true);
+    setKindlePairError("");
+    setKindlePairMessage("");
+    try {
+      const res = await accountFetch("/api/kindle/link", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ code: cleanCode }),
+      });
+      const data = (await res.json().catch(() => null)) as { success?: boolean; error?: string } | null;
+      if (res.ok && data?.success) {
+        setKindlePairMessage("¡Kindle vinculado con éxito! Tu dispositivo se conectará automáticamente.");
+        setKindleCode("");
+      } else {
+        setKindlePairError(data?.error || "Código inválido o expirado. Revisa tu Kindle.");
+      }
+    } catch {
+      setKindlePairError("Error al contactar al servidor.");
+    } finally {
+      setKindlePairLoading(false);
+    }
+  };
 
   const changeNativeLanguage = (val: string) => {
     setNativeLanguage(val);
@@ -1527,11 +1565,63 @@ export default function Account({
             <h3 className="eyebrow">Lectura en Kindle y Tinta Electrónica</h3>
             <p className="meta">
               ¿Tienes un Kindle o lector de tinta electrónica? Abre{" "}
-              <a href="/k" target="_blank" rel="noreferrer">
-                /k
+              <a href="/kindle" target="_blank" rel="noreferrer">
+                /kindle
               </a>{" "}
-              desde su navegador para leer tus libros en una interfaz ultra-ligera, sin JavaScript y sincronizada con tu cuenta.
+              desde su navegador para conectarlo en 1 toque con un código de 4 letras y sincronizar tu avance exacto de lectura.
             </p>
+            {!showKindlePairForm ? (
+              <button
+                type="button"
+                className="btn btn--secondary"
+                style={{ marginTop: "0.5rem" }}
+                onClick={() => setShowKindlePairForm(true)}
+              >
+                📲 Conectar mi Kindle
+              </button>
+            ) : (
+              <form onSubmit={handleLinkKindle} style={{ marginTop: "0.75rem", maxWidth: "340px" }}>
+                <label htmlFor="kindle-code-input" className="meta" style={{ display: "block", marginBottom: "0.3rem" }}>
+                  Código de 4 letras que aparece en tu Kindle:
+                </label>
+                <div style={{ display: "flex", gap: "0.5rem" }}>
+                  <input
+                    id="kindle-code-input"
+                    type="text"
+                    maxLength={4}
+                    value={kindleCode}
+                    onChange={(e) => setKindleCode(e.target.value.toUpperCase())}
+                    placeholder="Ej. K7M4"
+                    style={{
+                      fontFamily: "monospace",
+                      fontSize: "1.2rem",
+                      letterSpacing: "0.2rem",
+                      textAlign: "center",
+                      textTransform: "uppercase",
+                      width: "120px",
+                    }}
+                    autoFocus
+                  />
+                  <button
+                    type="submit"
+                    className="btn btn--primary"
+                    disabled={kindlePairLoading || kindleCode.trim().length !== 4}
+                  >
+                    {kindlePairLoading ? "Vinculando..." : "Vincular"}
+                  </button>
+                </div>
+                {kindlePairMessage ? (
+                  <p className="meta" style={{ color: "var(--accent, #16a34a)", marginTop: "0.5rem", fontWeight: 500 }}>
+                    {kindlePairMessage}
+                  </p>
+                ) : null}
+                {kindlePairError ? (
+                  <p className="meta" style={{ color: "var(--danger, #dc2626)", marginTop: "0.5rem" }}>
+                    {kindlePairError}
+                  </p>
+                ) : null}
+              </form>
+            )}
           </div>
 
           <div className="setting-block">

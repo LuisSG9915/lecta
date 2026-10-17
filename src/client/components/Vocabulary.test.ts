@@ -629,5 +629,90 @@ describe("Reestructura del Cuaderno", () => {
 
     expect(host.querySelector(".nb-word-detail")).toBeTruthy();
   });
+
+  describe("Cuaderno Unificado y Repaso de 1 Minuto (Track 4)", () => {
+    it("renderiza la vista unificada con hero header, botón de repaso rápido y buscador", async () => {
+      const wordsData = [
+        {
+          id: "1",
+          word: "solsticio",
+          shortDefinition: "Momento del año en que el sol alcanza su mayor altura.",
+          bookTitle: "Cien años de soledad",
+          sentenceContext: "Esperaban con paciencia el solsticio de verano.",
+          dueTimestamp: Date.now() - 1000,
+          stability: 1.5,
+        },
+        {
+          id: "2",
+          word: "crepúsculo",
+          shortDefinition: "Claridad que hay desde que raya el día hasta que sale el sol.",
+          bookTitle: "El Aleph",
+          sentenceContext: "Caminaron bajo el suave crepúsculo.",
+          dueTimestamp: Date.now() + 5000,
+          stability: 3.0,
+        },
+      ];
+
+      const onStartQuickReview = vi.fn();
+      const onDeleteWord = vi.fn();
+
+      await act(async () => {
+        root.render(
+          h(Vocabulary, {
+            words: wordsData,
+            onStartQuickReview,
+            onDeleteWord,
+            onClose: vi.fn(),
+          }),
+        );
+        for (let i = 0; i < 4; i++) await Promise.resolve();
+      });
+
+      expect(host.textContent).toContain("Tu Cuaderno");
+      expect(host.textContent).toContain("2 palabras guardadas de tus lecturas");
+
+      const ctaBtn = host.querySelector<HTMLButtonElement>(".notebook-quick-review-cta")!;
+      expect(ctaBtn).not.toBeNull();
+      expect(ctaBtn.textContent).toContain("Repaso rápido (2 palabras)");
+      expect(ctaBtn.textContent).toContain("1 min · 🐱");
+
+      // Al tocar el CTA llama a onStartQuickReview con las rondas calculadas
+      await act(async () => {
+        ctaBtn.click();
+      });
+      expect(onStartQuickReview).toHaveBeenCalledTimes(1);
+      const rounds = onStartQuickReview.mock.calls[0][0];
+      expect(rounds.length).toBe(2);
+      expect(rounds[0].item.word).toBe("solsticio");
+      expect(rounds[0].assignedGame).toBe("flash-choice");
+      expect(rounds[1].item.word).toBe("crepúsculo");
+      expect(rounds[1].assignedGame).toBe("word-scramble");
+
+      // Buscador instantáneo
+      const searchInput = host.querySelector<HTMLInputElement>(".notebook-search-input")!;
+      expect(searchInput).not.toBeNull();
+      await act(async () => {
+        const setter = Object.getOwnPropertyDescriptor(
+          HTMLInputElement.prototype,
+          "value",
+        )!.set!;
+        setter.call(searchInput, "Aleph");
+        searchInput.dispatchEvent(new Event("input", { bubbles: true }));
+        searchInput.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+
+      expect(host.textContent).toContain("crepúsculo");
+      expect(host.textContent).not.toContain("solsticio");
+
+      // Botón de eliminar
+      const deleteBtn = host.querySelector<HTMLButtonElement>(".notebook-word-delete-btn")!;
+      expect(deleteBtn).not.toBeNull();
+      await act(async () => {
+        deleteBtn.click();
+      });
+      expect(onDeleteWord).toHaveBeenCalledWith("2");
+    });
+  });
 });
+
 

@@ -63,6 +63,7 @@ export interface SavedWord {
   language: string;
   context?: string;
   bookHash?: string;
+  bookTitle?: string;
   // Acepción del catálogo elegida al guardar (fila de lexicon_senses).
   // El entry_id es int8 > 2^53 y se guarda como string. Las palabras
   // guardadas antes del cambio conservan un number truncado (…300 por

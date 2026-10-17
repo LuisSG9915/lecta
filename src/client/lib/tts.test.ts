@@ -21,13 +21,23 @@ import {
   noteTtsProgrammaticScroll,
   withTtsProgrammaticNav,
 } from "./ttsGuards";
-import { createTtsController, type TtsControllerDeps } from "./ttsController";
+import {
+  createTtsController,
+  playSentencesLoop,
+  stopAllTtsPlayback,
+  type TtsControllerDeps,
+} from "./ttsController";
 import {
   KITTEN_VOICES,
   type TtsSnapshot,
   type TtsTargetContext,
 } from "./ttsTypes";
-import { normalizeEnglishText, type KittenTtsEngine } from "./kittenTtsEngine";
+import {
+  normalizeEnglishText,
+  kittenTtsEngine,
+  KittenTtsEngine,
+} from "./kittenTtsEngine";
+import { trimLeadingAndTrailingSilence } from "../workers/kitten-tts.worker";
 
 const section = (html: string) => {
   const el = document.createElement("div");
@@ -267,6 +277,116 @@ describe("kittenTtsEngine", () => {
     expect(normalized).toContain("forty-two steps");
     expect(normalized).not.toContain("—");
     expect(normalized).not.toContain('"');
+  });
+
+  it("recorta silencios muertos al inicio y final manteniendo un colchón de seguridad", () => {
+    const sampleRate = 24000;
+    const total = sampleRate; // 1 segundo
+    const samples = new Float32Array(total);
+    for (let i = 5000; i < 15000; i++) {
+      samples[i] = 0.5;
+    }
+    const trimmed = trimLeadingAndTrailingSilence(samples, 0.003);
+    expect(trimmed.length).toBeLessThan(total);
+    expect(trimmed.length).toBeCloseTo(15000 - 5000 + 960 * 2, -2);
+    expect(trimmed.some((v) => v > 0.4)).toBe(true);
+  });
+
+  it("descarga el modelo con ReadableStream reportando progreso y guardándolo en CacheStorage", async () => {
+    const mockCache = {
+      match: vi.fn().mockResolvedValue(null),
+      put: vi.fn().mockResolvedValue(undefined),
+    };
+    const mockCaches = {
+      open: vi.fn().mockResolvedValue(mockCache),
+      match: vi.fn().mockResolvedValue(null),
+      delete: vi.fn().mockResolvedValue(true),
+    };
+    vi.stubGlobal("caches", mockCaches);
+
+    const chunk1 = new Uint8Array(100);
+    const chunk2 = new Uint8Array(100);
+    let readCount = 0;
+    const mockStream = {
+      getReader: () => ({
+        read: async () => {
+          readCount++;
+          if (readCount === 1) return { done: false, value: chunk1 };
+          if (readCount === 2) return { done: false, value: chunk2 };
+          return { done: true, value: undefined };
+        },
+      }),
+    };
+
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      body: mockStream,
+      headers: new Headers({ "content-length": "200" }),
+    } as unknown as Response);
+
+    const progressReports: number[] = [];
+    const engine = new KittenTtsEngine();
+    await engine.downloadModelWithProgress((p) => {
+      progressReports.push(p.percent);
+    }, "/mock-model.onnx");
+
+    expect(progressReports).toContain(50);
+    expect(progressReports).toContain(100);
+    expect(mockCache.put).toHaveBeenCalledWith(
+      "/mock-model.onnx",
+      expect.any(Response),
+    );
+
+    fetchSpy.mockRestore();
+    vi.unstubAllGlobals();
+  });
+
+  it("speakSentenceWithLookahead pre-sintetiza N+1 y N+2 automáticamente", async () => {
+    const engine = new KittenTtsEngine();
+    const prefetchSpy = vi.spyOn(engine, "prefetchUpcoming");
+    const sentences = [
+      "Sentence zero.",
+      "Sentence one.",
+      "Sentence two.",
+      "Sentence three.",
+    ];
+
+    await engine.speakSentenceWithLookahead({
+      sentences,
+      currentIndex: 0,
+      voiceId: "expr-voice-2-f",
+      speed: 1,
+    });
+
+    expect(prefetchSpy).toHaveBeenCalledWith(sentences, 1, "expr-voice-2-f", 1, 2);
+  });
+
+  it("playSentencesLoop reproduce con Kitten TTS si el modelo está descargado", async () => {
+    const isDownloadedSpy = vi.spyOn(kittenTtsEngine, "isModelDownloaded").mockResolvedValue(true);
+    const speakSpy = vi.spyOn(kittenTtsEngine, "speakSentenceWithLookahead").mockResolvedValue();
+
+    const highlights: number[] = [];
+    const onFinish = vi.fn();
+    const sentences = ["One.", "Two."];
+
+    await playSentencesLoop({
+      sentences,
+      startIndex: 0,
+      engineMode: "kitten-hd",
+      voiceId: "expr-voice-2-f",
+      speed: 1,
+      onHighlightSentence: (i) => highlights.push(i),
+      onFinishPage: onFinish,
+      isCancelled: () => false,
+    });
+
+    expect(speakSpy).toHaveBeenCalledTimes(2);
+    expect(onFinish).toHaveBeenCalledTimes(1);
+
+    expect(() => stopAllTtsPlayback()).not.toThrow();
+
+    isDownloadedSpy.mockRestore();
+    speakSpy.mockRestore();
   });
 });
 

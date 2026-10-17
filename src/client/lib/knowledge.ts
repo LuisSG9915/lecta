@@ -3,6 +3,12 @@ import { isLearnablePos, measuredZipf } from "../../shared/lexicon";
 import { menteBaseForms } from "../../shared/word-form";
 import { knowledgeArbWins } from "../../shared/reading-data";
 import { calibrationBankZipf } from "../../shared/calibration-bank";
+import {
+  adjustThetaOnEasyPin,
+  loadUserTheta,
+  saveUserTheta,
+  wordDifficulty,
+} from "./profile-models";
 
 // Modelo de conocimiento del lector: qué palabras conoce. Dos piezas
 // puras y deterministas:
@@ -592,3 +598,29 @@ export function vocabLevelLabel(
   if (threshold < 3.5) return "medio";
   return "en desarrollo";
 }
+
+/**
+ * Calibración Silenciosa (Track 4):
+ * Ajusta automáticamente el nivel theta del lector sin exámenes ni bloqueos
+ * cuando consulta ('lookup') o guarda ('save') una palabra.
+ */
+export function recordSilentCalibration(
+  word: string,
+  event: "lookup" | "save",
+  language = "es",
+): void {
+  try {
+    const cleanWord = word.trim().toLowerCase();
+    const currentTheta = loadUserTheta(3.0, language);
+    const zipf = calibrationBankZipf(cleanWord, language);
+    const bw = wordDifficulty(zipf);
+    const step = event === "save" ? 0.05 : 0.02;
+    const { newTheta, adjusted } = adjustThetaOnEasyPin(currentTheta, bw, step);
+    if (adjusted) {
+      saveUserTheta(newTheta, language);
+    }
+  } catch {
+    // Silencioso
+  }
+}
+

@@ -11,7 +11,7 @@
 
 import { buildSentenceMap, nodeAtPath } from "./ttsSentences";
 import { clearTtsMarks, markSentence, ttsMarkElement } from "./ttsMarks";
-import { createSpeaker, ensureVoices, type TtsSpeaker } from "./ttsSpeech";
+import { createSpeaker, ensureVoices, speakWithSystemVoice, stopSystemVoice, type TtsSpeaker } from "./ttsSpeech";
 import { loadTtsSettings, saveTtsSettings } from "./ttsSettings";
 import { isTtsSupported } from "./ttsSettings";
 import { kittenTtsEngine, type KittenTtsEngine } from "./kittenTtsEngine";
@@ -302,6 +302,7 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
           .synthesize(item.text, settings.kittenVoice, settings.rate)
           .then((buf) => {
             if (destroyed || snap.status !== "speaking") return;
+            lookaheadBuffers.set(cursor, buf);
             engine.play(buf, settings.rate, onEnded);
           })
           .catch(() => {
@@ -501,11 +502,11 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
       publish({ status: "paused", pauseReason: reason });
       emitPause(reason);
       // Pausa por ocultarse: si la pestaña no vuelve, la sesión se
-      // cierra sola — una voz congelada a la espera es un zombie.
+      // cierra sola en vez de quedar colgada.
       if (reason === "visibility") {
         hiddenTimer = window.setTimeout(() => {
           hiddenTimer = 0;
-          if (snap.status === "paused" && snap.pauseReason === "visibility" && document.hidden)
+          if (snap.status === "paused" && snap.pauseReason === "visibility")
             finish("visibility");
         }, HIDDEN_STOP_MS);
       }
@@ -756,4 +757,58 @@ export function sentenceStillValid(
 ): boolean {
   const node = nodeAtPath(root, item.nodePath);
   return node?.nodeType === Node.TEXT_NODE && Boolean(node.nodeValue);
+}
+
+export async function playSentencesLoop(params: {
+  sentences: string[];
+  startIndex: number;
+  engineMode: "system" | "kitten-hd" | "browser" | "kitten-neural";
+  voiceId: string;
+  speed: number;
+  onHighlightSentence: (index: number) => void;
+  onFinishPage: () => void;
+  isCancelled: () => boolean;
+}): Promise<void> {
+  const {
+    sentences,
+    startIndex,
+    engineMode,
+    voiceId,
+    speed,
+    onHighlightSentence,
+    onFinishPage,
+    isCancelled,
+  } = params;
+
+  const canUseKitten =
+    (engineMode === "kitten-hd" || engineMode === "kitten-neural") &&
+    (await kittenTtsEngine.isModelDownloaded());
+
+  for (let i = startIndex; i < sentences.length; i++) {
+    if (isCancelled()) break;
+
+    if (canUseKitten) {
+      // Reproduce la oración i y pre-sintetiza automáticamente i+1 e i+2 en segundo plano
+      await kittenTtsEngine.speakSentenceWithLookahead({
+        sentences,
+        currentIndex: i,
+        voiceId,
+        speed,
+        onSentenceAudioStart: () => onHighlightSentence(i),
+      });
+    } else {
+      // Motor instantáneo por defecto (0 MB de descarga)
+      onHighlightSentence(i);
+      await speakWithSystemVoice(sentences[i], { voiceId, rate: speed });
+    }
+  }
+
+  if (!isCancelled()) {
+    onFinishPage();
+  }
+}
+
+export function stopAllTtsPlayback(): void {
+  kittenTtsEngine.stop();
+  stopSystemVoice();
 }

@@ -169,3 +169,19 @@ export function dayLabel(dayKey: string): string {
     timeZone: "UTC",
   }).format(new Date(Date.UTC(y, m - 1, d, 12)));
 }
+
+// Inactividad mayor a 6 horas activa el resumen de bienvenida del gato
+export const INACTIVITY_RECAP_THRESHOLD_MS = 6 * 60 * 60_000;
+
+export function checkHasInactivityGap(
+  intervals: SavedInterval[],
+  bookHash: string,
+  now = Date.now(),
+  thresholdMs = INACTIVITY_RECAP_THRESHOLD_MS,
+): boolean {
+  const bookIntervals = intervals.filter((i) => i.bookHash === bookHash);
+  if (bookIntervals.length === 0) return false;
+  const lastEndedAt = Math.max(...bookIntervals.map((i) => i.endedAt));
+  return now - lastEndedAt >= thresholdMs;
+}
+

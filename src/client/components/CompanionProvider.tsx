@@ -195,6 +195,17 @@ type CompanionContextValue = {
   // escrita; si ya había una acción en curso resuelve sin hacer nada
   // — los botones deshabilitados hacen ese camino imposible por UI.
   care: (kind: CareKind) => Promise<void>;
+  // Track 5: Contexto de lectura para atajos del gato en Reader
+  readerContext?: CompanionReaderContext | null;
+  setReaderContext?: (ctx: CompanionReaderContext | null) => void;
+};
+
+export type CompanionReaderContext = {
+  pageText: string;
+  currentChapterIndex: number;
+  bookId: string;
+  sections?: any[];
+  toc?: any[];
 };
 
 const CompanionContext = createContext<CompanionContextValue | null>(null);
@@ -261,6 +272,7 @@ export function CompanionProvider({
   const [raw, setRaw] = useState<Loaded | null>(null);
   const [activeCare, setActiveCare] = useState<CareKind | null>(null);
   const [open, setOpen] = useState(false);
+  const [readerContext, setReaderContext] = useState<CompanionReaderContext | null>(null);
   // Capas modales vivas (hojas/diálogos/consultas) y el reporte de la
   // superficie: con cualquiera de ellos el festejo queda pendiente.
   const [modalLayers, setModalLayers] = useState(() => modalLayerCount());
@@ -522,6 +534,8 @@ export function CompanionProvider({
     closePanel,
     setCelebrationBlocked,
     care,
+    readerContext,
+    setReaderContext,
   };
 
   return (
@@ -539,6 +553,7 @@ export function CompanionProvider({
           onClose={closePanel}
           reducedMotion={reducedMotion}
           initialTab={panelTab}
+          readerContext={readerContext}
         />
       ) : null}
       {/* Inbox de festejos: montado mientras el juego está encendido

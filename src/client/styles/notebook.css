@@ -2588,3 +2588,427 @@
   }
 }
 
+/* ==========================================================================
+   Track 4: Tarjeta Única, Cuaderno Unificado y El Rincón de tu Gato
+   ========================================================================== */
+
+/* --- Tarjeta Única de Palabra (WordPanel) --- */
+.word-unified-card {
+  background: var(--surface-elevated, #201e1b);
+  color: var(--text-primary, #f5f2eb);
+  border-radius: 1.15rem;
+  padding: 1rem 1.1rem;
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.32), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  max-width: 440px;
+  width: 92vw;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.word-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.word-card-title-group {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.word-card-term {
+  font-size: 1.2rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.word-card-pos {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  opacity: 0.6;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.word-card-save-btn {
+  border: none;
+  border-radius: 999px;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  background: var(--accent-primary, #e6b86a);
+  color: #1a1815;
+  cursor: pointer;
+}
+
+.word-card-save-btn.is-saved {
+  background: rgba(120, 200, 140, 0.2);
+  color: #9be6b0;
+  cursor: default;
+}
+
+.word-card-audio-btn {
+  border: none;
+  background: transparent;
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 0.2rem;
+  line-height: 1;
+}
+
+.word-card-close-btn {
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 0.2rem;
+  line-height: 1;
+  opacity: 0.7;
+}
+.word-card-close-btn:hover {
+  opacity: 1;
+}
+
+.word-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.word-card-synonyms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.45rem;
+}
+
+.word-synonym-pill {
+  font-size: 0.74rem;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.word-card-short-def {
+  font-size: 0.95rem;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.word-card-context-box {
+  background: rgba(230, 184, 106, 0.09);
+  border-left: 3px solid var(--accent-primary, #e6b86a);
+  border-radius: 0.65rem;
+  padding: 0.65rem 0.8rem;
+}
+
+.word-card-context-label {
+  font-size: 0.74rem;
+  font-weight: 600;
+  opacity: 0.82;
+  margin-bottom: 0.25rem;
+}
+
+.word-card-context-text {
+  font-size: 0.86rem;
+  line-height: 1.4;
+  margin: 0;
+}
+
+.word-card-context-nuance {
+  font-style: italic;
+  opacity: 0.85;
+}
+
+.word-card-context-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.2rem 0;
+}
+
+.word-card-context-skeleton .skeleton-line {
+  height: 0.8rem;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  animation: pulse-skeleton 1.5s infinite ease-in-out;
+}
+
+.word-card-context-skeleton .skeleton-line.is-short {
+  width: 60%;
+}
+
+@keyframes pulse-skeleton {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+}
+
+/* --- Cuaderno Unificado + Botón de Repaso de 1 Minuto --- */
+.notebook-unified-container {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 1.5rem 1rem;
+}
+
+.notebook-hero-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.2rem;
+}
+
+.notebook-hero-copy .notebook-title {
+  font-size: 1.6rem;
+  font-weight: 800;
+  margin: 0 0 0.25rem;
+}
+
+.notebook-hero-copy .notebook-subtitle {
+  font-size: 0.88rem;
+  opacity: 0.75;
+  margin: 0;
+}
+
+.notebook-quick-review-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  border: none;
+  border-radius: 999px;
+  padding: 0.75rem 1.25rem;
+  background: var(--accent-primary, #e6b86a);
+  color: #1a1815;
+  font-weight: 700;
+  font-size: 0.92rem;
+  cursor: pointer;
+  box-shadow: 0 8px 22px rgba(230, 184, 106, 0.25);
+  transition: transform 140ms ease;
+}
+
+.notebook-quick-review-cta:hover {
+  transform: translateY(-1px);
+}
+
+.cta-badge {
+  background: rgba(0, 0, 0, 0.15);
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+}
+
+.notebook-search-bar {
+  margin-bottom: 1.2rem;
+}
+
+.notebook-search-input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  font-size: 0.95rem;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.notebook-words-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.notebook-word-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 0.9rem 1.1rem;
+  border-radius: 0.85rem;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.notebook-word-card-main {
+  flex: 1;
+}
+
+.notebook-word-top-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.35rem;
+}
+
+.notebook-word-lemma {
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.notebook-word-book-tag {
+  font-size: 0.75rem;
+  opacity: 0.65;
+}
+
+.notebook-word-def {
+  font-size: 0.9rem;
+  line-height: 1.4;
+  margin: 0.2rem 0;
+  opacity: 0.9;
+}
+
+.notebook-word-quote {
+  font-size: 0.82rem;
+  font-style: italic;
+  opacity: 0.7;
+  border-left: 2px solid rgba(255, 255, 255, 0.2);
+  margin: 0.4rem 0 0;
+  padding-left: 0.5rem;
+}
+
+.notebook-word-delete-btn {
+  border: none;
+  background: transparent;
+  color: inherit;
+  opacity: 0.4;
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 0.25rem;
+}
+.notebook-word-delete-btn:hover {
+  opacity: 0.9;
+}
+
+/* --- El Rincón de tu Gato (2 Pestañas) --- */
+.cat-corner-sheet {
+  max-width: 520px;
+  width: 94vw;
+  margin: 0 auto;
+}
+
+.cat-corner-header {
+  margin-bottom: 1rem;
+}
+
+.cat-corner-title-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.cat-corner-title {
+  font-size: 1.3rem;
+  font-weight: 800;
+  margin: 0;
+}
+
+.cat-corner-close-btn {
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: 1.2rem;
+  cursor: pointer;
+}
+
+.cat-corner-stage-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.cat-corner-speech-bubble {
+  font-size: 0.9rem;
+  font-style: italic;
+  text-align: center;
+  margin: 0.5rem 0 0;
+  opacity: 0.85;
+}
+
+.cat-corner-magic-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+
+.cat-magic-pill-btn {
+  border: 1px solid var(--accent-primary, #e6b86a);
+  background: rgba(230, 184, 106, 0.12);
+  color: inherit;
+  border-radius: 999px;
+  padding: 0.45rem 0.85rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.cat-magic-pill-btn:hover {
+  background: rgba(230, 184, 106, 0.22);
+}
+
+.cat-corner-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.4rem;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 0.3rem;
+  border-radius: 999px;
+  margin-top: 0.75rem;
+}
+
+.cat-corner-tab-btn {
+  border: none;
+  background: transparent;
+  color: inherit;
+  padding: 0.45rem 0.75rem;
+  border-radius: 999px;
+  font-size: 0.84rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.cat-corner-tab-btn.is-active {
+  background: var(--accent-primary, #e6b86a);
+  color: #1a1815;
+}
+
+.cat-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+}
+
+.cat-stat-card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 0.85rem;
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.cat-stat-value {
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin-bottom: 0.2rem;
+}
+
+.cat-stat-label {
+  font-size: 0.72rem;
+  opacity: 0.7;
+}
+
+

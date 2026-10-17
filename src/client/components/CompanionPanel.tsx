@@ -54,21 +54,14 @@ import {
   companionGreeting,
   type CareKind,
 } from "../lib/companion-interactions";
+import {
+  getCharactersOnPageWithoutSpoilers,
+  type CharacterCardInfo,
+} from "../lib/character-helper";
+import type { CompanionReaderContext } from "./CompanionProvider";
 
-export type CompanionPanelProps = {
-  state: GameState | null;
-  name: string;
-  equipped: EquippedItems;
-  accessories: string[];
-  mood: CatMood;
-  activeCare: CareKind | null;
-  onCare: (kind: CareKind) => Promise<void>;
-  onClose: () => void;
-  reducedMotion?: boolean;
-  initialTab?: CompanionTab;
-};
-
-export type CompanionTab = "care" | "rewards" | "closet" | "collection";
+export type CatCornerTab = "progress" | "customize";
+export type CompanionTab = CatCornerTab | "care" | "rewards" | "closet" | "collection";
 
 export const COMPANION_TABS: { id: CompanionTab; label: string }[] = [
   { id: "care", label: "Cuidado" },
@@ -76,6 +69,174 @@ export const COMPANION_TABS: { id: CompanionTab; label: string }[] = [
   { id: "closet", label: "Armario" },
   { id: "collection", label: "Vitrina" },
 ];
+
+export interface UnifiedCompanionPanelProps {
+  catName?: string;
+  catMoodMessage?: string;
+  streakDays?: number;
+  minutesReadToday?: number;
+  dailyGoalMinutes?: number;
+  wordsLearnedCount?: number;
+  isInsideReader?: boolean;
+
+  // Componentes hijos existentes que se montan limpiamente dentro de las 2 pestañas
+  renderStagePreview?: () => React.ReactNode; // CompanionStage.tsx
+  renderClosetGrid?: () => React.ReactNode; // CompanionCloset.tsx
+  renderJourneyMilestones?: () => React.ReactNode; // Resumen compacto de Journey.tsx
+
+  // Acciones mágicas de 1 toque cuando se abre desde Reader.tsx
+  onTriggerWhereWasI?: () => void;
+  onTriggerWhoIsOnPage?: () => void;
+  onClose: () => void;
+}
+
+export type CompanionPanelProps = Partial<UnifiedCompanionPanelProps> & {
+  state?: GameState | null;
+  name?: string;
+  equipped?: EquippedItems;
+  accessories?: string[];
+  mood?: CatMood;
+  activeCare?: CareKind | null;
+  onCare?: (kind: CareKind) => Promise<void>;
+  onClose: () => void;
+  reducedMotion?: boolean;
+  initialTab?: CompanionTab;
+  readerContext?: CompanionReaderContext | null;
+};
+
+export function CatCornerSheet({
+  catName = "Miso",
+  catMoodMessage,
+  streakDays = 0,
+  minutesReadToday = 0,
+  dailyGoalMinutes = 20,
+  wordsLearnedCount = 0,
+  isInsideReader = false,
+  renderStagePreview,
+  renderClosetGrid,
+  renderJourneyMilestones,
+  onTriggerWhereWasI,
+  onTriggerWhoIsOnPage,
+  onClose,
+}: UnifiedCompanionPanelProps & { onClose: () => void }) {
+  const [activeTab, setActiveTab] = useState<CatCornerTab>("progress");
+  const goalPercent = Math.min(
+    100,
+    Math.round((minutesReadToday / Math.max(1, dailyGoalMinutes)) * 100),
+  );
+
+  return (
+    <div
+      className="cat-corner-sheet"
+      role="dialog"
+      aria-label="El Rincón de tu Gato"
+    >
+      {/* Cabecera con el Escenario del Gato siempre visible arriba */}
+      <header className="cat-corner-header">
+        <div className="cat-corner-title-bar">
+          <h2 className="cat-corner-title">🐱 El Rincón de {catName}</h2>
+          <button
+            type="button"
+            className="cat-corner-close-btn"
+            onClick={onClose}
+            aria-label="Cerrar rincón del gato"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="cat-corner-stage-box">
+          {renderStagePreview ? renderStagePreview() : null}
+          {catMoodMessage ? (
+            <p className="cat-corner-speech-bubble">“{catMoodMessage}”</p>
+          ) : null}
+        </div>
+
+        {/* Atajos Mágicos de 1 toque si el lector tiene un libro abierto */}
+        {isInsideReader && (
+          <div className="cat-corner-magic-actions">
+            {onTriggerWhereWasI && (
+              <button
+                type="button"
+                className="cat-magic-pill-btn"
+                onClick={onTriggerWhereWasI}
+              >
+                ✨ ¿En qué me quedé? (15s)
+              </button>
+            )}
+            {onTriggerWhoIsOnPage && (
+              <button
+                type="button"
+                className="cat-magic-pill-btn"
+                onClick={onTriggerWhoIsOnPage}
+              >
+                👥 Personajes en esta página
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Selector simple de 2 Pestañas */}
+        <div className="cat-corner-tabs" role="tablist">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "progress"}
+            className={`cat-corner-tab-btn ${activeTab === "progress" ? "is-active" : ""}`}
+            onClick={() => setActiveTab("progress")}
+          >
+            🌱 Mi Progreso
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === "customize"}
+            className={`cat-corner-tab-btn ${activeTab === "customize" ? "is-active" : ""}`}
+            onClick={() => setActiveTab("customize")}
+          >
+            🎀 Personalizar Gato
+          </button>
+        </div>
+      </header>
+
+      {/* Contenido de la pestaña activa */}
+      <div className="cat-corner-body">
+        {activeTab === "progress" ? (
+          <div className="cat-progress-view">
+            <div className="cat-stats-grid">
+              <div className="cat-stat-card">
+                <span className="cat-stat-value">🔥 {streakDays} d</span>
+                <span className="cat-stat-label">Racha de lectura</span>
+              </div>
+              <div className="cat-stat-card">
+                <span className="cat-stat-value">
+                  ⏱️ {minutesReadToday}/{dailyGoalMinutes} m
+                </span>
+                <span className="cat-stat-label">
+                  Meta de hoy ({goalPercent}%)
+                </span>
+              </div>
+              <div className="cat-stat-card">
+                <span className="cat-stat-value">✨ {wordsLearnedCount}</span>
+                <span className="cat-stat-label">Palabras tuyas</span>
+              </div>
+            </div>
+
+            {renderJourneyMilestones && (
+              <div className="cat-journey-compact">
+                {renderJourneyMilestones()}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="cat-customize-view">
+            {renderClosetGrid ? renderClosetGrid() : null}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function withTryOn(
   accessories: string[],
@@ -90,18 +251,73 @@ function withTryOn(
   return [...filtered, tryOn];
 }
 
-export function CompanionPanel({
-  state,
-  name,
-  equipped,
-  accessories,
-  mood,
-  activeCare,
-  onCare,
-  onClose,
-  reducedMotion = false,
-  initialTab = "care",
-}: CompanionPanelProps) {
+export function CompanionPanel(props: CompanionPanelProps) {
+  if (props.renderStagePreview) {
+    return (
+      <CatCornerSheet
+        catName={props.catName ?? props.name ?? "Miso"}
+        catMoodMessage={props.catMoodMessage ?? "¡Listo para seguir leyendo!"}
+        streakDays={props.streakDays ?? props.state?.stats?.streakDays ?? 0}
+        minutesReadToday={
+          props.minutesReadToday ??
+          (props.state ? Math.round(props.state.stats.minutes) : 0)
+        }
+        dailyGoalMinutes={props.dailyGoalMinutes ?? 20}
+        wordsLearnedCount={
+          props.wordsLearnedCount ?? props.state?.stats?.saved ?? 0
+        }
+        isInsideReader={props.isInsideReader ?? false}
+        renderStagePreview={props.renderStagePreview}
+        renderClosetGrid={props.renderClosetGrid ?? (() => null)}
+        renderJourneyMilestones={props.renderJourneyMilestones}
+        onTriggerWhereWasI={props.onTriggerWhereWasI}
+        onTriggerWhoIsOnPage={props.onTriggerWhoIsOnPage}
+        onClose={props.onClose}
+      />
+    );
+  }
+
+  const {
+    state,
+    name = "Michi",
+    equipped = { head: null, neck: null, face: null, body: null, coat: null },
+    accessories = [],
+    mood = "awake",
+    activeCare = null,
+    onCare = async () => {},
+    onClose,
+    reducedMotion = false,
+    initialTab = "care",
+    readerContext,
+    onTriggerWhereWasI,
+    onTriggerWhoIsOnPage,
+  } = props;
+  const [characterCards, setCharacterCards] = useState<CharacterCardInfo[] | null>(null);
+  const [charactersLoading, setCharactersLoading] = useState(false);
+
+  const handleScanCharacters = async () => {
+    if (onTriggerWhoIsOnPage) {
+      onTriggerWhoIsOnPage();
+      return;
+    }
+    if (!readerContext) return;
+    setCharactersLoading(true);
+    try {
+      const results = await getCharactersOnPageWithoutSpoilers({
+        pageText: readerContext.pageText,
+        currentChapterIndex: readerContext.currentChapterIndex,
+        bookId: readerContext.bookId,
+        sections: readerContext.sections,
+        toc: readerContext.toc,
+      });
+      setCharacterCards(results);
+    } catch {
+      setCharacterCards([]);
+    } finally {
+      setCharactersLoading(false);
+    }
+  };
+
   const [prevInitialTab, setPrevInitialTab] = useState(initialTab);
   const [tab, setTab] = useState<CompanionTab>(initialTab);
   if (prevInitialTab !== initialTab) {
@@ -626,6 +842,89 @@ export function CompanionPanel({
                     Jugar con la pelota
                   </button>
                 </div>
+
+                {/* Track 5: Atajo mágico para escanear personajes de la página actual sin spoilers */}
+                {readerContext || onTriggerWhoIsOnPage || onTriggerWhereWasI ? (
+                  <div
+                    className="companion-reader-quick-actions"
+                    style={{ margin: "var(--s-3) 0", textAlign: "center" }}
+                  >
+                    {onTriggerWhereWasI && (
+                      <button
+                        type="button"
+                        className="btn companion-action-btn"
+                        onClick={onTriggerWhereWasI}
+                        aria-label="¿En qué me quedé?"
+                        style={{ width: "100%", justifyContent: "center", marginBottom: "var(--s-2)" }}
+                      >
+                        ✨ ¿En qué me quedé? (15s)
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="btn companion-action-btn"
+                      onClick={handleScanCharacters}
+                      disabled={charactersLoading}
+                      aria-label="¿Quién está en esta página?"
+                      style={{ width: "100%", justifyContent: "center" }}
+                    >
+                      👥 {charactersLoading ? "Buscando personajes…" : "¿Quién está en esta página?"}
+                    </button>
+                    {characterCards !== null && (
+                      <div
+                        className="companion-character-cards"
+                        style={{ marginTop: "var(--s-3)", textAlign: "left" }}
+                      >
+                        {characterCards.length === 0 ? (
+                          <p className="meta" style={{ margin: "var(--s-2) 0", fontSize: "0.85rem" }}>
+                            No se detectaron personajes con menciones previas en esta página.
+                          </p>
+                        ) : (
+                          <div
+                            className="character-cards-list"
+                            style={{
+                              display: "flex",
+                              flexDirection: "column",
+                              gap: "var(--s-2)",
+                            }}
+                          >
+                            {characterCards.map((c, i) => (
+                              <div
+                                key={i}
+                                className="character-card-item"
+                                style={{
+                                  padding: "var(--s-2) var(--s-3)",
+                                  borderRadius: "var(--r-md)",
+                                  background: "var(--card-bg, rgba(0, 0, 0, 0.04))",
+                                  border: "1px solid var(--border-subtle, rgba(0, 0, 0, 0.08))",
+                                }}
+                              >
+                                <strong
+                                  style={{
+                                    display: "block",
+                                    color: "var(--color-primary, #b45309)",
+                                  }}
+                                >
+                                  {c.name}
+                                </strong>
+                                <span
+                                  className="meta"
+                                  style={{
+                                    fontSize: "0.85rem",
+                                    display: "block",
+                                    marginTop: "2px",
+                                  }}
+                                >
+                                  {c.oneLiner}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ) : null}
 
                 {/* Estadísticas de lectura en fila compacta */}
                 <div

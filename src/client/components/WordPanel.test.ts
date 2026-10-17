@@ -35,6 +35,8 @@ vi.mock("../lib/idb", () => ({
   captureDbScope: vi.fn(() => ({})),
   loadSavedWord: vi.fn(async () => null),
   removeSavedWord: vi.fn(async () => null),
+  loadSessionValue: vi.fn(async () => null),
+  saveSessionValue: vi.fn(async () => undefined),
   saveKnowledge: vi.fn(async (input: { language: string; lemma: string; known: boolean }) => ({
     key: `${input.language}:${input.lemma}`,
     language: input.language,
@@ -468,6 +470,136 @@ describe("WordPanel - Acciones Rápidas (Fase 4.3)", () => {
     expect(host.querySelector(".passage-meaning-text")?.textContent).toContain(
       "Aquí «efímero» alude a la fugacidad del instante poético.",
     );
+  });
+
+  describe("WordPanel - Tarjeta Única Track 4", () => {
+    it("muestra inmediatamente significado local y sinónimos a 0 ms", async () => {
+      const lookupLocalLexicon = vi.fn(async (w: string) => ({
+        lemma: w,
+        partOfSpeech: "sustantivo",
+        shortDefinition: "Definición instantánea local.",
+        synonyms: ["sin1", "sin2"],
+      }));
+      const onRecordSilentCalibration = vi.fn();
+
+      render(
+        h(WordPanel, {
+          word: "alborada",
+          sentenceContext: "Despertaron con la suave alborada.",
+          bookLanguage: "es",
+          lookupLocalLexicon,
+          fetchContextualMeaning: vi.fn(),
+          onSpeakWord: vi.fn(),
+          onSaveToNotebook: vi.fn(),
+          onRecordSilentCalibration,
+          onClose: vi.fn(),
+        }),
+      );
+
+      // Calibración silenciosa registrada en 'lookup'
+      expect(onRecordSilentCalibration).toHaveBeenCalledWith("alborada", "lookup");
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(host.querySelector(".word-card-short-def")?.textContent).toContain(
+        "Definición instantánea local.",
+      );
+      expect(host.querySelector(".word-card-pos")?.textContent).toContain("sustantivo");
+      const synonyms = [...host.querySelectorAll(".word-synonym-pill")].map((el) => el.textContent);
+      expect(synonyms).toEqual(["sin1", "sin2"]);
+    });
+
+    it("resuelve en paralelo la explicación contextual y la guarda en caché para la frase exacta", async () => {
+      let resolveContextual: (res: any) => void = () => {};
+      const fetchContextualMeaning = vi.fn(
+        () =>
+          new Promise<any>((resolve) => {
+            resolveContextual = resolve;
+          }),
+      );
+
+      render(
+        h(WordPanel, {
+          word: "quimera",
+          sentenceContext: "Su sueño de volar era una quimera inalcanzable.",
+          bookLanguage: "es",
+          lookupLocalLexicon: vi.fn(async () => null),
+          fetchContextualMeaning,
+          onSpeakWord: vi.fn(),
+          onSaveToNotebook: vi.fn(),
+          onRecordSilentCalibration: vi.fn(),
+          onClose: vi.fn(),
+        }),
+      );
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      // Mientras carga muestra skeleton
+      expect(host.querySelector(".word-card-context-skeleton")).not.toBeNull();
+
+      // Se resuelve la IA contextual
+      await act(async () => {
+        resolveContextual({
+          inPassageMeaning: "Aquí significa una ilusión irrealizable.",
+          toneOrNuance: "Melancólico",
+        });
+        for (let i = 0; i < 4; i++) await Promise.resolve();
+      });
+
+      expect(host.querySelector(".word-card-context-text")?.textContent).toContain(
+        "Aquí significa una ilusión irrealizable.",
+      );
+      expect(host.querySelector(".word-card-context-nuance")?.textContent).toContain(
+        "Melancólico",
+      );
+    });
+
+    it("al guardar en 1 toque notifica a onSaveToNotebook y a onRecordSilentCalibration con 'save'", async () => {
+      const onSaveToNotebook = vi.fn(async () => {});
+      const onRecordSilentCalibration = vi.fn();
+      const lookupLocalLexicon = vi.fn(async (w: string) => ({
+        lemma: w,
+        shortDefinition: "Definición corta",
+        synonyms: [],
+      }));
+
+      render(
+        h(WordPanel, {
+          word: "quimera",
+          sentenceContext: "Su sueño de volar era una quimera inalcanzable.",
+          bookLanguage: "es",
+          lookupLocalLexicon,
+          fetchContextualMeaning: vi.fn(async () => ({
+            inPassageMeaning: "Ilusión imposible.",
+          })),
+          onSpeakWord: vi.fn(),
+          onSaveToNotebook,
+          onRecordSilentCalibration,
+          onClose: vi.fn(),
+        }),
+      );
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      const saveBtn = host.querySelector<HTMLButtonElement>(".word-card-save-btn")!;
+      await act(async () => {
+        click(saveBtn);
+      });
+
+      expect(onRecordSilentCalibration).toHaveBeenCalledWith("quimera", "save");
+      expect(onSaveToNotebook).toHaveBeenCalledWith(
+        expect.objectContaining({
+          word: "quimera",
+          sentenceContext: "Su sueño de volar era una quimera inalcanzable.",
+        }),
+      );
+    });
   });
 });
 

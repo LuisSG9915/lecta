@@ -55,7 +55,20 @@ import {
   rescueChallenge,
   shuffleStable,
   type AdaptiveChallenge,
+  buildOneMinuteReviewSession,
+  savedWordToItem,
+  type AutoGameType,
+  type SavedWordItem,
+  type OneMinuteReviewRound,
 } from "../lib/practice";
+
+export {
+  buildOneMinuteReviewSession,
+  savedWordToItem,
+  type AutoGameType,
+  type SavedWordItem,
+  type OneMinuteReviewRound,
+};
 import { markLevel, type MarkLevel } from "../lib/word-level";
 import { loadUseAi } from "../lib/ai-pref";
 import { GamePanel } from "./GamePanel";
@@ -91,11 +104,14 @@ import { languageName } from "../lib/epub";
 import { speakWord } from "../lib/speech";
 import Icon from "./Icon";
 
-type VocabularyProps = {
-  onClose: () => void;
+export type UnifiedVocabularyProps = {
+  words?: SavedWordItem[];
+  onStartQuickReview?: (rounds: OneMinuteReviewRound[]) => void;
+  onDeleteWord?: (id: string) => void;
+  onClose?: () => void;
   // Solo se usa hash/título/nombre/idioma para nombrar y filtrar libros:
   // la estantería manda ShelfItem, que no carga el archivo.
-  books: Pick<StoredBook, "hash" | "name" | "title" | "author" | "language">[];
+  books?: Pick<StoredBook, "hash" | "name" | "title" | "author" | "language">[];
   // Sube cuando la sincronización trae intervalos nuevos; la pestaña
   // de actividad relee su progreso sin remontar el panel.
   activityVersion?: number;
@@ -104,6 +120,107 @@ type VocabularyProps = {
   backLabel?: string;
 };
 
+export const UnifiedNotebookView: React.FC<{
+  words: SavedWordItem[];
+  onStartQuickReview?: (rounds: OneMinuteReviewRound[]) => void;
+  onDeleteWord?: (id: string) => void;
+}> = ({ words, onStartQuickReview, onDeleteWord }) => {
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const filteredWords = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return words;
+    return words.filter(
+      (w) =>
+        w.word.toLowerCase().includes(q) ||
+        w.shortDefinition.toLowerCase().includes(q) ||
+        (w.bookTitle && w.bookTitle.toLowerCase().includes(q)),
+    );
+  }, [words, searchQuery]);
+
+  const quickSession = useMemo(() => buildOneMinuteReviewSession(words), [words]);
+
+  return (
+    <div className="notebook-unified-container">
+      {/* Cabecera limpia con el CTA único de 1 toque */}
+      <header className="notebook-hero-header">
+        <div className="notebook-hero-copy">
+          <h1 className="notebook-title">Tu Cuaderno</h1>
+          <p className="notebook-subtitle">
+            {words.length === 0
+              ? "Toca cualquier palabra mientras lees para guardarla aquí."
+              : `${words.length} ${words.length === 1 ? "palabra guardada" : "palabras guardadas"} de tus lecturas`}
+          </p>
+        </div>
+
+        {words.length > 0 && (
+          <button
+            type="button"
+            className="notebook-quick-review-cta"
+            onClick={() => onStartQuickReview?.(quickSession)}
+          >
+            <span className="cta-icon">🎮</span>
+            <span className="cta-text">
+              Repaso rápido ({Math.min(5, words.length)}{" "}
+              {Math.min(5, words.length) === 1 ? "palabra" : "palabras"})
+            </span>
+            <span className="cta-badge">1 min · 🐱</span>
+          </button>
+        )}
+      </header>
+
+      {/* Buscador instantáneo */}
+      {words.length > 0 && (
+        <div className="notebook-search-bar">
+          <input
+            type="search"
+            className="notebook-search-input"
+            placeholder="🔍 Buscar palabra, significado o libro..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            aria-label="Buscar en tu cuaderno"
+          />
+        </div>
+      )}
+
+      {/* Lista única y limpia de palabras */}
+      <div className="notebook-words-list">
+        {filteredWords.map((item) => (
+          <article key={item.id} className="notebook-word-card">
+            <div className="notebook-word-card-main">
+              <div className="notebook-word-top-row">
+                <strong className="notebook-word-lemma">{item.word}</strong>
+                {item.bookTitle && (
+                  <span className="notebook-word-book-tag">📖 {item.bookTitle}</span>
+                )}
+              </div>
+              <p className="notebook-word-def">
+                {item.inPassageMeaning || item.shortDefinition}
+              </p>
+              {item.sentenceContext && (
+                <blockquote className="notebook-word-quote">
+                  “{item.sentenceContext}”
+                </blockquote>
+              )}
+            </div>
+
+            {onDeleteWord && (
+              <button
+                type="button"
+                className="notebook-word-delete-btn"
+                onClick={() => onDeleteWord(item.id)}
+                aria-label={`Eliminar ${item.word}`}
+                title="Quitar del cuaderno"
+              >
+                ✕
+              </button>
+            )}
+          </article>
+        ))}
+      </div>
+    </div>
+  );
+};
 type PracticeMode =
   | "meaning"
   | "form"
@@ -469,14 +586,26 @@ function WordRow({
   );
 }
 
-export default function Vocabulary({
-  onClose,
-  books,
+export function Vocabulary({
+  words: wordsProp,
+  onStartQuickReview,
+  onDeleteWord,
+  onClose = () => {},
+  books = [],
   activityVersion,
   onOpenJourney,
   presentation = "overlay",
   backLabel,
-}: VocabularyProps) {
+}: UnifiedVocabularyProps) {
+  if (wordsProp) {
+    return (
+      <UnifiedNotebookView
+        words={wordsProp}
+        onStartQuickReview={onStartQuickReview}
+        onDeleteWord={onDeleteWord}
+      />
+    );
+  }
   const ref = useRef<HTMLDivElement>(null);
   const isOverlay = presentation !== "page";
   useModalBehavior(ref, onClose, { enabled: isOverlay });
@@ -1806,7 +1935,7 @@ export default function Vocabulary({
                   </div>
 
                   {/* CTA Principal Único */}
-                  <div className="nb-hero-cta">
+                  <div className="nb-hero-cta" style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
                     {all.length === 0 ? (
                       <button
                         type="button"
@@ -1817,14 +1946,36 @@ export default function Vocabulary({
                         <span>Abrir un libro para guardar palabras</span>
                       </button>
                     ) : (
-                      <button
-                        type="button"
-                        className="btn btn--primary nb-hero-btn-flow"
-                        onClick={startAdaptiveFlow}
-                      >
-                        <Icon name="sparkles" size={16} />
-                        <span>Iniciar Sesión Fluida (~2 min)</span>
-                      </button>
+                      <>
+                        <button
+                          type="button"
+                          className="btn btn--primary nb-hero-btn-flow"
+                          onClick={startAdaptiveFlow}
+                        >
+                          <Icon name="sparkles" size={16} />
+                          <span>Iniciar Sesión Fluida (~2 min)</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="notebook-quick-review-cta"
+                          onClick={() => {
+                            const items = all.map(savedWordToItem);
+                            const session = buildOneMinuteReviewSession(items);
+                            if (onStartQuickReview) {
+                              onStartQuickReview(session);
+                            } else {
+                              startAdaptiveFlow();
+                            }
+                          }}
+                        >
+                          <span className="cta-icon">🎮</span>
+                          <span className="cta-text">
+                            Repaso rápido ({Math.min(5, all.length)}{" "}
+                            {Math.min(5, all.length) === 1 ? "palabra" : "palabras"})
+                          </span>
+                          <span className="cta-badge">1 min · 🐱</span>
+                        </button>
+                      </>
                     )}
                   </div>
 
@@ -3241,3 +3392,6 @@ export default function Vocabulary({
     </div>
   );
 }
+
+export default Vocabulary;
+

@@ -213,3 +213,68 @@ export async function searchBookSpoilerFree(
   return result;
 }
 
+export interface SearchBookMentionsParams {
+  bookId?: string;
+  query: string;
+  maxChapterIndex?: number;
+  sections?: SearchSection[];
+  toc?: SearchTocRow[];
+  signal?: AbortSignal;
+}
+
+export interface BookMentionItem {
+  sectionIndex: number;
+  chapterLabel: string;
+  shortContextSnippet: string;
+}
+
+const bookSectionsRegistry = new Map<string, { sections: SearchSection[]; toc: SearchTocRow[] }>();
+
+export function registerBookSections(
+  bookId: string,
+  sections: SearchSection[],
+  toc: SearchTocRow[] = [],
+): void {
+  bookSectionsRegistry.set(bookId, { sections, toc });
+}
+
+export function unregisterBookSections(bookId: string): void {
+  bookSectionsRegistry.delete(bookId);
+}
+
+/**
+ * Busca menciones de un término o personaje exclusivamente en capítulos anteriores o hasta maxChapterIndex.
+ * Regla inquebrantable anti-spoilers: jamás accede a capítulos o secciones posteriores.
+ */
+export async function searchBookMentions(
+  params: SearchBookMentionsParams,
+): Promise<BookMentionItem[]> {
+  const { bookId, query, maxChapterIndex } = params;
+  const registered = bookId ? bookSectionsRegistry.get(bookId) : undefined;
+  const sections = params.sections ?? registered?.sections ?? [];
+  const toc = params.toc ?? registered?.toc ?? [];
+
+  if (!sections.length || maxChapterIndex === undefined || maxChapterIndex < 0) {
+    return [];
+  }
+
+  const safeMax = Math.min(maxChapterIndex, sections.length - 1);
+  if (safeMax < 0) return [];
+
+  const summary = await searchBookSpoilerFree(
+    sections,
+    toc,
+    query,
+    safeMax,
+    undefined,
+    { signal: params.signal },
+  );
+
+  return summary.recentMentions.map((m) => ({
+    sectionIndex: m.sectionIndex,
+    chapterLabel: m.chapterLabel,
+    shortContextSnippet: m.sentence,
+  }));
+}
+
+

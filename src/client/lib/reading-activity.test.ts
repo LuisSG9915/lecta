@@ -92,14 +92,14 @@ describe("timeByDay", () => {
   });
 });
 
-describe("msByBook", () => {
-  const saved = (id: string, bookHash: string, start: number, end: number): SavedInterval => ({
-    id,
-    bookHash,
-    startedAt: start,
-    endedAt: end,
-  });
+const saved = (id: string, bookHash: string, start: number, end: number): SavedInterval => ({
+  id,
+  bookHash,
+  startedAt: start,
+  endedAt: end,
+});
 
+describe("msByBook", () => {
   it("suma por libro y une solapados dentro del mismo libro", () => {
     const totals = msByBook([
       saved("a", "libro-1", 0, 10 * MIN),
@@ -119,3 +119,33 @@ describe("formatDuration", () => {
     expect(formatDuration(30_000)).toBe("menos de 1 min");
   });
 });
+
+describe("checkHasInactivityGap", () => {
+  it("detecta inactividad mayor a 6 horas en el libro", async () => {
+    const { checkHasInactivityGap } = await import("./reading-activity");
+    const now = 100_000_000;
+    const sevenHoursAgo = now - 7 * HOUR;
+    const intervals = [
+      saved("1", "book-a", sevenHoursAgo - 30 * MIN, sevenHoursAgo),
+    ];
+
+    expect(checkHasInactivityGap(intervals, "book-a", now)).toBe(true);
+  });
+
+  it("devuelve false si el usuario leyó hace poco", async () => {
+    const { checkHasInactivityGap } = await import("./reading-activity");
+    const now = 100_000_000;
+    const twoHoursAgo = now - 2 * HOUR;
+    const intervals = [
+      saved("1", "book-a", twoHoursAgo - 30 * MIN, twoHoursAgo),
+    ];
+
+    expect(checkHasInactivityGap(intervals, "book-a", now)).toBe(false);
+  });
+
+  it("devuelve false si no hay registros previos del libro", async () => {
+    const { checkHasInactivityGap } = await import("./reading-activity");
+    expect(checkHasInactivityGap([], "book-nuevo", Date.now())).toBe(false);
+  });
+});
+

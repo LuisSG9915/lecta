@@ -652,4 +652,131 @@ describe("CompanionPanel", () => {
     const bubble = host.querySelector(".companion-bubble");
     expect(bubble?.textContent).toContain("comiendo");
   });
+
+  describe("Track 4: El Rincón de tu Gato (2 Pestañas)", () => {
+    it("renderiza la tarjeta unificada con los datos clave de progreso y escenario", async () => {
+      act(() =>
+        root.render(
+          h(CompanionPanel, {
+            catName: "Pelusa",
+            catMoodMessage: "¡Hoy leíste genial!",
+            streakDays: 5,
+            minutesReadToday: 15,
+            dailyGoalMinutes: 20,
+            wordsLearnedCount: 42,
+            renderStagePreview: () => h("div", { className: "stage-preview-mock" }, "Stage Mock"),
+            renderClosetGrid: () => h("div", { className: "closet-grid-mock" }, "Closet Mock"),
+            onClose: () => {},
+          }),
+        ),
+      );
+      await flush();
+
+      expect(host.querySelector(".cat-corner-sheet")).toBeTruthy();
+      expect(host.textContent).toContain("🐱 El Rincón de Pelusa");
+      expect(host.textContent).toContain("“¡Hoy leíste genial!”");
+      expect(host.textContent).toContain("🔥 5 d");
+      expect(host.textContent).toContain("⏱️ 15/20 m");
+      expect(host.textContent).toContain("Meta de hoy (75%)");
+      expect(host.textContent).toContain("✨ 42");
+      expect(host.textContent).toContain("Palabras tuyas");
+      expect(host.querySelector(".stage-preview-mock")).toBeTruthy();
+    });
+
+    it("renderiza atajos mágicos cuando isInsideReader es true", async () => {
+      let triggeredWhereWasI = false;
+      let triggeredWhoIs = false;
+
+      act(() =>
+        root.render(
+          h(CompanionPanel, {
+            catMoodMessage: "Leyendo...",
+            streakDays: 3,
+            minutesReadToday: 10,
+            dailyGoalMinutes: 20,
+            wordsLearnedCount: 12,
+            isInsideReader: true,
+            renderStagePreview: () => h("div", null, "Stage"),
+            renderClosetGrid: () => h("div", null, "Closet"),
+            onTriggerWhereWasI: () => {
+              triggeredWhereWasI = true;
+            },
+            onTriggerWhoIsOnPage: () => {
+              triggeredWhoIs = true;
+            },
+            onClose: () => {},
+          }),
+        ),
+      );
+      await flush();
+
+      const whereBtn = button("✨ ¿En qué me quedé? (15s)");
+      expect(whereBtn).toBeTruthy();
+      click(whereBtn!);
+      expect(triggeredWhereWasI).toBe(true);
+
+      const whoBtn = button("👥 Personajes en esta página");
+      expect(whoBtn).toBeTruthy();
+      click(whoBtn!);
+      expect(triggeredWhoIs).toBe(true);
+    });
+
+    it("alterna entre '🌱 Mi Progreso' y '🎀 Personalizar Gato'", async () => {
+      act(() =>
+        root.render(
+          h(CompanionPanel, {
+            catMoodMessage: "Leyendo...",
+            streakDays: 3,
+            minutesReadToday: 10,
+            dailyGoalMinutes: 20,
+            wordsLearnedCount: 12,
+            renderStagePreview: () => h("div", null, "Stage"),
+            renderClosetGrid: () => h("div", { className: "custom-closet" }, "Mi Armario"),
+            renderJourneyMilestones: () => h("div", { className: "custom-journey" }, "Mis Hitos"),
+            onClose: () => {},
+          }),
+        ),
+      );
+      await flush();
+
+      // Pestaña por defecto es progreso
+      expect(host.querySelector(".custom-journey")).toBeTruthy();
+      expect(host.querySelector(".custom-closet")).toBeFalsy();
+
+      // Cambiar a personalizar
+      const customizeTab = button("Personalizar Gato");
+      expect(customizeTab).toBeTruthy();
+      click(customizeTab!);
+      await flush();
+
+      expect(host.querySelector(".custom-closet")).toBeTruthy();
+      expect(host.querySelector(".custom-journey")).toBeFalsy();
+    });
+
+    it("el botón cerrar invoca onClose en el modo Track 4", async () => {
+      let closed = false;
+      act(() =>
+        root.render(
+          h(CompanionPanel, {
+            catMoodMessage: "Listo",
+            streakDays: 1,
+            minutesReadToday: 5,
+            dailyGoalMinutes: 20,
+            wordsLearnedCount: 3,
+            renderStagePreview: () => h("div", null, "Stage"),
+            renderClosetGrid: () => h("div", null, "Closet"),
+            onClose: () => {
+              closed = true;
+            },
+          }),
+        ),
+      );
+      await flush();
+
+      const closeBtn = host.querySelector(".cat-corner-close-btn") as HTMLButtonElement;
+      expect(closeBtn).toBeTruthy();
+      click(closeBtn);
+      expect(closed).toBe(true);
+    });
+  });
 });

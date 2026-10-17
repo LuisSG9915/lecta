@@ -440,3 +440,76 @@ export function rescueChallenge(
   };
 }
 
+/* ==========================================================================
+   Track 4: Repaso Rápido de 1 Minuto (FSRS + Selección Automática de Dinámica)
+   ========================================================================== */
+
+export type AutoGameType = "flash-choice" | "word-scramble" | "sentence-builder";
+
+export interface SavedWordItem {
+  id: string;
+  word: string;
+  shortDefinition: string;
+  inPassageMeaning?: string;
+  sentenceContext?: string;
+  bookTitle?: string;
+  // Metadatos de FSRS (src/client/lib/fsrs.ts)
+  dueTimestamp: number;
+  stability: number; // < 2: nueva/frágil, 2-7: intermedia, > 7: consolidada
+}
+
+export interface OneMinuteReviewRound {
+  item: SavedWordItem;
+  assignedGame: AutoGameType;
+}
+
+/**
+ * Selecciona automáticamente hasta 5 palabras prioritarias según FSRS
+ * y les asigna la dinámica más amena según su nivel de dominio.
+ */
+export function buildOneMinuteReviewSession(
+  items: SavedWordItem[],
+  now = Date.now(),
+): OneMinuteReviewRound[] {
+  const sorted = [...items].sort((a, b) => {
+    const aOverdue = a.dueTimestamp <= now ? 0 : 1;
+    const bOverdue = b.dueTimestamp <= now ? 0 : 1;
+    if (aOverdue !== bOverdue) return aOverdue - bOverdue;
+    return a.dueTimestamp - b.dueTimestamp;
+  });
+
+  return sorted.slice(0, 5).map((item) => {
+    let assignedGame: AutoGameType = "flash-choice";
+    if (item.stability >= 2 && item.stability < 6) {
+      assignedGame = "word-scramble"; // WordScrambleGame.tsx
+    } else if (item.stability >= 6 && item.sentenceContext) {
+      assignedGame = "sentence-builder"; // SentenceBuilderGame.tsx
+    }
+    return { item, assignedGame };
+  });
+}
+
+/**
+ * Convierte un SavedWord de IndexedDB a SavedWordItem para la sesión de 1 minuto.
+ */
+export function savedWordToItem(w: SavedWord): SavedWordItem {
+  const rawDue = w.card?.due;
+  let dueTimestamp = 0;
+  if (typeof rawDue === "number") {
+    dueTimestamp = rawDue;
+  } else if (typeof rawDue === "string") {
+    dueTimestamp = new Date(rawDue).getTime();
+  }
+  return {
+    id: w.key,
+    word: w.form,
+    shortDefinition: w.meaning ?? "",
+    inPassageMeaning: w.meaning,
+    sentenceContext: w.context,
+    bookTitle: w.bookTitle,
+    dueTimestamp,
+    stability: w.card?.stability ?? 0,
+  };
+}
+
+
