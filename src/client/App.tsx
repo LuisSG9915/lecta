@@ -22,6 +22,7 @@ import BookCover from "./components/BookCover";
 import Dialog from "./components/Dialog";
 import AppNav, { type NavDestination } from "./components/AppNav";
 import Notice from "./components/Notice";
+import { startSafeViewTransition } from "./lib/view-transition";
 import {
   applyTheme,
   loadNativeLanguage,
@@ -76,6 +77,7 @@ import { downloadBook, listRemoteBooks } from "./lib/books";
 import { queueBookDelete, queueBookUpload, runBookQueue } from "./lib/book-queue";
 import { syncPositions, type PositionConflict } from "./lib/positions-sync";
 import { checkEpubHeader, EPUB_MAX_BYTES } from "../shared/epub-check";
+import { extractEpubMeta } from "../shared/epub-meta";
 import { syncSavedWords } from "./lib/vocab";
 import { syncActivity, syncAnnotations, syncKnowledge, syncReviews } from "./lib/reading-sync";
 import { syncCompanion } from "./lib/companion-sync";
@@ -193,26 +195,32 @@ export default function App() {
     progress?: number;
   } | null>(null);
 
-  const openBook = (selection: BookSelection) => {
-    setHasVisitedVocab(false);
-    setShowVocabulary(false);
-    setShowAccount(false);
-    setShowJourney(false);
-    if (!bookRelease.current) {
-      bookRelease.current = pushOverlay(() => {
-        bookRelease.current = null;
-        setBook(null);
-      });
-    }
-    setBook(selection);
+  const openBook = (
+    selection: BookSelection,
+    meta?: { title?: string; author?: string; cover?: Blob },
+  ) => {
+    startSafeViewTransition(() => {
+      setShowVocabulary(false);
+      setShowAccount(false);
+      setShowJourney(false);
+      if (!bookRelease.current) {
+        bookRelease.current = pushOverlay(() => {
+          bookRelease.current = null;
+          startSafeViewTransition(() => {
+            setBook(null);
+          });
+        });
+      }
+      setBook(selection);
+    });
     const libItem = library.find((item) => item.hash === selection.hash);
     setLastReadBook({
       hash: selection.hash,
       name: selection.name,
       file: selection.file,
-      title: libItem?.title ?? selection.name,
-      author: libItem?.author,
-      cover: libItem?.cover,
+      title: meta?.title ?? libItem?.title ?? selection.name,
+      author: meta?.author ?? libItem?.author,
+      cover: meta?.cover ?? libItem?.cover,
       progress: 0,
     });
   };
@@ -298,8 +306,15 @@ export default function App() {
   };
 
   const closeReader = () => {
-    releaseBook();
-    setBook(null);
+    startSafeViewTransition(() => {
+      panelRelease.current?.release();
+      panelRelease.current = null;
+      setShowVocabulary(false);
+      setShowAccount(false);
+      setShowJourney(false);
+      releaseBook();
+      setBook(null);
+    });
     // La posición final de la sesión de lectura sale aquí hacia la
     // cuenta, para que los demás dispositivos continúen donde quedó.
     void syncPositions().catch(() => null);
@@ -360,6 +375,10 @@ export default function App() {
         ? "account"
         : "shelf";
 
+  if ((activeNav === "vocabulary" || showVocabulary) && !hasVisitedVocab) {
+    setHasVisitedVocab(true);
+  }
+
   useLayoutEffect(() => {
     if (book) return;
     const targetY = scrollPositions.current[activeNav] ?? 0;
@@ -367,51 +386,59 @@ export default function App() {
   }, [activeNav, book]);
 
   const navigateTo = (dest: NavDestination) => {
+    if (dest === "vocab" || dest === "vocabulary") {
+      setHasVisitedVocab(true);
+    }
     if (dest === activeNav) {
       window.scrollTo({ top: 0, behavior: "smooth" });
       return;
     }
     scrollPositions.current[activeNav] = window.scrollY;
 
-    startTransition(() => {
-      if (dest === "shelf") {
-        panelRelease.current?.release();
-        panelRelease.current = null;
-        setShowVocabulary(false);
-        setShowAccount(false);
-        setShowJourney(false);
-        return;
-      }
+    startSafeViewTransition(() => {
+      startTransition(() => {
+        if (dest === "shelf") {
+          panelRelease.current?.release();
+          panelRelease.current = null;
+          setShowVocabulary(false);
+          setShowAccount(false);
+          setShowJourney(false);
+          return;
+        }
 
-      if (!panelRelease.current) {
-        panelRelease.current = pushOverlay(() => {
-          startTransition(() => {
-            panelRelease.current = null;
-            setShowVocabulary(false);
-            setShowAccount(false);
-            setShowJourney(false);
+        if (!panelRelease.current) {
+          panelRelease.current = pushOverlay(() => {
+            startSafeViewTransition(() => {
+              startTransition(() => {
+                panelRelease.current = null;
+                setShowVocabulary(false);
+                setShowAccount(false);
+                setShowJourney(false);
+              });
+            });
           });
-        });
-      }
+        }
 
-      if (dest === "vocab" || dest === "vocabulary") {
-        setHasVisitedVocab(true);
-        setShowVocabulary(true);
-        setShowAccount(false);
-        setShowJourney(false);
-      } else if (dest === "journey") {
-        setShowJourney(true);
-        setShowVocabulary(false);
-        setShowAccount(false);
-      } else if (dest === "account") {
-        setShowAccount(true);
-        setShowVocabulary(false);
-        setShowJourney(false);
-      }
+        if (dest === "vocab" || dest === "vocabulary") {
+          setHasVisitedVocab(true);
+          setShowVocabulary(true);
+          setShowAccount(false);
+          setShowJourney(false);
+        } else if (dest === "journey") {
+          setShowJourney(true);
+          setShowVocabulary(false);
+          setShowAccount(false);
+        } else if (dest === "account") {
+          setShowAccount(true);
+          setShowVocabulary(false);
+          setShowJourney(false);
+        }
+      });
     });
   };
 
   const openNotebookOverlay = () => {
+    setHasVisitedVocab(true);
     if (!panelRelease.current) {
       panelRelease.current = pushOverlay(() => {
         panelRelease.current = null;
@@ -480,6 +507,7 @@ export default function App() {
         author: book.author,
         cover: book.cover,
         sectionCount: book.sectionCount,
+        language: book.language,
         pendingUpload: pendingUploads.has(book.hash) || undefined,
       }));
     const remoteItems: ShelfItem[] = remote
@@ -503,6 +531,7 @@ export default function App() {
           item.author ||
           (item.title ? undefined : "Toca para descargar"),
         sectionCount: item.sections || undefined,
+        language: item.language,
       }));
     setLibrary([...localItems, ...remoteItems]);
   }, [sessionUserId]);
@@ -723,9 +752,42 @@ export default function App() {
       }
       const hash = await sha256Hex(file);
       const scope = captureDbScope();
-      openBook({ hash, name: file.name, file });
-      void saveBook({ hash, name: file.name, data: file, addedAt: Date.now() }, scope)
-        .then(() => {
+      const fileBytes = new Uint8Array(await file.arrayBuffer());
+      const quickMeta = await extractEpubMeta(fileBytes).catch(() => null);
+      const initialMeta = {
+        title: quickMeta?.title,
+        author: quickMeta?.author,
+        language: quickMeta?.language,
+        sectionCount: quickMeta?.sections,
+        metaVersion: quickMeta ? 1 : undefined,
+      };
+      openBook({ hash, name: file.name, file }, initialMeta);
+      void saveBook(
+        {
+          hash,
+          name: file.name,
+          data: file,
+          addedAt: Date.now(),
+          ...initialMeta,
+        },
+        scope,
+      )
+        .then(async () => {
+          const fullMeta = await readBookMeta(file).catch(() => null);
+          if (fullMeta) {
+            await updateBookMeta(
+              hash,
+              {
+                title: fullMeta.title || initialMeta.title,
+                author: fullMeta.author || initialMeta.author,
+                language: fullMeta.language || initialMeta.language,
+                sectionCount: fullMeta.sectionCount || initialMeta.sectionCount,
+                cover: fullMeta.cover ?? undefined,
+                metaVersion: 1,
+              },
+              scope,
+            ).catch(() => null);
+          }
           setMessage("Libro guardado en este dispositivo.");
           void refreshLibrary();
           // Análisis de vocabulario en segundo plano: alimenta la
@@ -993,7 +1055,7 @@ export default function App() {
                 />
               </Activity>
 
-              {hasVisitedVocab ? (
+              {hasVisitedVocab || activeNav === "vocabulary" || showVocabulary ? (
                 <Activity mode={activeNav === "vocabulary" ? "visible" : "hidden"}>
                   <Suspense fallback={<p className="status">Abriendo tu cuaderno…</p>}>
                     <Vocabulary

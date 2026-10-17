@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { LexiconEntry } from "../lib/lexicon";
 import {
-  enrichWord,
   explainInPassage,
   lookupWord,
   reportSense,
@@ -50,12 +49,7 @@ import type { PhraseHit } from "../lib/phrases";
 type WordPanelProps = {
   word: string;
   context?: string;
-  // Locución del Wikcionario que cubre la palabra en su oración;
-  // es información de contexto — no cambia lo que se guarda ni
-  // el modelo de repaso.
   phrase?: PhraseHit;
-  // Sesión confirmada: sin ella los botones de IA muestran el aviso
-  // de entrada en vez de fallar tras la espera.
   canExplain?: boolean;
   language: string;
   bookHash: string;
@@ -116,7 +110,6 @@ export default function WordPanel({
   bookHash,
   bookTitle,
   author,
-  initialLevel = 1,
   compactMode = false,
   sections,
   toc,
@@ -129,7 +122,6 @@ export default function WordPanel({
   onKnowledgeChanged,
   onNotice,
 }: WordPanelProps) {
-  const [level, setLevel] = useState<1 | 2>(initialLevel);
   const [isExpanded, setIsExpanded] = useState(!compactMode);
   const [lookup, setLookup] = useState<LookupState>({ kind: "loading" });
   const [savedEntry, setSavedEntry] = useState<SavedWord | null>(null);
@@ -137,23 +129,24 @@ export default function WordPanel({
   const [saveError, setSaveError] = useState("");
   const [syncNote, setSyncNote] = useState(false);
   const [quickNotice, setQuickNotice] = useState<string | null>(null);
-  // Acepción elegida dentro de la ficha (índice de entrada + acepción).
   const [selected, setSelected] = useState({ entryIndex: 0, senseIndex: 0 });
   const [report, setReport] = useState<"idle" | "sending" | "done" | "error">("idle");
   const [reread, setReread] = useState<"idle" | "busy" | "done">("idle");
+  const [personalNote, setPersonalNote] = useState("");
+
   const [passageExplanation, setPassageExplanation] = useState<{
     state: "busy" | "done" | "error";
+    directMeaning?: string;
     contextualMeaning?: string;
     toneAndNuance?: string;
     catTip?: string;
     error?: string;
   } | null>(null);
-  // Preferencia «Usar IA» (Cuenta): una sola lectura por apertura de
-  // la ficha. Con ella apagada «Definir con IA» ni se ofrece; el
-  // catálogo (lookupWord) no usa IA y sigue igual.
-  const [useAi, setUseAi] = useState(true);
 
-  // Innovación 2: Atlas sin spoilers
+  const [useAi, setUseAi] = useState(true);
+  const autoTriggeredRef = useRef(false);
+
+  // Entidades / Atlas sin spoilers
   const isProperNoun = useMemo(() => /^[A-ZÁÉÍÓÚÜÑ]/.test(word.trim()), [word]);
   const [characterSummary, setCharacterSummary] = useState<SpoilerFreeEntitySummary | null>(null);
   const [characterRecap, setCharacterRecap] = useState<{
@@ -163,6 +156,150 @@ export default function WordPanel({
     error?: string;
   }>({ state: "idle" });
 
+  useEffect(() => {
+    let cancelled = false;
+    void loadUseAi(captureDbScope()).then((on) => {
+      if (!cancelled) setUseAi(on);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    autoTriggeredRef.current = false;
+    void (async () => {
+      const scope = captureDbScope();
+      const [stored, result] = await Promise.all([
+        loadSavedWord(language, word, scope),
+        lookupWord(word, language, scope),
+      ]);
+      if (cancelled) return;
+      if (stored) setSavedEntry(stored);
+      setSelected({ entryIndex: 0, senseIndex: 0 });
+      setReport("idle");
+      setPassageExplanation(null);
+      setCharacterRecap({ state: "idle" });
+      if (!result.ok) setLookup({ kind: "error", message: result.error, offline: result.offline });
+      else if (!result.found || result.entries.length === 0) setLookup({ kind: "notFound" });
+      else setLookup({ kind: "found", entries: result.entries, offline: result.offline });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [word, language]);
+
+  // Desambiguador sintáctico
+  const preferredPos = useMemo(() => {
+    return context ? inferContextualPos(word, context, language) : null;
+  }, [word, context, language]);
+
+  const entries = useMemo(() => {
+    const rawEntries = lookup.kind === "found" ? lookup.entries : [];
+    if (!preferredPos || rawEntries.length <= 1) return rawEntries;
+    return [...rawEntries].sort((a, b) => {
+      const aMatches =
+        a.pos?.toLowerCase() === preferredPos ||
+        (preferredPos === "sustantivo" &&
+          a.lemma.toLowerCase() === word.toLowerCase());
+      const bMatches =
+        b.pos?.toLowerCase() === preferredPos ||
+        (preferredPos === "sustantivo" &&
+          b.lemma.toLowerCase() === word.toLowerCase());
+      if (aMatches && !bMatches) return -1;
+      if (!aMatches && bMatches) return 1;
+      return 0;
+    });
+  }, [lookup, preferredPos, word]);
+
+  const primary = entries[0];
+  const chosenEntry = entries[selected.entryIndex] ?? entries[0];
+  const chosenSense = chosenEntry?.senses[selected.senseIndex] ?? chosenEntry?.senses[0];
+
+  const hasLocalDefinition = Boolean(
+    lookup.kind === "found" &&
+      chosenSense?.definition &&
+      chosenSense.definition.trim().length > 0,
+  );
+
+  const totalSenses = entries.reduce((count, entry) => count + entry.senses.length, 0);
+  const multiSense = totalSenses > 1;
+
+  // Acepciones secundarias (a partir de la segunda)
+  const secondarySenses = useMemo(() => {
+    const list: { entryIndex: number; senseIndex: number; definition: string }[] = [];
+    entries.forEach((entry, entryIndex) => {
+      entry.senses.forEach((sense, senseIndex) => {
+        if (entryIndex === 0 && senseIndex === 0) return;
+        list.push({ entryIndex, senseIndex, definition: sense.definition });
+      });
+    });
+    return list;
+  }, [entries]);
+
+  const lexicalFamily = useMemo(() => findLexicalFamily(word, language), [word, language]);
+
+  // Sinónimos rápidos (hasta 3 términos relacionados)
+  const synonyms = useMemo(() => {
+    return lexicalFamily.slice(0, 3);
+  }, [lexicalFamily]);
+
+  // OBJ-03: Carga automática de IA cuando la palabra no está en catálogo o no tiene definición
+  useEffect(() => {
+    if (
+      lookup.kind === "loading" ||
+      lookup.kind === "enriching" ||
+      autoTriggeredRef.current
+    ) {
+      return;
+    }
+
+    const needsAiLookup =
+      lookup.kind === "notFound" || (lookup.kind === "found" && !hasLocalDefinition);
+
+    if (needsAiLookup && canExplain && useAi) {
+      autoTriggeredRef.current = true;
+      queueMicrotask(() => {
+        setPassageExplanation({ state: "busy" });
+      });
+
+      const nativeLang = loadNativeLanguage();
+      void explainInPassage(
+        {
+          word,
+          sentence: context || `Palabra: ${word}`,
+          bookTitle,
+          author,
+          language,
+          nativeLanguage: nativeLang,
+        },
+        captureDbScope(),
+      ).then((res) => {
+        if (res.ok) {
+          setPassageExplanation({
+            state: "done",
+            directMeaning: res.directMeaning,
+            contextualMeaning: res.contextualMeaning,
+            toneAndNuance: res.toneAndNuance,
+            catTip: res.catTip,
+          });
+        } else {
+          setPassageExplanation({
+            state: "error",
+            error: res.error,
+          });
+        }
+      }).catch(() => {
+        setPassageExplanation({
+          state: "error",
+          error: "Sin conexión con el servicio de IA.",
+        });
+      });
+    }
+  }, [lookup, hasLocalDefinition, canExplain, useAi, word, context, bookTitle, author, language]);
+
+  // Búsqueda de menciones sin spoilers para personajes / lugares
   useEffect(() => {
     let cancelled = false;
     if (sections && sections.length > 0 && (isProperNoun || lookup.kind === "notFound")) {
@@ -230,81 +367,8 @@ export default function WordPanel({
     }
   };
 
-  useEffect(() => {
-    let cancelled = false;
-    void loadUseAi(captureDbScope()).then((on) => {
-      if (!cancelled) setUseAi(on);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      const scope = captureDbScope();
-      const [stored, result] = await Promise.all([
-        loadSavedWord(language, word, scope),
-        lookupWord(word, language, scope),
-      ]);
-      if (cancelled) return;
-      if (stored) setSavedEntry(stored);
-      setSelected({ entryIndex: 0, senseIndex: 0 });
-      setReport("idle");
-      setPassageExplanation(null);
-      setCharacterRecap({ state: "idle" });
-      setLevel(initialLevel);
-      if (!result.ok) setLookup({ kind: "error", message: result.error, offline: result.offline });
-      else if (!result.found) setLookup({ kind: "notFound" });
-      else setLookup({ kind: "found", entries: result.entries, offline: result.offline });
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [word, language, initialLevel]);
-
-  // Innovación 1: Desambiguador sintáctico y reordenación de entradas
-  const preferredPos = useMemo(() => {
-    return context ? inferContextualPos(word, context, language) : null;
-  }, [word, context, language]);
-
-  const entries = useMemo(() => {
-    const rawEntries = lookup.kind === "found" ? lookup.entries : [];
-    if (!preferredPos || rawEntries.length <= 1) return rawEntries;
-    return [...rawEntries].sort((a, b) => {
-      const aMatches =
-        a.pos?.toLowerCase() === preferredPos ||
-        (preferredPos === "sustantivo" &&
-          a.lemma.toLowerCase() === word.toLowerCase());
-      const bMatches =
-        b.pos?.toLowerCase() === preferredPos ||
-        (preferredPos === "sustantivo" &&
-          b.lemma.toLowerCase() === word.toLowerCase());
-      if (aMatches && !bMatches) return -1;
-      if (!aMatches && bMatches) return 1;
-      return 0;
-    });
-  }, [lookup, preferredPos, word]);
-
-  const primary = entries[0];
-  const totalSenses = entries.reduce((count, entry) => count + entry.senses.length, 0);
-  const multiSense = totalSenses > 1;
-
-  const chosenEntry = entries[selected.entryIndex] ?? entries[0];
-  const chosenSense = chosenEntry?.senses[selected.senseIndex] ?? chosenEntry?.senses[0];
-
-  const lexicalFamily = useMemo(() => findLexicalFamily(word, language), [word, language]);
-
-  const enrich = async () => {
-    setLookup({ kind: "enriching" });
-    const result = await enrichWord(word, language, context, captureDbScope(), loadNativeLanguage());
-    if (!result.ok) setLookup({ kind: "error", message: result.error });
-    else setLookup({ kind: "found", entries: result.entries });
-  };
-
   const explainPassageAction = async () => {
-    if (!context || passageExplanation?.state === "busy") return;
+    if (passageExplanation?.state === "busy") return;
     setPassageExplanation({ state: "busy" });
     if (!useAi || (typeof navigator !== "undefined" && !navigator.onLine)) {
       const def = chosenSense?.definition ?? "Significado contextual según el fragmento leído.";
@@ -319,7 +383,7 @@ export default function WordPanel({
     const result = await explainInPassage(
       {
         word,
-        sentence: context,
+        sentence: context || `Palabra: ${word}`,
         bookTitle,
         author,
         language,
@@ -330,6 +394,7 @@ export default function WordPanel({
     if (result.ok) {
       setPassageExplanation({
         state: "done",
+        directMeaning: result.directMeaning,
         contextualMeaning: result.contextualMeaning,
         toneAndNuance: result.toneAndNuance,
         catTip: result.catTip,
@@ -352,24 +417,29 @@ export default function WordPanel({
     }
   };
 
-  // Guarda la palabra con la acepción elegida junto a su evidencia
-  // «todavía no la sé» en una sola transacción: nunca queda la
-  // palabra sin la señal para el modelo (ni al revés).
-  // Guarda la palabra con la acepción elegida junto a su evidencia
-  // «todavía no la sé» en una sola transacción: nunca queda la
-  // palabra sin la señal para el modelo (ni al revés).
+  // Guardar en cuaderno (persist)
   const persist = async (isPriority = false) => {
     const scope = captureDbScope();
+    const effectiveMeaning =
+      passageExplanation?.directMeaning ||
+      passageExplanation?.contextualMeaning ||
+      chosenSense?.definition ||
+      undefined;
+
+    const savedContext = personalNote.trim()
+      ? `${context ?? ""} [Nota: ${personalNote.trim()}]`.trim()
+      : context;
+
     const { word: entry, knowledge } = await saveWordWithKnowledge({
       word: {
         form: word,
         lemma: chosenEntry?.lemma,
         pos: chosenEntry?.pos,
-        meaning: chosenSense?.definition,
+        meaning: effectiveMeaning,
         senseEntryId: chosenEntry?.entryId,
         senseOrder: chosenSense?.senseOrder,
         language,
-        context,
+        context: savedContext,
         bookHash,
         priority: isPriority,
       },
@@ -384,9 +454,7 @@ export default function WordPanel({
     setSavedEntry(entry);
     triggerHaptic(14);
     onSaved(entry);
-    // El premio queda ligado a la fila guardada (key + sello): re-guardar
-    // la misma palabra no infla el journal — la fila se fusiona y su
-    // updatedAt solo cambia si hubo algo nuevo que persistir.
+
     const awardedAt = Date.now();
     void award({ kind: "saved", zipf: chosenEntry?.zipf ?? null }, scope, {
       id: `saved:${entry.key}:${entry.updatedAt ?? entry.savedAt}`,
@@ -397,8 +465,6 @@ export default function WordPanel({
       onKnowledgeChanged?.(knowledge, { form: word, kind: "saved" });
       void pushKnowledgeToServer([knowledge], scope);
     }
-    // La palabra ya está a salvo localmente; si el envío falla lo
-    // decimos sin fingir sincronización.
     const pushed = await pushWordsToServer([entry], scope);
     if (!pushed) setSyncNote(true);
     return entry;
@@ -418,8 +484,32 @@ export default function WordPanel({
     }
   };
 
-  // Acción rápida «✓ Ya la sé»: marca como conocida y aplica micro-ajuste
-  // si la palabra supera el nivel estimado actual del lector.
+  const handlePinNotebook = async () => {
+    if (saving) return;
+    setSaving(true);
+    setSaveError("");
+    setSyncNote(false);
+    try {
+      await persist(true);
+      const bw = wordDifficulty(chosenEntry?.zipf);
+      const currentTheta = loadUserTheta();
+      const { newTheta, adjusted } = adjustThetaOnEasyPin(currentTheta, bw);
+      if (adjusted) {
+        saveUserTheta(newTheta);
+      }
+      const msg = "Fijada con prioridad en tu cuaderno.";
+      onNotice?.(msg);
+      setQuickNotice(msg);
+      setTimeout(() => {
+        setQuickNotice(null);
+      }, 2500);
+    } catch {
+      setSaveError("No se pudo fijar la palabra. Intenta de nuevo.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleQuickKnown = async () => {
     if (saving) return;
     setSaving(true);
@@ -470,35 +560,6 @@ export default function WordPanel({
     }
   };
 
-  // Acción rápida «★ Fijar en mi cuaderno»: guarda con prioridad y aplica
-  // micro-ajuste inverso si el usuario fija una palabra «fácil» (b_w < theta - 0.5).
-  const handlePinNotebook = async () => {
-    if (saving) return;
-    setSaving(true);
-    setSaveError("");
-    setSyncNote(false);
-    try {
-      await persist(true);
-      const bw = wordDifficulty(chosenEntry?.zipf);
-      const currentTheta = loadUserTheta();
-      const { newTheta, adjusted } = adjustThetaOnEasyPin(currentTheta, bw);
-      if (adjusted) {
-        saveUserTheta(newTheta);
-      }
-      const msg = "Fijada con prioridad en tu cuaderno.";
-      onNotice?.(msg);
-      setQuickNotice(msg);
-      setTimeout(() => {
-        setQuickNotice(null);
-      }, 2500);
-    } catch {
-      setSaveError("No se pudo fijar la palabra. Intenta de nuevo.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-
   const remove = async () => {
     if (saving) return;
     setSaving(true);
@@ -519,23 +580,18 @@ export default function WordPanel({
     }
   };
 
-  // Reporta que la acepción elegida no corresponde a esta oración.
-  // Requiere entryId y senseOrder del catálogo: sin ellos no hay fila
-  // que marcar y el botón ni se muestra.
   const reportSelected = async () => {
     if (chosenEntry?.entryId == null || chosenSense?.senseOrder == null) return;
     if (report === "sending") return;
     setReport("sending");
-    const result = await reportSense(
+    const res = await reportSense(
       chosenEntry.entryId,
       chosenSense.senseOrder,
       captureDbScope(),
     );
-    setReport(result.ok ? "done" : "error");
+    setReport(res.ok ? "done" : "error");
   };
 
-  // ¿La recordó al verla marcada? Actualiza la tarjeta como un repaso
-  // más: Sí = Bien, No = Otra vez.
   const markReread = async (remembered: boolean) => {
     if (!savedEntry || reread !== "idle") return;
     setReread("busy");
@@ -553,9 +609,7 @@ export default function WordPanel({
           rating: remembered ? "good" : "again",
         },
         scope,
-      ).catch(() => {
-        /* el historial es auxiliar; no deshace el repaso */
-      });
+      ).catch(() => {});
       setReread("done");
     } catch {
       setSaveError("No se pudo anotar el repaso. Intenta de nuevo.");
@@ -563,6 +617,67 @@ export default function WordPanel({
     }
   };
 
+  const actionsRef = useRef({
+    handlePinNotebook,
+    handleQuickKnown,
+    save,
+    word,
+    language,
+    savedEntry,
+    saving,
+    compactMode,
+  });
+  useEffect(() => {
+    actionsRef.current = {
+      handlePinNotebook,
+      handleQuickKnown,
+      save,
+      word,
+      language,
+      savedEntry,
+      saving,
+      compactMode,
+    };
+  });
+
+  // Atajos de teclado: 'p' (pronunciar), 'g' (guardar), 's' (ya la sé)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey) return;
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      const act = actionsRef.current;
+      const key = e.key.toLowerCase();
+      if (key === "g") {
+        e.preventDefault();
+        if (!act.saving) {
+          if (act.savedEntry) return;
+          void act.handlePinNotebook();
+        }
+      } else if (key === "s") {
+        e.preventDefault();
+        if (!act.saving) {
+          void act.handleQuickKnown();
+        }
+      } else if (key === "p") {
+        e.preventDefault();
+        void speakWord(act.word, act.language);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  // Micro-glosa para compactMode cuando no está expandida
   if (compactMode && !isExpanded) {
     const syllables = syllabifySpanish(word, "·");
     let briefSense = "Buscando definición...";
@@ -625,12 +740,20 @@ export default function WordPanel({
     );
   }
 
+  const primaryPos = chosenEntry?.pos || primary?.pos;
+  const isConjugation =
+    chosenEntry?.lemma && chosenEntry.lemma.toLowerCase() !== word.toLowerCase();
+
   return (
     <Sheet label={`Palabra ${word}`} onClose={onClose} side="right" variant="peek">
-      <div className="sheet-head">
-        <strong className="sheet-title">
-          {word}
-          {primary?.pos ? <span className="card-pos"> · {primary.pos}</span> : null}
+      {/* ===================================================================
+          BLOQUE 1 — Cabecera de Identidad
+          =================================================================== */}
+      <div className="sheet-head word-panel-header">
+        <div className="word-panel-identity">
+          <h2 className="word-panel-lemma">
+            {chosenEntry?.lemma || word}
+          </h2>
           <button
             type="button"
             className="btn--pronounce"
@@ -638,67 +761,23 @@ export default function WordPanel({
             title="Escuchar pronunciación"
             onClick={() => void speakWord(word, language)}
           >
-            <Icon name="speaker" size={16} />
+            <Icon name="speaker" size={18} />
           </button>
-        </strong>
-        <div className="word-panel-quick-actions word-panel-status-bar">
-          {savedEntry ? (
-            <>
-              <span className="word-panel-saved-badge">★ Guardada en tu cuaderno</span>
-              <button
-                type="button"
-                className="btn--quick-action btn--remove-word"
-                disabled={saving}
-                onClick={() => void remove()}
-                aria-label="Quitar de mi cuaderno"
-              >
-                Quitar
-              </button>
-              <button
-                type="button"
-                className="btn--quick-action btn--view-notebook"
-                onClick={() => {
-                  onClose();
-                  window.location.hash = "#vocabulary";
-                }}
-                aria-label="Ver en cuaderno"
-              >
-                Ver en cuaderno →
-              </button>
-            </>
-          ) : (
-            <>
-              <button
-                type="button"
-                className="btn--quick-action btn--pin-notebook btn btn--primary"
-                aria-label="★ Guardar en mi cuaderno"
-                title="Guardar en cuaderno"
-                disabled={saving}
-                onClick={() => void handlePinNotebook()}
-              >
-                ★ Guardar en mi cuaderno
-              </button>
-              <button
-                type="button"
-                className="btn--quick-action btn--quick-known btn"
-                aria-label="✓ Ya la sé"
-                title="Marcar como conocida y recalibrar perfil"
-                disabled={saving}
-                onClick={() => void handleQuickKnown()}
-              >
-                ✓ Ya la sé
-              </button>
-            </>
-          )}
+          {primaryPos ? (
+            <span className="card-pos word-panel-pos-pill">{primaryPos}</span>
+          ) : null}
+          {isConjugation ? (
+            <span className="word-panel-conjugation-note">de «{chosenEntry.lemma}»</span>
+          ) : null}
         </div>
         <button
           type="button"
-          className="btn--quiet"
+          className="btn--quiet word-panel-close-btn"
           onClick={onClose}
           aria-label="Cerrar ficha"
           data-autofocus
         >
-          Cerrar
+          ✕
         </button>
       </div>
 
@@ -708,353 +787,85 @@ export default function WordPanel({
         </div>
       ) : null}
 
-      {context ? <ContextQuote context={context} word={word} /> : null}
+      {/* ===================================================================
+          BLOQUE 2 — El Significado Práctico (Siempre visible de inmediato)
+          =================================================================== */}
+      <div className="word-panel-body word-panel-level-1">
+        {context ? <ContextQuote context={context} word={word} /> : null}
 
-      {level === 1 ? (
-        <div className="word-panel-level-1">
-          {phrase ? (
-            <div className="phrase-hit">
-              <p className="meta">En esta frase</p>
-              <p className="phrase-hit-lemma">
-                «{phrase.lemma}»
-                {phrase.pos ? <span className="card-pos"> · {phrase.pos}</span> : null}
-              </p>
-              <ol className="senses">
-                {phrase.definitions.map((definition, index) => (
-                  <li key={index}>{definition}</li>
-                ))}
-              </ol>
-              <p className="meta phrase-hit-source">Wikcionario</p>
-            </div>
-          ) : null}
+        {phrase ? (
+          <div className="phrase-hit">
+            <p className="meta">En esta frase</p>
+            <p className="phrase-hit-lemma">
+              «{phrase.lemma}»
+              {phrase.pos ? <span className="card-pos"> · {phrase.pos}</span> : null}
+            </p>
+            <ol className="senses">
+              {phrase.definitions.map((definition, index) => (
+                <li key={index}>{definition}</li>
+              ))}
+            </ol>
+            <p className="meta phrase-hit-source">Wikcionario</p>
+          </div>
+        ) : null}
 
-          {lookup.kind === "loading" ? <p className="meta">Buscando en el catálogo…</p> : null}
-          {lookup.kind === "enriching" ? <p className="meta">Consultando la ficha…</p> : null}
-          {lookup.kind === "error" ? (
-            <>
-              <p role="alert" className={`status${lookup.offline ? " status--offline" : ""}`}>
-                {lookup.message}
-              </p>
-              {lookup.offline ? (
-                <p className="meta">
-                  Puedes guardar la palabra en tu Cuaderno; su definición se completará automáticamente al reconectarte.
-                </p>
-              ) : null}
-              <button
-                type="button"
-                className="btn--quiet"
-                onClick={() => {
-                  setLookup({ kind: "loading" });
-                  void lookupWord(word, language, captureDbScope()).then((result) => {
-                    if (!result.ok) setLookup({ kind: "error", message: result.error, offline: result.offline });
-                    else if (!result.found) setLookup({ kind: "notFound" });
-                    else setLookup({ kind: "found", entries: result.entries, offline: result.offline });
-                  });
-                }}
-              >
-                Intentar de nuevo
-              </button>
-            </>
-          ) : null}
-          {lookup.kind === "notFound" ? (
-            <>
-              <p className="meta">Aún no está en el catálogo.</p>
-              {typeof navigator !== "undefined" && !navigator.onLine ? (
-                <p className="meta">
-                  Sin conexión a internet. Puedes guardar la palabra para definirla al reconectar.
-                </p>
-              ) : useAi ? (
-                <>
-                  <button
-                    type="button"
-                    className="btn"
-                    disabled={!canExplain}
-                    onClick={() => void enrich()}
-                  >
-                    Definir con IA
-                  </button>
-                  {!canExplain ? (
-                    <p className="meta">Inicia sesión para pedir explicaciones.</p>
-                  ) : null}
-                </>
-              ) : (
-                <p className="meta">
-                  Las definiciones con IA están apagadas; actívalas en Cuenta.
-                </p>
-              )}
-            </>
-          ) : null}
-          {lookup.kind === "found" ? (
-            <div className="word-panel-level-1-found">
-              <div className="word-panel-level-1-sense">
-                <span className="eyebrow">Acepción en este contexto</span>
-                <p className="word-panel-best-sense-def">
-                  {chosenSense?.definition ?? "Definición del catálogo."}
-                </p>
-                {chosenEntry?.lemma && chosenEntry.lemma.toLowerCase() !== word.toLowerCase() ? (
-                  <p className="meta">Forma de «{chosenEntry.lemma}»</p>
-                ) : null}
-              </div>
+        {/* Estado de carga inicial */}
+        {lookup.kind === "loading" ? (
+          <p className="meta" style={{ paddingBlock: "1rem", textAlign: "center" }}>
+            Buscando en el catálogo…
+          </p>
+        ) : null}
 
-              {lexicalFamily.length > 0 ? (
-                <div className="word-panel-lexical-family">
-                  <span className="eyebrow">Familia léxica</span>
-                  <div className="lexical-family-chips">
-                    {lexicalFamily.map((rel) => (
-                      <button
-                        key={rel}
-                        type="button"
-                        className="lexical-chip"
-                        onClick={() => onSelectWord?.(rel)}
-                        title={`Explorar «${rel}»`}
-                      >
-                        {rel}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-
-              {characterSummary && isProperNoun ? (
-                <div className="spoiler-free-card" role="region" aria-label="Atlas del libro sin spoilers">
-                  <div className="spoiler-free-header">
-                    <span className="spoiler-free-badge">🧭 Personaje / Lugar (Sin Spoilers)</span>
-                    <span className="spoiler-free-mentions">
-                      {characterSummary.totalMentionsSoFar} menci{characterSummary.totalMentionsSoFar === 1 ? "ón" : "ones"} hasta aquí
-                    </span>
-                  </div>
-
-                  {characterSummary.firstMention ? (
-                    <div className="spoiler-free-section">
-                      <p className="meta">Primera aparición: <strong>{characterSummary.firstMention.chapterLabel}</strong></p>
-                      <p className="spoiler-free-quote">«{characterSummary.firstMention.sentence}»</p>
-                    </div>
-                  ) : null}
-
-                  {characterSummary.recentMentions.length > 1 ? (
-                    <div className="spoiler-free-section">
-                      <p className="meta">Aparición reciente: <strong>{characterSummary.recentMentions[characterSummary.recentMentions.length - 1].chapterLabel}</strong></p>
-                      <p className="spoiler-free-quote">«{characterSummary.recentMentions[characterSummary.recentMentions.length - 1].sentence}»</p>
-                    </div>
-                  ) : null}
-
-                  <button
-                    type="button"
-                    className="btn btn--character-recap"
-                    disabled={characterRecap.state === "busy"}
-                    onClick={() => void handleCharacterRecap()}
-                  >
-                    {characterRecap.state === "busy" ? "Consultando al gato…" : "🐱 ¿Quién es hasta este capítulo?"}
-                  </button>
-
-                  {characterRecap.state === "done" && characterRecap.summary ? (
-                    <div className="character-recap-result">
-                      {characterRecap.role ? (
-                        <span className="character-recap-role">{characterRecap.role}</span>
-                      ) : null}
-                      <p className="character-recap-summary">{characterRecap.summary}</p>
-                    </div>
-                  ) : null}
-                  {characterRecap.state === "error" ? (
-                    <p role="alert" className="status">{characterRecap.error}</p>
-                  ) : null}
-                </div>
-              ) : null}
-
-              <div className="word-panel-profundizar-row">
-                <button
-                  type="button"
-                  className="btn btn--profundizar"
-                  onClick={() => setLevel(2)}
-                  aria-label="Profundizar en la palabra"
-                >
-                  Profundizar ↑
-                </button>
-              </div>
-            </div>
-          ) : (
-            characterSummary && (isProperNoun || lookup.kind === "notFound") ? (
-              <div className="spoiler-free-card" role="region" aria-label="Atlas del libro sin spoilers">
-                <div className="spoiler-free-header">
-                  <span className="spoiler-free-badge">🧭 Personaje / Lugar (Sin Spoilers)</span>
-                  <span className="spoiler-free-mentions">
-                    {characterSummary.totalMentionsSoFar} menci{characterSummary.totalMentionsSoFar === 1 ? "ón" : "ones"} hasta aquí
-                  </span>
-                </div>
-
-                {characterSummary.firstMention ? (
-                  <div className="spoiler-free-section">
-                    <p className="meta">Primera aparición: <strong>{characterSummary.firstMention.chapterLabel}</strong></p>
-                    <p className="spoiler-free-quote">«{characterSummary.firstMention.sentence}»</p>
-                  </div>
-                ) : null}
-
-                <button
-                  type="button"
-                  className="btn btn--character-recap"
-                  disabled={characterRecap.state === "busy"}
-                  onClick={() => void handleCharacterRecap()}
-                >
-                  {characterRecap.state === "busy" ? "Consultando al gato…" : "🐱 ¿Quién es hasta este capítulo?"}
-                </button>
-
-                {characterRecap.state === "done" && characterRecap.summary ? (
-                  <div className="character-recap-result">
-                    {characterRecap.role ? (
-                      <span className="character-recap-role">{characterRecap.role}</span>
-                    ) : null}
-                    <p className="character-recap-summary">{characterRecap.summary}</p>
-                  </div>
-                ) : null}
-              </div>
-            ) : null
-          )}
-        </div>
-      ) : (
-        <div className="word-panel-level-2">
-          <div className="word-panel-level-2-nav">
+        {lookup.kind === "error" ? (
+          <div className="word-panel-error-block">
+            <p role="alert" className={`status${lookup.offline ? " status--offline" : ""}`}>
+              {lookup.message}
+            </p>
             <button
               type="button"
-              className="btn--quiet btn--back-level-1"
-              onClick={() => setLevel(1)}
-              aria-label="Volver a vistazo rápido"
+              className="btn--quiet"
+              onClick={() => {
+                setLookup({ kind: "loading" });
+                void lookupWord(word, language, captureDbScope()).then((result) => {
+                  if (!result.ok) setLookup({ kind: "error", message: result.error, offline: result.offline });
+                  else if (!result.found || result.entries.length === 0) setLookup({ kind: "notFound" });
+                  else setLookup({ kind: "found", entries: result.entries, offline: result.offline });
+                });
+              }}
             >
-              ← Vistazo rápido
+              Intentar de nuevo
             </button>
           </div>
+        ) : null}
 
-          {phrase ? (
-            <div className="phrase-hit">
-              <p className="meta">En esta frase</p>
-              <p className="phrase-hit-lemma">
-                «{phrase.lemma}»
-                {phrase.pos ? <span className="card-pos"> · {phrase.pos}</span> : null}
-              </p>
-              <ol className="senses">
-                {phrase.definitions.map((definition, index) => (
-                  <li key={index}>{definition}</li>
-                ))}
-              </ol>
-              <p className="meta phrase-hit-source">Wikcionario</p>
-            </div>
-          ) : null}
-
-          {lookup.kind === "loading" ? <p className="meta">Buscando en el catálogo…</p> : null}
-          {lookup.kind === "enriching" ? <p className="meta">Consultando la ficha…</p> : null}
-          {lookup.kind === "error" ? (
-            <>
-              <p role="alert" className={`status${lookup.offline ? " status--offline" : ""}`}>
-                {lookup.message}
-              </p>
-              <button
-                type="button"
-                className="btn--quiet"
-                onClick={() => {
-                  setLookup({ kind: "loading" });
-                  void lookupWord(word, language, captureDbScope()).then((result) => {
-                    if (!result.ok) setLookup({ kind: "error", message: result.error, offline: result.offline });
-                    else if (!result.found) setLookup({ kind: "notFound" });
-                    else setLookup({ kind: "found", entries: result.entries, offline: result.offline });
-                  });
-                }}
-              >
-                Intentar de nuevo
-              </button>
-            </>
-          ) : null}
-          {lookup.kind === "notFound" ? (
-            <>
-              <p className="meta">Aún no está en el catálogo.</p>
-              {useAi ? (
-                <button
-                  type="button"
-                  className="btn"
-                  disabled={!canExplain}
-                  onClick={() => void enrich()}
-                >
-                  Definir con IA
-                </button>
-              ) : null}
-            </>
-          ) : null}
-          {lookup.kind === "found" ? (
-            <>
-              {lookup.offline ? (
-                <p className="meta meta--offline">
-                  <span className="offline-dot" aria-hidden="true">●</span> Memoria local · Disponible sin conexión
+        {/* OBJ-03: Carga automática de IA cuando no está en diccionario local */}
+        {(lookup.kind === "notFound" || (lookup.kind === "found" && !hasLocalDefinition)) ? (
+          <div className="word-panel-auto-ai-section">
+            {passageExplanation?.state === "busy" ? (
+              <div className="word-panel-auto-loading" role="status" aria-live="polite">
+                <span className="cat-spinner" aria-hidden="true">🐱</span>
+                <p className="meta" style={{ margin: 0, fontWeight: 500 }}>
+                  🐱 Buscando el significado exacto en tu lectura...
                 </p>
-              ) : null}
-              {multiSense ? (
-                <p className="meta">Elige la acepción que corresponde a esta oración:</p>
-              ) : null}
-              {entries.map((entry, entryIndex) => (
-                <div key={`${entry.lemma}:${entry.pos ?? ""}`} className="word-entry">
-                  {entry.lemma !== word ? (
-                    <p className="meta">Forma de «{entry.lemma}»</p>
-                  ) : null}
-                  <ol className="senses">
-                    {entry.senses.map((sense, senseIndex) =>
-                      multiSense ? (
-                        <li key={senseIndex}>
-                          <button
-                            type="button"
-                            className={`sense-option${
-                              selected.entryIndex === entryIndex &&
-                              selected.senseIndex === senseIndex
-                                ? " is-selected"
-                                : ""
-                            }`}
-                            aria-pressed={
-                              selected.entryIndex === entryIndex &&
-                              selected.senseIndex === senseIndex
-                            }
-                            onClick={() => {
-                              setSelected({ entryIndex, senseIndex });
-                              setReport("idle");
-                            }}
-                          >
-                            {sense.definition}
-                          </button>
-                        </li>
-                      ) : (
-                        <li key={senseIndex}>{sense.definition}</li>
-                      ),
-                    )}
-                  </ol>
+              </div>
+            ) : passageExplanation?.state === "done" ? (
+              <div className="word-panel-ai-practical-block">
+                <div className="word-panel-practical-meaning">
+                  <span className="eyebrow">Significado directo</span>
+                  <p className="word-panel-best-sense-def">
+                    {passageExplanation.directMeaning || passageExplanation.contextualMeaning}
+                  </p>
                 </div>
-              ))}
 
-              {lexicalFamily.length > 0 ? (
-                <div className="word-panel-lexical-family">
-                  <span className="eyebrow">Familia léxica</span>
-                  <div className="lexical-family-chips">
-                    {lexicalFamily.map((rel) => (
-                      <span key={rel} className="lexical-chip">
-                        {rel}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-
-              {/* Botón: ✨ Explicar en este pasaje (IA) */}
-              <div className="word-panel-ai-passage-section">
-                <button
-                  type="button"
-                  className="btn btn--explain-passage"
-                  disabled={passageExplanation?.state === "busy"}
-                  onClick={() => void explainPassageAction()}
-                >
-                  {passageExplanation?.state === "busy"
-                    ? "Consultando al gato…"
-                    : "✨ Explicar en este pasaje (IA)"}
-                </button>
-
-                {passageExplanation?.state === "done" ? (
+                {passageExplanation.contextualMeaning &&
+                passageExplanation.directMeaning &&
+                passageExplanation.contextualMeaning !== passageExplanation.directMeaning ? (
                   <div className="passage-explanation-card">
                     <div className="passage-explanation-meaning">
                       <span className="passage-badge-tone">{passageExplanation.toneAndNuance}</span>
-                      <p className="passage-meaning-text">{passageExplanation.contextualMeaning}</p>
+                      <p className="passage-meaning-text">
+                        <strong>En este pasaje:</strong> {passageExplanation.contextualMeaning}
+                      </p>
                     </div>
                     {passageExplanation.catTip ? (
                       <div className="cat-literary-tip">
@@ -1064,122 +875,281 @@ export default function WordPanel({
                     ) : null}
                   </div>
                 ) : null}
-                {passageExplanation?.state === "error" ? (
-                  <p role="alert" className="status">{passageExplanation.error}</p>
-                ) : null}
               </div>
+            ) : passageExplanation?.state === "error" ? (
+              <div className="word-panel-ai-error">
+                <p role="alert" className="status">{passageExplanation.error}</p>
+                <button
+                  type="button"
+                  className="btn btn--explain-passage"
+                  onClick={() => void explainPassageAction()}
+                >
+                  Reintentar con IA
+                </button>
+              </div>
+            ) : (
+              <p className="meta">Aún no tenemos esta palabra en el catálogo.</p>
+            )}
+          </div>
+        ) : null}
 
-              {characterSummary && isProperNoun ? (
-                <div className="spoiler-free-card" role="region" aria-label="Atlas del libro sin spoilers">
-                  <div className="spoiler-free-header">
-                    <span className="spoiler-free-badge">🧭 Personaje / Lugar (Sin Spoilers)</span>
-                    <span className="spoiler-free-mentions">
-                      {characterSummary.totalMentionsSoFar} menci{characterSummary.totalMentionsSoFar === 1 ? "ón" : "ones"} hasta aquí
-                    </span>
+        {/* 2.A: Si la palabra sí tenía definición local o vino del léxico base */}
+        {lookup.kind === "found" && hasLocalDefinition ? (
+          <div className="word-panel-practical-block word-panel-meaning-block">
+            <div className="word-panel-main-meaning">
+              <span className="eyebrow">Qué significa</span>
+              <p className="word-panel-best-sense-def word-panel-primary-def">
+                {chosenSense?.definition}
+              </p>
+
+              {synonyms.length > 0 ? (
+                <div className="word-panel-synonyms-row">
+                  <span className="meta" style={{ fontSize: "var(--fs-xs)" }}>💡 Sinónimos:</span>
+                  <div className="lexical-family-chips">
+                    {synonyms.map((syn) => (
+                      <button
+                        key={syn}
+                        type="button"
+                        className="lexical-chip"
+                        onClick={() => onSelectWord?.(syn)}
+                        title={`Explorar «${syn}»`}
+                      >
+                        {syn}
+                      </button>
+                    ))}
                   </div>
-
-                  {characterSummary.firstMention ? (
-                    <div className="spoiler-free-section">
-                      <p className="meta">Primera aparición: <strong>{characterSummary.firstMention.chapterLabel}</strong></p>
-                      <p className="spoiler-free-quote">«{characterSummary.firstMention.sentence}»</p>
-                    </div>
-                  ) : null}
-
-                  {characterSummary.recentMentions.length > 1 ? (
-                    <div className="spoiler-free-section">
-                      <p className="meta">Aparición reciente: <strong>{characterSummary.recentMentions[characterSummary.recentMentions.length - 1].chapterLabel}</strong></p>
-                      <p className="spoiler-free-quote">«{characterSummary.recentMentions[characterSummary.recentMentions.length - 1].sentence}»</p>
-                    </div>
-                  ) : null}
-
-                  <button
-                    type="button"
-                    className="btn btn--character-recap"
-                    disabled={characterRecap.state === "busy"}
-                    onClick={() => void handleCharacterRecap()}
-                  >
-                    {characterRecap.state === "busy" ? "Consultando al gato…" : "🐱 ¿Quién es hasta este capítulo?"}
-                  </button>
-
-                  {characterRecap.state === "done" && characterRecap.summary ? (
-                    <div className="character-recap-result">
-                      {characterRecap.role ? (
-                        <span className="character-recap-role">{characterRecap.role}</span>
-                      ) : null}
-                      <p className="character-recap-summary">{characterRecap.summary}</p>
-                    </div>
-                  ) : null}
-                  {characterRecap.state === "error" ? (
-                    <p role="alert" className="status">{characterRecap.error}</p>
-                  ) : null}
                 </div>
               ) : null}
-
-              {chosenEntry?.entryId != null && chosenSense?.senseOrder != null ? (
-                report === "done" ? (
-                  <p className="meta">Gracias, lo anotamos.</p>
-                ) : (
-                  <>
-                    <button
-                      type="button"
-                      className="btn--quiet"
-                      disabled={report === "sending"}
-                      onClick={() => void reportSelected()}
-                    >
-                      {report === "sending" ? "Enviando…" : "Esta explicación no corresponde"}
-                    </button>
-                    {report === "error" ? (
-                      <p role="alert" className="status">
-                        No se pudo enviar. Intenta de nuevo.
-                      </p>
-                    ) : null}
-                  </>
-                )
-              ) : null}
-            </>
-          ) : null}
-        </div>
-      )}
-
-      {!savedEntry && lookup.kind !== "found" ? (
-        <p className="meta">Se guardará sin ficha; podrás repasarla cuando tenga definición.</p>
-      ) : null}
-      {saveError ? (
-        <p role="alert" className="status">
-          {saveError}
-        </p>
-      ) : null}
-      {syncNote ? (
-        <p className="meta">Se guardó en este dispositivo; se sincroniza al volver la conexión.</p>
-      ) : null}
-
-      {savedEntry ? (
-        reread === "done" ? (
-          <p className="meta">Anotado.</p>
-        ) : (
-          <div className="reread">
-            <p className="meta">¿La recordaste al verla marcada?</p>
-            <div className="actions">
-              <button
-                type="button"
-                className="btn"
-                disabled={reread === "busy"}
-                onClick={() => void markReread(true)}
-              >
-                Sí
-              </button>
-              <button
-                type="button"
-                className="btn"
-                disabled={reread === "busy"}
-                onClick={() => void markReread(false)}
-              >
-                No
-              </button>
             </div>
+
+            {/* 2.B: Explicación en tu frase (1 clic o ya resuelta) */}
+            <div className="word-panel-ai-phrase-section">
+              {passageExplanation?.state === "done" ? (
+                <div className="passage-explanation-card">
+                  <div className="passage-explanation-meaning">
+                    <span className="passage-badge-tone">{passageExplanation.toneAndNuance}</span>
+                    <p className="passage-meaning-text">{passageExplanation.contextualMeaning}</p>
+                  </div>
+                  {passageExplanation.catTip ? (
+                    <div className="cat-literary-tip">
+                      <span className="cat-tip-icon" aria-hidden="true">🐾</span>
+                      <p className="cat-tip-text"><em>Michi:</em> «{passageExplanation.catTip}»</p>
+                    </div>
+                  ) : null}
+                </div>
+              ) : characterRecap.state === "done" && characterRecap.summary ? (
+                <div className="character-recap-result">
+                  {characterRecap.role ? (
+                    <span className="character-recap-role">{characterRecap.role}</span>
+                  ) : null}
+                  <p className="character-recap-summary">{characterRecap.summary}</p>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className={`btn ${isProperNoun ? "btn--character-recap" : "btn--explain-passage"}`}
+                  disabled={passageExplanation?.state === "busy" || characterRecap.state === "busy"}
+                  onClick={() => {
+                    if (isProperNoun) void handleCharacterRecap();
+                    else void explainPassageAction();
+                  }}
+                >
+                  {passageExplanation?.state === "busy" || characterRecap.state === "busy"
+                    ? "Consultando al gato…"
+                    : isProperNoun
+                      ? "🧭 ¿Quién es o qué es en el libro?"
+                      : "✨ Explicar en esta frase"}
+                </button>
+              )}
+            </div>
+
+            {/* 2.C: Acordeón opcional "Más detalles y nota personal ▾" */}
+            <details className="word-panel-details-accordion">
+              <summary className="word-panel-accordion-summary">
+                <span>Más detalles y nota personal ▾</span>
+              </summary>
+              <div className="word-panel-accordion-content">
+                {multiSense ? (
+                  <div className="word-panel-secondary-senses">
+                    <span className="eyebrow">Acepciones secundarias</span>
+                    <ol className="senses" start={2}>
+                      {secondarySenses.map((s, idx) => (
+                        <li key={idx}>
+                          <button
+                            type="button"
+                            className={`sense-option${selected.senseIndex === s.senseIndex ? " is-selected" : ""}`}
+                            onClick={() => setSelected({ entryIndex: s.entryIndex, senseIndex: s.senseIndex })}
+                          >
+                            {s.definition}
+                          </button>
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                ) : null}
+
+                {lexicalFamily.length > 0 ? (
+                  <div className="word-panel-lexical-family">
+                    <span className="eyebrow">Familia léxica</span>
+                    <div className="lexical-family-chips">
+                      {lexicalFamily.map((rel) => (
+                        <button
+                          key={rel}
+                          type="button"
+                          className="lexical-chip"
+                          onClick={() => onSelectWord?.(rel)}
+                          title={`Explorar «${rel}»`}
+                        >
+                          {rel}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                {/* Campo opcional para nota personal (SIN botón duplicado de guardar) */}
+                <div className="word-panel-note-field">
+                  <label htmlFor="word-personal-note" className="eyebrow">
+                    Nota personal
+                  </label>
+                  <textarea
+                    id="word-personal-note"
+                    className="word-panel-note-textarea"
+                    rows={2}
+                    placeholder="Añade un apunte personal o mnemotécnica..."
+                    value={personalNote}
+                    onChange={(e) => setPersonalNote(e.target.value)}
+                  />
+                </div>
+
+                {characterSummary && isProperNoun ? (
+                  <div className="spoiler-free-card" role="region" aria-label="Atlas del libro sin spoilers">
+                    <div className="spoiler-free-header">
+                      <span className="spoiler-free-badge">🧭 Atlas sin Spoilers</span>
+                      <span className="spoiler-free-mentions">
+                        {characterSummary.totalMentionsSoFar} menci{characterSummary.totalMentionsSoFar === 1 ? "ón" : "ones"} hasta aquí
+                      </span>
+                    </div>
+
+                    {characterSummary.firstMention ? (
+                      <div className="spoiler-free-section">
+                        <p className="meta">Primera aparición: <strong>{characterSummary.firstMention.chapterLabel}</strong></p>
+                        <p className="spoiler-free-quote">«{characterSummary.firstMention.sentence}»</p>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {chosenEntry?.entryId != null && chosenSense?.senseOrder != null ? (
+                  <div className="word-panel-report-row">
+                    {report === "done" ? (
+                      <span className="meta">Gracias, lo anotamos.</span>
+                    ) : (
+                      <button
+                        type="button"
+                        className="btn--quiet btn--report-sense"
+                        disabled={report === "sending"}
+                        onClick={() => void reportSelected()}
+                      >
+                        {report === "sending" ? "Enviando…" : "Esta explicación no corresponde"}
+                      </button>
+                    )}
+                  </div>
+                ) : null}
+              </div>
+            </details>
           </div>
-        )
-      ) : null}
+        ) : null}
+
+        {saveError ? (
+          <p role="alert" className="status">
+            {saveError}
+          </p>
+        ) : null}
+        {syncNote ? (
+          <p className="meta">Se guardó en este dispositivo; se sincroniza al volver la conexión.</p>
+        ) : null}
+
+        {savedEntry ? (
+          reread === "done" ? (
+            <p className="meta">Anotado.</p>
+          ) : (
+            <div className="reread">
+              <p className="meta">¿La recordaste al verla marcada?</p>
+              <div className="actions">
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={reread === "busy"}
+                  onClick={() => void markReread(true)}
+                >
+                  Sí
+                </button>
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={reread === "busy"}
+                  onClick={() => void markReread(false)}
+                >
+                  No
+                </button>
+              </div>
+            </div>
+          )
+        ) : null}
+      </div>
+
+      {/* ===================================================================
+          BLOQUE 3 — Barra Única de Acción al Pie (Sticky Footer)
+          =================================================================== */}
+      <div className="word-panel-sticky-footer">
+        {savedEntry ? (
+          <div className="word-panel-footer-saved">
+            <span className="word-panel-saved-badge">★ Guardada en tu cuaderno</span>
+            <button
+              type="button"
+              className="btn--quick-action btn--remove-word"
+              disabled={saving}
+              onClick={() => void remove()}
+              aria-label="Quitar de mi cuaderno"
+            >
+              Quitar
+            </button>
+            <button
+              type="button"
+              className="btn--quick-action btn--view-notebook"
+              onClick={() => {
+                onClose();
+                window.location.hash = "#vocabulary";
+              }}
+              aria-label="Ver en cuaderno"
+            >
+              Ver en cuaderno →
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            className="btn--quick-action btn--pin-notebook btn btn--primary"
+            aria-label="★ Guardar en cuaderno"
+            title="Guardar en cuaderno"
+            disabled={saving}
+            onClick={() => void handlePinNotebook()}
+          >
+            ★ Guardar en mi cuaderno
+          </button>
+        )}
+        <button
+          type="button"
+          className="btn--quick-action btn--quick-known btn"
+          aria-label="✓ Ya la sé"
+          title="Marcar como conocida y recalibrar perfil"
+          disabled={saving}
+          onClick={() => void handleQuickKnown()}
+        >
+          ✓ Ya la sé
+        </button>
+      </div>
     </Sheet>
   );
 }

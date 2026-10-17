@@ -57,6 +57,11 @@ vi.mock("./components/Shelf", async () => {
               item.name,
             ),
             createElement(
+              "span",
+              { className: "shelf-item-lang" },
+              (item as { language?: string }).language ?? "",
+            ),
+            createElement(
               "button",
               {
                 className: "shelf-book-remove",
@@ -510,6 +515,27 @@ describe("App · navegación principal (Fase 2)", () => {
     await flush();
 
     expect(host.querySelector(".reader-stub")).toBeTruthy();
+  });
+
+  it("preserva el idioma de los libros locales en la estantería", async () => {
+    vi.mocked(listStoredBooks).mockResolvedValueOnce([
+      {
+        hash: "h-en",
+        name: "red-queen.epub",
+        title: "Red Queen",
+        author: "Victoria Aveyard",
+        addedAt: 1,
+        language: "en",
+        data: new Blob(),
+      },
+    ] as never);
+
+    renderRoot();
+    await flush();
+
+    const langSpan = host.querySelector(".shelf-item-lang");
+    expect(langSpan).toBeTruthy();
+    expect(langSpan?.textContent).toBe("en");
   });
 });
 

@@ -11,6 +11,7 @@ import {
   calibrationFallbackDefinition,
   calibrationBankZipf,
 } from "../../shared/calibration-bank";
+import { getEnglishCoreEntry } from "../../shared/english-core-lexicon";
 
 export type LexiconEntry = {
   // int8 de unique_rowid() (~1.2e18 > 2^53): viaja como string por
@@ -88,6 +89,10 @@ export async function lookupWord(
     if (bankFallback) {
       return { ok: true, found: true, entries: [bankFallback], offline: true };
     }
+    const englishCore = getEnglishCoreEntry(form);
+    if (englishCore) {
+      return { ok: true, found: true, entries: [englishCore], offline: true };
+    }
     return {
       ok: false,
       error: "Sin conexión con el catálogo. Esta palabra aún no está en la memoria local.",
@@ -103,6 +108,10 @@ export async function lookupWord(
       if (bankFallback) {
         return { ok: true, found: true, entries: [bankFallback], offline: true };
       }
+      const englishCore = getEnglishCoreEntry(form);
+      if (englishCore) {
+        return { ok: true, found: true, entries: [englishCore], offline: true };
+      }
       return { ok: true, found: false, entries: [] };
     }
     const data = (await response.json()) as LexiconResponseBody;
@@ -115,6 +124,10 @@ export async function lookupWord(
       if (bankFallback) {
         return { ok: true, found: true, entries: [bankFallback], offline: true };
       }
+      const englishCore = getEnglishCoreEntry(form);
+      if (englishCore) {
+        return { ok: true, found: true, entries: [englishCore], offline: true };
+      }
       return { ok: false, error: data.error ?? "No se pudo consultar el catálogo." };
     }
     const found = Boolean(data.found);
@@ -126,6 +139,10 @@ export async function lookupWord(
     const bankFallback = getCalibrationBankFallbackEntry(form, language);
     if (bankFallback) {
       return { ok: true, found: true, entries: [bankFallback], offline: true };
+    }
+    const englishCore = getEnglishCoreEntry(form);
+    if (englishCore) {
+      return { ok: true, found: true, entries: [englishCore], offline: true };
     }
     return { ok: true, found, entries };
   } catch {
@@ -156,6 +173,10 @@ export async function lookupWord(
     const bankFallback = getCalibrationBankFallbackEntry(form, language);
     if (bankFallback) {
       return { ok: true, found: true, entries: [bankFallback], offline: true };
+    }
+    const englishCore = getEnglishCoreEntry(form);
+    if (englishCore) {
+      return { ok: true, found: true, entries: [englishCore], offline: true };
     }
     return {
       ok: false,
@@ -267,8 +288,8 @@ export async function enrichWord(
   nativeLanguage?: string,
 ): Promise<LookupResult> {
   try {
-    const response = await accountFetch(
-      "/api/lexicon/enrich",
+    let response = await accountFetch(
+      "/api/ai/enrich",
       {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -276,14 +297,40 @@ export async function enrichWord(
       },
       scope,
     );
+    if (response.status === 404) {
+      response = await accountFetch(
+        "/api/lexicon/enrich",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ form, language, context, nativeLanguage }),
+        },
+        scope,
+      );
+    }
     const data = (await response.json()) as LexiconResponseBody;
-    if (!response.ok) return { ok: false, error: data.error ?? "La IA no pudo definir la palabra." };
+    if (!response.ok) {
+      const core = getEnglishCoreEntry(form);
+      if (core) {
+        return { ok: true, found: true, entries: [core], offline: true };
+      }
+      return { ok: false, error: data.error ?? "La IA no pudo definir la palabra." };
+    }
     const entries = (data.entries as LexiconEntry[]) ?? [];
     if (entries.length > 0) {
       void saveCachedLexicon(language, form, entries, scope).catch(() => undefined);
+      return { ok: true, found: true, entries };
+    }
+    const core = getEnglishCoreEntry(form);
+    if (core) {
+      return { ok: true, found: true, entries: [core], offline: true };
     }
     return { ok: true, found: true, entries };
   } catch {
+    const core = getEnglishCoreEntry(form);
+    if (core) {
+      return { ok: true, found: true, entries: [core], offline: true };
+    }
     return { ok: false, error: "Sin conexión con el catálogo." };
   }
 }
@@ -343,6 +390,7 @@ export interface ExplainInPassageInput {
 export type ExplainInPassageResult =
   | {
       ok: true;
+      directMeaning?: string;
       contextualMeaning: string;
       toneAndNuance: string;
       catTip: string;
@@ -365,6 +413,7 @@ export async function explainInPassage(
       scope,
     );
     const data = (await response.json()) as {
+      directMeaning?: string;
       contextualMeaning?: string;
       toneAndNuance?: string;
       catTip?: string;
@@ -373,12 +422,13 @@ export async function explainInPassage(
     if (!response.ok) {
       return { ok: false, error: data.error ?? "No se pudo obtener la explicación." };
     }
-    if (!data.contextualMeaning) {
+    if (!data.contextualMeaning && !data.directMeaning) {
       return { ok: false, error: "La IA no devolvió una explicación válida." };
     }
     return {
       ok: true,
-      contextualMeaning: data.contextualMeaning,
+      directMeaning: data.directMeaning,
+      contextualMeaning: data.contextualMeaning || data.directMeaning || "",
       toneAndNuance: data.toneAndNuance || "Literario",
       catTip: data.catTip || "Una resonancia sutil en el texto.",
     };

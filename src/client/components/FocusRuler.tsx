@@ -99,7 +99,7 @@ export function FocusRuler({
   return (
     <div className="focus-ruler" aria-hidden="true">
       <div
-        className="focus-ruler-veil focus-ruler-veil--top"
+        className="focus-ruler-veil focus-ruler-veil--top focus-ruler__mask"
         style={{ insetBlockStart: 0, blockSize: top }}
       />
       <div
@@ -109,7 +109,7 @@ export function FocusRuler({
         {anchor ? <span className="focus-ruler-anchor">{anchor}</span> : null}
       </div>
       <div
-        className="focus-ruler-veil focus-ruler-veil--bottom"
+        className="focus-ruler-veil focus-ruler-veil--bottom focus-ruler__mask"
         style={{ insetBlockStart: top + bandPx, insetBlockEnd: 0 }}
       />
     </div>

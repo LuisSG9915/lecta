@@ -100,3 +100,17 @@ export function scrollToSnippet(container: HTMLElement, snippet: string): boolea
   }
   return false;
 }
+
+import { targetAt, type ChapterRange, type ChapterTarget, type IntraSectionContext } from "./chapters";
+
+/**
+ * Resuelve el capítulo lógico activo considerando la sección física y el contexto intra-sección.
+ */
+export function describeReadingLocation(
+  ranges: ChapterRange[],
+  sectionIndex: number,
+  context?: IntraSectionContext | string | null,
+): ChapterTarget | null {
+  return targetAt(ranges, sectionIndex, context);
+}
+

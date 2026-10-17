@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import type { StrategyContrast } from "../lib/settings";
 import Icon from "./Icon";
 import OfflineDictionaryControl from "./OfflineDictionaryControl";
 
@@ -19,6 +20,8 @@ export interface ReaderMoreMenuProps {
   fullscreenSupported?: boolean;
   onOpenRetreat?: () => void;
   embedded?: boolean;
+  strategyContrast?: StrategyContrast;
+  onStrategyContrastChange?: (contrast: StrategyContrast) => void;
 }
 
 export default function ReaderMoreMenu({
@@ -38,6 +41,8 @@ export default function ReaderMoreMenu({
   fullscreenSupported = true,
   onOpenRetreat,
   embedded = false,
+  strategyContrast = "high",
+  onStrategyContrastChange,
 }: ReaderMoreMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -183,6 +188,43 @@ export default function ReaderMoreMenu({
           <span className="reader-more-label">Retiro de lectura</span>
         </button>
       ) : null}
+
+      <div className="reader-more-strategy-section">
+        <span className="reader-more-strategy-label">Contraste de ayudas:</span>
+        <div
+          className="segmented segmented--contrast"
+          role="group"
+          aria-label="Contraste de ayudas"
+        >
+          <button
+            type="button"
+            className="segmented-btn"
+            data-active={strategyContrast === "soft" || undefined}
+            aria-pressed={strategyContrast === "soft"}
+            onClick={() => onStrategyContrastChange?.("soft")}
+          >
+            Suave
+          </button>
+          <button
+            type="button"
+            className="segmented-btn"
+            data-active={strategyContrast === "balanced" || undefined}
+            aria-pressed={strategyContrast === "balanced"}
+            onClick={() => onStrategyContrastChange?.("balanced")}
+          >
+            Nítido
+          </button>
+          <button
+            type="button"
+            className="segmented-btn"
+            data-active={strategyContrast === "high" || undefined}
+            aria-pressed={strategyContrast === "high"}
+            onClick={() => onStrategyContrastChange?.("high")}
+          >
+            Intenso (AAA)
+          </button>
+        </div>
+      </div>
 
       {bookHash ? (
         <div className="reader-more-offline-section">

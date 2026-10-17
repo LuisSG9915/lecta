@@ -250,21 +250,44 @@ export default function ReadingActivity({
       {goalProgress ? (
         <section aria-label="Meta de la semana">
           <h2 className="eyebrow act-eyebrow">Meta de la semana</h2>
-          <div className="dots act-ink-drops" role="list" aria-label="Lunes a domingo">
-            {goalProgress.days.map(({ dayKey, read }) => {
-              const dayMs = days.find((d) => d.dayKey === dayKey)?.ms ?? 0;
-              const fillPct = Math.min(100, Math.round((dayMs / (15 * 60_000)) * 100));
-              return (
-                <span
-                  key={dayKey}
-                  role="img"
-                  className={`dot dot--day act-ink-drop${read ? " dot--done act-ink-drop--read" : ""}`}
-                  title={`${dayLabel(dayKey)}: ${formatDuration(dayMs)}`}
-                  aria-label={`${dayLabel(dayKey)}: ${read ? "con lectura" : "sin lectura"}`}
-                  data-fill={fillPct}
+          <div className="act-goal-track" style={{ display: "flex", alignItems: "center", gap: "var(--s-4)", marginBlock: "var(--s-2)" }}>
+            <div
+              className="progress-ring shelf-goal-ring-widget"
+              role="progressbar"
+              aria-label="Meta semanal de lectura"
+              aria-valuenow={Math.min(100, Math.round((goalProgress.readDays / Math.max(1, goalProgress.target)) * 100))}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              style={{ width: "40px", height: "40px", flexShrink: 0 }}
+            >
+              <svg className="shelf-goal-ring-svg" viewBox="0 0 36 36" aria-hidden="true" style={{ width: "100%", height: "100%" }}>
+                <path
+                  className="goal-ring-bg"
+                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
                 />
-              );
-            })}
+                <path
+                  className="goal-ring-fill"
+                  strokeDasharray={`${Math.min(100, Math.round((goalProgress.readDays / Math.max(1, goalProgress.target)) * 100))}, 100`}
+                  d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                />
+              </svg>
+            </div>
+            <div className="dots act-ink-drops" role="list" aria-label="Lunes a domingo" style={{ flex: 1 }}>
+              {goalProgress.days.map(({ dayKey, read }) => {
+                const dayMs = days.find((d) => d.dayKey === dayKey)?.ms ?? 0;
+                const fillPct = Math.min(100, Math.round((dayMs / (15 * 60_000)) * 100));
+                return (
+                  <span
+                    key={dayKey}
+                    role="img"
+                    className={`dot dot--day act-ink-drop${read ? " dot--done act-ink-drop--read" : ""}`}
+                    title={`${dayLabel(dayKey)}: ${formatDuration(dayMs)}`}
+                    aria-label={`${dayLabel(dayKey)}: ${read ? "con lectura" : "sin lectura"}`}
+                    data-fill={fillPct}
+                  />
+                );
+              })}
+            </div>
           </div>
           <p className="meta">
             {goalProgress.readDays} de {goalProgress.target} días con lectura

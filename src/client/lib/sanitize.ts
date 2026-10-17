@@ -72,6 +72,8 @@ const READER_ATTRS = [
   "headers",
   "epub:type",
   "id",
+  "name",
+  "data-frag-id",
   "src",
   "alt",
   "title",
@@ -87,24 +89,80 @@ const READER_ATTRS = [
 
 export function sanitizeSectionDocument(source: Document) {
   const body = source.body ?? source.getElementsByTagName("body")[0] ?? source.documentElement;
+  // Pre-procesamiento seguro sobre clon para no mutar el documento fuente:
+  // En EPUBs de Calibre y EPUB 2 las anclas son <a id="p7"></a> o <a name="ch1">.
+  // Como DOMPurify veta <a>, transformamos las anclas en <span> antes de sanitizar.
+  const root = (body.cloneNode(true) as HTMLElement);
+  for (const a of root.querySelectorAll("a")) {
+    const fragId = a.getAttribute("id") || a.getAttribute("name");
+    if (fragId) {
+      const doc = root.ownerDocument || document;
+      const span = doc.createElement("span");
+      span.setAttribute("id", fragId);
+      span.setAttribute("data-frag-id", fragId);
+      while (a.firstChild) {
+        span.appendChild(a.firstChild);
+      }
+      a.replaceWith(span);
+    }
+  }
+
   const serializer = new XMLSerializer();
-  const dirty = [...body.childNodes]
+  const dirty = [...root.childNodes]
     .map((node) => serializer.serializeToString(node))
     .join("");
   const fragment = DOMPurify.sanitize(dirty, {
     ALLOWED_TAGS: READER_TAGS,
     ALLOWED_ATTR: READER_ATTRS,
+    ADD_ATTR: ["data-frag-id", "id", "name"],
     FORBID_TAGS: ["a"],
     FORBID_ATTR: ["class", "style"],
-    ALLOW_DATA_ATTR: false,
+    ALLOW_DATA_ATTR: true,
     RETURN_DOM_FRAGMENT: true,
   });
   const result = document.createElement("div");
   result.append(fragment);
-  for (const el of result.querySelectorAll("[id]")) {
-    el.setAttribute("data-frag-id", el.id);
+
+  for (const el of result.querySelectorAll("[id], [name]")) {
+    const fragId = el.getAttribute("id") || el.getAttribute("name");
+    if (fragId && !el.getAttribute("data-frag-id")) {
+      el.setAttribute("data-frag-id", fragId);
+    }
     el.removeAttribute("id");
+    el.removeAttribute("name");
   }
+
+  // Regla anti-colapso para Calibre:
+  // Bloques vacíos (sin texto ni imagen) que contienen [data-frag-id] no se pierden;
+  // se trasladan sus anclas al inicio del siguiente elemento hermano con contenido.
+  const blockCandidates = result.querySelectorAll("p, div, li, blockquote");
+  for (const el of blockCandidates) {
+    const hasText = Boolean(el.textContent?.trim());
+    const hasMedia = Boolean(el.querySelector("img, svg, image"));
+    const fragSpans = [...el.querySelectorAll<HTMLElement>("[data-frag-id]")];
+    if (el.hasAttribute("data-frag-id")) {
+      fragSpans.push(el as HTMLElement);
+    }
+    if (!hasText && !hasMedia && fragSpans.length > 0) {
+      let next = el.nextElementSibling;
+      while (next && !next.textContent?.trim() && !next.querySelector("img, svg, image")) {
+        next = next.nextElementSibling;
+      }
+      if (next) {
+        for (const fn of fragSpans) {
+          if (fn === el) {
+            const span = document.createElement("span");
+            span.setAttribute("data-frag-id", fn.getAttribute("data-frag-id")!);
+            next.prepend(span);
+          } else {
+            next.prepend(fn);
+          }
+        }
+        el.remove();
+      }
+    }
+  }
+
   // Encabezados vacíos (típicos de portadas/mapas: solo llevan `title`
   // como metadato) ocupan márgenes sin renderizar nada; en modo
   // páginas hasta pueden expulsar una imagen de su columna.
@@ -112,3 +170,4 @@ export function sanitizeSectionDocument(source: Document) {
     if (!el.textContent?.trim() && !el.firstElementChild) el.remove();
   return result;
 }
+

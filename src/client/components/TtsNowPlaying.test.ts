@@ -152,4 +152,67 @@ describe("TtsNowPlaying", () => {
     expect(chip?.textContent).toContain("En pausa");
     expect(container.querySelector(".tts-chip-actions")).toBeNull();
   });
+
+  it("muestra el selector de voz con las 8 voces de KittenTTS y emite onSelectKittenVoice", () => {
+    const onSelectKittenVoice = vi.fn();
+    const snap: TtsSnapshot = {
+      status: "speaking",
+      sessionId: "session-3",
+      rate: 1,
+      highlight: "sentence",
+      pauseReason: null,
+      kittenVoice: "expr-voice-2-f",
+      activeEngine: "kitten-neural",
+    };
+
+    render({
+      snap,
+      onPauseResume: vi.fn(),
+      onCycleRate: vi.fn(),
+      onStop: vi.fn(),
+      onSelectKittenVoice,
+    });
+
+    // Badge del motor neural
+    const badge = container.querySelector(".tts-engine-badge");
+    expect(badge).not.toBeNull();
+    expect(badge?.textContent).toContain("Neural 24kHz");
+
+    // Selector de voz
+    const select = container.querySelector(".tts-voice-select") as HTMLSelectElement;
+    expect(select).not.toBeNull();
+    expect(select.options.length).toBe(8);
+    expect(select.value).toBe("expr-voice-2-f");
+
+    // Cambiar de voz a Leo
+    act(() => {
+      select.value = "expr-voice-2-m";
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+
+    expect(onSelectKittenVoice).toHaveBeenCalledWith("expr-voice-2-m");
+  });
+
+  it("muestra badge 'Sistema' cuando el motor activo es browser", () => {
+    const snap: TtsSnapshot = {
+      status: "speaking",
+      sessionId: "session-4",
+      rate: 1,
+      highlight: "sentence",
+      pauseReason: null,
+      activeEngine: "browser",
+    };
+
+    render({
+      snap,
+      onPauseResume: vi.fn(),
+      onCycleRate: vi.fn(),
+      onStop: vi.fn(),
+    });
+
+    const badge = container.querySelector(".tts-engine-badge");
+    expect(badge).not.toBeNull();
+    expect(badge?.textContent).toContain("Sistema");
+  });
 });
+

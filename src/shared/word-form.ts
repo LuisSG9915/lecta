@@ -214,3 +214,72 @@ export function findLexicalFamily(word: string, language = "es"): string[] {
 
   return [];
 }
+
+/**
+ * Genera formas base o lemas candidatos para buscar una palabra flexionada
+ * en el diccionario local (español o inglés).
+ */
+export function generateLookupCandidates(word: string, language = "es"): string[] {
+  const clean = word.trim().toLowerCase();
+  if (!clean) return [];
+
+  const candidates: string[] = [clean];
+
+  if (language === "en") {
+    // 1. -ies (> 4 letras) -> -y (ej. memories -> memory)
+    if (clean.endsWith("ies") && clean.length > 4) {
+      candidates.push(`${clean.slice(0, -3)}y`);
+    }
+
+    // 2. -ied (> 4 letras) -> -y (ej. replied -> reply)
+    if (clean.endsWith("ied") && clean.length > 4) {
+      candidates.push(`${clean.slice(0, -3)}y`);
+    }
+
+    // 3. -ing (> 5 letras) -> sin ing, con e final, sin consonante duplicada
+    if (clean.endsWith("ing") && clean.length > 5) {
+      const root = clean.slice(0, -3);
+      candidates.push(root);
+      candidates.push(`${root}e`);
+      if (root.length >= 3 && root[root.length - 1] === root[root.length - 2]) {
+        candidates.push(root.slice(0, -1));
+      }
+    }
+
+    // 4. -ed (> 4 letras) -> sin ed, sin d, sin consonante duplicada
+    if (clean.endsWith("ed") && clean.length > 4) {
+      const rootNoEd = clean.slice(0, -2);
+      candidates.push(rootNoEd);
+      candidates.push(clean.slice(0, -1)); // sin d (loved -> love)
+      if (rootNoEd.length >= 3 && rootNoEd[rootNoEd.length - 1] === rootNoEd[rootNoEd.length - 2]) {
+        candidates.push(rootNoEd.slice(0, -1));
+      }
+    }
+
+    // 5. -ly (> 4 letras) -> sin ly, o -ily -> -y
+    if (clean.endsWith("ly") && clean.length > 4) {
+      candidates.push(clean.slice(0, -2));
+      if (clean.endsWith("ily") && clean.length > 4) {
+        candidates.push(`${clean.slice(0, -3)}y`);
+      }
+    }
+
+    // 6. -es (> 3 letras) -> sin es o sin s
+    if (clean.endsWith("es") && clean.length > 3) {
+      candidates.push(clean.slice(0, -2));
+      candidates.push(clean.slice(0, -1));
+    }
+
+    // 7. -s (> 3 letras, excluyendo -ss) -> sin s
+    if (clean.endsWith("s") && !clean.endsWith("ss") && clean.length > 3) {
+      candidates.push(clean.slice(0, -1));
+    }
+  } else {
+    // Español
+    for (const base of menteBaseForms(clean)) {
+      candidates.push(base);
+    }
+  }
+
+  return Array.from(new Set(candidates)).filter((c) => c.length >= 2);
+}

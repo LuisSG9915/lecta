@@ -530,7 +530,8 @@
   margin-block-end: 0;
 }
 
-.shelf-filters {
+.shelf-filters,
+.shelf__filters {
   display: flex;
   gap: var(--s-2);
   overflow-x: auto;
@@ -539,9 +540,12 @@
   align-items: center;
   min-inline-size: 0;
   max-inline-size: 100%;
+  -webkit-mask-image: linear-gradient(to right, #000 0%, #000 calc(100% - 24px), transparent 100%);
+  mask-image: linear-gradient(to right, #000 0%, #000 calc(100% - 24px), transparent 100%);
 }
 
-.shelf-filters::-webkit-scrollbar {
+.shelf-filters::-webkit-scrollbar,
+.shelf__filters::-webkit-scrollbar {
   display: none;
 }
 
@@ -1187,6 +1191,8 @@
   padding-block: 2px;
   min-inline-size: 0;
   max-inline-size: 100%;
+  -webkit-mask-image: linear-gradient(to right, #000 0%, #000 calc(100% - 24px), transparent 100%);
+  mask-image: linear-gradient(to right, #000 0%, #000 calc(100% - 24px), transparent 100%);
 }
 
 .discover-filters::-webkit-scrollbar {
@@ -1347,9 +1353,15 @@
 
 /* ---------- Pequeña ---------- */
 
+@media (max-width: 768px) {
+  .shelf {
+    padding-bottom: calc(136px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
 @media (max-width: 40rem) {
   .shelf {
-    padding-bottom: calc(130px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(136px + env(safe-area-inset-bottom, 0px));
   }
 
   .shelf-hero,
@@ -1702,12 +1714,12 @@
 
 /* ---------- Tarjeta de Onboarding Guiado (Ritual de Bienvenida) ---------- */
 .shelf-onboarding-card {
-  background: var(--paper-raised, #ffffff);
-  border: 1px solid var(--border-color, #e2ded5);
-  border-radius: var(--radius-m, 12px);
+  background: var(--paper-raised);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-sheet, 14px);
   padding: var(--s-4, 16px);
   margin-block-end: var(--s-5, 20px);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  box-shadow: var(--shadow-1);
 }
 
 .onboarding-header {
@@ -1762,9 +1774,9 @@
   flex-wrap: wrap;
   gap: 10px 12px;
   padding: 10px 12px;
-  background: var(--paper, #fdfcf9);
-  border: 1px solid var(--border-color, #eae6de);
-  border-radius: var(--radius-s, 8px);
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-2, 8px);
 }
 
 .onboarding-step.is-done {
@@ -1796,9 +1808,9 @@
   justify-content: center;
   font-size: 0.82rem;
   font-weight: 700;
-  background: var(--paper-raised, #ffffff);
-  border: 1.5px solid var(--ink-soft, #999999);
-  color: var(--ink, #1a1a1a);
+  background: var(--paper-raised);
+  border: 1.5px solid var(--rule-strong);
+  color: var(--ink);
   flex-shrink: 0;
 }
 

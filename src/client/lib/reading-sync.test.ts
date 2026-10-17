@@ -523,3 +523,26 @@ describe("syncKnowledge", () => {
     expect(saveSessionValue).not.toHaveBeenCalled();
   });
 });
+
+describe("flush y keepalive en sincronización", () => {
+  it("las peticiones PUT de sync de anotaciones incluyen keepalive: true", async () => {
+    const item = annotation("a1");
+    await pushAnnotationsToServer([item]);
+    const calls = vi.mocked(fetch).mock.calls;
+    const putCall = calls.find((c) => c[1]?.method === "PUT");
+    expect(putCall).toBeDefined();
+    expect(putCall?.[1]?.keepalive).toBe(true);
+  });
+
+  it("pushPositionsToServer incluye keepalive: true en guardado de progreso", async () => {
+    const pos = position("book1", { sectionIndex: 2 });
+    await pushPositionsToServer([pos]);
+    const calls = vi.mocked(fetch).mock.calls;
+    const posCall = calls.find(
+      (c) => c[0] === "/api/positions" && c[1]?.method === "PUT",
+    );
+    expect(posCall).toBeDefined();
+    expect(posCall?.[1]?.keepalive).toBe(true);
+  });
+});
+

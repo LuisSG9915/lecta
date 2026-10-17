@@ -167,7 +167,7 @@ export function CompanionCloset({
                     background: `linear-gradient(135deg, ${coat.fur} 50%, ${coat.chest} 50%)`,
                     border: isSelected
                       ? "2px solid var(--vermilion)"
-                      : "1.5px solid var(--border-color, rgba(128, 128, 128, 0.3))",
+                      : "1.5px solid var(--rule)",
                   }}
                 />
                 <span className="companion-coat-swatch__label">{coat.name}</span>

@@ -162,4 +162,27 @@ describe("ReaderMoreMenu", () => {
     await act(async () => items[3].click());
     expect(onExportBook).toHaveBeenCalledTimes(1);
   });
+
+  it("renderiza el selector de contraste de ayudas con las 3 píldoras (Suave, Nítido, Intenso AAA)", async () => {
+    const onStrategyContrastChange = vi.fn();
+    render({ strategyContrast: "high", onStrategyContrastChange });
+
+    const pills = host.querySelectorAll<HTMLButtonElement>(".segmented--contrast .segmented-btn");
+    expect(pills.length).toBe(3);
+    expect(pills[0].textContent).toContain("Suave");
+    expect(pills[1].textContent).toContain("Nítido");
+    expect(pills[2].textContent).toContain("Intenso (AAA)");
+
+    // La píldora 'high' debe estar activa
+    expect(pills[2].getAttribute("aria-pressed")).toBe("true");
+    expect(pills[0].getAttribute("aria-pressed")).toBe("false");
+
+    // Al hacer clic en 'soft' se invoca el callback
+    await act(async () => pills[0].click());
+    expect(onStrategyContrastChange).toHaveBeenCalledWith("soft");
+
+    // Al hacer clic en 'balanced' se invoca el callback
+    await act(async () => pills[1].click());
+    expect(onStrategyContrastChange).toHaveBeenCalledWith("balanced");
+  });
 });

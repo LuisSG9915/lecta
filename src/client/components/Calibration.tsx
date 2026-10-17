@@ -289,6 +289,7 @@ export default function Calibration({
 
   // Responder en la Etapa 1
   const handleAnswer = (val: CalibrationAnswerValue) => {
+    (document.activeElement as HTMLElement | null)?.blur?.();
     if (!currentWord) return;
     answeredRef.current = true;
     const now = Date.now();
@@ -389,6 +390,7 @@ export default function Calibration({
   }, [currentVerifyWord, sampleWords, language]);
 
   const handleVerifyChoice = (chosenDef: string) => {
+    (document.activeElement as HTMLElement | null)?.blur?.();
     if (!currentVerifyWord) return;
     const correctDef =
       currentVerifyWord.definition ??
@@ -489,7 +491,7 @@ export default function Calibration({
               padding: "1rem",
               display: "grid",
               gap: "0.25rem",
-              border: "1px solid var(--border)",
+              border: "var(--border)",
               borderRadius: "var(--radius-md)",
             }}
             onClick={() => void handleSelectProfile("es")}
@@ -508,7 +510,7 @@ export default function Calibration({
               padding: "1rem",
               display: "grid",
               gap: "0.25rem",
-              border: "1px solid var(--border)",
+              border: "var(--border)",
               borderRadius: "var(--radius-md)",
             }}
             onClick={() => void handleSelectProfile("other")}
@@ -562,7 +564,8 @@ export default function Calibration({
             alignItems: "center",
             padding: "0.375rem 0.75rem",
             marginBottom: "0.5rem",
-            background: "var(--surface-sunken, rgba(0, 0, 0, 0.04))",
+            background: "var(--paper-sunken)",
+            border: "var(--border)",
             borderRadius: "var(--radius-sm)",
           }}
         >
@@ -620,6 +623,7 @@ export default function Calibration({
             </div>
 
             <div
+              key={`step-${step}-${currentWord?.lemma ?? ""}`}
               className="cal-actions-grid cal-choices"
               role="group"
               aria-label={`Respuesta para ${currentWord.lemma}`}
@@ -679,7 +683,12 @@ export default function Calibration({
               ¿Cuál es el significado más cercano en tus lecturas?
             </p>
 
-            <div className="cal-options-list" role="group" aria-label={`Significado para ${currentVerifyWord.lemma}`}>
+            <div
+              key={`verify-${verifyIndex}-${currentVerifyWord?.lemma ?? ""}`}
+              className="cal-options-list"
+              role="group"
+              aria-label={`Significado para ${currentVerifyWord.lemma}`}
+            >
               {verificationChoices.map((choiceDef, idx) => (
                 <button
                   key={idx}

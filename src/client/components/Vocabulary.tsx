@@ -1607,7 +1607,7 @@ export default function Vocabulary({
   return (
     <div
       ref={ref}
-      className={`notebook ${isOverlay ? "notebook--overlay" : "notebook--page"}`}
+      className={`notebook ${isOverlay ? "notebook--overlay" : "notebook--page"} vocab`}
       role={isOverlay ? "dialog" : undefined}
       aria-modal={isOverlay ? "true" : undefined}
       aria-label="Cuaderno"
@@ -1807,15 +1807,25 @@ export default function Vocabulary({
 
                   {/* CTA Principal Único */}
                   <div className="nb-hero-cta">
-                    <button
-                      type="button"
-                      className="btn btn--primary nb-hero-btn-flow"
-                      onClick={startAdaptiveFlow}
-                      disabled={all.length === 0}
-                    >
-                      <Icon name="sparkles" size={16} />
-                      <span>Iniciar Sesión Fluida (~2 min)</span>
-                    </button>
+                    {all.length === 0 ? (
+                      <button
+                        type="button"
+                        className="btn btn--primary nb-hero-btn-flow"
+                        onClick={onClose}
+                      >
+                        <Icon name="shelf" size={16} />
+                        <span>Abrir un libro para guardar palabras</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="btn btn--primary nb-hero-btn-flow"
+                        onClick={startAdaptiveFlow}
+                      >
+                        <Icon name="sparkles" size={16} />
+                        <span>Iniciar Sesión Fluida (~2 min)</span>
+                      </button>
+                    )}
                   </div>
 
                   {/* Selector Secundario de Juegos ("Elegir modo libre") */}
@@ -1885,20 +1895,54 @@ export default function Vocabulary({
             </section>
 
             {recentWords.length > 0 ? (
-              <div className="nb-recent-rail" aria-label="Capturadas recientemente">
-                <span className="nb-recent-label">Capturadas recientemente:</span>
+              <div className="nb-recent-rail" aria-label="Guardadas recientemente en tu lectura">
+                <div
+                  className="nb-recent-head"
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    marginBottom: "6px",
+                  }}
+                >
+                  <span className="nb-recent-label">📌 Guardadas recientemente en tu lectura</span>
+                  <button
+                    type="button"
+                    className="btn--quiet nb-recent-all-btn"
+                    onClick={() => setTab("words")}
+                    style={{ fontSize: "var(--fs-xs, 0.75rem)", padding: "2px 8px" }}
+                    aria-label={`Ver todas las ${all.length} palabras en Mi Herbario`}
+                  >
+                    {`Ver todas (${all.length}) →`}
+                  </button>
+                </div>
                 <div className="nb-recent-track" role="list">
-                  {recentWords.map((w) => (
+                  {recentWords.slice(0, 5).map((w) => (
                     <button
                       key={w.key}
                       type="button"
                       role="listitem"
                       className="nb-recent-chip"
                       onClick={() => handleRecentChipClick(w)}
-                      title={`Ver ficha de ${w.lemma || w.form}`}
+                      title={w.meaning ? `${w.lemma || w.form}: ${w.meaning}` : `Ver ficha de ${w.lemma || w.form}`}
                     >
                       <span className="nb-recent-chip-star" aria-hidden="true">★</span>
                       <span className="nb-recent-chip-text">{w.lemma || w.form}</span>
+                      {w.meaning ? (
+                        <span
+                          className="nb-recent-chip-meaning"
+                          style={{
+                            opacity: 0.8,
+                            fontSize: "0.85em",
+                            maxWidth: "160px",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          · {w.meaning}
+                        </span>
+                      ) : null}
                     </button>
                   ))}
                 </div>

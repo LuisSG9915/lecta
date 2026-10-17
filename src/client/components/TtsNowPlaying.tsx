@@ -1,10 +1,10 @@
 import { useState, useRef, useEffect } from "react";
-import type { TtsSnapshot } from "../lib/ttsTypes";
+import { KITTEN_VOICES, type KittenVoiceId, type TtsSnapshot } from "../lib/ttsTypes";
 
 // Chip de sesión «Leer en voz alta»: pastilla flotante ergonómica con
-// navegación por frases (⏮ ⏭), control de velocidad en ciclo (0.9× a 1.3×),
+// controles táctiles ampliados (44x44px mín.), selector de voz KittenTTS,
+// navegación por frases (⏮ ⏭), velocidad en ciclo (0.9× a 1.3×),
 // captura de vocabulario al vuelo al Cuaderno y pausa/detener.
-// En foco profundo se reduce a su etiqueta discreta.
 const RATE_LABEL: Record<number, string> = {
   0.8: "0.8×",
   0.9: "0.9×",
@@ -23,6 +23,7 @@ export default function TtsNowPlaying({
   onCycleRate,
   onCaptureWord,
   onStop,
+  onSelectKittenVoice,
 }: {
   snap: TtsSnapshot;
   // deep_focus: el chip se queda mínimo — solo la etiqueta.
@@ -33,6 +34,7 @@ export default function TtsNowPlaying({
   onCycleRate: () => void;
   onCaptureWord?: () => void;
   onStop: () => void;
+  onSelectKittenVoice?: (voiceId: KittenVoiceId) => void;
 }) {
   const [captured, setCaptured] = useState(false);
   const captureTimerRef = useRef<number | null>(null);
@@ -63,13 +65,24 @@ export default function TtsNowPlaying({
     }, 1800);
   };
 
+  const isNeural = snap.activeEngine === "kitten-neural";
+
   return (
     <div
-      className={`tts-chip ${minimal ? "tts-chip--minimal" : "tts-chip--expanded"}`}
+      className={`tts-chip tts-now-playing ${minimal ? "tts-chip--minimal" : "tts-chip--expanded"}`}
       role="status"
       aria-label="Reproductor de lectura en voz alta"
     >
-      <span className="tts-chip-label">{label}</span>
+      <div className="tts-chip-header">
+        <span className="tts-chip-label">{label}</span>
+        <span
+          className={`tts-engine-badge ${isNeural ? "tts-engine-badge--neural" : "tts-engine-badge--browser"}`}
+          title={isNeural ? "Motor neural KittenTTS a 24kHz" : "Voz del sistema"}
+        >
+          {isNeural ? "Neural 24kHz" : "Sistema"}
+        </span>
+      </div>
+
       {minimal ? null : (
         <div className="tts-chip-actions">
           {onPrevSentence ? (
@@ -84,6 +97,7 @@ export default function TtsNowPlaying({
               ⏮
             </button>
           ) : null}
+
           {snap.status === "speaking" ? (
             <button
               type="button"
@@ -103,6 +117,7 @@ export default function TtsNowPlaying({
               Reanudar
             </button>
           ) : null}
+
           {onNextSentence ? (
             <button
               type="button"
@@ -115,14 +130,34 @@ export default function TtsNowPlaying({
               ⏭
             </button>
           ) : null}
+
           <button
             type="button"
             className="btn--quiet tts-chip-rate"
             onClick={onCycleRate}
             aria-label="Velocidad de lectura en voz alta"
+            title="Cambiar velocidad"
           >
             {RATE_LABEL[snap.rate] ?? `${snap.rate}×`}
           </button>
+
+          {/* Selector rápido de voz KittenTTS */}
+          <div className="tts-voice-selector-wrap">
+            <select
+              className="btn--quiet tts-voice-select"
+              value={snap.kittenVoice ?? "expr-voice-2-f"}
+              onChange={(e) => onSelectKittenVoice?.(e.target.value as KittenVoiceId)}
+              aria-label="Selector de voz KittenTTS"
+              title="Voz de KittenTTS"
+            >
+              {KITTEN_VOICES.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
           {onCaptureWord ? (
             <button
               type="button"
@@ -135,13 +170,15 @@ export default function TtsNowPlaying({
               {captured ? "✓ Guardada" : "★ Capturar palabra"}
             </button>
           ) : null}
+
           <button
             type="button"
             className="btn--quiet tts-chip-stop"
             onClick={onStop}
             aria-label="Detener lectura"
+            title="Detener lectura"
           >
-            Detener
+            ✕ Detener
           </button>
         </div>
       )}

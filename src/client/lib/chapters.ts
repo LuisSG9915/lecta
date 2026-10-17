@@ -10,7 +10,10 @@
 
 import type { EpubBook, EpubTocItem } from "./epub";
 
-export type ChapterKind = "chapter" | "preliminary" | "other" | "uncertain";
+export type ChapterKind = "chapter" | "preliminary" | "frontmatter" | "other" | "uncertain";
+
+export const isPreliminary = (kind: ChapterKind) =>
+  kind === "preliminary" || kind === "frontmatter";
 
 export type ChapterTarget = {
   // Identidad: ruta canónica + fragmento, p. ej. «OEBPS/cap1.xhtml#s2».
@@ -75,6 +78,151 @@ const BACKMATTER = new Set([
 
 const CHAPTER_START = new Set(["bodymatter", "text"]);
 
+const FRONT_LABELS = new Set([
+  "cover",
+  "portada",
+  "cubierta",
+  "title",
+  "title page",
+  "pagina de titulo",
+  "half title",
+  "titulo",
+  "copyright",
+  "creditos",
+  "legal",
+  "dedication",
+  "dedicatoria",
+  "epigraph",
+  "epigrafe",
+  "contents",
+  "table of contents",
+  "toc",
+  "indice",
+  "indice de contenido",
+  "tabla de contenidos",
+  "contenido",
+  "sumario",
+  "map",
+  "maps",
+  "mapa",
+  "mapas",
+  "dramatis personae",
+  "personajes",
+  "cast of characters",
+  "acknowledgments",
+  "acknowledgements",
+  "agradecimientos",
+  "about the author",
+  "sobre el autor",
+  "sobre la autora",
+  "also by",
+  "otros libros",
+  "books by",
+  "libros de",
+  "frontispiece",
+  "preface",
+  "prefacio",
+  "foreword",
+  "nota del autor",
+  "nota de la autora",
+  "authors note",
+  "author note",
+  "sinopsis",
+  "biografia",
+  "colofon",
+]);
+
+const BACK_LABELS = new Set([
+  "epilogue",
+  "epilogo",
+  "acknowledgments",
+  "acknowledgements",
+  "agradecimientos",
+  "about the author",
+  "sobre el autor",
+  "sobre la autora",
+  "books by",
+  "libros de",
+  "credits",
+  "creditos",
+  "copyright",
+  "about the publisher",
+  "sobre la editorial",
+  "back ads",
+  "glossary",
+  "glosario",
+  "appendix",
+  "apendice",
+  "colophon",
+  "colofon",
+  "afterword",
+  "nota final",
+]);
+
+export const normalizeLabel = (label: string) =>
+  label
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .replace(/[«»"'().,;:]/g, "")
+    .trim();
+
+/**
+ * Detector positivo bilingüe (ES/EN) de etiquetas que indican un capítulo real.
+ */
+export function isLikelyChapterLabel(label: string): boolean {
+  const trimmed = label.trim();
+  if (!trimmed) return false;
+  const norm = normalizeLabel(trimmed);
+  if (FRONT_LABELS.has(norm) || BACK_LABELS.has(norm)) return false;
+
+  // 1. Prefijos explícitos
+  if (
+    /^(?:chapter|capitulo|cap\.|ch\.|part|parte|book|libro|section|seccion|act|acto)\b/i.test(
+      norm,
+    )
+  )
+    return true;
+
+  // 2. Prólogos/preludios narrativos
+  if (
+    /^(?:prologue|prologo|prelude|preludio|introduction|introduccion)\b/i.test(
+      norm,
+    )
+  )
+    return true;
+
+  // 3. Numeración arábiga al inicio o sola (ej. "1", "1. Inicio", "12")
+  if (/^(?:\d{1,3})(?:[\s.:–—-]+\S.*)?$/.test(trimmed)) return true;
+
+  // 4. Numeración romana (I a L) con título/separador (ej. "IV. El viaje", "X - Inicio")
+  // Una letra romana sola (ej. "I", "II") sin landmarks queda uncertain (contrato F2).
+  if (
+    /^(?:I|II|III|IV|V|VI|VII|VIII|IX|X|XI|XII|XIII|XIV|XV|XVI|XVII|XVIII|XIX|XX|XXI|XXII|XXIII|XXIV|XXV|XXVI|XXVII|XXVIII|XXIX|XXX|XXXI|XXXII|XXXIII|XXXIV|XXXV|XL|L)[\s.:–—-]+\S.*$/i.test(
+      trimmed,
+    )
+  )
+    return true;
+
+  // 5. Números cardinales y ordinales en inglés (ej. "One", "Twenty-One", "Third")
+  if (
+    /^(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty(?:[-\s](?:one|two|three|four|five|six|seven|eight|nine))?|thirty(?:[-\s](?:one|two|three|four|five|six|seven|eight|nine))?|forty(?:[-\s](?:one|two|three|four|five|six|seven|eight|nine))?|fifty|first|second|third|fourth|fifth)(?:[\s.:–—-]+\S.*)?$/i.test(
+      norm,
+    )
+  )
+    return true;
+
+  // 6. Números cardinales y ordinales en español (ej. "Uno", "Primero", "Dieciséis")
+  if (
+    /^(?:uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|trece|catorce|quince|dieciseis|diecisiete|dieciocho|diecinueve|veinte|primero|segundo|tercero|cuarto|quinto)(?:[\s.:–—-]+\S.*)?$/i.test(
+      norm,
+    )
+  )
+    return true;
+
+  return false;
+}
+
 const normPath = (path: string) => path.replace(/^\/+/, "");
 
 const splitHref = (href: string) => {
@@ -89,9 +237,30 @@ const targetId = (path: string, fragment?: string) =>
 
 const sectionIndexOf = (book: EpubBook, path: string) => {
   const wanted = normPath(path);
-  return book.sections.findIndex(
+  const idx = book.sections.findIndex(
     (section) => normPath(section.id) === wanted,
   );
+  if (idx < 0) return idx;
+
+  // Si el destino apunta a un fragmento inicial vacío/ornamental generado por Calibre
+  // (ej. part0006_split_000.html de < 1.5 KB con solo un adorno/imagen y sin texto),
+  // y la sección siguiente es la continuación (_split_001.html) del mismo archivo,
+  // el inicio real del capítulo está en la sección siguiente.
+  const curr = book.sections[idx];
+  const next = book.sections[idx + 1];
+  if (
+    curr &&
+    next &&
+    curr.size !== undefined &&
+    curr.size > 0 &&
+    curr.size < 1500 &&
+    normPath(curr.id).includes("_split_000") &&
+    normPath(curr.id).replace(/_split_000\./i, "_split_001.") === normPath(next.id)
+  ) {
+    return idx + 1;
+  }
+
+  return idx;
 };
 
 const flattenToc = (items: EpubTocItem[], depth = 0, out: { item: EpubTocItem; depth: number }[] = []) => {
@@ -106,7 +275,7 @@ export function buildChapterCatalog(book: EpubBook): ChapterCatalog {
   const landmarks = (book.landmarks ?? []) as Landmark[];
 
   // chapterStart: primera sección que un landmark declara inicio del
-  // cuerpo del libro. Sin landmarks no hay certeza → todo uncertain.
+  // cuerpo del libro. Sin landmarks no hay certeza → heurística mínima.
   let chapterStart = Infinity;
   for (const landmark of landmarks) {
     if (!landmark.href || !landmark.type?.some((t) => CHAPTER_START.has(t)))
@@ -131,8 +300,9 @@ export function buildChapterCatalog(book: EpubBook): ChapterCatalog {
 
   const targets: ChapterTarget[] = [];
   const seen = new Set<string>();
-  const toc = book.toc?.length
-    ? flattenToc(book.toc)
+  const hasRealToc = Boolean(book.toc?.length);
+  const toc = hasRealToc
+    ? flattenToc(book.toc!)
     : // Sin índice: una entrada por sección lineal, todas uncertain —
       // la interfaz pide el inicio explícitamente.
       book.sections
@@ -143,28 +313,66 @@ export function buildChapterCatalog(book: EpubBook): ChapterCatalog {
         }))
         .filter((entry) => !entry.synthetic);
 
-  for (const { item, depth } of toc) {
+  // Inferencia cuando el libro carece de landmarks bodymatter pero tiene índice real (ej. Calibre o EPUB2):
+  // Buscamos el primer destino con un rótulo que sea positivamente un capítulo
+  let inferredBodyIdx = -1;
+  if (bodyIndex < 0 && hasRealToc) {
+    for (let i = 0; i < toc.length; i++) {
+      const { item } = toc[i];
+      const norm = normalizeLabel(item.label || "");
+      if (!FRONT_LABELS.has(norm) && isLikelyChapterLabel(item.label || "")) {
+        inferredBodyIdx = i;
+        break;
+      }
+    }
+  }
+
+  for (let i = 0; i < toc.length; i++) {
+    const { item, depth } = toc[i];
     if (!item.href) continue;
     const { path, fragment } = splitHref(item.href);
     const sectionIndex = sectionIndexOf(book, path);
     // Destinos rotos/externos se descartan: catálogo explícito, nunca
     // contenido mezclado.
     if (sectionIndex < 0) continue;
-    const id = targetId(path, fragment);
+    const realSection = book.sections[sectionIndex];
+    const realPath = realSection ? realSection.id : path;
+    const id = targetId(realPath, fragment);
     // Mismo destino por padre e hijo no se duplica; gana el primero.
     if (seen.has(id)) continue;
     seen.add(id);
 
+    const norm = normalizeLabel(item.label || "");
     const semantic = landmarkKindAt(path);
     const beforeBody = bodyIndex >= 0 && sectionIndex < bodyIndex;
     const noLinear = book.sections[sectionIndex]?.linear === "no";
     let kind: ChapterKind;
-    if (semantic === "preliminary" || beforeBody) kind = "preliminary";
-    else if (semantic === "other" || (noLinear && !beforeBody))
+
+    if (semantic === "preliminary" || beforeBody) {
+      kind = "preliminary";
+    } else if (semantic === "other" || (noLinear && !beforeBody)) {
       kind = "other";
-    else if (semantic === "chapter" || (bodyIndex >= 0 && !noLinear))
+    } else if (semantic === "chapter" || (bodyIndex >= 0 && !noLinear)) {
       kind = "chapter";
-    else kind = "uncertain";
+    } else if (inferredBodyIdx >= 0) {
+      if (i < inferredBodyIdx) {
+        kind = "frontmatter";
+      } else if (BACK_LABELS.has(norm)) {
+        kind = "other";
+      } else if (!noLinear) {
+        kind = "chapter";
+      } else {
+        kind = "uncertain";
+      }
+    } else {
+      if (FRONT_LABELS.has(norm)) {
+        kind = "frontmatter";
+      } else if (BACK_LABELS.has(norm)) {
+        kind = "other";
+      } else {
+        kind = "uncertain";
+      }
+    }
 
     targets.push({
       id,
@@ -192,43 +400,6 @@ export function buildChapterCatalog(book: EpubBook): ChapterCatalog {
   return { targets, ranges };
 }
 
-// Posición física → capítulo lógico: el destino cuyo tramo
-// `[startSection, endSection)` contiene la sección.
-// Rótulos de índice que no son inicio de lectura aunque su sección
-// quede clasificada «chapter» (los landmarks no siempre marcan el
-// cuerpo). Comparación normalizada: minúsculas, sin acentos, sin
-// puntuación de borde — cubre variantes como «Mapa», «Agradecimientos
-// del autor» no entra: la lista es de rótulos completos.
-const FRONT_LABELS = new Set([
-  "cubierta",
-  "portada",
-  "titulo",
-  "mapas",
-  "mapa",
-  "dedicatoria",
-  "epigrafe",
-  "agradecimientos",
-  "indice",
-  "indice de contenido",
-  "contenido",
-  "creditos",
-  "sinopsis",
-  "sobre el autor",
-  "sobre la autora",
-  "biografia",
-  "nota del autor",
-  "nota de la autora",
-  "colofon",
-]);
-
-const normalizeLabel = (label: string) =>
-  label
-    .normalize("NFD")
-    .replace(/\p{M}/gu, "")
-    .toLowerCase()
-    .replace(/[«»"'().,;:]/g, "")
-    .trim();
-
 // El «donde empiezas» sugerido: el primer capítulo que no sea
 // material preliminar por rótulo. Además, una entrada de los
 // primeros archivos cuyo rótulo repite el título del libro es casi
@@ -255,14 +426,69 @@ export function suggestedChapterTarget(
   );
 }
 
-export const targetAt = (
+export interface IntraSectionContext {
+  /** Fragmento activo explícito o detectado en la vista actual */
+  activeFragment?: string | null;
+  /** Página actual (0-based) en modo paginado */
+  currentPage?: number;
+  /** Mapa de fragmentId -> pageIndex dentro de la sección actual */
+  fragmentPageMap?: ReadonlyMap<string, number>;
+}
+
+export function targetAt(
   ranges: ChapterRange[],
   sectionIndex: number,
-): ChapterTarget | null =>
-  ranges.find(
+  context?: IntraSectionContext | string | null,
+): ChapterTarget | null {
+  const ctx: IntraSectionContext | null =
+    typeof context === "string"
+      ? { activeFragment: context }
+      : (context ?? null);
+
+  const covering = ranges.filter(
     (range) =>
       range.startSection <= sectionIndex && sectionIndex < range.endSection,
-  )?.target ?? null;
+  );
+  if (!covering.length) return null;
+
+  const sameSectionTargets = covering
+    .filter((r) => r.target.sectionIndex === sectionIndex)
+    .map((r) => r.target);
+
+  if (sameSectionTargets.length > 1) {
+    // Prioridad 1: currentPage + fragmentPageMap (modo paginado)
+    if (
+      ctx?.currentPage !== undefined &&
+      ctx.currentPage !== null &&
+      ctx.fragmentPageMap &&
+      ctx.fragmentPageMap.size > 0
+    ) {
+      let best: ChapterTarget | null = null;
+      for (const t of sameSectionTargets) {
+        if (t.fragment && ctx.fragmentPageMap.has(t.fragment)) {
+          const page = ctx.fragmentPageMap.get(t.fragment)!;
+          if (page <= ctx.currentPage) {
+            best = t;
+          }
+        }
+      }
+      if (best) return best;
+    }
+
+    // Prioridad 2: activeFragment explícito o detectado en scroll
+    if (ctx?.activeFragment) {
+      const found = sameSectionTargets.find(
+        (t) => t.fragment === ctx.activeFragment,
+      );
+      if (found) return found;
+    }
+
+    // Fallback inicial cuando no hay fragmento activo aún en esa sección
+    return sameSectionTargets[0];
+  }
+
+  return covering[0].target;
+}
 
 // ¿El lector llegó al final del rango? Está en su última sección con
 // la vista casi completa (0.98: en desplazamiento el tope real puede

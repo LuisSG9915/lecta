@@ -416,4 +416,20 @@ describe("Calibration", () => {
     expect(recordMock).toHaveBeenCalled();
     expect(onDone).toHaveBeenCalled();
   });
+
+  it("desenfoca el elemento activo y limpia cualquier foco/selección al responder (OBJ-01)", async () => {
+    await render();
+    const btn = button("La conozco bien");
+    expect(btn).toBeDefined();
+
+    const blurSpy = vi.spyOn(btn, "blur");
+    btn.focus();
+
+    await act(async () => {
+      btn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      await Promise.resolve();
+    });
+
+    expect(blurSpy).toHaveBeenCalled();
+  });
 });

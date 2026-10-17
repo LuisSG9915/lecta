@@ -36,6 +36,18 @@ import {
 
 export const kindleRoutes = new Hono<{ Bindings: WorkerEnv }>();
 
+// Cabeceras anti-caché para todas las vistas HTML del Kindle:
+// garantiza que al refrescar en el Kindle siempre se vean los últimos cambios.
+kindleRoutes.use("*", async (c, next) => {
+  await next();
+  const contentType = c.res.headers.get("content-type");
+  if (contentType?.includes("text/html")) {
+    c.res.headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
+    c.res.headers.set("Pragma", "no-cache");
+    c.res.headers.set("Expires", "0");
+  }
+});
+
 // 1. Estantería principal
 kindleRoutes.get("/", async (c) => {
   const session = await getSession(c);

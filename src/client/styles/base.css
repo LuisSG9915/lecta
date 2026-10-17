@@ -39,12 +39,23 @@ h2,
 h3,
 h4,
 h5,
-h6 {
+h6,
+.shelf-book-title,
+.shelf__book-title,
+.reader__book-title,
+.reader-bar-title,
+.dialog__title,
+.dialog-title,
+.sheet__title,
+.sheet-title,
+.card-title,
+.card-header {
   font-family: var(--font-book);
   font-weight: 500;
   font-optical-sizing: auto;
   line-height: var(--lh-display);
   overflow-wrap: break-word;
+  text-wrap: balance;
 }
 
 p {
@@ -58,6 +69,15 @@ select,
 textarea {
   font: inherit;
   color: inherit;
+}
+
+button,
+a,
+[role="button"],
+[role="switch"],
+input,
+summary {
+  touch-action: manipulation;
 }
 
 button {

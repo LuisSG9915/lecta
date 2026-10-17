@@ -353,7 +353,7 @@ export default function SectionPreview({
                 return (
                   <div
                     key={row.key}
-                    className={`portico-card-3d section-preview__flash-card${isFlipped ? " is-flipped section-preview__flash-card--expanded" : ""}`}
+                    className={`portico-card-3d section-preview__flash-card${isFlipped ? " is-flipped section-preview__flash-card--expanded section-preview__flash-card--flipped" : ""}`}
                     onClick={() => handleFlipCard(row)}
                     role="button"
                     tabIndex={0}

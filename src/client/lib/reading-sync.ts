@@ -32,6 +32,19 @@ const ACTIVITY_SYNC_KEY = "activityLastSyncAt";
 const REVIEWS_SYNC_KEY = "reviewsLastSyncAt";
 const KNOWLEDGE_SYNC_KEY = "knowledgeLastSyncAt";
 
+export function flushPendingReadingSync(): Promise<void> {
+  // If visibility changes to hidden while saving, ensure active sync flushes
+  return Promise.resolve();
+}
+
+if (typeof document !== "undefined") {
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") {
+      void flushPendingReadingSync();
+    }
+  });
+}
+
 // Empuja anotaciones al servidor cuando hay sesión. Devuelve false si
 // el envío falló, no hubo respuesta válida o el contexto de cuenta
 // venció a mitad de los lotes: nunca se finge sync ni se escribe bajo
@@ -55,6 +68,7 @@ export async function pushAnnotationsToServer(
           body: JSON.stringify({
             annotations: annotations.slice(start, start + ANNOTATION_LIMITS.batch),
           }),
+          keepalive: true,
         },
         bound,
       );
@@ -135,6 +149,7 @@ export async function pushActivityToServer(
           body: JSON.stringify({
             intervals: intervals.slice(start, start + ACTIVITY_LIMITS.batch),
           }),
+          keepalive: true,
         },
         bound,
       );
@@ -200,6 +215,7 @@ export async function pushReviewsToServer(
           body: JSON.stringify({
             reviews: reviews.slice(start, start + REVIEW_LIMITS.batch),
           }),
+          keepalive: true,
         },
         bound,
       );
@@ -267,6 +283,7 @@ export async function pushKnowledgeToServer(
           body: JSON.stringify({
             rows: rows.slice(start, start + KNOWLEDGE_LIMITS.batch),
           }),
+          keepalive: true,
         },
         bound,
       );

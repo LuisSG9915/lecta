@@ -34,10 +34,10 @@ export const SYSTEM_PROMPT = `Eres un lexicógrafo de español. Para una palabra
 Reglas: "pos" debe ser una de: sustantivo, verbo, adjetivo, adverbio, pronombre, preposición, conjunción, interjección, determinante, locución. Incluye de 1 a 3 acepciones, de la más común a la menos. No inventes acepciones raras. Si la forma es flexionada (plural, conjugación, género), "lemma" es la forma base e incluye la forma consultada en "forms".`;
 
 export function buildEnrichmentSystemPrompt(language = "es", nativeLanguage = "es"): string {
-  if (language === "en" && nativeLanguage === "es") {
-    return `Eres un lexicógrafo bilingüe inglés-español enfocado en estudiantes hispanohablantes de inglés. Para una palabra dada en inglés, devuelve SOLO un objeto JSON válido con esta forma exacta, sin texto extra:
-{"lemma":"<lema en inglés en minúsculas>","pos":"<categoría>","freqRank":<número entero estimado de frecuencia en inglés: 1 es la palabra más común; null si no sabes>,"forms":["<formas flexionadas comunes en inglés, en minúsculas>"],"senses":[{"definition":"<definición breve y clara en español>","example":"<oración natural de ejemplo en inglés>"}]}
-Reglas: "pos" debe ser una de: sustantivo, verbo, adjetivo, adverbio, pronombre, preposición, conjunción, interjección, determinante, locución. Las definiciones deben estar redactadas en español para que el estudiante las entienda con claridad. Las oraciones de ejemplo deben estar en inglés natural. Incluye de 1 a 3 acepciones, de la más común a la menos. Si la forma consultada es flexionada (plural, conjugación, irregular), "lemma" es la forma base en inglés e incluye la forma consultada en "forms".`;
+  if (language === "en") {
+    return `Eres un lexicógrafo bilingüe inglés-español enfocado en lectores hispanohablantes de libros en inglés. Para una palabra dada en inglés, devuelve SOLO un objeto JSON válido con esta forma exacta, sin texto extra:
+{"lemma":"<lema en inglés en minúsculas>","pos":"<categoría>","freqRank":<número entero estimado de frecuencia en inglés: 1 es la palabra más común; null si no sabes>,"forms":["<formas flexionadas comunes en inglés, en minúsculas>"],"senses":[{"definition":"<traducción exacta al español y definición breve y clara en español>","example":"<oración natural de ejemplo en inglés>"}]}
+Reglas: "pos" debe ser una de: sustantivo, verbo, adjetivo, adverbio, pronombre, preposición, conjunción, interjección, determinante, locución. Las definiciones deben estar redactadas en español e incluir traducción directa clara para que el lector hispanohablante la entienda de inmediato. Las oraciones de ejemplo deben estar en inglés natural. Incluye de 1 a 3 acepciones, de la más común a la menos. Si la forma consultada es flexionada (plural, conjugación, irregular), "lemma" es la forma base en inglés e incluye la forma consultada en "forms".`;
   }
   if (language === "es" && nativeLanguage === "en") {
     return `You are a bilingual Spanish-English lexicographer helping English native speakers learning Spanish. For a given Spanish word, return ONLY a valid JSON object in this exact format, with no extra text:
@@ -99,7 +99,7 @@ export const AI_CALL_LIMITS = {
   tip: 160,
   evaluate: 180,
   story: 180,
-  explain_passage: 192,
+  explain_passage: 384,
   companion_note: 120,
   page_recap: 90,
   character_recap: 256,
@@ -877,14 +877,17 @@ export function parseMicroStory(raw: string): MicroStory | null {
 
 // ---------- Explicación literaria en pasaje (B.3.3 & B.4) ----------
 
-export const EXPLAIN_PASSAGE_SYSTEM_PROMPT = `Eres el gato compañero literario de Lecta, un lector erudito, poético y cálido. Explicas el significado contextual, tono y matices literarios de una palabra o pasaje en su contexto exacto. Devuelve estrictamente SOLO un objeto JSON válido con esta forma exacta, sin texto extra ni markdown:
-{"contextualMeaning":"<significado preciso en este contexto, no definición general>","toneAndNuance":"<tono y matiz literario, ej. irónico, solemne, poético y elevado>","catTip":"<comentario cómplice o apunte curioso del gato sobre el estilo o uso del autor>"}
+export const EXPLAIN_PASSAGE_SYSTEM_PROMPT = `Eres el gato compañero literario de Lecta, un lector erudito, cálido y didáctico. Tu misión es explicar siempre con total claridad el significado práctico de la palabra y cómo funciona en su pasaje. Devuelve estrictamente SOLO un objeto JSON válido con esta forma exacta, sin texto extra ni markdown:
+{"directMeaning":"<significado directo y práctico>","contextualMeaning":"<qué significa exactamente en esta frase en 1 oración sencilla>","toneAndNuance":"<tono o matiz literario, ej. solemne, irónico, melancólico>","catTip":"<comentario breve y cómplice del gato sobre el estilo o uso>"}
 Reglas:
-- Máximo 150 tokens / respuestas breves y directas (1-2 frases por campo).
-- Si se indica una palabra concreta, "contextualMeaning" explica qué significa esa palabra en esa oración específica.
-- Si no se indica palabra concreta o se pide explicar el pasaje completo, "contextualMeaning" resume la metáfora, imagen o idea central del pasaje.
-- "toneAndNuance" identifica el registro emocional o literario (máx. 10 palabras).
-- "catTip" es un apunte cercano y perspicaz del gato sobre el libro, autor o estilo.`;
+- Si la palabra o pasaje está en inglés (u otro idioma distinto al español):
+  1. "directMeaning": Equivalente(s) exacto(s) en español + definición clara y breve de la palabra (ej. "«Linger»: Demorarse, quedarse más tiempo o persistir.").
+  2. "contextualMeaning": 1 oración sencilla en español explicando qué significa exactamente dentro de la frase del libro.
+- Si la palabra está en español:
+  1. "directMeaning": Qué significa la palabra en lenguaje llano y directo con 2 sinónimos claros (ej. "Significa permanecer o demorarse (sinónimos: retrasarse, tardar).").
+  2. "contextualMeaning": Qué sentido exacto tiene en la oración seleccionada en 1 oración sencilla.
+- "toneAndNuance": Identifica el registro emocional o literario (máx. 10 palabras).
+- "catTip": Apunte cercano y perspicaz del gato sobre el libro, autor o estilo.`;
 
 export function buildExplainInPassagePrompt(input: {
   word?: string;
@@ -905,21 +908,29 @@ export function buildExplainInPassagePrompt(input: {
   if (input.author?.trim()) {
     parts.push(`Autor: «${input.author.trim()}»`);
   }
-  const isEn = input.language?.toLowerCase().startsWith("en");
-  const isNativeEs = !input.nativeLanguage || input.nativeLanguage.toLowerCase().startsWith("es");
-  if (isEn && isNativeEs) {
+  const isEn =
+    input.language?.toLowerCase().startsWith("en") ||
+    (Boolean(input.word) &&
+      /^[a-zA-Z\s,.'"-]+$/.test(input.word ?? "") &&
+      /\b(the|and|of|in|to|with|was|that|for|on|he|she|it|they|began)\b/i.test(input.sentence));
+  if (isEn) {
     parts.push(
-      "Instrucción L1/L2: El libro está en inglés y el lector es hispanohablante. Explica el significado contextual en español con el matiz preciso del inglés, resaltando la traducción contextual y matiz literario.",
+      "Instrucción L1/L2: El libro está en inglés y el lector es hispanohablante. Devuelve 'directMeaning' con su traducción exacta al español y definición breve, y 'contextualMeaning' explicando en español su sentido en la frase.",
     );
   } else if (input.language && input.nativeLanguage && input.language !== input.nativeLanguage) {
     parts.push(
       `Instrucción L1/L2: El texto está en ${input.language} y la lengua del lector es ${input.nativeLanguage}. Redacta la explicación en ${input.nativeLanguage}.`,
+    );
+  } else {
+    parts.push(
+      "Instrucción: El texto está en español. Devuelve 'directMeaning' con su definición en lenguaje llano y 2 sinónimos claros, y 'contextualMeaning' con su sentido exacto en esta frase.",
     );
   }
   return parts.join("\n");
 }
 
 export interface PassageExplanation {
+  directMeaning?: string;
   contextualMeaning: string;
   toneAndNuance: string;
   catTip: string;
@@ -934,6 +945,10 @@ export function parsePassageExplanation(raw: string): PassageExplanation | null 
   }
   if (typeof data !== "object" || data === null) return null;
   const obj = data as Record<string, unknown>;
+  const directMeaning =
+    typeof obj.directMeaning === "string" && obj.directMeaning.trim()
+      ? obj.directMeaning.trim().slice(0, 300)
+      : undefined;
   const contextualMeaning =
     typeof obj.contextualMeaning === "string" ? obj.contextualMeaning.trim().slice(0, 300) : "";
   const toneAndNuance =
@@ -941,12 +956,16 @@ export function parsePassageExplanation(raw: string): PassageExplanation | null 
   const catTip =
     typeof obj.catTip === "string" ? obj.catTip.trim().slice(0, 300) : "";
 
-  if (!contextualMeaning) return null;
-  return {
-    contextualMeaning,
+  if (!contextualMeaning && !directMeaning) return null;
+  const result: PassageExplanation = {
+    contextualMeaning: contextualMeaning || directMeaning || "",
     toneAndNuance: toneAndNuance || "Literario",
     catTip: catTip || "Fíjate en cómo resuena esta frase en el resto del capítulo.",
   };
+  if (directMeaning) {
+    result.directMeaning = directMeaning;
+  }
+  return result;
 }
 
 // ---------- Cartas y Notas del Compañero (Lecta v2.0 - B.2) ----------

@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 import {
   anchorAtPage,
+  buildFragmentPageMap,
   columnOfOffset,
   pageAdvance,
   pageForFragment,
@@ -127,8 +128,57 @@ describe("pageForFragment", () => {
     expect(pageForFragment(container, "s2", layout)).toBe(1);
   });
 
+  it("ubica anclas anidadas dentro de un párrafo o elemento con imagen", () => {
+    const p = block("", 2200);
+    const span = document.createElement("span");
+    span.setAttribute("data-frag-id", "p7");
+    const img = document.createElement("img");
+    img.src = "test.jpg";
+    p.append(span, img);
+
+    const container = containerWith(block("primera parte", 0), p);
+    expect(pageForFragment(container, "p7", layout)).toBe(1);
+  });
+
   it("devuelve null si el id no existe en la sección", () => {
     const container = containerWith(block("texto", 0));
     expect(pageForFragment(container, "inexistente", layout)).toBeNull();
   });
 });
+
+describe("buildFragmentPageMap", () => {
+  const layout: PageLayout = { numCols: 2, colW: 676, gap: GAP, boxW: 1400 };
+
+  it("construye un mapa de fragmento a página para un contenedor DOM", () => {
+    const b0 = block("Epígrafe", 0);
+    b0.setAttribute("data-frag-id", "p3");
+
+    const b1 = block("Capítulo Uno", 1500);
+    b1.setAttribute("data-frag-id", "p7");
+
+    const b2 = block("Capítulo Dos", 3000);
+    b2.setAttribute("data-frag-id", "p17");
+
+    const container = containerWith(b0, b1, b2);
+    const map = buildFragmentPageMap(container, layout, ["p3", "p7", "p17", "inexistente"]);
+
+    expect(map.get("p3")).toBe(0);
+    expect(map.get("p7")).toBe(1);
+    expect(map.get("p17")).toBe(2);
+    expect(map.has("inexistente")).toBe(false);
+  });
+
+  it("construye un mapa de fragmento a página desde un arreglo de páginas HTML", () => {
+    const pages = [
+      '<div data-frag-id="p3">Epígrafe</div>',
+      '<div><span data-frag-id="p7"></span>Capítulo 1</div>',
+      '<div><span data-frag-id="p17"></span>Capítulo 2</div>',
+    ];
+    const map = buildFragmentPageMap(pages, ["p3", "p7", "p17", "p99"]);
+    expect(map.get("p3")).toBe(0);
+    expect(map.get("p7")).toBe(1);
+    expect(map.get("p17")).toBe(2);
+    expect(map.has("p99")).toBe(false);
+  });
+});
+

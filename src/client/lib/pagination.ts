@@ -46,7 +46,12 @@ export const firstColumnOfPage = (page: number, l: PageLayout) =>
 
 const blocks = (container: HTMLElement) =>
   [...container.querySelectorAll<HTMLElement>(BLOCK_SELECTOR)].filter(
-    (el) => normalizeBlockText(el.textContent ?? ""),
+    (el) =>
+      Boolean(
+        normalizeBlockText(el.textContent ?? "") ||
+          el.querySelector("img, svg, figure, image, [data-frag-id]") ||
+          el.hasAttribute("data-frag-id"),
+      ),
   );
 
 // Página del bloque: offsetLeft da la columna (el transform del
@@ -115,7 +120,75 @@ export function pageForFragment(
   );
   if (!el) return null;
   flash(el);
-  return pageOfElement(el, l);
+  const targetEl = (el.closest(BLOCK_SELECTOR) as HTMLElement) ?? el;
+  return pageOfElement(targetEl, l);
+}
+
+export type PageLike =
+  | { html?: string; textContent?: string; [key: string]: unknown }
+  | string;
+
+/**
+ * Construye un mapa de fragmentId -> pageIndex (0-based) para los fragmentos dados.
+ * Acepta tanto el contenedor renderizado con su layout de columnas como un arreglo de páginas.
+ */
+export function buildFragmentPageMap(
+  target: HTMLElement | PageLike[],
+  arg2: PageLayout | string[],
+  arg3?: string[],
+): Map<string, number> {
+  const map = new Map<string, number>();
+
+  const isDomElement =
+    Boolean(target) &&
+    typeof target === "object" &&
+    "nodeType" in target &&
+    (target as HTMLElement).nodeType === 1;
+
+  if (isDomElement && typeof arg2 === "object" && "numCols" in arg2) {
+    const container = target as HTMLElement;
+    const layout = arg2 as PageLayout;
+    const fragments = Array.isArray(arg3) ? arg3 : [];
+    for (const frag of fragments) {
+      if (!frag) continue;
+      const page = pageForFragment(container, frag, layout);
+      if (page !== null) {
+        map.set(frag, page);
+      }
+    }
+    return map;
+  }
+
+  const pages = Array.isArray(target) ? target : [];
+  const fragments = Array.isArray(arg2) ? arg2 : [];
+  for (const frag of fragments) {
+    if (!frag) continue;
+    const needle = `data-frag-id="${frag}"`;
+    const needleAlt = `data-frag-id='${frag}'`;
+    for (let p = 0; p < pages.length; p++) {
+      const page = pages[p];
+      if (typeof page === "string") {
+        if (page.includes(needle) || page.includes(needleAlt)) {
+          map.set(frag, p);
+          break;
+        }
+      } else if (page && typeof page === "object") {
+        if ("html" in page && typeof page.html === "string") {
+          if (page.html.includes(needle) || page.html.includes(needleAlt)) {
+            map.set(frag, p);
+            break;
+          }
+        }
+        if ("querySelector" in page && typeof (page as unknown as Element).querySelector === "function") {
+          if ((page as unknown as Element).querySelector(`[data-frag-id="${CSS.escape(frag)}"]`)) {
+            map.set(frag, p);
+            break;
+          }
+        }
+      }
+    }
+  }
+  return map;
 }
 
 const flash = (el: Element) => {
@@ -123,3 +196,4 @@ const flash = (el: Element) => {
   void (el as HTMLElement).offsetWidth;
   el.classList.add("search-flash");
 };
+

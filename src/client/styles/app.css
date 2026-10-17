@@ -90,6 +90,7 @@
   height: 3px;
   border-radius: 0 0 2px 2px;
   background: var(--vermilion);
+  view-transition-name: active-nav-indicator;
 }
 
 /* En escritorio (≥ 64rem), la barra pasa a ser un riel lateral izquierdo */
@@ -124,6 +125,7 @@
     width: 3px;
     height: 24px;
     border-radius: 0 2px 2px 0;
+    view-transition-name: active-nav-indicator;
   }
 
   .app-header {
@@ -605,9 +607,9 @@
   left: var(--s-3, 12px);
   right: var(--s-3, 12px);
   max-width: calc(100vw - 24px);
-  background: var(--paper-raised, #ffffff);
-  border: 1px solid var(--border-color, #e2ded5);
-  border-radius: var(--radius-m, 12px);
+  background: var(--paper-raised);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-2, 12px);
   box-shadow: 0 4px 18px rgba(0, 0, 0, 0.12);
   padding: 8px 12px;
   display: flex;
@@ -670,3 +672,16 @@
   border-radius: 999px;
   white-space: nowrap;
 }
+
+/* Espaciado inferior seguro frente a MiniReaderBar + AppNav (OBJ-07) */
+@media (max-width: 768px) {
+  .shelf,
+  .vocab,
+  .notebook,
+  .notebook--page,
+  .account,
+  .account-page {
+    padding-bottom: calc(136px + env(safe-area-inset-bottom, 0px));
+  }
+}
+

@@ -3,6 +3,8 @@
    y oled (negro). Sin [data-theme], el tema sigue a prefers-color-scheme. */
 
 :root {
+  accent-color: var(--vermilion);
+
   /* Familias */
   --font-book: "Literata Variable", Literata, Georgia, "Times New Roman", serif;
   --font-ui: "Alegreya Sans", "Gill Sans", "Segoe UI", "Trebuchet MS", sans-serif;
@@ -44,8 +46,21 @@
   --r-2: 4px;
   --r-pill: 999px;
   --r-sheet: 14px;
+  --radius-xs: 4px;
+  --radius-s: 8px;
+  --radius-m: 12px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
   --border: 1px solid var(--rule);
   --border-strong: 1px solid var(--rule-strong);
+  --border-color: var(--rule);
+  --line: var(--rule);
+  --surface: var(--paper-raised);
+  --surface-raised: var(--paper-raised);
+  --surface-sunken: var(--paper-sunken);
+  --surface-elevated: var(--paper-raised);
+  --bg: var(--paper);
   --shadow-sheet: 0 -8px 30px var(--shadow-sheet-color);
   --shadow-cover:
     1px 1px 0 rgba(0, 0, 0, 0.08), 4px 6px 14px -6px rgba(43, 37, 32, 0.35);
@@ -98,8 +113,11 @@
   --chroma-blue: #3b6e8c;
   --chroma-crimson: #b45309;
   --chroma-anchor-a: #1D4E89;
+  --chroma-anchor-a-bright: #0D0C0A;
   --chroma-anchor-b: #9E3B24;
+  --chroma-anchor-b-bright: #0D0C0A;
   --chroma-ink-base: var(--ink);
+  --chroma-ink-base-bright: #0D0C0A;
   --success: #3d7a5a;
   --success-wash: rgba(61, 122, 90, 0.14);
   --warning: #8a6a1e;
@@ -144,8 +162,11 @@
   --chroma-blue: #1d4ed8;
   --chroma-crimson: #b45309;
   --chroma-anchor-a: #1D4E89;
+  --chroma-anchor-a-bright: #0D0C0A;
   --chroma-anchor-b: #9E3B24;
+  --chroma-anchor-b-bright: #0D0C0A;
   --chroma-ink-base: var(--ink);
+  --chroma-ink-base-bright: #0D0C0A;
   --success: #3d7a4e;
   --success-wash: rgba(61, 122, 78, 0.14);
   --warning: #8a6a1e;
@@ -186,11 +207,14 @@
   --graphite: #8c8f86;
   --sage: #8fb996;
   --amber: #d9b65c;
-  --chroma-blue: #38bdf8;
-  --chroma-crimson: #fb923c;
-  --chroma-anchor-a: #7CC2FF;
-  --chroma-anchor-b: #FFB07C;
+  --chroma-blue: #8EC8FF;
+  --chroma-crimson: #FFA88D;
+  --chroma-anchor-a: #8EC8FF;
+  --chroma-anchor-a-bright: #BCE0FF;
+  --chroma-anchor-b: #FFA88D;
+  --chroma-anchor-b-bright: #FFD0C2;
   --chroma-ink-base: var(--ink);
+  --chroma-ink-base-bright: #FFFFFF;
   --success: #8fb996;
   --success-wash: rgba(143, 185, 150, 0.18);
   --warning: #d9b65c;
@@ -234,11 +258,14 @@
   --graphite: #8c8f86;
   --sage: #8fb996;
   --amber: #d9b65c;
-  --chroma-blue: #38bdf8;
-  --chroma-crimson: #fb923c;
-  --chroma-anchor-a: #7CC2FF;
-  --chroma-anchor-b: #FFB07C;
+  --chroma-blue: #8EC8FF;
+  --chroma-crimson: #FFA88D;
+  --chroma-anchor-a: #8EC8FF;
+  --chroma-anchor-a-bright: #BCE0FF;
+  --chroma-anchor-b: #FFA88D;
+  --chroma-anchor-b-bright: #FFD0C2;
   --chroma-ink-base: var(--ink);
+  --chroma-ink-base-bright: #FFFFFF;
   --success: #8fb996;
   --success-wash: rgba(143, 185, 150, 0.18);
   --warning: #d9b65c;
@@ -284,11 +311,14 @@
     --graphite: #8c8f86;
     --sage: #8fb996;
     --amber: #d9b65c;
-    --chroma-blue: #38bdf8;
-    --chroma-crimson: #fb923c;
-    --chroma-anchor-a: #7CC2FF;
-    --chroma-anchor-b: #FFB07C;
+    --chroma-blue: #8EC8FF;
+    --chroma-crimson: #FFA88D;
+    --chroma-anchor-a: #8EC8FF;
+    --chroma-anchor-a-bright: #BCE0FF;
+    --chroma-anchor-b: #FFA88D;
+    --chroma-anchor-b-bright: #FFD0C2;
     --chroma-ink-base: var(--ink);
+    --chroma-ink-base-bright: #FFFFFF;
     --success: #8fb996;
     --success-wash: rgba(143, 185, 150, 0.18);
     --warning: #d9b65c;
@@ -317,73 +347,129 @@
    ===================================================================== */
 :root,
 [data-chroma-palette="editorial"] {
-  --chroma-anchor-a: #1D4E89;
-  --chroma-anchor-b: #9E3B24;
+  --chroma-anchor-a: #1B4F72;
+  --chroma-anchor-a-bright: #0D0C0A;
+  --chroma-anchor-b: #7E2F26;
+  --chroma-anchor-b-bright: #0D0C0A;
+  --chroma-ink-base: #1F1D1A;
+  --chroma-ink-base-bright: #0D0C0A;
 }
 :root[data-theme="noche"] [data-chroma-palette="editorial"],
+:root[data-theme="night"] [data-chroma-palette="editorial"],
 :root[data-theme="oled"] [data-chroma-palette="editorial"],
 [data-theme="noche"][data-chroma-palette="editorial"],
+[data-theme="night"][data-chroma-palette="editorial"],
 [data-theme="oled"][data-chroma-palette="editorial"] {
-  --chroma-anchor-a: #7CC2FF;
-  --chroma-anchor-b: #FFB07C;
+  --chroma-anchor-a: #8EC8FF;
+  --chroma-anchor-a-bright: #BCE0FF;
+  --chroma-anchor-b: #FFA88D;
+  --chroma-anchor-b-bright: #FFD0C2;
+  --chroma-ink-base: #E2DDD5;
+  --chroma-ink-base-bright: #FFFFFF;
 }
 
 [data-chroma-palette="ocean_amber"] {
-  --chroma-anchor-a: #0E7490;
-  --chroma-anchor-b: #D97706;
+  --chroma-anchor-a: #0F5B7A;
+  --chroma-anchor-a-bright: #0D0C0A;
+  --chroma-anchor-b: #9A5000;
+  --chroma-anchor-b-bright: #0D0C0A;
+  --chroma-ink-base: #1F1D1A;
+  --chroma-ink-base-bright: #0D0C0A;
 }
 :root[data-theme="noche"] [data-chroma-palette="ocean_amber"],
+:root[data-theme="night"] [data-chroma-palette="ocean_amber"],
 :root[data-theme="oled"] [data-chroma-palette="ocean_amber"],
 [data-theme="noche"][data-chroma-palette="ocean_amber"],
+[data-theme="night"][data-chroma-palette="ocean_amber"],
 [data-theme="oled"][data-chroma-palette="ocean_amber"] {
-  --chroma-anchor-a: #38BDF8;
-  --chroma-anchor-b: #FBBF24;
+  --chroma-anchor-a: #7DD3FC;
+  --chroma-anchor-a-bright: #BAE6FD;
+  --chroma-anchor-b: #FCD34D;
+  --chroma-anchor-b-bright: #FDE68A;
+  --chroma-ink-base: #E2DDD5;
+  --chroma-ink-base-bright: #FFFFFF;
 }
 
 [data-chroma-palette="forest_plum"] {
-  --chroma-anchor-a: #2D6A4F;
-  --chroma-anchor-b: #7B2CBF;
+  --chroma-anchor-a: #1D5438;
+  --chroma-anchor-a-bright: #0D0C0A;
+  --chroma-anchor-b: #641E8C;
+  --chroma-anchor-b-bright: #0D0C0A;
+  --chroma-ink-base: #1F1D1A;
+  --chroma-ink-base-bright: #0D0C0A;
 }
 :root[data-theme="noche"] [data-chroma-palette="forest_plum"],
+:root[data-theme="night"] [data-chroma-palette="forest_plum"],
 :root[data-theme="oled"] [data-chroma-palette="forest_plum"],
 [data-theme="noche"][data-chroma-palette="forest_plum"],
+[data-theme="night"][data-chroma-palette="forest_plum"],
 [data-theme="oled"][data-chroma-palette="forest_plum"] {
-  --chroma-anchor-a: #74C69D;
-  --chroma-anchor-b: #DDA0DD;
+  --chroma-anchor-a: #86EFAC;
+  --chroma-anchor-a-bright: #BBF7D0;
+  --chroma-anchor-b: #F0ABFC;
+  --chroma-anchor-b-bright: #F5D0FE;
+  --chroma-ink-base: #E2DDD5;
+  --chroma-ink-base-bright: #FFFFFF;
 }
 
 [data-chroma-palette="high_contrast"] {
-  --chroma-anchor-a: #003566;
-  --chroma-anchor-b: #851D1D;
+  --chroma-anchor-a: #002B54;
+  --chroma-anchor-a-bright: #000000;
+  --chroma-anchor-b: #7A1414;
+  --chroma-anchor-b-bright: #000000;
+  --chroma-ink-base: #000000;
+  --chroma-ink-base-bright: #000000;
 }
 :root[data-theme="noche"] [data-chroma-palette="high_contrast"],
+:root[data-theme="night"] [data-chroma-palette="high_contrast"],
 :root[data-theme="oled"] [data-chroma-palette="high_contrast"],
 [data-theme="noche"][data-chroma-palette="high_contrast"],
+[data-theme="night"][data-chroma-palette="high_contrast"],
 [data-theme="oled"][data-chroma-palette="high_contrast"] {
-  --chroma-anchor-a: #60A5FA;
-  --chroma-anchor-b: #F87171;
+  --chroma-anchor-a: #93C5FD;
+  --chroma-anchor-a-bright: #DBEAFE;
+  --chroma-anchor-b: #FCA5A5;
+  --chroma-anchor-b-bright: #FEE2E2;
+  --chroma-ink-base: #F3F4F6;
+  --chroma-ink-base-bright: #FFFFFF;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]) [data-chroma-palette="editorial"],
   :root:not([data-theme])[data-chroma-palette="editorial"] {
-    --chroma-anchor-a: #7CC2FF;
-    --chroma-anchor-b: #FFB07C;
+    --chroma-anchor-a: #8EC8FF;
+    --chroma-anchor-a-bright: #BCE0FF;
+    --chroma-anchor-b: #FFA88D;
+    --chroma-anchor-b-bright: #FFD0C2;
+    --chroma-ink-base: #E2DDD5;
+    --chroma-ink-base-bright: #FFFFFF;
   }
   :root:not([data-theme]) [data-chroma-palette="ocean_amber"],
   :root:not([data-theme])[data-chroma-palette="ocean_amber"] {
-    --chroma-anchor-a: #38BDF8;
-    --chroma-anchor-b: #FBBF24;
+    --chroma-anchor-a: #7DD3FC;
+    --chroma-anchor-a-bright: #BAE6FD;
+    --chroma-anchor-b: #FCD34D;
+    --chroma-anchor-b-bright: #FDE68A;
+    --chroma-ink-base: #E2DDD5;
+    --chroma-ink-base-bright: #FFFFFF;
   }
   :root:not([data-theme]) [data-chroma-palette="forest_plum"],
   :root:not([data-theme])[data-chroma-palette="forest_plum"] {
-    --chroma-anchor-a: #74C69D;
-    --chroma-anchor-b: #DDA0DD;
+    --chroma-anchor-a: #86EFAC;
+    --chroma-anchor-a-bright: #BBF7D0;
+    --chroma-anchor-b: #F0ABFC;
+    --chroma-anchor-b-bright: #F5D0FE;
+    --chroma-ink-base: #E2DDD5;
+    --chroma-ink-base-bright: #FFFFFF;
   }
   :root:not([data-theme]) [data-chroma-palette="high_contrast"],
   :root:not([data-theme])[data-chroma-palette="high_contrast"] {
-    --chroma-anchor-a: #60A5FA;
-    --chroma-anchor-b: #F87171;
+    --chroma-anchor-a: #93C5FD;
+    --chroma-anchor-a-bright: #DBEAFE;
+    --chroma-anchor-b: #FCA5A5;
+    --chroma-anchor-b-bright: #FEE2E2;
+    --chroma-ink-base: #F3F4F6;
+    --chroma-ink-base-bright: #FFFFFF;
   }
 }
 

@@ -943,7 +943,12 @@ export default function Shelf({
                 <div className="shelf-hero-activity-bar">
                   {goalProgress ? (
                     <div
-                      className="shelf-goal-ring-widget"
+                      className="shelf-goal-ring-widget progress-ring"
+                      role="progressbar"
+                      aria-label="Meta de lectura semanal"
+                      aria-valuenow={Math.min(100, Math.round((goalProgress.readDays / Math.max(1, goalProgress.target)) * 100))}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
                       title={`Meta semanal: ${goalProgress.readDays} de ${goalProgress.target} días cumplidos`}
                     >
                       <svg className="shelf-goal-ring-svg" viewBox="0 0 36 36" aria-hidden="true">

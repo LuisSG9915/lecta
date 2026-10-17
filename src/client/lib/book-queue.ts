@@ -46,23 +46,26 @@ export async function runBookQueue(scope?: DbScope): Promise<number> {
           let title = book.title;
           let author = book.author;
           let sectionCount = book.sectionCount;
-          if (!title || !author) {
+          let language = book.language;
+          if (!title || !author || !language) {
             const meta = await readBookMeta(book.data).catch(() => null);
             if (meta) {
               title = meta.title || title;
               author = meta.author || author;
               sectionCount = meta.sectionCount ?? sectionCount;
+              language = meta.language || language;
             }
           }
           ok = await uploadBook(
             op.hash,
             new File([book.data], op.name || book.name),
             // Los metadatos viajan con el objeto remoto: así otros
-            // dispositivos muestran título y autor sin bajar el EPUB.
+            // dispositivos muestran título, autor e idioma sin bajar el EPUB.
             {
               title,
               author,
               sectionCount,
+              language,
             },
             bound,
           );

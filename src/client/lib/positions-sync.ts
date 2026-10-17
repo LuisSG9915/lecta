@@ -41,6 +41,7 @@ export async function pushPositionsToServer(
           body: JSON.stringify({
             positions: positions.slice(start, start + POSITION_LIMITS.batch),
           }),
+          keepalive: true,
         },
         bound,
       );
@@ -50,6 +51,27 @@ export async function pushPositionsToServer(
   } catch {
     return false;
   }
+}
+
+let pendingPositionsToFlush: SavedBookPosition[] = [];
+
+export function queuePositionForFlush(pos: SavedBookPosition) {
+  pendingPositionsToFlush.push(pos);
+}
+
+export function flushPendingPositions(scope?: DbScope): Promise<boolean> {
+  if (!pendingPositionsToFlush.length) return Promise.resolve(true);
+  const items = [...pendingPositionsToFlush];
+  pendingPositionsToFlush = [];
+  return pushPositionsToServer(items, scope);
+}
+
+if (typeof document !== "undefined") {
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") {
+      void flushPendingPositions();
+    }
+  });
 }
 
 // Fusiona posiciones locales y remotas por libro; gana la de updatedAt

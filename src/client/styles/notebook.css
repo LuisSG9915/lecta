@@ -755,15 +755,15 @@
   font-size: var(--fs-xs);
   padding: 0.15rem 0.45rem;
   border-radius: 9999px;
-  background: #fff7ed;
-  border: 1px solid #fed7aa;
-  color: #c2410c;
+  background: var(--ochre-soft, rgba(212, 164, 58, 0.14));
+  border: 1px solid var(--ochre, #fed7aa);
+  color: var(--amber, #c2410c);
 }
 
 .act-streak-shield--active {
-  background: #fef3c7;
-  border-color: #fde68a;
-  color: #b45309;
+  background: var(--ochre-wash, rgba(212, 164, 58, 0.28));
+  border-color: var(--ochre, #fde68a);
+  color: var(--amber, #b45309);
 }
 
 .act-streak-quote {
@@ -1101,6 +1101,14 @@
   list-style: none;
   margin: var(--s-4) 0 0;
   padding: 0;
+}
+
+.nb-word,
+.nb-word-row,
+.vocab__item,
+.vocab-card {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 76px;
 }
 
 .nb-word {
@@ -2466,13 +2474,16 @@
   letter-spacing: 0.04em;
 }
 
-.nb-recent-track {
+.nb-recent-track,
+.vocab__recent-strip {
   display: flex;
   gap: var(--s-2);
   overflow-x: auto;
   padding-block: 2px var(--s-2);
   -webkit-overflow-scrolling: touch;
   scrollbar-width: thin;
+  -webkit-mask-image: linear-gradient(to right, #000 0%, #000 calc(100% - 24px), transparent 100%);
+  mask-image: linear-gradient(to right, #000 0%, #000 calc(100% - 24px), transparent 100%);
 }
 
 .nb-recent-chip {
@@ -2514,3 +2525,66 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Tu Recorrido (OBJ-06) */
+.journey__intro {
+  padding-top: 10px;
+  padding-inline: 12px;
+}
+
+.journey__trail-map {
+  padding-inline: 12px;
+  box-sizing: border-box;
+}
+
+[data-theme="night"] .journey__trail-map,
+[data-theme="dark"] .journey__trail-map,
+:root[data-theme="noche"] .journey__trail-map,
+:root[data-theme="oled"] .journey__trail-map {
+  background: #181C22;
+  border: 1px solid rgba(255, 245, 230, 0.12);
+}
+
+.journey__node-label {
+  background: #FFFFFF;
+  color: #1F1D1A;
+  border: 1px solid rgba(31, 29, 26, 0.16);
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+}
+
+[data-theme="night"] .journey__node-label,
+[data-theme="dark"] .journey__node-label,
+:root[data-theme="noche"] .journey__node-label,
+:root[data-theme="oled"] .journey__node-label {
+  background: #242933;
+  color: #F5F2EB;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) .journey__trail-map {
+    background: #181C22;
+    border: 1px solid rgba(255, 245, 230, 0.12);
+  }
+  :root:not([data-theme]) .journey__node-label {
+    background: #242933;
+    color: #F5F2EB;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+  }
+}
+
+/* Espaciado inferior seguro frente a MiniReaderBar + AppNav (OBJ-07) */
+@media (max-width: 768px) {
+  .vocab,
+  .notebook,
+  .notebook--page {
+    padding-bottom: calc(136px + env(safe-area-inset-bottom, 0px));
+  }
+}
+

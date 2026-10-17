@@ -23,6 +23,7 @@ vi.mock("../lib/lexicon", () => ({
   explainInContext: vi.fn(),
   explainInPassage: vi.fn(async () => ({
     ok: true,
+    directMeaning: "Fugaz, de corta duración.",
     contextualMeaning: "Aquí «efímero» alude a la fugacidad del instante poético.",
     toneAndNuance: "Lírico y melancólico",
     catTip: "El autor emplea esta palabra para enfatizar el paso del tiempo.",
@@ -242,7 +243,7 @@ describe("WordPanel - Acciones Rápidas (Fase 4.3)", () => {
     );
   });
 
-  it("renderiza Nivel 1 (Vistazo Rápido) con la acepción exacta y botón 'Profundizar ↑'", async () => {
+  it("renderiza la cabecera limpia, definición práctica y botón directo de explicación", async () => {
     render(
       h(WordPanel, {
         word: "efimero",
@@ -258,18 +259,18 @@ describe("WordPanel - Acciones Rápidas (Fase 4.3)", () => {
       await Promise.resolve();
     });
 
-    const level1 = host.querySelector(".word-panel-level-1");
-    expect(level1).not.toBeNull();
-    expect(host.querySelector(".word-panel-best-sense-def")?.textContent).toContain(
+    const meaningBlock = host.querySelector(".word-panel-meaning-block");
+    expect(meaningBlock).not.toBeNull();
+    expect(host.querySelector(".word-panel-primary-def")?.textContent).toContain(
       "De corta duración.",
     );
 
-    const deepenBtn = host.querySelector<HTMLButtonElement>(".btn--profundizar");
-    expect(deepenBtn).not.toBeNull();
-    expect(deepenBtn?.textContent).toContain("Profundizar ↑");
+    const explainPassageBtn = host.querySelector<HTMLButtonElement>(".btn--explain-passage");
+    expect(explainPassageBtn).not.toBeNull();
+    expect(explainPassageBtn?.textContent).toContain("✨ Explicar en esta frase");
   });
 
-  it("al pulsar 'Profundizar ↑' pasa a Nivel 2 y muestra '✨ Explicar en este pasaje (IA)'", async () => {
+  it("al pulsar '✨ Explicar en esta frase' muestra la explicación contextual de IA", async () => {
     render(
       h(WordPanel, {
         word: "efimero",
@@ -285,19 +286,11 @@ describe("WordPanel - Acciones Rápidas (Fase 4.3)", () => {
       await Promise.resolve();
     });
 
-    const deepenBtn = host.querySelector<HTMLButtonElement>(".btn--profundizar")!;
-    await act(async () => {
-      click(deepenBtn);
-    });
-
-    const level2 = host.querySelector(".word-panel-level-2");
-    expect(level2).not.toBeNull();
-
     const explainPassageBtn = host.querySelector<HTMLButtonElement>(".btn--explain-passage");
     expect(explainPassageBtn).not.toBeNull();
-    expect(explainPassageBtn?.textContent).toContain("✨ Explicar en este pasaje (IA)");
+    expect(explainPassageBtn?.textContent).toContain("✨ Explicar en esta frase");
 
-    // Tocar el botón de IA en pasaje
+    // Tocar el botón de IA en pasaje directamente sin menús confusos
     await act(async () => {
       click(explainPassageBtn!);
     });
@@ -374,14 +367,7 @@ describe("WordPanel - Acciones Rápidas (Fase 4.3)", () => {
     });
     expect(speakWord).toHaveBeenCalledWith("wander", "en");
 
-    // Abrir nivel 2 (profundizar) para ver el botón de explicación
-    const deepenBtn = host.querySelector<HTMLButtonElement>(".btn--profundizar")!;
-    expect(deepenBtn).not.toBeNull();
-    await act(async () => {
-      click(deepenBtn);
-    });
-
-    // Probar explicación en pasaje con nativeLanguage
+    // El botón de explicación en frase está accesible directamente sin submenús
     const explainBtn = host.querySelector<HTMLButtonElement>(".btn--explain-passage");
     expect(explainBtn).not.toBeNull();
     await act(async () => {
@@ -398,6 +384,89 @@ describe("WordPanel - Acciones Rápidas (Fase 4.3)", () => {
         nativeLanguage: "es",
       }),
       expect.anything(),
+    );
+  });
+
+  it("responde a atajos de teclado rápidos 'p' (pronunciar), 'g' (guardar/fijar) y 's' (ya la sé)", async () => {
+    const { speakWord } = await import("../lib/speech");
+    const { saveWordWithKnowledge, saveKnowledge } = await import("../lib/idb");
+    const onSaved = vi.fn();
+    const onClose = vi.fn();
+
+    render(
+      h(WordPanel, {
+        word: "efimero",
+        language: "es",
+        context: "El destello fue efímero pero intenso.",
+        bookHash: "book123",
+        onClose,
+        onSaved,
+      }),
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // 1. Probar atajo 'p'
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "p", bubbles: true }));
+    });
+    expect(speakWord).toHaveBeenCalledWith("efimero", "es");
+
+    // 2. Probar atajo 'g' (guarda en cuaderno)
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "g", bubbles: true }));
+    });
+    expect(saveWordWithKnowledge).toHaveBeenCalled();
+    expect(onSaved).toHaveBeenCalled();
+
+    // 3. Probar atajo 's' (marcar como conocida)
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "s", bubbles: true }));
+    });
+    expect(saveKnowledge).toHaveBeenCalled();
+  });
+
+  it("dispara automáticamente la consulta de IA cuando la palabra no está en catálogo (OBJ-03)", async () => {
+    const { lookupWord, explainInPassage } = await import("../lib/lexicon");
+    vi.mocked(lookupWord).mockResolvedValueOnce({
+      ok: true,
+      found: false,
+      entries: [],
+    });
+
+
+    render(
+      h(WordPanel, {
+        word: "desconocida",
+        language: "es",
+        context: "Una palabra desconocida en la lectura.",
+        bookHash: "book123",
+        onClose: vi.fn(),
+        onSaved: vi.fn(),
+      }),
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // Debe haber invocado explainInPassage de forma automática sin requerir clic manual
+    expect(explainInPassage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        word: "desconocida",
+        sentence: "Una palabra desconocida en la lectura.",
+      }),
+      expect.anything(),
+    );
+
+    // Debe mostrar la explicación obtenida
+    expect(host.querySelector(".passage-meaning-text")?.textContent).toContain(
+      "Aquí «efímero» alude a la fugacidad del instante poético.",
     );
   });
 });

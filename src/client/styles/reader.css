@@ -317,8 +317,9 @@
   font-size: var(--read-size);
   line-height: var(--read-leading);
   font-optical-sizing: auto;
+  font-size-adjust: from-font;
   color: var(--ink);
-  padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(88px + env(safe-area-inset-bottom, 0px));
   /* Sin guionado una palabra larga no debe rebosar la medida:
      break-word la parte por el borde de la caja. */
   overflow-wrap: break-word;
@@ -327,6 +328,11 @@
   text-rendering: optimizeLegibility;
   orphans: 2;
   widows: 2;
+}
+
+/* OpenDyslexic tiene métricas y peso de x-height especializados: no distorsionar */
+.reader[data-font="dyslexic"] .book-content {
+  font-size-adjust: none;
 }
 
 .book-content > * {
@@ -1127,7 +1133,7 @@ mark.saved-passage--dario {
   flex-direction: column;
   /* El pie es fijo: su altura (~3.5rem) se reserva para que no tape
      la navegación de páginas. */
-  padding-block-end: calc(3.75rem + env(safe-area-inset-bottom, 0px));
+  padding-block-end: calc(88px + env(safe-area-inset-bottom, 0px));
   overflow: hidden;
 }
 
@@ -1984,7 +1990,7 @@ mark.predicted-word:hover {
   text-decoration: underline solid var(--accent-primary, #E08A58);
   text-decoration-thickness: 2px;
   text-underline-offset: 4px;
-  background: rgba(224, 138, 88, 0.10);
+  background: rgba(224, 138, 88, 0.12);
   border-radius: 3px;
   padding-inline: 1px;
   transition: background-color 0.25s ease;
@@ -2143,12 +2149,138 @@ mark.predicted-word:hover {
   margin-block-start: 0.38em;
 }
 
-/* Guía cromática (BeeLine): gradiente continuo que conecta el final de
-   cada línea o fragmento con el color de arranque de la siguiente para asistir
-   el salto de retorno ocular (Return Sweep) sin fatiga visual. */
+/* =====================================================================
+   OBJ-01 & OBJ-02: Guía Cromática de Alta Luminancia (WCAG AAA >= 7.5:1)
+   y Anclajes Biónicos / Neuro-Enfoque Luminoso
+   ===================================================================== */
+
+/* Evitar multiplicación de opacidades (OBJ-01) */
+.lecta-syntactic-line,
+.syn-line,
+.lecta-syntactic-chunk {
+  opacity: 1 !important;
+}
+
+/* Modo inline (conserva el flujo natural de párrafo si syntacticLines es false) */
+.lecta-syntactic-chunk[data-inline="true"] {
+  display: inline;
+}
+
+/* El cuerpo de la palabra NUNCA debe bajar de 0.90 ni usar var(--ink-muted) */
+.lecta-bionic-word {
+  display: inline;
+  opacity: 1 !important;
+  color: inherit;
+}
+
+.lecta-bionic-rest,
+.lecta-bionic-word > span:not(.lecta-bionic-anchor):not(.lecta-fixation-anchor):not(.lecta-anchor) {
+  opacity: 1 !important;
+  color: inherit;
+}
+
+.book-content .lecta-bionic-rest,
+.reader__stage .lecta-bionic-rest {
+  opacity: 1 !important;
+  color: inherit;
+}
+
+/* Anclajes de fijación biónicos: diferenciados por peso 700 y brillo superior */
+.lecta-bionic-anchor,
+.lecta-fixation-anchor,
+b.lecta-anchor {
+  font-weight: 700 !important;
+  opacity: 1 !important;
+  letter-spacing: 0.01em;
+  display: inline;
+}
+
+/* En modo oscuro: ancla biónica con brillo blanco superior (#FFFFFF) en líneas neutras */
+:root[data-theme="noche"] .lecta-bionic-anchor,
+:root[data-theme="night"] .lecta-bionic-anchor,
+:root[data-theme="oled"] .lecta-bionic-anchor,
+:root[data-theme="noche"] .lecta-fixation-anchor,
+:root[data-theme="night"] .lecta-fixation-anchor,
+:root[data-theme="oled"] .lecta-fixation-anchor,
+:root[data-theme="noche"] b.lecta-anchor,
+:root[data-theme="night"] b.lecta-anchor,
+:root[data-theme="oled"] b.lecta-anchor,
+[data-theme="noche"] .lecta-bionic-anchor,
+[data-theme="night"] .lecta-bionic-anchor,
+[data-theme="oled"] .lecta-bionic-anchor,
+[data-theme="noche"] .lecta-fixation-anchor,
+[data-theme="night"] .lecta-fixation-anchor,
+[data-theme="oled"] .lecta-fixation-anchor,
+[data-theme="noche"] b.lecta-anchor,
+[data-theme="night"] b.lecta-anchor,
+[data-theme="oled"] b.lecta-anchor {
+  color: #FFFFFF;
+  -webkit-text-fill-color: #FFFFFF;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) .lecta-bionic-anchor,
+  :root:not([data-theme]) .lecta-fixation-anchor,
+  :root:not([data-theme]) b.lecta-anchor {
+    color: #FFFFFF;
+    -webkit-text-fill-color: #FFFFFF;
+  }
+}
+
+/* En modo claro: ancla biónica con negro profundo #0D0C0A y cuerpo #26231F (contraste > 11:1) */
+:root,
+:root[data-theme="papel"],
+:root[data-theme="paper"],
+:root[data-theme="blanco"],
+:root[data-theme="white"] {
+  --bionic-rest-ink: #26231F;
+}
+
+:root[data-theme="papel"] .lecta-bionic-anchor,
+:root[data-theme="paper"] .lecta-bionic-anchor,
+:root[data-theme="blanco"] .lecta-bionic-anchor,
+:root[data-theme="white"] .lecta-bionic-anchor,
+:root[data-theme="papel"] .lecta-fixation-anchor,
+:root[data-theme="paper"] .lecta-fixation-anchor,
+:root[data-theme="blanco"] .lecta-fixation-anchor,
+:root[data-theme="white"] .lecta-fixation-anchor,
+:root[data-theme="papel"] b.lecta-anchor,
+:root[data-theme="paper"] b.lecta-anchor,
+:root[data-theme="blanco"] b.lecta-anchor,
+:root[data-theme="white"] b.lecta-anchor,
+[data-theme="papel"] .lecta-bionic-anchor,
+[data-theme="paper"] .lecta-bionic-anchor,
+[data-theme="blanco"] .lecta-bionic-anchor,
+[data-theme="white"] .lecta-bionic-anchor,
+[data-theme="papel"] .lecta-fixation-anchor,
+[data-theme="paper"] .lecta-fixation-anchor,
+[data-theme="blanco"] .lecta-fixation-anchor,
+[data-theme="white"] .lecta-fixation-anchor,
+[data-theme="papel"] b.lecta-anchor,
+[data-theme="paper"] b.lecta-anchor,
+[data-theme="blanco"] b.lecta-anchor,
+[data-theme="white"] b.lecta-anchor {
+  color: #0D0C0A;
+  -webkit-text-fill-color: #0D0C0A;
+}
+
+:root[data-theme="papel"] .lecta-bionic-rest,
+:root[data-theme="paper"] .lecta-bionic-rest,
+:root[data-theme="blanco"] .lecta-bionic-rest,
+:root[data-theme="white"] .lecta-bionic-rest,
+[data-theme="papel"] .lecta-bionic-rest,
+[data-theme="paper"] .lecta-bionic-rest,
+[data-theme="blanco"] .lecta-bionic-rest,
+[data-theme="white"] .lecta-bionic-rest {
+  color: #26231F;
+}
+
+/* Guía cromática (BeeLine): gradiente continuo de alta luminancia (OBJ-02) */
 .lecta-syntactic-chunk[data-chunk-cycle="0"],
+.syn-line[data-chunk-cycle="0"],
 .book-content[data-focus-mode="chromatic"] .syn-line[data-chunk-cycle="0"],
-.book-content[data-chromatic-guide="true"] .lecta-syntactic-chunk[data-chunk-cycle="0"] {
+.book-content[data-chromatic-guide="true"] .lecta-syntactic-chunk[data-chunk-cycle="0"],
+.reader__stage--chromatic [data-chunk-cycle="0"] {
   background: linear-gradient(to right, var(--chroma-ink-base, var(--ink)) 15%, var(--chroma-anchor-a) 100%);
   -webkit-background-clip: text;
   background-clip: text;
@@ -2156,9 +2288,21 @@ mark.predicted-word:hover {
   color: transparent;
 }
 
+.lecta-syntactic-chunk[data-chunk-cycle="0"] .lecta-bionic-anchor,
+.lecta-syntactic-chunk[data-chunk-cycle="0"] .lecta-fixation-anchor,
+.lecta-syntactic-chunk[data-chunk-cycle="0"] b.lecta-anchor,
+.syn-line[data-chunk-cycle="0"] .lecta-bionic-anchor,
+.syn-line[data-chunk-cycle="0"] .lecta-fixation-anchor,
+.syn-line[data-chunk-cycle="0"] b.lecta-anchor {
+  -webkit-text-fill-color: var(--chroma-anchor-a-bright, #BCE0FF) !important;
+  color: var(--chroma-anchor-a-bright, #BCE0FF) !important;
+}
+
 .lecta-syntactic-chunk[data-chunk-cycle="1"],
+.syn-line[data-chunk-cycle="1"],
 .book-content[data-focus-mode="chromatic"] .syn-line[data-chunk-cycle="1"],
-.book-content[data-chromatic-guide="true"] .lecta-syntactic-chunk[data-chunk-cycle="1"] {
+.book-content[data-chromatic-guide="true"] .lecta-syntactic-chunk[data-chunk-cycle="1"],
+.reader__stage--chromatic [data-chunk-cycle="1"] {
   background: linear-gradient(to right, var(--chroma-anchor-a) 0%, var(--chroma-ink-base, var(--ink)) 85%);
   -webkit-background-clip: text;
   background-clip: text;
@@ -2166,9 +2310,21 @@ mark.predicted-word:hover {
   color: transparent;
 }
 
+.lecta-syntactic-chunk[data-chunk-cycle="1"] .lecta-bionic-anchor,
+.lecta-syntactic-chunk[data-chunk-cycle="1"] .lecta-fixation-anchor,
+.lecta-syntactic-chunk[data-chunk-cycle="1"] b.lecta-anchor,
+.syn-line[data-chunk-cycle="1"] .lecta-bionic-anchor,
+.syn-line[data-chunk-cycle="1"] .lecta-fixation-anchor,
+.syn-line[data-chunk-cycle="1"] b.lecta-anchor {
+  -webkit-text-fill-color: var(--chroma-ink-base-bright, #FFFFFF) !important;
+  color: var(--chroma-ink-base-bright, #FFFFFF) !important;
+}
+
 .lecta-syntactic-chunk[data-chunk-cycle="2"],
+.syn-line[data-chunk-cycle="2"],
 .book-content[data-focus-mode="chromatic"] .syn-line[data-chunk-cycle="2"],
-.book-content[data-chromatic-guide="true"] .lecta-syntactic-chunk[data-chunk-cycle="2"] {
+.book-content[data-chromatic-guide="true"] .lecta-syntactic-chunk[data-chunk-cycle="2"],
+.reader__stage--chromatic [data-chunk-cycle="2"] {
   background: linear-gradient(to right, var(--chroma-ink-base, var(--ink)) 15%, var(--chroma-anchor-b) 100%);
   -webkit-background-clip: text;
   background-clip: text;
@@ -2176,9 +2332,21 @@ mark.predicted-word:hover {
   color: transparent;
 }
 
+.lecta-syntactic-chunk[data-chunk-cycle="2"] .lecta-bionic-anchor,
+.lecta-syntactic-chunk[data-chunk-cycle="2"] .lecta-fixation-anchor,
+.lecta-syntactic-chunk[data-chunk-cycle="2"] b.lecta-anchor,
+.syn-line[data-chunk-cycle="2"] .lecta-bionic-anchor,
+.syn-line[data-chunk-cycle="2"] .lecta-fixation-anchor,
+.syn-line[data-chunk-cycle="2"] b.lecta-anchor {
+  -webkit-text-fill-color: var(--chroma-anchor-b-bright, #FFD0C2) !important;
+  color: var(--chroma-anchor-b-bright, #FFD0C2) !important;
+}
+
 .lecta-syntactic-chunk[data-chunk-cycle="3"],
+.syn-line[data-chunk-cycle="3"],
 .book-content[data-focus-mode="chromatic"] .syn-line[data-chunk-cycle="3"],
-.book-content[data-chromatic-guide="true"] .lecta-syntactic-chunk[data-chunk-cycle="3"] {
+.book-content[data-chromatic-guide="true"] .lecta-syntactic-chunk[data-chunk-cycle="3"],
+.reader__stage--chromatic [data-chunk-cycle="3"] {
   background: linear-gradient(to right, var(--chroma-anchor-b) 0%, var(--chroma-ink-base, var(--ink)) 85%);
   -webkit-background-clip: text;
   background-clip: text;
@@ -2186,13 +2354,30 @@ mark.predicted-word:hover {
   color: transparent;
 }
 
+.lecta-syntactic-chunk[data-chunk-cycle="3"] .lecta-bionic-anchor,
+.lecta-syntactic-chunk[data-chunk-cycle="3"] .lecta-fixation-anchor,
+.lecta-syntactic-chunk[data-chunk-cycle="3"] b.lecta-anchor,
+.syn-line[data-chunk-cycle="3"] .lecta-bionic-anchor,
+.syn-line[data-chunk-cycle="3"] .lecta-fixation-anchor,
+.syn-line[data-chunk-cycle="3"] b.lecta-anchor {
+  -webkit-text-fill-color: var(--chroma-anchor-b-bright, #FFD0C2) !important;
+  color: var(--chroma-anchor-b-bright, #FFD0C2) !important;
+}
+
 /* Fallback de compatibilidad para selector 3n sin data-chunk-cycle */
 .book-content[data-focus-mode="chromatic"] .syn-line:not([data-chunk-cycle]):nth-child(3n + 1) {
-  background: linear-gradient(to right, var(--ink) 25%, var(--chroma-anchor-a, var(--chroma-blue)) 100%);
+  background: linear-gradient(to right, var(--chroma-ink-base, var(--ink)) 25%, var(--chroma-anchor-a, var(--chroma-blue)) 100%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
   color: transparent;
+}
+
+.book-content[data-focus-mode="chromatic"] .syn-line:not([data-chunk-cycle]):nth-child(3n + 1) .lecta-bionic-anchor,
+.book-content[data-focus-mode="chromatic"] .syn-line:not([data-chunk-cycle]):nth-child(3n + 1) .lecta-fixation-anchor,
+.book-content[data-focus-mode="chromatic"] .syn-line:not([data-chunk-cycle]):nth-child(3n + 1) b.lecta-anchor {
+  -webkit-text-fill-color: var(--chroma-anchor-a-bright, #BCE0FF) !important;
+  color: var(--chroma-anchor-a-bright, #BCE0FF) !important;
 }
 
 .book-content[data-focus-mode="chromatic"] .syn-line:not([data-chunk-cycle]):nth-child(3n + 2) {
@@ -2203,24 +2388,47 @@ mark.predicted-word:hover {
   color: transparent;
 }
 
+.book-content[data-focus-mode="chromatic"] .syn-line:not([data-chunk-cycle]):nth-child(3n + 2) .lecta-bionic-anchor,
+.book-content[data-focus-mode="chromatic"] .syn-line:not([data-chunk-cycle]):nth-child(3n + 2) .lecta-fixation-anchor,
+.book-content[data-focus-mode="chromatic"] .syn-line:not([data-chunk-cycle]):nth-child(3n + 2) b.lecta-anchor {
+  -webkit-text-fill-color: var(--chroma-anchor-b-bright, #FFD0C2) !important;
+  color: var(--chroma-anchor-b-bright, #FFD0C2) !important;
+}
+
 .book-content[data-focus-mode="chromatic"] .syn-line:not([data-chunk-cycle]):nth-child(3n) {
-  background: linear-gradient(to right, var(--chroma-anchor-b, var(--chroma-crimson)) 0%, var(--ink) 75%);
+  background: linear-gradient(to right, var(--chroma-anchor-b, var(--chroma-crimson)) 0%, var(--chroma-ink-base, var(--ink)) 75%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
   color: transparent;
 }
 
-/* Modo inline (conserva el flujo natural de párrafo si syntacticLines es false) */
-.lecta-syntactic-chunk[data-inline="true"] {
-  display: inline;
+.book-content[data-focus-mode="chromatic"] .syn-line:not([data-chunk-cycle]):nth-child(3n) .lecta-bionic-anchor,
+.book-content[data-focus-mode="chromatic"] .syn-line:not([data-chunk-cycle]):nth-child(3n) .lecta-fixation-anchor,
+.book-content[data-focus-mode="chromatic"] .syn-line:not([data-chunk-cycle]):nth-child(3n) b.lecta-anchor {
+  -webkit-text-fill-color: var(--chroma-ink-base-bright, #FFFFFF) !important;
+  color: var(--chroma-ink-base-bright, #FFFFFF) !important;
 }
 
-/* Anclajes de fijación biónicos */
-.lecta-fixation-anchor {
-  font-weight: 600;
-  color: inherit;
-  -webkit-text-fill-color: inherit;
+/* En temas claros, las anclas cromáticas mantienen tinta carbón de alto contraste */
+:root[data-theme="papel"] .syn-line .lecta-bionic-anchor,
+:root[data-theme="paper"] .syn-line .lecta-bionic-anchor,
+:root[data-theme="blanco"] .syn-line .lecta-bionic-anchor,
+:root[data-theme="white"] .syn-line .lecta-bionic-anchor,
+:root[data-theme="papel"] .lecta-syntactic-chunk .lecta-bionic-anchor,
+:root[data-theme="paper"] .lecta-syntactic-chunk .lecta-bionic-anchor,
+:root[data-theme="blanco"] .lecta-syntactic-chunk .lecta-bionic-anchor,
+:root[data-theme="white"] .lecta-syntactic-chunk .lecta-bionic-anchor,
+[data-theme="papel"] .syn-line .lecta-bionic-anchor,
+[data-theme="paper"] .syn-line .lecta-bionic-anchor,
+[data-theme="blanco"] .syn-line .lecta-bionic-anchor,
+[data-theme="white"] .syn-line .lecta-bionic-anchor,
+[data-theme="papel"] .lecta-syntactic-chunk .lecta-bionic-anchor,
+[data-theme="paper"] .lecta-syntactic-chunk .lecta-bionic-anchor,
+[data-theme="blanco"] .lecta-syntactic-chunk .lecta-bionic-anchor,
+[data-theme="white"] .lecta-syntactic-chunk .lecta-bionic-anchor {
+  -webkit-text-fill-color: #0D0C0A !important;
+  color: #0D0C0A !important;
 }
 
 /* Marcapasos Visual ("Ritmo Guiado" para TDAH) */
@@ -2231,15 +2439,157 @@ mark.predicted-word:hover {
   transition: background 0.15s ease-out, box-shadow 0.15s ease-out;
 }
 
-/* Regla de No-Colisión: marcas de vocabulario y notas nunca pierden legibilidad */
+/* =====================================================================
+   OBJ-03: Claridad de Palabras Subrayadas de Vocabulario en Guía Cromática
+   ===================================================================== */
 .lecta-syntactic-chunk mark,
 .syn-line mark,
+.lecta-syntactic-line mark,
 .book-content[data-focus-mode="chromatic"] mark,
-.book-content[data-chromatic-guide="true"] mark {
+.book-content[data-chromatic-guide="true"] mark,
+.reader__stage--chromatic mark {
   -webkit-text-fill-color: initial !important;
+  opacity: 1 !important;
   color: var(--ink) !important;
   text-decoration: underline dotted var(--accent-primary, #c86d3b);
-  text-underline-offset: 3px;
+  text-underline-offset: 4px;
+}
+
+:root[data-theme="noche"] .reader__stage mark.lecta-unknown-word,
+:root[data-theme="night"] .reader__stage mark.lecta-unknown-word,
+:root[data-theme="oled"] .reader__stage mark.lecta-unknown-word,
+:root[data-theme="noche"] .reader__stage--chromatic mark.lecta-unknown-word,
+:root[data-theme="night"] .reader__stage--chromatic mark.lecta-unknown-word,
+:root[data-theme="oled"] .reader__stage--chromatic mark.lecta-unknown-word,
+:root[data-theme="noche"] .lecta-syntactic-line mark.lecta-unknown-word,
+:root[data-theme="night"] .lecta-syntactic-line mark.lecta-unknown-word,
+:root[data-theme="oled"] .lecta-syntactic-line mark.lecta-unknown-word,
+:root[data-theme="noche"] .lecta-syntactic-chunk mark.lecta-unknown-word,
+:root[data-theme="night"] .lecta-syntactic-chunk mark.lecta-unknown-word,
+:root[data-theme="oled"] .lecta-syntactic-chunk mark.lecta-unknown-word,
+[data-theme="noche"] mark.lecta-unknown-word,
+[data-theme="night"] mark.lecta-unknown-word,
+[data-theme="oled"] mark.lecta-unknown-word {
+  opacity: 1 !important;
+  color: var(--ink) !important;
+  -webkit-text-fill-color: var(--ink) !important;
+  text-decoration: underline dotted rgba(255, 210, 140, 0.75) !important;
+  text-underline-offset: 4px !important;
+  text-decoration-thickness: 1.5px !important;
+  background: transparent !important;
+}
+
+:root[data-theme="noche"] .reader__stage mark.lecta-saved-word,
+:root[data-theme="night"] .reader__stage mark.lecta-saved-word,
+:root[data-theme="oled"] .reader__stage mark.lecta-saved-word,
+:root[data-theme="noche"] .reader__stage--chromatic mark.lecta-saved-word,
+:root[data-theme="night"] .reader__stage--chromatic mark.lecta-saved-word,
+:root[data-theme="oled"] .reader__stage--chromatic mark.lecta-saved-word,
+:root[data-theme="noche"] .lecta-syntactic-line mark.lecta-saved-word,
+:root[data-theme="night"] .lecta-syntactic-line mark.lecta-saved-word,
+:root[data-theme="oled"] .lecta-syntactic-line mark.lecta-saved-word,
+:root[data-theme="noche"] .lecta-syntactic-chunk mark.lecta-saved-word,
+:root[data-theme="night"] .lecta-syntactic-chunk mark.lecta-saved-word,
+:root[data-theme="oled"] .lecta-syntactic-chunk mark.lecta-saved-word,
+[data-theme="noche"] mark.lecta-saved-word,
+[data-theme="night"] mark.lecta-saved-word,
+[data-theme="oled"] mark.lecta-saved-word {
+  opacity: 1 !important;
+  color: var(--ink) !important;
+  -webkit-text-fill-color: var(--ink) !important;
+  text-decoration: underline solid rgba(255, 210, 140, 0.85) !important;
+  text-underline-offset: 4px !important;
+  text-decoration-thickness: 2px !important;
+  background: rgba(224, 138, 88, 0.16) !important;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) mark.lecta-unknown-word {
+    opacity: 1 !important;
+    color: var(--ink) !important;
+    -webkit-text-fill-color: var(--ink) !important;
+    text-decoration: underline dotted rgba(255, 210, 140, 0.75) !important;
+    text-underline-offset: 4px !important;
+    text-decoration-thickness: 1.5px !important;
+  }
+  :root:not([data-theme]) mark.lecta-saved-word {
+    opacity: 1 !important;
+    color: var(--ink) !important;
+    -webkit-text-fill-color: var(--ink) !important;
+    text-decoration: underline solid rgba(255, 210, 140, 0.85) !important;
+    text-underline-offset: 4px !important;
+    text-decoration-thickness: 2px !important;
+    background: rgba(224, 138, 88, 0.16) !important;
+  }
+}
+
+/* =====================================================================
+   OBJ-04: Calibración de Intensidad de Contraste ('soft' | 'balanced' | 'high')
+   ===================================================================== */
+[data-strategy-contrast="soft"] .lecta-bionic-anchor,
+[data-strategy-contrast="soft"] .lecta-fixation-anchor,
+[data-strategy-contrast="soft"] b.lecta-anchor {
+  font-weight: 600 !important;
+  opacity: 0.92 !important;
+}
+
+[data-strategy-contrast="balanced"] .lecta-bionic-anchor,
+[data-strategy-contrast="balanced"] .lecta-fixation-anchor,
+[data-strategy-contrast="balanced"] b.lecta-anchor {
+  font-weight: 700 !important;
+  opacity: 1 !important;
+}
+
+[data-strategy-contrast="high"] .lecta-bionic-anchor,
+[data-strategy-contrast="high"] .lecta-fixation-anchor,
+[data-strategy-contrast="high"] b.lecta-anchor {
+  font-weight: 700 !important;
+  opacity: 1 !important;
+  letter-spacing: 0.015em;
+}
+
+:root[data-theme="noche"] [data-strategy-contrast="high"] .lecta-bionic-anchor,
+:root[data-theme="night"] [data-strategy-contrast="high"] .lecta-bionic-anchor,
+:root[data-theme="oled"] [data-strategy-contrast="high"] .lecta-bionic-anchor,
+:root[data-theme="noche"] [data-strategy-contrast="high"] .lecta-fixation-anchor,
+:root[data-theme="night"] [data-strategy-contrast="high"] .lecta-fixation-anchor,
+:root[data-theme="oled"] [data-strategy-contrast="high"] .lecta-fixation-anchor,
+:root[data-theme="noche"] [data-strategy-contrast="high"] b.lecta-anchor,
+:root[data-theme="night"] [data-strategy-contrast="high"] b.lecta-anchor,
+:root[data-theme="oled"] [data-strategy-contrast="high"] b.lecta-anchor,
+[data-theme="noche"] [data-strategy-contrast="high"] .lecta-bionic-anchor,
+[data-theme="night"] [data-strategy-contrast="high"] .lecta-bionic-anchor,
+[data-theme="oled"] [data-strategy-contrast="high"] .lecta-bionic-anchor,
+[data-theme="noche"] [data-strategy-contrast="high"] .lecta-fixation-anchor,
+[data-theme="night"] [data-strategy-contrast="high"] .lecta-fixation-anchor,
+[data-theme="oled"] [data-strategy-contrast="high"] .lecta-fixation-anchor,
+[data-theme="noche"] [data-strategy-contrast="high"] b.lecta-anchor,
+[data-theme="night"] [data-strategy-contrast="high"] b.lecta-anchor,
+[data-theme="oled"] [data-strategy-contrast="high"] b.lecta-anchor {
+  color: #FFFFFF !important;
+  -webkit-text-fill-color: #FFFFFF !important;
+  text-shadow: 0 0 1px rgba(255, 255, 255, 0.4);
+}
+
+:root[data-theme="papel"] [data-strategy-contrast="high"] .lecta-bionic-anchor,
+:root[data-theme="paper"] [data-strategy-contrast="high"] .lecta-bionic-anchor,
+:root[data-theme="blanco"] [data-strategy-contrast="high"] .lecta-bionic-anchor,
+:root[data-theme="white"] [data-strategy-contrast="high"] .lecta-bionic-anchor,
+:root[data-theme="papel"] [data-strategy-contrast="high"] .lecta-fixation-anchor,
+:root[data-theme="paper"] [data-strategy-contrast="high"] .lecta-fixation-anchor,
+:root[data-theme="blanco"] [data-strategy-contrast="high"] .lecta-fixation-anchor,
+:root[data-theme="white"] [data-strategy-contrast="high"] .lecta-fixation-anchor,
+:root[data-theme="papel"] [data-strategy-contrast="high"] b.lecta-anchor,
+:root[data-theme="paper"] [data-strategy-contrast="high"] b.lecta-anchor,
+:root[data-theme="blanco"] [data-strategy-contrast="high"] b.lecta-anchor,
+:root[data-theme="white"] [data-strategy-contrast="high"] b.lecta-anchor {
+  color: #000000 !important;
+  -webkit-text-fill-color: #000000 !important;
+}
+
+[data-strategy-contrast="high"] .lecta-bionic-rest {
+  opacity: 1 !important;
+  color: inherit !important;
 }
 
 /* Foco de párrafo: atenúa los bloques fuera de la altura focal de lectura
@@ -2323,17 +2673,18 @@ mark.predicted-word:hover {
   pointer-events: none;
 }
 
-.focus-ruler-veil {
+.focus-ruler-veil,
+.focus-ruler__mask {
   position: absolute;
   inset-inline: 0;
-  background: rgba(31, 29, 26, 0.18);
+  background: rgba(31, 29, 26, 0.16);
 }
 
 .focus-ruler-veil--top {
   background: linear-gradient(
     to bottom,
-    rgba(31, 29, 26, 0.22) 0%,
-    rgba(31, 29, 26, 0.18) 85%,
+    rgba(31, 29, 26, 0.20) 0%,
+    rgba(31, 29, 26, 0.16) 85%,
     rgba(31, 29, 26, 0.08) 100%
   );
 }
@@ -2341,54 +2692,65 @@ mark.predicted-word:hover {
 .focus-ruler-veil--bottom {
   background: linear-gradient(
     to top,
-    rgba(31, 29, 26, 0.22) 0%,
-    rgba(31, 29, 26, 0.18) 85%,
+    rgba(31, 29, 26, 0.20) 0%,
+    rgba(31, 29, 26, 0.16) 85%,
     rgba(31, 29, 26, 0.08) 100%
   );
 }
 
 :root[data-theme="noche"] .focus-ruler-veil,
-:root[data-theme="oled"] .focus-ruler-veil {
-  background: rgba(10, 12, 16, 0.42);
+:root[data-theme="oled"] .focus-ruler-veil,
+[data-theme="dark"] .focus-ruler-veil,
+[data-theme="night"] .focus-ruler-veil,
+:root[data-theme="noche"] .focus-ruler__mask,
+:root[data-theme="oled"] .focus-ruler__mask,
+[data-theme="dark"] .focus-ruler__mask,
+[data-theme="night"] .focus-ruler__mask {
+  background: rgba(10, 12, 16, 0.38);
 }
 
 :root[data-theme="noche"] .focus-ruler-veil--top,
-:root[data-theme="oled"] .focus-ruler-veil--top {
+:root[data-theme="oled"] .focus-ruler-veil--top,
+[data-theme="dark"] .focus-ruler-veil--top,
+[data-theme="night"] .focus-ruler-veil--top {
   background: linear-gradient(
     to bottom,
-    rgba(10, 12, 16, 0.48) 0%,
-    rgba(10, 12, 16, 0.42) 85%,
+    rgba(10, 12, 16, 0.44) 0%,
+    rgba(10, 12, 16, 0.38) 85%,
     rgba(10, 12, 16, 0.18) 100%
   );
 }
 
 :root[data-theme="noche"] .focus-ruler-veil--bottom,
-:root[data-theme="oled"] .focus-ruler-veil--bottom {
+:root[data-theme="oled"] .focus-ruler-veil--bottom,
+[data-theme="dark"] .focus-ruler-veil--bottom,
+[data-theme="night"] .focus-ruler-veil--bottom {
   background: linear-gradient(
     to top,
-    rgba(10, 12, 16, 0.48) 0%,
-    rgba(10, 12, 16, 0.42) 85%,
+    rgba(10, 12, 16, 0.44) 0%,
+    rgba(10, 12, 16, 0.38) 85%,
     rgba(10, 12, 16, 0.18) 100%
   );
 }
 
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme]) .focus-ruler-veil {
-    background: rgba(10, 12, 16, 0.42);
+  :root:not([data-theme]) .focus-ruler-veil,
+  :root:not([data-theme]) .focus-ruler__mask {
+    background: rgba(10, 12, 16, 0.38);
   }
   :root:not([data-theme]) .focus-ruler-veil--top {
     background: linear-gradient(
       to bottom,
-      rgba(10, 12, 16, 0.48) 0%,
-      rgba(10, 12, 16, 0.42) 85%,
+      rgba(10, 12, 16, 0.44) 0%,
+      rgba(10, 12, 16, 0.38) 85%,
       rgba(10, 12, 16, 0.18) 100%
     );
   }
   :root:not([data-theme]) .focus-ruler-veil--bottom {
     background: linear-gradient(
       to top,
-      rgba(10, 12, 16, 0.48) 0%,
-      rgba(10, 12, 16, 0.42) 85%,
+      rgba(10, 12, 16, 0.44) 0%,
+      rgba(10, 12, 16, 0.38) 85%,
       rgba(10, 12, 16, 0.18) 100%
     );
   }
@@ -2697,13 +3059,16 @@ mark.predicted-word:hover {
   }
 }
 
-/* Chip de sesión: abajo al centro, discreto — informa el estado y
-   ofrece pausa/velocidad/detener sin interponerse en el texto. */
-.tts-chip {
+/* =====================================================================
+   OBJ-05: Separación de Barras Flotantes (TTS / Marcapasos y .reader__dock)
+   ===================================================================== */
+.tts-chip,
+.tts-now-playing,
+.reader__pacer-bar {
   position: fixed;
   z-index: 18;
   inset-inline: 0;
-  bottom: calc(var(--s-3) + env(safe-area-inset-bottom));
+  bottom: calc(76px + env(safe-area-inset-bottom, 0px));
   margin-inline: auto;
   width: fit-content;
   max-width: calc(100% - 2 * var(--s-4));
@@ -2722,9 +3087,45 @@ mark.predicted-word:hover {
   animation: fade-in var(--dur-2) var(--ease-out);
 }
 
+/* Incremento del padding inferior del libro cuando hay barras flotantes activas (OBJ-05) */
+.reader[data-floating-control="true"] .book-content,
+.book-content[data-has-floating-bar="true"],
+.reader-body[data-has-floating-bar="true"] .book-content,
+.reader:has(.tts-chip:not(:empty)) .book-content,
+.reader:has(.reader__pacer-bar) .book-content {
+  padding-bottom: calc(152px + env(safe-area-inset-bottom, 0px)) !important;
+}
+
+.tts-chip-header {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
 .tts-chip-label {
   white-space: nowrap;
   font-weight: 500;
+}
+
+.tts-engine-badge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 6px;
+  border-radius: var(--r-pill, 12px);
+  border: 1px solid currentColor;
+  opacity: 0.9;
+}
+
+.tts-engine-badge--neural {
+  color: var(--accent-primary, #c86d3b);
+  background: color-mix(in srgb, var(--accent-primary, #c86d3b) 12%, transparent);
+}
+
+.tts-engine-badge--browser {
+  color: var(--ink-soft);
+  background: color-mix(in srgb, var(--paper-sunken) 70%, transparent);
 }
 
 .tts-chip-actions {
@@ -2735,11 +3136,38 @@ mark.predicted-word:hover {
 
 .tts-chip-actions button {
   white-space: nowrap;
+  min-block-size: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Selector rápido de voz KittenTTS */
+.tts-voice-selector-wrap {
+  display: inline-flex;
+  align-items: center;
+}
+
+.tts-voice-select {
+  min-block-size: 44px;
+  border: var(--border);
+  border-radius: var(--r-pill);
+  padding: 0 var(--s-2);
+  background: transparent;
+  color: var(--ink);
+  font-size: var(--fs-xs);
+  cursor: pointer;
+  outline: none;
+}
+
+.tts-voice-select:focus-visible {
+  outline: 2px solid var(--accent-primary, #c86d3b);
 }
 
 /* Velocidad: el número es la etiqueta; el aria-label lleva el rol. */
 .tts-chip-rate {
-  min-inline-size: 2.6em;
+  min-inline-size: 44px;
+  min-block-size: 44px;
 }
 
 .tts-chip--expanded {
@@ -2755,6 +3183,8 @@ mark.predicted-word:hover {
 
 .tts-btn-step {
   font-size: 0.9em;
+  min-inline-size: 44px;
+  min-block-size: 44px;
   padding: 2px 6px;
   opacity: 0.85;
 }
@@ -2765,7 +3195,14 @@ mark.predicted-word:hover {
 
 .tts-btn-playpause {
   font-weight: 500;
-  padding: 2px 6px;
+  min-inline-size: 56px;
+  min-block-size: 44px;
+  padding: 2px 8px;
+}
+
+.tts-chip-stop {
+  min-inline-size: 56px;
+  min-block-size: 44px;
 }
 
 .tts-chip-capture {
@@ -2773,7 +3210,8 @@ mark.predicted-word:hover {
   color: var(--accent-primary, #c86d3b);
   background: color-mix(in srgb, var(--accent-primary, #c86d3b) 12%, transparent);
   border-radius: var(--r-pill);
-  padding: 2px 8px;
+  padding: 2px 10px;
+  min-block-size: 44px;
   transition: all 0.2s ease;
 }
 
@@ -2992,12 +3430,20 @@ mark.predicted-word:hover {
   box-shadow: var(--shadow-1);
 }
 
-.section-preview__flash-card--expanded .section-preview__flash-face--front {
+.section-preview__flash-card--expanded,
+.section-preview__flash-card--flipped {
+  grid-column: 1 / -1;
+}
+
+.section-preview__flash-card--expanded .section-preview__flash-face--front,
+.section-preview__flash-card--flipped .section-preview__flash-face--front {
   display: none;
 }
 
-.section-preview__flash-card--expanded .section-preview__flash-face--back {
+.section-preview__flash-card--expanded .section-preview__flash-face--back,
+.section-preview__flash-card--flipped .section-preview__flash-face--back {
   position: relative;
+  height: auto;
   max-height: 220px;
   overflow-y: auto;
   justify-content: flex-start;
@@ -3254,19 +3700,23 @@ mark.predicted-word:hover {
 }
 
 .tone-dot,
+.reader__passage-color,
 .reader__passage-color--amber,
 .reader__passage-color--sage,
 .reader__passage-color--dario-blue {
-  width: 18px;
-  height: 18px;
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
   border-radius: 50%;
-  border: 1.5px solid rgba(255, 255, 255, 0.7);
   padding: 0;
+  flex-shrink: 0;
+  border: 1.5px solid rgba(255, 255, 255, 0.7);
   cursor: pointer;
   transition: transform var(--dur-1) var(--ease-out), box-shadow var(--dur-1) var(--ease-out);
 }
 
 .tone-dot:hover,
+.reader__passage-color:hover,
 .reader__passage-color--amber:hover,
 .reader__passage-color--sage:hover,
 .reader__passage-color--dario-blue:hover {
@@ -3275,20 +3725,23 @@ mark.predicted-word:hover {
 
 .tone-dot--amber,
 .reader__passage-color--amber {
-  background-color: #f59e0b;
-  box-shadow: 0 0 0 1px rgba(245, 158, 11, 0.4);
+  background: #E08A58;
+  background-color: #E08A58;
+  box-shadow: 0 0 0 1px rgba(224, 138, 88, 0.4);
 }
 
 .tone-dot--salvia,
 .reader__passage-color--sage {
-  background-color: #10b981;
-  box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.4);
+  background: #4E9A74;
+  background-color: #4E9A74;
+  box-shadow: 0 0 0 1px rgba(78, 154, 116, 0.4);
 }
 
 .tone-dot--dario,
 .reader__passage-color--dario-blue {
-  background-color: #3b82f6;
-  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.4);
+  background: #4A88C7;
+  background-color: #4A88C7;
+  box-shadow: 0 0 0 1px rgba(74, 136, 199, 0.4);
 }
 
 /* Adaptación táctil y móvil de la barra de pasajes (Caso 5) */
@@ -3350,7 +3803,198 @@ mark.predicted-word:hover {
   }
 }
 
-/* WordPanel Nivel 1 (Vistazo Rápido) */
+/* =====================================================================
+   WordPanel Rediseñado (3 Bloques Limpios: Identidad, Práctica, Footer)
+   ===================================================================== */
+.word-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2, 0.5rem);
+  padding-bottom: var(--s-2, 0.5rem);
+  border-bottom: 1px solid var(--rule);
+}
+
+.word-panel-identity {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.word-panel-lemma {
+  font-family: var(--font-book, "Literata", Georgia, serif);
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--ink);
+  margin: 0;
+  line-height: 1.2;
+}
+
+.word-panel-pos-pill {
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs, 0.75rem);
+  font-weight: 600;
+  color: var(--ink-soft);
+  background: var(--paper-sunken);
+  border: 1px solid var(--rule);
+  padding: 2px 8px;
+  border-radius: 9999px;
+  text-transform: lowercase;
+}
+
+.word-panel-conjugation-note {
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs, 0.8rem);
+  font-style: italic;
+  color: var(--ink-dim);
+}
+
+.word-panel-close-btn {
+  font-size: 1.1rem;
+  color: var(--ink-dim);
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+
+.word-panel-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3, 0.75rem);
+  padding-bottom: 70px;
+}
+
+/* Indicador automático de IA */
+.word-panel-auto-loading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--paper-sunken);
+  border: 1px dashed var(--vermilion);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin: var(--s-2, 0.5rem) 0;
+}
+
+.word-panel-practical-block,
+.word-panel-ai-practical-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3, 0.75rem);
+}
+
+.word-panel-main-meaning,
+.word-panel-practical-meaning {
+  background: var(--paper-sunken);
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+
+.word-panel-best-sense-def {
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm, 0.95rem);
+  line-height: 1.5;
+  color: var(--ink);
+  margin: 4px 0 0;
+}
+
+.word-panel-synonyms-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--rule);
+}
+
+/* Acordeón "Más detalles y nota personal" */
+.word-panel-details-accordion {
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+  background: var(--paper);
+  overflow: hidden;
+  transition: all var(--dur-2) var(--ease-out);
+}
+
+.word-panel-accordion-summary {
+  padding: 10px 14px;
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs, 0.82rem);
+  font-weight: 600;
+  color: var(--ink-soft);
+  cursor: pointer;
+  user-select: none;
+  background: var(--paper-raised);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.word-panel-accordion-summary:hover {
+  color: var(--ink);
+  background: var(--paper-sunken);
+}
+
+.word-panel-accordion-content {
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border-top: 1px solid var(--rule);
+  background: var(--paper);
+}
+
+.word-panel-note-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm, 0.88rem);
+  line-height: 1.4;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--rule);
+  background: var(--paper-sunken);
+  color: var(--ink);
+  resize: vertical;
+}
+
+.word-panel-note-textarea:focus {
+  outline: none;
+  border-color: var(--vermilion);
+  background: var(--paper);
+}
+
+/* Barra Única de Acción al Pie (Sticky Footer) */
+.word-panel-sticky-footer {
+  position: sticky;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--s-2, 0.5rem);
+  padding: 10px 14px;
+  background: var(--paper-raised, #ffffff);
+  border-top: 1px solid var(--rule);
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.06);
+  z-index: 10;
+  margin: var(--s-3, 0.75rem) -1rem -1rem;
+}
+
+.word-panel-saved-actions,
+.word-panel-footer-saved {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  flex: 1;
+}
+
+/* WordPanel Nivel 1 (Vistazo Rápido retrocompatibilidad) */
 .word-panel-level-1 {
   display: flex;
   flex-direction: column;
@@ -3368,59 +4012,6 @@ mark.predicted-word:hover {
   border: 1px solid var(--rule);
   border-radius: 12px;
   padding: 12px 14px;
-}
-
-.word-panel-best-sense-def {
-  font-family: var(--font-ui);
-  font-size: var(--fs-sm, 0.92rem);
-  line-height: 1.45;
-  color: var(--ink);
-  margin: 4px 0 0;
-}
-
-.word-panel-profundizar-row {
-  display: flex;
-  justify-content: flex-end;
-}
-
-.btn--profundizar {
-  background: var(--paper-raised);
-  border: 1px solid var(--rule);
-  color: var(--accent-primary, #b45309);
-  font-family: var(--font-ui);
-  font-size: var(--fs-xs, 0.8rem);
-  font-weight: 600;
-  padding: 6px 14px;
-  border-radius: var(--r-pill);
-  cursor: pointer;
-  transition: all var(--dur-1) var(--ease-out);
-}
-
-.btn--profundizar:hover {
-  background: var(--accent-primary, #b45309);
-  color: var(--paper);
-  border-color: var(--accent-primary, #b45309);
-}
-
-/* WordPanel Nivel 2 (Panel Literario Profundo) */
-.word-panel-level-2 {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-3, 0.75rem);
-}
-
-.word-panel-level-2-nav {
-  margin-bottom: -4px;
-}
-
-.btn--back-level-1 {
-  font-size: var(--fs-xs, 0.8rem);
-  color: var(--ink-dim);
-  padding: 2px 6px;
-}
-
-.btn--back-level-1:hover {
-  color: var(--ink);
 }
 
 .word-panel-ai-passage-section {

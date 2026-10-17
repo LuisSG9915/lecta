@@ -264,7 +264,7 @@ export async function detectBookLanguage(
 
   if (!isAmbiguous) {
     const norm = normalizeLanguage(rawLang);
-    if (norm) return norm;
+    if (norm && norm !== "es") return norm;
   }
 
   // Comprobar descripción si existe

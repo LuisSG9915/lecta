@@ -91,4 +91,43 @@ describe("speech", () => {
     expect(utterance.text).toBe("water");
     expect(utterance.lang).toBe("en-GB");
   });
+
+  it("utiliza KittenTTS neural cuando el motor está listo para palabras en inglés", async () => {
+    const { kittenTtsEngine } = await import("./kittenTtsEngine");
+    kittenTtsEngine.setReadyForTesting(true);
+
+    const synthesizeSpy = vi.spyOn(kittenTtsEngine, "synthesize").mockResolvedValue({
+      sampleRate: 24000,
+      length: 2400,
+      duration: 0.1,
+    } as AudioBuffer);
+    const playSpy = vi.spyOn(kittenTtsEngine, "play").mockImplementation((_, __, onEnded) => {
+      onEnded?.();
+    });
+
+    await speakWord("serendipity", "en");
+
+    expect(synthesizeSpy).toHaveBeenCalledWith("serendipity", expect.any(String), 0.9);
+    expect(playSpy).toHaveBeenCalled();
+    // No debe usar speechSynthesis si KittenTTS neural está listo
+    expect(speakMock).not.toHaveBeenCalled();
+
+    kittenTtsEngine.setReadyForTesting(false);
+    synthesizeSpy.mockRestore();
+    playSpy.mockRestore();
+  });
+
+  it("palabras en español usan speechSynthesis con voz en español aun con KittenTTS listo", async () => {
+    const { kittenTtsEngine } = await import("./kittenTtsEngine");
+    kittenTtsEngine.setReadyForTesting(true);
+
+    await speakWord("biblioteca", "es");
+
+    expect(speakMock).toHaveBeenCalledTimes(1);
+    const utterance = speakMock.mock.calls[0][0] as SpeechSynthesisUtterance;
+    expect(utterance.text).toBe("biblioteca");
+    expect(utterance.lang).toBe("es-MX");
+
+    kittenTtsEngine.setReadyForTesting(false);
+  });
 });

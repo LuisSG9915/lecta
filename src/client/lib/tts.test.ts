@@ -12,6 +12,7 @@ import {
   consentTts,
   isTtsSupported,
   loadTtsSettings,
+  saveTtsSettings,
   TTS_SETTINGS_DEFAULTS,
 } from "./ttsSettings";
 import {
@@ -21,7 +22,12 @@ import {
   withTtsProgrammaticNav,
 } from "./ttsGuards";
 import { createTtsController, type TtsControllerDeps } from "./ttsController";
-import type { TtsSnapshot, TtsTargetContext } from "./ttsTypes";
+import {
+  KITTEN_VOICES,
+  type TtsSnapshot,
+  type TtsTargetContext,
+} from "./ttsTypes";
+import { normalizeEnglishText, type KittenTtsEngine } from "./kittenTtsEngine";
 
 const section = (html: string) => {
   const el = document.createElement("div");
@@ -200,9 +206,67 @@ describe("ttsSettings", () => {
     expect(loadTtsSettings().rate).toBe(1);
   });
 
+  it("persiste configuraciones multi-motor y voz de KittenTTS", () => {
+    saveTtsSettings({
+      ...TTS_SETTINGS_DEFAULTS,
+      enabled: true,
+      consentedAt: 12345,
+      engine: "kitten-neural",
+      kittenVoice: "expr-voice-3-m",
+    });
+    const loaded = loadTtsSettings();
+    expect(loaded.engine).toBe("kitten-neural");
+    expect(loaded.kittenVoice).toBe("expr-voice-3-m");
+  });
+
+  it("recupera defaults ante engine o voz inválidos", () => {
+    localStorage.setItem(
+      "lecta:tts",
+      JSON.stringify({ enabled: true, consentedAt: 10, engine: "invalido", kittenVoice: "fake-voice" }),
+    );
+    const loaded = loadTtsSettings();
+    expect(loaded.engine).toBe("auto");
+    expect(loaded.kittenVoice).toBe("expr-voice-2-f");
+  });
+
   it("isTtsSupported exige speechSynthesis", () => {
     // jsdom no trae speechSynthesis → no soportado aquí.
     expect(isTtsSupported()).toBe(false);
+  });
+});
+
+describe("kittenTtsEngine", () => {
+  it("expone el catálogo completo de 8 voces KittenTTS con metadatos", () => {
+    expect(KITTEN_VOICES).toHaveLength(8);
+    const ids = KITTEN_VOICES.map((v) => v.id);
+    expect(ids).toContain("expr-voice-2-m");
+    expect(ids).toContain("expr-voice-2-f");
+    expect(ids).toContain("expr-voice-3-m");
+    expect(ids).toContain("expr-voice-3-f");
+    expect(ids).toContain("expr-voice-4-m");
+    expect(ids).toContain("expr-voice-4-f");
+    expect(ids).toContain("expr-voice-5-m");
+    expect(ids).toContain("expr-voice-5-f");
+
+    for (const voice of KITTEN_VOICES) {
+      expect(voice.lang).toBe("en");
+      expect(["m", "f"]).toContain(voice.gender);
+      expect(voice.name.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("normaliza abreviaturas literarias, números romanos y diálogo en inglés", () => {
+    const input = '—"Mr. Darcy and Mrs. Bennet met Dr. Watson at St. Paul Church, Chapter IV: 42 steps."';
+    const normalized = normalizeEnglishText(input);
+
+    expect(normalized).toContain("Mister Darcy");
+    expect(normalized).toContain("Missus Bennet");
+    expect(normalized).toContain("Doctor Watson");
+    expect(normalized).toContain("Saint Paul Church");
+    expect(normalized).toContain("Chapter four");
+    expect(normalized).toContain("forty-two steps");
+    expect(normalized).not.toContain("—");
+    expect(normalized).not.toContain('"');
   });
 });
 
@@ -532,5 +596,98 @@ describe("ttsController", () => {
     expect(ctl.cycleRate(customRates)).toBe(1.3);
     expect(ctl.cycleRate(customRates)).toBe(0.9);
     expect(ctl.cycleRate(customRates)).toBe(1);
+  });
+
+  it("pre-sintetiza oraciones anticipadas en Lookahead Buffer (lookahead = 2) y reproduce sin pausas", async () => {
+    consent();
+    saveTtsSettings({
+      ...loadTtsSettings(),
+      engine: "kitten-neural",
+      kittenVoice: "expr-voice-2-f",
+    });
+
+    const fakeKitten = {
+      isSupported: () => true,
+      isReady: () => true,
+      synthesized: [] as string[],
+      played: [] as AudioBuffer[],
+      synthesize: vi.fn(async (text: string) => {
+        fakeKitten.synthesized.push(text);
+        return {
+          sampleRate: 24000,
+          length: text.length * 100,
+          duration: 0.2,
+        } as AudioBuffer;
+      }),
+      play: vi.fn((buf: AudioBuffer) => {
+        fakeKitten.played.push(buf);
+      }),
+      pause: vi.fn(),
+      resume: vi.fn(),
+      stop: vi.fn(),
+      isPlaying: () => true,
+      getModelProgress: () => ({ status: "ready" as const, percent: 100 }),
+    };
+
+    const { deps } = makeDeps([
+      section("<p>Sentence zero. Sentence one. Sentence two. Sentence three.</p>"),
+    ]);
+    deps.language = () => "en";
+    deps.kittenEngine = fakeKitten as unknown as KittenTtsEngine;
+
+    const ctl = createTtsController(deps);
+    ctl.start(CTX, 0);
+    await flush();
+
+    // Oración 0 se reproduce de inmediato
+    expect(fakeKitten.played).toHaveLength(1);
+    // Lookahead solicita Sentence one y Sentence two
+    expect(ctl.getLookaheadBuffers?.().has(1)).toBe(true);
+    expect(ctl.getLookaheadBuffers?.().has(2)).toBe(true);
+    expect(fakeKitten.synthesized).toContain("Sentence one.");
+    expect(fakeKitten.synthesized).toContain("Sentence two.");
+
+    // Al avanzar a Sentence one
+    ctl.nextSentence();
+    await flush();
+
+    // Se reproduce directamente desde el buffer pre-sintetizado
+    expect(fakeKitten.played).toHaveLength(2);
+    // Y solicita Sentence three
+    expect(ctl.getLookaheadBuffers?.().has(3)).toBe(true);
+
+    // Al avanzar a Sentence two
+    ctl.nextSentence();
+    await flush();
+
+    // Se libera el buffer de Sentence zero (< cursor - 1)
+    expect(ctl.getLookaheadBuffers?.().has(0)).toBe(false);
+  });
+
+  it("auto-avanza de página en modo paginado al avanzar de oración", async () => {
+    consent();
+    const s1 = section("<p id='sent-1'>Página 1.</p><p id='sent-2'>Página 2.</p>");
+    let currentPage = 0;
+    const { deps } = makeDeps([s1]);
+
+    // En modo paginado, reveal calcula la página del elemento
+    deps.reveal = (el: HTMLElement) => {
+      if (el.textContent?.includes("Página 2")) {
+        currentPage = 1;
+      } else {
+        currentPage = 0;
+      }
+    };
+
+    const ctl = createTtsController(deps);
+    ctl.start(CTX, 0);
+    await flush();
+
+    expect(currentPage).toBe(0);
+
+    ctl.nextSentence();
+    await flush();
+
+    expect(currentPage).toBe(1);
   });
 });

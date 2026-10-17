@@ -97,4 +97,26 @@ describe("sanitizeSectionDocument", () => {
     expect(clean.querySelector("blockquote p")?.textContent).toBe("Cita.");
     expect(clean.querySelector("td")?.textContent).toBe("celda");
   });
+
+  it("preserva anclas <a id> y <a name> estilo Calibre convirtiéndolas en span con data-frag-id sin dejar <a>", () => {
+    const clean = sanitize(
+      '<p class="calibre1"><a id="p7"></a><img src="index-7_1.jpg" alt="Image 4"/></p><p><a id="p17"></a></p><p>Chapter Two</p>',
+    );
+    expect(clean.querySelector("a")).toBeNull();
+    expect(clean.querySelector('[data-frag-id="p7"]')).not.toBeNull();
+    expect(clean.querySelector('[data-frag-id="p17"]')).not.toBeNull();
+    // p17 se rescató y se movió al inicio del bloque con contenido 'Chapter Two'
+    const chapterTwoBlock = clean.querySelector("p:last-child");
+    expect(chapterTwoBlock?.textContent).toContain("Chapter Two");
+    expect(chapterTwoBlock?.querySelector('[data-frag-id="p17"]')).not.toBeNull();
+  });
+
+  it("preserva anclas <a name> con texto interno descartando href pero manteniendo data-frag-id", () => {
+    const clean = sanitize('<a name="sec1" href="https://externo.com">Título de Sección</a>');
+    expect(clean.querySelector("a")).toBeNull();
+    const span = clean.querySelector('[data-frag-id="sec1"]');
+    expect(span).not.toBeNull();
+    expect(span?.textContent).toBe("Título de Sección");
+  });
 });
+

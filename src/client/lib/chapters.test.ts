@@ -424,3 +424,165 @@ describe("trackCalibrationOffer", () => {
     expect(trackCalibrationOffer(null, 0, 1, single).offer).toBe(false);
   });
 });
+
+describe("caso Calibre / King's Cage (sin landmarks bodymatter)", () => {
+  const kingsCageBook = book(
+    [
+      "titlepage.xhtml",
+      "index_split_000.html",
+      "index_split_001.html",
+      "index_split_002.html",
+      "index_split_003.html",
+      "index_split_004.html",
+      "index_split_005.html",
+      "index_split_006.html",
+    ],
+    [
+      entry("Epigraph", "index_split_000.html#p3"),
+      entry("Map", "index_split_000.html#p4"),
+      entry("Contents", "index_split_000.html#p5"),
+      entry("One", "index_split_000.html#p7"),
+      entry("Two", "index_split_000.html#p17"),
+      entry("Three", "index_split_000.html#p26"),
+      entry("Four", "index_split_000.html#p36"),
+      entry("Five", "index_split_000.html#p48"),
+      entry("Six", "index_split_001.html#p58"),
+      entry("Epilogue", "index_split_005.html#p383"),
+    ],
+    // Solo landmark cover, sin bodymatter ni text
+    [{ href: "titlepage.xhtml", type: ["cover"], label: "Cover" }],
+  );
+
+  it("clasifica Epigraph, Map y Contents como frontmatter, y One a Six como chapter", () => {
+    const catalog = buildChapterCatalog(kingsCageBook);
+
+    expect(catalog.targets[0].label).toBe("Epigraph");
+    expect(catalog.targets[0].kind).toBe("frontmatter");
+
+    expect(catalog.targets[1].label).toBe("Map");
+    expect(catalog.targets[1].kind).toBe("frontmatter");
+
+    expect(catalog.targets[2].label).toBe("Contents");
+    expect(catalog.targets[2].kind).toBe("frontmatter");
+
+    expect(catalog.targets[3].label).toBe("One");
+    expect(catalog.targets[3].kind).toBe("chapter");
+
+    expect(catalog.targets[4].label).toBe("Two");
+    expect(catalog.targets[4].kind).toBe("chapter");
+
+    expect(catalog.targets[5].label).toBe("Three");
+    expect(catalog.targets[5].kind).toBe("chapter");
+
+    expect(catalog.targets[6].label).toBe("Four");
+    expect(catalog.targets[6].kind).toBe("chapter");
+
+    expect(catalog.targets[7].label).toBe("Five");
+    expect(catalog.targets[7].kind).toBe("chapter");
+
+    expect(catalog.targets[8].label).toBe("Six");
+    expect(catalog.targets[8].kind).toBe("chapter");
+
+    expect(catalog.targets[9].label).toBe("Epilogue");
+    expect(catalog.targets[9].kind).toBe("other");
+  });
+
+  it("suggestedChapterTarget devuelve One (#p7) y NO Epigraph", () => {
+    const catalog = buildChapterCatalog(kingsCageBook);
+    const suggested = suggestedChapterTarget(catalog, "Kings Cage )");
+
+    expect(suggested).not.toBeNull();
+    expect(suggested?.label).toBe("One");
+    expect(suggested?.id).toBe("index_split_000.html#p7");
+    expect(suggested?.fragment).toBe("p7");
+  });
+
+  it("targetAt con fragmentPageMap y currentPage resuelve One, Two, Three, Four y Five según la página", () => {
+    const catalog = buildChapterCatalog(kingsCageBook);
+
+    // Simulamos que en index_split_000.html (sectionIndex 1):
+    // p3 (Epigraph) en pág 0
+    // p4 (Map) en pág 0
+    // p5 (Contents) en pág 0
+    // p7 (One) en pág 1
+    // p17 (Two) en pág 4
+    // p26 (Three) en pág 7
+    // p36 (Four) en pág 11
+    // p48 (Five) en pág 14
+    const fragmentPageMap = new Map<string, number>([
+      ["p3", 0],
+      ["p4", 0],
+      ["p5", 0],
+      ["p7", 1],
+      ["p17", 4],
+      ["p26", 7],
+      ["p36", 11],
+      ["p48", 14],
+    ]);
+
+    // Página 0: cae antes de One
+    expect(targetAt(catalog.ranges, 1, { currentPage: 0, fragmentPageMap })?.label).toBe("Contents");
+
+    // Página 1 a 3: One
+    expect(targetAt(catalog.ranges, 1, { currentPage: 1, fragmentPageMap })?.label).toBe("One");
+    expect(targetAt(catalog.ranges, 1, { currentPage: 2, fragmentPageMap })?.label).toBe("One");
+    expect(targetAt(catalog.ranges, 1, { currentPage: 3, fragmentPageMap })?.label).toBe("One");
+
+    // Página 4 a 6: Two
+    expect(targetAt(catalog.ranges, 1, { currentPage: 4, fragmentPageMap })?.label).toBe("Two");
+    expect(targetAt(catalog.ranges, 1, { currentPage: 6, fragmentPageMap })?.label).toBe("Two");
+
+    // Página 7 a 10: Three
+    expect(targetAt(catalog.ranges, 1, { currentPage: 7, fragmentPageMap })?.label).toBe("Three");
+
+    // Página 11 a 13: Four
+    expect(targetAt(catalog.ranges, 1, { currentPage: 11, fragmentPageMap })?.label).toBe("Four");
+
+    // Página 14+: Five
+    expect(targetAt(catalog.ranges, 1, { currentPage: 14, fragmentPageMap })?.label).toBe("Five");
+    expect(targetAt(catalog.ranges, 1, { currentPage: 20, fragmentPageMap })?.label).toBe("Five");
+  });
+
+  it("targetAt con activeFragment resuelve el target exacto en la misma sección", () => {
+    const catalog = buildChapterCatalog(kingsCageBook);
+
+    expect(targetAt(catalog.ranges, 1, "p7")?.label).toBe("One");
+    expect(targetAt(catalog.ranges, 1, "p17")?.label).toBe("Two");
+    expect(targetAt(catalog.ranges, 1, "p26")?.label).toBe("Three");
+    expect(targetAt(catalog.ranges, 1, "p36")?.label).toBe("Four");
+    expect(targetAt(catalog.ranges, 1, "p48")?.label).toBe("Five");
+  });
+
+  it("resuelve stubs vacíos _split_000 de Calibre hacia la sección con texto _split_001", () => {
+    const redQueenMock = {
+      sections: [
+        { id: "text/part0000.html", linear: "yes", size: 704 },
+        { id: "text/part0001.html", linear: "yes", size: 1068 },
+        { id: "text/part0006_split_000.html", linear: "yes", size: 642 },
+        { id: "text/part0006_split_001.html", linear: "yes", size: 17256 },
+        { id: "text/part0007_split_000.html", linear: "yes", size: 642 },
+        { id: "text/part0007_split_001.html", linear: "yes", size: 18840 },
+      ],
+      toc: [
+        { label: "Four", href: "text/part0006_split_000.html" },
+        { label: "Five", href: "text/part0007_split_000.html" },
+      ],
+      landmarks: [],
+    } as unknown as EpubBook;
+
+    const catalog = buildChapterCatalog(redQueenMock);
+    const targetFour = catalog.targets.find((t) => t.label === "Four");
+    const targetFive = catalog.targets.find((t) => t.label === "Five");
+
+    expect(targetFour).toBeDefined();
+    // Apunta a la sección 3 (part0006_split_001.html) donde está el texto real y no al stub 2
+    expect(targetFour?.sectionIndex).toBe(3);
+    expect(targetFour?.id).toBe("text/part0006_split_001.html");
+
+    expect(targetFive).toBeDefined();
+    // Apunta a la sección 5 (part0007_split_001.html) y no al stub 4
+    expect(targetFive?.sectionIndex).toBe(5);
+    expect(targetFive?.id).toBe("text/part0007_split_001.html");
+  });
+});
+

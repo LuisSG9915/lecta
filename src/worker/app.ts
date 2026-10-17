@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { chunks, getConnectionString, withClient, type WorkerEnv } from "./db";
 import {
   CATALOG,
@@ -7,6 +7,7 @@ import {
   insertEnrichment,
   pendingEnrichmentJobs,
   sampleForCalibration,
+  type LexiconEntryView,
 } from "./lexicon";
 import {
   ENRICHMENT_MODEL,
@@ -80,6 +81,18 @@ import { catalog } from "./catalog";
 import { kindleRoutes } from "./kindle/routes";
 
 export const app = new Hono<{ Bindings: WorkerEnv }>();
+
+// Cabeceras anti-caché para respuestas HTML servidas por el worker
+app.use("*", async (c, next) => {
+  await next();
+  const contentType = c.res.headers.get("content-type");
+  if (contentType?.includes("text/html")) {
+    c.res.headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
+    c.res.headers.set("Pragma", "no-cache");
+    c.res.headers.set("Expires", "0");
+  }
+});
+
 app.route("/", readingData);
 app.route("/", companion);
 app.route("/", catalog);
@@ -170,71 +183,96 @@ app.post("/api/lexicon/batch", async (context) => {
   return context.json({ entries });
 });
 
-app.post("/api/lexicon/enrich", async (context) => {
+const handleEnrich = async (context: Context<{ Bindings: WorkerEnv }>) => {
   const body = await context.req.json().catch(() => null);
   const form = typeof body?.form === "string" ? body.form.trim() : "";
   const language = typeof body?.language === "string" ? body.language.trim() : "es";
   const nativeLanguage = typeof body?.nativeLanguage === "string" ? body.nativeLanguage.trim() : "es";
   const contextText = typeof body?.context === "string" ? body.context.slice(0, 500) : undefined;
   if (!form || form.length > 100) return context.json({ error: "Falta la palabra." }, 400);
-  if (!getConnectionString(context.env))
+
+  // Si no hay configuración de base de datos ni de IA, reportar 503
+  if (!getConnectionString(context.env) && !context.env.DEEPSEEK_API_KEY) {
     return context.json({ error: "El catálogo no está configurado." }, 503);
+  }
 
   const session = await getSession(context);
-  if (!session) return context.json({ error: "Inicia sesión para definir palabras con IA." }, 401);
   if (isStopword(form, language))
     return context.json({ error: "«" + form + "» es una palabra muy común; no necesita ficha de IA." }, 400);
 
-  let result;
-  try {
-    const existing = await withClient(context.env, (client) =>
-      findEntries(client, language, form),
-    );
-    if (existing === undefined)
-      return context.json({ error: "El catálogo no está configurado." }, 503);
-    if (hasUsableDefinition(existing)) {
-      result = { status: "existing" as const, entries: existing };
-    } else {
-      const allowed = await consumeRateUnits(context.env, session.user.id, 1);
-      if (!allowed)
-        return context.json(
-          { error: "Llegaste al límite de definiciones con IA por hora. Intenta más tarde." },
-          429,
-        );
-      const ai = await requestEnrichment(context.env, { form, language, context: contextText, nativeLanguage });
-      if (!ai.ok) {
-        // Degradación limpia: si el catálogo ya tenía fichas de la
-        // palabra (aunque sin acepción útil), se sirven en lugar del
-        // error de IA.
-        result = existing.length
-          ? { status: "existing" as const, entries: existing }
-          : ({ status: ai.reason } as const);
-      } else {
-        const entries = await withClient(context.env, async (client) => {
-          await insertEnrichment(client, language, ai.enrichment, form);
-          return findEntries(client, language, form);
-        });
-        result = { status: "created" as const, entries: entries ?? [] };
-      }
+  let existing: LexiconEntryView[] = [];
+  if (getConnectionString(context.env)) {
+    try {
+      const found = await withClient(context.env, (client) =>
+        findEntries(client, language, form),
+      );
+      if (found) existing = found;
+    } catch {
+      // Si la base no responde, se continúa con enriquecimiento directo
     }
-  } catch {
-    return context.json({ error: "No se pudo consultar el catálogo." }, 502);
   }
 
-  if (!result) return context.json({ error: "El catálogo no está configurado." }, 503);
-  switch (result.status) {
-    case "existing":
-      return context.json({ status: "existing", entries: result.entries });
-    case "created":
-      return context.json({ status: "created", entries: result.entries });
-    case "not-configured":
-      return context.json({ error: "El enriquecimiento no está configurado." }, 503);
-    case "rate-limited":
-      return context.json({ error: "La IA está saturada. Intenta de nuevo en unos minutos." }, 503);
-    default:
-      return context.json({ error: "La IA no devolvió una ficha válida." }, 502);
+  if (hasUsableDefinition(existing)) {
+    return context.json({ status: "existing", entries: existing });
   }
-});
+
+  if (session) {
+    const allowed = await consumeRateUnits(context.env, session.user.id, 1);
+    if (!allowed) {
+      return context.json(
+        { error: "Llegaste al límite de definiciones con IA por hora. Intenta más tarde." },
+        429,
+      );
+    }
+  }
+
+  const ai = await requestEnrichment(context.env, { form, language, context: contextText, nativeLanguage });
+  if (!ai.ok) {
+    if (existing.length > 0) {
+      return context.json({ status: "existing", entries: existing });
+    }
+    switch (ai.reason) {
+      case "not-configured":
+        return context.json({ error: "El catálogo no está configurado." }, 503);
+      case "rate-limited":
+        return context.json({ error: "La IA está saturada. Intenta de nuevo en unos minutos." }, 503);
+      default:
+        return context.json({ error: "La IA no devolvió una ficha válida." }, 502);
+    }
+  }
+
+  const fallbackEntry: LexiconEntryView = {
+    entryId: null,
+    lemma: ai.enrichment.lemma,
+    pos: ai.enrichment.pos,
+    freqRank: ai.enrichment.freqRank,
+    zipf: null,
+    senses: ai.enrichment.senses.map((s, idx) => ({
+      definition: s.definition,
+      example: s.example,
+      senseOrder: idx + 1,
+    })),
+  };
+
+  if (getConnectionString(context.env)) {
+    try {
+      const entries = await withClient(context.env, async (client) => {
+        await insertEnrichment(client, language, ai.enrichment, form);
+        return findEntries(client, language, form);
+      });
+      if (entries && entries.length > 0) {
+        return context.json({ status: "created", entries });
+      }
+    } catch {
+      // Si falla la inserción en BD, devolver igualmente el resultado generado en 200
+    }
+  }
+
+  return context.json({ status: "created", entries: [fallbackEntry] }, 200);
+};
+
+app.post("/api/lexicon/enrich", handleEnrich);
+app.post("/api/ai/enrich", handleEnrich);
 
 app.post("/api/lexicon/enrich-batch", async (context) => {
   const body = await context.req.json().catch(() => null);
@@ -1279,19 +1317,21 @@ app.get("/api/books", async (context) => {
       let author = object.customMetadata?.author ?? "";
       let name = object.customMetadata?.name ?? "";
       let sections = Number(object.customMetadata?.sections) || 0;
+      let language = object.customMetadata?.language ?? "";
 
       // Si el libro remoto no tiene título guardado, intentamos extraerlo
       // del EPUB en R2 para que la estantería siempre lo muestre antes de descargarlo.
-      if (!title) {
+      if (!title || !language) {
         try {
           const r2Obj = await booksBucket.get(object.key);
           if (r2Obj) {
             const data = new Uint8Array(await r2Obj.arrayBuffer());
             const meta = await extractEpubMeta(data);
             if (meta?.title) {
-              title = meta.title;
+              title = title || meta.title;
               author = author || (meta.author ?? "");
               sections = sections || (meta.sections ?? 0);
+              language = language || (meta.language ?? "");
               name = name || `${title}.epub`;
 
               // Actualiza metadatos en segundo plano para que las siguientes peticiones
@@ -1304,6 +1344,7 @@ app.get("/api/books", async (context) => {
                     title,
                     author,
                     sections: sections ? String(sections) : "",
+                    language,
                   },
                 }).catch(() => null),
               );
@@ -1321,6 +1362,7 @@ app.get("/api/books", async (context) => {
         title,
         author,
         sections,
+        language,
       };
     }),
   );
@@ -1354,14 +1396,16 @@ app.put("/api/books/:hash", async (context) => {
   let author = meta.author?.slice(0, 200) ?? "";
   let sections = /^\d{1,5}$/.test(meta.sections ?? "") ? meta.sections! : "";
   let name = meta.name?.slice(0, 200) ?? "";
+  let language = meta.language?.slice(0, 10) ?? "";
 
-  if (!title) {
+  if (!title || !language) {
     const extracted = await extractEpubMeta(data).catch(() => null);
     if (extracted?.title) {
-      title = extracted.title.slice(0, 200);
+      title = title || extracted.title.slice(0, 200);
       author = author || (extracted.author?.slice(0, 200) ?? "");
       sections = sections || (extracted.sections ? String(extracted.sections) : "");
       name = name || `${title}.epub`;
+      language = language || (extracted.language?.slice(0, 10) ?? "");
     }
   }
 
@@ -1374,6 +1418,7 @@ app.put("/api/books/:hash", async (context) => {
       title,
       author,
       sections,
+      language,
     },
   });
   return context.json({ ok: true });

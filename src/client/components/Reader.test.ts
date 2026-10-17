@@ -287,3 +287,68 @@ describe("Guía Cromática y Modo de Concentración TDAH", () => {
     expect(isAmbientPurrActive()).toBe(false);
   });
 });
+
+describe("Recalibración de Luminancia, Contraste AAA y Separación de Barras Flotantes (OBJ-01 a OBJ-05)", () => {
+  it("la configuración por defecto tiene strategyContrast='high'", async () => {
+    const { READER_DEFAULTS } = await import("../lib/settings");
+    expect(READER_DEFAULTS.strategyContrast).toBe("high");
+  });
+
+  it("renderiza TtsNowPlaying con la clase .tts-now-playing para elevarse sobre .reader__dock", async () => {
+    const { createElement: h } = await import("react");
+    const { createRoot } = await import("react-dom/client");
+    const { act } = await import("react");
+    const { default: TtsNowPlaying } = await import("./TtsNowPlaying");
+
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        h(TtsNowPlaying, {
+          snap: {
+            status: "speaking",
+            sessionId: "test-1",
+            rate: 1,
+            highlight: "sentence",
+            pauseReason: null,
+          },
+          onPauseResume: vi.fn(),
+          onCycleRate: vi.fn(),
+          onStop: vi.fn(),
+        }),
+      );
+    });
+
+    const floatingBar = host.querySelector(".tts-chip.tts-now-playing");
+    expect(floatingBar).not.toBeNull();
+
+    await act(async () => {
+      root.unmount();
+    });
+    host.remove();
+  });
+
+
+  it("verifica las reglas CSS de reader.css para separación vertical y no colisión con el dock", async () => {
+    const fs = await import("node:fs/promises");
+    const path = await import("node:path");
+    const cssPath = path.resolve(process.cwd(), "src/client/styles/reader.css");
+    const css = await fs.readFile(cssPath, "utf-8");
+
+    // Verificar elevación de la barra flotante (.tts-chip, .reader__pacer-bar, .tts-now-playing) a 76px
+    expect(css).toMatch(/\.tts-chip,\s*\.tts-now-playing,\s*\.reader__pacer-bar\s*\{[^}]*bottom:\s*calc\(76px/);
+
+    // Verificar que el padding inferior del lector se amplía a 152px cuando hay barra flotante
+    expect(css).toMatch(/data-has-floating-bar="true"[^}]*padding-bottom:\s*calc\(152px/);
+
+    // Verificar contraste AAA y no oscurecimiento de anclas biónicas
+    expect(css).toMatch(/\.lecta-bionic-word\s*\{[^}]*opacity:\s*1/);
+    expect(css).toMatch(/\.lecta-bionic-anchor[^{]*\{[^}]*font-weight:\s*700/);
+    expect(css).toMatch(/data-theme="night"[^{]*\{[^}]*color:\s*#FFFFFF/);
+    expect(css).toMatch(/data-strategy-contrast="high"/);
+  });
+});
+
+

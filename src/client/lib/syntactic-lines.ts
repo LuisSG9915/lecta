@@ -10,6 +10,10 @@ import { isStopword } from "../../shared/stopwords";
 export const SYNTACTIC_LINE_CLASS = "syn-line";
 export const SYNTACTIC_CHUNK_CLASS = "lecta-syntactic-chunk";
 export const FIXATION_ANCHOR_CLASS = "lecta-fixation-anchor";
+export const BIONIC_ANCHOR_CLASS = "lecta-bionic-anchor";
+export const BIONIC_WORD_CLASS = "lecta-bionic-word";
+export const BIONIC_REST_CLASS = "lecta-bionic-rest";
+export const SYNTACTIC_LINE_LEGACY_CLASS = "lecta-syntactic-line";
 
 export interface SyntacticLinesOptions {
   chromaticGuide?: boolean;
@@ -114,7 +118,13 @@ export const COMPLEX_CONNECTORS =
 // Desenrolla las líneas y anclajes: cada span devuelve sus hijos al flujo
 // y el normalize vuelve a unir el texto (las marcas <mark> se conservan).
 export function clearSyntacticLines(root: ParentNode) {
-  root.querySelectorAll(`.${FIXATION_ANCHOR_CLASS}`).forEach((span) => {
+  root.querySelectorAll(`.${BIONIC_WORD_CLASS}`).forEach((span) => {
+    span.replaceWith(...span.childNodes);
+  });
+  root.querySelectorAll(`.${BIONIC_REST_CLASS}`).forEach((span) => {
+    span.replaceWith(...span.childNodes);
+  });
+  root.querySelectorAll(`.${FIXATION_ANCHOR_CLASS}, .${BIONIC_ANCHOR_CLASS}, .lecta-anchor`).forEach((span) => {
     span.replaceWith(...span.childNodes);
   });
   root.querySelectorAll(`[data-connector="true"]`).forEach((span) => {
@@ -124,6 +134,9 @@ export function clearSyntacticLines(root: ParentNode) {
     span.replaceWith(...span.childNodes);
   });
   root.querySelectorAll(`.${SYNTACTIC_CHUNK_CLASS}`).forEach((span) => {
+    span.replaceWith(...span.childNodes);
+  });
+  root.querySelectorAll(`.${SYNTACTIC_LINE_LEGACY_CLASS}`).forEach((span) => {
     span.replaceWith(...span.childNodes);
   });
   if (root instanceof Element || root instanceof DocumentFragment)
@@ -147,11 +160,20 @@ function applyBionicAnchorsToTextNode(tNode: Text) {
         frag.appendChild(document.createTextNode(val.slice(lastIdx, match.index)));
       }
       const anchorLen = word.length <= 3 ? 1 : word.length <= 6 ? 2 : 3;
+      const wordSpan = document.createElement("span");
+      wordSpan.className = BIONIC_WORD_CLASS;
+
       const anchorSpan = document.createElement("span");
-      anchorSpan.className = FIXATION_ANCHOR_CLASS;
+      anchorSpan.className = `${FIXATION_ANCHOR_CLASS} ${BIONIC_ANCHOR_CLASS} lecta-anchor`;
       anchorSpan.textContent = word.slice(0, anchorLen);
-      frag.appendChild(anchorSpan);
-      frag.appendChild(document.createTextNode(word.slice(anchorLen)));
+      wordSpan.appendChild(anchorSpan);
+
+      const restSpan = document.createElement("span");
+      restSpan.className = BIONIC_REST_CLASS;
+      restSpan.textContent = word.slice(anchorLen);
+      wordSpan.appendChild(restSpan);
+
+      frag.appendChild(wordSpan);
       lastIdx = match.index + word.length;
     }
   }
@@ -170,7 +192,9 @@ function applyBionicToElement(container: Element) {
       if (
         el.tagName.toLowerCase() === "mark" ||
         el.getAttribute("data-connector") === "true" ||
-        el.classList.contains(FIXATION_ANCHOR_CLASS)
+        el.classList.contains(FIXATION_ANCHOR_CLASS) ||
+        el.classList.contains(BIONIC_ANCHOR_CLASS) ||
+        el.classList.contains(BIONIC_WORD_CLASS)
       ) {
         return;
       }
@@ -247,7 +271,7 @@ export function applySyntacticLines(
         for (const child of [...el.childNodes]) {
           if (starters.has(child) || !span) {
             span = document.createElement("span");
-            span.className = `${SYNTACTIC_LINE_CLASS} ${SYNTACTIC_CHUNK_CLASS}`;
+            span.className = `${SYNTACTIC_LINE_CLASS} ${SYNTACTIC_CHUNK_CLASS} ${SYNTACTIC_LINE_LEGACY_CLASS}`;
             if (enableChromatic) {
               span.dataset.chunkCycle = String(globalChunkCycle % 4);
               globalChunkCycle++;
@@ -258,7 +282,7 @@ export function applySyntacticLines(
         }
       } else {
         const span = document.createElement("span");
-        span.className = `${SYNTACTIC_LINE_CLASS} ${SYNTACTIC_CHUNK_CLASS}`;
+        span.className = `${SYNTACTIC_LINE_CLASS} ${SYNTACTIC_CHUNK_CLASS} ${SYNTACTIC_LINE_LEGACY_CLASS}`;
         if (enableChromatic) {
           span.dataset.chunkCycle = String(globalChunkCycle % 4);
           globalChunkCycle++;
@@ -347,7 +371,7 @@ export function applySyntacticLines(
         for (const child of [...el.childNodes]) {
           if (starters.has(child) || !span) {
             span = document.createElement("span");
-            span.className = SYNTACTIC_CHUNK_CLASS;
+            span.className = `${SYNTACTIC_CHUNK_CLASS} ${SYNTACTIC_LINE_LEGACY_CLASS}`;
             span.dataset.chunkCycle = String(globalChunkCycle % 4);
             span.dataset.inline = "true";
             globalChunkCycle++;
@@ -357,7 +381,7 @@ export function applySyntacticLines(
         }
       } else {
         const span = document.createElement("span");
-        span.className = SYNTACTIC_CHUNK_CLASS;
+        span.className = `${SYNTACTIC_CHUNK_CLASS} ${SYNTACTIC_LINE_LEGACY_CLASS}`;
         span.dataset.chunkCycle = String(globalChunkCycle % 4);
         span.dataset.inline = "true";
         globalChunkCycle++;

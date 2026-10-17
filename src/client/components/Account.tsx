@@ -716,6 +716,7 @@ export default function Account({
             type="email"
             required
             autoComplete="email"
+            aria-invalid={error ? "true" : undefined}
             value={email}
             onChange={(event) => setEmail(event.target.value)}
           />
@@ -724,7 +725,9 @@ export default function Account({
             id="modal-password"
             type="password"
             required
+            minLength={8}
             autoComplete="current-password"
+            aria-invalid={error ? "true" : undefined}
             value={password}
             onChange={(event) => setPassword(event.target.value)}
           />
@@ -773,6 +776,7 @@ export default function Account({
             type="email"
             required
             autoComplete="email"
+            aria-invalid={error ? "true" : undefined}
             value={email}
             onChange={(event) => setEmail(event.target.value)}
           />
@@ -783,6 +787,7 @@ export default function Account({
             required
             minLength={8}
             autoComplete="new-password"
+            aria-invalid={error ? "true" : undefined}
             value={password}
             onChange={(event) => setPassword(event.target.value)}
           />
@@ -915,6 +920,7 @@ export default function Account({
             required
             minLength={8}
             autoComplete="new-password"
+            aria-invalid={error ? "true" : undefined}
             value={newPassword}
             onChange={(event) => setNewPassword(event.target.value)}
           />
@@ -1011,6 +1017,7 @@ export default function Account({
               type="password"
               required
               autoComplete="current-password"
+              aria-invalid={error ? "true" : undefined}
               value={currentPassword}
               onChange={(event) => setCurrentPassword(event.target.value)}
             />
@@ -1021,6 +1028,7 @@ export default function Account({
               required
               minLength={8}
               autoComplete="new-password"
+              aria-invalid={error ? "true" : undefined}
               value={newPassword}
               onChange={(event) => setNewPassword(event.target.value)}
             />
@@ -1043,7 +1051,7 @@ export default function Account({
   }
 
   return (
-    <section className="account-page" aria-label="Tú">
+    <section className="account-page account" aria-label="Tú">
       <header className="account-page-header">
         <h1 className="account-page-title">Tú</h1>
       </header>
@@ -1125,7 +1133,7 @@ export default function Account({
               {confirmDelete ? "¿Seguro? Borra cuenta, libros y vocabulario" : "Eliminar cuenta"}
             </button>
           </div>
-          <div className="account-kindle-guide" style={{ marginTop: "var(--s-3)", borderTop: "1px solid var(--border-color, #e5e5e5)", paddingTop: "var(--s-3)" }}>
+          <div className="account-kindle-guide" style={{ marginTop: "var(--s-3)", borderTop: "1px solid var(--rule)", paddingTop: "var(--s-3)" }}>
             <strong style={{ display: "block", marginBottom: "var(--s-1)" }}>Modo Kindle y Tinta Electrónica</strong>
             <p className="meta" style={{ marginBottom: "var(--s-2)" }}>Guía visual de 2 pasos para sincronizar con tu Kindle:</p>
             <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
@@ -1197,7 +1205,7 @@ export default function Account({
               Iniciar sesión o crear cuenta
             </button>
           </div>
-          <div className="account-kindle-guide" style={{ marginTop: "var(--s-3)", borderTop: "1px solid var(--border-color, #e5e5e5)", paddingTop: "var(--s-3)" }}>
+          <div className="account-kindle-guide" style={{ marginTop: "var(--s-3)", borderTop: "1px solid var(--rule)", paddingTop: "var(--s-3)" }}>
             <strong style={{ display: "block", marginBottom: "var(--s-1)" }}>Modo Kindle y Tinta Electrónica</strong>
             <p className="meta" style={{ marginBottom: "var(--s-2)" }}>Guía visual de 2 pasos para sincronizar con tu Kindle:</p>
             <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>

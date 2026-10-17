@@ -771,6 +771,9 @@ async function migrateAnonymousToUser(userId: string) {
 }
 
 export async function saveBook(book: StoredBook, scope?: DbScope) {
+  if (typeof navigator !== "undefined" && navigator.storage?.persist) {
+    void navigator.storage.persist().catch(() => false);
+  }
   return withDb(scope, async (db) => {
     const transaction = db.transaction(["books", "session"], "readwrite");
     await Promise.all([

@@ -2,7 +2,14 @@
 // (localStorage, no por cuenta): la voz sale del dispositivo y el
 // consentimiento habla de este dispositivo concreto.
 
-import { TTS_ALL_RATES, type TtsHighlightMode, type TtsRate } from "./ttsTypes";
+import {
+  TTS_ALL_RATES,
+  KITTEN_VOICES,
+  type KittenVoiceId,
+  type TtsEngineMode,
+  type TtsHighlightMode,
+  type TtsRate,
+} from "./ttsTypes";
 
 const TTS_KEY = "lecta:tts";
 
@@ -13,6 +20,8 @@ export type TtsSettings = {
   consentedAt: number | null;
   rate: TtsRate;
   highlight: TtsHighlightMode;
+  engine: TtsEngineMode;
+  kittenVoice: KittenVoiceId;
 };
 
 export const TTS_SETTINGS_DEFAULTS: TtsSettings = {
@@ -20,17 +29,31 @@ export const TTS_SETTINGS_DEFAULTS: TtsSettings = {
   consentedAt: null,
   rate: 1,
   highlight: "sentence",
+  engine: "auto",
+  kittenVoice: "expr-voice-2-f",
 };
+
+const VALID_ENGINES: readonly TtsEngineMode[] = ["auto", "kitten-neural", "browser"];
+const VALID_KITTEN_VOICES = new Set<string>(KITTEN_VOICES.map((v) => v.id));
 
 const parse = (raw: string | null): TtsSettings => {
   if (!raw) return TTS_SETTINGS_DEFAULTS;
   try {
     const v = JSON.parse(raw) as Partial<TtsSettings>;
+    const engine: TtsEngineMode =
+      v.engine && VALID_ENGINES.includes(v.engine) ? v.engine : "auto";
+    const kittenVoice: KittenVoiceId =
+      v.kittenVoice && VALID_KITTEN_VOICES.has(v.kittenVoice)
+        ? (v.kittenVoice as KittenVoiceId)
+        : "expr-voice-2-f";
+
     return {
       enabled: v.enabled === true && typeof v.consentedAt === "number",
       consentedAt: typeof v.consentedAt === "number" ? v.consentedAt : null,
       rate: TTS_ALL_RATES.includes(v.rate as TtsRate) ? (v.rate as TtsRate) : 1,
       highlight: "sentence",
+      engine,
+      kittenVoice,
     };
   } catch {
     return TTS_SETTINGS_DEFAULTS;
@@ -53,11 +76,21 @@ export function saveTtsSettings(settings: TtsSettings): void {
 
 // Marca el consentimiento del primer uso (epoch ms) y deja la función
 // encendida. Es la única vía que activa `enabled`.
-export function consentTts(now = Date.now()): TtsSettings {
-  const next = { ...loadTtsSettings(), enabled: true, consentedAt: now };
+export function consentTts(
+  now = Date.now(),
+  overrides?: Partial<Pick<TtsSettings, "engine" | "kittenVoice" | "rate">>,
+): TtsSettings {
+  const current = loadTtsSettings();
+  const next: TtsSettings = {
+    ...current,
+    ...overrides,
+    enabled: true,
+    consentedAt: now,
+  };
   saveTtsSettings(next);
   return next;
 }
+
 
 // La función existe solo donde hay voces: Web Speech API más el
 // segmentador de oraciones (ya exigido por la extracción de palabras).

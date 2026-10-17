@@ -131,9 +131,11 @@ export default function BookStart({
       : "focus");
 
   const catSpeechText =
-    strategy === "lexical"
-      ? "Este libro tiene oraciones largas y poéticas; te recomiendo activar «Líneas Sintácticas»."
-      : "¡Bienvenido! He preparado el mapa de expedición de este libro y te recomiendo activar «Enfoque Profundo».";
+    isL2English
+      ? "¡Bienvenido! He preparado este libro en inglés adaptando las notas de vocabulario a tu nivel."
+      : strategy === "lexical"
+        ? "Este libro tiene oraciones largas y poéticas; te recomiendo activar «Líneas Sintácticas»."
+        : "¡Bienvenido! He preparado el mapa de expedición de este libro y te recomiendo activar «Enfoque Profundo».";
 
   const chapterCount =
     targets.filter((t) => t.kind === "chapter").length || targets.length;
@@ -145,12 +147,21 @@ export default function BookStart({
       ? `~${Math.round(estimatedMins / 60)} h`
       : `~${estimatedMins} min`;
 
-  const activeGems: LexicalGem[] = sampleVocab ?? [
-    { word: "azur", meaning: "De color azul heráldico o poético" },
-    { word: "alba", meaning: "Primera luz del día antes de salir el sol" },
-    { word: "cisne", meaning: "Ave emblemática del Modernismo literario" },
-    { word: "quimera", meaning: "Sueño o ilusión hermosa que se persigue" },
-  ];
+  const activeGems: LexicalGem[] = sampleVocab ?? (
+    language.toLowerCase().startsWith("en")
+      ? [
+          { word: "wander", meaning: "Caminar sin rumbo fijo o perderse en pensamientos" },
+          { word: "glimmer", meaning: "Brillo tenue o débil que titila" },
+          { word: "whisper", meaning: "Hablar en voz muy baja o susurrar" },
+          { word: "fierce", meaning: "Intenso, salvaje o con gran fuerza" },
+        ]
+      : [
+          { word: "azur", meaning: "De color azul heráldico o poético" },
+          { word: "alba", meaning: "Primera luz del día antes de salir el sol" },
+          { word: "cisne", meaning: "Ave emblemática del Modernismo literario" },
+          { word: "quimera", meaning: "Sueño o ilusión hermosa que se persigue" },
+        ]
+  );
 
   const confirm = () => {
     if (!reading || !canConfirm) return;

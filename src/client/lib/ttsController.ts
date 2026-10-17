@@ -14,11 +14,14 @@ import { clearTtsMarks, markSentence, ttsMarkElement } from "./ttsMarks";
 import { createSpeaker, ensureVoices, type TtsSpeaker } from "./ttsSpeech";
 import { loadTtsSettings, saveTtsSettings } from "./ttsSettings";
 import { isTtsSupported } from "./ttsSettings";
+import { kittenTtsEngine, type KittenTtsEngine } from "./kittenTtsEngine";
 import {
   TTS_IDLE,
   TTS_RATES,
+  type KittenVoiceId,
   type SentenceLayoutItem,
   type TtsEndReason,
+  type TtsEngineMode,
   type TtsPauseReason,
   type TtsRate,
   type TtsSnapshot,
@@ -74,6 +77,7 @@ export type TtsControllerDeps = {
     onEnded(): void;
     onStalled(kind: "start" | "mid" | "resume"): void;
   }): TtsSpeaker;
+  kittenEngine?: KittenTtsEngine;
 };
 
 export type TtsController = {
@@ -88,6 +92,9 @@ export type TtsController = {
   prevSentence(): void;
   nextSentence(): void;
   getCurrentSentence(): string | null;
+  setKittenVoice?(voiceId: KittenVoiceId): void;
+  setEngine?(engine: TtsEngineMode): void;
+  getLookaheadBuffers?(): Map<number, AudioBuffer>;
   stop(reason: TtsEndReason): void;
   // La sección que pidió el avance programático terminó de pintar.
   onSectionRendered(): void;
@@ -119,9 +126,60 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
   let resumedCount = 0;
   let sectionAdvances = 0;
   let settings = loadTtsSettings();
+  let ttsWakeLock: WakeLockSentinel | null = null;
+  const lookaheadBuffers = new Map<number, AudioBuffer>();
+  const lookaheadPending = new Set<number>();
+
+  const shouldUseKitten = (): boolean => {
+    const isEn = deps.language().toLowerCase().startsWith("en");
+    if (settings.engine === "kitten-neural") return true;
+    if (settings.engine === "auto") {
+      const engine = deps.kittenEngine ?? kittenTtsEngine;
+      return isEn && engine.isSupported() && engine.isReady();
+    }
+    return false;
+  };
+
+  const acquireWakeLock = async () => {
+    if (typeof navigator !== "undefined" && "wakeLock" in navigator && navigator.wakeLock?.request) {
+      try {
+        if (!ttsWakeLock) {
+          ttsWakeLock = await navigator.wakeLock.request("screen");
+        }
+      } catch {
+        ttsWakeLock = null;
+      }
+    }
+  };
+
+  const releaseWakeLock = async () => {
+    try {
+      await ttsWakeLock?.release();
+    } catch {
+      // ignore
+    } finally {
+      ttsWakeLock = null;
+    }
+  };
 
   const publish = (next: Partial<TtsSnapshot>) => {
-    snap = { ...snap, ...next };
+    const active = shouldUseKitten() ? "kitten-neural" : "browser";
+    snap = {
+      ...snap,
+      engine: settings.engine,
+      kittenVoice: settings.kittenVoice,
+      activeEngine: active,
+      ...next,
+    };
+    if (snap.status === "speaking") {
+      void acquireWakeLock();
+    } else if (
+      snap.status === "paused" ||
+      snap.status === "idle" ||
+      snap.status === "stopping"
+    ) {
+      void releaseWakeLock();
+    }
     deps.onSnapshot(snap);
   };
 
@@ -180,6 +238,43 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
       sectionAdvances,
     });
 
+  const pruneLookahead = () => {
+    for (const idx of lookaheadBuffers.keys()) {
+      if (idx < cursor - 1) {
+        lookaheadBuffers.delete(idx);
+      }
+    }
+  };
+
+  const triggerLookahead = () => {
+    if (!shouldUseKitten()) return;
+    const engine = deps.kittenEngine ?? kittenTtsEngine;
+    // Buffer anticipado lookahead = 2
+    for (let offset = 1; offset <= 2; offset++) {
+      const targetIdx = cursor + offset;
+      if (
+        targetIdx < items.length &&
+        !lookaheadBuffers.has(targetIdx) &&
+        !lookaheadPending.has(targetIdx)
+      ) {
+        lookaheadPending.add(targetIdx);
+        const text = items[targetIdx].text;
+        void engine
+          .synthesize(text, settings.kittenVoice, settings.rate)
+          .then((buf) => {
+            if (destroyed) return;
+            lookaheadBuffers.set(targetIdx, buf);
+          })
+          .catch(() => {
+            // Error en pre-síntesis se ignora; speakCurrent reintentará o caerá a browser
+          })
+          .finally(() => {
+            lookaheadPending.delete(targetIdx);
+          });
+      }
+    }
+  };
+
   const speakCurrent = () => {
     const item = items[cursor];
     const root = deps.root();
@@ -187,12 +282,35 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
       advanceOrEnd();
       return;
     }
+    pruneLookahead();
     clearTtsMarks(root);
     if (markSentence(root, item)) {
       const el = ttsMarkElement(root);
       if (el) deps.reveal(el);
     }
-    speaker?.speak(item.text, settings.rate);
+
+    if (shouldUseKitten()) {
+      const engine = deps.kittenEngine ?? kittenTtsEngine;
+      triggerLookahead();
+
+      const preSynthesized = lookaheadBuffers.get(cursor);
+      if (preSynthesized) {
+        // Transición instantánea (<15ms) entre oraciones con audio ya en RAM
+        engine.play(preSynthesized, settings.rate, onEnded);
+      } else {
+        void engine
+          .synthesize(item.text, settings.kittenVoice, settings.rate)
+          .then((buf) => {
+            if (destroyed || snap.status !== "speaking") return;
+            engine.play(buf, settings.rate, onEnded);
+          })
+          .catch(() => {
+            speaker?.speak(item.text, settings.rate);
+          });
+      }
+    } else {
+      speaker?.speak(item.text, settings.rate);
+    }
   };
 
   // Fin de sección: dentro del target salta programático; en el borde
@@ -275,7 +393,12 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
   const finish = (reason: TtsEndReason) => {
     if (snap.status === "idle" || snap.status === "stopping") return;
     publish({ status: "stopping" });
+    if (shouldUseKitten()) {
+      (deps.kittenEngine ?? kittenTtsEngine).stop();
+    }
     speaker?.cancel();
+    lookaheadBuffers.clear();
+    lookaheadPending.clear();
     const root = deps.root();
     if (root) clearTtsMarks(root);
     stopHeartbeat();
@@ -286,7 +409,12 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
     items = [];
     awaitingSection = null;
     startedAt = 0;
-    publish({ ...TTS_IDLE, rate: settings.rate });
+    publish({
+      ...TTS_IDLE,
+      rate: settings.rate,
+      engine: settings.engine,
+      kittenVoice: settings.kittenVoice,
+    });
   };
 
   return {
@@ -362,7 +490,11 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
       // a «speaking», así que la capa abierta igual la detiene).
       if (snap.status !== "speaking") return;
       if (reason === "word_lookup") lookupCount += 1;
-      speaker?.pause();
+      if (shouldUseKitten()) {
+        (deps.kittenEngine ?? kittenTtsEngine).pause();
+      } else {
+        speaker?.pause();
+      }
       stopHeartbeat();
       // Último latido: el resto <30 s desde el anterior no se pierde.
       if (startedAt) deps.noteActivity();
@@ -393,10 +525,19 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
       // Si la cola sigue viva basta resume(); si el motor la soltó
       // al pausar (motores sin pause real) o nunca llegó a hablar,
       // se re-speak la oración activa — mismo criterio que iOS.
-      if (speaker?.speakingNow()) speaker.resume();
-      else {
-        if (!speaker) speaker = makeSpeaker();
-        speakCurrent();
+      if (shouldUseKitten()) {
+        const engine = deps.kittenEngine ?? kittenTtsEngine;
+        if (engine.isPlaying()) {
+          engine.resume();
+        } else {
+          speakCurrent();
+        }
+      } else {
+        if (speaker?.speakingNow()) speaker.resume();
+        else {
+          if (!speaker) speaker = makeSpeaker();
+          speakCurrent();
+        }
       }
       armHeartbeat();
     },
@@ -409,6 +550,11 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
       saveTtsSettings(settings);
       publish({ rate });
       speaker?.setRate(rate);
+      if (shouldUseKitten()) {
+        (deps.kittenEngine ?? kittenTtsEngine).stop();
+        lookaheadBuffers.clear();
+        lookaheadPending.clear();
+      }
       // El cambio se siente ya: re-speak de la oración en curso con
       // la velocidad nueva (misma marca, mismo conteo).
       if (snap.status === "speaking" && items[cursor]) {
@@ -430,6 +576,9 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
       if (snap.status !== "speaking" && snap.status !== "paused") return;
       if (cursor > 0) {
         cursor -= 1;
+        if (shouldUseKitten()) {
+          (deps.kittenEngine ?? kittenTtsEngine).stop();
+        }
         if (snap.status === "speaking") {
           speaker?.cancel();
           speaker = makeSpeaker();
@@ -452,6 +601,9 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
       if (cursor < items.length - 1) {
         cursor += 1;
         sentenceCount += 1;
+        if (shouldUseKitten()) {
+          (deps.kittenEngine ?? kittenTtsEngine).stop();
+        }
         if (snap.status === "speaking") {
           speaker?.cancel();
           speaker = makeSpeaker();
@@ -469,6 +621,39 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
       } else {
         advanceOrEnd();
       }
+    },
+
+    setKittenVoice(voiceId: KittenVoiceId) {
+      settings = { ...settings, kittenVoice: voiceId };
+      saveTtsSettings(settings);
+      publish({ kittenVoice: voiceId });
+      if (shouldUseKitten()) {
+        (deps.kittenEngine ?? kittenTtsEngine).stop();
+        lookaheadBuffers.clear();
+        lookaheadPending.clear();
+        if (snap.status === "speaking" && items[cursor]) {
+          speakCurrent();
+        }
+      }
+    },
+
+    setEngine(engine: TtsEngineMode) {
+      settings = { ...settings, engine };
+      saveTtsSettings(settings);
+      const active = shouldUseKitten() ? "kitten-neural" : "browser";
+      publish({ engine, activeEngine: active });
+      if (snap.status === "speaking" && items[cursor]) {
+        (deps.kittenEngine ?? kittenTtsEngine).stop();
+        speaker?.cancel();
+        speaker = makeSpeaker();
+        lookaheadBuffers.clear();
+        lookaheadPending.clear();
+        speakCurrent();
+      }
+    },
+
+    getLookaheadBuffers() {
+      return lookaheadBuffers;
     },
 
     getCurrentSentence(): string | null {

@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -24,6 +25,7 @@ import { sanitizeSectionDocument } from "../lib/sanitize";
 import { markWords } from "../lib/marks";
 import {
   captureDbScope,
+  getStoredBook,
   hasAnyLearningHistory,
   listAllKnowledge,
   listReadingEvents,
@@ -33,6 +35,7 @@ import {
   saveBookPosition,
   saveKnowledge,
   saveWordWithKnowledge,
+  updateBookMeta,
   recordPassiveExposure,
   saveReadingInterval,
   saveSessionValue,
@@ -165,6 +168,7 @@ import {
   pageForFragment,
   pageForText,
   pageOfElement,
+  buildFragmentPageMap,
   type PageLayout,
 } from "../lib/pagination";
 import {
@@ -211,6 +215,7 @@ import {
 import {
   TTS_IDLE,
   TTS_PLAYER_RATES,
+  type TtsEngineMode,
   type TtsSnapshot,
 } from "../lib/ttsTypes";
 import {
@@ -268,6 +273,7 @@ import {
   targetAt,
   type ChapterCatalog,
   type ChapterTarget,
+  type IntraSectionContext,
 } from "../lib/chapters";
 import {
   loadBookStart,
@@ -704,6 +710,51 @@ export default function Reader({
   const [page, setPage] = useState(0);
   const [pageCount, setPageCount] = useState(1);
   const [pageMetrics, setPageMetrics] = useState<PageLayout | null>(null);
+
+  const [activeScrollFragment, setActiveScrollFragment] = useState<string | null>(null);
+  const activeScrollFragRef = useRef<string | null>(null);
+
+  const currentSectionTargets = useMemo(() => {
+    if (!catalog) return [];
+    return catalog.targets.filter((t: ChapterTarget) => t.sectionIndex === sectionIndex);
+  }, [catalog, sectionIndex]);
+  const currentSectionTargetsRef = useRef<ChapterTarget[]>([]);
+  useEffect(() => {
+    currentSectionTargetsRef.current = currentSectionTargets;
+  }, [currentSectionTargets]);
+
+  const fragmentPageMap = useMemo(() => {
+    if (
+      settings.layout !== "pages" ||
+      !pageMetrics ||
+      !containerRef.current ||
+      currentSectionTargets.length <= 1
+    ) {
+      return null;
+    }
+    const fragments = currentSectionTargets
+      .map((t: ChapterTarget) => t.fragment)
+      .filter((f: string | undefined): f is string => Boolean(f));
+    return buildFragmentPageMap(containerRef.current, pageMetrics, fragments);
+  }, [settings.layout, pageMetrics, currentSectionTargets, sectionIndex, pageCount]);
+
+  const activeIntraContext = useMemo<IntraSectionContext>(() => {
+    if (settings.layout === "pages") {
+      return {
+        currentPage: page,
+        fragmentPageMap: fragmentPageMap ?? undefined,
+        activeFragment: activeScrollFragment,
+      };
+    }
+    return {
+      activeFragment: activeScrollFragment,
+    };
+  }, [settings.layout, page, fragmentPageMap, activeScrollFragment]);
+
+  const currentChapterTarget = useMemo(() => {
+    if (!catalog) return null;
+    return targetAt(catalog.ranges, sectionIndex, activeIntraContext);
+  }, [catalog, sectionIndex, activeIntraContext]);
   // Gato acompañante en el lector: el aspecto (etapa, accesorios,
   // nombre, presencia) viene del CompanionProvider único — aquí solo
   // queda el estado visible de la máquina local de lectura.
@@ -1700,16 +1751,16 @@ export default function Reader({
   // Avanzar a la sección siguiente habiendo llegado casi al final
   // cuenta como tramo terminado: el gato celebra. Saltar por el
   // índice o el buscador no celebra — no es «terminar» el capítulo.
-  const navNextSection = (index: number) => {
+  const navNextSection = (index: number, fragment?: string) => {
     if (currentRatioNow() >= 0.85)
       signalCompanion({ kind: "goal_completed" });
     trackMove(false);
-    void navigate("chapter", { index });
+    void navigate("chapter", { index, fragment });
   };
 
-  const navPrevSection = (index: number) => {
+  const navPrevSection = (index: number, fragment?: string) => {
     trackMove(true);
-    void navigate("chapter", { index });
+    void navigate("chapter", { index, fragment });
   };
 
   // ---------- Preparación de vocabulario (T19) ----------
@@ -1796,7 +1847,7 @@ export default function Reader({
       const book = bookRef.current;
       const range = cat?.ranges.find((r) => r.target.id === target.id);
       if (!cat || !analyzer || !book || !range) return;
-      const lang = getBookLanguage(book);
+      const lang = language || getBookLanguage(book);
       const base =
         record ??
         (await loadPreparationRecord(bookHash, target.id, scope).catch(() => null)) ??
@@ -1844,7 +1895,7 @@ export default function Reader({
         setPrep(next);
       }
     },
-    [bookHash, prepRowsFor],
+    [bookHash, prepRowsFor, language],
   );
 
   // Evalúa la matriz de apertura para un destino y actúa: hoja, aviso
@@ -1921,14 +1972,14 @@ export default function Reader({
           summary: opening === "summary",
           count:
             cached?.state === "ready"
-              ? prepRowsFor(cached, getBookLanguage(book)).rows.length
+              ? prepRowsFor(cached, language || getBookLanguage(book)).rows.length
               : null,
         });
         return;
       }
       setPrepNotice((cur) => (cur?.target.id === target.id ? null : cur));
     },
-    [bookHash, openPrepSheet, prepRowsFor],
+    [bookHash, openPrepSheet, prepRowsFor, language],
   );
 
   // Análisis del destino de la sección: deduplicado por el analizador,
@@ -1940,7 +1991,7 @@ export default function Reader({
       const analyzer = analyzerRef.current;
       const range = rangeFor(index);
       if (!book || !analyzer || !range) return;
-      const lang = getBookLanguage(book);
+      const lang = language || getBookLanguage(book);
       setAnalyzingFor(range.target.id, true);
       try {
         const result = await analyzer.analyze(
@@ -1959,7 +2010,7 @@ export default function Reader({
         setAnalyzingFor(range.target.id, false);
       }
     },
-    [rangeFor, setAnalyzingFor, applyPrediction, evaluatePreparation],
+    [rangeFor, setAnalyzingFor, applyPrediction, evaluatePreparation, language],
   );
 
   // Análisis con precarga: al terminar deja lista también la siguiente
@@ -2143,10 +2194,10 @@ export default function Reader({
   // Acceso manual «Palabras del capítulo» (modo «off» incluido): abre
   // la hoja del destino visible respetando su registro previo.
   const openPrepManual = () => {
-    const target = prepNotice?.target ?? targetAt(
-      catalogRef.current?.ranges ?? [],
-      sectionIndexRef.current,
-    );
+    const target =
+      prepNotice?.target ??
+      currentChapterTarget ??
+      targetAt(catalogRef.current?.ranges ?? [], sectionIndexRef.current);
     setPrepNotice(null);
     if (target) void openPrepSheet(target, null);
   };
@@ -2284,13 +2335,15 @@ export default function Reader({
         });
       setState("opening");
       setSelection(null);
+      activeScrollFragRef.current = restore.fragment ?? null;
+      setActiveScrollFragment(restore.fragment ?? null);
       try {
         const source = await section.createDocument();
         const sanitized = sanitizeSectionDocument(source);
         // Guiones blandos fuera antes de marcar, medir o anclar: el
         // texto que queda es el mismo con guionado activo o no.
         stripSoftHyphens(sanitized);
-        const lang = getBookLanguage(book);
+        const lang = language || getBookLanguage(book);
         // Si la sección ya estaba analizada, sus marcas (guardadas +
         // predichas) entran desde el primer pintado; si no, llegan al
         // terminar el análisis sobre el contenedor ya montado.
@@ -2456,6 +2509,7 @@ export default function Reader({
       classifyCached,
       analyzeSection,
       trackEvent,
+      language,
     ],
   );
 
@@ -2489,6 +2543,35 @@ export default function Reader({
         catalogRef.current?.ranges ?? [],
         sectionIndexRef.current,
       )?.id ?? null;
+
+      // Optimización intra-sección: si ya estamos en la misma sección y lista,
+      // desplazamos directamente al nuevo fragmento sin recargar todo el documento.
+      if (
+        dest.index === sectionIndexRef.current &&
+        dest.fragment &&
+        containerRef.current &&
+        stateRef.current === "ready"
+      ) {
+        if (layoutRef.current === "pages" && metricsRef.current) {
+          const targetPage = pageForFragment(
+            containerRef.current,
+            dest.fragment,
+            metricsRef.current,
+          );
+          if (targetPage !== null) {
+            setPageIdx(targetPage, true);
+          }
+        } else {
+          scrollToFragment(containerRef.current, dest.fragment);
+        }
+        activeScrollFragRef.current = dest.fragment;
+        setActiveScrollFragment(dest.fragment);
+        if (intent === "initial" || intent === "chapter") {
+          void evaluatePreparation(dest.index, "enter", prevTargetId);
+        }
+        return Promise.resolve();
+      }
+
       const result = loadSection(dest.index, restore);
       // Solo «entrar» puede interponer preparación; reanudar, buscar
       // y regresar nunca la disparan. La decisión corre tras la carga
@@ -2690,8 +2773,8 @@ export default function Reader({
     startTts();
   };
 
-  const onTtsConsentAccept = () => {
-    consentTts();
+  const onTtsConsentAccept = (engineMode?: TtsEngineMode) => {
+    consentTts(undefined, engineMode ? { engine: engineMode } : undefined);
     setTtsConsentOpen(false);
     trackEvent({
       kind: "tts_setting_changed",
@@ -2754,7 +2837,9 @@ export default function Reader({
         cleanup = close;
         bookRef.current = book;
         loadBlobRef.current = loadBlob;
-        const bookLanguage = await detectBookLanguage(book).catch(() => getBookLanguage(book));
+        const storedBook = await getStoredBook(bookHash, scope).catch(() => undefined);
+        const detectedLanguage = await detectBookLanguage(book).catch(() => getBookLanguage(book));
+        const bookLanguage = storedBook?.language || detectedLanguage;
         const nativeLanguage = loadNativeLanguage();
         const readerProfile = readerProfileFor(nativeLanguage, bookLanguage);
         baseThresholdRef.current =
@@ -2765,10 +2850,23 @@ export default function Reader({
         savedForms.current = savedFormLevels(storedWords);
         recordDominated(storedWords, bookLanguage, scope);
         setLanguage(bookLanguage);
-        setTitle(getBookTitle(book));
-        setAuthor(getBookAuthor(book));
+        const bookTitle = getBookTitle(book);
+        const bookAuthor = getBookAuthor(book);
+        setTitle(bookTitle);
+        setAuthor(bookAuthor);
         setSectionTotal(book.sections.length);
         setSectionSizes(book.sections.map((section) => Math.max(0, section.size || 0)));
+
+        void updateBookMeta(
+          bookHash,
+          {
+            language: bookLanguage,
+            title: bookTitle,
+            author: bookAuthor,
+            sectionCount: book.sections.length,
+          },
+          scope,
+        ).catch(() => null);
 
         // Catálogo de destinos (T10): semántica landmarks→índice,
         // fragmentos conservados. El índice viejo se reconstruye como
@@ -2961,7 +3059,7 @@ export default function Reader({
   // repiten). Es diagnóstico local; nada de esto bloquea la lectura.
   useEffect(() => {
     if (state !== "ready") return;
-    const target = targetAt(catalog?.ranges ?? [], sectionIndex);
+    const target = currentChapterTarget ?? targetAt(catalog?.ranges ?? [], sectionIndex);
     if (!target || lastTargetEnteredRef.current === target.id) return;
     lastTargetEnteredRef.current = target.id;
     trackEvent({
@@ -2969,7 +3067,7 @@ export default function Reader({
       targetId: target.id,
       sectionIndex,
     });
-  }, [state, sectionIndex, catalog, trackEvent]);
+  }, [state, sectionIndex, catalog, currentChapterTarget, trackEvent]);
 
   // Marcadores y pasajes del libro (una sola lectura por apertura).
   useEffect(() => {
@@ -3160,6 +3258,20 @@ export default function Reader({
         if (y < 90 || delta < -4) setBarsVisible(true);
         else if (delta > 4 && y > 160) setBarsVisible(false);
         setScrollRatio(scrollRatioNow());
+        if (containerRef.current && currentSectionTargetsRef.current.length > 1) {
+          const frags = containerRef.current.querySelectorAll("[data-frag-id]");
+          let bestFrag: string | null = null;
+          for (const el of frags) {
+            const rect = el.getBoundingClientRect();
+            if (rect.top <= 180) {
+              bestFrag = el.getAttribute("data-frag-id");
+            }
+          }
+          if (bestFrag !== activeScrollFragRef.current) {
+            activeScrollFragRef.current = bestFrag;
+            setActiveScrollFragment(bestFrag);
+          }
+        }
         if (
           (settingsRef.current?.paragraphFocus ||
             settingsRef.current?.focusMode === "paragraph") &&
@@ -3376,13 +3488,17 @@ export default function Reader({
     const viewport = viewportRef.current;
     if (!viewport) return;
     let timer: number | undefined;
+    let cancelled = false;
     const observer = new ResizeObserver(() => {
       window.clearTimeout(timer);
       timer = window.setTimeout(remeasure, 120);
     });
     observer.observe(viewport);
-    void document.fonts?.ready.then(remeasure);
+    void document.fonts?.ready?.then?.(() => {
+      if (!cancelled) remeasure();
+    });
     return () => {
+      cancelled = true;
       observer.disconnect();
       window.clearTimeout(timer);
     };
@@ -3414,7 +3530,7 @@ export default function Reader({
     if (!analysis) return;
 
     const book = bookRef.current;
-    const lang = book ? getBookLanguage(book) : "es";
+    const lang = language || (book ? getBookLanguage(book) : "es");
     const consulted = consultedInPageRef.current;
 
     const candidates = analysis.forms.filter(
@@ -3445,7 +3561,7 @@ export default function Reader({
         .catch(() => {});
     }
     consultedInPageRef.current.clear();
-  }, [analysisFor, sectionWords, applyKnowledgeRow]);
+  }, [analysisFor, sectionWords, applyKnowledgeRow, language]);
 
   // Página siguiente/anterior; en los bordes salta de sección (atrás
   // cae al final de la sección anterior, como al retroceder una página
@@ -3569,7 +3685,7 @@ export default function Reader({
     }
 
     setDeepReading(null);
-  }, []);
+  }, [setDeepReading]);
 
   const startDeepReading = async (config: DeepReadingConfig) => {
     setDeepModal(false);
@@ -3626,7 +3742,7 @@ export default function Reader({
     triggerHaptic("selection");
     const next = await toggleFullscreen();
     setIsFullscreenActive(next);
-  }, []);
+  }, [setIsFullscreenActive]);
 
   // Limpieza de pantalla completa y wake lock al desmontar el lector
   useEffect(() => {
@@ -3637,6 +3753,50 @@ export default function Reader({
       void toggleFullscreen(false);
     };
   }, []);
+
+  // Screen Wake Lock activo durante la lectura / reproducción de TTS
+  useEffect(() => {
+    let sentinel: WakeLockSentinel | null = null;
+    let isLive = true;
+
+    const acquireLock = async () => {
+      if (typeof document === "undefined" || document.hidden || !isLive) return;
+      try {
+        if (typeof navigator !== "undefined" && "wakeLock" in navigator && navigator.wakeLock?.request) {
+          sentinel = await navigator.wakeLock.request("screen");
+        }
+      } catch {
+        sentinel = null;
+      }
+    };
+
+    const releaseLock = async () => {
+      try {
+        await sentinel?.release();
+      } catch {
+        // ignore
+      } finally {
+        sentinel = null;
+      }
+    };
+
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        void acquireLock();
+      } else {
+        void releaseLock();
+      }
+    };
+
+    void acquireLock();
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    return () => {
+      isLive = false;
+      document.removeEventListener("visibilitychange", handleVisibility);
+      void releaseLock();
+    };
+  }, [ttsSnap?.status, deepReading?.active]);
 
   // Atajos de lectura: ← / → / Espacio / AvPág / RePág pasan página o sección.
   // Ctrl+F abre búsqueda; T abre índice; M abre marcadores; D consulta palabra;
@@ -3814,7 +3974,7 @@ export default function Reader({
     } catch {
       // fallback silencioso
     }
-  }, [language, bookHash, onWordSaved]);
+  }, [language, bookHash, onWordSaved, setTtsCapturedToast]);
 
   const onWordRemoved = (word: SavedWord) => {
     for (const form of [word.form, word.lemma]) {
@@ -4013,7 +4173,7 @@ export default function Reader({
       text,
       bookTitle: title,
       author,
-      chapterTitle: sectionTitle ?? sectionLabel(sectionIndex),
+      chapterTitle: currentChapterTarget?.label ?? sectionTitle ?? sectionLabel(sectionIndex),
       alreadySaved: false,
     });
     setSelButton(null);
@@ -4243,7 +4403,7 @@ export default function Reader({
         {
           text: pageText,
           bookTitle: title,
-          chapterTitle: sectionTitle ?? sectionLabel(sectionIndex),
+          chapterTitle: currentChapterTarget?.label ?? sectionTitle ?? sectionLabel(sectionIndex),
         },
         captureDbScope(),
       );
@@ -4265,7 +4425,7 @@ export default function Reader({
         text: sel,
         bookTitle: title,
         author,
-        chapterTitle: sectionTitle ?? sectionLabel(sectionIndex),
+        chapterTitle: currentChapterTarget?.label ?? sectionTitle ?? sectionLabel(sectionIndex),
         alreadySaved: false,
       });
       return;
@@ -4280,7 +4440,7 @@ export default function Reader({
       text: fallbackText,
       bookTitle: title,
       author,
-      chapterTitle: sectionTitle ?? sectionLabel(sectionIndex),
+      chapterTitle: currentChapterTarget?.label ?? sectionTitle ?? sectionLabel(sectionIndex),
       alreadySaved: false,
     });
   };
@@ -4541,8 +4701,58 @@ export default function Reader({
     );
   };
 
-  const nextRow = tocRows.find((row) => row.index === sectionIndex + 1);
-  const prevRow = tocRows.find((row) => row.index === sectionIndex - 1);
+  const currentTargetIdx = catalog
+    ? catalog.targets.findIndex((t) => t.id === currentChapterTarget?.id)
+    : -1;
+  const nextTarget =
+    currentTargetIdx >= 0 && catalog ? catalog.targets[currentTargetIdx + 1] : null;
+  const prevTarget =
+    currentTargetIdx > 0 && catalog ? catalog.targets[currentTargetIdx - 1] : null;
+
+  // Si hay otro sub-capítulo dentro de la MISMA sección física (ej. King's Cage: múltiples anclas
+  // en index_split_000.html), navegar al siguiente destino salta a ese ancla intra-sección.
+  // De lo contrario, la lectura física avanza sección por sección (sectionIndex + 1), SIN saltarse
+  // secciones intermedias (ej. Red Queen: el texto de un capítulo puede abarcar varias secciones).
+  const nextTargetInSameSection =
+    nextTarget && nextTarget.sectionIndex === sectionIndex && nextTarget.fragment
+      ? nextTarget
+      : null;
+  const prevTargetInSameSection =
+    prevTarget && prevTarget.sectionIndex === sectionIndex && prevTarget.fragment
+      ? prevTarget
+      : null;
+
+  const nextRow = nextTargetInSameSection
+    ? { index: sectionIndex, fragment: nextTargetInSameSection.fragment, label: nextTargetInSameSection.label }
+    : sectionIndex + 1 < sectionTotal
+      ? {
+          index: sectionIndex + 1,
+          fragment:
+            nextTarget && nextTarget.sectionIndex === sectionIndex + 1
+              ? nextTarget.fragment
+              : tocRows.find((r) => r.index === sectionIndex + 1)?.target.fragment,
+          label:
+            (nextTarget && nextTarget.sectionIndex === sectionIndex + 1 ? nextTarget.label : null) ??
+            tocRows.find((r) => r.index === sectionIndex + 1)?.label ??
+            (currentChapterTarget?.label ? `${currentChapterTarget.label} (cont.)` : `Sección ${sectionIndex + 2}`),
+        }
+      : null;
+
+  const prevRow = prevTargetInSameSection
+    ? { index: sectionIndex, fragment: prevTargetInSameSection.fragment, label: prevTargetInSameSection.label }
+    : sectionIndex > 0
+      ? {
+          index: sectionIndex - 1,
+          fragment:
+            prevTarget && prevTarget.sectionIndex === sectionIndex - 1
+              ? prevTarget.fragment
+              : tocRows.find((r) => r.index === sectionIndex - 1)?.target.fragment,
+          label:
+            (prevTarget && prevTarget.sectionIndex === sectionIndex - 1 ? prevTarget.label : null) ??
+            tocRows.find((r) => r.index === sectionIndex - 1)?.label ??
+            "Anterior",
+        }
+      : null;
 
   // ---------- Resumen de cierre de capítulo ----------
 
@@ -4553,7 +4763,7 @@ export default function Reader({
   // destino del índice sin clasificar — la mayoría de los EPUB no
   // traen landmarks y sin ellos casi todo cae ahí. Solo se excluyen
   // preliminares y ajenos.
-  const endTarget = targetAt(catalog?.ranges ?? [], sectionIndex);
+  const endTarget = currentChapterTarget ?? targetAt(catalog?.ranges ?? [], sectionIndex);
   // En render no se puede leer catalogRef (rangeFor lo hace): el
   // estado `catalog` refleja el mismo catálogo — línea previa lo usa.
   const endRange =
@@ -4564,6 +4774,7 @@ export default function Reader({
   const atChapterEnd =
     endTarget != null &&
     endTarget.kind !== "preliminary" &&
+    endTarget.kind !== "frontmatter" &&
     endTarget.kind !== "other" &&
     endRange != null &&
     sectionIndex === endRange.endSection - 1 &&
@@ -4640,6 +4851,7 @@ export default function Reader({
     <div
       className="reader"
       style={readerCssVars(settings) as CSSProperties}
+      data-font={settings.font}
       data-justify={settings.justify || undefined}
       data-dropcap={settings.dropCap || undefined}
       data-layout={settings.layout === "pages" ? "pages" : undefined}
@@ -4665,8 +4877,8 @@ export default function Reader({
           <Icon name="back" size={18} />
           <span className="reader-back-label"> Estantería</span>
         </button>
-        <p className="reader-bar-title" title={sectionTitle || title || fileName}>
-          {sectionTitle || title || fileName}
+        <p className="reader-bar-title" title={currentChapterTarget?.label || sectionTitle || title || fileName}>
+          {currentChapterTarget?.label || sectionTitle || title || fileName}
           {author ? <span className="reader-bar-author"> · {author}</span> : null}
         </p>
         <div className="reader-bar-progress" aria-hidden="true">
@@ -4722,7 +4934,11 @@ export default function Reader({
         </div>
       </header>
 
-      <div className="reader-body">
+      <div
+        className={`reader-body reader__stage ${settings.chromaticGuide && !strategyPaused ? "reader__stage--chromatic" : ""}`}
+        data-strategy-contrast={settings.strategyContrast}
+        data-has-floating-bar={ttsSnap.status !== "idle" || (settings.visualPacer && !strategyPaused) ? "true" : undefined}
+      >
         {state === "opening" && !title ? (
           <p className="reader-loading">Abriendo libro…</p>
         ) : null}
@@ -4752,13 +4968,15 @@ export default function Reader({
         <div className="page-viewport" ref={viewportRef}>
           <div
             ref={containerRef}
-            className="book-content"
+            className={`book-content reader__stage ${settings.chromaticGuide && !strategyPaused ? "reader__stage--chromatic" : ""}`}
             data-focus-mode={strategyPaused ? "off" : settings.focusMode}
             data-paragraph-focus={
               (!strategyPaused && (settings.paragraphFocus || settings.focusMode === "paragraph")) || undefined
             }
             data-strategy-preset={settings.strategyPreset}
+            data-strategy-contrast={settings.strategyContrast}
             data-strategy-paused={strategyPaused || undefined}
+            data-has-floating-bar={ttsSnap.status !== "idle" || (settings.visualPacer && !strategyPaused) ? "true" : undefined}
             data-hide-indicators={
               settings.hideSecondaryIndicators || settings.strategyPreset === "immersive" || undefined
             }
@@ -4922,22 +5140,34 @@ export default function Reader({
           <>
             {chapterEndCard}
           <nav className="reader-end" aria-label="Navegación de secciones">
-            {sectionIndex > 0 ? (
+            {prevRow != null || sectionIndex > 0 ? (
               <button
                 type="button"
                 className="reader-end-link"
-                onClick={() => navPrevSection(sectionIndex - 1)}
+                onClick={() => {
+                  if (prevRow) {
+                    navPrevSection(prevRow.index, prevRow.fragment);
+                  } else {
+                    navPrevSection(sectionIndex - 1);
+                  }
+                }}
               >
                 ← {prevRow?.label ?? "Anterior"}
               </button>
             ) : (
               <span />
             )}
-            {sectionIndex + 1 < sectionTotal ? (
+            {nextRow != null || sectionIndex + 1 < sectionTotal ? (
               <button
                 type="button"
                 className="reader-end-link"
-                onClick={() => navNextSection(sectionIndex + 1)}
+                onClick={() => {
+                  if (nextRow) {
+                    navNextSection(nextRow.index, nextRow.fragment);
+                  } else {
+                    navNextSection(sectionIndex + 1);
+                  }
+                }}
               >
                 Siguiente: {nextRow?.label ?? `Sección ${sectionIndex + 2}`} →
               </button>
@@ -4958,12 +5188,14 @@ export default function Reader({
             disabled={
               settings.layout === "pages"
                 ? sectionIndex === 0 && page === 0
-                : sectionIndex === 0
+                : prevRow == null && sectionIndex === 0
             }
             onClick={() => {
               triggerHaptic("selection");
               if (settings.layout === "pages") {
                 goPage(-1);
+              } else if (prevRow) {
+                navPrevSection(prevRow.index, prevRow.fragment);
               } else if (sectionIndex > 0) {
                 navPrevSection(sectionIndex - 1);
               }
@@ -4983,12 +5215,14 @@ export default function Reader({
             disabled={
               settings.layout === "pages"
                 ? sectionIndex + 1 >= sectionTotal && page + 1 >= pageCount
-                : sectionIndex + 1 >= sectionTotal
+                : nextRow == null && sectionIndex + 1 >= sectionTotal
             }
             onClick={() => {
               triggerHaptic("selection");
               if (settings.layout === "pages") {
                 goPage(1);
+              } else if (nextRow) {
+                navNextSection(nextRow.index, nextRow.fragment);
               } else if (sectionIndex + 1 < sectionTotal) {
                 navNextSection(sectionIndex + 1);
               }
@@ -5131,7 +5365,7 @@ export default function Reader({
       {/* Dock de Lectura Viva (B.1): Dock flotante inferior que reúne contador, interruptor de estrategia y al gato */}
       {state === "ready" && !isDeepReading ? (
         <aside
-          className="reader-dock"
+          className="reader-dock reader__dock"
           role="region"
           aria-label="Dock de lectura viva"
         >
@@ -5141,6 +5375,14 @@ export default function Reader({
               : `Cap. ${sectionIndex + 1} de ${sectionTotal || 1}`}
             {minutes > 0 ? ` · ~${minutes} min` : ""}
           </span>
+          {errorText ? (
+            <>
+              <span className="reader-dock-divider" aria-hidden="true" />
+              <span className="reader-error-text" role="alert" style={{ fontSize: "0.75rem", color: "var(--vermilion)" }}>
+                {errorText}
+              </span>
+            </>
+          ) : null}
           <span className="reader-dock-divider" aria-hidden="true" />
           <button
             type="button"
@@ -5309,45 +5551,6 @@ export default function Reader({
         </>
       ) : null}
 
-      {!(state === "ready" && !isDeepReading) ? (
-        <footer className="reader-foot reader__footer" data-hidden={!barsShown || undefined}>
-          <div
-            className="thread"
-            role="progressbar"
-            aria-valuenow={Math.round(progress * 100)}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuetext={`${Math.round(progress * 100)}% del libro`}
-          >
-            <div
-              className="thread-fill"
-              style={{ "--thread-value": `${progress * 100}%` } as CSSProperties}
-            />
-          </div>
-          <div className="reader-foot-meta">
-            <span>
-              {sectionTotal
-                ? sectionTitle
-                  ? `${sectionTitle} · ${sectionIndex + 1} de ${sectionTotal}`
-                  : `${sectionIndex + 1} de ${sectionTotal}`
-                : "Abriendo…"}
-              {minutes > 1
-                ? ` · ${minutes} min restantes`
-                : minutes === 1
-                  ? " · 1 min restante"
-                  : ""}
-            </span>
-            {errorText ? (
-              <span className="reader-error-text" role="alert">
-                {errorText}
-              </span>
-            ) : null}
-            <span key={seenStatus} className="reader-status" role="status">
-              {statusText}
-            </span>
-          </div>
-        </footer>
-      ) : null}
 
       {sheet === "toc" ? (
         <Sheet label="Índice" onClose={closeSheet} side="left">
@@ -5367,7 +5570,8 @@ export default function Reader({
             <ul className="toc-list">
               {tocRows.map((row, i) => {
                 const isCurrent =
-                  targetAt(catalog?.ranges ?? [], sectionIndex)?.id ===
+                  (currentChapterTarget?.id ??
+                    targetAt(catalog?.ranges ?? [], sectionIndex, activeIntraContext)?.id) ===
                   row.target.id;
                 return (
                 <li key={`${row.index}-${i}`} style={{ paddingInlineStart: `${row.depth * 1.25}rem` }}>
@@ -5772,6 +5976,43 @@ export default function Reader({
                       checked={settings.bionicAnchors}
                       onChange={onToggleBionicAnchors}
                     />
+                  </div>
+
+                  <div className="setting-row setting-row--stack">
+                    <div className="setting-info">
+                      <span className="setting-label">Contraste de ayudas</span>
+                      <span className="setting-subtext">Calibración de luminancia visual para Neuro-Enfoque y Guía Cromática</span>
+                    </div>
+                    <div
+                      className="segmented segmented--contrast"
+                      role="group"
+                      aria-label="Contraste de ayudas"
+                    >
+                      <button
+                        type="button"
+                        data-active={settings.strategyContrast === "soft" ? true : undefined}
+                        aria-pressed={settings.strategyContrast === "soft"}
+                        onClick={() => updateSettings({ strategyContrast: "soft" })}
+                      >
+                        Suave
+                      </button>
+                      <button
+                        type="button"
+                        data-active={settings.strategyContrast === "balanced" ? true : undefined}
+                        aria-pressed={settings.strategyContrast === "balanced"}
+                        onClick={() => updateSettings({ strategyContrast: "balanced" })}
+                      >
+                        Nítido
+                      </button>
+                      <button
+                        type="button"
+                        data-active={settings.strategyContrast === "high" ? true : undefined}
+                        aria-pressed={settings.strategyContrast === "high"}
+                        onClick={() => updateSettings({ strategyContrast: "high" })}
+                      >
+                        Intenso (AAA)
+                      </button>
+                    </div>
                   </div>
 
                   <div className="setting-row setting-row--stack">
@@ -6278,6 +6519,8 @@ export default function Reader({
                   setDeepModal(true);
                 }}
                 onClose={closeSheet}
+                strategyContrast={settings.strategyContrast}
+                onStrategyContrastChange={(contrast) => updateSettings({ strategyContrast: contrast })}
               />
 
               <div className="setting-section">
@@ -6390,6 +6633,13 @@ export default function Reader({
           firstChapterId={
             catalog.targets.find((t) => t.kind === "chapter")?.id ?? null
           }
+          bookTitle={title}
+          author={author}
+          language={language}
+          isSecondLanguage={language !== loadNativeLanguage()}
+          onStartCalibration={(lang) => {
+            void onRequestCalibration(lang);
+          }}
           onConfirm={confirmStart}
           onClose={onBack}
         />
@@ -6477,7 +6727,7 @@ export default function Reader({
             <div className="selection-tones-picker" aria-label="Elegir tono de tinta">
               <button
                 type="button"
-                className="tone-dot tone-dot--amber reader__passage-color--amber"
+                className="tone-dot tone-dot--amber reader__passage-color reader__passage-color--amber"
                 title="Tinta Ámbar"
                 aria-label="Tinta Ámbar"
                 onPointerDown={(event) => event.preventDefault()}
@@ -6485,7 +6735,7 @@ export default function Reader({
               />
               <button
                 type="button"
-                className="tone-dot tone-dot--salvia reader__passage-color--sage"
+                className="tone-dot tone-dot--salvia reader__passage-color reader__passage-color--sage"
                 title="Tinta Salvia"
                 aria-label="Tinta Salvia"
                 onPointerDown={(event) => event.preventDefault()}
@@ -6493,7 +6743,7 @@ export default function Reader({
               />
               <button
                 type="button"
-                className="tone-dot tone-dot--dario reader__passage-color--dario-blue"
+                className="tone-dot tone-dot--dario reader__passage-color reader__passage-color--dario-blue"
                 title="Tinta Azul Darío"
                 aria-label="Tinta Azul Darío"
                 onPointerDown={(event) => event.preventDefault()}
@@ -6567,7 +6817,11 @@ export default function Reader({
           sections={bookSections}
           toc={catalog?.targets?.map((t) => ({ index: t.sectionIndex, label: t.label }))}
           currentSectionIndex={sectionIndex}
-          currentChapterTitle={catalog?.targets?.find((t) => t.sectionIndex === sectionIndex)?.label ?? sectionTitle}
+          currentChapterTitle={
+            currentChapterTarget?.label ??
+            catalog?.targets?.find((t) => t.sectionIndex === sectionIndex)?.label ??
+            sectionTitle
+          }
           compactMode={
             !strategyPaused &&
             (settings.strategyPreset === "focus" ||
@@ -6708,6 +6962,51 @@ export default function Reader({
         </Dialog>
       ) : null}
 
+      {/* Marcapasos Visual: barra flotante ergonómica cuando está activo (OBJ-05) */}
+      {settings.visualPacer && !strategyPaused && state === "ready" && !isDeepReading ? (
+        <div
+          className="reader__pacer-bar tts-chip tts-chip--expanded"
+          role="status"
+          aria-label="Marcapasos visual"
+        >
+          <span className="tts-chip-label">
+            {pacerPaused ? "En pausa" : "Ritmo activo"}
+          </span>
+          <div className="tts-chip-actions">
+            <button
+              type="button"
+              className="btn--quiet tts-btn-playpause"
+              onClick={() => setPacerPaused((p) => !p)}
+              aria-label={pacerPaused ? "Reanudar ritmo" : "Pausar ritmo"}
+            >
+              {pacerPaused ? "Reanudar" : "Pausar"}
+            </button>
+            <button
+              type="button"
+              className="btn--quiet tts-chip-rate"
+              onClick={() => {
+                const nextWpm =
+                  (settings.pacerWpm || 210) >= 350
+                    ? 150
+                    : (settings.pacerWpm || 210) + 30;
+                updateSettings({ pacerWpm: nextWpm });
+              }}
+              aria-label="Velocidad del ritmo"
+            >
+              {`${settings.pacerWpm || 210} WPM`}
+            </button>
+            <button
+              type="button"
+              className="btn--quiet tts-chip-stop"
+              onClick={() => updateSettings({ visualPacer: false })}
+              aria-label="Detener ritmo"
+            >
+              Detener
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       {/* Chip discreto de la sesión de voz: no captura la lectura y
           en foco profundo se reduce a la etiqueta de estado. */}
       <TtsNowPlaying
@@ -6723,6 +7022,7 @@ export default function Reader({
         onNextSentence={() => ttsRef.current?.nextSentence()}
         onCycleRate={() => void ttsRef.current?.cycleRate(TTS_PLAYER_RATES)}
         onCaptureWord={handleTtsCaptureWord}
+        onSelectKittenVoice={(voiceId) => ttsRef.current?.setKittenVoice?.(voiceId)}
         onStop={() => ttsRef.current?.stop("user")}
       />
       {ttsCapturedToast ? (

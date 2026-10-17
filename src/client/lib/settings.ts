@@ -123,11 +123,14 @@ export type SoundscapeSetting =
   | "hearth"
   | "night_library";
 
+export type StrategyContrast = "soft" | "balanced" | "high";
+
 export interface ConcentrationSettings {
   syntacticLines: boolean; // Agrupación/cascada por sintagmas semánticos
   chromaticGuide: boolean; // Gradiente cromático de barrido ocular (Return Sweep)
   chromaticPalette: ChromaticPalette;
   bionicAnchors: boolean; // Resaltado sutil de las primeras letras en palabras léxicas clave
+  strategyContrast: StrategyContrast; // Calibración de luminancia y contraste ('soft' | 'balanced' | 'high')
   paragraphFocus: boolean; // Atenuación de párrafos inactivos
   focusRuler: boolean; // Regla de lectura deslizable
   ambientPurr: boolean; // Ronroneo ambiental suave de concentración (Body Doubling)
@@ -216,6 +219,8 @@ export interface ReaderSettings {
   chromaticPalette: ChromaticPalette;
   /** Resaltado tipográfico sutil de fijación en la primera parte de palabras clave (TDAH). */
   bionicAnchors: boolean;
+  /** Intensidad de contraste de las ayudas cognitivas ('soft' | 'balanced' | 'high'). */
+  strategyContrast: StrategyContrast;
   /** Ronroneo ambiental suave de concentración (Body Doubling). */
   ambientPurr: boolean;
   /** Paisaje sonoro procedural Web Audio o ronroneo. */
@@ -250,6 +255,7 @@ export const READER_DEFAULTS: ReaderSettings = {
   chromaticGuide: false,
   chromaticPalette: "editorial",
   bionicAnchors: false,
+  strategyContrast: "high",
   ambientPurr: false,
   soundscape: "none",
   highlightLexical: false,
@@ -443,6 +449,13 @@ export function parseReaderSettings(raw: string | null): ReaderSettings {
         ? v.bionicAnchors
         : false;
 
+    const strategyContrast: StrategyContrast =
+      v.strategyContrast === "soft" ||
+      v.strategyContrast === "balanced" ||
+      v.strategyContrast === "high"
+        ? v.strategyContrast
+        : "high";
+
     const ambientPurr =
       typeof v.ambientPurr === "boolean"
         ? v.ambientPurr
@@ -499,6 +512,7 @@ export function parseReaderSettings(raw: string | null): ReaderSettings {
       chromaticGuide,
       chromaticPalette,
       bionicAnchors,
+      strategyContrast,
       ambientPurr,
       soundscape:
         v.soundscape === "purr" ||
@@ -699,16 +713,48 @@ export function readerProfileFor(
   return nativeLanguage === bookLanguage ? "native" : "learner";
 }
 
+export const THEME_META_COLORS: Record<string, string> = {
+  paper: "#FBF7F0",
+  papel: "#FBF7F0",
+  white: "#FFFFFF",
+  blanco: "#FFFFFF",
+  night: "#141619",
+  noche: "#141619",
+  oled: "#000000",
+};
+
 // Sin elección manual ("auto") no se pone data-theme y la media query de
 // prefers-color-scheme decide; así el cambio del sistema se refleja solo.
-export function applyTheme(choice: ThemeChoice) {
+export function applyTheme(choice: ThemeChoice | "paper" | "white" | "night") {
   const root = document.documentElement;
-  if (choice === "auto") {
+  const canonical =
+    choice === "paper"
+      ? "papel"
+      : choice === "white"
+        ? "blanco"
+        : choice === "night"
+          ? "noche"
+          : choice;
+  if (canonical === "auto") {
     root.removeAttribute("data-theme");
     root.style.colorScheme = "light dark";
   } else {
-    root.dataset.theme = choice;
+    root.dataset.theme = canonical;
     root.style.colorScheme =
-      choice === "noche" || choice === "oled" ? "dark" : "light";
+      canonical === "noche" || canonical === "oled" ? "dark" : "light";
+  }
+
+  if (typeof document !== "undefined") {
+    let meta = document.querySelector('meta[name="theme-color"]');
+    if (!meta) {
+      meta = document.createElement("meta");
+      meta.setAttribute("name", "theme-color");
+      document.head?.appendChild(meta);
+    }
+    const isDark =
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(prefers-color-scheme: dark)")?.matches;
+    const color = THEME_META_COLORS[choice] ?? (isDark ? "#141619" : "#FBF7F0");
+    meta.setAttribute("content", color);
   }
 }

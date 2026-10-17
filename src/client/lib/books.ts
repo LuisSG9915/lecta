@@ -10,12 +10,14 @@ export type RemoteBook = {
   title?: string;
   author?: string;
   sections?: number;
+  language?: string;
 };
 
 export type BookUploadMeta = {
   title?: string;
   author?: string;
   sectionCount?: number;
+  language?: string;
 };
 
 // Las funciones de libros remotos re-lanzan StaleScopeError: «la cuenta
@@ -32,6 +34,7 @@ export async function uploadBook(
     if (meta.title) params.set("title", meta.title);
     if (meta.author) params.set("author", meta.author);
     if (meta.sectionCount) params.set("sections", String(meta.sectionCount));
+    if (meta.language) params.set("language", meta.language);
     const response = await accountFetch(
       `/api/books/${hash}?${params.toString()}`,
       {

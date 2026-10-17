@@ -68,6 +68,43 @@ export type SentenceLayoutItem = {
   text: string;
 };
 
+export type TtsEngineMode = "auto" | "kitten-neural" | "browser";
+
+export type KittenVoiceId =
+  | "expr-voice-2-m"
+  | "expr-voice-2-f"
+  | "expr-voice-3-m"
+  | "expr-voice-3-f"
+  | "expr-voice-4-m"
+  | "expr-voice-4-f"
+  | "expr-voice-5-m"
+  | "expr-voice-5-f";
+
+export type KittenVoice = {
+  id: KittenVoiceId;
+  name: string;
+  lang: "en";
+  gender: "m" | "f";
+  description?: string;
+};
+
+export const KITTEN_VOICES: readonly KittenVoice[] = [
+  { id: "expr-voice-2-m", name: "Leo (Cálida)", lang: "en", gender: "m" },
+  { id: "expr-voice-2-f", name: "Clara (Narrativa)", lang: "en", gender: "f" },
+  { id: "expr-voice-3-m", name: "Arthur (Profunda)", lang: "en", gender: "m" },
+  { id: "expr-voice-3-f", name: "Elena (Suave)", lang: "en", gender: "f" },
+  { id: "expr-voice-4-m", name: "George (Elegante)", lang: "en", gender: "m" },
+  { id: "expr-voice-4-f", name: "Ada (Expresiva)", lang: "en", gender: "f" },
+  { id: "expr-voice-5-m", name: "Oliver (Joven)", lang: "en", gender: "m" },
+  { id: "expr-voice-5-f", name: "Maya (Cristalina)", lang: "en", gender: "f" },
+] as const;
+
+export type ModelDownloadProgress = {
+  status: "idle" | "downloading" | "ready" | "error";
+  percent: number;
+  errorMessage?: string;
+};
+
 // Lo que la UI expone: estado de la máquina más el contexto de la
 // sesión en curso (para el chip y los eventos).
 export type TtsSnapshot = {
@@ -77,6 +114,9 @@ export type TtsSnapshot = {
   highlight: TtsHighlightMode;
   // Razón de la última pausa (para mensajes y telemetría).
   pauseReason: TtsPauseReason | null;
+  engine?: TtsEngineMode;
+  kittenVoice?: KittenVoiceId;
+  activeEngine?: "kitten-neural" | "browser";
 };
 
 export const TTS_IDLE: TtsSnapshot = {
@@ -85,4 +125,8 @@ export const TTS_IDLE: TtsSnapshot = {
   rate: 1,
   highlight: "sentence",
   pauseReason: null,
+  engine: "auto",
+  kittenVoice: "expr-voice-2-f",
+  activeEngine: "browser",
 };
+

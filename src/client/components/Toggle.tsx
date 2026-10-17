@@ -17,7 +17,7 @@ export default function Toggle({ checked, onChange, label }: ToggleProps) {
       className="switch"
       onClick={() => onChange(!checked)}
     >
-      <span className="switch-knob" aria-hidden="true" />
+      <span className="switch-knob toggle__thumb" aria-hidden="true" />
     </button>
   );
 }

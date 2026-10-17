@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  applyTheme,
   clearBookReaderSettings,
   hasBookReaderSettings,
   hasExplicitPreparationMode,
@@ -90,6 +91,7 @@ describe("parseReaderSettings", () => {
       chromaticGuide: false,
       chromaticPalette: "editorial",
       bionicAnchors: false,
+      strategyContrast: "high",
       ambientPurr: false,
       soundscape: "none",
       highlightLexical: false,
@@ -215,12 +217,22 @@ describe("parseReaderSettings", () => {
         chromaticPalette: "ocean_amber",
         bionicAnchors: true,
         ambientPurr: true,
+        strategyContrast: "balanced",
       }),
     );
     expect(s.chromaticGuide).toBe(true);
     expect(s.chromaticPalette).toBe("ocean_amber");
     expect(s.bionicAnchors).toBe(true);
     expect(s.ambientPurr).toBe(true);
+    expect(s.strategyContrast).toBe("balanced");
+  });
+
+  it("calibra strategyContrast con valores válidos ('soft' | 'balanced' | 'high') y descarta inválidos", () => {
+    expect(parseReaderSettings(JSON.stringify({ strategyContrast: "soft" })).strategyContrast).toBe("soft");
+    expect(parseReaderSettings(JSON.stringify({ strategyContrast: "balanced" })).strategyContrast).toBe("balanced");
+    expect(parseReaderSettings(JSON.stringify({ strategyContrast: "high" })).strategyContrast).toBe("high");
+    expect(parseReaderSettings(JSON.stringify({ strategyContrast: "ultra" })).strategyContrast).toBe("high");
+    expect(parseReaderSettings(JSON.stringify({})).strategyContrast).toBe("high");
   });
 });
 
@@ -434,5 +446,37 @@ describe("NativeLanguage", () => {
     expect(readerProfileFor("es", "es")).toBe("native");
     expect(readerProfileFor("en", "es")).toBe("learner");
     expect(readerProfileFor("es", "en")).toBe("learner");
+  });
+});
+
+describe("applyTheme", () => {
+  beforeEach(() => {
+    document.head.innerHTML = "";
+    document.documentElement.removeAttribute("data-theme");
+  });
+
+  it("actualiza <meta name=\"theme-color\"> a #000000 con oled", () => {
+    applyTheme("oled");
+    const meta = document.querySelector('meta[name="theme-color"]');
+    expect(meta).not.toBeNull();
+    expect(meta?.getAttribute("content")).toBe("#000000");
+    expect(document.documentElement.dataset.theme).toBe("oled");
+  });
+
+  it("actualiza <meta name=\"theme-color\"> a #141619 con night o noche", () => {
+    applyTheme("night");
+    const meta = document.querySelector('meta[name="theme-color"]');
+    expect(meta?.getAttribute("content")).toBe("#141619");
+    expect(document.documentElement.dataset.theme).toBe("noche");
+
+    applyTheme("noche");
+    expect(meta?.getAttribute("content")).toBe("#141619");
+  });
+
+  it("actualiza <meta name=\"theme-color\"> a #FBF7F0 con paper o papel", () => {
+    applyTheme("paper");
+    const meta = document.querySelector('meta[name="theme-color"]');
+    expect(meta?.getAttribute("content")).toBe("#FBF7F0");
+    expect(document.documentElement.dataset.theme).toBe("papel");
   });
 });

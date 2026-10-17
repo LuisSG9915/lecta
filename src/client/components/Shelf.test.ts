@@ -243,5 +243,38 @@ describe("Shelf - Tu Mesa de Lectura (Fase 5.2)", () => {
     });
     expect(host.querySelectorAll(".shelf-row .shelf-book").length).toBe(0);
   });
+
+  it("muestra la insignia de idioma EN para libros en inglés", async () => {
+    const englishLibrary: ShelfItem[] = [
+      {
+        hash: "h-en-1",
+        name: "Red Queen",
+        title: "Red Queen",
+        author: "Victoria Aveyard",
+        addedAt: 1,
+        sectionCount: 70,
+        language: "en",
+      },
+    ];
+
+    await act(async () => {
+      root.render(
+        h(Shelf, {
+          library: englishLibrary,
+          checking: false,
+          onOpen: vi.fn(),
+          onRemove: vi.fn(),
+          onAdd: vi.fn(),
+          onLibraryChange: vi.fn(),
+        }),
+      );
+      for (let i = 0; i < 4; i++) await Promise.resolve();
+    });
+
+    const badge = host.querySelector(".shelf-lang-badge");
+    expect(badge).toBeTruthy();
+    expect(badge?.textContent?.trim()).toBe("EN");
+    expect(badge?.getAttribute("title")).toBe("Idioma: Inglés");
+  });
 });
 

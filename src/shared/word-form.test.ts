@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { findLexicalFamily, inferContextualPos, isWordToken, menteBaseForms } from "./word-form";
+import {
+  findLexicalFamily,
+  generateLookupCandidates,
+  inferContextualPos,
+  isWordToken,
+  menteBaseForms,
+} from "./word-form";
 
 describe("isWordToken", () => {
   it("acepta letras del español con tildes, ñ y ü", () => {
@@ -120,5 +126,33 @@ describe("findLexicalFamily", () => {
     const res = findLexicalFamily("caminar");
     expect(res).not.toContain("caminar");
     expect(res.length).toBeLessThanOrEqual(3);
+  });
+});
+
+describe("generateLookupCandidates", () => {
+  it("genera candidatos morfológicos en inglés para plurales, tiempos verbales y adverbios", () => {
+    // -ies -> -y
+    expect(generateLookupCandidates("memories", "en")).toContain("memory");
+    // -ied -> -y
+    expect(generateLookupCandidates("replied", "en")).toContain("reply");
+    // -ing -> base, -e, desduplicación
+    expect(generateLookupCandidates("lingering", "en")).toContain("linger");
+    expect(generateLookupCandidates("making", "en")).toContain("make");
+    expect(generateLookupCandidates("running", "en")).toContain("run");
+    // -ed -> base, -e, desduplicación
+    expect(generateLookupCandidates("whispered", "en")).toContain("whisper");
+    expect(generateLookupCandidates("loved", "en")).toContain("love");
+    expect(generateLookupCandidates("stopped", "en")).toContain("stop");
+    // -ly / -ily -> base / -y
+    expect(generateLookupCandidates("reluctantly", "en")).toContain("reluctant");
+    expect(generateLookupCandidates("happily", "en")).toContain("happy");
+    // -es / -s -> base
+    expect(generateLookupCandidates("shadows", "en")).toContain("shadow");
+    expect(generateLookupCandidates("watches", "en")).toContain("watch");
+  });
+
+  it("mantiene la forma original como primer candidato", () => {
+    const candidates = generateLookupCandidates("lingering", "en");
+    expect(candidates[0]).toBe("lingering");
   });
 });

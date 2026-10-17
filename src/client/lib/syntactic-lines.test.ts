@@ -204,13 +204,24 @@ describe("applySyntacticLines / clearSyntacticLines", () => {
     expect(anchorTexts).not.toContain("El");
     expect(anchorTexts).not.toContain("sobre");
 
+    // Comprobar clases semánticas biónicas OBJ-01
+    const bionicAnchors = root.querySelectorAll(".lecta-bionic-anchor");
+    expect(bionicAnchors.length).toBe(anchors.length);
+    const bionicWords = root.querySelectorAll(".lecta-bionic-word");
+    expect(bionicWords.length).toBe(anchors.length);
+    const bionicRests = root.querySelectorAll(".lecta-bionic-rest");
+    expect(bionicRests.length).toBe(anchors.length);
+
     // Dentro del elemento mark no debe haberse inyectado anclaje
     const markEl = p.querySelector("mark.target");
     expect(markEl?.querySelector(".lecta-fixation-anchor")).toBeNull();
+    expect(markEl?.querySelector(".lecta-bionic-anchor")).toBeNull();
 
     // clearSyntacticLines restaura el texto perfectamente sin alterar nada
     clearSyntacticLines(root);
     expect(root.querySelectorAll(".lecta-fixation-anchor")).toHaveLength(0);
+    expect(root.querySelectorAll(".lecta-bionic-anchor")).toHaveLength(0);
+    expect(root.querySelectorAll(".lecta-bionic-word")).toHaveLength(0);
     expect(p.querySelector("mark.target")?.textContent).toBe("Biblioteca");
     expect(p.textContent).toBe(
       "El gato dormía tranquilamente sobre la alfombra. Biblioteca cerrada.",

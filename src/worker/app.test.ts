@@ -331,3 +331,15 @@ describe("POST /api/ai/micro-story", () => {
   });
 });
 
+describe("Kindle HTML routes anti-cache headers", () => {
+  it("includes no-store, no-cache, must-revalidate in HTML responses", async () => {
+    const response = await app.request("/k/login");
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/html");
+    expect(response.headers.get("Cache-Control")).toBe("no-store, no-cache, must-revalidate");
+    expect(response.headers.get("Pragma")).toBe("no-cache");
+    expect(response.headers.get("Expires")).toBe("0");
+  });
+});
+
+

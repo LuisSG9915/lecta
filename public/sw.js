@@ -2,23 +2,19 @@
 // incluidos, para que la app instalada abra y lea sin conexión.
 //
 // Reglas:
-// - Solo GET del mismo origen. /api/ jamás se cachea (sesiones,
-//   datos de cuenta y correo no pasan por el almacén del SW).
-// - Navegaciones: red primero, copia fresca a «/» y, si falla, la
-//   versión guardada — la app sigue abriendo aunque no haya red.
-// - Contenido precacheado: cache-first (rellena el cache si falta,
-//   p. ej. tras actualizar el SW antes de recargar).
-// - El resto de estáticos (rutas de las listas de abajo): cache
-//   primero con relleno; nunca inventa respuestas.
-//
-// La lista exacta de archivos llega de /sw-manifest.json, que el
-// build genera recorriendo el directorio de salida — este archivo
-// no enumera assets hasheados porque cambian en cada deploy.
+// - Solo GET del mismo origen. /api/, /kindle/ y /sw.js jamás se cachean
+//   (sesiones, vistas e-ink dinámicas y el propio SW no pasan por el almacén).
+// - Navegaciones: red primero con { cache: 'no-store' } y timeout de 3500ms;
+//   copia fresca a «/index.html» y «/» y, solo si falla la red, la versión guardada.
+// - Contenido precacheado: cache-first (rellena el cache si falta).
+// - Validación estricta MIME: jamás cachear ni entregar text/html para .css, .js o /assets/*.
+// - Autocuración de assets: reintento y notificación ASSET_MISMATCH_RELOAD ante hashes obsoletos.
 
-var CACHE_PREFIX = "lecta-";
+var CACHE_PREFIX = "lecta-v2-";
 var MANIFEST_URL = "/sw-manifest.json";
+var NAVIGATION_TIMEOUT_MS = 3500;
 
-// El único cache lecta-* vigente (tras activate solo queda uno).
+// El único cache lecta-v2-* vigente (tras activate solo queda uno).
 // Se memoiza pero se re-resuelve si el global del worker se reinicia.
 var cachedName = null;
 function lectaCache() {
@@ -34,18 +30,35 @@ function lectaCache() {
   });
 }
 
+// Validación estricta anti-corrupción por SPA fallback
+function isValidAssetResponse(requestUrl, response) {
+  if (!response || response.status !== 200) return false;
+  if (response.type !== "basic" && response.type !== "default") return false;
+  var contentType = (response.headers.get("content-type") || "").toLowerCase();
+  if (requestUrl.pathname.endsWith(".css") && contentType.indexOf("text/css") === -1) {
+    return false;
+  }
+  if (requestUrl.pathname.endsWith(".js") && contentType.indexOf("text/html") !== -1) {
+    return false;
+  }
+  if (requestUrl.pathname.startsWith("/assets/") && contentType.indexOf("text/html") !== -1) {
+    return false;
+  }
+  return true;
+}
+
+// 1. Install: activar inmediatamente sin bloquearse en waiting
 self.addEventListener("install", function (event) {
+  self.skipWaiting();
   event.waitUntil(
-    fetch(MANIFEST_URL, { cache: "no-cache" })
+    fetch(MANIFEST_URL, { cache: "no-store" })
       .then(function (res) {
         return res.ok ? res.json() : null;
       })
       .then(function (manifest) {
         var version = (manifest && manifest.version) || "0";
-        // addAll rechaza con peticiones repetidas; el manifiesto ya
-        // trae /index.html y /manifest.webmanifest.
         var seen = {};
-        var urls = ["/", "/manifest.webmanifest", MANIFEST_URL]
+        var urls = ["/", "/index.html", "/manifest.webmanifest", MANIFEST_URL]
           .concat((manifest && manifest.assets) || [])
           .filter(function (url) {
             if (seen[url]) return false;
@@ -57,38 +70,51 @@ self.addEventListener("install", function (event) {
           return cache.addAll(urls);
         });
       })
+      .catch(function () {
+        // En offline durante install o fallo transitorio, no bloquear
+      })
       .then(function () {
         return self.skipWaiting();
       })
   );
 });
 
+// 2. Message: soporte para SKIP_WAITING manual desde el cliente
+self.addEventListener("message", function (event) {
+  if (event.data && event.data.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
+});
+
+// 3. Activate: clients.claim() y purga de caches obsoletos (incluyendo versiones previas de lecta-*)
 self.addEventListener("activate", function (event) {
   event.waitUntil(
-    // La versión que este SW instaló decide qué cache conservar; si
-    // el manifiesto no responde (offline durante la activación) no
-    // se borra nada — peor caso es un cache viejo extra.
-    fetch(MANIFEST_URL, { cache: "no-cache" })
-      .then(function (res) {
-        return res.ok ? res.json() : null;
+    self.clients
+      .claim()
+      .then(function () {
+        return fetch(MANIFEST_URL, { cache: "no-store" })
+          .then(function (res) {
+            return res.ok ? res.json() : null;
+          })
+          .catch(function () {
+            return null;
+          });
       })
       .then(function (manifest) {
-        var keep = manifest ? CACHE_PREFIX + manifest.version : cachedName;
+        var keep = manifest && manifest.version ? CACHE_PREFIX + manifest.version : cachedName;
         return caches.keys().then(function (keys) {
           return Promise.all(
             keys.map(function (key) {
-              if (key.indexOf(CACHE_PREFIX) === 0 && key !== keep)
+              if (
+                (key.indexOf("lecta-") === 0 || key.indexOf(CACHE_PREFIX) === 0) &&
+                (!keep || key !== keep)
+              ) {
                 return caches.delete(key);
+              }
               return undefined;
             })
           );
         });
-      })
-      .catch(function () {
-        return undefined;
-      })
-      .then(function () {
-        return self.clients.claim();
       })
   );
 });
@@ -106,60 +132,164 @@ function refillable(path) {
   );
 }
 
+// 4. Fetch: Network-First con cache: 'no-store' para navegación y exclusión de rutas críticas
 self.addEventListener("fetch", function (event) {
   var req = event.request;
   if (req.method !== "GET") return;
   var url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
-  // Sesión, datos de cuenta, correo y sincronización: siempre a la
-  // red. El SW no debe fingir veredictos de auth ni datos frescos.
-  if (url.pathname.indexOf("/api/") === 0) return;
 
-  if (req.mode === "navigate") {
+  // 5. Excluir explícitamente de la caché del Service Worker las rutas /api/*, /kindle/* y /sw.js
+  if (
+    url.pathname.indexOf("/api/") === 0 ||
+    url.pathname.indexOf("/kindle/") === 0 ||
+    url.pathname.indexOf("/k/") === 0 ||
+    url.pathname === "/k" ||
+    url.pathname === "/sw.js"
+  ) {
+    return;
+  }
+
+  // Navegación: Network-First real sin caché HTTP con timeout de seguridad de 3500ms
+  var isNavigation =
+    req.mode === "navigate" ||
+    url.pathname === "/" ||
+    url.pathname === "/index.html";
+
+  if (isNavigation) {
     event.respondWith(
-      fetch(req)
-        .then(function (res) {
-          if (res.ok) {
-            return lectaCache().then(function (name) {
-              return caches
-                .open(name)
-                .then(function (cache) {
-                  return cache.put("/", res.clone());
-                })
-                .then(function () {
-                  return res;
-                });
+      new Promise(function (resolve) {
+        var controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+        var timer = null;
+
+        function fallbackToCache() {
+          return caches.match("/index.html").then(function (cached) {
+            if (cached) return cached;
+            return caches.match("/").then(function (cachedRoot) {
+              return cachedRoot || Response.error();
             });
-          }
-          return res;
-        })
-        .catch(function () {
-          return caches.match("/").then(function (cached) {
-            return cached || Response.error();
           });
-        })
+        }
+
+        if (controller) {
+          timer = setTimeout(function () {
+            controller.abort();
+          }, NAVIGATION_TIMEOUT_MS);
+        }
+
+        var fetchOptions = { cache: "no-store" };
+        if (controller) {
+          fetchOptions.signal = controller.signal;
+        }
+
+        var networkRequest = new Request(req.url, fetchOptions);
+
+        fetch(networkRequest)
+          .then(function (res) {
+            if (timer) clearTimeout(timer);
+            if (res && res.ok) {
+              var resClone1 = res.clone();
+              var resClone2 = res.clone();
+              lectaCache().then(function (name) {
+                caches.open(name).then(function (cache) {
+                  cache.put("/index.html", resClone1);
+                  cache.put("/", resClone2);
+                });
+              });
+              resolve(res);
+              return;
+            }
+            if (res) {
+              resolve(res);
+            } else {
+              fallbackToCache().then(resolve);
+            }
+          })
+          .catch(function () {
+            if (timer) clearTimeout(timer);
+            fallbackToCache().then(resolve);
+          });
+      })
     );
     return;
   }
 
+  // Resto de recursos estáticos: Cache-First con validación estricta y reintento
   event.respondWith(
     caches.match(req).then(function (cached) {
-      if (cached) return cached;
-      return fetch(req).then(function (res) {
-        if (res.ok && refillable(url.pathname)) {
-          return lectaCache().then(function (name) {
-            return caches
-              .open(name)
-              .then(function (cache) {
-                return cache.put(req, res.clone());
-              })
-              .then(function () {
-                return res;
-              });
+      if (cached && isValidAssetResponse(url, cached)) {
+        return cached;
+      }
+      if (cached) {
+        lectaCache().then(function (name) {
+          caches.open(name).then(function (cache) {
+            cache.delete(req);
+          });
+        });
+      }
+
+      function handleAssetMismatch() {
+        if (url.pathname.startsWith("/assets/")) {
+          lectaCache().then(function (name) {
+            caches.delete(name);
+          });
+          self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(function (clients) {
+            clients.forEach(function (client) {
+              client.postMessage({ type: "ASSET_MISMATCH_RELOAD" });
+            });
           });
         }
-        return res;
-      });
+        return new Response("", { status: 404, statusText: "Asset Mismatch" });
+      }
+
+      return fetch(req)
+        .then(function (res) {
+          if (isValidAssetResponse(url, res)) {
+            if (refillable(url.pathname)) {
+              var copy = res.clone();
+              lectaCache().then(function (name) {
+                caches.open(name).then(function (cache) {
+                  cache.put(req, copy);
+                });
+              });
+            }
+            return res;
+          }
+
+          // Si el servidor devolvió HTML (not_found_handling SPA) o no es válido,
+          // reintentar una vez con cache: 'reload'
+          return fetch(req, { cache: "reload" })
+            .then(function (retryRes) {
+              if (isValidAssetResponse(url, retryRes)) {
+                if (refillable(url.pathname)) {
+                  var retryCopy = retryRes.clone();
+                  lectaCache().then(function (name) {
+                    caches.open(name).then(function (cache) {
+                      cache.put(req, retryCopy);
+                    });
+                  });
+                }
+                return retryRes;
+              }
+              return handleAssetMismatch();
+            })
+            .catch(function () {
+              return handleAssetMismatch();
+            });
+        })
+        .catch(function () {
+          // Reintento ante corte transitorio de red
+          return fetch(req, { cache: "reload" })
+            .then(function (retryRes) {
+              if (isValidAssetResponse(url, retryRes)) {
+                return retryRes;
+              }
+              return handleAssetMismatch();
+            })
+            .catch(function () {
+              return handleAssetMismatch();
+            });
+        });
     })
   );
 });
