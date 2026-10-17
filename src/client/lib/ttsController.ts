@@ -624,16 +624,18 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
     },
 
     setKittenVoice(voiceId: KittenVoiceId) {
-      settings = { ...settings, kittenVoice: voiceId };
+      settings = { ...settings, kittenVoice: voiceId, engine: "kitten-neural" };
       saveTtsSettings(settings);
-      publish({ kittenVoice: voiceId });
-      if (shouldUseKitten()) {
-        (deps.kittenEngine ?? kittenTtsEngine).stop();
-        lookaheadBuffers.clear();
-        lookaheadPending.clear();
-        if (snap.status === "speaking" && items[cursor]) {
-          speakCurrent();
-        }
+      publish({ kittenVoice: voiceId, engine: "kitten-neural", activeEngine: "kitten-neural" });
+
+      (deps.kittenEngine ?? kittenTtsEngine).stop();
+      speaker?.cancel();
+      speaker = makeSpeaker();
+      lookaheadBuffers.clear();
+      lookaheadPending.clear();
+
+      if (snap.status === "speaking" && items[cursor]) {
+        speakCurrent();
       }
     },
 

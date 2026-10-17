@@ -197,13 +197,17 @@ export class KittenTtsEngine {
   private ready = false;
   private progress: ModelDownloadProgress = { status: "idle", percent: 0 };
 
+  private workerInitialized = false;
+  private initializingPromise: Promise<boolean> | null = null;
+
   constructor() {
-    // Verificación preliminar de caché en segundo plano
+    // Verificación preliminar de caché e inicialización en segundo plano
     if (typeof caches !== "undefined") {
       void isKittenModelCached().then((cached) => {
         if (cached) {
           this.ready = true;
           this.progress = { status: "ready", percent: 100 };
+          void this.ensureInitialized();
         }
       });
     }
@@ -256,6 +260,12 @@ export class KittenTtsEngine {
     const data = event.data;
     if (!data) return;
 
+    if (data.type === "init_done") {
+      this.workerInitialized = true;
+      this.ready = true;
+      return;
+    }
+
     if (data.type === "synthesize_done") {
       const p = this.pendingRequests.get(data.id);
       if (p) {
@@ -288,6 +298,47 @@ export class KittenTtsEngine {
     return this.audioCtx;
   }
 
+  async ensureInitialized(): Promise<boolean> {
+    if (this.workerInitialized) return true;
+    if (this.initializingPromise) return this.initializingPromise;
+
+    this.initializingPromise = (async () => {
+      try {
+        const cached = await isKittenModelCached();
+        if (!cached) return false;
+
+        const buffer = await getKittenModelBuffer();
+        const worker = this.getWorker();
+        if (worker && buffer) {
+          await new Promise<void>((resolve, reject) => {
+            const onMsg = (event: MessageEvent<WorkerResponse>) => {
+              if (event.data.type === "init_done") {
+                worker.removeEventListener("message", onMsg);
+                resolve();
+              } else if (event.data.type === "init_error") {
+                worker.removeEventListener("message", onMsg);
+                reject(new Error(event.data.error));
+              }
+            };
+            worker.addEventListener("message", onMsg);
+            worker.postMessage({ type: "init", modelBuffer: buffer } satisfies WorkerRequest, [buffer]);
+          });
+          this.workerInitialized = true;
+          this.ready = true;
+          this.progress = { status: "ready", percent: 100 };
+          return true;
+        }
+      } catch {
+        // Fallback si falla inicialización
+      } finally {
+        this.initializingPromise = null;
+      }
+      return false;
+    })();
+
+    return this.initializingPromise;
+  }
+
   async init(onProgress?: (progress: ModelDownloadProgress) => void): Promise<boolean> {
     if (!this.isSupported()) {
       return false;
@@ -305,11 +356,7 @@ export class KittenTtsEngine {
         onProgress?.(this.progress);
       }
 
-      const buffer = await getKittenModelBuffer();
-      const worker = this.getWorker();
-      if (worker && buffer) {
-        worker.postMessage({ type: "init", modelBuffer: buffer } satisfies WorkerRequest, [buffer]);
-      }
+      await this.ensureInitialized();
       this.ready = true;
       return true;
     } catch {
@@ -323,6 +370,10 @@ export class KittenTtsEngine {
     voiceId: KittenVoiceId = "expr-voice-2-f",
     speed = 1,
   ): Promise<AudioBuffer> {
+    if (!this.workerInitialized && typeof caches !== "undefined") {
+      await this.ensureInitialized();
+    }
+
     const worker = this.getWorker();
     const id = `req_${++this.reqIdCounter}_${Date.now()}`;
 
@@ -387,9 +438,12 @@ export class KittenTtsEngine {
       source.connect(ctx.destination);
 
       source.onended = () => {
-        if (this.currentSource === source) {
-          this.currentSource = null;
+        // Solo notificar fin natural si este nodo sigue siendo el vigente
+        if (this.currentSource !== source) {
+          return;
         }
+        this.currentSource = null;
+        source.onended = null;
         onEnded?.();
       };
 
@@ -416,13 +470,16 @@ export class KittenTtsEngine {
 
   stop(): void {
     if (this.currentSource) {
+      const src = this.currentSource;
+      this.currentSource = null;
+      // Desarmar onended para que el cese forzado no simule fin de frase ni dispare avances involuntarios
+      src.onended = null;
       try {
-        this.currentSource.stop();
-        this.currentSource.disconnect();
+        src.stop();
+        src.disconnect();
       } catch {
         // Ignorar fallo al detener
       }
-      this.currentSource = null;
     }
   }
 

@@ -102,7 +102,12 @@ export function CompanionPanel({
   reducedMotion = false,
   initialTab = "care",
 }: CompanionPanelProps) {
+  const [prevInitialTab, setPrevInitialTab] = useState(initialTab);
   const [tab, setTab] = useState<CompanionTab>(initialTab);
+  if (prevInitialTab !== initialTab) {
+    setPrevInitialTab(initialTab);
+    setTab(initialTab);
+  }
   const [equipBusy, setEquipBusy] = useState(false);
   const [closetError, setClosetError] = useState("");
   const [careError, setCareError] = useState("");

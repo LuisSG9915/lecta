@@ -33,7 +33,7 @@ export default function TtsConsentDialog({
       await downloadKittenModel((progress) => {
         setPercent(progress.percent);
       });
-      kittenTtsEngine.setReadyForTesting(true);
+      await kittenTtsEngine.init();
       onAccept("kitten-neural");
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Error al descargar el modelo.";

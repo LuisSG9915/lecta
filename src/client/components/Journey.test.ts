@@ -276,6 +276,14 @@ describe("Journey (Tu recorrido)", () => {
     expect(container?.textContent).toContain("Buzón del Gato");
     expect(container?.textContent).toContain("Ajustar Meta Diaria");
 
+    // Abrir vestidor del gato
+    const closetBtn = container?.querySelector("button[aria-label='Abrir vestidor del gato']");
+    expect(closetBtn).toBeTruthy();
+    await act(async () => {
+      closetBtn?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(openPanelMock).toHaveBeenCalledWith("closet");
+
     // Abrir buzón
     const inboxBtn = container?.querySelector("button[aria-label^='Buzón del Gato']");
     expect(inboxBtn).toBeTruthy();

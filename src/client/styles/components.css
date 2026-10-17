@@ -185,7 +185,7 @@
 .sheet-scrim,
 .sheet-backdrop {
   position: fixed;
-  z-index: 20;
+  z-index: 60;
   inset: 0;
   background: var(--scrim);
   backdrop-filter: blur(8px) saturate(1.05);
@@ -201,7 +201,7 @@
 
 .sheet {
   position: fixed;
-  z-index: 20;
+  z-index: 60;
   inset-inline: 0;
   bottom: 0;
   margin-inline: auto;
@@ -599,7 +599,7 @@
 .dialog-scrim,
 .dialog-backdrop {
   position: fixed;
-  z-index: 30;
+  z-index: 70;
   inset: 0;
   display: grid;
   place-items: center;

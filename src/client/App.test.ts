@@ -122,6 +122,9 @@ vi.mock("./lib/idb", () => ({
   listBookOps: vi.fn(async () => []),
   getActiveUserId: vi.fn(() => null),
   listKnowledge: vi.fn(async () => []),
+  listIntervals: vi.fn(async () => []),
+  listAllReviews: vi.fn(async () => []),
+  listReadingEvents: vi.fn(async () => []),
   countCachedLexicon: vi.fn(async () => 0),
   clearDictionaryCache: vi.fn(async () => undefined),
   listPositions: vi.fn(async () => []),
@@ -430,6 +433,34 @@ describe("App · navegación principal (Fase 2)", () => {
     // Perfil sigue visible
     expect(host.querySelector(".account-page")).toBeTruthy();
     expect(accountBtn?.getAttribute("aria-current")).toBe("page");
+  });
+
+  it("en Recorrido al presionar vestidor del gato abre la hoja del compañero en el armario", async () => {
+    renderRoot();
+    await flush();
+
+    const nav = host.querySelector("nav.app-nav");
+    const journeyBtn = nav?.querySelector<HTMLButtonElement>('[data-dest="journey"]');
+    expect(journeyBtn).toBeTruthy();
+
+    await import("./components/Journey");
+    await act(async () => journeyBtn!.click());
+    await flush();
+    await flush();
+
+    expect(host.querySelector(".journey-sheet")).toBeTruthy();
+
+    const closetBtn = host.querySelector<HTMLButtonElement>(
+      "button[aria-label='Abrir vestidor del gato']",
+    );
+    expect(closetBtn).toBeTruthy();
+
+    await act(async () => closetBtn!.click());
+    await flush();
+
+    // La hoja del compañero se monta y muestra el armario
+    expect(host.querySelector(".sheet.sheet--stage")).toBeTruthy();
+    expect(host.querySelector("#companion-panel-closet")).toBeTruthy();
   });
 
   it("enlace con token abre directamente el destino Perfil", async () => {
