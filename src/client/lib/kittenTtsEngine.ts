@@ -137,7 +137,7 @@ export async function downloadKittenModel(
         if (value) {
           chunks.push(value);
           receivedLength += value.length;
-          const percent = Math.min(100, Math.round((receivedLength / contentLength) * 100));
+          const percent = Math.min(99, Math.max(0, Math.round((receivedLength / contentLength) * 100)));
           onProgress?.({ status: "downloading", percent });
         }
       }

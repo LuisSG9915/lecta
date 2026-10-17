@@ -169,11 +169,13 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
   if (data.type === "init") {
     try {
       if (data.modelBuffer) {
-        // Carga dinámica de ONNX Runtime Web
-        const ort = await import("onnxruntime-web");
-        onnxSession = await ort.InferenceSession.create(data.modelBuffer, {
+        // Carga dinámica de ONNX Runtime Web (solo runtime WASM ligero para CPU)
+        const ort = await import("onnxruntime-web/wasm");
+        ort.env.wasm.numThreads = 1; // Evita requerir SharedArrayBuffer / COOP-COEP
+        ort.env.wasm.proxy = false;
+        onnxSession = (await ort.InferenceSession.create(data.modelBuffer, {
           executionProviders: ["wasm"],
-        });
+        })) as unknown as OnnxInferenceSession;
       }
       self.postMessage({ type: "init_done" } satisfies WorkerResponse);
     } catch (err) {
@@ -201,7 +203,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
       }
 
       if (onnxSession) {
-        const ort = await import("onnxruntime-web");
+        const ort = await import("onnxruntime-web/wasm");
         const tokenIds = textToTokenIds(cleanText);
         const inputName = onnxSession.inputNames[0] || "input_ids";
         const feeds: Record<string, unknown> = {

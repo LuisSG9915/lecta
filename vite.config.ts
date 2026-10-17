@@ -1,9 +1,68 @@
 import { cloudflare } from "@cloudflare/vite-plugin";
 import react from "@vitejs/plugin-react";
 import { createHash } from "node:crypto";
-import { readdirSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { defineConfig, type Plugin } from "vite";
+
+// Excluye binarios WebGPU/JSEP y cualquier artefacto que exceda el límite
+// de 25 MiB de Cloudflare Workers (por ejemplo ort-wasm-simd-threaded.jsep.wasm de 27 MiB).
+function excludeOversizedOnnxAssets(): Plugin {
+  const MAX_ASSET_SIZE_BYTES = 24 * 1024 * 1024; // 24 MiB
+
+  return {
+    name: "exclude-oversized-onnx-assets",
+    generateBundle(_, bundle) {
+      for (const [fileName, item] of Object.entries(bundle)) {
+        const isJsepOrAsyncify =
+          fileName.includes(".jsep.") || fileName.includes("asyncify.wasm");
+        let isOversized = false;
+        if (item.type === "asset") {
+          const byteLength =
+            typeof item.source === "string"
+              ? Buffer.byteLength(item.source)
+              : item.source.byteLength;
+          if (byteLength > MAX_ASSET_SIZE_BYTES) {
+            isOversized = true;
+          }
+        }
+        if (isJsepOrAsyncify || isOversized) {
+          delete bundle[fileName];
+        }
+      }
+    },
+    writeBundle(options) {
+      const targetDirs = [
+        options.dir ? join(options.dir, "assets") : null,
+        join(process.cwd(), "dist/client/assets"),
+      ].filter((d): d is string => !!d);
+
+      for (const assetsDir of targetDirs) {
+        if (!existsSync(assetsDir)) continue;
+        try {
+          const files = readdirSync(assetsDir, { withFileTypes: true });
+          for (const file of files) {
+            if (file.isFile()) {
+              const fullPath = join(assetsDir, file.name);
+              const shouldRemoveName =
+                file.name.includes(".jsep.") || file.name.includes("asyncify.wasm");
+              if (shouldRemoveName) {
+                unlinkSync(fullPath);
+                continue;
+              }
+              const stats = statSync(fullPath);
+              if (stats.size > MAX_ASSET_SIZE_BYTES) {
+                unlinkSync(fullPath);
+              }
+            }
+          }
+        } catch {
+          // Ignorar si el directorio de assets no está disponible en este ciclo
+        }
+      }
+    },
+  };
+}
 
 // Emite dist/client/sw-manifest.json tras el build del cliente: la
 // lista de archivos estáticos que el service worker precachea para
@@ -47,5 +106,5 @@ function swManifest(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [react(), cloudflare(), swManifest()],
+  plugins: [react(), cloudflare(), excludeOversizedOnnxAssets(), swManifest()],
 });

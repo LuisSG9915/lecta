@@ -106,6 +106,7 @@ self.addEventListener("activate", function (event) {
           return Promise.all(
             keys.map(function (key) {
               if (
+                key !== "lecta-kitten-tts-v1" &&
                 (key.indexOf("lecta-") === 0 || key.indexOf(CACHE_PREFIX) === 0) &&
                 (!keep || key !== keep)
               ) {
