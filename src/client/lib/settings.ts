@@ -270,6 +270,10 @@ export interface ReaderSettings {
   visualPacer: boolean;
   /** Velocidad del marcapasos visual en palabras por minuto (WPM). */
   pacerWpm: number;
+  /** Preset de lectura activo ('clean' | 'adhd' | 'guided' | 'custom'). */
+  readingPreset?: ReadingPreset;
+  /** Guía de color / guía cromática. */
+  colorGuide?: boolean;
 }
 
 export const READER_DEFAULTS: ReaderSettings = {
@@ -357,11 +361,13 @@ export function applyReadingPreset(
     case "clean":
       return {
         ...current,
+        readingPreset: "clean",
         strategyPreset: "clean",
         focusRuler: false,
         paragraphFocus: false,
         syntacticLines: false,
         chromaticGuide: false,
+        colorGuide: false,
         bionicAnchors: false,
         focusMode: "off",
         visualPacer: false,
@@ -372,12 +378,14 @@ export function applyReadingPreset(
     case "adhd":
       return {
         ...current,
+        readingPreset: "adhd",
         strategyPreset: "adhd",
         paragraphFocus: true,
         bionicAnchors: true,
         focusRuler: false,
         syntacticLines: false,
         chromaticGuide: false,
+        colorGuide: false,
         focusMode: "paragraph",
         visualPacer: false,
         highlightLexical: false,
@@ -387,9 +395,11 @@ export function applyReadingPreset(
     case "guided":
       return {
         ...current,
+        readingPreset: "guided",
         strategyPreset: "guided",
         syntacticLines: true,
         chromaticGuide: true,
+        colorGuide: true,
         paragraphFocus: false,
         focusRuler: false,
         bionicAnchors: false,
@@ -685,6 +695,8 @@ export function parseReaderSettings(raw: string | null): ReaderSettings {
         typeof v.pacerWpm === "number" && v.pacerWpm >= 60 && v.pacerWpm <= 600
           ? v.pacerWpm
           : 210,
+      ...(v.readingPreset !== undefined ? { readingPreset: v.readingPreset } : {}),
+      ...(v.colorGuide !== undefined ? { colorGuide: v.colorGuide } : {}),
     };
   } catch {
     return READER_DEFAULTS;

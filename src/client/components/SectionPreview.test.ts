@@ -335,4 +335,28 @@ describe("SectionPreview", () => {
       expect(props.onConfirm).toHaveBeenCalled();
     });
   });
+
+  describe("mode === 'pill'", () => {
+    it("renderiza únicamente la pastilla discreta y llama a onExpand al pulsar", () => {
+      const onExpand = vi.fn();
+      const props = base({
+        mode: "pill",
+        onExpand,
+        words: [row("es:uno"), row("es:dos"), row("es:tres")],
+      });
+      render(props);
+
+      const pill = host.querySelector<HTMLButtonElement>(".reader-section-preview-pill");
+      expect(pill).toBeTruthy();
+      expect(pill?.textContent).toBe("✨ 3 palabras clave en este capítulo · Ver");
+      expect(host.querySelector(".dialog-scrim")).toBeNull();
+      expect(host.querySelector(".portico-overlay")).toBeNull();
+
+      act(() => {
+        pill?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      });
+      expect(onExpand).toHaveBeenCalled();
+    });
+  });
 });
+

@@ -3,6 +3,7 @@ import { act, createElement as h } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import ReaderMoreMenu, { type ReaderMoreMenuProps } from "./ReaderMoreMenu";
+import { READER_DEFAULTS } from "../lib/settings";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -185,4 +186,44 @@ describe("ReaderMoreMenu", () => {
     await act(async () => pills[1].click());
     expect(onStrategyContrastChange).toHaveBeenCalledWith("balanced");
   });
+
+  it("renderiza los 3 botones rápidos de presets y llama a onUpdateSettings con el preset aplicado", async () => {
+    const onUpdateSettings = vi.fn();
+    render({ settings: READER_DEFAULTS, onUpdateSettings });
+
+    const cards = host.querySelectorAll<HTMLButtonElement>(".reader-mode-card");
+    expect(cards.length).toBe(3);
+    expect(cards[0].textContent).toContain("Lectura Limpia");
+    expect(cards[1].textContent).toContain("Enfoque TDAH");
+    expect(cards[2].textContent).toContain("Ritmo Guiado");
+
+    await act(async () => cards[1].click());
+    expect(onUpdateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        readingPreset: "adhd",
+        paragraphFocus: true,
+        syntacticLines: false,
+      }),
+    );
+  });
+
+  it("cambiar cualquiera de los switches individuales establece readingPreset: 'custom'", async () => {
+    const onUpdateSettings = vi.fn();
+    render({ settings: READER_DEFAULTS, onUpdateSettings });
+
+    const focusRulerSwitch = host.querySelector<HTMLInputElement>('input[aria-label="focusRuler"]');
+    expect(focusRulerSwitch).toBeTruthy();
+
+    await act(async () => {
+      focusRulerSwitch!.click();
+    });
+
+    expect(onUpdateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        focusRuler: true,
+        readingPreset: "custom",
+      }),
+    );
+  });
 });
+

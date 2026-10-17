@@ -241,6 +241,7 @@ import {
 import { translateParagraph } from "../lib/translate";
 import { ReaderRecapBubble } from "./ReaderRecapBubble";
 import { BilingueParagraph } from "./BilingueParagraph";
+import { kittenTtsEngine } from "../lib/kittenTtsEngine";
 import TtsConsentDialog from "./TtsConsentDialog";
 import SmartReaderDock from "./SmartReaderDock";
 import WordPanel from "./WordPanel";
@@ -647,8 +648,8 @@ export default function Reader({
   // Predicción de la sección visible (marcas punteadas en el texto).
   // Null mientras no haya análisis aplicable.
   const [prediction, setPrediction] = useState<SectionPrediction | null>(null);
-  const [analyzing, setAnalyzing] = useState(false);
-  const [enriching, setEnriching] = useState<{
+  const [_analyzing, setAnalyzing] = useState(false);
+  const [_enriching, setEnriching] = useState<{
     index: number;
     done: number;
     total: number;
@@ -2134,9 +2135,7 @@ export default function Reader({
         if (bookRef.current !== book) return;
       }
       if (opening === "prepare") {
-        setPrepNotice(null);
-        void openPrepSheet(target, record);
-        return;
+        opening = "notice";
       }
       if (opening === "notice" || opening === "summary") {
         if (opening === "summary" && record)
@@ -2773,6 +2772,22 @@ export default function Reader({
   const ttsRef = useRef<TtsController | null>(null);
   const [ttsSnap, setTtsSnap] = useState<TtsSnapshot>(TTS_IDLE);
   const [ttsConsentOpen, setTtsConsentOpen] = useState(false);
+  const [ttsDownloadProgress, setTtsDownloadProgress] = useState<number | null>(null);
+  const [isKittenModelDownloaded, setIsKittenModelDownloaded] = useState(false);
+
+  useEffect(() => {
+    if (ttsConsentOpen) {
+      void kittenTtsEngine.isModelDownloaded().then((downloaded) => {
+        setIsKittenModelDownloaded(downloaded);
+      });
+    }
+  }, [ttsConsentOpen]);
+
+  const handleDeleteTtsModel = async () => {
+    await kittenTtsEngine.removeDownloadedModel();
+    setIsKittenModelDownloaded(false);
+    setTtsDownloadProgress(null);
+  };
   const ttsFns = useRef({
     navigate,
     trackEvent,
@@ -3114,6 +3129,17 @@ export default function Reader({
         // la entrada viene del registro, no de una reanudación.
         bookStartRef.current = entry.kind === "target" ? start : null;
         if (entry.kind === "ask" && catalog.targets.length) {
+          const suggested =
+            suggestedChapterTarget(catalog, title) ??
+            catalog.targets.find((t) => t.kind === "chapter") ??
+            catalog.targets[0];
+          if (suggested) {
+            void navigate("initial", {
+              index: suggested.sectionIndex,
+              fragment: suggested.fragment,
+            });
+            return;
+          }
           setAskStart(true);
           onStatus("");
           return;
@@ -3785,6 +3811,9 @@ export default function Reader({
     isLastPageInBook: sectionIndex + 1 >= sectionTotal,
     reducedMotion: companion.reducedMotion,
     onTurnPage: goPage,
+    onCenterTap: () => {
+      setBarsVisible((prev) => !prev);
+    },
   });
 
   // Espejo del modo para callbacks estables (guardado, teclado,
@@ -4462,10 +4491,15 @@ export default function Reader({
       if (
         (patch.focusRuler !== undefined ||
           patch.paragraphFocus !== undefined ||
-          patch.syntacticLines !== undefined) &&
-        patch.strategyPreset === undefined
+          patch.syntacticLines !== undefined ||
+          patch.chromaticGuide !== undefined ||
+          (patch as Record<string, unknown>).colorGuide !== undefined) &&
+        (patch.strategyPreset === undefined || patch.readingPreset === undefined)
       ) {
-        presetPatch = { strategyPreset: "custom" };
+        presetPatch = {
+          strategyPreset: patch.strategyPreset ?? "custom",
+          readingPreset: "custom",
+        };
       }
       const next = { ...current, ...patch, ...presetPatch };
       if (patch.focusRuler === true) {
@@ -5481,26 +5515,11 @@ export default function Reader({
       {/* Pastilla discreta "Antes de leer" arriba del texto del capítulo (Regla 2 Zero-Friction) */}
       {prepNotice && !prep && !resumeCard && !isDeepReading && barsShown ? (
         <div className="reader-section-preview-pill-container" role="status">
-          <button
-            type="button"
-            className="reader-section-preview-pill"
-            onClick={openPrepManual}
-            aria-label={`Ver vocabulario clave de ${prepNotice.target.label}`}
-          >
-            <span>
-              ✨{" "}
-              {enriching && enriching.index === sectionIndex
-                ? `Definiendo ${enriching.done} de ${enriching.total}…`
-                : analyzing
-                  ? `Preparando vocabulario de ${prepNotice.target.label}…`
-                  : prepNotice.summary
-                    ? `Vocabulario revisado de ${prepNotice.target.label}`
-                    : prepNotice.count != null
-                      ? `${prepNotice.count} palabras clave en este capítulo`
-                      : `Palabras clave de ${prepNotice.target.label}`}
-            </span>
-            <span className="pill-cta">· Ver</span>
-          </button>
+          <SectionPreview
+            mode="pill"
+            words={Array.from({ length: prepNotice.count ?? 0 })}
+            onExpand={openPrepManual}
+          />
           <button
             type="button"
             className="reader-return-dismiss"
@@ -6694,6 +6713,8 @@ export default function Reader({
                 onClose={closeSheet}
                 strategyContrast={settings.strategyContrast}
                 onStrategyContrastChange={(contrast) => updateSettings({ strategyContrast: contrast })}
+                settings={settings}
+                onUpdateSettings={(updated) => updateSettings(updated)}
               />
 
               <div className="setting-section">
@@ -7189,6 +7210,9 @@ export default function Reader({
         <TtsConsentDialog
           onAccept={onTtsConsentAccept}
           onDismiss={() => setTtsConsentOpen(false)}
+          downloadProgress={ttsDownloadProgress}
+          isModelDownloaded={isKittenModelDownloaded}
+          onDeleteModel={() => void handleDeleteTtsModel()}
         />
       ) : null}
       {quoteCard ? (

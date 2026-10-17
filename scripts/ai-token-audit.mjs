@@ -329,7 +329,101 @@ async function loadCatalog(forms) {
   }
 }
 
+const CHARS_PER_TOKEN_ES = 3.8;
+
+const ZERO_FRICTION_SCENARIOS = [
+  {
+    task: 'word_context',
+    label: 'Tarjeta Única WordPanel (1 toque)',
+    sampleInputChars: 190,
+    promptOverheadChars: 95,
+    maxOutputTokens: 75,
+    callsPerSession: 6,
+  },
+  {
+    task: 'paragraph_translate',
+    label: 'Doble Toque Traducir Párrafo (EN -> ES)',
+    sampleInputChars: 520,
+    promptOverheadChars: 75,
+    maxOutputTokens: 260,
+    callsPerSession: 4,
+  },
+  {
+    task: 'page_recap',
+    label: '🐱 ¿En qué me quedé? (15s sin spoilers)',
+    sampleInputChars: 2100,
+    promptOverheadChars: 130,
+    maxOutputTokens: 140,
+    callsPerSession: 1,
+  },
+  {
+    task: 'character_cards',
+    label: '👥 ¿Quién está en esta página?',
+    sampleInputChars: 1200,
+    promptOverheadChars: 115,
+    maxOutputTokens: 120,
+    callsPerSession: 1,
+  },
+];
+
+const TASK_BUDGETS = {
+  word_context: { maxInputChars: 280, maxOutputTokens: 75, temperature: 0.15 },
+  paragraph_translate: { maxInputChars: 900, maxOutputTokens: 260, temperature: 0.10 },
+  page_recap: { maxInputChars: 2400, maxOutputTokens: 140, temperature: 0.25 },
+  character_cards: { maxInputChars: 1600, maxOutputTokens: 120, temperature: 0.20 },
+};
+
+export function runZeroFrictionTokenAudit() {
+  let totalSessionInputTokens = 0;
+  let totalSessionOutputTokens = 0;
+
+  for (const s of ZERO_FRICTION_SCENARIOS) {
+    const budget = TASK_BUDGETS[s.task];
+    if (budget && s.maxOutputTokens > budget.maxOutputTokens) {
+      throw new Error(
+        `Presupuesto excedido en ${s.task}: maxOutputTokens=${s.maxOutputTokens} supera el tope de ${budget.maxOutputTokens}`,
+      );
+    }
+  }
+
+  const rows = ZERO_FRICTION_SCENARIOS.map((s) => {
+    const estInputTokens = Math.ceil(
+      (s.sampleInputChars + s.promptOverheadChars) / CHARS_PER_TOKEN_ES,
+    );
+    const sessionIn = estInputTokens * s.callsPerSession;
+    const sessionOut = s.maxOutputTokens * s.callsPerSession;
+    totalSessionInputTokens += sessionIn;
+    totalSessionOutputTokens += sessionOut;
+
+    return {
+      Tarea: s.label,
+      'Tokens Entrada/Llamada': estInputTokens,
+      'Tope Salida (maxOutputTokens)': s.maxOutputTokens,
+      'Llamadas/Sesión': s.callsPerSession,
+      'Total Tokens/Sesión': sessionIn + sessionOut,
+    };
+  });
+
+  console.log("\n==================================================================");
+  console.log("       LECTA — AUDITORÍA ZERO-FRICTION DE TOKENS (FASE 3)");
+  console.log("==================================================================");
+  console.table(rows);
+  console.log(
+    `📊 Presupuesto Total Estimado por Sesión de Lectura: ${
+      totalSessionInputTokens + totalSessionOutputTokens
+    } tokens (Entrada: ${totalSessionInputTokens}, Salida máx: ${totalSessionOutputTokens})\n`,
+  );
+}
+
 async function main() {
+  try {
+    if (!process.env.DATABASE_URL) {
+      process.loadEnvFile?.(path.join(ROOT, ".env"));
+    }
+  } catch {}
+
+  runZeroFrictionTokenAudit();
+
   await mkdir(OUT_DIR, { recursive: true });
   if (SUMMARIZE) {
     const callsPath = path.join(OUT_DIR, "calls.json");
@@ -344,7 +438,13 @@ async function main() {
     return;
   }
   const epubPath = path.resolve(ROOT, EPUB);
-  const epubBytes = await readFile(epubPath);
+  let epubBytes;
+  try {
+    epubBytes = await readFile(epubPath);
+  } catch (err) {
+    console.warn(`Aviso: No se pudo leer EPUB (${epubPath}): ${err.message}`);
+    return;
+  }
   const epubSha = createHash("sha256").update(epubBytes).digest("hex");
   const zip = new ZipReader(new BlobReader(new Blob([epubBytes])));
   const entries = await zip.getEntries();
@@ -359,7 +459,14 @@ async function main() {
     (form) => !isStopword(form, LANGUAGE),
   );
   const capitals = capitalOnly(words);
-  const catalog = await loadCatalog(forms);
+
+  let catalog;
+  try {
+    catalog = await loadCatalog(forms);
+  } catch (err) {
+    console.warn(`Aviso: No se pudo conectar a la base de datos para la auditoría de catálogo (${err.message}). Omitiendo captura.`);
+    return;
+  }
   const prediction = predict(forms, catalog);
   const legacy = legacyCandidates(prediction, capitals);
   const improved = improvedCandidates(prediction, capitals);

@@ -20,14 +20,14 @@ export type SectionPreviewAnalysis = "loading" | "ready" | "error";
 
 export type SectionPreviewProps = {
   // Destino que se prepara («Capítulo 1», «Introducción»…).
-  title: string;
-  analysis: SectionPreviewAnalysis;
+  title?: string;
+  analysis?: SectionPreviewAnalysis;
   // Filas en el orden visual fijo: no se reordenan ni desaparecen
   // al responderlas; si llega una definición tardía se actualiza en
   // su lugar (misma `key`).
-  rows: SectionPreviewRow[];
+  rows?: SectionPreviewRow[];
   // Respuestas controladas por el controlador (borrador incluido).
-  answers: PreparationAnswers;
+  answers?: PreparationAnswers;
   // Consulta secundaria: formas que el catálogo no sabe medir. Se
   // muestran colapsadas para no saturar la selección principal.
   uncertainRows?: SectionPreviewRow[];
@@ -38,21 +38,21 @@ export type SectionPreviewProps = {
   // El controlador anota qué filas quedaron realmente visibles
   // (trayecto): se dispara al abrir y cada vez que crece lo visible.
   onRowsPresented?: (rows: SectionPreviewRow[]) => void;
-  saving: boolean;
+  saving?: boolean;
   // La definición/contexto se consulta desplegada en la misma
   // preparación; nunca se abre la ficha encima.
-  onAnswer: (key: string, answer: PreparationAnswer) => void;
+  onAnswer?: (key: string, answer: PreparationAnswer) => void;
   // «Guardar y leer»: confirma las respuestas explícitas.
-  onConfirm: () => void;
+  onConfirm?: () => void;
   // «Leer sin preparar»: salida siempre alcanzable, sin evidencia.
-  onSkip: () => void;
+  onSkip?: () => void;
   // Reintenta el análisis tras un error.
-  onRetry: () => void;
+  onRetry?: () => void;
   // Cerrar conserva el borrador (lo persiste el controlador).
-  onClose: () => void;
+  onClose?: () => void;
   // Descarte explícito del borrador; el componente lo confirma en la
   // misma hoja, sin apilar otro diálogo.
-  onDiscard: () => void;
+  onDiscard?: () => void;
   // Tiempo estimado de lectura del capítulo (minutos)
   estimatedMinutes?: number;
   // Estrategia preseleccionada sugerida para el capítulo
@@ -61,6 +61,9 @@ export type SectionPreviewProps = {
   onSelectStrategy?: (preset: ReadingStrategyPreset) => void;
   // Notificación al desbloquear una joya léxica
   onUnlockCard?: (row: SectionPreviewRow) => void;
+  mode?: "pill" | "modal";
+  words?: SectionPreviewRow[] | { length: number };
+  onExpand?: () => void;
 };
 
 const PAGE_SIZE = 8;
@@ -148,25 +151,40 @@ function Row({
 // vocabulario del destino y pide una respuesta explícita por palabra.
 // No escribe ni consulta nada: el controlador decide qué se guarda.
 export default function SectionPreview({
-  title,
-  analysis,
-  rows,
-  answers,
+  title = "",
+  analysis = "ready",
+  rows = [],
+  answers = {},
   uncertainRows,
   deferredRows,
   onRowsPresented,
-  saving,
-  onAnswer,
-  onConfirm,
-  onSkip,
-  onRetry,
-  onClose,
-  onDiscard,
+  saving = false,
+  onAnswer = () => {},
+  onConfirm = () => {},
+  onSkip = () => {},
+  onRetry = () => {},
+  onClose = () => {},
+  onDiscard = () => {},
   estimatedMinutes,
   initialStrategy,
   onSelectStrategy,
   onUnlockCard,
+  mode = "modal",
+  words = rows,
+  onExpand,
 }: SectionPreviewProps) {
+  if (mode === "pill") {
+    return (
+      <button
+        type="button"
+        className="reader-section-preview-pill"
+        onClick={onExpand}
+      >
+        ✨ {words.length} palabras clave en este capítulo · Ver
+      </button>
+    );
+  }
+
   const companion = useCompanionSafe();
   const [showAll, setShowAll] = useState(false);
   const [showUncertain, setShowUncertain] = useState(false);

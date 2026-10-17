@@ -103,4 +103,39 @@ describe("TtsConsentDialog", () => {
     });
     expect(onDismiss).toHaveBeenCalledTimes(2);
   });
+
+  it("renderiza el porcentaje de progreso cuando downloadProgress={45}", () => {
+    render({
+      onAccept: vi.fn(),
+      onDismiss: vi.fn(),
+      downloadProgress: 45,
+    });
+
+    const progress = container.querySelector('[role="progressbar"]');
+    expect(progress).toBeTruthy();
+    expect(progress?.getAttribute("aria-valuenow")).toBe("45");
+    expect(container.textContent).toContain("Descargando Voz Neural HD (Offline)... 45%");
+  });
+
+  it("renderiza y dispara onDeleteModel cuando isModelDownloaded={true}", () => {
+    const onDeleteModel = vi.fn();
+    render({
+      onAccept: vi.fn(),
+      onDismiss: vi.fn(),
+      isModelDownloaded: true,
+      onDeleteModel,
+    });
+
+    const deleteBtn = Array.from(container.querySelectorAll("button")).find((btn) =>
+      btn.textContent?.includes("Borrar datos de voz offline"),
+    );
+    expect(deleteBtn).toBeTruthy();
+    expect(deleteBtn?.textContent).toContain("🗑️ Borrar datos de voz offline (~24 MB)");
+
+    act(() => {
+      deleteBtn?.click();
+    });
+    expect(onDeleteModel).toHaveBeenCalledTimes(1);
+  });
 });
+

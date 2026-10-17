@@ -13,6 +13,21 @@ const RELOAD_DEBOUNCE_MS = 15_000;
 const CONTROLLER_RELOAD_KEY = "lecta_sw_controller_ts";
 const MISMATCH_RELOAD_KEY = "lecta_sw_mismatch_ts";
 
+/**
+ * Lista blanca de nombres de cachés de datos descargables (DLC)
+ * que deben ser preservados permanentemente durante la purga de cachés del SW.
+ */
+export const PERSISTENT_DLC_CACHE_NAMES = [
+  "lecta-kitten-tts-v1",
+  "lecta-offline-dict-v1",
+] as const;
+
+export type PersistentDlcCacheName = (typeof PERSISTENT_DLC_CACHE_NAMES)[number];
+
+export function isPersistentDlcCache(cacheName: string): boolean {
+  return (PERSISTENT_DLC_CACHE_NAMES as readonly string[]).includes(cacheName);
+}
+
 export function shouldAllowReload(key: string, storage?: Storage): boolean {
   try {
     const s = storage ?? (typeof window !== "undefined" ? window.sessionStorage : undefined);

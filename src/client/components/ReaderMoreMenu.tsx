@@ -1,5 +1,12 @@
 import { useEffect, useRef } from "react";
-import type { StrategyContrast } from "../lib/settings";
+import {
+  applyReadingPreset,
+  detectActiveReadingPreset,
+  READING_PRESETS,
+  type ReaderSettings,
+  type ReadingPreset,
+  type StrategyContrast,
+} from "../lib/settings";
 import Icon from "./Icon";
 import OfflineDictionaryControl from "./OfflineDictionaryControl";
 
@@ -22,6 +29,12 @@ export interface ReaderMoreMenuProps {
   embedded?: boolean;
   strategyContrast?: StrategyContrast;
   onStrategyContrastChange?: (contrast: StrategyContrast) => void;
+  settings?: ReaderSettings;
+  onUpdateSettings?: (settings: ReaderSettings) => void;
+  onToggleFocusRuler?: (val: boolean) => void;
+  onToggleParagraphFocus?: (val: boolean) => void;
+  onToggleSyntacticLines?: (val: boolean) => void;
+  onToggleColorGuide?: (val: boolean) => void;
 }
 
 export default function ReaderMoreMenu({
@@ -43,6 +56,12 @@ export default function ReaderMoreMenu({
   embedded = false,
   strategyContrast = "high",
   onStrategyContrastChange,
+  settings,
+  onUpdateSettings,
+  onToggleFocusRuler,
+  onToggleParagraphFocus,
+  onToggleSyntacticLines,
+  onToggleColorGuide,
 }: ReaderMoreMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -225,6 +244,120 @@ export default function ReaderMoreMenu({
           </button>
         </div>
       </div>
+
+      {settings && onUpdateSettings ? (
+        <div className="reader-more-presets-section">
+          <div className="reader-more-presets-header">
+            <span className="reader-more-presets-title">Modos de lectura</span>
+          </div>
+          <div className="reader-mode-cards" role="group" aria-label="Modos de lectura">
+            {READING_PRESETS.map((preset) => {
+              const active =
+                settings.readingPreset === preset.id ||
+                detectActiveReadingPreset(settings) === preset.id;
+              return (
+                <button
+                  key={preset.id}
+                  type="button"
+                  className={`reader-mode-card ${active ? "is-active" : ""}`}
+                  aria-pressed={active}
+                  onClick={() => {
+                    const updated = applyReadingPreset(
+                      settings,
+                      preset.id as Exclude<ReadingPreset, "custom">,
+                    );
+                    onUpdateSettings(updated);
+                  }}
+                >
+                  <span className="reader-mode-card-icon" aria-hidden="true">{preset.icon}</span>
+                  <strong className="reader-mode-card-title">{preset.label}</strong>
+                </button>
+              );
+            })}
+          </div>
+
+          <details className="strategy-accordion reader-more-customize">
+            <summary>
+              <span>Personalizar</span>
+            </summary>
+            <div className="strategy-accordion-body">
+              <label className="setting-row">
+                <span className="setting-label">Regla de lectura</span>
+                <input
+                  type="checkbox"
+                  role="switch"
+                  aria-label="focusRuler"
+                  checked={Boolean(settings.focusRuler)}
+                  onChange={(e) => {
+                    onToggleFocusRuler?.(e.target.checked);
+                    onUpdateSettings({
+                      ...settings,
+                      focusRuler: e.target.checked,
+                      readingPreset: "custom",
+                      strategyPreset: "custom",
+                    });
+                  }}
+                />
+              </label>
+              <label className="setting-row">
+                <span className="setting-label">Foco de párrafo</span>
+                <input
+                  type="checkbox"
+                  role="switch"
+                  aria-label="paragraphFocus"
+                  checked={Boolean(settings.paragraphFocus)}
+                  onChange={(e) => {
+                    onToggleParagraphFocus?.(e.target.checked);
+                    onUpdateSettings({
+                      ...settings,
+                      paragraphFocus: e.target.checked,
+                      readingPreset: "custom",
+                      strategyPreset: "custom",
+                    });
+                  }}
+                />
+              </label>
+              <label className="setting-row">
+                <span className="setting-label">Líneas sintácticas</span>
+                <input
+                  type="checkbox"
+                  role="switch"
+                  aria-label="syntacticLines"
+                  checked={Boolean(settings.syntacticLines)}
+                  onChange={(e) => {
+                    onToggleSyntacticLines?.(e.target.checked);
+                    onUpdateSettings({
+                      ...settings,
+                      syntacticLines: e.target.checked,
+                      readingPreset: "custom",
+                      strategyPreset: "custom",
+                    });
+                  }}
+                />
+              </label>
+              <label className="setting-row">
+                <span className="setting-label">Guía de color</span>
+                <input
+                  type="checkbox"
+                  role="switch"
+                  aria-label="colorGuide"
+                  checked={Boolean(settings.colorGuide || settings.chromaticGuide)}
+                  onChange={(e) => {
+                    onToggleColorGuide?.(e.target.checked);
+                    onUpdateSettings({
+                      ...settings,
+                      chromaticGuide: e.target.checked,
+                      colorGuide: e.target.checked,
+                      readingPreset: "custom",
+                      strategyPreset: "custom",
+                    });
+                  }}
+                />
+              </label>
+            </div>
+          </details>
+        </div>
+      ) : null}
 
       {bookHash ? (
         <div className="reader-more-offline-section">

@@ -2,27 +2,41 @@ import { useState, useEffect } from "react";
 import type { TtsEngineMode } from "../lib/ttsTypes";
 import { downloadKittenModel, kittenTtsEngine } from "../lib/kittenTtsEngine";
 
+export interface TtsConsentDialogProps {
+  onAccept: (engine?: TtsEngineMode) => void;
+  onDismiss: () => void;
+  downloadProgress?: number | null; // 0 a 100
+  isModelDownloaded?: boolean;
+  onDeleteModel?: () => void;
+}
+
 // Diálogo de consentimiento y preparación de «Leer en voz alta»:
 // Explica la voz neural KittenTTS (~24 MB, descargada una sola vez y guardada
 // offline en CacheStorage) frente a la voz ligera del sistema (0 MB).
 export default function TtsConsentDialog({
   onAccept,
   onDismiss,
-}: {
-  onAccept: (engine?: TtsEngineMode) => void;
-  onDismiss: () => void;
-}) {
+  downloadProgress,
+  isModelDownloaded,
+  onDeleteModel,
+}: TtsConsentDialogProps) {
   const [downloading, setDownloading] = useState(false);
   const [percent, setPercent] = useState(0);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  const isDownloadingProp =
+    typeof downloadProgress === "number" &&
+    downloadProgress >= 0 &&
+    downloadProgress <= 99;
+  const isBusy = downloading || isDownloadingProp;
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !downloading) onDismiss();
+      if (event.key === "Escape" && !isBusy) onDismiss();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [onDismiss, downloading]);
+  }, [onDismiss, isBusy]);
 
   const handleDownloadNeural = async () => {
     setDownloading(true);
@@ -50,7 +64,7 @@ export default function TtsConsentDialog({
     <div
       className="tts-consent-backdrop"
       onClick={() => {
-        if (!downloading) onDismiss();
+        if (!isBusy) onDismiss();
       }}
     >
       <div
@@ -69,7 +83,37 @@ export default function TtsConsentDialog({
           sin conexión. Lecta jamás envía el texto de tus libros a servidores externos.
         </p>
 
-        {downloading ? (
+        {isDownloadingProp ? (
+          <div className="tts-consent-progress" style={{ margin: "var(--s-3) 0" }}>
+            <div
+              className="tts-progress-bar"
+              role="progressbar"
+              aria-valuenow={downloadProgress}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              style={{
+                height: "8px",
+                background: "var(--paper-sunken, #e4e2dd)",
+                borderRadius: "4px",
+                overflow: "hidden",
+                margin: "var(--s-2) 0",
+              }}
+            >
+              <div
+                className="tts-progress-fill"
+                style={{
+                  width: `${downloadProgress}%`,
+                  height: "100%",
+                  background: "var(--accent-primary, #c86d3b)",
+                  transition: "width 0.2s ease",
+                }}
+              />
+            </div>
+            <p className="tts-progress-text" style={{ fontSize: "var(--fs-xs)", color: "var(--ink-soft)" }}>
+              Descargando Voz Neural HD (Offline)... {downloadProgress}%
+            </p>
+          </div>
+        ) : downloading ? (
           <div className="tts-consent-progress" style={{ margin: "var(--s-3) 0" }}>
             <div
               className="tts-progress-bar"
@@ -108,7 +152,7 @@ export default function TtsConsentDialog({
         ) : null}
 
         <div className="tts-consent-actions" style={{ display: "flex", flexDirection: "column", gap: "var(--s-2)", marginTop: "var(--s-4)" }}>
-          {!downloading ? (
+          {!isBusy ? (
             <>
               <button
                 type="button"
@@ -127,6 +171,17 @@ export default function TtsConsentDialog({
               >
                 Usar voz ligera del sistema (0 MB)
               </button>
+              {isModelDownloaded && onDeleteModel ? (
+                <button
+                  type="button"
+                  className="btn--quiet tts-delete-model-btn"
+                  onClick={onDeleteModel}
+                  aria-label="Borrar datos de voz offline"
+                  style={{ color: "var(--accent-danger, #d94848)" }}
+                >
+                  🗑️ Borrar datos de voz offline (~24 MB)
+                </button>
+              ) : null}
               <button
                 type="button"
                 className="btn--quiet"

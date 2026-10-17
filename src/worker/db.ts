@@ -13,6 +13,7 @@ export type WorkerEnv = {
   RESEND_FROM_EMAIL?: string;
   BOOKS?: R2Bucket;
   ENRICHMENT_WORKFLOW?: Workflow<{ forms: string[]; language?: string }>;
+  DB?: D1Database;
 };
 
 // La conexión vive solo dentro de la petición: los Workers no pueden

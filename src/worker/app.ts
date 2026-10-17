@@ -63,6 +63,14 @@ import {
   parseVerify,
   requestEnrichment,
   sanitizeTipContext,
+  AI_TASK_BUDGETS,
+  buildParagraphTranslationPrompt,
+} from "./ai";
+export {
+  buildContextualWordPrompt,
+  buildParagraphTranslationPrompt,
+  buildPageRecapPrompt,
+  buildCharacterCardsPrompt,
 } from "./ai";
 import { createAuth } from "./auth";
 import { isStopword } from "../shared/stopwords";
@@ -86,6 +94,84 @@ import {
 } from "./kindle/routes";
 
 export const app = new Hono<{ Bindings: WorkerEnv }>();
+
+// ---------- Caché Deduplicado de IA por Hash SHA-256 (LRU 300) ----------
+
+const workerAiMemoryCache = new Map<string, string>();
+const MAX_WORKER_AI_CACHE = 300;
+
+export async function computeAiCacheKey(
+  task: string,
+  payload: string,
+): Promise<string> {
+  const normalized = `${task}::${payload.trim().toLowerCase().replace(/\s+/g, ' ')}`;
+  const data = new TextEncoder().encode(normalized);
+  const digest = await crypto.subtle.digest('SHA-256', data);
+  const hex = Array.from(new Uint8Array(digest))
+    .slice(0, 12)
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+  return `ai:${task}:${hex}`;
+}
+
+export function getCachedAiText(key: string): string | null {
+  const hit = workerAiMemoryCache.get(key);
+  if (hit !== undefined) {
+    workerAiMemoryCache.delete(key);
+    workerAiMemoryCache.set(key, hit);
+    return hit;
+  }
+  return null;
+}
+
+export function setCachedAiText(key: string, value: string): void {
+  workerAiMemoryCache.delete(key);
+  if (workerAiMemoryCache.size >= MAX_WORKER_AI_CACHE) {
+    const oldest = workerAiMemoryCache.keys().next().value;
+    if (oldest) workerAiMemoryCache.delete(oldest);
+  }
+  workerAiMemoryCache.set(key, value);
+}
+
+/**
+ * Soporte opcional de lectura en persistencia D1 (si está configurada context.env.DB)
+ */
+export async function getCachedAiTextFromD1(
+  d1: D1Database | undefined,
+  key: string,
+): Promise<string | null> {
+  if (!d1) return null;
+  try {
+    const row = await d1
+      .prepare("SELECT value FROM ai_cache WHERE key = ? LIMIT 1")
+      .bind(key)
+      .first<{ value: string }>();
+    return row?.value ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Soporte opcional de escritura en persistencia D1 (si está configurada context.env.DB)
+ */
+export async function setCachedAiTextToD1(
+  d1: D1Database | undefined,
+  key: string,
+  value: string,
+): Promise<void> {
+  if (!d1) return;
+  try {
+    await d1
+      .prepare(
+        "INSERT INTO ai_cache (key, value, created_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      )
+      .bind(key, value, Date.now())
+      .run();
+  } catch {
+    // Si la tabla no existe o falla D1, el LRU en memoria ya protegió la llamada
+  }
+}
 
 // Cabeceras anti-caché para respuestas HTML servidas por el worker
 app.use("*", async (c, next) => {
@@ -739,7 +825,8 @@ app.post("/api/lexicon/explain", async (context) => {
     return context.json({ error: "Inicia sesión para pedir explicaciones." }, 401);
 
   const cacheKey = `${language}:${nativeLanguage}:${form.toLowerCase()}:${contextText}`;
-  const cached = explainCache.get(cacheKey);
+  const shaKey = await computeAiCacheKey("word_context", `${language}:${nativeLanguage}:${form}:${contextText}`);
+  const cached = getCachedAiText(shaKey) ?? explainCache.get(cacheKey) ?? (await getCachedAiTextFromD1(context.env.DB, shaKey));
   if (cached) return context.json({ explanation: cached, cached: true });
 
   const allowed = await consumeRateUnits(
@@ -755,13 +842,19 @@ app.post("/api/lexicon/explain", async (context) => {
       429,
     );
 
+  const budget = AI_TASK_BUDGETS.word_context;
+
   const ai = await callDeepSeek(
     context.env,
     {
       system: buildExplainSystemPrompt(language, nativeLanguage),
       user: buildExplainPrompt(form, language, contextText, nativeLanguage),
     },
-    EXPLAIN_CALL_OPTIONS,
+    {
+      ...EXPLAIN_CALL_OPTIONS,
+      maxTokens: budget.maxOutputTokens,
+      temperature: budget.temperature,
+    },
   );
   const parsed =
     ai.ok && ai.finishReason !== "length" ? parseExplain(ai.content) : null;
@@ -796,6 +889,8 @@ app.post("/api/lexicon/explain", async (context) => {
   if (!parsed)
     return context.json({ error: "La IA no devolvió una explicación válida." }, 502);
   explainCache.set(cacheKey, parsed.explanation);
+  setCachedAiText(shaKey, parsed.explanation);
+  await setCachedAiTextToD1(context.env.DB, shaKey, parsed.explanation);
   return context.json({ explanation: parsed.explanation });
 });
 
@@ -1176,17 +1271,30 @@ app.post("/api/ai/page-recap", async (context) => {
     return context.json({ error: "Se requiere el texto de la página para resumir." }, 400);
   }
 
+  const cacheKey = await computeAiCacheKey("page_recap", `${bookTitle ?? ""}::${chapterTitle ?? ""}::${text}`);
+  const cached = getCachedAiText(cacheKey) ?? (await getCachedAiTextFromD1(context.env.DB, cacheKey));
+  if (cached) {
+    try {
+      return context.json({ ...JSON.parse(cached), cached: true });
+    } catch {}
+  }
+
   if (!context.env.DEEPSEEK_API_KEY) {
     return context.json(deterministicPageRecapFallback(text));
   }
 
+  const budget = AI_TASK_BUDGETS.page_recap;
   const ai = await callDeepSeek(
     context.env,
     {
       system: PAGE_RECAP_SYSTEM_PROMPT,
       user: buildPageRecapPrompt({ text, bookTitle, chapterTitle }),
     },
-    PAGE_RECAP_CALL_OPTIONS,
+    {
+      ...PAGE_RECAP_CALL_OPTIONS,
+      maxTokens: budget.maxOutputTokens,
+      temperature: budget.temperature,
+    },
   );
 
   const parsed = ai.ok ? parsePageRecap(ai.content) : null;
@@ -1194,6 +1302,9 @@ app.post("/api/ai/page-recap", async (context) => {
     return context.json(deterministicPageRecapFallback(text));
   }
 
+  const serialized = JSON.stringify(parsed);
+  setCachedAiText(cacheKey, serialized);
+  await setCachedAiTextToD1(context.env.DB, cacheKey, serialized);
   return context.json(parsed);
 });
 
@@ -1207,24 +1318,37 @@ app.post("/api/ai/translate", async (context) => {
     return context.json({ error: "Se requiere texto para traducir." }, 400);
   }
 
+  const cacheKey = await computeAiCacheKey("paragraph_translate", `${from}:${to}:${text}`);
+  const cached = getCachedAiText(cacheKey) ?? (await getCachedAiTextFromD1(context.env.DB, cacheKey));
+  if (cached) {
+    return context.json({ translation: cached, cached: true });
+  }
+
   if (!context.env.DEEPSEEK_API_KEY) {
     return context.json({ translation: text });
   }
+
+  const { prompt, budget } = buildParagraphTranslationPrompt(text);
 
   const ai = await callDeepSeek(
     context.env,
     {
       system: `Eres un traductor literario bilingüe de ${from} a ${to}. Traduce el siguiente párrafo con fluidez, elegancia y fidelidad literaria. Devuelve ÚNICAMENTE la traducción directa, sin notas ni explicaciones.`,
-      user: text,
+      user: prompt,
     },
     {
       operation: "explain_passage",
       promptVersion: "bilingual_v1",
-      maxTokens: 512,
+      maxTokens: budget.maxOutputTokens,
+      temperature: budget.temperature,
     },
   );
 
   const translation = ai.ok && ai.content ? ai.content.trim() : text;
+  if (ai.ok && ai.content) {
+    setCachedAiText(cacheKey, translation);
+    await setCachedAiTextToD1(context.env.DB, cacheKey, translation);
+  }
   return context.json({ translation });
 });
 
@@ -1249,6 +1373,13 @@ app.post("/api/ai/character-recap", async (context) => {
   }
 
   const cacheKey = `${entityName.toLowerCase()}::${(bookTitle ?? "").toLowerCase()}::${excerptsSoFar.join("|").toLowerCase()}`;
+  const shaKey = await computeAiCacheKey("character_cards", `${entityName}::${bookTitle ?? ""}::${excerptsSoFar.join("|")}`);
+  const cachedSha = getCachedAiText(shaKey) ?? (await getCachedAiTextFromD1(context.env.DB, shaKey));
+  if (cachedSha) {
+    try {
+      return context.json({ ...JSON.parse(cachedSha), cached: true });
+    } catch {}
+  }
   const cached = characterRecapCache.get(cacheKey);
   if (cached) return context.json({ ...cached, cached: true });
 
@@ -1272,13 +1403,18 @@ app.post("/api/ai/character-recap", async (context) => {
     return context.json(deterministicCharacterRecapFallback(entityName, excerptsSoFar));
   }
 
+  const budget = AI_TASK_BUDGETS.character_cards;
   const ai = await callDeepSeek(
     context.env,
     {
       system: CHARACTER_RECAP_SYSTEM_PROMPT,
       user: buildCharacterRecapPrompt({ entityName, bookTitle, currentChapterTitle, excerptsSoFar }),
     },
-    CHARACTER_RECAP_CALL_OPTIONS,
+    {
+      ...CHARACTER_RECAP_CALL_OPTIONS,
+      maxTokens: budget.maxOutputTokens,
+      temperature: budget.temperature,
+    },
   );
 
   const parsed = ai.ok && ai.finishReason !== "length" ? parseCharacterRecap(ai.content) : null;
@@ -1293,6 +1429,9 @@ app.post("/api/ai/character-recap", async (context) => {
   }
 
   characterRecapCache.set(cacheKey, parsed);
+  const serialized = JSON.stringify(parsed);
+  setCachedAiText(shaKey, serialized);
+  await setCachedAiTextToD1(context.env.DB, shaKey, serialized);
   return context.json(parsed);
 });
 

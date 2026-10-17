@@ -241,4 +241,76 @@ describe("usePageGesture", () => {
     expect(container.getAttribute("data-dragging")).toBeNull();
     expect(onTurn).not.toHaveBeenCalled();
   });
+
+  it("invoca onCenterTap en tap simple en zona central", () => {
+    const onCenterTap = vi.fn();
+    act(() => {
+      root.render(h(TestHarness, { onCenterTap }));
+    });
+    const viewport = host.querySelector(".page-viewport") as HTMLElement;
+    Object.defineProperty(viewport, "getBoundingClientRect", {
+      value: () => ({ left: 0, width: 400, top: 0, height: 600, right: 400, bottom: 600 }),
+    });
+
+    act(() => {
+      viewport.dispatchEvent(
+        createPointerEvent("pointerdown", {
+          pointerId: 1,
+          pointerType: "touch",
+          isPrimary: true,
+          clientX: 200,
+          clientY: 200,
+          bubbles: true,
+        }, 100),
+      );
+      viewport.dispatchEvent(
+        createPointerEvent("pointerup", {
+          pointerId: 1,
+          pointerType: "touch",
+          clientX: 200,
+          clientY: 200,
+          bubbles: true,
+        }, 120),
+      );
+    });
+
+    expect(onCenterTap).toHaveBeenCalledTimes(1);
+  });
+
+  it("no invoca onCenterTap si el toque ocurre en zona lateral o sobre elemento interactivo", () => {
+    const onCenterTap = vi.fn();
+    act(() => {
+      root.render(h(TestHarness, { onCenterTap }));
+    });
+    const viewport = host.querySelector(".page-viewport") as HTMLElement;
+    Object.defineProperty(viewport, "getBoundingClientRect", {
+      value: () => ({ left: 0, width: 400, top: 0, height: 600, right: 400, bottom: 600 }),
+    });
+
+    // Toque lateral izquierdo (clientX: 50 < 25% de 400)
+    act(() => {
+      viewport.dispatchEvent(
+        createPointerEvent("pointerdown", {
+          pointerId: 1,
+          pointerType: "touch",
+          isPrimary: true,
+          clientX: 50,
+          clientY: 200,
+          bubbles: true,
+        }, 100),
+      );
+      viewport.dispatchEvent(
+        createPointerEvent("pointerup", {
+          pointerId: 1,
+          pointerType: "touch",
+          clientX: 50,
+          clientY: 200,
+          bubbles: true,
+        }, 120),
+      );
+    });
+
+    expect(onCenterTap).not.toHaveBeenCalled();
+  });
 });
+

@@ -5,6 +5,7 @@ import {
   rubberBand,
   settleDuration,
   swipeOutcome,
+  tapZone,
 } from "./page-gesture";
 
 export interface UsePageGestureOptions {
@@ -18,6 +19,7 @@ export interface UsePageGestureOptions {
   isLastPageInBook: boolean;
   reducedMotion: boolean;
   onTurnPage: (delta: number) => Promise<unknown> | void;
+  onCenterTap?: () => void;
 }
 
 interface PointerDragState {
@@ -43,6 +45,7 @@ export function usePageGesture({
   isLastPageInBook,
   reducedMotion,
   onTurnPage,
+  onCenterTap,
 }: UsePageGestureOptions) {
   const dragRef = useRef<PointerDragState | null>(null);
   const shouldSuppressClick = useRef(false);
@@ -232,7 +235,24 @@ export function usePageGesture({
       if (!drag || e.pointerId !== drag.id) return;
       dragRef.current = null;
 
-      if (!drag.swiping) return;
+      if (!drag.swiping) {
+        const dx = Math.abs(e.clientX - drag.startX);
+        const dy = Math.abs(e.clientY - drag.startY);
+        if (dx < 15 && dy < 15) {
+          const sel = window.getSelection()?.toString().trim();
+          if (!sel) {
+            const target = e.target as HTMLElement | null;
+            if (!target?.closest("a, button, input, [data-word]")) {
+              const rect = viewport.getBoundingClientRect();
+              const zone = tapZone(e.clientX, rect);
+              if (zone === "center") {
+                onCenterTap?.();
+              }
+            }
+          }
+        }
+        return;
+      }
 
       try {
         viewport.releasePointerCapture?.(e.pointerId);
@@ -323,5 +343,6 @@ export function usePageGesture({
     isLastPageInBook,
     reducedMotion,
     onTurnPage,
+    onCenterTap,
   ]);
 }

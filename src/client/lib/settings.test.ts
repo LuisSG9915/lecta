@@ -18,6 +18,7 @@ import {
   hasExplicitNativeLanguage,
   readerProfileFor,
   READER_DEFAULTS,
+  applyReadingPreset,
   applyStrategyPreset,
   isStrategyPresetActive,
 } from "./settings";
@@ -480,3 +481,62 @@ describe("applyTheme", () => {
     expect(document.documentElement.dataset.theme).toBe("papel");
   });
 });
+
+describe("applyReadingPreset", () => {
+  it("'clean' apaga todas las ayudas visuales", () => {
+    const customized = {
+      ...READER_DEFAULTS,
+      focusRuler: true,
+      paragraphFocus: true,
+      syntacticLines: true,
+      chromaticGuide: true,
+      colorGuide: true,
+      bionicAnchors: true,
+      visualPacer: true,
+      highlightLexical: true,
+    };
+    const res = applyReadingPreset(customized, "clean");
+    expect(res.focusRuler).toBe(false);
+    expect(res.paragraphFocus).toBe(false);
+    expect(res.syntacticLines).toBe(false);
+    expect(res.chromaticGuide).toBe(false);
+    expect(res.colorGuide).toBe(false);
+    expect(res.bionicAnchors).toBe(false);
+    expect(res.visualPacer).toBe(false);
+    expect(res.highlightLexical).toBe(false);
+    expect(res.readingPreset).toBe("clean");
+  });
+
+  it("'adhd' activa paragraphFocus y desactiva syntacticLines / colorGuide", () => {
+    const initial = {
+      ...READER_DEFAULTS,
+      syntacticLines: true,
+      chromaticGuide: true,
+      colorGuide: true,
+      paragraphFocus: false,
+    };
+    const res = applyReadingPreset(initial, "adhd");
+    expect(res.paragraphFocus).toBe(true);
+    expect(res.syntacticLines).toBe(false);
+    expect(res.colorGuide).toBe(false);
+    expect(res.chromaticGuide).toBe(false);
+    expect(res.readingPreset).toBe("adhd");
+  });
+
+  it("'guided' activa syntacticLines y colorGuide y desactiva paragraphFocus", () => {
+    const initial = {
+      ...READER_DEFAULTS,
+      paragraphFocus: true,
+      syntacticLines: false,
+      colorGuide: false,
+      chromaticGuide: false,
+    };
+    const res = applyReadingPreset(initial, "guided");
+    expect(res.syntacticLines).toBe(true);
+    expect(res.colorGuide).toBe(true);
+    expect(res.chromaticGuide).toBe(true);
+    expect(res.paragraphFocus).toBe(false);
+    expect(res.readingPreset).toBe("guided");
+  });
+});
+

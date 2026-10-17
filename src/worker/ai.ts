@@ -105,10 +105,63 @@ export const AI_CALL_LIMITS = {
   character_recap: 256,
 } as const satisfies Record<DeepSeekOperation, number>;
 
+export type LectaAiTaskType =
+  | 'word_context'
+  | 'paragraph_translate'
+  | 'page_recap'
+  | 'character_cards';
+
+export interface AiTaskBudget {
+  task: LectaAiTaskType;
+  maxInputChars: number;
+  maxOutputTokens: number;
+  temperature: number;
+}
+
+export const AI_TASK_BUDGETS: Record<LectaAiTaskType, AiTaskBudget> = {
+  word_context: {
+    task: 'word_context',
+    maxInputChars: 280,
+    maxOutputTokens: 75,
+    temperature: 0.15,
+  },
+  paragraph_translate: {
+    task: 'paragraph_translate',
+    maxInputChars: 900,
+    maxOutputTokens: 260,
+    temperature: 0.1,
+  },
+  page_recap: {
+    task: 'page_recap',
+    maxInputChars: 2400,
+    maxOutputTokens: 140,
+    temperature: 0.25,
+  },
+  character_cards: {
+    task: 'character_cards',
+    maxInputChars: 1600,
+    maxOutputTokens: 120,
+    temperature: 0.2,
+  },
+};
+
+/**
+ * Recorta el texto de entrada al presupuesto máximo de caracteres de la tarea
+ * sin cortar palabras a la mitad.
+ */
+export function clampInputText(text: string, maxChars: number): string {
+  const clean = text.replace(/\s+/g, ' ').trim();
+  if (clean.length <= maxChars) return clean;
+  const sliced = clean.slice(0, maxChars);
+  const lastSpace = sliced.lastIndexOf(' ');
+  return lastSpace > maxChars * 0.7 ? sliced.slice(0, lastSpace) : sliced;
+}
+
 export type DeepSeekCallOptions = {
   operation: DeepSeekOperation;
   promptVersion: string;
   maxTokens: number;
+  temperature?: number;
   // Reintentos: las pruebas inyectan sleep para no esperar de verdad;
   // en producción se usa el temporizador real.
   retry?: {
@@ -289,7 +342,7 @@ export async function callDeepSeek(
     },
     body: JSON.stringify({
       model: ENRICHMENT_MODEL,
-      temperature: 0.1,
+      temperature: options.temperature ?? 0.1,
       max_tokens: options.maxTokens,
       // El modo thinking viene activado por defecto en la API actual;
       // para fichas breves en JSON solo encarece y retrasa, y además
@@ -1032,15 +1085,32 @@ Reglas:
 - "hookQuestion": una pregunta sugerente que despierte la curiosidad para seguir leyendo sin spoilers.
 - Máximo 90 tokens en total. Tono empático, lúcido y literario.`;
 
+export function buildPageRecapPrompt(
+  recentPagesText: string,
+): { prompt: string; budget: AiTaskBudget };
 export function buildPageRecapPrompt(input: {
   text: string;
   bookTitle?: string;
   chapterTitle?: string;
-}): string {
+}): string;
+export function buildPageRecapPrompt(
+  inputOrText: string | { text: string; bookTitle?: string; chapterTitle?: string },
+): { prompt: string; budget: AiTaskBudget } | string {
+  if (typeof inputOrText === "string") {
+    const budget = AI_TASK_BUDGETS.page_recap;
+    const safeText = clampInputText(inputOrText, budget.maxInputChars);
+
+    const prompt =
+      `Resume en exactamente 3 viñetas cortas (máx 12 palabras por viñeta) qué acaba de ocurrir ` +
+      `en estas páginas para retomar la lectura. Prohibido inventar o adelantar hechos:\n` +
+      safeText;
+
+    return { prompt, budget };
+  }
   const parts: string[] = [];
-  if (input.bookTitle) parts.push(`Libro: «${input.bookTitle}»`);
-  if (input.chapterTitle) parts.push(`Capítulo: «${input.chapterTitle}»`);
-  parts.push(`Texto actual de la página:\n«${input.text.trim().slice(0, 1500)}»`);
+  if (inputOrText.bookTitle) parts.push(`Libro: «${inputOrText.bookTitle}»`);
+  if (inputOrText.chapterTitle) parts.push(`Capítulo: «${inputOrText.chapterTitle}»`);
+  parts.push(`Texto actual de la página:\n«${inputOrText.text.trim().slice(0, 1500)}»`);
   return parts.join("\n");
 }
 
@@ -1161,5 +1231,61 @@ export function deterministicCharacterRecapFallback(
     fallback: true,
   };
 }
+
+// ---------- Generadores de Prompts Comprimidos (Zero-Friction / Fase 3) ----------
+
+/**
+ * 1. Prompt ultra-compacto para Tarjeta Única de Palabra (WordPanel.tsx)
+ */
+export function buildContextualWordPrompt(
+  word: string,
+  sentence: string,
+  lang: 'es' | 'en' = 'es',
+): { prompt: string; budget: AiTaskBudget } {
+  const budget = AI_TASK_BUDGETS.word_context;
+  const safeWord = clampInputText(word, 45);
+  const safeSentence = clampInputText(sentence, budget.maxInputChars);
+
+  const prompt =
+    `Explica en español claro (máx 18 palabras) qué significa "${safeWord}" (${lang}) ` +
+    `exactamente en esta frase: "${safeSentence}". Sin introducciones.`;
+
+  return { prompt, budget };
+}
+
+/**
+ * 2. Prompt ultra-compacto para Doble Toque en Párrafo (BilingueParagraph.tsx / translate.ts)
+ */
+export function buildParagraphTranslationPrompt(
+  paragraph: string,
+): { prompt: string; budget: AiTaskBudget } {
+  const budget = AI_TASK_BUDGETS.paragraph_translate;
+  const safeParagraph = clampInputText(paragraph, budget.maxInputChars);
+
+  const prompt =
+    `Traduce al español manteniendo el tono literario. Devuelve SOLO la traducción:\n` +
+    safeParagraph;
+
+  return { prompt, budget };
+}
+
+/**
+ * 4. Prompt anti-spoilers para "¿Quién está en esta página?" (character-helper.ts)
+ */
+export function buildCharacterCardsPrompt(
+  names: string[],
+  priorMentionsSnippet: string,
+): { prompt: string; budget: AiTaskBudget } {
+  const budget = AI_TASK_BUDGETS.character_cards;
+  const safeNames = names.slice(0, 4).join(', ');
+  const safeContext = clampInputText(priorMentionsSnippet, budget.maxInputChars);
+
+  const prompt =
+    `Con base SOLO en este contexto previo del libro, describe en 1 línea corta (máx 12 palabras) ` +
+    `quién es cada uno (${safeNames}):\n${safeContext}`;
+
+  return { prompt, budget };
+}
+
 
 

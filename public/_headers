@@ -26,6 +26,29 @@
 /manifest.webmanifest
   Cache-Control: no-cache, must-revalidate
 
+# Modelos ONNX de Kitten TTS (DLC Offline): exponer Content-Length para barra de progreso 0-100%
+/models/*
+  Content-Type: application/octet-stream
+  Cache-Control: public, max-age=31536000, immutable
+  Access-Control-Expose-Headers: Content-Length, Content-Range
+  Accept-Ranges: bytes
+
+/*.onnx
+  Content-Type: application/octet-stream
+  Cache-Control: public, max-age=31536000, immutable
+  Access-Control-Expose-Headers: Content-Length, Content-Range
+  Accept-Ranges: bytes
+
+# Binarios WebAssembly (ONNX Runtime / Foliate)
+/*.wasm
+  Content-Type: application/wasm
+  Cache-Control: public, max-age=31536000, immutable
+
+# Fuentes tipográficas de lectura (Literata, Alegreya, Atkinson, OpenDyslexic, Source Serif)
+/assets/*.woff2
+  Content-Type: font/woff2
+  Cache-Control: public, max-age=31536000, immutable
+
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
 
@@ -33,10 +56,11 @@
   Cache-Control: public, max-age=86400
 
 /lexicon/*
-  Cache-Control: public, max-age=86400
+  Cache-Control: public, max-age=86400, stale-while-revalidate=604800
 
 /icons/*
   Cache-Control: public, max-age=86400
 
+# Audios del compañero gato y efectos sonoros
 /audio/*
-  Cache-Control: public, max-age=86400
+  Cache-Control: public, max-age=31536000, immutable

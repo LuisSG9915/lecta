@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { app } from "./app";
+import { app, computeAiCacheKey, getCachedAiText, setCachedAiText } from "./app";
 
 describe("GET /api/health", () => {
   it("returns the API status", async () => {
@@ -341,5 +341,85 @@ describe("Kindle HTML routes anti-cache headers", () => {
     expect(response.headers.get("Expires")).toBe("0");
   });
 });
+
+describe("Fase 3: Caché por Hash SHA-256 en Worker", () => {
+  it("computeAiCacheKey genera llaves deterministas por tarea y hash de 12 bytes hex", async () => {
+    const key1 = await computeAiCacheKey("paragraph_translate", "Hello world");
+    const key2 = await computeAiCacheKey("paragraph_translate", "  hello   world  ");
+    expect(key1).toBe(key2);
+    expect(key1).toMatch(/^ai:paragraph_translate:[0-9a-f]{24}$/);
+
+    const diffTask = await computeAiCacheKey("word_context", "Hello world");
+    expect(diffTask).not.toBe(key1);
+    expect(diffTask).toMatch(/^ai:word_context:[0-9a-f]{24}$/);
+  });
+
+  it("setCachedAiText y getCachedAiText almacenan y recuperan valores", async () => {
+    const key = await computeAiCacheKey("test_task", "sample payload");
+    expect(getCachedAiText(key)).toBeNull();
+
+    setCachedAiText(key, "Traducción almacenada");
+    expect(getCachedAiText(key)).toBe("Traducción almacenada");
+  });
+
+  it("limita el caché a 300 entradas desalojando la más antigua (LRU)", () => {
+    for (let i = 0; i < 305; i++) {
+      setCachedAiText(`test_key_${i}`, `val_${i}`);
+    }
+    // Las primeras 5 claves deberían haber sido desalojadas
+    expect(getCachedAiText("test_key_0")).toBeNull();
+    expect(getCachedAiText("test_key_4")).toBeNull();
+    // Las más recientes deben seguir en memoria
+    expect(getCachedAiText("test_key_304")).toBe("val_304");
+  });
+
+  it("POST /api/ai/translate devuelve respuesta en caché sin consumir tokens (cached: true)", async () => {
+    const text = "A gentle breeze rustled the leaves.";
+    const key = await computeAiCacheKey("paragraph_translate", "en:es:" + text);
+    setCachedAiText(key, "Una suave brisa susurró las hojas.");
+
+    const res = await app.request("/api/ai/translate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ text, from: "en", to: "es" }),
+    });
+
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as { translation: string; cached?: boolean };
+    expect(data.translation).toBe("Una suave brisa susurró las hojas.");
+    expect(data.cached).toBe(true);
+  });
+
+  it("POST /api/ai/page-recap devuelve respuesta en caché sin consumir tokens (cached: true)", async () => {
+    const text = "Página descriptiva para resumen.";
+    const key = await computeAiCacheKey("page_recap", "Libro A::Capítulo 1::" + text);
+    const sampleRecap = {
+      bullets: ["Acontecimiento 1.", "Acontecimiento 2."],
+      hookQuestion: "¿Qué sucederá luego?",
+    };
+    setCachedAiText(key, JSON.stringify(sampleRecap));
+
+    const res = await app.request("/api/ai/page-recap", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        text,
+        bookTitle: "Libro A",
+        chapterTitle: "Capítulo 1",
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const data = (await res.json()) as {
+      bullets: string[];
+      hookQuestion: string;
+      cached?: boolean;
+    };
+    expect(data.bullets).toEqual(sampleRecap.bullets);
+    expect(data.hookQuestion).toBe(sampleRecap.hookQuestion);
+    expect(data.cached).toBe(true);
+  });
+});
+
 
 

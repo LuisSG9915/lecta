@@ -76,11 +76,11 @@ export async function handleKindleLinkPage(c: any) {
   };
   kindleLinkCodes.set(code, record);
 
-  const db = (c.env as any).DB;
+  const db = (c.env as any)?.DB;
   if (db?.prepare) {
     try {
       await db.prepare(
-        `INSERT INTO kindle_link_codes (code, status, created_at) VALUES (?, 'pending', unixepoch())`
+        `INSERT INTO kindle_link_codes (code, status, created_at, expires_at) VALUES (?, 'pending', unixepoch(), unixepoch() + 600)`
       ).bind(code).run();
     } catch {}
   }
@@ -105,11 +105,11 @@ export async function handleKindleLinkAction(c: any) {
   }
 
   let record = kindleLinkCodes.get(code);
-  const db = (c.env as any).DB;
+  const db = (c.env as any)?.DB;
   if (!record && db?.prepare) {
     try {
       const d1Record = await db.prepare(
-        `SELECT * FROM kindle_link_codes WHERE code = ? AND status = 'pending'`
+        `SELECT * FROM kindle_link_codes WHERE code = ? AND status = 'pending' AND (expires_at IS NULL OR expires_at > unixepoch())`
       ).bind(code).first();
       if (d1Record) {
         record = {
@@ -150,8 +150,8 @@ export async function handleKindleLinkAction(c: any) {
   if (db?.prepare) {
     try {
       await db.prepare(
-        `UPDATE kindle_link_codes SET status = 'linked', user_token = ? WHERE code = ?`
-      ).bind(userSessionToken, code).run();
+        `UPDATE kindle_link_codes SET status = 'linked', user_id = ?, session_token = ? WHERE code = ?`
+      ).bind(session?.user?.id ?? null, userSessionToken, code).run();
     } catch {}
   }
 
@@ -166,8 +166,8 @@ export async function handleKindleStatus(c: any) {
   }
 
   let record = kindleLinkCodes.get(code);
-  const db = (c.env as any).DB;
-  if (!record && db?.prepare) {
+  const db = (c.env as any)?.DB;
+  if (db?.prepare) {
     try {
       const d1Record = await db.prepare(
         `SELECT * FROM kindle_link_codes WHERE code = ?`
@@ -175,10 +175,13 @@ export async function handleKindleStatus(c: any) {
       if (d1Record) {
         record = {
           code,
-          status: d1Record.status as any,
-          createdAt: Number(d1Record.created_at) * 1000 || Date.now(),
-          userToken: d1Record.user_token,
+          status: (d1Record.status as any) || record?.status || "pending",
+          createdAt: Number(d1Record.created_at) * 1000 || (record?.createdAt ?? Date.now()),
+          userToken: d1Record.session_token || d1Record.user_token || record?.userToken,
+          userId: d1Record.user_id || record?.userId,
+          redirectUrl: record?.redirectUrl,
         };
+        kindleLinkCodes.set(code, record);
       }
     } catch {}
   }

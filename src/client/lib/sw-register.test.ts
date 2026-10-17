@@ -1,6 +1,11 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { registerServiceWorker, shouldAllowReload } from "./sw-register";
+import {
+  registerServiceWorker,
+  shouldAllowReload,
+  PERSISTENT_DLC_CACHE_NAMES,
+  isPersistentDlcCache,
+} from "./sw-register";
 
 class MockServiceWorker extends EventTarget {
   state: ServiceWorkerState = "installing";
@@ -160,5 +165,58 @@ describe("registerServiceWorker", () => {
 
     const result = await registerServiceWorker();
     expect(result).toBeUndefined();
+  });
+
+  describe("PERSISTENT_DLC_CACHE_NAMES", () => {
+    it("incluye 'lecta-kitten-tts-v1' y 'lecta-offline-dict-v1'", () => {
+      expect(PERSISTENT_DLC_CACHE_NAMES).toContain("lecta-kitten-tts-v1");
+      expect(PERSISTENT_DLC_CACHE_NAMES).toContain("lecta-offline-dict-v1");
+      expect(isPersistentDlcCache("lecta-kitten-tts-v1")).toBe(true);
+      expect(isPersistentDlcCache("lecta-offline-dict-v1")).toBe(true);
+      expect(isPersistentDlcCache("lecta-v2-shell")).toBe(false);
+      expect(isPersistentDlcCache("lecta-v2-123")).toBe(false);
+    });
+
+    it("la estrategia de limpieza de cachés preserva siempre lecta-kitten-tts-v1 y lecta-offline-dict-v1", () => {
+      const activeKeys = [
+        "lecta-v2-10",
+        "lecta-v2-11",
+        "lecta-kitten-tts-v1",
+        "lecta-offline-dict-v1",
+        "unrelated-cache",
+      ];
+      const keep = "lecta-v2-11";
+      const persistentSet = new Set<string>(PERSISTENT_DLC_CACHE_NAMES);
+
+      const deleted: string[] = [];
+      for (const key of activeKeys) {
+        if (
+          !persistentSet.has(key) &&
+          (key.startsWith("lecta-") || key.startsWith("lecta-v2-")) &&
+          (!keep || key !== keep)
+        ) {
+          deleted.push(key);
+        }
+      }
+
+      expect(deleted).toEqual(["lecta-v2-10"]);
+      expect(deleted).not.toContain("lecta-kitten-tts-v1");
+      expect(deleted).not.toContain("lecta-offline-dict-v1");
+    });
+
+    it("public/sw.js incluye la protección de PERSISTENT_DLC_CACHES y el atajo para modelos .onnx", async () => {
+      const fs = await import("node:fs/promises");
+      const path = await import("node:path");
+      const swPath = path.resolve(process.cwd(), "public/sw.js");
+      const swCode = await fs.readFile(swPath, "utf-8");
+
+      expect(swCode).toContain("const KITTEN_TTS_CACHE = 'lecta-kitten-tts-v1';");
+      expect(swCode).toContain("const PERSISTENT_DLC_CACHES = new Set([");
+      expect(swCode).toContain("KITTEN_TTS_CACHE,");
+      expect(swCode).toContain("'lecta-offline-dict-v1',");
+      expect(swCode).toContain("!PERSISTENT_DLC_CACHES.has(key)");
+      expect(swCode).toContain("isKittenModelRequest(url)");
+      expect(swCode).toContain("caches.open(KITTEN_TTS_CACHE)");
+    });
   });
 });

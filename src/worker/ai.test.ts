@@ -38,6 +38,11 @@ import {
   sanitizeTipContext,
   STORY_CALL_OPTIONS,
   VERIFY_PROMPT_VERSION,
+  clampInputText,
+  AI_TASK_BUDGETS,
+  buildContextualWordPrompt,
+  buildParagraphTranslationPrompt,
+  buildCharacterCardsPrompt,
 } from "./ai";
 import type { WorkerEnv } from "./db";
 
@@ -1160,6 +1165,135 @@ describe("character-recap (Innovación 2)", () => {
     expect(CHARACTER_RECAP_CALL_OPTIONS.maxTokens).toBe(256);
   });
 });
+
+describe("Fase 3: Presupuestos Estrictos y Prompts Compactos Zero-Friction", () => {
+  describe("clampInputText", () => {
+    it("mantiene textos cortos intactos", () => {
+      expect(clampInputText("hola mundo", 20)).toBe("hola mundo");
+    });
+
+    it("normaliza espacios repetidos", () => {
+      expect(clampInputText("hola    mundo   literario", 50)).toBe("hola mundo literario");
+    });
+
+    it("recorta en el límite de palabra sin cortar por la mitad", () => {
+      const text = "Este es un fragmento de lectura que debe ser recortado con sumo cuidado";
+      const clamped = clampInputText(text, 35);
+      expect(clamped.length).toBeLessThanOrEqual(35);
+      expect(clamped).toBe("Este es un fragmento de lectura");
+    });
+
+    it("corta directamente si no hay espacio razonable", () => {
+      const text = "SupercalifragilisticoespialidosoExtraordinario";
+      const clamped = clampInputText(text, 20);
+      expect(clamped).toBe("Supercalifragilistic");
+    });
+  });
+
+  describe("AI_TASK_BUDGETS", () => {
+    it("define las 4 tareas con sus presupuestos exactos", () => {
+      expect(AI_TASK_BUDGETS.word_context).toEqual({
+        task: "word_context",
+        maxInputChars: 280,
+        maxOutputTokens: 75,
+        temperature: 0.15,
+      });
+
+      expect(AI_TASK_BUDGETS.paragraph_translate).toEqual({
+        task: "paragraph_translate",
+        maxInputChars: 900,
+        maxOutputTokens: 260,
+        temperature: 0.1,
+      });
+
+      expect(AI_TASK_BUDGETS.page_recap).toEqual({
+        task: "page_recap",
+        maxInputChars: 2400,
+        maxOutputTokens: 140,
+        temperature: 0.25,
+      });
+
+      expect(AI_TASK_BUDGETS.character_cards).toEqual({
+        task: "character_cards",
+        maxInputChars: 1600,
+        maxOutputTokens: 120,
+        temperature: 0.2,
+      });
+    });
+  });
+
+  describe("buildContextualWordPrompt", () => {
+    it("construye un prompt compacto con presupuesto word_context", () => {
+      const { prompt, budget } = buildContextualWordPrompt(
+        "abigarrado",
+        "El mercado ofrecía un espectáculo abigarrado y bullicioso.",
+        "es",
+      );
+      expect(budget).toEqual(AI_TASK_BUDGETS.word_context);
+      expect(prompt).toContain('significa "abigarrado" (es)');
+      expect(prompt).toContain('exactamente en esta frase: "El mercado ofrecía un espectáculo abigarrado y bullicioso."');
+      expect(prompt).toContain("Sin introducciones");
+      expect(prompt).toContain("máx 18 palabras");
+    });
+
+    it("recorta palabras y oraciones excesivamente largas", () => {
+      const longSentence = "palabra ".repeat(100);
+      const { prompt } = buildContextualWordPrompt("palabra", longSentence, "en");
+      expect(prompt.length).toBeLessThanOrEqual(280 + 130);
+      expect(prompt).toContain("(en)");
+    });
+  });
+
+  describe("buildParagraphTranslationPrompt", () => {
+    it("construye el prompt literario con presupuesto paragraph_translate", () => {
+      const paragraph = "The old town was shrouded in an ethereal mist as dawn broke over the silent towers.";
+      const { prompt, budget } = buildParagraphTranslationPrompt(paragraph);
+      expect(budget).toEqual(AI_TASK_BUDGETS.paragraph_translate);
+      expect(prompt).toContain("Traduce al español manteniendo el tono literario.");
+      expect(prompt).toContain("Devuelve SOLO la traducción:");
+      expect(prompt).toContain(paragraph);
+    });
+
+    it("recorta párrafos que excedan maxInputChars", () => {
+      const longPara = "A ".repeat(1200);
+      const { prompt } = buildParagraphTranslationPrompt(longPara);
+      expect(prompt.length).toBeLessThanOrEqual(900 + 80);
+    });
+  });
+
+  describe("buildPageRecapPrompt (sobrecarga comprimida)", () => {
+    it("cuando recibe string genera prompt comprimido con 3 viñetas y presupuesto", () => {
+      const pagesText = "Página 1: El viajero divisó la montaña. Página 2: Empezó a nevar copiosamente.";
+      const result = buildPageRecapPrompt(pagesText);
+      expect(typeof result).toBe("object");
+      expect(result.budget).toEqual(AI_TASK_BUDGETS.page_recap);
+      expect(result.prompt).toContain("Resume en exactamente 3 viñetas cortas");
+      expect(result.prompt).toContain("Prohibido inventar o adelantar hechos");
+      expect(result.prompt).toContain("Página 1: El viajero divisó la montaña.");
+    });
+
+    it("recorta textos de entrada que excedan 2400 caracteres", () => {
+      const longText = "Texto de página. ".repeat(250);
+      const result = buildPageRecapPrompt(longText);
+      expect(result.prompt.length).toBeLessThanOrEqual(2400 + 175);
+    });
+  });
+
+  describe("buildCharacterCardsPrompt", () => {
+    it("construye prompt anti-spoilers con presupuesto character_cards", () => {
+      const names = ["Aureliano", "Úrsula", "José Arcadio", "Pilar Ternera", "Rebeca"];
+      const snippet = "Aureliano trabajaba en los pescaditos de oro mientras Úrsula cuidaba la casa.";
+      const { prompt, budget } = buildCharacterCardsPrompt(names, snippet);
+      expect(budget).toEqual(AI_TASK_BUDGETS.character_cards);
+      expect(prompt).toContain("Con base SOLO en este contexto previo del libro");
+      expect(prompt).toContain("describe en 1 línea corta (máx 12 palabras)");
+      expect(prompt).toContain("Aureliano, Úrsula, José Arcadio, Pilar Ternera");
+      expect(prompt).not.toContain("Rebeca");
+      expect(prompt).toContain(snippet);
+    });
+  });
+});
+
 
 
 

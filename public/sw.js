@@ -13,6 +13,21 @@
 var CACHE_PREFIX = "lecta-v2-";
 var MANIFEST_URL = "/sw-manifest.json";
 var NAVIGATION_TIMEOUT_MS = 3500;
+const KITTEN_TTS_CACHE = 'lecta-kitten-tts-v1';
+
+// Lista blanca de cachés persistentes que NUNCA deben borrarse al actualizar la app
+const PERSISTENT_DLC_CACHES = new Set([
+  KITTEN_TTS_CACHE,
+  'lecta-offline-dict-v1',
+]);
+
+// Helper para detectar si una petición corresponde al modelo ONNX o datos DLC de Kitten TTS
+function isKittenModelRequest(url) {
+  return (
+    url.pathname.endsWith(".onnx") ||
+    url.pathname.indexOf("/models/") !== -1
+  );
+}
 
 // El único cache lecta-v2-* vigente (tras activate solo queda uno).
 // Se memoiza pero se re-resuelve si el global del worker se reinicia.
@@ -106,7 +121,7 @@ self.addEventListener("activate", function (event) {
           return Promise.all(
             keys.map(function (key) {
               if (
-                key !== "lecta-kitten-tts-v1" &&
+                !PERSISTENT_DLC_CACHES.has(key) &&
                 (key.indexOf("lecta-") === 0 || key.indexOf(CACHE_PREFIX) === 0) &&
                 (!keep || key !== keep)
               ) {
@@ -148,6 +163,27 @@ self.addEventListener("fetch", function (event) {
     url.pathname === "/k" ||
     url.pathname === "/sw.js"
   ) {
+    return;
+  }
+
+  // Ruta rápida para modelos .onnx de Kitten TTS:
+  // - Si ya fue descargado en 'lecta-kitten-tts-v1', servirlo al instante (incluso 100% offline).
+  // - Si aún no está descargado, pasar directo a red SIN clonar ni guardar en el caché de la app shell
+  //   para no duplicar 24 MB ni bloquear el ReadableStream de la barra de progreso.
+  if (isKittenModelRequest(url)) {
+    event.respondWith(
+      (async function () {
+        const dlcCache = await caches.open(KITTEN_TTS_CACHE);
+        const cachedModel =
+          (await dlcCache.match(req)) ||
+          (await dlcCache.match(url.pathname)) ||
+          (await dlcCache.match(req, { ignoreSearch: true }));
+        if (cachedModel) {
+          return cachedModel;
+        }
+        return fetch(req);
+      })()
+    );
     return;
   }
 
