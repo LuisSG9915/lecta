@@ -232,7 +232,7 @@ export default function Account({
       });
       const data = (await res.json().catch(() => null)) as { success?: boolean; error?: string } | null;
       if (res.ok && data?.success) {
-        setKindlePairMessage("¡Kindle vinculado con éxito! Tu dispositivo se conectará automáticamente.");
+        setKindlePairMessage("✅ ¡Kindle conectado! Ya puedes leer en tu e-reader.");
         setKindleCode("");
       } else {
         setKindlePairError(data?.error || "Código inválido o expirado. Revisa tu Kindle.");
@@ -1607,7 +1607,7 @@ export default function Account({
                     className="btn btn--primary"
                     disabled={kindlePairLoading || kindleCode.trim().length !== 4}
                   >
-                    {kindlePairLoading ? "Vinculando..." : "Vincular"}
+                    {kindlePairLoading ? "Vinculando..." : "Vincular Kindle"}
                   </button>
                 </div>
                 {kindlePairMessage ? (

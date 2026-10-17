@@ -189,6 +189,7 @@ app.route("/", companion);
 app.route("/", catalog);
 app.route("/k", kindleRoutes);
 app.get("/kindle", handleKindleLinkPage);
+app.get("/kindle/verify", handleKindleStatus);
 app.get("/api/kindle/status", handleKindleStatus);
 app.post("/api/kindle/link", handleKindleLinkAction);
 app.get("/kindle/*", (context) => {

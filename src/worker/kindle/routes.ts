@@ -1,7 +1,7 @@
 // Rutas del portal Kindle y dispositivos E-ink para Lecta.
 // Servidas íntegramente con HTML/CSS ligero generado en el Cloudflare Worker.
 
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { getConnectionString, withClient, type WorkerEnv } from "../db";
 import { getSession } from "../session";
 import { createAuth } from "../auth";
@@ -35,60 +35,256 @@ import {
   type CatPageNoteItem,
 } from "./views";
 
-export interface KindleLinkRecord {
+export interface KindleCodeRecord {
   code: string;
-  status: "pending" | "linked" | "expired";
+  status: "pending" | "linked" | "consumed";
+  userId: string | null;
+  sessionToken: string | null;
   createdAt: number;
-  userToken?: string;
-  userId?: string;
+  expiresAt: number;
   redirectUrl?: string;
+  userToken?: string | null;
 }
 
-export const kindleLinkCodes = new Map<string, KindleLinkRecord>();
+export type KindleLinkRecord = KindleCodeRecord;
+
+// Respaldo en memoria para tests unitarios donde c.env.DB no está presente
+export const memoryCodeStore = new Map<string, KindleCodeRecord>();
+export const kindleLinkCodes = memoryCodeStore;
+
+const SAFE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // Sin I/1/O/0 para evitar confusión en tinta electrónica
+const CODE_TTL_SECONDS = 600; // 10 minutos
+
+export function generateFourCharKindleCode(): string {
+  let code = "";
+  const randomBytes = new Uint8Array(4);
+  crypto.getRandomValues(randomBytes);
+  for (let i = 0; i < 4; i++) {
+    code += SAFE_CHARS[randomBytes[i] % SAFE_CHARS.length];
+  }
+  return code;
+}
 
 export function cleanExpiredKindleCodes() {
-  const cutoff = Date.now() - 10 * 60_000;
-  for (const [code, rec] of kindleLinkCodes.entries()) {
-    if (rec.createdAt < cutoff) {
-      kindleLinkCodes.delete(code);
+  const nowSec = Math.floor(Date.now() / 1000);
+  for (const [code, rec] of memoryCodeStore.entries()) {
+    if (rec.expiresAt < nowSec) {
+      memoryCodeStore.delete(code);
     }
   }
 }
 
-export async function handleKindleLinkPage(c: any) {
+export async function createKindleLinkCode(
+  db?: D1Database,
+  customCode?: string,
+): Promise<KindleCodeRecord> {
+  const nowSec = Math.floor(Date.now() / 1000);
+  const code = (customCode ?? generateFourCharKindleCode()).toUpperCase();
+  const record: KindleCodeRecord = {
+    code,
+    status: "pending",
+    userId: null,
+    sessionToken: null,
+    userToken: null,
+    createdAt: nowSec,
+    expiresAt: nowSec + CODE_TTL_SECONDS,
+  };
+
+  memoryCodeStore.set(code, record);
+
+  if (db && typeof db.prepare === "function") {
+    try {
+      await db
+        .prepare(`DELETE FROM kindle_link_codes WHERE expires_at < ?`)
+        .bind(nowSec)
+        .run()
+        .catch(() => {});
+
+      await db
+        .prepare(
+          `INSERT INTO kindle_link_codes (code, status, user_id, session_token, created_at, expires_at)
+           VALUES (?, 'pending', NULL, NULL, ?, ?)
+           ON CONFLICT(code) DO UPDATE SET status = 'pending', user_id = NULL, session_token = NULL, created_at = excluded.created_at, expires_at = excluded.expires_at`,
+        )
+        .bind(code, nowSec, record.expiresAt)
+        .run();
+    } catch {
+      // En tests con mocks parciales de D1, el Map en memoria mantiene el flujo vivo
+    }
+  }
+
+  return record;
+}
+
+export async function linkKindleCodeFromMobile(params: {
+  db?: D1Database;
+  code: string;
+  userId: string;
+  sessionToken: string;
+  redirectUrl?: string;
+}): Promise<{ ok: boolean; error?: string; redirectUrl?: string }> {
+  const cleanCode = params.code.trim().toUpperCase();
+  const nowSec = Math.floor(Date.now() / 1000);
+
+  if (!/^[A-Z0-9]{4}$/.test(cleanCode)) {
+    return { ok: false, error: "El código debe tener 4 caracteres." };
+  }
+
+  // 1. Intentar actualizar en D1 si está disponible
+  if (params.db && typeof params.db.prepare === "function") {
+    try {
+      const row = await params.db
+        .prepare(
+          `SELECT code, status, expires_at FROM kindle_link_codes WHERE code = ? LIMIT 1`,
+        )
+        .bind(cleanCode)
+        .first<{ code: string; status: string; expires_at?: number }>();
+
+      if (row) {
+        if ((row.expires_at != null && row.expires_at < nowSec) || (row.status && row.status !== "pending")) {
+          return { ok: false, error: "Código expirado o ya utilizado." };
+        }
+        await params.db
+          .prepare(
+            `UPDATE kindle_link_codes
+             SET status = 'linked', user_id = ?, session_token = ?
+             WHERE code = ?`,
+          )
+          .bind(params.userId, params.sessionToken, cleanCode)
+          .run();
+
+        const mem = memoryCodeStore.get(cleanCode);
+        if (mem) {
+          mem.status = "linked";
+          mem.userId = params.userId;
+          mem.sessionToken = params.sessionToken;
+          mem.userToken = params.sessionToken;
+          if (params.redirectUrl) mem.redirectUrl = params.redirectUrl;
+        } else {
+          memoryCodeStore.set(cleanCode, {
+            code: cleanCode,
+            status: "linked",
+            userId: params.userId,
+            sessionToken: params.sessionToken,
+            userToken: params.sessionToken,
+            createdAt: nowSec,
+            expiresAt: nowSec + CODE_TTL_SECONDS,
+            redirectUrl: params.redirectUrl,
+          });
+        }
+        return { ok: true, redirectUrl: params.redirectUrl };
+      }
+    } catch {
+      // Fallback al store en memoria
+    }
+  }
+
+  // 2. Fallback en memoria (tests unitarios o dev local sin migración corrida)
+  const memRecord = memoryCodeStore.get(cleanCode);
+  if (!memRecord || (memRecord.expiresAt && memRecord.expiresAt < nowSec) || memRecord.status !== "pending") {
+    return { ok: false, error: "Código inválido o expirado." };
+  }
+
+  memRecord.status = "linked";
+  memRecord.userId = params.userId;
+  memRecord.sessionToken = params.sessionToken;
+  memRecord.userToken = params.sessionToken;
+  if (params.redirectUrl) memRecord.redirectUrl = params.redirectUrl;
+  return { ok: true, redirectUrl: params.redirectUrl };
+}
+
+export async function consumeLinkedKindleCode(
+  db: D1Database | undefined,
+  code: string,
+): Promise<{ status: "pending" | "linked" | "expired" | "not_found"; sessionToken?: string; userId?: string; redirectUrl?: string }> {
+  const cleanCode = code.trim().toUpperCase();
+  const nowSec = Math.floor(Date.now() / 1000);
+
+  if (db && typeof db.prepare === "function") {
+    try {
+      const row = await db
+        .prepare(
+          `SELECT code, status, user_id, session_token, expires_at
+           FROM kindle_link_codes WHERE code = ? LIMIT 1`,
+        )
+        .bind(cleanCode)
+        .first<{
+          code: string;
+          status: string;
+          user_id: string | null;
+          session_token: string | null;
+          expires_at?: number;
+        }>();
+
+      if (row) {
+        if (row.expires_at != null && row.expires_at < nowSec) return { status: "expired" };
+        if (row.status === "linked" && row.session_token) {
+          const mem = memoryCodeStore.get(cleanCode);
+          return {
+            status: "linked",
+            sessionToken: row.session_token,
+            userId: row.user_id ?? undefined,
+            redirectUrl: mem?.redirectUrl,
+          };
+        }
+        return { status: "pending" };
+      }
+    } catch {
+      // Fallback a memoria
+    }
+  }
+
+  const mem = memoryCodeStore.get(cleanCode);
+  if (!mem) return { status: "not_found" };
+  if (mem.expiresAt && mem.expiresAt < nowSec) return { status: "expired" };
+  if (mem.status === "linked" && (mem.sessionToken || mem.userToken)) {
+    return {
+      status: "linked",
+      sessionToken: (mem.sessionToken || mem.userToken) as string,
+      userId: mem.userId ?? undefined,
+      redirectUrl: mem.redirectUrl,
+    };
+  }
+  return { status: "pending" };
+}
+
+export async function handleKindleLinkPage(c: Context<{ Bindings: WorkerEnv }>) {
   cleanExpiredKindleCodes();
   const session = await getSession(c);
   if (session?.user) {
     return c.redirect("/k");
   }
 
-  // Generar código temporal de 4 letras al entrar a /kindle desde el e-reader
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // Sin O/0 ni I/1 para evitar confusiones
+  const queryCode = (c.req.query("code") || "").trim().toUpperCase();
   let code = "";
-  for (let i = 0; i < 4; i++) {
-    code += chars.charAt(Math.floor(Math.random() * chars.length));
+  if (queryCode && /^[A-Z0-9]{4}$/.test(queryCode)) {
+    const mem = memoryCodeStore.get(queryCode);
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (mem && mem.status === "pending" && mem.expiresAt > nowSec) {
+      code = queryCode;
+    } else if (c.env?.DB && typeof c.env.DB.prepare === "function") {
+      try {
+        const row = await c.env.DB.prepare(
+          `SELECT code, status, expires_at FROM kindle_link_codes WHERE code = ? AND status = 'pending' LIMIT 1`,
+        ).bind(queryCode).first<{ code: string; status: string; expires_at?: number }>();
+        if (row && (row.expires_at == null || row.expires_at > nowSec)) {
+          code = queryCode;
+        }
+      } catch {
+        /* ignore */
+      }
+    }
   }
 
-  const record: KindleLinkRecord = {
-    code,
-    status: "pending",
-    createdAt: Date.now(),
-  };
-  kindleLinkCodes.set(code, record);
-
-  const db = (c.env as any)?.DB;
-  if (db?.prepare) {
-    try {
-      await db.prepare(
-        `INSERT INTO kindle_link_codes (code, status, created_at, expires_at) VALUES (?, 'pending', unixepoch(), unixepoch() + 600)`
-      ).bind(code).run();
-    } catch {}
+  if (!code) {
+    const record = await createKindleLinkCode(c.env?.DB);
+    code = record.code;
   }
 
   return c.html(renderKindleLinkView({ code, user: null }));
 }
 
-export async function handleKindleLinkAction(c: any) {
+export async function handleKindleLinkAction(c: Context<{ Bindings: WorkerEnv }>) {
   cleanExpiredKindleCodes();
   const body = await c.req.json().catch(() => null);
   const code = typeof body?.code === "string" ? body.code.trim().toUpperCase() : "";
@@ -103,110 +299,121 @@ export async function handleKindleLinkAction(c: any) {
     const match = cookieHeader.match(/(?:better-auth\.session_token|__Secure-better-auth\.session_token)=([^;]+)/);
     if (match) userSessionToken = match[1];
   }
-
-  let record = kindleLinkCodes.get(code);
-  const db = (c.env as any)?.DB;
-  if (!record && db?.prepare) {
-    try {
-      const d1Record = await db.prepare(
-        `SELECT * FROM kindle_link_codes WHERE code = ? AND status = 'pending' AND (expires_at IS NULL OR expires_at > unixepoch())`
-      ).bind(code).first();
-      if (d1Record) {
-        record = {
-          code,
-          status: "pending",
-          createdAt: Number(d1Record.created_at) * 1000 || Date.now(),
-        };
-      }
-    } catch {}
-  }
-
-  if (!record || record.status !== "pending") {
-    return c.json({ error: "Código inválido o expirado" }, 400);
+  if (!userSessionToken && session?.user?.id) {
+    userSessionToken = `token_${session.user.id}_${Date.now()}`;
   }
 
   // Redirigir a la página exacta del libro actual si el usuario tiene posición previa
   let redirectUrl = "/k";
-  if (session?.user?.id) {
+  const userId = session?.user?.id;
+  if (userId) {
     try {
       const pos = await withClient(c.env, (client) =>
         client.query(
-          `SELECT book_hash AS "bookHash" FROM lecta_user_positions WHERE user_id = $1 ORDER BY updated_at DESC LIMIT 1`,
-          [session.user.id],
+          `SELECT book_hash AS "bookHash", section_index AS "sectionIndex", scroll_top AS "scrollTop"
+           FROM lecta_user_positions WHERE user_id = $1 ORDER BY updated_at DESC LIMIT 1`,
+          [userId],
         ).then((res) => res.rows[0]),
       );
       if (pos?.bookHash) {
-        redirectUrl = `/k/read/${pos.bookHash}`;
+        const sec = pos.sectionIndex != null ? Number(pos.sectionIndex) : 0;
+        const page = pos.scrollTop != null ? Number(pos.scrollTop) : 0;
+        redirectUrl = `/k/read/${encodeURIComponent(pos.bookHash)}?section=${sec}&page=${page}`;
       }
-    } catch {}
+    } catch {
+      /* ignore */
+    }
   }
 
-  record.status = "linked";
-  record.userToken = userSessionToken;
-  record.userId = session?.user?.id;
-  record.redirectUrl = redirectUrl;
-  kindleLinkCodes.set(code, record);
+  const result = await linkKindleCodeFromMobile({
+    db: c.env?.DB,
+    code,
+    userId: userId || "",
+    sessionToken: userSessionToken,
+    redirectUrl,
+  });
 
-  if (db?.prepare) {
-    try {
-      await db.prepare(
-        `UPDATE kindle_link_codes SET status = 'linked', user_id = ?, session_token = ? WHERE code = ?`
-      ).bind(session?.user?.id ?? null, userSessionToken, code).run();
-    } catch {}
+  if (!result.ok) {
+    return c.json({ error: result.error || "Código inválido o expirado" }, 400);
   }
 
   return c.json({ success: true, redirectUrl });
 }
 
-export async function handleKindleStatus(c: any) {
+export async function handleKindleStatus(c: Context<{ Bindings: WorkerEnv }>) {
   cleanExpiredKindleCodes();
   const code = (c.req.query("code") || "").trim().toUpperCase();
   if (!code) {
     return c.json({ error: "Código no proporcionado" }, 400);
   }
 
-  let record = kindleLinkCodes.get(code);
-  const db = (c.env as any)?.DB;
-  if (db?.prepare) {
-    try {
-      const d1Record = await db.prepare(
-        `SELECT * FROM kindle_link_codes WHERE code = ?`
-      ).bind(code).first();
-      if (d1Record) {
-        record = {
-          code,
-          status: (d1Record.status as any) || record?.status || "pending",
-          createdAt: Number(d1Record.created_at) * 1000 || (record?.createdAt ?? Date.now()),
-          userToken: d1Record.session_token || d1Record.user_token || record?.userToken,
-          userId: d1Record.user_id || record?.userId,
-          redirectUrl: record?.redirectUrl,
-        };
-        kindleLinkCodes.set(code, record);
-      }
-    } catch {}
-  }
+  const result = await consumeLinkedKindleCode(c.env?.DB, code);
 
-  if (!record) {
+  const isHtml =
+    c.req.query("redirect") === "1" ||
+    (c.req.header("accept") || "").includes("text/html");
+
+  if (result.status === "not_found") {
+    if (isHtml) {
+      return c.redirect("/kindle");
+    }
     return c.json({ error: "Código no encontrado" }, 404);
   }
 
-  if (record.status === "linked") {
-    if (record.userToken) {
-      c.header(
-        "Set-Cookie",
-        `better-auth.session_token=${encodeURIComponent(record.userToken)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000`,
-      );
+  if (result.status === "expired") {
+    if (isHtml) {
+      return c.redirect("/kindle?error=expired");
     }
-    return c.json({ linked: true, redirectUrl: record.redirectUrl || "/k" });
+    return c.json({ error: "Código expirado", status: "expired" }, 400);
   }
 
-  return c.json({ linked: false, status: record.status });
+  if (result.status === "linked" && result.sessionToken) {
+    c.header(
+      "Set-Cookie",
+      `better-auth.session_token=${encodeURIComponent(result.sessionToken)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000`,
+    );
+
+    let redirectUrl = result.redirectUrl || "/k";
+
+    // Si aún no apunta a un libro específico y tenemos userId,
+    // buscamos en lecta_user_positions (005_user_positions.sql)
+    if ((!result.redirectUrl || redirectUrl === "/k") && result.userId) {
+      try {
+        const pos = await withClient(c.env, (client) =>
+          client.query(
+            `SELECT book_hash AS "bookHash", section_index AS "sectionIndex", scroll_top AS "scrollTop"
+             FROM lecta_user_positions WHERE user_id = $1 ORDER BY updated_at DESC LIMIT 1`,
+            [result.userId],
+          ).then((res) => res.rows[0]),
+        );
+        if (pos?.bookHash) {
+          const sec = pos.sectionIndex != null ? Number(pos.sectionIndex) : 0;
+          const page = pos.scrollTop != null ? Number(pos.scrollTop) : 0;
+          redirectUrl = `/k/read/${encodeURIComponent(pos.bookHash)}?section=${sec}&page=${page}`;
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+
+    if (isHtml) {
+      return c.redirect(redirectUrl);
+    }
+    return c.json({ linked: true, redirectUrl });
+  }
+
+  if (isHtml) {
+    return c.redirect(`/kindle?code=${encodeURIComponent(code)}&pending=1`);
+  }
+
+  return c.json({ linked: false, status: result.status });
 }
 
 export const kindleRoutes = new Hono<{ Bindings: WorkerEnv }>();
 
 kindleRoutes.get("/kindle", handleKindleLinkPage);
 kindleRoutes.get("/link", handleKindleLinkPage);
+kindleRoutes.get("/verify", handleKindleStatus);
 kindleRoutes.get("/api/kindle/status", handleKindleStatus);
 kindleRoutes.post("/api/kindle/link", handleKindleLinkAction);
 

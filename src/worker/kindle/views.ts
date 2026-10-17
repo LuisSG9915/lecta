@@ -1042,8 +1042,15 @@ export function renderKindleLinkView(options: {
       <div style="font-size: 3.5rem; font-weight: bold; letter-spacing: 0.6rem; margin: 1.5rem 0; color: #d97706; font-family: monospace;">
         ${escapeHtml(code)}
       </div>
-      <p style="color: #666; font-size: 0.9rem;">
-        El dispositivo se conectará automáticamente al instante.<br/>
+
+      <div style="margin: 1.8rem 0 1rem 0;">
+        <a href="/api/kindle/status?code=${encodeURIComponent(code)}&redirect=1" class="btn btn-primary" style="display: block; width: 100%; font-size: 1.1rem; padding: 12px; text-decoration: none;">
+          Ya ingresé el código en mi celular → Entrar
+        </a>
+      </div>
+
+      <p style="color: #666; font-size: 0.9rem; margin-top: 1.2rem;">
+        O espera unos segundos; el dispositivo se conectará automáticamente.<br/>
         <a href="/k/login" style="display: inline-block; margin-top: 1rem; color: #555; text-decoration: underline;">O inicia sesión con correo y contraseña</a>
       </p>
     </div>
@@ -1055,7 +1062,7 @@ export function renderKindleLinkView(options: {
             if (data && data.linked) {
               window.location.href = data.redirectUrl || '/k';
             } else {
-              setTimeout(poll, 3000);
+              setTimeout(poll, 4000);
             }
           })
           .catch(function() {

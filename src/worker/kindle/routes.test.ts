@@ -123,21 +123,21 @@ describe("Kindle Routes (/k and /kindle)", () => {
     });
 
     it("utiliza c.env.DB cuando está disponible para registrar y vincular códigos D1", async () => {
-      const mockD1Rows = new Map<string, any>();
+      const mockD1Rows = new Map<string, Record<string, unknown>>();
       const mockDb = {
         prepare: vi.fn((sql: string) => ({
-          bind: (...args: any[]) => ({
+          bind: (...args: unknown[]) => ({
             run: vi.fn(async () => {
               if (sql.includes("INSERT INTO kindle_link_codes")) {
-                mockD1Rows.set(args[0], {
+                mockD1Rows.set(args[0] as string, {
                   code: args[0],
                   status: "pending",
                   created_at: Math.floor(Date.now() / 1000),
                 });
               } else if (sql.includes("UPDATE kindle_link_codes")) {
                 const [userId, userToken, code] = args;
-                const existing = mockD1Rows.get(code) || { code };
-                mockD1Rows.set(code, {
+                const existing = mockD1Rows.get(code as string) || { code };
+                mockD1Rows.set(code as string, {
                   ...existing,
                   status: "linked",
                   user_id: userId,
@@ -147,7 +147,7 @@ describe("Kindle Routes (/k and /kindle)", () => {
               return { success: true };
             }),
             first: vi.fn(async () => {
-              const code = args[0];
+              const code = args[0] as string;
               return mockD1Rows.get(code) || null;
             }),
           }),
@@ -156,7 +156,7 @@ describe("Kindle Routes (/k and /kindle)", () => {
 
       const d1Env = {
         ...env,
-        DB: mockDb as any,
+        DB: mockDb as unknown as D1Database,
       };
 
       // 1. Generar código con D1
@@ -196,6 +196,54 @@ describe("Kindle Routes (/k and /kindle)", () => {
       const statusJson = (await statusRes.json()) as { linked: boolean };
       expect(statusJson.linked).toBe(true);
       expect(statusRes.headers.get("set-cookie")).toContain("d1-session-token");
+    });
+
+    it("muestra el botón físico HTML 'Ya ingresé el código en mi celular → Entrar' en la pantalla de vinculación", async () => {
+      getSessionMock.mockResolvedValueOnce(null);
+      const res = await app.request("/kindle", {}, env);
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).toContain("Ya ingresé el código en mi celular → Entrar");
+      expect(html).toContain("/api/kindle/status?code=");
+      expect(html).toContain("redirect=1");
+    });
+
+    it("al confirmar código vinculado vía botón físico (?redirect=1) establece cookie y redirige a la última posición leída", async () => {
+      // 1. Crear código
+      getSessionMock.mockResolvedValueOnce(null);
+      const kindleRes = await app.request("/kindle", {}, env);
+      const html = await kindleRes.text();
+      const codeMatch = html.match(/<div[^>]*font-size:\s*3\.5rem[^>]*>\s*([A-Z0-9]{4})\s*<\/div>/);
+      const code = codeMatch ? codeMatch[1] : "";
+      expect(code).toHaveLength(4);
+
+      // 2. Simular posición previa en lecta_user_positions
+      dbQueryMock.mockResolvedValueOnce({
+        rows: [{ bookHash: "ultimo-libro", sectionIndex: 3, scrollTop: 1 }],
+      });
+
+      // 3. Vincular desde móvil
+      getSessionMock.mockResolvedValueOnce({
+        user: { id: "user-lector", email: "lector@example.com" },
+      });
+      const linkRes = await app.request(
+        "/api/kindle/link",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ code, userSessionToken: "token-lector-abc" }),
+        },
+        env,
+      );
+      expect(linkRes.status).toBe(200);
+
+      // 4. Kindle pulsa botón físico con redirect=1
+      const buttonClickRes = await app.request(`/api/kindle/status?code=${code}&redirect=1`, {}, env);
+      expect(buttonClickRes.status).toBe(302);
+      expect(buttonClickRes.headers.get("set-cookie")).toContain("token-lector-abc");
+      expect(buttonClickRes.headers.get("Location")).toContain("/k/read/ultimo-libro");
+      expect(buttonClickRes.headers.get("Location")).toContain("section=3");
+      expect(buttonClickRes.headers.get("Location")).toContain("page=1");
     });
 
     it("/kindle/read/123 redirige a /k/read/123", async () => {

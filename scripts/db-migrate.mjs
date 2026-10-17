@@ -63,13 +63,48 @@ const invokedAsScript =
   process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href;
 if (invokedAsScript) {
   if (!process.env.DATABASE_URL) {
+    try {
+      process.loadEnvFile?.(".env");
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const isRemote = process.argv.includes("--remote") || process.argv.includes("--prod");
+  const isLocal = process.argv.includes("--local") || process.argv.includes("--dev");
+
+  if (isRemote) {
+    process.env.LECTA_MIGRATE_TARGET = "lecta";
+    if (process.env.DATABASE_URL_PROD) {
+      process.env.DATABASE_URL = process.env.DATABASE_URL_PROD;
+    } else if (process.env.DATABASE_URL?.includes("/lecta_dev")) {
+      process.env.DATABASE_URL = process.env.DATABASE_URL.replace("/lecta_dev", "/lecta");
+    }
+  }
+
+  if (!process.env.DATABASE_URL) {
     console.error("DATABASE_URL no está definida. Usa `pnpm db:migrate` (lee .env).");
     process.exit(1);
   }
+
+  const target = isRemote
+    ? "lecta"
+    : isLocal
+      ? "lecta_dev"
+      : process.env.LECTA_MIGRATE_TARGET || DEFAULT_DATABASE;
+
   const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
   await client.connect();
   try {
-    await migrate(client);
+    await client
+      .query(
+        `CREATE OR REPLACE FUNCTION unixepoch() RETURNS INT8 AS $$
+           SELECT extract(epoch from now())::INT8;
+         $$ LANGUAGE SQL;`,
+      )
+      .catch(() => {});
+
+    await migrate(client, MIGRATIONS_DIR, target);
   } catch (error) {
     console.error(error instanceof Error ? error.message : error);
     process.exitCode = 1;

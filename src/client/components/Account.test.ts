@@ -310,4 +310,33 @@ describe("Account componente Tú y Login", () => {
     );
     expect(recalibrateBtn).toBeTruthy();
   });
+
+  it("renderiza la sección para vincular Kindle por código de 4 letras e input en mayúsculas", async () => {
+    render(
+      h(Account, {
+        presentation: "page",
+        onClose: vi.fn(),
+        onOpenCalibration: vi.fn(),
+      }),
+    );
+    await flush();
+
+    const connectKindleBtn = Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find(
+      (b) => b.textContent?.includes("Conectar mi Kindle"),
+    );
+    expect(connectKindleBtn).toBeTruthy();
+
+    await act(async () => connectKindleBtn!.click());
+    await flush();
+
+    const input = host.querySelector<HTMLInputElement>("#kindle-code-input");
+    expect(input).toBeTruthy();
+    expect(input?.maxLength).toBe(4);
+
+    const submitBtn = Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find(
+      (b) => b.textContent?.includes("Vincular Kindle"),
+    );
+    expect(submitBtn).toBeTruthy();
+  });
 });
+
