@@ -372,3 +372,74 @@ describe("registros del perfil", () => {
     expect(await game.loadCompanionName(scope)).toBe("Misifus");
   });
 });
+
+describe("awardEpisodicConsolidation (Track 10)", () => {
+  it("asigna XP correspondiente según la calificación obtenida", async () => {
+    const { idb, game } = await freshModules();
+    const scope = idb.captureDbScope();
+
+    // Grade 4 (Easy) = 4 XP
+    await game.awardEpisodicConsolidation(4, scope, {
+      id: "consolidation:test:1",
+      at: 1000,
+      dayKey: "2026-10-18",
+    });
+    let state = await game.loadGame(scope);
+    expect(state.xp).toBe(4);
+
+    // Grade 3 (Good) = 3 XP
+    await game.awardEpisodicConsolidation(3, scope, {
+      id: "consolidation:test:2",
+      at: 2000,
+      dayKey: "2026-10-18",
+    });
+    state = await game.loadGame(scope);
+    expect(state.xp).toBe(7);
+
+    // Grade 2 (Hard) = 2 XP
+    await game.awardEpisodicConsolidation(2, scope, {
+      id: "consolidation:test:3",
+      at: 3000,
+      dayKey: "2026-10-18",
+    });
+    state = await game.loadGame(scope);
+    expect(state.xp).toBe(9);
+
+    // Grade 1 (Again) = 1 XP
+    await game.awardEpisodicConsolidation(1, scope, {
+      id: "consolidation:test:4",
+      at: 4000,
+      dayKey: "2026-10-18",
+    });
+    state = await game.loadGame(scope);
+    expect(state.xp).toBe(10);
+  });
+
+  it("re-exporta y ejecuta generateMorphologicalDistractors y generateClozeOptions", async () => {
+    const { game } = await freshModules();
+    const distractors = game.generateMorphologicalDistractors("susurró", { lang: "es", count: 2 });
+    expect(distractors.length).toBe(2);
+    expect(distractors).not.toContain("susurró");
+
+    const cloze = game.generateClozeOptions("whisper", { lang: "en", count: 3, seed: 123 });
+    expect(cloze.options.length).toBe(3);
+    expect(cloze.options[cloze.correctIndex]).toBe("whisper");
+  });
+
+  it("re-exporta y gestiona preferencias de consolidación (isConsolidationActive, mute/unmute, disable/enable)", async () => {
+    const { game } = await freshModules();
+    game.enableConsolidationGlobally();
+    expect(game.isConsolidationActive("book-test")).toBe(true);
+
+    game.muteConsolidationForBook("book-test");
+    expect(game.isConsolidationActive("book-test")).toBe(false);
+    expect(game.isConsolidationActive("other-book")).toBe(true);
+
+    game.unmuteConsolidationForBook("book-test");
+    expect(game.isConsolidationActive("book-test")).toBe(true);
+
+    game.disableConsolidationGlobally();
+    expect(game.isConsolidationActive("book-test")).toBe(false);
+    expect(game.isConsolidationActive()).toBe(false);
+  });
+});

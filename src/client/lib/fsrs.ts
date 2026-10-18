@@ -16,9 +16,40 @@ export const CAPTURE_SOURCE_PARAMS: Record<
   repeated_lookup: { difficulty: 7.2, stability: 0.4 },
 };
 
-export function scheduleReview(card: Card | undefined, rating: Grade, now = new Date()) {
+/**
+ * Multiplicador episódico según la calificación FSRS cuando se consolida en contexto narrativo real:
+ * - Easy (4): x1.35
+ * - Good (3): x1.20
+ * - Hard/Again (<=2): x1.00
+ */
+export function computeEpisodicMultiplier(rating: Grade): number {
+  if (rating === Rating.Easy) return 1.35;
+  if (rating === Rating.Good) return 1.20;
+  return 1.0;
+}
+
+export function scheduleReview(
+  card: Card | undefined,
+  rating: Grade,
+  now = new Date(),
+  options?: { episodicMultiplier?: number },
+) {
   const current: Card = card ?? createEmptyCard(now);
-  return scheduler.next(current, now, rating).card;
+  const nextCard = scheduler.next(current, now, rating).card;
+  if (options?.episodicMultiplier && options.episodicMultiplier > 1 && rating >= Rating.Good) {
+    nextCard.stability = Number((nextCard.stability * options.episodicMultiplier).toFixed(4));
+  }
+  return nextCard;
+}
+
+export function scheduleEpisodicReview(
+  card: Card | undefined,
+  rating: Grade,
+  now = new Date(),
+  customMultiplier?: number,
+): Card {
+  const multiplier = customMultiplier ?? computeEpisodicMultiplier(rating);
+  return scheduleReview(card, rating, now, { episodicMultiplier: multiplier });
 }
 
 export function newCardWithSource(

@@ -3973,5 +3973,325 @@
   font-style: italic;
 }
 
+/* ---------- Consolidación Episódica Post-Capítulo ---------- */
+
+.post-chapter-consolidation {
+  display: grid;
+  gap: 0.75rem;
+  padding: 1rem;
+  border-radius: var(--radius, 8px);
+  background: var(--paper-raised, var(--paper));
+  border: 1px solid var(--line);
+}
+
+.consolidation-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.85rem;
+  border-radius: var(--r-sm, 6px);
+  background: var(--paper-sunken);
+  border: 1px solid var(--line);
+}
+
+.consolidation-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: var(--fs-xs, 0.75rem);
+  font-weight: 600;
+  color: var(--vermilion, #b8332a);
+}
+
+.consolidation-word-chip {
+  display: inline-block;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border-radius: var(--r-sm, 4px);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  color: var(--ink);
+}
+
+.deep-summary-word-chip {
+  font-size: 0.8rem;
+  padding: 0.2rem 0.5rem;
+  background: var(--paper-sunken);
+  border-radius: var(--r-sm, 4px);
+  color: var(--ink);
+}
+
+/* ---------------------------------------------------------------------------
+   Fase 2: Hueco Contextual Episódico y Temporizador de Reconstrucción
+   --------------------------------------------------------------------------- */
+
+.sentence-cloze-card {
+  padding: 1.25rem;
+  border-radius: var(--radius, 8px);
+  background: var(--paper-raised, var(--paper));
+  border: 1px solid var(--line);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.sentence-cloze-quote-wrapper {
+  margin: 0.75rem 0;
+  padding: 0.85rem 1rem;
+  border-left: 3px solid var(--vermilion, #b8332a);
+  background: var(--paper-sunken);
+  border-radius: 0 var(--r-sm, 4px) var(--r-sm, 4px) 0;
+}
+
+.sentence-cloze-quote {
+  font-family: var(--font-serif, serif);
+  font-size: 1.125rem;
+  line-height: 1.6;
+  color: var(--ink);
+  margin: 0;
+}
+
+.sentence-cloze-slot {
+  display: inline-block;
+  min-width: 5rem;
+  padding: 0.1rem 0.5rem;
+  margin: 0 0.25rem;
+  border-radius: var(--r-sm, 4px);
+  text-align: center;
+  font-weight: 700;
+  transition: all 0.2s ease-out;
+}
+
+.sentence-cloze-slot.is-blank {
+  background: color-mix(in srgb, var(--ochre, #b8860b) 15%, transparent);
+  border-bottom: 2px dashed var(--ochre, #b8860b);
+  color: var(--ink-faint, #888);
+}
+
+.sentence-cloze-slot.is-filled {
+  background: color-mix(in srgb, #2e7d32 18%, transparent);
+  border: 1px solid #2e7d32;
+  color: #1b5e20;
+  animation: popSlot 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.sentence-cloze-slot.is-shaking {
+  animation: shakeCloze 0.4s ease-in-out;
+  border-color: var(--vermilion, #b8332a);
+  background: color-mix(in srgb, var(--vermilion, #b8332a) 15%, transparent);
+}
+
+@keyframes popSlot {
+  0% { transform: scale(0.9); }
+  60% { transform: scale(1.08); }
+  100% { transform: scale(1); }
+}
+
+@keyframes shakeCloze {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-4px); }
+  40%, 80% { transform: translateX(4px); }
+}
+
+.sentence-cloze-gloss {
+  margin-top: 0.5rem;
+  font-size: var(--fs-sm, 0.875rem);
+  color: var(--ink-muted);
+}
+
+.sentence-cloze-gloss-label {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.sentence-cloze-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 0.65rem;
+  margin: 1rem 0;
+}
+
+.sentence-cloze-option-btn {
+  display: flex;
+  align-items: center;
+  justifyContent: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  font-size: 1rem;
+  font-weight: 600;
+  border-radius: var(--radius, 8px);
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--ink);
+  transition: all 0.15s ease-in-out;
+  cursor: pointer;
+}
+
+.sentence-cloze-option-btn:hover:not(:disabled) {
+  border-color: var(--ochre, #b8860b);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.06);
+}
+
+.sentence-cloze-option-btn.is-correct {
+  background: #2e7d32;
+  color: #fff;
+  border-color: #1b5e20;
+}
+
+.sentence-cloze-option-btn.is-wrong {
+  opacity: 0.5;
+  text-decoration: line-through;
+  border-color: var(--vermilion, #b8332a);
+  color: var(--vermilion, #b8332a);
+}
+
+/* Temporizador de Reconstrucción Ortográfica (< 10 segundos) */
+.scramble-timer {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+  padding: 0.35rem 0.65rem;
+  border-radius: var(--r-sm, 6px);
+  background: var(--paper-sunken);
+  border: 1px solid var(--line);
+}
+
+.scramble-timer-badge {
+  font-size: 0.8rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-muted);
+}
+
+.scramble-timer-badge.is-urgent {
+  color: var(--vermilion, #b8332a);
+  animation: pulseUrgent 1s infinite;
+}
+
+.scramble-timer-track {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.scramble-timer-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--ochre, #b8860b);
+  transition: width 0.9s linear;
+}
+
+.scramble-timer-fill.is-urgent {
+  background: var(--vermilion, #b8332a);
+}
+
+@keyframes pulseUrgent {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* ---------------------------------------------------------------------------
+   Fase 3: Tarjeta de Cierre de Capítulo (25s) y Opciones de Desactivación
+   --------------------------------------------------------------------------- */
+
+.consolidation-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.consolidation-card-title {
+  font-size: var(--fs-sm, 0.9rem);
+  font-weight: 700;
+  color: var(--ink);
+  margin: 0;
+}
+
+.consolidation-options-wrapper {
+  position: relative;
+}
+
+.consolidation-options-toggle {
+  font-size: var(--fs-xs, 0.75rem);
+  padding: 0.2rem 0.5rem;
+  color: var(--ink-muted);
+  border-radius: var(--r-sm, 4px);
+  cursor: pointer;
+}
+
+.consolidation-options-toggle:hover {
+  background: var(--paper-sunken);
+  color: var(--ink);
+}
+
+.consolidation-options-dropdown {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 30;
+  min-width: 230px;
+  background: var(--paper-raised, var(--paper));
+  border: 1px solid var(--line);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  border-radius: var(--r-sm, 6px);
+  padding: 0.35rem 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.consolidation-option-item {
+  width: 100%;
+  text-align: left;
+  padding: 0.5rem 0.85rem;
+  font-size: var(--fs-xs, 0.75rem);
+  font-weight: 500;
+  color: var(--ink);
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.consolidation-option-item:hover {
+  background: var(--paper-sunken);
+  color: var(--vermilion, #b8332a);
+}
+
+.consolidation-word-chips {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin: 0.5rem 0;
+}
+
+.consolidation-runner-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+}
+
+.consolidation-skip-link {
+  font-size: var(--fs-xs, 0.8rem);
+  color: var(--ink-muted);
+  cursor: pointer;
+}
+
+.consolidation-skip-link:hover {
+  color: var(--ink);
+  text-decoration: underline;
+}
+
+.consolidation-start-btn {
+  font-weight: 600;
+}
+
+
+
 
 

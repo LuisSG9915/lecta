@@ -112,6 +112,10 @@ import {
   getBookDictionaryStatus,
   getDictionaryCacheWordCount,
   emptyDictionaryCache,
+  planPredictiveChapterPrecache,
+  isAutoPrecacheEnabled,
+  setAutoPrecacheEnabled,
+  prefetchUpcomingChaptersLexicon,
 } from "./offline-dictionary";
 import {
   saveCachedLexicon,
@@ -191,4 +195,75 @@ describe("offline-dictionary", () => {
     expect(status.cached).toBe(1);
     expect(status.percent).toBe(33);
   });
+
+  describe("planPredictiveChapterPrecache", () => {
+    it("calcula los próximos 2 capítulos por defecto dentro de los límites del libro", () => {
+      // Capítulo 0 de 10 -> [1, 2]
+      expect(planPredictiveChapterPrecache(0, 10)).toEqual([1, 2]);
+
+      // Capítulo 8 de 10 -> [9] (porque el índice 10 no existe)
+      expect(planPredictiveChapterPrecache(8, 10)).toEqual([9]);
+
+      // Último capítulo (9 de 10) -> []
+      expect(planPredictiveChapterPrecache(9, 10)).toEqual([]);
+
+      // Lookahead personalizado (ej. 3 capítulos)
+      expect(planPredictiveChapterPrecache(2, 10, 3)).toEqual([3, 4, 5]);
+
+      // Entradas inválidas
+      expect(planPredictiveChapterPrecache(-1, 10)).toEqual([]);
+      expect(planPredictiveChapterPrecache(0, 0)).toEqual([]);
+      expect(planPredictiveChapterPrecache(0, 10, 0)).toEqual([]);
+    });
+  });
+
+  describe("auto-precache toggle", () => {
+    it("permite consultar y cambiar la preferencia de pre-carga automática", () => {
+      expect(isAutoPrecacheEnabled()).toBe(true);
+
+      setAutoPrecacheEnabled(false);
+      expect(isAutoPrecacheEnabled()).toBe(false);
+
+      setAutoPrecacheEnabled(true);
+      expect(isAutoPrecacheEnabled()).toBe(true);
+    });
+  });
+
+  describe("prefetchUpcomingChaptersLexicon", () => {
+    it("omite la pre-descarga si el usuario deshabilitó la pre-carga automática", async () => {
+      setAutoPrecacheEnabled(false);
+      const res = await prefetchUpcomingChaptersLexicon("some-hash", 0);
+      expect(res.skipped).toBe(true);
+      expect(res.reason).toBe("disabled_by_user");
+      setAutoPrecacheEnabled(true);
+    });
+
+    it("omite la pre-descarga si el dispositivo no tiene red", async () => {
+      const origOnline = navigator.onLine;
+      try {
+        Object.defineProperty(navigator, "onLine", {
+          configurable: true,
+          value: false,
+        });
+
+        const res = await prefetchUpcomingChaptersLexicon("some-hash", 0);
+        expect(res.skipped).toBe(true);
+        expect(res.reason).toBe("offline");
+      } finally {
+        Object.defineProperty(navigator, "onLine", {
+          configurable: true,
+          value: origOnline,
+        });
+      }
+    });
+
+    it("indica libro no encontrado si no reside en el almacenamiento local", async () => {
+      const res = await prefetchUpcomingChaptersLexicon("nonexistent-book-hash", 0, {
+        forceOnlineCheck: false,
+      });
+      expect(res.skipped).toBe(true);
+      expect(res.reason).toBe("book_not_found");
+    });
+  });
 });
+

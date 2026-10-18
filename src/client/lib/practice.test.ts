@@ -14,6 +14,21 @@ import {
   smartContextSnippet,
   buildOneMinuteReviewSession,
   type SavedWordItem,
+  computeImplicitFsrsGrade,
+  buildPostChapterConsolidationQueue,
+  recordModalityAttempt,
+  loadPostChapterConsolidationPrefs,
+  savePostChapterConsolidationPrefs,
+  DEFAULT_CONSOLIDATION_PREFS,
+  type EpisodicWordItem,
+  type PostChapterConsolidationPrefs,
+  generateMorphologicalDistractors,
+  generateClozeOptions,
+  muteConsolidationForBook,
+  unmuteConsolidationForBook,
+  disableConsolidationGlobally,
+  enableConsolidationGlobally,
+  isConsolidationActive,
 } from "./practice";
 import type { SavedWord } from "./idb";
 
@@ -473,5 +488,360 @@ describe("buildOneMinuteReviewSession (Track 4)", () => {
     expect(session.find((s) => s.item.id === "4")?.assignedGame).toBe("flash-choice");
   });
 });
+
+describe("Track 10 — Consolidación Episódica Post-Capítulo", () => {
+  describe("computeImplicitFsrsGrade", () => {
+    it("asigna Grade 1 (Again) cuando hay 2 o más errores", () => {
+      const res = computeImplicitFsrsGrade(6, {
+        lemma: "quimera",
+        modality: "sentence-cloze",
+        responseTimeMs: 2000,
+        errorCount: 2,
+        usedHint: false,
+      });
+      expect(res.grade).toBe(1);
+      expect(res.episodicStabilityMultiplier).toBe(1.0);
+      expect(res.masteryDeltaTheta).toBe(-0.08);
+    });
+
+    it("asigna Grade 2 (Hard) cuando hay 1 error o se usó pista", () => {
+      const res1 = computeImplicitFsrsGrade(6, {
+        lemma: "quimera",
+        modality: "sentence-cloze",
+        responseTimeMs: 2000,
+        errorCount: 1,
+        usedHint: false,
+      });
+      expect(res1.grade).toBe(2);
+      expect(res1.episodicStabilityMultiplier).toBe(1.0);
+      expect(res1.masteryDeltaTheta).toBe(0.02);
+
+      const res2 = computeImplicitFsrsGrade(6, {
+        lemma: "quimera",
+        modality: "sentence-cloze",
+        responseTimeMs: 1500,
+        errorCount: 0,
+        usedHint: true,
+      });
+      expect(res2.grade).toBe(2);
+      expect(res2.episodicStabilityMultiplier).toBe(1.0);
+      expect(res2.masteryDeltaTheta).toBe(0.02);
+    });
+
+    it("asigna Grade 4 (Easy) con bono x1.35 cuando t_norm <= 650 ms/letra y 0 errores", () => {
+      // palabra de 6 letras, max(4, 6) = 6. 3600 ms / 6 = 600 ms/letra <= 650
+      const res = computeImplicitFsrsGrade(6, {
+        lemma: "quimera",
+        modality: "word-scramble",
+        responseTimeMs: 3600,
+        errorCount: 0,
+        usedHint: false,
+      });
+      expect(res.grade).toBe(4);
+      expect(res.episodicStabilityMultiplier).toBe(1.35);
+      expect(res.masteryDeltaTheta).toBe(0.14);
+    });
+
+    it("asigna Grade 3 (Good) con bono x1.20 cuando t_norm > 650 ms/letra y 0 errores", () => {
+      // palabra de 6 letras, 4500 ms / 6 = 750 ms/letra > 650
+      const res = computeImplicitFsrsGrade(6, {
+        lemma: "quimera",
+        modality: "sentence-cloze",
+        responseTimeMs: 4500,
+        errorCount: 0,
+        usedHint: false,
+      });
+      expect(res.grade).toBe(3);
+      expect(res.episodicStabilityMultiplier).toBe(1.2);
+      expect(res.masteryDeltaTheta).toBe(0.09);
+    });
+
+    it("normaliza por longitud mínima de 4 caracteres para palabras cortas", () => {
+      // palabra de 2 letras ("fe"): effectiveLen = max(4, 2) = 4.
+      // 2500 ms / 4 = 625 ms <= 650 -> Easy (4)
+      const res = computeImplicitFsrsGrade(2, {
+        lemma: "fe",
+        modality: "word-scramble",
+        responseTimeMs: 2500,
+        errorCount: 0,
+        usedHint: false,
+      });
+      expect(res.grade).toBe(4);
+    });
+  });
+
+  describe("buildPostChapterConsolidationQueue", () => {
+    const candidates: EpisodicWordItem[] = [
+      {
+        lemma: "ubícuo",
+        surfaceForm: "ubícuo",
+        lang: "es",
+        shortGloss: "Presente en todas partes",
+        chapterSentence: "El eco era ubícuo y misterioso en el salón.",
+        chapterTitle: "Capítulo 3",
+        source: "pre-chapter-primed",
+      },
+      {
+        lemma: "quimera",
+        surfaceForm: "quimera",
+        lang: "es",
+        shortGloss: "Ilusión o sueño",
+        chapterSentence: "Persiguió una quimera durante años.",
+        chapterTitle: "Capítulo 3",
+        source: "in-chapter-lookup",
+      },
+      {
+        lemma: "efímero",
+        surfaceForm: "efímero",
+        lang: "es",
+        shortGloss: "De corta duración",
+        chapterSentence: "Fue un instante efímero en la tarde.",
+        chapterTitle: "Capítulo 3",
+        source: "in-chapter-lookup",
+      },
+      {
+        lemma: "lóbrego",
+        surfaceForm: "lóbrego",
+        lang: "es",
+        shortGloss: "Oscuro o tenebroso",
+        chapterSentence: "El camino lóbrego cruzaba el bosque.",
+        chapterTitle: "Capítulo 3",
+        source: "pre-chapter-primed",
+      },
+    ];
+
+    it("retorna cola vacía si la función está deshabilitada o no hay candidatos", () => {
+      expect(
+        buildPostChapterConsolidationQueue(
+          candidates,
+          { ...DEFAULT_CONSOLIDATION_PREFS, enabled: false },
+          false,
+        ),
+      ).toEqual([]);
+      expect(
+        buildPostChapterConsolidationQueue([], DEFAULT_CONSOLIDATION_PREFS, false),
+      ).toEqual([]);
+    });
+
+    it("retorna cola vacía si el libro está silenciado", () => {
+      const prefs = {
+        ...DEFAULT_CONSOLIDATION_PREFS,
+        mutedBookIds: ["book-123"],
+      };
+      expect(
+        buildPostChapterConsolidationQueue(candidates, prefs, false, {
+          bookId: "book-123",
+        }),
+      ).toEqual([]);
+    });
+
+    it("prioriza in-chapter-lookup sobre pre-chapter-primed y limita al máximo configurado", () => {
+      const queue = buildPostChapterConsolidationQueue(
+        candidates,
+        DEFAULT_CONSOLIDATION_PREFS,
+        false,
+      );
+      expect(queue.length).toBe(3); // default maxExercisesPerChapter = 3
+      // Los primeros dos deben ser in-chapter-lookup
+      expect(queue[0].item.source).toBe("in-chapter-lookup");
+      expect(queue[1].item.source).toBe("in-chapter-lookup");
+      expect(queue[2].item.source).toBe("pre-chapter-primed");
+    });
+
+    it("en L2 alterna el segundo ejercicio a word-scramble si surfaceForm <= 10 caracteres", () => {
+      const queue = buildPostChapterConsolidationQueue(
+        candidates,
+        DEFAULT_CONSOLIDATION_PREFS,
+        true,
+      );
+      expect(queue.length).toBe(3);
+      expect(queue[0].modality).toBe("sentence-cloze");
+      expect(queue[1].modality).toBe("word-scramble");
+      expect(queue[2].modality).toBe("sentence-cloze");
+    });
+
+    it("respeta los pesos aprendidos del usuario por idioma", () => {
+      const customPrefs: PostChapterConsolidationPrefs = {
+        enabled: true,
+        mutedBookIds: [],
+        maxExercisesPerChapter: 2,
+        modalityWeightsByLang: {
+          es: {
+            "sentence-cloze": 0.4,
+            "word-scramble": 0.9,
+            "grammar-nuance": 0.2,
+          },
+        },
+      };
+      const queue = buildPostChapterConsolidationQueue(
+        candidates,
+        customPrefs,
+        false,
+      );
+      expect(queue.length).toBe(2);
+      // Al ser word-scramble el más alto en es, se asigna como modalidad prioritaria
+      expect(queue[0].modality).toBe("word-scramble");
+      expect(queue[1].modality).toBe("word-scramble");
+    });
+  });
+
+  describe("recordModalityAttempt", () => {
+    it("incrementa el peso de word-scramble ante errores ortográficos en L2", () => {
+      const basePrefs: PostChapterConsolidationPrefs = {
+        ...DEFAULT_CONSOLIDATION_PREFS,
+        modalityWeightsByLang: {
+          en: {
+            "sentence-cloze": 1.0,
+            "word-scramble": 0.9,
+            "grammar-nuance": 0.5,
+          },
+        },
+      };
+
+      const updated = recordModalityAttempt(
+        basePrefs,
+        "en",
+        {
+          lemma: "serendipity",
+          modality: "word-scramble",
+          responseTimeMs: 4000,
+          errorCount: 1,
+          usedHint: false,
+        },
+        true,
+      );
+
+      expect(updated.modalityWeightsByLang.en["word-scramble"]).toBeGreaterThan(
+        0.9,
+      );
+    });
+
+    it("incrementa el peso de sentence-cloze ante dificultades sintácticas en la frase", () => {
+      const basePrefs: PostChapterConsolidationPrefs = {
+        ...DEFAULT_CONSOLIDATION_PREFS,
+        modalityWeightsByLang: {
+          es: {
+            "sentence-cloze": 1.0,
+            "word-scramble": 0.6,
+            "grammar-nuance": 0.5,
+          },
+        },
+      };
+
+      const updated = recordModalityAttempt(
+        basePrefs,
+        "es",
+        {
+          lemma: "quimera",
+          modality: "sentence-cloze",
+          responseTimeMs: 3000,
+          errorCount: 1,
+          usedHint: false,
+        },
+        false,
+      );
+
+      expect(updated.modalityWeightsByLang.es["sentence-cloze"]).toBeGreaterThan(
+        1.0,
+      );
+    });
+  });
+
+  describe("preferencias persistentes de consolidación", () => {
+    it("guarda y recupera preferencias desde localStorage", () => {
+      const testPrefs = {
+        enabled: true,
+        mutedBookIds: ["book-abc"],
+        maxExercisesPerChapter: 2 as const,
+        modalityWeightsByLang: {
+          fr: {
+            "sentence-cloze": 0.8 as const,
+            "word-scramble": 1.1 as const,
+            "grammar-nuance": 0.3 as const,
+          },
+        },
+      };
+      savePostChapterConsolidationPrefs(testPrefs);
+      const loaded = loadPostChapterConsolidationPrefs();
+      expect(loaded.mutedBookIds).toEqual(["book-abc"]);
+      expect(loaded.maxExercisesPerChapter).toBe(2);
+      expect(loaded.modalityWeightsByLang.fr["word-scramble"]).toBe(1.1);
+    });
+
+    it("silencia y reactiva la consolidación para libros específicos en 1 clic", () => {
+      savePostChapterConsolidationPrefs({ ...DEFAULT_CONSOLIDATION_PREFS, mutedBookIds: [] });
+      expect(isConsolidationActive("book-quijote")).toBe(true);
+
+      muteConsolidationForBook("book-quijote");
+      expect(isConsolidationActive("book-quijote")).toBe(false);
+      // Otro libro no queda silenciado
+      expect(isConsolidationActive("book-ficciones")).toBe(true);
+
+      // Silenciar de nuevo no duplica la id
+      muteConsolidationForBook("book-quijote");
+      const prefs = loadPostChapterConsolidationPrefs();
+      expect(prefs.mutedBookIds.filter((id) => id === "book-quijote")).toHaveLength(1);
+
+      unmuteConsolidationForBook("book-quijote");
+      expect(isConsolidationActive("book-quijote")).toBe(true);
+    });
+
+    it("desactiva y reactiva la consolidación globalmente", () => {
+      savePostChapterConsolidationPrefs({ ...DEFAULT_CONSOLIDATION_PREFS, enabled: true });
+      expect(isConsolidationActive()).toBe(true);
+
+      disableConsolidationGlobally();
+      expect(isConsolidationActive()).toBe(false);
+      expect(isConsolidationActive("any-book")).toBe(false);
+
+      enableConsolidationGlobally();
+      expect(isConsolidationActive()).toBe(true);
+    });
+  });
+
+  describe("generateMorphologicalDistractors y generateClozeOptions (Fase 2)", () => {
+    it("genera distractores morfológicos en español para verbos flexionados", () => {
+      const distractors = generateMorphologicalDistractors("caminar", { lang: "es", count: 2 });
+      expect(distractors).toHaveLength(2);
+      expect(distractors).not.toContain("caminar");
+      // Debe contener variantes verbales como caminaba, caminando, caminó, etc.
+      expect(distractors.every((d) => d.startsWith("camin"))).toBe(true);
+    });
+
+    it("genera distractores morfológicos en inglés (L2) para participios o gerundios", () => {
+      const distractors = generateMorphologicalDistractors("wandering", { lang: "en", count: 2 });
+      expect(distractors).toHaveLength(2);
+      expect(distractors).not.toContain("wandering");
+      expect(distractors.some((d) => d === "wandered" || d === "wanders" || d === "wander")).toBe(true);
+    });
+
+    it("respeta la mayúscula inicial del término original", () => {
+      const distractors = generateMorphologicalDistractors("Susurró", { lang: "es", count: 2 });
+      expect(distractors).toHaveLength(2);
+      expect(distractors[0][0]).toBe(distractors[0][0].toUpperCase());
+      expect(distractors[1][0]).toBe(distractors[1][0].toUpperCase());
+    });
+
+    it("prioriza palabras candidatas del capítulo de longitud similar", () => {
+      const candidates = ["quimérico", "camino", "montaña", "lento"];
+      const distractors = generateMorphologicalDistractors("quimera", {
+        lang: "es",
+        count: 2,
+        candidates,
+      });
+      expect(distractors).toHaveLength(2);
+      expect(distractors).not.toContain("quimera");
+      expect(distractors).toContain("camino");
+    });
+
+    it("generateClozeOptions devuelve opciones barajadas y el correctIndex exacto", () => {
+      const res = generateClozeOptions("perenne", { lang: "es", count: 3, seed: 42 });
+      expect(res.options).toHaveLength(3);
+      expect(res.options[res.correctIndex]).toBe("perenne");
+      expect(new Set(res.options.map((o) => o.toLowerCase())).size).toBe(3);
+    });
+  });
+});
+
 
 

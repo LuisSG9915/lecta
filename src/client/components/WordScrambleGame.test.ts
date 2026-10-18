@@ -4,6 +4,10 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WordScrambleGame } from "./WordScrambleGame";
 
+vi.mock("../lib/speech", () => ({
+  speakWord: vi.fn().mockResolvedValue(undefined),
+}));
+
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
   true;
 
@@ -101,6 +105,13 @@ describe("WordScrambleGame", () => {
     });
 
     expect(onSolve).toHaveBeenCalledTimes(1);
+    expect(onSolve).toHaveBeenCalledWith(
+      expect.objectContaining({
+        responseTimeMs: expect.any(Number),
+        errorCount: 0,
+        usedHint: false,
+      }),
+    );
   });
 
   it("provides hint when clicking Pista button", () => {
@@ -171,4 +182,97 @@ describe("WordScrambleGame", () => {
     // The first slot needs 'S', so the tile with 'S' should have pulse-hint
     expect(hintTile?.textContent?.trim()).toBe("S");
   });
+
+  describe("Consolidación episódica (Fase 2)", () => {
+    it("muestra chapterSentence y shortGloss como pista contextual", () => {
+      render(
+        h(WordScrambleGame, {
+          targetWord: "sol",
+          chapterSentence: "El sol brillaba en lo alto de la colina.",
+          shortGloss: "Astro rey",
+          onSolve: vi.fn(),
+        }),
+      );
+
+      const meaning = host.querySelector(".scramble-meaning");
+      expect(meaning?.textContent).toContain("Astro rey");
+
+      const context = host.querySelector(".card-context");
+      expect(context?.textContent).toContain("El");
+      expect(context?.textContent).toContain("brillaba");
+    });
+
+    it("muestra el temporizador regresivo cuando timeLimitSeconds está activo", () => {
+      render(
+        h(WordScrambleGame, {
+          targetWord: "sol",
+          timeLimitSeconds: 10,
+          onSolve: vi.fn(),
+        }),
+      );
+
+      const timer = host.querySelector(".scramble-timer");
+      expect(timer).not.toBeNull();
+      const badge = host.querySelector(".scramble-timer-badge");
+      expect(badge?.textContent).toContain("10s");
+
+      // Avanzar 2 segundos
+      act(() => {
+        vi.advanceTimersByTime(2000);
+      });
+      expect(badge?.textContent).toContain("8s");
+    });
+
+    it("reproduce la pronunciación con speech.ts al acertar una palabra en L2", async () => {
+      const { speakWord } = await import("../lib/speech");
+      const onSolve = vi.fn();
+
+      render(
+        h(WordScrambleGame, {
+          targetWord: "cat",
+          language: "en",
+          onSolve,
+        }),
+      );
+
+      // Type c, a, t
+      act(() => {
+        window.dispatchEvent(new KeyboardEvent("keydown", { key: "c" }));
+      });
+      act(() => {
+        window.dispatchEvent(new KeyboardEvent("keydown", { key: "a" }));
+      });
+      act(() => {
+        window.dispatchEvent(new KeyboardEvent("keydown", { key: "t" }));
+      });
+
+      expect(speakWord).toHaveBeenCalledWith("cat", "en");
+
+      act(() => {
+        vi.advanceTimersByTime(800);
+      });
+      expect(onSolve).toHaveBeenCalledTimes(1);
+    });
+
+    it("aplica clase is-urgent cuando quedan 3 segundos o menos en el temporizador", () => {
+      render(
+        h(WordScrambleGame, {
+          targetWord: "luna",
+          timeLimitSeconds: 5,
+          onSolve: vi.fn(),
+        }),
+      );
+
+      const badge = host.querySelector(".scramble-timer-badge");
+      expect(badge?.classList.contains("is-urgent")).toBe(false);
+
+      // Avanzar 2 segundos -> quedan 3s
+      act(() => {
+        vi.advanceTimersByTime(2000);
+      });
+      expect(badge?.textContent).toContain("3s");
+      expect(badge?.classList.contains("is-urgent")).toBe(true);
+    });
+  });
 });
+

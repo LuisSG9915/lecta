@@ -132,6 +132,7 @@ let host: HTMLDivElement;
 let root: Root;
 
 beforeEach(async () => {
+  localStorage.clear();
   for (const db of disk.values()) {
     db.stores.clear();
     db.failPuts.clear();
@@ -361,5 +362,177 @@ describe("GamePanel", () => {
     expect(host.querySelector(".ai-story-card")).toBeTruthy();
     expect(host.querySelector(".ai-story-highlight")).toBeTruthy();
   });
+
+  it("renderiza el botón de consolidación post-capítulo y responde al toque", async () => {
+    const onStartConsolidation = vi.fn();
+    act(() =>
+      root.render(
+        h(CompanionProvider, {
+          userId: null,
+          children: h(GamePanel, {
+            mode: "post_chapter_consolidation",
+            onStartConsolidation,
+          }),
+        }),
+      ),
+    );
+    await flush();
+
+    const btn = button("Fijar Palabras del Capítulo");
+    expect(btn).toBeTruthy();
+    click(btn!);
+    expect(onStartConsolidation).toHaveBeenCalledTimes(1);
+  });
+
+  it("renderiza la tarjeta de consolidación post-capítulo (25s) y permite continuar o iniciar reto", async () => {
+    const onStartConsolidation = vi.fn();
+    const onContinueNextChapter = vi.fn();
+    const queue = [
+      {
+        item: {
+          lemma: "quimera",
+          surfaceForm: "quimera",
+          lang: "es",
+          shortGloss: "Fantasía",
+          chapterSentence: "Buscaba una quimera.",
+          chapterTitle: "Cap. 1",
+          source: "in-chapter-lookup" as const,
+        },
+        modality: "sentence-cloze" as const,
+      },
+      {
+        item: {
+          lemma: "efímero",
+          surfaceForm: "efímero",
+          lang: "es",
+          shortGloss: "Pasajero",
+          chapterSentence: "Un instante efímero.",
+          chapterTitle: "Cap. 1",
+          source: "pre-chapter-primed" as const,
+        },
+        modality: "word-scramble" as const,
+      },
+    ];
+
+    act(() =>
+      root.render(
+        h(CompanionProvider, {
+          userId: null,
+          children: h(GamePanel, {
+            mode: "post_chapter_consolidation",
+            consolidationQueue: queue,
+            onStartConsolidation,
+            onContinueNextChapter,
+          }),
+        }),
+      ),
+    );
+    await flush();
+
+    expect(host.textContent).toContain("Fija en tu memoria 2 palabras de este capítulo (~25 s)");
+    expect(host.textContent).toContain("quimera");
+    expect(host.textContent).toContain("efímero");
+
+    // Botón principal prominente para saltar sin fricción
+    const skipBtn = button("Continuar al siguiente capítulo");
+    expect(skipBtn).toBeTruthy();
+    click(skipBtn!);
+    expect(onContinueNextChapter).toHaveBeenCalledTimes(1);
+
+    // Botón para iniciar el reto
+    const startBtn = button("Fijar palabras (~25 s)");
+    expect(startBtn).toBeTruthy();
+    click(startBtn!);
+    expect(onStartConsolidation).toHaveBeenCalledTimes(1);
+  });
+
+  it("permite silenciar la consolidación para el libro en 1 clic desde GamePanel", async () => {
+    const queue = [
+      {
+        item: {
+          lemma: "quimera",
+          surfaceForm: "quimera",
+          lang: "es",
+          shortGloss: "Fantasía",
+          chapterSentence: "Buscaba una quimera.",
+          chapterTitle: "Cap. 1",
+          source: "in-chapter-lookup" as const,
+        },
+        modality: "sentence-cloze" as const,
+      },
+    ];
+
+    act(() =>
+      root.render(
+        h(CompanionProvider, {
+          userId: null,
+          children: h(GamePanel, {
+            mode: "post_chapter_consolidation",
+            consolidationQueue: queue,
+            bookId: "book-101",
+          }),
+        }),
+      ),
+    );
+    await flush();
+
+    expect(host.textContent).toContain("Fija en tu memoria 1 palabras");
+
+    // Abrir menú de opciones
+    const optionsBtn = button("Opciones ▾");
+    expect(optionsBtn).toBeTruthy();
+    click(optionsBtn!);
+    await flush();
+
+    const muteBtn = button("Ocultar en este libro");
+    expect(muteBtn).toBeTruthy();
+    click(muteBtn!);
+    await flush();
+
+    // La tarjeta desaparece
+    expect(host.textContent).not.toContain("Fija en tu memoria 1 palabras");
+  });
+
+  it("permite desactivar la consolidación globalmente desde GamePanel", async () => {
+    const queue = [
+      {
+        item: {
+          lemma: "quimera",
+          surfaceForm: "quimera",
+          lang: "es",
+          shortGloss: "Fantasía",
+          chapterSentence: "Buscaba una quimera.",
+          chapterTitle: "Cap. 1",
+          source: "in-chapter-lookup" as const,
+        },
+        modality: "sentence-cloze" as const,
+      },
+    ];
+
+    act(() =>
+      root.render(
+        h(CompanionProvider, {
+          userId: null,
+          children: h(GamePanel, {
+            mode: "post_chapter_consolidation",
+            consolidationQueue: queue,
+          }),
+        }),
+      ),
+    );
+    await flush();
+
+    const optionsBtn = button("Opciones ▾");
+    click(optionsBtn!);
+    await flush();
+
+    const disableBtn = button("Desactivar consolidación al final de capítulo siempre");
+    expect(disableBtn).toBeTruthy();
+    click(disableBtn!);
+    await flush();
+
+    expect(host.textContent).not.toContain("Fija en tu memoria 1 palabras");
+  });
 });
+
 

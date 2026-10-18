@@ -82,4 +82,13 @@ describe("ENGLISH_CORE_LEXICON", () => {
     const upper = getEnglishCoreEntry("Wander");
     expect(upper?.lemma).toBe("wander");
   });
+
+  it("proporciona entradas enriquecidas con zipf y definiciones para pre-caché offline de Track 11", () => {
+    const entry = getEnglishCoreEntry("glimpse");
+    expect(entry).not.toBeNull();
+    expect(entry?.lemma).toBe("glimpse");
+    expect(entry?.pos).toBe("sustantivo");
+    expect(entry?.senses[0].definition).toContain("vistazo / destello fugaz");
+    expect(typeof entry?.zipf).toBe("number");
+  });
 });

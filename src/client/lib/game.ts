@@ -352,3 +352,50 @@ export function emitGameChanged() {
 export function resetGameCache() {
   cache = null;
 }
+
+// Recompensa XP de consolidación episódica al resolver una palabra al final del capítulo
+export function awardEpisodicConsolidation(
+  grade: 1 | 2 | 3 | 4,
+  scope?: DbScope,
+  customMeta?: Partial<AwardMeta>,
+): Promise<void> {
+  const ratingMap: Record<1 | 2 | 3 | 4, "again" | "hard" | "good" | "easy"> = {
+    1: "again",
+    2: "hard",
+    3: "good",
+    4: "easy",
+  };
+  const now = Date.now();
+  const meta: AwardMeta = {
+    id: customMeta?.id ?? `consolidation:${now}:${crypto.randomUUID()}`,
+    at: customMeta?.at ?? now,
+    dayKey: customMeta?.dayKey ?? localDayKey(now),
+    interval: customMeta?.interval,
+  };
+  return award({ kind: "review", rating: ratingMap[grade] }, scope, meta);
+}
+
+export type {
+  ClozeOptionsResult,
+  ConsolidationAttemptMetrics,
+  ConsolidationModality,
+  EpisodicWordItem,
+  ImplicitFsrsGradeResult,
+  MorphologicalDistractorOptions,
+  PostChapterConsolidationPrefs,
+} from "./practice";
+export {
+  computeImplicitFsrsGrade,
+  buildPostChapterConsolidationQueue,
+  recordModalityAttempt,
+  loadPostChapterConsolidationPrefs,
+  savePostChapterConsolidationPrefs,
+  muteConsolidationForBook,
+  unmuteConsolidationForBook,
+  disableConsolidationGlobally,
+  enableConsolidationGlobally,
+  isConsolidationActive,
+  generateMorphologicalDistractors,
+  generateClozeOptions,
+  DEFAULT_CONSOLIDATION_PREFS,
+} from "./practice";

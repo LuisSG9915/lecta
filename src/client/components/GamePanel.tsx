@@ -11,7 +11,14 @@
 // la recepción y solo entonces se muestra el contenido.
 
 import { useEffect, useRef, useState } from "react";
-import { loadGame, openGameChest, writeCompanionField } from "../lib/game";
+import {
+  loadGame,
+  openGameChest,
+  writeCompanionField,
+  isConsolidationActive,
+  muteConsolidationForBook,
+  disableConsolidationGlobally,
+} from "../lib/game";
 import { captureDbScope } from "../lib/idb";
 import { useCompanion } from "./CompanionProvider";
 import { CompanionButton } from "./CompanionButton";
@@ -40,14 +47,37 @@ import {
 const REVEAL_MS = 2500;
 
 export interface GamePanelProps {
-  mode?: "dashboard" | "adaptive_flow" | "ai_workshop";
+  mode?: "dashboard" | "adaptive_flow" | "ai_workshop" | "post_chapter_consolidation";
   onStartAdaptiveFlow?: () => void;
+  onStartConsolidation?: () => void;
+  onSkipConsolidation?: () => void;
+  onContinueNextChapter?: () => void;
   words?: Array<{ word: string; meaning?: string; bookTitle?: string; lemma?: string }>;
+  consolidationQueue?: Array<{
+    item: {
+      lemma: string;
+      surfaceForm: string;
+      lang: string;
+      chapterSentence?: string;
+      shortGloss?: string;
+    };
+    modality: string;
+  }>;
+  bookId?: string;
   onClose?: () => void;
 }
 
 export function GamePanel(props: GamePanelProps) {
-  const { mode = "dashboard", onStartAdaptiveFlow } = props;
+  const {
+    mode = "dashboard",
+    onStartAdaptiveFlow,
+    onStartConsolidation,
+    onSkipConsolidation,
+    onContinueNextChapter,
+    consolidationQueue,
+    bookId,
+    onClose,
+  } = props;
   const {
     enabled,
     state,
@@ -80,6 +110,11 @@ export function GamePanel(props: GamePanelProps) {
   const [styleHint, setStyleHint] = useState("Poético y misterioso");
   const [generatingStory, setGeneratingStory] = useState(false);
   const [storyResult, setStoryResult] = useState<MicroStoryResult | null>(null);
+
+  const [isConsolidationMuted, setIsConsolidationMuted] = useState(
+    () => !isConsolidationActive(bookId),
+  );
+  const [showConsolidationOptions, setShowConsolidationOptions] = useState(false);
 
   if (!enabled || !state) return null;
 
@@ -444,6 +479,104 @@ export function GamePanel(props: GamePanelProps) {
             onClick={onStartAdaptiveFlow}
           >
             Iniciar Sesión Fluida
+          </button>
+        </div>
+      ) : null}
+      {mode === "post_chapter_consolidation" &&
+      !isConsolidationMuted &&
+      consolidationQueue &&
+      consolidationQueue.length > 0 ? (
+        <div className="consolidation-card game-post-chapter-consolidation">
+          <div className="consolidation-card-header">
+            <h3 className="consolidation-card-title">
+              Fija en tu memoria {consolidationQueue.length} palabras de este capítulo (~25 s)
+            </h3>
+            <div className="consolidation-options-wrapper">
+              <button
+                type="button"
+                className="btn--quiet consolidation-options-toggle"
+                onClick={() => setShowConsolidationOptions((prev) => !prev)}
+                aria-label="Opciones de consolidación"
+              >
+                Opciones ▾
+              </button>
+              {showConsolidationOptions ? (
+                <div className="consolidation-options-dropdown" role="menu">
+                  {bookId ? (
+                    <button
+                      type="button"
+                      className="consolidation-option-item"
+                      role="menuitem"
+                      onClick={() => {
+                        muteConsolidationForBook(bookId);
+                        setIsConsolidationMuted(true);
+                        setShowConsolidationOptions(false);
+                      }}
+                    >
+                      ✕ Ocultar en este libro
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="consolidation-option-item"
+                    role="menuitem"
+                    onClick={() => {
+                      disableConsolidationGlobally();
+                      setIsConsolidationMuted(true);
+                      setShowConsolidationOptions(false);
+                    }}
+                  >
+                    🚫 Desactivar consolidación al final de capítulo siempre
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="consolidation-word-chips">
+            {consolidationQueue.map(({ item }) => (
+              <span key={item.lemma} className="consolidation-word-chip">
+                {item.surfaceForm || item.lemma}
+              </span>
+            ))}
+          </div>
+
+          <div
+            className="consolidation-actions"
+            style={{
+              display: "flex",
+              gap: "0.5rem",
+              marginTop: "0.75rem",
+              flexWrap: "wrap",
+            }}
+          >
+            {onStartConsolidation ? (
+              <button
+                type="button"
+                className="btn btn--accent consolidation-start-btn"
+                onClick={onStartConsolidation}
+              >
+                Fijar palabras (~25 s)
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="btn btn--primary consolidation-skip-btn"
+              onClick={onContinueNextChapter ?? onSkipConsolidation ?? onClose}
+              data-autofocus
+            >
+              Continuar al siguiente capítulo →
+            </button>
+          </div>
+        </div>
+      ) : mode === "post_chapter_consolidation" && onStartConsolidation ? (
+        <div className="game-adaptive-flow-cta">
+          <button
+            type="button"
+            className="btn btn--primary"
+            onClick={onStartConsolidation}
+          >
+            Fijar Palabras del Capítulo
           </button>
         </div>
       ) : null}

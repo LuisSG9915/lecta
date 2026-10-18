@@ -5,9 +5,10 @@ import {
   clearCachedLexicon,
   getCachedLexiconBatch,
   loadSessionValue,
+  saveCachedLexiconBatch,
   type DbScope,
 } from "./idb";
-import { batchLookup, BATCH_LOOKUP_LIMIT } from "./lexicon";
+import { batchLookup, BATCH_LOOKUP_LIMIT, type LexiconEntry } from "./lexicon";
 import { extractUniqueWords } from "./segmenter";
 import { normalizeBlockText } from "./reading-location";
 import { sanitizeSectionDocument } from "./sanitize";
@@ -16,6 +17,7 @@ import { isWordToken, menteBaseForms } from "../../shared/word-form";
 import { cliticBaseForms } from "./knowledge";
 import { bookVocabKey } from "./book-vocab";
 import type { BookVocabManifest } from "./catalog";
+import { getEnglishCoreEntry } from "../../shared/english-core-lexicon";
 
 export interface PrecacheProgress {
   done: number;
@@ -148,4 +150,250 @@ export async function getDictionaryCacheWordCount(scope?: DbScope): Promise<numb
  */
 export async function emptyDictionaryCache(scope?: DbScope): Promise<void> {
   return clearCachedLexicon(scope);
+}
+
+// ---------------------------------------------------------------------------
+// Pre-caché predictivo offline de capítulos futuros (Track 11 — Fase 3)
+// ---------------------------------------------------------------------------
+
+export const AUTO_PRECACHE_STORAGE_KEY = "lecta:auto_precache_enabled:v1";
+
+let memoryAutoPrecache: boolean | null = null;
+
+export function isAutoPrecacheEnabled(): boolean {
+  if (memoryAutoPrecache !== null) return memoryAutoPrecache;
+  if (typeof window !== "undefined" && window.localStorage) {
+    try {
+      const val = window.localStorage.getItem(AUTO_PRECACHE_STORAGE_KEY);
+      return val === null ? true : val === "true";
+    } catch {
+      return true;
+    }
+  }
+  return true;
+}
+
+export function setAutoPrecacheEnabled(enabled: boolean): void {
+  memoryAutoPrecache = enabled;
+  if (typeof window !== "undefined" && window.localStorage) {
+    try {
+      window.localStorage.setItem(AUTO_PRECACHE_STORAGE_KEY, String(enabled));
+    } catch {
+      // Ignorar fallo de almacenamiento
+    }
+  }
+}
+
+/**
+ * Planifica los índices de capítulos a pre-cargar según el capítulo actual del lector
+ * y la ventana deslizante (lookahead = 2 por defecto).
+ */
+export function planPredictiveChapterPrecache(
+  currentChapterIndex: number,
+  totalChapters: number,
+  lookahead = 2,
+): number[] {
+  if (totalChapters <= 0 || lookahead <= 0 || currentChapterIndex < 0) return [];
+  const planned: number[] = [];
+  const max = Math.min(totalChapters, currentChapterIndex + 1 + lookahead);
+  for (let i = currentChapterIndex + 1; i < max; i++) {
+    planned.push(i);
+  }
+  return planned;
+}
+
+export interface PredictivePrecacheResult {
+  success: boolean;
+  upcomingChapters: number[];
+  precachedWords: number;
+  totalWords: number;
+  skipped?: boolean;
+  reason?: string;
+  error?: string;
+}
+
+/**
+ * Inspecciona silenciosamente en segundo plano los próximos capítulos (c+1 y c+2)
+ * cuando hay conexión, resolviendo primero contra el diccionario local (english-core-lexicon)
+ * y pre-descargando únicamente los términos no cubiertos.
+ */
+export async function prefetchUpcomingChaptersLexicon(
+  bookHash: string,
+  currentChapterIndex: number,
+  options?: {
+    lookahead?: number;
+    language?: string;
+    scope?: DbScope;
+    forceOnlineCheck?: boolean;
+  },
+): Promise<PredictivePrecacheResult> {
+  if (!isAutoPrecacheEnabled()) {
+    return {
+      success: false,
+      skipped: true,
+      reason: "disabled_by_user",
+      upcomingChapters: [],
+      precachedWords: 0,
+      totalWords: 0,
+    };
+  }
+
+  const isOnline =
+    options?.forceOnlineCheck === false ||
+    typeof navigator === "undefined" ||
+    !("onLine" in navigator) ||
+    navigator.onLine === true;
+
+  if (!isOnline) {
+    return {
+      success: false,
+      skipped: true,
+      reason: "offline",
+      upcomingChapters: [],
+      precachedWords: 0,
+      totalWords: 0,
+    };
+  }
+
+  const stored = await getStoredBook(bookHash, options?.scope).catch(() => undefined);
+  if (!stored) {
+    return {
+      success: false,
+      skipped: true,
+      reason: "book_not_found",
+      upcomingChapters: [],
+      precachedWords: 0,
+      totalWords: 0,
+    };
+  }
+
+  let epub;
+  try {
+    epub = await openEpub(stored.data);
+  } catch {
+    return {
+      success: false,
+      skipped: true,
+      reason: "open_failed",
+      upcomingChapters: [],
+      precachedWords: 0,
+      totalWords: 0,
+    };
+  }
+
+  const { book, close } = epub;
+  const language = options?.language || getBookLanguage(book) || stored.language || "es";
+  const lookahead = options?.lookahead ?? 2;
+  const plannedChapters = planPredictiveChapterPrecache(
+    currentChapterIndex,
+    book.sections.length,
+    lookahead,
+  );
+
+  if (plannedChapters.length === 0) {
+    await Promise.resolve(close()).catch(() => undefined);
+    return {
+      success: true,
+      skipped: true,
+      reason: "no_upcoming_chapters",
+      upcomingChapters: [],
+      precachedWords: 0,
+      totalWords: 0,
+    };
+  }
+
+  const chapterTexts: string[] = [];
+  try {
+    for (const chIdx of plannedChapters) {
+      const section = book.sections[chIdx];
+      if (!section) continue;
+      try {
+        const clean = sanitizeSectionDocument(await section.createDocument());
+        const text = normalizeBlockText(
+          [...clean.childNodes].map((node) => node.textContent ?? "").join(" "),
+        );
+        if (text) chapterTexts.push(text);
+      } catch {
+        continue;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+  } finally {
+    await Promise.resolve(close()).catch(() => undefined);
+  }
+
+  if (chapterTexts.length === 0) {
+    return {
+      success: true,
+      upcomingChapters: plannedChapters,
+      precachedWords: 0,
+      totalWords: 0,
+    };
+  }
+
+  const words = await extractUniqueWords(chapterTexts.join("\n"), language).catch(() => []);
+  const forms = [...new Set(words.map((w) => w.toLowerCase()))].filter(
+    (form) => isWordToken(form) && !isStopword(form, language),
+  );
+
+  const lookupForms = new Set(forms);
+  for (const form of forms) {
+    for (const base of menteBaseForms(form)) lookupForms.add(base);
+    for (const base of cliticBaseForms(form)) lookupForms.add(base);
+  }
+
+  const allForms = [...lookupForms];
+  if (!allForms.length) {
+    return {
+      success: true,
+      upcomingChapters: plannedChapters,
+      precachedWords: 0,
+      totalWords: 0,
+    };
+  }
+
+  const batchToSave: Record<string, LexiconEntry[]> = {};
+  const missingFromLocalCore: string[] = [];
+
+  if (language === "en") {
+    for (const form of allForms) {
+      const coreEntry = getEnglishCoreEntry(form);
+      if (coreEntry) {
+        batchToSave[form] = [coreEntry];
+      } else {
+        missingFromLocalCore.push(form);
+      }
+    }
+    if (Object.keys(batchToSave).length > 0) {
+      await saveCachedLexiconBatch("en", batchToSave, options?.scope).catch(() => undefined);
+    }
+  } else {
+    missingFromLocalCore.push(...allForms);
+  }
+
+  const resolvedLocally = Object.keys(batchToSave).length;
+  const alreadyCached: Record<string, LexiconEntry[]> = await getCachedLexiconBatch(
+    language,
+    missingFromLocalCore,
+    options?.scope,
+  ).catch(() => ({}));
+  const wordsToFetch = missingFromLocalCore.filter((f) => !alreadyCached[f]);
+
+  let newlyCached = 0;
+  if (wordsToFetch.length > 0) {
+    for (let i = 0; i < wordsToFetch.length; i += BATCH_LOOKUP_LIMIT) {
+      const chunk = wordsToFetch.slice(i, i + BATCH_LOOKUP_LIMIT);
+      const result = await batchLookup(chunk, language, options?.scope);
+      if (result.ok) {
+        newlyCached += Object.keys(result.entries).length;
+      }
+    }
+  }
+
+  return {
+    success: true,
+    upcomingChapters: plannedChapters,
+    precachedWords: resolvedLocally + newlyCached + Object.keys(alreadyCached).length,
+    totalWords: allForms.length,
+  };
 }

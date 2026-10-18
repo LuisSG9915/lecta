@@ -512,4 +512,581 @@ export function savedWordToItem(w: SavedWord): SavedWordItem {
   };
 }
 
+/* ==========================================================================
+   Track 10: Consolidación Episódica Post-Capítulo (FSRS Implícito + Adaptación)
+   ========================================================================== */
+
+export type ConsolidationModality =
+  | "sentence-cloze"
+  | "word-scramble"
+  | "grammar-nuance";
+
+export interface EpisodicWordItem {
+  lemma: string;
+  surfaceForm: string;
+  lang: string;
+  shortGloss: string;
+  chapterSentence: string; // La oración exacta del capítulo que acaba de leer
+  chapterTitle: string;
+  source: "pre-chapter-primed" | "in-chapter-lookup";
+  partOfSpeech?: string;
+}
+
+export interface ConsolidationAttemptMetrics {
+  lemma: string;
+  modality: ConsolidationModality;
+  responseTimeMs: number;
+  errorCount: number;
+  usedHint: boolean;
+}
+
+export interface ImplicitFsrsGradeResult {
+  grade: 1 | 2 | 3 | 4; // 1=Again, 2=Hard, 3=Good, 4=Easy
+  episodicStabilityMultiplier: number;
+  masteryDeltaTheta: number;
+}
+
+export interface PostChapterConsolidationPrefs {
+  enabled: boolean;
+  mutedBookIds: string[];
+  maxExercisesPerChapter: 2 | 3;
+  modalityWeightsByLang: Record<string, Record<ConsolidationModality, number>>;
+}
+
+export const DEFAULT_CONSOLIDATION_PREFS: PostChapterConsolidationPrefs = {
+  enabled: true,
+  mutedBookIds: [],
+  maxExercisesPerChapter: 3,
+  modalityWeightsByLang: {},
+};
+
+/**
+ * Infiere automáticamente la calificación FSRS (1..4) y el bono de estabilidad episódica
+ * a partir de la telemetría de respuesta del usuario, sin pedirle autoevaluación manual.
+ */
+export function computeImplicitFsrsGrade(
+  wordLength: number,
+  metrics: ConsolidationAttemptMetrics,
+): ImplicitFsrsGradeResult {
+  const effectiveLen = Math.max(4, wordLength);
+  const msPerChar = metrics.responseTimeMs / effectiveLen;
+
+  if (metrics.errorCount >= 2) {
+    return {
+      grade: 1,
+      episodicStabilityMultiplier: 1.0,
+      masteryDeltaTheta: -0.08,
+    };
+  }
+
+  if (metrics.errorCount === 1 || metrics.usedHint) {
+    return {
+      grade: 2,
+      episodicStabilityMultiplier: 1.0,
+      masteryDeltaTheta: 0.02,
+    };
+  }
+
+  if (msPerChar <= 650) {
+    return {
+      grade: 4,
+      episodicStabilityMultiplier: 1.35,
+      masteryDeltaTheta: 0.14,
+    };
+  }
+
+  return {
+    grade: 3,
+    episodicStabilityMultiplier: 1.2,
+    masteryDeltaTheta: 0.09,
+  };
+}
+
+/**
+ * Selecciona los 2 o 3 mejores ejercicios al terminar el capítulo priorizando
+ * palabras consultadas durante la lectura y palabras vistas en la pre-lectura.
+ */
+export function buildPostChapterConsolidationQueue(
+  candidates: EpisodicWordItem[],
+  prefs: PostChapterConsolidationPrefs,
+  isForeignLanguage: boolean,
+  options?: { bookId?: string },
+): Array<{ item: EpisodicWordItem; modality: ConsolidationModality }> {
+  if (!prefs.enabled || candidates.length === 0) return [];
+  if (options?.bookId && prefs.mutedBookIds?.includes(options.bookId)) return [];
+
+  // Priorizar las palabras que el usuario necesitó tocar dentro del capítulo, luego las pre-vistas
+  const sorted = [...candidates].sort((a, b) => {
+    if (a.source !== b.source) {
+      return a.source === "in-chapter-lookup" ? -1 : 1;
+    }
+    return b.chapterSentence.length - a.chapterSentence.length;
+  });
+
+  const selected = sorted.slice(0, prefs.maxExercisesPerChapter);
+
+  return selected.map((item, idx) => {
+    const langKey = item.lang.slice(0, 2).toLowerCase() || "es";
+    const customWeights = prefs.modalityWeightsByLang[langKey];
+
+    let modality: ConsolidationModality = "sentence-cloze";
+    if (customWeights && Object.keys(customWeights).length > 0) {
+      const sortedWeights = (
+        Object.entries(customWeights) as Array<[ConsolidationModality, number]>
+      ).sort((a, b) => b[1] - a[1]);
+      if (sortedWeights.length > 0) {
+        modality = sortedWeights[0][0];
+      }
+    } else if (isForeignLanguage && idx === 1 && item.surfaceForm.length <= 10) {
+      // En L2, alternar el segundo ejercicio con reconstrucción ortográfica (WordScramble)
+      modality = "word-scramble";
+    }
+
+    return { item, modality };
+  });
+}
+
+/**
+ * Adapta los pesos de efectividad de cada modalidad en función de los resultados del usuario:
+ * - Si en L2 comete errores ortográficos (error en word-scramble), incrementa la probabilidad de word-scramble.
+ * - Si consolida adecuadamente la ortografía o comete errores sintácticos, incrementa sentence-cloze.
+ */
+export function recordModalityAttempt(
+  prefs: PostChapterConsolidationPrefs,
+  lang: string,
+  metrics: ConsolidationAttemptMetrics,
+  isForeignLanguage = false,
+): PostChapterConsolidationPrefs {
+  const langKey = lang.slice(0, 2).toLowerCase() || "es";
+  const currentLangWeights = prefs.modalityWeightsByLang[langKey] ?? {
+    "sentence-cloze": 1.0,
+    "word-scramble": isForeignLanguage ? 0.9 : 0.6,
+    "grammar-nuance": 0.5,
+  };
+
+  const nextWeights: Record<ConsolidationModality, number> = {
+    ...currentLangWeights,
+  };
+
+  if (metrics.modality === "word-scramble") {
+    if (metrics.errorCount > 0 || metrics.usedHint) {
+      nextWeights["word-scramble"] = Number(
+        (nextWeights["word-scramble"] + 0.25).toFixed(2),
+      );
+    } else if (metrics.responseTimeMs / Math.max(4, metrics.lemma.length) <= 650) {
+      nextWeights["sentence-cloze"] = Number(
+        (nextWeights["sentence-cloze"] + 0.15).toFixed(2),
+      );
+    }
+  } else if (metrics.modality === "sentence-cloze") {
+    if (metrics.errorCount > 0 || metrics.usedHint) {
+      nextWeights["sentence-cloze"] = Number(
+        (nextWeights["sentence-cloze"] + 0.25).toFixed(2),
+      );
+    } else if (isForeignLanguage) {
+      nextWeights["word-scramble"] = Number(
+        (nextWeights["word-scramble"] + 0.1).toFixed(2),
+      );
+    }
+  }
+
+  return {
+    ...prefs,
+    modalityWeightsByLang: {
+      ...prefs.modalityWeightsByLang,
+      [langKey]: nextWeights,
+    },
+  };
+}
+
+export const POST_CHAPTER_CONSOLIDATION_PREFS_KEY =
+  "lecta:post_chapter_consolidation_prefs:v1";
+
+const memoryStorage: Record<string, string> = {};
+
+const getLocalStorage = (): {
+  getItem: (k: string) => string | null;
+  setItem: (k: string, v: string) => void;
+  removeItem: (k: string) => void;
+} | null => {
+  if (typeof window !== "undefined" && window.localStorage) return window.localStorage;
+  if (
+    typeof globalThis !== "undefined" &&
+    (globalThis as { localStorage?: Storage }).localStorage
+  ) {
+    return (globalThis as { localStorage: Storage }).localStorage;
+  }
+  return {
+    getItem: (k: string) => memoryStorage[k] ?? null,
+    setItem: (k: string, v: string) => {
+      memoryStorage[k] = v;
+    },
+    removeItem: (k: string) => {
+      delete memoryStorage[k];
+    },
+  };
+};
+
+export function loadPostChapterConsolidationPrefs(): PostChapterConsolidationPrefs {
+  const storage = getLocalStorage();
+  if (!storage) {
+    return { ...DEFAULT_CONSOLIDATION_PREFS };
+  }
+  try {
+    const raw = storage.getItem(POST_CHAPTER_CONSOLIDATION_PREFS_KEY);
+    if (!raw) return { ...DEFAULT_CONSOLIDATION_PREFS };
+    const parsed = JSON.parse(raw) as Partial<PostChapterConsolidationPrefs>;
+    return {
+      enabled: typeof parsed.enabled === "boolean" ? parsed.enabled : true,
+      mutedBookIds: Array.isArray(parsed.mutedBookIds) ? parsed.mutedBookIds : [],
+      maxExercisesPerChapter:
+        parsed.maxExercisesPerChapter === 2 || parsed.maxExercisesPerChapter === 3
+          ? parsed.maxExercisesPerChapter
+          : 3,
+      modalityWeightsByLang:
+        typeof parsed.modalityWeightsByLang === "object" &&
+        parsed.modalityWeightsByLang !== null
+          ? parsed.modalityWeightsByLang
+          : {},
+    };
+  } catch {
+    return { ...DEFAULT_CONSOLIDATION_PREFS };
+  }
+}
+
+export function savePostChapterConsolidationPrefs(
+  prefs: PostChapterConsolidationPrefs,
+): void {
+  const storage = getLocalStorage();
+  if (!storage) return;
+  try {
+    storage.setItem(
+      POST_CHAPTER_CONSOLIDATION_PREFS_KEY,
+      JSON.stringify(prefs),
+    );
+  } catch {
+    // Ignorar fallo de almacenamiento
+  }
+}
+
+/**
+ * Silencia la consolidación post-capítulo específicamente para un libro.
+ */
+export function muteConsolidationForBook(bookId: string): void {
+  if (!bookId) return;
+  const prefs = loadPostChapterConsolidationPrefs();
+  if (!prefs.mutedBookIds.includes(bookId)) {
+    savePostChapterConsolidationPrefs({
+      ...prefs,
+      mutedBookIds: [...prefs.mutedBookIds, bookId],
+    });
+  }
+}
+
+/**
+ * Vuelve a habilitar la consolidación para un libro silenciado previamente.
+ */
+export function unmuteConsolidationForBook(bookId: string): void {
+  if (!bookId) return;
+  const prefs = loadPostChapterConsolidationPrefs();
+  savePostChapterConsolidationPrefs({
+    ...prefs,
+    mutedBookIds: prefs.mutedBookIds.filter((id) => id !== bookId),
+  });
+}
+
+/**
+ * Desactiva la consolidación post-capítulo para todos los libros de forma global.
+ */
+export function disableConsolidationGlobally(): void {
+  const prefs = loadPostChapterConsolidationPrefs();
+  savePostChapterConsolidationPrefs({
+    ...prefs,
+    enabled: false,
+  });
+}
+
+/**
+ * Activa la consolidación post-capítulo de forma global.
+ */
+export function enableConsolidationGlobally(): void {
+  const prefs = loadPostChapterConsolidationPrefs();
+  savePostChapterConsolidationPrefs({
+    ...prefs,
+    enabled: true,
+  });
+}
+
+/**
+ * Verifica si la consolidación post-capítulo está activa (globalmente y no silenciada para el libro).
+ */
+export function isConsolidationActive(bookId?: string): boolean {
+  const prefs = loadPostChapterConsolidationPrefs();
+  if (!prefs.enabled) return false;
+  if (bookId && prefs.mutedBookIds.includes(bookId)) return false;
+  return true;
+}
+
+// ---------------------------------------------------------------------------
+// Generador de Distractores Morfológicos y Opciones Cloze (Fase 2)
+// ---------------------------------------------------------------------------
+
+export interface MorphologicalDistractorOptions {
+  lang?: string;
+  pos?: string;
+  count?: number;
+  candidates?: string[];
+}
+
+export interface ClozeOptionsResult {
+  options: string[];
+  correctIndex: number;
+}
+
+function matchCase(source: string, target: string): string {
+  if (!source || !target) return target;
+  if (source[0] === source[0].toUpperCase() && source[0] !== source[0].toLowerCase()) {
+    return target.charAt(0).toUpperCase() + target.slice(1);
+  }
+  return target.charAt(0).toLowerCase() + target.slice(1);
+}
+
+/**
+ * Genera distractores morfológicamente coherentes para una palabra clave,
+ * alternando desinencias verbales, flexiones o sufijos según el idioma (L1/L2).
+ */
+export function generateMorphologicalDistractors(
+  targetWord: string,
+  options?: MorphologicalDistractorOptions,
+): string[] {
+  const clean = targetWord.trim();
+  if (!clean) return [];
+
+  const lang = (options?.lang ?? "es").toLowerCase();
+  const isEn = lang.startsWith("en");
+  const count = Math.max(1, options?.count ?? 2);
+  const targetLower = clean.toLowerCase();
+
+  const results: string[] = [];
+  const seen = new Set<string>([targetLower]);
+
+  const addVariant = (variant: string | undefined | null) => {
+    if (!variant) return;
+    const trimmed = variant.trim();
+    const lower = trimmed.toLowerCase();
+    if (!lower || seen.has(lower)) return;
+    seen.add(lower);
+    results.push(matchCase(clean, trimmed));
+  };
+
+  // 1. Si se aportaron palabras candidatas (por ejemplo del mismo capítulo), priorizar las de longitud similar
+  if (options?.candidates && options.candidates.length > 0) {
+    const candidateMatches = options.candidates
+      .map((c) => c.trim())
+      .filter((c) => {
+        const cl = c.toLowerCase();
+        if (!cl || seen.has(cl)) return false;
+        return Math.abs(cl.length - targetLower.length) <= 4;
+      });
+    for (const cand of candidateMatches) {
+      addVariant(cand);
+      if (results.length >= count) return results.slice(0, count);
+    }
+  }
+
+  // 2. Reglas morfológicas para inglés (L2)
+  if (isEn) {
+    if (targetLower.endsWith("ing") && targetLower.length > 4) {
+      const base = targetLower.slice(0, -3);
+      addVariant(base + "ed");
+      addVariant(base + "s");
+      addVariant(base);
+      addVariant(base + "er");
+    } else if (targetLower.endsWith("ed") && targetLower.length > 4) {
+      const base = targetLower.slice(0, -2);
+      addVariant(base + "ing");
+      addVariant(base + "s");
+      addVariant(base);
+      addVariant(base + "er");
+    } else if (targetLower.endsWith("ly") && targetLower.length > 4) {
+      const base = targetLower.slice(0, -2);
+      addVariant(base);
+      addVariant(base + "ness");
+      addVariant(base + "ful");
+    } else if (targetLower.endsWith("tion") && targetLower.length > 5) {
+      const base = targetLower.slice(0, -4);
+      addVariant(base + "tive");
+      addVariant(base + "ting");
+      addVariant(base + "ted");
+    } else if (targetLower.endsWith("ful") && targetLower.length > 4) {
+      const base = targetLower.slice(0, -3);
+      addVariant(base + "less");
+      addVariant(base + "fully");
+      addVariant(base + "ness");
+    } else if (targetLower.endsWith("able") && targetLower.length > 5) {
+      const base = targetLower.slice(0, -4);
+      addVariant(base + "ably");
+      addVariant(base + "ed");
+      addVariant(base + "ing");
+    } else if (targetLower.endsWith("s") && targetLower.length > 3) {
+      const base = targetLower.endsWith("es") ? targetLower.slice(0, -2) : targetLower.slice(0, -1);
+      addVariant(base + "ed");
+      addVariant(base + "ing");
+      addVariant(base);
+    } else {
+      addVariant(targetLower + "ing");
+      addVariant(targetLower + "ed");
+      addVariant(targetLower + "s");
+      addVariant(targetLower + "er");
+    }
+  } else {
+    // 3. Reglas morfológicas para español (L1)
+    if (targetLower.endsWith("mente") && targetLower.length > 6) {
+      const base = targetLower.slice(0, -5);
+      addVariant(base);
+      addVariant(base + "s");
+      addVariant(base.slice(0, -1) + "ez");
+    } else if (targetLower.endsWith("ando") && targetLower.length > 5) {
+      const base = targetLower.slice(0, -4);
+      addVariant(base + "ar");
+      addVariant(base + "aba");
+      addVariant(base + "ado");
+      addVariant(base + "ó");
+    } else if (targetLower.endsWith("iendo") && targetLower.length > 6) {
+      const base = targetLower.slice(0, -5);
+      addVariant(base + "er");
+      addVariant(base + "ir");
+      addVariant(base + "ía");
+      addVariant(base + "ido");
+      addVariant(base + "ió");
+    } else if (targetLower.endsWith("ado") && targetLower.length > 4) {
+      const base = targetLower.slice(0, -3);
+      addVariant(base + "ar");
+      addVariant(base + "ando");
+      addVariant(base + "aba");
+      addVariant(base + "ó");
+    } else if (targetLower.endsWith("ido") && targetLower.length > 4) {
+      const base = targetLower.slice(0, -3);
+      addVariant(base + "er");
+      addVariant(base + "ir");
+      addVariant(base + "iendo");
+      addVariant(base + "ió");
+    } else if (targetLower.endsWith("aba") && targetLower.length > 4) {
+      const base = targetLower.slice(0, -3);
+      addVariant(base + "ar");
+      addVariant(base + "ando");
+      addVariant(base + "ó");
+    } else if (targetLower.endsWith("ía") && targetLower.length > 3) {
+      const base = targetLower.slice(0, -2);
+      addVariant(base + "er");
+      addVariant(base + "ir");
+      addVariant(base + "ió");
+    } else if (targetLower.endsWith("ó") && targetLower.length > 2) {
+      const base = targetLower.slice(0, -1);
+      addVariant(base + "aba");
+      addVariant(base + "ar");
+      addVariant(base + "ando");
+    } else if (targetLower.endsWith("ió") && targetLower.length > 3) {
+      const base = targetLower.slice(0, -2);
+      addVariant(base + "ía");
+      addVariant(base + "er");
+      addVariant(base + "iendo");
+    } else if (targetLower.endsWith("ar") && targetLower.length > 3) {
+      const base = targetLower.slice(0, -2);
+      addVariant(base + "aba");
+      addVariant(base + "ando");
+      addVariant(base + "ó");
+      addVariant(base + "ado");
+    } else if (targetLower.endsWith("er") && targetLower.length > 3) {
+      const base = targetLower.slice(0, -2);
+      addVariant(base + "ía");
+      addVariant(base + "iendo");
+      addVariant(base + "ió");
+      addVariant(base + "ido");
+    } else if (targetLower.endsWith("ir") && targetLower.length > 3) {
+      const base = targetLower.slice(0, -2);
+      addVariant(base + "ía");
+      addVariant(base + "iendo");
+      addVariant(base + "ió");
+      addVariant(base + "ido");
+    } else if (targetLower.endsWith("ción") && targetLower.length > 5) {
+      const base = targetLower.slice(0, -4);
+      addVariant(base + "dor");
+      addVariant(base + "miento");
+      addVariant(base + "ivo");
+    } else if (targetLower.endsWith("oso") || targetLower.endsWith("osa")) {
+      const base = targetLower.slice(0, -3);
+      addVariant(base + "idad");
+      addVariant(base + "al");
+      addVariant(base + (targetLower.endsWith("oso") ? "osa" : "oso"));
+    } else if (targetLower.endsWith("able") || targetLower.endsWith("ible")) {
+      const base = targetLower.slice(0, -4);
+      addVariant(base + "idad");
+      addVariant(base + "ado");
+      addVariant(base + "ante");
+    } else if (targetLower.endsWith("o") || targetLower.endsWith("a")) {
+      const base = targetLower.slice(0, -1);
+      addVariant(base + (targetLower.endsWith("o") ? "a" : "o"));
+      addVariant(base + "os");
+      addVariant(base + "as");
+      addVariant(base + "ito");
+    }
+  }
+
+  // 4. Mecanismo de contingencia si no se alcanzó el conteo requerido
+  const fallbackAffixes = isEn
+    ? ["s", "ed", "ing", "er", "ly", "ish"]
+    : ["s", "es", "ito", "ón", "ero", "ado"];
+
+  for (const affix of fallbackAffixes) {
+    if (results.length >= count) break;
+    addVariant(targetLower + affix);
+  }
+
+  if (results.length < count) {
+    const lastChar = targetLower.slice(-1);
+    const altChar = lastChar === "a" ? "o" : lastChar === "o" ? "e" : "a";
+    addVariant(targetLower.slice(0, -1) + altChar);
+    addVariant(targetLower + (isEn ? "y" : "al"));
+  }
+
+  return results.slice(0, count);
+}
+
+/**
+ * Genera el paquete de opciones de hueco contextual (cloze), devolviendo
+ * las opciones barajadas y el índice de la respuesta correcta.
+ */
+export function generateClozeOptions(
+  targetWord: string,
+  options?: MorphologicalDistractorOptions & { seed?: number },
+): ClozeOptionsResult {
+  const count = options?.count ?? 3;
+  const distractorCount = Math.max(1, count - 1);
+  const distractors = generateMorphologicalDistractors(targetWord, {
+    ...options,
+    count: distractorCount,
+  });
+
+  const all = [targetWord.trim(), ...distractors.slice(0, distractorCount)];
+  const shuffled =
+    options?.seed !== undefined
+      ? shuffleStable(all, options.seed)
+      : [...all].sort(() => Math.random() - 0.5);
+
+  const targetLower = targetWord.trim().toLowerCase();
+  let correctIndex = shuffled.findIndex(
+    (opt) => opt.trim().toLowerCase() === targetLower,
+  );
+  if (correctIndex === -1) {
+    correctIndex = 0;
+    shuffled[0] = targetWord.trim();
+  }
+
+  return {
+    options: shuffled,
+    correctIndex,
+  };
+}
+
 

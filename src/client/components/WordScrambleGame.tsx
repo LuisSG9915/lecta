@@ -10,6 +10,7 @@ import { conciseMeaning, scrambleWord } from "../lib/practice";
 import { PracticeContext } from "./PracticeContext";
 import { triggerHaptic, triggerPurrHaptic } from "../lib/haptics";
 import { playCompanionSound } from "../lib/companion-audio";
+import { speakWord } from "../lib/speech";
 
 export interface WordScrambleGameProps {
   targetWord: string;
@@ -18,11 +19,20 @@ export interface WordScrambleGameProps {
   context?: string | null;
   language?: string;
   disabled?: boolean;
-  onSolve: () => void;
+  onSolve: (metrics?: {
+    responseTimeMs: number;
+    errorCount: number;
+    usedHint: boolean;
+  }) => void;
   onWrong?: () => void;
   onAskHint?: () => void;
   hintText?: string | null;
   hintBusy?: boolean;
+  // Fase 2: Consolidación episódica
+  chapterSentence?: string | null;
+  shortGloss?: string | null;
+  timeLimitSeconds?: number | null;
+  autoPronounceOnSolve?: boolean;
 }
 
 interface Tile {
@@ -108,10 +118,36 @@ export function WordScrambleGame({
   onAskHint,
   hintText,
   hintBusy,
+  chapterSentence,
+  shortGloss,
+  timeLimitSeconds,
+  autoPronounceOnSolve = true,
 }: WordScrambleGameProps) {
   const instanceId = useId();
   const cleanTarget = useMemo(() => targetWord.trim(), [targetWord]);
   const isSyllableMode = cleanTarget.length > 7;
+  const effectiveContext = chapterSentence ?? context;
+  const effectiveMeaning = shortGloss ?? meaning;
+  const isForeign = Boolean(language && !language.toLowerCase().startsWith("es"));
+
+  const [secondsLeft, setSecondsLeft] = useState<number | null>(() =>
+    timeLimitSeconds !== undefined && timeLimitSeconds !== null
+      ? timeLimitSeconds
+      : null,
+  );
+
+  const [prevTimerKey, setPrevTimerKey] = useState(
+    () => `${cleanTarget}:${timeLimitSeconds ?? "none"}`,
+  );
+  const currentTimerKey = `${cleanTarget}:${timeLimitSeconds ?? "none"}`;
+  if (currentTimerKey !== prevTimerKey) {
+    setPrevTimerKey(currentTimerKey);
+    setSecondsLeft(
+      timeLimitSeconds !== undefined && timeLimitSeconds !== null
+        ? timeLimitSeconds
+        : null,
+    );
+  }
 
   const expectedChunks = useMemo(
     () => splitWordIntoSyllables(cleanTarget).map((c) => c.toUpperCase()),
@@ -140,6 +176,24 @@ export function WordScrambleGame({
   const [shaking, setShaking] = useState(false);
   const shakeTimer = useRef<number | null>(null);
 
+  useEffect(() => {
+    if (secondsLeft === null || solved || disabled || secondsLeft <= 0) return;
+    const timer = window.setInterval(() => {
+      setSecondsLeft((prev) => {
+        if (prev === null || prev <= 1) {
+          clearInterval(timer);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [secondsLeft, solved, disabled]);
+
+  const startTimeRef = useRef<number>(0);
+  const errorCountRef = useRef<number>(0);
+  const usedHintRef = useRef<boolean>(false);
+
   // Auto-ayuda por inactividad: si pasan 8s sin tocar ninguna ficha, hacer brillar la primera ficha correcta
   const [idleHintId, setIdleHintId] = useState<string | null>(null);
   const idleTimer = useRef<number | null>(null);
@@ -164,6 +218,12 @@ export function WordScrambleGame({
     setShaking(false);
     setIdleHintId(null);
   }
+
+  useEffect(() => {
+    startTimeRef.current = Date.now();
+    errorCountRef.current = 0;
+    usedHintRef.current = false;
+  }, [cleanTarget]);
 
   useEffect(() => {
     return () => {
@@ -215,12 +275,25 @@ export function WordScrambleGame({
       setIdleHintId(null);
       triggerPurrHaptic();
       playCompanionSound("purr");
+      if (isForeign && autoPronounceOnSolve !== false) {
+        void speakWord(cleanTarget, language).catch(() => {});
+      }
+      const elapsed =
+        startTimeRef.current > 0
+          ? Math.max(100, Date.now() - startTimeRef.current)
+          : 500;
+      const metrics = {
+        responseTimeMs: elapsed,
+        errorCount: errorCountRef.current,
+        usedHint: usedHintRef.current,
+      };
       window.setTimeout(() => {
-        onSolve();
+        onSolve(metrics);
       }, 700);
     } else {
       setShaking(true);
       triggerHaptic(24);
+      errorCountRef.current += 1;
       onWrong?.();
       if (shakeTimer.current !== null) window.clearTimeout(shakeTimer.current);
       shakeTimer.current = window.setTimeout(() => {
@@ -311,6 +384,7 @@ export function WordScrambleGame({
 
   const provideNextLetterHint = () => {
     if (disabled || solved) return;
+    usedHintRef.current = true;
     setIdleHintId(null);
     // Buscar la primera casilla que esté vacía o que tenga una letra/sílaba incorrecta
     let targetIndex = -1;
@@ -431,22 +505,47 @@ export function WordScrambleGame({
 
   return (
     <div className="scramble-game">
+      {secondsLeft !== null ? (
+        <div
+          className="scramble-timer"
+          role="timer"
+          aria-label={`Tiempo restante: ${secondsLeft} segundos`}
+        >
+          <span
+            className={`scramble-timer-badge${secondsLeft <= 3 ? " is-urgent" : ""}`}
+          >
+            ⏱️ {secondsLeft}s
+          </span>
+          <div className="scramble-timer-track">
+            <div
+              className={`scramble-timer-fill${secondsLeft <= 3 ? " is-urgent" : ""}`}
+              style={{
+                width: `${Math.max(
+                  0,
+                  Math.min(100, (secondsLeft / (timeLimitSeconds || 10)) * 100),
+                )}%`,
+              }}
+            />
+          </div>
+        </div>
+      ) : null}
+
       <div className="index-card nb-card scramble-card">
         <p className="nb-card-front">
           <span className="scramble-card-prompt">Alquimia de Palabras</span>
           {pos ? <span className="card-pos"> · {pos}</span> : null}
         </p>
 
-        {meaning ? (
+        {effectiveMeaning ? (
           <p className="scramble-meaning">
-            {conciseMeaning(meaning, 120)}
+            {conciseMeaning(effectiveMeaning, 120)}
           </p>
         ) : null}
 
-        {context ? (
+        {effectiveContext ? (
           <PracticeContext
             key={cleanTarget}
-            text={context}
+            text={effectiveContext}
             target={cleanTarget}
             language={language}
             slotTarget={true}
