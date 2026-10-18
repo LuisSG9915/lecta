@@ -274,6 +274,14 @@ export interface ReaderSettings {
   readingPreset?: ReadingPreset;
   /** Guía de color / guía cromática. */
   colorGuide?: boolean;
+  /** Modo de preparación adaptativa de vocabulario antes de cada capítulo */
+  chapterPrimingMode?: ChapterPrimingMode;
+  /** Máximo de palabras por capítulo (Cowan: 3 a 5) */
+  maxPrimingWords?: 3 | 4 | 5 | 7;
+  /** IDs de libros silenciados para pre-lectura */
+  mutedPrimingBookIds?: string[];
+  /** Subrayado sutil en el texto para palabras pre-vistas */
+  subtleInTextAnchor?: boolean;
 }
 
 export const READER_DEFAULTS: ReaderSettings = {
@@ -303,6 +311,30 @@ export const READER_DEFAULTS: ReaderSettings = {
   hideSecondaryIndicators: true,
   visualPacer: false,
   pacerWpm: 210,
+};
+
+export type ChapterPrimingMode = "auto" | "on-demand" | "off";
+
+export interface ChapterPrimingSettings {
+  /**
+   * 'auto': Muestra de 3 a 5 palabras clave antes del capítulo si superan el umbral cognitivo.
+   * 'on-demand': No abre nada automáticamente; muestra una píldora discreta en el encabezado.
+   * 'off': Desactivado por completo.
+   */
+  mode: ChapterPrimingMode;
+  /** Máximo de palabras por capítulo (basado en el límite de memoria de trabajo de Cowan: 3 a 5) */
+  maxWordsPerChapter: 3 | 4 | 5 | 7;
+  /** IDs de libros donde el usuario eligió "Ocultar en este libro" */
+  mutedBookIds: string[];
+  /** Activa el subrayado punteado sutil en el capítulo para las palabras pre-vistas */
+  subtleInTextAnchor: boolean;
+}
+
+export const DEFAULT_CHAPTER_PRIMING_SETTINGS: ChapterPrimingSettings = {
+  mode: "auto",
+  maxWordsPerChapter: 4,
+  mutedBookIds: [],
+  subtleInTextAnchor: true,
 };
 
 export type PreparationMode = "auto" | "notice" | "off";
@@ -695,6 +727,40 @@ export function parseReaderSettings(raw: string | null): ReaderSettings {
         typeof v.pacerWpm === "number" && v.pacerWpm >= 60 && v.pacerWpm <= 600
           ? v.pacerWpm
           : 210,
+      ...(v.chapterPrimingMode !== undefined
+        ? {
+            chapterPrimingMode:
+              v.chapterPrimingMode === "auto" ||
+              v.chapterPrimingMode === "on-demand" ||
+              v.chapterPrimingMode === "off"
+                ? v.chapterPrimingMode
+                : "auto",
+          }
+        : {}),
+      ...(v.maxPrimingWords !== undefined
+        ? {
+            maxPrimingWords:
+              v.maxPrimingWords === 3 ||
+              v.maxPrimingWords === 4 ||
+              v.maxPrimingWords === 5 ||
+              v.maxPrimingWords === 7
+                ? v.maxPrimingWords
+                : 4,
+          }
+        : {}),
+      ...(v.mutedPrimingBookIds !== undefined
+        ? {
+            mutedPrimingBookIds: Array.isArray(v.mutedPrimingBookIds)
+              ? v.mutedPrimingBookIds.filter((id): id is string => typeof id === "string")
+              : [],
+          }
+        : {}),
+      ...(v.subtleInTextAnchor !== undefined
+        ? {
+            subtleInTextAnchor:
+              typeof v.subtleInTextAnchor === "boolean" ? v.subtleInTextAnchor : true,
+          }
+        : {}),
       ...(v.readingPreset !== undefined ? { readingPreset: v.readingPreset } : {}),
       ...(v.colorGuide !== undefined ? { colorGuide: v.colorGuide } : {}),
     };
@@ -919,3 +985,86 @@ export function applyTheme(choice: ThemeChoice | "paper" | "white" | "night") {
     meta.setAttribute("content", color);
   }
 }
+
+export const CHAPTER_PRIMING_KEY = "lecta:chapter_priming:v1";
+
+export function loadChapterPrimingSettings(): ChapterPrimingSettings {
+  try {
+    const raw = storage()?.getItem(CHAPTER_PRIMING_KEY);
+    if (!raw) return { ...DEFAULT_CHAPTER_PRIMING_SETTINGS };
+    const parsed = JSON.parse(raw) as Partial<ChapterPrimingSettings>;
+    return {
+      mode:
+        parsed.mode === "auto" || parsed.mode === "on-demand" || parsed.mode === "off"
+          ? parsed.mode
+          : DEFAULT_CHAPTER_PRIMING_SETTINGS.mode,
+      maxWordsPerChapter:
+        parsed.maxWordsPerChapter === 3 ||
+        parsed.maxWordsPerChapter === 4 ||
+        parsed.maxWordsPerChapter === 5 ||
+        parsed.maxWordsPerChapter === 7
+          ? parsed.maxWordsPerChapter
+          : DEFAULT_CHAPTER_PRIMING_SETTINGS.maxWordsPerChapter,
+      mutedBookIds: Array.isArray(parsed.mutedBookIds)
+        ? parsed.mutedBookIds.filter((id): id is string => typeof id === "string")
+        : [],
+      subtleInTextAnchor:
+        typeof parsed.subtleInTextAnchor === "boolean"
+          ? parsed.subtleInTextAnchor
+          : DEFAULT_CHAPTER_PRIMING_SETTINGS.subtleInTextAnchor,
+    };
+  } catch {
+    return { ...DEFAULT_CHAPTER_PRIMING_SETTINGS };
+  }
+}
+
+export function saveChapterPrimingSettings(settings: ChapterPrimingSettings): void {
+  try {
+    storage()?.setItem(CHAPTER_PRIMING_KEY, JSON.stringify(settings));
+  } catch {
+    // Almacenamiento lleno o inaccesible
+  }
+}
+
+export function muteBookForPriming(bookId: string): void {
+  if (!bookId) return;
+  const current = loadChapterPrimingSettings();
+  if (!current.mutedBookIds.includes(bookId)) {
+    saveChapterPrimingSettings({
+      ...current,
+      mutedBookIds: [...current.mutedBookIds, bookId],
+    });
+  }
+}
+
+export function unmuteBookForPriming(bookId: string): void {
+  if (!bookId) return;
+  const current = loadChapterPrimingSettings();
+  saveChapterPrimingSettings({
+    ...current,
+    mutedBookIds: current.mutedBookIds.filter((id) => id !== bookId),
+  });
+}
+
+export function isPrimingMutedForBook(bookId: string): boolean {
+  if (!bookId) return false;
+  const current = loadChapterPrimingSettings();
+  return current.mutedBookIds.includes(bookId);
+}
+
+export function disablePrimingGlobally(): void {
+  const current = loadChapterPrimingSettings();
+  saveChapterPrimingSettings({
+    ...current,
+    mode: "off",
+  });
+}
+
+export function setChapterPrimingMode(mode: ChapterPrimingMode): void {
+  const current = loadChapterPrimingSettings();
+  saveChapterPrimingSettings({
+    ...current,
+    mode,
+  });
+}
+

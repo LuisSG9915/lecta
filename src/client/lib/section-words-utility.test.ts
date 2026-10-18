@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { nextChapterUtility, buildSuggestionRows } from "./section-words";
+import {
+  nextChapterUtility,
+  buildSuggestionRows,
+  selectOptimalChapterPrimingWords,
+  computeZpdWeight,
+  cleanContextSentence,
+  buildChapterPrimingCandidates,
+  type ChapterPrimingCandidate,
+} from "./section-words";
 import type { LexiconEntry } from "./lexicon";
 
 describe("Algoritmo Next-Chapter Utility (Fase 4.2)", () => {
@@ -201,3 +209,146 @@ describe("Algoritmo Next-Chapter Utility (Fase 4.2)", () => {
     expect(rows.rows[1].form).toBe("surreptitious");
   });
 });
+
+describe("Selector Científico de Palabras Pre-Capítulo (ZPD + Cowan) (Track 6)", () => {
+  it("cleanContextSentence trunca a 140 caracteres sin cortar palabras a la mitad", () => {
+    const shortSentence = "Esta es una oración corta.";
+    expect(cleanContextSentence(shortSentence)).toBe(shortSentence);
+
+    const longSentence =
+      "El viento soplaba furiosamente a través de las colinas heladas mientras los viajeros buscaban un refugio seguro antes de que la noche cubriera todo el valle de misterio y frío.";
+    const cleaned = cleanContextSentence(longSentence, 80);
+    expect(cleaned.length).toBeLessThanOrEqual(81);
+    expect(cleaned.endsWith("…")).toBe(true);
+    // No debe haber espacios antes de los puntos suspensivos
+    expect(cleaned.endsWith(" …")).toBe(false);
+  });
+
+  it("computeZpdWeight aplica campana gaussiana centrada en el desafío óptimo", () => {
+    const theta = 0.0;
+    // En L1, desafío óptimo es theta + 0.65
+    const optimalL1 = computeZpdWeight(theta, 0.65, false);
+    const tooEasy = computeZpdWeight(theta, -1.5, false);
+    const tooHard = computeZpdWeight(theta, 3.5, false);
+
+    expect(optimalL1).toBeCloseTo(1.0, 4);
+    expect(optimalL1).toBeGreaterThan(tooEasy);
+    expect(optimalL1).toBeGreaterThan(tooHard);
+
+    // En L2, desafío óptimo es theta + 0.35
+    const optimalL2 = computeZpdWeight(theta, 0.35, true);
+    expect(optimalL2).toBeCloseTo(1.0, 4);
+  });
+
+  it("selectOptimalChapterPrimingWords selecciona entre 3 y 5 palabras maximizando utilidad", () => {
+    const candidates: ChapterPrimingCandidate[] = [
+      {
+        lemma: "casa",
+        surfaceForm: "casa",
+        lang: "es",
+        beta: -2.0, // Muy fácil (dominada)
+        chapterFrequency: 10,
+        partOfSpeech: "noun",
+        shortGloss: "Edificio para habitar.",
+        contextSentence: "La casa era blanca.",
+      },
+      {
+        lemma: "vislumbrar",
+        surfaceForm: "vislumbró",
+        lang: "es",
+        beta: 0.7, // En ZPD óptima para theta = 0.0
+        chapterFrequency: 3,
+        partOfSpeech: "verb",
+        shortGloss: "Ver un objeto tenuemente.",
+        contextSentence: "A lo lejos vislumbró una luz.",
+      },
+      {
+        lemma: "efímero",
+        surfaceForm: "efímero",
+        lang: "es",
+        beta: 0.8, // En ZPD óptima
+        chapterFrequency: 2,
+        partOfSpeech: "adj",
+        shortGloss: "Que dura poco tiempo.",
+        contextSentence: "Un instante efímero de paz.",
+      },
+      {
+        lemma: "dar en el clavo",
+        surfaceForm: "dio en el clavo",
+        lang: "es",
+        beta: 0.6,
+        chapterFrequency: 2,
+        partOfSpeech: "phrase",
+        shortGloss: "Acertar con exactitud.",
+        contextSentence: "Con su respuesta dio en el clavo.",
+      },
+      {
+        lemma: "inmarcesible",
+        surfaceForm: "inmarcesible",
+        lang: "es",
+        beta: 3.5, // Demasiado difícil / fuera de ZPD
+        chapterFrequency: 1,
+        partOfSpeech: "adj",
+        shortGloss: "Que no se puede marchitar.",
+        contextSentence: "Una belleza inmarcesible.",
+      },
+    ];
+
+    const selected = selectOptimalChapterPrimingWords(candidates, 0.0, {
+      maxWords: 3,
+      isForeignLanguage: false,
+    });
+
+    // Debe respetar el límite Cowan (máximo 3)
+    expect(selected.length).toBeLessThanOrEqual(3);
+    expect(selected.length).toBeGreaterThan(0);
+
+    // "casa" debe ser descartada por ser demasiado fácil (unknownProb < 0.25)
+    expect(selected.some((w) => w.lemma === "casa")).toBe(false);
+
+    // Las candidatas en ZPD ("vislumbrar", "efímero", "dar en el clavo") deben ser seleccionadas
+    expect(selected.some((w) => w.lemma === "vislumbrar")).toBe(true);
+  });
+
+  it("buildChapterPrimingCandidates procesa texto del capítulo y genera candidatas enriquecidas", () => {
+    const entries: Record<string, LexiconEntry[]> = {
+      deslumbro: [
+        {
+          entryId: null,
+          freqRank: null,
+          lemma: "deslumbrar",
+          pos: "verbo",
+          zipf: 3.2,
+          senses: [{ definition: "Ofuscar la vista.", example: null, senseOrder: 1 }],
+        },
+      ],
+      aurora: [
+        {
+          entryId: null,
+          freqRank: null,
+          lemma: "aurora",
+          pos: "sustantivo",
+          zipf: 3.5,
+          senses: [{ definition: "Claridad antes del amanecer.", example: null, senseOrder: 1 }],
+        },
+      ],
+    };
+
+    const text =
+      "La hermosa aurora comenzó a surgir en el horizonte oriental. Su brillo deslumbro a todos los caminantes que cruzaban el bosque temprano en la mañana.";
+
+    const result = buildChapterPrimingCandidates({
+      forms: ["aurora", "aurora", "deslumbro"],
+      entries,
+      text,
+      lang: "es",
+      userTheta: 0.0,
+      maxWords: 4,
+    });
+
+    expect(result.length).toBeGreaterThan(0);
+    expect(result[0].contextSentence).toBeTruthy();
+    expect(result[0].contextSentence.length).toBeLessThanOrEqual(140);
+  });
+});
+

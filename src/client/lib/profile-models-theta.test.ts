@@ -12,6 +12,13 @@ import {
   saveUserTheta,
   loadThetaByLang,
   saveThetaForLang,
+  predictWordMasteryProbability,
+  betaFromZipf,
+  updateLanguageTheta,
+  loadUserLanguageProfile,
+  saveUserLanguageProfile,
+  recordChapterCompleted,
+  DEFAULT_USER_LANGUAGE_PROFILE,
 } from "./profile-models";
 
 describe("Recalibración en Vivo y Modelo de Nivel de Usuario Theta (Fase 4.3)", () => {
@@ -94,3 +101,73 @@ describe("Recalibración en Vivo y Modelo de Nivel de Usuario Theta (Fase 4.3)",
     expect(loadUserTheta(3.0, "es")).toBeCloseTo(4.15, 2);
   });
 });
+
+describe("Modelo Psicométrico Rasch 1PL y theta por idioma (Track 6)", () => {
+  it("predictWordMasteryProbability calcula Rasch 1PL sigmoide", () => {
+    // Si theta == beta, probabilidad es 0.5
+    expect(predictWordMasteryProbability(0.0, 0.0)).toBeCloseTo(0.5, 4);
+    expect(predictWordMasteryProbability(1.5, 1.5)).toBeCloseTo(0.5, 4);
+
+    // Si theta > beta, probabilidad > 0.5
+    expect(predictWordMasteryProbability(1.0, 0.0)).toBeGreaterThan(0.7);
+
+    // Si theta < beta, probabilidad < 0.5
+    expect(predictWordMasteryProbability(0.0, 1.0)).toBeLessThan(0.3);
+
+    // z acotado [-10, 10] para estabilidad numérica
+    expect(predictWordMasteryProbability(100, 0)).toBeCloseTo(1, 4);
+    expect(predictWordMasteryProbability(-100, 0)).toBeCloseTo(0, 4);
+  });
+
+  it("betaFromZipf mapea escala Zipf a dificultad intrinsic beta", () => {
+    // zipf 4.0 -> beta 0.0 (dificultad media)
+    expect(betaFromZipf(4.0)).toBe(0.0);
+    // zipf 2.0 (palabra rara) -> beta 2.0 (difícil)
+    expect(betaFromZipf(2.0)).toBe(2.0);
+    // zipf 6.0 (palabra común) -> beta -2.0 (fácil)
+    expect(betaFromZipf(6.0)).toBe(-2.0);
+  });
+
+  it("updateLanguageTheta con outcome = 1 incrementa theta y reduce incertidumbre", () => {
+    const profile = { ...DEFAULT_USER_LANGUAGE_PROFILE };
+    const beta = 1.0;
+    const updated = updateLanguageTheta(profile, "es", beta, 1);
+
+    expect(updated.thetaByLang.es).toBeGreaterThan(0.0);
+    expect(updated.uncertaintyByLang.es).toBeLessThan(1.0);
+    // El inglés no debe haber cambiado
+    expect(updated.thetaByLang.en).toBe(0.0);
+  });
+
+  it("updateLanguageTheta con outcome = 0 decrementa theta y reduce incertidumbre", () => {
+    const profile = { ...DEFAULT_USER_LANGUAGE_PROFILE, thetaByLang: { es: 1.0 } };
+    const beta = -0.5; // Palabra fácil desconocida
+    const updated = updateLanguageTheta(profile, "es", beta, 0);
+
+    expect(updated.thetaByLang.es).toBeLessThan(1.0);
+    expect(updated.uncertaintyByLang.es).toBeLessThan(1.0);
+  });
+
+  it("soporta actualización directa persistida y conteo de capítulos", () => {
+    localStorage.clear();
+    const updated = updateLanguageTheta("en", 0.5, 1);
+    expect(updated.thetaByLang.en).toBeGreaterThan(0.0);
+
+    const loaded = loadUserLanguageProfile();
+    expect(loaded.thetaByLang.en).toBe(updated.thetaByLang.en);
+
+    const afterChapter = recordChapterCompleted("en");
+    expect(afterChapter.chaptersCompletedByLang.en).toBe(1);
+    expect(afterChapter.chaptersCompletedByLang.es ?? 0).toBe(0);
+
+    saveUserLanguageProfile({
+      thetaByLang: { es: 1.5, en: 0.5 },
+      uncertaintyByLang: { es: 0.8, en: 0.9 },
+      chaptersCompletedByLang: { es: 3, en: 1 },
+    });
+    const loaded2 = loadUserLanguageProfile();
+    expect(loaded2.thetaByLang.es).toBe(1.5);
+    expect(loaded2.chaptersCompletedByLang.es).toBe(3);
+  });
+});
+

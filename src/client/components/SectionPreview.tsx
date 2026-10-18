@@ -2,7 +2,14 @@ import { useEffect, useRef, useState } from "react";
 import Sheet from "./Sheet";
 import { triggerHaptic } from "../lib/haptics";
 import type { PreparationAnswer, PreparationAnswers } from "../lib/preparation";
-import type { SuggestionRow } from "../lib/section-words";
+import {
+  cleanContextSentence,
+  normalizePosCategory,
+  type ScoredPrimingWord,
+  type SuggestionRow,
+} from "../lib/section-words";
+import { betaFromZipf } from "../lib/profile-models";
+import { speakWord } from "../lib/speech";
 import { useCompanionSafe } from "./CompanionProvider";
 import { Companion } from "./Companion";
 import { ProgressInk } from "./ProgressInk";
@@ -21,6 +28,10 @@ export type SectionPreviewAnalysis = "loading" | "ready" | "error";
 export type SectionPreviewProps = {
   // Destino que se prepara («Capítulo 1», «Introducción»…).
   title?: string;
+  chapterTitle?: string;
+  bookId?: string;
+  bookLang?: string;
+  userNativeLang?: string;
   analysis?: SectionPreviewAnalysis;
   // Filas en el orden visual fijo: no se reordenan ni desaparecen
   // al responderlas; si llega una definición tardía se actualiza en
@@ -61,9 +72,16 @@ export type SectionPreviewProps = {
   onSelectStrategy?: (preset: ReadingStrategyPreset) => void;
   // Notificación al desbloquear una joya léxica
   onUnlockCard?: (row: SectionPreviewRow) => void;
-  mode?: "pill" | "modal";
-  words?: SectionPreviewRow[] | { length: number };
+  mode?: "pill" | "modal" | "priming";
+  words?: ScoredPrimingWord[] | SectionPreviewRow[] | { length: number };
   onExpand?: () => void;
+  // Callbacks de pre-lectura adaptativa (Track 6 / Zero-Friction)
+  onMarkKnown?: (lemma: string, beta: number) => void;
+  onSaveToPractice?: (lemma: string, beta: number) => void;
+  onPronounce?: (word: string, lang: string) => void;
+  onStartReading?: () => void;
+  onMuteForBook?: (bookId: string) => void;
+  onDisableGlobally?: () => void;
 };
 
 const PAGE_SIZE = 8;
@@ -147,10 +165,208 @@ function Row({
   );
 }
 
+function PrimingCardView({
+  bookId,
+  chapterTitle,
+  bookLang,
+  userNativeLang,
+  words,
+  onMarkKnown,
+  onSaveToPractice,
+  onPronounce,
+  onStartReading,
+  onMuteForBook,
+  onDisableGlobally,
+}: {
+  bookId: string;
+  chapterTitle: string;
+  bookLang: string;
+  userNativeLang: string;
+  words: ScoredPrimingWord[];
+  onMarkKnown: (lemma: string, beta: number) => void;
+  onSaveToPractice: (lemma: string, beta: number) => void;
+  onPronounce?: (word: string, lang: string) => void;
+  onStartReading: () => void;
+  onMuteForBook: (bookId: string) => void;
+  onDisableGlobally: () => void;
+}) {
+  const [dismissedLemmas, setDismissedLemmas] = useState<Set<string>>(new Set());
+  const [savedLemmas, setSavedLemmas] = useState<Set<string>>(new Set());
+  const [showDisableMenu, setShowDisableMenu] = useState(false);
+
+  const isForeignLang =
+    bookLang.slice(0, 2).toLowerCase() !== userNativeLang.slice(0, 2).toLowerCase();
+
+  const visibleWords = words.filter((w) => !dismissedLemmas.has(w.lemma));
+
+  // Si el usuario ya conoce todas las palabras sugeridas o no hay candidatas, pasa directo
+  if (visibleWords.length === 0) {
+    return null;
+  }
+
+  const handleKnown = (word: ScoredPrimingWord) => {
+    triggerHaptic(10);
+    setDismissedLemmas((prev) => new Set(prev).add(word.lemma));
+    onMarkKnown(word.lemma, word.beta);
+  };
+
+  const handleSave = (word: ScoredPrimingWord) => {
+    triggerHaptic(12);
+    setSavedLemmas((prev) => new Set(prev).add(word.lemma));
+    onSaveToPractice(word.lemma, word.beta);
+  };
+
+  const handlePronounce = (form: string) => {
+    triggerHaptic(8);
+    if (onPronounce) {
+      onPronounce(form, bookLang);
+    } else {
+      void speakWord(form, bookLang);
+    }
+  };
+
+  const estimatedSeconds = Math.max(10, visibleWords.length * 5);
+
+  return (
+    <section
+      className="lecta-chapter-priming"
+      aria-label="Preparación de vocabulario del capítulo"
+    >
+      <header className="lecta-chapter-priming__header">
+        <div className="lecta-chapter-priming__meta">
+          <span className="lecta-chapter-priming__badge">
+            {isForeignLang ? `Lectura en ${bookLang.toUpperCase()}` : "Antes de leer"}
+          </span>
+          <span className="lecta-chapter-priming__time">
+            {visibleWords.length} {visibleWords.length === 1 ? "palabra clave" : "palabras clave"} · ~{estimatedSeconds} s
+          </span>
+        </div>
+
+        <div className="lecta-chapter-priming__controls">
+          <button
+            type="button"
+            className="lecta-chapter-priming__options-btn"
+            onClick={() => setShowDisableMenu((v) => !v)}
+            aria-expanded={showDisableMenu}
+            title="Opciones de visibilidad"
+          >
+            Opciones ▾
+          </button>
+
+          {showDisableMenu && (
+            <div className="lecta-chapter-priming__dropdown" role="menu">
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setShowDisableMenu(false);
+                  onMuteForBook(bookId);
+                }}
+              >
+                Ocultar en este libro
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setShowDisableMenu(false);
+                  onDisableGlobally();
+                }}
+              >
+                Desactivar pre-lectura siempre
+              </button>
+            </div>
+          )}
+        </div>
+      </header>
+
+      <h2 className="lecta-chapter-priming__title">{chapterTitle}</h2>
+      <p className="lecta-chapter-priming__subtitle">
+        Un vistazo rápido para que leas el capítulo de corrido y sin perder el hilo.
+      </p>
+
+      <ul className="lecta-chapter-priming__list">
+        {visibleWords.map((item) => {
+          const isSaved = savedLemmas.has(item.lemma);
+          return (
+            <li key={item.lemma} className="lecta-priming-card">
+              <div className="lecta-priming-card__top">
+                <div className="lecta-priming-card__word-group">
+                  <strong className="lecta-priming-card__lemma">{item.surfaceForm}</strong>
+                  {item.partOfSpeech && (
+                    <span className="lecta-priming-card__pos">{item.partOfSpeech}</span>
+                  )}
+                  <button
+                    type="button"
+                    className="lecta-priming-card__audio"
+                    onClick={() => handlePronounce(item.surfaceForm)}
+                    aria-label={`Escuchar pronunciación de ${item.surfaceForm}`}
+                  >
+                    🔊
+                  </button>
+                </div>
+
+                <div className="lecta-priming-card__actions">
+                  <button
+                    type="button"
+                    className="lecta-priming-card__btn-known"
+                    onClick={() => handleKnown(item)}
+                    title="El modelo aprenderá que ya dominas esta palabra"
+                  >
+                    ✓ Ya la sé
+                  </button>
+                  <button
+                    type="button"
+                    className={`lecta-priming-card__btn-save ${isSaved ? "is-saved" : ""}`}
+                    onClick={() => handleSave(item)}
+                    disabled={isSaved}
+                  >
+                    {isSaved ? "Guardada" : "+ Repasar"}
+                  </button>
+                </div>
+              </div>
+
+              {item.shortGloss && (
+                <p className="lecta-priming-card__gloss">{item.shortGloss}</p>
+              )}
+
+              {item.contextSentence && (
+                <blockquote className="lecta-priming-card__context">
+                  «{item.contextSentence}»
+                </blockquote>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+
+      <footer className="lecta-chapter-priming__footer">
+        <button
+          type="button"
+          className="lecta-chapter-priming__start-btn"
+          onClick={onStartReading}
+        >
+          Comenzar a leer capítulo →
+        </button>
+      </footer>
+    </section>
+  );
+}
+
 // Preparación «Antes de leer»: hoja controlada que lista el
 // vocabulario del destino y pide una respuesta explícita por palabra.
 // No escribe ni consulta nada: el controlador decide qué se guarda.
 export default function SectionPreview({
+  bookId = "",
+  chapterTitle,
+  bookLang = "es",
+  userNativeLang = "es",
+  onMarkKnown,
+  onSaveToPractice,
+  onPronounce,
+  onStartReading,
+  onMuteForBook,
+  onDisableGlobally,
   title = "",
   analysis = "ready",
   rows = [],
@@ -174,14 +390,63 @@ export default function SectionPreview({
   onExpand,
 }: SectionPreviewProps) {
   if (mode === "pill") {
+    const count =
+      typeof words === "object" && words !== null && "length" in words
+        ? words.length
+        : rows.length;
     return (
       <button
         type="button"
         className="reader-section-preview-pill"
         onClick={onExpand}
       >
-        ✨ {words.length} palabras clave en este capítulo · Ver
+        ✨ {count} {count === 1 ? "palabra clave" : "palabras clave"} en este capítulo · Ver
       </button>
+    );
+  }
+
+  const isPrimingMode =
+    mode === "priming" ||
+    onMarkKnown !== undefined ||
+    onStartReading !== undefined ||
+    onMuteForBook !== undefined ||
+    onDisableGlobally !== undefined ||
+    (Array.isArray(words) && words.length > 0 && "beta" in words[0]);
+
+  if (isPrimingMode) {
+    const primingWords: ScoredPrimingWord[] =
+      Array.isArray(words) && words.length > 0 && "beta" in words[0]
+        ? (words as ScoredPrimingWord[])
+        : rows.map((r) => ({
+            lemma: r.lemma ?? r.form.toLowerCase(),
+            surfaceForm: r.form,
+            lang: bookLang,
+            beta: r.zipf != null ? betaFromZipf(r.zipf) : 0.5,
+            chapterFrequency: 1,
+            partOfSpeech: normalizePosCategory(r.pos),
+            shortGloss: r.meaning ?? "",
+            contextSentence: cleanContextSentence(r.context, 140),
+            utilityScore: 1.0,
+            unknownProbability: 0.5,
+          }));
+
+    return (
+      <PrimingCardView
+        bookId={bookId}
+        chapterTitle={chapterTitle || title || "Preparación del capítulo"}
+        bookLang={bookLang}
+        userNativeLang={userNativeLang}
+        words={primingWords}
+        onMarkKnown={onMarkKnown ?? ((_lemma, _beta) => {})}
+        onSaveToPractice={onSaveToPractice ?? ((_lemma, _beta) => {})}
+        onPronounce={onPronounce}
+        onStartReading={() => {
+          onStartReading?.();
+          onConfirm();
+        }}
+        onMuteForBook={onMuteForBook ?? ((_id) => {})}
+        onDisableGlobally={onDisableGlobally ?? (() => {})}
+      />
     );
   }
 
@@ -635,3 +900,6 @@ export default function SectionPreview({
     </Sheet>
   );
 }
+
+export { SectionPreview };
+

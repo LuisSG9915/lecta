@@ -5,6 +5,7 @@ import { predictSection } from "./knowledge";
 import { isWordToken } from "../../shared/word-form";
 import { isStopword } from "../../shared/stopwords";
 import { preparationAnswerKey, type PreparationRow } from "./preparation";
+import { betaFromZipf, predictWordMasteryProbability } from "./profile-models";
 
 // Utilidades puras del lector predictivo: preparan entradas para
 // predictSection (knowledge.ts) y para la tarjeta «Antes de leer».
@@ -492,4 +493,220 @@ export function extractKeyWordFromSentence(
   const best = scored[0];
   return { form: best.form, lemma: best.lemma, pos: best.pos };
 }
+
+// ---------- Selector Científico de Palabras Pre-Capítulo (ZPD + Cowan) ----------
+
+export interface ChapterPrimingCandidate {
+  lemma: string;
+  surfaceForm: string;
+  lang: string;
+  beta: number; // Dificultad intrínseca de la palabra (-3 a +3.5)
+  chapterFrequency: number;
+  partOfSpeech?: "noun" | "verb" | "adj" | "adv" | "phrase" | "other";
+  shortGloss: string; // Glosa breve o traducción contextual (L2)
+  contextSentence: string; // Oración real del capítulo (máx. 140 caracteres)
+  fsrsRetrievability?: number; // Si ya está en FSRS (0 a 1)
+  isKnownExplicitly?: boolean;
+}
+
+export interface ScoredPrimingWord extends ChapterPrimingCandidate {
+  utilityScore: number;
+  unknownProbability: number;
+}
+
+/**
+ * Calcula la campana gaussiana de la Zona de Desarrollo Próximo (Vygotsky).
+ * Prioriza palabras que están ligeramente por encima del nivel actual del lector (theta + 0.6).
+ */
+export function computeZpdWeight(
+  theta: number,
+  beta: number,
+  isForeignLanguage: boolean,
+): number {
+  const optimalChallengeOffset = isForeignLanguage ? 0.35 : 0.65;
+  const targetBeta = theta + optimalChallengeOffset;
+  const sigma = isForeignLanguage ? 1.15 : 1.0;
+  const diff = beta - targetBeta;
+  return Math.exp(-(diff * diff) / (2 * sigma * sigma));
+}
+
+export const POS_WEIGHTS: Record<string, number> = {
+  phrase: 1.35, // Locuciones / phrasal verbs son críticos para no perder contexto en L2
+  verb: 1.25, // Núcleo de la acción narrativa
+  adj: 1.15, // Tono y atmósfera
+  noun: 1.10,
+  adv: 0.90,
+  other: 0.75,
+};
+
+export function selectOptimalChapterPrimingWords(
+  candidates: ChapterPrimingCandidate[],
+  userTheta: number,
+  options: {
+    maxWords: number;
+    isForeignLanguage: boolean;
+    minUtilityThreshold?: number;
+  },
+): ScoredPrimingWord[] {
+  const minThreshold = options.minUtilityThreshold ?? 0.22;
+
+  const scored: ScoredPrimingWord[] = [];
+
+  for (const item of candidates) {
+    if (item.isKnownExplicitly) continue;
+
+    // 1. Probabilidad de que el usuario NO conozca o haya olvidado la palabra
+    const pKnown =
+      item.fsrsRetrievability !== undefined
+        ? item.fsrsRetrievability
+        : predictWordMasteryProbability(userTheta, item.beta);
+
+    const unknownProb = 1 - pKnown;
+    if (unknownProb < 0.25) continue; // El usuario ya la domina con >75% de probabilidad
+
+    // 2. Impacto en la cobertura léxica del capítulo
+    const frequencyImpact = Math.log(1 + item.chapterFrequency);
+
+    // 3. Ajuste a la Zona de Desarrollo Próximo
+    const zpdWeight = computeZpdWeight(
+      userTheta,
+      item.beta,
+      options.isForeignLanguage,
+    );
+
+    // 4. Peso semántico por categoría gramatical
+    const posWeight = POS_WEIGHTS[item.partOfSpeech ?? "other"] ?? 1.0;
+
+    // 5. Bonificación FSRS si es una palabra vista antes que está a punto de olvidarse (R entre 0.30 y 0.75)
+    const fsrsBoost =
+      item.fsrsRetrievability !== undefined &&
+      item.fsrsRetrievability >= 0.3 &&
+      item.fsrsRetrievability <= 0.75
+        ? 1.3
+        : 1.0;
+
+    const utilityScore =
+      unknownProb * frequencyImpact * zpdWeight * posWeight * fsrsBoost;
+
+    if (utilityScore >= minThreshold) {
+      scored.push({
+        ...item,
+        utilityScore: Number(utilityScore.toFixed(4)),
+        unknownProbability: Number(unknownProb.toFixed(3)),
+      });
+    }
+  }
+
+  // Ordenar de mayor utilidad cognitiva a menor y cortar según límite de memoria de trabajo (Cowan)
+  return scored
+    .sort((a, b) => b.utilityScore - a.utilityScore)
+    .slice(0, options.maxWords);
+}
+
+/**
+ * Trunca y limpia una oración contextual a un máximo de caracteres sin cortar palabras.
+ */
+export function cleanContextSentence(
+  sentence: string | undefined,
+  maxChars = 140,
+): string {
+  if (!sentence) return "";
+  const trimmed = sentence.trim().replace(/\s+/g, " ");
+  if (trimmed.length <= maxChars) return trimmed;
+  const cut = trimmed.slice(0, maxChars);
+  const lastSpace = cut.lastIndexOf(" ");
+  return `${(lastSpace > 0 ? cut.slice(0, lastSpace) : cut).trim()}…`;
+}
+
+export function normalizePosCategory(
+  pos?: string | null,
+): ChapterPrimingCandidate["partOfSpeech"] {
+  if (!pos) return "other";
+  const p = pos.toLowerCase();
+  if (p.includes("phrase") || p.includes("locución") || p.includes("modismo"))
+    return "phrase";
+  if (p.includes("verb") || p.includes("verbo")) return "verb";
+  if (p.includes("adj") || p.includes("adjetivo")) return "adj";
+  if (p.includes("adv") || p.includes("adverbio")) return "adv";
+  if (p.includes("noun") || p.includes("sustantivo") || p.includes("nombre"))
+    return "noun";
+  return "other";
+}
+
+export function buildChapterPrimingCandidates(input: {
+  forms: string[];
+  entries: Record<string, LexiconEntry[]>;
+  text: string;
+  lang: string;
+  userTheta?: number;
+  isForeignLanguage?: boolean;
+  knowledge?: ReadonlyMap<string, { lemma: string; known: boolean }>;
+  fsrsRetrievabilities?: ReadonlyMap<string, number>;
+  maxWords?: number;
+  glosses?: ReadonlyMap<string, string>;
+}): ScoredPrimingWord[] {
+  const {
+    forms,
+    entries,
+    text,
+    lang,
+    userTheta = 0.0,
+    isForeignLanguage = false,
+    knowledge,
+    fsrsRetrievabilities,
+    maxWords = 4,
+    glosses,
+  } = input;
+
+  const frequencies = new Map<string, number>();
+  for (const f of forms) {
+    const lower = f.toLowerCase();
+    if (isWordToken(lower) && !isStopword(lower, lang)) {
+      frequencies.set(lower, (frequencies.get(lower) ?? 0) + 1);
+    }
+  }
+
+  const seenLemmas = new Set<string>();
+  const candidates: ChapterPrimingCandidate[] = [];
+
+  for (const [form, freq] of frequencies) {
+    const entry = entries[form]?.[0];
+    const lemma = (entry?.lemma ?? form).toLowerCase();
+    if (seenLemmas.has(lemma)) continue;
+    seenLemmas.add(lemma);
+
+    const isKnown =
+      knowledge?.get(lemma)?.known === true || knowledge?.get(form)?.known === true;
+    const beta = betaFromZipf(entry?.zipf);
+    const pos = normalizePosCategory(entry?.pos);
+    const shortGloss =
+      glosses?.get(lemma) ??
+      glosses?.get(form) ??
+      entry?.senses?.[0]?.definition ??
+      "";
+    const rawContext = firstSentenceWith(text, form, lang);
+    const contextSentence = cleanContextSentence(rawContext, 140);
+    const fsrsRetrievability =
+      fsrsRetrievabilities?.get(lemma) ?? fsrsRetrievabilities?.get(form);
+
+    candidates.push({
+      lemma,
+      surfaceForm: form,
+      lang,
+      beta,
+      chapterFrequency: freq,
+      partOfSpeech: pos,
+      shortGloss,
+      contextSentence,
+      fsrsRetrievability,
+      isKnownExplicitly: isKnown,
+    });
+  }
+
+  return selectOptimalChapterPrimingWords(candidates, userTheta, {
+    maxWords,
+    isForeignLanguage,
+  });
+}
+
 

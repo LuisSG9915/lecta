@@ -3,6 +3,8 @@ import {
   applyReadingPreset,
   detectActiveReadingPreset,
   READING_PRESETS,
+  setChapterPrimingMode,
+  type ChapterPrimingMode,
   type ReaderSettings,
   type ReadingPreset,
   type StrategyContrast,
@@ -35,6 +37,8 @@ export interface ReaderMoreMenuProps {
   onToggleParagraphFocus?: (val: boolean) => void;
   onToggleSyntacticLines?: (val: boolean) => void;
   onToggleColorGuide?: (val: boolean) => void;
+  chapterPrimingMode?: ChapterPrimingMode;
+  onChapterPrimingModeChange?: (mode: ChapterPrimingMode) => void;
 }
 
 export default function ReaderMoreMenu({
@@ -62,8 +66,21 @@ export default function ReaderMoreMenu({
   onToggleParagraphFocus,
   onToggleSyntacticLines,
   onToggleColorGuide,
+  chapterPrimingMode,
+  onChapterPrimingModeChange,
 }: ReaderMoreMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
+
+  const currentPrimingMode =
+    chapterPrimingMode ?? settings?.chapterPrimingMode ?? "auto";
+
+  const handlePrimingModeChange = (mode: ChapterPrimingMode) => {
+    onChapterPrimingModeChange?.(mode);
+    if (settings && onUpdateSettings) {
+      onUpdateSettings({ ...settings, chapterPrimingMode: mode });
+    }
+    setChapterPrimingMode(mode);
+  };
 
   useEffect(() => {
     if (!isOpen || embedded) return;
@@ -241,6 +258,43 @@ export default function ReaderMoreMenu({
             onClick={() => onStrategyContrastChange?.("high")}
           >
             Intenso (AAA)
+          </button>
+        </div>
+      </div>
+
+      <div className="reader-more-strategy-section">
+        <span className="reader-more-strategy-label">Preparación de capítulo:</span>
+        <div
+          className="segmented segmented--priming"
+          role="group"
+          aria-label="Preparación de capítulo"
+        >
+          <button
+            type="button"
+            className="segmented-btn"
+            data-active={currentPrimingMode === "auto" || undefined}
+            aria-pressed={currentPrimingMode === "auto"}
+            onClick={() => handlePrimingModeChange("auto")}
+          >
+            Auto
+          </button>
+          <button
+            type="button"
+            className="segmented-btn"
+            data-active={currentPrimingMode === "on-demand" || undefined}
+            aria-pressed={currentPrimingMode === "on-demand"}
+            onClick={() => handlePrimingModeChange("on-demand")}
+          >
+            Bajo demanda
+          </button>
+          <button
+            type="button"
+            className="segmented-btn"
+            data-active={currentPrimingMode === "off" || undefined}
+            aria-pressed={currentPrimingMode === "off"}
+            onClick={() => handlePrimingModeChange("off")}
+          >
+            Desactivado
           </button>
         </div>
       </div>

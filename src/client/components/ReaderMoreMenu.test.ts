@@ -225,5 +225,26 @@ describe("ReaderMoreMenu", () => {
       }),
     );
   });
+
+  it("renderiza el selector de preparación de capítulo con las 3 opciones (Auto, Bajo demanda, Desactivado)", async () => {
+    const onChapterPrimingModeChange = vi.fn();
+    render({ chapterPrimingMode: "on-demand", onChapterPrimingModeChange });
+
+    const pills = host.querySelectorAll<HTMLButtonElement>(".segmented--priming .segmented-btn");
+    expect(pills.length).toBe(3);
+    expect(pills[0].textContent).toContain("Auto");
+    expect(pills[1].textContent).toContain("Bajo demanda");
+    expect(pills[2].textContent).toContain("Desactivado");
+
+    expect(pills[1].getAttribute("aria-pressed")).toBe("true");
+    expect(pills[0].getAttribute("aria-pressed")).toBe("false");
+
+    await act(async () => pills[0].click());
+    expect(onChapterPrimingModeChange).toHaveBeenCalledWith("auto");
+
+    await act(async () => pills[2].click());
+    expect(onChapterPrimingModeChange).toHaveBeenCalledWith("off");
+  });
 });
+
 

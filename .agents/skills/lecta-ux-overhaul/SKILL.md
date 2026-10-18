@@ -12,3 +12,5 @@ Cuando el usuario invoque `/lecta-ux-overhaul`, ejecuta este plan paso a paso (o
 - **Track 3 (Kitten TTS Funcional Descargable + Lookahead)**: Ver @[Track 3](tracks/track-3-kitten-tts.md)
 - **Track 4 (WordPanel 1-Toque, Cuaderno Unificado y Rincón del Gato)**: Ver @[Track 4](tracks/track-4-vocab-cat.md)
 - **Track 5 (4 Funciones Mágicas IA + Kindle 4-Letras)**: Ver @[Track 5](tracks/track-5-magic-features.md)
+- **Track 6 (Pre-lectura Adaptativa y Multilingüe - Umbral del Capítulo)**: Ver @[Track 6](tracks/track-6-adaptive-chapter-priming.md)
+

@@ -47,7 +47,13 @@ import {
   type SavedBookPosition,
   type SavedInterval,
 } from "../lib/idb";
-import { loadUserTheta } from "../lib/profile-models";
+import {
+  loadUserTheta,
+  betaFromZipf,
+  loadUserLanguageProfile,
+  updateLanguageTheta,
+  recordChapterCompleted,
+} from "../lib/profile-models";
 import { batchLookup, enrichBatch, explainInPassage, lookupWord } from "../lib/lexicon";
 import {
   selectEnrichmentCandidates,
@@ -140,6 +146,9 @@ import {
   applyReadingPreset,
   detectActiveReadingPreset,
   isStrategyPresetActive,
+  isPrimingMutedForBook,
+  muteBookForPriming,
+  disablePrimingGlobally,
   type ChromaticPalette,
   type ReaderSettings,
   type ReadingStrategyPreset,
@@ -1381,6 +1390,16 @@ export default function Reader({
     setSheet(null);
     setSelection(hit);
     consultedInPageRef.current.add(hit.word.toLowerCase());
+    // Recalibración adaptativa hacia abajo (outcome = 0) para el idioma actual
+    try {
+      const currentLang = language || (bookRef.current ? getBookLanguage(bookRef.current) : "es");
+      const cachedAnalysis = analysisFor(sectionIndexRef.current);
+      const hitEntry = cachedAnalysis?.entries[hit.word.toLowerCase()]?.[0];
+      const wordBeta = betaFromZipf(hitEntry?.zipf);
+      updateLanguageTheta(currentLang, wordBeta, 0, 0.8);
+    } catch {
+      // Ignorar fallo al persistir theta
+    }
     // La consulta es un acto neutral para el modelo, pero sí queda en
     // el trayecto: sirve para distinguir curiosidad de guardado.
     trackEvent({
@@ -2118,6 +2137,13 @@ export default function Reader({
         () => null,
       );
       if (bookRef.current !== book) return;
+      if (
+        isPrimingMutedForBook(bookHash) ||
+        settingsRef.current?.chapterPrimingMode === "off"
+      ) {
+        setPrepNotice(null);
+        return;
+      }
       const decision = decidePreparation({
         mode: settingsRef.current?.preparationMode ?? "auto",
         intent: via,
@@ -3764,6 +3790,23 @@ export default function Reader({
         })
         .catch(() => {});
     }
+    // Aprendizaje pasivo adaptativo: refuerzo sutil para palabras en frontera (theta ≈ beta) no consultadas
+    try {
+      const profile = loadUserLanguageProfile();
+      const normLang = lang.slice(0, 2).toLowerCase() || "es";
+      const currentTheta = profile.thetaByLang[normLang] ?? 0.0;
+      for (const f of candidates) {
+        const entry = analysis.entries[f]?.[0];
+        if (!entry) continue;
+        const beta = betaFromZipf(entry.zipf);
+        if (Math.abs(currentTheta - beta) <= 1.0) {
+          updateLanguageTheta(lang, beta, 1, 0.25);
+          break;
+        }
+      }
+    } catch {
+      // Ignorar fallo de almacenamiento
+    }
     consultedInPageRef.current.clear();
   }, [analysisFor, sectionWords, applyKnowledgeRow, language]);
 
@@ -3788,6 +3831,12 @@ export default function Reader({
         // En la última página el ratio ya es ~1: pasar a la sección
         // siguiente cuenta como tramo terminado (el gato celebra).
         if (sectionIndexRef.current + 1 < sectionTotal) {
+          try {
+            const currentLang = language || (bookRef.current ? getBookLanguage(bookRef.current) : "es");
+            recordChapterCompleted(currentLang);
+          } catch {
+            // Ignorar fallo de guardado
+          }
           signalCompanion({ kind: "goal_completed", at: Date.now() });
           return navigate("chapter", { index: sectionIndexRef.current + 1 });
         }
@@ -6713,6 +6762,8 @@ export default function Reader({
                 onClose={closeSheet}
                 strategyContrast={settings.strategyContrast}
                 onStrategyContrastChange={(contrast) => updateSettings({ strategyContrast: contrast })}
+                chapterPrimingMode={settings.chapterPrimingMode}
+                onChapterPrimingModeChange={(mode) => updateSettings({ chapterPrimingMode: mode })}
                 settings={settings}
                 onUpdateSettings={(updated) => updateSettings(updated)}
               />
@@ -6842,6 +6893,9 @@ export default function Reader({
       {prep ? (
         <SectionPreview
           title={prep.target.label}
+          chapterTitle={prep.target.label}
+          bookId={bookHash}
+          bookLang={language}
           analysis={prep.analysis}
           rows={prep.rows}
           uncertainRows={prep.uncertain}
@@ -6860,6 +6914,50 @@ export default function Reader({
           onDiscard={discardPrep}
           initialStrategy={settings.strategyPreset}
           onSelectStrategy={(preset) => selectStrategyPreset(preset)}
+          onMarkKnown={(lemma, beta) => {
+            const currentLang = language || (bookRef.current ? getBookLanguage(bookRef.current) : "es");
+            updateLanguageTheta(currentLang, beta, 1, 1.0);
+            const scope = captureDbScope();
+            void saveKnowledge({ language: currentLang, lemma, known: true, source: "inferred" }, scope);
+          }}
+          onSaveToPractice={(lemma, beta) => {
+            const currentLang = language || (bookRef.current ? getBookLanguage(bookRef.current) : "es");
+            updateLanguageTheta(currentLang, beta, 0, 0.5);
+            const scope = captureDbScope();
+            void saveWordWithKnowledge(
+              {
+                word: {
+                  form: lemma,
+                  lemma,
+                  language: currentLang,
+                  bookHash,
+                },
+                knowledge: {
+                  language: currentLang,
+                  lemma,
+                  known: false,
+                  source: "saved",
+                  status: "unknown",
+                },
+              },
+              scope,
+            );
+          }}
+          onMuteForBook={(id) => {
+            muteBookForPriming(id);
+            setPrep(null);
+            closePrepLayer();
+          }}
+          onDisableGlobally={() => {
+            disablePrimingGlobally();
+            updateSettings({ chapterPrimingMode: "off" });
+            setPrep(null);
+            closePrepLayer();
+          }}
+          onStartReading={() => {
+            releaseOverlay();
+            closePrepLayer();
+          }}
         />
       ) : null}
 
@@ -7030,8 +7128,19 @@ export default function Reader({
           onKnowledgeChanged={(row, { form, kind }) => {
             // La evidencia persiste antes de llegar aquí: al modelo
             // en memoria y al trayecto, para que la siguiente
-            // sección ya sugiera con esta respuesta aplicada.
             applyKnowledgeRow(row);
+            try {
+              const currentLang = language || (bookRef.current ? getBookLanguage(bookRef.current) : "es");
+              const zipf = zipfForLemma(row.lemma);
+              const beta = betaFromZipf(zipf);
+              if (kind === "saved") {
+                updateLanguageTheta(currentLang, beta, 0, 1.0);
+              } else if (kind === "declared") {
+                updateLanguageTheta(currentLang, beta, 1, 1.0);
+              }
+            } catch {
+              // Ignorar fallo al persistir theta
+            }
             trackEvent(
               kind === "saved"
                 ? {

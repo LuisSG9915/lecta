@@ -21,6 +21,14 @@ import {
   applyReadingPreset,
   applyStrategyPreset,
   isStrategyPresetActive,
+  loadChapterPrimingSettings,
+  saveChapterPrimingSettings,
+  muteBookForPriming,
+  unmuteBookForPriming,
+  isPrimingMutedForBook,
+  disablePrimingGlobally,
+  setChapterPrimingMode,
+  DEFAULT_CHAPTER_PRIMING_SETTINGS,
 } from "./settings";
 
 describe("parseTheme", () => {
@@ -539,4 +547,82 @@ describe("applyReadingPreset", () => {
     expect(res.readingPreset).toBe("guided");
   });
 });
+
+describe("ChapterPrimingSettings", () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it("devuelve valores por defecto cuando no hay nada guardado", () => {
+    expect(loadChapterPrimingSettings()).toEqual(DEFAULT_CHAPTER_PRIMING_SETTINGS);
+    expect(DEFAULT_CHAPTER_PRIMING_SETTINGS.mode).toBe("auto");
+    expect(DEFAULT_CHAPTER_PRIMING_SETTINGS.maxWordsPerChapter).toBe(4);
+    expect(DEFAULT_CHAPTER_PRIMING_SETTINGS.mutedBookIds).toEqual([]);
+    expect(DEFAULT_CHAPTER_PRIMING_SETTINGS.subtleInTextAnchor).toBe(true);
+  });
+
+  it("persiste y recupera configuración modificada", () => {
+    saveChapterPrimingSettings({
+      mode: "on-demand",
+      maxWordsPerChapter: 5,
+      mutedBookIds: ["book-123"],
+      subtleInTextAnchor: false,
+    });
+
+    const loaded = loadChapterPrimingSettings();
+    expect(loaded.mode).toBe("on-demand");
+    expect(loaded.maxWordsPerChapter).toBe(5);
+    expect(loaded.mutedBookIds).toEqual(["book-123"]);
+    expect(loaded.subtleInTextAnchor).toBe(false);
+  });
+
+  it("silencia y reactiva libros individualmente sin perder otros", () => {
+    expect(isPrimingMutedForBook("book-a")).toBe(false);
+
+    muteBookForPriming("book-a");
+    expect(isPrimingMutedForBook("book-a")).toBe(true);
+    expect(isPrimingMutedForBook("book-b")).toBe(false);
+
+    muteBookForPriming("book-b");
+    expect(isPrimingMutedForBook("book-a")).toBe(true);
+    expect(isPrimingMutedForBook("book-b")).toBe(true);
+
+    unmuteBookForPriming("book-a");
+    expect(isPrimingMutedForBook("book-a")).toBe(false);
+    expect(isPrimingMutedForBook("book-b")).toBe(true);
+  });
+
+  it("desactiva globalmente en un toque con disablePrimingGlobally", () => {
+    expect(loadChapterPrimingSettings().mode).toBe("auto");
+    disablePrimingGlobally();
+    expect(loadChapterPrimingSettings().mode).toBe("off");
+    setChapterPrimingMode("on-demand");
+    expect(loadChapterPrimingSettings().mode).toBe("on-demand");
+  });
+
+  it("parseReaderSettings lee y valida campos de priming", () => {
+    const s = parseReaderSettings(
+      JSON.stringify({
+        chapterPrimingMode: "on-demand",
+        maxPrimingWords: 5,
+        mutedPrimingBookIds: ["b1", "b2"],
+        subtleInTextAnchor: false,
+      }),
+    );
+    expect(s.chapterPrimingMode).toBe("on-demand");
+    expect(s.maxPrimingWords).toBe(5);
+    expect(s.mutedPrimingBookIds).toEqual(["b1", "b2"]);
+    expect(s.subtleInTextAnchor).toBe(false);
+
+    const fallback = parseReaderSettings(
+      JSON.stringify({
+        chapterPrimingMode: "invalido",
+        maxPrimingWords: 99,
+      }),
+    );
+    expect(fallback.chapterPrimingMode).toBe("auto");
+    expect(fallback.maxPrimingWords).toBe(4);
+  });
+});
+
 

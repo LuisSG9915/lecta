@@ -358,5 +358,212 @@ describe("SectionPreview", () => {
       expect(onExpand).toHaveBeenCalled();
     });
   });
+
+  describe("Umbral del Capítulo - Tarjeta Editorial Pre-Capítulo (Track 6)", () => {
+    const primingWords = [
+      {
+        lemma: "vislumbrar",
+        surfaceForm: "vislumbró",
+        lang: "es",
+        beta: 0.8,
+        chapterFrequency: 2,
+        partOfSpeech: "verb" as const,
+        shortGloss: "Ver un objeto tenuemente.",
+        contextSentence: "A lo lejos vislumbró una luz.",
+        utilityScore: 1.25,
+        unknownProbability: 0.65,
+      },
+      {
+        lemma: "efímero",
+        surfaceForm: "efímero",
+        lang: "es",
+        beta: 0.6,
+        chapterFrequency: 3,
+        partOfSpeech: "adj" as const,
+        shortGloss: "Que dura poco tiempo.",
+        contextSentence: "Un instante efímero de paz.",
+        utilityScore: 1.15,
+        unknownProbability: 0.55,
+      },
+    ];
+
+    it("renderiza la tarjeta editorial limpia con encabezado, tiempo estimado y palabras", () => {
+      render(
+        base({
+          bookId: "b1",
+          chapterTitle: "Capítulo IV: La Niebla",
+          bookLang: "es",
+          userNativeLang: "es",
+          words: primingWords,
+          onMarkKnown: vi.fn(),
+          onSaveToPractice: vi.fn(),
+          onStartReading: vi.fn(),
+        }),
+      );
+
+      expect(host.querySelector(".lecta-chapter-priming")).toBeTruthy();
+      expect(text()).toContain("Capítulo IV: La Niebla");
+      expect(text()).toContain("Antes de leer");
+      expect(text()).toContain("2 palabras clave");
+      expect(text()).toContain("vislumbró");
+      expect(text()).toContain("efímero");
+      expect(text()).toContain("A lo lejos vislumbró una luz.");
+    });
+
+    it("indica badge de idioma extranjero si bookLang != userNativeLang", () => {
+      render(
+        base({
+          bookId: "b2",
+          chapterTitle: "Chapter 1",
+          bookLang: "en",
+          userNativeLang: "es",
+          words: [
+            {
+              lemma: "whisper",
+              surfaceForm: "whispered",
+              lang: "en",
+              beta: 0.5,
+              chapterFrequency: 2,
+              partOfSpeech: "verb",
+              shortGloss: "To speak softly",
+              contextSentence: "He whispered in the dark.",
+              utilityScore: 1.0,
+              unknownProbability: 0.5,
+            },
+          ],
+          onMarkKnown: vi.fn(),
+          onSaveToPractice: vi.fn(),
+          onStartReading: vi.fn(),
+        }),
+      );
+
+      expect(text()).toContain("Lectura en EN");
+    });
+
+    it("botón '✓ Ya la sé' marca la palabra como conocida y la pliega de la lista", () => {
+      const onMarkKnown = vi.fn();
+      render(
+        base({
+          bookId: "b1",
+          words: primingWords,
+          onMarkKnown,
+          onSaveToPractice: vi.fn(),
+          onStartReading: vi.fn(),
+        }),
+      );
+
+      const knownButtons = host.querySelectorAll(".lecta-priming-card__btn-known");
+      expect(knownButtons.length).toBe(2);
+
+      // Clic en '✓ Ya la sé' de la primera palabra ("vislumbrar")
+      act(() => {
+        knownButtons[0].dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      });
+
+      expect(onMarkKnown).toHaveBeenCalledWith("vislumbrar", 0.8);
+      // Ahora solo queda 1 tarjeta visible
+      expect(host.querySelectorAll(".lecta-priming-card").length).toBe(1);
+      expect(text()).not.toContain("vislumbró");
+      expect(text()).toContain("efímero");
+    });
+
+    it("botón '+ Repasar' guarda la palabra para repaso y cambia su estado a Guardada", () => {
+      const onSaveToPractice = vi.fn();
+      render(
+        base({
+          bookId: "b1",
+          words: primingWords,
+          onMarkKnown: vi.fn(),
+          onSaveToPractice,
+          onStartReading: vi.fn(),
+        }),
+      );
+
+      const saveButtons = host.querySelectorAll<HTMLButtonElement>(".lecta-priming-card__btn-save");
+      expect(saveButtons[0].textContent).toContain("+ Repasar");
+
+      act(() => {
+        saveButtons[0].dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      });
+
+      expect(onSaveToPractice).toHaveBeenCalledWith("vislumbrar", 0.8);
+      expect(saveButtons[0].textContent).toContain("Guardada");
+      expect(saveButtons[0].disabled).toBe(true);
+    });
+
+    it("botón de audio reproduce la pronunciación", () => {
+      const onPronounce = vi.fn();
+      render(
+        base({
+          bookId: "b1",
+          words: primingWords,
+          onPronounce,
+          onMarkKnown: vi.fn(),
+          onSaveToPractice: vi.fn(),
+          onStartReading: vi.fn(),
+        }),
+      );
+
+      const audioBtn = host.querySelector<HTMLButtonElement>(".lecta-priming-card__audio");
+      act(() => {
+        audioBtn?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      });
+
+      expect(onPronounce).toHaveBeenCalledWith("vislumbró", "es");
+    });
+
+    it("menú Opciones ▾ permite ocultar en este libro o desactivar globalmente", () => {
+      const onMuteForBook = vi.fn();
+      const onDisableGlobally = vi.fn();
+
+      render(
+        base({
+          bookId: "test-book-42",
+          words: primingWords,
+          onMuteForBook,
+          onDisableGlobally,
+          onMarkKnown: vi.fn(),
+          onSaveToPractice: vi.fn(),
+          onStartReading: vi.fn(),
+        }),
+      );
+
+      const optionsBtn = host.querySelector<HTMLButtonElement>(".lecta-chapter-priming__options-btn")!;
+      expect(host.querySelector(".lecta-chapter-priming__dropdown")).toBeNull();
+
+      // Abrir menú de opciones
+      act(() => {
+        optionsBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      });
+      expect(host.querySelector(".lecta-chapter-priming__dropdown")).toBeTruthy();
+
+      click("Ocultar en este libro");
+      expect(onMuteForBook).toHaveBeenCalledWith("test-book-42");
+
+      // Abrir de nuevo y desactivar globalmente
+      act(() => {
+        optionsBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      });
+      click("Desactivar pre-lectura siempre");
+      expect(onDisableGlobally).toHaveBeenCalled();
+    });
+
+    it("botón 'Comenzar a leer capítulo →' llama a onStartReading", () => {
+      const onStartReading = vi.fn();
+      render(
+        base({
+          bookId: "b1",
+          words: primingWords,
+          onStartReading,
+          onMarkKnown: vi.fn(),
+          onSaveToPractice: vi.fn(),
+        }),
+      );
+
+      click("Comenzar a leer capítulo →");
+      expect(onStartReading).toHaveBeenCalled();
+    });
+  });
 });
+
 

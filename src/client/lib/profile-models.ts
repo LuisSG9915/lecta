@@ -282,6 +282,162 @@ export function saveThetaForLang(language: string, theta: number): void {
   saveUserTheta(theta, language);
 }
 
+// ---------- Modelo Psicométrico Adaptativo por Idioma (Rasch 1PL & Elo) ----------
+
+export interface UserLanguageProfile {
+  /** Nivel de competencia léxica theta por idioma (rango típico: -3.0 a +3.5) */
+  thetaByLang: Record<string, number>;
+  /** Incertidumbre / varianza del estimador por idioma (disminuye conforme el usuario interactúa) */
+  uncertaintyByLang: Record<string, number>;
+  /** Contador de capítulos completados por idioma */
+  chaptersCompletedByLang: Record<string, number>;
+}
+
+export const DEFAULT_USER_LANGUAGE_PROFILE: UserLanguageProfile = {
+  thetaByLang: { es: 0.0, en: 0.0 },
+  uncertaintyByLang: { es: 1.0, en: 1.0 },
+  chaptersCompletedByLang: { es: 0, en: 0 },
+};
+
+export const USER_LANGUAGE_PROFILE_KEY = "lecta:user_language_profile:v1";
+
+export function loadUserLanguageProfile(): UserLanguageProfile {
+  if (typeof window === "undefined" || !window.localStorage) {
+    return { ...DEFAULT_USER_LANGUAGE_PROFILE };
+  }
+  try {
+    const raw = window.localStorage.getItem(USER_LANGUAGE_PROFILE_KEY);
+    if (!raw) {
+      return { ...DEFAULT_USER_LANGUAGE_PROFILE };
+    }
+    const parsed = JSON.parse(raw) as Partial<UserLanguageProfile>;
+    return {
+      thetaByLang:
+        typeof parsed.thetaByLang === "object" && parsed.thetaByLang !== null
+          ? parsed.thetaByLang
+          : { es: 0.0, en: 0.0 },
+      uncertaintyByLang:
+        typeof parsed.uncertaintyByLang === "object" && parsed.uncertaintyByLang !== null
+          ? parsed.uncertaintyByLang
+          : { es: 1.0, en: 1.0 },
+      chaptersCompletedByLang:
+        typeof parsed.chaptersCompletedByLang === "object" && parsed.chaptersCompletedByLang !== null
+          ? parsed.chaptersCompletedByLang
+          : { es: 0, en: 0 },
+    };
+  } catch {
+    return { ...DEFAULT_USER_LANGUAGE_PROFILE };
+  }
+}
+
+export function saveUserLanguageProfile(profile: UserLanguageProfile): void {
+  if (typeof window === "undefined" || !window.localStorage) return;
+  try {
+    window.localStorage.setItem(USER_LANGUAGE_PROFILE_KEY, JSON.stringify(profile));
+  } catch {
+    // ignorar fallo de almacenamiento
+  }
+}
+
+/**
+ * Probabilidad Rasch (IRT 1PL) de que el usuario conozca una palabra de dificultad `beta`
+ */
+export function predictWordMasteryProbability(theta: number, beta: number): number {
+  const z = Math.max(-10, Math.min(10, theta - beta));
+  return 1 / (1 + Math.exp(-z));
+}
+
+/**
+ * Convierte valor de escala Zipf (1.0 - 7.0) a dificultad intrinsic beta (-3.0 a +3.5).
+ */
+export function betaFromZipf(zipf: number | null | undefined): number {
+  if (zipf == null || !Number.isFinite(zipf)) return 0.5;
+  return Number(Math.max(-3.0, Math.min(3.5, 4.0 - zipf)).toFixed(2));
+}
+
+/**
+ * Actualiza el parámetro theta del usuario en un idioma específico.
+ * - outcome = 1: El usuario demostró conocer la palabra ("Ya la sé" o lectura fluida pasiva).
+ * - outcome = 0: El usuario desconoce la palabra (la tocó en el capítulo o pidió aprenderla).
+ */
+export function updateLanguageTheta(
+  profileOrLang: UserLanguageProfile | string,
+  langOrBeta: string | number,
+  wordBetaOrOutcome?: number,
+  outcomeOrSignalWeight?: number,
+  signalWeight = 1.0,
+): UserLanguageProfile {
+  let profile: UserLanguageProfile;
+  let lang: string;
+  let wordBeta: number;
+  let outcome: 0 | 1;
+  let weight = signalWeight;
+  let shouldPersist = false;
+
+  if (typeof profileOrLang === "string") {
+    shouldPersist = true;
+    profile = loadUserLanguageProfile();
+    lang = profileOrLang;
+    wordBeta = typeof langOrBeta === "number" ? langOrBeta : 0.0;
+    outcome = wordBetaOrOutcome === 1 ? 1 : 0;
+    weight = typeof outcomeOrSignalWeight === "number" ? outcomeOrSignalWeight : 1.0;
+  } else {
+    profile = profileOrLang;
+    lang = typeof langOrBeta === "string" ? langOrBeta : "es";
+    wordBeta = typeof wordBetaOrOutcome === "number" ? wordBetaOrOutcome : 0.0;
+    outcome = outcomeOrSignalWeight === 1 ? 1 : 0;
+    weight = signalWeight;
+  }
+
+  const normalizedLang = lang.slice(0, 2).toLowerCase() || "es";
+  const currentTheta = profile.thetaByLang[normalizedLang] ?? 0.0;
+  const currentUncertainty = profile.uncertaintyByLang[normalizedLang] ?? 1.0;
+
+  // Probabilidad esperada antes de observar la acción del usuario
+  const expected = predictWordMasteryProbability(currentTheta, wordBeta);
+
+  // Tasa de aprendizaje adaptativa (mayor cuando hay poca certeza sobre el usuario)
+  const baseK = 0.18 * Math.max(0.35, currentUncertainty) * weight;
+  const delta = baseK * (outcome - expected);
+
+  const nextTheta = Math.max(-3.5, Math.min(4.0, currentTheta + delta));
+  const nextUncertainty = Math.max(0.25, currentUncertainty * 0.97);
+
+  const updated: UserLanguageProfile = {
+    ...profile,
+    thetaByLang: {
+      ...profile.thetaByLang,
+      [normalizedLang]: Number(nextTheta.toFixed(4)),
+    },
+    uncertaintyByLang: {
+      ...profile.uncertaintyByLang,
+      [normalizedLang]: Number(nextUncertainty.toFixed(4)),
+    },
+  };
+
+  if (shouldPersist) {
+    saveUserLanguageProfile(updated);
+  }
+
+  return updated;
+}
+
+export function recordChapterCompleted(lang = "es"): UserLanguageProfile {
+  const profile = loadUserLanguageProfile();
+  const normalizedLang = lang.slice(0, 2).toLowerCase() || "es";
+  const currentCount = profile.chaptersCompletedByLang[normalizedLang] ?? 0;
+  const updated: UserLanguageProfile = {
+    ...profile,
+    chaptersCompletedByLang: {
+      ...profile.chaptersCompletedByLang,
+      [normalizedLang]: currentCount + 1,
+    },
+  };
+  saveUserLanguageProfile(updated);
+  return updated;
+}
+
+
 // ---------- Motor Adaptativo IRT (Calibración 2.0) ----------
 
 export const CALIBRATION_DISCRIMINATION = 1.4;

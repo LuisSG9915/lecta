@@ -4935,5 +4935,267 @@ b.lecta-anchor {
   font-style: italic;
 }
 
+/* =====================================================================
+   Track 6: Umbral del Capítulo (Pre-lectura Adaptativa Zero-Friction)
+   ===================================================================== */
+
+.lecta-chapter-priming {
+  max-width: 38rem;
+  margin: var(--s-6, 1.5rem) auto;
+  padding: var(--s-5, 1.25rem) var(--s-6, 1.5rem);
+  background: var(--bg-surface, var(--bg-paper, var(--paper, #fdfbf7)));
+  border: 1px solid var(--border-subtle, var(--line, #e5ded4));
+  border-radius: var(--radius-lg, var(--r-2, 12px));
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+  font-family: var(--font-book, serif);
+  color: var(--fg, var(--ink, #26241f));
+  box-sizing: border-box;
+}
+
+.lecta-chapter-priming__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--s-3, 0.75rem);
+  position: relative;
+}
+
+.lecta-chapter-priming__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2, 0.5rem);
+  font-size: var(--text-xs, 0.75rem);
+  color: var(--fg-muted, var(--ink-muted, #767169));
+  font-family: var(--font-ui, sans-serif);
+}
+
+.lecta-chapter-priming__badge {
+  background: color-mix(in srgb, var(--accent, var(--vermilion, #1d4e89)) 10%, transparent);
+  color: var(--accent, var(--vermilion, #1d4e89));
+  font-weight: 600;
+  padding: 0.15rem 0.5rem;
+  border-radius: 9999px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 0.72rem;
+}
+
+.lecta-chapter-priming__controls {
+  position: relative;
+}
+
+.lecta-chapter-priming__options-btn {
+  background: none;
+  border: 1px solid transparent;
+  color: var(--fg-muted, var(--ink-muted, #767169));
+  font-size: var(--text-xs, 0.75rem);
+  font-family: var(--font-ui, sans-serif);
+  padding: 0.25rem 0.5rem;
+  border-radius: var(--radius-sm, 4px);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.lecta-chapter-priming__options-btn:hover {
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  color: var(--fg, var(--ink, #26241f));
+}
+
+.lecta-chapter-priming__dropdown {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  margin-top: 0.35rem;
+  background: var(--paper-raised, #ffffff);
+  border: 1px solid var(--line, #ddd4c4);
+  border-radius: var(--r-2, 8px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  z-index: 50;
+  min-width: 14rem;
+  padding: 0.35rem 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.lecta-chapter-priming__dropdown button {
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 0.5rem 0.85rem;
+  font-size: 0.85rem;
+  color: var(--ink, #26241f);
+  font-family: var(--font-ui, sans-serif);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.lecta-chapter-priming__dropdown button:hover {
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+}
+
+.lecta-chapter-priming__title {
+  font-size: 1.35rem;
+  font-weight: 700;
+  margin: 0 0 0.35rem 0;
+  color: var(--ink, #26241f);
+  line-height: 1.3;
+}
+
+.lecta-chapter-priming__subtitle {
+  font-size: 0.875rem;
+  color: var(--ink-muted, #767169);
+  margin: 0 0 1rem 0;
+  font-family: var(--font-ui, sans-serif);
+  line-height: 1.45;
+}
+
+.lecta-chapter-priming__list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1.25rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.lecta-priming-card {
+  padding: 0.85rem 1rem;
+  background: color-mix(in srgb, var(--ink) 2%, transparent);
+  border: 1px solid color-mix(in srgb, var(--line) 60%, transparent);
+  border-radius: var(--r-2, 8px);
+  transition: all 0.2s ease;
+}
+
+.lecta-priming-card__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.35rem;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.lecta-priming-card__word-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.lecta-priming-card__lemma {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--ink, #26241f);
+}
+
+.lecta-priming-card__pos {
+  font-size: 0.72rem;
+  font-family: var(--font-ui, sans-serif);
+  color: var(--ink-muted, #767169);
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
+  padding: 0.12rem 0.45rem;
+  border-radius: 4px;
+}
+
+.lecta-priming-card__audio {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.2rem;
+  font-size: 0.95rem;
+  opacity: 0.7;
+  transition: opacity 0.15s ease;
+}
+
+.lecta-priming-card__audio:hover {
+  opacity: 1;
+}
+
+.lecta-priming-card__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.lecta-priming-card__btn-known {
+  background: none;
+  border: 1px solid var(--line, #ddd4c4);
+  color: var(--ink-muted, #767169);
+  padding: 0.25rem 0.6rem;
+  border-radius: var(--r-1, 4px);
+  font-size: 0.78rem;
+  font-family: var(--font-ui, sans-serif);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.lecta-priming-card__btn-known:hover {
+  background: color-mix(in srgb, var(--accent, #1d4e89) 8%, transparent);
+  color: var(--accent, #1d4e89);
+  border-color: var(--accent, #1d4e89);
+}
+
+.lecta-priming-card__btn-save {
+  background: color-mix(in srgb, var(--accent, #1d4e89) 8%, transparent);
+  border: 1px solid var(--accent, #1d4e89);
+  color: var(--accent, #1d4e89);
+  padding: 0.25rem 0.6rem;
+  border-radius: var(--r-1, 4px);
+  font-size: 0.78rem;
+  font-family: var(--font-ui, sans-serif);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.lecta-priming-card__btn-save.is-saved {
+  background: color-mix(in srgb, var(--ink) 5%, transparent);
+  border-color: var(--line, #eee);
+  color: var(--ink-muted, #767169);
+  cursor: default;
+}
+
+.lecta-priming-card__gloss {
+  font-size: 0.9rem;
+  color: var(--ink, #333);
+  margin: 0.25rem 0;
+  line-height: 1.45;
+}
+
+.lecta-priming-card__context {
+  margin: 0.45rem 0 0 0;
+  padding-left: 0.65rem;
+  border-left: 2px solid var(--accent, var(--vermilion, #1d4e89));
+  font-style: italic;
+  font-size: 0.85rem;
+  color: var(--ink-muted, #666);
+  line-height: 1.4;
+}
+
+.lecta-chapter-priming__footer {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 0.5rem;
+}
+
+.lecta-chapter-priming__start-btn {
+  background: var(--accent, var(--vermilion, #1d4e89));
+  color: #ffffff;
+  border: none;
+  padding: 0.6rem 1.2rem;
+  border-radius: var(--r-2, 6px);
+  font-family: var(--font-ui, sans-serif);
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: opacity 0.15s ease, transform 0.1s ease;
+}
+
+.lecta-chapter-priming__start-btn:hover {
+  opacity: 0.92;
+  transform: translateY(-1px);
+}
+
+
 
 
