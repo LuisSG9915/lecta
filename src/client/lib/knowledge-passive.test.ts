@@ -4,8 +4,11 @@ import {
   FAMILIAR_PASSIVE_THRESHOLD,
   updatePassiveExposureState,
   predictSection,
+  applyChapterCompletionPassiveLoop,
+  type ChapterCandidateFeedbackItem,
 } from "./knowledge";
 import type { LexiconEntry } from "./lexicon";
+import type { UserLanguageProfile } from "./profile-models";
 
 describe("Inferencia Implícita por Exposición Pasiva (Fase 4.1)", () => {
   it("constantes matemáticas correctas", () => {
@@ -75,3 +78,72 @@ describe("Inferencia Implícita por Exposición Pasiva (Fase 4.1)", () => {
     expect(pred3.knownCount).toBe(1);
   });
 });
+
+describe("applyChapterCompletionPassiveLoop (Canal C - Track 6)", () => {
+  const baseProfile: UserLanguageProfile = {
+    theta: 0.0,
+    thetaByLang: { es: 0.0, en: 0.0 },
+    uncertaintyByLang: { es: 1.0, en: 1.0 },
+    chaptersCompletedByLang: { es: 0, en: 0 },
+    preferredPreviewCount: 4,
+    consecutivePreviewSkips: 0,
+  };
+
+  it("aplica passive_frontier a palabras no consultadas en la frontera de dificultad con lectura fluida", () => {
+    const candidates: ChapterCandidateFeedbackItem[] = [
+      { lemma: "vislumbrar", beta: 0.5, wasConsultedInWordPanel: false }, // En frontera (|0 - 0.5| = 0.5 <= 1.1)
+      { lemma: "inmarcesible", beta: 3.5, wasConsultedInWordPanel: false }, // Lejos de frontera
+      { lemma: "efimero", beta: 0.6, wasConsultedInWordPanel: true }, // Consultada en WordPanel (no pasiva)
+    ];
+
+    const result = applyChapterCompletionPassiveLoop({
+      profile: baseProfile,
+      lang: "es",
+      candidates,
+      isFluidReadingPace: true,
+    });
+
+    // vislumbrar debe haber impulsado theta hacia arriba
+    expect(result.thetaByLang.es).toBeGreaterThan(baseProfile.thetaByLang.es);
+    expect(result.theta).toBe(result.thetaByLang.es);
+    expect(result.chaptersCompletedByLang.es).toBe(1);
+  });
+
+  it("omite señales pasivas si la velocidad de lectura no fue fluida", () => {
+    const candidates: ChapterCandidateFeedbackItem[] = [
+      { lemma: "vislumbrar", beta: 0.5, wasConsultedInWordPanel: false },
+    ];
+
+    const result = applyChapterCompletionPassiveLoop({
+      profile: baseProfile,
+      lang: "es",
+      candidates,
+      isFluidReadingPace: false,
+    });
+
+    // Theta no cambia porque el lector no leyó con fluidez normal
+    expect(result.thetaByLang.es).toBe(baseProfile.thetaByLang.es);
+    // Pero el conteo de capítulos sí se incrementa
+    expect(result.chaptersCompletedByLang.es).toBe(1);
+  });
+
+  it("actualiza el perfil del idioma del libro de forma independiente (ej. en)", () => {
+    const candidates: ChapterCandidateFeedbackItem[] = [
+      { lemma: "whisper", beta: 0.2, wasConsultedInWordPanel: false },
+    ];
+
+    const result = applyChapterCompletionPassiveLoop({
+      profile: baseProfile,
+      lang: "en",
+      candidates,
+      isFluidReadingPace: true,
+    });
+
+    expect(result.thetaByLang.en).toBeGreaterThan(baseProfile.thetaByLang.en);
+    expect(result.thetaByLang.es).toBe(0.0);
+    expect(result.theta).toBe(0.0);
+    expect(result.chaptersCompletedByLang.en).toBe(1);
+    expect(result.chaptersCompletedByLang.es).toBe(0);
+  });
+});
+

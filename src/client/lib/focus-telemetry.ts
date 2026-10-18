@@ -219,3 +219,312 @@ export function detectDensePassageStall(
   return true;
 }
 
+// ---------- Telemetría Adaptativa de Fatiga y Aprendizaje de Foco ----------
+
+export type FocusAidType = "paragraph-focus" | "syntactic-lines" | "focus-ruler";
+
+export interface LanguagePaceBaseline {
+  /** Segundos promedio por cada 100 palabras en este idioma */
+  meanSecPer100Words: number;
+  /** Desviación media en segundos por cada 100 palabras */
+  madSecPer100Words: number;
+  samples: number;
+}
+
+export interface UserFocusTelemetryProfile {
+  /** Si es false, el usuario desactivó las sugerencias de neuro-foco (Cero Fricción) */
+  autoSuggestEnabled: boolean;
+  /** IDs de libros donde el usuario silenció las sugerencias */
+  mutedBookIds: string[];
+  /** Ritmo base aprendido por idioma (ej. 'es' vs 'en') */
+  paceByLang: Record<string, LanguagePaceBaseline>;
+  /** Pesos de eficacia aprendidos para cada herramienta según la respuesta del usuario */
+  aidEfficacyWeights: Record<FocusAidType, number>;
+}
+
+export interface PageTurnTelemetryInput {
+  bookId?: string;
+  lang: string;
+  wordCountOnPage: number;
+  dwellTimeMs: number;
+  direction: "forward" | "backward";
+  sessionMinutesElapsed: number;
+  recentBackwardCountInWindow: number;
+}
+
+export interface FatigueEvaluationResult {
+  fatigueIndex: number; // 0.0 a 1.0
+  isFatigued: boolean;
+  reason: "none" | "stall" | "regressions" | "sustained-load";
+  recommendedAid: FocusAidType;
+  updatedProfile: UserFocusTelemetryProfile;
+}
+
+export const DEFAULT_FOCUS_TELEMETRY_PROFILE: UserFocusTelemetryProfile = {
+  autoSuggestEnabled: true,
+  mutedBookIds: [],
+  paceByLang: {},
+  aidEfficacyWeights: {
+    "paragraph-focus": 1.0,
+    "syntactic-lines": 1.0,
+    "focus-ruler": 0.9,
+  },
+};
+
+export function logistic(x: number): number {
+  const clamped = Math.max(-10, Math.min(10, x));
+  return 1 / (1 + Math.exp(-clamped));
+}
+
+/**
+ * Evalúa la telemetría al cambiar de página, actualiza la línea base personal en ese idioma
+ * y determina si el lector presenta fatiga o pérdida de concentración.
+ */
+export function evaluateReadingFatigue(
+  profile: UserFocusTelemetryProfile,
+  input: PageTurnTelemetryInput,
+  isForeignLanguage = false,
+): FatigueEvaluationResult {
+  const langKey = (input.lang || "es").slice(0, 2).toLowerCase();
+  const defaultMean = isForeignLanguage ? 34.0 : 22.0; // ~175 WPM en L2 vs ~270 WPM en L1
+  const currentBaseline: LanguagePaceBaseline = profile.paceByLang[langKey] ?? {
+    meanSecPer100Words: defaultMean,
+    madSecPer100Words: 6.5,
+    samples: 0,
+  };
+
+  const words = Math.max(15, input.wordCountOnPage);
+  const dwellSec = Math.max(1, input.dwellTimeMs / 1000);
+  const secPer100Words = (dwellSec / words) * 100;
+
+  // 1. Calcular anomalía de estancamiento (Z_stall) respecto al ritmo del propio lector
+  const spread = Math.max(4.0, currentBaseline.madSecPer100Words);
+  const zStall =
+    input.direction === "forward" &&
+    secPer100Words > currentBaseline.meanSecPer100Words
+      ? Math.min(
+          4.0,
+          (secPer100Words - currentBaseline.meanSecPer100Words) / spread,
+        )
+      : 0;
+
+  // 2. Detectar "Zoning Out" (paso ultrarrápido seguido de retroceso)
+  const regressionsSignal =
+    input.direction === "backward"
+      ? input.recentBackwardCountInWindow + 0.6
+      : input.recentBackwardCountInWindow;
+
+  // 3. Factor de duración de sesión
+  const sessionLoad = Math.log(
+    1 + Math.max(0, input.sessionMinutesElapsed) / 25,
+  );
+
+  // 4. Índice de Fatiga Cognitiva F_t
+  const rawLogit =
+    -2.2 + 0.85 * zStall + 1.15 * regressionsSignal + 0.45 * sessionLoad;
+  const fatigueIndex = Number(logistic(rawLogit).toFixed(4));
+
+  // 5. Actualizar la línea base personal SOLO en lecturas fluidas normales (sin atasco extremo ni salto vacío)
+  let nextBaseline = currentBaseline;
+  if (
+    input.direction === "forward" &&
+    secPer100Words >= 8 &&
+    secPer100Words <= 90 &&
+    zStall < 2.2
+  ) {
+    const alpha = currentBaseline.samples < 10 ? 0.25 : 0.08;
+    const nextMean =
+      (1 - alpha) * currentBaseline.meanSecPer100Words +
+      alpha * secPer100Words;
+    const absDiff = Math.abs(
+      secPer100Words - currentBaseline.meanSecPer100Words,
+    );
+    const nextMad =
+      (1 - alpha) * currentBaseline.madSecPer100Words + alpha * absDiff;
+
+    nextBaseline = {
+      meanSecPer100Words: Number(nextMean.toFixed(2)),
+      madSecPer100Words: Number(Math.max(3.0, nextMad).toFixed(2)),
+      samples: currentBaseline.samples + 1,
+    };
+  }
+
+  // 6. Seleccionar la mejor herramienta aprendida del usuario (con preferencia contextual L2)
+  const weights = { ...profile.aidEfficacyWeights };
+  if (isForeignLanguage) {
+    weights["syntactic-lines"] += 0.25; // En otros idiomas, la cadencia sintáctica ayuda más
+  }
+
+  const recommendedAid = (
+    Object.entries(weights) as Array<[FocusAidType, number]>
+  ).sort((a, b) => b[1] - a[1])[0][0];
+
+  const isMutedForBook = Boolean(
+    input.bookId && profile.mutedBookIds.includes(input.bookId),
+  );
+  const isFatigued =
+    profile.autoSuggestEnabled && !isMutedForBook && fatigueIndex >= 0.68;
+
+  let reason: FatigueEvaluationResult["reason"] = "none";
+  if (isFatigued) {
+    if (regressionsSignal >= 1.5) reason = "regressions";
+    else if (zStall >= 1.6) reason = "stall";
+    else reason = "sustained-load";
+  }
+
+  return {
+    fatigueIndex,
+    isFatigued,
+    reason,
+    recommendedAid,
+    updatedProfile: {
+      ...profile,
+      paceByLang: {
+        ...profile.paceByLang,
+        [langKey]: nextBaseline,
+      },
+    },
+  };
+}
+
+/**
+ * Actualiza los pesos del modelo cuando el usuario utiliza una herramienta de foco:
+ * - Si recuperó su fluidez (recoveredFlow = true), premia esa herramienta.
+ * - Si la desactivó enseguida (recoveredFlow = false), reduce su prioridad para no insistir.
+ */
+export function recordFocusAidOutcome(
+  profile: UserFocusTelemetryProfile,
+  aid: FocusAidType,
+  recoveredFlow: boolean,
+): UserFocusTelemetryProfile {
+  const currentWeight = profile.aidEfficacyWeights[aid] ?? 1.0;
+  const reward = recoveredFlow ? 1.5 : 0.4;
+  const nextWeight = Math.max(
+    0.2,
+    Math.min(2.5, 0.8 * currentWeight + 0.2 * reward),
+  );
+
+  return {
+    ...profile,
+    aidEfficacyWeights: {
+      ...profile.aidEfficacyWeights,
+      [aid]: Number(nextWeight.toFixed(3)),
+    },
+  };
+}
+
+/**
+ * Silencia las sugerencias de foco para un libro específico.
+ */
+export function muteBookFocusSuggestions(
+  profile: UserFocusTelemetryProfile,
+  bookId: string,
+): UserFocusTelemetryProfile {
+  if (profile.mutedBookIds.includes(bookId)) return profile;
+  return {
+    ...profile,
+    mutedBookIds: [...profile.mutedBookIds, bookId],
+  };
+}
+
+/**
+ * Reactiva las sugerencias de foco para un libro específico.
+ */
+export function unmuteBookFocusSuggestions(
+  profile: UserFocusTelemetryProfile,
+  bookId: string,
+): UserFocusTelemetryProfile {
+  if (!profile.mutedBookIds.includes(bookId)) return profile;
+  return {
+    ...profile,
+    mutedBookIds: profile.mutedBookIds.filter((id) => id !== bookId),
+  };
+}
+
+/**
+ * Comprueba si las sugerencias de foco están silenciadas globalmente o para el libro indicado.
+ */
+export function isFocusSuggestionMuted(
+  profile: UserFocusTelemetryProfile,
+  bookId?: string,
+): boolean {
+  if (!profile.autoSuggestEnabled) return true;
+  if (bookId && profile.mutedBookIds.includes(bookId)) return true;
+  return false;
+}
+
+/**
+ * Activa o desactiva globalmente las sugerencias automáticas de neuro-foco.
+ */
+export function setFocusAutoSuggestEnabled(
+  profile: UserFocusTelemetryProfile,
+  enabled: boolean,
+): UserFocusTelemetryProfile {
+  return {
+    ...profile,
+    autoSuggestEnabled: enabled,
+  };
+}
+
+// ---------- Persistencia local del perfil de neuro-foco ----------
+
+export const FOCUS_TELEMETRY_PROFILE_KEY = "lecta:focus_telemetry_profile:v1";
+
+function getStorage(): Storage | null {
+  if (typeof window !== "undefined" && window.localStorage) {
+    return window.localStorage;
+  }
+  if (typeof globalThis !== "undefined" && (globalThis as { localStorage?: Storage }).localStorage) {
+    return (globalThis as { localStorage: Storage }).localStorage;
+  }
+  return null;
+}
+
+export function loadFocusTelemetryProfile(): UserFocusTelemetryProfile {
+  const storage = getStorage();
+  if (!storage) {
+    return { ...DEFAULT_FOCUS_TELEMETRY_PROFILE };
+  }
+  try {
+    const raw = storage.getItem(FOCUS_TELEMETRY_PROFILE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return {
+        autoSuggestEnabled:
+          typeof parsed.autoSuggestEnabled === "boolean"
+            ? parsed.autoSuggestEnabled
+            : true,
+        mutedBookIds: Array.isArray(parsed.mutedBookIds)
+          ? parsed.mutedBookIds
+          : [],
+        paceByLang:
+          parsed.paceByLang && typeof parsed.paceByLang === "object"
+            ? parsed.paceByLang
+            : {},
+        aidEfficacyWeights: {
+          ...DEFAULT_FOCUS_TELEMETRY_PROFILE.aidEfficacyWeights,
+          ...(parsed.aidEfficacyWeights || {}),
+        },
+      };
+    }
+  } catch {
+    // fallback
+  }
+  return { ...DEFAULT_FOCUS_TELEMETRY_PROFILE };
+}
+
+export function saveFocusTelemetryProfile(
+  profile: UserFocusTelemetryProfile,
+): void {
+  const storage = getStorage();
+  if (!storage) return;
+  try {
+    storage.setItem(
+      FOCUS_TELEMETRY_PROFILE_KEY,
+      JSON.stringify(profile),
+    );
+  } catch {
+    // ignorar quota error
+  }
+}
+

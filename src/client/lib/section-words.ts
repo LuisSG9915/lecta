@@ -5,7 +5,11 @@ import { predictSection } from "./knowledge";
 import { isWordToken } from "../../shared/word-form";
 import { isStopword } from "../../shared/stopwords";
 import { preparationAnswerKey, type PreparationRow } from "./preparation";
-import { betaFromZipf, predictWordMasteryProbability } from "./profile-models";
+import {
+  betaFromZipf,
+  predictWordMasteryProbability,
+  estimateWordKnowProbability,
+} from "./profile-models";
 
 // Utilidades puras del lector predictivo: preparan entradas para
 // predictSection (knowledge.ts) y para la tarjeta «Antes de leer».
@@ -170,6 +174,7 @@ export type SuggestionRow = {
   pos?: string | null;
   meaning?: string;
   context?: string;
+  contextSnippet?: string;
   learning?: boolean;
   reason: PresentedReason;
   zipf?: number | null;
@@ -283,6 +288,9 @@ export function buildSuggestionRows(input: {
       pos: row.pos,
       meaning: row.meaning,
       context: row.context,
+      contextSnippet:
+        row.contextSnippet ??
+        (row.context ? extractChapterContextSnippet(row.context, row.form) : undefined),
       learning: extras.learning,
       reason: extras.reason,
       zipf: extras.zipf,
@@ -496,6 +504,169 @@ export function extractKeyWordFromSentence(
 
 // ---------- Selector Científico de Palabras Pre-Capítulo (ZPD + Cowan) ----------
 
+/** Límite cognitivo de Cowan (4 ± 1 bloques) por defecto para pre-lectura */
+export const MAX_PREVIEW_WORDS = 5;
+export const MIN_PREVIEW_WORDS = 3;
+export const MAX_PREVIEW_WORDS_L2_TECHNICAL = 7;
+export const MAX_CONTEXT_SNIPPET_CHARS = 140;
+
+export type LexicalPosTag = "verb" | "noun" | "adj" | "adv" | "phrase" | "other";
+
+/**
+ * Peso semántico W_POS(w): prioriza verbos de acción, adjetivos de tono,
+ * sustantivos clave y locuciones sobre adverbios o formas neutras.
+ */
+export function getSemanticPosWeight(pos?: LexicalPosTag | string | null): number {
+  if (!pos) return 1.0;
+  const norm = pos.toLowerCase();
+  if (norm.startsWith("phrase") || norm.startsWith("loc")) return 1.3;
+  if (norm.startsWith("v")) return 1.25;
+  if (norm.startsWith("adj")) return 1.2;
+  if (norm.startsWith("n") || norm.startsWith("sust")) return 1.15;
+  if (norm.startsWith("adv")) return 0.9;
+  return 1.0;
+}
+
+/**
+ * Zona de Desarrollo Próximo de Vygotsky: Zona(\theta_{u,L}, \beta_w)
+ * Campana gaussiana centrada ligeramente por encima del nivel actual del lector
+ * (\mu = \theta_{u,L} + 0.35, \sigma = 1.05) para impulsar aprendizaje sin frustración.
+ */
+export function computeZpdZoneWeight(thetaUL: number, betaW: number): number {
+  const targetDifficulty = thetaUL + 0.35;
+  const sigma = 1.05;
+  const z = (betaW - targetDifficulty) / sigma;
+  return Math.exp(-0.5 * z * z);
+}
+
+/**
+ * Puntaje de Utilidad Pre-Capítulo U(w, c, u):
+ * U(w, c, u) = (1 - P(conoce_{u,w})) * ln(1 + freq_{w,c}) * Zona(\theta_{u,L}, \beta_w) * W_POS(w)
+ */
+export function computePreChapterWordUtility(params: {
+  thetaUL: number;
+  betaW: number;
+  freqInChapter: number;
+  pos?: LexicalPosTag | string | null;
+  knowledgeStatus?: "known" | "learning" | "seen" | "unknown" | null;
+  stability?: number | null;
+  lastSeenTimestampMs?: number | null;
+  nowMs?: number;
+}): {
+  utility: number;
+  pKnow: number;
+  unknownProb: number;
+  freqImpact: number;
+  zoneWeight: number;
+  posWeight: number;
+} {
+  const {
+    thetaUL,
+    betaW,
+    freqInChapter,
+    pos,
+    knowledgeStatus,
+    stability,
+    lastSeenTimestampMs,
+    nowMs,
+  } = params;
+
+  const pKnow = estimateWordKnowProbability({
+    thetaUL,
+    betaW,
+    knowledgeStatus,
+    stability,
+    lastSeenTimestampMs,
+    nowMs,
+  });
+
+  const unknownProb = Math.max(0, 1 - pKnow);
+  const freqImpact = Math.log(1 + Math.max(1, freqInChapter));
+  const zoneWeight = computeZpdZoneWeight(thetaUL, betaW);
+  const posWeight = getSemanticPosWeight(pos);
+
+  const utility = unknownProb * freqImpact * zoneWeight * posWeight;
+
+  return {
+    utility,
+    pKnow,
+    unknownProb,
+    freqImpact,
+    zoneWeight,
+    posWeight,
+  };
+}
+
+/**
+ * Extrae la cita real del capítulo donde aparece la palabra (máx. 140 caracteres)
+ * sin cortar palabras a la mitad, lista para el priming contextual en SectionPreview.tsx.
+ */
+export function extractChapterContextSnippet(
+  chapterText: string,
+  surfaceWord: string,
+  maxChars: number = MAX_CONTEXT_SNIPPET_CHARS,
+): string {
+  if (!chapterText || !surfaceWord) return "";
+
+  const cleanText = chapterText.replace(/\s+/g, " ").trim();
+  const escaped = surfaceWord.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const regex = new RegExp(`(^|[^\\p{L}])(${escaped})(?=$|[^\\p{L}])`, "iu");
+  const match = regex.exec(cleanText);
+
+  if (!match) {
+    return cleanText.slice(0, maxChars);
+  }
+
+  const wordStart = match.index + match[1].length;
+  const wordEnd = wordStart + match[2].length;
+
+  // Delimitar por la oración contenedora (. ! ? ¡ ¿ ; \n)
+  let sentenceStart = wordStart;
+  while (sentenceStart > 0 && !/[.!?¡¿;\n]/.test(cleanText[sentenceStart - 1])) {
+    sentenceStart--;
+  }
+  let sentenceEnd = wordEnd;
+  while (sentenceEnd < cleanText.length && !/[.!?;\n]/.test(cleanText[sentenceEnd])) {
+    sentenceEnd++;
+  }
+  if (sentenceEnd < cleanText.length && /[.!?]/.test(cleanText[sentenceEnd])) {
+    sentenceEnd++;
+  }
+
+  const sentence = cleanText.slice(sentenceStart, sentenceEnd).trim();
+  if (sentence.length <= maxChars) {
+    return sentence;
+  }
+
+  // Si la oración supera los 140 caracteres, centrar ventana alrededor de la palabra
+  const relStart = Math.max(0, wordStart - sentenceStart);
+  const halfWindow = Math.floor((maxChars - surfaceWord.length) / 2);
+  let sliceStart = Math.max(0, relStart - halfWindow);
+  let sliceEnd = Math.min(sentence.length, sliceStart + maxChars);
+
+  if (sliceEnd - sliceStart < maxChars) {
+    sliceStart = Math.max(0, sliceEnd - maxChars);
+  }
+
+  // Ajustar a límites de palabra para no cortar sílabas
+  if (sliceStart > 0) {
+    const nextSpace = sentence.indexOf(" ", sliceStart);
+    if (nextSpace !== -1 && nextSpace < relStart) {
+      sliceStart = nextSpace + 1;
+    }
+  }
+  if (sliceEnd < sentence.length) {
+    const prevSpace = sentence.lastIndexOf(" ", sliceEnd);
+    if (prevSpace > relStart + surfaceWord.length) {
+      sliceEnd = prevSpace;
+    }
+  }
+
+  const prefix = sliceStart > 0 ? "…" : "";
+  const suffix = sliceEnd < sentence.length ? "…" : "";
+  return `${prefix}${sentence.slice(sliceStart, sliceEnd).trim()}${suffix}`;
+}
+
 export interface ChapterPrimingCandidate {
   lemma: string;
   surfaceForm: string;
@@ -505,6 +676,7 @@ export interface ChapterPrimingCandidate {
   partOfSpeech?: "noun" | "verb" | "adj" | "adv" | "phrase" | "other";
   shortGloss: string; // Glosa breve o traducción contextual (L2)
   contextSentence: string; // Oración real del capítulo (máx. 140 caracteres)
+  contextSnippet?: string; // Cita contextual exacta (máx. 140 caracteres)
   fsrsRetrievability?: number; // Si ya está en FSRS (0 a 1)
   isKnownExplicitly?: boolean;
 }
@@ -685,7 +857,8 @@ export function buildChapterPrimingCandidates(input: {
       entry?.senses?.[0]?.definition ??
       "";
     const rawContext = firstSentenceWith(text, form, lang);
-    const contextSentence = cleanContextSentence(rawContext, 140);
+    const contextSnippet = extractChapterContextSnippet(rawContext ?? text, form, 140);
+    const contextSentence = contextSnippet || cleanContextSentence(rawContext, 140);
     const fsrsRetrievability =
       fsrsRetrievabilities?.get(lemma) ?? fsrsRetrievabilities?.get(form);
 
@@ -698,6 +871,7 @@ export function buildChapterPrimingCandidates(input: {
       partOfSpeech: pos,
       shortGloss,
       contextSentence,
+      contextSnippet,
       fsrsRetrievability,
       isKnownExplicitly: isKnown,
     });

@@ -13,18 +13,8 @@ import {
 } from "../../shared/calibration-bank";
 import { getEnglishCoreEntry } from "../../shared/english-core-lexicon";
 
-export type LexiconEntry = {
-  // int8 de unique_rowid() (~1.2e18 > 2^53): viaja como string por
-  // JSON — un number lo truncaría y la acepción dejaría de resolver.
-  entryId: string | null;
-  lemma: string;
-  pos: string | null;
-  freqRank: number | null;
-  // Frecuencia medida (wordfreq ~0–8); null cuando la ficha no tiene
-  // medición. Es el criterio de rareza: freqRank es solo estimación IA.
-  zipf: number | null;
-  senses: { definition: string; example: string | null; senseOrder: number | null }[];
-};
+import type { LexiconEntry } from "../../shared/lexicon";
+export type { LexiconEntry };
 
 export type LookupResult =
   | { ok: true; found: boolean; entries: LexiconEntry[]; offline?: boolean }

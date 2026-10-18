@@ -35,6 +35,13 @@ import {
 import { recordSilentCalibration } from "../lib/knowledge";
 import { syllabifySpanish } from "../lib/syllables";
 import type { PhraseHit } from "../lib/phrases";
+import {
+  isLikelyProperNoun,
+  buildZeroSpoilerCharacterCard,
+  type CharacterMemoryCard,
+} from "../lib/character-helper";
+import { translateParagraph } from "../lib/translate";
+import { saveCharacterMemoryEnabled } from "../lib/page-recap";
 
 export interface LocalLexiconEntry {
   lemma: string;
@@ -68,6 +75,7 @@ export interface UnifiedWordPanelProps {
   currentSectionIndex?: number;
   currentChapterTitle?: string;
   onSelectWord?: (word: string) => void;
+  initialViewMode?: "dictionary" | "character";
   // Inyección de helpers actuales en src/client/lib/
   lookupLocalLexicon?: (word: string, lang: "es" | "en") => Promise<LocalLexiconEntry | null>;
   fetchContextualMeaning?: (
@@ -90,7 +98,11 @@ export interface UnifiedWordPanelProps {
     row: KnownWord,
     context: { form: string; kind: "saved" | "declared" },
   ) => void;
-  onRecordSilentCalibration?: (word: string, event: "lookup" | "save") => void;
+  onRecordSilentCalibration?: (
+    word: string,
+    event: "lookup" | "save" | "known",
+    language?: string,
+  ) => void;
   onNotice?: (message: string) => void;
   onClose: () => void;
 }
@@ -110,6 +122,12 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
   canExplain: _canExplain = true,
   isSavedInitial = false,
   compactMode = false,
+  sections,
+  toc,
+  currentSectionIndex,
+  currentChapterTitle,
+  onSelectWord,
+  initialViewMode,
   lookupLocalLexicon,
   fetchContextualMeaning,
   onSpeakWord,
@@ -125,6 +143,21 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
   const effectiveContext = (sentenceContext ?? context ?? "").trim();
   const cleanWord = word.trim();
   const cacheKey = `${effectiveLang}:${cleanWord.toLowerCase()}::${effectiveContext.slice(0, 120)}`;
+
+  const userNativeLang = loadNativeLanguage() || "es";
+  const isForeignBook = effectiveLang !== userNativeLang;
+  const isCandidateProperNoun = isLikelyProperNoun(cleanWord, effectiveContext, effectiveLang);
+
+  const [viewMode, setViewMode] = useState<"dictionary" | "character">(
+    () => initialViewMode ?? (isCandidateProperNoun ? "character" : "dictionary"),
+  );
+  const [characterCard, setCharacterCard] = useState<CharacterMemoryCard | null>(null);
+  const [isLoadingCharacter, setIsLoadingCharacter] = useState<boolean>(false);
+  const [translatedQuotes, setTranslatedQuotes] = useState<{
+    firstMention?: string;
+    recentMention?: string;
+  } | null>(null);
+  const [isTranslatingQuotes, setIsTranslatingQuotes] = useState<boolean>(false);
 
   const [isExpanded, setIsExpanded] = useState(!compactMode);
   const [localEntry, setLocalEntry] = useState<LocalLexiconEntry | null>(null);
@@ -285,6 +318,88 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
     return () => abortCtrl.abort();
   }, [cleanWord, effectiveContext, effectiveLang, cacheKey, lookupLocalLexicon, fetchContextualMeaning, onRecordSilentCalibration, bookTitle, author]);
 
+  // Construcción de la ficha de memoria de personaje (Cero Spoilers)
+  useEffect(() => {
+    let cancelled = false;
+    const shouldBuildCard = isCandidateProperNoun || Boolean(sections && sections.length > 0);
+    if (!shouldBuildCard) return;
+
+    setIsLoadingCharacter(true);
+
+    const boundary = {
+      chapterIndex: currentSectionIndex ?? 0,
+      charOffsetInChapter: undefined,
+    };
+
+    const loadChapters = async () => {
+      if (sections && sections.length > 0) {
+        const maxIndex = Math.min(sections.length - 1, boundary.chapterIndex);
+        const loaded: Array<{ index: number; title: string; plainText: string }> = [];
+
+        for (let idx = 0; idx <= maxIndex; idx++) {
+          if (cancelled) return [];
+          try {
+            const doc = await sections[idx].createDocument();
+            const title = toc?.find((r) => r.index === idx)?.label ?? `Capítulo ${idx + 1}`;
+            const plainText = doc.body?.textContent ?? "";
+            loaded.push({ index: idx, title, plainText });
+          } catch {
+            loaded.push({ index: idx, title: `Capítulo ${idx + 1}`, plainText: "" });
+          }
+        }
+        return loaded;
+      } else if (effectiveContext) {
+        return [
+          {
+            index: boundary.chapterIndex,
+            title: currentChapterTitle || `Capítulo ${boundary.chapterIndex + 1}`,
+            plainText: effectiveContext,
+          },
+        ];
+      }
+      return [];
+    };
+
+    void loadChapters().then((chapterTexts) => {
+      if (cancelled) return;
+      if (chapterTexts.length > 0) {
+        const card = buildZeroSpoilerCharacterCard(cleanWord, chapterTexts, boundary);
+        setCharacterCard(card);
+        if (card.totalMentionsUpToCursor > 0 && isCandidateProperNoun && !initialViewMode) {
+          setViewMode("character");
+        }
+      }
+      setIsLoadingCharacter(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [cleanWord, sections, toc, currentSectionIndex, currentChapterTitle, effectiveContext, isCandidateProperNoun, initialViewMode]);
+
+  // Traducción de citas para libros en otros idiomas (L2)
+  const handleTranslateQuotes = async () => {
+    if (!characterCard || isTranslatingQuotes) return;
+    setIsTranslatingQuotes(true);
+    triggerHaptic(8);
+    try {
+      const scope = captureDbScope();
+      const firstTrans = characterCard.firstMention
+        ? await translateParagraph(characterCard.firstMention.sentence, effectiveLang, userNativeLang, scope)
+        : undefined;
+      const recentTrans = characterCard.recentMention
+        ? await translateParagraph(characterCard.recentMention.sentence, effectiveLang, userNativeLang, scope)
+        : undefined;
+
+      setTranslatedQuotes({
+        firstMention: firstTrans,
+        recentMention: recentTrans,
+      });
+    } finally {
+      setIsTranslatingQuotes(false);
+    }
+  };
+
   // Pronunciación de voz
   const handleSpeak = () => {
     triggerHaptic(6);
@@ -398,6 +513,7 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
         saveUserTheta(newTheta, effectiveLang);
       }
 
+      onRecordSilentCalibration(cleanWord, "known", effectiveLang);
       onKnowledgeChanged?.(row, { form: cleanWord, kind: "declared" });
       const msg = "Marcada como conocida. Ajustamos tu perfil.";
       onNotice?.(msg);
@@ -452,9 +568,11 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
   if (compactMode && !isExpanded) {
     const syllables = effectiveLang === "es" ? syllabifySpanish(cleanWord) : cleanWord;
     const microDef =
-      localEntry?.shortDefinition ||
-      contextual?.inPassageMeaning ||
-      (isLoadingContext ? "Consultando..." : "Definición");
+      viewMode === "character" && characterCard?.firstMention
+        ? `👤 1ª mención: ${characterCard.firstMention.chapterTitle}`
+        : localEntry?.shortDefinition ||
+          contextual?.inPassageMeaning ||
+          (isLoadingContext ? "Consultando..." : "Definición");
 
     return (
       <div
@@ -582,89 +700,347 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
         </div>
       </header>
 
-      {/* Bloque 1: Significado directo + Sinónimos (0 ms) */}
-      <section className="word-card-dictionary-section word-panel-meaning-block">
-        <p className="word-card-short-def word-panel-primary-def">
-          {localEntry?.shortDefinition ||
-            (isLoadingContext
-              ? "Buscando significado..."
-              : contextual?.inPassageMeaning || "Significado disponible")}
-        </p>
-
-        {localEntry && localEntry.synonyms.length > 0 && (
-          <div className="word-card-synonyms">
-            {localEntry.synonyms.slice(0, 4).map((syn) => (
-              <span key={syn} className="word-synonym-pill">
-                {syn}
-              </span>
-            ))}
-          </div>
-        )}
-      </section>
-
-      {/* Bloque 2: "¿Qué significa en esta frase exacta?" (IA integrada en 1 paso, en paralelo y cacheada) */}
-      <section className="word-card-context-box">
-        <div
-          className="word-card-context-label"
-          style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}
+      {/* Selector de modo inteligente: Personaje / Diccionario */}
+      {(isCandidateProperNoun || Boolean(characterCard && characterCard.totalMentionsUpToCursor > 0)) && (
+        <nav
+          className="word-panel-mode-switcher"
+          aria-label="Vista del panel"
+          style={{
+            display: "flex",
+            gap: "0.5rem",
+            padding: "0.5rem 1rem 0",
+            borderBottom: "1px solid rgba(127,127,127,0.15)",
+          }}
         >
-          <span>🐱 En esta frase del libro:</span>
-          {/* Botón retrocompatible para tests existentes */}
           <button
             type="button"
-            className="btn--explain-passage"
-            onClick={() => {
-              if (contextual) return;
-              setIsLoadingContext(true);
-            }}
+            className={`btn--mode-toggle ${viewMode === "character" ? "is-active" : ""}`}
+            onClick={() => setViewMode("character")}
             style={{
               background: "transparent",
               border: "none",
-              color: "inherit",
-              fontSize: "0.74rem",
-              opacity: 0.8,
+              borderBottom: viewMode === "character" ? "2px solid currentColor" : "2px solid transparent",
+              padding: "0.25rem 0.5rem",
+              fontSize: "0.82rem",
+              fontWeight: viewMode === "character" ? 600 : 400,
               cursor: "pointer",
+              opacity: viewMode === "character" ? 1 : 0.65,
             }}
           >
-            ✨ Explicar en esta frase
+            👤 Personaje
           </button>
-        </div>
+          <button
+            type="button"
+            className={`btn--mode-toggle ${viewMode === "dictionary" ? "is-active" : ""}`}
+            onClick={() => setViewMode("dictionary")}
+            style={{
+              background: "transparent",
+              border: "none",
+              borderBottom: viewMode === "dictionary" ? "2px solid currentColor" : "2px solid transparent",
+              padding: "0.25rem 0.5rem",
+              fontSize: "0.82rem",
+              fontWeight: viewMode === "dictionary" ? 600 : 400,
+              cursor: "pointer",
+              opacity: viewMode === "dictionary" ? 1 : 0.65,
+            }}
+          >
+            📖 Diccionario
+          </button>
+        </nav>
+      )}
 
-        {isLoadingContext ? (
-          <div className="word-card-context-skeleton" aria-busy="true">
-            <span className="skeleton-line" />
-            <span className="skeleton-line is-short" />
+      {viewMode === "character" ? (
+        <section
+          className="character-memory-card"
+          role="region"
+          aria-label={`Memoria de ${cleanWord}`}
+          style={{ padding: "0.75rem 1rem" }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: "0.5rem",
+              marginBottom: "0.5rem",
+            }}
+          >
+            {/* Insignia de seguridad: 🔒 Hasta el Cap. X (Cero Spoilers) */}
+            <div
+              className="character-security-badge"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "0.35rem",
+                fontSize: "0.76rem",
+                fontWeight: 500,
+                padding: "0.2rem 0.5rem",
+                borderRadius: "4px",
+                background: "rgba(127,127,127,0.12)",
+                opacity: 0.9,
+              }}
+            >
+              <span className="character-security-icon" aria-hidden="true">🔒</span>
+              <span className="character-security-text">
+                Hasta el {currentChapterTitle || `Cap. ${(currentSectionIndex ?? 0) + 1}`} (Cero Spoilers)
+              </span>
+            </div>
+
+            <span
+              className="character-memory-header-tag"
+              style={{ fontSize: "0.74rem", opacity: 0.7 }}
+            >
+              Memoria del libro · Sin spoilers hasta tu página
+            </span>
           </div>
-        ) : contextual?.inPassageMeaning ? (
-          <div>
-            <p className="word-card-context-text passage-meaning-text">
-              {contextual.inPassageMeaning}
-              {contextual.toneOrNuance && (
-                <em className="word-card-context-nuance passage-badge-tone">
-                  {" "}· {contextual.toneOrNuance}
-                </em>
+
+          {isLoadingCharacter ? (
+            <div className="word-card-context-skeleton" aria-busy="true" style={{ marginTop: "0.5rem" }}>
+              <span className="skeleton-line" />
+              <span className="skeleton-line is-short" />
+            </div>
+          ) : characterCard ? (
+            <div className="character-memory-content" style={{ marginTop: "0.4rem" }}>
+              {/* Primera vez que apareció */}
+              <div className="character-mention-block character-first-mention" style={{ marginBottom: "0.65rem" }}>
+                <div
+                  className="character-mention-title"
+                  style={{ fontSize: "0.8rem", fontWeight: 600, opacity: 0.9 }}
+                >
+                  📖 Primera vez que apareció {characterCard.firstMention ? `(${characterCard.firstMention.chapterTitle})` : ""}:
+                </div>
+                {characterCard.firstMention ? (
+                  <blockquote
+                    className="character-quote-text"
+                    style={{
+                      margin: "0.25rem 0",
+                      paddingLeft: "0.6rem",
+                      borderLeft: "2px solid currentColor",
+                      fontStyle: "italic",
+                      fontSize: "0.86rem",
+                      lineHeight: "1.35",
+                      opacity: 0.9,
+                    }}
+                  >
+                    «{translatedQuotes?.firstMention || characterCard.firstMention.sentence}»
+                  </blockquote>
+                ) : (
+                  <p className="character-quote-empty" style={{ fontSize: "0.82rem", opacity: 0.7, margin: "0.2rem 0" }}>
+                    No se registran apariciones previas.
+                  </p>
+                )}
+              </div>
+
+              {/* Última vez visto antes de aquí */}
+              <div className="character-mention-block character-recent-mention" style={{ marginBottom: "0.65rem" }}>
+                <div
+                  className="character-mention-title"
+                  style={{ fontSize: "0.8rem", fontWeight: 600, opacity: 0.9 }}
+                >
+                  ⏳ Última vez visto antes de aquí {characterCard.recentMention ? `(${characterCard.recentMention.chapterTitle})` : ""}:
+                </div>
+                {characterCard.recentMention ? (
+                  <blockquote
+                    className="character-quote-text"
+                    style={{
+                      margin: "0.25rem 0",
+                      paddingLeft: "0.6rem",
+                      borderLeft: "2px solid currentColor",
+                      fontStyle: "italic",
+                      fontSize: "0.86rem",
+                      lineHeight: "1.35",
+                      opacity: 0.9,
+                    }}
+                  >
+                    «{translatedQuotes?.recentMention || characterCard.recentMention.sentence}»
+                  </blockquote>
+                ) : (
+                  <p className="character-quote-empty" style={{ fontSize: "0.82rem", opacity: 0.7, margin: "0.2rem 0" }}>
+                    {characterCard.firstMention
+                      ? "Es su primera escena o intervención en el libro."
+                      : "Sin menciones previas en la lectura."}
+                  </p>
+                )}
+              </div>
+
+              {/* Relación en escena */}
+              {characterCard.coOccurringCharacters.length > 0 && (
+                <div className="character-relationships-block" style={{ marginTop: "0.5rem" }}>
+                  <div
+                    className="character-relationships-label"
+                    style={{ fontSize: "0.78rem", fontWeight: 600, marginBottom: "0.25rem", opacity: 0.85 }}
+                  >
+                    👥 Relación en escena:
+                  </div>
+                  <div
+                    className="character-companions-pills"
+                    style={{ display: "flex", flexWrap: "wrap", gap: "0.35rem" }}
+                  >
+                    {characterCard.coOccurringCharacters.map((companionName) => (
+                      <button
+                        key={companionName}
+                        type="button"
+                        className="character-companion-pill word-synonym-pill"
+                        onClick={() => onSelectWord?.(companionName)}
+                        title={`Explorar ${companionName}`}
+                        style={{
+                          cursor: onSelectWord ? "pointer" : "default",
+                          border: "none",
+                          fontSize: "0.78rem",
+                        }}
+                      >
+                        {companionName}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               )}
+
+              {/* Soporte para Libros en Otros Idiomas (L2): Botón para traducir citas */}
+              {isForeignBook && (characterCard.firstMention || characterCard.recentMention) && (
+                <div className="character-translate-action" style={{ marginTop: "0.75rem" }}>
+                  <button
+                    type="button"
+                    className="btn--translate-character-quotes"
+                    onClick={handleTranslateQuotes}
+                    disabled={isTranslatingQuotes}
+                    style={{
+                      background: "transparent",
+                      border: "1px solid currentColor",
+                      borderRadius: "999px",
+                      padding: "0.25rem 0.65rem",
+                      fontSize: "0.78rem",
+                      cursor: isTranslatingQuotes ? "wait" : "pointer",
+                      opacity: isTranslatingQuotes ? 0.6 : 0.88,
+                    }}
+                  >
+                    {isTranslatingQuotes ? "Traduciendo citas..." : "🌐 Traducir citas al español"}
+                  </button>
+                </div>
+              )}
+
+              {/* Opción directa para desactivar recordatorio de personajes */}
+              <div
+                className="character-disable-action"
+                style={{ marginTop: "0.85rem", display: "flex", justifyContent: "flex-end" }}
+              >
+                <button
+                  type="button"
+                  className="btn--disable-character-memory"
+                  onClick={() => {
+                    saveCharacterMemoryEnabled(false);
+                    setViewMode("dictionary");
+                    onNotice?.("Recordatorio de personajes desactivado.");
+                  }}
+                  title="Desactivar recordatorio de personajes"
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    color: "inherit",
+                    fontSize: "0.72rem",
+                    opacity: 0.6,
+                    cursor: "pointer",
+                    textDecoration: "underline",
+                  }}
+                >
+                  ✕ Desactivar recordatorio de personajes
+                </button>
+              </div>
+            </div>
+          ) : (
+            <p className="character-quote-empty" style={{ fontSize: "0.85rem", opacity: 0.75, margin: "0.5rem 0" }}>
+              No se han encontrado apariciones anteriores de «{cleanWord}».
             </p>
-            {contextual.catTip && (
-              <p
-                className="cat-tip-text"
+          )}
+        </section>
+      ) : (
+        <>
+          {/* Bloque 1: Significado directo + Sinónimos (0 ms) */}
+          <section className="word-card-dictionary-section word-panel-meaning-block">
+            <p className="word-card-short-def word-panel-primary-def">
+              {localEntry?.shortDefinition ||
+                (isLoadingContext
+                  ? "Buscando significado..."
+                  : contextual?.inPassageMeaning || "Significado disponible")}
+            </p>
+
+            {localEntry && localEntry.synonyms.length > 0 && (
+              <div className="word-card-synonyms">
+                {localEntry.synonyms.slice(0, 4).map((syn) => (
+                  <span key={syn} className="word-synonym-pill">
+                    {syn}
+                  </span>
+                ))}
+              </div>
+            )}
+          </section>
+
+          {/* Bloque 2: "¿Qué significa en esta frase exacta?" (IA integrada en 1 paso, en paralelo y cacheada) */}
+          <section className="word-card-context-box">
+            <div
+              className="word-card-context-label"
+              style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}
+            >
+              <span>🐱 En esta frase del libro:</span>
+              {/* Botón retrocompatible para tests existentes */}
+              <button
+                type="button"
+                className="btn--explain-passage"
+                onClick={() => {
+                  if (contextual) return;
+                  setIsLoadingContext(true);
+                }}
                 style={{
-                  fontSize: "0.78rem",
-                  opacity: 0.82,
-                  marginTop: "0.35rem",
-                  fontStyle: "italic",
+                  background: "transparent",
+                  border: "none",
+                  color: "inherit",
+                  fontSize: "0.74rem",
+                  opacity: 0.8,
+                  cursor: "pointer",
                 }}
               >
-                {contextual.catTip}
+                ✨ Explicar en esta frase
+              </button>
+            </div>
+
+            {isLoadingContext ? (
+              <div className="word-card-context-skeleton" aria-busy="true">
+                <span className="skeleton-line" />
+                <span className="skeleton-line is-short" />
+              </div>
+            ) : contextual?.inPassageMeaning ? (
+              <div>
+                <p className="word-card-context-text passage-meaning-text">
+                  {contextual.inPassageMeaning}
+                  {contextual.toneOrNuance && (
+                    <em className="word-card-context-nuance passage-badge-tone">
+                      {" "}· {contextual.toneOrNuance}
+                    </em>
+                  )}
+                </p>
+                {contextual.catTip && (
+                  <p
+                    className="cat-tip-text"
+                    style={{
+                      fontSize: "0.78rem",
+                      opacity: 0.82,
+                      marginTop: "0.35rem",
+                      fontStyle: "italic",
+                    }}
+                  >
+                    {contextual.catTip}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <p className="word-card-context-fallback passage-meaning-text">
+                Sentido literal dentro del pasaje actual.
               </p>
             )}
-          </div>
-        ) : (
-          <p className="word-card-context-fallback passage-meaning-text">
-            Sentido literal dentro del pasaje actual.
-          </p>
-        )}
-      </section>
+          </section>
+        </>
+      )}
 
       {/* Toast de notificación rápida */}
       {quickNotice && (

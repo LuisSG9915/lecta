@@ -1,4 +1,4 @@
-import type { LexiconEntry } from "../client/lib/lexicon";
+import type { LexiconEntry } from "./lexicon";
 import {
   CALIBRATION_DEFINITIONS_EN,
   calibrationBankZipf,

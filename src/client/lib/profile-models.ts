@@ -284,19 +284,170 @@ export function saveThetaForLang(language: string, theta: number): void {
 
 // ---------- Modelo Psicométrico Adaptativo por Idioma (Rasch 1PL & Elo) ----------
 
+export type SupportedBookLang = "es" | "en" | string;
+
+export interface MultilingualThetaProfile {
+  /** Nivel theta principal (mantenido por retrocompatibilidad con tests actuales) */
+  theta?: number;
+  /** Mapa desacoplado de habilidad léxica por código de idioma ISO (ej. { es: 1.4, en: -0.2 }) */
+  thetaByLang?: Record<string, number>;
+  /** Preferencia adaptativa de cantidad de palabras pre-capítulo (Cowan: 3 a 5) */
+  preferredPreviewCount?: number;
+  /** Contador de capítulos donde el usuario saltó la tarjeta sin interactuar */
+  consecutivePreviewSkips?: number;
+}
+
+export const DEFAULT_THETA_L1 = 0.0;
+export const DEFAULT_THETA_L2 = -0.6;
+
+/**
+ * Obtiene el parámetro de habilidad \theta_{u,L} específico para el idioma del libro.
+ * Si el idioma aún no tiene calibración registrada, usa el prior de L1 o L2.
+ */
+export function getThetaForLanguage(
+  profile: Partial<MultilingualThetaProfile> | null | undefined,
+  bookLang: SupportedBookLang = "es",
+  nativeLang: SupportedBookLang = "es",
+): number {
+  const normLang = (bookLang || "es").slice(0, 2).toLowerCase();
+  const normNative = (nativeLang || "es").slice(0, 2).toLowerCase();
+
+  if (profile?.thetaByLang && typeof profile.thetaByLang[normLang] === "number") {
+    return profile.thetaByLang[normLang];
+  }
+
+  // Fallback retrocompatible: si el libro está en el idioma nativo, usa profile.theta
+  if (normLang === normNative && typeof profile?.theta === "number") {
+    return profile.theta;
+  }
+
+  return normLang === normNative ? DEFAULT_THETA_L1 : DEFAULT_THETA_L2;
+}
+
+/**
+ * Probabilidad a priori de que el usuario conozca la palabra según Rasch 1PL:
+ * P(conoce_{u,w}) = 1 / (1 + exp(-(theta_{u,L} - beta_w)))
+ */
+export function raschPriorKnowProbability(thetaUL: number, betaW: number): number {
+  const diff = Math.max(-10, Math.min(10, thetaUL - betaW));
+  return 1 / (1 + Math.exp(-diff));
+}
+
+/**
+ * Recuperabilidad FSRS R(t, S) = (1 + (19/81) * (t / S))^(-0.5)
+ * donde t son los días transcurridos desde la última exposición y S la estabilidad.
+ */
+export function fsrsRetrievability(elapsedDays: number, stability: number): number {
+  if (stability <= 0) return 0;
+  const t = Math.max(0, elapsedDays);
+  return Math.pow(1 + (19 / 81) * (t / stability), -0.5);
+}
+
+/**
+ * Probabilidad combinada P(conoce_{u,w}):
+ * Sustituye el prior de Rasch por la Recuperabilidad R(t, S) si la palabra ya existe
+ * en el historial del usuario (007_user_knowledge.sql / 004_user_reviews.sql).
+ */
+export function estimateWordKnowProbability(params: {
+  thetaUL: number;
+  betaW: number;
+  knowledgeStatus?: "known" | "learning" | "seen" | "unknown" | null;
+  stability?: number | null;
+  lastSeenTimestampMs?: number | null;
+  nowMs?: number;
+}): number {
+  const {
+    thetaUL,
+    betaW,
+    knowledgeStatus,
+    stability,
+    lastSeenTimestampMs,
+    nowMs = Date.now(),
+  } = params;
+
+  if (knowledgeStatus === "known") {
+    return 0.99;
+  }
+
+  if (
+    typeof stability === "number" &&
+    stability > 0 &&
+    typeof lastSeenTimestampMs === "number" &&
+    lastSeenTimestampMs > 0
+  ) {
+    const elapsedDays = Math.max(0, (nowMs - lastSeenTimestampMs) / 86_400_000);
+    return fsrsRetrievability(elapsedDays, stability);
+  }
+
+  return raschPriorKnowProbability(thetaUL, betaW);
+}
+
+/**
+ * Actualización dinámica de \theta_{u,L} a través de los 3 canales de competencia:
+ * - 'explicit_known': Usuario toca "✓ Ya la sé" en vista pre-capítulo (sube \theta proporcional a \beta_w).
+ * - 'lookup_surprise': Usuario consulta la palabra en WordPanel.tsx (baja \theta si se asumía conocida).
+ * - 'passive_frontier': Lectura fluida del capítulo sin consultar palabra frontera (\theta \approx \beta_w).
+ */
+export function updateThetaForLanguageSignal(
+  profile: MultilingualThetaProfile,
+  lang: SupportedBookLang,
+  betaW: number,
+  signal: "explicit_known" | "lookup_surprise" | "passive_frontier",
+): MultilingualThetaProfile & { thetaByLang: Record<string, number> } {
+  const normLang = (lang || "es").slice(0, 2).toLowerCase();
+  const currentTheta = getThetaForLanguage(profile, normLang);
+  const pKnow = raschPriorKnowProbability(currentTheta, betaW);
+
+  let delta = 0;
+  if (signal === "explicit_known") {
+    // Mayor ganancia si el usuario ya conoce una palabra difícil (pKnow bajo)
+    delta = 0.18 * (1 - pKnow);
+  } else if (signal === "lookup_surprise") {
+    // Mayor corrección a la baja si el modelo estaba muy seguro de que la conocía (pKnow alto)
+    delta = -0.22 * pKnow;
+  } else if (signal === "passive_frontier") {
+    // Ganancia suave pasiva solo para palabras cercanas a la frontera de dificultad
+    const distance = Math.abs(currentTheta - betaW);
+    if (distance <= 1.1) {
+      delta = 0.035 * (1 - pKnow);
+    }
+  }
+
+  const nextTheta = Math.max(-3.5, Math.min(3.5, Number((currentTheta + delta).toFixed(4))));
+  const nextThetaByLang = {
+    ...(profile.thetaByLang || {}),
+    [normLang]: nextTheta,
+  };
+
+  return {
+    ...profile,
+    theta: normLang === "es" ? nextTheta : profile.theta,
+    thetaByLang: nextThetaByLang,
+  };
+}
+
 export interface UserLanguageProfile {
+  /** Nivel theta principal (sincronizado con thetaByLang['es'] o idioma nativo) */
+  theta?: number;
   /** Nivel de competencia léxica theta por idioma (rango típico: -3.0 a +3.5) */
   thetaByLang: Record<string, number>;
   /** Incertidumbre / varianza del estimador por idioma (disminuye conforme el usuario interactúa) */
   uncertaintyByLang: Record<string, number>;
   /** Contador de capítulos completados por idioma */
   chaptersCompletedByLang: Record<string, number>;
+  /** Preferencia adaptativa de cantidad de palabras pre-capítulo (Cowan: 3 a 5) */
+  preferredPreviewCount?: number;
+  /** Contador de capítulos donde el usuario saltó la tarjeta sin interactuar */
+  consecutivePreviewSkips?: number;
 }
 
 export const DEFAULT_USER_LANGUAGE_PROFILE: UserLanguageProfile = {
+  theta: 0.0,
   thetaByLang: { es: 0.0, en: 0.0 },
   uncertaintyByLang: { es: 1.0, en: 1.0 },
   chaptersCompletedByLang: { es: 0, en: 0 },
+  preferredPreviewCount: 4,
+  consecutivePreviewSkips: 0,
 };
 
 export const USER_LANGUAGE_PROFILE_KEY = "lecta:user_language_profile:v1";
@@ -311,11 +462,13 @@ export function loadUserLanguageProfile(): UserLanguageProfile {
       return { ...DEFAULT_USER_LANGUAGE_PROFILE };
     }
     const parsed = JSON.parse(raw) as Partial<UserLanguageProfile>;
+    const thetaByLang =
+      typeof parsed.thetaByLang === "object" && parsed.thetaByLang !== null
+        ? parsed.thetaByLang
+        : { es: 0.0, en: 0.0 };
     return {
-      thetaByLang:
-        typeof parsed.thetaByLang === "object" && parsed.thetaByLang !== null
-          ? parsed.thetaByLang
-          : { es: 0.0, en: 0.0 },
+      theta: typeof parsed.theta === "number" ? parsed.theta : (thetaByLang.es ?? 0.0),
+      thetaByLang,
       uncertaintyByLang:
         typeof parsed.uncertaintyByLang === "object" && parsed.uncertaintyByLang !== null
           ? parsed.uncertaintyByLang
@@ -324,6 +477,8 @@ export function loadUserLanguageProfile(): UserLanguageProfile {
         typeof parsed.chaptersCompletedByLang === "object" && parsed.chaptersCompletedByLang !== null
           ? parsed.chaptersCompletedByLang
           : { es: 0, en: 0 },
+      preferredPreviewCount: parsed.preferredPreviewCount ?? 4,
+      consecutivePreviewSkips: parsed.consecutivePreviewSkips ?? 0,
     };
   } catch {
     return { ...DEFAULT_USER_LANGUAGE_PROFILE };
@@ -343,8 +498,7 @@ export function saveUserLanguageProfile(profile: UserLanguageProfile): void {
  * Probabilidad Rasch (IRT 1PL) de que el usuario conozca una palabra de dificultad `beta`
  */
 export function predictWordMasteryProbability(theta: number, beta: number): number {
-  const z = Math.max(-10, Math.min(10, theta - beta));
-  return 1 / (1 + Math.exp(-z));
+  return raschPriorKnowProbability(theta, beta);
 }
 
 /**

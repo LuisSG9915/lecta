@@ -91,6 +91,7 @@ import {
   handleKindleLinkPage,
   handleKindleStatus,
   handleKindleLinkAction,
+  handleKindlePrimingAction,
 } from "./kindle/routes";
 
 export const app = new Hono<{ Bindings: WorkerEnv }>();
@@ -192,6 +193,7 @@ app.get("/kindle", handleKindleLinkPage);
 app.get("/kindle/verify", handleKindleStatus);
 app.get("/api/kindle/status", handleKindleStatus);
 app.post("/api/kindle/link", handleKindleLinkAction);
+app.post("/kindle/priming/action", handleKindlePrimingAction);
 app.get("/kindle/*", (context) => {
   const p = context.req.path.replace(/^\/kindle/, "/k");
   return context.redirect(p);

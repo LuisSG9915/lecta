@@ -82,6 +82,10 @@ vi.mock("../lib/speech", () => ({
   speakWord: vi.fn(),
 }));
 
+vi.mock("../lib/translate", () => ({
+  translateParagraph: vi.fn(async (text: string) => `[ES] ${text}`),
+}));
+
 let host: HTMLDivElement;
 let root: Root;
 
@@ -598,6 +602,193 @@ describe("WordPanel - Acciones Rápidas (Fase 4.3)", () => {
           word: "quimera",
           sentenceContext: "Su sueño de volar era una quimera inalcanzable.",
         }),
+      );
+    });
+  });
+
+  describe("WordPanel - Memoria de Personajes y Cero Spoilers (Track 8 · Fase 2)", () => {
+    it("conmuta automáticamente a la tarjeta de personaje si es nombre propio y muestra anclas sin spoilers", async () => {
+      const onSelectWord = vi.fn();
+      const sections = [
+        {
+          createDocument: async () =>
+            new DOMParser().parseFromString(
+              "<body><p>Edmond Dantès llegó al puerto de Marsella con Mercédès.</p></body>",
+              "text/html",
+            ),
+        },
+        {
+          createDocument: async () =>
+            new DOMParser().parseFromString(
+              "<body><p>Dantès fue arrestado durante el banquete.</p></body>",
+              "text/html",
+            ),
+        },
+        {
+          createDocument: async () =>
+            new DOMParser().parseFromString(
+              "<body><p>SPOILER FATAL: Dantès escapa del Castillo de If.</p></body>",
+              "text/html",
+            ),
+        },
+      ];
+
+      const toc = [
+        { index: 0, label: "Capítulo I: Marsella" },
+        { index: 1, label: "Capítulo II: El Banquete" },
+        { index: 2, label: "Capítulo III: El Castillo de If (Futuro)" },
+      ];
+
+      render(
+        h(WordPanel, {
+          word: "Dantès",
+          sentenceContext: "Entonces Dantès miró a su alrededor con asombro.",
+          language: "es",
+          sections,
+          toc,
+          currentSectionIndex: 1,
+          currentChapterTitle: "Capítulo II: El Banquete",
+          onSelectWord,
+          onClose: vi.fn(),
+          onSaved: vi.fn(),
+        }),
+      );
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      // 1. Debe haber conmutado automáticamente al modo personaje
+      const memoryCard = host.querySelector(".character-memory-card");
+      expect(memoryCard).not.toBeNull();
+      expect(memoryCard?.textContent).toContain("Memoria del libro · Sin spoilers hasta tu página");
+
+      // 2. Insignia de seguridad estricta Cero Spoilers
+      const securityBadge = host.querySelector(".character-security-badge");
+      expect(securityBadge).not.toBeNull();
+      expect(securityBadge?.textContent).toContain("Hasta el Capítulo II: El Banquete (Cero Spoilers)");
+
+      // 3. Primera aparición (Capítulo I)
+      const firstMention = host.querySelector(".character-first-mention");
+      expect(firstMention).not.toBeNull();
+      expect(firstMention?.textContent).toContain("Primera vez que apareció (Capítulo I: Marsella)");
+      expect(firstMention?.textContent).toContain("Edmond Dantès llegó al puerto de Marsella");
+
+      // 4. Última vez visto antes de aquí (Capítulo II)
+      const recentMention = host.querySelector(".character-recent-mention");
+      expect(recentMention).not.toBeNull();
+      expect(recentMention?.textContent).toContain("Última vez visto antes de aquí (Capítulo II: El Banquete)");
+      expect(recentMention?.textContent).toContain("Dantès fue arrestado durante el banquete");
+
+      // 5. Garantía matemática Cero Spoilers: el capítulo 3 no existe en la ficha
+      expect(host.textContent).not.toContain("Castillo de If");
+
+      // 6. Relación en escena: píldoras de personajes que co-ocurren (Mercédès)
+      const companionPills = [...host.querySelectorAll<HTMLButtonElement>(".character-companion-pill")];
+      const mercedesPill = companionPills.find((p) => p.textContent === "Mercédès");
+      expect(mercedesPill).toBeDefined();
+
+      // Al pulsar en el personaje relacionado, invoca onSelectWord
+      await act(async () => {
+        click(mercedesPill!);
+      });
+      expect(onSelectWord).toHaveBeenCalledWith("Mercédès");
+    });
+
+    it("permite conmutar manualmente entre vista de Personaje y Diccionario con 1 toque", async () => {
+      render(
+        h(WordPanel, {
+          word: "Dantès",
+          sentenceContext: "Entonces Dantès miró al mar.",
+          language: "es",
+          onClose: vi.fn(),
+          onSaved: vi.fn(),
+        }),
+      );
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      // Localizar botones del conmutador de modo
+      const modeButtons = host.querySelectorAll<HTMLButtonElement>(".btn--mode-toggle");
+      expect(modeButtons.length).toBe(2);
+
+      const dictBtn = [...modeButtons].find((b) => b.textContent?.includes("Diccionario"))!;
+      const charBtn = [...modeButtons].find((b) => b.textContent?.includes("Personaje"))!;
+
+      // Conmutar a Diccionario
+      await act(async () => {
+        click(dictBtn);
+      });
+      expect(host.querySelector(".word-panel-meaning-block")).not.toBeNull();
+      expect(host.querySelector(".character-memory-card")).toBeNull();
+
+      // Conmutar de vuelta a Personaje
+      await act(async () => {
+        click(charBtn);
+      });
+      expect(host.querySelector(".character-memory-card")).not.toBeNull();
+      expect(host.querySelector(".word-panel-meaning-block")).toBeNull();
+    });
+
+    it("en libros L2 ofrece botón de traducción de citas al idioma materno", async () => {
+      const { translateParagraph } = await import("../lib/translate");
+
+      const sections = [
+        {
+          createDocument: async () =>
+            new DOMParser().parseFromString(
+              "<body><p>Dr. Watson met Sherlock Holmes in the laboratory.</p></body>",
+              "text/html",
+            ),
+        },
+      ];
+
+      render(
+        h(WordPanel, {
+          word: "Watson",
+          sentenceContext: "Dr. Watson stepped forward quietly.",
+          language: "en",
+          bookLanguage: "en",
+          sections,
+          currentSectionIndex: 0,
+          currentChapterTitle: "Chapter 1",
+          onClose: vi.fn(),
+          onSaved: vi.fn(),
+        }),
+      );
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      const translateBtn = host.querySelector<HTMLButtonElement>(".btn--translate-character-quotes");
+      expect(translateBtn).not.toBeNull();
+      expect(translateBtn?.textContent).toContain("🌐 Traducir citas al español");
+
+      // Pulsar traducir citas
+      await act(async () => {
+        click(translateBtn!);
+      });
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(translateParagraph).toHaveBeenCalledWith(
+        expect.stringContaining("Watson"),
+        "en",
+        "es",
+        expect.anything(),
+      );
+      expect(host.querySelector(".character-first-mention")?.textContent).toContain(
+        "[ES] Dr. Watson met Sherlock Holmes",
       );
     });
   });

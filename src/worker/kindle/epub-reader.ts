@@ -3,7 +3,7 @@
 // y extrae secciones limpias sin JavaScript para dispositivos de tinta electrónica.
 
 import { isStopword } from "../../shared/stopwords";
-import { isWordToken } from "../../shared/word-form";
+import { isWordToken, normalizeWordForm } from "../../shared/word-form";
 
 export type EpubSpineItem = {
   id: string;
@@ -28,6 +28,7 @@ export type ChapterResult = {
   contentHtml: string;
   sectionIndex: number;
   totalSections: number;
+  language?: string;
 };
 
 type ZipEntryInfo = {
@@ -346,6 +347,7 @@ export async function getEpubChapter(
     contentHtml,
     sectionIndex: validIndex,
     totalSections: epub.spine.length,
+    language: epub.language || "es",
   };
 }
 
@@ -655,3 +657,146 @@ export function findSentenceWithWord(text: string, word: string): string | null 
   }
   return null;
 }
+
+export interface KindlePrimingWord {
+  lemma: string;
+  surfaceForm: string;
+  lang: string;
+  beta: number;
+  chapterFrequency: number;
+  shortGloss: string;
+  contextSentence: string;
+  partOfSpeech?: string;
+  utilityScore: number;
+}
+
+export interface KindleUserLexicalState {
+  theta: number;
+  knownLemmas: Set<string>;
+  learningRetrievability: Map<string, number>; // lemma -> R (0..1)
+}
+
+/**
+ * Calcula la probabilidad de dominio según el modelo logístico de Rasch (1PL)
+ */
+export function computeRaschMastery(theta: number, beta: number): number {
+  const z = Math.max(-10, Math.min(10, theta - beta));
+  return 1 / (1 + Math.exp(-z));
+}
+
+/**
+ * Estima el parámetro theta del lector para el idioma dado a partir de sus registros en D1 (user_knowledge)
+ */
+export function estimateThetaFromD1Knowledge(
+  records: Array<{ word: string; status: string; difficultyBeta?: number }>
+): number {
+  let theta = 0.0;
+  let uncertainty = 1.0;
+
+  for (const row of records) {
+    const beta = row.difficultyBeta ?? 0.5;
+    const outcome = row.status === 'known' ? 1 : 0;
+    const expected = computeRaschMastery(theta, beta);
+    const k = 0.18 * Math.max(0.3, uncertainty);
+    theta = Math.max(-3.5, Math.min(4.0, theta + k * (outcome - expected)));
+    uncertainty = Math.max(0.25, uncertainty * 0.96);
+  }
+
+  return Number(theta.toFixed(4));
+}
+
+/**
+ * Extrae la oración exacta del capítulo (máx. 140 caracteres) donde aparece la palabra
+ */
+export function extractCompactContextSentence(chapterPlainText: string, surfaceForm: string): string {
+  const escaped = surfaceForm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const unicodeRegex = new RegExp(`([^.!?\\n]*(?<=^|[^\\p{L}\\p{M}\\d_])${escaped}(?=$|[^\\p{L}\\p{M}\\d_])[^.!?\\n]*[.!?]?)`, 'iu');
+  let match = chapterPlainText.match(unicodeRegex);
+  if (!match || !match[1]) {
+    const fallbackRegex = new RegExp(`([^.!?\\n]*\\b${escaped}\\b[^.!?\\n]*[.!?]?)`, 'i');
+    match = chapterPlainText.match(fallbackRegex);
+  }
+  if (!match || !match[1]) return '';
+
+  const sentence = match[1].trim().replace(/\s+/g, ' ');
+  if (sentence.length <= 140) return sentence;
+
+  const idx = sentence.toLowerCase().indexOf(surfaceForm.toLowerCase());
+  const start = Math.max(0, idx - 55);
+  const end = Math.min(sentence.length, idx + surfaceForm.length + 55);
+  return `${start > 0 ? '…' : ''}${sentence.slice(start, end).trim()}${end < sentence.length ? '…' : ''}`;
+}
+
+/**
+ * Selecciona entre 3 y 5 palabras óptimas para mostrar en la antesala E-Ink del capítulo
+ */
+export function selectKindleChapterPrimingWords(
+  chapterPlainText: string,
+  lang: string,
+  userState: KindleUserLexicalState,
+  lexiconCatalog: Map<string, { beta: number; gloss: string; pos?: string }>,
+  options: { maxWords?: number; isForeignLang?: boolean } = {}
+): KindlePrimingWord[] {
+  const maxWords = options.maxWords ?? 4;
+  const isForeign = options.isForeignLang ?? false;
+  const normalizedLang = lang.slice(0, 2).toLowerCase() || 'es';
+
+  // 1. Contabilizar frecuencias y primera forma superficial en el capítulo
+  const freqMap = new Map<string, { count: number; surface: string }>();
+  const rawTokens = chapterPlainText.split(/[^\p{L}\p{M}'-]+/u).filter(Boolean);
+
+  for (const token of rawTokens) {
+    if (token.length < 4) continue;
+    const lemma = normalizeWordForm(token.toLowerCase(), normalizedLang);
+    if (!lemma || isStopword(lemma, normalizedLang)) continue;
+    if (userState.knownLemmas.has(lemma)) continue;
+
+    const prev = freqMap.get(lemma);
+    if (prev) {
+      prev.count += 1;
+    } else {
+      freqMap.set(lemma, { count: 1, surface: token });
+    }
+  }
+
+  // 2. Puntuar cada candidato con Rasch + Zona de Desarrollo Próximo (ZPD)
+  const scored: KindlePrimingWord[] = [];
+  const targetOffset = isForeign ? 0.35 : 0.65;
+  const sigma = isForeign ? 1.15 : 1.0;
+
+  for (const [lemma, info] of freqMap.entries()) {
+    const lexEntry = lexiconCatalog.get(lemma);
+    if (!lexEntry || !lexEntry.gloss) continue;
+
+    const pKnown = userState.learningRetrievability.has(lemma)
+      ? userState.learningRetrievability.get(lemma)!
+      : computeRaschMastery(userState.theta, lexEntry.beta);
+
+    const unknownProb = 1 - pKnown;
+    if (unknownProb < 0.25) continue;
+
+    const freqWeight = Math.log(1 + info.count);
+    const diff = lexEntry.beta - (userState.theta + targetOffset);
+    const zpdWeight = Math.exp(-(diff * diff) / (2 * sigma * sigma));
+
+    const utilityScore = unknownProb * freqWeight * zpdWeight;
+    if (utilityScore < 0.20) continue;
+
+    scored.push({
+      lemma,
+      surfaceForm: info.surface,
+      lang: normalizedLang,
+      beta: lexEntry.beta,
+      chapterFrequency: info.count,
+      shortGloss: lexEntry.gloss,
+      partOfSpeech: lexEntry.pos,
+      contextSentence: extractCompactContextSentence(chapterPlainText, info.surface),
+      utilityScore: Number(utilityScore.toFixed(4)),
+    });
+  }
+
+  return scored
+    .sort((a, b) => b.utilityScore - a.utilityScore)
+    .slice(0, maxWords);
+}
+

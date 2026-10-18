@@ -5,6 +5,7 @@ import {
   inferContextualPos,
   isWordToken,
   menteBaseForms,
+  normalizeWordForm,
 } from "./word-form";
 
 describe("isWordToken", () => {
@@ -156,3 +157,30 @@ describe("generateLookupCandidates", () => {
     expect(candidates[0]).toBe("lingering");
   });
 });
+
+describe("normalizeWordForm", () => {
+  it("normaliza flexiones en inglés a su lema base", () => {
+    expect(normalizeWordForm("lingering", "en")).toBe("linger");
+    expect(normalizeWordForm("whispered", "en")).toBe("whisper");
+    expect(normalizeWordForm("reluctantly", "en")).toBe("reluctant");
+    expect(normalizeWordForm("shadows", "en")).toBe("shadow");
+    expect(normalizeWordForm("memories", "en")).toBe("memory");
+    expect(normalizeWordForm("watches", "en")).toBe("watch");
+    expect(normalizeWordForm("running", "en")).toBe("run");
+    expect(normalizeWordForm("stopped", "en")).toBe("stop");
+    expect(normalizeWordForm("wander", "en")).toBe("wander");
+  });
+
+  it("normaliza formas en español como adverbios en -mente", () => {
+    expect(normalizeWordForm("perfectamente", "es")).toBe("perfecto");
+    expect(normalizeWordForm("rápidamente", "es")).toBe("rápido");
+    expect(normalizeWordForm("soledad", "es")).toBe("soledad");
+    expect(normalizeWordForm("árbol", "es")).toBe("árbol");
+  });
+
+  it("gestiona cadenas vacías o con espacios", () => {
+    expect(normalizeWordForm("")).toBe("");
+    expect(normalizeWordForm("   ")).toBe("");
+  });
+});
+

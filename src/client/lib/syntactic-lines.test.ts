@@ -248,3 +248,60 @@ describe("splitSentenceIntoSyntacticChunks", () => {
     expect(chunks[chunks.length - 1].endsWith("azul.")).toBe(true);
   });
 });
+
+describe("Cadencia Sintáctica Multilingüe (Fase 2)", () => {
+  it("segmenta oraciones en inglés cortando antes de cláusulas largas (because, while, although, between)", () => {
+    const enText =
+      "The cat was resting on the old wooden chair because the afternoon sunlight made it warm and pleasant.";
+    const segs = syntacticSegments(enText, "en");
+    expect(segs.length).toBeGreaterThanOrEqual(2);
+    expect(segs.some((s) => s.startsWith("because"))).toBe(true);
+    expect(segs.join(" ")).toBe(enText);
+
+    const enText2 =
+      "She walked through the silent winter garden while the gentle snowfall covered the distant hills.";
+    const segs2 = syntacticSegments(enText2, "en");
+    expect(segs2.some((s) => s.startsWith("while"))).toBe(true);
+  });
+
+  it("segmenta oraciones en francés cortando antes de cláusulas (lorsque, puisque, quoique, que)", () => {
+    const frText =
+      "Le silence régnait dans la grande bibliothèque lorsque la pluie d'automne commença à frapper les vitres.";
+    const segs = syntacticSegments(frText, "fr");
+    expect(segs.length).toBeGreaterThanOrEqual(2);
+    expect(segs.some((s) => s.startsWith("lorsque"))).toBe(true);
+    expect(segs.join(" ")).toBe(frText);
+
+    const frText2 =
+      "Il referma le vieux manuscrit avec soin puisque chaque feuille fragile méritait une attention totale.";
+    const segs2 = syntacticSegments(frText2, "fr");
+    expect(segs2.some((s) => s.startsWith("puisque"))).toBe(true);
+  });
+
+  it("segmenta oraciones en alemán cortando antes de cláusulas subordinadas (weil, obwohl, während, dass)", () => {
+    const deText =
+      "Der alte Mann saß friedlich am offenen Fenster weil die kühle Abendluft ihm nach der langen Reise guttat.";
+    const segs = syntacticSegments(deText, "de");
+    expect(segs.length).toBeGreaterThanOrEqual(2);
+    expect(segs.some((s) => s.startsWith("weil"))).toBe(true);
+    expect(segs.join(" ")).toBe(deText);
+
+    const deText2 =
+      "Sie las den philosophischen Text mit Ruhe obwohl die dichten Gedanken ein hohes Maß an Fokus verlangten.";
+    const segs2 = syntacticSegments(deText2, "de");
+    expect(segs2.some((s) => s.startsWith("obwohl"))).toBe(true);
+  });
+
+  it("aplica cascada data-sub='true' a las cláusulas subordinadas en idiomas extranjeros", () => {
+    const root = document.createElement("div");
+    const p = document.createElement("p");
+    p.textContent =
+      "The reader was focused on every printed line because the story was becoming truly fascinating.";
+    root.append(p);
+
+    applySyntacticLines(root, { lang: "en", syntacticLines: true });
+    const subSpans = root.querySelectorAll<HTMLSpanElement>("[data-sub='true']");
+    expect(subSpans.length).toBeGreaterThan(0);
+    expect(subSpans[0].textContent).toContain("because");
+  });
+});

@@ -19,6 +19,7 @@ export interface SyntacticLinesOptions {
   chromaticGuide?: boolean;
   syntacticLines?: boolean;
   bionicAnchors?: boolean;
+  lang?: string;
 }
 
 // Contenido que nunca se reparte: no es prosa o ya está intervenido.
@@ -36,8 +37,39 @@ const MEDIUM = ":;—–";
 const WEAK = ",·";
 // Cierres pegados a un signo fuerte (». ”) ) pertenecen a ese corte.
 const CLOSERS = "»”\")]";
-const CONNECTOR =
-  /^(que|del|de|y|e|o|u|ni|pero|mas|sino|porque|pues|como|cuando|donde|aunque|aun|si|mientras|entonces|además|también|tampoco|siquiera|así|ya|con|sin|para|por|hasta|desde|hacia|sobre|tras|entre|según)\b/i;
+
+export const SPANISH_CONNECTORS =
+  /^(que|del|de|y|e|o|u|ni|pero|mas|sino|porque|pues|como|cuando|donde|aunque|aun|si|mientras|entonces|además|también|tampoco|siquiera|así|ya|con|sin|para|por|hasta|desde|hacia|sobre|tras|entre|según)\b/iu;
+
+export const ENGLISH_CONNECTORS =
+  /^(which|that|although|because|while|through|between|and|but|or|nor|so|yet|if|when|where|since|after|before|until|unless|whereas)\b/iu;
+
+export const FRENCH_CONNECTORS =
+  /^(qui|que|lorsque|puisque|quoique|quand|comme|si|mais|ou|et|donc|car|pourtant|cependant)\b/iu;
+
+export const GERMAN_CONNECTORS =
+  /^(dass|daß|weil|obwohl|während|und|oder|aber|denn|sondern|wenn|als|ob|nachdem|bevor|damit|seit|wie)\b/iu;
+
+export const MULTILINGUAL_CONNECTORS =
+  /^(que|del|de|y|e|o|u|ni|pero|mas|sino|porque|pues|como|cuando|donde|aunque|aun|si|mientras|entonces|además|también|tampoco|siquiera|así|ya|con|sin|para|por|hasta|desde|hacia|sobre|tras|entre|según|which|that|although|because|while|through|between|and|but|nor|so|yet|after|before|until|unless|whereas|qui|lorsque|puisque|quoique|quand|donc|car|pourtant|cependant|dass|daß|weil|obwohl|während|oder|aber|denn|sondern|wenn|nachdem|bevor|damit|seit)\b/iu;
+
+export const CONNECTOR = MULTILINGUAL_CONNECTORS;
+
+export function getConnectorRegex(lang?: string): RegExp {
+  const code = (lang || "").slice(0, 2).toLowerCase();
+  switch (code) {
+    case "es":
+      return SPANISH_CONNECTORS;
+    case "en":
+      return ENGLISH_CONNECTORS;
+    case "fr":
+      return FRENCH_CONNECTORS;
+    case "de":
+      return GERMAN_CONNECTORS;
+    default:
+      return MULTILINGUAL_CONNECTORS;
+  }
+}
 
 const MIN_BEFORE_CONNECTOR = 30;
 const MIN_BEFORE_MEDIUM = 30;
@@ -47,7 +79,8 @@ const MIN_SEGMENT = 16;
 
 // Posiciones de corte dentro de `text` (índices entre 1 y len-1).
 // Pura: la usa el reparto del DOM y las pruebas.
-export function syntacticBreaks(text: string): number[] {
+export function syntacticBreaks(text: string, lang?: string): number[] {
+  const connectorRe = getConnectorRegex(lang);
   const out: number[] = [];
   const n = text.length;
   let segStart = 0;
@@ -68,13 +101,13 @@ export function syntacticBreaks(text: string): number[] {
       while (k >= 0 && CLOSERS.includes(text[k])) k -= 1;
       const anchor = k >= 0 ? text[k] : "";
       const prev = i > 0 ? text[i - 1] : "";
-      const word = /^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]+/u.exec(text.slice(j))?.[0] ?? "";
+      const word = /^\p{L}+/u.exec(text.slice(j))?.[0] ?? "";
       const segLen = j - segStart;
       if (
         STRONG.includes(anchor) ||
         (MEDIUM.includes(prev) && segLen >= MIN_BEFORE_MEDIUM) ||
         (WEAK.includes(prev) && segLen >= MIN_BEFORE_WEAK) ||
-        (CONNECTOR.test(word) && segLen >= MIN_BEFORE_CONNECTOR)
+        (connectorRe.test(word) && segLen >= MIN_BEFORE_CONNECTOR)
       ) {
         out.push(j);
         segStart = j;
@@ -99,8 +132,8 @@ export function syntacticBreaks(text: string): number[] {
 }
 
 // El párrafo en unidades de línea, útil para pruebas y diagnóstico.
-export function syntacticSegments(text: string): string[] {
-  const breaks = syntacticBreaks(text);
+export function syntacticSegments(text: string, lang?: string): string[] {
+  const breaks = syntacticBreaks(text, lang);
   const out: string[] = [];
   let start = 0;
   for (const pos of breaks) {
@@ -244,7 +277,7 @@ export function applySyntacticLines(
     }
     if (!flat.trim()) return;
 
-    const breaks = syntacticBreaks(flat);
+    const breaks = syntacticBreaks(flat, options?.lang);
 
     if (enableSyntactic) {
       if (breaks.length > 0) {
@@ -296,9 +329,10 @@ export function applySyntacticLines(
       // Decoración sintáctica: cascada para subordinadas, respiración rítmica y conectores complejos
       const spans = el.querySelectorAll<HTMLSpanElement>(`.${SYNTACTIC_LINE_CLASS}`);
       let prevEndsWithStrong = false;
+      const connectorMatcher = getConnectorRegex(options?.lang);
       spans.forEach((s, idx) => {
         const text = s.textContent?.trim() ?? "";
-        if (idx > 0 && !prevEndsWithStrong && CONNECTOR.test(text)) {
+        if (idx > 0 && !prevEndsWithStrong && connectorMatcher.test(text)) {
           s.dataset.sub = "true";
         } else if (idx > 0 && prevEndsWithStrong) {
           s.dataset.newSentence = "true";

@@ -669,4 +669,210 @@ describe("Kindle Routes (/k and /kindle)", () => {
       expect(location).toContain("score=3");
     });
   });
+
+  describe("Espacio de Pre-lectura Adaptativo (Fase 2)", () => {
+    it("POST /kindle/priming/action con action=known actualiza user_knowledge", async () => {
+      getSessionMock.mockResolvedValue({
+        user: { id: "user-1", email: "lector@example.com" },
+      });
+
+      const formData = new FormData();
+      formData.append("action", "known");
+      formData.append("lemma", "perenne");
+      formData.append("lang", "es");
+      formData.append("bookId", "mock-hash-1");
+      formData.append("chapter", "0");
+      formData.append("returnUrl", "/k/read/mock-hash-1?section=0&page=0");
+
+      const res = await app.request("/kindle/priming/action", { method: "POST", body: formData }, env);
+      expect(res.status).toBe(303);
+      expect(res.headers.get("Location")).toContain("/k/read/mock-hash-1");
+      expect(dbQueryMock).toHaveBeenCalledWith(
+        expect.stringContaining("INSERT INTO lecta_user_knowledge"),
+        expect.arrayContaining(["user-1", "es", "perenne"]),
+      );
+    });
+
+    it("POST /kindle/priming/action con action=save actualiza user_knowledge y cuaderno", async () => {
+      getSessionMock.mockResolvedValue({
+        user: { id: "user-1", email: "lector@example.com" },
+      });
+
+      const formData = new FormData();
+      formData.append("action", "save");
+      formData.append("lemma", "soledad");
+      formData.append("lang", "es");
+      formData.append("bookId", "mock-hash-1");
+      formData.append("chapter", "0");
+      formData.append("returnUrl", "/k/read/mock-hash-1?section=0&page=0");
+
+      const res = await app.request("/kindle/priming/action", { method: "POST", body: formData }, env);
+      expect(res.status).toBe(303);
+      expect(dbQueryMock).toHaveBeenCalledWith(
+        expect.stringContaining("INSERT INTO lecta_user_words"),
+        expect.arrayContaining(["user-1", "es", "soledad"]),
+      );
+    });
+
+    it("POST /kindle/priming/action con action=mute_book fija cookie y redirige con primed=1", async () => {
+      getSessionMock.mockResolvedValue({
+        user: { id: "user-1", email: "lector@example.com" },
+      });
+
+      const formData = new FormData();
+      formData.append("action", "mute_book");
+      formData.append("bookId", "mock-hash-1");
+      formData.append("chapter", "0");
+      formData.append("returnUrl", "/k/read/mock-hash-1?section=0&page=0");
+
+      const res = await app.request("/kindle/priming/action", { method: "POST", body: formData }, env);
+      expect(res.status).toBe(303);
+      const setCookie = res.headers.get("Set-Cookie");
+      expect(setCookie).toContain("lecta_k_mute_mock-hash-1=1");
+      expect(res.headers.get("Location")).toContain("primed=1");
+    });
+
+    it("POST /kindle/priming/action con action=disable_all fija cookie global y redirige con primed=1", async () => {
+      getSessionMock.mockResolvedValue({
+        user: { id: "user-1", email: "lector@example.com" },
+      });
+
+      const formData = new FormData();
+      formData.append("action", "disable_all");
+      formData.append("bookId", "mock-hash-1");
+      formData.append("chapter", "0");
+      formData.append("returnUrl", "/k/read/mock-hash-1?section=0&page=0");
+
+      const res = await app.request("/kindle/priming/action", { method: "POST", body: formData }, env);
+      expect(res.status).toBe(303);
+      const setCookie = res.headers.get("Set-Cookie");
+      expect(setCookie).toContain("lecta_k_priming_off=1");
+      expect(res.headers.get("Location")).toContain("primed=1");
+    });
+
+    it("GET /k/read con primed=1 omite la antesala y muestra directamente el texto", async () => {
+      getSessionMock.mockResolvedValue({
+        user: { id: "user-1", email: "lector@example.com" },
+      });
+
+      const res = await app.request("/k/read/mock-hash-1?section=0&page=0&primed=1", {}, env);
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).toContain("Capítulo uno");
+      expect(html).toContain(">estrecha<");
+      expect(html).not.toContain("Comenzar a leer capítulo 1 →");
+    });
+
+    it("GET /k/read con cookie lecta_k_priming_off=1 omite la antesala", async () => {
+      getSessionMock.mockResolvedValue({
+        user: { id: "user-1", email: "lector@example.com" },
+      });
+
+      const res = await app.request(
+        "/k/read/mock-hash-1?section=0&page=0",
+        { headers: { Cookie: "lecta_k_priming_off=1" } },
+        env,
+      );
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).toContain("Capítulo uno");
+      expect(html).toContain(">estrecha<");
+      expect(html).not.toContain("Comenzar a leer capítulo 1 →");
+    });
+
+    it("GET /k/read con cookie lecta_k_mute_<bookId>=1 omite la antesala para este libro", async () => {
+      getSessionMock.mockResolvedValue({
+        user: { id: "user-1", email: "lector@example.com" },
+      });
+
+      const res = await app.request(
+        "/k/read/mock-hash-1?section=0&page=0",
+        { headers: { Cookie: "lecta_k_mute_mock-hash-1=1" } },
+        env,
+      );
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).toContain("Capítulo uno");
+      expect(html).toContain(">estrecha<");
+      expect(html).not.toContain("Comenzar a leer capítulo 1 →");
+    });
+
+    it("GET /k/read en página 0 muestra la antesala de pre-lectura cuando hay palabras candidatas en el catálogo", async () => {
+      getSessionMock.mockResolvedValue({
+        user: { id: "user-1", email: "lector@example.com" },
+      });
+
+      dbQueryMock.mockImplementation((sql: string) => {
+        if (typeof sql === "string" && sql.includes("lexicon_")) {
+          return Promise.resolve({
+            rows: [
+              {
+                queried_form: "perenne",
+                entry_id: "101",
+                lemma: "perenne",
+                pos: "adjetivo",
+                zipf: 3.5,
+                definition: "Que dura indefinidamente.",
+                sense_order: 1,
+              },
+              {
+                queried_form: "estrecha",
+                entry_id: "102",
+                lemma: "estrecho",
+                pos: "adjetivo",
+                zipf: 4.0,
+                definition: "Que tiene poca anchura.",
+                sense_order: 1,
+              },
+            ],
+          });
+        }
+        return Promise.resolve({ rows: [] });
+      });
+
+      const res = await app.request("/k/read/mock-hash-1?section=0&page=0", {}, env);
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).toContain("Antes de leer · Capítulo uno");
+      expect(html).toContain("Comenzar a leer capítulo →");
+      expect(html).toContain("✓ Ya la sé");
+      expect(html).toContain("+ Repasar");
+      expect(html).toContain("Ocultar en este libro");
+      expect(html).toContain("Desactivar siempre");
+      expect(html).toContain("window.lectaKindleAction");
+    });
+
+    it("POST /kindle/priming/action con action=enable_all limpia cookie lecta_k_priming_off", async () => {
+      getSessionMock.mockResolvedValue({
+        user: { id: "user-1", email: "lector@example.com" },
+      });
+
+      const formData = new FormData();
+      formData.append("action", "enable_all");
+      formData.append("returnUrl", "/k/read/mock-hash-1?section=0&page=0");
+
+      const res = await app.request("/kindle/priming/action", { method: "POST", body: formData }, env);
+      expect(res.status).toBe(303);
+      const setCookie = res.headers.get("Set-Cookie");
+      expect(setCookie).toContain("lecta_k_priming_off=0");
+    });
+
+    it("POST /k/priming/action y POST /kindle/priming/action son equivalentes", async () => {
+      getSessionMock.mockResolvedValue({
+        user: { id: "user-1", email: "lector@example.com" },
+      });
+
+      const formData = new FormData();
+      formData.append("action", "mute_book");
+      formData.append("bookId", "mock-hash-1");
+      formData.append("chapter", "0");
+      formData.append("returnUrl", "/k/read/mock-hash-1?section=0&page=0");
+
+      const res = await app.request("/k/priming/action", { method: "POST", body: formData }, env);
+      expect(res.status).toBe(303);
+      const setCookie = res.headers.get("Set-Cookie");
+      expect(setCookie).toContain("lecta_k_mute_mock-hash-1=1");
+    });
+  });
 });
+

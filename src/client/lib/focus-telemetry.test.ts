@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import {
   detectFatigue,
@@ -16,6 +17,16 @@ import {
   recordMove,
   resetDenseStallPage,
   TRACK_GAP_MS,
+  DEFAULT_FOCUS_TELEMETRY_PROFILE,
+  evaluateReadingFatigue,
+  isFocusSuggestionMuted,
+  loadFocusTelemetryProfile,
+  muteBookFocusSuggestions,
+  recordFocusAidOutcome,
+  saveFocusTelemetryProfile,
+  setFocusAutoSuggestEnabled,
+  unmuteBookFocusSuggestions,
+  type PageTurnTelemetryInput,
 } from "./focus-telemetry";
 import type { ReadingEvent } from "./idb";
 
@@ -207,5 +218,156 @@ describe("detectDensePassageStall", () => {
       T0 + 67_000,
     );
     expect(hit).toBe(false);
+  });
+});
+
+describe("Telemetría Adaptativa y Bandido Contextual de Neuro-Foco", () => {
+  it("evalúa ritmo fluido normal sin disparar fatiga y actualiza la línea base", () => {
+    const profile = { ...DEFAULT_FOCUS_TELEMETRY_PROFILE };
+    const input: PageTurnTelemetryInput = {
+      lang: "es",
+      wordCountOnPage: 100,
+      dwellTimeMs: 22_000, // 22s por 100 palabras (ritmo normal)
+      direction: "forward",
+      sessionMinutesElapsed: 5,
+      recentBackwardCountInWindow: 0,
+    };
+
+    const res = evaluateReadingFatigue(profile, input, false);
+    expect(res.isFatigued).toBe(false);
+    expect(res.fatigueIndex).toBeLessThan(0.3);
+    expect(res.reason).toBe("none");
+
+    // Actualiza la línea base en 'es' (samples pasa a 1)
+    const esBaseline = res.updatedProfile.paceByLang["es"];
+    expect(esBaseline).toBeDefined();
+    expect(esBaseline.samples).toBe(1);
+    expect(esBaseline.meanSecPer100Words).toBe(22);
+  });
+
+  it("distingue lengua materna (L1, ~22s/100w) vs idioma extranjero (L2, ~34s/100w)", () => {
+    const profile = { ...DEFAULT_FOCUS_TELEMETRY_PROFILE };
+    // 34s por 100 palabras en L2 no es atasco, pero en L1 sí se consideraría lento
+    const inputL2: PageTurnTelemetryInput = {
+      lang: "en",
+      wordCountOnPage: 100,
+      dwellTimeMs: 34_000,
+      direction: "forward",
+      sessionMinutesElapsed: 5,
+      recentBackwardCountInWindow: 0,
+    };
+
+    const resL2 = evaluateReadingFatigue(profile, inputL2, true);
+    expect(resL2.isFatigued).toBe(false);
+    // Para L2 se favorece syntactic-lines (+0.25)
+    expect(resL2.recommendedAid).toBe("syntactic-lines");
+  });
+
+  it("detecta fatiga por estancamiento severo (Z_stall alto) con reason='stall'", () => {
+    const profile = { ...DEFAULT_FOCUS_TELEMETRY_PROFILE };
+    // El usuario se queda trabado 70 segundos en una página de 100 palabras
+    const input: PageTurnTelemetryInput = {
+      lang: "es",
+      wordCountOnPage: 100,
+      dwellTimeMs: 70_000,
+      direction: "forward",
+      sessionMinutesElapsed: 15,
+      recentBackwardCountInWindow: 0,
+    };
+
+    const res = evaluateReadingFatigue(profile, input, false);
+    expect(res.fatigueIndex).toBeGreaterThanOrEqual(0.68);
+    expect(res.isFatigued).toBe(true);
+    expect(res.reason).toBe("stall");
+  });
+
+  it("detecta fatiga por retrocesos acumulados (regresiones / zoning out)", () => {
+    const profile = { ...DEFAULT_FOCUS_TELEMETRY_PROFILE };
+    const input: PageTurnTelemetryInput = {
+      lang: "es",
+      wordCountOnPage: 80,
+      dwellTimeMs: 15_000,
+      direction: "backward",
+      sessionMinutesElapsed: 30,
+      recentBackwardCountInWindow: 2, // dirección backward suma +0.6 -> 2.6
+    };
+
+    const res = evaluateReadingFatigue(profile, input, false);
+    expect(res.fatigueIndex).toBeGreaterThanOrEqual(0.68);
+    expect(res.isFatigued).toBe(true);
+    expect(res.reason).toBe("regressions");
+  });
+
+  it("aprende con el bandido contextual premiando la herramienta que restablece la fluidez", () => {
+    let profile = { ...DEFAULT_FOCUS_TELEMETRY_PROFILE };
+    expect(profile.aidEfficacyWeights["focus-ruler"]).toBe(0.9);
+
+    // Usuario usó la regla y recuperó su ritmo fluido (recoveredFlow = true)
+    // nextWeight = 0.8 * 0.9 + 0.2 * 1.5 = 0.72 + 0.3 = 1.02
+    profile = recordFocusAidOutcome(profile, "focus-ruler", true);
+    expect(profile.aidEfficacyWeights["focus-ruler"]).toBe(1.02);
+
+    // Segundo éxito consecutivo
+    // nextWeight = 0.8 * 1.02 + 0.2 * 1.5 = 0.816 + 0.3 = 1.116
+    profile = recordFocusAidOutcome(profile, "focus-ruler", true);
+    expect(profile.aidEfficacyWeights["focus-ruler"]).toBe(1.116);
+    // Ahora focus-ruler supera a las demás (1.116 > 1.0)
+    expect(profile.aidEfficacyWeights["focus-ruler"]).toBeGreaterThan(
+      profile.aidEfficacyWeights["paragraph-focus"],
+    );
+
+    // Si desactiva otra herramienta enseguida (recoveredFlow = false), se penaliza
+    profile = recordFocusAidOutcome(profile, "paragraph-focus", false);
+    // 0.8 * 1.0 + 0.2 * 0.4 = 0.88
+    expect(profile.aidEfficacyWeights["paragraph-focus"]).toBe(0.88);
+  });
+
+  it("permite silenciar sugerencias por libro y desactivarlas globalmente (Zero-Friction)", () => {
+    let profile = { ...DEFAULT_FOCUS_TELEMETRY_PROFILE };
+    const bookId = "book-quijote";
+
+    // Silenciar libro
+    profile = muteBookFocusSuggestions(profile, bookId);
+    expect(isFocusSuggestionMuted(profile, bookId)).toBe(true);
+    expect(isFocusSuggestionMuted(profile, "otro-libro")).toBe(false);
+
+    // Si está silenciado para ese libro, no se dispara isFatigued
+    const inputStall: PageTurnTelemetryInput = {
+      bookId,
+      lang: "es",
+      wordCountOnPage: 100,
+      dwellTimeMs: 80_000,
+      direction: "forward",
+      sessionMinutesElapsed: 40,
+      recentBackwardCountInWindow: 3,
+    };
+
+    const resMuted = evaluateReadingFatigue(profile, inputStall, false);
+    expect(resMuted.fatigueIndex).toBeGreaterThan(0.68);
+    expect(resMuted.isFatigued).toBe(false); // Silenciado para este libro
+
+    // Reactivar libro
+    profile = unmuteBookFocusSuggestions(profile, bookId);
+    expect(isFocusSuggestionMuted(profile, bookId)).toBe(false);
+    const resUnmuted = evaluateReadingFatigue(profile, inputStall, false);
+    expect(resUnmuted.isFatigued).toBe(true);
+
+    // Desactivar globalmente
+    profile = setFocusAutoSuggestEnabled(profile, false);
+    expect(isFocusSuggestionMuted(profile, "cualquier-libro")).toBe(true);
+    const resDisabled = evaluateReadingFatigue(profile, inputStall, false);
+    expect(resDisabled.isFatigued).toBe(false);
+  });
+
+  it("persiste y recupera el perfil en localStorage", () => {
+    const profile = {
+      ...DEFAULT_FOCUS_TELEMETRY_PROFILE,
+      mutedBookIds: ["book-123"],
+      autoSuggestEnabled: false,
+    };
+    saveFocusTelemetryProfile(profile);
+    const loaded = loadFocusTelemetryProfile();
+    expect(loaded.mutedBookIds).toEqual(["book-123"]);
+    expect(loaded.autoSuggestEnabled).toBe(false);
   });
 });

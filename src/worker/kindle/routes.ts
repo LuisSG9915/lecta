@@ -8,6 +8,7 @@ import { createAuth } from "../auth";
 import { findEntries, findEntriesForForms, type LexiconEntryView } from "../lexicon";
 import { createEmptyCard, fsrs, generatorParameters, Rating, type Card } from "ts-fsrs";
 import {
+  estimateThetaFromD1Knowledge,
   extractChapterPrepCandidates,
   extractPageWords,
   findSentenceWithWord,
@@ -16,12 +17,16 @@ import {
   getEpubResource,
   paginateChapter,
   parseEpub,
+  selectKindleChapterPrimingWords,
   stripHtml,
   wrapWordsWithLinks,
+  type KindleUserLexicalState,
 } from "./epub-reader";
+import { ENGLISH_CORE_LEXICON } from "../../shared/english-core-lexicon";
 import {
   renderChapterPrepView,
   renderHomeView,
+  renderKindleChapterPrimingView,
   renderKindleLinkView,
   renderLoginView,
   renderReaderView,
@@ -409,6 +414,146 @@ export async function handleKindleStatus(c: Context<{ Bindings: WorkerEnv }>) {
   return c.json({ linked: false, status: result.status });
 }
 
+/**
+ * POST /kindle/priming/action y POST /k/priming/action
+ * Maneja acciones sin requerir JS complejo en navegadores E-Ink:
+ * - action = 'known': Marca palabra como conocida en user_knowledge y sube theta
+ * - action = 'save': Guarda palabra en user_knowledge ('learning') y agenda en user_reviews (FSRS)
+ * - action = 'mute_book': Desactiva pre-lectura para este libro
+ * - action = 'disable_all': Desactiva pre-lectura globalmente
+ */
+export async function handleKindlePrimingAction(c: Context<{ Bindings: WorkerEnv }>) {
+  const formData = (await c.req.parseBody().catch(() => ({}))) as Record<string, unknown>;
+  const action = String(formData["action"] || "");
+  const bookId = String(formData["bookId"] || "");
+  const chapterIndex = Number(formData["chapter"] ?? formData["section"] ?? 0);
+  const lemma = String(formData["lemma"] || "").trim().toLowerCase();
+  const lang = String(formData["lang"] || "es").slice(0, 2).toLowerCase();
+  const returnUrl = String(
+    formData["returnUrl"] || `/k/read/${encodeURIComponent(bookId)}?section=${chapterIndex}`,
+  );
+
+  const session = await getSession(c).catch(() => null);
+  const userId =
+    session?.user?.id ||
+    (typeof (c as any).get === "function" ? (c as any).get("userId") : undefined);
+  const db = c.env?.DB;
+  const now = Date.now();
+
+  if (userId) {
+    if (action === "known" && lemma) {
+      if (db && typeof db.prepare === "function") {
+        await db
+          .prepare(
+            `INSERT INTO user_knowledge (user_id, word, lang, status, encounters, updated_at)
+             VALUES (?1, ?2, ?3, 'known', 1, ?4)
+             ON CONFLICT(user_id, word, lang)
+             DO UPDATE SET status = 'known', encounters = encounters + 1, updated_at = ?4`,
+          )
+          .bind(userId, lemma, lang, now)
+          .run()
+          .catch(() => {});
+      }
+      if (getConnectionString(c.env)) {
+        await withClient(c.env, (client) =>
+          client.query(
+            `INSERT INTO lecta_user_knowledge
+               (user_id, language, lemma, known, source, updated_at, deleted)
+             VALUES ($1, $2, $3, true, 'kindle_prep', $4, false)
+             ON CONFLICT (user_id, language, lemma) DO UPDATE SET
+               known = true,
+               source = 'kindle_prep',
+               updated_at = excluded.updated_at,
+               deleted = false`,
+            [userId, lang, lemma, now],
+          ),
+        ).catch(() => {});
+      }
+    } else if (action === "save" && lemma) {
+      if (db && typeof db.prepare === "function") {
+        await db
+          .prepare(
+            `INSERT INTO user_knowledge (user_id, word, lang, status, encounters, updated_at)
+             VALUES (?1, ?2, ?3, 'learning', 1, ?4)
+             ON CONFLICT(user_id, word, lang)
+             DO UPDATE SET status = 'learning', encounters = encounters + 1, updated_at = ?4`,
+          )
+          .bind(userId, lemma, lang, now)
+          .run()
+          .catch(() => {});
+
+        // Inicializar repaso espaciado FSRS en user_reviews
+        await db
+          .prepare(
+            `INSERT INTO user_reviews (user_id, word, next_review_at, stability, difficulty, reps, lapses, state, updated_at)
+             VALUES (?1, ?2, ?3, 1.5, 5.0, 0, 0, 'new', ?3)
+             ON CONFLICT(user_id, word) DO NOTHING`,
+          )
+          .bind(userId, lemma, now + 86_400_000)
+          .run()
+          .catch(() => {});
+      }
+      if (getConnectionString(c.env)) {
+        await withClient(c.env, async (client) => {
+          await client.query(
+            `INSERT INTO lecta_user_knowledge
+               (user_id, language, lemma, known, source, updated_at, deleted)
+             VALUES ($1, $2, $3, false, 'kindle_prep', $4, false)
+             ON CONFLICT (user_id, language, lemma) DO UPDATE SET
+               known = false,
+               source = 'kindle_prep',
+               updated_at = excluded.updated_at,
+               deleted = false`,
+            [userId, lang, lemma, now],
+          ).catch(() => {});
+          await client.query(
+            `INSERT INTO lecta_user_words
+               (user_id, language, form, lemma, pos, meaning, context, book_hash, saved_at, updated_at, deleted)
+             VALUES ($1, $2, $3, $3, NULL, NULL, NULL, $4, $5, $5, false)
+             ON CONFLICT (user_id, language, form) DO UPDATE SET
+               updated_at = excluded.updated_at,
+               deleted = false`,
+            [userId, lang, lemma, bookId || null, now],
+          ).catch(() => {});
+        }).catch(() => {});
+      }
+    }
+  }
+
+  if (action === "mute_book" && bookId) {
+    c.header(
+      "Set-Cookie",
+      `lecta_k_mute_${encodeURIComponent(bookId)}=1; Path=/; Max-Age=31536000; SameSite=Lax`,
+      { append: true },
+    );
+    const sep = returnUrl.includes("?") ? "&" : "?";
+    const target = returnUrl.includes("primed=1") ? returnUrl : `${returnUrl}${sep}primed=1`;
+    return c.redirect(target, 303);
+  }
+
+  if (action === "disable_all") {
+    c.header(
+      "Set-Cookie",
+      `lecta_k_priming_off=1; Path=/; Max-Age=31536000; SameSite=Lax`,
+      { append: true },
+    );
+    const sep = returnUrl.includes("?") ? "&" : "?";
+    const target = returnUrl.includes("primed=1") ? returnUrl : `${returnUrl}${sep}primed=1`;
+    return c.redirect(target, 303);
+  }
+
+  if (action === "enable_all") {
+    c.header(
+      "Set-Cookie",
+      `lecta_k_priming_off=0; Path=/; Max-Age=0; SameSite=Lax`,
+      { append: true },
+    );
+    return c.redirect(returnUrl, 303);
+  }
+
+  return c.redirect(returnUrl, 303);
+}
+
 export const kindleRoutes = new Hono<{ Bindings: WorkerEnv }>();
 
 kindleRoutes.get("/kindle", handleKindleLinkPage);
@@ -416,6 +561,8 @@ kindleRoutes.get("/link", handleKindleLinkPage);
 kindleRoutes.get("/verify", handleKindleStatus);
 kindleRoutes.get("/api/kindle/status", handleKindleStatus);
 kindleRoutes.post("/api/kindle/link", handleKindleLinkAction);
+kindleRoutes.post("/priming/action", handleKindlePrimingAction);
+kindleRoutes.post("/kindle/priming/action", handleKindlePrimingAction);
 
 // Cabeceras anti-caché para todas las vistas HTML del Kindle:
 // garantiza que al refrescar en el Kindle siempre se vean los últimos cambios.
@@ -673,7 +820,7 @@ kindleRoutes.get("/read/:hash", async (c) => {
   }
 
   const user = { id: session.user.id, email: session.user.email, name: session.user.name };
-  const requestedSection = c.req.query("section");
+  const requestedSection = c.req.query("section") ?? c.req.query("chapter");
   const requestedPage = c.req.query("page");
   const savedWord = c.req.query("savedWord");
   const markedKnown = c.req.query("markedKnown");
@@ -856,6 +1003,160 @@ kindleRoutes.get("/read/:hash", async (c) => {
     pageIndex = Math.min(Math.max(0, parseInt(requestedPage, 10) || 0), totalPages - 1);
   }
 
+  const isPrimed = c.req.query("primed") === "1";
+  const cookieHeader = c.req.header("cookie") || "";
+  const isPrimingOff = cookieHeader.includes("lecta_k_priming_off=1");
+  const isBookMuted = cookieHeader.includes(`lecta_k_mute_${encodeURIComponent(hash)}=1`);
+
+  // Antesala de pre-lectura adaptativa (solo al inicio del capítulo en página 0)
+  if (
+    pageIndex === 0 &&
+    requestedPage !== "last" &&
+    !isPrep &&
+    !lookupWord &&
+    !savedWord &&
+    !markedKnown &&
+    !isPrimed &&
+    !isPrimingOff &&
+    !isBookMuted
+  ) {
+    const bookLang = (chapter.language || "es").slice(0, 2).toLowerCase();
+    const cleanText = stripHtml(chapter.contentHtml);
+
+    // 1. Cargar historial del usuario para estimar theta y lemas conocidos
+    let d1Rows: Array<{ word: string; status: string; difficultyBeta?: number }> = [];
+    if (c.env?.DB && typeof c.env.DB.prepare === "function") {
+      try {
+        const res = await c.env.DB.prepare(
+          `SELECT word, status FROM user_knowledge WHERE user_id = ? AND lang = ?`,
+        )
+          .bind(user.id, bookLang)
+          .all<{ word: string; status: string }>();
+        if (res?.results) {
+          d1Rows = res.results.map((r) => ({
+            word: r.word.toLowerCase(),
+            status: r.status,
+          }));
+        }
+      } catch {
+        /* fallback */
+      }
+    }
+
+    const pgKnowledge =
+      (getConnectionString(c.env)
+        ? await withClient(c.env, (client) =>
+            client
+              .query<{ lemma: string; known: boolean }>(
+                `SELECT LOWER(lemma) AS lemma, known FROM lecta_user_knowledge
+                 WHERE user_id = $1 AND language = $2 AND deleted = false`,
+                [user.id, bookLang],
+              )
+              .then((res) => res.rows)
+              .catch(() => []),
+          )
+        : []) ?? [];
+
+    const knowledgeRecords: Array<{ word: string; status: string; difficultyBeta?: number }> = [...d1Rows];
+    const knownLemmas = new Set<string>();
+    const learningRetrievability = new Map<string, number>();
+
+    for (const r of d1Rows) {
+      if (r.status === "known") knownLemmas.add(r.word);
+      else if (r.status === "learning") learningRetrievability.set(r.word, 0.5);
+    }
+
+    for (const row of pgKnowledge) {
+      const status = row.known ? "known" : "learning";
+      knowledgeRecords.push({ word: row.lemma, status });
+      if (row.known) knownLemmas.add(row.lemma);
+      else learningRetrievability.set(row.lemma, 0.5);
+    }
+
+    const theta = estimateThetaFromD1Knowledge(knowledgeRecords);
+    const userState: KindleUserLexicalState = {
+      theta,
+      knownLemmas,
+      learningRetrievability,
+    };
+
+    // 2. Construir catálogo léxico relevante para este capítulo
+    const lexiconCatalog = new Map<string, { beta: number; gloss: string; pos?: string }>();
+
+    if (bookLang === "en") {
+      for (const [w, item] of Object.entries(ENGLISH_CORE_LEXICON)) {
+        lexiconCatalog.set(w, {
+          beta: 0.6,
+          gloss: item.translation ? `${item.translation}: ${item.definition}` : item.definition,
+          pos: item.pos,
+        });
+      }
+    } else {
+      const candidateForms = extractChapterPrepCandidates(chapter.contentHtml, "es");
+      const filtered = candidateForms.filter((f) => !knownLemmas.has(f)).slice(0, 100);
+      if (filtered.length > 0 && getConnectionString(c.env)) {
+        const entriesMap: Record<string, import("../lexicon").LexiconEntryView[]> =
+          (await withClient(c.env, (client) =>
+            findEntriesForForms(client, "es", filtered),
+          ).catch(() => ({}))) as Record<string, import("../lexicon").LexiconEntryView[]>;
+
+        for (const [form, entries] of Object.entries(entriesMap)) {
+          if (Array.isArray(entries) && entries.length > 0) {
+            const entry = entries[0];
+            const gloss = entry.senses?.[0]?.definition?.trim();
+            if (gloss) {
+              const lemma = (entry.lemma || form).toLowerCase();
+              lexiconCatalog.set(lemma, {
+                beta: entry.zipf ? Math.max(0.1, 5.0 - entry.zipf) : 0.6,
+                gloss,
+                pos: entry.pos || undefined,
+              });
+            }
+          }
+        }
+      }
+    }
+
+    // 3. Seleccionar palabras óptimas según Rasch + ZPD
+    const primingWords = selectKindleChapterPrimingWords(
+      cleanText,
+      bookLang,
+      userState,
+      lexiconCatalog,
+      { maxWords: 5, isForeignLang: bookLang !== "es" },
+    );
+
+    if (primingWords.length > 0) {
+      let savedNotice: string | null = null;
+      if (savedWord) {
+        savedNotice = `✓ Palabra «${savedWord}» guardada en tu Cuaderno.`;
+      } else if (markedKnown) {
+        savedNotice = `✓ Palabra «${markedKnown}» marcada como conocida.`;
+      }
+
+      const readUrl = `/k/read/${encodeURIComponent(hash)}?section=${chapter.sectionIndex}&page=0&primed=1${renderQuerySuffix}`;
+      return c.html(
+        renderKindleChapterPrimingView({
+          user,
+          bookId: hash,
+          bookHash: hash,
+          bookTitle: chapter.bookTitle,
+          bookAuthor: chapter.bookAuthor,
+          chapterTitle: chapter.chapterTitle,
+          chapterIndex: chapter.sectionIndex,
+          sectionIndex: chapter.sectionIndex,
+          totalSections: chapter.totalSections,
+          bookLang,
+          lang: bookLang,
+          isForeignLang: bookLang !== "es",
+          words: primingWords,
+          readUrl,
+          savedNotice,
+        }),
+      );
+    }
+  }
+
   const rawPageHtml = pages[pageIndex] || "<p>Sin contenido.</p>";
 
   // Obtener palabras guardadas y conocimiento del usuario
@@ -1035,6 +1336,7 @@ kindleRoutes.get("/read/:hash", async (c) => {
       size,
       gloss,
       catNotes,
+      primingOff: isPrimingOff || isBookMuted,
     }),
   );
 });

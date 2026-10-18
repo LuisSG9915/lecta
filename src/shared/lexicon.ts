@@ -4,6 +4,15 @@
 export type LexiconSenseLike = { definition?: string | null };
 export type LexiconEntryLike = { senses?: LexiconSenseLike[] };
 
+export type LexiconEntry = {
+  entryId: string | null;
+  lemma: string;
+  pos: string | null;
+  freqRank: number | null;
+  zipf: number | null;
+  senses: { definition: string; example: string | null; senseOrder: number | null }[];
+};
+
 export function hasUsableDefinition(entries: readonly LexiconEntryLike[] | undefined) {
   return (entries ?? []).some((entry) =>
     (entry.senses ?? []).some(

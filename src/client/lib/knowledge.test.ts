@@ -12,8 +12,13 @@ import {
   predictSection,
   resolveEvidence,
   vocabLevelLabel,
+  applyPreviewKnownSignal,
+  applyWordPanelLookupSignal,
+  updatePreviewFrictionPreference,
+  recordSilentCalibration,
   type KnowledgeEvidence,
 } from "./knowledge";
+import type { UserLanguageProfile } from "./profile-models";
 
 const entry = (zipf: number | null, over: Partial<LexiconEntry> = {}): LexiconEntry => ({
   entryId: null,
@@ -795,4 +800,78 @@ describe("vocabLevelLabel", () => {
     expect(vocabLevelLabel(3.8, "learner")).toBe("en desarrollo");
   });
 });
+
+describe("Canales de Retroalimentación Adaptativa (Paso 3)", () => {
+  const baseProfile: UserLanguageProfile = {
+    theta: 0.0,
+    thetaByLang: { es: 0.0, en: 0.0 },
+    uncertaintyByLang: { es: 1.0, en: 1.0 },
+    chaptersCompletedByLang: { es: 0, en: 0 },
+    preferredPreviewCount: 5,
+    consecutivePreviewSkips: 0,
+  };
+
+  it("applyPreviewKnownSignal incrementa thetaByLang[lang] y theta para 'es' al tocar '✓ Ya la sé'", () => {
+    const updated = applyPreviewKnownSignal(baseProfile, "es", 1.2);
+    expect(updated.thetaByLang.es).toBeGreaterThan(baseProfile.thetaByLang.es);
+    expect(updated.theta).toBe(updated.thetaByLang.es);
+    // No debe alterar inglés
+    expect(updated.thetaByLang.en).toBe(0.0);
+  });
+
+  it("applyPreviewKnownSignal en inglés actualiza thetaByLang['en'] sin alterar theta de español", () => {
+    const updated = applyPreviewKnownSignal(baseProfile, "en", 1.0);
+    expect(updated.thetaByLang.en).toBeGreaterThan(baseProfile.thetaByLang.en);
+    expect(updated.thetaByLang.es).toBe(0.0);
+    expect(updated.theta).toBe(0.0);
+  });
+
+  it("applyWordPanelLookupSignal baja theta por sorpresa al consultar una palabra asumida como conocida", () => {
+    // Usuario con nivel alto (theta = 2.0). Consulta palabra fácil (beta = -0.5, pKnow alto)
+    const highProfile: UserLanguageProfile = {
+      ...baseProfile,
+      theta: 2.0,
+      thetaByLang: { es: 2.0, en: 0.0 },
+    };
+    const updated = applyWordPanelLookupSignal(highProfile, "es", -0.5);
+    expect(updated.thetaByLang.es).toBeLessThan(highProfile.thetaByLang.es);
+    expect(updated.theta).toBe(updated.thetaByLang.es);
+  });
+
+  it("updatePreviewFrictionPreference reduce preferredPreviewCount de 5 a 3 con 3 omisiones consecutivas", () => {
+    // Estado inicial: 5 palabras preferidas
+    let profile: UserLanguageProfile = {
+      ...baseProfile,
+      preferredPreviewCount: 5,
+      consecutivePreviewSkips: 0,
+    };
+
+    // Omisión 1
+    profile = updatePreviewFrictionPreference(profile, false);
+    expect(profile.consecutivePreviewSkips).toBe(1);
+    expect(profile.preferredPreviewCount).toBe(5);
+
+    // Omisión 2
+    profile = updatePreviewFrictionPreference(profile, false);
+    expect(profile.consecutivePreviewSkips).toBe(2);
+    expect(profile.preferredPreviewCount).toBe(5);
+
+    // Omisión 3: Se alcanza el umbral de fricción -> reduce a 3 palabras
+    profile = updatePreviewFrictionPreference(profile, false);
+    expect(profile.consecutivePreviewSkips).toBe(3);
+    expect(profile.preferredPreviewCount).toBe(3);
+
+    // Interacción del usuario: reinicia el contador de omisiones a 0
+    profile = updatePreviewFrictionPreference(profile, true);
+    expect(profile.consecutivePreviewSkips).toBe(0);
+    expect(profile.preferredPreviewCount).toBe(3);
+  });
+
+  it("recordSilentCalibration ejecuta de forma segura los eventos 'lookup', 'save' y 'known'", () => {
+    expect(() => recordSilentCalibration("efimero", "known", "es")).not.toThrow();
+    expect(() => recordSilentCalibration("casa", "lookup", "es")).not.toThrow();
+    expect(() => recordSilentCalibration("perenne", "save", "es")).not.toThrow();
+  });
+});
+
 

@@ -62,6 +62,7 @@ export interface SavedWord {
   meaning?: string;
   language: string;
   context?: string;
+  contextSnippet?: string;
   bookHash?: string;
   bookTitle?: string;
   // Acepción del catálogo elegida al guardar (fila de lexicon_senses).
@@ -140,6 +141,19 @@ export type KnownWord = {
   estimatedKnownProb?: number;
   status?: "unknown" | "familiar" | "known";
 };
+
+/**
+ * Perfil psicométrico almacenado por cuenta en IndexedDB.
+ */
+export interface PsychometricProfileRecord {
+  theta?: number;
+  thetaByLang?: Record<string, number>;
+  preferredPreviewCount?: number;
+  consecutivePreviewSkips?: number;
+  uncertaintyByLang?: Record<string, number>;
+  chaptersCompletedByLang?: Record<string, number>;
+  updatedAt?: number;
+}
 
 // ---------- Historial de trayecto (readingEvents) ----------
 //
@@ -902,6 +916,31 @@ export async function saveSessionValue(key: string, value: string, scope?: DbSco
 
 export async function loadSessionValue(key: string, scope?: DbScope) {
   return withDb(scope, (db) => db.get("session", key));
+}
+
+export const PSYCHOMETRIC_PROFILE_SESSION_KEY = "lecta:psychometric_profile:v1";
+
+export async function savePsychometricProfile(
+  profile: PsychometricProfileRecord,
+  scope?: DbScope,
+): Promise<void> {
+  await withDb(scope, (db) =>
+    db.put("session", JSON.stringify(profile), PSYCHOMETRIC_PROFILE_SESSION_KEY),
+  );
+}
+
+export async function loadPsychometricProfile(
+  scope?: DbScope,
+): Promise<PsychometricProfileRecord | null> {
+  return withDb(scope, async (db) => {
+    const raw = await db.get("session", PSYCHOMETRIC_PROFILE_SESSION_KEY);
+    if (!raw || typeof raw !== "string") return null;
+    try {
+      return JSON.parse(raw) as PsychometricProfileRecord;
+    } catch {
+      return null;
+    }
+  });
 }
 
 export async function listSessionKeys(scope?: DbScope): Promise<string[]> {

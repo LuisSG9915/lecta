@@ -190,4 +190,142 @@ describe("SmartReaderDock (Track 2: Dock Inteligente Único)", () => {
     act(() => miniCatBtn.click());
     expect(onOpenCatCorner).toHaveBeenCalledTimes(1);
   });
+
+  describe("Fase 3: Sugerencia Silenciosa de Neuro-Foco en SmartReaderDock", () => {
+    it("no muestra la píldora si isFatigued es false", () => {
+      render({ isFatigued: false });
+      expect(container.querySelector(".reader-focus-suggestion-pill")).toBeNull();
+    });
+
+    it("muestra la píldora contextual por releídas (regressions) y la activa en 1 toque", () => {
+      const onAcceptFocusAid = vi.fn();
+      render({
+        focusSuggestion: {
+          isFatigued: true,
+          reason: "regressions",
+          recommendedAid: "paragraph-focus",
+        },
+        onAcceptFocusAid,
+      });
+
+      const pill = container.querySelector(".reader-focus-suggestion-pill");
+      expect(pill).not.toBeNull();
+      expect(pill?.textContent).toContain("¿Enfocar párrafo actual?");
+
+      // Tocar el botón principal activa la ayuda en 1 toque
+      const actionBtn = container.querySelector(".reader-focus-pill-action") as HTMLButtonElement;
+      expect(actionBtn).not.toBeNull();
+      act(() => actionBtn.click());
+
+      expect(onAcceptFocusAid).toHaveBeenCalledWith("paragraph-focus");
+      // Queda cerrada tras aceptar
+      expect(container.querySelector(".reader-focus-suggestion-pill")).toBeNull();
+    });
+
+    it("muestra la píldora contextual para cadencia sintáctica en L2 o fraseo denso", () => {
+      const onAcceptFocusAid = vi.fn();
+      render({
+        focusSuggestion: {
+          isFatigued: true,
+          reason: "stall",
+          recommendedAid: "syntactic-lines",
+        },
+        onAcceptFocusAid,
+      });
+
+      const pill = container.querySelector(".reader-focus-suggestion-pill");
+      expect(pill?.textContent).toContain("¿Activar cadencia por frases?");
+
+      const actionBtn = container.querySelector(".reader-focus-pill-action") as HTMLButtonElement;
+      act(() => actionBtn.click());
+      expect(onAcceptFocusAid).toHaveBeenCalledWith("syntactic-lines");
+    });
+
+    it("muestra la píldora contextual para regla de lectura", () => {
+      const onAcceptFocusAid = vi.fn();
+      render({
+        focusSuggestion: {
+          isFatigued: true,
+          reason: "stall",
+          recommendedAid: "focus-ruler",
+        },
+        onAcceptFocusAid,
+      });
+
+      const pill = container.querySelector(".reader-focus-suggestion-pill");
+      expect(pill?.textContent).toContain("¿Activar regla de lectura?");
+
+      const actionBtn = container.querySelector(".reader-focus-pill-action") as HTMLButtonElement;
+      act(() => actionBtn.click());
+      expect(onAcceptFocusAid).toHaveBeenCalledWith("focus-ruler");
+    });
+
+    it("al tocar ✕ en la píldora ofrece opciones para silenciar en este libro o siempre", () => {
+      const onMuteFocusForBook = vi.fn();
+      const onDisableFocusGlobally = vi.fn();
+
+      render({
+        focusSuggestion: {
+          isFatigued: true,
+          reason: "regressions",
+          recommendedAid: "paragraph-focus",
+        },
+        onMuteFocusForBook,
+        onDisableFocusGlobally,
+      });
+
+      // Tocar el botón ✕ de la píldora
+      const closeBtn = container.querySelector(".reader-focus-pill-close") as HTMLButtonElement;
+      expect(closeBtn).not.toBeNull();
+      act(() => closeBtn.click());
+
+      // Deben aparecer las opciones de silenciado
+      const muteBookBtn = container.querySelector(".reader-focus-mute-book-btn") as HTMLButtonElement;
+      const disableAlwaysBtn = container.querySelector(".reader-focus-disable-always-btn") as HTMLButtonElement;
+      expect(muteBookBtn).not.toBeNull();
+      expect(disableAlwaysBtn).not.toBeNull();
+      expect(muteBookBtn.textContent).toContain("No sugerir en este libro");
+      expect(disableAlwaysBtn.textContent).toContain("Desactivar sugerencias de enfoque siempre");
+
+      // Tocar silenciar en este libro
+      act(() => muteBookBtn.click());
+      expect(onMuteFocusForBook).toHaveBeenCalledTimes(1);
+      expect(container.querySelector(".reader-focus-suggestion-pill")).toBeNull();
+    });
+
+    it("permite desactivar sugerencias siempre desde las opciones de la píldora", () => {
+      const onDisableFocusGlobally = vi.fn();
+
+      render({
+        isFatigued: true,
+        recommendedFocusAid: "syntactic-lines",
+        onDisableFocusGlobally,
+      });
+
+      const closeBtn = container.querySelector(".reader-focus-pill-close") as HTMLButtonElement;
+      act(() => closeBtn.click());
+
+      const disableAlwaysBtn = container.querySelector(".reader-focus-disable-always-btn") as HTMLButtonElement;
+      act(() => disableAlwaysBtn.click());
+      expect(onDisableFocusGlobally).toHaveBeenCalledTimes(1);
+      expect(container.querySelector(".reader-focus-suggestion-pill")).toBeNull();
+    });
+
+    it("no interrumpe en modo audio ni en lienzo puro", () => {
+      render({
+        isFatigued: true,
+        ttsSnap: speakingSnap,
+      });
+      // En modo audio no se muestra la píldora de lectura
+      expect(container.querySelector(".reader-focus-suggestion-pill")).toBeNull();
+
+      render({
+        isFatigued: true,
+        isPureCanvas: true,
+      });
+      // En lienzo puro tampoco
+      expect(container.querySelector(".reader-focus-suggestion-pill")).toBeNull();
+    });
+  });
 });
+

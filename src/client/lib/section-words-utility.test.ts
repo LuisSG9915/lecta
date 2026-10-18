@@ -7,6 +7,12 @@ import {
   cleanContextSentence,
   buildChapterPrimingCandidates,
   type ChapterPrimingCandidate,
+  computePreChapterWordUtility,
+  extractChapterContextSnippet,
+  getSemanticPosWeight,
+  computeZpdZoneWeight,
+  MAX_PREVIEW_WORDS,
+  MAX_CONTEXT_SNIPPET_CHARS,
 } from "./section-words";
 import type { LexiconEntry } from "./lexicon";
 
@@ -349,6 +355,85 @@ describe("Selector Científico de Palabras Pre-Capítulo (ZPD + Cowan) (Track 6)
     expect(result.length).toBeGreaterThan(0);
     expect(result[0].contextSentence).toBeTruthy();
     expect(result[0].contextSentence.length).toBeLessThanOrEqual(140);
+  });
+});
+
+describe("computePreChapterWordUtility y extractChapterContextSnippet (Paso 2)", () => {
+  it("exporta las constantes de memoria de Cowan y snippet contextual", () => {
+    expect(MAX_PREVIEW_WORDS).toBe(5);
+    expect(MAX_CONTEXT_SNIPPET_CHARS).toBe(140);
+  });
+
+  it("calcula getSemanticPosWeight dando prioridad a frases, verbos, adjetivos y sustantivos", () => {
+    expect(getSemanticPosWeight("phrase")).toBe(1.3);
+    expect(getSemanticPosWeight("locucion")).toBe(1.3);
+    expect(getSemanticPosWeight("verb")).toBe(1.25);
+    expect(getSemanticPosWeight("verbo")).toBe(1.25);
+    expect(getSemanticPosWeight("adj")).toBe(1.2);
+    expect(getSemanticPosWeight("adjetivo")).toBe(1.2);
+    expect(getSemanticPosWeight("noun")).toBe(1.15);
+    expect(getSemanticPosWeight("sustantivo")).toBe(1.15);
+    expect(getSemanticPosWeight("adv")).toBe(0.9);
+    expect(getSemanticPosWeight("adverbio")).toBe(0.9);
+    expect(getSemanticPosWeight("other")).toBe(1.0);
+  });
+
+  it("calcula computeZpdZoneWeight con campana gaussiana centrada en theta + 0.35", () => {
+    const theta = 0.5;
+    const optimalBeta = theta + 0.35; // 0.85
+    const peak = computeZpdZoneWeight(theta, optimalBeta);
+    expect(peak).toBeCloseTo(1.0, 5);
+
+    const easy = computeZpdZoneWeight(theta, -1.0);
+    const hard = computeZpdZoneWeight(theta, 3.0);
+    expect(easy).toBeLessThan(peak);
+    expect(hard).toBeLessThan(peak);
+  });
+
+  it("computePreChapterWordUtility combina probabilidad desconocida, frecuencia, ZPD y POS", () => {
+    const res = computePreChapterWordUtility({
+      thetaUL: 0.0,
+      betaW: 0.35,
+      freqInChapter: 3,
+      pos: "verb",
+    });
+
+    // theta = 0, beta = 0.35 -> pKnow = 1 / (1 + exp(0.35)) = 0.41338
+    // unknownProb = 1 - 0.41338 = 0.5866
+    // freqImpact = ln(1 + 3) = 1.38629
+    // zoneWeight = 1.0 (en el pico theta + 0.35)
+    // posWeight = 1.25 (verbo)
+    // utility = 0.5866 * 1.38629 * 1.0 * 1.25 = 1.0166
+    expect(res.pKnow).toBeCloseTo(0.413, 2);
+    expect(res.unknownProb).toBeCloseTo(0.587, 2);
+    expect(res.freqImpact).toBeCloseTo(1.386, 2);
+    expect(res.zoneWeight).toBeCloseTo(1.0, 4);
+    expect(res.posWeight).toBe(1.25);
+    expect(res.utility).toBeCloseTo(1.016, 2);
+  });
+
+  it("extractChapterContextSnippet extrae la oración exacta cuando es <= 140 chars", () => {
+    const text = "En un lugar de la Mancha, de cuyo nombre no quiero acordarme. Vivía un hidalgo de los de lanza en astillero.";
+    const snippet = extractChapterContextSnippet(text, "hidalgo");
+    expect(snippet).toBe("Vivía un hidalgo de los de lanza en astillero.");
+    expect(snippet.length).toBeLessThanOrEqual(140);
+    expect(snippet).toContain("hidalgo");
+  });
+
+  it("extractChapterContextSnippet trunca oraciones largas a <= 140 caracteres centrando la palabra sin cortar sílabas", () => {
+    const text =
+      "El ilustre caballero andante don Quijote de la Mancha cabalgaba bajo el inclemente sol castellano pensando intensamente en su amada Dulcinea del Toboso mientras su fiel escudero Sancho Panza divisaba a lo lejos una misteriosa silueta que parecía un gigante amenazante en el horizonte.";
+    const snippet = extractChapterContextSnippet(text, "Dulcinea", 140);
+    expect(snippet.length).toBeLessThanOrEqual(140);
+    expect(snippet).toContain("Dulcinea");
+    expect(snippet.startsWith("…") || !snippet.startsWith(" ")).toBe(true);
+    expect(snippet.endsWith("…") || !snippet.endsWith(" ")).toBe(true);
+  });
+
+  it("extractChapterContextSnippet maneja entradas vacías o cuando no encuentra la palabra", () => {
+    expect(extractChapterContextSnippet("", "test")).toBe("");
+    expect(extractChapterContextSnippet("Hola mundo.", "")).toBe("");
+    expect(extractChapterContextSnippet("Hola mundo cruel.", "desaparecido")).toBe("Hola mundo cruel.");
   });
 });
 

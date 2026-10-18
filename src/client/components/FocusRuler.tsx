@@ -24,6 +24,7 @@ export function FocusRuler({
   anchor,
   activeParagraphY,
   lineHeightPx = 28,
+  onClose,
 }: {
   bandPx: number;
   // Ancla visual en el margen de la franja (la patita del gato).
@@ -32,10 +33,18 @@ export function FocusRuler({
   activeParagraphY?: number | null;
   // Alto de línea para el paso con flechas del teclado
   lineHeightPx?: number;
+  // Callback para cerrar la regla de lectura en 1 toque
+  onClose?: () => void;
 }) {
+  const [isDismissed, setIsDismissed] = useState(false);
+
   // Arranca centrada (no pegada al tope esperando el primer
   // movimiento) y luego sigue al puntero o párrafo enfocado.
-  const [y, setY] = useState(() => Math.round(window.innerHeight * 0.42));
+  const [y, setY] = useState(() =>
+    typeof window !== "undefined"
+      ? Math.round(window.innerHeight * 0.42)
+      : 350,
+  );
 
   // Seguimiento del puntero (ratón o lápiz)
   useEffect(() => {
@@ -84,20 +93,31 @@ export function FocusRuler({
         setY((prev) => Math.max(0, prev - step));
       } else if (event.key === "ArrowDown") {
         event.preventDefault();
-        setY((prev) => Math.min(window.innerHeight, prev + step));
+        setY((prev) =>
+          Math.min(
+            typeof window !== "undefined" ? window.innerHeight : 800,
+            prev + step,
+          ),
+        );
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [lineHeightPx]);
 
-  const top = Math.max(
-    0,
-    Math.min(y - bandPx / 2, window.innerHeight - bandPx),
-  );
+  if (isDismissed) return null;
+
+  const winH = typeof window !== "undefined" ? window.innerHeight : 800;
+  const top = Math.max(0, Math.min(y - bandPx / 2, winH - bandPx));
+
+  const handleClose = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsDismissed(true);
+    onClose?.();
+  };
 
   return (
-    <div className="focus-ruler" aria-hidden="true">
+    <div className="focus-ruler">
       <div
         className="focus-ruler-veil focus-ruler-veil--top focus-ruler__mask"
         style={{ insetBlockStart: 0, blockSize: top }}
@@ -107,6 +127,39 @@ export function FocusRuler({
         style={{ insetBlockStart: top, blockSize: bandPx }}
       >
         {anchor ? <span className="focus-ruler-anchor">{anchor}</span> : null}
+        <button
+          type="button"
+          className="focus-ruler-close-btn"
+          onClick={handleClose}
+          onPointerDown={(e) => e.stopPropagation()}
+          aria-label="Cerrar regla de lectura"
+          title="Cerrar regla de lectura (1 toque)"
+          style={{
+            pointerEvents: "auto",
+            position: "absolute",
+            insetInlineEnd: "16px",
+            insetBlockStart: "50%",
+            transform: "translateY(-50%)",
+            width: "28px",
+            height: "28px",
+            borderRadius: "9999px",
+            background: "rgba(0, 0, 0, 0.08)",
+            border: "1px solid rgba(0, 0, 0, 0.15)",
+            color: "inherit",
+            cursor: "pointer",
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: "14px",
+            fontWeight: 500,
+            lineHeight: 1,
+            padding: 0,
+            zIndex: 10,
+            opacity: 0.85,
+          }}
+        >
+          ✕
+        </button>
       </div>
       <div
         className="focus-ruler-veil focus-ruler-veil--bottom focus-ruler__mask"

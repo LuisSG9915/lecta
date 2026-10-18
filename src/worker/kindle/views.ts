@@ -3,6 +3,7 @@
 // y tipografía optimizada para pantallas de tinta electrónica.
 
 import type { LexiconEntryView } from "../lexicon";
+import type { KindlePrimingWord } from "./epub-reader";
 
 export type KindleUser = {
   id: string;
@@ -1100,6 +1101,7 @@ export function renderReaderView(options: {
   size?: "sm" | "md" | "lg" | "xl";
   gloss?: boolean;
   catNotes?: CatPageNoteItem[];
+  primingOff?: boolean;
 }): string {
   const {
     user,
@@ -1118,6 +1120,7 @@ export function renderReaderView(options: {
     size = "md",
     gloss = true,
     catNotes = [],
+    primingOff = false,
   } = options;
 
   const querySuffix = `&mode=${encodeURIComponent(mode)}&size=${encodeURIComponent(size)}&gloss=${gloss ? "1" : "0"}`;
@@ -1259,6 +1262,11 @@ export function renderReaderView(options: {
         Cap. ${sectionIndex + 1}/${totalSections}
         <a href="/k/practice?bookHash=${encodeURIComponent(bookHash)}&amp;returnTo=${encodeURIComponent(cleanPageUrl)}" class="reader-header-prep" title="Practicar vocabulario">🎯 Práctica</a>
         <a href="/k/read/${encodeURIComponent(bookHash)}?section=${sectionIndex}&amp;prep=1" class="reader-header-prep" title="Ver vocabulario del capítulo">📖 Prep</a>
+        ${
+          primingOff
+            ? `<form method="POST" action="/kindle/priming/action" style="display:inline; margin:0;"><input type="hidden" name="action" value="enable_all" /><input type="hidden" name="returnUrl" value="${escapeHtml(cleanPageUrl)}" /><button type="submit" class="reader-header-prep" style="background:#ffffff; border:1px solid #888888; cursor:pointer;" title="Reactivar antesala">✨ Antesala</button></form>`
+            : `<form method="POST" action="/kindle/priming/action" style="display:inline; margin:0;"><input type="hidden" name="action" value="disable_all" /><input type="hidden" name="returnUrl" value="${escapeHtml(cleanPageUrl)}" /><button type="submit" class="reader-header-prep" style="background:#ffffff; border:1px solid #888888; cursor:pointer;" title="Silenciar antesala">✨ Antesala</button></form>`
+        }
       </div>
     </header>
 
@@ -1682,3 +1690,281 @@ export function renderPracticeView(options: {
     returnTo,
   });
 }
+
+export interface KindleChapterPrimingViewProps {
+  bookId: string;
+  bookTitle: string;
+  chapterIndex: number;
+  chapterTitle: string;
+  bookLang: string;
+  isForeignLang: boolean;
+  words: KindlePrimingWord[];
+  bookAuthor?: string;
+  readUrl?: string;
+  currentUrl?: string;
+  user?: KindleUser | null;
+  bookHash?: string;
+  sectionIndex?: number;
+  totalSections?: number;
+  lang?: string;
+  savedNotice?: string | null;
+}
+
+export type KindlePrimingViewParams = KindleChapterPrimingViewProps;
+
+export function renderKindleChapterPrimingView(props: KindleChapterPrimingViewProps): string {
+  const bookId = props.bookId || props.bookHash || "";
+  const bookTitle = props.bookTitle || "";
+  const chapterIndex = props.chapterIndex ?? props.sectionIndex ?? 0;
+  const chapterTitle = props.chapterTitle || `Capítulo ${chapterIndex + 1}`;
+  const bookLang = props.bookLang || props.lang || "es";
+  const isForeignLang = props.isForeignLang ?? (bookLang !== "es");
+  const words = props.words || [];
+
+  const startReadingUrl =
+    props.readUrl ||
+    `/kindle/read/${encodeURIComponent(bookId)}?chapter=${chapterIndex}&page=0&primed=1`;
+  const currentUrl =
+    props.currentUrl ||
+    `/kindle/read/${encodeURIComponent(bookId)}?chapter=${chapterIndex}&page=0`;
+
+  const cardsHtml = words
+    .map(
+      (w) => `
+      <li class="k-priming-card" id="k-word-${escapeHtml(w.lemma)}">
+        <div class="k-priming-card__header">
+          <div class="k-priming-card__term">
+            <strong class="k-priming-card__surface">${escapeHtml(w.surfaceForm)}</strong>${w.partOfSpeech ? `<span class="k-priming-card__pos">(${escapeHtml(w.partOfSpeech)})</span>` : ""}
+          </div>
+          <div class="k-priming-card__actions">
+            <form method="POST" action="/kindle/priming/action" class="k-inline-form" onsubmit="return window.lectaKindleAction(event, this, '${escapeHtml(w.lemma)}', 'known')">
+              <input type="hidden" name="action" value="known" />
+              <input type="hidden" name="bookId" value="${escapeHtml(bookId)}" />
+              <input type="hidden" name="chapter" value="${chapterIndex}" />
+              <input type="hidden" name="lemma" value="${escapeHtml(w.lemma)}" />
+              <input type="hidden" name="lang" value="${escapeHtml(bookLang)}" />
+              <input type="hidden" name="returnUrl" value="${escapeHtml(currentUrl)}" />
+              <button type="submit" class="k-btn k-btn--small">✓ Ya la sé</button>
+            </form>
+            <form method="POST" action="/kindle/priming/action" class="k-inline-form" onsubmit="return window.lectaKindleAction(event, this, '${escapeHtml(w.lemma)}', 'save')">
+              <input type="hidden" name="action" value="save" />
+              <input type="hidden" name="bookId" value="${escapeHtml(bookId)}" />
+              <input type="hidden" name="chapter" value="${chapterIndex}" />
+              <input type="hidden" name="lemma" value="${escapeHtml(w.lemma)}" />
+              <input type="hidden" name="lang" value="${escapeHtml(bookLang)}" />
+              <input type="hidden" name="returnUrl" value="${escapeHtml(currentUrl)}" />
+              <button type="submit" class="k-btn k-btn--small k-btn--outline">+ Repasar</button>
+            </form>
+          </div>
+        </div>
+        <p class="k-priming-card__gloss">${escapeHtml(w.shortGloss)}</p>${
+          w.contextSentence
+            ? `<blockquote class="k-priming-card__quote">«${escapeHtml(w.contextSentence)}»</blockquote>`
+            : ""
+        }
+      </li>`,
+    )
+    .join("\n");
+
+  return `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Antes de leer · ${escapeHtml(chapterTitle)}</title>
+  <style>
+    /* E-Ink High Contrast Zero-Flicker Styles */
+    * { box-sizing: border-box; transition: none !important; animation: none !important; }
+    body {
+      margin: 0;
+      padding: 16px 20px;
+      background: #ffffff;
+      color: #000000;
+      font-family: Georgia, "Bookerly", "Literata", serif;
+      line-height: 1.45;
+    }
+    .k-topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2px solid #000000;
+      padding-bottom: 10px;
+      margin-bottom: 16px;
+      font-family: sans-serif;
+      font-size: 14px;
+    }
+    .k-badge {
+      font-weight: bold;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      border: 1.5px solid #000;
+      padding: 2px 8px;
+    }
+    .k-title {
+      font-size: 22px;
+      margin: 0 0 6px 0;
+      font-weight: bold;
+    }
+    .k-subtitle {
+      font-size: 15px;
+      margin: 0 0 16px 0;
+    }
+    .k-priming-list {
+      list-style: none;
+      padding: 0;
+      margin: 0 0 20px 0;
+    }
+    .k-priming-card {
+      border: 2px solid #000000;
+      padding: 12px 14px;
+      margin-bottom: 12px;
+    }
+    .k-priming-card__header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+    .k-priming-card__surface {
+      font-size: 19px;
+    }
+    .k-priming-card__pos {
+      font-size: 14px;
+      font-style: italic;
+      margin-left: 4px;
+    }
+    .k-priming-card__gloss {
+      margin: 4px 0 8px 0;
+      font-size: 16px;
+      font-weight: bold;
+    }
+    .k-priming-card__quote {
+      margin: 0;
+      padding-left: 10px;
+      border-left: 3px solid #000000;
+      font-size: 14px;
+      font-style: italic;
+    }
+    .k-inline-form { display: inline-block; margin: 0; }
+    .k-btn {
+      min-height: 44px;
+      padding: 8px 14px;
+      font-size: 15px;
+      font-family: sans-serif;
+      font-weight: bold;
+      background: #000000;
+      color: #ffffff;
+      border: 2px solid #000000;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .k-btn--outline {
+      background: #ffffff;
+      color: #000000;
+    }
+    .k-btn--small {
+      min-height: 38px;
+      padding: 6px 10px;
+      font-size: 14px;
+    }
+    .k-btn--full {
+      width: 100%;
+      min-height: 50px;
+      font-size: 18px;
+      margin-bottom: 16px;
+    }
+    .k-footer-Prefs {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      border-top: 1px solid #000000;
+      padding-top: 12px;
+    }
+  </style>
+</head>
+<body>
+  <header class="k-topbar">
+    <span>${escapeHtml(bookTitle)}</span>
+    <span class="k-badge">${isForeignLang ? `Idioma: ${escapeHtml(bookLang.toUpperCase())}` : "Pre-lectura"} · ${words.length} palabras</span>
+  </header>
+
+  <main>
+    <h1 class="k-title">${escapeHtml(chapterTitle)}</h1>
+    <p class="k-subtitle">Conoce estas palabras clave antes de empezar para leer el capítulo sin pausas.</p>
+
+    <a href="${escapeHtml(startReadingUrl)}" class="k-btn k-btn--full">
+      Comenzar a leer capítulo →
+    </a>
+
+    <ul class="k-priming-list">
+      ${cardsHtml}
+    </ul>
+
+    <div class="k-footer-Prefs">
+      <form method="POST" action="/kindle/priming/action" class="k-inline-form">
+        <input type="hidden" name="action" value="mute_book" />
+        <input type="hidden" name="bookId" value="${escapeHtml(bookId)}" />
+        <input type="hidden" name="chapter" value="${chapterIndex}" />
+        <input type="hidden" name="returnUrl" value="${escapeHtml(startReadingUrl)}" />
+        <button type="submit" class="k-btn k-btn--outline k-btn--small">Ocultar en este libro</button>
+      </form>
+
+      <form method="POST" action="/kindle/priming/action" class="k-inline-form">
+        <input type="hidden" name="action" value="disable_all" />
+        <input type="hidden" name="bookId" value="${escapeHtml(bookId)}" />
+        <input type="hidden" name="chapter" value="${chapterIndex}" />
+        <input type="hidden" name="returnUrl" value="${escapeHtml(startReadingUrl)}" />
+        <button type="submit" class="k-btn k-btn--outline k-btn--small">Desactivar siempre</button>
+      </form>
+    </div>
+  </main>
+
+  <script>
+    // Mejora progresiva E-Ink: evita recargar toda la página al marcar palabras
+    window.lectaKindleAction = function(ev, formEl, lemma, actionType) {
+      if (!window.fetch) return true;
+      ev.preventDefault();
+      var card = document.getElementById('k-word-' + lemma);
+      if (card && actionType === 'known') {
+        card.style.display = 'none';
+      } else if (card && actionType === 'save') {
+        var btn = formEl.querySelector('button');
+        if (btn) { btn.textContent = '✓ Guardada'; btn.disabled = true; }
+      }
+      var data = new FormData(formEl);
+      fetch(formEl.action, { method: 'POST', body: data });
+      return false;
+    };
+  </script>
+</body>
+</html>`;
+}
+
+/**
+ * Inyecta un anclaje sutil en el HTML del capítulo para las 3-5 palabras pre-vistas
+ */
+export function injectKindlePrimedAnchors(
+  chapterHtml: string,
+  primedWords: KindlePrimingWord[],
+): string {
+  if (!primedWords.length) return chapterHtml;
+  let output = chapterHtml;
+
+  for (const item of primedWords) {
+    const escaped = item.surfaceForm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    // Solo ancla la primera aparición fuera de etiquetas HTML
+    const regex = new RegExp(`(^|>[^<]*?)\\b(${escaped})\\b`, "i");
+    output = output.replace(
+      regex,
+      `$1<span style="border-bottom: 1.5px dashed #000; font-weight: 500;">$2</span> <small style="font-family: sans-serif; font-size: 0.78em;">[${escapeHtml(item.shortGloss)}]</small>`,
+    );
+  }
+
+  return output;
+}
+

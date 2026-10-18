@@ -283,3 +283,61 @@ export function generateLookupCandidates(word: string, language = "es"): string[
 
   return Array.from(new Set(candidates)).filter((c) => c.length >= 2);
 }
+
+/**
+ * Normaliza una forma superficial a su lema base más probable para consulta o comparación.
+ */
+export function normalizeWordForm(word: string, language = "es"): string {
+  const clean = word.trim().toLowerCase();
+  if (!clean) return "";
+  const lang = language.slice(0, 2).toLowerCase();
+
+  if (lang === "en") {
+    // 1. -ies / -ied (> 4 letras) -> -y (memories -> memory, replied -> reply)
+    if ((clean.endsWith("ies") || clean.endsWith("ied")) && clean.length > 4) {
+      return `${clean.slice(0, -3)}y`;
+    }
+    // 2. -ly / -ily (> 4 letras) -> base / -y (reluctantly -> reluctant, happily -> happy)
+    if (clean.endsWith("ly") && clean.length > 4) {
+      if (clean.endsWith("ily")) return `${clean.slice(0, -3)}y`;
+      return clean.slice(0, -2);
+    }
+    // 3. -ing (> 5 letras) -> base / desduplicación consonante (lingering -> linger, running -> run)
+    if (clean.endsWith("ing") && clean.length > 5) {
+      const root = clean.slice(0, -3);
+      if (root.length >= 3 && root[root.length - 1] === root[root.length - 2]) {
+        return root.slice(0, -1);
+      }
+      return root;
+    }
+    // 4. -ed (> 4 letras) -> base / desduplicación consonante (whispered -> whisper, stopped -> stop)
+    if (clean.endsWith("ed") && clean.length > 4) {
+      const root = clean.slice(0, -2);
+      if (root.length >= 3 && root[root.length - 1] === root[root.length - 2]) {
+        return root.slice(0, -1);
+      }
+      return root;
+    }
+    // 5. -es (> 4 letras) -> base (watches -> watch)
+    if (clean.endsWith("es") && clean.length > 4) {
+      if (clean.endsWith("shes") || clean.endsWith("ches") || clean.endsWith("sses") || clean.endsWith("xes")) {
+        return clean.slice(0, -2);
+      }
+      return clean.slice(0, -1);
+    }
+    // 6. -s (> 3 letras) -> base (shadows -> shadow)
+    if (clean.endsWith("s") && !clean.endsWith("ss") && clean.length > 3) {
+      return clean.slice(0, -1);
+    }
+    return clean;
+  }
+
+  // Español
+  if (clean.endsWith("mente") && clean.length > 6) {
+    const bases = menteBaseForms(clean);
+    if (bases.length > 0) return bases[bases.length - 1];
+  }
+
+  return clean;
+}
+

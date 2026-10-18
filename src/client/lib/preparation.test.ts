@@ -267,6 +267,17 @@ describe("buildPreparationWords", () => {
     expect(out).toHaveLength(1);
     expect(out[0].form).toBe("casa");
   });
+
+  it("conserva contextSnippet si está presente en la fila", () => {
+    const out = buildPreparationWords(
+      "es",
+      [row("vislumbrar", { lemma: "vislumbrar", contextSnippet: "A lo lejos vislumbró una luz." })],
+      answers({ "es:vislumbrar": "unknown" }),
+      "h1",
+    );
+    expect(out).toHaveLength(1);
+    expect(out[0].contextSnippet).toBe("A lo lejos vislumbró una luz.");
+  });
 });
 
 describe("filas funcionales", () => {

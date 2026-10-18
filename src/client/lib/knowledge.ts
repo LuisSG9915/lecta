@@ -5,9 +5,15 @@ import { knowledgeArbWins } from "../../shared/reading-data";
 import { calibrationBankZipf } from "../../shared/calibration-bank";
 import {
   adjustThetaOnEasyPin,
+  betaFromZipf,
+  loadUserLanguageProfile,
   loadUserTheta,
+  saveUserLanguageProfile,
   saveUserTheta,
+  updateThetaForLanguageSignal,
   wordDifficulty,
+  type SupportedBookLang,
+  type UserLanguageProfile,
 } from "./profile-models";
 
 // Modelo de conocimiento del lector: qué palabras conoce. Dos piezas
@@ -599,14 +605,209 @@ export function vocabLevelLabel(
   return "en desarrollo";
 }
 
+export interface ChapterCandidateFeedbackItem {
+  lemma: string;
+  beta: number;
+  wasConsultedInWordPanel?: boolean;
+}
+
+export interface ChapterCompletionPassiveLoopOptions {
+  profile?: UserLanguageProfile;
+  lang?: string;
+  candidates: ChapterCandidateFeedbackItem[];
+  isFluidReadingPace?: boolean;
+}
+
+/**
+ * Canal A: Al marcar una palabra como conocida ("✓ Ya la sé" en pre-lectura o WordPanel),
+ * dispara la señal 'explicit_known' para actualizar thetaByLang[lang].
+ */
+export function applyPreviewKnownSignal(
+  profileOrLang: UserLanguageProfile | string,
+  langOrBeta: string | number,
+  maybeBeta?: number,
+): UserLanguageProfile {
+  let profile: UserLanguageProfile;
+  let lang: string;
+  let betaW: number;
+  let shouldPersist = false;
+
+  if (typeof profileOrLang === "string") {
+    shouldPersist = true;
+    profile = loadUserLanguageProfile();
+    lang = profileOrLang;
+    betaW = typeof langOrBeta === "number" ? langOrBeta : 0;
+  } else {
+    profile = profileOrLang;
+    lang = typeof langOrBeta === "string" ? langOrBeta : "es";
+    betaW = typeof maybeBeta === "number" ? maybeBeta : 0;
+  }
+
+  const normLang = (lang || "es").slice(0, 2).toLowerCase() as SupportedBookLang;
+  const updated = updateThetaForLanguageSignal(profile, normLang, betaW, "explicit_known");
+  const result: UserLanguageProfile = {
+    ...profile,
+    ...updated,
+    theta: updated.theta,
+    thetaByLang: updated.thetaByLang ?? profile.thetaByLang,
+  };
+
+  if (shouldPersist) {
+    saveUserLanguageProfile(result);
+  }
+  return result;
+}
+
+/**
+ * Canal B: Al consultar una palabra en WordPanel, si el sistema asumía que el usuario la conocía
+ * o si se busca explícitamente, aplica la señal 'lookup_surprise' para corregir thetaByLang[lang] a la baja.
+ */
+export function applyWordPanelLookupSignal(
+  profileOrLang: UserLanguageProfile | string,
+  langOrBeta: string | number,
+  maybeBeta?: number,
+): UserLanguageProfile {
+  let profile: UserLanguageProfile;
+  let lang: string;
+  let betaW: number;
+  let shouldPersist = false;
+
+  if (typeof profileOrLang === "string") {
+    shouldPersist = true;
+    profile = loadUserLanguageProfile();
+    lang = profileOrLang;
+    betaW = typeof langOrBeta === "number" ? langOrBeta : 0;
+  } else {
+    profile = profileOrLang;
+    lang = typeof langOrBeta === "string" ? langOrBeta : "es";
+    betaW = typeof maybeBeta === "number" ? maybeBeta : 0;
+  }
+
+  const normLang = (lang || "es").slice(0, 2).toLowerCase() as SupportedBookLang;
+  const updated = updateThetaForLanguageSignal(profile, normLang, betaW, "lookup_surprise");
+  const result: UserLanguageProfile = {
+    ...profile,
+    ...updated,
+    theta: updated.theta,
+    thetaByLang: updated.thetaByLang ?? profile.thetaByLang,
+  };
+
+  if (shouldPersist) {
+    saveUserLanguageProfile(result);
+  }
+  return result;
+}
+
+/**
+ * Canal C: Al completar un capítulo, las palabras candidatas en la frontera (|theta - beta| <= 1.1)
+ * no consultadas en WordPanel reciben la señal 'passive_frontier' si la velocidad de lectura fue fluida.
+ */
+export function applyChapterCompletionPassiveLoop(
+  profileOrOptions: UserLanguageProfile | ChapterCompletionPassiveLoopOptions,
+  langArg?: string,
+  candidatesArg?: ChapterCandidateFeedbackItem[],
+  isFluidReadingPaceArg = true,
+): UserLanguageProfile {
+  let profile: UserLanguageProfile;
+  let lang: string;
+  let candidates: ChapterCandidateFeedbackItem[];
+  let isFluidReadingPace: boolean;
+  let shouldPersist = false;
+
+  if ("candidates" in profileOrOptions) {
+    shouldPersist = profileOrOptions.profile === undefined;
+    profile = profileOrOptions.profile ?? loadUserLanguageProfile();
+    lang = profileOrOptions.lang ?? "es";
+    candidates = profileOrOptions.candidates;
+    isFluidReadingPace = profileOrOptions.isFluidReadingPace ?? true;
+  } else {
+    profile = profileOrOptions;
+    lang = langArg ?? "es";
+    candidates = candidatesArg ?? [];
+    isFluidReadingPace = isFluidReadingPaceArg;
+  }
+
+  const normLang = (lang || "es").slice(0, 2).toLowerCase() as SupportedBookLang;
+  let currentProfile: UserLanguageProfile = { ...profile };
+
+  if (isFluidReadingPace) {
+    for (const candidate of candidates) {
+      if (candidate.wasConsultedInWordPanel) continue;
+      const updated = updateThetaForLanguageSignal(
+        currentProfile,
+        normLang,
+        candidate.beta,
+        "passive_frontier",
+      );
+      currentProfile = {
+        ...currentProfile,
+        ...updated,
+        theta: updated.theta,
+        thetaByLang: updated.thetaByLang ?? currentProfile.thetaByLang,
+      };
+    }
+  }
+
+  const currentCount = currentProfile.chaptersCompletedByLang[normLang] ?? 0;
+  const result: UserLanguageProfile = {
+    ...currentProfile,
+    chaptersCompletedByLang: {
+      ...currentProfile.chaptersCompletedByLang,
+      [normLang]: currentCount + 1,
+    },
+  };
+
+  if (shouldPersist) {
+    saveUserLanguageProfile(result);
+  }
+  return result;
+}
+
+/**
+ * Canal D: Adaptación de fricción. Si el usuario omite la tarjeta de pre-lectura
+ * durante 3 capítulos consecutivos, reduce la cantidad preferida de palabras de 5 (o 4) a 3.
+ */
+export function updatePreviewFrictionPreference(
+  profileOrInteracted: UserLanguageProfile | boolean,
+  maybeInteracted?: boolean,
+): UserLanguageProfile {
+  let profile: UserLanguageProfile;
+  let interacted: boolean;
+  let shouldPersist = false;
+
+  if (typeof profileOrInteracted === "boolean") {
+    shouldPersist = true;
+    profile = loadUserLanguageProfile();
+    interacted = profileOrInteracted;
+  } else {
+    profile = profileOrInteracted;
+    interacted = Boolean(maybeInteracted);
+  }
+
+  const skips = interacted ? 0 : (profile.consecutivePreviewSkips ?? 0) + 1;
+  const currentCount = profile.preferredPreviewCount ?? 4;
+  const nextCount = skips >= 3 ? 3 : currentCount;
+
+  const result: UserLanguageProfile = {
+    ...profile,
+    consecutivePreviewSkips: skips,
+    preferredPreviewCount: nextCount,
+  };
+
+  if (shouldPersist) {
+    saveUserLanguageProfile(result);
+  }
+  return result;
+}
+
 /**
  * Calibración Silenciosa (Track 4):
  * Ajusta automáticamente el nivel theta del lector sin exámenes ni bloqueos
- * cuando consulta ('lookup') o guarda ('save') una palabra.
+ * cuando consulta ('lookup'), guarda ('save') o marca como conocida ('known') una palabra.
  */
 export function recordSilentCalibration(
   word: string,
-  event: "lookup" | "save",
+  event: "lookup" | "save" | "known",
   language = "es",
 ): void {
   try {
@@ -614,13 +815,28 @@ export function recordSilentCalibration(
     const currentTheta = loadUserTheta(3.0, language);
     const zipf = calibrationBankZipf(cleanWord, language);
     const bw = wordDifficulty(zipf);
-    const step = event === "save" ? 0.05 : 0.02;
-    const { newTheta, adjusted } = adjustThetaOnEasyPin(currentTheta, bw, step);
-    if (adjusted) {
-      saveUserTheta(newTheta, language);
+    const beta = betaFromZipf(zipf);
+
+    if (event === "known") {
+      applyPreviewKnownSignal(language, beta);
+    } else if (event === "lookup") {
+      applyWordPanelLookupSignal(language, beta);
+      const step = 0.02;
+      const { newTheta, adjusted } = adjustThetaOnEasyPin(currentTheta, bw, step);
+      if (adjusted) {
+        saveUserTheta(newTheta, language);
+      }
+    } else {
+      // event === "save"
+      const step = 0.05;
+      const { newTheta, adjusted } = adjustThetaOnEasyPin(currentTheta, bw, step);
+      if (adjusted) {
+        saveUserTheta(newTheta, language);
+      }
     }
   } catch {
     // Silencioso
   }
 }
+
 

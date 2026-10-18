@@ -43,6 +43,7 @@ export type PreparationRow = {
   pos?: string | null;
   meaning?: string;
   context?: string;
+  contextSnippet?: string;
   senseEntryId?: string | null;
   senseOrder?: number | null;
 };
@@ -166,6 +167,7 @@ export function buildPreparationWords(
       meaning: row.meaning,
       language,
       context: row.context,
+      contextSnippet: row.contextSnippet,
       bookHash,
       senseEntryId: row.senseEntryId ?? undefined,
       senseOrder: row.senseOrder ?? undefined,
