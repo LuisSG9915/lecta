@@ -245,6 +245,61 @@ describe("ReaderMoreMenu", () => {
     await act(async () => pills[2].click());
     expect(onChapterPrimingModeChange).toHaveBeenCalledWith("off");
   });
+
+  it("permite ver y reactivar asistencias silenciadas para el libro actual (Track 12)", async () => {
+    // Simular que el libro tiene asistencias silenciadas
+    const testBook = "book-mute-test";
+    const { muteBookForPriming, isPrimingMutedForBook } = await import("../lib/settings");
+    const { muteBookFocusSuggestions, loadFocusTelemetryProfile, saveFocusTelemetryProfile } = await import("../lib/focus-telemetry");
+    const { muteConsolidationForBook, isConsolidationActive } = await import("../lib/practice");
+    const { saveCharacterMemoryEnabled, loadCharacterMemoryEnabled } = await import("../lib/page-recap");
+
+    muteBookForPriming(testBook);
+    const focusProf = loadFocusTelemetryProfile();
+    saveFocusTelemetryProfile(muteBookFocusSuggestions(focusProf, testBook));
+    muteConsolidationForBook(testBook);
+    saveCharacterMemoryEnabled(false);
+
+    expect(isPrimingMutedForBook(testBook)).toBe(true);
+    expect(isConsolidationActive(testBook)).toBe(false);
+    expect(loadCharacterMemoryEnabled()).toBe(false);
+
+    render({ bookHash: testBook, language: "en" });
+
+    // Verificar que la sección de asistencias inteligentes existe
+    const section = host.querySelector(".reader-more-assists-section");
+    expect(section).not.toBeNull();
+    expect(section?.textContent).toContain("Asistencias inteligentes");
+    expect(section?.textContent).toContain("Silenciado en este libro");
+
+    const reactivateButtons = host.querySelectorAll<HTMLButtonElement>(
+      ".reader-more-reactivate-btn",
+    );
+    expect(reactivateButtons.length).toBeGreaterThanOrEqual(3);
+
+    // Reactivar vocabulario de capítulo
+    await act(async () => {
+      reactivateButtons[0].click();
+    });
+    expect(isPrimingMutedForBook(testBook)).toBe(false);
+
+    // Reactivar sugerencias de foco
+    await act(async () => {
+      reactivateButtons[1].click();
+    });
+    const updatedProf = loadFocusTelemetryProfile();
+    expect(updatedProf.mutedBookIds).not.toContain(testBook);
+
+    // Reactivar memoria de personajes
+    const charBtn = Array.from(
+      host.querySelectorAll<HTMLButtonElement>(".reader-more-reactivate-btn"),
+    ).find((b) => b.closest(".reader-more-assist-row")?.textContent?.includes("Memoria de personajes"));
+    expect(charBtn).not.toBeUndefined();
+    await act(async () => {
+      charBtn?.click();
+    });
+    expect(loadCharacterMemoryEnabled()).toBe(true);
+  });
 });
 
 

@@ -602,6 +602,8 @@ export function computeImplicitFsrsGrade(
   };
 }
 
+export const calculateImplicitFsrsGrade = computeImplicitFsrsGrade;
+
 /**
  * Selecciona los 2 o 3 mejores ejercicios al terminar el capítulo priorizando
  * palabras consultadas durante la lectura y palabras vistas en la pre-lectura.

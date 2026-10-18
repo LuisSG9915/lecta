@@ -124,6 +124,13 @@ import {
   newFocusTracker,
   recordMove,
   resetDenseStallPage,
+  evaluateReadingFatigue,
+  recordFocusAidOutcome,
+  muteBookFocusSuggestions,
+  setFocusAutoSuggestEnabled,
+  loadFocusTelemetryProfile,
+  saveFocusTelemetryProfile,
+  type FocusAidType,
   type DenseStallDetector,
   type FocusTracker,
 } from "../lib/focus-telemetry";
@@ -160,6 +167,7 @@ import {
   scrollToAnchor,
   scrollToFragment,
   scrollToSnippet,
+  charOffsetAtViewTop,
 } from "../lib/reading-location";
 import { searchBookSections, type SearchHit } from "../lib/book-search";
 import {
@@ -240,7 +248,10 @@ import {
 import {
   requestPageRecap,
   requestLastPagesRecap,
+  generateZeroSpoilerSceneRecap,
+  saveCharacterMemoryEnabled,
   type PageRecapResult,
+  type SceneReturnRecap,
 } from "../lib/page-recap";
 import { checkHasInactivityGap } from "../lib/reading-activity";
 import {
@@ -248,11 +259,22 @@ import {
   unregisterBookSections,
 } from "../lib/book-search";
 import { translateParagraph } from "../lib/translate";
+import {
+  planPredictiveChapterPrecache,
+  prefetchUpcomingChaptersLexicon,
+} from "../lib/offline-dictionary";
+import {
+  buildPostChapterConsolidationQueue,
+  loadPostChapterConsolidationPrefs,
+  isConsolidationActive,
+  type EpisodicWordItem,
+  type ConsolidationModality,
+} from "../lib/practice";
 import { ReaderRecapBubble } from "./ReaderRecapBubble";
 import { BilingueParagraph } from "./BilingueParagraph";
 import { kittenTtsEngine } from "../lib/kittenTtsEngine";
 import TtsConsentDialog from "./TtsConsentDialog";
-import SmartReaderDock from "./SmartReaderDock";
+import SmartReaderDock, { type FocusSuggestion } from "./SmartReaderDock";
 import WordPanel from "./WordPanel";
 import SectionPreview, { type SectionPreviewRow } from "./SectionPreview";
 import Sheet from "./Sheet";
@@ -317,6 +339,12 @@ import {
   lemmaOfFromEntries,
   loadPhrases,
   matchPhrase,
+  selectOptimalScaffoldingTier,
+  updateBilingualAutonomyProfile,
+  loadBilingualScaffoldingProfile,
+  saveBilingualScaffoldingProfile,
+  muteBilingualForBook,
+  setBilingualMode,
   type PhraseIndex,
 } from "../lib/phrases";
 import {
@@ -694,6 +722,24 @@ export default function Reader({
   const [recapBubbleBullets, setRecapBubbleBullets] = useState<string[]>([]);
   const [recapBubbleLoading, setRecapBubbleLoading] = useState(false);
   const recapCheckedRef = useRef(false);
+
+  // Track 12: Ensamblaje Maestro de Ciclo de Vida del Capítulo
+  const currentChapterPrimedWords = useRef<EpisodicWordItem[]>([]);
+  const currentChapterLookups = useRef<EpisodicWordItem[]>([]);
+  const chapterStartedAtRef = useRef<number>(Date.now());
+  const pendingNextChapterRef = useRef<number | null>(null);
+  const [postChapterQueue, setPostChapterQueue] = useState<
+    Array<{ item: EpisodicWordItem; modality: ConsolidationModality }>
+  >([]);
+  const [fatigueSuggestion, setFatigueSuggestion] = useState<FocusSuggestion | null>(null);
+  const [sceneRecap, setSceneRecap] = useState<SceneReturnRecap | null>(null);
+  const sectionTextRef = useRef<string>("");
+  const sessionStartRef = useRef<number>(Date.now());
+  const pageTurnTimeRef = useRef<number>(Date.now());
+  const [activeBilingualParagraph, setActiveBilingualParagraph] = useState<{
+    originalText: string;
+    translatedText?: string;
+  } | null>(null);
 
   // Track 5: Doble toque para traducir párrafo
   const lastTapRef = useRef<{ time: number; element: HTMLElement | null }>({ time: 0, element: null });
@@ -1203,7 +1249,7 @@ export default function Reader({
       .catch(() => undefined);
   }, [bookHash, signalCompanion, presenceIdle]);
 
-  // Track 5: Detección de inactividad > 6h para "¿En qué me quedé?"
+  // Track 5: Detección de inactividad > 6h para "¿En qué me quedé?" (Track 8: Cero Spoilers)
   useEffect(() => {
     if (recapCheckedRef.current || !bookHash) return;
     recapCheckedRef.current = true;
@@ -1211,11 +1257,24 @@ export default function Reader({
     void listIntervals(scope)
       .then((intervals) => {
         if (checkHasInactivityGap(intervals, bookHash)) {
+          const offset = containerRef.current
+            ? charOffsetAtViewTop(containerRef.current, sectionTextRef.current)
+            : sectionTextRef.current.length;
+          const textBefore = sectionTextRef.current.slice(0, offset);
+          const lastInterval = intervals[intervals.length - 1];
+          const lastMs = lastInterval ? lastInterval.endedAt : Date.now() - 7 * 3600 * 1000;
+          const recap = generateZeroSpoilerSceneRecap(
+            textBefore,
+            lastMs,
+            Date.now(),
+            language || "es",
+          );
+          setSceneRecap(recap);
           setRecapBubbleVisible(true);
         }
       })
       .catch(() => undefined);
-  }, [bookHash]);
+  }, [bookHash, language]);
 
   const handleTriggerReturnRecap = async () => {
     setRecapBubbleLoading(true);
@@ -1312,12 +1371,13 @@ export default function Reader({
     });
   }, [companion, page, sectionIndex, bookHash, settings.layout, pageMetrics, state]);
 
-  // Track 5: Doble toque para traducir párrafo (modo bilingüe fluido en inglés)
+  // Track 5 & Track 11: Doble toque para traducir párrafo (modo bilingüe fluido en inglés)
   const toggleParagraphTranslation = async (p: HTMLElement) => {
     if (language !== "en") return;
     const existing = p.querySelector(".paragraph-inline-translation");
     if (existing) {
       existing.remove();
+      setActiveBilingualParagraph(null);
       return;
     }
     if (p.querySelector(".paragraph-translating-indicator")) return;
@@ -1340,6 +1400,10 @@ export default function Reader({
         em.textContent = translation;
         span.appendChild(em);
         p.appendChild(span);
+        setActiveBilingualParagraph({
+          originalText,
+          translatedText: translation,
+        });
       }
     } catch {
       indicator.remove();
@@ -1390,15 +1454,30 @@ export default function Reader({
     setSheet(null);
     setSelection(hit);
     consultedInPageRef.current.add(hit.word.toLowerCase());
-    // Recalibración adaptativa hacia abajo (outcome = 0) para el idioma actual
+    // Recalibración adaptativa hacia abajo (outcome = 0) para el idioma actual y registro en lookups del capítulo
     try {
       const currentLang = language || (bookRef.current ? getBookLanguage(bookRef.current) : "es");
       const cachedAnalysis = analysisFor(sectionIndexRef.current);
       const hitEntry = cachedAnalysis?.entries[hit.word.toLowerCase()]?.[0];
       const wordBeta = betaFromZipf(hitEntry?.zipf);
       updateLanguageTheta(currentLang, wordBeta, 0, 0.8);
+
+      const tocLabel = tocRowsRef.current.find((r) => r.index === sectionIndexRef.current)?.label;
+      const lookupItem: EpisodicWordItem = {
+        lemma: hitEntry?.lemma || hit.word.toLowerCase(),
+        surfaceForm: hit.word,
+        lang: currentLang,
+        shortGloss: hitEntry?.senses?.[0]?.definition || "",
+        chapterSentence: hit.context || hit.word,
+        chapterTitle: tocLabel || `Sección ${sectionIndexRef.current + 1}`,
+        source: "in-chapter-lookup",
+        partOfSpeech: hitEntry?.pos ?? undefined,
+      };
+      if (!currentChapterLookups.current.some((l) => l.lemma === lookupItem.lemma)) {
+        currentChapterLookups.current.push(lookupItem);
+      }
     } catch {
-      // Ignorar fallo al persistir theta
+      // Ignorar fallo al persistir theta o lookups
     }
     // La consulta es un acto neutral para el modelo, pero sí queda en
     // el trayecto: sirve para distinguir curiosidad de guardado.
@@ -1826,6 +1905,19 @@ export default function Reader({
         zipf: row.zipf,
       })),
     });
+    const freshPrimed: EpisodicWordItem[] = fresh.slice(0, 5).map((row) => ({
+      lemma: row.lemma || row.form,
+      surfaceForm: row.form,
+      lang: language || "es",
+      shortGloss: row.meaning || "",
+      chapterSentence: row.context || row.contextSnippet || row.form,
+      chapterTitle: current.target.label,
+      source: "pre-chapter-primed",
+      partOfSpeech: row.pos ?? undefined,
+    }));
+    if (freshPrimed.length > 0) {
+      currentChapterPrimedWords.current = freshPrimed;
+    }
   };
 
   // Medición de un lema desde el análisis cacheado del destino
@@ -2205,6 +2297,22 @@ export default function Reader({
         );
         if (result.state === "ready") {
           applyPrediction(index, lang);
+          // Track 12: Primed words para consolidación episódica de fin de capítulo
+          const suggestion = prepRowsFor(result, lang, prepLexRef.current);
+          const tocLabel = tocRowsRef.current.find((r) => r.index === index)?.label;
+          const primed: EpisodicWordItem[] = (suggestion?.rows ?? []).slice(0, 5).map((row) => ({
+            lemma: row.lemma || row.form,
+            surfaceForm: row.form,
+            lang,
+            shortGloss: row.meaning || "",
+            chapterSentence: row.context || row.contextSnippet || row.form,
+            chapterTitle: tocLabel || `Sección ${index + 1}`,
+            source: "pre-chapter-primed",
+            partOfSpeech: row.pos ?? undefined,
+          }));
+          if (primed.length > 0) {
+            currentChapterPrimedWords.current = primed;
+          }
           // Si hay aviso para este destino, el conteo se actualiza;
           // si el aviso fue descartado, no reaparece.
           void evaluatePreparation(index, "analysis-settled");
@@ -2599,6 +2707,20 @@ export default function Reader({
         const text = [...sanitized.childNodes]
           .map((node) => node.textContent ?? "")
           .join("\n");
+        sectionTextRef.current = text;
+        if (sectionIndexRef.current >= 0 && index !== sectionIndexRef.current) {
+          currentChapterLookups.current = [];
+          chapterStartedAtRef.current = Date.now();
+        }
+        const isL2 = lang !== loadNativeLanguage();
+        if (isL2 && (typeof navigator === "undefined" || !("onLine" in navigator) || navigator.onLine)) {
+          planPredictiveChapterPrecache(index, book.sections.length, 2);
+          void prefetchUpcomingChaptersLexicon(bookHash, index, {
+            lookahead: 2,
+            language: lang,
+            scope: captureDbScope(),
+          });
+        }
         const enterFrom =
           sectionIndexRef.current >= 0 && index !== sectionIndexRef.current
             ? index > sectionIndexRef.current
@@ -3818,6 +3940,38 @@ export default function Reader({
       noteActivity();
       trackMove(delta < 0);
       checkPassiveExposure();
+
+      // Track 9: Neuro-Foco en vivo
+      const now = Date.now();
+      const dwellTimeMs = Math.max(500, now - pageTurnTimeRef.current);
+      pageTurnTimeRef.current = now;
+      const direction: "forward" | "backward" = delta > 0 ? "forward" : "backward";
+      const isL2 = (language || (bookRef.current ? getBookLanguage(bookRef.current) : "es")) !== loadNativeLanguage();
+      const telemetryProfile = loadFocusTelemetryProfile();
+      const fatigueResult = evaluateReadingFatigue(
+        telemetryProfile,
+        {
+          dwellTimeMs,
+          direction,
+          wordCountOnPage: 80,
+          sessionMinutesElapsed: Math.max(0, (now - sessionStartRef.current) / 60000),
+          bookId: bookHash,
+          lang: language || "es",
+          recentBackwardCountInWindow: delta < 0 ? 1 : 0,
+        },
+        isL2,
+      );
+      saveFocusTelemetryProfile(fatigueResult.updatedProfile);
+      if (fatigueResult.isFatigued) {
+        setFatigueSuggestion({
+          isFatigued: true,
+          reason: fatigueResult.reason,
+          recommendedAid: fatigueResult.recommendedAid,
+        });
+      } else if (fatigueResult.reason === "none") {
+        setFatigueSuggestion(null);
+      }
+
       const next = pageRef.current + delta;
       if (next < 0) {
         if (sectionIndexRef.current > 0)
@@ -3831,6 +3985,7 @@ export default function Reader({
         // En la última página el ratio ya es ~1: pasar a la sección
         // siguiente cuenta como tramo terminado (el gato celebra).
         if (sectionIndexRef.current + 1 < sectionTotal) {
+          const nextIndex = sectionIndexRef.current + 1;
           try {
             const currentLang = language || (bookRef.current ? getBookLanguage(bookRef.current) : "es");
             recordChapterCompleted(currentLang);
@@ -3838,7 +3993,31 @@ export default function Reader({
             // Ignorar fallo de guardado
           }
           signalCompanion({ kind: "goal_completed", at: Date.now() });
-          return navigate("chapter", { index: sectionIndexRef.current + 1 });
+
+          // Track 6 & 10: Fin de Capítulo: Aprendizaje Pasivo + Consolidación Episódica
+          checkPassiveExposure();
+          const prefs = loadPostChapterConsolidationPrefs();
+          const candidates: EpisodicWordItem[] = [
+            ...currentChapterLookups.current,
+            ...currentChapterPrimedWords.current,
+          ];
+          const queue = buildPostChapterConsolidationQueue(candidates, prefs, isL2, { bookId: bookHash });
+
+          if (queue.length > 0 && isConsolidationActive(bookHash)) {
+            setPostChapterQueue(queue);
+            pendingNextChapterRef.current = nextIndex;
+            const durationMinutes = Math.max(1, Math.round((Date.now() - chapterStartedAtRef.current) / 60000));
+            setDeepSummary({
+              durationMinutes,
+              targetMinutes: 15,
+              sectionsRead: 1,
+              completedNaturally: true,
+              wordsAssimilated: sectionWords,
+            });
+            return Promise.resolve();
+          }
+
+          return navigate("chapter", { index: nextIndex });
         }
         return Promise.resolve();
       }
@@ -3846,7 +4025,7 @@ export default function Reader({
       saveSoon();
       return Promise.resolve();
     },
-    [navigate, saveSoon, sectionTotal, setPageIdx, noteActivity, trackMove, signalCompanion, checkPassiveExposure],
+    [navigate, saveSoon, sectionTotal, setPageIdx, noteActivity, trackMove, signalCompanion, checkPassiveExposure, language, bookHash, sectionWords],
   );
 
   usePageGesture({
@@ -4678,6 +4857,52 @@ export default function Reader({
     }
   };
 
+  // Track 9: Neuro-Foco - Manejadores de píldora adaptativa
+  const handleAcceptFocusAid = (aid: FocusAidType) => {
+    const prof = loadFocusTelemetryProfile();
+    const updated = recordFocusAidOutcome(prof, aid, true);
+    saveFocusTelemetryProfile(updated);
+    setFatigueSuggestion(null);
+
+    const updatedSettings: ReaderSettings = { ...settings };
+    if (aid === "paragraph-focus") {
+      updatedSettings.paragraphFocus = true;
+      updatedSettings.focusMode = "paragraph";
+    } else if (aid === "syntactic-lines") {
+      updatedSettings.syntacticLines = true;
+      updatedSettings.focusMode = "syntactic";
+    } else if (aid === "focus-ruler") {
+      updatedSettings.focusRuler = true;
+      updatedSettings.focusMode = "ruler";
+    }
+    setSettings(updatedSettings);
+    saveReaderSettings(updatedSettings, bookHash);
+    triggerHaptic("success");
+  };
+
+  const handleDismissFocusSuggestion = () => {
+    if (fatigueSuggestion?.recommendedAid) {
+      const prof = loadFocusTelemetryProfile();
+      const updated = recordFocusAidOutcome(prof, fatigueSuggestion.recommendedAid, false);
+      saveFocusTelemetryProfile(updated);
+    }
+    setFatigueSuggestion(null);
+  };
+
+  const handleMuteFocusForBook = () => {
+    const prof = loadFocusTelemetryProfile();
+    const updated = muteBookFocusSuggestions(prof, bookHash);
+    saveFocusTelemetryProfile(updated);
+    setFatigueSuggestion(null);
+  };
+
+  const handleDisableFocusGlobally = () => {
+    const prof = loadFocusTelemetryProfile();
+    const updated = setFocusAutoSuggestEnabled(prof, false);
+    saveFocusTelemetryProfile(updated);
+    setFatigueSuggestion(null);
+  };
+
   const handleCreateQuoteCard = () => {
     closeSheet();
     const sel = window.getSelection()?.toString().replace(/\s+/g, " ").trim();
@@ -5230,8 +5455,16 @@ export default function Reader({
           <ReaderRecapBubble
             recapBullets={recapBubbleBullets}
             isLoading={recapBubbleLoading}
+            sceneRecap={sceneRecap}
             onDismiss={() => setRecapBubbleVisible(false)}
             onTriggerRecap={handleTriggerReturnRecap}
+            onSelectCharacter={(name) => {
+              openSelection({
+                word: name,
+                context: sceneRecap?.lastReadSnippet,
+              });
+            }}
+            onDisableCharacterMemory={() => saveCharacterMemoryEnabled(false)}
           />
         ) : null}
         <div className="page-viewport" ref={viewportRef}>
@@ -5657,6 +5890,14 @@ export default function Reader({
           }}
           onStartAudio={onTtsRequest}
           onRecap={handleRecapClick}
+          focusSuggestion={fatigueSuggestion}
+          isFatigued={fatigueSuggestion?.isFatigued}
+          recommendedFocusAid={fatigueSuggestion?.recommendedAid}
+          focusFatigueReason={fatigueSuggestion?.reason}
+          onAcceptFocusAid={handleAcceptFocusAid}
+          onDismissFocusSuggestion={handleDismissFocusSuggestion}
+          onMuteFocusForBook={handleMuteFocusForBook}
+          onDisableFocusGlobally={handleDisableFocusGlobally}
           companionSlot={
             catShown && catState ? (
               <div
@@ -7109,6 +7350,11 @@ export default function Reader({
           sections={bookSections}
           toc={catalog?.targets?.map((t) => ({ index: t.sectionIndex, label: t.label }))}
           currentSectionIndex={sectionIndex}
+          charOffsetInChapter={
+            containerRef.current
+              ? charOffsetAtViewTop(containerRef.current, sectionTextRef.current)
+              : 0
+          }
           currentChapterTitle={
             currentChapterTarget?.label ??
             catalog?.targets?.find((t) => t.sectionIndex === sectionIndex)?.label ??
@@ -7350,8 +7596,69 @@ export default function Reader({
       {deepSummary ? (
         <DeepReadingSummaryModal
           summary={deepSummary}
-          onClose={() => setDeepSummary(null)}
+          consolidationQueue={postChapterQueue}
+          bookId={bookHash}
+          onContinue={() => {
+            setDeepSummary(null);
+            setPostChapterQueue([]);
+            if (pendingNextChapterRef.current !== null) {
+              const target = pendingNextChapterRef.current;
+              pendingNextChapterRef.current = null;
+              void navigate("chapter", { index: target });
+            }
+          }}
+          onClose={() => {
+            setDeepSummary(null);
+            setPostChapterQueue([]);
+            if (pendingNextChapterRef.current !== null) {
+              const target = pendingNextChapterRef.current;
+              pendingNextChapterRef.current = null;
+              void navigate("chapter", { index: target });
+            }
+          }}
         />
+      ) : null}
+
+      {activeBilingualParagraph ? (
+        <div
+          className="reader-bilingual-floating-container"
+          role="region"
+          aria-label="Párrafo bilingüe"
+          style={{
+            position: "fixed",
+            bottom: "84px",
+            left: "1rem",
+            right: "1rem",
+            margin: "0 auto",
+            maxWidth: "640px",
+            zIndex: 45,
+          }}
+        >
+          <BilingueParagraph
+            bookId={bookHash}
+            bookLanguage={language}
+            originalText={activeBilingualParagraph.originalText}
+            translatedText={activeBilingualParagraph.translatedText}
+            initialTier={selectOptimalScaffoldingTier(
+              activeBilingualParagraph.originalText,
+              0.1,
+              language || "en",
+              loadBilingualScaffoldingProfile(),
+              bookHash,
+            )}
+            onTierEscalated={() => {
+              const prof = loadBilingualScaffoldingProfile();
+              const updated = updateBilingualAutonomyProfile(
+                prof,
+                language || "en",
+                "escalated",
+              );
+              saveBilingualScaffoldingProfile(updated);
+            }}
+            onMuteForBook={(id) => muteBilingualForBook(id)}
+            onDisableBilingual={() => setBilingualMode("off")}
+          />
+        </div>
       ) : null}
       {glossaryOpen ? (
         <BookGlossaryModal

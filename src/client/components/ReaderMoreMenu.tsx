@@ -1,14 +1,42 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   applyReadingPreset,
   detectActiveReadingPreset,
   READING_PRESETS,
   setChapterPrimingMode,
+  isPrimingMutedForBook,
+  unmuteBookForPriming,
+  loadNativeLanguage,
+  saveUnifiedSmartAssists,
   type ChapterPrimingMode,
   type ReaderSettings,
   type ReadingPreset,
   type StrategyContrast,
 } from "../lib/settings";
+import { saveSmartAssistsPrefsIdb } from "../lib/idb";
+import {
+  loadFocusTelemetryProfile,
+  saveFocusTelemetryProfile,
+  unmuteBookFocusSuggestions,
+  setFocusAutoSuggestEnabled,
+  type UserFocusTelemetryProfile,
+} from "../lib/focus-telemetry";
+import {
+  loadBilingualScaffoldingProfile,
+  unmuteBilingualForBook,
+  setBilingualMode,
+  type BilingualScaffoldingProfile,
+} from "../lib/phrases";
+import {
+  loadPostChapterConsolidationPrefs,
+  unmuteConsolidationForBook,
+  enableConsolidationGlobally,
+  type PostChapterConsolidationPrefs,
+} from "../lib/practice";
+import {
+  loadCharacterMemoryEnabled,
+  saveCharacterMemoryEnabled,
+} from "../lib/page-recap";
 import Icon from "./Icon";
 import OfflineDictionaryControl from "./OfflineDictionaryControl";
 
@@ -70,6 +98,102 @@ export default function ReaderMoreMenu({
   onChapterPrimingModeChange,
 }: ReaderMoreMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
+
+  // Estados reactivos de asistencias para ver y reactivar si fueron silenciadas
+  const [isPrimingMutedThisBook, setIsPrimingMutedThisBook] = useState(() =>
+    bookHash ? isPrimingMutedForBook(bookHash) : false,
+  );
+  const [focusProfile, setFocusProfile] = useState<UserFocusTelemetryProfile>(() =>
+    loadFocusTelemetryProfile(),
+  );
+  const [bilingualProfile, setBilingualProfile] = useState<BilingualScaffoldingProfile>(() =>
+    loadBilingualScaffoldingProfile(),
+  );
+  const [consolidationPrefs, setConsolidationPrefs] = useState<PostChapterConsolidationPrefs>(() =>
+    loadPostChapterConsolidationPrefs(),
+  );
+  const [characterMemoryEnabled, setCharacterMemoryEnabled] = useState(() =>
+    loadCharacterMemoryEnabled(),
+  );
+
+  const isForeignLang = language !== loadNativeLanguage();
+  const isFocusMutedThisBook = Boolean(
+    bookHash && focusProfile.mutedBookIds.includes(bookHash),
+  );
+  const isBilingualMutedThisBook = Boolean(
+    bookHash && bilingualProfile.mutedBookIds.includes(bookHash),
+  );
+  const isConsolidationMutedThisBook = Boolean(
+    bookHash && consolidationPrefs.mutedBookIds.includes(bookHash),
+  );
+
+  const handleReactivatePrimingForBook = () => {
+    if (bookHash) {
+      unmuteBookForPriming(bookHash);
+      setIsPrimingMutedThisBook(false);
+      saveUnifiedSmartAssists({ mutedPrimingBookIds: [] }, bookHash);
+      void saveSmartAssistsPrefsIdb({ mutedPrimingBookIds: [] });
+    }
+  };
+
+  const handleReactivateFocusForBook = () => {
+    if (bookHash) {
+      const updated = unmuteBookFocusSuggestions(focusProfile, bookHash);
+      saveFocusTelemetryProfile(updated);
+      setFocusProfile(updated);
+      saveUnifiedSmartAssists({ mutedFocusBookIds: updated.mutedBookIds }, bookHash);
+      void saveSmartAssistsPrefsIdb({ mutedFocusBookIds: updated.mutedBookIds });
+    }
+  };
+
+  const handleReactivateFocusGlobally = () => {
+    const updated = setFocusAutoSuggestEnabled(focusProfile, true);
+    saveFocusTelemetryProfile(updated);
+    setFocusProfile(updated);
+    saveUnifiedSmartAssists({ focusAutoSuggestEnabled: true }, bookHash);
+    void saveSmartAssistsPrefsIdb({ focusAutoSuggestEnabled: true });
+  };
+
+  const handleReactivateBilingualForBook = () => {
+    if (bookHash) {
+      unmuteBilingualForBook(bookHash);
+      const next = loadBilingualScaffoldingProfile();
+      setBilingualProfile(next);
+      saveUnifiedSmartAssists({ mutedBilingualBookIds: next.mutedBookIds }, bookHash);
+      void saveSmartAssistsPrefsIdb({ mutedBilingualBookIds: next.mutedBookIds });
+    }
+  };
+
+  const handleReactivateBilingualGlobally = () => {
+    setBilingualMode("auto");
+    setBilingualProfile(loadBilingualScaffoldingProfile());
+    saveUnifiedSmartAssists({ bilingualScaffoldingMode: "auto" }, bookHash);
+    void saveSmartAssistsPrefsIdb({ bilingualScaffoldingMode: "auto" });
+  };
+
+  const handleReactivateConsolidationForBook = () => {
+    if (bookHash) {
+      unmuteConsolidationForBook(bookHash);
+      const next = loadPostChapterConsolidationPrefs();
+      setConsolidationPrefs(next);
+      saveUnifiedSmartAssists({ mutedConsolidationBookIds: next.mutedBookIds }, bookHash);
+      void saveSmartAssistsPrefsIdb({ mutedConsolidationBookIds: next.mutedBookIds });
+    }
+  };
+
+  const handleReactivateConsolidationGlobally = () => {
+    enableConsolidationGlobally();
+    setConsolidationPrefs(loadPostChapterConsolidationPrefs());
+    saveUnifiedSmartAssists({ postChapterConsolidationEnabled: true }, bookHash);
+    void saveSmartAssistsPrefsIdb({ postChapterConsolidationEnabled: true });
+  };
+
+  const handleReactivateCharacterMemory = () => {
+    saveCharacterMemoryEnabled(true);
+    setCharacterMemoryEnabled(true);
+    saveUnifiedSmartAssists({ characterMemoryEnabled: true }, bookHash);
+    void saveSmartAssistsPrefsIdb({ characterMemoryEnabled: true });
+  };
 
   const currentPrimingMode =
     chapterPrimingMode ?? settings?.chapterPrimingMode ?? "auto";
@@ -412,6 +536,152 @@ export default function ReaderMoreMenu({
           </details>
         </div>
       ) : null}
+
+      {/* Sección de Asistencias Inteligentes y Reactivación (Track 12) */}
+      <div className="reader-more-assists-section">
+        <div className="reader-more-assists-header">
+          <Icon name="sparkles" size={16} />
+          <span className="reader-more-assists-title">Asistencias inteligentes</span>
+        </div>
+        <div className="reader-more-assists-list">
+          {/* 1. Vocabulario de inicio de capítulo */}
+          <div className="reader-more-assist-row">
+            <div className="reader-more-assist-info">
+              <span className="reader-more-assist-name">Vocabulario de capítulo</span>
+              <span className="reader-more-assist-desc">
+                {isPrimingMutedThisBook
+                  ? "Silenciado en este libro"
+                  : currentPrimingMode === "off"
+                    ? "Desactivado globalmente"
+                    : "Activo"}
+              </span>
+            </div>
+            {isPrimingMutedThisBook ? (
+              <button
+                type="button"
+                className="btn--quiet reader-more-reactivate-btn"
+                onClick={handleReactivatePrimingForBook}
+              >
+                Reactivar
+              </button>
+            ) : null}
+          </div>
+
+          {/* 2. Neuro-foco adaptativo */}
+          <div className="reader-more-assist-row">
+            <div className="reader-more-assist-info">
+              <span className="reader-more-assist-name">Sugerencias de concentración</span>
+              <span className="reader-more-assist-desc">
+                {isFocusMutedThisBook
+                  ? "Silenciadas en este libro"
+                  : !focusProfile.autoSuggestEnabled
+                    ? "Desactivadas siempre"
+                    : "Activas"}
+              </span>
+            </div>
+            {isFocusMutedThisBook ? (
+              <button
+                type="button"
+                className="btn--quiet reader-more-reactivate-btn"
+                onClick={handleReactivateFocusForBook}
+              >
+                Reactivar
+              </button>
+            ) : !focusProfile.autoSuggestEnabled ? (
+              <button
+                type="button"
+                className="btn--quiet reader-more-reactivate-btn"
+                onClick={handleReactivateFocusGlobally}
+              >
+                Activar
+              </button>
+            ) : null}
+          </div>
+
+          {/* 3. Andamiaje bilingüe */}
+          {(isForeignLang || isBilingualMutedThisBook) ? (
+            <div className="reader-more-assist-row">
+              <div className="reader-more-assist-info">
+                <span className="reader-more-assist-name">Andamiaje bilingüe</span>
+                <span className="reader-more-assist-desc">
+                  {isBilingualMutedThisBook
+                    ? "Silenciado en este libro"
+                    : bilingualProfile.mode === "off"
+                      ? "Desactivado siempre"
+                      : "Activo"}
+                </span>
+              </div>
+              {isBilingualMutedThisBook ? (
+                <button
+                  type="button"
+                  className="btn--quiet reader-more-reactivate-btn"
+                  onClick={handleReactivateBilingualForBook}
+                >
+                  Reactivar
+                </button>
+              ) : bilingualProfile.mode === "off" ? (
+                <button
+                  type="button"
+                  className="btn--quiet reader-more-reactivate-btn"
+                  onClick={handleReactivateBilingualGlobally}
+                >
+                  Activar
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+
+          {/* 4. Consolidación post-capítulo */}
+          <div className="reader-more-assist-row">
+            <div className="reader-more-assist-info">
+              <span className="reader-more-assist-name">Consolidación post-capítulo</span>
+              <span className="reader-more-assist-desc">
+                {isConsolidationMutedThisBook
+                  ? "Silenciada en este libro"
+                  : !consolidationPrefs.enabled
+                    ? "Desactivada siempre"
+                    : "Activa (25s)"}
+              </span>
+            </div>
+            {isConsolidationMutedThisBook ? (
+              <button
+                type="button"
+                className="btn--quiet reader-more-reactivate-btn"
+                onClick={handleReactivateConsolidationForBook}
+              >
+                Reactivar
+              </button>
+            ) : !consolidationPrefs.enabled ? (
+              <button
+                type="button"
+                className="btn--quiet reader-more-reactivate-btn"
+                onClick={handleReactivateConsolidationGlobally}
+              >
+                Activar
+              </button>
+            ) : null}
+          </div>
+
+          {/* 5. Memoria de personajes */}
+          <div className="reader-more-assist-row">
+            <div className="reader-more-assist-info">
+              <span className="reader-more-assist-name">Memoria de personajes</span>
+              <span className="reader-more-assist-desc">
+                {characterMemoryEnabled ? "Activa (Cero Spoilers)" : "Desactivada"}
+              </span>
+            </div>
+            {!characterMemoryEnabled ? (
+              <button
+                type="button"
+                className="btn--quiet reader-more-reactivate-btn"
+                onClick={handleReactivateCharacterMemory}
+              >
+                Activar
+              </button>
+            ) : null}
+          </div>
+        </div>
+      </div>
 
       {bookHash ? (
         <div className="reader-more-offline-section">

@@ -114,3 +114,63 @@ export function describeReadingLocation(
   return targetAt(ranges, sectionIndex, context);
 }
 
+/**
+ * Encuentra el elemento visible más alto dentro del horizonte de lectura.
+ */
+export function findVisibleBlockAtViewTop(container: HTMLElement): HTMLElement | null {
+  const horizon = Math.min(window.innerHeight * 0.5, 400);
+  for (const el of container.querySelectorAll<HTMLElement>(BLOCK_SELECTOR)) {
+    const rect = el.getBoundingClientRect();
+    if (rect.bottom > 0 && rect.top < horizon) {
+      const text = normalizeBlockText(el.textContent ?? "");
+      if (text) return el;
+    }
+  }
+  return null;
+}
+
+/**
+ * Calcula el desplazamiento exacto en caracteres (charOffsetInChapter) de un párrafo o elemento
+ * dentro del texto plano del capítulo para garantizar la barrera matemática Cero Spoilers.
+ */
+export function charOffsetOfElementInChapter(
+  container: HTMLElement,
+  targetEl: HTMLElement | null,
+  chapterText?: string,
+): number {
+  if (!targetEl) return 0;
+
+  if (chapterText) {
+    const snippet = normalizeBlockText(targetEl.textContent ?? "").slice(0, 50);
+    if (snippet) {
+      const idx = chapterText.indexOf(snippet);
+      if (idx !== -1) {
+        return idx + (targetEl.textContent ?? "").length;
+      }
+    }
+  }
+
+  const blocks = Array.from(container.querySelectorAll<HTMLElement>(BLOCK_SELECTOR));
+  let offset = 0;
+  for (const el of blocks) {
+    const len = (el.textContent ?? "").length;
+    if (el === targetEl) {
+      offset += len;
+      break;
+    }
+    offset += len + 1;
+  }
+  return offset;
+}
+
+/**
+ * Obtiene el charOffsetInChapter exacto del párrafo visible actual en la parte superior.
+ */
+export function charOffsetAtViewTop(
+  container: HTMLElement,
+  chapterText?: string,
+): number {
+  const visible = findVisibleBlockAtViewTop(container);
+  return charOffsetOfElementInChapter(container, visible, chapterText);
+}
+

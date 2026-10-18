@@ -13,4 +13,10 @@ Cuando el usuario invoque `/lecta-ux-overhaul`, ejecuta este plan paso a paso (o
 - **Track 4 (WordPanel 1-Toque, Cuaderno Unificado y Rincón del Gato)**: Ver @[Track 4](tracks/track-4-vocab-cat.md)
 - **Track 5 (4 Funciones Mágicas IA + Kindle 4-Letras)**: Ver @[Track 5](tracks/track-5-magic-features.md)
 - **Track 6 (Pre-lectura Adaptativa y Multilingüe - Umbral del Capítulo)**: Ver @[Track 6](tracks/track-6-adaptive-chapter-priming.md)
+- **Track 7 (Kindle & E-Ink Pre-Chapter Priming)**: Ver @[Track 7](tracks/track-7-kindle-eink-priming.md)
+- **Track 8 (Memoria de Personajes con Cero Spoilers y Recaps)**: Ver @[Track 8](tracks/track-8-character-memory.md)
+- **Track 9 (Neuro-Foco en Vivo y Telemetría de Fatiga)**: Ver @[Track 9](tracks/track-9-neuro-focus-telemetry.md)
+- **Track 10 (Consolidación Episódica y Cierre de Capítulo con FSRS Implícito)**: Ver @[Track 10](tracks/track-10-episodic-consolidation.md)
+- **Track 11 (Andamiaje Bilingüe L2 y Pre-Caché Predictivo)**: Ver @[Track 11](tracks/track-11-bilingual-scaffolding-l2.md)
+- **Track 12 (Ensamblaje Maestro en Reader.tsx y Validación Global)**: Ver @[Track 12](tracks/track-12-master-wiring.md)
 

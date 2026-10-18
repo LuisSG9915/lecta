@@ -5,6 +5,8 @@ import {
   normalizeBlockText,
   scrollToAnchor,
   scrollToFragment,
+  charOffsetAtViewTop,
+  charOffsetOfElementInChapter,
 } from "./reading-location";
 
 // jsdom no implementa scrollIntoView ni geometría real: se simulan.
@@ -101,5 +103,28 @@ describe("scrollToFragment", () => {
   it("devuelve false si el id no existe", () => {
     const c = container(block("texto", 0));
     expect(scrollToFragment(c, "inexistente")).toBe(false);
+  });
+});
+
+describe("charOffsetAtViewTop and charOffsetOfElementInChapter", () => {
+  it("calcula el offset exacto en caracteres del bloque visible", () => {
+    const p1 = block("Primer párrafo del capítulo.", -150, 40);
+    const p2 = block("Segundo párrafo con datos importantes.", 50, 40);
+    const p3 = block("Tercer párrafo con posibles spoilers.", 250, 40);
+    const c = container(p1, p2, p3);
+
+    const fullChapterText =
+      "Primer párrafo del capítulo. Segundo párrafo con datos importantes. Tercer párrafo con posibles spoilers.";
+
+    const offset = charOffsetAtViewTop(c, fullChapterText);
+    expect(offset).toBeGreaterThan(0);
+    // El offset incluye hasta el final del segundo párrafo
+    expect(fullChapterText.slice(0, offset)).toContain("Segundo párrafo con datos importantes.");
+    // Y no contiene el tercer párrafo
+    expect(fullChapterText.slice(0, offset)).not.toContain("posibles spoilers");
+
+    const offsetOfP2 = charOffsetOfElementInChapter(c, p2, fullChapterText);
+    expect(offsetOfP2).toBeGreaterThan(0);
+    expect(fullChapterText.slice(0, offsetOfP2)).toContain("Segundo párrafo con datos importantes.");
   });
 });

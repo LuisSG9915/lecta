@@ -15,3 +15,6 @@ artifacts/
 
 .DS_Store
 catalog-seed/
+
+# Bundles de contexto temporales de agentes
+.agents/context-bundle-*.md

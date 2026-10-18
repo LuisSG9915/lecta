@@ -404,3 +404,69 @@ export function updateBilingualAutonomyProfile(
     },
   };
 }
+
+export const BILINGUAL_PROFILE_KEY = "lecta:bilingual_scaffolding_profile:v1";
+
+export function loadBilingualScaffoldingProfile(): BilingualScaffoldingProfile {
+  try {
+    const raw = typeof localStorage !== "undefined" ? localStorage.getItem(BILINGUAL_PROFILE_KEY) : null;
+    if (!raw) return { ...DEFAULT_BILINGUAL_PROFILE };
+    const parsed = JSON.parse(raw) as Partial<BilingualScaffoldingProfile>;
+    return {
+      mode:
+        parsed.mode === "auto" ||
+        parsed.mode === "tier-1-only" ||
+        parsed.mode === "tier-3-always" ||
+        parsed.mode === "off"
+          ? parsed.mode
+          : DEFAULT_BILINGUAL_PROFILE.mode,
+      mutedBookIds: Array.isArray(parsed.mutedBookIds) ? parsed.mutedBookIds : [],
+      autonomyBiasByLang:
+        typeof parsed.autonomyBiasByLang === "object" && parsed.autonomyBiasByLang !== null
+          ? parsed.autonomyBiasByLang
+          : {},
+    };
+  } catch {
+    return { ...DEFAULT_BILINGUAL_PROFILE };
+  }
+}
+
+export function saveBilingualScaffoldingProfile(
+  profile: BilingualScaffoldingProfile,
+): void {
+  try {
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem(BILINGUAL_PROFILE_KEY, JSON.stringify(profile));
+    }
+  } catch {
+    // ignorar quota error
+  }
+}
+
+export function muteBilingualForBook(bookId: string): void {
+  if (!bookId) return;
+  const p = loadBilingualScaffoldingProfile();
+  if (!p.mutedBookIds.includes(bookId)) {
+    saveBilingualScaffoldingProfile({
+      ...p,
+      mutedBookIds: [...p.mutedBookIds, bookId],
+    });
+  }
+}
+
+export function unmuteBilingualForBook(bookId: string): void {
+  if (!bookId) return;
+  const p = loadBilingualScaffoldingProfile();
+  saveBilingualScaffoldingProfile({
+    ...p,
+    mutedBookIds: p.mutedBookIds.filter((id) => id !== bookId),
+  });
+}
+
+export function setBilingualMode(
+  mode: BilingualScaffoldingProfile["mode"],
+): void {
+  const p = loadBilingualScaffoldingProfile();
+  saveBilingualScaffoldingProfile({ ...p, mode });
+}
+

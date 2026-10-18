@@ -274,7 +274,7 @@ export interface ReaderSettings {
   readingPreset?: ReadingPreset;
   /** Guía de color / guía cromática. */
   colorGuide?: boolean;
-  /** Modo de preparación adaptativa de vocabulario antes de cada capítulo */
+  /** Modo de preparación adaptativa de vocabulario antes de cada capítulo (Track 6) */
   chapterPrimingMode?: ChapterPrimingMode;
   /** Máximo de palabras por capítulo (Cowan: 3 a 5) */
   maxPrimingWords?: 3 | 4 | 5 | 7;
@@ -282,6 +282,18 @@ export interface ReaderSettings {
   mutedPrimingBookIds?: string[];
   /** Subrayado sutil en el texto para palabras pre-vistas */
   subtleInTextAnchor?: boolean;
+  /** Memoria de personajes sin spoilers (Track 8) */
+  characterMemoryEnabled?: boolean;
+  mutedCharacterMemoryBookIds?: string[];
+  /** Neuro-foco adaptativo y telemetría de fatiga (Track 9) */
+  focusAutoSuggestEnabled?: boolean;
+  mutedFocusBookIds?: string[];
+  /** Micro-reto de consolidación episódica al cerrar capítulo (Track 10) */
+  postChapterConsolidationEnabled?: boolean;
+  mutedConsolidationBookIds?: string[];
+  /** Andamiaje bilingüe multinivel en L2 (Track 11) */
+  bilingualScaffoldingMode?: "auto" | "tier-1-only" | "tier-3-always" | "off";
+  mutedBilingualBookIds?: string[];
 }
 
 export const READER_DEFAULTS: ReaderSettings = {
@@ -311,6 +323,18 @@ export const READER_DEFAULTS: ReaderSettings = {
   hideSecondaryIndicators: true,
   visualPacer: false,
   pacerWpm: 210,
+  chapterPrimingMode: "auto",
+  maxPrimingWords: 4,
+  mutedPrimingBookIds: [],
+  subtleInTextAnchor: true,
+  characterMemoryEnabled: true,
+  mutedCharacterMemoryBookIds: [],
+  focusAutoSuggestEnabled: true,
+  mutedFocusBookIds: [],
+  postChapterConsolidationEnabled: true,
+  mutedConsolidationBookIds: [],
+  bilingualScaffoldingMode: "auto",
+  mutedBilingualBookIds: [],
 };
 
 export type ChapterPrimingMode = "auto" | "on-demand" | "off";
@@ -597,6 +621,7 @@ export function parseReaderSettings(raw: string | null): ReaderSettings {
   if (!raw) return READER_DEFAULTS;
   try {
     const v = JSON.parse(raw) as Partial<ReaderSettings>;
+    if (!v || typeof v !== "object" || Array.isArray(v)) return READER_DEFAULTS;
     const focusMode: FocusMode =
       v.focusMode === "syntactic" ||
       v.focusMode === "paragraph" ||
@@ -761,11 +786,122 @@ export function parseReaderSettings(raw: string | null): ReaderSettings {
               typeof v.subtleInTextAnchor === "boolean" ? v.subtleInTextAnchor : true,
           }
         : {}),
+      ...(v.characterMemoryEnabled !== undefined
+        ? { characterMemoryEnabled: v.characterMemoryEnabled === true }
+        : {}),
+      ...(v.mutedCharacterMemoryBookIds !== undefined
+        ? {
+            mutedCharacterMemoryBookIds: Array.isArray(v.mutedCharacterMemoryBookIds)
+              ? v.mutedCharacterMemoryBookIds.filter((id): id is string => typeof id === "string")
+              : [],
+          }
+        : {}),
+      ...(v.focusAutoSuggestEnabled !== undefined
+        ? { focusAutoSuggestEnabled: v.focusAutoSuggestEnabled !== false }
+        : {}),
+      ...(v.mutedFocusBookIds !== undefined
+        ? {
+            mutedFocusBookIds: Array.isArray(v.mutedFocusBookIds)
+              ? v.mutedFocusBookIds.filter((id): id is string => typeof id === "string")
+              : [],
+          }
+        : {}),
+      ...(v.postChapterConsolidationEnabled !== undefined
+        ? { postChapterConsolidationEnabled: v.postChapterConsolidationEnabled !== false }
+        : {}),
+      ...(v.mutedConsolidationBookIds !== undefined
+        ? {
+            mutedConsolidationBookIds: Array.isArray(v.mutedConsolidationBookIds)
+              ? v.mutedConsolidationBookIds.filter((id): id is string => typeof id === "string")
+              : [],
+          }
+        : {}),
+      ...(v.bilingualScaffoldingMode !== undefined
+        ? {
+            bilingualScaffoldingMode:
+              v.bilingualScaffoldingMode === "auto" ||
+              v.bilingualScaffoldingMode === "tier-1-only" ||
+              v.bilingualScaffoldingMode === "tier-3-always" ||
+              v.bilingualScaffoldingMode === "off"
+                ? v.bilingualScaffoldingMode
+                : "auto",
+          }
+        : {}),
+      ...(v.mutedBilingualBookIds !== undefined
+        ? {
+            mutedBilingualBookIds: Array.isArray(v.mutedBilingualBookIds)
+              ? v.mutedBilingualBookIds.filter((id): id is string => typeof id === "string")
+              : [],
+          }
+        : {}),
       ...(v.readingPreset !== undefined ? { readingPreset: v.readingPreset } : {}),
       ...(v.colorGuide !== undefined ? { colorGuide: v.colorGuide } : {}),
     };
   } catch {
     return READER_DEFAULTS;
+  }
+}
+
+export interface UnifiedSmartAssistsPrefs {
+  chapterPrimingMode: ChapterPrimingMode;
+  mutedPrimingBookIds: string[];
+  characterMemoryEnabled: boolean;
+  mutedCharacterMemoryBookIds: string[];
+  focusAutoSuggestEnabled: boolean;
+  mutedFocusBookIds: string[];
+  postChapterConsolidationEnabled: boolean;
+  mutedConsolidationBookIds: string[];
+  bilingualScaffoldingMode: "auto" | "tier-1-only" | "tier-3-always" | "off";
+  mutedBilingualBookIds: string[];
+}
+
+export function loadUnifiedSmartAssists(bookId?: string): UnifiedSmartAssistsPrefs {
+  const settings = loadReaderSettings(bookId);
+  const priming = loadChapterPrimingSettings();
+  const mutedPriming = settings.mutedPrimingBookIds && settings.mutedPrimingBookIds.length > 0
+    ? settings.mutedPrimingBookIds
+    : priming.mutedBookIds ?? [];
+  return {
+    chapterPrimingMode: priming.mode ?? settings.chapterPrimingMode ?? "auto",
+    mutedPrimingBookIds: mutedPriming,
+    characterMemoryEnabled: settings.characterMemoryEnabled !== false,
+    mutedCharacterMemoryBookIds: settings.mutedCharacterMemoryBookIds ?? [],
+    focusAutoSuggestEnabled: settings.focusAutoSuggestEnabled !== false,
+    mutedFocusBookIds: settings.mutedFocusBookIds ?? [],
+    postChapterConsolidationEnabled: settings.postChapterConsolidationEnabled !== false,
+    mutedConsolidationBookIds: settings.mutedConsolidationBookIds ?? [],
+    bilingualScaffoldingMode: settings.bilingualScaffoldingMode ?? "auto",
+    mutedBilingualBookIds: settings.mutedBilingualBookIds ?? [],
+  };
+}
+
+export function saveUnifiedSmartAssists(
+  updates: Partial<UnifiedSmartAssistsPrefs>,
+  bookId?: string,
+): void {
+  const current = loadReaderSettings(bookId);
+  const next: ReaderSettings = {
+    ...current,
+    ...(updates.chapterPrimingMode !== undefined ? { chapterPrimingMode: updates.chapterPrimingMode } : {}),
+    ...(updates.mutedPrimingBookIds !== undefined ? { mutedPrimingBookIds: updates.mutedPrimingBookIds } : {}),
+    ...(updates.characterMemoryEnabled !== undefined ? { characterMemoryEnabled: updates.characterMemoryEnabled } : {}),
+    ...(updates.mutedCharacterMemoryBookIds !== undefined ? { mutedCharacterMemoryBookIds: updates.mutedCharacterMemoryBookIds } : {}),
+    ...(updates.focusAutoSuggestEnabled !== undefined ? { focusAutoSuggestEnabled: updates.focusAutoSuggestEnabled } : {}),
+    ...(updates.mutedFocusBookIds !== undefined ? { mutedFocusBookIds: updates.mutedFocusBookIds } : {}),
+    ...(updates.postChapterConsolidationEnabled !== undefined ? { postChapterConsolidationEnabled: updates.postChapterConsolidationEnabled } : {}),
+    ...(updates.mutedConsolidationBookIds !== undefined ? { mutedConsolidationBookIds: updates.mutedConsolidationBookIds } : {}),
+    ...(updates.bilingualScaffoldingMode !== undefined ? { bilingualScaffoldingMode: updates.bilingualScaffoldingMode } : {}),
+    ...(updates.mutedBilingualBookIds !== undefined ? { mutedBilingualBookIds: updates.mutedBilingualBookIds } : {}),
+  };
+  saveReaderSettings(next, bookId);
+
+  if (updates.chapterPrimingMode !== undefined || updates.mutedPrimingBookIds !== undefined) {
+    const priming = loadChapterPrimingSettings();
+    saveChapterPrimingSettings({
+      ...priming,
+      ...(updates.chapterPrimingMode !== undefined ? { mode: updates.chapterPrimingMode } : {}),
+      ...(updates.mutedPrimingBookIds !== undefined ? { mutedBookIds: updates.mutedPrimingBookIds } : {}),
+    });
   }
 }
 
@@ -1058,6 +1194,9 @@ export function disablePrimingGlobally(): void {
     ...current,
     mode: "off",
   });
+  saveUnifiedSmartAssists({
+    chapterPrimingMode: "off",
+  });
 }
 
 export function setChapterPrimingMode(mode: ChapterPrimingMode): void {
@@ -1065,6 +1204,9 @@ export function setChapterPrimingMode(mode: ChapterPrimingMode): void {
   saveChapterPrimingSettings({
     ...current,
     mode,
+  });
+  saveUnifiedSmartAssists({
+    chapterPrimingMode: mode,
   });
 }
 

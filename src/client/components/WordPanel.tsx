@@ -74,6 +74,7 @@ export interface UnifiedWordPanelProps {
   toc?: SearchTocRow[];
   currentSectionIndex?: number;
   currentChapterTitle?: string;
+  charOffsetInChapter?: number;
   onSelectWord?: (word: string) => void;
   initialViewMode?: "dictionary" | "character";
   // Inyección de helpers actuales en src/client/lib/
@@ -126,6 +127,7 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
   toc,
   currentSectionIndex,
   currentChapterTitle,
+  charOffsetInChapter,
   onSelectWord,
   initialViewMode,
   lookupLocalLexicon,
@@ -189,12 +191,14 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
     onRecordSilentCalibration(cleanWord, "lookup");
 
     // Verificar si ya está guardada en idb
-    void loadSavedWord(effectiveLang, cleanWord, scope).then((stored) => {
-      if (!abortCtrl.signal.aborted && stored) {
-        setSavedEntry(stored);
-        setIsSaved(true);
-      }
-    });
+    void loadSavedWord(effectiveLang, cleanWord, scope)
+      .then((stored) => {
+        if (!abortCtrl.signal.aborted && stored) {
+          setSavedEntry(stored);
+          setIsSaved(true);
+        }
+      })
+      .catch(() => {});
 
     // 2. Resolución instantánea (0 ms) desde diccionario local / offline / catálogo
     if (lookupLocalLexicon) {
@@ -328,7 +332,7 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
 
     const boundary = {
       chapterIndex: currentSectionIndex ?? 0,
-      charOffsetInChapter: undefined,
+      charOffsetInChapter,
     };
 
     const loadChapters = async () => {
@@ -375,7 +379,7 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [cleanWord, sections, toc, currentSectionIndex, currentChapterTitle, effectiveContext, isCandidateProperNoun, initialViewMode]);
+  }, [cleanWord, sections, toc, currentSectionIndex, currentChapterTitle, effectiveContext, isCandidateProperNoun, initialViewMode, charOffsetInChapter]);
 
   // Traducción de citas para libros en otros idiomas (L2)
   const handleTranslateQuotes = async () => {

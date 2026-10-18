@@ -36,11 +36,13 @@ export default function OfflineDictionaryControl({
 
   useEffect(() => {
     let cancelled = false;
-    void getBookDictionaryStatus(bookHash, language, captureDbScope()).then(
-      (res) => {
+    void getBookDictionaryStatus(bookHash, language, captureDbScope())
+      .then((res) => {
         if (!cancelled) setStatus(res);
-      },
-    );
+      })
+      .catch(() => {
+        // En entornos sin soporte de IndexedDB o en pruebas de componentes
+      });
     return () => {
       cancelled = true;
     };

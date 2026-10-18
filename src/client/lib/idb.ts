@@ -2301,3 +2301,36 @@ export async function clearCachedLexicon(scope?: DbScope): Promise<void> {
   });
 }
 
+export const SMART_ASSISTS_SESSION_KEY = "lecta:smart_assists:v1";
+
+export async function saveSmartAssistsPrefsIdb(
+  prefs: Record<string, unknown> | object,
+  scope?: DbScope,
+): Promise<void> {
+  try {
+    await withDb(scope, (db) =>
+      db.put("session", JSON.stringify(prefs), SMART_ASSISTS_SESSION_KEY),
+    );
+  } catch {
+    // Silently ignore in environments where IDB cannot be accessed
+  }
+}
+
+export async function loadSmartAssistsPrefsIdb(
+  scope?: DbScope,
+): Promise<Record<string, unknown> | null> {
+  try {
+    return await withDb(scope, async (db) => {
+      const raw = await db.get("session", SMART_ASSISTS_SESSION_KEY);
+      if (!raw || typeof raw !== "string") return null;
+      try {
+        return JSON.parse(raw) as Record<string, unknown>;
+      } catch {
+        return null;
+      }
+    });
+  } catch {
+    return null;
+  }
+}
+

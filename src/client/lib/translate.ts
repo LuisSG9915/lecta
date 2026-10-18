@@ -11,6 +11,11 @@ import {
   calculateLexicalFrictionDensity,
   DEFAULT_BILINGUAL_PROFILE,
   CORE_FOREIGN_IDIOMS,
+  loadBilingualScaffoldingProfile,
+  saveBilingualScaffoldingProfile,
+  muteBilingualForBook,
+  unmuteBilingualForBook,
+  setBilingualMode,
 } from "./phrases";
 
 export type {
@@ -24,6 +29,11 @@ export {
   calculateLexicalFrictionDensity,
   DEFAULT_BILINGUAL_PROFILE,
   CORE_FOREIGN_IDIOMS,
+  loadBilingualScaffoldingProfile,
+  saveBilingualScaffoldingProfile,
+  muteBilingualForBook,
+  unmuteBilingualForBook,
+  setBilingualMode,
 };
 
 /**
