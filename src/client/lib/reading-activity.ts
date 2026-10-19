@@ -1,4 +1,9 @@
-import type { SavedInterval } from "./idb";
+import type { ReadingEvent, SavedInterval } from "./idb";
+import {
+  loadBaselineWpm,
+  loadFocusTelemetryProfile,
+  type UserFocusTelemetryProfile,
+} from "./focus-telemetry";
 
 export type TimeInterval = { startedAt: number; endedAt: number };
 
@@ -184,4 +189,178 @@ export function checkHasInactivityGap(
   const lastEndedAt = Math.max(...bookIntervals.map((i) => i.endedAt));
   return now - lastEndedAt >= thresholdMs;
 }
+
+// ---------- Capítulos y Páginas en Estado de Flujo ----------
+
+export interface FlowStateSummary {
+  flowChaptersCount: number;       // Capítulos o sesiones completadas en estado de flujo
+  uninterruptedPagesStreak: number; // Mayor racha (o total reciente) de páginas leídas de corrido sin tropiezos
+  totalFlowPages: number;          // Total de páginas leídas en ritmo fluido
+  comfortablePaceLabel: string;    // Ej: '~1.6 min por página' o '~195 palabras/min'
+  paceDescriptor: string;          // Ej: 'Ritmo sereno y constante' | 'Inmersión profunda' | 'Descubriendo tu ritmo'
+  hasEnoughData: boolean;          // true cuando hay suficientes muestras de telemetría
+}
+
+export interface FlowStateCalculationInput {
+  events?: ReadingEvent[] | null;
+  intervals?: TimeInterval[] | null;
+  focusProfile?: UserFocusTelemetryProfile | null;
+  baselineWpm?: number | null;
+  chaptersCompleted?: number | Record<string, number> | null;
+  lang?: string;
+}
+
+export function computeFlowStateSummary(
+  inputOrEvents?: FlowStateCalculationInput | ReadingEvent[] | null,
+  maybeIntervals?: TimeInterval[] | null,
+  maybeFocusProfile?: UserFocusTelemetryProfile | null,
+  maybeBaselineWpm?: number | null,
+): FlowStateSummary {
+  let events: ReadingEvent[] = [];
+  let intervals: TimeInterval[] = [];
+  let focusProfile: UserFocusTelemetryProfile | null = null;
+  let baselineWpm: number | null = null;
+  let chaptersCompleted: number | Record<string, number> | null = null;
+  let lang = "es";
+
+  if (Array.isArray(inputOrEvents)) {
+    events = inputOrEvents;
+    intervals = maybeIntervals ?? [];
+    focusProfile = maybeFocusProfile ?? null;
+    baselineWpm = maybeBaselineWpm ?? null;
+  } else if (inputOrEvents && typeof inputOrEvents === "object") {
+    events = inputOrEvents.events ?? [];
+    intervals = inputOrEvents.intervals ?? [];
+    focusProfile = inputOrEvents.focusProfile ?? null;
+    baselineWpm = inputOrEvents.baselineWpm ?? null;
+    chaptersCompleted = inputOrEvents.chaptersCompleted ?? null;
+    lang = inputOrEvents.lang ?? "es";
+  }
+
+  if (!focusProfile) {
+    focusProfile = loadFocusTelemetryProfile();
+  }
+  if (baselineWpm == null) {
+    baselineWpm = loadBaselineWpm();
+  }
+
+  let eventDwellMs = 0;
+  let eventWords = 0;
+  let flowPages = 0;
+  let currentStreak = 0;
+  let maxStreak = 0;
+  const sectionsVisited = new Set<string>();
+  const sectionsFatigued = new Set<string>();
+
+  const sortedEvents = [...events].sort((a, b) => a.createdAt - b.createdAt);
+
+  for (const ev of sortedEvents) {
+    if (ev.kind === "section_dwell") {
+      eventDwellMs += ev.ms;
+      eventWords += ev.words;
+      if (ev.ms >= 5_000) {
+        flowPages += 1;
+        currentStreak += 1;
+        if (currentStreak > maxStreak) {
+          maxStreak = currentStreak;
+        }
+        const key = `${ev.bookHash ?? "b"}:${ev.visitId ?? ev.sectionIndex}`;
+        sectionsVisited.add(key);
+      }
+    } else if (ev.kind === "page_regressed") {
+      currentStreak = 0;
+    } else if (ev.kind === "fatigue_flag") {
+      currentStreak = 0;
+      const key = `${ev.bookHash ?? "b"}:${ev.visitId ?? ev.sectionIndex}`;
+      sectionsFatigued.add(key);
+    }
+  }
+
+  const normLang = lang.slice(0, 2).toLowerCase();
+  const langBaseline =
+    focusProfile?.paceByLang?.[normLang] ?? focusProfile?.paceByLang?.["es"];
+  const telemetrySamples = Object.values(focusProfile?.paceByLang ?? {}).reduce(
+    (acc, b) => acc + (b?.samples ?? 0),
+    0,
+  );
+
+  const totalFlowPages = Math.max(flowPages, telemetrySamples);
+  const uninterruptedPagesStreak =
+    maxStreak > 0
+      ? maxStreak
+      : telemetrySamples > 0
+        ? Math.min(telemetrySamples, 12)
+        : 0;
+
+  const eventChapters = Math.max(0, sectionsVisited.size - sectionsFatigued.size);
+  const sessionChapters = intervals.filter(
+    (i) => i.endedAt - i.startedAt >= 8 * 60_000,
+  ).length;
+  let chaptersFromProfile = 0;
+  if (typeof chaptersCompleted === "number") {
+    chaptersFromProfile = chaptersCompleted;
+  } else if (chaptersCompleted && typeof chaptersCompleted === "object") {
+    chaptersFromProfile = Object.values(chaptersCompleted).reduce(
+      (a, b) => a + b,
+      0,
+    );
+  }
+  const flowChaptersCount = Math.max(
+    eventChapters,
+    sessionChapters,
+    chaptersFromProfile,
+    Math.floor(totalFlowPages / 6),
+  );
+
+  const hasEnoughEventData =
+    (eventDwellMs >= 30_000 && eventWords >= 60) || flowPages >= 3;
+  const hasEnoughTelemetryData =
+    (langBaseline?.samples ?? 0) >= 3 || telemetrySamples >= 3;
+  const hasEnoughData = hasEnoughEventData || hasEnoughTelemetryData;
+
+  if (!hasEnoughData) {
+    return {
+      flowChaptersCount,
+      uninterruptedPagesStreak,
+      totalFlowPages,
+      comfortablePaceLabel: "Calibrando con tu lectura",
+      paceDescriptor: "Leyendo a tu propio paso",
+      hasEnoughData: false,
+    };
+  }
+
+  let effectiveWpm: number;
+  if (eventDwellMs >= 15_000 && eventWords >= 40) {
+    effectiveWpm = Math.round(eventWords / (eventDwellMs / 60_000));
+  } else if (langBaseline && langBaseline.meanSecPer100Words > 0) {
+    effectiveWpm = Math.round((100 / langBaseline.meanSecPer100Words) * 60);
+  } else if (typeof baselineWpm === "number" && baselineWpm > 0) {
+    effectiveWpm = Math.round(baselineWpm);
+  } else {
+    effectiveWpm = 200;
+  }
+
+  const comfortablePaceLabel = `~${effectiveWpm} palabras/min`;
+
+  let paceDescriptor: string;
+  if (effectiveWpm >= 260) {
+    paceDescriptor = "Inmersión profunda";
+  } else if (effectiveWpm >= 180) {
+    paceDescriptor = "Ritmo sereno y constante";
+  } else {
+    paceDescriptor = "Descubriendo tu ritmo";
+  }
+
+  return {
+    flowChaptersCount,
+    uninterruptedPagesStreak,
+    totalFlowPages,
+    comfortablePaceLabel,
+    paceDescriptor,
+    hasEnoughData: true,
+  };
+}
+
+export const flowStateSummary = computeFlowStateSummary;
+
 

@@ -1,21 +1,24 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   captureDbScope,
   listIntervals,
   listReadingEvents,
   loadSessionValue,
   saveSessionValue,
+  type ReadingEvent,
   type SavedInterval,
   type SavedWord,
   type StoredBook,
 } from "../lib/idb";
 import { isDue } from "../lib/fsrs";
 import {
+  computeFlowStateSummary,
   dayKeyOf,
   dayLabel,
   formatDuration,
   msByBook,
   timeByDay,
+  type FlowStateSummary,
 } from "../lib/reading-activity";
 import {
   dayWpm,
@@ -56,6 +59,7 @@ export default function ReadingActivity({
   onOpenJourney,
 }: ReadingActivityProps) {
   const [intervals, setIntervals] = useState<SavedInterval[] | null>(null);
+  const [readingEvents, setReadingEvents] = useState<ReadingEvent[]>([]);
   const [goal, setGoal] = useState<ReadingGoal | null>(null);
   const [shieldMsg, setShieldMsg] = useState<string | null>(null);
   // Atención por día desde el trayecto local (readingEvents).
@@ -66,6 +70,15 @@ export default function ReadingActivity({
   // meta y la semana se recalculan solo cuando llegan datos nuevos.
   const [now, setNow] = useState(() => Date.now());
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+  const flowSummary = useMemo<FlowStateSummary>(
+    () =>
+      computeFlowStateSummary({
+        events: readingEvents,
+        intervals: intervals ?? [],
+      }),
+    [readingEvents, intervals],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -79,6 +92,7 @@ export default function ReadingActivity({
         if (cancelled) return;
         setNow(Date.now());
         setIntervals(list);
+        setReadingEvents(events);
         const parsedGoal = parseReadingGoal(rawGoal);
         let activeGoal = parsedGoal;
         if (parsedGoal) {
@@ -295,6 +309,50 @@ export default function ReadingActivity({
           </p>
         </section>
       ) : null}
+
+      <section aria-label="Estado de flujo y ritmo" className="reading-flow-mirror">
+        <div className="reading-flow-header">
+          <div className="reading-flow-title-wrap">
+            <span className="reading-flow-icon" aria-hidden="true">🌊</span>
+            <div>
+              <h2 className="eyebrow act-eyebrow reading-flow-title">Estado de flujo y ritmo</h2>
+              <span className="meta">{flowSummary.paceDescriptor}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="reading-flow-metrics-row">
+          <div className="reading-flow-stat-box">
+            <span className="reading-flow-stat-value">{flowSummary.flowChaptersCount}</span>
+            <span className="reading-flow-stat-label">Capítulos en flujo</span>
+            <span className="reading-flow-stat-sublabel">Capítulos leídos de corrido</span>
+          </div>
+
+          <div className="reading-flow-stat-box">
+            <span className="reading-flow-stat-value">{flowSummary.uninterruptedPagesStreak}</span>
+            <span className="reading-flow-stat-label">Páginas sin interrupción</span>
+            <span className="reading-flow-stat-sublabel">Páginas seguidas en inmersión</span>
+          </div>
+
+          {flowSummary.hasEnoughData ? (
+            <div className="reading-flow-stat-box">
+              <span className="reading-flow-stat-value">{flowSummary.comfortablePaceLabel}</span>
+              <span className="reading-flow-stat-label">Ritmo cómodo</span>
+              <span className="reading-flow-stat-sublabel">{flowSummary.paceDescriptor}</span>
+            </div>
+          ) : null}
+        </div>
+
+        {flowSummary.hasEnoughData ? (
+          <p className="reading-flow-note meta">
+            Lecta adapta las ayudas previas a este ritmo para que nunca pierdas el hilo.
+          </p>
+        ) : (
+          <p className="reading-flow-initial meta">
+            Lee tus primeras páginas con calma; aquí verás cuántas páginas fluyen sin interrupciones.
+          </p>
+        )}
+      </section>
       {intervals.length === 0 ? (
         <p className="nb-empty">
           Aún no hay lectura registrada.

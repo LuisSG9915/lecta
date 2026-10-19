@@ -3,7 +3,7 @@ import { act, createElement as h } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Journey from "./Journey";
-import type { SavedBookPosition, SavedInterval, SavedReview, SavedWord, StoredBook } from "../lib/idb";
+import type { KnownWord, SavedBookPosition, SavedInterval, SavedReview, SavedWord, StoredBook } from "../lib/idb";
 
 import { emptyGameState, type GameState } from "../../shared/gamification";
 
@@ -12,6 +12,7 @@ let mockIntervals: SavedInterval[] = [];
 let mockWords: SavedWord[] = [];
 let mockPositions: SavedBookPosition[] = [];
 let mockReviews: SavedReview[] = [];
+let mockKnowledge: KnownWord[] = [];
 
 vi.mock("../lib/idb", async (importOriginal) => {
   const mod = await importOriginal<typeof import("../lib/idb")>();
@@ -23,6 +24,7 @@ vi.mock("../lib/idb", async (importOriginal) => {
     listPositions: vi.fn(async () => mockPositions),
     listAllReviews: vi.fn(async () => mockReviews),
     listReadingEvents: vi.fn(async () => []),
+    listKnowledge: vi.fn(async () => mockKnowledge),
     loadSessionValue: vi.fn(async () => null),
     saveSessionValue: vi.fn(async () => {}),
   };
@@ -95,6 +97,7 @@ describe("Journey (Tu recorrido)", () => {
         createdAt: new Date("2026-10-10T12:00:00Z").getTime(),
       },
     ];
+    mockKnowledge = [];
     mockCompanionContext = null;
   });
 
@@ -392,5 +395,138 @@ describe("Journey (Tu recorrido)", () => {
       expect(leftVal).toBeLessThanOrEqual(74);
     });
   });
+
+  it("renderiza el bloque de Horizonte de Palabras con curva SVG y contadores de dominio pasivo vs. activo", async () => {
+    // 2 palabras pasivas en conocimiento + 1 consulta activa
+    // más las 2 palabras guardadas en mockWords (casa, perro -> activas)
+    mockKnowledge = [
+      {
+        key: "es:vislumbrar",
+        language: "es",
+        lemma: "vislumbrar",
+        known: true,
+        source: "passive_frontier",
+        updatedAt: 1,
+      },
+      {
+        key: "es:perenne",
+        language: "es",
+        lemma: "perenne",
+        known: false,
+        status: "familiar",
+        passiveSeenCount: 3,
+        source: "inferred",
+        updatedAt: 1,
+      },
+      {
+        key: "es:inmarcesible",
+        language: "es",
+        lemma: "inmarcesible",
+        known: true,
+        source: "in-chapter-lookup",
+        updatedAt: 1,
+      },
+    ];
+
+    await act(async () => {
+      root?.render(h(Journey, { onClose: vi.fn(), books: sampleBooks }));
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // 1. Título de sección presente
+    expect(container?.textContent).toContain("Tu horizonte de palabras");
+
+    // 2. Contadores de desglose pasivo vs activo
+    // Pasivas: vislumbrar, perenne = 2
+    expect(container?.textContent).toContain("Absorbidas de corrido (2)");
+    // Activas: inmarcesible (in-chapter-lookup) + casa, perro (en Cuaderno) = 3
+    expect(container?.textContent).toContain("Exploradas al tocar (3)");
+
+    // 3. Indicador de nivel léxico
+    expect(container?.textContent).toContain("Nivel léxico ·");
+
+    // 4. Curva SVG renderizada con role="img"
+    const curveSvg = container?.querySelector(".journey-lexical-curve");
+    expect(curveSvg).toBeTruthy();
+    expect(curveSvg?.getAttribute("role")).toBe("img");
+    expect(curveSvg?.getAttribute("aria-label")).toContain("Curva de crecimiento léxico");
+
+    // 5. Barra de proporción
+    const splitBar = container?.querySelector(".journey-mastery-split-bar");
+    expect(splitBar).toBeTruthy();
+    const passiveFill = container?.querySelector(".journey-mastery-passive-fill");
+    const activeFill = container?.querySelector(".journey-mastery-active-fill");
+    expect(passiveFill).toBeTruthy();
+    expect(activeFill).toBeTruthy();
+  });
+
+  it("renderiza píldoras de idioma y tarjetas para multilingüe (Español e Inglés)", async () => {
+    // Actividad en español e inglés
+    mockKnowledge = [
+      {
+        key: "es:vislumbrar",
+        language: "es",
+        lemma: "vislumbrar",
+        known: true,
+        source: "passive",
+        updatedAt: 1,
+      },
+      {
+        key: "en:whisper",
+        language: "en",
+        lemma: "whisper",
+        known: true,
+        source: "passive",
+        updatedAt: 1,
+      },
+    ];
+
+    const multilingualBooks: Pick<StoredBook, "hash" | "name" | "title" | "author" | "language" | "cover">[] = [
+      ...sampleBooks,
+      {
+        hash: "book-en",
+        name: "Great Gatsby.epub",
+        title: "The Great Gatsby",
+        author: "F. Scott Fitzgerald",
+        language: "en",
+      },
+    ];
+
+    await act(async () => {
+      root?.render(h(Journey, { onClose: vi.fn(), books: multilingualBooks }));
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // Píldoras de selección presentes
+    const pills = container?.querySelectorAll(".journey-lang-pill");
+    expect(pills?.length).toBeGreaterThanOrEqual(2);
+    const pillTexts = Array.from(pills || []).map((p) => p.textContent);
+    expect(pillTexts).toContain("Español");
+    expect(pillTexts).toContain("Inglés");
+
+    // Ambas tarjetas de idioma presentes en la cuadrícula
+    const cards = container?.querySelectorAll(".journey-lang-card");
+    expect(cards?.length).toBe(2);
+
+    // Curvas SVG para ambos idiomas
+    const curves = container?.querySelectorAll(".journey-lexical-curve");
+    expect(curves?.length).toBe(2);
+
+    // Filtrar al pulsar la píldora de Inglés
+    const enPill = Array.from(pills || []).find((p) => p.textContent?.includes("Inglés"));
+    expect(enPill).toBeTruthy();
+    await act(async () => {
+      enPill?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    const filteredCards = container?.querySelectorAll(".journey-lang-card");
+    expect(filteredCards?.length).toBe(1);
+    expect(filteredCards?.[0].textContent).toContain("Inglés");
+  });
 });
+
 

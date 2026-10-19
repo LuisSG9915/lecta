@@ -6,8 +6,14 @@ import {
   msByBook,
   timeByDay,
   totalMs,
+  computeFlowStateSummary,
+  flowStateSummary,
 } from "./reading-activity";
-import type { SavedInterval } from "./idb";
+import type { ReadingEvent, SavedInterval } from "./idb";
+import {
+  DEFAULT_FOCUS_TELEMETRY_PROFILE,
+  type UserFocusTelemetryProfile,
+} from "./focus-telemetry";
 
 const MIN = 60_000;
 const HOUR = 3_600_000;
@@ -148,4 +154,125 @@ describe("checkHasInactivityGap", () => {
     expect(checkHasInactivityGap([], "book-nuevo", Date.now())).toBe(false);
   });
 });
+
+describe("Métrica de Capítulos y Páginas en Estado de Flujo (Fase 1)", () => {
+  const readingEvent = (
+    partial: Partial<ReadingEvent>,
+  ): ReadingEvent =>
+    ({
+      id: "ev-1",
+      version: 1,
+      visitId: "v-1",
+      bookHash: "book-1",
+      kind: "section_dwell",
+      sectionIndex: 0,
+      createdAt: 1_000_000,
+      ms: 30_000,
+      words: 120,
+      ...partial,
+    }) as ReadingEvent;
+
+  it("devuelve un estado vacío seguro y cálido para lectores nuevos sin datos", () => {
+    // 1. Invocación vacía
+    const empty1 = computeFlowStateSummary();
+    expect(empty1.hasEnoughData).toBe(false);
+    expect(empty1.flowChaptersCount).toBe(0);
+    expect(empty1.uninterruptedPagesStreak).toBe(0);
+    expect(empty1.totalFlowPages).toBe(0);
+    expect(empty1.comfortablePaceLabel).toBe("Calibrando con tu lectura");
+    expect(empty1.paceDescriptor).toBe("Leyendo a tu propio paso");
+
+    // 2. Invocación con objeto vacío o arrays vacíos
+    const empty2 = computeFlowStateSummary({ events: [], intervals: [] });
+    expect(empty2.hasEnoughData).toBe(false);
+    expect(empty2.comfortablePaceLabel).toBe("Calibrando con tu lectura");
+    expect(empty2.paceDescriptor).toBe("Leyendo a tu propio paso");
+
+    // 3. flowStateSummary es alias idéntico
+    expect(flowStateSummary).toBe(computeFlowStateSummary);
+  });
+
+  it("calcula FlowStateSummary a partir del perfil de telemetría de foco", () => {
+    const focusProfile: UserFocusTelemetryProfile = {
+      ...DEFAULT_FOCUS_TELEMETRY_PROFILE,
+      paceByLang: {
+        es: {
+          meanSecPer100Words: 25.0, // ~240 WPM
+          madSecPer100Words: 4.5,
+          samples: 18,
+        },
+      },
+    };
+
+    const summary = computeFlowStateSummary({ focusProfile });
+
+    expect(summary.hasEnoughData).toBe(true);
+    expect(summary.totalFlowPages).toBe(18);
+    expect(summary.uninterruptedPagesStreak).toBeGreaterThanOrEqual(10);
+    expect(summary.flowChaptersCount).toBeGreaterThanOrEqual(2);
+    // 100 / 25 * 60 = 240 WPM
+    expect(summary.comfortablePaceLabel).toBe("~240 palabras/min");
+    expect(summary.paceDescriptor).toBe("Ritmo sereno y constante");
+  });
+
+  it("calcula la mayor racha de páginas ininterrumpidas a partir de eventos con regresión", () => {
+    const t0 = 10_000_000;
+    const events: ReadingEvent[] = [
+      // 4 páginas seguidas en flujo (~240 WPM cada una)
+      readingEvent({ id: "e1", createdAt: t0, ms: 30_000, words: 120 }),
+      readingEvent({ id: "e2", createdAt: t0 + 35_000, ms: 30_000, words: 120 }),
+      readingEvent({ id: "e3", createdAt: t0 + 70_000, ms: 30_000, words: 120 }),
+      readingEvent({ id: "e4", createdAt: t0 + 105_000, ms: 30_000, words: 120 }),
+      // Tropiezo / retroceso de página
+      readingEvent({ id: "e5", createdAt: t0 + 140_000, kind: "page_regressed" }),
+      // 2 páginas después del tropiezo
+      readingEvent({ id: "e6", createdAt: t0 + 175_000, ms: 30_000, words: 120 }),
+      readingEvent({ id: "e7", createdAt: t0 + 210_000, ms: 30_000, words: 120 }),
+    ];
+
+    const summary = computeFlowStateSummary({ events });
+
+    expect(summary.hasEnoughData).toBe(true);
+    // Total de páginas en flujo: 4 + 2 = 6
+    expect(summary.totalFlowPages).toBe(6);
+    // Mayor racha antes del tropiezo: 4
+    expect(summary.uninterruptedPagesStreak).toBe(4);
+    // 6 * 120 palabras / 3 min = 240 WPM
+    expect(summary.comfortablePaceLabel).toBe("~240 palabras/min");
+    expect(summary.paceDescriptor).toBe("Ritmo sereno y constante");
+  });
+
+  it("asigna descriptores editoriales según la velocidad de lectura y rachas", () => {
+    // 1. Inmersión profunda (WPM >= 260)
+    const fastProfile: UserFocusTelemetryProfile = {
+      ...DEFAULT_FOCUS_TELEMETRY_PROFILE,
+      paceByLang: {
+        es: {
+          meanSecPer100Words: 20.0, // 300 WPM
+          madSecPer100Words: 3.0,
+          samples: 10,
+        },
+      },
+    };
+    const fastSummary = computeFlowStateSummary({ focusProfile: fastProfile });
+    expect(fastSummary.paceDescriptor).toBe("Inmersión profunda");
+    expect(fastSummary.comfortablePaceLabel).toBe("~300 palabras/min");
+
+    // 2. Descubriendo tu ritmo (WPM < 180)
+    const slowProfile: UserFocusTelemetryProfile = {
+      ...DEFAULT_FOCUS_TELEMETRY_PROFILE,
+      paceByLang: {
+        es: {
+          meanSecPer100Words: 45.0, // ~133 WPM
+          madSecPer100Words: 8.0,
+          samples: 5,
+        },
+      },
+    };
+    const slowSummary = computeFlowStateSummary({ focusProfile: slowProfile });
+    expect(slowSummary.paceDescriptor).toBe("Descubriendo tu ritmo");
+    expect(slowSummary.comfortablePaceLabel).toBe("~133 palabras/min");
+  });
+});
+
 

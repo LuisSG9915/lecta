@@ -3,7 +3,12 @@ import { act, createElement as h } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import ReadingActivity from "./ReadingActivity";
-import { listIntervals, loadSessionValue, saveSessionValue } from "../lib/idb";
+import {
+  listIntervals,
+  listReadingEvents,
+  loadSessionValue,
+  saveSessionValue,
+} from "../lib/idb";
 import { serializeReadingGoal } from "../lib/reading-goal";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
@@ -21,6 +26,7 @@ vi.mock("../lib/idb", async (importOriginal) => {
 });
 
 const intervalsMock = vi.mocked(listIntervals);
+const eventsMock = vi.mocked(listReadingEvents);
 const loadMock = vi.mocked(loadSessionValue);
 const saveMock = vi.mocked(saveSessionValue);
 
@@ -116,5 +122,73 @@ describe("ReadingActivity · meta de la semana", () => {
     const monthMap = host.querySelector('[aria-label="Mapa de tinta mensual"]');
     expect(monthMap).toBeTruthy();
     expect(monthMap?.querySelectorAll(".act-month-cell").length).toBeGreaterThanOrEqual(28);
+  });
+});
+
+describe("ReadingActivity · Estado de Flujo y Ritmo", () => {
+  it("muestra el estado inicial empático cuando hay poca o ninguna lectura", async () => {
+    intervalsMock.mockResolvedValue([]);
+    eventsMock.mockResolvedValue([]);
+    await render();
+
+    const flowSection = host.querySelector('[aria-label="Estado de flujo y ritmo"]');
+    expect(flowSection).toBeTruthy();
+    expect(host.textContent).toContain("Estado de flujo y ritmo");
+    expect(host.textContent).toContain("Capítulos en flujo");
+    expect(host.textContent).toContain("Páginas sin interrupción");
+    expect(host.textContent).toContain(
+      "Lee tus primeras páginas con calma; aquí verás cuántas páginas fluyen sin interrupciones.",
+    );
+  });
+
+  it("muestra métricas de flujo, páginas seguidas y ritmo cómodo cuando hay datos suficientes", async () => {
+    intervalsMock.mockResolvedValue([
+      { id: "i1", bookHash: "b1", startedAt: 1000, endedAt: 1000 + 10 * 60_000 },
+    ]);
+    eventsMock.mockResolvedValue([
+      {
+        id: "e1",
+        bookHash: "b1",
+        visitId: "v1",
+        createdAt: 1000,
+        kind: "section_dwell",
+        sectionIndex: 0,
+        ms: 30_000,
+        words: 100,
+      },
+      {
+        id: "e2",
+        bookHash: "b1",
+        visitId: "v2",
+        createdAt: 35_000,
+        kind: "section_dwell",
+        sectionIndex: 1,
+        ms: 30_000,
+        words: 110,
+      },
+      {
+        id: "e3",
+        bookHash: "b1",
+        visitId: "v3",
+        createdAt: 70_000,
+        kind: "section_dwell",
+        sectionIndex: 2,
+        ms: 30_000,
+        words: 95,
+      },
+    ]);
+    await render();
+
+    const flowSection = host.querySelector('[aria-label="Estado de flujo y ritmo"]');
+    expect(flowSection).toBeTruthy();
+    expect(host.textContent).toContain("Capítulos en flujo");
+    expect(host.textContent).toContain("Capítulos leídos de corrido");
+    expect(host.textContent).toContain("Páginas sin interrupción");
+    expect(host.textContent).toContain("Páginas seguidas en inmersión");
+    expect(host.textContent).toContain("Ritmo cómodo");
+    expect(host.textContent).toMatch(/~\d+\s+palabras\/min/);
+    expect(host.textContent).toContain(
+      "Lecta adapta las ayudas previas a este ritmo para que nunca pierdas el hilo.",
+    );
   });
 });

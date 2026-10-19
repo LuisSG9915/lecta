@@ -10,9 +10,12 @@ import {
   literaryRankFor,
   inkPathNodes,
   LITERARY_RANKS,
+  computeLanguageLexicalGrowth,
+  normalizeThetaScore,
+  lexicalGrowthStage,
 } from "./journey";
 import type { Card } from "./fsrs";
-import type { SavedReview, SavedWord } from "./idb";
+import type { KnownWord, SavedReview, SavedWord } from "./idb";
 import type { TimeInterval } from "./reading-activity";
 
 const card = (stability: number, reps = 1): Card => ({
@@ -232,3 +235,162 @@ describe("Sendero de Tinta (Ink Path Milestones)", () => {
     expect(remainingText).toContain("min de lectura");
   });
 });
+
+describe("Evolución Léxica por Idioma (θ_{u,L}) - Espejo de Progreso Cognitivo (Fase 1)", () => {
+  it("normaliza θ_{u,L} a escala 0..100 y asigna etiquetas editoriales sin jerga matemática", () => {
+    // Normalización: ((theta + 2.5) / 5) * 100 con clamp [5, 100]
+    expect(normalizeThetaScore(-3.0)).toBe(5);
+    expect(normalizeThetaScore(-2.5)).toBe(5);
+    expect(normalizeThetaScore(-0.6)).toBe(38);
+    expect(normalizeThetaScore(0.0)).toBe(50);
+    expect(normalizeThetaScore(1.5)).toBe(80);
+    expect(normalizeThetaScore(2.5)).toBe(100);
+    expect(normalizeThetaScore(3.5)).toBe(100);
+
+    // Títulos y subtítulos cálidos
+    const stageLow = lexicalGrowthStage(30);
+    expect(stageLow.stageTitle).toBe("Base en construcción");
+    expect(stageLow.stageSubtitle).toBeTruthy();
+
+    const stageMid = lexicalGrowthStage(50);
+    expect(stageMid.stageTitle).toBe("Lectura fluida");
+    expect(stageMid.stageSubtitle).toBeTruthy();
+
+    const stageHigh = lexicalGrowthStage(75);
+    expect(stageHigh.stageTitle).toBe("Horizonte literario");
+    expect(stageHigh.stageSubtitle).toBeTruthy();
+
+    const stageMaster = lexicalGrowthStage(95);
+    expect(stageMaster.stageTitle).toBe("Maestría léxica");
+    expect(stageMaster.stageSubtitle).toBeTruthy();
+  });
+
+  it("mantiene la separación correcta entre español e inglés", () => {
+    // Caso 1: Usuario solo con actividad en español (el inglés no se muestra si no tiene actividad)
+    const growthSoloEs = computeLanguageLexicalGrowth({
+      profile: {
+        thetaByLang: { es: 1.2, en: -0.6 },
+        chaptersCompletedByLang: { es: 2, en: 0 },
+      },
+      knownWords: [
+        { language: "es", lemma: "vislumbrar", known: true, source: "passive_frontier" },
+      ],
+      books: [{ language: "es" }],
+    });
+
+    expect(growthSoloEs).toHaveLength(1);
+    expect(growthSoloEs[0].lang).toBe("es");
+    expect(growthSoloEs[0].langLabel).toBe("Español");
+    expect(growthSoloEs[0].currentTheta).toBe(1.2);
+    expect(growthSoloEs[0].normalizedLevel).toBe(normalizeThetaScore(1.2));
+    expect(growthSoloEs[0].stageTitle).toBe("Horizonte literario");
+
+    // Caso 2: Usuario con actividad en ambos idiomas
+    const growthAmbos = computeLanguageLexicalGrowth({
+      profile: {
+        thetaByLang: { es: 1.5, en: -0.4 },
+        chaptersCompletedByLang: { es: 3, en: 1 },
+      },
+      knownWords: [
+        { language: "es", lemma: "vislumbrar", known: true, source: "passive_frontier" },
+        { language: "en", lemma: "whisper", known: true, source: "passive" },
+      ],
+      books: [{ language: "es" }, { language: "en" }],
+    });
+
+    expect(growthAmbos).toHaveLength(2);
+    expect(growthAmbos[0].lang).toBe("es");
+    expect(growthAmbos[0].langLabel).toBe("Español");
+    expect(growthAmbos[0].currentTheta).toBe(1.5);
+
+    expect(growthAmbos[1].lang).toBe("en");
+    expect(growthAmbos[1].langLabel).toBe("Inglés");
+    expect(growthAmbos[1].currentTheta).toBe(-0.4);
+    expect(growthAmbos[1].normalizedLevel).toBe(normalizeThetaScore(-0.4));
+  });
+
+  it("realiza un conteo preciso de palabras por dominio pasivo vs. consulta activa", () => {
+    const knownWords: KnownWord[] = [
+      // 1. Pasiva: consolidada por exposición sin consulta (passive_frontier)
+      {
+        key: "es:vislumbrar",
+        language: "es",
+        lemma: "vislumbrar",
+        known: true,
+        source: "passive_frontier",
+        updatedAt: 1,
+      },
+      // 2. Pasiva: familiaridad por 3+ exposiciones pasivas sin consulta
+      {
+        key: "es:perenne",
+        language: "es",
+        lemma: "perenne",
+        known: false,
+        status: "familiar",
+        passiveSeenCount: 3,
+        source: "inferred",
+        updatedAt: 1,
+      },
+      // 3. Pasiva: pre-lectura ("✓ Ya la sé" / preparation)
+      {
+        key: "es:alborada",
+        language: "es",
+        lemma: "alborada",
+        known: true,
+        source: "preparation",
+        updatedAt: 1,
+      },
+      // 4. Activa: consulta explícita en el lector (toque / word_consulted)
+      {
+        key: "es:inmarcesible",
+        language: "es",
+        lemma: "inmarcesible",
+        known: true,
+        source: "in-chapter-lookup",
+        updatedAt: 1,
+      },
+    ];
+
+    // Palabra 5 (activa): guardada en el Cuaderno
+    const savedWords: SavedWord[] = [
+      word("uberrimo", { language: "es", lemma: "uberrimo" }),
+    ];
+
+    const [growth] = computeLanguageLexicalGrowth({
+      profile: { thetaByLang: { es: 1.0 } },
+      knownWords,
+      savedWords,
+    });
+
+    // 3 pasivas (vislumbrar, perenne, alborada) y 2 activas (inmarcesible, uberrimo)
+    expect(growth.passiveMasteredCount).toBe(3);
+    expect(growth.activeQueriedCount).toBe(2);
+    expect(growth.totalMasteredCount).toBe(5);
+    // Ratio pasivo: 3 / 5 = 60%
+    expect(growth.passiveRatioPercent).toBe(60);
+
+    // Curva sparkline: mínimo 2 puntos válidos y normalizados
+    expect(growth.curvePoints.length).toBeGreaterThanOrEqual(2);
+    for (const pt of growth.curvePoints) {
+      expect(pt.normalizedScore).toBeGreaterThanOrEqual(5);
+      expect(pt.normalizedScore).toBeLessThanOrEqual(100);
+      expect(typeof pt.index).toBe("number");
+      expect(typeof pt.theta).toBe("number");
+    }
+  });
+
+  it("ofrece un estado inicial seguro y tolerante ante datos vacíos", () => {
+    const growth = computeLanguageLexicalGrowth({});
+    expect(growth).toHaveLength(1);
+    expect(growth[0].lang).toBe("es");
+    expect(growth[0].langLabel).toBe("Español");
+    expect(growth[0].passiveMasteredCount).toBe(0);
+    expect(growth[0].activeQueriedCount).toBe(0);
+    expect(growth[0].totalMasteredCount).toBe(0);
+    expect(growth[0].passiveRatioPercent).toBe(0);
+    expect(growth[0].normalizedLevel).toBeGreaterThanOrEqual(5);
+    expect(growth[0].curvePoints.length).toBeGreaterThanOrEqual(2);
+    expect(growth[0].stageTitle).toBe("Lectura fluida"); // default theta 0.0 -> score 50
+  });
+});
+

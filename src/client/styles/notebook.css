@@ -852,6 +852,101 @@
   border-color: #991b1b;
 }
 
+/* ---------- Estado de Flujo y Ritmo de Lectura ---------- */
+.reading-flow-mirror {
+  margin-top: 14px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: var(--surface-card, var(--paper-raised, rgba(255, 255, 255, 0.04)));
+  border: 1px solid var(--border-subtle, var(--rule, rgba(255, 255, 255, 0.08)));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.reading-flow-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.reading-flow-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.reading-flow-icon {
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.reading-flow-title {
+  margin: 0 !important;
+  font-size: var(--fs-xs, 0.75rem);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted, var(--ink-soft, #a1a1aa));
+}
+
+.reading-flow-metrics-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+}
+
+.reading-flow-stat-box {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--paper-sunken, rgba(0, 0, 0, 0.03));
+  border: 1px solid var(--rule, rgba(255, 255, 255, 0.04));
+}
+
+.reading-flow-stat-value {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--text-primary, var(--ink, #f4f4f5));
+}
+
+.reading-flow-stat-label {
+  font-size: 0.75rem;
+  color: var(--text-muted, var(--ink-soft, #a1a1aa));
+}
+
+.reading-flow-stat-sublabel {
+  font-size: 0.7rem;
+  color: var(--text-muted, var(--ink-soft, #a1a1aa));
+  opacity: 0.85;
+}
+
+.reading-flow-note {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--text-muted, var(--ink-soft, #a1a1aa));
+  line-height: 1.4;
+}
+
+.reading-flow-initial {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-muted, var(--ink-soft, #a1a1aa));
+  line-height: 1.45;
+}
+
+@media (max-width: 480px) {
+  .reading-flow-mirror {
+    padding: 12px;
+  }
+  .reading-flow-metrics-row {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ---------- Lista ---------- */
 
 /* Búsqueda, filtros, orden y exportación en una misma zona. */

@@ -2,8 +2,14 @@
 // etapas FSRS de vocabulario, récords personales e historial de lectura
 // a partir de datos reales del dispositivo (sin tablas nuevas).
 
-import type { SavedReview, SavedWord } from "./idb";
+import type { KnownWord, SavedReview, SavedWord } from "./idb";
 import { markLevel } from "./word-level";
+import {
+  DEFAULT_USER_LANGUAGE_PROFILE,
+  getThetaForLanguage,
+  loadUserLanguageProfile,
+  type UserLanguageProfile,
+} from "./profile-models";
 import {
   dayKeyOf,
   mergeIntervals,
@@ -352,3 +358,271 @@ export function inkPathNodes(
     remainingText,
   };
 }
+
+// ---------- Evolución Léxica por Idioma (θ_{u,L}) ----------
+
+export type SupportedGrowthLang = "es" | "en";
+
+export interface LanguageLexicalCurvePoint {
+  index: number;
+  theta: number;          // Valor interno (-3 a +3)
+  normalizedScore: number; // Escala 0 a 100 para renderizar en SVG y barras
+  timestamp?: number;
+}
+
+export interface LanguageLexicalGrowth {
+  lang: SupportedGrowthLang;
+  langLabel: string;       // 'Español' | 'Inglés'
+  currentTheta: number;
+  normalizedLevel: number; // 0..100
+  stageTitle: string;      // Ej: 'Base en construcción' | 'Lectura fluida' | 'Horizonte literario' | 'Maestría léxica'
+  stageSubtitle: string;   // Explicación breve y cálida en 1 línea
+  passiveMasteredCount: number; // Palabras dominadas leyendo de corrido (pre-lectura / sin toque)
+  activeQueriedCount: number;   // Palabras aprendidas por consulta activa / toque
+  totalMasteredCount: number;
+  passiveRatioPercent: number;  // 0..100 (% de fluidez sin fricción)
+  curvePoints: LanguageLexicalCurvePoint[]; // Mínimo 2 puntos (o estado inicial suave) para dibujar el sparkline SVG
+}
+
+/**
+ * Mapea el parámetro theta continuo (-3 a +3) a una escala visual de 5 a 100.
+ */
+export function normalizeThetaScore(theta: number): number {
+  return Math.round(Math.max(5, Math.min(100, ((theta + 2.5) / 5) * 100)));
+}
+
+/**
+ * Retorna las etiquetas editoriales y cálidas de la etapa de crecimiento léxico según el nivel normalizado.
+ */
+export function lexicalGrowthStage(normalizedScore: number): {
+  stageTitle: string;
+  stageSubtitle: string;
+} {
+  if (normalizedScore < 40) {
+    return {
+      stageTitle: "Base en construcción",
+      stageSubtitle: "Consolidando vocabulario fundamental y giros cotidianos.",
+    };
+  }
+  if (normalizedScore < 65) {
+    return {
+      stageTitle: "Lectura fluida",
+      stageSubtitle: "Lectura natural y disfrute de la mayoría de expresiones.",
+    };
+  }
+  if (normalizedScore < 85) {
+    return {
+      stageTitle: "Horizonte literario",
+      stageSubtitle: "Afinidad con estructuras complejas, matices y vocabulario enriquecido.",
+    };
+  }
+  return {
+    stageTitle: "Maestría léxica",
+    stageSubtitle: "Dominio profundo de obras exigentes y clásicos de la literatura.",
+  };
+}
+
+export interface LanguageLexicalGrowthParams {
+  profile?: Partial<UserLanguageProfile> | null;
+  knownWords?: Array<Partial<KnownWord>> | null;
+  savedWords?: Array<Partial<SavedWord>> | null;
+  activeLanguages?: string[] | null;
+  books?: Array<{ language?: string }> | null;
+}
+
+export function computeLanguageLexicalGrowth(
+  paramsOrKnown?:
+    | LanguageLexicalGrowthParams
+    | Array<Partial<KnownWord>>
+    | Array<Partial<SavedWord>>
+    | null,
+  maybeSavedWords?: Array<Partial<SavedWord>> | null,
+  maybeProfile?: Partial<UserLanguageProfile> | null,
+): LanguageLexicalGrowth[] {
+  let profile: Partial<UserLanguageProfile> | null = null;
+  let knownWords: Array<Partial<KnownWord>> = [];
+  let savedWords: Array<Partial<SavedWord>> = [];
+  let activeLanguages: string[] = [];
+  let books: Array<{ language?: string }> = [];
+
+  if (Array.isArray(paramsOrKnown)) {
+    if (
+      paramsOrKnown.length > 0 &&
+      "savedAt" in paramsOrKnown[0] &&
+      !("known" in paramsOrKnown[0])
+    ) {
+      savedWords = paramsOrKnown as Array<Partial<SavedWord>>;
+      if (Array.isArray(maybeSavedWords)) {
+        knownWords = maybeSavedWords as Array<Partial<KnownWord>>;
+      }
+    } else {
+      knownWords = paramsOrKnown as Array<Partial<KnownWord>>;
+      savedWords = maybeSavedWords ?? [];
+    }
+    profile = maybeProfile ?? null;
+  } else if (paramsOrKnown && typeof paramsOrKnown === "object") {
+    profile = paramsOrKnown.profile ?? null;
+    knownWords = paramsOrKnown.knownWords ?? [];
+    savedWords = paramsOrKnown.savedWords ?? [];
+    activeLanguages = paramsOrKnown.activeLanguages ?? [];
+    books = paramsOrKnown.books ?? [];
+  }
+
+  const effectiveProfile: UserLanguageProfile = {
+    ...DEFAULT_USER_LANGUAGE_PROFILE,
+    ...(profile ?? (typeof window !== "undefined" ? loadUserLanguageProfile() : {})),
+    thetaByLang: {
+      ...DEFAULT_USER_LANGUAGE_PROFILE.thetaByLang,
+      ...(profile?.thetaByLang ?? {}),
+    },
+    chaptersCompletedByLang: {
+      ...DEFAULT_USER_LANGUAGE_PROFILE.chaptersCompletedByLang,
+      ...(profile?.chaptersCompletedByLang ?? {}),
+    },
+  };
+
+  // Determinar si 'en' tiene actividad registrada
+  const hasEnWord =
+    knownWords.some(
+      (w) => !w.deleted && (w.language || "").slice(0, 2).toLowerCase() === "en",
+    ) ||
+    savedWords.some(
+      (w) => !w.deleted && (w.language || "").slice(0, 2).toLowerCase() === "en",
+    );
+
+  const hasEnBook = books.some(
+    (b) => (b.language || "").slice(0, 2).toLowerCase() === "en",
+  );
+
+  const hasEnActivity =
+    hasEnWord ||
+    hasEnBook ||
+    activeLanguages.some((l) => l.slice(0, 2).toLowerCase() === "en") ||
+    (effectiveProfile.chaptersCompletedByLang.en ?? 0) > 0 ||
+    (profile?.thetaByLang?.en !== undefined &&
+      profile.thetaByLang.en !== 0.0 &&
+      profile.thetaByLang.en !== -0.6);
+
+  const langsToProcess: SupportedGrowthLang[] = hasEnActivity ? ["es", "en"] : ["es"];
+
+  return langsToProcess.map((lang) => {
+    const currentTheta = getThetaForLanguage(effectiveProfile, lang, "es");
+    const normalizedLevel = normalizeThetaScore(currentTheta);
+    const { stageTitle, stageSubtitle } = lexicalGrowthStage(normalizedLevel);
+
+    const activeLemmas = new Set<string>();
+    const passiveLemmas = new Set<string>();
+
+    for (const kw of knownWords) {
+      if (kw.deleted) continue;
+      const kwLang = (kw.language || "es").slice(0, 2).toLowerCase();
+      if (kwLang !== lang) continue;
+      const lemma = (kw.lemma || kw.key || "").trim().toLowerCase();
+      if (!lemma) continue;
+
+      const isExplicitQuery =
+        kw.source === "saved" ||
+        kw.source === "lookup" ||
+        kw.source === "in-chapter-lookup" ||
+        kw.source === "word_consulted" ||
+        kw.source === "active";
+
+      if (isExplicitQuery) {
+        activeLemmas.add(lemma);
+        passiveLemmas.delete(lemma);
+        continue;
+      }
+
+      const isPassiveConsolidated =
+        kw.status === "familiar" ||
+        (kw.passiveSeenCount ?? 0) >= 3 ||
+        kw.source === "passive" ||
+        kw.source === "passive_frontier" ||
+        kw.source === "preparation" ||
+        kw.source === "pre-chapter-primed" ||
+        kw.source === "declared" ||
+        kw.source === "explicit" ||
+        kw.source === "explicit_known" ||
+        (kw.known === true && kw.status !== "unknown");
+
+      if (isPassiveConsolidated && !activeLemmas.has(lemma)) {
+        passiveLemmas.add(lemma);
+      }
+    }
+
+    for (const sw of savedWords) {
+      if (sw.deleted) continue;
+      const swLang = (sw.language || "es").slice(0, 2).toLowerCase();
+      if (swLang !== lang) continue;
+      const lemma = (sw.lemma || sw.form || sw.key || "").trim().toLowerCase();
+      if (!lemma) continue;
+
+      activeLemmas.add(lemma);
+      passiveLemmas.delete(lemma);
+    }
+
+    const passiveMasteredCount = passiveLemmas.size;
+    const activeQueriedCount = activeLemmas.size;
+    const totalMasteredCount = passiveMasteredCount + activeQueriedCount;
+    const passiveRatioPercent =
+      totalMasteredCount > 0
+        ? Math.round((passiveMasteredCount / totalMasteredCount) * 100)
+        : 0;
+
+    const initialPrior = lang === "es" ? 0.0 : -0.6;
+    const curvePoints: LanguageLexicalCurvePoint[] = [];
+
+    if (Math.abs(currentTheta - initialPrior) > 0.05) {
+      curvePoints.push({
+        index: 0,
+        theta: initialPrior,
+        normalizedScore: normalizeThetaScore(initialPrior),
+      });
+
+      if (Math.abs(currentTheta - initialPrior) > 0.4) {
+        const midTheta = Number(((initialPrior + currentTheta) / 2).toFixed(2));
+        curvePoints.push({
+          index: 1,
+          theta: midTheta,
+          normalizedScore: normalizeThetaScore(midTheta),
+        });
+      }
+
+      curvePoints.push({
+        index: curvePoints.length,
+        theta: currentTheta,
+        normalizedScore: normalizedLevel,
+      });
+    } else {
+      curvePoints.push(
+        {
+          index: 0,
+          theta: currentTheta,
+          normalizedScore: normalizedLevel,
+        },
+        {
+          index: 1,
+          theta: currentTheta,
+          normalizedScore: normalizedLevel,
+        },
+      );
+    }
+
+    return {
+      lang,
+      langLabel: lang === "es" ? "Español" : "Inglés",
+      currentTheta,
+      normalizedLevel,
+      stageTitle,
+      stageSubtitle,
+      passiveMasteredCount,
+      activeQueriedCount,
+      totalMasteredCount,
+      passiveRatioPercent,
+      curvePoints,
+    };
+  });
+}
+
+export const languageLexicalGrowth = computeLanguageLexicalGrowth;
+

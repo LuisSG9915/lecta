@@ -4,10 +4,12 @@ import {
   captureDbScope,
   listAllReviews,
   listIntervals,
+  listKnowledge,
   listPositions,
   listSavedWords,
   loadSessionValue,
   saveSessionValue,
+  type KnownWord,
   type SavedBookPosition,
   type SavedInterval,
   type SavedReview,
@@ -19,6 +21,7 @@ import { levelProgress, listFamilyProgress } from "../lib/gamification";
 import {
   bookLabel,
   calculateInkPoints,
+  computeLanguageLexicalGrowth,
   finishedBookHashes,
   inkPathNodes,
   literaryRankFor,
@@ -27,6 +30,7 @@ import {
   weeksHistory,
   wordStages,
   type InkMilestoneNode,
+  type LanguageLexicalCurvePoint,
 } from "../lib/journey";
 import {
   Seal,
@@ -89,6 +93,97 @@ const NODE_COORDINATES: { x: number; y: number }[] = [
   { x: 50, y: 92 },
 ];
 
+function LexicalCurveSparkline({
+  points,
+  lang,
+  label,
+}: {
+  points: LanguageLexicalCurvePoint[];
+  lang: string;
+  label: string;
+}) {
+  const safePoints =
+    points.length >= 2
+      ? points
+      : [
+          { index: 0, theta: 0, normalizedScore: 50 },
+          { index: 1, theta: 0, normalizedScore: 50 },
+        ];
+
+  const paddingX = 14;
+  const paddingTop = 10;
+  const paddingBottom = 14;
+  const plotWidth = 240 - 2 * paddingX;
+  const plotHeight = 64 - paddingTop - paddingBottom;
+
+  const coords = safePoints.map((p, i) => {
+    const x = Number(
+      (paddingX + (i / (safePoints.length - 1)) * plotWidth).toFixed(1),
+    );
+    const scoreClamped = Math.max(5, Math.min(100, p.normalizedScore));
+    const y = Number(
+      (64 - paddingBottom - ((scoreClamped - 5) / 95) * plotHeight).toFixed(1),
+    );
+    return { x, y };
+  });
+
+  const pathD = coords.reduce(
+    (acc, pt, idx) => (idx === 0 ? `M ${pt.x} ${pt.y}` : `${acc} L ${pt.x} ${pt.y}`),
+    "",
+  );
+  const areaD = `${pathD} L ${coords[coords.length - 1].x} 64 L ${coords[0].x} 64 Z`;
+  const gradientId = `lexical-curve-grad-${lang}`;
+  const lastPt = coords[coords.length - 1];
+
+  return (
+    <div className="journey-lexical-curve-wrap">
+      <svg
+        viewBox="0 0 240 64"
+        className="journey-lexical-curve"
+        role="img"
+        aria-label={label}
+      >
+        <defs>
+          <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+            <stop
+              offset="0%"
+              stopColor="var(--accent, #d97757)"
+              stopOpacity="0.22"
+            />
+            <stop
+              offset="100%"
+              stopColor="var(--accent, #d97757)"
+              stopOpacity="0.0"
+            />
+          </linearGradient>
+        </defs>
+        <path d={areaD} fill={`url(#${gradientId})`} />
+        <path
+          d={pathD}
+          fill="none"
+          stroke="var(--accent, #d97757)"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <circle
+          cx={lastPt.x}
+          cy={lastPt.y}
+          r="7"
+          fill="var(--accent, #d97757)"
+          opacity="0.2"
+        />
+        <circle
+          cx={lastPt.x}
+          cy={lastPt.y}
+          r="4"
+          fill="var(--accent, #d97757)"
+        />
+      </svg>
+    </div>
+  );
+}
+
 export default function Journey({ onClose, books }: JourneyProps) {
   const ref = useRef<HTMLDivElement>(null);
   useModalBehavior(ref, onClose);
@@ -96,6 +191,7 @@ export default function Journey({ onClose, books }: JourneyProps) {
   const [loading, setLoading] = useState(true);
   const [intervals, setIntervals] = useState<SavedInterval[]>([]);
   const [words, setWords] = useState<SavedWord[]>([]);
+  const [knownWords, setKnownWords] = useState<KnownWord[]>([]);
   const [positions, setPositions] = useState<SavedBookPosition[]>([]);
   const [reviews, setReviews] = useState<SavedReview[]>([]);
 
@@ -105,6 +201,7 @@ export default function Journey({ onClose, books }: JourneyProps) {
   const [isInboxOpen, setIsInboxOpen] = useState(false);
   const [isGoalModalOpen, setIsGoalModalOpen] = useState(false);
   const [selectedGoalMinutes, setSelectedGoalMinutes] = useState(15);
+  const [selectedLang, setSelectedLang] = useState<string>("all");
 
   const companion = useCompanionSafe();
   const companionEnabled = Boolean(companion?.enabled && companion?.state);
@@ -130,14 +227,16 @@ export default function Journey({ onClose, books }: JourneyProps) {
       listSavedWords(undefined, scope).catch(() => []),
       listPositions(scope).catch(() => []),
       listAllReviews(scope).catch(() => []),
+      listKnowledge(undefined, scope).catch(() => []),
       Promise.resolve(loadSessionValue(COMPANION_LETTERS_KEY, scope)).catch(() => null),
       Promise.resolve(loadSessionValue(READING_GOAL_KEY, scope)).catch(() => null),
-    ]).then(([ints, wrds, pos, revs, rawLetters, rawGoal]) => {
+    ]).then(([ints, wrds, pos, revs, knw, rawLetters, rawGoal]) => {
       if (cancelled) return;
       setIntervals(ints);
       setWords(wrds.filter((w) => !w.deleted));
       setPositions(pos);
       setReviews(revs);
+      setKnownWords(knw || []);
       const parsedLetters = parseCompanionLetters(rawLetters);
       if (parsedLetters.length > 0) {
         setLetters(parsedLetters);
@@ -221,6 +320,22 @@ export default function Journey({ onClose, books }: JourneyProps) {
     () => inkPathNodes(inkPoints),
     [inkPoints],
   );
+
+  const lexicalGrowths = useMemo(
+    () =>
+      computeLanguageLexicalGrowth({
+        knownWords,
+        savedWords: words,
+        books,
+      }),
+    [knownWords, words, books],
+  );
+
+  const displayedGrowths = useMemo(() => {
+    if (selectedLang === "all") return lexicalGrowths;
+    const filtered = lexicalGrowths.filter((g) => g.lang === selectedLang);
+    return filtered.length > 0 ? filtered : lexicalGrowths;
+  }, [lexicalGrowths, selectedLang]);
 
   // Agrupación de sellos en las 3 grandes categorías
   const sealsByCategory = useMemo(() => {
@@ -672,6 +787,135 @@ export default function Journey({ onClose, books }: JourneyProps) {
                     Aún no has guardado palabras en tu cuaderno. Toca cualquier palabra mientras lees.
                   </p>
                 )}
+              </div>
+            </section>
+
+            {/* ======================================================== */}
+            {/* BLOQUE: Tu Horizonte de Palabras (Crecimiento Léxico)   */}
+            {/* ======================================================== */}
+            <section
+              className="journey-section journey-lexical-section"
+              aria-label="Tu horizonte de palabras"
+            >
+              <div className="journey-section-head">
+                <h2 className="journey-section-title">Tu horizonte de palabras</h2>
+                <span className="meta">
+                  {lexicalGrowths.length === 1
+                    ? "1 idioma activo"
+                    : `${lexicalGrowths.length} idiomas`}
+                </span>
+              </div>
+              <p className="meta">
+                Descubre cómo evoluciona tu vocabulario en cada idioma y el
+                impacto de la lectura fluida sin fricción.
+              </p>
+
+              {lexicalGrowths.length > 1 ? (
+                <div
+                  className="journey-lang-pills"
+                  role="tablist"
+                  aria-label="Idiomas de lectura"
+                >
+                  {lexicalGrowths.map((g) => {
+                    const isSelected = selectedLang === g.lang;
+                    return (
+                      <button
+                        key={g.lang}
+                        type="button"
+                        role="tab"
+                        aria-selected={isSelected}
+                        className={`journey-lang-pill ${isSelected ? "journey-lang-pill--active" : ""}`}
+                        onClick={() =>
+                          setSelectedLang(selectedLang === g.lang ? "all" : g.lang)
+                        }
+                      >
+                        {g.langLabel}
+                      </button>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={selectedLang === "all"}
+                    className={`journey-lang-pill ${selectedLang === "all" ? "journey-lang-pill--active" : ""}`}
+                    onClick={() => setSelectedLang("all")}
+                  >
+                    Todos
+                  </button>
+                </div>
+              ) : null}
+
+              <div className="journey-lang-grid">
+                {displayedGrowths.map((g) => (
+                  <article
+                    key={g.lang}
+                    className="journey-lang-card"
+                    aria-label={`Evolución en ${g.langLabel}`}
+                  >
+                    <div className="journey-lang-card-header">
+                      <div className="journey-lang-card-title-row">
+                        <h3 className="journey-lang-stage-title">{g.stageTitle}</h3>
+                        <span className="journey-lang-badge">{g.langLabel}</span>
+                      </div>
+                      <p className="journey-lang-stage-sub meta">{g.stageSubtitle}</p>
+                      <span className="journey-lang-score-label meta">
+                        Nivel léxico · {g.normalizedLevel}/100
+                      </span>
+                    </div>
+
+                    <LexicalCurveSparkline
+                      points={g.curvePoints}
+                      lang={g.lang}
+                      label={`Curva de crecimiento léxico en ${g.langLabel}: ${g.stageTitle}, nivel ${g.normalizedLevel}/100`}
+                    />
+
+                    <div
+                      className="journey-mastery-split-bar"
+                      role="progressbar"
+                      aria-valuenow={g.passiveRatioPercent}
+                      aria-valuemin={0}
+                      aria-valuemax={100}
+                      aria-label={`Proporción de dominio en ${g.langLabel}: ${g.passiveRatioPercent}% de corrido`}
+                    >
+                      <div
+                        className="journey-mastery-passive-fill"
+                        style={{
+                          width: `${g.totalMasteredCount > 0 ? g.passiveRatioPercent : 0}%`,
+                        }}
+                        title={`Leídas de corrido: ${g.passiveMasteredCount}`}
+                      />
+                      <div
+                        className="journey-mastery-active-fill"
+                        style={{
+                          width: `${g.totalMasteredCount > 0 ? 100 - g.passiveRatioPercent : 0}%`,
+                        }}
+                        title={`Exploradas al tocar: ${g.activeQueriedCount}`}
+                      />
+                    </div>
+
+                    <div className="journey-mastery-legend">
+                      <div className="journey-mastery-card journey-mastery-card--passive">
+                        <div className="journey-mastery-card-head">
+                          <span aria-hidden="true">🌊</span>
+                          <strong>Absorbidas de corrido ({g.passiveMasteredCount})</strong>
+                        </div>
+                        <p className="journey-mastery-card-desc meta">
+                          Palabras integradas sin detener tu lectura gracias a la preparación previa.
+                        </p>
+                      </div>
+
+                      <div className="journey-mastery-card journey-mastery-card--active">
+                        <div className="journey-mastery-card-head">
+                          <span aria-hidden="true">🔍</span>
+                          <strong>Exploradas al tocar ({g.activeQueriedCount})</strong>
+                        </div>
+                        <p className="journey-mastery-card-desc meta">
+                          Palabras consultadas y guardadas mientras leías.
+                        </p>
+                      </div>
+                    </div>
+                  </article>
+                ))}
               </div>
             </section>
 
