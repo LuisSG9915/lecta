@@ -554,7 +554,9 @@ export async function handleKindlePrimingAction(c: Context<{ Bindings: WorkerEnv
   const session = await getSession(c).catch(() => null);
   const userId =
     session?.user?.id ||
-    (typeof (c as any).get === "function" ? (c as any).get("userId") : undefined);
+    (typeof (c as unknown as { get?: (k: string) => unknown }).get === "function"
+      ? ((c as unknown as { get: (k: string) => unknown }).get("userId") as string | undefined)
+      : undefined);
   const db = c.env?.DB;
   const now = Date.now();
 
@@ -796,6 +798,33 @@ kindleRoutes.get("/", async (c) => {
     }),
   );
 
+  if (c.env.DB) {
+    const d1Result = await c.env.DB.prepare(
+      `SELECT book_id AS id, title, author FROM user_books WHERE user_id = ? ORDER BY updated_at DESC`,
+    )
+      .bind(user.id)
+      .all<{ id: string; title: string; author: string }>()
+      .catch(() => null);
+
+    if (d1Result?.results) {
+      const knownHashes = new Set(books.map((b) => b.hash));
+      for (const d1 of d1Result.results) {
+        if (!knownHashes.has(d1.id)) {
+          const pos = positionMap.get(d1.id);
+          books.push({
+            hash: d1.id,
+            title: d1.title || "Libro sin título",
+            author: d1.author || "Autor desconocido",
+            sections: 1,
+            currentSection: pos ? pos.sectionIndex : null,
+            currentPage: pos ? pos.pageIndex : null,
+            progressPercent: pos ? pos.progress : null,
+          });
+        }
+      }
+    }
+  }
+
   return c.html(renderHomeView({ user, books }));
 });
 
@@ -924,6 +953,44 @@ kindleRoutes.get("/logout", async (c) => {
   return new Response(null, { status: 302, headers });
 });
 
+// Función de carga de binario EPUB para /k con soporte de catálogo y libros de usuario
+export async function loadEpubBufferForKindle(
+  env: WorkerEnv,
+  userId: string | null,
+  bookId: string,
+): Promise<ArrayBuffer | null> {
+  const bucket = env.BOOKS_BUCKET ?? env.BOOKS;
+  if (!bucket) return null;
+
+  // 1. Intentar desde catálogo público en R2
+  const catalogObj = await bucket.get(`catalog/${bookId}.epub`);
+  if (catalogObj) return await catalogObj.arrayBuffer();
+
+  // 2. Fallback a libros propios del usuario vinculado en /k
+  if (!userId) return null;
+  if (env.DB) {
+    const userBook = await env.DB.prepare(
+      `SELECT r2_key FROM user_books WHERE user_id = ? AND book_id = ?`,
+    )
+      .bind(userId, bookId)
+      .first<{ r2_key: string }>()
+      .catch(() => null);
+
+    if (userBook?.r2_key) {
+      const userObj = await bucket.get(userBook.r2_key);
+      if (userObj) return await userObj.arrayBuffer();
+    }
+  }
+
+  const userBookObj = await bucket.get(`user-books/${userId}/${bookId}.epub`);
+  if (userBookObj) return await userBookObj.arrayBuffer();
+
+  const legacyObj = await bucket.get(`books/${userId}/${bookId}.epub`);
+  if (legacyObj) return await legacyObj.arrayBuffer();
+
+  return null;
+}
+
 // 4. Lector de capítulos
 kindleRoutes.get("/read/:hash", async (c) => {
   const session = await getSession(c);
@@ -933,7 +1000,7 @@ kindleRoutes.get("/read/:hash", async (c) => {
     return c.redirect(`/k/login?returnTo=${encodeURIComponent(c.req.url)}`);
   }
 
-  if (!c.env.BOOKS) {
+  if (!c.env.BOOKS && !c.env.BOOKS_BUCKET) {
     return c.html("<h1>Error</h1><p>El almacenamiento no está configurado.</p>", 503);
   }
 
@@ -973,17 +1040,16 @@ kindleRoutes.get("/read/:hash", async (c) => {
 
   const sectionIndex = Math.max(0, parseInt(requestedSection, 10) || 0);
 
-  // Descargar el EPUB de R2
-  const key = `books/${user.id}/${hash}.epub`;
-  const r2Obj = await c.env.BOOKS.get(key);
-  if (!r2Obj) {
+  // Descargar el EPUB de R2 (con fallback a user_books en D1 o catálogo)
+  const epubBuffer = await loadEpubBufferForKindle(c.env, user.id, hash);
+  if (!epubBuffer) {
     return c.html(
       `<h1>Libro no encontrado</h1><p>No se encontró este libro en tu cuenta.</p><p><a href="/k">Volver a la biblioteca</a></p>`,
       404,
     );
   }
 
-  const data = new Uint8Array(await r2Obj.arrayBuffer());
+  const data = new Uint8Array(epubBuffer);
   const chapter = await getEpubChapter(data, sectionIndex, hash);
   if (!chapter) {
     return c.html(
@@ -1472,17 +1538,12 @@ kindleRoutes.get("/read/:hash/resource", async (c) => {
     return c.text("Ruta de recurso faltante", 400);
   }
 
-  if (!c.env.BOOKS) {
-    return c.text("Almacenamiento no configurado", 503);
-  }
-
-  const key = `books/${session.user.id}/${hash}.epub`;
-  const r2Obj = await c.env.BOOKS.get(key);
-  if (!r2Obj) {
+  const epubBuffer = await loadEpubBufferForKindle(c.env, session.user.id, hash);
+  if (!epubBuffer) {
     return c.text("Libro no encontrado", 404);
   }
 
-  const data = new Uint8Array(await r2Obj.arrayBuffer());
+  const data = new Uint8Array(epubBuffer);
   const resource = await getEpubResource(data, resourcePath);
   if (!resource) {
     return c.text("Recurso no encontrado en el EPUB", 404);

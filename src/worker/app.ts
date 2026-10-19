@@ -80,9 +80,9 @@ import {
   calibrationBankVersion,
   type CalibrationProfile,
 } from "../shared/calibration-bank";
-import { checkEpubHeader, EPUB_MAX_BYTES } from "../shared/epub-check";
+import { checkEpubHeader, checkEpubBuffer, EPUB_MAX_BYTES } from "../shared/epub-check";
 import { extractEpubMeta } from "../shared/epub-meta";
-import { getSession } from "./session";
+import { getSession, getSessionUser } from "./session";
 import { readingData } from "./reading-data";
 import { companion } from "./companion";
 import { catalog } from "./catalog";
@@ -1281,7 +1281,9 @@ app.post("/api/ai/page-recap", async (context) => {
   if (cached) {
     try {
       return context.json({ ...JSON.parse(cached), cached: true });
-    } catch {}
+    } catch {
+      // Ignorar caché inválido y recomputar
+    }
   }
 
   if (!context.env.DEEPSEEK_API_KEY) {
@@ -1383,7 +1385,9 @@ app.post("/api/ai/character-recap", async (context) => {
   if (cachedSha) {
     try {
       return context.json({ ...JSON.parse(cachedSha), cached: true });
-    } catch {}
+    } catch {
+      // Ignorar caché inválido y recomputar
+    }
   }
   const cached = characterRecapCache.get(cacheKey);
   if (cached) return context.json({ ...cached, cached: true });
@@ -1772,4 +1776,123 @@ app.put("/api/vocab", async (context) => {
   if (upserted === undefined)
     return context.json({ error: "El vocabulario no está configurado." }, 503);
   return context.json({ ok: true, upserted });
+});
+
+// ---------- Sincronización Cloud de EPUBs Propios (BYO-EPUB) en D1 y R2 ----------
+
+const MAX_SINGLE_EPUB_BYTES = 15 * 1024 * 1024; // 15 MB por archivo
+const MAX_USER_QUOTA_BYTES = 50 * 1024 * 1024; // 50 MB por cuenta
+
+app.put("/api/user/books/:bookId/file", async (c) => {
+  const user = await getSessionUser(c);
+  if (!user) return c.json({ error: "No autenticado" }, 401);
+
+  if (!c.env.DB) {
+    return c.json({ error: "Base de datos no configurada" }, 503);
+  }
+  const booksBucket = c.env.BOOKS_BUCKET ?? c.env.BOOKS;
+  if (!booksBucket) {
+    return c.json({ error: "Almacenamiento no configurado" }, 503);
+  }
+
+  const bookId = c.req.param("bookId");
+  const rawTitle = c.req.header("x-book-title");
+  const rawAuthor = c.req.header("x-book-author");
+  const title = rawTitle ? decodeURIComponent(rawTitle) : bookId;
+  const author = rawAuthor ? decodeURIComponent(rawAuthor) : "";
+  const sha256 = c.req.header("x-book-sha256") ?? "";
+
+  const buffer = await c.req.arrayBuffer();
+  if (buffer.byteLength === 0 || buffer.byteLength > MAX_SINGLE_EPUB_BYTES) {
+    return c.json({ error: "El archivo EPUB excede el límite de 15 MB" }, 413);
+  }
+
+  const check = checkEpubBuffer(buffer);
+  if (!check.ok) {
+    return c.json({ error: check.reason ?? "Archivo EPUB inválido" }, 400);
+  }
+
+  // Verificar cuota acumulada del usuario en D1
+  const quotaRow = await c.env.DB.prepare(
+    `SELECT COALESCE(SUM(size_bytes), 0) AS total FROM user_books WHERE user_id = ? AND book_id != ?`,
+  )
+    .bind(user.id, bookId)
+    .first<{ total: number }>();
+
+  if ((quotaRow?.total ?? 0) + buffer.byteLength > MAX_USER_QUOTA_BYTES) {
+    return c.json({ error: "Cuota de almacenamiento de 50 MB alcanzada" }, 507);
+  }
+
+  const r2Key = `user-books/${user.id}/${bookId}.epub`;
+  await booksBucket.put(r2Key, buffer, {
+    httpMetadata: { contentType: "application/epub+zip" },
+    customMetadata: { userId: user.id, bookId, title, author },
+  });
+
+  const now = Date.now();
+  await c.env.DB.prepare(
+    `INSERT INTO user_books (user_id, book_id, title, author, r2_key, size_bytes, sha256, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(user_id, book_id) DO UPDATE SET
+       title = excluded.title,
+       author = excluded.author,
+       r2_key = excluded.r2_key,
+       size_bytes = excluded.size_bytes,
+       sha256 = excluded.sha256,
+       updated_at = excluded.updated_at`,
+  )
+    .bind(user.id, bookId, title, author, r2Key, buffer.byteLength, sha256, now, now)
+    .run();
+
+  return c.json({ ok: true, bookId, sizeBytes: buffer.byteLength, updatedAt: now });
+});
+
+app.get("/api/user/books", async (c) => {
+  const user = await getSessionUser(c);
+  if (!user) return c.json({ books: [] });
+
+  if (!c.env.DB) {
+    return c.json({ books: [] });
+  }
+
+  const { results } = await c.env.DB.prepare(
+    `SELECT book_id AS id, title, author, size_bytes AS sizeBytes, sha256, updated_at AS updatedAt
+     FROM user_books WHERE user_id = ? ORDER BY updated_at DESC`,
+  )
+    .bind(user.id)
+    .all();
+
+  return c.json({ books: results ?? [] });
+});
+
+app.get("/api/user/books/:bookId/file", async (c) => {
+  const user = await getSessionUser(c);
+  if (!user) return c.json({ error: "No autenticado" }, 401);
+
+  if (!c.env.DB) {
+    return c.json({ error: "Base de datos no configurada" }, 503);
+  }
+  const booksBucket = c.env.BOOKS_BUCKET ?? c.env.BOOKS;
+  if (!booksBucket) {
+    return c.json({ error: "Almacenamiento no configurado" }, 503);
+  }
+
+  const bookId = c.req.param("bookId");
+  const row = await c.env.DB.prepare(
+    `SELECT r2_key, title FROM user_books WHERE user_id = ? AND book_id = ?`,
+  )
+    .bind(user.id, bookId)
+    .first<{ r2_key: string; title: string }>();
+
+  if (!row) return c.json({ error: "Libro no encontrado en la nube" }, 404);
+
+  const obj = await booksBucket.get(row.r2_key);
+  if (!obj) return c.json({ error: "Binario no encontrado en R2" }, 404);
+
+  return new Response(obj.body, {
+    headers: {
+      "Content-Type": "application/epub+zip",
+      "Cache-Control": "private, max-age=3600",
+    },
+  });
 });

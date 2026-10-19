@@ -3,8 +3,9 @@
 // funciona igual en tema claro y oscuro sin tocar el render del
 // libro. pointer-events:none: el velo nunca estorba el paso de
 // página, la selección ni la consulta de palabras.
+// Cuenta con tirador lateral para fijar (pin) o arrastrar manualmente.
 
-import { useEffect, useState, type ReactNode } from "react";
+import React, { useCallback, useEffect, useState, type ReactNode } from "react";
 import type { RulerSize } from "../lib/settings";
 
 // «Párrafo» como alto de banda: un párrafo típico de 5–6 líneas a la
@@ -19,14 +20,11 @@ export function rulerBandPx(size: RulerSize, linePx: number): number {
   return Math.max(1, Math.round(lines * linePx));
 }
 
-export function FocusRuler({
-  bandPx,
-  anchor,
-  activeParagraphY,
-  lineHeightPx = 28,
-  onClose,
-}: {
-  bandPx: number;
+export interface FocusRulerProps {
+  enabled?: boolean;
+  heightPx?: number;
+  bandPx?: number;
+  initialY?: number;
   // Ancla visual en el margen de la franja (la patita del gato).
   anchor?: ReactNode;
   // Posición Y de párrafo enfocado para seguimiento automático
@@ -35,38 +33,69 @@ export function FocusRuler({
   lineHeightPx?: number;
   // Callback para cerrar la regla de lectura en 1 toque
   onClose?: () => void;
-}) {
-  const [isDismissed, setIsDismissed] = useState(false);
+}
 
-  // Arranca centrada (no pegada al tope esperando el primer
-  // movimiento) y luego sigue al puntero o párrafo enfocado.
-  const [y, setY] = useState(() =>
-    typeof window !== "undefined"
-      ? Math.round(window.innerHeight * 0.42)
-      : 350,
-  );
+export function FocusRuler({
+  enabled = true,
+  heightPx,
+  bandPx,
+  initialY = 220,
+  anchor,
+  activeParagraphY,
+  lineHeightPx = 28,
+  onClose,
+}: FocusRulerProps) {
+  const effectiveBandPx = heightPx ?? bandPx ?? 56;
+  const [y, setY] = useState<number>(() => {
+    if (typeof activeParagraphY === "number" && !Number.isNaN(activeParagraphY)) {
+      return activeParagraphY;
+    }
+    if (typeof window !== "undefined") {
+      return Math.round(window.innerHeight * 0.42);
+    }
+    return initialY;
+  });
+  const [pinned, setPinned] = useState<boolean>(false);
+  const [dragging, setDragging] = useState<boolean>(false);
+  const [isDismissed, setIsDismissed] = useState<boolean>(false);
 
-  // Seguimiento del puntero (ratón o lápiz)
+  // Seguimiento del movimiento del ratón
   useEffect(() => {
-    const onMove = (event: PointerEvent) => setY(event.clientY);
-    window.addEventListener("pointermove", onMove, { passive: true });
-    return () => window.removeEventListener("pointermove", onMove);
-  }, []);
+    if (!enabled || pinned || dragging) return;
+    const handleMove = (e: MouseEvent) => {
+      setY(e.clientY);
+    };
+    window.addEventListener("mousemove", handleMove, { passive: true });
+    return () => window.removeEventListener("mousemove", handleMove);
+  }, [enabled, pinned, dragging]);
 
-  // Soporte táctil fluido con el dedo
+  // Seguimiento de pointermove (compatibilidad con lápiz y tests)
   useEffect(() => {
-    const onTouchMove = (event: TouchEvent) => {
+    if (!enabled || pinned || dragging) return;
+    const handlePointerMoveEvt = (e: PointerEvent) => {
+      setY(e.clientY);
+    };
+    window.addEventListener("pointermove", handlePointerMoveEvt, { passive: true });
+    return () => window.removeEventListener("pointermove", handlePointerMoveEvt);
+  }, [enabled, pinned, dragging]);
+
+  // Soporte táctil con el dedo (touchmove)
+  useEffect(() => {
+    if (!enabled || pinned || dragging) return;
+    const handleTouchMove = (event: TouchEvent) => {
       if (event.touches.length > 0) {
         setY(event.touches[0].clientY);
       }
     };
-    window.addEventListener("touchmove", onTouchMove, { passive: true });
-    return () => window.removeEventListener("touchmove", onTouchMove);
-  }, []);
+    window.addEventListener("touchmove", handleTouchMove, { passive: true });
+    return () => window.removeEventListener("touchmove", handleTouchMove);
+  }, [enabled, pinned, dragging]);
 
-  // Seguimiento automático del párrafo enfocado
+  // Seguimiento automático del párrafo enfocado cuando no está fijado ni arrastrándose
   const [prevActiveY, setPrevActiveY] = useState(activeParagraphY);
   if (
+    !pinned &&
+    !dragging &&
     typeof activeParagraphY === "number" &&
     !Number.isNaN(activeParagraphY) &&
     activeParagraphY !== prevActiveY
@@ -77,6 +106,7 @@ export function FocusRuler({
 
   // Atajos de teclado: flechas Arriba / Abajo para desplazar la regla renglón a renglón
   useEffect(() => {
+    if (!enabled) return;
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       if (
@@ -103,12 +133,39 @@ export function FocusRuler({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [lineHeightPx]);
+  }, [enabled, lineHeightPx]);
 
-  if (isDismissed) return null;
+  const handlePointerDown = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    try {
+      e.currentTarget.setPointerCapture?.(e.pointerId);
+    } catch {
+      // Ignorar fallo de pointer capture en entornos sin soporte (p.ej. jsdom)
+    }
+    setDragging(true);
+  }, []);
+
+  const handlePointerMove = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
+    if (!dragging) return;
+    const winH = typeof window !== "undefined" ? window.innerHeight : 800;
+    const clampedY = Math.max(64, Math.min(winH - 96, e.clientY));
+    setY(clampedY);
+  }, [dragging]);
+
+  const handlePointerUp = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
+    if (!dragging) return;
+    try {
+      e.currentTarget.releasePointerCapture?.(e.pointerId);
+    } catch {
+      // Ignorar fallo de pointer capture en entornos sin soporte
+    }
+    setDragging(false);
+  }, [dragging]);
+
+  if (!enabled || isDismissed) return null;
 
   const winH = typeof window !== "undefined" ? window.innerHeight : 800;
-  const top = Math.max(0, Math.min(y - bandPx / 2, winH - bandPx));
+  const top = Math.max(0, Math.min(y - effectiveBandPx / 2, winH - effectiveBandPx));
 
   const handleClose = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -117,16 +174,39 @@ export function FocusRuler({
   };
 
   return (
-    <div className="focus-ruler">
+    <div
+      className={`focus-ruler ${pinned ? "is-pinned" : ""}`}
+      style={{
+        pointerEvents: "none",
+      }}
+      aria-hidden="true"
+    >
       <div
         className="focus-ruler-veil focus-ruler-veil--top focus-ruler__mask"
         style={{ insetBlockStart: 0, blockSize: top }}
       />
       <div
         className="focus-ruler-band"
-        style={{ insetBlockStart: top, blockSize: bandPx }}
+        style={{ insetBlockStart: top, blockSize: effectiveBandPx }}
       >
         {anchor ? <span className="focus-ruler-anchor">{anchor}</span> : null}
+
+        <button
+          type="button"
+          className="focus-ruler__handle"
+          aria-label={pinned ? "Desbloquear regla de enfoque" : "Fijar o arrastrar regla de enfoque"}
+          title={pinned ? "Toca para desbloquear · Arrastra para mover" : "Toca para fijar · Arrastra para mover"}
+          onClick={(e) => {
+            e.stopPropagation();
+            setPinned((prev) => !prev);
+          }}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+        >
+          <span className="focus-ruler__grip">{pinned ? "📌" : "⋮"}</span>
+        </button>
+
         <button
           type="button"
           className="focus-ruler-close-btn"
@@ -137,7 +217,7 @@ export function FocusRuler({
           style={{
             pointerEvents: "auto",
             position: "absolute",
-            insetInlineEnd: "16px",
+            insetInlineEnd: "48px",
             insetBlockStart: "50%",
             transform: "translateY(-50%)",
             width: "28px",
@@ -163,7 +243,7 @@ export function FocusRuler({
       </div>
       <div
         className="focus-ruler-veil focus-ruler-veil--bottom focus-ruler__mask"
-        style={{ insetBlockStart: top + bandPx, insetBlockEnd: 0 }}
+        style={{ insetBlockStart: top + effectiveBandPx, insetBlockEnd: 0 }}
       />
     </div>
   );

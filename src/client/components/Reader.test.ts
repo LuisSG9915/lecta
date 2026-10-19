@@ -365,6 +365,30 @@ describe("Recalibración de Luminancia, Contraste AAA y Separación de Barras Fl
     expect(css).toMatch(/data-theme="night"[^{]*\{[^}]*color:\s*#FFFFFF/);
     expect(css).toMatch(/data-strategy-contrast="high"/);
   });
+
+  it("verifica las reglas del Coordinador de Capas Flotantes (Paso 2) en reader.css", async () => {
+    const fs = await import("node:fs/promises");
+    const path = await import("node:path");
+    const cssPath = path.resolve(process.cwd(), "src/client/styles/reader.css");
+    const css = await fs.readFile(cssPath, "utf-8");
+
+    // Variables de separación en .reader-shell
+    expect(css).toMatch(/\.reader-shell\s*\{[^}]*--dock-clearance:\s*84px/);
+    expect(css).toMatch(/\.reader-shell\[data-dock-ghost="true"\]\s*\{[^}]*--dock-clearance:\s*24px/);
+    expect(css).toMatch(/\.reader-shell\[data-tts-active="true"\]\s*\{[^}]*--tts-clearance:\s*64px/);
+
+    // Z-indexes coordinados: SmartReaderDock (30), ReaderRecapBubble (31), TtsNowPlaying (32)
+    expect(css).toMatch(/\.smart-reader-dock\s*\{[^}]*z-index:\s*30/);
+    expect(css).toMatch(/\.reader-recap-bubble\s*\{[^}]*z-index:\s*31/);
+    expect(css).toMatch(/\.tts-now-playing\s*\{[^}]*z-index:\s*32/);
+
+    // En móvil (<= 720px), ocultar dock y recap al abrir WordPanel inspector
+    expect(css).toMatch(/@media\s*\(max-width:\s*720px\)[^{]*\{[\s\S]*data-inspector-open="true"[\s\S]*opacity:\s*0/);
+
+    // FocusRuler tirador lateral táctil
+    expect(css).toMatch(/\.focus-ruler\s*\{[^}]*pointer-events:\s*none;[^}]*z-index:\s*25/);
+    expect(css).toMatch(/\.focus-ruler__handle\s*\{[^}]*pointer-events:\s*auto/);
+  });
 });
 
 describe("Cableado Maestro e Integración en Reader.tsx (Fase 1 y Fase 2)", () => {

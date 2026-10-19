@@ -80,7 +80,14 @@ import { syncPositions, type PositionConflict } from "./lib/positions-sync";
 import { checkEpubHeader, EPUB_MAX_BYTES } from "../shared/epub-check";
 import { extractEpubMeta } from "../shared/epub-meta";
 import { syncSavedWords } from "./lib/vocab";
-import { syncActivity, syncAnnotations, syncKnowledge, syncReviews } from "./lib/reading-sync";
+import {
+  syncActivity,
+  syncAnnotations,
+  syncKnowledge,
+  syncReviews,
+  pullMissingUserBooksFromCloud,
+  syncUserBookUpload,
+} from "./lib/reading-sync";
 import { syncCompanion } from "./lib/companion-sync";
 import { authClient } from "./lib/auth";
 
@@ -714,6 +721,9 @@ export default function App() {
       // y en datos móviles pueden tardar, no deben retener la lista.
       if (!cancelled) void refreshLibrary();
       await runBookQueue(scope).catch(() => 0);
+      void pullMissingUserBooksFromCloud().then((downloaded) => {
+        if (downloaded > 0 && !cancelled) void refreshLibrary();
+      }).catch(() => null);
       // Lo que solo está en la nube ya no baja en automático: aparece
       // en la estantería como «En la nube» y se descarga al tocarlo.
       if (!cancelled) void refreshLibrary();
@@ -817,6 +827,14 @@ export default function App() {
         void queueBookUpload(hash, file.name, scope)
           .then(() => runBookQueue(scope))
           .then(() => refreshLibrary());
+        void file.arrayBuffer().then((buf) => {
+          void syncUserBookUpload({
+            id: hash,
+            title: initialMeta.title || file.name,
+            author: initialMeta.author,
+            data: buf,
+          });
+        }).catch(() => null);
       }
     } catch {
       setBook(null);

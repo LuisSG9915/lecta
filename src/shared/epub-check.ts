@@ -34,3 +34,8 @@ export function checkEpubHeader(bytes: Uint8Array): EpubCheck {
     return { ok: false, reason: "bad-mimetype" };
   return { ok: true };
 }
+
+export function checkEpubBuffer(buffer: ArrayBuffer | Uint8Array): EpubCheck {
+  const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+  return checkEpubHeader(bytes);
+}

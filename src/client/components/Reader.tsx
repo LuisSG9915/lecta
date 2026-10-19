@@ -5413,7 +5413,10 @@ export default function Reader({
 
   return (
     <div
-      className="reader"
+      className="reader reader-shell"
+      data-dock-ghost={!barsShown ? "true" : "false"}
+      data-tts-active={ttsSnap.status !== "idle" ? "true" : "false"}
+      data-inspector-open={selection ? "true" : "false"}
       style={readerCssVars(settings) as CSSProperties}
       data-font={settings.font}
       data-justify={settings.justify || undefined}

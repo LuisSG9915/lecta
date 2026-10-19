@@ -21,6 +21,8 @@ import {
   pushReviewsToServer,
   syncKnowledge,
   syncReviews,
+  syncUserBookUpload,
+  pullMissingUserBooksFromCloud,
 } from "./reading-sync";
 import { pushPositionsToServer, syncPositions } from "./positions-sync";
 
@@ -58,6 +60,9 @@ vi.mock("./idb", () => {
   putReviews: vi.fn(async () => 0),
   saveBookPosition: vi.fn(async () => undefined),
   saveSessionValue: vi.fn(async () => undefined),
+  listBooks: vi.fn(async () => []),
+  getBookData: vi.fn(async () => null),
+  saveBook: vi.fn(async () => undefined),
   };
 });
 
@@ -543,6 +548,64 @@ describe("flush y keepalive en sincronización", () => {
     );
     expect(posCall).toBeDefined();
     expect(posCall?.[1]?.keepalive).toBe(true);
+  });
+});
+
+describe("BYO-EPUB Cloud Sync (reading-sync)", () => {
+  it("syncUserBookUpload sube el archivo EPUB con los encabezados correspondientes", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    const data = new Uint8Array([1, 2, 3]).buffer;
+    const ok = await syncUserBookUpload({
+      id: "book-123",
+      title: "El Quijote",
+      author: "Cervantes",
+      data,
+    });
+    expect(ok).toBe(true);
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/user/books/book-123/file",
+      expect.objectContaining({
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/epub+zip",
+          "x-book-title": encodeURIComponent("El Quijote"),
+          "x-book-author": encodeURIComponent("Cervantes"),
+        },
+        body: data,
+      }),
+    );
+  });
+
+  it("pullMissingUserBooksFromCloud descarga libros que no existen localmente y los guarda en IDB", async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            books: [
+              { id: "b1", title: "Libro 1", author: "A1", updatedAt: 100 },
+              { id: "b2", title: "Libro 2", author: "A2", updatedAt: 200 },
+            ],
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(new Uint8Array([1, 2, 3, 4]).buffer, { status: 200 }),
+      );
+
+    const { listBooks, saveBook } = await import("./idb");
+    vi.mocked(listBooks).mockResolvedValueOnce([{ id: "b1", title: "Libro 1" }]);
+
+    const downloaded = await pullMissingUserBooksFromCloud();
+    expect(downloaded).toBe(1);
+    expect(saveBook).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "b2",
+        title: "Libro 2",
+        author: "A2",
+        addedAt: 200,
+      }),
+    );
   });
 });
 

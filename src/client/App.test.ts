@@ -171,6 +171,8 @@ vi.mock("./lib/reading-sync", () => ({
   syncAnnotations: vi.fn(async () => undefined),
   syncKnowledge: vi.fn(async () => undefined),
   syncReviews: vi.fn(async () => undefined),
+  pullMissingUserBooksFromCloud: vi.fn(async () => 0),
+  syncUserBookUpload: vi.fn(async () => true),
 }));
 
 vi.mock("./lib/companion-sync", () => ({

@@ -11,12 +11,16 @@ import {
   putMissingIntervals,
   putReviews,
   saveSessionValue,
+  getBookData,
+  saveBook,
+  listBooks,
   type DbScope,
   type KnownWord,
   type SavedAnnotation,
   type SavedInterval,
   type SavedReview,
 } from "./idb";
+export { getBookData };
 import { accountFetch } from "./account-fetch";
 import { knowledgeArbWins } from "../../shared/reading-data";
 import { annotationStamp } from "./annotations";
@@ -345,4 +349,58 @@ export async function syncKnowledge(scope?: DbScope) {
   // demás syncs: una sincronización parcial no cuenta como «al día».
   await saveSessionValue(KNOWLEDGE_SYNC_KEY, String(Date.now()), bound);
   return pulled;
+}
+
+export async function syncUserBookUpload(book: {
+  id: string;
+  title: string;
+  author?: string;
+  data: ArrayBuffer;
+}): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/user/books/${encodeURIComponent(book.id)}/file`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/epub+zip",
+        "x-book-title": encodeURIComponent(book.title),
+        "x-book-author": encodeURIComponent(book.author ?? ""),
+      },
+      body: book.data,
+    });
+    return res.ok;
+  } catch {
+    return false; // Local-first: si está offline, no interrumpir al usuario
+  }
+}
+
+export async function pullMissingUserBooksFromCloud(): Promise<number> {
+  try {
+    const res = await fetch("/api/user/books");
+    if (!res.ok) return 0;
+    const { books: remoteBooks } = (await res.json()) as {
+      books: Array<{ id: string; title: string; author: string; updatedAt: number }>;
+    };
+
+    const localBooks = await listBooks();
+    const localIds = new Set(localBooks.map((b) => b.id));
+    let downloaded = 0;
+
+    for (const remote of remoteBooks) {
+      if (localIds.has(remote.id)) continue;
+      const fileRes = await fetch(`/api/user/books/${encodeURIComponent(remote.id)}/file`);
+      if (!fileRes.ok) continue;
+      const buffer = await fileRes.arrayBuffer();
+      await saveBook({
+        id: remote.id,
+        title: remote.title,
+        author: remote.author,
+        addedAt: remote.updatedAt,
+        data: buffer,
+      });
+      downloaded++;
+    }
+    return downloaded;
+  } catch {
+    return 0;
+  }
 }

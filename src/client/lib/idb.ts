@@ -785,15 +785,37 @@ async function migrateAnonymousToUser(userId: string) {
   }
 }
 
-export async function saveBook(book: StoredBook, scope?: DbScope) {
+export type SaveBookInput =
+  | StoredBook
+  | {
+      id: string;
+      title: string;
+      author?: string;
+      addedAt?: number;
+      data: ArrayBuffer | Blob;
+    };
+
+export async function saveBook(book: SaveBookInput, scope?: DbScope) {
   if (typeof navigator !== "undefined" && navigator.storage?.persist) {
     void navigator.storage.persist().catch(() => false);
   }
+  const stored: StoredBook =
+    "hash" in book
+      ? book
+      : {
+          hash: book.id,
+          name: book.title,
+          title: book.title,
+          author: book.author ?? "",
+          addedAt: book.addedAt ?? Date.now(),
+          data: book.data instanceof Blob ? book.data : new Blob([book.data], { type: "application/epub+zip" }),
+        };
+
   return withDb(scope, async (db) => {
     const transaction = db.transaction(["books", "session"], "readwrite");
     await Promise.all([
-      transaction.objectStore("books").put(book),
-      transaction.objectStore("session").put(book.hash, SESSION_KEY),
+      transaction.objectStore("books").put(stored),
+      transaction.objectStore("session").put(stored.hash, SESSION_KEY),
       transaction.done,
     ]);
   });
@@ -814,8 +836,23 @@ export async function listStoredBooks(scope?: DbScope) {
   return withDb(scope, (db) => db.getAll("books"));
 }
 
+export async function listBooks(scope?: DbScope): Promise<Array<{ id: string; title: string; author?: string }>> {
+  const books = await listStoredBooks(scope);
+  return books.map((b) => ({
+    id: b.hash,
+    title: b.title || b.name,
+    author: b.author,
+  }));
+}
+
 export async function getStoredBook(hash: string, scope?: DbScope) {
   return withDb(scope, (db) => db.get("books", hash));
+}
+
+export async function getBookData(id: string, scope?: DbScope): Promise<ArrayBuffer | null> {
+  const book = await getStoredBook(id, scope);
+  if (!book?.data) return null;
+  return book.data.arrayBuffer();
 }
 
 // Guarda los metadatos del EPUB (título, autor, portada) sin tocar el

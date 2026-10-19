@@ -129,4 +129,76 @@ describe("FocusRuler (Track 9 - Regla Oculomotora de Cero Latencia)", () => {
     expect(anchorEl).not.toBeNull();
     expect(anchorEl?.textContent).toContain("🐾");
   });
+
+  it("renderiza el tirador lateral (handle) y alterna fijado (is-pinned) con 📌 y ⋮", () => {
+    act(() => {
+      root.render(h(FocusRuler, { heightPx: 56, initialY: 220 }));
+    });
+
+    const ruler = container.querySelector(".focus-ruler") as HTMLElement;
+    const handle = container.querySelector(".focus-ruler__handle") as HTMLButtonElement;
+    const grip = container.querySelector(".focus-ruler__grip") as HTMLElement;
+
+    expect(handle).not.toBeNull();
+    expect(grip).not.toBeNull();
+    expect(ruler.classList.contains("is-pinned")).toBe(false);
+    expect(grip.textContent).toBe("⋮");
+
+    // Click para fijar (pin)
+    act(() => {
+      handle.click();
+    });
+
+    expect(ruler.classList.contains("is-pinned")).toBe(true);
+    expect(grip.textContent).toBe("📌");
+
+    // Cuando está fijado, mousemove no debe mover la regla
+    const band = container.querySelector(".focus-ruler-band") as HTMLElement;
+    const pinnedTop = band.style.insetBlockStart;
+
+    act(() => {
+      window.dispatchEvent(new MouseEvent("mousemove", { clientY: 500 }));
+    });
+    expect(band.style.insetBlockStart).toBe(pinnedTop);
+
+    // Click para desfijar (unpin)
+    act(() => {
+      handle.click();
+    });
+
+    expect(ruler.classList.contains("is-pinned")).toBe(false);
+    expect(grip.textContent).toBe("⋮");
+  });
+
+  it("permite arrastrar el tirador mediante eventos de puntero (pointerdown, pointermove, pointerup)", () => {
+    act(() => {
+      root.render(h(FocusRuler, { heightPx: 60, initialY: 200 }));
+    });
+
+    const handle = container.querySelector(".focus-ruler__handle") as HTMLButtonElement;
+    const band = container.querySelector(".focus-ruler-band") as HTMLElement;
+
+    act(() => {
+      handle.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, clientY: 200 }));
+    });
+
+    act(() => {
+      handle.dispatchEvent(new MouseEvent("pointermove", { bubbles: true, clientY: 350 }));
+    });
+
+    expect(band.style.insetBlockStart).toBe(`${350 - 30}px`);
+
+    act(() => {
+      handle.dispatchEvent(new MouseEvent("pointerup", { bubbles: true, clientY: 350 }));
+    });
+  });
+
+  it("no renderiza nada cuando enabled es false", () => {
+    act(() => {
+      root.render(h(FocusRuler, { enabled: false, heightPx: 56 }));
+    });
+
+    expect(container.querySelector(".focus-ruler")).toBeNull();
+  });
 });
+

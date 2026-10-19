@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkEpubHeader } from "./epub-check";
+import { checkEpubHeader, checkEpubBuffer } from "./epub-check";
 
 const enc = (text: string) => [...new TextEncoder().encode(text)];
 
@@ -51,5 +51,11 @@ describe("checkEpubHeader", () => {
   it("rechaza un encabezado cortado", () => {
     const epub = new Uint8Array([...localHeader("mimetype")]);
     expect(checkEpubHeader(epub)).toEqual({ ok: false, reason: "truncated" });
+  });
+
+  it("checkEpubBuffer valida correctamente tanto ArrayBuffer como Uint8Array", () => {
+    const epub = new Uint8Array([...localHeader("mimetype"), ...MIMETYPE]);
+    expect(checkEpubBuffer(epub)).toEqual({ ok: true });
+    expect(checkEpubBuffer(epub.buffer)).toEqual({ ok: true });
   });
 });

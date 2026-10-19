@@ -22,3 +22,11 @@ export const getSession = async (context: {
   if (expected && expected !== session.user.id) return null;
   return session;
 };
+
+export const getSessionUser = async (context: {
+  env: WorkerEnv;
+  req: { raw: Request; url: string };
+}) => {
+  const session = await getSession(context);
+  return session?.user ?? null;
+};
