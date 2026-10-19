@@ -82,6 +82,7 @@ export function cleanExpiredKindleCodes() {
 export async function createKindleLinkCode(
   db?: D1Database,
   customCode?: string,
+  env?: WorkerEnv,
 ): Promise<KindleCodeRecord> {
   const nowSec = Math.floor(Date.now() / 1000);
   const code = (customCode ?? generateFourCharKindleCode()).toUpperCase();
@@ -96,6 +97,22 @@ export async function createKindleLinkCode(
   };
 
   memoryCodeStore.set(code, record);
+
+  if (env && getConnectionString(env)) {
+    try {
+      await withClient(env, async (client) => {
+        await client.query("DELETE FROM kindle_link_codes WHERE expires_at < $1", [nowSec]);
+        await client.query(
+          `INSERT INTO kindle_link_codes (code, status, user_id, session_token, created_at, expires_at)
+           VALUES ($1, 'pending', NULL, NULL, $2, $3)
+           ON CONFLICT(code) DO UPDATE SET status = 'pending', user_id = NULL, session_token = NULL, created_at = excluded.created_at, expires_at = excluded.expires_at`,
+          [code, nowSec, record.expiresAt],
+        );
+      });
+    } catch {
+      // Fallback a D1 / memoria
+    }
+  }
 
   if (db && typeof db.prepare === "function") {
     try {
@@ -127,6 +144,7 @@ export async function linkKindleCodeFromMobile(params: {
   userId: string;
   sessionToken: string;
   redirectUrl?: string;
+  env?: WorkerEnv;
 }): Promise<{ ok: boolean; error?: string; redirectUrl?: string }> {
   const cleanCode = params.code.trim().toUpperCase();
   const nowSec = Math.floor(Date.now() / 1000);
@@ -135,7 +153,59 @@ export async function linkKindleCodeFromMobile(params: {
     return { ok: false, error: "El código debe tener 4 caracteres." };
   }
 
-  // 1. Intentar actualizar en D1 si está disponible
+  // 1. Intentar actualizar en Postgres si está disponible
+  if (params.env && getConnectionString(params.env)) {
+    try {
+      const res = await withClient(params.env, async (client) => {
+        const queryRes = await client.query(
+          `SELECT code, status, expires_at FROM kindle_link_codes WHERE code = $1 LIMIT 1`,
+          [cleanCode],
+        );
+        const row = queryRes.rows[0];
+        if (!row) return null;
+        if ((row.expires_at != null && Number(row.expires_at) < nowSec) || (row.status && row.status !== "pending")) {
+          return { error: "Código expirado o ya utilizado." };
+        }
+        await client.query(
+          `UPDATE kindle_link_codes
+           SET status = 'linked', user_id = $1, session_token = $2
+           WHERE code = $3`,
+          [params.userId, params.sessionToken, cleanCode],
+        );
+        return { ok: true };
+      });
+
+      if (res?.error) {
+        return { ok: false, error: res.error };
+      }
+      if (res?.ok) {
+        const mem = memoryCodeStore.get(cleanCode);
+        if (mem) {
+          mem.status = "linked";
+          mem.userId = params.userId;
+          mem.sessionToken = params.sessionToken;
+          mem.userToken = params.sessionToken;
+          if (params.redirectUrl) mem.redirectUrl = params.redirectUrl;
+        } else {
+          memoryCodeStore.set(cleanCode, {
+            code: cleanCode,
+            status: "linked",
+            userId: params.userId,
+            sessionToken: params.sessionToken,
+            userToken: params.sessionToken,
+            createdAt: nowSec,
+            expiresAt: nowSec + CODE_TTL_SECONDS,
+            redirectUrl: params.redirectUrl,
+          });
+        }
+        return { ok: true, redirectUrl: params.redirectUrl };
+      }
+    } catch {
+      // Fallback a D1 / memoria
+    }
+  }
+
+  // 2. Intentar actualizar en D1 si está disponible
   if (params.db && typeof params.db.prepare === "function") {
     try {
       const row = await params.db
@@ -184,7 +254,7 @@ export async function linkKindleCodeFromMobile(params: {
     }
   }
 
-  // 2. Fallback en memoria (tests unitarios o dev local sin migración corrida)
+  // 3. Fallback en memoria (tests unitarios o dev local sin migración corrida)
   const memRecord = memoryCodeStore.get(cleanCode);
   if (!memRecord || (memRecord.expiresAt && memRecord.expiresAt < nowSec) || memRecord.status !== "pending") {
     return { ok: false, error: "Código inválido o expirado." };
@@ -199,12 +269,44 @@ export async function linkKindleCodeFromMobile(params: {
 }
 
 export async function consumeLinkedKindleCode(
-  db: D1Database | undefined,
-  code: string,
+  db?: D1Database | undefined,
+  code?: string,
+  env?: WorkerEnv,
 ): Promise<{ status: "pending" | "linked" | "expired" | "not_found"; sessionToken?: string; userId?: string; redirectUrl?: string }> {
-  const cleanCode = code.trim().toUpperCase();
+  const cleanCode = (code || "").trim().toUpperCase();
   const nowSec = Math.floor(Date.now() / 1000);
 
+  // 1. Intentar consultar en Postgres
+  if (env && getConnectionString(env)) {
+    try {
+      const row = await withClient(env, async (client) => {
+        const queryRes = await client.query(
+          `SELECT code, status, user_id, session_token, expires_at
+           FROM kindle_link_codes WHERE code = $1 LIMIT 1`,
+          [cleanCode],
+        );
+        return queryRes.rows[0];
+      });
+
+      if (row) {
+        if (row.expires_at != null && Number(row.expires_at) < nowSec) return { status: "expired" };
+        if (row.status === "linked" && row.session_token) {
+          const mem = memoryCodeStore.get(cleanCode);
+          return {
+            status: "linked",
+            sessionToken: row.session_token,
+            userId: row.user_id ?? undefined,
+            redirectUrl: mem?.redirectUrl,
+          };
+        }
+        return { status: "pending" };
+      }
+    } catch {
+      // Fallback a D1 / memoria
+    }
+  }
+
+  // 2. Intentar consultar en D1
   if (db && typeof db.prepare === "function") {
     try {
       const row = await db
@@ -267,6 +369,21 @@ export async function handleKindleLinkPage(c: Context<{ Bindings: WorkerEnv }>) 
     const nowSec = Math.floor(Date.now() / 1000);
     if (mem && mem.status === "pending" && mem.expiresAt > nowSec) {
       code = queryCode;
+    } else if (c.env && getConnectionString(c.env)) {
+      try {
+        const row = await withClient(c.env, async (client) => {
+          const res = await client.query(
+            `SELECT code, status, expires_at FROM kindle_link_codes WHERE code = $1 AND status = 'pending' LIMIT 1`,
+            [queryCode],
+          );
+          return res.rows[0];
+        });
+        if (row && (row.expires_at == null || Number(row.expires_at) > nowSec)) {
+          code = queryCode;
+        }
+      } catch {
+        /* ignore */
+      }
     } else if (c.env?.DB && typeof c.env.DB.prepare === "function") {
       try {
         const row = await c.env.DB.prepare(
@@ -282,7 +399,7 @@ export async function handleKindleLinkPage(c: Context<{ Bindings: WorkerEnv }>) 
   }
 
   if (!code) {
-    const record = await createKindleLinkCode(c.env?.DB);
+    const record = await createKindleLinkCode(c.env?.DB, undefined, c.env);
     code = record.code;
   }
 
@@ -336,6 +453,7 @@ export async function handleKindleLinkAction(c: Context<{ Bindings: WorkerEnv }>
     userId: userId || "",
     sessionToken: userSessionToken,
     redirectUrl,
+    env: c.env,
   });
 
   if (!result.ok) {
@@ -352,7 +470,7 @@ export async function handleKindleStatus(c: Context<{ Bindings: WorkerEnv }>) {
     return c.json({ error: "Código no proporcionado" }, 400);
   }
 
-  const result = await consumeLinkedKindleCode(c.env?.DB, code);
+  const result = await consumeLinkedKindleCode(c.env?.DB, code, c.env);
 
   const isHtml =
     c.req.query("redirect") === "1" ||

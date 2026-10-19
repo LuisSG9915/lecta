@@ -10,6 +10,8 @@
 // - Validación estricta MIME: jamás cachear ni entregar text/html para .css, .js o /assets/*.
 // - Autocuración de assets: reintento y notificación ASSET_MISMATCH_RELOAD ante hashes obsoletos.
 
+// Versión y marca de compilación para invalidación de caché PWA en navegadores y móviles
+var SW_VERSION = "2.2.0-20261018";
 var CACHE_PREFIX = "lecta-v2-";
 var MANIFEST_URL = "/sw-manifest.json";
 var NAVIGATION_TIMEOUT_MS = 3500;

@@ -86,6 +86,15 @@
   --read-size: 1.125rem;
   --read-leading: 1.65;
   --read-measure: 65ch;
+
+  /* Superficies semánticas y andamiaje cognitivo (Track 13) */
+  --surface-priming: color-mix(in srgb, var(--paper-sunken, var(--bg-secondary, #f7f4ee)) 92%, var(--accent-primary, var(--vermilion, #8c5a32)) 8%);
+  --border-priming: color-mix(in srgb, var(--border-color, var(--rule, #dcd6cc)) 80%, var(--accent-primary, var(--vermilion, #8c5a32)) 20%);
+  --surface-spoiler-safe: color-mix(in srgb, var(--paper-sunken, var(--bg-secondary, #f7f4ee)) 90%, #2e6b4e 10%);
+  --text-spoiler-safe: #25583f;
+  --surface-bilingue-clause: color-mix(in srgb, var(--paper-sunken, var(--bg-secondary, #f7f4ee)) 94%, #3b5998 6%);
+  --paragraph-dim-opacity: 0.32;
+  --priming-anchor-underline: color-mix(in srgb, var(--accent-primary, var(--vermilion, #8c5a32)) 55%, transparent);
 }
 
 /* Tema papel sepia (predeterminado claro - Editorial Crema) */
@@ -472,4 +481,59 @@
     --chroma-ink-base-bright: #FFFFFF;
   }
 }
+
+/* =====================================================================
+   Soporte Multitema para Superficies Semánticas (Track 13)
+   ===================================================================== */
+:root[data-theme="blanco"],
+[data-theme="light"],
+.theme-light {
+  --surface-priming: color-mix(in srgb, var(--paper-sunken, #f2f0ea) 92%, var(--accent-primary, #8c5a32) 8%);
+  --border-priming: color-mix(in srgb, var(--rule, #e3ded3) 80%, var(--accent-primary, #8c5a32) 20%);
+  --surface-spoiler-safe: color-mix(in srgb, var(--paper-sunken, #f2f0ea) 90%, #2e6b4e 10%);
+  --text-spoiler-safe: #25583f;
+  --surface-bilingue-clause: color-mix(in srgb, var(--paper-sunken, #f2f0ea) 94%, #3b5998 6%);
+  --paragraph-dim-opacity: 0.32;
+  --priming-anchor-underline: color-mix(in srgb, var(--accent-primary, #8c5a32) 55%, transparent);
+}
+
+:root[data-theme="papel"],
+[data-theme="sepia"],
+.theme-sepia {
+  --surface-priming: color-mix(in srgb, var(--paper-sunken, #f0e7d5) 92%, var(--accent-primary, #8c5a32) 8%);
+  --border-priming: color-mix(in srgb, var(--rule, rgba(120, 95, 70, 0.12)) 80%, var(--accent-primary, #8c5a32) 20%);
+  --surface-spoiler-safe: color-mix(in srgb, var(--paper-sunken, #f0e7d5) 90%, #2e6b4e 10%);
+  --text-spoiler-safe: #25583f;
+  --surface-bilingue-clause: color-mix(in srgb, var(--paper-sunken, #f0e7d5) 94%, #3b5998 6%);
+  --paragraph-dim-opacity: 0.32;
+  --priming-anchor-underline: color-mix(in srgb, var(--accent-primary, #8c5a32) 55%, transparent);
+}
+
+:root[data-theme="noche"],
+:root[data-theme="oled"],
+:root[data-theme="night"],
+[data-theme="dark"],
+.theme-dark {
+  --surface-priming: color-mix(in srgb, var(--paper-sunken, var(--bg-secondary, #1e1e1e)) 90%, var(--accent-primary, var(--accent, #d4a373)) 10%);
+  --border-priming: color-mix(in srgb, var(--rule-strong, var(--border-color, #333333)) 75%, var(--accent-primary, var(--accent, #d4a373)) 25%);
+  --surface-spoiler-safe: color-mix(in srgb, var(--paper-sunken, var(--bg-secondary, #1e1e1e)) 88%, #4da87a 12%);
+  --text-spoiler-safe: #7ce0ad;
+  --surface-bilingue-clause: color-mix(in srgb, var(--paper-sunken, var(--bg-secondary, #1e1e1e)) 90%, #6d9dc5 10%);
+  --paragraph-dim-opacity: 0.26;
+  --priming-anchor-underline: color-mix(in srgb, var(--vermilion, #e08a58) 55%, transparent);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]),
+  [data-theme="auto"] {
+    --surface-priming: color-mix(in srgb, var(--paper-sunken, var(--bg-secondary, #1e1e1e)) 90%, var(--accent-primary, var(--accent, #d4a373)) 10%);
+    --border-priming: color-mix(in srgb, var(--rule-strong, var(--border-color, #333333)) 75%, var(--accent-primary, var(--accent, #d4a373)) 25%);
+    --surface-spoiler-safe: color-mix(in srgb, var(--paper-sunken, var(--bg-secondary, #1e1e1e)) 88%, #4da87a 12%);
+    --text-spoiler-safe: #7ce0ad;
+    --surface-bilingue-clause: color-mix(in srgb, var(--paper-sunken, var(--bg-secondary, #1e1e1e)) 90%, #6d9dc5 10%);
+    --paragraph-dim-opacity: 0.26;
+    --priming-anchor-underline: color-mix(in srgb, var(--vermilion, #e08a58) 55%, transparent);
+  }
+}
+
 

@@ -253,7 +253,7 @@ export async function runSmokeTests(baseUrl = BASE) {
       ),
     `status ${sample.status}, ${sampleWords.length} palabras`,
   );
-  const sampleLang = await api("/api/lexicon/sample?language=en", { baseUrl });
+  const sampleLang = await api("/api/lexicon/sample?language=fr", { baseUrl });
   check(
     "GET /api/lexicon/sample rechaza idioma sin muestra",
     sampleLang.status === 400,

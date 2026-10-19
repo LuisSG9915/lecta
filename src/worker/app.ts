@@ -293,6 +293,8 @@ const handleEnrich = async (context: Context<{ Bindings: WorkerEnv }>) => {
   }
 
   const session = await getSession(context);
+  if (!session) return context.json({ error: "No autorizado." }, 401);
+
   if (isStopword(form, language))
     return context.json({ error: "«" + form + "» es una palabra muy común; no necesita ficha de IA." }, 400);
 

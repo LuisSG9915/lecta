@@ -4197,6 +4197,15 @@
    Fase 3: Tarjeta de Cierre de Capítulo (25s) y Opciones de Desactivación
    --------------------------------------------------------------------------- */
 
+.consolidation-card.deep-summary-consolidation {
+  margin: var(--s-3) 0;
+  padding: 0.95rem 1.15rem;
+  background: var(--surface-priming);
+  border: 1px solid var(--border-priming);
+  border-radius: var(--radius-md, 10px);
+  box-shadow: 0 4px 16px -4px rgba(0, 0, 0, 0.05);
+}
+
 .consolidation-card-header {
   display: flex;
   justify-content: space-between;
@@ -4219,13 +4228,14 @@
 .consolidation-options-toggle {
   font-size: var(--fs-xs, 0.75rem);
   padding: 0.2rem 0.5rem;
-  color: var(--ink-muted);
-  border-radius: var(--r-sm, 4px);
+  color: var(--ink-soft);
+  border-radius: var(--radius-xs, 4px);
   cursor: pointer;
+  transition: all 0.15s ease;
 }
 
 .consolidation-options-toggle:hover {
-  background: var(--paper-sunken);
+  background: color-mix(in srgb, var(--ink) 6%, transparent);
   color: var(--ink);
 }
 
@@ -4234,11 +4244,11 @@
   right: 0;
   top: calc(100% + 4px);
   z-index: 30;
-  min-width: 230px;
-  background: var(--paper-raised, var(--paper));
-  border: 1px solid var(--line);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
-  border-radius: var(--r-sm, 6px);
+  min-width: 240px;
+  background: var(--paper-raised, #ffffff);
+  border: 1px solid var(--border-color, #dcd6cc);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  border-radius: var(--radius-sm, 8px);
   padding: 0.35rem 0;
   display: flex;
   flex-direction: column;
@@ -4247,18 +4257,18 @@
 .consolidation-option-item {
   width: 100%;
   text-align: left;
-  padding: 0.5rem 0.85rem;
-  font-size: var(--fs-xs, 0.75rem);
+  padding: 0.55rem 0.85rem;
+  font-size: var(--fs-xs, 0.78rem);
   font-weight: 500;
   color: var(--ink);
   background: none;
   border: none;
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition: background 0.15s ease, color 0.15s ease;
 }
 
 .consolidation-option-item:hover {
-  background: var(--paper-sunken);
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
   color: var(--vermilion, #b8332a);
 }
 
@@ -4266,7 +4276,18 @@
   display: flex;
   gap: 0.4rem;
   flex-wrap: wrap;
-  margin: 0.5rem 0;
+  margin: 0.5rem 0 0.2rem;
+}
+
+.consolidation-word-chip {
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  background: var(--paper-raised, #ffffff);
+  border: 1px solid var(--border-color, var(--rule));
+  font-size: var(--fs-xs, 0.8rem);
+  font-weight: 600;
+  color: var(--ink);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
 }
 
 .consolidation-runner-head {
@@ -4278,8 +4299,9 @@
 
 .consolidation-skip-link {
   font-size: var(--fs-xs, 0.8rem);
-  color: var(--ink-muted);
+  color: var(--ink-soft);
   cursor: pointer;
+  transition: color 0.15s ease;
 }
 
 .consolidation-skip-link:hover {
@@ -4289,6 +4311,95 @@
 
 .consolidation-start-btn {
   font-weight: 600;
+  min-height: 40px;
+  padding: 0.6rem 1.15rem;
+  border-radius: var(--radius-sm, 6px);
+  background: var(--accent-primary, #c86d3b);
+  color: var(--on-accent, #ffffff);
+  border: none;
+  cursor: pointer;
+  transition: opacity 0.15s ease, transform 0.1s ease;
+}
+
+.consolidation-start-btn:hover {
+  opacity: 0.92;
+  transform: translateY(-1px);
+}
+
+/* Botón prominente de avance sin fricción */
+.consolidation-skip-btn {
+  font-weight: 700;
+  min-height: 40px;
+  padding: 0.6rem 1.35rem;
+  font-size: var(--fs-sm, 0.92rem);
+  letter-spacing: 0.01em;
+  transition: opacity 0.15s ease, transform 0.1s ease;
+}
+
+.consolidation-skip-btn:hover {
+  opacity: 0.95;
+  transform: translateY(-1px);
+}
+
+/* Estados de acierto y latencia para SentenceBuilderGame y WordScrambleGame */
+.sentence-cloze-slot.is-filled {
+  border-color: var(--accent-success, #3d7a5a);
+  background: color-mix(in srgb, var(--accent-success, #3d7a5a) 12%, transparent);
+  color: var(--accent-success, #3d7a5a);
+  font-weight: 700;
+  transition: all 0.2s var(--ease-spring);
+}
+
+.sentence-cloze-option-btn.is-correct {
+  background: var(--accent-success, #3d7a5a) !important;
+  color: var(--on-accent, #ffffff) !important;
+  border-color: var(--accent-success, #3d7a5a) !important;
+  transform: scale(1.02);
+  transition: all 0.2s var(--ease-spring);
+}
+
+.sentence-cloze-option-btn.is-wrong {
+  background: color-mix(in srgb, var(--vermilion, #b8332a) 15%, transparent);
+  border-color: var(--vermilion, #b8332a);
+  color: var(--vermilion, #b8332a);
+  opacity: 0.7;
+}
+
+.scramble-slots.is-solved .scramble-slot {
+  background: color-mix(in srgb, var(--accent-success, #3d7a5a) 15%, transparent);
+  border-color: var(--accent-success, #3d7a5a);
+  color: var(--accent-success, #3d7a5a);
+  transform: scale(1.04);
+  transition: all 0.22s var(--ease-spring);
+}
+
+.scramble-tile.pulse-hint {
+  animation: pulseLatencyHint 1.4s ease-in-out infinite;
+  border-color: var(--accent-primary, #c86d3b);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-primary, #c86d3b) 30%, transparent);
+}
+
+@keyframes pulseLatencyHint {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-primary, #c86d3b) 25%, transparent);
+  }
+  50% {
+    transform: scale(1.06);
+    box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent-primary, #c86d3b) 45%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scramble-tile.pulse-hint,
+  .consolidation-start-btn,
+  .consolidation-skip-btn,
+  .sentence-cloze-option-btn.is-correct,
+  .scramble-slots.is-solved .scramble-slot {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+  }
 }
 
 
