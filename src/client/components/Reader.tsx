@@ -143,23 +143,15 @@ import {
   hasExplicitPreparationMode,
   readerProfileFor,
   readerCssVars,
-  READER_LIMITS,
-  LEADING_OPTIONS,
-  MARGIN_OPTIONS,
   PREPARATION_MODES,
-  READING_STRATEGY_PRESETS,
-  CHROMATIC_PALETTES,
   applyStrategyPreset,
   applyReadingPreset,
   detectActiveReadingPreset,
-  isStrategyPresetActive,
   isPrimingMutedForBook,
   muteBookForPriming,
   disablePrimingGlobally,
-  type ChromaticPalette,
   type ReaderSettings,
   type ReadingStrategyPreset,
-  type SoundscapeSetting,
   type ThemeChoice,
 } from "../lib/settings";
 import {
@@ -223,7 +215,6 @@ import {
 } from "../lib/ttsGuards";
 import {
   consentTts,
-  isTtsSupported,
   loadTtsSettings,
 } from "../lib/ttsSettings";
 import { sentenceIndexForAnchor } from "../lib/ttsSentences";
@@ -304,7 +295,7 @@ import {
   toggleFullscreen,
 } from "../lib/fullscreen";
 import { playCompanionSound } from "../lib/companion-audio";
-import ThemeMenu, { FontCarousel, StepperControl } from "./ThemeMenu";
+import ThemeMenu from "./ThemeMenu";
 import Toggle from "./Toggle";
 import { Companion } from "./Companion";
 import { CompanionButton } from "./CompanionButton";
@@ -364,7 +355,7 @@ import {
 
 type ReaderState = "idle" | "opening" | "ready" | "error";
 type SheetKind = "toc" | "settings" | "search" | "marks";
-export type ReaderSettingsTab = "strategy" | "appearance" | "book";
+export type ReaderSettingsTab = "appearance" | "book" | "strategy";
 
 // Metadata del premio por consulta de palabra: el uuid se genera al
 // abrir la ficha y viaja congelado en el journal. Vive fuera del
@@ -692,7 +683,7 @@ export default function Reader({
     total: number;
   } | null>(null);
   const [sheet, setSheet] = useState<SheetKind | null>(null);
-  const [settingsTab, setSettingsTab] = useState<ReaderSettingsTab>("strategy");
+  const [settingsTab, setSettingsTab] = useState<ReaderSettingsTab>("appearance");
   const [barsVisible, setBarsVisible] = useState(true);
   const [isFullscreenActive, setIsFullscreenActive] = useState(() => isFullscreen());
   const [scrollRatio, setScrollRatio] = useState(0);
@@ -1514,8 +1505,9 @@ export default function Reader({
     setSheet(null);
   };
 
-  const openSettings = (tab: ReaderSettingsTab = "strategy") => {
-    setSettingsTab(tab);
+  const openSettings = (tab: ReaderSettingsTab = "appearance") => {
+    const resolvedTab = tab === "strategy" ? "appearance" : tab;
+    setSettingsTab(resolvedTab);
     openSheet("settings");
   };
 
@@ -3941,6 +3933,11 @@ export default function Reader({
       trackMove(delta < 0);
       checkPassiveExposure();
 
+      // Al avanzar página, pasa a lectura inmersiva ocultando las barras
+      if (delta > 0) {
+        setBarsVisible(false);
+      }
+
       // Track 9: Neuro-Foco en vivo
       const now = Date.now();
       const dwellTimeMs = Math.max(500, now - pageTurnTimeRef.current);
@@ -4738,10 +4735,14 @@ export default function Reader({
         next.paragraphFocus = true;
         next.focusRuler = false;
         next.focusMode = "paragraph";
+      } else if (patch.focusMode !== undefined) {
+        next.focusMode = patch.focusMode;
       } else if (patch.focusRuler === false && patch.paragraphFocus === false) {
         next.focusRuler = false;
         next.paragraphFocus = false;
-        if (next.syntacticLines) {
+        if (next.chromaticGuide) {
+          next.focusMode = "chromatic";
+        } else if (next.syntacticLines) {
           next.focusMode = "syntactic";
         } else {
           next.focusMode = "off";
@@ -4750,6 +4751,8 @@ export default function Reader({
         next.focusMode = "paragraph";
       } else if (next.focusRuler) {
         next.focusMode = "ruler";
+      } else if (next.chromaticGuide) {
+        next.focusMode = "chromatic";
       } else if (next.syntacticLines) {
         next.focusMode = "syntactic";
       } else {
@@ -4776,33 +4779,6 @@ export default function Reader({
   };
 
 
-  const onToggleSyntacticLines = (checked: boolean) => {
-    updateSettings({
-      syntacticLines: checked,
-      strategyPreset: "custom",
-    });
-  };
-
-  const onToggleChromaticGuide = (checked: boolean) => {
-    updateSettings({
-      chromaticGuide: checked,
-      strategyPreset: "custom",
-    });
-  };
-
-  const onSelectChromaPalette = (palette: ChromaticPalette) => {
-    updateSettings({
-      chromaticPalette: palette,
-      strategyPreset: "custom",
-    });
-  };
-
-  const onToggleBionicAnchors = (checked: boolean) => {
-    updateSettings({
-      bionicAnchors: checked,
-      strategyPreset: "custom",
-    });
-  };
 
   const handleRecapClick = async () => {
     triggerHaptic("selection");
@@ -5367,14 +5343,6 @@ export default function Reader({
           {currentChapterTarget?.label || sectionTitle || title || fileName}
           {author ? <span className="reader-bar-author"> · {author}</span> : null}
         </p>
-        <div className="reader-bar-progress" aria-hidden="true">
-          <ProgressInk
-            value={Math.round(progress * 100)}
-            max={100}
-            variant="vermilion"
-            ariaValueText={`${Math.round(progress * 100)}% del libro`}
-          />
-        </div>
         <div className="reader-bar-actions">
           <button
             type="button"
@@ -5389,34 +5357,31 @@ export default function Reader({
           <button
             type="button"
             className="btn--quiet reader-bar-btn reader-bar-btn--settings"
-            onClick={() => openSettings("strategy")}
-            aria-label="Ajustes de lectura y apariencia"
-            title="Ajustes de lectura (Aa / ✨)"
+            onClick={() => openSettings("appearance")}
+            aria-label="Apariencia y ayudas"
+            title="Apariencia y ayudas (Aa)"
           >
             <span className="reader-btn-icon reader-btn-icon--aa" aria-hidden="true">Aa</span>
-            <Icon name="sparkles" size={14} />
-            <span className="reader-btn-text">Lectura</span>
-          </button>
-          <button
-            type="button"
-            className="btn--quiet reader-bar-btn"
-            onClick={onOpenNotebook}
-            aria-label="Abrir Cuaderno de vocabulario"
-            title="Cuaderno"
-          >
-            <Icon name="notebook" size={20} />
-            <span className="reader-btn-text">Cuaderno</span>
+            <span className="reader-btn-text">Apariencia</span>
           </button>
           <button
             type="button"
             className="btn--quiet reader-bar-btn reader-bar-btn--more"
             onClick={() => openSettings("book")}
-            aria-label="Opciones del libro"
-            title="Opciones del libro"
+            aria-label="Herramientas del libro"
+            title="Herramientas del libro"
           >
             <Icon name="more" size={20} />
-            <span className="reader-btn-text">Libro</span>
+            <span className="reader-btn-text">Más</span>
           </button>
+        </div>
+        <div className="reader-bar-progress" aria-hidden="true">
+          <ProgressInk
+            value={Math.round(progress * 100)}
+            max={100}
+            variant="vermilion"
+            ariaValueText={`${Math.round(progress * 100)}% del libro`}
+          />
         </div>
       </header>
 
@@ -5885,7 +5850,7 @@ export default function Reader({
             updateSettings(applyReadingPreset(settings, preset));
           }}
           onOpenAdvancedSettings={() => {
-            setSettingsTab("strategy");
+            setSettingsTab("appearance");
             setSheet("settings");
           }}
           onStartAudio={onTtsRequest}
@@ -6328,22 +6293,12 @@ export default function Reader({
             <button
               type="button"
               role="tab"
-              aria-selected={settingsTab === "strategy"}
+              aria-selected={settingsTab === "appearance" || settingsTab === "strategy"}
               className="sheet-tab"
-              data-active={settingsTab === "strategy" || undefined}
-              onClick={() => setSettingsTab("strategy")}
-            >
-              Estrategia
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={settingsTab === "appearance"}
-              className="sheet-tab"
-              data-active={settingsTab === "appearance" || undefined}
+              data-active={settingsTab === "appearance" || settingsTab === "strategy" || undefined}
               onClick={() => setSettingsTab("appearance")}
             >
-              Apariencia
+              Apariencia y ayudas
             </button>
             <button
               type="button"
@@ -6353,522 +6308,39 @@ export default function Reader({
               data-active={settingsTab === "book" || undefined}
               onClick={() => setSettingsTab("book")}
             >
-              Libro
+              Herramientas del libro
             </button>
           </div>
 
-          {/* Pestaña 1: Estrategia */}
-          {settingsTab === "strategy" ? (
-            <div role="tabpanel" aria-label="Estrategia" className="sheet-panel">
-              <div className="strategy-grid" role="radiogroup" aria-label="Modos de lectura">
-                {READING_STRATEGY_PRESETS.map((preset) => {
-                  const isActive = isStrategyPresetActive(preset.id, settings);
-                  return (
-                    <button
-                      key={preset.id}
-                      type="button"
-                      role="radio"
-                      aria-checked={isActive}
-                      data-active={isActive ? "true" : undefined}
-                      className="strategy-card"
-                      onClick={() => selectStrategyPreset(preset.id)}
-                    >
-                      <div className="strategy-card-header">
-                        <Icon name={preset.icon} size={20} />
-                        <strong className="strategy-card-title">{preset.title}</strong>
-                      </div>
-                      <p className="strategy-card-desc">{preset.description}</p>
-                    </button>
-                  );
-                })}
-              </div>
 
-              <details className="strategy-accordion">
-                <summary>
-                  <span>Ajuste fino de estrategias</span>
-                  <span className="strategy-accordion-hint">Personalizar</span>
-                </summary>
-                <div className="strategy-accordion-body">
-                  <div className="setting-row">
-                    <div className="setting-info">
-                      <span className="setting-label">Guía Cromática (BeeLine)</span>
-                      <span className="setting-subtext">Gradiente de barrido ocular para retorno de línea</span>
-                    </div>
-                    <Toggle
-                      label="Guía Cromática"
-                      checked={settings.chromaticGuide}
-                      onChange={onToggleChromaticGuide}
-                    />
-                  </div>
-                  {settings.chromaticGuide ? (
-                    <div className="setting-row setting-row--sub">
-                      <span className="setting-label">Paleta cromática</span>
-                      <div
-                        className="segmented segmented--palette"
-                        role="group"
-                        aria-label="Paleta cromática"
-                      >
-                        {CHROMATIC_PALETTES.map((p) => (
-                          <button
-                            key={p.id}
-                            type="button"
-                            data-active={settings.chromaticPalette === p.id || undefined}
-                            aria-pressed={settings.chromaticPalette === p.id}
-                            onClick={() => onSelectChromaPalette(p.id)}
-                            style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}
-                          >
-                            <span
-                              style={{
-                                display: "inline-block",
-                                width: "10px",
-                                height: "10px",
-                                borderRadius: "50%",
-                                background: `linear-gradient(135deg, ${p.preview[0]}, ${p.preview[1]})`,
-                              }}
-                              aria-hidden="true"
-                            />
-                            <span>{p.label}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
-
-                  <div className="setting-row">
-                    <div className="setting-info">
-                      <span className="setting-label">Líneas Sintácticas</span>
-                      <span className="setting-subtext">
-                        Corta el texto en unidades con sentido (recomendado junto a Guía Cromática para TDAH)
-                      </span>
-                    </div>
-                    <Toggle
-                      label="Líneas Sintácticas"
-                      checked={settings.syntacticLines}
-                      onChange={onToggleSyntacticLines}
-                    />
-                  </div>
-
-                  <div className="setting-row">
-                    <div className="setting-info">
-                      <span className="setting-label">Anclajes Biónicos</span>
-                      <span className="setting-subtext">Resalta las letras iniciales para fijación ocular ágil</span>
-                    </div>
-                    <Toggle
-                      label="Anclajes Biónicos"
-                      checked={settings.bionicAnchors}
-                      onChange={onToggleBionicAnchors}
-                    />
-                  </div>
-
-                  <div className="setting-row setting-row--stack">
-                    <div className="setting-info">
-                      <span className="setting-label">Contraste de ayudas</span>
-                      <span className="setting-subtext">Calibración de luminancia visual para Neuro-Enfoque y Guía Cromática</span>
-                    </div>
-                    <div
-                      className="segmented segmented--contrast"
-                      role="group"
-                      aria-label="Contraste de ayudas"
-                    >
-                      <button
-                        type="button"
-                        data-active={settings.strategyContrast === "soft" ? true : undefined}
-                        aria-pressed={settings.strategyContrast === "soft"}
-                        onClick={() => updateSettings({ strategyContrast: "soft" })}
-                      >
-                        Suave
-                      </button>
-                      <button
-                        type="button"
-                        data-active={settings.strategyContrast === "balanced" ? true : undefined}
-                        aria-pressed={settings.strategyContrast === "balanced"}
-                        onClick={() => updateSettings({ strategyContrast: "balanced" })}
-                      >
-                        Nítido
-                      </button>
-                      <button
-                        type="button"
-                        data-active={settings.strategyContrast === "high" ? true : undefined}
-                        aria-pressed={settings.strategyContrast === "high"}
-                        onClick={() => updateSettings({ strategyContrast: "high" })}
-                      >
-                        Intenso (AAA)
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="setting-row setting-row--stack">
-                    <div className="setting-info">
-                      <span className="setting-label">Foco de Iluminación</span>
-                      <span className="setting-subtext">Aísla el texto y guía la atención visual sin colisiones</span>
-                    </div>
-                    <div
-                      className="segmented segmented--wrap segmented--illumination"
-                      role="group"
-                      aria-label="Foco de Iluminación"
-                    >
-                      <button
-                        type="button"
-                        data-active={
-                          !settings.paragraphFocus && !settings.focusRuler
-                            ? true
-                            : undefined
-                        }
-                        aria-pressed={!settings.paragraphFocus && !settings.focusRuler}
-                        onClick={() =>
-                          updateSettings({
-                            focusRuler: false,
-                            paragraphFocus: false,
-                            strategyPreset: "custom",
-                          })
-                        }
-                      >
-                        Sin máscara
-                      </button>
-                      <button
-                        type="button"
-                        data-active={
-                          !settings.paragraphFocus &&
-                          settings.focusRuler &&
-                          settings.rulerSize === 1
-                            ? true
-                            : undefined
-                        }
-                        aria-pressed={
-                          !settings.paragraphFocus &&
-                          settings.focusRuler &&
-                          settings.rulerSize === 1
-                        }
-                        onClick={() =>
-                          updateSettings({
-                            focusRuler: true,
-                            rulerSize: 1,
-                            paragraphFocus: false,
-                            strategyPreset: "custom",
-                          })
-                        }
-                      >
-                        Franja 1 línea
-                      </button>
-                      <button
-                        type="button"
-                        data-active={
-                          !settings.paragraphFocus &&
-                          settings.focusRuler &&
-                          (settings.rulerSize === 3 || (!settings.rulerSize && settings.rulerSize !== 1))
-                            ? true
-                            : undefined
-                        }
-                        aria-pressed={
-                          !settings.paragraphFocus &&
-                          settings.focusRuler &&
-                          (settings.rulerSize === 3 || (!settings.rulerSize && settings.rulerSize !== 1))
-                        }
-                        onClick={() =>
-                          updateSettings({
-                            focusRuler: true,
-                            rulerSize: 3,
-                            paragraphFocus: false,
-                            strategyPreset: "custom",
-                          })
-                        }
-                      >
-                        Franja 3 líneas
-                      </button>
-                      <button
-                        type="button"
-                        data-active={
-                          settings.paragraphFocus ||
-                          (settings.focusRuler && settings.rulerSize === "paragraph")
-                            ? true
-                            : undefined
-                        }
-                        aria-pressed={
-                          settings.paragraphFocus ||
-                          (settings.focusRuler && settings.rulerSize === "paragraph")
-                        }
-                        onClick={() =>
-                          updateSettings({
-                            paragraphFocus: true,
-                            focusRuler: false,
-                            strategyPreset: "custom",
-                          })
-                        }
-                      >
-                        Párrafo activo
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="setting-row setting-row--stack">
-                    <div className="setting-info">
-                      <span className="setting-label">Paisaje Sonoro de Concentración</span>
-                      <span className="setting-subtext">Sonidos ambientales procedurales para TDAH y flujo inmersivo</span>
-                    </div>
-                    <div
-                      className="segmented segmented--wrap segmented--soundscape"
-                      role="group"
-                      aria-label="Paisaje Sonoro de Concentración"
-                    >
-                      {[
-                        { id: "none", label: "Sin sonido" },
-                        { id: "purr", label: "Ronroneo" },
-                        { id: "rain", label: "Lluvia" },
-                        { id: "hearth", label: "Chimenea" },
-                        { id: "night_library", label: "Biblioteca" },
-                      ].map((item) => {
-                        const currentSound =
-                          settings.soundscape || (settings.ambientPurr ? "purr" : "none");
-                        const active = currentSound === item.id;
-                        return (
-                          <button
-                            key={item.id}
-                            type="button"
-                            data-active={active ? true : undefined}
-                            aria-pressed={active}
-                            onClick={() => {
-                              updateSettings({
-                                soundscape: item.id as SoundscapeSetting,
-                                ambientPurr: item.id === "purr",
-                                strategyPreset: "custom",
-                              });
-                            }}
-                          >
-                            {item.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  <div className="setting-row">
-                    <div className="setting-info">
-                      <span className="setting-label">Ritmo Guiado (Marcapasos Visual)</span>
-                      <span className="setting-subtext">
-                        Acompaña la lectura saltando entre unidades sintácticas a velocidad constante (TDAH)
-                      </span>
-                    </div>
-                    <Toggle
-                      label="Ritmo Guiado"
-                      checked={settings.visualPacer}
-                      onChange={(checked) => {
-                        updateSettings({
-                          visualPacer: checked,
-                          strategyPreset: "custom",
-                        });
-                      }}
-                    />
-                  </div>
-
-                  {settings.visualPacer ? (
-                    <div className="setting-row setting-row--stack">
-                      <div className="setting-info">
-                        <span className="setting-label">Velocidad del Ritmo Guiado</span>
-                        <span className="setting-subtext">{settings.pacerWpm || 210} palabras por minuto (WPM)</span>
-                      </div>
-                      <div
-                        className="segmented segmented--wpm"
-                        role="group"
-                        aria-label="Velocidad en palabras por minuto"
-                      >
-                        {[
-                          { wpm: 160, label: "160 WPM" },
-                          { wpm: 210, label: "210 WPM" },
-                          { wpm: 260, label: "260 WPM" },
-                          { wpm: 320, label: "320 WPM" },
-                        ].map((item) => (
-                          <button
-                            key={item.wpm}
-                            type="button"
-                            data-active={(settings.pacerWpm || 210) === item.wpm ? true : undefined}
-                            aria-pressed={(settings.pacerWpm || 210) === item.wpm}
-                            onClick={() => {
-                              updateSettings({
-                                pacerWpm: item.wpm,
-                                strategyPreset: "custom",
-                              });
-                            }}
-                          >
-                            {item.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
-
-                  {/* Previsualización en vivo */}
-                  <div
-                    className="strategy-preview-box"
-                    data-chroma-palette={settings.chromaticPalette || "editorial"}
-                    data-chromatic-guide={settings.chromaticGuide ? "true" : "false"}
-                    data-bionic-anchors={settings.bionicAnchors ? "true" : "false"}
-                    aria-label="Previsualización de lectura"
-                  >
-                    {settings.syntacticLines ? (
-                      <>
-                        <span
-                          className="syn-line lecta-syntactic-chunk"
-                          data-chunk-cycle="0"
-                        >
-                          {settings.bionicAnchors ? (
-                            <>
-                              <span className="lecta-fixation-anchor">En</span> un{" "}
-                              <span className="lecta-fixation-anchor">lug</span>ar de la{" "}
-                              <span className="lecta-fixation-anchor">Man</span>cha,
-                            </>
-                          ) : (
-                            "En un lugar de la Mancha,"
-                          )}
-                        </span>
-                        <span
-                          className="syn-line lecta-syntactic-chunk"
-                          data-chunk-cycle="1"
-                        >
-                          {settings.bionicAnchors ? (
-                            <>
-                              de <span className="lecta-fixation-anchor">cuy</span>o{" "}
-                              <span className="lecta-fixation-anchor">nom</span>bre no{" "}
-                              <span className="lecta-fixation-anchor">qui</span>ero{" "}
-                              <span className="lecta-fixation-anchor">acor</span>darme...
-                            </>
-                          ) : (
-                            "de cuyo nombre no quiero acordarme..."
-                          )}
-                        </span>
-                      </>
-                    ) : (
-                      <p>
-                        <span
-                          className="lecta-syntactic-chunk"
-                          data-inline="true"
-                          data-chunk-cycle="0"
-                        >
-                          {settings.bionicAnchors ? (
-                            <>
-                              <span className="lecta-fixation-anchor">En</span> un{" "}
-                              <span className="lecta-fixation-anchor">lug</span>ar de la{" "}
-                              <span className="lecta-fixation-anchor">Man</span>cha,{" "}
-                            </>
-                          ) : (
-                            "En un lugar de la Mancha, "
-                          )}
-                        </span>
-                        <span
-                          className="lecta-syntactic-chunk"
-                          data-inline="true"
-                          data-chunk-cycle="1"
-                        >
-                          {settings.bionicAnchors ? (
-                            <>
-                              de <span className="lecta-fixation-anchor">cuy</span>o{" "}
-                              <span className="lecta-fixation-anchor">nom</span>bre no{" "}
-                              <span className="lecta-fixation-anchor">qui</span>ero{" "}
-                              <span className="lecta-fixation-anchor">acor</span>darme...
-                            </>
-                          ) : (
-                            "de cuyo nombre no quiero acordarme..."
-                          )}
-                        </span>
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </details>
-
-              <div className="setting-section">
-                <div className="setting-row">
-                  <div className="setting-info">
-                    <span className="setting-label">Retiro de lectura</span>
-                    <span className="setting-subtext">Sesión inmersiva con tiempo o páginas objetivo</span>
-                  </div>
-                  <button
-                    type="button"
-                    className="btn--quiet"
-                    onClick={() => {
-                      closeSheet();
-                      setDeepModal(true);
-                    }}
-                  >
-                    Iniciar retiro
-                  </button>
-                </div>
-              </div>
-            </div>
-          ) : null}
-
-          {/* Pestaña 2: Apariencia */}
-          {settingsTab === "appearance" ? (
-            <div role="tabpanel" aria-label="Apariencia" className="sheet-panel">
-              <div className="setting-section">
-                <span className="setting-section-label">Tema</span>
-                <ThemeMenu value={theme} onChange={onThemeChange} variant="swatches" />
-              </div>
-
-              <div className="setting-section">
-                <span className="setting-section-label">Tipografía</span>
-                <FontCarousel
-                  value={settings.font}
-                  onChange={(font) => updateSettings({ font })}
-                />
-              </div>
-
-              <div className="setting-section">
-                <span className="setting-section-label">Tamaño y Espaciado</span>
-                <StepperControl
-                  label="Tamaño de letra"
-                  valueText={`${settings.size} px`}
-                  canDecrement={settings.size > READER_LIMITS.size.min}
-                  canIncrement={settings.size < READER_LIMITS.size.max}
-                  onDecrement={() => updateSettings({ size: settings.size - 1 })}
-                  onIncrement={() => updateSettings({ size: settings.size + 1 })}
-                  ariaDecrementLabel="Letra más pequeña"
-                  ariaIncrementLabel="Letra más grande"
-                />
-
-                <StepperControl
-                  label="Interlineado"
-                  valueText={
-                    LEADING_OPTIONS.find((o) => o.value === settings.leading)?.label ??
-                    String(settings.leading)
-                  }
-                  canDecrement={settings.leading > LEADING_OPTIONS[0].value}
-                  canIncrement={
-                    settings.leading < LEADING_OPTIONS[LEADING_OPTIONS.length - 1].value
-                  }
-                  onDecrement={() => {
-                    const idx = LEADING_OPTIONS.findIndex((o) => o.value === settings.leading);
-                    if (idx > 0) updateSettings({ leading: LEADING_OPTIONS[idx - 1].value });
-                    else if (idx === -1) updateSettings({ leading: LEADING_OPTIONS[0].value });
-                  }}
-                  onIncrement={() => {
-                    const idx = LEADING_OPTIONS.findIndex((o) => o.value === settings.leading);
-                    if (idx >= 0 && idx < LEADING_OPTIONS.length - 1) {
-                      updateSettings({ leading: LEADING_OPTIONS[idx + 1].value });
-                    } else if (idx === -1) {
-                      updateSettings({ leading: LEADING_OPTIONS[LEADING_OPTIONS.length - 1].value });
-                    }
-                  }}
-                  ariaDecrementLabel="Reducir interlineado"
-                  ariaIncrementLabel="Aumentar interlineado"
-                />
-
-                <div className="setting-row">
-                  <span className="setting-label">Márgenes</span>
-                  <div className="segmented" role="group" aria-label="Márgenes">
-                    {MARGIN_OPTIONS.map(({ value, label }) => (
-                      <button
-                        key={value}
-                        type="button"
-                        data-active={settings.measure === value || undefined}
-                        aria-pressed={settings.measure === value}
-                        onClick={() => updateSettings({ measure: value })}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
+          {/* Pestaña: Apariencia y ayudas (SSOT) */}
+          {settingsTab === "appearance" || settingsTab === "strategy" ? (
+            <div role="tabpanel" aria-label="Apariencia y ayudas" className="sheet-panel">
+              <ThemeMenu
+                value={theme}
+                onChange={onThemeChange}
+                settings={settings}
+                onUpdateSettings={updateSettings}
+                activePreset={detectActiveReadingPreset(settings)}
+                onSelectPreset={(preset) => {
+                  const updated = applyReadingPreset(settings, preset);
+                  updateSettings(updated);
+                }}
+                onToggleFocusRuler={(checked) => {
+                  updateSettings({
+                    focusRuler: checked,
+                    readingPreset: "custom",
+                    strategyPreset: "custom",
+                  });
+                }}
+                onToggleParagraphFocus={(checked) => {
+                  updateSettings({
+                    paragraphFocus: checked,
+                    readingPreset: "custom",
+                    strategyPreset: "custom",
+                  });
+                }}
+              />
 
               <div className="setting-section">
                 <span className="setting-section-label">Maquetación</span>
@@ -6986,27 +6458,18 @@ export default function Reader({
                   closeSheet();
                   setGlossaryOpen(true);
                 }}
+                onOpenNotebook={() => {
+                  closeSheet();
+                  onOpenNotebook();
+                }}
                 onCreateQuoteCard={handleCreateQuoteCard}
                 onExportBook={handleExportBook}
                 bookHash={bookHash}
                 language={language}
-                onToggleTts={onTtsRequest}
-                ttsActive={ttsSnap.status !== "idle"}
-                ttsSupported={isTtsSupported()}
                 onToggleFullscreen={() => void handleToggleFullscreen()}
                 isFullscreen={isFullscreenActive}
                 fullscreenSupported={isFullscreenSupported()}
-                onOpenRetreat={() => {
-                  closeSheet();
-                  setDeepModal(true);
-                }}
                 onClose={closeSheet}
-                strategyContrast={settings.strategyContrast}
-                onStrategyContrastChange={(contrast) => updateSettings({ strategyContrast: contrast })}
-                chapterPrimingMode={settings.chapterPrimingMode}
-                onChapterPrimingModeChange={(mode) => updateSettings({ chapterPrimingMode: mode })}
-                settings={settings}
-                onUpdateSettings={(updated) => updateSettings(updated)}
               />
 
               <div className="setting-section">

@@ -14,6 +14,38 @@ export interface FocusSuggestion {
   recommendedAid: FocusAidType;
 }
 
+export function formatCompactProgress(raw: string): { compact: string; title: string } {
+  if (!raw) return { compact: "", title: "" };
+
+  const match = raw.match(
+    /^(Cap\.|Pág\.|pág\.|cap\.)\s*(\d+)(?:\s+de\s+(\d+))?(?:\s*·\s*~?(\d+)\s*(?:min|m))?/i
+  );
+  if (match) {
+    const [, prefix, current, total, mins] = match;
+    const isCap = prefix.toLowerCase().startsWith("cap");
+    const label = isCap ? "Cap." : "Pág.";
+    const fullUnit = isCap ? "Capítulo" : "Página";
+
+    let compact = `${label} ${current}`;
+    let title = `${fullUnit} ${current}${total ? ` de ${total}` : ""}`;
+
+    if (mins) {
+      compact += ` · ~${mins}m`;
+      title += ` — ~${mins} min restantes`;
+    }
+
+    return { compact, title };
+  }
+
+  const compact = raw
+    .replace(/\s+de\s+\d+/i, "")
+    .replace(/~(\d+)\s*min/gi, "~$1m")
+    .replace(/(\d+)\s*min/gi, "$1m")
+    .trim();
+
+  return { compact, title: raw };
+}
+
 export interface SmartReaderDockProps {
   /** Texto legible de progreso (ej. "Pág. 12 de 45 · ~3 min" o "Cap. 2 de 8 · ~15 min") */
   progressText: string;
@@ -92,6 +124,7 @@ export default function SmartReaderDock({
   const [isMuteOptionsOpen, setIsMuteOptionsOpen] = useState(false);
   const popoverRef = useRef<HTMLDivElement>(null);
 
+  const progressMeta = formatCompactProgress(progressText);
   const isAudioMode = ttsSnap.status !== "idle" && ttsSnap.status !== "stopping";
 
   const effectiveIsFatigued = Boolean(
@@ -119,16 +152,16 @@ export default function SmartReaderDock({
       description: "Opciones avanzadas personalizadas",
     };
 
-  // Cierra el popover si se hace clic fuera
+  // Cierra el popover si se presiona la tecla Escape
   useEffect(() => {
     if (!isModeSheetOpen) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
         setIsModeSheetOpen(false);
       }
     };
-    window.addEventListener("pointerdown", handleClickOutside);
-    return () => window.removeEventListener("pointerdown", handleClickOutside);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isModeSheetOpen]);
 
   const handleCapture = () => {
@@ -163,18 +196,36 @@ export default function SmartReaderDock({
 
       {/* DOCK ÚNICO INFERIOR INTELIGENTE */}
       <div
-        className={`reader-smart-dock-wrapper ${isPureCanvas ? "is-pure-canvas" : ""}`}
+        className={`reader-dock-shell reader-dock-wrapper reader-smart-dock-wrapper ${isPureCanvas ? "is-pure-canvas" : ""}`}
         data-hidden={isPureCanvas || undefined}
         ref={popoverRef}
       >
+        {/* Backdrop transparente que intercepta el toque exterior para cerrar el popover sin pasar de página */}
+        {isModeSheetOpen && !isAudioMode && (
+          <div
+            className="dock-mode-popover-backdrop"
+            data-testid="dock-mode-popover-backdrop"
+            aria-hidden="true"
+            onClick={(e) => {
+              e.stopPropagation();
+              e.preventDefault();
+              setIsModeSheetOpen(false);
+            }}
+            onTouchStart={(e) => {
+              e.stopPropagation();
+              setIsModeSheetOpen(false);
+            }}
+          />
+        )}
+
         {/* Popover de 1 toque para los 3 Modos Humanos */}
         {isModeSheetOpen && !isAudioMode && (
           <div
-            className="reader-mode-popover"
+            className="dock-mode-popover reader-mode-popover"
             role="dialog"
             aria-label="Elegir modo de lectura"
           >
-            <div className="reader-mode-popover-grid">
+            <div className="dock-mode-popover-grid reader-mode-popover-grid">
               {READING_PRESETS.map((preset) => {
                 const isSelected = activePreset === preset.id;
                 return (
@@ -182,7 +233,8 @@ export default function SmartReaderDock({
                     key={preset.id}
                     type="button"
                     className={`reader-mode-card ${isSelected ? "is-active" : ""}`}
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.stopPropagation();
                       onSelectPreset(preset.id as Exclude<ReadingPreset, "custom">);
                       setIsModeSheetOpen(false);
                     }}
@@ -194,10 +246,10 @@ export default function SmartReaderDock({
                 );
               })}
             </div>
-            <div className="reader-mode-popover-footer">
+            <div className="dock-mode-popover-footer reader-mode-popover-footer">
               <button
                 type="button"
-                className="reader-mode-customize-link"
+                className="dock-mode-customize-btn reader-mode-customize-link"
                 onClick={() => {
                   setIsModeSheetOpen(false);
                   onOpenAdvancedSettings();
@@ -371,14 +423,27 @@ export default function SmartReaderDock({
         )}
 
         <nav
-          className={`reader-smart-dock reader-dock ${isAudioMode ? "is-audio-mode" : "is-reading-mode"}`}
+          className={`smart-reader-dock reader-smart-dock reader-dock ${isAudioMode ? "is-audio-mode" : "is-reading-mode"}`}
           aria-label={isAudioMode ? "Controles de voz y ritmo" : "Barra de lectura"}
         >
+          {/* Asiento del Gato (Perch Mode: reposando sobre la esquina superior derecha de la cápsula) */}
+          {companionSlot ? (
+            <div
+              className="dock-companion-slot dock-companion-perch"
+              data-popover-open={isModeSheetOpen || undefined}
+            >
+              {companionSlot}
+            </div>
+          ) : null}
+
           {!isAudioMode ? (
             /* ================= MODO LECTURA ================= */
             <>
-              <div className="dock-section dock-progress-info">
-                <span className="dock-chapter-text">{progressText}</span>
+              <div
+                className="dock-progress-meta dock-section dock-progress-info"
+                title={progressMeta.title || progressText}
+              >
+                <span className="dock-chapter-text">{progressMeta.compact || progressText}</span>
                 {errorText ? (
                   <span className="dock-error-text" role="alert">
                     {errorText}
@@ -386,67 +451,57 @@ export default function SmartReaderDock({
                 ) : null}
               </div>
 
-              <span className="reader-dock-divider" aria-hidden="true" />
-
-              {/* Selector de los 3 Modos Humanos */}
-              <button
-                type="button"
-                className="dock-action-btn dock-mode-trigger"
-                onClick={() => setIsModeSheetOpen((prev) => !prev)}
-                aria-expanded={isModeSheetOpen}
-                aria-label={`Modo de lectura: ${currentPresetMeta.label}. Toque para cambiar`}
-                title="Modo de lectura y ayudas visuales"
-              >
-                <span aria-hidden="true">{currentPresetMeta.icon}</span>
-                <span>{currentPresetMeta.shortLabel}</span>
-              </button>
-
-              {/* Botón directo de 1 toque para escuchar en voz alta */}
-              {onStartAudio && (
+              <div className="dock-actions-group">
+                {/* Selector de los 3 Modos Humanos */}
                 <button
                   type="button"
-                  className="dock-action-btn dock-listen-trigger"
-                  onClick={onStartAudio}
-                  aria-label="Escuchar página en voz alta"
-                  title="Escuchar en voz alta (TTS)"
+                  className="dock-action-btn dock-pill-btn dock-mode-trigger"
+                  onClick={() => setIsModeSheetOpen((prev) => !prev)}
+                  aria-expanded={isModeSheetOpen}
+                  aria-label={`Modo de lectura: ${currentPresetMeta.label}. Toque para cambiar`}
+                  title="Modo de lectura y ayudas visuales"
                 >
-                  <Icon name="headphones" size={14} />
-                  <span>Escuchar</span>
+                  <span aria-hidden="true">{currentPresetMeta.icon}</span>
+                  <span>{currentPresetMeta.shortLabel}</span>
                 </button>
-              )}
 
-              {/* Resumen de atención (Hilo) */}
-              {onRecap && (
-                <button
-                  type="button"
-                  className="dock-action-btn dock-recap-trigger"
-                  onClick={onRecap}
-                  aria-label="Recuperar el hilo de esta página"
-                  title="Recuperar el hilo (resumen de atención)"
-                >
-                  <span aria-hidden="true">🧭</span>
-                  <span>Hilo</span>
-                </button>
-              )}
+                {/* Botón directo de 1 toque para escuchar en voz alta */}
+                {onStartAudio && (
+                  <button
+                    type="button"
+                    className="dock-action-btn dock-pill-btn dock-listen-trigger"
+                    onClick={onStartAudio}
+                    aria-label="Escuchar página en voz alta"
+                    title="Escuchar en voz alta (TTS)"
+                  >
+                    <Icon name="headphones" size={14} />
+                    <span className="dock-action-label-collapsible">Escuchar</span>
+                  </button>
+                )}
 
-              {/* Slot del Gato Acompañante interactivo */}
-              {companionSlot ? (
-                <>
-                  <span className="reader-dock-divider" aria-hidden="true" />
-                  <div className="dock-companion-slot">
-                    {companionSlot}
-                  </div>
-                </>
-              ) : null}
+                {/* Resumen de atención (Hilo) */}
+                {onRecap && (
+                  <button
+                    type="button"
+                    className="dock-action-btn dock-pill-btn dock-recap-trigger"
+                    onClick={onRecap}
+                    aria-label="Recuperar el hilo de esta página"
+                    title="Recuperar el hilo (resumen de atención)"
+                  >
+                    <span aria-hidden="true">🧭</span>
+                    <span className="dock-action-label-collapsible">Hilo</span>
+                  </button>
+                )}
+              </div>
             </>
           ) : (
             /* ================= MODO AUDIO / TTS ================= */
-            <>
+            <div className="dock-actions-group dock-audio-group" style={{ width: "100%", justifyContent: "center" }}>
               {/* Frase anterior */}
               {onPrevSentence ? (
                 <button
                   type="button"
-                  className="dock-audio-btn dock-audio-step-btn"
+                  className="dock-audio-btn dock-audio-step-btn dock-pill-btn"
                   onClick={onPrevSentence}
                   disabled={ttsSnap.status === "preparing"}
                   aria-label="Frase anterior"
@@ -459,7 +514,7 @@ export default function SmartReaderDock({
               {/* Play / Pausa */}
               <button
                 type="button"
-                className="dock-audio-play-btn"
+                className="dock-audio-play-btn dock-pill-btn"
                 onClick={onTogglePlayPause}
                 disabled={ttsSnap.status === "preparing"}
                 aria-label={
@@ -481,7 +536,7 @@ export default function SmartReaderDock({
               {onNextSentence ? (
                 <button
                   type="button"
-                  className="dock-audio-btn dock-audio-step-btn"
+                  className="dock-audio-btn dock-audio-step-btn dock-pill-btn"
                   onClick={onNextSentence}
                   disabled={ttsSnap.status === "preparing"}
                   aria-label="Frase siguiente"
@@ -494,7 +549,7 @@ export default function SmartReaderDock({
               {/* Velocidad */}
               <button
                 type="button"
-                className="dock-audio-pill-btn"
+                className="dock-audio-pill-btn dock-pill-btn"
                 onClick={onCycleSpeed}
                 aria-label="Velocidad de voz"
                 title="Cambiar velocidad"
@@ -503,43 +558,45 @@ export default function SmartReaderDock({
               </button>
 
               {/* Selector de Voz */}
-              <button
-                type="button"
-                className={`dock-audio-pill-btn ${isNeuralVoice ? "is-hd-active" : ""}`}
-                onClick={onOpenVoiceSelector}
-                aria-label="Elegir voz"
-                title={isNeuralVoice ? "Voz KittenTTS Neural HD activa" : "Voz del sistema. Toca para cambiar o descargar HD"}
-              >
-                {isNeuralVoice ? "✨ Voz HD" : "🎙️ Voz"}
-              </button>
+              {onOpenVoiceSelector ? (
+                <button
+                  type="button"
+                  className={`dock-audio-pill-btn dock-pill-btn ${isNeuralVoice ? "is-hd-active" : ""}`}
+                  onClick={onOpenVoiceSelector}
+                  aria-label="Elegir voz"
+                  title={isNeuralVoice ? "Voz KittenTTS Neural HD activa" : "Voz del sistema. Toca para cambiar o descargar HD"}
+                >
+                  <span aria-hidden="true">{isNeuralVoice ? "✨" : "🎙️"}</span>
+                  <span className="dock-action-label-collapsible">{isNeuralVoice ? " Voz HD" : " Voz"}</span>
+                </button>
+              ) : null}
 
               {/* Captura al Cuaderno de la frase actual */}
               {onCaptureWord ? (
                 <button
                   type="button"
-                  className={`dock-audio-pill-btn dock-audio-capture-btn ${wordCapturedToast ? "is-captured" : ""}`}
+                  className={`dock-audio-pill-btn dock-pill-btn dock-audio-capture-btn ${wordCapturedToast ? "is-captured" : ""}`}
                   onClick={handleCapture}
                   disabled={ttsSnap.status === "preparing"}
                   aria-label="Capturar joya léxica de la frase al Cuaderno"
                   title="Guardar palabra clave de la frase"
                 >
-                  {wordCapturedToast ? "✓ Guardada" : "★ Joya"}
+                  <span aria-hidden="true">{wordCapturedToast ? "✓" : "★"}</span>
+                  <span className="dock-action-label-collapsible">{wordCapturedToast ? " Guardada" : " Joya"}</span>
                 </button>
               ) : null}
-
-              <span className="reader-dock-divider" aria-hidden="true" />
 
               {/* Volver a lectura silenciosa */}
               <button
                 type="button"
-                className="dock-audio-close-btn"
+                className="dock-audio-close-btn dock-pill-btn"
                 onClick={onStopAudio}
                 aria-label="Detener audio y volver a lectura silenciosa"
                 title="Volver a lectura silenciosa"
               >
                 ✕
               </button>
-            </>
+            </div>
           )}
         </nav>
       </div>

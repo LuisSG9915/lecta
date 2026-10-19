@@ -47,15 +47,27 @@
 }
 
 .reader-bar-progress {
-  flex: 0 1 120px;
-  min-width: 60px;
-  max-width: 140px;
-  margin-inline: var(--s-2);
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  pointer-events: none;
+  z-index: 2;
+  margin: 0;
+  padding: 0;
 }
 
 .reader-bar-progress .progress-ink {
-  block-size: 4px;
-  border-radius: 2px;
+  block-size: 2px;
+  height: 2px;
+  border-radius: 0;
+  background: transparent;
+  width: 100%;
+}
+
+.reader-bar-progress .progress-ink-fill {
+  height: 2px;
 }
 
 .reader-back {
@@ -63,8 +75,8 @@
   display: inline-flex;
   align-items: center;
   gap: 0.2rem;
-  min-height: 44px;
-  min-width: 44px;
+  min-height: 40px;
+  min-width: 40px;
   padding-inline: var(--s-2);
 }
 
@@ -74,14 +86,12 @@
 }
 
 .reader-bar-title {
-  flex: 1 1 auto;
+  flex: 1;
   min-width: 0;
   margin: 0;
   font-family: var(--font-ui);
-  font-size: var(--fs-sm);
+  font-size: 0.875rem;
   font-weight: 500;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
   color: var(--ink-soft);
   text-align: center;
   white-space: nowrap;
@@ -264,7 +274,8 @@
 
 .reader-body {
   padding-block-start: 4.5rem;
-  padding-block-end: 8rem;
+  padding-block-end: calc(84px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px));
   padding-inline: var(--s-5);
 }
 
@@ -1131,9 +1142,9 @@ mark.saved-passage--dario {
   min-block-size: 0;
   display: flex;
   flex-direction: column;
-  /* El pie es fijo: su altura (~3.5rem) se reserva para que no tape
-     la navegación de páginas. */
-  padding-block-end: calc(88px + env(safe-area-inset-bottom, 0px));
+  /* El margen inferior reserva espacio para que la cápsula nunca tape las últimas dos líneas */
+  padding-block-end: calc(84px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px));
   overflow: hidden;
 }
 
@@ -1678,6 +1689,44 @@ mark.saved-passage--dario {
   margin-left: var(--s-3);
   padding-left: var(--s-2);
   border-left: 2px solid var(--rule);
+}
+
+/* Hoja Aa: 3 bloques escaneables (Tema, Tipografía, Ayudas de Enfoque) */
+.theme-sheet-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  padding: var(--s-2) 0;
+}
+
+.theme-sheet-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.theme-sheet-steppers {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.theme-focus-switches {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.reader-mode-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--s-2);
+}
+
+@media (max-width: 480px) {
+  .reader-mode-cards {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Carrusel horizontal de tipografías */
@@ -3071,7 +3120,8 @@ b.lecta-anchor {
   bottom: calc(76px + env(safe-area-inset-bottom, 0px));
   margin-inline: auto;
   width: fit-content;
-  max-width: calc(100% - 2 * var(--s-4));
+  max-width: calc(100vw - 20px);
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   gap: var(--s-2);
@@ -4498,147 +4548,296 @@ b.lecta-anchor {
    Track 2: Dock Inferior Único, Modo Lienzo Puro y 3 Modos de Lectura
    ===================================================================== */
 
-/* Contenedor fijo del Dock Único */
+/* Contenedor fijo inferior centrado y blindado contra desbordamientos */
+.reader-dock-shell,
+.reader-dock-wrapper,
 .reader-smart-dock-wrapper {
   position: fixed;
   left: 50%;
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 1.25rem);
+  bottom: max(12px, env(safe-area-inset-bottom, 12px));
   transform: translateX(-50%);
-  z-index: 25;
+  z-index: 40;
+  width: max-content;
+  max-width: calc(100vw - 20px);
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--s-2);
-  width: fit-content;
-  max-width: min(94vw, 540px);
   pointer-events: none;
-  transition:
-    transform 240ms cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 240ms ease;
+  transition: transform 280ms cubic-bezier(0.22, 1, 0.36, 1),
+              opacity 220ms ease;
 }
 
-.reader-smart-dock-wrapper.is-pure-canvas,
-.reader-smart-dock-wrapper[data-hidden="true"] {
-  transform: translate(-50%, calc(100% + 2rem));
+.reader-dock-shell[data-hidden="true"],
+.reader-dock-wrapper[data-hidden="true"],
+.reader-smart-dock-wrapper[data-hidden="true"],
+.reader-smart-dock-wrapper.is-pure-canvas {
+  transform: translate(-50%, calc(100% + 24px));
   opacity: 0;
   pointer-events: none;
 }
 
+/* La Cápsula Principal */
+.smart-reader-dock,
 .reader-smart-dock {
+  position: relative;
+  z-index: 30;
   pointer-events: auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.5rem;
-  padding: 0.35rem 0.75rem 0.35rem 1rem;
-  border-radius: var(--r-full, 9999px);
-  background: color-mix(in srgb, var(--paper-raised) 88%, transparent);
-  color: var(--ink);
-  border: 1px solid var(--rule);
-  -webkit-backdrop-filter: blur(14px);
-  backdrop-filter: blur(14px);
-  box-shadow: 0 4px 20px -2px rgba(31, 29, 26, 0.12);
-  transition: all 240ms cubic-bezier(0.22, 1, 0.36, 1);
+  gap: 6px;
+  width: 100%;
+  max-width: min(520px, calc(100vw - 20px));
+  min-height: 48px;
+  padding: 6px 10px;
+  border-radius: 9999px;
+  background: rgba(24, 24, 27, 0.92);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.5);
+  box-sizing: border-box;
+  overflow: visible;
+  color: var(--text-main, #ffffff);
 }
 
+.smart-reader-dock.is-audio-mode,
 .reader-smart-dock.is-audio-mode {
-  background: color-mix(in srgb, var(--paper-sunken) 92%, transparent);
-  border-color: color-mix(in srgb, var(--vermilion) 35%, var(--rule));
+  justify-content: center;
+  gap: 4px;
 }
 
+/* Metadatos de progreso elásticos (nunca empujan botones fuera) */
+.dock-progress-meta,
 .dock-section.dock-progress-info {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 0.75rem;
+  line-height: 1.2;
+  color: var(--text-muted, #a1a1aa);
+  padding-left: 4px;
+}
+
+.dock-chapter-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: inline-block;
+  max-width: 100%;
+}
+
+/* Acciones del dock */
+.dock-actions-group {
   display: flex;
   align-items: center;
-  gap: 0.35rem;
-  font-family: var(--font-ui);
-  font-size: var(--fs-xs);
-  color: var(--ink-soft);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
+  gap: 4px;
+  flex-shrink: 0;
 }
 
+.dock-pill-btn,
 .dock-action-btn,
-.dock-audio-pill-btn,
-.dock-audio-btn,
-.dock-audio-play-btn,
-.dock-audio-close-btn {
-  border: none;
-  background: transparent;
-  color: inherit;
-  font-family: var(--font-ui);
-  font-size: var(--fs-xs);
-  font-weight: 500;
-  min-height: 32px;
-  padding: 0.25rem 0.65rem;
-  border-radius: var(--r-full, 9999px);
+.dock-audio-pill-btn {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
-  cursor: pointer;
+  justify-content: center;
+  gap: 5px;
+  height: 36px;
+  padding: 0 10px;
+  border-radius: 9999px;
+  font-size: 0.8125rem;
+  font-weight: 500;
   white-space: nowrap;
-  transition:
-    background-color 150ms ease,
-    transform 120ms ease;
+  flex-shrink: 0;
+  color: var(--text-main, #ffffff);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background-color 150ms ease, transform 120ms ease;
 }
 
+.dock-pill-btn:hover,
 .dock-action-btn:hover,
-.dock-audio-pill-btn:hover,
-.dock-audio-btn:hover {
-  background: color-mix(in srgb, var(--ink) 8%, transparent);
+.dock-audio-pill-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.dock-pill-btn:active,
+.dock-action-btn:active,
+.dock-audio-pill-btn:active {
+  transform: scale(0.96);
+}
+
+/* Botones de audio */
+.dock-audio-step-btn {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.95rem;
+  border-radius: 9999px;
 }
 
 .dock-audio-play-btn {
-  background: var(--vermilion);
+  height: 36px;
+  min-height: 36px;
+  padding: 0 12px;
+  background: var(--vermilion, #c86d3b);
   color: #ffffff !important;
   font-weight: 600;
-  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: transform 120ms ease, filter 150ms ease;
 }
 
 .dock-audio-play-btn:hover {
   filter: brightness(1.1);
-  transform: scale(1.02);
+}
+
+.dock-audio-play-btn:active {
+  transform: scale(0.96);
 }
 
 .dock-audio-pill-btn.is-hd-active {
-  background: color-mix(in srgb, var(--vermilion) 16%, transparent);
-  color: var(--vermilion);
+  background: rgba(200, 109, 59, 0.2);
+  color: var(--vermilion, #c86d3b);
   font-weight: 600;
 }
 
 .dock-audio-capture-btn.is-captured {
-  background: color-mix(in srgb, var(--gold) 25%, transparent);
-  color: var(--ink);
+  background: rgba(234, 179, 8, 0.25);
+  color: #fbbf24;
 }
 
-.dock-companion-slot {
+.dock-audio-close-btn {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  color: var(--text-muted, #a1a1aa);
+  background: transparent;
+  border: none;
+  border-radius: 9999px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background-color 150ms ease, color 150ms ease;
 }
 
-/* Popover de los 3 Modos Humanos */
-.reader-mode-popover {
+.dock-audio-close-btn:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* Backdrop transparente que intercepta clics fuera del popover sin pasar de página */
+.dock-mode-popover-backdrop {
+  position: fixed;
+  inset: -100vh -100vw;
+  z-index: 10;
+  background: transparent;
   pointer-events: auto;
-  width: min(94vw, 480px);
-  background: var(--paper-raised);
-  border-radius: var(--radius-lg, 14px);
-  padding: var(--s-3);
-  border: 1px solid var(--rule);
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.22);
-  -webkit-backdrop-filter: blur(16px);
-  backdrop-filter: blur(16px);
-  animation: companion-bubble-pop 200ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+/* Asiento reservado para el Gato en Modo Perch (reposando sobre la repisa de la cápsula) */
+.dock-companion-slot,
+.dock-companion-perch {
+  position: absolute;
+  right: 12px;
+  bottom: calc(100% - 6px);
+  z-index: 41;
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  transition: opacity 180ms ease, transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.dock-companion-slot[data-popover-open="true"],
+.dock-companion-perch[data-popover-open="true"] {
+  opacity: 0;
+  transform: scale(0.85);
+  pointer-events: none;
+}
+
+.dock-companion-slot .reader-dock-cat,
+.dock-companion-slot .reader-dock-cat .companion-btn,
+.dock-companion-slot .reader-dock-cat .companion-btn .cat {
+  inline-size: 36px;
+  block-size: 36px;
+  min-width: 36px;
+  min-height: 36px;
+}
+
+/* Responsividad extrema para móviles angostos (< 390px) */
+@media (max-width: 390px) {
+  .smart-reader-dock,
+  .reader-smart-dock {
+    padding: 5px 8px;
+    gap: 4px;
+  }
+  .dock-progress-meta,
+  .dock-section.dock-progress-info {
+    font-size: 0.7rem;
+    max-width: 96px;
+  }
+  /* Oculta texto secundario en botones de acción dejando icono + accesible */
+  .dock-action-label-collapsible {
+    display: none;
+  }
+  .dock-pill-btn,
+  .dock-action-btn,
+  .dock-audio-pill-btn {
+    padding: 0 8px;
+  }
+}
+
+/* Popover de Modos: encima de la cápsula, nunca tapado por ella ni por el backdrop */
+.dock-mode-popover,
+.reader-mode-popover {
+  position: relative;
+  z-index: 50;
+  pointer-events: auto;
+  width: min(360px, calc(100vw - 24px));
+  max-height: min(62vh, 420px);
+  margin-bottom: 10px;
+  padding: 12px;
+  border-radius: 20px;
+  background: var(--surface-elevated, #18181b);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.65);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  box-sizing: border-box;
+  animation: dockPopoverIn 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.dock-mode-popover-grid,
 .reader-mode-popover-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: var(--s-2);
-}
-
-@media (max-width: 480px) {
-  .reader-mode-popover-grid {
-    grid-template-columns: 1fr;
-  }
+  grid-template-columns: 1fr;
+  gap: 8px;
 }
 
 .reader-mode-card {
@@ -4646,25 +4845,26 @@ b.lecta-anchor {
   flex-direction: column;
   align-items: flex-start;
   text-align: left;
-  padding: var(--s-2) var(--s-3);
-  border-radius: var(--radius-md, 10px);
-  border: 1px solid var(--rule);
-  background: var(--paper-sunken);
-  color: var(--ink);
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-main, #ffffff);
   cursor: pointer;
   transition:
     border-color 150ms ease,
     background-color 150ms ease;
-  min-height: 72px;
+  min-height: 56px;
 }
 
 .reader-mode-card:hover {
-  border-color: var(--ink-soft);
+  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .reader-mode-card.is-active {
-  border-color: var(--vermilion);
-  background: color-mix(in srgb, var(--vermilion) 12%, var(--paper-raised));
+  border-color: var(--vermilion, #c86d3b);
+  background: rgba(200, 109, 59, 0.16);
 }
 
 .reader-mode-card-icon {
@@ -4682,30 +4882,56 @@ b.lecta-anchor {
 .reader-mode-card-desc {
   font-family: var(--font-ui);
   font-size: 0.7rem;
-  color: var(--ink-soft);
+  color: var(--text-muted, #a1a1aa);
   line-height: 1.25;
 }
 
+.dock-mode-popover-footer,
 .reader-mode-popover-footer {
-  margin-top: var(--s-2);
-  padding-top: var(--s-2);
-  border-top: 1px solid var(--rule);
+  position: sticky;
+  bottom: -12px;
+  margin: 4px -12px -12px -12px;
+  padding: 10px 12px;
+  background: linear-gradient(to top, #18181b 80%, rgba(24, 24, 27, 0.85));
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
   text-align: center;
 }
 
+.dock-mode-customize-btn,
 .reader-mode-customize-link {
-  border: none;
-  background: none;
-  color: var(--ink-soft);
-  font-family: var(--font-ui);
-  font-size: var(--fs-xs);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: 9999px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-muted, #a1a1aa);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   cursor: pointer;
-  text-decoration: underline;
-  text-underline-offset: 3px;
+  text-decoration: none;
+  transition: all 150ms ease;
 }
 
+.dock-mode-customize-btn:hover,
 .reader-mode-customize-link:hover {
-  color: var(--ink);
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+@keyframes dockPopoverIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 /* Gato miniatura en esquina durante Modo Lienzo Puro */

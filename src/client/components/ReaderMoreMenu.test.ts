@@ -3,7 +3,6 @@ import { act, createElement as h } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import ReaderMoreMenu, { type ReaderMoreMenuProps } from "./ReaderMoreMenu";
-import { READER_DEFAULTS } from "../lib/settings";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -27,9 +26,7 @@ describe("ReaderMoreMenu", () => {
     isOpen: true,
     onClose: vi.fn(),
     onSearch: vi.fn(),
-    onToggleTts: vi.fn(),
     onToggleFullscreen: vi.fn(),
-    onOpenRetreat: vi.fn(),
   };
 
   const render = (props: Partial<ReaderMoreMenuProps> = {}) => {
@@ -48,12 +45,10 @@ describe("ReaderMoreMenu", () => {
     const menu = host.querySelector(".reader-more-menu");
     expect(menu).toBeTruthy();
     const items = host.querySelectorAll(".reader-more-item");
-    expect(items.length).toBe(4);
+    expect(items.length).toBe(2);
 
     expect(items[0].textContent).toContain("Buscar en el libro");
-    expect(items[1].textContent).toContain("Leer en voz alta");
-    expect(items[2].textContent).toContain("Pantalla completa");
-    expect(items[3].textContent).toContain("Retiro de lectura");
+    expect(items[1].textContent).toContain("Pantalla completa");
 
     expect(document.activeElement).toBe(items[0]);
   });
@@ -76,37 +71,12 @@ describe("ReaderMoreMenu", () => {
     const onClose = vi.fn(() => calls.push("close"));
     render({ onToggleFullscreen, onClose });
 
-    const btn = host.querySelectorAll<HTMLButtonElement>(".reader-more-item")[2];
+    const btn = host.querySelectorAll<HTMLButtonElement>(".reader-more-item")[1];
     await act(async () => btn.click());
 
     expect(onToggleFullscreen).toHaveBeenCalledTimes(1);
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(calls).toEqual(["fullscreen", "close"]);
-  });
-
-  it("Escuchar invoca onToggleTts y onClose", async () => {
-    const onToggleTts = vi.fn();
-    const onClose = vi.fn();
-    render({ onToggleTts, onClose, ttsActive: true });
-
-    const btn = host.querySelectorAll<HTMLButtonElement>(".reader-more-item")[1];
-    expect(btn.textContent).toContain("Detener voz");
-    await act(async () => btn.click());
-
-    expect(onToggleTts).toHaveBeenCalledTimes(1);
-    expect(onClose).toHaveBeenCalledTimes(1);
-  });
-
-  it("Retiro invoca onOpenRetreat y onClose", async () => {
-    const onOpenRetreat = vi.fn();
-    const onClose = vi.fn();
-    render({ onOpenRetreat, onClose });
-
-    const btn = host.querySelectorAll<HTMLButtonElement>(".reader-more-item")[3];
-    await act(async () => btn.click());
-
-    expect(onOpenRetreat).toHaveBeenCalledTimes(1);
-    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   it("Escape cierra el menú", () => {
@@ -131,119 +101,43 @@ describe("ReaderMoreMenu", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  it("oculta opciones cuando ttsSupported o fullscreenSupported son false", () => {
-    render({ ttsSupported: false, fullscreenSupported: false });
+  it("oculta opciones cuando fullscreenSupported es false", () => {
+    render({ fullscreenSupported: false });
     const items = host.querySelectorAll(".reader-more-item");
-    expect(items.length).toBe(2);
+    expect(items.length).toBe(1);
     expect(items[0].textContent).toContain("Buscar en el libro");
-    expect(items[1].textContent).toContain("Retiro de lectura");
   });
 
-  it("renderiza Glosario, Tarjeta de cita y Exportar cuando se proporcionan los callbacks", async () => {
+  it("renderiza Glosario, Cuaderno, Tarjeta de cita y Exportar cuando se proporcionan los callbacks", async () => {
     const onOpenGlossary = vi.fn();
+    const onOpenNotebook = vi.fn();
     const onCreateQuoteCard = vi.fn();
     const onExportBook = vi.fn();
     const onClose = vi.fn();
-    render({ onOpenGlossary, onCreateQuoteCard, onExportBook, onClose });
+    render({ onOpenGlossary, onOpenNotebook, onCreateQuoteCard, onExportBook, onClose });
 
     const items = host.querySelectorAll<HTMLButtonElement>(".reader-more-item");
-    expect(items.length).toBe(7);
+    expect(items.length).toBe(6);
 
-    expect(items[0].textContent).toContain("Glosario del libro");
-    expect(items[2].textContent).toContain("Crear tarjeta de cita");
-    expect(items[3].textContent).toContain("Exportar notas y vocabulario");
+    expect(items[0].textContent).toContain("Buscar en el libro");
+    expect(items[1].textContent).toContain("Personajes y glosario");
+    expect(items[2].textContent).toContain("Cuaderno de notas");
+    expect(items[3].textContent).toContain("Crear tarjeta de cita");
+    expect(items[4].textContent).toContain("Exportar notas y vocabulario");
+    expect(items[5].textContent).toContain("Pantalla completa");
 
-    await act(async () => items[0].click());
+    await act(async () => items[1].click());
     expect(onOpenGlossary).toHaveBeenCalledTimes(1);
     expect(onClose).toHaveBeenCalledTimes(1);
 
     await act(async () => items[2].click());
-    expect(onCreateQuoteCard).toHaveBeenCalledTimes(1);
+    expect(onOpenNotebook).toHaveBeenCalledTimes(1);
 
     await act(async () => items[3].click());
+    expect(onCreateQuoteCard).toHaveBeenCalledTimes(1);
+
+    await act(async () => items[4].click());
     expect(onExportBook).toHaveBeenCalledTimes(1);
-  });
-
-  it("renderiza el selector de contraste de ayudas con las 3 píldoras (Suave, Nítido, Intenso AAA)", async () => {
-    const onStrategyContrastChange = vi.fn();
-    render({ strategyContrast: "high", onStrategyContrastChange });
-
-    const pills = host.querySelectorAll<HTMLButtonElement>(".segmented--contrast .segmented-btn");
-    expect(pills.length).toBe(3);
-    expect(pills[0].textContent).toContain("Suave");
-    expect(pills[1].textContent).toContain("Nítido");
-    expect(pills[2].textContent).toContain("Intenso (AAA)");
-
-    // La píldora 'high' debe estar activa
-    expect(pills[2].getAttribute("aria-pressed")).toBe("true");
-    expect(pills[0].getAttribute("aria-pressed")).toBe("false");
-
-    // Al hacer clic en 'soft' se invoca el callback
-    await act(async () => pills[0].click());
-    expect(onStrategyContrastChange).toHaveBeenCalledWith("soft");
-
-    // Al hacer clic en 'balanced' se invoca el callback
-    await act(async () => pills[1].click());
-    expect(onStrategyContrastChange).toHaveBeenCalledWith("balanced");
-  });
-
-  it("renderiza los 3 botones rápidos de presets y llama a onUpdateSettings con el preset aplicado", async () => {
-    const onUpdateSettings = vi.fn();
-    render({ settings: READER_DEFAULTS, onUpdateSettings });
-
-    const cards = host.querySelectorAll<HTMLButtonElement>(".reader-mode-card");
-    expect(cards.length).toBe(3);
-    expect(cards[0].textContent).toContain("Lectura Limpia");
-    expect(cards[1].textContent).toContain("Enfoque TDAH");
-    expect(cards[2].textContent).toContain("Ritmo Guiado");
-
-    await act(async () => cards[1].click());
-    expect(onUpdateSettings).toHaveBeenCalledWith(
-      expect.objectContaining({
-        readingPreset: "adhd",
-        paragraphFocus: true,
-        syntacticLines: false,
-      }),
-    );
-  });
-
-  it("cambiar cualquiera de los switches individuales establece readingPreset: 'custom'", async () => {
-    const onUpdateSettings = vi.fn();
-    render({ settings: READER_DEFAULTS, onUpdateSettings });
-
-    const focusRulerSwitch = host.querySelector<HTMLInputElement>('input[aria-label="focusRuler"]');
-    expect(focusRulerSwitch).toBeTruthy();
-
-    await act(async () => {
-      focusRulerSwitch!.click();
-    });
-
-    expect(onUpdateSettings).toHaveBeenCalledWith(
-      expect.objectContaining({
-        focusRuler: true,
-        readingPreset: "custom",
-      }),
-    );
-  });
-
-  it("renderiza el selector de preparación de capítulo con las 3 opciones (Auto, Bajo demanda, Desactivado)", async () => {
-    const onChapterPrimingModeChange = vi.fn();
-    render({ chapterPrimingMode: "on-demand", onChapterPrimingModeChange });
-
-    const pills = host.querySelectorAll<HTMLButtonElement>(".segmented--priming .segmented-btn");
-    expect(pills.length).toBe(3);
-    expect(pills[0].textContent).toContain("Auto");
-    expect(pills[1].textContent).toContain("Bajo demanda");
-    expect(pills[2].textContent).toContain("Desactivado");
-
-    expect(pills[1].getAttribute("aria-pressed")).toBe("true");
-    expect(pills[0].getAttribute("aria-pressed")).toBe("false");
-
-    await act(async () => pills[0].click());
-    expect(onChapterPrimingModeChange).toHaveBeenCalledWith("auto");
-
-    await act(async () => pills[2].click());
-    expect(onChapterPrimingModeChange).toHaveBeenCalledWith("off");
   });
 
   it("permite ver y reactivar asistencias silenciadas para el libro actual (Track 12)", async () => {
@@ -301,5 +195,3 @@ describe("ReaderMoreMenu", () => {
     expect(loadCharacterMemoryEnabled()).toBe(true);
   });
 });
-
-

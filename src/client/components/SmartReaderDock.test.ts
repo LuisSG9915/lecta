@@ -2,7 +2,7 @@
 import { act, createElement as h } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import SmartReaderDock, { type SmartReaderDockProps } from "./SmartReaderDock";
+import SmartReaderDock, { formatCompactProgress, type SmartReaderDockProps } from "./SmartReaderDock";
 import type { TtsSnapshot } from "../lib/ttsTypes";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -69,7 +69,9 @@ describe("SmartReaderDock (Track 2: Dock Inteligente Único)", () => {
   it("renderiza el modo lectura con progreso, preset activo, escuchar y botón de hilo", () => {
     render();
 
-    expect(container.textContent).toContain("Pág. 14 de 62 · ~4 min");
+    expect(container.textContent).toContain("Pág. 14 · ~4m");
+    const progressEl = container.querySelector(".dock-progress-meta") as HTMLElement;
+    expect(progressEl?.title).toBe("Página 14 de 62 — ~4 min restantes");
     expect(container.textContent).toContain("Limpia");
     expect(container.textContent).toContain("Escuchar");
     expect(container.textContent).toContain("Hilo");
@@ -325,6 +327,99 @@ describe("SmartReaderDock (Track 2: Dock Inteligente Único)", () => {
       });
       // En lienzo puro tampoco
       expect(container.querySelector(".reader-focus-suggestion-pill")).toBeNull();
+    });
+  });
+
+  describe("Fase 1: Geometría Responsiva, Popover sin Colisión y Cápsula", () => {
+    it("formatCompactProgress formatea texto largo a versión compacta y genera title accesible", () => {
+      const capResult = formatCompactProgress("Cap. 13 de 96 · ~5 min");
+      expect(capResult.compact).toBe("Cap. 13 · ~5m");
+      expect(capResult.title).toBe("Capítulo 13 de 96 — ~5 min restantes");
+
+      const pagResult = formatCompactProgress("Pág. 14 de 62 · ~4 min");
+      expect(pagResult.compact).toBe("Pág. 14 · ~4m");
+      expect(pagResult.title).toBe("Página 14 de 62 — ~4 min restantes");
+
+      const noMinResult = formatCompactProgress("Cap. 5 de 20");
+      expect(noMinResult.compact).toBe("Cap. 5");
+      expect(noMinResult.title).toBe("Capítulo 5 de 20");
+    });
+
+    it("incluye etiquetas colapsables dock-action-label-collapsible en botones de acción", () => {
+      render();
+
+      const listenLabel = container.querySelector(".dock-listen-trigger .dock-action-label-collapsible");
+      expect(listenLabel).not.toBeNull();
+      expect(listenLabel?.textContent).toBe("Escuchar");
+
+      const recapLabel = container.querySelector(".dock-recap-trigger .dock-action-label-collapsible");
+      expect(recapLabel).not.toBeNull();
+      expect(recapLabel?.textContent).toBe("Hilo");
+    });
+
+    it("el popover incluye dock-mode-popover-footer y botón con dock-mode-customize-btn", () => {
+      render();
+
+      const modeBtn = container.querySelector(".dock-mode-trigger") as HTMLButtonElement;
+      act(() => modeBtn.click());
+
+      const popover = container.querySelector(".dock-mode-popover");
+      expect(popover).not.toBeNull();
+
+      const footer = container.querySelector(".dock-mode-popover-footer");
+      expect(footer).not.toBeNull();
+
+      const customizeBtn = footer?.querySelector(".dock-mode-customize-btn") as HTMLButtonElement;
+      expect(customizeBtn).not.toBeNull();
+      expect(customizeBtn.textContent).toContain("Personalizar opciones avanzadas");
+    });
+  });
+
+  describe("Fase 3: Acoplamiento del Gato (Perch Mode) y Backdrop de Inmersión", () => {
+    it("posa al gato en dock-companion-perch sobre la repisa de la cápsula sin invadir dock-actions-group", () => {
+      const companionNode = h("div", { "data-testid": "mock-cat" }, "Michi");
+      render({ companionSlot: companionNode });
+
+      const perchSlot = container.querySelector(".dock-companion-slot.dock-companion-perch");
+      expect(perchSlot).not.toBeNull();
+      expect(perchSlot?.textContent).toContain("Michi");
+
+      // dock-actions-group NO contiene el slot del gato (libera 40px horizontales)
+      const actionsGroup = container.querySelector(".dock-actions-group");
+      expect(actionsGroup?.querySelector(".dock-companion-slot")).toBeNull();
+    });
+
+    it("oculta suavemente al gato con data-popover-open cuando el popover de modos se abre", () => {
+      const companionNode = h("div", { "data-testid": "mock-cat" }, "Michi");
+      render({ companionSlot: companionNode });
+
+      const perchSlot = container.querySelector(".dock-companion-perch");
+      expect(perchSlot?.getAttribute("data-popover-open")).toBeNull();
+
+      // Abrir popover
+      const modeBtn = container.querySelector(".dock-mode-trigger") as HTMLButtonElement;
+      act(() => modeBtn.click());
+
+      // El slot recibe data-popover-open="true" para su transición de opacidad
+      expect(perchSlot?.getAttribute("data-popover-open")).toBe("true");
+
+      // Cerrar popover
+      act(() => modeBtn.click());
+      expect(perchSlot?.getAttribute("data-popover-open")).toBeNull();
+    });
+
+    it("renderiza backdrop transparente que cierra el popover sin disparar eventos de navegación", () => {
+      render();
+
+      const modeBtn = container.querySelector(".dock-mode-trigger") as HTMLButtonElement;
+      act(() => modeBtn.click());
+
+      const backdrop = container.querySelector(".dock-mode-popover-backdrop") as HTMLDivElement;
+      expect(backdrop).not.toBeNull();
+
+      // Al hacer clic en el backdrop, el popover se cierra
+      act(() => backdrop.click());
+      expect(container.querySelector(".dock-mode-popover")).toBeNull();
     });
   });
 });

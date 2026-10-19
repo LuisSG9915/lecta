@@ -1,16 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  applyReadingPreset,
-  detectActiveReadingPreset,
-  READING_PRESETS,
-  setChapterPrimingMode,
   isPrimingMutedForBook,
   unmuteBookForPriming,
   loadNativeLanguage,
   saveUnifiedSmartAssists,
   type ChapterPrimingMode,
   type ReaderSettings,
-  type ReadingPreset,
   type StrategyContrast,
 } from "../lib/settings";
 import { saveSmartAssistsPrefsIdb } from "../lib/idb";
@@ -45,18 +40,20 @@ export interface ReaderMoreMenuProps {
   onClose?: () => void;
   onSearch: () => void;
   onOpenGlossary?: () => void;
+  onOpenNotebook?: () => void;
   onCreateQuoteCard?: () => void;
   onExportBook?: () => void;
   bookHash?: string;
   language?: string;
-  onToggleTts?: () => void;
-  ttsActive?: boolean;
-  ttsSupported?: boolean;
   onToggleFullscreen?: () => void;
   isFullscreen?: boolean;
   fullscreenSupported?: boolean;
-  onOpenRetreat?: () => void;
   embedded?: boolean;
+  // Props opcionales/en desuso conservadas para compatibilidad de tipos
+  onToggleTts?: () => void;
+  ttsActive?: boolean;
+  ttsSupported?: boolean;
+  onOpenRetreat?: () => void;
   strategyContrast?: StrategyContrast;
   onStrategyContrastChange?: (contrast: StrategyContrast) => void;
   settings?: ReaderSettings;
@@ -74,28 +71,17 @@ export default function ReaderMoreMenu({
   onClose,
   onSearch,
   onOpenGlossary,
+  onOpenNotebook,
   onCreateQuoteCard,
   onExportBook,
   bookHash,
   language = "es",
-  onToggleTts,
-  ttsActive = false,
-  ttsSupported = true,
   onToggleFullscreen,
   isFullscreen = false,
   fullscreenSupported = true,
-  onOpenRetreat,
   embedded = false,
-  strategyContrast = "high",
-  onStrategyContrastChange,
-  settings,
-  onUpdateSettings,
-  onToggleFocusRuler,
-  onToggleParagraphFocus,
-  onToggleSyntacticLines,
-  onToggleColorGuide,
   chapterPrimingMode,
-  onChapterPrimingModeChange,
+  settings,
 }: ReaderMoreMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -198,18 +184,10 @@ export default function ReaderMoreMenu({
   const currentPrimingMode =
     chapterPrimingMode ?? settings?.chapterPrimingMode ?? "auto";
 
-  const handlePrimingModeChange = (mode: ChapterPrimingMode) => {
-    onChapterPrimingModeChange?.(mode);
-    if (settings && onUpdateSettings) {
-      onUpdateSettings({ ...settings, chapterPrimingMode: mode });
-    }
-    setChapterPrimingMode(mode);
-  };
-
   useEffect(() => {
     if (!isOpen || embedded) return;
 
-    // Autofocus first button when opening as popover
+    // Autofocus primer botón al abrir como popover
     const firstButton = menuRef.current?.querySelector<HTMLButtonElement>("button");
     firstButton?.focus();
 
@@ -253,20 +231,9 @@ export default function ReaderMoreMenu({
       ref={menuRef}
       className={embedded ? "reader-book-actions" : "reader-more-menu"}
       role="menu"
-      aria-label="Opciones del libro"
+      aria-label="Herramientas del libro"
     >
-      {onOpenGlossary ? (
-        <button
-          type="button"
-          role="menuitem"
-          className="reader-more-item"
-          onClick={() => handleAction(onOpenGlossary)}
-        >
-          <Icon name="notebook" size={18} />
-          <span className="reader-more-label">Glosario del libro</span>
-        </button>
-      ) : null}
-
+      {/* 1. Buscar en el libro */}
       <button
         type="button"
         role="menuitem"
@@ -277,6 +244,32 @@ export default function ReaderMoreMenu({
         <span className="reader-more-label">Buscar en el libro</span>
         <kbd className="reader-more-shortcut">Ctrl+F</kbd>
       </button>
+
+      {/* 2. Personajes y glosario */}
+      {onOpenGlossary ? (
+        <button
+          type="button"
+          role="menuitem"
+          className="reader-more-item"
+          onClick={() => handleAction(onOpenGlossary)}
+        >
+          <Icon name="notebook" size={18} />
+          <span className="reader-more-label">Personajes y glosario</span>
+        </button>
+      ) : null}
+
+      {/* 3. Cuaderno de notas y citas */}
+      {onOpenNotebook ? (
+        <button
+          type="button"
+          role="menuitem"
+          className="reader-more-item"
+          onClick={() => handleAction(onOpenNotebook)}
+        >
+          <Icon name="notebook" size={18} />
+          <span className="reader-more-label">Cuaderno de notas</span>
+        </button>
+      ) : null}
 
       {onCreateQuoteCard ? (
         <button
@@ -302,28 +295,14 @@ export default function ReaderMoreMenu({
         </button>
       ) : null}
 
-      {ttsSupported && onToggleTts ? (
-        <button
-          type="button"
-          role="menuitem"
-          className="reader-more-item"
-          onClick={() => handleAction(onToggleTts)}
-          aria-pressed={ttsActive}
-        >
-          <Icon name={ttsActive ? "stop" : "headphones"} size={18} />
-          <span className="reader-more-label">
-            {ttsActive ? "Detener voz" : "Leer en voz alta"}
-          </span>
-        </button>
-      ) : null}
-
+      {/* 4. Pantalla completa */}
       {fullscreenSupported && onToggleFullscreen ? (
         <button
           type="button"
           role="menuitem"
           className="reader-more-item"
           onClick={() => {
-            // Invocación sincrónica antes de cerrar para cumplir política de gestos
+            // Invocación sincrónica antes de cerrar para cumplir política de gestos del navegador
             onToggleFullscreen();
             if (!embedded) onClose?.();
           }}
@@ -337,351 +316,153 @@ export default function ReaderMoreMenu({
         </button>
       ) : null}
 
-      {onOpenRetreat ? (
-        <button
-          type="button"
-          role="menuitem"
-          className="reader-more-item"
-          onClick={() => handleAction(onOpenRetreat)}
-        >
-          <Icon name="retreat" size={18} />
-          <span className="reader-more-label">Retiro de lectura</span>
-        </button>
-      ) : null}
-
-      <div className="reader-more-strategy-section">
-        <span className="reader-more-strategy-label">Contraste de ayudas:</span>
-        <div
-          className="segmented segmented--contrast"
-          role="group"
-          aria-label="Contraste de ayudas"
-        >
-          <button
-            type="button"
-            className="segmented-btn"
-            data-active={strategyContrast === "soft" || undefined}
-            aria-pressed={strategyContrast === "soft"}
-            onClick={() => onStrategyContrastChange?.("soft")}
-          >
-            Suave
-          </button>
-          <button
-            type="button"
-            className="segmented-btn"
-            data-active={strategyContrast === "balanced" || undefined}
-            aria-pressed={strategyContrast === "balanced"}
-            onClick={() => onStrategyContrastChange?.("balanced")}
-          >
-            Nítido
-          </button>
-          <button
-            type="button"
-            className="segmented-btn"
-            data-active={strategyContrast === "high" || undefined}
-            aria-pressed={strategyContrast === "high"}
-            onClick={() => onStrategyContrastChange?.("high")}
-          >
-            Intenso (AAA)
-          </button>
-        </div>
-      </div>
-
-      <div className="reader-more-strategy-section">
-        <span className="reader-more-strategy-label">Preparación de capítulo:</span>
-        <div
-          className="segmented segmented--priming"
-          role="group"
-          aria-label="Preparación de capítulo"
-        >
-          <button
-            type="button"
-            className="segmented-btn"
-            data-active={currentPrimingMode === "auto" || undefined}
-            aria-pressed={currentPrimingMode === "auto"}
-            onClick={() => handlePrimingModeChange("auto")}
-          >
-            Auto
-          </button>
-          <button
-            type="button"
-            className="segmented-btn"
-            data-active={currentPrimingMode === "on-demand" || undefined}
-            aria-pressed={currentPrimingMode === "on-demand"}
-            onClick={() => handlePrimingModeChange("on-demand")}
-          >
-            Bajo demanda
-          </button>
-          <button
-            type="button"
-            className="segmented-btn"
-            data-active={currentPrimingMode === "off" || undefined}
-            aria-pressed={currentPrimingMode === "off"}
-            onClick={() => handlePrimingModeChange("off")}
-          >
-            Desactivado
-          </button>
-        </div>
-      </div>
-
-      {settings && onUpdateSettings ? (
-        <div className="reader-more-presets-section">
-          <div className="reader-more-presets-header">
-            <span className="reader-more-presets-title">Modos de lectura</span>
+      {/* Sección de Asistencias Inteligentes y Reactivación para este libro (Track 12) */}
+      {bookHash ? (
+        <div className="reader-more-assists-section">
+          <div className="reader-more-assists-header">
+            <Icon name="sparkles" size={16} />
+            <span className="reader-more-assists-title">Asistencias inteligentes</span>
           </div>
-          <div className="reader-mode-cards" role="group" aria-label="Modos de lectura">
-            {READING_PRESETS.map((preset) => {
-              const active =
-                settings.readingPreset === preset.id ||
-                detectActiveReadingPreset(settings) === preset.id;
-              return (
-                <button
-                  key={preset.id}
-                  type="button"
-                  className={`reader-mode-card ${active ? "is-active" : ""}`}
-                  aria-pressed={active}
-                  onClick={() => {
-                    const updated = applyReadingPreset(
-                      settings,
-                      preset.id as Exclude<ReadingPreset, "custom">,
-                    );
-                    onUpdateSettings(updated);
-                  }}
-                >
-                  <span className="reader-mode-card-icon" aria-hidden="true">{preset.icon}</span>
-                  <strong className="reader-mode-card-title">{preset.label}</strong>
-                </button>
-              );
-            })}
-          </div>
-
-          <details className="strategy-accordion reader-more-customize">
-            <summary>
-              <span>Personalizar</span>
-            </summary>
-            <div className="strategy-accordion-body">
-              <label className="setting-row">
-                <span className="setting-label">Regla de lectura</span>
-                <input
-                  type="checkbox"
-                  role="switch"
-                  aria-label="focusRuler"
-                  checked={Boolean(settings.focusRuler)}
-                  onChange={(e) => {
-                    onToggleFocusRuler?.(e.target.checked);
-                    onUpdateSettings({
-                      ...settings,
-                      focusRuler: e.target.checked,
-                      readingPreset: "custom",
-                      strategyPreset: "custom",
-                    });
-                  }}
-                />
-              </label>
-              <label className="setting-row">
-                <span className="setting-label">Foco de párrafo</span>
-                <input
-                  type="checkbox"
-                  role="switch"
-                  aria-label="paragraphFocus"
-                  checked={Boolean(settings.paragraphFocus)}
-                  onChange={(e) => {
-                    onToggleParagraphFocus?.(e.target.checked);
-                    onUpdateSettings({
-                      ...settings,
-                      paragraphFocus: e.target.checked,
-                      readingPreset: "custom",
-                      strategyPreset: "custom",
-                    });
-                  }}
-                />
-              </label>
-              <label className="setting-row">
-                <span className="setting-label">Líneas sintácticas</span>
-                <input
-                  type="checkbox"
-                  role="switch"
-                  aria-label="syntacticLines"
-                  checked={Boolean(settings.syntacticLines)}
-                  onChange={(e) => {
-                    onToggleSyntacticLines?.(e.target.checked);
-                    onUpdateSettings({
-                      ...settings,
-                      syntacticLines: e.target.checked,
-                      readingPreset: "custom",
-                      strategyPreset: "custom",
-                    });
-                  }}
-                />
-              </label>
-              <label className="setting-row">
-                <span className="setting-label">Guía de color</span>
-                <input
-                  type="checkbox"
-                  role="switch"
-                  aria-label="colorGuide"
-                  checked={Boolean(settings.colorGuide || settings.chromaticGuide)}
-                  onChange={(e) => {
-                    onToggleColorGuide?.(e.target.checked);
-                    onUpdateSettings({
-                      ...settings,
-                      chromaticGuide: e.target.checked,
-                      colorGuide: e.target.checked,
-                      readingPreset: "custom",
-                      strategyPreset: "custom",
-                    });
-                  }}
-                />
-              </label>
-            </div>
-          </details>
-        </div>
-      ) : null}
-
-      {/* Sección de Asistencias Inteligentes y Reactivación (Track 12) */}
-      <div className="reader-more-assists-section">
-        <div className="reader-more-assists-header">
-          <Icon name="sparkles" size={16} />
-          <span className="reader-more-assists-title">Asistencias inteligentes</span>
-        </div>
-        <div className="reader-more-assists-list">
-          {/* 1. Vocabulario de inicio de capítulo */}
-          <div className="reader-more-assist-row">
-            <div className="reader-more-assist-info">
-              <span className="reader-more-assist-name">Vocabulario de capítulo</span>
-              <span className="reader-more-assist-desc">
-                {isPrimingMutedThisBook
-                  ? "Silenciado en este libro"
-                  : currentPrimingMode === "off"
-                    ? "Desactivado globalmente"
-                    : "Activo"}
-              </span>
-            </div>
-            {isPrimingMutedThisBook ? (
-              <button
-                type="button"
-                className="btn--quiet reader-more-reactivate-btn"
-                onClick={handleReactivatePrimingForBook}
-              >
-                Reactivar
-              </button>
-            ) : null}
-          </div>
-
-          {/* 2. Neuro-foco adaptativo */}
-          <div className="reader-more-assist-row">
-            <div className="reader-more-assist-info">
-              <span className="reader-more-assist-name">Sugerencias de concentración</span>
-              <span className="reader-more-assist-desc">
-                {isFocusMutedThisBook
-                  ? "Silenciadas en este libro"
-                  : !focusProfile.autoSuggestEnabled
-                    ? "Desactivadas siempre"
-                    : "Activas"}
-              </span>
-            </div>
-            {isFocusMutedThisBook ? (
-              <button
-                type="button"
-                className="btn--quiet reader-more-reactivate-btn"
-                onClick={handleReactivateFocusForBook}
-              >
-                Reactivar
-              </button>
-            ) : !focusProfile.autoSuggestEnabled ? (
-              <button
-                type="button"
-                className="btn--quiet reader-more-reactivate-btn"
-                onClick={handleReactivateFocusGlobally}
-              >
-                Activar
-              </button>
-            ) : null}
-          </div>
-
-          {/* 3. Andamiaje bilingüe */}
-          {(isForeignLang || isBilingualMutedThisBook) ? (
+          <div className="reader-more-assists-list">
+            {/* 1. Vocabulario de inicio de capítulo */}
             <div className="reader-more-assist-row">
               <div className="reader-more-assist-info">
-                <span className="reader-more-assist-name">Andamiaje bilingüe</span>
+                <span className="reader-more-assist-name">Vocabulario de capítulo</span>
                 <span className="reader-more-assist-desc">
-                  {isBilingualMutedThisBook
+                  {isPrimingMutedThisBook
                     ? "Silenciado en este libro"
-                    : bilingualProfile.mode === "off"
-                      ? "Desactivado siempre"
+                    : currentPrimingMode === "off"
+                      ? "Desactivado globalmente"
                       : "Activo"}
                 </span>
               </div>
-              {isBilingualMutedThisBook ? (
+              {isPrimingMutedThisBook ? (
                 <button
                   type="button"
                   className="btn--quiet reader-more-reactivate-btn"
-                  onClick={handleReactivateBilingualForBook}
+                  onClick={handleReactivatePrimingForBook}
                 >
                   Reactivar
                 </button>
-              ) : bilingualProfile.mode === "off" ? (
+              ) : null}
+            </div>
+
+            {/* 2. Neuro-foco adaptativo */}
+            <div className="reader-more-assist-row">
+              <div className="reader-more-assist-info">
+                <span className="reader-more-assist-name">Sugerencias de concentración</span>
+                <span className="reader-more-assist-desc">
+                  {isFocusMutedThisBook
+                    ? "Silenciadas en este libro"
+                    : !focusProfile.autoSuggestEnabled
+                      ? "Desactivadas siempre"
+                      : "Activas"}
+                </span>
+              </div>
+              {isFocusMutedThisBook ? (
                 <button
                   type="button"
                   className="btn--quiet reader-more-reactivate-btn"
-                  onClick={handleReactivateBilingualGlobally}
+                  onClick={handleReactivateFocusForBook}
+                >
+                  Reactivar
+                </button>
+              ) : !focusProfile.autoSuggestEnabled ? (
+                <button
+                  type="button"
+                  className="btn--quiet reader-more-reactivate-btn"
+                  onClick={handleReactivateFocusGlobally}
                 >
                   Activar
                 </button>
               ) : null}
             </div>
-          ) : null}
 
-          {/* 4. Consolidación post-capítulo */}
-          <div className="reader-more-assist-row">
-            <div className="reader-more-assist-info">
-              <span className="reader-more-assist-name">Consolidación post-capítulo</span>
-              <span className="reader-more-assist-desc">
-                {isConsolidationMutedThisBook
-                  ? "Silenciada en este libro"
-                  : !consolidationPrefs.enabled
-                    ? "Desactivada siempre"
-                    : "Activa (25s)"}
-              </span>
-            </div>
-            {isConsolidationMutedThisBook ? (
-              <button
-                type="button"
-                className="btn--quiet reader-more-reactivate-btn"
-                onClick={handleReactivateConsolidationForBook}
-              >
-                Reactivar
-              </button>
-            ) : !consolidationPrefs.enabled ? (
-              <button
-                type="button"
-                className="btn--quiet reader-more-reactivate-btn"
-                onClick={handleReactivateConsolidationGlobally}
-              >
-                Activar
-              </button>
+            {/* 3. Andamiaje bilingüe */}
+            {(isForeignLang || isBilingualMutedThisBook) ? (
+              <div className="reader-more-assist-row">
+                <div className="reader-more-assist-info">
+                  <span className="reader-more-assist-name">Andamiaje bilingüe</span>
+                  <span className="reader-more-assist-desc">
+                    {isBilingualMutedThisBook
+                      ? "Silenciado en este libro"
+                      : bilingualProfile.mode === "off"
+                        ? "Desactivado siempre"
+                        : "Activo"}
+                  </span>
+                </div>
+                {isBilingualMutedThisBook ? (
+                  <button
+                    type="button"
+                    className="btn--quiet reader-more-reactivate-btn"
+                    onClick={handleReactivateBilingualForBook}
+                  >
+                    Reactivar
+                  </button>
+                ) : bilingualProfile.mode === "off" ? (
+                  <button
+                    type="button"
+                    className="btn--quiet reader-more-reactivate-btn"
+                    onClick={handleReactivateBilingualGlobally}
+                  >
+                    Activar
+                  </button>
+                ) : null}
+              </div>
             ) : null}
-          </div>
 
-          {/* 5. Memoria de personajes */}
-          <div className="reader-more-assist-row">
-            <div className="reader-more-assist-info">
-              <span className="reader-more-assist-name">Memoria de personajes</span>
-              <span className="reader-more-assist-desc">
-                {characterMemoryEnabled ? "Activa (Cero Spoilers)" : "Desactivada"}
-              </span>
+            {/* 4. Consolidación post-capítulo */}
+            <div className="reader-more-assist-row">
+              <div className="reader-more-assist-info">
+                <span className="reader-more-assist-name">Consolidación post-capítulo</span>
+                <span className="reader-more-assist-desc">
+                  {isConsolidationMutedThisBook
+                    ? "Silenciada en este libro"
+                    : !consolidationPrefs.enabled
+                      ? "Desactivada siempre"
+                      : "Activa (25s)"}
+                </span>
+              </div>
+              {isConsolidationMutedThisBook ? (
+                <button
+                  type="button"
+                  className="btn--quiet reader-more-reactivate-btn"
+                  onClick={handleReactivateConsolidationForBook}
+                >
+                  Reactivar
+                </button>
+              ) : !consolidationPrefs.enabled ? (
+                <button
+                  type="button"
+                  className="btn--quiet reader-more-reactivate-btn"
+                  onClick={handleReactivateConsolidationGlobally}
+                >
+                  Activar
+                </button>
+              ) : null}
             </div>
-            {!characterMemoryEnabled ? (
-              <button
-                type="button"
-                className="btn--quiet reader-more-reactivate-btn"
-                onClick={handleReactivateCharacterMemory}
-              >
-                Activar
-              </button>
-            ) : null}
+
+            {/* 5. Memoria de personajes */}
+            <div className="reader-more-assist-row">
+              <div className="reader-more-assist-info">
+                <span className="reader-more-assist-name">Memoria de personajes</span>
+                <span className="reader-more-assist-desc">
+                  {characterMemoryEnabled ? "Activa (Cero Spoilers)" : "Desactivada"}
+                </span>
+              </div>
+              {!characterMemoryEnabled ? (
+                <button
+                  type="button"
+                  className="btn--quiet reader-more-reactivate-btn"
+                  onClick={handleReactivateCharacterMemory}
+                >
+                  Activar
+                </button>
+              ) : null}
+            </div>
           </div>
         </div>
-      </div>
+      ) : null}
 
       {bookHash ? (
         <div className="reader-more-offline-section">

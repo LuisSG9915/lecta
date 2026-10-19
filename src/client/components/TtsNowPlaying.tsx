@@ -167,7 +167,7 @@ export default function TtsNowPlaying({
               aria-label="Capturar joya léxica de la frase al Cuaderno"
               title="Guardar palabra clave de la frase"
             >
-              {captured ? "✓ Guardada" : "★ Capturar palabra"}
+              {captured ? "✓ Guardada" : <>★ <span className="dock-action-label-collapsible">Capturar palabra</span></>}
             </button>
           ) : null}
 
@@ -178,7 +178,7 @@ export default function TtsNowPlaying({
             aria-label="Detener lectura"
             title="Detener lectura"
           >
-            ✕ Detener
+            ✕ <span className="dock-action-label-collapsible">Detener</span>
           </button>
         </div>
       )}
