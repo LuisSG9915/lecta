@@ -388,6 +388,9 @@ export interface LanguageLexicalGrowth {
  * Mapea el parámetro theta continuo (-3 a +3) a una escala visual de 5 a 100.
  */
 export function normalizeThetaScore(theta: number): number {
+  if (typeof theta !== "number" || Number.isNaN(theta)) {
+    return 50;
+  }
   return Math.round(Math.max(5, Math.min(100, ((theta + 2.5) / 5) * 100)));
 }
 

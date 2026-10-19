@@ -495,12 +495,22 @@ export default function Shelf({
 
   const heroPosition = current ? positionByHash.get(current.hash) : undefined;
 
+  const isFirstTimeReader =
+    library.length === 0 ||
+    (library.length === 1 &&
+      (!positions.length ||
+        progressOf(
+          positionByHash.get(library[0].hash),
+          library[0].sectionCount,
+        ) === 0));
+
   const step1Done = calibrationDone;
   const step2Done = positions.length > 0;
   const step3Done = wordCounts.size > 0 || (companion.state && companion.state.xp > 0);
   const onboardingAllDone = step1Done && step2Done && step3Done;
   const isBrandNew = library.length <= 1 && positions.length === 0 && !calibrationDone;
   const showOnboarding =
+    !isFirstTimeReader &&
     !onboardingDismissed &&
     (isBrandNew || !step1Done || !step2Done || !step3Done || onboardingAllDone);
 
@@ -536,6 +546,44 @@ export default function Shelf({
           event.currentTarget.value = "";
         }}
       />
+
+      {isFirstTimeReader ? (
+        <section className="shelf-welcome-hero" aria-label="Primera lectura en 1 clic">
+          <div className="shelf-welcome-hero-content">
+            <span className="shelf-welcome-hero-badge">✨ Prueba instantánea</span>
+            <h2 className="shelf-welcome-hero-title">
+              Vive cómo se siente leer sin interrupciones
+            </h2>
+            <p className="shelf-welcome-hero-subtitle">
+              Abre nuestra edición interactiva de muestra o elige una obra gratuita abajo. Lecta preparará las palabras difíciles antes de cada capítulo.
+            </p>
+            <div className="shelf-welcome-hero-actions">
+              <button
+                type="button"
+                className="btn btn--primary shelf-welcome-hero-btn"
+                onClick={() => {
+                  triggerHaptic(12);
+                  if (library.length > 0) {
+                    onOpen(library[0]);
+                  } else {
+                    void openSample();
+                  }
+                }}
+                disabled={sampleState === "loading"}
+              >
+                {sampleState === "loading"
+                  ? "Preparando el libro…"
+                  : "📖 Empezar lectura de muestra ahora"}
+              </button>
+            </div>
+            {sampleState === "error" ? (
+              <p className="meta" role="alert">
+                No pude traer el libro. Revisa tu conexión e inténtalo de nuevo.
+              </p>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
 
       {showOnboarding ? (
         <section className="shelf-onboarding-card" aria-label="Bienvenida a Lecta">
@@ -667,62 +715,6 @@ export default function Shelf({
 
       {library.length === 0 ? (
         <section className="shelf-empty">
-          <div className="shelf-welcome">
-            <h2 className="shelf-welcome-title">{timeOfDayGreeting()}</h2>
-            <p className="shelf-welcome-subtitle">
-              Un rincón sereno para leer libros en español, descubrir palabras y enriquecer tu vocabulario con repetición espaciada.
-            </p>
-          </div>
-
-          <div className="shelf-invitation">
-            <div className="shelf-invitation-cover">
-              <div
-                className="cover cover--generated"
-                style={
-                  {
-                    "--cover-paper": "#233342",
-                    "--cover-ink": "#f7f9fa",
-                    "--cover-accent": "#d4a43a",
-                  } as CSSProperties
-                }
-              >
-                <div className="cover-frame">
-                  <p className="cover-title">Azul…</p>
-                  <span className="cover-ornament" aria-hidden="true" />
-                  <p className="cover-author">Rubén Darío</p>
-                </div>
-              </div>
-            </div>
-            <div className="shelf-invitation-content">
-              <p className="eyebrow">Lectura recomendada de inicio</p>
-              <h3 className="shelf-invitation-book-title">Azul…</h3>
-              <p className="meta">Rubén Darío · Cuentos y poemas clásicos</p>
-              <blockquote className="shelf-invitation-quote">
-                «En Chile escribió Rubén Darío los textos que inauguraron el Modernismo. Toca cualquier palabra en el libro para ver su definición y guardarla en tu Cuaderno.»
-              </blockquote>
-              <div className="shelf-invitation-actions">
-                <button
-                  type="button"
-                  className="btn btn--primary"
-                  onClick={() => {
-                    triggerHaptic(12);
-                    void openSample();
-                  }}
-                  disabled={sampleState === "loading"}
-                >
-                  {sampleState === "loading"
-                    ? "Preparando el libro…"
-                    : "Comenzar a leer «Azul…»"}
-                </button>
-              </div>
-              {sampleState === "error" ? (
-                <p className="meta" role="alert">
-                  No pude traer el libro. Revisa tu conexión e inténtalo de nuevo.
-                </p>
-              ) : null}
-            </div>
-          </div>
-
           <div className="shelf-import-zone">
             <p className="shelf-import-label">O añade tus propios libros</p>
             <button
@@ -769,7 +761,7 @@ export default function Shelf({
               </div>
             </section>
           ) : null}
-          {current ? (
+          {current && !isFirstTimeReader ? (
             <section className="shelf-hero shelf-reading-table shelf__desk-hero" aria-label="Tu Mesa de Lectura">
               <div className="shelf-hero-left">
                 <button

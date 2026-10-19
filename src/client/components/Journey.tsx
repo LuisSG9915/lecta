@@ -102,13 +102,18 @@ function LexicalCurveSparkline({
   lang: string;
   label: string;
 }) {
-  const safePoints =
-    points.length >= 2
+  const safePoints: LanguageLexicalCurvePoint[] =
+    points && points.length >= 2
       ? points
-      : [
-          { index: 0, theta: 0, normalizedScore: 50 },
-          { index: 1, theta: 0, normalizedScore: 50 },
-        ];
+      : points && points.length === 1
+        ? [
+            { ...points[0], index: 0 },
+            { ...points[0], index: 1 },
+          ]
+        : [
+            { index: 0, theta: 0, normalizedScore: 50 },
+            { index: 1, theta: 0, normalizedScore: 50 },
+          ];
 
   const paddingX = 14;
   const paddingTop = 10;
@@ -120,7 +125,10 @@ function LexicalCurveSparkline({
     const x = Number(
       (paddingX + (i / (safePoints.length - 1)) * plotWidth).toFixed(1),
     );
-    const scoreClamped = Math.max(5, Math.min(100, p.normalizedScore));
+    const rawScore = p.normalizedScore;
+    const scoreVal =
+      typeof rawScore === "number" && !Number.isNaN(rawScore) ? rawScore : 50;
+    const scoreClamped = Math.max(5, Math.min(100, scoreVal));
     const y = Number(
       (64 - paddingBottom - ((scoreClamped - 5) / 95) * plotHeight).toFixed(1),
     );

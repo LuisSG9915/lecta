@@ -2604,9 +2604,17 @@ export function Vocabulary({
                 combo={combo}
                 mode={companionMode}
                 onModeChange={updateCompanionMode}
+                bookTitle={learn.items[0].bookTitle}
               />
               <p className="meta nb-practice-meta">Primera exposición</p>
               <div className="index-card nb-card">
+                <div className="game-book-eco-row">
+                  <span className="game-book-eco-pill">
+                    {learn.items[0].bookTitle
+                      ? `📖 Eco de: ${learn.items[0].bookTitle}`
+                      : "📖 De tus lecturas recientes"}
+                  </span>
+                </div>
                 <p className="nb-card-front">
                   <strong>{learn.items[0].form}</strong>
                   <button
@@ -2719,7 +2727,7 @@ export function Vocabulary({
           <div className="nb-done">
             <PracticeCompanionHeader
               pose="celebrate"
-              speech="¡Repaso terminado! Has practicado todas las palabras de hoy 🎉"
+              speech={`¡Repaso terminado! Afianzaste ${queue.total} ${queue.total === 1 ? "palabra" : "palabras"} para tu próximo capítulo 🐾`}
               combo={combo}
               mode={companionMode}
               onModeChange={updateCompanionMode}
@@ -2765,9 +2773,18 @@ export function Vocabulary({
               </div>
             ) : null}
 
-            <button type="button" className="btn--quiet" onClick={() => setQueue(null)}>
-              Ver el cuaderno
-            </button>
+            <div style={{ display: "flex", gap: "var(--s-2)", flexWrap: "wrap", justifyContent: "center", marginTop: "var(--s-3)" }}>
+              <button
+                type="button"
+                className="btn btn--primary game-return-reading-btn"
+                onClick={onClose}
+              >
+                Volver a mi lectura
+              </button>
+              <button type="button" className="btn--quiet" onClick={() => setQueue(null)}>
+                Ver el cuaderno
+              </button>
+            </div>
           </div>
         ) : null}
 
@@ -2786,6 +2803,7 @@ export function Vocabulary({
                 current: queue.total - queue.items.length + 1,
                 total: queue.total,
               }}
+              bookTitle={current.word.bookTitle}
               instruction={
                 current.mode === "scramble"
                   ? "Toca las fichas en orden para completar la palabra del pasaje."
@@ -2799,10 +2817,13 @@ export function Vocabulary({
               }
             />
             <div className="nb-practice-progress-row">
-              <p className="meta nb-practice-meta">
-                Modo {MODES.find((m) => m.id === current.mode)?.label.toLowerCase()}
-              </p>
+              <span className="game-book-eco-pill">
+                {current.word.bookTitle
+                  ? `📖 Eco de: ${current.word.bookTitle}`
+                  : "📖 De tus lecturas recientes"}
+              </span>
               <span className="nb-practice-counter meta">
+                {MODES.find((m) => m.id === current.mode)?.label ? `${MODES.find((m) => m.id === current.mode)?.label} · ` : ""}
                 {queue.total - queue.items.length + 1} de {queue.total}
               </span>
             </div>
@@ -3127,6 +3148,13 @@ export function Vocabulary({
             ) : EXERCISE_MODES.has(current.mode) ? (
               <>
                 <div className="index-card nb-card">
+                  <div className="game-book-eco-row">
+                    <span className="game-book-eco-pill">
+                      {current.word.bookTitle
+                        ? `📖 Eco de: ${current.word.bookTitle}`
+                        : "📖 De tus lecturas recientes"}
+                    </span>
+                  </div>
                   {current.mode === "choose" ? (
                     <>
                       {cloze ? (

@@ -1849,3 +1849,155 @@
   color: var(--ink, #1a1a1a);
   margin-block-end: 4px;
 }
+
+/* ---------- Banner de Primera Lectura en 1 Clic (Hero Empático) ---------- */
+
+.shelf-welcome-hero {
+  position: relative;
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--accent-primary, #c86d3b) 10%, var(--paper-raised)) 0%,
+    var(--paper-raised) 100%
+  );
+  border: 1px solid color-mix(in srgb, var(--accent-primary, #c86d3b) 25%, var(--rule-subtle, rgba(120, 95, 70, 0.15)));
+  border-radius: var(--r-2, 12px);
+  padding: var(--s-5, 1.5rem);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+  margin-block-end: var(--s-5, 1.25rem);
+  overflow: hidden;
+}
+
+.shelf-welcome-hero-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3, 0.75rem);
+  max-inline-size: 44rem;
+}
+
+.shelf-welcome-hero-badge {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs, 0.75rem);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 0.2rem 0.65rem;
+  border-radius: var(--r-pill, 999px);
+  background: color-mix(in srgb, var(--accent-primary, #c86d3b) 14%, transparent);
+  color: var(--accent-primary, #c86d3b);
+  border: 1px solid color-mix(in srgb, var(--accent-primary, #c86d3b) 28%, transparent);
+}
+
+.shelf-welcome-hero-title {
+  margin: 0;
+  font-family: var(--font-book, "Charter", "Georgia", serif);
+  font-size: clamp(1.2rem, 3.8vw, 1.7rem);
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+}
+
+.shelf-welcome-hero-subtitle {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: clamp(0.85rem, 2.5vw, 0.95rem);
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+
+.shelf-welcome-hero-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3, 0.75rem);
+  flex-wrap: wrap;
+  margin-block-start: var(--s-2, 0.5rem);
+}
+
+.shelf-welcome-hero-btn {
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm, 0.875rem);
+  font-weight: 600;
+  padding: 0.65rem 1.35rem;
+  border-radius: var(--r-pill, 999px);
+  min-height: 2.75rem;
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--accent-primary, #c86d3b) 25%, transparent);
+  transition: transform var(--dur-2, 180ms) var(--ease-spring, ease), box-shadow var(--dur-2, 180ms) var(--ease-soft, ease);
+}
+
+.shelf-welcome-hero-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--accent-primary, #c86d3b) 35%, transparent);
+}
+
+@media (max-width: 380px) {
+  .shelf-welcome-hero {
+    padding: var(--s-4, 1rem);
+  }
+
+  .shelf-welcome-hero-btn {
+    inline-size: 100%;
+    justify-content: center;
+    text-align: center;
+  }
+}
+
+/* ---------- Píldora de Afinidad en Catálogo (.book-affinity-pill) ---------- */
+
+.book-affinity-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-family: var(--font-ui);
+  font-size: 0.68rem;
+  font-weight: 600;
+  line-height: 1.2;
+  padding: 0.18rem 0.5rem;
+  border-radius: var(--r-pill, 999px);
+  white-space: nowrap;
+  max-inline-size: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-block-end: 0.25rem;
+  transition: all var(--dur-1, 120ms) var(--ease-soft, ease);
+}
+
+.book-affinity-pill[data-tone="ideal"] {
+  background: color-mix(in srgb, #2e7d32 14%, var(--paper-raised));
+  color: #1b5e20;
+  border: 1px solid color-mix(in srgb, #2e7d32 28%, transparent);
+}
+
+.book-affinity-pill[data-tone="relaxed"] {
+  background: color-mix(in srgb, #0288d1 12%, var(--paper-raised));
+  color: #01579b;
+  border: 1px solid color-mix(in srgb, #0288d1 26%, transparent);
+}
+
+.book-affinity-pill[data-tone="supported"] {
+  background: color-mix(in srgb, var(--accent-primary, #c86d3b) 14%, var(--paper-raised));
+  color: var(--accent-primary, #a84c1f);
+  border: 1px solid color-mix(in srgb, var(--accent-primary, #c86d3b) 30%, transparent);
+}
+
+@media (prefers-color-scheme: dark) {
+  .book-affinity-pill[data-tone="ideal"] {
+    background: rgba(46, 125, 50, 0.22);
+    color: #81c784;
+    border-color: rgba(129, 199, 132, 0.35);
+  }
+
+  .book-affinity-pill[data-tone="relaxed"] {
+    background: rgba(2, 136, 209, 0.2);
+    color: #81d4fa;
+    border-color: rgba(129, 212, 250, 0.35);
+  }
+
+  .book-affinity-pill[data-tone="supported"] {
+    background: rgba(200, 109, 59, 0.22);
+    color: #ffab91;
+    border-color: rgba(255, 171, 145, 0.35);
+  }
+}
+

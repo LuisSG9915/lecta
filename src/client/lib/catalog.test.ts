@@ -4,6 +4,7 @@ import {
   catalogVocab,
   downloadCatalogEpub,
   entriesByFormOf,
+  getBookAffinityBadge,
   isCatalogIndex,
   isVocabManifest,
   listCatalog,
@@ -156,3 +157,60 @@ describe("manifiesto → vista de predictSection", () => {
     expect(isVocabManifest({ v: 1 })).toBe(false);
   });
 });
+
+describe("getBookAffinityBadge (Fase 1)", () => {
+  it("devuelve 'ideal' cuando el libro está cerca del nivel del lector", () => {
+    const badge = getBookAffinityBadge("es", 0.0, 0.0);
+    expect(badge).toEqual({
+      tone: "ideal",
+      label: "✨ Ideal para tu ritmo",
+      description: "Fluidez natural con nuevas palabras a tu medida",
+    });
+  });
+
+  it("devuelve 'relaxed' cuando el libro es más sencillo que el nivel del lector", () => {
+    const badge = getBookAffinityBadge("es", -1.0, 0.0);
+    expect(badge).toEqual({
+      tone: "relaxed",
+      label: "🌱 Lectura relajada",
+      description: "Para disfrutar de corrido y sin esfuerzo",
+    });
+  });
+
+  it("devuelve 'supported' con apoyo inteligente en L1 si el libro es más retador", () => {
+    const badge = getBookAffinityBadge("es", 1.5, 0.0);
+    expect(badge).toEqual({
+      tone: "supported",
+      label: "🌊 Con apoyo inteligente",
+      description: "Lecta activará pistas previas para que no pierdas el hilo",
+    });
+  });
+
+  it("devuelve 'supported' con apoyo bilingüe en L2 con theta bajo", () => {
+    const badge = getBookAffinityBadge("en", 0.0, -0.6);
+    expect(badge).toEqual({
+      tone: "supported",
+      label: "🌊 Con apoyo bilingüe",
+      description: "Lecta activará pistas previas para que no pierdas el hilo",
+    });
+  });
+
+  it("soporta porcentajes de cobertura (> 10)", () => {
+    expect(getBookAffinityBadge("es", 95, 0.0).tone).toBe("relaxed");
+    expect(getBookAffinityBadge("es", 90, 0.0).tone).toBe("ideal");
+    expect(getBookAffinityBadge("es", 78, 0.0).tone).toBe("supported");
+  });
+
+  it("soporta niveles MCER como string (A1, B1, C1)", () => {
+    expect(getBookAffinityBadge("es", "A1", 0.0).tone).toBe("relaxed");
+    expect(getBookAffinityBadge("es", "B1", 0.0).tone).toBe("ideal");
+    expect(getBookAffinityBadge("es", "C1", 0.0).tone).toBe("supported");
+  });
+
+  it("soporta atajos de tono explícito ('ideal', 'relaxed', 'supported')", () => {
+    expect(getBookAffinityBadge("es", "ideal").tone).toBe("ideal");
+    expect(getBookAffinityBadge("es", "relaxed").tone).toBe("relaxed");
+    expect(getBookAffinityBadge("es", "supported").tone).toBe("supported");
+  });
+});
+

@@ -235,8 +235,17 @@ function PrimingCardView({
       <header className="lecta-chapter-priming__header">
         <div className="lecta-chapter-priming__meta">
           <span className="lecta-chapter-priming__badge">
-            {isForeignLang ? `Lectura en ${bookLang.toUpperCase()}` : "Antes de leer"}
+            ✨ Lectura sin tropiezos · 20 seg
           </span>
+          {isForeignLang ? (
+            <span className="lecta-chapter-priming__badge">
+              Lectura en {bookLang.toUpperCase()}
+            </span>
+          ) : (
+            <span className="lecta-chapter-priming__badge">
+              Antes de leer
+            </span>
+          )}
           <span className="lecta-chapter-priming__time">
             {visibleWords.length} {visibleWords.length === 1 ? "palabra clave" : "palabras clave"} · ~{estimatedSeconds} s
           </span>
@@ -280,9 +289,16 @@ function PrimingCardView({
         </div>
       </header>
 
-      <h2 className="lecta-chapter-priming__title">{chapterTitle}</h2>
+      {chapterTitle ? (
+        <p className="meta" style={{ margin: "0 0 0.25rem 0", fontWeight: 600 }}>
+          {chapterTitle}
+        </p>
+      ) : null}
+      <h2 className="lecta-chapter-priming__title">
+        Palabras clave antes de entrar al capítulo
+      </h2>
       <p className="lecta-chapter-priming__subtitle">
-        Un vistazo rápido para que leas el capítulo de corrido y sin perder el hilo.
+        Dales un vistazo rápido; así cuando aparezcan en la historia las leerás de corrido sin perder la magia.
       </p>
 
       <ul className="lecta-chapter-priming__list">
@@ -313,7 +329,7 @@ function PrimingCardView({
                     onClick={() => handleKnown(item)}
                     title="El modelo aprenderá que ya dominas esta palabra"
                   >
-                    ✓ Ya la sé
+                    ✓ Ya la conozco
                   </button>
                   <button
                     type="button"
@@ -346,7 +362,7 @@ function PrimingCardView({
           className="lecta-chapter-priming__start-btn"
           onClick={onStartReading}
         >
-          Comenzar a leer capítulo →
+          Entrar al capítulo →
         </button>
       </footer>
     </section>

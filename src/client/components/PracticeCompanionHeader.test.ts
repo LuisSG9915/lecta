@@ -199,4 +199,43 @@ describe("PracticeCompanionHeader", () => {
     if (catAvatar) click(catAvatar);
     expect(onAskHint).toHaveBeenCalledTimes(1);
   });
+
+  it("muestra mensaje literario cálido y dinámico según el progreso y píldora de libro de origen", () => {
+    vi.spyOn(CompanionProviderModule, "useCompanionSafe").mockReturnValue({
+      enabled: true,
+      state: {} as never,
+      name: "Michi",
+      equipped: { body: null, neck: null, head: null, face: null, coat: null },
+      accessories: [],
+      mood: "awake",
+      stage: 1,
+      presence: "visits",
+      modalOpen: false,
+      reducedMotion: false,
+      activeCare: null,
+      open: false,
+      openPanel: vi.fn(),
+      closePanel: vi.fn(),
+      setCelebrationBlocked: vi.fn(),
+      care: vi.fn(),
+    });
+
+    render(
+      h(PracticeCompanionHeader, {
+        pose: "idle",
+        speech: "¡Vamos a repasar!",
+        combo: 0,
+        mode: "animated",
+        onModeChange: vi.fn(),
+        progress: { current: 1, total: 4 },
+        bookTitle: "Cien años de soledad",
+      }),
+    );
+
+    // Debe mostrar el mensaje dinámico cálido
+    expect(host.textContent).toContain("Cada palabra que recuerdas hace tu próxima página más fluida");
+    // Debe mostrar la píldora de eco literario
+    expect(host.textContent).toContain("📖 Eco de: Cien años de soledad");
+  });
 });
+

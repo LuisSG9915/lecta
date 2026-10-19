@@ -2368,6 +2368,208 @@ mark.saved-word[data-level="settled"] {
   letter-spacing: 0.04em;
 }
 
+/* ---------- Calibración CAT 15-Segundos (Zero-Friction UX) ---------- */
+
+.cat-calibration-card {
+  width: min(420px, calc(100vw - 24px));
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding: 1.5rem;
+  background: var(--paper, var(--bg-surface, #fff));
+  border-radius: var(--r-sheet, var(--radius-lg, 16px));
+  box-shadow: var(--shadow-1, var(--shadow-md, 0 4px 20px rgba(0, 0, 0, 0.08)));
+}
+
+.cat-calibration-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.cat-lang-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.625rem;
+  font-size: var(--fs-xs, 0.75rem);
+  font-weight: 600;
+  border-radius: 999px;
+  background: var(--paper-sunken, #f5f3ef);
+  color: var(--ink-soft, #555);
+  border: 1px solid var(--rule, #e8e5de);
+}
+
+.cat-skip-btn {
+  background: none;
+  border: none;
+  padding: 0.25rem 0.5rem;
+  font-size: var(--fs-sm, 0.875rem);
+  color: var(--ink-soft, #666);
+  cursor: pointer;
+  border-radius: var(--r-1, 6px);
+  transition: color 150ms ease, background-color 150ms ease;
+  white-space: nowrap;
+}
+
+.cat-skip-btn:hover {
+  color: var(--ink, #111);
+  background: var(--paper-sunken, #f5f3ef);
+}
+
+.cat-progress-dots {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  margin-block: 0.15rem;
+}
+
+.cat-progress-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--rule-strong, #ccc);
+  transition: all 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.cat-progress-dot.is-active {
+  background: var(--accent-primary, var(--vermilion, #c84b31));
+  transform: scale(1.3);
+}
+
+.cat-progress-dot.is-completed {
+  background: var(--accent-primary, var(--vermilion, #c84b31));
+  opacity: 0.5;
+}
+
+.cat-word-stage {
+  min-height: 180px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 1rem 0.5rem;
+  animation: catWordFadeIn 140ms ease-out;
+}
+
+.cat-word-title {
+  font-family: var(--font-book, var(--font-serif, "Literata", Georgia, serif));
+  font-size: clamp(1.75rem, 5vw, 2.25rem);
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--ink, #1a1a1a);
+  margin: 0 0 0.5rem 0;
+  letter-spacing: -0.01em;
+}
+
+.cat-word-pos {
+  font-size: var(--fs-xs, 0.8125rem);
+  color: var(--ink-soft, #777);
+  font-style: italic;
+  margin: 0 0 0.35rem 0;
+}
+
+.cat-word-hint {
+  font-size: var(--fs-sm, 0.9375rem);
+  color: var(--ink-soft, #555);
+  margin: 0;
+  max-width: 320px;
+  line-height: 1.4;
+}
+
+.cat-actions-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.cat-action-btn {
+  min-height: 52px;
+  font-size: 1rem;
+  font-weight: 500;
+  border-radius: var(--radius-md, var(--r-2, 12px));
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: transform 80ms ease, background-color 150ms, border-color 150ms;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2rem;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid var(--rule-strong, #ccc);
+  background: var(--paper-raised, #fff);
+  color: var(--ink, #222);
+}
+
+.cat-action-btn:active {
+  transform: scale(0.97);
+}
+
+.cat-action-btn--primary {
+  background: var(--accent-primary, var(--vermilion, #c84b31));
+  border-color: var(--accent-primary, var(--vermilion, #c84b31));
+  color: #fff;
+}
+
+.cat-action-btn--primary:hover {
+  filter: brightness(0.95);
+}
+
+.cat-action-btn--primary .cal-btn-key {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.cat-action-btn--secondary {
+  background: var(--paper-raised, #fff);
+  border-color: var(--rule-strong, #bbb);
+  color: var(--ink, #222);
+}
+
+.cat-action-btn--secondary:hover {
+  background: var(--paper-sunken, #f5f3ef);
+}
+
+.cat-celebration-stage {
+  min-height: 180px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 0.75rem;
+  animation: catWordFadeIn 200ms ease-out;
+}
+
+.cat-celebration-icon {
+  font-size: 2rem;
+}
+
+.cat-celebration-msg {
+  font-family: var(--font-book, serif);
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--ink, #222);
+  margin: 0;
+  line-height: 1.35;
+}
+
+.cat-celebration-sub {
+  font-size: var(--fs-sm, 0.875rem);
+  color: var(--ink-soft, #666);
+  margin: 0;
+}
+
+@keyframes catWordFadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 /* ==========================================================================
    Track 4: WordPanel, Cuaderno Unificado y El Rincón de tu Gato
    ========================================================================== */

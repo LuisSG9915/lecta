@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Dialog from "./Dialog";
 import { triggerHaptic, type DeepReadingSummary } from "../lib/deep-reading";
 import { useCompanionSafe } from "./CompanionProvider";
@@ -12,6 +12,7 @@ import {
 } from "../lib/game";
 import { SentenceBuilderGame } from "./SentenceBuilderGame";
 import { WordScrambleGame } from "./WordScrambleGame";
+import QuoteCardModal from "./QuoteCardModal";
 
 export interface DeepReadingSummaryModalProps {
   summary: DeepReadingSummary;
@@ -21,6 +22,12 @@ export interface DeepReadingSummaryModalProps {
   onClose: () => void;
   bookId?: string;
   onSkipConsolidation?: () => void;
+  harvestWords?: string[];
+  featuredQuote?: string;
+  bookTitle?: string;
+  author?: string;
+  chapterTitle?: string;
+  onShareQuote?: (quote?: string) => void;
 }
 
 export default function DeepReadingSummaryModal({
@@ -31,6 +38,12 @@ export default function DeepReadingSummaryModal({
   onClose,
   bookId,
   onSkipConsolidation,
+  harvestWords,
+  featuredQuote,
+  bookTitle,
+  author,
+  chapterTitle,
+  onShareQuote,
 }: DeepReadingSummaryModalProps) {
   const companion = useCompanionSafe();
   const durationText =
@@ -43,14 +56,36 @@ export default function DeepReadingSummaryModal({
   const [showOptionsMenu, setShowOptionsMenu] = useState(false);
   const [activeWordIndex, setActiveWordIndex] = useState<number | null>(null);
   const [consolidationCompleted, setConsolidationCompleted] = useState(false);
+  const [showQuoteModal, setShowQuoteModal] = useState(false);
 
   const wordsAssimilated =
     summary.wordsAssimilated ?? Math.max(3, summary.sectionsRead * 4);
   const coverageDelta =
     summary.coverageDeltaPercent ?? (summary.sectionsRead > 0 ? 1 : 0);
 
-  const queue = consolidationQueue ?? [];
+  const queue = useMemo(() => consolidationQueue ?? [], [consolidationQueue]);
   const hasConsolidation = !isMuted && queue.length > 0;
+
+  const harvestList = useMemo(() => {
+    if (harvestWords && harvestWords.length > 0) return harvestWords;
+    const wordsFromQueue = queue.map((q) => q.item.surfaceForm || q.item.lemma);
+    return Array.from(new Set(wordsFromQueue.filter(Boolean)));
+  }, [harvestWords, queue]);
+
+  const defaultQuote =
+    featuredQuote ||
+    (queue.length > 0 && queue[0].item.chapterSentence
+      ? queue[0].item.chapterSentence
+      : "La lectura profunda transforma el tiempo en memoria viva.");
+
+  const handleCreatePostal = () => {
+    triggerHaptic("selection");
+    if (onShareQuote) {
+      onShareQuote(defaultQuote);
+    } else {
+      setShowQuoteModal(true);
+    }
+  };
 
   const handleSkip = () => {
     triggerHaptic("selection");
@@ -146,7 +181,14 @@ export default function DeepReadingSummaryModal({
           </p>
         </div>
 
-        <div style={{ marginTop: "var(--s-4)", display: "flex", justifyContent: "flex-end" }}>
+        <div style={{ marginTop: "var(--s-4)", display: "flex", justifyContent: "flex-end", gap: "var(--s-2)", flexWrap: "wrap" }}>
+          <button
+            type="button"
+            className="btn--quiet deep-summary-quote-btn"
+            onClick={handleCreatePostal}
+          >
+            📸 Crear postal del capítulo
+          </button>
           <button
             type="button"
             className="btn btn--primary"
@@ -156,6 +198,16 @@ export default function DeepReadingSummaryModal({
             Continuar al siguiente capítulo →
           </button>
         </div>
+
+        {showQuoteModal ? (
+          <QuoteCardModal
+            text={defaultQuote}
+            bookTitle={bookTitle}
+            author={author}
+            chapterTitle={chapterTitle}
+            onClose={() => setShowQuoteModal(false)}
+          />
+        ) : null}
       </Dialog>
     );
   }
@@ -305,6 +357,37 @@ export default function DeepReadingSummaryModal({
         </div>
       </div>
 
+      {/* Sección: 🌱 Tu Cosecha en este Capítulo */}
+      <div className="deep-summary-harvest" aria-label="Tu cosecha del capítulo">
+        <div className="deep-summary-harvest-header">
+          <div className="deep-summary-harvest-title-row">
+            <h3 className="deep-summary-harvest-title">🌱 Tu Cosecha en este Capítulo</h3>
+            <span className="deep-summary-harvest-count">+{wordsAssimilated} palabras</span>
+          </div>
+          <p className="deep-summary-harvest-desc">
+            ¡Leíste este capítulo de corrido integrando nuevas palabras en contexto!
+          </p>
+        </div>
+        {harvestList.length > 0 ? (
+          <div className="deep-summary-harvest-chips" aria-label="Palabras integradas en el capítulo">
+            {harvestList.map((word) => (
+              <span key={word} className="deep-summary-harvest-chip">
+                {word}
+              </span>
+            ))}
+          </div>
+        ) : null}
+        <div className="deep-summary-harvest-actions">
+          <button
+            type="button"
+            className="deep-summary-quote-btn"
+            onClick={handleCreatePostal}
+          >
+            📸 Crear postal del capítulo
+          </button>
+        </div>
+      </div>
+
       {/* Tarjeta Limpia de Consolidación Episódica (~25 segundos) */}
       {hasConsolidation ? (
         <div className="consolidation-card deep-summary-consolidation">
@@ -397,6 +480,16 @@ export default function DeepReadingSummaryModal({
           Continuar al siguiente capítulo →
         </button>
       </div>
+
+      {showQuoteModal ? (
+        <QuoteCardModal
+          text={defaultQuote}
+          bookTitle={bookTitle}
+          author={author}
+          chapterTitle={chapterTitle}
+          onClose={() => setShowQuoteModal(false)}
+        />
+      ) : null}
     </Dialog>
   );
 }

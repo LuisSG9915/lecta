@@ -250,4 +250,38 @@ describe("DiscoverRail", () => {
     expect(newWords).toBeTruthy();
     expect(newWords?.textContent).toContain("palabras útiles");
   });
+
+  it("muestra la píldora de afinidad .book-affinity-pill con data-tone y label cálido (Fase 1)", async () => {
+    const books = [
+      book("quijote", { title: "Don Quijote", language: "es", difficulty: "ideal" }),
+      book("simple", { title: "Cuentos Fáciles", language: "es", difficulty: "relaxed" }),
+      book("english", { title: "Great Expectations", language: "en", difficulty: "supported" }),
+    ];
+
+    await act(async () => {
+      root.render(
+        h(DiscoverRail, {
+          library: [],
+          onOpen: vi.fn(),
+          onGet: vi.fn(),
+          fetchIndex: async () => index(books),
+          fetchVocab: async () => null,
+          loadInputs: async () => null,
+        }),
+      );
+    });
+
+    const affinityPills = host.querySelectorAll<HTMLSpanElement>(".book-affinity-pill");
+    expect(affinityPills.length).toBe(3);
+
+    expect(affinityPills[0].getAttribute("data-tone")).toBe("ideal");
+    expect(affinityPills[0].textContent).toBe("✨ Ideal para tu ritmo");
+
+    expect(affinityPills[1].getAttribute("data-tone")).toBe("relaxed");
+    expect(affinityPills[1].textContent).toBe("🌱 Lectura relajada");
+
+    expect(affinityPills[2].getAttribute("data-tone")).toBe("supported");
+    expect(affinityPills[2].textContent).toBe("🌊 Con apoyo bilingüe");
+  });
 });
+

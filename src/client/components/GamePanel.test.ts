@@ -533,6 +533,81 @@ describe("GamePanel", () => {
 
     expect(host.textContent).not.toContain("Fija en tu memoria 1 palabras");
   });
+
+  it("muestra la píldora de contexto literario '📖 Eco de: {bookTitle}' en la tarjeta de palabra", async () => {
+    act(() =>
+      root.render(
+        h(CompanionProvider, {
+          userId: null,
+          children: h(GamePanel, {
+            mode: "ai_workshop",
+            words: [
+              {
+                word: "relicario",
+                meaning: "Lugar sagrado",
+                bookTitle: "La sombra del viento",
+              },
+            ],
+          }),
+        }),
+      ),
+    );
+    await flush();
+
+    expect(host.textContent).toContain("📖 Eco de: La sombra del viento");
+  });
+
+  it("muestra el estado vacío humanizado cuando no hay palabras pendientes con botón 'Volver a mi lectura'", async () => {
+    const onReturnToReading = vi.fn();
+    act(() =>
+      root.render(
+        h(CompanionProvider, {
+          userId: null,
+          children: h(GamePanel, {
+            mode: "adaptive_flow",
+            words: [],
+            onReturnToReading,
+          }),
+        }),
+      ),
+    );
+    await flush();
+
+    expect(host.textContent).toContain(
+      "✨ Tu memoria está al día. Sigue disfrutando tu libro; Lecta guardará aquí los momentos y palabras que quieras conservar.",
+    );
+
+    const returnBtn = button("Volver a mi lectura");
+    expect(returnBtn).toBeTruthy();
+    click(returnBtn!);
+    expect(onReturnToReading).toHaveBeenCalledTimes(1);
+  });
+
+  it("celebra el final de una ronda rápida mostrando palabras afianzadas para el próximo capítulo", async () => {
+    const onReturnToReading = vi.fn();
+    act(() =>
+      root.render(
+        h(CompanionProvider, {
+          userId: null,
+          children: h(GamePanel, {
+            roundFinished: true,
+            wordsReviewedCount: 4,
+            onReturnToReading,
+          }),
+        }),
+      ),
+    );
+    await flush();
+
+    expect(host.textContent).toContain("Ecos de tus lecturas afianzados");
+    expect(host.textContent).toContain("Afianzaste 4 palabras para tu próximo capítulo");
+
+    const returnBtn = button("Volver a mi lectura");
+    expect(returnBtn).toBeTruthy();
+    click(returnBtn!);
+    expect(onReturnToReading).toHaveBeenCalledTimes(1);
+  });
 });
+
 
 

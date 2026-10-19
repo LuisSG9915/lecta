@@ -15,6 +15,16 @@ export interface PracticeCompanionHeaderProps {
   hintText?: string | null;
   progress?: { current: number; total: number };
   instruction?: string;
+  bookTitle?: string;
+}
+
+export function getProgressEncouragement(current: number, total: number): string {
+  if (total <= 1) return "Cada palabra que recuerdas hace tu próxima página más fluida 🐾";
+  if (current === 1) return "Cada palabra que recuerdas hace tu próxima página más fluida 🐾";
+  if (current === total) return "¡Última palabra de la ronda! Tu lectura será mucho más fluida ✨";
+  const ratio = current / total;
+  if (ratio >= 0.5) return "¡Gran avance! Estas palabras resonarán en tu próxima lectura 📖";
+  return "Sumando ecos de tus libros a tu memoria activa 🐾";
 }
 
 export function PracticeCompanionHeader({
@@ -28,6 +38,7 @@ export function PracticeCompanionHeader({
   hintText,
   progress,
   instruction,
+  bookTitle,
 }: PracticeCompanionHeaderProps) {
   const companion = useCompanionSafe();
 
@@ -71,7 +82,16 @@ export function PracticeCompanionHeader({
         ? "Tranquilo"
         : "Oculto";
 
-  const displayText = hintText ? `💡 ${hintText}` : (instruction ?? speech);
+  const getDisplayText = () => {
+    if (hintText) return `💡 ${hintText}`;
+    if (instruction) return instruction;
+    if (progress && progress.total > 0 && (!speech || speech === "¡Vamos a repasar!")) {
+      return getProgressEncouragement(progress.current, progress.total);
+    }
+    return speech;
+  };
+
+  const displayText = getDisplayText();
 
   return (
     <aside className="practice-cat-bar" aria-label={`Compañero ${name}`}>
@@ -130,6 +150,11 @@ export function PracticeCompanionHeader({
           <div className="practice-cat-speech-bubble" role="status">
             <div className="practice-cat-meta-row">
               <strong className="practice-cat-name">{name}</strong>
+              {bookTitle ? (
+                <span className="practice-header-book-pill" title={`De tu libro: ${bookTitle}`}>
+                  📖 Eco de: {bookTitle}
+                </span>
+              ) : null}
               {combo >= 2 && mode === "animated" ? (
                 <span
                   className={`practice-cat-combo ${combo >= 3 ? "is-blazing pulse-combo" : ""}`}

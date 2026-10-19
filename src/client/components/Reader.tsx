@@ -205,6 +205,7 @@ import { loadUseAi } from "../lib/ai-pref";
 import {
   calibrationDoneKey,
   hasCalibrationEvidence,
+  needsLanguageCalibration,
 } from "../lib/calibration";
 import { calibrationBankZipf } from "../../shared/calibration-bank";
 import {
@@ -3264,6 +3265,13 @@ export default function Reader({
         const start = await loadBookStart(bookHash, scope).catch(() => null);
         const entry = resolveEntryTarget(saved, start, catalog, book.sections.length);
         if (disposed) return;
+
+        // Cuando el usuario abre su primer libro en un idioma no calibrado (ej. L2 'en'),
+        // se presenta el ajuste adaptativo CAT de 15s antes del capítulo 1 (100% saltable en 1 clic).
+        if (saved == null && needsLanguageCalibration(bookLanguage)) {
+          void onRequestCalibration(bookLanguage);
+        }
+
         // El destino de preparación elegido al seleccionar el inicio
         // lo consume la primera evaluación «enter» — solo aplica si
         // la entrada viene del registro, no de una reanudación.
@@ -7061,6 +7069,17 @@ export default function Reader({
           summary={deepSummary}
           consolidationQueue={postChapterQueue}
           bookId={bookHash}
+          bookTitle={title}
+          author={author}
+          chapterTitle={currentChapterTarget?.label ?? sectionTitle ?? sectionLabel(sectionIndex)}
+          onShareQuote={(quote) => {
+            setQuoteCard({
+              text: quote || "La lectura profunda transforma el tiempo en memoria viva.",
+              bookTitle: title,
+              author,
+              chapterTitle: currentChapterTarget?.label ?? sectionTitle ?? sectionLabel(sectionIndex),
+            });
+          }}
           onContinue={() => {
             setDeepSummary(null);
             setPostChapterQueue([]);

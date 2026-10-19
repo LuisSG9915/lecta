@@ -527,6 +527,42 @@ describe("Journey (Tu recorrido)", () => {
     expect(filteredCards?.length).toBe(1);
     expect(filteredCards?.[0].textContent).toContain("Inglés");
   });
+
+  it("renderiza el bloque de horizonte y la curva SVG sin errores ni NaN cuando el usuario tiene 0 palabras", async () => {
+    mockWords = [];
+    mockKnowledge = [];
+    await act(async () => {
+      root?.render(h(Journey, { onClose: vi.fn(), books: sampleBooks }));
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const lexicalSection = container?.querySelector(".journey-lexical-section");
+    expect(lexicalSection).toBeTruthy();
+    expect(container?.textContent).toContain("Tu horizonte de palabras");
+    expect(container?.textContent).toContain("Nivel léxico ·");
+    expect(container?.textContent).not.toContain("NaN");
+    expect(container?.textContent).not.toContain("Infinity");
+
+    const svg = container?.querySelector(".journey-lexical-curve");
+    expect(svg).toBeTruthy();
+    const paths = svg?.querySelectorAll("path");
+    expect(paths?.length).toBeGreaterThanOrEqual(2);
+    for (const p of Array.from(paths || [])) {
+      const d = p.getAttribute("d");
+      expect(d).toBeTruthy();
+      expect(d).not.toContain("NaN");
+      expect(d).not.toContain("undefined");
+    }
+
+    const circles = svg?.querySelectorAll("circle");
+    expect(circles?.length).toBe(2);
+    for (const c of Array.from(circles || [])) {
+      expect(c.getAttribute("cx")).not.toContain("NaN");
+      expect(c.getAttribute("cy")).not.toContain("NaN");
+    }
+  });
 });
 
 

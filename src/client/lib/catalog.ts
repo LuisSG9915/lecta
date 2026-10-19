@@ -5,6 +5,7 @@ import {
   type DbScope,
 } from "./idb";
 import type { LexiconEntry } from "./lexicon";
+import { getLanguageTheta } from "./profile-models";
 
 // Catálogo público de Lecta: clásicos de dominio público servidos por
 // el worker desde R2 (`/api/catalog*` en src/worker/catalog.ts). Las
@@ -30,6 +31,7 @@ export type CatalogBook = {
   epubSha256?: string;
   cover: boolean;
   moodTags?: string[];
+  difficulty?: number | string;
 };
 
 export type CatalogIndex = {
@@ -228,3 +230,121 @@ export async function downloadCatalogEpub(
   const name = `${book.title} — ${book.author}.epub`;
   return new File([data], name, { type: "application/epub+zip" });
 }
+
+export interface BookAffinityBadge {
+  tone: "ideal" | "relaxed" | "supported";
+  label: string;       // Ej: '✨ Ideal para tu ritmo' | '🌱 Lectura relajada' | '🌊 Con apoyo bilingüe'
+  description: string; // Explicación breve de 1 línea
+}
+
+/**
+ * Calcula una etiqueta cálida y empática de afinidad lectora comparando el nivel
+ * léxico del usuario (theta) con la dificultad estimada del libro.
+ */
+export function getBookAffinityBadge(
+  bookLang = "es",
+  bookDifficultyOrLevel?: string | number,
+  userTheta?: number,
+): BookAffinityBadge {
+  const normLang = (bookLang || "es").slice(0, 2).toLowerCase();
+  const theta =
+    typeof userTheta === "number" && Number.isFinite(userTheta)
+      ? userTheta
+      : getLanguageTheta(normLang);
+  const isL2 = normLang !== "es";
+
+  // Atajos si se especifica el tono de forma directa
+  if (bookDifficultyOrLevel === "ideal") {
+    return {
+      tone: "ideal",
+      label: "✨ Ideal para tu ritmo",
+      description: "Fluidez natural con nuevas palabras a tu medida",
+    };
+  }
+  if (bookDifficultyOrLevel === "relaxed") {
+    return {
+      tone: "relaxed",
+      label: "🌱 Lectura relajada",
+      description: "Para disfrutar de corrido y sin esfuerzo",
+    };
+  }
+  if (bookDifficultyOrLevel === "supported") {
+    return {
+      tone: "supported",
+      label: isL2 ? "🌊 Con apoyo bilingüe" : "🌊 Con apoyo inteligente",
+      description: "Lecta activará pistas previas para que no pierdas el hilo",
+    };
+  }
+
+  // Si se pasa un porcentaje de cobertura de vocabulario (0 a 100)
+  if (typeof bookDifficultyOrLevel === "number" && bookDifficultyOrLevel > 10) {
+    if (bookDifficultyOrLevel >= 94) {
+      return {
+        tone: "relaxed",
+        label: "🌱 Lectura relajada",
+        description: "Para disfrutar de corrido y sin esfuerzo",
+      };
+    }
+    if (bookDifficultyOrLevel >= 86) {
+      return {
+        tone: "ideal",
+        label: "✨ Ideal para tu ritmo",
+        description: "Fluidez natural con nuevas palabras a tu medida",
+      };
+    }
+    return {
+      tone: "supported",
+      label: isL2 ? "🌊 Con apoyo bilingüe" : "🌊 Con apoyo inteligente",
+      description: "Lecta activará pistas previas para que no pierdas el hilo",
+    };
+  }
+
+  // Dificultad estimada intrínseca (escala beta de Rasch / nivel MCER)
+  let diffValue = 0.0;
+  if (typeof bookDifficultyOrLevel === "number") {
+    diffValue = bookDifficultyOrLevel;
+  } else if (typeof bookDifficultyOrLevel === "string") {
+    const upper = bookDifficultyOrLevel.toUpperCase().trim();
+    if (upper === "A1") diffValue = -1.5;
+    else if (upper === "A2") diffValue = -0.8;
+    else if (upper === "B1") diffValue = 0.0;
+    else if (upper === "B2") diffValue = 0.8;
+    else if (upper === "C1") diffValue = 1.6;
+    else if (upper === "C2") diffValue = 2.4;
+    else {
+      const parsed = parseFloat(bookDifficultyOrLevel);
+      if (Number.isFinite(parsed)) {
+        diffValue = parsed;
+      } else if (/f[aá]cil|easy|principiante|b[aá]sico/i.test(bookDifficultyOrLevel)) {
+        diffValue = -1.0;
+      } else if (/dif[ií]cil|hard|avanzado|elevado/i.test(bookDifficultyOrLevel)) {
+        diffValue = 1.2;
+      } else {
+        diffValue = 0.0;
+      }
+    }
+  }
+
+  const delta = diffValue - theta;
+
+  if (delta > 0.4 || (isL2 && theta < 0.2 && delta >= -0.2)) {
+    return {
+      tone: "supported",
+      label: isL2 ? "🌊 Con apoyo bilingüe" : "🌊 Con apoyo inteligente",
+      description: "Lecta activará pistas previas para que no pierdas el hilo",
+    };
+  }
+  if (delta < -0.4) {
+    return {
+      tone: "relaxed",
+      label: "🌱 Lectura relajada",
+      description: "Para disfrutar de corrido y sin esfuerzo",
+    };
+  }
+  return {
+    tone: "ideal",
+    label: "✨ Ideal para tu ritmo",
+    description: "Fluidez natural con nuevas palabras a tu medida",
+  };
+}
+

@@ -388,9 +388,26 @@ describe("Evolución Léxica por Idioma (θ_{u,L}) - Espejo de Progreso Cognitiv
     expect(growth[0].activeQueriedCount).toBe(0);
     expect(growth[0].totalMasteredCount).toBe(0);
     expect(growth[0].passiveRatioPercent).toBe(0);
+    expect(Number.isNaN(growth[0].passiveRatioPercent)).toBe(false);
+    expect(Number.isFinite(growth[0].passiveRatioPercent)).toBe(true);
     expect(growth[0].normalizedLevel).toBeGreaterThanOrEqual(5);
+    expect(Number.isNaN(growth[0].normalizedLevel)).toBe(false);
+    expect(Number.isFinite(growth[0].normalizedLevel)).toBe(true);
     expect(growth[0].curvePoints.length).toBeGreaterThanOrEqual(2);
     expect(growth[0].stageTitle).toBe("Lectura fluida"); // default theta 0.0 -> score 50
+  });
+
+  it("normaliza theta de forma segura ante valores extremos o inválidos (NaN/Infinity)", () => {
+    expect(normalizeThetaScore(0)).toBe(50);
+    expect(normalizeThetaScore(-2.5)).toBe(5);
+    expect(normalizeThetaScore(-10)).toBe(5); // clamped a 5 mínimo
+    expect(normalizeThetaScore(2.5)).toBe(100);
+    expect(normalizeThetaScore(10)).toBe(100); // clamped a 100 máximo
+    expect(normalizeThetaScore(NaN)).toBe(50);
+    // @ts-expect-error probando entrada no numérica
+    expect(normalizeThetaScore(undefined)).toBe(50);
+    // @ts-expect-error probando entrada no numérica
+    expect(normalizeThetaScore(null)).toBe(50);
   });
 });
 

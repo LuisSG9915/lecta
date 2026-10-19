@@ -4,11 +4,13 @@ import {
   catalogCoverUrl,
   catalogVocab,
   entriesByFormOf,
+  getBookAffinityBadge,
   getBookMoodTags,
   listCatalog,
   manifestBookForms,
   type CatalogBook,
 } from "../lib/catalog";
+import { getLanguageTheta } from "../lib/profile-models";
 import {
   coverageLabel,
   coverageOfBook,
@@ -208,6 +210,12 @@ export default function DiscoverRail({
           const palette = coverPalette(book.id);
           const showCover = book.cover && !coverBroken.has(book.id);
           const tags = getBookMoodTags(book);
+          const userTheta = getLanguageTheta(book.language || "es");
+          const affinity = getBookAffinityBadge(
+            book.language || "es",
+            coverage?.percent ?? book.difficulty,
+            userTheta,
+          );
           return (
             <li key={book.id} className="discover-book">
               <div className="discover-cover">
@@ -256,6 +264,13 @@ export default function DiscoverRail({
                     <span key={t} className="discover-tag-pill">{t}</span>
                   ))}
                 </div>
+                <span
+                  className="book-affinity-pill"
+                  data-tone={affinity.tone}
+                  title={affinity.description}
+                >
+                  {affinity.label}
+                </span>
                 <p className="discover-title" title={book.title}>
                   {book.title}
                 </p>

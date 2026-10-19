@@ -41,18 +41,33 @@ import {
   type EvaluateSentenceResult,
   type MicroStoryResult,
 } from "../lib/learn";
+import { PracticeCompanionHeader } from "./PracticeCompanionHeader";
 
 // Contenido recién abierto de un cofre: la ropa ofrece ponérsela sin
 // salir del panel y el resto se retira solo a los segundos.
 const REVEAL_MS = 2500;
 
 export interface GamePanelProps {
-  mode?: "dashboard" | "adaptive_flow" | "ai_workshop" | "post_chapter_consolidation";
+  mode?:
+    | "dashboard"
+    | "adaptive_flow"
+    | "ai_workshop"
+    | "post_chapter_consolidation"
+    | "quick_review"
+    | "empty_review"
+    | "round_finished";
   onStartAdaptiveFlow?: () => void;
   onStartConsolidation?: () => void;
   onSkipConsolidation?: () => void;
   onContinueNextChapter?: () => void;
-  words?: Array<{ word: string; meaning?: string; bookTitle?: string; lemma?: string }>;
+  onReturnToReading?: () => void;
+  words?: Array<{
+    word: string;
+    meaning?: string;
+    bookTitle?: string;
+    lemma?: string;
+    context?: string;
+  }>;
   consolidationQueue?: Array<{
     item: {
       lemma: string;
@@ -60,11 +75,16 @@ export interface GamePanelProps {
       lang: string;
       chapterSentence?: string;
       shortGloss?: string;
+      bookTitle?: string;
     };
     modality: string;
   }>;
   bookId?: string;
   onClose?: () => void;
+  roundFinished?: boolean;
+  wordsReviewedCount?: number;
+  emptyReview?: boolean;
+  currentBookTitle?: string;
 }
 
 export function GamePanel(props: GamePanelProps) {
@@ -74,9 +94,15 @@ export function GamePanel(props: GamePanelProps) {
     onStartConsolidation,
     onSkipConsolidation,
     onContinueNextChapter,
+    onReturnToReading,
+    words,
     consolidationQueue,
     bookId,
     onClose,
+    roundFinished,
+    wordsReviewedCount,
+    emptyReview,
+    currentBookTitle,
   } = props;
   const {
     enabled,
@@ -308,6 +334,13 @@ export function GamePanel(props: GamePanelProps) {
         {workshopTab === "challenge" ? (
           <div className="ai-challenge-container">
             <div className="ai-word-banner">
+              <div className="game-book-eco-row">
+                <span className="game-book-eco-pill">
+                  {currentWord.bookTitle
+                    ? `📖 Eco de: ${currentWord.bookTitle}`
+                    : "📖 De tus lecturas recientes"}
+                </span>
+              </div>
               <h3 className="ai-word-title">{currentWord.word}</h3>
               {currentWord.meaning ? (
                 <p className="ai-word-meaning">
@@ -471,8 +504,61 @@ export function GamePanel(props: GamePanelProps) {
       aria-label="Tu compañero y progreso"
       data-mode={mode}
     >
+      {/* Estado: Ronda rápida terminada con celebración del compañero */}
+      {roundFinished || mode === "round_finished" ? (
+        <div className="game-round-finished" role="status">
+          <PracticeCompanionHeader
+            pose="celebrate"
+            speech={`¡Excelente ronda! Afianzaste ${wordsReviewedCount ?? 5} palabras para tu próximo capítulo 🐾`}
+            combo={0}
+            mode="animated"
+            onModeChange={() => {}}
+          />
+          <div className="game-round-finished-content">
+            <h3 className="game-round-finished-title">🌱 Ecos de tus lecturas afianzados</h3>
+            <p className="game-round-finished-text">
+              Afianzaste {wordsReviewedCount ?? 5} palabras para tu próximo capítulo. {name} celebra tu avance y que tu próxima lectura sea aún más fluida.
+            </p>
+            <div className="game-round-actions">
+              <button
+                type="button"
+                className="btn btn--primary game-return-reading-btn"
+                onClick={onReturnToReading ?? onContinueNextChapter ?? onClose}
+              >
+                Volver a mi lectura
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* Estado: Sin palabras pendientes de repaso */}
+      {emptyReview || mode === "empty_review" || ((mode === "adaptive_flow" || mode === "quick_review") && words && words.length === 0) ? (
+        <div className="game-empty-review" role="status">
+          <p className="game-empty-review-text">
+            ✨ Tu memoria está al día. Sigue disfrutando tu libro; Lecta guardará aquí los momentos y palabras que quieras conservar.
+          </p>
+          <div className="game-empty-actions">
+            <button
+              type="button"
+              className="btn btn--primary game-return-reading-btn"
+              onClick={onReturnToReading ?? onClose}
+            >
+              Volver a mi lectura
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       {mode === "adaptive_flow" && onStartAdaptiveFlow ? (
         <div className="game-adaptive-flow-cta">
+          <div className="game-book-eco-row">
+            <span className="game-book-eco-pill">
+              {currentBookTitle || (words && words[0]?.bookTitle)
+                ? `📖 Eco de: ${currentBookTitle ?? words?.[0]?.bookTitle}`
+                : "📖 De tus lecturas recientes"}
+            </span>
+          </div>
           <button
             type="button"
             className="btn btn--primary"
@@ -487,6 +573,13 @@ export function GamePanel(props: GamePanelProps) {
       consolidationQueue &&
       consolidationQueue.length > 0 ? (
         <div className="consolidation-card game-post-chapter-consolidation">
+          <div className="game-book-eco-row">
+            <span className="game-book-eco-pill">
+              {currentBookTitle || (consolidationQueue[0]?.item?.bookTitle)
+                ? `📖 Eco de: ${currentBookTitle ?? consolidationQueue[0]?.item?.bookTitle}`
+                : "📖 De tus lecturas recientes"}
+            </span>
+          </div>
           <div className="consolidation-card-header">
             <h3 className="consolidation-card-title">
               Fija en tu memoria {consolidationQueue.length} palabras de este capítulo (~25 s)

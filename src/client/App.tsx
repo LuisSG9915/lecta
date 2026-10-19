@@ -47,6 +47,7 @@ import {
   fetchCalibrationSample,
   type CalibrationWord,
 } from "./lib/calibration";
+import { getCalibrationBankByLang } from "../shared/calibration-bank";
 import {
   captureDbScope,
   deleteAccountDb,
@@ -297,11 +298,19 @@ export default function App() {
     if (calibrationWords) return true;
     const profile = readerProfileFor(loadNativeLanguage(), language);
     const sample = await fetchCalibrationSample(language, profile);
-    if (!sample.ok || !sample.words.length) {
+    const words: CalibrationWord[] =
+      sample.ok && sample.words?.length
+        ? sample.words
+        : getCalibrationBankByLang(language).map((item) => ({
+            lemma: item.word,
+            definition: null,
+            sampleContext: item.posHint,
+          }));
+    if (!words.length) {
       setError("No se pudo cargar la lista de palabras. Intenta de nuevo con conexión.");
       return false;
     }
-    showCalibration(sample.words, null, language);
+    showCalibration(words, null, language);
     return true;
   };
 

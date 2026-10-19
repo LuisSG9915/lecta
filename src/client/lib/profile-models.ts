@@ -495,6 +495,14 @@ export function saveUserLanguageProfile(profile: UserLanguageProfile): void {
 }
 
 /**
+ * Retorna el parámetro theta de habilidad léxica del usuario para el idioma especificado.
+ */
+export function getLanguageTheta(bookLang = "es", nativeLang = "es"): number {
+  const profile = loadUserLanguageProfile();
+  return getThetaForLanguage(profile, bookLang, nativeLang);
+}
+
+/**
  * Probabilidad Rasch (IRT 1PL) de que el usuario conozca una palabra de dificultad `beta`
  */
 export function predictWordMasteryProbability(theta: number, beta: number): number {
@@ -525,7 +533,7 @@ export function updateLanguageTheta(
   let lang: string;
   let wordBeta: number;
   let outcome: 0 | 1;
-  let weight = signalWeight;
+  let weight: number;
   let shouldPersist = false;
 
   if (typeof profileOrLang === "string") {

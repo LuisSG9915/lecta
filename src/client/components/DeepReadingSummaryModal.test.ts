@@ -336,4 +336,81 @@ describe("DeepReadingSummaryModal", () => {
     expect(host.textContent).not.toContain("Fija en tu memoria");
     expect(host.querySelector(".consolidation-card")).toBeNull();
   });
+
+  it("muestra la sección de '🌱 Tu Cosecha en este Capítulo' con palabras y mensaje celebratorio", () => {
+    const onClose = vi.fn();
+    const harvestWords = ["alborada", "crepúsculo", "destello"];
+    act(() => {
+      root.render(
+        h(DeepReadingSummaryModal, {
+          summary: baseSummary,
+          harvestWords,
+          onClose,
+        }),
+      );
+    });
+
+    const text = host.textContent ?? "";
+    expect(text).toContain("🌱 Tu Cosecha en este Capítulo");
+    expect(text).toContain("¡Leíste este capítulo de corrido integrando nuevas palabras en contexto!");
+    expect(text).toContain("alborada");
+    expect(text).toContain("crepúsculo");
+    expect(text).toContain("destello");
+  });
+
+  it("permite crear la postal del capítulo en 1 clic llamando a onShareQuote", () => {
+    const onClose = vi.fn();
+    const onShareQuote = vi.fn();
+    act(() => {
+      root.render(
+        h(DeepReadingSummaryModal, {
+          summary: baseSummary,
+          featuredQuote: "El mar sonreía a lo lejos con dientes de espuma.",
+          bookTitle: "Canción de otoño",
+          author: "Rubén Darío",
+          onShareQuote,
+          onClose,
+        }),
+      );
+    });
+
+    const quoteBtn = [...host.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("Crear postal del capítulo"),
+    )!;
+    expect(quoteBtn).toBeTruthy();
+
+    act(() => {
+      quoteBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+
+    expect(onShareQuote).toHaveBeenCalledWith("El mar sonreía a lo lejos con dientes de espuma.");
+  });
+
+  it("abre QuoteCardModal in situ al pulsar '📸 Crear postal del capítulo' si no hay onShareQuote", () => {
+    const onClose = vi.fn();
+    act(() => {
+      root.render(
+        h(DeepReadingSummaryModal, {
+          summary: baseSummary,
+          featuredQuote: "La lectura es un refugio en el tiempo.",
+          bookTitle: "Don Quijote",
+          author: "Cervantes",
+          onClose,
+        }),
+      );
+    });
+
+    const quoteBtn = [...host.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("Crear postal del capítulo"),
+    )!;
+    expect(quoteBtn).toBeTruthy();
+
+    act(() => {
+      quoteBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+
+    // Debe abrir QuoteCardModal (Dialog con label o contenido de postal)
+    expect(host.textContent).toContain("Crear postal");
+  });
 });
+

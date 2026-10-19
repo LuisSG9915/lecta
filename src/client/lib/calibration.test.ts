@@ -8,19 +8,32 @@ import {
 import {
   CALIBRATION_DONE_KEY,
   CALIBRATION_DRAFT_KEY,
+  CAT_MAX_STEPS,
+  CAT_MIN_STEPS,
+  CAT_SE_CONVERGENCE_THRESHOLD,
   calibrationAnswerScore,
   calibrationDoneKey,
   calibrationDraftKey,
   calibrationRows,
   hasCalibrationEvidence,
+  initCatSession,
+  needsLanguageCalibration,
   parseCalibrationDraft,
   recordCalibration,
+  resetCalibrationStatusForTesting,
+  selectNextCatItem,
   serializeCalibrationDraft,
+  skipCatSession,
+  skipLanguageCalibration,
+  submitCatAnswer,
   type CalibrationAnswers,
   type CalibrationWord,
+  type CatSessionState,
 } from "./calibration";
 import { pushKnowledgeToServer } from "./reading-sync";
 import { pushWordsToServer } from "./vocab";
+import { loadUserLanguageProfile } from "./profile-models";
+import { itemResponseProbability } from "../../shared/calibration-bank";
 
 // Las transformaciones usan los merges y claves reales; solo se
 // sustituye lo que toca almacén o red.
@@ -383,5 +396,129 @@ describe("calibrationAnswerScore and IRT adaptive engine", () => {
     expect(ctxEn).toContain("clandestine");
   });
 });
+
+describe("Motor CAT de 15 Segundos y Máquina de Estados Adaptativa", () => {
+  beforeEach(() => {
+    resetCalibrationStatusForTesting();
+  });
+
+  it("selectNextCatItem selecciona el ítem no respondido con P más cercana a 0.50 y descarta respondidos", () => {
+    const item1 = selectNextCatItem({ lang: "es", theta: 0.0, answeredIds: [] });
+    expect(item1).not.toBeNull();
+    expect(item1?.difficulty).toBe(0.0);
+
+    const item2 = selectNextCatItem({ lang: "es", theta: 0.0, answeredIds: [item1!.id] });
+    expect(item2).not.toBeNull();
+    expect(item2?.id).not.toBe(item1?.id);
+    expect(CAT_SE_CONVERGENCE_THRESHOLD).toBe(0.42);
+  });
+
+  it("realiza salto dinámico hacia b_2 > b_1 con P cercana a 0.50 tras responder known = true en el paso 1", () => {
+    let session: CatSessionState = initCatSession("es", 0.0);
+    expect(session.step).toBe(0);
+    expect(session.isComplete).toBe(false);
+    expect(session.currentItem).not.toBeNull();
+
+    const item1 = session.currentItem!;
+    const b1 = item1.difficulty;
+    const p1 = itemResponseProbability(session.theta, b1);
+    expect(Math.abs(p1 - 0.5)).toBeLessThan(0.05);
+
+    // Usuario responde que sí la conoce en el paso 1
+    session = submitCatAnswer(session, true);
+    expect(session.step).toBe(1);
+    expect(session.theta).toBeGreaterThan(0.0);
+    expect(session.currentItem).not.toBeNull();
+
+    const item2 = session.currentItem!;
+    const b2 = item2.difficulty;
+    expect(b2).toBeGreaterThan(b1);
+
+    const p2 = itemResponseProbability(session.theta, b2);
+    expect(Math.abs(p2 - 0.5)).toBeLessThan(0.12);
+  });
+
+  it("un usuario que responde true a todo alcanza un theta > +1.2 en 6 a 8 clics", () => {
+    let session = initCatSession("es", 0.0);
+    while (!session.isComplete) {
+      session = submitCatAnswer(session, true);
+    }
+    expect(session.step).toBeGreaterThanOrEqual(CAT_MIN_STEPS);
+    expect(session.step).toBeLessThanOrEqual(CAT_MAX_STEPS);
+    expect(session.theta).toBeGreaterThan(1.2);
+    expect(session.isComplete).toBe(true);
+    expect(session.currentItem).toBeNull();
+  });
+
+  it("un usuario que responde false a todo converge a theta < -1.2 en 6 a 8 clics", () => {
+    let session = initCatSession("es", 0.0);
+    while (!session.isComplete) {
+      session = submitCatAnswer(session, false);
+    }
+    expect(session.step).toBeGreaterThanOrEqual(CAT_MIN_STEPS);
+    expect(session.step).toBeLessThanOrEqual(CAT_MAX_STEPS);
+    expect(session.theta).toBeLessThan(-1.2);
+    expect(session.isComplete).toBe(true);
+    expect(session.currentItem).toBeNull();
+  });
+
+  it("un usuario intermedio converge cerca de 0.0 y detiene el test entre 6 y 8 clics", () => {
+    let session = initCatSession("es", 0.0);
+    while (!session.isComplete) {
+      const current = session.currentItem!;
+      // Conoce palabras cotidianas/fáciles (b <= 0.0) y desconoce las difíciles (b > 0.0)
+      const knows = current.difficulty <= 0.0;
+      session = submitCatAnswer(session, knows);
+    }
+    expect(session.step).toBeGreaterThanOrEqual(CAT_MIN_STEPS);
+    expect(session.step).toBeLessThanOrEqual(CAT_MAX_STEPS);
+    expect(Math.abs(session.theta - 0.0)).toBeLessThan(0.35);
+    expect(session.isComplete).toBe(true);
+  });
+
+  it("independencia multilingüe: calibrar 'es' no marca 'en' como calibrado; 'en' dispara needsLanguageCalibration('en') === true", () => {
+    resetCalibrationStatusForTesting();
+    expect(needsLanguageCalibration("es")).toBe(true);
+    expect(needsLanguageCalibration("en")).toBe(true);
+
+    // Completar calibración en español
+    let session = initCatSession("es");
+    while (!session.isComplete) {
+      session = submitCatAnswer(session, true);
+    }
+    expect(session.isComplete).toBe(true);
+
+    // Español ya no necesita calibración, pero inglés sigue necesitando
+    expect(needsLanguageCalibration("es")).toBe(false);
+    expect(needsLanguageCalibration("en")).toBe(true);
+    expect(needsLanguageCalibration("en-US")).toBe(true);
+  });
+
+  it("skipLanguageCalibration('en') deja needsLanguageCalibration('en') === false e inicializa un theta neutro válido", () => {
+    resetCalibrationStatusForTesting();
+    expect(needsLanguageCalibration("en")).toBe(true);
+
+    skipLanguageCalibration("en");
+
+    expect(needsLanguageCalibration("en")).toBe(false);
+    expect(needsLanguageCalibration("en-GB")).toBe(false);
+
+    const profile = loadUserLanguageProfile();
+    expect(profile.thetaByLang.en).toBeDefined();
+    expect(profile.thetaByLang.en).toBe(0.0);
+  });
+
+  it("skipCatSession marca la sesión como terminada y omitida sin bloquear al usuario", () => {
+    resetCalibrationStatusForTesting();
+    const session = initCatSession("en");
+    const skipped = skipCatSession(session);
+
+    expect(skipped.isComplete).toBe(true);
+    expect(skipped.wasSkipped).toBe(true);
+    expect(skipped.currentItem).toBeNull();
+    expect(needsLanguageCalibration("en")).toBe(false);
+  });
+});
+
 
 

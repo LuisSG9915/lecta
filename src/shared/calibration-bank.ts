@@ -14,6 +14,22 @@
 // se sube la versión para no restaurar respuestas contra otra muestra.
 export type CalibrationProfile = "native" | "learner";
 
+export type CalibrationLanguage = "es" | "en";
+
+export interface CalibrationBankItem {
+  id: string;
+  word: string;
+  lang: CalibrationLanguage;
+  /** Parámetro de dificultad IRT b_i en escala logit [-2.5, +2.5] */
+  difficulty: number;
+  /** Parámetro de discriminación IRT alpha (por defecto 1.35) */
+  discrimination?: number;
+  /** Banda o estrato legible (ej. 'cotidiano' | 'intermedio' | 'avanzado' | 'literario') */
+  band: "cotidiano" | "intermedio" | "avanzado" | "literario";
+  /** Breve pista gramatical o contexto neutro sin regalar la definición */
+  posHint?: string;
+}
+
 export const CALIBRATION_BANK_VERSION = "es-bank-v3";
 export const CALIBRATION_BANK_EN_VERSION = "en-bank-v1";
 
@@ -337,6 +353,10 @@ export interface EnglishCalibrationItem {
   zipf: number;
   meaning: string;
   context: string;
+  /** Dificultad IRT b_i en escala logit [-2.5, +2.5] alineada con profile-models.ts */
+  irtDifficulty?: number;
+  /** Estrato legible equivalente */
+  band?: "cotidiano" | "intermedio" | "avanzado" | "literario";
 }
 
 // Banco editorial de 24 palabras graduadas de B1 a C2 para evaluación L2 de inglés
@@ -348,6 +368,8 @@ export const ENGLISH_CALIBRATION_BANK: readonly EnglishCalibrationItem[] = [
     level: "B1",
     difficulty: 3.5,
     zipf: 3.5,
+    irtDifficulty: -0.45,
+    band: "intermedio",
     meaning: "Susurrar o hablar en voz muy baja.",
     context: "He leaned closer to whisper the secret into her ear.",
   },
@@ -357,6 +379,8 @@ export const ENGLISH_CALIBRATION_BANK: readonly EnglishCalibrationItem[] = [
     level: "B1",
     difficulty: 3.5,
     zipf: 3.5,
+    irtDifficulty: -0.3,
+    band: "intermedio",
     meaning: "Vagar, pasear sin rumbo o perderse en pensamientos.",
     context: "They would often wander through the woods on Sunday mornings.",
   },
@@ -366,6 +390,8 @@ export const ENGLISH_CALIBRATION_BANK: readonly EnglishCalibrationItem[] = [
     level: "B1",
     difficulty: 3.6,
     zipf: 3.4,
+    irtDifficulty: -0.15,
+    band: "intermedio",
     meaning: "Gran placer, satisfacción o deleite.",
     context: "The unexpected visit brought great delight to the whole family.",
   },
@@ -375,6 +401,8 @@ export const ENGLISH_CALIBRATION_BANK: readonly EnglishCalibrationItem[] = [
     level: "B1",
     difficulty: 3.2,
     zipf: 3.8,
+    irtDifficulty: -0.75,
+    band: "intermedio",
     meaning: "Estrecho o de poca anchura.",
     context: "The car squeezed through the narrow alley between the stone houses.",
   },
@@ -384,6 +412,8 @@ export const ENGLISH_CALIBRATION_BANK: readonly EnglishCalibrationItem[] = [
     level: "B1",
     difficulty: 3.3,
     zipf: 3.7,
+    irtDifficulty: -0.9,
+    band: "intermedio",
     meaning: "Amable, dócil, suave o cariñoso.",
     context: "She spoke with a gentle voice that calmed the frightened child.",
   },
@@ -393,6 +423,8 @@ export const ENGLISH_CALIBRATION_BANK: readonly EnglishCalibrationItem[] = [
     level: "B1",
     difficulty: 3.4,
     zipf: 3.6,
+    irtDifficulty: -0.6,
+    band: "intermedio",
     meaning: "Valiente, decidido ante el miedo o peligro.",
     context: "It was brave of him to stand up and speak the truth.",
   },
@@ -403,6 +435,8 @@ export const ENGLISH_CALIBRATION_BANK: readonly EnglishCalibrationItem[] = [
     level: "B2",
     difficulty: 4.2,
     zipf: 2.8,
+    irtDifficulty: 0.35,
+    band: "avanzado",
     meaning: "Incómodo, torpe o difícil de manejar.",
     context: "There was an awkward silence before anyone decided to answer.",
   },
@@ -412,6 +446,8 @@ export const ENGLISH_CALIBRATION_BANK: readonly EnglishCalibrationItem[] = [
     level: "B2",
     difficulty: 4.3,
     zipf: 2.7,
+    irtDifficulty: 0.3,
+    band: "avanzado",
     meaning: "Torpe en movimientos o en el trato.",
     context: "His clumsy hands dropped the porcelain cup onto the floor.",
   },
@@ -421,6 +457,8 @@ export const ENGLISH_CALIBRATION_BANK: readonly EnglishCalibrationItem[] = [
     level: "B2",
     difficulty: 4.2,
     zipf: 2.8,
+    irtDifficulty: 0.45,
+    band: "avanzado",
     meaning: "Terco, obstinado o difícil de doblegar.",
     context: "He was too stubborn to admit that he had lost the map.",
   },
@@ -430,6 +468,8 @@ export const ENGLISH_CALIBRATION_BANK: readonly EnglishCalibrationItem[] = [
     level: "B2",
     difficulty: 4.1,
     zipf: 2.9,
+    irtDifficulty: 0.6,
+    band: "avanzado",
     meaning: "Prosperar, florecer o desarrollarse con éxito.",
     context: "Plants thrive when given enough sunlight and clean water.",
   },
@@ -439,6 +479,8 @@ export const ENGLISH_CALIBRATION_BANK: readonly EnglishCalibrationItem[] = [
     level: "B2",
     difficulty: 4.3,
     zipf: 2.7,
+    irtDifficulty: 0.75,
+    band: "avanzado",
     meaning: "Temblar de frío, miedo o emoción.",
     context: "She felt her hands tremble as she opened the envelope.",
   },
@@ -448,6 +490,8 @@ export const ENGLISH_CALIBRATION_BANK: readonly EnglishCalibrationItem[] = [
     level: "B2",
     difficulty: 4.1,
     zipf: 2.9,
+    irtDifficulty: 0.9,
+    band: "avanzado",
     meaning: "Sutil, delicado o difícil de percibir a simple vista.",
     context: "There was a subtle change in his expression that gave him away.",
   },
@@ -458,6 +502,8 @@ export const ENGLISH_CALIBRATION_BANK: readonly EnglishCalibrationItem[] = [
     level: "C1",
     difficulty: 4.7,
     zipf: 2.3,
+    irtDifficulty: 1.5,
+    band: "literario",
     meaning: "Comprender o penetrar el sentido profundo de algo.",
     context: "He could not fathom why she had made such a sudden decision.",
   },
@@ -467,6 +513,8 @@ export const ENGLISH_CALIBRATION_BANK: readonly EnglishCalibrationItem[] = [
     level: "C1",
     difficulty: 4.6,
     zipf: 2.4,
+    irtDifficulty: 1.2,
+    band: "avanzado",
     meaning: "Pensar detenidamente y con calma sobre algo.",
     context: "She sat by the window to ponder the strange letter she had received.",
   },
@@ -476,6 +524,8 @@ export const ENGLISH_CALIBRATION_BANK: readonly EnglishCalibrationItem[] = [
     level: "C1",
     difficulty: 4.7,
     zipf: 2.3,
+    irtDifficulty: 1.05,
+    band: "avanzado",
     meaning: "Sentir un deseo profundo o anhelo vehemente.",
     context: "On cold winter evenings, they would yearn for the warmth of summer.",
   },
@@ -485,6 +535,8 @@ export const ENGLISH_CALIBRATION_BANK: readonly EnglishCalibrationItem[] = [
     level: "C1",
     difficulty: 4.8,
     zipf: 2.2,
+    irtDifficulty: 1.35,
+    band: "literario",
     meaning: "Consuelo o alivio en medio del dolor o la tristeza.",
     context: "Music was the only solace he could find during those difficult months.",
   },
@@ -494,6 +546,8 @@ export const ENGLISH_CALIBRATION_BANK: readonly EnglishCalibrationItem[] = [
     level: "C1",
     difficulty: 4.7,
     zipf: 2.3,
+    irtDifficulty: 1.65,
+    band: "literario",
     meaning: "Distante, reservado o poco comunicativo.",
     context: "He remained aloof from the crowd, observing everything in silence.",
   },
@@ -503,6 +557,8 @@ export const ENGLISH_CALIBRATION_BANK: readonly EnglishCalibrationItem[] = [
     level: "C1",
     difficulty: 4.8,
     zipf: 2.2,
+    irtDifficulty: 1.8,
+    band: "literario",
     meaning: "Arrogante, orgulloso y con desdén hacia los demás.",
     context: "Her haughty expression softened when she saw the children playing.",
   },
@@ -513,6 +569,8 @@ export const ENGLISH_CALIBRATION_BANK: readonly EnglishCalibrationItem[] = [
     level: "C2",
     difficulty: 4.9,
     zipf: 2.1,
+    irtDifficulty: 2.25,
+    band: "literario",
     meaning: "Hecho en secreto o de forma oculta.",
     context: "They held a clandestine meeting under the cover of night.",
   },
@@ -522,6 +580,8 @@ export const ENGLISH_CALIBRATION_BANK: readonly EnglishCalibrationItem[] = [
     level: "C2",
     difficulty: 5.0,
     zipf: 2.0,
+    irtDifficulty: 2.3,
+    band: "literario",
     meaning: "Obtenido o realizado con disimulo y a escondidas.",
     context: "She cast a surreptitious glance at the clock on the wall.",
   },
@@ -531,6 +591,8 @@ export const ENGLISH_CALIBRATION_BANK: readonly EnglishCalibrationItem[] = [
     level: "C2",
     difficulty: 4.9,
     zipf: 2.1,
+    irtDifficulty: 2.1,
+    band: "literario",
     meaning: "Que dura muy poco tiempo o es pasajero.",
     context: "The sunset painted the sky in ephemeral shades of gold.",
   },
@@ -540,6 +602,8 @@ export const ENGLISH_CALIBRATION_BANK: readonly EnglishCalibrationItem[] = [
     level: "C2",
     difficulty: 4.8,
     zipf: 2.2,
+    irtDifficulty: 1.9,
+    band: "literario",
     meaning: "Misterioso, extraño o inquietante.",
     context: "She had an uncanny ability to guess exactly what people were thinking.",
   },
@@ -549,6 +613,8 @@ export const ENGLISH_CALIBRATION_BANK: readonly EnglishCalibrationItem[] = [
     level: "C2",
     difficulty: 4.8,
     zipf: 2.2,
+    irtDifficulty: 1.95,
+    band: "literario",
     meaning: "Encender fuego o avivar un sentimiento o pasión.",
     context: "A small spark was enough to kindle the dry branches in the fireplace.",
   },
@@ -558,10 +624,13 @@ export const ENGLISH_CALIBRATION_BANK: readonly EnglishCalibrationItem[] = [
     level: "C2",
     difficulty: 4.8,
     zipf: 2.2,
+    irtDifficulty: 1.85,
+    band: "literario",
     meaning: "Error o equivocación torpe y grave.",
     context: "He realized his blunder as soon as the words left his mouth.",
   },
 ];
+
 
 // Definiciones bilingües / de apoyo para los lemas en inglés del banco.
 export const CALIBRATION_DEFINITIONS_EN: Readonly<Record<string, string>> = {
@@ -883,7 +952,26 @@ export const CALIBRATION_SAMPLE_CONTEXTS: Readonly<Record<string, string>> = {
   inquietud: "Una sutil inquietud se dibujó en su semblante al escuchar las noticias de ultramar.",
   mudo: "El impacto de la revelación lo dejó mudo por varios instantes.",
   dilema: "Se debatía ante el dilema de revelar la verdad o salvaguardar la paz familiar.",
+  // Cotidianas / alta frecuencia en español
+  lluvia: "La lluvia caía suavemente sobre el tejado durante toda la noche.",
+  viento: "Un fuerte viento del norte agitaba las copas de los árboles.",
+  hermoso: "Contemplaron un hermoso amanecer desde lo alto de la colina.",
+  escuchar: "Se detuvo en silencio para escuchar el rumor del arroyo cercano.",
+  cuarto: "Había una lámpara encendida en la mesa de noche de su cuarto.",
+  profundo: "El pozo de piedra era tan profundo que apenas se divisaba el fondo.",
+  quitar: "Ayudó a su abuelo a quitar las hojas secas que cubrían la entrada.",
+  temor: "Sintió un ligero temor antes de abrir la pesada puerta de roble.",
   // Contextos en inglés
+  water: "She drank a glass of fresh water after the long walk.",
+  friend: "A loyal friend supported him through every difficult challenge.",
+  travel: "They decided to travel across the country during the autumn holiday.",
+  window: "He opened the bedroom window to let in the fresh morning air.",
+  quiet: "The library was completely quiet during the late afternoon hours.",
+  bridge: "They crossed the stone bridge that spanned the narrow river.",
+  silver: "A polished silver watch caught the light on the wooden desk.",
+  danger: "The warning sign indicated danger near the rocky cliff edge.",
+  bargain: "She found an unexpected bargain at the local weekend book fair.",
+  sorrow: "He bore his sorrow with quiet dignity and resilient hope.",
   whisper: "He leaned closer to whisper the secret into her ear.",
   wander: "They would often wander through the woods on Sunday mornings.",
   delight: "The unexpected visit brought great delight to the whole family.",
@@ -975,5 +1063,622 @@ export function calibrationBankLemmas(
   profile: CalibrationProfile = "native",
 ): string[] {
   return calibrationBankFor(profile, language).flat();
+}
+
+// ============================================================================
+// Banco Calibrado IRT Multilingüe (Escala Logit continua b_i en [-2.2, +2.4])
+// ============================================================================
+
+/**
+ * Banco IRT calibrado en español con 30 ítems densamente distribuidos
+ * desde vocabulario cotidiano (A2/B1, b_i <= -1.2) hasta literario/culto (C2, b_i >= +1.5),
+ * con incrementos de 0.15 logits entre ítems contiguos.
+ */
+export const CALIBRATION_BANK_ITEMS_ES: readonly CalibrationBankItem[] = [
+  // Cotidiano (A2-B1): vocabulario frecuente y familiar (b_i <= -1.0)
+  {
+    id: "es-lluvia",
+    word: "lluvia",
+    lang: "es",
+    difficulty: -2.1,
+    discrimination: 1.35,
+    band: "cotidiano",
+    posHint: "sustantivo que refiere a precipitación de agua",
+  },
+  {
+    id: "es-viento",
+    word: "viento",
+    lang: "es",
+    difficulty: -1.95,
+    discrimination: 1.35,
+    band: "cotidiano",
+    posHint: "sustantivo que indica corriente natural de aire",
+  },
+  {
+    id: "es-hermoso",
+    word: "hermoso",
+    lang: "es",
+    difficulty: -1.8,
+    discrimination: 1.35,
+    band: "cotidiano",
+    posHint: "adjetivo que agrada por su belleza o proporción",
+  },
+  {
+    id: "es-escuchar",
+    word: "escuchar",
+    lang: "es",
+    difficulty: -1.65,
+    discrimination: 1.35,
+    band: "cotidiano",
+    posHint: "verbo de percepción auditiva consciente",
+  },
+  {
+    id: "es-cuarto",
+    word: "cuarto",
+    lang: "es",
+    difficulty: -1.5,
+    discrimination: 1.35,
+    band: "cotidiano",
+    posHint: "sustantivo que denota una habitación de vivienda",
+  },
+  {
+    id: "es-profundo",
+    word: "profundo",
+    lang: "es",
+    difficulty: -1.35,
+    discrimination: 1.35,
+    band: "cotidiano",
+    posHint: "adjetivo descriptivo de gran distancia al fondo",
+  },
+  {
+    id: "es-quitar",
+    word: "quitar",
+    lang: "es",
+    difficulty: -1.2,
+    discrimination: 1.35,
+    band: "cotidiano",
+    posHint: "verbo de retirar o apartar algo de su sitio",
+  },
+  {
+    id: "es-temor",
+    word: "temor",
+    lang: "es",
+    difficulty: -1.05,
+    discrimination: 1.35,
+    band: "cotidiano",
+    posHint: "sustantivo que expresa emoción de miedo o recelo",
+  },
+  // Intermedio (B1-B2): narrativa estándar y descriptiva (-0.9 a +0.15)
+  {
+    id: "es-alboroto",
+    word: "alboroto",
+    lang: "es",
+    difficulty: -0.9,
+    discrimination: 1.35,
+    band: "intermedio",
+    posHint: "sustantivo de desorden o tumulto sonoro",
+  },
+  {
+    id: "es-esquivar",
+    word: "esquivar",
+    lang: "es",
+    difficulty: -0.75,
+    discrimination: 1.35,
+    band: "intermedio",
+    posHint: "verbo de evasión rápida ante un obstáculo",
+  },
+  {
+    id: "es-fatiga",
+    word: "fatiga",
+    lang: "es",
+    difficulty: -0.6,
+    discrimination: 1.35,
+    band: "intermedio",
+    posHint: "sustantivo de cansancio corporal o mental",
+  },
+  {
+    id: "es-destello",
+    word: "destello",
+    lang: "es",
+    difficulty: -0.45,
+    discrimination: 1.35,
+    band: "intermedio",
+    posHint: "sustantivo que denota un resplandor breve y vivo",
+  },
+  {
+    id: "es-inquietud",
+    word: "inquietud",
+    lang: "es",
+    difficulty: -0.3,
+    discrimination: 1.35,
+    band: "intermedio",
+    posHint: "sustantivo de desasosiego o agitación interior",
+  },
+  {
+    id: "es-cautela",
+    word: "cautela",
+    lang: "es",
+    difficulty: -0.15,
+    discrimination: 1.35,
+    band: "intermedio",
+    posHint: "sustantivo de prudencia y reserva al actuar",
+  },
+  {
+    id: "es-aflicción",
+    word: "aflicción",
+    lang: "es",
+    difficulty: 0.0,
+    discrimination: 1.35,
+    band: "intermedio",
+    posHint: "sustantivo de sufrimiento moral o pena profunda",
+  },
+  {
+    id: "es-melancolía",
+    word: "melancolía",
+    lang: "es",
+    difficulty: 0.15,
+    discrimination: 1.35,
+    band: "intermedio",
+    posHint: "sustantivo de tristeza sosegada y nostálgica",
+  },
+  // Avanzado (B2+-C1): literatura y expresión figurada (+0.30 a +1.20)
+  {
+    id: "es-sosiego",
+    word: "sosiego",
+    lang: "es",
+    difficulty: 0.3,
+    discrimination: 1.35,
+    band: "avanzado",
+    posHint: "sustantivo de calma y tranquilidad de ánimo",
+  },
+  {
+    id: "es-conjetura",
+    word: "conjetura",
+    lang: "es",
+    difficulty: 0.45,
+    discrimination: 1.35,
+    band: "avanzado",
+    posHint: "sustantivo de juicio u opinión por indicios",
+  },
+  {
+    id: "es-zarpar",
+    word: "zarpar",
+    lang: "es",
+    difficulty: 0.6,
+    discrimination: 1.35,
+    band: "avanzado",
+    posHint: "verbo náutico de levar anclas e iniciar viaje",
+  },
+  {
+    id: "es-sagaz",
+    word: "sagaz",
+    lang: "es",
+    difficulty: 0.75,
+    discrimination: 1.35,
+    band: "avanzado",
+    posHint: "adjetivo de agudeza, perspicacia y astucia",
+  },
+  {
+    id: "es-vehemencia",
+    word: "vehemencia",
+    lang: "es",
+    difficulty: 0.9,
+    discrimination: 1.35,
+    band: "avanzado",
+    posHint: "sustantivo de fuerza o pasión intensa en el obrar",
+  },
+  {
+    id: "es-desdén",
+    word: "desdén",
+    lang: "es",
+    difficulty: 1.05,
+    discrimination: 1.35,
+    band: "avanzado",
+    posHint: "sustantivo de actitud de indiferencia o menosprecio",
+  },
+  {
+    id: "es-taciturno",
+    word: "taciturno",
+    lang: "es",
+    difficulty: 1.2,
+    discrimination: 1.35,
+    band: "avanzado",
+    posHint: "adjetivo de carácter callado y poco comunicativo",
+  },
+  // Literario (C1+-C2): cultismos, narrativa clásica y arcaísmos (+1.35 a +2.25)
+  {
+    id: "es-pusilánime",
+    word: "pusilánime",
+    lang: "es",
+    difficulty: 1.35,
+    discrimination: 1.35,
+    band: "literario",
+    posHint: "adjetivo de falta de ánimo o resolución",
+  },
+  {
+    id: "es-soslayar",
+    word: "soslayar",
+    lang: "es",
+    difficulty: 1.5,
+    discrimination: 1.35,
+    band: "literario",
+    posHint: "verbo culto de esquivar con habilidad una dificultad",
+  },
+  {
+    id: "es-subyugar",
+    word: "subyugar",
+    lang: "es",
+    difficulty: 1.65,
+    discrimination: 1.35,
+    band: "literario",
+    posHint: "verbo que expresa someter o cautivar intensamente",
+  },
+  {
+    id: "es-truculento",
+    word: "truculento",
+    lang: "es",
+    difficulty: 1.8,
+    discrimination: 1.35,
+    band: "literario",
+    posHint: "adjetivo de crueldad, violencia o dramatismo excesivo",
+  },
+  {
+    id: "es-resquemor",
+    word: "resquemor",
+    lang: "es",
+    difficulty: 1.95,
+    discrimination: 1.35,
+    band: "literario",
+    posHint: "sustantivo de resentimiento o disgusto persistente",
+  },
+  {
+    id: "es-diletante",
+    word: "diletante",
+    lang: "es",
+    difficulty: 2.1,
+    discrimination: 1.35,
+    band: "literario",
+    posHint: "sustantivo que cultiva un arte por afición y no oficio",
+  },
+  {
+    id: "es-ignominia",
+    word: "ignominia",
+    lang: "es",
+    difficulty: 2.25,
+    discrimination: 1.35,
+    band: "literario",
+    posHint: "sustantivo de deshonra pública o afrenta grave",
+  },
+];
+
+/**
+ * Banco IRT calibrado en inglés con 30 ítems densamente distribuidos
+ * desde vocabulario cotidiano (A1/B1, b_i <= -1.2) hasta literario/culto (C2, b_i >= +1.5),
+ * con incrementos de 0.15 logits entre ítems contiguos.
+ */
+export const CALIBRATION_BANK_ITEMS_EN: readonly CalibrationBankItem[] = [
+  // Cotidiano (A1-B1): high frequency and everyday vocabulary (b_i <= -1.0)
+  {
+    id: "en-water",
+    word: "water",
+    lang: "en",
+    difficulty: -2.1,
+    discrimination: 1.35,
+    band: "cotidiano",
+    posHint: "common noun for essential liquid",
+  },
+  {
+    id: "en-friend",
+    word: "friend",
+    lang: "en",
+    difficulty: -1.95,
+    discrimination: 1.35,
+    band: "cotidiano",
+    posHint: "noun denoting a close companion or ally",
+  },
+  {
+    id: "en-travel",
+    word: "travel",
+    lang: "en",
+    difficulty: -1.8,
+    discrimination: 1.35,
+    band: "cotidiano",
+    posHint: "verb or noun related to journeying to places",
+  },
+  {
+    id: "en-window",
+    word: "window",
+    lang: "en",
+    difficulty: -1.65,
+    discrimination: 1.35,
+    band: "cotidiano",
+    posHint: "noun for an opening in a wall admitting light",
+  },
+  {
+    id: "en-quiet",
+    word: "quiet",
+    lang: "en",
+    difficulty: -1.5,
+    discrimination: 1.35,
+    band: "cotidiano",
+    posHint: "adjective describing silence or calmness",
+  },
+  {
+    id: "en-bridge",
+    word: "bridge",
+    lang: "en",
+    difficulty: -1.35,
+    discrimination: 1.35,
+    band: "cotidiano",
+    posHint: "noun denoting a structure spanning an obstacle",
+  },
+  {
+    id: "en-silver",
+    word: "silver",
+    lang: "en",
+    difficulty: -1.2,
+    discrimination: 1.35,
+    band: "cotidiano",
+    posHint: "noun or adjective denoting a precious lustrous metal",
+  },
+  {
+    id: "en-danger",
+    word: "danger",
+    lang: "en",
+    difficulty: -1.05,
+    discrimination: 1.35,
+    band: "cotidiano",
+    posHint: "noun denoting liability to harm or risk",
+  },
+  // Intermedio (B1-B2): standard narrative and descriptive vocabulary (-0.9 a +0.15)
+  {
+    id: "en-gentle",
+    word: "gentle",
+    lang: "en",
+    difficulty: -0.9,
+    discrimination: 1.35,
+    band: "intermedio",
+    posHint: "adjective describing mild, tender or kind behavior",
+  },
+  {
+    id: "en-narrow",
+    word: "narrow",
+    lang: "en",
+    difficulty: -0.75,
+    discrimination: 1.35,
+    band: "intermedio",
+    posHint: "adjective describing limited breadth or width",
+  },
+  {
+    id: "en-brave",
+    word: "brave",
+    lang: "en",
+    difficulty: -0.6,
+    discrimination: 1.35,
+    band: "intermedio",
+    posHint: "adjective showing courage in difficult situations",
+  },
+  {
+    id: "en-whisper",
+    word: "whisper",
+    lang: "en",
+    difficulty: -0.45,
+    discrimination: 1.35,
+    band: "intermedio",
+    posHint: "verb or noun for speaking very softly",
+  },
+  {
+    id: "en-wander",
+    word: "wander",
+    lang: "en",
+    difficulty: -0.3,
+    discrimination: 1.35,
+    band: "intermedio",
+    posHint: "verb for strolling without a fixed path",
+  },
+  {
+    id: "en-delight",
+    word: "delight",
+    lang: "en",
+    difficulty: -0.15,
+    discrimination: 1.35,
+    band: "intermedio",
+    posHint: "noun denoting intense pleasure or satisfaction",
+  },
+  {
+    id: "en-bargain",
+    word: "bargain",
+    lang: "en",
+    difficulty: 0.0,
+    discrimination: 1.35,
+    band: "intermedio",
+    posHint: "noun or verb for an advantageous agreement or purchase",
+  },
+  {
+    id: "en-sorrow",
+    word: "sorrow",
+    lang: "en",
+    difficulty: 0.15,
+    discrimination: 1.35,
+    band: "intermedio",
+    posHint: "noun expressing distress caused by loss or grief",
+  },
+  // Avanzado (B2+-C1): nuanced, expressive narrative vocabulary (+0.30 a +1.20)
+  {
+    id: "en-clumsy",
+    word: "clumsy",
+    lang: "en",
+    difficulty: 0.3,
+    discrimination: 1.35,
+    band: "avanzado",
+    posHint: "adjective indicating awkward physical coordination",
+  },
+  {
+    id: "en-stubborn",
+    word: "stubborn",
+    lang: "en",
+    difficulty: 0.45,
+    discrimination: 1.35,
+    band: "avanzado",
+    posHint: "adjective describing resolute or obstinate character",
+  },
+  {
+    id: "en-thrive",
+    word: "thrive",
+    lang: "en",
+    difficulty: 0.6,
+    discrimination: 1.35,
+    band: "avanzado",
+    posHint: "verb meaning to flourish or prosper vigorously",
+  },
+  {
+    id: "en-tremble",
+    word: "tremble",
+    lang: "en",
+    difficulty: 0.75,
+    discrimination: 1.35,
+    band: "avanzado",
+    posHint: "verb describing involuntary shaking from cold or emotion",
+  },
+  {
+    id: "en-subtle",
+    word: "subtle",
+    lang: "en",
+    difficulty: 0.9,
+    discrimination: 1.35,
+    band: "avanzado",
+    posHint: "adjective describing delicate or elusive nuance",
+  },
+  {
+    id: "en-yearn",
+    word: "yearn",
+    lang: "en",
+    difficulty: 1.05,
+    discrimination: 1.35,
+    band: "avanzado",
+    posHint: "verb expressing intense longing or tender desire",
+  },
+  {
+    id: "en-ponder",
+    word: "ponder",
+    lang: "en",
+    difficulty: 1.2,
+    discrimination: 1.35,
+    band: "avanzado",
+    posHint: "verb for contemplating deeply and deliberately",
+  },
+  // Literario (C1+-C2): complex, formal, literary and arcane vocabulary (+1.35 a +2.25)
+  {
+    id: "en-solace",
+    word: "solace",
+    lang: "en",
+    difficulty: 1.35,
+    discrimination: 1.35,
+    band: "literario",
+    posHint: "noun denoting comfort in sorrow or misfortune",
+  },
+  {
+    id: "en-fathom",
+    word: "fathom",
+    lang: "en",
+    difficulty: 1.5,
+    discrimination: 1.35,
+    band: "literario",
+    posHint: "verb meaning to penetrate and comprehend deeply",
+  },
+  {
+    id: "en-aloof",
+    word: "aloof",
+    lang: "en",
+    difficulty: 1.65,
+    discrimination: 1.35,
+    band: "literario",
+    posHint: "adjective meaning reserved, distant or emotionally detached",
+  },
+  {
+    id: "en-haughty",
+    word: "haughty",
+    lang: "en",
+    difficulty: 1.8,
+    discrimination: 1.35,
+    band: "literario",
+    posHint: "adjective indicating arrogant superiority or disdain",
+  },
+  {
+    id: "en-kindle",
+    word: "kindle",
+    lang: "en",
+    difficulty: 1.95,
+    discrimination: 1.35,
+    band: "literario",
+    posHint: "verb for igniting flame or stirring deep emotion",
+  },
+  {
+    id: "en-ephemeral",
+    word: "ephemeral",
+    lang: "en",
+    difficulty: 2.1,
+    discrimination: 1.35,
+    band: "literario",
+    posHint: "adjective describing lasting a very brief time",
+  },
+  {
+    id: "en-clandestine",
+    word: "clandestine",
+    lang: "en",
+    difficulty: 2.25,
+    discrimination: 1.35,
+    band: "literario",
+    posHint: "adjective indicating conducted with secretive stealth",
+  },
+];
+
+/** Todos los ítems de calibración IRT disponibles */
+export const CALIBRATION_BANK_ITEMS: readonly CalibrationBankItem[] = [
+  ...CALIBRATION_BANK_ITEMS_ES,
+  ...CALIBRATION_BANK_ITEMS_EN,
+];
+
+/**
+ * Obtiene los ítems del banco de calibración IRT según el idioma indicado.
+ * Normaliza códigos regionales como 'en-US' -> 'en', 'es-MX' -> 'es'.
+ */
+export function getCalibrationBankByLang(
+  lang: CalibrationLanguage | string = "es",
+): CalibrationBankItem[] {
+  const norm = (lang || "es").toLowerCase().trim().split(/[-_]/)[0];
+  if (norm === "en") {
+    return [...CALIBRATION_BANK_ITEMS_EN];
+  }
+  return [...CALIBRATION_BANK_ITEMS_ES];
+}
+
+/**
+ * Probabilidad de respuesta según el modelo logístico 2PL:
+ * P(conoce | theta, b_i) = 1 / (1 + exp(-alpha * (theta - b_i)))
+ *
+ * Devuelve exactamente 0.50 cuando theta === difficulty.
+ */
+export function itemResponseProbability(
+  theta: number,
+  difficulty: number,
+  discrimination = 1.35,
+): number {
+  return 1 / (1 + Math.exp(-discrimination * (theta - difficulty)));
+}
+
+/**
+ * Información de Fisher para un ítem dicotómico 2PL:
+ * I_i(theta) = alpha^2 * P * (1 - P)
+ *
+ * Alcanza su valor máximo en theta === difficulty (donde P = 0.50).
+ */
+export function itemFisherInformation(
+  theta: number,
+  difficulty: number,
+  discrimination = 1.35,
+): number {
+  const p = itemResponseProbability(theta, difficulty, discrimination);
+  return discrimination * discrimination * p * (1 - p);
 }
 

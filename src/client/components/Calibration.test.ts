@@ -2,62 +2,22 @@
 import { act, createElement as h } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import Calibration from "./Calibration";
+import Calibration, { type CalibrationProps } from "./Calibration";
 import {
-  CALIBRATION_DRAFT_KEY,
-  recordCalibration,
-  serializeCalibrationDraft,
-  type CalibrationWord,
+  needsLanguageCalibration,
 } from "../lib/calibration";
-import { loadSessionValue, saveSessionValue } from "../lib/idb";
+import { loadUserLanguageProfile } from "../lib/profile-models";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
   true;
-
-// El componente solo toca el almacén de sesión para el borrador; el
-// guardado real (recordCalibration) se cubre en calibration.test.ts.
-vi.mock("../lib/idb", async (importOriginal) => {
-  const mod = await importOriginal<typeof import("../lib/idb")>();
-  return {
-    ...mod,
-    loadSessionValue: vi.fn(async () => null),
-    saveSessionValue: vi.fn(async () => undefined),
-  };
-});
-vi.mock("../lib/calibration", async (importOriginal) => {
-  const mod = await importOriginal<typeof import("../lib/calibration")>();
-  return {
-    ...mod,
-    recordCalibration: vi.fn(async () => ({ knowledge: [], words: [] })),
-    fetchCalibrationSample: vi.fn(async (_lang, profile) => ({
-      ok: true,
-      profile: profile ?? "native",
-      words: sample,
-    })),
-  };
-});
-vi.mock("../lib/reading-sync", () => ({
-  pushKnowledgeToServer: vi.fn(async () => true),
-}));
-vi.mock("../lib/vocab", () => ({ pushWordsToServer: vi.fn(async () => true) }));
-
-const loadMock = vi.mocked(loadSessionValue);
-const saveMock = vi.mocked(saveSessionValue);
-const recordMock = vi.mocked(recordCalibration);
-
-const sample: CalibrationWord[] = Array.from({ length: 18 }, (_, i) => ({
-  lemma: `palabra${i + 1}`,
-  definition: `def ${i + 1}`,
-  sampleContext: `Contexto ilustrativo para palabra${i + 1}`,
-}));
 
 let host: HTMLDivElement;
 let root: Root;
 
 beforeEach(() => {
+  vi.useRealTimers();
   vi.clearAllMocks();
   localStorage.clear();
-  localStorage.setItem("lecta:nativeLanguageConfirmed", "1");
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);
@@ -70,366 +30,181 @@ afterEach(() => {
   localStorage.clear();
 });
 
-// Render + hidratación del borrador dentro de un solo act asíncrono
-const render = (over: { onDone?: () => void; onClose?: () => void } = {}) =>
+const render = (props: Partial<CalibrationProps> = {}) =>
   act(async () => {
     root.render(
       h(Calibration, {
-        words: sample,
-        onDone: over.onDone ?? vi.fn(),
-        onClose: over.onClose ?? vi.fn(),
+        onDone: props.onDone ?? vi.fn(),
+        onClose: props.onClose,
+        onComplete: props.onComplete,
+        language: props.language ?? "es",
+        words: props.words,
       }),
     );
-    await Promise.resolve();
-    await Promise.resolve();
-    await Promise.resolve();
     await Promise.resolve();
   });
 
 const text = () => host.textContent ?? "";
 const button = (label: string) =>
-  [...host.querySelectorAll("button")].find(
-    (b) => b.textContent?.trim() === label || b.textContent?.includes(label),
-  )!;
+  [...host.querySelectorAll("button")].find((b) =>
+    b.textContent?.trim().includes(label),
+  );
 
 const click = (label: string) =>
   act(() => {
-    button(label).dispatchEvent(
+    const btn = button(label);
+    if (!btn) throw new Error(`Button with label "${label}" not found`);
+    btn.dispatchEvent(
       new MouseEvent("click", { bubbles: true, cancelable: true }),
     );
   });
 
-const choice = (
-  lemma: string,
-  kind: "known" | "unknown" | "unsure" | "La conozco" | "No la conozco" | "No me suena" | "Me suena dudosa" | "La conozco bien",
-) => {
-  const group = host.querySelector(`[aria-label="Respuesta para ${lemma}"]`);
-  if (!group) return null;
-  const buttons = [...group.querySelectorAll("button")];
-  if (kind === "known" || kind === "La conozco" || kind === "La conozco bien") {
-    return buttons.find(
-      (b) =>
-        b.textContent?.includes("La conozco bien") ||
-        b.textContent?.includes("La conozco") ||
-        b.textContent?.includes("[3]"),
-    )!;
-  }
-  if (kind === "unsure" || kind === "Me suena dudosa") {
-    return buttons.find(
-      (b) =>
-        b.textContent?.includes("Me suena dudosa") ||
-        b.textContent?.includes("dudosa") ||
-        b.textContent?.includes("[2]"),
-    )!;
-  }
-  if (kind === "unknown" || kind === "No la conozco" || kind === "No me suena") {
-    return buttons.find(
-      (b) =>
-        b.textContent?.includes("No me suena") ||
-        b.textContent?.includes("No la conozco") ||
-        b.textContent?.includes("[1]"),
-    )!;
-  }
-  return buttons.find((b) => b.textContent?.includes(kind))!;
-};
-
-describe("Calibration", () => {
-  it("muestra una carta de tinta a la vez con su progreso adaptativo y contexto", async () => {
+describe("Calibration (CAT 15-Segundos Zero-Friction)", () => {
+  it("muestra una sola palabra a la vez con tipografía destacada y su pregunta contextual", async () => {
     await render();
-    expect(text()).toContain("Etapa 1 de 3: Cartas de Tinta");
-    expect(text()).toContain("Palabra 1 de 10");
-    expect(text()).toContain("palabra1");
-    expect(text()).toContain("Contexto ilustrativo para palabra1");
-    expect(text()).toContain("[1]");
-    expect(text()).toContain("No me suena");
-    expect(text()).toContain("[2]");
-    expect(text()).toContain("Me suena dudosa");
-    expect(text()).toContain("[3]");
-    expect(text()).toContain("La conozco bien");
-    expect(text()).toContain("No es un examen");
+
+    // Cabecera ligera y badge de contexto
+    expect(text()).toContain("Ajuste rápido · Español (15 s)");
+    expect(button("Saltar e ir al libro →")).toBeTruthy();
+
+    // Tarjeta central de palabra única (en theta = 0 es 'aflicción')
+    const wordTitle = host.querySelector(".cat-word-title");
+    expect(wordTitle).toBeTruthy();
+    expect(wordTitle?.textContent?.trim()).toBe("aflicción");
+    expect(text()).toContain("¿Reconoces qué significa esta palabra al leer?");
+
+    // Dos botones táctiles grandes
+    expect(button("No estoy seguro")).toBeTruthy();
+    expect(button("Sí la conozco")).toBeTruthy();
+
+    // Puntos de progreso presentes (8 puntos)
+    const dots = host.querySelectorAll(".cat-progress-dot");
+    expect(dots.length).toBe(8);
+    expect(dots[0].classList.contains("is-active")).toBe(true);
   });
 
-  it("responder avanza al siguiente ítem adaptativo y Atrás permite retroceder sin perder respuestas", async () => {
+  it("hacer clic en «Sí la conozco» avanza a la siguiente palabra vía CAT", async () => {
     await render();
-    act(() => {
-      choice("palabra1", "No me suena")!.dispatchEvent(
-        new MouseEvent("click", { bubbles: true, cancelable: true }),
-      );
-    });
-    // Avanzó a la palabra 2
-    expect(text()).toContain("Palabra 2 de 10");
-    expect(text()).toContain("1 palabra(s) respondida(s)");
 
-    // Retroceder con Atrás
-    click("Atrás");
-    expect(text()).toContain("Palabra 1 de 10");
-    expect(choice("palabra1", "No me suena")?.getAttribute("aria-pressed")).toBe(
-      "true",
-    );
+    const firstWord = host.querySelector(".cat-word-title")?.textContent;
+    expect(firstWord).toBe("aflicción");
+
+    click("Sí la conozco");
+
+    const secondWord = host.querySelector(".cat-word-title")?.textContent;
+    expect(secondWord).toBeTruthy();
+    expect(secondWord).not.toBe(firstWord);
+
+    // El primer punto ahora está completado y el segundo activo
+    const dots = host.querySelectorAll(".cat-progress-dot");
+    expect(dots[0].classList.contains("is-completed")).toBe(true);
+    expect(dots[1].classList.contains("is-active")).toBe(true);
   });
 
-  it("atajos de teclado 1, 2 y 3 registran respuestas de inmediato", async () => {
+  it("hacer clic en «No estoy seguro» avanza a una palabra de menor dificultad", async () => {
     await render();
-    expect(text()).toContain("Palabra 1 de 10");
 
-    act(() => {
-      window.dispatchEvent(new KeyboardEvent("keydown", { key: "3" }));
-    });
+    click("No estoy seguro");
 
-    // Registró conocida y avanzó a la palabra 2
-    expect(text()).toContain("Palabra 2 de 10");
-    expect(text()).toContain("1 palabra(s) respondida(s)");
+    const secondWord = host.querySelector(".cat-word-title")?.textContent;
+    expect(secondWord).toBeTruthy();
+    expect(secondWord).not.toBe("aflicción");
+
+    const dots = host.querySelectorAll(".cat-progress-dot");
+    expect(dots[0].classList.contains("is-completed")).toBe(true);
+    expect(dots[1].classList.contains("is-active")).toBe(true);
   });
 
-  it("cada cambio persiste el borrador v2 con respuestas y muestra", async () => {
-    await render();
-    act(() => {
-      choice("palabra1", "La conozco bien")!.dispatchEvent(
-        new MouseEvent("click", { bubbles: true, cancelable: true }),
-      );
-    });
-    const saved = saveMock.mock.calls.at(-1);
-    expect(saved?.[0]).toBe(CALIBRATION_DRAFT_KEY);
-    const draft = JSON.parse(String(saved?.[1]));
-    expect(draft.v).toBe(2);
-    expect(draft.answers).toEqual({ palabra1: "known" });
-    expect(draft.words).toHaveLength(18);
-  });
-
-  it("un borrador v2 restaura las respuestas y el paso guardado", async () => {
-    const draftWords = sample.slice(0, 12).map((word, i) => ({
-      lemma: `borrador${i}`,
-      definition: word.definition,
-      sampleContext: word.sampleContext,
-    }));
-    loadMock.mockResolvedValueOnce(
-      serializeCalibrationDraft({
-        answers: { borrador0: "unknown" },
-        step: 0,
-        words: draftWords,
-      }),
-    );
-    await render();
-    // La muestra del borrador sustituye a la descargada
-    expect(text()).toContain("borrador0");
-    expect(text()).toContain("1 palabra(s) respondida(s)");
-    expect(choice("borrador0", "No me suena")?.getAttribute("aria-pressed")).toBe(
-      "true",
-    );
-  });
-
-  it("Saltar limpia el borrador y termina el flujo", async () => {
+  it("finaliza en 6 a 8 clics invocando onComplete y onDone con micro-celebración", async () => {
+    vi.useFakeTimers();
     const onDone = vi.fn();
-    await render({ onDone });
-    click("Saltar");
-    expect(saveMock).toHaveBeenLastCalledWith(
-      CALIBRATION_DRAFT_KEY,
-      "",
-      expect.anything(),
-    );
-    expect(onDone).toHaveBeenCalledTimes(1);
-  });
+    const onComplete = vi.fn();
 
-  it("una hidratación tardía no pisa una respuesta ni cambia la muestra", async () => {
-    let resolveDraft: (raw: string | null) => void = () => {};
-    loadMock.mockReturnValueOnce(
-      new Promise<string | null>((resolve) => {
-        resolveDraft = resolve;
-      }),
-    );
-    await render();
-    act(() => {
-      choice("palabra1", "La conozco bien")!.dispatchEvent(
-        new MouseEvent("click", { bubbles: true, cancelable: true }),
-      );
-    });
-    const draftWords = sample.map((word, i) => ({
-      lemma: `tardia${i}`,
-      definition: word.definition,
-      sampleContext: word.sampleContext,
-    }));
-    await act(async () => {
-      resolveDraft(
-        serializeCalibrationDraft({
-          answers: { tardia0: "unknown" },
-          step: 0,
-          words: draftWords,
-        }),
-      );
-      await Promise.resolve();
-    });
-    // Se mantiene la muestra descargada y la respuesta del lector
-    expect(text()).toContain("palabra");
-    expect(text()).not.toContain("tardia0");
-  });
+    await render({ onDone, onComplete });
 
-  it("Listo con fallo de guardado avisa con alerta y no pierde el borrador", async () => {
-    const onDone = vi.fn();
-    recordMock.mockRejectedValueOnce(new Error("sin almacén"));
-    await render({ onDone });
-    await act(async () => {
-      button("Listo").dispatchEvent(
-        new MouseEvent("click", { bubbles: true, cancelable: true }),
-      );
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-    expect(text()).toContain("No se pudieron guardar tus respuestas");
-    expect(onDone).not.toHaveBeenCalled();
-    // No se borró el borrador: sigue para el reintento
-    expect(saveMock.mock.calls.every((call) => call[1] !== "")).toBe(true);
-    // Y el botón vuelve a estar habilitado
-    expect(button("Listo").disabled).toBe(false);
-  });
-
-  it("Cerrar sale sin escribir ni limpiar el borrador", async () => {
-    const onClose = vi.fn();
-    const onDone = vi.fn();
-    await render({ onClose, onDone });
-    click("Cerrar");
-    expect(onClose).toHaveBeenCalledTimes(1);
-    expect(onDone).not.toHaveBeenCalled();
-    expect(recordMock).not.toHaveBeenCalled();
-    expect(saveMock.mock.calls.every((call) => call[1] !== "")).toBe(true);
-  });
-
-  it("muestra la pregunta de lengua materna cuando no está confirmada", async () => {
-    localStorage.removeItem("lecta:nativeLanguageConfirmed");
-    localStorage.removeItem("lecta:nativeLanguage");
-    await render();
-    expect(text()).toContain("¿Cuál es tu lengua materna?");
-    expect(text()).toContain("Español (lengua materna)");
-    expect(text()).toContain("Otro idioma (estudiante de español)");
-  });
-
-  it("elegir 'Español (lengua materna)' guarda confirmación y arranca calibración en Etapa 1", async () => {
-    localStorage.removeItem("lecta:nativeLanguageConfirmed");
-    localStorage.removeItem("lecta:nativeLanguage");
-    await render();
-    expect(text()).toContain("¿Cuál es tu lengua materna?");
-    const nativeBtn = [...host.querySelectorAll("button")].find((b) =>
-      b.textContent?.includes("Español (lengua materna)"),
-    )!;
-    await act(async () => {
-      nativeBtn.dispatchEvent(
-        new MouseEvent("click", { bubbles: true, cancelable: true }),
-      );
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-    expect(localStorage.getItem("lecta:nativeLanguageConfirmed")).toBe("1");
-    expect(text()).toContain("Etapa 1 de 3: Cartas de Tinta");
-    expect(text()).toContain("Palabra 1 de 10");
-  });
-
-  it("elegir 'Otro idioma' guarda la preferencia como no nativo y arranca calibración en Etapa 1", async () => {
-    localStorage.removeItem("lecta:nativeLanguageConfirmed");
-    localStorage.removeItem("lecta:nativeLanguage");
-    await render();
-    const learnerBtn = [...host.querySelectorAll("button")].find((b) =>
-      b.textContent?.includes("Otro idioma"),
-    )!;
-    await act(async () => {
-      learnerBtn.dispatchEvent(
-        new MouseEvent("click", { bubbles: true, cancelable: true }),
-      );
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-    expect(localStorage.getItem("lecta:nativeLanguageConfirmed")).toBe("1");
-    expect(localStorage.getItem("lecta:nativeLanguage")).toBe("other");
-    expect(text()).toContain("Etapa 1 de 3: Cartas de Tinta");
-    expect(text()).toContain("Palabra 1 de 10");
-  });
-
-  it("saltar en la pregunta de lengua materna cierra la calibración", async () => {
-    const onDone = vi.fn();
-    localStorage.removeItem("lecta:nativeLanguageConfirmed");
-    await render({ onDone });
-    const skipBtn = [...host.querySelectorAll("button")].find((b) =>
-      b.textContent?.includes("Saltar prueba"),
-    )!;
-    await act(async () => {
-      skipBtn.dispatchEvent(
-        new MouseEvent("click", { bubbles: true, cancelable: true }),
-      );
-    });
-    expect(onDone).toHaveBeenCalled();
-  });
-
-  it("flujo completo a través de las 3 etapas: Cartas de Tinta -> Verificación -> Lente de lectura y perfil", async () => {
-    const onDone = vi.fn();
-    await render({ onDone });
-
-    // Responder 10 palabras (algunas known para activar verificación)
-    for (let i = 0; i < 10; i++) {
-      await act(async () => {
-        window.dispatchEvent(
-          new KeyboardEvent("keydown", { key: i % 2 === 0 ? "3" : "2" }),
-        );
-        await Promise.resolve();
-      });
-    }
-
-    // Debe haber avanzado a Etapa 2 (Verificación de precisión)
-    expect(text()).toContain("Etapa 2 de 3: Verificación");
-    expect(text()).toContain("Micro-reto anti-sobreconfianza");
-
-    // Resolver las opciones de verificación
-    const optionTiles = () => [...host.querySelectorAll(".cal-option-tile")];
-    while (optionTiles().length > 0) {
-      await act(async () => {
-        optionTiles()[0].dispatchEvent(
+    // Responder sucesivamente hasta que se complete (máx 8 clics)
+    for (let i = 0; i < 8; i++) {
+      const yesBtn = button("Sí la conozco");
+      if (!yesBtn) break;
+      act(() => {
+        yesBtn.dispatchEvent(
           new MouseEvent("click", { bubbles: true, cancelable: true }),
         );
-        await Promise.resolve();
       });
     }
 
-    // Debe haber avanzado a Etapa 3 (Tu Lente de Lectura)
-    expect(text()).toContain("Etapa 3 de 3: Tu Lente de Lectura");
-    expect(text()).toContain("Ajusta tu lente de lectura");
-    expect(text()).toContain("Lectura Limpia");
-    expect(text()).toContain("Enfoque de Párrafo");
-    expect(text()).toContain("Líneas Sintácticas");
+    // Al completarse, muestra el mensaje amigable sin jerga técnica
+    expect(text()).toContain(
+      "¡Listo! Lecta ajustó las ayudas del capítulo a tu ritmo.",
+    );
+    expect(text()).toContain("Abriendo tu lectura…");
 
-    // Seleccionar estrategia Líneas Sintácticas
-    click("Líneas Sintácticas");
-    expect(host.querySelector(".syn-line")).not.toBeNull();
-
-    // Finalizar afinación y ver perfil
-    click("Finalizar afinación y ver mi perfil");
-    expect(text()).toContain("¡Perfil de Lector Listo!");
-    expect(text()).toContain("Nivel de Vocabulario");
-    expect(text()).toContain("Lente Inicial");
-    expect(text()).toContain("Ritmo de Lectura");
-
-    // Guardar definitivamente con Listo
-    await act(async () => {
-      button("Listo").dispatchEvent(
-        new MouseEvent("click", { bubbles: true, cancelable: true }),
-      );
-      await Promise.resolve();
-      await Promise.resolve();
+    // Avanzar el micro-timer de celebración (650ms)
+    act(() => {
+      vi.advanceTimersByTime(700);
     });
 
-    expect(recordMock).toHaveBeenCalled();
-    expect(onDone).toHaveBeenCalled();
+    expect(onComplete).toHaveBeenCalledTimes(1);
+    expect(typeof onComplete.mock.calls[0][0]).toBe("number");
+    expect(onDone).toHaveBeenCalledTimes(1);
+
+    // El perfil de idioma fue actualizado
+    const profile = loadUserLanguageProfile();
+    expect(profile.thetaByLang?.es).toBeDefined();
+
+    vi.useRealTimers();
   });
 
-  it("desenfoca el elemento activo y limpia cualquier foco/selección al responder (OBJ-01)", async () => {
-    await render();
-    const btn = button("La conozco bien");
-    expect(btn).toBeDefined();
+  it("el botón «Saltar e ir al libro →» cierra la prueba en 1 toque y respeta Zero-Friction", async () => {
+    const onDone = vi.fn();
+    const onClose = vi.fn();
 
-    const blurSpy = vi.spyOn(btn, "blur");
-    btn.focus();
+    await render({ onDone, onClose, language: "es" });
 
-    await act(async () => {
-      btn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
-      await Promise.resolve();
+    click("Saltar e ir al libro →");
+
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(needsLanguageCalibration("es")).toBe(false);
+  });
+
+  it("responde a los atajos de teclado ArrowLeft/1, ArrowRight/2 y Escape", async () => {
+    const onClose = vi.fn();
+    await render({ onClose });
+
+    const firstWord = host.querySelector(".cat-word-title")?.textContent;
+
+    // Tecla 2 -> 'Sí la conozco'
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "2" }));
     });
+    const secondWord = host.querySelector(".cat-word-title")?.textContent;
+    expect(secondWord).not.toBe(firstWord);
 
-    expect(blurSpy).toHaveBeenCalled();
+    // Tecla ArrowLeft -> 'No estoy seguro'
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft" }));
+    });
+    const thirdWord = host.querySelector(".cat-word-title")?.textContent;
+    expect(thirdWord).not.toBe(secondWord);
+
+    // Tecla Escape -> Saltar
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    });
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("soporta calibración para idioma inglés (en) con banco en inglés", async () => {
+    await render({ language: "en" });
+
+    expect(text()).toContain("Ajuste rápido · Inglés (15 s)");
+    // En inglés, el primer ítem en theta = 0 es 'bargain'
+    const wordTitle = host.querySelector(".cat-word-title");
+    expect(wordTitle?.textContent?.trim()).toBe("bargain");
+
+    click("Sí la conozco");
+    const nextWord = host.querySelector(".cat-word-title")?.textContent;
+    expect(nextWord).toBeTruthy();
+    expect(nextWord).not.toBe("bargain");
   });
 });

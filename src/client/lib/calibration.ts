@@ -11,8 +11,19 @@ import { pushWordsToServer } from "./vocab";
 import {
   calibrationFallbackDefinition,
   calibrationSampleContext,
+  getCalibrationBankByLang,
+  itemFisherInformation,
+  itemResponseProbability,
+  type CalibrationBankItem,
+  type CalibrationLanguage,
   type CalibrationProfile,
 } from "../../shared/calibration-bank";
+import {
+  loadUserLanguageProfile,
+  saveUserLanguageProfile,
+  saveUserTheta,
+  type UserLanguageProfile,
+} from "./profile-models";
 
 // Calibración inicial del vocabulario: una muestra del catálogo
 // (lemas repartidos en bandas de frecuencia, servida por
@@ -294,4 +305,327 @@ export async function recordCalibration(
 }
 
 export { recordSilentCalibration } from "./knowledge";
+
+// ============================================================================
+// Motor CAT (Computerized Adaptive Testing) de 15 Segundos (P ≈ 0.50)
+// ============================================================================
+
+export const CAT_MIN_STEPS = 6;
+export const CAT_MAX_STEPS = 8;
+export const CAT_SE_CONVERGENCE_THRESHOLD = 0.42;
+export const CAT_PRIOR_PRECISION = 3.0; // I_0 = 1 / sigma_0^2 (sigma_0 ~ 0.577)
+
+export interface CatResponseRecord {
+  itemId: string;
+  word: string;
+  difficulty: number;
+  known: boolean;
+  thetaBefore: number;
+  thetaAfter: number;
+  probabilityAtPresentation: number;
+}
+
+export interface CatSessionState {
+  lang: CalibrationLanguage;
+  step: number;               // 0..8
+  maxSteps: number;           // 8 (con parada temprana en 6-7 si converge)
+  theta: number;              // Estimación actual \hat{\theta}_{u,L}
+  standardError: number;      // SE(\hat{\theta})
+  answeredIds: string[];
+  history: CatResponseRecord[];
+  currentItem: CalibrationBankItem | null;
+  isComplete: boolean;
+  wasSkipped: boolean;
+}
+
+// Almacén en memoria por idioma (aislamiento por sesión / entorno de pruebas)
+const inMemoryCalibrationStatus = new Map<string, "done" | "skipped">();
+
+/**
+ * Restablece el estado de calibración en memoria y localStorage (para pruebas).
+ */
+export function resetCalibrationStatusForTesting(): void {
+  inMemoryCalibrationStatus.clear();
+  if (typeof window !== "undefined" && window.localStorage) {
+    try {
+      window.localStorage.removeItem(calibrationDoneKey("es"));
+      window.localStorage.removeItem(calibrationDoneKey("en"));
+      window.localStorage.removeItem("lecta:cat_calibrated:es");
+      window.localStorage.removeItem("lecta:cat_calibrated:en");
+      window.localStorage.removeItem("lecta:cat_skipped:es");
+      window.localStorage.removeItem("lecta:cat_skipped:en");
+    } catch {
+      // ignorar error de entorno
+    }
+  }
+}
+
+/**
+ * Selecciona el siguiente ítem del banco que maximiza la información de Fisher,
+ * es decir, minimiza |P(conoce | theta, b_i) - 0.50| entre los ítems no respondidos.
+ */
+export function selectNextCatItem(
+  state: Pick<CatSessionState, "lang" | "theta" | "answeredIds">,
+): CalibrationBankItem | null {
+  const bank = getCalibrationBankByLang(state.lang);
+  const answeredSet = new Set(state.answeredIds);
+  const candidates = bank.filter((item) => !answeredSet.has(item.id));
+  if (candidates.length === 0) return null;
+
+  let bestItem = candidates[0];
+  let bestDiffToHalf = Infinity;
+  let bestDistanceToTheta = Infinity;
+
+  for (const item of candidates) {
+    const alpha = item.discrimination ?? 1.35;
+    const p = itemResponseProbability(state.theta, item.difficulty, alpha);
+    const diffToHalf = Math.abs(p - 0.5);
+    const distToTheta = Math.abs(item.difficulty - state.theta);
+
+    if (
+      diffToHalf < bestDiffToHalf - 1e-9 ||
+      (Math.abs(diffToHalf - bestDiffToHalf) <= 1e-9 && distToTheta < bestDistanceToTheta)
+    ) {
+      bestDiffToHalf = diffToHalf;
+      bestDistanceToTheta = distToTheta;
+      bestItem = item;
+    }
+  }
+
+  return bestItem;
+}
+
+/**
+ * Inicializa una nueva sesión de examen adaptativo computarizado (CAT).
+ */
+export function initCatSession(
+  lang: CalibrationLanguage | string = "es",
+  initialTheta?: number,
+): CatSessionState {
+  const norm: CalibrationLanguage = (lang || "es").toLowerCase().startsWith("en") ? "en" : "es";
+  const startTheta = typeof initialTheta === "number" ? initialTheta : 0.0;
+  const initialItem = selectNextCatItem({
+    lang: norm,
+    theta: startTheta,
+    answeredIds: [],
+  });
+
+  return {
+    lang: norm,
+    step: 0,
+    maxSteps: CAT_MAX_STEPS,
+    theta: startTheta,
+    standardError: Number((1 / Math.sqrt(CAT_PRIOR_PRECISION)).toFixed(4)),
+    answeredIds: [],
+    history: [],
+    currentItem: initialItem,
+    isComplete: false,
+    wasSkipped: false,
+  };
+}
+
+/**
+ * Procesa la respuesta del lector a la palabra actual ('known: boolean'),
+ * actualiza el estimador bayesiano EAP amortiguado, evalúa criterios de parada (6 a 8 clics)
+ * y selecciona el próximo ítem con P ≈ 0.50.
+ */
+export function submitCatAnswer(
+  state: CatSessionState,
+  known: boolean,
+): CatSessionState {
+  if (state.isComplete || !state.currentItem) {
+    return state;
+  }
+
+  const item = state.currentItem;
+  const alpha = item.discrimination ?? 1.35;
+  const y = known ? 1 : 0;
+  const p = itemResponseProbability(state.theta, item.difficulty, alpha);
+  const itemInfo = itemFisherInformation(state.theta, item.difficulty, alpha);
+
+  // Información Fisher acumulada incluyendo el prior
+  const historyInfo = state.history.reduce((acc, record) => {
+    const a = 1.35;
+    const prob = record.probabilityAtPresentation;
+    return acc + a * a * prob * (1 - prob);
+  }, 0);
+  const iTotal = CAT_PRIOR_PRECISION + historyInfo + itemInfo;
+  const nextSe = Number((1 / Math.sqrt(iTotal)).toFixed(4));
+
+  // Actualización bayesiana con paso ágil en las primeras interacciones
+  const agileFactor = state.step < 2 ? 1.35 : 1.0;
+  const damping = Math.max(1.1, (iTotal - 1.5) * 0.65);
+  const delta = (agileFactor * alpha * (y - p)) / damping;
+  const nextTheta = Math.max(-2.5, Math.min(2.5, Number((state.theta + delta).toFixed(4))));
+
+  const record: CatResponseRecord = {
+    itemId: item.id,
+    word: item.word,
+    difficulty: item.difficulty,
+    known,
+    thetaBefore: state.theta,
+    thetaAfter: nextTheta,
+    probabilityAtPresentation: Number(p.toFixed(4)),
+  };
+
+  const nextStep = state.step + 1;
+  const stepDelta = Math.abs(nextTheta - state.theta);
+  const nextAnsweredIds = [...state.answeredIds, item.id];
+  const nextHistory = [...state.history, record];
+
+  // Criterio de parada adaptativo: 6 a 8 clics
+  const reachedConvergence =
+    nextStep >= CAT_MIN_STEPS &&
+    (nextSe <= CAT_SE_CONVERGENCE_THRESHOLD || stepDelta < 0.12);
+  const reachedMax = nextStep >= state.maxSteps;
+
+  const candidateNextItem =
+    reachedConvergence || reachedMax
+      ? null
+      : selectNextCatItem({
+          lang: state.lang,
+          theta: nextTheta,
+          answeredIds: nextAnsweredIds,
+        });
+
+  const isComplete = reachedMax || reachedConvergence || candidateNextItem === null;
+
+  if (isComplete) {
+    persistCatCompletion(state.lang, nextTheta);
+  }
+
+  return {
+    ...state,
+    step: nextStep,
+    theta: nextTheta,
+    standardError: nextSe,
+    answeredIds: nextAnsweredIds,
+    history: nextHistory,
+    currentItem: isComplete ? null : candidateNextItem,
+    isComplete,
+    wasSkipped: false,
+  };
+}
+
+/**
+ * Salta la calibración en curso preservando la regla Zero-Friction.
+ */
+export function skipCatSession(state: CatSessionState): CatSessionState {
+  skipLanguageCalibration(state.lang);
+  return {
+    ...state,
+    isComplete: true,
+    wasSkipped: true,
+    currentItem: null,
+  };
+}
+
+/**
+ * Persiste el resultado del examen adaptativo en profile-models.ts y registra el idioma como completado.
+ */
+export function persistCatCompletion(lang: CalibrationLanguage, finalTheta: number): void {
+  const norm: CalibrationLanguage = (lang || "es").toLowerCase().startsWith("en") ? "en" : "es";
+  const profile = loadUserLanguageProfile();
+  const updatedProfile: UserLanguageProfile = {
+    ...profile,
+    theta: norm === "es" ? finalTheta : (profile.theta ?? finalTheta),
+    thetaByLang: {
+      ...profile.thetaByLang,
+      [norm]: finalTheta,
+    },
+    uncertaintyByLang: {
+      ...profile.uncertaintyByLang,
+      [norm]: 0.35,
+    },
+  };
+  saveUserLanguageProfile(updatedProfile);
+  saveUserTheta(finalTheta, norm);
+  markLanguageCalibrated(norm);
+}
+
+/**
+ * Marca internamente y en almacenamiento que el idioma ha completado la calibración.
+ */
+export function markLanguageCalibrated(lang: string): void {
+  const norm = (lang || "es").toLowerCase().startsWith("en") ? "en" : "es";
+  inMemoryCalibrationStatus.set(norm, "done");
+  if (typeof window !== "undefined" && window.localStorage) {
+    try {
+      window.localStorage.setItem(calibrationDoneKey(norm), "1");
+      window.localStorage.setItem(`lecta:cat_calibrated:${norm}`, "1");
+    } catch {
+      // ignorar quota error
+    }
+  }
+}
+
+/**
+ * Marca que el usuario decidió omitir la calibración para este idioma.
+ */
+export function markLanguageSkipped(lang: string): void {
+  const norm = (lang || "es").toLowerCase().startsWith("en") ? "en" : "es";
+  inMemoryCalibrationStatus.set(norm, "skipped");
+  if (typeof window !== "undefined" && window.localStorage) {
+    try {
+      window.localStorage.setItem(calibrationDoneKey(norm), "1");
+      window.localStorage.setItem(`lecta:cat_skipped:${norm}`, "1");
+    } catch {
+      // ignorar quota error
+    }
+  }
+}
+
+/**
+ * Omite la calibración para el idioma dado por decisión del usuario (Zero-Friction),
+ * inicializa theta_u,L = 0.0 si no tenía valor previo, y asegura que la lectura nunca sea bloqueada.
+ */
+export function skipLanguageCalibration(lang: CalibrationLanguage | string): void {
+  const norm: CalibrationLanguage = (lang || "es").toLowerCase().startsWith("en") ? "en" : "es";
+  const profile = loadUserLanguageProfile();
+  const currentTheta = profile.thetaByLang?.[norm];
+
+  // Si no tenía valor previo, inicializa theta neutro 0.0
+  if (typeof currentTheta !== "number" || !Number.isFinite(currentTheta)) {
+    const updatedProfile: UserLanguageProfile = {
+      ...profile,
+      theta: norm === "es" ? 0.0 : (profile.theta ?? 0.0),
+      thetaByLang: {
+        ...profile.thetaByLang,
+        [norm]: 0.0,
+      },
+    };
+    saveUserLanguageProfile(updatedProfile);
+    saveUserTheta(0.0, norm);
+  }
+
+  markLanguageSkipped(norm);
+}
+
+/**
+ * Devuelve true únicamente si el usuario no ha completado ni saltado la calibración en ese idioma específico.
+ */
+export function needsLanguageCalibration(lang: string): boolean {
+  const lower = (lang || "es").toLowerCase().trim();
+  const norm: CalibrationLanguage | null = lower.startsWith("en") ? "en" : lower.startsWith("es") ? "es" : null;
+  if (!norm) return false;
+
+  const mem = inMemoryCalibrationStatus.get(norm);
+  if (mem === "done" || mem === "skipped") return false;
+
+  if (typeof window !== "undefined" && window.localStorage) {
+    try {
+      if (
+        window.localStorage.getItem(calibrationDoneKey(norm)) === "1" ||
+        window.localStorage.getItem(`lecta:cat_calibrated:${norm}`) === "1" ||
+        window.localStorage.getItem(`lecta:cat_skipped:${norm}`) === "1"
+      ) {
+        return false;
+      }
+    } catch {
+      // ignorar error de acceso a storage
+    }
+  }
+
+  return true;
+}
 

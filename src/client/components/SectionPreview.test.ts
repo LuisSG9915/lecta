@@ -548,7 +548,7 @@ describe("SectionPreview", () => {
       expect(onDisableGlobally).toHaveBeenCalled();
     });
 
-    it("botón 'Comenzar a leer capítulo →' llama a onStartReading", () => {
+    it("botón 'Entrar al capítulo →' llama a onStartReading (Fase 2)", () => {
       const onStartReading = vi.fn();
       render(
         base({
@@ -560,8 +560,29 @@ describe("SectionPreview", () => {
         }),
       );
 
-      click("Comenzar a leer capítulo →");
+      click("Entrar al capítulo →");
       expect(onStartReading).toHaveBeenCalled();
+    });
+
+    it("muestra el encabezado literario y empático de la Fase 2", () => {
+      render(
+        base({
+          bookId: "b1",
+          chapterTitle: "Capítulo II",
+          words: primingWords,
+          onMarkKnown: vi.fn(),
+          onSaveToPractice: vi.fn(),
+          onStartReading: vi.fn(),
+        }),
+      );
+
+      expect(text()).toContain("✨ Lectura sin tropiezos · 20 seg");
+      expect(text()).toContain("Palabras clave antes de entrar al capítulo");
+      expect(text()).toContain(
+        "Dales un vistazo rápido; así cuando aparezcan en la historia las leerás de corrido sin perder la magia.",
+      );
+      const knownBtns = host.querySelectorAll(".lecta-priming-card__btn-known");
+      expect(knownBtns[0]?.textContent).toBe("✓ Ya la conozco");
     });
   });
 });

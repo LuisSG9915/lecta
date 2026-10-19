@@ -276,5 +276,92 @@ describe("Shelf - Tu Mesa de Lectura (Fase 5.2)", () => {
     expect(badge?.textContent?.trim()).toBe("EN");
     expect(badge?.getAttribute("title")).toBe("Idioma: Inglés");
   });
+
+  it("muestra el Banner de Primera Lectura en 1 Clic cuando no hay libros (Fase 1)", async () => {
+    const onAdd = vi.fn();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        blob: async () => new Blob(["test-epub"]),
+      })),
+    );
+
+    await act(async () => {
+      root.render(
+        h(Shelf, {
+          library: [],
+          checking: false,
+          onOpen: vi.fn(),
+          onRemove: vi.fn(),
+          onAdd,
+          onLibraryChange: vi.fn(),
+        }),
+      );
+      for (let i = 0; i < 4; i++) await Promise.resolve();
+    });
+
+    const hero = host.querySelector(".shelf-welcome-hero");
+    expect(hero).toBeTruthy();
+    expect(hero?.querySelector(".shelf-welcome-hero-title")?.textContent).toBe(
+      "Vive cómo se siente leer sin interrupciones",
+    );
+    expect(hero?.querySelector(".shelf-welcome-hero-subtitle")?.textContent).toContain(
+      "Abre nuestra edición interactiva de muestra o elige una obra gratuita abajo",
+    );
+
+    const btn = hero?.querySelector(".shelf-welcome-hero-btn") as HTMLButtonElement;
+    expect(btn).toBeTruthy();
+    expect(btn.textContent).toContain("📖 Empezar lectura de muestra ahora");
+
+    await act(async () => {
+      btn.click();
+      for (let i = 0; i < 4; i++) await Promise.resolve();
+    });
+
+    expect(onAdd).toHaveBeenCalledTimes(1);
+    vi.unstubAllGlobals();
+  });
+
+  it("con 1 libro sin abrir, el Banner de 1 Clic lo abre directamente (Fase 1)", async () => {
+    const onOpen = vi.fn();
+    const unopenedBook: ShelfItem = {
+      hash: "h-unopened-1",
+      name: "Azul…",
+      title: "Azul…",
+      author: "Rubén Darío",
+      addedAt: 1,
+      sectionCount: 12,
+      language: "es",
+    };
+
+    await act(async () => {
+      root.render(
+        h(Shelf, {
+          library: [unopenedBook],
+          checking: false,
+          onOpen,
+          onRemove: vi.fn(),
+          onAdd: vi.fn(),
+          onLibraryChange: vi.fn(),
+        }),
+      );
+      for (let i = 0; i < 4; i++) await Promise.resolve();
+    });
+
+    const hero = host.querySelector(".shelf-welcome-hero");
+    expect(hero).toBeTruthy();
+
+    const btn = hero?.querySelector(".shelf-welcome-hero-btn") as HTMLButtonElement;
+    expect(btn).toBeTruthy();
+
+    await act(async () => {
+      btn.click();
+      for (let i = 0; i < 4; i++) await Promise.resolve();
+    });
+
+    expect(onOpen).toHaveBeenCalledWith(unopenedBook);
+  });
 });
+
 
