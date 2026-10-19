@@ -16,6 +16,7 @@ import { loadTtsSettings, saveTtsSettings } from "./ttsSettings";
 import { isTtsSupported } from "./ttsSettings";
 import { kittenTtsEngine, type KittenTtsEngine } from "./kittenTtsEngine";
 import {
+  KITTEN_VOICES,
   TTS_IDLE,
   TTS_RATES,
   type KittenVoiceId,
@@ -25,7 +26,9 @@ import {
   type TtsPauseReason,
   type TtsRate,
   type TtsSnapshot,
+  type TtsStatus,
   type TtsTargetContext,
+  type TtsVoiceOption,
 } from "./ttsTypes";
 
 // Latido «tts_active»: mientras habla y la pestaña está visible, el
@@ -811,4 +814,161 @@ export async function playSentencesLoop(params: {
 export function stopAllTtsPlayback(): void {
   kittenTtsEngine.stop();
   stopSystemVoice();
+}
+
+export interface TtsControllerOptions {
+  onStateChange: (snap: {
+    status: TtsStatus;
+    currentSentenceText: string;
+    currentIndex: number;
+    totalSentences: number;
+  }) => void;
+  onVoicesChange?: (available: TtsVoiceOption[]) => void;
+  onSectionEnd?: () => void;
+  onDownloadProgress?: (pct: number) => void;
+  onError?: (msg: string) => void;
+}
+
+export class TtsAudioController {
+  private options: TtsControllerOptions;
+  private status: TtsStatus = "idle";
+  private sentences: string[] = [];
+  private currentIndex = 0;
+  private rate = 1;
+  private voiceURI: string | null = null;
+  private isCancelledFlag = false;
+
+  constructor(options: TtsControllerOptions) {
+    this.options = options;
+    this.initVoices();
+  }
+
+  private initVoices() {
+    const voices: TtsVoiceOption[] = [];
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      const sysVoices = window.speechSynthesis.getVoices();
+      for (const v of sysVoices) {
+        voices.push({
+          id: v.voiceURI,
+          name: v.name,
+          lang: v.lang,
+          isDefault: v.default,
+        });
+      }
+    }
+    for (const kv of KITTEN_VOICES) {
+      voices.push({
+        id: `kitten:${kv.id}`,
+        name: `${kv.name} (Neural HD)`,
+        lang: "es",
+        isNeural: true,
+      });
+    }
+    this.options.onVoicesChange?.(voices);
+  }
+
+  attachDocument(doc: Document | null): void {
+    if (doc?.body) {
+      const text = doc.body.textContent || "";
+      const seg = new Intl.Segmenter("es", { granularity: "sentence" });
+      this.sentences = [...seg.segment(text)]
+        .map((s) => s.segment.trim())
+        .filter((s) => s.length > 0);
+    } else {
+      this.sentences = [];
+    }
+    this.currentIndex = 0;
+    this.emitState();
+  }
+
+  private emitState(): void {
+    this.options.onStateChange({
+      status: this.status,
+      currentSentenceText: this.sentences[this.currentIndex] || "",
+      currentIndex: this.currentIndex,
+      totalSentences: this.sentences.length,
+    });
+  }
+
+  play(): void {
+    if (!this.sentences.length) return;
+    this.status = "playing";
+    this.isCancelledFlag = false;
+    this.emitState();
+
+    void playSentencesLoop({
+      sentences: this.sentences,
+      startIndex: this.currentIndex,
+      engineMode: this.voiceURI?.startsWith("kitten:") ? "kitten-neural" : "browser",
+      voiceId: this.voiceURI?.replace("kitten:", "") || "",
+      speed: this.rate,
+      onHighlightSentence: (idx) => {
+        this.currentIndex = idx;
+        this.emitState();
+      },
+      onFinishPage: () => {
+        this.status = "idle";
+        this.emitState();
+        this.options.onSectionEnd?.();
+      },
+      isCancelled: () => this.isCancelledFlag,
+    });
+  }
+
+  pause(): void {
+    this.status = "paused";
+    this.isCancelledFlag = true;
+    stopAllTtsPlayback();
+    this.emitState();
+  }
+
+  resume(): void {
+    this.play();
+  }
+
+  stop(): void {
+    this.status = "idle";
+    this.isCancelledFlag = true;
+    stopAllTtsPlayback();
+    this.currentIndex = 0;
+    this.emitState();
+  }
+
+  prev(): void {
+    if (this.currentIndex > 0) {
+      this.currentIndex--;
+      if (this.status === "playing") {
+        this.isCancelledFlag = true;
+        stopAllTtsPlayback();
+        this.play();
+      } else {
+        this.emitState();
+      }
+    }
+  }
+
+  next(): void {
+    if (this.currentIndex < this.sentences.length - 1) {
+      this.currentIndex++;
+      if (this.status === "playing") {
+        this.isCancelledFlag = true;
+        stopAllTtsPlayback();
+        this.play();
+      } else {
+        this.emitState();
+      }
+    }
+  }
+
+  setRate(rate: number): void {
+    this.rate = rate;
+  }
+
+  setVoice(voiceURI: string | null): void {
+    this.voiceURI = voiceURI;
+  }
+
+  destroy(): void {
+    this.stop();
+  }
 }

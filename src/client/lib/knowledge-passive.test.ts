@@ -6,6 +6,11 @@ import {
   predictSection,
   applyChapterCompletionPassiveLoop,
   type ChapterCandidateFeedbackItem,
+  MIN_PAGE_DWELL_MS,
+  MIN_MS_PER_WORD,
+  MAX_REQUIRED_DWELL_MS,
+  computeRequiredDwellMs,
+  processPageTurnForPassiveKnowledge,
 } from "./knowledge";
 import type { LexiconEntry } from "./lexicon";
 import type { UserLanguageProfile } from "./profile-models";
@@ -144,6 +149,39 @@ describe("applyChapterCompletionPassiveLoop (Canal C - Track 6)", () => {
     expect(result.theta).toBe(0.0);
     expect(result.chaptersCompletedByLang.en).toBe(1);
     expect(result.chaptersCompletedByLang.es).toBe(0);
+  });
+});
+
+describe("Umbral de Lectura Pasiva Proporcional (Track 1 Zero-Friction)", () => {
+  it("constantes de umbral proporcionales correctas", () => {
+    expect(MIN_PAGE_DWELL_MS).toBe(3000);
+    expect(MIN_MS_PER_WORD).toBe(160);
+    expect(MAX_REQUIRED_DWELL_MS).toBe(12000);
+  });
+
+  it("calcula dwell requerido proporcionalmente con clamp mínimo y máximo", () => {
+    // 0 palabras o negativo -> MIN_PAGE_DWELL_MS (3000)
+    expect(computeRequiredDwellMs(0)).toBe(3000);
+    expect(computeRequiredDwellMs(-5)).toBe(3000);
+
+    // 10 palabras: 10 * 160 = 1600 < 3000 -> 3000
+    expect(computeRequiredDwellMs(10)).toBe(3000);
+
+    // 50 palabras: 50 * 160 = 8000
+    expect(computeRequiredDwellMs(50)).toBe(8000);
+
+    // 100 palabras: 100 * 160 = 16000 > 12000 -> 12000
+    expect(computeRequiredDwellMs(100)).toBe(12000);
+  });
+
+  it("processPageTurnForPassiveKnowledge ignora giros rápidos que no cumplen el dwell requerido", async () => {
+    const pageWords = ["palabra1", "palabra2", "palabra3", "palabra4", "palabra5", "palabra6", "palabra7", "palabra8", "palabra9", "palabra10", "palabra11", "palabra12", "palabra13", "palabra14", "palabra15", "palabra16", "palabra17", "palabra18", "palabra19", "palabra20", "palabra21", "palabra22", "palabra23", "palabra24", "palabra25"];
+    // 25 palabras * 160ms = 4000ms dwell mínimo
+    const tapped = new Set<string>();
+
+    // dwell = 2500ms (< 4000ms) -> debe descartar (0 procesadas)
+    const processed = await processPageTurnForPassiveKnowledge(pageWords, tapped, 2500);
+    expect(processed).toBe(0);
   });
 });
 

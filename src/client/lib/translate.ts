@@ -139,3 +139,12 @@ export function selectMostComplexClause(paragraphText: string): {
     endIndex: sorted[0].endIndex,
   };
 }
+
+export async function translateSentence(
+  text: string,
+  targetLang = "en",
+  sourceLang = "es",
+  scope?: DbScope,
+): Promise<string> {
+  return translateParagraph(text, sourceLang, targetLang, scope);
+}

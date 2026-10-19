@@ -93,6 +93,31 @@
   view-transition-name: active-nav-indicator;
 }
 
+.app-nav-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  width: 100%;
+  max-width: 480px;
+  margin: 0 auto;
+}
+
+.app-nav-icon-wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.app-nav-companion {
+  gap: 2px;
+}
+
+.app-nav-companion-avatar {
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
 /* En escritorio (≥ 64rem), la barra pasa a ser un riel lateral izquierdo */
 @media (min-width: 64rem) {
   .app-nav {

@@ -22,6 +22,7 @@ export type TtsSettings = {
   highlight: TtsHighlightMode;
   engine: TtsEngineMode;
   kittenVoice: KittenVoiceId;
+  voiceURI?: string | null;
 };
 
 export const TTS_SETTINGS_DEFAULTS: TtsSettings = {
@@ -31,6 +32,7 @@ export const TTS_SETTINGS_DEFAULTS: TtsSettings = {
   highlight: "sentence",
   engine: "auto",
   kittenVoice: "expr-voice-2-f",
+  voiceURI: null,
 };
 
 const VALID_ENGINES: readonly TtsEngineMode[] = ["auto", "kitten-neural", "browser"];
@@ -54,6 +56,7 @@ const parse = (raw: string | null): TtsSettings => {
       highlight: "sentence",
       engine,
       kittenVoice,
+      voiceURI: typeof v.voiceURI === "string" ? v.voiceURI : null,
     };
   } catch {
     return TTS_SETTINGS_DEFAULTS;
@@ -66,9 +69,11 @@ export function loadTtsSettings(): TtsSettings {
   return parse(storage()?.getItem(TTS_KEY) ?? null);
 }
 
-export function saveTtsSettings(settings: TtsSettings): void {
+export function saveTtsSettings(settings: Partial<TtsSettings>): void {
   try {
-    storage()?.setItem(TTS_KEY, JSON.stringify(settings));
+    const current = loadTtsSettings();
+    const next = { ...current, ...settings };
+    storage()?.setItem(TTS_KEY, JSON.stringify(next));
   } catch {
     // almacenamiento lleno o bloqueado: queda solo en memoria
   }
@@ -101,4 +106,30 @@ export function isTtsSupported(): boolean {
     typeof Intl !== "undefined" &&
     typeof Intl.Segmenter === "function"
   );
+}
+
+const KITTEN_CONSENT_KEY = "lecta:kitten-tts-consent";
+
+export function hasKittenConsent(): boolean {
+  try {
+    return storage()?.getItem(KITTEN_CONSENT_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function setKittenConsent(consented: boolean): void {
+  try {
+    if (consented) {
+      storage()?.setItem(KITTEN_CONSENT_KEY, "1");
+    } else {
+      storage()?.removeItem(KITTEN_CONSENT_KEY);
+    }
+  } catch {
+    // ignore
+  }
+}
+
+export function isKittenVoiceURI(uri: string): boolean {
+  return uri.startsWith("kitten:") || uri.includes("kitten");
 }

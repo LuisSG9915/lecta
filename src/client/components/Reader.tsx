@@ -55,6 +55,7 @@ import {
   recordChapterCompleted,
 } from "../lib/profile-models";
 import { batchLookup, enrichBatch, explainInPassage, lookupWord } from "../lib/lexicon";
+import { scheduleCapturedReview } from "../lib/reviews";
 import {
   selectEnrichmentCandidates,
   selectSavedForEnrichment,
@@ -64,6 +65,7 @@ import {
   cliticBasesFor,
   DEFAULT_THRESHOLD_LEARNER,
   DEFAULT_THRESHOLD_NATIVE,
+  computeRequiredDwellMs,
   estimateProfile,
   isCredibleKnowledge,
   predictSection,
@@ -205,7 +207,6 @@ import { loadUseAi } from "../lib/ai-pref";
 import {
   calibrationDoneKey,
   hasCalibrationEvidence,
-  needsLanguageCalibration,
 } from "../lib/calibration";
 import { calibrationBankZipf } from "../../shared/calibration-bank";
 import {
@@ -403,6 +404,7 @@ type ReaderProps = {
   // falsa la ficha ya anuncia «Inicia sesión» en vez de fallar tras
   // la espera. La preferencia «Usar IA» se consulta aparte.
   signedIn: boolean;
+  readerInitialWord?: string;
 };
 
 // Caché por sección: la consulta al catálogo se hace una sola vez por
@@ -432,6 +434,35 @@ const AUTO_ENRICH_CAP = 8;
 const SAVED_ENRICH_CAP = 20;
 
 const clampNumber = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
+
+export function shouldAutoShowPreview(
+  chapterPreviewMode: string | undefined,
+  bookId: string,
+  sectionIndex: number,
+  _coveragePct?: number,
+  unknownKeyWordsCount = 0,
+): boolean {
+  if (chapterPreviewMode === "off") return false;
+  if (unknownKeyWordsCount <= 0) return false;
+  const key = `lecta:previewed:${bookId}:${sectionIndex}`;
+  try {
+    if (sessionStorage.getItem(key) === "1" || localStorage.getItem(key) === "1") {
+      return false;
+    }
+  } catch {
+    // ignore storage errors
+  }
+  return true;
+}
+
+export function markSectionPreviewed(bookId: string, sectionIndex: number): void {
+  const key = `lecta:previewed:${bookId}:${sectionIndex}`;
+  try {
+    sessionStorage.setItem(key, "1");
+  } catch {
+    // ignore storage errors
+  }
+}
 
 // Registra las palabras dominadas (repasadas, con ≥90 días de
 // estabilidad) como evidencia «conocida» inferida: alimenta el
@@ -487,6 +518,7 @@ export default function Reader({
   vocabVersion,
   onRequestCalibration,
   signedIn,
+  readerInitialWord,
 }: ReaderProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -670,6 +702,12 @@ export default function Reader({
   const calEvaluated = useRef(false);
   const [language, setLanguage] = useState("es");
   const [selection, setSelection] = useState<WordHit | null>(null);
+
+  useEffect(() => {
+    if (readerInitialWord && state === "ready") {
+      setSelection({ word: readerInitialWord });
+    }
+  }, [readerInitialWord, state]);
   // Índice de locuciones (asset estático): se pide al montar el
   // lector para que el PRIMER toque ya lo tenga en memoria — sin
   // red ni IA en el camino de la consulta.
@@ -702,6 +740,42 @@ export default function Reader({
   const denseStallDetectorRef = useRef<DenseStallDetector>(
     newDenseStallDetector(0),
   );
+
+  // Previsualización de capítulo como píldora opcional (Zero-Friction Track 1)
+  const [previewSuggested, setPreviewSuggested] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
+
+  const focusTelemetryRef = useRef({
+    pageEnteredAt: Date.now(),
+    lastFlaggedAt: 0,
+    recordPageTurn: function(_wordsOnPage = 100, dwellMs?: number) {
+      const now = Date.now();
+      const elapsed = dwellMs ?? (now - this.pageEnteredAt);
+      this.pageEnteredAt = now;
+      if (elapsed > 35_000 && now - this.lastFlaggedAt > 120_000) {
+        this.lastFlaggedAt = now;
+        return true;
+      }
+      return false;
+    },
+  });
+
+  const showNotice = useCallback(
+    (msg: string) => {
+      onStatus(msg);
+    },
+    [onStatus],
+  );
+
+  const chapterAnalysis = useMemo(() => {
+    const count = prepNotice?.count ?? 0;
+    if (count <= 0) return null;
+    return {
+      coveragePct: 95,
+      unknownKeyWords: Array.from({ length: count }, (_, i) => ({ id: i })),
+    };
+  }, [prepNotice]);
+
   const lastActivityAtRef = useRef<number>(0);
   const [stallBubble, setStallBubble] = useState<string | null>(null);
   const stallBubbleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -2096,6 +2170,7 @@ export default function Reader({
   // y, si sigue pendiente, deja el aviso como vía para retomarlo (en
   // modo «off» el acceso manual basta, no se muestra nada).
   const closePrepLayer = () => {
+    setShowPreview(false);
     const current = prepRef.current;
     prepRef.current = null;
     setPrep(null);
@@ -2255,17 +2330,32 @@ export default function Reader({
             scope,
           ).catch(() => undefined);
         const cached = analyzerRef.current?.cached(target.id);
+        const count =
+          cached?.state === "ready"
+            ? prepRowsFor(cached, language || getBookLanguage(book)).rows.length
+            : null;
         setPrepNotice({
           target,
           summary: opening === "summary",
-          count:
-            cached?.state === "ready"
-              ? prepRowsFor(cached, language || getBookLanguage(book)).rows.length
-              : null,
+          count,
         });
+        if (
+          shouldAutoShowPreview(
+            (settingsRef.current as any)?.chapterPreview ?? settingsRef.current?.preparationMode,
+            bookHash,
+            target.sectionIndex,
+            95,
+            count ?? 0,
+          )
+        ) {
+          setPreviewSuggested(true);
+        } else {
+          setPreviewSuggested(false);
+        }
         return;
       }
       setPrepNotice((cur) => (cur?.target.id === target.id ? null : cur));
+      setPreviewSuggested(false);
     },
     [bookHash, openPrepSheet, prepRowsFor, language],
   );
@@ -2498,6 +2588,7 @@ export default function Reader({
   // Acceso manual «Palabras del capítulo» (modo «off» incluido): abre
   // la hoja del destino visible respetando su registro previo.
   const openPrepManual = () => {
+    setShowPreview(true);
     const target =
       prepNotice?.target ??
       currentChapterTarget ??
@@ -3264,32 +3355,19 @@ export default function Reader({
         const saved = await loadBookPosition(bookHash, scope);
         const start = await loadBookStart(bookHash, scope).catch(() => null);
         const entry = resolveEntryTarget(saved, start, catalog, book.sections.length);
-        if (disposed) return;
-
-        // Cuando el usuario abre su primer libro en un idioma no calibrado (ej. L2 'en'),
-        // se presenta el ajuste adaptativo CAT de 15s antes del capítulo 1 (100% saltable en 1 clic).
-        if (saved == null && needsLanguageCalibration(bookLanguage)) {
-          void onRequestCalibration(bookLanguage);
-        }
-
-        // El destino de preparación elegido al seleccionar el inicio
-        // lo consume la primera evaluación «enter» — solo aplica si
-        // la entrada viene del registro, no de una reanudación.
+        // Lectura en 0 Segundos (Regla 2 Zero-Friction): Apertura inmediata sin bloqueos
+        // ni modales forzados de calibración o preparación al tocar un libro.
         bookStartRef.current = entry.kind === "target" ? start : null;
-        if (entry.kind === "ask" && catalog.targets.length) {
-          const suggested =
-            suggestedChapterTarget(catalog, title) ??
-            catalog.targets.find((t) => t.kind === "chapter") ??
-            catalog.targets[0];
-          if (suggested) {
-            void navigate("initial", {
-              index: suggested.sectionIndex,
-              fragment: suggested.fragment,
-            });
-            return;
-          }
-          setAskStart(true);
-          onStatus("");
+        if (entry.kind === "ask") {
+          const suggested = catalog?.targets?.length
+            ? (suggestedChapterTarget(catalog, title) ??
+              catalog.targets.find((t) => t.kind === "chapter") ??
+              catalog.targets[0])
+            : null;
+          void navigate("initial", {
+            index: suggested?.sectionIndex ?? 0,
+            fragment: suggested?.fragment,
+          });
           return;
         }
         if (entry.kind === "resume") {
@@ -3871,10 +3949,12 @@ export default function Reader({
     }
     const dwellMs = now - pageEnteredAtRef.current;
     pageEnteredAtRef.current = now;
-    if (dwellMs < 8000) return;
 
     const totalPages = Math.max(1, pageCountRef.current);
     const wordsInPage = Math.max(1, Math.round(sectionWords / totalPages));
+    const requiredDwellMs = computeRequiredDwellMs(wordsInPage);
+    if (dwellMs < requiredDwellMs) return;
+
     const speedWpm = Math.round(wordsInPage / (dwellMs / 60000));
     if (speedWpm >= 450) return;
 
@@ -3975,6 +4055,19 @@ export default function Reader({
         });
       } else if (fatigueResult.reason === "none") {
         setFatigueSuggestion(null);
+      }
+
+      // Sugerencia consentida de Guía Visual (Lectura Biónica) ante pasaje denso
+      const shouldSuggestBionic = focusTelemetryRef.current.recordPageTurn(
+        Math.max(1, Math.round(sectionWords / Math.max(1, pageCountRef.current))),
+        dwellTimeMs,
+      );
+      if (
+        shouldSuggestBionic &&
+        !settingsRef.current?.bionicAnchors &&
+        !(settingsRef.current as any)?.bionicReading
+      ) {
+        showNotice("¿Pasaje denso? Puedes activar la «Guía visual de sílabas» en el menú Aa.");
       }
 
       const next = pageRef.current + delta;
@@ -4356,6 +4449,7 @@ export default function Reader({
 
   const onWordSaved = useCallback((word: SavedWord) => {
     ttsRef.current?.noteSavedWord();
+    void scheduleCapturedReview(word.form, bookHash, word.context, language).catch(() => {});
     for (const form of [word.form, word.lemma]) {
       if (form) savedForms.current.set(form.toLowerCase(), "new");
     }
@@ -5767,25 +5861,39 @@ export default function Reader({
         </div>
       ) : null}
 
-      {/* Pastilla discreta "Antes de leer" arriba del texto del capítulo (Regla 2 Zero-Friction) */}
-      {prepNotice && !prep && !resumeCard && !isDeepReading && barsShown ? (
-        <div className="reader-section-preview-pill-container" role="status">
-          <SectionPreview
-            mode="pill"
-            words={Array.from({ length: prepNotice.count ?? 0 })}
-            onExpand={openPrepManual}
-          />
-          <button
-            type="button"
-            className="reader-return-dismiss"
-            onClick={dismissPrepNotice}
-            aria-label="Ocultar aviso de vocabulario"
-            style={{ marginLeft: "0.25rem" }}
-          >
-            ×
-          </button>
+      {/* Píldora superior de preparación de capítulo (Regla 2 Zero-Friction) */}
+      {previewSuggested && !showPreview && chapterAnalysis && chapterAnalysis.unknownKeyWords.length > 0 && (
+        <div className="reader-chapter-prep-pill" role="status" aria-live="polite">
+          <span>
+            <strong>{chapterAnalysis.unknownKeyWords.length} palabras clave</strong> en este capítulo
+          </span>
+          <div className="reader-chapter-prep-actions">
+            <button
+              type="button"
+              className="reader-chapter-prep-btn"
+              onClick={() => {
+                setPreviewSuggested(false);
+                setShowPreview(true);
+                openPrepManual();
+              }}
+            >
+              Preparar antes de leer
+            </button>
+            <button
+              type="button"
+              className="reader-chapter-prep-dismiss"
+              onClick={() => {
+                markSectionPreviewed(bookHash, sectionIndex);
+                setPreviewSuggested(false);
+                dismissPrepNotice();
+              }}
+              aria-label="Descartar sugerencia del capítulo"
+            >
+              ✕
+            </button>
+          </div>
         </div>
-      ) : null}
+      )}
 
       {/* Invitación a la prueba de vocabulario: misma franja fija que
           el aviso de preparación, fuera del texto; conviven solo una
@@ -5849,6 +5957,8 @@ export default function Reader({
               : `Cap. ${sectionIndex + 1} de ${sectionTotal || 1}${minutes > 0 ? ` · ~${minutes} min` : ""}`
           }
           errorText={errorText ?? undefined}
+          coveragePct={prediction?.coveragePct ?? null}
+          onOpenGlossary={() => setGlossaryOpen(true)}
           isPureCanvas={!barsShown}
           onExitPureCanvas={() => setBarsVisible(true)}
           activePreset={detectActiveReadingPreset(settings)}
@@ -6851,6 +6961,7 @@ export default function Reader({
               const zipf = zipfForLemma(row.lemma);
               const beta = betaFromZipf(zipf);
               if (kind === "saved") {
+                void scheduleCapturedReview(form, bookHash, undefined, currentLang).catch(() => {});
                 updateLanguageTheta(currentLang, beta, 0, 1.0);
               } else if (kind === "declared") {
                 updateLanguageTheta(currentLang, beta, 1, 1.0);

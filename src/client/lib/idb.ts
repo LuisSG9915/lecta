@@ -535,7 +535,7 @@ const scopeDbName = (scope: DbScope) =>
 // Resuelve la base para un contexto. La compartida se reutiliza cuando
 // el contexto sigue vivo; con contexto vencido se abre una conexión
 // privada a la base dueña y el llamador la cierra al terminar.
-async function withDb<T>(
+export async function withDb<T>(
   scope: DbScope | undefined,
   run: (db: IDBPDatabase<LectaDB>) => T | Promise<T>,
 ): Promise<T> {
@@ -2332,5 +2332,29 @@ export async function loadSmartAssistsPrefsIdb(
   } catch {
     return null;
   }
+}
+
+export type { BookMeta } from "./cover";
+
+export interface WordMeaning {
+  word: string;
+  lemma?: string;
+  partOfSpeech?: string;
+  ContextualMeaning?: string;
+  definitions: string[];
+  examples?: string[];
+  source?: string;
+}
+
+export type VocabEntry = SavedWord & {
+  id: string;
+  note?: string;
+};
+
+export async function getBookWithData(
+  hash: string,
+  scope?: DbScope,
+): Promise<StoredBook | undefined> {
+  return getStoredBook(hash, scope);
 }
 

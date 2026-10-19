@@ -1,6 +1,8 @@
 export type IconName =
   | "shelf"
+  | "book"
   | "notebook"
+  | "bookmark"
   | "you"
   | "journey"
   | "index"
@@ -18,6 +20,7 @@ export type IconName =
   | "close"
   | "strategy"
   | "sparkles"
+  | "sparkle"
   | "quote"
   | "download"
   | "focus"
@@ -54,6 +57,7 @@ export default function Icon({ name, size = 20, className }: IconProps) {
 function renderIconPath(name: IconName) {
   switch (name) {
     case "shelf":
+    case "book":
       return (
         <>
           <path d="M4 19h16" />
@@ -71,6 +75,10 @@ function renderIconPath(name: IconName) {
           <path d="M10 11h6" />
           <path d="M10 15h4" />
         </>
+      );
+    case "bookmark":
+      return (
+        <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
       );
     case "you":
       return (
@@ -182,6 +190,7 @@ function renderIconPath(name: IconName) {
       );
     case "strategy":
     case "sparkles":
+    case "sparkle":
       return (
         <>
           <path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3z" />

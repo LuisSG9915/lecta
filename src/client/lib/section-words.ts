@@ -883,4 +883,47 @@ export function buildChapterPrimingCandidates(input: {
   });
 }
 
+export interface SectionWord {
+  word: string;
+  sentence?: string;
+  count?: number;
+}
+
+export function extractSectionWords(
+  doc: Document,
+  options?: { maxWords?: number; language?: string },
+): SectionWord[] {
+  const maxWords = options?.maxWords ?? 18;
+  const lang = options?.language ?? "es";
+  const text = doc.body?.textContent ?? "";
+  if (!text.trim()) return [];
+
+  const segmenter = new Intl.Segmenter(lang, { granularity: "word" });
+  const freq = new Map<string, { count: number; sentence?: string }>();
+  const sentences = [...new Intl.Segmenter(lang, { granularity: "sentence" }).segment(text)];
+
+  for (const s of sentences) {
+    const sText = s.segment.trim();
+    for (const w of segmenter.segment(sText)) {
+      if (!w.isWordLike) continue;
+      const word = w.segment;
+      const lower = word.toLowerCase();
+      if (lower.length < 3 || isStopword(lower)) continue;
+      const current = freq.get(lower);
+      if (!current) {
+        freq.set(lower, { count: 1, sentence: sText });
+      } else {
+        current.count++;
+      }
+    }
+  }
+
+  const sorted = [...freq.entries()].sort((a, b) => b[1].count - a[1].count);
+  return sorted.slice(0, maxWords).map(([word, data]) => ({
+    word,
+    sentence: data.sentence,
+    count: data.count,
+  }));
+}
+
 

@@ -470,3 +470,93 @@ export function setBilingualMode(
   saveBilingualScaffoldingProfile({ ...p, mode });
 }
 
+export interface PhraseEntry {
+  phrase: string;
+  meaning: string;
+  example?: string;
+}
+
+export interface PhrasesIndex {
+  getAll: () => PhraseEntry[];
+  findInSentence: (sentence: string, word?: string) => PhraseEntry | undefined;
+}
+
+export function createPhrasesIndex(index: PhraseIndex): PhrasesIndex {
+  const allEntries: PhraseEntry[] = index.phrases.map((p) => ({
+    phrase: p.hit.lemma,
+    meaning: p.hit.definitions.join("; ") || p.hit.pos || "",
+  }));
+  return {
+    getAll: () => allEntries,
+    findInSentence: (sentence: string, word?: string) => {
+      const hit = matchPhrase(index, sentence, word || "", (t) => new Set([t]));
+      if (!hit) return undefined;
+      return {
+        phrase: hit.lemma,
+        meaning: hit.definitions.join("; ") || hit.pos || "",
+      };
+    },
+  };
+}
+
+export async function loadPhrasesIndex(): Promise<PhrasesIndex | null> {
+  const index = await loadPhrases();
+  if (!index) return null;
+  return createPhrasesIndex(index);
+}
+
+export function clearPhraseMarks(doc: Document): void {
+  if (!doc?.body) return;
+  const marks = doc.querySelectorAll("mark.lecta-phrase-mark, mark.phrase-mark");
+  marks.forEach((mark) => {
+    mark.replaceWith(...mark.childNodes);
+  });
+  doc.body.normalize();
+}
+
+export function applyPhraseMarks(doc: Document, phrases: PhraseEntry[]): void {
+  if (!doc?.body || !phrases || !phrases.length) return;
+  const phraseMap = new Map<string, PhraseEntry>();
+  for (const p of phrases) {
+    if (p.phrase) phraseMap.set(p.phrase.toLowerCase(), p);
+  }
+  if (!phraseMap.size) return;
+
+  const walker = doc.createTreeWalker(doc.body, NodeFilter.SHOW_TEXT, {
+    acceptNode: (node) => {
+      const parent = node.parentElement;
+      if (!parent) return NodeFilter.FILTER_REJECT;
+      if (parent.closest("mark.lecta-phrase-mark, mark.phrase-mark, script, style")) {
+        return NodeFilter.FILTER_REJECT;
+      }
+      return NodeFilter.FILTER_ACCEPT;
+    },
+  });
+
+  const textNodes: Text[] = [];
+  let n = walker.nextNode();
+  while (n) {
+    textNodes.push(n as Text);
+    n = walker.nextNode();
+  }
+
+  for (const textNode of textNodes) {
+    const text = textNode.nodeValue;
+    if (!text) continue;
+    const lower = text.toLowerCase();
+    for (const [lowerPhrase, entry] of phraseMap.entries()) {
+      const idx = lower.indexOf(lowerPhrase);
+      if (idx !== -1) {
+        const before = textNode.splitText(idx);
+        before.splitText(lowerPhrase.length);
+        const mark = doc.createElement("mark");
+        mark.className = "lecta-phrase-mark phrase-mark";
+        mark.dataset.phrase = entry.phrase;
+        mark.textContent = before.nodeValue;
+        before.parentNode?.replaceChild(mark, before);
+        break;
+      }
+    }
+  }
+}
+

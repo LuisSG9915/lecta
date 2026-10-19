@@ -2,6 +2,7 @@
 // dinámicos para no inflar el chunk inicial. Los tipos quedan estáticos.
 import type { FileEntry } from "@zip.js/zip.js";
 import type { EPUB } from "foliate-js/epub.js";
+import type { ReaderSettings } from "./settings";
 
 export type EpubBook = Awaited<ReturnType<EPUB["init"]>>;
 export type EpubTocItem = NonNullable<EpubBook["toc"]>[number];
@@ -286,4 +287,110 @@ export async function detectBookLanguage(
   }
 
   return normalizeLanguage(rawLang) || "es";
+}
+
+export type TocItem = EpubTocItem;
+
+export function extractChapters(book: EpubBook): TocItem[] {
+  return (book?.toc ?? []) as TocItem[];
+}
+
+export function injectReaderStyles(doc: Document, settings: ReaderSettings): void {
+  if (!doc?.documentElement) return;
+  const root = doc.documentElement;
+  const theme = settings.theme || "paper";
+  root.setAttribute("data-theme", theme);
+  root.style.setProperty("--reader-font-family", `var(--font-${settings.font || "literata"})`);
+  root.style.setProperty("--reader-font-size", `${settings.fontSize || 18}px`);
+  root.style.setProperty(
+    "--reader-line-height",
+    settings.lineHeight === "compact"
+      ? "1.4"
+      : settings.lineHeight === "spacious"
+        ? "1.9"
+        : "1.65",
+  );
+  root.style.setProperty(
+    "--reader-margins",
+    settings.margins === "narrow"
+      ? "16px"
+      : settings.margins === "wide"
+        ? "48px"
+        : "28px",
+  );
+}
+
+export async function openEpubElement(
+  host: HTMLElement,
+  file: Blob,
+): Promise<{
+  view: HTMLElement & {
+    prev?: () => void;
+    next?: () => void;
+    goTo?: (target: string | number) => Promise<void>;
+    close?: () => void;
+    book?: EpubBook;
+  };
+  bookObj: EpubBook;
+  cleanup: () => void;
+}> {
+  if (
+    typeof window !== "undefined" &&
+    typeof customElements !== "undefined" &&
+    !customElements.get("foliate-view")
+  ) {
+    try {
+      // @ts-expect-error foliate-js view has no typings
+      await import("foliate-js/view.js");
+    } catch {
+      // ignore
+    }
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let view: any;
+  if (
+    typeof document !== "undefined" &&
+    typeof customElements !== "undefined" &&
+    customElements.get("foliate-view")
+  ) {
+    view = document.createElement("foliate-view");
+    host.appendChild(view);
+    await view.open(file);
+    const bookObj = view.book;
+    return {
+      view,
+      bookObj,
+      cleanup: () => {
+        try {
+          view.close?.();
+        } catch {
+          // ignore
+        }
+        view.remove();
+      },
+    };
+  }
+
+  // Fallback for mock/test environments
+  const { book, close } = await openEpub(file);
+  view = document.createElement("div");
+  view.prev = () => {};
+  view.next = () => {};
+  view.goTo = async () => {};
+  view.close = () => close();
+  host.appendChild(view);
+
+  return {
+    view,
+    bookObj: book,
+    cleanup: () => {
+      try {
+        close();
+      } catch {
+        // ignore
+      }
+      view.remove();
+    },
+  };
 }

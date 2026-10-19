@@ -5702,6 +5702,341 @@ b.lecta-anchor {
   }
 }
 
+/* Píldora superior de preparación de capítulo (Zero-Friction Flow) */
+.reader-chapter-prep-pill {
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + 0.75rem);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 120;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.4rem 0.85rem;
+  background: var(--bg-surface, var(--bg, #ffffff));
+  border: 1px solid var(--border-subtle, rgba(0, 0, 0, 0.12));
+  border-radius: 9999px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+  font-size: 0.84rem;
+  color: var(--text-primary, #1e293b);
+  white-space: nowrap;
+  max-width: 90vw;
+}
+
+.reader-chapter-prep-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.reader-chapter-prep-btn {
+  background: var(--accent, #c86d3b);
+  color: #fff;
+  border: none;
+  border-radius: 9999px;
+  padding: 0.25rem 0.65rem;
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s ease, transform 0.1s ease;
+}
+
+.reader-chapter-prep-btn:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.reader-chapter-prep-dismiss {
+  background: transparent;
+  border: none;
+  color: var(--text-muted, #64748b);
+  font-size: 0.9rem;
+  cursor: pointer;
+  padding: 0.15rem 0.35rem;
+  border-radius: 50%;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.reader-chapter-prep-dismiss:hover {
+  color: var(--text-primary, #1e293b);
+}
+
+/* ==========================================================================
+   Parte 2: Controles de Lectura, ThemeMenu y Píldora de Cobertura
+   ========================================================================== */
+
+/* Píldora de cobertura léxica en el Dock */
+.smart-dock-btn.smart-dock-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 9999px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  white-space: nowrap;
+  flex-shrink: 0;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background-color 150ms ease, border-color 150ms ease, transform 120ms ease;
+}
+
+.smart-dock-btn.smart-dock-pill:active {
+  transform: scale(0.96);
+}
+
+.smart-dock-pill-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  opacity: 0.85;
+}
+
+.smart-dock-btn.smart-dock-pill.is-easy {
+  background: rgba(34, 197, 94, 0.16);
+  color: #22c55e;
+  border-color: rgba(34, 197, 94, 0.32);
+}
+
+.smart-dock-btn.smart-dock-pill.is-moderate {
+  background: rgba(234, 179, 8, 0.16);
+  color: #eab308;
+  border-color: rgba(234, 179, 8, 0.32);
+}
+
+.smart-dock-btn.smart-dock-pill.is-challenging {
+  background: rgba(249, 115, 22, 0.16);
+  color: #f97316;
+  border-color: rgba(249, 115, 22, 0.32);
+}
+
+/* Panel ThemeMenu con lenguaje claro */
+.theme-menu[role="dialog"] {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding: 0.5rem 0;
+}
+
+.theme-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.theme-row.theme-row-toggle {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+}
+
+.theme-label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary, #1e293b);
+}
+
+.theme-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.theme-value {
+  font-size: 0.8125rem;
+  color: var(--text-muted, #64748b);
+  font-variant-numeric: tabular-nums;
+}
+
+.theme-toggle-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-right: 1rem;
+}
+
+.theme-toggle-hint {
+  font-size: 0.775rem;
+  color: var(--text-muted, #64748b);
+  line-height: 1.35;
+}
+
+/* Opciones de Tipografía */
+.font-choices {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 0.5rem;
+}
+
+.font-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 0.625rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle, rgba(0, 0, 0, 0.1));
+  background: var(--bg-surface, #ffffff);
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 150ms ease, background-color 150ms ease;
+}
+
+.font-choice.is-active {
+  border-color: var(--vermilion, #dc2626);
+  background: rgba(220, 38, 38, 0.05);
+}
+
+.font-choice-name {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.font-choice-hint {
+  font-size: 0.7rem;
+  color: var(--text-muted, #64748b);
+  margin-top: 2px;
+}
+
+.font-preview-literata { font-family: var(--font-book, serif); }
+.font-preview-source-serif { font-family: 'Source Serif 4', serif; }
+.font-preview-alegreya-sans { font-family: 'Alegreya Sans', sans-serif; }
+.font-preview-atkinson { font-family: 'Atkinson Hyperlegible', sans-serif; }
+.font-preview-opendyslexic { font-family: 'OpenDyslexic', sans-serif; }
+
+/* Controles de tamaño de letra */
+.size-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.size-controls input[type="range"] {
+  flex: 1;
+  accent-color: var(--vermilion, #dc2626);
+}
+
+.size-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle, rgba(0, 0, 0, 0.12));
+  background: var(--bg-surface, #f8fafc);
+  color: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.size-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* FSRS Rating Bar */
+.game-rating-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.game-rating-prompt {
+  font-size: 0.85rem;
+  font-weight: 500;
+  text-align: center;
+  color: var(--text-muted, #64748b);
+}
+
+.game-rating-buttons {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.5rem;
+}
+
+.game-rate-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 8px 6px;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle, rgba(0, 0, 0, 0.12));
+  background: var(--bg-surface, rgba(0, 0, 0, 0.03));
+  color: inherit;
+  cursor: pointer;
+  transition: transform 120ms ease, background-color 150ms ease, border-color 150ms ease;
+}
+
+.game-rate-btn:hover {
+  transform: translateY(-1px);
+}
+
+.game-rate-btn:active {
+  transform: scale(0.97);
+}
+
+.game-rate-label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.game-rate-sub {
+  font-size: 0.7rem;
+  opacity: 0.85;
+  font-variant-numeric: tabular-nums;
+}
+
+.game-rate-again {
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #ef4444;
+}
+
+.game-rate-again:hover {
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.game-rate-hard {
+  border-color: rgba(245, 158, 11, 0.3);
+  color: #f59e0b;
+}
+
+.game-rate-hard:hover {
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.game-rate-good {
+  border-color: rgba(59, 130, 246, 0.3);
+  color: #3b82f6;
+}
+
+.game-rate-good:hover {
+  background: rgba(59, 130, 246, 0.08);
+}
+
+.game-rate-easy {
+  border-color: rgba(34, 197, 94, 0.3);
+  color: #22c55e;
+}
+
+.game-rate-easy:hover {
+  background: rgba(34, 197, 94, 0.08);
+}
+
+
+
 
 
 

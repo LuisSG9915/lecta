@@ -528,3 +528,24 @@ export function saveFocusTelemetryProfile(
   }
 }
 
+export class FocusTelemetry {
+  private pageTurns = 0;
+  private lastTurnAt = Date.now();
+  private regressions = 0;
+
+  recordPageTurn(isBack = false): boolean {
+    const now = Date.now();
+    const dt = now - this.lastTurnAt;
+    this.lastTurnAt = now;
+    this.pageTurns++;
+    if (isBack) {
+      this.regressions++;
+    }
+    if (this.pageTurns >= 3 && (dt > 40_000 || this.regressions >= 2)) {
+      this.regressions = 0;
+      return true;
+    }
+    return false;
+  }
+}
+

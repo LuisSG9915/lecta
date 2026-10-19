@@ -1,9 +1,13 @@
 import {
   captureDbScope,
   saveReview,
+  withDb,
+  wordKey,
   type DbScope,
   type SavedReview,
+  type SavedWord,
 } from "./idb";
+import { newCard } from "./fsrs";
 import { pushReviewsToServer } from "./reading-sync";
 import { award, localDayKey } from "./game";
 import type { ReviewKind, ReviewRating } from "../../shared/reading-data";
@@ -44,3 +48,34 @@ export async function recordReview(
   });
   return saved;
 }
+
+/**
+ * Programa la palabra capturada (guardada o en aprendizaje) en la cola de repaso FSRS.
+ * Se invoca exclusivamente cuando el usuario guarda intencionalmente una palabra o la marca para aprender,
+ * evitando ensuciar la cola de repaso por simples consultas de lectura.
+ */
+export async function scheduleCapturedReview(
+  word: string,
+  bookId?: string,
+  sentence?: string,
+  language = "es",
+  scope?: DbScope,
+): Promise<void> {
+  const bound = scope ?? captureDbScope();
+  await withDb(bound, async (db) => {
+    const key = wordKey(language, word);
+    const existing = await db.get("savedWords", key);
+    if (!existing) return;
+    const now = Date.now();
+    const card = existing.card ?? newCard();
+    const updated: SavedWord = {
+      ...existing,
+      card,
+      context: sentence || existing.context,
+      bookHash: bookId || existing.bookHash,
+      updatedAt: now,
+    };
+    await db.put("savedWords", updated);
+  }).catch(() => {});
+}
+

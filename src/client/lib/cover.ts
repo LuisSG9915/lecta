@@ -1,6 +1,10 @@
 import { openEpub, getBookAuthor, getBookLanguage, getBookTitle, detectBookLanguage } from "./epub";
 
 export type BookMeta = {
+  id?: string;
+  hash?: string;
+  name?: string;
+  file?: Blob | File;
   title: string;
   author: string;
   language: string;

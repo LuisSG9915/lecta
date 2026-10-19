@@ -11,12 +11,17 @@ export const THEME_CHOICES: ThemeChoice[] = [
   "oled",
 ];
 
-export const THEME_LABELS: Record<ThemeChoice, string> = {
+export type ReaderTheme = "paper" | "sepia" | "night" | ThemeChoice;
+
+export const THEME_LABELS: Record<string, string> = {
   auto: "Auto",
   blanco: "Papel Crema",
   papel: "Sepia Cálido",
   noche: "Gris Tarde",
   oled: "Noche Tinta",
+  paper: "Papel",
+  sepia: "Sepia",
+  night: "Noche",
 };
 
 // Muestra de cada paleta: el papel y la tinta tal como se ven al leer.
@@ -33,7 +38,40 @@ export const THEME_SWATCHES: Record<ThemeChoice, { bg: string; fg?: string; bord
 const THEME_KEY = "lecta:theme";
 const READER_KEY = "lecta:reader";
 
-export type ReaderFont = "literata" | "sans" | "serif" | "atkinson" | "dyslexic";
+export type ReaderFont =
+  | "literata"
+  | "source-serif"
+  | "alegreya-sans"
+  | "atkinson"
+  | "opendyslexic"
+  | "sans"
+  | "serif"
+  | "dyslexic";
+
+export const FONT_LABELS: Record<string, { name: string; hint: string }> = {
+  literata: { name: "Literata", hint: "Clásica y legible para novelas" },
+  "source-serif": { name: "Source Serif", hint: "Elegante y nítida" },
+  serif: { name: "Source Serif", hint: "Elegante y nítida" },
+  "alegreya-sans": { name: "Alegreya Sans", hint: "Moderna y suave a la vista" },
+  sans: { name: "Alegreya Sans", hint: "Moderna y suave a la vista" },
+  atkinson: { name: "Atkinson", hint: "Diseñada para máxima distinción" },
+  opendyslexic: { name: "OpenDyslexic", hint: "Base pesada que evita saltos" },
+  dyslexic: { name: "OpenDyslexic", hint: "Base pesada que evita saltos" },
+};
+
+export type ReaderLineHeight = "compact" | "comfortable" | "spacious";
+export const LINE_HEIGHT_LABELS: Record<ReaderLineHeight, string> = {
+  compact: "Compacto",
+  comfortable: "Cómodo",
+  spacious: "Amplio",
+};
+
+export type ReaderMargins = "narrow" | "medium" | "wide";
+export const MARGIN_LABELS: Record<ReaderMargins, string> = {
+  narrow: "Estrecho",
+  medium: "Medio",
+  wide: "Amplio",
+};
 
 export interface ReaderFontOption {
   id: ReaderFont;
@@ -294,6 +332,15 @@ export interface ReaderSettings {
   /** Andamiaje bilingüe multinivel en L2 (Track 11) */
   bilingualScaffoldingMode?: "auto" | "tier-1-only" | "tier-3-always" | "off";
   mutedBilingualBookIds?: string[];
+  theme?: ReaderTheme;
+  fontSize?: number;
+  lineHeight?: ReaderLineHeight | number;
+  margins?: ReaderMargins | number;
+  bionicReading?: boolean;
+  syllableBreaks?: boolean;
+  bilingueEnabled?: boolean;
+  chapterPreview?: boolean | "auto" | "off" | "minimal";
+  companionEnabled?: boolean;
 }
 
 export const READER_DEFAULTS: ReaderSettings = {
@@ -323,6 +370,15 @@ export const READER_DEFAULTS: ReaderSettings = {
   hideSecondaryIndicators: true,
   visualPacer: false,
   pacerWpm: 210,
+  theme: "paper",
+  fontSize: 18,
+  lineHeight: "comfortable",
+  margins: "medium",
+  bionicReading: false,
+  syllableBreaks: false,
+  bilingueEnabled: false,
+  chapterPreview: true,
+  companionEnabled: true,
   chapterPrimingMode: "auto",
   maxPrimingWords: 4,
   mutedPrimingBookIds: [],
@@ -336,6 +392,8 @@ export const READER_DEFAULTS: ReaderSettings = {
   bilingualScaffoldingMode: "auto",
   mutedBilingualBookIds: [],
 };
+
+export const DEFAULT_SETTINGS: ReaderSettings = READER_DEFAULTS;
 
 export type ChapterPrimingMode = "auto" | "on-demand" | "off";
 
@@ -969,6 +1027,8 @@ export function loadReaderSettings(bookHash?: string): ReaderSettings {
   return parseReaderSettings(storage()?.getItem(READER_KEY) ?? null);
 }
 
+export const loadSettings = loadReaderSettings;
+
 export function saveReaderSettings(settings: ReaderSettings, bookHash?: string) {
   try {
     storage()?.setItem(readerKeyFor(bookHash), JSON.stringify(settings));
@@ -976,6 +1036,8 @@ export function saveReaderSettings(settings: ReaderSettings, bookHash?: string) 
     // mismo criterio que saveTheme
   }
 }
+
+export const saveSettings = saveReaderSettings;
 
 export function hasBookReaderSettings(bookHash: string): boolean {
   return storage()?.getItem(readerKeyFor(bookHash)) != null;

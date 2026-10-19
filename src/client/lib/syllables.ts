@@ -93,3 +93,7 @@ export function syllabifySpanish(word: string, separator = "·"): string {
   syllables.push(clean.slice(start));
   return syllables.join(separator);
 }
+
+export function hyphenateWord(word: string): string {
+  return syllabifySpanish(word, "·");
+}

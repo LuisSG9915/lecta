@@ -2,7 +2,11 @@
 import { act, createElement as h } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import SmartReaderDock, { formatCompactProgress, type SmartReaderDockProps } from "./SmartReaderDock";
+import SmartReaderDock, {
+  formatCompactProgress,
+  getCoverageBandClass,
+  type SmartReaderDockProps,
+} from "./SmartReaderDock";
 import type { TtsSnapshot } from "../lib/ttsTypes";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -422,5 +426,34 @@ describe("SmartReaderDock (Track 2: Dock Inteligente Único)", () => {
       expect(container.querySelector(".dock-mode-popover")).toBeNull();
     });
   });
+
+  describe("Fase 2: Desambiguación del Porcentaje de Cobertura Léxica", () => {
+    it("getCoverageBandClass asigna las clases semánticas correctas según umbral", () => {
+      expect(getCoverageBandClass(96)).toBe("is-easy");
+      expect(getCoverageBandClass(95)).toBe("is-easy");
+      expect(getCoverageBandClass(92)).toBe("is-moderate");
+      expect(getCoverageBandClass(90)).toBe("is-moderate");
+      expect(getCoverageBandClass(89)).toBe("is-challenging");
+      expect(getCoverageBandClass(75)).toBe("is-challenging");
+    });
+
+    it("renderiza la píldora de vocabulario del capítulo con el prefijo Vocab. y clase semántica", () => {
+      const onOpenGlossary = vi.fn();
+      render({ coveragePct: 92, onOpenGlossary });
+
+      const pill = container.querySelector(".smart-dock-pill") as HTMLButtonElement;
+      expect(pill).not.toBeNull();
+      expect(pill.classList.contains("is-moderate")).toBe(true);
+      expect(pill.getAttribute("aria-label")).toBe(
+        "Vocabulario conocido del capítulo: 92%. Toca para abrir el glosario",
+      );
+      expect(pill.textContent).toContain("Vocab.");
+      expect(pill.textContent).toContain("92%");
+
+      act(() => pill.click());
+      expect(onOpenGlossary).toHaveBeenCalledTimes(1);
+    });
+  });
 });
+
 

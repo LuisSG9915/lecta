@@ -10,7 +10,7 @@ import {
 } from "../lib/idb";
 import { CALIBRATION_DONE_KEY } from "../lib/calibration";
 import { triggerHaptic } from "../lib/haptics";
-import { displayTitle, readBookMeta } from "../lib/cover";
+import { displayTitle, readBookMeta, type BookMeta } from "../lib/cover";
 import { languageName } from "../lib/epub";
 import {
   entriesByFormOf,
@@ -61,13 +61,41 @@ export type ShelfItem = Pick<
   "hash" | "name" | "addedAt" | "title" | "author" | "cover" | "sectionCount" | "language"
 > & { remoteOnly?: boolean; pendingUpload?: boolean };
 
-type ShelfProps = {
-  library: ShelfItem[];
-  checking: boolean;
-  onOpen: (book: ShelfItem) => void;
-  onRemove: (hash: string) => void;
-  onAdd: (file: File) => void;
-  onLibraryChange: () => void;
+export type ActiveRead = {
+  hash: string;
+  name: string;
+  file?: File;
+  title?: string;
+  author?: string;
+  cover?: Blob;
+  progress?: number;
+};
+
+export type BookLike = ShelfItem | (BookMeta & { hash?: string; name?: string; file?: File });
+
+export type ShelfProps = {
+  books?: (BookMeta | ShelfItem)[];
+  activeRead?: ActiveRead | null;
+  vocabCount?: number;
+  dueReviewsCount?: number;
+  hasCalibrated?: boolean;
+  onSelect?: (book: BookLike, initialWord?: string) => void;
+  onPrepareBook?: (book: BookLike) => void;
+  onStartCalibration?: () => void;
+  onBooksChange?: () => Promise<void> | void;
+  onOpenVocab?: () => void;
+  onOpenPractice?: () => void;
+  onOpenAccount?: () => void;
+  onOpenJourney?: () => void;
+  user?: unknown;
+  syncing?: boolean;
+
+  library?: ShelfItem[];
+  checking?: boolean;
+  onOpen?: (book: ShelfItem) => void;
+  onRemove?: (hash: string) => void;
+  onAdd?: (file: File) => void;
+  onLibraryChange?: () => void;
   // «Obtener» del riel Descubre: el padre baja el EPUB del catálogo y
   // lo pasa al flujo normal de añadir libro.
   onGetCatalogBook?: (item: CatalogBook) => Promise<void> | void;
@@ -78,10 +106,10 @@ type ShelfProps = {
   // Sube cuando la sincronización trae intervalos nuevos: la meta de
   // la semana relee su progreso sin recargar la estantería.
   activityVersion?: number;
-  onOpenJourney?: () => void;
-  onOpenPractice?: () => void;
   onRequestCalibration?: () => void;
 };
+
+export type Props = ShelfProps;
 
 const DAY_MS = 86_400_000;
 const startOfDay = (ts: number) => {
@@ -122,12 +150,19 @@ const progressOf = (position: SavedBookPosition | undefined, sectionCount: numbe
     : 0;
 
 export default function Shelf({
-  library,
-  checking,
-  onOpen,
-  onRemove,
-  onAdd,
-  onLibraryChange,
+  library: rawLibrary = [],
+  books,
+  checking = false,
+  dueReviewsCount: propDueReviewsCount,
+  hasCalibrated,
+  onSelect,
+  onPrepareBook,
+  onStartCalibration,
+  onBooksChange,
+  onOpen = () => {},
+  onRemove = () => {},
+  onAdd = () => {},
+  onLibraryChange = () => {},
   onGetCatalogBook,
   onDownloadBook,
   downloadingHash,
@@ -136,10 +171,13 @@ export default function Shelf({
   onOpenPractice,
   onRequestCalibration,
 }: ShelfProps) {
+  const library = (books as ShelfItem[]) ?? rawLibrary;
+  const handleLibraryChange = onBooksChange ?? onLibraryChange;
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [positions, setPositions] = useState<SavedBookPosition[]>([]);
   const [wordCounts, setWordCounts] = useState<Map<string, number>>(new Map());
   const [dueWordsCount, setDueWordsCount] = useState(0);
+  const effectiveDueWordsCount = propDueReviewsCount ?? dueWordsCount;
   const [latestHash, setLatestHash] = useState<string | undefined>(undefined);
   const [weekDays, setWeekDays] = useState<{ day: number; read: boolean }[]>([]);
   const [goalProgress, setGoalProgress] = useState<WeeklyGoalProgress | null>(null);
@@ -150,6 +188,33 @@ export default function Shelf({
     "idle",
   );
   const [calibrationDone, setCalibrationDone] = useState(false);
+  const [calibrationDismissed, setCalibrationDismissed] = useState(() => {
+    try {
+      return (
+        localStorage.getItem("lecta:calibration-banner-dismissed") === "1" ||
+        localStorage.getItem("lecta_onboarding_dismissed") === "1"
+      );
+    } catch {
+      return false;
+    }
+  });
+
+  const dismissCalibrationBanner = () => {
+    setCalibrationDismissed(true);
+    try {
+      localStorage.setItem("lecta:calibration-banner-dismissed", "1");
+    } catch {
+      // ignore storage errors
+    }
+  };
+
+  const handleBookClick = (book: ShelfItem) => {
+    if (onSelect) {
+      onSelect(book);
+    } else {
+      onOpen(book);
+    }
+  };
   const [onboardingDismissed, setOnboardingDismissed] = useState(() => {
     try {
       return localStorage.getItem("lecta_onboarding_dismissed") === "1";
@@ -282,13 +347,13 @@ export default function Shelf({
           },
           scope,
         );
-        onLibraryChange();
+        handleLibraryChange();
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [library, onLibraryChange]);
+  }, [library, handleLibraryChange]);
 
   // Cobertura de vocabulario por libro propio: mismo manifiesto que el
   // catálogo (bookVocab:v1:{hash}). Primero lo ya analizado; los que
@@ -486,7 +551,7 @@ export default function Shelf({
     const scope = captureDbScope();
     await updateBookMeta(hash, { language }, scope);
     setOptionsBook((prev) => (prev && prev.hash === hash ? { ...prev, language } : prev));
-    onLibraryChange();
+    handleLibraryChange();
   };
 
   if (checking) {
@@ -533,7 +598,7 @@ export default function Shelf({
   };
 
   return (
-    <div className="shelf" onDragOver={(e) => e.preventDefault()}>
+    <div className="shelf shelf-main" onDragOver={(e) => e.preventDefault()}>
       <input
         ref={fileInputRef}
         className="visually-hidden"
@@ -564,7 +629,7 @@ export default function Shelf({
                 onClick={() => {
                   triggerHaptic(12);
                   if (library.length > 0) {
-                    onOpen(library[0]);
+                    handleBookClick(library[0]);
                   } else {
                     void openSample();
                   }
@@ -646,8 +711,8 @@ export default function Shelf({
                     type="button"
                     className="btn btn--sm"
                     onClick={() => {
-                      if (current) onOpen(current);
-                      else if (library[0]) onOpen(library[0]);
+                      if (current) handleBookClick(current);
+                      else if (library[0]) handleBookClick(library[0]);
                       else if (onGetCatalogBook) {
                         void onGetCatalogBook({
                           id: "azul-ruben-dario",
@@ -769,7 +834,7 @@ export default function Shelf({
                   className="shelf-hero-cover shelf-book-spine"
                   onClick={() => {
                     triggerHaptic(10);
-                    onOpen(current);
+                    handleBookClick(current);
                   }}
                   aria-label={`Continuar ${displayTitle(current.name, current.title)}`}
                 >
@@ -856,7 +921,7 @@ export default function Shelf({
                       className="btn btn--primary btn--hero-continue"
                       onClick={() => {
                         triggerHaptic(10);
-                        onOpen(current);
+                        handleBookClick(current);
                       }}
                     >
                       Continuar leyendo · {activeModeLabel}
@@ -867,7 +932,7 @@ export default function Shelf({
                       onClick={() => {
                         triggerHaptic(10);
                         if (onOpenPractice) onOpenPractice();
-                        else onOpen(current);
+                        else handleBookClick(current);
                       }}
                     >
                       Pre-entrenar 3 palabras del capítulo
@@ -923,11 +988,11 @@ export default function Shelf({
                   </div>
                 ) : null}
 
-                {dueWordsCount > 0 ? (
+                {effectiveDueWordsCount > 0 ? (
                   <div className="shelf-cat-pending-note" role="status">
                     <span className="cat-note-icon" aria-hidden="true">🐾 💌</span>
                     <span className="cat-note-text">
-                      Tienes {dueWordsCount} palabra{dueWordsCount === 1 ? "" : "s"} {dueWordsCount === 1 ? "lista" : "listas"} en tu cuaderno
+                      Tienes {effectiveDueWordsCount} palabra{effectiveDueWordsCount === 1 ? "" : "s"} {effectiveDueWordsCount === 1 ? "lista" : "listas"} en tu cuaderno
                     </span>
                   </div>
                 ) : null}
@@ -964,7 +1029,7 @@ export default function Shelf({
                     </div>
                   ) : null}
 
-                  {dueWordsCount > 0 ? (
+                  {effectiveDueWordsCount > 0 ? (
                     <button
                       type="button"
                       className="btn btn--quick-practice"
@@ -975,13 +1040,47 @@ export default function Shelf({
                       }}
                     >
                       <Icon name="sparkles" size={16} />
-                      <span>Practicar {dueWordsCount} palabra{dueWordsCount === 1 ? "" : "s"} pendiente{dueWordsCount === 1 ? "" : "s"}</span>
+                      <span>Practicar {effectiveDueWordsCount} palabra{effectiveDueWordsCount === 1 ? "" : "s"} pendiente{effectiveDueWordsCount === 1 ? "" : "s"}</span>
                     </button>
                   ) : null}
                 </div>
               </div>
             </section>
           ) : null}
+
+          {/* Banner de Calibración Voluntaria (Opt-in - Zero-Friction) */}
+          {!(hasCalibrated ?? calibrationDone) &&
+            !calibrationDismissed &&
+            (onStartCalibration ?? onRequestCalibration) && (
+              <section
+                className="shelf-calibration-callout"
+                aria-label="Personalización de vocabulario"
+              >
+                <div className="shelf-calibration-callout-copy">
+                  <span className="shelf-kicker">Personalización opcional · 1 min</span>
+                  <p className="shelf-calibration-callout-title">
+                    Ajusta Lecta a tu vocabulario para que sólo subraye las palabras que realmente son nuevas para ti.
+                  </p>
+                </div>
+                <div className="shelf-calibration-callout-actions">
+                  <button
+                    type="button"
+                    className="btn btn-primary btn--primary"
+                    onClick={onStartCalibration ?? onRequestCalibration}
+                  >
+                    Personalizar mi nivel
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn--quiet"
+                    onClick={dismissCalibrationBanner}
+                    aria-label="Ocultar sugerencia de personalización"
+                  >
+                    Ahora no
+                  </button>
+                </div>
+              </section>
+            )}
 
           <section aria-label="Tu estantería">
             <div className="shelf-header-row">
@@ -1050,7 +1149,7 @@ export default function Shelf({
                       type="button"
                       className="shelf-book-cover"
                       disabled={isDownloading}
-                      onClick={() => onOpen(book)}
+                      onClick={() => handleBookClick(book)}
                       aria-label={`Abrir ${displayTitle(book.name, book.title)}`}
                       title={displayTitle(book.name, book.title)}
                     >
@@ -1209,13 +1308,29 @@ export default function Shelf({
                         if (onDownloadBook) {
                           void onDownloadBook(optionsBook);
                         } else {
-                          onOpen(optionsBook);
+                          handleBookClick(optionsBook);
                         }
                       }}
                     >
                       {downloadingHash === optionsBook.hash
                         ? "Descargando libro…"
                         : "Descargar libro a este dispositivo"}
+                    </button>
+                  </div>
+                ) : null}
+
+                {onPrepareBook && !optionsBook.remoteOnly ? (
+                  <div className="shelf-options-section">
+                    <button
+                      type="button"
+                      className="btn shelf-options-prep-btn"
+                      onClick={() => {
+                        const target = optionsBook;
+                        setOptionsBook(null);
+                        onPrepareBook(target);
+                      }}
+                    >
+                      Preparar vocabulario antes de leer…
                     </button>
                   </div>
                 ) : null}

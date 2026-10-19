@@ -49,3 +49,15 @@ export function dominatedLemmas(words: SavedWord[]): string[] {
   }
   return [...lemmas];
 }
+
+export type WordLevel = "a1" | "a2" | "b1" | "b2" | "c1" | "c2";
+
+export function classifyWordLevel(wordOrLemma: string): WordLevel {
+  const len = wordOrLemma.length;
+  if (len <= 4) return "a1";
+  if (len <= 6) return "a2";
+  if (len <= 8) return "b1";
+  if (len <= 10) return "b2";
+  if (len <= 12) return "c1";
+  return "c2";
+}

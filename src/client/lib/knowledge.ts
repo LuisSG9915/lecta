@@ -1,4 +1,5 @@
 import { batchLookup, type LexiconEntry } from "./lexicon";
+import { listKnowledge, recordPassiveExposure, saveKnowledge, type DbScope } from "./idb";
 import { isLearnablePos, measuredZipf } from "../../shared/lexicon";
 import { menteBaseForms } from "../../shared/word-form";
 import { knowledgeArbWins } from "../../shared/reading-data";
@@ -172,6 +173,7 @@ export type SectionPrediction = {
   // diferidas, no las declara conocidas por no caber.
   deferred: { form: string; entry: LexiconEntry }[];
   total: number; // formas únicas analizadas
+  coveragePct?: number; // porcentaje de vocabulario conocido/cubierto (0-100)
 };
 
 // Clasifica las formas únicas de una sección contra lo que se sabe del
@@ -344,6 +346,11 @@ export function predictSection(
   // Lo que el tope dejó fuera no es «conocida»: son candidatas que
   // no cupieron y la hoja ofrece aparte.
   const deferred = candidates.slice(PREDICT_CAP);
+  const total = forms.length;
+  const coveragePct =
+    total > 0
+      ? Math.max(0, Math.min(100, Math.round(((knownCount + savedCount) / total) * 100)))
+      : 100;
 
   return {
     predicted,
@@ -352,7 +359,8 @@ export function predictSection(
     missing,
     uncertain,
     deferred,
-    total: forms.length,
+    total,
+    coveragePct,
   };
 }
 
@@ -837,6 +845,97 @@ export function recordSilentCalibration(
   } catch {
     // Silencioso
   }
+}
+
+// ---------- Umbral de Lectura Pasiva Proporcional ----------
+export const MIN_PAGE_DWELL_MS = 3000;
+export const MIN_MS_PER_WORD = 160; // ~375 palabras por minuto (lectura ágil real, no escaneo)
+export const MAX_REQUIRED_DWELL_MS = 12000;
+
+export function computeRequiredDwellMs(wordCount: number): number {
+  if (wordCount <= 0) return MIN_PAGE_DWELL_MS;
+  return Math.min(
+    MAX_REQUIRED_DWELL_MS,
+    Math.max(MIN_PAGE_DWELL_MS, Math.round(wordCount * MIN_MS_PER_WORD)),
+  );
+}
+
+export async function processPageTurnForPassiveKnowledge(
+  pageWords: string[],
+  tappedWordsOnPage: Set<string>,
+  dwellTimeMs: number,
+  language = "es",
+  scope?: DbScope,
+): Promise<number> {
+  if (!pageWords || pageWords.length === 0) return 0;
+  const requiredDwellMs = computeRequiredDwellMs(pageWords.length);
+  if (dwellTimeMs < requiredDwellMs) {
+    return 0;
+  }
+  const untapped = new Set<string>();
+  for (const w of pageWords) {
+    const clean = w.trim().toLowerCase();
+    if (!clean || tappedWordsOnPage.has(clean) || tappedWordsOnPage.has(w)) continue;
+    untapped.add(clean);
+  }
+  let count = 0;
+  for (const lemma of untapped) {
+    try {
+      await recordPassiveExposure(language, lemma, scope);
+      count++;
+    } catch {
+      // Ignorar fallo de escritura individual
+    }
+  }
+  return count;
+}
+
+export type KnowledgeStatus = "seen" | "learning" | "known";
+export type KnowledgeMap = Map<string, KnowledgeStatus>;
+
+export async function getWordKnowledge(
+  lemma: string,
+  lang = "es",
+  scope?: DbScope,
+): Promise<{ status: KnowledgeStatus } | null> {
+  const words = await listKnowledge(lang, scope);
+  const entry = words.find((w) => w.lemma.toLowerCase() === lemma.toLowerCase());
+  if (!entry) return null;
+  const status: KnowledgeStatus = entry.known ? "known" : (entry.status === "familiar" ? "seen" : "learning");
+  return { status };
+}
+
+export async function markWordStatus(
+  lemma: string,
+  status: KnowledgeStatus,
+  lang = "es",
+  scope?: DbScope,
+): Promise<void> {
+  const known = status === "known";
+  await saveKnowledge(
+    {
+      language: lang,
+      lemma: lemma.toLowerCase(),
+      known,
+      source: "reader",
+      status: status === "seen" ? "familiar" : (known ? "known" : "unknown"),
+    },
+    scope,
+  );
+}
+
+export async function getAllKnowledgeMap(
+  lang = "es",
+  scope?: DbScope,
+): Promise<KnowledgeMap> {
+  const words = await listKnowledge(lang, scope);
+  const map: KnowledgeMap = new Map();
+  for (const w of words) {
+    if (w.deleted) continue;
+    const status: KnowledgeStatus = w.known ? "known" : (w.status === "familiar" ? "seen" : "learning");
+    map.set(w.lemma.toLowerCase(), status);
+  }
+  return map;
 }
 
 

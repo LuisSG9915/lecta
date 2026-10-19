@@ -42,6 +42,32 @@ import {
   type MicroStoryResult,
 } from "../lib/learn";
 import { PracticeCompanionHeader } from "./PracticeCompanionHeader";
+import { scheduleReview, Rating, type Card, type Grade } from "../lib/fsrs";
+
+export type ReviewState = Card;
+export { Rating };
+
+export function simulateNextReview(
+  currentReview: ReviewState | undefined,
+  rating: Rating,
+  now = new Date(),
+): Card {
+  return scheduleReview(currentReview, rating as unknown as Grade, now);
+}
+
+export function formatFsrsIntervalPreview(
+  currentReview: ReviewState | undefined,
+  rating: Rating,
+): string {
+  // Simula el siguiente intervalo usando el motor FSRS ya presente en la app
+  const sim = simulateNextReview(currentReview, rating);
+  const days = sim.scheduled_days;
+  if (days === 0) return "Hoy (10 min)";
+  if (days === 1) return "Mañana (1 d)";
+  if (days < 30) return `En ${days} días`;
+  const months = Math.round(days / 30);
+  return `En ~${months} ${months === 1 ? "mes" : "meses"}`;
+}
 
 // Contenido recién abierto de un cofre: la ropa ofrece ponérsela sin
 // salir del panel y el resto se retira solo a los segundos.
@@ -85,6 +111,8 @@ export interface GamePanelProps {
   wordsReviewedCount?: number;
   emptyReview?: boolean;
   currentBookTitle?: string;
+  currentReview?: ReviewState;
+  onRate?: (rating: Rating) => void;
 }
 
 export function GamePanel(props: GamePanelProps) {
@@ -103,6 +131,8 @@ export function GamePanel(props: GamePanelProps) {
     wordsReviewedCount,
     emptyReview,
     currentBookTitle,
+    currentReview,
+    onRate,
   } = props;
   const {
     enabled,
@@ -546,6 +576,32 @@ export function GamePanel(props: GamePanelProps) {
             >
               Volver a mi lectura
             </button>
+          </div>
+        </div>
+      ) : null}
+
+      {onRate ? (
+        <div className="game-rating-bar" role="group" aria-label="Calificar dificultad de recuerdo">
+          <span className="game-rating-prompt">¿Qué tan bien la recordaste?</span>
+          <div className="game-rating-buttons">
+            {(
+              [
+                { rating: Rating.Again, label: "1 · Otra vez", tone: "again" },
+                { rating: Rating.Hard, label: "2 · Difícil", tone: "hard" },
+                { rating: Rating.Good, label: "3 · Bien", tone: "good" },
+                { rating: Rating.Easy, label: "4 · Fácil", tone: "easy" },
+              ] as const
+            ).map(({ rating, label, tone }) => (
+              <button
+                key={rating}
+                type="button"
+                className={`game-rate-btn game-rate-${tone}`}
+                onClick={() => onRate(rating)}
+              >
+                <span className="game-rate-label">{label}</span>
+                <span className="game-rate-sub">{formatFsrsIntervalPreview(currentReview, rating)}</span>
+              </button>
+            ))}
           </div>
         </div>
       ) : null}

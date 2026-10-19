@@ -46,10 +46,20 @@ export function formatCompactProgress(raw: string): { compact: string; title: st
   return { compact, title: raw };
 }
 
+export function getCoverageBandClass(pct: number): string {
+  if (pct >= 95) return "is-easy"; // Verde suave / óptimo (95-100%)
+  if (pct >= 90) return "is-moderate"; // Amarillo / zona de desarrollo próximo
+  return "is-challenging"; // Naranja / desafiante (< 90%)
+}
+
 export interface SmartReaderDockProps {
   /** Texto legible de progreso (ej. "Pág. 12 de 45 · ~3 min" o "Cap. 2 de 8 · ~15 min") */
   progressText: string;
   errorText?: string;
+
+  /** Cobertura léxica del capítulo (porcentaje 0-100) */
+  coveragePct?: number | null;
+  onOpenGlossary?: () => void;
 
   /** Estado de Lienzo Puro (ocultar barras para lectura inmersiva) */
   isPureCanvas: boolean;
@@ -92,6 +102,8 @@ export interface SmartReaderDockProps {
 export default function SmartReaderDock({
   progressText,
   errorText,
+  coveragePct,
+  onOpenGlossary,
   isPureCanvas,
   onExitPureCanvas,
   activePreset,
@@ -452,6 +464,19 @@ export default function SmartReaderDock({
               </div>
 
               <div className="dock-actions-group">
+                {coveragePct != null && !Number.isNaN(coveragePct) && (
+                  <button
+                    type="button"
+                    className={`smart-dock-btn smart-dock-pill ${getCoverageBandClass(coveragePct)}`}
+                    onClick={onOpenGlossary}
+                    aria-label={`Vocabulario conocido del capítulo: ${Math.round(coveragePct)}%. Toca para abrir el glosario`}
+                    title="Ver palabras de este capítulo"
+                  >
+                    <span className="smart-dock-pill-label">Vocab.</span>{" "}
+                    <strong>{Math.round(coveragePct)}%</strong>
+                  </button>
+                )}
+
                 {/* Selector de los 3 Modos Humanos */}
                 <button
                   type="button"

@@ -16,7 +16,7 @@ import type { ChapterCatalog, ChapterRange } from "./chapters";
 import { extractUniqueWords } from "./segmenter";
 import { isStopword } from "../../shared/stopwords";
 import { isWordToken, menteBaseForms } from "../../shared/word-form";
-import { cliticBaseForms } from "./knowledge";
+import { cliticBaseForms, type KnowledgeMap } from "./knowledge";
 import { capitalOnlyForms } from "./section-words";
 import { sanitizeSectionDocument } from "./sanitize";
 import { batchLookup, type BatchLookupResult, type LexiconEntry } from "./lexicon";
@@ -28,12 +28,14 @@ export type ChapterAnalysis =
       entries: Record<string, LexiconEntry[]>;
       capitalOnly: Set<string>;
       text: string;
+      coveragePct?: number;
+      unknownKeyWords?: string[];
+      totalWords?: number;
+      uniqueWords?: number;
     }
-  | { state: "error"; error: string }
-  // El libro cambió o se canceló mientras corría: el resultado no es
-  // confiable y no queda en caché — el próximo intento rehace todo.
-  | { state: "stale" }
-  | { state: "cancelled" };
+  | { state: "error"; error: string; coveragePct?: number; unknownKeyWords?: string[] }
+  | { state: "stale"; coveragePct?: number; unknownKeyWords?: string[] }
+  | { state: "cancelled"; coveragePct?: number; unknownKeyWords?: string[] };
 
 export type SerializedChapterAnalysis = {
   version: 1;
@@ -65,6 +67,8 @@ export function deserializeChapterAnalysis(raw: string): ChapterAnalysis | null 
       entries: data.entries ?? {},
       capitalOnly: new Set(data.capitalOnly ?? []),
       text: data.text ?? "",
+      coveragePct: 100,
+      unknownKeyWords: [],
     };
   } catch {
     return null;
@@ -181,6 +185,8 @@ export function createChapterAnalyzer(
         entries: result.entries,
         capitalOnly: capitalOnlyForms(words),
         text,
+        coveragePct: 100,
+        unknownKeyWords: [],
       };
     } catch (error) {
       return {
@@ -260,4 +266,108 @@ export function createChapterAnalyzer(
     cached: (targetId) => cache.get(targetId),
     clear: () => cache.clear(),
   };
+}
+
+export function computeChapterAnalysis(
+  text: string,
+  knowledgeMap: KnowledgeMap,
+): ChapterAnalysis {
+  if (!text.trim()) {
+    return {
+      state: "ready",
+      forms: [],
+      entries: {},
+      capitalOnly: new Set(),
+      text: "",
+      coveragePct: 100,
+      unknownKeyWords: [],
+      totalWords: 0,
+      uniqueWords: 0,
+    };
+  }
+
+  const segmenter = new Intl.Segmenter("es", { granularity: "word" });
+  const segments = [...segmenter.segment(text)].filter((s) => s.isWordLike);
+  const totalWords = segments.length;
+  const wordFreq = new Map<string, number>();
+
+  for (const seg of segments) {
+    const w = seg.segment.toLowerCase();
+    if (w.length < 3 || isStopword(w)) continue;
+    wordFreq.set(w, (wordFreq.get(w) ?? 0) + 1);
+  }
+
+  const uniqueWords = wordFreq.size;
+  if (uniqueWords === 0) {
+    return {
+      state: "ready",
+      forms: [],
+      entries: {},
+      capitalOnly: new Set(),
+      text,
+      coveragePct: 100,
+      unknownKeyWords: [],
+      totalWords,
+      uniqueWords: 0,
+    };
+  }
+
+  let knownCount = 0;
+  const unknownKeyWords: string[] = [];
+
+  const sorted = [...wordFreq.entries()].sort((a, b) => b[1] - a[1]);
+
+  for (const [w] of sorted) {
+    const status = knowledgeMap.get(w);
+    if (status === "known" || status === "seen") {
+      knownCount++;
+    } else {
+      if (unknownKeyWords.length < 15) {
+        unknownKeyWords.push(w);
+      }
+    }
+  }
+
+  const coveragePct = Math.max(0, Math.min(100, Math.round((knownCount / uniqueWords) * 100)));
+
+  return {
+    state: "ready",
+    forms: sorted.map(([w]) => w),
+    entries: {},
+    capitalOnly: new Set(),
+    text,
+    coveragePct,
+    unknownKeyWords,
+    totalWords,
+    uniqueWords,
+  };
+}
+
+export function shouldAutoShowPreview(
+  chapterPreviewMode: string | boolean | undefined,
+  bookId: string,
+  sectionIndex: number,
+  _coveragePct?: number,
+  unknownKeyWordsCount = 0,
+): boolean {
+  if (chapterPreviewMode === "off" || chapterPreviewMode === false) return false;
+  if (unknownKeyWordsCount <= 0) return false;
+  const key = `lecta:previewed:${bookId}:${sectionIndex}`;
+  try {
+    if (sessionStorage.getItem(key) === "1" || localStorage.getItem(key) === "1") {
+      return false;
+    }
+  } catch {
+    // ignore storage errors
+  }
+  return true;
+}
+
+export function markSectionPreviewed(bookId: string, sectionIndex: number): void {
+  const key = `lecta:previewed:${bookId}:${sectionIndex}`;
+  try {
+    sessionStorage.setItem(key, "1");
+  } catch {
+    // ignore storage errors
+  }
 }

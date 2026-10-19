@@ -2,11 +2,15 @@ import {
   captureDbScope,
   isDbScopeActive,
   listAllSavedWords,
+  listSavedWords,
   putSavedWord,
   removeSavedWord,
   saveSessionValue,
+  saveWordWithKnowledge,
   type DbScope,
   type SavedWord,
+  type VocabEntry,
+  type WordMeaning,
 } from "./idb";
 import { accountFetch } from "./account-fetch";
 
@@ -117,4 +121,96 @@ export async function syncSavedWords(scope?: DbScope) {
   // una sincronización parcial no cuenta como «al día».
   if (allOk) await saveSessionValue(LAST_SYNC_KEY, String(Date.now()), bound);
   return allOk ? pulled : null;
+}
+
+export async function findSavedEntry(
+  word: string,
+  bookId?: string,
+  scope?: DbScope,
+): Promise<VocabEntry | null> {
+  const bound = scope ?? captureDbScope();
+  const words = await listSavedWords(undefined, bound);
+  const found = words.find(
+    (w) =>
+      w.form.toLowerCase() === word.toLowerCase() &&
+      (!bookId || !w.bookHash || w.bookHash === bookId),
+  );
+  if (!found) return null;
+  return {
+    ...found,
+    id: found.key,
+    note: found.contextSnippet ?? "",
+  };
+}
+
+export async function saveVocabEntry(
+  input: {
+    word: string;
+    lemma: string;
+    bookId?: string;
+    bookTitle?: string;
+    sentence?: string;
+    cfi?: string;
+    meaning?: WordMeaning;
+    note?: string;
+  },
+  scope?: DbScope,
+): Promise<{ entry: VocabEntry }> {
+  const bound = scope ?? captureDbScope();
+  const def = input.meaning?.ContextualMeaning || input.meaning?.definitions?.[0] || "";
+  const { word: saved } = await saveWordWithKnowledge(
+    {
+      word: {
+        form: input.word,
+        lemma: input.lemma,
+        meaning: def,
+        language: "es",
+        context: input.sentence,
+        bookHash: input.bookId,
+        bookTitle: input.bookTitle,
+        contextSnippet: input.note,
+        priority: true,
+      },
+      knowledge: {
+        language: "es",
+        lemma: input.lemma,
+        known: false,
+        source: "saved",
+        status: "unknown",
+      },
+    },
+    bound,
+  );
+  const entry: VocabEntry = {
+    ...saved,
+    id: saved.key,
+    note: input.note,
+  };
+  return { entry };
+}
+
+export async function removeVocabEntry(id: string, scope?: DbScope): Promise<void> {
+  await removeWord(id, scope);
+}
+
+export async function updateVocabNote(
+  id: string,
+  note: string,
+  scope?: DbScope,
+): Promise<VocabEntry | null> {
+  const bound = scope ?? captureDbScope();
+  const words = await listAllSavedWords(undefined, bound);
+  const found = words.find((w) => w.key === id);
+  if (!found) return null;
+  const updated: SavedWord = {
+    ...found,
+    contextSnippet: note,
+    updatedAt: Date.now(),
+  };
+  await putSavedWord(updated, bound);
+  return {
+    ...updated,
+    id: updated.key,
+    note,
+  };
 }

@@ -78,3 +78,5 @@ export function newCard(now = new Date(), source?: CaptureSource): Card {
 export function isDue(card: Card | undefined, now = new Date()) {
   return !card || new Date(card.due).getTime() <= now.getTime();
 }
+
+export { scheduleCapturedReview } from "./reviews";

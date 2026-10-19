@@ -31,7 +31,6 @@ describe("ThemeMenu", () => {
 
     const swatches = host.querySelectorAll(".swatch");
     expect(swatches.length).toBeGreaterThanOrEqual(4);
-    expect(host.querySelector(".theme-sheet-container")).toBeNull();
 
     await act(async () => {
       (swatches[0] as HTMLButtonElement).click();
@@ -39,7 +38,7 @@ describe("ThemeMenu", () => {
     expect(onChange).toHaveBeenCalledTimes(1);
   });
 
-  it("renderiza los 3 bloques visuales cuando se proporcionan settings", () => {
+  it("renderiza controles con lenguaje humano sin jerga cognitiva cuando se proporcionan settings", () => {
     const onChange = vi.fn();
     const onUpdateSettings = vi.fn();
     act(() => {
@@ -53,68 +52,43 @@ describe("ThemeMenu", () => {
       );
     });
 
-    const container = host.querySelector(".theme-sheet-container");
-    expect(container).toBeTruthy();
+    const menu = host.querySelector('.theme-menu[role="dialog"]');
+    expect(menu).toBeTruthy();
 
-    const sections = host.querySelectorAll(".theme-sheet-section");
-    expect(sections.length).toBe(3);
+    // Rótulos humanos de diseño
+    expect(host.textContent).toContain("Color de página");
+    expect(host.textContent).toContain("Letra");
+    expect(host.textContent).toContain("Tamaño de letra");
+    expect(host.textContent).toContain("Espacio entre líneas");
+    expect(host.textContent).toContain("Ancho de página");
 
-    // Bloque 1: Tema y color
-    expect(sections[0].textContent).toContain("Tema y color");
-    expect(sections[0].querySelectorAll(".swatch").length).toBeGreaterThanOrEqual(4);
+    // Switches con lenguaje claro (sin jerga psicométrica ni biónica)
+    expect(host.textContent).toContain("Regla guía de lectura");
+    expect(host.textContent).toContain("Ilumina la línea actual para no perder el renglón");
 
-    // Bloque 2: Tipografía y ritmo
-    expect(sections[1].textContent).toContain("Tipografía y ritmo");
-    expect(sections[1].querySelector(".font-carousel")).toBeTruthy();
-    expect(sections[1].textContent).toContain("Tamaño de letra");
-    expect(sections[1].textContent).toContain("Interlineado");
-    expect(sections[1].textContent).toContain("Márgenes");
+    expect(host.textContent).toContain("Un párrafo a la vez");
+    expect(host.textContent).toContain("Atenúa el resto del texto para concentrarte en el bloque actual");
 
-    // Bloque 3: Ayudas de enfoque
-    expect(sections[2].textContent).toContain("Ayudas de enfoque");
-    const cards = sections[2].querySelectorAll(".reader-mode-card");
-    expect(cards.length).toBe(3);
-    expect(cards[0].textContent).toContain("Lectura Limpia");
-    expect(cards[1].textContent).toContain("Enfoque TDAH");
-    expect(cards[2].textContent).toContain("Ritmo Guiado");
+    expect(host.textContent).toContain("Guía visual de sílabas");
+    expect(host.textContent).toContain("Destaca el inicio de cada palabra para leer con más agilidad");
 
-    expect(sections[2].textContent).toContain("Regla de lectura");
-    expect(sections[2].textContent).toContain("Ilumina solo la línea actual");
-    expect(sections[2].textContent).toContain("Párrafos por bloques");
-    expect(sections[2].textContent).toContain("Agrupa frases largas para leer sin fatiga");
-    expect(sections[2].textContent).toContain("Apoyo bilingüe");
-    expect(sections[2].textContent).toContain("Muestra traducciones suaves en pasajes difíciles");
+    expect(host.textContent).toContain("Dividir palabras largas");
+    expect(host.textContent).toContain("Separa con guiones sutiles las palabras complejas");
+
+    expect(host.textContent).toContain("Agrupar frases por idea");
+    expect(host.textContent).toContain("Separa el texto en pausas naturales para facilitar la comprensión");
+
+    expect(host.textContent).toContain("Traducción al inglés por párrafo");
+    expect(host.textContent).toContain("Muestra una traducción discreta debajo de cada párrafo");
+
+    expect(host.textContent).toContain("Sugerir palabras del capítulo");
+    expect(host.textContent).toContain("Muestra un resumen de vocabulario clave al comenzar un nuevo capítulo");
+
+    expect(host.textContent).toContain("Modo sin mascota");
+    expect(host.textContent).toContain("Oculta las animaciones del búho para una lectura completamente sobria");
   });
 
-  it("seleccionar un preset en el Bloque 3 actualiza settings", async () => {
-    const onUpdateSettings = vi.fn();
-    act(() => {
-      root.render(
-        h(ThemeMenu, {
-          value: "blanco",
-          onChange: vi.fn(),
-          settings: READER_DEFAULTS,
-          onUpdateSettings,
-        }),
-      );
-    });
-
-    const cards = host.querySelectorAll<HTMLButtonElement>(".reader-mode-card");
-    // Clic en Enfoque TDAH
-    await act(async () => {
-      cards[1].click();
-    });
-
-    expect(onUpdateSettings).toHaveBeenCalledWith(
-      expect.objectContaining({
-        readingPreset: "adhd",
-        paragraphFocus: true,
-        bionicAnchors: true,
-      }),
-    );
-  });
-
-  it("cambiar los switches individuales en el Bloque 3 conmuta a custom", async () => {
+  it("cambiar los switches individuales actualiza settings adecuadamente", async () => {
     const onUpdateSettings = vi.fn();
     const onToggleFocusRuler = vi.fn();
     act(() => {
@@ -129,10 +103,10 @@ describe("ThemeMenu", () => {
       );
     });
 
-    const switches = host.querySelectorAll<HTMLButtonElement>('.theme-focus-switches button[role="switch"]');
-    expect(switches.length).toBe(3);
+    const switches = host.querySelectorAll<HTMLButtonElement>('button[role="switch"]');
+    expect(switches.length).toBe(8);
 
-    // Switch 0: Regla de lectura
+    // Switch 0: Regla guía de lectura
     await act(async () => {
       switches[0].click();
     });
@@ -140,28 +114,37 @@ describe("ThemeMenu", () => {
     expect(onUpdateSettings).toHaveBeenCalledWith(
       expect.objectContaining({
         focusRuler: true,
-        readingPreset: "custom",
       }),
     );
 
-    // Switch 1: Párrafos por bloques
+    // Switch 1: Un párrafo a la vez
     await act(async () => {
       switches[1].click();
     });
     expect(onUpdateSettings).toHaveBeenCalledWith(
       expect.objectContaining({
         paragraphFocus: true,
-        readingPreset: "custom",
       }),
     );
 
-    // Switch 2: Apoyo bilingüe
+    // Switch 2: Guía visual de sílabas
     await act(async () => {
       switches[2].click();
     });
     expect(onUpdateSettings).toHaveBeenCalledWith(
       expect.objectContaining({
-        bilingualScaffoldingMode: "off",
+        bionicReading: true,
+        bionicAnchors: true,
+      }),
+    );
+
+    // Switch 7: Modo sin mascota (companionEnabled = false)
+    await act(async () => {
+      switches[7].click();
+    });
+    expect(onUpdateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        companionEnabled: false,
       }),
     );
   });

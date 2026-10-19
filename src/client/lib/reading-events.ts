@@ -285,3 +285,19 @@ export function countSavedInRange(
   }
   return forms.size;
 }
+
+export async function recordEvent(
+  kind: string,
+  payload: { bookId: string; word?: string; [key: string]: unknown },
+  scope?: DbScope,
+): Promise<void> {
+  await trackReadingEvent(
+    {
+      kind: (kind as any) || "word_lookup",
+      bookHash: payload.bookId,
+      visitId: "v0",
+      form: payload.word || "",
+    } as any,
+    scope,
+  ).catch(() => {});
+}

@@ -17,7 +17,7 @@ const Journey = lazy(() => import("./components/Journey"));
 import Account from "./components/Account";
 import Calibration from "./components/Calibration";
 import { CompanionProvider } from "./components/CompanionProvider";
-import Shelf, { type ShelfItem } from "./components/Shelf";
+import Shelf, { type ShelfItem, type BookLike } from "./components/Shelf";
 import BookCover from "./components/BookCover";
 import Dialog from "./components/Dialog";
 import AppNav, { type NavDestination } from "./components/AppNav";
@@ -134,6 +134,8 @@ export default function App() {
   // primer libro; desde Cuenta se reabre sin libro pendiente.
   const [calibrationWords, setCalibrationWords] = useState<CalibrationWord[] | null>(null);
   const [calibrationLang, setCalibrationLang] = useState("es");
+  const [calibrationDone, setCalibrationDone] = useState(false);
+  const [readerInitialWord, setReaderInitialWord] = useState<string | undefined>(undefined);
   const bookRelease = useRef<OverlayHandle | null>(null);
   const panelRelease = useRef<OverlayHandle | null>(null);
   const calibrationRelease = useRef<OverlayHandle | null>(null);
@@ -239,6 +241,7 @@ export default function App() {
     calibrationScope.current = null;
     setCalibrationWords(null);
     if (markDone) {
+      setCalibrationDone(true);
       void saveSessionValue(calibrationDoneKey(calibrationLang), "1", scope).catch(
         () => undefined,
       );
@@ -315,6 +318,7 @@ export default function App() {
   };
 
   const closeReader = () => {
+    setReaderInitialWord(undefined);
     startSafeViewTransition(() => {
       panelRelease.current?.release();
       panelRelease.current = null;
@@ -338,7 +342,8 @@ export default function App() {
     void Promise.all([
       listSavedWords(undefined, scope).catch(() => []),
       loadSessionValue(COMPANION_LETTERS_KEY, scope).catch(() => null),
-    ]).then(([savedWords, rawLetters]) => {
+      loadSessionValue(CALIBRATION_DONE_KEY, scope).catch(() => null),
+    ]).then(([savedWords, rawLetters, rawCalibration]) => {
       if (cancelled) return;
       let count = 0;
       for (const w of savedWords) {
@@ -347,6 +352,7 @@ export default function App() {
       setDueReviewsCount(count);
       const letters = parseCompanionLetters(rawLetters);
       setHasJourneyAlert(letters.some((l) => !l.read));
+      setCalibrationDone(rawCalibration === "1");
     });
     return () => {
       cancelled = true;
@@ -918,6 +924,34 @@ export default function App() {
   const openShelfItem = (item: ShelfItem) =>
     item.remoteOnly ? void openRemoteBook(item) : void openStoredBook(item);
 
+  const handleSelectBook = (
+    b: BookLike,
+    initialWord?: string,
+  ) => {
+    setReaderInitialWord(initialWord);
+    startSafeViewTransition(() => {
+      startTransition(() => {
+        if ("file" in b && b.file) {
+          openBook({ hash: b.hash ?? "", name: b.name ?? b.file.name, file: b.file });
+        } else if ("hash" in b && b.hash) {
+          const item = library.find((lib) => lib.hash === b.hash) ?? (b as ShelfItem);
+          void openShelfItem(item);
+        }
+      });
+    });
+  };
+
+  const handleOpenBookPrep = (b: BookLike) => {
+    if ("hash" in b && b.hash) {
+      const item = library.find((lib) => lib.hash === b.hash) ?? (b as ShelfItem);
+      void openShelfItem(item);
+    }
+  };
+
+  const handleOpenCalibration = () => {
+    void requestCalibration();
+  };
+
   // El aviso de conflicto es una capa del historial como las demás:
   // «atrás» lo cierra sin abrir el libro. Si elige abrir, su entrada
   // pasa a ser la del libro (swap, como la calibración): así release()
@@ -1022,6 +1056,7 @@ export default function App() {
               vocabVersion={vocabVersion}
               onRequestCalibration={requestCalibration}
               signedIn={Boolean(sessionUserId)}
+              readerInitialWord={readerInitialWord}
             />
           </Suspense>
 
@@ -1049,18 +1084,31 @@ export default function App() {
               <Activity mode={activeNav === "shelf" ? "visible" : "hidden"}>
                 <Shelf
                   library={library}
+                  books={library}
                   checking={checkingLibrary}
+                  activeRead={lastReadBook}
+                  vocabCount={library.length}
+                  dueReviewsCount={dueReviewsCount}
+                  hasCalibrated={calibrationDone || Boolean(calibrationWords)}
                   onOpen={openShelfItem}
+                  onSelect={handleSelectBook}
+                  onPrepareBook={handleOpenBookPrep}
+                  onStartCalibration={handleOpenCalibration}
                   onRemove={removeBook}
                   onAdd={(file) => void selectBook(file)}
                   onLibraryChange={() => void refreshLibrary()}
+                  onBooksChange={() => void refreshLibrary()}
                   onGetCatalogBook={getCatalogBook}
                   onDownloadBook={(item) => void openRemoteBook(item, false)}
                   downloadingHash={downloadingHash}
                   activityVersion={activityVersion}
-                  onOpenJourney={() => openJourneyFrom("shelf")}
+                  onOpenVocab={openNotebookOverlay}
                   onOpenPractice={() => navigateTo("vocabulary")}
+                  onOpenAccount={() => navigateTo("account")}
+                  onOpenJourney={() => openJourneyFrom("shelf")}
                   onRequestCalibration={() => void requestCalibration()}
+                  user={session?.user ?? null}
+                  syncing={false}
                 />
               </Activity>
 

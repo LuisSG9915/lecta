@@ -137,3 +137,21 @@ export async function syncPositions(scope?: DbScope): Promise<{
   await saveSessionValue(POSITIONS_SYNC_KEY, String(Date.now()), bound);
   return { pulled, conflicts };
 }
+
+export async function pushPosition(
+  bookId: string,
+  cfi: string,
+  fraction: number,
+  scope?: DbScope,
+): Promise<boolean> {
+  const pos: SavedBookPosition = {
+    bookHash: bookId,
+    sectionIndex: 0,
+    scrollTop: 0,
+    ratio: fraction,
+    progress: fraction,
+    anchor: cfi,
+    updatedAt: Date.now(),
+  };
+  return pushPositionsToServer([pos], scope);
+}

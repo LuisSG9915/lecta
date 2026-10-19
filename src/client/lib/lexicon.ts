@@ -6,6 +6,7 @@ import {
   saveCachedLexicon,
   saveCachedLexiconBatch,
   type DbScope,
+  type WordMeaning,
 } from "./idb";
 import {
   calibrationFallbackDefinition,
@@ -46,7 +47,7 @@ function getCalibrationBankFallbackEntry(form: string, language: string): Lexico
   };
 }
 
-export async function lookupWord(
+async function lookupWordRaw(
   form: string,
   language = "es",
   scope?: DbScope,
@@ -174,6 +175,39 @@ export async function lookupWord(
       offline: true,
     };
   }
+}
+
+function enrichResult(res: LookupResult, form: string): LookupResult & WordMeaning {
+  const firstEntry = res.ok && res.entries.length ? res.entries[0] : undefined;
+  const lemma = firstEntry?.lemma ?? form;
+  const partOfSpeech = firstEntry?.pos ?? undefined;
+  const defs = firstEntry?.senses?.map((s) => s.definition) ?? [];
+  const examples = (firstEntry?.senses?.map((s) => s.example).filter(Boolean) as string[]) ?? [];
+  const contextual = defs[0] || "";
+
+  return {
+    ...res,
+    word: form,
+    lemma,
+    partOfSpeech,
+    ContextualMeaning: contextual,
+    definitions: defs,
+    examples,
+    source: 'offline' in res && res.offline ? "offline" : "catalog",
+  };
+}
+
+export async function lookupWord(
+  form: string,
+  sentenceOrLang = "es",
+  scope?: DbScope,
+): Promise<LookupResult & Partial<WordMeaning>> {
+  const language =
+    sentenceOrLang && sentenceOrLang.length <= 5 && !sentenceOrLang.includes(" ")
+      ? sentenceOrLang
+      : "es";
+  const raw = await lookupWordRaw(form, language, scope);
+  return enrichResult(raw, form);
 }
 
 export type BatchLookupResult =

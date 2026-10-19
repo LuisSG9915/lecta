@@ -69,3 +69,21 @@ export function markWords(
     }
   }
 }
+
+export function clearChapterMarks(doc: Document): void {
+  if (!doc?.body) return;
+  doc.querySelectorAll(`.${SAVED_CLASS}, .lecta-saved-word, .${PREDICTED_CLASS}, .lecta-unknown-word`).forEach((mark) => {
+    mark.replaceWith(...mark.childNodes);
+  });
+  doc.body.normalize();
+}
+
+export function applyChapterMarks(
+  doc: Document,
+  wordsToMark: Set<string>,
+  savedWords: Set<string> | Map<string, MarkLevel>,
+  language = "es",
+): void {
+  if (!doc?.body) return;
+  markWords(doc.body, savedWords, wordsToMark, language);
+}

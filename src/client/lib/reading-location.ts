@@ -174,3 +174,29 @@ export function charOffsetAtViewTop(
   return charOffsetOfElementInChapter(container, visible, chapterText);
 }
 
+export interface BookLocationData {
+  cfi: string;
+  fraction?: number;
+  updatedAt?: number;
+}
+
+export function getBookLocation(bookId: string): BookLocationData | null {
+  try {
+    const raw = typeof localStorage !== "undefined" ? localStorage.getItem(`lecta:location:${bookId}`) : null;
+    if (!raw) return null;
+    return JSON.parse(raw) as BookLocationData;
+  } catch {
+    return null;
+  }
+}
+
+export function saveBookLocation(bookId: string, loc: BookLocationData): void {
+  try {
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem(`lecta:location:${bookId}`, JSON.stringify(loc));
+    }
+  } catch {
+    // ignore
+  }
+}
+

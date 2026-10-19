@@ -123,7 +123,7 @@ vi.mock("idb", () => ({
 import * as idb from "../lib/idb";
 import * as game from "../lib/game";
 import { CompanionProvider } from "./CompanionProvider";
-import { GamePanel } from "./GamePanel";
+import { GamePanel, formatFsrsIntervalPreview, Rating } from "./GamePanel";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
   true;
@@ -606,6 +606,56 @@ describe("GamePanel", () => {
     expect(returnBtn).toBeTruthy();
     click(returnBtn!);
     expect(onReturnToReading).toHaveBeenCalledTimes(1);
+  });
+
+  it("formatFsrsIntervalPreview calcula las etiquetas temporales correctas para FSRS", () => {
+    // Para Rating.Again en tarjeta nueva: 0 días -> 'Hoy (10 min)'
+    expect(formatFsrsIntervalPreview(undefined, Rating.Again)).toBe("Hoy (10 min)");
+
+    // Para tarjeta ya establecida en repaso
+    const settledCard: any = {
+      due: new Date(),
+      stability: 10,
+      difficulty: 3,
+      elapsed_days: 5,
+      scheduled_days: 5,
+      reps: 3,
+      lapses: 0,
+      state: 2,
+      last_review: new Date(Date.now() - 5 * 86400000),
+    };
+    const previewSettled = formatFsrsIntervalPreview(settledCard, Rating.Good);
+    expect(previewSettled).toMatch(/^(Mañana \(1 d\)|En \d+ días|En ~\d+ mes(es)?)$/);
+  });
+
+  it("renderiza la barra de calificación FSRS con previsualización de intervalos cuando se provee onRate", async () => {
+    const onRate = vi.fn();
+    act(() =>
+      root.render(
+        h(CompanionProvider, {
+          userId: null,
+          children: h(GamePanel, {
+            onRate,
+          }),
+        }),
+      ),
+    );
+    await flush();
+
+    const ratingBar = host.querySelector(".game-rating-bar");
+    expect(ratingBar).not.toBeNull();
+    expect(ratingBar?.textContent).toContain("¿Qué tan bien la recordaste?");
+
+    const buttons = host.querySelectorAll<HTMLButtonElement>(".game-rate-btn");
+    expect(buttons).toHaveLength(4);
+    expect(buttons[0].textContent).toContain("1 · Otra vez");
+    expect(buttons[0].textContent).toContain("Hoy (10 min)");
+    expect(buttons[1].textContent).toContain("2 · Difícil");
+    expect(buttons[2].textContent).toContain("3 · Bien");
+    expect(buttons[3].textContent).toContain("4 · Fácil");
+
+    click(buttons[2]);
+    expect(onRate).toHaveBeenCalledWith(Rating.Good);
   });
 });
 

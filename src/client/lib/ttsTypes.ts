@@ -12,7 +12,7 @@ export const TTS_ALL_RATES: TtsRate[] = [0.8, 0.9, 1, 1.15, 1.2, 1.3];
 // posterior (gated por foco + regla activos).
 export type TtsHighlightMode = "sentence";
 
-export type TtsStatus = "idle" | "preparing" | "speaking" | "paused" | "stopping";
+export type TtsStatus = "idle" | "preparing" | "speaking" | "playing" | "paused" | "stopping";
 
 export type TtsPauseReason =
   | "user"
@@ -129,4 +129,12 @@ export const TTS_IDLE: TtsSnapshot = {
   kittenVoice: "expr-voice-2-f",
   activeEngine: "browser",
 };
+
+export interface TtsVoiceOption {
+  id: string;
+  name: string;
+  lang: string;
+  isNeural?: boolean;
+  isDefault?: boolean;
+}
 

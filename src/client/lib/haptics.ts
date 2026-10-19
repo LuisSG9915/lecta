@@ -36,3 +36,11 @@ export function triggerPurrHaptic() {
     }
   }
 }
+
+export function hapticLight(): void {
+  triggerHaptic("light");
+}
+
+export function hapticSuccess(): void {
+  triggerHaptic("success");
+}

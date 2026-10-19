@@ -88,4 +88,9 @@ describe("Consolidación Episódica FSRS (Track 10)", () => {
     expect(Number.isFinite(r2.stability)).toBe(true);
     expect(Number.isFinite(r2.difficulty)).toBe(true);
   });
+
+  it("exporta scheduleCapturedReview para programar palabras capturadas intencionalmente", async () => {
+    const { scheduleCapturedReview } = await import("./fsrs");
+    expect(typeof scheduleCapturedReview).toBe("function");
+  });
 });
