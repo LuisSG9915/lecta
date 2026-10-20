@@ -316,6 +316,75 @@ describe("WordPanel - Acciones Rápidas (Fase 4.3)", () => {
     );
   });
 
+  it("en compactMode renderiza la cápsula rápida word-capsule con acciones, hint contextual y botón cerrar", async () => {
+    const onClose = vi.fn();
+    render(
+      h(WordPanel, {
+        word: "galicismo",
+        language: "es",
+        bookHash: "book123",
+        compactMode: true,
+        onClose,
+        onSaved: vi.fn(),
+      }),
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const capsule = host.querySelector(".word-capsule");
+    expect(capsule).not.toBeNull();
+    expect(capsule?.querySelector(".word-capsule__lemma")?.textContent).toBe("galicismo");
+    expect(capsule?.querySelector(".word-capsule__context-hint")?.textContent).toContain("Ver explicación en esta frase");
+    expect(capsule?.querySelector(".word-capsule__icon-btn")).not.toBeNull();
+    expect(capsule?.querySelector(".word-capsule__save-btn")).not.toBeNull();
+
+    const closeBtn = capsule?.querySelector<HTMLButtonElement>(".word-capsule__close-btn");
+    expect(closeBtn).not.toBeNull();
+    await act(async () => {
+      click(closeBtn!);
+    });
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it("renderiza la cabecera responsiva de 2 filas con botón × fijo en la fila superior", async () => {
+    const onClose = vi.fn();
+    render(
+      h(WordPanel, {
+        word: "efimero",
+        context: "Un momento efimero.",
+        language: "es",
+        bookHash: "book123",
+        onClose,
+        onSaved: vi.fn(),
+      }),
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const header = host.querySelector(".word-panel__header");
+    expect(header).not.toBeNull();
+
+    const topRow = header?.querySelector(".word-panel__top-row");
+    expect(topRow).not.toBeNull();
+    expect(topRow?.querySelector(".word-panel__word")?.textContent).toBe("efimero");
+    expect(topRow?.querySelector(".word-panel__audio-btn")).not.toBeNull();
+
+    const closeBtn = topRow?.querySelector<HTMLButtonElement>(".word-panel__close-btn");
+    expect(closeBtn).not.toBeNull();
+    await act(async () => {
+      click(closeBtn!);
+    });
+    expect(onClose).toHaveBeenCalled();
+
+    const statusRow = header?.querySelector(".word-panel__status-row");
+    expect(statusRow).not.toBeNull();
+    expect(statusRow?.querySelector(".word-panel__save-cta")).not.toBeNull();
+  });
+
   it("en compactMode renderiza la micro-glosa ultracompacta con silabeo y permite expandir", async () => {
     render(
       h(WordPanel, {

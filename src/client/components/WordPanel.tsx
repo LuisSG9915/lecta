@@ -568,7 +568,7 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [cleanWord, effectiveLang, isSaved, saving, localEntry, contextual]);
 
-  // Modo ultracompacto (micro-glosa)
+  // Modo ultracompacto (Cápsula rápida / micro-glosa)
   if (compactMode && !isExpanded) {
     const syllables = effectiveLang === "es" ? syllabifySpanish(cleanWord) : cleanWord;
     const microDef =
@@ -580,36 +580,75 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
 
     return (
       <div
-        className="micro-gloss-panel"
-        role="region"
-        aria-label={`Micro-glosa de ${cleanWord}`}
+        className="word-capsule micro-gloss-panel"
+        role="dialog"
+        aria-label={`Definición rápida de ${cleanWord}`}
       >
-        <div
-          className="micro-gloss-info"
-          onClick={() => setIsExpanded(true)}
-          style={{ cursor: "pointer" }}
-        >
-          <strong className="micro-gloss-word">{cleanWord}</strong>
-          <span className="micro-gloss-syllables">{syllables}</span>
-          <span className="micro-gloss-def">{microDef}</span>
-        </div>
-        <div className="micro-gloss-actions">
-          <button
-            type="button"
-            className="btn--pronounce"
-            onClick={handleSpeak}
-            aria-label="Escuchar pronunciación"
+        <div className="word-capsule__main">
+          <div
+            className="word-capsule__content micro-gloss-info"
+            onClick={() => setIsExpanded(true)}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                setIsExpanded(true);
+              }
+            }}
           >
-            🔊
-          </button>
-          <button
-            type="button"
-            className="btn--quick-known"
-            onClick={handleQuickKnown}
-            aria-label="Marcar como conocida"
-          >
-            ✓
-          </button>
+            <div className="word-capsule__header">
+              <strong className="word-capsule__lemma micro-gloss-word">{cleanWord}</strong>
+              {syllables && <span className="word-capsule__syllables micro-gloss-syllables">{syllables}</span>}
+            </div>
+            <p className="word-capsule__gloss micro-gloss-def micro-gloss-meaning">{microDef}</p>
+            <span className="word-capsule__context-hint">
+              ✨ Ver explicación en esta frase ›
+            </span>
+          </div>
+
+          <div className="word-capsule__actions micro-gloss-actions">
+            <button
+              type="button"
+              className="word-capsule__icon-btn btn--pronounce micro-gloss-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleSpeak();
+              }}
+              aria-label="Escuchar pronunciación"
+              title="Escuchar pronunciación"
+            >
+              🔊
+            </button>
+            <button
+              type="button"
+              className={`word-capsule__save-btn btn--quick-known micro-gloss-btn ${isSaved ? "is-saved" : ""}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (isSaved) {
+                  void handleRemove();
+                } else {
+                  void handleSave();
+                }
+              }}
+              aria-label={isSaved ? "Quitar de mi cuaderno" : "Guardar en mi cuaderno"}
+              title={isSaved ? "Quitar de mi cuaderno" : "Guardar en mi cuaderno"}
+            >
+              ✓
+            </button>
+            <button
+              type="button"
+              className="word-capsule__close-btn micro-gloss-close"
+              onClick={(e) => {
+                e.stopPropagation();
+                onClose();
+              }}
+              aria-label="Cerrar definición"
+              title="Cerrar definición"
+            >
+              ×
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -621,64 +660,49 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
       role="dialog"
       aria-label={`Significado de ${cleanWord}`}
     >
-      {/* Cabecera: Palabra + Pronunciación + Acciones Rápidas en 1 toque */}
-      <header className="word-card-header">
-        <div className="word-card-title-group">
-          <h3 className="word-card-term">{cleanWord}</h3>
-          {localEntry?.partOfSpeech && (
-            <span className="word-card-pos">{localEntry.partOfSpeech}</span>
-          )}
+      {/* Cabecera responsiva con botón X garantizado en fila superior y estado en 2ª fila */}
+      <header className="word-panel__header word-card-header">
+        <div className="word-panel__top-row">
+          <div className="word-panel__title-group word-card-title-group">
+            <h3 className="word-panel__word word-card-term">{cleanWord}</h3>
+            {localEntry?.partOfSpeech && (
+              <span className="word-panel__pos-badge word-card-pos">{localEntry.partOfSpeech}</span>
+            )}
+            <button
+              type="button"
+              className="word-panel__audio-btn word-card-audio-btn btn--pronounce"
+              onClick={handleSpeak}
+              aria-label="Pronunciar palabra"
+              title="Escuchar pronunciación"
+            >
+              🔊
+            </button>
+          </div>
+
+          {/* Botón X explícito siempre visible en móvil y escritorio */}
           <button
             type="button"
-            className="word-card-audio-btn btn--pronounce"
-            onClick={handleSpeak}
-            aria-label="Escuchar pronunciación"
-            title="Escuchar pronunciación"
+            className="word-panel__close-btn word-card-close-btn"
+            onClick={onClose}
+            aria-label="Cerrar panel de palabra"
+            title="Cerrar panel de palabra"
           >
-            🔊
+            <span aria-hidden="true">×</span>
           </button>
         </div>
 
-        <div className="word-card-actions">
-          {!isSaved && (
-            <button
-              type="button"
-              className="btn--quick-known word-card-pos"
-              onClick={handleQuickKnown}
-              title="Marcar como ya conocida para ajustar tu nivel sin exámenes"
-              style={{ cursor: "pointer", border: "none" }}
-            >
-              ✓ Ya la sé
-            </button>
-          )}
-
-          <button
-            type="button"
-            className={`word-card-save-btn btn--pin-notebook ${isSaved ? "is-saved" : ""}`}
-            onClick={handleSave}
-            disabled={isSaved || saving}
-          >
-            {isSaved ? "★ Guardada en tu cuaderno" : "★ Guardar en mi cuaderno"}
-          </button>
-
-          {isSaved && (
-            <>
-              <span className="word-panel-saved-badge" style={{ display: "none" }}>
+        {/* Segunda fila dedicada para el estado de guardado sin aplastar el título */}
+        <div className="word-panel__status-row word-card-actions">
+          {isSaved ? (
+            <div className="word-panel__saved-bar">
+              <span className="word-panel__saved-pill word-panel-saved-badge">
                 ★ Guardada en tu cuaderno
               </span>
               <button
                 type="button"
-                className="btn--remove-word"
+                className="word-panel__unsave-link btn--remove-word"
                 onClick={handleRemove}
                 title="Quitar de mi cuaderno"
-                style={{
-                  background: "transparent",
-                  border: "none",
-                  color: "inherit",
-                  fontSize: "0.78rem",
-                  cursor: "pointer",
-                  opacity: 0.7,
-                }}
               >
                 Quitar
               </button>
@@ -690,17 +714,28 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
               >
                 Ver en cuaderno →
               </button>
+            </div>
+          ) : (
+            <>
+              <button
+                type="button"
+                className="word-panel__save-cta word-card-save-btn btn--pin-notebook"
+                onClick={handleSave}
+                disabled={saving}
+              >
+                ★ Guardar en mi cuaderno
+              </button>
+              <button
+                type="button"
+                className="btn--quick-known word-card-pos"
+                onClick={handleQuickKnown}
+                title="Marcar como ya conocida para ajustar tu nivel sin exámenes"
+                style={{ cursor: "pointer", border: "none" }}
+              >
+                ✓ Ya la sé
+              </button>
             </>
           )}
-
-          <button
-            type="button"
-            className="word-card-close-btn"
-            onClick={onClose}
-            aria-label="Cerrar tarjeta"
-          >
-            ✕
-          </button>
         </div>
       </header>
 

@@ -4331,6 +4331,264 @@ b.lecta-anchor {
   animation: micro-gloss-in var(--dur-2, 180ms) var(--ease-out);
 }
 
+/* ==========================================================================
+   Corrección de Cápsula Flotante (Imagen 1: sin desborde + hint de contexto)
+   ========================================================================== */
+.word-capsule {
+  position: fixed;
+  bottom: calc(var(--s-4, 1rem) + 48px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 45;
+  width: min(calc(100vw - 2rem), 440px);
+  background: var(--surface-elevated, #201e1b);
+  color: var(--text-primary, #f5f2eb);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+  height: auto !important;
+  min-height: unset;
+  max-height: none;
+  padding: 12px 14px;
+  border-radius: 18px;
+  box-sizing: border-box;
+  overflow: visible;
+}
+
+.word-capsule__main {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+}
+
+.word-capsule__content {
+  flex: 1 1 auto;
+  min-width: 0;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.word-capsule__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  line-height: 1.25;
+}
+
+.word-capsule__lemma {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #ffffff;
+  margin: 0;
+}
+
+.word-capsule__syllables {
+  font-size: 0.82rem;
+  color: #e07a5f;
+}
+
+.word-capsule__gloss {
+  margin: 2px 0 0;
+  font-size: 0.93rem;
+  line-height: 1.38;
+  color: rgba(255, 255, 255, 0.92);
+  overflow-wrap: break-word;
+  white-space: normal;
+}
+
+/* Indicador claro de que tocar la cápsula abre el contexto del libro */
+.word-capsule__context-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #f2b880;
+  opacity: 0.95;
+}
+
+.word-capsule__actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.word-capsule__icon-btn,
+.word-capsule__save-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.08);
+  color: inherit;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: all var(--dur-1, 120ms) ease;
+}
+
+.word-capsule__save-btn.is-saved {
+  background: rgba(72, 148, 110, 0.28);
+  border-color: rgba(140, 224, 179, 0.4);
+  color: #8ce0b3;
+}
+
+.word-capsule__icon-btn:hover,
+.word-capsule__save-btn:hover,
+.word-capsule__close-btn:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+/* ==========================================================================
+   Corrección de Cabecera de WordPanel en Móvil (Imagen 2: botón X + badge)
+   ========================================================================== */
+.word-panel__header {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.word-panel__top-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+}
+
+.word-panel__title-group {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.word-panel__word {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.word-panel__pos-badge {
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  opacity: 0.65;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.word-panel__audio-btn {
+  background: transparent;
+  border: none;
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 2px 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+}
+
+.word-panel__audio-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* Botón X siempre visible en móvil y escritorio con área táctil de 38x38px */
+.word-panel__close-btn,
+.word-capsule__close-btn {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.08);
+  color: inherit;
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: all var(--dur-1, 120ms) ease;
+}
+
+.word-panel__status-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.word-panel__saved-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* Evita que "★ Guardada en tu cuaderno" se deforme en un círculo de 4 líneas */
+.word-panel__saved-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  line-height: 1.2;
+  white-space: nowrap;
+  background: rgba(72, 148, 110, 0.22);
+  color: #8ce0b3;
+  border: 1px solid rgba(140, 224, 179, 0.28);
+}
+
+.word-panel__save-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  background: var(--accent-primary, #e6b86a);
+  color: #1a1815;
+  cursor: pointer;
+  transition: opacity 120ms ease;
+}
+
+.word-panel__save-cta:hover {
+  opacity: 0.92;
+}
+
+.word-panel__unsave-link {
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+  opacity: 0.75;
+  text-decoration: underline;
+  padding: 4px 6px;
+}
+
+.word-panel__unsave-link:hover {
+  opacity: 1;
+}
+
 @keyframes micro-gloss-in {
   from {
     opacity: 0;
