@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { TtsAudioController } from '../lib/ttsController';
-import { unlockAudioContext } from '../lib/kittenTtsEngine';
+import { downloadKittenModel, isKittenModelCached, unlockAudioContext } from '../lib/kittenTtsEngine';
 import type { TtsRate, TtsStatus, TtsVoiceOption } from '../lib/ttsTypes';
 import {
   hasKittenConsent,
@@ -34,6 +34,7 @@ export function useReaderTts({
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
 
   useEffect(() => {
+    const initialSettings = loadTtsSettings();
     const ctrl = new TtsAudioController({
       onStateChange: (snap: {
         status: TtsStatus;
@@ -60,6 +61,10 @@ export function useReaderTts({
       },
     });
 
+    // Sincronizar velocidad y voz guardadas al montar el controlador
+    ctrl.setRate(initialSettings.rate);
+    ctrl.setVoice(initialSettings.voiceURI ?? null);
+
     controllerRef.current = ctrl;
     return () => {
       ctrl.stop();
@@ -73,6 +78,33 @@ export function useReaderTts({
     if (!controllerRef.current || !sectionDoc) return;
     controllerRef.current.attachDocument(sectionDoc);
   }, [sectionDoc]);
+
+  const ensureModelAndPlay = useCallback(
+    async (targetVoiceURI: string | null) => {
+      const ctrl = controllerRef.current;
+      if (!ctrl) return;
+
+      if (targetVoiceURI && isKittenVoiceURI(targetVoiceURI)) {
+        try {
+          const cached = await isKittenModelCached();
+          if (!cached) {
+            setDownloadProgress(0);
+            await downloadKittenModel((p) => {
+              setDownloadProgress(p.percent >= 100 ? null : p.percent);
+            });
+          }
+        } catch {
+          setDownloadProgress(null);
+          onShowNotice('No se pudo descargar la voz HD; usando voz del sistema.');
+        } finally {
+          setDownloadProgress(null);
+        }
+      }
+
+      ctrl.play();
+    },
+    [onShowNotice],
+  );
 
   const startOrToggleTts = useCallback(() => {
     unlockAudioContext();
@@ -95,21 +127,22 @@ export function useReaderTts({
       return;
     }
 
-    ctrl.play();
-  }, [status, voiceURI]);
+    void ensureModelAndPlay(voiceURI);
+  }, [status, voiceURI, ensureModelAndPlay]);
 
   const handleConfirmConsent = useCallback(() => {
     unlockAudioContext();
     setKittenConsent(true);
     setShowConsentDialog(false);
-    if (pendingVoiceURI && controllerRef.current) {
-      controllerRef.current.setVoice(pendingVoiceURI);
-      setVoiceURI(pendingVoiceURI);
-      saveTtsSettings({ rate: rate as TtsRate, voiceURI: pendingVoiceURI });
+    const chosenVoice = pendingVoiceURI ?? voiceURI;
+    if (chosenVoice && controllerRef.current) {
+      controllerRef.current.setVoice(chosenVoice);
+      setVoiceURI(chosenVoice);
+      saveTtsSettings({ rate: rate as TtsRate, voiceURI: chosenVoice });
     }
     setPendingVoiceURI(null);
-    controllerRef.current?.play();
-  }, [pendingVoiceURI, rate]);
+    void ensureModelAndPlay(chosenVoice);
+  }, [pendingVoiceURI, voiceURI, rate, ensureModelAndPlay]);
 
   const handleCancelConsent = useCallback(() => {
     setShowConsentDialog(false);
@@ -118,6 +151,7 @@ export function useReaderTts({
 
   const handleChangeRate = useCallback(
     (nextRate: number) => {
+      unlockAudioContext();
       setRate(nextRate);
       controllerRef.current?.setRate(nextRate);
       saveTtsSettings({ rate: nextRate as TtsRate, voiceURI });
@@ -127,6 +161,7 @@ export function useReaderTts({
 
   const handleChangeVoice = useCallback(
     (nextVoiceURI: string | null) => {
+      unlockAudioContext();
       if (nextVoiceURI && isKittenVoiceURI(nextVoiceURI) && !hasKittenConsent()) {
         setPendingVoiceURI(nextVoiceURI);
         setShowConsentDialog(true);
@@ -144,6 +179,7 @@ export function useReaderTts({
   }, []);
 
   const stepSentence = useCallback((delta: -1 | 1) => {
+    unlockAudioContext();
     if (delta < 0) controllerRef.current?.prev();
     else controllerRef.current?.next();
   }, []);
