@@ -5416,6 +5416,7 @@ export default function Reader({
       className="reader reader-shell"
       data-dock-ghost={!barsShown ? "true" : "false"}
       data-tts-active={ttsSnap.status !== "idle" ? "true" : "false"}
+      data-recap-visible={Boolean(recapBubbleVisible) ? "true" : "false"}
       data-inspector-open={selection ? "true" : "false"}
       style={readerCssVars(settings) as CSSProperties}
       data-font={settings.font}
@@ -6060,6 +6061,11 @@ export default function Reader({
           decoración también se va: no queda rastro del gato. */}
       {!strategyPaused && (settings.focusRuler || settings.focusMode === "ruler") && !settings.paragraphFocus && state === "ready" ? (
         <FocusRuler
+          enabled={true}
+          heightPx={rulerBandPx(
+            settings.rulerSize,
+            settings.size * settings.leading,
+          )}
           bandPx={rulerBandPx(
             settings.rulerSize,
             settings.size * settings.leading,

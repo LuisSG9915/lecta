@@ -124,7 +124,7 @@ describe("Zen HUD & Estrategias (B.1 & B.2)", () => {
     expect(PRESET_LABELS.custom).toBe("Ajustado");
   });
 
-  it("FocusRuler incluye velos superior e inferior y responde a flechas del teclado", async () => {
+  it("FocusRuler incluye franja de lectura, tirador táctil y responde a flechas del teclado", async () => {
     const { createElement: h } = await import("react");
     const { createRoot } = await import("react-dom/client");
     const { act } = await import("react");
@@ -138,13 +138,11 @@ describe("Zen HUD & Estrategias (B.1 & B.2)", () => {
       root.render(h(FocusRuler, { bandPx: 120, lineHeightPx: 30 }));
     });
 
-    const topVeil = host.querySelector(".focus-ruler-veil--top");
-    const bottomVeil = host.querySelector(".focus-ruler-veil--bottom");
-    const band = host.querySelector(".focus-ruler-band");
+    const band = host.querySelector(".focus-ruler__band");
+    const handle = host.querySelector(".focus-ruler__handle");
 
-    expect(topVeil).not.toBeNull();
-    expect(bottomVeil).not.toBeNull();
     expect(band).not.toBeNull();
+    expect(handle).not.toBeNull();
 
     // Evento de teclado ArrowDown
     await act(async () => {
@@ -373,9 +371,9 @@ describe("Recalibración de Luminancia, Contraste AAA y Separación de Barras Fl
     const css = await fs.readFile(cssPath, "utf-8");
 
     // Variables de separación en .reader-shell
-    expect(css).toMatch(/\.reader-shell\s*\{[^}]*--dock-clearance:\s*84px/);
-    expect(css).toMatch(/\.reader-shell\[data-dock-ghost="true"\]\s*\{[^}]*--dock-clearance:\s*24px/);
-    expect(css).toMatch(/\.reader-shell\[data-tts-active="true"\]\s*\{[^}]*--tts-clearance:\s*64px/);
+    expect(css).toMatch(/\.reader-shell\s*\{[^}]*--dock-clearance:\s*82px/);
+    expect(css).toMatch(/\.reader-shell\[data-dock-ghost="true"\]\s*\{[^}]*--dock-clearance:\s*28px/);
+    expect(css).toMatch(/\.reader-shell\[data-tts-active="true"\]\s*\{[^}]*--tts-clearance:\s*60px/);
 
     // Z-indexes coordinados: SmartReaderDock (30), ReaderRecapBubble (31), TtsNowPlaying (32)
     expect(css).toMatch(/\.smart-reader-dock\s*\{[^}]*z-index:\s*30/);
