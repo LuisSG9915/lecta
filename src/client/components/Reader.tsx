@@ -2203,7 +2203,11 @@ export default function Reader({
       const cat = catalogRef.current;
       const analyzer = analyzerRef.current;
       const book = bookRef.current;
-      const range = cat?.ranges.find((r) => r.target.id === target.id);
+      const range =
+        cat?.ranges.find((r) => r.target.id === target.id) ??
+        (cat?.ranges && cat.ranges.length > 0
+          ? cat.ranges.find((r) => r.target.sectionIndex === target.sectionIndex) ?? cat.ranges[0]
+          : undefined);
       if (!cat || !analyzer || !book || !range) return;
       const lang = language || getBookLanguage(book);
       const base =
@@ -2219,13 +2223,20 @@ export default function Reader({
       setSheet(null);
       setSelection(null);
       presentedKeysRef.current.clear();
+
+      const cached = analyzer.cached(range.target.id);
+      const cachedSuggestion =
+        cached?.state === "ready"
+          ? prepRowsFor(cached, lang, prepLexRef.current)
+          : null;
+
       const initial = {
         target,
         record: base,
-        analysis: "loading" as const,
-        rows: [] as SectionPreviewRow[],
-        uncertain: [] as SectionPreviewRow[],
-        deferred: [] as SectionPreviewRow[],
+        analysis: cachedSuggestion ? ("ready" as const) : ("loading" as const),
+        rows: cachedSuggestion ? cachedSuggestion.rows : ([] as SectionPreviewRow[]),
+        uncertain: cachedSuggestion ? cachedSuggestion.uncertain : ([] as SectionPreviewRow[]),
+        deferred: cachedSuggestion ? cachedSuggestion.deferred : ([] as SectionPreviewRow[]),
         presentationId: crypto.randomUUID(),
         answers: base.answers,
         saving: false,
@@ -2592,7 +2603,8 @@ export default function Reader({
     const target =
       prepNotice?.target ??
       currentChapterTarget ??
-      targetAt(catalogRef.current?.ranges ?? [], sectionIndexRef.current);
+      targetAt(catalogRef.current?.ranges ?? [], sectionIndexRef.current) ??
+      catalogRef.current?.targets?.[0];
     setPrepNotice(null);
     if (target) void openPrepSheet(target, null);
   };
@@ -6723,6 +6735,7 @@ export default function Reader({
 
       {prep ? (
         <SectionPreview
+          mode="modal"
           title={prep.target.label}
           chapterTitle={prep.target.label}
           bookId={bookHash}

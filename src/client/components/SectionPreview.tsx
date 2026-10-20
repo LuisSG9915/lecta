@@ -372,39 +372,41 @@ function PrimingCardView({
 // Preparación «Antes de leer»: hoja controlada que lista el
 // vocabulario del destino y pide una respuesta explícita por palabra.
 // No escribe ni consulta nada: el controlador decide qué se guarda.
-export default function SectionPreview({
-  bookId = "",
-  chapterTitle,
-  bookLang = "es",
-  userNativeLang = "es",
-  onMarkKnown,
-  onSaveToPractice,
-  onPronounce,
-  onStartReading,
-  onMuteForBook,
-  onDisableGlobally,
-  title = "",
-  analysis = "ready",
-  rows = [],
-  answers = {},
-  uncertainRows,
-  deferredRows,
-  onRowsPresented,
-  saving = false,
-  onAnswer = () => {},
-  onConfirm = () => {},
-  onSkip = () => {},
-  onRetry = () => {},
-  onClose = () => {},
-  onDiscard = () => {},
-  estimatedMinutes,
-  initialStrategy,
-  onSelectStrategy,
-  onUnlockCard,
-  mode = "modal",
-  words = rows,
-  onExpand,
-}: SectionPreviewProps) {
+export default function SectionPreview(props: SectionPreviewProps) {
+  const {
+    bookId = "",
+    chapterTitle,
+    bookLang = "es",
+    userNativeLang = "es",
+    onMarkKnown,
+    onSaveToPractice,
+    onPronounce,
+    onStartReading,
+    onMuteForBook,
+    onDisableGlobally,
+    title = "",
+    analysis = "ready",
+    rows = [],
+    answers = {},
+    uncertainRows,
+    deferredRows,
+    onRowsPresented,
+    saving = false,
+    onAnswer = () => {},
+    onConfirm = () => {},
+    onSkip = () => {},
+    onRetry = () => {},
+    onClose = () => {},
+    onDiscard = () => {},
+    estimatedMinutes,
+    initialStrategy,
+    onSelectStrategy,
+    onUnlockCard,
+    mode = "modal",
+    words = rows,
+    onExpand,
+  } = props;
+
   if (mode === "pill") {
     const count =
       typeof words === "object" && words !== null && "length" in words
@@ -423,11 +425,11 @@ export default function SectionPreview({
 
   const isPrimingMode =
     mode === "priming" ||
-    onMarkKnown !== undefined ||
-    onStartReading !== undefined ||
-    onMuteForBook !== undefined ||
-    onDisableGlobally !== undefined ||
-    (Array.isArray(words) && words.length > 0 && "beta" in words[0]);
+    (Array.isArray(props.words) &&
+      props.words.length > 0 &&
+      typeof props.words[0] === "object" &&
+      props.words[0] !== null &&
+      "beta" in props.words[0]);
 
   if (isPrimingMode) {
     const primingWords: ScoredPrimingWord[] =
