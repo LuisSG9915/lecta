@@ -150,6 +150,24 @@ describe("kittenPhonemizer", () => {
     expect(phonemizeText("i've")).toBe("aɪv");
     expect(phonemizeText("i'll")).toBe("aɪl");
     expect(phonemizeText("i'd")).toBe("aɪd");
+    expect(phonemizeText("that's")).toBe("ðæts");
+    expect(phonemizeText("there's")).toBe("ðɛɹz");
+    expect(phonemizeText("what's")).toBe("wɑːts");
+    expect(phonemizeText("let's")).toBe("ˈlɛts");
+    expect(phonemizeText("should've")).toBe("ˈʃʊdəv");
+  });
+
+  it("garantiza que palabras de contenido lleven marca de acento primario ˈ", () => {
+    // Palabras generadas vía reglas G2P que son de contenido
+    expect(convertEnglishWordToIpa("cat")).toContain("ˈ");
+    expect(convertEnglishWordToIpa("dog")).toContain("ˈ");
+    expect(convertEnglishWordToIpa("house")).toContain("ˈ");
+    expect(convertEnglishWordToIpa("jump")).toContain("ˈ");
+
+    // Palabras funcionales átonas no llevan acento artificial
+    expect(convertEnglishWordToIpa("the")).not.toContain("ˈ");
+    expect(convertEnglishWordToIpa("in")).not.toContain("ˈ");
+    expect(convertEnglishWordToIpa("of")).not.toContain("ˈ");
   });
 
   it("aplica IPA en-us rótico con acento tónico ˈ en palabras de contenido", () => {

@@ -185,6 +185,34 @@ export const COMMON_IPA_DICT: Record<string, string> = {
   well_contr: "wiːl",
   "they'll": "ðeɪl",
   theyll: "ðeɪl",
+  "that's": "ðæts",
+  thats: "ðæts",
+  "there's": "ðɛɹz",
+  theres: "ðɛɹz",
+  "what's": "wɑːts",
+  whats: "wɑːts",
+  "who's": "huːz",
+  whos: "huːz",
+  "here's": "hɪɹz",
+  heres: "hɪɹz",
+  "where's": "wɛɹz",
+  wheres: "wɛɹz",
+  "how's": "haʊz",
+  hows: "haʊz",
+  "let's": "ˈlɛts",
+  lets: "ˈlɛts",
+  "should've": "ˈʃʊdəv",
+  shouldve: "ˈʃʊdəv",
+  "could've": "ˈkʊdəv",
+  couldve: "ˈkʊdəv",
+  "would've": "ˈwʊdəv",
+  wouldve: "ˈwʊdəv",
+  "must've": "ˈmʌstəv",
+  mustve: "ˈmʌstəv",
+  "might've": "ˈmaɪtəv",
+  mightve: "ˈmaɪtəv",
+  "ain't": "ˈeɪnt",
+  aint: "ˈeɪnt",
 
   // Verbos comunes e irregulares
   say: "ˈseɪ",
@@ -566,12 +594,12 @@ export function convertEnglishWordToIpa(raw: string): string {
     return raw.replace(/ʧ/g, "tʃ").replace(/ʤ/g, "dʒ");
   }
 
-  const lower = raw.toLowerCase().trim();
+  const lower = raw.toLowerCase().trim().replace(/^['’"]+|['’"]+$/g, "");
   if (COMMON_IPA_DICT[lower]) {
     return COMMON_IPA_DICT[lower];
   }
 
-  // Normalizar contracciones con apóstrofe tipográfico
+  // Normalizar y resolver contracciones con apóstrofe tipográfico ANTES de eliminar el apóstrofe
   const cleanWithApostrophe = lower.replace(/['']/g, "'");
   if (COMMON_IPA_DICT[cleanWithApostrophe]) {
     return COMMON_IPA_DICT[cleanWithApostrophe];
@@ -691,7 +719,7 @@ export function convertEnglishWordToIpa(raw: string): string {
   // Aplicar siempre marca de acento primario "ˈ" en palabras de contenido de 1 o más sílabas
   const cleanWordNoApostrophe = cleanWithApostrophe.replace(/'/g, "");
   if (!UNSTRESSED_FUNCTION_WORDS.has(cleanWordNoApostrophe) && !ipa.includes("ˈ") && !ipa.includes("ˌ")) {
-    const vowelCount = (ipa.match(/[ɑɐɒæɔəɘɚɛɜɝɞɨɪʊʌiueo]/g) || []).length;
+    const vowelCount = (ipa.match(/[ɑaɐɒæɔəɘɚɛɜɝɞɨɪʊʌiueo]/g) || []).length;
     if (vowelCount >= 1) {
       ipa = "ˈ" + ipa;
     }
