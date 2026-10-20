@@ -25,6 +25,7 @@ import {
   createTtsController,
   playSentencesLoop,
   stopAllTtsPlayback,
+  TtsAudioController,
   type TtsControllerDeps,
 } from "./ttsController";
 import {
@@ -1167,5 +1168,49 @@ describe("ttsController", () => {
     // Para libros en español, debe usar el speaker nativo y no KittenTTS
     expect(nativeSpeaker.speak).toHaveBeenCalledWith("Este es un texto en idioma español.", 1);
     expect(ctl.snapshot().activeEngine).toBe("browser");
+  });
+
+  it("playSentencesLoop pasa language a speakWithSystemVoice para evitar voz en español al leer inglés", async () => {
+    vi.spyOn(kittenTtsEngine, "isModelDownloaded").mockResolvedValue(false);
+    const speech = await import("./ttsSpeech");
+    const speakSpy = vi.spyOn(speech, "speakWithSystemVoice").mockResolvedValue();
+
+    await playSentencesLoop({
+      sentences: ["Hello, world!"],
+      startIndex: 0,
+      engineMode: "browser",
+      voiceId: "",
+      speed: 1,
+      language: "en",
+      onHighlightSentence: () => {},
+      onFinishPage: () => {},
+      isCancelled: () => false,
+    });
+
+    expect(speakSpy).toHaveBeenCalledWith("Hello, world!", expect.objectContaining({ language: "en" }));
+    speakSpy.mockRestore();
+  });
+
+  it("TtsAudioController reinicia la frase actual en caliente si se cambia la velocidad o la voz estando en reproducción", () => {
+    const onStateChange = vi.fn();
+    const ctrl = new TtsAudioController({ onStateChange });
+    const doc = document.implementation.createHTMLDocument();
+    doc.body.innerHTML = "<p>Sentence one. Sentence two.</p>";
+    ctrl.attachDocument(doc);
+
+    // Mock play
+    const playSpy = vi.spyOn(ctrl, "play").mockImplementation(() => {});
+
+    // Poner estado en playing simulado
+    // @ts-expect-error test private access
+    ctrl.status = "playing";
+
+    ctrl.setRate(1.2);
+    expect(playSpy).toHaveBeenCalledTimes(1);
+
+    ctrl.setVoice("kitten:expr-voice-3-m");
+    expect(playSpy).toHaveBeenCalledTimes(2);
+
+    playSpy.mockRestore();
   });
 });

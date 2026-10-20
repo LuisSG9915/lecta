@@ -90,7 +90,10 @@ export default function TtsNowPlaying({
             <button
               type="button"
               className="btn--quiet tts-btn-step"
-              onClick={onPrevSentence}
+              onClick={() => {
+                unlockAudioContext();
+                onPrevSentence();
+              }}
               disabled={snap.status === "preparing"}
               aria-label="Frase anterior"
               title="Frase anterior"
@@ -129,7 +132,10 @@ export default function TtsNowPlaying({
             <button
               type="button"
               className="btn--quiet tts-btn-step"
-              onClick={onNextSentence}
+              onClick={() => {
+                unlockAudioContext();
+                onNextSentence();
+              }}
               disabled={snap.status === "preparing"}
               aria-label="Frase siguiente"
               title="Frase siguiente"
@@ -141,7 +147,10 @@ export default function TtsNowPlaying({
           <button
             type="button"
             className="btn--quiet tts-chip-rate"
-            onClick={onCycleRate}
+            onClick={() => {
+              unlockAudioContext();
+              onCycleRate();
+            }}
             aria-label="Velocidad de lectura en voz alta"
             title="Cambiar velocidad"
           >
@@ -153,7 +162,10 @@ export default function TtsNowPlaying({
             <select
               className="btn--quiet tts-voice-select"
               value={snap.kittenVoice ?? "expr-voice-2-f"}
-              onChange={(e) => onSelectKittenVoice?.(e.target.value as KittenVoiceId)}
+              onChange={(e) => {
+                unlockAudioContext();
+                onSelectKittenVoice?.(e.target.value as KittenVoiceId);
+              }}
               aria-label="Selector de voz KittenTTS"
               title="Voz de KittenTTS"
             >

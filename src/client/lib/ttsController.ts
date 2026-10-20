@@ -815,6 +815,7 @@ export async function playSentencesLoop(params: {
   engineMode: "system" | "kitten-hd" | "browser" | "kitten-neural";
   voiceId: string;
   speed: number;
+  language?: string;
   onHighlightSentence: (index: number) => void;
   onFinishPage: () => void;
   isCancelled: () => boolean;
@@ -825,6 +826,7 @@ export async function playSentencesLoop(params: {
     engineMode,
     voiceId,
     speed,
+    language,
     onHighlightSentence,
     onFinishPage,
     isCancelled,
@@ -860,13 +862,13 @@ export async function playSentencesLoop(params: {
         // Degradación elegante (Graceful fallback) a Web Speech API para no cortar la lectura
         if (!isCancelled()) {
           onHighlightSentence(i);
-          await speakWithSystemVoice(sentences[i], { voiceId, rate: speed });
+          await speakWithSystemVoice(sentences[i], { voiceId, rate: speed, language });
         }
       }
     } else {
       // Motor instantáneo por defecto (0 MB de descarga)
       onHighlightSentence(i);
-      await speakWithSystemVoice(sentences[i], { voiceId, rate: speed });
+      await speakWithSystemVoice(sentences[i], { voiceId, rate: speed, language });
     }
   }
 
@@ -901,6 +903,7 @@ export class TtsAudioController {
   private rate = 1;
   private voiceURI: string | null = null;
   private isCancelledFlag = false;
+  private docLang = "en";
 
   constructor(options: TtsControllerOptions) {
     this.options = options;
@@ -935,12 +938,14 @@ export class TtsAudioController {
     if (doc?.body) {
       const text = doc.body.textContent || "";
       const docLang = doc.documentElement?.lang?.trim() || "en";
+      this.docLang = docLang;
       const seg = new Intl.Segmenter(docLang, { granularity: "sentence" });
       this.sentences = [...seg.segment(text)]
         .map((s) => s.segment.trim())
         .filter((s) => s.length > 0);
     } else {
       this.sentences = [];
+      this.docLang = "en";
     }
     this.currentIndex = 0;
     this.emitState();
@@ -968,6 +973,7 @@ export class TtsAudioController {
       engineMode: this.voiceURI?.startsWith("kitten:") ? "kitten-neural" : "browser",
       voiceId: this.voiceURI?.replace("kitten:", "") || "",
       speed: this.rate,
+      language: this.docLang,
       onHighlightSentence: (idx) => {
         this.currentIndex = idx;
         this.emitState();
@@ -1027,11 +1033,23 @@ export class TtsAudioController {
   }
 
   setRate(rate: number): void {
+    const changed = this.rate !== rate;
     this.rate = rate;
+    if (changed && this.status === "playing") {
+      this.isCancelledFlag = true;
+      stopAllTtsPlayback();
+      this.play();
+    }
   }
 
   setVoice(voiceURI: string | null): void {
+    const changed = this.voiceURI !== voiceURI;
     this.voiceURI = voiceURI;
+    if (changed && this.status === "playing") {
+      this.isCancelledFlag = true;
+      stopAllTtsPlayback();
+      this.play();
+    }
   }
 
   destroy(): void {
