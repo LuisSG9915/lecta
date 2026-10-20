@@ -740,7 +740,7 @@ export class KittenTtsEngine {
         let settled = false;
         let source: AudioBufferSourceNode | null = null;
         const duration = audioBuffer.duration && audioBuffer.duration > 0 ? audioBuffer.duration : 0.05;
-        const expectedDurationMs = Math.max(20, Math.round(duration * 1000));
+        const expectedDurationMs = Math.max(50, Math.round(duration * 1000));
 
         // Watchdog de seguridad: garantiza que la cola de lectura avance incluso si source.onended
         // se traba en background o la oración fue puramente silenciosa
@@ -831,7 +831,19 @@ export class KittenTtsEngine {
     voiceId: KittenVoiceId = "expr-voice-2-f",
     speed = 1,
   ): Promise<AudioBuffer> {
-    return this.synthesize(text, voiceId, speed, "low");
+    if (this.idleTimer) {
+      clearTimeout(this.idleTimer);
+      this.idleTimer = null;
+    }
+    this.activeRequests++;
+    try {
+      const ok = await this.ensureInitialized();
+      if (!ok) throw new Error("KittenTTS engine failed to initialize");
+      return await this.requestAudioBuffer(text, voiceId, speed, "low");
+    } finally {
+      this.activeRequests = Math.max(0, this.activeRequests - 1);
+      this.scheduleIdleRelease();
+    }
   }
 
   play(audioBuffer: AudioBuffer, _rate = 1, onEnded?: () => void): void {
@@ -842,7 +854,7 @@ export class KittenTtsEngine {
     let settled = false;
     let source: AudioBufferSourceNode | null = null;
     const duration = audioBuffer.duration && audioBuffer.duration > 0 ? audioBuffer.duration : 0.05;
-    const expectedDurationMs = Math.max(20, Math.round(duration * 1000));
+    const expectedDurationMs = Math.max(50, Math.round(duration * 1000));
 
     const onDone = () => {
       if (!settled) {

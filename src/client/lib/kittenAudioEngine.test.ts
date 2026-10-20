@@ -272,5 +272,38 @@ describe("KittenTTS Web Audio & Memory Lifecycle (Fase 2)", () => {
       expect(engine.getModelProgress().status).toBe("error");
       expect(engine.getModelProgress().errorMessage).toContain("Failed to compile ONNX WebAssembly module");
     });
+
+    it("synthesizeLookahead() invoca la síntesis con prioridad low y devuelve AudioBuffer", async () => {
+      const engine = new KittenTtsEngine();
+      vi.spyOn(engine, "ensureInitialized").mockResolvedValue(true);
+      const fakeBuffer = {
+        sampleRate: 24000,
+        length: 240,
+        duration: 0.01,
+        numberOfChannels: 1,
+      } as unknown as AudioBuffer;
+
+      const spyRequest = vi
+        .spyOn(engine as unknown as { requestAudioBuffer: (...args: unknown[]) => Promise<AudioBuffer> }, "requestAudioBuffer")
+        .mockResolvedValue(fakeBuffer);
+
+      const res = await engine.synthesizeLookahead("Lookahead sentence text", "expr-voice-2-f", 1);
+      expect(res).toBe(fakeBuffer);
+      expect(spyRequest).toHaveBeenCalledWith(
+        "Lookahead sentence text",
+        "expr-voice-2-f",
+        1,
+        "low",
+      );
+    });
+
+    it("synthesizeLookahead() lanza un error si ensureInitialized() devuelve false", async () => {
+      const engine = new KittenTtsEngine();
+      vi.spyOn(engine, "ensureInitialized").mockResolvedValue(false);
+
+      await expect(
+        engine.synthesizeLookahead("Lookahead failure test", "expr-voice-2-f", 1),
+      ).rejects.toThrow("KittenTTS engine failed to initialize");
+    });
   });
 });
