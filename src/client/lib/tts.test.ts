@@ -1213,4 +1213,32 @@ describe("ttsController", () => {
 
     playSpy.mockRestore();
   });
+
+  it("playSentencesLoop llama a kittenTtsEngine.init si el modelo no está descargado previamente", async () => {
+    vi.spyOn(kittenTtsEngine, "isModelDownloaded").mockResolvedValue(false);
+    const initSpy = vi.spyOn(kittenTtsEngine, "init").mockResolvedValue(true);
+    const speakSpy = vi.spyOn(kittenTtsEngine, "speakSentenceWithLookahead").mockResolvedValue();
+    vi.spyOn(kittenTtsEngine, "isReady").mockReturnValue(true);
+
+    const progressReports: number[] = [];
+
+    await playSentencesLoop({
+      sentences: ["Hello from KittenTTS!"],
+      startIndex: 0,
+      engineMode: "kitten-neural",
+      voiceId: "expr-voice-2-f",
+      speed: 1,
+      language: "en",
+      onDownloadProgress: (pct) => progressReports.push(pct),
+      onHighlightSentence: () => {},
+      onFinishPage: () => {},
+      isCancelled: () => false,
+    });
+
+    expect(initSpy).toHaveBeenCalled();
+    expect(speakSpy).toHaveBeenCalled();
+
+    initSpy.mockRestore();
+    speakSpy.mockRestore();
+  });
 });

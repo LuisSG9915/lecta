@@ -337,7 +337,7 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
           .catch((err) => {
             if (destroyed || currentGen !== speakGen || snap.status !== "speaking") return;
             const msg = err instanceof Error ? err.message : String(err);
-            if (/stopped|cancelled by epoch|terminated/i.test(msg)) return;
+            if (/stopped|cancelled|canceled|terminated/i.test(msg)) return;
 
             console.warn(
               "[Lecta TTS] KittenTTS falló o liberó memoria; cambiando a voz nativa del sistema:",
@@ -730,6 +730,7 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
 
     onDomMutated() {
       if (snap.status !== "speaking" && snap.status !== "paused") return;
+      speakGen += 1;
       const wasSpeaking = snap.status === "speaking";
       const current = items[cursor];
       if (wasSpeaking) {
@@ -816,6 +817,7 @@ export async function playSentencesLoop(params: {
   voiceId: string;
   speed: number;
   language?: string;
+  onDownloadProgress?: (pct: number) => void;
   onHighlightSentence: (index: number) => void;
   onFinishPage: () => void;
   isCancelled: () => boolean;
@@ -827,6 +829,7 @@ export async function playSentencesLoop(params: {
     voiceId,
     speed,
     language,
+    onDownloadProgress,
     onHighlightSentence,
     onFinishPage,
     isCancelled,
@@ -835,9 +838,16 @@ export async function playSentencesLoop(params: {
   // Desbloqueo síncrono del AudioContext dentro de la interacción del usuario
   kittenTtsEngine.unlockAudioContext();
 
-  let canUseKitten =
-    (engineMode === "kitten-hd" || engineMode === "kitten-neural") &&
-    (await kittenTtsEngine.isModelDownloaded());
+  let canUseKitten = false;
+  if (engineMode === "kitten-hd" || engineMode === "kitten-neural") {
+    const downloaded = await kittenTtsEngine.isModelDownloaded();
+    if (!downloaded) {
+      const ok = await kittenTtsEngine.init((p) => onDownloadProgress?.(p.percent));
+      canUseKitten = ok && kittenTtsEngine.isReady();
+    } else {
+      canUseKitten = true;
+    }
+  }
 
   for (let i = startIndex; i < sentences.length; i++) {
     if (isCancelled()) break;
@@ -937,9 +947,9 @@ export class TtsAudioController {
   attachDocument(doc: Document | null): void {
     if (doc?.body) {
       const text = doc.body.textContent || "";
-      const docLang = doc.documentElement?.lang?.trim() || "en";
+      const docLang = doc.documentElement?.lang?.trim() || doc.body.lang?.trim() || "en";
       this.docLang = docLang;
-      const seg = new Intl.Segmenter(docLang, { granularity: "sentence" });
+      const seg = new Intl.Segmenter(this.docLang, { granularity: "sentence" });
       this.sentences = [...seg.segment(text)]
         .map((s) => s.segment.trim())
         .filter((s) => s.length > 0);
@@ -974,6 +984,7 @@ export class TtsAudioController {
       voiceId: this.voiceURI?.replace("kitten:", "") || "",
       speed: this.rate,
       language: this.docLang,
+      onDownloadProgress: this.options.onDownloadProgress,
       onHighlightSentence: (idx) => {
         this.currentIndex = idx;
         this.emitState();
