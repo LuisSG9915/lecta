@@ -281,21 +281,8 @@ async function runKittenInference(
       ? rawData
       : Float32Array.from(rawData as ArrayLike<number>);
 
-  // En lugar de amputar siempre 5,000 muestras a ciegas, recortar únicamente hasta un máximo
-  // de 2,400 muestras (100 ms) si exceden el silencio final y delegar el ajuste exacto a trimLeadingAndTrailingSilence
-  let tailCut = 0;
-  const maxTailCut = Math.min(2400, Math.floor(rawSamples.length * 0.15));
-  while (
-    tailCut < maxTailCut &&
-    Math.abs(rawSamples[rawSamples.length - 1 - tailCut]) < 0.003
-  ) {
-    tailCut++;
-  }
-  const cleanTailSamples = tailCut > 0
-    ? rawSamples.subarray(0, rawSamples.length - tailCut)
-    : rawSamples;
-
-  return trimLeadingAndTrailingSilence(cleanTailSamples, 0.003);
+  // Recorte dinámico de silencio real al inicio y final del audio generado
+  return trimLeadingAndTrailingSilence(rawSamples, 0.003);
 }
 
 async function configureOrtWasmEnv(): Promise<typeof import("onnxruntime-web/wasm")> {
@@ -313,7 +300,12 @@ async function configureOrtWasmEnv(): Promise<typeof import("onnxruntime-web/was
           : "/assets/ort-wasm-simd-threaded.wasm";
       const resp = await fetch(testUrl, { method: "HEAD" });
       const contentType = (resp.headers.get("content-type") || "").toLowerCase();
-      if (!resp.ok || resp.status !== 200 || contentType.includes("text/html")) {
+      const isWasm =
+        resp.ok &&
+        resp.status === 200 &&
+        (contentType.includes("application/wasm") || contentType.includes("wasm")) &&
+        !contentType.includes("text/html");
+      if (!isWasm) {
         wasmBase = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.30.0/dist/";
       }
     } catch {
