@@ -2173,10 +2173,8 @@ export function parseNpzVoices(buffer: ArrayBuffer): Record<string, Float32Array
         const numFloats = Math.floor((compressedSize - floatByteStart) / 4);
 
         if (numFloats >= 256) {
-          const rawSlice = npyBytes.subarray(floatByteStart, floatByteStart + 256 * 4);
-          const alignedBuffer = new ArrayBuffer(256 * 4);
-          new Uint8Array(alignedBuffer).set(rawSlice);
-          const floatArray = new Float32Array(alignedBuffer);
+          const rawSlice = npyBytes.slice(10 + headerLen, 10 + headerLen + 256 * 4);
+          const floatArray = new Float32Array(rawSlice.buffer, rawSlice.byteOffset, 256);
           const voiceName = fileName.replace(/\.npy$/i, "");
           voices[voiceName] = floatArray;
         }
