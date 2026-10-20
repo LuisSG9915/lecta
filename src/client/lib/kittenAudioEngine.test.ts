@@ -275,6 +275,7 @@ describe("KittenTTS Web Audio & Memory Lifecycle (Fase 2)", () => {
 
     it("synthesizeLookahead() invoca la síntesis con prioridad low y devuelve AudioBuffer", async () => {
       const engine = new KittenTtsEngine();
+      vi.spyOn(engine, "isModelDownloaded").mockResolvedValue(true);
       vi.spyOn(engine, "ensureInitialized").mockResolvedValue(true);
       const fakeBuffer = {
         sampleRate: 24000,
@@ -299,6 +300,7 @@ describe("KittenTTS Web Audio & Memory Lifecycle (Fase 2)", () => {
 
     it("synthesizeLookahead() lanza un error si ensureInitialized() devuelve false", async () => {
       const engine = new KittenTtsEngine();
+      vi.spyOn(engine, "isModelDownloaded").mockResolvedValue(true);
       vi.spyOn(engine, "ensureInitialized").mockResolvedValue(false);
 
       await expect(

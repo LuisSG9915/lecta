@@ -416,6 +416,7 @@ describe("kittenTtsEngine", () => {
 
   it("speakSentenceWithLookahead pre-sintetiza N+1 y N+2 automáticamente", async () => {
     const engine = new KittenTtsEngine();
+    vi.spyOn(engine, "isModelDownloaded").mockResolvedValue(true);
     const prefetchSpy = vi.spyOn(engine, "prefetchUpcoming");
     const sentences = [
       "Sentence zero.",

@@ -715,6 +715,13 @@ export class KittenTtsEngine {
     this.attachVisibilityGuard();
 
     try {
+      if (!(await this.isModelDownloaded())) {
+        try {
+          await this.downloadModelWithProgress();
+        } catch {
+          // Si falla la descarga, ensureInitialized reportará el error
+        }
+      }
       const ok = await this.ensureInitialized();
       if (!ok) {
         throw new Error("KittenTTS engine failed to initialize");
@@ -815,6 +822,13 @@ export class KittenTtsEngine {
     this.attachVisibilityGuard();
 
     try {
+      if (!(await this.isModelDownloaded())) {
+        try {
+          await this.downloadModelWithProgress();
+        } catch {
+          // Si falla la descarga, ensureInitialized reportará el error
+        }
+      }
       const ok = await this.ensureInitialized();
       if (!ok) {
         throw new Error("KittenTTS engine failed to initialize");
@@ -837,6 +851,13 @@ export class KittenTtsEngine {
     }
     this.activeRequests++;
     try {
+      if (!(await this.isModelDownloaded())) {
+        try {
+          await this.downloadModelWithProgress();
+        } catch {
+          // Si falla la descarga, ensureInitialized reportará el error
+        }
+      }
       const ok = await this.ensureInitialized();
       if (!ok) throw new Error("KittenTTS engine failed to initialize");
       return await this.requestAudioBuffer(text, voiceId, speed, "low");
