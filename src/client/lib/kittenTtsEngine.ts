@@ -9,8 +9,8 @@ import type { WorkerRequest, WorkerResponse } from "../workers/kitten-tts.worker
 export const KITTEN_CACHE_NAME = "lecta-kitten-tts-v1";
 export const KITTEN_MODEL_URL = "/models/kitten-tts-quantized.onnx";
 export const KITTEN_MODEL_FALLBACK_URLS: readonly string[] = [
-  "https://huggingface.co/KittenML/kitten-tts-nano-0.8-int8/resolve/main/kitten_tts_nano_v0_8.onnx",
   "https://huggingface.co/KittenML/kitten-tts-nano-0.1/resolve/main/kitten_tts_nano_v0_1.onnx",
+  "https://huggingface.co/KittenML/kitten-tts-nano-0.8-int8/resolve/main/kitten_tts_nano_v0_8.onnx",
 ];
 export const KITTEN_MODEL_CDN_URL = KITTEN_MODEL_FALLBACK_URLS[0];
 export const KITTEN_IDLE_TIMEOUT_MS = 3 * 60 * 1000; // 3 minutos
@@ -37,8 +37,8 @@ export { normalizeEnglishText, numberToEnglishWords };
  * Sanitiza las muestras de audio recibidas de la inferencia ONNX:
  * - Valida que el buffer no sea nulo ni esté detached (byteLength > 0).
  * - Convierte cualquier valor NaN o Infinity en 0.
- * - Aplica normalización de pico proporcional (gain = 0.98 / maxPeak) en vez de hard-clipping
- *   para no convertir la onda en ondas cuadradas distorsionadas ("voz metálica/alien").
+ * - Aplica Peak Normalization (si maxPeak > 0.95, escala por 0.95 / maxPeak) en vez de hard-clipping
+ *   para no distorsionar la onda ni saturar ("voz metálica/alien").
  * - Asegura un tamaño mínimo de 240 muestras (10ms a 24kHz) para que audioCtx.createBuffer jamás falle.
  */
 export function sanitizeAudioSamples(
@@ -60,27 +60,25 @@ export function sanitizeAudioSamples(
   const targetLen = Math.max(240, len);
   const clean = new Float32Array(targetLen);
 
-  // 1. Encontrar el pico máximo absoluto (maxAbs) ignorando NaN e Infinity
-  let maxAbs = 0;
+  // 1. Encontrar el pico máximo absoluto (maxPeak) de las muestras finitas
+  let maxPeak = 0;
   for (let i = 0; i < len; i++) {
     const val = samples[i];
     if (Number.isFinite(val)) {
       const abs = Math.abs(val);
-      if (abs > maxAbs) maxAbs = abs;
+      if (abs > maxPeak) maxPeak = abs;
     }
   }
 
-  // 2. Normalización de pico (Peak Normalization):
-  // Si maxAbs > 0.98, dividir todas las muestras por (maxAbs / 0.95) para conservar la forma de onda limpia
-  // con un margen de seguridad del 5% (-0.45 dB) sin saturación cuadrada (hard clipping).
-  const divisor = maxAbs > 0.98 ? maxAbs / 0.95 : 1.0;
+  // 2. Peak Normalization: si maxPeak > 0.95, multiplicar todas las muestras por 0.95 / maxPeak
+  const scale = maxPeak > 0.95 ? 0.95 / maxPeak : 1.0;
 
   for (let i = 0; i < len; i++) {
     const val = samples[i];
     if (!Number.isFinite(val)) {
       clean[i] = 0;
     } else {
-      clean[i] = val / divisor;
+      clean[i] = val * scale;
     }
   }
 
@@ -549,13 +547,9 @@ export class KittenTtsEngine {
         onProgress?.(this.progress);
       }
 
-      const initialized = await this.ensureInitialized();
-      if (!initialized) {
-        this.ready = false;
-        return false;
-      }
-      this.ready = true;
-      return true;
+      const ok = await this.ensureInitialized();
+      this.ready = ok;
+      return ok;
     } catch (err) {
       this.ready = false;
       this.progress = {

@@ -61,12 +61,12 @@ describe("KittenTTS Web Audio & Memory Lifecycle (Fase 2)", () => {
   });
 
   describe("sanitizeAudioSamples", () => {
-    it("aplica normalización proporcional si hay picos > 0.98 y reemplaza NaN e Infinity por 0", () => {
+    it("aplica normalización proporcional si hay picos > 0.95 y reemplaza NaN e Infinity por 0", () => {
       const dirty = new Float32Array([1.5, -2.0, NaN, Infinity, -Infinity, 0.5, -0.5]);
       const clean = sanitizeAudioSamples(dirty);
 
       expect(clean.length).toBeGreaterThanOrEqual(240); // Mínimo para createBuffer
-      // maxAbs = 2.0 > 0.98 -> normalización de pico dividiendo por (maxAbs / 0.95)
+      // maxPeak = 2.0 > 0.95 -> normalización de pico escalando por (0.95 / maxPeak)
       expect(clean[0]).toBeCloseTo(0.7125, 4);
       expect(clean[1]).toBeCloseTo(-0.95, 4);
       expect(clean[2]).toBe(0);
@@ -76,7 +76,7 @@ describe("KittenTTS Web Audio & Memory Lifecycle (Fase 2)", () => {
       expect(clean[6]).toBeCloseTo(-0.2375, 4);
     });
 
-    it("no altera las muestras si maxAbs <= 0.98", () => {
+    it("no altera las muestras si maxPeak <= 0.95", () => {
       const normal = new Float32Array([0.1, -0.4, 0.95, -0.8]);
       const clean = sanitizeAudioSamples(normal);
 
@@ -91,15 +91,15 @@ describe("KittenTTS Web Audio & Memory Lifecycle (Fase 2)", () => {
       const samples = new Float32Array([0.5, 1.25, 2.0, 2.5, 1.5, -0.5, -1.5, -2.5, -1.0]);
       const clean = sanitizeAudioSamples(samples);
 
-      // maxAbs = 2.5 > 0.98 -> divisor = 2.5 / 0.95 = 2.631578...
+      // maxPeak = 2.5 > 0.95 -> scale = 0.95 / 2.5 = 0.38
       // Verificar que ningún pico supera 0.95 (sin saturación ni recorte a ±1.0)
       for (let i = 0; i < samples.length; i++) {
         expect(Math.abs(clean[i])).toBeLessThanOrEqual(0.95 + 1e-6);
       }
 
       // El pico máximo queda exactamente en 0.95
-      expect(clean[3]).toBeCloseTo(0.95, 5); // 2.5 / (2.5 / 0.95)
-      expect(clean[7]).toBeCloseTo(-0.95, 5); // -2.5 / (2.5 / 0.95)
+      expect(clean[3]).toBeCloseTo(0.95, 5); // 2.5 * (0.95 / 2.5)
+      expect(clean[7]).toBeCloseTo(-0.95, 5); // -2.5 * (0.95 / 2.5)
 
       // Verificar que NO hay hard-clipping: la relación proporcional entre muestras se conserva
       // En hard-clipping, tanto 2.0 como 2.5 se truncarían a 1.0 (ratio 1.0).
