@@ -122,4 +122,44 @@ describe("kittenVoicesData", () => {
     expect(loaded).toBe(true);
     expect(getVoiceEmbedding("test-voice")[0]).toBeCloseTo(0.05, 5);
   });
+
+  it("parseNpzVoices soporta offsets no alineados a múltiplos de 4 sin lanzar RangeError", () => {
+    // Nombre con longitud impar para forzar dataStart impar (30 + 5 = 35, no múltiplo de 4)
+    const filename = "v.npy";
+    const headerStr = "{'descr': '<f4', 'fortran_order': False, 'shape': (1, 256), }";
+    const padLen = 64 - ((10 + headerStr.length) % 64);
+    const headerPadded = headerStr + " ".repeat(padLen - 1) + "\n";
+    const headerBytes = new TextEncoder().encode(headerPadded);
+    const headerLen = headerBytes.length;
+
+    const dataFloats = new Float32Array(256);
+    dataFloats[0] = 0.42;
+
+    const npyTotalLen = 10 + headerLen + 256 * 4;
+    const npyBuf = new Uint8Array(npyTotalLen);
+    npyBuf.set([0x93, 0x4e, 0x55, 0x4d, 0x50, 0x59, 1, 0], 0);
+    new DataView(npyBuf.buffer).setUint16(8, headerLen, true);
+    npyBuf.set(headerBytes, 10);
+    new Uint8Array(npyBuf.buffer, 10 + headerLen).set(new Uint8Array(dataFloats.buffer));
+
+    const fnBytes = new TextEncoder().encode(filename);
+    expect(fnBytes.length % 2).toBe(1); // Longitud impar (5)
+    expect((30 + fnBytes.length) % 4).not.toBe(0); // Offset 35, no divisible por 4
+
+    const zipHeaderLen = 30 + fnBytes.length;
+    const zipBuf = new Uint8Array(zipHeaderLen + npyTotalLen);
+    const dv = new DataView(zipBuf.buffer);
+    dv.setUint32(0, 0x04034b50, true);
+    dv.setUint32(18, npyTotalLen, true);
+    dv.setUint32(22, npyTotalLen, true);
+    dv.setUint16(26, fnBytes.length, true);
+    dv.setUint16(28, 0, true);
+    zipBuf.set(fnBytes, 30);
+    zipBuf.set(npyBuf, 30 + fnBytes.length);
+
+    expect(() => parseNpzVoices(zipBuf.buffer)).not.toThrow();
+    const parsed = parseNpzVoices(zipBuf.buffer);
+    expect(parsed["v"]).toBeDefined();
+    expect(parsed["v"][0]).toBeCloseTo(0.42, 5);
+  });
 });

@@ -2169,13 +2169,16 @@ export function parseNpzVoices(buffer: ArrayBuffer): Record<string, Float32Array
         npyBytes[5] === 0x59
       ) {
         const headerLen = new DataView(npyBytes.buffer, npyBytes.byteOffset + 8, 2).getUint16(0, true);
-        const floatDataStart = npyBytes.byteOffset + 10 + headerLen;
-        const numFloats = Math.floor((compressedSize - (10 + headerLen)) / 4);
+        const floatByteStart = 10 + headerLen;
+        const numFloats = Math.floor((compressedSize - floatByteStart) / 4);
 
         if (numFloats >= 256) {
-          const floatArray = new Float32Array(npyBytes.buffer, floatDataStart, 256);
+          const rawSlice = npyBytes.subarray(floatByteStart, floatByteStart + 256 * 4);
+          const alignedBuffer = new ArrayBuffer(256 * 4);
+          new Uint8Array(alignedBuffer).set(rawSlice);
+          const floatArray = new Float32Array(alignedBuffer);
           const voiceName = fileName.replace(/\.npy$/i, "");
-          voices[voiceName] = new Float32Array(floatArray);
+          voices[voiceName] = floatArray;
         }
       }
     }

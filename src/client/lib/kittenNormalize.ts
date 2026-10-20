@@ -236,9 +236,10 @@ export function normalizeEnglishText(text: string): string {
   t = expandDecades(t);
   t = expandRanges(t);
 
-  // 3. Comillas tipográficas, comillas latinas e inglesas
-  t = t.replace(/[“”"']/g, "");
-  t = t.replace(/[«»]/g, "");
+  // 3. Comillas tipográficas, latinas e inglesas (preservando apóstrofes internos de contracciones)
+  t = t.replace(/[“”"«»‘]/g, "");
+  t = t.replace(/(^|[\s;:,.!?¡¿—…"«»“”])['’]+|['’]+([\s;:,.!?¡¿—…"«»“”]|$)/g, "$1$2");
+  t = t.replace(/’/g, "'");
 
   // 4. Signos de apertura en español
   t = t.replace(/[¿¡]/g, "");
