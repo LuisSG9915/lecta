@@ -174,7 +174,7 @@ async function processNextJob() {
  * Garantiza siempre devolver un buffer no-vacío (mínimo 240 muestras) para
  * prevenir que audioCtx.createBuffer falle con "The number of frames is 0".
  */
-export function trimLeadingAndTrailingSilence(samples: Float32Array, threshold = 0.004): Float32Array {
+export function trimLeadingAndTrailingSilence(samples: Float32Array, threshold = 0.003): Float32Array {
   if (!samples || samples.length === 0) {
     return new Float32Array(240);
   }
@@ -281,9 +281,21 @@ async function runKittenInference(
       ? rawData
       : Float32Array.from(rawData as ArrayLike<number>);
 
-  // Evitar amputar ciegamente 5000 muestras (~208ms), lo que destruye la última sílaba en oraciones cortas.
-  // trimLeadingAndTrailingSilence detecta dinámicamente el umbral de silencio real (0.004) y preserva un colchón de 40ms.
-  return trimLeadingAndTrailingSilence(rawSamples, 0.004);
+  // En lugar de amputar siempre 5,000 muestras a ciegas, recortar únicamente hasta un máximo
+  // de 2,400 muestras (100 ms) si exceden el silencio final y delegar el ajuste exacto a trimLeadingAndTrailingSilence
+  let tailCut = 0;
+  const maxTailCut = Math.min(2400, Math.floor(rawSamples.length * 0.15));
+  while (
+    tailCut < maxTailCut &&
+    Math.abs(rawSamples[rawSamples.length - 1 - tailCut]) < 0.003
+  ) {
+    tailCut++;
+  }
+  const cleanTailSamples = tailCut > 0
+    ? rawSamples.subarray(0, rawSamples.length - tailCut)
+    : rawSamples;
+
+  return trimLeadingAndTrailingSilence(cleanTailSamples, 0.003);
 }
 
 async function configureOrtWasmEnv(): Promise<typeof import("onnxruntime-web/wasm")> {
@@ -295,9 +307,13 @@ async function configureOrtWasmEnv(): Promise<typeof import("onnxruntime-web/was
   let wasmBase = "/assets/";
   if (typeof fetch === "function") {
     try {
-      const resp = await fetch("/assets/ort-wasm-simd-threaded.wasm", { method: "HEAD" });
-      const contentType = resp.headers.get("content-type") || "";
-      if (!resp.ok || contentType.includes("text/html")) {
+      const testUrl =
+        typeof self !== "undefined" && self.location?.origin
+          ? new URL("/assets/ort-wasm-simd-threaded.wasm", self.location.origin).href
+          : "/assets/ort-wasm-simd-threaded.wasm";
+      const resp = await fetch(testUrl, { method: "HEAD" });
+      const contentType = (resp.headers.get("content-type") || "").toLowerCase();
+      if (!resp.ok || resp.status !== 200 || contentType.includes("text/html")) {
         wasmBase = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.30.0/dist/";
       }
     } catch {
