@@ -4,6 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import TtsNowPlaying from "./TtsNowPlaying";
 import type { TtsSnapshot } from "../lib/ttsTypes";
+import * as kittenTtsEngineModule from "../lib/kittenTtsEngine";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
   true;
@@ -213,6 +214,34 @@ describe("TtsNowPlaying", () => {
     const badge = container.querySelector(".tts-engine-badge");
     expect(badge).not.toBeNull();
     expect(badge?.textContent).toContain("Sistema");
+  });
+
+  it("desbloquea de forma síncrona el AudioContext al pulsar el botón de pausa o reanudación", () => {
+    const unlockSpy = vi.spyOn(kittenTtsEngineModule, "unlockAudioContext");
+    const onPauseResume = vi.fn();
+    const snap: TtsSnapshot = {
+      status: "speaking",
+      sessionId: "session-5",
+      rate: 1,
+      highlight: "sentence",
+      pauseReason: null,
+    };
+
+    render({
+      snap,
+      onPauseResume,
+      onCycleRate: vi.fn(),
+      onStop: vi.fn(),
+    });
+
+    const playPauseBtn = container.querySelector(".tts-btn-playpause") as HTMLButtonElement;
+    expect(playPauseBtn).not.toBeNull();
+    act(() => playPauseBtn.click());
+
+    expect(unlockSpy).toHaveBeenCalled();
+    expect(onPauseResume).toHaveBeenCalled();
+
+    unlockSpy.mockRestore();
   });
 });
 

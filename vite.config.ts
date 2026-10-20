@@ -1,9 +1,60 @@
 import { cloudflare } from "@cloudflare/vite-plugin";
 import react from "@vitejs/plugin-react";
 import { createHash } from "node:crypto";
-import { existsSync, readdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  readFileSync,
+  readdirSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { join, relative } from "node:path";
 import { defineConfig, type Plugin } from "vite";
+
+// Garantiza que el binario WASM de ONNX Runtime esté disponible sin hash en /assets/
+// tanto en desarrollo local (middleware de Vite) como en producción (copia en dist/client/assets).
+function onnxWasmPlugin(): Plugin {
+  const wasmSrc = join(
+    process.cwd(),
+    "node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.wasm",
+  );
+
+  return {
+    name: "lecta-onnx-wasm",
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        if (
+          req.url === "/assets/ort-wasm-simd-threaded.wasm" ||
+          req.url === "/ort-wasm-simd-threaded.wasm"
+        ) {
+          if (existsSync(wasmSrc)) {
+            res.setHeader("Content-Type", "application/wasm");
+            res.setHeader("Cache-Control", "no-cache");
+            res.end(readFileSync(wasmSrc));
+            return;
+          }
+        }
+        next();
+      });
+    },
+    writeBundle(options) {
+      if (!existsSync(wasmSrc)) return;
+      const targetDirs = [
+        options.dir ? join(options.dir, "assets") : null,
+        join(process.cwd(), "dist/client/assets"),
+      ].filter((d): d is string => !!d);
+
+      for (const dir of targetDirs) {
+        if (existsSync(dir)) {
+          const dest = join(dir, "ort-wasm-simd-threaded.wasm");
+          copyFileSync(wasmSrc, dest);
+        }
+      }
+    },
+  };
+}
 
 // Excluye binarios WebGPU/JSEP y cualquier artefacto que exceda el límite
 // de 25 MiB de Cloudflare Workers (por ejemplo ort-wasm-simd-threaded.jsep.wasm de 27 MiB).
@@ -86,6 +137,9 @@ function swManifest(): Plugin {
           }
           // _headers/_redirects son reglas del host, no contenido.
           if (entry.name.startsWith("_") || entry.name.startsWith(".")) continue;
+          // Excluir binarios WASM y modelos ONNX pesados del precaché de instalación inicial.
+          // Se descargan y cachean bajo demanda con consentimiento del usuario.
+          if (entry.name.endsWith(".wasm") || entry.name.endsWith(".onnx")) continue;
           const path = `/${relative(outDir, full).split("\\").join("/")}`;
           if (path === "/sw-manifest.json") continue;
           assets.push(path);
@@ -106,5 +160,11 @@ function swManifest(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [react(), cloudflare(), excludeOversizedOnnxAssets(), swManifest()],
+  plugins: [
+    react(),
+    cloudflare(),
+    excludeOversizedOnnxAssets(),
+    onnxWasmPlugin(),
+    swManifest(),
+  ],
 });

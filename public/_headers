@@ -40,9 +40,17 @@
   Accept-Ranges: bytes
 
 # Binarios WebAssembly (ONNX Runtime / Foliate)
+/assets/*.wasm
+  Content-Type: application/wasm
+  Cache-Control: public, max-age=31536000, immutable
+  Access-Control-Expose-Headers: Content-Length, Content-Range
+  Accept-Ranges: bytes
+
 /*.wasm
   Content-Type: application/wasm
   Cache-Control: public, max-age=31536000, immutable
+  Access-Control-Expose-Headers: Content-Length, Content-Range
+  Accept-Ranges: bytes
 
 # Fuentes tipográficas de lectura (Literata, Alegreya, Atkinson, OpenDyslexic, Source Serif)
 /assets/*.woff2

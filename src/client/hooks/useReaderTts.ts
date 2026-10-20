@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { TtsAudioController } from '../lib/ttsController';
+import { unlockAudioContext } from '../lib/kittenTtsEngine';
 import type { TtsRate, TtsStatus, TtsVoiceOption } from '../lib/ttsTypes';
 import {
   hasKittenConsent,
@@ -74,6 +75,7 @@ export function useReaderTts({
   }, [sectionDoc]);
 
   const startOrToggleTts = useCallback(() => {
+    unlockAudioContext();
     const ctrl = controllerRef.current;
     if (!ctrl) return;
 
@@ -97,6 +99,7 @@ export function useReaderTts({
   }, [status, voiceURI]);
 
   const handleConfirmConsent = useCallback(() => {
+    unlockAudioContext();
     setKittenConsent(true);
     setShowConsentDialog(false);
     if (pendingVoiceURI && controllerRef.current) {

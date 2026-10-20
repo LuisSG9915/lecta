@@ -9,6 +9,7 @@ import type { WorkerRequest, WorkerResponse } from "../workers/kitten-tts.worker
 export const KITTEN_CACHE_NAME = "lecta-kitten-tts-v1";
 export const KITTEN_MODEL_URL = "/models/kitten-tts-quantized.onnx";
 export const KITTEN_IDLE_TIMEOUT_MS = 3 * 60 * 1000; // 3 minutos
+export const WORKER_INFERENCE_TIMEOUT_MS = 12000; // 12 segundos límite por oración
 const MAX_PREFETCH_CACHE_ITEMS = 8; // Máximo de oraciones pre-sintetizadas en RAM
 
 export interface DownloadProgress {
@@ -21,89 +22,52 @@ interface PendingJob {
   resolve: (buffer: AudioBuffer) => void;
   reject: (err: Error) => void;
   epoch: number;
+  timer?: ReturnType<typeof setTimeout> | number;
 }
 
-// Conversión de números a palabras en inglés
-const ONES = [
-  "", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
-  "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen",
-  "seventeen", "eighteen", "nineteen",
-];
-const TENS = [
-  "", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety",
-];
+import { normalizeEnglishText, numberToEnglishWords } from "./kittenNormalize";
+export { normalizeEnglishText, numberToEnglishWords };
 
-export function numberToEnglishWords(n: number): string {
-  if (n === 0) return "zero";
-  if (n < 0) return `minus ${numberToEnglishWords(-n)}`;
-  if (n < 20) return ONES[n];
-  if (n < 100) {
-    const rem = n % 10;
-    return `${TENS[Math.floor(n / 10)]}${rem ? `-${ONES[rem]}` : ""}`;
+/**
+ * Sanitiza las muestras de audio recibidas de la inferencia ONNX:
+ * - Valida que el buffer no sea nulo ni esté detached (byteLength > 0).
+ * - Convierte cualquier valor NaN o Infinity en 0.
+ * - Aplica un clamp suave en [-1.0, 1.0].
+ * - Asegura un tamaño mínimo de 240 muestras (10ms a 24kHz) para que audioCtx.createBuffer jamás falle.
+ */
+export function sanitizeAudioSamples(
+  samples: Float32Array | ArrayLike<number> | null | undefined,
+): Float32Array {
+  if (!samples) {
+    return new Float32Array(240);
   }
-  if (n < 1000) {
-    const rem = n % 100;
-    return `${ONES[Math.floor(n / 100)]} hundred${rem ? ` ${numberToEnglishWords(rem)}` : ""}`;
+
+  if (samples instanceof Float32Array && samples.byteLength === 0) {
+    return new Float32Array(240);
   }
-  if (n < 1000000) {
-    const thousands = Math.floor(n / 1000);
-    const rem = n % 1000;
-    return `${numberToEnglishWords(thousands)} thousand${rem ? ` ${numberToEnglishWords(rem)}` : ""}`;
+
+  const len = samples.length;
+  if (len === 0) {
+    return new Float32Array(240);
   }
-  return String(n);
-}
 
-const ROMAN_MAP: Record<string, number> = {
-  I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6, VII: 7, VIII: 8, IX: 9, X: 10,
-  XI: 11, XII: 12, XIII: 13, XIV: 14, XV: 15, XVI: 16, XVII: 17, XVIII: 18, XIX: 19, XX: 20,
-  XXI: 21, XXII: 22, XXIII: 23, XXIV: 24, XXV: 25, XXX: 30, XL: 40, L: 50,
-};
+  const targetLen = Math.max(240, len);
+  const clean = new Float32Array(targetLen);
 
-function convertNumberOrRoman(val: string): string {
-  const upper = val.toUpperCase();
-  if (ROMAN_MAP[upper]) return numberToEnglishWords(ROMAN_MAP[upper]);
-  const num = parseInt(val, 10);
-  if (!isNaN(num)) return numberToEnglishWords(num);
-  return val;
-}
+  for (let i = 0; i < len; i++) {
+    const val = samples[i];
+    if (!Number.isFinite(val)) {
+      clean[i] = 0;
+    } else if (val > 1.0) {
+      clean[i] = 1.0;
+    } else if (val < -1.0) {
+      clean[i] = -1.0;
+    } else {
+      clean[i] = val;
+    }
+  }
 
-export function normalizeEnglishText(text: string): string {
-  let t = text;
-  // Diálogos: raya larga «—» y semirraya «–» a pausa breve
-  t = t.replace(/[—–]/g, ", ");
-  // Comillas tipográficas e inglesas
-  t = t.replace(/[“”"']/g, "");
-  t = t.replace(/[«»]/g, "");
-
-  // Abreviaturas literarias
-  t = t.replace(/\bMr\./g, "Mister");
-  t = t.replace(/\bMr\b/g, "Mister");
-  t = t.replace(/\bMrs\./g, "Missus");
-  t = t.replace(/\bMrs\b/g, "Missus");
-  t = t.replace(/\bMs\./g, "Miss");
-  t = t.replace(/\bMs\b/g, "Miss");
-  t = t.replace(/\bDr\./g, "Doctor");
-  t = t.replace(/\bDr\b/g, "Doctor");
-  t = t.replace(/\bSt\.\s/g, "Saint ");
-  t = t.replace(/\bProf\./g, "Professor");
-  t = t.replace(/\bCapt\./g, "Captain");
-  t = t.replace(/\bGen\./g, "General");
-  t = t.replace(/\bCol\./g, "Colonel");
-  t = t.replace(/\bLt\./g, "Lieutenant");
-  t = t.replace(/\bRev\./g, "Reverend");
-
-  // Capítulos con números romanos o arábigos («Chapter IV» -> «Chapter four»)
-  t = t.replace(/\bChapter\s+([0-9IVXLCDM]+)\b/gi, (_, val) => {
-    return `Chapter ${convertNumberOrRoman(val)}`;
-  });
-
-  // Números a palabras
-  t = t.replace(/\b\d+\b/g, (match) => {
-    const num = parseInt(match, 10);
-    return isNaN(num) ? match : numberToEnglishWords(num);
-  });
-
-  return t.replace(/\s+/g, " ").trim();
+  return clean;
 }
 
 export class KittenTtsEngine {
@@ -183,6 +147,7 @@ export class KittenTtsEngine {
     this.initPromise = null;
     this.lookaheadCache.clear();
     for (const [, job] of this.pendingJobs) {
+      if (job.timer) clearTimeout(job.timer);
       job.reject(new Error("Worker terminated to release memory"));
     }
     this.pendingJobs.clear();
@@ -195,6 +160,14 @@ export class KittenTtsEngine {
       this.unbindVisibility();
       this.unbindVisibility = null;
     }
+    if (this.audioCtx && typeof this.audioCtx.close === "function") {
+      void this.audioCtx.close().catch(() => {});
+    }
+    this.audioCtx = null;
+  }
+
+  public resetAudioContextForTesting(): void {
+    this.audioCtx = null;
   }
 
   isSupported(): boolean {
@@ -223,13 +196,19 @@ export class KittenTtsEngine {
 
   /**
    * Verifica en 1ms si el usuario ya descargó el motor Kitten TTS previamente.
+   * Valida que el archivo en caché tenga estado 200 (no 206 parcial) y no sea un fallback HTML.
    */
   async isModelDownloaded(modelUrl = KITTEN_MODEL_URL): Promise<boolean> {
     if (typeof caches === "undefined") return false;
     try {
       const cache = await caches.open(KITTEN_CACHE_NAME);
       const match = await cache.match(modelUrl);
-      return Boolean(match);
+      if (!match) return false;
+      const status = match.status ?? 200;
+      if (status !== 200) return false;
+      const contentType = (match.headers.get("content-type") || "").toLowerCase();
+      if (contentType.includes("text/html")) return false;
+      return true;
     } catch {
       return false;
     }
@@ -238,6 +217,7 @@ export class KittenTtsEngine {
   /**
    * Descarga opcional del modelo ONNX (~24 MB) con barra de progreso real (0% a 100%).
    * Almacena en CacheStorage ('lecta-kitten-tts-v1') usando ReadableStream.
+   * Rechaza respuestas 206 Partial Content o fallbacks SPA para evitar corrupción de caché.
    */
   async downloadModelWithProgress(
     onProgress?: (p: DownloadProgress) => void,
@@ -251,9 +231,17 @@ export class KittenTtsEngine {
 
     this.progress = { status: "downloading", percent: 0 };
     const response = await fetch(modelUrl);
-    if (!response.ok || !response.body) {
-      this.progress = { status: "error", percent: 0, errorMessage: `HTTP ${response.status}` };
-      throw new Error(`No se pudo descargar el motor de voz (${response.status})`);
+    const contentType = (response.headers.get("content-type") || "").toLowerCase();
+    const status = response.status ?? (response.ok ? 200 : 500);
+
+    // Exigir HTTP 200 íntegro (rechazando 206 Partial Content y páginas HTML de error/SPA)
+    if (status !== 200 || !response.body || contentType.includes("text/html")) {
+      this.progress = {
+        status: "error",
+        percent: 0,
+        errorMessage: status === 206 ? "Respuesta parcial rechazada" : `HTTP ${status}`,
+      };
+      throw new Error(`No se pudo descargar el motor de voz (${status})`);
     }
 
     const contentLength = Number(response.headers.get("content-length")) || 24_500_000;
@@ -274,6 +262,16 @@ export class KittenTtsEngine {
     }
 
     const blob = new Blob(chunks as unknown as BlobPart[], { type: "application/octet-stream" });
+
+    // Validar integridad mínima: si contentLength >= 10 MB, menos de 10 MB indica corte de red;
+    // de lo contrario, verificar que no se haya recibido menos de lo declarado por el servidor
+    const isTruncated =
+      contentLength >= 10_000_000 ? blob.size < 10_000_000 : blob.size < contentLength;
+    if (isTruncated) {
+      this.progress = { status: "error", percent: 0, errorMessage: "Descarga incompleta o corrupta" };
+      throw new Error("El archivo del modelo ONNX está incompleto o truncado");
+    }
+
     if (typeof caches !== "undefined") {
       const cache = await caches.open(KITTEN_CACHE_NAME);
       await cache.put(
@@ -282,6 +280,7 @@ export class KittenTtsEngine {
           headers: {
             "Content-Type": "application/octet-stream",
             "Content-Length": String(blob.size),
+            "Accept-Ranges": "bytes",
           },
         }),
       );
@@ -339,6 +338,9 @@ export class KittenTtsEngine {
       const jobId = msg.jobId ?? msg.id;
       const pending = this.pendingJobs.get(jobId);
       if (!pending) return;
+      if (pending.timer) {
+        clearTimeout(pending.timer);
+      }
       this.pendingJobs.delete(jobId);
 
       if (msg.epoch !== undefined && msg.epoch < this.epoch) {
@@ -347,20 +349,22 @@ export class KittenTtsEngine {
       }
 
       try {
-        const pcm = msg.pcm ?? msg.audioData;
-        const sampleRate = msg.sampleRate || 24000;
+        const rawPcm = msg.pcm ?? msg.audioData;
+        const cleanSamples = sanitizeAudioSamples(rawPcm);
+        const sampleRate = 24000;
         const ctx = this.getAudioContext();
+
         if (ctx && typeof ctx.createBuffer === "function") {
-          const audioBuffer = ctx.createBuffer(1, pcm.length, sampleRate);
-          audioBuffer.copyToChannel(pcm as unknown as Float32Array<ArrayBuffer>, 0);
+          const audioBuffer = ctx.createBuffer(1, cleanSamples.length, sampleRate);
+          audioBuffer.copyToChannel(cleanSamples as unknown as Float32Array<ArrayBuffer>, 0);
           pending.resolve(audioBuffer);
         } else {
           pending.resolve({
             sampleRate,
-            length: pcm.length,
-            duration: pcm.length / sampleRate,
+            length: cleanSamples.length,
+            duration: cleanSamples.length / sampleRate,
             numberOfChannels: 1,
-            getChannelData: () => pcm,
+            getChannelData: () => cleanSamples,
             copyFromChannel: () => {},
             copyToChannel: () => {},
           } as unknown as AudioBuffer);
@@ -372,6 +376,9 @@ export class KittenTtsEngine {
       const jobId = msg.jobId ?? msg.id;
       const pending = this.pendingJobs.get(jobId);
       if (!pending) return;
+      if (pending.timer) {
+        clearTimeout(pending.timer);
+      }
       this.pendingJobs.delete(jobId);
       pending.reject(new Error(msg.error));
     }
@@ -391,10 +398,20 @@ export class KittenTtsEngine {
         }
       }
     }
-    if (this.audioCtx && this.audioCtx.state === "suspended") {
-      void this.audioCtx.resume();
-    }
     return this.audioCtx;
+  }
+
+  /**
+   * Desbloquea de forma síncrona el AudioContext en el mismo tick del gesto del usuario
+   * (click / tap), garantizando que navegadores móviles (iOS Safari, Chrome Android)
+   * no silencien el contexto de audio antes de llamadas asíncronas o inferencia.
+   */
+  public unlockAudioContext(): AudioContext | null {
+    const ctx = this.getAudioContext();
+    if (ctx && ctx.state === "suspended") {
+      void ctx.resume();
+    }
+    return ctx;
   }
 
   /**
@@ -518,7 +535,21 @@ export class KittenTtsEngine {
     let promise: Promise<AudioBuffer>;
     if (worker) {
       promise = new Promise<AudioBuffer>((resolve, reject) => {
-        this.pendingJobs.set(key, { resolve, reject, epoch: currentEpoch });
+        const timer = typeof window !== "undefined"
+          ? window.setTimeout(() => {
+              const pending = this.pendingJobs.get(key);
+              if (pending) {
+                this.pendingJobs.delete(key);
+                pending.reject(
+                  new Error(
+                    `KittenTTS inference timed out after ${WORKER_INFERENCE_TIMEOUT_MS}ms`,
+                  ),
+                );
+              }
+            }, WORKER_INFERENCE_TIMEOUT_MS)
+          : undefined;
+
+        this.pendingJobs.set(key, { resolve, reject, epoch: currentEpoch, timer });
         worker.postMessage({
           type: "SYNTHESIZE",
           jobId: key,
@@ -602,6 +633,9 @@ export class KittenTtsEngine {
     const text = sentences[currentIndex]?.trim();
     if (!text) return;
 
+    // Desbloqueo síncrono del AudioContext en el tick del gesto del usuario
+    this.unlockAudioContext();
+
     if (this.idleTimer) {
       clearTimeout(this.idleTimer);
       this.idleTimer = null;
@@ -625,41 +659,63 @@ export class KittenTtsEngine {
       if (activeEpoch !== this.epoch) return;
 
       // 3. Reproducir con Web Audio API (0ms de latencia de decodificación)
-      const ctx = this.getAudioContext();
+      const ctx = this.unlockAudioContext();
       this.stopCurrentSource();
 
       return await new Promise<void>((resolve) => {
+        let settled = false;
+        let source: AudioBufferSourceNode | null = null;
+        const duration = audioBuffer.duration && audioBuffer.duration > 0 ? audioBuffer.duration : 0.05;
+        const expectedDurationMs = Math.max(20, Math.round((duration / Math.max(0.2, speed)) * 1000));
+
+        // Watchdog de seguridad: garantiza que la cola de lectura avance incluso si source.onended
+        // se traba en background o la oración fue puramente silenciosa
+        const safetyTimer = typeof window !== "undefined"
+          ? window.setTimeout(() => {
+              if (!settled) {
+                settled = true;
+                this.stopCurrentSource();
+                resolve();
+              }
+            }, expectedDurationMs + 800)
+          : undefined;
+
+        const onDone = () => {
+          if (!settled) {
+            settled = true;
+            if (safetyTimer) window.clearTimeout(safetyTimer);
+            if (this.currentSource === source) {
+              this.currentSource = null;
+            }
+            if (source) source.onended = null;
+            resolve();
+          }
+        };
+
         if (!ctx) {
           onSentenceAudioStart?.();
-          const duration = audioBuffer.duration && audioBuffer.duration > 0 ? audioBuffer.duration : 0.05;
-          const ms = Math.max(10, Math.min(100, Math.round((duration / speed) * 1000)));
-          window.setTimeout(() => resolve(), ms);
+          const ms = Math.max(10, Math.min(100, expectedDurationMs));
+          if (typeof window !== "undefined") {
+            window.setTimeout(onDone, ms);
+          } else {
+            onDone();
+          }
           return;
         }
 
-        if (ctx.state === "suspended") {
-          void ctx.resume();
-        }
-
         try {
-          const source = ctx.createBufferSource();
+          source = ctx.createBufferSource();
           source.buffer = audioBuffer;
           source.playbackRate.value = speed;
           source.connect(ctx.destination);
           this.currentSource = source;
 
-          source.onended = () => {
-            if (this.currentSource === source) {
-              this.currentSource = null;
-            }
-            source.onended = null;
-            resolve();
-          };
+          source.onended = onDone;
 
           onSentenceAudioStart?.();
           source.start(0);
         } catch {
-          resolve();
+          onDone();
         }
       });
     } finally {
@@ -673,6 +729,7 @@ export class KittenTtsEngine {
     voiceId: KittenVoiceId = "expr-voice-2-f",
     speed = 1,
   ): Promise<AudioBuffer> {
+    this.unlockAudioContext();
     if (this.idleTimer) {
       clearTimeout(this.idleTimer);
       this.idleTimer = null;
@@ -691,35 +748,50 @@ export class KittenTtsEngine {
 
   play(audioBuffer: AudioBuffer, rate = 1, onEnded?: () => void): void {
     this.stopCurrentSource();
-    const ctx = this.getAudioContext();
+    const ctx = this.unlockAudioContext();
+
+    let settled = false;
+    let source: AudioBufferSourceNode | null = null;
+    const duration = audioBuffer.duration && audioBuffer.duration > 0 ? audioBuffer.duration : 0.05;
+    const expectedDurationMs = Math.max(50, Math.round((duration / Math.max(0.2, rate)) * 1000));
+
+    const onDone = () => {
+      if (!settled) {
+        settled = true;
+        if (safetyTimer) window.clearTimeout(safetyTimer);
+        if (this.currentSource === source) {
+          this.currentSource = null;
+        }
+        if (source) source.onended = null;
+        onEnded?.();
+      }
+    };
+
+    const safetyTimer = typeof window !== "undefined"
+      ? window.setTimeout(onDone, expectedDurationMs + 800)
+      : undefined;
+
     if (!ctx) {
-      const ms = Math.max(100, Math.round(((audioBuffer.duration || 1) / rate) * 1000));
-      window.setTimeout(() => onEnded?.(), ms);
+      if (typeof window !== "undefined") {
+        window.setTimeout(onDone, Math.max(50, Math.min(100, expectedDurationMs)));
+      } else {
+        onDone();
+      }
       return;
     }
 
-    if (ctx.state === "suspended") {
-      void ctx.resume();
-    }
-
     try {
-      const source = ctx.createBufferSource();
+      source = ctx.createBufferSource();
       source.buffer = audioBuffer;
       source.playbackRate.value = rate;
       source.connect(ctx.destination);
 
-      source.onended = () => {
-        if (this.currentSource === source) {
-          this.currentSource = null;
-        }
-        source.onended = null;
-        onEnded?.();
-      };
+      source.onended = onDone;
 
       this.currentSource = source;
       source.start(0);
     } catch {
-      onEnded?.();
+      onDone();
     }
   }
 
@@ -767,6 +839,7 @@ export class KittenTtsEngine {
     }
 
     for (const [, job] of this.pendingJobs) {
+      if (job.timer) clearTimeout(job.timer);
       job.reject(new Error("Stopped"));
     }
     this.pendingJobs.clear();
@@ -785,6 +858,10 @@ export function getKittenTtsEngine(): KittenTtsEngine {
   return kittenTtsEngine;
 }
 
+export function unlockAudioContext(): AudioContext | null {
+  return kittenTtsEngine.unlockAudioContext();
+}
+
 export async function isKittenModelCached(modelUrl = KITTEN_MODEL_URL): Promise<boolean> {
   return kittenTtsEngine.isModelDownloaded(modelUrl);
 }
@@ -794,8 +871,14 @@ export async function getKittenModelBuffer(modelUrl = KITTEN_MODEL_URL): Promise
   try {
     const cache = await caches.open(KITTEN_CACHE_NAME);
     const res = await cache.match(modelUrl);
-    if (!res) return null;
-    return await res.arrayBuffer();
+    if (!res || res.status !== 200) return null;
+    const buffer = await res.arrayBuffer();
+    // Validar integridad mínima: si el buffer tiene menos de 10 MB, está truncado/corrupto
+    if (buffer.byteLength < 10_000_000) {
+      await cache.delete(modelUrl);
+      return null;
+    }
+    return buffer;
   } catch {
     return null;
   }

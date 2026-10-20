@@ -1,10 +1,17 @@
 // src/client/workers/kitten-tts.worker.ts
 // Worker de inferencia para KittenTTS (<25MB, 24kHz)
-// Añade cola con prioridad ('high'/'low'), control de epoch, recorte de silencios muertos
-// y transferencia Zero-Copy del buffer PCM.
+// Pipeline oficial de inferencia ONNX alineado con kittenml/kittentts_legacy/onnx_model.py:
+// 1. Normalización de texto en inglés (kittenNormalize.ts)
+// 2. Conversión a fonemas IPA y tokenización con 178 símbolos y padding 0 al inicio y final (kittenPhonemizer.ts)
+// 3. Inferencia con tensores input_ids [1, N], style [1, 256] y speed [1] (kittenVoicesData.ts)
+// 4. Recorte de padding del modelo y silencios muertos con transferencia Zero-Copy del buffer PCM.
 
 import type { KittenVoiceId } from "../lib/ttsTypes";
 import { getVoiceEmbedding } from "../lib/kittenVoicesData";
+import { normalizeEnglishText } from "../lib/kittenNormalize";
+import { prepareKittenInputIds } from "../lib/kittenPhonemizer";
+
+export { normalizeEnglishText };
 
 export type WorkerRequest =
   | {
@@ -68,6 +75,16 @@ let currentEpoch = 0;
 let isProcessing = false;
 let onnxSession: OnnxInferenceSession | null = null;
 
+function postWorkerMessage(message: WorkerResponse, transfer?: Transferable[]): void {
+  if (typeof self !== "undefined" && typeof self.postMessage === "function") {
+    if (transfer && transfer.length > 0) {
+      (self.postMessage as (msg: unknown, tr: Transferable[]) => void)(message, transfer);
+    } else {
+      self.postMessage(message);
+    }
+  }
+}
+
 // Cola de trabajos: los de prioridad 'high' siempre van antes que los 'low' (lookahead)
 const jobQueue: SynthJob[] = [];
 
@@ -113,12 +130,15 @@ async function processNextJob() {
     }
 
     try {
-      const pcm = await runKittenInference(job.text, job.voiceId, job.speed);
+      const rawSamples = await runKittenInference(job.text, job.voiceId, job.speed);
 
       // Verificar de nuevo tras la inferencia por si se canceló mientras calculaba
       if (job.epoch < currentEpoch) {
         continue;
       }
+
+      // Crear una copia fresca independiente antes de transferir para evitar buffers detached
+      const pcm = new Float32Array(rawSamples);
 
       const response: WorkerResponse = {
         type: "SYNTHESIS_DONE",
@@ -131,10 +151,10 @@ async function processNextJob() {
       };
 
       // Transferencia Zero-Copy del ArrayBuffer al hilo principal
-      (self.postMessage as (message: any, transfer: Transferable[]) => void)(response, [pcm.buffer]);
+      postWorkerMessage(response, [pcm.buffer]);
     } catch (err) {
       if (job.epoch >= currentEpoch) {
-        self.postMessage({
+        postWorkerMessage({
           type: "SYNTHESIS_ERROR",
           jobId: job.jobId,
           id: job.jobId,
@@ -151,262 +171,151 @@ async function processNextJob() {
 /**
  * Elimina silencios muertos al principio y final del tensor de salida
  * para que la oración N y la N+1 se encadenen con ritmo humano natural.
+ * Garantiza siempre devolver un buffer no-vacío (mínimo 240 muestras) para
+ * prevenir que audioCtx.createBuffer falle con "The number of frames is 0".
  */
 export function trimLeadingAndTrailingSilence(samples: Float32Array, threshold = 0.003): Float32Array {
+  if (!samples || samples.length === 0) {
+    return new Float32Array(240);
+  }
+
   let start = 0;
   let end = samples.length - 1;
 
   while (start < end && Math.abs(samples[start]) < threshold) start++;
   while (end > start && Math.abs(samples[end]) < threshold) end--;
 
+  // Si toda la muestra era silencio o no supera el umbral
+  if (start >= end) {
+    return new Float32Array(240);
+  }
+
   // Dejar un pequeño colchón de 40ms (aprox 960 muestras a 24kHz) para evitar clics de fase
   const pad = Math.floor(SAMPLE_RATE * 0.04);
   const safeStart = Math.max(0, start - pad);
   const safeEnd = Math.min(samples.length, end + pad);
 
-  return samples.slice(safeStart, safeEnd);
+  const trimmed = samples.slice(safeStart, safeEnd);
+  return trimmed.length > 0 ? trimmed : new Float32Array(240);
 }
 
-// Conversión de números a palabras en inglés (0 a 999,999)
-const ONES = [
-  "", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
-  "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen",
-  "seventeen", "eighteen", "nineteen",
-];
-const TENS = [
-  "", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety",
-];
-
-function numberToWords(n: number): string {
-  if (n === 0) return "zero";
-  if (n < 0) return `minus ${numberToWords(-n)}`;
-  if (n < 20) return ONES[n];
-  if (n < 100) {
-    const rem = n % 10;
-    return `${TENS[Math.floor(n / 10)]}${rem ? `-${ONES[rem]}` : ""}`;
-  }
-  if (n < 1000) {
-    const rem = n % 100;
-    return `${ONES[Math.floor(n / 100)]} hundred${rem ? ` ${numberToWords(rem)}` : ""}`;
-  }
-  if (n < 1000000) {
-    const thousands = Math.floor(n / 1000);
-    const rem = n % 1000;
-    return `${numberToWords(thousands)} thousand${rem ? ` ${numberToWords(rem)}` : ""}`;
-  }
-  return String(n);
-}
-
-const ROMAN_MAP: Record<string, number> = {
-  I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6, VII: 7, VIII: 8, IX: 9, X: 10,
-  XI: 11, XII: 12, XIII: 13, XIV: 14, XV: 15, XVI: 16, XVII: 17, XVIII: 18, XIX: 19, XX: 20,
-  XXI: 21, XXII: 22, XXIII: 23, XXIV: 24, XXV: 25, XXX: 30, XL: 40, L: 50,
-};
-
-function convertNumberOrRoman(val: string): string {
-  const upper = val.toUpperCase();
-  if (ROMAN_MAP[upper]) return numberToWords(ROMAN_MAP[upper]);
-  const num = parseInt(val, 10);
-  if (!isNaN(num)) return numberToWords(num);
-  return val;
-}
-
-export function normalizeEnglishText(text: string): string {
-  let t = text;
-  // Diálogos: raya larga «—» y semirraya «–» a pausa breve
-  t = t.replace(/[—–]/g, ", ");
-  // Comillas tipográficas, comillas latinas e inglesas
-  t = t.replace(/[“”"']/g, "");
-  t = t.replace(/[«»]/g, "");
-  // Signos de apertura en español
-  t = t.replace(/[¿¡]/g, "");
-
-  // Normalizar acentos y diacríticos a su base ASCII
-  t = t.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-
-  // Abreviaturas literarias
-  t = t.replace(/\bMr\./g, "Mister");
-  t = t.replace(/\bMr\b/g, "Mister");
-  t = t.replace(/\bMrs\./g, "Missus");
-  t = t.replace(/\bMrs\b/g, "Missus");
-  t = t.replace(/\bMs\./g, "Miss");
-  t = t.replace(/\bMs\b/g, "Miss");
-  t = t.replace(/\bDr\./g, "Doctor");
-  t = t.replace(/\bDr\b/g, "Doctor");
-  t = t.replace(/\bSt\.\s/g, "Saint ");
-  t = t.replace(/\bProf\./g, "Professor");
-  t = t.replace(/\bCapt\./g, "Captain");
-  t = t.replace(/\bGen\./g, "General");
-  t = t.replace(/\bCol\./g, "Colonel");
-  t = t.replace(/\bLt\./g, "Lieutenant");
-  t = t.replace(/\bRev\./g, "Reverend");
-
-  // Capítulos con números romanos o arábigos («Chapter IV» -> «Chapter four»)
-  t = t.replace(/\bChapter\s+([0-9IVXLCDM]+)\b/gi, (_, val) => {
-    return `Chapter ${convertNumberOrRoman(val)}`;
-  });
-
-  // Números a palabras
-  t = t.replace(/\b\d+\b/g, (match) => {
-    const num = parseInt(match, 10);
-    return isNaN(num) ? match : numberToWords(num);
-  });
-
-  return t.replace(/\s+/g, " ").trim();
-}
-
-// Vocabulario fonético/caracteres para KittenTTS
-const VOCAB = "_ ,.!?-'\":;abcdefghijklmnopqrstuvwxyz";
-
-function textToTokenIds(text: string): number[] {
-  const normalized = text.toLowerCase();
-  const tokens: number[] = [];
-  for (const ch of normalized) {
-    const idx = VOCAB.indexOf(ch);
-    if (idx >= 0) {
-      tokens.push(idx);
-    } else {
-      tokens.push(VOCAB.indexOf(" "));
-    }
-  }
-  return tokens.length > 0 ? tokens : [VOCAB.indexOf(" ")];
-}
-
-type VoiceProfile = {
-  f0: number;
-  f1: number;
-  f2: number;
-  warmth: number;
-};
-
-const VOICE_PROFILES: Record<string, VoiceProfile> = {
-  "expr-voice-2-m": { f0: 122, f1: 520, f2: 1580, warmth: 0.8 },
-  "expr-voice-2-f": { f0: 212, f1: 680, f2: 2150, warmth: 0.5 },
-  "expr-voice-3-m": { f0: 94,  f1: 430, f2: 1350, warmth: 1.0 },
-  "expr-voice-3-f": { f0: 236, f1: 760, f2: 2400, warmth: 0.3 },
-  "expr-voice-4-m": { f0: 142, f1: 610, f2: 1750, warmth: 0.7 },
-  "expr-voice-4-f": { f0: 226, f1: 710, f2: 2280, warmth: 0.4 },
-  "expr-voice-5-m": { f0: 110, f1: 480, f2: 1500, warmth: 0.6 },
-  "expr-voice-5-f": { f0: 250, f1: 800, f2: 2550, warmth: 0.3 },
-};
-
-function generateSyntheticSpeechWave(
-  text: string,
-  voiceId = "expr-voice-2-f",
-  speed = 1,
-): Float32Array {
-  const profile = VOICE_PROFILES[voiceId] ?? VOICE_PROFILES["expr-voice-2-f"];
-
-  const words = text.trim().split(/\s+/).filter(Boolean);
-  if (words.length === 0) return new Float32Array(2400);
-
-  const syllablesPerWord = words.map((w) => Math.max(1, Math.round(w.length / 3)));
-  const totalSyllables = syllablesPerWord.reduce((a, b) => a + b, 0);
-  const syllableDur = Math.max(0.12, 0.18 / Math.max(0.5, speed));
-  const pauseDur = 0.04 / Math.max(0.5, speed);
-  const totalDuration = totalSyllables * syllableDur + (words.length - 1) * pauseDur + 0.1;
-
-  const totalSamples = Math.floor(SAMPLE_RATE * totalDuration);
-  const samples = new Float32Array(totalSamples);
-
-  let sampleIdx = 0;
-  for (let w = 0; w < words.length; w++) {
-    const syllCount = syllablesPerWord[w];
-    for (let s = 0; s < syllCount; s++) {
-      const sylLen = Math.floor(SAMPLE_RATE * syllableDur);
-      const phraseProgress = sampleIdx / totalSamples;
-      const pitchInflection = 1 + 0.08 * Math.sin(Math.PI * phraseProgress) - 0.05 * phraseProgress;
-      const currentF0 = profile.f0 * pitchInflection;
-
-      for (let i = 0; i < sylLen && sampleIdx < totalSamples; i++) {
-        const t = i / SAMPLE_RATE;
-        const sylProgress = i / sylLen;
-        const env = Math.sin(Math.PI * Math.pow(sylProgress, 0.8));
-
-        const h1 = Math.sin(2 * Math.PI * currentF0 * t);
-        const h2 = 0.5 * profile.warmth * Math.sin(2 * Math.PI * currentF0 * 2 * t);
-        const h3 = 0.25 * Math.sin(2 * Math.PI * currentF0 * 3 * t);
-        const formant1 = 0.35 * Math.sin(2 * Math.PI * profile.f1 * t);
-        const formant2 = 0.15 * Math.sin(2 * Math.PI * profile.f2 * t);
-
-        const val = (h1 + h2 + h3 + formant1 + formant2) * 0.22 * env;
-        samples[sampleIdx++] = val;
-      }
-    }
-    const pauseLen = Math.floor(SAMPLE_RATE * pauseDur);
-    for (let p = 0; p < pauseLen && sampleIdx < totalSamples; p++) {
-      samples[sampleIdx++] = 0;
-    }
-  }
-
-  return samples;
-}
-
+/**
+ * Ejecuta inferencia ONNX usando los tensores exactos del modelo KittenTTS:
+ * - input_ids: int64 [1, length]
+ * - style: float32 [1, 256]
+ * - speed: float32 [1]
+ */
 async function runKittenInference(
   text: string,
-  voiceId: KittenVoiceId,
+  voiceId: KittenVoiceId | string,
   speed: number,
 ): Promise<Float32Array> {
   const cleanText = normalizeEnglishText(text);
   if (!cleanText) {
-    return new Float32Array(2400);
+    return new Float32Array(SAMPLE_RATE / 10); // 100ms silencio si texto vacío
   }
 
-  if (onnxSession) {
-    try {
-      const ort = await import("onnxruntime-web/wasm");
-      const tokenIds = textToTokenIds(cleanText);
-      const styleArray = getVoiceEmbedding(voiceId);
-
-      const inputNames = onnxSession.inputNames;
-      const inputIdName =
-        inputNames.find((n) => n.toLowerCase().includes("id") || n.toLowerCase().includes("text")) ||
-        inputNames[0] ||
-        "input_ids";
-      const styleName =
-        inputNames.find((n) => n.toLowerCase().includes("style") || n.toLowerCase().includes("voice") || n.toLowerCase().includes("emb")) ||
-        inputNames[1] ||
-        "style";
-      const speedName =
-        inputNames.find((n) => n.toLowerCase().includes("speed") || n.toLowerCase().includes("rate")) ||
-        inputNames[2] ||
-        "speed";
-
-      const feeds: Record<string, unknown> = {
-        [inputIdName]: new ort.Tensor("int64", BigInt64Array.from(tokenIds.map(BigInt)), [1, tokenIds.length]),
-      };
-
-      if (inputNames.length > 1) {
-        feeds[styleName] = new ort.Tensor("float32", styleArray, [1, styleArray.length]);
-      }
-
-      if (inputNames.length > 2) {
-        feeds[speedName] = new ort.Tensor("float32", Float32Array.from([speed]), [1]);
-      }
-
-      const results = await onnxSession.run(feeds);
-      const outputTensor = results[onnxSession.outputNames[0]];
-      const rawData = outputTensor.data;
-      const rawSamples =
-        rawData instanceof Float32Array
-          ? rawData
-          : Float32Array.from(rawData as ArrayLike<number>);
-
-      return trimLeadingAndTrailingSilence(rawSamples, 0.003);
-    } catch {
-      // Fallback a síntesis si falla ONNX
-    }
+  if (!onnxSession) {
+    throw new Error(
+      "KittenTTS ONNX session is not initialized. Model weights must be downloaded and initialized before synthesis.",
+    );
   }
 
-  const rawSamples = generateSyntheticSpeechWave(cleanText, voiceId, speed);
-  return trimLeadingAndTrailingSilence(rawSamples, 0.003);
+  const ort = await import("onnxruntime-web/wasm");
+  const tokenIds = prepareKittenInputIds(cleanText);
+  const voiceEmbedding = getVoiceEmbedding(voiceId);
+
+  const inputNames = onnxSession.inputNames;
+  const inputIdName =
+    inputNames.find(
+      (n) => n === "input_ids" || n.toLowerCase().includes("id") || n.toLowerCase().includes("text"),
+    ) ??
+    inputNames[0] ??
+    "input_ids";
+  const styleName =
+    inputNames.find(
+      (n) =>
+        n === "style" ||
+        n.toLowerCase().includes("style") ||
+        n.toLowerCase().includes("voice") ||
+        n.toLowerCase().includes("emb"),
+    ) ??
+    inputNames[1] ??
+    "style";
+  const speedName =
+    inputNames.find(
+      (n) => n === "speed" || n.toLowerCase().includes("speed") || n.toLowerCase().includes("rate"),
+    ) ??
+    inputNames[2] ??
+    "speed";
+
+  // 1. input_ids: tensor int64 [1, ids.length] con tokens envueltos en [0, ...ids, 0]
+  const feeds: Record<string, unknown> = {
+    [inputIdName]: new ort.Tensor(
+      "int64",
+      BigInt64Array.from(tokenIds.map(BigInt)),
+      [1, tokenIds.length],
+    ),
+  };
+
+  // 2. style: tensor float32 [1, 256] del embedding acústico real
+  if (inputNames.includes(styleName) || inputNames.length > 1) {
+    feeds[styleName] = new ort.Tensor("float32", voiceEmbedding, [1, voiceEmbedding.length]);
+  }
+
+  // 3. speed: tensor float32 [1] con la velocidad de habla
+  if (inputNames.includes(speedName) || inputNames.length > 2) {
+    feeds[speedName] = new ort.Tensor("float32", new Float32Array([speed]), [1]);
+  }
+
+  const results = await onnxSession.run(feeds);
+  const outputName = onnxSession.outputNames[0];
+  const outputTensor = results[outputName];
+  if (!outputTensor) {
+    throw new Error(`KittenTTS ONNX inference produced no output tensor for '${outputName}'`);
+  }
+
+  const rawData = outputTensor.data;
+  const rawSamples =
+    rawData instanceof Float32Array
+      ? rawData
+      : Float32Array.from(rawData as ArrayLike<number>);
+
+  // Según onnx_model.py: recortar ~5000 muestras finales de padding acústico generadas por el decodificador
+  const trimmedPadding =
+    rawSamples.length > 5000 ? rawSamples.subarray(0, rawSamples.length - 5000) : rawSamples;
+
+  return trimLeadingAndTrailingSilence(trimmedPadding, 0.003);
+}
+
+async function configureOrtWasmEnv(): Promise<typeof import("onnxruntime-web/wasm")> {
+  const ort = await import("onnxruntime-web/wasm");
+
+  // Configuración explícita de rutas de WebAssembly bajo public/_headers (/assets/*.wasm)
+  ort.env.wasm.wasmPaths = "/assets/";
+
+  // Si no hay SharedArrayBuffer o el worker no corre en un contexto crossOriginIsolated,
+  // forzar numThreads = 1 para evitar bloqueos y fallos silenciosos al instanciar pthread workers
+  const hasSharedArrayBuffer =
+    typeof SharedArrayBuffer !== "undefined" &&
+    typeof self !== "undefined" &&
+    Boolean((self as unknown as { crossOriginIsolated?: boolean }).crossOriginIsolated);
+
+  if (!hasSharedArrayBuffer) {
+    ort.env.wasm.numThreads = 1;
+  } else {
+    const hw = typeof navigator !== "undefined" ? navigator.hardwareConcurrency : 1;
+    ort.env.wasm.numThreads = Math.min(4, Math.max(1, Math.floor((hw || 1) / 2)));
+  }
+
+  ort.env.wasm.proxy = false;
+  return ort;
 }
 
 async function initOnnxSession(modelBuffer?: ArrayBuffer, modelUrl?: string): Promise<void> {
+  const ort = await configureOrtWasmEnv();
+
   if (modelBuffer) {
-    const ort = await import("onnxruntime-web/wasm");
-    ort.env.wasm.numThreads = 1;
-    ort.env.wasm.proxy = false;
     onnxSession = (await ort.InferenceSession.create(modelBuffer, {
       executionProviders: ["wasm"],
     })) as unknown as OnnxInferenceSession;
@@ -417,65 +326,73 @@ async function initOnnxSession(modelBuffer?: ArrayBuffer, modelUrl?: string): Pr
     try {
       const cache = await caches.open("lecta-kitten-tts-v1");
       const match = await cache.match(modelUrl);
-      if (match) {
+      if (match && match.status === 200) {
         const buf = await match.arrayBuffer();
-        const ort = await import("onnxruntime-web/wasm");
-        ort.env.wasm.numThreads = 1;
-        ort.env.wasm.proxy = false;
-        onnxSession = (await ort.InferenceSession.create(buf, {
-          executionProviders: ["wasm"],
-        })) as unknown as OnnxInferenceSession;
+        if (buf.byteLength >= 10_000_000) {
+          onnxSession = (await ort.InferenceSession.create(buf, {
+            executionProviders: ["wasm"],
+          })) as unknown as OnnxInferenceSession;
+          return;
+        }
       }
     } catch {
       // ignore
     }
   }
+
+  if (modelUrl) {
+    onnxSession = (await ort.InferenceSession.create(modelUrl, {
+      executionProviders: ["wasm"],
+    })) as unknown as OnnxInferenceSession;
+  }
 }
 
-self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
-  const msg = event.data;
-  if (!msg) return;
+if (typeof self !== "undefined") {
+  self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
+    const msg = event.data;
+    if (!msg) return;
 
-  switch (msg.type) {
-    case "INIT":
-    case "init": {
-      try {
-        await initOnnxSession(msg.modelBuffer, msg.modelUrl);
-        self.postMessage({ type: "INIT_DONE" } satisfies WorkerResponse);
-        void processNextJob();
-      } catch (err) {
-        self.postMessage({
-          type: "INIT_ERROR",
-          error: err instanceof Error ? err.message : String(err),
-        } satisfies WorkerResponse);
-      }
-      break;
-    }
-
-    case "SYNTHESIZE":
-    case "synthesize": {
-      const jobId = msg.jobId ?? msg.id ?? `job_${Date.now()}_${Math.random()}`;
-      enqueueJob({
-        jobId,
-        text: msg.text,
-        voiceId: (msg.voiceId as KittenVoiceId) || "expr-voice-2-f",
-        speed: msg.speed ?? 1,
-        priority: msg.priority ?? "high",
-        epoch: msg.epoch ?? currentEpoch,
-      });
-      break;
-    }
-
-    case "CANCEL_EPOCH":
-    case "cancel_epoch": {
-      currentEpoch = msg.epoch;
-      // Limpiar inmediatamente de la cola todos los trabajos de épocas anteriores
-      for (let i = jobQueue.length - 1; i >= 0; i--) {
-        if (jobQueue[i].epoch < currentEpoch) {
-          jobQueue.splice(i, 1);
+    switch (msg.type) {
+      case "INIT":
+      case "init": {
+        try {
+          await initOnnxSession(msg.modelBuffer, msg.modelUrl);
+          postWorkerMessage({ type: "INIT_DONE" } satisfies WorkerResponse);
+          void processNextJob();
+        } catch (err) {
+          postWorkerMessage({
+            type: "INIT_ERROR",
+            error: err instanceof Error ? err.message : String(err),
+          } satisfies WorkerResponse);
         }
+        break;
       }
-      break;
+
+      case "SYNTHESIZE":
+      case "synthesize": {
+        const jobId = msg.jobId ?? msg.id ?? `job_${Date.now()}_${Math.random()}`;
+        enqueueJob({
+          jobId,
+          text: msg.text,
+          voiceId: (msg.voiceId as KittenVoiceId) || "expr-voice-2-f",
+          speed: msg.speed ?? 1,
+          priority: msg.priority ?? "high",
+          epoch: msg.epoch ?? currentEpoch,
+        });
+        break;
+      }
+
+      case "CANCEL_EPOCH":
+      case "cancel_epoch": {
+        currentEpoch = msg.epoch;
+        // Limpiar inmediatamente de la cola todos los trabajos de épocas anteriores
+        for (let i = jobQueue.length - 1; i >= 0; i--) {
+          if (jobQueue[i].epoch < currentEpoch) {
+            jobQueue.splice(i, 1);
+          }
+        }
+        break;
+      }
     }
-  }
-};
+  };
+}

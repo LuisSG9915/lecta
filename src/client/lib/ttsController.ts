@@ -448,6 +448,7 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
       // Android el servicio TTS puede seguir dormido si nada lo despierta
       // cerca del toque. cancel+resume es inofensivo en motores sanos.
       try {
+        (deps.kittenEngine ?? kittenTtsEngine).unlockAudioContext?.();
         window.speechSynthesis.cancel();
         window.speechSynthesis.resume();
       } catch {
@@ -529,6 +530,7 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
 
     resume() {
       if (snap.status !== "paused") return;
+      (deps.kittenEngine ?? kittenTtsEngine).unlockAudioContext?.();
       resumedCount += 1;
       publish({ status: "speaking", pauseReason: null });
       deps.emit({
@@ -800,7 +802,10 @@ export async function playSentencesLoop(params: {
     isCancelled,
   } = params;
 
-  const canUseKitten =
+  // Desbloqueo síncrono del AudioContext dentro de la interacción del usuario
+  kittenTtsEngine.unlockAudioContext();
+
+  let canUseKitten =
     (engineMode === "kitten-hd" || engineMode === "kitten-neural") &&
     (await kittenTtsEngine.isModelDownloaded());
 
@@ -822,6 +827,7 @@ export async function playSentencesLoop(params: {
           "[Lecta TTS] KittenTTS falló o liberó memoria; cambiando a voz nativa del sistema:",
           err,
         );
+        canUseKitten = false;
         kittenTtsEngine.releaseWorkerMemory();
         // Degradación elegante (Graceful fallback) a Web Speech API para no cortar la lectura
         if (!isCancelled()) {
@@ -922,6 +928,7 @@ export class TtsAudioController {
 
   play(): void {
     if (!this.sentences.length) return;
+    kittenTtsEngine.unlockAudioContext();
     this.status = "playing";
     this.isCancelledFlag = false;
     this.emitState();

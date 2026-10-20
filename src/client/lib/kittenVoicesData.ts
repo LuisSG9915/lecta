@@ -2069,7 +2069,50 @@ export const KITTEN_VOICE_EMBEDDINGS: Record<KittenVoiceId, number[]> = {
   ]
 };
 
-export function getVoiceEmbedding(voiceId: KittenVoiceId): Float32Array {
-  const raw = KITTEN_VOICE_EMBEDDINGS[voiceId] ?? KITTEN_VOICE_EMBEDDINGS["expr-voice-2-f"];
-  return new Float32Array(raw);
+// Aliases oficiales según kittenml/kittentts_legacy/onnx_model.py
+export const KITTEN_VOICE_ALIASES: Record<string, KittenVoiceId> = {
+  bella: "expr-voice-2-f",
+  jasper: "expr-voice-2-m",
+  luna: "expr-voice-3-f",
+  bruno: "expr-voice-3-m",
+  rosie: "expr-voice-4-f",
+  hugo: "expr-voice-4-m",
+  kiki: "expr-voice-5-f",
+  leo: "expr-voice-5-m",
+};
+
+// Caché de tensores Float32Array para evitar re-asignaciones en cada inferencia
+const CACHED_FLOAT32_EMBEDDINGS: Partial<Record<KittenVoiceId, Float32Array>> = {};
+
+/**
+ * Obtiene el embedding acústico oficial Float32Array de 256 dimensiones
+ * para modular el estilo del grafo ONNX de KittenTTS.
+ */
+export function getVoiceEmbedding(voiceId: KittenVoiceId | string): Float32Array {
+  const lower = typeof voiceId === "string" ? voiceId.toLowerCase().trim() : "";
+  const resolvedId: KittenVoiceId =
+    KITTEN_VOICE_ALIASES[lower] ??
+    ((voiceId in KITTEN_VOICE_EMBEDDINGS ? voiceId : "expr-voice-2-f") as KittenVoiceId);
+
+  const cached = CACHED_FLOAT32_EMBEDDINGS[resolvedId];
+  if (cached) return cached;
+
+  const raw = KITTEN_VOICE_EMBEDDINGS[resolvedId] ?? KITTEN_VOICE_EMBEDDINGS["expr-voice-2-f"];
+  const tensor = new Float32Array(raw);
+  CACHED_FLOAT32_EMBEDDINGS[resolvedId] = tensor;
+  return tensor;
+}
+
+/**
+ * Valida que un tensor de voz sea real, tenga 256 dimensiones y valores válidos.
+ */
+export function isRealVoiceEmbedding(embedding: Float32Array | number[]): boolean {
+  if (!embedding || embedding.length !== 256) return false;
+  let nonZeroCount = 0;
+  for (let i = 0; i < embedding.length; i++) {
+    const v = embedding[i];
+    if (!Number.isFinite(v)) return false;
+    if (v !== 0) nonZeroCount++;
+  }
+  return nonZeroCount > 100;
 }

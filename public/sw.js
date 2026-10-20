@@ -11,6 +11,7 @@
 // - Autocuración de assets: reintento y notificación ASSET_MISMATCH_RELOAD ante hashes obsoletos.
 
 // Versión y marca de compilación para invalidación de caché PWA en navegadores y móviles
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 var SW_VERSION = "2.2.0-20261018";
 var CACHE_PREFIX = "lecta-v2-";
 var MANIFEST_URL = "/sw-manifest.json";
@@ -59,6 +60,12 @@ function isValidAssetResponse(requestUrl, response) {
     return false;
   }
   if (requestUrl.pathname.startsWith("/assets/") && contentType.indexOf("text/html") !== -1) {
+    return false;
+  }
+  if (requestUrl.pathname.endsWith(".wasm") && contentType.indexOf("text/html") !== -1) {
+    return false;
+  }
+  if (requestUrl.pathname.endsWith(".onnx") && contentType.indexOf("text/html") !== -1) {
     return false;
   }
   return true;
@@ -168,21 +175,62 @@ self.addEventListener("fetch", function (event) {
     return;
   }
 
-  // Ruta rápida para modelos .onnx de Kitten TTS:
+  // Ruta rápida y blindada para modelos .onnx de Kitten TTS:
   // - Si ya fue descargado en 'lecta-kitten-tts-v1', servirlo al instante (incluso 100% offline).
-  // - Si aún no está descargado, pasar directo a red SIN clonar ni guardar en el caché de la app shell
-  //   para no duplicar 24 MB ni bloquear el ReadableStream de la barra de progreso.
+  // - Soporta cabeceras Range devolviendo 206 Partial Content sintetizado sobre el archivo íntegro.
+  // - NUNCA devuelve respuestas cacheadas incompletas (HTTP 206 truncadas) ni fallbacks SPA (text/html).
+  // - Si aún no está descargado, pasa directo a la red como stream nativo sin buffering en el Service Worker.
   if (isKittenModelRequest(url)) {
     event.respondWith(
       (async function () {
-        const dlcCache = await caches.open(KITTEN_TTS_CACHE);
-        const cachedModel =
-          (await dlcCache.match(req)) ||
-          (await dlcCache.match(url.pathname)) ||
-          (await dlcCache.match(req, { ignoreSearch: true }));
-        if (cachedModel) {
-          return cachedModel;
+        try {
+          const dlcCache = await caches.open(KITTEN_TTS_CACHE);
+          const cachedModel =
+            (await dlcCache.match(req)) ||
+            (await dlcCache.match(url.pathname)) ||
+            (await dlcCache.match(req, { ignoreSearch: true }));
+
+          if (cachedModel && cachedModel.status === 200) {
+            const contentType = (cachedModel.headers.get("content-type") || "").toLowerCase();
+            if (contentType.indexOf("text/html") === -1) {
+              const rangeHeader = req.headers.get("Range");
+              if (rangeHeader) {
+                // Sintetizar respuesta HTTP 206 Partial Content a partir del buffer cacheado completo
+                const matches = rangeHeader.match(/bytes=(\d+)-(\d*)/);
+                if (matches) {
+                  const fullBuffer = await cachedModel.arrayBuffer();
+                  const total = fullBuffer.byteLength;
+                  const start = parseInt(matches[1], 10);
+                  const end = matches[2] ? parseInt(matches[2], 10) : total - 1;
+                  if (start < total && end < total && start <= end) {
+                    const slice = fullBuffer.slice(start, end + 1);
+                    return new Response(slice, {
+                      status: 206,
+                      statusText: "Partial Content",
+                      headers: {
+                        "Content-Type": "application/octet-stream",
+                        "Content-Range": `bytes ${start}-${end}/${total}`,
+                        "Content-Length": String(slice.byteLength),
+                        "Accept-Ranges": "bytes",
+                      },
+                    });
+                  }
+                }
+              }
+              return cachedModel;
+            } else {
+              // Si el caché almacenó un fallback HTML corrupto, purgarlo
+              await dlcCache.delete(req);
+            }
+          } else if (cachedModel && cachedModel.status === 206) {
+            // Respuestas 206 cacheadas incompletas: purgar inmediatamente para que no rompan ONNX
+            await dlcCache.delete(req);
+          }
+        } catch {
+          // Ignorar fallo de caché y caer directo a red
         }
+
+        // Descarga directa en streaming desde la red
         return fetch(req);
       })()
     );

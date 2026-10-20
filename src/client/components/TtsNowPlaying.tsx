@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { KITTEN_VOICES, type KittenVoiceId, type TtsSnapshot } from "../lib/ttsTypes";
+import { unlockAudioContext } from "../lib/kittenTtsEngine";
 
 // Chip de sesión «Leer en voz alta»: pastilla flotante ergonómica con
 // controles táctiles ampliados (44x44px mín.), selector de voz KittenTTS,
@@ -102,7 +103,10 @@ export default function TtsNowPlaying({
             <button
               type="button"
               className="btn--quiet tts-btn-playpause"
-              onClick={onPauseResume}
+              onClick={() => {
+                unlockAudioContext();
+                onPauseResume();
+              }}
               aria-label="Pausar lectura"
             >
               Pausar
@@ -111,7 +115,10 @@ export default function TtsNowPlaying({
             <button
               type="button"
               className="btn--quiet tts-btn-playpause"
-              onClick={onPauseResume}
+              onClick={() => {
+                unlockAudioContext();
+                onPauseResume();
+              }}
               aria-label="Reanudar lectura"
             >
               Reanudar

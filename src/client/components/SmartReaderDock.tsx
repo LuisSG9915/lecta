@@ -4,6 +4,7 @@ import {
   type ReadingPreset,
 } from "../lib/settings";
 import type { TtsSnapshot } from "../lib/ttsTypes";
+import { unlockAudioContext } from "../lib/kittenTtsEngine";
 import Icon from "./Icon";
 
 import type { FocusAidType } from "../lib/focus-telemetry";
@@ -540,7 +541,10 @@ export default function SmartReaderDock({
               <button
                 type="button"
                 className="dock-audio-play-btn dock-pill-btn"
-                onClick={onTogglePlayPause}
+                onClick={() => {
+                  unlockAudioContext();
+                  onTogglePlayPause();
+                }}
                 disabled={ttsSnap.status === "preparing"}
                 aria-label={
                   ttsSnap.status === "preparing"

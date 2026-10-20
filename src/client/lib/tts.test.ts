@@ -37,7 +37,9 @@ import {
   kittenTtsEngine,
   KittenTtsEngine,
   KITTEN_IDLE_TIMEOUT_MS,
+  sanitizeAudioSamples,
 } from "./kittenTtsEngine";
+import { prepareKittenInputIds } from "./kittenPhonemizer";
 import { trimLeadingAndTrailingSilence } from "../workers/kitten-tts.worker";
 
 const section = (html: string) => {
@@ -340,6 +342,74 @@ describe("kittenTtsEngine", () => {
 
     fetchSpy.mockRestore();
     vi.unstubAllGlobals();
+  });
+
+  it("la tokenización añade el padding 0 inicial y final y genera un BigInt64Array válido", () => {
+    const text = "Lecta Zero-Friction TTS";
+    const tokenIds = prepareKittenInputIds(text);
+
+    // Padding 0 obligatorio al inicio y final según StyleTTS2 ONNX
+    expect(tokenIds.length).toBeGreaterThanOrEqual(3);
+    expect(tokenIds[0]).toBe(0);
+    expect(tokenIds[tokenIds.length - 1]).toBe(0);
+
+    // Conversión a BigInt64Array requerida para el tensor ONNX int64 [1, N]
+    const tensorData = BigInt64Array.from(tokenIds.map(BigInt));
+    expect(tensorData).toBeInstanceOf(BigInt64Array);
+    expect(tensorData.length).toBe(tokenIds.length);
+    expect(tensorData[0]).toBe(0n);
+    expect(tensorData[tensorData.length - 1]).toBe(0n);
+  });
+
+  it("kittenTtsEngine maneja muestras con NaN o silencios sin lanzar excepción en createBuffer", () => {
+    // Buffer contaminado con NaN, Infinity y valores fuera de [-1, 1]
+    const dirtySamples = new Float32Array([NaN, 2.5, -3.0, Infinity, -Infinity, 0.25]);
+    const cleanSamples = sanitizeAudioSamples(dirtySamples);
+
+    expect(cleanSamples.length).toBeGreaterThanOrEqual(240);
+    expect(cleanSamples[0]).toBe(0); // NaN reemplazado
+    expect(cleanSamples[1]).toBe(1.0); // Clamped a 1.0
+    expect(cleanSamples[2]).toBe(-1.0); // Clamped a -1.0
+    expect(cleanSamples[3]).toBe(0); // Infinity reemplazado
+    expect(cleanSamples[4]).toBe(0); // -Infinity reemplazado
+    expect(cleanSamples[5]).toBe(0.25);
+
+    // Caso de silencio absoluto / buffer vacío: debe tener al menos 240 muestras para createBuffer
+    const emptySamples = new Float32Array(0);
+    const sanitizedEmpty = sanitizeAudioSamples(emptySamples);
+    expect(sanitizedEmpty.length).toBe(240);
+
+    // Verificar que createBuffer jamás falle por frame count 0
+    const fakeCtx = {
+      createBuffer: vi.fn((_channels: number, length: number, rate: number) => {
+        if (length === 0) throw new Error("The number of frames is 0");
+        return { length, sampleRate: rate };
+      }),
+    };
+    expect(() => fakeCtx.createBuffer(1, sanitizedEmpty.length, 24000)).not.toThrow();
+  });
+
+  it("la pre-síntesis (Lookahead Buffer N+1) no reutiliza un ArrayBuffer detached", async () => {
+    const engine = new KittenTtsEngine();
+
+    // Simular un buffer detached o con longitud cero
+    const rawBuffer = new ArrayBuffer(2400);
+    const detachedSamples = new Float32Array(rawBuffer, 0, 0);
+    const safeOutput = sanitizeAudioSamples(detachedSamples);
+    expect(safeOutput.length).toBeGreaterThanOrEqual(240);
+    expect(safeOutput.byteLength).toBeGreaterThan(0);
+
+    // Verificar que requestAudioBuffer devuelve una promesa segura y reutilizable
+    const p1 = (engine as unknown as {
+      requestAudioBuffer: (t: string, v: string, s: number, p: string) => Promise<AudioBuffer>;
+    }).requestAudioBuffer("Lookahead text", "expr-voice-2-f", 1, "low");
+    const p2 = (engine as unknown as {
+      requestAudioBuffer: (t: string, v: string, s: number, p: string) => Promise<AudioBuffer>;
+    }).requestAudioBuffer("Lookahead text", "expr-voice-2-f", 1, "high");
+
+    expect(p1).toBe(p2);
+    const buf = await p1;
+    expect(buf.length).toBeGreaterThan(0);
   });
 
   it("speakSentenceWithLookahead pre-sintetiza N+1 y N+2 automáticamente", async () => {
@@ -873,6 +943,40 @@ describe("ttsController", () => {
     expect(releaseSpy).toHaveBeenCalled();
     expect(highlighted).toContain(0);
     expect(finished).toBe(true);
+
+    speakSpy.mockRestore();
+    releaseSpy.mockRestore();
+  });
+
+  it("ante un error o timeout del Worker en KittenTTS, el controlador conmuta a síntesis nativa sin bloquear la sesión", async () => {
+    // Simular error de inferencia del Worker (como SYNTHESIS_ERROR o timeout de 12s)
+    const workerError = new Error("KittenTTS Worker Inference Timeout");
+    const speakSpy = vi.spyOn(kittenTtsEngine, "speakSentenceWithLookahead").mockRejectedValueOnce(workerError);
+    const releaseSpy = vi.spyOn(kittenTtsEngine, "releaseWorkerMemory");
+    vi.spyOn(kittenTtsEngine, "isModelDownloaded").mockResolvedValue(true);
+
+    const spokenSentences: number[] = [];
+    let pageEnded = false;
+
+    await playSentencesLoop({
+      sentences: ["Primera oración con fallo de worker.", "Segunda oración tras fallback nativo."],
+      startIndex: 0,
+      engineMode: "kitten-hd",
+      voiceId: "expr-voice-2-f",
+      speed: 1,
+      onHighlightSentence: (idx) => spokenSentences.push(idx),
+      onFinishPage: () => {
+        pageEnded = true;
+      },
+      isCancelled: () => false,
+    });
+
+    expect(speakSpy).toHaveBeenCalled();
+    expect(releaseSpy).toHaveBeenCalled();
+    // Debe haber avanzado y completado ambas oraciones sin bloquearse
+    expect(spokenSentences).toContain(0);
+    expect(spokenSentences).toContain(1);
+    expect(pageEnded).toBe(true);
 
     speakSpy.mockRestore();
     releaseSpy.mockRestore();
