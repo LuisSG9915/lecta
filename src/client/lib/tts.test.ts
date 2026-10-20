@@ -1060,4 +1060,112 @@ describe("ttsController", () => {
     speakSpy.mockRestore();
     releaseSpy.mockRestore();
   });
+
+  it("cuando se cancela una síntesis con engine.stop() (ej: nextSentence), el .catch() no mata al Worker ni habla en voz nativa", async () => {
+    consent();
+    saveTtsSettings({
+      ...loadTtsSettings(),
+      engine: "kitten-neural",
+      kittenVoice: "expr-voice-2-f",
+    });
+
+    const releaseSpy = vi.fn();
+    let rejectPrevious: ((err: Error) => void) | null = null;
+
+    const fakeKitten = {
+      isSupported: () => true,
+      isReady: () => true,
+      synthesize: vi.fn((text: string) => {
+        if (text.includes("Primera")) {
+          return new Promise<AudioBuffer>((_resolve, reject) => {
+            rejectPrevious = reject;
+          });
+        }
+        return Promise.resolve({
+          sampleRate: 24000,
+          length: 2400,
+          duration: 0.1,
+        } as AudioBuffer);
+      }),
+      synthesizeLookahead: vi.fn().mockResolvedValue({
+        sampleRate: 24000,
+        length: 2400,
+        duration: 0.1,
+      } as AudioBuffer),
+      play: vi.fn(),
+      pause: vi.fn(),
+      resume: vi.fn(),
+      stop: vi.fn(() => {
+        if (rejectPrevious) {
+          rejectPrevious(new Error("Stopped"));
+          rejectPrevious = null;
+        }
+      }),
+      releaseWorkerMemory: releaseSpy,
+      isPlaying: () => true,
+      getModelProgress: () => ({ status: "ready" as const, percent: 100 }),
+    };
+
+    const nativeSpeaker = {
+      speak: vi.fn(),
+      pause: vi.fn(),
+      resume: vi.fn(),
+      cancel: vi.fn(),
+      speakingNow: () => false,
+      setRate: vi.fn(),
+    };
+
+    const { deps } = makeDeps([
+      section("<p>Primera oración lenta. Segunda oración rápida.</p>"),
+    ]);
+    deps.language = () => "en";
+    deps.kittenEngine = fakeKitten as unknown as KittenTtsEngine;
+    deps.makeSpeaker = () => nativeSpeaker;
+
+    const ctl = createTtsController(deps);
+    ctl.start(CTX, 0);
+    await flush();
+
+    // El usuario avanza rápidamente a la siguiente oración mientras la primera estaba en vuelo
+    ctl.nextSentence();
+    await flush();
+
+    // El rechazo "Stopped" de la primera oración NO debe matar al Worker ni usar speaker nativo
+    expect(releaseSpy).not.toHaveBeenCalled();
+    expect(nativeSpeaker.speak).not.toHaveBeenCalled();
+  });
+
+  it("shouldUseKitten no activa KittenTTS en libros en español cuando corre sin mock de pruebas", async () => {
+    consent();
+    saveTtsSettings({
+      ...loadTtsSettings(),
+      engine: "kitten-neural",
+      kittenVoice: "expr-voice-2-f",
+    });
+
+    const nativeSpeaker = {
+      speak: vi.fn(),
+      pause: vi.fn(),
+      resume: vi.fn(),
+      cancel: vi.fn(),
+      speakingNow: () => false,
+      setRate: vi.fn(),
+    };
+
+    const { deps } = makeDeps([
+      section("<p>Este es un texto en idioma español.</p>"),
+    ]);
+    deps.language = () => "es";
+    // Sin kittenEngine inyectado (comportamiento real en producción)
+    deps.kittenEngine = undefined;
+    deps.makeSpeaker = () => nativeSpeaker;
+
+    const ctl = createTtsController(deps);
+    ctl.start(CTX, 0);
+    await flush();
+
+    // Para libros en español, debe usar el speaker nativo y no KittenTTS
+    expect(nativeSpeaker.speak).toHaveBeenCalledWith("Este es un texto en idioma español.", 1);
+    expect(ctl.snapshot().activeEngine).toBe("browser");
+  });
 });

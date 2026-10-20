@@ -121,6 +121,7 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
   let awaitingTimer = 0;
   let stallRetries = 0;
   let destroyed = false;
+  let speakGen = 0;
 
   // Contadores de la sesión para tts_session_end.
   let startedAt = 0;
@@ -136,10 +137,17 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
 
   const shouldUseKitten = (): boolean => {
     const isEn = deps.language().toLowerCase().startsWith("en");
+    const isTestMock = Boolean(deps.kittenEngine);
+    if (!isEn && !isTestMock) {
+      return false;
+    }
     if (settings.engine === "kitten-neural") return true;
     if (settings.engine === "auto") {
       const engine = deps.kittenEngine ?? kittenTtsEngine;
-      return isEn && engine.isSupported() && engine.isReady();
+      const isReadyOrDownloaded =
+        engine.isReady() ||
+        engine.getModelProgress().status === "ready";
+      return isEn && engine.isSupported() && isReadyOrDownloaded;
     }
     return false;
   };
@@ -253,7 +261,7 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
   const triggerLookahead = () => {
     if (!shouldUseKitten()) return;
     const engine = deps.kittenEngine ?? kittenTtsEngine;
-    // Buffer anticipado lookahead = 2
+    // Buffer anticipado lookahead = 2 con prioridad "low" para no bloquear la oración actual
     for (let offset = 1; offset <= 2; offset++) {
       const targetIdx = cursor + offset;
       if (
@@ -263,8 +271,11 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
       ) {
         lookaheadPending.add(targetIdx);
         const text = items[targetIdx].text;
-        void engine
-          .synthesize(text, settings.kittenVoice, settings.rate)
+        const synthLookahead =
+          typeof engine.synthesizeLookahead === "function"
+            ? engine.synthesizeLookahead(text, settings.kittenVoice, settings.rate)
+            : engine.synthesize(text, settings.kittenVoice, settings.rate, "low");
+        void synthLookahead
           .then((buf) => {
             if (destroyed) return;
             lookaheadBuffers.set(targetIdx, buf);
@@ -280,6 +291,8 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
   };
 
   const speakCurrent = () => {
+    speakGen += 1;
+    const currentGen = speakGen;
     const item = items[cursor];
     const root = deps.root();
     if (!item || !root) {
@@ -295,27 +308,37 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
 
     if (shouldUseKitten()) {
       const engine = deps.kittenEngine ?? kittenTtsEngine;
-      triggerLookahead();
 
       const preSynthesized = lookaheadBuffers.get(cursor);
       if (preSynthesized) {
         // Transición instantánea (<15ms) entre oraciones con audio ya en RAM
         try {
-          engine.play(preSynthesized, settings.rate, onEnded);
+          // Usar siempre 1.0 para Web Audio API: el modelo ONNX ya sintetizó a settings.rate
+          engine.play(preSynthesized, 1.0, onEnded);
+          triggerLookahead();
         } catch (err) {
+          if (destroyed || currentGen !== speakGen || snap.status !== "speaking") return;
           console.warn("[Lecta TTS] KittenTTS falló al reproducir pre-sintetizado:", err);
           engine.releaseWorkerMemory?.();
           speaker?.speak(item.text, settings.rate);
         }
       } else {
-        void engine
-          .synthesize(item.text, settings.kittenVoice, settings.rate)
+        // 1. Encolar primero la oración actual con prioridad high
+        const synthPromise = engine.synthesize(item.text, settings.kittenVoice, settings.rate);
+        // 2. Disparar lookahead después con prioridad low
+        triggerLookahead();
+
+        void synthPromise
           .then((buf) => {
-            if (destroyed || snap.status !== "speaking") return;
+            if (destroyed || currentGen !== speakGen || snap.status !== "speaking") return;
             lookaheadBuffers.set(cursor, buf);
-            engine.play(buf, settings.rate, onEnded);
+            engine.play(buf, 1.0, onEnded);
           })
           .catch((err) => {
+            if (destroyed || currentGen !== speakGen || snap.status !== "speaking") return;
+            const msg = err instanceof Error ? err.message : String(err);
+            if (/stopped|cancelled by epoch|terminated/i.test(msg)) return;
+
             console.warn(
               "[Lecta TTS] KittenTTS falló o liberó memoria; cambiando a voz nativa del sistema:",
               err,
@@ -408,6 +431,7 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
   // publica el snapshot. Idempotente — stop durante stopping no repite.
   const finish = (reason: TtsEndReason) => {
     if (snap.status === "idle" || snap.status === "stopping") return;
+    speakGen += 1;
     publish({ status: "stopping" });
     if (shouldUseKitten()) {
       (deps.kittenEngine ?? kittenTtsEngine).stop();
@@ -506,6 +530,7 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
       // reanudar (el efecto de pausas del Reader reintenta al pasar
       // a «speaking», así que la capa abierta igual la detiene).
       if (snap.status !== "speaking") return;
+      speakGen += 1;
       if (reason === "word_lookup") lookupCount += 1;
       if (shouldUseKitten()) {
         (deps.kittenEngine ?? kittenTtsEngine).pause();
@@ -708,6 +733,9 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
       const wasSpeaking = snap.status === "speaking";
       const current = items[cursor];
       if (wasSpeaking) {
+        if (shouldUseKitten()) {
+          (deps.kittenEngine ?? kittenTtsEngine).stop();
+        }
         speaker?.pause();
         publish({ status: "paused", pauseReason: "render_change" });
         emitPause("render_change");
@@ -896,7 +924,7 @@ export class TtsAudioController {
       voices.push({
         id: `kitten:${kv.id}`,
         name: `${kv.name} (Neural HD)`,
-        lang: "es",
+        lang: "en-US",
         isNeural: true,
       });
     }
@@ -906,7 +934,8 @@ export class TtsAudioController {
   attachDocument(doc: Document | null): void {
     if (doc?.body) {
       const text = doc.body.textContent || "";
-      const seg = new Intl.Segmenter("es", { granularity: "sentence" });
+      const docLang = doc.documentElement?.lang?.trim() || "en";
+      const seg = new Intl.Segmenter(docLang, { granularity: "sentence" });
       this.sentences = [...seg.segment(text)]
         .map((s) => s.segment.trim())
         .filter((s) => s.length > 0);

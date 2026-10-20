@@ -781,7 +781,7 @@ export function Vocabulary({
     setTimeout(() => {
       const detailId = `word-detail-${word.key.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
       const el = document.getElementById(detailId)?.parentElement || document.getElementById(detailId);
-      if (el) {
+      if (el && typeof el.scrollIntoView === "function") {
         el.scrollIntoView({ behavior: "smooth", block: "center" });
       }
     }, 100);

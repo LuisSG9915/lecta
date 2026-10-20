@@ -804,6 +804,7 @@ export class KittenTtsEngine {
     text: string,
     voiceId: KittenVoiceId = "expr-voice-2-f",
     speed = 1,
+    priority: "high" | "low" = "high",
   ): Promise<AudioBuffer> {
     this.unlockAudioContext();
     if (this.idleTimer) {
@@ -818,11 +819,19 @@ export class KittenTtsEngine {
       if (!ok) {
         throw new Error("KittenTTS engine failed to initialize");
       }
-      return await this.requestAudioBuffer(text, voiceId, speed, "high");
+      return await this.requestAudioBuffer(text, voiceId, speed, priority);
     } finally {
       this.activeRequests = Math.max(0, this.activeRequests - 1);
       this.scheduleIdleRelease();
     }
+  }
+
+  async synthesizeLookahead(
+    text: string,
+    voiceId: KittenVoiceId = "expr-voice-2-f",
+    speed = 1,
+  ): Promise<AudioBuffer> {
+    return this.synthesize(text, voiceId, speed, "low");
   }
 
   play(audioBuffer: AudioBuffer, _rate = 1, onEnded?: () => void): void {
