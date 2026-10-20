@@ -8,6 +8,11 @@ import type { WorkerRequest, WorkerResponse } from "../workers/kitten-tts.worker
 
 export const KITTEN_CACHE_NAME = "lecta-kitten-tts-v1";
 export const KITTEN_MODEL_URL = "/models/kitten-tts-quantized.onnx";
+export const KITTEN_MODEL_FALLBACK_URLS: readonly string[] = [
+  "https://huggingface.co/KittenML/kitten-tts-nano-0.8-int8/resolve/main/kitten_tts_nano_v0_8.onnx",
+  "https://huggingface.co/KittenML/kitten-tts-nano-0.1/resolve/main/kitten_tts_nano_v0_1.onnx",
+];
+export const KITTEN_MODEL_CDN_URL = KITTEN_MODEL_FALLBACK_URLS[0];
 export const KITTEN_IDLE_TIMEOUT_MS = 3 * 60 * 1000; // 3 minutos
 export const WORKER_INFERENCE_TIMEOUT_MS = 12000; // 12 segundos límite por oración
 const MAX_PREFETCH_CACHE_ITEMS = 8; // Máximo de oraciones pre-sintetizadas en RAM
@@ -32,7 +37,8 @@ export { normalizeEnglishText, numberToEnglishWords };
  * Sanitiza las muestras de audio recibidas de la inferencia ONNX:
  * - Valida que el buffer no sea nulo ni esté detached (byteLength > 0).
  * - Convierte cualquier valor NaN o Infinity en 0.
- * - Aplica un clamp suave en [-1.0, 1.0].
+ * - Aplica normalización de pico proporcional (gain = 0.98 / maxPeak) en vez de hard-clipping
+ *   para no convertir la onda en ondas cuadradas distorsionadas ("voz metálica/alien").
  * - Asegura un tamaño mínimo de 240 muestras (10ms a 24kHz) para que audioCtx.createBuffer jamás falle.
  */
 export function sanitizeAudioSamples(
@@ -54,16 +60,27 @@ export function sanitizeAudioSamples(
   const targetLen = Math.max(240, len);
   const clean = new Float32Array(targetLen);
 
+  // 1. Encontrar el pico máximo absoluto (maxAbs) ignorando NaN e Infinity
+  let maxAbs = 0;
+  for (let i = 0; i < len; i++) {
+    const val = samples[i];
+    if (Number.isFinite(val)) {
+      const abs = Math.abs(val);
+      if (abs > maxAbs) maxAbs = abs;
+    }
+  }
+
+  // 2. Normalización de pico (Peak Normalization):
+  // Si maxAbs > 0.98, dividir todas las muestras por (maxAbs / 0.95) para conservar la forma de onda limpia
+  // con un margen de seguridad del 5% (-0.45 dB) sin saturación cuadrada (hard clipping).
+  const divisor = maxAbs > 0.98 ? maxAbs / 0.95 : 1.0;
+
   for (let i = 0; i < len; i++) {
     const val = samples[i];
     if (!Number.isFinite(val)) {
       clean[i] = 0;
-    } else if (val > 1.0) {
-      clean[i] = 1.0;
-    } else if (val < -1.0) {
-      clean[i] = -1.0;
     } else {
-      clean[i] = val;
+      clean[i] = val / divisor;
     }
   }
 
@@ -202,7 +219,7 @@ export class KittenTtsEngine {
     if (typeof caches === "undefined") return false;
     try {
       const cache = await caches.open(KITTEN_CACHE_NAME);
-      const match = await cache.match(modelUrl);
+      const match = (await cache.match(modelUrl)) ?? (await cache.match(KITTEN_MODEL_URL));
       if (!match) return false;
       const status = match.status ?? 200;
       if (status !== 200) return false;
@@ -218,6 +235,7 @@ export class KittenTtsEngine {
    * Descarga opcional del modelo ONNX (~24 MB) con barra de progreso real (0% a 100%).
    * Almacena en CacheStorage ('lecta-kitten-tts-v1') usando ReadableStream.
    * Rechaza respuestas 206 Partial Content o fallbacks SPA para evitar corrupción de caché.
+   * Dispone de fallback automático a los repositorios oficiales de Hugging Face si la ruta local da 404/HTML.
    */
   async downloadModelWithProgress(
     onProgress?: (p: DownloadProgress) => void,
@@ -230,18 +248,38 @@ export class KittenTtsEngine {
     }
 
     this.progress = { status: "downloading", percent: 0 };
-    const response = await fetch(modelUrl);
-    const contentType = (response.headers.get("content-type") || "").toLowerCase();
-    const status = response.status ?? (response.ok ? 200 : 500);
+
+    const candidateUrls = [
+      modelUrl,
+      ...(modelUrl.startsWith("http") ? [] : KITTEN_MODEL_FALLBACK_URLS),
+    ];
+
+    let response: Response | null = null;
+    let lastStatus = 404;
+
+    for (const url of candidateUrls) {
+      try {
+        const res = await fetch(url);
+        const status = res.status ?? (res.ok ? 200 : 500);
+        lastStatus = status;
+        const contentType = (res.headers?.get?.("content-type") || "").toLowerCase();
+        if (res.ok && status === 200 && !contentType.includes("text/html") && res.body) {
+          response = res;
+          break;
+        }
+      } catch {
+        // Fallback al siguiente candidato
+      }
+    }
 
     // Exigir HTTP 200 íntegro (rechazando 206 Partial Content y páginas HTML de error/SPA)
-    if (status !== 200 || !response.body || contentType.includes("text/html")) {
+    if (!response || !response.body) {
       this.progress = {
         status: "error",
         percent: 0,
-        errorMessage: status === 206 ? "Respuesta parcial rechazada" : `HTTP ${status}`,
+        errorMessage: lastStatus === 206 ? "Respuesta parcial rechazada" : `HTTP ${lastStatus}`,
       };
-      throw new Error(`No se pudo descargar el motor de voz (${status})`);
+      throw new Error(`No se pudo descargar el motor de voz (${lastStatus})`);
     }
 
     const contentLength = Number(response.headers.get("content-length")) || 24_500_000;
@@ -274,16 +312,18 @@ export class KittenTtsEngine {
 
     if (typeof caches !== "undefined") {
       const cache = await caches.open(KITTEN_CACHE_NAME);
-      await cache.put(
-        modelUrl,
+      const makeResponse = () =>
         new Response(blob, {
           headers: {
             "Content-Type": "application/octet-stream",
             "Content-Length": String(blob.size),
             "Accept-Ranges": "bytes",
           },
-        }),
-      );
+        });
+      await cache.put(modelUrl, makeResponse());
+      if (modelUrl !== KITTEN_MODEL_URL) {
+        await cache.put(KITTEN_MODEL_URL, makeResponse());
+      }
     }
 
     this.progress = { status: "ready", percent: 100 };
@@ -424,26 +464,54 @@ export class KittenTtsEngine {
     this.initPromise = new Promise<boolean>((resolve) => {
       const worker = this.getWorker();
       if (!worker) {
-        this.ready = true;
-        resolve(true);
+        // En entornos sin Worker (como tests unitarios bajo jsdom), permitir el fallback de síntesis de test
+        if (typeof Worker === "undefined") {
+          this.ready = true;
+          resolve(true);
+          return;
+        }
+        this.ready = false;
+        resolve(false);
         return;
       }
+
+      const cleanup = () => {
+        worker.removeEventListener("message", onMsg);
+        worker.removeEventListener("error", onErr);
+      };
 
       const onMsg = (e: MessageEvent<WorkerResponse>) => {
         const msg = e.data;
         if (msg.type === "INIT_DONE" || msg.type === "init_done") {
-          worker.removeEventListener("message", onMsg);
+          cleanup();
           this.ready = true;
           this.progress = { status: "ready", percent: 100 };
           resolve(true);
         } else if (msg.type === "INIT_ERROR" || msg.type === "init_error") {
-          worker.removeEventListener("message", onMsg);
+          cleanup();
           this.ready = false;
+          this.progress = {
+            status: "error",
+            percent: 0,
+            errorMessage: msg.error || "Error al inicializar sesión ONNX",
+          };
           resolve(false);
         }
       };
 
+      const onErr = (e: ErrorEvent) => {
+        cleanup();
+        this.ready = false;
+        this.progress = {
+          status: "error",
+          percent: 0,
+          errorMessage: e.message || "Error fatal en Web Worker de KittenTTS",
+        };
+        resolve(false);
+      };
+
       worker.addEventListener("message", onMsg);
+      worker.addEventListener("error", onErr);
 
       void (async () => {
         try {
@@ -481,11 +549,20 @@ export class KittenTtsEngine {
         onProgress?.(this.progress);
       }
 
-      await this.ensureInitialized();
+      const initialized = await this.ensureInitialized();
+      if (!initialized) {
+        this.ready = false;
+        return false;
+      }
       this.ready = true;
       return true;
-    } catch {
+    } catch (err) {
       this.ready = false;
+      this.progress = {
+        status: "error",
+        percent: 0,
+        errorMessage: err instanceof Error ? err.message : String(err),
+      };
       return false;
     }
   }
@@ -644,7 +721,10 @@ export class KittenTtsEngine {
     this.attachVisibilityGuard();
 
     try {
-      await this.ensureInitialized();
+      const ok = await this.ensureInitialized();
+      if (!ok) {
+        throw new Error("KittenTTS engine failed to initialize");
+      }
       const activeEpoch = this.epoch;
 
       // 1. Pedir la oración actual N (si ya estaba en el Lookahead Buffer, se resuelve en 0ms)
@@ -666,7 +746,7 @@ export class KittenTtsEngine {
         let settled = false;
         let source: AudioBufferSourceNode | null = null;
         const duration = audioBuffer.duration && audioBuffer.duration > 0 ? audioBuffer.duration : 0.05;
-        const expectedDurationMs = Math.max(20, Math.round((duration / Math.max(0.2, speed)) * 1000));
+        const expectedDurationMs = Math.max(20, Math.round(duration * 1000));
 
         // Watchdog de seguridad: garantiza que la cola de lectura avance incluso si source.onended
         // se traba en background o la oración fue puramente silenciosa
@@ -706,7 +786,9 @@ export class KittenTtsEngine {
         try {
           source = ctx.createBufferSource();
           source.buffer = audioBuffer;
-          source.playbackRate.value = speed;
+          // El modelo ONNX ya sintetizó a la velocidad speed manteniendo el pitch y formantes naturales.
+          // playbackRate debe ser 1.0 para no remuestrear ni distorsionar la voz ("alien / ardilla").
+          source.playbackRate.value = 1.0;
           source.connect(ctx.destination);
           this.currentSource = source;
 
@@ -738,7 +820,10 @@ export class KittenTtsEngine {
     this.attachVisibilityGuard();
 
     try {
-      await this.ensureInitialized();
+      const ok = await this.ensureInitialized();
+      if (!ok) {
+        throw new Error("KittenTTS engine failed to initialize");
+      }
       return await this.requestAudioBuffer(text, voiceId, speed, "high");
     } finally {
       this.activeRequests = Math.max(0, this.activeRequests - 1);
@@ -746,14 +831,15 @@ export class KittenTtsEngine {
     }
   }
 
-  play(audioBuffer: AudioBuffer, rate = 1, onEnded?: () => void): void {
+  play(audioBuffer: AudioBuffer, _rate = 1, onEnded?: () => void): void {
+    void _rate;
     this.stopCurrentSource();
     const ctx = this.unlockAudioContext();
 
     let settled = false;
     let source: AudioBufferSourceNode | null = null;
     const duration = audioBuffer.duration && audioBuffer.duration > 0 ? audioBuffer.duration : 0.05;
-    const expectedDurationMs = Math.max(50, Math.round((duration / Math.max(0.2, rate)) * 1000));
+    const expectedDurationMs = Math.max(20, Math.round(duration * 1000));
 
     const onDone = () => {
       if (!settled) {
@@ -783,7 +869,8 @@ export class KittenTtsEngine {
     try {
       source = ctx.createBufferSource();
       source.buffer = audioBuffer;
-      source.playbackRate.value = rate;
+      // playbackRate = 1.0 preserva la frecuencia original de 24kHz sin distorsión de resampling
+      source.playbackRate.value = 1.0;
       source.connect(ctx.destination);
 
       source.onended = onDone;
@@ -870,12 +957,15 @@ export async function getKittenModelBuffer(modelUrl = KITTEN_MODEL_URL): Promise
   if (typeof caches === "undefined") return null;
   try {
     const cache = await caches.open(KITTEN_CACHE_NAME);
-    const res = await cache.match(modelUrl);
+    const res = (await cache.match(modelUrl)) ?? (await cache.match(KITTEN_MODEL_URL));
     if (!res || res.status !== 200) return null;
     const buffer = await res.arrayBuffer();
     // Validar integridad mínima: si el buffer tiene menos de 10 MB, está truncado/corrupto
     if (buffer.byteLength < 10_000_000) {
       await cache.delete(modelUrl);
+      if (modelUrl !== KITTEN_MODEL_URL) {
+        await cache.delete(KITTEN_MODEL_URL);
+      }
       return null;
     }
     return buffer;

@@ -368,11 +368,12 @@ describe("kittenTtsEngine", () => {
 
     expect(cleanSamples.length).toBeGreaterThanOrEqual(240);
     expect(cleanSamples[0]).toBe(0); // NaN reemplazado
-    expect(cleanSamples[1]).toBe(1.0); // Clamped a 1.0
-    expect(cleanSamples[2]).toBe(-1.0); // Clamped a -1.0
+    // Normalización de pico proporcional (maxAbs = 3.0 > 0.98, divisor = 3.0 / 0.95)
+    expect(cleanSamples[1]).toBeCloseTo((2.5 * 0.95) / 3.0, 5);
+    expect(cleanSamples[2]).toBeCloseTo(-0.95, 5);
     expect(cleanSamples[3]).toBe(0); // Infinity reemplazado
     expect(cleanSamples[4]).toBe(0); // -Infinity reemplazado
-    expect(cleanSamples[5]).toBe(0.25);
+    expect(cleanSamples[5]).toBeCloseTo((0.25 * 0.95) / 3.0, 5);
 
     // Caso de silencio absoluto / buffer vacío: debe tener al menos 240 muestras para createBuffer
     const emptySamples = new Float32Array(0);
@@ -430,6 +431,84 @@ describe("kittenTtsEngine", () => {
     });
 
     expect(prefetchSpy).toHaveBeenCalledWith(sentences, 1, "expr-voice-2-f", 1, 2);
+  });
+
+  it("init() devuelve false y mantiene ready = false ante INIT_ERROR del Worker", async () => {
+    const engine = new KittenTtsEngine();
+    type Listener = (e: { data?: unknown }) => void;
+    const listeners: Record<string, Listener> = {};
+
+    const fakeWorker = {
+      postMessage: vi.fn((msg: { type: string }) => {
+        if (msg.type === "INIT") {
+          setTimeout(() => {
+            listeners.message?.({
+              data: { type: "INIT_ERROR", error: "Session creation failed in Worker" },
+            });
+          }, 0);
+        }
+      }),
+      addEventListener: vi.fn((type: string, fn: Listener) => {
+        listeners[type] = fn;
+      }),
+      removeEventListener: vi.fn((type: string) => {
+        delete listeners[type];
+      }),
+      terminate: vi.fn(),
+    };
+
+    vi.spyOn(engine as unknown as { getWorker: () => unknown }, "getWorker").mockReturnValue(fakeWorker);
+    vi.spyOn(engine, "isModelDownloaded").mockResolvedValue(true);
+    vi.spyOn(engine, "isSupported").mockReturnValue(true);
+
+    const ok = await engine.init();
+    expect(ok).toBe(false);
+    expect(engine.isReady()).toBe(false);
+  });
+
+  it("source.playbackRate.value se fija estrictamente en 1.0 para preservar el tono natural", () => {
+    const fakeSource = {
+      buffer: null,
+      playbackRate: { value: 0 },
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+      start: vi.fn(),
+      stop: vi.fn(),
+      onended: null,
+    };
+
+    const fakeCtx = {
+      state: "running",
+      resume: vi.fn().mockResolvedValue(undefined),
+      createBufferSource: () => {
+        fakeSource.playbackRate.value = 0;
+        return fakeSource;
+      },
+    } as unknown as AudioContext;
+
+    vi.stubGlobal("AudioContext", class {
+      constructor() {
+        return fakeCtx;
+      }
+    });
+
+    const fakeBuffer = {
+      sampleRate: 24000,
+      length: 240,
+      duration: 0.05,
+      numberOfChannels: 1,
+      getChannelData: () => new Float32Array(240),
+      copyFromChannel: () => {},
+      copyToChannel: () => {},
+    } as unknown as AudioBuffer;
+
+    kittenTtsEngine.play(fakeBuffer, 0.8);
+    expect(fakeSource.playbackRate.value).toBe(1.0);
+
+    kittenTtsEngine.play(fakeBuffer, 1.25);
+    expect(fakeSource.playbackRate.value).toBe(1.0);
+
+    vi.unstubAllGlobals();
   });
 
   it("playSentencesLoop reproduce con Kitten TTS si el modelo está descargado", async () => {

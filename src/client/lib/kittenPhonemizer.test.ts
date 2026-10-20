@@ -62,4 +62,33 @@ describe("kittenPhonemizer", () => {
     expect(tokens[0]).toBe(0);
     expect(tokens[tokens.length - 1]).toBe(0);
   });
+
+  it("mapea fonemas IPA clave (ɹ, ɪ, ɛ, æ, ɑː, ə, ð, θ, ʃ, ŋ, ˈ) y mantiene los espacios entre palabras", () => {
+    // 1. Verificar existencia e índices válidos de los fonemas IPA solicitados
+    const ipaChars = ["ɹ", "ɪ", "ɛ", "æ", "ə", "ð", "θ", "ʃ", "ŋ", "ˈ"];
+    for (const char of ipaChars) {
+      const idx = KITTEN_VOCAB_MAP.get(char);
+      expect(idx).toBeDefined();
+      expect(idx).toBeGreaterThanOrEqual(0);
+      expect(idx).toBeLessThan(178);
+    }
+
+    // 2. Verificar que el convertidor G2P genera ɹ en lugar de r para palabras inglesas
+    const ipaRed = convertEnglishWordToIpa("red");
+    expect(ipaRed).toContain("ɹ");
+    expect(ipaRed).not.toContain("r");
+
+    // 3. Verificar que mantiene los espacios entre palabras como token 16
+    const phraseIpa = phonemizeText("the red cat");
+    expect(phraseIpa).toBe("ðə ɹɛd kæt");
+
+    const tokens = prepareKittenInputIds("the red cat");
+    // Debe empezar con pad 0, terminar con pad 0
+    expect(tokens[0]).toBe(0);
+    expect(tokens[tokens.length - 1]).toBe(0);
+
+    // Debe contener el token de espacio (16) entre palabras
+    const spaceIndices = tokens.filter((t) => t === 16);
+    expect(spaceIndices.length).toBe(2); // Dos espacios entre tres palabras
+  });
 });

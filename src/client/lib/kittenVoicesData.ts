@@ -2116,3 +2116,86 @@ export function isRealVoiceEmbedding(embedding: Float32Array | number[]): boolea
   }
   return nonZeroCount > 100;
 }
+
+/**
+ * Registra o actualiza dinámicamente un embedding acústico de voz.
+ */
+export function registerVoiceEmbedding(voiceId: string, embedding: Float32Array | number[]): boolean {
+  if (!isRealVoiceEmbedding(embedding)) return false;
+  const tensor = embedding instanceof Float32Array ? embedding : new Float32Array(embedding);
+  const normalizedId = voiceId.toLowerCase().trim() as KittenVoiceId;
+  KITTEN_VOICE_EMBEDDINGS[normalizedId] = Array.from(tensor);
+  CACHED_FLOAT32_EMBEDDINGS[normalizedId] = tensor;
+  return true;
+}
+
+/**
+ * Extrae y parsea tensores Float32Array(256) directamente de un archivo voices.npz
+ * (formato ZIP de NumPy con entradas .npy sin comprimir).
+ */
+export function parseNpzVoices(buffer: ArrayBuffer): Record<string, Float32Array> {
+  const voices: Record<string, Float32Array> = {};
+  const view = new DataView(buffer);
+  const bytes = new Uint8Array(buffer);
+  let offset = 0;
+
+  while (offset + 30 <= buffer.byteLength) {
+    // Buscar la firma de cabecera local de archivo ZIP: 0x04034b50 ("PK\x03\x04")
+    if (view.getUint32(offset, true) !== 0x04034b50) {
+      break;
+    }
+
+    const compressedSize = view.getUint32(offset + 18, true);
+    const fileNameLen = view.getUint16(offset + 26, true);
+    const extraFieldLen = view.getUint16(offset + 28, true);
+
+    const nameStart = offset + 30;
+    const nameBytes = bytes.subarray(nameStart, nameStart + fileNameLen);
+    const fileName = new TextDecoder().decode(nameBytes);
+
+    const dataStart = nameStart + fileNameLen + extraFieldLen;
+    const dataEnd = dataStart + compressedSize;
+
+    if (dataEnd <= buffer.byteLength && fileName.endsWith(".npy")) {
+      const npyBytes = bytes.subarray(dataStart, dataEnd);
+      // Validar cabecera mágica de NumPy: \x93NUMPY
+      if (
+        npyBytes.length > 10 &&
+        npyBytes[0] === 0x93 &&
+        npyBytes[1] === 0x4e &&
+        npyBytes[2] === 0x55 &&
+        npyBytes[3] === 0x4d &&
+        npyBytes[4] === 0x50 &&
+        npyBytes[5] === 0x59
+      ) {
+        const headerLen = new DataView(npyBytes.buffer, npyBytes.byteOffset + 8, 2).getUint16(0, true);
+        const floatDataStart = npyBytes.byteOffset + 10 + headerLen;
+        const numFloats = Math.floor((compressedSize - (10 + headerLen)) / 4);
+
+        if (numFloats >= 256) {
+          const floatArray = new Float32Array(npyBytes.buffer, floatDataStart, 256);
+          const voiceName = fileName.replace(/\.npy$/i, "");
+          voices[voiceName] = new Float32Array(floatArray);
+        }
+      }
+    }
+
+    offset = dataStart + compressedSize;
+  }
+
+  return voices;
+}
+
+/**
+ * Carga e incorpora embeddings de voz desde un ArrayBuffer de voices.npz.
+ */
+export function loadVoicesFromNpz(buffer: ArrayBuffer): boolean {
+  const parsed = parseNpzVoices(buffer);
+  let loadedAny = false;
+  for (const [name, tensor] of Object.entries(parsed)) {
+    if (registerVoiceEmbedding(name, tensor)) {
+      loadedAny = true;
+    }
+  }
+  return loadedAny;
+}

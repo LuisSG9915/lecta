@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  KittenTtsEngine,
   WORKER_INFERENCE_TIMEOUT_MS,
   kittenTtsEngine,
   sanitizeAudioSamples,
@@ -60,18 +61,52 @@ describe("KittenTTS Web Audio & Memory Lifecycle (Fase 2)", () => {
   });
 
   describe("sanitizeAudioSamples", () => {
-    it("aplica clamp a [-1.0, 1.0] y reemplaza NaN e Infinity por 0", () => {
+    it("aplica normalización proporcional si hay picos > 0.98 y reemplaza NaN e Infinity por 0", () => {
       const dirty = new Float32Array([1.5, -2.0, NaN, Infinity, -Infinity, 0.5, -0.5]);
       const clean = sanitizeAudioSamples(dirty);
 
       expect(clean.length).toBeGreaterThanOrEqual(240); // Mínimo para createBuffer
-      expect(clean[0]).toBe(1.0);
-      expect(clean[1]).toBe(-1.0);
+      // maxAbs = 2.0 > 0.98 -> normalización de pico dividiendo por (maxAbs / 0.95)
+      expect(clean[0]).toBeCloseTo(0.7125, 4);
+      expect(clean[1]).toBeCloseTo(-0.95, 4);
       expect(clean[2]).toBe(0);
       expect(clean[3]).toBe(0);
       expect(clean[4]).toBe(0);
-      expect(clean[5]).toBe(0.5);
-      expect(clean[6]).toBe(-0.5);
+      expect(clean[5]).toBeCloseTo(0.2375, 4);
+      expect(clean[6]).toBeCloseTo(-0.2375, 4);
+    });
+
+    it("no altera las muestras si maxAbs <= 0.98", () => {
+      const normal = new Float32Array([0.1, -0.4, 0.95, -0.8]);
+      const clean = sanitizeAudioSamples(normal);
+
+      expect(clean[0]).toBeCloseTo(0.1, 5);
+      expect(clean[1]).toBeCloseTo(-0.4, 5);
+      expect(clean[2]).toBeCloseTo(0.95, 5);
+      expect(clean[3]).toBeCloseTo(-0.8, 5);
+    });
+
+    it("normaliza picos mayores a 1.0 proporcionalmente sin hacer hard-clipping", () => {
+      // Onda con forma progresiva con picos superiores a 1.0 (máx 2.5)
+      const samples = new Float32Array([0.5, 1.25, 2.0, 2.5, 1.5, -0.5, -1.5, -2.5, -1.0]);
+      const clean = sanitizeAudioSamples(samples);
+
+      // maxAbs = 2.5 > 0.98 -> divisor = 2.5 / 0.95 = 2.631578...
+      // Verificar que ningún pico supera 0.95 (sin saturación ni recorte a ±1.0)
+      for (let i = 0; i < samples.length; i++) {
+        expect(Math.abs(clean[i])).toBeLessThanOrEqual(0.95 + 1e-6);
+      }
+
+      // El pico máximo queda exactamente en 0.95
+      expect(clean[3]).toBeCloseTo(0.95, 5); // 2.5 / (2.5 / 0.95)
+      expect(clean[7]).toBeCloseTo(-0.95, 5); // -2.5 / (2.5 / 0.95)
+
+      // Verificar que NO hay hard-clipping: la relación proporcional entre muestras se conserva
+      // En hard-clipping, tanto 2.0 como 2.5 se truncarían a 1.0 (ratio 1.0).
+      // Con normalización proporcional: clean[3] / clean[2] === 2.5 / 2.0 === 1.25
+      const ratio = clean[3] / clean[2];
+      expect(ratio).toBeCloseTo(2.5 / 2.0, 5);
+      expect(clean[1] / clean[0]).toBeCloseTo(1.25 / 0.5, 5);
     });
 
     it("previene errores de createBuffer con Float32Array vacío o buffer detached", () => {
@@ -154,6 +189,88 @@ describe("KittenTTS Web Audio & Memory Lifecycle (Fase 2)", () => {
       expect(ended).toBe(true);
 
       vi.unstubAllGlobals();
+    });
+
+    it("source.playbackRate.value permanece en 1.0 incluso cuando speed es 0.8 o 1.25", () => {
+      const fakeSource = {
+        buffer: null,
+        playbackRate: { value: 0 },
+        connect: vi.fn(),
+        disconnect: vi.fn(),
+        start: vi.fn(),
+        stop: vi.fn(),
+        onended: null,
+      };
+
+      const fakeCtx = {
+        state: "running",
+        resume: vi.fn().mockResolvedValue(undefined),
+        createBufferSource: () => {
+          fakeSource.playbackRate.value = 0;
+          return fakeSource;
+        },
+      } as unknown as AudioContext;
+
+      vi.stubGlobal("AudioContext", class {
+        constructor() {
+          return fakeCtx;
+        }
+      });
+
+      const fakeBuffer = {
+        sampleRate: 24000,
+        length: 240,
+        duration: 0.05,
+        numberOfChannels: 1,
+        getChannelData: () => new Float32Array(240),
+        copyFromChannel: () => {},
+        copyToChannel: () => {},
+      } as unknown as AudioBuffer;
+
+      // 1. Probar velocidad lenta (0.8)
+      kittenTtsEngine.play(fakeBuffer, 0.8);
+      expect(fakeSource.playbackRate.value).toBe(1.0);
+
+      // 2. Probar velocidad rápida (1.25)
+      kittenTtsEngine.play(fakeBuffer, 1.25);
+      expect(fakeSource.playbackRate.value).toBe(1.0);
+
+      vi.unstubAllGlobals();
+    });
+
+    it("init() devuelve false y deja isReady() === false cuando el Worker emite INIT_ERROR", async () => {
+      const engine = new KittenTtsEngine();
+      type Listener = (e: { data?: unknown; message?: string }) => void;
+      const listeners: Record<string, Listener> = {};
+
+      const fakeWorker = {
+        postMessage: vi.fn((msg: { type: string }) => {
+          if (msg.type === "INIT") {
+            setTimeout(() => {
+              listeners.message?.({
+                data: { type: "INIT_ERROR", error: "Failed to compile ONNX WebAssembly module" },
+              });
+            }, 0);
+          }
+        }),
+        addEventListener: vi.fn((type: string, fn: Listener) => {
+          listeners[type] = fn;
+        }),
+        removeEventListener: vi.fn((type: string) => {
+          delete listeners[type];
+        }),
+        terminate: vi.fn(),
+      };
+
+      vi.spyOn(engine as unknown as { getWorker: () => unknown }, "getWorker").mockReturnValue(fakeWorker);
+      vi.spyOn(engine, "isModelDownloaded").mockResolvedValue(true);
+      vi.spyOn(engine, "isSupported").mockReturnValue(true);
+
+      const ok = await engine.init();
+      expect(ok).toBe(false);
+      expect(engine.isReady()).toBe(false);
+      expect(engine.getModelProgress().status).toBe("error");
+      expect(engine.getModelProgress().errorMessage).toContain("Failed to compile ONNX WebAssembly module");
     });
   });
 });

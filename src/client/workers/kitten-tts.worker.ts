@@ -7,7 +7,7 @@
 // 4. Recorte de padding del modelo y silencios muertos con transferencia Zero-Copy del buffer PCM.
 
 import type { KittenVoiceId } from "../lib/ttsTypes";
-import { getVoiceEmbedding } from "../lib/kittenVoicesData";
+import { getVoiceEmbedding, registerVoiceEmbedding } from "../lib/kittenVoicesData";
 import { normalizeEnglishText } from "../lib/kittenNormalize";
 import { prepareKittenInputIds } from "../lib/kittenPhonemizer";
 
@@ -174,7 +174,7 @@ async function processNextJob() {
  * Garantiza siempre devolver un buffer no-vacío (mínimo 240 muestras) para
  * prevenir que audioCtx.createBuffer falle con "The number of frames is 0".
  */
-export function trimLeadingAndTrailingSilence(samples: Float32Array, threshold = 0.003): Float32Array {
+export function trimLeadingAndTrailingSilence(samples: Float32Array, threshold = 0.004): Float32Array {
   if (!samples || samples.length === 0) {
     return new Float32Array(240);
   }
@@ -281,18 +281,31 @@ async function runKittenInference(
       ? rawData
       : Float32Array.from(rawData as ArrayLike<number>);
 
-  // Según onnx_model.py: recortar ~5000 muestras finales de padding acústico generadas por el decodificador
-  const trimmedPadding =
-    rawSamples.length > 5000 ? rawSamples.subarray(0, rawSamples.length - 5000) : rawSamples;
-
-  return trimLeadingAndTrailingSilence(trimmedPadding, 0.003);
+  // Evitar amputar ciegamente 5000 muestras (~208ms), lo que destruye la última sílaba en oraciones cortas.
+  // trimLeadingAndTrailingSilence detecta dinámicamente el umbral de silencio real (0.004) y preserva un colchón de 40ms.
+  return trimLeadingAndTrailingSilence(rawSamples, 0.004);
 }
 
 async function configureOrtWasmEnv(): Promise<typeof import("onnxruntime-web/wasm")> {
   const ort = await import("onnxruntime-web/wasm");
 
-  // Configuración explícita de rutas de WebAssembly bajo public/_headers (/assets/*.wasm)
-  ort.env.wasm.wasmPaths = "/assets/";
+  // Configuración explícita de rutas de WebAssembly:
+  // Intentar usar /assets/ localmente; si no está disponible o devuelve SPA HTML fallback,
+  // caer limpiamente al CDN oficial de jsdelivr.
+  let wasmBase = "/assets/";
+  if (typeof fetch === "function") {
+    try {
+      const resp = await fetch("/assets/ort-wasm-simd-threaded.wasm", { method: "HEAD" });
+      const contentType = resp.headers.get("content-type") || "";
+      if (!resp.ok || contentType.includes("text/html")) {
+        wasmBase = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.30.0/dist/";
+      }
+    } catch {
+      wasmBase = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.30.0/dist/";
+    }
+  }
+
+  ort.env.wasm.wasmPaths = wasmBase;
 
   // Si no hay SharedArrayBuffer o el worker no corre en un contexto crossOriginIsolated,
   // forzar numThreads = 1 para evitar bloqueos y fallos silenciosos al instanciar pthread workers
@@ -348,6 +361,23 @@ async function initOnnxSession(modelBuffer?: ArrayBuffer, modelUrl?: string): Pr
 }
 
 if (typeof self !== "undefined") {
+  self.onerror = (event: string | Event, _source?: string, _lineno?: number, _colno?: number, error?: Error) => {
+    const errorMsg = error?.message || (typeof event === "string" ? event : "Unknown worker error");
+    postWorkerMessage({
+      type: "INIT_ERROR",
+      error: `KittenTTS worker error: ${errorMsg}`,
+    } satisfies WorkerResponse);
+  };
+
+  self.onunhandledrejection = (event: PromiseRejectionEvent) => {
+    const reason = event.reason;
+    const errorMsg = reason instanceof Error ? reason.message : String(reason);
+    postWorkerMessage({
+      type: "INIT_ERROR",
+      error: `KittenTTS worker unhandled rejection: ${errorMsg}`,
+    } satisfies WorkerResponse);
+  };
+
   self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
     const msg = event.data;
     if (!msg) return;
@@ -356,6 +386,13 @@ if (typeof self !== "undefined") {
       case "INIT":
       case "init": {
         try {
+          if (msg.voicesData) {
+            for (const [vId, vData] of Object.entries(msg.voicesData)) {
+              if (vData instanceof Float32Array || Array.isArray(vData)) {
+                registerVoiceEmbedding(vId, vData as Float32Array | number[]);
+              }
+            }
+          }
           await initOnnxSession(msg.modelBuffer, msg.modelUrl);
           postWorkerMessage({ type: "INIT_DONE" } satisfies WorkerResponse);
           void processNextJob();

@@ -547,7 +547,13 @@ export function convertEnglishWordToIpa(raw: string): string {
     if (rem.startsWith("all")) { ipa += "ɔːl"; i += 3; continue; }
 
     // Patrones de 2 letras
-    if (rem.startsWith("th")) { ipa += "θ"; i += 2; continue; }
+    if (rem.startsWith("th")) {
+      const prevVowel = i > 0 && "aeiou".includes(w[i - 1]);
+      const nextVowel = i + 2 < n && "aeiou".includes(w[i + 2]);
+      ipa += prevVowel && nextVowel ? "ð" : "θ";
+      i += 2;
+      continue;
+    }
     if (rem.startsWith("sh")) { ipa += "ʃ"; i += 2; continue; }
     if (rem.startsWith("ch")) { ipa += "ʧ"; i += 2; continue; }
     if (rem.startsWith("ph")) { ipa += "f"; i += 2; continue; }
@@ -568,7 +574,7 @@ export function convertEnglishWordToIpa(raw: string): string {
     if (rem.startsWith("or")) { ipa += "ɔː"; i += 2; continue; }
     if (rem.startsWith("wr")) { ipa += "ɹ"; i += 2; continue; }
     if (rem.startsWith("kn") && i === 0) { ipa += "n"; i += 2; continue; }
-    if (rem.startsWith("ed") && i === n - 2) { ipa += "d"; i += 2; continue; }
+    if (rem.startsWith("ed") && i === n - 2 && n >= 4) { ipa += "d"; i += 2; continue; }
 
     // Regla de silent 'e' (magic e: vocal + consonante + e al final de la palabra)
     if (i === n - 3 && w[n - 1] === "e") {
@@ -615,6 +621,14 @@ export function convertEnglishWordToIpa(raw: string): string {
     i++;
   }
 
+  // Añadir marca de acento primario ˈ en palabras polisílabas no presentes en el diccionario
+  if (!ipa.includes("ˈ") && !ipa.includes("ˌ")) {
+    const vowelCount = (ipa.match(/[ɑɐɒæɔəɘɚɛɜɝɞɨɪʊʌiueo]/g) || []).length;
+    if (vowelCount >= 2) {
+      ipa = "ˈ" + ipa;
+    }
+  }
+
   return ipa;
 }
 
@@ -626,8 +640,8 @@ export function phonemizeText(text: string): string {
   if (!text) return "";
   const normalized = normalizeEnglishText(text);
 
-  // Tokenizar en palabras y signos de puntuación / espacios
-  const tokens = normalized.match(/[\w']+|[^\w\s]|\s+/g) || [];
+  // Tokenizar en palabras y signos de puntuación / espacios, preservando apóstrofes y marcas de acento
+  const tokens = normalized.match(/[\w'ˈˌ]+|[^\w\s'ˈˌ]|\s+/g) || [];
   const phonemesList: string[] = [];
 
   for (const token of tokens) {

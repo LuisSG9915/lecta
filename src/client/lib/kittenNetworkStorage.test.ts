@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  KITTEN_MODEL_FALLBACK_URLS,
   KITTEN_MODEL_URL,
   getKittenModelBuffer,
   kittenTtsEngine,
@@ -120,6 +121,39 @@ describe("KittenTTS Network, Cache & Storage Isolation (Fase 3)", () => {
 
       expect(fakeCacheStorage.has(KITTEN_MODEL_URL)).toBe(true);
       expect(await kittenTtsEngine.isModelDownloaded(KITTEN_MODEL_URL)).toBe(true);
+    });
+
+    it("hace fallback automático al repositorio oficial en Hugging Face si modelUrl da 404", async () => {
+      const validSize = 12 * 1024 * 1024;
+      const bigChunk = new Uint8Array(validSize);
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(bigChunk);
+          controller.close();
+        },
+      });
+
+      const fetchMock = vi.fn().mockImplementation((url: string) => {
+        if (url.includes("/models/")) {
+          return Promise.resolve(new Response("404 Not Found", { status: 404 }));
+        }
+        return Promise.resolve(
+          new Response(stream, {
+            status: 200,
+            headers: {
+              "Content-Type": "application/octet-stream",
+              "Content-Length": String(validSize),
+            },
+          }),
+        );
+      });
+
+      vi.stubGlobal("fetch", fetchMock);
+
+      await kittenTtsEngine.downloadModelWithProgress(undefined, KITTEN_MODEL_URL);
+      expect(fetchMock).toHaveBeenCalledWith(KITTEN_MODEL_URL);
+      expect(fetchMock).toHaveBeenCalledWith(KITTEN_MODEL_FALLBACK_URLS[0]);
+      expect(fakeCacheStorage.has(KITTEN_MODEL_URL)).toBe(true);
     });
   });
 
