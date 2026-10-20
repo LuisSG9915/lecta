@@ -106,6 +106,7 @@ export type TtsController = {
   onDomMutated(): void;
   noteSavedWord(): void;
   destroy(): void;
+  dispose?(): void;
 };
 
 export function createTtsController(deps: TtsControllerDeps): TtsController {
@@ -299,7 +300,13 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
       const preSynthesized = lookaheadBuffers.get(cursor);
       if (preSynthesized) {
         // Transición instantánea (<15ms) entre oraciones con audio ya en RAM
-        engine.play(preSynthesized, settings.rate, onEnded);
+        try {
+          engine.play(preSynthesized, settings.rate, onEnded);
+        } catch (err) {
+          console.warn("[Lecta TTS] KittenTTS falló al reproducir pre-sintetizado:", err);
+          engine.releaseWorkerMemory?.();
+          speaker?.speak(item.text, settings.rate);
+        }
       } else {
         void engine
           .synthesize(item.text, settings.kittenVoice, settings.rate)
@@ -308,7 +315,12 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
             lookaheadBuffers.set(cursor, buf);
             engine.play(buf, settings.rate, onEnded);
           })
-          .catch(() => {
+          .catch((err) => {
+            console.warn(
+              "[Lecta TTS] KittenTTS falló o liberó memoria; cambiando a voz nativa del sistema:",
+              err,
+            );
+            engine.releaseWorkerMemory?.();
             speaker?.speak(item.text, settings.rate);
           });
       }
@@ -747,6 +759,11 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
       finish("navigation");
       speaker?.cancel();
       stopHeartbeat();
+      (deps.kittenEngine ?? kittenTtsEngine).releaseWorkerMemory?.();
+    },
+
+    dispose() {
+      (deps.kittenEngine ?? kittenTtsEngine).releaseWorkerMemory?.();
     },
   };
 }
@@ -791,14 +808,27 @@ export async function playSentencesLoop(params: {
     if (isCancelled()) break;
 
     if (canUseKitten) {
-      // Reproduce la oración i y pre-sintetiza automáticamente i+1 e i+2 en segundo plano
-      await kittenTtsEngine.speakSentenceWithLookahead({
-        sentences,
-        currentIndex: i,
-        voiceId,
-        speed,
-        onSentenceAudioStart: () => onHighlightSentence(i),
-      });
+      try {
+        // Reproduce la oración i y pre-sintetiza automáticamente i+1 e i+2 en segundo plano
+        await kittenTtsEngine.speakSentenceWithLookahead({
+          sentences,
+          currentIndex: i,
+          voiceId,
+          speed,
+          onSentenceAudioStart: () => onHighlightSentence(i),
+        });
+      } catch (err) {
+        console.warn(
+          "[Lecta TTS] KittenTTS falló o liberó memoria; cambiando a voz nativa del sistema:",
+          err,
+        );
+        kittenTtsEngine.releaseWorkerMemory();
+        // Degradación elegante (Graceful fallback) a Web Speech API para no cortar la lectura
+        if (!isCancelled()) {
+          onHighlightSentence(i);
+          await speakWithSystemVoice(sentences[i], { voiceId, rate: speed });
+        }
+      }
     } else {
       // Motor instantáneo por defecto (0 MB de descarga)
       onHighlightSentence(i);
@@ -970,5 +1000,11 @@ export class TtsAudioController {
 
   destroy(): void {
     this.stop();
+  }
+
+  dispose(): void {
+    this.stop();
+    this.destroy();
+    kittenTtsEngine.releaseWorkerMemory();
   }
 }

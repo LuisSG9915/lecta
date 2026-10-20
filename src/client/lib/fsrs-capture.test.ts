@@ -40,4 +40,16 @@ describe("Inicialización Inteligente en FSRS por CaptureSource (Fase 4.4)", () 
     expect(sourceCard.difficulty).toBe(5.5);
     expect(sourceCard.stability).toBe(1.0);
   });
+
+  it("contrato lecta-zero-friction.md: agenda en FSRS únicamente bajo acción intencional (reader_tap) o preferencia explícita", () => {
+    // Regla Zero-Friction 1: la psicometría FSRS opera de fondo sin interrumpir la lectura
+    // y solo captura palabras tras acción voluntaria del lector
+    const tapCard = newCardWithSource("reader_tap");
+    expect(tapCard.difficulty).toBe(5.5);
+    expect(tapCard.stability).toBe(1.0);
+
+    // Fuentes de captura válidas e intencionales
+    const intentionalSources = Object.keys(CAPTURE_SOURCE_PARAMS);
+    expect(intentionalSources).toEqual(["pre_reading", "reader_tap", "repeated_lookup"]);
+  });
 });

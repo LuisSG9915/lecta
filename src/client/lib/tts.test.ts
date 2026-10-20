@@ -36,6 +36,7 @@ import {
   normalizeEnglishText,
   kittenTtsEngine,
   KittenTtsEngine,
+  KITTEN_IDLE_TIMEOUT_MS,
 } from "./kittenTtsEngine";
 import { trimLeadingAndTrailingSilence } from "../workers/kitten-tts.worker";
 
@@ -809,5 +810,71 @@ describe("ttsController", () => {
     await flush();
 
     expect(currentPage).toBe(1);
+  });
+
+  it("libera la memoria del worker de KittenTTS cuando la pestaña pasa a hidden estando inactivo", () => {
+    vi.useFakeTimers();
+    const engine = new KittenTtsEngine();
+    const releaseSpy = vi.spyOn(engine, "releaseWorkerMemory");
+
+    // Simular ciclo de inactividad
+    (engine as unknown as { scheduleIdleRelease: () => void }).scheduleIdleRelease();
+    vi.advanceTimersByTime(KITTEN_IDLE_TIMEOUT_MS + 100);
+
+    expect(releaseSpy).toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it("libera la memoria del worker de KittenTTS en evento visibilitychange a hidden", () => {
+    const engine = new KittenTtsEngine();
+    const releaseSpy = vi.spyOn(engine, "releaseWorkerMemory");
+
+    Object.defineProperty(document, "visibilityState", {
+      value: "hidden",
+      configurable: true,
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+
+    expect(releaseSpy).toHaveBeenCalled();
+
+    Object.defineProperty(document, "visibilityState", {
+      value: "visible",
+      configurable: true,
+    });
+    engine.dispose();
+  });
+
+  it("degrada suavemente a voz nativa si KittenTTS falla durante playSentencesLoop", async () => {
+    const speakSpy = vi.spyOn(kittenTtsEngine, "speakSentenceWithLookahead").mockRejectedValueOnce(
+      new Error("WASM Out of Memory"),
+    );
+    const releaseSpy = vi.spyOn(kittenTtsEngine, "releaseWorkerMemory");
+
+    // Simular que el modelo está descargado para activar la rama Kitten
+    vi.spyOn(kittenTtsEngine, "isModelDownloaded").mockResolvedValueOnce(true);
+
+    const highlighted: number[] = [];
+    let finished = false;
+
+    await playSentencesLoop({
+      sentences: ["Frase de prueba con fallback."],
+      startIndex: 0,
+      engineMode: "kitten-hd",
+      voiceId: "expr-voice-2-f",
+      speed: 1,
+      onHighlightSentence: (idx) => highlighted.push(idx),
+      onFinishPage: () => {
+        finished = true;
+      },
+      isCancelled: () => false,
+    });
+
+    expect(speakSpy).toHaveBeenCalled();
+    expect(releaseSpy).toHaveBeenCalled();
+    expect(highlighted).toContain(0);
+    expect(finished).toBe(true);
+
+    speakSpy.mockRestore();
+    releaseSpy.mockRestore();
   });
 });

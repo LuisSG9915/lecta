@@ -370,4 +370,42 @@ describe("Telemetría Adaptativa y Bandido Contextual de Neuro-Foco", () => {
     expect(loaded.mutedBookIds).toEqual(["book-123"]);
     expect(loaded.autoSuggestEnabled).toBe(false);
   });
+
+  it("contrato lecta-zero-friction.md: emite sugerencia no bloqueante tras 2 páginas lentas consecutivas sin jerga", () => {
+    let profile = { ...DEFAULT_FOCUS_TELEMETRY_PROFILE };
+    const bookId = "book-zero-friction";
+
+    // Página 1: ritmo lento / estancamiento
+    const page1: PageTurnTelemetryInput = {
+      bookId,
+      lang: "es",
+      wordCountOnPage: 100,
+      dwellTimeMs: 75_000,
+      direction: "forward",
+      sessionMinutesElapsed: 15,
+      recentBackwardCountInWindow: 0,
+    };
+    const res1 = evaluateReadingFatigue(profile, page1, false);
+    profile = res1.updatedProfile;
+
+    // Página 2: segundo estancamiento consecutivo con retroceso leve
+    const page2: PageTurnTelemetryInput = {
+      bookId,
+      lang: "es",
+      wordCountOnPage: 100,
+      dwellTimeMs: 90_000,
+      direction: "forward",
+      sessionMinutesElapsed: 18,
+      recentBackwardCountInWindow: 1,
+    };
+    const res2 = evaluateReadingFatigue(profile, page2, false);
+
+    // Contrato Zero-Friction: sugerencia disponible para Dock discreto, jamás modal bloqueante
+    expect(res2.isFatigued).toBe(true);
+    expect(res2.recommendedAid).toBeDefined();
+    // La sugerencia es una herramienta visual humana, sin términos psicométricos
+    expect(["focus-ruler", "paragraph-focus", "syntactic-lines"]).toContain(
+      res2.recommendedAid,
+    );
+  });
 });

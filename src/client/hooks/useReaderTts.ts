@@ -61,7 +61,8 @@ export function useReaderTts({
 
     controllerRef.current = ctrl;
     return () => {
-      ctrl.destroy();
+      ctrl.stop();
+      ctrl.dispose();
       controllerRef.current = null;
     };
   }, [onAdvanceSection, onShowNotice]);

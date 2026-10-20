@@ -8,6 +8,7 @@ import type { WorkerRequest, WorkerResponse } from "../workers/kitten-tts.worker
 
 export const KITTEN_CACHE_NAME = "lecta-kitten-tts-v1";
 export const KITTEN_MODEL_URL = "/models/kitten-tts-quantized.onnx";
+export const KITTEN_IDLE_TIMEOUT_MS = 3 * 60 * 1000; // 3 minutos
 const MAX_PREFETCH_CACHE_ITEMS = 8; // Máximo de oraciones pre-sintetizadas en RAM
 
 export interface DownloadProgress {
@@ -120,13 +121,79 @@ export class KittenTtsEngine {
   // Lookahead Buffer: guarda promesas de AudioBuffer listas o en proceso (LRU de 8 oraciones)
   private lookaheadCache = new Map<string, Promise<AudioBuffer>>();
 
+  private idleTimer: ReturnType<typeof setTimeout> | null = null;
+  private activeRequests = 0;
+  private unbindVisibility: (() => void) | null = null;
+
   constructor() {
+    this.attachVisibilityGuard();
     if (typeof caches !== "undefined") {
       void this.isModelDownloaded().then((cached) => {
         if (cached) {
           this.progress = { status: "ready", percent: 100 };
         }
       });
+    }
+  }
+
+  private scheduleIdleRelease(): void {
+    if (this.idleTimer) {
+      clearTimeout(this.idleTimer);
+      this.idleTimer = null;
+    }
+    if (this.activeRequests > 0) return;
+
+    this.idleTimer = setTimeout(() => {
+      if (this.activeRequests === 0) {
+        this.releaseWorkerMemory();
+      }
+    }, KITTEN_IDLE_TIMEOUT_MS);
+  }
+
+  private attachVisibilityGuard(): void {
+    if (this.unbindVisibility || typeof document === 'undefined') return;
+
+    const handleVisibility = () => {
+      // En iOS Safari / Android Chrome, liberar el heap WASM/ONNX si la app pasa a background en pausa
+      if (document.visibilityState === 'hidden' && this.activeRequests === 0) {
+        this.releaseWorkerMemory();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    this.unbindVisibility = () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }
+
+  /**
+   * Termina el Web Worker de ONNX para devolver los ~24 MB de RAM al sistema operativo,
+   * permitiendo que una futura llamada a synthesize() lo vuelva a instanciar bajo demanda.
+   */
+  public releaseWorkerMemory(): void {
+    if (this.idleTimer) {
+      clearTimeout(this.idleTimer);
+      this.idleTimer = null;
+    }
+    if (this.worker) {
+      this.worker.terminate();
+      this.worker = null;
+    }
+    this.ready = false;
+    this.initPromise = null;
+    this.lookaheadCache.clear();
+    for (const [, job] of this.pendingJobs) {
+      job.reject(new Error("Worker terminated to release memory"));
+    }
+    this.pendingJobs.clear();
+    this.activeRequests = 0;
+  }
+
+  public dispose(): void {
+    this.releaseWorkerMemory();
+    if (this.unbindVisibility) {
+      this.unbindVisibility();
+      this.unbindVisibility = null;
     }
   }
 
@@ -285,7 +352,7 @@ export class KittenTtsEngine {
         const ctx = this.getAudioContext();
         if (ctx && typeof ctx.createBuffer === "function") {
           const audioBuffer = ctx.createBuffer(1, pcm.length, sampleRate);
-          audioBuffer.copyToChannel(pcm as any, 0);
+          audioBuffer.copyToChannel(pcm as unknown as Float32Array<ArrayBuffer>, 0);
           pending.resolve(audioBuffer);
         } else {
           pending.resolve({
@@ -474,7 +541,7 @@ export class KittenTtsEngine {
       let buf: AudioBuffer;
       if (ctx && typeof ctx.createBuffer === "function") {
         buf = ctx.createBuffer(1, pcm.length, sampleRate);
-        buf.copyToChannel(pcm as any, 0);
+        buf.copyToChannel(pcm, 0);
       } else {
         buf = {
           sampleRate,
@@ -535,58 +602,70 @@ export class KittenTtsEngine {
     const text = sentences[currentIndex]?.trim();
     if (!text) return;
 
-    await this.ensureInitialized();
-    const activeEpoch = this.epoch;
+    if (this.idleTimer) {
+      clearTimeout(this.idleTimer);
+      this.idleTimer = null;
+    }
+    this.activeRequests++;
+    this.attachVisibilityGuard();
 
-    // 1. Pedir la oración actual N (si ya estaba en el Lookahead Buffer, se resuelve en 0ms)
-    const bufferPromise = this.requestAudioBuffer(text, voiceId, speed, "high");
+    try {
+      await this.ensureInitialized();
+      const activeEpoch = this.epoch;
 
-    // 2. Disparar de inmediato en el Worker la pre-síntesis de N+1 y N+2
-    this.prefetchUpcoming(sentences, currentIndex + 1, voiceId, speed, 2);
+      // 1. Pedir la oración actual N (si ya estaba en el Lookahead Buffer, se resuelve en 0ms)
+      const bufferPromise = this.requestAudioBuffer(text, voiceId, speed, "high");
 
-    const audioBuffer = await bufferPromise;
+      // 2. Disparar de inmediato en el Worker la pre-síntesis de N+1 y N+2
+      this.prefetchUpcoming(sentences, currentIndex + 1, voiceId, speed, 2);
 
-    // Verificar que no se haya detenido/cambiado de página mientras esperaba
-    if (activeEpoch !== this.epoch) return;
+      const audioBuffer = await bufferPromise;
 
-    // 3. Reproducir con Web Audio API (0ms de latencia de decodificación)
-    const ctx = this.getAudioContext();
-    this.stopCurrentSource();
+      // Verificar que no se haya detenido/cambiado de página mientras esperaba
+      if (activeEpoch !== this.epoch) return;
 
-    return new Promise<void>((resolve) => {
-      if (!ctx) {
-        onSentenceAudioStart?.();
-        const duration = audioBuffer.duration && audioBuffer.duration > 0 ? audioBuffer.duration : 0.05;
-        const ms = Math.max(10, Math.min(100, Math.round((duration / speed) * 1000)));
-        window.setTimeout(() => resolve(), ms);
-        return;
-      }
+      // 3. Reproducir con Web Audio API (0ms de latencia de decodificación)
+      const ctx = this.getAudioContext();
+      this.stopCurrentSource();
 
-      if (ctx.state === "suspended") {
-        void ctx.resume();
-      }
+      return await new Promise<void>((resolve) => {
+        if (!ctx) {
+          onSentenceAudioStart?.();
+          const duration = audioBuffer.duration && audioBuffer.duration > 0 ? audioBuffer.duration : 0.05;
+          const ms = Math.max(10, Math.min(100, Math.round((duration / speed) * 1000)));
+          window.setTimeout(() => resolve(), ms);
+          return;
+        }
 
-      try {
-        const source = ctx.createBufferSource();
-        source.buffer = audioBuffer;
-        source.playbackRate.value = speed;
-        source.connect(ctx.destination);
-        this.currentSource = source;
+        if (ctx.state === "suspended") {
+          void ctx.resume();
+        }
 
-        source.onended = () => {
-          if (this.currentSource === source) {
-            this.currentSource = null;
-          }
-          source.onended = null;
+        try {
+          const source = ctx.createBufferSource();
+          source.buffer = audioBuffer;
+          source.playbackRate.value = speed;
+          source.connect(ctx.destination);
+          this.currentSource = source;
+
+          source.onended = () => {
+            if (this.currentSource === source) {
+              this.currentSource = null;
+            }
+            source.onended = null;
+            resolve();
+          };
+
+          onSentenceAudioStart?.();
+          source.start(0);
+        } catch {
           resolve();
-        };
-
-        onSentenceAudioStart?.();
-        source.start(0);
-      } catch {
-        resolve();
-      }
-    });
+        }
+      });
+    } finally {
+      this.activeRequests = Math.max(0, this.activeRequests - 1);
+      this.scheduleIdleRelease();
+    }
   }
 
   async synthesize(
@@ -594,8 +673,20 @@ export class KittenTtsEngine {
     voiceId: KittenVoiceId = "expr-voice-2-f",
     speed = 1,
   ): Promise<AudioBuffer> {
-    await this.ensureInitialized();
-    return this.requestAudioBuffer(text, voiceId, speed, "high");
+    if (this.idleTimer) {
+      clearTimeout(this.idleTimer);
+      this.idleTimer = null;
+    }
+    this.activeRequests++;
+    this.attachVisibilityGuard();
+
+    try {
+      await this.ensureInitialized();
+      return await this.requestAudioBuffer(text, voiceId, speed, "high");
+    } finally {
+      this.activeRequests = Math.max(0, this.activeRequests - 1);
+      this.scheduleIdleRelease();
+    }
   }
 
   play(audioBuffer: AudioBuffer, rate = 1, onEnded?: () => void): void {
@@ -679,6 +770,8 @@ export class KittenTtsEngine {
       job.reject(new Error("Stopped"));
     }
     this.pendingJobs.clear();
+    this.activeRequests = 0;
+    this.scheduleIdleRelease();
   }
 
   isPlaying(): boolean {
