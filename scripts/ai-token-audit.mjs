@@ -420,7 +420,9 @@ async function main() {
     if (!process.env.DATABASE_URL) {
       process.loadEnvFile?.(path.join(ROOT, ".env"));
     }
-  } catch {}
+  } catch {
+    // Ignorado si no existe .env
+  }
 
   runZeroFrictionTokenAudit();
 

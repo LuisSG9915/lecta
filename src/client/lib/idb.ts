@@ -443,6 +443,63 @@ export class StaleScopeError extends Error {
   }
 }
 
+export type DbStorageErrorCode = "blocked" | "quota" | "corrupt" | "timeout";
+
+export interface DbStorageError {
+  code: DbStorageErrorCode;
+  message: string;
+}
+
+export function classifyDbError(error: unknown): DbStorageError {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  const name = error instanceof Error ? error.name : "";
+  const lower = message.toLowerCase();
+
+  if (
+    lower.includes("otra pestaña") ||
+    lower.includes("blocked") ||
+    lower.includes("bloqueada") ||
+    name === "VersionError"
+  ) {
+    return {
+      code: "blocked",
+      message:
+        error instanceof Error && error.message
+          ? error.message
+          : "La base local está bloqueada por otra pestaña abierta; ciérrala y recarga.",
+    };
+  }
+
+  if (
+    name === "QuotaExceededError" ||
+    lower.includes("quota") ||
+    lower.includes("cuota") ||
+    lower.includes("espacio") ||
+    lower.includes("almacenamiento lleno")
+  ) {
+    return {
+      code: "quota",
+      message: "Se agotó la cuota de almacenamiento en este dispositivo.",
+    };
+  }
+
+  if (
+    lower.includes("timeout") ||
+    lower.includes("tiempo límite") ||
+    lower.includes("timed out")
+  ) {
+    return {
+      code: "timeout",
+      message: "La conexión con el almacenamiento local tardó demasiado.",
+    };
+  }
+
+  return {
+    code: "corrupt",
+    message: message || "Error al acceder a la base de datos local.",
+  };
+}
+
 // Tope para una apertura bloqueada: si otra pestaña conserva abierta
 // una versión vieja, `openDB` queda pendiente para siempre y con él la
 // estantería («Preparando tu estantería…» sin fin). Pasado este plazo
@@ -517,8 +574,17 @@ function openLectaDB(name: string) {
   });
 }
 
+export function resetDbConnection() {
+  dbPromise = null;
+}
+
 function getDb() {
-  dbPromise ??= openLectaDB(dbNameFor(activeUserId));
+  if (!dbPromise) {
+    dbPromise = openLectaDB(dbNameFor(activeUserId)).catch((err) => {
+      dbPromise = null;
+      throw err;
+    });
+  }
   return dbPromise;
 }
 
@@ -783,6 +849,188 @@ async function migrateAnonymousToUser(userId: string) {
     anon.close();
     target.close();
   }
+}
+
+export type BackupRestoreResult = {
+  booksRestored: number;
+  positionsRestored: number;
+  wordsRestored: number;
+  annotationsRestored: number;
+  activityRestored: number;
+  reviewsRestored: number;
+  knowledgeRestored: number;
+};
+
+export async function restoreBackupToDb(
+  data: {
+    books?: Array<{
+      hash: string;
+      name: string;
+      addedAt?: number;
+      title?: string;
+      author?: string;
+      language?: string;
+      sectionCount?: number;
+      metaVersion?: number;
+    }>;
+    positions?: SavedBookPosition[];
+    words?: SavedWord[];
+    annotations?: SavedAnnotation[];
+    activity?: SavedInterval[];
+    reviews?: SavedReview[];
+    knowledge?: KnownWord[];
+    events?: ReadingEvent[];
+    companionEvents?: GameJournalEvent[];
+    companionReceipts?: CompanionReceipt[];
+    session?: Record<string, string>;
+  },
+  scope?: DbScope,
+): Promise<BackupRestoreResult> {
+  const bound = scope ?? captureDbScope();
+  return withDb(bound, async (target) => {
+    let booksRestored = 0;
+    let positionsRestored = 0;
+    let wordsRestored = 0;
+    let annotationsRestored = 0;
+    let activityRestored = 0;
+    let reviewsRestored = 0;
+    let knowledgeRestored = 0;
+
+    if (Array.isArray(data.books)) {
+      for (const book of data.books) {
+        if (!book?.hash) continue;
+        const existing = await target.get("books", book.hash);
+        if (!existing) {
+          await target.put("books", {
+            hash: book.hash,
+            name: book.name || `${book.hash.slice(0, 8)}.epub`,
+            addedAt: book.addedAt ?? Date.now(),
+            title: book.title,
+            author: book.author,
+            language: book.language,
+            sectionCount: book.sectionCount,
+            metaVersion: book.metaVersion,
+            data: new Blob([]),
+          });
+          booksRestored++;
+        }
+      }
+    }
+
+    if (Array.isArray(data.positions)) {
+      for (const position of data.positions) {
+        if (!position?.bookHash) continue;
+        const existing = await target.get("positions", position.bookHash);
+        const merged = existing
+          ? newerOf(existing, position, (item) => item.updatedAt)
+          : position;
+        await target.put("positions", merged);
+        positionsRestored++;
+      }
+    }
+
+    if (Array.isArray(data.words)) {
+      for (const word of data.words) {
+        if (!word?.key) continue;
+        const existing = await target.get("savedWords", word.key);
+        const merged = existing
+          ? newerOf(existing, word, (item) => item.updatedAt ?? item.savedAt)
+          : word;
+        await target.put("savedWords", merged);
+        wordsRestored++;
+      }
+    }
+
+    if (Array.isArray(data.annotations)) {
+      for (const annotation of data.annotations) {
+        if (!annotation?.key) continue;
+        const existing = await target.get("annotations", annotation.key);
+        const merged = existing
+          ? newerOf(existing, annotation, (item) => item.updatedAt)
+          : annotation;
+        await target.put("annotations", merged);
+        annotationsRestored++;
+      }
+    }
+
+    if (Array.isArray(data.activity)) {
+      for (const interval of data.activity) {
+        if (!interval?.id) continue;
+        if (!(await target.get("activity", interval.id))) {
+          await target.put("activity", interval);
+          activityRestored++;
+        }
+      }
+    }
+
+    if (Array.isArray(data.reviews)) {
+      for (const review of data.reviews) {
+        if (!review?.id) continue;
+        if (!(await target.get("reviews", review.id))) {
+          await target.put("reviews", review);
+          reviewsRestored++;
+        }
+      }
+    }
+
+    if (Array.isArray(data.knowledge)) {
+      for (const item of data.knowledge) {
+        if (!item?.key) continue;
+        const existing = await target.get("knowledge", item.key);
+        const merged = existing
+          ? newerOf(existing, item, (k) => k.updatedAt)
+          : item;
+        await target.put("knowledge", merged);
+        knowledgeRestored++;
+      }
+    }
+
+    if (Array.isArray(data.events)) {
+      for (const event of data.events) {
+        if (!event?.id) continue;
+        if (!(await target.get("readingEvents", event.id))) {
+          await target.put("readingEvents", event);
+        }
+      }
+    }
+
+    if (Array.isArray(data.companionEvents)) {
+      for (const event of data.companionEvents) {
+        if (!event?.id) continue;
+        if (!(await target.get("companionEvents", event.id))) {
+          await target.put("companionEvents", event);
+        }
+      }
+    }
+
+    if (Array.isArray(data.companionReceipts)) {
+      for (const receipt of data.companionReceipts) {
+        if (!receipt?.id) continue;
+        if (!(await target.get("companionReceipts", receipt.id))) {
+          await target.put("companionReceipts", receipt);
+        }
+      }
+    }
+
+    if (data.session && typeof data.session === "object") {
+      for (const [key, incoming] of Object.entries(data.session)) {
+        if (typeof incoming !== "string") continue;
+        const existing = await target.get("session", key);
+        const merged = mergeSessionValue(existing, incoming);
+        if (merged !== existing) await target.put("session", merged, key);
+      }
+    }
+
+    return {
+      booksRestored,
+      positionsRestored,
+      wordsRestored,
+      annotationsRestored,
+      activityRestored,
+      reviewsRestored,
+      knowledgeRestored,
+    };
+  });
 }
 
 export type SaveBookInput =

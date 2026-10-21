@@ -11,6 +11,7 @@ import {
   type FormEvent,
   type KeyboardEvent,
 } from "react";
+import "../styles/game.css";
 import Sheet from "./Sheet";
 import { CompanionStage } from "./CompanionStage";
 import {
@@ -276,7 +277,10 @@ export function CompanionPanel(props: CompanionPanelProps) {
       />
     );
   }
+  return <FullCompanionPanel {...props} />;
+}
 
+function FullCompanionPanel(props: CompanionPanelProps) {
   const {
     state,
     name = "Michi",

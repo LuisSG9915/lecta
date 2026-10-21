@@ -18,3 +18,7 @@ catalog-seed/
 
 # Bundles de contexto temporales de agentes
 .agents/context-bundle-*.md
+
+# Playwright artifacts
+test-results/
+playwright-report/

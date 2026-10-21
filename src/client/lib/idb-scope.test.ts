@@ -880,3 +880,67 @@ describe("accountFetch", () => {
     vi.unstubAllGlobals();
   });
 });
+
+describe("restoreBackupToDb", () => {
+  it("fusiona respetando updatedAt más reciente sin borrar datos locales nuevos", async () => {
+    const idb = await freshIdb();
+    await idb.setDbUser("restore-test-user");
+
+    const now = Date.now();
+
+    // Guardar una palabra local más reciente
+    await idb.saveWord({
+      form: "local",
+      meaning: "significado local reciente",
+      language: "es",
+    });
+
+    const wordsBefore = await idb.listSavedWords();
+    const localStamp = wordsBefore.find((w) => w.key === "es:local")?.updatedAt ?? now;
+
+    const result = await idb.restoreBackupToDb({
+      words: [
+        {
+          key: "es:local",
+          form: "local",
+          meaning: "intento de pisar con respaldo viejo",
+          language: "es",
+          savedAt: now - 5000,
+          updatedAt: localStamp - 5000, // más viejo que el local
+        },
+        {
+          key: "es:antigua",
+          form: "antigua",
+          meaning: "significado nuevo de respaldo",
+          language: "es",
+          savedAt: now,
+          updatedAt: now + 10000, // más nuevo
+        },
+        {
+          key: "es:completamente-nueva",
+          form: "completamente-nueva",
+          meaning: "palabra nueva",
+          language: "es",
+          savedAt: now,
+          updatedAt: now,
+        },
+      ],
+      books: [{ hash: "b-restore", name: "nuevo-libro.epub" }],
+      positions: [{ bookHash: "b-restore", sectionIndex: 2, scrollTop: 20, updatedAt: now }],
+    });
+
+    expect(result.wordsRestored).toBe(3);
+    expect(result.booksRestored).toBe(1);
+    expect(result.positionsRestored).toBe(1);
+
+    const words = await idb.listSavedWords();
+    const localWord = words.find((w) => w.key === "es:local");
+    expect(localWord?.meaning).toBe("significado local reciente");
+
+    const updatedWord = words.find((w) => w.key === "es:antigua");
+    expect(updatedWord?.meaning).toBe("significado nuevo de respaldo");
+
+    const newWord = words.find((w) => w.key === "es:completamente-nueva");
+    expect(newWord).toBeDefined();
+  });
+});

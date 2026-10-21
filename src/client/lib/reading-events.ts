@@ -293,11 +293,11 @@ export async function recordEvent(
 ): Promise<void> {
   await trackReadingEvent(
     {
-      kind: (kind as any) || "word_lookup",
+      kind: (kind as ReadingEventDraft["kind"]) || "word_lookup",
       bookHash: payload.bookId,
       visitId: "v0",
       form: payload.word || "",
-    } as any,
+    } as unknown as ReadingEventDraft,
     scope,
   ).catch(() => {});
 }

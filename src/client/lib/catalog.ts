@@ -233,7 +233,7 @@ export async function downloadCatalogEpub(
 
 export interface BookAffinityBadge {
   tone: "ideal" | "relaxed" | "supported";
-  label: string;       // Ej: '✨ Ideal para tu ritmo' | '🌱 Lectura relajada' | '🌊 Con apoyo bilingüe'
+  label: string;       // Ej: 'Ideal para tu ritmo' | 'Lectura relajada' | 'Con apoyo bilingüe'
   description: string; // Explicación breve de 1 línea
 }
 
@@ -257,21 +257,21 @@ export function getBookAffinityBadge(
   if (bookDifficultyOrLevel === "ideal") {
     return {
       tone: "ideal",
-      label: "✨ Ideal para tu ritmo",
+      label: "Ideal para tu ritmo",
       description: "Fluidez natural con nuevas palabras a tu medida",
     };
   }
   if (bookDifficultyOrLevel === "relaxed") {
     return {
       tone: "relaxed",
-      label: "🌱 Lectura relajada",
+      label: "Lectura relajada",
       description: "Para disfrutar de corrido y sin esfuerzo",
     };
   }
   if (bookDifficultyOrLevel === "supported") {
     return {
       tone: "supported",
-      label: isL2 ? "🌊 Con apoyo bilingüe" : "🌊 Con apoyo inteligente",
+      label: isL2 ? "Con apoyo bilingüe" : "Con apoyo inteligente",
       description: "Lecta activará pistas previas para que no pierdas el hilo",
     };
   }
@@ -281,20 +281,20 @@ export function getBookAffinityBadge(
     if (bookDifficultyOrLevel >= 94) {
       return {
         tone: "relaxed",
-        label: "🌱 Lectura relajada",
+        label: "Lectura relajada",
         description: "Para disfrutar de corrido y sin esfuerzo",
       };
     }
     if (bookDifficultyOrLevel >= 86) {
       return {
         tone: "ideal",
-        label: "✨ Ideal para tu ritmo",
+        label: "Ideal para tu ritmo",
         description: "Fluidez natural con nuevas palabras a tu medida",
       };
     }
     return {
       tone: "supported",
-      label: isL2 ? "🌊 Con apoyo bilingüe" : "🌊 Con apoyo inteligente",
+      label: isL2 ? "Con apoyo bilingüe" : "Con apoyo inteligente",
       description: "Lecta activará pistas previas para que no pierdas el hilo",
     };
   }
@@ -330,20 +330,20 @@ export function getBookAffinityBadge(
   if (delta > 0.4 || (isL2 && theta < 0.2 && delta >= -0.2)) {
     return {
       tone: "supported",
-      label: isL2 ? "🌊 Con apoyo bilingüe" : "🌊 Con apoyo inteligente",
+      label: isL2 ? "Con apoyo bilingüe" : "Con apoyo inteligente",
       description: "Lecta activará pistas previas para que no pierdas el hilo",
     };
   }
   if (delta < -0.4) {
     return {
       tone: "relaxed",
-      label: "🌱 Lectura relajada",
+      label: "Lectura relajada",
       description: "Para disfrutar de corrido y sin esfuerzo",
     };
   }
   return {
     tone: "ideal",
-    label: "✨ Ideal para tu ritmo",
+    label: "Ideal para tu ritmo",
     description: "Fluidez natural con nuevas palabras a tu medida",
   };
 }

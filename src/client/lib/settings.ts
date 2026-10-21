@@ -258,6 +258,27 @@ export const READING_STRATEGY_PRESETS: ReadingStrategyPresetItem[] = [
   },
 ];
 
+export type InterfaceMode = "simple" | "advanced";
+
+export interface FeatureFlags {
+  neuralTts: boolean;
+  vocabGames: boolean;
+  kindleSync: boolean;
+  focusTelemetry: boolean;
+  chapterPriming: boolean;
+}
+
+export const DEFAULT_FEATURE_FLAGS: FeatureFlags = {
+  neuralTts: true,
+  vocabGames: true,
+  kindleSync: true,
+  focusTelemetry: true,
+  chapterPriming: true,
+};
+
+export const INTERFACE_MODE_KEY = "lecta:interface_mode";
+export const FEATURE_FLAGS_KEY = "lecta:feature_flags";
+
 export interface ReaderSettings {
   font: ReaderFont;
   /** Tamaño del texto del libro, en px (16–24). */
@@ -341,6 +362,8 @@ export interface ReaderSettings {
   bilingueEnabled?: boolean;
   chapterPreview?: boolean | "auto" | "off" | "minimal";
   companionEnabled?: boolean;
+  interfaceMode?: InterfaceMode;
+  featureFlags?: FeatureFlags;
 }
 
 export const READER_DEFAULTS: ReaderSettings = {
@@ -391,6 +414,8 @@ export const READER_DEFAULTS: ReaderSettings = {
   mutedConsolidationBookIds: [],
   bilingualScaffoldingMode: "auto",
   mutedBilingualBookIds: [],
+  interfaceMode: "simple",
+  featureFlags: DEFAULT_FEATURE_FLAGS,
 };
 
 export const DEFAULT_SETTINGS: ReaderSettings = READER_DEFAULTS;
@@ -894,10 +919,73 @@ export function parseReaderSettings(raw: string | null): ReaderSettings {
         : {}),
       ...(v.readingPreset !== undefined ? { readingPreset: v.readingPreset } : {}),
       ...(v.colorGuide !== undefined ? { colorGuide: v.colorGuide } : {}),
+      ...(v.interfaceMode !== undefined
+        ? { interfaceMode: v.interfaceMode === "advanced" ? "advanced" : "simple" }
+        : {}),
+      ...(v.featureFlags !== undefined && typeof v.featureFlags === "object" && v.featureFlags
+        ? {
+            featureFlags: {
+              ...DEFAULT_FEATURE_FLAGS,
+              ...v.featureFlags,
+            },
+          }
+        : {}),
     };
   } catch {
     return READER_DEFAULTS;
   }
+}
+
+export function loadInterfaceMode(): InterfaceMode {
+  try {
+    const stored = localStorage.getItem(INTERFACE_MODE_KEY);
+    if (stored === "advanced" || stored === "simple") return stored;
+    const readerRaw = localStorage.getItem(READER_KEY);
+    if (readerRaw) {
+      const parsed = JSON.parse(readerRaw);
+      if (parsed?.interfaceMode === "advanced") return "advanced";
+    }
+  } catch {
+    // ignore
+  }
+  return "simple";
+}
+
+export function saveInterfaceMode(mode: InterfaceMode): void {
+  try {
+    localStorage.setItem(INTERFACE_MODE_KEY, mode);
+  } catch {
+    // ignore
+  }
+}
+
+export function loadFeatureFlags(): FeatureFlags {
+  try {
+    const stored = localStorage.getItem(FEATURE_FLAGS_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      return { ...DEFAULT_FEATURE_FLAGS, ...parsed };
+    }
+  } catch {
+    // ignore
+  }
+  return { ...DEFAULT_FEATURE_FLAGS };
+}
+
+export function saveFeatureFlags(flags: Partial<FeatureFlags>): FeatureFlags {
+  const current = loadFeatureFlags();
+  const next = { ...current, ...flags };
+  try {
+    localStorage.setItem(FEATURE_FLAGS_KEY, JSON.stringify(next));
+  } catch {
+    // ignore
+  }
+  return next;
+}
+
+export function isFeatureFlagEnabled(flag: keyof FeatureFlags): boolean {
+  const flags = loadFeatureFlags();
+  return flags[flag] ?? true;
 }
 
 export interface UnifiedSmartAssistsPrefs {

@@ -42,6 +42,7 @@ import {
 } from "../lib/character-helper";
 import { translateParagraph } from "../lib/translate";
 import { saveCharacterMemoryEnabled } from "../lib/page-recap";
+import Icon from "./Icon";
 
 export interface LocalLexiconEntry {
   lemma: string;
@@ -573,7 +574,7 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
     const syllables = effectiveLang === "es" ? syllabifySpanish(cleanWord) : cleanWord;
     const microDef =
       viewMode === "character" && characterCard?.firstMention
-        ? `👤 1ª mención: ${characterCard.firstMention.chapterTitle}`
+        ? `1ª mención: ${characterCard.firstMention.chapterTitle}`
         : localEntry?.shortDefinition ||
           contextual?.inPassageMeaning ||
           (isLoadingContext ? "Consultando..." : "Definición");
@@ -603,7 +604,7 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
             </div>
             <p className="word-capsule__gloss micro-gloss-def micro-gloss-meaning">{microDef}</p>
             <span className="word-capsule__context-hint">
-              ✨ Ver explicación en esta frase ›
+              Ver explicación en esta frase ›
             </span>
           </div>
 
@@ -618,7 +619,7 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
               aria-label="Escuchar pronunciación"
               title="Escuchar pronunciación"
             >
-              🔊
+              <Icon name="speaker" size={16} />
             </button>
             <button
               type="button"
@@ -675,7 +676,7 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
               aria-label="Pronunciar palabra"
               title="Escuchar pronunciación"
             >
-              🔊
+              <Icon name="speaker" size={16} />
             </button>
           </div>
 
@@ -766,7 +767,7 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
               opacity: viewMode === "character" ? 1 : 0.65,
             }}
           >
-            👤 Personaje
+            Personaje
           </button>
           <button
             type="button"
@@ -783,7 +784,7 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
               opacity: viewMode === "dictionary" ? 1 : 0.65,
             }}
           >
-            📖 Diccionario
+            Diccionario
           </button>
         </nav>
       )}
@@ -805,7 +806,7 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
               marginBottom: "0.5rem",
             }}
           >
-            {/* Insignia de seguridad: 🔒 Hasta el Cap. X (Cero Spoilers) */}
+            {/* Insignia de seguridad: Hasta el Cap. X (Cero Spoilers) */}
             <div
               className="character-security-badge"
               style={{
@@ -820,7 +821,7 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
                 opacity: 0.9,
               }}
             >
-              <span className="character-security-icon" aria-hidden="true">🔒</span>
+              <span className="character-security-icon" aria-hidden="true"><Icon name="lock" size={12} /></span>
               <span className="character-security-text">
                 Hasta el {currentChapterTitle || `Cap. ${(currentSectionIndex ?? 0) + 1}`} (Cero Spoilers)
               </span>
@@ -847,7 +848,7 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
                   className="character-mention-title"
                   style={{ fontSize: "0.8rem", fontWeight: 600, opacity: 0.9 }}
                 >
-                  📖 Primera vez que apareció {characterCard.firstMention ? `(${characterCard.firstMention.chapterTitle})` : ""}:
+                  Primera vez que apareció {characterCard.firstMention ? `(${characterCard.firstMention.chapterTitle})` : ""}:
                 </div>
                 {characterCard.firstMention ? (
                   <blockquote
@@ -910,7 +911,7 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
                     className="character-relationships-label"
                     style={{ fontSize: "0.78rem", fontWeight: 600, marginBottom: "0.25rem", opacity: 0.85 }}
                   >
-                    👥 Relación en escena:
+                    Relación en escena:
                   </div>
                   <div
                     className="character-companions-pills"
@@ -954,7 +955,7 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
                       opacity: isTranslatingQuotes ? 0.6 : 0.88,
                     }}
                   >
-                    {isTranslatingQuotes ? "Traduciendo citas..." : "🌐 Traducir citas al español"}
+                    {isTranslatingQuotes ? "Traduciendo citas..." : "Traducir citas al español"}
                   </button>
                 </div>
               )}
@@ -1021,7 +1022,7 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
               className="word-card-context-label"
               style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}
             >
-              <span>🐱 En esta frase del libro:</span>
+              <span>En esta frase del libro:</span>
               {/* Botón retrocompatible para tests existentes */}
               <button
                 type="button"
@@ -1039,7 +1040,7 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
                   cursor: "pointer",
                 }}
               >
-                ✨ Explicar en esta frase
+                Explicar en esta frase
               </button>
             </div>
 

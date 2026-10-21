@@ -29,7 +29,9 @@ export function loadCharacterMemoryEnabled(): boolean {
 export function saveCharacterMemoryEnabled(enabled: boolean): void {
   try {
     localStorage.setItem(CHARACTER_MEMORY_KEY, String(enabled));
-  } catch {}
+  } catch {
+    // Quota o ambiente sin localStorage
+  }
 }
 
 /**

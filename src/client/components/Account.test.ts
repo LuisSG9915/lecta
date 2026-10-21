@@ -338,5 +338,57 @@ describe("Account componente Tú y Login", () => {
     );
     expect(submitBtn).toBeTruthy();
   });
+
+  it("renderiza botón para restaurar respaldo y selector de archivo", async () => {
+    render(
+      h(Account, {
+        presentation: "page",
+        onClose: vi.fn(),
+        onOpenCalibration: vi.fn(),
+      }),
+    );
+    await flush();
+
+    const restoreBtn = Array.from(host.querySelectorAll("button")).find((b) =>
+      b.textContent?.includes("Restaurar respaldo (JSON)"),
+    );
+    expect(restoreBtn).toBeTruthy();
+
+    const fileInput = host.querySelector<HTMLInputElement>(
+      'input[type="file"][accept*=".json"]',
+    );
+    expect(fileInput).toBeTruthy();
+  });
+
+  it("renderiza botones de Centro de diagnóstico y Aviso de Privacidad en Acerca de", async () => {
+    render(
+      h(Account, {
+        presentation: "page",
+        onClose: vi.fn(),
+        onOpenCalibration: vi.fn(),
+      }),
+    );
+    await flush();
+
+    const diagBtn = Array.from(host.querySelectorAll("button")).find((b) =>
+      b.textContent?.includes("Centro de diagnóstico"),
+    );
+    expect(diagBtn).toBeTruthy();
+
+    const privacyBtn = Array.from(host.querySelectorAll("button")).find((b) =>
+      b.textContent?.includes("Aviso de Privacidad"),
+    );
+    expect(privacyBtn).toBeTruthy();
+
+    const termsBtn = Array.from(host.querySelectorAll("button")).find((b) =>
+      b.textContent?.includes("Términos de Uso"),
+    );
+    expect(termsBtn).toBeTruthy();
+
+    // Abrir modal de diagnóstico
+    await act(async () => diagBtn!.click());
+    await flush();
+    expect(host.querySelector('[aria-label="Acerca de y Diagnóstico"]')).toBeTruthy();
+  });
 });
 

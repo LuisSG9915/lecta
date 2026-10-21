@@ -10,9 +10,10 @@
 // - Validación estricta MIME: jamás cachear ni entregar text/html para .css, .js o /assets/*.
 // - Autocuración de assets: reintento y notificación ASSET_MISMATCH_RELOAD ante hashes obsoletos.
 
-// Versión y marca de compilación para invalidación de caché PWA en navegadores y móviles
+// Versión y marca de compilación para invalidación de caché PWA en navegadores y móviles.
+// En producción se sincroniza automáticamente durante el build desde sw-manifest.json.
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-var SW_VERSION = "2.2.0-20261018";
+var SW_VERSION = "auto";
 var CACHE_PREFIX = "lecta-v2-";
 var MANIFEST_URL = "/sw-manifest.json";
 var NAVIGATION_TIMEOUT_MS = 3500;
@@ -80,7 +81,10 @@ self.addEventListener("install", function (event) {
         return res.ok ? res.json() : null;
       })
       .then(function (manifest) {
-        var version = (manifest && manifest.version) || "0";
+        if (manifest && manifest.version) {
+          SW_VERSION = manifest.version;
+        }
+        var version = (manifest && manifest.version) || SW_VERSION || "0";
         var seen = {};
         var urls = ["/", "/index.html", "/manifest.webmanifest", MANIFEST_URL]
           .concat((manifest && manifest.assets) || [])
@@ -125,6 +129,9 @@ self.addEventListener("activate", function (event) {
           });
       })
       .then(function (manifest) {
+        if (manifest && manifest.version) {
+          SW_VERSION = manifest.version;
+        }
         var keep = manifest && manifest.version ? CACHE_PREFIX + manifest.version : cachedName;
         return caches.keys().then(function (keys) {
           return Promise.all(

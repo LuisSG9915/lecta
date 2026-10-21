@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import "../styles/notebook.css";
 import { isDue, newCard, Rating, scheduleReview, type Card, type Grade } from "../lib/fsrs";
 import {
   captureDbScope,
@@ -71,7 +72,7 @@ export {
 };
 import { markLevel, type MarkLevel } from "../lib/word-level";
 import { loadUseAi } from "../lib/ai-pref";
-import { GamePanel } from "./GamePanel";
+const GamePanel = lazy(() => import("./GamePanel").then((m) => ({ default: m.GamePanel })));
 import { formatInterval, futureRelativeDay } from "../lib/relative-time";
 import {
   downloadBookMarkdown,
@@ -586,10 +587,22 @@ function WordRow({
   );
 }
 
-export function Vocabulary({
-  words: wordsProp,
+export function Vocabulary(props: UnifiedVocabularyProps) {
+  if (props.words) {
+    return (
+      <UnifiedNotebookView
+        words={props.words}
+        onStartQuickReview={props.onStartQuickReview}
+        onDeleteWord={props.onDeleteWord}
+      />
+    );
+  }
+  return <FullVocabulary {...props} />;
+}
+
+function FullVocabulary({
   onStartQuickReview,
-  onDeleteWord,
+  onDeleteWord: _onDeleteWord,
   onClose = () => {},
   books = [],
   activityVersion,
@@ -597,15 +610,6 @@ export function Vocabulary({
   presentation = "overlay",
   backLabel,
 }: UnifiedVocabularyProps) {
-  if (wordsProp) {
-    return (
-      <UnifiedNotebookView
-        words={wordsProp}
-        onStartQuickReview={onStartQuickReview}
-        onDeleteWord={onDeleteWord}
-      />
-    );
-  }
   const ref = useRef<HTMLDivElement>(null);
   const isOverlay = presentation !== "page";
   useModalBehavior(ref, onClose, { enabled: isOverlay });
@@ -2100,17 +2104,19 @@ export function Vocabulary({
               </div>
             ) : null}
 
-            <GamePanel
-              mode={workshopOpen ? "ai_workshop" : "dashboard"}
-              onStartAdaptiveFlow={startAdaptiveFlow}
-              words={all.map((w) => ({
-                word: w.form,
-                meaning: w.meaning,
-                bookTitle: w.bookHash ? bookTitle(w.bookHash) : undefined,
-                lemma: w.lemma,
-              }))}
-              onClose={() => setWorkshopOpen(false)}
-            />
+            <Suspense fallback={null}>
+              <GamePanel
+                mode={workshopOpen ? "ai_workshop" : "dashboard"}
+                onStartAdaptiveFlow={startAdaptiveFlow}
+                words={all.map((w) => ({
+                  word: w.form,
+                  meaning: w.meaning,
+                  bookTitle: w.bookHash ? bookTitle(w.bookHash) : undefined,
+                  lemma: w.lemma,
+                }))}
+                onClose={() => setWorkshopOpen(false)}
+              />
+            </Suspense>
 
             <div className="segmented nb-tabs" role="group" aria-label="Secciones del cuaderno">
               <button

@@ -615,7 +615,7 @@ export default function Shelf({
       {isFirstTimeReader ? (
         <section className="shelf-welcome-hero" aria-label="Primera lectura en 1 clic">
           <div className="shelf-welcome-hero-content">
-            <span className="shelf-welcome-hero-badge">✨ Prueba instantánea</span>
+            <span className="shelf-welcome-hero-badge">Lectura inmediata</span>
             <h2 className="shelf-welcome-hero-title">
               Vive cómo se siente leer sin interrupciones
             </h2>
@@ -638,7 +638,14 @@ export default function Shelf({
               >
                 {sampleState === "loading"
                   ? "Preparando el libro…"
-                  : "📖 Empezar lectura de muestra ahora"}
+                  : "Empezar lectura de muestra ahora"}
+              </button>
+              <button
+                type="button"
+                className="btn btn--secondary shelf-welcome-hero-btn-secondary"
+                onClick={pickFile}
+              >
+                Elegir archivo EPUB
               </button>
             </div>
             {sampleState === "error" ? (
@@ -668,7 +675,7 @@ export default function Shelf({
 
           {onboardingAllDone ? (
             <div className="onboarding-celebration">
-              <p className="onboarding-celebration-title">🎉 ¡Ritual de inicio completado!</p>
+              <p className="onboarding-celebration-title">¡Ritual de inicio completado!</p>
               <p className="meta">
                 Has desbloqueado la <strong>Bufanda de Invierno</strong> (<code>scarf_amber</code>) en el clóset de tu compañero.
               </p>
@@ -755,7 +762,7 @@ export default function Shelf({
           etapa y ropa equipada, nombre y nivel breve; el botón abre
           la hoja de cuidado del proveedor. Solo si el juego está
           encendido — nunca desplaza ni rompe la estantería. */}
-      {showCompanion && companion.state && !current ? (
+      {showCompanion && companion.state && !current && !isFirstTimeReader ? (
         <section
           className="shelf-companion shelf__desk-companion"
           aria-label={`Tu compañero ${companion.name}`}
@@ -950,7 +957,7 @@ export default function Shelf({
 
               <div className="shelf-hero-right">
                 <div className="shelf-hero-lamp" aria-hidden="true" title="Rincón cálido con el gato">
-                  <span className="shelf-lamp-icon">🛋️ 💡</span>
+                  <span className="shelf-lamp-icon"><Icon name="sparkles" size={16} /></span>
                 </div>
                 {showCompanion && companion.state ? (
                   <div
@@ -990,7 +997,7 @@ export default function Shelf({
 
                 {effectiveDueWordsCount > 0 ? (
                   <div className="shelf-cat-pending-note" role="status">
-                    <span className="cat-note-icon" aria-hidden="true">🐾 💌</span>
+                    <span className="cat-note-icon" aria-hidden="true"><Icon name="notebook" size={14} /></span>
                     <span className="cat-note-text">
                       Tienes {effectiveDueWordsCount} palabra{effectiveDueWordsCount === 1 ? "" : "s"} {effectiveDueWordsCount === 1 ? "lista" : "listas"} en tu cuaderno
                     </span>
@@ -1024,7 +1031,7 @@ export default function Shelf({
                           <strong>{goalProgress.readDays}/{goalProgress.target}</strong>
                           <span>días</span>
                         </div>
-                        <span className="meta">{goalProgress.met ? "Meta cumplida 🎉" : "Meta semanal"}</span>
+                        <span className="meta">{goalProgress.met ? "Meta cumplida" : "Meta semanal"}</span>
                       </div>
                     </div>
                   ) : null}
@@ -1051,6 +1058,7 @@ export default function Shelf({
           {/* Banner de Calibración Voluntaria (Opt-in - Zero-Friction) */}
           {!(hasCalibrated ?? calibrationDone) &&
             !calibrationDismissed &&
+            !isFirstTimeReader &&
             (onStartCalibration ?? onRequestCalibration) && (
               <section
                 className="shelf-calibration-callout"

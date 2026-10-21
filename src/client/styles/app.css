@@ -93,6 +93,93 @@
   view-transition-name: active-nav-indicator;
 }
 
+.app-nav-sync-indicator {
+  position: absolute;
+  top: -24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--paper-raised);
+  border: var(--border);
+  border-bottom: none;
+  border-radius: var(--r-sm) var(--r-sm) 0 0;
+  padding: 2px 10px;
+  font-size: 11px;
+  color: var(--ink-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+  pointer-events: none;
+  font-family: var(--font-ui);
+  box-shadow: 0 -1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.app-nav-sync-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ink-faint);
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.app-nav-sync-dot.is-synced {
+  background: #16a34a;
+}
+
+.app-nav-sync-dot.is-pending {
+  background: #d97706;
+}
+
+.app-nav-sync-dot.is-offline {
+  background: #64748b;
+}
+
+.app-nav-sync-dot.is-error {
+  background: #dc2626;
+}
+
+/* ---------- Panel de error honesto de base de datos ---------- */
+.db-error-panel {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 45vh;
+  padding: var(--s-6) var(--s-3);
+}
+
+.db-error-card {
+  max-width: 32rem;
+  width: 100%;
+  background: var(--paper-raised);
+  border: var(--border);
+  border-radius: var(--r-md);
+  padding: var(--s-6);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.db-error-title {
+  font-family: var(--font-display);
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  color: var(--ink);
+  margin-top: 0;
+  margin-bottom: var(--s-2);
+}
+
+.db-error-message {
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+  line-height: 1.5;
+  margin-bottom: var(--s-5);
+}
+
+.db-error-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
 .app-nav-inner {
   display: flex;
   align-items: center;

@@ -337,7 +337,7 @@ describe("DeepReadingSummaryModal", () => {
     expect(host.querySelector(".consolidation-card")).toBeNull();
   });
 
-  it("muestra la sección de '🌱 Tu Cosecha en este Capítulo' con palabras y mensaje celebratorio", () => {
+  it("muestra la sección de 'Tu Cosecha en este Capítulo' con palabras y mensaje celebratorio", () => {
     const onClose = vi.fn();
     const harvestWords = ["alborada", "crepúsculo", "destello"];
     act(() => {
@@ -351,7 +351,7 @@ describe("DeepReadingSummaryModal", () => {
     });
 
     const text = host.textContent ?? "";
-    expect(text).toContain("🌱 Tu Cosecha en este Capítulo");
+    expect(text).toContain("Tu Cosecha en este Capítulo");
     expect(text).toContain("¡Leíste este capítulo de corrido integrando nuevas palabras en contexto!");
     expect(text).toContain("alborada");
     expect(text).toContain("crepúsculo");
@@ -386,7 +386,7 @@ describe("DeepReadingSummaryModal", () => {
     expect(onShareQuote).toHaveBeenCalledWith("El mar sonreía a lo lejos con dientes de espuma.");
   });
 
-  it("abre QuoteCardModal in situ al pulsar '📸 Crear postal del capítulo' si no hay onShareQuote", () => {
+  it("abre QuoteCardModal in situ al pulsar 'Crear postal del capítulo' si no hay onShareQuote", () => {
     const onClose = vi.fn();
     act(() => {
       root.render(

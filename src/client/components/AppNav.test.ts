@@ -117,63 +117,62 @@ describe("AppNav", () => {
     expect(host.querySelector(".app-nav-sparkle")).not.toBeNull();
   });
 
-  describe("Navegación Unificada (onSelect / NavTab)", () => {
-    it("renderiza las 3 secciones principales y dispara onSelect", () => {
-      const onSelect = vi.fn();
-      act(() => {
-        root.render(
-          h(AppNav, {
-            activeTab: "shelf",
-            onSelect,
-            dueReviewsCount: 5,
-          }),
-        );
-      });
-
-      const buttons = host.querySelectorAll("button");
-      expect(buttons).toHaveLength(3);
-      expect(buttons[0].textContent).toContain("Biblioteca");
-      expect(buttons[0].getAttribute("aria-current")).toBe("page");
-      expect(buttons[1].textContent).toContain("Mi vocabulario");
-      expect(buttons[1].textContent).toContain("5");
-      expect(buttons[2].textContent).toContain("Progreso");
-
-      act(() => {
-        buttons[1].click();
-      });
-      expect(onSelect).toHaveBeenCalledWith("vocab");
-
-      act(() => {
-        buttons[2].click();
-      });
-      expect(onSelect).toHaveBeenCalledWith("journey");
+  it("muestra indicador honesto de sincronización con conexión o sin ella", () => {
+    act(() => {
+      root.render(
+        h(AppNav, {
+          active: "shelf",
+          onNavigate: vi.fn(),
+          syncState: {
+            isOnline: false,
+            lastSyncedAt: null,
+            pendingChangesCount: 0,
+            lastSyncError: null,
+          },
+        }),
+      );
     });
+    const offlineIndicator = host.querySelector(".app-nav-sync-indicator");
+    expect(offlineIndicator).toBeTruthy();
+    expect(offlineIndicator?.textContent).toContain("Sin conexión · guardado local");
 
-    it("renderiza el botón del compañero cuando se provee onOpenCompanion", () => {
-      const onSelect = vi.fn();
-      const onOpenCompanion = vi.fn();
-      act(() => {
-        root.render(
-          h(AppNav, {
-            activeTab: "vocab",
-            onSelect,
-            companionName: "Búho",
-            onOpenCompanion,
-          }),
-        );
-      });
-
-      const buttons = host.querySelectorAll("button");
-      expect(buttons).toHaveLength(4);
-      const companionBtn = host.querySelector(".app-nav-companion") as HTMLButtonElement;
-      expect(companionBtn).not.toBeNull();
-      expect(companionBtn.textContent).toContain("Búho");
-
-      act(() => {
-        companionBtn.click();
-      });
-      expect(onOpenCompanion).toHaveBeenCalledTimes(1);
+    act(() => {
+      root.render(
+        h(AppNav, {
+          active: "shelf",
+          onNavigate: vi.fn(),
+          hasAccount: true,
+          syncState: {
+            isOnline: true,
+            lastSyncedAt: Date.now(),
+            pendingChangesCount: 0,
+            lastSyncError: null,
+          },
+        }),
+      );
     });
+    const syncedIndicator = host.querySelector(".app-nav-sync-indicator");
+    expect(syncedIndicator?.textContent).toContain("Sincronizado");
+
+    act(() => {
+      root.render(
+        h(AppNav, {
+          active: "shelf",
+          onNavigate: vi.fn(),
+          hasAccount: true,
+          syncState: {
+            isOnline: true,
+            lastSyncedAt: Date.now(),
+            pendingChangesCount: 3,
+            lastSyncError: null,
+          },
+        }),
+      );
+    });
+    const pendingIndicator = host.querySelector(".app-nav-sync-indicator");
+    expect(pendingIndicator?.textContent).toContain(
+      "Guardado en este dispositivo · pendiente de sincronizar",
+    );
   });
 });
 

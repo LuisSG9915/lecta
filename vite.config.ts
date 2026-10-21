@@ -155,6 +155,17 @@ function swManifest(): Plugin {
         join(outDir, "sw-manifest.json"),
         `${JSON.stringify({ version, assets })}\n`,
       );
+
+      // Sincroniza SW_VERSION en sw.js generado con el hash de sw-manifest.json
+      const swDist = join(outDir, "sw.js");
+      if (existsSync(swDist)) {
+        const swContent = readFileSync(swDist, "utf8");
+        const updatedSw = swContent.replace(
+          /var\s+SW_VERSION\s*=\s*["'][^"']*["'];?/,
+          `var SW_VERSION = "${version}";`,
+        );
+        writeFileSync(swDist, updatedSw, "utf8");
+      }
     },
   };
 }
@@ -167,4 +178,25 @@ export default defineConfig({
     onnxWasmPlugin(),
     swManifest(),
   ],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (
+            id.includes("node_modules/react/") ||
+            id.includes("node_modules/react-dom/") ||
+            id.includes("node_modules/scheduler/")
+          ) {
+            return "react-vendor";
+          }
+          if (
+            id.includes("src/shared/calibration-bank") ||
+            id.includes("src/shared/english-core-lexicon")
+          ) {
+            return "lexicon-banks";
+          }
+        },
+      },
+    },
+  },
 });

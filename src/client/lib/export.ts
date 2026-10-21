@@ -15,6 +15,7 @@ import {
   listSessionKeys,
   loadBookPosition,
   loadSessionValue,
+  restoreBackupToDb,
   COMPANION_ACKED_KEY,
   COMPANION_BASELINES_KEY,
   COMPANION_DEVICE_PREFS_KEY,
@@ -22,6 +23,7 @@ import {
   COMPANION_PROFILE_KEY,
   GAME_KEY,
   GAME_STATE_KEY,
+  type BackupRestoreResult,
   type DbScope,
   type KnownWord,
   type ReadingEvent,
@@ -64,7 +66,9 @@ export function downloadText(filename: string, text: string, type: string) {
   const anchor = document.createElement("a");
   anchor.href = url;
   anchor.download = filename;
+  document.body.appendChild(anchor);
   anchor.click();
+  anchor.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
@@ -834,6 +838,85 @@ export function buildBackup(data: BackupData, exportedAt = Date.now()): string {
     null,
     2,
   );
+}
+
+export interface BackupPreviewSummary {
+  version: number;
+  exportedAt: string;
+  booksCount: number;
+  wordsCount: number;
+  annotationsCount: number;
+  positionsCount: number;
+  hasCompanionState: boolean;
+  reviewsCount: number;
+  activityCount: number;
+}
+
+export function inspectBackupPayload(jsonString: string): BackupPreviewSummary {
+  if (typeof jsonString !== "string" || !jsonString.trim()) {
+    throw new Error("El archivo de respaldo está vacío.");
+  }
+  let raw: unknown;
+  try {
+    raw = JSON.parse(jsonString);
+  } catch {
+    throw new Error("El archivo no tiene un formato JSON válido.");
+  }
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new Error("El archivo no contiene un objeto de respaldo válido.");
+  }
+  const obj = raw as Record<string, unknown>;
+  if (typeof obj.version !== "number" || obj.version < 1) {
+    throw new Error("El archivo no contiene una versión de respaldo válida.");
+  }
+  if (obj.version > 1) {
+    throw new Error(
+      `La versión del respaldo (${obj.version}) es más reciente que la versión soportada (1).`,
+    );
+  }
+
+  const booksCount = Array.isArray(obj.books) ? obj.books.length : 0;
+  const wordsCount = Array.isArray(obj.words) ? obj.words.length : 0;
+  const annotationsCount = Array.isArray(obj.annotations) ? obj.annotations.length : 0;
+  const positionsCount = Array.isArray(obj.positions) ? obj.positions.length : 0;
+  const reviewsCount = Array.isArray(obj.reviews) ? obj.reviews.length : 0;
+  const activityCount = Array.isArray(obj.activity) ? obj.activity.length : 0;
+  const hasCompanionState = Boolean(
+    (Array.isArray(obj.companionEvents) && obj.companionEvents.length > 0) ||
+      (Array.isArray(obj.companionReceipts) && obj.companionReceipts.length > 0) ||
+      (obj.session &&
+        typeof obj.session === "object" &&
+        Object.keys(obj.session).some((k) => k.startsWith("comp_"))),
+  );
+
+  return {
+    version: obj.version,
+    exportedAt:
+      typeof obj.exportedAt === "string" ? obj.exportedAt : new Date().toISOString(),
+    booksCount,
+    wordsCount,
+    annotationsCount,
+    positionsCount,
+    hasCompanionState,
+    reviewsCount,
+    activityCount,
+  };
+}
+
+export async function restoreBackupPayload(
+  payload: BackupData | string | Record<string, unknown>,
+  _strategy: "merge-by-updated-at" = "merge-by-updated-at",
+  scope?: DbScope,
+): Promise<BackupRestoreResult> {
+  const data: Partial<BackupData> =
+    typeof payload === "string"
+      ? (JSON.parse(payload) as Partial<BackupData>)
+      : (payload as Partial<BackupData>);
+
+  if (!data || typeof data !== "object") {
+    throw new Error("Los datos de respaldo no son válidos para restaurar.");
+  }
+  return restoreBackupToDb(data as Parameters<typeof restoreBackupToDb>[0], scope);
 }
 
 // Reúne todo lo del dispositivo y lo descarga como

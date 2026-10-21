@@ -2,7 +2,7 @@
 import { act, createElement as h, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import WordPanel from "./WordPanel";
+import WordPanel, { type ContextualMeaningResult } from "./WordPanel";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -273,10 +273,10 @@ describe("WordPanel - Acciones Rápidas (Fase 4.3)", () => {
 
     const explainPassageBtn = host.querySelector<HTMLButtonElement>(".btn--explain-passage");
     expect(explainPassageBtn).not.toBeNull();
-    expect(explainPassageBtn?.textContent).toContain("✨ Explicar en esta frase");
+    expect(explainPassageBtn?.textContent).toContain("Explicar en esta frase");
   });
 
-  it("al pulsar '✨ Explicar en esta frase' muestra la explicación contextual de IA", async () => {
+  it("al pulsar 'Explicar en esta frase' muestra la explicación contextual de IA", async () => {
     render(
       h(WordPanel, {
         word: "efimero",
@@ -294,7 +294,7 @@ describe("WordPanel - Acciones Rápidas (Fase 4.3)", () => {
 
     const explainPassageBtn = host.querySelector<HTMLButtonElement>(".btn--explain-passage");
     expect(explainPassageBtn).not.toBeNull();
-    expect(explainPassageBtn?.textContent).toContain("✨ Explicar en esta frase");
+    expect(explainPassageBtn?.textContent).toContain("Explicar en esta frase");
 
     // Tocar el botón de IA en pasaje directamente sin menús confusos
     await act(async () => {
@@ -585,10 +585,10 @@ describe("WordPanel - Acciones Rápidas (Fase 4.3)", () => {
     });
 
     it("resuelve en paralelo la explicación contextual y la guarda en caché para la frase exacta", async () => {
-      let resolveContextual: (res: any) => void = () => {};
+      let resolveContextual: (res: ContextualMeaningResult) => void = () => {};
       const fetchContextualMeaning = vi.fn(
         () =>
-          new Promise<any>((resolve) => {
+          new Promise<ContextualMeaningResult>((resolve) => {
             resolveContextual = resolve;
           }),
       );
@@ -840,7 +840,7 @@ describe("WordPanel - Acciones Rápidas (Fase 4.3)", () => {
 
       const translateBtn = host.querySelector<HTMLButtonElement>(".btn--translate-character-quotes");
       expect(translateBtn).not.toBeNull();
-      expect(translateBtn?.textContent).toContain("🌐 Traducir citas al español");
+      expect(translateBtn?.textContent).toContain("Traducir citas al español");
 
       // Pulsar traducir citas
       await act(async () => {

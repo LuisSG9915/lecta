@@ -22,6 +22,7 @@ import {
 } from "react";
 import { CompanionPanel, type CompanionTab } from "./CompanionPanel";
 import { CompanionCelebration } from "./CompanionCelebration";
+import type { SearchSection, SearchTocRow } from "../lib/book-search";
 import {
   loadCompanionDevicePrefs,
   loadGame,
@@ -204,8 +205,8 @@ export type CompanionReaderContext = {
   pageText: string;
   currentChapterIndex: number;
   bookId: string;
-  sections?: any[];
-  toc?: any[];
+  sections?: SearchSection[];
+  toc?: SearchTocRow[];
 };
 
 const CompanionContext = createContext<CompanionContextValue | null>(null);

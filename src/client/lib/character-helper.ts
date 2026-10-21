@@ -1,5 +1,5 @@
 import { isStopword } from "../../shared/stopwords";
-import { searchBookMentions } from "./book-search";
+import { searchBookMentions, type SearchSection, type SearchTocRow } from "./book-search";
 
 export interface SpoilerBoundary {
   /** Índice del capítulo actual (0-based) */
@@ -204,8 +204,8 @@ export async function getCharactersOnPageWithoutSpoilers(params: {
   pageText: string;
   currentChapterIndex: number;
   bookId: string;
-  sections?: any[];
-  toc?: any[];
+  sections?: SearchSection[];
+  toc?: SearchTocRow[];
 }): Promise<CharacterCardInfo[]> {
   const { pageText, currentChapterIndex, bookId } = params;
 

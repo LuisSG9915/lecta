@@ -17,7 +17,6 @@ import { isWordToken, menteBaseForms } from "../../shared/word-form";
 import { cliticBaseForms } from "./knowledge";
 import { bookVocabKey } from "./book-vocab";
 import type { BookVocabManifest } from "./catalog";
-import { getEnglishCoreEntry } from "../../shared/english-core-lexicon";
 
 export interface PrecacheProgress {
   done: number;
@@ -356,6 +355,7 @@ export async function prefetchUpcomingChaptersLexicon(
   const missingFromLocalCore: string[] = [];
 
   if (language === "en") {
+    const { getEnglishCoreEntry } = await import("../../shared/english-core-lexicon");
     for (const form of allForms) {
       const coreEntry = getEnglishCoreEntry(form);
       if (coreEntry) {

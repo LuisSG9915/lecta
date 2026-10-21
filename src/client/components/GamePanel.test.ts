@@ -123,6 +123,7 @@ vi.mock("idb", () => ({
 import * as idb from "../lib/idb";
 import * as game from "../lib/game";
 import { CompanionProvider } from "./CompanionProvider";
+import type { Card } from "ts-fsrs";
 import { GamePanel, formatFsrsIntervalPreview, Rating } from "./GamePanel";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
@@ -613,7 +614,7 @@ describe("GamePanel", () => {
     expect(formatFsrsIntervalPreview(undefined, Rating.Again)).toBe("Hoy (10 min)");
 
     // Para tarjeta ya establecida en repaso
-    const settledCard: any = {
+    const settledCard: Card = {
       due: new Date(),
       stability: 10,
       difficulty: 3,
@@ -622,6 +623,7 @@ describe("GamePanel", () => {
       reps: 3,
       lapses: 0,
       state: 2,
+      learning_steps: 0,
       last_review: new Date(Date.now() - 5 * 86400000),
     };
     const previewSettled = formatFsrsIntervalPreview(settledCard, Rating.Good);

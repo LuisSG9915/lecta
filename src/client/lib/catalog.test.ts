@@ -163,7 +163,7 @@ describe("getBookAffinityBadge (Fase 1)", () => {
     const badge = getBookAffinityBadge("es", 0.0, 0.0);
     expect(badge).toEqual({
       tone: "ideal",
-      label: "✨ Ideal para tu ritmo",
+      label: "Ideal para tu ritmo",
       description: "Fluidez natural con nuevas palabras a tu medida",
     });
   });
@@ -172,7 +172,7 @@ describe("getBookAffinityBadge (Fase 1)", () => {
     const badge = getBookAffinityBadge("es", -1.0, 0.0);
     expect(badge).toEqual({
       tone: "relaxed",
-      label: "🌱 Lectura relajada",
+      label: "Lectura relajada",
       description: "Para disfrutar de corrido y sin esfuerzo",
     });
   });
@@ -181,7 +181,7 @@ describe("getBookAffinityBadge (Fase 1)", () => {
     const badge = getBookAffinityBadge("es", 1.5, 0.0);
     expect(badge).toEqual({
       tone: "supported",
-      label: "🌊 Con apoyo inteligente",
+      label: "Con apoyo inteligente",
       description: "Lecta activará pistas previas para que no pierdas el hilo",
     });
   });
@@ -190,7 +190,7 @@ describe("getBookAffinityBadge (Fase 1)", () => {
     const badge = getBookAffinityBadge("en", 0.0, -0.6);
     expect(badge).toEqual({
       tone: "supported",
-      label: "🌊 Con apoyo bilingüe",
+      label: "Con apoyo bilingüe",
       description: "Lecta activará pistas previas para que no pierdas el hilo",
     });
   });

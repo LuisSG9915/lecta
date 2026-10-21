@@ -169,7 +169,7 @@ describe("page-recap", () => {
       host.remove();
     });
 
-    const render = (node: any) => act(() => root.render(node));
+    const render = (node: Parameters<Root["render"]>[0]) => act(() => root.render(node));
     const click = (el: Element) =>
       act(() => {
         el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));

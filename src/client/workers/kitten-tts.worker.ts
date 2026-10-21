@@ -11,6 +11,9 @@ import { getVoiceEmbedding, registerVoiceEmbedding } from "../lib/kittenVoicesDa
 import { normalizeEnglishText } from "../lib/kittenNormalize";
 import { prepareKittenInputIds } from "../lib/kittenPhonemizer";
 
+export const ORT_WASM_VERSION = "1.30.0";
+export const ORT_WASM_CDN_BASE = `https://cdn.jsdelivr.net/npm/onnxruntime-web@${ORT_WASM_VERSION}/dist/`;
+
 export { normalizeEnglishText };
 
 export type WorkerRequest =
@@ -306,10 +309,10 @@ async function configureOrtWasmEnv(): Promise<typeof import("onnxruntime-web/was
         (contentType.includes("application/wasm") || contentType.includes("wasm")) &&
         !contentType.includes("text/html");
       if (!isWasm) {
-        wasmBase = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.30.0/dist/";
+        wasmBase = ORT_WASM_CDN_BASE;
       }
     } catch {
-      wasmBase = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.30.0/dist/";
+      wasmBase = ORT_WASM_CDN_BASE;
     }
   }
 

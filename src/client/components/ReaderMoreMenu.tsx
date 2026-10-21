@@ -4,6 +4,9 @@ import {
   unmuteBookForPriming,
   loadNativeLanguage,
   saveUnifiedSmartAssists,
+  loadInterfaceMode,
+  saveInterfaceMode,
+  type InterfaceMode,
   type ChapterPrimingMode,
   type ReaderSettings,
   type StrategyContrast,
@@ -82,8 +85,21 @@ export default function ReaderMoreMenu({
   embedded = false,
   chapterPrimingMode,
   settings,
+  onUpdateSettings,
 }: ReaderMoreMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
+
+  const [interfaceMode, setInterfaceMode] = useState<InterfaceMode>(() =>
+    settings?.interfaceMode ?? loadInterfaceMode(),
+  );
+
+  const handleSetInterfaceMode = (mode: InterfaceMode) => {
+    saveInterfaceMode(mode);
+    setInterfaceMode(mode);
+    if (settings && onUpdateSettings) {
+      onUpdateSettings({ ...settings, interfaceMode: mode });
+    }
+  };
 
   // Estados reactivos de asistencias para ver y reactivar si fueron silenciadas
   const [isPrimingMutedThisBook, setIsPrimingMutedThisBook] = useState(() =>
@@ -188,7 +204,9 @@ export default function ReaderMoreMenu({
     if (!isOpen || embedded) return;
 
     // Autofocus primer botón al abrir como popover
-    const firstButton = menuRef.current?.querySelector<HTMLButtonElement>("button");
+    const firstButton =
+      menuRef.current?.querySelector<HTMLButtonElement>(".reader-more-item") ??
+      menuRef.current?.querySelector<HTMLButtonElement>("button");
     firstButton?.focus();
 
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -233,6 +251,40 @@ export default function ReaderMoreMenu({
       role="menu"
       aria-label="Herramientas del libro"
     >
+      {/* 0. Selector de Modo de Interfaz (Simple / Avanzado) */}
+      <div
+        className="reader-interface-mode-box"
+        style={{
+          padding: "0.5rem 0.75rem",
+          borderBottom: "1px solid rgba(127,127,127,0.15)",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.35rem" }}>
+          <span className="meta" style={{ fontWeight: 600, fontSize: "0.8rem" }}>Modo de lectura</span>
+          <span className="meta" style={{ fontSize: "0.72rem" }}>
+            {interfaceMode === "advanced" ? "Avanzado" : "Simple"}
+          </span>
+        </div>
+        <div style={{ display: "flex", gap: "0.35rem" }}>
+          <button
+            type="button"
+            className={`btn btn--sm ${interfaceMode === "simple" ? "btn--primary" : "btn--quiet"}`}
+            style={{ flex: 1, padding: "0.25rem 0.5rem", fontSize: "0.78rem" }}
+            onClick={() => handleSetInterfaceMode("simple")}
+          >
+            Modo Simple
+          </button>
+          <button
+            type="button"
+            className={`btn btn--sm ${interfaceMode === "advanced" ? "btn--primary" : "btn--quiet"}`}
+            style={{ flex: 1, padding: "0.25rem 0.5rem", fontSize: "0.78rem" }}
+            onClick={() => handleSetInterfaceMode("advanced")}
+          >
+            Modo Avanzado
+          </button>
+        </div>
+      </div>
+
       {/* 1. Buscar en el libro */}
       <button
         type="button"

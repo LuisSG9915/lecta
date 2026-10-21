@@ -11,7 +11,7 @@ import type { EpubBook } from "../lib/epub";
 import type { WordHit } from "../lib/words";
 import { extractWordAtPoint, wordHitFromRange } from "../lib/words";
 import { tapZone } from "../lib/page-gesture";
-import { usePageGesture } from "../lib/use-page-gesture";
+import { useReaderShortcutsAndGestures } from "../hooks/useReaderShortcutsAndGestures";
 import {
   openEpub,
   detectBookLanguage,
@@ -37,7 +37,6 @@ import {
   saveWordWithKnowledge,
   updateBookMeta,
   recordPassiveExposure,
-  saveReadingInterval,
   saveSessionValue,
   listIntervals,
   loadSessionValue,
@@ -45,7 +44,6 @@ import {
   type KnownWord,
   type SavedWord,
   type SavedBookPosition,
-  type SavedInterval,
 } from "../lib/idb";
 import {
   loadUserTheta,
@@ -186,16 +184,7 @@ import {
 } from "../lib/pagination";
 import {
   pushAnnotationsToServer,
-  pushActivityToServer,
 } from "../lib/reading-sync";
-import {
-  dayKeyOf,
-  IDLE_MS,
-  MIN_INTERVAL_MS,
-  ROLL_MS,
-  timeByDay,
-} from "../lib/reading-activity";
-import { DAY_GOAL_MS } from "../lib/reading-goal";
 import { pushOverlay, type OverlayHandle } from "../lib/history";
 import {
   dominatedLemmas,
@@ -266,19 +255,14 @@ import {
 import { ReaderRecapBubble } from "./ReaderRecapBubble";
 import { BilingueParagraph } from "./BilingueParagraph";
 import { kittenTtsEngine } from "../lib/kittenTtsEngine";
-import TtsConsentDialog from "./TtsConsentDialog";
 import SmartReaderDock, { type FocusSuggestion } from "./SmartReaderDock";
-import WordPanel from "./WordPanel";
-import SectionPreview, { type SectionPreviewRow } from "./SectionPreview";
+import { type SectionPreviewRow } from "./SectionPreview";
 import Sheet from "./Sheet";
-import Dialog from "./Dialog";
 import Icon from "./Icon";
-import { ProgressInk } from "./ProgressInk";
 import ReaderMoreMenu from "./ReaderMoreMenu";
-import QuoteCardModal from "./QuoteCardModal";
-import DeepReadingModal from "./DeepReadingModal";
-import DeepReadingSummaryModal from "./DeepReadingSummaryModal";
-import BookGlossaryModal from "./BookGlossaryModal";
+import { ReaderTopBar } from "./reader/ReaderTopBar";
+import { ReaderOverlays } from "./reader/ReaderOverlays";
+import { useReaderPersistence } from "../hooks/useReaderPersistence";
 import { downloadBookMarkdown } from "../lib/export";
 import {
   formatRemainingTime,
@@ -291,9 +275,7 @@ import {
   type DeepReadingSummary,
 } from "../lib/deep-reading";
 import {
-  isFullscreen,
   isFullscreenSupported,
-  subscribeFullscreenChange,
   toggleFullscreen,
 } from "../lib/fullscreen";
 import { playCompanionSound } from "../lib/companion-audio";
@@ -302,7 +284,7 @@ import Toggle from "./Toggle";
 import { Companion } from "./Companion";
 import { CompanionButton } from "./CompanionButton";
 import { useCompanion } from "./CompanionProvider";
-import { eligibleDelta, useReaderPresence } from "../lib/reader-presence";
+import { useReaderPresence } from "../lib/reader-presence";
 import { FocusRuler, rulerBandPx } from "./FocusRuler";
 import {
   buildChapterCatalog,
@@ -316,11 +298,9 @@ import {
 } from "../lib/chapters";
 import {
   loadBookStart,
-  saveBookStart,
   resolveEntryTarget,
   type BookStartRecord,
 } from "../lib/book-start";
-import BookStart from "./BookStart";
 import {
   createChapterAnalyzer,
   deserializeChapterAnalysis,
@@ -598,9 +578,7 @@ export default function Reader({
   // Preferencia «Usar IA» en ref: la lee el enriquecimiento automático
   // sin rehacer callbacks ni depender del ciclo de render.
   const useAiRef = useRef(true);
-  // Última posición capturada en vida: la usa el guardado al desmontar,
-  // cuando el contenedor ya está fuera del DOM y no puede medirse.
-  const latestPosition = useRef<SavedBookPosition | null>(null);
+
   // Última posición del puntero sobre el texto: la tecla D consulta la
   // palabra bajo el cursor sin necesidad de hacer clic.
   const lastPoint = useRef<{ x: number; y: number } | null>(null);
@@ -659,9 +637,6 @@ export default function Reader({
   const [catalog, setCatalog] = useState<ChapterCatalog | null>(null);
   const [bookSections, setBookSections] = useState<EpubBook["sections"] | undefined>(undefined);
   const catalogRef = useRef<ChapterCatalog | null>(null);
-  // Elección inicial pendiente (T18): sin posición ni registro se
-  // pregunta dónde empezar antes de renderizar una sección.
-  const [askStart, setAskStart] = useState(false);
   // Registro de la elección inicial: el destino de preparación que
   // eligió (o se le sugirió) se consume en la primera evaluación.
   const bookStartRef = useRef<BookStartRecord | null>(null);
@@ -724,7 +699,6 @@ export default function Reader({
   const [sheet, setSheet] = useState<SheetKind | null>(null);
   const [settingsTab, setSettingsTab] = useState<ReaderSettingsTab>("appearance");
   const [barsVisible, setBarsVisible] = useState(true);
-  const [isFullscreenActive, setIsFullscreenActive] = useState(() => isFullscreen());
   const [scrollRatio, setScrollRatio] = useState(0);
   const [wpm, setWpm] = useState(DEFAULT_WPM);
   const [settings, setSettings] = useState<ReaderSettings>(() => loadReaderSettings(bookHash));
@@ -922,11 +896,7 @@ export default function Reader({
   } | null>(null);
   const searchAbort = useRef<AbortController | null>(null);
   // Segmento de lectura abierto: empieza con la primera señal real y
-  // termina donde quedó la última — el rato que sigue sin señales no
-  // cuenta. `paused` lo cierran las hojas, los paneles y la pestaña
-  // oculta: hojas/repaso/inactividad no son lectura.
-  const activityRef = useRef<{ startedAt: number; lastActiveAt: number } | null>(null);
-  const pausedRef = useRef(true);
+
 
   // Compañero desde el proveedor único: preferencia del juego, etapa,
   // accesorios equipados, nombre y modo de presencia de la cuenta —
@@ -949,7 +919,7 @@ export default function Reader({
   // (consulta de palabra, calibración, diálogos) aunque aún no haya
   // cerrado el segmento: son el mismo concepto de «tapado».
   const presenceOverlay =
-    readingPaused || selection !== null || askStart || companion.modalOpen;
+    readingPaused || selection !== null || companion.modalOpen;
 
   // Pestaña oculta para el planificador (aparte del seguimiento de
   // actividad, que ya la escucha para cerrar el segmento).
@@ -1199,10 +1169,6 @@ export default function Reader({
     overlayRelease.current = null;
   };
 
-  // Día «leído» ya celebrado: evita repetir la celebración si otro
-  // segmento cruza el umbral el mismo día (la llave es día local).
-  const dayGoalRef = useRef<{ dayKey: string; done: boolean } | null>(null);
-
   // ---------- Gato acompañante y telemetría de foco ----------
 
   // Única puerta a la máquina del gato: nunca asigna sin cambiar —
@@ -1236,84 +1202,24 @@ export default function Reader({
     [presenceReact],
   );
 
-  // Toda señal de lectura real pasa por aquí: scroll, cambio de página,
-  // flechas, toques en el texto y consultas de palabra. Con hoja,
-  // panel o pestaña oculta la señal se ignora.
-  const noteActivity = useCallback(() => {
-    if (pausedRef.current || document.hidden) return;
-    const now = Date.now();
-    const seg = activityRef.current;
-    // El planificador de presencia cuenta solo actividad elegible:
-    // el delta entre señales reales, acotado como el seguimiento —
-    // un hueco mayor a IDLE_MS no regala su tiempo completo, y sin
-    // segmento vivo la señal no trae tiempo a cuestas.
-    const delta = eligibleDelta(seg, now, IDLE_MS);
-    if (!seg) activityRef.current = { startedAt: now, lastActiveAt: now };
-    else seg.lastActiveAt = now;
-    presenceActivity(delta);
-    setCatSleepy(false);
-    signalCompanion({ kind: "reading_activity", at: now });
-  }, [signalCompanion, presenceActivity]);
+  const capturePositionRef = useRef<() => SavedBookPosition | null>(() => null);
 
-  // Cierra el segmento abierto y, si duró lo bastante, lo guarda como
-  // intervalo inmutable. Termina en la última señal, no en «ahora»:
-  // los segundos quietos antes de la pausa tampoco cuentan.
-  const closeActivity = useCallback(() => {
-    const seg = activityRef.current;
-    activityRef.current = null;
-    // Sin segmento vivo el lector está inactivo para la presencia —
-    // las visitas se difieren sin acumular deuda.
-    presenceIdle(true);
-    if (!seg) return;
-    const endedAt = Math.min(seg.lastActiveAt, Date.now());
-    if (endedAt - seg.startedAt < MIN_INTERVAL_MS) return;
-    const interval: SavedInterval = {
-      id: crypto.randomUUID(),
-      bookHash,
-      startedAt: seg.startedAt,
-      endedAt,
-    };
-    // El tramo se midió bajo esta cuenta: si la sesión cambia antes de
-    // que el guardado termine, aterriza en su base — nunca en la nueva.
-    const scope = captureDbScope();
-    void saveReadingInterval(interval, scope).then(() =>
-      pushActivityToServer([interval], scope),
-    );
-    // El día del premio se fija con la zona del emisor (la misma de la
-    // meta diaria de abajo): el journal replica la racha con esos
-    // dayKey, no con la zona de quien sincronice.
-    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    const dayKey = dayKeyOf(endedAt, tz);
-    void award({ kind: "read", ms: endedAt - seg.startedAt }, scope, {
-      id: `read:${interval.id}`,
-      at: endedAt,
-      dayKey,
-      interval: { startedAt: seg.startedAt, endedAt },
-    });
-
-    // Meta del día: si este tramo lleva al día por encima del mínimo
-    // de «día leído» (60 s), el gato celebra — una sola vez por día.
-    // El total se pide al almacén para no celebrar dos veces cuando el
-    // lector ya había leído hoy en otra sesión; el intervalo en vuelo
-    // se suma por separado (se filtra por id por si ya aterrizó).
-    void listIntervals(scope)
-      .then((list) => {
-        if (dayGoalRef.current?.dayKey !== dayKey)
-          dayGoalRef.current = { dayKey, done: false };
-        if (dayGoalRef.current.done) return;
-        const saved =
-          timeByDay(
-            list.filter((i) => i.id !== interval.id),
-            tz,
-          ).find((d) => d.dayKey === dayKey)?.ms ?? 0;
-        const segMs = endedAt - seg.startedAt;
-        if (saved < DAY_GOAL_MS && saved + segMs >= DAY_GOAL_MS) {
-          dayGoalRef.current.done = true;
-          signalCompanion({ kind: "goal_completed", at: endedAt });
-        }
-      })
-      .catch(() => undefined);
-  }, [bookHash, signalCompanion, presenceIdle]);
+  const {
+    latestPositionRef,
+    noteActivity,
+    closeActivity,
+    saveSoon,
+  } = useReaderPersistence({
+    bookHash,
+    isReady: state === "ready",
+    capturePosition: () => capturePositionRef.current(),
+    signalCompanion,
+    awardReading: (input, scope, receipt) => award(input, scope, receipt),
+    presenceActivity,
+    presenceIdle,
+    setCatSleepy,
+    paused: readingPaused,
+  });
 
   // Track 5: Detección de inactividad > 6h para "¿En qué me quedé?" (Track 8: Cero Spoilers)
   useEffect(() => {
@@ -1586,40 +1492,7 @@ export default function Reader({
     openSheet("settings");
   };
 
-  // Las pausas cierran el segmento en su última señal; al volver, la
-  // siguiente señal abre uno nuevo sin arrastrar el tiempo de pausa.
-  // La hoja del gato (vive en el proveedor) también pausa: cuidar al
-  // gato no es lectura.
-  useEffect(() => {
-    pausedRef.current = readingPaused;
-    if (pausedRef.current) closeActivity();
-  }, [readingPaused, closeActivity]);
 
-  // Latido del segmento: si pasó el umbral sin señales cierra donde
-  // quedó la última; si sigue vivo pero ya es largo lo «rueda» para
-  // que una caída de la pestaña no se lleve la sesión entera.
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      const seg = activityRef.current;
-      if (!seg) return;
-      const now = Date.now();
-      if (now - seg.lastActiveAt > IDLE_MS) {
-        closeActivity();
-        return;
-      }
-      if (now - seg.startedAt >= ROLL_MS) {
-        const restartAt = seg.lastActiveAt;
-        closeActivity();
-        if (!pausedRef.current && !document.hidden) {
-          activityRef.current = { startedAt: restartAt, lastActiveAt: restartAt };
-          // El segmento sigue vivo tras la ronda: sin esto la
-          // presencia quedaría «inactiva» hasta la próxima señal.
-          presenceIdle(false);
-        }
-      }
-    }, 30_000);
-    return () => window.clearInterval(timer);
-  }, [closeActivity, presenceIdle]);
 
   // Compañero de lectura: la máquina local solo existe con el juego
   // encendido (lo dice el proveedor único, nada se recarga aquí). Al
@@ -1708,23 +1581,10 @@ export default function Reader({
       anchor,
       updatedAt: Date.now(),
     };
-    latestPosition.current = pos;
+    latestPositionRef.current = pos;
     return pos;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bookHash]);
-
-  // Guardado con debounce: igual que al hacer scroll, también sirve al
-  // pasar de página. El contexto se ata al tick que programó el
-  // guardado: si la cuenta cambia antes de que corra, la posición cae
-  // en la base que leyó — no en la recién activada.
-  const saveSoon = useCallback(() => {
-    const scope = captureDbScope();
-    window.clearTimeout(scrollTimer.current);
-    scrollTimer.current = window.setTimeout(() => {
-      const pos = capturePosition();
-      if (pos) void saveBookPosition(pos, scope);
-    }, 400);
-  }, [capturePosition]);
+  capturePositionRef.current = capturePosition;
 
   // Mide la caja útil y reparte las columnas. La medida (ch) se toma
   // de una sonda real para respetar la fuente elegida. El recuento de
@@ -2352,7 +2212,7 @@ export default function Reader({
         });
         if (
           shouldAutoShowPreview(
-            (settingsRef.current as any)?.chapterPreview ?? settingsRef.current?.preparationMode,
+            (settingsRef.current as { chapterPreview?: string; preparationMode?: string } | null)?.chapterPreview ?? settingsRef.current?.preparationMode,
             bookHash,
             target.sectionIndex,
             95,
@@ -3098,7 +2958,7 @@ export default function Reader({
         // Arranca donde el lector tiene la vista: la posición
         // guardada si cae en esta sección; si no, el bloque visible
         // más alto; sin ninguna de las dos, la primera oración.
-        const saved = latestPosition.current;
+        const saved = latestPositionRef.current;
         const anchor =
           saved?.sectionIndex === sectionIndexRef.current && saved.anchor
             ? saved.anchor
@@ -3137,7 +2997,6 @@ export default function Reader({
       sheet ||
       panelsOpen ||
       prep ||
-      askStart ||
       companion.open ||
       companion.modalOpen
     )
@@ -3150,7 +3009,6 @@ export default function Reader({
     sheet,
     panelsOpen,
     prep,
-    askStart,
     companion.open,
     companion.modalOpen,
     fatigueNotice,
@@ -3818,7 +3676,7 @@ export default function Reader({
     const wasPages = layoutRef.current === "pages";
     const raf = requestAnimationFrame(() => {
       const container = containerRef.current;
-      const saved = latestPosition.current;
+      const saved = latestPositionRef.current;
       if (!container) return;
       if (settings.layout === "scroll") {
         if (saved?.anchor) {
@@ -3881,7 +3739,7 @@ export default function Reader({
       if (layoutRef.current === "pages") {
         remeasure();
       } else {
-        const saved = latestPosition.current;
+        const saved = latestPositionRef.current;
         const max =
           document.documentElement.scrollHeight - window.innerHeight;
         if (!saved?.anchor || !scrollToAnchor(container, saved.anchor))
@@ -4077,7 +3935,7 @@ export default function Reader({
       if (
         shouldSuggestBionic &&
         !settingsRef.current?.bionicAnchors &&
-        !(settingsRef.current as any)?.bionicReading
+        !(settingsRef.current as { bionicReading?: boolean } | null)?.bionicReading
       ) {
         showNotice("¿Pasaje denso? Puedes activar la «Guía visual de sílabas» en el menú Aa.");
       }
@@ -4138,21 +3996,6 @@ export default function Reader({
     [navigate, saveSoon, sectionTotal, setPageIdx, noteActivity, trackMove, signalCompanion, checkPassiveExposure, language, bookHash, sectionWords],
   );
 
-  usePageGesture({
-    viewportRef,
-    containerRef,
-    layout: settings.layout,
-    page,
-    pageCount,
-    pageAdvance: pageMetrics ? pageAdvance(pageMetrics.boxW, pageMetrics.gap) : 0,
-    isFirstPageInBook: sectionIndex === 0,
-    isLastPageInBook: sectionIndex + 1 >= sectionTotal,
-    reducedMotion: companion.reducedMotion,
-    onTurnPage: goPage,
-    onCenterTap: () => {
-      setBarsVisible((prev) => !prev);
-    },
-  });
 
   // Espejo del modo para callbacks estables (guardado, teclado,
   // restauración): leen refs, no estado que cierra viejo.
@@ -4160,29 +4003,7 @@ export default function Reader({
     layoutRef.current = settings.layout;
   }, [settings.layout]);
 
-  // Referencia fresca para el guardado al desmontar: si el lector se
-  // cierra sin más scroll (ajustó la letra y salió, sección corta), el
-  // debounce pudo no correr y la posición quedaría vieja. Al desmontar el
-  // contenedor ya está desconectado del DOM (los rectángulos dan 0), así
-  // que se escribe la última posición capturada en vida, no una nueva.
-  // `ready` evita guardar el estado inicial: en StrictMode el cleanup
-  // corre una vez al montar y pisaría la posición guardada.
-  const latest = useRef({ ready: state === "ready" });
-  useEffect(() => {
-    latest.current = { ready: state === "ready" };
-  });
-  useEffect(() => {
-    return () => {
-      closeActivity();
-      if (!latest.current.ready) return;
-      const pos = latestPosition.current;
-      if (!pos) return;
-      void saveBookPosition(
-        { ...pos, updatedAt: Date.now() },
-        captureDbScope(),
-      );
-    };
-  }, [bookHash, closeActivity]);
+
 
   // Modo Retiro de lectura: ciclo de sesión inmersiva, bloqueo de pantalla y cierre
   const deepReadingRef = useRef<DeepReadingState | null>(null);
@@ -4276,188 +4097,40 @@ export default function Reader({
     return () => clearInterval(interval);
   }, [deepReading?.active, deepReading?.startedAt, deepReading?.targetEndedAt, finishDeepReading]);
 
-  // Sincronización del estado de pantalla completa
-  useEffect(() => {
-    return subscribeFullscreenChange(() => {
-      setIsFullscreenActive(isFullscreen());
-    });
-  }, []);
-
-  const handleToggleFullscreen = useCallback(async () => {
-    triggerHaptic("selection");
-    const next = await toggleFullscreen();
-    setIsFullscreenActive(next);
-  }, [setIsFullscreenActive]);
-
-  // Limpieza de pantalla completa y wake lock al desmontar el lector
-  useEffect(() => {
-    return () => {
-      if (wakeLockRef.current) {
-        void releaseScreenWakeLock(wakeLockRef.current);
+  const { isFullscreenActive, handleToggleFullscreen } = useReaderShortcutsAndGestures({
+    viewportRef,
+    containerRef,
+    lastPointRef: lastPoint,
+    layout: settings.layout,
+    page,
+    pageCount,
+    pageAdvancePx: pageMetrics ? pageAdvance(pageMetrics.boxW, pageMetrics.gap) : 0,
+    sectionIndex,
+    sectionTotal,
+    reducedMotion: companion.reducedMotion,
+    panelsOpen,
+    selectionActive: Boolean(selection),
+    sheetActive: Boolean(sheet),
+    language,
+    visualPacerActive: Boolean(settings.visualPacer),
+    deepReadingActive: Boolean(deepReading?.active),
+    onTurnPage: goPage,
+    onCenterTap: () => {
+      setBarsVisible((prev) => !prev);
+    },
+    onNavPrevSection: (idx) => navPrevSection(idx),
+    onNavNextSection: (idx) => navNextSection(idx),
+    onOpenSheet: (s) => {
+      if (s === "toc" || s === "search" || s === "marks") {
+        openSheet(s);
       }
-      void toggleFullscreen(false);
-    };
-  }, []);
-
-  // Screen Wake Lock activo durante la lectura / reproducción de TTS
-  useEffect(() => {
-    let sentinel: WakeLockSentinel | null = null;
-    let isLive = true;
-
-    const acquireLock = async () => {
-      if (typeof document === "undefined" || document.hidden || !isLive) return;
-      try {
-        if (typeof navigator !== "undefined" && "wakeLock" in navigator && navigator.wakeLock?.request) {
-          sentinel = await navigator.wakeLock.request("screen");
-        }
-      } catch {
-        sentinel = null;
-      }
-    };
-
-    const releaseLock = async () => {
-      try {
-        await sentinel?.release();
-      } catch {
-        // ignore
-      } finally {
-        sentinel = null;
-      }
-    };
-
-    const handleVisibility = () => {
-      if (document.visibilityState === "visible") {
-        void acquireLock();
-      } else {
-        void releaseLock();
-      }
-    };
-
-    void acquireLock();
-    document.addEventListener("visibilitychange", handleVisibility);
-
-    return () => {
-      isLive = false;
-      document.removeEventListener("visibilitychange", handleVisibility);
-      void releaseLock();
-    };
-  }, [ttsSnap?.status, deepReading?.active]);
-
-  // Atajos de lectura: ← / → / Espacio / AvPág / RePág pasan página o sección.
-  // Ctrl+F abre búsqueda; T abre índice; M abre marcadores; D consulta palabra;
-  // F / F11 alterna pantalla completa; Tab siempre trae las barras de vuelta.
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Tab") setBarsVisible(true);
-      const target = event.target;
-      const inInput =
-        target instanceof HTMLElement &&
-        Boolean(target.closest("input, textarea, select, [contenteditable]"));
-
-      if ((event.ctrlKey || event.metaKey) && (event.key === "f" || event.key === "F")) {
-        if (!inInput) {
-          event.preventDefault();
-          openSheet("search");
-          return;
-        }
-      }
-
-      if (selection || sheet || panelsOpen) return;
-      if (inInput) return;
-
-      if (deepReading?.active && event.key === "Escape") {
-        event.preventDefault();
-        void finishDeepReading(false);
-        return;
-      }
-
-      if (!event.metaKey && !event.ctrlKey && !event.altKey) {
-        if (event.key === "t" || event.key === "T") {
-          event.preventDefault();
-          openSheet("toc");
-          return;
-        }
-        if (event.key === "m" || event.key === "M") {
-          event.preventDefault();
-          openSheet("marks");
-          return;
-        }
-        if (event.key === "f" || event.key === "F") {
-          event.preventDefault();
-          void handleToggleFullscreen();
-          return;
-        }
-      }
-
-      if (event.key === "F11") {
-        event.preventDefault();
-        void handleToggleFullscreen();
-        return;
-      }
-
-      if (event.key === " " || event.code === "Space") {
-        event.preventDefault();
-        noteActivity();
-        if (settings.visualPacer) {
-          setPacerPaused((p) => !p);
-          return;
-        }
-        if (layoutRef.current === "pages") {
-          if (event.shiftKey) goPage(-1);
-          else goPage(1);
-        } else {
-          window.scrollBy({
-            top: (event.shiftKey ? -1 : 1) * Math.round(window.innerHeight * 0.75),
-            behavior: "smooth",
-          });
-        }
-        return;
-      }
-
-      if (event.key === "PageDown") {
-        event.preventDefault();
-        noteActivity();
-        if (layoutRef.current === "pages") goPage(1);
-        else window.scrollBy({ top: Math.round(window.innerHeight * 0.75), behavior: "smooth" });
-        return;
-      }
-
-      if (event.key === "PageUp") {
-        event.preventDefault();
-        noteActivity();
-        if (layoutRef.current === "pages") goPage(-1);
-        else window.scrollBy({ top: -Math.round(window.innerHeight * 0.75), behavior: "smooth" });
-        return;
-      }
-
-      if (event.key === "ArrowLeft" || event.key === "ArrowRight") noteActivity();
-      if (event.key === "ArrowLeft") {
-        if (layoutRef.current === "pages") goPage(-1);
-        else if (sectionIndex > 0) navPrevSection(sectionIndex - 1);
-      }
-      if (event.key === "ArrowRight") {
-        if (layoutRef.current === "pages") goPage(1);
-        else if (sectionIndex + 1 < sectionTotal) navNextSection(sectionIndex + 1);
-      }
-      if (
-        (event.key === "d" || event.key === "D") &&
-        !event.metaKey && !event.ctrlKey && !event.altKey &&
-        lastPoint.current &&
-        containerRef.current
-      ) {
-        const hit = extractWordAtPoint(
-          lastPoint.current.x,
-          lastPoint.current.y,
-          containerRef.current,
-          language,
-        );
-        if (hit) openSelection(hit);
-      }
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selection, sheet, panelsOpen, sectionIndex, sectionTotal, navigate, goPage, noteActivity, language, handleToggleFullscreen]);
+    },
+    onOpenSelection: (hit) => openSelection(hit),
+    onTogglePacer: () => setPacerPaused((p) => !p),
+    onFinishDeepReading: (cancelled) => void finishDeepReading(cancelled),
+    noteActivity,
+    ttsStatus: ttsSnap?.status,
+  });
 
   const onWordSaved = useCallback((word: SavedWord) => {
     ttsRef.current?.noteSavedWord();
@@ -4539,7 +4212,7 @@ export default function Reader({
     locate?: { anchor?: string; snippet?: string; fragment?: string },
     intent: NavIntent = "lookup",
   ) => {
-    const pos = latestPosition.current;
+    const pos = latestPositionRef.current;
     if (pos) {
       setReturnPoint({
         sectionIndex: pos.sectionIndex,
@@ -4555,34 +4228,6 @@ export default function Reader({
       index,
       fragment: locate?.fragment,
       restore: { anchor: locate?.anchor, snippet: locate?.snippet },
-    });
-  };
-
-  // Elección inicial confirmada: el registro queda separado del
-  // avance y el lector navega al destino elegido como entrada.
-  const confirmStart = (choice: {
-    readingTargetId: string;
-    preparationTargetId: string | null;
-  }) => {
-    const target = catalog?.targets.find(
-      (item) => item.id === choice.readingTargetId,
-    );
-    if (!target) return;
-    setAskStart(false);
-    void saveBookStart(bookHash, choice, captureDbScope()).catch(
-      () => undefined,
-    );
-    // La primera evaluación prepara el destino registrado (p. ej. el
-    // primer capítulo) aunque la lectura empiece en la intro.
-    bookStartRef.current = {
-      version: 1,
-      readingTargetId: choice.readingTargetId,
-      preparationTargetId: choice.preparationTargetId,
-      updatedAt: Date.now(),
-    };
-    void navigate("initial", {
-      index: target.sectionIndex,
-      fragment: target.fragment,
     });
   };
 
@@ -5428,7 +5073,7 @@ export default function Reader({
       className="reader reader-shell"
       data-dock-ghost={!barsShown ? "true" : "false"}
       data-tts-active={ttsSnap.status !== "idle" ? "true" : "false"}
-      data-recap-visible={Boolean(recapBubbleVisible) ? "true" : "false"}
+      data-recap-visible={recapBubbleVisible ? "true" : "false"}
       data-inspector-open={selection ? "true" : "false"}
       style={readerCssVars(settings) as CSSProperties}
       data-font={settings.font}
@@ -5443,65 +5088,17 @@ export default function Reader({
         aria-hidden="true"
         className="measure-probe"
       />
-      <header
-        className={`reader-bar ${isZenFaded ? "reader-head--faded" : ""}`.trim()}
-        data-zen-faded={isZenFaded || undefined}
-        data-hidden={!barsShown || undefined}
-      >
-        <button
-          type="button"
-          className="btn--quiet reader-back"
-          onClick={onBack}
-          aria-label="Volver a la estantería"
-        >
-          <Icon name="back" size={18} />
-          <span className="reader-back-label"> Estantería</span>
-        </button>
-        <p className="reader-bar-title" title={currentChapterTarget?.label || sectionTitle || title || fileName}>
-          {currentChapterTarget?.label || sectionTitle || title || fileName}
-          {author ? <span className="reader-bar-author"> · {author}</span> : null}
-        </p>
-        <div className="reader-bar-actions">
-          <button
-            type="button"
-            className="btn--quiet reader-bar-btn"
-            onClick={() => openSheet("toc")}
-            aria-label="Índice del libro"
-            title="Índice (T)"
-          >
-            <Icon name="index" size={20} />
-            <span className="reader-btn-text">Índice</span>
-          </button>
-          <button
-            type="button"
-            className="btn--quiet reader-bar-btn reader-bar-btn--settings"
-            onClick={() => openSettings("appearance")}
-            aria-label="Apariencia y ayudas"
-            title="Apariencia y ayudas (Aa)"
-          >
-            <span className="reader-btn-icon reader-btn-icon--aa" aria-hidden="true">Aa</span>
-            <span className="reader-btn-text">Apariencia</span>
-          </button>
-          <button
-            type="button"
-            className="btn--quiet reader-bar-btn reader-bar-btn--more"
-            onClick={() => openSettings("book")}
-            aria-label="Herramientas del libro"
-            title="Herramientas del libro"
-          >
-            <Icon name="more" size={20} />
-            <span className="reader-btn-text">Más</span>
-          </button>
-        </div>
-        <div className="reader-bar-progress" aria-hidden="true">
-          <ProgressInk
-            value={Math.round(progress * 100)}
-            max={100}
-            variant="vermilion"
-            ariaValueText={`${Math.round(progress * 100)}% del libro`}
-          />
-        </div>
-      </header>
+      <ReaderTopBar
+        onBack={onBack}
+        title={currentChapterTarget?.label || sectionTitle || title || fileName}
+        author={author}
+        progress={progress}
+        isZenFaded={isZenFaded}
+        barsShown={barsShown}
+        onOpenToc={() => openSheet("toc")}
+        onOpenAppearance={() => openSettings("appearance")}
+        onOpenMore={() => openSettings("book")}
+      />
 
       <div
         className={`reader-body reader__stage ${settings.chromaticGuide && !strategyPaused ? "reader__stage--chromatic" : ""}`}
@@ -6714,97 +6311,6 @@ export default function Reader({
         </Sheet>
       ) : null}
 
-      {askStart && catalog ? (
-        <BookStart
-          targets={catalog.targets}
-          suggestedStartId={suggestedChapterTarget(catalog, title)?.id ?? null}
-          firstChapterId={
-            catalog.targets.find((t) => t.kind === "chapter")?.id ?? null
-          }
-          bookTitle={title}
-          author={author}
-          language={language}
-          isSecondLanguage={language !== loadNativeLanguage()}
-          onStartCalibration={(lang) => {
-            void onRequestCalibration(lang);
-          }}
-          onConfirm={confirmStart}
-          onClose={onBack}
-        />
-      ) : null}
-
-      {prep ? (
-        <SectionPreview
-          mode="modal"
-          title={prep.target.label}
-          chapterTitle={prep.target.label}
-          bookId={bookHash}
-          bookLang={language}
-          analysis={prep.analysis}
-          rows={prep.rows}
-          uncertainRows={prep.uncertain}
-          deferredRows={prep.deferred}
-          onRowsPresented={recordPresented}
-          answers={prep.answers}
-          saving={prep.saving}
-          onAnswer={answerPrep}
-          onConfirm={() => void confirmPrep()}
-          onSkip={skipPrep}
-          onRetry={() => void retryPrep()}
-          onClose={() => {
-            releaseOverlay();
-            closePrepLayer();
-          }}
-          onDiscard={discardPrep}
-          initialStrategy={settings.strategyPreset}
-          onSelectStrategy={(preset) => selectStrategyPreset(preset)}
-          onMarkKnown={(lemma, beta) => {
-            const currentLang = language || (bookRef.current ? getBookLanguage(bookRef.current) : "es");
-            updateLanguageTheta(currentLang, beta, 1, 1.0);
-            const scope = captureDbScope();
-            void saveKnowledge({ language: currentLang, lemma, known: true, source: "inferred" }, scope);
-          }}
-          onSaveToPractice={(lemma, beta) => {
-            const currentLang = language || (bookRef.current ? getBookLanguage(bookRef.current) : "es");
-            updateLanguageTheta(currentLang, beta, 0, 0.5);
-            const scope = captureDbScope();
-            void saveWordWithKnowledge(
-              {
-                word: {
-                  form: lemma,
-                  lemma,
-                  language: currentLang,
-                  bookHash,
-                },
-                knowledge: {
-                  language: currentLang,
-                  lemma,
-                  known: false,
-                  source: "saved",
-                  status: "unknown",
-                },
-              },
-              scope,
-            );
-          }}
-          onMuteForBook={(id) => {
-            muteBookForPriming(id);
-            setPrep(null);
-            closePrepLayer();
-          }}
-          onDisableGlobally={() => {
-            disablePrimingGlobally();
-            updateSettings({ chapterPrimingMode: "off" });
-            setPrep(null);
-            closePrepLayer();
-          }}
-          onStartReading={() => {
-            releaseOverlay();
-            closePrepLayer();
-          }}
-        />
-      ) : null}
-
       {returnPoint ? (
         <div className="reader-return">
           <button
@@ -6939,181 +6445,7 @@ export default function Reader({
         </div>
       ) : null}
 
-      {selection ? (
-        <WordPanel
-          key={selection.word}
-          word={selection.word}
-          context={selection.context}
-          phrase={selection.phrase}
-          canExplain={signedIn}
-          language={language}
-          bookHash={bookHash}
-          bookTitle={title}
-          author={author}
-          sections={bookSections}
-          toc={catalog?.targets?.map((t) => ({ index: t.sectionIndex, label: t.label }))}
-          currentSectionIndex={sectionIndex}
-          charOffsetInChapter={
-            containerRef.current
-              ? charOffsetAtViewTop(containerRef.current, sectionTextRef.current)
-              : 0
-          }
-          currentChapterTitle={
-            currentChapterTarget?.label ??
-            catalog?.targets?.find((t) => t.sectionIndex === sectionIndex)?.label ??
-            sectionTitle
-          }
-          compactMode={
-            !strategyPaused &&
-            (settings.strategyPreset === "focus" ||
-              settings.focusMode === "chromatic" ||
-              settings.paragraphFocus ||
-              settings.syntacticLines ||
-              settings.chromaticGuide)
-          }
-          onClose={closeSelection}
-          onSaved={onWordSaved}
-          onRemoved={onWordRemoved}
-          onKnowledgeChanged={(row, { form, kind }) => {
-            // La evidencia persiste antes de llegar aquí: al modelo
-            // en memoria y al trayecto, para que la siguiente
-            applyKnowledgeRow(row);
-            try {
-              const currentLang = language || (bookRef.current ? getBookLanguage(bookRef.current) : "es");
-              const zipf = zipfForLemma(row.lemma);
-              const beta = betaFromZipf(zipf);
-              if (kind === "saved") {
-                void scheduleCapturedReview(form, bookHash, undefined, currentLang).catch(() => {});
-                updateLanguageTheta(currentLang, beta, 0, 1.0);
-              } else if (kind === "declared") {
-                updateLanguageTheta(currentLang, beta, 1, 1.0);
-              }
-            } catch {
-              // Ignorar fallo al persistir theta
-            }
-            trackEvent(
-              kind === "saved"
-                ? {
-                    kind: "word_saved",
-                    sectionIndex: sectionIndexRef.current,
-                    form,
-                    lemma: row.lemma,
-                    origin: "text",
-                  }
-                : {
-                    kind: "word_declared_known",
-                    sectionIndex: sectionIndexRef.current,
-                    lemma: row.lemma,
-                    origin: "text",
-                  },
-            );
-          }}
-        />
-      ) : null}
 
-      {pageRecap ? (
-        <Dialog
-          label="Recuperar el hilo"
-          onClose={() => setPageRecap(null)}
-          className="dialog--page-recap"
-        >
-          <div className="sheet-head">
-            <h2 className="sheet-title">
-              <span aria-hidden="true">🧭</span> Recuperar el hilo
-            </h2>
-            <button
-              type="button"
-              className="btn--quiet"
-              onClick={() => setPageRecap(null)}
-              aria-label="Cerrar hilo"
-            >
-              Cerrar
-            </button>
-          </div>
-
-          {pageRecap.loading ? (
-            <div className="cat-passage-loading">
-              <span className="cat-spinner" aria-hidden="true">🧭</span>
-              <p className="meta">Reconstruyendo el hilo de atención de esta página…</p>
-            </div>
-          ) : pageRecap.data ? (
-            <div className="page-recap-content">
-              <ul className="page-recap-bullets">
-                {pageRecap.data.bullets.map((b, idx) => (
-                  <li key={idx} className="page-recap-bullet">
-                    <span className="bullet-dot" aria-hidden="true">•</span>
-                    <span>{b}</span>
-                  </li>
-                ))}
-              </ul>
-              {pageRecap.data.hookQuestion ? (
-                <div className="page-recap-hook">
-                  <span className="hook-icon" aria-hidden="true">✨</span>
-                  <p className="hook-text"><em>{pageRecap.data.hookQuestion}</em></p>
-                </div>
-              ) : null}
-              <div className="page-recap-actions" style={{ marginTop: "1rem", textAlign: "right" }}>
-                <button
-                  type="button"
-                  className="btn btn--primary"
-                  onClick={() => setPageRecap(null)}
-                  autoFocus
-                >
-                  Continuar leyendo →
-                </button>
-              </div>
-            </div>
-          ) : (
-            <p role="alert" className="status">{pageRecap.error ?? "No se pudo recuperar el hilo."}</p>
-          )}
-        </Dialog>
-      ) : null}
-
-      {catPassageExplanation ? (
-        <Dialog
-          label="El apunte del Gato"
-          onClose={() => setCatPassageExplanation(null)}
-          className="dialog--cat-explanation"
-        >
-          <div className="sheet-head">
-            <h2 className="sheet-title">
-              <span className="cat-dialog-avatar" aria-hidden="true">🐾</span> El apunte del Gato
-            </h2>
-            <button
-              type="button"
-              className="btn--quiet"
-              onClick={() => setCatPassageExplanation(null)}
-              aria-label="Cerrar apunte"
-            >
-              Cerrar
-            </button>
-          </div>
-
-          <div className="cat-passage-quote">
-            “{catPassageExplanation.passage}”
-          </div>
-
-          {catPassageExplanation.loading ? (
-            <div className="cat-passage-loading">
-              <span className="cat-spinner" aria-hidden="true">🐾</span>
-              <p className="meta">El gato está leyendo con atención el pasaje…</p>
-            </div>
-          ) : catPassageExplanation.data ? (
-            <div className="cat-passage-result">
-              <div className="passage-badge-tone-row">
-                <span className="passage-badge-tone">{catPassageExplanation.data.toneAndNuance}</span>
-              </div>
-              <p className="passage-meaning-text">{catPassageExplanation.data.contextualMeaning}</p>
-              <div className="cat-literary-tip">
-                <span className="cat-tip-icon" aria-hidden="true">🐾</span>
-                <p className="cat-tip-text"><em>Michi:</em> «{catPassageExplanation.data.catTip}»</p>
-              </div>
-            </div>
-          ) : (
-            <p role="alert" className="status">{catPassageExplanation.error ?? "No se pudo obtener la explicación."}</p>
-          )}
-        </Dialog>
-      ) : null}
 
       {/* Marcapasos Visual: barra flotante ergonómica cuando está activo (OBJ-05) */}
       {settings.visualPacer && !strategyPaused && state === "ready" && !isDeepReading ? (
@@ -7165,74 +6497,7 @@ export default function Reader({
           ★ Guardada en Cuaderno: <strong>{ttsCapturedToast}</strong>
         </div>
       ) : null}
-      {ttsConsentOpen ? (
-        <TtsConsentDialog
-          onAccept={onTtsConsentAccept}
-          onDismiss={() => setTtsConsentOpen(false)}
-          downloadProgress={ttsDownloadProgress}
-          isModelDownloaded={isKittenModelDownloaded}
-          onDeleteModel={() => void handleDeleteTtsModel()}
-        />
-      ) : null}
-      {quoteCard ? (
-        <QuoteCardModal
-          text={quoteCard.text}
-          bookTitle={quoteCard.bookTitle}
-          author={quoteCard.author}
-          chapterTitle={quoteCard.chapterTitle}
-          alreadySaved={quoteCard.alreadySaved}
-          onClose={() => setQuoteCard(null)}
-          onSavePassage={
-            quoteCard.alreadySaved
-              ? undefined
-              : () => {
-                  void savePassageDirectly(quoteCard.text);
-                }
-          }
-        />
-      ) : null}
-      {deepModal ? (
-        <DeepReadingModal
-          onStart={(config) => void startDeepReading(config)}
-          onClose={() => setDeepModal(false)}
-        />
-      ) : null}
-      {deepSummary ? (
-        <DeepReadingSummaryModal
-          summary={deepSummary}
-          consolidationQueue={postChapterQueue}
-          bookId={bookHash}
-          bookTitle={title}
-          author={author}
-          chapterTitle={currentChapterTarget?.label ?? sectionTitle ?? sectionLabel(sectionIndex)}
-          onShareQuote={(quote) => {
-            setQuoteCard({
-              text: quote || "La lectura profunda transforma el tiempo en memoria viva.",
-              bookTitle: title,
-              author,
-              chapterTitle: currentChapterTarget?.label ?? sectionTitle ?? sectionLabel(sectionIndex),
-            });
-          }}
-          onContinue={() => {
-            setDeepSummary(null);
-            setPostChapterQueue([]);
-            if (pendingNextChapterRef.current !== null) {
-              const target = pendingNextChapterRef.current;
-              pendingNextChapterRef.current = null;
-              void navigate("chapter", { index: target });
-            }
-          }}
-          onClose={() => {
-            setDeepSummary(null);
-            setPostChapterQueue([]);
-            if (pendingNextChapterRef.current !== null) {
-              const target = pendingNextChapterRef.current;
-              pendingNextChapterRef.current = null;
-              void navigate("chapter", { index: target });
-            }
-          }}
-        />
-      ) : null}
+
 
       {activeBilingualParagraph ? (
         <div
@@ -7275,19 +6540,178 @@ export default function Reader({
           />
         </div>
       ) : null}
-      {glossaryOpen ? (
-        <BookGlossaryModal
-          bookHash={bookHash}
-          bookTitle={title}
-          language={language}
-          onClose={() => setGlossaryOpen(false)}
-          onSelectTerm={(word) => {
-            setGlossaryOpen(false);
-            openSelection({ word, context: "" });
-          }}
-          onWordSaved={onWordSaved}
-        />
-      ) : null}
+      <ReaderOverlays
+        bookHash={bookHash}
+        bookTitle={title}
+        author={author}
+        language={language}
+        sectionIndex={sectionIndex}
+        signedIn={signedIn}
+        selection={selection}
+        onCloseSelection={closeSelection}
+        onWordSaved={onWordSaved}
+        onWordRemoved={onWordRemoved}
+        onKnowledgeChanged={(row, { form, kind }) => {
+          applyKnowledgeRow(row);
+          try {
+            const currentLang = language || (bookRef.current ? getBookLanguage(bookRef.current) : "es");
+            const zipf = zipfForLemma(row.lemma);
+            const beta = betaFromZipf(zipf);
+            if (kind === "saved") {
+              void scheduleCapturedReview(form, bookHash, undefined, currentLang).catch(() => {});
+              updateLanguageTheta(currentLang, beta, 0, 1.0);
+            } else if (kind === "declared") {
+              updateLanguageTheta(currentLang, beta, 1, 1.0);
+            }
+          } catch {
+            // Ignorar fallo al persistir theta
+          }
+          trackEvent(
+            kind === "saved"
+              ? {
+                  kind: "word_saved",
+                  sectionIndex: sectionIndexRef.current,
+                  form,
+                  lemma: row.lemma,
+                  origin: "text",
+                }
+              : {
+                  kind: "word_declared_known",
+                  sectionIndex: sectionIndexRef.current,
+                  lemma: row.lemma,
+                  origin: "text",
+                },
+          );
+        }}
+        bookSections={bookSections}
+        toc={catalog?.targets?.map((t) => ({ index: t.sectionIndex, label: t.label }))}
+        charOffsetInChapter={
+          containerRef.current
+            ? charOffsetAtViewTop(containerRef.current, sectionTextRef.current)
+            : 0
+        }
+        currentChapterTitle={
+          currentChapterTarget?.label ??
+          catalog?.targets?.find((t) => t.sectionIndex === sectionIndex)?.label ??
+          sectionTitle
+        }
+        compactMode={
+          !strategyPaused &&
+          (settings.strategyPreset === "focus" ||
+            settings.focusMode === "chromatic" ||
+            settings.paragraphFocus ||
+            settings.syntacticLines ||
+            settings.chromaticGuide)
+        }
+        prep={prep}
+        onRowsPresented={recordPresented}
+        onAnswerPrep={answerPrep}
+        onConfirmPrep={() => void confirmPrep()}
+        onSkipPrep={skipPrep}
+        onRetryPrep={() => void retryPrep()}
+        onClosePrep={() => {
+          releaseOverlay();
+          closePrepLayer();
+        }}
+        onDiscardPrep={discardPrep}
+        initialStrategy={settings.strategyPreset}
+        onSelectStrategy={(preset) => selectStrategyPreset(preset)}
+        onMarkKnown={(lemma, beta) => {
+          const currentLang = language || (bookRef.current ? getBookLanguage(bookRef.current) : "es");
+          updateLanguageTheta(currentLang, beta, 1, 1.0);
+          const scope = captureDbScope();
+          void saveKnowledge({ language: currentLang, lemma, known: true, source: "inferred" }, scope);
+        }}
+        onSaveToPractice={(lemma, beta) => {
+          const currentLang = language || (bookRef.current ? getBookLanguage(bookRef.current) : "es");
+          updateLanguageTheta(currentLang, beta, 0, 0.5);
+          const scope = captureDbScope();
+          void saveWordWithKnowledge(
+            {
+              word: {
+                form: lemma,
+                lemma,
+                language: currentLang,
+                bookHash,
+              },
+              knowledge: {
+                language: currentLang,
+                lemma,
+                known: false,
+                source: "saved",
+                status: "unknown",
+              },
+            },
+            scope,
+          );
+        }}
+        onMuteForBook={(id) => {
+          muteBookForPriming(id);
+          setPrep(null);
+          closePrepLayer();
+        }}
+        onDisableGlobally={() => {
+          disablePrimingGlobally();
+          updateSettings({ chapterPrimingMode: "off" });
+          setPrep(null);
+          closePrepLayer();
+        }}
+        onStartReading={() => {
+          releaseOverlay();
+          closePrepLayer();
+        }}
+        quoteCard={quoteCard}
+        onCloseQuoteCard={() => setQuoteCard(null)}
+        onSaveQuoteCardPassage={(text) => void savePassageDirectly(text)}
+        deepModal={deepModal}
+        onStartDeepReading={(config) => void startDeepReading(config)}
+        onCloseDeepModal={() => setDeepModal(false)}
+        deepSummary={deepSummary}
+        postChapterQueue={postChapterQueue}
+        onShareDeepSummaryQuote={(quote) => {
+          setQuoteCard({
+            text: quote || "La lectura profunda transforma el tiempo en memoria viva.",
+            bookTitle: title,
+            author,
+            chapterTitle: currentChapterTarget?.label ?? sectionTitle ?? sectionLabel(sectionIndex),
+          });
+        }}
+        onContinueDeepSummary={() => {
+          setDeepSummary(null);
+          setPostChapterQueue([]);
+          if (pendingNextChapterRef.current !== null) {
+            const target = pendingNextChapterRef.current;
+            pendingNextChapterRef.current = null;
+            void navigate("chapter", { index: target });
+          }
+        }}
+        onCloseDeepSummary={() => {
+          setDeepSummary(null);
+          setPostChapterQueue([]);
+          if (pendingNextChapterRef.current !== null) {
+            const target = pendingNextChapterRef.current;
+            pendingNextChapterRef.current = null;
+            void navigate("chapter", { index: target });
+          }
+        }}
+        glossaryOpen={glossaryOpen}
+        onCloseGlossary={() => setGlossaryOpen(false)}
+        onSelectGlossaryTerm={(word) => {
+          setGlossaryOpen(false);
+          openSelection({ word, context: "" });
+        }}
+        onGlossaryWordSaved={onWordSaved}
+        ttsConsentOpen={ttsConsentOpen}
+        onTtsConsentAccept={onTtsConsentAccept}
+        onTtsConsentDismiss={() => setTtsConsentOpen(false)}
+        ttsDownloadProgress={ttsDownloadProgress}
+        isKittenModelDownloaded={isKittenModelDownloaded}
+        onDeleteTtsModel={() => void handleDeleteTtsModel()}
+        pageRecap={pageRecap}
+        onClosePageRecap={() => setPageRecap(null)}
+        catPassageExplanation={catPassageExplanation}
+        onCloseCatExplanation={() => setCatPassageExplanation(null)}
+      />
     </div>
   );
 }

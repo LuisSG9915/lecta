@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { authClient } from "../lib/auth";
 import { accountFetch } from "../lib/account-fetch";
 import { PENDING_DELETE_KEY } from "../lib/account-cleanup";
@@ -43,7 +43,14 @@ import {
   READING_GOAL_KEY,
   serializeReadingGoal,
 } from "../lib/reading-goal";
-import { downloadBackup } from "../lib/export";
+import {
+  downloadBackup,
+  inspectBackupPayload,
+  restoreBackupPayload,
+  type BackupPreviewSummary,
+} from "../lib/export";
+import DiagnosticsModal from "./DiagnosticsModal";
+import LegalNotice from "./LegalNotice";
 import { timeAgo } from "../lib/relative-time";
 import { getDictionaryCacheWordCount, emptyDictionaryCache } from "../lib/offline-dictionary";
 import {
@@ -214,6 +221,55 @@ export default function Account({
   const [kindlePairError, setKindlePairError] = useState("");
   const [showKindlePairForm, setShowKindlePairForm] = useState(false);
 
+  // Diagnóstico, respaldo y avisos legales
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const [showLegal, setShowLegal] = useState<"privacy" | "terms" | null>(null);
+  const [backupPreview, setBackupPreview] = useState<BackupPreviewSummary | null>(null);
+  const [backupPayload, setBackupPayload] = useState<string | null>(null);
+  const [restoringBackup, setRestoringBackup] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleBackupFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const summary = inspectBackupPayload(text);
+      setBackupPayload(text);
+      setBackupPreview(summary);
+      setError("");
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "No se pudo interpretar el archivo de respaldo.",
+      );
+      setBackupPayload(null);
+      setBackupPreview(null);
+    } finally {
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const handleConfirmRestore = async () => {
+    if (!backupPayload) return;
+    setRestoringBackup(true);
+    try {
+      await restoreBackupPayload(backupPayload);
+      setMessage("Respaldo restaurado correctamente.");
+      setBackupPreview(null);
+      setBackupPayload(null);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Ocurrió un error al restaurar el respaldo.",
+      );
+    } finally {
+      setRestoringBackup(false);
+    }
+  };
+
   const handleLinkKindle = async (e: FormEvent) => {
     e.preventDefault();
     const cleanCode = kindleCode.trim().toUpperCase();
@@ -232,7 +288,7 @@ export default function Account({
       });
       const data = (await res.json().catch(() => null)) as { success?: boolean; error?: string } | null;
       if (res.ok && data?.success) {
-        setKindlePairMessage("✅ ¡Kindle conectado! Ya puedes leer en tu e-reader.");
+        setKindlePairMessage("¡Kindle conectado! Ya puedes leer en tu e-reader.");
         setKindleCode("");
       } else {
         setKindlePairError(data?.error || "Código inválido o expirado. Revisa tu Kindle.");
@@ -974,12 +1030,32 @@ export default function Account({
           </div>
         </form>
       ) : null}
+      <div style={{ marginTop: "var(--s-3)", textAlign: "center" }}>
+        <button
+          type="button"
+          className="btn--quiet"
+          style={{ fontSize: "var(--fs-xs)", color: "var(--ink-muted)" }}
+          onClick={() => setShowLegal("privacy")}
+        >
+          Aviso de Privacidad y Términos de Uso
+        </button>
+      </div>
     </Dialog>
   );
 
   if (!isPage) {
     if (!session?.user) {
-      return authModalNode;
+      return (
+        <>
+          {authModalNode}
+          {showLegal ? (
+            <LegalNotice
+              initialTab={showLegal}
+              onClose={() => setShowLegal(null)}
+            />
+          ) : null}
+        </>
+      );
     }
     return (
       <Dialog label="Tu cuenta" onClose={onClose}>
@@ -1524,17 +1600,33 @@ export default function Account({
             </p>
             <div className="setting-row">
               <span className="setting-label">Copia de tus datos</span>
-              <button
-                type="button"
-                className="btn--quiet"
-                onClick={() =>
-                  void downloadBackup().catch(() =>
-                    setError("No se pudo preparar el respaldo. Intenta de nuevo."),
-                  )
-                }
-              >
-                Descargar mis datos (JSON)
-              </button>
+              <div style={{ display: "flex", gap: "var(--s-2)", flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  className="btn--quiet"
+                  onClick={() =>
+                    void downloadBackup().catch(() =>
+                      setError("No se pudo preparar el respaldo. Intenta de nuevo."),
+                    )
+                  }
+                >
+                  Descargar mis datos (JSON)
+                </button>
+                <button
+                  type="button"
+                  className="btn--quiet"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  Restaurar respaldo (JSON)
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".json,application/json"
+                  style={{ display: "none" }}
+                  onChange={(e) => void handleBackupFileSelect(e)}
+                />
+              </div>
             </div>
             <p className="meta">
               Palabras, repasos, marcadores, posiciones y preferencias de este dispositivo.
@@ -1577,7 +1669,7 @@ export default function Account({
                 style={{ marginTop: "0.5rem" }}
                 onClick={() => setShowKindlePairForm(true)}
               >
-                📲 Conectar mi Kindle
+                Conectar mi Kindle
               </button>
             ) : (
               <form onSubmit={handleLinkKindle} style={{ marginTop: "0.75rem", maxWidth: "340px" }}>
@@ -1625,7 +1717,7 @@ export default function Account({
           </div>
 
           <div className="setting-block">
-            <h3 className="eyebrow">Acerca de</h3>
+            <h3 className="eyebrow">Acerca de y Diagnóstico</h3>
             <p className="meta">
               Diccionario base: simplemma (MIT; datos bajo ODbL 1.0 y licencias derivadas) y
               wordfreq (CC BY-SA 4.0 y fuentes con atribución). Definiciones del Wikcionario
@@ -1640,9 +1732,97 @@ export default function Account({
               </a>
               .
             </p>
+            <div style={{ display: "flex", gap: "var(--s-2)", marginTop: "var(--s-2)", flexWrap: "wrap" }}>
+              <button
+                type="button"
+                className="btn--quiet"
+                onClick={() => setShowDiagnostics(true)}
+              >
+                Centro de diagnóstico
+              </button>
+              <button
+                type="button"
+                className="btn--quiet"
+                onClick={() => setShowLegal("privacy")}
+              >
+                Aviso de Privacidad
+              </button>
+              <button
+                type="button"
+                className="btn--quiet"
+                onClick={() => setShowLegal("terms")}
+              >
+                Términos de Uso
+              </button>
+            </div>
           </div>
         </div>
       </details>
+
+      {backupPreview ? (
+        <Dialog label="Restaurar respaldo" onClose={() => setBackupPreview(null)}>
+          <div className="sheet-head">
+            <strong className="sheet-title">Restaurar respaldo</strong>
+            <button
+              type="button"
+              className="btn--quiet"
+              onClick={() => setBackupPreview(null)}
+              aria-label="Cerrar"
+            >
+              Cerrar
+            </button>
+          </div>
+          <div style={{ padding: "var(--s-3) 0" }}>
+            <p className="meta">
+              Se encontraron los siguientes datos en el archivo de respaldo:
+            </p>
+            <ul style={{ listStyle: "none", padding: 0, margin: "var(--s-2) 0", fontSize: "var(--fs-sm)" }}>
+              <li>Versión del formato: v{backupPreview.version}</li>
+              <li>Fecha de exportación: {new Date(backupPreview.exportedAt).toLocaleString()}</li>
+              <li>Libros: {backupPreview.booksCount}</li>
+              <li>Palabras del cuaderno: {backupPreview.wordsCount}</li>
+              <li>Anotaciones: {backupPreview.annotationsCount}</li>
+              <li>Posiciones de lectura: {backupPreview.positionsCount}</li>
+              <li>Repasos: {backupPreview.reviewsCount}</li>
+              <li>Sesiones de actividad: {backupPreview.activityCount}</li>
+              <li>Estado del compañero: {backupPreview.hasCompanionState ? "Incluido" : "No incluido"}</li>
+            </ul>
+            <p className="meta" style={{ marginTop: "var(--s-2)" }}>
+              La restauración fusionará estos datos con los actuales de este dispositivo,
+              conservando siempre la versión más reciente sin sobreescribir tus lecturas nuevas.
+            </p>
+            <div style={{ display: "flex", gap: "var(--s-2)", marginTop: "var(--s-4)", justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => setBackupPreview(null)}
+                disabled={restoringBackup}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="btn btn--primary"
+                onClick={() => void handleConfirmRestore()}
+                disabled={restoringBackup}
+              >
+                {restoringBackup ? "Restaurando…" : "Confirmar restauración"}
+              </button>
+            </div>
+          </div>
+        </Dialog>
+      ) : null}
+
+      {showDiagnostics ? (
+        <DiagnosticsModal onClose={() => setShowDiagnostics(false)} />
+      ) : null}
+
+      {showLegal ? (
+        <LegalNotice
+          initialTab={showLegal}
+          onClose={() => setShowLegal(null)}
+        />
+      ) : null}
 
       {showAuthModal ? authModalNode : null}
     </section>

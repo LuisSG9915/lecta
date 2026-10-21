@@ -14,8 +14,8 @@ import {
 const Reader = lazy(() => import("./components/Reader"));
 const Vocabulary = lazy(() => import("./components/Vocabulary"));
 const Journey = lazy(() => import("./components/Journey"));
-import Account from "./components/Account";
-import Calibration from "./components/Calibration";
+const Account = lazy(() => import("./components/Account"));
+const Calibration = lazy(() => import("./components/Calibration"));
 import { CompanionProvider } from "./components/CompanionProvider";
 import Shelf, { type ShelfItem, type BookLike } from "./components/Shelf";
 import BookCover from "./components/BookCover";
@@ -47,9 +47,9 @@ import {
   fetchCalibrationSample,
   type CalibrationWord,
 } from "./lib/calibration";
-import { getCalibrationBankByLang } from "../shared/calibration-bank";
 import {
   captureDbScope,
+  classifyDbError,
   deleteAccountDb,
   deleteStoredBook,
   getStoredBook,
@@ -60,13 +60,25 @@ import {
   loadBookPosition,
   loadSessionValue,
   loadShelfBootstrap,
+  resetDbConnection,
   saveBook,
   saveBookPosition,
   saveSessionValue,
   setDbUser,
   updateBookMeta,
   type DbScope,
+  type DbStorageError,
+  type StoredBook,
 } from "./lib/idb";
+import {
+  downloadBackup,
+  inspectBackupPayload,
+  restoreBackupPayload,
+  type BackupPreviewSummary,
+} from "./lib/export";
+import { recordSyncError, recordSyncSuccess } from "./lib/sync-state";
+import DiagnosticsModal from "./components/DiagnosticsModal";
+import LegalNotice from "./components/LegalNotice";
 import { resetGameCache } from "./lib/game";
 import {
   clearLastUserId,
@@ -167,6 +179,57 @@ export default function App() {
   // nunca antes): el compañero solo ve datos de la base vigente — un
   // cambio de cuenta lo limpia y recarga con el contexto nuevo.
   const [dbUserId, setDbUserId] = useState<string | null>(null);
+  const [dbStorageError, setDbStorageError] = useState<DbStorageError | null>(null);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const [showLegal, setShowLegal] = useState<"privacy" | "terms" | null>(null);
+  const [backupPreview, setBackupPreview] = useState<BackupPreviewSummary | null>(null);
+  const [backupPayload, setBackupPayload] = useState<string | null>(null);
+  const [restoringBackup, setRestoringBackup] = useState(false);
+  const restoreFileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleRestoreFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const summary = inspectBackupPayload(text);
+      setBackupPayload(text);
+      setBackupPreview(summary);
+      setError("");
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "No se pudo interpretar el archivo de respaldo.",
+      );
+      setBackupPayload(null);
+      setBackupPreview(null);
+    } finally {
+      if (restoreFileInputRef.current) restoreFileInputRef.current.value = "";
+    }
+  };
+
+  const handleConfirmRestoreFromApp = async () => {
+    if (!backupPayload) return;
+    setRestoringBackup(true);
+    try {
+      await restoreBackupPayload(backupPayload);
+      setMessage("Respaldo restaurado correctamente.");
+      setBackupPreview(null);
+      setBackupPayload(null);
+      setDbStorageError(null);
+      setCheckingLibrary(true);
+      void refreshLibrary();
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Ocurrió un error al restaurar el respaldo.",
+      );
+    } finally {
+      setRestoringBackup(false);
+    }
+  };
 
   useEffect(() => {
     // Precarga el Lector durante la holgura del navegador para que abrir un libro sea inmediato.
@@ -308,14 +371,17 @@ export default function App() {
     if (calibrationWords) return true;
     const profile = readerProfileFor(loadNativeLanguage(), language);
     const sample = await fetchCalibrationSample(language, profile);
+    let fallbackWords: CalibrationWord[] = [];
+    if (!sample.ok || !sample.words?.length) {
+      const { getCalibrationBankByLang } = await import("../shared/calibration-bank");
+      fallbackWords = getCalibrationBankByLang(language).map((item) => ({
+        lemma: item.word,
+        definition: null,
+        sampleContext: item.posHint,
+      }));
+    }
     const words: CalibrationWord[] =
-      sample.ok && sample.words?.length
-        ? sample.words
-        : getCalibrationBankByLang(language).map((item) => ({
-            lemma: item.word,
-            definition: null,
-            sampleContext: item.posHint,
-          }));
+      sample.ok && sample.words?.length ? sample.words : fallbackWords;
     if (!words.length) {
       setError("No se pudo cargar la lista de palabras. Intenta de nuevo con conexión.");
       return false;
@@ -347,7 +413,7 @@ export default function App() {
     let cancelled = false;
     const scope = captureDbScope();
     void Promise.all([
-      listSavedWords(undefined, scope).catch(() => []),
+      listSavedWords(undefined, scope),
       loadSessionValue(COMPANION_LETTERS_KEY, scope).catch(() => null),
       loadSessionValue(CALIBRATION_DONE_KEY, scope).catch(() => null),
     ]).then(([savedWords, rawLetters, rawCalibration]) => {
@@ -360,6 +426,10 @@ export default function App() {
       const letters = parseCompanionLetters(rawLetters);
       setHasJourneyAlert(letters.some((l) => !l.read));
       setCalibrationDone(rawCalibration === "1");
+    }).catch((err) => {
+      if (!cancelled && isDbScopeActive(scope)) {
+        setDbStorageError(classifyDbError(err));
+      }
     });
     return () => {
       cancelled = true;
@@ -369,7 +439,9 @@ export default function App() {
   useEffect(() => {
     if (lastReadBook || library.length === 0) return;
     const scope = captureDbScope();
+    let cancelled = false;
     void loadShelfBootstrap(scope).then(({ positions, latestHash }) => {
+      if (cancelled) return;
       const targetHash = latestHash || positions[0]?.bookHash;
       if (!targetHash) return;
       const item = library.find((b) => b.hash === targetHash);
@@ -386,7 +458,14 @@ export default function App() {
         cover: item.cover,
         progress: prog,
       });
-    }).catch(() => null);
+    }).catch((err) => {
+      if (!cancelled && isDbScopeActive(scope)) {
+        setDbStorageError(classifyDbError(err));
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [library, lastReadBook]);
 
   const activeNav: NavDestination = showJourney
@@ -503,12 +582,24 @@ export default function App() {
     // resultado no se publica — jamás se pinta la biblioteca de otra
     // cuenta.
     const bound = captureDbScope();
-    const [books, ops, remote] = await Promise.all([
-      listStoredBooks(bound).catch(() => []),
-      listBookOps(bound).catch(() => []),
-      sessionUserId ? listRemoteBooks(bound).catch(() => []) : Promise.resolve([]),
-    ]);
+    let books: StoredBook[];
+    let ops: Awaited<ReturnType<typeof listBookOps>>;
+    let remote: Awaited<ReturnType<typeof listRemoteBooks>>;
+    try {
+      [books, ops, remote] = await Promise.all([
+        listStoredBooks(bound),
+        listBookOps(bound),
+        sessionUserId ? listRemoteBooks(bound).catch(() => []) : Promise.resolve([]),
+      ]);
+    } catch (err) {
+      if (isDbScopeActive(bound)) {
+        setCheckingLibrary(false);
+        setDbStorageError(classifyDbError(err));
+      }
+      return;
+    }
     if (!isDbScopeActive(bound)) return;
+    setDbStorageError(null);
     const pendingUploads = new Set(
       ops.filter((op) => op.kind === "upload").map((op) => op.hash),
     );
@@ -586,7 +677,12 @@ export default function App() {
         setCheckingLibrary(false);
         void refreshLibrary();
       })
-      .catch(() => undefined);
+      .catch((err) => {
+        if (!cancelled) {
+          setCheckingLibrary(false);
+          setDbStorageError(classifyDbError(err));
+        }
+      });
     return () => {
       cancelled = true;
     };
@@ -616,11 +712,7 @@ export default function App() {
         // fallo real.
         if (!cancelled) {
           setCheckingLibrary(false);
-          setError(
-            error instanceof Error && error.message
-              ? error.message
-              : "No se pudo abrir la biblioteca local. Recarga la página.",
-          );
+          setDbStorageError(classifyDbError(error));
         }
         return;
       }
@@ -669,7 +761,15 @@ export default function App() {
       void refreshLibrary();
       if (!sessionUserId) return;
 
-      const pulled = await syncSavedWords(scope).catch(() => null);
+      const pulled = await syncSavedWords(scope)
+        .then((res) => {
+          recordSyncSuccess();
+          return res;
+        })
+        .catch((err) => {
+          recordSyncError(err);
+          return null;
+        });
       if (!cancelled && pulled) {
         setMessage(`Cuaderno sincronizado: ${pulled} palabra(s) nueva(s) en este dispositivo.`);
         setVocabVersion((v) => v + 1);
@@ -702,10 +802,19 @@ export default function App() {
       // Posiciones de lectura: misma fusión por libro, empuja lo local
       // y baja lo que otros dispositivos dejaron más reciente.
       void syncPositions(scope).catch(() => null);
-      const [remote, localBooks] = await Promise.all([
-        listRemoteBooks(scope).catch(() => []),
-        listStoredBooks(scope),
-      ]);
+      let remote: Awaited<ReturnType<typeof listRemoteBooks>>;
+      let localBooks: StoredBook[];
+      try {
+        [remote, localBooks] = await Promise.all([
+          listRemoteBooks(scope).catch(() => []),
+          listStoredBooks(scope),
+        ]);
+      } catch (err) {
+        if (!cancelled && isDbScopeActive(scope)) {
+          setDbStorageError(classifyDbError(err));
+        }
+        return;
+      }
       if (cancelled || !isDbScopeActive(scope)) return;
       const remoteHashes = new Set(remote.map((item) => item.hash));
 
@@ -1099,36 +1208,89 @@ export default function App() {
           </header>
           <ViewTransition name="app-main">
             <main className="app-main">
-              <Activity mode={activeNav === "shelf" ? "visible" : "hidden"}>
-                <Shelf
-                  library={library}
-                  books={library}
-                  checking={checkingLibrary}
-                  activeRead={lastReadBook}
-                  vocabCount={library.length}
-                  dueReviewsCount={dueReviewsCount}
-                  hasCalibrated={calibrationDone || Boolean(calibrationWords)}
-                  onOpen={openShelfItem}
-                  onSelect={handleSelectBook}
-                  onPrepareBook={handleOpenBookPrep}
-                  onStartCalibration={handleOpenCalibration}
-                  onRemove={removeBook}
-                  onAdd={(file) => void selectBook(file)}
-                  onLibraryChange={() => void refreshLibrary()}
-                  onBooksChange={() => void refreshLibrary()}
-                  onGetCatalogBook={getCatalogBook}
-                  onDownloadBook={(item) => void openRemoteBook(item, false)}
-                  downloadingHash={downloadingHash}
-                  activityVersion={activityVersion}
-                  onOpenVocab={openNotebookOverlay}
-                  onOpenPractice={() => navigateTo("vocabulary")}
-                  onOpenAccount={() => navigateTo("account")}
-                  onOpenJourney={() => openJourneyFrom("shelf")}
-                  onRequestCalibration={() => void requestCalibration()}
-                  user={session?.user ?? null}
-                  syncing={false}
-                />
-              </Activity>
+              {dbStorageError ? (
+                <section className="db-error-panel" role="alert">
+                  <div className="db-error-card">
+                    <h2 className="db-error-title">Problema con el almacenamiento local</h2>
+                    <p className="db-error-message">{dbStorageError.message}</p>
+                    <div className="db-error-actions">
+                      <button
+                        type="button"
+                        className="btn btn--primary"
+                        onClick={() => {
+                          resetDbConnection();
+                          setDbStorageError(null);
+                          setCheckingLibrary(true);
+                          void setDbUser(sessionUserId ?? null)
+                            .then(() => refreshLibrary())
+                            .catch((err) => {
+                              setCheckingLibrary(false);
+                              setDbStorageError(classifyDbError(err));
+                            });
+                        }}
+                      >
+                        Reintentar conexión
+                      </button>
+                      <button
+                        type="button"
+                        className="btn"
+                        onClick={() => {
+                          void downloadBackup().catch(() => {
+                            setError("No se pudo preparar el respaldo de emergencia.");
+                          });
+                        }}
+                      >
+                        Exportar respaldo de emergencia
+                      </button>
+                      <button
+                        type="button"
+                        className="btn"
+                        onClick={() => restoreFileInputRef.current?.click()}
+                      >
+                        Restaurar respaldo
+                      </button>
+                      <button
+                        type="button"
+                        className="btn--quiet"
+                        onClick={() => setShowDiagnostics(true)}
+                      >
+                        Diagnóstico y detalles
+                      </button>
+                    </div>
+                  </div>
+                </section>
+              ) : (
+                <Activity mode={activeNav === "shelf" ? "visible" : "hidden"}>
+                  <Shelf
+                    library={library}
+                    books={library}
+                    checking={checkingLibrary}
+                    activeRead={lastReadBook}
+                    vocabCount={library.length}
+                    dueReviewsCount={dueReviewsCount}
+                    hasCalibrated={calibrationDone || Boolean(calibrationWords)}
+                    onOpen={openShelfItem}
+                    onSelect={handleSelectBook}
+                    onPrepareBook={handleOpenBookPrep}
+                    onStartCalibration={handleOpenCalibration}
+                    onRemove={removeBook}
+                    onAdd={(file) => void selectBook(file)}
+                    onLibraryChange={() => void refreshLibrary()}
+                    onBooksChange={() => void refreshLibrary()}
+                    onGetCatalogBook={getCatalogBook}
+                    onDownloadBook={(item) => void openRemoteBook(item, false)}
+                    downloadingHash={downloadingHash}
+                    activityVersion={activityVersion}
+                    onOpenVocab={openNotebookOverlay}
+                    onOpenPractice={() => navigateTo("vocabulary")}
+                    onOpenAccount={() => navigateTo("account")}
+                    onOpenJourney={() => openJourneyFrom("shelf")}
+                    onRequestCalibration={() => void requestCalibration()}
+                    user={session?.user ?? null}
+                    syncing={false}
+                  />
+                </Activity>
+              )}
 
               {hasVisitedVocab || activeNav === "vocabulary" || showVocabulary ? (
                 <Activity mode={activeNav === "vocabulary" ? "visible" : "hidden"}>
@@ -1146,19 +1308,21 @@ export default function App() {
               ) : null}
 
               {showAccount ? (
-                <Account
-                  key={sessionUserId ?? "anon"}
-                  presentation="page"
-                  theme={theme}
-                  onThemeChange={changeTheme}
-                  onClose={() => navigateTo("shelf")}
-                  onOpenJourney={() => openJourneyFrom("account")}
-                  resetToken={resetToken}
-                  onResetDone={() => setResetToken(undefined)}
-                  onOpenCalibration={(words, lang = "es") => {
-                    showCalibration(words, null, lang);
-                  }}
-                />
+                <Suspense fallback={null}>
+                  <Account
+                    key={sessionUserId ?? "anon"}
+                    presentation="page"
+                    theme={theme}
+                    onThemeChange={changeTheme}
+                    onClose={() => navigateTo("shelf")}
+                    onOpenJourney={() => openJourneyFrom("account")}
+                    resetToken={resetToken}
+                    onResetDone={() => setResetToken(undefined)}
+                    onOpenCalibration={(words, lang = "es") => {
+                      showCalibration(words, null, lang);
+                    }}
+                  />
+                </Suspense>
               ) : null}
             </main>
           </ViewTransition>
@@ -1211,6 +1375,7 @@ export default function App() {
             onNavigate={navigateTo}
             dueCount={dueReviewsCount}
             hasJourneyAlert={hasJourneyAlert}
+            hasAccount={Boolean(sessionUserId)}
           />
           <Notice
             message={message}
@@ -1231,13 +1396,15 @@ export default function App() {
         </Suspense>
       ) : null}
       {calibrationWords ? (
-        <Calibration
-          key={sessionUserId ?? "anon"}
-          words={calibrationWords}
-          language={calibrationLang}
-          onDone={() => closeCalibration(true)}
-          onClose={() => closeCalibration(false)}
-        />
+        <Suspense fallback={null}>
+          <Calibration
+            key={sessionUserId ?? "anon"}
+            words={calibrationWords}
+            language={calibrationLang}
+            onDone={() => closeCalibration(true)}
+            onClose={() => closeCalibration(false)}
+          />
+        </Suspense>
       ) : null}
       {positionPrompt ? (
         <Dialog label="Otro dispositivo avanzó más" onClose={dismissPositionPrompt}>
@@ -1273,6 +1440,79 @@ export default function App() {
             </button>
           </div>
         </Dialog>
+      ) : null}
+
+      <input
+        ref={restoreFileInputRef}
+        type="file"
+        accept=".json,application/json"
+        style={{ display: "none" }}
+        onChange={(e) => void handleRestoreFileSelect(e)}
+      />
+
+      {backupPreview ? (
+        <Dialog label="Restaurar respaldo" onClose={() => setBackupPreview(null)}>
+          <div className="sheet-head">
+            <strong className="sheet-title">Restaurar respaldo</strong>
+            <button
+              type="button"
+              className="btn--quiet"
+              onClick={() => setBackupPreview(null)}
+              aria-label="Cerrar"
+            >
+              Cerrar
+            </button>
+          </div>
+          <div style={{ padding: "var(--s-3) 0" }}>
+            <p className="meta">
+              Se encontraron los siguientes datos en el archivo de respaldo:
+            </p>
+            <ul style={{ listStyle: "none", padding: 0, margin: "var(--s-2) 0", fontSize: "var(--fs-sm)" }}>
+              <li>Versión del formato: v{backupPreview.version}</li>
+              <li>Fecha de exportación: {new Date(backupPreview.exportedAt).toLocaleString()}</li>
+              <li>Libros: {backupPreview.booksCount}</li>
+              <li>Palabras del cuaderno: {backupPreview.wordsCount}</li>
+              <li>Anotaciones: {backupPreview.annotationsCount}</li>
+              <li>Posiciones de lectura: {backupPreview.positionsCount}</li>
+              <li>Repasos: {backupPreview.reviewsCount}</li>
+              <li>Sesiones de actividad: {backupPreview.activityCount}</li>
+              <li>Estado del compañero: {backupPreview.hasCompanionState ? "Incluido" : "No incluido"}</li>
+            </ul>
+            <p className="meta" style={{ marginTop: "var(--s-2)" }}>
+              La restauración fusionará estos datos con los actuales de este dispositivo,
+              conservando siempre la versión más reciente sin sobreescribir tus lecturas nuevas.
+            </p>
+            <div style={{ display: "flex", gap: "var(--s-2)", marginTop: "var(--s-4)", justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => setBackupPreview(null)}
+                disabled={restoringBackup}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="btn btn--primary"
+                onClick={() => void handleConfirmRestoreFromApp()}
+                disabled={restoringBackup}
+              >
+                {restoringBackup ? "Restaurando…" : "Confirmar restauración"}
+              </button>
+            </div>
+          </div>
+        </Dialog>
+      ) : null}
+
+      {showDiagnostics ? (
+        <DiagnosticsModal onClose={() => setShowDiagnostics(false)} />
+      ) : null}
+
+      {showLegal ? (
+        <LegalNotice
+          initialTab={showLegal}
+          onClose={() => setShowLegal(null)}
+        />
       ) : null}
     </div>
     </CompanionProvider>

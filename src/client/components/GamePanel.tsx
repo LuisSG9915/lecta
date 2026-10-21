@@ -11,6 +11,7 @@
 // la recepción y solo entonces se muestra el contenido.
 
 import { useEffect, useRef, useState } from "react";
+import "../styles/game.css";
 import {
   loadGame,
   openGameChest,

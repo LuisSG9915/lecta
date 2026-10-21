@@ -8,12 +8,6 @@ import {
   type DbScope,
   type WordMeaning,
 } from "./idb";
-import {
-  calibrationFallbackDefinition,
-  calibrationBankZipf,
-} from "../../shared/calibration-bank";
-import { getEnglishCoreEntry } from "../../shared/english-core-lexicon";
-
 import type { LexiconEntry } from "../../shared/lexicon";
 export type { LexiconEntry };
 
@@ -27,7 +21,8 @@ type LexiconResponseBody = {
   error?: string;
 };
 
-function getCalibrationBankFallbackEntry(form: string, language: string): LexiconEntry | null {
+async function getCalibrationBankFallbackEntry(form: string, language: string): Promise<LexiconEntry | null> {
+  const { calibrationFallbackDefinition, calibrationBankZipf } = await import("../../shared/calibration-bank");
   const normalized = form.trim().toLowerCase();
   const def = calibrationFallbackDefinition(normalized, language);
   if (!def) return null;
@@ -45,6 +40,11 @@ function getCalibrationBankFallbackEntry(form: string, language: string): Lexico
       },
     ],
   };
+}
+
+async function resolveEnglishCoreEntry(form: string): Promise<LexiconEntry | null> {
+  const { getEnglishCoreEntry } = await import("../../shared/english-core-lexicon");
+  return getEnglishCoreEntry(form);
 }
 
 async function lookupWordRaw(
@@ -76,11 +76,11 @@ async function lookupWordRaw(
       };
       return { ok: true, found: true, entries: [fallbackEntry], offline: true };
     }
-    const bankFallback = getCalibrationBankFallbackEntry(form, language);
+    const bankFallback = await getCalibrationBankFallbackEntry(form, language);
     if (bankFallback) {
       return { ok: true, found: true, entries: [bankFallback], offline: true };
     }
-    const englishCore = getEnglishCoreEntry(form);
+    const englishCore = await resolveEnglishCoreEntry(form);
     if (englishCore) {
       return { ok: true, found: true, entries: [englishCore], offline: true };
     }
@@ -95,11 +95,11 @@ async function lookupWordRaw(
   try {
     const response = await accountFetch(`/api/lexicon/lookup?${params}`, undefined, scope);
     if (response.status === 404) {
-      const bankFallback = getCalibrationBankFallbackEntry(form, language);
+      const bankFallback = await getCalibrationBankFallbackEntry(form, language);
       if (bankFallback) {
         return { ok: true, found: true, entries: [bankFallback], offline: true };
       }
-      const englishCore = getEnglishCoreEntry(form);
+      const englishCore = await resolveEnglishCoreEntry(form);
       if (englishCore) {
         return { ok: true, found: true, entries: [englishCore], offline: true };
       }
@@ -111,11 +111,11 @@ async function lookupWordRaw(
       if (cached && cached.length > 0) {
         return { ok: true, found: true, entries: cached, offline: true };
       }
-      const bankFallback = getCalibrationBankFallbackEntry(form, language);
+      const bankFallback = await getCalibrationBankFallbackEntry(form, language);
       if (bankFallback) {
         return { ok: true, found: true, entries: [bankFallback], offline: true };
       }
-      const englishCore = getEnglishCoreEntry(form);
+      const englishCore = await resolveEnglishCoreEntry(form);
       if (englishCore) {
         return { ok: true, found: true, entries: [englishCore], offline: true };
       }
@@ -127,11 +127,11 @@ async function lookupWordRaw(
       void saveCachedLexicon(language, form, entries, scope).catch(() => undefined);
       return { ok: true, found, entries };
     }
-    const bankFallback = getCalibrationBankFallbackEntry(form, language);
+    const bankFallback = await getCalibrationBankFallbackEntry(form, language);
     if (bankFallback) {
       return { ok: true, found: true, entries: [bankFallback], offline: true };
     }
-    const englishCore = getEnglishCoreEntry(form);
+    const englishCore = await resolveEnglishCoreEntry(form);
     if (englishCore) {
       return { ok: true, found: true, entries: [englishCore], offline: true };
     }
@@ -161,11 +161,11 @@ async function lookupWordRaw(
       };
       return { ok: true, found: true, entries: [fallbackEntry], offline: true };
     }
-    const bankFallback = getCalibrationBankFallbackEntry(form, language);
+    const bankFallback = await getCalibrationBankFallbackEntry(form, language);
     if (bankFallback) {
       return { ok: true, found: true, entries: [bankFallback], offline: true };
     }
-    const englishCore = getEnglishCoreEntry(form);
+    const englishCore = await resolveEnglishCoreEntry(form);
     if (englishCore) {
       return { ok: true, found: true, entries: [englishCore], offline: true };
     }
@@ -334,7 +334,7 @@ export async function enrichWord(
     }
     const data = (await response.json()) as LexiconResponseBody;
     if (!response.ok) {
-      const core = getEnglishCoreEntry(form);
+      const core = await resolveEnglishCoreEntry(form);
       if (core) {
         return { ok: true, found: true, entries: [core], offline: true };
       }
@@ -345,13 +345,13 @@ export async function enrichWord(
       void saveCachedLexicon(language, form, entries, scope).catch(() => undefined);
       return { ok: true, found: true, entries };
     }
-    const core = getEnglishCoreEntry(form);
+    const core = await resolveEnglishCoreEntry(form);
     if (core) {
       return { ok: true, found: true, entries: [core], offline: true };
     }
     return { ok: true, found: true, entries };
   } catch {
-    const core = getEnglishCoreEntry(form);
+    const core = await resolveEnglishCoreEntry(form);
     if (core) {
       return { ok: true, found: true, entries: [core], offline: true };
     }

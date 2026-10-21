@@ -13,6 +13,7 @@ import {
 import { SentenceBuilderGame } from "./SentenceBuilderGame";
 import { WordScrambleGame } from "./WordScrambleGame";
 import QuoteCardModal from "./QuoteCardModal";
+import Icon from "./Icon";
 
 export interface DeepReadingSummaryModalProps {
   summary: DeepReadingSummary;
@@ -162,8 +163,8 @@ export default function DeepReadingSummaryModal({
                 pose="celebrate"
               />
             ) : (
-              <div style={{ fontSize: "3rem", textAlign: "center" }} aria-hidden="true">
-                🎉🐱
+              <div style={{ textAlign: "center" }} aria-hidden="true">
+                <Icon name="sparkles" size={32} />
               </div>
             )}
           </div>
@@ -187,7 +188,7 @@ export default function DeepReadingSummaryModal({
             className="btn--quiet deep-summary-quote-btn"
             onClick={handleCreatePostal}
           >
-            📸 Crear postal del capítulo
+            Crear postal del capítulo
           </button>
           <button
             type="button"
@@ -295,8 +296,8 @@ export default function DeepReadingSummaryModal({
               pose="celebrate"
             />
           ) : (
-            <div style={{ fontSize: "2.5rem", textAlign: "center" }} aria-hidden="true">
-              🎉🐱
+            <div style={{ textAlign: "center" }} aria-hidden="true">
+              <Icon name="sparkles" size={28} />
             </div>
           )}
         </div>
@@ -357,11 +358,11 @@ export default function DeepReadingSummaryModal({
         </div>
       </div>
 
-      {/* Sección: 🌱 Tu Cosecha en este Capítulo */}
+      {/* Sección: Tu Cosecha en este Capítulo */}
       <div className="deep-summary-harvest" aria-label="Tu cosecha del capítulo">
         <div className="deep-summary-harvest-header">
           <div className="deep-summary-harvest-title-row">
-            <h3 className="deep-summary-harvest-title">🌱 Tu Cosecha en este Capítulo</h3>
+            <h3 className="deep-summary-harvest-title">Tu Cosecha en este Capítulo</h3>
             <span className="deep-summary-harvest-count">+{wordsAssimilated} palabras</span>
           </div>
           <p className="deep-summary-harvest-desc">
@@ -383,7 +384,7 @@ export default function DeepReadingSummaryModal({
             className="deep-summary-quote-btn"
             onClick={handleCreatePostal}
           >
-            📸 Crear postal del capítulo
+            Crear postal del capítulo
           </button>
         </div>
       </div>
@@ -423,7 +424,7 @@ export default function DeepReadingSummaryModal({
                     role="menuitem"
                     onClick={handleDisableGlobally}
                   >
-                    🚫 Desactivar consolidación al final de capítulo siempre
+                    Desactivar consolidación al final de capítulo siempre
                   </button>
                 </div>
               ) : null}

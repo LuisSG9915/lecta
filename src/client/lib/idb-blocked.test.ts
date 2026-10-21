@@ -85,4 +85,28 @@ describe("openLectaDB bajo upgrade bloqueado", () => {
     cbs?.blocking?.(8, 9, { target: { close } });
     expect(close).toHaveBeenCalled();
   });
+
+  it("classifyDbError clasifica correctamente los errores de almacenamiento", async () => {
+    const { classifyDbError } = await freshIdb();
+
+    expect(
+      classifyDbError(new Error("La base local sigue abierta en otra pestaña")).code,
+    ).toBe("blocked");
+
+    const versionErr = new Error("Database version error");
+    versionErr.name = "VersionError";
+    expect(classifyDbError(versionErr).code).toBe("blocked");
+
+    const quotaErr = new Error("The quota has been exceeded");
+    quotaErr.name = "QuotaExceededError";
+    expect(classifyDbError(quotaErr).code).toBe("quota");
+
+    expect(classifyDbError(new Error("Database operation timed out")).code).toBe(
+      "timeout",
+    );
+
+    expect(classifyDbError(new Error("InvalidStateError: corrupted data")).code).toBe(
+      "corrupt",
+    );
+  });
 });

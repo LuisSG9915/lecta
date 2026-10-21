@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   activityToCsv,
   annotationsToMarkdown,
@@ -6,7 +6,9 @@ import {
   buildBackup,
   formatReadingDuration,
   fullNotebookToMarkdown,
+  inspectBackupPayload,
   passagesToCsv,
+  restoreBackupPayload,
   sanitizeFilename,
   sessionKeysForBackup,
   wordsToCsv,
@@ -14,6 +16,22 @@ import {
   exportAnkiTsv,
 } from "./export";
 import type { SavedAnnotation, SavedInterval, SavedWord } from "./idb";
+
+vi.mock("./idb", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./idb")>();
+  return {
+    ...actual,
+    restoreBackupToDb: vi.fn(async () => ({
+      booksRestored: 1,
+      positionsRestored: 1,
+      wordsRestored: 1,
+      annotationsRestored: 0,
+      activityRestored: 0,
+      reviewsRestored: 0,
+      knowledgeRestored: 0,
+    })),
+  };
+});
 
 const bookName = (hash: string | undefined) =>
   hash === "b1" ? "Cien años de soledad" : undefined;
@@ -563,5 +581,81 @@ describe("fullNotebookToMarkdown", () => {
     expect(md).toContain("- **laberinto**");
     expect(md).toContain("## Otras notas y palabras");
     expect(md).toContain("- **suelta**: Palabra sin libro");
+  });
+});
+
+describe("inspectBackupPayload", () => {
+  it("valida y extrae el resumen de un respaldo válido", () => {
+    const backupJson = JSON.stringify({
+      version: 1,
+      exportedAt: "2026-10-21T00:00:00.000Z",
+      words: [{ key: "es:casa", form: "casa" }],
+      books: [{ hash: "b1", name: "libro.epub" }],
+      positions: [{ bookHash: "b1", sectionIndex: 0, scrollTop: 100 }],
+      annotations: [{ key: "b1:a1", id: "a1" }],
+      reviews: [{ id: "r1" }],
+      activity: [{ id: "act1" }],
+      companionEvents: [{ id: "ce1" }],
+      session: { comp_xp: "100" },
+    });
+
+    const summary = inspectBackupPayload(backupJson);
+    expect(summary.version).toBe(1);
+    expect(summary.exportedAt).toBe("2026-10-21T00:00:00.000Z");
+    expect(summary.wordsCount).toBe(1);
+    expect(summary.booksCount).toBe(1);
+    expect(summary.positionsCount).toBe(1);
+    expect(summary.annotationsCount).toBe(1);
+    expect(summary.reviewsCount).toBe(1);
+    expect(summary.activityCount).toBe(1);
+    expect(summary.hasCompanionState).toBe(true);
+  });
+
+  it("rechaza archivo vacío", () => {
+    expect(() => inspectBackupPayload("")).toThrow("vacío");
+    expect(() => inspectBackupPayload("   ")).toThrow("vacío");
+  });
+
+  it("rechaza JSON inválido", () => {
+    expect(() => inspectBackupPayload("{ not json }")).toThrow("formato JSON");
+  });
+
+  it("rechaza versión incompatible o ausente", () => {
+    expect(() => inspectBackupPayload(JSON.stringify({ words: [] }))).toThrow("versión");
+    expect(() =>
+      inspectBackupPayload(JSON.stringify({ version: 99, words: [] })),
+    ).toThrow("más reciente");
+  });
+});
+
+describe("restoreBackupPayload", () => {
+  it("restaura los registros resolviendo por merge", async () => {
+    const backupData = {
+      words: [
+        {
+          key: "es:palabra",
+          form: "palabra",
+          language: "es",
+          savedAt: 1000,
+          updatedAt: 2000,
+        },
+      ],
+      books: [{ hash: "hash1", name: "prueba.epub", addedAt: 1000 }],
+      positions: [{ bookHash: "hash1", sectionIndex: 1, scrollTop: 50, updatedAt: 2000 }],
+      annotations: [],
+      activity: [],
+      reviews: [],
+      knowledge: [],
+      readingDays: [],
+      events: [],
+      companionEvents: [],
+      companionReceipts: [],
+      session: {},
+    };
+
+    const res = await restoreBackupPayload(backupData);
+    expect(res).toBeDefined();
+    expect(res.wordsRestored).toBeGreaterThanOrEqual(1);
+    expect(res.positionsRestored).toBeGreaterThanOrEqual(1);
   });
 });

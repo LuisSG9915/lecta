@@ -385,23 +385,8 @@ export default function SectionPreview(props: SectionPreviewProps) {
     onMuteForBook,
     onDisableGlobally,
     title = "",
-    analysis = "ready",
     rows = [],
-    answers = {},
-    uncertainRows,
-    deferredRows,
-    onRowsPresented,
-    saving = false,
-    onAnswer = () => {},
     onConfirm = () => {},
-    onSkip = () => {},
-    onRetry = () => {},
-    onClose = () => {},
-    onDiscard = () => {},
-    estimatedMinutes,
-    initialStrategy,
-    onSelectStrategy,
-    onUnlockCard,
     mode = "modal",
     words = rows,
     onExpand,
@@ -455,18 +440,43 @@ export default function SectionPreview(props: SectionPreviewProps) {
         bookLang={bookLang}
         userNativeLang={userNativeLang}
         words={primingWords}
-        onMarkKnown={onMarkKnown ?? ((_lemma, _beta) => {})}
-        onSaveToPractice={onSaveToPractice ?? ((_lemma, _beta) => {})}
+        onMarkKnown={onMarkKnown ?? (() => {})}
+        onSaveToPractice={onSaveToPractice ?? (() => {})}
         onPronounce={onPronounce}
         onStartReading={() => {
           onStartReading?.();
           onConfirm();
         }}
-        onMuteForBook={onMuteForBook ?? ((_id) => {})}
+        onMuteForBook={onMuteForBook ?? (() => {})}
         onDisableGlobally={onDisableGlobally ?? (() => {})}
       />
     );
   }
+
+  return <FullSectionPreview {...props} />;
+}
+
+function FullSectionPreview(props: SectionPreviewProps) {
+  const {
+    title = "",
+    analysis = "ready",
+    rows = [],
+    answers = {},
+    uncertainRows,
+    deferredRows,
+    onRowsPresented,
+    saving = false,
+    onAnswer = () => {},
+    onConfirm = () => {},
+    onSkip = () => {},
+    onRetry = () => {},
+    onClose = () => {},
+    onDiscard = () => {},
+    estimatedMinutes,
+    initialStrategy,
+    onSelectStrategy,
+    onUnlockCard,
+  } = props;
 
   const companion = useCompanionSafe();
   const [showAll, setShowAll] = useState(false);

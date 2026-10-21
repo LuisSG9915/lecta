@@ -275,13 +275,13 @@ describe("DiscoverRail", () => {
     expect(affinityPills.length).toBe(3);
 
     expect(affinityPills[0].getAttribute("data-tone")).toBe("ideal");
-    expect(affinityPills[0].textContent).toBe("✨ Ideal para tu ritmo");
+    expect(affinityPills[0].textContent).toBe("Ideal para tu ritmo");
 
     expect(affinityPills[1].getAttribute("data-tone")).toBe("relaxed");
-    expect(affinityPills[1].textContent).toBe("🌱 Lectura relajada");
+    expect(affinityPills[1].textContent).toBe("Lectura relajada");
 
     expect(affinityPills[2].getAttribute("data-tone")).toBe("supported");
-    expect(affinityPills[2].textContent).toBe("🌊 Con apoyo bilingüe");
+    expect(affinityPills[2].textContent).toBe("Con apoyo bilingüe");
   });
 });
 

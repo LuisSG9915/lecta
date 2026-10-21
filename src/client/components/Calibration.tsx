@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Sheet from "./Sheet";
+import Icon from "./Icon";
 import {
   initCatSession,
   skipCatSession,
@@ -132,7 +133,7 @@ export default function Calibration({
             aria-live="polite"
           >
             <div className="cat-celebration-icon" aria-hidden="true">
-              ✨
+              <Icon name="sparkles" size={24} />
             </div>
             <p className="cat-celebration-msg">
               ¡Listo! Lecta ajustó las ayudas del capítulo a tu ritmo.

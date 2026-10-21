@@ -312,7 +312,15 @@ describe("Shelf - Tu Mesa de Lectura (Fase 5.2)", () => {
 
     const btn = hero?.querySelector(".shelf-welcome-hero-btn") as HTMLButtonElement;
     expect(btn).toBeTruthy();
-    expect(btn.textContent).toContain("📖 Empezar lectura de muestra ahora");
+    expect(btn.textContent).toContain("Empezar lectura de muestra ahora");
+
+    const secondaryBtn = hero?.querySelector(".shelf-welcome-hero-btn-secondary") as HTMLButtonElement;
+    expect(secondaryBtn).toBeTruthy();
+    expect(secondaryBtn.textContent).toContain("Elegir archivo EPUB");
+
+    // Zero-Friction: No ritual de 3 pasos ni tarjeta de gato en la primera apertura
+    expect(host.querySelector(".shelf-onboarding-card")).toBeNull();
+    expect(host.querySelector(".shelf__desk-companion")).toBeNull();
 
     await act(async () => {
       btn.click();

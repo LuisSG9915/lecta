@@ -78,6 +78,12 @@ vi.mock("./components/Shelf", async () => {
 vi.mock("./lib/idb", () => ({
   captureDbScope: vi.fn(() => ({ userId: null as string | null, generation: 0 })),
   isDbScopeActive: vi.fn(() => true),
+  classifyDbError: vi.fn((err: unknown) => {
+    const msg = err instanceof Error ? err.message : String(err ?? "");
+    const code = msg.includes("otra pestaña") ? "blocked" : "corrupt";
+    return { code, message: msg };
+  }),
+  resetDbConnection: vi.fn(),
   StaleScopeError: class StaleScopeError extends Error {
     constructor() {
       super("La cuenta activa cambió durante la operación.");
@@ -390,6 +396,9 @@ describe("App · navegación principal (Fase 2)", () => {
 
     // Navegar a Perfil
     await act(async () => accountBtn!.click());
+    await act(async () => {
+      await import("./components/Account");
+    });
     await flush();
     expect(accountBtn?.getAttribute("aria-current")).toBe("page");
     expect(vocabBtn?.getAttribute("aria-current")).toBeNull();
@@ -412,6 +421,9 @@ describe("App · navegación principal (Fase 2)", () => {
 
     // Abrir Perfil
     await act(async () => accountBtn!.click());
+    await act(async () => {
+      await import("./components/Account");
+    });
     await flush();
     expect(host.querySelector(".account-page")).toBeTruthy();
 
@@ -569,6 +581,31 @@ describe("App · navegación principal (Fase 2)", () => {
     const langSpan = host.querySelector(".shelf-item-lang");
     expect(langSpan).toBeTruthy();
     expect(langSpan?.textContent).toBe("en");
+  });
+
+  it("muestra panel de error honesto cuando falla IndexedDB, sin mostrar estantería vacía", async () => {
+    vi.mocked(listStoredBooks).mockRejectedValueOnce(
+      new Error("La base local sigue abierta en otra pestaña"),
+    );
+
+    renderRoot();
+    await flush();
+
+    // No debe mostrar la estantería vacía
+    expect(host.querySelector(".shelf-stub")).toBeNull();
+
+    // Debe mostrar el panel de error honesto
+    const errorPanel = host.querySelector(".db-error-panel");
+    expect(errorPanel).toBeTruthy();
+    expect(errorPanel?.textContent).toContain("Problema con el almacenamiento local");
+    expect(errorPanel?.textContent).toContain("otra pestaña");
+
+    // Debe mostrar los botones de acción requeridos
+    const buttons = errorPanel?.querySelectorAll("button");
+    const buttonTexts = Array.from(buttons ?? []).map((b) => b.textContent);
+    expect(buttonTexts).toContain("Reintentar conexión");
+    expect(buttonTexts).toContain("Exportar respaldo de emergencia");
+    expect(buttonTexts).toContain("Restaurar respaldo");
   });
 });
 
