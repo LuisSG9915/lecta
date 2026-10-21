@@ -191,21 +191,21 @@ export interface ReaderModePresetConfig {
 export const READING_PRESETS: ReaderModePresetConfig[] = [
   {
     id: "clean",
-    icon: "📖",
+    icon: "retreat",
     label: "Lectura Limpia",
     shortLabel: "Limpia",
     description: "Editorial clásico sin ayudas visuales",
   },
   {
     id: "adhd",
-    icon: "⚡",
+    icon: "sparkles",
     label: "Enfoque TDAH",
     shortLabel: "Enfoque",
     description: "Párrafo activo nítido + anclas de atención",
   },
   {
     id: "guided",
-    icon: "🌊",
+    icon: "strategy",
     label: "Ritmo Guiado",
     shortLabel: "Ritmo",
     description: "Frases cortas + guía cromática de alto contraste",

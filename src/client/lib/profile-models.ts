@@ -1,4 +1,56 @@
-import { estimateProfile, type KnowledgeEvidence } from "./knowledge";
+export type KnowledgeEvidence = { zipf: number | null; known: boolean };
+
+export type VocabProfile = {
+  threshold: number;
+  confidence: "low" | "mid" | "high";
+};
+
+// Umbrales base por defecto según el perfil del lector.
+export const DEFAULT_THRESHOLD_NATIVE = 2.0;
+export const DEFAULT_THRESHOLD_LEARNER = 3.0;
+export const DEFAULT_THRESHOLD = DEFAULT_THRESHOLD_LEARNER;
+
+export const CANDIDATES = [1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0] as const;
+export const PROFILE_REGULARIZATION = 2;
+export const MIN_THRESHOLD = 1.0;
+export const MAX_THRESHOLD = 5.5;
+export const PROFILE_ADJUST_KEY = "profileAdjust";
+
+const clamp = (value: number, min: number, max: number) =>
+  Math.min(max, Math.max(min, value));
+
+export function estimateProfile(
+  evidence: KnowledgeEvidence[],
+  adjust = 0,
+  baseThreshold = DEFAULT_THRESHOLD,
+): VocabProfile {
+  const usable = evidence.flatMap((item) =>
+    item.zipf == null ? [] : [{ zipf: item.zipf, known: item.known }],
+  );
+  let best = baseThreshold;
+  if (usable.length) {
+    let bestScore = Number.POSITIVE_INFINITY;
+    let bestDistance = Number.POSITIVE_INFINITY;
+    for (const t of CANDIDATES) {
+      let errors = 0;
+      for (const item of usable) {
+        if (item.known && item.zipf < t) errors += 1;
+        if (!item.known && item.zipf >= t) errors += 1;
+      }
+      const distance = Math.abs(t - baseThreshold);
+      const score = errors + PROFILE_REGULARIZATION * distance;
+      if (score < bestScore || (score === bestScore && distance < bestDistance)) {
+        bestScore = score;
+        bestDistance = distance;
+        best = t;
+      }
+    }
+  }
+  return {
+    threshold: clamp(best + adjust, MIN_THRESHOLD, MAX_THRESHOLD),
+    confidence: usable.length < 15 ? "low" : usable.length < 60 ? "mid" : "high",
+  };
+}
 
 // ---------- Modelos candidatos del umbral de sugerencias ----------
 //

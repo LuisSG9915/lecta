@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import Dialog from "./Dialog";
+import { getStoredErrorLogs, ERROR_LOG_STORAGE_KEY } from "./ErrorBoundary";
 import { getSyncState, type SyncState } from "../lib/sync-state";
 import {
   loadFeatureFlags,
@@ -69,17 +70,7 @@ export default function DiagnosticsModal({ onClose }: DiagnosticsModalProps) {
       }).catch(() => undefined);
     }
 
-    try {
-      const storedErrors = localStorage.getItem("lecta_error_log_v1");
-      if (storedErrors) {
-        const parsed = JSON.parse(storedErrors);
-        if (Array.isArray(parsed)) {
-          setRecentErrors(parsed);
-        }
-      }
-    } catch {
-      // Ignore localStorage parse errors
-    }
+    setRecentErrors(getStoredErrorLogs());
 
     const scope = captureDbScope();
     void Promise.all([
@@ -194,6 +185,11 @@ export default function DiagnosticsModal({ onClose }: DiagnosticsModalProps) {
               ? ` · ${syncState.pendingChangesCount} cambio(s) pendiente(s)`
               : ""}
           </p>
+          {syncState.collections ? (
+            <div style={{ marginTop: "var(--s-1)", fontSize: "var(--fs-xs)", color: "var(--ink-muted)" }}>
+              Colecciones: {Object.entries(syncState.collections).map(([k, v]) => `${k}: ${v.status}`).join(" · ")}
+            </div>
+          ) : null}
         </section>
 
         <section className="setting-block" aria-label="Interruptores de función">
@@ -228,6 +224,7 @@ export default function DiagnosticsModal({ onClose }: DiagnosticsModalProps) {
                 </div>
                 <button
                   type="button"
+                  data-flag={key}
                   className={`btn btn--sm ${featureFlags[key] ? "btn--primary" : "btn--quiet"}`}
                   onClick={() => handleToggleFlag(key)}
                   aria-pressed={featureFlags[key]}
@@ -240,7 +237,26 @@ export default function DiagnosticsModal({ onClose }: DiagnosticsModalProps) {
         </section>
 
         <section className="setting-block">
-          <h3 className="eyebrow">Registro de errores recientes ({recentErrors.length})</h3>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <h3 className="eyebrow" style={{ margin: 0 }}>Registro de errores recientes ({recentErrors.length})</h3>
+            {recentErrors.length > 0 ? (
+              <button
+                type="button"
+                className="btn--quiet"
+                style={{ fontSize: "var(--fs-xs)" }}
+                onClick={() => {
+                  try {
+                    localStorage.removeItem(ERROR_LOG_STORAGE_KEY);
+                    setRecentErrors([]);
+                  } catch {
+                    // Quota o permisos
+                  }
+                }}
+              >
+                Limpiar registro
+              </button>
+            ) : null}
+          </div>
           {recentErrors.length === 0 ? (
             <p className="meta" style={{ margin: "var(--s-1) 0" }}>
               No hay errores capturados recientemente.

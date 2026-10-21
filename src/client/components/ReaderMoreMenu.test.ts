@@ -3,6 +3,7 @@ import { act, createElement as h } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import ReaderMoreMenu, { type ReaderMoreMenuProps } from "./ReaderMoreMenu";
+import { READER_DEFAULTS } from "../lib/settings";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -108,13 +109,20 @@ describe("ReaderMoreMenu", () => {
     expect(items[0].textContent).toContain("Buscar en el libro");
   });
 
-  it("renderiza Glosario, Cuaderno, Tarjeta de cita y Exportar cuando se proporcionan los callbacks", async () => {
+  it("renderiza Glosario, Cuaderno, Tarjeta de cita y Exportar en Modo Avanzado cuando se proporcionan los callbacks", async () => {
     const onOpenGlossary = vi.fn();
     const onOpenNotebook = vi.fn();
     const onCreateQuoteCard = vi.fn();
     const onExportBook = vi.fn();
     const onClose = vi.fn();
-    render({ onOpenGlossary, onOpenNotebook, onCreateQuoteCard, onExportBook, onClose });
+    render({
+      onOpenGlossary,
+      onOpenNotebook,
+      onCreateQuoteCard,
+      onExportBook,
+      onClose,
+      settings: { ...READER_DEFAULTS, interfaceMode: "advanced" },
+    });
 
     const items = host.querySelectorAll<HTMLButtonElement>(".reader-more-item");
     expect(items.length).toBe(6);
@@ -140,6 +148,44 @@ describe("ReaderMoreMenu", () => {
     expect(onExportBook).toHaveBeenCalledTimes(1);
   });
 
+  it("en Modo Simple oculta opciones avanzadas y al alternar a Modo Avanzado las revela", async () => {
+    const onOpenGlossary = vi.fn();
+    const onCreateQuoteCard = vi.fn();
+    const onExportBook = vi.fn();
+    render({
+      onOpenGlossary,
+      onCreateQuoteCard,
+      onExportBook,
+      bookHash: "book-mode-test",
+    });
+
+    // En Modo Simple (por defecto)
+    expect(host.textContent).toContain("Modo Simple");
+    expect(host.querySelector(".reader-more-assists-section")).toBeNull();
+    expect(host.querySelector(".reader-more-offline-section")).toBeNull();
+    const simpleItems = Array.from(host.querySelectorAll(".reader-more-item")).map(
+      (el) => el.textContent,
+    );
+    expect(simpleItems.some((t) => t?.includes("Crear tarjeta de cita"))).toBe(false);
+    expect(simpleItems.some((t) => t?.includes("Exportar notas"))).toBe(false);
+
+    // Cambiar a Modo Avanzado mediante el botón del selector
+    const advancedToggleBtn = Array.from(host.querySelectorAll("button")).find((b) =>
+      b.textContent?.includes("Modo Avanzado"),
+    );
+    expect(advancedToggleBtn).toBeTruthy();
+    await act(async () => advancedToggleBtn!.click());
+
+    // En Modo Avanzado las opciones y secciones avanzadas están visibles
+    expect(host.querySelector(".reader-more-assists-section")).not.toBeNull();
+    expect(host.querySelector(".reader-more-offline-section")).not.toBeNull();
+    const advancedItems = Array.from(host.querySelectorAll(".reader-more-item")).map(
+      (el) => el.textContent,
+    );
+    expect(advancedItems.some((t) => t?.includes("Crear tarjeta de cita"))).toBe(true);
+    expect(advancedItems.some((t) => t?.includes("Exportar notas"))).toBe(true);
+  });
+
   it("permite ver y reactivar asistencias silenciadas para el libro actual (Track 12)", async () => {
     // Simular que el libro tiene asistencias silenciadas
     const testBook = "book-mute-test";
@@ -158,7 +204,11 @@ describe("ReaderMoreMenu", () => {
     expect(isConsolidationActive(testBook)).toBe(false);
     expect(loadCharacterMemoryEnabled()).toBe(false);
 
-    render({ bookHash: testBook, language: "en" });
+    render({
+      bookHash: testBook,
+      language: "en",
+      settings: { ...READER_DEFAULTS, interfaceMode: "advanced" },
+    });
 
     // Verificar que la sección de asistencias inteligentes existe
     const section = host.querySelector(".reader-more-assists-section");

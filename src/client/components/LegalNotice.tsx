@@ -89,6 +89,22 @@ export default function LegalNotice({
               Lecta no contiene rastreadores de publicidad de terceros, píxeles de seguimiento ni comercializa
               con la actividad de los lectores.
             </p>
+            <h4 style={{ margin: "var(--s-3) 0 var(--s-1)" }}>
+              Responsable del tratamiento y cumplimiento LFPDPPP
+            </h4>
+            <p>
+              En cumplimiento con la Ley Federal de Protección de Datos Personales en Posesión de los Particulares (LFPDPPP), se informa la identidad y domicilio del Responsable del Tratamiento:
+            </p>
+            <p style={{ fontStyle: "italic", background: "var(--c-surface-2, rgba(0,0,0,0.05))", padding: "var(--s-2)", borderRadius: "var(--r-sm)" }}>
+              [PENDIENTE DE REVISIÓN POR TITULAR: Nombre/Razón Social, Domicilio y Correo Legal]
+            </p>
+            <h4 style={{ margin: "var(--s-3) 0 var(--s-1)" }}>Derechos ARCO y procedimiento de revocación</h4>
+            <p>
+              Conforme a la LFPDPPP, tienes derecho a ejercer tus derechos de Acceso, Rectificación, Cancelación y Oposición (derechos ARCO), así como revocar en cualquier momento el consentimiento otorgado para el tratamiento de tus datos personales.
+            </p>
+            <p>
+              Puedes ejercer estos derechos enviando una solicitud al correo de contacto legal o directamente desde los controles de la aplicación mediante la descarga íntegra de tu respaldo en formato JSON y el borrado irreversible de tu cuenta (el cual ejecuta una purga en cascada de tus palabras, posiciones y archivos en la nube). Las solicitudes dirigidas al Responsable serán atendidas en los términos y plazos fijados por la LFPDPPP.
+            </p>
           </article>
         ) : (
           <article>
@@ -105,11 +121,26 @@ export default function LegalNotice({
               estantería. Eres responsable de contar con los derechos o autorizaciones pertinentes para los libros
               que decidas almacenar o sincronizar.
             </p>
-            <h4 style={{ margin: "var(--s-3) 0 var(--s-1)" }}>Datos léxicos y fuentes abiertas</h4>
+            <h4 style={{ margin: "var(--s-3) 0 var(--s-1)" }}>
+              Datos léxicos, licencias abiertas y cumplimiento ODbL 1.0
+            </h4>
             <p>
-              El catálogo de definiciones y lemas utiliza datos de fuentes libres: simplemma (MIT),
-              Wikcionario en español vía kaikki.org (CC BY-SA 4.0 / GFDL) y wordfreq (CC BY-SA 4.0).
+              Lecta incluye datos léxicos derivados para lematización y análisis de vocabulario. En estricto cumplimiento con las licencias de las fuentes originales:
             </p>
+            <ul style={{ paddingLeft: "var(--s-4)", display: "flex", flexDirection: "column", gap: "var(--s-2)" }}>
+              <li>
+                <strong>Tabla derivada forma → lema (ODbL 1.0):</strong> Contiene información de «Lemmatization lists» de Michal Měchura, disponible bajo la Open Database License (ODbL) 1.0. La tabla derivada <code>forma → lema</code> está licenciada bajo ODbL 1.0. En cumplimiento de las cláusulas §4.3 y §4.4 de la licencia, la base de datos derivada se encuentra disponible para su libre descarga pública en el repositorio <a href="https://github.com/lecta-app/lecta-lexicon-data" target="_blank" rel="noopener noreferrer">lecta-lexicon-data</a> (archivo <code>forms-es.csv.gz</code>).
+              </li>
+              <li>
+                <strong>Frecuencias zipf (CC BY-SA 4.0):</strong> Derivadas de <em>wordfreq</em> de Robyn Speer (CC BY-SA 4.0; incluye corpus Google Books Ngrams, Wikipedia, ParaCrawl, OpenSubtitles y listas SUBTLEX de Marc Brysbaert et al.). La tabla derivada <code>lemmas-freq-es.csv.gz</code> se publica bajo CC BY-SA 4.0.
+              </li>
+              <li>
+                <strong>Acepciones y definiciones (CC BY-SA 4.0 + GFDL):</strong> Las definiciones estructuradas provienen del Wikcionario en español vía <a href="https://kaikki.org" target="_blank" rel="noopener noreferrer">kaikki.org</a> bajo licencias libres CC BY-SA 4.0 y GFDL.
+              </li>
+              <li>
+                <strong>Componentes adicionales:</strong> Simplemma (MIT, © Adrien Barbaresi), FreeLing (LGPLLR), spaCy lookups-data (MIT), UniMorph (CC BY-SA 3.0) y Wikinflection (CC BY 4.0).
+              </li>
+            </ul>
             <h4 style={{ margin: "var(--s-3) 0 var(--s-1)" }}>Disponibilidad del servicio</h4>
             <p>
               El servicio se ofrece tal como está. Dado el diseño local-first, tus datos permanecen disponibles en

@@ -168,6 +168,15 @@ export function sanitizeSectionDocument(source: Document) {
   // páginas hasta pueden expulsar una imagen de su columna.
   for (const el of result.querySelectorAll("h1,h2,h3,h4,h5,h6"))
     if (!el.textContent?.trim() && !el.firstElementChild) el.remove();
+
+  // Accesibilidad: imágenes de EPUB sin atributo alt reciben alt=""
+  // para considerarse decorativas según WCAG 2.1 (evita fallos de lectura asistida).
+  for (const img of result.querySelectorAll("img")) {
+    if (!img.hasAttribute("alt")) {
+      img.setAttribute("alt", "");
+    }
+  }
+
   return result;
 }
 

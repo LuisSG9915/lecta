@@ -26,7 +26,6 @@ import { markWords } from "../lib/marks";
 import {
   captureDbScope,
   getStoredBook,
-  hasAnyLearningHistory,
   listAllKnowledge,
   listReadingEvents,
   listKnowledge,
@@ -46,13 +45,12 @@ import {
   type SavedBookPosition,
 } from "../lib/idb";
 import {
-  loadUserTheta,
   betaFromZipf,
   loadUserLanguageProfile,
   updateLanguageTheta,
   recordChapterCompleted,
 } from "../lib/profile-models";
-import { batchLookup, enrichBatch, explainInPassage, lookupWord } from "../lib/lexicon";
+import { batchLookup, enrichBatch, lookupWord } from "../lib/lexicon";
 import { scheduleCapturedReview } from "../lib/reviews";
 import {
   selectEnrichmentCandidates,
@@ -74,9 +72,7 @@ import {
   type VocabProfile,
 } from "../lib/knowledge";
 import {
-  buildSuggestionRows,
   extractKeyWordFromSentence,
-  type SuggestionRows,
 } from "../lib/section-words";
 import {
   chapterSummary,
@@ -147,9 +143,9 @@ import {
   applyStrategyPreset,
   applyReadingPreset,
   detectActiveReadingPreset,
-  isPrimingMutedForBook,
   muteBookForPriming,
   disablePrimingGlobally,
+  isFeatureFlagEnabled,
   type ReaderSettings,
   type ReadingStrategyPreset,
   type ThemeChoice,
@@ -161,16 +157,6 @@ import {
   scrollToSnippet,
   charOffsetAtViewTop,
 } from "../lib/reading-location";
-import { searchBookSections, type SearchHit } from "../lib/book-search";
-import {
-  listAnnotations,
-  saveAnnotation,
-  removeAnnotation,
-  updateAnnotation,
-  type SavedAnnotation,
-} from "../lib/idb";
-import { makeBookmark, makePassage, type PassageTone } from "../lib/annotations";
-import { applyPassageMarks } from "../lib/passage-marks";
 import {
   pageLayout,
   pageAdvance,
@@ -182,13 +168,9 @@ import {
   buildFragmentPageMap,
   type PageLayout,
 } from "../lib/pagination";
-import {
-  pushAnnotationsToServer,
-} from "../lib/reading-sync";
 import { pushOverlay, type OverlayHandle } from "../lib/history";
 import {
   dominatedLemmas,
-  markLevel,
   savedFormLevels,
   type MarkLevel,
 } from "../lib/word-level";
@@ -197,28 +179,11 @@ import {
   calibrationDoneKey,
   hasCalibrationEvidence,
 } from "../lib/calibration";
-import { calibrationBankZipf } from "../../shared/calibration-bank";
+import { calibrationBankZipf } from "../lib/knowledge";
 import {
   isTtsProgrammaticNav,
   isTtsProgrammaticScroll,
-  noteTtsProgrammaticScroll,
-  withTtsProgrammaticNav,
 } from "../lib/ttsGuards";
-import {
-  consentTts,
-  loadTtsSettings,
-} from "../lib/ttsSettings";
-import { sentenceIndexForAnchor } from "../lib/ttsSentences";
-import {
-  createTtsController,
-  type TtsController,
-} from "../lib/ttsController";
-import {
-  TTS_IDLE,
-  TTS_PLAYER_RATES,
-  type TtsEngineMode,
-  type TtsSnapshot,
-} from "../lib/ttsTypes";
 import {
   setCompanionAudioSuppressed,
   startAmbientPurr,
@@ -242,10 +207,6 @@ import {
 } from "../lib/book-search";
 import { translateParagraph } from "../lib/translate";
 import {
-  planPredictiveChapterPrecache,
-  prefetchUpcomingChaptersLexicon,
-} from "../lib/offline-dictionary";
-import {
   buildPostChapterConsolidationQueue,
   loadPostChapterConsolidationPrefs,
   isConsolidationActive,
@@ -254,15 +215,16 @@ import {
 } from "../lib/practice";
 import { ReaderRecapBubble } from "./ReaderRecapBubble";
 import { BilingueParagraph } from "./BilingueParagraph";
-import { kittenTtsEngine } from "../lib/kittenTtsEngine";
 import SmartReaderDock, { type FocusSuggestion } from "./SmartReaderDock";
-import { type SectionPreviewRow } from "./SectionPreview";
 import Sheet from "./Sheet";
 import Icon from "./Icon";
 import ReaderMoreMenu from "./ReaderMoreMenu";
 import { ReaderTopBar } from "./reader/ReaderTopBar";
 import { ReaderOverlays } from "./reader/ReaderOverlays";
+import { ReaderSearchAndTocSheet } from "./reader/ReaderSearchAndTocSheet";
 import { useReaderPersistence } from "../hooks/useReaderPersistence";
+import { useReaderAnnotationsAndSearch } from "../hooks/useReaderAnnotationsAndSearch";
+import { useReaderTts } from "../hooks/useReaderTts";
 import { downloadBookMarkdown } from "../lib/export";
 import {
   formatRemainingTime,
@@ -320,20 +282,6 @@ import {
   setBilingualMode,
   type PhraseIndex,
 } from "../lib/phrases";
-import {
-  acknowledgePreparationEntry,
-  buildPreparationEvidence,
-  buildPreparationWords,
-  confirmPreparation,
-  decidePreparation,
-  loadPreparationRecord,
-  newPreparationRecord,
-  preparationRecordKey,
-  savePreparationRecord,
-  type PreparationAnswers,
-  type PreparationRecord,
-  type PreparationRow,
-} from "../lib/preparation";
 
 type ReaderState = "idle" | "opening" | "ready" | "error";
 type SheetKind = "toc" | "settings" | "search" | "marks";
@@ -415,34 +363,12 @@ const SAVED_ENRICH_CAP = 20;
 
 const clampNumber = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
 
-export function shouldAutoShowPreview(
-  chapterPreviewMode: string | undefined,
-  bookId: string,
-  sectionIndex: number,
-  _coveragePct?: number,
-  unknownKeyWordsCount = 0,
-): boolean {
-  if (chapterPreviewMode === "off") return false;
-  if (unknownKeyWordsCount <= 0) return false;
-  const key = `lecta:previewed:${bookId}:${sectionIndex}`;
-  try {
-    if (sessionStorage.getItem(key) === "1" || localStorage.getItem(key) === "1") {
-      return false;
-    }
-  } catch {
-    // ignore storage errors
-  }
-  return true;
-}
-
-export function markSectionPreviewed(bookId: string, sectionIndex: number): void {
-  const key = `lecta:previewed:${bookId}:${sectionIndex}`;
-  try {
-    sessionStorage.setItem(key, "1");
-  } catch {
-    // ignore storage errors
-  }
-}
+import {
+  useReaderChapterPrep,
+  markSectionPreviewed,
+  shouldAutoShowPreview,
+} from "../hooks/useReaderChapterPrep";
+export { markSectionPreviewed, shouldAutoShowPreview };
 
 // Registra las palabras dominadas (repasadas, con ≥90 días de
 // estabilidad) como evidencia «conocida» inferida: alimenta el
@@ -509,8 +435,14 @@ export default function Reader({
   const lastScrollY = useRef(0);
   const savedForms = useRef<Map<string, MarkLevel>>(new Map());
   const sectionTiming = useRef<{ start: number; startRatio: number; words: number } | null>(null);
-  const overlayRelease = useRef<OverlayHandle | null>(null);
+  const overlayReleaseRef = useRef<OverlayHandle | null>(null);
+  const releaseOverlay = () => {
+    overlayReleaseRef.current?.release();
+    overlayReleaseRef.current = null;
+  };
   const tocRowsRef = useRef<TocRow[]>([]);
+  const currentChapterPrimedWordsRef = useRef<EpisodicWordItem[]>([]);
+  const ttsStopOnNavRef = useRef<(() => void) | null>(null);
   // El analizador por rango (T13) reemplaza al cache por sección:
   // deduplica por destino y trabaja sobre el tramo físico completo.
   // Se crea en loadBook tras el catálogo.
@@ -542,8 +474,6 @@ export default function Reader({
   // Id de esta apertura del libro: agrupa los eventos del trayecto
   // en una «visita». Se genera al primer uso (fuera del render).
   const visitIdRef = useRef<string | null>(null);
-  // Filas de preparación ya anotadas como realmente visibles.
-  const presentedKeysRef = useRef(new Set<string>());
   // Último destino anotado en el trayecto (una entrada por destino).
   const lastTargetEnteredRef = useRef<string | null>(null);
   // Una sola solicitud de definiciones para guardadas sin acepción
@@ -554,24 +484,6 @@ export default function Reader({
   const analyzingTargets = useRef(new Set<string>());
   // Destinos que ya gastaron su lote automático de definiciones IA.
   const enrichedTargets = useRef(new Set<string>());
-  // Espejo de la hoja de preparación para los callbacks (igual que
-  // sectionIndexRef para la sección): evita cerrar sobre estado viejo.
-  const prepRef = useRef<{
-    target: ChapterTarget;
-    record: PreparationRecord;
-    analysis: "loading" | "ready" | "error";
-    rows: SectionPreviewRow[];
-    uncertain: SectionPreviewRow[];
-    deferred: SectionPreviewRow[];
-    answers: PreparationAnswers;
-    // Identifica la presentación en el trayecto: cada apertura de la
-    // hoja agrupa lo que se mostró y lo que se respondió.
-    presentationId: string;
-    saving: boolean;
-  } | null>(null);
-  // Datos léxicos por clave de respuesta: la vista solo recibe la fila
-  // ligera; al confirmar se reconstruye la PreparationRow completa.
-  const prepLexRef = useRef(new Map<string, PreparationRow>());
   // Espejo de ajustes para callbacks (el modo de preparación se lee
   // al decidir, no al renderizar).
   const settingsRef = useRef<ReaderSettings | null>(null);
@@ -643,28 +555,6 @@ export default function Reader({
   // Analizador por rango (T13): un capítulo repartido es un solo
   // destino con una sola consulta de catálogo.
   const analyzerRef = useRef<ChapterAnalyzer | null>(null);
-  // Hoja de preparación controlada (T19): el lector marca conocidas/
-  // desconocidas y el controlador guarda vía confirmPreparation.
-  const [prep, setPrep] = useState<{
-    target: ChapterTarget;
-    record: PreparationRecord;
-    analysis: "loading" | "ready" | "error";
-    rows: SectionPreviewRow[];
-    uncertain: SectionPreviewRow[];
-    deferred: SectionPreviewRow[];
-    answers: PreparationAnswers;
-    presentationId: string;
-    saving: boolean;
-  } | null>(null);
-  // Aviso/acceso persistente «Palabras del capítulo»: vive en la zona
-  // de controles, fuera del texto, hasta atenderlo o descartarlo.
-  const [prepNotice, setPrepNotice] = useState<{
-    target: ChapterTarget;
-    summary: boolean;
-    count: number | null;
-  } | null>(null);
-  const prepDismissed = useRef(new Set<string>());
-  const prepEvaluated = useRef<string | null>(null);
   // Invitación a la prueba de vocabulario: aparece una vez por apertura
   // del libro al terminar el primer tramo leído, si la cuenta no ha
   // calibrado ni descartado la oferta («calibrationDone»). La franja
@@ -677,6 +567,129 @@ export default function Reader({
   const calEvaluated = useRef(false);
   const [language, setLanguage] = useState("es");
   const [selection, setSelection] = useState<WordHit | null>(null);
+  const [charOffsetInChapter, setCharOffsetInChapter] = useState(0);
+
+  const applyCachedPredictionRef = useRef<((index: number, lang: string) => SectionPrediction | null) | null>(null);
+  const zipfForLemmaRef = useRef<((lemma: string) => number | null) | null>(null);
+
+  const trackEvent = useCallback(
+    (draft: VisitEventDraft) => {
+      const visitId = (visitIdRef.current ??= crypto.randomUUID());
+      void trackReadingEvent(
+        { ...draft, visitId, bookHash },
+        captureDbScope(),
+      );
+    },
+    [bookHash],
+  );
+
+  const rangeFor = useCallback(
+    (index: number) => {
+      const cat = catalogRef.current;
+      if (!cat) return null;
+      return (
+        cat.ranges.find((r) => r.startSection <= index && index < r.endSection) ??
+        cat.ranges[0] ??
+        null
+      );
+    },
+    [],
+  );
+
+  const [_analyzing, setAnalyzing] = useState(false);
+
+  const setAnalyzingFor = useCallback((targetId: string, analyzing: boolean) => {
+    if (analyzing) analyzingTargets.current.add(targetId);
+    else analyzingTargets.current.delete(targetId);
+    const current = targetAt(
+      catalogRef.current?.ranges ?? [],
+      sectionIndexRef.current,
+    );
+    if (current?.id === targetId) setAnalyzing(analyzing);
+  }, []);
+
+  const ingestKnowledgeRow = useCallback(
+    (row: {
+      lemma: string;
+      known: boolean;
+      status?: "unknown" | "familiar" | "known";
+      passiveSeenCount?: number;
+      estimatedKnownProb?: number;
+    }) => {
+      const lemma = row.lemma.toLowerCase();
+      knowledgeMapRef.current.set(lemma, {
+        lemma,
+        known: row.known,
+        status: row.status,
+        passiveSeenCount: row.passiveSeenCount,
+        estimatedKnownProb: row.estimatedKnownProb,
+      });
+      const prev = evidenceRef.current.get(lemma);
+      evidenceRef.current.set(lemma, {
+        known: row.known,
+        zipf: prev?.zipf ?? zipfForLemmaRef.current?.(lemma) ?? null,
+      });
+      pendingKnowledgeRef.current.add(lemma);
+    },
+    [],
+  );
+
+  const {
+    prep,
+    setPrep,
+    prepNotice,
+    previewSuggested,
+    setPreviewSuggested,
+    showPreview,
+    setShowPreview,
+    closePrepLayer,
+    evaluatePreparation,
+    analyzeSection,
+    triggerL2Precache,
+    answerPrep,
+    confirmPrep,
+    skipPrep,
+    retryPrep,
+    discardPrep,
+    openPrepManual,
+    dismissPrepNotice,
+    recordPresented,
+    resetPrepForBook,
+  } = useReaderChapterPrep({
+    bookHash,
+    bookRef,
+    catalogRef,
+    analyzerRef,
+    language,
+    sectionIndexRef,
+    settingsRef,
+    tocRowsRef,
+    bookStartRef,
+    currentChapterPrimedWordsRef,
+    savedForms,
+    knowledgeMapRef,
+    evidenceRef,
+    profileRef,
+    adjustRef,
+    baseThresholdRef,
+    overlayReleaseRef,
+    pushOverlay,
+    releaseOverlay,
+    captureDbScope,
+    rangeFor,
+    setAnalyzingFor,
+    applyPrediction: (index, lang) => {
+      applyCachedPredictionRef.current?.(index, lang);
+    },
+    trackEvent,
+    ingestKnowledgeRow,
+    onStatus,
+    onError,
+    closeOtherOverlays: () => {
+      setSheet(null);
+      setSelection(null);
+    },
+  });
 
   useEffect(() => {
     if (readerInitialWord && state === "ready") {
@@ -690,7 +703,6 @@ export default function Reader({
   // Predicción de la sección visible (marcas punteadas en el texto).
   // Null mientras no haya análisis aplicable.
   const [prediction, setPrediction] = useState<SectionPrediction | null>(null);
-  const [_analyzing, setAnalyzing] = useState(false);
   const [_enriching, setEnriching] = useState<{
     index: number;
     done: number;
@@ -714,10 +726,6 @@ export default function Reader({
   const denseStallDetectorRef = useRef<DenseStallDetector>(
     newDenseStallDetector(0),
   );
-
-  // Previsualización de capítulo como píldora opcional (Zero-Friction Track 1)
-  const [previewSuggested, setPreviewSuggested] = useState(false);
-  const [showPreview, setShowPreview] = useState(false);
 
   const focusTelemetryRef = useRef({
     pageEnteredAt: Date.now(),
@@ -755,7 +763,6 @@ export default function Reader({
   const stallBubbleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [bookOverride, setBookOverride] = useState(() => hasBookReaderSettings(bookHash));
   const [seenStatus, setSeenStatus] = useState(statusText);
-  const [annotations, setAnnotations] = useState<SavedAnnotation[]>([]);
 
   // Track 5: Burbuja "¿En qué me quedé?" tras > 6 horas de inactividad
   const [recapBubbleVisible, setRecapBubbleVisible] = useState(false);
@@ -764,7 +771,6 @@ export default function Reader({
   const recapCheckedRef = useRef(false);
 
   // Track 12: Ensamblaje Maestro de Ciclo de Vida del Capítulo
-  const currentChapterPrimedWords = useRef<EpisodicWordItem[]>([]);
   const currentChapterLookups = useRef<EpisodicWordItem[]>([]);
   const chapterStartedAtRef = useRef<number>(Date.now());
   const pendingNextChapterRef = useRef<number | null>(null);
@@ -783,9 +789,6 @@ export default function Reader({
 
   // Track 5: Doble toque para traducir párrafo
   const lastTapRef = useRef<{ time: number; element: HTMLElement | null }>({ time: 0, element: null });
-  const [searchQ, setSearchQ] = useState("");
-  const [searchHits, setSearchHits] = useState<SearchHit[]>([]);
-  const [searchDone, setSearchDone] = useState(true);
   const [returnPoint, setReturnPoint] = useState<{
     sectionIndex: number;
     ratio: number;
@@ -799,26 +802,7 @@ export default function Reader({
   } | null>(null);
   const lastPointerTypeRef = useRef<string>("mouse");
   const [showLongPressHint, setShowLongPressHint] = useState(false);
-  const [editingNote, setEditingNote] = useState<string | null>(null);
-  const [noteDraft, setNoteDraft] = useState("");
-  const [quoteCard, setQuoteCard] = useState<{
-    text: string;
-    bookTitle?: string;
-    author?: string;
-    chapterTitle?: string;
-    alreadySaved?: boolean;
-  } | null>(null);
   const [deepModal, setDeepModal] = useState(false);
-  const [catPassageExplanation, setCatPassageExplanation] = useState<{
-    passage: string;
-    loading: boolean;
-    data: {
-      contextualMeaning: string;
-      toneAndNuance: string;
-      catTip: string;
-    } | null;
-    error: string | null;
-  } | null>(null);
   const [pageRecap, setPageRecap] = useState<{
     loading: boolean;
     data: PageRecapResult | null;
@@ -845,20 +829,23 @@ export default function Reader({
     currentSectionTargetsRef.current = currentSectionTargets;
   }, [currentSectionTargets]);
 
-  const fragmentPageMap = useMemo(() => {
+  const [fragmentPageMap, setFragmentPageMap] = useState<Map<string, number> | null>(null);
+
+  useEffect(() => {
     if (
       settings.layout !== "pages" ||
       !pageMetrics ||
       !containerRef.current ||
       currentSectionTargets.length <= 1
     ) {
-      return null;
+      setFragmentPageMap(null);
+      return;
     }
     const fragments = currentSectionTargets
       .map((t: ChapterTarget) => t.fragment)
       .filter((f: string | undefined): f is string => Boolean(f));
-    return buildFragmentPageMap(containerRef.current, pageMetrics, fragments);
-  }, [settings.layout, pageMetrics, currentSectionTargets, sectionIndex, pageCount]);
+    setFragmentPageMap(buildFragmentPageMap(containerRef.current, pageMetrics, fragments));
+  }, [settings.layout, pageMetrics, currentSectionTargets]);
 
   const activeIntraContext = useMemo<IntraSectionContext>(() => {
     if (settings.layout === "pages") {
@@ -877,6 +864,54 @@ export default function Reader({
     if (!catalog) return null;
     return targetAt(catalog.ranges, sectionIndex, activeIntraContext);
   }, [catalog, sectionIndex, activeIntraContext]);
+
+  const {
+    annotations,
+    bookmark,
+    passages,
+    searchQ,
+    setSearchQ,
+    searchHits,
+    searchDone,
+    editingNote,
+    setEditingNote,
+    noteDraft,
+    setNoteDraft,
+    quoteCard,
+    setQuoteCard,
+    catPassageExplanation,
+    setCatPassageExplanation,
+    sectionLabel,
+    saveBookmarkHere,
+    removeMark,
+    saveNote,
+    savePassageSelection,
+    openQuoteCardFromSelection,
+    askCatAboutSelection,
+    savePassageDirectly,
+  } = useReaderAnnotationsAndSearch({
+    bookHash,
+    sectionIndex,
+    state,
+    vocabVersion,
+    prediction,
+    bookRef,
+    containerRef,
+    metricsRef,
+    layoutRef,
+    pageRef,
+    tocRows,
+    tocRowsRef,
+    currentChapterTarget,
+    sectionTitle,
+    title,
+    author,
+    language,
+    signedIn,
+    captureDbScope,
+    onStatus,
+    setSelButton,
+  });
   // Gato acompañante en el lector: el aspecto (etapa, accesorios,
   // nombre, presencia) viene del CompanionProvider único — aquí solo
   // queda el estado visible de la máquina local de lectura.
@@ -894,7 +929,6 @@ export default function Reader({
     savedInRange: number;
     rereadTo: { index: number; fragment?: string } | null;
   } | null>(null);
-  const searchAbort = useRef<AbortController | null>(null);
   // Segmento de lectura abierto: empieza con la primera señal real y
 
 
@@ -1164,11 +1198,6 @@ export default function Reader({
 
   if (seenStatus !== statusText) setSeenStatus(statusText);
 
-  const releaseOverlay = () => {
-    overlayRelease.current?.release();
-    overlayRelease.current = null;
-  };
-
   // ---------- Gato acompañante y telemetría de foco ----------
 
   // Única puerta a la máquina del gato: nunca asigna sin cambiar —
@@ -1418,13 +1447,16 @@ export default function Reader({
         ) ?? undefined;
     }
     const close = () => {
-      overlayRelease.current = null;
+      overlayReleaseRef.current = null;
       setSelection(null);
     };
-    if (overlayRelease.current) overlayRelease.current.swap(close);
-    else overlayRelease.current = pushOverlay(close);
+    if (overlayReleaseRef.current) overlayReleaseRef.current.swap(close);
+    else overlayReleaseRef.current = pushOverlay(close);
     setSheet(null);
     setSelection(hit);
+    if (containerRef.current) {
+      setCharOffsetInChapter(charOffsetAtViewTop(containerRef.current, sectionTextRef.current));
+    }
     consultedInPageRef.current.add(hit.word.toLowerCase());
     // Recalibración adaptativa hacia abajo (outcome = 0) para el idioma actual y registro en lookups del capítulo
     try {
@@ -1472,11 +1504,11 @@ export default function Reader({
 
   const openSheet = (kind: SheetKind) => {
     const close = () => {
-      overlayRelease.current = null;
+      overlayReleaseRef.current = null;
       setSheet(null);
     };
-    if (overlayRelease.current) overlayRelease.current.swap(close);
-    else overlayRelease.current = pushOverlay(close);
+    if (overlayReleaseRef.current) overlayReleaseRef.current.swap(close);
+    else overlayReleaseRef.current = pushOverlay(close);
     setSelection(null);
     setSheet(kind);
   };
@@ -1584,7 +1616,9 @@ export default function Reader({
     latestPositionRef.current = pos;
     return pos;
   }, [bookHash]);
-  capturePositionRef.current = capturePosition;
+  useEffect(() => {
+    capturePositionRef.current = capturePosition;
+  }, [capturePosition]);
 
   // Mide la caja útil y reparte las columnas. La medida (ch) se toma
   // de una sonda real para respetar la fuente elegida. El recuento de
@@ -1648,18 +1682,7 @@ export default function Reader({
 
   // ---------- Predicción por sección (perfil del lector) ----------
 
-  // Bandera de «sección analizándose» por índice; el estado `analyzing`
   // ---------- Predicción por destino (perfil del lector) ----------
-
-  // Rango del catálogo que contiene la sección física.
-  const rangeFor = useCallback(
-    (index: number) =>
-      catalogRef.current?.ranges.find(
-        (range) =>
-          range.startSection <= index && index < range.endSection,
-      ) ?? null,
-    [],
-  );
 
   // Análisis «ready» del destino que contiene la sección.
   const analysisFor = useCallback(
@@ -1671,21 +1694,6 @@ export default function Reader({
       return cached?.state === "ready" ? cached : undefined;
     },
     [rangeFor],
-  );
-
-  // Bandera de «destino analizándose» por id de target; el estado
-  // `analyzing` solo refleja el destino visible.
-  const setAnalyzingFor = useCallback(
-    (targetId: string, on: boolean) => {
-      if (on) analyzingTargets.current.add(targetId);
-      else analyzingTargets.current.delete(targetId);
-      const current = targetAt(
-        catalogRef.current?.ranges ?? [],
-        sectionIndexRef.current,
-      );
-      if (current?.id === targetId) setAnalyzing(on);
-    },
-    [],
   );
 
   // Clasifica el destino ya cacheado contra el perfil vigente y el
@@ -1726,6 +1734,9 @@ export default function Reader({
     },
     [classifyCached],
   );
+  useEffect(() => {
+    applyCachedPredictionRef.current = applyCachedPrediction;
+  }, [applyCachedPrediction]);
 
   // Tras una predicción con huecos (formas sin ficha o predichas sin
   // acepciones), la IA define lo que falta sola: una vez por destino,
@@ -1798,55 +1809,6 @@ export default function Reader({
 
   // ---------- Trayecto de lectura (diagnóstico local) ----------
 
-  // Registra un evento de esta visita y este libro. Auxiliar:
-  // trackReadingEvent ya traga sus errores y respeta la preferencia
-  // de Cuenta; aquí solo falta el `void` y los ids de contexto.
-  const trackEvent = useCallback(
-    (draft: VisitEventDraft) => {
-      const visitId = (visitIdRef.current ??= crypto.randomUUID());
-      void trackReadingEvent(
-        { ...draft, visitId, bookHash },
-        captureDbScope(),
-      );
-    },
-    [bookHash],
-  );
-
-  // Anota las filas que la hoja dejó realmente visibles (página
-  // inicial, «Ver más», consulta secundaria), deduplicando por clave.
-  const recordPresented = (rows: SectionPreviewRow[]) => {
-    const current = prepRef.current;
-    if (!current) return;
-    const fresh = rows.filter((row) => !presentedKeysRef.current.has(row.key));
-    if (!fresh.length) return;
-    for (const row of fresh) presentedKeysRef.current.add(row.key);
-    trackEvent({
-      kind: "preparation_presented",
-      targetId: current.target.id,
-      presentationId: current.presentationId,
-      rows: fresh.map((row) => ({
-        key: row.key,
-        form: row.form,
-        lemma: row.lemma ?? undefined,
-        reason: row.reason ?? "rarity",
-        zipf: row.zipf,
-      })),
-    });
-    const freshPrimed: EpisodicWordItem[] = fresh.slice(0, 5).map((row) => ({
-      lemma: row.lemma || row.form,
-      surfaceForm: row.form,
-      lang: language || "es",
-      shortGloss: row.meaning || "",
-      chapterSentence: row.context || row.contextSnippet || row.form,
-      chapterTitle: current.target.label,
-      source: "pre-chapter-primed",
-      partOfSpeech: row.pos ?? undefined,
-    }));
-    if (freshPrimed.length > 0) {
-      currentChapterPrimedWords.current = freshPrimed;
-    }
-  };
-
   // Medición de un lema desde el análisis cacheado del destino
   // visible: la evidencia escrita en sesión no espera al próximo
   // batchLookup de refreshProfile para pesar en el perfil.
@@ -1861,35 +1823,9 @@ export default function Reader({
     },
     [analysisFor, language],
   );
-
-  // Evidencia recién escrita entra al modelo en memoria y queda
-  // marcada como pendiente: refreshProfile no la pisa si el store aún
-  // no la refleja al releer.
-  const ingestKnowledgeRow = useCallback(
-    (row: {
-      lemma: string;
-      known: boolean;
-      status?: "unknown" | "familiar" | "known";
-      passiveSeenCount?: number;
-      estimatedKnownProb?: number;
-    }) => {
-      const lemma = row.lemma.toLowerCase();
-      knowledgeMapRef.current.set(lemma, {
-        lemma,
-        known: row.known,
-        status: row.status,
-        passiveSeenCount: row.passiveSeenCount,
-        estimatedKnownProb: row.estimatedKnownProb,
-      });
-      const prev = evidenceRef.current.get(lemma);
-      evidenceRef.current.set(lemma, {
-        zipf: prev?.zipf ?? zipfForLemma(lemma),
-        known: row.known,
-      });
-      pendingKnowledgeRef.current.add(lemma);
-    },
-    [zipfForLemma],
-  );
+  useEffect(() => {
+    zipfForLemmaRef.current = zipfForLemma;
+  }, [zipfForLemma]);
 
   // Evidencia nueva aplicada de inmediato: perfil reestimado y la
   // sección visible reclasificada sin esperar otra recarga.
@@ -1978,500 +1914,6 @@ export default function Reader({
   const navPrevSection = (index: number, fragment?: string) => {
     trackMove(true);
     void navigate("chapter", { index, fragment });
-  };
-
-  // ---------- Preparación de vocabulario (T19) ----------
-
-  // Filas de la hoja desde un análisis listo: la selección principal
-  // (predichas + «aprendiendo») y la consulta secundaria con lo que
-  // el catálogo no sabe medir — nombres propios y extranjerismos solo
-  // capitalizados quedan fuera. Los datos léxicos completos van a
-  // prepLexRef por clave: el confirmar los necesita para armar
-  // evidencia y palabras sin volver a buscarlos.
-  const prepRowsFor = useCallback(
-    (
-      analysis: ReadyAnalysis,
-      lang: string,
-      lex?: Map<string, PreparationRow>,
-    ): SuggestionRows =>
-      buildSuggestionRows({
-        language: lang,
-        forms: analysis.forms,
-        entries: analysis.entries,
-        capitalOnly: analysis.capitalOnly,
-        text: analysis.text,
-        saved: savedForms.current,
-        knowledge: knowledgeMapRef.current,
-        threshold:
-          profileRef.current?.threshold ??
-          estimateProfile(
-            [...evidenceRef.current.values()],
-            adjustRef.current,
-            baseThresholdRef.current,
-          ).threshold,
-        userTheta: loadUserTheta(
-          profileRef.current?.threshold ??
-          estimateProfile(
-            [...evidenceRef.current.values()],
-            adjustRef.current,
-            baseThresholdRef.current,
-          ).threshold,
-          lang,
-        ),
-        isSecondLanguage: lang !== loadNativeLanguage(),
-        lex,
-      }),
-    [],
-  );
-
-  // Cierra la capa de preparación: la corre el `close` del historial
-  // (botón atrás) y los cierres explícitos — release() solo desenrolla
-  // la entrada, el estado hay que limpiarlo aquí. Conserva el borrador
-  // y, si sigue pendiente, deja el aviso como vía para retomarlo (en
-  // modo «off» el acceso manual basta, no se muestra nada).
-  const closePrepLayer = () => {
-    setShowPreview(false);
-    const current = prepRef.current;
-    prepRef.current = null;
-    setPrep(null);
-    if (current) {
-      void savePreparationRecord(
-        {
-          ...current.record,
-          updatedAt: Date.now(),
-        },
-        captureDbScope(),
-      ).catch(() => undefined);
-      if (
-        current.record.disposition === "pending" &&
-        settingsRef.current?.preparationMode !== "off"
-      )
-        setPrepNotice({
-          target: current.target,
-          summary: false,
-          count: current.rows.length || null,
-        });
-    }
-  };
-
-  // Abre la hoja de preparación para un destino: capa propia del
-  // historial (atrás = cerrar hoja, como el resto de ventanas) y
-  // análisis compartido con el pipeline del capítulo — deduplicado.
-  const openPrepSheet = useCallback(
-    async (target: ChapterTarget, record: PreparationRecord | null) => {
-      const scope = captureDbScope();
-      const cat = catalogRef.current;
-      const analyzer = analyzerRef.current;
-      const book = bookRef.current;
-      const range =
-        cat?.ranges.find((r) => r.target.id === target.id) ??
-        (cat?.ranges && cat.ranges.length > 0
-          ? cat.ranges.find((r) => r.target.sectionIndex === target.sectionIndex) ?? cat.ranges[0]
-          : undefined);
-      if (!cat || !analyzer || !book || !range) return;
-      const lang = language || getBookLanguage(book);
-      const base =
-        record ??
-        (await loadPreparationRecord(bookHash, target.id, scope).catch(() => null)) ??
-        newPreparationRecord({ bookHash, targetId: target.id, updatedAt: Date.now() });
-      const close = () => {
-        overlayRelease.current = null;
-        closePrepLayer();
-      };
-      if (overlayRelease.current) overlayRelease.current.swap(close);
-      else overlayRelease.current = pushOverlay(close);
-      setSheet(null);
-      setSelection(null);
-      presentedKeysRef.current.clear();
-
-      const cached = analyzer.cached(range.target.id);
-      const cachedSuggestion =
-        cached?.state === "ready"
-          ? prepRowsFor(cached, lang, prepLexRef.current)
-          : null;
-
-      const initial = {
-        target,
-        record: base,
-        analysis: cachedSuggestion ? ("ready" as const) : ("loading" as const),
-        rows: cachedSuggestion ? cachedSuggestion.rows : ([] as SectionPreviewRow[]),
-        uncertain: cachedSuggestion ? cachedSuggestion.uncertain : ([] as SectionPreviewRow[]),
-        deferred: cachedSuggestion ? cachedSuggestion.deferred : ([] as SectionPreviewRow[]),
-        presentationId: crypto.randomUUID(),
-        answers: base.answers,
-        saving: false,
-      };
-      prepRef.current = initial;
-      setPrep(initial);
-      const result = await analyzer.analyze(range);
-      const current = prepRef.current;
-      // El resultado tardío se descarta si la hoja ya no es la misma.
-      if (!current || current.target.id !== target.id) return;
-      if (result.state === "ready") {
-        const suggestion = prepRowsFor(result, lang, prepLexRef.current);
-        const next = {
-          ...current,
-          analysis: "ready" as const,
-          rows: suggestion.rows,
-          uncertain: suggestion.uncertain,
-          deferred: suggestion.deferred,
-        };
-        prepRef.current = next;
-        setPrep(next);
-      } else {
-        const next = { ...current, analysis: "error" as const };
-        prepRef.current = next;
-        setPrep(next);
-      }
-    },
-    [bookHash, prepRowsFor, language],
-  );
-
-  // Evalúa la matriz de apertura para un destino y actúa: hoja, aviso
-  // persistente, resumen de una sola vez o nada. `enter` corre al
-  // entrar al capítulo; `analysis-settled` solo actualiza el aviso.
-  const evaluatePreparation = useCallback(
-    async (
-      index: number,
-      via: "enter" | "analysis-settled" = "enter",
-      prevTargetId: string | null = null,
-    ) => {
-      const cat = catalogRef.current;
-      const book = bookRef.current;
-      if (!cat || !book) return;
-      // La primera entrada usa el destino de preparación elegido al
-      // seleccionar inicio (preparar el capítulo leyendo la intro);
-      // después manda el destino que contiene la sección.
-      const recorded = bookStartRef.current;
-      if (via === "enter") bookStartRef.current = null;
-      let target: ChapterTarget | null = null;
-      if (via === "enter" && recorded?.preparationTargetId) {
-        target =
-          cat.targets.find(
-            (item) => item.id === recorded.preparationTargetId,
-          ) ?? null;
-      }
-      target ??= targetAt(cat.ranges, index);
-      if (!target) return;
-      let firstEval = false;
-      if (via === "enter") {
-        // Entrar a otra sección del mismo destino no reevalúa: solo
-        // la primera evaluación del libro o un cambio real de destino
-        // disparan la decisión. `prevTargetId` viene de navigate y
-        // distingue «intro → cap1» de «cap1 §2 → cap1 §3».
-        firstEval = prepEvaluated.current == null;
-        if (!firstEval && prevTargetId === target.id) return;
-        prepEvaluated.current = target.id;
-      }
-      const scope = captureDbScope();
-      const record = await loadPreparationRecord(bookHash, target.id, scope).catch(
-        () => null,
-      );
-      if (bookRef.current !== book) return;
-      if (
-        isPrimingMutedForBook(bookHash) ||
-        settingsRef.current?.chapterPrimingMode === "off"
-      ) {
-        setPrepNotice(null);
-        return;
-      }
-      const decision = decidePreparation({
-        mode: settingsRef.current?.preparationMode ?? "auto",
-        intent: via,
-        record,
-        noticeDismissed: prepDismissed.current.has(target.id),
-      });
-      let opening = decision.opening;
-      // El primer capítulo de una cuenta sin historial: la hoja
-      // pediría clasificar palabras que el perfil aún no sabe usar —
-      // entra directo con el aviso discreto; la calibración después
-      // del primer tramo aprende el nivel sin pedirlo por adelantado.
-      if (opening === "prepare" && firstEval) {
-        if (!(await hasAnyLearningHistory(scope).catch(() => true)))
-          opening = "notice";
-        if (bookRef.current !== book) return;
-      }
-      if (opening === "prepare") {
-        opening = "notice";
-      }
-      if (opening === "notice" || opening === "summary") {
-        if (opening === "summary" && record)
-          void savePreparationRecord(
-            acknowledgePreparationEntry(record, Date.now()),
-            scope,
-          ).catch(() => undefined);
-        const cached = analyzerRef.current?.cached(target.id);
-        const count =
-          cached?.state === "ready"
-            ? prepRowsFor(cached, language || getBookLanguage(book)).rows.length
-            : null;
-        setPrepNotice({
-          target,
-          summary: opening === "summary",
-          count,
-        });
-        if (
-          shouldAutoShowPreview(
-            (settingsRef.current as { chapterPreview?: string; preparationMode?: string } | null)?.chapterPreview ?? settingsRef.current?.preparationMode,
-            bookHash,
-            target.sectionIndex,
-            95,
-            count ?? 0,
-          )
-        ) {
-          setPreviewSuggested(true);
-        } else {
-          setPreviewSuggested(false);
-        }
-        return;
-      }
-      setPrepNotice((cur) => (cur?.target.id === target.id ? null : cur));
-      setPreviewSuggested(false);
-    },
-    [bookHash, openPrepSheet, prepRowsFor, language],
-  );
-
-  // Análisis del destino de la sección: deduplicado por el analizador,
-  // sin bloquear la pintura. Un fallo no impide leer — la hoja muestra
-  // su propio estado de error si el usuario la abre.
-  const runSectionAnalysis = useCallback(
-    async (index: number, knownText?: string) => {
-      const book = bookRef.current;
-      const analyzer = analyzerRef.current;
-      const range = rangeFor(index);
-      if (!book || !analyzer || !range) return;
-      const lang = language || getBookLanguage(book);
-      setAnalyzingFor(range.target.id, true);
-      try {
-        const result = await analyzer.analyze(
-          range,
-          knownText != null
-            ? { knownSection: { index, text: knownText } }
-            : undefined,
-        );
-        if (result.state === "ready") {
-          applyPrediction(index, lang);
-          // Track 12: Primed words para consolidación episódica de fin de capítulo
-          const suggestion = prepRowsFor(result, lang, prepLexRef.current);
-          const tocLabel = tocRowsRef.current.find((r) => r.index === index)?.label;
-          const primed: EpisodicWordItem[] = (suggestion?.rows ?? []).slice(0, 5).map((row) => ({
-            lemma: row.lemma || row.form,
-            surfaceForm: row.form,
-            lang,
-            shortGloss: row.meaning || "",
-            chapterSentence: row.context || row.contextSnippet || row.form,
-            chapterTitle: tocLabel || `Sección ${index + 1}`,
-            source: "pre-chapter-primed",
-            partOfSpeech: row.pos ?? undefined,
-          }));
-          if (primed.length > 0) {
-            currentChapterPrimedWords.current = primed;
-          }
-          // Si hay aviso para este destino, el conteo se actualiza;
-          // si el aviso fue descartado, no reaparece.
-          void evaluatePreparation(index, "analysis-settled");
-        }
-      } finally {
-        setAnalyzingFor(range.target.id, false);
-      }
-    },
-    [rangeFor, setAnalyzingFor, applyPrediction, evaluatePreparation, language],
-  );
-
-  // Análisis con precarga: al terminar deja lista también la siguiente
-  // parte real del catálogo (el próximo capítulo, no otra sección).
-  const analyzeSection = useCallback(
-    async (index: number, knownText?: string) => {
-      await runSectionAnalysis(index, knownText);
-      void analyzerRef.current?.preloadNext(index);
-    },
-    [runSectionAnalysis],
-  );
-
-  // ---------- Acciones de la hoja de preparación ----------
-
-  // Respuesta en borrador: se persiste al vuelo para que cerrar y
-  // reabrir la retome donde quedó.
-  const answerPrep = (key: string, answer: "known" | "unknown") => {
-    const current = prepRef.current;
-    if (!current) return;
-    const answers = { ...current.answers, [key]: answer };
-    const record = {
-      ...current.record,
-      answers,
-      updatedAt: Date.now(),
-    };
-    const next = { ...current, answers, record };
-    prepRef.current = next;
-    setPrep(next);
-    void savePreparationRecord(record, captureDbScope()).catch(() => undefined);
-    trackEvent({
-      kind: "preparation_answered",
-      targetId: current.target.id,
-      presentationId: current.presentationId,
-      key,
-      answer,
-    });
-  };
-
-  // «Guardar y leer»: lote atómico (registro + conocimiento + Cuaderno)
-  // vía confirmPreparation; lo escrito alimenta marcas y perfil.
-  const confirmPrep = async () => {
-    const current = prepRef.current;
-    if (!current || current.saving) return;
-    const withSaving = { ...current, saving: true };
-    prepRef.current = withSaving;
-    setPrep(withSaving);
-    const lex = prepLexRef.current;
-    // Las diferidas también pueden haberse respondido (consulta
-    // aparte): su evidencia y sus palabras entran al mismo lote.
-    const rows: PreparationRow[] = [
-      ...current.rows,
-      ...current.uncertain,
-      ...current.deferred,
-    ].map((row) => lex.get(row.key) ?? { form: row.form, lemma: row.lemma });
-    const record: PreparationRecord = {
-      ...current.record,
-      answers: current.answers,
-      disposition: "reviewed",
-      updatedAt: Date.now(),
-    };
-    // La disposición final queda en prepRef antes de cerrar: el
-    // persist de closePrepLayer guarda este registro, no el borrador.
-    prepRef.current = { ...withSaving, record };
-    const result = await confirmPreparation(
-      {
-        record,
-        recordKey: preparationRecordKey(bookHash, current.target.id),
-        knowledge: buildPreparationEvidence(language, rows, current.answers),
-        words: buildPreparationWords(language, rows, current.answers, bookHash),
-      },
-      captureDbScope(),
-    );
-    if (!result.saved) {
-      const reverted = { ...withSaving, saving: false };
-      prepRef.current = reverted;
-      setPrep(reverted);
-      onError("No se pudo guardar la preparación. Intenta de nuevo.");
-      return;
-    }
-    // Aplica lo escrito: evidencia al perfil (ambas respuestas pesan,
-    // con su zipf resuelto del análisis), desconocidas al Cuaderno.
-    for (const item of result.knowledge) ingestKnowledgeRow(item);
-    for (const word of result.words) {
-      // El nivel sale de la tarjeta realmente escrita: una palabra ya
-      // guardada conserva su tarjeta (la mezcla no la baja a «new») y
-      // una dominada respondida por ficha rara deja de marcarse.
-      const level = markLevel(word.card);
-      for (const form of [word.form, word.lemma]) {
-        if (!form) continue;
-        const key = form.toLowerCase();
-        if (level) savedForms.current.set(key, level);
-        else savedForms.current.delete(key);
-      }
-    }
-    const next = estimateProfile(
-      [...evidenceRef.current.values()],
-      adjustRef.current,
-      baseThresholdRef.current,
-    );
-    profileRef.current = next;
-    applyPrediction(sectionIndexRef.current, language);
-    releaseOverlay();
-    closePrepLayer();
-    if (!result.synced)
-      onStatus("Guardado en este dispositivo; se sincroniza al volver la conexión.");
-    else if (result.words.length)
-      onStatus(
-          `${result.words.length} palabra(s) agregada(s) a tu cuaderno.`,
-      );
-  };
-
-  // «Leer sin preparar»: marca el destino como declinado — no se vuelve
-  // a interponer y no genera evidencia.
-  const skipPrep = () => {
-    const current = prepRef.current;
-    if (!current) return;
-    const record: PreparationRecord = {
-      ...current.record,
-      answers: current.answers,
-      disposition: "skipped",
-      entryAcknowledged: true,
-      updatedAt: Date.now(),
-    };
-    prepRef.current = { ...current, record };
-    trackEvent({
-      kind: "preparation_skipped",
-      targetId: current.target.id,
-      presentationId: current.presentationId,
-    });
-    releaseOverlay();
-    closePrepLayer();
-  };
-
-  // Reintento tras error de análisis: mismo flujo de apertura, la capa
-  // del historial ya existe — solo se actualiza el estado.
-  const retryPrep = async () => {
-    const current = prepRef.current;
-    const analyzer = analyzerRef.current;
-    const cat = catalogRef.current;
-    if (!current || !analyzer || !cat) return;
-    const range = cat.ranges.find((r) => r.target.id === current.target.id);
-    if (!range) return;
-    const loading = { ...current, analysis: "loading" as const };
-    prepRef.current = loading;
-    setPrep(loading);
-    const result = await analyzer.analyze(range);
-    const now = prepRef.current;
-    if (!now || now.target.id !== current.target.id) return;
-    const suggestion =
-      result.state === "ready"
-        ? prepRowsFor(result, language, prepLexRef.current)
-        : null;
-    const next = suggestion
-      ? {
-          ...now,
-          analysis: "ready" as const,
-          rows: suggestion.rows,
-          uncertain: suggestion.uncertain,
-          deferred: suggestion.deferred,
-        }
-      : { ...now, analysis: "error" as const };
-    prepRef.current = next;
-    setPrep(next);
-  };
-
-  // Descarte explícito del borrador: vacía respuestas sin cerrar.
-  const discardPrep = () => {
-    const current = prepRef.current;
-    if (!current) return;
-    const record: PreparationRecord = {
-      ...current.record,
-      answers: {},
-      updatedAt: Date.now(),
-    };
-    const next = { ...current, answers: {}, record };
-    prepRef.current = next;
-    setPrep(next);
-    void savePreparationRecord(record, captureDbScope()).catch(() => undefined);
-  };
-
-  // Acceso manual «Palabras del capítulo» (modo «off» incluido): abre
-  // la hoja del destino visible respetando su registro previo.
-  const openPrepManual = () => {
-    setShowPreview(true);
-    const target =
-      prepNotice?.target ??
-      currentChapterTarget ??
-      targetAt(catalogRef.current?.ranges ?? [], sectionIndexRef.current) ??
-      catalogRef.current?.targets?.[0];
-    setPrepNotice(null);
-    if (target) void openPrepSheet(target, null);
-  };
-
-  const dismissPrepNotice = () => {
-    if (prepNotice) prepDismissed.current.add(prepNotice.target.id);
-    setPrepNotice(null);
   };
 
   // Perfil del lector: la evidencia en ambas direcciones calibra el
@@ -2668,15 +2110,7 @@ export default function Reader({
           currentChapterLookups.current = [];
           chapterStartedAtRef.current = Date.now();
         }
-        const isL2 = lang !== loadNativeLanguage();
-        if (isL2 && (typeof navigator === "undefined" || !("onLine" in navigator) || navigator.onLine)) {
-          planPredictiveChapterPrecache(index, book.sections.length, 2);
-          void prefetchUpcomingChaptersLexicon(bookHash, index, {
-            lookahead: 2,
-            language: lang,
-            scope: captureDbScope(),
-          });
-        }
+        triggerL2Precache(index, book.sections.length, lang);
         const enterFrom =
           sectionIndexRef.current >= 0 && index !== sectionIndexRef.current
             ? index > sectionIndexRef.current
@@ -2817,7 +2251,7 @@ export default function Reader({
       // La voz solo cede ante navegación del lector: los avances que
       // hace el propio TTS dentro del target llegan protegidos por
       // withTtsProgrammaticNav y no cierran la sesión.
-      if (!isTtsProgrammaticNav()) ttsRef.current?.stop("navigation");
+      if (!isTtsProgrammaticNav()) ttsStopOnNavRef.current?.();
       const restore = { ...dest.restore };
       if (dest.fragment) restore.fragment = dest.fragment;
       const prevTargetId = targetAt(
@@ -2869,215 +2303,52 @@ export default function Reader({
   );
 
   // ---------- «Leer en voz alta» ----------
-  // La sesión vive en un controlador estable creado una vez por
-  // montaje; las funciones del lector que toca se sirven por espejo
-  // (misma razón que sectionIndexRef: evitar cierres de estado viejo
-  // sin rehacer la sesión en cada render).
-  const ttsRef = useRef<TtsController | null>(null);
-  const [ttsSnap, setTtsSnap] = useState<TtsSnapshot>(TTS_IDLE);
-  const [ttsConsentOpen, setTtsConsentOpen] = useState(false);
-  const [ttsDownloadProgress, setTtsDownloadProgress] = useState<number | null>(null);
-  const [isKittenModelDownloaded, setIsKittenModelDownloaded] = useState(false);
-
-  useEffect(() => {
-    if (ttsConsentOpen) {
-      void kittenTtsEngine.isModelDownloaded().then((downloaded) => {
-        setIsKittenModelDownloaded(downloaded);
-      });
-    }
-  }, [ttsConsentOpen]);
-
-  const handleDeleteTtsModel = async () => {
-    await kittenTtsEngine.removeDownloadedModel();
-    setIsKittenModelDownloaded(false);
-    setTtsDownloadProgress(null);
-  };
-  const ttsFns = useRef({
-    navigate,
-    trackEvent,
-    noteActivity,
-    onStatus,
-    reducedMotion: companion.reducedMotion,
+  const {
+    ttsRef,
+    ttsSnap,
+    ttsConsentOpen,
+    setTtsConsentOpen,
+    ttsDownloadProgress,
+    isKittenModelDownloaded,
+    handleDeleteTtsModel,
+    onTtsRequest,
+    onTtsConsentAccept,
+    togglePlayPause,
+    prevSentence,
+    nextSentence,
+    cycleSpeed,
+    stopTts,
+  } = useReaderTts({
+    bookHash,
+    state,
     language,
-    closeSheet,
-  });
-
-  // Los espejos se actualizan tras cada commit: las dependencias del
-  // controlador leen siempre la versión vigente de estas funciones.
-  useEffect(() => {
-    ttsFns.current = {
-      navigate,
-      trackEvent,
-      noteActivity,
-      onStatus,
-      reducedMotion: companion.reducedMotion,
-      language,
-      closeSheet,
-    };
-    stateRef.current = state;
-  });
-
-  useEffect(() => {
-    const ctl = createTtsController({
-      language: () => ttsFns.current.language,
-      root: () => containerRef.current,
-      sectionIndex: () => sectionIndexRef.current,
-      sectionReady: () => stateRef.current === "ready",
-      navigateSection: (index) => {
-        // Salto interno del target: envuelto para que navigate no lo
-        // lea como navegación explícita (que sí detiene la sesión).
-        // Intent «resume» porque la voz continúa el tramo — «chapter»
-        // podría interponer la hoja de preparación a media sesión.
-        withTtsProgrammaticNav(() => {
-          void ttsFns.current.navigate("resume", { index });
-        });
-      },
-      reveal: (el) => {
-        // El scroll que sigue a la voz no es del lector: la ventana
-        // de tiempo lo exime de las señales de actividad.
-        noteTtsProgrammaticScroll();
-        const metrics = metricsRef.current;
-        if (layoutRef.current === "pages" && metrics) {
-          setPageIdx(pageOfElement(el, metrics));
-          return;
-        }
-        el.scrollIntoView({
-          block: "center",
-          behavior: ttsFns.current.reducedMotion ? "auto" : "smooth",
-        });
-      },
-      emit: (draft) =>
-        ttsFns.current.trackEvent(draft as unknown as VisitEventDraft),
-      noteActivity: () => ttsFns.current.noteActivity(),
-      onSnapshot: setTtsSnap,
-      onSessionEnd: (reason) => {
-        if (reason === "error")
-          ttsFns.current.onStatus("No se pudo leer en voz alta.");
-      },
-      resolveStartIndex: (items) => {
-        // Arranca donde el lector tiene la vista: la posición
-        // guardada si cae en esta sección; si no, el bloque visible
-        // más alto; sin ninguna de las dos, la primera oración.
-        const saved = latestPositionRef.current;
-        const anchor =
-          saved?.sectionIndex === sectionIndexRef.current && saved.anchor
-            ? saved.anchor
-            : containerRef.current
-              ? anchorAtViewTop(containerRef.current)
-              : null;
-        return sentenceIndexForAnchor(items, anchor);
-      },
-    });
-    // La asignación al ref va por función (patrón de analyzerRef):
-    // el lint de react-hooks no admite escrituras directas aquí.
-    const attach = (next: TtsController | null) => {
-      ttsRef.current = next;
-    };
-    attach(ctl);
-    return () => {
-      ctl.destroy();
-      attach(null);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Pausas de la sesión: pestaña oculta («visibility», con cierre
-  // automático prolongado en el controlador) gana siempre; la ficha
-  // de palabra lleva razón propia («word_lookup»); cualquier otra
-  // hoja o capa es «panel_opened»; el aviso de fatiga, «fatigue».
-  // Ninguna reanuda sola: volver es siempre decisión del lector.
-  useEffect(() => {
-    const ctl = ttsRef.current;
-    if (!ctl) return;
-    if (ttsSnap.status !== "speaking" && ttsSnap.status !== "preparing")
-      return;
-    if (docHidden) ctl.pause("visibility");
-    else if (selection) ctl.pause("word_lookup");
-    else if (
-      sheet ||
-      panelsOpen ||
-      prep ||
-      companion.open ||
-      companion.modalOpen
-    )
-      ctl.pause("panel_opened");
-    else if (fatigueNotice) ctl.pause("fatigue");
-  }, [
-    ttsSnap.status,
+    sectionIndex,
+    sectionIndexRef,
+    stateRef,
+    containerRef,
+    catalogRef,
+    metricsRef,
+    layoutRef,
+    latestPositionRef,
+    companion,
     docHidden,
     selection,
     sheet,
     panelsOpen,
     prep,
-    companion.open,
-    companion.modalOpen,
     fatigueNotice,
-  ]);
+    setPageIdx,
+    setCompanionAudioSuppressed,
+    navigate,
+    trackEvent,
+    noteActivity,
+    closeSheet,
+    onShowNotice: onStatus,
+  });
 
-  // La sección que el avance programático pidió terminó de pintar:
-  // el controlador reconstruye el mapa ahí y sigue hablando.
   useEffect(() => {
-    if (state === "ready") ttsRef.current?.onSectionRendered();
-  }, [state, sectionIndex]);
-
-  // El gato guarda silencio mientras la voz corre — supresión
-  // temporal, no toca su preferencia de sonido ni su celebración.
-  useEffect(() => {
-    setCompanionAudioSuppressed(ttsSnap.status === "speaking");
-    return () => setCompanionAudioSuppressed(false);
-  }, [ttsSnap.status]);
-
-  const startTts = () => {
-    const ctl = ttsRef.current;
-    if (!ctl || state !== "ready") return;
-    closeSheet();
-    const index = sectionIndexRef.current;
-    // El territorio es el rango [startSection, endSection) del
-    // destino que cubre la sección visible; sin catálogo, la sección
-    // sola (lee lo visible y termina con chapter_end).
-    const range = (catalogRef.current?.ranges ?? []).find(
-      (r) => r.startSection <= index && index < r.endSection,
-    );
-    ctl.start(
-      {
-        bookHash,
-        targetId: range?.target.id ?? `s${index}`,
-        startSection: range?.startSection ?? index,
-        endSection: range?.endSection ?? index + 1,
-        sectionIndex: index,
-      },
-      // El índice real lo resuelve resolveStartIndex sobre el mapa
-      // ya construido (posición guardada → bloque visible → 0).
-      0,
-    );
-  };
-
-  const onTtsRequest = () => {
-    const ctl = ttsRef.current;
-    if (!ctl) return;
-    if (ttsSnap.status !== "idle") {
-      ctl.stop("user");
-      return;
-    }
-    // Primer uso del dispositivo: el aviso de privacidad va primero;
-    // cancelarlo no vuelve a insistir (solo reaparece si se toca).
-    if (loadTtsSettings().consentedAt === null) {
-      setTtsConsentOpen(true);
-      return;
-    }
-    startTts();
-  };
-
-  const onTtsConsentAccept = (engineMode?: TtsEngineMode) => {
-    consentTts(undefined, engineMode ? { engine: engineMode } : undefined);
-    setTtsConsentOpen(false);
-    trackEvent({
-      kind: "tts_setting_changed",
-      enabled: true,
-      source: "reader_tools",
-    });
-    startTts();
-  };
+    ttsStopOnNavRef.current = () => ttsRef.current?.stop("navigation");
+  }, [ttsRef]);
 
   useEffect(() => {
     let disposed = false;
@@ -3101,15 +2372,11 @@ export default function Reader({
       catalogRef.current = null;
       analyzingTargets.current.clear();
       enrichedTargets.current.clear();
-      prepLexRef.current = new Map();
-      prepDismissed.current.clear();
-      prepEvaluated.current = null;
+      resetPrepForBook();
       bookStartRef.current = null;
-      prepRef.current = null;
       knowledgeMapRef.current = new Map();
       evidenceRef.current = new Map();
       pendingKnowledgeRef.current.clear();
-      presentedKeysRef.current.clear();
       lastTargetEnteredRef.current = null;
       savedEnrichSentRef.current = false;
       profileRef.current = null;
@@ -3118,8 +2385,6 @@ export default function Reader({
       // Poda perezosa del trayecto: conserva el historial reciente.
       void pruneReadingHistory(undefined, scope);
       setPrediction(null);
-      setPrep(null);
-      setPrepNotice(null);
       setAnalyzing(false);
       setEnriching(null);
       setBookSections(undefined);
@@ -3369,11 +2634,6 @@ export default function Reader({
     });
   }, [state, sectionIndex, catalog, currentChapterTarget, trackEvent]);
 
-  // Marcadores y pasajes del libro (una sola lectura por apertura).
-  useEffect(() => {
-    void listAnnotations(bookHash, captureDbScope()).then(setAnnotations);
-  }, [bookHash]);
-
   // Preferencia «Usar IA» (una sola lectura por apertura del libro).
   // Con ella apagada, el enriquecimiento automático ni se ofrece ni se
   // llama; la tarjeta igual muestra las predichas sin definición.
@@ -3388,49 +2648,6 @@ export default function Reader({
   }, []);
 
   // Marcas de pasajes guardados en la sección actual. Va después del
-  // remarcado de vocabulario (guardadas + predichas): `prediction`
-  // reordena nodos de texto cuando el análisis llega, así que el
-  // fallback de pasajes vuelve a correr encima.
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container || state !== "ready") return;
-    applyPassageMarks(
-      container,
-      annotations.filter((a) => a.kind === "passage" && a.sectionIndex === sectionIndex),
-    );
-  }, [annotations, sectionIndex, state, vocabVersion, prediction]);
-
-  // Búsqueda progresiva dentro del libro: entrega resultados conforme
-  // avanza, se cancela al cambiar la consulta o cerrar la hoja.
-  useEffect(() => {
-    searchAbort.current?.abort();
-    const query = searchQ.trim();
-    if (query.length < 2 || !bookRef.current) return;
-    const ctrl = new AbortController();
-    searchAbort.current = ctrl;
-    const timer = window.setTimeout(() => {
-      void (async () => {
-        const book = bookRef.current;
-        if (!book) return;
-        setSearchHits([]);
-        setSearchDone(false);
-        for await (const hit of searchBookSections(
-          book.sections,
-          tocRowsRef.current,
-          query,
-          { signal: ctrl.signal, limit: 100 },
-        )) {
-          setSearchHits((prev) => [...prev, hit]);
-        }
-        if (!ctrl.signal.aborted) setSearchDone(true);
-      })();
-    }, 300);
-    return () => {
-      window.clearTimeout(timer);
-      ctrl.abort();
-    };
-  }, [searchQ]);
-
   // Menú flotante sobre la selección del usuario.
   useEffect(() => {
     let timer: number | undefined;
@@ -3902,28 +3119,32 @@ export default function Reader({
       pageTurnTimeRef.current = now;
       const direction: "forward" | "backward" = delta > 0 ? "forward" : "backward";
       const isL2 = (language || (bookRef.current ? getBookLanguage(bookRef.current) : "es")) !== loadNativeLanguage();
-      const telemetryProfile = loadFocusTelemetryProfile();
-      const fatigueResult = evaluateReadingFatigue(
-        telemetryProfile,
-        {
-          dwellTimeMs,
-          direction,
-          wordCountOnPage: 80,
-          sessionMinutesElapsed: Math.max(0, (now - sessionStartRef.current) / 60000),
-          bookId: bookHash,
-          lang: language || "es",
-          recentBackwardCountInWindow: delta < 0 ? 1 : 0,
-        },
-        isL2,
-      );
-      saveFocusTelemetryProfile(fatigueResult.updatedProfile);
-      if (fatigueResult.isFatigued) {
-        setFatigueSuggestion({
-          isFatigued: true,
-          reason: fatigueResult.reason,
-          recommendedAid: fatigueResult.recommendedAid,
-        });
-      } else if (fatigueResult.reason === "none") {
+      if (isFeatureFlagEnabled("focusTelemetry")) {
+        const telemetryProfile = loadFocusTelemetryProfile();
+        const fatigueResult = evaluateReadingFatigue(
+          telemetryProfile,
+          {
+            dwellTimeMs,
+            direction,
+            wordCountOnPage: 80,
+            sessionMinutesElapsed: Math.max(0, (now - sessionStartRef.current) / 60000),
+            bookId: bookHash,
+            lang: language || "es",
+            recentBackwardCountInWindow: delta < 0 ? 1 : 0,
+          },
+          isL2,
+        );
+        saveFocusTelemetryProfile(fatigueResult.updatedProfile);
+        if (fatigueResult.isFatigued) {
+          setFatigueSuggestion({
+            isFatigued: true,
+            reason: fatigueResult.reason,
+            recommendedAid: fatigueResult.recommendedAid,
+          });
+        } else if (fatigueResult.reason === "none") {
+          setFatigueSuggestion(null);
+        }
+      } else {
         setFatigueSuggestion(null);
       }
 
@@ -3967,11 +3188,13 @@ export default function Reader({
           const prefs = loadPostChapterConsolidationPrefs();
           const candidates: EpisodicWordItem[] = [
             ...currentChapterLookups.current,
-            ...currentChapterPrimedWords.current,
+            ...currentChapterPrimedWordsRef.current,
           ];
-          const queue = buildPostChapterConsolidationQueue(candidates, prefs, isL2, { bookId: bookHash });
+          const queue = isFeatureFlagEnabled("vocabGames")
+            ? buildPostChapterConsolidationQueue(candidates, prefs, isL2, { bookId: bookHash })
+            : [];
 
-          if (queue.length > 0 && isConsolidationActive(bookHash)) {
+          if (queue.length > 0 && isConsolidationActive(bookHash) && isFeatureFlagEnabled("vocabGames")) {
             setPostChapterQueue(queue);
             pendingNextChapterRef.current = nextIndex;
             const durationMinutes = Math.max(1, Math.round((Date.now() - chapterStartedAtRef.current) / 60000));
@@ -4261,207 +3484,6 @@ export default function Reader({
       "chapter",
     );
   };
-
-  const refreshAnnotations = async (scope?: DbScope) => {
-    setAnnotations(await listAnnotations(bookHash, scope ?? captureDbScope()));
-  };
-
-  const pushAnnotation = (entry: SavedAnnotation, scope?: DbScope) => {
-    const bound = scope ?? captureDbScope();
-    setAnnotations((prev) => [...prev.filter((a) => a.key !== entry.key), entry]);
-    void pushAnnotationsToServer([entry], bound);
-  };
-
-  const bookmark = annotations.find((a) => a.kind === "bookmark");
-
-  const saveBookmarkHere = async () => {
-    const container = containerRef.current;
-    const metrics = metricsRef.current;
-    const anchor = container
-      ? layoutRef.current === "pages" && metrics
-        ? (anchorAtPage(container, metrics, pageRef.current) ?? undefined)
-        : (anchorAtViewTop(container) ?? undefined)
-      : undefined;
-    const scope = captureDbScope();
-    pushAnnotation(
-      await saveAnnotation(makeBookmark(bookHash, sectionIndex, anchor), scope),
-      scope,
-    );
-    onStatus("Marcador guardado en este lugar.");
-  };
-
-  const removeMark = async (key: string) => {
-    const scope = captureDbScope();
-    const tombstone = await removeAnnotation(key, scope);
-    if (tombstone) void pushAnnotationsToServer([tombstone], scope);
-    await refreshAnnotations(scope);
-    onStatus("Marcado eliminado.");
-  };
-
-  const saveNote = async (annotation: SavedAnnotation) => {
-    const scope = captureDbScope();
-    const updated = await updateAnnotation(
-      {
-        ...annotation,
-        note: noteDraft.trim() || undefined,
-      },
-      scope,
-    );
-    pushAnnotation(updated, scope);
-    setEditingNote(null);
-  };
-
-  // La selección del usuario se convierte en pasaje con su contexto
-  // para reubicarlo aunque cambie la letra o el ancho.
-  const savePassageSelection = async (color: PassageTone = "amber") => {
-    const sel = window.getSelection();
-    const container = containerRef.current;
-    if (!sel || sel.isCollapsed || !container || !sel.rangeCount) {
-      setSelButton(null);
-      return;
-    }
-    const range = sel.getRangeAt(0);
-    if (!container.contains(range.commonAncestorContainer)) {
-      setSelButton(null);
-      return;
-    }
-    const before = document.createRange();
-    before.selectNodeContents(container);
-    before.setEnd(range.startContainer, range.startOffset);
-    const after = document.createRange();
-    after.selectNodeContents(container);
-    after.setStart(range.endContainer, range.endOffset);
-    const input = makePassage(
-      bookHash,
-      sectionIndex,
-      sel.toString(),
-      before.toString(),
-      after.toString(),
-      color,
-    );
-    sel.removeAllRanges();
-    setSelButton(null);
-    if (!input) return;
-    const scope = captureDbScope();
-    pushAnnotation(await saveAnnotation(input, scope), scope);
-    const toneName = color === "salvia" ? "Salvia" : color === "dario" ? "Azul Darío" : "Ámbar";
-    onStatus(`Pasaje resaltado con tinta (${toneName}).`);
-  };
-
-  const openQuoteCardFromSelection = () => {
-    const container = containerRef.current;
-    const sel = window.getSelection();
-    if (!container || !sel || sel.isCollapsed || !sel.rangeCount) {
-      setSelButton(null);
-      return;
-    }
-    const text = sel.toString().replace(/\s+/g, " ").trim();
-    if (text.length < 2) {
-      setSelButton(null);
-      return;
-    }
-    setQuoteCard({
-      text,
-      bookTitle: title,
-      author,
-      chapterTitle: currentChapterTarget?.label ?? sectionTitle ?? sectionLabel(sectionIndex),
-      alreadySaved: false,
-    });
-    setSelButton(null);
-  };
-
-  const askCatAboutSelection = async () => {
-    const container = containerRef.current;
-    const sel = window.getSelection();
-    if (!container || !sel || sel.isCollapsed || !sel.rangeCount) {
-      setSelButton(null);
-      return;
-    }
-    const text = sel.toString().replace(/\s+/g, " ").trim();
-    if (text.length < 2) {
-      setSelButton(null);
-      return;
-    }
-    sel.removeAllRanges();
-    setSelButton(null);
-
-    setCatPassageExplanation({
-      passage: text,
-      loading: true,
-      data: null,
-      error: null,
-    });
-
-    if (!signedIn) {
-      setCatPassageExplanation({
-        passage: text,
-        loading: false,
-        data: {
-          contextualMeaning: `Apreciación del fragmento: «${text.slice(0, 100)}...»`,
-          toneAndNuance: "Literario",
-          catTip: "Inicia sesión para recibir lecturas profundas con IA en vivo.",
-        },
-        error: null,
-      });
-      return;
-    }
-
-    try {
-      const scope = captureDbScope();
-      const res = await explainInPassage(
-        {
-          sentence: text,
-          bookTitle: title,
-          author,
-          language,
-        },
-        scope,
-      );
-      if (res.ok) {
-        setCatPassageExplanation({
-          passage: text,
-          loading: false,
-          data: {
-            contextualMeaning: res.contextualMeaning,
-            toneAndNuance: res.toneAndNuance,
-            catTip: res.catTip,
-          },
-          error: null,
-        });
-      } else {
-        setCatPassageExplanation({
-          passage: text,
-          loading: false,
-          data: {
-            contextualMeaning: `Apreciación del fragmento: «${text.slice(0, 120)}»`,
-            toneAndNuance: "Literario",
-            catTip: "No pudimos conectar con la IA en este momento, pero disfruta de este pasaje.",
-          },
-          error: null,
-        });
-      }
-    } catch {
-      setCatPassageExplanation({
-        passage: text,
-        loading: false,
-        data: null,
-        error: "No se pudo consultar al gato literario.",
-      });
-    }
-  };
-
-  const savePassageDirectly = async (text: string) => {
-    const input = makePassage(bookHash, sectionIndex, text);
-    if (!input) return;
-    const scope = captureDbScope();
-    pushAnnotation(await saveAnnotation(input, scope), scope);
-    onStatus("Pasaje guardado en Marcadores y Cuaderno.");
-  };
-
-  const sectionLabel = (index: number) =>
-    tocRows.find((row) => row.index === index)?.label ?? `Sección ${index + 1}`;
-
-  const passages = annotations.filter((a) => a.kind === "passage");
 
   // El modo de preparación lo leen los callbacks de navegación sin
   // depender del ciclo de render.
@@ -5475,7 +4497,7 @@ export default function Reader({
       ) : null}
 
       {/* Píldora superior de preparación de capítulo (Regla 2 Zero-Friction) */}
-      {previewSuggested && !showPreview && chapterAnalysis && chapterAnalysis.unknownKeyWords.length > 0 && (
+      {isFeatureFlagEnabled("chapterPriming") && previewSuggested && !showPreview && chapterAnalysis && chapterAnalysis.unknownKeyWords.length > 0 && (
         <div className="reader-chapter-prep-pill" role="status" aria-live="polite">
           <span>
             <strong>{chapterAnalysis.unknownKeyWords.length} palabras clave</strong> en este capítulo
@@ -5648,18 +4670,13 @@ export default function Reader({
             ) : null
           }
           ttsSnap={ttsSnap}
-          onTogglePlayPause={() => {
-            const ctl = ttsRef.current;
-            if (!ctl) return;
-            if (ttsSnap.status === "speaking") ctl.pause("user");
-            else if (ttsSnap.status === "paused") ctl.resume();
-          }}
-          onPrevSentence={() => ttsRef.current?.prevSentence()}
-          onNextSentence={() => ttsRef.current?.nextSentence()}
-          onCycleSpeed={() => void ttsRef.current?.cycleRate(TTS_PLAYER_RATES)}
+          onTogglePlayPause={togglePlayPause}
+          onPrevSentence={prevSentence}
+          onNextSentence={nextSentence}
+          onCycleSpeed={cycleSpeed}
           onOpenVoiceSelector={() => setTtsConsentOpen(true)}
           onCaptureWord={handleTtsCaptureWord}
-          onStopAudio={() => ttsRef.current?.stop("user")}
+          onStopAudio={() => stopTts("user")}
           onOpenCatCorner={onCatTap}
         />
       ) : null}
@@ -5735,281 +4752,37 @@ export default function Reader({
       ) : null}
 
 
-      {sheet === "toc" ? (
-        <Sheet label="Índice" onClose={closeSheet} side="left">
-          <div className="sheet-head">
-            <strong className="sheet-title">Índice</strong>
-            <button
-              type="button"
-              className="btn--quiet"
-              onClick={closeSheet}
-              aria-label="Cerrar índice"
-              data-autofocus
-            >
-              Cerrar
-            </button>
-          </div>
-          {tocRows.length ? (
-            <ul className="toc-list">
-              {tocRows.map((row, i) => {
-                const isCurrent =
-                  (currentChapterTarget?.id ??
-                    targetAt(catalog?.ranges ?? [], sectionIndex, activeIntraContext)?.id) ===
-                  row.target.id;
-                return (
-                <li key={`${row.index}-${i}`} style={{ paddingInlineStart: `${row.depth * 1.25}rem` }}>
-                  <button
-                    type="button"
-                    className="toc-item"
-                    data-current={isCurrent || undefined}
-                    aria-current={isCurrent ? "location" : undefined}
-                    onClick={() =>
-                      jumpTo(
-                        row.index,
-                        { fragment: row.target.fragment },
-                        "chapter",
-                      )
-                    }
-                  >
-                    {row.label}
-                  </button>
-                </li>
-                );
-              })}
-            </ul>
-          ) : (
-            <p className="meta">Este libro no trae índice.</p>
-          )}
-          <button
-            type="button"
-            className="btn--quiet toc-vocab"
-            onClick={() => setSheet("marks")}
-          >
-            Marcadores y pasajes
-            {annotations.length ? ` · ${annotations.length}` : ""}
-          </button>
-          <button
-            type="button"
-            className="btn--quiet toc-vocab"
-            onClick={() => {
-              closeSheet();
-              setGlossaryOpen(true);
-            }}
-          >
-            Glosario y singularidades de la obra
-          </button>
-        </Sheet>
-      ) : null}
-
-      {sheet === "search" ? (
-        <Sheet label="Buscar en el libro" onClose={closeSheet} side="left">
-          <div className="sheet-head">
-            <strong className="sheet-title">Buscar en el libro</strong>
-            <button
-              type="button"
-              className="btn--quiet"
-              onClick={closeSheet}
-              aria-label="Cerrar búsqueda"
-            >
-              Cerrar
-            </button>
-          </div>
-          <input
-            className="search-input"
-            type="search"
-            placeholder="Palabra o frase…"
-            value={searchQ}
-            onChange={(event) => setSearchQ(event.target.value)}
-            aria-label="Texto a buscar en el libro"
-            data-autofocus
-          />
-          {searchQ.trim().length >= 2 ? (
-            <p className="meta search-status" role="status">
-              {searchDone
-                ? searchHits.length
-                  ? `${searchHits.length} resultado(s)${searchHits.length >= 100 ? " (primeros 100)" : ""}`
-                  : "Sin resultados."
-                : `Buscando… ${searchHits.length ? `${searchHits.length} hasta ahora` : ""}`}
-            </p>
-          ) : (
-            <p className="meta search-status">
-              Escribe al menos 2 letras. Los acentos y las mayúsculas no importan.
-            </p>
-          )}
-          {searchHits.length ? (
-            <ul className="search-results">
-              {searchHits.map((hit, index) => (
-                <li key={`${hit.sectionIndex}-${index}`}>
-                  <button
-                    type="button"
-                    className="search-hit"
-                    onClick={() => jumpTo(hit.sectionIndex, { snippet: hit.anchor })}
-                  >
-                    <span className="search-hit-label">{hit.label}</span>
-                    <span className="search-hit-context">
-                      {hit.before}
-                      <mark>{hit.match}</mark>
-                      {hit.after}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : null}
-        </Sheet>
-      ) : null}
-
-      {sheet === "marks" ? (
-        <Sheet label="Marcadores y pasajes" onClose={closeSheet} side="left">
-          <div className="sheet-head">
-            <strong className="sheet-title">Marcadores</strong>
-            <button
-              type="button"
-              className="btn--quiet"
-              onClick={closeSheet}
-              aria-label="Cerrar marcadores"
-              data-autofocus
-            >
-              Cerrar
-            </button>
-          </div>
-          {bookmark ? (
-            <div className="mark-bookmark">
-              <p>
-                Marcador en <strong>{sectionLabel(bookmark.sectionIndex)}</strong>
-              </p>
-              <div className="mark-actions">
-                <button
-                  type="button"
-                  className="btn--quiet"
-                  onClick={() => jumpTo(bookmark.sectionIndex, { anchor: bookmark.anchor })}
-                >
-                  Ir al marcador
-                </button>
-                <button
-                  type="button"
-                  className="btn--quiet mark-remove"
-                  onClick={() => void removeMark(bookmark.key)}
-                >
-                  Quitar
-                </button>
-              </div>
-            </div>
-          ) : (
-            <button type="button" className="btn" onClick={() => void saveBookmarkHere()}>
-              Guardar este lugar
-            </button>
-          )}
-          <h3 className="sheet-subtitle">Pasajes guardados</h3>
-          {passages.length ? (
-            <ul className="marks-list">
-              {passages.map((passage) => (
-                <li key={passage.key} className="mark-item">
-                  <button
-                    type="button"
-                    className="mark-jump"
-                    onClick={() =>
-                      jumpTo(passage.sectionIndex, {
-                        snippet: passage.anchor ?? passage.text ?? "",
-                      })
-                    }
-                  >
-                    <span className="search-hit-label">
-                      {sectionLabel(passage.sectionIndex)}
-                    </span>
-                    <q className="mark-text">
-                      {passage.text && passage.text.length > 140
-                        ? `${passage.text.slice(0, 140)}…`
-                        : passage.text}
-                    </q>
-                  </button>
-                  {passage.note ? <p className="mark-note">{passage.note}</p> : null}
-                  {editingNote === passage.key ? (
-                    <div className="mark-note-edit">
-                      <textarea
-                        value={noteDraft}
-                        onChange={(event) => setNoteDraft(event.target.value)}
-                        rows={2}
-                        maxLength={500}
-                        placeholder="Una nota sobre este pasaje…"
-                        aria-label="Nota del pasaje"
-                      />
-                      <div className="mark-actions">
-                        <button
-                          type="button"
-                          className="btn--quiet"
-                          onClick={() => void saveNote(passage)}
-                        >
-                          Guardar nota
-                        </button>
-                        <button
-                          type="button"
-                          className="btn--quiet"
-                          onClick={() => setEditingNote(null)}
-                        >
-                          Cancelar
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="mark-actions">
-                      <button
-                        type="button"
-                        className="btn--quiet"
-                        onClick={() => {
-                          setQuoteCard({
-                            text: passage.text ?? "",
-                            bookTitle: title,
-                            author,
-                            chapterTitle: sectionLabel(passage.sectionIndex),
-                            alreadySaved: true,
-                          });
-                        }}
-                      >
-                        Tarjeta
-                      </button>
-                      <button
-                        type="button"
-                        className="btn--quiet"
-                        onClick={() => {
-                          setEditingNote(passage.key);
-                          setNoteDraft(passage.note ?? "");
-                        }}
-                      >
-                        {passage.note ? "Editar nota" : "Nota"}
-                      </button>
-                      <button
-                        type="button"
-                        className="btn--quiet mark-remove"
-                        onClick={() => void removeMark(passage.key)}
-                      >
-                        Quitar
-                      </button>
-                    </div>
-                  )}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="meta">
-              Selecciona un fragmento del texto para guardarlo como pasaje.
-            </p>
-          )}
-          {passages.length ? (
-            <button
-              type="button"
-              className="btn--quiet"
-              style={{ marginTop: "var(--s-3)", width: "100%", justifyContent: "center" }}
-              onClick={() => {
-                triggerHaptic("selection");
-                void downloadBookMarkdown(bookHash, title);
-              }}
-            >
-              Exportar notas y citas (.md)
-            </button>
-          ) : null}
-        </Sheet>
-      ) : null}
+      <ReaderSearchAndTocSheet
+        sheet={sheet}
+        closeSheet={closeSheet}
+        setSheet={setSheet}
+        tocRows={tocRows}
+        currentChapterTarget={currentChapterTarget}
+        catalog={catalog}
+        sectionIndex={sectionIndex}
+        activeIntraContext={activeIntraContext}
+        jumpTo={jumpTo}
+        annotations={annotations}
+        setGlossaryOpen={setGlossaryOpen}
+        searchQ={searchQ}
+        setSearchQ={setSearchQ}
+        searchDone={searchDone}
+        searchHits={searchHits}
+        sectionLabel={sectionLabel}
+        bookmark={bookmark}
+        passages={passages}
+        saveBookmarkHere={saveBookmarkHere}
+        removeMark={removeMark}
+        editingNote={editingNote}
+        noteDraft={noteDraft}
+        setNoteDraft={setNoteDraft}
+        setEditingNote={setEditingNote}
+        saveNote={saveNote}
+        setQuoteCard={setQuoteCard}
+        bookHash={bookHash}
+        title={title}
+        author={author}
+      />
 
       {sheet === "settings" ? (
         <Sheet label="Opciones de lectura" onClose={closeSheet}>
@@ -6205,6 +4978,8 @@ export default function Reader({
                 onToggleFullscreen={() => void handleToggleFullscreen()}
                 isFullscreen={isFullscreenActive}
                 fullscreenSupported={isFullscreenSupported()}
+                settings={settings}
+                onUpdateSettings={updateSettings}
                 onClose={closeSheet}
               />
 
@@ -6585,11 +5360,7 @@ export default function Reader({
         }}
         bookSections={bookSections}
         toc={catalog?.targets?.map((t) => ({ index: t.sectionIndex, label: t.label }))}
-        charOffsetInChapter={
-          containerRef.current
-            ? charOffsetAtViewTop(containerRef.current, sectionTextRef.current)
-            : 0
-        }
+        charOffsetInChapter={charOffsetInChapter}
         currentChapterTitle={
           currentChapterTarget?.label ??
           catalog?.targets?.find((t) => t.sectionIndex === sectionIndex)?.label ??

@@ -6,14 +6,13 @@ import {
   StaleScopeError,
   type DbScope,
 } from "./idb";
-import { cliticBaseForms, dedupeKey } from "./knowledge";
+import { cliticBaseForms, dedupeKey, isWordToken, menteBaseForms } from "../../shared/word-form";
+import type { BookVocabManifest } from "./catalog";
 import { batchLookup, type LexiconEntry } from "./lexicon";
 import { extractUniqueWords } from "./segmenter";
-import { normalizeBlockText } from "./reading-location";
 import { sanitizeSectionDocument } from "./sanitize";
+import { normalizeBlockText } from "./reading-location";
 import { isStopword } from "../../shared/stopwords";
-import { isWordToken, menteBaseForms } from "../../shared/word-form";
-import type { BookVocabManifest } from "./catalog";
 
 // Análisis de vocabulario de un libro propio: produce el mismo
 // manifiesto que el seed publica para el catálogo (catalog.ts), así

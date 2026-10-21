@@ -55,6 +55,10 @@ export async function pushPositionsToServer(
 
 let pendingPositionsToFlush: SavedBookPosition[] = [];
 
+export function getPendingPositionsCount(): number {
+  return pendingPositionsToFlush.length;
+}
+
 export function queuePositionForFlush(pos: SavedBookPosition) {
   pendingPositionsToFlush.push(pos);
 }

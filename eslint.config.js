@@ -10,7 +10,7 @@ export default tseslint.config(
   reactHooks.configs.flat.recommended,
   {
     linterOptions: {
-      reportUnusedDisableDirectives: "off",
+      reportUnusedDisableDirectives: "warn",
     },
     files: ["**/*.{js,mjs,cjs,ts,tsx}"],
     languageOptions: {
@@ -20,11 +20,10 @@ export default tseslint.config(
       },
     },
     rules: {
-      // Reglas de React Compiler desactivadas: Lecta usa React 19 estándar sin compilador Babel/Vite
-      "react-hooks/set-state-in-effect": "off",
-      "react-hooks/purity": "off",
-      "react-hooks/refs": "off",
-      "react-hooks/preserve-manual-memoization": "off",
+      "react-hooks/refs": "error",
+      "react-hooks/set-state-in-effect": "warn",
+      "react-hooks/purity": "warn",
+      "react-hooks/preserve-manual-memoization": "warn",
       "@typescript-eslint/no-unused-vars": [
         "error",
         {

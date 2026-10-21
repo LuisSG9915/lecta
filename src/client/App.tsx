@@ -35,7 +35,6 @@ import { decidePendingDelete, PENDING_DELETE_KEY } from "./lib/account-cleanup";
 import { pushOverlay, type OverlayHandle } from "./lib/history";
 import { sha256Hex } from "./lib/hash";
 import { downloadCatalogEpub, type CatalogBook } from "./lib/catalog";
-import { analyzeStoredBook } from "./lib/book-vocab";
 import { isDue } from "./lib/fsrs";
 import {
   COMPANION_LETTERS_KEY,
@@ -72,11 +71,13 @@ import {
 } from "./lib/idb";
 import {
   downloadBackup,
-  inspectBackupPayload,
-  restoreBackupPayload,
-  type BackupPreviewSummary,
 } from "./lib/export";
-import { recordSyncError, recordSyncSuccess } from "./lib/sync-state";
+import RestoreBackupDialog from "./components/RestoreBackupDialog";
+import {
+  recordCollectionSyncError,
+  recordCollectionSyncSuccess,
+  setPendingChangesCount,
+} from "./lib/sync-state";
 import DiagnosticsModal from "./components/DiagnosticsModal";
 import LegalNotice from "./components/LegalNotice";
 import { resetGameCache } from "./lib/game";
@@ -88,7 +89,7 @@ import {
 import { displayTitle, readBookMeta } from "./lib/cover";
 import { downloadBook, listRemoteBooks } from "./lib/books";
 import { queueBookDelete, queueBookUpload, runBookQueue } from "./lib/book-queue";
-import { syncPositions, type PositionConflict } from "./lib/positions-sync";
+import { getPendingPositionsCount, syncPositions, type PositionConflict } from "./lib/positions-sync";
 import { checkEpubHeader, EPUB_MAX_BYTES } from "../shared/epub-check";
 import { extractEpubMeta } from "../shared/epub-meta";
 import { syncSavedWords } from "./lib/vocab";
@@ -182,54 +183,6 @@ export default function App() {
   const [dbStorageError, setDbStorageError] = useState<DbStorageError | null>(null);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [showLegal, setShowLegal] = useState<"privacy" | "terms" | null>(null);
-  const [backupPreview, setBackupPreview] = useState<BackupPreviewSummary | null>(null);
-  const [backupPayload, setBackupPayload] = useState<string | null>(null);
-  const [restoringBackup, setRestoringBackup] = useState(false);
-  const restoreFileInputRef = useRef<HTMLInputElement>(null);
-
-  const handleRestoreFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    try {
-      const text = await file.text();
-      const summary = inspectBackupPayload(text);
-      setBackupPayload(text);
-      setBackupPreview(summary);
-      setError("");
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "No se pudo interpretar el archivo de respaldo.",
-      );
-      setBackupPayload(null);
-      setBackupPreview(null);
-    } finally {
-      if (restoreFileInputRef.current) restoreFileInputRef.current.value = "";
-    }
-  };
-
-  const handleConfirmRestoreFromApp = async () => {
-    if (!backupPayload) return;
-    setRestoringBackup(true);
-    try {
-      await restoreBackupPayload(backupPayload);
-      setMessage("Respaldo restaurado correctamente.");
-      setBackupPreview(null);
-      setBackupPayload(null);
-      setDbStorageError(null);
-      setCheckingLibrary(true);
-      void refreshLibrary();
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Ocurrió un error al restaurar el respaldo.",
-      );
-    } finally {
-      setRestoringBackup(false);
-    }
-  };
 
   useEffect(() => {
     // Precarga el Lector durante la holgura del navegador para que abrir un libro sea inmediato.
@@ -598,7 +551,10 @@ export default function App() {
       }
       return;
     }
-    if (!isDbScopeActive(bound)) return;
+    if (!isDbScopeActive(bound)) {
+      setCheckingLibrary(false);
+      return;
+    }
     setDbStorageError(null);
     const pendingUploads = new Set(
       ops.filter((op) => op.kind === "upload").map((op) => op.hash),
@@ -647,6 +603,7 @@ export default function App() {
         language: item.language,
       }));
     setLibrary([...localItems, ...remoteItems]);
+    setCheckingLibrary(false);
   }, [sessionUserId]);
 
   // El panel abierto por el enlace también es una capa del historial:
@@ -763,11 +720,11 @@ export default function App() {
 
       const pulled = await syncSavedWords(scope)
         .then((res) => {
-          recordSyncSuccess();
+          recordCollectionSyncSuccess("words");
           return res;
         })
         .catch((err) => {
-          recordSyncError(err);
+          recordCollectionSyncError("words", err);
           return null;
         });
       if (!cancelled && pulled) {
@@ -775,33 +732,71 @@ export default function App() {
         setVocabVersion((v) => v + 1);
       }
       // Marcadores y pasajes: mismo ciclo, sin bloquear la estantería.
-      const pulledMarks = await syncAnnotations(scope).catch(() => null);
+      const pulledMarks = await syncAnnotations(scope)
+        .then((res) => {
+          recordCollectionSyncSuccess("annotations");
+          return res;
+        })
+        .catch((err) => {
+          recordCollectionSyncError("annotations", err);
+          return null;
+        });
       if (!cancelled && pulledMarks) {
         setMessage(`Marcadores sincronizados: ${pulledMarks} nuevo(s) en este dispositivo.`);
       }
       // Actividad de lectura: mismas reglas, anexable por id. Si
       // llegaron intervalos el panel del Cuaderno relee su progreso.
       void syncActivity(scope)
-        .then((pulled) => {
-          if (pulled && !cancelled) setActivityVersion((v) => v + 1);
+        .then((pulledAct) => {
+          recordCollectionSyncSuccess("activity");
+          if (pulledAct && !cancelled) setActivityVersion((v) => v + 1);
         })
-        .catch(() => null);
+        .catch((err) => {
+          recordCollectionSyncError("activity", err);
+        });
       // Repasos del cuaderno: anexables por id, mismo ciclo.
-      void syncReviews(scope).catch(() => null);
+      void syncReviews(scope)
+        .then(() => {
+          recordCollectionSyncSuccess("reviews");
+        })
+        .catch((err) => {
+          recordCollectionSyncError("reviews", err);
+        });
       // El compañero: baja lo que otros dispositivos escribieron y
       // sube journal, registros y recepciones pendientes.
-      void syncCompanion(scope).catch(() => null);
+      void syncCompanion(scope)
+        .then(() => {
+          recordCollectionSyncSuccess("companion");
+        })
+        .catch((err) => {
+          recordCollectionSyncError("companion", err);
+        });
       // Conocimiento del lector: misma fusión por clave con updatedAt
       // como árbitro, lápidas incluidas. Si bajó algo, el lector
       // recarga su perfil como cuando llegan palabras nuevas.
       void syncKnowledge(scope)
-        .then((pulled) => {
-          if (pulled && !cancelled) setVocabVersion((v) => v + 1);
+        .then((pulledKnow) => {
+          recordCollectionSyncSuccess("knowledge");
+          if (pulledKnow && !cancelled) setVocabVersion((v) => v + 1);
         })
-        .catch(() => null);
+        .catch((err) => {
+          recordCollectionSyncError("knowledge", err);
+        });
       // Posiciones de lectura: misma fusión por libro, empuja lo local
       // y baja lo que otros dispositivos dejaron más reciente.
-      void syncPositions(scope).catch(() => null);
+      void syncPositions(scope)
+        .then(() => {
+          recordCollectionSyncSuccess("positions");
+        })
+        .catch((err) => {
+          recordCollectionSyncError("positions", err);
+        });
+      try {
+        const bookOps = await listBookOps(scope).catch(() => []);
+        setPendingChangesCount(bookOps.length + getPendingPositionsCount());
+      } catch {
+        // Ignore
+      }
       let remote: Awaited<ReturnType<typeof listRemoteBooks>>;
       let localBooks: StoredBook[];
       try {
@@ -820,9 +815,12 @@ export default function App() {
 
       // Lo que falta en la nube entra a la cola persistente: si la
       // subida falla queda «Pendiente de subir» y se reintenta solo.
+      // Guarda estricta: jamás encolar libros con data vacía o de 0 bytes.
       for (const storedBook of localBooks) {
         if (!remoteHashes.has(storedBook.hash)) {
-          await queueBookUpload(storedBook.hash, storedBook.name, scope);
+          if (storedBook.data && storedBook.data.size > 0) {
+            await queueBookUpload(storedBook.hash, storedBook.name, scope);
+          }
         }
       }
       // La estantería repinta ya con los remotos y las insignias de
@@ -848,20 +846,45 @@ export default function App() {
   useEffect(() => {
     if (!sessionUserId) return;
     const onOnline = () => {
-      void syncSavedWords();
-      void syncAnnotations();
-      void syncActivity().then((pulled) => {
-        if (pulled) setActivityVersion((v) => v + 1);
-      });
-      void syncReviews();
-      void syncCompanion();
-      void syncKnowledge().then((pulled) => {
-        if (pulled) setVocabVersion((v) => v + 1);
-      });
-      void syncPositions();
-      void runBookQueue()
+      const scope = captureDbScope();
+      void syncSavedWords(scope)
+        .then(() => recordCollectionSyncSuccess("words"))
+        .catch((e) => recordCollectionSyncError("words", e));
+      void syncAnnotations(scope)
+        .then(() => recordCollectionSyncSuccess("annotations"))
+        .catch((e) => recordCollectionSyncError("annotations", e));
+      void syncActivity(scope)
+        .then((pulled) => {
+          recordCollectionSyncSuccess("activity");
+          if (pulled) setActivityVersion((v) => v + 1);
+        })
+        .catch((e) => recordCollectionSyncError("activity", e));
+      void syncReviews(scope)
+        .then(() => recordCollectionSyncSuccess("reviews"))
+        .catch((e) => recordCollectionSyncError("reviews", e));
+      void syncCompanion(scope)
+        .then(() => recordCollectionSyncSuccess("companion"))
+        .catch((e) => recordCollectionSyncError("companion", e));
+      void syncKnowledge(scope)
+        .then((pulled) => {
+          recordCollectionSyncSuccess("knowledge");
+          if (pulled) setVocabVersion((v) => v + 1);
+        })
+        .catch((e) => recordCollectionSyncError("knowledge", e));
+      void syncPositions(scope)
+        .then(() => recordCollectionSyncSuccess("positions"))
+        .catch((e) => recordCollectionSyncError("positions", e));
+      void runBookQueue(scope)
         .then(() => refreshLibrary())
-        .catch(() => undefined);
+        .catch(() => undefined)
+        .finally(async () => {
+          try {
+            const bookOps = await listBookOps(scope).catch(() => []);
+            setPendingChangesCount(bookOps.length + getPendingPositionsCount());
+          } catch {
+            // Ignore
+          }
+        });
     };
     window.addEventListener("online", onOnline);
     return () => window.removeEventListener("online", onOnline);
@@ -927,7 +950,9 @@ export default function App() {
           // Análisis de vocabulario en segundo plano: alimenta la
           // insignia ~% de la tarjeta. Sin red sale con null y la
           // estantería lo reintenta en el próximo montaje.
-          void analyzeStoredBook(hash, scope).catch(() => null);
+          void import("./lib/book-vocab")
+            .then((m) => m.analyzeStoredBook(hash, scope))
+            .catch(() => null);
         })
         .catch(() => setError("El libro se abrió, pero no se pudo guardar en este dispositivo."));
       // La subida pasa por la cola persistente: sin conexión queda
@@ -1242,13 +1267,22 @@ export default function App() {
                       >
                         Exportar respaldo de emergencia
                       </button>
-                      <button
-                        type="button"
-                        className="btn"
-                        onClick={() => restoreFileInputRef.current?.click()}
-                      >
-                        Restaurar respaldo
-                      </button>
+                      <RestoreBackupDialog
+                        onRestored={async () => {
+                          setDbStorageError(null);
+                          setMessage("Respaldo restaurado correctamente.");
+                          await refreshLibrary();
+                        }}
+                        trigger={(openPicker) => (
+                          <button
+                            type="button"
+                            className="btn"
+                            onClick={openPicker}
+                          >
+                            Restaurar respaldo
+                          </button>
+                        )}
+                      />
                       <button
                         type="button"
                         className="btn--quiet"
@@ -1321,6 +1355,7 @@ export default function App() {
                     onOpenCalibration={(words, lang = "es") => {
                       showCalibration(words, null, lang);
                     }}
+                    onRestored={refreshLibrary}
                   />
                 </Suspense>
               ) : null}
@@ -1438,68 +1473,6 @@ export default function App() {
             <button type="button" className="btn" onClick={() => void keepLocalPosition()}>
               Quedarme donde estaba
             </button>
-          </div>
-        </Dialog>
-      ) : null}
-
-      <input
-        ref={restoreFileInputRef}
-        type="file"
-        accept=".json,application/json"
-        style={{ display: "none" }}
-        onChange={(e) => void handleRestoreFileSelect(e)}
-      />
-
-      {backupPreview ? (
-        <Dialog label="Restaurar respaldo" onClose={() => setBackupPreview(null)}>
-          <div className="sheet-head">
-            <strong className="sheet-title">Restaurar respaldo</strong>
-            <button
-              type="button"
-              className="btn--quiet"
-              onClick={() => setBackupPreview(null)}
-              aria-label="Cerrar"
-            >
-              Cerrar
-            </button>
-          </div>
-          <div style={{ padding: "var(--s-3) 0" }}>
-            <p className="meta">
-              Se encontraron los siguientes datos en el archivo de respaldo:
-            </p>
-            <ul style={{ listStyle: "none", padding: 0, margin: "var(--s-2) 0", fontSize: "var(--fs-sm)" }}>
-              <li>Versión del formato: v{backupPreview.version}</li>
-              <li>Fecha de exportación: {new Date(backupPreview.exportedAt).toLocaleString()}</li>
-              <li>Libros: {backupPreview.booksCount}</li>
-              <li>Palabras del cuaderno: {backupPreview.wordsCount}</li>
-              <li>Anotaciones: {backupPreview.annotationsCount}</li>
-              <li>Posiciones de lectura: {backupPreview.positionsCount}</li>
-              <li>Repasos: {backupPreview.reviewsCount}</li>
-              <li>Sesiones de actividad: {backupPreview.activityCount}</li>
-              <li>Estado del compañero: {backupPreview.hasCompanionState ? "Incluido" : "No incluido"}</li>
-            </ul>
-            <p className="meta" style={{ marginTop: "var(--s-2)" }}>
-              La restauración fusionará estos datos con los actuales de este dispositivo,
-              conservando siempre la versión más reciente sin sobreescribir tus lecturas nuevas.
-            </p>
-            <div style={{ display: "flex", gap: "var(--s-2)", marginTop: "var(--s-4)", justifyContent: "flex-end" }}>
-              <button
-                type="button"
-                className="btn"
-                onClick={() => setBackupPreview(null)}
-                disabled={restoringBackup}
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                className="btn btn--primary"
-                onClick={() => void handleConfirmRestoreFromApp()}
-                disabled={restoringBackup}
-              >
-                {restoringBackup ? "Restaurando…" : "Confirmar restauración"}
-              </button>
-            </div>
           </div>
         </Dialog>
       ) : null}

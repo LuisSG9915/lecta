@@ -25,7 +25,7 @@ import {
   type BookCoverage,
 } from "../lib/coverage";
 import { playCompanionSound } from "../lib/companion-audio";
-import { analyzeStoredBook, loadBookVocab } from "../lib/book-vocab";
+import { loadBookVocab } from "../lib/book-vocab";
 import { relativeDay } from "../lib/relative-time";
 import {
   parseReadingGoal,
@@ -382,7 +382,10 @@ export default function Shelf({
       for (const hash of hashes) {
         if (cancelled) return;
         let manifest = await loadBookVocab(hash, scope);
-        if (!manifest) manifest = await analyzeStoredBook(hash, scope);
+        if (!manifest) {
+          const { analyzeStoredBook } = await import("../lib/book-vocab");
+          manifest = await analyzeStoredBook(hash, scope);
+        }
         if (!manifest || cancelled) continue;
         const coverage = coverageOfBook(
           manifestBookForms(manifest),

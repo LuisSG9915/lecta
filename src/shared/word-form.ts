@@ -25,6 +25,48 @@ export function menteBaseForms(form: string): string[] {
   return root.endsWith("a") ? [root, `${root.slice(0, -1)}o`] : [root];
 }
 
+const ENCLITIC_PRONOUNS = [
+  "los",
+  "las",
+  "les",
+  "lo",
+  "la",
+  "le",
+  "me",
+  "te",
+  "se",
+  "nos",
+  "os",
+] as const;
+
+const stripAccents = (text: string) =>
+  text.normalize("NFD").replace(/\p{M}/gu, "");
+
+export function cliticBaseForms(form: string): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const push = (candidate: string) => {
+    const clean = stripAccents(candidate);
+    if (clean.length >= 3 && clean !== form && !seen.has(clean)) {
+      seen.add(clean);
+      out.push(clean);
+    }
+  };
+  for (const pronoun of ENCLITIC_PRONOUNS) {
+    if (!form.endsWith(pronoun)) continue;
+    const once = form.slice(0, -pronoun.length);
+    push(once);
+    for (const second of ENCLITIC_PRONOUNS) {
+      if (!once.endsWith(second)) continue;
+      push(once.slice(0, -second.length));
+    }
+  }
+  return out;
+}
+
+export const dedupeKey = (entry: { entryId?: number | string | null; lemma: string; pos?: string | null }) =>
+  entry.entryId != null ? `id:${entry.entryId}` : `${entry.lemma}::${entry.pos ?? ""}`;
+
 export type ContextualPos = "sustantivo" | "verbo" | null;
 
 const ES_DETERMINERS = new Set([

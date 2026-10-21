@@ -1,9 +1,11 @@
 import { batchLookup, type LexiconEntry } from "./lexicon";
 import { listKnowledge, recordPassiveExposure, saveKnowledge, type DbScope } from "./idb";
 import { isLearnablePos, measuredZipf } from "../../shared/lexicon";
-import { menteBaseForms } from "../../shared/word-form";
+import { menteBaseForms, cliticBaseForms, dedupeKey } from "../../shared/word-form";
+export { cliticBaseForms, dedupeKey };
 import { knowledgeArbWins } from "../../shared/reading-data";
 import { calibrationBankZipf } from "../../shared/calibration-bank";
+export { calibrationBankZipf };
 import {
   adjustThetaOnEasyPin,
   betaFromZipf,
@@ -24,19 +26,33 @@ import {
 //   · predictSection — qué formas de una sección conviene preparar,
 //     combinando cuaderno, evidencia explícita y rareza medida.
 
-// ---------- Perfil léxico ----------
+import {
+  estimateProfile,
+  DEFAULT_THRESHOLD_NATIVE,
+  DEFAULT_THRESHOLD_LEARNER,
+  DEFAULT_THRESHOLD,
+  CANDIDATES,
+  PROFILE_REGULARIZATION,
+  MIN_THRESHOLD,
+  MAX_THRESHOLD,
+  PROFILE_ADJUST_KEY,
+  type KnowledgeEvidence,
+  type VocabProfile,
+} from "./profile-models";
 
-export type KnowledgeEvidence = { zipf: number | null; known: boolean };
-
-export type VocabProfile = {
-  threshold: number;
-  confidence: "low" | "mid" | "high";
+export {
+  estimateProfile,
+  DEFAULT_THRESHOLD_NATIVE,
+  DEFAULT_THRESHOLD_LEARNER,
+  DEFAULT_THRESHOLD,
+  CANDIDATES,
+  PROFILE_REGULARIZATION,
+  MIN_THRESHOLD,
+  MAX_THRESHOLD,
+  PROFILE_ADJUST_KEY,
+  type KnowledgeEvidence,
+  type VocabProfile,
 };
-
-// Umbrales base por defecto según el perfil del lector.
-export const DEFAULT_THRESHOLD_NATIVE = 2.0;
-export const DEFAULT_THRESHOLD_LEARNER = 3.0;
-export const DEFAULT_THRESHOLD = DEFAULT_THRESHOLD_LEARNER;
 
 // Inferencia implícita por exposición pasiva.
 export const GAMMA_PASSIVE = 0.82;
@@ -68,86 +84,10 @@ export function updatePassiveExposureState(current: {
   };
 }
 
-// Candidatos a umbral en pasos de 0.5 (las «bandas» del plan). Al
-// empatar en puntaje gana el más cercano al valor base: un empate no
-// es evidencia de que el perfil sea extremo, y el umbral mínimo
-// dejaba pasar casi nada con calibraciones ambiguas. Si todavía
-// empatan en distancia, el recorrido ascendente favorece al menor.
-const CANDIDATES = [1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0] as const;
-
-// Regularización: cada paso de 0.5 lejos del valor base cuesta λ
-// errores. Con evidencia escasa el umbral se queda cerca del base en
-// lugar de dejarse arrastrar al extremo por un lote pequeño — la
-// evaluación cronológica sobre datos reales (profile-eval) midió
-// λ=2 como el menor valor que agota la mejora en omisiones sin pagar
-// más falsas alarmas.
-export const PROFILE_REGULARIZATION = 2;
-
-// El ajuste manual («mostrar más / menos») puede salirse de las bandas
-// pero no del tramo útil de la escala zipf. Se exportan para que la
-// tarjeta «Antes de leer» deshabilite sus botones en los topes.
-export const MIN_THRESHOLD = 1.0;
-export const MAX_THRESHOLD = 5.5;
-
-// Clave de sesión del ajuste manual del perfil («mostrar más/menos»
-// de la tarjeta de preparación). La lee quien estime el umbral fuera
-// del lector — cobertura del catálogo y de libros propios.
-export const PROFILE_ADJUST_KEY = "profileAdjust";
-
-const clamp = (value: number, min: number, max: number) =>
-  Math.min(max, Math.max(min, value));
-
-// Estima el umbral a partir del cual conviene predecir midiendo qué
-// candidato comete menos errores contra la evidencia real, con
-// regularización hacia el valor base (PROFILE_REGULARIZATION): contar
-// como conocida una palabra rara que el lector marcó como desconocida,
-// o al revés, son fallos. La evidencia sin medición (zipf null) no
-// aporta posición en la escala y se ignora — también para confidence,
-// porque no dice nada del nivel del lector. `adjust` desplaza el
-// resultado.
-export function estimateProfile(
-  evidence: KnowledgeEvidence[],
-  adjust = 0,
-  baseThreshold = DEFAULT_THRESHOLD,
-): VocabProfile {
-  const usable = evidence.flatMap((item) =>
-    item.zipf == null ? [] : [{ zipf: item.zipf, known: item.known }],
-  );
-  let best = baseThreshold;
-  if (usable.length) {
-    let bestScore = Number.POSITIVE_INFINITY;
-    let bestDistance = Number.POSITIVE_INFINITY;
-    for (const t of CANDIDATES) {
-      let errors = 0;
-      for (const item of usable) {
-        if (item.known && item.zipf < t) errors += 1;
-        if (!item.known && item.zipf >= t) errors += 1;
-      }
-      const distance = Math.abs(t - baseThreshold);
-      const score = errors + PROFILE_REGULARIZATION * distance;
-      if (score < bestScore || (score === bestScore && distance < bestDistance)) {
-        bestScore = score;
-        bestDistance = distance;
-        best = t;
-      }
-    }
-  }
-  return {
-    threshold: clamp(best + adjust, MIN_THRESHOLD, MAX_THRESHOLD),
-    confidence: usable.length < 15 ? "low" : usable.length < 60 ? "mid" : "high",
-  };
-}
-
 // ---------- Predicción por sección ----------
 
 // Tope de la lista de predichas por sección.
 export const PREDICT_CAP = 40;
-
-// La misma entrada puede responder por varias formas de la sección
-// («perenne» y «perennes»): se predice una sola vez, con la primera
-// forma que la trajo.
-export const dedupeKey = (entry: LexiconEntry) =>
-  entry.entryId != null ? `id:${entry.entryId}` : `${entry.lemma}::${entry.pos ?? ""}`;
 
 // Más rara primero; las sin medición al final, y a igual zipf gana el
 // orden alfabético de la forma.
@@ -382,58 +322,6 @@ export function isCredibleKnowledge(
 }
 
 // ---------- Resolución de evidencia contra el catálogo ----------
-
-// Pronombres enclíticos del español, ordenados para probar las
-// terminaciones más largas primero. Una forma sin ficha puede ser un
-// verbo con pronombres pegados («abrirlo», «tomármelo»): quitarlos da
-// la forma base que el catálogo sí conoce. La lista se limita a
-// pronombres reales — quitar cualquier sufijo produciría lemas
-// inventados.
-const ENCLITIC_PRONOUNS = [
-  "los",
-  "las",
-  "les",
-  "lo",
-  "la",
-  "le",
-  "me",
-  "te",
-  "se",
-  "nos",
-  "os",
-] as const;
-
-const stripAccents = (text: string) =>
-  text.normalize("NFD").replace(/\p{M}/gu, "");
-
-// Candidatas a forma base de un posible clítico, en orden: quita uno
-// o dos pronombres del final y normaliza la tilde que el enclítico
-// desplaza («tomármelo» → «tomar», «escribiéndolos» → «escribiendo»).
-// El resultado no se confía: la verificación real es que la base
-// exista en el catálogo — «pedacito» no produce candidata útil y
-// «guiris» ninguna. Residuos de menos de 3 letras se descartan (la
-// base sería un imperativo de una letra o una palabra truncada).
-export function cliticBaseForms(form: string): string[] {
-  const out: string[] = [];
-  const seen = new Set<string>();
-  const push = (candidate: string) => {
-    const clean = stripAccents(candidate);
-    if (clean.length >= 3 && clean !== form && !seen.has(clean)) {
-      seen.add(clean);
-      out.push(clean);
-    }
-  };
-  for (const pronoun of ENCLITIC_PRONOUNS) {
-    if (!form.endsWith(pronoun)) continue;
-    const once = form.slice(0, -pronoun.length);
-    push(once);
-    for (const second of ENCLITIC_PRONOUNS) {
-      if (!once.endsWith(second)) continue;
-      push(once.slice(0, -second.length));
-    }
-  }
-  return out;
-}
 
 // Fila de evidencia de entrada: `source` y `updatedAt` arbitran
 // conflictos al proyectar alias (mismo orden que mergeKnowledgeWrite

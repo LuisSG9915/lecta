@@ -898,6 +898,14 @@ describe("restoreBackupToDb", () => {
     const wordsBefore = await idb.listSavedWords();
     const localStamp = wordsBefore.find((w) => w.key === "es:local")?.updatedAt ?? now;
 
+    // Guardar un libro local existente con binario no vacío
+    await idb.saveBook({
+      hash: "b-restore",
+      name: "archivo-original.epub",
+      addedAt: now - 5000,
+      data: new Blob(["contenido binario epub"]),
+    });
+
     const result = await idb.restoreBackupToDb({
       words: [
         {
@@ -925,13 +933,23 @@ describe("restoreBackupToDb", () => {
           updatedAt: now,
         },
       ],
-      books: [{ hash: "b-restore", name: "nuevo-libro.epub" }],
+      books: [
+        { hash: "b-restore", name: "nuevo-libro.epub", addedAt: now },
+        { hash: "b-inexistente", name: "no-debe-crear-0-bytes.epub", addedAt: now },
+      ],
       positions: [{ bookHash: "b-restore", sectionIndex: 2, scrollTop: 20, updatedAt: now }],
     });
 
     expect(result.wordsRestored).toBe(3);
-    expect(result.booksRestored).toBe(1);
+    expect(result.booksRestored).toBe(1); // Solo actualiza el que ya tenía binario
     expect(result.positionsRestored).toBe(1);
+
+    const storedBooks = await idb.listStoredBooks();
+    expect(storedBooks).toHaveLength(1);
+    expect(storedBooks[0].hash).toBe("b-restore");
+    expect(storedBooks[0].data.size).toBeGreaterThan(0);
+    // Verificar que jamás se insertó el libro inexistente con 0 bytes
+    expect(storedBooks.some((b) => b.data.size === 0)).toBe(false);
 
     const words = await idb.listSavedWords();
     const localWord = words.find((w) => w.key === "es:local");

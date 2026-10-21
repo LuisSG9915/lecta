@@ -179,6 +179,11 @@ export default defineConfig({
     swManifest(),
   ],
   build: {
+    modulePreload: {
+      resolveDependencies(_filename, deps) {
+        return deps.filter((dep) => !dep.includes("lexicon-banks"));
+      },
+    },
     rollupOptions: {
       output: {
         manualChunks(id) {

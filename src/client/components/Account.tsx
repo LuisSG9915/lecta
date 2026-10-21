@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { authClient } from "../lib/auth";
 import { accountFetch } from "../lib/account-fetch";
 import { PENDING_DELETE_KEY } from "../lib/account-cleanup";
@@ -45,15 +45,14 @@ import {
 } from "../lib/reading-goal";
 import {
   downloadBackup,
-  inspectBackupPayload,
-  restoreBackupPayload,
-  type BackupPreviewSummary,
 } from "../lib/export";
+import RestoreBackupDialog from "./RestoreBackupDialog";
 import DiagnosticsModal from "./DiagnosticsModal";
 import LegalNotice from "./LegalNotice";
 import { timeAgo } from "../lib/relative-time";
 import { getDictionaryCacheWordCount, emptyDictionaryCache } from "../lib/offline-dictionary";
 import {
+  isFeatureFlagEnabled,
   loadNativeLanguage,
   readerProfileFor,
   saveNativeLanguage,
@@ -80,6 +79,7 @@ type AccountProps = {
   onOpenJourney?: () => void;
   theme?: ThemeChoice;
   onThemeChange?: (theme: ThemeChoice) => void;
+  onRestored?: () => void | Promise<void>;
 };
 
 async function loadVocabSummary(
@@ -149,6 +149,7 @@ export default function Account({
   onOpenJourney,
   theme,
   onThemeChange,
+  onRestored,
 }: AccountProps) {
   const isPage = presentation === "page";
   const companion = useCompanionSafe();
@@ -221,54 +222,9 @@ export default function Account({
   const [kindlePairError, setKindlePairError] = useState("");
   const [showKindlePairForm, setShowKindlePairForm] = useState(false);
 
-  // Diagnóstico, respaldo y avisos legales
+  // Diagnóstico y avisos legales
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [showLegal, setShowLegal] = useState<"privacy" | "terms" | null>(null);
-  const [backupPreview, setBackupPreview] = useState<BackupPreviewSummary | null>(null);
-  const [backupPayload, setBackupPayload] = useState<string | null>(null);
-  const [restoringBackup, setRestoringBackup] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const handleBackupFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    try {
-      const text = await file.text();
-      const summary = inspectBackupPayload(text);
-      setBackupPayload(text);
-      setBackupPreview(summary);
-      setError("");
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "No se pudo interpretar el archivo de respaldo.",
-      );
-      setBackupPayload(null);
-      setBackupPreview(null);
-    } finally {
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    }
-  };
-
-  const handleConfirmRestore = async () => {
-    if (!backupPayload) return;
-    setRestoringBackup(true);
-    try {
-      await restoreBackupPayload(backupPayload);
-      setMessage("Respaldo restaurado correctamente.");
-      setBackupPreview(null);
-      setBackupPayload(null);
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Ocurrió un error al restaurar el respaldo.",
-      );
-    } finally {
-      setRestoringBackup(false);
-    }
-  };
 
   const handleLinkKindle = async (e: FormEvent) => {
     e.preventDefault();
@@ -1247,20 +1203,22 @@ export default function Account({
               {confirmDelete ? "¿Seguro? Borra cuenta, libros y vocabulario" : "Eliminar cuenta"}
             </button>
           </div>
-          <div className="account-kindle-guide" style={{ marginTop: "var(--s-3)", borderTop: "1px solid var(--rule)", paddingTop: "var(--s-3)" }}>
-            <strong style={{ display: "block", marginBottom: "var(--s-1)" }}>Modo Kindle y Tinta Electrónica</strong>
-            <p className="meta" style={{ marginBottom: "var(--s-2)" }}>Guía visual de 2 pasos para sincronizar con tu Kindle:</p>
-            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-              <div style={{ display: "flex", gap: "8px", alignItems: "baseline" }}>
-                <span style={{ fontWeight: "bold" }}>1.</span>
-                <span className="meta">Abre el navegador experimental de tu Kindle e ingresa a <strong>/k</strong> (o lecta.app/k).</span>
-              </div>
-              <div style={{ display: "flex", gap: "8px", alignItems: "baseline" }}>
-                <span style={{ fontWeight: "bold" }}>2.</span>
-                <span className="meta">Inicia sesión con tu correo ({session.user.email}) para sincronizar libros, posición y notas al instante.</span>
+          {isFeatureFlagEnabled("kindleSync") && (
+            <div className="account-kindle-guide" style={{ marginTop: "var(--s-3)", borderTop: "1px solid var(--rule)", paddingTop: "var(--s-3)" }}>
+              <strong style={{ display: "block", marginBottom: "var(--s-1)" }}>Modo Kindle y Tinta Electrónica</strong>
+              <p className="meta" style={{ marginBottom: "var(--s-2)" }}>Guía visual de 2 pasos para sincronizar con tu Kindle:</p>
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                <div style={{ display: "flex", gap: "8px", alignItems: "baseline" }}>
+                  <span style={{ fontWeight: "bold" }}>1.</span>
+                  <span className="meta">Abre el navegador experimental de tu Kindle e ingresa a <strong>/k</strong> (o lecta.app/k).</span>
+                </div>
+                <div style={{ display: "flex", gap: "8px", alignItems: "baseline" }}>
+                  <span style={{ fontWeight: "bold" }}>2.</span>
+                  <span className="meta">Inicia sesión con tu correo ({session.user.email}) para sincronizar libros, posición y notas al instante.</span>
+                </div>
               </div>
             </div>
-          </div>
+          )}
           {showChange ? (
             <form className="field" onSubmit={changePassword} style={{ marginTop: "var(--s-3)" }}>
               <label htmlFor="current-password">Contraseña actual</label>
@@ -1319,20 +1277,22 @@ export default function Account({
               Iniciar sesión o crear cuenta
             </button>
           </div>
-          <div className="account-kindle-guide" style={{ marginTop: "var(--s-3)", borderTop: "1px solid var(--rule)", paddingTop: "var(--s-3)" }}>
-            <strong style={{ display: "block", marginBottom: "var(--s-1)" }}>Modo Kindle y Tinta Electrónica</strong>
-            <p className="meta" style={{ marginBottom: "var(--s-2)" }}>Guía visual de 2 pasos para sincronizar con tu Kindle:</p>
-            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-              <div style={{ display: "flex", gap: "8px", alignItems: "baseline" }}>
-                <span style={{ fontWeight: "bold" }}>1.</span>
-                <span className="meta">Abre el navegador experimental de tu Kindle e ingresa a <strong>/k</strong> (o lecta.app/k).</span>
-              </div>
-              <div style={{ display: "flex", gap: "8px", alignItems: "baseline" }}>
-                <span style={{ fontWeight: "bold" }}>2.</span>
-                <span className="meta">Inicia sesión con tu cuenta para sincronizar libros, avances y notas al instante.</span>
+          {isFeatureFlagEnabled("kindleSync") && (
+            <div className="account-kindle-guide" style={{ marginTop: "var(--s-3)", borderTop: "1px solid var(--rule)", paddingTop: "var(--s-3)" }}>
+              <strong style={{ display: "block", marginBottom: "var(--s-1)" }}>Modo Kindle y Tinta Electrónica</strong>
+              <p className="meta" style={{ marginBottom: "var(--s-2)" }}>Guía visual de 2 pasos para sincronizar con tu Kindle:</p>
+              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+                <div style={{ display: "flex", gap: "8px", alignItems: "baseline" }}>
+                  <span style={{ fontWeight: "bold" }}>1.</span>
+                  <span className="meta">Abre el navegador experimental de tu Kindle e ingresa a <strong>/k</strong> (o lecta.app/k).</span>
+                </div>
+                <div style={{ display: "flex", gap: "8px", alignItems: "baseline" }}>
+                  <span style={{ fontWeight: "bold" }}>2.</span>
+                  <span className="meta">Inicia sesión con tu cuenta para sincronizar libros, avances y notas al instante.</span>
+                </div>
               </div>
             </div>
-          </div>
+          )}
         </section>
       ) : null}
 
@@ -1612,25 +1572,25 @@ export default function Account({
                 >
                   Descargar mis datos (JSON)
                 </button>
-                <button
-                  type="button"
-                  className="btn--quiet"
-                  onClick={() => fileInputRef.current?.click()}
-                >
-                  Restaurar respaldo (JSON)
-                </button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".json,application/json"
-                  style={{ display: "none" }}
-                  onChange={(e) => void handleBackupFileSelect(e)}
+                <RestoreBackupDialog
+                  onRestored={async () => {
+                    setMessage("Respaldo restaurado correctamente.");
+                    if (onRestored) await onRestored();
+                  }}
+                  trigger={(openPicker) => (
+                    <button
+                      type="button"
+                      className="btn--quiet"
+                      onClick={openPicker}
+                    >
+                      Restaurar respaldo (JSON)
+                    </button>
+                  )}
                 />
               </div>
             </div>
             <p className="meta">
-              Palabras, repasos, marcadores, posiciones y preferencias de este dispositivo.
-              Los libros se re-suben solos si tienes cuenta.
+              El respaldo guarda tus palabras, notas, posiciones e historial. Los archivos EPUB no viajan en el archivo de respaldo: si tienes cuenta se descargan desde tu nube, y si lees sin cuenta basta con volver a abrir tu archivo EPUB para recuperar tu progreso automáticamente.
             </p>
             <div className="setting-row">
               <span className="setting-label">Memoria del diccionario</span>
@@ -1653,68 +1613,70 @@ export default function Account({
             </p>
           </div>
 
-          <div className="setting-block">
-            <h3 className="eyebrow">Lectura en Kindle y Tinta Electrónica</h3>
-            <p className="meta">
-              ¿Tienes un Kindle o lector de tinta electrónica? Abre{" "}
-              <a href="/kindle" target="_blank" rel="noreferrer">
-                /kindle
-              </a>{" "}
-              desde su navegador para conectarlo en 1 toque con un código de 4 letras y sincronizar tu avance exacto de lectura.
-            </p>
-            {!showKindlePairForm ? (
-              <button
-                type="button"
-                className="btn btn--secondary"
-                style={{ marginTop: "0.5rem" }}
-                onClick={() => setShowKindlePairForm(true)}
-              >
-                Conectar mi Kindle
-              </button>
-            ) : (
-              <form onSubmit={handleLinkKindle} style={{ marginTop: "0.75rem", maxWidth: "340px" }}>
-                <label htmlFor="kindle-code-input" className="meta" style={{ display: "block", marginBottom: "0.3rem" }}>
-                  Código de 4 letras que aparece en tu Kindle:
-                </label>
-                <div style={{ display: "flex", gap: "0.5rem" }}>
-                  <input
-                    id="kindle-code-input"
-                    type="text"
-                    maxLength={4}
-                    value={kindleCode}
-                    onChange={(e) => setKindleCode(e.target.value.toUpperCase())}
-                    placeholder="Ej. K7M4"
-                    style={{
-                      fontFamily: "monospace",
-                      fontSize: "1.2rem",
-                      letterSpacing: "0.2rem",
-                      textAlign: "center",
-                      textTransform: "uppercase",
-                      width: "120px",
-                    }}
-                    autoFocus
-                  />
-                  <button
-                    type="submit"
-                    className="btn btn--primary"
-                    disabled={kindlePairLoading || kindleCode.trim().length !== 4}
-                  >
-                    {kindlePairLoading ? "Vinculando..." : "Vincular Kindle"}
-                  </button>
-                </div>
-                {kindlePairMessage ? (
-                  <p className="meta" style={{ color: "var(--accent, #16a34a)", marginTop: "0.5rem", fontWeight: 500 }}>
-                    {kindlePairMessage}
-                  </p>
-                ) : null}
-                {kindlePairError ? (
-                  <p className="meta" style={{ color: "var(--danger, #dc2626)", marginTop: "0.5rem" }}>
-                    {kindlePairError}
-                  </p>
-                ) : null}
-              </form>
-            )}
-          </div>
+          {isFeatureFlagEnabled("kindleSync") && (
+            <div className="setting-block">
+              <h3 className="eyebrow">Lectura en Kindle y Tinta Electrónica</h3>
+              <p className="meta">
+                ¿Tienes un Kindle o lector de tinta electrónica? Abre{" "}
+                <a href="/kindle" target="_blank" rel="noreferrer">
+                  /kindle
+                </a>{" "}
+                desde su navegador para conectarlo en 1 toque con un código de 4 letras y sincronizar tu avance exacto de lectura.
+              </p>
+              {!showKindlePairForm ? (
+                <button
+                  type="button"
+                  className="btn btn--secondary"
+                  style={{ marginTop: "0.5rem" }}
+                  onClick={() => setShowKindlePairForm(true)}
+                >
+                  Conectar mi Kindle
+                </button>
+              ) : (
+                <form onSubmit={handleLinkKindle} style={{ marginTop: "0.75rem", maxWidth: "340px" }}>
+                  <label htmlFor="kindle-code-input" className="meta" style={{ display: "block", marginBottom: "0.3rem" }}>
+                    Código de 4 letras que aparece en tu Kindle:
+                  </label>
+                  <div style={{ display: "flex", gap: "0.5rem" }}>
+                    <input
+                      id="kindle-code-input"
+                      type="text"
+                      maxLength={4}
+                      value={kindleCode}
+                      onChange={(e) => setKindleCode(e.target.value.toUpperCase())}
+                      placeholder="Ej. K7M4"
+                      style={{
+                        fontFamily: "monospace",
+                        fontSize: "1.2rem",
+                        letterSpacing: "0.2rem",
+                        textAlign: "center",
+                        textTransform: "uppercase",
+                        width: "120px",
+                      }}
+                      autoFocus
+                    />
+                    <button
+                      type="submit"
+                      className="btn btn--primary"
+                      disabled={kindlePairLoading || kindleCode.trim().length !== 4}
+                    >
+                      {kindlePairLoading ? "Vinculando..." : "Vincular Kindle"}
+                    </button>
+                  </div>
+                  {kindlePairMessage ? (
+                    <p className="meta" style={{ color: "var(--accent, #16a34a)", marginTop: "0.5rem", fontWeight: 500 }}>
+                      {kindlePairMessage}
+                    </p>
+                  ) : null}
+                  {kindlePairError ? (
+                    <p className="meta" style={{ color: "var(--danger, #dc2626)", marginTop: "0.5rem" }}>
+                      {kindlePairError}
+                    </p>
+                  ) : null}
+                </form>
+              )}
+            </div>
+          )}
 
           <div className="setting-block">
             <h3 className="eyebrow">Acerca de y Diagnóstico</h3>
@@ -1758,60 +1720,6 @@ export default function Account({
           </div>
         </div>
       </details>
-
-      {backupPreview ? (
-        <Dialog label="Restaurar respaldo" onClose={() => setBackupPreview(null)}>
-          <div className="sheet-head">
-            <strong className="sheet-title">Restaurar respaldo</strong>
-            <button
-              type="button"
-              className="btn--quiet"
-              onClick={() => setBackupPreview(null)}
-              aria-label="Cerrar"
-            >
-              Cerrar
-            </button>
-          </div>
-          <div style={{ padding: "var(--s-3) 0" }}>
-            <p className="meta">
-              Se encontraron los siguientes datos en el archivo de respaldo:
-            </p>
-            <ul style={{ listStyle: "none", padding: 0, margin: "var(--s-2) 0", fontSize: "var(--fs-sm)" }}>
-              <li>Versión del formato: v{backupPreview.version}</li>
-              <li>Fecha de exportación: {new Date(backupPreview.exportedAt).toLocaleString()}</li>
-              <li>Libros: {backupPreview.booksCount}</li>
-              <li>Palabras del cuaderno: {backupPreview.wordsCount}</li>
-              <li>Anotaciones: {backupPreview.annotationsCount}</li>
-              <li>Posiciones de lectura: {backupPreview.positionsCount}</li>
-              <li>Repasos: {backupPreview.reviewsCount}</li>
-              <li>Sesiones de actividad: {backupPreview.activityCount}</li>
-              <li>Estado del compañero: {backupPreview.hasCompanionState ? "Incluido" : "No incluido"}</li>
-            </ul>
-            <p className="meta" style={{ marginTop: "var(--s-2)" }}>
-              La restauración fusionará estos datos con los actuales de este dispositivo,
-              conservando siempre la versión más reciente sin sobreescribir tus lecturas nuevas.
-            </p>
-            <div style={{ display: "flex", gap: "var(--s-2)", marginTop: "var(--s-4)", justifyContent: "flex-end" }}>
-              <button
-                type="button"
-                className="btn"
-                onClick={() => setBackupPreview(null)}
-                disabled={restoringBackup}
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                className="btn btn--primary"
-                onClick={() => void handleConfirmRestore()}
-                disabled={restoringBackup}
-              >
-                {restoringBackup ? "Restaurando…" : "Confirmar restauración"}
-              </button>
-            </div>
-          </div>
-        </Dialog>
-      ) : null}
 
       {showDiagnostics ? (
         <DiagnosticsModal onClose={() => setShowDiagnostics(false)} />

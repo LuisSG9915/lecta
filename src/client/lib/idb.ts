@@ -900,19 +900,43 @@ export async function restoreBackupToDb(
       for (const book of data.books) {
         if (!book?.hash) continue;
         const existing = await target.get("books", book.hash);
-        if (!existing) {
-          await target.put("books", {
-            hash: book.hash,
-            name: book.name || `${book.hash.slice(0, 8)}.epub`,
-            addedAt: book.addedAt ?? Date.now(),
-            title: book.title,
-            author: book.author,
-            language: book.language,
-            sectionCount: book.sectionCount,
-            metaVersion: book.metaVersion,
-            data: new Blob([]),
-          });
-          booksRestored++;
+        if (existing) {
+          if (existing.data && existing.data.size > 0) {
+            // Si ya existe el libro localmente con data.size > 0, conserva su binario
+            // y actualiza solo metadatos si el respaldo es más reciente o si faltaban datos.
+            const backupTime = book.addedAt ?? 0;
+            const existingTime = existing.addedAt ?? 0;
+            if (backupTime >= existingTime || !existing.title) {
+              await target.put("books", {
+                ...existing,
+                title: book.title ?? existing.title,
+                author: book.author ?? existing.author,
+                language: book.language ?? existing.language,
+                sectionCount: book.sectionCount ?? existing.sectionCount,
+                metaVersion: book.metaVersion ?? existing.metaVersion,
+                name: book.name ?? existing.name,
+              });
+              booksRestored++;
+            }
+          } else {
+            // Si existía un registro previo corrupto de 0 bytes, se remueve de books
+            await target.delete("books", book.hash);
+          }
+        }
+        // Guardar metadatos recordados en clave de sesión/metadatos separada sin contaminar books
+        if (book.title || book.name) {
+          await target.put(
+            "session",
+            {
+              hash: book.hash,
+              name: book.name,
+              title: book.title,
+              author: book.author,
+              language: book.language,
+              sectionCount: book.sectionCount,
+            },
+            `book_meta:${book.hash}`,
+          );
         }
       }
     }

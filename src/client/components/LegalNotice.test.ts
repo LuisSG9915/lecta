@@ -30,6 +30,9 @@ describe("LegalNotice", () => {
     expect(host.textContent).toContain("Aviso de Privacidad");
     expect(host.textContent).toContain("local primero (local-first)");
     expect(host.textContent).toContain("Consultas de Inteligencia Artificial");
+    expect(host.textContent).toContain("LFPDPPP");
+    expect(host.textContent).toContain("[PENDIENTE DE REVISIÓN POR TITULAR: Nombre/Razón Social, Domicilio y Correo Legal]");
+    expect(host.textContent).toContain("derechos ARCO");
   });
 
   it("permite alternar a la pestaña de términos de uso", () => {
@@ -48,7 +51,9 @@ describe("LegalNotice", () => {
 
     expect(host.textContent).toContain("Términos de Uso");
     expect(host.textContent).toContain("Propiedad de tus lecturas");
-    expect(host.textContent).toContain("Datos léxicos y fuentes abiertas");
+    expect(host.textContent).toContain("ODbL 1.0");
+    expect(host.textContent).toContain("lecta-lexicon-data");
+    expect(host.textContent).toContain("forma → lema");
   });
 
   it("permite abrir directamente en la pestaña de términos", () => {

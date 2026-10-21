@@ -23,7 +23,10 @@ export function logErrorToStorage(error: unknown, errorInfo?: ErrorInfo | null):
       message: error instanceof Error ? error.message : String(error),
       stack,
       timestamp: Date.now(),
-      url: typeof window !== "undefined" ? window.location.href : "",
+      url:
+        typeof window !== "undefined"
+          ? `${window.location.origin}${window.location.pathname}`
+          : "",
     };
 
     const updated = [...list, entry].slice(-ERROR_LOG_MAX_ENTRIES);

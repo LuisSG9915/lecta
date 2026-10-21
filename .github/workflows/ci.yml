@@ -2,14 +2,17 @@ name: CI
 
 on:
   push:
-    branches: ["*"]
+    branches: ["**"]
   pull_request:
-    branches: ["*"]
+    branches: ["**"]
 
 jobs:
   validate:
     name: Typecheck, Lint, Test & Build
     runs-on: ubuntu-latest
+    env:
+      BETTER_AUTH_SECRET: "ci-test-secret-lecta-32-chars-minimum-key"
+      CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE: "postgresql://postgres:postgres@localhost:5432/lecta"
     steps:
       - name: Checkout
         uses: actions/checkout@v4

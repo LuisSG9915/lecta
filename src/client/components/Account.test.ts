@@ -339,6 +339,28 @@ describe("Account componente Tú y Login", () => {
     expect(submitBtn).toBeTruthy();
   });
 
+  it("oculta la sección de Kindle si featureFlags.kindleSync está desactivado", async () => {
+    const { saveFeatureFlags } = await import("../lib/settings");
+    saveFeatureFlags({ kindleSync: false });
+    try {
+      render(
+        h(Account, {
+          presentation: "page",
+          onClose: vi.fn(),
+          onOpenCalibration: vi.fn(),
+        }),
+      );
+      await flush();
+      expect(host.querySelector(".account-kindle-guide")).toBeNull();
+      const connectKindleBtn = Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find(
+        (b) => b.textContent?.includes("Conectar mi Kindle"),
+      );
+      expect(connectKindleBtn).toBeUndefined();
+    } finally {
+      saveFeatureFlags({ kindleSync: true });
+    }
+  });
+
   it("renderiza botón para restaurar respaldo y selector de archivo", async () => {
     render(
       h(Account, {

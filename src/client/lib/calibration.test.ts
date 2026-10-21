@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getActiveUserId,
   listKnowledge,
@@ -19,6 +19,7 @@ import {
   initCatSession,
   needsLanguageCalibration,
   parseCalibrationDraft,
+  preloadCalibrationBank,
   recordCalibration,
   resetCalibrationStatusForTesting,
   selectNextCatItem,
@@ -398,6 +399,10 @@ describe("calibrationAnswerScore and IRT adaptive engine", () => {
 });
 
 describe("Motor CAT de 15 Segundos y Máquina de Estados Adaptativa", () => {
+  beforeAll(async () => {
+    await preloadCalibrationBank();
+  });
+
   beforeEach(() => {
     resetCalibrationStatusForTesting();
   });

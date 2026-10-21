@@ -3,7 +3,7 @@ import type { SavedWord, KnownWord } from "../../lib/idb";
 import type { SearchSection } from "../../lib/book-search";
 import type { DeepReadingSummary, DeepReadingConfig } from "../../lib/deep-reading";
 import type { ConsolidationModality, EpisodicWordItem } from "../../lib/practice";
-import type { StrategyPreset } from "../../lib/settings";
+import { isFeatureFlagEnabled, type StrategyPreset } from "../../lib/settings";
 import type { TtsEngineMode } from "../../lib/ttsTypes";
 import type { PageRecapResult } from "../../lib/page-recap";
 import type { ChapterTarget } from "../../lib/chapters";
@@ -18,6 +18,7 @@ import BookGlossaryModal from "../BookGlossaryModal";
 import TtsConsentDialog from "../TtsConsentDialog";
 import ReaderMoreMenu from "../ReaderMoreMenu";
 import Dialog from "../Dialog";
+import Icon from "../Icon";
 
 export interface PrepState {
   target: ChapterTarget;
@@ -224,7 +225,7 @@ export function ReaderOverlays({
 }: ReaderOverlaysProps) {
   return (
     <>
-      {prep ? (
+      {prep && isFeatureFlagEnabled("chapterPriming") ? (
         <SectionPreview
           mode="modal"
           title={prep.target.label}
@@ -286,7 +287,10 @@ export function ReaderOverlays({
         >
           <div className="sheet-head">
             <h2 className="sheet-title">
-              <span aria-hidden="true">🧭</span> Recuperar el hilo
+              <span aria-hidden="true" style={{ display: "inline-flex", verticalAlign: "middle", marginRight: "var(--s-1)" }}>
+                <Icon name="journey" size={16} />
+              </span>
+              Recuperar el hilo
             </h2>
             <button
               type="button"
@@ -301,7 +305,7 @@ export function ReaderOverlays({
           {pageRecap.loading ? (
             <div className="cat-passage-loading">
               <span className="cat-spinner" aria-hidden="true">
-                🧭
+                <Icon name="journey" size={20} />
               </span>
               <p className="meta">Reconstruyendo el hilo de atención de esta página…</p>
             </div>
@@ -320,7 +324,7 @@ export function ReaderOverlays({
               {pageRecap.data.hookQuestion ? (
                 <div className="page-recap-hook">
                   <span className="hook-icon" aria-hidden="true">
-                    ✨
+                    <Icon name="sparkles" size={16} />
                   </span>
                   <p className="hook-text">
                     <em>{pageRecap.data.hookQuestion}</em>
@@ -357,8 +361,8 @@ export function ReaderOverlays({
         >
           <div className="sheet-head">
             <h2 className="sheet-title">
-              <span className="cat-dialog-avatar" aria-hidden="true">
-                🐾
+              <span className="cat-dialog-avatar" aria-hidden="true" style={{ display: "inline-flex", verticalAlign: "middle", marginRight: "var(--s-1)" }}>
+                <Icon name="sparkles" size={16} />
               </span>{" "}
               El apunte del Gato
             </h2>
@@ -377,7 +381,7 @@ export function ReaderOverlays({
           {catPassageExplanation.loading ? (
             <div className="cat-passage-loading">
               <span className="cat-spinner" aria-hidden="true">
-                🐾
+                <Icon name="sparkles" size={20} />
               </span>
               <p className="meta">El gato está leyendo con atención el pasaje…</p>
             </div>
@@ -393,7 +397,7 @@ export function ReaderOverlays({
               </p>
               <div className="cat-literary-tip">
                 <span className="cat-tip-icon" aria-hidden="true">
-                  🐾
+                  <Icon name="sparkles" size={16} />
                 </span>
                 <p className="cat-tip-text">
                   <em>Michi:</em> «{catPassageExplanation.data.catTip}»

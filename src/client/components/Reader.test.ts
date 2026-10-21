@@ -858,6 +858,7 @@ describe("Cableado Maestro e Integración en Reader.tsx (Fase 1 y Fase 2)", () =
       saveUnifiedSmartAssists,
       loadUnifiedSmartAssists,
       muteBookForPriming,
+      READER_DEFAULTS,
     } = await import("../lib/settings");
     const { saveFocusTelemetryProfile, loadFocusTelemetryProfile, muteBookFocusSuggestions } =
       await import("../lib/focus-telemetry");
@@ -891,6 +892,7 @@ describe("Cableado Maestro e Integración en Reader.tsx (Fase 1 y Fase 2)", () =
           onSearch: vi.fn(),
           bookHash: testBook,
           language: "en",
+          settings: { ...READER_DEFAULTS, interfaceMode: "advanced" },
         }),
       );
     });
@@ -1330,6 +1332,102 @@ describe("Fase 4: Pruebas de Integración End-to-End en Reader.test.ts", () => {
     });
 
     expect(onContinue).toHaveBeenCalledTimes(1);
+  });
+
+  it("5. Respeta los interruptores de función (kill-switches locales)", async () => {
+    const { createElement: h, act } = await import("react");
+    const { createRoot } = await import("react-dom/client");
+    const { saveFeatureFlags } = await import("../lib/settings");
+    const { default: ReaderOverlays } = await import("./reader/ReaderOverlays");
+    const { default: DeepReadingSummaryModal } = await import("./DeepReadingSummaryModal");
+    const { TtsAudioController } = await import("../lib/ttsController");
+
+    // 5.1 featureFlags.chapterPriming: false desactiva SectionPreview
+    saveFeatureFlags({ chapterPriming: false });
+    root = createRoot(host);
+    await act(async () => {
+      root.render(
+        h(ReaderOverlays, {
+          bookHash: "test-hash",
+          selection: null,
+          onCloseSelection: vi.fn(),
+          quoteCard: null,
+          onCloseQuoteCard: vi.fn(),
+          prep: {
+            target: {
+              id: "cap-1",
+              label: "Capítulo 1",
+              href: "cap1.xhtml",
+              sectionIndex: 0,
+              depth: 0,
+              kind: "chapter",
+            },
+            analysis: "ready",
+            rows: [],
+            uncertain: [],
+            deferred: [],
+            answers: {},
+            saving: false,
+          },
+          onClosePrep: vi.fn(),
+          onSkipPrep: vi.fn(),
+        }),
+      );
+    });
+    expect(host.querySelector(".reader-section-preview-pill")).toBeNull();
+    expect(host.querySelector(".reader-section-preview")).toBeNull();
+    saveFeatureFlags({ chapterPriming: true });
+
+    // 5.2 featureFlags.vocabGames: false desactiva consolidación al final del capítulo
+    saveFeatureFlags({ vocabGames: false });
+    await act(async () => {
+      root.unmount();
+    });
+    root = createRoot(host);
+    await act(async () => {
+      root.render(
+        h(DeepReadingSummaryModal, {
+          summary: {
+            durationMinutes: 15,
+            targetMinutes: 15,
+            sectionsRead: 1,
+            completedNaturally: true,
+            wordsAssimilated: 1,
+            coverageDeltaPercent: 1,
+          },
+          consolidationQueue: [
+            {
+              item: {
+                lemma: "arcano",
+                surfaceForm: "arcano",
+                lang: "es",
+                shortGloss: "secreto",
+                chapterSentence: "Un saber arcano.",
+                chapterTitle: "Capítulo 1",
+                source: "in-chapter-lookup",
+              },
+              modality: "sentence-cloze",
+            },
+          ],
+          bookId: "b-test",
+          onContinue: vi.fn(),
+          onClose: vi.fn(),
+        }),
+      );
+    });
+    expect(host.textContent).not.toContain("Fija en tu memoria");
+    saveFeatureFlags({ vocabGames: true });
+
+    // 5.3 featureFlags.neuralTts: false fuerza motor nativo y no expone voces neurales
+    saveFeatureFlags({ neuralTts: false });
+    let passedVoices: Array<{ id: string; name: string; lang: string; isNeural?: boolean }> = [];
+    new TtsAudioController({
+      onVoicesChange: (v) => {
+        passedVoices = v;
+      },
+    });
+    expect(passedVoices.some((v) => v.isNeural)).toBe(false);
+    saveFeatureFlags({ neuralTts: true });
   });
 });
 

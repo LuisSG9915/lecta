@@ -8,6 +8,7 @@ import SmartReaderDock, {
   type SmartReaderDockProps,
 } from "./SmartReaderDock";
 import type { TtsSnapshot } from "../lib/ttsTypes";
+import { saveFeatureFlags } from "../lib/settings";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -161,7 +162,8 @@ describe("SmartReaderDock (Track 2: Dock Inteligente Único)", () => {
     expect(container.textContent).toContain("1.15×");
 
     // Motor HD badge
-    expect(container.textContent).toContain("✨ Voz HD");
+    expect(container.textContent).toContain("Voz HD");
+    expect(container.querySelector(".icon--sparkles")).toBeTruthy();
 
     // Capturar joya léxica al Cuaderno
     const captureBtn = container.querySelector(".dock-audio-capture-btn") as HTMLButtonElement;
@@ -201,6 +203,22 @@ describe("SmartReaderDock (Track 2: Dock Inteligente Único)", () => {
     it("no muestra la píldora si isFatigued es false", () => {
       render({ isFatigued: false });
       expect(container.querySelector(".reader-focus-suggestion-pill")).toBeNull();
+    });
+
+    it("no muestra la píldora si featureFlags.focusTelemetry está desactivado", () => {
+      saveFeatureFlags({ focusTelemetry: false });
+      try {
+        render({
+          focusSuggestion: {
+            isFatigued: true,
+            reason: "regressions",
+            recommendedAid: "paragraph-focus",
+          },
+        });
+        expect(container.querySelector(".reader-focus-suggestion-pill")).toBeNull();
+      } finally {
+        saveFeatureFlags({ focusTelemetry: true });
+      }
     });
 
     it("muestra la píldora contextual por releídas (regressions) y la activa en 1 toque", () => {

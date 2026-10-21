@@ -42,6 +42,12 @@ async function sendViaResend(
 
 export function createAuth(env: WorkerEnv, baseURL: string) {
   const pool = new pg.Pool({ connectionString: getConnectionString(env), max: 1 });
+  if (typeof pool.on === "function") {
+    pool.on("error", (err) => {
+      // Evita crash del proceso por error no capturado en eventos de socket (ej. ENOTFOUND transitorio)
+      console.error("Postgres pool error:", err.message);
+    });
+  }
   return betterAuth({
     database: {
       db: new Kysely({ dialect: new PostgresDialect({ pool }) }),

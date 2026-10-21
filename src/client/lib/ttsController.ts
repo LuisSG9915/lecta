@@ -14,6 +14,7 @@ import { clearTtsMarks, markSentence, ttsMarkElement } from "./ttsMarks";
 import { createSpeaker, ensureVoices, speakWithSystemVoice, stopSystemVoice, type TtsSpeaker } from "./ttsSpeech";
 import { loadTtsSettings, saveTtsSettings } from "./ttsSettings";
 import { isTtsSupported } from "./ttsSettings";
+import { isFeatureFlagEnabled } from "./settings";
 import { kittenTtsEngine, type KittenTtsEngine } from "./kittenTtsEngine";
 import {
   KITTEN_VOICES,
@@ -136,6 +137,9 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
   const lookaheadPending = new Set<number>();
 
   const shouldUseKitten = (): boolean => {
+    if (!isFeatureFlagEnabled("neuralTts")) {
+      return false;
+    }
     const isEn = deps.language().toLowerCase().startsWith("en");
     const isTestMock = Boolean(deps.kittenEngine);
     if (!isEn && !isTestMock) {
@@ -893,7 +897,7 @@ export function stopAllTtsPlayback(): void {
 }
 
 export interface TtsControllerOptions {
-  onStateChange: (snap: {
+  onStateChange?: (snap: {
     status: TtsStatus;
     currentSentenceText: string;
     currentIndex: number;
@@ -915,7 +919,7 @@ export class TtsAudioController {
   private isCancelledFlag = false;
   private docLang = "en";
 
-  constructor(options: TtsControllerOptions) {
+  constructor(options: TtsControllerOptions = {}) {
     this.options = options;
     this.initVoices();
   }
@@ -933,13 +937,15 @@ export class TtsAudioController {
         });
       }
     }
-    for (const kv of KITTEN_VOICES) {
-      voices.push({
-        id: `kitten:${kv.id}`,
-        name: `${kv.name} (Neural HD)`,
-        lang: "en-US",
-        isNeural: true,
-      });
+    if (isFeatureFlagEnabled("neuralTts")) {
+      for (const kv of KITTEN_VOICES) {
+        voices.push({
+          id: `kitten:${kv.id}`,
+          name: `${kv.name} (Neural HD)`,
+          lang: "en-US",
+          isNeural: true,
+        });
+      }
     }
     this.options.onVoicesChange?.(voices);
   }
@@ -962,7 +968,7 @@ export class TtsAudioController {
   }
 
   private emitState(): void {
-    this.options.onStateChange({
+    this.options.onStateChange?.({
       status: this.status,
       currentSentenceText: this.sentences[this.currentIndex] || "",
       currentIndex: this.currentIndex,
@@ -980,7 +986,10 @@ export class TtsAudioController {
     void playSentencesLoop({
       sentences: this.sentences,
       startIndex: this.currentIndex,
-      engineMode: this.voiceURI?.startsWith("kitten:") ? "kitten-neural" : "browser",
+      engineMode:
+        isFeatureFlagEnabled("neuralTts") && this.voiceURI?.startsWith("kitten:")
+          ? "kitten-neural"
+          : "browser",
       voiceId: this.voiceURI?.replace("kitten:", "") || "",
       speed: this.rate,
       language: this.docLang,

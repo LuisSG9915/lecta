@@ -8,6 +8,7 @@ import {
   type CalibrationWord,
   type CatSessionState,
 } from "../lib/calibration";
+import { getCalibrationBankByLang } from "../../shared/calibration-bank";
 
 export type CalibrationProps = {
   words?: CalibrationWord[];
@@ -25,7 +26,7 @@ export default function Calibration({
 }: CalibrationProps) {
   const [prevLanguage, setPrevLanguage] = useState(language);
   const [session, setSession] = useState<CatSessionState>(() =>
-    initCatSession(language),
+    initCatSession(language, undefined, getCalibrationBankByLang(language)),
   );
   const [isFinishing, setIsFinishing] = useState(false);
   const finishTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -33,7 +34,7 @@ export default function Calibration({
   // Reiniciar sesión adaptativa si cambia la prop de idioma (sin useEffect sincrónico)
   if (language !== prevLanguage) {
     setPrevLanguage(language);
-    setSession(initCatSession(language));
+    setSession(initCatSession(language, undefined, getCalibrationBankByLang(language)));
     setIsFinishing(false);
   }
 
@@ -61,7 +62,7 @@ export default function Calibration({
   const handleAnswer = useCallback(
     (known: boolean) => {
       if (!session.currentItem || isFinishing) return;
-      const next = submitCatAnswer(session, known);
+      const next = submitCatAnswer(session, known, getCalibrationBankByLang(language));
       setSession(next);
 
       if (next.isComplete) {

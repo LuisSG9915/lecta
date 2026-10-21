@@ -90,6 +90,7 @@ import ReadingActivity from "./ReadingActivity";
 import { PracticeContext } from "./PracticeContext";
 import { PracticeCompanionHeader } from "./PracticeCompanionHeader";
 import {
+  isFeatureFlagEnabled,
   loadNativeLanguage,
   loadPracticeCompanionMode,
   savePracticeCompanionMode,
@@ -154,18 +155,18 @@ export const UnifiedNotebookView: React.FC<{
           </p>
         </div>
 
-        {words.length > 0 && (
+        {words.length > 0 && isFeatureFlagEnabled("vocabGames") && (
           <button
             type="button"
             className="notebook-quick-review-cta"
             onClick={() => onStartQuickReview?.(quickSession)}
           >
-            <span className="cta-icon">🎮</span>
+            <span className="cta-icon"><Icon name="strategy" size={16} /></span>
             <span className="cta-text">
               Repaso rápido ({Math.min(5, words.length)}{" "}
               {Math.min(5, words.length) === 1 ? "palabra" : "palabras"})
             </span>
-            <span className="cta-badge">1 min · 🐱</span>
+            <span className="cta-badge">1 min</span>
           </button>
         )}
       </header>
@@ -176,7 +177,7 @@ export const UnifiedNotebookView: React.FC<{
           <input
             type="search"
             className="notebook-search-input"
-            placeholder="🔍 Buscar palabra, significado o libro..."
+            placeholder="Buscar palabra, significado o libro..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             aria-label="Buscar en tu cuaderno"
@@ -192,7 +193,9 @@ export const UnifiedNotebookView: React.FC<{
               <div className="notebook-word-top-row">
                 <strong className="notebook-word-lemma">{item.word}</strong>
                 {item.bookTitle && (
-                  <span className="notebook-word-book-tag">📖 {item.bookTitle}</span>
+                  <span className="notebook-word-book-tag">
+                    <Icon name="book" size={12} /> {item.bookTitle}
+                  </span>
                 )}
               </div>
               <p className="notebook-word-def">
@@ -1267,10 +1270,10 @@ function FullVocabulary({
           const next = prev + 1;
           if (next >= 3) {
             setCatPose("celebrate");
-            setCatSpeech(`¡Imparable! Racha de ${next} aciertos 🔥`);
+            setCatSpeech(`¡Imparable! Racha de ${next} aciertos`);
           } else {
             setCatPose("celebrate");
-            setCatSpeech(rating === Rating.Easy ? "¡Pan comido! ✨" : "¡Muy bien! 🐾");
+            setCatSpeech(rating === Rating.Easy ? "¡Excelente trabajo!" : "¡Muy bien!");
           }
           return next;
         });
@@ -1280,7 +1283,7 @@ function FullVocabulary({
       } else {
         setCombo(0);
         setCatPose("idle");
-        setCatSpeech("Casi... la repasaremos de nuevo 🌿");
+        setCatSpeech("Casi... la repasaremos de nuevo.");
         triggerHaptic(rating === Rating.Again ? 8 : 12);
       }
       clearCatTimer();
@@ -1327,10 +1330,10 @@ function FullVocabulary({
         const next = prev + 1;
         if (next >= 3) {
           setCatPose("celebrate");
-          setCatSpeech(`¡En racha! x${next} 🔥`);
+          setCatSpeech(`¡En racha! x${next}`);
         } else {
           setCatPose("celebrate");
-          setCatSpeech("¡Exacto! 🎯");
+          setCatSpeech("¡Exacto!");
         }
         return next;
       });
@@ -1339,7 +1342,7 @@ function FullVocabulary({
     } else {
       setCombo(0);
       setCatPose("idle");
-      setCatSpeech("¡Ánimo! Vamos con la siguiente 🌿");
+      setCatSpeech("¡Ánimo! Vamos con la siguiente.");
     }
     clearCatTimer();
     catPoseTimer.current = setTimeout(() => {
@@ -1417,11 +1420,11 @@ function FullVocabulary({
       setCombo((prev) => {
         const next = prev + 1;
         if (nextDone.size === tanda.length) {
-          setCatSpeech("¡Tanda de parejas completada con éxito! 🧩🎉");
+          setCatSpeech("¡Tanda de parejas completada con éxito!");
         } else if (next >= 3) {
-          setCatSpeech(`¡Parejas en racha! x${next} 🔥`);
+          setCatSpeech(`¡Parejas en racha! x${next}`);
         } else {
-          setCatSpeech("¡Pareja encontrada! ✨");
+          setCatSpeech("¡Pareja encontrada!");
         }
         return next;
       });
@@ -1430,7 +1433,7 @@ function FullVocabulary({
     } else {
       setCombo(0);
       setCatPose("greet");
-      setCatSpeech("Ese no corresponde... ¡sigue buscando! 🌿");
+      setCatSpeech("Ese no corresponde... ¡sigue buscando.");
       setMatchFails((fails) => ({ ...fails, [matchSel]: (fails[matchSel] ?? 0) + 1 }));
       setMatchFlash(meaningKey);
       window.clearTimeout(matchFlashTimer.current);
@@ -1509,7 +1512,7 @@ function FullVocabulary({
   const askCatHint = () => {
     if (!current || hintBusy) return;
     setHintBusy(true);
-    setCatSpeech("Pensando en una pista… 🤔");
+    setCatSpeech("Pensando en una pista…");
     const scope = captureDbScope();
     void explainInContext(current.word.form, current.word.language, current.word.context, scope, loadNativeLanguage())
       .then((res) => {
@@ -1522,7 +1525,7 @@ function FullVocabulary({
             ? `Significado: «${current.word.meaning.slice(0, 50)}…»`
             : "Intenta recordar el pasaje del libro.";
           setHintText(fallback);
-          setCatSpeech("Pista del cuaderno 📖");
+          setCatSpeech("Pista del cuaderno");
         }
       })
       .catch(() => {
@@ -1530,7 +1533,7 @@ function FullVocabulary({
           ? `Significado: «${current.word.meaning.slice(0, 50)}…»`
           : "Intenta recordar el pasaje del libro.";
         setHintText(fallback);
-        setCatSpeech("Pista del cuaderno 📖");
+        setCatSpeech("Pista del cuaderno");
       })
       .finally(() => setHintBusy(false));
   };
@@ -1787,8 +1790,8 @@ function FullVocabulary({
                       setCatPose((p) => (p === "idle" ? "greet" : "idle"));
                       setCatSpeech(
                         combo > 0
-                          ? `¡Llevas racha x${combo}! 🐾`
-                          : "¡A leer y repasar con ganas! 🐾",
+                          ? `¡Llevas racha x${combo}!`
+                          : "¡A leer y repasar con ganas!",
                       );
                     }}
                     role="button"
@@ -1915,7 +1918,7 @@ function FullVocabulary({
                         <span>Energía Léxica</span>
                       </span>
                       <span className="nb-hero-energy-streak">
-                        {combo > 0 ? `🔥 Combo x${combo}` : `⚡ ${Math.floor(companion?.state?.xp ?? 0)} pts`}
+                        {combo > 0 ? `Combo x${combo}` : `${Math.floor(companion?.state?.xp ?? 0)} pts`}
                         {companion?.state?.stats?.streakDays && companion.state.stats.streakDays > 1
                           ? ` · Racha ${companion.state.stats.streakDays} días`
                           : ""}
@@ -1959,92 +1962,96 @@ function FullVocabulary({
                           <Icon name="sparkles" size={16} />
                           <span>Iniciar Sesión Fluida (~2 min)</span>
                         </button>
-                        <button
-                          type="button"
-                          className="notebook-quick-review-cta"
-                          onClick={() => {
-                            const items = all.map(savedWordToItem);
-                            const session = buildOneMinuteReviewSession(items);
-                            if (onStartQuickReview) {
-                              onStartQuickReview(session);
-                            } else {
-                              startAdaptiveFlow();
-                            }
-                          }}
-                        >
-                          <span className="cta-icon">🎮</span>
-                          <span className="cta-text">
-                            Repaso rápido ({Math.min(5, all.length)}{" "}
-                            {Math.min(5, all.length) === 1 ? "palabra" : "palabras"})
-                          </span>
-                          <span className="cta-badge">1 min · 🐱</span>
-                        </button>
+                        {isFeatureFlagEnabled("vocabGames") && (
+                          <button
+                            type="button"
+                            className="notebook-quick-review-cta"
+                            onClick={() => {
+                              const items = all.map(savedWordToItem);
+                              const session = buildOneMinuteReviewSession(items);
+                              if (onStartQuickReview) {
+                                onStartQuickReview(session);
+                              } else {
+                                startAdaptiveFlow();
+                              }
+                            }}
+                          >
+                            <span className="cta-icon"><Icon name="strategy" size={16} /></span>
+                            <span className="cta-text">
+                              Repaso rápido ({Math.min(5, all.length)}{" "}
+                              {Math.min(5, all.length) === 1 ? "palabra" : "palabras"})
+                            </span>
+                            <span className="cta-badge">1 min</span>
+                          </button>
+                        )}
                       </>
                     )}
                   </div>
 
                   {/* Selector Secundario de Juegos ("Elegir modo libre") */}
-                  <div className="nb-free-modes">
-                    <span className="nb-free-modes-label">Elegir modo libre:</span>
-                    <div className="nb-free-modes-grid" role="group" aria-label="Modos de juego libres">
-                      <button
-                        type="button"
-                        className="nb-free-mode-card"
-                        onClick={() => void startPractice("cloze")}
-                        disabled={all.filter((w) => isEligible(w, "cloze")).length === 0}
-                        title="Hueco en el Libro · Contexto rápido"
-                      >
-                        <span className="nb-free-mode-icon" aria-hidden="true">📖</span>
-                        <div className="nb-free-mode-info">
-                          <strong className="nb-free-mode-name">Hueco en el Libro</strong>
-                          <span className="nb-free-mode-time">Contexto rápido</span>
-                        </div>
-                      </button>
+                  {isFeatureFlagEnabled("vocabGames") && (
+                    <div className="nb-free-modes">
+                      <span className="nb-free-modes-label">Elegir modo libre:</span>
+                      <div className="nb-free-modes-grid" role="group" aria-label="Modos de juego libres">
+                        <button
+                          type="button"
+                          className="nb-free-mode-card"
+                          onClick={() => void startPractice("cloze")}
+                          disabled={all.filter((w) => isEligible(w, "cloze")).length === 0}
+                          title="Hueco en el Libro · Contexto rápido"
+                        >
+                          <span className="nb-free-mode-icon" aria-hidden="true"><Icon name="book" size={16} /></span>
+                          <div className="nb-free-mode-info">
+                            <strong className="nb-free-mode-name">Hueco en el Libro</strong>
+                            <span className="nb-free-mode-time">Contexto rápido</span>
+                          </div>
+                        </button>
 
-                      <button
-                        type="button"
-                        className="nb-free-mode-card"
-                        onClick={() => void startPractice("scramble")}
-                        disabled={all.filter((w) => isEligible(w, "scramble")).length === 0}
-                        title="Sílabas de Tinta · Descifrar palabra"
-                      >
-                        <span className="nb-free-mode-icon" aria-hidden="true">✒️</span>
-                        <div className="nb-free-mode-info">
-                          <strong className="nb-free-mode-name">Sílabas de Tinta</strong>
-                          <span className="nb-free-mode-time">Descifrar palabra</span>
-                        </div>
-                      </button>
+                        <button
+                          type="button"
+                          className="nb-free-mode-card"
+                          onClick={() => void startPractice("scramble")}
+                          disabled={all.filter((w) => isEligible(w, "scramble")).length === 0}
+                          title="Sílabas de Tinta · Descifrar palabra"
+                        >
+                          <span className="nb-free-mode-icon" aria-hidden="true"><Icon name="sparkles" size={16} /></span>
+                          <div className="nb-free-mode-info">
+                            <strong className="nb-free-mode-name">Sílabas de Tinta</strong>
+                            <span className="nb-free-mode-time">Descifrar palabra</span>
+                          </div>
+                        </button>
 
-                      <button
-                        type="button"
-                        className="nb-free-mode-card"
-                        onClick={() => void startPractice("syntax")}
-                        disabled={all.filter((w) => isEligible(w, "syntax")).length === 0}
-                        title="Telar de Frases · Ordenar oración"
-                      >
-                        <span className="nb-free-mode-icon" aria-hidden="true">🧵</span>
-                        <div className="nb-free-mode-info">
-                          <strong className="nb-free-mode-name">Telar de Frases</strong>
-                          <span className="nb-free-mode-time">Ordenar frase</span>
-                        </div>
-                      </button>
+                        <button
+                          type="button"
+                          className="nb-free-mode-card"
+                          onClick={() => void startPractice("syntax")}
+                          disabled={all.filter((w) => isEligible(w, "syntax")).length === 0}
+                          title="Telar de Frases · Ordenar oración"
+                        >
+                          <span className="nb-free-mode-icon" aria-hidden="true"><Icon name="strategy" size={16} /></span>
+                          <div className="nb-free-mode-info">
+                            <strong className="nb-free-mode-name">Telar de Frases</strong>
+                            <span className="nb-free-mode-time">Ordenar frase</span>
+                          </div>
+                        </button>
 
-                      <button
-                        type="button"
-                        className="nb-free-mode-card"
-                        onClick={() => setWorkshopOpen((prev) => !prev)}
-                        disabled={all.length === 0}
-                        title="Taller con el Gato IA · Generativo"
-                      >
-                        <span className="nb-free-mode-icon" aria-hidden="true">🐾</span>
-                        <div className="nb-free-mode-info">
-                          <strong className="nb-free-mode-name">Taller con el Gato IA</strong>
-                          <span className="nb-free-mode-time">Generativo</span>
-                        </div>
-                      </button>
+                        <button
+                          type="button"
+                          className="nb-free-mode-card"
+                          onClick={() => setWorkshopOpen((prev) => !prev)}
+                          disabled={all.length === 0}
+                          title="Taller con el Gato IA · Generativo"
+                        >
+                          <span className="nb-free-mode-icon" aria-hidden="true"><Icon name="sparkles" size={16} /></span>
+                          <div className="nb-free-mode-info">
+                            <strong className="nb-free-mode-name">Taller con el Gato IA</strong>
+                            <span className="nb-free-mode-time">Generativo</span>
+                          </div>
+                        </button>
+                      </div>
+                      {practiceNote ? <p className="meta nb-practice-note">{practiceNote}</p> : null}
                     </div>
-                    {practiceNote ? <p className="meta nb-practice-note">{practiceNote}</p> : null}
-                  </div>
+                  )}
                 </div>
               </div>
             </section>
@@ -2060,7 +2067,7 @@ function FullVocabulary({
                     marginBottom: "6px",
                   }}
                 >
-                  <span className="nb-recent-label">📌 Guardadas recientemente en tu lectura</span>
+                  <span className="nb-recent-label">Guardadas recientemente en tu lectura</span>
                   <button
                     type="button"
                     className="btn--quiet nb-recent-all-btn"
@@ -2104,19 +2111,21 @@ function FullVocabulary({
               </div>
             ) : null}
 
-            <Suspense fallback={null}>
-              <GamePanel
-                mode={workshopOpen ? "ai_workshop" : "dashboard"}
-                onStartAdaptiveFlow={startAdaptiveFlow}
-                words={all.map((w) => ({
-                  word: w.form,
-                  meaning: w.meaning,
-                  bookTitle: w.bookHash ? bookTitle(w.bookHash) : undefined,
-                  lemma: w.lemma,
-                }))}
-                onClose={() => setWorkshopOpen(false)}
-              />
-            </Suspense>
+            {isFeatureFlagEnabled("vocabGames") && (
+              <Suspense fallback={null}>
+                <GamePanel
+                  mode={workshopOpen ? "ai_workshop" : "dashboard"}
+                  onStartAdaptiveFlow={startAdaptiveFlow}
+                  words={all.map((w) => ({
+                    word: w.form,
+                    meaning: w.meaning,
+                    bookTitle: w.bookHash ? bookTitle(w.bookHash) : undefined,
+                    lemma: w.lemma,
+                  }))}
+                  onClose={() => setWorkshopOpen(false)}
+                />
+              </Suspense>
+            )}
 
             <div className="segmented nb-tabs" role="group" aria-label="Secciones del cuaderno">
               <button
@@ -2617,8 +2626,8 @@ function FullVocabulary({
                 <div className="game-book-eco-row">
                   <span className="game-book-eco-pill">
                     {learn.items[0].bookTitle
-                      ? `📖 Eco de: ${learn.items[0].bookTitle}`
-                      : "📖 De tus lecturas recientes"}
+                      ? `Eco de: ${learn.items[0].bookTitle}`
+                      : "De tus lecturas recientes"}
                   </span>
                 </div>
                 <p className="nb-card-front">
@@ -2733,7 +2742,7 @@ function FullVocabulary({
           <div className="nb-done">
             <PracticeCompanionHeader
               pose="celebrate"
-              speech={`¡Repaso terminado! Afianzaste ${queue.total} ${queue.total === 1 ? "palabra" : "palabras"} para tu próximo capítulo 🐾`}
+              speech={`¡Repaso terminado! Afianzaste ${queue.total} ${queue.total === 1 ? "palabra" : "palabras"} para tu próximo capítulo.`}
               combo={combo}
               mode={companionMode}
               onModeChange={updateCompanionMode}
@@ -2825,8 +2834,8 @@ function FullVocabulary({
             <div className="nb-practice-progress-row">
               <span className="game-book-eco-pill">
                 {current.word.bookTitle
-                  ? `📖 Eco de: ${current.word.bookTitle}`
-                  : "📖 De tus lecturas recientes"}
+                  ? `Eco de: ${current.word.bookTitle}`
+                  : "De tus lecturas recientes"}
               </span>
               <span className="nb-practice-counter meta">
                 {MODES.find((m) => m.id === current.mode)?.label ? `${MODES.find((m) => m.id === current.mode)?.label} · ` : ""}
@@ -2902,7 +2911,7 @@ function FullVocabulary({
                     const next = prev + 1;
                     setCatPose("celebrate");
                     setCatSpeech(
-                      next >= 3 ? `¡En racha! x${next} 🔥` : "¡Palabra descifrada! ✨🎯",
+                      next >= 3 ? `¡En racha! x${next}` : "¡Palabra descifrada!",
                     );
                     return next;
                   });
@@ -2928,13 +2937,13 @@ function FullVocabulary({
                       return { ...prev, items: nextItems };
                     });
                     setCatPose("greet");
-                    setCatSpeech("¡No pasa nada! El gato te ayuda: inténtalo en contexto 🐾");
+                    setCatSpeech("¡No pasa nada! El gato te ayuda: inténtalo en contexto.");
                     setHintText(rescued.hint ?? null);
                     setCombo(0);
                     return;
                   }
                   setCatPose("greet");
-                  setCatSpeech("Casi... ¡revisa el orden de las letras! 🐾");
+                  setCatSpeech("Casi... ¡revisa el orden de las letras!");
                   setCombo(0);
                 }}
               />
@@ -2955,7 +2964,7 @@ function FullVocabulary({
                     const next = prev + 1;
                     setCatPose("celebrate");
                     setCatSpeech(
-                      next >= 3 ? `¡Gramática en racha! x${next} 🔥` : "¡Categoría acertada! 🏛️✨",
+                      next >= 3 ? `¡Gramática en racha! x${next}` : "¡Categoría acertada!",
                     );
                     return next;
                   });
@@ -2981,13 +2990,13 @@ function FullVocabulary({
                       return { ...prev, items: nextItems };
                     });
                     setCatPose("greet");
-                    setCatSpeech("¡Tranquilo! Vamos a ver la palabra en su oración 🐾");
+                    setCatSpeech("¡Tranquilo! Vamos a ver la palabra en su oración.");
                     setHintText(rescued.hint ?? null);
                     setCombo(0);
                     return;
                   }
                   setCatPose("greet");
-                  setCatSpeech("Casi... revisa la función de la palabra 🐾");
+                  setCatSpeech("Casi... revisa la función de la palabra.");
                   setCombo(0);
                 }}
               />
@@ -3007,7 +3016,7 @@ function FullVocabulary({
                     const next = prev + 1;
                     setCatPose("celebrate");
                     setCatSpeech(
-                      next >= 3 ? `¡Sintaxis en racha! x${next} 🔥` : "¡Oración ordenada! 🎯✨",
+                      next >= 3 ? `¡Sintaxis en racha! x${next}` : "¡Oración ordenada!",
                     );
                     return next;
                   });
@@ -3033,13 +3042,13 @@ function FullVocabulary({
                       return { ...prev, items: nextItems };
                     });
                     setCatPose("greet");
-                    setCatSpeech("¡No pasa nada! Reconozcamos la palabra primero 🐾");
+                    setCatSpeech("¡No pasa nada! Reconozcamos la palabra primero.");
                     setHintText(rescued.hint ?? null);
                     setCombo(0);
                     return;
                   }
                   setCatPose("greet");
-                  setCatSpeech("Revisa el orden de las palabras 🐾");
+                  setCatSpeech("Revisa el orden de las palabras.");
                   setCombo(0);
                 }}
               />
@@ -3157,8 +3166,8 @@ function FullVocabulary({
                   <div className="game-book-eco-row">
                     <span className="game-book-eco-pill">
                       {current.word.bookTitle
-                        ? `📖 Eco de: ${current.word.bookTitle}`
-                        : "📖 De tus lecturas recientes"}
+                        ? `Eco de: ${current.word.bookTitle}`
+                        : "De tus lecturas recientes"}
                     </span>
                   </div>
                   {current.mode === "choose" ? (

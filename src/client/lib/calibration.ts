@@ -8,15 +8,10 @@ import {
 } from "./idb";
 import { pushKnowledgeToServer } from "./reading-sync";
 import { pushWordsToServer } from "./vocab";
-import {
-  calibrationFallbackDefinition,
-  calibrationSampleContext,
-  getCalibrationBankByLang,
-  itemFisherInformation,
-  itemResponseProbability,
-  type CalibrationBankItem,
-  type CalibrationLanguage,
-  type CalibrationProfile,
+import type {
+  CalibrationBankItem,
+  CalibrationLanguage,
+  CalibrationProfile,
 } from "../../shared/calibration-bank";
 import {
   loadUserLanguageProfile,
@@ -24,6 +19,31 @@ import {
   saveUserTheta,
   type UserLanguageProfile,
 } from "./profile-models";
+
+/**
+ * Probabilidad de respuesta según el modelo logístico 2PL:
+ * P(conoce | theta, b_i) = 1 / (1 + exp(-alpha * (theta - b_i)))
+ */
+export function itemResponseProbability(
+  theta: number,
+  difficulty: number,
+  discrimination = 1.35,
+): number {
+  return 1 / (1 + Math.exp(-discrimination * (theta - difficulty)));
+}
+
+/**
+ * Información de Fisher para un ítem dicotómico 2PL:
+ * I_i(theta) = alpha^2 * P * (1 - P)
+ */
+export function itemFisherInformation(
+  theta: number,
+  difficulty: number,
+  discrimination = 1.35,
+): number {
+  const p = itemResponseProbability(theta, difficulty, discrimination);
+  return discrimination * discrimination * p * (1 - p);
+}
 
 // Calibración inicial del vocabulario: una muestra del catálogo
 // (lemas repartidos en bandas de frecuencia, servida por
@@ -94,22 +114,31 @@ export async function fetchCalibrationSample(
       version?: unknown;
     };
     if (!response.ok || !Array.isArray(data.words)) return { ok: false };
-    const words = data.words
-      .filter(
-        (item): item is CalibrationWord =>
-          typeof item === "object" &&
-          item !== null &&
-          typeof (item as CalibrationWord).lemma === "string" &&
-          ((item as CalibrationWord).definition === null ||
-            typeof (item as CalibrationWord).definition === "string"),
-      )
-      .map((item) => ({
-        ...item,
-        definition:
-          item.definition ?? calibrationFallbackDefinition(item.lemma, language),
-        sampleContext:
-          item.sampleContext ?? calibrationSampleContext(item.lemma, language),
-      }));
+    const rawWords = data.words.filter(
+      (item): item is CalibrationWord =>
+        typeof item === "object" &&
+        item !== null &&
+        typeof (item as CalibrationWord).lemma === "string" &&
+        ((item as CalibrationWord).definition === null ||
+          typeof (item as CalibrationWord).definition === "string"),
+    );
+
+    let fallbackDef: ((lemma: string, lang: string) => string | null) | null = null;
+    let fallbackCtx: ((lemma: string, lang: string) => string | null) | null = null;
+
+    if (rawWords.some((w) => w.definition == null || w.sampleContext == null)) {
+      const bank = await import("../../shared/calibration-bank");
+      fallbackDef = bank.calibrationFallbackDefinition;
+      fallbackCtx = bank.calibrationSampleContext;
+    }
+
+    const words = rawWords.map((item) => ({
+      ...item,
+      definition:
+        item.definition ?? fallbackDef?.(item.lemma, language) ?? null,
+      sampleContext:
+        item.sampleContext ?? fallbackCtx?.(item.lemma, language) ?? null,
+    }));
     const version =
       typeof data.version === "string" ? data.version : undefined;
     return { ok: true, words, version };
@@ -360,16 +389,35 @@ export function resetCalibrationStatusForTesting(): void {
   }
 }
 
+let _bankCache: { es: CalibrationBankItem[]; en: CalibrationBankItem[] } | null = null;
+
+export async function preloadCalibrationBank(): Promise<{ es: CalibrationBankItem[]; en: CalibrationBankItem[] }> {
+  if (!_bankCache) {
+    const { getCalibrationBankByLang } = await import("../../shared/calibration-bank");
+    _bankCache = {
+      es: getCalibrationBankByLang("es"),
+      en: getCalibrationBankByLang("en"),
+    };
+  }
+  return _bankCache;
+}
+
+export function setCalibrationBankCache(bank: { es: CalibrationBankItem[]; en: CalibrationBankItem[] }): void {
+  _bankCache = bank;
+}
+
 /**
  * Selecciona el siguiente ítem del banco que maximiza la información de Fisher,
  * es decir, minimiza |P(conoce | theta, b_i) - 0.50| entre los ítems no respondidos.
  */
 export function selectNextCatItem(
   state: Pick<CatSessionState, "lang" | "theta" | "answeredIds">,
+  bank?: CalibrationBankItem[],
 ): CalibrationBankItem | null {
-  const bank = getCalibrationBankByLang(state.lang);
+  const norm = (state.lang || "es").toLowerCase().startsWith("en") ? "en" : "es";
+  const candidatesBank = bank ?? _bankCache?.[norm] ?? [];
   const answeredSet = new Set(state.answeredIds);
-  const candidates = bank.filter((item) => !answeredSet.has(item.id));
+  const candidates = candidatesBank.filter((item) => !answeredSet.has(item.id));
   if (candidates.length === 0) return null;
 
   let bestItem = candidates[0];
@@ -401,6 +449,7 @@ export function selectNextCatItem(
 export function initCatSession(
   lang: CalibrationLanguage | string = "es",
   initialTheta?: number,
+  bank?: CalibrationBankItem[],
 ): CatSessionState {
   const norm: CalibrationLanguage = (lang || "es").toLowerCase().startsWith("en") ? "en" : "es";
   const startTheta = typeof initialTheta === "number" ? initialTheta : 0.0;
@@ -408,7 +457,7 @@ export function initCatSession(
     lang: norm,
     theta: startTheta,
     answeredIds: [],
-  });
+  }, bank);
 
   return {
     lang: norm,
@@ -432,6 +481,7 @@ export function initCatSession(
 export function submitCatAnswer(
   state: CatSessionState,
   known: boolean,
+  bank?: CalibrationBankItem[],
 ): CatSessionState {
   if (state.isComplete || !state.currentItem) {
     return state;
@@ -486,7 +536,7 @@ export function submitCatAnswer(
           lang: state.lang,
           theta: nextTheta,
           answeredIds: nextAnsweredIds,
-        });
+        }, bank);
 
   const isComplete = reachedMax || reachedConvergence || candidateNextItem === null;
 

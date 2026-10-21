@@ -142,6 +142,21 @@ describe("ErrorBoundary", () => {
     expect(sessionStorage.getItem("activeBook")).toBeNull();
   });
 
+  it("sanitiza la URL al guardar el error recortando query params y hash para no filtrar tokens", () => {
+    const originalHref = window.location.href;
+    try {
+      window.history.pushState({}, "", "/reader?token=secret-token-123#frag");
+      logErrorToStorage(new Error("Error con token en url"));
+      const logs = getStoredErrorLogs();
+      const last = logs[logs.length - 1];
+      expect(last.url).not.toContain("token=secret-token-123");
+      expect(last.url).not.toContain("#frag");
+      expect(last.url).toBe(`${window.location.origin}/reader`);
+    } finally {
+      window.history.pushState({}, "", originalHref);
+    }
+  });
+
   it("renderiza el fallback personalizado si se proporciona", () => {
     render(
       h(

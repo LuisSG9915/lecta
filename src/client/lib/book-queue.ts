@@ -14,8 +14,13 @@ import { readBookMeta } from "./cover";
 
 // Encola la subida de un libro local a la cuenta; se procesa con
 // runBookQueue (al iniciar sesión o cuando vuelve la conexión).
-export function queueBookUpload(hash: string, name?: string, scope?: DbScope) {
-  return enqueueBookOp({ kind: "upload", hash, name }, scope);
+export async function queueBookUpload(hash: string, name?: string, scope?: DbScope) {
+  const bound = scope ?? captureDbScope();
+  const book = await getStoredBook(hash, bound);
+  if (!book || !book.data || book.data.size === 0) {
+    return;
+  }
+  return enqueueBookOp({ kind: "upload", hash, name }, bound);
 }
 
 // Encola el borrado remoto de un libro (el local ya se eliminó).
@@ -43,32 +48,38 @@ export async function runBookQueue(scope?: DbScope): Promise<number> {
       if (op.kind === "upload") {
         const book = await getStoredBook(op.hash, bound);
         if (book) {
-          let title = book.title;
-          let author = book.author;
-          let sectionCount = book.sectionCount;
-          let language = book.language;
-          if (!title || !author || !language) {
-            const meta = await readBookMeta(book.data).catch(() => null);
-            if (meta) {
-              title = meta.title || title;
-              author = meta.author || author;
-              sectionCount = meta.sectionCount ?? sectionCount;
-              language = meta.language || language;
+          if (!book.data || book.data.size === 0) {
+            // Guarda estricta: jamás intentar subir a /api/books un libro con data vacía;
+            // se descarta la tarea de la cola retornando null.
+            ok = null;
+          } else {
+            let title = book.title;
+            let author = book.author;
+            let sectionCount = book.sectionCount;
+            let language = book.language;
+            if (!title || !author || !language) {
+              const meta = await readBookMeta(book.data).catch(() => null);
+              if (meta) {
+                title = meta.title || title;
+                author = meta.author || author;
+                sectionCount = meta.sectionCount ?? sectionCount;
+                language = meta.language || language;
+              }
             }
+            ok = await uploadBook(
+              op.hash,
+              new File([book.data], op.name || book.name),
+              // Los metadatos viajan con el objeto remoto: así otros
+              // dispositivos muestran título, autor e idioma sin bajar el EPUB.
+              {
+                title,
+                author,
+                sectionCount,
+                language,
+              },
+              bound,
+            );
           }
-          ok = await uploadBook(
-            op.hash,
-            new File([book.data], op.name || book.name),
-            // Los metadatos viajan con el objeto remoto: así otros
-            // dispositivos muestran título, autor e idioma sin bajar el EPUB.
-            {
-              title,
-              author,
-              sectionCount,
-              language,
-            },
-            bound,
-          );
         } else {
           ok = null;
         }
@@ -80,7 +91,9 @@ export async function runBookQueue(scope?: DbScope): Promise<number> {
         continue;
       }
       await removeBookOp(op.id, bound);
-      done += 1;
+      if (ok === true) {
+        done += 1;
+      }
     } catch (error) {
       // El contexto venció (la sesión cambió durante la corrida): no es
       // un fallo de la op, así que se queda en la cola sin anotar.

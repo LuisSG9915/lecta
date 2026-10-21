@@ -674,7 +674,7 @@ describe("Reestructura del Cuaderno", () => {
       const ctaBtn = host.querySelector<HTMLButtonElement>(".notebook-quick-review-cta")!;
       expect(ctaBtn).not.toBeNull();
       expect(ctaBtn.textContent).toContain("Repaso rápido (2 palabras)");
-      expect(ctaBtn.textContent).toContain("1 min · 🐱");
+      expect(ctaBtn.textContent).toContain("1 min");
 
       // Al tocar el CTA llama a onStartQuickReview con las rondas calculadas
       await act(async () => {
@@ -711,6 +711,37 @@ describe("Reestructura del Cuaderno", () => {
         deleteBtn.click();
       });
       expect(onDeleteWord).toHaveBeenCalledWith("2");
+    });
+
+    it("oculta minijuegos y botones de repaso rápido si featureFlags.vocabGames está desactivado", async () => {
+      const { saveFeatureFlags } = await import("../lib/settings");
+      saveFeatureFlags({ vocabGames: false });
+      try {
+        const words = [
+          {
+            id: "1",
+            word: "solsticio",
+            shortDefinition: "Época en que el Sol se halla en uno de los trópicos.",
+            dueTimestamp: Date.now() - 1000,
+            stability: 1.2,
+          },
+        ];
+        await act(async () => {
+          root.render(
+            h(Vocabulary, {
+              words,
+              presentation: "page",
+              onClose: () => {},
+            }),
+          );
+          for (let i = 0; i < 4; i++) await Promise.resolve();
+        });
+
+        expect(host.querySelector(".notebook-quick-review-cta")).toBeNull();
+        expect(host.querySelector(".nb-free-modes")).toBeNull();
+      } finally {
+        saveFeatureFlags({ vocabGames: true });
+      }
     });
   });
 });

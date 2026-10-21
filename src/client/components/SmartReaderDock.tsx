@@ -2,10 +2,11 @@ import { useState, useRef, useEffect, type ReactNode } from "react";
 import {
   READING_PRESETS,
   type ReadingPreset,
+  isFeatureFlagEnabled,
 } from "../lib/settings";
 import type { TtsSnapshot } from "../lib/ttsTypes";
 import { unlockAudioContext } from "../lib/kittenTtsEngine";
-import Icon from "./Icon";
+import Icon, { type IconName } from "./Icon";
 
 import type { FocusAidType } from "../lib/focus-telemetry";
 
@@ -159,7 +160,7 @@ export default function SmartReaderDock({
 
   const currentPresetMeta =
     READING_PRESETS.find((p) => p.id === activePreset) ?? {
-      icon: "🎛️",
+      icon: "more",
       shortLabel: "Ajustado",
       label: "Personalizado",
       description: "Opciones avanzadas personalizadas",
@@ -200,7 +201,9 @@ export default function SmartReaderDock({
           aria-label="Abrir rincón de tu gato o salir de lienzo puro"
           title="Toca para interactuar o salir de Lienzo Puro"
         >
-          <span className="reader-mini-cat-avatar" aria-hidden="true">🐾</span>
+          <span className="reader-mini-cat-avatar" aria-hidden="true">
+            <Icon name="sparkles" size={16} />
+          </span>
           {isAudioMode && ttsSnap.status === "speaking" && (
             <span className="reader-mini-audio-dot" aria-label="Audio reproduciéndose" />
           )}
@@ -252,7 +255,9 @@ export default function SmartReaderDock({
                       setIsModeSheetOpen(false);
                     }}
                   >
-                    <span className="reader-mode-card-icon" aria-hidden="true">{preset.icon}</span>
+                    <span className="reader-mode-card-icon" aria-hidden="true">
+                      <Icon name={preset.icon as IconName} size={18} />
+                    </span>
                     <strong className="reader-mode-card-title">{preset.label}</strong>
                     <span className="reader-mode-card-desc">{preset.description}</span>
                   </button>
@@ -268,14 +273,14 @@ export default function SmartReaderDock({
                   onOpenAdvancedSettings();
                 }}
               >
-                ⚙️ Personalizar opciones avanzadas…
+                Personalizar opciones avanzadas…
               </button>
             </div>
           </div>
         )}
 
         {/* Píldora sutil de Neuro-Foco (Track 9 - Cero Fricción) */}
-        {effectiveIsFatigued && !isDismissedLocally && !isAudioMode && !isPureCanvas && (
+        {isFeatureFlagEnabled("focusTelemetry") && effectiveIsFatigued && !isDismissedLocally && !isAudioMode && !isPureCanvas && (
           <div
             className="reader-focus-suggestion-pill"
             role="status"
@@ -323,11 +328,16 @@ export default function SmartReaderDock({
                   aria-label={`Sugerencia de enfoque: ${suggestionText}. Toca para activar`}
                 >
                   <span aria-hidden="true">
-                    {effectiveAid === "syntactic-lines"
-                      ? "〰️"
-                      : effectiveAid === "focus-ruler"
-                        ? "📏"
-                        : "🎯"}
+                    <Icon
+                      name={
+                        effectiveAid === "syntactic-lines"
+                          ? "strategy"
+                          : effectiveAid === "focus-ruler"
+                            ? "focus"
+                            : "focus"
+                      }
+                      size={14}
+                    />
                   </span>
                   <span>{suggestionText}</span>
                 </button>
@@ -487,7 +497,9 @@ export default function SmartReaderDock({
                   aria-label={`Modo de lectura: ${currentPresetMeta.label}. Toque para cambiar`}
                   title="Modo de lectura y ayudas visuales"
                 >
-                  <span aria-hidden="true">{currentPresetMeta.icon}</span>
+                  <span aria-hidden="true">
+                    <Icon name={currentPresetMeta.icon as IconName} size={14} />
+                  </span>
                   <span>{currentPresetMeta.shortLabel}</span>
                 </button>
 
@@ -514,7 +526,7 @@ export default function SmartReaderDock({
                     aria-label="Recuperar el hilo de esta página"
                     title="Recuperar el hilo (resumen de atención)"
                   >
-                    <span aria-hidden="true">🧭</span>
+                    <Icon name="journey" size={14} />
                     <span className="dock-action-label-collapsible">Hilo</span>
                   </button>
                 )}
@@ -595,7 +607,9 @@ export default function SmartReaderDock({
                   aria-label="Elegir voz"
                   title={isNeuralVoice ? "Voz KittenTTS Neural HD activa" : "Voz del sistema. Toca para cambiar o descargar HD"}
                 >
-                  <span aria-hidden="true">{isNeuralVoice ? "✨" : "🎙️"}</span>
+                  <span aria-hidden="true">
+                    <Icon name={isNeuralVoice ? "sparkles" : "speaker"} size={14} />
+                  </span>
                   <span className="dock-action-label-collapsible">{isNeuralVoice ? " Voz HD" : " Voz"}</span>
                 </button>
               ) : null}

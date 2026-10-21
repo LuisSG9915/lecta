@@ -323,7 +323,7 @@ export default function ReaderMoreMenu({
         </button>
       ) : null}
 
-      {onCreateQuoteCard ? (
+      {interfaceMode === "advanced" && onCreateQuoteCard ? (
         <button
           type="button"
           role="menuitem"
@@ -335,7 +335,7 @@ export default function ReaderMoreMenu({
         </button>
       ) : null}
 
-      {onExportBook ? (
+      {interfaceMode === "advanced" && onExportBook ? (
         <button
           type="button"
           role="menuitem"
@@ -369,7 +369,7 @@ export default function ReaderMoreMenu({
       ) : null}
 
       {/* Sección de Asistencias Inteligentes y Reactivación para este libro (Track 12) */}
-      {bookHash ? (
+      {interfaceMode === "advanced" && bookHash ? (
         <div className="reader-more-assists-section">
           <div className="reader-more-assists-header">
             <Icon name="sparkles" size={16} />
@@ -516,7 +516,7 @@ export default function ReaderMoreMenu({
         </div>
       ) : null}
 
-      {bookHash ? (
+      {interfaceMode === "advanced" && bookHash ? (
         <div className="reader-more-offline-section">
           <div className="reader-more-offline-header">
             <Icon name="cloud" size={16} />

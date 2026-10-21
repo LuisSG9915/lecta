@@ -118,6 +118,16 @@ describe("AppNav", () => {
   });
 
   it("muestra indicador honesto de sincronización con conexión o sin ella", () => {
+    const idleCollections = {
+      words: { status: "idle" as const },
+      positions: { status: "idle" as const },
+      annotations: { status: "idle" as const },
+      knowledge: { status: "idle" as const },
+      activity: { status: "idle" as const },
+      reviews: { status: "idle" as const },
+      companion: { status: "idle" as const },
+    };
+
     act(() => {
       root.render(
         h(AppNav, {
@@ -128,6 +138,7 @@ describe("AppNav", () => {
             lastSyncedAt: null,
             pendingChangesCount: 0,
             lastSyncError: null,
+            collections: idleCollections,
           },
         }),
       );
@@ -135,6 +146,16 @@ describe("AppNav", () => {
     const offlineIndicator = host.querySelector(".app-nav-sync-indicator");
     expect(offlineIndicator).toBeTruthy();
     expect(offlineIndicator?.textContent).toContain("Sin conexión · guardado local");
+
+    const syncedCollections = {
+      words: { status: "synced" as const },
+      positions: { status: "synced" as const },
+      annotations: { status: "synced" as const },
+      knowledge: { status: "synced" as const },
+      activity: { status: "synced" as const },
+      reviews: { status: "synced" as const },
+      companion: { status: "synced" as const },
+    };
 
     act(() => {
       root.render(
@@ -147,6 +168,7 @@ describe("AppNav", () => {
             lastSyncedAt: Date.now(),
             pendingChangesCount: 0,
             lastSyncError: null,
+            collections: syncedCollections,
           },
         }),
       );
@@ -163,16 +185,26 @@ describe("AppNav", () => {
           syncState: {
             isOnline: true,
             lastSyncedAt: Date.now(),
-            pendingChangesCount: 3,
+            pendingChangesCount: 0,
             lastSyncError: null,
+            collections: {
+              words: { status: "error", error: "Error en red" },
+              positions: { status: "synced" },
+              annotations: { status: "synced" },
+              knowledge: { status: "synced" },
+              activity: { status: "synced" },
+              reviews: { status: "synced" },
+              companion: { status: "synced" },
+            },
           },
         }),
       );
     });
-    const pendingIndicator = host.querySelector(".app-nav-sync-indicator");
-    expect(pendingIndicator?.textContent).toContain(
-      "Guardado en este dispositivo · pendiente de sincronizar",
+    const errorIndicator = host.querySelector(".app-nav-sync-indicator");
+    expect(errorIndicator?.textContent).toContain(
+      "Guardado local · reintentando sincronizar",
     );
+    expect(host.querySelector(".app-nav-sync-dot.is-error")).not.toBeNull();
   });
 });
 

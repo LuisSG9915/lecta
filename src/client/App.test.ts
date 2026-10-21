@@ -34,14 +34,19 @@ vi.mock("./components/Shelf", async () => {
   return {
     default: ({
       library,
+      checking,
       onOpen,
       onRemove,
     }: {
       library: { hash: string; name: string }[];
+      checking?: boolean;
       onOpen: (item: never) => void;
       onRemove?: (hash: string) => void;
-    }) =>
-      createElement(
+    }) => {
+      if (checking) {
+        return createElement("p", { className: "status" }, "Preparando tu estantería…");
+      }
+      return createElement(
         "ul",
         { className: "shelf-stub" },
         library.map((item) =>
@@ -71,7 +76,8 @@ vi.mock("./components/Shelf", async () => {
             ),
           ),
         ),
-      ),
+      );
+    },
   };
 });
 
@@ -606,6 +612,48 @@ describe("App · navegación principal (Fase 2)", () => {
     expect(buttonTexts).toContain("Reintentar conexión");
     expect(buttonTexts).toContain("Exportar respaldo de emergencia");
     expect(buttonTexts).toContain("Restaurar respaldo");
+  });
+
+  it("tras fallo inicial de IndexedDB, pulsar 'Reintentar conexión' exitoso apaga checkingLibrary y muestra la estantería", async () => {
+    vi.mocked(listStoredBooks).mockRejectedValueOnce(
+      new Error("La base local sigue abierta en otra pestaña"),
+    );
+
+    renderRoot();
+    await flush();
+
+    const errorPanel = host.querySelector(".db-error-panel");
+    expect(errorPanel).toBeTruthy();
+    expect(host.querySelector(".shelf-stub")).toBeNull();
+
+    // Al reintentar, la base se abre exitosamente con un libro
+    vi.mocked(listStoredBooks).mockResolvedValueOnce([
+      {
+        hash: "b-recuperado",
+        name: "libro-recuperado.epub",
+        addedAt: 1,
+        data: new Blob(),
+      },
+    ] as never);
+
+    const retryBtn = Array.from(errorPanel!.querySelectorAll("button")).find(
+      (b) => b.textContent?.includes("Reintentar conexión"),
+    );
+    expect(retryBtn).toBeDefined();
+
+    await act(async () => {
+      retryBtn!.click();
+    });
+    await flush();
+
+    // Ya no debe estar en estado de error
+    expect(host.querySelector(".db-error-panel")).toBeNull();
+    // Ya no debe mostrar "Preparando tu estantería…"
+    expect(host.textContent).not.toContain("Preparando tu estantería…");
+    // Debe mostrar la estantería con el libro recuperado
+    const shelf = host.querySelector(".shelf-stub");
+    expect(shelf).toBeTruthy();
+    expect(shelf?.textContent).toContain("libro-recuperado.epub");
   });
 });
 

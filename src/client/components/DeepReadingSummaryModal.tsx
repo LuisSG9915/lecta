@@ -14,6 +14,7 @@ import { SentenceBuilderGame } from "./SentenceBuilderGame";
 import { WordScrambleGame } from "./WordScrambleGame";
 import QuoteCardModal from "./QuoteCardModal";
 import Icon from "./Icon";
+import { isFeatureFlagEnabled } from "../lib/settings";
 
 export interface DeepReadingSummaryModalProps {
   summary: DeepReadingSummary;
@@ -65,7 +66,8 @@ export default function DeepReadingSummaryModal({
     summary.coverageDeltaPercent ?? (summary.sectionsRead > 0 ? 1 : 0);
 
   const queue = useMemo(() => consolidationQueue ?? [], [consolidationQueue]);
-  const hasConsolidation = !isMuted && queue.length > 0;
+  const allowVocabGames = isFeatureFlagEnabled("vocabGames");
+  const hasConsolidation = !isMuted && queue.length > 0 && allowVocabGames;
 
   const harvestList = useMemo(() => {
     if (harvestWords && harvestWords.length > 0) return harvestWords;

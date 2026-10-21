@@ -15,23 +15,114 @@ import {
   wordsToAnkiTsv,
   exportAnkiTsv,
 } from "./export";
-import type { SavedAnnotation, SavedInterval, SavedWord } from "./idb";
+import {
+  listStoredBooks,
+  restoreBackupToDb,
+  saveBook,
+  type SavedAnnotation,
+  type SavedInterval,
+  type SavedWord,
+} from "./idb";
 
-vi.mock("./idb", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("./idb")>();
-  return {
-    ...actual,
-    restoreBackupToDb: vi.fn(async () => ({
-      booksRestored: 1,
-      positionsRestored: 1,
-      wordsRestored: 1,
-      annotationsRestored: 0,
-      activityRestored: 0,
-      reviewsRestored: 0,
-      knowledgeRestored: 0,
-    })),
-  };
-});
+const KEY_PATHS: Record<string, string> = {
+  books: "hash",
+  positions: "bookHash",
+  session: "",
+  savedWords: "key",
+  annotations: "key",
+  activity: "id",
+  reviews: "id",
+  knowledge: "key",
+  readingEvents: "id",
+  bookOps: "id",
+  companionEvents: "id",
+  companionReceipts: "id",
+  lexiconCache: "key",
+};
+
+class FakeDb {
+  stores = new Map<string, Map<unknown, unknown>>();
+  closed = false;
+
+  private storeFor(name: string) {
+    let store = this.stores.get(name);
+    if (!store) {
+      store = new Map();
+      this.stores.set(name, store);
+    }
+    return store;
+  }
+
+  get(name: string, key: unknown) {
+    return Promise.resolve(this.storeFor(name).get(key));
+  }
+
+  getAll(name: string) {
+    return Promise.resolve([...this.storeFor(name).values()]);
+  }
+
+  getAllKeys(name: string) {
+    return Promise.resolve([...this.storeFor(name).keys()]);
+  }
+
+  put(name: string, value: unknown, key?: unknown) {
+    const k = key ?? (value as Record<string, unknown>)[KEY_PATHS[name]];
+    this.storeFor(name).set(k, value);
+    return Promise.resolve(k);
+  }
+
+  delete(name: string, key: unknown) {
+    this.storeFor(name).delete(key);
+    return Promise.resolve();
+  }
+
+  transaction() {
+    const pending: (() => void)[] = [];
+    let aborted = false;
+    return {
+      objectStore: (name: string) => ({
+        get: (key: unknown) => this.get(name, key),
+        getAll: () => this.getAll(name),
+        getAllKeys: () => this.getAllKeys(name),
+        put: (value: unknown, key?: unknown) => {
+          if (aborted) return Promise.reject(new Error("tx abortada"));
+          pending.push(() => {
+            void this.put(name, value, key);
+          });
+          return Promise.resolve(
+            key ?? (value as Record<string, unknown>)[KEY_PATHS[name]],
+          );
+        },
+        delete: (key: unknown) => {
+          pending.push(() => this.delete(name, key));
+          return Promise.resolve();
+        },
+        clear: () => {
+          pending.push(() => this.storeFor(name).clear());
+          return Promise.resolve();
+        },
+      }),
+      abort() {
+        aborted = true;
+        pending.length = 0;
+      },
+      get done() {
+        if (!aborted) pending.forEach((run) => run());
+        return Promise.resolve();
+      },
+    };
+  }
+
+  close() {
+    this.closed = true;
+  }
+}
+
+const fakeDb = new FakeDb();
+
+vi.mock("idb", () => ({
+  openDB: vi.fn(async () => fakeDb),
+}));
 
 const bookName = (hash: string | undefined) =>
   hash === "b1" ? "Cien años de soledad" : undefined;
@@ -657,5 +748,56 @@ describe("restoreBackupPayload", () => {
     expect(res).toBeDefined();
     expect(res.wordsRestored).toBeGreaterThanOrEqual(1);
     expect(res.positionsRestored).toBeGreaterThanOrEqual(1);
+  });
+
+  it("en una base limpia NO inserta filas en books con data.size === 0", async () => {
+    const backupData = {
+      books: [
+        { hash: "b-clean-1", name: "libro-vacio-1.epub", title: "Libro 1" },
+        { hash: "b-clean-2", name: "libro-vacio-2.epub", title: "Libro 2" },
+      ],
+      words: [{ key: "es:test", form: "test", language: "es", savedAt: 1000 }],
+      positions: [],
+    };
+
+    const res = await restoreBackupToDb(backupData);
+    expect(res.booksRestored).toBe(0); // Ningún libro nuevo de 0 bytes se restauró en books
+    expect(res.wordsRestored).toBe(1);
+
+    const stored = await listStoredBooks();
+    // Jamás deben existir registros en books con binarios vacíos de 0 bytes
+    const zeroByteBooks = stored.filter((b) => !b.data || b.data.size === 0);
+    expect(zeroByteBooks).toHaveLength(0);
+  });
+
+  it("si el libro ya existía localmente con binario válido, actualiza metadatos y conserva el binario", async () => {
+    await saveBook({
+      hash: "b-local-con-datos",
+      name: "original.epub",
+      addedAt: 1000,
+      title: "Título Viejo",
+      data: new Blob(["contenido binario real"]),
+    });
+
+    const backupData = {
+      books: [
+        {
+          hash: "b-local-con-datos",
+          name: "renombrado.epub",
+          title: "Título Actualizado del Respaldo",
+          addedAt: 2000,
+        },
+      ],
+    };
+
+    const res = await restoreBackupToDb(backupData);
+    expect(res.booksRestored).toBe(1);
+
+    const stored = await listStoredBooks();
+    const updated = stored.find((b) => b.hash === "b-local-con-datos");
+    expect(updated).toBeDefined();
+    expect(updated?.title).toBe("Título Actualizado del Respaldo");
+    expect(updated?.name).toBe("renombrado.epub");
+    expect(updated?.data.size).toBeGreaterThan(0);
   });
 });

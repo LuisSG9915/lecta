@@ -43,6 +43,12 @@ export async function withClient<T>(env: WorkerEnv, run: (client: pg.Client) => 
   const connectionString = getConnectionString(env);
   if (!connectionString) return undefined;
   const client = new pg.Client({ connectionString });
+  if (typeof client.on === "function") {
+    client.on("error", (err) => {
+      // Evita crash del proceso por error no capturado en eventos de socket
+      console.error("Postgres client error:", err.message);
+    });
+  }
   await client.connect();
   try {
     return await run(client);
