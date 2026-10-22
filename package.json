@@ -13,6 +13,7 @@
     "typecheck": "tsc -p tsconfig.client.json && tsc -p tsconfig.worker.json && pnpm mcp:typecheck",
     "lint": "eslint . --max-warnings 28",
     "check:size": "node scripts/check-bundle-budget.mjs",
+    "gate": "pnpm typecheck && pnpm lint && pnpm test && pnpm run build && pnpm run check:size",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",

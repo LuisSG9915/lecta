@@ -3,7 +3,13 @@
 ## Verificación
 
 - `pnpm typecheck` (cliente + worker + MCP), `pnpm lint`, `pnpm test`, `pnpm build`.
-- `pnpm smoke:auth` corre contra un server vivo; `SMOKE_URL=<url>` para producción.
+- `pnpm gate` encadena typecheck + lint + test + build + check:size: es la puerta de
+  cierre de cada fase de `docs/plan-8-fases.md`. `pnpm lint` está **exactamente** en
+  28 de 28 warnings y `check:size` en 206.05 de 215 kB gzip: un warning o un import
+  estático nuevo rompe el gate.
+- `pnpm smoke:auth` corre contra un server vivo y **escribe** en él (dos cuentas
+  nuevas, un EPUB en R2 y vocab); `SMOKE_URL=<url>` para producción, una sola vez
+  por deploy y anotando las cuentas creadas.
 - `pnpm db:setup` / `pnpm db:auth` aplican esquema y tablas de Better Auth (usan `DATABASE_URL` de `.env`).
 - `pnpm db:migrate` aplica `db/migrations/*.sql` en orden a la base del `.env` (idempotente, registra en `lecta_schema_migrations`). Migraciones nuevas van solo a `lecta_dev` salvo autorización.
 - El migrador exige que `current_database()` coincida con `LECTA_MIGRATE_TARGET` (default `lecta_dev`). Para producción: `LECTA_MIGRATE_TARGET=lecta` + `DATABASE_URL` con el nombre cambiado a `lecta` — solo con autorización expresa.
@@ -14,6 +20,10 @@
   (`LECTA_KEEP_DEV_VARS=1`): conserva ese archivo solo en tu máquina.
 - `pnpm model:upload` sube el modelo de Kitten TTS a R2 (`models/kitten-tts-quantized.onnx`).
   Requiere credenciales de escritura de R2 (`wrangler login` o `CLOUDFLARE_API_TOKEN`).
+  `pnpm model:upload --verify` exige `MODEL_SHA256` y aborta si falta o no coincide;
+  sin `--verify` avisa y sube igual. Origen: `KittenML/kitten-tts-nano-0.8-int8`
+  (`kitten_tts_nano_v0_8.onnx`, 24 369 971 bytes,
+  SHA-256 `f7b0afcbee92870b32b8e0276d855b954dc25470c9f051b376ac7eee537c76fc`).
 
 ## MCP
 
@@ -38,6 +48,9 @@
   servida en stale ~60 s y `request-password-reset` no creaba el token para un
   usuario recién registrado. Además una sesión revocada podía seguir válida
   desde el cache. No reactivar el caching sin aislar auth de las lecturas.
+- Workers Logs activo (`observability.logs.enabled` en `wrangler.jsonc`): los
+  eventos estructurados (`client_error` y compañía) se consultan en el dashboard
+  con retención de días, no como histórico.
 - Secrets en el worker: `DATABASE_URL`, `BETTER_AUTH_SECRET`, `DEEPSEEK_API_KEY`,
   `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `AI_GATEWAY_KEY`, `AI_GATEWAY_URL`.
   `secrets.required` en `wrangler.jsonc` controla cuáles llegan al `env` en dev
@@ -72,8 +85,11 @@
   `pnpm dev` debe reiniciarse tras cambiar `.env` (las vars se leen al arrancar).
 - `lecta_dev` arrancó con esquema + auth + seed, sin usuarios: en dev hay que
   registrarse de nuevo (el correo es el mismo dominio, es solo otra base).
-- `lecta` (prod) tiene todas las migraciones hasta `009_user_companion.sql`
-  (las cuatro `lecta_user_companion_*` con FK CASCADE a `user`).
+- `lecta` (prod) tiene aplicadas 001–010 (verificado el 2026-10-22; la
+  `010_kindle_link_codes.sql` ya había corrido). Pendientes:
+  `011_user_books.sql`, `012_sync_incremental_indexes.sql` y
+  `013_knowledge_sync_order_index.sql` (las cuatro `lecta_user_companion_*`
+  con FK CASCADE a `user`).
 - `defaultdb` pertenece a otro proyecto (POS): no tocar sus tablas.
 - EPUBs de prueba con copyright están en `.gitignore` (`/src/*.epub`,
   `/fixtures/*.epub` salvo `minimal.epub`).

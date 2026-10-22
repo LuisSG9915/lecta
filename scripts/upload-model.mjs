@@ -20,12 +20,45 @@ const CACHE_DIR = process.env.MODEL_CACHE_DIR || resolve(".cache/models");
 const LOCAL_PATH = resolve(CACHE_DIR, MODEL_FILENAME);
 const MIN_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
 
+/**
+ * Política del checksum (decisión 0.5 del plan de 8 fases):
+ * - con `--verify`, MODEL_SHA256 es obligatorio; si falta o no es un SHA-256
+ *   válido, se aborta antes de descargar o subir nada;
+ * - sin `--verify`, si falta, se avisa y se continúa para no bloquear una
+ *   re-subida puntual del binario.
+ */
+export function resolveChecksumPolicy({
+  verify = false,
+  expected = process.env.MODEL_SHA256,
+} = {}) {
+  const normalized = expected?.trim().toLowerCase() ?? "";
+  if (/^[0-9a-f]{64}$/.test(normalized)) return normalized;
+  if (normalized) {
+    throw new Error(
+      `MODEL_SHA256 no es un SHA-256 válido (64 caracteres hex): "${normalized}"`,
+    );
+  }
+  if (verify) {
+    throw new Error(
+      "MODEL_SHA256 es obligatorio con --verify. Calcula el hash del binario con\n" +
+        "  shasum -a 256 <modelo.onnx>\n" +
+        "y expórtalo antes de ejecutar `pnpm model:upload --verify`.",
+    );
+  }
+  return "";
+}
+
 async function verifyModelChecksum(
   localPath,
   expected = process.env.MODEL_SHA256,
 ) {
   const normalized = expected?.trim().toLowerCase();
   if (!normalized) return;
+  if (!/^[0-9a-f]{64}$/.test(normalized)) {
+    throw new Error(
+      `MODEL_SHA256 no es un SHA-256 válido (64 caracteres hex): "${normalized}"`,
+    );
+  }
 
   const hash = createHash("sha256");
   await pipeline(fs.createReadStream(localPath), hash);
@@ -126,6 +159,17 @@ const invokedAsScript =
 
 if (invokedAsScript) {
   try {
+    const verify = process.argv.includes("--verify");
+    const checksum = resolveChecksumPolicy({ verify });
+    if (checksum) {
+      // Normalizado, para que ensureModelDownloaded verifique exactamente esto.
+      process.env.MODEL_SHA256 = checksum;
+    } else {
+      console.warn(
+        "⚠️  MODEL_SHA256 no está definido: el modelo se subirá sin verificar su " +
+          "integridad. Usa `pnpm model:upload --verify` para exigirlo.",
+      );
+    }
     const isRemote = !process.argv.includes("--local");
     const localFile = await ensureModelDownloaded();
     uploadToR2(localFile, DEFAULT_BUCKET, R2_KEY, isRemote);

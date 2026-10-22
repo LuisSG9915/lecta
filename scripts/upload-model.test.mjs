@@ -2,11 +2,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_SOURCE_URL,
   ensureModelDownloaded,
+  resolveChecksumPolicy,
   uploadToR2,
 } from "./upload-model.mjs";
 import fs from "node:fs";
 import child_process from "node:child_process";
 import { Writable } from "node:stream";
+
+// SHA-256 real del kitten_tts_nano_v0_8.onnx (24 369 971 bytes).
+const MODEL_SHA256 =
+  "f7b0afcbee92870b32b8e0276d855b954dc25470c9f051b376ac7eee537c76fc";
 
 describe("scripts/upload-model", () => {
   beforeEach(() => {
@@ -16,6 +21,7 @@ describe("scripts/upload-model", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
   });
 
   it("apunta al modelo KittenML vigente", () => {
@@ -130,5 +136,31 @@ describe("scripts/upload-model", () => {
       ],
       { stdio: "inherit" },
     );
+  });
+
+  describe("resolveChecksumPolicy", () => {
+    it("normaliza un SHA-256 en mayúsculas o con espacios", () => {
+      expect(
+        resolveChecksumPolicy({ expected: `  ${MODEL_SHA256.toUpperCase()}  ` }),
+      ).toBe(MODEL_SHA256);
+    });
+
+    it("sin --verify y sin hash devuelve vacío: se avisa y se continúa", () => {
+      vi.stubEnv("MODEL_SHA256", "");
+      expect(resolveChecksumPolicy({ verify: false })).toBe("");
+    });
+
+    it("con --verify exige MODEL_SHA256", () => {
+      vi.stubEnv("MODEL_SHA256", "");
+      expect(() => resolveChecksumPolicy({ verify: true })).toThrow(
+        /obligatorio con --verify/,
+      );
+    });
+
+    it("rechaza un hash con formato inválido", () => {
+      expect(() =>
+        resolveChecksumPolicy({ verify: false, expected: "f7b0afcb" }),
+      ).toThrow(/no es un SHA-256 válido/);
+    });
   });
 });

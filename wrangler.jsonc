@@ -56,6 +56,9 @@
 		"mode": "smart"
 	},
 	"observability": {
+		"logs": {
+			"enabled": true
+		},
 		"issues": {
 			"enabled": true
 		}
