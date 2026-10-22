@@ -9,7 +9,7 @@ Estado verificado el 2026-10-22, árbol con Fase 0 aplicada:
 
 | Métrica | Valor | Límite | Margen |
 |---|---|---|---|
-| JS inicial (gzip) | 176.08 kB | 215.00 kB | 38.92 kB (aviso al 90 % = 193.5) |
+| JS inicial (gzip) | 176.67 kB | 215.00 kB | 38.33 kB (aviso al 90 % = 193.5) |
 | CSS inicial (gzip) | 19.84 kB | 55.00 kB | 35.16 kB |
 | Pruebas | 168 archivos / 2 365 pruebas | — | — |
 | Lint | 28 warnings | 28 (`--max-warnings 28`) | **0** |
