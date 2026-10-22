@@ -7,7 +7,9 @@ exacto, el método que funciona y lo que queda.
 - **Rama:** `main`, árbol limpio
 - **Último commit relevante:** `refactor(fase-7): extraer el dock (4623 -> 4573)`
 - **Plan de referencia:** `docs/plan-8-fases.md` §10 (Fase 7)
-- **Estado:** fase **abierta**. Siete cortes hechos, todos con gate y e2e verdes.
+- **Estado:** fase **cerrada con desvío** (2026-10-22). Siete cortes hechos, todos con gate y
+  e2e verdes. El criterio 1 de §10.3 (≤ 3 500) **no** se alcanzó: quedó en 4 573 y la decisión está
+  registrada en `docs/plan-8-fases.md` §13.
 
 ## 1. Dónde estamos
 
@@ -103,6 +105,9 @@ pnpm gate             # typecheck + lint + test + build + check:size
 ```
 
 ## 4. Lo que queda (medido)
+
+Nada de esto entra ya en la Fase 7: es la línea de trabajo que haría falta para bajar a 3 500, si
+se decide abrirla.
 
 ### 4.1 Presentación — ~266 líneas
 

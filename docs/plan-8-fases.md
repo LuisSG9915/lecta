@@ -88,14 +88,17 @@ Revierte con `git revert <sha>` salvo que la fase diga otra cosa.
 | Fase | Entrega | Depende de | Bloquea a | Riesgo | Esf. | Gate extra |
 |---|---|---|---|---|---|---|
 | 0 | Decisiones + observability + checksum | — | 1 | — | — | ✅ cerrada |
-| 1 | Prod migrada y desplegada | 0, auth de wrangler | 2, 5 | **Alto** (única irreversible) | S | smoke contra prod |
-| 2 | TTS 24 MB versionado y verificado | 1 (deploy) | — | Medio | M | `check-model` + e2e de voz |
-| 3 | Arranque ≤ 193.5 kB | 0 | 5, 7 | Bajo | M | `test:e2e` |
-| 4 | Cursor de sync veraz + índice | 0 | — | **Alto** (pérdida silenciosa de datos) | L | sync manual en dev |
-| 5 | Errores de cliente observables | 3 (presupuesto) y 1 (logs) | 6 | Bajo | M | — |
-| 6 | Cobertura real + MCP con pruebas | 4, 5 | 7 | Bajo | M | `test:coverage` |
-| 7 | `Reader.tsx` ≤ 3 500 líneas (objetivo 3 000) | 3, 6 | — | **Alto** (monolito de 5 503 líneas) | L | `test:e2e` por extracción |
-| 8 | ODbL descargable de verdad | — | — | Bajo | S | `curl -I` en prod |
+| 1 | Prod migrada y desplegada | 0, auth de wrangler | 2, 5 | **Alto** (única irreversible) | S | smoke contra prod · ✅ 2026-10-22 |
+| 2 | TTS 24 MB versionado y verificado | 1 (deploy) | — | Medio | M | `check-model` + e2e de voz · ✅ 2026-10-22 |
+| 3 | Arranque ≤ 193.5 kB | 0 | 5, 7 | Bajo | M | `test:e2e` · ✅ 2026-10-22 |
+| 4 | Cursor de sync veraz + índice | 0 | — | **Alto** (pérdida silenciosa de datos) | L | sync manual en dev · ✅ 2026-10-22 |
+| 5 | Errores de cliente observables | 3 (presupuesto) y 1 (logs) | 6 | Bajo | M | — · ✅ 2026-10-22 |
+| 6 | Cobertura real + MCP con pruebas | 4, 5 | 7 | Bajo | M | `test:coverage` · ✅ 2026-10-22 |
+| 7 | `Reader.tsx` ≤ 3 500 líneas (objetivo 3 000) | 3, 6 | — | **Alto** (monolito de 5 503 líneas) | L | `test:e2e` por extracción · ⚠️ cerrada con desvío: 4 573 |
+| 8 | ODbL descargable de verdad | — | — | Bajo | S | `curl -I` en prod · ✅ 2026-10-22 (pendiente: `senses-es.csv.gz`) |
+
+Leyenda: ✅ cerrada con los criterios verificados por comando (§4.7, §5.3, …); ⚠️ cerrada con
+un criterio sin alcanzar y la decisión registrada en §13 (hoy solo la Fase 7, criterio 1).
 
 **Paralelizables hoy:** 3 (peso) y 4 (sync) no dependen de producción. La 2 sí necesita un deploy
 para verificar el R2 real, pero el código se puede escribir antes.
@@ -677,7 +680,7 @@ Revertir. Los umbrales vuelven a los globales.
 
 ---
 
-## 10. Fase 7 — Partir `Reader.tsx`
+## 10. Fase 7 — Partir `Reader.tsx` · **cerrada con desvío**
 
 | | |
 |---|---|
@@ -692,8 +695,8 @@ Revertir. Los umbrales vuelven a los globales.
 hecha: el lector solo consume `ttsSnap` y unos pocos callbacks). Lo que queda no es «crear
 hooks»: es sacar un closure de 5 200 líneas donde casi todo bloque necesita 25–50 props.
 
-**Estado (2026-10-22): extracción en curso, no cerrada.** `Reader.tsx` pasó de **5 503 a 4 573
-líneas** en siete cortes, cada uno con gate y e2e verdes:
+**Estado (2026-10-22): cerrada con desvío.** `Reader.tsx` pasó de **5 503 a 4 573 líneas** en
+siete cortes, cada uno con gate y e2e verdes:
 
 | Corte | Archivo nuevo | Líneas movidas | Props |
 |---|---|---|---|
@@ -885,6 +888,7 @@ Revertir. El archivo en `public/` se puede borrar sin efectos: nadie lo referenc
 | 2026-10-22 | `MODEL_SHA256` obligatorio con `--verify` | Un «verificar» que no verifica es peor que nada |
 | 2026-10-22 | Gate único `pnpm gate` | Cinco comandos a mano se olvidan; uno no |
 | 2026-10-22 | `smoke:auth` deja 2 cuentas en prod | Se acepta y se documenta; no hay borrado automático |
+| 2026-10-22 | Fase 7 se cierra en 4 573 líneas (criterio 1 no alcanzado) | El JSX está agotado: el último bloque eran 94 líneas. Las ~1 073 restantes son lógica y exigen `ReaderEngineContext` + hooks, que §10.2 saca explícitamente de esta fase |
 
 ## 14. Qué cambió respecto a la v1
 
