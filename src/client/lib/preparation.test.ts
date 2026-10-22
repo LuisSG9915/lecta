@@ -337,8 +337,8 @@ describe("confirmPreparation", () => {
     vi.clearAllMocks();
     userMock.mockReturnValue("u1");
     batchMock.mockResolvedValue(written);
-    pushKMock.mockResolvedValue(true);
-    pushWMock.mockResolvedValue(true);
+    pushKMock.mockResolvedValue({ ok: true, acceptedMax: 0 });
+    pushWMock.mockResolvedValue({ ok: true, acceptedMax: 0 });
   });
 
   it("guarda local primero y empuja solo las filas escritas", async () => {
@@ -349,11 +349,11 @@ describe("confirmPreparation", () => {
     });
     pushKMock.mockImplementation(async () => {
       order.push("pushK");
-      return true;
+      return { ok: true, acceptedMax: 0 };
     });
     pushWMock.mockImplementation(async () => {
       order.push("pushW");
-      return true;
+      return { ok: true, acceptedMax: 0 };
     });
     const out = await confirmPreparation(input);
     expect(order).toEqual(["save", "pushK", "pushW"]);
@@ -373,7 +373,7 @@ describe("confirmPreparation", () => {
   });
 
   it("sync falla → saved:true, synced:false, sin deshacer", async () => {
-    pushKMock.mockResolvedValue(false);
+    pushKMock.mockResolvedValue({ ok: false, acceptedMax: 0 });
     const out = await confirmPreparation(input);
     expect(out).toMatchObject({ saved: true, synced: false });
     expect(out.knowledge).toEqual(written.knowledge);

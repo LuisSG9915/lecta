@@ -480,14 +480,14 @@ GET de vocab ordena por `(updated_at, form)` con el único índice `(user_id, la
 4. Eliminar los fallbacks a cursores globales (`vocab`, `vocab:push`, `knowledge:push`) y dejar de
    escribirlos. Coste: un re-sync completo por idioma la primera vez; beneficio: no se saltan
    remotos antiguos al descubrir un idioma nuevo. Anotarlo en `docs/sistema-lecta.md`.
-5. Migración `014_vocab_sync_order_index.sql`:
-   ```sql
-   CREATE INDEX IF NOT EXISTS idx_user_words_user_lang_updated_form
-     ON lecta_user_words (user_id, language, updated_at, form);
-   ```
-   Se aplica a `lecta_dev` en esta fase. **A producción solo en una ventana autorizada**: si la
-   Fase 4 termina antes que la Fase 1, entra en la ventana de §4.3; si no, queda pendiente y se
-   anota en `AGENTS.md`. No se crea una segunda ventana para un índice.
+5. ~~Migración `014_vocab_sync_order_index.sql`~~ **descartada con evidencia**. El `EXPLAIN` en
+   `lecta_dev` del GET de vocab (`user_id`, `language`, `updated_at > ?`,
+   `ORDER BY updated_at, form`) usa `idx_user_words_user_lang_updated` con span directo y **sin
+   nodo de sort ni top-k**: CockroachDB añade `form` al índice como columna implícita de la PK, así
+   que el índice de 012 ya cumple el orden. Además, el índice propuesto incluía la PK completa
+   (`user_id, language, form`) y ese patrón **se cuelga** en este cluster (§4.3). No hay migración
+   que aplicar. Recomendación opcional de Cockroach para otra fase: cubrir con
+   `STORING (lemma, pos, meaning, context, …)` para evitar el index join.
 
 ### 7.2 Criterios de aceptación (pruebas con nombre)
 
@@ -498,8 +498,18 @@ GET de vocab ordena por `(updated_at, form)` con el único índice `(user_id, la
 | 3 | Carrera | guardar palabra con el `fetch` pendiente | el siguiente sync la empuja |
 | 4 | Lote parcial | lote 1 OK, lote 2 falla | cursor = máximo del lote 1 |
 | 5 | Sin cursores globales | `grep -rn "vocab:push\\|knowledge:push" src/client` | 0 resultados |
-| 6 | Índice usado | `EXPLAIN` del GET de vocab en `lecta_dev` | `idx_user_words_user_lang_updated_form` |
+| 6 | Índice usado | `EXPLAIN` del GET de vocab en `lecta_dev` | `idx_user_words_user_lang_updated`, sin sort |
 | 7 | Sin duplicados | sync manual dev, dos pasadas | ids estables |
+
+**Ejecutado el 2026-10-22.** Los seis carriles usan `advanceSyncCursor` con el `acceptedMax` del
+push; no queda ninguna escritura de cursor con `Date.now()` (`grep` vacío) y los cursores globales
+de vocabulario desaparecieron. Pruebas nuevas: `sync-cursors.test.ts` (monotonía, valores
+corruptos, aislamiento por cuenta), y en `vocab.test.ts` el cursor no usa el reloj (`Date.now`
+fijado en 9e15 → cursor 200), el lote parcial (501 palabras, segundo PUT rechazado → cursor 500) y
+la carrera (palabra guardada durante el vuelo → se empuja en el ciclo siguiente). En
+`reading-sync.test.ts`, la misma prueba de «no reloj» para anotaciones. **014 descartada** con el
+`EXPLAIN` de arriba. El «sync manual en dev, dos pasadas» no se pudo hacer desde aquí: queda
+pendiente de una pasada con la app abierta.
 
 ### 7.3 Señales de fallo
 

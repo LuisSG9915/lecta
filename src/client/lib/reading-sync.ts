@@ -22,7 +22,8 @@ import {
 } from "./idb";
 export { getBookData };
 import { accountFetch } from "./account-fetch";
-import { getSyncCursor, setSyncCursor } from "./sync-cursors";
+import { advanceSyncCursor, getSyncCursor } from "./sync-cursors";
+import { maxStamp, type PushResult } from "./sync-push";
 import {
   clearCollectionPagesPending,
   markCollectionPagesPending,
@@ -61,31 +62,30 @@ if (typeof document !== "undefined") {
 export async function pushAnnotationsToServer(
   annotations: SavedAnnotation[],
   scope?: DbScope,
-): Promise<boolean> {
+): Promise<PushResult> {
   const bound = scope ?? captureDbScope();
-  if (!bound.userId || !annotations.length) return true;
-  if (!isDbScopeActive(bound)) return false;
+  if (!bound.userId || !annotations.length) return { ok: true, acceptedMax: 0 };
+  if (!isDbScopeActive(bound)) return { ok: false, acceptedMax: 0 };
+  let acceptedMax = 0;
   try {
-    // El servidor recorta cada PUT a ANNOTATION_LIMITS.batch; sin
-    // lotes, el excedente se perdería sin aviso.
     for (let start = 0; start < annotations.length; start += ANNOTATION_LIMITS.batch) {
+      const batch = annotations.slice(start, start + ANNOTATION_LIMITS.batch);
       const response = await accountFetch(
         "/api/annotations",
         {
           method: "PUT",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            annotations: annotations.slice(start, start + ANNOTATION_LIMITS.batch),
-          }),
+          body: JSON.stringify({ annotations: batch }),
           keepalive: true,
         },
         bound,
       );
-      if (!response.ok) return false;
+      if (!response.ok) return { ok: false, acceptedMax };
+      acceptedMax = Math.max(acceptedMax, maxStamp(batch, (item) => annotationStamp(item)));
     }
-    return true;
+    return { ok: true, acceptedMax };
   } catch {
-    return false;
+    return { ok: false, acceptedMax };
   }
 }
 
@@ -193,19 +193,21 @@ export async function syncAnnotations(scope?: DbScope) {
   });
 
   if (toPush.length > 0) {
-    if (await pushAnnotationsToServer(toPush, bound)) {
-      setSyncCursor(bound.userId, "annotations:push", Date.now());
-    } else {
-      return null;
+    const pushed = await pushAnnotationsToServer(toPush, bound);
+    // El cursor avanza hasta lo confirmado, nunca al reloj: lo que quedó
+    // fuera se reenvía en el siguiente ciclo.
+    if (pushed.acceptedMax > 0) {
+      advanceSyncCursor(bound.userId, "annotations:push", pushed.acceptedMax);
     }
-  } else if (lastPushedAt === 0) {
-    setSyncCursor(bound.userId, "annotations:push", Date.now());
+    if (!pushed.ok) return null;
   }
 
   // Solo se sella la fecha cuando el ciclo completo salió: una
   // sincronización parcial no cuenta como «al día».
-  const finalCursor = nextCursor ?? (maxUpdated > 0 ? maxUpdated : Date.now());
-  setSyncCursor(bound.userId, "annotations", finalCursor);
+  const finalCursor = nextCursor ?? maxUpdated;
+  if (finalCursor > 0) {
+    advanceSyncCursor(bound.userId, "annotations", finalCursor);
+  }
   await saveSessionValue(LAST_SYNC_KEY, String(Date.now()), bound);
   return pulled;
 }
@@ -215,29 +217,30 @@ export async function syncAnnotations(scope?: DbScope) {
 export async function pushActivityToServer(
   intervals: SavedInterval[],
   scope?: DbScope,
-): Promise<boolean> {
+): Promise<PushResult> {
   const bound = scope ?? captureDbScope();
-  if (!bound.userId || !intervals.length) return true;
-  if (!isDbScopeActive(bound)) return false;
+  if (!bound.userId || !intervals.length) return { ok: true, acceptedMax: 0 };
+  if (!isDbScopeActive(bound)) return { ok: false, acceptedMax: 0 };
+  let acceptedMax = 0;
   try {
     for (let start = 0; start < intervals.length; start += ACTIVITY_LIMITS.batch) {
+      const batch = intervals.slice(start, start + ACTIVITY_LIMITS.batch);
       const response = await accountFetch(
         "/api/activity",
         {
           method: "PUT",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            intervals: intervals.slice(start, start + ACTIVITY_LIMITS.batch),
-          }),
+          body: JSON.stringify({ intervals: batch }),
           keepalive: true,
         },
         bound,
       );
-      if (!response.ok) return false;
+      if (!response.ok) return { ok: false, acceptedMax };
+      acceptedMax = Math.max(acceptedMax, maxStamp(batch, (item) => item.endedAt ?? item.startedAt));
     }
-    return true;
+    return { ok: true, acceptedMax };
   } catch {
-    return false;
+    return { ok: false, acceptedMax };
   }
 }
 
@@ -342,17 +345,17 @@ export async function syncActivity(scope?: DbScope) {
   });
 
   if (toPush.length > 0) {
-    if (await pushActivityToServer(toPush, bound)) {
-      setSyncCursor(bound.userId, "activity:push", Date.now());
-    } else {
-      return null;
+    const pushed = await pushActivityToServer(toPush, bound);
+    if (pushed.acceptedMax > 0) {
+      advanceSyncCursor(bound.userId, "activity:push", pushed.acceptedMax);
     }
-  } else if (lastPushedAt === 0) {
-    setSyncCursor(bound.userId, "activity:push", Date.now());
+    if (!pushed.ok) return null;
   }
 
-  const finalCursor = nextCursor ?? (maxUpdated > 0 ? maxUpdated : Date.now());
-  setSyncCursor(bound.userId, "activity", finalCursor);
+  const finalCursor = nextCursor ?? maxUpdated;
+  if (finalCursor > 0) {
+    advanceSyncCursor(bound.userId, "activity", finalCursor);
+  }
   await saveSessionValue(ACTIVITY_SYNC_KEY, String(Date.now()), bound);
   return pulled;
 }
@@ -362,29 +365,30 @@ export async function syncActivity(scope?: DbScope) {
 export async function pushReviewsToServer(
   reviews: SavedReview[],
   scope?: DbScope,
-): Promise<boolean> {
+): Promise<PushResult> {
   const bound = scope ?? captureDbScope();
-  if (!bound.userId || !reviews.length) return true;
-  if (!isDbScopeActive(bound)) return false;
+  if (!bound.userId || !reviews.length) return { ok: true, acceptedMax: 0 };
+  if (!isDbScopeActive(bound)) return { ok: false, acceptedMax: 0 };
+  let acceptedMax = 0;
   try {
     for (let start = 0; start < reviews.length; start += REVIEW_LIMITS.batch) {
+      const batch = reviews.slice(start, start + REVIEW_LIMITS.batch);
       const response = await accountFetch(
         "/api/reviews",
         {
           method: "PUT",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            reviews: reviews.slice(start, start + REVIEW_LIMITS.batch),
-          }),
+          body: JSON.stringify({ reviews: batch }),
           keepalive: true,
         },
         bound,
       );
-      if (!response.ok) return false;
+      if (!response.ok) return { ok: false, acceptedMax };
+      acceptedMax = Math.max(acceptedMax, maxStamp(batch, (item) => item.createdAt));
     }
-    return true;
+    return { ok: true, acceptedMax };
   } catch {
-    return false;
+    return { ok: false, acceptedMax };
   }
 }
 
@@ -487,17 +491,17 @@ export async function syncReviews(scope?: DbScope) {
   });
 
   if (toPush.length > 0) {
-    if (await pushReviewsToServer(toPush, bound)) {
-      setSyncCursor(bound.userId, "reviews:push", Date.now());
-    } else {
-      return null;
+    const pushed = await pushReviewsToServer(toPush, bound);
+    if (pushed.acceptedMax > 0) {
+      advanceSyncCursor(bound.userId, "reviews:push", pushed.acceptedMax);
     }
-  } else if (lastPushedAt === 0) {
-    setSyncCursor(bound.userId, "reviews:push", Date.now());
+    if (!pushed.ok) return null;
   }
 
-  const finalCursor = nextCursor ?? (maxUpdated > 0 ? maxUpdated : Date.now());
-  setSyncCursor(bound.userId, "reviews", finalCursor);
+  const finalCursor = nextCursor ?? maxUpdated;
+  if (finalCursor > 0) {
+    advanceSyncCursor(bound.userId, "reviews", finalCursor);
+  }
   await saveSessionValue(REVIEWS_SYNC_KEY, String(Date.now()), bound);
   return pulled;
 }
@@ -509,29 +513,30 @@ export async function syncReviews(scope?: DbScope) {
 export async function pushKnowledgeToServer(
   rows: KnownWord[],
   scope?: DbScope,
-): Promise<boolean> {
+): Promise<PushResult> {
   const bound = scope ?? captureDbScope();
-  if (!bound.userId || !rows.length) return true;
-  if (!isDbScopeActive(bound)) return false;
+  if (!bound.userId || !rows.length) return { ok: true, acceptedMax: 0 };
+  if (!isDbScopeActive(bound)) return { ok: false, acceptedMax: 0 };
+  let acceptedMax = 0;
   try {
     for (let start = 0; start < rows.length; start += KNOWLEDGE_LIMITS.batch) {
+      const batch = rows.slice(start, start + KNOWLEDGE_LIMITS.batch);
       const response = await accountFetch(
         "/api/knowledge",
         {
           method: "PUT",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            rows: rows.slice(start, start + KNOWLEDGE_LIMITS.batch),
-          }),
+          body: JSON.stringify({ rows: batch }),
           keepalive: true,
         },
         bound,
       );
-      if (!response.ok) return false;
+      if (!response.ok) return { ok: false, acceptedMax };
+      acceptedMax = Math.max(acceptedMax, maxStamp(batch, (item) => item.updatedAt ?? 0));
     }
-    return true;
+    return { ok: true, acceptedMax };
   } catch {
-    return false;
+    return { ok: false, acceptedMax };
   }
 }
 
@@ -553,9 +558,7 @@ export async function syncKnowledge(
   const cursorKey = options?.language
     ? `knowledge:${options.language}`
     : "knowledge";
-  const cursor =
-    getSyncCursor(bound.userId, cursorKey) ||
-    getSyncCursor(bound.userId, "knowledge");
+  const cursor = getSyncCursor(bound.userId, cursorKey);
   const effectiveSince = local.length > 0 ? cursor : 0;
 
   let currentSince = effectiveSince;
@@ -648,9 +651,7 @@ export async function syncKnowledge(
   const pushCursorKey = options?.language
     ? `knowledge:${options.language}:push`
     : "knowledge:push";
-  const lastPushedAt =
-    getSyncCursor(bound.userId, pushCursorKey) ||
-    getSyncCursor(bound.userId, "knowledge:push");
+  const lastPushedAt = getSyncCursor(bound.userId, pushCursorKey);
   const toPush = local.filter((item) => {
     if (options?.language && item.language !== options.language) return false;
     const s = item.updatedAt ?? 0;
@@ -662,24 +663,21 @@ export async function syncKnowledge(
   });
 
   if (toPush.length > 0) {
-    if (await pushKnowledgeToServer(toPush, bound)) {
-      const pushNow = Date.now();
-      setSyncCursor(bound.userId, pushCursorKey, pushNow);
-      setSyncCursor(bound.userId, "knowledge:push", pushNow);
-    } else {
-      return null;
+    const pushed = await pushKnowledgeToServer(toPush, bound);
+    // El conocimiento se arbitra por `knowledgeArbWins`, así que reenviar
+    // es seguro; el cursor solo avanza hasta lo confirmado.
+    if (pushed.acceptedMax > 0) {
+      advanceSyncCursor(bound.userId, pushCursorKey, pushed.acceptedMax);
     }
-  } else if (lastPushedAt === 0) {
-    const pushNow = Date.now();
-    setSyncCursor(bound.userId, pushCursorKey, pushNow);
-    setSyncCursor(bound.userId, "knowledge:push", pushNow);
+    if (!pushed.ok) return null;
   }
 
   // Solo se sella la fecha cuando el ciclo completo salió, como en los
   // demás syncs: una sincronización parcial no cuenta como «al día».
-  const finalCursor = nextCursor ?? (maxUpdated > 0 ? maxUpdated : Date.now());
-  setSyncCursor(bound.userId, cursorKey, finalCursor);
-  setSyncCursor(bound.userId, "knowledge", finalCursor);
+  const finalCursor = nextCursor ?? maxUpdated;
+  if (finalCursor > 0) {
+    advanceSyncCursor(bound.userId, cursorKey, finalCursor);
+  }
   await saveSessionValue(KNOWLEDGE_SYNC_KEY, String(Date.now()), bound);
   return pulled;
 }

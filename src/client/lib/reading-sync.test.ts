@@ -26,7 +26,7 @@ import {
   pullMissingUserBooksFromCloud,
 } from "./reading-sync";
 import { pushPositionsToServer, syncPositions } from "./positions-sync";
-import { clearSyncCursors } from "./sync-cursors";
+import { clearSyncCursors, getSyncCursor } from "./sync-cursors";
 
 vi.mock("./idb", () => {
   const getActiveUserId = vi.fn((): string | null => "u1");
@@ -150,7 +150,7 @@ describe("pushAnnotationsToServer", () => {
     const items = Array.from({ length: 501 }, (_, i) => annotation(`a${i}`));
     // Una lápida dentro del segundo lote: debe llegar intacta.
     items[500].deleted = true;
-    await expect(pushAnnotationsToServer(items)).resolves.toBe(true);
+    await expect(pushAnnotationsToServer(items)).resolves.toMatchObject({ ok: true });
     expect(fetch).toHaveBeenCalledTimes(2);
     expect(vi.mocked(fetch).mock.calls[0][0]).toBe("/api/annotations");
     const batches = putBodies("annotations") as SavedAnnotation[][];
@@ -165,13 +165,13 @@ describe("pushAnnotationsToServer", () => {
     vi.mocked(fetch)
       .mockResolvedValueOnce(okResponse())
       .mockResolvedValueOnce(errorResponse());
-    await expect(pushAnnotationsToServer(items)).resolves.toBe(false);
+    await expect(pushAnnotationsToServer(items)).resolves.toMatchObject({ ok: false });
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 
   it("sin sesión no llama al servidor y devuelve true", async () => {
     vi.mocked(getActiveUserId).mockReturnValue(null);
-    await expect(pushAnnotationsToServer([annotation("a")])).resolves.toBe(true);
+    await expect(pushAnnotationsToServer([annotation("a")])).resolves.toMatchObject({ ok: true });
     expect(fetch).not.toHaveBeenCalled();
     expect(saveSessionValue).not.toHaveBeenCalled();
   });
@@ -203,12 +203,32 @@ describe("syncAnnotations", () => {
     expect(secondCall).toBe("/api/annotations?since=200");
     expect(putAnnotation).not.toHaveBeenCalled();
   });
+
+  it("el cursor de push avanza a lo confirmado, nunca al reloj", async () => {
+    const { listAllAnnotations } = await import("./idb");
+    vi.mocked(listAllAnnotations).mockResolvedValue([
+      annotation("a1", { updatedAt: 100 }),
+      annotation("a2", { updatedAt: 200 }),
+    ]);
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ annotations: [], serverTime: 900 }), { status: 200 }),
+      )
+      .mockResolvedValueOnce(okResponse());
+
+    const now = vi.spyOn(Date, "now").mockReturnValue(9_000_000_000_000_000);
+    await syncAnnotations();
+    now.mockRestore();
+
+    expect(getSyncCursor("u1", "annotations:push")).toBe(200);
+    expect(getSyncCursor("u1", "annotations")).toBe(900);
+  });
 });
 
 describe("pushActivityToServer", () => {
   it("1001 intervalos viajan en dos PUT sin perder ni repetir ninguno", async () => {
     const items = Array.from({ length: 1001 }, (_, i) => interval(`i${i}`));
-    await expect(pushActivityToServer(items)).resolves.toBe(true);
+    await expect(pushActivityToServer(items)).resolves.toMatchObject({ ok: true });
     expect(fetch).toHaveBeenCalledTimes(2);
     expect(vi.mocked(fetch).mock.calls[0][0]).toBe("/api/activity");
     const batches = putBodies("intervals") as SavedInterval[][];
@@ -219,14 +239,14 @@ describe("pushActivityToServer", () => {
 
   it("si fetch lanza devuelve false", async () => {
     vi.mocked(fetch).mockRejectedValue(new Error("sin red"));
-    await expect(pushActivityToServer([interval("i")])).resolves.toBe(false);
+    await expect(pushActivityToServer([interval("i")])).resolves.toMatchObject({ ok: false });
   });
 });
 
 describe("pushReviewsToServer", () => {
   it("1001 repasos viajan en dos PUT sin perder ni repetir ninguno", async () => {
     const items = Array.from({ length: 1001 }, (_, i) => review(`r${i}`));
-    await expect(pushReviewsToServer(items)).resolves.toBe(true);
+    await expect(pushReviewsToServer(items)).resolves.toMatchObject({ ok: true });
     expect(fetch).toHaveBeenCalledTimes(2);
     expect(vi.mocked(fetch).mock.calls[0][0]).toBe("/api/reviews");
     const batches = putBodies("reviews") as SavedReview[][];
@@ -240,13 +260,13 @@ describe("pushReviewsToServer", () => {
     vi.mocked(fetch)
       .mockResolvedValueOnce(okResponse())
       .mockResolvedValueOnce(errorResponse());
-    await expect(pushReviewsToServer(items)).resolves.toBe(false);
+    await expect(pushReviewsToServer(items)).resolves.toMatchObject({ ok: false });
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 
   it("sin sesión no llama al servidor y devuelve true", async () => {
     vi.mocked(getActiveUserId).mockReturnValue(null);
-    await expect(pushReviewsToServer([review("r")])).resolves.toBe(true);
+    await expect(pushReviewsToServer([review("r")])).resolves.toMatchObject({ ok: true });
     expect(fetch).not.toHaveBeenCalled();
   });
 });
@@ -297,7 +317,7 @@ describe("syncReviews", () => {
 describe("pushPositionsToServer", () => {
   it("501 posiciones viajan en dos PUT sin perder ni repetir ninguna", async () => {
     const items = Array.from({ length: 501 }, (_, i) => position(`b${i}`));
-    await expect(pushPositionsToServer(items)).resolves.toBe(true);
+    await expect(pushPositionsToServer(items)).resolves.toMatchObject({ ok: true });
     expect(fetch).toHaveBeenCalledTimes(2);
     expect(vi.mocked(fetch).mock.calls[0][0]).toBe("/api/positions");
     const batches = putBodies("positions") as SavedBookPosition[][];
@@ -311,13 +331,13 @@ describe("pushPositionsToServer", () => {
     vi.mocked(fetch)
       .mockResolvedValueOnce(okResponse())
       .mockResolvedValueOnce(errorResponse());
-    await expect(pushPositionsToServer(items)).resolves.toBe(false);
+    await expect(pushPositionsToServer(items)).resolves.toMatchObject({ ok: false });
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 
   it("sin sesión no llama al servidor y devuelve true", async () => {
     vi.mocked(getActiveUserId).mockReturnValue(null);
-    await expect(pushPositionsToServer([position("b1")])).resolves.toBe(true);
+    await expect(pushPositionsToServer([position("b1")])).resolves.toMatchObject({ ok: true });
     expect(fetch).not.toHaveBeenCalled();
   });
 });
@@ -389,7 +409,7 @@ describe("pushKnowledgeToServer", () => {
     const items = Array.from({ length: 501 }, (_, i) => known(`lema${i}`));
     // Una lápida dentro del segundo lote: debe llegar intacta.
     items[500].deleted = true;
-    await expect(pushKnowledgeToServer(items)).resolves.toBe(true);
+    await expect(pushKnowledgeToServer(items)).resolves.toMatchObject({ ok: true });
     expect(fetch).toHaveBeenCalledTimes(2);
     expect(vi.mocked(fetch).mock.calls[0][0]).toBe("/api/knowledge");
     const batches = putBodies("rows") as KnownWord[][];
@@ -404,13 +424,13 @@ describe("pushKnowledgeToServer", () => {
     vi.mocked(fetch)
       .mockResolvedValueOnce(okResponse())
       .mockResolvedValueOnce(errorResponse());
-    await expect(pushKnowledgeToServer(items)).resolves.toBe(false);
+    await expect(pushKnowledgeToServer(items)).resolves.toMatchObject({ ok: false });
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 
   it("sin sesión no llama al servidor y devuelve true", async () => {
     vi.mocked(getActiveUserId).mockReturnValue(null);
-    await expect(pushKnowledgeToServer([known("perenne")])).resolves.toBe(true);
+    await expect(pushKnowledgeToServer([known("perenne")])).resolves.toMatchObject({ ok: true });
     expect(fetch).not.toHaveBeenCalled();
     expect(saveSessionValue).not.toHaveBeenCalled();
   });

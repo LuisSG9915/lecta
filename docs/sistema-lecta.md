@@ -399,6 +399,16 @@ Patrón común (`*-sync.ts` + `reading-data.ts` del worker):
   distinta, el cliente pregunta antes de saltar.
 - Envíos en lotes (vocab 500/PUT; knowledge con su propio tope); se
   detiene al primer lote fallido — nunca se finge sync.
+- **El cursor de push avanza al sello máximo confirmado**, no al reloj
+  (`advanceSyncCursor`, monótono). Cada push devuelve `{ ok, acceptedMax }`:
+  si el servidor confirmó el lote 1 y rechazó el 2, el cursor queda en el
+  máximo del lote 1 y lo demás se reenvía en el siguiente ciclo. Antes se
+  usaba `Date.now()`, que podía adelantar a un dato guardado durante el
+  vuelo y no empujarlo nunca.
+- Ya **no hay cursores globales** (`vocab`, `vocab:push`, `knowledge:push`
+  como respaldo): el cursor es por idioma. Coste único tras actualizar: el
+  primer sync de cada idioma vuelve a pedir desde el principio; el
+  servidor descarta lo que ya tiene.
 - Todo el ciclo corre atado al `DbScope` capturado al empezar; si la
   cuenta cambia, se aborta limpio.
 

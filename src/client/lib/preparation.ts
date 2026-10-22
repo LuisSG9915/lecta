@@ -348,5 +348,9 @@ export async function confirmPreparation(
     pushKnowledgeToServer(batch.knowledge, bound),
     pushWordsToServer(batch.words, bound),
   ]);
-  return { saved: true, synced: knowledgeSynced && wordsSynced, ...batch };
+  return {
+    saved: true,
+    synced: knowledgeSynced.ok && wordsSynced.ok,
+    ...batch,
+  };
 }

@@ -7,7 +7,7 @@ import {
   type SavedWord,
 } from "./idb";
 import { pushWordsToServer, syncSavedWords } from "./vocab";
-import { clearSyncCursors } from "./sync-cursors";
+import { clearSyncCursors, getSyncCursor } from "./sync-cursors";
 
 vi.mock("./idb", () => {
   const getActiveUserId = vi.fn((): string | null => "u1");
@@ -70,19 +70,19 @@ afterEach(() => {
 
 describe("pushWordsToServer", () => {
   it("sin palabras no llama al servidor y devuelve true", async () => {
-    await expect(pushWordsToServer([])).resolves.toBe(true);
+    await expect(pushWordsToServer([])).resolves.toMatchObject({ ok: true });
     expect(fetch).not.toHaveBeenCalled();
   });
 
   it("sin sesión no llama al servidor y devuelve true", async () => {
     vi.mocked(getActiveUserId).mockReturnValue(null);
-    await expect(pushWordsToServer([word("a")])).resolves.toBe(true);
+    await expect(pushWordsToServer([word("a")])).resolves.toMatchObject({ ok: true });
     expect(fetch).not.toHaveBeenCalled();
   });
 
   it("500 palabras viajan en un solo PUT y en orden", async () => {
     const words = Array.from({ length: 500 }, (_, i) => word(`w${i}`));
-    await expect(pushWordsToServer(words)).resolves.toBe(true);
+    await expect(pushWordsToServer(words)).resolves.toMatchObject({ ok: true });
     expect(fetch).toHaveBeenCalledTimes(1);
     const [url, init] = vi.mocked(fetch).mock.calls[0];
     expect(url).toBe("/api/vocab");
@@ -92,7 +92,7 @@ describe("pushWordsToServer", () => {
 
   it("501 palabras viajan en dos lotes sin perder ni repetir ninguna", async () => {
     const words = Array.from({ length: 501 }, (_, i) => word(`w${i}`));
-    await expect(pushWordsToServer(words)).resolves.toBe(true);
+    await expect(pushWordsToServer(words)).resolves.toMatchObject({ ok: true });
     expect(fetch).toHaveBeenCalledTimes(2);
     const batches = putBodies().map((body) => body.words);
     expect(batches[0]).toEqual(words.slice(0, 500));
@@ -105,13 +105,13 @@ describe("pushWordsToServer", () => {
     vi.mocked(fetch)
       .mockResolvedValueOnce(okResponse())
       .mockResolvedValueOnce(errorResponse());
-    await expect(pushWordsToServer(words)).resolves.toBe(false);
+    await expect(pushWordsToServer(words)).resolves.toMatchObject({ ok: false });
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 
   it("si fetch lanza devuelve false", async () => {
     vi.mocked(fetch).mockRejectedValue(new Error("sin red"));
-    await expect(pushWordsToServer([word("a")])).resolves.toBe(false);
+    await expect(pushWordsToServer([word("a")])).resolves.toMatchObject({ ok: false });
   });
 });
 
@@ -325,5 +325,71 @@ describe("syncSavedWords", () => {
     expect(getCalls).toHaveLength(2);
     expect(getCalls[0][0]).toBe("/api/vocab?lang=es");
     expect(getCalls[1][0]).toBe("/api/vocab?lang=en");
+  });
+});
+
+describe("cursor de push veraz", () => {
+  it("avanza al máximo aceptado por el servidor y nunca al reloj", async () => {
+    vi.mocked(listAllSavedWords).mockResolvedValue([
+      { ...word("a"), savedAt: 100, updatedAt: 100 },
+      { ...word("b"), savedAt: 200, updatedAt: 200 },
+    ]);
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ words: [], serverTime: 900 }), { status: 200 }),
+      )
+      .mockResolvedValueOnce(okResponse());
+
+    const now = vi.spyOn(Date, "now").mockReturnValue(9_000_000_000_000_000);
+    await syncSavedWords();
+    now.mockRestore();
+
+    expect(getSyncCursor("u1", "vocab:es:push")).toBe(200);
+    expect(getSyncCursor("u1", "vocab:es")).toBe(900);
+    // Los cursores globales ya no se escriben (Fase 4).
+    expect(getSyncCursor("u1", "vocab")).toBe(0);
+    expect(getSyncCursor("u1", "vocab:push")).toBe(0);
+  });
+
+  it("un lote fallido no adelanta el cursor más allá de lo confirmado", async () => {
+    const words = Array.from({ length: 501 }, (_, i) => ({
+      ...word(`w${i}`),
+      savedAt: i + 1,
+      updatedAt: i + 1,
+    }));
+    vi.mocked(listAllSavedWords).mockResolvedValue(words);
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(new Response(JSON.stringify({ words: [] }), { status: 200 }))
+      .mockResolvedValueOnce(okResponse())
+      .mockResolvedValueOnce(errorResponse());
+
+    await expect(syncSavedWords()).resolves.toBeNull();
+    expect(getSyncCursor("u1", "vocab:es:push")).toBe(500);
+    expect(getSyncCursor("u1", "vocab:es:push")).not.toBe(Date.now());
+  });
+
+  it("una palabra guardada mientras el PUT está en vuelo se empuja en el ciclo siguiente", async () => {
+    vi.mocked(listAllSavedWords).mockResolvedValue([
+      { ...word("a"), savedAt: 100, updatedAt: 100 },
+    ]);
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(new Response(JSON.stringify({ words: [] }), { status: 200 }))
+      .mockResolvedValueOnce(okResponse());
+    await syncSavedWords();
+    expect(getSyncCursor("u1", "vocab:es:push")).toBe(100);
+
+    // El usuario guardó "b" (150) mientras el PUT anterior estaba en vuelo.
+    vi.mocked(listAllSavedWords).mockResolvedValue([
+      { ...word("a"), savedAt: 100, updatedAt: 100 },
+      { ...word("b"), savedAt: 150, updatedAt: 150 },
+    ]);
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(new Response(JSON.stringify({ words: [] }), { status: 200 }))
+      .mockResolvedValueOnce(okResponse());
+    await syncSavedWords();
+
+    const batches = putBodies();
+    expect(batches.at(-1)?.words.map((item) => item.key)).toEqual(["b"]);
+    expect(getSyncCursor("u1", "vocab:es:push")).toBe(150);
   });
 });

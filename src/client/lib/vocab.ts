@@ -13,7 +13,8 @@ import {
   type WordMeaning,
 } from "./idb";
 import { accountFetch } from "./account-fetch";
-import { getSyncCursor, setSyncCursor } from "./sync-cursors";
+import { advanceSyncCursor, getSyncCursor } from "./sync-cursors";
+import { maxStamp, type PushResult } from "./sync-push";
 import {
   clearCollectionPagesPending,
   markCollectionPagesPending,
@@ -33,26 +34,29 @@ const WORD_BATCH_LIMIT = 500;
 export async function pushWordsToServer(
   words: SavedWord[],
   scope?: DbScope,
-): Promise<boolean> {
+): Promise<PushResult> {
   const bound = scope ?? captureDbScope();
-  if (!bound.userId || !words.length) return true;
-  if (!isDbScopeActive(bound)) return false;
+  if (!bound.userId || !words.length) return { ok: true, acceptedMax: 0 };
+  if (!isDbScopeActive(bound)) return { ok: false, acceptedMax: 0 };
+  let acceptedMax = 0;
   try {
     for (let start = 0; start < words.length; start += WORD_BATCH_LIMIT) {
+      const batch = words.slice(start, start + WORD_BATCH_LIMIT);
       const response = await accountFetch(
         "/api/vocab",
         {
           method: "PUT",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ words: words.slice(start, start + WORD_BATCH_LIMIT) }),
+          body: JSON.stringify({ words: batch }),
         },
         bound,
       );
-      if (!response.ok) return false;
+      if (!response.ok) return { ok: false, acceptedMax };
+      acceptedMax = Math.max(acceptedMax, maxStamp(batch, stamp));
     }
-    return true;
+    return { ok: true, acceptedMax };
   } catch {
-    return false;
+    return { ok: false, acceptedMax };
   }
 }
 
@@ -110,9 +114,7 @@ export async function syncSavedWords(scope?: DbScope) {
     }
 
     const local = localAll.filter((word) => (word.language || "es") === language);
-    const langCursor =
-      getSyncCursor(bound.userId, `vocab:${language}`) ||
-      getSyncCursor(bound.userId, "vocab");
+    const langCursor = getSyncCursor(bound.userId, `vocab:${language}`);
     const effectiveSince = local.length > 0 ? langCursor : 0;
 
     let currentSince = effectiveSince;
@@ -209,9 +211,7 @@ export async function syncSavedWords(scope?: DbScope) {
     }
 
     // Desacoplar toPush de effectiveSince
-    const lastPushedAt =
-      getSyncCursor(bound.userId, `vocab:${language}:push`) ||
-      getSyncCursor(bound.userId, "vocab:push");
+    const lastPushedAt = getSyncCursor(bound.userId, `vocab:${language}:push`);
     const toPush = local.filter((word) => {
       const wordStamp = stamp(word);
       const remoteWord = remoteByKey.get(word.key);
@@ -222,22 +222,21 @@ export async function syncSavedWords(scope?: DbScope) {
     });
 
     if (toPush.length > 0) {
-      if (await pushWordsToServer(toPush, bound)) {
-        const pushNow = Date.now();
-        setSyncCursor(bound.userId, `vocab:${language}:push`, pushNow);
-        setSyncCursor(bound.userId, "vocab:push", pushNow);
-      } else {
+      const pushed = await pushWordsToServer(toPush, bound);
+      // Solo se avanza hasta lo confirmado: si un lote falló, lo que quedó
+      // fuera del cursor se reenvía en el siguiente ciclo.
+      if (pushed.acceptedMax > 0) {
+        advanceSyncCursor(bound.userId, `vocab:${language}:push`, pushed.acceptedMax);
+      }
+      if (!pushed.ok) {
         allOk = false;
       }
-    } else if (lastPushedAt === 0) {
-      const pushNow = Date.now();
-      setSyncCursor(bound.userId, `vocab:${language}:push`, pushNow);
-      setSyncCursor(bound.userId, "vocab:push", pushNow);
     }
 
-    const finalLangCursor =
-      langNextCursor ?? (maxUpdated > 0 ? maxUpdated : Date.now());
-    setSyncCursor(bound.userId, `vocab:${language}`, finalLangCursor);
+    const finalLangCursor = langNextCursor ?? maxUpdated;
+    if (finalLangCursor > 0) {
+      advanceSyncCursor(bound.userId, `vocab:${language}`, finalLangCursor);
+    }
   }
 
   // Solo sellamos la fecha cuando todos los idiomas sincronizaron:
@@ -245,7 +244,6 @@ export async function syncSavedWords(scope?: DbScope) {
   if (allOk) {
     if (pagesPending) markCollectionPagesPending("words");
     else clearCollectionPagesPending("words");
-    setSyncCursor(bound.userId, "vocab", maxUpdated > 0 ? maxUpdated : Date.now());
     await saveSessionValue(LAST_SYNC_KEY, String(Date.now()), bound);
   }
   return allOk ? pulled : null;
