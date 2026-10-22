@@ -13,7 +13,7 @@ Estado verificado el 2026-10-22, árbol con Fase 0 aplicada:
 | CSS inicial (gzip) | 32.92 kB | 55.00 kB | 22.08 kB |
 | Pruebas | 168 archivos / 2 365 pruebas | — | — |
 | Lint | 28 warnings | 28 (`--max-warnings 28`) | **0** |
-| Migraciones en prod | 001–010 | 013 | 011, 012, 013 pendientes |
+| Migraciones en prod | 001–013 | 013 | al día (2026-10-22) |
 
 Las dos cifras que aprietan son el JS (95.8 % del presupuesto) y el lint (**exactamente** en el
 tope). Cualquier fase que añada un warning o un import estático nuevo falla el gate.
@@ -202,6 +202,11 @@ pnpm db:migrate --prod
   `show jobs` → si hay un `SCHEMA CHANGE GC` en `waiting for MVCC GC`, espera; ni `CANCEL JOB`
   ni `PAUSE JOB` lo liberan. Lección del 2026-10-22: no crees índices de prueba y los borres el
   mismo día de una migración.
+- **Un `CREATE INDEX` que incluye la PK completa se cuelga** (bug del cluster, verificado en
+  `lecta_user_activity`, `lecta_user_reviews` y `lecta_user_knowledge`). CockroachDB ya añade las
+  columnas de la PK de forma implícita, así que se dejan fuera las que la completan:
+  `(user_id, ended_at, id)` → `(user_id, ended_at)`. El índice resultante en `SHOW INDEXES` sale
+  con la PK añadida, que es el efecto buscado.
 
 ### 4.4 Desplegar
 
@@ -248,6 +253,12 @@ Esperado: 10 minutos sin errores 500 ni `[worker-error]` repetidos.
 El modelo (`/models/…`) **hoy devuelve 404** y no es criterio de esta fase: R2 no tiene ningún
 objeto en `models/` y el binario se sube en la Fase 2 (§5). Verificado el 2026-10-22 con
 `wrangler r2 object get`: «The specified key does not exist.»
+
+**Ejecutado el 2026-10-22:** los seis criterios verdes. `pnpm smoke:auth` pasó entero,
+`/api/health` 200, `wrangler tail` sin errores, migraciones 001–013 registradas y worker
+`9e8242d0` desplegado. Dos matices que quedaron en `AGENTS.md`: `smoke:auth` deja dos cuentas
+`@smoke.test` en producción, y tres índices se crearon con las columnas de filtro en vez de
+repetir la PK (efecto idéntico, ver la nota de PK completa en §4.3).
 
 ### 4.8 Señales de fallo
 

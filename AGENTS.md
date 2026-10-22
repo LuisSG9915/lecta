@@ -26,6 +26,15 @@
   índices de prueba y borrarlos el mismo día de una migración; si una migración
   se cuelga, mirar `SHOW JOBS` antes de tocar nada (un GC en `waiting for MVCC GC`
   es la causa, y ni `CANCEL JOB` ni `PAUSE JOB` lo liberan).
+- **Un `CREATE INDEX` cuyas columnas clave incluyen la PK completa se cuelga**
+  (bug del cluster, verificado el 2026-10-22 en `lecta_user_activity`,
+  `lecta_user_reviews` y `lecta_user_knowledge`). CockroachDB ya añade las
+  columnas de la PK de forma implícita al índice, así que la solución es dejar
+  fuera las que completan la PK: `(user_id, ended_at, id)` → `(user_id, ended_at)`.
+  Los índices de prod `idx_user_activity_user_ended_id`,
+  `idx_user_reviews_user_created_id` e `idx_user_knowledge_user_updated_lang_lemma`
+  se crearon así (`SHOW INDEXES` los muestra con las columnas de la PK añadidas,
+  que es justo el efecto buscado).
 - `pnpm model:upload` sube el modelo de Kitten TTS a R2 (`models/kitten-tts-quantized.onnx`).
   Requiere credenciales de escritura de R2 (`wrangler login` o `CLOUDFLARE_API_TOKEN`).
   `pnpm model:upload --verify` exige `MODEL_SHA256` y aborta si falta o no coincide;
@@ -93,13 +102,11 @@
   `pnpm dev` debe reiniciarse tras cambiar `.env` (las vars se leen al arrancar).
 - `lecta_dev` arrancó con esquema + auth + seed, sin usuarios: en dev hay que
   registrarse de nuevo (el correo es el mismo dominio, es solo otra base).
-- `lecta` (prod) tiene aplicadas 001–011 (verificado el 2026-10-22; 011 se aplicó
-  ese día y el worker quedó desplegado con `user_books`). **Pendientes 012 y 013**:
-  sus cinco índices no pudieron crearse porque `DROP INDEX` + `gc.ttlseconds=4500`
-  bloquean la cola de cambios de esquema ~75 min. Tres de los cinco índices de 012
-  (words, knowledge, annotations) ya existen; faltan el de `lecta_user_activity`,
-  el de `lecta_user_reviews` y el de 013. Las seis tablas de sync quedaron con
-  `schema_locked=false` hasta cerrar esa migración.
+- `lecta` (prod) tiene aplicadas **001–013** (verificado el 2026-10-22; 011 se
+  aplicó ese día y el worker quedó desplegado con `user_books`). Los índices de
+  sync existen todos, pero dos se crearon con las columnas estrictamente
+  necesarias y no como los escribe la migración: ver la nota de PK completa abajo.
+  Las seis tablas de sync vuelven a estar con `schema_locked=true`.
 - `defaultdb` pertenece a otro proyecto (POS): no tocar sus tablas.
 - EPUBs de prueba con copyright están en `.gitignore` (`/src/*.epub`,
   `/fixtures/*.epub` salvo `minimal.epub`).
