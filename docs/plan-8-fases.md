@@ -687,8 +687,31 @@ Revertir. Los umbrales vuelven a los globales.
 | **Esfuerzo** | L |
 
 **Realidad del repo:** ya existe `src/client/components/reader/` con `ReaderOverlays.tsx`,
-`ReaderTopBar.tsx` y `ReaderSearchAndTocSheet.tsx`; `SmartReaderDock.tsx` ya está fuera. No se
-parte de cero y no se inventan `ReaderContent`/`ReaderDock` «nuevos» sin mirar eso.
+`ReaderTopBar.tsx` y `ReaderSearchAndTocSheet.tsx`; `SmartReaderDock.tsx` ya está fuera y
+`src/client/hooks/useReaderTts.ts` **también existe** (la extracción 1 del plan v2 ya estaba
+hecha: el lector solo consume `ttsSnap` y unos pocos callbacks). Lo que queda no es «crear
+hooks»: es sacar un closure de 5 200 líneas donde casi todo bloque necesita 25–50 props.
+
+**Estado (2026-10-22): extracción en curso, no cerrada.**
+`Reader.tsx` pasó de **5 503 a 5 227 líneas** con el primer corte: la hoja «Opciones de lectura»
+(297 líneas de JSX) vive ahora en `reader/ReaderSettingsSheet.tsx` con 24 props explícitas.
+Gate y e2e verdes tras el corte.
+
+Mapa medido de lo que queda (líneas de JSX / props que necesitaría):
+
+| Bloque | Líneas | Props | Riesgo |
+|---|---|---|---|
+| Área de lectura (`reader-body`, 4126–4416) | 291 | ~52 | Medio |
+| Acciones de selección (`returnPoint`/`selButton`) | 127 | ~30 | Medio |
+| Avisos flotantes (retomar, prep, calibración, fatiga) | 121 | ~25 | Bajo |
+| Dock y sus modos (`SmartReaderDock` + estado) | 94 | ~49 | Medio |
+| Regla de enfoque + pausa 20-20-20 | 70 | ~15 | Bajo |
+| Bloque bilingüe | 41 | ~15 | Bajo |
+
+Sacar esos seis bloques deja el archivo en ~4 480. Para bajar de 3 500 hay que mover además
+lógica: el cargador de sección (`loadSection`, ~223 líneas), la paginación (`goPage` + métricas,
+~200) y la selección (~150) a hooks con un objeto de contexto. Es un trabajo de varias sesiones:
+no se fuerza en una sola pasada.
 
 ### 10.1 Invariantes
 

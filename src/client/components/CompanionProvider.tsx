@@ -174,7 +174,7 @@ const presenceFrom = (registers: CompanionRegister[]): ReadingPresence => {
 
 // ---- Contexto ----
 
-type CompanionContextValue = {
+export type CompanionContextValue = {
   // Estado proyectado del juego; null mientras carga la primera vez
   // o durante un cambio de cuenta (nada de la cuenta previa queda).
   state: GameState | null;
