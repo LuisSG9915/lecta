@@ -25,7 +25,6 @@ import {
   type BookCoverage,
 } from "../lib/coverage";
 import { playCompanionSound } from "../lib/companion-audio";
-import { loadBookVocab } from "../lib/book-vocab";
 import { relativeDay } from "../lib/relative-time";
 import {
   parseReadingGoal,
@@ -379,11 +378,15 @@ export default function Shelf({
       // hay red no se puede medir nada y el lote entero se omite.
       const inputs = await inputsForCoverage("es", scope).catch(() => null);
       if (!inputs || cancelled) return;
+      // El manifiesto y su análisis viven en un chunk diferido: la
+      // estantería solo lo carga cuando hay red y libros que medir.
+      const { loadBookVocab, analyzeStoredBook } = await import(
+        "../lib/book-vocab"
+      );
       for (const hash of hashes) {
         if (cancelled) return;
         let manifest = await loadBookVocab(hash, scope);
         if (!manifest) {
-          const { analyzeStoredBook } = await import("../lib/book-vocab");
           manifest = await analyzeStoredBook(hash, scope);
         }
         if (!manifest || cancelled) continue;

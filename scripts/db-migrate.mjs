@@ -11,12 +11,87 @@ import pg from "pg";
 
 const MIGRATIONS_DIR = "db/migrations";
 const DEFAULT_DATABASE = "lecta_dev";
+const DEFAULT_MIGRATE_TIMEOUT_MS = 120_000;
+
+function isTimeoutError(error) {
+  const code = String(error?.code ?? "");
+  const message = String(error?.message ?? "");
+  return (
+    code === "57014" ||
+    /timeout|timed out|canceling statement due to statement timeout/i.test(message)
+  );
+}
+
+function normalizeTableName(raw) {
+  const cleaned = String(raw ?? "").replace(/"/g, "");
+  const table = cleaned.split(".").pop();
+  return /^[A-Za-z_][A-Za-z0-9_]*$/.test(table) ? table : null;
+}
+
+// Tabla sobre la que actúa un DDL que puede quedarse esperando si la
+// tabla tiene schema_locked=true. CREATE TABLE no cuenta: la tabla aún
+// no existe. Las sentencias que gestionan el lock explícitamente se
+// dejan pasar para poder desbloquear/bloquear desde una migración.
+export function extractDdlTable(statement) {
+  if (/schema_locked/i.test(statement)) return null;
+
+  const index = statement.match(
+    /CREATE\s+(?:UNIQUE\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?[^\s]+\s+ON\s+(?:TABLE\s+)?("?[A-Za-z_][\w."]*)/i,
+  );
+  if (index) return normalizeTableName(index[1]);
+
+  const alter = statement.match(
+    /ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:ONLY\s+)?(?!IF\b)("?[A-Za-z_][\w."]*)/i,
+  );
+  if (alter) return normalizeTableName(alter[1]);
+
+  const drop = statement.match(
+    /DROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?!IF\b)("?[A-Za-z_][\w."]*)/i,
+  );
+  if (drop) return normalizeTableName(drop[1]);
+
+  return null;
+}
+
+// Antes de ejecutar el DDL: si la tabla está protegida, fallar con una
+// instrucción clara en vez de esperar indefinidamente (Cockroach deja la
+// sentencia en espera, sin error, hasta que se desbloquee).
+export async function assertTableUnlocked(client, statement) {
+  const table = extractDdlTable(statement);
+  if (!table) return;
+
+  let ddl;
+  try {
+    const result = await client.query(`SHOW CREATE TABLE ${table}`);
+    ddl = Object.values(result.rows[0] ?? {}).join("\n");
+  } catch (error) {
+    if (isTimeoutError(error)) {
+      throw new Error(
+        `No se pudo verificar schema_locked de ${table} (tiempo agotado). Revisa la tabla antes de migrar.`,
+        { cause: error },
+      );
+    }
+    // La tabla no existe: CREATE TABLE la creará o el DDL fallará solo.
+    return;
+  }
+
+  if (/schema_locked\s*=\s*true/i.test(ddl)) {
+    throw new Error(
+      `La tabla ${table} tiene schema_locked=true. Desbloquéala solo para esta migración y vuelve a bloquearla después:\n` +
+        `  ALTER TABLE ${table} SET (schema_locked = false);\n` +
+        `  ...migración...\n` +
+        `  ALTER TABLE ${table} SET (schema_locked = true);`,
+    );
+  }
+}
 
 export async function migrate(
   client,
   migrationsDir = MIGRATIONS_DIR,
   target = process.env.LECTA_MIGRATE_TARGET || DEFAULT_DATABASE,
 ) {
+  const timeoutMs =
+    Number(process.env.LECTA_MIGRATE_TIMEOUT_MS) || DEFAULT_MIGRATE_TIMEOUT_MS;
   // current_database() antes de cualquier escritura: si la conexión
   // apunta a otra base se aborta sin ejecutar ni una línea de SQL.
   const { rows } = await client.query("SELECT current_database() AS db");
@@ -50,7 +125,21 @@ export async function migrate(
       .split(/;\s*\n/)
       .map((s) => s.trim())
       .filter(Boolean);
-    for (const statement of statements) await client.query(statement);
+    for (const statement of statements) {
+      await assertTableUnlocked(client, statement);
+      try {
+        await client.query(statement);
+      } catch (error) {
+        if (isTimeoutError(error)) {
+          throw new Error(
+            `La sentencia de ${file} excedió el tiempo límite (${timeoutMs} ms). ` +
+              "Si la tabla tiene schema_locked=true, desbloquéala explícitamente antes de migrar.",
+            { cause: error },
+          );
+        }
+        throw error;
+      }
+    }
     await client.query(
       "INSERT INTO lecta_schema_migrations (name, applied_at) VALUES ($1, $2)",
       [file, Date.now()],
@@ -93,7 +182,13 @@ if (invokedAsScript) {
       ? "lecta_dev"
       : process.env.LECTA_MIGRATE_TARGET || DEFAULT_DATABASE;
 
-  const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
+  const timeoutMs =
+    Number(process.env.LECTA_MIGRATE_TIMEOUT_MS) || DEFAULT_MIGRATE_TIMEOUT_MS;
+  const client = new pg.Client({
+    connectionString: process.env.DATABASE_URL,
+    statement_timeout: timeoutMs,
+    query_timeout: timeoutMs,
+  });
   await client.connect();
   try {
     await client

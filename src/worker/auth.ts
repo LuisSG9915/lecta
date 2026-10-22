@@ -2,7 +2,7 @@ import { betterAuth } from "better-auth";
 import { magicLink } from "better-auth/plugins";
 import { Kysely, PostgresDialect } from "kysely";
 import pg from "pg";
-import { getConnectionString, type WorkerEnv } from "./db";
+import { getConnectionString, logPostgresError, type WorkerEnv } from "./db";
 
 type EmailContent = { subject: string; intro: string };
 
@@ -45,7 +45,7 @@ export function createScopedAuth(env: WorkerEnv, baseURL: string) {
   if (typeof pool.on === "function") {
     pool.on("error", (err) => {
       // Evita crash del proceso por error no capturado en eventos de socket (ej. ENOTFOUND transitorio)
-      console.error("Postgres pool error:", err.message);
+      logPostgresError("pool", err);
     });
   }
   const closePool = async () => {

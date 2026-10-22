@@ -1,0 +1,16 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "servers": {
+      "lecta": {
+        "type": "local",
+        "command": [
+          "sh",
+          "-c",
+          "pnpm -s mcp:build >/dev/null && exec node mcp/dist/index.js"
+        ],
+        "cwd": "."
+      }
+    }
+  }
+}

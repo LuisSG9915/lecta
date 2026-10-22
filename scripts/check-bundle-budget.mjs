@@ -38,6 +38,11 @@ while ((m = cssRegex.exec(html)) !== null) {
   }
 }
 
+if (jsFiles.length === 0 || cssFiles.length === 0) {
+  console.error(`❌ Error de auditoría: se encontraron ${jsFiles.length} archivos JS y ${cssFiles.length} archivos CSS iniciales.`);
+  process.exit(1);
+}
+
 // 1. Verificar que el chunk lexicon-banks NO esté en los tags modulepreload de index.html
 const lexiconBanksPreloaded = jsFiles.some((f) => f.includes("lexicon-banks"));
 if (lexiconBanksPreloaded) {

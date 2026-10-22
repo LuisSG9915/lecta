@@ -9,6 +9,10 @@ import {
 } from "./idb";
 import { accountFetch } from "./account-fetch";
 import { getSyncCursor, setSyncCursor } from "./sync-cursors";
+import {
+  clearCollectionPagesPending,
+  markCollectionPagesPending,
+} from "./sync-state";
 import { POSITION_LIMITS } from "../../shared/reading-data";
 
 const POSITIONS_SYNC_KEY = "positionsLastSyncAt";
@@ -98,6 +102,7 @@ export async function syncPositions(scope?: DbScope): Promise<{
   const effectiveSince = local.length > 0 ? cursor : 0;
 
   let currentSince = effectiveSince;
+  let currentAfterBookHash: string | undefined;
   let page = 0;
   const MAX_PAGES = 25;
   let hasMore = true;
@@ -113,12 +118,17 @@ export async function syncPositions(scope?: DbScope): Promise<{
       serverTime?: number;
       hasMore?: boolean;
       nextCursor?: number;
+      nextAfterBookHash?: string | null;
     };
     try {
-      const url =
-        currentSince > 0
-          ? `/api/positions?since=${currentSince}`
-          : "/api/positions";
+      const params = new URLSearchParams();
+      if (currentSince > 0) params.set("since", String(currentSince));
+      if (currentAfterBookHash) {
+        params.set("afterBookHash", currentAfterBookHash);
+      }
+      const url = params.size
+        ? `/api/positions?${params.toString()}`
+        : "/api/positions";
       const response = await accountFetch(url, undefined, bound);
       if (!response.ok) {
         allOk = false;
@@ -139,9 +149,9 @@ export async function syncPositions(scope?: DbScope): Promise<{
     remoteAll.push(...items);
 
     hasMore = Boolean(data.hasMore);
-    if (hasMore && data.nextCursor) {
+    if (hasMore && data.nextCursor !== undefined) {
       currentSince = data.nextCursor;
-      setSyncCursor(bound.userId, "positions", currentSince);
+      currentAfterBookHash = data.nextAfterBookHash ?? undefined;
     }
     if (!hasMore && data.nextCursor) {
       nextCursor = data.nextCursor;
@@ -149,6 +159,8 @@ export async function syncPositions(scope?: DbScope): Promise<{
   }
 
   if (!allOk) return null;
+  if (hasMore) markCollectionPagesPending("positions");
+  else clearCollectionPagesPending("positions");
 
   const localByHash = new Map(local.map((item) => [item.bookHash, item]));
   const remoteByHash = new Map(remoteAll.map((item) => [item.bookHash, item]));

@@ -1,3 +1,4 @@
+import "../styles/reader.css";
 import {
   useCallback,
   useEffect,

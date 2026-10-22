@@ -2,12 +2,33 @@
 
 ## Verificación
 
-- `pnpm typecheck` (cliente + worker), `pnpm lint`, `pnpm test`, `pnpm build`.
+- `pnpm typecheck` (cliente + worker + MCP), `pnpm lint`, `pnpm test`, `pnpm build`.
 - `pnpm smoke:auth` corre contra un server vivo; `SMOKE_URL=<url>` para producción.
 - `pnpm db:setup` / `pnpm db:auth` aplican esquema y tablas de Better Auth (usan `DATABASE_URL` de `.env`).
 - `pnpm db:migrate` aplica `db/migrations/*.sql` en orden a la base del `.env` (idempotente, registra en `lecta_schema_migrations`). Migraciones nuevas van solo a `lecta_dev` salvo autorización.
 - El migrador exige que `current_database()` coincida con `LECTA_MIGRATE_TARGET` (default `lecta_dev`). Para producción: `LECTA_MIGRATE_TARGET=lecta` + `DATABASE_URL` con el nombre cambiado a `lecta` — solo con autorización expresa.
 - `pnpm db:migrate` aplica `db/migrations/*.sql` en orden (registra lo aplicado en `lecta_schema_migrations`; idempotente).
+- `pnpm db:migrate` falla rápido si una tabla destino tiene `schema_locked=true`; no espera indefinidamente. Desbloquéala solo para esa migración (`ALTER TABLE ... SET (schema_locked = false)`), migra y vuelve a bloquearla. `LECTA_MIGRATE_TIMEOUT_MS` ajusta el límite de sentencia (default 120000 ms).
+- `pnpm build` elimina `dist/lecta/.dev.vars` (secretos) al terminar. Para probar
+  auth, sync o IA en local con `vite preview`, usa `pnpm preview:local`
+  (`LECTA_KEEP_DEV_VARS=1`): conserva ese archivo solo en tu máquina.
+- `pnpm model:upload` sube el modelo de Kitten TTS a R2 (`models/kitten-tts-quantized.onnx`).
+  Requiere credenciales de escritura de R2 (`wrangler login` o `CLOUDFLARE_API_TOKEN`).
+
+## MCP
+
+- `mcp/` es un servidor MCP local (stdio, solo lectura) que proxya la API HTTP
+  de Lecta. `pnpm mcp:build` compila y `pnpm mcp:typecheck` verifica tipos.
+  Detalle y configuración de clientes en `mcp/README.md`.
+- `pnpm test` incluye las pruebas de `mcp/src` (configuración, cookies y
+  manejo de errores HTTP). `mcp/dist/` es artefacto y está ignorado.
+- `opencode.json` lo registra como servidor `lecta` y lo recompila al arrancar.
+  Credenciales solo por entorno: `LECTA_EMAIL` + `LECTA_PASSWORD` o
+  `LECTA_COOKIE`; `LECTA_BASE_URL` para apuntar a dev. Sin credenciales
+  funcionan las herramientas públicas.
+- El MCP no se conecta a la base ni escribe: si se agregan herramientas de
+  escritura, deben pasar por la API y respetar la sincronización por sello de
+  `updatedAt` (nada de SQL directo).
 
 ## Producción
 

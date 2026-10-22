@@ -206,10 +206,12 @@ describe("GET /api/vocab — sincronización incremental", () => {
       words: unknown[];
       hasMore: boolean;
       nextCursor: number;
+      nextAfterWord: string | null;
     };
     expect(bodyThousand.words).toHaveLength(1000);
     expect(bodyThousand.hasMore).toBe(true);
     expect(bodyThousand.nextCursor).toBe(1700000000000 + 999);
+    expect(bodyThousand.nextAfterWord).toBe("palabra999");
 
     // 2. Caso menos de 1000 filas (fin de paginación)
     queryMock.mockClear();
@@ -230,5 +232,43 @@ describe("GET /api/vocab — sincronización incremental", () => {
     expect(bodyLess.hasMore).toBe(false);
     expect(bodyLess.nextCursor).toBeGreaterThanOrEqual(beforeQuery - 5_000);
     expect(bodyLess.nextCursor).toBeLessThanOrEqual(Date.now());
+  });
+
+  it("omite el DISTINCT de idiomas en páginas intermedias", async () => {
+    queryMock.mockResolvedValueOnce({ rowCount: 0, rows: [] });
+
+    const response = await app.request(
+      "/api/vocab?lang=es&includeLanguages=0",
+      {},
+      {},
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      availableLanguages?: string[];
+    };
+    expect(body.availableLanguages).toBeUndefined();
+    expect(queryMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("usa afterWord para no perder filas con el mismo updated_at", async () => {
+    queryMock.mockResolvedValueOnce({ rowCount: 0, rows: [] });
+
+    const response = await app.request(
+      "/api/vocab?lang=es&since=1700000000000&afterWord=perenne",
+      {},
+      {},
+    );
+    expect(response.status).toBe(200);
+
+    expect(queryMock).toHaveBeenCalledTimes(1);
+    const [sql, params] = queryMock.mock.calls[0] as unknown as [
+      string,
+      unknown[],
+    ];
+    expect(sql).toContain(
+      "(updated_at > $3 OR (updated_at = $3 AND form > $4))",
+    );
+    expect(sql).toContain("ORDER BY updated_at ASC, form ASC");
+    expect(params).toEqual(["u1", "es", 1700000000000, "perenne"]);
   });
 });

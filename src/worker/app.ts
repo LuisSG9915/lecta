@@ -98,7 +98,14 @@ export const app = new Hono<{ Bindings: WorkerEnv }>();
 
 app.onError((err, c) => {
   const pathname = new URL(c.req.url).pathname;
-  console.error(`[worker-error] ${c.req.method} ${pathname}:`, err);
+  // Nunca el objeto crudo: puede llevar `detail` con valores de filas o
+  // constraints de Postgres. Solo metadatos seguros para diagnóstico.
+  const anyErr = err as { name?: string; code?: string; message?: string };
+  console.error(`[worker-error] ${c.req.method} ${pathname}:`, {
+    name: anyErr?.name ?? "Error",
+    code: anyErr?.code,
+    message: anyErr?.message ?? String(err),
+  });
   if (
     err instanceof SessionInfraError ||
     (err as { code?: string })?.code === "DB_UNAVAILABLE"
@@ -1736,68 +1743,80 @@ app.get("/api/vocab", async (context) => {
   if (!session) return context.json({ error: "Inicia sesión para ver tu vocabulario." }, 401);
   const language = context.req.query("lang")?.trim() || "es";
   const since = parseSinceParam(context.req.query("since"));
+  const afterWord = context.req.query("afterWord")?.trim() || null;
+  // availableLanguages solo hace falta al descubrir idiomas en la primera
+  // página. En las siguientes (o cuando el cliente lo desactiva) se evita
+  // el DISTINCT: es una consulta cara que se repetía por cada página.
+  const includeLanguages =
+    context.req.query("includeLanguages") !== "0" && !afterWord;
   const queryStartMs = Date.now();
   const LIMIT = 1000;
 
   const resultData = await withClient(context.env, async (client) => {
-    const rows = since > 0
+    const params: unknown[] = [session.user.id, language];
+    const filters = ["user_id = $1", "language = $2"];
+    if (since > 0) {
+      if (afterWord) {
+        filters.push(
+          "(updated_at > $3 OR (updated_at = $3 AND form > $4))",
+        );
+        params.push(since, afterWord);
+      } else {
+        filters.push("updated_at > $3");
+        params.push(since);
+      }
+    }
+
+    const rows = await client
+      .query(
+        `SELECT language, form, lemma, pos, meaning, context, book_hash AS "bookHash",
+                sense_entry_id AS "senseEntryId", sense_order AS "senseOrder",
+                card, saved_at AS "savedAt", updated_at AS "updatedAt", deleted
+         FROM lecta_user_words
+         WHERE ${filters.join(" AND ")}
+         ORDER BY updated_at ASC, form ASC
+         LIMIT ${LIMIT}`,
+        params,
+      )
+      .then((result) => result.rows);
+
+    const langRows = includeLanguages
       ? await client
           .query(
-            `SELECT language, form, lemma, pos, meaning, context, book_hash AS "bookHash",
-                    sense_entry_id AS "senseEntryId", sense_order AS "senseOrder",
-                    card, saved_at AS "savedAt", updated_at AS "updatedAt", deleted
-             FROM lecta_user_words
-             WHERE user_id = $1 AND language = $2 AND updated_at > $3
-             ORDER BY updated_at ASC
-             LIMIT ${LIMIT}`,
-            [session.user.id, language, since],
+            `SELECT DISTINCT language FROM lecta_user_words WHERE user_id = $1`,
+            [session.user.id],
           )
           .then((result) => result.rows)
-      : await client
-          .query(
-            `SELECT language, form, lemma, pos, meaning, context, book_hash AS "bookHash",
-                    sense_entry_id AS "senseEntryId", sense_order AS "senseOrder",
-                    card, saved_at AS "savedAt", updated_at AS "updatedAt", deleted
-             FROM lecta_user_words
-             WHERE user_id = $1 AND language = $2
-             ORDER BY updated_at ASC
-             LIMIT ${LIMIT}`,
-            [session.user.id, language],
-          )
-          .then((result) => result.rows);
+          .catch(() => [])
+      : [];
 
-    const langRows = await client
-      .query(
-        `SELECT DISTINCT language FROM lecta_user_words WHERE user_id = $1`,
-        [session.user.id],
-      )
-      .then((result) => result.rows)
-      .catch(() => []);
-
-    return { rows, langRows };
+    return { rows, langRows, includeLanguages };
   });
 
   if (resultData === undefined)
     return context.json({ error: "El vocabulario no está configurado." }, 503);
 
-  const { rows, langRows } = resultData;
+  const { rows, langRows, includeLanguages: withLanguages } = resultData;
   const hasMore = rows.length === LIMIT;
   const lastRow = rows.length > 0 ? rows[rows.length - 1] : null;
   const nextCursor =
     hasMore && lastRow
       ? Number(lastRow.updatedAt)
       : Math.max(0, queryStartMs - 5_000);
+  const nextAfterWord = hasMore && lastRow ? String(lastRow.form) : null;
 
-  const availableLanguages = Array.from(
-    new Set([
-      ...langRows
-        .map((r: { language?: unknown }) =>
-          typeof r.language === "string" ? r.language.trim() : "",
-        )
-        .filter(Boolean),
-      language,
-    ]),
-  );
+  const availableLanguages = withLanguages
+    ? Array.from(
+        new Set([
+          ...langRows
+            .map((r: { language?: unknown }) =>
+              typeof r.language === "string" ? r.language.trim() : "",
+            )
+            .filter(Boolean),
+          language,
+        ]),
+      )
+    : undefined;
 
   return context.json({
     words: rows.map((row) => ({
@@ -1813,6 +1832,7 @@ app.get("/api/vocab", async (context) => {
     serverTime: Date.now(),
     hasMore,
     nextCursor,
+    nextAfterWord,
     availableLanguages,
   });
 });

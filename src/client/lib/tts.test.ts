@@ -24,6 +24,7 @@ import {
 import {
   createTtsController,
   playSentencesLoop,
+  sentenceStillValid,
   stopAllTtsPlayback,
   TtsAudioController,
   type TtsControllerDeps,
@@ -1241,5 +1242,251 @@ describe("ttsController", () => {
 
     initSpy.mockRestore();
     speakSpy.mockRestore();
+  });
+
+  it("no arranca si el dispositivo no soporta TTS", async () => {
+    consent();
+    const { deps } = makeDeps([section("<p>Frase.</p>")]);
+    deps.supported = () => false;
+    const ctl = createTtsController(deps);
+    ctl.start(CTX, 0);
+    await flush();
+    expect(ctl.snapshot().status).toBe("idle");
+  });
+
+  it("un stall en pausa re-speak la oración y vuelve a pausar", async () => {
+    consent();
+    const { deps, speakers } = makeDeps([section("<p>Una. Dos.</p>")]);
+    const ctl = createTtsController(deps);
+    ctl.start(CTX, 0);
+    await flush();
+    ctl.pause("user");
+
+    expect(speakers).toHaveLength(1);
+    speakers[0].stalled("resume");
+
+    expect(speakers).toHaveLength(2);
+    expect(speakers[1].spoken.at(-1)).toBe("Una.");
+    expect(speakers[1].pauseCount).toBe(1);
+  });
+
+  it("navega oraciones en pausa sin reanudar la voz", async () => {
+    consent();
+    const { deps, speakers } = makeDeps([
+      section("<p>Primera. Segunda. Tercera.</p>"),
+    ]);
+    const ctl = createTtsController(deps);
+    ctl.start(CTX, 0);
+    await flush();
+    ctl.pause("user");
+    const spokenBefore = speakers[0].spoken.length;
+
+    ctl.nextSentence();
+    expect(ctl.getCurrentSentence()).toBe("Segunda.");
+    ctl.prevSentence();
+    expect(ctl.getCurrentSentence()).toBe("Primera.");
+    expect(speakers[0].spoken).toHaveLength(spokenBefore);
+  });
+
+  it("cambia motor y voz en caliente sin cerrar la sesión", async () => {
+    consent();
+    const { deps } = makeDeps([section("<p>Frase única.</p>")]);
+    const ctl = createTtsController(deps);
+    ctl.start(CTX, 0);
+    await flush();
+
+    ctl.setKittenVoice?.("expr-voice-2-f");
+    expect(ctl.snapshot().kittenVoice).toBe("expr-voice-2-f");
+    ctl.setEngine?.("auto");
+    expect(ctl.snapshot().engine).toBe("auto");
+    expect(ctl.snapshot().status).toBe("speaking");
+  });
+
+  it("reancla tras una mutación estructural y sigue hablando", async () => {
+    consent();
+    const root = section("<p>Una frase. Otra frase.</p>");
+    const { deps } = makeDeps([root]);
+    const ctl = createTtsController(deps);
+    ctl.start(CTX, 0);
+    await flush();
+    expect(ctl.getCurrentSentence()).toBe("Una frase.");
+
+    root.innerHTML = "<p><em>Una frase.</em> Otra frase.</p>";
+    ctl.onDomMutated();
+
+    expect(ctl.snapshot().status).toBe("speaking");
+    expect(ctl.getCurrentSentence()).toBe("Una frase.");
+  });
+
+  it("una mutación estando en pausa re-ancla sin reanudar", async () => {
+    consent();
+    const root = section("<p>Una frase. Otra frase.</p>");
+    const { deps } = makeDeps([root]);
+    const ctl = createTtsController(deps);
+    ctl.start(CTX, 0);
+    await flush();
+    ctl.pause("user");
+
+    root.innerHTML = "<p><em>Una frase.</em> Otra frase.</p>";
+    ctl.onDomMutated();
+
+    expect(ctl.snapshot().status).toBe("paused");
+    expect(ctl.getCurrentSentence()).toBe("Una frase.");
+  });
+
+  it("destroy cierra por navegación y dispose libera el worker", async () => {
+    consent();
+    const { deps, events } = makeDeps([section("<p>Frase.</p>")]);
+    const ctl = createTtsController(deps);
+    ctl.start(CTX, 0);
+    await flush();
+
+    const releaseSpy = vi.spyOn(kittenTtsEngine, "releaseWorkerMemory");
+    ctl.destroy();
+    expect(
+      events.find((e) => e.kind === "tts_session_end")?.endReason,
+    ).toBe("navigation");
+    expect(ctl.snapshot().status).toBe("idle");
+
+    ctl.dispose?.();
+    expect(releaseSpy).toHaveBeenCalled();
+    releaseSpy.mockRestore();
+  });
+
+  it("adquiere y libera el wake lock al hablar y pausar", async () => {
+    consent();
+    const release = vi.fn().mockResolvedValue(undefined);
+    const request = vi.fn().mockResolvedValue({ release });
+    Object.defineProperty(navigator, "wakeLock", {
+      value: { request },
+      configurable: true,
+    });
+
+    try {
+      const { deps } = makeDeps([section("<p>Frase.</p>")]);
+      const ctl = createTtsController(deps);
+      ctl.start(CTX, 0);
+      await flush();
+      expect(request).toHaveBeenCalledWith("screen");
+
+      ctl.pause("user");
+      await flush();
+      expect(release).toHaveBeenCalled();
+    } finally {
+      // @ts-expect-error limpieza del stub
+      delete navigator.wakeLock;
+    }
+  });
+
+  it("getCurrentSentence es null fuera de una sesión activa", () => {
+    const { deps } = makeDeps([section("<p>Frase.</p>")]);
+    const ctl = createTtsController(deps);
+    expect(ctl.getCurrentSentence()).toBeNull();
+  });
+
+  it("sentenceStillValid exige un nodo de texto vivo", () => {
+    const root = section("<p>Texto.</p>");
+    const { items } = buildSentenceMap(root, 0);
+    expect(sentenceStillValid(root, items[0])).toBe(true);
+
+    const other = document.createElement("div");
+    expect(sentenceStillValid(other, items[0])).toBe(false);
+  });
+});
+
+describe("TtsAudioController (motor del sistema)", () => {
+  afterEach(() => {
+    // @ts-expect-error limpieza del stub
+    delete window.speechSynthesis;
+    vi.restoreAllMocks();
+  });
+
+  it("enumera voces del sistema y reemite estado al adjuntar documento", () => {
+    const voice = {
+      voiceURI: "v1",
+      name: "Voz ES",
+      lang: "es-MX",
+      default: true,
+    } as SpeechSynthesisVoice;
+    Object.defineProperty(window, "speechSynthesis", {
+      value: { getVoices: () => [voice] },
+      configurable: true,
+    });
+
+    const onVoicesChange = vi.fn();
+    const onStateChange = vi.fn();
+    const ctrl = new TtsAudioController({ onVoicesChange, onStateChange });
+    expect(onVoicesChange).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        { id: "v1", name: "Voz ES", lang: "es-MX", isDefault: true },
+      ]),
+    );
+
+    const doc = document.implementation.createHTMLDocument();
+    doc.documentElement.lang = "es";
+    doc.body.innerHTML = "<p>Una. Dos.</p>";
+    ctrl.attachDocument(doc);
+    expect(onStateChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ totalSentences: 2, currentIndex: 0 }),
+    );
+
+    ctrl.attachDocument(null);
+    expect(onStateChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ totalSentences: 0, currentIndex: 0 }),
+    );
+  });
+
+  it("no reproduce sin oraciones y completa la sección con la voz del sistema", async () => {
+    const speech = await import("./ttsSpeech");
+    const speakSpy = vi
+      .spyOn(speech, "speakWithSystemVoice")
+      .mockResolvedValue();
+    const onSectionEnd = vi.fn();
+    const ctrl = new TtsAudioController({ onSectionEnd });
+
+    ctrl.attachDocument(null);
+    ctrl.play();
+    expect(speakSpy).not.toHaveBeenCalled();
+
+    const doc = document.implementation.createHTMLDocument();
+    doc.documentElement.lang = "es";
+    doc.body.innerHTML = "<p>Una. Dos.</p>";
+    ctrl.attachDocument(doc);
+    ctrl.play();
+    await flush();
+
+    expect(speakSpy).toHaveBeenCalledTimes(2);
+    expect(onSectionEnd).toHaveBeenCalledTimes(1);
+    speakSpy.mockRestore();
+  });
+
+  it("pausa, reanuda, navega, ajusta velocidad/voz y se destruye", () => {
+    const onStateChange = vi.fn();
+    const ctrl = new TtsAudioController({ onStateChange });
+    const doc = document.implementation.createHTMLDocument();
+    doc.documentElement.lang = "es";
+    doc.body.innerHTML = "<p>Una. Dos. Tres.</p>";
+    ctrl.attachDocument(doc);
+
+    ctrl.pause();
+    expect(onStateChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ status: "paused" }),
+    );
+    ctrl.next();
+    expect(onStateChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ currentIndex: 1 }),
+    );
+    ctrl.prev();
+    expect(onStateChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ currentIndex: 0 }),
+    );
+    ctrl.setRate(1.2);
+    ctrl.setVoice("v1");
+    ctrl.stop();
+    expect(onStateChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({ status: "idle", currentIndex: 0 }),
+    );
+    ctrl.destroy();
+    ctrl.dispose();
   });
 });

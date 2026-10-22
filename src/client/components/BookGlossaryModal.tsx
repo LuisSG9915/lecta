@@ -9,7 +9,6 @@ import {
   type GlossarySort,
   type GlossaryTerm,
 } from "../lib/glossary";
-import { analyzeStoredBook, loadBookVocab } from "../lib/book-vocab";
 import {
   captureDbScope,
   listAllKnowledge,
@@ -104,6 +103,9 @@ export default function BookGlossaryModal({
     void (async () => {
       const scope = captureDbScope();
       try {
+        const { loadBookVocab, analyzeStoredBook } = await import(
+          "../lib/book-vocab"
+        );
         let manifest = await loadBookVocab(bookHash, scope);
         if (!manifest) {
           manifest = await analyzeStoredBook(bookHash, scope);

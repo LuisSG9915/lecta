@@ -23,3 +23,7 @@ catalog-seed/
 test-results/
 playwright-report/
 coverage/
+
+# MCP: artefactos de compilación y caché local del modelo TTS
+mcp/dist/
+.cache/

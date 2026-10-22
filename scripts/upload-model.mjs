@@ -1,13 +1,17 @@
 import fs from "node:fs";
 import child_process from "node:child_process";
+import { createHash } from "node:crypto";
 import { dirname, resolve } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
 import { pathToFileURL } from "node:url";
 
-const DEFAULT_SOURCE_URL =
-  process.env.MODEL_SOURCE_URL ||
-  "https://huggingface.co/KittenTTS/kitten-tts-nano-es/resolve/main/kitten-tts-quantized.onnx";
+export const DEFAULT_SOURCE_URL =
+  "https://huggingface.co/KittenML/kitten-tts-nano-0.8-int8/resolve/main/kitten_tts_nano_v0_8.onnx";
+
+// MODEL_SOURCE_URL permite probar con otro espejo sin cambiar la constante
+// pública que verifican las pruebas.
+const SOURCE_URL = process.env.MODEL_SOURCE_URL || DEFAULT_SOURCE_URL;
 
 const DEFAULT_BUCKET = process.env.R2_BUCKET_NAME || "lecta-books";
 const MODEL_FILENAME = process.env.MODEL_FILENAME || "kitten-tts-quantized.onnx";
@@ -16,13 +20,32 @@ const CACHE_DIR = process.env.MODEL_CACHE_DIR || resolve(".cache/models");
 const LOCAL_PATH = resolve(CACHE_DIR, MODEL_FILENAME);
 const MIN_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
 
+async function verifyModelChecksum(
+  localPath,
+  expected = process.env.MODEL_SHA256,
+) {
+  const normalized = expected?.trim().toLowerCase();
+  if (!normalized) return;
+
+  const hash = createHash("sha256");
+  await pipeline(fs.createReadStream(localPath), hash);
+  const actual = hash.digest("hex");
+  if (actual !== normalized) {
+    throw new Error(
+      `El SHA-256 del modelo no coincide (esperado ${normalized}, obtenido ${actual}): ${localPath}`,
+    );
+  }
+  console.log("✓ SHA-256 del modelo verificado");
+}
+
 export async function ensureModelDownloaded(
-  sourceUrl = DEFAULT_SOURCE_URL,
+  sourceUrl = SOURCE_URL,
   localPath = LOCAL_PATH,
 ) {
   if (fs.existsSync(localPath)) {
     const stats = fs.statSync(localPath);
     if (stats.size >= MIN_SIZE_BYTES) {
+      await verifyModelChecksum(localPath);
       console.log(
         `✓ Modelo encontrado en caché local (${(stats.size / 1024 / 1024).toFixed(2)} MB): ${localPath}`,
       );
@@ -61,6 +84,7 @@ export async function ensureModelDownloaded(
   console.log(
     `✓ Modelo descargado exitosamente (${(stats.size / 1024 / 1024).toFixed(2)} MB): ${localPath}`,
   );
+  await verifyModelChecksum(localPath);
   return localPath;
 }
 
@@ -85,7 +109,9 @@ export function uploadToR2(
     args.push("--remote");
   }
 
-  const result = child_process.spawnSync("npx", args, { stdio: "inherit" });
+  const result = child_process.spawnSync("pnpm", ["exec", ...args], {
+    stdio: "inherit",
+  });
   if (result.status !== 0) {
     throw new Error(
       `Error al subir el modelo a R2 via wrangler (código de salida: ${result.status})`,

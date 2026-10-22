@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
+  clearCollectionPagesPending,
   getSyncState,
   getSyncStatusLabel,
   isSyncInError,
+  markCollectionPagesPending,
   recordCollectionSyncError,
   recordCollectionSyncSuccess,
   setPendingChangesCount,
@@ -10,8 +12,22 @@ import {
   type SyncCollection,
 } from "./sync-state";
 
+const ALL_COLLECTIONS: SyncCollection[] = [
+  "words",
+  "positions",
+  "annotations",
+  "knowledge",
+  "activity",
+  "reviews",
+  "companion",
+];
+
 describe("sync-state", () => {
   beforeEach(() => {
+    for (const collection of ALL_COLLECTIONS) {
+      clearCollectionPagesPending(collection);
+    }
+    setPendingChangesCount(0);
     updateSyncState({
       isOnline: true,
       lastSyncedAt: null,
@@ -119,5 +135,25 @@ describe("sync-state", () => {
   it("muestra 'Guardado en este dispositivo' para usuarios anónimos sin cuenta", () => {
     const state = getSyncState();
     expect(getSyncStatusLabel(state, false)).toBe("Guardado en este dispositivo");
+  });
+
+  it("mantiene 'pendiente de sincronizar' cuando quedaron páginas sin leer", () => {
+    recordCollectionSyncSuccess("words", 1000);
+    expect(getSyncStatusLabel(getSyncState(), true)).toBe("Sincronizado");
+
+    markCollectionPagesPending("words");
+    expect(getSyncState().pendingChangesCount).toBe(1);
+    expect(getSyncStatusLabel(getSyncState(), true)).toBe(
+      "Guardado en este dispositivo · pendiente de sincronizar",
+    );
+
+    // Un éxito de colección no debe borrar el pendiente de páginas.
+    recordCollectionSyncSuccess("words", 2000);
+    expect(getSyncStatusLabel(getSyncState(), true)).toBe(
+      "Guardado en este dispositivo · pendiente de sincronizar",
+    );
+
+    clearCollectionPagesPending("words");
+    expect(getSyncStatusLabel(getSyncState(), true)).toBe("Sincronizado");
   });
 });

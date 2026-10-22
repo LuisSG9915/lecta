@@ -105,6 +105,8 @@ CREATE INDEX IF NOT EXISTS idx_user_words_user_lang_updated
   ON lecta_user_words (user_id, language, updated_at);
 CREATE INDEX IF NOT EXISTS idx_user_knowledge_user_lang_updated
   ON lecta_user_knowledge (user_id, language, updated_at);
+CREATE INDEX IF NOT EXISTS idx_user_knowledge_user_updated_lang_lemma
+  ON lecta_user_knowledge (user_id, updated_at, language, lemma);
 CREATE INDEX IF NOT EXISTS idx_user_annotations_user_updated
   ON lecta_user_annotations (user_id, updated_at);
 CREATE INDEX IF NOT EXISTS idx_user_activity_user_ended_id

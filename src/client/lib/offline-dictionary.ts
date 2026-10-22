@@ -15,7 +15,6 @@ import { sanitizeSectionDocument } from "./sanitize";
 import { isStopword } from "../../shared/stopwords";
 import { isWordToken, menteBaseForms } from "../../shared/word-form";
 import { cliticBaseForms } from "./knowledge";
-import { bookVocabKey } from "./book-vocab";
 import type { BookVocabManifest } from "./catalog";
 
 export interface PrecacheProgress {
@@ -118,6 +117,7 @@ export async function getBookDictionaryStatus(
   language = "es",
   scope?: DbScope,
 ): Promise<{ total: number; cached: number; percent: number }> {
+  const { bookVocabKey } = await import("./book-vocab");
   const cachedJson = await loadSessionValue(bookVocabKey(hash), scope).catch(() => null);
   if (!cachedJson) {
     return { total: 0, cached: 0, percent: 0 };

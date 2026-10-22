@@ -194,6 +194,7 @@ describe("syncSavedWords", () => {
             words: page1Words,
             hasMore: true,
             nextCursor: 1999,
+            nextAfterWord: "w_999",
             serverTime: 1999,
           }),
           { status: 200 },
@@ -217,7 +218,46 @@ describe("syncSavedWords", () => {
 
     const calls = vi.mocked(fetch).mock.calls;
     expect(calls[0][0]).toBe("/api/vocab?lang=es");
-    expect(calls[1][0]).toBe("/api/vocab?lang=es&since=1999");
+    expect(calls[1][0]).toBe(
+      "/api/vocab?lang=es&since=1999&afterWord=w_999&includeLanguages=0",
+    );
+  });
+
+  it("arranca en since=0 y avanza con nextCursor + afterWord en la segunda página", async () => {
+    vi.mocked(listAllSavedWords).mockResolvedValue([]);
+
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            words: [{ ...word("alba"), savedAt: 1000, updatedAt: 1000 }],
+            hasMore: true,
+            nextCursor: 1000,
+            nextAfterWord: "alba",
+            serverTime: 1000,
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            words: [],
+            hasMore: false,
+            nextCursor: 2000,
+            serverTime: 2000,
+          }),
+          { status: 200 },
+        ),
+      );
+
+    await expect(syncSavedWords()).resolves.toBe(1);
+
+    const calls = vi.mocked(fetch).mock.calls;
+    expect(calls[0][0]).toBe("/api/vocab?lang=es");
+    expect(calls[1][0]).toBe(
+      "/api/vocab?lang=es&since=1000&afterWord=alba&includeLanguages=0",
+    );
   });
 
   it("una palabra nueva guardada localmente se incluye en toPush aunque el cursor de bajada esté adelantado", async () => {

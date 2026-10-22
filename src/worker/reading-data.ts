@@ -42,37 +42,41 @@ readingData.get("/api/annotations", async (context) => {
     return context.json({ error: "Inicia sesión para ver tus marcadores." }, 401);
 
   const since = parseSinceParam(context.req.query("since"));
+  const afterId = context.req.query("afterId")?.trim() || null;
   const queryStartMs = Date.now();
   const LIMIT = 1000;
 
-  const rows = await withClient(context.env, (client) => {
-    if (since > 0) {
-      return client
-        .query(
-          `SELECT book_hash AS "bookHash", id, kind, section_index AS "sectionIndex",
-                  anchor, text, prefix, suffix, note,
-                  created_at AS "createdAt", updated_at AS "updatedAt", deleted
-           FROM lecta_user_annotations
-           WHERE user_id = $1 AND updated_at > $2
-           ORDER BY updated_at ASC
-           LIMIT ${LIMIT}`,
-          [session.user.id, since],
-        )
-        .then((result) => result.rows);
+  const params: unknown[] = [session.user.id];
+  const filters = ["user_id = $1"];
+  if (since > 0) {
+    if (afterId) {
+      filters.push("(updated_at > $2 OR (updated_at = $2 AND id > $3))");
+      params.push(since, afterId);
+    } else {
+      filters.push("updated_at > $2");
+      params.push(since);
     }
-    return client
+  } else if (afterId) {
+    // Cursor estable por id cuando la primera página arranca sin since.
+    filters.push("id > $2");
+    params.push(afterId);
+  }
+  const order = since > 0 ? "updated_at ASC, id ASC" : afterId ? "id ASC" : "updated_at ASC, id ASC";
+
+  const rows = await withClient(context.env, (client) =>
+    client
       .query(
         `SELECT book_hash AS "bookHash", id, kind, section_index AS "sectionIndex",
                 anchor, text, prefix, suffix, note,
                 created_at AS "createdAt", updated_at AS "updatedAt", deleted
          FROM lecta_user_annotations
-         WHERE user_id = $1
-         ORDER BY updated_at ASC
+         WHERE ${filters.join(" AND ")}
+         ORDER BY ${order}
          LIMIT ${LIMIT}`,
-        [session.user.id],
+        params,
       )
-      .then((result) => result.rows);
-  });
+      .then((result) => result.rows),
+  );
   if (rows === undefined)
     return context.json({ error: "El almacenamiento no está configurado." }, 503);
 
@@ -82,6 +86,7 @@ readingData.get("/api/annotations", async (context) => {
     hasMore && lastRow
       ? Number(lastRow.updatedAt)
       : Math.max(0, queryStartMs - 5_000);
+  const nextAfterId = hasMore && lastRow ? String(lastRow.id) : null;
 
   return context.json({
     annotations: rows.map((row) => ({
@@ -94,6 +99,7 @@ readingData.get("/api/annotations", async (context) => {
     serverTime: Date.now(),
     hasMore,
     nextCursor,
+    nextAfterId,
   });
 });
 
@@ -168,6 +174,20 @@ readingData.get("/api/activity", async (context) => {
   const LIMIT = 1000;
 
   const rows = await withClient(context.env, (client) => {
+    if (afterId && since > 0) {
+      return client
+        .query(
+          `SELECT id, book_hash AS "bookHash",
+                  started_at AS "startedAt", ended_at AS "endedAt"
+           FROM lecta_user_activity
+           WHERE user_id = $1
+             AND (ended_at > $2 OR (ended_at = $2 AND id > $3))
+           ORDER BY ended_at ASC, id ASC
+           LIMIT ${LIMIT}`,
+          [session.user.id, since, afterId],
+        )
+        .then((result) => result.rows);
+    }
     if (afterId) {
       return client
         .query(
@@ -286,6 +306,20 @@ readingData.get("/api/reviews", async (context) => {
   const LIMIT = 1000;
 
   const rows = await withClient(context.env, (client) => {
+    if (afterId && since > 0) {
+      return client
+        .query(
+          `SELECT id, language, form, kind, rating, hints,
+                  created_at AS "createdAt"
+           FROM lecta_user_reviews
+           WHERE user_id = $1
+             AND (created_at > $2 OR (created_at = $2 AND id > $3))
+           ORDER BY created_at ASC, id ASC
+           LIMIT ${LIMIT}`,
+          [session.user.id, since, afterId],
+        )
+        .then((result) => result.rows);
+    }
     if (afterId) {
       return client
         .query(
@@ -401,37 +435,47 @@ readingData.get("/api/positions", async (context) => {
     return context.json({ error: "Inicia sesión para ver tus posiciones." }, 401);
 
   const since = parseSinceParam(context.req.query("since"));
+  const afterBookHash = context.req.query("afterBookHash")?.trim() || null;
   const queryStartMs = Date.now();
   const LIMIT = 1000;
 
-  const rows = await withClient(context.env, (client) => {
-    if (since > 0) {
-      return client
-        .query(
-          `SELECT book_hash AS "bookHash", section_index AS "sectionIndex",
-                  scroll_top AS "scrollTop", ratio, progress, anchor,
-                  updated_at AS "updatedAt"
-           FROM lecta_user_positions
-           WHERE user_id = $1 AND updated_at > $2
-           ORDER BY updated_at ASC
-           LIMIT ${LIMIT}`,
-          [session.user.id, since],
-        )
-        .then((result) => result.rows);
+  const params: unknown[] = [session.user.id];
+  const filters = ["user_id = $1"];
+  if (since > 0) {
+    if (afterBookHash) {
+      filters.push(
+        "(updated_at > $2 OR (updated_at = $2 AND book_hash > $3))",
+      );
+      params.push(since, afterBookHash);
+    } else {
+      filters.push("updated_at > $2");
+      params.push(since);
     }
-    return client
+  } else if (afterBookHash) {
+    filters.push("book_hash > $2");
+    params.push(afterBookHash);
+  }
+  const order =
+    since > 0
+      ? "updated_at ASC, book_hash ASC"
+      : afterBookHash
+        ? "book_hash ASC"
+        : "updated_at ASC, book_hash ASC";
+
+  const rows = await withClient(context.env, (client) =>
+    client
       .query(
         `SELECT book_hash AS "bookHash", section_index AS "sectionIndex",
                 scroll_top AS "scrollTop", ratio, progress, anchor,
                 updated_at AS "updatedAt"
          FROM lecta_user_positions
-         WHERE user_id = $1
-         ORDER BY updated_at ASC
+         WHERE ${filters.join(" AND ")}
+         ORDER BY ${order}
          LIMIT ${LIMIT}`,
-        [session.user.id],
+        params,
       )
-      .then((result) => result.rows);
-  });
+      .then((result) => result.rows),
+  );
   if (rows === undefined)
     return context.json({ error: "El almacenamiento no está configurado." }, 503);
 
@@ -441,6 +485,8 @@ readingData.get("/api/positions", async (context) => {
     hasMore && lastRow
       ? Number(lastRow.updatedAt)
       : Math.max(0, queryStartMs - 5_000);
+  const nextAfterBookHash =
+    hasMore && lastRow ? String(lastRow.bookHash) : null;
 
   return context.json({
     positions: rows.map((row) => ({
@@ -454,6 +500,7 @@ readingData.get("/api/positions", async (context) => {
     serverTime: Date.now(),
     hasMore,
     nextCursor,
+    nextAfterBookHash,
   });
 });
 
@@ -527,90 +574,110 @@ readingData.get("/api/knowledge", async (context) => {
 
   const language = context.req.query("language")?.trim();
   const since = parseSinceParam(context.req.query("since"));
+  const afterWord = context.req.query("afterWord")?.trim() || null;
+  const afterLanguage = context.req.query("afterLanguage")?.trim() || null;
+  // El DISTINCT de idiomas solo hace falta en la primera página: en las
+  // siguientes es una consulta redundante por cada 1,000 filas.
+  const includeLanguages =
+    context.req.query("includeLanguages") !== "0" && !afterWord;
   const queryStartMs = Date.now();
   const LIMIT = 1000;
 
   const resultData = await withClient(context.env, async (client) => {
-    let queryPromise: Promise<{ rows: Record<string, unknown>[] }>;
-    if (since > 0) {
-      if (language) {
-        queryPromise = client.query(
-          `SELECT language, lemma, known, source,
-                  updated_at AS "updatedAt", deleted
-           FROM lecta_user_knowledge
-           WHERE user_id = $1 AND language = $2 AND updated_at > $3
-           ORDER BY updated_at ASC
-           LIMIT ${LIMIT}`,
-          [session.user.id, language, since],
-        );
-      } else {
-        queryPromise = client.query(
-          `SELECT language, lemma, known, source,
-                  updated_at AS "updatedAt", deleted
-           FROM lecta_user_knowledge
-           WHERE user_id = $1 AND updated_at > $2
-           ORDER BY updated_at ASC
-           LIMIT ${LIMIT}`,
-          [session.user.id, since],
-        );
-      }
-    } else {
-      if (language) {
-        queryPromise = client.query(
-          `SELECT language, lemma, known, source,
-                  updated_at AS "updatedAt", deleted
-           FROM lecta_user_knowledge
-           WHERE user_id = $1 AND language = $2
-           ORDER BY updated_at ASC
-           LIMIT ${LIMIT}`,
-          [session.user.id, language],
-        );
-      } else {
-        queryPromise = client.query(
-          `SELECT language, lemma, known, source,
-                  updated_at AS "updatedAt", deleted
-           FROM lecta_user_knowledge
-           WHERE user_id = $1
-           ORDER BY updated_at ASC
-           LIMIT ${LIMIT}`,
-          [session.user.id],
-        );
-      }
+    const params: unknown[] = [session.user.id];
+    const filters = ["user_id = $1"];
+    let paramIndex = 2;
+    if (language) {
+      filters.push(`language = $${paramIndex++}`);
+      params.push(language);
     }
+    if (since > 0) {
+      if (afterWord && afterLanguage) {
+        // La clave real es (language, lemma): sin el idioma, dos lemas
+        // iguales en idiomas distintos con el mismo sello se saltarían.
+        filters.push(
+          `(updated_at > $${paramIndex} OR (updated_at = $${paramIndex} AND (language > $${paramIndex + 1} OR (language = $${paramIndex + 1} AND lemma > $${paramIndex + 2}))))`,
+        );
+        params.push(since, afterLanguage, afterWord);
+      } else if (afterWord) {
+        filters.push(
+          `(updated_at > $${paramIndex} OR (updated_at = $${paramIndex} AND lemma > $${paramIndex + 1}))`,
+        );
+        params.push(since, afterWord);
+      } else {
+        filters.push(`updated_at > $${paramIndex}`);
+        params.push(since);
+      }
+    } else if (afterWord && afterLanguage) {
+      filters.push(
+        `(language > $${paramIndex} OR (language = $${paramIndex} AND lemma > $${paramIndex + 1}))`,
+      );
+      params.push(afterLanguage, afterWord);
+    } else if (afterWord) {
+      filters.push(`lemma > $${paramIndex}`);
+      params.push(afterWord);
+    }
+    const order =
+      since > 0
+        ? afterWord && afterLanguage
+          ? "updated_at ASC, language ASC, lemma ASC"
+          : "updated_at ASC, lemma ASC"
+        : afterWord && afterLanguage
+          ? "language ASC, lemma ASC"
+          : afterWord
+            ? "lemma ASC"
+            : "updated_at ASC, lemma ASC";
 
-    const langPromise = client
-      .query(
-        `SELECT DISTINCT language FROM lecta_user_knowledge WHERE user_id = $1`,
-        [session.user.id],
-      )
-      .then((res) => res.rows)
-      .catch(() => []);
+    const queryPromise = client.query(
+      `SELECT language, lemma, known, source,
+              updated_at AS "updatedAt", deleted
+       FROM lecta_user_knowledge
+       WHERE ${filters.join(" AND ")}
+       ORDER BY ${order}
+       LIMIT ${LIMIT}`,
+      params,
+    ) as Promise<{ rows: Record<string, unknown>[] }>;
+
+    const langPromise = includeLanguages
+      ? client
+          .query(
+            `SELECT DISTINCT language FROM lecta_user_knowledge WHERE user_id = $1`,
+            [session.user.id],
+          )
+          .then((res) => res.rows)
+          .catch(() => [])
+      : Promise.resolve([]);
 
     const [queryRes, langRows] = await Promise.all([queryPromise, langPromise]);
-    return { rows: queryRes.rows, langRows };
+    return { rows: queryRes.rows, langRows, includeLanguages };
   });
 
   if (resultData === undefined)
     return context.json({ error: "El almacenamiento no está configurado." }, 503);
 
-  const { rows, langRows } = resultData;
+  const { rows, langRows, includeLanguages: withLanguages } = resultData;
   const hasMore = rows.length === LIMIT;
   const lastRow = rows.length > 0 ? rows[rows.length - 1] : null;
   const nextCursor =
     hasMore && lastRow
       ? Number(lastRow.updatedAt)
       : Math.max(0, queryStartMs - 5_000);
+  const nextAfterWord = hasMore && lastRow ? String(lastRow.lemma) : null;
+  const nextAfterLanguage =
+    hasMore && lastRow ? String(lastRow.language) : null;
 
-  const availableLanguages = Array.from(
-    new Set([
-      ...langRows
-        .map((r: { language?: unknown }) =>
-          typeof r.language === "string" ? r.language.trim() : "",
-        )
-        .filter(Boolean),
-      ...(language ? [language] : ["es"]),
-    ]),
-  );
+  const availableLanguages = withLanguages
+    ? Array.from(
+        new Set([
+          ...langRows
+            .map((r: { language?: unknown }) =>
+              typeof r.language === "string" ? r.language.trim() : "",
+            )
+            .filter(Boolean),
+          ...(language ? [language] : ["es"]),
+        ]),
+      )
+    : undefined;
 
   return context.json({
     rows: rows.map((row) => ({
@@ -620,6 +687,8 @@ readingData.get("/api/knowledge", async (context) => {
     serverTime: Date.now(),
     hasMore,
     nextCursor,
+    nextAfterWord,
+    nextAfterLanguage,
     availableLanguages,
   });
 });

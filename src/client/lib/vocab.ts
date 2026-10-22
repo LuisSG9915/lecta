@@ -14,6 +14,10 @@ import {
 } from "./idb";
 import { accountFetch } from "./account-fetch";
 import { getSyncCursor, setSyncCursor } from "./sync-cursors";
+import {
+  clearCollectionPagesPending,
+  markCollectionPagesPending,
+} from "./sync-state";
 import { loadUserLanguageProfile, USER_LANGUAGE_PROFILE_KEY } from "./profile-models";
 
 const stamp = (word: SavedWord) => word.updatedAt ?? word.savedAt;
@@ -92,6 +96,7 @@ export async function syncSavedWords(scope?: DbScope) {
 
   let pulled = 0;
   let allOk = true;
+  let pagesPending = false;
   let maxUpdated = 0;
 
   for (let i = 0; i < queue.length; i++) {
@@ -111,6 +116,7 @@ export async function syncSavedWords(scope?: DbScope) {
     const effectiveSince = local.length > 0 ? langCursor : 0;
 
     let currentSince = effectiveSince;
+    let currentAfterWord: string | undefined;
     let page = 0;
     const MAX_PAGES = 25;
     let hasMore = true;
@@ -125,14 +131,18 @@ export async function syncSavedWords(scope?: DbScope) {
         serverTime?: number;
         hasMore?: boolean;
         nextCursor?: number;
+        nextAfterWord?: string | null;
         availableLanguages?: string[];
       };
 
       try {
-        const url =
-          currentSince > 0
-            ? `/api/vocab?lang=${encodeURIComponent(language)}&since=${currentSince}`
-            : `/api/vocab?lang=${encodeURIComponent(language)}`;
+        const params = new URLSearchParams({ lang: language });
+        if (currentSince > 0) params.set("since", String(currentSince));
+        if (currentAfterWord) params.set("afterWord", currentAfterWord);
+        // Solo la primera página descubre idiomas: en las siguientes el
+        // DISTINCT es redundante y cuesta una consulta por página.
+        if (page > 1) params.set("includeLanguages", "0");
+        const url = `/api/vocab?${params.toString()}`;
         const response = await accountFetch(url, undefined, bound);
         if (!response.ok) {
           langOk = false;
@@ -166,10 +176,9 @@ export async function syncSavedWords(scope?: DbScope) {
       }
 
       hasMore = Boolean(pageData.hasMore);
-      if (hasMore && pageData.nextCursor) {
+      if (hasMore && pageData.nextCursor !== undefined) {
         currentSince = pageData.nextCursor;
-        setSyncCursor(bound.userId, `vocab:${language}`, currentSince);
-        setSyncCursor(bound.userId, "vocab", currentSince);
+        currentAfterWord = pageData.nextAfterWord ?? undefined;
       }
       if (!hasMore && pageData.nextCursor) {
         langNextCursor = pageData.nextCursor;
@@ -178,6 +187,8 @@ export async function syncSavedWords(scope?: DbScope) {
         maxUpdated = pageData.serverTime;
       }
     }
+
+    pagesPending ||= hasMore;
 
     if (!langOk) {
       allOk = false;
@@ -232,6 +243,8 @@ export async function syncSavedWords(scope?: DbScope) {
   // Solo sellamos la fecha cuando todos los idiomas sincronizaron:
   // una sincronización parcial no cuenta como «al día».
   if (allOk) {
+    if (pagesPending) markCollectionPagesPending("words");
+    else clearCollectionPagesPending("words");
     setSyncCursor(bound.userId, "vocab", maxUpdated > 0 ? maxUpdated : Date.now());
     await saveSessionValue(LAST_SYNC_KEY, String(Date.now()), bound);
   }

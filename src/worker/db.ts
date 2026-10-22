@@ -41,6 +41,20 @@ export function chunks<T>(items: readonly T[], size = SYNC_CHUNK_ROWS): T[][] {
   return out;
 }
 
+// Los cierres de socket del ciclo de vida (el request terminó y el pool
+// cerró la conexión) no son fallos: registrarlos solo llena los logs.
+const EXPECTED_SOCKET_CLOSURES =
+  /this socket has been closed|connection terminated/i;
+
+export function logPostgresError(
+  kind: "client" | "pool",
+  err: unknown,
+): void {
+  const msg = String((err as { message?: unknown } | null)?.message ?? "");
+  if (EXPECTED_SOCKET_CLOSURES.test(msg)) return;
+  console.error(`Postgres ${kind} error:`, msg);
+}
+
 export async function withClient<T>(env: WorkerEnv, run: (client: pg.Client) => Promise<T>) {
   const connectionString = getConnectionString(env);
   if (!connectionString) return undefined;
@@ -48,7 +62,7 @@ export async function withClient<T>(env: WorkerEnv, run: (client: pg.Client) => 
   if (typeof client.on === "function") {
     client.on("error", (err) => {
       // Evita crash del proceso por error no capturado en eventos de socket
-      console.error("Postgres client error:", err.message);
+      logPostgresError("client", err);
     });
   }
   await client.connect();

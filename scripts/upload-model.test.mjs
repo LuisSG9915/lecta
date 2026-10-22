@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ensureModelDownloaded, uploadToR2 } from "./upload-model.mjs";
+import {
+  DEFAULT_SOURCE_URL,
+  ensureModelDownloaded,
+  uploadToR2,
+} from "./upload-model.mjs";
 import fs from "node:fs";
 import child_process from "node:child_process";
 import { Writable } from "node:stream";
@@ -12,6 +16,11 @@ describe("scripts/upload-model", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it("apunta al modelo KittenML vigente", () => {
+    expect(DEFAULT_SOURCE_URL).toContain("KittenML/kitten-tts-nano-0.8-int8");
+    expect(DEFAULT_SOURCE_URL.endsWith(".onnx")).toBe(true);
   });
 
   it("reutiliza el modelo existente si su tamaño supera los 10 MB", async () => {
@@ -107,8 +116,9 @@ describe("scripts/upload-model", () => {
     uploadToR2("/local/path/model.onnx", "lecta-books", "models/kitten.onnx", true);
 
     expect(spawnSpy).toHaveBeenCalledWith(
-      "npx",
+      "pnpm",
       [
+        "exec",
         "wrangler",
         "r2",
         "object",

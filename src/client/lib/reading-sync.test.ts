@@ -659,6 +659,8 @@ describe("Paginación y Cursores de Sync (Lote 1)", () => {
             rows: page1Rows,
             hasMore: true,
             nextCursor: 1999,
+            nextAfterWord: "lemma_999",
+            nextAfterLanguage: "es",
             serverTime: 1999,
           }),
           { status: 200 },
@@ -682,7 +684,9 @@ describe("Paginación y Cursores de Sync (Lote 1)", () => {
 
     const calls = vi.mocked(fetch).mock.calls;
     expect(calls[0][0]).toBe("/api/knowledge");
-    expect(calls[1][0]).toBe("/api/knowledge?since=1999");
+    expect(calls[1][0]).toBe(
+      "/api/knowledge?since=1999&afterWord=lemma_999&afterLanguage=es&includeLanguages=0",
+    );
   });
 
   it("syncKnowledge recibe availableLanguages en la respuesta y guarda el cursor final", async () => {
@@ -716,6 +720,7 @@ describe("Paginación y Cursores de Sync (Lote 1)", () => {
             annotations: page1,
             hasMore: true,
             nextCursor: 1999,
+            nextAfterId: "a_999",
             serverTime: 1999,
           }),
           { status: 200 },
@@ -737,7 +742,55 @@ describe("Paginación y Cursores de Sync (Lote 1)", () => {
     expect(result).toBe(1020);
     const calls = vi.mocked(fetch).mock.calls;
     expect(calls[0][0]).toBe("/api/annotations");
-    expect(calls[1][0]).toBe("/api/annotations?since=1999");
+    expect(calls[1][0]).toBe(
+      "/api/annotations?since=1999&afterId=a_999",
+    );
+  });
+
+  it("no omite ni duplica filas cuando dos páginas comparten updated_at", async () => {
+    const page1 = [
+      annotation("a", { updatedAt: 1000 }),
+      annotation("b", { updatedAt: 1000 }),
+    ];
+    const page2 = [
+      annotation("c", { updatedAt: 1000 }),
+      annotation("d", { updatedAt: 1000 }),
+    ];
+
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            annotations: page1,
+            hasMore: true,
+            nextCursor: 1000,
+            nextAfterId: "b",
+            serverTime: 1000,
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            annotations: page2,
+            hasMore: false,
+            nextCursor: 2000,
+            serverTime: 2000,
+          }),
+          { status: 200 },
+        ),
+      );
+
+    const { putAnnotation } = await import("./idb");
+    const result = await syncAnnotations();
+    expect(result).toBe(4);
+    expect(vi.mocked(fetch).mock.calls[1][0]).toBe(
+      "/api/annotations?since=1000&afterId=b",
+    );
+    const pulledKeys = vi.mocked(putAnnotation).mock.calls.map(([item]) => item.key);
+    expect(new Set(pulledKeys).size).toBe(4);
+    expect(pulledKeys.sort()).toEqual(["b1:a", "b1:b", "b1:c", "b1:d"]);
   });
 
   it("syncActivity aplica paginación con hasMore y nextAfterId", async () => {
@@ -832,6 +885,7 @@ describe("Paginación y Cursores de Sync (Lote 1)", () => {
             positions: page1,
             hasMore: true,
             nextCursor: 1999,
+            nextAfterBookHash: "h_999",
             serverTime: 1999,
           }),
           { status: 200 },
@@ -853,7 +907,9 @@ describe("Paginación y Cursores de Sync (Lote 1)", () => {
     expect(result?.pulled).toBe(1025);
     const calls = vi.mocked(fetch).mock.calls;
     expect(calls[0][0]).toBe("/api/positions");
-    expect(calls[1][0]).toBe("/api/positions?since=1999");
+    expect(calls[1][0]).toBe(
+      "/api/positions?since=1999&afterBookHash=h_999",
+    );
   });
 });
 

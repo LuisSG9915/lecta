@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { app, computeAiCacheKey, getCachedAiText, setCachedAiText } from "./app";
+import type { WorkerEnv } from "./db";
 
 describe("GET /api/health", () => {
   it("returns the API status", async () => {
@@ -500,6 +501,45 @@ describe("GET y HEAD /models/:filename", () => {
     expect(res.headers.get("etag")).toBe('"mock-etag-head"');
     const text = await res.text();
     expect(text).toBe("");
+  });
+});
+
+describe("app.onError", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("registra solo metadatos seguros y no el detalle de Postgres", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const error = Object.assign(
+      new Error("duplicate key value violates unique constraint"),
+      {
+        name: "PostgresError",
+        code: "23505",
+        detail: "Key (email)=(user@test.com) already exists",
+      },
+    );
+    const env = {
+      BOOKS: {
+        get: () => {
+          throw error;
+        },
+      },
+    } as unknown as WorkerEnv;
+
+    const res = await app.request("/models/fallo.onnx", {}, env);
+
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ error: "Internal Server Error" });
+    expect(errorSpy).toHaveBeenCalledWith(
+      "[worker-error] GET /models/fallo.onnx:",
+      {
+        name: "PostgresError",
+        code: "23505",
+        message: "duplicate key value violates unique constraint",
+      },
+    );
+    expect(JSON.stringify(errorSpy.mock.calls)).not.toContain("user@test.com");
   });
 });
 

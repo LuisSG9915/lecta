@@ -37,6 +37,9 @@ const initialCollections: Record<SyncCollection, CollectionSyncStatus> = {
 
 let rawPendingCount = 0;
 const collectionPendingCounts: Partial<Record<PendingCollection, number>> = {};
+// Colecciones que agotaron MAX_PAGES con `hasMore` todavía en true: el
+// ciclo no terminó, aunque el cursor sí avanzó para continuar después.
+const pagesPendingCollections: Partial<Record<SyncCollection, boolean>> = {};
 
 export function computeEffectivePendingChanges(
   collections = currentState.collections,
@@ -49,7 +52,8 @@ export function computeEffectivePendingChanges(
   const errorCollectionsCount = Object.values(collections).filter(
     (c) => c.status === "error",
   ).length;
-  return rawCount + collectionSum + errorCollectionsCount;
+  const pagesPendingCount = Object.keys(pagesPendingCollections).length;
+  return rawCount + collectionSum + errorCollectionsCount + pagesPendingCount;
 }
 
 let currentState: SyncState = {
@@ -100,6 +104,22 @@ export function setCollectionPendingCount(
   count: number,
 ): void {
   collectionPendingCounts[collection] = Math.max(0, count);
+  updateSyncState({
+    pendingChangesCount: computeEffectivePendingChanges(),
+  });
+}
+
+export function markCollectionPagesPending(collection: SyncCollection): void {
+  if (pagesPendingCollections[collection]) return;
+  pagesPendingCollections[collection] = true;
+  updateSyncState({
+    pendingChangesCount: computeEffectivePendingChanges(),
+  });
+}
+
+export function clearCollectionPagesPending(collection: SyncCollection): void {
+  if (!pagesPendingCollections[collection]) return;
+  delete pagesPendingCollections[collection];
   updateSyncState({
     pendingChangesCount: computeEffectivePendingChanges(),
   });

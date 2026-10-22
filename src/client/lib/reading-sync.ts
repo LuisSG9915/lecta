@@ -23,6 +23,10 @@ import {
 export { getBookData };
 import { accountFetch } from "./account-fetch";
 import { getSyncCursor, setSyncCursor } from "./sync-cursors";
+import {
+  clearCollectionPagesPending,
+  markCollectionPagesPending,
+} from "./sync-state";
 import { knowledgeArbWins } from "../../shared/reading-data";
 import { annotationStamp } from "./annotations";
 import {
@@ -99,6 +103,7 @@ export async function syncAnnotations(scope?: DbScope) {
   const effectiveSince = local.length > 0 ? cursor : 0;
 
   let currentSince = effectiveSince;
+  let currentAfterId: string | undefined;
   let page = 0;
   const MAX_PAGES = 25;
   let hasMore = true;
@@ -114,12 +119,15 @@ export async function syncAnnotations(scope?: DbScope) {
       serverTime?: number;
       hasMore?: boolean;
       nextCursor?: number;
+      nextAfterId?: string | null;
     };
     try {
-      const url =
-        currentSince > 0
-          ? `/api/annotations?since=${currentSince}`
-          : "/api/annotations";
+      const params = new URLSearchParams();
+      if (currentSince > 0) params.set("since", String(currentSince));
+      if (currentAfterId) params.set("afterId", currentAfterId);
+      const url = params.size
+        ? `/api/annotations?${params.toString()}`
+        : "/api/annotations";
       const response = await accountFetch(url, undefined, bound);
       if (!response.ok) {
         allOk = false;
@@ -143,9 +151,9 @@ export async function syncAnnotations(scope?: DbScope) {
     remoteAll.push(...items);
 
     hasMore = Boolean(data.hasMore);
-    if (hasMore && data.nextCursor) {
+    if (hasMore && data.nextCursor !== undefined) {
       currentSince = data.nextCursor;
-      setSyncCursor(bound.userId, "annotations", currentSince);
+      currentAfterId = data.nextAfterId ?? undefined;
     }
     if (!hasMore && data.nextCursor) {
       nextCursor = data.nextCursor;
@@ -153,6 +161,8 @@ export async function syncAnnotations(scope?: DbScope) {
   }
 
   if (!allOk) return null;
+  if (hasMore) markCollectionPagesPending("annotations");
+  else clearCollectionPagesPending("annotations");
 
   const localByKey = new Map(local.map((item) => [item.key, item]));
   const remoteByKey = new Map(remoteAll.map((item) => [item.key, item]));
@@ -263,12 +273,12 @@ export async function syncActivity(scope?: DbScope) {
       nextAfterId?: string;
     };
     try {
-      let url = "/api/activity";
-      if (currentSince > 0) {
-        url = `/api/activity?since=${currentSince}`;
-      } else if (currentAfterId) {
-        url = `/api/activity?afterId=${encodeURIComponent(currentAfterId)}`;
-      }
+      const params = new URLSearchParams();
+      if (currentSince > 0) params.set("since", String(currentSince));
+      if (currentAfterId) params.set("afterId", currentAfterId);
+      const url = params.size
+        ? `/api/activity?${params.toString()}`
+        : "/api/activity";
       const response = await accountFetch(url, undefined, bound);
       if (!response.ok) {
         allOk = false;
@@ -290,9 +300,11 @@ export async function syncActivity(scope?: DbScope) {
 
     hasMore = Boolean(data.hasMore);
     if (hasMore) {
-      if (currentSince > 0 && data.nextCursor) {
+      // La primera página sin since se ordena por id: se sigue con el
+      // cursor de id para no mezclar ended_at con un corte por id.
+      if (currentSince > 0 && data.nextCursor !== undefined) {
         currentSince = data.nextCursor;
-        setSyncCursor(bound.userId, "activity", currentSince);
+        currentAfterId = data.nextAfterId ?? undefined;
       } else if (data.nextAfterId) {
         currentAfterId = data.nextAfterId;
       }
@@ -303,6 +315,8 @@ export async function syncActivity(scope?: DbScope) {
   }
 
   if (!allOk) return null;
+  if (hasMore) markCollectionPagesPending("activity");
+  else clearCollectionPagesPending("activity");
 
   const remoteIds = new Set(remoteAll.map((item) => item.id));
   const localIds = new Set(local.map((item) => item.id));
@@ -406,12 +420,12 @@ export async function syncReviews(scope?: DbScope) {
       nextAfterId?: string;
     };
     try {
-      let url = "/api/reviews";
-      if (currentSince > 0) {
-        url = `/api/reviews?since=${currentSince}`;
-      } else if (currentAfterId) {
-        url = `/api/reviews?afterId=${encodeURIComponent(currentAfterId)}`;
-      }
+      const params = new URLSearchParams();
+      if (currentSince > 0) params.set("since", String(currentSince));
+      if (currentAfterId) params.set("afterId", currentAfterId);
+      const url = params.size
+        ? `/api/reviews?${params.toString()}`
+        : "/api/reviews";
       const response = await accountFetch(url, undefined, bound);
       if (!response.ok) {
         allOk = false;
@@ -433,9 +447,11 @@ export async function syncReviews(scope?: DbScope) {
 
     hasMore = Boolean(data.hasMore);
     if (hasMore) {
-      if (currentSince > 0 && data.nextCursor) {
+      // La primera página sin since se ordena por id: se sigue con el
+      // cursor de id para no mezclar ended_at con un corte por id.
+      if (currentSince > 0 && data.nextCursor !== undefined) {
         currentSince = data.nextCursor;
-        setSyncCursor(bound.userId, "reviews", currentSince);
+        currentAfterId = data.nextAfterId ?? undefined;
       } else if (data.nextAfterId) {
         currentAfterId = data.nextAfterId;
       }
@@ -446,6 +462,8 @@ export async function syncReviews(scope?: DbScope) {
   }
 
   if (!allOk) return null;
+  if (hasMore) markCollectionPagesPending("reviews");
+  else clearCollectionPagesPending("reviews");
 
   const remoteIds = new Set(remoteAll.map((item) => item.id));
   const localIds = new Set(local.map((item) => item.id));
@@ -541,6 +559,8 @@ export async function syncKnowledge(
   const effectiveSince = local.length > 0 ? cursor : 0;
 
   let currentSince = effectiveSince;
+  let currentAfterWord: string | undefined;
+  let currentAfterLanguage: string | undefined;
   let page = 0;
   const MAX_PAGES = 25;
   let hasMore = true;
@@ -556,20 +576,20 @@ export async function syncKnowledge(
       serverTime?: number;
       hasMore?: boolean;
       nextCursor?: number;
+      nextAfterWord?: string | null;
+      nextAfterLanguage?: string | null;
       availableLanguages?: string[];
     };
     try {
-      const langParam = options?.language
-        ? `language=${encodeURIComponent(options.language)}`
-        : "";
-      let url = "/api/knowledge";
-      if (currentSince > 0) {
-        url = langParam
-          ? `/api/knowledge?${langParam}&since=${currentSince}`
-          : `/api/knowledge?since=${currentSince}`;
-      } else if (langParam) {
-        url = `/api/knowledge?${langParam}`;
-      }
+      const params = new URLSearchParams();
+      if (options?.language) params.set("language", options.language);
+      if (currentSince > 0) params.set("since", String(currentSince));
+      if (currentAfterWord) params.set("afterWord", currentAfterWord);
+      if (currentAfterLanguage) params.set("afterLanguage", currentAfterLanguage);
+      if (page > 1) params.set("includeLanguages", "0");
+      const url = params.size
+        ? `/api/knowledge?${params.toString()}`
+        : "/api/knowledge";
       const response = await accountFetch(url, undefined, bound);
       if (!response.ok) {
         allOk = false;
@@ -593,10 +613,10 @@ export async function syncKnowledge(
     remoteAll.push(...pageItems);
 
     hasMore = Boolean(data.hasMore);
-    if (hasMore && data.nextCursor) {
+    if (hasMore && data.nextCursor !== undefined) {
       currentSince = data.nextCursor;
-      setSyncCursor(bound.userId, cursorKey, currentSince);
-      setSyncCursor(bound.userId, "knowledge", currentSince);
+      currentAfterWord = data.nextAfterWord ?? undefined;
+      currentAfterLanguage = data.nextAfterLanguage ?? undefined;
     }
     if (!hasMore && data.nextCursor) {
       nextCursor = data.nextCursor;
@@ -604,6 +624,8 @@ export async function syncKnowledge(
   }
 
   if (!allOk) return null;
+  if (hasMore) markCollectionPagesPending("knowledge");
+  else clearCollectionPagesPending("knowledge");
 
   const localByKey = new Map(local.map((item) => [item.key, item]));
   const remoteByKey = new Map(remoteAll.map((item) => [item.key, item]));

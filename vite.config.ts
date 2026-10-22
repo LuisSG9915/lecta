@@ -175,6 +175,10 @@ function stripDevVarsPlugin(): Plugin {
   return {
     name: "lecta-strip-dev-vars",
     closeBundle() {
+      // En builds normales (y en CI) el archivo con secretos no debe
+      // quedar en dist/. Para probar auth, sync o IA en `vite preview`
+      // se puede conservar a propósito con LECTA_KEEP_DEV_VARS=1.
+      if (process.env.LECTA_KEEP_DEV_VARS === "1") return;
       // Elimina cualquier archivo .dev.vars que haya sido copiado a dist/
       for (const candidate of [
         resolve(process.cwd(), "dist/.dev.vars"),

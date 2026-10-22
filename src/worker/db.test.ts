@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { chunks, SYNC_CHUNK_ROWS } from "./db";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { chunks, logPostgresError, SYNC_CHUNK_ROWS } from "./db";
 
 describe("chunks", () => {
   it("devuelve un solo trozo cuando la lista cabe en el lote", () => {
@@ -24,5 +24,35 @@ describe("chunks", () => {
 
   it("respeta un tamaño de trozo explícito", () => {
     expect(chunks([1, 2, 3, 4, 5], 2)).toEqual([[1, 2], [3, 4], [5]]);
+  });
+});
+
+describe("logPostgresError", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("ignora cierres esperados del ciclo de vida", () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    logPostgresError("client", new Error("This socket has been closed"));
+    logPostgresError("pool", new Error("Connection terminated unexpectedly"));
+
+    expect(errorSpy).not.toHaveBeenCalled();
+  });
+
+  it("registra solo el mensaje de un error real, sin el objeto crudo", () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const error = Object.assign(new Error("timeout expired"), {
+      detail: "Key (email)=(user@test.com) already exists",
+    });
+
+    logPostgresError("client", error);
+
+    expect(errorSpy).toHaveBeenCalledWith(
+      "Postgres client error:",
+      "timeout expired",
+    );
+    expect(JSON.stringify(errorSpy.mock.calls)).not.toContain("user@test.com");
   });
 });
