@@ -97,6 +97,8 @@ import {
 export const app = new Hono<{ Bindings: WorkerEnv }>();
 
 app.onError((err, c) => {
+  const pathname = new URL(c.req.url).pathname;
+  console.error(`[worker-error] ${c.req.method} ${pathname}:`, err);
   if (
     err instanceof SessionInfraError ||
     (err as { code?: string })?.code === "DB_UNAVAILABLE"
@@ -110,7 +112,6 @@ app.onError((err, c) => {
       503,
     );
   }
-  console.error("Unhandled worker error:", err);
   return c.json({ error: "Internal Server Error" }, 500);
 });
 
@@ -224,35 +225,38 @@ app.post("/kindle/*", async (context) => {
 
 app.get("/api/health", (context) => context.json({ status: "ok" }));
 
-app.get("/models/:filename", async (c) => {
+app.on(["GET", "HEAD"], "/models/:filename", async (c) => {
   const filename = c.req.param("filename");
   if (!filename || filename.includes("..") || filename.includes("/")) {
     return c.json({ error: "Invalid model filename" }, 400);
   }
 
-  const modelsBucket = c.env?.MODELS_BUCKET ?? c.env?.BOOKS_BUCKET ?? c.env?.BOOKS;
-  if (modelsBucket) {
-    const object = await modelsBucket.get(`models/${filename}`);
-    if (object) {
-      const headers = new Headers();
-      headers.set("Content-Type", "application/octet-stream");
-      headers.set("Cache-Control", "public, max-age=31536000, immutable");
-      if (object.size !== undefined) {
-        headers.set("Content-Length", String(object.size));
-      }
-      return new Response(object.body, { headers });
-    }
+  const modelsBucket = c.env?.BOOKS ?? c.env?.MODELS_BUCKET ?? c.env?.BOOKS_BUCKET;
+  if (!modelsBucket) {
+    return c.text("Model not found", 404);
   }
 
-  if (c.env?.TTS_MODEL_CDN_URL) {
-    const cdnUrl = c.env.TTS_MODEL_CDN_URL;
-    const targetUrl = cdnUrl.endsWith(".onnx")
-      ? cdnUrl
-      : `${cdnUrl.replace(/\/+$/, "")}/${encodeURIComponent(filename)}`;
-    return c.redirect(targetUrl, 302);
+  const object = await modelsBucket.get(`models/${filename}`);
+  if (!object) {
+    return c.text("Model not found", 404);
   }
 
-  return c.json({ error: "Model not found on primary origin" }, 404);
+  const headers = new Headers();
+  headers.set("Content-Type", "application/octet-stream");
+  headers.set("Cache-Control", "public, max-age=31536000, immutable");
+  if (object.size !== undefined) {
+    headers.set("Content-Length", String(object.size));
+  }
+  const etag = (object as { httpEtag?: string; etag?: string }).httpEtag ?? (object as { etag?: string }).etag;
+  if (etag) {
+    headers.set("ETag", etag);
+  }
+
+  if (c.req.method === "HEAD") {
+    return new Response(null, { status: 200, headers });
+  }
+
+  return new Response(object.body, { status: 200, headers });
 });
 
 app.on(["GET", "POST"], "/api/auth/*", async (context) => {
@@ -1732,33 +1736,69 @@ app.get("/api/vocab", async (context) => {
   if (!session) return context.json({ error: "Inicia sesión para ver tu vocabulario." }, 401);
   const language = context.req.query("lang")?.trim() || "es";
   const since = parseSinceParam(context.req.query("since"));
+  const queryStartMs = Date.now();
+  const LIMIT = 1000;
 
-  const rows = await withClient(context.env, (client) => {
-    if (since > 0) {
-      return client
-        .query(
-          `SELECT language, form, lemma, pos, meaning, context, book_hash AS "bookHash",
-                  sense_entry_id AS "senseEntryId", sense_order AS "senseOrder",
-                  card, saved_at AS "savedAt", updated_at AS "updatedAt", deleted
-           FROM lecta_user_words
-           WHERE user_id = $1 AND language = $2 AND updated_at > $3
-           ORDER BY updated_at ASC`,
-          [session.user.id, language, since],
-        )
-        .then((result) => result.rows);
-    }
-    return client
+  const resultData = await withClient(context.env, async (client) => {
+    const rows = since > 0
+      ? await client
+          .query(
+            `SELECT language, form, lemma, pos, meaning, context, book_hash AS "bookHash",
+                    sense_entry_id AS "senseEntryId", sense_order AS "senseOrder",
+                    card, saved_at AS "savedAt", updated_at AS "updatedAt", deleted
+             FROM lecta_user_words
+             WHERE user_id = $1 AND language = $2 AND updated_at > $3
+             ORDER BY updated_at ASC
+             LIMIT ${LIMIT}`,
+            [session.user.id, language, since],
+          )
+          .then((result) => result.rows)
+      : await client
+          .query(
+            `SELECT language, form, lemma, pos, meaning, context, book_hash AS "bookHash",
+                    sense_entry_id AS "senseEntryId", sense_order AS "senseOrder",
+                    card, saved_at AS "savedAt", updated_at AS "updatedAt", deleted
+             FROM lecta_user_words
+             WHERE user_id = $1 AND language = $2
+             ORDER BY updated_at ASC
+             LIMIT ${LIMIT}`,
+            [session.user.id, language],
+          )
+          .then((result) => result.rows);
+
+    const langRows = await client
       .query(
-        `SELECT language, form, lemma, pos, meaning, context, book_hash AS "bookHash",
-                sense_entry_id AS "senseEntryId", sense_order AS "senseOrder",
-                card, saved_at AS "savedAt", updated_at AS "updatedAt", deleted
-         FROM lecta_user_words WHERE user_id = $1 AND language = $2`,
-        [session.user.id, language],
+        `SELECT DISTINCT language FROM lecta_user_words WHERE user_id = $1`,
+        [session.user.id],
       )
-      .then((result) => result.rows);
+      .then((result) => result.rows)
+      .catch(() => []);
+
+    return { rows, langRows };
   });
-  if (rows === undefined)
+
+  if (resultData === undefined)
     return context.json({ error: "El vocabulario no está configurado." }, 503);
+
+  const { rows, langRows } = resultData;
+  const hasMore = rows.length === LIMIT;
+  const lastRow = rows.length > 0 ? rows[rows.length - 1] : null;
+  const nextCursor =
+    hasMore && lastRow
+      ? Number(lastRow.updatedAt)
+      : Math.max(0, queryStartMs - 5_000);
+
+  const availableLanguages = Array.from(
+    new Set([
+      ...langRows
+        .map((r: { language?: unknown }) =>
+          typeof r.language === "string" ? r.language.trim() : "",
+        )
+        .filter(Boolean),
+      language,
+    ]),
+  );
+
   return context.json({
     words: rows.map((row) => ({
       ...row,
@@ -1771,6 +1811,9 @@ app.get("/api/vocab", async (context) => {
       card: typeof row.card === "string" ? JSON.parse(row.card) : row.card,
     })),
     serverTime: Date.now(),
+    hasMore,
+    nextCursor,
+    availableLanguages,
   });
 });
 
@@ -1781,6 +1824,7 @@ app.put("/api/vocab", async (context) => {
   if (!session)
     return context.json({ error: "Inicia sesión para guardar tu vocabulario." }, 401);
 
+  const serverNow = Date.now();
   const body = await context.req.json().catch(() => null);
   const inputs = Array.isArray(body?.words) ? (body.words as UserWordInput[]) : [];
   // Una card malformada invalida la petición completa antes del SQL:
@@ -1796,8 +1840,13 @@ app.put("/api/vocab", async (context) => {
     .map((input) => {
       const form = cleanText(input.form, 100)?.trim().toLowerCase();
       const language = cleanText(input.language, 10)?.trim() || "es";
-      const updatedAt = cleanNumber(input.updatedAt) ?? Date.now();
+      const rawUpdatedAt = cleanNumber(input.updatedAt);
+      const updatedAt =
+        rawUpdatedAt !== undefined ? Math.min(rawUpdatedAt, serverNow) : serverNow;
       if (!form) return null;
+      const rawSavedAt = cleanNumber(input.savedAt);
+      const savedAt =
+        rawSavedAt !== undefined ? Math.min(rawSavedAt, serverNow) : updatedAt;
       return {
         form,
         language,
@@ -1811,7 +1860,7 @@ app.put("/api/vocab", async (context) => {
         senseEntryId: toCatalogId(input.senseEntryId),
         senseOrder: toSenseOrder(input.senseOrder),
         card: input.card ?? null,
-        savedAt: cleanNumber(input.savedAt) ?? updatedAt,
+        savedAt,
         updatedAt,
         deleted: input.deleted === true,
       };

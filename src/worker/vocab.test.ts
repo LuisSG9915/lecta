@@ -111,6 +111,21 @@ describe("PUT /api/vocab — tarjeta FSRS", () => {
     expect(rows[0].card).toBeNull();
     expect(rows[1].card).toBeNull();
   });
+
+  it("acota un updatedAt proveniente de un reloj de cliente adelantado 10 minutos al Date.now() del servidor", async () => {
+    const futureTime = Date.now() + 600_000; // +10 minutos en el futuro
+    const response = await putWords([word({ updatedAt: futureTime, savedAt: futureTime })]);
+    expect(response.status).toBe(200);
+
+    const [, params] = queryMock.mock.calls[0] as unknown as [
+      string,
+      [string, string],
+    ];
+    const rows = JSON.parse(params[1]) as { updatedAt: number; savedAt: number }[];
+    expect(rows[0].updatedAt).toBeLessThanOrEqual(Date.now());
+    expect(rows[0].updatedAt).toBeLessThan(futureTime);
+    expect(rows[0].savedAt).toBeLessThanOrEqual(Date.now());
+  });
 });
 
 describe("GET /api/vocab — sincronización incremental", () => {
@@ -160,5 +175,60 @@ describe("GET /api/vocab — sincronización incremental", () => {
     const [sql, params] = queryMock.mock.calls[0] as unknown as [string, unknown[]];
     expect(sql).toContain("updated_at > $3");
     expect(params).toEqual(["u1", "es", 1700000050000]);
+  });
+
+  it("calcula correctamente nextCursor y hasMore cuando devuelve 1000 filas vs menos de 1000 filas", async () => {
+    // 1. Caso 1000 filas (paginación activa)
+    const thousandRows = Array.from({ length: 1000 }, (_, i) => ({
+      language: "es",
+      form: `palabra${i}`,
+      lemma: `palabra${i}`,
+      pos: "noun",
+      meaning: "def",
+      context: "ctx",
+      bookHash: "h1",
+      senseEntryId: "1",
+      senseOrder: 1,
+      card: null,
+      savedAt: 1700000000000 + i,
+      updatedAt: 1700000000000 + i,
+      deleted: false,
+    }));
+
+    queryMock.mockResolvedValueOnce({
+      rowCount: 1000,
+      rows: thousandRows,
+    });
+
+    const responseThousand = await app.request("/api/vocab?lang=es", {}, {});
+    expect(responseThousand.status).toBe(200);
+    const bodyThousand = (await responseThousand.json()) as {
+      words: unknown[];
+      hasMore: boolean;
+      nextCursor: number;
+    };
+    expect(bodyThousand.words).toHaveLength(1000);
+    expect(bodyThousand.hasMore).toBe(true);
+    expect(bodyThousand.nextCursor).toBe(1700000000000 + 999);
+
+    // 2. Caso menos de 1000 filas (fin de paginación)
+    queryMock.mockClear();
+    queryMock.mockResolvedValueOnce({
+      rowCount: 50,
+      rows: thousandRows.slice(0, 50),
+    });
+
+    const beforeQuery = Date.now();
+    const responseLess = await app.request("/api/vocab?lang=es&since=1700000000999", {}, {});
+    expect(responseLess.status).toBe(200);
+    const bodyLess = (await responseLess.json()) as {
+      words: unknown[];
+      hasMore: boolean;
+      nextCursor: number;
+    };
+    expect(bodyLess.words).toHaveLength(50);
+    expect(bodyLess.hasMore).toBe(false);
+    expect(bodyLess.nextCursor).toBeGreaterThanOrEqual(beforeQuery - 5_000);
+    expect(bodyLess.nextCursor).toBeLessThanOrEqual(Date.now());
   });
 });

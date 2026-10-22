@@ -173,4 +173,117 @@ describe("syncSavedWords", () => {
     // Un delta vacío no sobrescribe ni borra las palabras locales
     expect(putSavedWord).not.toHaveBeenCalled();
   });
+
+  it("itera y recupera 1050 palabras en dos páginas en una sola llamada a syncSavedWords", async () => {
+    vi.mocked(listAllSavedWords).mockResolvedValue([]);
+    const page1Words = Array.from({ length: 1000 }, (_, i) => ({
+      ...word(`w_${i}`),
+      savedAt: 1000 + i,
+      updatedAt: 1000 + i,
+    }));
+    const page2Words = Array.from({ length: 50 }, (_, i) => ({
+      ...word(`w_p2_${i}`),
+      savedAt: 2000 + i,
+      updatedAt: 2000 + i,
+    }));
+
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            words: page1Words,
+            hasMore: true,
+            nextCursor: 1999,
+            serverTime: 1999,
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            words: page2Words,
+            hasMore: false,
+            nextCursor: 2050,
+            serverTime: 2050,
+          }),
+          { status: 200 },
+        ),
+      );
+
+    const result = await syncSavedWords();
+    expect(result).toBe(1050);
+    expect(putSavedWord).toHaveBeenCalledTimes(1050);
+
+    const calls = vi.mocked(fetch).mock.calls;
+    expect(calls[0][0]).toBe("/api/vocab?lang=es");
+    expect(calls[1][0]).toBe("/api/vocab?lang=es&since=1999");
+  });
+
+  it("una palabra nueva guardada localmente se incluye en toPush aunque el cursor de bajada esté adelantado", async () => {
+    const { setSyncCursor } = await import("./sync-cursors");
+    const futureTime = Date.now() + 600_000;
+    setSyncCursor("u1", "vocab", futureTime);
+    setSyncCursor("u1", "vocab:es", futureTime);
+
+    const nuevaLocal = { ...word("palabraNueva"), updatedAt: Date.now(), savedAt: Date.now() };
+    vi.mocked(listAllSavedWords).mockResolvedValue([nuevaLocal]);
+
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ words: [], serverTime: Date.now(), hasMore: false }), { status: 200 }),
+      )
+      .mockResolvedValueOnce(okResponse());
+
+    const result = await syncSavedWords();
+    expect(result).toBe(0);
+
+    const putCalls = vi.mocked(fetch).mock.calls.filter((c) => c[1]?.method === "PUT");
+    expect(putCalls).toHaveLength(1);
+    const body = JSON.parse(putCalls[0][1]?.body as string) as { words: SavedWord[] };
+    expect(body.words).toHaveLength(1);
+    expect(body.words[0].key).toBe("palabraNueva");
+  });
+
+  it("un dispositivo nuevo con base local vacía al recibir availableLanguages sincroniza todos los idiomas", async () => {
+    vi.mocked(listAllSavedWords).mockResolvedValue([]);
+
+    const wordEs = { ...word("hola", "es"), savedAt: 100, updatedAt: 100 };
+    const wordEn = { ...word("hello", "en"), savedAt: 200, updatedAt: 200 };
+
+    vi.mocked(fetch)
+      // Respuesta para lang=es con availableLanguages: ["es", "en"]
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            words: [wordEs],
+            availableLanguages: ["es", "en"],
+            hasMore: false,
+            serverTime: 100,
+          }),
+          { status: 200 },
+        ),
+      )
+      // Respuesta para lang=en
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            words: [wordEn],
+            hasMore: false,
+            serverTime: 200,
+          }),
+          { status: 200 },
+        ),
+      );
+
+    const result = await syncSavedWords();
+    expect(result).toBe(2);
+    expect(putSavedWord).toHaveBeenCalledWith(wordEs, expect.anything());
+    expect(putSavedWord).toHaveBeenCalledWith(wordEn, expect.anything());
+
+    const getCalls = vi.mocked(fetch).mock.calls.filter((c) => !c[1]?.method || c[1]?.method === "GET");
+    expect(getCalls).toHaveLength(2);
+    expect(getCalls[0][0]).toBe("/api/vocab?lang=es");
+    expect(getCalls[1][0]).toBe("/api/vocab?lang=en");
+  });
 });

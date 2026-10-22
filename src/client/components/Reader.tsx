@@ -4172,6 +4172,7 @@ export default function Reader({
         <div className="page-viewport" ref={viewportRef}>
           <div
             ref={containerRef}
+            role="document"
             className={`book-content reader__stage ${settings.chromaticGuide && !strategyPaused ? "reader__stage--chromatic" : ""}`}
             data-focus-mode={strategyPaused ? "off" : settings.focusMode}
             data-paragraph-focus={

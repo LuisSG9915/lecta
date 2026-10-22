@@ -421,34 +421,20 @@ describe("Fase 3: Caché por Hash SHA-256 en Worker", () => {
   });
 });
 
-describe("GET /models/:filename", () => {
+describe("GET y HEAD /models/:filename", () => {
   it("rejects path traversal in filename with 400", async () => {
     const res = await app.request("/models/..%2Fsecret.txt");
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: "Invalid model filename" });
   });
 
-  it("returns explicit 404 JSON (not HTML SPA) when model is not found on primary origin", async () => {
-    const res = await app.request("/models/kitten-tts-quantized.onnx");
+  it("retorna 404 cuando el modelo no existe o no hay bucket", async () => {
+    const res = await app.request("/models/inexistente.onnx");
     expect(res.status).toBe(404);
-    const contentType = res.headers.get("content-type") || "";
-    expect(contentType).toContain("application/json");
-    expect(await res.json()).toEqual({ error: "Model not found on primary origin" });
+    expect(await res.text()).toBe("Model not found");
   });
 
-  it("redirects cleanly (302) when TTS_MODEL_CDN_URL is configured", async () => {
-    const res = await app.request(
-      "/models/kitten-tts-quantized.onnx",
-      {},
-      { TTS_MODEL_CDN_URL: "https://cdn.example.com/models" },
-    );
-    expect(res.status).toBe(302);
-    expect(res.headers.get("location")).toBe(
-      "https://cdn.example.com/models/kitten-tts-quantized.onnx",
-    );
-  });
-
-  it("serves binary stream with immutable cache headers when present in MODELS_BUCKET", async () => {
+  it("serves binary stream with immutable cache headers and ETag when present in BOOKS binding", async () => {
     const fakeData = new Uint8Array([1, 2, 3, 4, 5]);
     const mockBucket = {
       get: async (key: string) => {
@@ -461,6 +447,7 @@ describe("GET /models/:filename", () => {
               },
             }),
             size: fakeData.byteLength,
+            httpEtag: '"mock-etag-123"',
           };
         }
         return null;
@@ -470,14 +457,49 @@ describe("GET /models/:filename", () => {
     const res = await app.request(
       "/models/kitten-tts-quantized.onnx",
       {},
-      { MODELS_BUCKET: mockBucket as unknown as R2Bucket },
+      { BOOKS: mockBucket as unknown as R2Bucket },
     );
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("application/octet-stream");
     expect(res.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
     expect(res.headers.get("content-length")).toBe(String(fakeData.byteLength));
+    expect(res.headers.get("etag")).toBe('"mock-etag-123"');
     const body = new Uint8Array(await res.arrayBuffer());
     expect(body).toEqual(fakeData);
+  });
+
+  it("responde a HEAD /models/kitten-tts-quantized.onnx con 200, Content-Length y body vacío", async () => {
+    const fakeData = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
+    const mockBucket = {
+      get: async (key: string) => {
+        if (key === "models/kitten-tts-quantized.onnx") {
+          return {
+            body: new ReadableStream({
+              start(controller) {
+                controller.enqueue(fakeData);
+                controller.close();
+              },
+            }),
+            size: fakeData.byteLength,
+            httpEtag: '"mock-etag-head"',
+          };
+        }
+        return null;
+      },
+    };
+
+    const res = await app.request(
+      "/models/kitten-tts-quantized.onnx",
+      { method: "HEAD" },
+      { BOOKS: mockBucket as unknown as R2Bucket },
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("application/octet-stream");
+    expect(res.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+    expect(res.headers.get("content-length")).toBe(String(fakeData.byteLength));
+    expect(res.headers.get("etag")).toBe('"mock-etag-head"');
+    const text = await res.text();
+    expect(text).toBe("");
   });
 });
 

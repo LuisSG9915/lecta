@@ -641,3 +641,219 @@ describe("BYO-EPUB Cloud Sync (reading-sync)", () => {
   });
 });
 
+describe("Paginación y Cursores de Sync (Lote 1)", () => {
+  it("syncKnowledge itera y recupera 1050 filas en dos páginas en una sola llamada", async () => {
+    const page1Rows = Array.from({ length: 1000 }, (_, i) => ({
+      ...known(`lemma_${i}`),
+      updatedAt: 1000 + i,
+    }));
+    const page2Rows = Array.from({ length: 50 }, (_, i) => ({
+      ...known(`lemma_p2_${i}`),
+      updatedAt: 2000 + i,
+    }));
+
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            rows: page1Rows,
+            hasMore: true,
+            nextCursor: 1999,
+            serverTime: 1999,
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            rows: page2Rows,
+            hasMore: false,
+            nextCursor: 2050,
+            serverTime: 2050,
+          }),
+          { status: 200 },
+        ),
+      );
+
+    const result = await syncKnowledge();
+    expect(result).toBe(1050);
+    expect(putKnowledge).toHaveBeenCalledTimes(1050);
+
+    const calls = vi.mocked(fetch).mock.calls;
+    expect(calls[0][0]).toBe("/api/knowledge");
+    expect(calls[1][0]).toBe("/api/knowledge?since=1999");
+  });
+
+  it("syncKnowledge recibe availableLanguages en la respuesta y guarda el cursor final", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          rows: [known("perenne", { language: "es" })],
+          availableLanguages: ["es", "en"],
+          hasMore: false,
+          nextCursor: 5000,
+          serverTime: 5000,
+        }),
+        { status: 200 },
+      ),
+    );
+
+    const result = await syncKnowledge();
+    expect(result).toBe(1);
+    const { getSyncCursor } = await import("./sync-cursors");
+    expect(getSyncCursor("u1", "knowledge")).toBe(5000);
+  });
+
+  it("syncAnnotations aplica paginación con hasMore y nextCursor", async () => {
+    const page1 = Array.from({ length: 1000 }, (_, i) => annotation(`a_${i}`, { updatedAt: 1000 + i }));
+    const page2 = Array.from({ length: 20 }, (_, i) => annotation(`a_p2_${i}`, { updatedAt: 2000 + i }));
+
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            annotations: page1,
+            hasMore: true,
+            nextCursor: 1999,
+            serverTime: 1999,
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            annotations: page2,
+            hasMore: false,
+            nextCursor: 2020,
+            serverTime: 2020,
+          }),
+          { status: 200 },
+        ),
+      );
+
+    const result = await syncAnnotations();
+    expect(result).toBe(1020);
+    const calls = vi.mocked(fetch).mock.calls;
+    expect(calls[0][0]).toBe("/api/annotations");
+    expect(calls[1][0]).toBe("/api/annotations?since=1999");
+  });
+
+  it("syncActivity aplica paginación con hasMore y nextAfterId", async () => {
+    const page1 = Array.from({ length: 1000 }, (_, i) => interval(`act_${i}`));
+    const page2 = Array.from({ length: 10 }, (_, i) => interval(`act_p2_${i}`));
+
+    const { syncActivity } = await import("./reading-sync");
+
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            intervals: page1,
+            hasMore: true,
+            nextAfterId: "act_999",
+            nextCursor: 1999,
+            serverTime: 1999,
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            intervals: page2,
+            hasMore: false,
+            nextAfterId: null,
+            nextCursor: 2010,
+            serverTime: 2010,
+          }),
+          { status: 200 },
+        ),
+      );
+
+    const { putMissingIntervals } = await import("./idb");
+    vi.mocked(putMissingIntervals).mockResolvedValueOnce(1010);
+
+    const result = await syncActivity();
+    expect(result).toBe(1010);
+    const calls = vi.mocked(fetch).mock.calls;
+    expect(calls[0][0]).toBe("/api/activity");
+    expect(calls[1][0]).toBe("/api/activity?afterId=act_999");
+  });
+
+  it("syncReviews aplica paginación con hasMore y nextAfterId", async () => {
+    const page1 = Array.from({ length: 1000 }, (_, i) => review(`rev_${i}`));
+    const page2 = Array.from({ length: 15 }, (_, i) => review(`rev_p2_${i}`));
+
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            reviews: page1,
+            hasMore: true,
+            nextAfterId: "rev_999",
+            nextCursor: 1999,
+            serverTime: 1999,
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            reviews: page2,
+            hasMore: false,
+            nextAfterId: null,
+            nextCursor: 2015,
+            serverTime: 2015,
+          }),
+          { status: 200 },
+        ),
+      );
+
+    vi.mocked(putReviews).mockResolvedValueOnce(1015);
+
+    const result = await syncReviews();
+    expect(result).toBe(1015);
+    const calls = vi.mocked(fetch).mock.calls;
+    expect(calls[0][0]).toBe("/api/reviews");
+    expect(calls[1][0]).toBe("/api/reviews?afterId=rev_999");
+  });
+
+  it("syncPositions aplica paginación con hasMore y nextCursor", async () => {
+    const page1 = Array.from({ length: 1000 }, (_, i) => position(`h_${i}`, { updatedAt: 1000 + i }));
+    const page2 = Array.from({ length: 25 }, (_, i) => position(`h_p2_${i}`, { updatedAt: 2000 + i }));
+
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            positions: page1,
+            hasMore: true,
+            nextCursor: 1999,
+            serverTime: 1999,
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            positions: page2,
+            hasMore: false,
+            nextCursor: 2025,
+            serverTime: 2025,
+          }),
+          { status: 200 },
+        ),
+      );
+
+    const result = await syncPositions();
+    expect(result?.pulled).toBe(1025);
+    const calls = vi.mocked(fetch).mock.calls;
+    expect(calls[0][0]).toBe("/api/positions");
+    expect(calls[1][0]).toBe("/api/positions?since=1999");
+  });
+});
+

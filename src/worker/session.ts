@@ -23,36 +23,41 @@ export class SessionInfraError extends Error {
   }
 }
 
+const INFRA_CODES = new Set([
+  "ECONNREFUSED",
+  "ETIMEDOUT",
+  "ECONNRESET",
+  "EPIPE",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "57P01",
+  "57P02",
+  "57P03",
+  "08000",
+  "08001",
+  "08003",
+  "08004",
+  "08006",
+  "53300",
+  "DB_UNAVAILABLE",
+]);
+
+const INFRA_PATTERNS = [
+  /connection terminated unexpectedly/i,
+  /this socket has been closed/i,
+  /timeout expired/i,
+  /connect ECONNREFUSED/i,
+  /terminating connection due to administrator command/i,
+];
+
 export function isSessionInfraError(err: unknown): boolean {
   if (!err) return false;
   if (err instanceof SessionInfraError) return true;
-  const anyErr = err as { code?: unknown; message?: unknown; name?: unknown };
+  const anyErr = err as { code?: unknown; message?: unknown };
   const code = String(anyErr.code ?? "");
-  const msg = String(anyErr.message ?? "").toLowerCase();
-  const infraCodes = [
-    "ECONNREFUSED",
-    "ETIMEDOUT",
-    "ECONNRESET",
-    "ENOTFOUND",
-    "EAI_AGAIN",
-    "57P01",
-    "08006",
-    "08001",
-    "DB_UNAVAILABLE",
-  ];
-  if (infraCodes.includes(code)) return true;
-  return (
-    msg.includes("connect") ||
-    msg.includes("socket") ||
-    msg.includes("timeout") ||
-    msg.includes("pool") ||
-    msg.includes("terminating connection") ||
-    msg.includes("connection terminated") ||
-    msg.includes("econnrefused") ||
-    msg.includes("etimedout") ||
-    msg.includes("getaddrinfo") ||
-    msg.includes("closed")
-  );
+  if (INFRA_CODES.has(code)) return true;
+  const msg = String(anyErr.message ?? "");
+  return INFRA_PATTERNS.some((pattern) => pattern.test(msg));
 }
 
 // Sesión compartida por las rutas de datos del usuario. Devuelve null

@@ -20,7 +20,7 @@ vi.mock("./auth", async (importOriginal) => {
   };
 });
 
-import { getSession, SessionInfraError } from "./session";
+import { getSession, isSessionInfraError, SessionInfraError } from "./session";
 
 const env = { DATABASE_URL: "postgres://lecta:test@localhost/lecta_dev" };
 
@@ -124,6 +124,15 @@ describe("getSession", () => {
 
   it("devuelve null y cierra el pool ante errores normales de sesión inválida", async () => {
     getSessionMock.mockRejectedValue(new Error("Session expired or malformed token"));
+    const session = await getSession(contextFor({}));
+    expect(session).toBeNull();
+    expect(closePoolMock).toHaveBeenCalled();
+  });
+
+  it("no clasifica un error de validación/auth normal con la palabra pool como error de infraestructura", async () => {
+    const error = new Error("Invalid session pool state");
+    expect(isSessionInfraError(error)).toBe(false);
+    getSessionMock.mockRejectedValue(error);
     const session = await getSession(contextFor({}));
     expect(session).toBeNull();
     expect(closePoolMock).toHaveBeenCalled();

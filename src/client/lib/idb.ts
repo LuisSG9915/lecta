@@ -24,6 +24,8 @@ import {
 } from "../../shared/companion-data";
 import type { GameState } from "../../shared/gamification";
 
+export type StoredBookBinary = Blob | ArrayBuffer | Uint8Array;
+
 export interface StoredBook {
   hash: string;
   name: string;
@@ -37,6 +39,10 @@ export interface StoredBook {
   cover?: Blob;
   // Marca de que ya intentamos leer los metadatos (aunque haya fallado).
   metaVersion?: number;
+}
+
+export interface StoredBookRecord extends Omit<StoredBook, "data"> {
+  data: StoredBookBinary;
 }
 
 export interface SavedBookPosition {
@@ -361,7 +367,7 @@ export interface BookOp {
 }
 
 interface LectaDB {
-  books: { key: string; value: StoredBook };
+  books: { key: string; value: StoredBookRecord };
   positions: { key: string; value: SavedBookPosition };
   session: { key: string; value: string };
   savedWords: { key: string; value: SavedWord };
@@ -996,7 +1002,7 @@ export async function restoreBackupToDb(
       for (const book of data.books) {
         if (!book?.hash) continue;
         const rawExisting = await target.get("books", book.hash);
-        const existing = normalizeStoredBook(rawExisting as StoredBook);
+        const existing = rawExisting ? normalizeStoredBookRecord(rawExisting) : undefined;
         if (existing) {
           if (existing.data && existing.data.size > 0) {
             // Si ya existe el libro localmente con data.size > 0, conserva su binario
@@ -1140,73 +1146,97 @@ export async function restoreBackupToDb(
 }
 
 export type SaveBookInput =
-  | StoredBook
+  | StoredBookRecord
   | {
       id: string;
       title: string;
       author?: string;
       addedAt?: number;
-      data: ArrayBuffer | Blob;
+      data: StoredBookBinary;
+      language?: string;
+      sectionCount?: number;
+      cover?: Blob;
+      metaVersion?: number;
+      name?: string;
+      hash?: string;
     };
 
-export function normalizeStoredBook(book: StoredBook | undefined): StoredBook | undefined {
-  if (!book) return book;
-  if (book.data && !(book.data instanceof Blob)) {
-    return {
-      ...book,
-      data: new Blob([book.data as unknown as ArrayBuffer], { type: "application/epub+zip" }),
-    };
-  }
-  return book;
+export function normalizeStoredBookRecord(record: StoredBookRecord): StoredBook {
+  return {
+    ...record,
+    data:
+      record.data instanceof Blob
+        ? record.data
+        : new Blob([record.data as unknown as BlobPart], { type: "application/epub+zip" }),
+  };
 }
 
-export async function saveBook(book: SaveBookInput, scope?: DbScope) {
+export function normalizeStoredBook(
+  book: StoredBookRecord | StoredBook | undefined,
+): StoredBook | undefined {
+  if (!book) return book;
+  return normalizeStoredBookRecord(book);
+}
+
+export async function saveBook(book: SaveBookInput, scope?: DbScope): Promise<StoredBook> {
   if (typeof navigator !== "undefined" && navigator.storage?.persist) {
     void navigator.storage.persist().catch(() => false);
   }
-  const rawData = "hash" in book ? book.data : book.data;
+  const rawData = book.data;
   // Convertimos a ArrayBuffer para almacenamiento persistente 100% seguro y compatible
   // en todos los motores de base de datos (evita el bug crítico de WebKit/Safari con Blobs en IndexedDB).
   let buffer: ArrayBuffer;
-  if (rawData instanceof Blob) {
-    buffer = await rawData.arrayBuffer();
-  } else if (rawData instanceof ArrayBuffer) {
+  if (rawData instanceof ArrayBuffer) {
     buffer = rawData;
   } else if (ArrayBuffer.isView(rawData)) {
     const view = rawData as Uint8Array;
-    const copy = new Uint8Array(view.byteLength);
-    copy.set(new Uint8Array(view.buffer, view.byteOffset, view.byteLength));
-    buffer = copy.buffer;
+    buffer = view.buffer.slice(view.byteOffset, view.byteOffset + view.byteLength) as ArrayBuffer;
+  } else if (rawData instanceof Blob) {
+    buffer = await rawData.arrayBuffer();
   } else {
     buffer = new ArrayBuffer(0);
   }
 
-  const stored =
-    "hash" in book
-      ? { ...book, data: buffer }
-      : {
-          hash: book.id,
-          name: book.title,
-          title: book.title,
-          author: book.author ?? "",
-          addedAt: book.addedAt ?? Date.now(),
-          data: buffer,
-        };
+  const hash = ("hash" in book && book.hash ? book.hash : ("id" in book ? book.id : "")) || "";
+  const name = ("name" in book && book.name ? book.name : ("title" in book && book.title ? book.title : "")) || "";
+  const title = "title" in book ? book.title : undefined;
+  const author = "author" in book ? book.author : undefined;
+  const addedAt = "addedAt" in book && book.addedAt ? book.addedAt : Date.now();
+  const language = "language" in book ? book.language : undefined;
+  const sectionCount = "sectionCount" in book ? book.sectionCount : undefined;
+  const cover = "cover" in book ? book.cover : undefined;
+  const metaVersion = "metaVersion" in book ? book.metaVersion : undefined;
+
+  const stored: StoredBookRecord = {
+    hash,
+    name,
+    title,
+    author,
+    addedAt,
+    language,
+    sectionCount,
+    cover,
+    metaVersion,
+    data: buffer,
+  };
 
   return withDb(scope, async (db) => {
     const transaction = db.transaction(["books", "session"], "readwrite");
     await Promise.all([
-      transaction.objectStore("books").put(stored as unknown as StoredBook),
+      transaction.objectStore("books").put(stored),
       transaction.objectStore("session").put(stored.hash, SESSION_KEY),
       transaction.done,
     ]);
+    return normalizeStoredBookRecord(stored);
   });
 }
 
-export async function loadLatestBook(scope?: DbScope) {
+export async function loadLatestBook(scope?: DbScope): Promise<StoredBook | undefined> {
   return withDb(scope, async (db) => {
     const hash = await db.get("session", SESSION_KEY);
-    return hash ? normalizeStoredBook(await db.get("books", hash)) : undefined;
+    if (!hash) return undefined;
+    const record = await db.get("books", hash);
+    return record ? normalizeStoredBookRecord(record) : undefined;
   });
 }
 
@@ -1214,10 +1244,10 @@ export async function loadLatestBookHash(scope?: DbScope) {
   return withDb(scope, (db) => db.get("session", SESSION_KEY));
 }
 
-export async function listStoredBooks(scope?: DbScope) {
+export async function listStoredBooks(scope?: DbScope): Promise<StoredBook[]> {
   return withDb(scope, async (db) => {
     const books = await db.getAll("books");
-    return books.map((b) => normalizeStoredBook(b)!) as StoredBook[];
+    return books.map(normalizeStoredBookRecord);
   });
 }
 
@@ -1230,8 +1260,11 @@ export async function listBooks(scope?: DbScope): Promise<Array<{ id: string; ti
   }));
 }
 
-export async function getStoredBook(hash: string, scope?: DbScope) {
-  return withDb(scope, async (db) => normalizeStoredBook(await db.get("books", hash)));
+export async function getStoredBook(hash: string, scope?: DbScope): Promise<StoredBook | undefined> {
+  return withDb(scope, async (db) => {
+    const record = await db.get("books", hash);
+    return record ? normalizeStoredBookRecord(record) : undefined;
+  });
 }
 
 export async function getBookData(id: string, scope?: DbScope): Promise<ArrayBuffer | null> {

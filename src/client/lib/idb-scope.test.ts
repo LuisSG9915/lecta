@@ -964,4 +964,32 @@ describe("restoreBackupToDb", () => {
     const newWord = words.find((w) => w.key === "es:completamente-nueva");
     expect(newWord).toBeDefined();
   });
+
+  it("acepta ArrayBuffer directamente en saveBook y getStoredBook devuelve StoredBook con Blob y tamaño exacto", async () => {
+    const idb = await freshIdb();
+    const rawBytes = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    const arrayBuffer = rawBytes.buffer;
+    const bookHash = "c".repeat(64);
+
+    const saved = await idb.saveBook({
+      hash: bookHash,
+      name: "direct-buffer.epub",
+      data: arrayBuffer,
+      title: "Direct Buffer Book",
+      author: "Test Author",
+      addedAt: Date.now(),
+    });
+
+    expect(saved).toBeDefined();
+    expect(saved.data instanceof Blob).toBe(true);
+    expect(saved.data.size).toBe(10);
+
+    const retrieved = await idb.getStoredBook(bookHash);
+    expect(retrieved).toBeDefined();
+    expect(retrieved!.data instanceof Blob).toBe(true);
+    expect(retrieved!.data.size).toBe(10);
+
+    const retrievedBytes = new Uint8Array(await retrieved!.data.arrayBuffer());
+    expect(retrievedBytes).toEqual(rawBytes);
+  });
 });

@@ -98,33 +98,70 @@ export async function syncAnnotations(scope?: DbScope) {
   const cursor = getSyncCursor(bound.userId, "annotations");
   const effectiveSince = local.length > 0 ? cursor : 0;
 
-  let remote: SavedAnnotation[] | null = null;
+  let currentSince = effectiveSince;
+  let page = 0;
+  const MAX_PAGES = 25;
+  let hasMore = true;
+  const remoteAll: SavedAnnotation[] = [];
   let serverTime: number | undefined;
-  try {
-    const url = effectiveSince > 0 ? `/api/annotations?since=${effectiveSince}` : "/api/annotations";
-    const response = await accountFetch(url, undefined, bound);
-    if (response.ok) {
-      const data = (await response.json()) as { annotations?: SavedAnnotation[]; serverTime?: number };
-      serverTime = data.serverTime;
-      // La clave se deriva de libro+id; se recalcula por si faltara.
-      remote = (data.annotations ?? []).map((item) => ({
-        ...item,
-        key: item.key || `${item.bookHash}:${item.id}`,
-      }));
+  let nextCursor: number | undefined;
+  let allOk = true;
+
+  while (hasMore && page < MAX_PAGES) {
+    page++;
+    let data: {
+      annotations?: SavedAnnotation[];
+      serverTime?: number;
+      hasMore?: boolean;
+      nextCursor?: number;
+    };
+    try {
+      const url =
+        currentSince > 0
+          ? `/api/annotations?since=${currentSince}`
+          : "/api/annotations";
+      const response = await accountFetch(url, undefined, bound);
+      if (!response.ok) {
+        allOk = false;
+        break;
+      }
+      data = await response.json();
+    } catch {
+      allOk = false;
+      break;
     }
-  } catch {
-    remote = null;
+    if (!data) {
+      allOk = false;
+      break;
+    }
+
+    if (data.serverTime) serverTime = data.serverTime;
+    const items = (data.annotations ?? []).map((item) => ({
+      ...item,
+      key: item.key || `${item.bookHash}:${item.id}`,
+    }));
+    remoteAll.push(...items);
+
+    hasMore = Boolean(data.hasMore);
+    if (hasMore && data.nextCursor) {
+      currentSince = data.nextCursor;
+      setSyncCursor(bound.userId, "annotations", currentSince);
+    }
+    if (!hasMore && data.nextCursor) {
+      nextCursor = data.nextCursor;
+    }
   }
-  if (!remote) return null;
+
+  if (!allOk) return null;
 
   const localByKey = new Map(local.map((item) => [item.key, item]));
-  const remoteByKey = new Map(remote.map((item) => [item.key, item]));
+  const remoteByKey = new Map(remoteAll.map((item) => [item.key, item]));
 
   let pulled = 0;
   let maxUpdated = effectiveSince;
   if (serverTime && serverTime > maxUpdated) maxUpdated = serverTime;
 
-  for (const item of remote) {
+  for (const item of remoteAll) {
     const s = annotationStamp(item);
     if (s > maxUpdated) maxUpdated = s;
     const existing = localByKey.get(item.key);
@@ -134,19 +171,31 @@ export async function syncAnnotations(scope?: DbScope) {
     }
   }
 
+  // Desacoplar toPush de effectiveSince
+  const lastPushedAt = getSyncCursor(bound.userId, "annotations:push");
   const toPush = local.filter((item) => {
     const s = annotationStamp(item);
     const remoteItem = remoteByKey.get(item.key);
-    if (effectiveSince > 0) {
-      return s > effectiveSince && (!remoteItem || s > annotationStamp(remoteItem));
+    if (remoteItem) {
+      return s > annotationStamp(remoteItem);
     }
-    return !remoteItem || s > annotationStamp(remoteItem);
+    return lastPushedAt > 0 ? s > lastPushedAt : true;
   });
-  if (!(await pushAnnotationsToServer(toPush, bound))) return null;
+
+  if (toPush.length > 0) {
+    if (await pushAnnotationsToServer(toPush, bound)) {
+      setSyncCursor(bound.userId, "annotations:push", Date.now());
+    } else {
+      return null;
+    }
+  } else if (lastPushedAt === 0) {
+    setSyncCursor(bound.userId, "annotations:push", Date.now());
+  }
 
   // Solo se sella la fecha cuando el ciclo completo salió: una
   // sincronización parcial no cuenta como «al día».
-  setSyncCursor(bound.userId, "annotations", maxUpdated > 0 ? maxUpdated : Date.now());
+  const finalCursor = nextCursor ?? (maxUpdated > 0 ? maxUpdated : Date.now());
+  setSyncCursor(bound.userId, "annotations", finalCursor);
   await saveSessionValue(LAST_SYNC_KEY, String(Date.now()), bound);
   return pulled;
 }
@@ -194,45 +243,102 @@ export async function syncActivity(scope?: DbScope) {
   const cursor = getSyncCursor(bound.userId, "activity");
   const effectiveSince = local.length > 0 ? cursor : 0;
 
-  let remote: SavedInterval[] | null = null;
+  let currentSince = effectiveSince;
+  let currentAfterId: string | undefined = undefined;
+  let page = 0;
+  const MAX_PAGES = 25;
+  let hasMore = true;
+  const remoteAll: SavedInterval[] = [];
   let serverTime: number | undefined;
-  try {
-    const url = effectiveSince > 0 ? `/api/activity?since=${effectiveSince}` : "/api/activity";
-    const response = await accountFetch(url, undefined, bound);
-    if (response.ok) {
-      const data = (await response.json()) as { intervals?: SavedInterval[]; serverTime?: number };
-      remote = data.intervals ?? [];
-      serverTime = data.serverTime;
-    }
-  } catch {
-    remote = null;
-  }
-  if (!remote) return null;
+  let nextCursor: number | undefined;
+  let allOk = true;
 
-  const remoteIds = new Set(remote.map((item) => item.id));
+  while (hasMore && page < MAX_PAGES) {
+    page++;
+    let data: {
+      intervals?: SavedInterval[];
+      serverTime?: number;
+      hasMore?: boolean;
+      nextCursor?: number;
+      nextAfterId?: string;
+    };
+    try {
+      let url = "/api/activity";
+      if (currentSince > 0) {
+        url = `/api/activity?since=${currentSince}`;
+      } else if (currentAfterId) {
+        url = `/api/activity?afterId=${encodeURIComponent(currentAfterId)}`;
+      }
+      const response = await accountFetch(url, undefined, bound);
+      if (!response.ok) {
+        allOk = false;
+        break;
+      }
+      data = await response.json();
+    } catch {
+      allOk = false;
+      break;
+    }
+    if (!data) {
+      allOk = false;
+      break;
+    }
+
+    if (data.serverTime) serverTime = data.serverTime;
+    const items = data.intervals ?? [];
+    remoteAll.push(...items);
+
+    hasMore = Boolean(data.hasMore);
+    if (hasMore) {
+      if (currentSince > 0 && data.nextCursor) {
+        currentSince = data.nextCursor;
+        setSyncCursor(bound.userId, "activity", currentSince);
+      } else if (data.nextAfterId) {
+        currentAfterId = data.nextAfterId;
+      }
+    }
+    if (!hasMore && data.nextCursor) {
+      nextCursor = data.nextCursor;
+    }
+  }
+
+  if (!allOk) return null;
+
+  const remoteIds = new Set(remoteAll.map((item) => item.id));
   const localIds = new Set(local.map((item) => item.id));
 
   let maxUpdated = effectiveSince;
   if (serverTime && serverTime > maxUpdated) maxUpdated = serverTime;
-  for (const item of remote) {
+  for (const item of remoteAll) {
     const s = item.endedAt ?? item.startedAt;
     if (s > maxUpdated) maxUpdated = s;
   }
 
   const pulled = await putMissingIntervals(
-    remote.filter((item) => !localIds.has(item.id)),
+    remoteAll.filter((item) => !localIds.has(item.id)),
     bound,
   );
+
+  // Desacoplar toPush de effectiveSince
+  const lastPushedAt = getSyncCursor(bound.userId, "activity:push");
   const toPush = local.filter((item) => {
     if (remoteIds.has(item.id)) return false;
-    if (effectiveSince > 0) {
-      return (item.endedAt ?? item.startedAt) > effectiveSince;
-    }
-    return true;
+    const s = item.endedAt ?? item.startedAt;
+    return lastPushedAt > 0 ? s > lastPushedAt : true;
   });
-  if (!(await pushActivityToServer(toPush, bound))) return null;
 
-  setSyncCursor(bound.userId, "activity", maxUpdated > 0 ? maxUpdated : Date.now());
+  if (toPush.length > 0) {
+    if (await pushActivityToServer(toPush, bound)) {
+      setSyncCursor(bound.userId, "activity:push", Date.now());
+    } else {
+      return null;
+    }
+  } else if (lastPushedAt === 0) {
+    setSyncCursor(bound.userId, "activity:push", Date.now());
+  }
+
+  const finalCursor = nextCursor ?? (maxUpdated > 0 ? maxUpdated : Date.now());
+  setSyncCursor(bound.userId, "activity", finalCursor);
   await saveSessionValue(ACTIVITY_SYNC_KEY, String(Date.now()), bound);
   return pulled;
 }
@@ -280,42 +386,100 @@ export async function syncReviews(scope?: DbScope) {
   const cursor = getSyncCursor(bound.userId, "reviews");
   const effectiveSince = local.length > 0 ? cursor : 0;
 
-  let remote: SavedReview[] | null = null;
+  let currentSince = effectiveSince;
+  let currentAfterId: string | undefined = undefined;
+  let page = 0;
+  const MAX_PAGES = 25;
+  let hasMore = true;
+  const remoteAll: SavedReview[] = [];
   let serverTime: number | undefined;
-  try {
-    const url = effectiveSince > 0 ? `/api/reviews?since=${effectiveSince}` : "/api/reviews";
-    const response = await accountFetch(url, undefined, bound);
-    if (response.ok) {
-      const data = (await response.json()) as { reviews?: SavedReview[]; serverTime?: number };
-      remote = data.reviews ?? [];
-      serverTime = data.serverTime;
-    }
-  } catch {
-    remote = null;
-  }
-  if (!remote) return null;
+  let nextCursor: number | undefined;
+  let allOk = true;
 
-  const remoteIds = new Set(remote.map((item) => item.id));
+  while (hasMore && page < MAX_PAGES) {
+    page++;
+    let data: {
+      reviews?: SavedReview[];
+      serverTime?: number;
+      hasMore?: boolean;
+      nextCursor?: number;
+      nextAfterId?: string;
+    };
+    try {
+      let url = "/api/reviews";
+      if (currentSince > 0) {
+        url = `/api/reviews?since=${currentSince}`;
+      } else if (currentAfterId) {
+        url = `/api/reviews?afterId=${encodeURIComponent(currentAfterId)}`;
+      }
+      const response = await accountFetch(url, undefined, bound);
+      if (!response.ok) {
+        allOk = false;
+        break;
+      }
+      data = await response.json();
+    } catch {
+      allOk = false;
+      break;
+    }
+    if (!data) {
+      allOk = false;
+      break;
+    }
+
+    if (data.serverTime) serverTime = data.serverTime;
+    const items = data.reviews ?? [];
+    remoteAll.push(...items);
+
+    hasMore = Boolean(data.hasMore);
+    if (hasMore) {
+      if (currentSince > 0 && data.nextCursor) {
+        currentSince = data.nextCursor;
+        setSyncCursor(bound.userId, "reviews", currentSince);
+      } else if (data.nextAfterId) {
+        currentAfterId = data.nextAfterId;
+      }
+    }
+    if (!hasMore && data.nextCursor) {
+      nextCursor = data.nextCursor;
+    }
+  }
+
+  if (!allOk) return null;
+
+  const remoteIds = new Set(remoteAll.map((item) => item.id));
   const localIds = new Set(local.map((item) => item.id));
 
   let maxUpdated = effectiveSince;
   if (serverTime && serverTime > maxUpdated) maxUpdated = serverTime;
-  for (const item of remote) {
+  for (const item of remoteAll) {
     if (item.createdAt > maxUpdated) maxUpdated = item.createdAt;
   }
 
   const pulled = await putReviews(
-    remote.filter((item) => !localIds.has(item.id)),
+    remoteAll.filter((item) => !localIds.has(item.id)),
     bound,
   );
+
+  // Desacoplar toPush de effectiveSince
+  const lastPushedAt = getSyncCursor(bound.userId, "reviews:push");
   const toPush = local.filter((item) => {
     if (remoteIds.has(item.id)) return false;
-    if (effectiveSince > 0) return item.createdAt > effectiveSince;
-    return true;
+    return lastPushedAt > 0 ? item.createdAt > lastPushedAt : true;
   });
-  if (!(await pushReviewsToServer(toPush, bound))) return null;
 
-  setSyncCursor(bound.userId, "reviews", maxUpdated > 0 ? maxUpdated : Date.now());
+  if (toPush.length > 0) {
+    if (await pushReviewsToServer(toPush, bound)) {
+      setSyncCursor(bound.userId, "reviews:push", Date.now());
+    } else {
+      return null;
+    }
+  } else if (lastPushedAt === 0) {
+    setSyncCursor(bound.userId, "reviews:push", Date.now());
+  }
+
+  const finalCursor = nextCursor ?? (maxUpdated > 0 ? maxUpdated : Date.now());
+  setSyncCursor(bound.userId, "reviews", finalCursor);
   await saveSessionValue(REVIEWS_SYNC_KEY, String(Date.now()), bound);
   return pulled;
 }
@@ -360,41 +524,95 @@ export async function pushKnowledgeToServer(
 // del servidor: cualquier orden de llegada converge al mismo ganador.
 // Devuelve cuántas filas llegaron, o null si no hubo sesión, el ciclo
 // no se completó o la cuenta cambió a mitad del ciclo.
-export async function syncKnowledge(scope?: DbScope) {
+export async function syncKnowledge(
+  scope?: DbScope,
+  options?: { language?: string },
+) {
   const bound = scope ?? captureDbScope();
   if (!bound.userId || !isDbScopeActive(bound)) return null;
 
   const local = await listAllKnowledge(undefined, bound);
-  const cursor = getSyncCursor(bound.userId, "knowledge");
+  const cursorKey = options?.language
+    ? `knowledge:${options.language}`
+    : "knowledge";
+  const cursor =
+    getSyncCursor(bound.userId, cursorKey) ||
+    getSyncCursor(bound.userId, "knowledge");
   const effectiveSince = local.length > 0 ? cursor : 0;
 
-  let remote: KnownWord[] | null = null;
+  let currentSince = effectiveSince;
+  let page = 0;
+  const MAX_PAGES = 25;
+  let hasMore = true;
+  const remoteAll: KnownWord[] = [];
   let serverTime: number | undefined;
-  try {
-    const url = effectiveSince > 0 ? `/api/knowledge?since=${effectiveSince}` : "/api/knowledge";
-    const response = await accountFetch(url, undefined, bound);
-    if (response.ok) {
-      const data = (await response.json()) as { rows?: KnownWord[]; serverTime?: number };
-      serverTime = data.serverTime;
-      // La clave se deriva de idioma+lema; se recalcula por si faltara.
-      remote = (data.rows ?? []).map((item) => ({
-        ...item,
-        key: item.key || knowledgeKey(item.language, item.lemma),
-      }));
+  let nextCursor: number | undefined;
+  let allOk = true;
+
+  while (hasMore && page < MAX_PAGES) {
+    page++;
+    let data: {
+      rows?: KnownWord[];
+      serverTime?: number;
+      hasMore?: boolean;
+      nextCursor?: number;
+      availableLanguages?: string[];
+    };
+    try {
+      const langParam = options?.language
+        ? `language=${encodeURIComponent(options.language)}`
+        : "";
+      let url = "/api/knowledge";
+      if (currentSince > 0) {
+        url = langParam
+          ? `/api/knowledge?${langParam}&since=${currentSince}`
+          : `/api/knowledge?since=${currentSince}`;
+      } else if (langParam) {
+        url = `/api/knowledge?${langParam}`;
+      }
+      const response = await accountFetch(url, undefined, bound);
+      if (!response.ok) {
+        allOk = false;
+        break;
+      }
+      data = await response.json();
+    } catch {
+      allOk = false;
+      break;
     }
-  } catch {
-    remote = null;
+    if (!data) {
+      allOk = false;
+      break;
+    }
+
+    if (data.serverTime) serverTime = data.serverTime;
+    const pageItems = (data.rows ?? []).map((item) => ({
+      ...item,
+      key: item.key || knowledgeKey(item.language, item.lemma),
+    }));
+    remoteAll.push(...pageItems);
+
+    hasMore = Boolean(data.hasMore);
+    if (hasMore && data.nextCursor) {
+      currentSince = data.nextCursor;
+      setSyncCursor(bound.userId, cursorKey, currentSince);
+      setSyncCursor(bound.userId, "knowledge", currentSince);
+    }
+    if (!hasMore && data.nextCursor) {
+      nextCursor = data.nextCursor;
+    }
   }
-  if (!remote) return null;
+
+  if (!allOk) return null;
 
   const localByKey = new Map(local.map((item) => [item.key, item]));
-  const remoteByKey = new Map(remote.map((item) => [item.key, item]));
+  const remoteByKey = new Map(remoteAll.map((item) => [item.key, item]));
 
   let pulled = 0;
   let maxUpdated = effectiveSince;
   if (serverTime && serverTime > maxUpdated) maxUpdated = serverTime;
 
-  for (const item of remote) {
+  for (const item of remoteAll) {
     const s = item.updatedAt ?? 0;
     if (s > maxUpdated) maxUpdated = s;
     const existing = localByKey.get(item.key);
@@ -404,19 +622,42 @@ export async function syncKnowledge(scope?: DbScope) {
     }
   }
 
+  // Desacoplar toPush de effectiveSince
+  const pushCursorKey = options?.language
+    ? `knowledge:${options.language}:push`
+    : "knowledge:push";
+  const lastPushedAt =
+    getSyncCursor(bound.userId, pushCursorKey) ||
+    getSyncCursor(bound.userId, "knowledge:push");
   const toPush = local.filter((item) => {
+    if (options?.language && item.language !== options.language) return false;
     const s = item.updatedAt ?? 0;
     const remoteItem = remoteByKey.get(item.key);
-    if (effectiveSince > 0) {
-      return s > effectiveSince && (!remoteItem || knowledgeArbWins(item, remoteItem));
+    if (remoteItem) {
+      return knowledgeArbWins(item, remoteItem);
     }
-    return !remoteItem || knowledgeArbWins(item, remoteItem);
+    return lastPushedAt > 0 ? s > lastPushedAt : true;
   });
-  if (!(await pushKnowledgeToServer(toPush, bound))) return null;
+
+  if (toPush.length > 0) {
+    if (await pushKnowledgeToServer(toPush, bound)) {
+      const pushNow = Date.now();
+      setSyncCursor(bound.userId, pushCursorKey, pushNow);
+      setSyncCursor(bound.userId, "knowledge:push", pushNow);
+    } else {
+      return null;
+    }
+  } else if (lastPushedAt === 0) {
+    const pushNow = Date.now();
+    setSyncCursor(bound.userId, pushCursorKey, pushNow);
+    setSyncCursor(bound.userId, "knowledge:push", pushNow);
+  }
 
   // Solo se sella la fecha cuando el ciclo completo salió, como en los
   // demás syncs: una sincronización parcial no cuenta como «al día».
-  setSyncCursor(bound.userId, "knowledge", maxUpdated > 0 ? maxUpdated : Date.now());
+  const finalCursor = nextCursor ?? (maxUpdated > 0 ? maxUpdated : Date.now());
+  setSyncCursor(bound.userId, cursorKey, finalCursor);
+  setSyncCursor(bound.userId, "knowledge", finalCursor);
   await saveSessionValue(KNOWLEDGE_SYNC_KEY, String(Date.now()), bound);
   return pulled;
 }

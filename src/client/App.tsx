@@ -937,12 +937,11 @@ export default function App() {
         metaVersion: quickMeta ? 1 : undefined,
       };
       openBook({ hash, name: file.name, file }, initialMeta);
-      const bookBlob = new Blob([fileBytes], { type: "application/epub+zip" });
       void saveBook(
         {
           hash,
           name: file.name,
-          data: bookBlob,
+          data: fileBytes,
           addedAt: Date.now(),
           ...initialMeta,
         },

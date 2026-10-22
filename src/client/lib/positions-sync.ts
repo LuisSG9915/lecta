@@ -97,30 +97,68 @@ export async function syncPositions(scope?: DbScope): Promise<{
   const cursor = getSyncCursor(bound.userId, "positions");
   const effectiveSince = local.length > 0 ? cursor : 0;
 
-  let remote: SavedBookPosition[] | null = null;
+  let currentSince = effectiveSince;
+  let page = 0;
+  const MAX_PAGES = 25;
+  let hasMore = true;
+  const remoteAll: SavedBookPosition[] = [];
   let serverTime: number | undefined;
-  try {
-    const url = effectiveSince > 0 ? `/api/positions?since=${effectiveSince}` : "/api/positions";
-    const response = await accountFetch(url, undefined, bound);
-    if (response.ok) {
-      const data = (await response.json()) as { positions?: SavedBookPosition[]; serverTime?: number };
-      remote = data.positions ?? [];
-      serverTime = data.serverTime;
+  let nextCursor: number | undefined;
+  let allOk = true;
+
+  while (hasMore && page < MAX_PAGES) {
+    page++;
+    let data: {
+      positions?: SavedBookPosition[];
+      serverTime?: number;
+      hasMore?: boolean;
+      nextCursor?: number;
+    };
+    try {
+      const url =
+        currentSince > 0
+          ? `/api/positions?since=${currentSince}`
+          : "/api/positions";
+      const response = await accountFetch(url, undefined, bound);
+      if (!response.ok) {
+        allOk = false;
+        break;
+      }
+      data = await response.json();
+    } catch {
+      allOk = false;
+      break;
     }
-  } catch {
-    remote = null;
+    if (!data) {
+      allOk = false;
+      break;
+    }
+
+    if (data.serverTime) serverTime = data.serverTime;
+    const items = data.positions ?? [];
+    remoteAll.push(...items);
+
+    hasMore = Boolean(data.hasMore);
+    if (hasMore && data.nextCursor) {
+      currentSince = data.nextCursor;
+      setSyncCursor(bound.userId, "positions", currentSince);
+    }
+    if (!hasMore && data.nextCursor) {
+      nextCursor = data.nextCursor;
+    }
   }
-  if (!remote) return null;
+
+  if (!allOk) return null;
 
   const localByHash = new Map(local.map((item) => [item.bookHash, item]));
-  const remoteByHash = new Map(remote.map((item) => [item.bookHash, item]));
+  const remoteByHash = new Map(remoteAll.map((item) => [item.bookHash, item]));
 
   const conflicts: PositionConflict[] = [];
   let pulled = 0;
   let maxUpdated = effectiveSince;
   if (serverTime && serverTime > maxUpdated) maxUpdated = serverTime;
 
-  for (const item of remote) {
+  for (const item of remoteAll) {
     if (item.updatedAt > maxUpdated) maxUpdated = item.updatedAt;
     const existing = localByHash.get(item.bookHash);
     if (!existing || item.updatedAt > existing.updatedAt) {
@@ -142,17 +180,29 @@ export async function syncPositions(scope?: DbScope): Promise<{
     }
   }
 
+  // Desacoplar toPush de effectiveSince
+  const lastPushedAt = getSyncCursor(bound.userId, "positions:push");
   const toPush = local.filter((item) => {
     const remoteItem = remoteByHash.get(item.bookHash);
-    if (effectiveSince > 0) {
-      return item.updatedAt > effectiveSince && (!remoteItem || item.updatedAt > remoteItem.updatedAt);
+    if (remoteItem) {
+      return item.updatedAt > remoteItem.updatedAt;
     }
-    return !remoteItem || item.updatedAt > remoteItem.updatedAt;
+    return lastPushedAt > 0 ? item.updatedAt > lastPushedAt : true;
   });
-  if (!(await pushPositionsToServer(toPush, bound))) return null;
+
+  if (toPush.length > 0) {
+    if (await pushPositionsToServer(toPush, bound)) {
+      setSyncCursor(bound.userId, "positions:push", Date.now());
+    } else {
+      return null;
+    }
+  } else if (lastPushedAt === 0) {
+    setSyncCursor(bound.userId, "positions:push", Date.now());
+  }
 
   // Solo se sella cuando el ciclo completo salió, como en anotaciones.
-  setSyncCursor(bound.userId, "positions", maxUpdated > 0 ? maxUpdated : Date.now());
+  const finalCursor = nextCursor ?? (maxUpdated > 0 ? maxUpdated : Date.now());
+  setSyncCursor(bound.userId, "positions", finalCursor);
   await saveSessionValue(POSITIONS_SYNC_KEY, String(Date.now()), bound);
   return { pulled, conflicts };
 }

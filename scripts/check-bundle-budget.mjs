@@ -8,6 +8,7 @@ const INDEX_HTML_PATH = path.join(DIST_CLIENT_DIR, "index.html");
 // Presupuestos estrictos con margen razonable sobre el peso actual
 const MAX_JS_GZIP_KB = 215; // Presupuesto JS inicial gzip (<= 215 kB)
 const MAX_CSS_GZIP_KB = 55; // Presupuesto CSS inicial gzip (<= 55 kB)
+const WARN_THRESHOLD_RATIO = 0.90; // Umbral de aviso preventivo al 90%
 
 if (!fs.existsSync(INDEX_HTML_PATH)) {
   console.error(`[Error] No se encontró ${INDEX_HTML_PATH}. Ejecuta 'pnpm run build' primero.`);
@@ -109,14 +110,24 @@ console.table([
 
 let failed = false;
 
+const jsRatio = jsGzipKb / MAX_JS_GZIP_KB;
 if (jsGzipKb > MAX_JS_GZIP_KB) {
   console.error(`❌ Falló el presupuesto de JS: ${jsGzipKb.toFixed(2)} kB > ${MAX_JS_GZIP_KB} kB`);
   failed = true;
+} else if (jsRatio >= WARN_THRESHOLD_RATIO) {
+  const pct = (jsRatio * 100).toFixed(1);
+  const marginKb = (MAX_JS_GZIP_KB - jsGzipKb).toFixed(2);
+  console.warn(`⚠️ AVISO: El peso inicial de JS está al ${pct}% del presupuesto (quedan ${marginKb} kB de margen).`);
 }
 
+const cssRatio = cssGzipKb / MAX_CSS_GZIP_KB;
 if (cssGzipKb > MAX_CSS_GZIP_KB) {
   console.error(`❌ Falló el presupuesto de CSS: ${cssGzipKb.toFixed(2)} kB > ${MAX_CSS_GZIP_KB} kB`);
   failed = true;
+} else if (cssRatio >= WARN_THRESHOLD_RATIO) {
+  const pct = (cssRatio * 100).toFixed(1);
+  const marginKb = (MAX_CSS_GZIP_KB - cssGzipKb).toFixed(2);
+  console.warn(`⚠️ AVISO: El peso inicial de CSS está al ${pct}% del presupuesto (quedan ${marginKb} kB de margen).`);
 }
 
 if (failed) {

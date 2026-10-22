@@ -14,6 +14,7 @@ import {
 } from "./idb";
 import { accountFetch } from "./account-fetch";
 import { getSyncCursor, setSyncCursor } from "./sync-cursors";
+import { loadUserLanguageProfile, USER_LANGUAGE_PROFILE_KEY } from "./profile-models";
 
 const stamp = (word: SavedWord) => word.updatedAt ?? word.savedAt;
 const LAST_SYNC_KEY = "vocabLastSyncAt";
@@ -61,76 +62,171 @@ export async function removeWord(key: string, scope?: DbScope) {
 
 // Fusiona vocabulario local y remoto por clave; el registro con
 // updatedAt más reciente gana. Recorre todos los idiomas presentes en
-// el cuaderno local, no solo el español. Devuelve cuántas palabras
-// llegaron del servidor, o null si no hubo sesión/respuesta o la
-// cuenta cambió a mitad del ciclo.
+// el cuaderno local, el perfil y los devueltos por el servidor.
+// Devuelve cuántas palabras llegaron del servidor, o null si no hubo
+// sesión/respuesta o la cuenta cambió a mitad del ciclo.
 export async function syncSavedWords(scope?: DbScope) {
   const bound = scope ?? captureDbScope();
   if (!bound.userId || !isDbScopeActive(bound)) return null;
   const localAll = await listAllSavedWords(undefined, bound);
-  const languages = [...new Set(localAll.map((word) => word.language || "es"))];
-  if (!languages.length) languages.push("es");
 
-  const cursor = getSyncCursor(bound.userId, "vocab");
-  // Si la base local está vacía, forzar since = 0 para descargar todo el cuaderno
-  const effectiveSince = localAll.length > 0 ? cursor : 0;
+  const initialLanguages = new Set<string>(["es"]);
+  for (const word of localAll) {
+    if (word.language) initialLanguages.add(word.language);
+  }
+  const hasSavedProfile =
+    typeof window !== "undefined" &&
+    window.localStorage &&
+    window.localStorage.getItem(USER_LANGUAGE_PROFILE_KEY);
+  if (hasSavedProfile) {
+    const profile = loadUserLanguageProfile();
+    if (profile.thetaByLang) {
+      for (const lang of Object.keys(profile.thetaByLang)) {
+        if (lang) initialLanguages.add(lang);
+      }
+    }
+  }
+
+  const queue = Array.from(initialLanguages);
+  const processedLanguages = new Set<string>();
 
   let pulled = 0;
   let allOk = true;
-  let maxUpdated = effectiveSince;
+  let maxUpdated = 0;
 
-  for (const language of languages) {
+  for (let i = 0; i < queue.length; i++) {
+    const language = queue[i];
+    if (processedLanguages.has(language)) continue;
+    processedLanguages.add(language);
+
     if (!isDbScopeActive(bound)) {
       allOk = false;
       break;
     }
-    let remote: SavedWord[] | null = null;
-    try {
-      const url =
-        effectiveSince > 0
-          ? `/api/vocab?lang=${encodeURIComponent(language)}&since=${effectiveSince}`
-          : `/api/vocab?lang=${encodeURIComponent(language)}`;
-      const response = await accountFetch(url, undefined, bound);
-      if (response.ok) {
-        const data = (await response.json()) as { words?: SavedWord[]; serverTime?: number };
-        remote = data.words ?? [];
-        if (data.serverTime && data.serverTime > maxUpdated) {
-          maxUpdated = data.serverTime;
+
+    const local = localAll.filter((word) => (word.language || "es") === language);
+    const langCursor =
+      getSyncCursor(bound.userId, `vocab:${language}`) ||
+      getSyncCursor(bound.userId, "vocab");
+    const effectiveSince = local.length > 0 ? langCursor : 0;
+
+    let currentSince = effectiveSince;
+    let page = 0;
+    const MAX_PAGES = 25;
+    let hasMore = true;
+    const langRemote: SavedWord[] = [];
+    let langOk = true;
+    let langNextCursor: number | undefined;
+
+    while (hasMore && page < MAX_PAGES) {
+      page++;
+      let pageData: {
+        words?: SavedWord[];
+        serverTime?: number;
+        hasMore?: boolean;
+        nextCursor?: number;
+        availableLanguages?: string[];
+      };
+
+      try {
+        const url =
+          currentSince > 0
+            ? `/api/vocab?lang=${encodeURIComponent(language)}&since=${currentSince}`
+            : `/api/vocab?lang=${encodeURIComponent(language)}`;
+        const response = await accountFetch(url, undefined, bound);
+        if (!response.ok) {
+          langOk = false;
+          break;
+        }
+        pageData = await response.json();
+      } catch {
+        langOk = false;
+        break;
+      }
+
+      if (!pageData) {
+        langOk = false;
+        break;
+      }
+
+      const words = pageData.words ?? [];
+      langRemote.push(...words);
+
+      // Descubrimiento dinámico de idiomas adicionales
+      if (Array.isArray(pageData.availableLanguages)) {
+        for (const availLang of pageData.availableLanguages) {
+          if (
+            availLang &&
+            !processedLanguages.has(availLang) &&
+            !queue.includes(availLang)
+          ) {
+            queue.push(availLang);
+          }
         }
       }
-    } catch {
-      remote = null;
+
+      hasMore = Boolean(pageData.hasMore);
+      if (hasMore && pageData.nextCursor) {
+        currentSince = pageData.nextCursor;
+        setSyncCursor(bound.userId, `vocab:${language}`, currentSince);
+        setSyncCursor(bound.userId, "vocab", currentSince);
+      }
+      if (!hasMore && pageData.nextCursor) {
+        langNextCursor = pageData.nextCursor;
+      }
+      if (pageData.serverTime && pageData.serverTime > maxUpdated) {
+        maxUpdated = pageData.serverTime;
+      }
     }
-    if (!remote) {
+
+    if (!langOk) {
       allOk = false;
       continue;
     }
 
-    const local = localAll.filter((word) => (word.language || "es") === language);
     const localByKey = new Map(local.map((word) => [word.key, word]));
-    const remoteByKey = new Map(remote.map((word) => [word.key, word]));
+    const remoteByKey = new Map(langRemote.map((word) => [word.key, word]));
 
-    for (const word of remote) {
+    for (const word of langRemote) {
       const wordStamp = stamp(word);
       if (wordStamp > maxUpdated) maxUpdated = wordStamp;
       const existing = localByKey.get(word.key);
       if (!existing || wordStamp > stamp(existing)) {
-        // Aterriza en la base dueña del contexto aunque la activa ya
-        // sea otra: la respuesta traía datos de esa cuenta.
         await putSavedWord(word, bound);
         pulled += 1;
       }
     }
 
+    // Desacoplar toPush de effectiveSince
+    const lastPushedAt =
+      getSyncCursor(bound.userId, `vocab:${language}:push`) ||
+      getSyncCursor(bound.userId, "vocab:push");
     const toPush = local.filter((word) => {
       const wordStamp = stamp(word);
       const remoteWord = remoteByKey.get(word.key);
-      if (effectiveSince > 0) {
-        return wordStamp > effectiveSince && (!remoteWord || wordStamp > stamp(remoteWord));
+      if (remoteWord) {
+        return wordStamp > stamp(remoteWord);
       }
-      return !remoteWord || wordStamp > stamp(remoteWord);
+      return lastPushedAt > 0 ? wordStamp > lastPushedAt : true;
     });
-    if (!(await pushWordsToServer(toPush, bound))) allOk = false;
+
+    if (toPush.length > 0) {
+      if (await pushWordsToServer(toPush, bound)) {
+        const pushNow = Date.now();
+        setSyncCursor(bound.userId, `vocab:${language}:push`, pushNow);
+        setSyncCursor(bound.userId, "vocab:push", pushNow);
+      } else {
+        allOk = false;
+      }
+    } else if (lastPushedAt === 0) {
+      const pushNow = Date.now();
+      setSyncCursor(bound.userId, `vocab:${language}:push`, pushNow);
+      setSyncCursor(bound.userId, "vocab:push", pushNow);
+    }
+
+    const finalLangCursor =
+      langNextCursor ?? (maxUpdated > 0 ? maxUpdated : Date.now());
+    setSyncCursor(bound.userId, `vocab:${language}`, finalLangCursor);
   }
 
   // Solo sellamos la fecha cuando todos los idiomas sincronizaron:
