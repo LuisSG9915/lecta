@@ -266,6 +266,10 @@ export interface FeatureFlags {
   kindleSync: boolean;
   focusTelemetry: boolean;
   chapterPriming: boolean;
+  /** Comparte metadatos de errores con el equipo (nunca el texto del libro). */
+  shareClientErrors: boolean;
+  /** Incluye el mensaje del error además de los metadatos. Desactivado por defecto. */
+  includeErrorMessage: boolean;
 }
 
 export const DEFAULT_FEATURE_FLAGS: FeatureFlags = {
@@ -274,6 +278,8 @@ export const DEFAULT_FEATURE_FLAGS: FeatureFlags = {
   kindleSync: true,
   focusTelemetry: true,
   chapterPriming: true,
+  shareClientErrors: true,
+  includeErrorMessage: false,
 };
 
 export const INTERFACE_MODE_KEY = "lecta:interface_mode";

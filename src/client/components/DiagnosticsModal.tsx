@@ -205,6 +205,8 @@ export default function DiagnosticsModal({ onClose }: DiagnosticsModalProps) {
                 { key: "kindleSync" as const, label: "Sincronización con Kindle", desc: "Emparejamiento y lectura remota en e-reader" },
                 { key: "focusTelemetry" as const, label: "Telemetría de Enfoque", desc: "Detección de fatiga lectora y pausas" },
                 { key: "chapterPriming" as const, label: "Pre-lectura de Capítulos", desc: "Anticipación de vocabulario difícil" },
+                { key: "shareClientErrors" as const, label: "Compartir errores con el equipo", desc: "Solo metadatos: error, ruta y versión" },
+                { key: "includeErrorMessage" as const, label: "Incluir mensaje del error", desc: "Puede contener texto del libro que estabas leyendo" },
               ] as const
             ).map(({ key, label, desc }) => (
               <div

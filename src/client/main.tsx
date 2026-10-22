@@ -3,11 +3,13 @@ import { createRoot } from "react-dom/client";
 import App from "./App";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { initCssGuard } from "./lib/css-guard";
+import { installClientErrorReporting } from "./lib/client-errors";
 import { applyTheme, loadTheme } from "./lib/settings";
 import { registerServiceWorker } from "./lib/sw-register";
 import "./styles.css";
 
 initCssGuard();
+installClientErrorReporting();
 applyTheme(loadTheme());
 
 // Solo en producción: en dev el SW rompería HMR y enmascararía

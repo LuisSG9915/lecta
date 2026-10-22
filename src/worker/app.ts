@@ -1,6 +1,11 @@
 import { Hono, type Context } from "hono";
 import { chunks, getConnectionString, withClient, type WorkerEnv } from "./db";
 import {
+  CLIENT_ERROR_MAX_BODY_BYTES,
+  allowClientError,
+  parseClientErrorReport,
+} from "./client-errors";
+import {
   CATALOG,
   findEntries,
   findEntriesForForms,
@@ -231,6 +236,36 @@ app.post("/kindle/*", async (context) => {
 });
 
 app.get("/api/health", (context) => context.json({ status: "ok" }));
+
+// Errores de cliente: sin sesión y sin base de datos a propósito.
+// Un bucle de errores en el navegador no puede consumir RUs ni tumbar
+// Hyperdrive; el tope por isolate evita que inunde los logs.
+app.post("/api/client-errors", async (context) => {
+  const raw = await context.req.text().catch(() => "");
+  if (raw.length > CLIENT_ERROR_MAX_BODY_BYTES) {
+    return context.body(null, 204);
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return context.body(null, 204);
+  }
+
+  const report = parseClientErrorReport(parsed);
+  if (!report) {
+    return context.body(null, 204);
+  }
+
+  const ip = context.req.header("cf-connecting-ip") ?? "local";
+  if (!allowClientError(ip, Date.now())) {
+    return context.body(null, 204);
+  }
+
+  console.error(JSON.stringify(report));
+  return context.body(null, 204);
+});
 
 app.on(["GET", "HEAD"], "/models/:filename", async (c) => {
   const filename = c.req.param("filename");

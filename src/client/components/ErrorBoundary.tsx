@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
+import { reportErrorObject } from "../lib/client-errors";
 
 export const ERROR_LOG_STORAGE_KEY = "lecta_error_log_v1";
 export const ERROR_LOG_MAX_ENTRIES = 5;
@@ -78,6 +79,8 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
   override componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
     logErrorToStorage(error, errorInfo);
+    // Metadatos al equipo (el mensaje solo viaja si el usuario lo activó).
+    reportErrorObject(error, "react.boundary");
   }
 
   private handleBackToLibrary = (): void => {

@@ -572,11 +572,21 @@ Al revertir, los cursores vuelven a `Date.now()`; el primer sync reenvía de má
 | 2 | Ruta saneada | `route: "/reader?book=abc#x"` | se registra `/reader` |
 | 3 | Cuerpo sucio | campo extra o `message` de 10 kB | 204 y **nada** en logs |
 | 4 | Tope | 40 peticiones seguidas | ≤ 30 registradas |
-| 5 | Sin BD | test unitario con `app.request` y `withClient` espiado | 0 llamadas |
+| 5 | Sin BD | `app.request` con un `env` **sin** `DATABASE_URL` | 204 igual (si tocara la BD daría 503) |
 | 6 | Interruptor | flag apagada | 0 peticiones de red |
 
 Las pruebas 1–4 se hacen con `app.request` (Hono) en unit, no contra prod: deterministas y gratis.
 La 5 es la que evita la regresión cara.
+
+**Ejecutado el 2026-10-22.** `src/worker/client-errors.ts` (allowlist, saneo de ruta, límites) y
+`src/client/lib/client-errors.ts` (huella por sesión, máximo 5 por carga, `keepalive`). Enganchado
+en `ErrorBoundary.componentDidCatch`, `window.onerror` y `unhandledrejection`; interruptores
+`shareClientErrors` (on) e `includeErrorMessage` (off) en `FeatureFlags`, con su UI en Diagnóstico.
+Verificado contra producción con `wrangler tail`: el reporte válido responde 204 y deja
+`{"event":"client_error",...,"route":"/reader","version":"prod"}`; el cuerpo con `stack` y el de
+10 kB responden 204 y **no** dejan nada. El código de Kindle (`/k/ABCD`) se registra como `/k/*`
+para no filtrar el código de vinculación. Pruebas: 24 nuevas (worker + cliente), gate en 172
+archivos / 2 414 pruebas. Desplegado `53165f0f`.
 
 ### 8.3 Señales de fallo
 

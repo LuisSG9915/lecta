@@ -1,6 +1,7 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { app, computeAiCacheKey, getCachedAiText, setCachedAiText } from "./app";
 import type { WorkerEnv } from "./db";
+import { resetClientErrorLimiters } from "./client-errors";
 
 describe("GET /api/health", () => {
   it("returns the API status", async () => {
@@ -558,3 +559,97 @@ describe("Infraestructura de sesión (503 vs 401)", () => {
 
 
 
+
+describe("POST /api/client-errors", () => {
+  const valid = {
+    name: "TypeError",
+    code: "window.error",
+    route: "/reader?book=abc#x",
+    version: "prod",
+  };
+  const post = (body: unknown, headers: Record<string, string> = {}) =>
+    app.request("/api/client-errors", {
+      method: "POST",
+      headers: { "content-type": "application/json", "cf-connecting-ip": "1.2.3.4", ...headers },
+      body: typeof body === "string" ? body : JSON.stringify(body),
+    });
+
+  let errorSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    resetClientErrorLimiters();
+    errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    errorSpy.mockRestore();
+  });
+
+  const logged = (): Record<string, unknown>[] =>
+    (errorSpy.mock.calls as unknown[][])
+      .map((call) => {
+        try {
+          return JSON.parse(String(call[0])) as Record<string, unknown>;
+        } catch {
+          return null;
+        }
+      })
+      .filter(
+        (entry): entry is Record<string, unknown> =>
+          entry !== null && entry.event === "client_error",
+      );
+
+  it("acepta un reporte válido, responde 204 y sanea la ruta", async () => {
+    const response = await post(valid);
+    expect(response.status).toBe(204);
+    expect(logged()).toEqual([
+      {
+        event: "client_error",
+        name: "TypeError",
+        code: "window.error",
+        route: "/reader",
+        version: "prod",
+      },
+    ]);
+  });
+
+  it("no toca la base: responde 204 incluso sin DATABASE_URL", async () => {
+    const response = await app.request(
+      "/api/client-errors",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(valid),
+      },
+      {} as WorkerEnv,
+    );
+    expect(response.status).toBe(204);
+  });
+
+  it("descarta en silencio un campo extra", async () => {
+    const response = await post({ ...valid, stack: "at foo()" });
+    expect(response.status).toBe(204);
+    expect(logged()).toHaveLength(0);
+  });
+
+  it("descarta en silencio un mensaje enorme", async () => {
+    const response = await post({ ...valid, message: "x".repeat(10_000) });
+    expect(response.status).toBe(204);
+    expect(logged()).toHaveLength(0);
+  });
+
+  it("descarta JSON inválido", async () => {
+    const response = await post("{no-es-json");
+    expect(response.status).toBe(204);
+    expect(logged()).toHaveLength(0);
+  });
+
+  it("limita a 30 registros por minuto y por IP", async () => {
+    for (let i = 0; i < 40; i += 1) {
+      // Cambia el nombre para no chocar con el dedupe del cliente (que aquí no aplica).
+      const response = await post({ ...valid, name: `Error${i}` });
+      expect(response.status).toBe(204);
+    }
+    expect(logged()).toHaveLength(30);
+  });
+});

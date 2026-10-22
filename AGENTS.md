@@ -80,6 +80,12 @@
 - Workers Logs activo (`observability.logs.enabled` en `wrangler.jsonc`): los
   eventos estructurados (`client_error` y compañía) se consultan en el dashboard
   con retención de días, no como histórico.
+- `POST /api/client-errors` recibe errores del navegador **sin sesión y sin base
+  de datos** (no llama a `withClient`): allowlist `name`/`code`/`route`/`version`
+  y, opcional, `message`; tope de 30/min y 300/hora por IP **por isolate** (es un
+  freno a los logs, no seguridad) y rechazo silencioso con 204. La ruta se sanea
+  (`/k/ABCD` → `/k/*`). Interruptores en Diagnóstico: `shareClientErrors` e
+  `includeErrorMessage` (este último apagado por defecto).
 - Secrets en el worker: `DATABASE_URL`, `BETTER_AUTH_SECRET`, `DEEPSEEK_API_KEY`,
   `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `AI_GATEWAY_KEY`, `AI_GATEWAY_URL`.
   `secrets.required` en `wrangler.jsonc` controla cuáles llegan al `env` en dev
