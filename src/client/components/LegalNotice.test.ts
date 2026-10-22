@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 import { act, createElement as h } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import fs from "node:fs";
+import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import LegalNotice from "./LegalNotice";
 
@@ -52,8 +54,18 @@ describe("LegalNotice", () => {
     expect(host.textContent).toContain("Términos de Uso");
     expect(host.textContent).toContain("Propiedad de tus lecturas");
     expect(host.textContent).toContain("ODbL 1.0");
-    expect(host.textContent).toContain("lecta-lexicon-data");
     expect(host.textContent).toContain("forma → lema");
+    expect(host.textContent).not.toContain("lecta-lexicon-data");
+
+    // Los enlaces de descarga apuntan a assets que existen en public/.
+    const publicDir = path.resolve(process.cwd(), "public");
+    for (const file of ["lexicon/forms-es.tsv.gz", "lexicon/lemmas-freq-es.tsv.gz", "lexicon/README.md"]) {
+      expect(fs.existsSync(path.join(publicDir, file)), `falta public/${file}`).toBe(true);
+    }
+    const hrefs = [...host.querySelectorAll("a")].map((a) => a.getAttribute("href"));
+    expect(hrefs).toContain("/lexicon/forms-es.tsv.gz");
+    expect(hrefs).toContain("/lexicon/lemmas-freq-es.tsv.gz");
+    expect(hrefs).toContain("/lexicon/README.md");
   });
 
   it("permite abrir directamente en la pestaña de términos", () => {

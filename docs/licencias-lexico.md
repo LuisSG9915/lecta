@@ -41,17 +41,18 @@ licencias exactas que empaqueta están en `licenses/` de su repo.
 
 ## Cumplimiento adoptado
 
-1. Publicar las dos tablas derivadas empaquetadas con sus licencias:
-   - `forms-es.csv.gz` (forma→lema) bajo **ODbL 1.0**.
-   - `lemmas-freq-es.csv.gz` (lema→zipf) bajo **CC BY-SA 4.0**, con
-     `LICENSE` y `README` (fuentes, proceso, crédito SUBTLEX).
-   - `senses-es.csv.gz` (acepciones cargadas del Wikcionario en
-     español vía kaikki.org; `lexicon_senses.source='wiktionary'`)
-     bajo **CC BY-SA 4.0 + GFDL**. Las acepciones `source='ai'` son
-     contenido propio generado y no entran en ese archivo.
-   - Repo público dedicado `lecta-lexicon-data`, enlazado desde
-     «Acerca de». Los TSV generados por `scripts/lexicon-export.py`
-     son la fuente de esos archivos.
+1. Publicar las tablas derivadas **desde la propia app** (decisión 0.2: Opción A, sin
+   depender de un repositorio de GitHub que daba 404):
+   - `/lexicon/forms-es.tsv.gz` (forma→lema, 665 732 pares) bajo **ODbL 1.0**.
+   - `/lexicon/lemmas-freq-es.tsv.gz` (lema→zipf, 71 646 pares) bajo **CC BY-SA 4.0**.
+   - `/lexicon/README.md` con fuentes, proceso, crédito SUBTLEX, licencias y SHA-256 de
+     cada archivo — hace de `LICENSE` + `README` en un solo documento.
+   - Ambas se sirven con `Content-Type: application/gzip` y `Content-Disposition:
+     attachment` (reglas en `public/_headers`) para que se descarguen como archivo.
+   - Los TSV de origen los genera `scripts/lexicon-export.py` en `data/lexicon/`
+     (no versionado); el `.gz` publicado sí se versiona en `public/lexicon/`.
+   - **Pendiente:** `senses-es.csv.gz` (acepciones del Wikcionario, CC BY-SA 4.0 +
+     GFDL). No se genera todavía; las acepciones `source='ai'` no entrarían.
 2. Texto de atribución en «Acerca de» (pendiente de implementar):
 
    > Lecta incluye datos léxicos derivados de Simplemma (código MIT,

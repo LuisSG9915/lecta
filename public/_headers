@@ -63,6 +63,16 @@
 /libros/*
   Cache-Control: public, max-age=86400
 
+# Tablas léxicas descargables (Fase 8): se sirven como archivo, no como texto.
+# Van antes de /lexicon/* para que mande la regla específica.
+/lexicon/forms-es.tsv.gz
+  Content-Type: application/gzip
+  Content-Disposition: attachment; filename="forms-es.tsv.gz"
+
+/lexicon/lemmas-freq-es.tsv.gz
+  Content-Type: application/gzip
+  Content-Disposition: attachment; filename="lemmas-freq-es.tsv.gz"
+
 /lexicon/*
   Cache-Control: public, max-age=86400, stale-while-revalidate=604800
 

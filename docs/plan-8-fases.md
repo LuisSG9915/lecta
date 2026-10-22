@@ -817,6 +817,18 @@ ls -l public/lexicon/forms-es.tsv.gz   # ≈ 1.89 MB
 | 4 | No infla el bundle | `pnpm check:size` | sin cambios (es un asset estático) |
 | 5 | Dentro de límites | `pnpm run deploy` | ningún error de tamaño por archivo |
 
+**Ejecutado el 2026-10-22.** Publicadas **dos** tablas, no una: el aviso también prometía
+`lemmas-freq-es.csv.gz` para las frecuencias zipf y no existía en ningún sitio. Ahora hay
+`/lexicon/forms-es.tsv.gz` (1 886 928 bytes, 665 732 pares, ODbL), `/lexicon/lemmas-freq-es.tsv.gz`
+(331 783 bytes, 71 646 pares, CC BY-SA) y `/lexicon/README.md` con procedencia, licencias, SHA-256
+y cómo regenerarlas. Las reglas específicas de `public/_headers` ganan a la genérica: `curl -I`
+devuelve `content-type: application/gzip` y `content-disposition: attachment` en ambas. Descarga
+real verificada: mismo SHA-256 que el archivo local y 665 732 líneas al descomprimir. El texto del
+aviso ya no menciona `lecta-lexicon-data` (0 coincidencias en `src/` y `docs/`), y la prueba exige
+que los tres archivos existan en `public/`. `check:size` sin cambios (176.68 kB) y deploy
+`7518d096` sin avisos de tamaño. **Pendiente fuera de alcance:** exportar `senses-es.csv.gz`
+(acepciones del Wikcionario), anotado en `docs/licencias-lexico.md`.
+
 ### 11.3 Señales de fallo
 
 - El `.gz` se sirve como `text/plain` y el navegador lo muestra en vez de descargarlo → gana la

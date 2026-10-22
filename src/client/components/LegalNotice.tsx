@@ -129,10 +129,10 @@ export default function LegalNotice({
             </p>
             <ul style={{ paddingLeft: "var(--s-4)", display: "flex", flexDirection: "column", gap: "var(--s-2)" }}>
               <li>
-                <strong>Tabla derivada forma → lema (ODbL 1.0):</strong> Contiene información de «Lemmatization lists» de Michal Měchura, disponible bajo la Open Database License (ODbL) 1.0. La tabla derivada <code>forma → lema</code> está licenciada bajo ODbL 1.0. En cumplimiento de las cláusulas §4.3 y §4.4 de la licencia, la base de datos derivada se encuentra disponible para su libre descarga pública en el repositorio <a href="https://github.com/lecta-app/lecta-lexicon-data" target="_blank" rel="noopener noreferrer">lecta-lexicon-data</a> (archivo <code>forms-es.csv.gz</code>).
+                <strong>Tabla derivada forma → lema (ODbL 1.0):</strong> Contiene información de «Lemmatization lists» de Michal Měchura, disponible bajo la Open Database License (ODbL) 1.0. La tabla derivada <code>forma → lema</code> está licenciada bajo ODbL 1.0. En cumplimiento de las cláusulas §4.3 y §4.6 de la licencia, la base de datos derivada está disponible para su libre descarga pública en <a href="/lexicon/forms-es.tsv.gz" download>forms-es.tsv.gz</a> (665 732 pares), junto con su procedencia, licencia y suma de verificación en <a href="/lexicon/README.md">/lexicon/README.md</a>.
               </li>
               <li>
-                <strong>Frecuencias zipf (CC BY-SA 4.0):</strong> Derivadas de <em>wordfreq</em> de Robyn Speer (CC BY-SA 4.0; incluye corpus Google Books Ngrams, Wikipedia, ParaCrawl, OpenSubtitles y listas SUBTLEX de Marc Brysbaert et al.). La tabla derivada <code>lemmas-freq-es.csv.gz</code> se publica bajo CC BY-SA 4.0.
+                <strong>Frecuencias zipf (CC BY-SA 4.0):</strong> Derivadas de <em>wordfreq</em> de Robyn Speer (CC BY-SA 4.0; incluye corpus Google Books Ngrams, Wikipedia, ParaCrawl, OpenSubtitles y listas SUBTLEX de Marc Brysbaert et al.). La tabla derivada <a href="/lexicon/lemmas-freq-es.tsv.gz" download>lemmas-freq-es.tsv.gz</a> se publica bajo CC BY-SA 4.0.
               </li>
               <li>
                 <strong>Acepciones y definiciones (CC BY-SA 4.0 + GFDL):</strong> Las definiciones estructuradas provienen del Wikcionario en español vía <a href="https://kaikki.org" target="_blank" rel="noopener noreferrer">kaikki.org</a> bajo licencias libres CC BY-SA 4.0 y GFDL.
