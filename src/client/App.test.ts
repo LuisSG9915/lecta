@@ -476,7 +476,10 @@ describe("App · navegación principal (Fase 2)", () => {
     expect(closetBtn).toBeTruthy();
 
     await act(async () => closetBtn!.click());
-    await flush();
+    // La hoja es diferida (React.lazy): se espera a que resuelva el chunk.
+    for (let i = 0; i < 40 && !host.querySelector(".sheet.sheet--stage"); i += 1) {
+      await flush();
+    }
 
     // La hoja del compañero se monta y muestra el armario
     expect(host.querySelector(".sheet.sheet--stage")).toBeTruthy();

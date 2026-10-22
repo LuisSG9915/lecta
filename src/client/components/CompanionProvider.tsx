@@ -13,6 +13,8 @@
 
 import {
   createContext,
+  lazy,
+  Suspense,
   useCallback,
   useContext,
   useEffect,
@@ -20,8 +22,18 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { CompanionPanel, type CompanionTab } from "./CompanionPanel";
-import { CompanionCelebration } from "./CompanionCelebration";
+import type { CompanionTab } from "./CompanionPanel";
+
+// La hoja y el festejo son la mitad del peso del proveedor y solo se ven
+// cuando el usuario interactúa: entran diferidos para no pagarlos en el
+// arranque (Fase 3). La precarga en idle evita el parpadeo en la primera
+// apertura.
+const CompanionPanel = lazy(() =>
+  import("./CompanionPanel").then((m) => ({ default: m.CompanionPanel })),
+);
+const CompanionCelebration = lazy(() =>
+  import("./CompanionCelebration").then((m) => ({ default: m.CompanionCelebration })),
+);
 import type { SearchSection, SearchTocRow } from "../lib/book-search";
 import {
   loadCompanionDevicePrefs,
@@ -518,6 +530,35 @@ export function CompanionProvider({
     }
   }, []);
 
+  // Precarga en tiempo muerto: cuando el usuario abra la hoja, el chunk ya está.
+  useEffect(() => {
+    const prefetch = () => {
+      void import("./CompanionPanel");
+      void import("./CompanionCelebration");
+    };
+    const idle = (
+      globalThis as typeof globalThis & {
+        requestIdleCallback?: (
+          cb: () => void,
+          options?: { timeout: number },
+        ) => number;
+        cancelIdleCallback?: (handle: number) => void;
+      }
+    ).requestIdleCallback;
+    if (typeof idle === "function") {
+      const handle = idle(prefetch, { timeout: 3000 });
+      return () => {
+        (
+          globalThis as typeof globalThis & {
+            cancelIdleCallback?: (h: number) => void;
+          }
+        ).cancelIdleCallback?.(handle);
+      };
+    }
+    const timer = setTimeout(prefetch, 2500);
+    return () => clearTimeout(timer);
+  }, []);
+
   const value: CompanionContextValue = {
     state,
     enabled: loaded?.enabled ?? null,
@@ -543,34 +584,38 @@ export function CompanionProvider({
     <CompanionContext.Provider value={value}>
       {children}
       {panelOpen ? (
-        <CompanionPanel
-          state={state}
-          name={name}
-          equipped={equipped}
-          accessories={accessories}
-          mood={mood}
-          activeCare={activeCare}
-          onCare={care}
-          onClose={closePanel}
-          reducedMotion={reducedMotion}
-          initialTab={panelTab}
-          readerContext={readerContext}
-        />
+        <Suspense fallback={null}>
+          <CompanionPanel
+            state={state}
+            name={name}
+            equipped={equipped}
+            accessories={accessories}
+            mood={mood}
+            activeCare={activeCare}
+            onCare={care}
+            onClose={closePanel}
+            reducedMotion={reducedMotion}
+            initialTab={panelTab}
+            readerContext={readerContext}
+          />
+        </Suspense>
       ) : null}
       {/* Inbox de festejos: montado mientras el juego está encendido
           (no por `items.length` — un recibo que aterriza a mitad de
           tarjeta no debe cortarla). La key por cuenta limpia la
           memoria «mostrado» al cambiar A→B: nada se arrastra. */}
       {loaded?.enabled && state ? (
-        <CompanionCelebration
-          key={userId ?? "anon"}
-          items={celebrationItems}
-          blocked={celebrationBlocked}
-          name={name}
-          stage={stage}
-          accessories={accessories}
-          onSeen={markCelebrationSeen}
-        />
+        <Suspense fallback={null}>
+          <CompanionCelebration
+            key={userId ?? "anon"}
+            items={celebrationItems}
+            blocked={celebrationBlocked}
+            name={name}
+            stage={stage}
+            accessories={accessories}
+            onSeen={markCelebrationSeen}
+          />
+        </Suspense>
       ) : null}
     </CompanionContext.Provider>
   );

@@ -66,7 +66,7 @@ implementar, no después de fallar.
 
 - `pnpm lint` está **exactamente** en 28 de 28 warnings: cualquier warning nuevo
   rompe el gate. Arregla el tuyo, no subas `--max-warnings`.
-- `check:size` está en 206.05 de 215 kB: cualquier import estático nuevo revienta CI.
+- `check:size` está en 176.08 de 215 kB: hay margen, pero cada import estático nuevo se mide.
 - `pnpm test:e2e` reconstruye `dist/`: no lo corras en paralelo con otro `build`.
 
 ## Reglas de código que no se negocian

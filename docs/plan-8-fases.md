@@ -9,14 +9,14 @@ Estado verificado el 2026-10-22, árbol con Fase 0 aplicada:
 
 | Métrica | Valor | Límite | Margen |
 |---|---|---|---|
-| JS inicial (gzip) | 206.05 kB | 215.00 kB | 8.95 kB (aviso al 90 % = 193.5) |
-| CSS inicial (gzip) | 32.92 kB | 55.00 kB | 22.08 kB |
+| JS inicial (gzip) | 176.08 kB | 215.00 kB | 38.92 kB (aviso al 90 % = 193.5) |
+| CSS inicial (gzip) | 19.84 kB | 55.00 kB | 35.16 kB |
 | Pruebas | 168 archivos / 2 365 pruebas | — | — |
 | Lint | 28 warnings | 28 (`--max-warnings 28`) | **0** |
 | Migraciones en prod | 001–013 | 013 | al día (2026-10-22) |
 
-Las dos cifras que aprietan son el JS (95.8 % del presupuesto) y el lint (**exactamente** en el
-tope). Cualquier fase que añada un warning o un import estático nuevo falla el gate.
+El lint queda **exactamente** en el tope de 28; cualquier warning nuevo falla el gate. El JS
+tiene margen tras la Fase 3, pero se sigue midiendo en cada fase.
 
 ---
 
@@ -425,6 +425,14 @@ Fases 5 y 7 añaden código. Los culpables reales, medidos: `react-vendor` 66.0,
 | 3 | Sin saltos | e2e + apertura del panel de la mascota | sin CLS visible |
 | 4 | Comportamiento igual | `pnpm gate` + `pnpm test:e2e` | verde |
 | 5 | Chunks diferidos existen | `ls dist/client/assets \| grep -i companion` | chunk aparte, no en `index.html` |
+
+**Ejecutado el 2026-10-22:** 206.05 → **176.08 kB** gzip (17.4 kB por debajo del aviso de 193.5),
+CSS 32.92 → 19.84 kB, módulos iniciales 16 → 14 (13 `modulepreload` + 1 script). Chunks nuevos:
+`CompanionPanel`, `CompanionCelebration`, `DiagnosticsModal`, `LegalNotice`. Gate verde (169
+archivos, 2 373 pruebas, 28/28 warnings) y e2e 12/12 (chromium + webkit-iphone). Desplegado el
+worker `e603dd4a`. Las pruebas que abren la hoja del compañero ahora esperan al chunk (antes
+asumían montaje síncrono); `CompanionCelebration.test.ts` precarga el módulo porque con
+temporizadores falsos el `import()` dinámico no resuelve.
 
 ### 6.3 Señales de fallo
 

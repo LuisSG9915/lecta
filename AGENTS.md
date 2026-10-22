@@ -5,8 +5,8 @@
 - `pnpm typecheck` (cliente + worker + MCP), `pnpm lint`, `pnpm test`, `pnpm build`.
 - `pnpm gate` encadena typecheck + lint + test + build + check:size: es la puerta de
   cierre de cada fase de `docs/plan-8-fases.md`. `pnpm lint` está **exactamente** en
-  28 de 28 warnings y `check:size` en 206.05 de 215 kB gzip: un warning o un import
-  estático nuevo rompe el gate.
+  28 de 28 warnings y `check:size` en 176.08 de 215 kB gzip: un warning nuevo rompe
+  el gate; en peso aún quedan ~39 kB de margen.
 - `pnpm smoke:auth` corre contra un server vivo y **escribe** en él (dos cuentas
   nuevas, un EPUB en R2 y vocab); `SMOKE_URL=<url>` para producción, una sola vez
   por deploy y anotando las cuentas creadas.

@@ -194,10 +194,15 @@ const seedChests = async () => {
 describe("GamePanel", () => {
   it("el botón del gato abre la hoja del compañero", async () => {
     await renderPanel();
+    // Carga el chunk diferido para que el lazy resuelva en microtareas.
+    await import("./CompanionPanel");
     const cat = host.querySelector(".companion-btn")! as HTMLButtonElement;
     expect(cat.getAttribute("aria-label")).toBe("Ver a Gato");
     click(cat);
-    await flush();
+    // La hoja es diferida (React.lazy): se espera a que resuelva el chunk.
+    for (let i = 0; i < 40 && !host.querySelector(".sheet"); i += 1) {
+      await flush();
+    }
     const sheet = host.querySelector(".sheet");
     expect(sheet).toBeTruthy();
     expect(sheet!.getAttribute("aria-label")).toBe("Gato");

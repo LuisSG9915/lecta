@@ -166,6 +166,20 @@ const flush = async () =>
     await Promise.resolve();
   });
 
+// La hoja y el festejo son diferidos (React.lazy): el chunk tarda varios
+// turnos del event loop en resolverse, así que se espera a que aparezcan.
+const flushUntil = async (predicate: () => boolean, attempts = 40) => {
+  // Ceder un macrotarea deja resolver el import() del chunk diferido.
+  for (let i = 0; i < attempts; i += 1) {
+    if (predicate()) return true;
+    await flush();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    });
+  }
+  return predicate();
+};
+
 const chest = (
   id: string,
   reward: string,
@@ -355,7 +369,7 @@ describe("CompanionProvider con base real simulada", () => {
         new MouseEvent("click", { bubbles: true, cancelable: true }),
       );
     });
-    await flush();
+    await flushUntil(() => host.querySelectorAll(".sheet").length > 0);
     const sheets = host.querySelectorAll(".sheet");
     expect(sheets.length).toBe(1);
     // La hoja lleva el nombre del gato como rótulo accesible.
@@ -401,7 +415,9 @@ describe("CompanionProvider con base real simulada", () => {
           new MouseEvent("click", { bubbles: true, cancelable: true }),
         );
     });
-    await flush();
+    await flushUntil(() =>
+      [...host.querySelectorAll("button")].some((b) => b.textContent === "Acariciar"),
+    );
 
     act(() => {
       [...host.querySelectorAll("button")]

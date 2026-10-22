@@ -123,6 +123,9 @@ vi.mock("idb", () => ({
 import * as idb from "../lib/idb";
 import * as game from "../lib/game";
 import { CompanionProvider, useCompanion } from "./CompanionProvider";
+// Carga el chunk diferido antes de que la suite instale temporizadores falsos:
+// con ellos activos, el import() dinámico no llega a resolverse.
+import "./CompanionPanel";
 import {
   CompanionCelebration,
   CELEBRATION_MS,
@@ -152,6 +155,10 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+// `vi.useFakeTimers()` reemplaza setTimeout: se guarda el real para ceder el
+// event loop de verdad y dejar que el import() del chunk diferido resuelva.
+const realSetTimeout = globalThis.setTimeout;
+
 const flush = async () =>
   act(async () => {
     await Promise.resolve();
@@ -159,6 +166,20 @@ const flush = async () =>
     await Promise.resolve();
     await Promise.resolve();
   });
+
+// La hoja es diferida (React.lazy): se espera a que el chunk resuelva.
+const flushUntil = async (predicate: () => boolean, attempts = 60) => {
+  // La suite usa temporizadores falsos, pero el import() del chunk necesita
+  // I/O real: se cede el event loop con el setTimeout capturado arriba.
+  for (let i = 0; i < attempts; i += 1) {
+    if (predicate()) return true;
+    await flush();
+    await act(async () => {
+      await new Promise((resolve) => realSetTimeout(resolve, 0));
+    });
+  }
+  return predicate();
+};
 
 const toast = () => host.querySelector(".companion-toast");
 const toastText = () => toast()?.textContent ?? "";
@@ -532,8 +553,7 @@ describe("inbox de festejos dentro del proveedor", () => {
         .querySelector("[data-testid=open]")!
         .dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
-    await flush();
-    await flush();
+    await flushUntil(() => host.querySelector(".sheet") !== null);
     expect(host.querySelector(".sheet")).not.toBeNull();
     expect(toast()).toBeNull();
     const receipts = await idb.listCompanionReceipts(

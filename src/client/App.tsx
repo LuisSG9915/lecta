@@ -17,6 +17,9 @@ const Journey = lazy(() => import("./components/Journey"));
 const Account = lazy(() => import("./components/Account"));
 const Calibration = lazy(() => import("./components/Calibration"));
 const RestoreBackupDialog = lazy(() => import("./components/RestoreBackupDialog"));
+// Modales que solo se montan a petición: fuera del arranque (Fase 3).
+const DiagnosticsModal = lazy(() => import("./components/DiagnosticsModal"));
+const LegalNotice = lazy(() => import("./components/LegalNotice"));
 import { CompanionProvider } from "./components/CompanionProvider";
 import Shelf, { type ShelfItem, type BookLike } from "./components/Shelf";
 import BookCover from "./components/BookCover";
@@ -76,8 +79,6 @@ import {
   setPendingChangesCount,
   setCollectionPendingCount,
 } from "./lib/sync-state";
-import DiagnosticsModal from "./components/DiagnosticsModal";
-import LegalNotice from "./components/LegalNotice";
 import { resetGameCache } from "./lib/game";
 import {
   clearLastUserId,
@@ -1502,14 +1503,18 @@ export default function App() {
       ) : null}
 
       {showDiagnostics ? (
-        <DiagnosticsModal onClose={() => setShowDiagnostics(false)} />
+        <Suspense fallback={null}>
+          <DiagnosticsModal onClose={() => setShowDiagnostics(false)} />
+        </Suspense>
       ) : null}
 
       {showLegal ? (
-        <LegalNotice
-          initialTab={showLegal}
-          onClose={() => setShowLegal(null)}
-        />
+        <Suspense fallback={null}>
+          <LegalNotice
+            initialTab={showLegal}
+            onClose={() => setShowLegal(null)}
+          />
+        </Suspense>
       ) : null}
     </div>
     </CompanionProvider>
