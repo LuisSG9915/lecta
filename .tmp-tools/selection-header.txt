@@ -1,0 +1,34 @@
+// Barra de acciones de selección del lector: volver a donde estaba, menú de
+// pasaje (tinta, cita, preguntar) y aviso de pulsación larga.
+//
+// Extraída de Reader.tsx (Fase 7). Solo pinta; la posición y el estado del menú
+// los calcula el lector.
+import { Icon } from "../Icon";
+import type { WordHit } from "../../lib/words";
+
+export type ReaderReturnPoint = {
+  sectionIndex: number;
+  ratio: number;
+  anchor?: string;
+};
+
+export type ReaderSelectionButton = {
+  x: number;
+  y: number;
+  placement: "top" | "bottom";
+  singleWordHit: WordHit | null;
+};
+
+export interface ReaderSelectionBarProps {
+  returnPoint: ReaderReturnPoint | null;
+  setReturnPoint: (value: ReaderReturnPoint | null) => void;
+  goBack: () => void;
+  selButton: ReaderSelectionButton | null;
+  setSelButton: (value: ReaderSelectionButton | null) => void;
+  openSelection: (hit: WordHit) => void;
+  savePassageSelection: (tone: "amber" | "salvia" | "dario") => void | Promise<unknown>;
+  openQuoteCardFromSelection: () => void;
+  askCatAboutSelection: () => void | Promise<unknown>;
+  setDeepModal: (value: boolean) => void;
+  showLongPressHint: boolean;
+}

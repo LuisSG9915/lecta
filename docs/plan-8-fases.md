@@ -692,14 +692,15 @@ Revertir. Los umbrales vuelven a los globales.
 hecha: el lector solo consume `ttsSnap` y unos pocos callbacks). Lo que queda no es «crear
 hooks»: es sacar un closure de 5 200 líneas donde casi todo bloque necesita 25–50 props.
 
-**Estado (2026-10-22): extracción en curso, no cerrada.** `Reader.tsx` pasó de **5 503 a 4 884
-líneas** en tres cortes, cada uno con gate y e2e verdes:
+**Estado (2026-10-22): extracción en curso, no cerrada.** `Reader.tsx` pasó de **5 503 a 4 764
+líneas** en cuatro cortes, cada uno con gate y e2e verdes:
 
 | Corte | Archivo nuevo | Líneas movidas | Props |
 |---|---|---|---|
 | 1 | `reader/ReaderSettingsSheet.tsx` | 297 | 24 |
 | 2 | `reader/ReaderContent.tsx` | 291 | 45 |
 | 3 | `reader/ReaderNotices.tsx` | 116 | 19 |
+| 4 | `reader/ReaderSelectionBar.tsx` | 133 | 11 |
 
 Al mover JSX conviene llevarse también las utilidades que solo usaba ese bloque
 (`focusBlock`, `tapZone`, `triggerHaptic`, `captureDbScope`, `saveSessionValue`,
@@ -710,12 +711,11 @@ Mapa medido de lo que queda:
 
 | Bloque | Líneas | Props | Riesgo |
 |---|---|---|---|
-| Acciones de selección (`returnPoint`/`selButton`) | 127 | ~30 | Medio |
 | Dock y sus modos (`SmartReaderDock` + estado) | 94 | ~49 | Medio |
 | Regla de enfoque + pausa 20-20-20 | 70 | ~15 | Bajo |
 | Bloque bilingüe | 41 | ~15 | Bajo |
 
-Sacar esos cuatro bloques deja el archivo en ~4 450. Para bajar de 3 500 hay que mover además
+Sacar los tres bloques que quedan deja el archivo en ~4 560. Para bajar de 3 500 hay que mover además
 lógica: el cargador de sección (`loadSection`, ~223 líneas), la paginación (`goPage` + métricas,
 ~200) y la selección (~150) a hooks con un objeto de contexto — o pasar a un `ctx` único
 compartido por los componentes extraídos, que ya es el patrón de `ReaderOverlays`. Es trabajo de
