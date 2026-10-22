@@ -1,0 +1,64 @@
+// Área de lectura del lector: contenido de la sección, resaltados, burbuja de
+// recapitulación, tarjeta de fin de capítulo y pie de navegación entre secciones.
+//
+// Extraída de Reader.tsx (Fase 7) sin cambiar comportamiento. Es presentacional:
+// recibe estado y callbacks, no posee estado propio.
+import type { MouseEvent, ReactNode, RefObject } from "react";
+import { ReaderRecapBubble } from "../ReaderRecapBubble";
+import type { ReaderSettings } from "../../lib/settings";
+import type { PageLayout } from "../../lib/pagination";
+import type { SceneReturnRecap } from "../../lib/page-recap";
+import type { WordHit } from "../../lib/words";
+
+export type ReaderSectionRow = { index: number; fragment?: string; label: string };
+
+export interface ReaderContentProps {
+  containerRef: RefObject<HTMLDivElement | null>;
+  viewportRef: RefObject<HTMLDivElement | null>;
+  settings: ReaderSettings;
+  state: "idle" | "opening" | "ready" | "error";
+  sectionIndex: number;
+  sectionTotal: number;
+  sectionWords: number;
+  sectionTitle: string;
+  sectionHasImages: boolean;
+  showChapterTitle: boolean;
+  strategyPaused: boolean;
+  page: number;
+  pageCount: number;
+  pageAdvance: number;
+  pageMetrics: PageLayout | null;
+  ttsSnap: { status: string };
+  selection: WordHit | null;
+  setSelection: (selection: WordHit | null) => void;
+  setBarsVisible: (visible: boolean) => void;
+  setShowLongPressHint: (show: boolean) => void;
+  showLongPressHint: boolean;
+  recapBubbleVisible: boolean;
+  recapBubbleLoading: boolean;
+  recapBubbleBullets: string[];
+  setRecapBubbleVisible: (visible: boolean) => void;
+  sceneRecap: SceneReturnRecap | null;
+  chapterEndCard: ReactNode;
+  nextRow: ReaderSectionRow | null;
+  prevRow: ReaderSectionRow | null;
+  language: string;
+  noteActivity: () => void;
+  navigate: (
+    kind: "chapter",
+    options: { index: number; restore?: { ratio: number } },
+  ) => void | Promise<unknown>;
+  goPage: (delta: number) => void;
+  navNextSection: (index: number, fragment?: string) => void;
+  navPrevSection: (index: number, fragment?: string) => void;
+  openSelection: (hit: WordHit) => void;
+  extractWordAtPoint: (event: MouseEvent<HTMLDivElement>) => WordHit | null;
+  handleContainerDoubleClick: (event: MouseEvent<HTMLDivElement>) => void;
+  handleTriggerReturnRecap: () => void | Promise<unknown>;
+  toggleParagraphTranslation: () => void;
+  lastPoint: RefObject<{ x: number; y: number } | null>;
+  lastTapRef: RefObject<{ time: number; element: HTMLElement | null }>;
+  lastPointerTypeRef: RefObject<string>;
+  pacerIndexRef: RefObject<number>;
+  onBack: () => void;
+}
