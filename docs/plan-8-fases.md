@@ -692,26 +692,34 @@ Revertir. Los umbrales vuelven a los globales.
 hecha: el lector solo consume `ttsSnap` y unos pocos callbacks). Lo que queda no es «crear
 hooks»: es sacar un closure de 5 200 líneas donde casi todo bloque necesita 25–50 props.
 
-**Estado (2026-10-22): extracción en curso, no cerrada.**
-`Reader.tsx` pasó de **5 503 a 5 227 líneas** con el primer corte: la hoja «Opciones de lectura»
-(297 líneas de JSX) vive ahora en `reader/ReaderSettingsSheet.tsx` con 24 props explícitas.
-Gate y e2e verdes tras el corte.
+**Estado (2026-10-22): extracción en curso, no cerrada.** `Reader.tsx` pasó de **5 503 a 4 981
+líneas** en dos cortes, cada uno con gate y e2e verdes:
 
-Mapa medido de lo que queda (líneas de JSX / props que necesitaría):
+| Corte | Archivo nuevo | Líneas movidas | Props |
+|---|---|---|---|
+| 1 | `reader/ReaderSettingsSheet.tsx` | 297 | 24 |
+| 2 | `reader/ReaderContent.tsx` | 291 | 45 |
+
+Al mover JSX conviene llevarse también las utilidades que solo usaba ese bloque
+(`focusBlock`, `tapZone`, `triggerHaptic`, `captureDbScope`, `saveSessionValue`,
+`saveCharacterMemoryEnabled`, `ReaderRecapBubble`): dejan de viajar como props. Ojo con la regla
+del compilador de React: un ref pasado como prop tiene que llamarse `…Ref` (`lastPointRef`).
+
+Mapa medido de lo que queda:
 
 | Bloque | Líneas | Props | Riesgo |
 |---|---|---|---|
-| Área de lectura (`reader-body`, 4126–4416) | 291 | ~52 | Medio |
+| Avisos flotantes (retomar, prep, calibración, fatiga) | 116 | ~20 | Bajo |
 | Acciones de selección (`returnPoint`/`selButton`) | 127 | ~30 | Medio |
-| Avisos flotantes (retomar, prep, calibración, fatiga) | 121 | ~25 | Bajo |
 | Dock y sus modos (`SmartReaderDock` + estado) | 94 | ~49 | Medio |
 | Regla de enfoque + pausa 20-20-20 | 70 | ~15 | Bajo |
 | Bloque bilingüe | 41 | ~15 | Bajo |
 
-Sacar esos seis bloques deja el archivo en ~4 480. Para bajar de 3 500 hay que mover además
+Sacar esos cinco bloques deja el archivo en ~4 530. Para bajar de 3 500 hay que mover además
 lógica: el cargador de sección (`loadSection`, ~223 líneas), la paginación (`goPage` + métricas,
-~200) y la selección (~150) a hooks con un objeto de contexto. Es un trabajo de varias sesiones:
-no se fuerza en una sola pasada.
+~200) y la selección (~150) a hooks con un objeto de contexto — o pasar a un `ctx` único
+compartido por los componentes extraídos, que ya es el patrón de `ReaderOverlays`. Es trabajo de
+varias sesiones: no se fuerza en una sola pasada.
 
 ### 10.1 Invariantes
 
