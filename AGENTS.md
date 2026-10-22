@@ -18,6 +18,14 @@
 - `pnpm build` elimina `dist/lecta/.dev.vars` (secretos) al terminar. Para probar
   auth, sync o IA en local con `vite preview`, usa `pnpm preview:local`
   (`LECTA_KEEP_DEV_VARS=1`): conserva ese archivo solo en tu máquina.
+- **CockroachDB serializa los cambios de esquema y un job `SCHEMA CHANGE GC`
+  ocupa la cola mientras espera MVCC GC.** El TTL de la base es
+  `gc.ttlseconds = 4500` (75 min): tras un `DROP INDEX`/`DROP TABLE`, cualquier
+  `CREATE INDEX` o `ALTER TABLE` se queda colgado hasta que expira. Verificado el
+  2026-10-22 con migraciones de 20 s bloqueadas más de 5 min. Reglas: no crear
+  índices de prueba y borrarlos el mismo día de una migración; si una migración
+  se cuelga, mirar `SHOW JOBS` antes de tocar nada (un GC en `waiting for MVCC GC`
+  es la causa, y ni `CANCEL JOB` ni `PAUSE JOB` lo liberan).
 - `pnpm model:upload` sube el modelo de Kitten TTS a R2 (`models/kitten-tts-quantized.onnx`).
   Requiere credenciales de escritura de R2 (`wrangler login` o `CLOUDFLARE_API_TOKEN`).
   `pnpm model:upload --verify` exige `MODEL_SHA256` y aborta si falta o no coincide;
@@ -85,11 +93,13 @@
   `pnpm dev` debe reiniciarse tras cambiar `.env` (las vars se leen al arrancar).
 - `lecta_dev` arrancó con esquema + auth + seed, sin usuarios: en dev hay que
   registrarse de nuevo (el correo es el mismo dominio, es solo otra base).
-- `lecta` (prod) tiene aplicadas 001–010 (verificado el 2026-10-22; la
-  `010_kindle_link_codes.sql` ya había corrido). Pendientes:
-  `011_user_books.sql`, `012_sync_incremental_indexes.sql` y
-  `013_knowledge_sync_order_index.sql` (las cuatro `lecta_user_companion_*`
-  con FK CASCADE a `user`).
+- `lecta` (prod) tiene aplicadas 001–011 (verificado el 2026-10-22; 011 se aplicó
+  ese día y el worker quedó desplegado con `user_books`). **Pendientes 012 y 013**:
+  sus cinco índices no pudieron crearse porque `DROP INDEX` + `gc.ttlseconds=4500`
+  bloquean la cola de cambios de esquema ~75 min. Tres de los cinco índices de 012
+  (words, knowledge, annotations) ya existen; faltan el de `lecta_user_activity`,
+  el de `lecta_user_reviews` y el de 013. Las seis tablas de sync quedaron con
+  `schema_locked=false` hasta cerrar esa migración.
 - `defaultdb` pertenece a otro proyecto (POS): no tocar sus tablas.
 - EPUBs de prueba con copyright están en `.gitignore` (`/src/*.epub`,
   `/fixtures/*.epub` salvo `minimal.epub`).

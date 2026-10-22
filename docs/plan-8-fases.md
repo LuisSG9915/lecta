@@ -196,6 +196,12 @@ pnpm db:migrate --prod
   bloquear. Lo dice el propio script; no lo saltes.
 - El migrador compara `current_database()` con `LECTA_MIGRATE_TARGET=lecta` y **se niega** si la
   URL apunta a otro sitio. Ese guard es la red de seguridad: si salta, no lo rodees.
+- **Si un `CREATE INDEX` se cuelga, no es la tabla: es la cola.** Un job `SCHEMA CHANGE GC` de
+  cualquier `DROP INDEX`/`DROP TABLE` reciente ocupa la cola hasta que pasa `gc.ttlseconds`
+  (4500 s = 75 min en esta base) y bloquea todos los cambios de esquema. Comprobación:
+  `show jobs` → si hay un `SCHEMA CHANGE GC` en `waiting for MVCC GC`, espera; ni `CANCEL JOB`
+  ni `PAUSE JOB` lo liberan. Lección del 2026-10-22: no crees índices de prueba y los borres el
+  mismo día de una migración.
 
 ### 4.4 Desplegar
 
