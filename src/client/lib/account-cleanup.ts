@@ -1,3 +1,6 @@
+import { clearSyncCursors } from "./sync-cursors";
+export { clearSyncCursors };
+
 // Clave del marcador local que recuerda que se pidió borrar la cuenta.
 export const PENDING_DELETE_KEY = "lecta:pending-delete";
 

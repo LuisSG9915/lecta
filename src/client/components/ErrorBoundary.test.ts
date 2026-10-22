@@ -90,6 +90,9 @@ describe("ErrorBoundary", () => {
     expect(logs[0].message).toBe("Error de prueba");
     expect(typeof logs[0].timestamp).toBe("number");
     expect(typeof logs[0].url).toBe("string");
+    expect(logs[0].url).toBe(window.location.pathname);
+    expect(logs[0].url).not.toContain("http");
+    expect(logs[0].url).not.toContain(window.location.origin);
     expect(logs[0].stack).toBeDefined();
   });
 
@@ -151,7 +154,8 @@ describe("ErrorBoundary", () => {
       const last = logs[logs.length - 1];
       expect(last.url).not.toContain("token=secret-token-123");
       expect(last.url).not.toContain("#frag");
-      expect(last.url).toBe(`${window.location.origin}/reader`);
+      expect(last.url).not.toContain(window.location.origin);
+      expect(last.url).toBe("/reader");
     } finally {
       window.history.pushState({}, "", originalHref);
     }

@@ -13,6 +13,7 @@ import {
   type WordMeaning,
 } from "./idb";
 import { accountFetch } from "./account-fetch";
+import { getSyncCursor, setSyncCursor } from "./sync-cursors";
 
 const stamp = (word: SavedWord) => word.updatedAt ?? word.savedAt;
 const LAST_SYNC_KEY = "vocabLastSyncAt";
@@ -70,8 +71,14 @@ export async function syncSavedWords(scope?: DbScope) {
   const languages = [...new Set(localAll.map((word) => word.language || "es"))];
   if (!languages.length) languages.push("es");
 
+  const cursor = getSyncCursor(bound.userId, "vocab");
+  // Si la base local está vacía, forzar since = 0 para descargar todo el cuaderno
+  const effectiveSince = localAll.length > 0 ? cursor : 0;
+
   let pulled = 0;
   let allOk = true;
+  let maxUpdated = effectiveSince;
+
   for (const language of languages) {
     if (!isDbScopeActive(bound)) {
       allOk = false;
@@ -79,14 +86,17 @@ export async function syncSavedWords(scope?: DbScope) {
     }
     let remote: SavedWord[] | null = null;
     try {
-      const response = await accountFetch(
-        `/api/vocab?lang=${encodeURIComponent(language)}`,
-        undefined,
-        bound,
-      );
+      const url =
+        effectiveSince > 0
+          ? `/api/vocab?lang=${encodeURIComponent(language)}&since=${effectiveSince}`
+          : `/api/vocab?lang=${encodeURIComponent(language)}`;
+      const response = await accountFetch(url, undefined, bound);
       if (response.ok) {
-        const data = (await response.json()) as { words?: SavedWord[] };
+        const data = (await response.json()) as { words?: SavedWord[]; serverTime?: number };
         remote = data.words ?? [];
+        if (data.serverTime && data.serverTime > maxUpdated) {
+          maxUpdated = data.serverTime;
+        }
       }
     } catch {
       remote = null;
@@ -101,8 +111,10 @@ export async function syncSavedWords(scope?: DbScope) {
     const remoteByKey = new Map(remote.map((word) => [word.key, word]));
 
     for (const word of remote) {
+      const wordStamp = stamp(word);
+      if (wordStamp > maxUpdated) maxUpdated = wordStamp;
       const existing = localByKey.get(word.key);
-      if (!existing || stamp(word) > stamp(existing)) {
+      if (!existing || wordStamp > stamp(existing)) {
         // Aterriza en la base dueña del contexto aunque la activa ya
         // sea otra: la respuesta traía datos de esa cuenta.
         await putSavedWord(word, bound);
@@ -111,15 +123,22 @@ export async function syncSavedWords(scope?: DbScope) {
     }
 
     const toPush = local.filter((word) => {
+      const wordStamp = stamp(word);
       const remoteWord = remoteByKey.get(word.key);
-      return !remoteWord || stamp(word) > stamp(remoteWord);
+      if (effectiveSince > 0) {
+        return wordStamp > effectiveSince && (!remoteWord || wordStamp > stamp(remoteWord));
+      }
+      return !remoteWord || wordStamp > stamp(remoteWord);
     });
     if (!(await pushWordsToServer(toPush, bound))) allOk = false;
   }
 
   // Solo sellamos la fecha cuando todos los idiomas sincronizaron:
   // una sincronización parcial no cuenta como «al día».
-  if (allOk) await saveSessionValue(LAST_SYNC_KEY, String(Date.now()), bound);
+  if (allOk) {
+    setSyncCursor(bound.userId, "vocab", maxUpdated > 0 ? maxUpdated : Date.now());
+    await saveSessionValue(LAST_SYNC_KEY, String(Date.now()), bound);
+  }
   return allOk ? pulled : null;
 }
 

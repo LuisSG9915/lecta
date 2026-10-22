@@ -123,6 +123,39 @@ describe("KittenTTS Network, Cache & Storage Isolation (Fase 3)", () => {
       expect(await kittenTtsEngine.isModelDownloaded(KITTEN_MODEL_URL)).toBe(true);
     });
 
+    it("descarga directamente desde el origen primario sin consultar Hugging Face cuando el modelo existe", async () => {
+      const validSize = 12 * 1024 * 1024;
+      const bigChunk = new Uint8Array(validSize);
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(bigChunk);
+          controller.close();
+        },
+      });
+
+      const fetchMock = vi.fn().mockImplementation((url: string) => {
+        if (url === KITTEN_MODEL_URL) {
+          return Promise.resolve(
+            new Response(stream, {
+              status: 200,
+              headers: {
+                "Content-Type": "application/octet-stream",
+                "Content-Length": String(validSize),
+              },
+            }),
+          );
+        }
+        return Promise.reject(new Error("Should not be called"));
+      });
+
+      vi.stubGlobal("fetch", fetchMock);
+
+      await kittenTtsEngine.downloadModelWithProgress(undefined, KITTEN_MODEL_URL);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(fetchMock).toHaveBeenCalledWith(KITTEN_MODEL_URL);
+      expect(fakeCacheStorage.has(KITTEN_MODEL_URL)).toBe(true);
+    });
+
     it("hace fallback automático al repositorio oficial en Hugging Face si modelUrl da 404", async () => {
       const validSize = 12 * 1024 * 1024;
       const bigChunk = new Uint8Array(validSize);

@@ -11,7 +11,7 @@ test.describe("Lecta — 9 Recorridos Críticos E2E", () => {
     await page.goto("/");
   });
 
-  test("Recorrido 1: Primera visita limpia (sin emojis) y apertura de EPUB real", async ({
+  test("Recorrido 1: Apertura de EPUB real y paginación [webkit]", async ({
     page,
   }) => {
     // 1. Onboarding limpio sin emojis
@@ -41,6 +41,14 @@ test.describe("Lecta — 9 Recorridos Críticos E2E", () => {
     const bookContent = page.locator(".book-content");
     await expect(bookContent).toBeVisible();
     await expect(bookContent).toContainText("Capítulo uno");
+
+    // 4. Paginación hacia el siguiente capítulo
+    const nextBtn = page.locator(
+      'button.page-nav-btn[aria-label="Página siguiente"], button.reader-end-link--next, button:has-text("Siguiente")',
+    ).first();
+    await nextBtn.scrollIntoViewIfNeeded().catch(() => {});
+    await nextBtn.click();
+    await expect(bookContent).toContainText("Capítulo dos");
   });
 
   test("Recorrido 2: Paginación hacia adelante/atrás y persistencia de la posición de lectura al recargar", async ({
@@ -53,8 +61,11 @@ test.describe("Lecta — 9 Recorridos Críticos E2E", () => {
     await expect(reader).toBeVisible({ timeout: 10_000 });
     await expect(page.locator(".book-content")).toContainText("Capítulo uno");
 
-    // Avanzar de capítulo usando la tecla Flecha Derecha o botón de navegación
-    const nextBtn = page.locator('button.page-nav-btn[aria-label="Página siguiente"]');
+    // Avanzar de capítulo usando botón de navegación o flecha
+    const nextBtn = page.locator(
+      'button.page-nav-btn[aria-label="Página siguiente"], button.reader-end-link--next, button:has-text("Capítulo dos"), button:has-text("Siguiente")',
+    ).first();
+    await nextBtn.scrollIntoViewIfNeeded().catch(() => {});
     if (await nextBtn.isVisible().catch(() => false)) {
       await nextBtn.click();
     } else {
@@ -65,8 +76,33 @@ test.describe("Lecta — 9 Recorridos Críticos E2E", () => {
     const bookContent = page.locator(".book-content");
     await expect(bookContent).toContainText("Capítulo dos", { timeout: 8_000 });
 
-    // Dar tiempo para que el debounce de persistencia (400ms) guarde en IndexedDB
-    await page.waitForTimeout(600);
+    // Esperar a que el libro y la posición queden asentados en IndexedDB
+    await page.waitForFunction(async () => {
+      return new Promise<boolean>((resolve) => {
+        const req = window.indexedDB.open("lecta");
+        req.onsuccess = () => {
+          const db = req.result;
+          if (!db.objectStoreNames.contains("books")) {
+            db.close();
+            return resolve(false);
+          }
+          const tx = db.transaction("books", "readonly");
+          const countReq = tx.objectStore("books").count();
+          countReq.onsuccess = () => {
+            const count = countReq.result;
+            db.close();
+            resolve(count > 0);
+          };
+          countReq.onerror = () => {
+            db.close();
+            resolve(false);
+          };
+        };
+        req.onerror = () => resolve(false);
+      });
+    }, { timeout: 10_000 }).catch(() => {});
+
+    await page.waitForTimeout(500);
 
     // Recargar la página
     await page.reload();
@@ -85,7 +121,7 @@ test.describe("Lecta — 9 Recorridos Críticos E2E", () => {
     await expect(page.locator(".book-content")).toContainText("Capítulo dos");
   });
 
-  test("Recorrido 3: Tocar una palabra en el libro, abrir WordPanel y guardarla en el vocabulario", async ({
+  test("Recorrido 3: Tocar una palabra en el libro, abrir WordPanel y guardarla en el vocabulario [webkit]", async ({
     page,
   }) => {
     // Abrir libro minimal
@@ -132,7 +168,7 @@ test.describe("Lecta — 9 Recorridos Críticos E2E", () => {
     await expect(wordDialog.locator(".word-panel-saved-badge")).toBeVisible({ timeout: 5_000 });
   });
 
-  test("Recorrido 4: Simular modo offline (context.setOffline(true)), recargar la PWA y seguir leyendo el libro guardado", async ({
+  test("Recorrido 4: Modo offline (CacheStorage / IndexedDB) y verificación de layout móvil (dock + barra de estado de sync sin solapamiento) [webkit]", async ({
     page,
     context,
   }) => {
@@ -142,6 +178,55 @@ test.describe("Lecta — 9 Recorridos Críticos E2E", () => {
     const reader = page.locator(".reader");
     await expect(reader).toBeVisible({ timeout: 10_000 });
     await expect(page.locator(".book-content")).toContainText("Capítulo uno");
+
+    // Verificación de geometría en Reader antes de offline:
+    // 1. El dock inteligente inferior debe estar visible dentro de los límites del viewport
+    const dock = page.locator(".smart-reader-dock, .reader-smart-dock");
+    await expect(dock).toBeVisible({ timeout: 5_000 });
+    const dockBox = await dock.boundingBox();
+    expect(dockBox).not.toBeNull();
+
+    const viewport = page.viewportSize();
+    if (viewport && dockBox) {
+      // El dock se ubica en la parte inferior del viewport
+      expect(dockBox.y + dockBox.height).toBeLessThanOrEqual(viewport.height + 4);
+      expect(dockBox.y).toBeGreaterThan(viewport.height * 0.5);
+
+      // El área de lectura tiene padding inferior para evitar solapamiento visual con el dock
+      const bookPaddingBottom = await page.$eval(".book-content", (el) =>
+        parseFloat(window.getComputedStyle(el).paddingBottom || "0"),
+      );
+      expect(bookPaddingBottom).toBeGreaterThanOrEqual(40);
+    }
+
+    // Regla Zero-Friction: en Reader no debe coexistir ninguna otra barra inferior (ej. app-nav)
+    await expect(page.locator(".app-nav")).toHaveCount(0);
+
+    // Esperar a que el libro quede asentado en IndexedDB antes de recargar
+    await page.waitForFunction(async () => {
+      return new Promise<boolean>((resolve) => {
+        const req = window.indexedDB.open("lecta");
+        req.onsuccess = () => {
+          const db = req.result;
+          if (!db.objectStoreNames.contains("books")) {
+            db.close();
+            return resolve(false);
+          }
+          const tx = db.transaction("books", "readonly");
+          const countReq = tx.objectStore("books").count();
+          countReq.onsuccess = () => {
+            const count = countReq.result;
+            db.close();
+            resolve(count > 0);
+          };
+          countReq.onerror = () => {
+            db.close();
+            resolve(false);
+          };
+        };
+        req.onerror = () => resolve(false);
+      });
+    }, { timeout: 10_000 });
 
     // Esperar a que el Service Worker tome el control de la página
     await page.evaluate(async () => {
@@ -173,6 +258,19 @@ test.describe("Lecta — 9 Recorridos Críticos E2E", () => {
     // Recargar la PWA sin conexión
     await page.reload({ waitUntil: "domcontentloaded" });
 
+    // En la estantería móvil, verificar la posición del indicador de sincronización / estado offline
+    const syncIndicator = page.locator(".app-nav-sync-indicator, .sync-indicator").first();
+    if (await syncIndicator.isVisible()) {
+      const syncBox = await syncIndicator.boundingBox();
+      expect(syncBox).not.toBeNull();
+      if (syncBox && viewport) {
+        // La barra de sincronización se sitúa adecuadamente sin invadir el centro de la pantalla
+        expect(syncBox.height).toBeGreaterThan(0);
+        expect(syncBox.width).toBeGreaterThan(0);
+        expect(syncBox.y + syncBox.height).toBeLessThanOrEqual(viewport.height + 4);
+      }
+    }
+
     // Reanudar la lectura desde la estantería o mesa de lectura si recarga en shelf
     const resumeBtn = page
       .locator(
@@ -184,6 +282,11 @@ test.describe("Lecta — 9 Recorridos Críticos E2E", () => {
 
     await expect(reader).toBeVisible({ timeout: 10_000 });
     await expect(page.locator(".book-content")).toBeVisible();
+
+    // Verificación post-reanudación: el dock inteligente sigue posicionado sin solapar y sin duplicar barras
+    const resumedDock = page.locator(".smart-reader-dock, .reader-smart-dock");
+    await expect(resumedDock).toBeVisible({ timeout: 5_000 });
+    await expect(page.locator(".app-nav")).toHaveCount(0);
 
     // Paginación sigue funcionando offline desde IndexedDB
     await page.keyboard.press("ArrowRight");
@@ -509,10 +612,11 @@ test.describe("Lecta — 9 Recorridos Críticos E2E", () => {
     // 3. Auditoría de accesibilidad con Axe en la Estantería
     const shelfAxe = await new AxeBuilder({ page })
       .withTags(["wcag2a", "wcag2aa"])
-      .disableRules(["color-contrast"])
       .analyze();
-    const criticalShelfViolations = shelfAxe.violations.filter((v) => v.impact === "critical");
-    expect(criticalShelfViolations).toEqual([]);
+    const blockingShelfViolations = shelfAxe.violations.filter(
+      (v) => v.impact === "critical" || v.impact === "serious",
+    );
+    expect(blockingShelfViolations).toEqual([]);
 
     // 4. Abrir libro minimal y ejecutar auditoría de accesibilidad en el Lector
     const fileInput = page.locator('input[type="file"][accept*="epub"]');
@@ -521,9 +625,10 @@ test.describe("Lecta — 9 Recorridos Críticos E2E", () => {
 
     const readerAxe = await new AxeBuilder({ page })
       .withTags(["wcag2a", "wcag2aa"])
-      .disableRules(["color-contrast"])
       .analyze();
-    const criticalReaderViolations = readerAxe.violations.filter((v) => v.impact === "critical");
-    expect(criticalReaderViolations).toEqual([]);
+    const blockingReaderViolations = readerAxe.violations.filter(
+      (v) => v.impact === "critical" || v.impact === "serious",
+    );
+    expect(blockingReaderViolations).toEqual([]);
   });
 });

@@ -72,7 +72,33 @@ describe("sync-state", () => {
 
     const state = getSyncState();
     expect(isSyncInError(state)).toBe(false);
+    expect(state.pendingChangesCount).toBe(0);
     expect(getSyncStatusLabel(state, true)).toBe("Sincronizado");
+  });
+
+  it("contabiliza pendientes por colección individual e impide estado 'Sincronizado'", () => {
+    const now = 1700000000000;
+    const collections: SyncCollection[] = [
+      "words",
+      "positions",
+      "annotations",
+      "knowledge",
+      "activity",
+      "reviews",
+      "companion",
+    ];
+    for (const c of collections) {
+      recordCollectionSyncSuccess(c, now);
+    }
+    expect(getSyncStatusLabel(getSyncState(), true)).toBe("Sincronizado");
+
+    // Añadir 2 palabras pendientes
+    setPendingChangesCount(2);
+    const state = getSyncState();
+    expect(state.pendingChangesCount).toBe(2);
+    expect(getSyncStatusLabel(state, true)).toBe(
+      "Guardado en este dispositivo · pendiente de sincronizar",
+    );
   });
 
   it("muestra 'Guardado en este dispositivo · pendiente de sincronizar' cuando hay cambios en cola", () => {

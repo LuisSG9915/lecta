@@ -72,7 +72,7 @@ export {
   buildPageRecapPrompt,
   buildCharacterCardsPrompt,
 } from "./ai";
-import { createAuth } from "./auth";
+import { createScopedAuth, closePoolSafe } from "./auth";
 import { isStopword } from "../shared/stopwords";
 import { hasUsableDefinition } from "../shared/lexicon";
 import { isFsrsCardShape } from "../shared/reading-data";
@@ -82,7 +82,7 @@ import {
 } from "../shared/calibration-bank";
 import { checkEpubHeader, checkEpubBuffer, EPUB_MAX_BYTES } from "../shared/epub-check";
 import { extractEpubMeta } from "../shared/epub-meta";
-import { getSession, getSessionUser } from "./session";
+import { getSession, getSessionUser, SessionInfraError } from "./session";
 import { readingData } from "./reading-data";
 import { companion } from "./companion";
 import { catalog } from "./catalog";
@@ -95,6 +95,24 @@ import {
 } from "./kindle/routes";
 
 export const app = new Hono<{ Bindings: WorkerEnv }>();
+
+app.onError((err, c) => {
+  if (
+    err instanceof SessionInfraError ||
+    (err as { code?: string })?.code === "DB_UNAVAILABLE"
+  ) {
+    return c.json(
+      {
+        error:
+          "Base de datos temporalmente no disponible. Tus datos locales están a salvo.",
+        code: "DB_UNAVAILABLE",
+      },
+      503,
+    );
+  }
+  console.error("Unhandled worker error:", err);
+  return c.json({ error: "Internal Server Error" }, 500);
+});
 
 // ---------- Caché Deduplicado de IA por Hash SHA-256 (LRU 300) ----------
 
@@ -206,11 +224,47 @@ app.post("/kindle/*", async (context) => {
 
 app.get("/api/health", (context) => context.json({ status: "ok" }));
 
-app.on(["GET", "POST"], "/api/auth/*", (context) => {
+app.get("/models/:filename", async (c) => {
+  const filename = c.req.param("filename");
+  if (!filename || filename.includes("..") || filename.includes("/")) {
+    return c.json({ error: "Invalid model filename" }, 400);
+  }
+
+  const modelsBucket = c.env?.MODELS_BUCKET ?? c.env?.BOOKS_BUCKET ?? c.env?.BOOKS;
+  if (modelsBucket) {
+    const object = await modelsBucket.get(`models/${filename}`);
+    if (object) {
+      const headers = new Headers();
+      headers.set("Content-Type", "application/octet-stream");
+      headers.set("Cache-Control", "public, max-age=31536000, immutable");
+      if (object.size !== undefined) {
+        headers.set("Content-Length", String(object.size));
+      }
+      return new Response(object.body, { headers });
+    }
+  }
+
+  if (c.env?.TTS_MODEL_CDN_URL) {
+    const cdnUrl = c.env.TTS_MODEL_CDN_URL;
+    const targetUrl = cdnUrl.endsWith(".onnx")
+      ? cdnUrl
+      : `${cdnUrl.replace(/\/+$/, "")}/${encodeURIComponent(filename)}`;
+    return c.redirect(targetUrl, 302);
+  }
+
+  return c.json({ error: "Model not found on primary origin" }, 404);
+});
+
+app.on(["GET", "POST"], "/api/auth/*", async (context) => {
   if (!getConnectionString(context.env))
     return context.json({ error: "La autenticación no está configurada." }, 503);
   const baseURL = context.env.BETTER_AUTH_URL ?? new URL(context.req.url).origin;
-  return createAuth(context.env, baseURL).handler(context.req.raw);
+  const { auth, closePool } = createScopedAuth(context.env, baseURL);
+  try {
+    return await auth.handler(context.req.raw);
+  } finally {
+    await closePoolSafe(closePool, context);
+  }
 });
 
 app.get("/api/lexicon/lookup", async (context) => {
@@ -1662,15 +1716,38 @@ const cleanText = (value: unknown, max: number) =>
 const cleanNumber = (value: unknown) =>
   typeof value === "number" && Number.isFinite(value) ? value : undefined;
 
+function parseSinceParam(param?: string | null): number {
+  if (!param) return 0;
+  const num = Number(param);
+  if (Number.isFinite(num) && num > 0) return num;
+  const parsedDate = Date.parse(param);
+  if (!Number.isNaN(parsedDate) && parsedDate > 0) return parsedDate;
+  return 0;
+}
+
 app.get("/api/vocab", async (context) => {
   if (!getConnectionString(context.env))
     return context.json({ error: "El vocabulario no está configurado." }, 503);
   const session = await getSession(context);
   if (!session) return context.json({ error: "Inicia sesión para ver tu vocabulario." }, 401);
   const language = context.req.query("lang")?.trim() || "es";
+  const since = parseSinceParam(context.req.query("since"));
 
-  const rows = await withClient(context.env, (client) =>
-    client
+  const rows = await withClient(context.env, (client) => {
+    if (since > 0) {
+      return client
+        .query(
+          `SELECT language, form, lemma, pos, meaning, context, book_hash AS "bookHash",
+                  sense_entry_id AS "senseEntryId", sense_order AS "senseOrder",
+                  card, saved_at AS "savedAt", updated_at AS "updatedAt", deleted
+           FROM lecta_user_words
+           WHERE user_id = $1 AND language = $2 AND updated_at > $3
+           ORDER BY updated_at ASC`,
+          [session.user.id, language, since],
+        )
+        .then((result) => result.rows);
+    }
+    return client
       .query(
         `SELECT language, form, lemma, pos, meaning, context, book_hash AS "bookHash",
                 sense_entry_id AS "senseEntryId", sense_order AS "senseOrder",
@@ -1678,8 +1755,8 @@ app.get("/api/vocab", async (context) => {
          FROM lecta_user_words WHERE user_id = $1 AND language = $2`,
         [session.user.id, language],
       )
-      .then((result) => result.rows),
-  );
+      .then((result) => result.rows);
+  });
   if (rows === undefined)
     return context.json({ error: "El vocabulario no está configurado." }, 503);
   return context.json({
@@ -1693,6 +1770,7 @@ app.get("/api/vocab", async (context) => {
       updatedAt: Number(row.updatedAt),
       card: typeof row.card === "string" ? JSON.parse(row.card) : row.card,
     })),
+    serverTime: Date.now(),
   });
 });
 

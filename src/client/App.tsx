@@ -16,6 +16,7 @@ const Vocabulary = lazy(() => import("./components/Vocabulary"));
 const Journey = lazy(() => import("./components/Journey"));
 const Account = lazy(() => import("./components/Account"));
 const Calibration = lazy(() => import("./components/Calibration"));
+const RestoreBackupDialog = lazy(() => import("./components/RestoreBackupDialog"));
 import { CompanionProvider } from "./components/CompanionProvider";
 import Shelf, { type ShelfItem, type BookLike } from "./components/Shelf";
 import BookCover from "./components/BookCover";
@@ -31,7 +32,7 @@ import {
   saveTheme,
   type ThemeChoice,
 } from "./lib/settings";
-import { decidePendingDelete, PENDING_DELETE_KEY } from "./lib/account-cleanup";
+import { decidePendingDelete, PENDING_DELETE_KEY, clearSyncCursors } from "./lib/account-cleanup";
 import { pushOverlay, type OverlayHandle } from "./lib/history";
 import { sha256Hex } from "./lib/hash";
 import { downloadCatalogEpub, type CatalogBook } from "./lib/catalog";
@@ -70,13 +71,10 @@ import {
   type StoredBook,
 } from "./lib/idb";
 import {
-  downloadBackup,
-} from "./lib/export";
-import RestoreBackupDialog from "./components/RestoreBackupDialog";
-import {
   recordCollectionSyncError,
   recordCollectionSyncSuccess,
   setPendingChangesCount,
+  setCollectionPendingCount,
 } from "./lib/sync-state";
 import DiagnosticsModal from "./components/DiagnosticsModal";
 import LegalNotice from "./components/LegalNotice";
@@ -703,6 +701,7 @@ export default function App() {
         });
         if (decision.clearMarker) localStorage.removeItem(PENDING_DELETE_KEY);
         if (decision.cleanupUserId) {
+          clearSyncCursors(decision.cleanupUserId);
           const removed = await deleteAccountDb(decision.cleanupUserId);
           if (!cancelled) {
             if (removed) {
@@ -827,7 +826,21 @@ export default function App() {
       // pendiente: las subidas corren detrás — son archivos completos
       // y en datos móviles pueden tardar, no deben retener la lista.
       if (!cancelled) void refreshLibrary();
-      await runBookQueue(scope).catch(() => 0);
+      await runBookQueue(scope)
+        .then(() => {
+          setCollectionPendingCount("books", 0);
+        })
+        .catch(() => {
+          setCollectionPendingCount("books", 1);
+        })
+        .finally(async () => {
+          try {
+            const bookOps = await listBookOps(scope).catch(() => []);
+            setPendingChangesCount(bookOps.length + getPendingPositionsCount());
+          } catch {
+            // Ignore
+          }
+        });
       void pullMissingUserBooksFromCloud().then((downloaded) => {
         if (downloaded > 0 && !cancelled) void refreshLibrary();
       }).catch(() => null);
@@ -875,8 +888,13 @@ export default function App() {
         .then(() => recordCollectionSyncSuccess("positions"))
         .catch((e) => recordCollectionSyncError("positions", e));
       void runBookQueue(scope)
-        .then(() => refreshLibrary())
-        .catch(() => undefined)
+        .then(() => {
+          setCollectionPendingCount("books", 0);
+          return refreshLibrary();
+        })
+        .catch(() => {
+          setCollectionPendingCount("books", 1);
+        })
         .finally(async () => {
           try {
             const bookOps = await listBookOps(scope).catch(() => []);
@@ -919,11 +937,12 @@ export default function App() {
         metaVersion: quickMeta ? 1 : undefined,
       };
       openBook({ hash, name: file.name, file }, initialMeta);
+      const bookBlob = new Blob([fileBytes], { type: "application/epub+zip" });
       void saveBook(
         {
           hash,
           name: file.name,
-          data: file,
+          data: bookBlob,
           addedAt: Date.now(),
           ...initialMeta,
         },
@@ -954,7 +973,9 @@ export default function App() {
             .then((m) => m.analyzeStoredBook(hash, scope))
             .catch(() => null);
         })
-        .catch(() => setError("El libro se abrió, pero no se pudo guardar en este dispositivo."));
+        .catch(() => {
+          setError("El libro se abrió, pero no se pudo guardar en este dispositivo.");
+        });
       // La subida pasa por la cola persistente: sin conexión queda
       // encolada y la tarjeta se marca «Pendiente de subir».
       if (sessionUserId) {
@@ -1260,29 +1281,33 @@ export default function App() {
                         type="button"
                         className="btn"
                         onClick={() => {
-                          void downloadBackup().catch(() => {
-                            setError("No se pudo preparar el respaldo de emergencia.");
-                          });
+                          void import("./lib/export")
+                            .then(({ downloadBackup }) => downloadBackup())
+                            .catch(() => {
+                              setError("No se pudo preparar el respaldo de emergencia.");
+                            });
                         }}
                       >
                         Exportar respaldo de emergencia
                       </button>
-                      <RestoreBackupDialog
-                        onRestored={async () => {
-                          setDbStorageError(null);
-                          setMessage("Respaldo restaurado correctamente.");
-                          await refreshLibrary();
-                        }}
-                        trigger={(openPicker) => (
-                          <button
-                            type="button"
-                            className="btn"
-                            onClick={openPicker}
-                          >
-                            Restaurar respaldo
-                          </button>
-                        )}
-                      />
+                      <Suspense fallback={null}>
+                        <RestoreBackupDialog
+                          onRestored={async () => {
+                            setDbStorageError(null);
+                            setMessage("Respaldo restaurado correctamente.");
+                            await refreshLibrary();
+                          }}
+                          trigger={(openPicker) => (
+                            <button
+                              type="button"
+                              className="btn"
+                              onClick={openPicker}
+                            >
+                              Restaurar respaldo
+                            </button>
+                          )}
+                        />
+                      </Suspense>
                       <button
                         type="button"
                         className="btn--quiet"

@@ -8,10 +8,11 @@ import {
 } from "./idb";
 import { pushKnowledgeToServer } from "./reading-sync";
 import { pushWordsToServer } from "./vocab";
-import type {
-  CalibrationBankItem,
-  CalibrationLanguage,
-  CalibrationProfile,
+import {
+  getCalibrationBankByLang,
+  type CalibrationBankItem,
+  type CalibrationLanguage,
+  type CalibrationProfile,
 } from "../../shared/calibration-bank";
 import {
   loadUserLanguageProfile,
@@ -19,31 +20,12 @@ import {
   saveUserTheta,
   type UserLanguageProfile,
 } from "./profile-models";
+import {
+  itemFisherInformation,
+  itemResponseProbability,
+} from "../../shared/irt";
 
-/**
- * Probabilidad de respuesta según el modelo logístico 2PL:
- * P(conoce | theta, b_i) = 1 / (1 + exp(-alpha * (theta - b_i)))
- */
-export function itemResponseProbability(
-  theta: number,
-  difficulty: number,
-  discrimination = 1.35,
-): number {
-  return 1 / (1 + Math.exp(-discrimination * (theta - difficulty)));
-}
-
-/**
- * Información de Fisher para un ítem dicotómico 2PL:
- * I_i(theta) = alpha^2 * P * (1 - P)
- */
-export function itemFisherInformation(
-  theta: number,
-  difficulty: number,
-  discrimination = 1.35,
-): number {
-  const p = itemResponseProbability(theta, difficulty, discrimination);
-  return discrimination * discrimination * p * (1 - p);
-}
+export { itemFisherInformation, itemResponseProbability };
 
 // Calibración inicial del vocabulario: una muestra del catálogo
 // (lemas repartidos en bandas de frecuencia, servida por
@@ -389,23 +371,6 @@ export function resetCalibrationStatusForTesting(): void {
   }
 }
 
-let _bankCache: { es: CalibrationBankItem[]; en: CalibrationBankItem[] } | null = null;
-
-export async function preloadCalibrationBank(): Promise<{ es: CalibrationBankItem[]; en: CalibrationBankItem[] }> {
-  if (!_bankCache) {
-    const { getCalibrationBankByLang } = await import("../../shared/calibration-bank");
-    _bankCache = {
-      es: getCalibrationBankByLang("es"),
-      en: getCalibrationBankByLang("en"),
-    };
-  }
-  return _bankCache;
-}
-
-export function setCalibrationBankCache(bank: { es: CalibrationBankItem[]; en: CalibrationBankItem[] }): void {
-  _bankCache = bank;
-}
-
 /**
  * Selecciona el siguiente ítem del banco que maximiza la información de Fisher,
  * es decir, minimiza |P(conoce | theta, b_i) - 0.50| entre los ítems no respondidos.
@@ -414,8 +379,7 @@ export function selectNextCatItem(
   state: Pick<CatSessionState, "lang" | "theta" | "answeredIds">,
   bank?: CalibrationBankItem[],
 ): CalibrationBankItem | null {
-  const norm = (state.lang || "es").toLowerCase().startsWith("en") ? "en" : "es";
-  const candidatesBank = bank ?? _bankCache?.[norm] ?? [];
+  const candidatesBank = bank ?? getCalibrationBankByLang(state.lang);
   const answeredSet = new Set(state.answeredIds);
   const candidates = candidatesBank.filter((item) => !answeredSet.has(item.id));
   if (candidates.length === 0) return null;

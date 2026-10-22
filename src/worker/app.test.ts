@@ -421,5 +421,86 @@ describe("Fase 3: Caché por Hash SHA-256 en Worker", () => {
   });
 });
 
+describe("GET /models/:filename", () => {
+  it("rejects path traversal in filename with 400", async () => {
+    const res = await app.request("/models/..%2Fsecret.txt");
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "Invalid model filename" });
+  });
+
+  it("returns explicit 404 JSON (not HTML SPA) when model is not found on primary origin", async () => {
+    const res = await app.request("/models/kitten-tts-quantized.onnx");
+    expect(res.status).toBe(404);
+    const contentType = res.headers.get("content-type") || "";
+    expect(contentType).toContain("application/json");
+    expect(await res.json()).toEqual({ error: "Model not found on primary origin" });
+  });
+
+  it("redirects cleanly (302) when TTS_MODEL_CDN_URL is configured", async () => {
+    const res = await app.request(
+      "/models/kitten-tts-quantized.onnx",
+      {},
+      { TTS_MODEL_CDN_URL: "https://cdn.example.com/models" },
+    );
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe(
+      "https://cdn.example.com/models/kitten-tts-quantized.onnx",
+    );
+  });
+
+  it("serves binary stream with immutable cache headers when present in MODELS_BUCKET", async () => {
+    const fakeData = new Uint8Array([1, 2, 3, 4, 5]);
+    const mockBucket = {
+      get: async (key: string) => {
+        if (key === "models/kitten-tts-quantized.onnx") {
+          return {
+            body: new ReadableStream({
+              start(controller) {
+                controller.enqueue(fakeData);
+                controller.close();
+              },
+            }),
+            size: fakeData.byteLength,
+          };
+        }
+        return null;
+      },
+    };
+
+    const res = await app.request(
+      "/models/kitten-tts-quantized.onnx",
+      {},
+      { MODELS_BUCKET: mockBucket as unknown as R2Bucket },
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("application/octet-stream");
+    expect(res.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+    expect(res.headers.get("content-length")).toBe(String(fakeData.byteLength));
+    const body = new Uint8Array(await res.arrayBuffer());
+    expect(body).toEqual(fakeData);
+  });
+});
+
+describe("Infraestructura de sesión (503 vs 401)", () => {
+  it("responde 503 con DB_UNAVAILABLE cuando la base de datos no está disponible", async () => {
+    const res = await app.request(
+      "/api/annotations",
+      {
+        headers: {
+          cookie: "better-auth.session_token=token-invalido-de-prueba",
+        },
+      },
+      {
+        DATABASE_URL: "postgres://usuario:pass@unreachable.invalid:5432/db",
+      },
+    );
+    expect(res.status).toBe(503);
+    const body = (await res.json()) as { error: string; code: string };
+    expect(body.code).toBe("DB_UNAVAILABLE");
+    expect(body.error).toContain("Base de datos temporalmente no disponible");
+  });
+});
+
+
 
 

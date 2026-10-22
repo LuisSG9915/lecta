@@ -4258,7 +4258,7 @@ export default function Reader({
                 return;
               }
 
-              // 2. Navegación táctil en páginas: 25% bordes pasa página, centro alterna barras
+              // 2. Navegación táctil en páginas: 25% bordes pasa página, centro busca palabra o alterna barras
               if (settings.layout === "pages") {
                 const viewport = viewportRef.current ?? container;
                 const rect = viewport.getBoundingClientRect();
@@ -4268,10 +4268,21 @@ export default function Reader({
                 } else if (zone === "prev") {
                   void goPage(-1);
                 } else {
-                  setBarsVisible((v) => !v);
+                  const hit = extractWordAtPoint(event.clientX, event.clientY, container, language);
+                  if (hit) {
+                    openSelection(hit);
+                  } else {
+                    setBarsVisible((v) => !v);
+                  }
                 }
               } else {
-                setBarsVisible((v) => !v);
+                // En modo scroll: si tocó una palabra, abrir ficha; si no, alternar barras
+                const hit = extractWordAtPoint(event.clientX, event.clientY, container, language);
+                if (hit) {
+                  openSelection(hit);
+                } else {
+                  setBarsVisible((v) => !v);
+                }
               }
             } else {
               // En ratón (escritorio):

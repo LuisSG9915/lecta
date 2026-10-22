@@ -7,6 +7,7 @@ import {
   type SavedWord,
 } from "./idb";
 import { pushWordsToServer, syncSavedWords } from "./vocab";
+import { clearSyncCursors } from "./sync-cursors";
 
 vi.mock("./idb", () => {
   const getActiveUserId = vi.fn((): string | null => "u1");
@@ -55,6 +56,8 @@ const putBodies = () =>
 
 beforeEach(() => {
   vi.clearAllMocks();
+  clearSyncCursors();
+  if (typeof localStorage !== "undefined") localStorage.clear();
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue(okResponse()));
   vi.mocked(getActiveUserId).mockReturnValue("u1");
   vi.mocked(listAllSavedWords).mockResolvedValue([]);
@@ -143,5 +146,31 @@ describe("syncSavedWords", () => {
       expect.any(String),
       expect.anything(),
     );
+  });
+
+  it("la segunda llamada a sync envía ?since=<timestamp> y un delta vacío conserva palabras locales", async () => {
+    const localWords = [word("palabra1"), word("palabra2")];
+    vi.mocked(listAllSavedWords).mockResolvedValue(localWords);
+
+    // Primera llamada: descarga palabra con updatedAt: 1000
+    const remoteFirst = { ...word("nueva"), savedAt: 1000, updatedAt: 1000 };
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(new Response(JSON.stringify({ words: [remoteFirst], serverTime: 1000 }), { status: 200 }))
+      .mockResolvedValueOnce(okResponse());
+
+    await expect(syncSavedWords()).resolves.toBe(1);
+    expect(vi.mocked(fetch).mock.calls[0][0]).toBe("/api/vocab?lang=es");
+
+    // Segunda llamada: debe incluir &since=1000
+    vi.mocked(putSavedWord).mockClear();
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(new Response(JSON.stringify({ words: [], serverTime: 1500 }), { status: 200 }));
+
+    await expect(syncSavedWords()).resolves.toBe(0);
+    const secondGetUrl = vi.mocked(fetch).mock.calls[2][0];
+    expect(secondGetUrl).toBe("/api/vocab?lang=es&since=1000");
+
+    // Un delta vacío no sobrescribe ni borra las palabras locales
+    expect(putSavedWord).not.toHaveBeenCalled();
   });
 });

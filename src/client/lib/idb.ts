@@ -6,6 +6,7 @@ import type { ReviewKind, ReviewRating } from "../../shared/reading-data";
 import {
   KNOWLEDGE_SOURCE_STRENGTH,
   knowledgeArbWins,
+  isFsrsCardShape,
 } from "../../shared/reading-data";
 import {
   mergeCompanionRegister,
@@ -861,6 +862,100 @@ export type BackupRestoreResult = {
   knowledgeRestored: number;
 };
 
+export const MAX_BACKUP_WORDS = 50_000;
+export const MAX_BACKUP_ANNOTATIONS = 25_000;
+export const MAX_BACKUP_POSITIONS = 5_000;
+export const MAX_BACKUP_ACTIVITY = 25_000;
+export const MAX_BACKUP_REVIEWS = 50_000;
+export const MAX_BACKUP_KNOWLEDGE = 100_000;
+
+export const SHA256_HEX_RE = /^[a-f0-9]{64}$/i;
+
+export function validateBackupPayloadStrict(data: {
+  books?: Array<{
+    hash: string;
+    name?: string;
+    addedAt?: number;
+    title?: string;
+    author?: string;
+    language?: string;
+    sectionCount?: number;
+    metaVersion?: number;
+  }>;
+  positions?: SavedBookPosition[];
+  words?: SavedWord[];
+  annotations?: SavedAnnotation[];
+  activity?: SavedInterval[];
+  reviews?: SavedReview[];
+  knowledge?: KnownWord[];
+  events?: ReadingEvent[];
+  companionEvents?: GameJournalEvent[];
+  companionReceipts?: CompanionReceipt[];
+  session?: Record<string, string>;
+}): void {
+  if (
+    (data.words?.length ?? 0) > MAX_BACKUP_WORDS ||
+    (data.annotations?.length ?? 0) > MAX_BACKUP_ANNOTATIONS ||
+    (data.positions?.length ?? 0) > MAX_BACKUP_POSITIONS ||
+    (data.activity?.length ?? 0) > MAX_BACKUP_ACTIVITY ||
+    (data.reviews?.length ?? 0) > MAX_BACKUP_REVIEWS ||
+    (data.knowledge?.length ?? 0) > MAX_BACKUP_KNOWLEDGE
+  ) {
+    throw new Error("El respaldo excede el límite máximo de registros permitido");
+  }
+
+  if (Array.isArray(data.books)) {
+    for (const book of data.books) {
+      if (book?.hash && !SHA256_HEX_RE.test(book.hash)) {
+        throw new Error(`El respaldo contiene un hash de libro inválido: "${book.hash}"`);
+      }
+    }
+  }
+
+  if (Array.isArray(data.positions)) {
+    for (const pos of data.positions) {
+      if (pos?.bookHash && !SHA256_HEX_RE.test(pos.bookHash)) {
+        throw new Error(`El respaldo contiene un bookHash de posición inválido: "${pos.bookHash}"`);
+      }
+    }
+  }
+
+  if (Array.isArray(data.annotations)) {
+    for (const ann of data.annotations) {
+      if (ann?.bookHash && !SHA256_HEX_RE.test(ann.bookHash)) {
+        throw new Error(`El respaldo contiene un bookHash de anotación inválido: "${ann.bookHash}"`);
+      }
+    }
+  }
+
+  if (Array.isArray(data.words)) {
+    for (const word of data.words) {
+      const wordStr =
+        word.form ?? (word as unknown as { word?: string }).word;
+      if (typeof wordStr !== "string" || wordStr.trim().length === 0 || wordStr.length > 200) {
+        throw new Error("El respaldo contiene una palabra esencial con formato inválido o vacía");
+      }
+      const updatedAt = word.updatedAt ?? word.savedAt;
+      if (typeof updatedAt !== "number" || !Number.isFinite(updatedAt) || updatedAt <= 0) {
+        throw new Error(`El respaldo contiene una palabra ("${wordStr}") con fecha de actualización inválida`);
+      }
+      if (word.card !== undefined && word.card !== null && !isFsrsCardShape(word.card)) {
+        throw new Error(`El respaldo contiene una tarjeta FSRS inválida en la palabra "${wordStr}"`);
+      }
+    }
+  }
+
+  if (Array.isArray(data.reviews)) {
+    for (const review of data.reviews) {
+      const revObj = review as unknown as { card?: unknown; fsrsCard?: unknown };
+      const card = revObj.card ?? revObj.fsrsCard;
+      if (card !== undefined && card !== null && !isFsrsCardShape(card)) {
+        throw new Error(`El respaldo contiene una tarjeta FSRS inválida en el repaso "${review.id ?? ""}"`);
+      }
+    }
+  }
+}
+
 export async function restoreBackupToDb(
   data: {
     books?: Array<{
@@ -886,6 +981,7 @@ export async function restoreBackupToDb(
   },
   scope?: DbScope,
 ): Promise<BackupRestoreResult> {
+  validateBackupPayloadStrict(data);
   const bound = scope ?? captureDbScope();
   return withDb(bound, async (target) => {
     let booksRestored = 0;
@@ -899,7 +995,8 @@ export async function restoreBackupToDb(
     if (Array.isArray(data.books)) {
       for (const book of data.books) {
         if (!book?.hash) continue;
-        const existing = await target.get("books", book.hash);
+        const rawExisting = await target.get("books", book.hash);
+        const existing = normalizeStoredBook(rawExisting as StoredBook);
         if (existing) {
           if (existing.data && existing.data.size > 0) {
             // Si ya existe el libro localmente con data.size > 0, conserva su binario
@@ -922,21 +1019,6 @@ export async function restoreBackupToDb(
             // Si existía un registro previo corrupto de 0 bytes, se remueve de books
             await target.delete("books", book.hash);
           }
-        }
-        // Guardar metadatos recordados en clave de sesión/metadatos separada sin contaminar books
-        if (book.title || book.name) {
-          await target.put(
-            "session",
-            {
-              hash: book.hash,
-              name: book.name,
-              title: book.title,
-              author: book.author,
-              language: book.language,
-              sectionCount: book.sectionCount,
-            },
-            `book_meta:${book.hash}`,
-          );
         }
       }
     }
@@ -1067,26 +1149,54 @@ export type SaveBookInput =
       data: ArrayBuffer | Blob;
     };
 
+export function normalizeStoredBook(book: StoredBook | undefined): StoredBook | undefined {
+  if (!book) return book;
+  if (book.data && !(book.data instanceof Blob)) {
+    return {
+      ...book,
+      data: new Blob([book.data as unknown as ArrayBuffer], { type: "application/epub+zip" }),
+    };
+  }
+  return book;
+}
+
 export async function saveBook(book: SaveBookInput, scope?: DbScope) {
   if (typeof navigator !== "undefined" && navigator.storage?.persist) {
     void navigator.storage.persist().catch(() => false);
   }
-  const stored: StoredBook =
+  const rawData = "hash" in book ? book.data : book.data;
+  // Convertimos a ArrayBuffer para almacenamiento persistente 100% seguro y compatible
+  // en todos los motores de base de datos (evita el bug crítico de WebKit/Safari con Blobs en IndexedDB).
+  let buffer: ArrayBuffer;
+  if (rawData instanceof Blob) {
+    buffer = await rawData.arrayBuffer();
+  } else if (rawData instanceof ArrayBuffer) {
+    buffer = rawData;
+  } else if (ArrayBuffer.isView(rawData)) {
+    const view = rawData as Uint8Array;
+    const copy = new Uint8Array(view.byteLength);
+    copy.set(new Uint8Array(view.buffer, view.byteOffset, view.byteLength));
+    buffer = copy.buffer;
+  } else {
+    buffer = new ArrayBuffer(0);
+  }
+
+  const stored =
     "hash" in book
-      ? book
+      ? { ...book, data: buffer }
       : {
           hash: book.id,
           name: book.title,
           title: book.title,
           author: book.author ?? "",
           addedAt: book.addedAt ?? Date.now(),
-          data: book.data instanceof Blob ? book.data : new Blob([book.data], { type: "application/epub+zip" }),
+          data: buffer,
         };
 
   return withDb(scope, async (db) => {
     const transaction = db.transaction(["books", "session"], "readwrite");
     await Promise.all([
-      transaction.objectStore("books").put(stored),
+      transaction.objectStore("books").put(stored as unknown as StoredBook),
       transaction.objectStore("session").put(stored.hash, SESSION_KEY),
       transaction.done,
     ]);
@@ -1096,7 +1206,7 @@ export async function saveBook(book: SaveBookInput, scope?: DbScope) {
 export async function loadLatestBook(scope?: DbScope) {
   return withDb(scope, async (db) => {
     const hash = await db.get("session", SESSION_KEY);
-    return hash ? db.get("books", hash) : undefined;
+    return hash ? normalizeStoredBook(await db.get("books", hash)) : undefined;
   });
 }
 
@@ -1105,7 +1215,10 @@ export async function loadLatestBookHash(scope?: DbScope) {
 }
 
 export async function listStoredBooks(scope?: DbScope) {
-  return withDb(scope, (db) => db.getAll("books"));
+  return withDb(scope, async (db) => {
+    const books = await db.getAll("books");
+    return books.map((b) => normalizeStoredBook(b)!) as StoredBook[];
+  });
 }
 
 export async function listBooks(scope?: DbScope): Promise<Array<{ id: string; title: string; author?: string }>> {
@@ -1118,7 +1231,7 @@ export async function listBooks(scope?: DbScope): Promise<Array<{ id: string; ti
 }
 
 export async function getStoredBook(hash: string, scope?: DbScope) {
-  return withDb(scope, (db) => db.get("books", hash));
+  return withDb(scope, async (db) => normalizeStoredBook(await db.get("books", hash)));
 }
 
 export async function getBookData(id: string, scope?: DbScope): Promise<ArrayBuffer | null> {

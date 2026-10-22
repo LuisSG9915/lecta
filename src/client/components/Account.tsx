@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { authClient } from "../lib/auth";
 import { accountFetch } from "../lib/account-fetch";
-import { PENDING_DELETE_KEY } from "../lib/account-cleanup";
+import { PENDING_DELETE_KEY, clearSyncCursors } from "../lib/account-cleanup";
 import {
   captureDbScope,
   listKnowledge,
@@ -534,6 +534,7 @@ export default function Account({
       // El marcador de arranque optimista solo apunta a sesiones
       // vigentes: cerrar sesión aquí lo limpia de inmediato.
       clearLastUserId();
+      clearSyncCursors(session?.user?.id);
       onClose();
       return {};
     });

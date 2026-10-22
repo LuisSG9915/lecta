@@ -24,7 +24,8 @@
 			"/k",
 			"/k/*",
 			"/kindle",
-			"/kindle/*"
+			"/kindle/*",
+			"/models/*"
 		]
 	},
 	"r2_buckets": [

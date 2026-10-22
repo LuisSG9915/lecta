@@ -11,12 +11,18 @@ vi.mock("../session", () => ({
   getSession: (...args: unknown[]) => getSessionMock(...args),
 }));
 
-vi.mock("../auth", () => ({
-  createAuth: () => ({
+vi.mock("../auth", () => {
+  const authObj = {
     handler: (...args: unknown[]) => authHandlerMock(...args),
     api: { getSession: getSessionMock },
-  }),
-}));
+    closePool: () => Promise.resolve(),
+  };
+  return {
+    createAuth: () => authObj,
+    createScopedAuth: () => ({ auth: authObj, closePool: () => Promise.resolve() }),
+    closePoolSafe: (closePool: () => Promise<void>) => closePool(),
+  };
+});
 
 vi.mock("../db", async (importOriginal) => {
   const original = await importOriginal<typeof import("../db")>();

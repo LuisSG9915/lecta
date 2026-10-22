@@ -3,6 +3,9 @@ import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 // Capturamos la configuración que createAuth entrega a better-auth y
 // al plugin de magic link para invocar los callbacks de correo sin
 // red ni base. Ningún test toca Resend ni Postgres de verdad.
+const poolEndMock = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+const poolOnMock = vi.hoisted(() => vi.fn());
+
 const mocks = vi.hoisted(() => ({
   betterAuth: vi.fn((config: unknown) => ({ __config: config })),
   magicLink: vi.fn((opts: unknown) => opts),
@@ -11,9 +14,17 @@ const mocks = vi.hoisted(() => ({
 vi.mock("better-auth", () => ({ betterAuth: mocks.betterAuth }));
 vi.mock("better-auth/plugins", () => ({ magicLink: mocks.magicLink }));
 vi.mock("kysely", () => ({ Kysely: class {}, PostgresDialect: class {} }));
-vi.mock("pg", () => ({ default: { Pool: class {}, Client: class {} } }));
+vi.mock("pg", () => ({
+  default: {
+    Pool: class {
+      end = poolEndMock;
+      on = poolOnMock;
+    },
+    Client: class {},
+  },
+}));
 
-import { createAuth } from "./auth";
+import { createAuth, createScopedAuth } from "./auth";
 
 const FAKE_URL = "https://lecta.test/auth?token=TOKEN_FICTICIO_abc123";
 const FAKE_EMAIL = "persona@example.test";
@@ -124,5 +135,23 @@ describe("correo de autenticación", () => {
     };
     expect(body.to).toEqual([FAKE_EMAIL]);
     expect(body.html).toContain(FAKE_URL);
+  });
+});
+
+describe("gestión del ciclo de vida del pool pg", () => {
+  it("createScopedAuth permite invocar closePool y cierra el pool", async () => {
+    poolEndMock.mockClear();
+    const { closePool } = createScopedAuth(envWithDb, "https://lecta.test");
+    expect(poolEndMock).not.toHaveBeenCalled();
+    await closePool();
+    expect(poolEndMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("createAuth adjunta closePool y funciona igual", async () => {
+    poolEndMock.mockClear();
+    const auth = createAuth(envWithDb, "https://lecta.test") as unknown as { closePool: () => Promise<void> };
+    expect(typeof auth.closePool).toBe("function");
+    await auth.closePool();
+    expect(poolEndMock).toHaveBeenCalledTimes(1);
   });
 });

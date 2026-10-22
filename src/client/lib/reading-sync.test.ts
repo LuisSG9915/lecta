@@ -19,12 +19,14 @@ import {
   pushActivityToServer,
   pushKnowledgeToServer,
   pushReviewsToServer,
+  syncAnnotations,
   syncKnowledge,
   syncReviews,
   syncUserBookUpload,
   pullMissingUserBooksFromCloud,
 } from "./reading-sync";
 import { pushPositionsToServer, syncPositions } from "./positions-sync";
+import { clearSyncCursors } from "./sync-cursors";
 
 vi.mock("./idb", () => {
   const getActiveUserId = vi.fn((): string | null => "u1");
@@ -128,6 +130,8 @@ const putBodies = (
 
 beforeEach(() => {
   vi.clearAllMocks();
+  clearSyncCursors();
+  if (typeof localStorage !== "undefined") localStorage.clear();
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue(okResponse()));
   vi.mocked(getActiveUserId).mockReturnValue("u1");
   vi.mocked(listAllKnowledge).mockResolvedValue([]);
@@ -170,6 +174,34 @@ describe("pushAnnotationsToServer", () => {
     await expect(pushAnnotationsToServer([annotation("a")])).resolves.toBe(true);
     expect(fetch).not.toHaveBeenCalled();
     expect(saveSessionValue).not.toHaveBeenCalled();
+  });
+});
+
+describe("syncAnnotations", () => {
+  it("la segunda llamada a syncAnnotations envía ?since=<timestamp> y un delta vacío conserva locales", async () => {
+    const { listAllAnnotations, putAnnotation } = await import("./idb");
+    const local = [annotation("a1", { updatedAt: 100 })];
+    vi.mocked(listAllAnnotations).mockResolvedValue(local);
+
+    const remoteFirst = annotation("a2", { updatedAt: 200 });
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ annotations: [remoteFirst], serverTime: 200 }), { status: 200 }),
+      )
+      .mockResolvedValueOnce(okResponse());
+
+    await expect(syncAnnotations()).resolves.toBe(1);
+    expect(vi.mocked(fetch).mock.calls[0][0]).toBe("/api/annotations");
+
+    vi.mocked(putAnnotation).mockClear();
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ annotations: [], serverTime: 300 }), { status: 200 }),
+    );
+
+    await expect(syncAnnotations()).resolves.toBe(0);
+    const secondCall = vi.mocked(fetch).mock.calls[2][0];
+    expect(secondCall).toBe("/api/annotations?since=200");
+    expect(putAnnotation).not.toHaveBeenCalled();
   });
 });
 

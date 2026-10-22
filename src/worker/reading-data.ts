@@ -20,6 +20,15 @@ import {
   type SyncKnowledgeInput,
 } from "../shared/reading-data";
 
+function parseSinceParam(param?: string | null): number {
+  if (!param) return 0;
+  const num = Number(param);
+  if (Number.isFinite(num) && num > 0) return num;
+  const parsedDate = Date.parse(param);
+  if (!Number.isNaN(parsedDate) && parsedDate > 0) return parsedDate;
+  return 0;
+}
+
 // Marcadores y pasajes del lector, sincronizados entre dispositivos.
 // Mismo patrón que /api/vocab: GET devuelve todo lo del usuario y PUT
 // fusiona por clave con updated_at como árbitro.
@@ -32,8 +41,23 @@ readingData.get("/api/annotations", async (context) => {
   if (!session)
     return context.json({ error: "Inicia sesión para ver tus marcadores." }, 401);
 
-  const rows = await withClient(context.env, (client) =>
-    client
+  const since = parseSinceParam(context.req.query("since"));
+
+  const rows = await withClient(context.env, (client) => {
+    if (since > 0) {
+      return client
+        .query(
+          `SELECT book_hash AS "bookHash", id, kind, section_index AS "sectionIndex",
+                  anchor, text, prefix, suffix, note,
+                  created_at AS "createdAt", updated_at AS "updatedAt", deleted
+           FROM lecta_user_annotations
+           WHERE user_id = $1 AND updated_at > $2
+           ORDER BY updated_at ASC`,
+          [session.user.id, since],
+        )
+        .then((result) => result.rows);
+    }
+    return client
       .query(
         `SELECT book_hash AS "bookHash", id, kind, section_index AS "sectionIndex",
                 anchor, text, prefix, suffix, note,
@@ -41,8 +65,8 @@ readingData.get("/api/annotations", async (context) => {
          FROM lecta_user_annotations WHERE user_id = $1`,
         [session.user.id],
       )
-      .then((result) => result.rows),
-  );
+      .then((result) => result.rows);
+  });
   if (rows === undefined)
     return context.json({ error: "El almacenamiento no está configurado." }, 503);
   return context.json({
@@ -53,6 +77,7 @@ readingData.get("/api/annotations", async (context) => {
       createdAt: Number(row.createdAt),
       updatedAt: Number(row.updatedAt),
     })),
+    serverTime: Date.now(),
   });
 });
 
@@ -115,16 +140,45 @@ readingData.get("/api/activity", async (context) => {
   if (!session)
     return context.json({ error: "Inicia sesión para ver tu actividad." }, 401);
 
-  const rows = await withClient(context.env, (client) =>
-    client
+  const since = parseSinceParam(context.req.query("since"));
+  const afterId = context.req.query("afterId")?.trim();
+
+  const rows = await withClient(context.env, (client) => {
+    if (since > 0) {
+      return client
+        .query(
+          `SELECT id, book_hash AS "bookHash",
+                  started_at AS "startedAt", ended_at AS "endedAt"
+           FROM lecta_user_activity
+           WHERE user_id = $1 AND ended_at > $2
+           ORDER BY ended_at ASC, id ASC
+           LIMIT 1000`,
+          [session.user.id, since],
+        )
+        .then((result) => result.rows);
+    }
+    if (afterId) {
+      return client
+        .query(
+          `SELECT id, book_hash AS "bookHash",
+                  started_at AS "startedAt", ended_at AS "endedAt"
+           FROM lecta_user_activity
+           WHERE user_id = $1 AND id > $2
+           ORDER BY id ASC
+           LIMIT 1000`,
+          [session.user.id, afterId],
+        )
+        .then((result) => result.rows);
+    }
+    return client
       .query(
         `SELECT id, book_hash AS "bookHash",
                 started_at AS "startedAt", ended_at AS "endedAt"
          FROM lecta_user_activity WHERE user_id = $1`,
         [session.user.id],
       )
-      .then((result) => result.rows),
-  );
+      .then((result) => result.rows);
+  });
   if (rows === undefined)
     return context.json({ error: "El almacenamiento no está configurado." }, 503);
   return context.json({
@@ -133,6 +187,7 @@ readingData.get("/api/activity", async (context) => {
       startedAt: Number(row.startedAt),
       endedAt: Number(row.endedAt),
     })),
+    serverTime: Date.now(),
   });
 });
 
@@ -185,16 +240,45 @@ readingData.get("/api/reviews", async (context) => {
   if (!session)
     return context.json({ error: "Inicia sesión para ver tus repasos." }, 401);
 
-  const rows = await withClient(context.env, (client) =>
-    client
+  const since = parseSinceParam(context.req.query("since"));
+  const afterId = context.req.query("afterId")?.trim();
+
+  const rows = await withClient(context.env, (client) => {
+    if (since > 0) {
+      return client
+        .query(
+          `SELECT id, language, form, kind, rating, hints,
+                  created_at AS "createdAt"
+           FROM lecta_user_reviews
+           WHERE user_id = $1 AND created_at > $2
+           ORDER BY created_at ASC, id ASC
+           LIMIT 1000`,
+          [session.user.id, since],
+        )
+        .then((result) => result.rows);
+    }
+    if (afterId) {
+      return client
+        .query(
+          `SELECT id, language, form, kind, rating, hints,
+                  created_at AS "createdAt"
+           FROM lecta_user_reviews
+           WHERE user_id = $1 AND id > $2
+           ORDER BY id ASC
+           LIMIT 1000`,
+          [session.user.id, afterId],
+        )
+        .then((result) => result.rows);
+    }
+    return client
       .query(
         `SELECT id, language, form, kind, rating, hints,
                 created_at AS "createdAt"
          FROM lecta_user_reviews WHERE user_id = $1`,
         [session.user.id],
       )
-      .then((result) => result.rows),
-  );
+      .then((result) => result.rows);
+  });
   if (rows === undefined)
     return context.json({ error: "El almacenamiento no está configurado." }, 503);
   return context.json({
@@ -203,6 +287,7 @@ readingData.get("/api/reviews", async (context) => {
       hints: Number(row.hints),
       createdAt: Number(row.createdAt),
     })),
+    serverTime: Date.now(),
   });
 });
 
@@ -257,8 +342,23 @@ readingData.get("/api/positions", async (context) => {
   if (!session)
     return context.json({ error: "Inicia sesión para ver tus posiciones." }, 401);
 
-  const rows = await withClient(context.env, (client) =>
-    client
+  const since = parseSinceParam(context.req.query("since"));
+
+  const rows = await withClient(context.env, (client) => {
+    if (since > 0) {
+      return client
+        .query(
+          `SELECT book_hash AS "bookHash", section_index AS "sectionIndex",
+                  scroll_top AS "scrollTop", ratio, progress, anchor,
+                  updated_at AS "updatedAt"
+           FROM lecta_user_positions
+           WHERE user_id = $1 AND updated_at > $2
+           ORDER BY updated_at ASC`,
+          [session.user.id, since],
+        )
+        .then((result) => result.rows);
+    }
+    return client
       .query(
         `SELECT book_hash AS "bookHash", section_index AS "sectionIndex",
                 scroll_top AS "scrollTop", ratio, progress, anchor,
@@ -266,8 +366,8 @@ readingData.get("/api/positions", async (context) => {
          FROM lecta_user_positions WHERE user_id = $1`,
         [session.user.id],
       )
-      .then((result) => result.rows),
-  );
+      .then((result) => result.rows);
+  });
   if (rows === undefined)
     return context.json({ error: "El almacenamiento no está configurado." }, 503);
   return context.json({
@@ -279,6 +379,7 @@ readingData.get("/api/positions", async (context) => {
       progress: row.progress != null ? Number(row.progress) : null,
       updatedAt: Number(row.updatedAt),
     })),
+    serverTime: Date.now(),
   });
 });
 
@@ -346,8 +447,34 @@ readingData.get("/api/knowledge", async (context) => {
     return context.json({ error: "Inicia sesión para ver lo que conoces." }, 401);
 
   const language = context.req.query("language")?.trim();
-  const rows = await withClient(context.env, (client) =>
-    client
+  const since = parseSinceParam(context.req.query("since"));
+
+  const rows = await withClient(context.env, (client) => {
+    if (since > 0) {
+      if (language) {
+        return client
+          .query(
+            `SELECT language, lemma, known, source,
+                    updated_at AS "updatedAt", deleted
+             FROM lecta_user_knowledge
+             WHERE user_id = $1 AND language = $2 AND updated_at > $3
+             ORDER BY updated_at ASC`,
+            [session.user.id, language, since],
+          )
+          .then((result) => result.rows);
+      }
+      return client
+        .query(
+          `SELECT language, lemma, known, source,
+                  updated_at AS "updatedAt", deleted
+           FROM lecta_user_knowledge
+           WHERE user_id = $1 AND updated_at > $2
+           ORDER BY updated_at ASC`,
+          [session.user.id, since],
+        )
+        .then((result) => result.rows);
+    }
+    return client
       .query(
         language
           ? `SELECT language, lemma, known, source,
@@ -360,8 +487,8 @@ readingData.get("/api/knowledge", async (context) => {
              WHERE user_id = $1`,
         language ? [session.user.id, language] : [session.user.id],
       )
-      .then((result) => result.rows),
-  );
+      .then((result) => result.rows);
+  });
   if (rows === undefined)
     return context.json({ error: "El almacenamiento no está configurado." }, 503);
   return context.json({
@@ -369,6 +496,7 @@ readingData.get("/api/knowledge", async (context) => {
       ...row,
       updatedAt: Number(row.updatedAt),
     })),
+    serverTime: Date.now(),
   });
 });
 

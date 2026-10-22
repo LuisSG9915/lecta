@@ -42,6 +42,17 @@ import { USE_AI_KEY } from "./ai-pref";
 import { HISTORY_KEY } from "./reading-events";
 import { timeByDay } from "./reading-activity";
 
+export {
+  MAX_BACKUP_WORDS,
+  MAX_BACKUP_ANNOTATIONS,
+  MAX_BACKUP_POSITIONS,
+  MAX_BACKUP_ACTIVITY,
+  MAX_BACKUP_REVIEWS,
+  MAX_BACKUP_KNOWLEDGE,
+  SHA256_HEX_RE,
+  validateBackupPayloadStrict,
+} from "./idb";
+
 // Campos que empiezan con =, +, -, @ se interpretan como fórmulas en
 // hojas de cálculo: se neutralizan con un apóstrofo inicial.
 const neutralize = (text: string) => (/^[=+\-@]/.test(text) ? `'${text}` : text);
@@ -792,8 +803,8 @@ export function sessionKeysForBackup(allKeys: string[]): string[] {
 }
 
 // El respaldo lleva solo los metadatos del libro: `data` y `cover` son
-// blobs que no caben en JSON y tampoco hacen falta — con cuenta el
-// archivo se re-sube solo y la portada se regenera al abrirlo.
+// blobs binarios que no se incluyen en el JSON ni se re-suben desde un respaldo
+// (el usuario debe volver a importar sus archivos EPUB si borra su almacén local).
 export type BackupBookMeta = Omit<StoredBook, "data" | "cover">;
 
 export type BackupData = {

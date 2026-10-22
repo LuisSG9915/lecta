@@ -4,7 +4,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // la base y qué no. Un cliente pg falso registra cada query con sus
 // parámetros sin tocar ninguna base real.
 const queryMock = vi.hoisted(() =>
-  vi.fn(async () => ({ rowCount: 1, rows: [] })),
+  vi.fn<
+    (...args: unknown[]) => Promise<{ rowCount: number; rows: Record<string, unknown>[] }>
+  >(async () => ({ rowCount: 1, rows: [] })),
 );
 const getSessionMock = vi.hoisted(() =>
   vi.fn(async () => ({ user: { id: "u1" } })),
@@ -108,5 +110,55 @@ describe("PUT /api/vocab — tarjeta FSRS", () => {
     const rows = JSON.parse(params[1]) as { card: unknown }[];
     expect(rows[0].card).toBeNull();
     expect(rows[1].card).toBeNull();
+  });
+});
+
+describe("GET /api/vocab — sincronización incremental", () => {
+  it("sin parámetro since devuelve todas las palabras y serverTime", async () => {
+    queryMock.mockResolvedValueOnce({
+      rowCount: 1,
+      rows: [
+        {
+          language: "es",
+          form: "perenne",
+          lemma: "perenne",
+          pos: "adj",
+          meaning: "continuo",
+          context: "un árbol perenne",
+          bookHash: "h1",
+          senseEntryId: "123",
+          senseOrder: 1,
+          card: null,
+          savedAt: 1700000000000,
+          updatedAt: 1700000000000,
+          deleted: false,
+        },
+      ],
+    });
+
+    const response = await app.request("/api/vocab?lang=es", {}, {});
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { words: unknown[]; serverTime: number };
+    expect(body.words).toHaveLength(1);
+    expect(body.serverTime).toBeGreaterThan(0);
+    const [sql, params] = queryMock.mock.calls[0] as unknown as [string, unknown[]];
+    expect(sql).not.toContain("updated_at >");
+    expect(params).toEqual(["u1", "es"]);
+  });
+
+  it("con parámetro since filtra por updated_at > since", async () => {
+    queryMock.mockResolvedValueOnce({
+      rowCount: 0,
+      rows: [],
+    });
+
+    const response = await app.request("/api/vocab?lang=es&since=1700000050000", {}, {});
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { words: unknown[]; serverTime: number };
+    expect(body.words).toHaveLength(0);
+    expect(body.serverTime).toBeGreaterThan(0);
+    const [sql, params] = queryMock.mock.calls[0] as unknown as [string, unknown[]];
+    expect(sql).toContain("updated_at > $3");
+    expect(params).toEqual(["u1", "es", 1700000050000]);
   });
 });

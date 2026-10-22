@@ -6,11 +6,12 @@ import {
   existsSync,
   readFileSync,
   readdirSync,
+  rmSync,
   statSync,
   unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { join, relative } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { defineConfig, type Plugin } from "vite";
 
 // Garantiza que el binario WASM de ONNX Runtime esté disponible sin hash en /assets/
@@ -170,6 +171,24 @@ function swManifest(): Plugin {
   };
 }
 
+function stripDevVarsPlugin(): Plugin {
+  return {
+    name: "lecta-strip-dev-vars",
+    closeBundle() {
+      // Elimina cualquier archivo .dev.vars que haya sido copiado a dist/
+      for (const candidate of [
+        resolve(process.cwd(), "dist/.dev.vars"),
+        resolve(process.cwd(), "dist/lecta/.dev.vars"),
+        resolve(process.cwd(), "dist/client/.dev.vars"),
+      ]) {
+        if (existsSync(candidate)) {
+          rmSync(candidate, { force: true });
+        }
+      }
+    },
+  };
+}
+
 export default defineConfig({
   plugins: [
     react(),
@@ -177,6 +196,7 @@ export default defineConfig({
     excludeOversizedOnnxAssets(),
     onnxWasmPlugin(),
     swManifest(),
+    stripDevVarsPlugin(),
   ],
   build: {
     modulePreload: {

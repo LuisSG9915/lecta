@@ -40,7 +40,7 @@ async function sendViaResend(
   }
 }
 
-export function createAuth(env: WorkerEnv, baseURL: string) {
+export function createScopedAuth(env: WorkerEnv, baseURL: string) {
   const pool = new pg.Pool({ connectionString: getConnectionString(env), max: 1 });
   if (typeof pool.on === "function") {
     pool.on("error", (err) => {
@@ -48,7 +48,16 @@ export function createAuth(env: WorkerEnv, baseURL: string) {
       console.error("Postgres pool error:", err.message);
     });
   }
-  return betterAuth({
+  const closePool = async () => {
+    try {
+      if (typeof pool.end === "function") {
+        await pool.end();
+      }
+    } catch {
+      // noop
+    }
+  };
+  const auth = betterAuth({
     database: {
       db: new Kysely({ dialect: new PostgresDialect({ pool }) }),
       type: "postgres",
@@ -94,4 +103,33 @@ export function createAuth(env: WorkerEnv, baseURL: string) {
       }),
     ],
   });
+  return { auth, pool, closePool };
+}
+
+export async function closePoolSafe(
+  closePool: () => Promise<void>,
+  contextOrExecutionCtx?: unknown,
+): Promise<void> {
+  let delegated = false;
+  try {
+    const ctx =
+      (contextOrExecutionCtx as { executionCtx?: { waitUntil?: (p: Promise<unknown>) => void } })
+        ?.executionCtx ??
+      (contextOrExecutionCtx as { waitUntil?: (p: Promise<unknown>) => void });
+    if (ctx && typeof ctx.waitUntil === "function") {
+      ctx.waitUntil(closePool());
+      delegated = true;
+    }
+  } catch {
+    delegated = false;
+  }
+  if (!delegated) {
+    await closePool();
+  }
+}
+
+export function createAuth(env: WorkerEnv, baseURL: string) {
+  const { auth, closePool } = createScopedAuth(env, baseURL);
+  (auth as unknown as { closePool: () => Promise<void> }).closePool = closePool;
+  return auth;
 }

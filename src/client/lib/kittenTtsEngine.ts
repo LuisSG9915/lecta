@@ -995,6 +995,14 @@ export async function getKittenModelBuffer(modelUrl = KITTEN_MODEL_URL): Promise
     const cache = await caches.open(KITTEN_CACHE_NAME);
     const res = (await cache.match(modelUrl)) ?? (await cache.match(KITTEN_MODEL_URL));
     if (!res || res.status !== 200) return null;
+    const contentType = (res.headers?.get("content-type") || "").toLowerCase();
+    if (contentType.includes("text/html")) {
+      await cache.delete(modelUrl);
+      if (modelUrl !== KITTEN_MODEL_URL) {
+        await cache.delete(KITTEN_MODEL_URL);
+      }
+      return null;
+    }
     const buffer = await res.arrayBuffer();
     // Validar integridad mínima: si el buffer tiene menos de 10 MB, está truncado/corrupto
     if (buffer.byteLength < 10_000_000) {

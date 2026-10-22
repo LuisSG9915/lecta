@@ -16,6 +16,11 @@ export default defineConfig({
       name: "chromium",
       use: { ...devices["Desktop Chrome"] },
     },
+    {
+      name: "webkit-iphone",
+      use: { ...devices["iPhone 13"], browserName: "webkit" },
+      grep: /\[webkit\]/,
+    },
   ],
   webServer: {
     command: process.env.CI

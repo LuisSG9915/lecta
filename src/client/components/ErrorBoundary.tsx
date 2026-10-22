@@ -25,7 +25,7 @@ export function logErrorToStorage(error: unknown, errorInfo?: ErrorInfo | null):
       timestamp: Date.now(),
       url:
         typeof window !== "undefined"
-          ? `${window.location.origin}${window.location.pathname}`
+          ? window.location.pathname
           : "",
     };
 

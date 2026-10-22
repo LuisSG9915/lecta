@@ -13,6 +13,8 @@ export type WorkerEnv = {
   RESEND_FROM_EMAIL?: string;
   BOOKS?: R2Bucket;
   BOOKS_BUCKET?: R2Bucket;
+  MODELS_BUCKET?: R2Bucket;
+  TTS_MODEL_CDN_URL?: string;
   ENRICHMENT_WORKFLOW?: Workflow<{ forms: string[]; language?: string }>;
   DB?: D1Database;
 };

@@ -105,7 +105,9 @@ describe("RestoreBackupDialog", () => {
     });
 
     // Esperar microtasks de FileReader
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
 
     // Verificar que el diálogo de vista previa está presente
     const dialog = document.body.querySelector(".dialog");

@@ -8,6 +8,7 @@ import {
   type SavedBookPosition,
 } from "./idb";
 import { accountFetch } from "./account-fetch";
+import { getSyncCursor, setSyncCursor } from "./sync-cursors";
 import { POSITION_LIMITS } from "../../shared/reading-data";
 
 const POSITIONS_SYNC_KEY = "positionsLastSyncAt";
@@ -92,25 +93,35 @@ export async function syncPositions(scope?: DbScope): Promise<{
   const bound = scope ?? captureDbScope();
   if (!bound.userId || !isDbScopeActive(bound)) return null;
 
+  const local = await listPositions(bound);
+  const cursor = getSyncCursor(bound.userId, "positions");
+  const effectiveSince = local.length > 0 ? cursor : 0;
+
   let remote: SavedBookPosition[] | null = null;
+  let serverTime: number | undefined;
   try {
-    const response = await accountFetch("/api/positions", undefined, bound);
+    const url = effectiveSince > 0 ? `/api/positions?since=${effectiveSince}` : "/api/positions";
+    const response = await accountFetch(url, undefined, bound);
     if (response.ok) {
-      const data = (await response.json()) as { positions?: SavedBookPosition[] };
+      const data = (await response.json()) as { positions?: SavedBookPosition[]; serverTime?: number };
       remote = data.positions ?? [];
+      serverTime = data.serverTime;
     }
   } catch {
     remote = null;
   }
   if (!remote) return null;
 
-  const local = await listPositions(bound);
   const localByHash = new Map(local.map((item) => [item.bookHash, item]));
   const remoteByHash = new Map(remote.map((item) => [item.bookHash, item]));
 
   const conflicts: PositionConflict[] = [];
   let pulled = 0;
+  let maxUpdated = effectiveSince;
+  if (serverTime && serverTime > maxUpdated) maxUpdated = serverTime;
+
   for (const item of remote) {
+    if (item.updatedAt > maxUpdated) maxUpdated = item.updatedAt;
     const existing = localByHash.get(item.bookHash);
     if (!existing || item.updatedAt > existing.updatedAt) {
       await saveBookPosition(item, bound);
@@ -133,11 +144,15 @@ export async function syncPositions(scope?: DbScope): Promise<{
 
   const toPush = local.filter((item) => {
     const remoteItem = remoteByHash.get(item.bookHash);
+    if (effectiveSince > 0) {
+      return item.updatedAt > effectiveSince && (!remoteItem || item.updatedAt > remoteItem.updatedAt);
+    }
     return !remoteItem || item.updatedAt > remoteItem.updatedAt;
   });
   if (!(await pushPositionsToServer(toPush, bound))) return null;
 
   // Solo se sella cuando el ciclo completo salió, como en anotaciones.
+  setSyncCursor(bound.userId, "positions", maxUpdated > 0 ? maxUpdated : Date.now());
   await saveSessionValue(POSITIONS_SYNC_KEY, String(Date.now()), bound);
   return { pulled, conflicts };
 }

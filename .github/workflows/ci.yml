@@ -43,8 +43,11 @@ jobs:
       - name: Build
         run: pnpm run build
 
-      - name: Install Playwright Chromium
-        run: pnpm exec playwright install --with-deps chromium
+      - name: Check bundle budget
+        run: pnpm run check:size
+
+      - name: Install Playwright Browsers
+        run: pnpm exec playwright install --with-deps chromium webkit
 
       - name: Run E2E tests
         run: pnpm test:e2e

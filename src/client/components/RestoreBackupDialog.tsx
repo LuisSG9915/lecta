@@ -1,4 +1,4 @@
-import { useId, useCallback, useRef, useState, useEffect, type ReactNode } from "react";
+import { useId, useCallback, useState, type ReactNode } from "react";
 import Dialog from "./Dialog";
 import {
   inspectBackupPayload,
@@ -9,14 +9,12 @@ import {
 export interface RestoreBackupDialogProps {
   onRestored: () => void | Promise<void>;
   trigger?: (openPicker: () => void) => ReactNode;
-  isOpen?: boolean;
   onClose?: () => void;
 }
 
 export default function RestoreBackupDialog({
   onRestored,
   trigger,
-  isOpen,
   onClose,
 }: RestoreBackupDialogProps) {
   const inputId = useId();
@@ -24,17 +22,6 @@ export default function RestoreBackupDialog({
   const [payload, setPayload] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [restoring, setRestoring] = useState(false);
-
-  // Si se controla externamente mediante isOpen y no hay previsualización abierta,
-  // abrir el selector de archivo cuando isOpen pase a true.
-  const prevIsOpen = useRef(isOpen);
-  useEffect(() => {
-    if (isOpen && !prevIsOpen.current && !preview && !error) {
-      const input = document.getElementById(inputId) as HTMLInputElement | null;
-      input?.click();
-    }
-    prevIsOpen.current = isOpen;
-  }, [isOpen, preview, error, inputId]);
 
   const openPicker = useCallback(() => {
     setError(null);

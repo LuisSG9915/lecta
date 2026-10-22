@@ -23,6 +23,7 @@ import { Seal, toRoman } from "./Seal";
 import { openGameChest, writeCompanionField } from "../lib/game";
 import { captureDbScope, listStoredBooks } from "../lib/idb";
 import { listRemoteBooks } from "../lib/books";
+import { coverUrlFor } from "../lib/cover";
 import {
   COMPANION_ARTICLES,
   type CompanionArticle,
@@ -376,7 +377,7 @@ function FullCompanionPanel(props: CompanionPanelProps) {
         map.set(b.hash, {
           title: b.title || b.name,
           author: b.author,
-          cover: b.cover,
+          cover: b.cover ? coverUrlFor(b.cover) : undefined,
         });
       }
       for (const r of remote) {

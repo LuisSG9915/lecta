@@ -4,7 +4,7 @@
 import { Hono, type Context } from "hono";
 import { getConnectionString, withClient, type WorkerEnv } from "../db";
 import { getSession } from "../session";
-import { createAuth } from "../auth";
+import { createScopedAuth, closePoolSafe } from "../auth";
 import { findEntries, findEntriesForForms, type LexiconEntryView } from "../lexicon";
 import { createEmptyCard, fsrs, generatorParameters, Rating, type Card } from "ts-fsrs";
 import {
@@ -883,8 +883,9 @@ kindleRoutes.post("/login", async (c) => {
   });
 
   let authRes: Response;
+  const { auth: loginAuth, closePool: closeLoginPool } = createScopedAuth(c.env, baseURL);
   try {
-    authRes = await createAuth(c.env, baseURL).handler(authReq);
+    authRes = await loginAuth.handler(authReq);
   } catch {
     return c.html(
       renderLoginView({
@@ -895,6 +896,8 @@ kindleRoutes.post("/login", async (c) => {
       }),
       500,
     );
+  } finally {
+    await closePoolSafe(closeLoginPool, c);
   }
 
   if (!authRes.ok) {
@@ -931,7 +934,13 @@ kindleRoutes.get("/logout", async (c) => {
     headers: c.req.raw.headers,
   });
 
-  const authRes = await createAuth(c.env, baseURL).handler(authReq).catch(() => null);
+  const { auth: logoutAuth, closePool: closeLogoutPool } = createScopedAuth(c.env, baseURL);
+  let authRes: Response | null;
+  try {
+    authRes = await logoutAuth.handler(authReq).catch(() => null);
+  } finally {
+    await closePoolSafe(closeLogoutPool, c);
+  }
   const headers = new Headers();
 
   if (authRes) {

@@ -20,6 +20,7 @@ import {
   restoreBackupToDb,
   saveBook,
   type SavedAnnotation,
+  type SavedBookPosition,
   type SavedInterval,
   type SavedWord,
 } from "./idb";
@@ -720,6 +721,10 @@ describe("inspectBackupPayload", () => {
 });
 
 describe("restoreBackupPayload", () => {
+  const HASH_1 = "1".repeat(64);
+  const HASH_2 = "2".repeat(64);
+  const HASH_3 = "3".repeat(64);
+
   it("restaura los registros resolviendo por merge", async () => {
     const backupData = {
       words: [
@@ -731,8 +736,8 @@ describe("restoreBackupPayload", () => {
           updatedAt: 2000,
         },
       ],
-      books: [{ hash: "hash1", name: "prueba.epub", addedAt: 1000 }],
-      positions: [{ bookHash: "hash1", sectionIndex: 1, scrollTop: 50, updatedAt: 2000 }],
+      books: [{ hash: HASH_1, name: "prueba.epub", addedAt: 1000 }],
+      positions: [{ bookHash: HASH_1, sectionIndex: 1, scrollTop: 50, updatedAt: 2000 }],
       annotations: [],
       activity: [],
       reviews: [],
@@ -753,10 +758,10 @@ describe("restoreBackupPayload", () => {
   it("en una base limpia NO inserta filas en books con data.size === 0", async () => {
     const backupData = {
       books: [
-        { hash: "b-clean-1", name: "libro-vacio-1.epub", title: "Libro 1" },
-        { hash: "b-clean-2", name: "libro-vacio-2.epub", title: "Libro 2" },
+        { hash: HASH_2, name: "libro-vacio-1.epub", title: "Libro 1" },
+        { hash: HASH_3, name: "libro-vacio-2.epub", title: "Libro 2" },
       ],
-      words: [{ key: "es:test", form: "test", language: "es", savedAt: 1000 }],
+      words: [{ key: "es:test", form: "test", language: "es", savedAt: 1000, updatedAt: 1000 }],
       positions: [],
     };
 
@@ -772,7 +777,7 @@ describe("restoreBackupPayload", () => {
 
   it("si el libro ya existía localmente con binario válido, actualiza metadatos y conserva el binario", async () => {
     await saveBook({
-      hash: "b-local-con-datos",
+      hash: HASH_1,
       name: "original.epub",
       addedAt: 1000,
       title: "Título Viejo",
@@ -782,7 +787,7 @@ describe("restoreBackupPayload", () => {
     const backupData = {
       books: [
         {
-          hash: "b-local-con-datos",
+          hash: HASH_1,
           name: "renombrado.epub",
           title: "Título Actualizado del Respaldo",
           addedAt: 2000,
@@ -794,10 +799,67 @@ describe("restoreBackupPayload", () => {
     expect(res.booksRestored).toBe(1);
 
     const stored = await listStoredBooks();
-    const updated = stored.find((b) => b.hash === "b-local-con-datos");
+    const updated = stored.find((b) => b.hash === HASH_1);
     expect(updated).toBeDefined();
     expect(updated?.title).toBe("Título Actualizado del Respaldo");
     expect(updated?.name).toBe("renombrado.epub");
     expect(updated?.data.size).toBeGreaterThan(0);
+  });
+
+  it("rechaza por completo un respaldo con una tarjeta FSRS corrupta sin escribir filas parciales", async () => {
+    const corruptBackup = {
+      words: [
+        {
+          key: "es:buena",
+          form: "buena",
+          language: "es",
+          savedAt: 1000,
+          updatedAt: 1000,
+        },
+        {
+          key: "es:corrupta",
+          form: "corrupta",
+          language: "es",
+          savedAt: 1000,
+          updatedAt: 1000,
+          // Tarjeta FSRS con campos no numéricos/inválidos
+          card: {
+            due: "fecha-invalida",
+            stability: "no-es-numero",
+            difficulty: 5,
+            state: 999,
+          } as unknown as SavedWord["card"],
+        },
+      ],
+    };
+
+    await expect(restoreBackupToDb(corruptBackup)).rejects.toThrow(/tarjeta FSRS inválida/);
+  });
+
+  it("rechaza un respaldo con un bookHash inválido (path traversal o no SHA-256)", async () => {
+    const pathTraversalBackup = {
+      books: [{ hash: "../../etc/passwd", name: "hacked.epub" }],
+      words: [{ key: "es:test", form: "test", language: "es", savedAt: 1000, updatedAt: 1000 }],
+    };
+    await expect(restoreBackupToDb(pathTraversalBackup)).rejects.toThrow(/hash de libro inválido/);
+
+    const shortHashBackup = {
+      positions: [{ bookHash: "abc", sectionIndex: 0, scrollTop: 0, updatedAt: 1000 }],
+    };
+    await expect(restoreBackupToDb(shortHashBackup)).rejects.toThrow(/bookHash de posición inválido/);
+  });
+
+  it("rechaza un respaldo que supera el tope de filas permitido", async () => {
+    // Generar un array que supere MAX_BACKUP_POSITIONS (5_000)
+    const tooManyPositions = Array.from({ length: 5_001 }, (_, i) => ({
+      bookHash: HASH_1,
+      sectionIndex: i,
+      scrollTop: 0,
+      updatedAt: 1000,
+    }));
+
+    await expect(
+      restoreBackupToDb({ positions: tooManyPositions as unknown as SavedBookPosition[] }),
+    ).rejects.toThrow(/El respaldo excede el límite máximo de registros permitido/);
   });
 });

@@ -200,6 +200,8 @@ export default function SmartReaderDock({
           onClick={onOpenCatCorner ?? onExitPureCanvas}
           aria-label="Abrir rincón de tu gato o salir de lienzo puro"
           title="Toca para interactuar o salir de Lienzo Puro"
+          tabIndex={isPureCanvas ? 0 : -1}
+          disabled={!isPureCanvas}
         >
           <span className="reader-mini-cat-avatar" aria-hidden="true">
             <Icon name="sparkles" size={16} />

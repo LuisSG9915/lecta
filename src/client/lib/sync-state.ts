@@ -9,6 +9,8 @@ export type SyncCollection =
   | "reviews"
   | "companion";
 
+export type PendingCollection = SyncCollection | "books";
+
 export interface CollectionSyncStatus {
   status: "idle" | "syncing" | "synced" | "error";
   lastSyncedAt?: number;
@@ -32,6 +34,23 @@ const initialCollections: Record<SyncCollection, CollectionSyncStatus> = {
   reviews: { status: "idle" },
   companion: { status: "idle" },
 };
+
+let rawPendingCount = 0;
+const collectionPendingCounts: Partial<Record<PendingCollection, number>> = {};
+
+export function computeEffectivePendingChanges(
+  collections = currentState.collections,
+  rawCount = rawPendingCount,
+): number {
+  const collectionSum = Object.values(collectionPendingCounts).reduce(
+    (sum, c) => sum + (c || 0),
+    0,
+  );
+  const errorCollectionsCount = Object.values(collections).filter(
+    (c) => c.status === "error",
+  ).length;
+  return rawCount + collectionSum + errorCollectionsCount;
+}
 
 let currentState: SyncState = {
   isOnline: typeof navigator !== "undefined" ? navigator.onLine : true,
@@ -69,10 +88,28 @@ export function updateSyncState(patch: Partial<SyncState>): void {
   notify();
 }
 
+export function setPendingChangesCount(count: number): void {
+  rawPendingCount = Math.max(0, count);
+  updateSyncState({
+    pendingChangesCount: computeEffectivePendingChanges(),
+  });
+}
+
+export function setCollectionPendingCount(
+  collection: PendingCollection,
+  count: number,
+): void {
+  collectionPendingCounts[collection] = Math.max(0, count);
+  updateSyncState({
+    pendingChangesCount: computeEffectivePendingChanges(),
+  });
+}
+
 export function recordCollectionSyncSuccess(
   collection: SyncCollection,
   timestamp: number = Date.now(),
 ): void {
+  collectionPendingCounts[collection] = 0;
   const nextCollections: Record<SyncCollection, CollectionSyncStatus> = {
     ...currentState.collections,
     [collection]: {
@@ -90,6 +127,7 @@ export function recordCollectionSyncSuccess(
     collections: nextCollections,
     lastSyncError: hasError ? firstError : null,
     lastSyncedAt: hasError ? currentState.lastSyncedAt : timestamp,
+    pendingChangesCount: computeEffectivePendingChanges(nextCollections),
   });
 }
 
@@ -109,32 +147,7 @@ export function recordCollectionSyncError(
   updateSyncState({
     collections: nextCollections,
     lastSyncError: message,
-  });
-}
-
-export function recordSyncSuccess(timestamp: number = Date.now()): void {
-  const allSynced: Record<SyncCollection, CollectionSyncStatus> = { ...currentState.collections };
-  for (const k of Object.keys(allSynced) as SyncCollection[]) {
-    allSynced[k] = { status: "synced", lastSyncedAt: timestamp, error: null };
-  }
-  updateSyncState({
-    lastSyncedAt: timestamp,
-    lastSyncError: null,
-    pendingChangesCount: 0,
-    collections: allSynced,
-  });
-}
-
-export function recordSyncError(error: unknown): void {
-  const message = error instanceof Error ? error.message : String(error ?? "Error");
-  updateSyncState({
-    lastSyncError: message,
-  });
-}
-
-export function setPendingChangesCount(count: number): void {
-  updateSyncState({
-    pendingChangesCount: Math.max(0, count),
+    pendingChangesCount: computeEffectivePendingChanges(nextCollections),
   });
 }
 

@@ -22,6 +22,7 @@ import {
 } from "./idb";
 export { getBookData };
 import { accountFetch } from "./account-fetch";
+import { getSyncCursor, setSyncCursor } from "./sync-cursors";
 import { knowledgeArbWins } from "../../shared/reading-data";
 import { annotationStamp } from "./annotations";
 import {
@@ -93,11 +94,18 @@ export async function syncAnnotations(scope?: DbScope) {
   const bound = scope ?? captureDbScope();
   if (!bound.userId || !isDbScopeActive(bound)) return null;
 
+  const local = await listAllAnnotations(undefined, bound);
+  const cursor = getSyncCursor(bound.userId, "annotations");
+  const effectiveSince = local.length > 0 ? cursor : 0;
+
   let remote: SavedAnnotation[] | null = null;
+  let serverTime: number | undefined;
   try {
-    const response = await accountFetch("/api/annotations", undefined, bound);
+    const url = effectiveSince > 0 ? `/api/annotations?since=${effectiveSince}` : "/api/annotations";
+    const response = await accountFetch(url, undefined, bound);
     if (response.ok) {
-      const data = (await response.json()) as { annotations?: SavedAnnotation[] };
+      const data = (await response.json()) as { annotations?: SavedAnnotation[]; serverTime?: number };
+      serverTime = data.serverTime;
       // La clave se deriva de libro+id; se recalcula por si faltara.
       remote = (data.annotations ?? []).map((item) => ({
         ...item,
@@ -109,27 +117,36 @@ export async function syncAnnotations(scope?: DbScope) {
   }
   if (!remote) return null;
 
-  const local = await listAllAnnotations(undefined, bound);
   const localByKey = new Map(local.map((item) => [item.key, item]));
   const remoteByKey = new Map(remote.map((item) => [item.key, item]));
 
   let pulled = 0;
+  let maxUpdated = effectiveSince;
+  if (serverTime && serverTime > maxUpdated) maxUpdated = serverTime;
+
   for (const item of remote) {
+    const s = annotationStamp(item);
+    if (s > maxUpdated) maxUpdated = s;
     const existing = localByKey.get(item.key);
-    if (!existing || annotationStamp(item) > annotationStamp(existing)) {
+    if (!existing || s > annotationStamp(existing)) {
       await putAnnotation(item, bound);
       pulled += 1;
     }
   }
 
   const toPush = local.filter((item) => {
+    const s = annotationStamp(item);
     const remoteItem = remoteByKey.get(item.key);
-    return !remoteItem || annotationStamp(item) > annotationStamp(remoteItem);
+    if (effectiveSince > 0) {
+      return s > effectiveSince && (!remoteItem || s > annotationStamp(remoteItem));
+    }
+    return !remoteItem || s > annotationStamp(remoteItem);
   });
   if (!(await pushAnnotationsToServer(toPush, bound))) return null;
 
   // Solo se sella la fecha cuando el ciclo completo salió: una
   // sincronización parcial no cuenta como «al día».
+  setSyncCursor(bound.userId, "annotations", maxUpdated > 0 ? maxUpdated : Date.now());
   await saveSessionValue(LAST_SYNC_KEY, String(Date.now()), bound);
   return pulled;
 }
@@ -173,29 +190,49 @@ export async function syncActivity(scope?: DbScope) {
   const bound = scope ?? captureDbScope();
   if (!bound.userId || !isDbScopeActive(bound)) return null;
 
+  const local = await listIntervals(bound);
+  const cursor = getSyncCursor(bound.userId, "activity");
+  const effectiveSince = local.length > 0 ? cursor : 0;
+
   let remote: SavedInterval[] | null = null;
+  let serverTime: number | undefined;
   try {
-    const response = await accountFetch("/api/activity", undefined, bound);
+    const url = effectiveSince > 0 ? `/api/activity?since=${effectiveSince}` : "/api/activity";
+    const response = await accountFetch(url, undefined, bound);
     if (response.ok) {
-      const data = (await response.json()) as { intervals?: SavedInterval[] };
+      const data = (await response.json()) as { intervals?: SavedInterval[]; serverTime?: number };
       remote = data.intervals ?? [];
+      serverTime = data.serverTime;
     }
   } catch {
     remote = null;
   }
   if (!remote) return null;
 
-  const local = await listIntervals(bound);
   const remoteIds = new Set(remote.map((item) => item.id));
   const localIds = new Set(local.map((item) => item.id));
+
+  let maxUpdated = effectiveSince;
+  if (serverTime && serverTime > maxUpdated) maxUpdated = serverTime;
+  for (const item of remote) {
+    const s = item.endedAt ?? item.startedAt;
+    if (s > maxUpdated) maxUpdated = s;
+  }
 
   const pulled = await putMissingIntervals(
     remote.filter((item) => !localIds.has(item.id)),
     bound,
   );
-  const toPush = local.filter((item) => !remoteIds.has(item.id));
+  const toPush = local.filter((item) => {
+    if (remoteIds.has(item.id)) return false;
+    if (effectiveSince > 0) {
+      return (item.endedAt ?? item.startedAt) > effectiveSince;
+    }
+    return true;
+  });
   if (!(await pushActivityToServer(toPush, bound))) return null;
 
+  setSyncCursor(bound.userId, "activity", maxUpdated > 0 ? maxUpdated : Date.now());
   await saveSessionValue(ACTIVITY_SYNC_KEY, String(Date.now()), bound);
   return pulled;
 }
@@ -239,29 +276,46 @@ export async function syncReviews(scope?: DbScope) {
   const bound = scope ?? captureDbScope();
   if (!bound.userId || !isDbScopeActive(bound)) return null;
 
+  const local = await listAllReviews(bound);
+  const cursor = getSyncCursor(bound.userId, "reviews");
+  const effectiveSince = local.length > 0 ? cursor : 0;
+
   let remote: SavedReview[] | null = null;
+  let serverTime: number | undefined;
   try {
-    const response = await accountFetch("/api/reviews", undefined, bound);
+    const url = effectiveSince > 0 ? `/api/reviews?since=${effectiveSince}` : "/api/reviews";
+    const response = await accountFetch(url, undefined, bound);
     if (response.ok) {
-      const data = (await response.json()) as { reviews?: SavedReview[] };
+      const data = (await response.json()) as { reviews?: SavedReview[]; serverTime?: number };
       remote = data.reviews ?? [];
+      serverTime = data.serverTime;
     }
   } catch {
     remote = null;
   }
   if (!remote) return null;
 
-  const local = await listAllReviews(bound);
   const remoteIds = new Set(remote.map((item) => item.id));
   const localIds = new Set(local.map((item) => item.id));
+
+  let maxUpdated = effectiveSince;
+  if (serverTime && serverTime > maxUpdated) maxUpdated = serverTime;
+  for (const item of remote) {
+    if (item.createdAt > maxUpdated) maxUpdated = item.createdAt;
+  }
 
   const pulled = await putReviews(
     remote.filter((item) => !localIds.has(item.id)),
     bound,
   );
-  const toPush = local.filter((item) => !remoteIds.has(item.id));
+  const toPush = local.filter((item) => {
+    if (remoteIds.has(item.id)) return false;
+    if (effectiveSince > 0) return item.createdAt > effectiveSince;
+    return true;
+  });
   if (!(await pushReviewsToServer(toPush, bound))) return null;
 
+  setSyncCursor(bound.userId, "reviews", maxUpdated > 0 ? maxUpdated : Date.now());
   await saveSessionValue(REVIEWS_SYNC_KEY, String(Date.now()), bound);
   return pulled;
 }
@@ -310,11 +364,18 @@ export async function syncKnowledge(scope?: DbScope) {
   const bound = scope ?? captureDbScope();
   if (!bound.userId || !isDbScopeActive(bound)) return null;
 
+  const local = await listAllKnowledge(undefined, bound);
+  const cursor = getSyncCursor(bound.userId, "knowledge");
+  const effectiveSince = local.length > 0 ? cursor : 0;
+
   let remote: KnownWord[] | null = null;
+  let serverTime: number | undefined;
   try {
-    const response = await accountFetch("/api/knowledge", undefined, bound);
+    const url = effectiveSince > 0 ? `/api/knowledge?since=${effectiveSince}` : "/api/knowledge";
+    const response = await accountFetch(url, undefined, bound);
     if (response.ok) {
-      const data = (await response.json()) as { rows?: KnownWord[] };
+      const data = (await response.json()) as { rows?: KnownWord[]; serverTime?: number };
+      serverTime = data.serverTime;
       // La clave se deriva de idioma+lema; se recalcula por si faltara.
       remote = (data.rows ?? []).map((item) => ({
         ...item,
@@ -326,12 +387,16 @@ export async function syncKnowledge(scope?: DbScope) {
   }
   if (!remote) return null;
 
-  const local = await listAllKnowledge(undefined, bound);
   const localByKey = new Map(local.map((item) => [item.key, item]));
   const remoteByKey = new Map(remote.map((item) => [item.key, item]));
 
   let pulled = 0;
+  let maxUpdated = effectiveSince;
+  if (serverTime && serverTime > maxUpdated) maxUpdated = serverTime;
+
   for (const item of remote) {
+    const s = item.updatedAt ?? 0;
+    if (s > maxUpdated) maxUpdated = s;
     const existing = localByKey.get(item.key);
     if (!existing || knowledgeArbWins(item, existing)) {
       await putKnowledge(item, bound);
@@ -340,13 +405,18 @@ export async function syncKnowledge(scope?: DbScope) {
   }
 
   const toPush = local.filter((item) => {
+    const s = item.updatedAt ?? 0;
     const remoteItem = remoteByKey.get(item.key);
+    if (effectiveSince > 0) {
+      return s > effectiveSince && (!remoteItem || knowledgeArbWins(item, remoteItem));
+    }
     return !remoteItem || knowledgeArbWins(item, remoteItem);
   });
   if (!(await pushKnowledgeToServer(toPush, bound))) return null;
 
   // Solo se sella la fecha cuando el ciclo completo salió, como en los
   // demás syncs: una sincronización parcial no cuenta como «al día».
+  setSyncCursor(bound.userId, "knowledge", maxUpdated > 0 ? maxUpdated : Date.now());
   await saveSessionValue(KNOWLEDGE_SYNC_KEY, String(Date.now()), bound);
   return pulled;
 }
