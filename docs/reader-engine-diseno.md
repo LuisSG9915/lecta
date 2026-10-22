@@ -160,6 +160,9 @@ Orden por riesgo creciente, no por tamaño. **Un corte = un commit**, con `pnpm 
 | 4 | `hooks/useReaderSectionLoader.ts` | `loadSection` | 218 | ~43 | −175 | 4 049 |
 | 5 | `hooks/useReaderSettings.ts` | `updateSettings` (solo si el 4 deja > 4 000) | 53 | ~15 | −38 | 4 011 |
 
+**Estado de ejecución:** corte 1 hecho el 2026-10-22 → 4 573 → **4 422** (−151; la proyección
+decía −148). Pruebas del módulo: 11, sin jsdom. Siguiente: corte 2 (`useReaderSelection`).
+
 Ese es el techo del tipo 1 + tipo 2: **~4 050**, todavía lejos de 3 500. Lo que falta no son
 callbacks sino **efectos** (1 097 líneas en 44 bloques):
 
