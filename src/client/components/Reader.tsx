@@ -215,6 +215,8 @@ import SmartReaderDock, { type FocusSuggestion } from "./SmartReaderDock";
 import { ReaderTopBar } from "./reader/ReaderTopBar";
 import { ReaderOverlays } from "./reader/ReaderOverlays";
 import { ReaderContent } from "./reader/ReaderContent";
+import { ReaderFloatingBars } from "./reader/ReaderFloatingBars";
+import { ReaderFocusLayers } from "./reader/ReaderFocusLayers";
 import { ReaderNotices } from "./reader/ReaderNotices";
 import { ReaderSelectionBar } from "./reader/ReaderSelectionBar";
 import ReaderSettingsSheet from "./reader/ReaderSettingsSheet";
@@ -224,8 +226,6 @@ import { useReaderAnnotationsAndSearch } from "../hooks/useReaderAnnotationsAndS
 import { useReaderTts } from "../hooks/useReaderTts";
 import { downloadBookMarkdown } from "../lib/export";
 import {
-  formatRemainingTime,
-  formatElapsedMinutes,
   requestScreenWakeLock,
   releaseScreenWakeLock,
   triggerHaptic,
@@ -238,11 +238,9 @@ import {
   toggleFullscreen,
 } from "../lib/fullscreen";
 import { playCompanionSound } from "../lib/companion-audio";
-import { Companion } from "./Companion";
 import { CompanionButton } from "./CompanionButton";
 import { useCompanion } from "./CompanionProvider";
 import { useReaderPresence } from "../lib/reader-presence";
-import { FocusRuler, rulerBandPx } from "./FocusRuler";
 import {
   buildChapterCatalog,
   suggestedChapterTarget,
@@ -269,11 +267,6 @@ import {
   lemmaOfFromEntries,
   loadPhrases,
   matchPhrase,
-  selectOptimalScaffoldingTier,
-  updateBilingualAutonomyProfile,
-  loadBilingualScaffoldingProfile,
-  saveBilingualScaffoldingProfile,
-  muteBilingualForBook,
   setBilingualMode,
   type PhraseIndex,
 } from "../lib/phrases";
@@ -4347,75 +4340,20 @@ export default function Reader({
         />
       ) : null}
 
-      {/* Regla de enfoque: velo de papel con una franja clara que
-          sigue al puntero; la patita del gato ancla el margen. Con
-          presencia «off» o el gato suprimido por esta lectura la
-          decoración también se va: no queda rastro del gato. */}
-      {!strategyPaused && (settings.focusRuler || settings.focusMode === "ruler") && !settings.paragraphFocus && state === "ready" ? (
-        <FocusRuler
-          enabled={true}
-          heightPx={rulerBandPx(
-            settings.rulerSize,
-            settings.size * settings.leading,
-          )}
-          bandPx={rulerBandPx(
-            settings.rulerSize,
-            settings.size * settings.leading,
-          )}
-          lineHeightPx={settings.size * settings.leading}
-          anchor={
-            catEnabled && presenceMode !== "off" && !catSuppressed ? (
-              <Companion
-                stage={companion.stage}
-                mood="awake"
-                accessories={companion.accessories}
-                focus={catState ?? "reading"}
-                decorative
-              />
-            ) : undefined
-          }
-        />
-      ) : null}
-      {isDeepReading && deepReading ? (
-        <>
-          <aside
-            className="reader-deep-indicator"
-            aria-label="Sesión de retiro de lectura"
-          >
-            <span className="reader-deep-indicator-text">
-              {deepReading.targetEndedAt
-                ? formatRemainingTime(
-                    Math.max(
-                      0,
-                      deepReading.targetMinutes * 60_000 - deepReading.elapsedMs,
-                    ),
-                  )
-                : `${formatElapsedMinutes(deepReading.elapsedMs)} en retiro`}
-            </span>
-            <button
-              type="button"
-              className="reader-deep-indicator-btn"
-              onClick={() => void finishDeepReading(false)}
-              aria-label="Concluir retiro de lectura"
-            >
-              Concluir
-            </button>
-          </aside>
-          <div
-            className="reader-deep-thread"
-            role="progressbar"
-            aria-valuenow={Math.round(progress * 100)}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-label="Progreso general en retiro"
-          >
-            <div
-              className="reader-deep-thread-fill"
-              style={{ width: `${Math.round(progress * 100)}%` }}
-            />
-          </div>
-        </>
-      ) : null}
+      <ReaderFocusLayers
+        settings={settings}
+        state={state}
+        strategyPaused={strategyPaused}
+        catEnabled={catEnabled}
+        presenceMode={presenceMode}
+        catSuppressed={catSuppressed}
+        companion={companion}
+        catState={catState}
+        isDeepReading={isDeepReading}
+        deepReading={deepReading}
+        finishDeepReading={finishDeepReading}
+        progress={progress}
+      />
 
 
       <ReaderSearchAndTocSheet
@@ -4496,99 +4434,20 @@ export default function Reader({
 
 
 
-      {/* Marcapasos Visual: barra flotante ergonómica cuando está activo (OBJ-05) */}
-      {settings.visualPacer && !strategyPaused && state === "ready" && !isDeepReading ? (
-        <div
-          className="reader__pacer-bar tts-chip tts-chip--expanded"
-          role="status"
-          aria-label="Marcapasos visual"
-        >
-          <span className="tts-chip-label">
-            {pacerPaused ? "En pausa" : "Ritmo activo"}
-          </span>
-          <div className="tts-chip-actions">
-            <button
-              type="button"
-              className="btn--quiet tts-btn-playpause"
-              onClick={() => setPacerPaused((p) => !p)}
-              aria-label={pacerPaused ? "Reanudar ritmo" : "Pausar ritmo"}
-            >
-              {pacerPaused ? "Reanudar" : "Pausar"}
-            </button>
-            <button
-              type="button"
-              className="btn--quiet tts-chip-rate"
-              onClick={() => {
-                const nextWpm =
-                  (settings.pacerWpm || 210) >= 350
-                    ? 150
-                    : (settings.pacerWpm || 210) + 30;
-                updateSettings({ pacerWpm: nextWpm });
-              }}
-              aria-label="Velocidad del ritmo"
-            >
-              {`${settings.pacerWpm || 210} WPM`}
-            </button>
-            <button
-              type="button"
-              className="btn--quiet tts-chip-stop"
-              onClick={() => updateSettings({ visualPacer: false })}
-              aria-label="Detener ritmo"
-            >
-              Detener
-            </button>
-          </div>
-        </div>
-      ) : null}
-
-      {ttsCapturedToast ? (
-        <div className="reader-hint-toast reader-hint-toast--captured" role="status" aria-live="polite">
-          ★ Guardada en Cuaderno: <strong>{ttsCapturedToast}</strong>
-        </div>
-      ) : null}
-
-
-      {activeBilingualParagraph ? (
-        <div
-          className="reader-bilingual-floating-container"
-          role="region"
-          aria-label="Párrafo bilingüe"
-          style={{
-            position: "fixed",
-            bottom: "84px",
-            left: "1rem",
-            right: "1rem",
-            margin: "0 auto",
-            maxWidth: "640px",
-            zIndex: 45,
-          }}
-        >
-          <BilingueParagraph
-            bookId={bookHash}
-            bookLanguage={language}
-            originalText={activeBilingualParagraph.originalText}
-            translatedText={activeBilingualParagraph.translatedText}
-            initialTier={selectOptimalScaffoldingTier(
-              activeBilingualParagraph.originalText,
-              0.1,
-              language || "en",
-              loadBilingualScaffoldingProfile(),
-              bookHash,
-            )}
-            onTierEscalated={() => {
-              const prof = loadBilingualScaffoldingProfile();
-              const updated = updateBilingualAutonomyProfile(
-                prof,
-                language || "en",
-                "escalated",
-              );
-              saveBilingualScaffoldingProfile(updated);
-            }}
-            onMuteForBook={(id) => muteBilingualForBook(id)}
-            onDisableBilingual={() => setBilingualMode("off")}
-          />
-        </div>
-      ) : null}
+      <ReaderFloatingBars
+        settings={settings}
+        state={state}
+        strategyPaused={strategyPaused}
+        isDeepReading={isDeepReading}
+        pacerPaused={pacerPaused}
+        setPacerPaused={setPacerPaused}
+        updateSettings={updateSettings}
+        ttsCapturedToast={ttsCapturedToast}
+        activeBilingualParagraph={activeBilingualParagraph}
+        bookHash={bookHash}
+        language={language}
+        setBilingualMode={setBilingualMode}
+      />
       <ReaderOverlays
         bookHash={bookHash}
         bookTitle={title}

@@ -1,0 +1,26 @@
+// Capas de superposición del lector: la regla de enfoque (con la pata del gato
+// anclada al margen) y el indicador de retiro de lectura profunda.
+//
+// Extraídas de Reader.tsx (Fase 7). Solo pintan.
+import Companion from "../Companion";
+import { FocusRuler, rulerBandPx } from "../FocusRuler";
+import type { CompanionContextValue } from "../CompanionProvider";
+import type { CompanionState } from "../../lib/companion-state";
+import type { DeepReadingState } from "../../lib/deep-reading";
+import { formatElapsedMinutes, formatRemainingTime } from "../../lib/export";
+import type { ReaderSettings } from "../../lib/settings";
+
+export interface ReaderFocusLayersProps {
+  settings: ReaderSettings;
+  state: "idle" | "opening" | "ready" | "error";
+  strategyPaused: boolean;
+  catEnabled: boolean;
+  presenceMode: string;
+  catSuppressed: boolean;
+  companion: CompanionContextValue;
+  catState: CompanionState | null;
+  isDeepReading: boolean;
+  deepReading: DeepReadingState | null;
+  finishDeepReading: (completed: boolean) => void | Promise<unknown>;
+  progress: number;
+}
