@@ -4,9 +4,10 @@
 
 - `pnpm typecheck` (cliente + worker + MCP), `pnpm lint`, `pnpm test`, `pnpm build`.
 - `pnpm gate` encadena typecheck + lint + test + build + check:size: es la puerta de
-  cierre de cada fase de `docs/plan-8-fases.md`. `pnpm lint` está **exactamente** en
-  28 de 28 warnings y `check:size` ronda 176.7 kB de 215 kB gzip: un warning nuevo rompe
-  el gate; en peso aún quedan ~38 kB de margen.
+  cierre de cada fase de `docs/plan-8-fases.md`. `pnpm lint` tiene un tope duro de 28
+  warnings y hoy van **23** (bajó de 28 con el corte 2 de `docs/reader-engine-diseno.md`, al
+  dejar de bailar el análisis del React Compiler): un warning nuevo por encima del tope rompe
+  el gate. `check:size` ronda 176.7 kB de 215 kB gzip; en peso quedan ~38 kB de margen.
 - `pnpm smoke:auth` corre contra un server vivo y **escribe** en él (dos cuentas
   nuevas, un EPUB en R2 y vocab); `SMOKE_URL=<url>` para producción, una sola vez
   por deploy y anotando las cuentas creadas.

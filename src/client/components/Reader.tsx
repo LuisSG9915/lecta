@@ -219,6 +219,7 @@ import { ReaderSearchAndTocSheet } from "./reader/ReaderSearchAndTocSheet";
 import { useReaderPersistence } from "../hooks/useReaderPersistence";
 import { useReaderAnnotationsAndSearch } from "../hooks/useReaderAnnotationsAndSearch";
 import { useReaderTts } from "../hooks/useReaderTts";
+import { useReaderSelection } from "../hooks/useReaderSelection";
 import { downloadBookMarkdown } from "../lib/export";
 import {
   requestScreenWakeLock,
@@ -258,9 +259,7 @@ import {
   type ChapterAnalysis,
 } from "../lib/chapter-analysis";
 import {
-  lemmaOfFromEntries,
   loadPhrases,
-  matchPhrase,
   setBilingualMode,
   type PhraseIndex,
 } from "../lib/phrases";
@@ -268,18 +267,6 @@ import {
 type ReaderState = "idle" | "opening" | "ready" | "error";
 type SheetKind = "toc" | "settings" | "search" | "marks";
 export type ReaderSettingsTab = "appearance" | "book" | "strategy";
-
-// Metadata del premio por consulta de palabra: el uuid se genera al
-// abrir la ficha y viaja congelado en el journal. Vive fuera del
-// componente para que reloj/uuid no se lean durante el render.
-const consultedAwardMeta = () => {
-  const at = Date.now();
-  return {
-    id: `consult:${crypto.randomUUID()}`,
-    at,
-    dayKey: localDayKey(at),
-  };
-};
 
 // Días sin abrir el libro para que aparezca el marcador de retomar:
 // una reanudación reciente ya es continua y la tarjeta solo estorba.
@@ -322,11 +309,11 @@ type ReaderProps = {
 // estos mismos datos sin otra llamada (predictSection es pura).
 // Análisis «ready» de un destino: lo que la preparación y las marcas
 // necesitan del cache del analizador por rango.
-type ReadyAnalysis = Extract<ChapterAnalysis, { state: "ready" }>;
+export type ReadyAnalysis = Extract<ChapterAnalysis, { state: "ready" }>;
 
 // Fila del índice: derivada del catálogo de destinos, así la hoja
 // navega por destino lógico (sección + fragmento), no solo sección.
-type TocRow = { label: string; index: number; depth: number; target: ChapterTarget };
+export type TocRow = { label: string; index: number; depth: number; target: ChapterTarget };
 
 const WPM_KEY = "readingWpm";
 // Desplazamiento manual del umbral del perfil («Mostrar menos/más»)
@@ -1402,88 +1389,6 @@ export default function Reader({
     }
   };
 
-  // Las capas del lector son mutuamente excluyentes: abrir una cierra
-  // la anterior y reutiliza su entrada de historial cuando existe. Si
-  // la entrada salió vía «atrás», el close deja el ref limpio para que
-  // la siguiente capa empuje una entrada nueva.
-  const openSelection = (hit: WordHit) => {
-    noteActivity();
-    // Locución en la oración del toque: matching por lema con el
-    // análisis ya en caché del capítulo (capítulo sin analizar →
-    // solo superficie; degradación documentada en phrases.ts).
-    if (hit.context && phrasesRef.current) {
-      const analysis = analyzerRef.current?.cached(
-        targetAt(
-          catalogRef.current?.ranges ?? [],
-          sectionIndexRef.current,
-        )?.id ?? "",
-      );
-      hit.phrase =
-        matchPhrase(
-          phrasesRef.current,
-          hit.context,
-          hit.word,
-          lemmaOfFromEntries(
-            analysis?.state === "ready" ? analysis.entries : undefined,
-          ),
-        ) ?? undefined;
-    }
-    const close = () => {
-      overlayReleaseRef.current = null;
-      setSelection(null);
-    };
-    if (overlayReleaseRef.current) overlayReleaseRef.current.swap(close);
-    else overlayReleaseRef.current = pushOverlay(close);
-    setSheet(null);
-    setSelection(hit);
-    if (containerRef.current) {
-      setCharOffsetInChapter(charOffsetAtViewTop(containerRef.current, sectionTextRef.current));
-    }
-    consultedInPageRef.current.add(hit.word.toLowerCase());
-    // Recalibración adaptativa hacia abajo (outcome = 0) para el idioma actual y registro en lookups del capítulo
-    try {
-      const currentLang = language || (bookRef.current ? getBookLanguage(bookRef.current) : "es");
-      const cachedAnalysis = analysisFor(sectionIndexRef.current);
-      const hitEntry = cachedAnalysis?.entries[hit.word.toLowerCase()]?.[0];
-      const wordBeta = betaFromZipf(hitEntry?.zipf);
-      updateLanguageTheta(currentLang, wordBeta, 0, 0.8);
-
-      const tocLabel = tocRowsRef.current.find((r) => r.index === sectionIndexRef.current)?.label;
-      const lookupItem: EpisodicWordItem = {
-        lemma: hitEntry?.lemma || hit.word.toLowerCase(),
-        surfaceForm: hit.word,
-        lang: currentLang,
-        shortGloss: hitEntry?.senses?.[0]?.definition || "",
-        chapterSentence: hit.context || hit.word,
-        chapterTitle: tocLabel || `Sección ${sectionIndexRef.current + 1}`,
-        source: "in-chapter-lookup",
-        partOfSpeech: hitEntry?.pos ?? undefined,
-      };
-      if (!currentChapterLookups.current.some((l) => l.lemma === lookupItem.lemma)) {
-        currentChapterLookups.current.push(lookupItem);
-      }
-    } catch {
-      // Ignorar fallo al persistir theta o lookups
-    }
-    // La consulta es un acto neutral para el modelo, pero sí queda en
-    // el trayecto: sirve para distinguir curiosidad de guardado.
-    trackEvent({
-      kind: "word_consulted",
-      sectionIndex: sectionIndexRef.current,
-      form: hit.word,
-      origin: "text",
-    });
-    // Una consulta = un evento del journal, sellado al abrir la ficha.
-    void award({ kind: "consulted" }, captureDbScope(), consultedAwardMeta());
-    signalCompanion({ kind: "word_consulted" });
-    recordConsult(hit.word);
-  };
-
-  const closeSelection = () => {
-    releaseOverlay();
-    setSelection(null);
-  };
-
   const openSheet = (kind: SheetKind) => {
     const close = () => {
       overlayReleaseRef.current = null;
@@ -1852,6 +1757,33 @@ export default function Reader({
         applyKnowledgeRow({ lemma: row.lemma, known: row.known });
     })().catch(() => undefined);
   };
+  // Las capas del lector son mutuamente excluyentes: abrir una cierra la
+  // anterior y reutiliza su entrada de historial cuando existe. La lógica vive
+  // en hooks/useReaderSelection.ts.
+  const { openSelection, closeSelection } = useReaderSelection({
+    language,
+    setSelection,
+    setSheet,
+    setCharOffsetInChapter,
+    analyzerRef,
+    bookRef,
+    catalogRef,
+    consultedInPageRef,
+    containerRef,
+    currentChapterLookups,
+    overlayReleaseRef,
+    phrasesRef,
+    sectionIndexRef,
+    sectionTextRef,
+    tocRowsRef,
+    analysisFor,
+    recordConsult,
+    signalCompanion,
+    trackEvent,
+    releaseOverlay,
+    noteActivity,
+  });
+
 
   // Avance o retroceso de navegación hacia la ventana de fatiga; el
   // retroceso queda además en el trayecto. Si la tasa de regresiones

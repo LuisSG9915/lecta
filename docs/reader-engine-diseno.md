@@ -160,8 +160,24 @@ Orden por riesgo creciente, no por tamaño. **Un corte = un commit**, con `pnpm 
 | 4 | `hooks/useReaderSectionLoader.ts` | `loadSection` | 218 | ~43 | −175 | 4 049 |
 | 5 | `hooks/useReaderSettings.ts` | `updateSettings` (solo si el 4 deja > 4 000) | 53 | ~15 | −38 | 4 011 |
 
-**Estado de ejecución:** corte 1 hecho el 2026-10-22 → 4 573 → **4 422** (−151; la proyección
-decía −148). Pruebas del módulo: 11, sin jsdom. Siguiente: corte 2 (`useReaderSelection`).
+**Estado de ejecución (2026-10-22):**
+
+| Corte | Estado | `Reader.tsx` | Pruebas nuevas |
+|---|---|---|---|
+| 1 · `lib/reader-evidence.ts` | hecho | 4 573 → 4 422 (−151; se proyectaba −148) | 11, sin jsdom |
+| 2 · `hooks/useReaderSelection.ts` | hecho | 4 422 → 4 354 (−68; se proyectaba −57) | 7, jsdom + `act` |
+
+Dos notas del corte 2:
+
+- **El lint bajó de 28 a 23 warnings** con el tope igual en 28: al salir el bloque que mutaba el
+  parámetro `hit`, el análisis del React Compiler dejó de bailar el componente y se fueron 5
+  `react-hooks/preserve-manual-memoization`. No se tocó la configuración. `AGENTS.md` y §12 de
+  este plan quedan actualizados.
+- **El e2e falló una vez** en el Recorrido 9 (`.shelf-welcome-hero` no visible al arranque, ~5 s).
+  El mismo test pasó en aislamiento y la suite completa pasó 12/12 en las dos corridas
+  siguientes con el mismo código: es un fallo de arranque, no de la extracción.
+
+Siguiente: corte 3 (`useReaderNavigation`: `navigate` + `goPage`).
 
 Ese es el techo del tipo 1 + tipo 2: **~4 050**, todavía lejos de 3 500. Lo que falta no son
 callbacks sino **efectos** (1 097 líneas en 44 bloques):
