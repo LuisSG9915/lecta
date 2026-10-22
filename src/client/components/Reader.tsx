@@ -139,8 +139,6 @@ import {
   readerProfileFor,
   readerCssVars,
   applyStrategyPreset,
-  applyReadingPreset,
-  detectActiveReadingPreset,
   muteBookForPriming,
   disablePrimingGlobally,
   isFeatureFlagEnabled,
@@ -211,10 +209,11 @@ import {
   type ConsolidationModality,
 } from "../lib/practice";
 import { BilingueParagraph } from "./BilingueParagraph";
-import SmartReaderDock, { type FocusSuggestion } from "./SmartReaderDock";
+import type { FocusSuggestion } from "./SmartReaderDock";
 import { ReaderTopBar } from "./reader/ReaderTopBar";
 import { ReaderOverlays } from "./reader/ReaderOverlays";
 import { ReaderContent } from "./reader/ReaderContent";
+import { ReaderDockHost } from "./reader/ReaderDockHost";
 import { ReaderFloatingBars } from "./reader/ReaderFloatingBars";
 import { ReaderFocusLayers } from "./reader/ReaderFocusLayers";
 import { ReaderNotices } from "./reader/ReaderNotices";
@@ -238,7 +237,6 @@ import {
   toggleFullscreen,
 } from "../lib/fullscreen";
 import { playCompanionSound } from "../lib/companion-audio";
-import { CompanionButton } from "./CompanionButton";
 import { useCompanion } from "./CompanionProvider";
 import { useReaderPresence } from "../lib/reader-presence";
 import {
@@ -4244,99 +4242,51 @@ export default function Reader({
 
       {/* SmartReaderDock (Track 2): Dock Inteligente Único que muta entre Lectura, Audio y Lienzo Puro */}
       {state === "ready" && !isDeepReading ? (
-        <SmartReaderDock
-          progressText={
-            settings.layout === "pages"
-              ? `Pág. ${page + 1} de ${pageCount || 1}${minutes > 0 ? ` · ~${minutes} min` : ""}`
-              : `Cap. ${sectionIndex + 1} de ${sectionTotal || 1}${minutes > 0 ? ` · ~${minutes} min` : ""}`
-          }
-          errorText={errorText ?? undefined}
-          coveragePct={prediction?.coveragePct ?? null}
-          onOpenGlossary={() => setGlossaryOpen(true)}
-          isPureCanvas={!barsShown}
-          onExitPureCanvas={() => setBarsVisible(true)}
-          activePreset={detectActiveReadingPreset(settings)}
-          onSelectPreset={(preset) => {
-            triggerHaptic("selection");
-            setStrategyPaused(false);
-            updateSettings(applyReadingPreset(settings, preset));
-          }}
-          onOpenAdvancedSettings={() => {
-            setSettingsTab("appearance");
-            setSheet("settings");
-          }}
-          onStartAudio={onTtsRequest}
-          onRecap={handleRecapClick}
-          focusSuggestion={fatigueSuggestion}
-          isFatigued={fatigueSuggestion?.isFatigued}
-          recommendedFocusAid={fatigueSuggestion?.recommendedAid}
-          focusFatigueReason={fatigueSuggestion?.reason}
-          onAcceptFocusAid={handleAcceptFocusAid}
-          onDismissFocusSuggestion={handleDismissFocusSuggestion}
-          onMuteFocusForBook={handleMuteFocusForBook}
-          onDisableFocusGlobally={handleDisableFocusGlobally}
-          companionSlot={
-            catShown && catState ? (
-              <div
-                className="reader-dock-cat cat-anim"
-                data-out={catLeaving || undefined}
-              >
-                <CompanionButton
-                  stage={companion.stage}
-                  mood={
-                    catSavedWord
-                      ? "happy"
-                      : catSleepy
-                        ? "sleepy"
-                        : "awake"
-                  }
-                  accessories={companion.accessories}
-                  focus={
-                    catSavedWord
-                      ? "celebrating"
-                      : isDeepReading
-                        ? "deep_focus"
-                        : catSleepy
-                          ? "sleep"
-                          : selection
-                            ? "curious"
-                            : catState
-                  }
-                  gazeProgress={
-                    settings.layout === "pages"
-                      ? pageCount > 1
-                        ? page / (pageCount - 1)
-                        : 0
-                      : scrollRatio
-                  }
-                  pose={
-                    isDeepReading
-                      ? undefined
-                      : catTap
-                        ? "celebrate"
-                        : catSavedWord
-                          ? "celebrate"
-                          : catGreeting
-                            ? "greet"
-                            : undefined
-                  }
-                  label={`Ver a ${companion.name}`}
-                  onClick={onCatTap}
-                  bubbleMessage={stallBubble}
-                  onBubbleClick={onStallBubbleClick}
-                />
-              </div>
-            ) : null
-          }
+        <ReaderDockHost
+          settings={settings}
+          updateSettings={updateSettings}
+          errorText={errorText}
+          page={page}
+          pageCount={pageCount}
+          sectionIndex={sectionIndex}
+          sectionTotal={sectionTotal}
+          minutes={minutes}
+          prediction={prediction}
+          scrollRatio={scrollRatio}
+          barsShown={barsShown}
+          setBarsVisible={setBarsVisible}
+          setGlossaryOpen={setGlossaryOpen}
+          setSettingsTab={setSettingsTab}
+          setSheet={setSheet}
+          setStrategyPaused={setStrategyPaused}
+          setTtsConsentOpen={setTtsConsentOpen}
           ttsSnap={ttsSnap}
-          onTogglePlayPause={togglePlayPause}
-          onPrevSentence={prevSentence}
-          onNextSentence={nextSentence}
-          onCycleSpeed={cycleSpeed}
-          onOpenVoiceSelector={() => setTtsConsentOpen(true)}
-          onCaptureWord={handleTtsCaptureWord}
-          onStopAudio={() => stopTts("user")}
-          onOpenCatCorner={onCatTap}
+          onTtsRequest={onTtsRequest}
+          togglePlayPause={togglePlayPause}
+          prevSentence={prevSentence}
+          nextSentence={nextSentence}
+          cycleSpeed={cycleSpeed}
+          stopTts={stopTts}
+          handleTtsCaptureWord={handleTtsCaptureWord}
+          handleRecapClick={handleRecapClick}
+          isDeepReading={isDeepReading}
+          selection={selection}
+          companion={companion}
+          catState={catState}
+          catShown={catShown}
+          catLeaving={catLeaving}
+          catTap={catTap}
+          catSavedWord={catSavedWord}
+          catSleepy={catSleepy}
+          catGreeting={catGreeting}
+          onCatTap={onCatTap}
+          stallBubble={stallBubble}
+          onStallBubbleClick={onStallBubbleClick}
+          fatigueSuggestion={fatigueSuggestion}
+          handleAcceptFocusAid={handleAcceptFocusAid}
+          handleDismissFocusSuggestion={handleDismissFocusSuggestion}
+          handleMuteFocusForBook={handleMuteFocusForBook}
+          handleDisableFocusGlobally={handleDisableFocusGlobally}
         />
       ) : null}
 

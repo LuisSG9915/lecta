@@ -5,13 +5,13 @@ exacto, el método que funciona y lo que queda.
 
 - **Fecha:** 2026-10-22
 - **Rama:** `main`, árbol limpio
-- **Último commit relevante:** `08258c1`
+- **Último commit relevante:** `refactor(fase-7): extraer el dock (4623 -> 4573)`
 - **Plan de referencia:** `docs/plan-8-fases.md` §10 (Fase 7)
-- **Estado:** fase **abierta**. Seis cortes hechos, todos con gate y e2e verdes.
+- **Estado:** fase **abierta**. Siete cortes hechos, todos con gate y e2e verdes.
 
 ## 1. Dónde estamos
 
-`Reader.tsx` pasó de **5 503 a 4 623 líneas** (−16 %). Lo extraído:
+`Reader.tsx` pasó de **5 503 a 4 573 líneas** (−17 %). Lo extraído:
 
 | Corte | Archivo | Líneas | Props |
 |---|---|---|---|
@@ -21,6 +21,7 @@ exacto, el método que funciona y lo que queda.
 | 4 | `src/client/components/reader/ReaderSelectionBar.tsx` | 133 | 11 |
 | 5 | `src/client/components/reader/ReaderFocusLayers.tsx` | 71 | 12 |
 | 6 | `src/client/components/reader/ReaderFloatingBars.tsx` | 93 | 12 |
+| 7 | `src/client/components/reader/ReaderDockHost.tsx` | 94 | 44 |
 
 Objetivo del plan: ≤ 3 500 (meta 3 000). **No alcanzado**: el JSX restante son ~266 líneas; el
 resto del archivo es lógica que no se puede mover sin hooks.
@@ -107,10 +108,11 @@ pnpm gate             # typecheck + lint + test + build + check:size
 
 | Bloque | Líneas | Props | Notas |
 |---|---|---|---|
-| Dock + cableado de modos | ~94 | ~49 | `<SmartReaderDock` en `Reader.tsx`; estado de modo lectura/audio/lienzo. Props caras: valora si compensa. |
 | Props de `<ReaderOverlays` | ~172 | — | Es solo el paso de props a un componente que **ya existe**. Moverlo no reduce acoplamiento; se puede dejar. |
 
-Hacer el dock deja el archivo en ~4 530. **No llega a 3 500.**
+El dock ya salió (corte 7) y dejó el archivo en **4 573**. **No llega a 3 500.** El guard
+`state === "ready" && !isDeepReading` se quedó en `Reader.tsx`: el host solo se monta cuando el
+lector está listo y no hay retiro de lectura, y así no viaja como prop.
 
 ### 4.2 Lógica — aquí está el salto real
 

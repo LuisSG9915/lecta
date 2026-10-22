@@ -692,8 +692,8 @@ Revertir. Los umbrales vuelven a los globales.
 hecha: el lector solo consume `ttsSnap` y unos pocos callbacks). Lo que queda no es «crear
 hooks»: es sacar un closure de 5 200 líneas donde casi todo bloque necesita 25–50 props.
 
-**Estado (2026-10-22): extracción en curso, no cerrada.** `Reader.tsx` pasó de **5 503 a 4 623
-líneas** en seis cortes, cada uno con gate y e2e verdes:
+**Estado (2026-10-22): extracción en curso, no cerrada.** `Reader.tsx` pasó de **5 503 a 4 573
+líneas** en siete cortes, cada uno con gate y e2e verdes:
 
 | Corte | Archivo nuevo | Líneas movidas | Props |
 |---|---|---|---|
@@ -703,6 +703,7 @@ líneas** en seis cortes, cada uno con gate y e2e verdes:
 | 4 | `reader/ReaderSelectionBar.tsx` | 133 | 11 |
 | 5 | `reader/ReaderFocusLayers.tsx` | 71 | 12 |
 | 6 | `reader/ReaderFloatingBars.tsx` | 93 | 12 |
+| 7 | `reader/ReaderDockHost.tsx` | 94 | 44 |
 
 Al mover JSX conviene llevarse también las utilidades que solo usaba ese bloque
 (`focusBlock`, `tapZone`, `triggerHaptic`, `captureDbScope`, `saveSessionValue`,
@@ -713,13 +714,14 @@ Mapa medido de lo que queda:
 
 | Bloque | Líneas | Props | Riesgo |
 |---|---|---|---|
-| Dock y sus modos (`SmartReaderDock` + estado) | 94 | ~49 | Medio |
+| Props de `<ReaderOverlays` | 172 | — | Bajo |
 
-Con esto el JSX ya está casi todo fuera: solo queda el dock (94 líneas, 49 props) y el bloque de props de `ReaderOverlays` (172). Para bajar de 3 500 hay que mover **lógica** a hooks. Para bajar de 3 500 hay que mover además
-lógica: el cargador de sección (`loadSection`, ~223 líneas), la paginación (`goPage` + métricas,
-~200) y la selección (~150) a hooks con un objeto de contexto — o pasar a un `ctx` único
-compartido por los componentes extraídos, que ya es el patrón de `ReaderOverlays`. Es trabajo de
-varias sesiones: no se fuerza en una sola pasada.
+Con esto el JSX ya está todo fuera salvo el paso de props a `ReaderOverlays` (172 líneas), que no
+reduce acoplamiento: el componente ya existe y mover el listado solo lo traslada. Para bajar de
+3 500 hay que mover **lógica** a hooks: el cargador de sección (`loadSection`, ~223 líneas), la
+paginación (`goPage` + métricas, ~200) y la selección (~150) a hooks con un objeto de contexto — o
+pasar a un `ctx` único compartido por los componentes extraídos, que ya es el patrón de
+`ReaderOverlays`. Es trabajo de varias sesiones: no se fuerza en una sola pasada.
 
 ### 10.1 Invariantes
 
@@ -739,7 +741,7 @@ varias sesiones: no se fuerza en una sola pasada.
 | 1 | `reader/useReaderTts.ts` | estado del motor, lookahead, voz, reproducción | −400 | e2e de voz |
 | 2 | `reader/ReaderChrome.tsx` | barra superior, progreso, cabecera de capítulo | −350 | e2e |
 | 3 | `reader/ReaderContent.tsx` | canal de render (foliate), selección, resaltado | −600 | e2e + selección |
-| 4 | `reader/ReaderDockHost.tsx` | cableado de `SmartReaderDock` y modos | −250 | e2e |
+| 4 | `reader/ReaderDockHost.tsx` | cableado de `SmartReaderDock` y modos | −250 (real: −50) | e2e |
 
 Sobran ~1 100 líneas de margen: el objetivo es ≤ 3 000, el mínimo aceptable 3 500. Si al terminar
 la 4 sigues por encima de 3 500, **no** fuerces una quinta extracción: documenta qué queda acoplado
