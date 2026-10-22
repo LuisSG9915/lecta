@@ -106,8 +106,9 @@ pnpm gate             # typecheck + lint + test + build + check:size
 
 ## 4. Lo que queda (medido)
 
-Nada de esto entra ya en la Fase 7: es la línea de trabajo que haría falta para bajar a 3 500, si
-se decide abrirla.
+Nada de esto entra ya en la Fase 7: es una línea de trabajo aparte. Diseño y decisiones del
+2026-10-22 en `docs/reader-engine-diseno.md`: objetivo ≤ 4 050 con cuatro cortes (sin mover
+efectos), meta de 3 500 aplazada.
 
 ### 4.1 Presentación — ~266 líneas
 
