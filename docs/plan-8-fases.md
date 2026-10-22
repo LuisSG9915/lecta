@@ -94,7 +94,7 @@ Revierte con `git revert <sha>` salvo que la fase diga otra cosa.
 | 4 | Cursor de sync veraz + índice | 0 | — | **Alto** (pérdida silenciosa de datos) | L | sync manual en dev · ✅ 2026-10-22 |
 | 5 | Errores de cliente observables | 3 (presupuesto) y 1 (logs) | 6 | Bajo | M | — · ✅ 2026-10-22 |
 | 6 | Cobertura real + MCP con pruebas | 4, 5 | 7 | Bajo | M | `test:coverage` · ✅ 2026-10-22 |
-| 7 | `Reader.tsx` ≤ 3 500 líneas (objetivo 3 000) | 3, 6 | — | **Alto** (monolito de 5 503 líneas) | L | `test:e2e` por extracción · ⚠️ cerrada con desvío: 4 573 |
+| 7 | `Reader.tsx` ≤ 3 500 líneas (objetivo 3 000) | 3, 6 | — | **Alto** (monolito de 5 503 líneas) | L | `test:e2e` por extracción · ⚠️ cerrada con desvío: 4 573 · desplegada 2026-10-22 |
 | 8 | ODbL descargable de verdad | — | — | Bajo | S | `curl -I` en prod · ✅ 2026-10-22 (pendiente: `senses-es.csv.gz`) |
 
 Leyenda: ✅ cerrada con los criterios verificados por comando (§4.7, §5.3, …); ⚠️ cerrada con

@@ -178,6 +178,22 @@ llegar a 3 500 (que ya sabes que exige mover lógica a hooks).
 
 ## 7. Despliegue
 
-Producción está en la Fase 8 (`7518d096`), **sin los refactors de la Fase 7**. Son cambios sin
-comportamiento observable y con e2e verde; se pueden subir cuando se cierre la fase o antes, si
-se quiere reducir la distancia entre `main` y producción. No hay migraciones ni secretos nuevos.
+**Producción ya sirve los siete cortes de la Fase 7.** Desplegado el 2026-10-22 con
+`pnpm run deploy` desde `main` en `40344c2`, versión `774b2f1c-e838-4045-8305-693d1968700c`
+(la anterior era `7518d096-887b-4803-b657-b137121d854c`, la de la Fase 8). No hay migraciones ni
+secretos nuevos: `db/migrations/` sigue terminando en 013.
+
+Verificación de solo lectura tras el deploy:
+
+- `/api/health` → `{"status":"ok"}`.
+- `node scripts/check-model.mjs --url https://lecta.luis-sg9915.workers.dev` → PASS en las cuatro
+  comprobaciones (200, tamaño, ETag, caché inmutable).
+- `wrangler tail` durante 75 s: 68 peticiones reales, **todas** 200 y `outcome: "ok"`, 0
+  excepciones y 0 líneas `"level": "error"`, servidas por la versión nueva.
+- El chunk nuevo del lector (`assets/Reader-DjInwQIh.js`) responde 200 desde el dominio.
+
+**No** se corrió `smoke:auth`: escribe dos cuentas y un EPUB en R2, y este deploy no toca auth,
+API ni esquema (solo JS del lector). Queda disponible si se quiere el smoke completo:
+`SMOKE_URL=https://lecta.luis-sg9915.workers.dev pnpm smoke:auth`, una sola vez.
+
+Rollback: `pnpm exec wrangler rollback --name lecta` (vuelve a `7518d096`).
