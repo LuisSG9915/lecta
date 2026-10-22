@@ -243,27 +243,36 @@ app.on(["GET", "HEAD"], "/models/:filename", async (c) => {
     return c.text("Model not found", 404);
   }
 
-  const object = await modelsBucket.get(`models/${filename}`);
+  const key = `models/${filename}`;
+
+  const buildHeaders = (object: R2Object | R2ObjectBody) => {
+    const headers = new Headers();
+    headers.set("Content-Type", "application/octet-stream");
+    headers.set("Cache-Control", "public, max-age=31536000, immutable");
+    if (object.size !== undefined) {
+      headers.set("Content-Length", String(object.size));
+    }
+    const etag = object.httpEtag ?? object.etag;
+    if (etag) {
+      headers.set("ETag", etag);
+    }
+    return headers;
+  };
+
+  // HEAD con head(): no se abre el cuerpo de un objeto de 24 MB para tirarlo.
+  if (c.req.method === "HEAD") {
+    const head = await modelsBucket.head(key);
+    if (!head) {
+      return c.text("Model not found", 404);
+    }
+    return new Response(null, { status: 200, headers: buildHeaders(head) });
+  }
+
+  const object = await modelsBucket.get(key);
   if (!object) {
     return c.text("Model not found", 404);
   }
-
-  const headers = new Headers();
-  headers.set("Content-Type", "application/octet-stream");
-  headers.set("Cache-Control", "public, max-age=31536000, immutable");
-  if (object.size !== undefined) {
-    headers.set("Content-Length", String(object.size));
-  }
-  const etag = (object as { httpEtag?: string; etag?: string }).httpEtag ?? (object as { etag?: string }).etag;
-  if (etag) {
-    headers.set("ETag", etag);
-  }
-
-  if (c.req.method === "HEAD") {
-    return new Response(null, { status: 200, headers });
-  }
-
-  return new Response(object.body, { status: 200, headers });
+  return new Response(object.body, { status: 200, headers: buildHeaders(object) });
 });
 
 app.on(["GET", "POST"], "/api/auth/*", async (context) => {

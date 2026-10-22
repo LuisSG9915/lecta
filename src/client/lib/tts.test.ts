@@ -331,9 +331,11 @@ describe("kittenTtsEngine", () => {
 
     const progressReports: number[] = [];
     const engine = new KittenTtsEngine();
+    // Sin hash esperado: este caso prueba el flujo de descarga y caché; la
+    // verificación de integridad la cubre kittenNetworkStorage.test.ts.
     await engine.downloadModelWithProgress((p) => {
       progressReports.push(p.percent);
-    }, "/mock-model.onnx");
+    }, "/mock-model.onnx", "");
 
     expect(progressReports).toContain(50);
     expect(progressReports).toContain(100);

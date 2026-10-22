@@ -10,6 +10,7 @@ import type { KittenVoiceId } from "../lib/ttsTypes";
 import { getVoiceEmbedding, registerVoiceEmbedding } from "../lib/kittenVoicesData";
 import { normalizeEnglishText } from "../lib/kittenNormalize";
 import { prepareKittenInputIds } from "../lib/kittenPhonemizer";
+import { KITTEN_CACHE_NAME } from "../lib/kittenModel";
 
 export const ORT_WASM_VERSION = "1.30.0";
 export const ORT_WASM_CDN_BASE = `https://cdn.jsdelivr.net/npm/onnxruntime-web@${ORT_WASM_VERSION}/dist/`;
@@ -348,7 +349,7 @@ async function initOnnxSession(modelBuffer?: ArrayBuffer, modelUrl?: string): Pr
 
   if (modelUrl && typeof caches !== "undefined") {
     try {
-      const cache = await caches.open("lecta-kitten-tts-v1");
+      const cache = await caches.open(KITTEN_CACHE_NAME);
       const match = await cache.match(modelUrl);
       if (match && match.status === 200) {
         const buf = await match.arrayBuffer();

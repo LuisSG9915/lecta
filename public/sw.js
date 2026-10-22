@@ -16,7 +16,7 @@ var SW_VERSION = "auto";
 var CACHE_PREFIX = "lecta-v2-";
 var MANIFEST_URL = "/sw-manifest.json";
 var NAVIGATION_TIMEOUT_MS = 3500;
-const KITTEN_TTS_CACHE = 'lecta-kitten-tts-v1';
+const KITTEN_TTS_CACHE = 'lecta-kitten-tts-v2';
 
 // Lista blanca de cachés persistentes que NUNCA deben borrarse al actualizar la app
 const PERSISTENT_DLC_CACHES = new Set([
@@ -182,7 +182,7 @@ self.addEventListener("fetch", function (event) {
   }
 
   // Ruta rápida y blindada para modelos .onnx de Kitten TTS:
-  // - Si ya fue descargado en 'lecta-kitten-tts-v1', servirlo al instante (incluso 100% offline).
+  // - Si ya fue descargado en 'lecta-kitten-tts-v2', servirlo al instante (incluso 100% offline).
   // - Soporta cabeceras Range devolviendo 206 Partial Content sintetizado sobre el archivo íntegro.
   // - NUNCA devuelve respuestas cacheadas incompletas (HTTP 206 truncadas) ni fallbacks SPA (text/html).
   // - Si aún no está descargado, pasa directo a la red como stream nativo sin buffering en el Service Worker.

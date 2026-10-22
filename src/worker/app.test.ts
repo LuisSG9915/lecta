@@ -439,7 +439,7 @@ describe("GET y HEAD /models/:filename", () => {
     const fakeData = new Uint8Array([1, 2, 3, 4, 5]);
     const mockBucket = {
       get: async (key: string) => {
-        if (key === "models/kitten-tts-quantized.onnx") {
+        if (key === "models/kitten-tts-nano-0.8-int8-v1.onnx") {
           return {
             body: new ReadableStream({
               start(controller) {
@@ -456,7 +456,7 @@ describe("GET y HEAD /models/:filename", () => {
     };
 
     const res = await app.request(
-      "/models/kitten-tts-quantized.onnx",
+      "/models/kitten-tts-nano-0.8-int8-v1.onnx",
       {},
       { BOOKS: mockBucket as unknown as R2Bucket },
     );
@@ -469,38 +469,30 @@ describe("GET y HEAD /models/:filename", () => {
     expect(body).toEqual(fakeData);
   });
 
-  it("responde a HEAD /models/kitten-tts-quantized.onnx con 200, Content-Length y body vacío", async () => {
+  it("responde a HEAD con 200, Content-Length y body vacío usando head() sin abrir el cuerpo", async () => {
     const fakeData = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
-    const mockBucket = {
-      get: async (key: string) => {
-        if (key === "models/kitten-tts-quantized.onnx") {
-          return {
-            body: new ReadableStream({
-              start(controller) {
-                controller.enqueue(fakeData);
-                controller.close();
-              },
-            }),
-            size: fakeData.byteLength,
-            httpEtag: '"mock-etag-head"',
-          };
-        }
-        return null;
-      },
-    };
+    const headMock = vi.fn(async (key: string) =>
+      key === "models/kitten-tts-nano-0.8-int8-v1.onnx"
+        ? { size: fakeData.byteLength, httpEtag: '"mock-etag-head"' }
+        : null,
+    );
+    const getMock = vi.fn(async () => {
+      throw new Error("HEAD no debe descargar el cuerpo del modelo");
+    });
 
     const res = await app.request(
-      "/models/kitten-tts-quantized.onnx",
+      "/models/kitten-tts-nano-0.8-int8-v1.onnx",
       { method: "HEAD" },
-      { BOOKS: mockBucket as unknown as R2Bucket },
+      { BOOKS: { head: headMock, get: getMock } as unknown as R2Bucket },
     );
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("application/octet-stream");
     expect(res.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
     expect(res.headers.get("content-length")).toBe(String(fakeData.byteLength));
     expect(res.headers.get("etag")).toBe('"mock-etag-head"');
-    const text = await res.text();
-    expect(text).toBe("");
+    expect(headMock).toHaveBeenCalledWith("models/kitten-tts-nano-0.8-int8-v1.onnx");
+    expect(getMock).not.toHaveBeenCalled();
+    expect(await res.text()).toBe("");
   });
 });
 

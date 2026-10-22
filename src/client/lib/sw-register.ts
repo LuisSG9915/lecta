@@ -18,7 +18,7 @@ const MISMATCH_RELOAD_KEY = "lecta_sw_mismatch_ts";
  * que deben ser preservados permanentemente durante la purga de cachés del SW.
  */
 export const PERSISTENT_DLC_CACHE_NAMES = [
-  "lecta-kitten-tts-v1",
+  "lecta-kitten-tts-v2",
   "lecta-offline-dict-v1",
 ] as const;
 

@@ -35,12 +35,24 @@
   `idx_user_reviews_user_created_id` e `idx_user_knowledge_user_updated_lang_lemma`
   se crearon así (`SHOW INDEXES` los muestra con las columnas de la PK añadidas,
   que es justo el efecto buscado).
-- `pnpm model:upload` sube el modelo de Kitten TTS a R2 (`models/kitten-tts-quantized.onnx`).
+- `pnpm model:upload` sube el modelo de Kitten TTS a R2
+  (`models/kitten-tts-nano-0.8-int8-v1.onnx`; el nombre lleva versión porque la
+  ruta se sirve con `Cache-Control: immutable` durante un año).
   Requiere credenciales de escritura de R2 (`wrangler login` o `CLOUDFLARE_API_TOKEN`).
   `pnpm model:upload --verify` exige `MODEL_SHA256` y aborta si falta o no coincide;
   sin `--verify` avisa y sube igual. Origen: `KittenML/kitten-tts-nano-0.8-int8`
   (`kitten_tts_nano_v0_8.onnx`, 24 369 971 bytes,
   SHA-256 `f7b0afcbee92870b32b8e0276d855b954dc25470c9f051b376ac7eee537c76fc`).
+- `node scripts/check-model.mjs --url https://lecta.luis-sg9915.workers.dev`
+  verifica desde fuera que `/models/…` responde 200 con el tamaño, `ETag` y caché
+  inmutable. No necesita credenciales; úsalo tras subir el modelo o cambiar la ruta.
+- La configuración del modelo (URL, hash, nombre de caché) vive en
+  `src/client/lib/kittenModel.ts`, compartida por el motor, el worker de inferencia
+  y el service worker. **El cliente verifica el SHA-256 antes de cachear** y guarda
+  el sello en la respuesta (`x-model-sha256`); `isModelDownloaded` compara el sello,
+  no recalcula 24 MB en cada arranque. No hay fallbacks a Hugging Face: si R2 no
+  sirve el binario, la voz HD falla y hay que arreglar el despliegue.
+  Subir un modelo nuevo = cambiar versión en URL y caché (`lecta-kitten-tts-vN`).
 
 ## MCP
 

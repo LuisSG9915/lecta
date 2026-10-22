@@ -14,7 +14,7 @@ export const DEFAULT_SOURCE_URL =
 const SOURCE_URL = process.env.MODEL_SOURCE_URL || DEFAULT_SOURCE_URL;
 
 const DEFAULT_BUCKET = process.env.R2_BUCKET_NAME || "lecta-books";
-const MODEL_FILENAME = process.env.MODEL_FILENAME || "kitten-tts-quantized.onnx";
+const MODEL_FILENAME = process.env.MODEL_FILENAME || "kitten-tts-nano-0.8-int8-v1.onnx";
 const R2_KEY = `models/${MODEL_FILENAME}`;
 const CACHE_DIR = process.env.MODEL_CACHE_DIR || resolve(".cache/models");
 const LOCAL_PATH = resolve(CACHE_DIR, MODEL_FILENAME);

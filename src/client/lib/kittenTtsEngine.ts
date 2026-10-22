@@ -1,21 +1,49 @@
 // src/client/lib/kittenTtsEngine.ts
 // Motor neural KittenTTS (<25MB, 24kHz) para Lecta.
-// Soporta descarga opcional a CacheStorage ('lecta-kitten-tts-v1') con ReadableStream progress,
+// Soporta descarga opcional a CacheStorage ('lecta-kitten-tts-v2') con ReadableStream progress,
 // Lookahead Buffer (N+1 y N+2) con cola LRU de 8 oraciones, y síntesis acelerada con Zero-Copy.
 
 import type { KittenVoiceId, ModelDownloadProgress } from "./ttsTypes";
 import type { WorkerRequest, WorkerResponse } from "../workers/kitten-tts.worker";
+import {
+  KITTEN_CACHE_NAME,
+  KITTEN_MODEL_BYTES,
+  KITTEN_MODEL_SHA256,
+  KITTEN_MODEL_URL,
+  LEGACY_KITTEN_CACHE_NAMES,
+} from "./kittenModel";
 
-export const KITTEN_CACHE_NAME = "lecta-kitten-tts-v1";
-export const KITTEN_MODEL_URL = "/models/kitten-tts-quantized.onnx";
-export const KITTEN_MODEL_FALLBACK_URLS: readonly string[] = [
-  "https://huggingface.co/KittenML/kitten-tts-nano-0.1/resolve/main/kitten_tts_nano_v0_1.onnx",
-  "https://huggingface.co/KittenML/kitten-tts-nano-0.8-int8/resolve/main/kitten_tts_nano_v0_8.onnx",
-];
-export const KITTEN_MODEL_CDN_URL = KITTEN_MODEL_FALLBACK_URLS[0];
+// Se reexportan para no romper a quien ya las importaba desde el motor; la fuente
+// de verdad es `kittenModel.ts`, compartida con el worker y el service worker.
+export {
+  KITTEN_CACHE_NAME,
+  KITTEN_MODEL_BYTES,
+  KITTEN_MODEL_SHA256,
+  KITTEN_MODEL_URL,
+  LEGACY_KITTEN_CACHE_NAMES,
+};
+
 export const KITTEN_IDLE_TIMEOUT_MS = 3 * 60 * 1000; // 3 minutos
 export const WORKER_INFERENCE_TIMEOUT_MS = 12000; // 12 segundos límite por oración
 const MAX_PREFETCH_CACHE_ITEMS = 8; // Máximo de oraciones pre-sintetizadas en RAM
+/** Tamaño mínimo aceptable antes de comprobar el hash: por debajo es un corte de red. */
+const MIN_MODEL_BYTES = 10_000_000;
+
+/** SHA-256 en hex minúsculas, para comparar con `KITTEN_MODEL_SHA256`. */
+async function sha256Hex(data: ArrayBuffer): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+}
+
+/** Borra cachés de versiones anteriores del modelo; no debe romper la descarga. */
+async function purgeLegacyModelCaches(): Promise<void> {
+  if (typeof caches === "undefined") return;
+  await Promise.all(
+    LEGACY_KITTEN_CACHE_NAMES.map((name) => caches.delete(name).catch(() => false)),
+  );
+}
 
 export interface DownloadProgress {
   loadedBytes: number;
@@ -211,18 +239,26 @@ export class KittenTtsEngine {
 
   /**
    * Verifica en 1ms si el usuario ya descargó el motor Kitten TTS previamente.
-   * Valida que el archivo en caché tenga estado 200 (no 206 parcial) y no sea un fallback HTML.
+   * Valida estado 200, que no sea un fallback HTML y que el hash guardado en la
+   * respuesta cacheada coincida con el esperado (no se recalcula el hash: son 24 MB).
    */
-  async isModelDownloaded(modelUrl = KITTEN_MODEL_URL): Promise<boolean> {
+  async isModelDownloaded(
+    modelUrl = KITTEN_MODEL_URL,
+    expectedSha256: string = KITTEN_MODEL_SHA256,
+  ): Promise<boolean> {
     if (typeof caches === "undefined") return false;
     try {
       const cache = await caches.open(KITTEN_CACHE_NAME);
-      const match = (await cache.match(modelUrl)) ?? (await cache.match(KITTEN_MODEL_URL));
+      const match = await cache.match(modelUrl);
       if (!match) return false;
       const status = match.status ?? 200;
       if (status !== 200) return false;
       const contentType = (match.headers.get("content-type") || "").toLowerCase();
       if (contentType.includes("text/html")) return false;
+      if (expectedSha256) {
+        const cachedHash = (match.headers.get("x-model-sha256") || "").toLowerCase();
+        if (cachedHash !== expectedSha256.toLowerCase()) return false;
+      }
       return true;
     } catch {
       return false;
@@ -231,43 +267,38 @@ export class KittenTtsEngine {
 
   /**
    * Descarga opcional del modelo ONNX (~24 MB) con barra de progreso real (0% a 100%).
-   * Almacena en CacheStorage ('lecta-kitten-tts-v1') usando ReadableStream.
-   * Rechaza respuestas 206 Partial Content o fallbacks SPA para evitar corrupción de caché.
-   * Dispone de fallback automático a los repositorios oficiales de Hugging Face si la ruta local da 404/HTML.
+   * Almacena en CacheStorage solo si el SHA-256 coincide: si no, no se cachea nada.
+   * Sin fallbacks: el binario vive en R2 con la versión en el nombre, así que un 404
+   * es un error de despliegue, no una razón para servir otra versión del modelo.
    */
   async downloadModelWithProgress(
     onProgress?: (p: DownloadProgress) => void,
     modelUrl = KITTEN_MODEL_URL,
+    expectedSha256: string = KITTEN_MODEL_SHA256,
   ): Promise<void> {
-    if (await this.isModelDownloaded(modelUrl)) {
+    if (await this.isModelDownloaded(modelUrl, expectedSha256)) {
       this.progress = { status: "ready", percent: 100 };
-      onProgress?.({ loadedBytes: 24_000_000, totalBytes: 24_000_000, percent: 100 });
+      onProgress?.({
+        loadedBytes: KITTEN_MODEL_BYTES,
+        totalBytes: KITTEN_MODEL_BYTES,
+        percent: 100,
+      });
       return;
     }
 
     this.progress = { status: "downloading", percent: 0 };
 
-    const candidateUrls = [
-      modelUrl,
-      ...(modelUrl.startsWith("http") ? [] : KITTEN_MODEL_FALLBACK_URLS),
-    ];
-
     let response: Response | null = null;
-    let lastStatus = 404;
-
-    for (const url of candidateUrls) {
-      try {
-        const res = await fetch(url);
-        const status = res.status ?? (res.ok ? 200 : 500);
-        lastStatus = status;
-        const contentType = (res.headers?.get?.("content-type") || "").toLowerCase();
-        if (res.ok && status === 200 && !contentType.includes("text/html") && res.body) {
-          response = res;
-          break;
-        }
-      } catch {
-        // Fallback al siguiente candidato
+    let lastStatus = 0;
+    try {
+      const res = await fetch(modelUrl);
+      lastStatus = res.status ?? (res.ok ? 200 : 500);
+      const contentType = (res.headers?.get?.("content-type") || "").toLowerCase();
+      if (res.ok && lastStatus === 200 && !contentType.includes("text/html") && res.body) {
+        response = res;
       }
+    } catch {
+      // Red caída: lastStatus sigue en 0 y el mensaje dirá "sin conexión".
     }
 
     // Exigir HTTP 200 íntegro (rechazando 206 Partial Content y páginas HTML de error/SPA)
@@ -275,12 +306,15 @@ export class KittenTtsEngine {
       this.progress = {
         status: "error",
         percent: 0,
-        errorMessage: lastStatus === 206 ? "Respuesta parcial rechazada" : `HTTP ${lastStatus}`,
+        errorMessage: lastStatus === 206 ? "Respuesta parcial rechazada" : lastStatus ? `HTTP ${lastStatus}` : "Sin conexión",
       };
-      throw new Error(`No se pudo descargar el motor de voz (${lastStatus})`);
+      throw new Error(
+        `No se pudo descargar el motor de voz (${lastStatus || "sin conexión"})`,
+      );
     }
 
-    const contentLength = Number(response.headers.get("content-length")) || 24_500_000;
+    const declaredBytes = Number(response.headers.get("content-length")) || 0;
+    const contentLength = declaredBytes || KITTEN_MODEL_BYTES;
     const reader = response.body.getReader();
     const chunks: Uint8Array[] = [];
     let loadedBytes = 0;
@@ -297,31 +331,44 @@ export class KittenTtsEngine {
       }
     }
 
-    const blob = new Blob(chunks as unknown as BlobPart[], { type: "application/octet-stream" });
-
-    // Validar integridad mínima: si contentLength >= 10 MB, menos de 10 MB indica corte de red;
-    // de lo contrario, verificar que no se haya recibido menos de lo declarado por el servidor
-    const isTruncated =
-      contentLength >= 10_000_000 ? blob.size < 10_000_000 : blob.size < contentLength;
-    if (isTruncated) {
+    if (loadedBytes < declaredBytes) {
+      this.progress = { status: "error", percent: 0, errorMessage: "Descarga incompleta o corrupta" };
+      throw new Error("El archivo del modelo ONNX está incompleto o truncado");
+    }
+    if (declaredBytes === 0 && loadedBytes < MIN_MODEL_BYTES) {
       this.progress = { status: "error", percent: 0, errorMessage: "Descarga incompleta o corrupta" };
       throw new Error("El archivo del modelo ONNX está incompleto o truncado");
     }
 
+    const blob = new Blob(chunks as unknown as BlobPart[], { type: "application/octet-stream" });
+
+    // Verificar integridad ANTES de escribir en caché: un binario alterado no se guarda.
+    if (expectedSha256) {
+      const actual = await sha256Hex(await blob.arrayBuffer());
+      if (actual !== expectedSha256.toLowerCase()) {
+        this.progress = {
+          status: "error",
+          percent: 0,
+          errorMessage: "El modelo descargado no coincide con el esperado",
+        };
+        throw new Error(
+          `Integridad del modelo inválida (esperado ${expectedSha256}, obtenido ${actual})`,
+        );
+      }
+    }
+
     if (typeof caches !== "undefined") {
       const cache = await caches.open(KITTEN_CACHE_NAME);
-      const makeResponse = () =>
-        new Response(blob, {
-          headers: {
-            "Content-Type": "application/octet-stream",
-            "Content-Length": String(blob.size),
-            "Accept-Ranges": "bytes",
-          },
-        });
-      await cache.put(modelUrl, makeResponse());
-      if (modelUrl !== KITTEN_MODEL_URL) {
-        await cache.put(KITTEN_MODEL_URL, makeResponse());
+      const headers: Record<string, string> = {
+        "Content-Type": "application/octet-stream",
+        "Content-Length": String(blob.size),
+        "Accept-Ranges": "bytes",
+      };
+      if (expectedSha256) {
+        headers["x-model-sha256"] = expectedSha256.toLowerCase();
       }
+      await cache.put(modelUrl, new Response(blob, { headers }));
+      await purgeLegacyModelCaches();
     }
 
     this.progress = { status: "ready", percent: 100 };
@@ -985,31 +1032,40 @@ export function unlockAudioContext(): AudioContext | null {
   return kittenTtsEngine.unlockAudioContext();
 }
 
-export async function isKittenModelCached(modelUrl = KITTEN_MODEL_URL): Promise<boolean> {
-  return kittenTtsEngine.isModelDownloaded(modelUrl);
+export async function isKittenModelCached(
+  modelUrl = KITTEN_MODEL_URL,
+  expectedSha256: string = KITTEN_MODEL_SHA256,
+): Promise<boolean> {
+  return kittenTtsEngine.isModelDownloaded(modelUrl, expectedSha256);
 }
 
-export async function getKittenModelBuffer(modelUrl = KITTEN_MODEL_URL): Promise<ArrayBuffer | null> {
+export async function getKittenModelBuffer(
+  modelUrl = KITTEN_MODEL_URL,
+  expectedSha256: string = KITTEN_MODEL_SHA256,
+): Promise<ArrayBuffer | null> {
   if (typeof caches === "undefined") return null;
   try {
     const cache = await caches.open(KITTEN_CACHE_NAME);
-    const res = (await cache.match(modelUrl)) ?? (await cache.match(KITTEN_MODEL_URL));
+    const res = await cache.match(modelUrl);
     if (!res || res.status !== 200) return null;
     const contentType = (res.headers?.get("content-type") || "").toLowerCase();
     if (contentType.includes("text/html")) {
       await cache.delete(modelUrl);
-      if (modelUrl !== KITTEN_MODEL_URL) {
-        await cache.delete(KITTEN_MODEL_URL);
-      }
       return null;
+    }
+    // El hash se verificó al descargar y quedó en la respuesta cacheada: aquí solo
+    // se compara el sello, no se recalculan 24 MB en cada arranque.
+    if (expectedSha256) {
+      const cachedHash = (res.headers.get("x-model-sha256") || "").toLowerCase();
+      if (cachedHash !== expectedSha256.toLowerCase()) {
+        await cache.delete(modelUrl);
+        return null;
+      }
     }
     const buffer = await res.arrayBuffer();
     // Validar integridad mínima: si el buffer tiene menos de 10 MB, está truncado/corrupto
-    if (buffer.byteLength < 10_000_000) {
+    if (buffer.byteLength < MIN_MODEL_BYTES) {
       await cache.delete(modelUrl);
-      if (modelUrl !== KITTEN_MODEL_URL) {
-        await cache.delete(KITTEN_MODEL_URL);
-      }
       return null;
     }
     return buffer;
@@ -1021,6 +1077,7 @@ export async function getKittenModelBuffer(modelUrl = KITTEN_MODEL_URL): Promise
 export async function downloadKittenModel(
   onProgress?: (progress: ModelDownloadProgress) => void,
   modelUrl = KITTEN_MODEL_URL,
+  expectedSha256: string = KITTEN_MODEL_SHA256,
 ): Promise<void> {
   onProgress?.({ status: "downloading", percent: 0 });
   await kittenTtsEngine.downloadModelWithProgress((p) => {
@@ -1028,6 +1085,6 @@ export async function downloadKittenModel(
       status: p.percent >= 100 ? "ready" : "downloading",
       percent: p.percent,
     });
-  }, modelUrl);
+  }, modelUrl, expectedSha256);
   onProgress?.({ status: "ready", percent: 100 });
 }

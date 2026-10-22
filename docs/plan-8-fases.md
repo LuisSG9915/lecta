@@ -358,6 +358,14 @@ node scripts/check-model.mjs --url https://lecta.luis-sg9915.workers.dev
 | 7 | Nada de v0.1 | `grep -rn "0\\.1" src/client/lib/tts*` | 0 resultados |
 | 8 | Presupuesto | `pnpm check:size` | ≤ 215 kB (sin cambios) |
 
+**Ejecutado el 2026-10-22.** Modelo subido con hash verificado y servido en
+`/models/kitten-tts-nano-0.8-int8-v1.onnx` (200, 24 369 971 bytes, ETag, `immutable`); la URL
+vieja da 404 y no queda ninguna referencia a Hugging Face ni a v0.1 en el código. `check-model`
+verde contra producción. Los criterios 3, 4, 5 y 6 se demuestran con pruebas unitarias
+(`kittenNetworkStorage.test.ts` y `app.test.ts`): **no existe e2e de voz HD en el repo**, así
+que ese gate del plan no se puede cumplir y no se marca como hecho. Desplegado el worker
+`f69dd412` tras `pnpm gate` verde (169 archivos, 2 373 pruebas).
+
 ### 5.4 Señales de fallo
 
 - La descarga se queda en 99 % → `Content-Length` del objeto no coincide con el real.
