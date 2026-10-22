@@ -620,7 +620,8 @@ diagnóstico (el cliente deja de enviar) sin desplegar.
 
 - `src/client/lib/use-page-gesture.ts`: 64.8 % sentencias / 56.3 % funciones / 0 % ramas → ≥ 85 %
   de sentencias.
-- `src/client/lib/page-gesture.ts`: 100 % sentencias pero 18.8 % ramas → ≥ 60 % de ramas.
+- `src/client/lib/page-gesture.ts`: 100 % sentencias y **96.55 %** de ramas (el 18.8 % del plan v1
+  estaba obsoleto) → el suelo de 60 % queda como red de seguridad, no como trabajo pendiente.
 - Umbrales por archivo en `vitest.config.ts`, además de los globales:
   ```ts
   thresholds: {
@@ -632,9 +633,9 @@ diagnóstico (el cliente deja de enviar) sin desplegar.
     "src/client/lib/page-gesture.ts": { branches: 60 },
   },
   ```
-- `mcp/src/tools.ts` (1 241 líneas, 12 herramientas, cero pruebas): tabla de casos que recorra las
-  herramientas **registradas** — nombre presente, entrada válida con zod, camino feliz con `fetch`
-  mockeado, y un error HTTP por herramienta.
+- `mcp/src/tools.ts` (1 241 líneas, **11** herramientas, cero pruebas): tabla de casos que recorra
+  las herramientas **registradas** — nombre presente, entrada válida con zod, camino feliz con la
+  API mockeada, y un error por herramienta.
 - Añadir `mcp/src/**/*.ts` a `coverage.include` (hoy MCP queda fuera de la cobertura).
 
 ### 9.2 Criterios de aceptación
@@ -646,6 +647,18 @@ diagnóstico (el cliente deja de enviar) sin desplegar.
 | 3 | MCP en cobertura | `coverage/coverage-summary.json` | incluye `mcp/src` |
 | 4 | Sin tocar el catálogo | `grep -rn "lexicon_" mcp/src --include=*.test.ts` | 0 escrituras |
 | 5 | A11y | `pnpm test:e2e` + axe en pantallas de Fases 3 y 5 | verde |
+
+**Ejecutado el 2026-10-22.** `use-page-gesture.ts`: 64.8 → **97.2 %** de sentencias (82.88 % ramas,
+93.75 % funciones, 98.8 % líneas) con 15 pruebas nuevas: rueda con bloqueo por inercia, resistencia
+elástica y háptica en el borde, lápiz, selección activa, zoom de `visualViewport`, asentamiento con
+transición, movimiento reducido, promesa de pase, tap sobre enlace y reajuste al cambiar de página.
+`page-gesture.ts` ya estaba en 96.55 % de ramas. En MCP, `tools.test.ts` recorre las **11**
+herramientas registradas: nombre, título, descripción, esquema zod, entrada válida, camino feliz y
+error de API por herramienta (26 pruebas). `mcp/src` entra en `coverage.include` (excluye
+`index.ts`, que es el arranque stdio) y `vitest.config.ts` gana suelos por archivo
+(`use-page-gesture` 85/80, `page-gesture` 60 ramas, `tools.ts` 70/60, `api.ts` 50/50). Cobertura
+global: 78.06 % sentencias, 81.24 % líneas; `mcp/src` 71.25 % de líneas. Gate en 173 archivos /
+2 455 pruebas y e2e 12/12 (incluye el axe del Recorrido 9). Sin cambios de runtime: no hay deploy.
 
 ### 9.3 Señales de fallo
 
