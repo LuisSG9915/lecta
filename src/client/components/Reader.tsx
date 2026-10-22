@@ -216,6 +216,7 @@ import Icon from "./Icon";
 import { ReaderTopBar } from "./reader/ReaderTopBar";
 import { ReaderOverlays } from "./reader/ReaderOverlays";
 import { ReaderContent } from "./reader/ReaderContent";
+import { ReaderNotices } from "./reader/ReaderNotices";
 import ReaderSettingsSheet from "./reader/ReaderSettingsSheet";
 import { ReaderSearchAndTocSheet } from "./reader/ReaderSearchAndTocSheet";
 import { useReaderPersistence } from "../hooks/useReaderPersistence";
@@ -4225,126 +4226,28 @@ export default function Reader({
         </>
       ) : null}
 
-      {/* Marcador de retomar: máxima prioridad en la franja — es el
-          mensaje de apertura cuando el libro llevaba días cerrado.
-          Mientras está visible, el resto de avisos espera; al
-          descartarlo vuelven a su orden normal. */}
-      {resumeCard ? (
-        <div className="reader-prep" role="status">
-          <span className="reader-prep-text">
-            {resumeCard.label
-              ? `Quedaste en «${resumeCard.label}» ${resumeCard.lastReadText}.`
-              : `La última vez que abriste este libro fue ${resumeCard.lastReadText}.`}
-            {resumeCard.savedInRange > 0
-              ? ` Guardaste ${resumeCard.savedInRange} palabra(s) en este tramo.`
-              : ""}
-          </span>
-          {resumeCard.rereadTo ? (
-            <button
-              type="button"
-              className="btn reader-prep-open"
-              onClick={rereadChapter}
-            >
-              Releer el capítulo
-            </button>
-          ) : null}
-          <button
-            type="button"
-            className="reader-return-dismiss"
-            onClick={() => setResumeCard(null)}
-            aria-label="Seguir leyendo"
-          >
-            ×
-          </button>
-        </div>
-      ) : null}
-
-      {/* Píldora superior de preparación de capítulo (Regla 2 Zero-Friction) */}
-      {isFeatureFlagEnabled("chapterPriming") && previewSuggested && !showPreview && chapterAnalysis && chapterAnalysis.unknownKeyWords.length > 0 && (
-        <div className="reader-chapter-prep-pill" role="status" aria-live="polite">
-          <span>
-            <strong>{chapterAnalysis.unknownKeyWords.length} palabras clave</strong> en este capítulo
-          </span>
-          <div className="reader-chapter-prep-actions">
-            <button
-              type="button"
-              className="reader-chapter-prep-btn"
-              onClick={() => {
-                setPreviewSuggested(false);
-                setShowPreview(true);
-                openPrepManual();
-              }}
-            >
-              Preparar antes de leer
-            </button>
-            <button
-              type="button"
-              className="reader-chapter-prep-dismiss"
-              onClick={() => {
-                markSectionPreviewed(bookHash, sectionIndex);
-                setPreviewSuggested(false);
-                dismissPrepNotice();
-              }}
-              aria-label="Descartar sugerencia del capítulo"
-            >
-              ✕
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Invitación a la prueba de vocabulario: misma franja fija que
-          el aviso de preparación, fuera del texto; conviven solo una
-          por diseño (la de preparación tiene preferencia). Persiste
-          hasta aceptar o decir «Ahora no». */}
-      {calNotice && !prep && !prepNotice && !resumeCard && !isDeepReading ? (
-        <div className="reader-prep" role="status">
-          <span className="reader-prep-text">
-            Ajusta qué palabras te sugiere Lecta antes de cada capítulo.
-          </span>
-          <button
-            type="button"
-            className="btn reader-prep-open"
-            onClick={() => void acceptCalibrationNotice()}
-          >
-            Ajustar mi vocabulario
-          </button>
-          <button
-            type="button"
-            className="reader-return-dismiss"
-            onClick={dismissCalibrationNotice}
-            aria-label="Ahora no"
-          >
-            ×
-          </button>
-        </div>
-      ) : null}
-
-      {/* Pausa 20-20-20: el detector de fatiga (retrocesos tras un
-          tramo largo) la dispara; se descarta al entenderla. */}
-      {fatigueNotice && !resumeCard && !isDeepReading ? (
-        <div className="reader-prep" role="status">
-          <span className="reader-prep-text">
-            Has retrocedido varias veces en el último rato. Descansa la
-            vista: mira algo lejano unos 20 segundos.
-          </span>
-          <button
-            type="button"
-            className="btn reader-prep-open"
-            onClick={() => setFatigueNotice(false)}
-          >
-            Entendido
-          </button>
-          <button
-            type="button"
-            className="reader-return-dismiss"
-            onClick={() => setFatigueNotice(false)}
-            aria-label="Ocultar sugerencia de descanso"
-          >
-            ×
-          </button>
-        </div>
-      ) : null}
+      <ReaderNotices
+        resumeCard={resumeCard}
+        rereadChapter={rereadChapter}
+        setResumeCard={setResumeCard}
+        previewSuggested={previewSuggested}
+        setPreviewSuggested={setPreviewSuggested}
+        showPreview={showPreview}
+        setShowPreview={setShowPreview}
+        chapterAnalysis={chapterAnalysis}
+        openPrepManual={openPrepManual}
+        bookHash={bookHash}
+        sectionIndex={sectionIndex}
+        dismissPrepNotice={dismissPrepNotice}
+        calNotice={calNotice}
+        prep={prep}
+        prepNotice={prepNotice}
+        isDeepReading={isDeepReading}
+        acceptCalibrationNotice={acceptCalibrationNotice}
+        dismissCalibrationNotice={dismissCalibrationNotice}
+        fatigueNotice={fatigueNotice}
+        setFatigueNotice={setFatigueNotice}
+      />
 
       {/* SmartReaderDock (Track 2): Dock Inteligente Único que muta entre Lectura, Audio y Lienzo Puro */}
       {state === "ready" && !isDeepReading ? (

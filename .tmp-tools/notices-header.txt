@@ -1,0 +1,37 @@
+// Franja de avisos flotantes del lector: marcador de retomar, sugerencia de
+// preparación de capítulo, invitación a la calibración y pausa 20-20-20.
+//
+// Extraída de Reader.tsx (Fase 7). Solo pinta; el orden de prioridad y el
+// estado viven en el lector.
+import { isFeatureFlagEnabled } from "../../lib/settings";
+import { markSectionPreviewed } from "../../lib/chapter-analysis";
+
+export type ReaderResumeCard = {
+  label: string | null;
+  lastReadText: string;
+  daysSince: number;
+  savedInRange: number;
+  rereadTo: { index: number; fragment?: string } | null;
+};
+
+export interface ReaderNoticesProps {
+  resumeCard: ReaderResumeCard | null;
+  setResumeCard: (value: ReaderResumeCard | null) => void;
+  previewSuggested: boolean;
+  setPreviewSuggested: (value: boolean) => void;
+  showPreview: boolean;
+  setShowPreview: (value: boolean) => void;
+  chapterAnalysis: { unknownKeyWords: unknown[] } | null;
+  openPrepManual: () => void;
+  bookHash: string;
+  sectionIndex: number;
+  dismissPrepNotice: () => void;
+  calNotice: boolean;
+  prep: unknown;
+  prepNotice: unknown;
+  isDeepReading: boolean;
+  acceptCalibrationNotice: () => void | Promise<unknown>;
+  dismissCalibrationNotice: () => void;
+  fatigueNotice: boolean;
+  setFatigueNotice: (value: boolean) => void;
+}
