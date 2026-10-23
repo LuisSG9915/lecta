@@ -42,12 +42,36 @@ externos.
   `317ea68884c115e7817541ef1921b03750b01940d0d53c37a2a62b81e33b75e9`
 - **Generado:** 2026-10-22.
 
+## `senses-es.csv.gz` — acepciones del Wikcionario
+
+- **Contenido:** 184 915 acepciones, con cabecera
+  `lemma,pos,sense_order,definition,example`, UTF-8, una por línea. Los saltos de línea dentro de
+  un campo se aplanan a un espacio; el resto del texto va tal cual (comillas escapadas según
+  RFC 4180).
+- **Origen:** Wikcionario en español vía [kaikki.org](https://kaikki.org), bajo **CC BY-SA 4.0 +
+  GFDL**.
+- **Derivación:** `scripts/lexicon-export-senses.mjs` lee el catálogo
+  (`lexicon_senses` unido a `lexicon_entries`, idioma `es`) y exporta **solo** las filas
+  `source = 'wiktionary'`. Quedan fuera las acepciones generadas con IA (`source = 'ai'`) y las
+  de la semilla (`source` NULL): no son datos del Wikcionario.
+- **Licencia:** CC BY-SA 4.0 + GFDL. Se acredita al Wikcionario en español y a kaikki.org; las
+  obras derivadas se comparten bajo la misma licencia.
+- **SHA-256 del `.gz`:**
+  `851fd49b06d6e0f058f4e5dd4b64558e9e0cfb84d8fb08689445934772a3c6ef`
+- **Generado:** 2026-10-22.
+- **Regenerar:**
+  ```bash
+  node --env-file=.env scripts/lexicon-export-senses.mjs
+  ```
+  Requiere el catálogo cargado; si hace falta, primero
+  `node --env-file=.env scripts/lexicon-wiktionary.mjs`. El orden es estable y el gzip no lleva
+  fecha, así que dos ejecuciones sobre el mismo catálogo dan el mismo SHA-256.
+
 ## Notas
 
 - `locuciones.es.json` (frases hechas) se publica aparte y no forma parte de estas
-  dos tablas.
-- Las acepciones del Wikcionario (CC BY-SA 4.0 + GFDL) viven en la base de datos y
-  **todavía no se exportan** como archivo; queda anotado en
-  `docs/licencias-lexico.md`.
+  tres tablas.
+- Las acepciones del Wikcionario (CC BY-SA 4.0 + GFDL) se publican en
+  `senses-es.csv.gz`; la base de datos sigue siendo la fuente.
 - Estas tablas son las que usa el motor de Lecta para lematizar y para ordenar el
   vocabulario por frecuencia; no contienen datos de usuarios.

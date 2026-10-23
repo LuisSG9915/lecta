@@ -51,8 +51,9 @@ licencias exactas que empaqueta están en `licenses/` de su repo.
      attachment` (reglas en `public/_headers`) para que se descarguen como archivo.
    - Los TSV de origen los genera `scripts/lexicon-export.py` en `data/lexicon/`
      (no versionado); el `.gz` publicado sí se versiona en `public/lexicon/`.
-   - **Pendiente:** `senses-es.csv.gz` (acepciones del Wikcionario, CC BY-SA 4.0 +
-     GFDL). No se genera todavía; las acepciones `source='ai'` no entrarían.
+   - `/lexicon/senses-es.csv.gz` (acepciones del Wikcionario, 184 915 filas) bajo **CC
+     BY-SA 4.0 + GFDL**; quedan fuera las acepciones `source='ai'` y las de la semilla. Se
+     regenera con `node --env-file=.env scripts/lexicon-export-senses.mjs`.
 2. Texto de atribución en «Acerca de» (pendiente de implementar):
 
    > Lecta incluye datos léxicos derivados de Simplemma (código MIT,

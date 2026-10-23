@@ -73,6 +73,10 @@
   Content-Type: application/gzip
   Content-Disposition: attachment; filename="lemmas-freq-es.tsv.gz"
 
+/lexicon/senses-es.csv.gz
+  Content-Type: application/gzip
+  Content-Disposition: attachment; filename="senses-es.csv.gz"
+
 /lexicon/*
   Cache-Control: public, max-age=86400, stale-while-revalidate=604800
 

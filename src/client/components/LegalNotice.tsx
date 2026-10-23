@@ -135,7 +135,7 @@ export default function LegalNotice({
                 <strong>Frecuencias zipf (CC BY-SA 4.0):</strong> Derivadas de <em>wordfreq</em> de Robyn Speer (CC BY-SA 4.0; incluye corpus Google Books Ngrams, Wikipedia, ParaCrawl, OpenSubtitles y listas SUBTLEX de Marc Brysbaert et al.). La tabla derivada <a href="/lexicon/lemmas-freq-es.tsv.gz" download>lemmas-freq-es.tsv.gz</a> se publica bajo CC BY-SA 4.0.
               </li>
               <li>
-                <strong>Acepciones y definiciones (CC BY-SA 4.0 + GFDL):</strong> Las definiciones estructuradas provienen del Wikcionario en español vía <a href="https://kaikki.org" target="_blank" rel="noopener noreferrer">kaikki.org</a> bajo licencias libres CC BY-SA 4.0 y GFDL.
+                <strong>Acepciones y definiciones (CC BY-SA 4.0 + GFDL):</strong> Las definiciones estructuradas provienen del Wikcionario en español vía <a href="https://kaikki.org" target="_blank" rel="noopener noreferrer">kaikki.org</a> bajo licencias libres CC BY-SA 4.0 y GFDL. La tabla derivada <a href="/lexicon/senses-es.csv.gz" download>senses-es.csv.gz</a> (184 915 acepciones) se publica bajo CC BY-SA 4.0 + GFDL.
               </li>
               <li>
                 <strong>Componentes adicionales:</strong> Simplemma (MIT, © Adrien Barbaresi), FreeLing (LGPLLR), spaCy lookups-data (MIT), UniMorph (CC BY-SA 3.0) y Wikinflection (CC BY 4.0).

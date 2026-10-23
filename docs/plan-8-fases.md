@@ -842,8 +842,10 @@ devuelve `content-type: application/gzip` y `content-disposition: attachment` en
 real verificada: mismo SHA-256 que el archivo local y 665 732 líneas al descomprimir. El texto del
 aviso ya no menciona `lecta-lexicon-data` (0 coincidencias en `src/` y `docs/`), y la prueba exige
 que los tres archivos existan en `public/`. `check:size` sin cambios (176.68 kB) y deploy
-`7518d096` sin avisos de tamaño. **Pendiente fuera de alcance:** exportar `senses-es.csv.gz`
-(acepciones del Wikcionario), anotado en `docs/licencias-lexico.md`.
+`7518d096` sin avisos de tamaño. **Pendiente cerrado el 2026-10-22:** `senses-es.csv.gz` publicado (184 915 acepciones,
+5 391 130 bytes gzip, SHA-256 `851fd49b…`), generado por `scripts/lexicon-export-senses.mjs`
+con las filas `source='wiktionary'` del catálogo. `public/_headers` lo sirve como descarga y
+`LegalNotice.tsx` lo enlaza; la prueba exige que el archivo exista.
 
 ### 11.3 Señales de fallo
 

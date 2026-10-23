@@ -59,12 +59,18 @@ describe("LegalNotice", () => {
 
     // Los enlaces de descarga apuntan a assets que existen en public/.
     const publicDir = path.resolve(process.cwd(), "public");
-    for (const file of ["lexicon/forms-es.tsv.gz", "lexicon/lemmas-freq-es.tsv.gz", "lexicon/README.md"]) {
+    for (const file of [
+      "lexicon/forms-es.tsv.gz",
+      "lexicon/lemmas-freq-es.tsv.gz",
+      "lexicon/senses-es.csv.gz",
+      "lexicon/README.md",
+    ]) {
       expect(fs.existsSync(path.join(publicDir, file)), `falta public/${file}`).toBe(true);
     }
     const hrefs = [...host.querySelectorAll("a")].map((a) => a.getAttribute("href"));
     expect(hrefs).toContain("/lexicon/forms-es.tsv.gz");
     expect(hrefs).toContain("/lexicon/lemmas-freq-es.tsv.gz");
+    expect(hrefs).toContain("/lexicon/senses-es.csv.gz");
     expect(hrefs).toContain("/lexicon/README.md");
   });
 
