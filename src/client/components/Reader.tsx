@@ -44,7 +44,6 @@ import {
 import {
   betaFromZipf,
   updateLanguageTheta,
-  recordChapterCompleted,
 } from "../lib/profile-models";
 import { batchLookup, enrichBatch, lookupWord } from "../lib/lexicon";
 import { scheduleCapturedReview } from "../lib/reviews";
@@ -111,7 +110,6 @@ import {
   newFocusTracker,
   recordMove,
   resetDenseStallPage,
-  evaluateReadingFatigue,
   recordFocusAidOutcome,
   muteBookFocusSuggestions,
   setFocusAutoSuggestEnabled,
@@ -133,7 +131,6 @@ import {
   applyStrategyPreset,
   muteBookForPriming,
   disablePrimingGlobally,
-  isFeatureFlagEnabled,
   type ReaderSettings,
   type ReadingStrategyPreset,
   type ThemeChoice,
@@ -169,7 +166,6 @@ import {
 } from "../lib/calibration";
 import { calibrationBankZipf } from "../lib/knowledge";
 import {
-  isTtsProgrammaticNav,
   isTtsProgrammaticScroll,
 } from "../lib/ttsGuards";
 import {
@@ -198,9 +194,6 @@ import {
 } from "../lib/book-search";
 import { translateParagraph } from "../lib/translate";
 import {
-  buildPostChapterConsolidationQueue,
-  loadPostChapterConsolidationPrefs,
-  isConsolidationActive,
   type EpisodicWordItem,
   type ConsolidationModality,
 } from "../lib/practice";
@@ -220,6 +213,10 @@ import { useReaderPersistence } from "../hooks/useReaderPersistence";
 import { useReaderAnnotationsAndSearch } from "../hooks/useReaderAnnotationsAndSearch";
 import { useReaderTts } from "../hooks/useReaderTts";
 import { useReaderSelection } from "../hooks/useReaderSelection";
+import {
+  useReaderNavigation,
+  useReaderPagination,
+} from "../hooks/useReaderNavigation";
 import { downloadBookMarkdown } from "../lib/export";
 import {
   requestScreenWakeLock,
@@ -264,7 +261,7 @@ import {
   type PhraseIndex,
 } from "../lib/phrases";
 
-type ReaderState = "idle" | "opening" | "ready" | "error";
+export type ReaderState = "idle" | "opening" | "ready" | "error";
 type SheetKind = "toc" | "settings" | "search" | "marks";
 export type ReaderSettingsTab = "appearance" | "book" | "strategy";
 
@@ -275,7 +272,7 @@ const RESUME_CARD_MIN_DAYS = 3;
 // Intención de navegación (coordinador T17): todo salto pasa por
 // `navigate` y deja registrada de dónde vino — la preparación (T19)
 // decide qué interponer según esta intención y el ajuste vigente.
-type NavIntent = "initial" | "chapter" | "resume" | "lookup" | "return";
+export type NavIntent = "initial" | "chapter" | "resume" | "lookup" | "return";
 
 type ReaderProps = {
   bookHash: string;
@@ -2052,77 +2049,23 @@ export default function Reader({
 
   // Coordinador de navegación: todo salto registra su intención para
   // que la preparación (T19) sepa si debe interponerse. El destino
-  // físico sigue siendo sección + restauración — el formato de
-  // posición persistida no cambia.
-  const navigate = useCallback(
-    (
-      intent: NavIntent,
-      dest: {
-        index: number;
-        fragment?: string;
-        restore?: {
-          ratio?: number;
-          anchor?: string;
-          snippet?: string;
-          fragment?: string;
-          at?: "end";
-        };
-      },
-    ) => {
-      navIntentRef.current = intent;
-      // La voz solo cede ante navegación del lector: los avances que
-      // hace el propio TTS dentro del target llegan protegidos por
-      // withTtsProgrammaticNav y no cierran la sesión.
-      if (!isTtsProgrammaticNav()) ttsStopOnNavRef.current?.();
-      const restore = { ...dest.restore };
-      if (dest.fragment) restore.fragment = dest.fragment;
-      const prevTargetId = targetAt(
-        catalogRef.current?.ranges ?? [],
-        sectionIndexRef.current,
-      )?.id ?? null;
-
-      // Optimización intra-sección: si ya estamos en la misma sección y lista,
-      // desplazamos directamente al nuevo fragmento sin recargar todo el documento.
-      if (
-        dest.index === sectionIndexRef.current &&
-        dest.fragment &&
-        containerRef.current &&
-        stateRef.current === "ready"
-      ) {
-        if (layoutRef.current === "pages" && metricsRef.current) {
-          const targetPage = pageForFragment(
-            containerRef.current,
-            dest.fragment,
-            metricsRef.current,
-          );
-          if (targetPage !== null) {
-            setPageIdx(targetPage, true);
-          }
-        } else {
-          scrollToFragment(containerRef.current, dest.fragment);
-        }
-        activeScrollFragRef.current = dest.fragment;
-        setActiveScrollFragment(dest.fragment);
-        if (intent === "initial" || intent === "chapter") {
-          void evaluatePreparation(dest.index, "enter", prevTargetId);
-        }
-        return Promise.resolve();
-      }
-
-      const result = loadSection(dest.index, restore);
-      // Solo «entrar» puede interponer preparación; reanudar, buscar
-      // y regresar nunca la disparan. La decisión corre tras la carga
-      // y jamás la bloquea — si la sección falló no hay nada que
-      // evaluar (sectionIndexRef no cambió).
-      if (intent === "initial" || intent === "chapter")
-        void result.then(() => {
-          if (sectionIndexRef.current === dest.index)
-            void evaluatePreparation(dest.index, "enter", prevTargetId);
-        });
-      return result;
-    },
-    [loadSection, evaluatePreparation],
-  );
+  // físico sigue siendo sección + restauración. La lógica vive en
+  // hooks/useReaderNavigation.ts.
+  const { navigate } = useReaderNavigation({
+    loadSection,
+    evaluatePreparation,
+    setPageIdx,
+    setActiveScrollFragment,
+    activeScrollFragRef,
+    catalogRef,
+    containerRef,
+    layoutRef,
+    metricsRef,
+    navIntentRef,
+    sectionIndexRef,
+    stateRef,
+    ttsStopOnNavRef,
+  });
 
   // ---------- «Leer en voz alta» ----------
   const {
@@ -2868,123 +2811,37 @@ export default function Reader({
 
   // Página siguiente/anterior; en los bordes salta de sección (atrás
   // cae al final de la sección anterior, como al retroceder una página
-  // en un libro impreso).
-  const goPage = useCallback(
-    (delta: number) => {
-      noteActivity();
-      trackMove(delta < 0);
-      checkPassiveExposure();
-
-      // Al avanzar página, pasa a lectura inmersiva ocultando las barras
-      if (delta > 0) {
-        setBarsVisible(false);
-      }
-
-      // Track 9: Neuro-Foco en vivo
-      const now = Date.now();
-      const dwellTimeMs = Math.max(500, now - pageTurnTimeRef.current);
-      pageTurnTimeRef.current = now;
-      const direction: "forward" | "backward" = delta > 0 ? "forward" : "backward";
-      const isL2 = (language || (bookRef.current ? getBookLanguage(bookRef.current) : "es")) !== loadNativeLanguage();
-      if (isFeatureFlagEnabled("focusTelemetry")) {
-        const telemetryProfile = loadFocusTelemetryProfile();
-        const fatigueResult = evaluateReadingFatigue(
-          telemetryProfile,
-          {
-            dwellTimeMs,
-            direction,
-            wordCountOnPage: 80,
-            sessionMinutesElapsed: Math.max(0, (now - sessionStartRef.current) / 60000),
-            bookId: bookHash,
-            lang: language || "es",
-            recentBackwardCountInWindow: delta < 0 ? 1 : 0,
-          },
-          isL2,
-        );
-        saveFocusTelemetryProfile(fatigueResult.updatedProfile);
-        if (fatigueResult.isFatigued) {
-          setFatigueSuggestion({
-            isFatigued: true,
-            reason: fatigueResult.reason,
-            recommendedAid: fatigueResult.recommendedAid,
-          });
-        } else if (fatigueResult.reason === "none") {
-          setFatigueSuggestion(null);
-        }
-      } else {
-        setFatigueSuggestion(null);
-      }
-
-      // Sugerencia consentida de Guía Visual (Lectura Biónica) ante pasaje denso
-      const shouldSuggestBionic = focusTelemetryRef.current.recordPageTurn(
-        Math.max(1, Math.round(sectionWords / Math.max(1, pageCountRef.current))),
-        dwellTimeMs,
-      );
-      if (
-        shouldSuggestBionic &&
-        !settingsRef.current?.bionicAnchors &&
-        !(settingsRef.current as { bionicReading?: boolean } | null)?.bionicReading
-      ) {
-        showNotice("¿Pasaje denso? Puedes activar la «Guía visual de sílabas» en el menú Aa.");
-      }
-
-      const next = pageRef.current + delta;
-      if (next < 0) {
-        if (sectionIndexRef.current > 0)
-          return navigate("chapter", {
-            index: sectionIndexRef.current - 1,
-            restore: { at: "end" },
-          });
-        return Promise.resolve();
-      }
-      if (next >= pageCountRef.current) {
-        // En la última página el ratio ya es ~1: pasar a la sección
-        // siguiente cuenta como tramo terminado (el gato celebra).
-        if (sectionIndexRef.current + 1 < sectionTotal) {
-          const nextIndex = sectionIndexRef.current + 1;
-          try {
-            const currentLang = language || (bookRef.current ? getBookLanguage(bookRef.current) : "es");
-            recordChapterCompleted(currentLang);
-          } catch {
-            // Ignorar fallo de guardado
-          }
-          signalCompanion({ kind: "goal_completed", at: Date.now() });
-
-          // Track 6 & 10: Fin de Capítulo: Aprendizaje Pasivo + Consolidación Episódica
-          checkPassiveExposure();
-          const prefs = loadPostChapterConsolidationPrefs();
-          const candidates: EpisodicWordItem[] = [
-            ...currentChapterLookups.current,
-            ...currentChapterPrimedWordsRef.current,
-          ];
-          const queue = isFeatureFlagEnabled("vocabGames")
-            ? buildPostChapterConsolidationQueue(candidates, prefs, isL2, { bookId: bookHash })
-            : [];
-
-          if (queue.length > 0 && isConsolidationActive(bookHash) && isFeatureFlagEnabled("vocabGames")) {
-            setPostChapterQueue(queue);
-            pendingNextChapterRef.current = nextIndex;
-            const durationMinutes = Math.max(1, Math.round((Date.now() - chapterStartedAtRef.current) / 60000));
-            setDeepSummary({
-              durationMinutes,
-              targetMinutes: 15,
-              sectionsRead: 1,
-              completedNaturally: true,
-              wordsAssimilated: sectionWords,
-            });
-            return Promise.resolve();
-          }
-
-          return navigate("chapter", { index: nextIndex });
-        }
-        return Promise.resolve();
-      }
-      setPageIdx(next);
-      saveSoon();
-      return Promise.resolve();
-    },
-    [navigate, saveSoon, sectionTotal, setPageIdx, noteActivity, trackMove, signalCompanion, checkPassiveExposure, language, bookHash, sectionWords],
-  );
+  // en un libro impreso). La lógica vive en hooks/useReaderNavigation.ts.
+  const { goPage } = useReaderPagination({
+    navigate,
+    checkPassiveExposure,
+    noteActivity,
+    saveSoon,
+    trackMove,
+    showNotice,
+    signalCompanion,
+    setPageIdx,
+    setBarsVisible,
+    setDeepSummary,
+    setFatigueSuggestion,
+    setPostChapterQueue,
+    bookHash,
+    language,
+    sectionWords,
+    sectionTotal,
+    bookRef,
+    pageRef,
+    pageCountRef,
+    sectionIndexRef,
+    pageTurnTimeRef,
+    sessionStartRef,
+    chapterStartedAtRef,
+    pendingNextChapterRef,
+    currentChapterLookups,
+    currentChapterPrimedWordsRef,
+    focusTelemetryRef,
+    settingsRef,
+  });
 
 
   // Espejo del modo para callbacks estables (guardado, teclado,

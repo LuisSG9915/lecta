@@ -166,6 +166,7 @@ Orden por riesgo creciente, no por tamaño. **Un corte = un commit**, con `pnpm 
 |---|---|---|---|
 | 1 · `lib/reader-evidence.ts` | hecho | 4 573 → 4 422 (−151; se proyectaba −148) | 11, sin jsdom |
 | 2 · `hooks/useReaderSelection.ts` | hecho | 4 422 → 4 354 (−68; se proyectaba −57) | 7, jsdom + `act` |
+| 3 · `hooks/useReaderNavigation.ts` | hecho | 4 354 → 4 211 (−143; se proyectaba −144) | 12, jsdom + `act` |
 
 Dos notas del corte 2:
 
@@ -177,7 +178,16 @@ Dos notas del corte 2:
   El mismo test pasó en aislamiento y la suite completa pasó 12/12 en las dos corridas
   siguientes con el mismo código: es un fallo de arranque, no de la extracción.
 
-Siguiente: corte 3 (`useReaderNavigation`: `navigate` + `goPage`).
+Notas del corte 3:
+
+- **Salieron dos hooks, no uno**: `navigate` tiene que existir antes de montar la voz
+  (`useReaderTts` lo recibe en el render, línea ~2164) y `goPage` necesita
+  `checkPassiveExposure` (~2860). Por eso el archivo exporta `useReaderNavigation` y
+  `useReaderPagination` y el lector los llama en dos puntos distintos.
+- El lint bajó otra vez, de 23 a **21 warnings** (otras dos
+  `preserve-manual-memoization` que dejaron de bailar). Tope igual en 28.
+
+Siguiente: corte 4 (`useReaderSectionLoader`: `loadSection`, el más acoplado).
 
 Ese es el techo del tipo 1 + tipo 2: **~4 050**, todavía lejos de 3 500. Lo que falta no son
 callbacks sino **efectos** (1 097 líneas en 44 bloques):
