@@ -847,6 +847,12 @@ que los tres archivos existan en `public/`. `check:size` sin cambios (176.68 kB)
 con las filas `source='wiktionary'` del catálogo. `public/_headers` lo sirve como descarga y
 `LegalNotice.tsx` lo enlaza; la prueba exige que el archivo exista.
 
+Verificado en producción tras el deploy `e42ec618`: `curl -I` devuelve 200 con
+`content-type: application/gzip` y `content-disposition: attachment; filename="senses-es.csv.gz"`;
+la descarga real pesa 5 391 130 bytes, su SHA-256 coincide con el local y descomprime en 184 916
+líneas (cabecera + 184 915). Las otras dos tablas y el README siguen en 200. `check:size` sin
+cambios (176.67 kB) porque es un asset estático.
+
 ### 11.3 Señales de fallo
 
 - El `.gz` se sirve como `text/plain` y el navegador lo muestra en vez de descargarlo → gana la

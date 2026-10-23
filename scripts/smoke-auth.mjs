@@ -90,7 +90,7 @@ export async function runSmokeTests(baseUrl = BASE) {
   // --- alta de cuentas ---
   const cookieA = await signUp(USER_A, baseUrl);
   const cookieB = await signUp(USER_B, baseUrl);
-  console.log("Cuentas A y B creadas.");
+  console.log(`Cuentas A y B creadas: ${USER_A.email} y ${USER_B.email}.`);
 
   // --- libros ---
   // EPUB mínimo válido para el servidor: cabecera local ZIP con la

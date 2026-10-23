@@ -203,4 +203,25 @@ Tras el segundo deploy (versión `ae2629b9`): `/api/health` 200, `check-model` P
 lector responde 200 y un `wrangler tail` con tráfico propio mostró 2 peticiones servidas por la
 versión nueva, 200 y sin errores.
 
-Rollback: `pnpm exec wrangler rollback --name lecta` (vuelve a `774b2f1c`).
+**Tercer deploy del día (Fase 8, pendiente cerrado):** versión
+`e42ec618-f127-45a3-af4c-5c556fbad190` desde `main` en `f5b415f`, con
+`/lexicon/senses-es.csv.gz` (184 915 acepciones, 5 391 130 bytes). Verificado: 200 con
+`application/gzip` + `attachment`, descarga con el mismo SHA-256 que el archivo local y 184 916
+líneas al descomprimir.
+
+Rollback: `pnpm exec wrangler rollback --name lecta` (vuelve a `ae2629b9`).
+
+## 8. Smoke de autenticación
+
+`SMOKE_URL=https://lecta.luis-sg9915.workers.dev pnpm smoke:auth` corrido el 2026-10-22 tras el
+deploy `ae2629b9`: **33 PASS**, «Todas las pruebas pasaron». Crea dos cuentas reales
+(`a-<Date.now()>@smoke.test` y `b-<Date.now()>@smoke.test`); el script no imprimía el sufijo en
+ese momento y **se corrigió en el mismo commit de este apunte** (ahora imprime los dos correos).
+Las dos cuentas creadas ese día quedan sin purgar; para listarlas:
+
+```sql
+SELECT email, "createdAt" FROM "user"
+WHERE email LIKE '%@smoke.test' ORDER BY "createdAt" DESC LIMIT 6;
+```
+
+No se corrieron más smokes en el día (la regla es uno por deploy relevante).
