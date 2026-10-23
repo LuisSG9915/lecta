@@ -167,6 +167,9 @@ Orden por riesgo creciente, no por tamaño. **Un corte = un commit**, con `pnpm 
 | 1 · `lib/reader-evidence.ts` | hecho | 4 573 → 4 422 (−151; se proyectaba −148) | 11, sin jsdom |
 | 2 · `hooks/useReaderSelection.ts` | hecho | 4 422 → 4 354 (−68; se proyectaba −57) | 7, jsdom + `act` |
 | 3 · `hooks/useReaderNavigation.ts` | hecho | 4 354 → 4 211 (−143; se proyectaba −144) | 12, jsdom + `act` |
+| 4 · `hooks/useReaderSectionLoader.ts` | hecho | 4 211 → **4 032** (−179; se proyectaba −175) | 8, jsdom + `act` |
+
+**Objetivo cumplido:** 4 032 ≤ 4 050 con los cuatro cortes (4 573 → 4 032, −541 en total).
 
 Dos notas del corte 2:
 
@@ -187,7 +190,14 @@ Notas del corte 3:
 - El lint bajó otra vez, de 23 a **21 warnings** (otras dos
   `preserve-manual-memoization` que dejaron de bailar). Tope igual en 28.
 
-Siguiente: corte 4 (`useReaderSectionLoader`: `loadSection`, el más acoplado).
+Notas del corte 4:
+
+- El cargador era el bloque más acoplado, como decía el inventario: 43 entradas (14 setters,
+  20 refs, 6 helpers, 2 salidas de hooks y `onError`). Pasó sin cambios de comportamiento y con
+  el cuerpo (194 líneas) idéntico byte a byte.
+- Su tipo de restauración reutiliza `ReaderNavRestore` del corte 3 en vez de duplicarlo.
+
+Siguiente: corte 5 (`updateSettings`) si se quiere bajar de 4 000; deja el archivo en ~3 990.
 
 Ese es el techo del tipo 1 + tipo 2: **~4 050**, todavía lejos de 3 500. Lo que falta no son
 callbacks sino **efectos** (1 097 líneas en 44 bloques):
