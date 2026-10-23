@@ -865,8 +865,8 @@ Revertir. El archivo en `public/` se puede borrar sin efectos: nadie lo referenc
 1. **El catálogo léxico es compartido.** `src/worker/lexicon.ts` consulta `lecta_dev.lexicon_*`
    desde producción. Un test o un script que escriba ahí **modifica lo que leen los usuarios**.
    Vale para las Fases 4, 6 y cualquier script nuevo.
-2. **Lint con tope fijo.** 28 es el máximo (`--max-warnings 28`); desde el corte 2 de
-   `docs/reader-engine-diseno.md` hay 23, así que quedan 5 de holgura. Un warning nuevo por
+2. **Lint con tope fijo.** 28 es el máximo (`--max-warnings 28`); tras los cortes 2–5 de
+   `docs/reader-engine-diseno.md` hay 20, así que quedan 8 de holgura. Un warning nuevo por
    encima del tope tumba el gate.
 3. **Presupuesto de JS al 95.8 %.** Cualquier import estático nuevo (modales de las Fases 5 y 7)
    debe entrar como `lazy`.
