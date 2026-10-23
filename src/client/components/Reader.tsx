@@ -209,6 +209,7 @@ import {
   useReaderPagination,
 } from "../hooks/useReaderNavigation";
 import { useReaderSectionLoader } from "../hooks/useReaderSectionLoader";
+import { useReaderSettings } from "../hooks/useReaderSettings";
 import { downloadBookMarkdown } from "../lib/export";
 import {
   requestScreenWakeLock,
@@ -2936,59 +2937,8 @@ export default function Reader({
     settingsRef.current = settings;
   }, [settings]);
 
-  const updateSettings = (patch: Partial<ReaderSettings>) => {
-    setSettings((current) => {
-      let presetPatch: Partial<ReaderSettings> = {};
-      if (
-        (patch.focusRuler !== undefined ||
-          patch.paragraphFocus !== undefined ||
-          patch.syntacticLines !== undefined ||
-          patch.chromaticGuide !== undefined ||
-          (patch as Record<string, unknown>).colorGuide !== undefined) &&
-        (patch.strategyPreset === undefined || patch.readingPreset === undefined)
-      ) {
-        presetPatch = {
-          strategyPreset: patch.strategyPreset ?? "custom",
-          readingPreset: "custom",
-        };
-      }
-      const next = { ...current, ...patch, ...presetPatch };
-      if (patch.focusRuler === true) {
-        next.focusRuler = true;
-        next.paragraphFocus = false;
-        next.focusMode = "ruler";
-      } else if (patch.paragraphFocus === true) {
-        next.paragraphFocus = true;
-        next.focusRuler = false;
-        next.focusMode = "paragraph";
-      } else if (patch.focusMode !== undefined) {
-        next.focusMode = patch.focusMode;
-      } else if (patch.focusRuler === false && patch.paragraphFocus === false) {
-        next.focusRuler = false;
-        next.paragraphFocus = false;
-        if (next.chromaticGuide) {
-          next.focusMode = "chromatic";
-        } else if (next.syntacticLines) {
-          next.focusMode = "syntactic";
-        } else {
-          next.focusMode = "off";
-        }
-      } else if (next.paragraphFocus) {
-        next.focusMode = "paragraph";
-      } else if (next.focusRuler) {
-        next.focusMode = "ruler";
-      } else if (next.chromaticGuide) {
-        next.focusMode = "chromatic";
-      } else if (next.syntacticLines) {
-        next.focusMode = "syntactic";
-      } else {
-        next.focusMode = "off";
-      }
-      saveReaderSettings(next, bookHash);
-      setBookOverride(true);
-      return next;
-    });
-  };
+  // Ajustes del lector: la lógica vive en hooks/useReaderSettings.ts.
+  const { updateSettings } = useReaderSettings({ bookHash, setSettings, setBookOverride });
 
   const selectStrategyPreset = (preset: ReadingStrategyPreset) => {
     const updated = applyStrategyPreset(preset, settings);

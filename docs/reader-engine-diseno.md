@@ -167,9 +167,12 @@ Orden por riesgo creciente, no por tamaño. **Un corte = un commit**, con `pnpm 
 | 1 · `lib/reader-evidence.ts` | hecho | 4 573 → 4 422 (−151; se proyectaba −148) | 11, sin jsdom |
 | 2 · `hooks/useReaderSelection.ts` | hecho | 4 422 → 4 354 (−68; se proyectaba −57) | 7, jsdom + `act` |
 | 3 · `hooks/useReaderNavigation.ts` | hecho | 4 354 → 4 211 (−143; se proyectaba −144) | 12, jsdom + `act` |
-| 4 · `hooks/useReaderSectionLoader.ts` | hecho | 4 211 → **4 032** (−179; se proyectaba −175) | 8, jsdom + `act` |
+| 4 · `hooks/useReaderSectionLoader.ts` | hecho | 4 211 → 4 032 (−179; se proyectaba −175) | 8, jsdom + `act` |
+| 5 · `hooks/useReaderSettings.ts` | hecho | 4 032 → **3 982** (−50; se proyectaba −53) | 7, jsdom + `act` |
 
-**Objetivo cumplido:** 4 032 ≤ 4 050 con los cuatro cortes (4 573 → 4 032, −541 en total).
+**Objetivo cumplido:** 3 982, por debajo de los dos umbrales de la línea (≤ 4 050 con cuatro cortes,
+≤ 4 000 con el quinto). `Reader.tsx` pasó de **4 573 a 3 982 líneas** (−591, −13 %) con cinco
+commits, cada uno con gate y e2e verdes.
 
 Dos notas del corte 2:
 
@@ -197,7 +200,16 @@ Notas del corte 4:
   el cuerpo (194 líneas) idéntico byte a byte.
 - Su tipo de restauración reutiliza `ReaderNavRestore` del corte 3 en vez de duplicarlo.
 
-Siguiente: corte 5 (`updateSettings`) si se quiere bajar de 4 000; deja el archivo en ~3 990.
+Notas del corte 5:
+
+- `updateSettings` eran 54 líneas con solo tres dependencias (el updater de `setSettings`,
+  `saveReaderSettings` y `bookHash`). Su cuerpo (46 líneas) es idéntico byte a byte; lo único
+  nuevo es que ahora la acción es estable, así que los componentes que la reciben por prop dejan
+  de re-renderizarse por identidad.
+
+**Qué queda para 3 500:** lo de la §5, oleada de efectos (508 líneas en 14 bloques) más la
+oleada 3 de callbacks. La decisión del 2026-10-22 es no hacerlo en esta línea: se reevalúa con
+estas cifras delante.
 
 Ese es el techo del tipo 1 + tipo 2: **~4 050**, todavía lejos de 3 500. Lo que falta no son
 callbacks sino **efectos** (1 097 líneas en 44 bloques):
