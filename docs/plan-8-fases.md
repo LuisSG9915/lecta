@@ -94,7 +94,7 @@ Revierte con `git revert <sha>` salvo que la fase diga otra cosa.
 | 4 | Cursor de sync veraz + índice | 0 | — | **Alto** (pérdida silenciosa de datos) | L | sync manual en dev · ✅ 2026-10-22 |
 | 5 | Errores de cliente observables | 3 (presupuesto) y 1 (logs) | 6 | Bajo | M | — · ✅ 2026-10-22 |
 | 6 | Cobertura real + MCP con pruebas | 4, 5 | 7 | Bajo | M | `test:coverage` · ✅ 2026-10-22 |
-| 7 | `Reader.tsx` ≤ 3 500 líneas (objetivo 3 000) | 3, 6 | — | **Alto** (monolito de 5 503 líneas) | L | `test:e2e` por extracción · ⚠️ cerrada con desvío: 4 573 · desplegada 2026-10-22 |
+| 7 | `Reader.tsx` ≤ 3 500 líneas (objetivo 3 000) | 3, 6 | — | **Alto** (monolito de 5 503 líneas) | L | `test:e2e` por extracción · ⚠️ cerrada con desvío: **3 982** · meta 3 500 retirada |
 | 8 | ODbL descargable de verdad | — | — | Bajo | S | `curl -I` en prod · ✅ 2026-10-22 (pendiente: `senses-es.csv.gz`) |
 
 Leyenda: ✅ cerrada con los criterios verificados por comando (§4.7, §5.3, …); ⚠️ cerrada con
@@ -695,8 +695,11 @@ Revertir. Los umbrales vuelven a los globales.
 hecha: el lector solo consume `ttsSnap` y unos pocos callbacks). Lo que queda no es «crear
 hooks»: es sacar un closure de 5 200 líneas donde casi todo bloque necesita 25–50 props.
 
-**Estado (2026-10-22): cerrada con desvío.** `Reader.tsx` pasó de **5 503 a 4 573 líneas** en
-siete cortes, cada uno con gate y e2e verdes:
+**Estado (2026-10-22): cerrada con desvío.** La extracción de JSX terminó en 4 573 líneas y una
+línea de trabajo posterior (`docs/reader-engine-diseno.md`) la bajó a **3 982** sacando la lógica a
+hooks, con cinco cortes más. La meta de ≤ 3 500 **se retiró** ese mismo día por decisión explícita:
+el criterio pasa a ser el comportamiento, no el tamaño. Histórico del cierre de la fase: `Reader.tsx`
+pasó de **5 503 a 4 573 líneas** en siete cortes, cada uno con gate y e2e verdes:
 
 | Corte | Archivo nuevo | Líneas movidas | Props |
 |---|---|---|---|

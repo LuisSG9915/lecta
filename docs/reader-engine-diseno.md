@@ -12,8 +12,11 @@ cortes del §5**, y a **≤ 4 000** si entra el quinto (`updateSettings`), sin c
 observable, con las mismas puertas (gate + e2e) y pruebas unitarias nuevas donde el e2e no llega.
 
 La meta de ≤ 3 500 del §10.3 del plan **queda fuera de esta línea**: exigiría mover efectos
-(oleada 2) y los callbacks restantes (oleada 3), donde el e2e es más ciego. Se reevalúa cuando el
-archivo esté en 4 050.
+(oleada 2) y los callbacks restantes (oleada 3), donde el e2e es más ciego.
+
+**Cerrada el 2026-10-22 con 3 982 líneas** (cinco cortes, −591). Por decisión del mismo día, la
+meta de 3 500 **se retira**: el criterio deja de ser el tamaño del archivo y pasa a ser que el
+lector funcione bien. La oleada de efectos (§5) **no se ejecuta**.
 
 **No-objetivos.** Reescribir el lector; cambiar props públicas (`ReaderProps`), exports
 (`recordDominated`, `PRESET_LABELS`, `ReaderSettingsTab`) ni CSS; tocar `reader.css`; subir el
@@ -208,8 +211,8 @@ Notas del corte 5:
   de re-renderizarse por identidad.
 
 **Qué queda para 3 500:** lo de la §5, oleada de efectos (508 líneas en 14 bloques) más la
-oleada 3 de callbacks. La decisión del 2026-10-22 es no hacerlo en esta línea: se reevalúa con
-estas cifras delante.
+oleada 3 de callbacks. **Retirado el 2026-10-22**: no se ejecuta. El lector se queda en 3 982 y el
+esfuerzo pasa a correctitud, no a tamaño. Si algún día se reabre, las cifras siguen aquí.
 
 Ese es el techo del tipo 1 + tipo 2: **~4 050**, todavía lejos de 3 500. Lo que falta no son
 callbacks sino **efectos** (1 097 líneas en 44 bloques):
@@ -297,6 +300,7 @@ integración; estas pruebas cubren justo lo que el e2e no ve (orden e identidad)
 | Objetivo de líneas | **≤ 4 050** con los cuatro cortes; **≤ 4 000** con el quinto | se corta aquí la línea; 3 500 se reevalúa después, no es la puerta |
 | Forma | **Cuatro hooks pequeños** + un módulo de `lib/`, no un `useReaderEngine` de 85 campos | cada corte con su interfaz, su prueba y su rollback |
 | Efecto de init del EPUB | **No se mueve** | el archivo no baja de ~4 050 por esta vía; R6 se mantiene |
+| Meta de 3 500 | **Retirada** | el criterio es que el lector funcione bien, no cuántas líneas tenga |
 
 Queda anotado lo que **no** se hace en esta línea y por qué: ni la oleada de efectos (§5) ni el
 efecto de init. Si más adelante se quiere 3 500, la decisión se reabre con estas cifras delante.

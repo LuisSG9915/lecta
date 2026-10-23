@@ -107,8 +107,8 @@ pnpm gate             # typecheck + lint + test + build + check:size
 ## 4. Lo que queda (medido)
 
 Nada de esto entra ya en la Fase 7: es una línea de trabajo aparte. Diseño y decisiones del
-2026-10-22 en `docs/reader-engine-diseno.md`: objetivo ≤ 4 050 con cuatro cortes (sin mover
-efectos), meta de 3 500 aplazada.
+2026-10-22 en `docs/reader-engine-diseno.md`: cinco cortes ejecutados, `Reader.tsx` en **3 982**
+líneas, meta de 3 500 **retirada** por decisión del usuario y oleada de efectos no ejecutada.
 
 ### 4.1 Presentación — ~266 líneas
 
