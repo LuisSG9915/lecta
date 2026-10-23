@@ -8,6 +8,11 @@
   warnings y hoy van **20** (bajó de 28 con los cortes 2–5 de `docs/reader-engine-diseno.md`, al
   dejar de bailar el análisis del React Compiler): un warning nuevo por encima del tope rompe
   el gate. `check:size` ronda 176.7 kB de 215 kB gzip; en peso quedan ~38 kB de margen.
+- La suite (`vitest.config.ts`) corre con **4 workers** y timeouts de 15 s. Son 178 archivos con
+  jsdom en un portátil de 8 GB que además corre IDE: con un worker por núcleo, un pico de memoria
+  mata workers y tumba archivos que no tienen que ver con el cambio (visto el 2026-10-22: 6
+  archivos y 18 pruebas de golpe, sin reproducirse después). Con 4 workers tarda **~28 s** y
+  aguanta carga.
 - `pnpm smoke:auth` corre contra un server vivo y **escribe** en él (dos cuentas
   nuevas, un EPUB en R2 y vocab); `SMOKE_URL=<url>` para producción, una sola vez
   por deploy y anotando las cuentas creadas.
