@@ -344,6 +344,44 @@ describe("Kindle HTML routes anti-cache headers", () => {
   });
 });
 
+describe("Blindaje de rutas IA (Tarea 1.1)", () => {
+  const post = (path: string, body: unknown) =>
+    app.request(path, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: typeof body === "string" ? body : JSON.stringify(body),
+    });
+
+  it("page-recap responde 401 sin sesión", async () => {
+    const res = await post("/api/ai/page-recap", {
+      text: "Una página cualquiera.",
+      bookTitle: "Libro",
+      chapterTitle: "Capítulo 1",
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it("translate responde 401 sin sesión", async () => {
+    const res = await post("/api/ai/translate", {
+      text: "The wind was rising.",
+      from: "en",
+      to: "es",
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it("companion-note responde 401 sin sesión", async () => {
+    const res = await post("/api/ai/companion-note", { catName: "Michi" });
+    expect(res.status).toBe(401);
+  });
+
+  it("corta cuerpos de más de 64 KB con 413 antes de parsear el JSON", async () => {
+    const res = await post("/api/ai/page-recap", "x".repeat(65 * 1024));
+    expect(res.status).toBe(413);
+    expect(await res.json()).toEqual({ error: "Payload too large" });
+  });
+});
+
 describe("Fase 3: Caché por Hash SHA-256 en Worker", () => {
   it("computeAiCacheKey genera llaves deterministas por tarea y hash de 12 bytes hex", async () => {
     const key1 = await computeAiCacheKey("paragraph_translate", "Hello world");
@@ -375,7 +413,7 @@ describe("Fase 3: Caché por Hash SHA-256 en Worker", () => {
     expect(getCachedAiText("test_key_304")).toBe("val_304");
   });
 
-  it("POST /api/ai/translate devuelve respuesta en caché sin consumir tokens (cached: true)", async () => {
+  it("POST /api/ai/translate exige sesión incluso si la respuesta está en caché", async () => {
     const text = "A gentle breeze rustled the leaves.";
     const key = await computeAiCacheKey("paragraph_translate", "en:es:" + text);
     setCachedAiText(key, "Una suave brisa susurró las hojas.");
@@ -386,13 +424,11 @@ describe("Fase 3: Caché por Hash SHA-256 en Worker", () => {
       body: JSON.stringify({ text, from: "en", to: "es" }),
     });
 
-    expect(res.status).toBe(200);
-    const data = (await res.json()) as { translation: string; cached?: boolean };
-    expect(data.translation).toBe("Una suave brisa susurró las hojas.");
-    expect(data.cached).toBe(true);
+    // La caché no es una puerta trasera: sin sesión válida no se sirve.
+    expect(res.status).toBe(401);
   });
 
-  it("POST /api/ai/page-recap devuelve respuesta en caché sin consumir tokens (cached: true)", async () => {
+  it("POST /api/ai/page-recap exige sesión incluso si la respuesta está en caché", async () => {
     const text = "Página descriptiva para resumen.";
     const key = await computeAiCacheKey("page_recap", "Libro A::Capítulo 1::" + text);
     const sampleRecap = {
@@ -411,15 +447,8 @@ describe("Fase 3: Caché por Hash SHA-256 en Worker", () => {
       }),
     });
 
-    expect(res.status).toBe(200);
-    const data = (await res.json()) as {
-      bullets: string[];
-      hookQuestion: string;
-      cached?: boolean;
-    };
-    expect(data.bullets).toEqual(sampleRecap.bullets);
-    expect(data.hookQuestion).toBe(sampleRecap.hookQuestion);
-    expect(data.cached).toBe(true);
+    // La caché no es una puerta trasera: sin sesión válida no se sirve.
+    expect(res.status).toBe(401);
   });
 });
 

@@ -100,8 +100,8 @@ en `lecta`.
 - `better-auth` + `kysely` para cuentas; `resend` para correo.
 - Cloudflare Workflows (`lecta-enrichment`) para definir palabras en
   segundo plano.
-- Cron `0 5 * * *` (diario): purga `session`/`verification` vencidas y
-  `lecta_rate_log` > 48 h.
+- Cron `0 5 * * *` (diario): purga `session`/`verification` vencidas,
+  `lecta_rate_log` > 48 h y `lecta_ai_quota` con más de 48 horas.
 
 **Datos**
 - CockroachDB (compatible con Postgres, driver `pg` 8.23).
@@ -156,7 +156,8 @@ Tablas de Better Auth: `user`, `session`, `account`, `verification`.
 | Tabla | Migración | Contenido |
 |---|---|---|
 | `lecta_user_words` | schema.sql | Cuaderno (mirror de `savedWords`, con `sense_entry_id`/`sense_order` al catálogo) |
-| `lecta_rate_log` | schema.sql | Cuotas IA por usuario/scope/hora |
+| `lecta_rate_log` | schema.sql | Histórico legado de cuotas IA (el cron lo purga) |
+| `lecta_ai_quota` | 014 (aplicada en `lecta_dev` y `lecta` el 2026-10-23) | Cuota IA atómica por usuario/scope/hora (UPSERT) |
 | `lecta_user_annotations` | 001 | Marcadores y pasajes |
 | `lecta_user_activity` | 002 | Intervalos de lectura |
 | `lecta_user_reviews` | 004 | Repasos FSRS |
@@ -211,10 +212,12 @@ Auth (Better Auth, `/api/auth/*`):
 - Magic link (10 min), correo+contraseña, «olvidé contraseña», borrado
   de cuenta con verificación por correo. El enlace de borrado exige la
   misma sesión que lo pidió.
-- `beforeDelete` purga `books/<userId>/` de R2; las filas SQL caen por
-  CASCADE; el cliente marca `lecta:pending-delete` y solo limpia la
-  base local cuando el correo redirige con `cuenta=eliminada`
-  (`account-cleanup.ts`).
+- `beforeDelete` purga paginando `books/<userId>/` y `user-books/<userId>/`
+  de R2 y borra `user_books` y `kindle_link_codes` (incluidos los expirados);
+  el resto cae por CASCADE. El cliente marca `lecta:pending-delete` y solo
+  limpia la base local cuando el correo redirige con `cuenta=eliminada`
+  **y** `deleteAccountDb` confirma el borrado; si IndexedDB queda bloqueado,
+  el marcador se conserva para el siguiente arranque (`account-cleanup.ts`).
 - Hyperdrive corre con **caché desactivado a propósito** — con caché,
   `findUserByEmail` quedaba stale ~60 s y rompía registro/reset.
   No reactivarlo.
@@ -426,9 +429,13 @@ Patrón común (`*-sync.ts` + `reading-data.ts` del worker):
 - Salida IA validada en el servidor (`ai.ts`): JSON estricto, `pos`
   permitido, tope de definiciones/ejemplos, `promptVersion` y
   `modelVersion` guardados por fila, telemetría `lecta.ai_call`.
-- Cuotas por hora y scope (`lecta_rate_log`, ventana de 1 h):
-  enriquecer 60, ítems 24, verificar 30, explicar 30, tip 6 (pero la
-  cadencia real es ≤1/día por cuenta — ver §5.11).
+- Cuotas por hora natural y scope (`lecta_ai_quota`, una fila por
+  cuenta/scope/hora): enriquecer 60, ítems 24, verificar 30, explicar 30,
+  tip 6, evaluar 40, micro-relato 20, page-recap 40, traducir 60 y
+  companion-note 12. El incremento y la comprobación del tope son un solo
+  `INSERT ... ON CONFLICT DO UPDATE ... WHERE ... RETURNING`; `RETURNING`
+  vacío se traduce a 429. (El tip mantiene su cadencia real ≤1/día por
+  cuenta — ver §5.11.)
 - `catalog-seed.mjs --seed` (`buildResolvedManifest`) resuelve las
   formas de cada libro del catálogo contra `lexicon_forms`/`entries`
   en lotes de 2 000 y emite `.vocab.json` — el mismo análisis que haría

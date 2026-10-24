@@ -52,6 +52,18 @@ CREATE TABLE IF NOT EXISTS lecta_rate_log (
 );
 CREATE INDEX IF NOT EXISTS lecta_rate_log_window ON lecta_rate_log (user_id, created_at);
 
+-- Cuota atómica de IA (014_ai_quota.sql): el contador vive en una fila
+-- por cuenta/alcance/hora para que el UPSERT verifique el tope sin
+-- lecturas separadas.
+CREATE TABLE IF NOT EXISTS lecta_ai_quota (
+  user_id STRING NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+  scope STRING NOT NULL,
+  bucket_hour INT8 NOT NULL,
+  units_used INT8 NOT NULL,
+  updated_at INT8 NOT NULL,
+  PRIMARY KEY (user_id, scope, bucket_hour)
+);
+
 -- Marcadores y pasajes del lector por cuenta (sincronización entre
 -- dispositivos). En bases existentes se aplica con la migración
 -- db/migrations/001_user_annotations.sql.

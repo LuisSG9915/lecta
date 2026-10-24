@@ -9,6 +9,7 @@ import {
 } from "../lib/settings";
 import {
   captureDbScope,
+  deleteLocalDb,
   listAnnotations,
   listIntervals,
   listPositions,
@@ -53,6 +54,9 @@ export default function DiagnosticsModal({ onClose }: DiagnosticsModalProps) {
   const [copied, setCopied] = useState(false);
   const [syncState, setSyncState] = useState<SyncState>(getSyncState());
   const [featureFlags, setFeatureFlags] = useState<FeatureFlags>(() => loadFeatureFlags());
+  const [wipeState, setWipeState] = useState<
+    "idle" | "confirm" | "working" | "error" | "done"
+  >("idle");
 
   const handleToggleFlag = (flag: keyof FeatureFlags) => {
     const updated = saveFeatureFlags({ [flag]: !featureFlags[flag] });
@@ -89,6 +93,26 @@ export default function DiagnosticsModal({ onClose }: DiagnosticsModalProps) {
       });
     }).catch(() => undefined);
   }, []);
+
+  const handleWipeLocalData = async () => {
+    if (wipeState === "working" || wipeState === "done") return;
+    if (wipeState !== "confirm") {
+      setWipeState("confirm");
+      return;
+    }
+    setWipeState("working");
+    try {
+      const removed = await deleteLocalDb();
+      if (!removed) {
+        setWipeState("error");
+        return;
+      }
+      setCounts({ books: 0, words: 0, positions: 0, annotations: 0, activity: 0 });
+      setWipeState("done");
+    } catch {
+      setWipeState("error");
+    }
+  };
 
   const handleCopyReport = async () => {
     const report = {
@@ -189,6 +213,40 @@ export default function DiagnosticsModal({ onClose }: DiagnosticsModalProps) {
             <div style={{ marginTop: "var(--s-1)", fontSize: "var(--fs-xs)", color: "var(--ink-muted)" }}>
               Colecciones: {Object.entries(syncState.collections).map(([k, v]) => `${k}: ${v.status}`).join(" · ")}
             </div>
+          ) : null}
+        </section>
+
+        <section className="setting-block">
+          <h3 className="eyebrow">Borrar datos locales</h3>
+          <p className="meta" style={{ margin: "var(--s-1) 0" }}>
+            Elimina de este dispositivo los libros, palabras, posiciones, anotaciones y
+            actividad de la cuenta activa. No borra tu cuenta ni tus datos en la nube;
+            si vuelves a iniciar sesión, se sincronizarán de nuevo.
+          </p>
+          <button
+            type="button"
+            className="btn--quiet btn--danger"
+            onClick={() => void handleWipeLocalData()}
+            disabled={wipeState === "working" || wipeState === "done"}
+          >
+            {wipeState === "confirm"
+              ? "Confirmar borrado local"
+              : wipeState === "working"
+                ? "Borrando datos locales…"
+                : wipeState === "done"
+                  ? "Datos locales borrados"
+                  : "Borrar datos locales de este dispositivo"}
+          </button>
+          {wipeState === "error" ? (
+            <p role="alert" className="status">
+              No se pudo borrar la base local: ciérrala en otras pestañas y vuelve a
+              intentarlo.
+            </p>
+          ) : null}
+          {wipeState === "done" ? (
+            <p role="status" className="status">
+              Datos locales borrados. Recarga Lecta para empezar de cero.
+            </p>
           ) : null}
         </section>
 

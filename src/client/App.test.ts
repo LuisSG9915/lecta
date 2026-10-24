@@ -5,11 +5,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App";
 import { authClient } from "./lib/auth";
 import {
+  deleteAccountDb,
   getStoredBook,
   listBookOps,
   listStoredBooks,
   loadSessionValue,
 } from "./lib/idb";
+import { PENDING_DELETE_KEY } from "./lib/account-cleanup";
 import { listRemoteBooks } from "./lib/books";
 import { syncPositions } from "./lib/positions-sync";
 
@@ -128,7 +130,7 @@ vi.mock("./lib/idb", () => ({
   readCompanionRegisters: vi.fn(async () => []),
   saveCompanionAcked: vi.fn(async () => undefined),
   saveCompanionDevicePrefs: vi.fn(async () => undefined),
-  deleteAccountDb: vi.fn(async () => undefined),
+  deleteAccountDb: vi.fn(async () => true),
   deleteStoredBook: vi.fn(async () => undefined),
   getStoredBook: vi.fn(async () => undefined),
   listBookOps: vi.fn(async () => []),
@@ -477,7 +479,7 @@ describe("App · navegación principal (Fase 2)", () => {
 
     await act(async () => closetBtn!.click());
     // La hoja es diferida (React.lazy): se espera a que resuelva el chunk.
-    for (let i = 0; i < 40 && !host.querySelector(".sheet.sheet--stage"); i += 1) {
+    for (let i = 0; i < 100 && !host.querySelector(".sheet.sheet--stage"); i += 1) {
       await flush();
     }
 
@@ -657,6 +659,65 @@ describe("App · navegación principal (Fase 2)", () => {
     const shelf = host.querySelector(".shelf-stub");
     expect(shelf).toBeTruthy();
     expect(shelf?.textContent).toContain("libro-recuperado.epub");
+  });
+
+  it("conserva el marcador de borrado si deleteAccountDb queda bloqueado", async () => {
+    window.history.replaceState({}, "", "/?cuenta=eliminada");
+    localStorage.setItem(PENDING_DELETE_KEY, "user-A");
+    vi.mocked(deleteAccountDb).mockResolvedValue(false);
+
+    renderRoot();
+    await flush();
+    await flush();
+
+    expect(localStorage.getItem(PENDING_DELETE_KEY)).toBe("user-A");
+    expect(host.textContent).toContain("Se reintentará al abrir de nuevo");
+  });
+
+  it("consume el marcador de borrado solo cuando deleteAccountDb confirma", async () => {
+    window.history.replaceState({}, "", "/?cuenta=eliminada");
+    localStorage.setItem(PENDING_DELETE_KEY, "user-A");
+    vi.mocked(deleteAccountDb).mockResolvedValue(true);
+
+    renderRoot();
+    await flush();
+    await flush();
+
+    expect(localStorage.getItem(PENDING_DELETE_KEY)).toBeNull();
+  });
+
+  it("al cambiar de cuenta desmonta el lector y no deja la mini-barra de la cuenta anterior", async () => {
+    vi.mocked(syncPositions).mockResolvedValue({ conflicts: [] } as never);
+    vi.mocked(authClient.useSession).mockReturnValue({
+      data: { user: { id: "user-A" } },
+      isPending: false,
+    } as never);
+
+    renderRoot();
+    await flush();
+
+    const openBtn = host.querySelector<HTMLButtonElement>(".shelf-book-cover");
+    expect(openBtn).toBeTruthy();
+    await act(async () => openBtn!.click());
+    await flush();
+    await flush();
+    expect(host.querySelector(".reader-stub")).toBeTruthy();
+
+    // La sesión cambia en otra pestaña (broadcast de Better Auth).
+    vi.mocked(authClient.useSession).mockReturnValue({
+      data: { user: { id: "user-B" } },
+      isPending: false,
+    } as never);
+    await act(async () => root.render(h(App)));
+    await flush();
+
+    // El EPUB privado de A ya no está montado y su última lectura se borró.
+    expect(host.querySelector(".reader-stub")).toBeNull();
+    const nav = host.querySelector("nav.app-nav");
+    const vocabBtn = nav?.querySelector<HTMLButtonElement>('[data-dest="vocabulary"]');
+    await act(async () => vocabBtn!.click());
+    await flush();
+    expect(host.querySelector(".mini-reader-bar")).toBeNull();
   });
 });
 

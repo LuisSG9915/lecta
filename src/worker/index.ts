@@ -14,6 +14,9 @@ const handler: ExportedHandler<WorkerEnv> = {
         await client.query("DELETE FROM lecta_rate_log WHERE created_at < $1", [
           Date.now() - 48 * 3_600_000,
         ]);
+        await client.query("DELETE FROM lecta_ai_quota WHERE bucket_hour < $1", [
+          Math.floor((Date.now() - 48 * 3_600_000) / 3_600_000),
+        ]);
       }) ?? Promise.resolve()),
     );
   },

@@ -112,8 +112,10 @@
 - Magic link (10 min), correo+contraseña, "olvidé contraseña" y borrado de
   cuenta con verificación por correo. El enlace de borrado **exige la misma
   sesión** que lo pidió (Better Auth valida token contra sesión activa).
-- `beforeDelete` purga `books/<userId>/` de R2; `lecta_user_words` y
-  `lecta_rate_log` caen por `ON DELETE CASCADE`.
+- `beforeDelete` purga paginando `books/<userId>/` y `user-books/<userId>/`
+  de R2 y borra `user_books` y `kindle_link_codes` (también los códigos
+  expirados). `lecta_user_words`, `lecta_rate_log` y `lecta_ai_quota` caen por
+  `ON DELETE CASCADE`.
 - IndexedDB separado por cuenta (`lecta` anónimo, `lecta:u:<id>` por usuario);
   al entrar sesión migra lo anónimo a la cuenta.
 
@@ -126,11 +128,16 @@
   `pnpm dev` debe reiniciarse tras cambiar `.env` (las vars se leen al arrancar).
 - `lecta_dev` arrancó con esquema + auth + seed, sin usuarios: en dev hay que
   registrarse de nuevo (el correo es el mismo dominio, es solo otra base).
-- `lecta` (prod) tiene aplicadas **001–013** (verificado el 2026-10-22; 011 se
-  aplicó ese día y el worker quedó desplegado con `user_books`). Los índices de
-  sync existen todos, pero dos se crearon con las columnas estrictamente
+- `lecta` (prod) tiene aplicadas **001–014** (014 aplicada el 2026-10-23;
+  011 el 2026-10-22 y el worker quedó desplegado con `user_books`). Los índices
+  de sync existen todos, pero dos se crearon con las columnas estrictamente
   necesarias y no como los escribe la migración: ver la nota de PK completa abajo.
   Las seis tablas de sync vuelven a estar con `schema_locked=true`.
+- **014_ai_quota.sql** aplicada en `lecta_dev` y `lecta` (2026-10-23, 14
+  migraciones en cada una): `lecta_ai_quota` es la tabla del UPSERT atómico de
+  cuota de IA (PK `user_id, scope, bucket_hour`, FK a `user` con CASCADE). **El
+  worker todavía no está desplegado con este código**: desplegarlo cuando se pida
+  (`pnpm run deploy`).
 - `defaultdb` pertenece a otro proyecto (POS): no tocar sus tablas.
 - EPUBs de prueba con copyright están en `.gitignore` (`/src/*.epub`,
   `/fixtures/*.epub` salvo `minimal.epub`).

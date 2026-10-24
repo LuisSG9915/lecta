@@ -62,6 +62,12 @@ function decodeXmlEntities(str: string): string {
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
     .replace(/&apos;/g, "'")
+    .replace(/&colon;/gi, ":")
+    .replace(/&tab;/gi, "\t")
+    .replace(/&newline;/gi, "\n")
+    .replace(/&#x([0-9a-f]+);/gi, (_, code) =>
+      String.fromCharCode(parseInt(code, 16)),
+    )
     .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
     .trim();
 }
@@ -270,20 +276,48 @@ export function sanitizeKindleHtml(
   // 1. Quitar soft hyphens (\u00AD)
   content = content.replace(/\u00AD/g, "");
 
-  // 2. Eliminar etiquetas no deseadas o peligrosas
-  content = content
-    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
-    .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, "")
-    .replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, "")
-    .replace(/<object\b[^<]*(?:(?!<\/object>)<[^<]*)*<\/object>/gi, "")
-    .replace(/<embed\b[^>]*>/gi, "")
-    .replace(/<form\b[^<]*(?:(?!<\/form>)<[^<]*)*<\/form>/gi, "");
+  // 2. Eliminar por completo etiquetas ejecutables o con contenido
+  // activo. Se quita el bloque entero, no solo la etiqueta.
+  const dangerousTags = "script|style|iframe|object|embed|form|svg|math";
+  content = content.replace(
+    new RegExp("<(" + dangerousTags + ")\\b[^>]*>[\\s\\S]*?<\\/\\1\\s*>", "gi"),
+    "",
+  );
+  content = content.replace(
+    new RegExp("<\\/?(" + dangerousTags + ")\\b[^>]*>", "gi"),
+    "",
+  );
 
-  // 3. Eliminar eventos inline (onclick, onerror, onload, etc.)
-  content = content.replace(/\s+on[a-z]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "");
+  // 3. Quitar atributos on* y neutralizar URL peligrosas, incluidas las
+  // ofuscadas con entidades, espacios o caracteres de control.
+  content = content.replace(
+    /<([a-z][a-z0-9:-]*)([^>]*)>/gi,
+    (_tag, name: string, attrs: string) => {
+      const cleaned = attrs
+        .replace(/\s+on[a-z0-9_-]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "")
+        .replace(
+          /\s+(href|src|xlink:href|action|formaction|poster|background|srcdoc)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi,
+          (
+            full,
+            attr: string,
+            doubleQuoted?: string,
+            singleQuoted?: string,
+            unquoted?: string,
+          ) => {
+            const raw = doubleQuoted ?? singleQuoted ?? unquoted ?? "";
+            const normalized = Array.from(decodeXmlEntities(raw))
+              .filter((char) => char.charCodeAt(0) > 0x20)
+              .join("")
+              .toLowerCase();
+            return /^(?:javascript|vbscript|data:text\/html)/.test(normalized)
+              ? " " + attr + '="#"'
+              : full;
+          },
+        );
+      return "<" + name + cleaned + ">";
+    },
+  );
 
-  // 4. Neutralizar javascript: en enlaces
-  content = content.replace(/\bhref\s*=\s*(["'])javascript:[^"']*\1/gi, 'href="#"');
 
   // 5. Reescribir rutas de imágenes relativas para servirlas vía el Worker
   content = content.replace(

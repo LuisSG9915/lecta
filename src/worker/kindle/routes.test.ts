@@ -1,7 +1,13 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { makeSignature } from "better-auth/crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { app } from "../app";
+import {
+  memoryCodeStore,
+  resetKindleStatusLimiter,
+  SAFE_EPUB_ASSET_MIMES,
+} from "./routes";
 
 const getSessionMock = vi.hoisted(() => vi.fn());
 const authHandlerMock = vi.hoisted(() => vi.fn());
@@ -66,11 +72,14 @@ describe("Kindle Routes (/k and /kindle)", () => {
 
   const env = {
     DATABASE_URL: "postgres://mock",
+    BETTER_AUTH_SECRET: "test-secret-for-signed-kindle-cookie",
     BOOKS: mockBooksBucket as unknown,
   };
 
   beforeEach(() => {
     vi.clearAllMocks();
+    memoryCodeStore.clear();
+    resetKindleStatusLimiter();
     getSessionMock.mockResolvedValue(null);
     dbQueryMock.mockResolvedValue({ rows: [] });
   });
@@ -126,6 +135,91 @@ describe("Kindle Routes (/k and /kindle)", () => {
       const statusJson = (await statusRes.json()) as { linked: boolean };
       expect(statusJson.linked).toBe(true);
       expect(statusRes.headers.get("set-cookie")).toContain("better-auth.session_token");
+    });
+
+    it("emite cookie firmada compatible con Better Auth y con prefijo __Secure- en HTTPS", async () => {
+      getSessionMock.mockResolvedValueOnce(null);
+      const kindleRes = await app.request("https://lecta.test/kindle", {}, env);
+      const html = await kindleRes.text();
+      const code = html.match(/<div[^>]*font-size:\s*3\.5rem[^>]*>\s*([A-Z0-9]{4})\s*<\/div>/)?.[1] ?? "";
+      expect(code).toHaveLength(4);
+
+      getSessionMock.mockResolvedValueOnce({
+        user: { id: "user-https", email: "https@example.com" },
+      });
+      const linkRes = await app.request(
+        "https://lecta.test/api/kindle/link",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ code, userSessionToken: "signed-token" }),
+        },
+        env,
+      );
+      expect(linkRes.status).toBe(200);
+
+      const statusRes = await app.request(
+        `https://lecta.test/api/kindle/status?code=${code}`,
+        {},
+        env,
+      );
+      expect(statusRes.status).toBe(200);
+      const setCookie = statusRes.headers.get("set-cookie") ?? "";
+      expect(setCookie.startsWith("__Secure-better-auth.session_token=")).toBe(true);
+      expect(setCookie).toContain("Secure");
+      const cookieValue = decodeURIComponent(
+        setCookie.split(";")[0].split("=").slice(1).join("="),
+      );
+      const dot = cookieValue.lastIndexOf(".");
+      const token = cookieValue.slice(0, dot);
+      const signature = cookieValue.slice(dot + 1);
+      expect(token).toBe("signed-token");
+      // La firma sale del mismo HMAC-SHA256 que usa Better Auth.
+      expect(signature).toBe(
+        await makeSignature("signed-token", env.BETTER_AUTH_SECRET),
+      );
+      const body = (await statusRes.json()) as Record<string, unknown>;
+      expect(body).not.toHaveProperty("sessionToken");
+    });
+
+    it("canjea el código una sola vez: la segunda consulta ya no entrega sesión", async () => {
+      const memEnv = { ...env, DATABASE_URL: undefined } as unknown as typeof env;
+      getSessionMock.mockResolvedValueOnce(null);
+      const kindleRes = await app.request("/kindle", {}, memEnv);
+      const html = await kindleRes.text();
+      const code = html.match(/<div[^>]*font-size:\s*3\.5rem[^>]*>\s*([A-Z0-9]{4})\s*<\/div>/)?.[1] ?? "";
+      expect(code).toHaveLength(4);
+
+      getSessionMock.mockResolvedValueOnce({
+        user: { id: "user-once", email: "once@example.com" },
+      });
+      const linkRes = await app.request(
+        "/api/kindle/link",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ code, userSessionToken: "once-token" }),
+        },
+        memEnv,
+      );
+      expect(linkRes.status).toBe(200);
+
+      const first = await app.request(`/api/kindle/status?code=${code}`, {}, memEnv);
+      expect(first.status).toBe(200);
+      expect(first.headers.get("set-cookie")).toContain("better-auth.session_token=");
+
+      const second = await app.request(`/api/kindle/status?code=${code}`, {}, memEnv);
+      expect(second.status).toBe(404);
+    });
+
+    it("limita las consultas de estado por IP", async () => {
+      const headers = { "cf-connecting-ip": "203.0.113.77" };
+      for (let i = 0; i < 20; i += 1) {
+        const res = await app.request("/api/kindle/status?code=ZZZZ", { headers }, env);
+        expect(res.status).toBe(404);
+      }
+      const blocked = await app.request("/api/kindle/status?code=ZZZZ", { headers }, env);
+      expect(blocked.status).toBe(429);
     });
 
     it("utiliza c.env.DB cuando está disponible para registrar y vincular códigos D1", async () => {
@@ -484,15 +578,40 @@ describe("Kindle Routes (/k and /kindle)", () => {
   });
 
   describe("GET /k/read/:hash/resource", () => {
-    it("sirve un recurso del EPUB con su MIME type", async () => {
+    it("bloquea XHTML/HTML del EPUB con 415 (no se sirve HTML same-origin)", async () => {
       getSessionMock.mockResolvedValue({
         user: { id: "user-1", email: "lector@example.com" },
       });
 
-      const res = await app.request("/k/read/mock-hash-1/resource?path=OEBPS/nav.xhtml", {}, env);
-      expect(res.status).toBe(200);
-      expect(res.headers.get("Content-Type")).toBe("application/xhtml+xml");
+      for (const path of ["OEBPS/nav.xhtml", "OEBPS/chapter1.xhtml"]) {
+        const res = await app.request(
+          "/k/read/mock-hash-1/resource?path=" + encodeURIComponent(path),
+          {},
+          env,
+        );
+        expect(res.status).toBe(415);
+        expect(await res.text()).toBe("Unsupported resource type");
+      }
     });
+
+    it("solo permite MIME de imagen y fuente en la lista blanca", () => {
+      expect(SAFE_EPUB_ASSET_MIMES.has("image/jpeg")).toBe(true);
+      expect(SAFE_EPUB_ASSET_MIMES.has("image/png")).toBe(true);
+      expect(SAFE_EPUB_ASSET_MIMES.has("font/woff2")).toBe(true);
+      expect(SAFE_EPUB_ASSET_MIMES.has("text/html")).toBe(false);
+      expect(SAFE_EPUB_ASSET_MIMES.has("application/xhtml+xml")).toBe(false);
+      expect(SAFE_EPUB_ASSET_MIMES.has("image/svg+xml")).toBe(false);
+    });
+  });
+
+  it("añade CSP restrictiva y nosniff a las vistas HTML de /k", async () => {
+    const res = await app.request("/k/login", {}, env);
+    expect(res.status).toBe(200);
+    const csp = res.headers.get("content-security-policy") ?? "";
+    expect(csp).toContain("default-src 'none'");
+    expect(csp).toContain("script-src 'unsafe-inline'");
+    expect(csp).toContain("form-action 'self'");
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
   });
 
   describe("GET /k/lookup (Diccionario)", () => {

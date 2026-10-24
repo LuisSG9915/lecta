@@ -1,4 +1,5 @@
 import { Hono, type Context } from "hono";
+import { bodyLimit } from "hono/body-limit";
 import { chunks, getConnectionString, withClient, type WorkerEnv } from "./db";
 import {
   CLIENT_ERROR_MAX_BODY_BYTES,
@@ -97,9 +98,21 @@ import {
   handleKindleStatus,
   handleKindleLinkAction,
   handleKindlePrimingAction,
+  KINDLE_HTML_CSP,
 } from "./kindle/routes";
 
 export const app = new Hono<{ Bindings: WorkerEnv }>();
+
+// Las rutas de IA reciben texto de página/párrafo: 64 KB sobran para el
+// caso legítimo y cortan en la puerta cualquier cuerpo desmedido antes
+// de que c.req.json() lo materialice en memoria.
+app.use(
+  "/api/ai/*",
+  bodyLimit({
+    maxSize: 64 * 1024,
+    onError: (c) => c.json({ error: "Payload too large" }, 413),
+  }),
+);
 
 app.onError((err, c) => {
   const pathname = new URL(c.req.url).pathname;
@@ -213,6 +226,8 @@ app.use("*", async (c, next) => {
     c.res.headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
     c.res.headers.set("Pragma", "no-cache");
     c.res.headers.set("Expires", "0");
+    c.res.headers.set("Content-Security-Policy", KINDLE_HTML_CSP);
+    c.res.headers.set("X-Content-Type-Options", "nosniff");
   }
 });
 
@@ -1340,6 +1355,8 @@ app.post("/api/ai/explain-in-passage", async (context) => {
   return context.json(parsed);
 });
 
+const companionNoteCache = createTtlCache<string>({ maxEntries: 100, ttlMs: 20 * 60_000 });
+
 app.post("/api/ai/companion-note", async (context) => {
   const body = await context.req.json().catch(() => null);
   const catName = typeof body?.catName === "string" ? body.catName.trim().slice(0, 50) : "Michi";
@@ -1349,8 +1366,46 @@ app.post("/api/ai/companion-note", async (context) => {
   const masteredWord = typeof body?.masteredWord === "string" ? body.masteredWord.trim().slice(0, 100) : undefined;
 
   const session = await getSession(context);
-  if (!session) {
+  if (!session?.user?.id) {
     return context.json({ error: "Inicia sesión para recibir cartas del compañero." }, 401);
+  }
+
+  const fallback = () =>
+    context.json({
+      title: "¡Felicidades por tu lectura, amigo!",
+      note: `¡Qué gran paso diste hoy con tu lectura! Me encanta ver cómo sigues enriqueciendo tus libros día a día.`,
+      signOff: `Con cariño, ${catName} 🐾`,
+      fallback: true,
+    });
+
+  // La nota depende de la cuenta y del contexto exacto: misma entrada,
+  // misma carta. El userId evita reutilizar una nota personalizada de
+  // otra cuenta y la cuota solo se gasta cuando de verdad hay llamada.
+  const cacheKey = await computeAiCacheKey(
+    "companion_note",
+    [session.user.id, catName, achievement ?? "", rankName ?? "", bookTitle ?? "", masteredWord ?? ""].join("::"),
+  );
+  const cached =
+    getCachedAiText(cacheKey) ??
+    companionNoteCache.get(cacheKey) ??
+    (await getCachedAiTextFromD1(context.env.DB, cacheKey));
+  const cachedNote = cached ? parseCompanionNote(cached) : null;
+  if (cachedNote) return context.json({ ...cachedNote, cached: true });
+
+  if (!context.env.DEEPSEEK_API_KEY) return fallback();
+
+  const allowed = await consumeRateUnits(
+    context.env,
+    session.user.id,
+    1,
+    COMPANION_NOTE_UNITS_PER_HOUR,
+    "companion-note",
+  );
+  if (!allowed) {
+    return context.json(
+      { error: "Llegaste al límite de cartas del compañero por ahora. Intenta más tarde." },
+      429,
+    );
   }
 
   const ai = await callDeepSeek(
@@ -1363,15 +1418,12 @@ app.post("/api/ai/companion-note", async (context) => {
   );
 
   const parsed = ai.ok ? parseCompanionNote(ai.content) : null;
-  if (!parsed) {
-    return context.json({
-      title: "¡Felicidades por tu lectura, amigo!",
-      note: `¡Qué gran paso diste hoy con tu lectura! Me encanta ver cómo sigues enriqueciendo tus libros día a día.`,
-      signOff: `Con cariño, ${catName} 🐾`,
-      fallback: true,
-    });
-  }
+  if (!parsed) return fallback();
 
+  const serialized = JSON.stringify(parsed);
+  setCachedAiText(cacheKey, serialized);
+  companionNoteCache.set(cacheKey, serialized);
+  await setCachedAiTextToD1(context.env.DB, cacheKey, serialized);
   return context.json(parsed);
 });
 
@@ -1383,6 +1435,11 @@ app.post("/api/ai/page-recap", async (context) => {
 
   if (!text) {
     return context.json({ error: "Se requiere el texto de la página para resumir." }, 400);
+  }
+
+  const session = await getSession(context);
+  if (!session?.user?.id) {
+    return context.json({ error: "Inicia sesión para resumir páginas con IA." }, 401);
   }
 
   const cacheKey = await computeAiCacheKey("page_recap", `${bookTitle ?? ""}::${chapterTitle ?? ""}::${text}`);
@@ -1397,6 +1454,20 @@ app.post("/api/ai/page-recap", async (context) => {
 
   if (!context.env.DEEPSEEK_API_KEY) {
     return context.json(deterministicPageRecapFallback(text));
+  }
+
+  const allowed = await consumeRateUnits(
+    context.env,
+    session.user.id,
+    1,
+    PAGE_RECAP_UNITS_PER_HOUR,
+    "page-recap",
+  );
+  if (!allowed) {
+    return context.json(
+      { error: "Llegaste al límite de resúmenes con IA por ahora. Intenta más tarde." },
+      429,
+    );
   }
 
   const budget = AI_TASK_BUDGETS.page_recap;
@@ -1434,6 +1505,11 @@ app.post("/api/ai/translate", async (context) => {
     return context.json({ error: "Se requiere texto para traducir." }, 400);
   }
 
+  const session = await getSession(context);
+  if (!session?.user?.id) {
+    return context.json({ error: "Inicia sesión para traducir párrafos con IA." }, 401);
+  }
+
   const cacheKey = await computeAiCacheKey("paragraph_translate", `${from}:${to}:${text}`);
   const cached = getCachedAiText(cacheKey) ?? (await getCachedAiTextFromD1(context.env.DB, cacheKey));
   if (cached) {
@@ -1442,6 +1518,20 @@ app.post("/api/ai/translate", async (context) => {
 
   if (!context.env.DEEPSEEK_API_KEY) {
     return context.json({ translation: text });
+  }
+
+  const allowed = await consumeRateUnits(
+    context.env,
+    session.user.id,
+    1,
+    TRANSLATE_UNITS_PER_HOUR,
+    "translate",
+  );
+  if (!allowed) {
+    return context.json(
+      { error: "Llegaste al límite de traducciones con IA por ahora. Intenta más tarde." },
+      429,
+    );
   }
 
   const { prompt, budget } = buildParagraphTranslationPrompt(text);
@@ -1563,35 +1653,39 @@ const EXPLAIN_UNITS_PER_HOUR = 30;
 const TIP_UNITS_PER_HOUR = 6;
 const EVALUATE_UNITS_PER_HOUR = 40;
 const STORY_UNITS_PER_HOUR = 20;
+const PAGE_RECAP_UNITS_PER_HOUR = 40;
+const TRANSLATE_UNITS_PER_HOUR = 60;
+const COMPANION_NOTE_UNITS_PER_HOUR = 12;
 const HOUR_MS = 3_600_000;
 
-// Suma `units` a la ventana de la última hora del scope dado y la
-// registra en la misma consulta; devuelve false cuando la cuenta ya
-// llegó al límite.
-async function consumeRateUnits(
+// Cuota por (cuenta, alcance, hora natural). El incremento y la
+// verificación del tope ocurren en una sola sentencia: dos peticiones
+// simultáneas no pueden leer el mismo total y colarse las dos.
+// RETURNING vacío = la fila no se insertó ni actualizó porque el
+// límite ya estaba alcanzado.
+export async function consumeRateUnits(
   env: WorkerEnv,
   userId: string,
   units: number,
   limit = ENRICH_UNITS_PER_HOUR,
   scope = "enrich",
-) {
+): Promise<boolean> {
   const now = Date.now();
+  const bucketHour = Math.floor(now / HOUR_MS);
   const result = await withClient(env, (client) =>
-    client.query(
-      `WITH cnt AS (
-         SELECT COALESCE(SUM(units), 0)::int8 AS total
-         FROM lecta_rate_log
-         WHERE user_id = $1 AND scope = $5 AND created_at > $2
-       ), ins AS (
-         INSERT INTO lecta_rate_log (user_id, units, scope, created_at)
-         SELECT $1, $3, $5, $4 FROM cnt WHERE cnt.total + $3 <= $6
-         RETURNING 1
-       )
-       SELECT EXISTS (SELECT 1 FROM ins) AS allowed`,
-      [userId, now - HOUR_MS, units, now, scope, limit],
+    client.query<{ units_used: number | string }>(
+      `INSERT INTO lecta_ai_quota (user_id, scope, bucket_hour, units_used, updated_at)
+       VALUES ($1, $5, $2, $3, $4)
+       ON CONFLICT (user_id, scope, bucket_hour)
+       DO UPDATE SET
+         units_used = lecta_ai_quota.units_used + EXCLUDED.units_used,
+         updated_at = EXCLUDED.updated_at
+       WHERE lecta_ai_quota.units_used + EXCLUDED.units_used <= $6
+       RETURNING units_used`,
+      [userId, bucketHour, units, now, scope, limit],
     ),
   );
-  return result?.rows[0]?.allowed === true;
+  return Boolean(result?.rows[0]);
 }
 
 const bookKey = (userId: string, hash: string) => `books/${userId}/${hash}.epub`;

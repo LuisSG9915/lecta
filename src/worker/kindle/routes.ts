@@ -2,6 +2,7 @@
 // Servidas íntegramente con HTML/CSS ligero generado en el Cloudflare Worker.
 
 import { Hono, type Context } from "hono";
+import { setSignedCookie } from "hono/cookie";
 import { getConnectionString, withClient, type WorkerEnv } from "../db";
 import { getSession } from "../session";
 import { createScopedAuth, closePoolSafe } from "../auth";
@@ -59,6 +60,50 @@ export const kindleLinkCodes = memoryCodeStore;
 
 const SAFE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // Sin I/1/O/0 para evitar confusión en tinta electrónica
 const CODE_TTL_SECONDS = 600; // 10 minutos
+const STATUS_LIMIT_PER_MINUTE = 20;
+
+// Recursos del EPUB que el navegador E-ink puede recibir. Nada de HTML,
+// XHTML ni SVG: un recurso activo same-origin en /k sería XSS.
+export const SAFE_EPUB_ASSET_MIMES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+  "image/avif",
+  "font/woff2",
+  "font/woff",
+  "font/ttf",
+  "font/otf",
+]);
+
+export const KINDLE_HTML_CSP =
+  "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'";
+
+// Límite por IP y por isolate para la consulta de estado: el código es
+// corto y el endpoint entrega una sesión, así que no puede ser un oráculo
+// sin freno. No sustituye a la expiración del código, la acompaña.
+const statusBuckets = new Map<string, { minute: number; count: number }>();
+
+export function allowKindleStatus(ip: string, now = Date.now()): boolean {
+  const minute = Math.floor(now / 60_000);
+  let bucket = statusBuckets.get(ip);
+  if (!bucket) {
+    if (statusBuckets.size >= 5_000) statusBuckets.clear();
+    bucket = { minute, count: 0 };
+  }
+  if (bucket.minute !== minute) {
+    bucket.minute = minute;
+    bucket.count = 0;
+  }
+  bucket.count += 1;
+  statusBuckets.set(ip, bucket);
+  return bucket.count <= STATUS_LIMIT_PER_MINUTE;
+}
+
+/** Solo para pruebas: deja el limitador como recién arrancado. */
+export function resetKindleStatusLimiter(): void {
+  statusBuckets.clear();
+}
 
 export function generateFourCharKindleCode(): string {
   let code = "";
@@ -276,63 +321,148 @@ export async function consumeLinkedKindleCode(
   const cleanCode = (code || "").trim().toUpperCase();
   const nowSec = Math.floor(Date.now() / 1000);
 
-  // 1. Intentar consultar en Postgres
+  type ConsumeOutcome =
+    | { row: { session_token: string | null; user_id: string | null } }
+    | { expired: true }
+    | { gone: true }
+    | { pending: true }
+    | { missing: true };
+
+  const takeMemory = (): { status: "pending" | "linked" | "expired" | "not_found"; sessionToken?: string; userId?: string; redirectUrl?: string } => {
+    const mem = memoryCodeStore.get(cleanCode);
+    if (!mem) return { status: "not_found" };
+    if (mem.expiresAt && mem.expiresAt < nowSec) {
+      memoryCodeStore.delete(cleanCode);
+      return { status: "expired" };
+    }
+    if (mem.status === "linked" && (mem.sessionToken || mem.userToken)) {
+      const sessionToken = (mem.sessionToken || mem.userToken) as string;
+      memoryCodeStore.delete(cleanCode);
+      return {
+        status: "linked",
+        sessionToken,
+        userId: mem.userId ?? undefined,
+        redirectUrl: mem.redirectUrl,
+      };
+    }
+    if (mem.status !== "pending") {
+      memoryCodeStore.delete(cleanCode);
+      return { status: "not_found" };
+    }
+    return { status: "pending" };
+  };
+
+  // 1. Postgres: DELETE ... RETURNING consume el código exactamente una
+  // vez. Si el código no vive en Postgres, se sigue con D1/memoria.
   if (env && getConnectionString(env)) {
     try {
-      const row = await withClient(env, async (client) => {
-        const queryRes = await client.query(
-          `SELECT code, status, user_id, session_token, expires_at
-           FROM kindle_link_codes WHERE code = $1 LIMIT 1`,
+      const outcome = await withClient<ConsumeOutcome>(env, async (client) => {
+        const consumed = await client.query<{
+          session_token: string | null;
+          user_id: string | null;
+        }>(
+          `DELETE FROM kindle_link_codes
+           WHERE code = $1 AND status = 'linked' AND expires_at >= $2
+           RETURNING session_token, user_id`,
+          [cleanCode, nowSec],
+        );
+        if (consumed.rows[0]) return { row: consumed.rows[0] };
+        const state = await client.query<{
+          status: string;
+          expires_at: number | string | null;
+        }>(
+          `SELECT status, expires_at FROM kindle_link_codes WHERE code = $1 LIMIT 1`,
           [cleanCode],
         );
-        return queryRes.rows[0];
+        const row = state.rows[0];
+        if (!row) return { missing: true };
+        if (row.expires_at != null && Number(row.expires_at) < nowSec) {
+          await client.query(
+            `DELETE FROM kindle_link_codes WHERE code = $1`,
+            [cleanCode],
+          );
+          return { expired: true };
+        }
+        if (row.status !== "pending") {
+          await client.query(
+            `DELETE FROM kindle_link_codes WHERE code = $1`,
+            [cleanCode],
+          );
+          return { gone: true };
+        }
+        return { pending: true };
       });
 
-      if (row) {
-        if (row.expires_at != null && Number(row.expires_at) < nowSec) return { status: "expired" };
-        if (row.status === "linked" && row.session_token) {
-          const mem = memoryCodeStore.get(cleanCode);
-          return {
-            status: "linked",
-            sessionToken: row.session_token,
-            userId: row.user_id ?? undefined,
-            redirectUrl: mem?.redirectUrl,
-          };
-        }
-        return { status: "pending" };
+      if (outcome && "row" in outcome) {
+        const record = outcome.row;
+        if (!record.session_token) return { status: "not_found" };
+        const mem = memoryCodeStore.get(cleanCode);
+        memoryCodeStore.delete(cleanCode);
+        return {
+          status: "linked",
+          sessionToken: record.session_token,
+          userId: record.user_id ?? undefined,
+          redirectUrl: mem?.redirectUrl,
+        };
       }
+      if (outcome && "expired" in outcome) {
+        memoryCodeStore.delete(cleanCode);
+        return { status: "expired" };
+      }
+      if (outcome && "gone" in outcome) {
+        memoryCodeStore.delete(cleanCode);
+        return { status: "not_found" };
+      }
+      if (outcome && "pending" in outcome) return { status: "pending" };
     } catch {
       // Fallback a D1 / memoria
     }
   }
 
-  // 2. Intentar consultar en D1
+  // 2. D1: mismo DELETE ... RETURNING para que un código se canjee una
+  // sola vez aunque dos pestañas consulten a la vez.
   if (db && typeof db.prepare === "function") {
     try {
       const row = await db
         .prepare(
-          `SELECT code, status, user_id, session_token, expires_at
-           FROM kindle_link_codes WHERE code = ? LIMIT 1`,
+          `DELETE FROM kindle_link_codes
+           WHERE code = ? AND status = 'linked' AND expires_at >= ?
+           RETURNING session_token, user_id`,
+        )
+        .bind(cleanCode, nowSec)
+        .first<{ session_token: string | null; user_id: string | null }>();
+      if (row?.session_token) {
+        const mem = memoryCodeStore.get(cleanCode);
+        memoryCodeStore.delete(cleanCode);
+        return {
+          status: "linked",
+          sessionToken: row.session_token,
+          userId: row.user_id ?? undefined,
+          redirectUrl: mem?.redirectUrl,
+        };
+      }
+      const state = await db
+        .prepare(
+          `SELECT status, expires_at FROM kindle_link_codes WHERE code = ? LIMIT 1`,
         )
         .bind(cleanCode)
-        .first<{
-          code: string;
-          status: string;
-          user_id: string | null;
-          session_token: string | null;
-          expires_at?: number;
-        }>();
-
-      if (row) {
-        if (row.expires_at != null && row.expires_at < nowSec) return { status: "expired" };
-        if (row.status === "linked" && row.session_token) {
-          const mem = memoryCodeStore.get(cleanCode);
-          return {
-            status: "linked",
-            sessionToken: row.session_token,
-            userId: row.user_id ?? undefined,
-            redirectUrl: mem?.redirectUrl,
-          };
+        .first<{ status: string; expires_at?: number }>();
+      if (state) {
+        if (state.expires_at != null && state.expires_at < nowSec) {
+          await db
+            .prepare(`DELETE FROM kindle_link_codes WHERE code = ?`)
+            .bind(cleanCode)
+            .run();
+          memoryCodeStore.delete(cleanCode);
+          return { status: "expired" };
+        }
+        if (state.status !== "pending") {
+          await db
+            .prepare(`DELETE FROM kindle_link_codes WHERE code = ?`)
+            .bind(cleanCode)
+            .run();
+          memoryCodeStore.delete(cleanCode);
+          return { status: "not_found" };
         }
         return { status: "pending" };
       }
@@ -341,18 +471,7 @@ export async function consumeLinkedKindleCode(
     }
   }
 
-  const mem = memoryCodeStore.get(cleanCode);
-  if (!mem) return { status: "not_found" };
-  if (mem.expiresAt && mem.expiresAt < nowSec) return { status: "expired" };
-  if (mem.status === "linked" && (mem.sessionToken || mem.userToken)) {
-    return {
-      status: "linked",
-      sessionToken: (mem.sessionToken || mem.userToken) as string,
-      userId: mem.userId ?? undefined,
-      redirectUrl: mem.redirectUrl,
-    };
-  }
-  return { status: "pending" };
+  return takeMemory();
 }
 
 export async function handleKindleLinkPage(c: Context<{ Bindings: WorkerEnv }>) {
@@ -470,6 +589,20 @@ export async function handleKindleStatus(c: Context<{ Bindings: WorkerEnv }>) {
     return c.json({ error: "Código no proporcionado" }, 400);
   }
 
+  const ip =
+    c.req.header("cf-connecting-ip") ??
+    c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ??
+    "local";
+  if (!allowKindleStatus(ip)) {
+    return c.json(
+      { error: "Demasiadas consultas de código. Espera un minuto." },
+      429,
+    );
+  }
+  if (!c.env.BETTER_AUTH_SECRET) {
+    return c.json({ error: "La vinculación no está configurada." }, 503);
+  }
+
   const result = await consumeLinkedKindleCode(c.env?.DB, code, c.env);
 
   const isHtml =
@@ -491,10 +624,19 @@ export async function handleKindleStatus(c: Context<{ Bindings: WorkerEnv }>) {
   }
 
   if (result.status === "linked" && result.sessionToken) {
-    c.header(
-      "Set-Cookie",
-      `better-auth.session_token=${encodeURIComponent(result.sessionToken)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000`,
-    );
+    // Better Auth valida la cookie firmada (HMAC-SHA256), no el token
+    // en crudo. En HTTPS la cookie debe llevar el prefijo __Secure-.
+    const isSecure = new URL(c.req.url).protocol === "https:";
+    const cookieName = isSecure
+      ? "__Secure-better-auth.session_token"
+      : "better-auth.session_token";
+    await setSignedCookie(c, cookieName, result.sessionToken, c.env.BETTER_AUTH_SECRET, {
+      httpOnly: true,
+      secure: isSecure,
+      sameSite: "Lax",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 30,
+    });
 
     let redirectUrl = result.redirectUrl || "/k";
 
@@ -676,16 +818,8 @@ export async function handleKindlePrimingAction(c: Context<{ Bindings: WorkerEnv
 
 export const kindleRoutes = new Hono<{ Bindings: WorkerEnv }>();
 
-kindleRoutes.get("/kindle", handleKindleLinkPage);
-kindleRoutes.get("/link", handleKindleLinkPage);
-kindleRoutes.get("/verify", handleKindleStatus);
-kindleRoutes.get("/api/kindle/status", handleKindleStatus);
-kindleRoutes.post("/api/kindle/link", handleKindleLinkAction);
-kindleRoutes.post("/priming/action", handleKindlePrimingAction);
-kindleRoutes.post("/kindle/priming/action", handleKindlePrimingAction);
-
-// Cabeceras anti-caché para todas las vistas HTML del Kindle:
-// garantiza que al refrescar en el Kindle siempre se vean los últimos cambios.
+// Middleware registrado antes de las rutas: anti-caché, CSP restrictiva
+// y nosniff en todas las vistas HTML del Kindle.
 kindleRoutes.use("*", async (c, next) => {
   await next();
   const contentType = c.res.headers.get("content-type");
@@ -693,8 +827,18 @@ kindleRoutes.use("*", async (c, next) => {
     c.res.headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
     c.res.headers.set("Pragma", "no-cache");
     c.res.headers.set("Expires", "0");
+    c.res.headers.set("Content-Security-Policy", KINDLE_HTML_CSP);
+    c.res.headers.set("X-Content-Type-Options", "nosniff");
   }
 });
+
+kindleRoutes.get("/kindle", handleKindleLinkPage);
+kindleRoutes.get("/link", handleKindleLinkPage);
+kindleRoutes.get("/verify", handleKindleStatus);
+kindleRoutes.get("/api/kindle/status", handleKindleStatus);
+kindleRoutes.post("/api/kindle/link", handleKindleLinkAction);
+kindleRoutes.post("/priming/action", handleKindlePrimingAction);
+kindleRoutes.post("/kindle/priming/action", handleKindlePrimingAction);
 
 // 1. Estantería principal
 kindleRoutes.get("/", async (c) => {
@@ -1558,10 +1702,16 @@ kindleRoutes.get("/read/:hash/resource", async (c) => {
     return c.text("Recurso no encontrado en el EPUB", 404);
   }
 
+  if (!SAFE_EPUB_ASSET_MIMES.has(resource.mimeType)) {
+    return c.text("Unsupported resource type", 415);
+  }
+
   return new Response(resource.data as unknown as BodyInit, {
     headers: {
       "Content-Type": resource.mimeType,
-      "Cache-Control": "public, max-age=86400",
+      "Cache-Control": "private, max-age=86400",
+      "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+      "X-Content-Type-Options": "nosniff",
     },
   });
 });

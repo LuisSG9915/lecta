@@ -3,6 +3,7 @@ import { act, createElement as h } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import DiagnosticsModal from "./DiagnosticsModal";
+import { deleteLocalDb } from "../lib/idb";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -11,6 +12,7 @@ vi.mock("../lib/idb", async (importOriginal) => {
   return {
     ...actual,
     captureDbScope: vi.fn(() => ({ userId: null, generation: 0 })),
+    deleteLocalDb: vi.fn(async () => true),
     listStoredBooks: vi.fn(async () => [{ hash: "b1" }]),
     listSavedWords: vi.fn(async () => [{ key: "w1" }, { key: "w2" }]),
     listPositions: vi.fn(async () => []),
@@ -89,6 +91,31 @@ describe("DiagnosticsModal", () => {
     expect(copiedJson.version).toBe("0.1.0");
     expect(copiedJson.collections.books).toBe(1);
     expect(copiedJson.collections.words).toBe(2);
+  });
+
+  it("borra los datos locales solo tras confirmar", async () => {
+    await act(async () => {
+      root.render(h(DiagnosticsModal, { onClose: vi.fn() }));
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 10));
+    });
+
+    const wipe = Array.from(host.querySelectorAll("button")).find((b) =>
+      b.textContent?.includes("Borrar datos locales de este dispositivo"),
+    );
+    expect(wipe).toBeTruthy();
+
+    await act(async () => wipe!.click());
+    expect(deleteLocalDb).not.toHaveBeenCalled();
+    expect(wipe?.textContent).toContain("Confirmar borrado local");
+
+    await act(async () => wipe!.click());
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 10));
+    });
+    expect(deleteLocalDb).toHaveBeenCalledTimes(1);
+    expect(host.textContent).toContain("Datos locales borrados");
   });
 
   it("muestra y permite conmutar los interruptores de función (kill-switches)", async () => {

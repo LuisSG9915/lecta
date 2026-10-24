@@ -2,9 +2,60 @@ import { betterAuth } from "better-auth";
 import { magicLink } from "better-auth/plugins";
 import { Kysely, PostgresDialect } from "kysely";
 import pg from "pg";
-import { getConnectionString, logPostgresError, type WorkerEnv } from "./db";
+import {
+  getConnectionString,
+  logPostgresError,
+  withClient,
+  type WorkerEnv,
+} from "./db";
 
 type EmailContent = { subject: string; intro: string };
+
+/**
+ * Borra un prefijo de R2 paginando con cursor. R2 lista como máximo
+ * 1000 objetos por página y delete() acepta como máximo 1000 claves:
+ * una sola llamada dejaría huérfanos los libros de usuarios con más
+ * de mil objetos.
+ */
+export async function purgeR2Prefix(
+  bucket: R2Bucket,
+  prefix: string,
+): Promise<void> {
+  let cursor: string | undefined;
+  do {
+    const listed = await bucket.list({ prefix, cursor, limit: 1000 });
+    if (listed.objects.length > 0) {
+      await bucket.delete(listed.objects.map((object) => object.key));
+    }
+    cursor = listed.truncated ? listed.cursor : undefined;
+  } while (cursor);
+}
+
+/**
+ * Purga todo lo asociado a una cuenta: ambos prefijos de R2 (EPUBs
+ * propios y libros de usuario), user_books y los códigos de Kindle.
+ * Los códigos expirados de cualquier cuenta se limpian de paso.
+ */
+export async function purgeUserData(
+  env: WorkerEnv,
+  userId: string,
+): Promise<void> {
+  const nowSec = Math.floor(Date.now() / 1000);
+  const tasks: Promise<unknown>[] = [
+    withClient(env, async (client) => {
+      await client.query("DELETE FROM user_books WHERE user_id = $1", [userId]);
+      await client.query(
+        "DELETE FROM kindle_link_codes WHERE user_id = $1 OR expires_at < $2",
+        [userId, nowSec],
+      );
+    }),
+  ];
+  if (env.BOOKS) {
+    tasks.push(purgeR2Prefix(env.BOOKS, `books/${userId}/`));
+    tasks.push(purgeR2Prefix(env.BOOKS, `user-books/${userId}/`));
+  }
+  await Promise.all(tasks);
+}
 
 async function sendViaResend(
   env: WorkerEnv,
@@ -84,10 +135,7 @@ export function createScopedAuth(env: WorkerEnv, baseURL: string) {
           });
         },
         beforeDelete: async (user) => {
-          const bucket = env.BOOKS;
-          if (!bucket) return;
-          const listed = await bucket.list({ prefix: `books/${user.id}/` });
-          await Promise.all(listed.objects.map((object) => bucket.delete(object.key)));
+          await purgeUserData(env, user.id);
         },
       },
     },

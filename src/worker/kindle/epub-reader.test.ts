@@ -73,6 +73,37 @@ describe("epub-reader (Kindle E-ink)", () => {
     });
   });
 
+    it("neutraliza svg, math, formularios, data:text/html y esquemas ofuscados", () => {
+      const raw = `
+        <body>
+          <p>Texto seguro.</p>
+          <svg onload="alert(1)"><circle cx="1" cy="1" r="1" /></svg>
+          <math><mtext>peligro</mtext></math>
+          <form action="/robar"><input name="x" /></form>
+          <iframe src="https://ejemplo.test"></iframe>
+          <img src=x onerror=alert(1)>
+          <a href="java&#x73;cript:alert(1)">a</a>
+          <a href="vbscript:msgbox(1)">b</a>
+          <img src="data:text/html;base64,PHNjcmlwdD4=">
+        </body>
+      `;
+      const { contentHtml } = sanitizeKindleHtml(raw, "OEBPS", "hash-xss");
+      expect(contentHtml).toContain("Texto seguro.");
+      for (const forbidden of [
+        "<svg",
+        "<math",
+        "<form",
+        "<iframe",
+        "onerror",
+        "onload",
+        "javascript:",
+        "vbscript:",
+        "data:text/html",
+      ]) {
+        expect(contentHtml).not.toContain(forbidden);
+      }
+    });
+
   describe("getEpubChapter", () => {
     it("extrae el primer capítulo sanitizado con conteo de secciones", async () => {
       const result = await getEpubChapter(minimalBytes, 0, "test-book");

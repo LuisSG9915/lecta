@@ -5,6 +5,7 @@ import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
 // red ni base. Ningún test toca Resend ni Postgres de verdad.
 const poolEndMock = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 const poolOnMock = vi.hoisted(() => vi.fn());
+const dbQueryMock = vi.hoisted(() => vi.fn());
 
 const mocks = vi.hoisted(() => ({
   betterAuth: vi.fn((config: unknown) => ({ __config: config })),
@@ -24,7 +25,18 @@ vi.mock("pg", () => ({
   },
 }));
 
-import { createAuth, createScopedAuth } from "./auth";
+vi.mock("./db", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./db")>();
+  return {
+    ...actual,
+    withClient: async (
+      _env: unknown,
+      run: (client: { query: typeof dbQueryMock }) => Promise<unknown>,
+    ) => run({ query: dbQueryMock }),
+  };
+});
+
+import { createAuth, createScopedAuth, purgeR2Prefix } from "./auth";
 
 const FAKE_URL = "https://lecta.test/auth?token=TOKEN_FICTICIO_abc123";
 const FAKE_EMAIL = "persona@example.test";
@@ -37,6 +49,7 @@ type AuthConfig = {
   user: {
     deleteUser: {
       sendDeleteAccountVerification: (args: EmailArgs) => Promise<void>;
+      beforeDelete: (user: { id: string }) => Promise<void>;
     };
   };
 };
@@ -61,6 +74,8 @@ const allLogs = (...spies: ReturnType<typeof vi.spyOn>[]) =>
 beforeEach(() => {
   mocks.betterAuth.mockClear();
   mocks.magicLink.mockClear();
+  dbQueryMock.mockReset();
+  dbQueryMock.mockResolvedValue({ rows: [] });
 });
 
 afterEach(() => {
@@ -153,5 +168,74 @@ describe("gestión del ciclo de vida del pool pg", () => {
     expect(typeof auth.closePool).toBe("function");
     await auth.closePool();
     expect(poolEndMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("purga total al borrar la cuenta", () => {
+  it("purgeR2Prefix pagina con cursor y borra todos los objetos", async () => {
+    const pages = [
+      {
+        objects: [{ key: "books/u1/a.epub" }, { key: "books/u1/b.epub" }],
+        truncated: true,
+        cursor: "next",
+      },
+      {
+        objects: [{ key: "books/u1/c.epub" }],
+        truncated: false,
+        cursor: "",
+      },
+    ];
+    const list = vi.fn(async (_options: unknown) => pages.shift());
+    const remove = vi.fn(async () => undefined);
+    const bucket = { list, delete: remove } as unknown as R2Bucket;
+
+    await purgeR2Prefix(bucket, "books/u1/");
+
+    expect(list).toHaveBeenCalledTimes(2);
+    expect(list.mock.calls[0]?.[0]).toEqual({
+      prefix: "books/u1/",
+      cursor: undefined,
+      limit: 1000,
+    });
+    expect(list.mock.calls[1]?.[0]).toEqual({
+      prefix: "books/u1/",
+      cursor: "next",
+      limit: 1000,
+    });
+    expect(remove).toHaveBeenNthCalledWith(1, [
+      "books/u1/a.epub",
+      "books/u1/b.epub",
+    ]);
+    expect(remove).toHaveBeenNthCalledWith(2, ["books/u1/c.epub"]);
+  });
+
+  it("beforeDelete purga books/, user-books/ y las tablas user_books y kindle_link_codes", async () => {
+    const list = vi.fn(async ({ prefix }: { prefix: string }) => ({
+      objects: [{ key: prefix + "a.epub" }],
+      truncated: false,
+      cursor: "",
+    }));
+    const remove = vi.fn(async () => undefined);
+    const bucket = { list, delete: remove } as unknown as R2Bucket;
+
+    createAuth({ ...envWithDb, BOOKS: bucket }, "https://lecta.test");
+    await lastAuthConfig().user.deleteUser.beforeDelete({ id: "u1" });
+
+    expect(list).toHaveBeenCalledWith(
+      expect.objectContaining({ prefix: "books/u1/" }),
+    );
+    expect(list).toHaveBeenCalledWith(
+      expect.objectContaining({ prefix: "user-books/u1/" }),
+    );
+    expect(remove).toHaveBeenCalledWith(["books/u1/a.epub"]);
+    expect(remove).toHaveBeenCalledWith(["user-books/u1/a.epub"]);
+    expect(dbQueryMock).toHaveBeenCalledWith(
+      expect.stringContaining("DELETE FROM user_books"),
+      ["u1"],
+    );
+    expect(dbQueryMock).toHaveBeenCalledWith(
+      expect.stringContaining("DELETE FROM kindle_link_codes"),
+      ["u1", expect.any(Number)],
+    );
   });
 });

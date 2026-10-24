@@ -103,10 +103,17 @@ import {
 import { syncCompanion } from "./lib/companion-sync";
 import { authClient } from "./lib/auth";
 
-type BookSelection = {
+type BookFileSelection = {
   hash: string;
   name: string;
   file: File;
+};
+
+// El libro abierto recuerda de qué cuenta es. Sin esto, un cambio de
+// sesión en otra pestaña dejaba el EPUB privado de la cuenta anterior
+// montado sobre la base nueva.
+type BookSelection = BookFileSelection & {
+  ownerUserId: string | null;
 };
 
 export default function App() {
@@ -162,11 +169,14 @@ export default function App() {
   // El libro que esperaba entrar cuando se ofreció la calibración.
   // Ref y no estado: el cierre puede venir de «atrás» (popstate) con
   // un callback viejo, y la ref siempre tiene el pendiente actual.
-  const calibrationPending = useRef<BookSelection | null>(null);
+  const calibrationPending = useRef<BookFileSelection | null>(null);
   // La base donde vive la hoja abierta: la marca «calibrationDone» al
   // cerrar cae con la evidencia de la misma cuenta aunque la sesión
   // haya cambiado mientras la prueba estaba abierta.
   const calibrationScope = useRef<DbScope | null>(null);
+  // Identidad confirmada en la pasada anterior del efecto de sesión.
+  // undefined = todavía no hay veredicto; null = modo anónimo.
+  const prevSessionUserIdRef = useRef<string | null | undefined>(undefined);
   const { data: session, isPending: sessionPending, error: sessionError } =
     authClient.useSession();
   const sessionUserId = session?.user?.id;
@@ -218,12 +228,17 @@ export default function App() {
     author?: string;
     cover?: Blob;
     progress?: number;
+    ownerUserId: string | null;
   } | null>(null);
 
   const openBook = (
-    selection: BookSelection,
+    selection: BookFileSelection,
     meta?: { title?: string; author?: string; cover?: Blob },
   ) => {
+    const ownedSelection: BookSelection = {
+      ...selection,
+      ownerUserId: sessionUserId ?? null,
+    };
     startSafeViewTransition(() => {
       setShowVocabulary(false);
       setShowAccount(false);
@@ -236,13 +251,14 @@ export default function App() {
           });
         });
       }
-      setBook(selection);
+      setBook(ownedSelection);
     });
     const libItem = library.find((item) => item.hash === selection.hash);
     setLastReadBook({
       hash: selection.hash,
       name: selection.name,
       file: selection.file,
+      ownerUserId: ownedSelection.ownerUserId,
       title: meta?.title ?? libItem?.title ?? selection.name,
       author: meta?.author ?? libItem?.author,
       cover: meta?.cover ?? libItem?.cover,
@@ -358,6 +374,33 @@ export default function App() {
     void syncPositions().catch(() => null);
   };
 
+  // Corte limpio al cambiar de identidad: el libro abierto, la última
+  // lectura, las hojas modales y la entrada del lector en el historial
+  // pertenecen a la cuenta anterior y no pueden sobrevivir a la nueva.
+  const resetForIdentityChange = useCallback(() => {
+    calibrationPending.current = null;
+    calibrationRelease.current?.release();
+    calibrationRelease.current = null;
+    setCalibrationWords(null);
+    positionRelease.current?.release();
+    positionRelease.current = null;
+    setPositionPrompt(null);
+    journeyRelease.current?.release();
+    journeyRelease.current = null;
+    panelRelease.current?.release();
+    panelRelease.current = null;
+    bookRelease.current?.release();
+    bookRelease.current = null;
+    setBook(null);
+    setLastReadBook(null);
+    setReaderInitialWord(undefined);
+    setShowVocabulary(false);
+    setShowAccount(false);
+    setShowJourney(false);
+    setShowDiagnostics(false);
+    setShowLegal(null);
+  }, []);
+
   const [dueReviewsCount, setDueReviewsCount] = useState(0);
   const [hasJourneyAlert, setHasJourneyAlert] = useState(false);
 
@@ -389,6 +432,11 @@ export default function App() {
   }, [vocabVersion, activityVersion, dbUserId]);
 
   useEffect(() => {
+    // La base activa debe ser ya la de esta identidad: tras un cambio de
+    // cuenta, el estado dbUserId sigue apuntando a la base anterior
+    // hasta que setDbUser termina. Sin esta guarda, el bootstrap podría
+    // leer la última lectura de A y publicarla como si fuera de B.
+    if (dbUserId !== (sessionUserId ?? null)) return;
     if (lastReadBook || library.length === 0) return;
     const scope = captureDbScope();
     let cancelled = false;
@@ -409,6 +457,7 @@ export default function App() {
         author: item.author,
         cover: item.cover,
         progress: prog,
+        ownerUserId: sessionUserId ?? null,
       });
     }).catch((err) => {
       if (!cancelled && isDbScopeActive(scope)) {
@@ -418,7 +467,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [library, lastReadBook]);
+  }, [library, lastReadBook, sessionUserId, dbUserId]);
 
   const activeNav: NavDestination = showJourney
     ? "journey"
@@ -658,6 +707,34 @@ export default function App() {
     // sin error SÍ son veredicto de «sin sesión».
     const inconclusive =
       Boolean(sessionError) && sessionError?.status !== 401 && !sessionUserId;
+    const nextSessionUserId = sessionUserId ?? null;
+    if (!inconclusive) {
+      const prevSessionUserId = prevSessionUserIdRef.current;
+      prevSessionUserIdRef.current = nextSessionUserId;
+      if (
+        prevSessionUserId !== undefined &&
+        prevSessionUserId !== nextSessionUserId
+      ) {
+        if (prevSessionUserId === null && nextSessionUserId !== null) {
+          // Inicio de sesión sobre la propia sesión anónima: el libro
+          // abierto se adopta en la cuenta nueva en vez de cerrarse.
+          setBook((current) =>
+            current && current.ownerUserId === null
+              ? { ...current, ownerUserId: nextSessionUserId }
+              : current,
+          );
+          setLastReadBook((current) =>
+            current && current.ownerUserId === null
+              ? { ...current, ownerUserId: nextSessionUserId }
+              : current,
+          );
+        } else if (prevSessionUserId !== null) {
+          // Otra cuenta (o cierre de sesión): nada de la identidad
+          // anterior puede quedar montado sobre la base nueva.
+          resetForIdentityChange();
+        }
+      }
+    }
     void (async () => {
       try {
         if (!inconclusive) await setDbUser(sessionUserId ?? null);
@@ -700,15 +777,33 @@ export default function App() {
           pendingUserId: pendingDelete,
           sessionUserId,
         });
-        if (decision.clearMarker) localStorage.removeItem(PENDING_DELETE_KEY);
+        // Un enlace vencido/con error no autoriza a borrar datos, pero sí
+        // descarta el marcador: no hay nada que reintentar.
+        if (decision.clearMarker && !decision.cleanupUserId) {
+          localStorage.removeItem(PENDING_DELETE_KEY);
+        }
         if (decision.cleanupUserId) {
-          clearSyncCursors(decision.cleanupUserId);
-          const removed = await deleteAccountDb(decision.cleanupUserId);
-          if (!cancelled) {
+          try {
+            const removed = await deleteAccountDb(decision.cleanupUserId);
             if (removed) {
-              setMessage("Tu cuenta y sus datos en este dispositivo fueron eliminados.");
-            } else {
-              setError("Tu cuenta se eliminó, pero no se pudo limpiar este dispositivo.");
+              // Solo el borrado confirmado consume el marcador: si
+              // IndexedDB queda bloqueado por otra pestaña, se conserva
+              // para reintentar en el próximo arranque.
+              localStorage.removeItem(PENDING_DELETE_KEY);
+              clearSyncCursors(decision.cleanupUserId);
+              if (!cancelled) {
+                setMessage("Tu cuenta y sus datos en este dispositivo fueron eliminados.");
+              }
+            } else if (!cancelled) {
+              setError(
+                "Tu cuenta se eliminó, pero no se pudo limpiar este dispositivo. Se reintentará al abrir de nuevo.",
+              );
+            }
+          } catch {
+            if (!cancelled) {
+              setError(
+                "Tu cuenta se eliminó, pero no se pudo limpiar este dispositivo. Se reintentará al abrir de nuevo.",
+              );
             }
           }
         }
@@ -852,7 +947,14 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [sessionUserId, sessionPending, sessionError, authLink, refreshLibrary]);
+  }, [
+    sessionUserId,
+    sessionPending,
+    sessionError,
+    authLink,
+    refreshLibrary,
+    resetForIdentityChange,
+  ]);
 
   // Si la sesión sigue abierta y vuelve la conexión, re-sincroniza todo
   // (los cambios hechos sin conexión —palabras, posiciones, subidas de
@@ -1203,13 +1305,21 @@ export default function App() {
     void refreshLibrary();
   };
 
+  // Guardarraíl de renderizado: aunque el efecto de sesión aún no haya
+  // corrido, un libro de otra cuenta no se monta. El libro anónimo sí
+  // sobrevive a la migración null -> userId.
+  const currentOwnerUserId = sessionUserId ?? null;
+  const canRenderCurrentBook =
+    book !== null &&
+    (book.ownerUserId === currentOwnerUserId || book.ownerUserId === null);
+
   return (
     // El compañero vive una sola vez aquí, sobre todo el contenido:
     // la hoja compartida puede abrirse desde el Cuaderno hoy y desde
     // Estantería o Lector después sin duplicar instancias ni estado.
     <CompanionProvider userId={dbUserId}>
     <div className="app">
-      {book ? (
+      {book && canRenderCurrentBook ? (
         <>
           <Suspense fallback={<p className="status">Abriendo el libro…</p>}>
             <Reader
@@ -1386,7 +1496,11 @@ export default function App() {
               ) : null}
             </main>
           </ViewTransition>
-          {lastReadBook && !book && activeNav !== "shelf" ? (
+          {lastReadBook &&
+          (lastReadBook.ownerUserId === currentOwnerUserId ||
+            lastReadBook.ownerUserId === null) &&
+          !book &&
+          activeNav !== "shelf" ? (
             <aside className="mini-reader-bar" aria-label="Lectura en curso">
               <div className="mini-reader-cover">
                 <BookCover

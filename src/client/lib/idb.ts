@@ -626,16 +626,29 @@ export function getActiveUserId() {
 }
 
 // Borra por completo la base local de una cuenta (solo tras el correo
-// de confirmación del borrado). Devuelve false si el navegador lo
-// bloqueó o falló: quien llama decide si avisa, nunca se finge éxito.
-export async function deleteAccountDb(userId: string): Promise<boolean> {
-  if (activeUserId === userId) await setDbUser(null);
+// de confirmación del borrado) o la base anónima con null. Cierra la
+// conexión viva antes de borrar: sin eso, IndexedDB bloquea el borrado
+// en la misma pestaña. Devuelve false si el navegador lo bloqueó o
+// falló: quien llama decide si avisa, nunca se finge éxito.
+export async function deleteAccountDb(userId: string | null): Promise<boolean> {
+  if (activeUserId === userId) {
+    if (userId !== null) await setDbUser(null);
+    const open = dbPromise;
+    dbPromise = null;
+    if (open) (await open).close();
+  }
   return new Promise<boolean>((resolve) => {
     const request = indexedDB.deleteDatabase(dbNameFor(userId));
     request.onsuccess = () => resolve(true);
     request.onblocked = () => resolve(false);
     request.onerror = () => resolve(false);
   });
+}
+
+// Acción manual de Diagnóstico: cierra la conexión activa y borra el
+// DbScope actual (la base de la cuenta o el espacio anónimo).
+export async function deleteLocalDb(): Promise<boolean> {
+  return deleteAccountDb(activeUserId);
 }
 
 // Cambia la base activa según la sesión, serializado: una transición
