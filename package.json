@@ -21,6 +21,7 @@
     "db:auth": "node --env-file=.env scripts/auth-migrate.mjs",
     "db:migrate": "node --env-file=.env scripts/db-migrate.mjs",
     "smoke:auth": "node scripts/smoke-auth.mjs",
+    "smoke:sync": "node scripts/smoke-sync.mjs",
     "measure:open": "node scripts/measure-open-latency.mjs",
     "audit:investigacion": "node scripts/audit-investigacion.mjs",
     "audit:investigacion:online": "node scripts/audit-investigacion.mjs --online",

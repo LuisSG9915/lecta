@@ -99,15 +99,29 @@ primera visita puede quedarse, pero no en cada entrada.
 
 ## Verificación
 
-`pnpm gate` en verde:
+`pnpm gate` en verde (segunda pasada, tras el corte final):
 
 - `typecheck` cliente + worker + MCP.
-- `lint` sin warnings.
-- **182 archivos / 2 570 pruebas**.
+- `lint` sin warnings (tope 0).
+- **183 archivos / 2 576 pruebas**.
 - Build y presupuesto: **178.49 kB gzip** de 215 kB (JS inicial) y 20.09 kB de
   55 kB (CSS).
 
-No se creó commit; los cambios se suman al trabajo en curso del árbol.
+Publicado después:
+
+- Commit `0ba7c3f` (`feat(auditoria-ux)`) en `main`, con la migración
+  `015_server_synced_at.sql` y el arnés de auditoría.
+- Migración 015 aplicada en `lecta` (2026-10-24, tabla por tabla) y en
+  `lecta_dev` (2026-10-24, sentencia por sentencia: `pnpm db:migrate` se queda
+  corto con el `statement_timeout` de 120 s porque cada DDL dispara un
+  `SCHEMA CHANGE GC`).
+- Deploy `5822f097-e648-4cd7-93ee-9a6195a49747` con verificación en caliente:
+  `/api/health` 200 con `db: connected`, `/` 200, 401 sin sesión, ONNX de R2
+  intacto (`check-model`).
+- `smoke:auth` completo contra producción (cuentas `a-…@smoke.test` y
+  `b-…@smoke.test` del 2026-10-24) y `smoke:sync` en local contra `lecta_dev`:
+  el pull incremental devuelve `syncedAt`, respeta el cursor y ya no pierde
+  filas escritas por relojes atrasados.
 
 ## Reproducir
 

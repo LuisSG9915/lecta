@@ -16,6 +16,12 @@
 - `pnpm smoke:auth` corre contra un server vivo y **escribe** en él (dos cuentas
   nuevas, un EPUB en R2 y vocab); `SMOKE_URL=<url>` para producción, una sola vez
   por deploy y anotando las cuentas creadas.
+- `pnpm smoke:sync` (`scripts/smoke-sync.mjs`) verifica el contrato de sync de
+  punta a punta: crea una cuenta temporal y comprueba que el pull incremental
+  devuelve `syncedAt`, que el cursor no repite filas y que una fila escrita con
+  `updatedAt` atrasado **sí** aparece por sello de servidor. Igual que
+  `smoke:auth`, escribe: apúntalo a dev o anota la cuenta. Contra producción el
+  2026-10-24 pasó completo antes y después del deploy.
 - `pnpm db:setup` / `pnpm db:auth` aplican esquema y tablas de Better Auth (usan `DATABASE_URL` de `.env`).
 - `pnpm db:migrate` aplica `db/migrations/*.sql` en orden a la base del `.env` (idempotente, registra en `lecta_schema_migrations`). Migraciones nuevas van solo a `lecta_dev` salvo autorización.
 - El migrador exige que `current_database()` coincida con `LECTA_MIGRATE_TARGET` (default `lecta_dev`). Para producción: `LECTA_MIGRATE_TARGET=lecta` + `DATABASE_URL` con el nombre cambiado a `lecta` — solo con autorización expresa.
@@ -78,6 +84,11 @@
 ## Producción
 
 - URL: `https://lecta.luis-sg9915.workers.dev` — deploy con `pnpm run deploy`.
+- Último deploy: **2026-10-24**, versión `5822f097-e648-4cd7-93ee-9a6195a49747`
+  (auditoría UX + pull por `synced_at` + `/api/health` con chequeo de base).
+  Verificado en caliente: `/api/health` → 200 `{"ok":true,"db":"connected"}`,
+  `/` → 200, `/api/positions` sin sesión → 401, `check-model` con el ONNX de R2
+  intacto y `smoke:auth` completo en verde contra producción.
 - **Hyperdrive `lecta-db` (id `0b4288d9…`) tiene el cache DESACTIVADO a propósito.**
   Con cache activado, una verificación de existencia (`findUserByEmail`) quedó
   servida en stale ~60 s y `request-password-reset` no creaba el token para un
@@ -128,21 +139,29 @@
   `pnpm dev` debe reiniciarse tras cambiar `.env` (las vars se leen al arrancar).
 - `lecta_dev` arrancó con esquema + auth + seed, sin usuarios: en dev hay que
   registrarse de nuevo (el correo es el mismo dominio, es solo otra base).
-- `lecta` (prod) tiene aplicadas **001–014** (014 aplicada el 2026-10-23;
-  011 el 2026-10-22 y el worker quedó desplegado con `user_books`). Los índices
-  de sync existen todos, pero dos se crearon con las columnas estrictamente
-  necesarias y no como los escribe la migración: ver la nota de PK completa abajo.
-  Las seis tablas de sync vuelven a estar con `schema_locked=true`.
+- `lecta` (prod) tiene aplicadas **001–015** (015 aplicada el 2026-10-24 y
+  014 el 2026-10-23). Los índices de sync existen todos, pero dos se crearon con
+  las columnas estrictamente necesarias y no como los escribe la migración: ver
+  la nota de PK completa arriba. Las seis tablas de sync vuelven a estar con
+  `schema_locked=true`.
 - **014_ai_quota.sql** aplicada en `lecta_dev` y `lecta` (2026-10-23, 14
   migraciones en cada una): `lecta_ai_quota` es la tabla del UPSERT atómico de
-  cuota de IA (PK `user_id, scope, bucket_hour`, FK a `user` con CASCADE). **El
-  worker todavía no está desplegado con este código**: desplegarlo cuando se pida
-  (`pnpm run deploy`).
-- **015_server_synced_at.sql** está versionada pero **sin aplicar** en `lecta` ni en
-  `lecta_dev` (2026-10-24): añade `synced_at BIGINT` (reloj de servidor) a las seis tablas
-  de sync y los índices `(user_id, synced_at)` que usa el pull incremental. El worker ya
-  ordena y pagina por `synced_at`, así que migración y deploy van juntos — y las seis
-  tablas están con `schema_locked=true`, así que hay que desbloquear una a una.
+  cuota de IA (PK `user_id, scope, bucket_hour`, FK a `user` con CASCADE). El
+  worker desplegado el 2026-10-24 ya la usa.
+- **015_server_synced_at.sql** aplicada en `lecta` (2026-10-24, tabla por tabla)
+  y en `lecta_dev` (2026-10-24, 15 migraciones en cada una): añade `synced_at
+  BIGINT` con reloj de servidor a las seis tablas de sync y los índices
+  `(user_id, synced_at)`. Es el cursor del pull incremental, así que **migración
+  y deploy van juntos**: con 015 aplicada pero worker viejo, el pull por
+  `updated_at` sigue funcionando; al revés, el pull fallaría.
+  - `pnpm db:migrate` **se queda corto con 015**: cada DDL dispara un job
+    `SCHEMA CHANGE GC` y CockroachDB serializa los cambios de esquema, así que
+    el `statement_timeout` de 120 s tumba la migración a mitad. Aplícala
+    sentencia por sentencia (desbloquear las seis tablas → 6 `ALTER` → 6
+    `CREATE INDEX` → registrar en `lecta_schema_migrations` → volver a
+    bloquear). Cada `ALTER ... ADD COLUMN` tardó entre 0 y 200 s.
+  - Ojo al verificar: `SHOW COLUMNS` puede no ver la columna recién añadida
+    mientras el job de esquema no finaliza; `SHOW JOBS` manda.
 - `defaultdb` pertenece a otro proyecto (POS): no tocar sus tablas.
 - EPUBs de prueba con copyright están en `.gitignore` (`/src/*.epub`,
   `/fixtures/*.epub` salvo `minimal.epub`).
