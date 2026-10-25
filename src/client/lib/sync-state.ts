@@ -109,6 +109,14 @@ export function setCollectionPendingCount(
   });
 }
 
+export function incrementCollectionPendingCount(
+  collection: PendingCollection,
+  delta = 1,
+): void {
+  const current = collectionPendingCounts[collection] ?? 0;
+  setCollectionPendingCount(collection, current + delta);
+}
+
 export function markCollectionPagesPending(collection: SyncCollection): void {
   if (pagesPendingCollections[collection]) return;
   pagesPendingCollections[collection] = true;
@@ -123,6 +131,60 @@ export function clearCollectionPagesPending(collection: SyncCollection): void {
   updateSyncState({
     pendingChangesCount: computeEffectivePendingChanges(),
   });
+}
+
+let continuationTimer: ReturnType<typeof setTimeout> | null = null;
+let registeredContinuationRunner: (() => void) | null = null;
+
+export function registerReadingSyncContinuationRunner(runner: () => void): void {
+  registeredContinuationRunner = runner;
+}
+
+export function scheduleReadingSyncContinuation(
+  collection?: SyncCollection,
+  delayMs = 50,
+): void {
+  if (collection) {
+    markCollectionPagesPending(collection);
+  }
+  if (continuationTimer) clearTimeout(continuationTimer);
+  continuationTimer = setTimeout(() => {
+    continuationTimer = null;
+    if (registeredContinuationRunner && (typeof navigator === "undefined" || navigator.onLine !== false)) {
+      registeredContinuationRunner();
+    }
+  }, delayMs);
+}
+
+const RETRY_DELAYS_MS = [5_000, 15_000, 45_000] as const;
+let retryTimer: ReturnType<typeof setTimeout> | null = null;
+let retryAttempt = 0;
+let registeredRetryCallback: (() => void) | null = null;
+
+export function registerSyncRetryRunner(runner: () => void): void {
+  registeredRetryCallback = runner;
+}
+
+export function scheduleSyncRetry(onRetry?: () => void): void {
+  if (onRetry) registeredRetryCallback = onRetry;
+  if (retryTimer) clearTimeout(retryTimer);
+  if (retryAttempt >= RETRY_DELAYS_MS.length) return;
+
+  const delay = RETRY_DELAYS_MS[retryAttempt++];
+  retryTimer = setTimeout(() => {
+    retryTimer = null;
+    if (currentState.isOnline) {
+      registeredRetryCallback?.();
+    }
+  }, delay);
+}
+
+export function resetSyncRetry(): void {
+  if (retryTimer) {
+    clearTimeout(retryTimer);
+    retryTimer = null;
+  }
+  retryAttempt = 0;
 }
 
 export function recordCollectionSyncSuccess(
@@ -149,6 +211,10 @@ export function recordCollectionSyncSuccess(
     lastSyncedAt: hasError ? currentState.lastSyncedAt : timestamp,
     pendingChangesCount: computeEffectivePendingChanges(nextCollections),
   });
+
+  if (!hasError) {
+    resetSyncRetry();
+  }
 }
 
 export function recordCollectionSyncError(
@@ -169,6 +235,17 @@ export function recordCollectionSyncError(
     lastSyncError: message,
     pendingChangesCount: computeEffectivePendingChanges(nextCollections),
   });
+
+  if (currentState.isOnline) {
+    scheduleSyncRetry();
+  }
+}
+
+export function recordCollectionSyncFailure(
+  collection: SyncCollection,
+  error: unknown = "Sync parcial o interrumpido",
+): void {
+  recordCollectionSyncError(collection, error);
 }
 
 export function useSyncState(): SyncState {

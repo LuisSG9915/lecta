@@ -942,7 +942,17 @@ kindleRoutes.get("/", async (c) => {
     }),
   );
 
-  if (c.env.DB) {
+  let userBookList: Array<{ id: string; title: string; author: string }> = [];
+  if (getConnectionString(c.env)) {
+    const rows = await withClient(c.env, async (client) => {
+      const res = await client.query<{ id: string; title: string; author: string }>(
+        `SELECT book_id AS id, title, author FROM user_books WHERE user_id = $1 ORDER BY updated_at DESC`,
+        [user.id],
+      );
+      return res.rows;
+    });
+    if (rows) userBookList = rows;
+  } else if (c.env.DB) {
     const d1Result = await c.env.DB.prepare(
       `SELECT book_id AS id, title, author FROM user_books WHERE user_id = ? ORDER BY updated_at DESC`,
     )
@@ -951,20 +961,24 @@ kindleRoutes.get("/", async (c) => {
       .catch(() => null);
 
     if (d1Result?.results) {
-      const knownHashes = new Set(books.map((b) => b.hash));
-      for (const d1 of d1Result.results) {
-        if (!knownHashes.has(d1.id)) {
-          const pos = positionMap.get(d1.id);
-          books.push({
-            hash: d1.id,
-            title: d1.title || "Libro sin título",
-            author: d1.author || "Autor desconocido",
-            sections: 1,
-            currentSection: pos ? pos.sectionIndex : null,
-            currentPage: pos ? pos.pageIndex : null,
-            progressPercent: pos ? pos.progress : null,
-          });
-        }
+      userBookList = d1Result.results;
+    }
+  }
+
+  if (userBookList.length > 0) {
+    const knownHashes = new Set(books.map((b) => b.hash));
+    for (const d1 of userBookList) {
+      if (!knownHashes.has(d1.id)) {
+        const pos = positionMap.get(d1.id);
+        books.push({
+          hash: d1.id,
+          title: d1.title || "Libro sin título",
+          author: d1.author || "Autor desconocido",
+          sections: 1,
+          currentSection: pos ? pos.sectionIndex : null,
+          currentPage: pos ? pos.pageIndex : null,
+          progressPercent: pos ? pos.progress : null,
+        });
       }
     }
   }
@@ -1121,7 +1135,19 @@ export async function loadEpubBufferForKindle(
 
   // 2. Fallback a libros propios del usuario vinculado en /k
   if (!userId) return null;
-  if (env.DB) {
+  if (getConnectionString(env)) {
+    const userBook = await withClient(env, async (client) => {
+      const res = await client.query<{ r2_key: string }>(
+        `SELECT r2_key FROM user_books WHERE user_id = $1 AND book_id = $2`,
+        [userId, bookId],
+      );
+      return res.rows[0];
+    });
+    if (userBook?.r2_key) {
+      const userObj = await bucket.get(userBook.r2_key);
+      if (userObj) return await userObj.arrayBuffer();
+    }
+  } else if (env.DB) {
     const userBook = await env.DB.prepare(
       `SELECT r2_key FROM user_books WHERE user_id = ? AND book_id = ?`,
     )

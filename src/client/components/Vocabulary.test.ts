@@ -2,10 +2,12 @@
 import { act, createElement as h } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createEmptyCard } from "ts-fsrs";
 import Vocabulary from "./Vocabulary";
 import {
   fillSavedWordMeaning,
   listSavedWords,
+  putSavedWord,
   saveKnowledge,
   updateSavedWord,
   type SavedWord,
@@ -742,6 +744,72 @@ describe("Reestructura del Cuaderno", () => {
       } finally {
         saveFeatureFlags({ vocabGames: true });
       }
+    });
+
+    it("Fase 4.3: muestra el aviso de Deshacer al quitar una palabra y restaura el registro íntegro al pulsarlo", async () => {
+      const fsrsCard = createEmptyCard(new Date("2026-03-20"));
+      fsrsCard.reps = 3;
+      fsrsCard.stability = 15;
+      const testWord = word({
+        form: "efímero",
+        meaning: "pasajero",
+        card: fsrsCard,
+      });
+      listWordsMock.mockResolvedValue([testWord]);
+      await render();
+
+      expect(text()).toContain("efímero");
+
+      // Abrir la fila de la palabra para ver acciones
+      const wordRowBtn = host.querySelector<HTMLButtonElement>(".nb-word-row");
+      expect(wordRowBtn).toBeTruthy();
+      await act(async () => {
+        wordRowBtn?.click();
+        for (let i = 0; i < 4; i++) await Promise.resolve();
+      });
+
+      const removeBtn = host.querySelector<HTMLButtonElement>(".nb-remove");
+      expect(removeBtn).toBeTruthy();
+
+      await act(async () => {
+        removeBtn?.click();
+        for (let i = 0; i < 4; i++) await Promise.resolve();
+      });
+
+      // Aviso de eliminación con botón Deshacer
+      const noticeText = host.querySelector(".app-notice-text");
+      expect(noticeText?.textContent).toBe("«efímero» se quitó del cuaderno.");
+      const undoBtn = host.querySelector<HTMLButtonElement>(".app-notice-action");
+      expect(undoBtn?.textContent).toBe("Deshacer");
+
+      // Pulsar Deshacer
+      const putMock = vi.mocked(putSavedWord);
+      const pushMock = vi.mocked(pushWordsToServer);
+
+      await act(async () => {
+        undoBtn?.click();
+        for (let i = 0; i < 4; i++) await Promise.resolve();
+      });
+
+      expect(putMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          form: "efímero",
+          deleted: false,
+          deletedAt: null,
+          card: expect.objectContaining({ stability: 15 }),
+        }),
+        expect.anything(),
+      );
+      expect(pushMock).toHaveBeenCalledWith(
+        [
+          expect.objectContaining({
+            form: "efímero",
+            deleted: false,
+            deletedAt: null,
+          }),
+        ],
+        expect.anything(),
+      );
     });
   });
 });

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   clearCollectionPagesPending,
   getSyncState,
@@ -6,7 +6,10 @@ import {
   isSyncInError,
   markCollectionPagesPending,
   recordCollectionSyncError,
+  recordCollectionSyncFailure,
   recordCollectionSyncSuccess,
+  registerSyncRetryRunner,
+  resetSyncRetry,
   setPendingChangesCount,
   updateSyncState,
   type SyncCollection,
@@ -155,5 +158,47 @@ describe("sync-state", () => {
 
     clearCollectionPagesPending("words");
     expect(getSyncStatusLabel(getSyncState(), true)).toBe("Sincronizado");
+  });
+
+  it("cuando sync falla (recordCollectionSyncFailure), el estado pasa a reintentando sincronizar y el timer de backoff vuelve a intentar el sync", () => {
+    vi.useFakeTimers();
+    resetSyncRetry();
+
+    const onRetryMock = vi.fn();
+    registerSyncRetryRunner(onRetryMock);
+
+    recordCollectionSyncFailure("words", "Fallo de red");
+
+    const state = getSyncState();
+    expect(state.collections.words.status).toBe("error");
+    expect(isSyncInError(state)).toBe(true);
+    expect(getSyncStatusLabel(state, true)).toBe("Guardado local · reintentando sincronizar");
+
+    // Intento 1: 5_000 ms
+    expect(onRetryMock).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(4999);
+    expect(onRetryMock).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(onRetryMock).toHaveBeenCalledTimes(1);
+
+    // Si vuelve a fallar: intento 2: 15_000 ms
+    recordCollectionSyncFailure("words", "Fallo 2");
+    vi.advanceTimersByTime(14999);
+    expect(onRetryMock).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(1);
+    expect(onRetryMock).toHaveBeenCalledTimes(2);
+
+    // Si vuelve a fallar: intento 3: 45_000 ms
+    recordCollectionSyncFailure("words", "Fallo 3");
+    vi.advanceTimersByTime(44999);
+    expect(onRetryMock).toHaveBeenCalledTimes(2);
+    vi.advanceTimersByTime(1);
+    expect(onRetryMock).toHaveBeenCalledTimes(3);
+
+    // Éxito posterior resetea el timer y restaura 'Sincronizado'
+    recordCollectionSyncSuccess("words", Date.now());
+    expect(isSyncInError(getSyncState())).toBe(false);
+
+    vi.useRealTimers();
   });
 });

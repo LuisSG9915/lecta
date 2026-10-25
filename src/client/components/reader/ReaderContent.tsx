@@ -66,6 +66,7 @@ export interface ReaderContentProps {
   handleContainerDoubleClick: (event: MouseEvent<HTMLDivElement>) => void;
   handleTriggerReturnRecap: () => void | Promise<unknown>;
   toggleParagraphTranslation: (element: HTMLElement) => void | Promise<unknown>;
+  onInternalLinkClick?: (href: string) => void;
   lastPointRef: RefObject<{ x: number; y: number } | null>;
   lastTapRef: RefObject<{ time: number; element: HTMLElement | null }>;
   lastPointerTypeRef: RefObject<string>;
@@ -116,6 +117,7 @@ export function ReaderContent(props: ReaderContentProps) {
   handleContainerDoubleClick,
   handleTriggerReturnRecap,
   toggleParagraphTranslation,
+  onInternalLinkClick,
   lastPointRef,
   lastTapRef,
   lastPointerTypeRef,
@@ -224,9 +226,22 @@ export function ReaderContent(props: ReaderContentProps) {
           }
         }
       }
-      // Los enlaces internos del EPUB (notas al pie, índice)
-      // apuntan a rutas que no existen en la app: no navegar.
-      if ((event.target as HTMLElement).closest("a")) event.preventDefault();
+      // Los enlaces internos del EPUB (notas al pie, referencias)
+      // navegan dentro de la obra guardando el punto de retorno.
+      const internalLink = (event.target as HTMLElement).closest<HTMLAnchorElement>("a[data-epub-link='internal']");
+      if (internalLink) {
+        event.preventDefault();
+        event.stopPropagation();
+        const href = internalLink.getAttribute("href");
+        if (href && onInternalLinkClick) {
+          onInternalLinkClick(href);
+        }
+        return;
+      }
+      if ((event.target as HTMLElement).closest("a")) {
+        event.preventDefault();
+        return;
+      }
 
       const isTouch =
         lastPointerTypeRef.current === "touch" ||

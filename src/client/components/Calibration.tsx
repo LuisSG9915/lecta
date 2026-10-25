@@ -73,7 +73,7 @@ export default function Calibration({
         }, 650);
       }
     },
-    [session, isFinishing, onComplete, onDone],
+    [session, isFinishing, onComplete, onDone, language],
   );
 
   // Atajos de teclado para respuesta ultra-rápida (< 1.5 s por palabra)

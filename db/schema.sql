@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS lecta_user_words (
   card JSONB,
   saved_at INT8 NOT NULL,
   updated_at INT8 NOT NULL,
+  synced_at INT8 NOT NULL DEFAULT (extract(epoch from now()) * 1000)::bigint,
   deleted BOOL NOT NULL DEFAULT false,
   PRIMARY KEY (user_id, language, form)
 );
@@ -80,6 +81,7 @@ CREATE TABLE IF NOT EXISTS lecta_user_annotations (
   note STRING,
   created_at INT8 NOT NULL,
   updated_at INT8 NOT NULL,
+  synced_at INT8 NOT NULL DEFAULT (extract(epoch from now()) * 1000)::bigint,
   deleted BOOL NOT NULL DEFAULT false,
   PRIMARY KEY (user_id, book_hash, id)
 );
@@ -125,5 +127,13 @@ CREATE INDEX IF NOT EXISTS idx_user_activity_user_ended_id
   ON lecta_user_activity (user_id, ended_at, id);
 CREATE INDEX IF NOT EXISTS idx_user_reviews_user_created_id
   ON lecta_user_reviews (user_id, created_at, id);
+
+-- Índices de sincronización por tiempo de servidor (015_server_synced_at.sql)
+CREATE INDEX IF NOT EXISTS idx_user_words_synced_at ON lecta_user_words (user_id, language, synced_at ASC);
+CREATE INDEX IF NOT EXISTS idx_user_knowledge_synced_at ON lecta_user_knowledge (user_id, synced_at ASC);
+CREATE INDEX IF NOT EXISTS idx_user_annotations_synced_at ON lecta_user_annotations (user_id, synced_at ASC);
+CREATE INDEX IF NOT EXISTS idx_user_reviews_synced_at ON lecta_user_reviews (user_id, synced_at ASC);
+CREATE INDEX IF NOT EXISTS idx_user_positions_synced_at ON lecta_user_positions (user_id, synced_at ASC);
+CREATE INDEX IF NOT EXISTS idx_user_activity_synced_at ON lecta_user_activity (user_id, synced_at ASC);
 
 

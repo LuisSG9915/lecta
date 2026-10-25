@@ -178,46 +178,6 @@ export function setCachedAiText(key: string, value: string): void {
   workerAiMemoryCache.set(key, value);
 }
 
-/**
- * Soporte opcional de lectura en persistencia D1 (si está configurada context.env.DB)
- */
-export async function getCachedAiTextFromD1(
-  d1: D1Database | undefined,
-  key: string,
-): Promise<string | null> {
-  if (!d1) return null;
-  try {
-    const row = await d1
-      .prepare("SELECT value FROM ai_cache WHERE key = ? LIMIT 1")
-      .bind(key)
-      .first<{ value: string }>();
-    return row?.value ?? null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Soporte opcional de escritura en persistencia D1 (si está configurada context.env.DB)
- */
-export async function setCachedAiTextToD1(
-  d1: D1Database | undefined,
-  key: string,
-  value: string,
-): Promise<void> {
-  if (!d1) return;
-  try {
-    await d1
-      .prepare(
-        "INSERT INTO ai_cache (key, value, created_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-      )
-      .bind(key, value, Date.now())
-      .run();
-  } catch {
-    // Si la tabla no existe o falla D1, el LRU en memoria ya protegió la llamada
-  }
-}
-
 // Cabeceras anti-caché para respuestas HTML servidas por el worker
 app.use("*", async (c, next) => {
   await next();
@@ -250,7 +210,21 @@ app.post("/kindle/*", async (context) => {
   return app.fetch(new Request(url.toString(), context.req.raw), context.env, context.executionCtx);
 });
 
-app.get("/api/health", (context) => context.json({ status: "ok" }));
+app.get("/api/health", async (c) => {
+  try {
+    const queryPromise = withClient(c.env, (client) => client.query("SELECT 1"));
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error("DB healthcheck timeout")), 2000),
+    );
+    const result = await Promise.race([queryPromise, timeoutPromise]);
+    if (!result) {
+      return c.json({ ok: false, db: "unreachable" }, 503);
+    }
+    return c.json({ ok: true, db: "connected", status: "ok" }, 200);
+  } catch {
+    return c.json({ ok: false, db: "unreachable" }, 503);
+  }
+});
 
 // Errores de cliente: sin sesión y sin base de datos a propósito.
 // Un bucle de errores en el navegador no puede consumir RUs ni tumbar
@@ -955,7 +929,7 @@ app.post("/api/lexicon/explain", async (context) => {
 
   const cacheKey = `${language}:${nativeLanguage}:${form.toLowerCase()}:${contextText}`;
   const shaKey = await computeAiCacheKey("word_context", `${language}:${nativeLanguage}:${form}:${contextText}`);
-  const cached = getCachedAiText(shaKey) ?? explainCache.get(cacheKey) ?? (await getCachedAiTextFromD1(context.env.DB, shaKey));
+  const cached = getCachedAiText(shaKey) ?? explainCache.get(cacheKey);
   if (cached) return context.json({ explanation: cached, cached: true });
 
   const allowed = await consumeRateUnits(
@@ -1019,7 +993,6 @@ app.post("/api/lexicon/explain", async (context) => {
     return context.json({ error: "La IA no devolvió una explicación válida." }, 502);
   explainCache.set(cacheKey, parsed.explanation);
   setCachedAiText(shaKey, parsed.explanation);
-  await setCachedAiTextToD1(context.env.DB, shaKey, parsed.explanation);
   return context.json({ explanation: parsed.explanation });
 });
 
@@ -1387,8 +1360,7 @@ app.post("/api/ai/companion-note", async (context) => {
   );
   const cached =
     getCachedAiText(cacheKey) ??
-    companionNoteCache.get(cacheKey) ??
-    (await getCachedAiTextFromD1(context.env.DB, cacheKey));
+    companionNoteCache.get(cacheKey);
   const cachedNote = cached ? parseCompanionNote(cached) : null;
   if (cachedNote) return context.json({ ...cachedNote, cached: true });
 
@@ -1423,7 +1395,6 @@ app.post("/api/ai/companion-note", async (context) => {
   const serialized = JSON.stringify(parsed);
   setCachedAiText(cacheKey, serialized);
   companionNoteCache.set(cacheKey, serialized);
-  await setCachedAiTextToD1(context.env.DB, cacheKey, serialized);
   return context.json(parsed);
 });
 
@@ -1443,7 +1414,7 @@ app.post("/api/ai/page-recap", async (context) => {
   }
 
   const cacheKey = await computeAiCacheKey("page_recap", `${bookTitle ?? ""}::${chapterTitle ?? ""}::${text}`);
-  const cached = getCachedAiText(cacheKey) ?? (await getCachedAiTextFromD1(context.env.DB, cacheKey));
+  const cached = getCachedAiText(cacheKey);
   if (cached) {
     try {
       return context.json({ ...JSON.parse(cached), cached: true });
@@ -1491,7 +1462,6 @@ app.post("/api/ai/page-recap", async (context) => {
 
   const serialized = JSON.stringify(parsed);
   setCachedAiText(cacheKey, serialized);
-  await setCachedAiTextToD1(context.env.DB, cacheKey, serialized);
   return context.json(parsed);
 });
 
@@ -1511,7 +1481,7 @@ app.post("/api/ai/translate", async (context) => {
   }
 
   const cacheKey = await computeAiCacheKey("paragraph_translate", `${from}:${to}:${text}`);
-  const cached = getCachedAiText(cacheKey) ?? (await getCachedAiTextFromD1(context.env.DB, cacheKey));
+  const cached = getCachedAiText(cacheKey);
   if (cached) {
     return context.json({ translation: cached, cached: true });
   }
@@ -1553,7 +1523,6 @@ app.post("/api/ai/translate", async (context) => {
   const translation = ai.ok && ai.content ? ai.content.trim() : text;
   if (ai.ok && ai.content) {
     setCachedAiText(cacheKey, translation);
-    await setCachedAiTextToD1(context.env.DB, cacheKey, translation);
   }
   return context.json({ translation });
 });
@@ -1580,7 +1549,7 @@ app.post("/api/ai/character-recap", async (context) => {
 
   const cacheKey = `${entityName.toLowerCase()}::${(bookTitle ?? "").toLowerCase()}::${excerptsSoFar.join("|").toLowerCase()}`;
   const shaKey = await computeAiCacheKey("character_cards", `${entityName}::${bookTitle ?? ""}::${excerptsSoFar.join("|")}`);
-  const cachedSha = getCachedAiText(shaKey) ?? (await getCachedAiTextFromD1(context.env.DB, shaKey));
+  const cachedSha = getCachedAiText(shaKey);
   if (cachedSha) {
     try {
       return context.json({ ...JSON.parse(cachedSha), cached: true });
@@ -1639,7 +1608,6 @@ app.post("/api/ai/character-recap", async (context) => {
   characterRecapCache.set(cacheKey, parsed);
   const serialized = JSON.stringify(parsed);
   setCachedAiText(shaKey, serialized);
-  await setCachedAiTextToD1(context.env.DB, shaKey, serialized);
   return context.json(parsed);
 });
 
@@ -1688,6 +1656,143 @@ export async function consumeRateUnits(
   return Boolean(result?.rows[0]);
 }
 
+export const MAX_USER_STORAGE_BYTES = 500 * 1024 * 1024; // 500 MB por cuenta
+export const MAX_USER_BOOKS = 100;
+
+export async function checkUserBooksQuota(
+  env: WorkerEnv,
+  userId: string,
+  bookId: string,
+  newFileBytes: number,
+): Promise<{ allowed: boolean; reason?: string }> {
+  let totalBytes = 0;
+  let bookCount = 0;
+  let resolved = false;
+
+  if (getConnectionString(env)) {
+    const res = await withClient(env, (client) =>
+      client.query<{ total_bytes: string | number; book_count: string | number }>(
+        `SELECT
+           COALESCE(SUM(size_bytes), 0)::bigint AS total_bytes,
+           COUNT(*)::int AS book_count
+         FROM user_books
+         WHERE user_id = $1 AND book_id != $2`,
+        [userId, bookId],
+      ),
+    );
+    if (res?.rows[0]) {
+      totalBytes = Number(res.rows[0].total_bytes);
+      bookCount = Number(res.rows[0].book_count);
+      resolved = true;
+    }
+  }
+  if (!resolved && env.DB) {
+    const row = await env.DB.prepare(
+      `SELECT COALESCE(SUM(size_bytes), 0) AS total, COUNT(*) AS count FROM user_books WHERE user_id = ? AND book_id != ?`,
+    )
+      .bind(userId, bookId)
+      .first<{ total: number; count: number }>()
+      .catch(() => null);
+    totalBytes = Number(row?.total ?? 0);
+    bookCount = Number(row?.count ?? 0);
+  }
+
+  if (bookCount >= MAX_USER_BOOKS) {
+    return { allowed: false, reason: "Storage quota exceeded: maximum books limit reached (100)" };
+  }
+  if (totalBytes + newFileBytes > MAX_USER_STORAGE_BYTES) {
+    return { allowed: false, reason: "Storage quota exceeded for this account" };
+  }
+
+  return { allowed: true };
+}
+
+export async function recordUserBook(
+  env: WorkerEnv,
+  book: {
+    userId: string;
+    bookId: string;
+    title: string;
+    author: string;
+    r2Key: string;
+    sizeBytes: number;
+    sha256: string;
+  },
+): Promise<void> {
+  const now = Date.now();
+  let recorded = false;
+  if (getConnectionString(env)) {
+    const res = await withClient(env, (client) =>
+      client.query(
+        `INSERT INTO user_books (user_id, book_id, title, author, r2_key, size_bytes, sha256, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         ON CONFLICT (user_id, book_id) DO UPDATE SET
+           title = EXCLUDED.title,
+           author = EXCLUDED.author,
+           r2_key = EXCLUDED.r2_key,
+           size_bytes = EXCLUDED.size_bytes,
+           sha256 = EXCLUDED.sha256,
+           updated_at = EXCLUDED.updated_at`,
+        [
+          book.userId,
+          book.bookId,
+          book.title,
+          book.author,
+          book.r2Key,
+          book.sizeBytes,
+          book.sha256,
+          now,
+          now,
+        ],
+      ),
+    );
+    if (res) recorded = true;
+  }
+  if (!recorded && env.DB) {
+    await env.DB.prepare(
+      `INSERT INTO user_books (user_id, book_id, title, author, r2_key, size_bytes, sha256, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(user_id, book_id) DO UPDATE SET
+         title = excluded.title,
+         author = excluded.author,
+         r2_key = excluded.r2_key,
+         size_bytes = excluded.size_bytes,
+         sha256 = excluded.sha256,
+         updated_at = excluded.updated_at`,
+    )
+      .bind(
+        book.userId,
+        book.bookId,
+        book.title,
+        book.author,
+        book.r2Key,
+        book.sizeBytes,
+        book.sha256,
+        now,
+        now,
+      )
+      .run()
+      .catch(() => null);
+  }
+}
+
+export async function deleteUserBookRecord(
+  env: WorkerEnv,
+  userId: string,
+  bookId: string,
+): Promise<void> {
+  if (getConnectionString(env)) {
+    await withClient(env, (client) =>
+      client.query(`DELETE FROM user_books WHERE user_id = $1 AND book_id = $2`, [userId, bookId]),
+    );
+  } else if (env.DB) {
+    await env.DB.prepare(`DELETE FROM user_books WHERE user_id = ? AND book_id = ?`)
+      .bind(userId, bookId)
+      .run()
+      .catch(() => null);
+  }
+}
+
 const bookKey = (userId: string, hash: string) => `books/${userId}/${hash}.epub`;
 const HASH_PATTERN = /^[a-f0-9]{64}$/;
 
@@ -1699,86 +1804,122 @@ app.get("/api/books", async (context) => {
   if (!session) return context.json({ error: "Inicia sesión para ver tus libros." }, 401);
 
   const listed = await booksBucket.list({ prefix: `books/${session.user.id}/` });
-  const books = await Promise.all(
-    listed.objects.map(async (object) => {
-      const hash = object.key.split("/").pop()?.replace(/\.epub$/, "") ?? "";
-      let title = object.customMetadata?.title ?? "";
-      let author = object.customMetadata?.author ?? "";
-      let name = object.customMetadata?.name ?? "";
-      let sections = Number(object.customMetadata?.sections) || 0;
-      let language = object.customMetadata?.language ?? "";
 
-      // Si el libro remoto no tiene título guardado, intentamos extraerlo
-      // del EPUB en R2 para que la estantería siempre lo muestre antes de descargarlo.
-      if (!title || !language) {
+  const books = listed.objects.map((object) => {
+    const hash = object.key.split("/").pop()?.replace(/\.epub$/, "") ?? "";
+    const title = object.customMetadata?.title ?? "";
+    const author = object.customMetadata?.author ?? "";
+    const name = object.customMetadata?.name ?? "";
+    const sections = Number(object.customMetadata?.sections) || 0;
+    const language = object.customMetadata?.language ?? "";
+
+    return {
+      hash,
+      uploaded: object.uploaded,
+      name: name || (title ? `${title}.epub` : `${hash.slice(0, 8)}.epub`),
+      title: title || name.replace(/\.epub$/i, "") || `Libro ${hash.slice(0, 8)}`,
+      author,
+      sections,
+      language,
+    };
+  });
+
+  const repairObj = listed.objects.find((object) => {
+    const title = object.customMetadata?.title ?? "";
+    const language = object.customMetadata?.language ?? "";
+    return !title || !language;
+  });
+
+  let executionCtx: { waitUntil: (promise: Promise<unknown>) => void } | undefined;
+  try {
+    executionCtx = context.executionCtx;
+  } catch {
+    executionCtx = undefined;
+  }
+
+  if (repairObj && executionCtx?.waitUntil) {
+    const key = repairObj.key;
+    const hash = key.split("/").pop()?.replace(/\.epub$/, "") ?? "";
+    executionCtx.waitUntil(
+      (async () => {
         try {
-          const r2Obj = await booksBucket.get(object.key);
-          if (r2Obj) {
-            const data = new Uint8Array(await r2Obj.arrayBuffer());
-            const meta = await extractEpubMeta(data);
-            if (meta?.title) {
-              title = title || meta.title;
-              author = author || (meta.author ?? "");
-              sections = sections || (meta.sections ?? 0);
-              language = language || (meta.language ?? "");
-              name = name || `${title}.epub`;
+          const r2Obj = await booksBucket.get(key);
+          if (!r2Obj) return;
+          const data = new Uint8Array(await r2Obj.arrayBuffer());
+          const meta = await extractEpubMeta(data);
+          if (meta?.title) {
+            const repTitle = meta.title.slice(0, 200);
+            const repAuthor = (meta.author ?? "").slice(0, 200);
+            const repSections = meta.sections ? String(meta.sections) : "";
+            const repLang = (meta.language ?? "").slice(0, 10);
+            const repName = `${repTitle}.epub`;
 
-              // Actualiza metadatos en segundo plano para que las siguientes peticiones
-              // no tengan que releer el archivo.
-              context.executionCtx?.waitUntil?.(
-                booksBucket.put(object.key, data, {
-                  httpMetadata: { contentType: "application/epub+zip" },
-                  customMetadata: {
-                    name,
-                    title,
-                    author,
-                    sections: sections ? String(sections) : "",
-                    language,
-                  },
-                }).catch(() => null),
-              );
-            }
+            await booksBucket.put(key, data, {
+              httpMetadata: { contentType: "application/epub+zip" },
+              customMetadata: {
+                name: repName,
+                title: repTitle,
+                author: repAuthor,
+                sections: repSections,
+                language: repLang,
+              },
+            });
+
+            await recordUserBook(context.env, {
+              userId: session.user.id,
+              bookId: hash,
+              title: repTitle,
+              author: repAuthor,
+              r2Key: key,
+              sizeBytes: data.byteLength,
+              sha256: hash,
+            });
           }
         } catch {
-          // Ignora fallos silenciosos y responde con lo que haya
+          // Ignora fallos silenciosos en segundo plano
         }
-      }
-
-      return {
-        hash,
-        uploaded: object.uploaded,
-        name: name || (title ? `${title}.epub` : ""),
-        title,
-        author,
-        sections,
-        language,
-      };
-    }),
-  );
+      })(),
+    );
+  }
 
   return context.json({ books });
 });
 
-app.put("/api/books/:hash", async (context) => {
-  if (!context.env.BOOKS)
+const handleBookUpload = async (
+  context: Context<{ Bindings: WorkerEnv }>,
+  declaredHash?: string,
+) => {
+  const booksBucket = context.env.BOOKS;
+  if (!booksBucket)
     return context.json({ error: "El almacenamiento no está configurado." }, 503);
   const session = await getSession(context);
   if (!session) return context.json({ error: "Inicia sesión para guardar libros." }, 401);
 
-  const hash = context.req.param("hash");
-  if (!HASH_PATTERN.test(hash))
-    return context.json({ error: "Identificador de libro inválido." }, 400);
   const data = new Uint8Array(await context.req.arrayBuffer());
   if (!data.byteLength || data.byteLength > EPUB_MAX_BYTES)
     return context.json({ error: "Archivo vacío o demasiado grande (máximo 50 MB)." }, 400);
   if (!checkEpubHeader(data).ok)
     return context.json({ error: "El archivo no es un EPUB válido." }, 400);
-  // El hash de la ruta es la identidad del libro: tiene que corresponder
-  // al contenido subido, no servir solo como nombre de la llave.
+
   const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", data));
   const hex = Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join("");
-  if (hex !== hash)
-    return context.json({ error: "El contenido no coincide con el identificador declarado." }, 400);
+
+  if (declaredHash) {
+    if (!HASH_PATTERN.test(declaredHash)) {
+      return context.json({ error: "Identificador de libro inválido." }, 400);
+    }
+    if (hex !== declaredHash) {
+      return context.json({ error: "El contenido no coincide con el identificador declarado." }, 400);
+    }
+  }
+
+  const hash = declaredHash ?? hex;
+
+  // Verificación de cuota por cuenta antes de escribir en R2
+  const quota = await checkUserBooksQuota(context.env, session.user.id, hash, data.byteLength);
+  if (!quota.allowed) {
+    return context.json({ error: quota.reason ?? "Storage quota exceeded for this account" }, 413);
+  }
 
   const meta = context.req.query();
   let title = meta.title?.slice(0, 200) ?? "";
@@ -1798,10 +1939,9 @@ app.put("/api/books/:hash", async (context) => {
     }
   }
 
-  await context.env.BOOKS.put(bookKey(session.user.id, hash), data, {
+  const r2Key = bookKey(session.user.id, hash);
+  await booksBucket.put(r2Key, data, {
     httpMetadata: { contentType: "application/epub+zip" },
-    // Título/autor/secciones viajan con el objeto para que otros
-    // dispositivos pinten la ficha sin bajar el EPUB completo.
     customMetadata: {
       name,
       title,
@@ -1810,11 +1950,27 @@ app.put("/api/books/:hash", async (context) => {
       language,
     },
   });
-  return context.json({ ok: true });
-});
+
+  await recordUserBook(context.env, {
+    userId: session.user.id,
+    bookId: hash,
+    title: title || name.replace(/\.epub$/i, "") || hash,
+    author,
+    r2Key,
+    sizeBytes: data.byteLength,
+    sha256: hash,
+  });
+
+  return context.json({ ok: true, hash });
+};
+
+app.put("/api/books/:hash", (context) => handleBookUpload(context, context.req.param("hash")));
+app.post("/api/books/:hash", (context) => handleBookUpload(context, context.req.param("hash")));
+app.post("/api/books", (context) => handleBookUpload(context));
 
 app.get("/api/books/:hash", async (context) => {
-  if (!context.env.BOOKS)
+  const booksBucket = context.env.BOOKS;
+  if (!booksBucket)
     return context.json({ error: "El almacenamiento no está configurado." }, 503);
   const session = await getSession(context);
   if (!session) return context.json({ error: "Inicia sesión para ver tus libros." }, 401);
@@ -1823,7 +1979,7 @@ app.get("/api/books/:hash", async (context) => {
   if (!HASH_PATTERN.test(hash))
     return context.json({ error: "Identificador de libro inválido." }, 400);
 
-  const object = await context.env.BOOKS.get(bookKey(session.user.id, hash));
+  const object = await booksBucket.get(bookKey(session.user.id, hash));
   if (!object) return context.json({ error: "Libro no encontrado." }, 404);
   return new Response(object.body, {
     headers: { "content-type": "application/epub+zip" },
@@ -1831,7 +1987,8 @@ app.get("/api/books/:hash", async (context) => {
 });
 
 app.delete("/api/books/:hash", async (context) => {
-  if (!context.env.BOOKS)
+  const booksBucket = context.env.BOOKS;
+  if (!booksBucket)
     return context.json({ error: "El almacenamiento no está configurado." }, 503);
   const session = await getSession(context);
   if (!session) return context.json({ error: "Inicia sesión para borrar libros." }, 401);
@@ -1840,7 +1997,8 @@ app.delete("/api/books/:hash", async (context) => {
   if (!HASH_PATTERN.test(hash))
     return context.json({ error: "Identificador de libro inválido." }, 400);
 
-  await context.env.BOOKS.delete(bookKey(session.user.id, hash));
+  await booksBucket.delete(bookKey(session.user.id, hash));
+  await deleteUserBookRecord(context.env, session.user.id, hash);
   return context.json({ ok: true });
 });
 
@@ -1896,11 +2054,11 @@ app.get("/api/vocab", async (context) => {
     if (since > 0) {
       if (afterWord) {
         filters.push(
-          "(updated_at > $3 OR (updated_at = $3 AND form > $4))",
+          "(synced_at > $3 OR (synced_at = $3 AND form > $4))",
         );
         params.push(since, afterWord);
       } else {
-        filters.push("updated_at > $3");
+        filters.push("synced_at > $3");
         params.push(since);
       }
     }
@@ -1909,10 +2067,11 @@ app.get("/api/vocab", async (context) => {
       .query(
         `SELECT language, form, lemma, pos, meaning, context, book_hash AS "bookHash",
                 sense_entry_id AS "senseEntryId", sense_order AS "senseOrder",
-                card, saved_at AS "savedAt", updated_at AS "updatedAt", deleted
+                card, saved_at AS "savedAt", updated_at AS "updatedAt",
+                synced_at AS "syncedAt", deleted
          FROM lecta_user_words
          WHERE ${filters.join(" AND ")}
-         ORDER BY updated_at ASC, form ASC
+         ORDER BY synced_at ASC, form ASC
          LIMIT ${LIMIT}`,
         params,
       )
@@ -1939,7 +2098,7 @@ app.get("/api/vocab", async (context) => {
   const lastRow = rows.length > 0 ? rows[rows.length - 1] : null;
   const nextCursor =
     hasMore && lastRow
-      ? Number(lastRow.updatedAt)
+      ? Number(lastRow.syncedAt)
       : Math.max(0, queryStartMs - 5_000);
   const nextAfterWord = hasMore && lastRow ? String(lastRow.form) : null;
 
@@ -1965,6 +2124,7 @@ app.get("/api/vocab", async (context) => {
       senseOrder: row.senseOrder != null ? Number(row.senseOrder) : null,
       savedAt: Number(row.savedAt),
       updatedAt: Number(row.updatedAt),
+      syncedAt: row.syncedAt != null ? Number(row.syncedAt) : Number(row.updatedAt),
       card: typeof row.card === "string" ? JSON.parse(row.card) : row.card,
     })),
     serverTime: Date.now(),
@@ -2033,26 +2193,31 @@ app.put("/api/vocab", async (context) => {
       const result = await client.query(
       `INSERT INTO lecta_user_words
          (user_id, language, form, lemma, pos, meaning, context, book_hash,
-          sense_entry_id, sense_order, card, saved_at, updated_at, deleted)
+          sense_entry_id, sense_order, card, saved_at, updated_at, deleted, synced_at)
        SELECT $1,
               j.value ->> 'language', j.value ->> 'form', j.value ->> 'lemma',
               j.value ->> 'pos', j.value ->> 'meaning', j.value ->> 'context',
               j.value ->> 'bookHash',
               (j.value ->> 'senseEntryId')::int8, (j.value ->> 'senseOrder')::int4,
-              j.value -> 'card',
+              NULLIF(j.value -> 'card', 'null'::jsonb) AS card,
               (j.value ->> 'savedAt')::int8, (j.value ->> 'updatedAt')::int8,
-              COALESCE((j.value ->> 'deleted')::bool, false)
+              COALESCE((j.value ->> 'deleted')::bool, false),
+              $3::int8
        FROM jsonb_array_elements($2::jsonb) AS j(value)
        ON CONFLICT (user_id, language, form) DO UPDATE SET
          lemma = excluded.lemma, pos = excluded.pos, meaning = excluded.meaning,
          context = excluded.context, book_hash = excluded.book_hash,
          sense_entry_id = excluded.sense_entry_id,
          sense_order = excluded.sense_order,
-         card = COALESCE(excluded.card, lecta_user_words.card),
+         card = CASE
+           WHEN excluded.deleted THEN NULL
+           ELSE COALESCE(NULLIF(excluded.card, 'null'::jsonb), lecta_user_words.card)
+         END,
          updated_at = excluded.updated_at,
-         deleted = excluded.deleted
-       WHERE lecta_user_words.updated_at < excluded.updated_at`,
-      [session.user.id, JSON.stringify(chunk)],
+         deleted = excluded.deleted,
+         synced_at = excluded.synced_at
+       WHERE lecta_user_words.updated_at <= excluded.updated_at`,
+      [session.user.id, JSON.stringify(chunk), serverNow],
       );
       total += result.rowCount ?? 0;
     }
@@ -2060,21 +2225,65 @@ app.put("/api/vocab", async (context) => {
   });
   if (upserted === undefined)
     return context.json({ error: "El vocabulario no está configurado." }, 503);
-  return context.json({ ok: true, upserted });
+  return context.json({ ok: true, upserted, serverTime: serverNow });
 });
 
-// ---------- Sincronización Cloud de EPUBs Propios (BYO-EPUB) en D1 y R2 ----------
+app.get("/api/sync/counts", async (context) => {
+  if (!getConnectionString(context.env))
+    return context.json({ error: "El almacenamiento no está configurado." }, 503);
+  const session = await getSession(context);
+  if (!session)
+    return context.json({ error: "Inicia sesión para consultar sincronización." }, 401);
 
-const MAX_SINGLE_EPUB_BYTES = 15 * 1024 * 1024; // 15 MB por archivo
-const MAX_USER_QUOTA_BYTES = 50 * 1024 * 1024; // 50 MB por cuenta
+  const counts = await withClient(context.env, async (client) => {
+    const [words, annotations, activity, reviews, positions, knowledge] =
+      await Promise.all([
+        client.query(
+          `SELECT COUNT(*)::int8 AS count FROM lecta_user_words WHERE user_id = $1 AND deleted = false`,
+          [session.user.id],
+        ),
+        client.query(
+          `SELECT COUNT(*)::int8 AS count FROM lecta_user_annotations WHERE user_id = $1 AND deleted = false`,
+          [session.user.id],
+        ),
+        client.query(
+          `SELECT COUNT(*)::int8 AS count FROM lecta_user_activity WHERE user_id = $1`,
+          [session.user.id],
+        ),
+        client.query(
+          `SELECT COUNT(*)::int8 AS count FROM lecta_user_reviews WHERE user_id = $1`,
+          [session.user.id],
+        ),
+        client.query(
+          `SELECT COUNT(*)::int8 AS count FROM lecta_user_positions WHERE user_id = $1`,
+          [session.user.id],
+        ),
+        client.query(
+          `SELECT COUNT(*)::int8 AS count FROM lecta_user_knowledge WHERE user_id = $1 AND deleted = false`,
+          [session.user.id],
+        ),
+      ]);
+    return {
+      words: Number(words.rows[0]?.count ?? 0),
+      annotations: Number(annotations.rows[0]?.count ?? 0),
+      activity: Number(activity.rows[0]?.count ?? 0),
+      reviews: Number(reviews.rows[0]?.count ?? 0),
+      positions: Number(positions.rows[0]?.count ?? 0),
+      knowledge: Number(knowledge.rows[0]?.count ?? 0),
+    };
+  });
+  if (counts === undefined)
+    return context.json({ error: "El almacenamiento no está configurado." }, 503);
+
+  return context.json({ counts, serverTime: Date.now() });
+});
+
+// ---------- Sincronización Cloud de EPUBs Propios (BYO-EPUB) en CockroachDB/D1 y R2 ----------
 
 app.put("/api/user/books/:bookId/file", async (c) => {
   const user = await getSessionUser(c);
   if (!user) return c.json({ error: "No autenticado" }, 401);
 
-  if (!c.env.DB) {
-    return c.json({ error: "Base de datos no configurada" }, 503);
-  }
   const booksBucket = c.env.BOOKS_BUCKET ?? c.env.BOOKS;
   if (!booksBucket) {
     return c.json({ error: "Almacenamiento no configurado" }, 503);
@@ -2088,8 +2297,8 @@ app.put("/api/user/books/:bookId/file", async (c) => {
   const sha256 = c.req.header("x-book-sha256") ?? "";
 
   const buffer = await c.req.arrayBuffer();
-  if (buffer.byteLength === 0 || buffer.byteLength > MAX_SINGLE_EPUB_BYTES) {
-    return c.json({ error: "El archivo EPUB excede el límite de 15 MB" }, 413);
+  if (buffer.byteLength === 0 || buffer.byteLength > EPUB_MAX_BYTES) {
+    return c.json({ error: "El archivo EPUB excede el límite permitido" }, 413);
   }
 
   const check = checkEpubBuffer(buffer);
@@ -2097,15 +2306,10 @@ app.put("/api/user/books/:bookId/file", async (c) => {
     return c.json({ error: check.reason ?? "Archivo EPUB inválido" }, 400);
   }
 
-  // Verificar cuota acumulada del usuario en D1
-  const quotaRow = await c.env.DB.prepare(
-    `SELECT COALESCE(SUM(size_bytes), 0) AS total FROM user_books WHERE user_id = ? AND book_id != ?`,
-  )
-    .bind(user.id, bookId)
-    .first<{ total: number }>();
-
-  if ((quotaRow?.total ?? 0) + buffer.byteLength > MAX_USER_QUOTA_BYTES) {
-    return c.json({ error: "Cuota de almacenamiento de 50 MB alcanzada" }, 507);
+  // Verificar cuota acumulada del usuario
+  const quota = await checkUserBooksQuota(c.env, user.id, bookId, buffer.byteLength);
+  if (!quota.allowed) {
+    return c.json({ error: quota.reason ?? "Storage quota exceeded for this account" }, 413);
   }
 
   const r2Key = `user-books/${user.id}/${bookId}.epub`;
@@ -2115,19 +2319,15 @@ app.put("/api/user/books/:bookId/file", async (c) => {
   });
 
   const now = Date.now();
-  await c.env.DB.prepare(
-    `INSERT INTO user_books (user_id, book_id, title, author, r2_key, size_bytes, sha256, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(user_id, book_id) DO UPDATE SET
-       title = excluded.title,
-       author = excluded.author,
-       r2_key = excluded.r2_key,
-       size_bytes = excluded.size_bytes,
-       sha256 = excluded.sha256,
-       updated_at = excluded.updated_at`,
-  )
-    .bind(user.id, bookId, title, author, r2Key, buffer.byteLength, sha256, now, now)
-    .run();
+  await recordUserBook(c.env, {
+    userId: user.id,
+    bookId,
+    title,
+    author,
+    r2Key,
+    sizeBytes: buffer.byteLength,
+    sha256,
+  });
 
   return c.json({ ok: true, bookId, sizeBytes: buffer.byteLength, updatedAt: now });
 });
@@ -2136,48 +2336,92 @@ app.get("/api/user/books", async (c) => {
   const user = await getSessionUser(c);
   if (!user) return c.json({ books: [] });
 
-  if (!c.env.DB) {
-    return c.json({ books: [] });
+  if (getConnectionString(c.env)) {
+    const rows = await withClient(c.env, async (client) => {
+      const res = await client.query<{
+        id: string;
+        title: string;
+        author: string;
+        sizebytes: number | string;
+        sha256: string;
+        updatedat: number | string;
+      }>(
+        `SELECT book_id AS id, title, author, size_bytes AS sizebytes, sha256, updated_at AS updatedat
+         FROM user_books WHERE user_id = $1 ORDER BY updated_at DESC`,
+        [user.id],
+      );
+      return res.rows.map((r) => ({
+        id: r.id,
+        title: r.title,
+        author: r.author,
+        sizeBytes: Number(r.sizebytes),
+        sha256: r.sha256,
+        updatedAt: Number(r.updatedat),
+      }));
+    });
+    if (rows) return c.json({ books: rows });
   }
 
-  const { results } = await c.env.DB.prepare(
-    `SELECT book_id AS id, title, author, size_bytes AS sizeBytes, sha256, updated_at AS updatedAt
-     FROM user_books WHERE user_id = ? ORDER BY updated_at DESC`,
-  )
-    .bind(user.id)
-    .all();
+  if (c.env.DB) {
+    const { results } = await c.env.DB.prepare(
+      `SELECT book_id AS id, title, author, size_bytes AS sizeBytes, sha256, updated_at AS updatedAt
+       FROM user_books WHERE user_id = ? ORDER BY updated_at DESC`,
+    )
+      .bind(user.id)
+      .all();
+    return c.json({ books: results ?? [] });
+  }
 
-  return c.json({ books: results ?? [] });
+  return c.json({ books: [] });
 });
 
 app.get("/api/user/books/:bookId/file", async (c) => {
   const user = await getSessionUser(c);
   if (!user) return c.json({ error: "No autenticado" }, 401);
 
-  if (!c.env.DB) {
-    return c.json({ error: "Base de datos no configurada" }, 503);
-  }
   const booksBucket = c.env.BOOKS_BUCKET ?? c.env.BOOKS;
   if (!booksBucket) {
     return c.json({ error: "Almacenamiento no configurado" }, 503);
   }
 
   const bookId = c.req.param("bookId");
-  const row = await c.env.DB.prepare(
-    `SELECT r2_key, title FROM user_books WHERE user_id = ? AND book_id = ?`,
-  )
-    .bind(user.id, bookId)
-    .first<{ r2_key: string; title: string }>();
+  let r2Key: string | null = null;
 
-  if (!row) return c.json({ error: "Libro no encontrado en la nube" }, 404);
+  if (getConnectionString(c.env)) {
+    const res = await withClient(c.env, (client) =>
+      client.query<{ r2_key: string }>(
+        `SELECT r2_key FROM user_books WHERE user_id = $1 AND book_id = $2`,
+        [user.id, bookId],
+      ),
+    );
+    r2Key = res?.rows[0]?.r2_key ?? null;
+  } else if (c.env.DB) {
+    const row = await c.env.DB.prepare(
+      `SELECT r2_key FROM user_books WHERE user_id = ? AND book_id = ?`,
+    )
+      .bind(user.id, bookId)
+      .first<{ r2_key: string }>()
+      .catch(() => null);
+    r2Key = row?.r2_key ?? null;
+  }
 
-  const obj = await booksBucket.get(row.r2_key);
-  if (!obj) return c.json({ error: "Binario no encontrado en R2" }, 404);
+  const keysToTry = [
+    r2Key,
+    `user-books/${user.id}/${bookId}.epub`,
+    `books/${user.id}/${bookId}.epub`,
+  ].filter(Boolean) as string[];
 
-  return new Response(obj.body, {
-    headers: {
-      "Content-Type": "application/epub+zip",
-      "Cache-Control": "private, max-age=3600",
-    },
-  });
+  for (const key of keysToTry) {
+    const obj = await booksBucket.get(key);
+    if (obj) {
+      return new Response(obj.body, {
+        headers: {
+          "Content-Type": "application/epub+zip",
+          "Cache-Control": "private, max-age=3600",
+        },
+      });
+    }
+  }
+
+  return c.json({ error: "Libro no encontrado en la nube" }, 404);
 });

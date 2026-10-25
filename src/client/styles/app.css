@@ -374,6 +374,28 @@
   opacity: 1;
 }
 
+.app-notice-action {
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: var(--r-pill);
+  color: inherit;
+  font-family: inherit;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  padding: 2px var(--s-2);
+  cursor: pointer;
+  margin-inline-start: var(--s-1);
+  transition: opacity var(--dur-1) var(--ease-out), background-color var(--dur-1) var(--ease-out);
+}
+
+.app-notice-action:hover {
+  background-color: rgba(255, 255, 255, 0.15);
+}
+
+.notebook .app-notices {
+  z-index: 30;
+}
+
 /* ---------- Cuaderno y Tú en modo página ---------- */
 
 .notebook--page {

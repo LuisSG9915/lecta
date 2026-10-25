@@ -74,8 +74,9 @@ import {
   type StoredBook,
 } from "./lib/idb";
 import {
-  recordCollectionSyncError,
+  recordCollectionSyncFailure,
   recordCollectionSyncSuccess,
+  registerSyncRetryRunner,
   setPendingChangesCount,
   setCollectionPendingCount,
 } from "./lib/sync-state";
@@ -89,10 +90,13 @@ import { displayTitle, readBookMeta } from "./lib/cover";
 import { downloadBook, listRemoteBooks } from "./lib/books";
 import { queueBookDelete, queueBookUpload, runBookQueue } from "./lib/book-queue";
 import { getPendingPositionsCount, syncPositions, type PositionConflict } from "./lib/positions-sync";
+
 import { checkEpubHeader, EPUB_MAX_BYTES } from "../shared/epub-check";
 import { extractEpubMeta } from "../shared/epub-meta";
 import { syncSavedWords } from "./lib/vocab";
 import {
+  flushPendingReadingSync,
+  registerReadingSyncRunner,
   syncActivity,
   syncAnnotations,
   syncKnowledge,
@@ -153,7 +157,21 @@ export default function App() {
   const [positionPrompt, setPositionPrompt] = useState<{
     conflict: PositionConflict;
     open: () => void;
+    resume?: () => void;
   } | null>(null);
+  // El sync corre por detrás de la apertura. Si trae una posición remota
+  // más nueva, el lector la aplica sin desmontar el libro.
+  const [positionSync, setPositionSync] = useState<{ hash: string; version: number } | null>(null);
+  const [resumeRequest, setResumeRequest] = useState<{
+    hash: string;
+    key: number;
+    sectionIndex: number;
+    ratio?: number;
+    anchor?: string;
+  } | null>(null);
+  // Hash del libro que está delante, para no aplicar un sync que llega
+  // después de que la persona volvió a la estantería.
+  const openBookHashRef = useRef<string | null>(null);
   const [resetToken, setResetToken] = useState<string | undefined>(authLink.token);
   const [theme, setTheme] = useState<ThemeChoice>(() => loadTheme());
   // Calibración inicial de vocabulario: se interpone una vez antes del
@@ -239,6 +257,7 @@ export default function App() {
       ...selection,
       ownerUserId: sessionUserId ?? null,
     };
+    openBookHashRef.current = selection.hash;
     startSafeViewTransition(() => {
       setShowVocabulary(false);
       setShowAccount(false);
@@ -246,6 +265,7 @@ export default function App() {
       if (!bookRelease.current) {
         bookRelease.current = pushOverlay(() => {
           bookRelease.current = null;
+          openBookHashRef.current = null;
           startSafeViewTransition(() => {
             setBook(null);
           });
@@ -359,7 +379,11 @@ export default function App() {
   };
 
   const closeReader = () => {
+    openBookHashRef.current = null;
     setReaderInitialWord(undefined);
+    setResumeRequest(null);
+    setPositionSync(null);
+    setMessage("");
     startSafeViewTransition(() => {
       panelRelease.current?.release();
       panelRelease.current = null;
@@ -391,6 +415,7 @@ export default function App() {
     panelRelease.current = null;
     bookRelease.current?.release();
     bookRelease.current = null;
+    openBookHashRef.current = null;
     setBook(null);
     setLastReadBook(null);
     setReaderInitialWord(undefined);
@@ -815,11 +840,15 @@ export default function App() {
 
       const pulled = await syncSavedWords(scope)
         .then((res) => {
-          recordCollectionSyncSuccess("words");
+          if (res !== null) {
+            recordCollectionSyncSuccess("words");
+          } else {
+            recordCollectionSyncFailure("words", "Sync parcial o interrumpido");
+          }
           return res;
         })
         .catch((err) => {
-          recordCollectionSyncError("words", err);
+          recordCollectionSyncFailure("words", err);
           return null;
         });
       if (!cancelled && pulled) {
@@ -829,11 +858,15 @@ export default function App() {
       // Marcadores y pasajes: mismo ciclo, sin bloquear la estantería.
       const pulledMarks = await syncAnnotations(scope)
         .then((res) => {
-          recordCollectionSyncSuccess("annotations");
+          if (res !== null) {
+            recordCollectionSyncSuccess("annotations");
+          } else {
+            recordCollectionSyncFailure("annotations", "Sync parcial o interrumpido");
+          }
           return res;
         })
         .catch((err) => {
-          recordCollectionSyncError("annotations", err);
+          recordCollectionSyncFailure("annotations", err);
           return null;
         });
       if (!cancelled && pulledMarks) {
@@ -843,48 +876,68 @@ export default function App() {
       // llegaron intervalos el panel del Cuaderno relee su progreso.
       void syncActivity(scope)
         .then((pulledAct) => {
-          recordCollectionSyncSuccess("activity");
-          if (pulledAct && !cancelled) setActivityVersion((v) => v + 1);
+          if (pulledAct !== null) {
+            recordCollectionSyncSuccess("activity");
+            if (pulledAct && !cancelled) setActivityVersion((v) => v + 1);
+          } else {
+            recordCollectionSyncFailure("activity", "Sync parcial o interrumpido");
+          }
         })
         .catch((err) => {
-          recordCollectionSyncError("activity", err);
+          recordCollectionSyncFailure("activity", err);
         });
       // Repasos del cuaderno: anexables por id, mismo ciclo.
       void syncReviews(scope)
-        .then(() => {
-          recordCollectionSyncSuccess("reviews");
+        .then((res) => {
+          if (res !== null) {
+            recordCollectionSyncSuccess("reviews");
+          } else {
+            recordCollectionSyncFailure("reviews", "Sync parcial o interrumpido");
+          }
         })
         .catch((err) => {
-          recordCollectionSyncError("reviews", err);
+          recordCollectionSyncFailure("reviews", err);
         });
       // El compañero: baja lo que otros dispositivos escribieron y
       // sube journal, registros y recepciones pendientes.
       void syncCompanion(scope)
-        .then(() => {
-          recordCollectionSyncSuccess("companion");
+        .then((res) => {
+          if (res !== null) {
+            recordCollectionSyncSuccess("companion");
+          } else {
+            recordCollectionSyncFailure("companion", "Sync parcial o interrumpido");
+          }
         })
         .catch((err) => {
-          recordCollectionSyncError("companion", err);
+          recordCollectionSyncFailure("companion", err);
         });
       // Conocimiento del lector: misma fusión por clave con updatedAt
       // como árbitro, lápidas incluidas. Si bajó algo, el lector
       // recarga su perfil como cuando llegan palabras nuevas.
       void syncKnowledge(scope)
         .then((pulledKnow) => {
-          recordCollectionSyncSuccess("knowledge");
-          if (pulledKnow && !cancelled) setVocabVersion((v) => v + 1);
+          if (pulledKnow !== null) {
+            recordCollectionSyncSuccess("knowledge");
+            if (pulledKnow && !cancelled) setVocabVersion((v) => v + 1);
+          } else {
+            recordCollectionSyncFailure("knowledge", "Sync parcial o interrumpido");
+          }
         })
         .catch((err) => {
-          recordCollectionSyncError("knowledge", err);
+          recordCollectionSyncFailure("knowledge", err);
         });
       // Posiciones de lectura: misma fusión por libro, empuja lo local
       // y baja lo que otros dispositivos dejaron más reciente.
       void syncPositions(scope)
-        .then(() => {
-          recordCollectionSyncSuccess("positions");
+        .then((res) => {
+          if (res !== null) {
+            recordCollectionSyncSuccess("positions");
+          } else {
+            recordCollectionSyncFailure("positions", "Sync parcial o interrumpido");
+          }
         })
         .catch((err) => {
-          recordCollectionSyncError("positions", err);
+          recordCollectionSyncFailure("positions", err);
         });
       try {
         const bookOps = await listBookOps(scope).catch(() => []);
@@ -961,35 +1014,60 @@ export default function App() {
   // libros encoladas— se suben aquí).
   useEffect(() => {
     if (!sessionUserId) return;
-    const onOnline = () => {
+
+    const runFullSync = async () => {
       const scope = captureDbScope();
+      if (!scope.userId) return;
       void syncSavedWords(scope)
-        .then(() => recordCollectionSyncSuccess("words"))
-        .catch((e) => recordCollectionSyncError("words", e));
+        .then((res) => {
+          if (res !== null) recordCollectionSyncSuccess("words");
+          else recordCollectionSyncFailure("words", "Sync parcial o interrumpido");
+        })
+        .catch((e) => recordCollectionSyncFailure("words", e));
       void syncAnnotations(scope)
-        .then(() => recordCollectionSyncSuccess("annotations"))
-        .catch((e) => recordCollectionSyncError("annotations", e));
+        .then((res) => {
+          if (res !== null) recordCollectionSyncSuccess("annotations");
+          else recordCollectionSyncFailure("annotations", "Sync parcial o interrumpido");
+        })
+        .catch((e) => recordCollectionSyncFailure("annotations", e));
       void syncActivity(scope)
         .then((pulled) => {
-          recordCollectionSyncSuccess("activity");
-          if (pulled) setActivityVersion((v) => v + 1);
+          if (pulled !== null) {
+            recordCollectionSyncSuccess("activity");
+            if (pulled) setActivityVersion((v) => v + 1);
+          } else {
+            recordCollectionSyncFailure("activity", "Sync parcial o interrumpido");
+          }
         })
-        .catch((e) => recordCollectionSyncError("activity", e));
+        .catch((e) => recordCollectionSyncFailure("activity", e));
       void syncReviews(scope)
-        .then(() => recordCollectionSyncSuccess("reviews"))
-        .catch((e) => recordCollectionSyncError("reviews", e));
+        .then((res) => {
+          if (res !== null) recordCollectionSyncSuccess("reviews");
+          else recordCollectionSyncFailure("reviews", "Sync parcial o interrumpido");
+        })
+        .catch((e) => recordCollectionSyncFailure("reviews", e));
       void syncCompanion(scope)
-        .then(() => recordCollectionSyncSuccess("companion"))
-        .catch((e) => recordCollectionSyncError("companion", e));
+        .then((res) => {
+          if (res !== null) recordCollectionSyncSuccess("companion");
+          else recordCollectionSyncFailure("companion", "Sync parcial o interrumpido");
+        })
+        .catch((e) => recordCollectionSyncFailure("companion", e));
       void syncKnowledge(scope)
         .then((pulled) => {
-          recordCollectionSyncSuccess("knowledge");
-          if (pulled) setVocabVersion((v) => v + 1);
+          if (pulled !== null) {
+            recordCollectionSyncSuccess("knowledge");
+            if (pulled) setVocabVersion((v) => v + 1);
+          } else {
+            recordCollectionSyncFailure("knowledge", "Sync parcial o interrumpido");
+          }
         })
-        .catch((e) => recordCollectionSyncError("knowledge", e));
+        .catch((e) => recordCollectionSyncFailure("knowledge", e));
       void syncPositions(scope)
-        .then(() => recordCollectionSyncSuccess("positions"))
-        .catch((e) => recordCollectionSyncError("positions", e));
+        .then((res) => {
+          if (res !== null) recordCollectionSyncSuccess("positions");
+          else recordCollectionSyncFailure("positions", "Sync parcial o interrumpido");
+        })
+        .catch((e) => recordCollectionSyncFailure("positions", e));
       void runBookQueue(scope)
         .then(() => {
           setCollectionPendingCount("books", 0);
@@ -1007,8 +1085,33 @@ export default function App() {
           }
         });
     };
+
+    registerReadingSyncRunner(runFullSync);
+    registerSyncRetryRunner(runFullSync);
+
+    const onOnline = () => {
+      void runFullSync();
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        void flushPendingReadingSync();
+      }
+    };
+
+    const onPageHide = () => {
+      void flushPendingReadingSync();
+    };
+
     window.addEventListener("online", onOnline);
-    return () => window.removeEventListener("online", onOnline);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("pagehide", onPageHide);
+
+    return () => {
+      window.removeEventListener("online", onOnline);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("pagehide", onPageHide);
+    };
   }, [sessionUserId, refreshLibrary]);
 
   const selectBook = async (file: File) => {
@@ -1125,15 +1228,35 @@ export default function App() {
       });
       setMessage(`Abriendo «${stored.title ?? stored.name}»…`);
     };
-    // Antes de abrir se fusiona la posición con la cuenta; si lo remoto
-    // pisó una posición local que apuntaba a otro lugar, se pregunta.
-    const sync = await syncPositions(scope).catch(() => null);
-    const conflict = sync?.conflicts.find((entry) => entry.bookHash === item.hash);
-    if (conflict) {
-      showPositionPrompt(conflict, open);
-      return;
-    }
+    // Lectura en 0 segundos también con cuenta: el libro abre desde
+    // IndexedDB y la fusión con el servidor termina por detrás. Si la
+    // nube trae un avance más nuevo, se aplica sin recargar; si hay
+    // conflicto, el aviso llega sobre el libro ya abierto.
     open();
+    void syncPositions(scope)
+      .then((sync) => {
+        if (!sync || openBookHashRef.current !== item.hash) return;
+        const conflict = sync.conflicts.find((entry) => entry.bookHash === item.hash);
+        if (conflict) {
+          showPositionPrompt(conflict, () => undefined, () => {
+            setResumeRequest({
+              hash: item.hash,
+              key: Date.now(),
+              sectionIndex: conflict.merged.sectionIndex,
+              ratio: conflict.merged.ratio,
+              anchor: conflict.merged.anchor,
+            });
+          });
+          return;
+        }
+        if (sync.pulled > 0) {
+          setPositionSync((prev) => ({
+            hash: item.hash,
+            version: (prev?.hash === item.hash ? prev.version : 0) + 1,
+          }));
+        }
+      })
+      .catch(() => null);
   };
 
   // Libro solo en la nube: se descarga, se guarda y se abre. La posición
@@ -1236,9 +1359,13 @@ export default function App() {
     setPositionPrompt(null);
   };
 
-  const showPositionPrompt = (conflict: PositionConflict, open: () => void) => {
+  const showPositionPrompt = (
+    conflict: PositionConflict,
+    open: () => void,
+    resume?: () => void,
+  ) => {
     positionRelease.current ??= pushOverlay(onPositionPromptBack);
-    setPositionPrompt({ conflict, open });
+    setPositionPrompt({ conflict, open, resume });
   };
 
   // El aviso se puede cerrar sin abrir (Escape o clic fuera): la
@@ -1258,6 +1385,7 @@ export default function App() {
       bookRelease.current = release;
       release.swap(() => {
         bookRelease.current = null;
+        openBookHashRef.current = null;
         setBook(null);
       });
     }
@@ -1266,7 +1394,18 @@ export default function App() {
 
   const continueFromRemote = () => {
     const prompt = positionPrompt;
-    if (prompt) openFromPrompt(prompt);
+    if (!prompt) return;
+    if (prompt.resume) {
+      // El libro ya está abierto: cerrar el aviso y saltar a la posición
+      // fusionada sin pasar por openBook (no hay remontaje ni pérdida
+      // de la sección que se estaba leyendo).
+      positionRelease.current?.release();
+      positionRelease.current = null;
+      setPositionPrompt(null);
+      prompt.resume();
+      return;
+    }
+    openFromPrompt(prompt);
   };
 
   const keepLocalPosition = async () => {
@@ -1340,6 +1479,12 @@ export default function App() {
               onRequestCalibration={requestCalibration}
               signedIn={Boolean(sessionUserId)}
               readerInitialWord={readerInitialWord}
+              positionSyncVersion={
+                positionSync?.hash === book.hash ? positionSync.version : 0
+              }
+              resumeRequest={
+                resumeRequest?.hash === book.hash ? resumeRequest : null
+              }
             />
           </Suspense>
 
@@ -1551,14 +1696,18 @@ export default function App() {
             hasJourneyAlert={hasJourneyAlert}
             hasAccount={Boolean(sessionUserId)}
           />
-          <Notice
-            message={message}
-            error={error}
-            onDismissMessage={() => setMessage("")}
-            onDismissError={() => setError("")}
-          />
         </>
       )}
+
+      <Notice
+        // Con el lector abierto el aviso de estado ya se pinta dentro del
+        // lector: duplicarlo aquí lo anuncia dos veces a lectores de pantalla
+        // y lo deja detrás del dock. Fuera del lector, esta es la única capa.
+        message={book ? null : message}
+        error={error}
+        onDismissMessage={() => setMessage("")}
+        onDismissError={() => setError("")}
+      />
 
       {showJourney ? (
         <Suspense fallback={<p className="status">Abriendo tu recorrido…</p>}>

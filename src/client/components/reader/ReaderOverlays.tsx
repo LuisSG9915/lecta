@@ -77,6 +77,7 @@ export interface ReaderOverlaysProps {
   charOffsetInChapter?: number;
   currentChapterTitle?: string;
   compactMode?: boolean;
+  wordCapsuleHost?: HTMLElement | null;
 
   // SectionPreview
   prep: PrepState | null;
@@ -164,6 +165,7 @@ export function ReaderOverlays({
   charOffsetInChapter = 0,
   currentChapterTitle,
   compactMode = false,
+  wordCapsuleHost = null,
 
   prep,
   onRowsPresented,
@@ -272,6 +274,7 @@ export function ReaderOverlays({
           charOffsetInChapter={charOffsetInChapter}
           currentChapterTitle={currentChapterTitle}
           compactMode={compactMode}
+          capsuleHost={wordCapsuleHost}
           onClose={onCloseSelection}
           onSaved={onWordSaved}
           onRemoved={onWordRemoved}

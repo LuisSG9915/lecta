@@ -22,6 +22,7 @@ import {
 } from "../lib/idb";
 import QuoteCardModal from "./QuoteCardModal";
 import BookGlossaryModal from "./BookGlossaryModal";
+import Notice from "./Notice";
 import {
   answerItem,
   batchLookup,
@@ -340,7 +341,7 @@ const ORDERS = [
 ] as const;
 
 const GROUP_PAGE = 50;
-const UNDO_MS = 6000;
+const UNDO_MS = 5000;
 
 // Nivel de estabilidad FSRS en 4 segmentos para el indicador visual
 function getStabilitySegments(s: number): number {
@@ -1552,7 +1553,8 @@ function FullVocabulary({
 
   const restore = async () => {
     if (!undo) return;
-    const restored = { ...undo.word, deleted: false, updatedAt: Date.now() };
+    window.clearTimeout(undoTimer.current);
+    const restored = { ...undo.word, deleted: false, deletedAt: null, updatedAt: Date.now() };
     setUndo(null);
     try {
       const scope = captureDbScope();
@@ -1749,6 +1751,14 @@ function FullVocabulary({
       aria-label="Cuaderno"
       data-session={queue ? "queue" : learn ? "learn" : undefined}
     >
+      {undo ? (
+        <Notice
+          message={`«${undo.word.form}» se quitó del cuaderno.`}
+          actionLabel="Deshacer"
+          onAction={() => void restore()}
+          onDismissMessage={() => setUndo(null)}
+        />
+      ) : null}
       <header className="notebook-bar">
         {isOverlay ? (
           <button

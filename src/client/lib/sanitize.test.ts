@@ -37,10 +37,30 @@ describe("sanitizeSectionDocument", () => {
     expect(p?.hasAttribute("onmouseover")).toBe(false);
   });
 
-  it("elimina enlaces y su href javascript:", () => {
-    const clean = sanitize('<a href="javascript:window.__xss=1">enlace</a>');
-    expect(clean.querySelector("a")).toBeNull();
-    expect(clean.textContent).toBe("enlace");
+  it("conserva enlaces internos y notas al pie con data-epub-link='internal' y desactiva esquemas peligrosos o externos", () => {
+    const cleanInternal1 = sanitize('<a href="#fn1">1</a>');
+    const a1 = cleanInternal1.querySelector("a");
+    expect(a1).not.toBeNull();
+    expect(a1?.getAttribute("href")).toBe("#fn1");
+    expect(a1?.getAttribute("data-epub-link")).toBe("internal");
+
+    const cleanInternal2 = sanitize('<a href="chapter2.xhtml#note-4">ver nota</a>');
+    const a2 = cleanInternal2.querySelector("a");
+    expect(a2).not.toBeNull();
+    expect(a2?.getAttribute("href")).toBe("chapter2.xhtml#note-4");
+    expect(a2?.getAttribute("data-epub-link")).toBe("internal");
+
+    const cleanJs = sanitize('<a href="javascript:alert(1)">x</a>');
+    const aJs = cleanJs.querySelector("a");
+    expect(aJs).not.toBeNull();
+    expect(aJs?.hasAttribute("href")).toBe(false);
+    expect(aJs?.textContent).toBe("x");
+
+    const cleanEvil = sanitize('<a href="https://evil.com">y</a>');
+    const aEvil = cleanEvil.querySelector("a");
+    expect(aEvil).not.toBeNull();
+    expect(aEvil?.hasAttribute("href")).toBe(false);
+    expect(aEvil?.textContent).toBe("y");
   });
 
   it("conserva imágenes pero elimina sus handlers, e iframes", () => {
@@ -113,10 +133,10 @@ describe("sanitizeSectionDocument", () => {
 
   it("preserva anclas <a name> con texto interno descartando href pero manteniendo data-frag-id", () => {
     const clean = sanitize('<a name="sec1" href="https://externo.com">Título de Sección</a>');
-    expect(clean.querySelector("a")).toBeNull();
-    const span = clean.querySelector('[data-frag-id="sec1"]');
-    expect(span).not.toBeNull();
-    expect(span?.textContent).toBe("Título de Sección");
+    const el = clean.querySelector('[data-frag-id="sec1"]');
+    expect(el).not.toBeNull();
+    expect(el?.hasAttribute("href")).toBe(false);
+    expect(el?.textContent).toBe("Título de Sección");
   });
 });
 

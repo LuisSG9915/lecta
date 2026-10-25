@@ -8,11 +8,17 @@ import {
   type SavedBookPosition,
 } from "./idb";
 import { accountFetch } from "./account-fetch";
-import { advanceSyncCursor, getSyncCursor } from "./sync-cursors";
-import { maxStamp, type PushResult } from "./sync-push";
+import {
+  advanceSyncCompoundCursor,
+  advanceSyncCursor,
+  getSyncCompoundCursor,
+  getSyncCursor,
+} from "./sync-cursors";
+import { type PushResult } from "./sync-push";
 import {
   clearCollectionPagesPending,
   markCollectionPagesPending,
+  scheduleReadingSyncContinuation,
 } from "./sync-state";
 import { POSITION_LIMITS } from "../../shared/reading-data";
 
@@ -37,10 +43,12 @@ export async function pushPositionsToServer(
   const bound = scope ?? captureDbScope();
   if (!bound.userId || !positions.length) return { ok: true, acceptedMax: 0 };
   if (!isDbScopeActive(bound)) return { ok: false, acceptedMax: 0 };
+  const sorted = [...positions].sort((a, b) => a.updatedAt - b.updatedAt);
   let acceptedMax = 0;
+  let lastAcceptedKey: string | undefined;
   try {
-    for (let start = 0; start < positions.length; start += POSITION_LIMITS.batch) {
-      const batch = positions.slice(start, start + POSITION_LIMITS.batch);
+    for (let start = 0; start < sorted.length; start += POSITION_LIMITS.batch) {
+      const batch = sorted.slice(start, start + POSITION_LIMITS.batch);
       const response = await accountFetch(
         "/api/positions",
         {
@@ -51,12 +59,23 @@ export async function pushPositionsToServer(
         },
         bound,
       );
-      if (!response.ok) return { ok: false, acceptedMax };
-      acceptedMax = Math.max(acceptedMax, maxStamp(batch, (item) => item.updatedAt));
+      if (!response.ok) return { ok: false, acceptedMax, lastAcceptedKey };
+      const data = (await response.json().catch(() => null)) as { serverTime?: number } | null;
+      const serverTime = data?.serverTime;
+      if (serverTime) {
+        for (const item of batch) {
+          if (item.updatedAt > serverTime) {
+            await saveBookPosition({ ...item, updatedAt: serverTime }, bound);
+          }
+        }
+      }
+      const lastItem = batch[batch.length - 1];
+      acceptedMax = Math.max(acceptedMax, serverTime ? Math.min(lastItem.updatedAt, serverTime) : lastItem.updatedAt);
+      lastAcceptedKey = lastItem.bookHash;
     }
-    return { ok: true, acceptedMax };
+    return { ok: true, acceptedMax, lastAcceptedKey };
   } catch {
-    return { ok: false, acceptedMax };
+    return { ok: false, acceptedMax, lastAcceptedKey };
   }
 }
 
@@ -64,10 +83,6 @@ let pendingPositionsToFlush: SavedBookPosition[] = [];
 
 export function getPendingPositionsCount(): number {
   return pendingPositionsToFlush.length;
-}
-
-export function queuePositionForFlush(pos: SavedBookPosition) {
-  pendingPositionsToFlush.push(pos);
 }
 
 export function flushPendingPositions(scope?: DbScope): Promise<boolean> {
@@ -161,8 +176,12 @@ export async function syncPositions(scope?: DbScope): Promise<{
   }
 
   if (!allOk) return null;
-  if (hasMore) markCollectionPagesPending("positions");
-  else clearCollectionPagesPending("positions");
+  if (hasMore) {
+    markCollectionPagesPending("positions");
+    scheduleReadingSyncContinuation("positions");
+  } else {
+    clearCollectionPagesPending("positions");
+  }
 
   const localByHash = new Map(local.map((item) => [item.bookHash, item]));
   const remoteByHash = new Map(remoteAll.map((item) => [item.bookHash, item]));
@@ -194,30 +213,49 @@ export async function syncPositions(scope?: DbScope): Promise<{
     }
   }
 
-  // Desacoplar toPush de effectiveSince
-  const lastPushedAt = getSyncCursor(bound.userId, "positions:push");
-  const toPush = local.filter((item) => {
-    const remoteItem = remoteByHash.get(item.bookHash);
-    if (remoteItem) {
-      return item.updatedAt > remoteItem.updatedAt;
-    }
-    return lastPushedAt > 0 ? item.updatedAt > lastPushedAt : true;
-  });
+  // Desacoplar toPush de effectiveSince con orden y cursor seguro
+  const lastCursor = getSyncCompoundCursor(bound.userId, "positions:push");
+  const toPush = local
+    .filter((item) => {
+      const remoteItem = remoteByHash.get(item.bookHash);
+      if (remoteItem) {
+        return item.updatedAt > remoteItem.updatedAt;
+      }
+      if (lastCursor.key) {
+        if (item.updatedAt > lastCursor.stamp) return true;
+        if (item.updatedAt === lastCursor.stamp && item.bookHash > lastCursor.key) return true;
+        return false;
+      }
+      return lastCursor.stamp > 0 ? item.updatedAt > lastCursor.stamp : true;
+    })
+    .sort((a, b) => {
+      const diff = a.updatedAt - b.updatedAt;
+      return diff !== 0 ? diff : a.bookHash.localeCompare(b.bookHash);
+    });
 
   if (toPush.length > 0) {
     const pushed = await pushPositionsToServer(toPush, bound);
     if (pushed.acceptedMax > 0) {
-      advanceSyncCursor(bound.userId, "positions:push", pushed.acceptedMax);
+      if (pushed.lastAcceptedKey) {
+        advanceSyncCompoundCursor(bound.userId, "positions:push", {
+          stamp: pushed.acceptedMax,
+          key: pushed.lastAcceptedKey,
+        });
+      } else {
+        advanceSyncCursor(bound.userId, "positions:push", pushed.acceptedMax);
+      }
     }
     if (!pushed.ok) return null;
   }
 
   // Solo se sella cuando el ciclo completo salió, como en anotaciones.
-  const finalCursor = nextCursor ?? maxUpdated;
+  const finalCursor = hasMore ? currentSince : (nextCursor ?? maxUpdated);
   if (finalCursor > 0) {
     advanceSyncCursor(bound.userId, "positions", finalCursor);
   }
-  await saveSessionValue(POSITIONS_SYNC_KEY, String(Date.now()), bound);
+  if (!hasMore) {
+    await saveSessionValue(POSITIONS_SYNC_KEY, String(Date.now()), bound);
+  }
   return { pulled, conflicts };
 }
 

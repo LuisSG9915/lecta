@@ -225,7 +225,7 @@ export function isLikelyChapterLabel(label: string): boolean {
 
 const normPath = (path: string) => path.replace(/^\/+/, "");
 
-const splitHref = (href: string) => {
+export const splitHref = (href: string) => {
   const hash = href.indexOf("#");
   return hash < 0
     ? { path: href, fragment: undefined as string | undefined }
@@ -235,7 +235,7 @@ const splitHref = (href: string) => {
 const targetId = (path: string, fragment?: string) =>
   fragment ? `${normPath(path)}#${fragment}` : normPath(path);
 
-const sectionIndexOf = (book: EpubBook, path: string) => {
+export const sectionIndexOf = (book: EpubBook, path: string) => {
   const wanted = normPath(path);
   const idx = book.sections.findIndex(
     (section) => normPath(section.id) === wanted,

@@ -1,14 +1,44 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { app, computeAiCacheKey, getCachedAiText, setCachedAiText } from "./app";
 import type { WorkerEnv } from "./db";
+import * as dbModule from "./db";
 import { resetClientErrorLimiters } from "./client-errors";
 
 describe("GET /api/health", () => {
-  it("returns the API status", async () => {
+  it("devuelve 503 con db unreachable si la base de datos no está disponible", async () => {
+    vi.spyOn(dbModule, "withClient").mockResolvedValueOnce(undefined);
+    const response = await app.request("/api/health");
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ ok: false, db: "unreachable" });
+  });
+
+  it("devuelve 200 con db connected si la base de datos responde SELECT 1", async () => {
+    vi.spyOn(dbModule, "withClient").mockImplementationOnce(async (_env, callback) => {
+      return callback({
+        query: vi.fn().mockResolvedValue({ rows: [{ "?column?": 1 }] }),
+      } as unknown as Parameters<typeof callback>[0]);
+    });
     const response = await app.request("/api/health");
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ status: "ok" });
+    expect(await response.json()).toEqual({ ok: true, db: "connected", status: "ok" });
+  });
+
+  it("devuelve 503 si la consulta supera el timeout de 2000 ms", async () => {
+    vi.spyOn(dbModule, "withClient").mockImplementationOnce(
+      () => new Promise((resolve) => setTimeout(resolve, 3000)),
+    );
+    vi.useFakeTimers();
+    try {
+      const promise = app.request("/api/health");
+      await vi.advanceTimersByTimeAsync(2100);
+      const response = await promise;
+      expect(response.status).toBe(503);
+      expect(await response.json()).toEqual({ ok: false, db: "unreachable" });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

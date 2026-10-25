@@ -48,6 +48,7 @@ import {
 } from "../lib/export";
 import RestoreBackupDialog from "./RestoreBackupDialog";
 import DiagnosticsModal from "./DiagnosticsModal";
+import { forceFullResyncFromServer } from "../lib/reading-sync";
 import LegalNotice from "./LegalNotice";
 import { timeAgo } from "../lib/relative-time";
 import { getDictionaryCacheWordCount, emptyDictionaryCache } from "../lib/offline-dictionary";
@@ -225,6 +226,8 @@ export default function Account({
   // Diagnóstico y avisos legales
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [showLegal, setShowLegal] = useState<"privacy" | "terms" | null>(null);
+  const [resyncLoading, setResyncLoading] = useState(false);
+  const [resyncMessage, setResyncMessage] = useState("");
 
   const handleLinkKindle = async (e: FormEvent) => {
     e.preventDefault();
@@ -1695,7 +1698,7 @@ export default function Account({
               </a>
               .
             </p>
-            <div style={{ display: "flex", gap: "var(--s-2)", marginTop: "var(--s-2)", flexWrap: "wrap" }}>
+            <div style={{ display: "flex", gap: "var(--s-2)", marginTop: "var(--s-2)", flexWrap: "wrap", alignItems: "center" }}>
               <button
                 type="button"
                 className="btn--quiet"
@@ -1703,6 +1706,41 @@ export default function Account({
               >
                 Centro de diagnóstico
               </button>
+              <button
+                type="button"
+                className="btn--quiet"
+                disabled={resyncLoading}
+                onClick={async () => {
+                  if (resyncLoading) return;
+                  setResyncLoading(true);
+                  setResyncMessage("");
+                  try {
+                    const res = await forceFullResyncFromServer();
+                    if (res.ok) {
+                      setResyncMessage(
+                        res.diverged
+                          ? "Sincronizado (divergencia detectada)"
+                          : "Sincronizado correctamente",
+                      );
+                    } else {
+                      setResyncMessage(res.error || "Error al sincronizar");
+                    }
+                  } catch (e) {
+                    setResyncMessage(
+                      e instanceof Error ? e.message : "Error al sincronizar",
+                    );
+                  } finally {
+                    setResyncLoading(false);
+                  }
+                }}
+              >
+                {resyncLoading ? "Resincronizando…" : "Resincronizar desde el servidor"}
+              </button>
+              {resyncMessage ? (
+                <span className="meta" style={{ fontSize: "var(--fs-xs)" }}>
+                  {resyncMessage}
+                </span>
+              ) : null}
               <button
                 type="button"
                 className="btn--quiet"

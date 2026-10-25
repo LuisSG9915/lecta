@@ -94,9 +94,9 @@ describe("PUT /api/vocab — tarjeta FSRS", () => {
     expect(rows[0].card).toEqual(card);
   });
 
-  it("card ausente o null no pisa la almacenada", async () => {
-    // El upsert conserva la tarjeta previa con COALESCE: una
-    // actualización de otro campo jamás borra el repaso del lector.
+  it("card ausente o null no pisa la almacenada y envuelve con NULLIF y CASE", async () => {
+    // El upsert conserva la tarjeta previa con COALESCE(NULLIF(excluded.card, 'null'::jsonb), ...):
+    // una actualización de otro campo o dispositivo con card null jamás borra el repaso del lector.
     const response = await putWords([word(), word({ card: null })]);
     expect(response.status).toBe(200);
 
@@ -105,7 +105,13 @@ describe("PUT /api/vocab — tarjeta FSRS", () => {
       [string, string],
     ];
     expect(sql).toContain(
-      "card = COALESCE(excluded.card, lecta_user_words.card)",
+      "NULLIF(j.value -> 'card', 'null'::jsonb) AS card",
+    );
+    expect(sql).toContain(
+      "card = CASE",
+    );
+    expect(sql).toContain(
+      "COALESCE(NULLIF(excluded.card, 'null'::jsonb), lecta_user_words.card)",
     );
     const rows = JSON.parse(params[1]) as { card: unknown }[];
     expect(rows[0].card).toBeNull();
@@ -157,11 +163,11 @@ describe("GET /api/vocab — sincronización incremental", () => {
     expect(body.words).toHaveLength(1);
     expect(body.serverTime).toBeGreaterThan(0);
     const [sql, params] = queryMock.mock.calls[0] as unknown as [string, unknown[]];
-    expect(sql).not.toContain("updated_at >");
+    expect(sql).not.toContain("synced_at >");
     expect(params).toEqual(["u1", "es"]);
   });
 
-  it("con parámetro since filtra por updated_at > since", async () => {
+  it("con parámetro since filtra por synced_at > since", async () => {
     queryMock.mockResolvedValueOnce({
       rowCount: 0,
       rows: [],
@@ -173,8 +179,66 @@ describe("GET /api/vocab — sincronización incremental", () => {
     expect(body.words).toHaveLength(0);
     expect(body.serverTime).toBeGreaterThan(0);
     const [sql, params] = queryMock.mock.calls[0] as unknown as [string, unknown[]];
-    expect(sql).toContain("updated_at > $3");
+    expect(sql).toContain("synced_at > $3");
     expect(params).toEqual(["u1", "es", 1700000050000]);
+  });
+
+  it("dispositivo A con reloj atrasado 60 s sube una palabra y dispositivo B con cursor en serverTime - 5 s la recibe gracias a synced_at", async () => {
+    const serverNow = 1_700_000_100_000;
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(serverNow);
+
+    // 1. Dispositivo A (reloj atrasado 60s) envía palabra con updatedAt = serverNow - 60_000
+    const delayedUpdatedAt = serverNow - 60_000;
+    queryMock.mockResolvedValueOnce({ rowCount: 1, rows: [] });
+    const putResponse = await putWords([word({ form: "atrasada", updatedAt: delayedUpdatedAt, savedAt: delayedUpdatedAt })]);
+    expect(putResponse.status).toBe(200);
+
+    // Servidor fijó synced_at = serverNow como parámetro $3
+    const [putSql, putParams] = queryMock.mock.calls[0] as unknown as [string, [string, string, number]];
+    expect(putSql).toContain("synced_at");
+    expect(putParams[2]).toBe(serverNow);
+
+    // 2. Dispositivo B hace pull con cursor = serverNow - 5_000
+    const cursorDeviceB = serverNow - 5_000;
+    queryMock.mockClear();
+    queryMock.mockResolvedValueOnce({
+      rowCount: 1,
+      rows: [
+        {
+          language: "es",
+          form: "atrasada",
+          lemma: "atrasada",
+          pos: "adj",
+          meaning: "tardía",
+          context: null,
+          bookHash: "h1",
+          senseEntryId: null,
+          senseOrder: null,
+          card: null,
+          savedAt: delayedUpdatedAt,
+          updatedAt: delayedUpdatedAt,
+          syncedAt: serverNow,
+          deleted: false,
+        },
+      ],
+    });
+
+    const getResponse = await app.request(`/api/vocab?lang=es&since=${cursorDeviceB}`, {}, {});
+    expect(getResponse.status).toBe(200);
+    const body = (await getResponse.json()) as { words: { form: string; syncedAt: number; updatedAt: number }[] };
+
+    // Dispositivo B recibe la palabra porque la query filtra por synced_at > cursorDeviceB
+    // (serverNow > serverNow - 5_000 es true, aunque updatedAt = serverNow - 60_000 hubiera quedado por debajo)
+    const [getSql, getParams] = queryMock.mock.calls[0] as unknown as [string, unknown[]];
+    expect(getSql).toContain("synced_at > $3");
+    expect(getSql).not.toContain("updated_at > $3");
+    expect(getParams).toEqual(["u1", "es", cursorDeviceB]);
+    expect(body.words).toHaveLength(1);
+    expect(body.words[0].form).toBe("atrasada");
+    expect(body.words[0].syncedAt).toBeGreaterThan(cursorDeviceB);
+    expect(body.words[0].updatedAt).toBeLessThan(cursorDeviceB);
+
+    nowSpy.mockRestore();
   });
 
   it("calcula correctamente nextCursor y hasMore cuando devuelve 1000 filas vs menos de 1000 filas", async () => {
@@ -192,6 +256,7 @@ describe("GET /api/vocab — sincronización incremental", () => {
       card: null,
       savedAt: 1700000000000 + i,
       updatedAt: 1700000000000 + i,
+      syncedAt: 1700000000000 + i,
       deleted: false,
     }));
 
@@ -250,7 +315,7 @@ describe("GET /api/vocab — sincronización incremental", () => {
     expect(queryMock).toHaveBeenCalledTimes(1);
   });
 
-  it("usa afterWord para no perder filas con el mismo updated_at", async () => {
+  it("usa afterWord para no perder filas con el mismo synced_at", async () => {
     queryMock.mockResolvedValueOnce({ rowCount: 0, rows: [] });
 
     const response = await app.request(
@@ -266,9 +331,9 @@ describe("GET /api/vocab — sincronización incremental", () => {
       unknown[],
     ];
     expect(sql).toContain(
-      "(updated_at > $3 OR (updated_at = $3 AND form > $4))",
+      "(synced_at > $3 OR (synced_at = $3 AND form > $4))",
     );
-    expect(sql).toContain("ORDER BY updated_at ASC, form ASC");
+    expect(sql).toContain("ORDER BY synced_at ASC, form ASC");
     expect(params).toEqual(["u1", "es", 1700000000000, "perenne"]);
   });
 });

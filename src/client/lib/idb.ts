@@ -684,6 +684,72 @@ async function switchDbUser(userId: string | null) {
 const newerOf = <T>(a: T, b: T, stamp: (item: T) => number | undefined) =>
   (stamp(b) ?? 0) > (stamp(a) ?? 0) ? b : a;
 
+export interface KnowledgeRecord {
+  updatedAt?: number;
+  savedAt?: number;
+  deleted?: boolean;
+  deletedAt?: number | null;
+  card?: Card | null;
+  contextSnippet?: string | null;
+  priority?: boolean | null;
+  passiveSeenCount?: number | null;
+  [key: string]: unknown;
+}
+
+export function mergeKnowledgeRecords<T extends KnowledgeRecord>(
+  a: T,
+  b: T,
+): T {
+  const getStamp = (r: KnowledgeRecord) => r.updatedAt ?? r.savedAt ?? 0;
+  const [winner, loser] = getStamp(a) >= getStamp(b) ? [a, b] : [b, a];
+
+  // Si la versión más reciente es una lápida de borrado, gana la lápida completa
+  if (winner.deletedAt != null || winner.deleted === true) {
+    return winner;
+  }
+
+  const pickBetterCard = (
+    c1: Card | null | undefined,
+    c2: Card | null | undefined,
+  ): Card | null => {
+    if (!c1) return c2 ?? null;
+    if (!c2) return c1;
+    const r1 = (c1 as { reps?: number }).reps ?? 0;
+    const r2 = (c2 as { reps?: number }).reps ?? 0;
+    if (r1 !== r2) return r1 > r2 ? c1 : c2;
+    const getReviewTime = (c: Card) => {
+      const lr =
+        (c as { last_review?: unknown; lastReview?: unknown }).last_review ??
+        (c as { last_review?: unknown; lastReview?: unknown }).lastReview;
+      if (!lr) return 0;
+      if (lr instanceof Date) return lr.getTime();
+      if (typeof lr === "number") return lr;
+      return new Date(String(lr)).getTime() || 0;
+    };
+    return getReviewTime(c1) >= getReviewTime(c2) ? c1 : c2;
+  };
+
+  const merged: T = {
+    ...loser,
+    ...winner,
+    card: pickBetterCard(
+      winner.card as Card | undefined,
+      loser.card as Card | undefined,
+    ) as T["card"],
+    contextSnippet: (winner.contextSnippet ?? loser.contextSnippet) as T["contextSnippet"],
+    priority: (winner.priority ?? loser.priority) as T["priority"],
+  };
+
+  if (winner.passiveSeenCount != null || loser.passiveSeenCount != null) {
+    (merged as Record<string, unknown>).passiveSeenCount = Math.max(
+      Number(winner.passiveSeenCount) || 0,
+      Number(loser.passiveSeenCount) || 0,
+    );
+  }
+
+  return merged;
+}
+
 async function migrateAnonymousToUser(userId: string) {
   // Destino fijo con conexión propia: el traslado escribe en la base
   // de `userId` aunque la cuenta activa cambiara mientras corría.
@@ -725,7 +791,7 @@ async function migrateAnonymousToUser(userId: string) {
     for (const word of words) {
       const existing = await target.get("savedWords", word.key);
       const merged = existing
-        ? newerOf(existing, word, (item) => item.updatedAt ?? item.savedAt)
+        ? mergeKnowledgeRecords(word, existing)
         : word;
       await target.put("savedWords", merged);
     }
@@ -751,7 +817,7 @@ async function migrateAnonymousToUser(userId: string) {
     for (const word of knowledge) {
       const existing = await target.get("knowledge", word.key);
       const merged = existing
-        ? newerOf(existing, word, (item) => item.updatedAt)
+        ? mergeKnowledgeRecords(word, existing)
         : word;
       await target.put("knowledge", merged);
     }

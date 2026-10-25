@@ -591,6 +591,79 @@
   margin-block-end: var(--s-3);
 }
 
+.shelf-controls-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-3);
+  flex-wrap: wrap;
+  margin-block-end: var(--s-4);
+}
+
+.shelf-search-wrap {
+  flex: 1 1 14rem;
+  min-inline-size: 0;
+}
+
+.shelf-search-input {
+  inline-size: 100%;
+  max-inline-size: 24rem;
+  padding: 0.35rem 0.75rem;
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+  color: var(--ink);
+  background: var(--paper-raised, rgba(0, 0, 0, 0.03));
+  border: 1px solid var(--rule-subtle, rgba(120, 95, 70, 0.2));
+  border-radius: var(--r-pill, 999px);
+  outline: none;
+  transition: border-color var(--dur-1) var(--ease-soft), background var(--dur-1) var(--ease-soft);
+}
+
+.shelf-search-input:focus {
+  border-color: var(--accent-primary, #c86d3b);
+  background: var(--paper);
+}
+
+.shelf-sort-wrap {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+}
+
+.shelf-sort-label {
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+.shelf-sort-select {
+  padding: 0.25rem 0.65rem;
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  color: var(--ink);
+  background: var(--paper-raised, var(--paper));
+  border: 1px solid var(--rule-subtle, rgba(120, 95, 70, 0.2));
+  border-radius: var(--r-pill, 999px);
+  cursor: pointer;
+  outline: none;
+}
+
+.shelf-sort-select:focus {
+  border-color: var(--accent-primary, #c86d3b);
+}
+
+.shelf-empty-search {
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+  font-style: italic;
+  padding: var(--s-4) 0;
+  margin: 0;
+}
+
 .shelf-row {
   list-style: none;
   margin: 0;
@@ -964,8 +1037,11 @@
 
 .shelf-empty {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--s-6);
-  justify-items: start;
+  justify-items: stretch;
+  justify-self: stretch;
+  inline-size: 100%;
   padding-block: var(--s-5);
   max-inline-size: 50rem;
 }
@@ -1054,6 +1130,7 @@
   display: grid;
   gap: var(--s-3);
   inline-size: 100%;
+  justify-self: stretch;
   margin-block-start: var(--s-2);
 }
 
@@ -1523,12 +1600,12 @@
 
   .shelf-book,
   .shelf-book-cover,
-  .add-slot {
+  .add-slot:not(.add-slot--wide) {
     inline-size: 6.5rem;
   }
 
   .shelf-book-cover,
-  .add-slot {
+  .add-slot:not(.add-slot--wide) {
     block-size: 9.75rem;
   }
 }

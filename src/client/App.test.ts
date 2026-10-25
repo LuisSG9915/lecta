@@ -187,6 +187,9 @@ vi.mock("./lib/reading-sync", () => ({
   syncReviews: vi.fn(async () => undefined),
   pullMissingUserBooksFromCloud: vi.fn(async () => 0),
   syncUserBookUpload: vi.fn(async () => true),
+  registerReadingSyncRunner: vi.fn(),
+  flushPendingReadingSync: vi.fn(async () => {}),
+  scheduleReadingSyncPush: vi.fn(),
 }));
 
 vi.mock("./lib/companion-sync", () => ({
@@ -212,6 +215,15 @@ const popBack = () =>
     history.replaceState({}, "");
     window.dispatchEvent(new Event("popstate"));
   });
+
+// Retroceso real de una sola entrada: el historial vuelve al lector y
+// solo se cierra la capa que estaba encima.
+const popOneEntry = async () => {
+  await act(async () => {
+    history.back();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+};
 
 const CONFLICT = {
   bookHash: "h1",
@@ -259,19 +271,39 @@ const openConflict = async () => {
   await act(async () => card!.click());
   await flush();
   expect(host.querySelector(".dialog-scrim")).toBeTruthy();
+  // La apertura ya no espera al sync: el lector está montado detrás.
+  expect(host.querySelector(".reader-stub")).toBeTruthy();
 };
 
 const renderRoot = () => act(() => root.render(h(App)));
 
+describe("App · apertura sin esperar a la red", () => {
+  it("monta el lector antes de que termine el sync de posiciones", async () => {
+    let release!: (value: { pulled: number; conflicts: never[] }) => void;
+    vi.mocked(syncPositions).mockImplementation(
+      () => new Promise((resolve) => { release = resolve; }),
+    );
+    renderRoot();
+    await flush();
+    const card = host.querySelector<HTMLButtonElement>(".shelf-book-cover");
+    expect(card).toBeTruthy();
+    await act(async () => card!.click());
+    await flush();
+    // El sync sigue pendiente y el libro ya está abierto.
+    expect(host.querySelector(".reader-stub")).toBeTruthy();
+    await act(async () => release({ pulled: 0, conflicts: [] }));
+  });
+});
+
 describe("App · aviso de conflicto de posición", () => {
-  it("atrás cierra solo la capa del aviso y no abre el libro", async () => {
+  it("atrás cierra solo la capa del aviso y deja el libro abierto", async () => {
     await openConflict();
-    popBack();
+    await popOneEntry();
     expect(host.querySelector(".dialog-scrim")).toBeNull();
-    expect(host.querySelector(".reader-stub")).toBeNull();
+    expect(host.querySelector(".reader-stub")).toBeTruthy();
   });
 
-  it("cerrar el aviso no abre el libro", async () => {
+  it("cerrar el aviso mantiene el libro abierto en la posición local", async () => {
     await openConflict();
     const close = [...host.querySelectorAll("button")].find(
       (b) => b.getAttribute("aria-label") === "Cerrar aviso",
@@ -279,7 +311,8 @@ describe("App · aviso de conflicto de posición", () => {
     expect(close).toBeTruthy();
     await act(async () => close!.click());
     expect(host.querySelector(".dialog-scrim")).toBeNull();
-    expect(host.querySelector(".reader-stub")).toBeNull();
+    // La apertura ya no espera al sync: el libro está detrás del aviso.
+    expect(host.querySelector(".reader-stub")).toBeTruthy();
   });
 
   it("elegir continuar abre el libro y atrás vuelve a la estantería", async () => {

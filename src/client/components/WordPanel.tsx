@@ -1,5 +1,6 @@
 import "../styles/reader.css";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   explainInPassage,
   lookupWord,
@@ -20,7 +21,8 @@ import {
   type KnownWord,
   type SavedWord,
 } from "../lib/idb";
-import { pushKnowledgeToServer } from "../lib/reading-sync";
+import { pushKnowledgeToServer, scheduleReadingSyncPush } from "../lib/reading-sync";
+import { incrementCollectionPendingCount } from "../lib/sync-state";
 import { recordReview } from "../lib/reviews";
 import { loadUseAi } from "../lib/ai-pref";
 import { loadNativeLanguage } from "../lib/settings";
@@ -72,6 +74,8 @@ export interface UnifiedWordPanelProps {
   canExplain?: boolean;
   isSavedInitial?: boolean;
   compactMode?: boolean;
+  /** Nodo de la franja flotante donde montar la cápsula (evita el fixed). */
+  capsuleHost?: HTMLElement | null;
   sections?: SearchSection[];
   toc?: SearchTocRow[];
   currentSectionIndex?: number;
@@ -125,6 +129,7 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
   canExplain: _canExplain = true,
   isSavedInitial = false,
   compactMode = false,
+  capsuleHost = null,
   sections,
   toc,
   currentSectionIndex,
@@ -240,10 +245,18 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
     // 3. Resolución paralela automática del sentido exacto en la frase del libro (con caché en memoria e IndexedDB)
     const cachedMemory = passageMeaningMemoryCache.get(cacheKey);
     if (cachedMemory) {
-      setContextual(cachedMemory);
-      setIsLoadingContext(false);
+      queueMicrotask(() => {
+        if (!abortCtrl.signal.aborted) {
+          setContextual(cachedMemory);
+          setIsLoadingContext(false);
+        }
+      });
     } else {
-      setIsLoadingContext(true);
+      queueMicrotask(() => {
+        if (!abortCtrl.signal.aborted) {
+          setIsLoadingContext(true);
+        }
+      });
       // Intentar leer de IndexedDB session cache primero
       const loadCachePromise = typeof loadSessionValue === "function"
         ? loadSessionValue(`passage_meaning:${cacheKey}`, scope).catch(() => null)
@@ -330,7 +343,11 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
     const shouldBuildCard = isCandidateProperNoun || Boolean(sections && sections.length > 0);
     if (!shouldBuildCard) return;
 
-    setIsLoadingCharacter(true);
+    queueMicrotask(() => {
+      if (!cancelled) {
+        setIsLoadingCharacter(true);
+      }
+    });
 
     const boundary = {
       chapterIndex: currentSectionIndex ?? 0,
@@ -464,6 +481,9 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
       setSavedEntry(saved);
       onSaved?.(saved);
 
+      incrementCollectionPendingCount("words");
+      scheduleReadingSyncPush("words");
+
       // Micro-ajuste de theta en caso de guardar palabra fácil
       const currentTheta = loadUserTheta(3.0, effectiveLang);
       const bw = wordDifficulty(localEntry?.shortDefinition ? 3.5 : 2.5);
@@ -546,6 +566,21 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
     setTimeout(() => setQuickNotice(null), 2000);
   };
 
+  const keyboardHandlersRef = useRef({
+    handleSpeak,
+    handleSave,
+    handleQuickKnown,
+    onClose,
+  });
+  useEffect(() => {
+    keyboardHandlersRef.current = {
+      handleSpeak,
+      handleSave,
+      handleQuickKnown,
+      onClose,
+    };
+  });
+
   // Atajos de teclado rápidos: 'p' (pronunciar), 'g' (guardar), 's' (ya la sé), Escape (cerrar)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -554,21 +589,21 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
       }
       if (e.key === "p" || e.key === "P") {
         e.preventDefault();
-        handleSpeak();
+        keyboardHandlersRef.current.handleSpeak();
       } else if (e.key === "g" || e.key === "G") {
         e.preventDefault();
-        void handleSave();
+        void keyboardHandlersRef.current.handleSave();
       } else if (e.key === "s" || e.key === "S") {
         e.preventDefault();
-        void handleQuickKnown();
+        void keyboardHandlersRef.current.handleQuickKnown();
       } else if (e.key === "Escape") {
         e.preventDefault();
-        onClose();
+        keyboardHandlersRef.current.onClose();
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [cleanWord, effectiveLang, isSaved, saving, localEntry, contextual]);
+  }, []);
 
   // Modo ultracompacto (Cápsula rápida / micro-glosa)
   if (compactMode && !isExpanded) {
@@ -580,7 +615,7 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
           contextual?.inPassageMeaning ||
           (isLoadingContext ? "Consultando..." : "Definición");
 
-    return (
+    const capsule = (
       <div
         className="word-capsule micro-gloss-panel"
         role="dialog"
@@ -654,6 +689,7 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
         </div>
       </div>
     );
+    return capsuleHost ? createPortal(capsule, capsuleHost) : capsule;
   }
 
   return (

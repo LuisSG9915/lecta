@@ -6,6 +6,8 @@ import {
   listAllKnowledge,
   listAllReviews,
   listIntervals,
+  listPositions,
+  listSavedWords,
   putAnnotation,
   putKnowledge,
   putMissingIntervals,
@@ -22,12 +24,27 @@ import {
 } from "./idb";
 export { getBookData };
 import { accountFetch } from "./account-fetch";
-import { advanceSyncCursor, getSyncCursor } from "./sync-cursors";
-import { maxStamp, type PushResult } from "./sync-push";
+import {
+  advanceSyncCompoundCursor,
+  advanceSyncCursor,
+  getSyncCompoundCursor,
+  getSyncCursor,
+  resetPullCursors,
+} from "./sync-cursors";
+import { type PushResult } from "./sync-push";
 import {
   clearCollectionPagesPending,
   markCollectionPagesPending,
+  registerReadingSyncContinuationRunner,
+  scheduleReadingSyncContinuation,
 } from "./sync-state";
+export { scheduleReadingSyncContinuation };
+import { pushWordsToServer, syncSavedWords } from "./vocab";
+import {
+  flushPendingPositions,
+  pushPositionsToServer,
+  syncPositions,
+} from "./positions-sync";
 import { knowledgeArbWins } from "../../shared/reading-data";
 import { annotationStamp } from "./annotations";
 import {
@@ -42,9 +59,46 @@ const ACTIVITY_SYNC_KEY = "activityLastSyncAt";
 const REVIEWS_SYNC_KEY = "reviewsLastSyncAt";
 const KNOWLEDGE_SYNC_KEY = "knowledgeLastSyncAt";
 
-export function flushPendingReadingSync(): Promise<void> {
-  // If visibility changes to hidden while saving, ensure active sync flushes
-  return Promise.resolve();
+export type SyncCollectionKey =
+  | "words"
+  | "annotations"
+  | "activity"
+  | "reviews"
+  | "knowledge"
+  | "positions";
+
+let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+let pendingFlushRunner: (() => Promise<void>) | null = null;
+const dirtyCollections = new Set<SyncCollectionKey>();
+
+export function registerReadingSyncRunner(runner: () => Promise<void>): void {
+  pendingFlushRunner = runner;
+  registerReadingSyncContinuationRunner(() => {
+    void runner();
+  });
+}
+
+export function scheduleReadingSyncPush(
+  collection: SyncCollectionKey,
+  delayMs = 2000,
+): void {
+  dirtyCollections.add(collection);
+  if (debounceTimer) clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(() => {
+    void flushPendingReadingSync();
+  }, delayMs);
+}
+
+export async function flushPendingReadingSync(): Promise<void> {
+  if (debounceTimer) {
+    clearTimeout(debounceTimer);
+    debounceTimer = null;
+  }
+  if (dirtyCollections.size === 0 || !pendingFlushRunner) return;
+  if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+
+  dirtyCollections.clear();
+  await pendingFlushRunner();
 }
 
 if (typeof document !== "undefined") {
@@ -52,6 +106,11 @@ if (typeof document !== "undefined") {
     if (document.visibilityState === "hidden") {
       void flushPendingReadingSync();
     }
+  });
+}
+if (typeof window !== "undefined") {
+  window.addEventListener("pagehide", () => {
+    void flushPendingReadingSync();
   });
 }
 
@@ -66,10 +125,12 @@ export async function pushAnnotationsToServer(
   const bound = scope ?? captureDbScope();
   if (!bound.userId || !annotations.length) return { ok: true, acceptedMax: 0 };
   if (!isDbScopeActive(bound)) return { ok: false, acceptedMax: 0 };
+  const sorted = [...annotations].sort((a, b) => annotationStamp(a) - annotationStamp(b));
   let acceptedMax = 0;
+  let lastAcceptedKey: string | undefined;
   try {
-    for (let start = 0; start < annotations.length; start += ANNOTATION_LIMITS.batch) {
-      const batch = annotations.slice(start, start + ANNOTATION_LIMITS.batch);
+    for (let start = 0; start < sorted.length; start += ANNOTATION_LIMITS.batch) {
+      const batch = sorted.slice(start, start + ANNOTATION_LIMITS.batch);
       const response = await accountFetch(
         "/api/annotations",
         {
@@ -80,12 +141,24 @@ export async function pushAnnotationsToServer(
         },
         bound,
       );
-      if (!response.ok) return { ok: false, acceptedMax };
-      acceptedMax = Math.max(acceptedMax, maxStamp(batch, (item) => annotationStamp(item)));
+      if (!response.ok) return { ok: false, acceptedMax, lastAcceptedKey };
+      const data = (await response.json().catch(() => null)) as { serverTime?: number } | null;
+      const serverTime = data?.serverTime;
+      if (serverTime) {
+        for (const item of batch) {
+          if (item.updatedAt > serverTime) {
+            await putAnnotation({ ...item, updatedAt: serverTime }, bound);
+          }
+        }
+      }
+      const lastItem = batch[batch.length - 1];
+      const stamp = annotationStamp(lastItem);
+      acceptedMax = Math.max(acceptedMax, serverTime ? Math.min(stamp, serverTime) : stamp);
+      lastAcceptedKey = lastItem.key;
     }
-    return { ok: true, acceptedMax };
+    return { ok: true, acceptedMax, lastAcceptedKey };
   } catch {
-    return { ok: false, acceptedMax };
+    return { ok: false, acceptedMax, lastAcceptedKey };
   }
 }
 
@@ -161,8 +234,12 @@ export async function syncAnnotations(scope?: DbScope) {
   }
 
   if (!allOk) return null;
-  if (hasMore) markCollectionPagesPending("annotations");
-  else clearCollectionPagesPending("annotations");
+  if (hasMore) {
+    markCollectionPagesPending("annotations");
+    scheduleReadingSyncContinuation("annotations");
+  } else {
+    clearCollectionPagesPending("annotations");
+  }
 
   const localByKey = new Map(local.map((item) => [item.key, item]));
   const remoteByKey = new Map(remoteAll.map((item) => [item.key, item]));
@@ -181,34 +258,53 @@ export async function syncAnnotations(scope?: DbScope) {
     }
   }
 
-  // Desacoplar toPush de effectiveSince
-  const lastPushedAt = getSyncCursor(bound.userId, "annotations:push");
-  const toPush = local.filter((item) => {
-    const s = annotationStamp(item);
-    const remoteItem = remoteByKey.get(item.key);
-    if (remoteItem) {
-      return s > annotationStamp(remoteItem);
-    }
-    return lastPushedAt > 0 ? s > lastPushedAt : true;
-  });
+  // Desacoplar toPush de effectiveSince con orden y cursor seguro
+  const lastCursor = getSyncCompoundCursor(bound.userId, "annotations:push");
+  const toPush = local
+    .filter((item) => {
+      const s = annotationStamp(item);
+      const remoteItem = remoteByKey.get(item.key);
+      if (remoteItem) {
+        return s > annotationStamp(remoteItem);
+      }
+      if (lastCursor.key) {
+        if (s > lastCursor.stamp) return true;
+        if (s === lastCursor.stamp && item.key > lastCursor.key) return true;
+        return false;
+      }
+      return lastCursor.stamp > 0 ? s > lastCursor.stamp : true;
+    })
+    .sort((a, b) => {
+      const diff = annotationStamp(a) - annotationStamp(b);
+      return diff !== 0 ? diff : a.key.localeCompare(b.key);
+    });
 
   if (toPush.length > 0) {
     const pushed = await pushAnnotationsToServer(toPush, bound);
     // El cursor avanza hasta lo confirmado, nunca al reloj: lo que quedó
     // fuera se reenvía en el siguiente ciclo.
     if (pushed.acceptedMax > 0) {
-      advanceSyncCursor(bound.userId, "annotations:push", pushed.acceptedMax);
+      if (pushed.lastAcceptedKey) {
+        advanceSyncCompoundCursor(bound.userId, "annotations:push", {
+          stamp: pushed.acceptedMax,
+          key: pushed.lastAcceptedKey,
+        });
+      } else {
+        advanceSyncCursor(bound.userId, "annotations:push", pushed.acceptedMax);
+      }
     }
     if (!pushed.ok) return null;
   }
 
   // Solo se sella la fecha cuando el ciclo completo salió: una
   // sincronización parcial no cuenta como «al día».
-  const finalCursor = nextCursor ?? maxUpdated;
+  const finalCursor = hasMore ? currentSince : (nextCursor ?? maxUpdated);
   if (finalCursor > 0) {
     advanceSyncCursor(bound.userId, "annotations", finalCursor);
   }
-  await saveSessionValue(LAST_SYNC_KEY, String(Date.now()), bound);
+  if (!hasMore) {
+    await saveSessionValue(LAST_SYNC_KEY, String(Date.now()), bound);
+  }
   return pulled;
 }
 
@@ -221,10 +317,13 @@ export async function pushActivityToServer(
   const bound = scope ?? captureDbScope();
   if (!bound.userId || !intervals.length) return { ok: true, acceptedMax: 0 };
   if (!isDbScopeActive(bound)) return { ok: false, acceptedMax: 0 };
+  const stamp = (item: SavedInterval) => item.endedAt ?? item.startedAt;
+  const sorted = [...intervals].sort((a, b) => stamp(a) - stamp(b));
   let acceptedMax = 0;
+  let lastAcceptedKey: string | undefined;
   try {
-    for (let start = 0; start < intervals.length; start += ACTIVITY_LIMITS.batch) {
-      const batch = intervals.slice(start, start + ACTIVITY_LIMITS.batch);
+    for (let start = 0; start < sorted.length; start += ACTIVITY_LIMITS.batch) {
+      const batch = sorted.slice(start, start + ACTIVITY_LIMITS.batch);
       const response = await accountFetch(
         "/api/activity",
         {
@@ -235,12 +334,17 @@ export async function pushActivityToServer(
         },
         bound,
       );
-      if (!response.ok) return { ok: false, acceptedMax };
-      acceptedMax = Math.max(acceptedMax, maxStamp(batch, (item) => item.endedAt ?? item.startedAt));
+      if (!response.ok) return { ok: false, acceptedMax, lastAcceptedKey };
+      const data = (await response.json().catch(() => null)) as { serverTime?: number } | null;
+      const serverTime = data?.serverTime;
+      const lastItem = batch[batch.length - 1];
+      const itemStamp = stamp(lastItem);
+      acceptedMax = Math.max(acceptedMax, serverTime ? Math.min(itemStamp, serverTime) : itemStamp);
+      lastAcceptedKey = lastItem.id;
     }
-    return { ok: true, acceptedMax };
+    return { ok: true, acceptedMax, lastAcceptedKey };
   } catch {
-    return { ok: false, acceptedMax };
+    return { ok: false, acceptedMax, lastAcceptedKey };
   }
 }
 
@@ -318,8 +422,12 @@ export async function syncActivity(scope?: DbScope) {
   }
 
   if (!allOk) return null;
-  if (hasMore) markCollectionPagesPending("activity");
-  else clearCollectionPagesPending("activity");
+  if (hasMore) {
+    markCollectionPagesPending("activity");
+    scheduleReadingSyncContinuation("activity");
+  } else {
+    clearCollectionPagesPending("activity");
+  }
 
   const remoteIds = new Set(remoteAll.map((item) => item.id));
   const localIds = new Set(local.map((item) => item.id));
@@ -336,27 +444,48 @@ export async function syncActivity(scope?: DbScope) {
     bound,
   );
 
-  // Desacoplar toPush de effectiveSince
-  const lastPushedAt = getSyncCursor(bound.userId, "activity:push");
-  const toPush = local.filter((item) => {
-    if (remoteIds.has(item.id)) return false;
-    const s = item.endedAt ?? item.startedAt;
-    return lastPushedAt > 0 ? s > lastPushedAt : true;
-  });
+  // Desacoplar toPush de effectiveSince con orden y cursor seguro
+  const lastCursor = getSyncCompoundCursor(bound.userId, "activity:push");
+  const toPush = local
+    .filter((item) => {
+      if (remoteIds.has(item.id)) return false;
+      const s = item.endedAt ?? item.startedAt;
+      if (lastCursor.key) {
+        if (s > lastCursor.stamp) return true;
+        if (s === lastCursor.stamp && item.id > lastCursor.key) return true;
+        return false;
+      }
+      return lastCursor.stamp > 0 ? s > lastCursor.stamp : true;
+    })
+    .sort((a, b) => {
+      const sA = a.endedAt ?? a.startedAt;
+      const sB = b.endedAt ?? b.startedAt;
+      const diff = sA - sB;
+      return diff !== 0 ? diff : a.id.localeCompare(b.id);
+    });
 
   if (toPush.length > 0) {
     const pushed = await pushActivityToServer(toPush, bound);
     if (pushed.acceptedMax > 0) {
-      advanceSyncCursor(bound.userId, "activity:push", pushed.acceptedMax);
+      if (pushed.lastAcceptedKey) {
+        advanceSyncCompoundCursor(bound.userId, "activity:push", {
+          stamp: pushed.acceptedMax,
+          key: pushed.lastAcceptedKey,
+        });
+      } else {
+        advanceSyncCursor(bound.userId, "activity:push", pushed.acceptedMax);
+      }
     }
     if (!pushed.ok) return null;
   }
 
-  const finalCursor = nextCursor ?? maxUpdated;
+  const finalCursor = hasMore ? currentSince : (nextCursor ?? maxUpdated);
   if (finalCursor > 0) {
     advanceSyncCursor(bound.userId, "activity", finalCursor);
   }
-  await saveSessionValue(ACTIVITY_SYNC_KEY, String(Date.now()), bound);
+  if (!hasMore) {
+    await saveSessionValue(ACTIVITY_SYNC_KEY, String(Date.now()), bound);
+  }
   return pulled;
 }
 
@@ -369,10 +498,12 @@ export async function pushReviewsToServer(
   const bound = scope ?? captureDbScope();
   if (!bound.userId || !reviews.length) return { ok: true, acceptedMax: 0 };
   if (!isDbScopeActive(bound)) return { ok: false, acceptedMax: 0 };
+  const sorted = [...reviews].sort((a, b) => a.createdAt - b.createdAt);
   let acceptedMax = 0;
+  let lastAcceptedKey: string | undefined;
   try {
-    for (let start = 0; start < reviews.length; start += REVIEW_LIMITS.batch) {
-      const batch = reviews.slice(start, start + REVIEW_LIMITS.batch);
+    for (let start = 0; start < sorted.length; start += REVIEW_LIMITS.batch) {
+      const batch = sorted.slice(start, start + REVIEW_LIMITS.batch);
       const response = await accountFetch(
         "/api/reviews",
         {
@@ -383,12 +514,16 @@ export async function pushReviewsToServer(
         },
         bound,
       );
-      if (!response.ok) return { ok: false, acceptedMax };
-      acceptedMax = Math.max(acceptedMax, maxStamp(batch, (item) => item.createdAt));
+      if (!response.ok) return { ok: false, acceptedMax, lastAcceptedKey };
+      const data = (await response.json().catch(() => null)) as { serverTime?: number } | null;
+      const serverTime = data?.serverTime;
+      const lastItem = batch[batch.length - 1];
+      acceptedMax = Math.max(acceptedMax, serverTime ? Math.min(lastItem.createdAt, serverTime) : lastItem.createdAt);
+      lastAcceptedKey = lastItem.id;
     }
-    return { ok: true, acceptedMax };
+    return { ok: true, acceptedMax, lastAcceptedKey };
   } catch {
-    return { ok: false, acceptedMax };
+    return { ok: false, acceptedMax, lastAcceptedKey };
   }
 }
 
@@ -466,8 +601,12 @@ export async function syncReviews(scope?: DbScope) {
   }
 
   if (!allOk) return null;
-  if (hasMore) markCollectionPagesPending("reviews");
-  else clearCollectionPagesPending("reviews");
+  if (hasMore) {
+    markCollectionPagesPending("reviews");
+    scheduleReadingSyncContinuation("reviews");
+  } else {
+    clearCollectionPagesPending("reviews");
+  }
 
   const remoteIds = new Set(remoteAll.map((item) => item.id));
   const localIds = new Set(local.map((item) => item.id));
@@ -483,26 +622,45 @@ export async function syncReviews(scope?: DbScope) {
     bound,
   );
 
-  // Desacoplar toPush de effectiveSince
-  const lastPushedAt = getSyncCursor(bound.userId, "reviews:push");
-  const toPush = local.filter((item) => {
-    if (remoteIds.has(item.id)) return false;
-    return lastPushedAt > 0 ? item.createdAt > lastPushedAt : true;
-  });
+  // Desacoplar toPush de effectiveSince con orden y cursor seguro
+  const lastCursor = getSyncCompoundCursor(bound.userId, "reviews:push");
+  const toPush = local
+    .filter((item) => {
+      if (remoteIds.has(item.id)) return false;
+      if (lastCursor.key) {
+        if (item.createdAt > lastCursor.stamp) return true;
+        if (item.createdAt === lastCursor.stamp && item.id > lastCursor.key) return true;
+        return false;
+      }
+      return lastCursor.stamp > 0 ? item.createdAt > lastCursor.stamp : true;
+    })
+    .sort((a, b) => {
+      const diff = a.createdAt - b.createdAt;
+      return diff !== 0 ? diff : a.id.localeCompare(b.id);
+    });
 
   if (toPush.length > 0) {
     const pushed = await pushReviewsToServer(toPush, bound);
     if (pushed.acceptedMax > 0) {
-      advanceSyncCursor(bound.userId, "reviews:push", pushed.acceptedMax);
+      if (pushed.lastAcceptedKey) {
+        advanceSyncCompoundCursor(bound.userId, "reviews:push", {
+          stamp: pushed.acceptedMax,
+          key: pushed.lastAcceptedKey,
+        });
+      } else {
+        advanceSyncCursor(bound.userId, "reviews:push", pushed.acceptedMax);
+      }
     }
     if (!pushed.ok) return null;
   }
 
-  const finalCursor = nextCursor ?? maxUpdated;
+  const finalCursor = hasMore ? currentSince : (nextCursor ?? maxUpdated);
   if (finalCursor > 0) {
     advanceSyncCursor(bound.userId, "reviews", finalCursor);
   }
-  await saveSessionValue(REVIEWS_SYNC_KEY, String(Date.now()), bound);
+  if (!hasMore) {
+    await saveSessionValue(REVIEWS_SYNC_KEY, String(Date.now()), bound);
+  }
   return pulled;
 }
 
@@ -517,10 +675,12 @@ export async function pushKnowledgeToServer(
   const bound = scope ?? captureDbScope();
   if (!bound.userId || !rows.length) return { ok: true, acceptedMax: 0 };
   if (!isDbScopeActive(bound)) return { ok: false, acceptedMax: 0 };
+  const sorted = [...rows].sort((a, b) => (a.updatedAt ?? 0) - (b.updatedAt ?? 0));
   let acceptedMax = 0;
+  let lastAcceptedKey: string | undefined;
   try {
-    for (let start = 0; start < rows.length; start += KNOWLEDGE_LIMITS.batch) {
-      const batch = rows.slice(start, start + KNOWLEDGE_LIMITS.batch);
+    for (let start = 0; start < sorted.length; start += KNOWLEDGE_LIMITS.batch) {
+      const batch = sorted.slice(start, start + KNOWLEDGE_LIMITS.batch);
       const response = await accountFetch(
         "/api/knowledge",
         {
@@ -531,12 +691,24 @@ export async function pushKnowledgeToServer(
         },
         bound,
       );
-      if (!response.ok) return { ok: false, acceptedMax };
-      acceptedMax = Math.max(acceptedMax, maxStamp(batch, (item) => item.updatedAt ?? 0));
+      if (!response.ok) return { ok: false, acceptedMax, lastAcceptedKey };
+      const data = (await response.json().catch(() => null)) as { serverTime?: number } | null;
+      const serverTime = data?.serverTime;
+      if (serverTime) {
+        for (const item of batch) {
+          if ((item.updatedAt ?? 0) > serverTime) {
+            await putKnowledge({ ...item, updatedAt: serverTime }, bound);
+          }
+        }
+      }
+      const lastItem = batch[batch.length - 1];
+      const stamp = lastItem.updatedAt ?? 0;
+      acceptedMax = Math.max(acceptedMax, serverTime ? Math.min(stamp, serverTime) : stamp);
+      lastAcceptedKey = lastItem.key || knowledgeKey(lastItem.language, lastItem.lemma);
     }
-    return { ok: true, acceptedMax };
+    return { ok: true, acceptedMax, lastAcceptedKey };
   } catch {
-    return { ok: false, acceptedMax };
+    return { ok: false, acceptedMax, lastAcceptedKey };
   }
 }
 
@@ -627,8 +799,12 @@ export async function syncKnowledge(
   }
 
   if (!allOk) return null;
-  if (hasMore) markCollectionPagesPending("knowledge");
-  else clearCollectionPagesPending("knowledge");
+  if (hasMore) {
+    markCollectionPagesPending("knowledge");
+    scheduleReadingSyncContinuation("knowledge");
+  } else {
+    clearCollectionPagesPending("knowledge");
+  }
 
   const localByKey = new Map(local.map((item) => [item.key, item]));
   const remoteByKey = new Map(remoteAll.map((item) => [item.key, item]));
@@ -642,43 +818,69 @@ export async function syncKnowledge(
     if (s > maxUpdated) maxUpdated = s;
     const existing = localByKey.get(item.key);
     if (!existing || knowledgeArbWins(item, existing)) {
-      await putKnowledge(item, bound);
+      const passiveCount =
+        item.passiveSeenCount != null || existing?.passiveSeenCount != null
+          ? Math.max(item.passiveSeenCount ?? 0, existing?.passiveSeenCount ?? 0)
+          : undefined;
+      const toPut: KnownWord = passiveCount !== undefined ? { ...item, passiveSeenCount: passiveCount } : item;
+      await putKnowledge(toPut, bound);
       pulled += 1;
     }
   }
 
-  // Desacoplar toPush de effectiveSince
+  // Desacoplar toPush de effectiveSince con orden y cursor seguro
   const pushCursorKey = options?.language
     ? `knowledge:${options.language}:push`
     : "knowledge:push";
-  const lastPushedAt = getSyncCursor(bound.userId, pushCursorKey);
-  const toPush = local.filter((item) => {
-    if (options?.language && item.language !== options.language) return false;
-    const s = item.updatedAt ?? 0;
-    const remoteItem = remoteByKey.get(item.key);
-    if (remoteItem) {
-      return knowledgeArbWins(item, remoteItem);
-    }
-    return lastPushedAt > 0 ? s > lastPushedAt : true;
-  });
+  const lastCursor = getSyncCompoundCursor(bound.userId, pushCursorKey);
+  const toPush = local
+    .filter((item) => {
+      if (options?.language && item.language !== options.language) return false;
+      const s = item.updatedAt ?? 0;
+      const remoteItem = remoteByKey.get(item.key);
+      if (remoteItem) {
+        return knowledgeArbWins(item, remoteItem);
+      }
+      if (lastCursor.key) {
+        if (s > lastCursor.stamp) return true;
+        if (s === lastCursor.stamp && item.key > lastCursor.key) return true;
+        return false;
+      }
+      return lastCursor.stamp > 0 ? s > lastCursor.stamp : true;
+    })
+    .sort((a, b) => {
+      const diff = (a.updatedAt ?? 0) - (b.updatedAt ?? 0);
+      const keyA = a.key || knowledgeKey(a.language, a.lemma);
+      const keyB = b.key || knowledgeKey(b.language, b.lemma);
+      return diff !== 0 ? diff : keyA.localeCompare(keyB);
+    });
 
   if (toPush.length > 0) {
     const pushed = await pushKnowledgeToServer(toPush, bound);
     // El conocimiento se arbitra por `knowledgeArbWins`, así que reenviar
     // es seguro; el cursor solo avanza hasta lo confirmado.
     if (pushed.acceptedMax > 0) {
-      advanceSyncCursor(bound.userId, pushCursorKey, pushed.acceptedMax);
+      if (pushed.lastAcceptedKey) {
+        advanceSyncCompoundCursor(bound.userId, pushCursorKey, {
+          stamp: pushed.acceptedMax,
+          key: pushed.lastAcceptedKey,
+        });
+      } else {
+        advanceSyncCursor(bound.userId, pushCursorKey, pushed.acceptedMax);
+      }
     }
     if (!pushed.ok) return null;
   }
 
   // Solo se sella la fecha cuando el ciclo completo salió, como en los
   // demás syncs: una sincronización parcial no cuenta como «al día».
-  const finalCursor = nextCursor ?? maxUpdated;
+  const finalCursor = hasMore ? currentSince : (nextCursor ?? maxUpdated);
   if (finalCursor > 0) {
     advanceSyncCursor(bound.userId, cursorKey, finalCursor);
   }
-  await saveSessionValue(KNOWLEDGE_SYNC_KEY, String(Date.now()), bound);
+  if (!hasMore) {
+    await saveSessionValue(KNOWLEDGE_SYNC_KEY, String(Date.now()), bound);
+  }
   return pulled;
 }
 
@@ -734,4 +936,127 @@ export async function pullMissingUserBooksFromCloud(): Promise<number> {
   } catch {
     return 0;
   }
+}
+
+export interface ResyncResult {
+  ok: boolean;
+  serverCounts?: {
+    words: number;
+    annotations: number;
+    activity: number;
+    reviews: number;
+    positions: number;
+    knowledge: number;
+  };
+  localCounts?: {
+    words: number;
+    annotations: number;
+    activity: number;
+    reviews: number;
+    positions: number;
+    knowledge: number;
+  };
+  diverged?: boolean;
+  error?: string;
+}
+
+export async function forceFullResyncFromServer(
+  scope?: DbScope,
+): Promise<ResyncResult> {
+  const bound = scope ?? captureDbScope();
+  if (!bound.userId || !isDbScopeActive(bound)) {
+    return { ok: false, error: "No hay sesión activa" };
+  }
+
+  // 1. Flush/push de cambios pendientes locales
+  await flushPendingReadingSync();
+  await flushPendingPositions(bound);
+
+  const [localWords, localAnn, localAct, localRev, localPos, localKnow] =
+    await Promise.all([
+      listSavedWords(undefined, bound),
+      listAllAnnotations(undefined, bound),
+      listIntervals(bound),
+      listAllReviews(bound),
+      listPositions(bound),
+      listAllKnowledge(undefined, bound),
+    ]);
+
+  if (localWords.length) await pushWordsToServer(localWords, bound);
+  if (localAnn.length) await pushAnnotationsToServer(localAnn, bound);
+  if (localAct.length) await pushActivityToServer(localAct, bound);
+  if (localRev.length) await pushReviewsToServer(localRev, bound);
+  if (localPos.length) await pushPositionsToServer(localPos, bound);
+  if (localKnow.length) await pushKnowledgeToServer(localKnow, bound);
+
+  // 2. Reiniciar a 0 todos los cursores locales de pull
+  resetPullCursors(bound.userId);
+
+  // 3. Ejecutar el pull completo de todas las colecciones
+  await Promise.all([
+    syncSavedWords(bound),
+    syncAnnotations(bound),
+    syncActivity(bound),
+    syncReviews(bound),
+    syncPositions(bound),
+    syncKnowledge(bound),
+  ]);
+
+  // 4. Comparar conteos locales activos contra /api/sync/counts
+  let serverCounts: ResyncResult["serverCounts"];
+  try {
+    const res = await accountFetch("/api/sync/counts", undefined, bound);
+    if (!res.ok) {
+      return { ok: false, error: "Error al consultar conteos del servidor" };
+    }
+    const data = (await res.json()) as { counts: ResyncResult["serverCounts"] };
+    serverCounts = data.counts;
+  } catch (e) {
+    return {
+      ok: false,
+      error:
+        e instanceof Error ? e.message : "Error de red al consultar conteos",
+    };
+  }
+
+  const [activeWords, activeAnn, activeAct, activeRev, activePos, activeKnow] =
+    await Promise.all([
+      listSavedWords(undefined, bound).then(
+        (items) => items.filter((w) => !w.deleted).length,
+      ),
+      listAllAnnotations(undefined, bound).then(
+        (items) => items.filter((a) => !a.deleted).length,
+      ),
+      listIntervals(bound).then((items) => items.length),
+      listAllReviews(bound).then((items) => items.length),
+      listPositions(bound).then((items) => items.length),
+      listAllKnowledge(undefined, bound).then(
+        (items: KnownWord[]) => items.filter((k) => !k.deleted).length,
+      ),
+    ]);
+
+  const localCounts = {
+    words: activeWords,
+    annotations: activeAnn,
+    activity: activeAct,
+    reviews: activeRev,
+    positions: activePos,
+    knowledge: activeKnow,
+  };
+
+  const diverged =
+    !serverCounts ||
+    localCounts.words !== serverCounts.words ||
+    localCounts.annotations !== serverCounts.annotations ||
+    localCounts.activity !== serverCounts.activity ||
+    localCounts.reviews !== serverCounts.reviews ||
+    localCounts.positions !== serverCounts.positions ||
+    localCounts.knowledge !== serverCounts.knowledge;
+
+  return {
+    ok: true,
+    serverCounts,
+    localCounts,
+    diverged,
+  };
 }

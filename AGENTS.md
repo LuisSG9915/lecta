@@ -4,11 +4,11 @@
 
 - `pnpm typecheck` (cliente + worker + MCP), `pnpm lint`, `pnpm test`, `pnpm build`.
 - `pnpm gate` encadena typecheck + lint + test + build + check:size: es la puerta de
-  cierre de cada fase de `docs/plan-8-fases.md`. `pnpm lint` tiene un tope duro de 28
-  warnings y hoy van **20** (bajó de 28 con los cortes 2–5 de `docs/reader-engine-diseno.md`, al
-  dejar de bailar el análisis del React Compiler): un warning nuevo por encima del tope rompe
-  el gate. `check:size` ronda 176.7 kB de 215 kB gzip; en peso quedan ~38 kB de margen.
-- La suite (`vitest.config.ts`) corre con **4 workers** y timeouts de 15 s. Son 178 archivos con
+  cierre de cada fase de `docs/plan-8-fases.md`. `pnpm lint` tiene un tope duro de **0
+  warnings** (bajó de 28 con la auditoría UX del 2026-10-24, que dejó de bailar el análisis
+  del React Compiler y limpió los 20 que quedaban): un warning nuevo rompe el gate.
+  `check:size` va en **178.5 kB** de 215 kB gzip; en peso quedan ~36 kB de margen.
+- La suite (`vitest.config.ts`) corre con **4 workers** y timeouts de 15 s. Son 183 archivos con
   jsdom en un portátil de 8 GB que además corre IDE: con un worker por núcleo, un pico de memoria
   mata workers y tumba archivos que no tienen que ver con el cambio (visto el 2026-10-22: 6
   archivos y 18 pruebas de golpe, sin reproducirse después). Con 4 workers tarda **~28 s** y
@@ -138,6 +138,11 @@
   cuota de IA (PK `user_id, scope, bucket_hour`, FK a `user` con CASCADE). **El
   worker todavía no está desplegado con este código**: desplegarlo cuando se pida
   (`pnpm run deploy`).
+- **015_server_synced_at.sql** está versionada pero **sin aplicar** en `lecta` ni en
+  `lecta_dev` (2026-10-24): añade `synced_at BIGINT` (reloj de servidor) a las seis tablas
+  de sync y los índices `(user_id, synced_at)` que usa el pull incremental. El worker ya
+  ordena y pagina por `synced_at`, así que migración y deploy van juntos — y las seis
+  tablas están con `schema_locked=true`, así que hay que desbloquear una a una.
 - `defaultdb` pertenece a otro proyecto (POS): no tocar sus tablas.
 - EPUBs de prueba con copyright están en `.gitignore` (`/src/*.epub`,
   `/fixtures/*.epub` salvo `minimal.epub`).

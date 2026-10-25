@@ -72,6 +72,16 @@ export type ActiveRead = {
 
 export type BookLike = ShelfItem | (BookMeta & { hash?: string; name?: string; file?: File });
 
+export type ShelfSortBy = "recent" | "title" | "progress";
+
+function normalizeText(text: string): string {
+  return text
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
 export type ShelfProps = {
   books?: (BookMeta | ShelfItem)[];
   activeRead?: ActiveRead | null;
@@ -483,6 +493,8 @@ export default function Shelf({
   const [catPetQuote, setCatPetQuote] = useState<string | null>(null);
   type ShelfFilter = "all" | "reading" | "unread" | "finished";
   const [shelfFilter, setShelfFilter] = useState<ShelfFilter>("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sortBy, setSortBy] = useState<ShelfSortBy>("recent");
 
   const activeStrategy: StrategyPreset = useMemo(() => {
     if (heroStrategy) return heroStrategy;
@@ -504,23 +516,61 @@ export default function Shelf({
   }, [activeStrategy, current]);
 
   const filteredLibrary = useMemo(() => {
-    if (shelfFilter === "all") return library;
-    return library.filter((book) => {
-      const pos = positionByHash.get(book.hash);
-      const total = book.sectionCount ?? 0;
-      const progress = progressOf(pos, total);
-      if (shelfFilter === "reading") {
-        return pos && progress > 0 && progress < 0.99;
-      }
-      if (shelfFilter === "unread") {
-        return !pos || progress === 0;
-      }
-      if (shelfFilter === "finished") {
-        return progress >= 0.99;
-      }
-      return true;
-    });
-  }, [library, shelfFilter, positionByHash]);
+    let result = library;
+    if (shelfFilter !== "all") {
+      result = result.filter((book) => {
+        const pos = positionByHash.get(book.hash);
+        const total = book.sectionCount ?? 0;
+        const progress = progressOf(pos, total);
+        if (shelfFilter === "reading") {
+          return pos && progress > 0 && progress < 0.99;
+        }
+        if (shelfFilter === "unread") {
+          return !pos || progress === 0;
+        }
+        if (shelfFilter === "finished") {
+          return progress >= 0.99;
+        }
+        return true;
+      });
+    }
+
+    const q = normalizeText(searchQuery);
+    if (q) {
+      result = result.filter((book) => {
+        const title = normalizeText(book.title || book.name || "");
+        const author = normalizeText(book.author || "");
+        return title.includes(q) || author.includes(q);
+      });
+    }
+
+    const sorted = [...result];
+    if (sortBy === "title") {
+      sorted.sort((a, b) => {
+        const titleA = (a.title || a.name || "").toLowerCase();
+        const titleB = (b.title || b.name || "").toLowerCase();
+        return titleA.localeCompare(titleB);
+      });
+    } else if (sortBy === "progress") {
+      sorted.sort((a, b) => {
+        const progA = progressOf(positionByHash.get(a.hash), a.sectionCount);
+        const progB = progressOf(positionByHash.get(b.hash), b.sectionCount);
+        if (progB !== progA) return progB - progA;
+        const recentA = positionByHash.get(a.hash)?.updatedAt ?? a.addedAt ?? 0;
+        const recentB = positionByHash.get(b.hash)?.updatedAt ?? b.addedAt ?? 0;
+        return recentB - recentA;
+      });
+    } else {
+      // "recent"
+      sorted.sort((a, b) => {
+        const recentA = positionByHash.get(a.hash)?.updatedAt ?? a.addedAt ?? 0;
+        const recentB = positionByHash.get(b.hash)?.updatedAt ?? b.addedAt ?? 0;
+        return recentB - recentA;
+      });
+    }
+
+    return sorted;
+  }, [library, shelfFilter, searchQuery, sortBy, positionByHash]);
 
   const pickFile = () => fileInputRef.current?.click();
 
@@ -580,10 +630,13 @@ export default function Shelf({
   const step3Done = wordCounts.size > 0 || (companion.state && companion.state.xp > 0);
   const onboardingAllDone = step1Done && step2Done && step3Done;
   const isBrandNew = library.length <= 1 && positions.length === 0 && !calibrationDone;
+  // Solo se guía antes de la primera lectura o para celebrar que ya se
+  // completó. Un lector que ya avanzó no vuelve a ver la lista de pasos
+  // cada vez que entra a la estantería.
   const showOnboarding =
     !isFirstTimeReader &&
     !onboardingDismissed &&
-    (isBrandNew || !step1Done || !step2Done || !step3Done || onboardingAllDone);
+    (isBrandNew || onboardingAllDone);
 
   const skipOnboarding = () => {
     try {
@@ -667,8 +720,8 @@ export default function Shelf({
         <section className="shelf-onboarding-card" aria-label="Bienvenida a Lecta">
           <div className="onboarding-header">
             <div className="onboarding-title-group">
-              <span className="onboarding-badge">Ritual de Bienvenida</span>
-              <h2 className="onboarding-title">Comienza en 3 pasos con tu compañero</h2>
+              <span className="onboarding-badge">Primeros pasos</span>
+              <h2 className="onboarding-title">Prepara tu lectura en 3 pasos</h2>
             </div>
             <button
               type="button"
@@ -1145,6 +1198,41 @@ export default function Shelf({
                 </button>
               </div>
             </div>
+
+            <div className="shelf-controls-bar">
+              <div className="shelf-search-wrap">
+                <input
+                  type="search"
+                  className="shelf-search-input"
+                  placeholder="Buscar por título o autor…"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  aria-label="Buscar libros por título o autor"
+                />
+              </div>
+              <div className="shelf-sort-wrap">
+                <label htmlFor="shelf-sort-select" className="shelf-sort-label">
+                  Ordenar:
+                </label>
+                <select
+                  id="shelf-sort-select"
+                  className="shelf-sort-select"
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as ShelfSortBy)}
+                  aria-label="Ordenar estantería"
+                >
+                  <option value="recent">Recientes</option>
+                  <option value="title">Título</option>
+                  <option value="progress">Progreso</option>
+                </select>
+              </div>
+            </div>
+
+            {filteredLibrary.length === 0 && searchQuery.trim() ? (
+              <p className="shelf-empty-search">
+                No se encontraron libros que coincidan con «{searchQuery}».
+              </p>
+            ) : null}
 
             <ul className="shelf-row">
               {filteredLibrary.map((book) => {

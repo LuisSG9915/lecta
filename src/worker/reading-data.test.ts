@@ -48,6 +48,7 @@ const thousandAnnotations = () =>
     note: null,
     createdAt: 1,
     updatedAt: 1000,
+    syncedAt: 1000,
     deleted: false,
   }));
 
@@ -60,6 +61,7 @@ const thousandPositions = () =>
     progress: 0.5,
     anchor: null,
     updatedAt: 1000,
+    syncedAt: 1000,
   }));
 
 const thousandKnowledge = () =>
@@ -69,11 +71,12 @@ const thousandKnowledge = () =>
     known: true,
     source: "calibration",
     updatedAt: 1000,
+    syncedAt: 1000,
     deleted: false,
   }));
 
 describe("GET /api/annotations — cursor compuesto", () => {
-  it("combina updated_at e id y expone nextAfterId", async () => {
+  it("combina synced_at e id y expone nextAfterId", async () => {
     queryMock.mockResolvedValueOnce({
       rowCount: 1000,
       rows: thousandAnnotations(),
@@ -99,15 +102,15 @@ describe("GET /api/annotations — cursor compuesto", () => {
       unknown[],
     ];
     expect(sql).toContain(
-      "(updated_at > $2 OR (updated_at = $2 AND id > $3))",
+      "(synced_at > $2 OR (synced_at = $2 AND id > $3))",
     );
-    expect(sql).toContain("ORDER BY updated_at ASC, id ASC");
+    expect(sql).toContain("ORDER BY synced_at ASC, id ASC");
     expect(params).toEqual(["u1", 1000, "a0"]);
   });
 });
 
 describe("GET /api/positions — cursor compuesto", () => {
-  it("combina updated_at y book_hash y expone nextAfterBookHash", async () => {
+  it("combina synced_at y book_hash y expone nextAfterBookHash", async () => {
     queryMock.mockResolvedValueOnce({
       rowCount: 1000,
       rows: thousandPositions(),
@@ -133,15 +136,15 @@ describe("GET /api/positions — cursor compuesto", () => {
       unknown[],
     ];
     expect(sql).toContain(
-      "(updated_at > $2 OR (updated_at = $2 AND book_hash > $3))",
+      "(synced_at > $2 OR (synced_at = $2 AND book_hash > $3))",
     );
-    expect(sql).toContain("ORDER BY updated_at ASC, book_hash ASC");
+    expect(sql).toContain("ORDER BY synced_at ASC, book_hash ASC");
     expect(params).toEqual(["u1", 1000, "h0"]);
   });
 });
 
 describe("GET /api/activity — cursor compuesto", () => {
-  it("combina ended_at e id para no repetir el borde", async () => {
+  it("combina synced_at e id para no repetir el borde", async () => {
     queryMock.mockResolvedValueOnce({ rowCount: 0, rows: [] });
 
     const response = await app.request(
@@ -156,14 +159,14 @@ describe("GET /api/activity — cursor compuesto", () => {
       unknown[],
     ];
     expect(sql).toContain(
-      "(ended_at > $2 OR (ended_at = $2 AND id > $3))",
+      "(synced_at > $2 OR (synced_at = $2 AND id > $3))",
     );
     expect(params).toEqual(["u1", 1000, "act_9"]);
   });
 });
 
 describe("GET /api/reviews — cursor compuesto", () => {
-  it("combina created_at e id para no repetir el borde", async () => {
+  it("combina synced_at e id para no repetir el borde", async () => {
     queryMock.mockResolvedValueOnce({ rowCount: 0, rows: [] });
 
     const response = await app.request(
@@ -178,14 +181,14 @@ describe("GET /api/reviews — cursor compuesto", () => {
       unknown[],
     ];
     expect(sql).toContain(
-      "(created_at > $2 OR (created_at = $2 AND id > $3))",
+      "(synced_at > $2 OR (synced_at = $2 AND id > $3))",
     );
     expect(params).toEqual(["u1", 1000, "rev_9"]);
   });
 });
 
 describe("GET /api/knowledge — cursor compuesto", () => {
-  it("combina updated_at, language y lemma y expone ambos cursores", async () => {
+  it("combina synced_at, language y lemma y expone ambos cursores", async () => {
     queryMock.mockResolvedValueOnce({
       rowCount: 1000,
       rows: thousandKnowledge(),
@@ -213,9 +216,9 @@ describe("GET /api/knowledge — cursor compuesto", () => {
       unknown[],
     ];
     expect(sql).toContain(
-      "(updated_at > $3 OR (updated_at = $3 AND (language > $4 OR (language = $4 AND lemma > $5))))",
+      "(synced_at > $3 OR (synced_at = $3 AND (language > $4 OR (language = $4 AND lemma > $5))))",
     );
-    expect(sql).toContain("ORDER BY updated_at ASC, language ASC, lemma ASC");
+    expect(sql).toContain("ORDER BY synced_at ASC, language ASC, lemma ASC");
     expect(params).toEqual(["u1", "es", 1000, "es", "l0"]);
   });
 
@@ -237,9 +240,9 @@ describe("GET /api/knowledge — cursor compuesto", () => {
       unknown[],
     ];
     expect(sql).toContain(
-      "(updated_at > $2 OR (updated_at = $2 AND (language > $3 OR (language = $3 AND lemma > $4))))",
+      "(synced_at > $2 OR (synced_at = $2 AND (language > $3 OR (language = $3 AND lemma > $4))))",
     );
-    expect(sql).toContain("ORDER BY updated_at ASC, language ASC, lemma ASC");
+    expect(sql).toContain("ORDER BY synced_at ASC, language ASC, lemma ASC");
     expect(params).toEqual(["u1", 1000, "es", "l0"]);
   });
 });

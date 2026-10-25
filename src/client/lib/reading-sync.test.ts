@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getActiveUserId,
+  listAllAnnotations,
   listAllKnowledge,
   listAllReviews,
   listPositions,
+  putAnnotation,
   putKnowledge,
   putReviews,
   saveBookPosition,
@@ -24,9 +26,10 @@ import {
   syncReviews,
   syncUserBookUpload,
   pullMissingUserBooksFromCloud,
+  forceFullResyncFromServer,
 } from "./reading-sync";
 import { pushPositionsToServer, syncPositions } from "./positions-sync";
-import { clearSyncCursors, getSyncCursor } from "./sync-cursors";
+import { clearSyncCursors, getSyncCursor, setSyncCursor } from "./sync-cursors";
 
 vi.mock("./idb", () => {
   const getActiveUserId = vi.fn((): string | null => "u1");
@@ -56,7 +59,10 @@ vi.mock("./idb", () => {
   listAllReviews: vi.fn(async () => []),
   listIntervals: vi.fn(async () => []),
   listPositions: vi.fn(async () => []),
+  listSavedWords: vi.fn(async () => []),
+  listAllSavedWords: vi.fn(async () => []),
   putAnnotation: vi.fn(async () => undefined),
+  putSavedWord: vi.fn(async () => undefined),
   putKnowledge: vi.fn(async () => undefined),
   putMissingIntervals: vi.fn(async () => 0),
   putReviews: vi.fn(async () => 0),
@@ -65,6 +71,12 @@ vi.mock("./idb", () => {
   listBooks: vi.fn(async () => []),
   getBookData: vi.fn(async () => null),
   saveBook: vi.fn(async () => undefined),
+  mergeKnowledgeRecords: vi.fn((a: { updatedAt?: number; savedAt?: number; deleted?: boolean }, b: { updatedAt?: number; savedAt?: number; deleted?: boolean }) => {
+    const getStamp = (r: { updatedAt?: number; savedAt?: number }) => r.updatedAt ?? r.savedAt ?? 0;
+    const [winner, loser] = getStamp(a) >= getStamp(b) ? [a, b] : [b, a];
+    if (winner.deleted) return winner;
+    return { ...loser, ...winner };
+  }),
   };
 });
 
@@ -222,6 +234,45 @@ describe("syncAnnotations", () => {
 
     expect(getSyncCursor("u1", "annotations:push")).toBe(200);
     expect(getSyncCursor("u1", "annotations")).toBe(900);
+  });
+
+  it("con sellos no monótonos ordena por stamp ASC, y ante fallo del lote 2 lastPushedAt conserva el corte y el siguiente ciclo reenvía", async () => {
+    const { listAllAnnotations } = await import("./idb");
+    const items: SavedAnnotation[] = [
+      annotation("aardvark", { updatedAt: 5000 }),
+      ...Array.from({ length: 499 }, (_, i) => annotation(`mid${i}`, { updatedAt: 1000 })),
+      annotation("zorro", { updatedAt: 1000 }),
+    ];
+    vi.mocked(listAllAnnotations).mockResolvedValue(items);
+
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ annotations: [], serverTime: 900 }), { status: 200 }),
+      )
+      .mockResolvedValueOnce(okResponse())
+      .mockResolvedValueOnce(errorResponse());
+
+    await expect(syncAnnotations()).resolves.toBeNull();
+
+    const batches = putBodies("annotations") as SavedAnnotation[][];
+    expect(batches).toHaveLength(2);
+    expect(batches[0].some((a) => a.id === "zorro")).toBe(true);
+    expect(batches[1].some((a) => a.id === "aardvark")).toBe(true);
+
+    expect(getSyncCursor("u1", "annotations:push")).toBe(1000);
+
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ annotations: [], serverTime: 1200 }), { status: 200 }),
+      )
+      .mockResolvedValueOnce(okResponse());
+
+    await syncAnnotations();
+
+    const secondAttemptBatches = (putBodies("annotations") as SavedAnnotation[][]).slice(2);
+    expect(secondAttemptBatches).toHaveLength(1);
+    expect(secondAttemptBatches[0].map((a) => a.id)).toEqual(["aardvark"]);
+    expect(getSyncCursor("u1", "annotations:push")).toBe(5000);
   });
 });
 
@@ -601,6 +652,44 @@ describe("flush y keepalive en sincronización", () => {
     expect(posCall).toBeDefined();
     expect(posCall?.[1]?.keepalive).toBe(true);
   });
+
+  it("scheduleReadingSyncPush debounce de 2 segundos ejecuta el push pendiente tras 2000 ms", async () => {
+    vi.useFakeTimers();
+    const runner = vi.fn(async () => {});
+    const { registerReadingSyncRunner, scheduleReadingSyncPush } = await import("./reading-sync");
+    registerReadingSyncRunner(runner);
+
+    scheduleReadingSyncPush("words", 2000);
+    expect(runner).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(1999);
+    expect(runner).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(runner).toHaveBeenCalledTimes(1);
+
+    vi.useRealTimers();
+  });
+
+  it("flushPendingReadingSync cancela el timer pendiente y ejecuta inmediatamente", async () => {
+    vi.useFakeTimers();
+    const runner = vi.fn(async () => {});
+    const { registerReadingSyncRunner, scheduleReadingSyncPush, flushPendingReadingSync } =
+      await import("./reading-sync");
+    registerReadingSyncRunner(runner);
+
+    scheduleReadingSyncPush("words", 2000);
+    expect(runner).not.toHaveBeenCalled();
+
+    await flushPendingReadingSync();
+    expect(runner).toHaveBeenCalledTimes(1);
+
+    // Asegurarse de que el timer fue cancelado y no vuelve a disparar
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(runner).toHaveBeenCalledTimes(1);
+
+    vi.useRealTimers();
+  });
 });
 
 describe("BYO-EPUB Cloud Sync (reading-sync)", () => {
@@ -930,6 +1019,147 @@ describe("Paginación y Cursores de Sync (Lote 1)", () => {
     expect(calls[1][0]).toBe(
       "/api/positions?since=1999&afterBookHash=h_999",
     );
+  });
+
+  it("pushAnnotationsToServer corrige sellos futuros al serverTime devuelto por el servidor", async () => {
+    const serverNow = 1_700_000_000_000;
+    const futureTime = serverNow + 600_000;
+    const ann = annotation("a_futuro", { updatedAt: futureTime });
+
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ ok: true, serverTime: serverNow }), { status: 200 }),
+    );
+
+    const result = await pushAnnotationsToServer([ann]);
+    expect(result.ok).toBe(true);
+    expect(putAnnotation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "a_futuro",
+        updatedAt: serverNow,
+      }),
+      expect.anything(),
+    );
+  });
+
+  it("forceFullResyncFromServer restaura registros borrados silenciosamente en IndexedDB sin cerrar sesión", async () => {
+    // 1. Simular cursor de pull avanzado previamente en annotations
+    setSyncCursor("u1", "annotations", 5000);
+    setSyncCursor("u1", "vocab:es", 5000);
+    setSyncCursor("u1", "positions", 5000);
+    expect(getSyncCursor("u1", "annotations")).toBe(5000);
+
+    // 2. En local IndexedDB, el registro de anotación se borró silenciosamente
+    vi.mocked(listAllAnnotations).mockResolvedValue([]);
+
+    // 3. Mock de endpoints para responder al pull completo y a /api/sync/counts
+    const restoredAnn = {
+      id: "ann_restaurada",
+      bookHash: "b1",
+      kind: "passage",
+      sectionIndex: 0,
+      anchor: null,
+      text: "anotación recuperada",
+      prefix: null,
+      suffix: null,
+      note: null,
+      createdAt: 1000,
+      updatedAt: 1000,
+      syncedAt: 1000,
+      deleted: false,
+    };
+
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/annotations")) {
+        return new Response(
+          JSON.stringify({
+            annotations: [restoredAnn],
+            hasMore: false,
+            nextCursor: 1000,
+            serverTime: 1000,
+          }),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/api/vocab")) {
+        return new Response(
+          JSON.stringify({ words: [], hasMore: false, nextCursor: 0, serverTime: 1000 }),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/api/positions")) {
+        return new Response(
+          JSON.stringify({ positions: [], hasMore: false, nextCursor: 0, serverTime: 1000 }),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/api/activity")) {
+        return new Response(
+          JSON.stringify({ intervals: [], hasMore: false, nextCursor: 0, serverTime: 1000 }),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/api/reviews")) {
+        return new Response(
+          JSON.stringify({ reviews: [], hasMore: false, nextCursor: 0, serverTime: 1000 }),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/api/knowledge")) {
+        return new Response(
+          JSON.stringify({ items: [], hasMore: false, nextCursor: 0, serverTime: 1000 }),
+          { status: 200 },
+        );
+      }
+      if (url.includes("/api/sync/counts")) {
+        return new Response(
+          JSON.stringify({
+            ok: true,
+            counts: {
+              words: 0,
+              annotations: 1,
+              activity: 0,
+              reviews: 0,
+              positions: 0,
+              knowledge: 0,
+            },
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(JSON.stringify({ ok: true, serverTime: 1000 }), { status: 200 });
+    });
+
+    // Simulamos que al repoblar, putAnnotation registra la fila y subsequent listAllAnnotations la retorna
+    vi.mocked(putAnnotation).mockImplementationOnce(async (ann) => {
+      vi.mocked(listAllAnnotations).mockResolvedValue([
+        annotation("ann_restaurada", { text: "anotación recuperada", updatedAt: 1000 }),
+      ]);
+      return ann.id;
+    });
+
+    // 4. Invocar la resincronización forzada
+    const res = await forceFullResyncFromServer();
+
+    expect(res.ok).toBe(true);
+    // Verifica que putAnnotation fue invocado para restaurar la anotación en IDB
+    expect(putAnnotation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "ann_restaurada",
+        text: "anotación recuperada",
+      }),
+      expect.anything(),
+    );
+
+    // Verifica que la petición de pull fue sin since=5000 gracias al reinicio de cursor
+    const annCall = vi.mocked(fetch).mock.calls.find((c) => String(c[0]).includes("/api/annotations"));
+    expect(annCall).toBeDefined();
+    expect(String(annCall?.[0])).not.toContain("since=5000");
+
+    // Y los conteos finales coinciden con el servidor
+    expect(res.serverCounts?.annotations).toBe(1);
+    expect(res.localCounts?.annotations).toBe(1);
+    expect(res.diverged).toBe(false);
   });
 });
 

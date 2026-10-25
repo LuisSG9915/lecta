@@ -16,6 +16,7 @@ import {
   listSavedWords,
   listStoredBooks,
 } from "../lib/idb";
+import { forceFullResyncFromServer } from "../lib/reading-sync";
 
 export interface DiagnosticsModalProps {
   onClose: () => void;
@@ -50,13 +51,57 @@ export default function DiagnosticsModal({ onClose }: DiagnosticsModalProps) {
     annotations: number;
     activity: number;
   } | null>(null);
-  const [recentErrors, setRecentErrors] = useState<ErrorLogEntry[]>([]);
+  const [recentErrors, setRecentErrors] = useState<ErrorLogEntry[]>(() => getStoredErrorLogs());
   const [copied, setCopied] = useState(false);
   const [syncState, setSyncState] = useState<SyncState>(getSyncState());
   const [featureFlags, setFeatureFlags] = useState<FeatureFlags>(() => loadFeatureFlags());
   const [wipeState, setWipeState] = useState<
     "idle" | "confirm" | "working" | "error" | "done"
   >("idle");
+  const [resyncState, setResyncState] = useState<
+    "idle" | "loading" | "success" | "error"
+  >("idle");
+  const [resyncMsg, setResyncMsg] = useState("");
+
+  const handleResyncFromServer = async () => {
+    if (resyncState === "loading") return;
+    setResyncState("loading");
+    setResyncMsg("");
+    try {
+      const res = await forceFullResyncFromServer();
+      if (res.ok) {
+        setResyncState("success");
+        setResyncMsg(
+          res.diverged
+            ? "Sincronizado (divergencia en conteos detectada)"
+            : "Sincronizado: datos al día con el servidor",
+        );
+        const scope = captureDbScope();
+        const [books, words, positions, annotations, activity] =
+          await Promise.all([
+            listStoredBooks(scope).catch(() => []),
+            listSavedWords(undefined, scope).catch(() => []),
+            listPositions(scope).catch(() => []),
+            listAnnotations(undefined, scope).catch(() => []),
+            listIntervals(scope).catch(() => []),
+          ]);
+        setCounts({
+          books: books.length,
+          words: words.length,
+          positions: positions.length,
+          annotations: annotations.length,
+          activity: activity.length,
+        });
+        setSyncState(getSyncState());
+      } else {
+        setResyncState("error");
+        setResyncMsg(res.error || "No se pudo sincronizar");
+      }
+    } catch (e) {
+      setResyncState("error");
+      setResyncMsg(e instanceof Error ? e.message : "Error al sincronizar");
+    }
+  };
 
   const handleToggleFlag = (flag: keyof FeatureFlags) => {
     const updated = saveFeatureFlags({ [flag]: !featureFlags[flag] });
@@ -64,8 +109,6 @@ export default function DiagnosticsModal({ onClose }: DiagnosticsModalProps) {
   };
 
   useEffect(() => {
-    setSyncState(getSyncState());
-
     if (typeof navigator !== "undefined" && navigator.storage?.estimate) {
       void navigator.storage.estimate().then((est) => {
         if (typeof est.usage === "number" && typeof est.quota === "number") {
@@ -73,8 +116,6 @@ export default function DiagnosticsModal({ onClose }: DiagnosticsModalProps) {
         }
       }).catch(() => undefined);
     }
-
-    setRecentErrors(getStoredErrorLogs());
 
     const scope = captureDbScope();
     void Promise.all([
@@ -214,6 +255,27 @@ export default function DiagnosticsModal({ onClose }: DiagnosticsModalProps) {
               Colecciones: {Object.entries(syncState.collections).map(([k, v]) => `${k}: ${v.status}`).join(" · ")}
             </div>
           ) : null}
+          <div style={{ marginTop: "var(--s-2)", display: "flex", alignItems: "center", gap: "var(--s-2)", flexWrap: "wrap" }}>
+            <button
+              type="button"
+              className="btn btn--sm"
+              disabled={resyncState === "loading"}
+              onClick={() => void handleResyncFromServer()}
+            >
+              {resyncState === "loading" ? "Resincronizando…" : "Resincronizar desde el servidor"}
+            </button>
+            {resyncMsg ? (
+              <span
+                className="meta"
+                style={{
+                  fontSize: "var(--fs-xs)",
+                  color: resyncState === "error" ? "var(--danger, #dc2626)" : "inherit",
+                }}
+              >
+                {resyncMsg}
+              </span>
+            ) : null}
+          </div>
         </section>
 
         <section className="setting-block">

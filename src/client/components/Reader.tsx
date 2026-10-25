@@ -195,6 +195,7 @@ import { ReaderOverlays } from "./reader/ReaderOverlays";
 import { ReaderContent } from "./reader/ReaderContent";
 import { ReaderDockHost } from "./reader/ReaderDockHost";
 import { ReaderFloatingBars } from "./reader/ReaderFloatingBars";
+import { ReaderFloatingLane } from "./reader/ReaderFloatingLane";
 import { ReaderFocusLayers } from "./reader/ReaderFocusLayers";
 import { ReaderNotices } from "./reader/ReaderNotices";
 import { ReaderSelectionBar } from "./reader/ReaderSelectionBar";
@@ -235,6 +236,8 @@ import {
   type ChapterCatalog,
   type ChapterTarget,
   type IntraSectionContext,
+  splitHref,
+  sectionIndexOf,
 } from "../lib/chapters";
 import {
   loadBookStart,
@@ -292,6 +295,16 @@ type ReaderProps = {
   // la espera. La preferencia «Usar IA» se consulta aparte.
   signedIn: boolean;
   readerInitialWord?: string;
+  // El sync de posiciones corre detrás de la apertura. Un cambio de
+  // versión pide releer la posición guardada; `resumeRequest` la aplica
+  // de forma explícita (conflicto resuelto por el lector).
+  positionSyncVersion?: number;
+  resumeRequest?: {
+    key: number;
+    sectionIndex: number;
+    ratio?: number;
+    anchor?: string;
+  } | null;
 };
 
 // Caché por sección: la consulta al catálogo se hace una sola vez por
@@ -384,12 +397,13 @@ export default function Reader({
   onRequestCalibration,
   signedIn,
   readerInitialWord,
+  positionSyncVersion = 0,
+  resumeRequest = null,
 }: ReaderProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const measureProbeRef = useRef<HTMLDivElement>(null);
   const bookRef = useRef<EpubBook | null>(null);
-  const scrollTimer = useRef<number | undefined>(undefined);
   const rafPending = useRef(false);
   const lastScrollY = useRef(0);
   const savedForms = useRef<Map<string, MarkLevel>>(new Map());
@@ -652,7 +666,9 @@ export default function Reader({
 
   useEffect(() => {
     if (readerInitialWord && state === "ready") {
-      setSelection({ word: readerInitialWord });
+      queueMicrotask(() => {
+        setSelection({ word: readerInitialWord });
+      });
     }
   }, [readerInitialWord, state]);
   // Índice de locuciones (asset estático): se pide al montar el
@@ -687,10 +703,11 @@ export default function Reader({
   );
 
   const focusTelemetryRef = useRef({
-    pageEnteredAt: Date.now(),
+    pageEnteredAt: 0,
     lastFlaggedAt: 0,
     recordPageTurn: function(_wordsOnPage = 100, dwellMs?: number) {
       const now = Date.now();
+      if (this.pageEnteredAt === 0) this.pageEnteredAt = now;
       const elapsed = dwellMs ?? (now - this.pageEnteredAt);
       this.pageEnteredAt = now;
       if (elapsed > 35_000 && now - this.lastFlaggedAt > 120_000) {
@@ -731,7 +748,7 @@ export default function Reader({
 
   // Track 12: Ensamblaje Maestro de Ciclo de Vida del Capítulo
   const currentChapterLookups = useRef<EpisodicWordItem[]>([]);
-  const chapterStartedAtRef = useRef<number>(Date.now());
+  const chapterStartedAtRef = useRef<number>(0);
   const pendingNextChapterRef = useRef<number | null>(null);
   const [postChapterQueue, setPostChapterQueue] = useState<
     Array<{ item: EpisodicWordItem; modality: ConsolidationModality }>
@@ -739,8 +756,16 @@ export default function Reader({
   const [fatigueSuggestion, setFatigueSuggestion] = useState<FocusSuggestion | null>(null);
   const [sceneRecap, setSceneRecap] = useState<SceneReturnRecap | null>(null);
   const sectionTextRef = useRef<string>("");
-  const sessionStartRef = useRef<number>(Date.now());
-  const pageTurnTimeRef = useRef<number>(Date.now());
+  const sessionStartRef = useRef<number>(0);
+  const pageTurnTimeRef = useRef<number>(0);
+
+  useEffect(() => {
+    const now = Date.now();
+    if (!sessionStartRef.current) sessionStartRef.current = now;
+    if (!chapterStartedAtRef.current) chapterStartedAtRef.current = now;
+    if (!pageTurnTimeRef.current) pageTurnTimeRef.current = now;
+    if (focusTelemetryRef.current.pageEnteredAt === 0) focusTelemetryRef.current.pageEnteredAt = now;
+  }, []);
   const [activeBilingualParagraph, setActiveBilingualParagraph] = useState<{
     originalText: string;
     translatedText?: string;
@@ -770,6 +795,80 @@ export default function Reader({
   const [glossaryOpen, setGlossaryOpen] = useState(false);
   const [deepReading, setDeepReading] = useState<DeepReadingState | null>(null);
   const [deepSummary, setDeepSummary] = useState<DeepReadingSummary | null>(null);
+
+  const [returnPositions, setReturnPositions] = useState<
+    Array<{
+      sectionIndex: number;
+      anchor?: string;
+      ratio: number;
+      scrollTop?: number;
+      page?: number;
+    }>
+  >([]);
+  const [toastMessage, setToastMessage] = useState<string>("");
+  // Nodo de la franja flotante para la cápsula de palabra (portal).
+  const [wordCapsuleHost, setWordCapsuleHost] = useState<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    // Un estado vacío significa «ya terminó»: retirar el aviso en el
+    // acto evita que «Abriendo libro…» siga visible con el libro listo.
+    // El setState va en un timer (aunque sea 0) para no encadenar
+    // renders síncronos desde el efecto.
+    if (!statusText) {
+      const clearTimer = setTimeout(() => setToastMessage(""), 0);
+      return () => clearTimeout(clearTimer);
+    }
+    const showTimer = setTimeout(() => {
+      setToastMessage(statusText);
+    }, 0);
+    const hideTimer = setTimeout(() => {
+      setToastMessage("");
+    }, 3000);
+    return () => {
+      clearTimeout(showTimer);
+      clearTimeout(hideTimer);
+    };
+  }, [statusText]);
+
+  const glossaryReleaseRef = useRef<OverlayHandle | null>(null);
+  const quoteReleaseRef = useRef<OverlayHandle | null>(null);
+  const summaryReleaseRef = useRef<OverlayHandle | null>(null);
+
+  useEffect(() => {
+    if (glossaryOpen) {
+      if (!glossaryReleaseRef.current) {
+        glossaryReleaseRef.current = pushOverlay(() => setGlossaryOpen(false));
+      }
+    } else {
+      if (glossaryReleaseRef.current) {
+        const handle = glossaryReleaseRef.current;
+        glossaryReleaseRef.current = null;
+        handle.release();
+      }
+    }
+  }, [glossaryOpen]);
+
+  useEffect(() => {
+    if (deepSummary) {
+      if (!summaryReleaseRef.current) {
+        summaryReleaseRef.current = pushOverlay(() => setDeepSummary(null));
+      }
+    } else {
+      if (summaryReleaseRef.current) {
+        const handle = summaryReleaseRef.current;
+        summaryReleaseRef.current = null;
+        handle.release();
+      }
+    }
+  }, [deepSummary]);
+
+  useEffect(() => {
+    return () => {
+      glossaryReleaseRef.current?.release();
+      quoteReleaseRef.current?.release();
+      summaryReleaseRef.current?.release();
+    };
+  }, []);
   const isDeepReading = Boolean(deepReading?.active);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
   const [page, setPage] = useState(0);
@@ -871,6 +970,20 @@ export default function Reader({
     onStatus,
     setSelButton,
   });
+
+  useEffect(() => {
+    if (quoteCard) {
+      if (!quoteReleaseRef.current) {
+        quoteReleaseRef.current = pushOverlay(() => setQuoteCard(null));
+      }
+    } else {
+      if (quoteReleaseRef.current) {
+        const handle = quoteReleaseRef.current;
+        quoteReleaseRef.current = null;
+        handle.release();
+      }
+    }
+  }, [quoteCard, setQuoteCard]);
   // Gato acompañante en el lector: el aspecto (etapa, accesorios,
   // nombre, presencia) viene del CompanionProvider único — aquí solo
   // queda el estado visible de la máquina local de lectura.
@@ -1492,7 +1605,7 @@ export default function Reader({
     };
     latestPositionRef.current = pos;
     return pos;
-  }, [bookHash]);
+  }, [bookHash, currentRatioNow, latestPositionRef]);
   useEffect(() => {
     capturePositionRef.current = capturePosition;
   }, [capturePosition]);
@@ -1609,7 +1722,7 @@ export default function Reader({
         );
       return prediction;
     },
-    [classifyCached],
+    [classifyCached, setPrediction],
   );
   useEffect(() => {
     applyCachedPredictionRef.current = applyCachedPrediction;
@@ -1670,7 +1783,7 @@ export default function Reader({
       }
       setEnriching(null);
     },
-    [rangeFor, analysisFor, applyCachedPrediction],
+    [rangeFor, analysisFor, applyCachedPrediction, setEnriching],
   );
 
   // Predicción aplicada a la sección visible más el disparo del lote
@@ -1889,6 +2002,48 @@ export default function Reader({
     ttsStopOnNavRef,
   });
 
+  // Posición remota que llega después de abrir: se aplica sobre el libro
+  // ya montado. Si el lector ya se movió, no se le arranca de donde está.
+  const appliedSyncVersionRef = useRef(0);
+  const appliedResumeKeyRef = useRef(0);
+
+  useEffect(() => {
+    if (!resumeRequest || resumeRequest.key === appliedResumeKeyRef.current) return;
+    if (state !== "ready") return;
+    appliedResumeKeyRef.current = resumeRequest.key;
+    void navigate("resume", {
+      index: resumeRequest.sectionIndex,
+      restore: { ratio: resumeRequest.ratio, anchor: resumeRequest.anchor },
+    });
+    onStatus("Continuando desde tu otro dispositivo…");
+  }, [resumeRequest, state, navigate, onStatus]);
+
+  useEffect(() => {
+    if (positionSyncVersion <= appliedSyncVersionRef.current) return;
+    if (state !== "ready") return;
+    appliedSyncVersionRef.current = positionSyncVersion;
+    let cancelled = false;
+    void (async () => {
+      const current = capturePosition();
+      // Solo se retoma solo si la persona sigue al principio: si ya
+      // avanzó, su lectura manda sobre lo que traiga la nube.
+      const atStart =
+        sectionIndexRef.current === 0 && (!current || (current.ratio ?? 0) < 0.02);
+      if (!atStart) return;
+      const saved = await loadBookPosition(bookHash, captureDbScope());
+      if (cancelled || !saved) return;
+      if (saved.sectionIndex === 0 && (saved.ratio ?? 0) < 0.02) return;
+      await navigate("resume", {
+        index: saved.sectionIndex,
+        restore: { ratio: saved.ratio, anchor: saved.anchor },
+      });
+      onStatus("Retomando donde lo dejaste en otro dispositivo.");
+    })().catch(() => null);
+    return () => {
+      cancelled = true;
+    };
+  }, [positionSyncVersion, state, capturePosition, bookHash, navigate, onStatus]);
+
   // ---------- «Leer en voz alta» ----------
   const {
     ttsRef,
@@ -2094,6 +2249,7 @@ export default function Reader({
             index: suggested?.sectionIndex ?? 0,
             fragment: suggested?.fragment,
           });
+          onStatus("");
           return;
         }
         if (entry.kind === "resume") {
@@ -2169,7 +2325,6 @@ export default function Reader({
       releaseOverlay();
       finalizeTiming(currentRatioNow());
       cleanup?.();
-      window.clearTimeout(scrollTimer.current);
       for (const url of imgUrls.splice(0)) URL.revokeObjectURL(url);
     };
     // tocRows se usa dentro de loadSection pero se calcula aquí; el
@@ -2291,11 +2446,22 @@ export default function Reader({
 
         let placement: "top" | "bottom" = isTouch ? "bottom" : "top";
         let y = isTouch ? rect.bottom : rect.top;
+        // Reserva para la franja flotante + dock: el menú no debe caer
+        // encima de la cápsula ni de las acciones de lectura.
+        const bottomReserve = isTouch ? 190 : 96;
 
-        if (placement === "bottom" && rect.bottom + 64 > window.innerHeight && rect.top > 64) {
+        if (
+          placement === "bottom" &&
+          rect.bottom + bottomReserve > window.innerHeight &&
+          rect.top > bottomReserve
+        ) {
           placement = "top";
           y = rect.top;
-        } else if (placement === "top" && rect.top < 64 && rect.bottom + 64 <= window.innerHeight) {
+        } else if (
+          placement === "top" &&
+          rect.top < bottomReserve &&
+          rect.bottom + bottomReserve <= window.innerHeight
+        ) {
           placement = "bottom";
           y = rect.bottom;
         }
@@ -2341,7 +2507,7 @@ export default function Reader({
         timer = window.setTimeout(() => {
           setShowLongPressHint(false);
           void saveSessionValue(key, "1", scope).catch(() => undefined);
-        }, 6000);
+        }, 9000);
       }
     });
     return () => window.clearTimeout(timer);
@@ -2405,7 +2571,6 @@ export default function Reader({
     return () => {
       window.removeEventListener("scroll", onScroll);
       document.removeEventListener("visibilitychange", onHide);
-      window.clearTimeout(scrollTimer.current);
     };
   }, [saveSoon, capturePosition, closeActivity, noteActivity]);
 
@@ -2570,6 +2735,8 @@ export default function Reader({
     strategyPaused,
     state,
     remeasure,
+    latestPositionRef,
+    ttsRef,
   ]);
 
   // En modo foco de párrafo, reenfocar al cambiar de sección o de página.
@@ -2819,7 +2986,7 @@ export default function Reader({
     // tanto en la tarjeta como en las marcas del texto.
     applyPrediction(sectionIndexRef.current, language);
     onStatus(`«${word.form}» ya está en tu cuaderno.`);
-  }, [language, applyPrediction, onStatus]);
+  }, [language, applyPrediction, onStatus, bookHash, ttsRef]);
 
   const handleTtsCaptureWord = useCallback(async () => {
     const ctl = ttsRef.current;
@@ -2862,7 +3029,7 @@ export default function Reader({
     } catch {
       // fallback silencioso
     }
-  }, [language, bookHash, onWordSaved, setTtsCapturedToast]);
+  }, [language, bookHash, onWordSaved, setTtsCapturedToast, ttsRef]);
 
   const onWordRemoved = (word: SavedWord) => {
     for (const form of [word.form, word.lemma]) {
@@ -2911,6 +3078,63 @@ export default function Reader({
       });
     }
   };
+
+  const handleInternalLinkClick = useCallback((href: string) => {
+    const currentPos = capturePosition();
+    if (currentPos) {
+      setReturnPositions((prev) => [
+        ...prev,
+        {
+          sectionIndex: currentPos.sectionIndex,
+          anchor: currentPos.anchor,
+          ratio: currentPos.ratio ?? 0,
+          scrollTop: currentPos.scrollTop,
+          page: settings.layout === "pages" ? page : undefined,
+        },
+      ]);
+    }
+
+    if (href.startsWith("#")) {
+      const fragment = href.slice(1);
+      void navigate("chapter", { index: sectionIndexRef.current, fragment });
+    } else {
+      const currSection = bookRef.current?.sections?.[sectionIndexRef.current];
+      const resolved = currSection?.resolveHref ? currSection.resolveHref(href) : href;
+      const { path, fragment } = splitHref(resolved);
+      let targetSectionIdx = bookRef.current ? sectionIndexOf(bookRef.current, path) : -1;
+      if (targetSectionIdx < 0 && bookRef.current?.sections) {
+        targetSectionIdx = bookRef.current.sections.findIndex((s) => s.id.endsWith(path));
+      }
+      if (targetSectionIdx >= 0) {
+        void navigate("chapter", { index: targetSectionIdx, fragment });
+      } else if (fragment) {
+        void navigate("chapter", { index: sectionIndexRef.current, fragment });
+      }
+    }
+  }, [capturePosition, settings.layout, page, navigate]);
+
+  const handleReturnFromFootnote = useCallback(() => {
+    setReturnPositions((prev) => {
+      if (prev.length === 0) return prev;
+      const target = prev[prev.length - 1];
+      void navigate("return", {
+        index: target.sectionIndex,
+        restore: {
+          anchor: target.anchor,
+          ratio: target.ratio,
+        },
+      }).then(() => {
+        if (
+          target.sectionIndex === sectionIndexRef.current &&
+          target.page !== undefined &&
+          settings.layout === "pages"
+        ) {
+          setPage(target.page);
+        }
+      });
+      return prev.slice(0, -1);
+    });
+  }, [navigate, settings.layout]);
 
   // «Releer el capítulo» del marcador de retomar: salta al inicio del
   // destino con jumpTo — eso deja «Volver a donde estaba» armado para
@@ -3563,6 +3787,7 @@ export default function Reader({
         lastTapRef={lastTapRef}
         lastPointerTypeRef={lastPointerTypeRef}
         pacerIndexRef={pacerIndexRef}
+        onInternalLinkClick={handleInternalLinkClick}
         onBack={onBack}
       />
 
@@ -3778,9 +4003,6 @@ export default function Reader({
       ) : null}
 
       <ReaderSelectionBar
-        returnPoint={returnPoint}
-        setReturnPoint={setReturnPoint}
-        goBack={goBack}
         selButton={selButton}
         setSelButton={setSelButton}
         openSelection={openSelection}
@@ -3788,25 +4010,85 @@ export default function Reader({
         openQuoteCardFromSelection={openQuoteCardFromSelection}
         askCatAboutSelection={askCatAboutSelection}
         setDeepModal={setDeepModal}
-        showLongPressHint={showLongPressHint}
       />
 
+      <ReaderFloatingLane>
+        {toastMessage ? (
+          <div role="status" aria-live="polite" className="reader-status-toast">
+            {toastMessage}
+          </div>
+        ) : (
+          <div role="status" aria-live="polite" className="sr-only">
+            {statusText || ""}
+          </div>
+        )}
 
+        {showLongPressHint && !toastMessage ? (
+          <div className="reader-hint-toast" role="status" aria-live="polite">
+            Mantén presionada una palabra para ver qué significa.
+          </div>
+        ) : null}
 
-      <ReaderFloatingBars
-        settings={settings}
-        state={state}
-        strategyPaused={strategyPaused}
-        isDeepReading={isDeepReading}
-        pacerPaused={pacerPaused}
-        setPacerPaused={setPacerPaused}
-        updateSettings={updateSettings}
-        ttsCapturedToast={ttsCapturedToast}
-        activeBilingualParagraph={activeBilingualParagraph}
-        bookHash={bookHash}
-        language={language}
-        setBilingualMode={setBilingualMode}
-      />
+        <div
+          ref={setWordCapsuleHost}
+          className="reader-floating-capsule-slot"
+        />
+
+        {returnPoint ? (
+          <div className="reader-return">
+            <button
+              type="button"
+              className="reader-return-btn"
+              onClick={goBack}
+            >
+              ‹ Volver a donde estaba
+            </button>
+            <button
+              type="button"
+              className="reader-return-dismiss"
+              onClick={() => setReturnPoint(null)}
+              aria-label="Descartar regreso"
+            >
+              ×
+            </button>
+          </div>
+        ) : null}
+
+        {returnPositions.length > 0 ? (
+          <div className="reader-return">
+            <button
+              type="button"
+              className="reader-return-btn"
+              onClick={handleReturnFromFootnote}
+            >
+              ← Volver a la lectura
+            </button>
+            <button
+              type="button"
+              className="reader-return-dismiss"
+              onClick={() => setReturnPositions([])}
+              aria-label="Descartar retorno"
+            >
+              ×
+            </button>
+          </div>
+        ) : null}
+
+        <ReaderFloatingBars
+          settings={settings}
+          state={state}
+          strategyPaused={strategyPaused}
+          isDeepReading={isDeepReading}
+          pacerPaused={pacerPaused}
+          setPacerPaused={setPacerPaused}
+          updateSettings={updateSettings}
+          ttsCapturedToast={ttsCapturedToast}
+          activeBilingualParagraph={activeBilingualParagraph}
+          bookHash={bookHash}
+          language={language}
+          setBilingualMode={setBilingualMode}
+        />
+      </ReaderFloatingLane>
       <ReaderOverlays
         bookHash={bookHash}
         bookTitle={title}
@@ -3858,6 +4140,7 @@ export default function Reader({
           catalog?.targets?.find((t) => t.sectionIndex === sectionIndex)?.label ??
           sectionTitle
         }
+        wordCapsuleHost={wordCapsuleHost}
         compactMode={
           !strategyPaused &&
           (settings.strategyPreset === "focus" ||

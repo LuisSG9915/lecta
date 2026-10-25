@@ -51,24 +51,24 @@ function normalize(value: unknown): number {
   return Number.isFinite(val) && val > 0 ? val : 0;
 }
 
-function readCursors(userId: string): Record<string, number> {
+export interface SyncCompoundCursor {
+  stamp: number;
+  key: string;
+}
+
+function readRawCursors(userId: string): Record<string, unknown> {
   try {
     const raw = getStorageItem(storageKey(userId));
     if (!raw) return {};
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     if (!parsed || typeof parsed !== "object") return {};
-    const out: Record<string, number> = {};
-    for (const [key, value] of Object.entries(parsed)) {
-      const normalized = normalize(value);
-      if (normalized > 0) out[key] = normalized;
-    }
-    return out;
+    return parsed;
   } catch {
     return {};
   }
 }
 
-function writeCursors(userId: string, cursors: Record<string, number>): void {
+function writeRawCursors(userId: string, cursors: Record<string, unknown>): void {
   try {
     setStorageItem(storageKey(userId), JSON.stringify(cursors));
   } catch {
@@ -76,9 +76,48 @@ function writeCursors(userId: string, cursors: Record<string, number>): void {
   }
 }
 
+function readCursors(userId: string): Record<string, number> {
+  const parsed = readRawCursors(userId);
+  const out: Record<string, number> = {};
+  for (const [key, value] of Object.entries(parsed)) {
+    const normalized = normalize(value);
+    if (normalized > 0) out[key] = normalized;
+  }
+  return out;
+}
+
 export function getSyncCursor(userId: string, collection: string): number {
   if (!userId) return 0;
   return readCursors(userId)[collection] ?? 0;
+}
+
+export function getSyncCompoundCursor(userId: string, collection: string): SyncCompoundCursor {
+  if (!userId) return { stamp: 0, key: "" };
+  const raw = readRawCursors(userId);
+  const stamp = normalize(raw[collection]);
+  const key = typeof raw[`${collection}#key`] === "string" ? (raw[`${collection}#key`] as string) : "";
+  return { stamp, key };
+}
+
+export function advanceSyncCompoundCursor(
+  userId: string,
+  collection: string,
+  cursor: SyncCompoundCursor,
+): SyncCompoundCursor {
+  if (!userId) return { stamp: 0, key: "" };
+  const stamp = normalize(cursor.stamp);
+  const raw = readRawCursors(userId);
+  const currentStamp = normalize(raw[collection]);
+  const currentKey = typeof raw[`${collection}#key`] === "string" ? (raw[`${collection}#key`] as string) : "";
+
+  const shouldAdvance =
+    stamp > currentStamp || (stamp === currentStamp && cursor.key.localeCompare(currentKey) > 0);
+  if (!shouldAdvance) return { stamp: currentStamp, key: currentKey };
+
+  raw[collection] = stamp;
+  raw[`${collection}#key`] = cursor.key;
+  writeRawCursors(userId, raw);
+  return { stamp, key: cursor.key };
 }
 
 /**
@@ -88,9 +127,10 @@ export function getSyncCursor(userId: string, collection: string): number {
 export function setSyncCursor(userId: string, collection: string, timestamp: number): void {
   const value = normalize(timestamp);
   if (!userId || value <= 0) return;
-  const cursors = readCursors(userId);
-  cursors[collection] = value;
-  writeCursors(userId, cursors);
+  const raw = readRawCursors(userId);
+  raw[collection] = value;
+  delete raw[`${collection}#key`];
+  writeRawCursors(userId, raw);
 }
 
 /**
@@ -104,11 +144,11 @@ export function advanceSyncCursor(
 ): number {
   if (!userId) return 0;
   const value = normalize(stamp);
-  const cursors = readCursors(userId);
-  const current = cursors[collection] ?? 0;
+  const raw = readRawCursors(userId);
+  const current = normalize(raw[collection]);
   if (value <= current) return current;
-  cursors[collection] = value;
-  writeCursors(userId, cursors);
+  raw[collection] = value;
+  writeRawCursors(userId, raw);
   return value;
 }
 
@@ -136,4 +176,18 @@ export function clearSyncCursors(userId?: string): void {
   } catch {
     // Ignorar error
   }
+}
+
+/**
+ * Reinicia únicamente los cursores de pull (descarga) a 0 para forzar una
+ * resincronización completa desde el servidor sin perder los cursores de push.
+ */
+export function resetPullCursors(userId: string): void {
+  if (!userId) return;
+  const raw = readRawCursors(userId);
+  const pullKeys = Object.keys(raw).filter((k) => !k.includes(":push"));
+  for (const k of pullKeys) {
+    delete raw[k];
+  }
+  writeRawCursors(userId, raw);
 }

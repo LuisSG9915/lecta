@@ -1080,12 +1080,14 @@ mark.saved-passage--dario {
 }
 
 /* ---------- «Volver a donde estaba» ---------- */
+/* Con el marcapasos activo, el retorno sube un carril para no compartir
+   espacio con la barra de ritmo. */
 
 .reader-return {
   position: fixed;
   z-index: 15;
   inset-inline-end: var(--s-4);
-  inset-block-end: calc(3.5rem + env(safe-area-inset-bottom));
+  inset-block-end: calc(6rem + env(safe-area-inset-bottom));
   display: flex;
   align-items: stretch;
   border: var(--border);
@@ -1103,6 +1105,10 @@ mark.saved-passage--dario {
   font-family: var(--font-ui);
   font-size: var(--fs-sm);
   color: var(--ink);
+}
+
+.reader:has(.reader__pacer-bar) .reader-return {
+  inset-block-end: calc(6rem + 62px + env(safe-area-inset-bottom, 0px));
 }
 
 .reader-return-btn:hover {
@@ -1269,7 +1275,7 @@ mark.saved-passage--dario {
 /* Aviso de descubrimiento para pulsación larga en táctil */
 .reader-hint-toast {
   position: fixed;
-  bottom: calc(4.75rem + env(safe-area-inset-bottom, 0px));
+  bottom: calc(6rem + env(safe-area-inset-bottom, 0px));
   left: 50%;
   transform: translateX(-50%);
   z-index: 30;
@@ -1291,6 +1297,33 @@ mark.saved-passage--dario {
   color: var(--ink);
   font-weight: 500;
   z-index: 35;
+}
+
+.reader-status-toast {
+  position: fixed;
+  bottom: calc(6rem + env(safe-area-inset-bottom, 0px));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  padding: var(--s-2) var(--s-4);
+  background: var(--paper-raised);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  border: var(--border);
+  border-radius: var(--r-pill);
+  box-shadow: var(--shadow-sheet);
+  animation: fade-in var(--dur-2) var(--ease-out);
+  pointer-events: none;
+}
+
+/* El popover de modos ocupa la franja sobre el dock: el toast de estado
+   espera detrás para no tapar «Personalizar opciones avanzadas». */
+.reader:has(.reader-mode-popover) .reader-status-toast,
+.reader:has(.reader-mode-popover) .reader-hint-toast {
+  opacity: 0;
+  visibility: hidden;
 }
 
 /* ---------- Botones de navegación lateral flotantes ---------- */
@@ -3118,7 +3151,7 @@ b.lecta-anchor {
   position: fixed;
   z-index: 18;
   inset-inline: 0;
-  bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+  bottom: calc(6rem + env(safe-area-inset-bottom, 0px));
   margin-inline: auto;
   width: fit-content;
   max-width: calc(100vw - 20px);
@@ -5069,6 +5102,149 @@ b.lecta-anchor {
   }
 }
 
+/* Objetivos táctiles del dock en móvil: 44px como mínimo (Apple HIG).
+   La cobertura se compacta a «100%» para devolver ancho a las acciones. */
+@media (max-width: 360px) {
+  .smart-reader-dock:not(.is-audio-mode) .dock-section.dock-progress-info,
+  .smart-reader-dock:not(.is-audio-mode) .smart-dock-pill {
+    display: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .smart-reader-dock:not(.is-audio-mode),
+  .reader-smart-dock:not(.is-audio-mode) {
+    padding: 5px 8px;
+    gap: 4px;
+  }
+  .smart-reader-dock:not(.is-audio-mode) .dock-mode-trigger,
+  .smart-reader-dock:not(.is-audio-mode) .dock-listen-trigger,
+  .smart-reader-dock:not(.is-audio-mode) .dock-recap-trigger {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0 8px;
+  }
+  .smart-reader-dock:not(.is-audio-mode) .smart-dock-pill {
+    height: 40px;
+    padding: 0 9px;
+  }
+  .smart-reader-dock:not(.is-audio-mode) .smart-dock-pill-label {
+    display: none;
+  }
+  .smart-reader-dock:not(.is-audio-mode) .dock-progress-meta,
+  .smart-reader-dock:not(.is-audio-mode) .dock-section.dock-progress-info {
+    max-width: 92px;
+  }
+}
+
+/* Párrafo bilingüe: misma franja que el resto de avisos flotantes, por encima
+   del dock. Con el marcapasos activo sube un carril para no taparlo. */
+.reader-bilingual-floating-container {
+  position: fixed;
+  left: 1rem;
+  right: 1rem;
+  bottom: calc(6rem + env(safe-area-inset-bottom, 0px));
+  margin: 0 auto;
+  max-width: 640px;
+  z-index: 45;
+}
+
+/* Franja única: todo lo que flota sobre el dock se apila aquí en columna.
+   Los hijos dejan de posicionarse a mano para que no se pisen entre sí. */
+.reader-floating-lane {
+  position: fixed;
+  z-index: 45;
+  inset-inline: 0;
+  bottom: calc(6rem + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding-inline: 1rem;
+  pointer-events: none;
+}
+
+.reader-floating-lane > * {
+  pointer-events: auto;
+}
+
+.reader-floating-lane .reader__pacer-bar,
+.reader-floating-lane .reader-status-toast,
+.reader-floating-lane .reader-hint-toast,
+.reader-floating-lane .reader-bilingual-floating-container {
+  position: static;
+  inset: auto;
+  transform: none;
+  margin: 0;
+}
+
+.reader-floating-lane .reader-bilingual-floating-container {
+  order: 1;
+  inline-size: 100%;
+  max-inline-size: 640px;
+}
+
+.reader-floating-lane .reader__pacer-bar {
+  order: 2;
+}
+
+.reader-floating-lane .reader-hint-toast--captured {
+  order: 3;
+}
+
+.reader-floating-lane .reader-hint-toast:not(.reader-hint-toast--captured) {
+  order: 4;
+}
+
+.reader-floating-lane .reader-status-toast {
+  order: 5;
+}
+
+.reader-floating-lane .reader-return {
+  order: 6;
+  position: static;
+  inset: auto;
+  transform: none;
+  margin: 0;
+}
+
+/* La cápsula de palabra entra en la misma cola: deja de ser un fixed que
+   competía con el dock y empuja hacia arriba al marcapasos si hace falta. */
+.reader-floating-capsule-slot {
+  order: 0;
+  inline-size: 100%;
+  display: flex;
+  justify-content: center;
+}
+
+.reader-floating-capsule-slot:empty {
+  display: none;
+}
+
+.reader-floating-capsule-slot .word-capsule {
+  position: static;
+  inset: auto;
+  transform: none;
+  inline-size: 100%;
+  max-inline-size: 440px;
+  z-index: auto;
+}
+
+/* El gato reposa sobre la cápsula; con el marcapasos activo se retira para no
+   posarse encima de la barra de ritmo. */
+.reader:has(.reader__pacer-bar) .dock-companion-perch,
+.reader:has(.reader-hint-toast) .dock-companion-perch,
+.reader:has(.reader-status-toast) .dock-companion-perch,
+.reader:has(.word-capsule) .reader-hint-toast {
+  display: none;
+}
+
+.reader:has(.word-capsule) .dock-companion-perch {
+  opacity: 0;
+  transform: scale(0.85);
+  pointer-events: none;
+}
+
 /* Popover de Modos: encima de la cápsula, nunca tapado por ella ni por el backdrop */
 .dock-mode-popover,
 .reader-mode-popover {
@@ -5077,12 +5253,16 @@ b.lecta-anchor {
   pointer-events: auto;
   width: min(360px, calc(100vw - 24px));
   max-height: min(62vh, 420px);
-  margin-bottom: 10px;
+  margin-bottom: 16px;
   padding: 12px;
   border-radius: 20px;
-  background: var(--surface-elevated, #18181b);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.65);
+  /* Superficie del tema: el popover se lee sobre papel, sepia, noche y OLED.
+     Antes usaba tokens del tema oscuro que no existen fuera de él (texto
+     blanco sobre papel blanco: títulos invisibles). */
+  background: var(--paper-raised);
+  border: 1px solid var(--rule-strong);
+  box-shadow: var(--shadow-2);
+  color: var(--ink);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -5106,9 +5286,9 @@ b.lecta-anchor {
   text-align: left;
   padding: 10px 12px;
   border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--text-main, #ffffff);
+  border: 1px solid var(--rule);
+  background: var(--paper);
+  color: var(--ink);
   cursor: pointer;
   transition:
     border-color 150ms ease,
@@ -5117,13 +5297,17 @@ b.lecta-anchor {
 }
 
 .reader-mode-card:hover {
-  border-color: rgba(255, 255, 255, 0.2);
-  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--rule-strong);
+  background: var(--paper-sunken);
 }
 
 .reader-mode-card.is-active {
-  border-color: var(--vermilion, #c86d3b);
-  background: rgba(200, 109, 59, 0.16);
+  border-color: var(--vermilion);
+  background: color-mix(in srgb, var(--vermilion) 12%, var(--paper-raised));
+}
+
+.reader-mode-card.is-active .reader-mode-card-title {
+  color: var(--vermilion);
 }
 
 .reader-mode-card-icon {
@@ -5133,16 +5317,16 @@ b.lecta-anchor {
 
 .reader-mode-card-title {
   font-family: var(--font-ui);
-  font-size: var(--fs-xs);
+  font-size: 0.8125rem;
   font-weight: 600;
   margin-bottom: 0.15rem;
 }
 
 .reader-mode-card-desc {
   font-family: var(--font-ui);
-  font-size: 0.7rem;
-  color: var(--text-muted, #a1a1aa);
-  line-height: 1.25;
+  font-size: 0.75rem;
+  color: var(--ink-soft);
+  line-height: 1.3;
 }
 
 .dock-mode-popover-footer,
@@ -5151,8 +5335,8 @@ b.lecta-anchor {
   bottom: -12px;
   margin: 4px -12px -12px -12px;
   padding: 10px 12px;
-  background: linear-gradient(to top, #18181b 80%, rgba(24, 24, 27, 0.85));
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--paper-raised);
+  border-top: 1px solid var(--rule);
   text-align: center;
 }
 
@@ -5161,15 +5345,15 @@ b.lecta-anchor {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 36px;
+  min-height: 44px;
   width: 100%;
   padding: 8px 12px;
   border-radius: 9999px;
   font-size: 0.8125rem;
   font-weight: 500;
-  color: var(--text-muted, #a1a1aa);
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: var(--ink-soft);
+  background: var(--paper-sunken);
+  border: 1px solid var(--rule);
   cursor: pointer;
   text-decoration: none;
   transition: all 150ms ease;
@@ -5177,9 +5361,9 @@ b.lecta-anchor {
 
 .dock-mode-customize-btn:hover,
 .reader-mode-customize-link:hover {
-  color: #ffffff;
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.15);
+  color: var(--ink);
+  background: var(--paper);
+  border-color: var(--rule-strong);
 }
 
 @keyframes dockPopoverIn {
@@ -5918,6 +6102,14 @@ b.lecta-anchor {
 
 /* 5. Accesibilidad: Reducción de movimiento y Adaptación Móvil */
 @media (prefers-reduced-motion: reduce) {
+  .dock-mode-popover,
+  .reader-mode-popover,
+  .reader__pacer-bar,
+  .reader-floating-lane > * {
+    animation: none !important;
+    transition: none !important;
+  }
+
   .lecta-priming-card,
   [data-paragraph-dimmed="true"],
   .reader-recap-bubble,
@@ -5972,12 +6164,12 @@ b.lecta-anchor {
   align-items: center;
   gap: 0.75rem;
   padding: 0.4rem 0.85rem;
-  background: var(--bg-surface, var(--bg, #ffffff));
-  border: 1px solid var(--border-subtle, rgba(0, 0, 0, 0.12));
+  background: var(--paper-raised);
+  border: 1px solid var(--rule);
   border-radius: 9999px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-2);
   font-size: 0.84rem;
-  color: var(--text-primary, #1e293b);
+  color: var(--ink);
   white-space: nowrap;
   max-width: 90vw;
 }
@@ -5989,7 +6181,7 @@ b.lecta-anchor {
 }
 
 .reader-chapter-prep-btn {
-  background: var(--accent, #c86d3b);
+  background: var(--vermilion);
   color: #fff;
   border: none;
   border-radius: 9999px;

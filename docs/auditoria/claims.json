@@ -1,0 +1,1030 @@
+{
+  "version": 1,
+  "doc": "docs/estrategia-aprendizaje-2026-10-24.md",
+  "nota": "Registro de afirmaciones falsables del documento. Cada afirmación declara una cita textual (docQuote), anclajes de código verificables, sondas ejecutables y las referencias que la sostienen. Lo que no se pueda comprobar debe quedar UNVERIFIED, no aprobado.",
+  "claims": [
+    {
+      "id": "H1-cobertura-tipos",
+      "section": "H1",
+      "title": "La cobertura se calcula sobre formas únicas",
+      "statement": "El porcentaje de cobertura de un libro divide conocidas+guardadas entre formas únicas (types), sin ponderar por apariciones (tokens).",
+      "docQuote": "Se calcula sobre **formas únicas**",
+      "checks": [
+        {
+          "type": "code-anchor",
+          "file": "src/client/lib/knowledge.ts",
+          "line": 292,
+          "window": 2,
+          "expect": "\\(knownCount \\+ savedCount\\) / total",
+          "why": "la fórmula del porcentaje usa knownCount+savedCount sobre total"
+        },
+        {
+          "type": "code-anchor",
+          "file": "src/client/lib/knowledge.ts",
+          "line": 289,
+          "window": 2,
+          "expect": "const total = forms\\.length",
+          "why": "total es el número de formas únicas de la sección"
+        },
+        {
+          "type": "code-absent",
+          "file": "src/client/lib/coverage.ts",
+          "pattern": "\\btokens?\\b",
+          "why": "coverage.ts no pondera por tokens"
+        }
+      ],
+      "citations": [
+        "laufer2010",
+        "nation2006",
+        "schmitt2011"
+      ]
+    },
+    {
+      "id": "H1-umbrales-dobles",
+      "section": "H1",
+      "title": "Dos sistemas de umbrales para la misma métrica",
+      "statement": "coverageLabel usa 90/75/60 y getBookAffinityBadge usa 94/86 sobre el mismo porcentaje, así que un libro puede llevar dos etiquetas distintas a la vez.",
+      "docQuote": "Etiquetas con umbrales propios 90/75/60",
+      "checks": [
+        {
+          "type": "code-anchor",
+          "file": "src/client/lib/coverage.ts",
+          "line": 152,
+          "window": 1,
+          "expect": "percent >= 90",
+          "why": "umbral de «En tu nivel»"
+        },
+        {
+          "type": "code-anchor",
+          "file": "src/client/lib/catalog.ts",
+          "line": 281,
+          "window": 10,
+          "expect": "bookDifficultyOrLevel >= 94",
+          "why": "umbral de «Lectura relajada» en la insignia de afinidad"
+        },
+        {
+          "type": "code-anchor",
+          "file": "src/client/lib/catalog.ts",
+          "line": 289,
+          "window": 10,
+          "expect": "bookDifficultyOrLevel >= 86",
+          "why": "umbral de «Ideal para tu ritmo» en la misma insignia"
+        }
+      ],
+      "citations": [
+        "schmitt2011",
+        "laufer2010"
+      ]
+    },
+    {
+      "id": "H2-preparacion-40",
+      "section": "H2",
+      "title": "La preparación automática ofrece hasta 40 filas",
+      "statement": "La hoja «Antes de leer» se abre sola una vez por sección cuando hay palabras desconocidas y admite hasta 40 filas, mientras el tope de palabras de priming es 3–5.",
+      "docQuote": "hasta **40 filas**",
+      "checks": [
+        {
+          "type": "code-anchor",
+          "file": "src/client/lib/section-words.ts",
+          "line": 203,
+          "window": 1,
+          "expect": "PREPARATION_ROWS_CAP = 40",
+          "why": "tope global de la selección principal"
+        },
+        {
+          "type": "code-anchor",
+          "file": "src/client/lib/settings.ts",
+          "line": 411,
+          "window": 1,
+          "expect": "chapterPrimingMode: \"auto\"",
+          "why": "la preparación se abre sola por defecto"
+        },
+        {
+          "type": "code-anchor",
+          "file": "src/client/hooks/useReaderChapterPrep.ts",
+          "line": 51,
+          "window": 2,
+          "expect": "unknownKeyWordsCount <= 0",
+          "why": "solo se abre si hay palabras desconocidas"
+        },
+        {
+          "type": "code-anchor",
+          "file": "src/client/lib/section-words.ts",
+          "line": 508,
+          "window": 2,
+          "expect": "MAX_PREVIEW_WORDS = 5",
+          "why": "el tope cognitivo declarado (Cowan) es 5, no 40"
+        }
+      ],
+      "citations": [
+        "yanagisawa2020",
+        "elleman2009",
+        "webb2009"
+      ]
+    },
+    {
+      "id": "H2-zpd-huerfano",
+      "section": "H2",
+      "title": "El selector ZPD de 3–5 palabras no tiene consumidor",
+      "statement": "selectOptimalChapterPrimingWords y buildChapterPrimingCandidates existen y están probados, pero ningún módulo de producción los importa.",
+      "docQuote": "es código muerto",
+      "checks": [
+        {
+          "type": "no-importers",
+          "symbol": "selectOptimalChapterPrimingWords",
+          "scope": [
+            "src"
+          ],
+          "exclude": [
+            "src/client/lib/section-words.ts"
+          ],
+          "why": "si aparece un importador, la afirmación queda refutada"
+        },
+        {
+          "type": "no-importers",
+          "symbol": "buildChapterPrimingCandidates",
+          "scope": [
+            "src"
+          ],
+          "exclude": [
+            "src/client/lib/section-words.ts"
+          ],
+          "why": "idem para el constructor de candidatas"
+        }
+      ],
+      "citations": [
+        "yanagisawa2020",
+        "nation2006"
+      ]
+    },
+    {
+      "id": "H3-theta-escala",
+      "section": "H3",
+      "title": "Dos escalas de dificultad con el mismo nombre de theta",
+      "statement": "Las tres escalas de dificultad (7 − zipf, 4 − zipf y logit) comparten la llave lecta:user_theta:<lang>:v1: el CAT y el salto de calibración la escriben, la hoja de preparación la lee y calcula β = 7 − zipf. Con θ = 4 la campana ZPD apunta a zipf ≈ 2,4; con θ = 1, a zipf ≈ 5,4.",
+      "docQuote": "Dos escalas de θ con el mismo nombre",
+      "checks": [
+        {
+          "type": "code-anchor",
+          "file": "src/client/lib/profile-models.ts",
+          "line": 227,
+          "window": 1,
+          "expect": "Math\\.max\\(0, 7\\.0 - zipf\\)",
+          "why": "wordDifficulty usa 7 − zipf"
+        },
+        {
+          "type": "code-anchor",
+          "file": "src/client/lib/profile-models.ts",
+          "line": 569,
+          "window": 1,
+          "expect": "4\\.0 - zipf",
+          "why": "betaFromZipf usa 4 − zipf"
+        },
+        {
+          "type": "code-anchor",
+          "file": "src/client/lib/calibration.ts",
+          "line": 556,
+          "window": 6,
+          "expect": "saveUserTheta\\(finalTheta",
+          "why": "el CAT persiste su theta en la misma llave"
+        },
+        {
+          "type": "code-anchor",
+          "file": "src/client/lib/calibration.ts",
+          "line": 612,
+          "window": 4,
+          "expect": "saveUserTheta\\(0\\.0",
+          "why": "saltar la calibración escribe 0,0 en la misma llave"
+        },
+        {
+          "type": "code-anchor",
+          "file": "src/client/hooks/useReaderChapterPrep.ts",
+          "line": 202,
+          "window": 2,
+          "expect": "loadUserTheta\\(",
+          "why": "la utilidad de la hoja se alimenta con loadUserTheta"
+        },
+        {
+          "type": "probe",
+          "probe": "theta-escalas",
+          "why": "desfase de escalas y efecto sobre el zipf objetivo"
+        }
+      ],
+      "citations": [
+        "wilson2019"
+      ]
+    },
+    {
+      "id": "H4-jol",
+      "section": "H4",
+      "title": "«Ya la conozco» alimenta el nivel como si fuera una prueba",
+      "statement": "Marcar «ya la conozco» llama a updateLanguageTheta con outcome 1 y un delta de 0,18 × (1 − P), sin ninguna recuperación verificada de por medio.",
+      "docQuote": "«Ya la conozco» es un juicio, no una prueba",
+      "checks": [
+        {
+          "type": "code-anchor",
+          "file": "src/client/components/Reader.tsx",
+          "line": 4167,
+          "window": 4,
+          "expect": "updateLanguageTheta\\(currentLang, beta, 1, 1\\.0\\)",
+          "why": "onMarkKnown sube theta con outcome 1"
+        },
+        {
+          "type": "code-anchor",
+          "file": "src/client/lib/profile-models.ts",
+          "line": 456,
+          "window": 1,
+          "expect": "0\\.18 \\* \\(1 - pKnow\\)",
+          "why": "magnitud de la señal explicit_known"
+        }
+      ],
+      "citations": [
+        "koriat2005",
+        "laufergoldstein2004",
+        "richland2009",
+        "kornell2009",
+        "kremmel2016"
+      ]
+    },
+    {
+      "id": "H5-pasiva",
+      "section": "H5",
+      "title": "La exposición pasiva marca páginas completas y «familiariza» a las 3 pasadas",
+      "statement": "Si el dwell supera palabras × 160 ms (con tope de 12 s), todas las palabras no tocadas de la página se registran como vistas, y la tercera exposición las vuelve «familiar», lo que las saca de la predicción.",
+      "docQuote": "La exposición pasiva se auto-engaña",
+      "checks": [
+        {
+          "type": "code-anchor",
+          "file": "src/client/lib/knowledge.ts",
+          "line": 58,
+          "window": 1,
+          "expect": "GAMMA_PASSIVE = 0\\.82",
+          "why": "decaimiento de la probabilidad estimada"
+        },
+        {
+          "type": "code-anchor",
+          "file": "src/client/lib/knowledge.ts",
+          "line": 59,
+          "window": 1,
+          "expect": "FAMILIAR_PASSIVE_THRESHOLD = 3",
+          "why": "tres exposiciones bastan para «familiar»"
+        },
+        {
+          "type": "code-anchor",
+          "file": "src/client/lib/knowledge.ts",
+          "line": 740,
+          "window": 2,
+          "expect": "MIN_MS_PER_WORD = 160",
+          "why": "dwell exigido por palabra"
+        },
+        {
+          "type": "code-anchor",
+          "file": "src/client/lib/knowledge.ts",
+          "line": 766,
+          "window": 8,
+          "expect": "tappedWordsOnPage\\.has",
+          "why": "solo se excluyen las palabras tocadas; el resto entra completa"
+        },
+        {
+          "type": "probe",
+          "probe": "passive-dwell",
+          "why": "el tope de 12 s hace que 75+ palabras ya cumplan el dwell"
+        }
+      ],
+      "citations": [
+        "nagy1985",
+        "pigada2006",
+        "waring2003"
+      ]
+    },
+    {
+      "id": "H6-fsrs-manual",
+      "section": "H6",
+      "title": "Las tarjetas se inicializan a mano y la estabilidad se infla después",
+      "statement": "CAPTURE_SOURCE_PARAMS fija dificultad y estabilidad por origen de captura en vez de usar la primera calificación, y scheduleReview multiplica la estabilidad por 1,2/1,35 después del cálculo del scheduler.",
+      "docQuote": "bien elegido y mal inicializado",
+      "checks": [
+        {
+          "type": "code-anchor",
+          "file": "src/client/lib/fsrs.ts",
+          "line": 15,
+          "window": 2,
+          "expect": "reader_tap: \\{ difficulty: 5\\.5, stability: 1\\.0 \\}",
+          "why": "parámetros manuales por origen"
+        },
+        {
+          "type": "code-anchor",
+          "file": "src/client/lib/fsrs.ts",
+          "line": 40,
+          "window": 2,
+          "expect": "nextCard\\.stability \\* options\\.episodicMultiplier",
+          "why": "inflado posterior al cálculo del scheduler"
+        },
+        {
+          "type": "probe",
+          "probe": "fsrs-init",
+          "why": "compara la inicialización manual con la del modelo real"
+        }
+      ],
+      "citations": [
+        "ye2022",
+        "lindsey2014",
+        "cepeda2008",
+        "cepeda2006",
+        "rowland2014",
+        "adesope2017"
+      ]
+    },
+    {
+      "id": "H6-implicito-tiempo",
+      "section": "H6",
+      "title": "La calificación implícita convierte velocidad en «Easy»",
+      "statement": "computeImplicitFsrsGrade devuelve grade 4 (Easy) si el tiempo por carácter es ≤ 650 ms, sin comprobar producción ni recuerdo demorado.",
+      "docQuote": "650 ms/carácter",
+      "checks": [
+        {
+          "type": "code-anchor",
+          "file": "src/client/lib/practice.ts",
+          "line": 590,
+          "window": 1,
+          "expect": "msPerChar <= 650",
+          "why": "umbral de tiempo que produce Easy"
+        },
+        {
+          "type": "code-anchor",
+          "file": "src/client/lib/practice.ts",
+          "line": 574,
+          "window": 2,
+          "expect": "errorCount >= 2",
+          "why": "el error sí degrada; el tiempo es el único ascenso"
+        }
+      ],
+      "citations": [
+        "rowland2014",
+        "laufergoldstein2004"
+      ]
+    },
+    {
+      "id": "H7-xp-proxy",
+      "section": "H7",
+      "title": "El XP paga consultar y coleccionar rarezas",
+      "statement": "Consultar una palabra paga 2 XP, guardar paga 3 y una palabra rara (zipf < 3,0) paga 7; hay logros por acumular palabras raras, y la racha multiplica el XP por 1,1.",
+      "docQuote": "La gamificación paga el proxy",
+      "checks": [
+        {
+          "type": "code-anchor",
+          "file": "src/shared/gamification.ts",
+          "line": 540,
+          "window": 1,
+          "expect": "gained \\+= 2",
+          "why": "XP por consulta"
+        },
+        {
+          "type": "code-anchor",
+          "file": "src/shared/gamification.ts",
+          "line": 547,
+          "window": 2,
+          "expect": "gained \\+= 4",
+          "why": "bonus por rareza"
+        },
+        {
+          "type": "code-anchor",
+          "file": "src/shared/gamification.ts",
+          "line": 87,
+          "window": 1,
+          "expect": "RARE_ZIPF_BELOW = 3\\.0",
+          "why": "definición de «rara»"
+        },
+        {
+          "type": "code-anchor",
+          "file": "src/shared/gamification.ts",
+          "line": 501,
+          "window": 1,
+          "expect": "STREAK_XP_BONUS = 1\\.1",
+          "why": "bonus por racha"
+        },
+        {
+          "type": "probe",
+          "probe": "xp-proxies",
+          "why": "valores de XP observados al ejecutar applyGameEvent"
+        }
+      ],
+      "citations": [
+        "deci1999",
+        "howard2021",
+        "sailer2020",
+        "harkin2016"
+      ]
+    },
+    {
+      "id": "H7-scroll",
+      "section": "Ajustes",
+      "title": "El lector abre en scroll por defecto",
+      "statement": "El ajuste por defecto de layout es scroll con medida de 65 caracteres, aunque la evidencia favorece el paginado.",
+      "docQuote": "`scroll` (`settings.ts:382`)",
+      "checks": [
+        {
+          "type": "code-anchor",
+          "file": "src/client/lib/settings.ts",
+          "line": 382,
+          "window": 1,
+          "expect": "layout: \"scroll\"",
+          "why": "valor por defecto del layout"
+        },
+        {
+          "type": "code-anchor",
+          "file": "src/client/lib/settings.ts",
+          "line": 379,
+          "window": 1,
+          "expect": "measure: 65",
+          "why": "medida de línea por defecto"
+        }
+      ],
+      "citations": [
+        "delgado2018",
+        "haverkamp2023",
+        "sanchez2009",
+        "dyson2001"
+      ]
+    },
+    {
+      "id": "M4-sin-push",
+      "section": "M4",
+      "title": "No hay notificaciones push en el cliente",
+      "statement": "El cliente no registra pushManager ni pide permiso de notificaciones, así que cualquier recordatorio tiene que ser in-app o externo (calendario).",
+      "docQuote": "no existe `pushManager` en el cliente",
+      "checks": [
+        {
+          "type": "code-absent",
+          "scope": [
+            "src/client"
+          ],
+          "pattern": "pushManager|showNotification|Notification\\.requestPermission",
+          "why": "si aparece, el documento se equivoca sobre la infraestructura"
+        }
+      ],
+      "citations": [
+        "gollwitzer2006",
+        "thakkar2016",
+        "lally2010"
+      ]
+    },
+    {
+      "id": "H8-sin-medicion",
+      "section": "H8",
+      "title": "No se mide comprensión ni retención diferida",
+      "statement": "No existe en el código ninguna comprobación de comprensión ni de retención demorada; el bucle se valida con consultas, guardados, repasos y minutos.",
+      "docQuote": "Nadie mide si se aprende",
+      "checks": [
+        {
+          "type": "code-absent",
+          "scope": [
+            "src"
+          ],
+          "pattern": "comprehension|delayedRetention|retentionCheck|chequeoDeRetencion",
+          "why": "ningún identificador mide comprensión o retención diferida"
+        },
+        {
+          "type": "code-absent",
+          "scope": [
+            "src"
+          ],
+          "pattern": "postTest|delayedRecall",
+          "why": "tampoco hay post-test ni recuerdo demorado"
+        }
+      ],
+      "citations": [
+        "rowland2014",
+        "adesope2017",
+        "harkin2016"
+      ]
+    },
+    {
+      "id": "H3-cat-prior",
+      "section": "H3",
+      "title": "El prior del CAT está en otra escala que su banco",
+      "statement": "El banco activo del CAT usa dificultades logit entre −2,1 y +2,25, mientras el prior es θ = 4,0: en el primer ítem P(conocer) ≈ 0,996 y la información de Fisher es casi nula.",
+      "docQuote": "el prior del CAT (4,0) cae fuera del rango",
+      "checks": [
+        {
+          "type": "code-anchor",
+          "file": "src/shared/calibration-bank.ts",
+          "line": 1077,
+          "window": 1,
+          "expect": "CALIBRATION_BANK_ITEMS_ES",
+          "why": "banco logit que usa el CAT"
+        },
+        {
+          "type": "code-anchor",
+          "file": "src/client/lib/calibration.ts",
+          "line": 382,
+          "window": 2,
+          "expect": "getCalibrationBankByLang",
+          "why": "el CAT selecciona ítems de ese banco"
+        },
+        {
+          "type": "code-anchor",
+          "file": "src/client/lib/profile-models.ts",
+          "line": 658,
+          "window": 1,
+          "expect": "CALIBRATION_PRIOR_THETA = 4\\.0",
+          "why": "prior en la escala 7 − zipf"
+        },
+        {
+          "type": "probe",
+          "probe": "bank-escala",
+          "why": "rango del banco y probabilidad/información en el prior"
+        }
+      ],
+      "citations": []
+    }
+  ],
+  "references": {
+    "laufer2010": {
+      "cite": "Laufer & Ravenhorst-Kalovski (2010), Reading in a Foreign Language 22(1), 15–30 — umbrales 95 %/98 %",
+      "url": "https://eric.ed.gov/?id=EJ887873",
+      "level": "estudio primario",
+      "yearAnyOf": [
+        2010
+      ]
+    },
+    "nation2006": {
+      "cite": "Nation (2006), Canadian Modern Language Review 63(1) — tamaño léxico por modalidad",
+      "doi": "10.3138/cmlr.63.1.59",
+      "level": "corpus",
+      "titleIncludes": [
+        "How Large a Vocabulary"
+      ],
+      "yearAnyOf": [
+        2006
+      ]
+    },
+    "schmitt2011": {
+      "cite": "Schmitt, Jiang & Grabe (2011), Modern Language Journal 95(1), 26–43 — relación lineal cobertura-comprensión",
+      "url": "https://eric.ed.gov/?id=EJ928357",
+      "level": "estudio primario",
+      "yearAnyOf": [
+        2011
+      ]
+    },
+    "yanagisawa2020": {
+      "cite": "Yanagisawa, Webb & Uchihara (2020), Studies in Second Language Acquisition — glosas 45,3 % vs 26,6 %",
+      "doi": "10.1017/S0272263119000688",
+      "level": "meta-análisis",
+      "titleIncludes": [
+        "GLOSSING"
+      ],
+      "yearAnyOf": [
+        2020
+      ]
+    },
+    "webb2009": {
+      "cite": "Webb (2009), Canadian Modern Language Review — asistencia durante la lectura supera a la previa",
+      "level": "estudio primario",
+      "doi": "10.3138/cmlr.65.3.441",
+      "titleIncludes": [
+        "Pre-learning Vocabulary"
+      ],
+      "yearAnyOf": [
+        2009
+      ]
+    },
+    "elleman2009": {
+      "cite": "Elleman, Lindo, Morphy & Compton (2009), Journal of Research on Educational Effectiveness 2(1), 1–44 — d = 0,50 vs 0,10",
+      "doi": "10.1080/19345740802539200",
+      "level": "meta-análisis",
+      "titleIncludes": [
+        "Vocabulary Instruction"
+      ],
+      "yearAnyOf": [
+        2009
+      ]
+    },
+    "koriat2005": {
+      "cite": "Koriat & Bjork (2005), JEP:LMC 31(2) — ilusiones de competencia",
+      "doi": "10.1037/0278-7393.31.2.187",
+      "level": "experimental",
+      "titleIncludes": [
+        "Illusions of Competence"
+      ],
+      "yearAnyOf": [
+        2005
+      ]
+    },
+    "laufergoldstein2004": {
+      "cite": "Laufer & Goldstein (2004), Language Learning 54(3) — reconocimiento vs recuerdo",
+      "doi": "10.1111/j.0023-8333.2004.00260.x",
+      "level": "experimental",
+      "titleIncludes": [
+        "Testing Vocabulary Knowledge"
+      ],
+      "yearAnyOf": [
+        2004
+      ]
+    },
+    "richland2009": {
+      "cite": "Richland, Kornell & Kao (2009), JEP:Applied 15(3) — efecto de la prueba previa",
+      "doi": "10.1037/a0016496",
+      "level": "experimental",
+      "titleIncludes": [
+        "pretesting effect"
+      ],
+      "yearAnyOf": [
+        2009
+      ]
+    },
+    "kornell2009": {
+      "cite": "Kornell, Hays & Bjork (2009), JEP:LMC 35(4) — fallar con feedback no daña",
+      "doi": "10.1037/a0015729",
+      "level": "experimental",
+      "titleIncludes": [
+        "Unsuccessful retrieval attempts"
+      ],
+      "yearAnyOf": [
+        2009
+      ]
+    },
+    "waring2003": {
+      "cite": "Waring & Takaki (2003), Reading in a Foreign Language 15(2) — ninguna palabra con <8 encuentros se retuvo",
+      "url": "https://eric.ed.gov/?id=EJ676380",
+      "level": "estudio primario",
+      "yearAnyOf": [
+        2003
+      ]
+    },
+    "pigada2006": {
+      "cite": "Pigada & Schmitt (2006), Reading in a Foreign Language 18(1) — aprendizaje parcial y necesidad de encuentros",
+      "url": "https://eric.ed.gov/?id=EJ759833",
+      "level": "estudio primario",
+      "yearAnyOf": [
+        2006
+      ]
+    },
+    "nagy1985": {
+      "cite": "Nagy, Herman & Anderson (1985), Reading Research Quarterly 20(2), 233–253 — 5–15 % por exposición",
+      "level": "estudio primario",
+      "doi": "10.2307/747758",
+      "titleIncludes": [
+        "Learning Words from Context"
+      ],
+      "yearAnyOf": [
+        1985
+      ]
+    },
+    "nation2014": {
+      "cite": "Nation (2014), Reading in a Foreign Language 26(2) — 2 novelas por millar",
+      "url": "https://eric.ed.gov/?id=EJ1044345",
+      "level": "corpus",
+      "yearAnyOf": [
+        2014
+      ]
+    },
+    "cepeda2008": {
+      "cite": "Cepeda et al. (2008), Psychological Science 19(11) — 20–40 % a una semana, 5–10 % a un año",
+      "doi": "10.1111/j.1467-9280.2008.02209.x",
+      "level": "replicado",
+      "titleIncludes": [
+        "Spacing Effects"
+      ],
+      "yearAnyOf": [
+        2008
+      ]
+    },
+    "cepeda2006": {
+      "cite": "Cepeda et al. (2006), Psychological Bulletin 132(3) — 317 experimentos de práctica distribuida",
+      "doi": "10.1037/0033-2909.132.3.354",
+      "level": "meta-análisis",
+      "titleIncludes": [
+        "Distributed practice"
+      ],
+      "yearAnyOf": [
+        2006
+      ]
+    },
+    "rowland2014": {
+      "cite": "Rowland (2014), Psychological Bulletin 140(6) — g ≈ 0,50 para práctica de recuperación",
+      "doi": "10.1037/a0037559",
+      "level": "meta-análisis",
+      "titleIncludes": [
+        "testing versus restudy"
+      ],
+      "yearAnyOf": [
+        2014
+      ]
+    },
+    "adesope2017": {
+      "cite": "Adesope, Trevisan & Sundararajan (2017), Review of Educational Research 87(3) — g ≈ 0,61 con feedback",
+      "doi": "10.3102/0034654316689306",
+      "level": "meta-análisis",
+      "titleIncludes": [
+        "Practice Testing"
+      ],
+      "yearAnyOf": [
+        2017
+      ]
+    },
+    "ye2022": {
+      "cite": "Ye, Su & Cao (2022), KDD — SSP-MMC/FSRS, +12,6 % de coste de memorización",
+      "doi": "10.1145/3534678.3539081",
+      "level": "benchmark de logs",
+      "titleIncludes": [
+        "Stochastic Shortest Path"
+      ],
+      "yearAnyOf": [
+        2022
+      ]
+    },
+    "lindsey2014": {
+      "cite": "Lindsey et al. (2014), Psychological Science 25(3) — +16,5 % de retención con personalización",
+      "doi": "10.1177/0956797613504302",
+      "level": "replicado",
+      "titleIncludes": [
+        "Long-Term Knowledge Retention"
+      ],
+      "yearAnyOf": [
+        2014
+      ]
+    },
+    "deci1999": {
+      "cite": "Deci, Koestner & Ryan (1999), Psychological Bulletin 125(6) — d ≈ −0,40 por recompensas contingentes",
+      "doi": "10.1037/0033-2909.125.6.627",
+      "level": "meta-análisis",
+      "titleIncludes": [
+        "extrinsic rewards"
+      ],
+      "yearAnyOf": [
+        1999
+      ]
+    },
+    "howard2021": {
+      "cite": "Howard et al. (2021), Perspectives on Psychological Science — la regulación externa no predice persistencia",
+      "doi": "10.1177/1745691620966789",
+      "level": "meta-análisis",
+      "titleIncludes": [
+        "Student Motivation"
+      ],
+      "yearAnyOf": [
+        2021
+      ]
+    },
+    "sailer2020": {
+      "cite": "Sailer & Homner (2020), Educational Psychology Review — g = 0,49 / 0,36 / 0,25",
+      "url": "https://eric.ed.gov/?id=EJ1245270",
+      "level": "meta-análisis",
+      "yearAnyOf": [
+        2020
+      ]
+    },
+    "harkin2016": {
+      "cite": "Harkin et al. (2016), Psychological Bulletin — monitoreo del progreso, d = 0,40",
+      "doi": "10.1037/bul0000025",
+      "level": "meta-análisis",
+      "titleIncludes": [
+        "monitoring goal progress"
+      ],
+      "yearAnyOf": [
+        2016
+      ]
+    },
+    "gollwitzer2006": {
+      "cite": "Gollwitzer & Sheeran (2006), Advances in Experimental Social Psychology — d = 0,65",
+      "doi": "10.1016/S0065-2601(06)38002-1",
+      "level": "meta-análisis",
+      "titleIncludes": [
+        "Implementation Intentions"
+      ],
+      "yearAnyOf": [
+        2006
+      ]
+    },
+    "thakkar2016": {
+      "cite": "Thakkar et al. (2016), JAMA Internal Medicine — recordatorios SMS, OR 2,11",
+      "doi": "10.1001/jamainternmed.2015.7667",
+      "level": "meta-análisis",
+      "titleIncludes": [
+        "Text Messaging"
+      ],
+      "yearAnyOf": [
+        2016
+      ]
+    },
+    "lally2010": {
+      "cite": "Lally et al. (2010), European Journal of Social Psychology 40(6), 998–1009 — 66 días de mediana",
+      "doi": "10.1002/ejsp.674",
+      "level": "replicado",
+      "titleIncludes": [
+        "habits formed"
+      ],
+      "yearAnyOf": [
+        2009,
+        2010
+      ]
+    },
+    "delgado2018": {
+      "cite": "Delgado et al. (2018), Educational Research Review 25 — g = −0,21 papel > pantalla",
+      "doi": "10.1016/j.edurev.2018.09.003",
+      "level": "meta-análisis",
+      "titleIncludes": [
+        "printed books"
+      ],
+      "yearAnyOf": [
+        2018
+      ]
+    },
+    "haverkamp2023": {
+      "cite": "Haverkamp et al. (2023), Reading and Writing 36(7) — paginar vs mover texto",
+      "doi": "10.1007/s11145-022-10328-9",
+      "level": "experimental",
+      "titleIncludes": [
+        "text movement"
+      ],
+      "yearAnyOf": [
+        2022,
+        2023
+      ]
+    },
+    "sanchez2009": {
+      "cite": "Sanchez & Wiley (2009), Human Factors — el scroll castiga a baja memoria de trabajo",
+      "doi": "10.1177/0018720809352788",
+      "level": "experimental",
+      "titleIncludes": [
+        "Scroll or Not to Scroll"
+      ],
+      "yearAnyOf": [
+        2009
+      ]
+    },
+    "dyson2001": {
+      "cite": "Dyson & Haselgrove (2001), IJHCS — velocidad máxima en ~55 caracteres",
+      "doi": "10.1006/ijhc.2001.0458",
+      "level": "experimental",
+      "titleIncludes": [
+        "line length"
+      ],
+      "yearAnyOf": [
+        2001
+      ]
+    },
+    "albulescu2022": {
+      "cite": "Albulescu et al. (2022), PLOS ONE — micro-descansos d = 0,36 vigor / 0,35 fatiga",
+      "doi": "10.1371/journal.pone.0272460",
+      "level": "meta-análisis",
+      "titleIncludes": [
+        "break"
+      ],
+      "yearAnyOf": [
+        2022
+      ]
+    },
+    "clintonlisell2023": {
+      "cite": "Clinton-Lisell (2023), meta-análisis de lectura con audio (preprint)",
+      "doi": "10.31219/osf.io/ku6tv",
+      "level": "preprint",
+      "titleIncludes": [
+        "Reading while listening"
+      ],
+      "yearAnyOf": [
+        2023
+      ]
+    },
+    "griffiths1992": {
+      "cite": "Griffiths (1992), TESOL Quarterly 26(2) — umbral ~200 wpm",
+      "doi": "10.2307/3587015",
+      "level": "experimental",
+      "titleIncludes": [
+        "Speech Rate"
+      ],
+      "yearAnyOf": [
+        1992
+      ]
+    },
+    "kim2020": {
+      "cite": "Kim, Lee & Lee (2020), Language Teaching Research — glosa L1 > L2, g = 0,33",
+      "doi": "10.1177/1362168820981394",
+      "level": "meta-análisis",
+      "titleIncludes": [
+        "L1 and L2 glosses"
+      ],
+      "yearAnyOf": [
+        2020
+      ]
+    },
+    "kremmel2016": {
+      "cite": "Kremmel & Schmitt (2016), Language Assessment Quarterly — los test inflan el saber",
+      "url": "https://eric.ed.gov/?id=EJ1120126",
+      "level": "estudio primario",
+      "yearAnyOf": [
+        2016
+      ]
+    },
+    "wilson2019": {
+      "cite": "Wilson et al. (2019), Nature Communications — regla del 85 % de acierto",
+      "doi": "10.1038/s41467-019-12552-4",
+      "level": "modelo computacional",
+      "titleIncludes": [
+        "Eighty Five Percent"
+      ],
+      "yearAnyOf": [
+        2019
+      ]
+    },
+    "kirschner2006": {
+      "cite": "Kirschner, Sweller & Clark (2006), Educational Psychologist — guía explícita para novatos",
+      "doi": "10.1207/s15326985ep4102_1",
+      "level": "revisión",
+      "titleIncludes": [
+        "Minimal Guidance"
+      ],
+      "yearAnyOf": [
+        2006
+      ]
+    },
+    "milkman2014": {
+      "cite": "Milkman, Minson & Volpp (2014), Management Science — temptation bundling, +51 %",
+      "doi": "10.1287/mnsc.2013.1784",
+      "level": "experimental",
+      "titleIncludes": [
+        "Temptation Bundling"
+      ],
+      "yearAnyOf": [
+        2014
+      ]
+    },
+    "dai2014": {
+      "cite": "Dai, Milkman & Riis (2014), Management Science — fresh start effect",
+      "doi": "10.1287/mnsc.2014.1901",
+      "level": "correlacional",
+      "titleIncludes": [
+        "Fresh Start"
+      ],
+      "yearAnyOf": [
+        2014
+      ]
+    },
+    "locke2002": {
+      "cite": "Locke & Latham (2002), American Psychologist — metas específicas y difíciles",
+      "doi": "10.1037/0003-066X.57.9.705",
+      "level": "revisión",
+      "titleIncludes": [
+        "goal setting"
+      ],
+      "yearAnyOf": [
+        2002
+      ]
+    },
+    "ryandeci2000": {
+      "cite": "Ryan & Deci (2000), American Psychologist — autonomía, competencia y relación",
+      "doi": "10.1037/0003-066X.55.1.68",
+      "level": "revisión",
+      "titleIncludes": [
+        "Self-determination"
+      ],
+      "yearAnyOf": [
+        2000
+      ]
+    },
+    "patall2008": {
+      "cite": "Patall, Cooper & Robinson (2008), Psychological Bulletin — elegir aumenta motivación intrínseca",
+      "doi": "10.1037/0033-2909.134.2.270",
+      "level": "meta-análisis",
+      "titleIncludes": [
+        "choice"
+      ],
+      "yearAnyOf": [
+        2008
+      ]
+    },
+    "szpunar2013": {
+      "cite": "Szpunar, Khan & Schacter (2013), PNAS — tests intercalados reducen la divagación",
+      "doi": "10.1073/pnas.1221764110",
+      "level": "experimental",
+      "titleIncludes": [
+        "mind wandering"
+      ],
+      "yearAnyOf": [
+        2013
+      ]
+    },
+    "killingsworth2010": {
+      "cite": "Killingsworth & Gilbert (2010), Science — 46,9 % del tiempo despierto divagando",
+      "doi": "10.1126/science.1192439",
+      "level": "experimental",
+      "titleIncludes": [
+        "Wandering Mind"
+      ],
+      "yearAnyOf": [
+        2010
+      ]
+    },
+    "rayner2016": {
+      "cite": "Rayner et al. (2016), Psychological Science in the Public Interest — la lectura veloz sacrifica comprensión",
+      "textOnly": true,
+      "level": "revisión"
+    },
+    "kivetz2006": {
+      "cite": "Kivetz, Urminsky & Zheng (2006), Journal of Marketing Research 43(1) — goal gradient",
+      "textOnly": true,
+      "level": "experimental"
+    }
+  }
+}

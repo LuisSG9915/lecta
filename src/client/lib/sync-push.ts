@@ -10,6 +10,8 @@ export interface PushResult {
   ok: boolean;
   /** Sello máximo de lo confirmado; 0 si no se confirmó nada. */
   acceptedMax: number;
+  /** Clave del último elemento confirmado del lote. */
+  lastAcceptedKey?: string;
 }
 
 export const EMPTY_PUSH: PushResult = { ok: true, acceptedMax: 0 };

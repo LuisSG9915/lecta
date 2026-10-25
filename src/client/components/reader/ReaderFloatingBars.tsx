@@ -102,15 +102,6 @@ export function ReaderFloatingBars(props: ReaderFloatingBarsProps) {
       className="reader-bilingual-floating-container"
       role="region"
       aria-label="Párrafo bilingüe"
-      style={{
-        position: "fixed",
-        bottom: "84px",
-        left: "1rem",
-        right: "1rem",
-        margin: "0 auto",
-        maxWidth: "640px",
-        zIndex: 45,
-      }}
     >
       <BilingueParagraph
         bookId={bookHash}

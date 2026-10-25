@@ -295,14 +295,14 @@ export default function SmartReaderDock({
               alignItems: "center",
               gap: "8px",
               padding: isMuteOptionsOpen ? "6px 12px" : "6px 10px 6px 14px",
-              background: "var(--bg-elevated, #2a2a2e)",
-              color: "var(--text-main, #ffffff)",
+              background: "var(--paper-raised)",
+              color: "var(--ink)",
               borderRadius: "9999px",
-              boxShadow: "0 4px 16px rgba(0, 0, 0, 0.22)",
+              boxShadow: "var(--shadow-2)",
               fontSize: "0.86rem",
               lineHeight: 1.3,
               zIndex: 50,
-              border: "1px solid var(--border-subtle, rgba(255, 255, 255, 0.12))",
+              border: "1px solid var(--rule-strong)",
             }}
           >
             {!isMuteOptionsOpen ? (
@@ -348,7 +348,7 @@ export default function SmartReaderDock({
                   className="reader-focus-pill-close"
                   onClick={() => setIsMuteOptionsOpen(true)}
                   style={{
-                    background: "rgba(255, 255, 255, 0.1)",
+                    background: "var(--paper-sunken)",
                     border: "none",
                     color: "inherit",
                     borderRadius: "9999px",

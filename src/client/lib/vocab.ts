@@ -3,6 +3,7 @@ import {
   isDbScopeActive,
   listAllSavedWords,
   listSavedWords,
+  mergeKnowledgeRecords,
   putSavedWord,
   removeSavedWord,
   saveSessionValue,
@@ -13,11 +14,17 @@ import {
   type WordMeaning,
 } from "./idb";
 import { accountFetch } from "./account-fetch";
-import { advanceSyncCursor, getSyncCursor } from "./sync-cursors";
-import { maxStamp, type PushResult } from "./sync-push";
+import {
+  advanceSyncCompoundCursor,
+  advanceSyncCursor,
+  getSyncCompoundCursor,
+  getSyncCursor,
+} from "./sync-cursors";
+import { type PushResult } from "./sync-push";
 import {
   clearCollectionPagesPending,
   markCollectionPagesPending,
+  scheduleReadingSyncContinuation,
 } from "./sync-state";
 import { loadUserLanguageProfile, USER_LANGUAGE_PROFILE_KEY } from "./profile-models";
 
@@ -38,10 +45,12 @@ export async function pushWordsToServer(
   const bound = scope ?? captureDbScope();
   if (!bound.userId || !words.length) return { ok: true, acceptedMax: 0 };
   if (!isDbScopeActive(bound)) return { ok: false, acceptedMax: 0 };
+  const sorted = [...words].sort((a, b) => stamp(a) - stamp(b));
   let acceptedMax = 0;
+  let lastAcceptedKey: string | undefined;
   try {
-    for (let start = 0; start < words.length; start += WORD_BATCH_LIMIT) {
-      const batch = words.slice(start, start + WORD_BATCH_LIMIT);
+    for (let start = 0; start < sorted.length; start += WORD_BATCH_LIMIT) {
+      const batch = sorted.slice(start, start + WORD_BATCH_LIMIT);
       const response = await accountFetch(
         "/api/vocab",
         {
@@ -51,12 +60,25 @@ export async function pushWordsToServer(
         },
         bound,
       );
-      if (!response.ok) return { ok: false, acceptedMax };
-      acceptedMax = Math.max(acceptedMax, maxStamp(batch, stamp));
+      if (!response.ok) return { ok: false, acceptedMax, lastAcceptedKey };
+      const data = (await response.json().catch(() => null)) as { serverTime?: number } | null;
+      const serverTime = data?.serverTime;
+      if (serverTime) {
+        for (const item of batch) {
+          const itemStamp = stamp(item);
+          if (itemStamp > serverTime) {
+            await putSavedWord({ ...item, updatedAt: serverTime }, bound);
+          }
+        }
+      }
+      const lastItem = batch[batch.length - 1];
+      const lastStamp = stamp(lastItem);
+      acceptedMax = Math.max(acceptedMax, serverTime ? Math.min(lastStamp, serverTime) : lastStamp);
+      lastAcceptedKey = lastItem.key;
     }
-    return { ok: true, acceptedMax };
+    return { ok: true, acceptedMax, lastAcceptedKey };
   } catch {
-    return { ok: false, acceptedMax };
+    return { ok: false, acceptedMax, lastAcceptedKey };
   }
 }
 
@@ -205,35 +227,53 @@ export async function syncSavedWords(scope?: DbScope) {
       if (wordStamp > maxUpdated) maxUpdated = wordStamp;
       const existing = localByKey.get(word.key);
       if (!existing || wordStamp > stamp(existing)) {
-        await putSavedWord(word, bound);
+        const merged = existing ? mergeKnowledgeRecords(word, existing) : word;
+        await putSavedWord(merged, bound);
         pulled += 1;
       }
     }
 
-    // Desacoplar toPush de effectiveSince
-    const lastPushedAt = getSyncCursor(bound.userId, `vocab:${language}:push`);
-    const toPush = local.filter((word) => {
-      const wordStamp = stamp(word);
-      const remoteWord = remoteByKey.get(word.key);
-      if (remoteWord) {
-        return wordStamp > stamp(remoteWord);
-      }
-      return lastPushedAt > 0 ? wordStamp > lastPushedAt : true;
-    });
+    // Desacoplar toPush de effectiveSince con orden y cursor seguro
+    const lastCursor = getSyncCompoundCursor(bound.userId, `vocab:${language}:push`);
+    const toPush = local
+      .filter((word) => {
+        const wordStamp = stamp(word);
+        const remoteWord = remoteByKey.get(word.key);
+        if (remoteWord) {
+          return wordStamp > stamp(remoteWord);
+        }
+        if (lastCursor.key) {
+          if (wordStamp > lastCursor.stamp) return true;
+          if (wordStamp === lastCursor.stamp && word.key > lastCursor.key) return true;
+          return false;
+        }
+        return lastCursor.stamp > 0 ? wordStamp > lastCursor.stamp : true;
+      })
+      .sort((a, b) => {
+        const diff = stamp(a) - stamp(b);
+        return diff !== 0 ? diff : a.key.localeCompare(b.key);
+      });
 
     if (toPush.length > 0) {
       const pushed = await pushWordsToServer(toPush, bound);
       // Solo se avanza hasta lo confirmado: si un lote falló, lo que quedó
       // fuera del cursor se reenvía en el siguiente ciclo.
       if (pushed.acceptedMax > 0) {
-        advanceSyncCursor(bound.userId, `vocab:${language}:push`, pushed.acceptedMax);
+        if (pushed.lastAcceptedKey) {
+          advanceSyncCompoundCursor(bound.userId, `vocab:${language}:push`, {
+            stamp: pushed.acceptedMax,
+            key: pushed.lastAcceptedKey,
+          });
+        } else {
+          advanceSyncCursor(bound.userId, `vocab:${language}:push`, pushed.acceptedMax);
+        }
       }
       if (!pushed.ok) {
         allOk = false;
       }
     }
 
-    const finalLangCursor = langNextCursor ?? maxUpdated;
+    const finalLangCursor = hasMore ? currentSince : (langNextCursor ?? maxUpdated);
     if (finalLangCursor > 0) {
       advanceSyncCursor(bound.userId, `vocab:${language}`, finalLangCursor);
     }
@@ -242,9 +282,13 @@ export async function syncSavedWords(scope?: DbScope) {
   // Solo sellamos la fecha cuando todos los idiomas sincronizaron:
   // una sincronización parcial no cuenta como «al día».
   if (allOk) {
-    if (pagesPending) markCollectionPagesPending("words");
-    else clearCollectionPagesPending("words");
-    await saveSessionValue(LAST_SYNC_KEY, String(Date.now()), bound);
+    if (pagesPending) {
+      markCollectionPagesPending("words");
+      scheduleReadingSyncContinuation("words");
+    } else {
+      clearCollectionPagesPending("words");
+      await saveSessionValue(LAST_SYNC_KEY, String(Date.now()), bound);
+    }
   }
   return allOk ? pulled : null;
 }

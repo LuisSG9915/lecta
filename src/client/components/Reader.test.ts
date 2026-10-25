@@ -34,8 +34,47 @@ vi.mock("../lib/idb", async (importOriginal) => {
     getCachedLexiconBatch: vi.fn(async () => ({})),
     countCachedLexicon: vi.fn(async () => 0),
     loadSavedWord: vi.fn(async () => null),
+    listAnnotations: vi.fn(async () => []),
+    listAllAnnotations: vi.fn(async () => []),
+    getStoredBook: vi.fn(async () => undefined),
   };
 });
+
+vi.mock("../lib/epub", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("../lib/epub")>();
+  return {
+    ...mod,
+    openEpub: vi.fn(async () => {
+      throw new Error("dummy-book-close");
+    }),
+  };
+});
+
+vi.mock("./CompanionProvider", () => ({
+  useCompanion: vi.fn(() => ({
+    enabled: true,
+    state: {
+      stats: { streakDays: 4, lastDayKey: "2026-03-10" },
+      accessories: [],
+      xp: 100,
+    },
+    name: "Gato",
+    presence: "visits",
+    modalOpen: false,
+    open: false,
+    stage: 2,
+    mood: "content",
+    accessories: [],
+    reducedMotion: false,
+    activeCare: null,
+    care: vi.fn(),
+    setCelebrationBlocked: vi.fn(),
+    openPanel: vi.fn(),
+    closePanel: vi.fn(),
+  })),
+  useCompanionSafe: vi.fn(() => null),
+  CompanionProvider: ({ children }: { children: React.ReactNode }) => children,
+}));
 
 const listMock = vi.mocked(listAllKnowledge);
 const saveMock = vi.mocked(saveKnowledge);
@@ -351,11 +390,16 @@ describe("Recalibración de Luminancia, Contraste AAA y Separación de Barras Fl
     const cssPath = path.resolve(process.cwd(), "src/client/styles/reader.css");
     const css = await fs.readFile(cssPath, "utf-8");
 
-    // Verificar elevación de la barra flotante (.tts-chip, .reader__pacer-bar, .tts-now-playing) a 76px
-    expect(css).toMatch(/\.tts-chip,\s*\.tts-now-playing,\s*\.reader__pacer-bar\s*\{[^}]*bottom:\s*calc\(76px/);
+    // La barra flotante (.tts-chip, .reader__pacer-bar, .tts-now-playing) se eleva
+    // por encima del dock, que en móvil creció a 56px para dar objetivos de 44px.
+    expect(css).toMatch(/\.tts-chip,\s*\.tts-now-playing,\s*\.reader__pacer-bar\s*\{[^}]*bottom:\s*calc\(6rem/);
 
     // Verificar que el padding inferior del lector se amplía a 152px cuando hay barra flotante
     expect(css).toMatch(/data-has-floating-bar="true"[^}]*padding-bottom:\s*calc\(152px/);
+
+    // La franja flotante apila los avisos y les quita el posicionamiento propio
+    expect(css).toMatch(/\.reader-floating-lane\s*\{[^}]*display:\s*flex/);
+    expect(css).toMatch(/\.reader-floating-lane \.reader-status-toast[^{]*\{[^}]*position:\s*static/);
 
     // Verificar contraste AAA y no oscurecimiento de anclas biónicas
     expect(css).toMatch(/\.lecta-bionic-word\s*\{[^}]*opacity:\s*1/);
@@ -1428,6 +1472,145 @@ describe("Fase 4: Pruebas de Integración End-to-End en Reader.test.ts", () => {
     });
     expect(passedVoices.some((v) => v.isNeural)).toBe(false);
     saveFeatureFlags({ neuralTts: true });
+  });
+
+  it("6.1 Fase 4.1: Interceptación de enlaces internos en ReaderContent", async () => {
+    const { createElement: h, act } = await import("react");
+    const { createRoot } = await import("react-dom/client");
+    const { ReaderContent } = await import("./reader/ReaderContent");
+    const { READER_DEFAULTS } = await import("../lib/settings");
+
+    const onInternalLinkClick = vi.fn();
+    root = createRoot(host);
+
+    await act(async () => {
+      root.render(
+        h(ReaderContent, {
+          containerRef: { current: document.createElement("div") },
+          viewportRef: { current: document.createElement("div") },
+          lastPointRef: { current: null },
+          settings: READER_DEFAULTS,
+          state: "ready",
+          sectionIndex: 0,
+          sectionTotal: 5,
+          sectionWords: 100,
+          title: "Libro de prueba",
+          sectionTitle: "Capítulo 1",
+          sectionHasImages: false,
+          showChapterTitle: true,
+          strategyPaused: false,
+          page: 1,
+          pageCount: 1,
+          pageAdvance: () => 0,
+          pageMetrics: null,
+          ttsSnap: { status: "stopped" },
+          selection: null,
+          setSelection: vi.fn(),
+          setBarsVisible: vi.fn(),
+          setShowLongPressHint: vi.fn(),
+          showLongPressHint: false,
+          recapBubbleVisible: false,
+          recapBubbleLoading: false,
+          recapBubbleBullets: [],
+          setRecapBubbleVisible: vi.fn(),
+          sceneRecap: null,
+          chapterEndCard: null,
+          nextRow: null,
+          prevRow: null,
+          language: "es",
+          noteActivity: vi.fn(),
+          navigate: vi.fn(),
+          goPage: vi.fn(),
+          navNextSection: vi.fn(),
+          navPrevSection: vi.fn(),
+          openSelection: vi.fn(),
+          extractWordAtPoint: () => null,
+          handleContainerDoubleClick: vi.fn(),
+          handleTriggerReturnRecap: vi.fn(),
+          toggleParagraphTranslation: vi.fn(),
+          onInternalLinkClick,
+          lastTapRef: { current: { time: 0, element: null } },
+          lastPointerTypeRef: { current: "mouse" },
+          pacerIndexRef: { current: 0 },
+          onBack: vi.fn(),
+        }),
+      );
+    });
+
+    const bookContent = host.querySelector<HTMLDivElement>(".book-content");
+    expect(bookContent).toBeTruthy();
+
+    const link = document.createElement("a");
+    link.setAttribute("href", "#fn1");
+    link.setAttribute("data-epub-link", "internal");
+    link.textContent = "[1]";
+    bookContent?.appendChild(link);
+
+    await act(async () => {
+      link.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+
+    expect(onInternalLinkClick).toHaveBeenCalledWith("#fn1");
+  });
+
+  it("6.2 Fase 4.2: Feedback visual toast en Reader y control de modales en el historial", async () => {
+    const { createElement: h, act } = await import("react");
+    const { createRoot } = await import("react-dom/client");
+    const { default: Reader } = await import("./Reader");
+    const { CompanionProvider } = await import("./CompanionProvider");
+    const { pushOverlay } = await import("../lib/history");
+
+    // 6.2.1 Verificar que statusText renderiza un toast con role="status" y aria-live="polite"
+    root = createRoot(host);
+    await act(async () => {
+      root.render(
+        h(
+          CompanionProvider,
+          {
+            userId: null,
+            children: h(Reader, {
+              bookHash: "test-hash",
+              file: new Blob(["dummy"]),
+              fileName: "test.epub",
+              onError: vi.fn(),
+              onStatus: vi.fn(),
+              onBack: vi.fn(),
+              onOpenNotebook: vi.fn(),
+              statusText: "Marcador guardado",
+              errorText: "",
+              panelsOpen: false,
+              theme: "papel",
+              onThemeChange: vi.fn(),
+              vocabVersion: 1,
+              onRequestCalibration: vi.fn(async () => false),
+              signedIn: false,
+            }),
+          },
+        ),
+      );
+    });
+
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+    });
+
+    const toast = host.querySelector(".reader-status-toast");
+    expect(toast).toBeTruthy();
+    expect(toast?.getAttribute("role")).toBe("status");
+    expect(toast?.getAttribute("aria-live")).toBe("polite");
+    expect(toast?.textContent).toContain("Marcador guardado");
+
+    // 6.2.2 Verificar gestión de historial con popstate en modales
+    let glossaryOpen = true;
+    pushOverlay(() => {
+      glossaryOpen = false;
+    });
+    expect(glossaryOpen).toBe(true);
+
+    // Disparar popstate del navegador (botón Atrás)
+    history.replaceState({}, "");
+    window.dispatchEvent(new Event("popstate"));
+    expect(glossaryOpen).toBe(false);
   });
 });
 

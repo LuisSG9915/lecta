@@ -1,6 +1,27 @@
 import DOMPurify from "dompurify";
 
+export function isSafeInternalEpubHref(rawHref: string): boolean {
+  const trimmed = rawHref.trim();
+  if (!trimmed || trimmed.startsWith("//")) return false;
+  // Bloquear cualquier esquema con ':' (javascript:, data:, http:, https:, vbscript:, mailto:)
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/i.test(trimmed)) return false;
+  return true;
+}
+
+DOMPurify.addHook("afterSanitizeAttributes", (node) => {
+  if (node.tagName && node.tagName.toLowerCase() === "a") {
+    const href = node.getAttribute("href");
+    if (href && isSafeInternalEpubHref(href)) {
+      node.setAttribute("data-epub-link", "internal");
+    } else {
+      node.removeAttribute("href");
+      node.removeAttribute("target");
+    }
+  }
+});
+
 const READER_TAGS = [
+  "a",
   "article",
   "aside",
   "blockquote",
@@ -71,9 +92,11 @@ const READER_ATTRS = [
   "scope",
   "headers",
   "epub:type",
+  "role",
   "id",
   "name",
   "data-frag-id",
+  "data-epub-link",
   "src",
   "alt",
   "title",
@@ -90,12 +113,12 @@ const READER_ATTRS = [
 export function sanitizeSectionDocument(source: Document) {
   const body = source.body ?? source.getElementsByTagName("body")[0] ?? source.documentElement;
   // Pre-procesamiento seguro sobre clon para no mutar el documento fuente:
-  // En EPUBs de Calibre y EPUB 2 las anclas son <a id="p7"></a> o <a name="ch1">.
-  // Como DOMPurify veta <a>, transformamos las anclas en <span> antes de sanitizar.
+  // En EPUBs de Calibre y EPUB 2 las anclas vacías son <a id="p7"></a> o <a name="ch1">.
+  // Las transformamos en <span> solo si carecen de href.
   const root = (body.cloneNode(true) as HTMLElement);
   for (const a of root.querySelectorAll("a")) {
     const fragId = a.getAttribute("id") || a.getAttribute("name");
-    if (fragId) {
+    if (fragId && !a.hasAttribute("href")) {
       const doc = root.ownerDocument || document;
       const span = doc.createElement("span");
       span.setAttribute("id", fragId);
@@ -114,8 +137,8 @@ export function sanitizeSectionDocument(source: Document) {
   const fragment = DOMPurify.sanitize(dirty, {
     ALLOWED_TAGS: READER_TAGS,
     ALLOWED_ATTR: READER_ATTRS,
-    ADD_ATTR: ["data-frag-id", "id", "name"],
-    FORBID_TAGS: ["a"],
+    ADD_ATTR: ["data-frag-id", "data-epub-link", "id", "name"],
+    FORBID_TAGS: [],
     FORBID_ATTR: ["class", "style"],
     ALLOW_DATA_ATTR: true,
     RETURN_DOM_FRAGMENT: true,

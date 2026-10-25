@@ -59,6 +59,8 @@ vi.mock("../lib/vocab", () => ({
 
 vi.mock("../lib/reading-sync", () => ({
   pushKnowledgeToServer: vi.fn(async () => true),
+  scheduleReadingSyncPush: vi.fn(),
+  flushPendingReadingSync: vi.fn(async () => {}),
 }));
 
 vi.mock("../lib/reviews", () => ({
@@ -247,6 +249,11 @@ describe("WordPanel - Acciones Rápidas (Fase 4.3)", () => {
     expect(host.querySelector(".word-panel-notice-toast")?.textContent).toContain(
       "Fijada con prioridad en tu cuaderno.",
     );
+
+    const { scheduleReadingSyncPush } = await import("../lib/reading-sync");
+    expect(scheduleReadingSyncPush).toHaveBeenCalledWith("words");
+    const { getSyncState } = await import("../lib/sync-state");
+    expect(getSyncState().pendingChangesCount).toBeGreaterThan(0);
   });
 
   it("renderiza la cabecera limpia, definición práctica y botón directo de explicación", async () => {
@@ -346,6 +353,29 @@ describe("WordPanel - Acciones Rápidas (Fase 4.3)", () => {
       click(closeBtn!);
     });
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it("monta la cápsula dentro del host de la franja flotante", async () => {
+    const slot = document.createElement("div");
+    document.body.appendChild(slot);
+    render(
+      h(WordPanel, {
+        word: "galicismo",
+        language: "es",
+        bookHash: "book123",
+        compactMode: true,
+        capsuleHost: slot,
+        onClose: vi.fn(),
+      }),
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(slot.querySelector(".word-capsule")).not.toBeNull();
+    expect(host.querySelector(".word-capsule")).toBeNull();
+    slot.remove();
   });
 
   it("renderiza la cabecera responsiva de 2 filas con botón × fijo en la fila superior", async () => {

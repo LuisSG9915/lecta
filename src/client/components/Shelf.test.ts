@@ -370,6 +370,143 @@ describe("Shelf - Tu Mesa de Lectura (Fase 5.2)", () => {
 
     expect(onOpen).toHaveBeenCalledWith(unopenedBook);
   });
+
+  describe("Fase 4.3: Búsqueda y Ordenación en la Estantería", () => {
+    const multiBooks: ShelfItem[] = [
+      {
+        hash: "h-1",
+        name: "quijote",
+        title: "Don Quijote de la Mancha",
+        author: "Miguel de Cervantes",
+        addedAt: 100,
+        sectionCount: 10,
+        language: "es",
+      },
+      {
+        hash: "h-2",
+        name: "arbol",
+        title: "El Árbol de la Ciencia",
+        author: "Pío Baroja",
+        addedAt: 200,
+        sectionCount: 20,
+        language: "es",
+      },
+      {
+        hash: "h-3",
+        name: "ficciones",
+        title: "Ficciones",
+        author: "Jorge Luis Borges",
+        addedAt: 300,
+        sectionCount: 5,
+        language: "es",
+      },
+    ];
+
+    it("filtra libros por título y autor sin distinción de mayúsculas ni acentos", async () => {
+      await act(async () => {
+        root.render(
+          h(Shelf, {
+            library: multiBooks,
+            checking: false,
+            onOpen: vi.fn(),
+            onRemove: vi.fn(),
+            onAdd: vi.fn(),
+            onLibraryChange: vi.fn(),
+          }),
+        );
+        for (let i = 0; i < 4; i++) await Promise.resolve();
+      });
+
+      const searchInput = host.querySelector<HTMLInputElement>(".shelf-search-input");
+      expect(searchInput).toBeTruthy();
+
+      // Búsqueda por título sin acento: "arbol" debe encontrar "El Árbol de la Ciencia"
+      await act(async () => {
+        const setter = Object.getOwnPropertyDescriptor(
+          HTMLInputElement.prototype,
+          "value",
+        )!.set!;
+        setter.call(searchInput, "arbol");
+        searchInput?.dispatchEvent(new Event("input", { bubbles: true }));
+        searchInput?.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+
+      const titlesAfterSearch1 = Array.from(
+        host.querySelectorAll(".shelf-row .shelf-book-cover"),
+      ).map((el) => el.getAttribute("title"));
+      expect(titlesAfterSearch1.some((t) => t?.includes("Árbol"))).toBe(true);
+      expect(titlesAfterSearch1.some((t) => t?.includes("Quijote"))).toBe(false);
+      expect(titlesAfterSearch1.some((t) => t?.includes("Ficciones"))).toBe(false);
+
+      // Búsqueda por autor: "cervantes" debe encontrar "Don Quijote de la Mancha"
+      await act(async () => {
+        const setter = Object.getOwnPropertyDescriptor(
+          HTMLInputElement.prototype,
+          "value",
+        )!.set!;
+        setter.call(searchInput, "cervantes");
+        searchInput?.dispatchEvent(new Event("input", { bubbles: true }));
+        searchInput?.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+
+      const titlesAfterSearch2 = Array.from(
+        host.querySelectorAll(".shelf-row .shelf-book-cover"),
+      ).map((el) => el.getAttribute("title"));
+      expect(titlesAfterSearch2.some((t) => t?.includes("Quijote"))).toBe(true);
+      expect(titlesAfterSearch2.some((t) => t?.includes("Árbol"))).toBe(false);
+
+      // Búsqueda sin coincidencias muestra mensaje discreto
+      await act(async () => {
+        const setter = Object.getOwnPropertyDescriptor(
+          HTMLInputElement.prototype,
+          "value",
+        )!.set!;
+        setter.call(searchInput, "inexistente xyz");
+        searchInput?.dispatchEvent(new Event("input", { bubbles: true }));
+        searchInput?.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+
+      const emptyMsg = host.querySelector(".shelf-empty-search");
+      expect(emptyMsg).toBeTruthy();
+      expect(emptyMsg?.textContent).toContain("inexistente xyz");
+    });
+
+    it("ordena libros por título, progreso y recientes", async () => {
+      await act(async () => {
+        root.render(
+          h(Shelf, {
+            library: multiBooks,
+            checking: false,
+            onOpen: vi.fn(),
+            onRemove: vi.fn(),
+            onAdd: vi.fn(),
+            onLibraryChange: vi.fn(),
+          }),
+        );
+        for (let i = 0; i < 4; i++) await Promise.resolve();
+      });
+
+      const sortSelect = host.querySelector<HTMLSelectElement>(".shelf-sort-select");
+      expect(sortSelect).toBeTruthy();
+
+      // Ordenar por título alfabético
+      await act(async () => {
+        const setter = Object.getOwnPropertyDescriptor(
+          HTMLSelectElement.prototype,
+          "value",
+        )!.set!;
+        setter.call(sortSelect, "title");
+        sortSelect?.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+
+      const titlesByTitle = Array.from(
+        host.querySelectorAll(".shelf-row .shelf-book-cover"),
+      ).map((el) => el.getAttribute("title"));
+      expect(titlesByTitle[0]).toContain("Don Quijote");
+      expect(titlesByTitle[1]).toContain("El Árbol");
+      expect(titlesByTitle[2]).toContain("Ficciones");
+    });
+  });
 });
 
 

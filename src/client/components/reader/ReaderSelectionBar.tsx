@@ -1,16 +1,10 @@
-// Barra de acciones de selección del lector: volver a donde estaba, menú de
-// pasaje (tinta, cita, preguntar) y aviso de pulsación larga.
+// Menú de acciones de selección del lector: pasaje (tinta, cita, preguntar)
+// y aviso de pulsación larga. El regreso vive en la franja flotante.
 //
 // Extraída de Reader.tsx (Fase 7). Solo pinta; la posición y el estado del menú
 // los calcula el lector.
 import Icon from "../Icon";
 import type { WordHit } from "../../lib/words";
-
-export type ReaderReturnPoint = {
-  sectionIndex: number;
-  ratio: number;
-  anchor?: string;
-};
 
 export type ReaderSelectionButton = {
   x: number;
@@ -20,9 +14,6 @@ export type ReaderSelectionButton = {
 };
 
 export interface ReaderSelectionBarProps {
-  returnPoint: ReaderReturnPoint | null;
-  setReturnPoint: (value: ReaderReturnPoint | null) => void;
-  goBack: () => void;
   selButton: ReaderSelectionButton | null;
   setSelButton: (value: ReaderSelectionButton | null) => void;
   openSelection: (hit: WordHit) => void;
@@ -30,14 +21,10 @@ export interface ReaderSelectionBarProps {
   openQuoteCardFromSelection: () => void;
   askCatAboutSelection: () => void | Promise<unknown>;
   setDeepModal: (value: boolean) => void;
-  showLongPressHint: boolean;
 }
 
 export function ReaderSelectionBar(props: ReaderSelectionBarProps) {
   const {
-  returnPoint,
-  setReturnPoint,
-  goBack,
   selButton,
   setSelButton,
   openSelection,
@@ -45,31 +32,10 @@ export function ReaderSelectionBar(props: ReaderSelectionBarProps) {
   openQuoteCardFromSelection,
   askCatAboutSelection,
   setDeepModal,
-  showLongPressHint,
   } = props;
 
   return (
     <>
-  {returnPoint ? (
-    <div className="reader-return">
-      <button
-        type="button"
-        className="reader-return-btn"
-        onClick={goBack}
-      >
-        ‹ Volver a donde estaba
-      </button>
-      <button
-        type="button"
-        className="reader-return-dismiss"
-        onClick={() => setReturnPoint(null)}
-        aria-label="Descartar regreso"
-      >
-        ×
-      </button>
-    </div>
-  ) : null}
-
   {selButton ? (
     <div
       className="selection-menu reader__passage-bar"
@@ -175,12 +141,6 @@ export function ReaderSelectionBar(props: ReaderSelectionBarProps) {
         <Icon name="sparkles" size={14} />
         <span>Preguntar</span>
       </button>
-    </div>
-  ) : null}
-
-  {showLongPressHint ? (
-    <div className="reader-hint-toast" role="status" aria-live="polite">
-      Mantén presionada una palabra para ver qué significa.
     </div>
   ) : null}
     </>

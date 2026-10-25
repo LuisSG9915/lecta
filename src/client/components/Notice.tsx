@@ -1,9 +1,12 @@
+import type { ReactNode } from "react";
 import { useEffect, useRef } from "react";
 import Icon from "./Icon";
 
 export interface NoticeProps {
-  message?: string | null;
+  message?: ReactNode | string | null;
   error?: string | null;
+  actionLabel?: string;
+  onAction?: () => void;
   onDismissMessage?: () => void;
   onDismissError?: () => void;
 }
@@ -11,6 +14,8 @@ export interface NoticeProps {
 export default function Notice({
   message,
   error,
+  actionLabel,
+  onAction,
   onDismissMessage,
   onDismissError,
 }: NoticeProps) {
@@ -88,6 +93,18 @@ export default function Notice({
           onBlur={handleResume}
         >
           <span className="app-notice-text">{message}</span>
+          {actionLabel && onAction ? (
+            <button
+              type="button"
+              className="app-notice-action btn--quiet"
+              onClick={() => {
+                onAction();
+                onDismissMessage?.();
+              }}
+            >
+              {actionLabel}
+            </button>
+          ) : null}
         </div>
       ) : null}
     </div>

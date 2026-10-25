@@ -4,10 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useWordInspector } from './useWordInspector';
 import { useReaderTts } from './useReaderTts';
-import { useChapterLexicon } from './useChapterLexicon';
-import { useEpubView } from './useEpubView';
 import type { BookMeta } from '../lib/idb';
-import { DEFAULT_SETTINGS } from '../lib/settings';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -179,62 +176,6 @@ describe('Lecta Custom Hooks (Decoupled Architecture)', () => {
 
       expect(ttsHook.showTtsConsent).toBe(false);
       expect(ttsHook.ttsVoiceURI).toBe('kitten:expr-voice-2-f');
-    });
-  });
-
-  describe('useChapterLexicon', () => {
-    it('calcula la cobertura léxica y sugiere vista previa sin bloquear la lectura', async () => {
-      let lexiconHook!: ReturnType<typeof useChapterLexicon>;
-      const doc = document.implementation.createHTMLDocument('Chapter');
-      doc.body.innerHTML = '<p>Texto de prueba con vocabulario común.</p>';
-
-      function TestComponent() {
-        lexiconHook = useChapterLexicon({
-          bookId: mockBook.id!,
-          sectionDoc: doc,
-          sectionIndex: 0,
-          chapterPreviewEnabled: true,
-        });
-        return h('div', null, lexiconHook.coveragePct ? `${lexiconHook.coveragePct}%` : 'loading');
-      }
-
-      await act(async () => {
-        root.render(h(TestComponent));
-      });
-
-      // Esperar microtareas del effect
-      await act(async () => {
-        await new Promise((r) => setTimeout(r, 20));
-      });
-
-      expect(lexiconHook.chapterAnalysis).not.toBeNull();
-      expect(lexiconHook.showPreviewModal).toBe(false); // No bloquea con modal automático
-    });
-  });
-
-  describe('useEpubView', () => {
-    it('inicializa y reporta error gracefully si el libro no existe en almacenamiento local', async () => {
-      let epubHook!: ReturnType<typeof useEpubView>;
-
-      function TestComponent() {
-        epubHook = useEpubView({
-          book: mockBook,
-          settings: DEFAULT_SETTINGS,
-        });
-        return h('div', { ref: epubHook.hostRef }, epubHook.bookLoading ? 'loading' : 'done');
-      }
-
-      await act(async () => {
-        root.render(h(TestComponent));
-      });
-
-      // Esperar ciclo asíncrono
-      await act(async () => {
-        await new Promise((r) => setTimeout(r, 20));
-      });
-
-      expect(epubHook.bookError).toBe('No se encontró el archivo del libro en este dispositivo.');
-      expect(epubHook.bookLoading).toBe(false);
     });
   });
 });

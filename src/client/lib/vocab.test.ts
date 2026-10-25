@@ -33,6 +33,12 @@ vi.mock("./idb", () => {
   putSavedWord: vi.fn(async () => undefined),
   removeSavedWord: vi.fn(),
   saveSessionValue: vi.fn(async () => undefined),
+  mergeKnowledgeRecords: vi.fn((a: { updatedAt?: number; savedAt?: number; deleted?: boolean }, b: { updatedAt?: number; savedAt?: number; deleted?: boolean }) => {
+    const getStamp = (r: { updatedAt?: number; savedAt?: number }) => r.updatedAt ?? r.savedAt ?? 0;
+    const [winner, loser] = getStamp(a) >= getStamp(b) ? [a, b] : [b, a];
+    if (winner.deleted) return winner;
+    return { ...loser, ...winner };
+  }),
   };
 });
 
@@ -112,6 +118,31 @@ describe("pushWordsToServer", () => {
   it("si fetch lanza devuelve false", async () => {
     vi.mocked(fetch).mockRejectedValue(new Error("sin red"));
     await expect(pushWordsToServer([word("a")])).resolves.toMatchObject({ ok: false });
+  });
+
+  it("si el servidor devuelve serverTime inferior al updatedAt del cliente (+10 min en futuro), recorta el sello local en IndexedDB", async () => {
+    const serverNow = 1_700_000_000_000;
+    const futureTime = serverNow + 600_000;
+    const futureWord: SavedWord = {
+      ...word("futuro"),
+      savedAt: futureTime,
+      updatedAt: futureTime,
+    };
+
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ ok: true, serverTime: serverNow }), { status: 200 }),
+    );
+
+    const result = await pushWordsToServer([futureWord]);
+    expect(result.ok).toBe(true);
+
+    expect(putSavedWord).toHaveBeenCalledWith(
+      expect.objectContaining({
+        key: "futuro",
+        updatedAt: serverNow,
+      }),
+      expect.anything(),
+    );
   });
 });
 
@@ -391,5 +422,131 @@ describe("cursor de push veraz", () => {
     const batches = putBodies();
     expect(batches.at(-1)?.words.map((item) => item.key)).toEqual(["b"]);
     expect(getSyncCursor("u1", "vocab:es:push")).toBe(150);
+  });
+
+  it("con sellos no monótonos ordena por stamp ASC, y ante fallo del lote 2 lastPushedAt conserva el corte y el siguiente ciclo reenvía", async () => {
+    const words: SavedWord[] = [
+      { ...word("aardvark"), savedAt: 5000, updatedAt: 5000 },
+      ...Array.from({ length: 499 }, (_, i) => ({
+        ...word(`mid${i}`),
+        savedAt: 1000,
+        updatedAt: 1000,
+      })),
+      { ...word("zorro"), savedAt: 1000, updatedAt: 1000 },
+    ];
+    vi.mocked(listAllSavedWords).mockResolvedValue(words);
+
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(new Response(JSON.stringify({ words: [] }), { status: 200 }))
+      .mockResolvedValueOnce(okResponse())
+      .mockResolvedValueOnce(errorResponse());
+
+    await expect(syncSavedWords()).resolves.toBeNull();
+
+    const batches = putBodies();
+    expect(batches).toHaveLength(2);
+    expect(batches[0].words.some((w) => w.form === "zorro")).toBe(true);
+    expect(batches[1].words.some((w) => w.form === "aardvark")).toBe(true);
+
+    expect(getSyncCursor("u1", "vocab:es:push")).toBe(1000);
+
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(new Response(JSON.stringify({ words: [] }), { status: 200 }))
+      .mockResolvedValueOnce(okResponse());
+
+    await syncSavedWords();
+
+    const secondAttemptBatches = putBodies().slice(2);
+    expect(secondAttemptBatches).toHaveLength(1);
+    expect(secondAttemptBatches[0].words.map((w) => w.form)).toEqual(["aardvark"]);
+    expect(getSyncCursor("u1", "vocab:es:push")).toBe(5000);
+  });
+
+  it("con 28 páginas en el servidor y MAX_PAGES = 25, la primera tanda frena en la pág 25 conservando su cursor (no serverTime) y la segunda descarga las págs 26, 27 y 28", async () => {
+    const local = [word("base")];
+    vi.mocked(listAllSavedWords).mockResolvedValue(local);
+
+    const serverTime = 999_999;
+    // Mock de las primeras 25 páginas
+    for (let p = 1; p <= 25; p++) {
+      const pageWords = [word(`w_p${p}`)];
+      vi.mocked(fetch).mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            words: pageWords,
+            hasMore: true,
+            nextCursor: p * 1000,
+            nextAfterWord: `w_p${p}`,
+            serverTime,
+          }),
+          { status: 200 },
+        ),
+      );
+    }
+    // Mock de PUT para toPush si lo hubiera
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(JSON.stringify({ ok: true, serverTime }), { status: 200 }),
+    );
+
+    const firstRunPulled = await syncSavedWords();
+    expect(firstRunPulled).toBe(25);
+
+    // El cursor tras la página 25 debe ser 25 * 1000 = 25000, NUNCA serverTime (999_999)
+    const cursorAfterPage25 = getSyncCursor("u1", "vocab:es");
+    expect(cursorAfterPage25).toBe(25000);
+    expect(cursorAfterPage25).not.toBe(serverTime);
+
+    // Segunda ejecución: descarga las páginas 26, 27 y 28
+    vi.mocked(fetch)
+      // Página 26
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            words: [word("w_p26")],
+            hasMore: true,
+            nextCursor: 26000,
+            nextAfterWord: "w_p26",
+            serverTime,
+          }),
+          { status: 200 },
+        ),
+      )
+      // Página 27
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            words: [word("w_p27")],
+            hasMore: true,
+            nextCursor: 27000,
+            nextAfterWord: "w_p27",
+            serverTime,
+          }),
+          { status: 200 },
+        ),
+      )
+      // Página 28 (última página, hasMore: false)
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            words: [word("w_p28")],
+            hasMore: false,
+            nextCursor: 28000,
+            nextAfterWord: null,
+            serverTime,
+          }),
+          { status: 200 },
+        ),
+      );
+
+    const secondRunPulled = await syncSavedWords();
+    expect(secondRunPulled).toBe(3);
+
+    // Verificamos que se llamó al endpoint con since=25000 en la segunda ejecución
+    const calls = vi.mocked(fetch).mock.calls;
+    const callPage26 = calls[26]; // 25 páginas + 1 PUT = llamadas 0..25; llamada 26 es pág 26
+    expect(callPage26[0]).toContain("since=25000");
+
+    // Y el cursor final tras completar todas las páginas ya no está en 25000 sino en 28000
+    expect(getSyncCursor("u1", "vocab:es")).toBe(28000);
   });
 });
