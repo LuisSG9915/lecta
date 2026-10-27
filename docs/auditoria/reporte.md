@@ -1,9 +1,9 @@
 # Reporte de auditoría — estrategia de aprendizaje de Lecta
 
-Generado: 2026-10-27T20:38:46.575Z
+Generado: 2026-10-27T22:47:39.787Z
 Documento auditado: `docs/estrategia-aprendizaje-2026-10-24.md`
 Registro: `docs/auditoria/claims.json`
-Commit: `6f71581d4fc428be962c182e6e07dae0d85569be`
+Commit: `d55b7432af161113d091b5f4d1251dcf8e360394`
 Red: sí (DOI/URL resueltos)
 
 **Veredicto: PASS** — 14 afirmaciones aprobadas, 0 refutadas, 0 refutadas por auditoría, 0 sin verificar, 0 comprobaciones omitidas.
@@ -143,8 +143,8 @@ Código: **PASS** · Referencias: **PASS**
 - evidencia: `src/client/lib/profile-models.ts:405-415`
 
 - ✅ **PASS** · doc-mention: el documento contiene ««Ya la conozco» es un juicio, no una prueba»
-- ✅ **PASS** · code-anchor: src/client/components/Reader.tsx:4171 coincide con /updateLanguageTheta\(currentLang, beta, 1, 1\.0\)/
-  - observado: `{"file":"src/client/components/Reader.tsx","line":4171,"text":"updateLanguageTheta(currentLang, beta, 1, 1.0);"}`
+- ✅ **PASS** · code-anchor: src/client/components/Reader.tsx:4172 coincide con /updateLanguageTheta\(currentLang, beta, 1, 1\.0\)/
+  - observado: `{"file":"src/client/components/Reader.tsx","line":4172,"text":"updateLanguageTheta(currentLang, beta, 1, 1.0);"}`
 - ✅ **PASS** · code-anchor: src/client/lib/profile-models.ts:417 coincide con /0\.18 \* \(1 - pKnow\)/
   - observado: `{"file":"src/client/lib/profile-models.ts","line":417,"text":"delta = 0.18 * (1 - pKnow);"}`
 - ✅ **PASS** · code-anchor: src/client/components/WordPanel.tsx:525 coincide con /award: false/
@@ -179,8 +179,8 @@ Código: **PASS** · Referencias: **PASS**
   - observado: `{"file":"src/client/lib/knowledge.ts","line":55,"text":"export const FAMILIAR_PASSIVE_THRESHOLD = 3;"}`
 - ✅ **PASS** · code-anchor: src/client/lib/reader-evidence.ts:230 coincide con /uniqueLemmas\.size >= 8/
   - observado: `{"file":"src/client/lib/reader-evidence.ts","line":230,"text":"if (uniqueLemmas.size >= 8) break;"}`
-- ✅ **PASS** · code-anchor: src/client/lib/idb.ts:2076 coincide con /if \(existing\?\.deleted\) return existing/
-  - observado: `{"file":"src/client/lib/idb.ts","line":2076,"text":"if (existing?.deleted) return existing;"}`
+- ✅ **PASS** · code-anchor: src/client/lib/idb.ts:2077 coincide con /if \(existing\?\.deleted\) return existing/
+  - observado: `{"file":"src/client/lib/idb.ts","line":2077,"text":"if (existing?.deleted) return existing;"}`
 - ✅ **PASS** · code-absent: /processPageTurnForPassiveKnowledge/ no aparece en src/client/lib/knowledge.ts
 - ✅ **PASS** · referencia nagy1985: Crossref: 1985 · learning words from context
   - observado: `{"doi":"10.2307/747758","year":1985,"title":"learning words from context"}`
@@ -204,8 +204,8 @@ Código: **PASS** · Referencias: **PASS**
 - ✅ **PASS** · code-absent: /CAPTURE_SOURCE_PARAMS|newCardWithSource|scheduleEpisodicReview/ no aparece en src/client/lib/fsrs.ts
 - ✅ **PASS** · code-anchor: src/client/lib/reviews.ts:93 coincide con /export async function consolidateEpisodicWord/
   - observado: `{"file":"src/client/lib/reviews.ts","line":93,"text":"export async function consolidateEpisodicWord("}`
-- ✅ **PASS** · code-anchor: src/client/components/DeepReadingSummaryModal.tsx:146 coincide con /consolidateEpisodicWord\(current\.item/
-  - observado: `{"file":"src/client/components/DeepReadingSummaryModal.tsx","line":146,"text":"void consolidateEpisodicWord(current.item, bookId)"}`
+- ✅ **PASS** · code-anchor: src/client/components/DeepReadingSummaryModal.tsx:148 coincide con /consolidateEpisodicWord\(current\.item/
+  - observado: `{"file":"src/client/components/DeepReadingSummaryModal.tsx","line":148,"text":"void consolidateEpisodicWord(current.item, bookId)"}`
 - ✅ **PASS** · referencia ye2022: Crossref: 2022 · a stochastic shortest path algorithm for optimizing spaced repetition scheduling
   - observado: `{"doi":"10.1145/3534678.3539081","year":2022,"title":"a stochastic shortest path algorithm for optimizing spaced repetition scheduling"}`
 - ✅ **PASS** · referencia lindsey2014: Crossref: 2014 · improving students’ long-term knowledge retention through personalized review
@@ -316,7 +316,7 @@ Código: **PASS** · Referencias: **PASS**
 
 ### ✅ H8-sin-medicion — Se mide la retención del vocabulario; la comprensión solo tiene autoevaluación
 
-> No hay ninguna medida objetiva de comprensión lectora. La retención del vocabulario sí se calcula (tasa de acierto y palabras con estabilidad de 7 y 30 días) y al cerrar cada capítulo el lector puede anotar si seguió el hilo; esa autoevaluación se muestra como valoración propia, no como comprensión medida.
+> No hay ninguna medida objetiva de comprensión lectora. La retención del vocabulario sí se calcula (tasa de acierto y palabras con memoria estimada de 7 y 30 días) y al cerrar cada capítulo el lector puede anotar si seguió el hilo; esa autoevaluación se muestra como valoración propia, no como comprensión medida.
 
 Código: **PASS** · Referencias: **PASS**
 

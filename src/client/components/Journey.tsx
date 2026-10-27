@@ -813,8 +813,8 @@ export default function Journey({ onClose, books }: JourneyProps) {
                     </div>
                     <p className="meta journey-retention-summary">
                       {retention.recallRatePct !== null
-                        ? `Retención en repasos: ${retention.recallRatePct}% · ${retention.retained30dCount} con estabilidad de 30+ días (${retention.retained7dCount} con 7+ días)`
-                        : `${retention.retained30dCount} con estabilidad de 30+ días · Haz tu primer repaso en el Cuaderno para medir tu retención`}
+                        ? `Retención en repasos: ${retention.recallRatePct}% · ${retention.retained30dCount} con memoria estimada de 30+ días (${retention.retained7dCount} de 7+ días)`
+                        : `${retention.retained30dCount} con memoria estimada de 30+ días · Haz tu primer repaso en el Cuaderno para medir tu retención`}
                     </p>
                     <p className="meta journey-follow-summary">
                       {chapterFollows.answered > 0

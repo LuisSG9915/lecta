@@ -80,7 +80,7 @@ describe("computeRetentionSummary", () => {
     expect(summary.recallRatePct).toBe(75);
   });
 
-  it("cuenta palabras con estabilidad de 7 y 30 días solo si hay repasos", () => {
+  it("cuenta palabras con memoria estimada de 7 y 30 días solo si hay repasos", () => {
     const words: SavedWord[] = [
       word("nueva", { card: card(0, 0) }),
       word("semana", { card: card(8, 2) }),

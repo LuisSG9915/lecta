@@ -194,7 +194,7 @@ declaró.
   Science* 19(11)).
 
 **Hecho**: el Cuaderno ofrece «Ritmo de repaso» con tres niveles (Fluido 85 %,
-Equilibrado 90 %, Firme 93 %) que fijan `request_retention`. Falta ajustarlo con
+Equilibrado 90 %, Firme 93 %) que fijan `request_retention` y se guardan por cuenta. Falta ajustarlo con
 la curva propia del lector cuando haya datos suficientes.
 
 ### H7. La gamificación paga el proxy
@@ -228,7 +228,7 @@ frontera).
   **Ninguna** de esas cosas es comprensión.
 - La retención del vocabulario ya se mide: `computeRetentionSummary`
   (`journey.ts`) calcula la tasa de acierto sobre los repasos verificados y
-  cuántas palabras tienen estabilidad de 7 y 30 días; «Tu
+  cuántas palabras tienen memoria estimada de 7 y 30 días (la estabilidad de FSRS); «Tu
   recorrido» lo muestra junto a las etapas, y el Cuaderno ofrece un «Chequeo 30
   días» de un minuto sobre las palabras asentadas con 30 o más días desde su último repaso.
 - El propio `docs/concentracion-y-lectura.md` §4 lo declara: «Lo que Lecta NO
@@ -455,7 +455,7 @@ Lo que se corrigió:
   reto de cierre ahora consolida la tarjeta de verdad, también en modo scroll.
 - **H7 — el XP ya no se puede farmear.** Consultar paga una vez por palabra al
   día y el autoinforme no paga como repaso.
-- **H8 — la retención ya se mide.** Tasa de acierto real y palabras con estabilidad
+- **H8 — la retención ya se mide.** Tasa de acierto real y palabras con memoria estimada
   de 7 y 30 días en «Tu recorrido», más un «Chequeo 30 días» opcional en el
   Cuaderno. La comprensión sigue sin medida objetiva: hay una autoevaluación de
   un toque al cerrar cada capítulo, mostrada como valoración propia.
