@@ -13,6 +13,8 @@ import { tapZone } from "../../lib/page-gesture";
 import { triggerHaptic } from "../../lib/haptics";
 import { captureDbScope, saveSessionValue } from "../../lib/idb";
 import type { WordHit } from "../../lib/words";
+import type { EpisodicWordItem } from "../../lib/practice";
+import { MidChapterRecallCard } from "./MidChapterRecallCard";
 
 export type ReaderSectionRow = { index: number; fragment?: string; label: string };
 
@@ -72,6 +74,9 @@ export interface ReaderContentProps {
   lastPointerTypeRef: RefObject<string>;
   pacerIndexRef: RefObject<number>;
   onBack: () => void;
+  midChapterRecall?: EpisodicWordItem | null;
+  onMidChapterRecallSolve?: () => void;
+  onMidChapterRecallSkip?: () => void;
 }
 
 export function ReaderContent(props: ReaderContentProps) {
@@ -123,6 +128,9 @@ export function ReaderContent(props: ReaderContentProps) {
   lastPointerTypeRef,
   pacerIndexRef,
   onBack,
+  midChapterRecall,
+  onMidChapterRecallSolve,
+  onMidChapterRecallSkip,
   } = props;
 
   return (
@@ -171,6 +179,13 @@ export function ReaderContent(props: ReaderContentProps) {
         });
       }}
       onDisableCharacterMemory={() => saveCharacterMemoryEnabled(false)}
+    />
+  ) : null}
+  {midChapterRecall && onMidChapterRecallSolve && onMidChapterRecallSkip ? (
+    <MidChapterRecallCard
+      item={midChapterRecall}
+      onSolve={onMidChapterRecallSolve}
+      onSkip={onMidChapterRecallSkip}
     />
   ) : null}
   <div className="page-viewport" ref={viewportRef}>

@@ -1,9 +1,9 @@
 {
   "tool": "audit-investigacion",
   "version": 1,
-  "generatedAt": "2026-10-27T22:47:39.787Z",
+  "generatedAt": "2026-10-27T23:25:31.575Z",
   "root": "/Users/luis/Desarrollos Devin/lecta",
-  "commit": "d55b7432af161113d091b5f4d1251dcf8e360394",
+  "commit": "0138b8435ea64efd1ee6b7f5ce6de57616a1fad4",
   "doc": "docs/estrategia-aprendizaje-2026-10-24.md",
   "registry": "docs/auditoria/claims.json",
   "online": true,
@@ -156,40 +156,40 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/lib/coverage.ts:207 coincide con /COVERAGE_FLUID_MIN = 94/",
+          "detail": "src/client/lib/coverage.ts:214 coincide con /COVERAGE_FLUID_MIN = 94/",
           "observed": {
             "file": "src/client/lib/coverage.ts",
-            "line": 207,
+            "line": 214,
             "text": "export const COVERAGE_FLUID_MIN = 94;"
           }
         },
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/lib/coverage.ts:208 coincide con /COVERAGE_IDEAL_MIN = 86/",
+          "detail": "src/client/lib/coverage.ts:215 coincide con /COVERAGE_IDEAL_MIN = 86/",
           "observed": {
             "file": "src/client/lib/coverage.ts",
-            "line": 208,
+            "line": 215,
             "text": "export const COVERAGE_IDEAL_MIN = 86;"
           }
         },
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/lib/coverage.ts:184 coincide con /reencuentrosCount: reencounterLemmas\\.size/",
+          "detail": "src/client/lib/coverage.ts:190 coincide con /reencuentrosCount: reencounterLemmas\\.size/",
           "observed": {
             "file": "src/client/lib/coverage.ts",
-            "line": 184,
+            "line": 190,
             "text": "reencuentrosCount: reencounterLemmas.size,"
           }
         },
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/lib/catalog.ts:282 coincide con /COVERAGE_FLUID_MIN/",
+          "detail": "src/client/lib/catalog.ts:283 coincide con /COVERAGE_FLUID_MIN/",
           "observed": {
             "file": "src/client/lib/catalog.ts",
-            "line": 282,
+            "line": 283,
             "text": "if (bookDifficultyOrLevel >= COVERAGE_FLUID_MIN) {"
           }
         },
@@ -529,10 +529,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/components/Reader.tsx:4172 coincide con /updateLanguageTheta\\(currentLang, beta, 1, 1\\.0\\)/",
+          "detail": "src/client/components/Reader.tsx:4212 coincide con /updateLanguageTheta\\(currentLang, beta, 1, 1\\.0\\)/",
           "observed": {
             "file": "src/client/components/Reader.tsx",
-            "line": 4172,
+            "line": 4212,
             "text": "updateLanguageTheta(currentLang, beta, 1, 1.0);"
           }
         },
@@ -684,10 +684,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/lib/idb.ts:2077 coincide con /if \\(existing\\?\\.deleted\\) return existing/",
+          "detail": "src/client/lib/idb.ts:2078 coincide con /if \\(existing\\?\\.deleted\\) return existing/",
           "observed": {
             "file": "src/client/lib/idb.ts",
-            "line": 2077,
+            "line": 2078,
             "text": "if (existing?.deleted) return existing;"
           }
         },

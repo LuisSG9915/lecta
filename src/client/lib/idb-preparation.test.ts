@@ -227,6 +227,7 @@ describe("isBookScopedSessionKey", () => {
   it("las respuestas de capítulo también salen con su libro", () => {
     expect(isBookScopedSessionKey("abc", "chapterFollow:v1:abc:Cap%201")).toBe(true);
     expect(isBookScopedSessionKey("abc", "chapterFollow:v1:abc2:Cap%201")).toBe(false);
+    expect(isBookScopedSessionKey("abc", "midChapterRecall:v1:abc:cap-1")).toBe(true);
   });
 
   it("claves ajenas al ciclo quedan intactas", () => {

@@ -26,8 +26,8 @@ afirmación vive en `docs/auditoria/claims.json` y se reproduce con
    código muerto que duplicaba decisiones.
 4. **Lo que sigue faltando**: una medida objetiva de comprensión (hoy solo hay
    autoevaluación de un toque al cerrar cada capítulo) y la curva de retención
-   propia con datos reales de lectores. El reencuentro léxico ya ordena Descubre;
-   falta ponderarlo por apariciones.
+   propia con datos reales de lectores. El reencuentro léxico ya ordena Descubre,
+   ponderado por apariciones.
 
 ---
 
@@ -263,12 +263,11 @@ de encuentros en contexto (Pigada & Schmitt, 2006, *RFL* 18(1); Waring & Takaki,
 eficiente para producirlos: para cubrir el segundo millar hacen falta ~200 k
 tokens ≈ 2 novelas (Nation, 2014, *RFL* 26(2)).
 
-**Hecho**: el conteo ya es por lema (`coverageOfBook`), y Descubre ordena los
-libros en tu nivel por reencuentros antes que por cobertura (`compareBookCoverages`).
-
-**Siguiente paso**: ponderar por apariciones (`reencuentros = Σ peso(palabra) ×
-apariciones`), con un índice de lemas por libro o un filtro Aho-Corasick sobre los
-EPUB propios.
+**Hecho**: el conteo es por lema (`coverageOfBook`) y se pondera por apariciones:
+cada aparición de una palabra del cuaderno vale 1 (`reencuentrosPonderados`).
+Descubre ordena los libros en tu nivel por esa suma, antes que por cobertura
+(`compareBookCoverages`). El análisis del libro guarda `occurrences`; los libros
+analizados antes valen una aparición por forma, sin migrar datos.
 
 ### M2. Repaso en el texto (spacing + retrieval + contexto variable)
 
@@ -282,12 +281,16 @@ recuperación al texto junta espaciamiento, recuperación y variabilidad de
 contexto — las tres palancas con evidencia (Cepeda 2006; Rowland 2014; Laufer &
 Hulstijn 2001 sobre carga de implicación).
 
-**Hecho en el cierre**: `buildPostChapterConsolidationQueue` prioriza las palabras
-del Cuaderno que reaparecen en el capítulo (`notebook-reencounter`), sin duplicar
-lemas. Ese criterio es de reencuentro, no de vencimiento FSRS.
+**Hecho**: al pasar a la sección siguiente, si una palabra del cuaderno ya venció y
+aparece en ella, arriba del texto aparece un micro-cloze de 1 toque con su oración
+(`MidChapterRecallCard`). Es la versión elegida: se dispara al entrar, no al final
+de la sección; como máximo una vez por capítulo, se puede saltar y solo corre con
+la consolidación activa. Al responder bien consolida la palabra en FSRS
+(Rating.Good), igual que el cierre.
 
-**Pendiente**: el disparador por vencimiento en el *breakpoint* del texto
-(`ReaderFloatingLane`, sin interrumpir a media línea).
+**Cierre de capítulo**: `buildPostChapterConsolidationQueue` prioriza las palabras
+del cuaderno que reaparecen en el capítulo (`notebook-reencounter`), sin duplicar
+lemas. Ese criterio es de reencuentro, no de vencimiento FSRS.
 
 ### M3. Lectura con audio de ritmo controlado (y modo manos libres)
 
@@ -371,7 +374,7 @@ meta-análisis —trátese como hipótesis a medir— y el ranking no está resp
    rareza.
 
 **P1 — palancas nuevas**
-4. Repaso en el texto (M2): el cierre ya usa las palabras del Cuaderno que reaparecen; falta el disparador en el *breakpoint*.
+4. Repaso en el texto (M2): hecho al entrar a una sección con palabras vencidas, una vez por capítulo.
 5. Chequeo de retención a 30 días (hecho, con 30 días de retraso) y autoevaluación del hilo al cerrar capítulo (hechos); la medida objetiva de comprensión queda pospuesta hasta tener datos de uso (H8).
 6. Contrato si–entonces (M4) con tarjeta in-app.
 7. Reencuentro léxico ordenado por apariciones (M1).
@@ -459,9 +462,10 @@ Lo que se corrigió:
   de 7 y 30 días en «Tu recorrido», más un «Chequeo 30 días» opcional en el
   Cuaderno. La comprensión sigue sin medida objetiva: hay una autoevaluación de
   un toque al cerrar cada capítulo, mostrada como valoración propia.
-- **M1 y M2 conectados.** Los reencuentros cuentan lemas distintos, ordenan
-  Descubre y las palabras del Cuaderno que reaparecen entran primero al cierre
-  del capítulo. El ritmo de repaso de FSRS se elige en el Cuaderno (0,85 / 0,90 /
+- **M1 y M2 conectados.** Los reencuentros se ponderan por apariciones y ordenan
+  Descubre; las palabras del Cuaderno que reaparecen entran primero al cierre del
+  capítulo, y al entrar a una sección con una palabra vencida aparece un micro-cloze
+  (una vez por capítulo). El ritmo de repaso de FSRS se elige en el Cuaderno (0,85 / 0,90 /
   0,93) y la migración de θ ya no resta 3 a quien venía en escala Rasch.
 - **Referencias corregidas:** Webb (2009) encuentra que pre-aprender vocabulario
   *ayuda* a la comprensión; en Delgado et al. (2018) el scroll no es moderador y

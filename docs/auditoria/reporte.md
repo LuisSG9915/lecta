@@ -1,9 +1,9 @@
 # Reporte de auditoría — estrategia de aprendizaje de Lecta
 
-Generado: 2026-10-27T22:47:39.787Z
+Generado: 2026-10-27T23:25:31.575Z
 Documento auditado: `docs/estrategia-aprendizaje-2026-10-24.md`
 Registro: `docs/auditoria/claims.json`
-Commit: `d55b7432af161113d091b5f4d1251dcf8e360394`
+Commit: `0138b8435ea64efd1ee6b7f5ce6de57616a1fad4`
 Red: sí (DOI/URL resueltos)
 
 **Veredicto: PASS** — 14 afirmaciones aprobadas, 0 refutadas, 0 refutadas por auditoría, 0 sin verificar, 0 comprobaciones omitidas.
@@ -47,14 +47,14 @@ Código: **PASS** · Referencias: **PASS**
 - evidencia: `src/client/components/DiscoverRail.tsx:216-230`
 
 - ✅ **PASS** · doc-mention: el documento contiene «Una sola escala de umbrales»
-- ✅ **PASS** · code-anchor: src/client/lib/coverage.ts:207 coincide con /COVERAGE_FLUID_MIN = 94/
-  - observado: `{"file":"src/client/lib/coverage.ts","line":207,"text":"export const COVERAGE_FLUID_MIN = 94;"}`
-- ✅ **PASS** · code-anchor: src/client/lib/coverage.ts:208 coincide con /COVERAGE_IDEAL_MIN = 86/
-  - observado: `{"file":"src/client/lib/coverage.ts","line":208,"text":"export const COVERAGE_IDEAL_MIN = 86;"}`
-- ✅ **PASS** · code-anchor: src/client/lib/coverage.ts:184 coincide con /reencuentrosCount: reencounterLemmas\.size/
-  - observado: `{"file":"src/client/lib/coverage.ts","line":184,"text":"reencuentrosCount: reencounterLemmas.size,"}`
-- ✅ **PASS** · code-anchor: src/client/lib/catalog.ts:282 coincide con /COVERAGE_FLUID_MIN/
-  - observado: `{"file":"src/client/lib/catalog.ts","line":282,"text":"if (bookDifficultyOrLevel >= COVERAGE_FLUID_MIN) {"}`
+- ✅ **PASS** · code-anchor: src/client/lib/coverage.ts:214 coincide con /COVERAGE_FLUID_MIN = 94/
+  - observado: `{"file":"src/client/lib/coverage.ts","line":214,"text":"export const COVERAGE_FLUID_MIN = 94;"}`
+- ✅ **PASS** · code-anchor: src/client/lib/coverage.ts:215 coincide con /COVERAGE_IDEAL_MIN = 86/
+  - observado: `{"file":"src/client/lib/coverage.ts","line":215,"text":"export const COVERAGE_IDEAL_MIN = 86;"}`
+- ✅ **PASS** · code-anchor: src/client/lib/coverage.ts:190 coincide con /reencuentrosCount: reencounterLemmas\.size/
+  - observado: `{"file":"src/client/lib/coverage.ts","line":190,"text":"reencuentrosCount: reencounterLemmas.size,"}`
+- ✅ **PASS** · code-anchor: src/client/lib/catalog.ts:283 coincide con /COVERAGE_FLUID_MIN/
+  - observado: `{"file":"src/client/lib/catalog.ts","line":283,"text":"if (bookDifficultyOrLevel >= COVERAGE_FLUID_MIN) {"}`
 - ✅ **PASS** · referencia schmitt2011: https://eric.ed.gov/?id=EJ928357 → HTTP 200
   - observado: `{"url":"https://eric.ed.gov/?id=EJ928357","http":200}`
 - ✅ **PASS** · referencia laufer2010: https://eric.ed.gov/?id=EJ887873 → HTTP 200
@@ -143,8 +143,8 @@ Código: **PASS** · Referencias: **PASS**
 - evidencia: `src/client/lib/profile-models.ts:405-415`
 
 - ✅ **PASS** · doc-mention: el documento contiene ««Ya la conozco» es un juicio, no una prueba»
-- ✅ **PASS** · code-anchor: src/client/components/Reader.tsx:4172 coincide con /updateLanguageTheta\(currentLang, beta, 1, 1\.0\)/
-  - observado: `{"file":"src/client/components/Reader.tsx","line":4172,"text":"updateLanguageTheta(currentLang, beta, 1, 1.0);"}`
+- ✅ **PASS** · code-anchor: src/client/components/Reader.tsx:4212 coincide con /updateLanguageTheta\(currentLang, beta, 1, 1\.0\)/
+  - observado: `{"file":"src/client/components/Reader.tsx","line":4212,"text":"updateLanguageTheta(currentLang, beta, 1, 1.0);"}`
 - ✅ **PASS** · code-anchor: src/client/lib/profile-models.ts:417 coincide con /0\.18 \* \(1 - pKnow\)/
   - observado: `{"file":"src/client/lib/profile-models.ts","line":417,"text":"delta = 0.18 * (1 - pKnow);"}`
 - ✅ **PASS** · code-anchor: src/client/components/WordPanel.tsx:525 coincide con /award: false/
@@ -179,8 +179,8 @@ Código: **PASS** · Referencias: **PASS**
   - observado: `{"file":"src/client/lib/knowledge.ts","line":55,"text":"export const FAMILIAR_PASSIVE_THRESHOLD = 3;"}`
 - ✅ **PASS** · code-anchor: src/client/lib/reader-evidence.ts:230 coincide con /uniqueLemmas\.size >= 8/
   - observado: `{"file":"src/client/lib/reader-evidence.ts","line":230,"text":"if (uniqueLemmas.size >= 8) break;"}`
-- ✅ **PASS** · code-anchor: src/client/lib/idb.ts:2077 coincide con /if \(existing\?\.deleted\) return existing/
-  - observado: `{"file":"src/client/lib/idb.ts","line":2077,"text":"if (existing?.deleted) return existing;"}`
+- ✅ **PASS** · code-anchor: src/client/lib/idb.ts:2078 coincide con /if \(existing\?\.deleted\) return existing/
+  - observado: `{"file":"src/client/lib/idb.ts","line":2078,"text":"if (existing?.deleted) return existing;"}`
 - ✅ **PASS** · code-absent: /processPageTurnForPassiveKnowledge/ no aparece en src/client/lib/knowledge.ts
 - ✅ **PASS** · referencia nagy1985: Crossref: 1985 · learning words from context
   - observado: `{"doi":"10.2307/747758","year":1985,"title":"learning words from context"}`

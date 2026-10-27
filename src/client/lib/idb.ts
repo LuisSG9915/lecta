@@ -1561,7 +1561,8 @@ export function isBookScopedSessionKey(bookHash: string, key: string): boolean {
     key === `bookStart:v1:${bookHash}` ||
     key === `bookVocab:v1:${bookHash}` ||
     key.startsWith(`preparation:v1:${bookHash}:`) ||
-    key.startsWith(`${CHAPTER_FOLLOW_PREFIX}${encodeURIComponent(bookHash)}:`)
+    key.startsWith(`${CHAPTER_FOLLOW_PREFIX}${encodeURIComponent(bookHash)}:`) ||
+    key.startsWith(`midChapterRecall:v1:${encodeURIComponent(bookHash)}:`)
   );
 }
 

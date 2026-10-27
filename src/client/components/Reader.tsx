@@ -40,7 +40,7 @@ import {
 } from "../lib/idb";
 import { updateLanguageTheta } from "../lib/profile-models";
 import { batchLookup, enrichBatch, lookupWord } from "../lib/lexicon";
-import { scheduleCapturedReview } from "../lib/reviews";
+import { consolidateEpisodicWord, scheduleCapturedReview } from "../lib/reviews";
 import {
   selectEnrichmentCandidates,
   selectSavedForEnrichment,
@@ -124,6 +124,7 @@ import {
   type ReaderSettings,
   type ReadingStrategyPreset,
   type ThemeChoice,
+  isFeatureFlagEnabled,
 } from "../lib/settings";
 import {
   anchorAtViewTop,
@@ -185,7 +186,9 @@ import { translateParagraph } from "../lib/translate";
 import {
   type EpisodicWordItem,
   type ConsolidationModality,
+  isConsolidationActive,
 } from "../lib/practice";
+import { isForwardStepIntoSection, midChapterRecallKey, pickMidChapterRecall } from "../lib/mid-chapter-recall";
 import { BilingueParagraph } from "./BilingueParagraph";
 import type { FocusSuggestion } from "./SmartReaderDock";
 import { ReaderTopBar } from "./reader/ReaderTopBar";
@@ -920,6 +923,40 @@ export default function Reader({
     if (!catalog) return null;
     return targetAt(catalog.ranges, sectionIndex, activeIntraContext);
   }, [catalog, sectionIndex, activeIntraContext]);
+
+  const [midChapterRecall, setMidChapterRecall] = useState<{ section: number; item: EpisodicWordItem } | null>(null);
+  const previousRecallSectionRef = useRef(-1);
+  const pendingRecallSectionRef = useRef<number | null>(null);
+  useEffect(() => {
+    const previous = previousRecallSectionRef.current;
+    previousRecallSectionRef.current = sectionIndex;
+    pendingRecallSectionRef.current = isForwardStepIntoSection(previous, sectionIndex) ? sectionIndex : null;
+  }, [sectionIndex]);
+  useEffect(() => {
+    if (state !== "ready" || pendingRecallSectionRef.current !== sectionIndex) return;
+    pendingRecallSectionRef.current = null;
+    if (!isFeatureFlagEnabled("vocabGames") || !isConsolidationActive(bookHash)) return;
+    const target = targetAt(catalog?.ranges ?? [], sectionIndex, null);
+    const chapterId = target?.id ?? `sec-${sectionIndex}`;
+    const chapterTitle = target?.label ?? "";
+    const scope = captureDbScope();
+    void (async () => {
+      const flagKey = midChapterRecallKey(bookHash, chapterId);
+      if ((await Promise.resolve(loadSessionValue(flagKey, scope)).catch(() => null)) === "1") return;
+      const words = await Promise.resolve(listSavedWords(undefined, scope)).catch(() => []);
+      const item = pickMidChapterRecall(words, sectionTextRef.current, language);
+      if (!item || sectionIndexRef.current !== sectionIndex) return;
+      await Promise.resolve(saveSessionValue(flagKey, "1", scope)).catch(() => undefined);
+      setMidChapterRecall({ section: sectionIndex, item: { ...item, chapterTitle } });
+    })().catch(() => undefined);
+  }, [state, sectionIndex, bookHash, language, catalog]);
+  const visibleMidChapterRecall =
+    midChapterRecall && midChapterRecall.section === sectionIndex ? midChapterRecall.item : null;
+  const solveMidChapterRecall = () => {
+    setMidChapterRecall(null);
+    if (visibleMidChapterRecall) void consolidateEpisodicWord(visibleMidChapterRecall, bookHash).catch(() => undefined);
+  };
+  const skipMidChapterRecall = () => setMidChapterRecall(null);
 
   const {
     annotations,
@@ -3793,6 +3830,9 @@ export default function Reader({
         lastTapRef={lastTapRef}
         lastPointerTypeRef={lastPointerTypeRef}
         pacerIndexRef={pacerIndexRef}
+        midChapterRecall={visibleMidChapterRecall}
+        onMidChapterRecallSolve={solveMidChapterRecall}
+        onMidChapterRecallSkip={skipMidChapterRecall}
         onInternalLinkClick={handleInternalLinkClick}
         onBack={onBack}
       />
