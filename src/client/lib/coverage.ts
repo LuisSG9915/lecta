@@ -49,6 +49,7 @@ export type BookCoverage = {
   // Formas del libro que el lector ya tiene en su Cuaderno: la promesa
   // de «reencuentro» al elegir la siguiente lectura.
   reencuentrosCount?: number;
+  reencuentrosPonderados?: number;
 };
 
 // Reúne las tres fuentes del perfil — cuaderno, conocimiento declarado/
@@ -149,6 +150,7 @@ export function coverageOfBook(
   forms: string[],
   entriesByForm: Record<string, LexiconEntry[]>,
   inputs: CoverageInputs,
+  occurrences?: Record<string, number>,
 ): BookCoverage {
   const prediction = predictSection(
     forms,
@@ -163,15 +165,19 @@ export function coverageOfBook(
   const covered = prediction.savedCount + prediction.knownCount;
   const newWordsCount =
     prediction.predicted.length + (prediction.deferred?.length ?? 0);
-  const reencounterLemmas = new Set<string>();
+  const reencounterLemmas = new Map<string, number>();
   for (const form of forms) {
     const lower = form.toLowerCase();
     const matched = (entriesByForm[form] ?? []).find((entry) =>
       inputs.saved.has(entry.lemma.toLowerCase()),
     );
-    if (matched) reencounterLemmas.add(matched.lemma.toLowerCase());
-    else if (inputs.saved.has(lower))
-      reencounterLemmas.add(entriesByForm[form]?.[0]?.lemma?.toLowerCase() || lower);
+    const lemma = matched
+      ? matched.lemma.toLowerCase()
+      : inputs.saved.has(lower)
+        ? entriesByForm[form]?.[0]?.lemma?.toLowerCase() || lower
+        : null;
+    if (lemma)
+      reencounterLemmas.set(lemma, (reencounterLemmas.get(lemma) ?? 0) + (occurrences?.[form] ?? 1));
   }
   return {
     percent: prediction.total
@@ -182,6 +188,7 @@ export function coverageOfBook(
     uncertain: prediction.uncertain.length,
     newWordsCount,
     reencuentrosCount: reencounterLemmas.size,
+    reencuentrosPonderados: [...reencounterLemmas.values()].reduce((sum, n) => sum + n, 0),
   };
 }
 
@@ -194,8 +201,8 @@ export function compareBookCoverages(a: BookCoverage, b: BookCoverage): number {
   const bInZone = b.percent >= COVERAGE_IDEAL_MIN ? 1 : 0;
   if (aInZone !== bInZone) return bInZone - aInZone;
   if (aInZone === 1) {
-    const aRe = a.reencuentrosCount ?? 0;
-    const bRe = b.reencuentrosCount ?? 0;
+    const aRe = a.reencuentrosPonderados ?? a.reencuentrosCount ?? 0;
+    const bRe = b.reencuentrosPonderados ?? b.reencuentrosCount ?? 0;
     if (aRe !== bRe) return bRe - aRe;
   }
   return b.percent - a.percent;

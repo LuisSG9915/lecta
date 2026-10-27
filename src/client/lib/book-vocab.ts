@@ -35,6 +35,7 @@ export function buildBookVocabManifest(
   forms: string[],
   entriesByForm: Record<string, LexiconEntry[]>,
   wordCount: number,
+  occurrences?: Record<string, number>,
 ): BookVocabManifest {
   const entries: BookVocabManifest["entries"] = [];
   const indexOf = new Map<string, number>();
@@ -83,6 +84,7 @@ export function buildBookVocabManifest(
     entries,
     byForm,
     missing,
+    ...(occurrences ? { occurrences } : {}),
   };
 }
 
@@ -178,7 +180,13 @@ export async function analyzeStoredBook(
     : ({ ok: true as const, entries: {} });
   if (!result.ok) return null;
 
-  const manifest = buildBookVocabManifest(forms, result.entries, wordCount);
+  const formSet = new Set(forms);
+  const occurrences: Record<string, number> = {};
+  for (const word of words) {
+    const form = word.toLowerCase();
+    if (formSet.has(form)) occurrences[form] = (occurrences[form] ?? 0) + 1;
+  }
+  const manifest = buildBookVocabManifest(forms, result.entries, wordCount, occurrences);
   void saveSessionValue(
     bookVocabKey(hash),
     JSON.stringify(manifest),

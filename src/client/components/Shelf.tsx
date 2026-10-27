@@ -408,6 +408,7 @@ export default function Shelf({
           manifestBookForms(manifest),
           entriesByFormOf(manifest),
           inputs,
+          manifest.occurrences,
         );
         setBookCoverages((prev) => {
           const next = new Map(prev);

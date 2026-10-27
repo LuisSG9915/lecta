@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   coverageLabel,
   coverageLanguageOf,
+  compareBookCoverages,
   coverageOfBook,
   createCoverageInputsLoader,
   inputsForCoverage,
@@ -136,6 +137,41 @@ describe("coverageOfBook", () => {
     );
     expect(coverage.percent).toBe(100);
     expect(coverage.reencuentrosCount).toBe(1);
+  });
+
+  it("el reencuentro ponderado suma las apariciones de los lemas del cuaderno", () => {
+    const entriesByForm = {
+      corrió: [entry("correr", 4.5, "verbo")],
+      corrieron: [entry("correr", 4.5, "verbo")],
+      casa: [entry("casa", 6.1)],
+    };
+    const coverage = coverageOfBook(
+      ["corrió", "corrieron", "casa"],
+      entriesByForm,
+      inputs({ saved: new Set(["correr"]) }),
+      { corrió: 2, corrieron: 1, casa: 4 },
+    );
+    expect(coverage.reencuentrosCount).toBe(1);
+    expect(coverage.reencuentrosPonderados).toBe(3);
+  });
+
+  it("sin conteos, cada forma vale una aparición", () => {
+    const entriesByForm = {
+      corrió: [entry("correr", 4.5, "verbo")],
+      corrieron: [entry("correr", 4.5, "verbo")],
+    };
+    const coverage = coverageOfBook(
+      ["corrió", "corrieron"],
+      entriesByForm,
+      inputs({ saved: new Set(["correr"]) }),
+    );
+    expect(coverage.reencuentrosPonderados).toBe(2);
+  });
+
+  it("entre libros en tu nivel gana el que más apariciones del cuaderno repite", () => {
+    const pocas = { percent: 90, total: 10, missing: 0, uncertain: 0, reencuentrosCount: 3, reencuentrosPonderados: 3 };
+    const muchas = { percent: 90, total: 10, missing: 0, uncertain: 0, reencuentrosCount: 2, reencuentrosPonderados: 12 };
+    expect([pocas, muchas].sort(compareBookCoverages)[0]).toBe(muchas);
   });
 
   it("libro vacío no divide entre cero", () => {

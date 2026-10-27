@@ -64,7 +64,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/lib/coverage.ts",
-          "line": 207,
+          "line": 214,
           "window": 1,
           "expect": "COVERAGE_FLUID_MIN = 94",
           "why": "umbral único de lectura fluida"
@@ -72,7 +72,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/lib/coverage.ts",
-          "line": 208,
+          "line": 215,
           "window": 1,
           "expect": "COVERAGE_IDEAL_MIN = 86",
           "why": "umbral único de reto ideal"
@@ -80,7 +80,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/lib/coverage.ts",
-          "line": 184,
+          "line": 190,
           "window": 1,
           "expect": "reencuentrosCount: reencounterLemmas\\.size",
           "why": "la cobertura cuenta lemas distintos del Cuaderno que reaparecen en el libro"
@@ -88,7 +88,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/lib/catalog.ts",
-          "line": 282,
+          "line": 283,
           "window": 3,
           "expect": "COVERAGE_FLUID_MIN",
           "why": "la insignia del catálogo usa el mismo umbral"

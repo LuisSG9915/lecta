@@ -145,6 +145,21 @@ describe("analyzeStoredBook", () => {
     expect(cached?.uniqueForms).toBe(manifest!.uniqueForms);
   });
 
+  it("guarda cuántas veces aparece cada forma propia del libro", async () => {
+    const manifest = await analyzeStoredBook("h1", undefined, {
+      open: fakeOpen(["casa casa perenne"]),
+      extractWords: async () => ["casa", "casa", "perenne", "la"],
+      lookup: async () => ({
+        ok: true as const,
+        entries: {
+          casa: [entry("casa", 6.1)],
+          perenne: [entry("perenne", 2.1, "adjetivo")],
+        },
+      }),
+    });
+    expect(manifest!.occurrences).toEqual({ casa: 2, perenne: 1 });
+  });
+
   it("sin libro guardado devuelve null sin escribir nada", async () => {
     const manifest = await analyzeStoredBook("falta");
     expect(manifest).toBeNull();

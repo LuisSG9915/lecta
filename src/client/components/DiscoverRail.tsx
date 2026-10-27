@@ -130,6 +130,7 @@ export default function DiscoverRail({
           manifestBookForms(manifest),
           entriesByFormOf(manifest),
           inputs,
+          manifest.occurrences,
         );
         if (cancelled) return;
         setCoverages((prev) => {

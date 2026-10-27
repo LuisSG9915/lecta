@@ -56,6 +56,7 @@ export type BookVocabManifest = {
   entries: { id: string | null; lemma: string; pos: string | null; zipf: number | null }[];
   byForm: Record<string, number[]>;
   missing: string[];
+  occurrences?: Record<string, number>;
 };
 
 const INDEX_KEY = "catalogIndex:v1";
