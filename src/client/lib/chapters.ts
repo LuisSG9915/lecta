@@ -435,6 +435,14 @@ export interface IntraSectionContext {
   fragmentPageMap?: ReadonlyMap<string, number>;
 }
 
+// Identidad estable del capítulo en el que está el lector. Sin entrada
+// del índice (libro sin TOC utilizable, sección fuera de todo tramo) cae
+// a la sección física: la autoevaluación y el repaso a mitad de capítulo
+// siguen existiendo y comparten la misma clave.
+export function chapterIdFor(target: ChapterTarget | null, sectionIndex: number): string {
+  return target?.id ?? `sec-${sectionIndex}`;
+}
+
 export function targetAt(
   ranges: ChapterRange[],
   sectionIndex: number,

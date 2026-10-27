@@ -286,7 +286,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/components/Reader.tsx",
-          "line": 4212,
+          "line": 4217,
           "window": 2,
           "expect": "updateLanguageTheta\\(currentLang, beta, 1, 1\\.0\\)",
           "why": "onMarkKnown sube theta con outcome 1"

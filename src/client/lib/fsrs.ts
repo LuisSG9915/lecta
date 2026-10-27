@@ -1,5 +1,5 @@
 import { createEmptyCard, fsrs, generatorParameters, Rating, type Card, type Grade } from "ts-fsrs";
-import { loadSessionValue, saveSessionValue, type DbScope } from "./idb";
+import { getActiveUserId, loadSessionValue, saveSessionValue, type DbScope } from "./idb";
 
 export type { Card, Grade };
 export { Rating };
@@ -28,34 +28,37 @@ function schedulerFor(requestRetention: number): ReturnType<typeof fsrs> {
   return instance;
 }
 
-let activeRetentionHorizon: RetentionHorizon = "standard";
+// El ritmo pertenece a la cuenta: una entrada por usuario para que un
+// repaso no programe con el ritmo de la cuenta anterior mientras la base
+// acaba de cambiar. Sin sesión manda el lector anónimo.
+let anonHorizon: RetentionHorizon = "standard";
+const horizonsByUser = new Map<string, RetentionHorizon>();
 
 const isRetentionHorizon = (value: unknown): value is RetentionHorizon =>
   value === "relaxed" || value === "standard" || value === "intensive";
 
 export function loadRetentionHorizon(): RetentionHorizon {
-  return activeRetentionHorizon;
+  const owner = getActiveUserId();
+  return owner ? (horizonsByUser.get(owner) ?? "standard") : anonHorizon;
 }
 
-export function setActiveRetentionHorizon(horizon: RetentionHorizon): void {
-  activeRetentionHorizon = horizon;
+export function setActiveRetentionHorizon(horizon: RetentionHorizon, userId?: string | null): void {
+  const owner = userId === undefined ? getActiveUserId() : userId;
+  if (owner) horizonsByUser.set(owner, horizon);
+  else anonHorizon = horizon;
 }
 
 export async function saveRetentionHorizon(
   horizon: RetentionHorizon,
   scope?: DbScope,
 ): Promise<void> {
-  setActiveRetentionHorizon(horizon);
+  setActiveRetentionHorizon(horizon, scope?.userId ?? undefined);
   await saveSessionValue(RETENTION_HORIZON_KEY, horizon, scope);
 }
 
 export async function hydrateRetentionHorizon(scope?: DbScope): Promise<void> {
-  try {
-    const raw = await loadSessionValue(RETENTION_HORIZON_KEY, scope);
-    setActiveRetentionHorizon(isRetentionHorizon(raw) ? raw : "standard");
-  } catch {
-    setActiveRetentionHorizon("standard");
-  }
+  const raw = await loadSessionValue(RETENTION_HORIZON_KEY, scope).catch(() => null);
+  setActiveRetentionHorizon(isRetentionHorizon(raw) ? raw : "standard", scope?.userId ?? undefined);
 }
 
 export function requestRetentionFor(

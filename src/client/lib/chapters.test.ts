@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildChapterCatalog,
+  chapterIdFor,
   reachedRangeEnd,
   suggestedChapterTarget,
   targetAt,
@@ -30,6 +31,25 @@ const book = (
 
 const entry = (label: string, href: string, subitems?: EpubTocItem[]) =>
   ({ label, href, subitems }) as EpubTocItem;
+
+describe("chapterIdFor", () => {
+  it("usa la entrada del índice cuando existe", () => {
+    const target = {
+      id: "OEBPS/cap1.xhtml#s2",
+      label: "Capítulo 1",
+      href: "cap1.xhtml#s2",
+      sectionIndex: 3,
+      fragment: "s2",
+      depth: 0,
+      kind: "chapter" as const,
+    };
+    expect(chapterIdFor(target, 3)).toBe("OEBPS/cap1.xhtml#s2");
+  });
+
+  it("sin entrada del índice cae a la sección física, no a nada", () => {
+    expect(chapterIdFor(null, 7)).toBe("sec-7");
+  });
+});
 
 describe("buildChapterCatalog", () => {
   it("F1: preliminares por landmarks y capítulos desde bodymatter", () => {

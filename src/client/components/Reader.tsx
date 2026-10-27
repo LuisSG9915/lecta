@@ -234,6 +234,7 @@ import {
   trackCalibrationOffer,
   type CalibrationTrack,
   targetAt,
+  chapterIdFor,
   type ChapterCatalog,
   type ChapterTarget,
   type IntraSectionContext,
@@ -923,6 +924,11 @@ export default function Reader({
     if (!catalog) return null;
     return targetAt(catalog.ranges, sectionIndex, activeIntraContext);
   }, [catalog, sectionIndex, activeIntraContext]);
+  // Identidad del capítulo en el que está el lector. Sin entrada del
+  // índice (libro sin TOC útil) cae a la sección física: la
+  // autoevaluación y el repaso a mitad de capítulo siguen existiendo y
+  // comparten la misma clave.
+  const currentChapterId = chapterIdFor(currentChapterTarget, sectionIndex);
 
   const [midChapterRecall, setMidChapterRecall] = useState<{ section: number; item: EpisodicWordItem } | null>(null);
   const previousRecallSectionRef = useRef(-1);
@@ -936,9 +942,8 @@ export default function Reader({
     if (state !== "ready" || pendingRecallSectionRef.current !== sectionIndex) return;
     pendingRecallSectionRef.current = null;
     if (!isFeatureFlagEnabled("vocabGames") || !isConsolidationActive(bookHash)) return;
-    const target = targetAt(catalog?.ranges ?? [], sectionIndex, null);
-    const chapterId = target?.id ?? `sec-${sectionIndex}`;
-    const chapterTitle = target?.label ?? "";
+    const chapterId = currentChapterId;
+    const chapterTitle = currentChapterTarget?.label ?? "";
     const scope = captureDbScope();
     void (async () => {
       const flagKey = midChapterRecallKey(bookHash, chapterId);
@@ -949,7 +954,7 @@ export default function Reader({
       await Promise.resolve(saveSessionValue(flagKey, "1", scope)).catch(() => undefined);
       setMidChapterRecall({ section: sectionIndex, item: { ...item, chapterTitle } });
     })().catch(() => undefined);
-  }, [state, sectionIndex, bookHash, language, catalog]);
+  }, [state, sectionIndex, bookHash, language, currentChapterId, currentChapterTarget]);
   const visibleMidChapterRecall =
     midChapterRecall && midChapterRecall.section === sectionIndex ? midChapterRecall.item : null;
   const solveMidChapterRecall = () => {
@@ -4179,7 +4184,7 @@ export default function Reader({
         bookSections={bookSections}
         toc={catalog?.targets?.map((t) => ({ index: t.sectionIndex, label: t.label }))}
         charOffsetInChapter={charOffsetInChapter}
-        currentChapterId={currentChapterTarget?.id}
+        currentChapterId={currentChapterId}
         currentChapterTitle={
           currentChapterTarget?.label ??
           catalog?.targets?.find((t) => t.sectionIndex === sectionIndex)?.label ??

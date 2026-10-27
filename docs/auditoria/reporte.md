@@ -1,9 +1,9 @@
 # Reporte de auditoría — estrategia de aprendizaje de Lecta
 
-Generado: 2026-10-27T23:25:31.575Z
+Generado: 2026-10-27T23:57:42.777Z
 Documento auditado: `docs/estrategia-aprendizaje-2026-10-24.md`
 Registro: `docs/auditoria/claims.json`
-Commit: `0138b8435ea64efd1ee6b7f5ce6de57616a1fad4`
+Commit: `684ed9c1b0a28c08c13b95e6486d3d74ab900f04`
 Red: sí (DOI/URL resueltos)
 
 **Veredicto: PASS** — 14 afirmaciones aprobadas, 0 refutadas, 0 refutadas por auditoría, 0 sin verificar, 0 comprobaciones omitidas.
@@ -47,12 +47,12 @@ Código: **PASS** · Referencias: **PASS**
 - evidencia: `src/client/components/DiscoverRail.tsx:216-230`
 
 - ✅ **PASS** · doc-mention: el documento contiene «Una sola escala de umbrales»
-- ✅ **PASS** · code-anchor: src/client/lib/coverage.ts:214 coincide con /COVERAGE_FLUID_MIN = 94/
-  - observado: `{"file":"src/client/lib/coverage.ts","line":214,"text":"export const COVERAGE_FLUID_MIN = 94;"}`
-- ✅ **PASS** · code-anchor: src/client/lib/coverage.ts:215 coincide con /COVERAGE_IDEAL_MIN = 86/
-  - observado: `{"file":"src/client/lib/coverage.ts","line":215,"text":"export const COVERAGE_IDEAL_MIN = 86;"}`
-- ✅ **PASS** · code-anchor: src/client/lib/coverage.ts:190 coincide con /reencuentrosCount: reencounterLemmas\.size/
-  - observado: `{"file":"src/client/lib/coverage.ts","line":190,"text":"reencuentrosCount: reencounterLemmas.size,"}`
+- ✅ **PASS** · code-anchor: src/client/lib/coverage.ts:215 coincide con /COVERAGE_FLUID_MIN = 94/
+  - observado: `{"file":"src/client/lib/coverage.ts","line":215,"text":"export const COVERAGE_FLUID_MIN = 94;"}`
+- ✅ **PASS** · code-anchor: src/client/lib/coverage.ts:216 coincide con /COVERAGE_IDEAL_MIN = 86/
+  - observado: `{"file":"src/client/lib/coverage.ts","line":216,"text":"export const COVERAGE_IDEAL_MIN = 86;"}`
+- ✅ **PASS** · code-anchor: src/client/lib/coverage.ts:191 coincide con /reencuentrosCount: reencounterLemmas\.size/
+  - observado: `{"file":"src/client/lib/coverage.ts","line":191,"text":"reencuentrosCount: reencounterLemmas.size,"}`
 - ✅ **PASS** · code-anchor: src/client/lib/catalog.ts:283 coincide con /COVERAGE_FLUID_MIN/
   - observado: `{"file":"src/client/lib/catalog.ts","line":283,"text":"if (bookDifficultyOrLevel >= COVERAGE_FLUID_MIN) {"}`
 - ✅ **PASS** · referencia schmitt2011: https://eric.ed.gov/?id=EJ928357 → HTTP 200
@@ -143,8 +143,8 @@ Código: **PASS** · Referencias: **PASS**
 - evidencia: `src/client/lib/profile-models.ts:405-415`
 
 - ✅ **PASS** · doc-mention: el documento contiene ««Ya la conozco» es un juicio, no una prueba»
-- ✅ **PASS** · code-anchor: src/client/components/Reader.tsx:4212 coincide con /updateLanguageTheta\(currentLang, beta, 1, 1\.0\)/
-  - observado: `{"file":"src/client/components/Reader.tsx","line":4212,"text":"updateLanguageTheta(currentLang, beta, 1, 1.0);"}`
+- ✅ **PASS** · code-anchor: src/client/components/Reader.tsx:4217 coincide con /updateLanguageTheta\(currentLang, beta, 1, 1\.0\)/
+  - observado: `{"file":"src/client/components/Reader.tsx","line":4217,"text":"updateLanguageTheta(currentLang, beta, 1, 1.0);"}`
 - ✅ **PASS** · code-anchor: src/client/lib/profile-models.ts:417 coincide con /0\.18 \* \(1 - pKnow\)/
   - observado: `{"file":"src/client/lib/profile-models.ts","line":417,"text":"delta = 0.18 * (1 - pKnow);"}`
 - ✅ **PASS** · code-anchor: src/client/components/WordPanel.tsx:525 coincide con /award: false/

@@ -8,12 +8,13 @@ import {
   scheduleReview,
   hydrateRetentionHorizon,
 } from "./fsrs";
-import { loadSessionValue, saveSessionValue } from "./idb";
+import { loadSessionValue, saveSessionValue, getActiveUserId } from "./idb";
 
 vi.mock("./idb", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./idb")>()),
   loadSessionValue: vi.fn(async () => undefined),
   saveSessionValue: vi.fn(async () => undefined),
+  getActiveUserId: vi.fn(() => null),
 }));
 
 describe("scheduleReview", () => {
@@ -64,6 +65,29 @@ describe("scheduleReview", () => {
     vi.mocked(loadSessionValue).mockResolvedValueOnce("otro");
     await hydrateRetentionHorizon();
     expect(loadRetentionHorizon()).toBe("standard");
+  });
+
+  it("el horizonte no se filtra entre cuentas", async () => {
+    const getActive = vi.mocked(getActiveUserId);
+    try {
+      getActive.mockReturnValue("u1");
+      await saveRetentionHorizon("relaxed");
+      expect(loadRetentionHorizon()).toBe("relaxed");
+
+      // La base ya cambió de cuenta pero su ritmo aún no se cargó:
+      // el repaso no puede heredar el de u1.
+      getActive.mockReturnValue("u2");
+      expect(loadRetentionHorizon()).toBe("standard");
+
+      vi.mocked(loadSessionValue).mockResolvedValueOnce("intensive");
+      await hydrateRetentionHorizon({ userId: "u2", generation: 1 } as never);
+      expect(loadRetentionHorizon()).toBe("intensive");
+
+      getActive.mockReturnValue("u1");
+      expect(loadRetentionHorizon()).toBe("relaxed");
+    } finally {
+      getActive.mockReturnValue(null);
+    }
   });
 
   it("un horizonte más exigente programa repasos más cercanos", () => {

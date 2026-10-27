@@ -700,12 +700,15 @@ export default function App() {
     if (!optimisticUserId) return;
     let cancelled = false;
     void setDbUser(optimisticUserId)
-      .then(() => {
+      .then(async () => {
         if (cancelled) return;
         resetGameCache();
         const scope = captureDbScope();
+        // El ritmo de repaso se carga antes de publicar la cuenta: así
+        // la interfaz nunca muestra el de la cuenta anterior.
+        await hydrateRetentionHorizon(scope);
+        if (cancelled) return;
         setDbUserId(scope.userId);
-        void hydrateRetentionHorizon(scope);
         setCheckingLibrary(false);
         void refreshLibrary();
       })
@@ -790,10 +793,11 @@ export default function App() {
       // escrituras aterrizan en la base dueña y la red aborta.
       const scope = captureDbScope();
       if (cancelled) return;
+      await hydrateRetentionHorizon(scope);
+      if (cancelled) return;
       // Ya es seguro: la base activa es la de esta cuenta — el
       // compañero recarga con ella (y limpia lo de la cuenta previa).
       setDbUserId(scope.userId);
-      void hydrateRetentionHorizon(scope);
 
       // La base local solo se limpia si el correo de confirmación
       // redirigió aquí; cerrar sesión o un enlace vencido no bastan.

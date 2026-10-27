@@ -1,9 +1,9 @@
 {
   "tool": "audit-investigacion",
   "version": 1,
-  "generatedAt": "2026-10-27T23:25:31.575Z",
+  "generatedAt": "2026-10-27T23:57:42.777Z",
   "root": "/Users/luis/Desarrollos Devin/lecta",
-  "commit": "0138b8435ea64efd1ee6b7f5ce6de57616a1fad4",
+  "commit": "684ed9c1b0a28c08c13b95e6486d3d74ab900f04",
   "doc": "docs/estrategia-aprendizaje-2026-10-24.md",
   "registry": "docs/auditoria/claims.json",
   "online": true,
@@ -156,30 +156,30 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/lib/coverage.ts:214 coincide con /COVERAGE_FLUID_MIN = 94/",
+          "detail": "src/client/lib/coverage.ts:215 coincide con /COVERAGE_FLUID_MIN = 94/",
           "observed": {
             "file": "src/client/lib/coverage.ts",
-            "line": 214,
+            "line": 215,
             "text": "export const COVERAGE_FLUID_MIN = 94;"
           }
         },
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/lib/coverage.ts:215 coincide con /COVERAGE_IDEAL_MIN = 86/",
+          "detail": "src/client/lib/coverage.ts:216 coincide con /COVERAGE_IDEAL_MIN = 86/",
           "observed": {
             "file": "src/client/lib/coverage.ts",
-            "line": 215,
+            "line": 216,
             "text": "export const COVERAGE_IDEAL_MIN = 86;"
           }
         },
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/lib/coverage.ts:190 coincide con /reencuentrosCount: reencounterLemmas\\.size/",
+          "detail": "src/client/lib/coverage.ts:191 coincide con /reencuentrosCount: reencounterLemmas\\.size/",
           "observed": {
             "file": "src/client/lib/coverage.ts",
-            "line": 190,
+            "line": 191,
             "text": "reencuentrosCount: reencounterLemmas.size,"
           }
         },
@@ -529,10 +529,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/components/Reader.tsx:4212 coincide con /updateLanguageTheta\\(currentLang, beta, 1, 1\\.0\\)/",
+          "detail": "src/client/components/Reader.tsx:4217 coincide con /updateLanguageTheta\\(currentLang, beta, 1, 1\\.0\\)/",
           "observed": {
             "file": "src/client/components/Reader.tsx",
-            "line": 4212,
+            "line": 4217,
             "text": "updateLanguageTheta(currentLang, beta, 1, 1.0);"
           }
         },

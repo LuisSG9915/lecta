@@ -392,6 +392,12 @@ describe("sessionKeysForBackup", () => {
     ).toContain("chapterFollow:v1:b1:Cap%201");
   });
 
+  it("respalda la marca de repaso a mitad de capítulo", () => {
+    expect(
+      sessionKeysForBackup(["midChapterRecall:v1:b1:cap-1", "unrelated:key"]),
+    ).toContain("midChapterRecall:v1:b1:cap-1");
+  });
+
   it("no respalda claves arbitrarias ni duplica", () => {
     const keys = sessionKeysForBackup(["readingWpm", "unrelated:key"]);
     expect(keys).not.toContain("unrelated:key");
