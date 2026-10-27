@@ -264,10 +264,12 @@ eficiente para producirlos: para cubrir el segundo millar hacen falta ~200 k
 tokens ≈ 2 novelas (Nation, 2014, *RFL* 26(2)).
 
 **Hecho**: el conteo es por lema (`coverageOfBook`) y se pondera por apariciones:
-cada aparición de una palabra del cuaderno vale 1 (`reencuentrosPonderados`).
+en tus libros propios, cada aparición de una palabra del cuaderno vale 1 (`reencuentrosPonderados`).
 Descubre ordena los libros en tu nivel por esa suma, antes que por cobertura
 (`compareBookCoverages`). El análisis del libro guarda `occurrences`; los libros
-analizados antes valen una aparición por forma, sin migrar datos.
+analizados antes valen una aparición por lema, sin migrar datos. El catálogo compartido
+todavía no trae conteos: ahí cada lema vale 1 hasta regenerar su manifiesto, lo que cambia
+datos compartidos y requiere autorización.
 
 ### M2. Repaso en el texto (spacing + retrieval + contexto variable)
 

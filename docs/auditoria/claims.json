@@ -64,7 +64,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/lib/coverage.ts",
-          "line": 214,
+          "line": 215,
           "window": 1,
           "expect": "COVERAGE_FLUID_MIN = 94",
           "why": "umbral único de lectura fluida"
@@ -72,7 +72,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/lib/coverage.ts",
-          "line": 215,
+          "line": 216,
           "window": 1,
           "expect": "COVERAGE_IDEAL_MIN = 86",
           "why": "umbral único de reto ideal"
@@ -80,7 +80,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/lib/coverage.ts",
-          "line": 190,
+          "line": 191,
           "window": 1,
           "expect": "reencuentrosCount: reencounterLemmas\\.size",
           "why": "la cobertura cuenta lemas distintos del Cuaderno que reaparecen en el libro"

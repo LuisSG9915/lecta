@@ -176,8 +176,9 @@ export function coverageOfBook(
       : inputs.saved.has(lower)
         ? entriesByForm[form]?.[0]?.lemma?.toLowerCase() || lower
         : null;
-    if (lemma)
-      reencounterLemmas.set(lemma, (reencounterLemmas.get(lemma) ?? 0) + (occurrences?.[form] ?? 1));
+    if (!lemma) continue;
+    if (occurrences) reencounterLemmas.set(lemma, (reencounterLemmas.get(lemma) ?? 0) + (occurrences[form] ?? 1));
+    else reencounterLemmas.set(lemma, 1);
   }
   return {
     percent: prediction.total

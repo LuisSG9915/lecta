@@ -155,7 +155,7 @@ describe("coverageOfBook", () => {
     expect(coverage.reencuentrosPonderados).toBe(3);
   });
 
-  it("sin conteos, cada forma vale una aparición", () => {
+  it("sin conteos, cada lema vale una aparición aunque tenga varias formas", () => {
     const entriesByForm = {
       corrió: [entry("correr", 4.5, "verbo")],
       corrieron: [entry("correr", 4.5, "verbo")],
@@ -165,7 +165,8 @@ describe("coverageOfBook", () => {
       entriesByForm,
       inputs({ saved: new Set(["correr"]) }),
     );
-    expect(coverage.reencuentrosPonderados).toBe(2);
+    expect(coverage.reencuentrosCount).toBe(1);
+    expect(coverage.reencuentrosPonderados).toBe(1);
   });
 
   it("entre libros en tu nivel gana el que más apariciones del cuaderno repite", () => {
