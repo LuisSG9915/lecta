@@ -255,7 +255,9 @@
   padding-bottom: calc(var(--s-2) + env(safe-area-inset-bottom));
 }
 
-@media (max-height: 30rem) {
+/* Pantallas bajas (móvil apaisado, ventanas pequeñas): la hoja del
+   compañero necesita el alto completo o el armario se queda sin rejilla. */
+@media (max-height: 34rem) {
   .sheet--stage {
     height: 92svh;
     max-height: 92svh;

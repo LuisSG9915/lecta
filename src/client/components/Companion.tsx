@@ -20,6 +20,7 @@ import {
   COMPANION_COAT_IDS,
   resolveCoatId,
   type CompanionCoatId,
+  type EquippedSlot,
 } from "../../shared/companion-data";
 import { triggerHaptic } from "../lib/haptics";
 
@@ -300,169 +301,63 @@ function StrokePatch({ s, cls }: { s: Stroke; cls: string }) {
   );
 }
 
+// Qué prendas pueden dibujarse y en qué orden. Una por ranura (la primera
+// que el gato lleve puesta gana), así que el orden de cada fila es la
+// prioridad histórica: no reordenar sin querer.
+//
+// Ésta es LA tabla que hay que tocar al añadir arte nuevo: una fila por
+// ranura y el id dentro. Antes era una escalera de if/else a mano donde un
+// id del catálogo que faltara en la cadena no se dibujaba nunca y nadie se
+// enteraba (así aparecieron cinco tarjetas muertas en el armario).
+export const WEAR_LAYERS: { slot: EquippedSlot; ids: string[] }[] = [
+  { slot: "body", ids: ["chaleco", "capa", "abrigo"] },
+  {
+    slot: "face",
+    ids: ["anteojos", "monoculo", "glasses_round", "monocle_gold", "gafas_sol"],
+  },
+  {
+    slot: "head",
+    ids: [
+      "moño",
+      "boina",
+      "beret_poet",
+      "wizard_hat",
+      "laurel_crown",
+      "headphones_cozy",
+      "pluma",
+    ],
+  },
+  {
+    slot: "neck",
+    ids: [
+      "bufanda",
+      "collar",
+      "corbatin",
+      "scarf_amber",
+      "cape_modernist",
+      "bowtie_scholar",
+      "detective_cape",
+      "panuelo",
+    ],
+  },
+];
+
 function Wear({ art, accessories }: { art: StageArt; accessories: string[] }) {
+  const worn = new Set(accessories);
   const items: ReactNode[] = [];
-
-  // Ranura cuerpo (body)
-  if (accessories.includes("chaleco") && art.wear.chaleco)
+  for (const { ids } of WEAR_LAYERS) {
+    const id = ids.find((candidate) => worn.has(candidate));
+    if (!id) continue;
+    const paths = art.wear[id as keyof StageArt["wear"]];
+    if (!paths || paths.length === 0) continue;
     items.push(
-      <g key="chaleco" className="cat-wear cat-wear--chaleco">
-        {art.wear.chaleco.map((d, i) => (
+      <g key={id} className={`cat-wear cat-wear--${id}`}>
+        {paths.map((d, i) => (
           <path key={i} d={d} />
         ))}
       </g>,
     );
-  else if (accessories.includes("capa") && art.wear.capa)
-    items.push(
-      <g key="capa" className="cat-wear cat-wear--capa">
-        {art.wear.capa.map((d, i) => (
-          <path key={i} d={d} />
-        ))}
-      </g>,
-    );
-
-  // Ranura ojos / cara (face)
-  if (accessories.includes("anteojos") && art.wear.anteojos)
-    items.push(
-      <g key="anteojos" className="cat-wear cat-wear--anteojos">
-        {art.wear.anteojos.map((d, i) => (
-          <path key={i} d={d} />
-        ))}
-      </g>,
-    );
-  else if (accessories.includes("monoculo") && art.wear.monoculo)
-    items.push(
-      <g key="monoculo" className="cat-wear cat-wear--monoculo">
-        {art.wear.monoculo.map((d, i) => (
-          <path key={i} d={d} />
-        ))}
-      </g>,
-    );
-  else if (accessories.includes("glasses_round") && art.wear.glasses_round)
-    items.push(
-      <g key="glasses_round" className="cat-wear cat-wear--glasses_round">
-        {art.wear.glasses_round.map((d, i) => (
-          <path key={i} d={d} />
-        ))}
-      </g>,
-    );
-  else if (accessories.includes("monocle_gold") && art.wear.monocle_gold)
-    items.push(
-      <g key="monocle_gold" className="cat-wear cat-wear--monocle_gold">
-        {art.wear.monocle_gold.map((d, i) => (
-          <path key={i} d={d} />
-        ))}
-      </g>,
-    );
-
-  // Ranura cabeza (head)
-  if (accessories.includes("moño") && art.wear.moño)
-    items.push(
-      <g key="moño" className="cat-wear cat-wear--moño">
-        {art.wear.moño.map((d, i) => (
-          <path key={i} d={d} />
-        ))}
-      </g>,
-    );
-  else if (accessories.includes("boina") && art.wear.boina)
-    items.push(
-      <g key="boina" className="cat-wear cat-wear--boina">
-        {art.wear.boina.map((d, i) => (
-          <path key={i} d={d} />
-        ))}
-      </g>,
-    );
-  else if (accessories.includes("beret_poet") && art.wear.beret_poet)
-    items.push(
-      <g key="beret_poet" className="cat-wear cat-wear--beret_poet">
-        {art.wear.beret_poet.map((d, i) => (
-          <path key={i} d={d} />
-        ))}
-      </g>,
-    );
-  else if (accessories.includes("wizard_hat") && art.wear.wizard_hat)
-    items.push(
-      <g key="wizard_hat" className="cat-wear cat-wear--wizard_hat">
-        {art.wear.wizard_hat.map((d, i) => (
-          <path key={i} d={d} />
-        ))}
-      </g>,
-    );
-  else if (accessories.includes("laurel_crown") && art.wear.laurel_crown)
-    items.push(
-      <g key="laurel_crown" className="cat-wear cat-wear--laurel_crown">
-        {art.wear.laurel_crown.map((d, i) => (
-          <path key={i} d={d} />
-        ))}
-      </g>,
-    );
-  else if (accessories.includes("headphones_cozy") && art.wear.headphones_cozy)
-    items.push(
-      <g key="headphones_cozy" className="cat-wear cat-wear--headphones_cozy">
-        {art.wear.headphones_cozy.map((d, i) => (
-          <path key={i} d={d} />
-        ))}
-      </g>,
-    );
-
-  // Ranura cuello (neck)
-  if (accessories.includes("bufanda") && art.wear.bufanda)
-    items.push(
-      <g key="bufanda" className="cat-wear cat-wear--bufanda">
-        {art.wear.bufanda.map((d, i) => (
-          <path key={i} d={d} />
-        ))}
-      </g>,
-    );
-  else if (accessories.includes("collar") && art.wear.collar)
-    items.push(
-      <g key="collar" className="cat-wear cat-wear--collar">
-        {art.wear.collar.map((d, i) => (
-          <path key={i} d={d} />
-        ))}
-      </g>,
-    );
-  else if (accessories.includes("corbatin") && art.wear.corbatin)
-    items.push(
-      <g key="corbatin" className="cat-wear cat-wear--corbatin">
-        {art.wear.corbatin.map((d, i) => (
-          <path key={i} d={d} />
-        ))}
-      </g>,
-    );
-  else if (accessories.includes("scarf_amber") && art.wear.scarf_amber)
-    items.push(
-      <g key="scarf_amber" className="cat-wear cat-wear--scarf_amber">
-        {art.wear.scarf_amber.map((d, i) => (
-          <path key={i} d={d} />
-        ))}
-      </g>,
-    );
-  else if (accessories.includes("cape_modernist") && art.wear.cape_modernist)
-    items.push(
-      <g key="cape_modernist" className="cat-wear cat-wear--cape_modernist">
-        {art.wear.cape_modernist.map((d, i) => (
-          <path key={i} d={d} />
-        ))}
-      </g>,
-    );
-  else if (accessories.includes("bowtie_scholar") && art.wear.bowtie_scholar)
-    items.push(
-      <g key="bowtie_scholar" className="cat-wear cat-wear--bowtie_scholar">
-        {art.wear.bowtie_scholar.map((d, i) => (
-          <path key={i} d={d} />
-        ))}
-      </g>,
-    );
-  else if (accessories.includes("detective_cape") && art.wear.detective_cape)
-    items.push(
-      <g key="detective_cape" className="cat-wear cat-wear--detective_cape">
-        {art.wear.detective_cape.map((d, i) => (
-          <path key={i} d={d} />
-        ))}
-      </g>,
-    );
-
+  }
   return <>{items}</>;
 }
 

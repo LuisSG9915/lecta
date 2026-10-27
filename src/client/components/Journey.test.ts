@@ -170,8 +170,9 @@ describe("Journey (Tu recorrido)", () => {
       state: null,
     };
 
+    const closeMock = vi.fn();
     await act(async () => {
-      root?.render(h(Journey, { onClose: vi.fn(), books: sampleBooks }));
+      root?.render(h(Journey, { onClose: closeMock, books: sampleBooks }));
     });
     await act(async () => {
       await Promise.resolve();
@@ -200,8 +201,9 @@ describe("Journey (Tu recorrido)", () => {
     };
 
 
+    const closeMock = vi.fn();
     await act(async () => {
-      root?.render(h(Journey, { onClose: vi.fn(), books: sampleBooks }));
+      root?.render(h(Journey, { onClose: closeMock, books: sampleBooks }));
     });
     await act(async () => {
       await Promise.resolve();
@@ -214,8 +216,9 @@ describe("Journey (Tu recorrido)", () => {
   });
 
   it("muestra la cuadrícula de exlibris para libros concluidos", async () => {
+    const closeMock = vi.fn();
     await act(async () => {
-      root?.render(h(Journey, { onClose: vi.fn(), books: sampleBooks }));
+      root?.render(h(Journey, { onClose: closeMock, books: sampleBooks }));
     });
     await act(async () => {
       await Promise.resolve();
@@ -228,8 +231,9 @@ describe("Journey (Tu recorrido)", () => {
 
   it("muestra mensaje sobrio cuando no hay libros concluidos", async () => {
     mockPositions = [];
+    const closeMock = vi.fn();
     await act(async () => {
-      root?.render(h(Journey, { onClose: vi.fn(), books: sampleBooks }));
+      root?.render(h(Journey, { onClose: closeMock, books: sampleBooks }));
     });
     await act(async () => {
       await Promise.resolve();
@@ -240,8 +244,9 @@ describe("Journey (Tu recorrido)", () => {
   });
 
   it("renderiza el Rango Literario y el Sendero de Tinta con sus hitos", async () => {
+    const closeMock = vi.fn();
     await act(async () => {
-      root?.render(h(Journey, { onClose: vi.fn(), books: sampleBooks }));
+      root?.render(h(Journey, { onClose: closeMock, books: sampleBooks }));
     });
     await act(async () => {
       await Promise.resolve();
@@ -268,8 +273,9 @@ describe("Journey (Tu recorrido)", () => {
       openPanel: openPanelMock,
     } as unknown as typeof mockCompanionContext;
 
+    const closeMock = vi.fn();
     await act(async () => {
-      root?.render(h(Journey, { onClose: vi.fn(), books: sampleBooks }));
+      root?.render(h(Journey, { onClose: closeMock, books: sampleBooks }));
     });
     await act(async () => {
       await Promise.resolve();
@@ -286,6 +292,8 @@ describe("Journey (Tu recorrido)", () => {
       closetBtn?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
     expect(openPanelMock).toHaveBeenCalledWith("closet");
+    // El vestidor sustituye la hoja del recorrido: nunca dos modales.
+    expect(closeMock).toHaveBeenCalled();
 
     // Abrir buzón
     const inboxBtn = container?.querySelector("button[aria-label^='Buzón del Gato']");
@@ -316,8 +324,9 @@ describe("Journey (Tu recorrido)", () => {
       state: baseState,
     } as unknown as typeof mockCompanionContext;
 
+    const closeMock = vi.fn();
     await act(async () => {
-      root?.render(h(Journey, { onClose: vi.fn(), books: sampleBooks }));
+      root?.render(h(Journey, { onClose: closeMock, books: sampleBooks }));
     });
     await act(async () => {
       await Promise.resolve();
@@ -346,8 +355,9 @@ describe("Journey (Tu recorrido)", () => {
   });
 
   it("al tocar un hito del sendero despliega su popover de detalle", async () => {
+    const closeMock = vi.fn();
     await act(async () => {
-      root?.render(h(Journey, { onClose: vi.fn(), books: sampleBooks }));
+      root?.render(h(Journey, { onClose: closeMock, books: sampleBooks }));
     });
     await act(async () => {
       await Promise.resolve();
@@ -372,8 +382,9 @@ describe("Journey (Tu recorrido)", () => {
   });
 
   it("renderiza el mapa de sendero con clases mobile-safe y nodos entre 24% y 74%", async () => {
+    const closeMock = vi.fn();
     await act(async () => {
-      root?.render(h(Journey, { onClose: vi.fn(), books: sampleBooks }));
+      root?.render(h(Journey, { onClose: closeMock, books: sampleBooks }));
     });
     await act(async () => {
       await Promise.resolve();
@@ -428,8 +439,9 @@ describe("Journey (Tu recorrido)", () => {
       },
     ];
 
+    const closeMock = vi.fn();
     await act(async () => {
-      root?.render(h(Journey, { onClose: vi.fn(), books: sampleBooks }));
+      root?.render(h(Journey, { onClose: closeMock, books: sampleBooks }));
     });
     await act(async () => {
       await Promise.resolve();
@@ -531,8 +543,9 @@ describe("Journey (Tu recorrido)", () => {
   it("renderiza el bloque de horizonte y la curva SVG sin errores ni NaN cuando el usuario tiene 0 palabras", async () => {
     mockWords = [];
     mockKnowledge = [];
+    const closeMock = vi.fn();
     await act(async () => {
-      root?.render(h(Journey, { onClose: vi.fn(), books: sampleBooks }));
+      root?.render(h(Journey, { onClose: closeMock, books: sampleBooks }));
     });
     await act(async () => {
       await Promise.resolve();

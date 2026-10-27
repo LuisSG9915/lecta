@@ -374,7 +374,7 @@
         {
           "type": "code-anchor",
           "file": "src/shared/gamification.ts",
-          "line": 540,
+          "line": 556,
           "window": 1,
           "expect": "gained \\+= 2",
           "why": "XP por consulta"
@@ -382,7 +382,7 @@
         {
           "type": "code-anchor",
           "file": "src/shared/gamification.ts",
-          "line": 547,
+          "line": 563,
           "window": 2,
           "expect": "gained \\+= 4",
           "why": "bonus por rareza"
@@ -398,7 +398,7 @@
         {
           "type": "code-anchor",
           "file": "src/shared/gamification.ts",
-          "line": 501,
+          "line": 517,
           "window": 1,
           "expect": "STREAK_XP_BONUS = 1\\.1",
           "why": "bonus por racha"

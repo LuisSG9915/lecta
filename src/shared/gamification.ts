@@ -340,6 +340,13 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: "repasos_800", title: "Memoria de archivo", desc: "Haz 800 repasos de vocabulario", xp: 450, family: "repasos", goal: 800, check: (s) => s.reviews >= 800 },
   { id: "libro_5", title: "Estante propio", desc: "Termina 5 libros", xp: 300, family: "libros", goal: 5, check: (s) => s.booksFinished >= 5, rewardItemId: "laurel_crown" },
   { id: "libro_10", title: "Diez libros cerrados", desc: "Termina 10 libros", xp: 500, family: "libros", goal: 10, check: (s) => s.booksFinished >= 10 },
+  // El primer premio tiene que llegar en la PRIMERA sesión: diez minutos de
+  // una sentada regalan el corbatín. Se añade al final para no tocar el orden
+  // de los logros existentes (el corbatín sigue siendo también el regalo del
+  // nivel 2: dos caminos, el que llegue antes).
+  // Sin XP a propósito: el premio es la prenda, y la escalera de niveles se
+  // queda como estaba — no se acelera la economía para dar un traje.
+  { id: "primer_cuarto", title: "Primer cuarto de hora", desc: "Lee 10 minutos de una sentada", xp: 0, family: "sesion", goal: 10, check: (s) => s.longestSessionMin >= 10, rewardItemId: "corbatin" },
 ];
 
 export interface FamilyProgress {
@@ -413,7 +420,10 @@ export function rewardForLevel(level: number): string {
 // proyectado, lo que los hace retroactivos — quien ya cruzó el
 // umbral tiene su pelaje sin depender de un cofre antiguo.
 export const COAT_LEVELS: Record<string, number> = {
-  "pelaje-atigrado": 1,
+  // El primer pelaje se regala: un lector nuevo puede cambiarle el color al
+  // gato desde el minuto cero (el natural por omisión es el tuxedo oscuro).
+  // Sin esto el armario arrancaba con una sola prenda y catorce candados.
+  "pelaje-atigrado": 0,
   "pelaje-calico": 2,
   "pelaje-gris": 3,
   "pelaje-siames": 5,
@@ -461,6 +471,12 @@ export const ACCESSORY_LABELS: Record<string, string> = {
 };
 
 export const ITEM_ACHIEVEMENT_REWARDS: Partial<Record<string, { id: string; title: string }>> = {
+  corbatin: { id: "primer_cuarto", title: "Primer cuarto de hora" },
+  // Plantilla de prendas nuevas: cada una cuelga de un logro que ya existía.
+  panuelo: { id: "racha_3", title: "Tres días seguidos" },
+  gafas_sol: { id: "lectura_10h", title: "Lector de oficio" },
+  abrigo: { id: "racha_14", title: "Dos semanas seguidas" },
+  pluma: { id: "libro_1", title: "Primer libro cerrado" },
   beret_poet: { id: "maraton", title: "Maratón" },
   bowtie_scholar: { id: "curioso_50", title: "Curioso" },
   wizard_hat: { id: "repasos_50", title: "Mente en forma" },

@@ -162,6 +162,14 @@ const buttons = () => [...host.querySelectorAll("button")];
 const button = (label: string) =>
   buttons().find((b) => b.textContent?.includes(label));
 
+// Tarjeta del armario por su título exacto (la ficha, los looks y la
+// pista «Más cerca» también son botones con nombres de prenda dentro).
+const card = (label: string) =>
+  [...host.querySelectorAll(".companion-card")].find(
+    (c) => c.querySelector(".companion-card-title")?.textContent === label,
+  ) as HTMLButtonElement | undefined;
+
+
 // Input controlado de React: el setter nativo + evento «input».
 const typeInto = (el: HTMLInputElement, value: string) =>
   act(() => {
@@ -367,19 +375,26 @@ describe("CompanionPanel", () => {
     await flush();
     await openCloset("Cuello");
 
-    const collar = button("Collar")! as HTMLButtonElement;
-    expect(collar.getAttribute("aria-disabled")).toBe("true");
+    // Bloqueada, pero pulsable: la prenda se prueba en el gato. Se anuncia
+    // con su nombre accesible (nunca como control deshabilitado).
+    const collar = card("Collar")!;
+    expect(collar.getAttribute("data-locked")).toBe("true");
+    expect(collar.getAttribute("aria-disabled")).toBeNull();
     expect(collar.textContent).toContain("Nivel 7");
+    expect(collar.getAttribute("aria-label")).toContain("bloqueada");
+    expect(collar.getAttribute("aria-label")).toContain("Nivel 7");
 
-    const bufanda = button("Bufanda")! as HTMLButtonElement;
-    expect(bufanda.getAttribute("aria-disabled")).toBe("true");
+    const bufanda = card("Bufanda")!;
+    expect(bufanda.getAttribute("data-locked")).toBe("true");
     expect(bufanda.textContent).toContain("Nivel 3");
 
     // Al tocar la prenda bloqueada se prueba sin escribir nada
     click(collar);
     await flush();
     expect(await game.readCompanionField("equipped.neck", scope)).toBeUndefined();
-    expect(host.querySelector(".companion-bubble")?.textContent).toContain("Se desbloquea en el nivel 7");
+    // El globo dice el requisito en corto (cabe en una línea sobre el
+    // gato); el número es lo que el usuario necesita para entenderlo.
+    expect(host.querySelector(".companion-bubble")?.textContent).toContain("Nivel 7");
 
     // Botón de quitar prueba
     const quitarBtn = button("Quitar prueba");
@@ -389,9 +404,7 @@ describe("CompanionPanel", () => {
     expect(button("Quitar prueba")).toBeFalsy();
 
     // «Sin prenda» nunca se bloquea
-    expect(
-      (button("Sin prenda")! as HTMLButtonElement).disabled,
-    ).toBe(false);
+    expect(card("Sin prenda")!.disabled).toBe(false);
   });
 
   it("prenda remota puesta se conserva marcada pero no se dibuja", async () => {
@@ -413,13 +426,13 @@ describe("CompanionPanel", () => {
     expect(
       host.querySelector(".companion-stage .cat-wear--mono, .companion-stage .cat-wear--moño"),
     ).toBeNull();
-    const mono = button("Moño")! as HTMLButtonElement;
+    const mono = card("Moño")!;
     expect(mono.getAttribute("aria-checked")).toBe("true");
     expect(mono.textContent).toContain("Puesta");
-    expect(mono.getAttribute("aria-disabled")).toBe("true");
-    expect(
-      (button("Sin prenda")! as HTMLButtonElement).disabled,
-    ).toBe(false);
+    expect(mono.getAttribute("data-locked")).toBe("true");
+    // Puesta en otro dispositivo y no dibujable aquí: se anuncia como tal.
+    expect(mono.getAttribute("aria-label")).toContain("bloqueada");
+    expect(card("Sin prenda")!.disabled).toBe(false);
   });
 
   it("la hoja abre saludando y muestra la línea contextual", async () => {
@@ -449,25 +462,47 @@ describe("CompanionPanel", () => {
     await flush();
     await openCloset("Pelaje");
 
-    const natural = button("Natural")! as HTMLButtonElement;
-    expect(natural.disabled).toBe(false);
-    const atigrado = button("Atigrado")! as HTMLButtonElement;
-    expect(atigrado.getAttribute("aria-disabled")).toBe("true");
-    expect(atigrado.textContent).toContain("Nivel 2");
-    const dorado = button("Dorado")! as HTMLButtonElement;
-    expect(dorado.textContent).toContain("Nivel 10");
+    // «Natural» es la acción de quitar el pelaje: sin pelaje puesto, no hay
+    // nada que quitar y el control está apagado.
+    const natural = card("Natural")!;
+    expect(natural.disabled).toBe(true);
+    // Los pelajes se llaman como su paleta, igual que en el selector.
+    // El primero es tuyo desde el minuto cero: se puede vestir el gato.
+    const atigrado = card("Naranja Miel")!;
+    expect(atigrado.textContent).toContain("Tuya");
+    // El pelaje natural no pide nivel: el gato ya lo lleva.
+    const tuxedo = card("Tinta y Crema")!;
+    expect(tuxedo.textContent).toContain("Puesta");
+    expect(card("Calicó Literario")!.textContent).toContain("Nivel 3");
+    // Cinco paletas, no doce prendas: los ids de paleta legados ya no se
+    // listan (dibujaban el mismo color y no los otorgaba nadie).
+    expect(card("Tuxedo")).toBeUndefined();
+    expect(card("Calicó Literario")).toBeTruthy();
   });
 
   it("un pelaje desbloqueado se equipa y «Natural» lo quita", async () => {
     const scope = idb.captureDbScope();
     const state = makeState({ xp: 1150 });
+    // Con un pelaje ya puesto (como haría el proveedor tras un cambio), la
+    // acción «Natural» está viva y puede quitarlo.
     act(() =>
-      root.render(h(CompanionPanel, baseProps({ state }))),
+      root.render(
+        h(CompanionPanel, baseProps({
+          state,
+          equipped: {
+            head: null,
+            neck: null,
+            face: null,
+            body: null,
+            coat: "pelaje-tuxedo",
+          },
+        })),
+      ),
     );
     await flush();
     await openCloset("Pelaje");
 
-    const tuxedo = button("Tuxedo")! as HTMLButtonElement;
+    const tuxedo = card("Tinta y Crema")!;
     expect(tuxedo.getAttribute("aria-disabled")).toBeNull();
     click(tuxedo);
     await flush();
@@ -475,15 +510,127 @@ describe("CompanionPanel", () => {
       (await game.readCompanionField("equipped.coat", scope))?.value,
     ).toBe("pelaje-tuxedo");
 
-    expect(
-      (button("Dorado")! as HTMLButtonElement).getAttribute("aria-disabled"),
-    ).toBe("true");
-
-    click(button("Natural")!);
+    click(card("Natural")!);
     await flush();
     const reg = await game.readCompanionField("equipped.coat", scope);
     expect(reg).toBeTruthy();
     expect(reg!.value).toBeNull();
+  });
+
+  it("un pelaje bloqueado se prueba y no se escribe", async () => {
+    const scope = idb.captureDbScope();
+    act(() =>
+      root.render(h(CompanionPanel, baseProps({ state: makeState() }))),
+    );
+    await flush();
+    await openCloset("Pelaje");
+
+    const cream = card("Crema Canela")!;
+    // Nivel 1: sólo el de serie es tuyo — el resto se prueba.
+    expect(cream.getAttribute("data-locked")).toBe("true");
+    expect(cream.getAttribute("aria-disabled")).toBeNull();
+    expect(cream.textContent).toContain("Nivel 6");
+
+    click(cream);
+    await flush();
+    // Escribirlo dejaba un «equipped.coat» que no se puede dibujar: el
+    // gato volvía al natural y la hoja decía que se lo había puesto.
+    expect(await game.readCompanionField("equipped.coat", scope)).toBeUndefined();
+    expect(host.querySelector(".companion-bubble")?.textContent).toContain(
+      "Nivel 6",
+    );
+  });
+
+  it("un pelaje desbloqueado sí se equipa", async () => {
+    const scope = idb.captureDbScope();
+    act(() =>
+      root.render(
+        h(CompanionPanel, baseProps({ state: makeState({ xp: 60 }) })),
+      ),
+    );
+    await flush();
+    await openCloset("Pelaje");
+
+    const ginger = card("Naranja Miel")!;
+    expect(ginger.getAttribute("aria-label")).toContain("tuya");
+
+    click(ginger);
+    await flush();
+    expect(
+      (await game.readCompanionField("equipped.coat", scope))?.value,
+    ).toBe("pelaje-atigrado");
+  });
+
+  it("un pelaje del registro que esta copia no tiene no se marca como puesto", async () => {
+    act(() =>
+      root.render(
+        h(CompanionPanel, baseProps({
+          state: makeState(),
+          equipped: {
+            body: null,
+            neck: null,
+            head: null,
+            face: null,
+            coat: "pelaje-dorado",
+          },
+        })),
+      ),
+    );
+    await flush();
+    await openCloset("Pelaje");
+
+    // El gato se dibuja con el pelaje natural (accessories vacío): ninguna
+    // paleta puede anunciarse como puesta, y el natural es el activo.
+    const puestas = [...host.querySelectorAll(".companion-card")].filter(
+      (c) => c.getAttribute("aria-checked") === "true",
+    );
+    expect(
+      puestas.map((c) => c.querySelector(".companion-card-title")?.textContent),
+    ).toEqual(["Tinta y Crema"]);
+  });
+
+  it("con un libro abierto, el armario viste para ese libro y lo recuerda", async () => {
+    const scope = idb.captureDbScope();
+    // Nivel 8: tiene el look «Poeta de provincia» completo.
+    const state = makeState({ xp: 1150 });
+    act(() =>
+      root.render(
+        h(CompanionPanel, baseProps({
+          state,
+          readerContext: {
+            bookId: "libro-1",
+            pageText: "texto",
+            currentChapterIndex: 0,
+          },
+        })),
+      ),
+    );
+    await flush();
+    await openCloset();
+
+    // La fila sólo existe dentro del lector.
+    const poet = button("Poesía")!;
+    expect(poet).toBeTruthy();
+    click(poet);
+    await flush();
+
+    // Se vistió el look de ese ambiente…
+    expect((await game.readCompanionField("equipped.head", scope))?.value).toBe(
+      "boina",
+    );
+    expect((await game.readCompanionField("equipped.neck", scope))?.value).toBe(
+      "corbatin",
+    );
+    // …y el ambiente quedó recordado para ese libro, no para otro.
+    const prefs = await game.loadCompanionDevicePrefs(scope);
+    expect(prefs.bookMoods).toEqual({ "libro-1": "poesia" });
+  });
+
+  it("sin libro abierto no hay fila de ambientes", async () => {
+    act(() => root.render(h(CompanionPanel, baseProps({ state: makeState() }))));
+    await flush();
+    await openCloset();
+    expect(host.querySelector(".closet-moods")).toBeNull();
   });
 
   it("el cuidado real deja lastCare sin tocar XP ni estadísticas", async () => {
@@ -564,7 +711,7 @@ describe("CompanionPanel", () => {
 
     expect(host.textContent).toContain("Álbum de Estampas de Lectura");
     expect(host.textContent).toContain("Primera palabra");
-    expect(host.textContent).toContain("1 de 36 conseguidas");
+    expect(host.textContent).toContain("1 de 37 conseguidas");
   });
 
   it("la vitrina muestra las 8 familias con sus sellos y marca «Nuevo» para logros recientes", async () => {

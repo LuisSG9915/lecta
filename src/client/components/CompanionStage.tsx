@@ -326,10 +326,14 @@ export function CompanionStage({
   if (tryOnArticle) {
     const ach = ITEM_ACHIEVEMENT_REWARDS[tryOnArticle];
     const hint = ach
-      ? `Se desbloquea con el logro: ${ach.title}`
+      ? `Logro ${ach.title}`
       : tryOnLevel !== null
-        ? `Se desbloquea en el nivel ${tryOnLevel}`
+        ? `Nivel ${tryOnLevel}`
         : "Prenda de prueba";
+    // Corto a propósito: el globo vive en una línea sobre el gato y
+    // con «Se desbloquea en el nivel N» el requisito se cortaba con
+    // puntos suspensivos justo en el número. El detalle completo va
+    // en el aria-label de la prenda.
     bubbleContent = {
       text: `Así se vería · ${hint}`,
       hasAction: true,
@@ -357,7 +361,7 @@ export function CompanionStage({
     tryOnArticle === "stage_ancient_library";
 
   return (
-    <div className="companion-stage">
+    <div className="companion-stage" data-in-closet={inCloset || undefined}>
       {/* Globo de diálogo absoluto (no suma altura fija) */}
       {bubbleContent ? (
         <div className="companion-bubble" role="status">

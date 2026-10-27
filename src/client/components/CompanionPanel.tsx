@@ -13,6 +13,7 @@ import {
 } from "react";
 import "../styles/game.css";
 import Sheet from "./Sheet";
+import { Companion } from "./Companion";
 import { CompanionStage } from "./CompanionStage";
 import {
   CompanionCloset,
@@ -20,12 +21,18 @@ import {
 } from "./CompanionCloset";
 import { ProgressInk } from "./ProgressInk";
 import { Seal, toRoman } from "./Seal";
-import { openGameChest, writeCompanionField } from "../lib/game";
+import {
+  loadCompanionDevicePrefs,
+  openGameChest,
+  saveCompanionBookMood,
+  writeCompanionField,
+} from "../lib/game";
 import { captureDbScope, listStoredBooks } from "../lib/idb";
 import { listRemoteBooks } from "../lib/books";
 import { coverUrlFor } from "../lib/cover";
 import {
   COMPANION_ARTICLES,
+  type BookMood,
   type CompanionArticle,
   type EquippedItems,
   type EquippedSlot,
@@ -56,6 +63,16 @@ import {
   companionGreeting,
   type CareKind,
 } from "../lib/companion-interactions";
+import { closetComment, lookForMood, lookStatus } from "../lib/companion-closet";
+import {
+  buildPortraitPng,
+  downloadBlob,
+  portraitFigures,
+  portraitFilename,
+  portraitShareText,
+  sharePortrait,
+  themeColor,
+} from "../lib/companion-portrait";
 import {
   getCharactersOnPageWithoutSpoilers,
   type CharacterCardInfo,
@@ -351,8 +368,18 @@ function FullCompanionPanel(props: CompanionPanelProps) {
   );
   const [tryOnLevel, setTryOnLevel] = useState<number | null>(null);
 
-  // Reacción local de ojos felices tras equipar
+  // Reacción local de ojos felices tras equipar + la frase que dice el gato
   const [happyReaction, setHappyReaction] = useState(false);
+  const [justWorn, setJustWorn] = useState<CompanionArticle | null>(null);
+  // Retrato de lectura: se genera en el cliente y no se sube a ningún sitio.
+  const [portraitBusy, setPortraitBusy] = useState(false);
+  const [portraitError, setPortraitError] = useState("");
+  const [portraitNote, setPortraitNote] = useState("");
+  const portraitRef = useRef<HTMLDivElement>(null);
+  // Ambiente que el lector asignó a cada libro (preferencia del
+  // dispositivo): con él el armario propone un look sin inventar géneros.
+  // Se guarda por hash para que cambiar de libro no arrastre la elección.
+  const [moodByBook, setMoodByBook] = useState<Record<string, BookMood>>({});
 
   // Metadatos de libros para los exlibris de libros completados
   const [booksMap, setBooksMap] = useState<
@@ -463,6 +490,41 @@ function FullCompanionPanel(props: CompanionPanelProps) {
     try {
       await writeCompanionField(`equipped.${slot}`, article, captureDbScope());
       triggerHaptic("selection");
+      setJustWorn((article as CompanionArticle | null) ?? null);
+      setHappyReaction(true);
+      setTimeout(() => setHappyReaction(false), 1000);
+    } catch {
+      setClosetError("No se pudo guardar la prenda. Intenta de nuevo.");
+    } finally {
+      setEquipBusy(false);
+    }
+  };
+
+  // Varias ranuras de una vez (looks del armario y «quitar prendas»): cada
+  // campo se escribe con su propio sello monótono, igual que un toque
+  // individual, para que el sync no vea saltos de sello entre ranuras.
+  const chooseMany = async (items: Partial<EquippedItems>) => {
+    if (equipBusy) return;
+    const entries = Object.entries(items) as [
+      EquippedSlot,
+      string | null | undefined,
+    ][];
+    if (entries.length === 0) return;
+    setEquipBusy(true);
+    setClosetError("");
+    setTryOnArticle(null);
+    setTryOnLevel(null);
+    try {
+      const scope = captureDbScope();
+      for (const [slot, article] of entries) {
+        if (article === undefined) continue;
+        await writeCompanionField(`equipped.${slot}`, article, scope);
+      }
+      triggerHaptic("success");
+      const head = entries.find(([slot]) => slot === "head")?.[1];
+      const body = entries.find(([slot]) => slot === "body")?.[1];
+      const worn = (head ?? body ?? null) as CompanionArticle | null;
+      setJustWorn(worn);
       setHappyReaction(true);
       setTimeout(() => setHappyReaction(false), 1000);
     } catch {
@@ -484,6 +546,93 @@ function FullCompanionPanel(props: CompanionPanelProps) {
   const clearTryOn = () => {
     setTryOnArticle(null);
     setTryOnLevel(null);
+  };
+
+  const bookId = readerContext?.bookId ?? null;
+  // El ambiente se lee de disco cuando hay libro abierto. Sin libro no hay
+  // nada que leer: la fila no se pinta (ni se resetea estado en el efecto).
+  useEffect(() => {
+    if (!bookId) return;
+    let alive = true;
+    const scope = captureDbScope();
+    void loadCompanionDevicePrefs(scope)
+      .then((prefs) => {
+        if (!alive) return;
+        const moods: Record<string, BookMood> = {};
+        for (const [key, value] of Object.entries(prefs.bookMoods ?? {})) {
+          if (value) moods[key] = value;
+        }
+        setMoodByBook((prev) => ({ ...prev, ...moods }));
+      })
+      .catch(() => {
+        /* preferencia local: si no se puede leer, el armario no la ofrece */
+      });
+    return () => {
+      alive = false;
+    };
+  }, [bookId]);
+
+  const bookMood: BookMood | null = bookId ? (moodByBook[bookId] ?? null) : null;
+
+  // Elegir ambiente guarda la etiqueta y viste al gato con lo que tenga de
+  // ese look. Repetir el ambiente elegido lo quita (sin desvestir).
+  const chooseMood = (mood: BookMood | null) => {
+    if (!bookId) return;
+    setMoodByBook((prev) => {
+      const next: Record<string, BookMood> = { ...prev };
+      if (mood) next[bookId] = mood;
+      else delete next[bookId];
+      return next;
+    });
+    void saveCompanionBookMood(bookId, mood, captureDbScope()).catch(() => {
+      /* preferencia local: si falla, la próxima vez vuelve a preguntar */
+    });
+    const look = lookForMood(mood);
+    if (!look) return;
+    const status = lookStatus(look, owned);
+    if (Object.keys(status.available).length === 0) return;
+    triggerHaptic("selection");
+    void chooseMany(status.available);
+  };
+
+  const portrait = portraitFigures(state ?? null, name);
+
+  const portraitBlob = async (): Promise<Blob> => {
+    const cat = portraitRef.current?.querySelector("svg.cat");
+    if (!(cat instanceof SVGSVGElement)) throw new Error("sin gato que retratar");
+    return buildPortraitPng({
+      cat,
+      figures: portrait,
+      paper: themeColor("--paper", "#f6efe3"),
+      ink: themeColor("--ink", "#2b2520"),
+      inkSoft: themeColor("--ink-soft", "#6b5f52"),
+      accent: themeColor("--vermilion", "#b23a2b"),
+    });
+  };
+
+  const makePortrait = async (mode: "share" | "download") => {
+    if (portraitBusy) return;
+    setPortraitBusy(true);
+    setPortraitError("");
+    setPortraitNote("");
+    try {
+      const blob = await portraitBlob();
+      const filename = portraitFilename(name);
+      if (mode === "download") {
+        downloadBlob(blob, filename);
+        setPortraitNote("Retrato descargado.");
+      } else {
+        const how = await sharePortrait(blob, filename, portraitShareText(portrait));
+        setPortraitNote(
+          how === "shared" ? "Retrato compartido." : "Retrato descargado.",
+        );
+      }
+    } catch {
+      // Sin canvas o sin gato: se avisa y no se promete una imagen que no va.
+      setPortraitError("No se pudo preparar el retrato. Intenta de nuevo.");
+    } finally {
+      setPortraitBusy(false);
+    }
   };
 
   const prog = state ? levelProgress(state.xp) : null;
@@ -723,7 +872,14 @@ function FullCompanionPanel(props: CompanionPanelProps) {
               Boolean(arrival) &&
               state.stats.lastDayKey === dayKeyOf(arrival!.at.getTime())
             }
-            greetingText={waving ? greeting : null}
+            greetingText={
+              // Prioridad: la frase del armario justo después de vestirse
+              // (es la respuesta del gato), si no el saludo de llegada.
+              (tab === "closet" && happyReaction && !tryOnArticle
+                ? closetComment(justWorn)
+                : null) ??
+              (waving ? greeting : null)
+            }
             careStatusText={activeCare ? CARE_STATUS[activeCare](name) : null}
             tryOnArticle={tryOnArticle}
             tryOnLevel={tryOnLevel}
@@ -1268,8 +1424,14 @@ function FullCompanionPanel(props: CompanionPanelProps) {
                   owned={owned}
                   equipBusy={equipBusy}
                   closetError={closetError}
+                  state={state}
+                  bookId={bookId}
+                  bookMood={bookMood}
+                  onBookMood={chooseMood}
                   onChoose={choose}
+                  onChooseMany={chooseMany}
                   onTryOn={handleTryOn}
+                  onClearTryOn={clearTryOn}
                   tryOnArticle={tryOnArticle}
                 />
               </div>
@@ -1283,6 +1445,60 @@ function FullCompanionPanel(props: CompanionPanelProps) {
                 className="companion-tabpanel"
                 aria-labelledby="companion-tab-collection"
               >
+                {/* Retrato: el gato con su look y las cifras de la casa,
+                    listo para descargar o compartir. */}
+                <div className="portrait-card">
+                  <div className="portrait-card__frame" ref={portraitRef}>
+                    <Companion
+                      stage={catStageForLevel(prog.level)}
+                      mood={mood}
+                      accessories={stageAccessories}
+                      decorative
+                    />
+                    <p className="portrait-card__name">{name}</p>
+                    <p className="portrait-card__level">{portrait.level}</p>
+                    {portrait.lines.length ? (
+                      <ul className="portrait-card__figures">
+                        {portrait.lines.map((line) => (
+                          <li key={line}>{line}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="portrait-card__empty">
+                        Aún sin cifras: en cuanto leas, aparecerán aquí.
+                      </p>
+                    )}
+                  </div>
+                  <div className="portrait-card__actions">
+                    <button
+                      type="button"
+                      className="btn btn--sm"
+                      disabled={portraitBusy}
+                      onClick={() => void makePortrait("share")}
+                    >
+                      {portraitBusy ? "Preparando…" : "Compartir retrato"}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn--quiet portrait-card__download"
+                      disabled={portraitBusy}
+                      onClick={() => void makePortrait("download")}
+                    >
+                      Descargar
+                    </button>
+                  </div>
+                  {portraitError ? (
+                    <p className="status" role="alert">
+                      {portraitError}
+                    </p>
+                  ) : null}
+                  {portraitNote ? (
+                    <p className="meta" role="status">
+                      {portraitNote}
+                    </p>
+                  ) : null}
+                </div>
+
                 <div
                   style={{
                     display: "flex",

@@ -487,6 +487,10 @@ export default function Journey({ onClose, books }: JourneyProps) {
                     className="btn journey-action-btn"
                     onClick={() => {
                       if (companion?.openPanel) {
+                        // Una sola capa modal: el vestidor no se apila
+                        // sobre el recorrido (dos aria-modal a la vez y el
+                        // texto del recorrido filtrándose por la hoja).
+                        onClose();
                         companion.openPanel("closet");
                       }
                     }}

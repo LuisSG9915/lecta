@@ -14,6 +14,7 @@ import {
   projectGame,
   receiptIdFor,
   COMPANION_FIELDS,
+  BOOK_MOODS,
   COMPANION_MOTION,
   type CompanionDevicePrefs,
   type CompanionRegister,
@@ -2477,7 +2478,23 @@ export async function readCompanionDevicePrefs(
         !(COMPANION_MOTION as readonly unknown[]).includes(parsed.motion)
       )
         return null;
-      return parsed as unknown as CompanionDevicePrefs;
+      // Los ambientes por libro son opcionales: se conservan sólo las claves
+      // con un valor del catálogo (basura fuera, resto intacto).
+      const moods = parsed.bookMoods;
+      const cleanMoods: Record<string, string> = {};
+      if (isRecord(moods)) {
+        for (const [key, value] of Object.entries(moods)) {
+          if (typeof value === "string" && (BOOK_MOODS as readonly string[]).includes(value)) {
+            cleanMoods[key] = value;
+          }
+        }
+      }
+      return {
+        version: 1,
+        soundEnabled: parsed.soundEnabled,
+        motion: parsed.motion as CompanionDevicePrefs["motion"],
+        bookMoods: cleanMoods as CompanionDevicePrefs["bookMoods"],
+      };
     } catch {
       return null;
     }

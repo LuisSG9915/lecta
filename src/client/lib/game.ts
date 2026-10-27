@@ -31,6 +31,7 @@ import {
   mergeCompanionRegister,
   projectGame,
   receiptIdFor,
+  type BookMood,
   type CompanionDevicePrefs,
   type CompanionField,
   type CompanionRegister,
@@ -324,6 +325,24 @@ export async function loadCompanionDevicePrefs(
   } catch {
     return DEFAULT_DEVICE_PREFS;
   }
+}
+
+// Ambiente de un libro («poesía», «misterio»…) para que el gato proponga su
+// look. Vive en las preferencias del dispositivo: un libro concreto en esta
+// copia, sin tocar el contrato del sync. Sin aviso a los suscriptores del
+// juego: no cambia XP, ropa ni constancia — sólo una etiqueta de lectura.
+export async function saveCompanionBookMood(
+  bookId: string,
+  mood: BookMood | null,
+  scope?: DbScope,
+): Promise<void> {
+  if (!bookId) return;
+  const bound = scope ?? captureDbScope();
+  const prefs = await loadCompanionDevicePrefs(bound);
+  const bookMoods = { ...(prefs.bookMoods ?? {}) };
+  if (mood) bookMoods[bookId] = mood;
+  else delete bookMoods[bookId];
+  await writeCompanionDevicePrefs({ ...prefs, bookMoods }, bound);
 }
 
 // Guardar preferencias del dispositivo avisa a los suscriptores: el

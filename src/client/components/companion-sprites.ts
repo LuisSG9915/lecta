@@ -89,6 +89,10 @@ export interface StageArt {
     detective_cape?: string[];
     glasses_round?: string[];
     monocle_gold?: string[];
+    panuelo?: string[];
+    gafas_sol?: string[];
+    abrigo?: string[];
+    pluma?: string[];
   };
   // Anclas de platito, pelota, taza, vela y zZz.
   propX: number;
@@ -581,6 +585,75 @@ function makeStage(p: CatParams): StageArt {
       ell(mx, eyeY, mr, mr),
       `M ${n(mx + mr * 0.72)} ${n(eyeY + mr * 0.72)} ` +
         `Q ${n(mx + mr + 8)} ${n(eyeY + mr + 12)} ${n(cx + hw * 0.82)} ${n(jawY + 12)}`,
+    ];
+  }
+
+  // ---- Prendas de plantilla (2026-10-26) ----
+  // Cuatro ejemplos completos, dibujados sobre las medidas del gato, no sobre
+  // números fijos: le quedan a las cinco etapas.
+
+  // Pañuelo de lectura (cuello): banda fina sobre la mandíbula y triángulo al
+  // pecho, con el nudo a la derecha.
+  {
+    const bandY = jawY + 2;
+    wear.panuelo = [
+      `M ${n(cx - jawW)} ${n(bandY - 2)} Q ${n(cx)} ${n(bandY + 8)} ${n(cx + jawW)} ${n(bandY - 2)} ` +
+        `L ${n(cx + jawW - 2)} ${n(bandY + 4)} Q ${n(cx)} ${n(bandY + 14)} ${n(cx - jawW + 2)} ${n(bandY + 4)} Z`,
+      `M ${n(cx - 13)} ${n(bandY + 3)} L ${n(cx + 13)} ${n(bandY + 3)} ` +
+        `L ${n(cx + 1)} ${n(bandY + 26)} Q ${n(cx - 1)} ${n(bandY + 29)} ${n(cx - 3)} ${n(bandY + 26)} Z`,
+      `M ${n(cx + 4)} ${n(bandY + 5)} L ${n(cx + 12)} ${n(bandY + 2)} ` +
+        `L ${n(cx + 11)} ${n(bandY + 11)} L ${n(cx + 3)} ${n(bandY + 12)} Z`,
+    ];
+  }
+
+  // Gafas de sol (ojos): dos lentes rellenas, puente y patillas.
+  {
+    const lx = p.eyeRx + 3.4;
+    const ly = p.eyeRy + 2.2;
+    wear.gafas_sol = [
+      ell(cx - p.eyeDx, eyeY, lx, ly),
+      ell(cx + p.eyeDx, eyeY, lx, ly),
+      `M ${n(cx - p.eyeDx + lx)} ${n(eyeY - 1)} L ${n(cx + p.eyeDx - lx)} ${n(eyeY - 1)} ` +
+        `M ${n(cx - p.eyeDx - lx)} ${n(eyeY - 2)} L ${n(cx - hw - 1)} ${n(eyeY - 6)} ` +
+        `M ${n(cx + p.eyeDx + lx)} ${n(eyeY - 2)} L ${n(cx + hw + 1)} ${n(eyeY - 6)}`,
+    ];
+  }
+
+  // Abrigo de invierno (cuerpo): dos faldones hasta el suelo del cuerpo, cuello
+  // alto y dos botones.
+  {
+    const coatTop = p.bodyCy - p.bodyRy * 0.85;
+    const coatBottom = p.bodyCy + p.bodyRy + 2;
+    const coatOut = p.bodyRx * 1.06;
+    const coatIn = p.bodyRx * 0.12;
+    const collarW = jawW * 0.52;
+    wear.abrigo = [
+      `M ${n(cx - p.bodyRx * 0.86)} ${n(coatTop)} ` +
+        `C ${n(cx - coatOut - 2)} ${n(p.bodyCy - p.bodyRy * 0.2)} ${n(cx - coatOut)} ${n(coatBottom - 4)} ` +
+        `${n(cx - coatOut)} ${n(coatBottom)} ` +
+        `L ${n(cx - coatIn)} ${n(coatBottom)} L ${n(cx - coatIn - 1)} ${n(coatTop + 3)} Z`,
+      `M ${n(cx + p.bodyRx * 0.86)} ${n(coatTop)} ` +
+        `C ${n(cx + coatOut + 2)} ${n(p.bodyCy - p.bodyRy * 0.2)} ${n(cx + coatOut)} ${n(coatBottom - 4)} ` +
+        `${n(cx + coatOut)} ${n(coatBottom)} ` +
+        `L ${n(cx + coatIn)} ${n(coatBottom)} L ${n(cx + coatIn + 1)} ${n(coatTop + 3)} Z`,
+      `M ${n(cx - collarW)} ${n(jawY - 1)} Q ${n(cx)} ${n(jawY + 9)} ${n(cx + collarW)} ${n(jawY - 1)} ` +
+        `Q ${n(cx)} ${n(jawY + 16)} ${n(cx - collarW)} ${n(jawY - 1)} Z`,
+      ell(cx + p.bodyRx * 0.2, p.bodyCy - p.bodyRy * 0.1, 1.7, 1.7),
+      ell(cx + p.bodyRx * 0.2, p.bodyCy + p.bodyRy * 0.45, 1.7, 1.7),
+    ];
+  }
+
+  // Pluma de escribano (cabeza): pluma de ave detrás de la oreja derecha.
+  {
+    const fx = cx + hw * 0.58;
+    const fy = headTop + 12;
+    const tipX = cx + hw * 1.1;
+    const tipY = Math.max(10, headTop - 16);
+    wear.pluma = [
+      `M ${n(fx)} ${n(fy)} ` +
+        `C ${n(fx + 12)} ${n(headTop + 2)} ${n(tipX - 3)} ${n(tipY + 12)} ${n(tipX)} ${n(tipY)} ` +
+        `C ${n(tipX - 18)} ${n(tipY + 10)} ${n(fx + 5)} ${n(headTop + 8)} ${n(fx - 7)} ${n(fy + 6)} Z`,
+      `M ${n(fx + 1)} ${n(fy + 1)} Q ${n((fx + tipX) / 2 + 1)} ${n((fy + tipY) / 2 + 3)} ${n(tipX - 1)} ${n(tipY + 3)}`,
     ];
   }
 

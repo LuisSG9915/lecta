@@ -184,8 +184,10 @@ describe("logros y cofres", () => {
 
 describe("pelajes del gato", () => {
   it("se desbloquean por nivel proyectado, no por cofre", () => {
-    expect(unlockedCoats(emptyGameState())).toEqual([]);
-    // Nivel 1 (xp 30, índice 1) regala el atigrado.
+    // El atigrado viene de serie: un lector nuevo ya puede cambiarle el
+    // color al gato sin esperar a ningún cofre.
+    expect(unlockedCoats(emptyGameState())).toEqual(["pelaje-atigrado"]);
+    // Nivel 2 (xp 30) no añade ninguno: el siguiente es el calicó (nivel 3).
     expect(unlockedCoats({ ...emptyGameState(), xp: 30 })).toEqual([
       "pelaje-atigrado",
     ]);
@@ -200,7 +202,7 @@ describe("pelajes del gato", () => {
 
   it("requiredCoatLevel da el nivel visible o null", () => {
     expect(requiredCoatLevel("pelaje-dorado")).toBe(10);
-    expect(requiredCoatLevel("pelaje-atigrado")).toBe(2);
+    expect(requiredCoatLevel("pelaje-atigrado")).toBe(1);
     expect(requiredCoatLevel("pelaje-calico")).toBe(3);
     expect(requiredCoatLevel("pelaje-negro")).toBe(7);
     expect(requiredCoatLevel("bufanda")).toBeNull();
@@ -248,7 +250,7 @@ describe("familias y catálogo de logros", () => {
   ];
 
   it("los 24 logros originales conservan exactamente id, título, desc, xp y umbrales (invariante)", () => {
-    expect(ACHIEVEMENTS.length).toBe(36);
+    expect(ACHIEVEMENTS.length).toBe(37);
     for (let i = 0; i < ORIGINAL_24.length; i++) {
       const orig = ORIGINAL_24[i];
       const actual = ACHIEVEMENTS[i];
@@ -293,9 +295,9 @@ describe("familias y catálogo de logros", () => {
     }
   });
 
-  it("los 12 logros nuevos tienen títulos, descripciones y puntos correctos", () => {
+  it("los logros nuevos tienen títulos, descripciones y puntos correctos", () => {
     const newOnes = ACHIEVEMENTS.slice(24);
-    expect(newOnes).toHaveLength(12);
+    expect(newOnes).toHaveLength(13);
 
     const map = new Map(newOnes.map((a) => [a.id, a]));
     expect(map.get("palabras_250")).toMatchObject({ title: "Cuaderno lleno", xp: 180, goal: 250 });
@@ -310,6 +312,14 @@ describe("familias y catálogo de logros", () => {
     expect(map.get("repasos_800")).toMatchObject({ title: "Memoria de archivo", xp: 450, goal: 800 });
     expect(map.get("libro_5")).toMatchObject({ title: "Estante propio", xp: 300, goal: 5 });
     expect(map.get("libro_10")).toMatchObject({ title: "Diez libros cerrados", xp: 500, goal: 10 });
+    // El primer premio del armario: diez minutos de una sentada.
+    expect(map.get("primer_cuarto")).toMatchObject({
+      title: "Primer cuarto de hora",
+      desc: "Lee 10 minutos de una sentada",
+      xp: 0,
+      goal: 10,
+      rewardItemId: "corbatin",
+    });
   });
 
   it("cada familia tiene logros con metas estrictamente crecientes", () => {

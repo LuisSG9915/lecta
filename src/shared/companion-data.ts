@@ -135,10 +135,25 @@ export function parseReceiptId(
 
 // Preferencias del dispositivo: viven solo en esta máquina y no se
 // sincronizan (el sonido arranca apagado a propósito).
+// Ambiente que el lector asignó a un libro («poesía», «misterio»…) para que
+// el gato proponga su look. Es una preferencia de LECTURA, pero vive en el
+// dispositivo: no viaja en el sync para no meter un registro nuevo en el
+// contrato (y para no castigar a un cliente viejo con filas rechazadas).
+export type BookMood = "poesia" | "aventura" | "misterio" | "clasico";
+
+export const BOOK_MOODS: readonly BookMood[] = [
+  "poesia",
+  "aventura",
+  "misterio",
+  "clasico",
+] as const;
+
 export interface CompanionDevicePrefs {
   version: 1;
   soundEnabled: boolean;
   motion: CompanionMotion;
+  // Por hash de libro: { "<bookHash>": "poesia" }
+  bookMoods?: Partial<Record<string, BookMood>>;
 }
 
 // Todo lo que alimenta la proyección: baselines legados + journal +
@@ -201,6 +216,11 @@ export const COMPANION_ARTICLES = {
   monocle_gold: "face",
   stage_rainy_window: "body",
   stage_ancient_library: "body",
+  // Plantilla de prendas nuevas (2026-10-26): cuatro ejemplos completos.
+  panuelo: "neck",
+  gafas_sol: "face",
+  abrigo: "body",
+  pluma: "head",
 } as const;
 export type CompanionArticle = keyof typeof COMPANION_ARTICLES;
 export type EquippedSlot = (typeof COMPANION_ARTICLES)[CompanionArticle];

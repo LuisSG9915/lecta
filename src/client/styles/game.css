@@ -1747,11 +1747,34 @@
   min-height: calc(var(--cat-size) + 1.75rem);
 }
 
+/* Globo del escenario. Con `left: 50%` y ancho automático el bloque
+   disponible se quedaba en la mitad derecha del escenario y el texto se
+   cortaba justo donde vive el requisito («Se desbloquea en el niv…»).
+   Centrado con inset + max-content ocupa lo que necesita. */
+/* En el Armario el gato es el espejo: crece un cuarto y suelta el suelo
+   de estado, que ahí no dice nada y le roba alto a la rejilla. */
+.companion-stage[data-in-closet] {
+  --cat-size: clamp(7rem, 24vh, 10rem);
+  margin-block-end: var(--s-1);
+}
+
+.companion-stage[data-in-closet] .companion-stage-floor {
+  display: none;
+}
+
+/* Con poco alto, el espejo cede sitio: la rejilla es lo que se viene a usar. */
+@media (max-height: 34rem) {
+  .companion-stage[data-in-closet] {
+    --cat-size: 6rem;
+  }
+}
+
 .companion-bubble {
   position: absolute;
   top: -0.25rem;
-  left: 50%;
-  transform: translateX(-50%);
+  inset-inline: 0;
+  margin-inline: auto;
+  width: max-content;
   z-index: 3;
   display: inline-flex;
   align-items: center;
@@ -2054,7 +2077,7 @@
   overflow: hidden;
 }
 
-@media (max-height: 30rem) {
+@media (max-height: 34rem) {
   .companion-stage-layout {
     display: grid;
     grid-template-columns: minmax(180px, 35%) 1fr;
@@ -2121,149 +2144,17 @@
   gap: var(--s-3);
 }
 
-/* Selector de 5 pelajes principales (Bloque 4.3) */
-.companion-coat-swatches {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-2);
-  padding: var(--s-2) var(--s-3);
-  background: var(--paper-raised);
-  border: 1px solid var(--rule);
-  border-radius: var(--r-2, 12px);
-}
-
-.companion-coat-swatches__header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.companion-coat-swatches__title {
-  font-family: var(--font-ui);
-  font-size: var(--fs-xs);
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--ink-soft);
-}
-
-.companion-coat-swatches__current {
-  font-family: var(--font-ui);
-  font-size: var(--fs-xs);
-  font-weight: 500;
-  color: var(--vermilion);
-}
-
-.companion-coat-swatches__row {
-  display: flex;
-  gap: var(--s-2);
-  align-items: center;
-  overflow-x: auto;
-  scrollbar-width: none;
-  padding-block: 2px;
-}
-
-.companion-coat-swatches__row::-webkit-scrollbar {
-  display: none;
-}
-
-.companion-coat-swatch {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  background: none;
-  border: none;
-  padding: 4px;
-  border-radius: var(--r-1, 8px);
-  cursor: pointer;
-  transition: transform var(--dur-1) var(--ease-out);
-}
-
-.companion-coat-swatch:hover:not(:disabled) {
-  transform: translateY(-2px);
-}
-
-.companion-coat-swatch__disc {
-  display: block;
-  inline-size: 28px;
-  block-size: 28px;
-  border-radius: 50%;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
-  transition: transform var(--dur-1) var(--ease-out), box-shadow var(--dur-1) var(--ease-out);
-}
-
-.companion-coat-swatch[data-active] .companion-coat-swatch__disc {
-  transform: scale(1.12);
-  box-shadow: 0 0 0 2px var(--paper), 0 0 0 4px var(--vermilion);
-}
-
-.companion-coat-swatch__label {
-  font-family: var(--font-ui);
-  font-size: 10px;
-  font-weight: 500;
-  color: var(--ink-soft);
-  white-space: nowrap;
-}
-
-.companion-coat-swatch[data-active] .companion-coat-swatch__label {
-  color: var(--ink);
-  font-weight: 600;
-}
-
-.companion-slot-chips {
-  display: flex;
-  gap: var(--s-2);
-  overflow-x: auto;
-  padding-block-end: var(--s-1);
-  scrollbar-width: none;
-}
-
-.companion-slot-chips::-webkit-scrollbar {
-  display: none;
-}
-
-.companion-chip {
-  flex: none;
-  padding: var(--s-1) var(--s-3);
-  font-family: var(--font-ui);
-  font-size: var(--fs-xs);
-  font-weight: 500;
-  border-radius: var(--r-pill, 999px);
-  border: 1px solid var(--rule);
-  background: var(--paper-raised);
-  color: var(--ink-soft);
-  cursor: pointer;
-  transition:
-    background-color var(--dur-1) var(--ease-out),
-    color var(--dur-1) var(--ease-out),
-    border-color var(--dur-1) var(--ease-out);
-}
-
-.companion-chip:hover {
-  color: var(--ink);
-  border-color: var(--rule-strong);
-}
-
-.companion-chip[data-active] {
-  background: var(--ink);
-  color: var(--paper-raised);
-  border-color: var(--ink);
-}
-
+/* Rejilla, no carril: el armario se hojea en vertical (33 tarjetas en
+   4 092 px de scroll horizontal eran invisibles). Tres columnas caben en
+   cualquier hoja y dejan respirar la fila de la ficha. */
 .companion-tray {
-  display: flex;
-  gap: var(--s-3);
-  overflow-x: auto;
-  scroll-snap-type: x proximity;
-  overscroll-behavior-x: contain;
-  padding-block: var(--s-2) var(--s-3);
-  padding-inline-end: var(--s-3);
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(5.5rem, 1fr));
+  gap: var(--s-2);
+  padding-block: var(--s-2) var(--s-2);
 }
 
 .companion-card {
-  flex: 0 0 7rem;
-  scroll-snap-align: start;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -2294,14 +2185,32 @@
   border-style: dashed;
 }
 
+/* Bloqueada: se apaga la miniatura, no el texto. El requisito («Nivel 5 ·
+   faltan 320 pts») tiene que seguir legible — es lo que hace de gancho, y
+   antes se apagaba entero con `aria-disabled`, que además la anunciaba
+   como control muerto cuando en realidad se puede probar. */
+.companion-card[data-locked] .companion-thumb {
+  opacity: 0.72;
+}
+
+.companion-card[data-locked] {
+  background: color-mix(in srgb, var(--paper-raised) 82%, transparent);
+}
+
 .companion-card[aria-disabled="true"] {
   opacity: 0.85;
+}
+
+/* La ficha describe la prenda TOCADA, que no siempre es la puesta: se
+   marca con un filete fino para que se distinga del estado «Puesta». */
+.companion-card[data-selected] {
+  border-color: var(--ink-soft);
 }
 
 .companion-card-title {
   font-size: var(--fs-xs);
   font-weight: 500;
-  margin-block-start: var(--s-1);
+  margin-block-start: 2px;
   line-height: 1.2;
 }
 
@@ -2320,11 +2229,537 @@
   color: var(--ink-soft);
 }
 
+/* Requisito con número dentro de la tarjeta (dos líneas, sin gritar). */
+.companion-card-req {
+  display: block;
+  margin-block-start: 2px;
+  font-size: 0.62rem;
+  line-height: 1.25;
+  color: var(--ink-soft);
+  text-wrap: balance;
+}
+
+/* ---- Pañuelo de lectura (cuello) ---- */
+.cat .cat-wear--panuelo path:first-child {
+  fill: var(--ochre, #b8860b);
+  stroke: var(--cat-outline);
+  stroke-width: 1.1;
+  stroke-linejoin: round;
+}
+
+.cat .cat-wear--panuelo path:nth-child(2) {
+  fill: #7d2b20;
+  stroke: var(--cat-outline);
+  stroke-width: 1.1;
+  stroke-linejoin: round;
+}
+
+.cat .cat-wear--panuelo path:last-child {
+  fill: var(--vermilion);
+  stroke: var(--cat-outline);
+  stroke-width: 1;
+  stroke-linejoin: round;
+}
+
+/* ---- Gafas de sol (ojos) ---- */
+.cat .cat-wear--gafas_sol path:nth-child(-n + 2) {
+  fill: #2b2622;
+  stroke: var(--cat-outline);
+  stroke-width: 1.1;
+  fill-opacity: 0.88;
+}
+
+.cat .cat-wear--gafas_sol path:last-child {
+  fill: none;
+  stroke: var(--cat-outline);
+  stroke-width: 1.1;
+  stroke-linecap: round;
+}
+
+/* ---- Abrigo de invierno (cuerpo) ---- */
+.cat .cat-wear--abrigo path:nth-child(-n + 2) {
+  fill: #4a5a6a;
+  stroke: var(--cat-outline);
+  stroke-width: 1.2;
+  stroke-linejoin: round;
+}
+
+.cat .cat-wear--abrigo path:nth-child(3) {
+  fill: #6b7a88;
+  stroke: var(--cat-outline);
+  stroke-width: 1.1;
+  stroke-linejoin: round;
+}
+
+.cat .cat-wear--abrigo path:nth-child(n + 4) {
+  fill: var(--ochre, #b8860b);
+  stroke: var(--cat-outline);
+  stroke-width: 0.8;
+}
+
+/* ---- Pluma de escribano (cabeza) ---- */
+.cat .cat-wear--pluma path:first-child {
+  fill: #f4efe4;
+  stroke: var(--cat-outline);
+  stroke-width: 1.1;
+  stroke-linejoin: round;
+}
+
+.cat .cat-wear--pluma path:last-child {
+  fill: none;
+  stroke: var(--cat-outline);
+  stroke-width: 0.9;
+  stroke-linecap: round;
+}
+
+/* ---------- Retrato de lectura ---------- */
+
+/* La tarjeta que se convierte en imagen: mismo papel y misma tinta que el
+   PNG para que lo que se ve sea lo que se descarga. */
+.portrait-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  margin-block-end: var(--s-4);
+}
+
+.portrait-card__frame {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: var(--s-3) var(--s-4);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-2, 12px);
+  background: var(--paper-raised);
+}
+
+.portrait-card__frame .cat {
+  inline-size: 7rem;
+  block-size: 7rem;
+}
+
+.portrait-card__name {
+  margin: var(--s-2) 0 0;
+  font-family: var(--font-serif, Georgia, serif);
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.portrait-card__level {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+}
+
+.portrait-card__figures {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px var(--s-3);
+  margin: var(--s-2) 0 0;
+  padding: 0;
+  list-style: none;
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+}
+
+.portrait-card__figures li + li::before {
+  content: "·";
+  margin-inline-end: var(--s-2);
+  color: var(--rule-strong);
+}
+
+.portrait-card__empty {
+  margin: var(--s-2) 0 0;
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  color: var(--ink-faint);
+}
+
+.portrait-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  align-items: center;
+}
+
+.portrait-card__download {
+  padding: var(--s-1) var(--s-2);
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+  background: none;
+  border: none;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+/* ---------- Armario: próxima meta, looks, ficha ---------- */
+
+/* Barra de requisito compartida por la tarjeta, la ficha y la cabecera.
+   Sin animación de relleno: el avance no debe «bailar» cada vez que
+   se abre la hoja. */
+.closet-bar {
+  display: block;
+  inline-size: 100%;
+  block-size: 3px;
+  margin-block-start: 3px;
+  border-radius: var(--r-pill, 999px);
+  background: color-mix(in srgb, var(--rule-strong) 45%, transparent);
+  overflow: hidden;
+}
+
+.closet-bar__fill {
+  display: block;
+  block-size: 100%;
+  border-radius: inherit;
+  background: var(--vermilion);
+}
+
+/* Temporada: una línea con el motivo del día. */
+.closet-season {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 var(--s-2);
+  margin: 0;
+  padding: 2px var(--s-3);
+  border-radius: var(--r-2, 12px);
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+}
+
+.closet-season__label {
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ochre, var(--vermilion));
+}
+
+.closet-season__name {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.closet-season__reason {
+  flex: 1 1 100%;
+  font-size: 0.62rem;
+  color: var(--ink-faint);
+}
+
+/* Etiqueta en la tarjeta de la prenda de temporada. */
+.closet-season-tag {
+  margin-block-start: 2px;
+  font-family: var(--font-ui);
+  font-size: 0.56rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ochre, var(--vermilion));
+}
+
+/* 1. «Más cerca»: la distancia a la siguiente prenda, en una línea. */
+.closet-next {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-areas:
+    "label name req"
+    "bar bar bar";
+  align-items: baseline;
+  gap: 2px var(--s-2);
+  inline-size: 100%;
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--vermilion);
+  border-radius: var(--r-2, 12px);
+  background: var(--paper-raised);
+  font-family: var(--font-ui);
+  text-align: start;
+  cursor: pointer;
+  transition: border-color var(--dur-1) var(--ease-out);
+}
+
+.closet-next:hover {
+  border-color: var(--rule-strong);
+  border-left-color: var(--vermilion);
+}
+
+.closet-next__label {
+  grid-area: label;
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.closet-next__name {
+  grid-area: name;
+  font-size: var(--fs-sm, 0.9rem);
+  font-weight: 600;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.closet-next__req {
+  grid-area: req;
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+
+.closet-next .closet-bar {
+  grid-area: bar;
+  margin-block-start: 4px;
+}
+
+/* 3. Looks: tres atajos de autoexpresión. */
+.closet-looks {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+  gap: var(--s-2);
+}
+
+.closet-look {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: var(--s-2);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-2, 12px);
+  background: var(--paper-raised);
+  font-family: var(--font-ui);
+  text-align: start;
+  cursor: pointer;
+  transition:
+    border-color var(--dur-1) var(--ease-out),
+    transform var(--dur-1) var(--ease-out);
+}
+
+.closet-look:hover:not(:disabled) {
+  border-color: var(--rule-strong);
+  transform: translateY(-1px);
+}
+
+.closet-look[data-incomplete] .closet-look__name {
+  color: var(--ink-soft);
+}
+
+.closet-look:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.closet-look__name {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--ink);
+}
+
+.closet-look__hint {
+  font-size: 0.62rem;
+  line-height: 1.25;
+  color: var(--ink-faint);
+}
+
+/* Ambiente del libro abierto: una pregunta, no un ajuste escondido. */
+.closet-moods {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-1) var(--s-2);
+}
+
+.closet-moods__label {
+  font-family: var(--font-ui);
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+/* 4. Vistas del armario: siete fichas en dos filas (caben todas a la
+   vista; un carril horizontal escondía «Pelaje» y «Looks»). */
+/* Siete fichas en dos filas: caben todas a la vista sin carril horizontal
+   (que escondía «Pelaje» y «Looks»). No van pegadas: con 226 px de panel,
+   una cabecera fija de dos filas se come la rejilla. */
+.companion-slot-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-1) var(--s-2);
+}
+
+.companion-chip {
+  flex: none;
+  padding: 2px var(--s-2);
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  font-weight: 500;
+  line-height: 1.5;
+  border-radius: var(--r-pill, 999px);
+  border: 1px solid var(--rule);
+  background: var(--paper-raised);
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition:
+    background-color var(--dur-1) var(--ease-out),
+    color var(--dur-1) var(--ease-out),
+    border-color var(--dur-1) var(--ease-out);
+}
+
+.companion-chip:hover {
+  color: var(--ink);
+  border-color: var(--rule-strong);
+}
+
+.companion-chip[data-active] {
+  background: var(--ink);
+  color: var(--paper-raised);
+  border-color: var(--ink);
+}
+
+/* Contador: mismo renglón, más apagado, cifras tabulares para que no
+   bailen al pasar de 9 a 10. */
+.companion-chip__count {
+  margin-inline-start: 4px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+}
+
+.companion-chip[data-active] .companion-chip__count {
+  opacity: 0.85;
+}
+
+/* 5. Ficha de la prenda tocada: nombre, historia y su requisito. */
+.closet-sheet {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-2, 12px);
+  background: var(--paper-raised);
+}
+
+.closet-sheet__text {
+  flex: 1;
+  min-inline-size: 0;
+}
+
+.closet-sheet__name {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm, 0.9rem);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.closet-sheet__state {
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--vermilion);
+}
+
+.closet-sheet__story {
+  margin: 2px 0 0;
+  font-size: var(--fs-xs);
+  line-height: 1.35;
+  color: var(--ink-soft);
+}
+
+.closet-sheet__req {
+  margin: 4px 0 0;
+  font-size: 0.62rem;
+  line-height: 1.3;
+  color: var(--ink-faint);
+}
+
+/* La distancia en minutos de lectura: el número que el lector reconoce. */
+.closet-sheet__equiv {
+  color: var(--ink-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.closet-sheet__actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+}
+
+.closet-sheet__actions .btn {
+  min-block-size: 2.25rem;
+}
+
+/* 6. Cierre: probar es gratis («Sorpréndeme») o desnudar al gato. */
+.closet-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  align-items: center;
+}
+
+.closet-surprise {
+  padding: var(--s-1) var(--s-2);
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--vermilion);
+  border: 1px solid currentColor;
+  border-radius: var(--r-pill, 999px);
+  background: none;
+  cursor: pointer;
+}
+
+.closet-surprise:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--vermilion) 10%, transparent);
+}
+
+.closet-clear {
+  align-self: flex-start;
+  padding: var(--s-1) var(--s-2);
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+  border: none;
+  background: none;
+  border-radius: var(--r-1, 8px);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.closet-clear:hover:not(:disabled) {
+  color: var(--ink);
+}
+
+.closet-empty-hint {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  color: var(--ink-faint);
+}
+
 /* Miniatura en tarjeta: gato completo a 48px sin animaciones */
 .companion-thumb {
   position: relative;
-  inline-size: 3rem;
-  block-size: 3rem;
+  inline-size: 2.5rem;
+  block-size: 2.5rem;
   display: flex;
   align-items: center;
   justify-content: center;
