@@ -1521,6 +1521,7 @@ export function isMigratableSessionKey(key: string): boolean {
     key === "calibrationDone" ||
     key === "calibrationDraft" ||
     key === "readingGoal:v1" ||
+    key === "lecta:retention_horizon:v1" ||
     key === "learnExposure:v1" ||
     SESSION_MIGRATABLE_PREFIXES.some((prefix) => key.startsWith(prefix))
   );

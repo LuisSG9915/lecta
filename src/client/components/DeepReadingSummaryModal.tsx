@@ -36,6 +36,7 @@ export interface DeepReadingSummaryModalProps {
   bookTitle?: string;
   author?: string;
   chapterTitle?: string;
+  chapterId?: string;
   onShareQuote?: (quote?: string) => void;
   onWordConsolidated?: (word: SavedWord) => void;
 }
@@ -53,6 +54,7 @@ export default function DeepReadingSummaryModal({
   bookTitle,
   author,
   chapterTitle,
+  chapterId,
   onShareQuote,
   onWordConsolidated,
 }: DeepReadingSummaryModalProps) {
@@ -109,8 +111,8 @@ export default function DeepReadingSummaryModal({
   const answerFollow = (level: ChapterFollowLevel) => {
     triggerHaptic("selection");
     setFollowAnswer(level);
-    if (bookId && chapterTitle) {
-      void saveChapterFollowAnswer(bookId, chapterTitle, level).catch(() => {});
+    if (bookId && chapterId) {
+      void saveChapterFollowAnswer(bookId, chapterId, level).catch(() => {});
     }
   };
 
@@ -390,7 +392,7 @@ export default function DeepReadingSummaryModal({
         </div>
       </div>
 
-      {bookId && chapterTitle ? (
+      {bookId && chapterId ? (
         <section
           aria-label="Hilo del capítulo"
           style={{ textAlign: "center", margin: "0 0 var(--s-3)" }}

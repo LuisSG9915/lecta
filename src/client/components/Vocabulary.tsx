@@ -1127,7 +1127,7 @@ function FullVocabulary({
   };
 
   const changeRetentionHorizon = (next: RetentionHorizon) => {
-    saveRetentionHorizon(next);
+    void saveRetentionHorizon(next).catch(() => {});
     setRetentionHorizon(next);
   };
 

@@ -18,7 +18,7 @@ import { loadUseAi } from "../lib/ai-pref";
 import { saveSessionValue } from "../lib/idb";
 import { pushKnowledgeToServer } from "../lib/reading-sync";
 import { pushWordsToServer } from "../lib/vocab";
-import { RETENTION_HORIZON_KEY } from "../lib/fsrs";
+import { RETENTION_HORIZON_KEY, setActiveRetentionHorizon } from "../lib/fsrs";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
   true;
@@ -279,10 +279,10 @@ describe("Chequeo de retención a 30 días", () => {
 
 describe("Ritmo de repaso", () => {
   beforeEach(() => {
-    window.localStorage.removeItem(RETENTION_HORIZON_KEY);
+    setActiveRetentionHorizon("standard");
   });
   afterEach(() => {
-    window.localStorage.removeItem(RETENTION_HORIZON_KEY);
+    setActiveRetentionHorizon("standard");
   });
 
   const pressed = (label: string) =>
@@ -297,7 +297,7 @@ describe("Ritmo de repaso", () => {
     expect(pressed("Fluido 85%")).toBe("false");
 
     await click("Fluido 85%");
-    expect(window.localStorage.getItem(RETENTION_HORIZON_KEY)).toBe("relaxed");
+    expect(saveSessionMock).toHaveBeenCalledWith(RETENTION_HORIZON_KEY, "relaxed", undefined);
     expect(pressed("Fluido 85%")).toBe("true");
     expect(pressed("Equilibrado 90%")).toBe("false");
   });

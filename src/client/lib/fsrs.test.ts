@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   isDue,
   loadRetentionHorizon,
@@ -6,7 +6,15 @@ import {
   requestRetentionFor,
   saveRetentionHorizon,
   scheduleReview,
+  hydrateRetentionHorizon,
 } from "./fsrs";
+import { loadSessionValue, saveSessionValue } from "./idb";
+
+vi.mock("./idb", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./idb")>()),
+  loadSessionValue: vi.fn(async () => undefined),
+  saveSessionValue: vi.fn(async () => undefined),
+}));
 
 describe("scheduleReview", () => {
   it("una tarjeta nueva queda programada y no vence de inmediato si va bien", () => {
@@ -40,33 +48,33 @@ describe("scheduleReview", () => {
     expect(new Date(again.last_review!).getTime()).not.toBeNaN();
   });
 
-  it("el horizonte de retención se guarda y cambia el intervalo pedido", () => {
-    // @vitest-environment jsdom no aplica aquí: se simula localStorage.
-    const store = new Map<string, string>();
-    const g = globalThis as { window?: unknown };
-    g.window = {
-      localStorage: {
-        getItem: (key: string) => store.get(key) ?? null,
-        setItem: (key: string, value: string) => void store.set(key, value),
-      },
-    };
-    try {
-      saveRetentionHorizon("relaxed");
-      expect(loadRetentionHorizon()).toBe("relaxed");
-      expect(requestRetentionFor("relaxed")).toBe(0.85);
-      expect(requestRetentionFor("intensive")).toBe(0.93);
+  it("el horizonte de retención se aplica al instante y se guarda por cuenta", async () => {
+    await saveRetentionHorizon("relaxed");
+    expect(loadRetentionHorizon()).toBe("relaxed");
+    expect(requestRetentionFor()).toBe(0.85);
+    expect(requestRetentionFor("intensive")).toBe(0.93);
+    expect(saveSessionValue).toHaveBeenCalledWith("lecta:retention_horizon:v1", "relaxed", undefined);
+  });
 
-      const base = scheduleReview(undefined, Rating.Good);
-      const relaxed = scheduleReview(base, Rating.Good, new Date(), {
-        requestRetention: 0.85,
-      });
-      const intensive = scheduleReview(base, Rating.Good, new Date(), {
-        requestRetention: 0.93,
-      });
-      expect(relaxed.due.getTime()).toBeGreaterThanOrEqual(intensive.due.getTime());
-    } finally {
-      delete g.window;
-    }
+  it("al entrar a una cuenta carga su horizonte; un valor inválido vuelve al estándar", async () => {
+    vi.mocked(loadSessionValue).mockResolvedValueOnce("intensive");
+    await hydrateRetentionHorizon();
+    expect(loadRetentionHorizon()).toBe("intensive");
+
+    vi.mocked(loadSessionValue).mockResolvedValueOnce("otro");
+    await hydrateRetentionHorizon();
+    expect(loadRetentionHorizon()).toBe("standard");
+  });
+
+  it("un horizonte más exigente programa repasos más cercanos", () => {
+    const base = scheduleReview(undefined, Rating.Good);
+    const relaxed = scheduleReview(base, Rating.Good, new Date(), {
+      requestRetention: 0.85,
+    });
+    const intensive = scheduleReview(base, Rating.Good, new Date(), {
+      requestRetention: 0.93,
+    });
+    expect(relaxed.due.getTime()).toBeGreaterThanOrEqual(intensive.due.getTime());
   });
 });
 

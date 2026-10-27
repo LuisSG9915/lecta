@@ -81,6 +81,7 @@ import {
   setCollectionPendingCount,
 } from "./lib/sync-state";
 import { resetGameCache } from "./lib/game";
+import { hydrateRetentionHorizon } from "./lib/fsrs";
 import {
   clearLastUserId,
   loadLastUserId,
@@ -704,6 +705,7 @@ export default function App() {
         resetGameCache();
         const scope = captureDbScope();
         setDbUserId(scope.userId);
+        void hydrateRetentionHorizon(scope);
         setCheckingLibrary(false);
         void refreshLibrary();
       })
@@ -791,6 +793,7 @@ export default function App() {
       // Ya es seguro: la base activa es la de esta cuenta — el
       // compañero recarga con ella (y limpia lo de la cuenta previa).
       setDbUserId(scope.userId);
+      void hydrateRetentionHorizon(scope);
 
       // La base local solo se limpia si el correo de confirmación
       // redirigió aquí; cerrar sesión o un enlace vencido no bastan.

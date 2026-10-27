@@ -76,6 +76,7 @@ export interface ReaderOverlaysProps {
   toc?: Array<{ index: number; label: string }>;
   charOffsetInChapter?: number;
   currentChapterTitle?: string;
+  currentChapterId?: string;
   compactMode?: boolean;
   wordCapsuleHost?: HTMLElement | null;
 
@@ -165,6 +166,7 @@ export function ReaderOverlays({
   toc,
   charOffsetInChapter = 0,
   currentChapterTitle,
+  currentChapterId,
   compactMode = false,
   wordCapsuleHost = null,
 
@@ -445,6 +447,7 @@ export function ReaderOverlays({
           bookTitle={bookTitle}
           author={author}
           chapterTitle={currentChapterTitle}
+          chapterId={currentChapterId}
           onShareQuote={onShareDeepSummaryQuote}
           onContinue={onContinueDeepSummary}
           onClose={onCloseDeepSummary}

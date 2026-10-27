@@ -4139,6 +4139,7 @@ export default function Reader({
         bookSections={bookSections}
         toc={catalog?.targets?.map((t) => ({ index: t.sectionIndex, label: t.label }))}
         charOffsetInChapter={charOffsetInChapter}
+        currentChapterId={currentChapterTarget?.id}
         currentChapterTitle={
           currentChapterTarget?.label ??
           catalog?.targets?.find((t) => t.sectionIndex === sectionIndex)?.label ??

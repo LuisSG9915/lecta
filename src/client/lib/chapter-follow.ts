@@ -16,8 +16,8 @@ export const CHAPTER_FOLLOW_OPTIONS: ReadonlyArray<{ level: ChapterFollowLevel; 
 
 const LEVELS = new Set<string>(CHAPTER_FOLLOW_OPTIONS.map((option) => option.level));
 
-export function chapterFollowKey(bookId: string, chapterTitle: string): string {
-  return `${CHAPTER_FOLLOW_PREFIX}${encodeURIComponent(bookId)}:${encodeURIComponent(chapterTitle.trim())}`;
+export function chapterFollowKey(bookId: string, chapterId: string): string {
+  return `${CHAPTER_FOLLOW_PREFIX}${encodeURIComponent(bookId)}:${encodeURIComponent(chapterId)}`;
 }
 
 export function serializeChapterFollow(level: ChapterFollowLevel, now = Date.now()): string {
@@ -38,12 +38,12 @@ export function parseChapterFollow(raw: string | null | undefined): ChapterFollo
 
 export async function saveChapterFollowAnswer(
   bookId: string,
-  chapterTitle: string,
+  chapterId: string,
   level: ChapterFollowLevel,
   scope?: DbScope,
 ): Promise<void> {
   await saveSessionValue(
-    chapterFollowKey(bookId, chapterTitle),
+    chapterFollowKey(bookId, chapterId),
     serializeChapterFollow(level),
     scope,
   );

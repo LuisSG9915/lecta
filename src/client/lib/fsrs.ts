@@ -1,4 +1,5 @@
 import { createEmptyCard, fsrs, generatorParameters, Rating, type Card, type Grade } from "ts-fsrs";
+import { loadSessionValue, saveSessionValue, type DbScope } from "./idb";
 
 export type { Card, Grade };
 export { Rating };
@@ -27,23 +28,33 @@ function schedulerFor(requestRetention: number): ReturnType<typeof fsrs> {
   return instance;
 }
 
+let activeRetentionHorizon: RetentionHorizon = "standard";
+
+const isRetentionHorizon = (value: unknown): value is RetentionHorizon =>
+  value === "relaxed" || value === "standard" || value === "intensive";
+
 export function loadRetentionHorizon(): RetentionHorizon {
-  if (typeof window === "undefined" || !window.localStorage) return "standard";
-  try {
-    const raw = window.localStorage.getItem(RETENTION_HORIZON_KEY);
-    if (raw === "relaxed" || raw === "standard" || raw === "intensive") return raw;
-  } catch {
-    // sin almacenamiento cae al horizonte estándar
-  }
-  return "standard";
+  return activeRetentionHorizon;
 }
 
-export function saveRetentionHorizon(horizon: RetentionHorizon): void {
-  if (typeof window === "undefined" || !window.localStorage) return;
+export function setActiveRetentionHorizon(horizon: RetentionHorizon): void {
+  activeRetentionHorizon = horizon;
+}
+
+export async function saveRetentionHorizon(
+  horizon: RetentionHorizon,
+  scope?: DbScope,
+): Promise<void> {
+  setActiveRetentionHorizon(horizon);
+  await saveSessionValue(RETENTION_HORIZON_KEY, horizon, scope);
+}
+
+export async function hydrateRetentionHorizon(scope?: DbScope): Promise<void> {
   try {
-    window.localStorage.setItem(RETENTION_HORIZON_KEY, horizon);
+    const raw = await loadSessionValue(RETENTION_HORIZON_KEY, scope);
+    setActiveRetentionHorizon(isRetentionHorizon(raw) ? raw : "standard");
   } catch {
-    // ignorar error de cuota
+    setActiveRetentionHorizon("standard");
   }
 }
 

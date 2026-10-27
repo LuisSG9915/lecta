@@ -762,6 +762,7 @@ const BACKUP_SESSION_KEYS = [
   "calibrationDone",
   "calibrationDraft",
   "readingGoal:v1",
+  "lecta:retention_horizon:v1",
   "learnExposure:v1",
   USE_AI_KEY,
   HISTORY_KEY,

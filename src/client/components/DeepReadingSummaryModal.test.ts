@@ -335,7 +335,7 @@ describe("DeepReadingSummaryModal", () => {
           onClose: vi.fn(),
           onContinue,
           bookId: "libro-1",
-          chapterTitle: "Capítulo 1",
+          chapterId: "cap-1",
         }),
       );
     });
@@ -345,7 +345,7 @@ describe("DeepReadingSummaryModal", () => {
       lost.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     });
 
-    expect(saveChapterFollowAnswer).toHaveBeenCalledWith("libro-1", "Capítulo 1", "perdido");
+    expect(saveChapterFollowAnswer).toHaveBeenCalledWith("libro-1", "cap-1", "perdido");
     expect(host.textContent).toContain("Anotado");
     expect(host.textContent).not.toContain("Seguí el hilo");
 
