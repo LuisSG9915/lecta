@@ -9,12 +9,11 @@ import type { ChapterAnalyzer } from "../lib/chapter-analysis";
 import { targetAt, type ChapterCatalog } from "../lib/chapters";
 import type { CompanionSignal } from "../lib/companion-state";
 import { getBookLanguage, type EpubBook } from "../lib/epub";
-import { award, localDayKey } from "../lib/game";
+import { awardConsultOncePerDay } from "../lib/game";
 import { pushOverlay, type OverlayHandle } from "../lib/history";
 import { captureDbScope } from "../lib/idb";
 import { lemmaOfFromEntries, matchPhrase, type PhraseIndex } from "../lib/phrases";
 import type { EpisodicWordItem } from "../lib/practice";
-import { betaFromZipf, updateLanguageTheta } from "../lib/profile-models";
 import { charOffsetAtViewTop } from "../lib/reading-location";
 import type { VisitEventDraft } from "../lib/reading-events";
 import type { WordHit } from "../lib/words";
@@ -22,18 +21,6 @@ import type { ReadyAnalysis, TocRow } from "../components/Reader";
 
 /** Un ref de React visto desde el hook. */
 type Ref<T> = { current: T };
-
-// Metadata del premio por consulta de palabra: el uuid se genera al
-// abrir la ficha y viaja congelado en el journal. Vive fuera del
-// componente para que reloj/uuid no se lean durante el render.
-const consultedAwardMeta = () => {
-  const at = Date.now();
-  return {
-    id: `consult:${crypto.randomUUID()}`,
-    at,
-    dayKey: localDayKey(at),
-  };
-};
 
 export interface UseReaderSelectionOptions {
   /** Idioma del libro; vacío cae al del EPUB. */
@@ -125,13 +112,11 @@ export function useReaderSelection(options: UseReaderSelectionOptions) {
       setCharOffsetInChapter(charOffsetAtViewTop(containerRef.current, sectionTextRef.current));
     }
     consultedInPageRef.current.add(hit.word.toLowerCase());
-    // Recalibración adaptativa hacia abajo (outcome = 0) para el idioma actual y registro en lookups del capítulo
+    const currentLang = language || (bookRef.current ? getBookLanguage(bookRef.current) : "es");
+    // Registro en lookups del capítulo
     try {
-      const currentLang = language || (bookRef.current ? getBookLanguage(bookRef.current) : "es");
       const cachedAnalysis = analysisFor(sectionIndexRef.current);
       const hitEntry = cachedAnalysis?.entries[hit.word.toLowerCase()]?.[0];
-      const wordBeta = betaFromZipf(hitEntry?.zipf);
-      updateLanguageTheta(currentLang, wordBeta, 0, 0.8);
 
       const tocLabel = tocRowsRef.current.find((r) => r.index === sectionIndexRef.current)?.label;
       const lookupItem: EpisodicWordItem = {
@@ -148,7 +133,7 @@ export function useReaderSelection(options: UseReaderSelectionOptions) {
         currentChapterLookups.current.push(lookupItem);
       }
     } catch {
-      // Ignorar fallo al persistir theta o lookups
+      // Ignorar fallo al persistir lookups
     }
     // La consulta es un acto neutral para el modelo, pero sí queda en
     // el trayecto: sirve para distinguir curiosidad de guardado.
@@ -158,8 +143,9 @@ export function useReaderSelection(options: UseReaderSelectionOptions) {
       form: hit.word,
       origin: "text",
     });
-    // Una consulta = un evento del journal, sellado al abrir la ficha.
-    void award({ kind: "consulted" }, captureDbScope(), consultedAwardMeta());
+    // Una consulta = un evento del journal, sellado al abrir la ficha y
+    // pagado una sola vez por palabra e idioma en el día local.
+    void awardConsultOncePerDay(currentLang, hit.word, captureDbScope());
     signalCompanion({ kind: "word_consulted" });
     recordConsult(hit.word);
   }, []);

@@ -14,7 +14,6 @@ import {
   smartContextSnippet,
   buildOneMinuteReviewSession,
   type SavedWordItem,
-  computeImplicitFsrsGrade,
   buildPostChapterConsolidationQueue,
   recordModalityAttempt,
   loadPostChapterConsolidationPrefs,
@@ -490,86 +489,6 @@ describe("buildOneMinuteReviewSession (Track 4)", () => {
 });
 
 describe("Track 10 — Consolidación Episódica Post-Capítulo", () => {
-  describe("computeImplicitFsrsGrade", () => {
-    it("asigna Grade 1 (Again) cuando hay 2 o más errores", () => {
-      const res = computeImplicitFsrsGrade(6, {
-        lemma: "quimera",
-        modality: "sentence-cloze",
-        responseTimeMs: 2000,
-        errorCount: 2,
-        usedHint: false,
-      });
-      expect(res.grade).toBe(1);
-      expect(res.episodicStabilityMultiplier).toBe(1.0);
-      expect(res.masteryDeltaTheta).toBe(-0.08);
-    });
-
-    it("asigna Grade 2 (Hard) cuando hay 1 error o se usó pista", () => {
-      const res1 = computeImplicitFsrsGrade(6, {
-        lemma: "quimera",
-        modality: "sentence-cloze",
-        responseTimeMs: 2000,
-        errorCount: 1,
-        usedHint: false,
-      });
-      expect(res1.grade).toBe(2);
-      expect(res1.episodicStabilityMultiplier).toBe(1.0);
-      expect(res1.masteryDeltaTheta).toBe(0.02);
-
-      const res2 = computeImplicitFsrsGrade(6, {
-        lemma: "quimera",
-        modality: "sentence-cloze",
-        responseTimeMs: 1500,
-        errorCount: 0,
-        usedHint: true,
-      });
-      expect(res2.grade).toBe(2);
-      expect(res2.episodicStabilityMultiplier).toBe(1.0);
-      expect(res2.masteryDeltaTheta).toBe(0.02);
-    });
-
-    it("asigna Grade 4 (Easy) con bono x1.35 cuando t_norm <= 650 ms/letra y 0 errores", () => {
-      // palabra de 6 letras, max(4, 6) = 6. 3600 ms / 6 = 600 ms/letra <= 650
-      const res = computeImplicitFsrsGrade(6, {
-        lemma: "quimera",
-        modality: "word-scramble",
-        responseTimeMs: 3600,
-        errorCount: 0,
-        usedHint: false,
-      });
-      expect(res.grade).toBe(4);
-      expect(res.episodicStabilityMultiplier).toBe(1.35);
-      expect(res.masteryDeltaTheta).toBe(0.14);
-    });
-
-    it("asigna Grade 3 (Good) con bono x1.20 cuando t_norm > 650 ms/letra y 0 errores", () => {
-      // palabra de 6 letras, 4500 ms / 6 = 750 ms/letra > 650
-      const res = computeImplicitFsrsGrade(6, {
-        lemma: "quimera",
-        modality: "sentence-cloze",
-        responseTimeMs: 4500,
-        errorCount: 0,
-        usedHint: false,
-      });
-      expect(res.grade).toBe(3);
-      expect(res.episodicStabilityMultiplier).toBe(1.2);
-      expect(res.masteryDeltaTheta).toBe(0.09);
-    });
-
-    it("normaliza por longitud mínima de 4 caracteres para palabras cortas", () => {
-      // palabra de 2 letras ("fe"): effectiveLen = max(4, 2) = 4.
-      // 2500 ms / 4 = 625 ms <= 650 -> Easy (4)
-      const res = computeImplicitFsrsGrade(2, {
-        lemma: "fe",
-        modality: "word-scramble",
-        responseTimeMs: 2500,
-        errorCount: 0,
-        usedHint: false,
-      });
-      expect(res.grade).toBe(4);
-    });
-  });
-
   describe("buildPostChapterConsolidationQueue", () => {
     const candidates: EpisodicWordItem[] = [
       {
@@ -646,6 +565,34 @@ describe("Track 10 — Consolidación Episódica Post-Capítulo", () => {
       expect(queue[0].item.source).toBe("in-chapter-lookup");
       expect(queue[1].item.source).toBe("in-chapter-lookup");
       expect(queue[2].item.source).toBe("pre-chapter-primed");
+    });
+
+    it("ordena los reencuentros del Cuaderno entre la consulta y la preparación, sin duplicar lemas", () => {
+      const withReencounter = [
+        ...candidates,
+        {
+          lemma: "lóbrego",
+          surfaceForm: "lóbrego",
+          lang: "es",
+          shortGloss: "Oscuro o tenebroso",
+          chapterSentence: "El camino lóbrego cruzaba el bosque.",
+          chapterTitle: "Capítulo 3",
+          source: "notebook-reencounter" as const,
+        },
+      ];
+      const queue = buildPostChapterConsolidationQueue(
+        withReencounter,
+        { ...DEFAULT_CONSOLIDATION_PREFS, maxExercisesPerChapter: 3 },
+        false,
+      );
+      // Dos consultas, luego el reencuentro (el duplicado pre-visto de
+      // «lóbrego» se colapsa a la fuente de mayor prioridad).
+      expect(queue.map((q) => q.item.source)).toEqual([
+        "in-chapter-lookup",
+        "in-chapter-lookup",
+        "notebook-reencounter",
+      ]);
+      expect(queue.filter((q) => q.item.lemma === "lóbrego")).toHaveLength(1);
     });
 
     it("en L2 alterna el segundo ejercicio a word-scramble si surfaceForm <= 10 caracteres", () => {

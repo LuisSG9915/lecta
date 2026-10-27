@@ -7,8 +7,6 @@ import { isStopword } from "../../shared/stopwords";
 import { preparationAnswerKey, type PreparationRow } from "./preparation";
 import {
   betaFromZipf,
-  predictWordMasteryProbability,
-  estimateWordKnowProbability,
 } from "./profile-models";
 
 // Utilidades puras del lector predictivo: preparan entradas para
@@ -108,11 +106,11 @@ export interface NextChapterUtilityOptions {
 export function nextChapterUtility(opts: NextChapterUtilityOptions): number {
   const theta =
     opts.userTheta ??
-    (opts.threshold != null ? Math.max(0, 7.0 - opts.threshold) : 4.0);
+    (opts.threshold != null ? betaFromZipf(opts.threshold) : 0.0);
   const bw =
     opts.zipf != null && Number.isFinite(opts.zipf)
-      ? Math.max(0, 7.0 - opts.zipf)
-      : 4.0;
+      ? Number((4.0 - opts.zipf).toFixed(2))
+      : 1.0;
   const alpha = opts.alpha ?? 1.0;
 
   // P(unknown | w, theta) = 1 / (1 + exp(alpha * (theta - bw)))
@@ -123,7 +121,7 @@ export function nextChapterUtility(opts: NextChapterUtilityOptions): number {
   const fBook = Math.max(fCap, opts.bookFreq ?? fCap);
   const freqReward = 1 + 1.4 * Math.log(1 + fCap) + 0.6 * Math.log(1 + fBook);
 
-  // W_zona: campana de Zona de Desarrollo Próximo (i+1)
+  // W_zona: campana de Zona de Desarrollo Próximo (i+1) en la escala 4 − zipf
   // Premia con 1.25x si 0 <= bw - theta <= 1.2
   // Penaliza con 0.6x si bw - theta > 2.5
   const delta = bw - theta;
@@ -145,8 +143,8 @@ export function nextChapterUtility(opts: NextChapterUtilityOptions): number {
     const isRepeated = fCap >= 2 || fBook >= 2;
     const isSweetSpotB1C1 =
       (opts.zipf != null && opts.zipf >= 2.5 && opts.zipf <= 4.2) ||
-      (bw >= 2.8 && bw <= 4.5);
-    const isObscureHapax = !isRepeated && (bw > 4.5 || (opts.zipf != null && opts.zipf < 2.5));
+      (bw >= -0.2 && bw <= 1.5);
+    const isObscureHapax = !isRepeated && (bw > 1.5 || (opts.zipf != null && opts.zipf < 2.5));
 
     if (isRepeated) {
       wL2 *= 1.35;
@@ -341,9 +339,11 @@ export function buildSuggestionRows(input: {
   // la regla de evidencia. Con respuesta explícita cuentan en el
   // grupo de evidencia, no en el de repaso.
   for (const form of forms) {
-    const level = saved.get(form);
-    if (level == null) continue;
     const entry = entries[form]?.[0];
+    const level =
+      saved.get(form) ??
+      (entry?.lemma ? saved.get(entry.lemma.toLowerCase()) : undefined);
+    if (level == null) continue;
     const evidence = knowledge.get(entry?.lemma ?? form) ?? knowledge.get(form);
     if (!preparationLearning(level, evidence)) continue;
     const sense = entry?.senses[0];
@@ -510,93 +510,6 @@ export const MIN_PREVIEW_WORDS = 3;
 export const MAX_PREVIEW_WORDS_L2_TECHNICAL = 7;
 export const MAX_CONTEXT_SNIPPET_CHARS = 140;
 
-export type LexicalPosTag = "verb" | "noun" | "adj" | "adv" | "phrase" | "other";
-
-/**
- * Peso semántico W_POS(w): prioriza verbos de acción, adjetivos de tono,
- * sustantivos clave y locuciones sobre adverbios o formas neutras.
- */
-export function getSemanticPosWeight(pos?: LexicalPosTag | string | null): number {
-  if (!pos) return 1.0;
-  const norm = pos.toLowerCase();
-  if (norm.startsWith("phrase") || norm.startsWith("loc")) return 1.3;
-  if (norm.startsWith("v")) return 1.25;
-  if (norm.startsWith("adj")) return 1.2;
-  if (norm.startsWith("n") || norm.startsWith("sust")) return 1.15;
-  if (norm.startsWith("adv")) return 0.9;
-  return 1.0;
-}
-
-/**
- * Zona de Desarrollo Próximo de Vygotsky: Zona(\theta_{u,L}, \beta_w)
- * Campana gaussiana centrada ligeramente por encima del nivel actual del lector
- * (\mu = \theta_{u,L} + 0.35, \sigma = 1.05) para impulsar aprendizaje sin frustración.
- */
-export function computeZpdZoneWeight(thetaUL: number, betaW: number): number {
-  const targetDifficulty = thetaUL + 0.35;
-  const sigma = 1.05;
-  const z = (betaW - targetDifficulty) / sigma;
-  return Math.exp(-0.5 * z * z);
-}
-
-/**
- * Puntaje de Utilidad Pre-Capítulo U(w, c, u):
- * U(w, c, u) = (1 - P(conoce_{u,w})) * ln(1 + freq_{w,c}) * Zona(\theta_{u,L}, \beta_w) * W_POS(w)
- */
-export function computePreChapterWordUtility(params: {
-  thetaUL: number;
-  betaW: number;
-  freqInChapter: number;
-  pos?: LexicalPosTag | string | null;
-  knowledgeStatus?: "known" | "learning" | "seen" | "unknown" | null;
-  stability?: number | null;
-  lastSeenTimestampMs?: number | null;
-  nowMs?: number;
-}): {
-  utility: number;
-  pKnow: number;
-  unknownProb: number;
-  freqImpact: number;
-  zoneWeight: number;
-  posWeight: number;
-} {
-  const {
-    thetaUL,
-    betaW,
-    freqInChapter,
-    pos,
-    knowledgeStatus,
-    stability,
-    lastSeenTimestampMs,
-    nowMs,
-  } = params;
-
-  const pKnow = estimateWordKnowProbability({
-    thetaUL,
-    betaW,
-    knowledgeStatus,
-    stability,
-    lastSeenTimestampMs,
-    nowMs,
-  });
-
-  const unknownProb = Math.max(0, 1 - pKnow);
-  const freqImpact = Math.log(1 + Math.max(1, freqInChapter));
-  const zoneWeight = computeZpdZoneWeight(thetaUL, betaW);
-  const posWeight = getSemanticPosWeight(pos);
-
-  const utility = unknownProb * freqImpact * zoneWeight * posWeight;
-
-  return {
-    utility,
-    pKnow,
-    unknownProb,
-    freqImpact,
-    zoneWeight,
-    posWeight,
-  };
-}
-
 /**
  * Extrae la cita real del capítulo donde aparece la palabra (máx. 140 caracteres)
  * sin cortar palabras a la mitad, lista para el priming contextual en SectionPreview.tsx.
@@ -686,94 +599,6 @@ export interface ScoredPrimingWord extends ChapterPrimingCandidate {
   unknownProbability: number;
 }
 
-/**
- * Calcula la campana gaussiana de la Zona de Desarrollo Próximo (Vygotsky).
- * Prioriza palabras que están ligeramente por encima del nivel actual del lector (theta + 0.6).
- */
-export function computeZpdWeight(
-  theta: number,
-  beta: number,
-  isForeignLanguage: boolean,
-): number {
-  const optimalChallengeOffset = isForeignLanguage ? 0.35 : 0.65;
-  const targetBeta = theta + optimalChallengeOffset;
-  const sigma = isForeignLanguage ? 1.15 : 1.0;
-  const diff = beta - targetBeta;
-  return Math.exp(-(diff * diff) / (2 * sigma * sigma));
-}
-
-export const POS_WEIGHTS: Record<string, number> = {
-  phrase: 1.35, // Locuciones / phrasal verbs son críticos para no perder contexto en L2
-  verb: 1.25, // Núcleo de la acción narrativa
-  adj: 1.15, // Tono y atmósfera
-  noun: 1.10,
-  adv: 0.90,
-  other: 0.75,
-};
-
-export function selectOptimalChapterPrimingWords(
-  candidates: ChapterPrimingCandidate[],
-  userTheta: number,
-  options: {
-    maxWords: number;
-    isForeignLanguage: boolean;
-    minUtilityThreshold?: number;
-  },
-): ScoredPrimingWord[] {
-  const minThreshold = options.minUtilityThreshold ?? 0.22;
-
-  const scored: ScoredPrimingWord[] = [];
-
-  for (const item of candidates) {
-    if (item.isKnownExplicitly) continue;
-
-    // 1. Probabilidad de que el usuario NO conozca o haya olvidado la palabra
-    const pKnown =
-      item.fsrsRetrievability !== undefined
-        ? item.fsrsRetrievability
-        : predictWordMasteryProbability(userTheta, item.beta);
-
-    const unknownProb = 1 - pKnown;
-    if (unknownProb < 0.25) continue; // El usuario ya la domina con >75% de probabilidad
-
-    // 2. Impacto en la cobertura léxica del capítulo
-    const frequencyImpact = Math.log(1 + item.chapterFrequency);
-
-    // 3. Ajuste a la Zona de Desarrollo Próximo
-    const zpdWeight = computeZpdWeight(
-      userTheta,
-      item.beta,
-      options.isForeignLanguage,
-    );
-
-    // 4. Peso semántico por categoría gramatical
-    const posWeight = POS_WEIGHTS[item.partOfSpeech ?? "other"] ?? 1.0;
-
-    // 5. Bonificación FSRS si es una palabra vista antes que está a punto de olvidarse (R entre 0.30 y 0.75)
-    const fsrsBoost =
-      item.fsrsRetrievability !== undefined &&
-      item.fsrsRetrievability >= 0.3 &&
-      item.fsrsRetrievability <= 0.75
-        ? 1.3
-        : 1.0;
-
-    const utilityScore =
-      unknownProb * frequencyImpact * zpdWeight * posWeight * fsrsBoost;
-
-    if (utilityScore >= minThreshold) {
-      scored.push({
-        ...item,
-        utilityScore: Number(utilityScore.toFixed(4)),
-        unknownProbability: Number(unknownProb.toFixed(3)),
-      });
-    }
-  }
-
-  // Ordenar de mayor utilidad cognitiva a menor y cortar según límite de memoria de trabajo (Cowan)
-  return scored
-    .sort((a, b) => b.utilityScore - a.utilityScore)
-    .slice(0, options.maxWords);
-}
 
 /**
  * Trunca y limpia una oración contextual a un máximo de caracteres sin cortar palabras.
@@ -805,125 +630,6 @@ export function normalizePosCategory(
   return "other";
 }
 
-export function buildChapterPrimingCandidates(input: {
-  forms: string[];
-  entries: Record<string, LexiconEntry[]>;
-  text: string;
-  lang: string;
-  userTheta?: number;
-  isForeignLanguage?: boolean;
-  knowledge?: ReadonlyMap<string, { lemma: string; known: boolean }>;
-  fsrsRetrievabilities?: ReadonlyMap<string, number>;
-  maxWords?: number;
-  glosses?: ReadonlyMap<string, string>;
-}): ScoredPrimingWord[] {
-  const {
-    forms,
-    entries,
-    text,
-    lang,
-    userTheta = 0.0,
-    isForeignLanguage = false,
-    knowledge,
-    fsrsRetrievabilities,
-    maxWords = 4,
-    glosses,
-  } = input;
 
-  const frequencies = new Map<string, number>();
-  for (const f of forms) {
-    const lower = f.toLowerCase();
-    if (isWordToken(lower) && !isStopword(lower, lang)) {
-      frequencies.set(lower, (frequencies.get(lower) ?? 0) + 1);
-    }
-  }
-
-  const seenLemmas = new Set<string>();
-  const candidates: ChapterPrimingCandidate[] = [];
-
-  for (const [form, freq] of frequencies) {
-    const entry = entries[form]?.[0];
-    const lemma = (entry?.lemma ?? form).toLowerCase();
-    if (seenLemmas.has(lemma)) continue;
-    seenLemmas.add(lemma);
-
-    const isKnown =
-      knowledge?.get(lemma)?.known === true || knowledge?.get(form)?.known === true;
-    const beta = betaFromZipf(entry?.zipf);
-    const pos = normalizePosCategory(entry?.pos);
-    const shortGloss =
-      glosses?.get(lemma) ??
-      glosses?.get(form) ??
-      entry?.senses?.[0]?.definition ??
-      "";
-    const rawContext = firstSentenceWith(text, form, lang);
-    const contextSnippet = extractChapterContextSnippet(rawContext ?? text, form, 140);
-    const contextSentence = contextSnippet || cleanContextSentence(rawContext, 140);
-    const fsrsRetrievability =
-      fsrsRetrievabilities?.get(lemma) ?? fsrsRetrievabilities?.get(form);
-
-    candidates.push({
-      lemma,
-      surfaceForm: form,
-      lang,
-      beta,
-      chapterFrequency: freq,
-      partOfSpeech: pos,
-      shortGloss,
-      contextSentence,
-      contextSnippet,
-      fsrsRetrievability,
-      isKnownExplicitly: isKnown,
-    });
-  }
-
-  return selectOptimalChapterPrimingWords(candidates, userTheta, {
-    maxWords,
-    isForeignLanguage,
-  });
-}
-
-export interface SectionWord {
-  word: string;
-  sentence?: string;
-  count?: number;
-}
-
-export function extractSectionWords(
-  doc: Document,
-  options?: { maxWords?: number; language?: string },
-): SectionWord[] {
-  const maxWords = options?.maxWords ?? 18;
-  const lang = options?.language ?? "es";
-  const text = doc.body?.textContent ?? "";
-  if (!text.trim()) return [];
-
-  const segmenter = new Intl.Segmenter(lang, { granularity: "word" });
-  const freq = new Map<string, { count: number; sentence?: string }>();
-  const sentences = [...new Intl.Segmenter(lang, { granularity: "sentence" }).segment(text)];
-
-  for (const s of sentences) {
-    const sText = s.segment.trim();
-    for (const w of segmenter.segment(sText)) {
-      if (!w.isWordLike) continue;
-      const word = w.segment;
-      const lower = word.toLowerCase();
-      if (lower.length < 3 || isStopword(lower)) continue;
-      const current = freq.get(lower);
-      if (!current) {
-        freq.set(lower, { count: 1, sentence: sText });
-      } else {
-        current.count++;
-      }
-    }
-  }
-
-  const sorted = [...freq.entries()].sort((a, b) => b[1].count - a[1].count);
-  return sorted.slice(0, maxWords).map(([word, data]) => ({
-    word,
-    sentence: data.sentence,
-    count: data.count,
-  }));
-}
 
 

@@ -210,128 +210,89 @@ export function evaluateChronological(
 
 // ---------- Nivel de usuario (theta) y micro-ajustes en vivo ----------
 
-export const DEFAULT_ETA = 0.04;
+// θ vive en una sola escala: la Rasch que ya usan el CAT y el lector
+// (betaFromZipf = 4 − zipf, neutra en 0.0). La llave vieja
+// `lecta:user_theta:*` guardaba 7 − zipf (neutra en 4.0): se migra una
+// sola vez restando 3 y nunca se vuelve a escribir.
 export const USER_THETA_KEY = "lecta:user_theta:v1";
+export const THETA_MIGRATION_KEY = "lecta:theta_migrated:v2";
 
-export function sigmoid(x: number): number {
-  return 1 / (1 + Math.exp(-x));
-}
-
-/**
- * Calcula la dificultad léxica del ítem b_w a partir de su escala zipf.
- * Zipf típico en español: 1.0 (rarísima) a 7.0 (muy común).
- * b_w = 7.0 - zipf, por lo que b_w va de 0.0 (fácil) a 6.0 (difícil).
- */
-export function wordDifficulty(zipf: number | null | undefined): number {
-  if (zipf == null || !Number.isFinite(zipf)) return 4.0;
-  return Math.max(0, 7.0 - zipf);
-}
-
-/**
- * Convierte el umbral de perfil en un valor inicial de theta de usuario.
- * Para threshold base 3.0 -> theta = 4.0.
- */
-export function thetaFromThreshold(threshold: number): number {
-  return Math.max(0, 7.0 - threshold);
-}
-
-export function defaultTheta(threshold = 3.0): number {
-  return thetaFromThreshold(threshold);
-}
-
-/**
- * Probabilidad logística de desconocer la palabra:
- * P(unknown | w, theta) = 1 / (1 + exp(alpha * (theta - b_w)))
- */
-export function probUnknown(theta: number, bw: number, alpha = 1.0): number {
-  return 1 / (1 + Math.exp(alpha * (theta - bw)));
-}
-
-/**
- * Micro-ajuste al marcar "✓ Ya la sé":
- * Si b_w > theta: theta <- theta + eta * sigma(b_w - theta) con eta = 0.04.
- */
-export function adjustThetaOnKnown(
-  currentTheta: number,
-  bw: number,
-  eta = DEFAULT_ETA,
-): { newTheta: number; adjusted: boolean; delta: number } {
-  if (bw > currentTheta) {
-    const delta = eta * sigmoid(bw - currentTheta);
-    return { newTheta: currentTheta + delta, adjusted: true, delta };
-  }
-  return { newTheta: currentTheta, adjusted: false, delta: 0 };
-}
-
-/**
- * Micro-ajuste inverso al fijar una palabra "fácil" en el cuaderno:
- * Si b_w < theta - 0.5: theta <- theta - eta * sigma((theta - 0.5) - bw) con eta = 0.04.
- */
-export function adjustThetaOnEasyPin(
-  currentTheta: number,
-  bw: number,
-  eta = DEFAULT_ETA,
-): { newTheta: number; adjusted: boolean; delta: number } {
-  if (bw < currentTheta - 0.5) {
-    const delta = eta * sigmoid((currentTheta - 0.5) - bw);
-    return { newTheta: currentTheta - delta, adjusted: true, delta };
-  }
-  return { newTheta: currentTheta, adjusted: false, delta: 0 };
-}
+// En la escala vieja (7 − zipf), cualquier umbral válido (1.5..4.5)
+// daba un θ ≥ 2.5. Valores menores ya estaban en escala Rasch/CAT
+// (saltar la calibración escribía 0.0): restarles 3 hundiría el nivel.
+export const LEGACY_THETA_MIN_RAW = 2.5;
 
 export type ThetaByLang = { es: number; en: number; [lang: string]: number };
 
+/** Llave heredada, solo para migrar: ya no se escribe. */
 export function userThetaKeyForLang(lang = "es"): string {
   return `lecta:user_theta:${lang.toLowerCase().split(/[-_]/)[0] || "es"}:v1`;
 }
 
-/**
- * Carga el theta_user persistido para el idioma especificado o lo inicializa a partir del umbral actual.
- */
-export function loadUserTheta(fallbackThreshold = 3.0, language = "es"): number {
-  if (typeof window === "undefined" || !window.localStorage) {
-    return thetaFromThreshold(fallbackThreshold);
-  }
-  try {
-    const langKey = userThetaKeyForLang(language);
-    const raw =
-      window.localStorage.getItem(langKey) ??
-      (language.toLowerCase().startsWith("es")
-        ? window.localStorage.getItem(USER_THETA_KEY)
-        : null);
-    if (raw) {
-      const val = parseFloat(raw);
-      if (Number.isFinite(val)) return val;
-    }
-  } catch {
-    // fallback
-  }
-  return thetaFromThreshold(fallbackThreshold);
+export function clampTheta(theta: number): number {
+  return Number(Math.max(-3.5, Math.min(3.5, theta)).toFixed(4));
 }
 
-export function saveUserTheta(theta: number, language = "es"): void {
+/**
+ * Migración de una sola vez desde la escala vieja (7 − zipf, neutra en 4.0)
+ * a la viva (4 − zipf, neutra en 0.0): θ_B = θ_A − 3. La llave heredada se
+ * conserva como respaldo un release; el perfil manda desde aquí.
+ */
+export function migrateLegacyTheta(): void {
   if (typeof window === "undefined" || !window.localStorage) return;
   try {
-    const val = theta.toFixed(4);
-    const langKey = userThetaKeyForLang(language);
-    window.localStorage.setItem(langKey, val);
-    if (language.toLowerCase().startsWith("es")) {
-      window.localStorage.setItem(USER_THETA_KEY, val);
+    if (window.localStorage.getItem(THETA_MIGRATION_KEY) === "1") return;
+    const profile = loadUserLanguageProfile();
+    const thetaByLang = { ...(profile.thetaByLang || {}) };
+    const langs = new Set([...Object.keys(thetaByLang), "es", "en"]);
+    let changed = false;
+    for (const lang of langs) {
+      const already = thetaByLang[lang];
+      // Un θ ya calibrado en la escala nueva manda: no se pisa.
+      if (typeof already === "number" && Number.isFinite(already) && already !== 0) continue;
+      const raw =
+        window.localStorage.getItem(userThetaKeyForLang(lang)) ??
+        (lang.startsWith("es") ? window.localStorage.getItem(USER_THETA_KEY) : null);
+      if (raw == null) continue;
+      const legacy = parseFloat(raw);
+      if (!Number.isFinite(legacy)) continue;
+      thetaByLang[lang] =
+        legacy >= LEGACY_THETA_MIN_RAW ? clampTheta(legacy - 3) : clampTheta(legacy);
+      changed = true;
     }
+    if (changed) {
+      saveUserLanguageProfile({
+        ...profile,
+        theta: thetaByLang.es ?? profile.theta,
+        thetaByLang,
+      });
+    }
+    window.localStorage.setItem(THETA_MIGRATION_KEY, "1");
   } catch {
-    // ignorar error de quota
+    // sin almacenamiento no hay nada que migrar
   }
 }
 
-export function loadThetaByLang(fallbackThreshold = 3.0): ThetaByLang {
-  return {
-    es: loadUserTheta(fallbackThreshold, "es"),
-    en: loadUserTheta(fallbackThreshold, "en"),
-  };
+/**
+ * θ del lector en la escala viva (4 − zipf). `loadUserTheta` se conserva con
+ * el nombre histórico; el segundo argumento viejo (umbral) ya no aplica.
+ */
+export function loadUserTheta(language = "es"): number {
+  migrateLegacyTheta();
+  return getLanguageTheta(language);
 }
 
-export function saveThetaForLang(language: string, theta: number): void {
-  saveUserTheta(theta, language);
+/** Escribe θ en el perfil por idioma (escala 4 − zipf). Única llave viva. */
+export function saveUserTheta(theta: number, language = "es"): void {
+  if (typeof window === "undefined" || !window.localStorage) return;
+  const norm = (language || "es").slice(0, 2).toLowerCase() || "es";
+  const profile = loadUserLanguageProfile();
+  const value = clampTheta(theta);
+  saveUserLanguageProfile({
+    ...profile,
+    theta: norm === "es" ? value : (profile.theta ?? value),
+    thetaByLang: { ...(profile.thetaByLang || {}), [norm]: value },
+  });
 }
 
 // ---------- Modelo Psicométrico Adaptativo por Idioma (Rasch 1PL & Elo) ----------
@@ -650,132 +611,3 @@ export function recordChapterCompleted(lang = "es"): UserLanguageProfile {
   saveUserLanguageProfile(updated);
   return updated;
 }
-
-
-// ---------- Motor Adaptativo IRT (Calibración 2.0) ----------
-
-export const CALIBRATION_DISCRIMINATION = 1.4;
-export const CALIBRATION_PRIOR_THETA = 4.0;
-export const CALIBRATION_PRIOR_SIGMA = 1.2;
-
-/**
- * Probabilidad de conocimiento bajo el modelo logístico 2PL:
- * P(y_i = 1 | theta) = 1 / (1 + exp(-a_i * (theta - b_i)))
- */
-export function probKnown2PL(
-  theta: number,
-  b_i: number,
-  a_i = CALIBRATION_DISCRIMINATION,
-): number {
-  return 1 / (1 + Math.exp(-a_i * (theta - b_i)));
-}
-
-/**
- * Información de Fisher del ítem i a nivel theta:
- * I_i(theta) = a_i^2 * P_i(theta) * (1 - P_i(theta))
- */
-export function fisherInformation(
-  theta: number,
-  b_i: number,
-  a_i = CALIBRATION_DISCRIMINATION,
-): number {
-  const p = probKnown2PL(theta, b_i, a_i);
-  return a_i * a_i * p * (1 - p);
-}
-
-/**
- * Selecciona el siguiente ítem adaptativo del banco que maximiza la
- * información de Fisher para el theta actual del usuario.
- */
-export function selectNextAdaptiveItem<
-  T extends { lemma: string; difficulty?: number; zipf?: number | null },
->(
-  pool: readonly T[],
-  answeredLemmas: ReadonlySet<string>,
-  currentTheta: number,
-  a_i = CALIBRATION_DISCRIMINATION,
-): T | null {
-  const candidates = pool.filter((item) => !answeredLemmas.has(item.lemma));
-  if (candidates.length === 0) return null;
-
-  let bestItem: T = candidates[0];
-  let bestInfo = -Infinity;
-
-  for (const candidate of candidates) {
-    const b_i =
-      candidate.difficulty ?? wordDifficulty(candidate.zipf);
-    const info = fisherInformation(currentTheta, b_i, a_i);
-    if (info > bestInfo) {
-      bestInfo = info;
-      bestItem = candidate;
-    }
-  }
-  return bestItem;
-}
-
-export interface CalibrationResponseItem {
-  b_i: number;
-  /** Ponderación: 1.0 (conocida), 0.35 (dudosa), 0.0 (desconocida) */
-  score: number;
-}
-
-/**
- * Estimación Bayesiana MAP (Maximum A Posteriori) de theta con prior normal:
- * ln P(theta | y) = sum_i [ y_i * ln(P_i) + (1 - y_i) * ln(1 - P_i) ] - (theta - mu)^2 / (2 * sigma^2)
- */
-export function estimateThetaMAP(
-  responses: readonly CalibrationResponseItem[],
-  priorMean = CALIBRATION_PRIOR_THETA,
-  priorSigma = CALIBRATION_PRIOR_SIGMA,
-  a_i = CALIBRATION_DISCRIMINATION,
-): number {
-  if (responses.length === 0) return priorMean;
-
-  let bestTheta = priorMean;
-  let bestLogPost = -Infinity;
-
-  const minTheta = 1.0;
-  const maxTheta = 6.0;
-  const step = 0.05;
-
-  for (let t = minTheta; t <= maxTheta + 1e-6; t += step) {
-    const logPrior =
-      -Math.pow(t - priorMean, 2) / (2 * priorSigma * priorSigma);
-
-    let logLikelihood = 0;
-    for (const r of responses) {
-      const p = probKnown2PL(t, r.b_i, a_i);
-      const pSafe = Math.min(Math.max(p, 1e-9), 1 - 1e-9);
-      logLikelihood +=
-        r.score * Math.log(pSafe) + (1 - r.score) * Math.log(1 - pSafe);
-    }
-
-    const logPost = logLikelihood + logPrior;
-    if (logPost > bestLogPost) {
-      bestLogPost = logPost;
-      bestTheta = t;
-    }
-  }
-
-  return Number(bestTheta.toFixed(2));
-}
-
-/**
- * Corrección de sobreconfianza basada en las verificaciones de precisión:
- * theta_final = theta_MAP - 0.35 * (k / max(1, m))
- */
-export function applyOverconfidenceCorrection(
-  thetaMap: number,
-  failedVerifications: number,
-  totalVerifications: number,
-  penaltyFactor = 0.35,
-): number {
-  if (totalVerifications <= 0 || failedVerifications <= 0) {
-    return thetaMap;
-  }
-  const penalty =
-    penaltyFactor * (failedVerifications / Math.max(1, totalVerifications));
-  return Number(Math.max(1.0, thetaMap - penalty).toFixed(2));
-}
-
-

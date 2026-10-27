@@ -3,6 +3,10 @@
 ## Verificación
 
 - `pnpm typecheck` (cliente + worker + MCP), `pnpm lint`, `pnpm test`, `pnpm build`.
+- `pnpm gate` corre las pruebas con `scripts/test-trace.mjs`: si fallan, deja el log
+  completo en `artifacts/test-failures/<fecha>.log` y resume en la terminal el
+  archivo y la prueba. (Existe porque un fallo del gate se perdió una vez por
+  filtrar la salida con un grep: un fallo sin nombre cuesta una tarde.)
 - `pnpm gate` encadena typecheck + lint + test + build + check:size: es la puerta de
   cierre de cada fase de `docs/plan-8-fases.md`. `pnpm lint` tiene un tope duro de **0
   warnings** (bajó de 28 con la auditoría UX del 2026-10-24, que dejó de bailar el análisis
@@ -197,4 +201,23 @@
    - Prohibido incluir archivos `.onnx` pesados en el bundle principal del Worker de Cloudflare (< 25 MiB).
    - Implementar pre-síntesis (lookahead buffer de la oración N+1) en `kitten-tts.worker.ts` para eliminar silencios entre frases.
 5. **Verificación Continua**: Después de cada cambio en componentes o librerías, ejecuta `pnpm test` (Vitest) y verifica que no existan regresiones de tipos con TypeScript.
+
+## Auditoría de la estrategia de aprendizaje
+
+- `node scripts/audit-investigacion.mjs [--online]` audita
+  `docs/estrategia-aprendizaje-2026-10-24.md` contra el código real y escribe
+  `docs/auditoria/reporte.*`. Corre también en `pnpm test`.
+- Cada afirmación de `docs/auditoria/claims.json` puede llevar `auditVerdict`
+  (`SOSTENIDA` / `MATIZADA` / `REFUTADA`). Si una refutada deja de fallar, el
+  arnés la marca `VERDICT_STALE` y el reporte falla: hay que revisar el
+  veredicto, no silenciarlo.
+- La comprobación `reachable` exige que la función citada se use en producción
+  fuera de su archivo (no cuentan pruebas, comentarios ni reexportaciones). Toda
+  afirmación que cite una función debe llevar una.
+- θ vive en una sola escala (`betaFromZipf` = 4 − zipf, neutra en 0) y en una
+  sola llave (`lecta:user_language_profile:v1`). La llave vieja
+  `lecta:user_theta:*` solo se migra restando 3; no volver a escribirla.
+- El cierre de capítulo debe pasar por `completeChapterTo`
+  (`useReaderNavigation.ts`) en scroll y en páginas, y consolidar la tarjeta con
+  `consolidateEpisodicWord` (`reviews.ts`). Un ejercicio resuelto = un repaso.
 

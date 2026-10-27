@@ -28,14 +28,13 @@ import { loadUseAi } from "../lib/ai-pref";
 import { loadNativeLanguage } from "../lib/settings";
 import { triggerHaptic } from "../lib/haptics";
 import { speakWord } from "../lib/speech";
+import { betaFromZipf } from "../lib/profile-models";
+import { markLevel } from "../lib/word-level";
 import {
-  adjustThetaOnKnown,
-  adjustThetaOnEasyPin,
-  loadUserTheta,
-  saveUserTheta,
-  wordDifficulty,
-} from "../lib/profile-models";
-import { recordSilentCalibration } from "../lib/knowledge";
+  applyPreviewKnownSignal,
+  calibrationBankZipf,
+  recordSilentCalibration,
+} from "../lib/knowledge";
 import { syllabifySpanish } from "../lib/syllables";
 import type { PhraseHit } from "../lib/phrases";
 import {
@@ -484,13 +483,6 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
       incrementCollectionPendingCount("words");
       scheduleReadingSyncPush("words");
 
-      // Micro-ajuste de theta en caso de guardar palabra fácil
-      const currentTheta = loadUserTheta(3.0, effectiveLang);
-      const bw = wordDifficulty(localEntry?.shortDefinition ? 3.5 : 2.5);
-      const { newTheta, adjusted } = adjustThetaOnEasyPin(currentTheta, bw);
-      if (adjusted) {
-        saveUserTheta(newTheta, effectiveLang);
-      }
 
       const msg = "Fijada con prioridad en tu cuaderno.";
       onNotice?.(msg);
@@ -530,16 +522,15 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
           rating: "known",
         },
         scope,
+        { award: false },
       ).catch(() => {});
 
-      const currentTheta = loadUserTheta(3.0, effectiveLang);
-      const bw = wordDifficulty(localEntry?.shortDefinition ? 3.5 : 2.5);
-      const { newTheta, adjusted } = adjustThetaOnKnown(currentTheta, bw);
-      if (adjusted) {
-        saveUserTheta(newTheta, effectiveLang);
-      }
-
-      onRecordSilentCalibration(cleanWord, "known", effectiveLang);
+      // Un solo ajuste por acto: θ sube con la dificultad real de la palabra
+      // (4 − zipf), no con un 3,5/2,5 inventado según haya definición corta.
+      applyPreviewKnownSignal(
+        effectiveLang,
+        betaFromZipf(calibrationBankZipf(lemma, effectiveLang)),
+      );
       onKnowledgeChanged?.(row, { form: cleanWord, kind: "declared" });
       const msg = "Marcada como conocida. Ajustamos tu perfil.";
       onNotice?.(msg);
@@ -551,6 +542,17 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
       setSaving(false);
     }
   };
+
+  // Etapa real de la palabra guardada: el lector la ve al reencontrarla
+  // en el texto, no solo dentro del Cuaderno.
+  const savedStage =
+    savedEntry?.card && (savedEntry.card.reps ?? 0) > 0
+      ? markLevel(savedEntry.card) === "learning"
+        ? "En práctica"
+        : markLevel(savedEntry.card) === "settled"
+          ? "Asentada"
+          : "Dominada"
+      : null;
 
   // Quitar del cuaderno
   const handleRemove = async () => {
@@ -734,7 +736,7 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
           {isSaved ? (
             <div className="word-panel__saved-bar">
               <span className="word-panel__saved-pill word-panel-saved-badge">
-                ★ Guardada en tu cuaderno
+                ★ Guardada en tu cuaderno{savedStage ? ` · ${savedStage}` : ""}
               </span>
               <button
                 type="button"

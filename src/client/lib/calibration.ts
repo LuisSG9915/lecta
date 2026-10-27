@@ -17,7 +17,6 @@ import {
 import {
   loadUserLanguageProfile,
   saveUserLanguageProfile,
-  saveUserTheta,
   type UserLanguageProfile,
 } from "./profile-models";
 import {
@@ -51,17 +50,6 @@ export function calibrationDraftKey(language = "es"): string {
 
 export type CalibrationAnswerValue = "known" | "unknown" | "unsure";
 export type CalibrationAnswers = Record<string, CalibrationAnswerValue>;
-
-export function calibrationAnswerScore(answer: CalibrationAnswerValue): number {
-  switch (answer) {
-    case "known":
-      return 1.0;
-    case "unsure":
-      return 0.35;
-    case "unknown":
-      return 0.0;
-  }
-}
 
 // `definition` puede ser null: el catálogo ofrece lemas aunque no
 // tengan acepción cargada; al marcarlos no hay revelado.
@@ -553,7 +541,6 @@ export function persistCatCompletion(lang: CalibrationLanguage, finalTheta: numb
     },
   };
   saveUserLanguageProfile(updatedProfile);
-  saveUserTheta(finalTheta, norm);
   markLanguageCalibrated(norm);
 }
 
@@ -609,7 +596,6 @@ export function skipLanguageCalibration(lang: CalibrationLanguage | string): voi
       },
     };
     saveUserLanguageProfile(updatedProfile);
-    saveUserTheta(0.0, norm);
   }
 
   markLanguageSkipped(norm);

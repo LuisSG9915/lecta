@@ -77,6 +77,23 @@ export function sha256(text) {
   return crypto.createHash("sha256").update(text).digest("hex");
 }
 
+// SHA del commit auditado: HEAD apunta a una rama; se resuelve en
+// .git/refs o en packed-refs. Sin repositorio devuelve null.
+export function resolveCommit(root) {
+  try {
+    const head = fs.readFileSync(path.join(root, ".git/HEAD"), "utf8").trim();
+    if (!head.startsWith("ref: ")) return head;
+    const ref = head.slice(5);
+    const loose = path.join(root, ".git", ref);
+    if (fs.existsSync(loose)) return fs.readFileSync(loose, "utf8").trim();
+    const packed = fs.readFileSync(path.join(root, ".git/packed-refs"), "utf8");
+    const line = packed.split("\n").find((entry) => entry.endsWith(` ${ref}`));
+    return line ? line.split(" ")[0] : head;
+  } catch {
+    return null;
+  }
+}
+
 function walk(root, dirs, visit) {
   for (const dir of dirs) {
     const abs = path.join(root, dir);
@@ -208,6 +225,56 @@ export function checkNoImporters(root, check) {
     status: "FAIL",
     detail: `${symbol} tiene ${callers.length} importador(es) en producción`,
     observed: { symbol, callers },
+  };
+}
+
+// Alcanzabilidad: ¿algún archivo de producción, fuera del que define el
+// símbolo, lo USA? No cuentan pruebas, .d.ts, comentarios ni líneas de
+// import/export...from (una reexportación no es un uso). Se conservan
+// los saltos de línea para que el número de línea reportado sea real.
+const keepNewlines = (match) => match.replace(/[^\n]/g, "");
+const BLOCK_COMMENT = /\/\*[\s\S]*?\*\//g;
+const LINE_COMMENT = /(^|[^:"'`])\/\/.*$/gm;
+const IMPORT_EXPORT_FROM =
+  /(?:import|export)\s+(?:type\s+)?(?:\{[^}]*\}|\*\s+as\s+\w+|\w+(?:\s*,\s*\{[^}]*\})?)\s+from\s*["'][^"']+["'];?/g;
+
+export function stripNonUsage(text) {
+  return text
+    .replace(BLOCK_COMMENT, keepNewlines)
+    .replace(LINE_COMMENT, "$1")
+    .replace(IMPORT_EXPORT_FROM, keepNewlines);
+}
+
+export function checkReachable(root, check) {
+  const dirs = check.scope ?? ["src"];
+  const symbol = check.symbol;
+  const regex = new RegExp(`\\b${symbol}\\b`);
+  const exclude = new Set([check.definedIn, ...(check.exclude ?? [])]);
+  const users = [];
+  walk(root, dirs, (abs) => {
+    const rel = relOf(root, abs);
+    if (exclude.has(rel)) return;
+    if (/\.test\.[cm]?[jt]sx?$/.test(rel) || rel.endsWith(".d.ts")) return;
+    const text = fs.readFileSync(abs, "utf8");
+    if (!regex.test(text)) return;
+    const lines = stripNonUsage(text).split("\n");
+    const index = lines.findIndex((line) => regex.test(line));
+    if (index < 0) return;
+    users.push({ file: rel, line: index + 1, text: lines[index].trim().slice(0, 140) });
+  });
+  if (users.length) {
+    return {
+      kind: "reachable",
+      status: "PASS",
+      detail: `${symbol} se usa en producción (${users.length} archivo/s)`,
+      observed: { symbol, callers: users.slice(0, 5) },
+    };
+  }
+  return {
+    kind: "reachable",
+    status: "FAIL",
+    detail: `${symbol} no tiene usos en producción fuera de ${check.definedIn} (solo pruebas, comentarios o reexportaciones)`,
+    observed: { symbol, callers: [] },
   };
 }
 
@@ -359,102 +426,59 @@ async function importTs(root, rel) {
   return import(pathToFileURL(path.join(root, rel)).href);
 }
 
-function zpd(theta, beta, offset, sigma) {
-  const z = (beta - (theta + offset)) / sigma;
-  return Math.exp(-0.5 * z * z);
-}
-
 const PROBES = {
   async "theta-escalas"(root) {
     const pm = await importTs(root, "src/client/lib/profile-models.ts");
-    const sp = readText(root, "src/client/lib/section-words.ts");
-    const offsetL1 = Number(sp.match(/optimalChallengeOffset = isForeignLanguage \? ([\d.]+) : ([\d.]+)/)?.[2]);
-    const sigmaL1 = Number(sp.match(/sigma = isForeignLanguage \? ([\d.]+) : ([\d.]+)/)?.[2]);
-    const minUtility = Number(sp.match(/minUtilityThreshold \?\? ([\d.]+)/)?.[1]);
+    const profileSrc = readText(root, "src/client/lib/profile-models.ts");
+    const calibrationSrc = readText(root, "src/client/lib/calibration.ts");
+    const readerSrc = readText(root, "src/client/components/Reader.tsx");
+    const wordPanelSrc = readText(root, "src/client/components/WordPanel.tsx");
+    const sectionWordsSrc = readText(root, "src/client/lib/section-words.ts");
+    const legacyExports = [
+      "wordDifficulty",
+      "thetaFromThreshold",
+      "defaultTheta",
+      "adjustThetaOnKnown",
+      "adjustThetaOnEasyPin",
+      "probUnknown",
+      "loadThetaByLang",
+      "saveThetaForLang",
+    ].filter((name) => typeof pm[name] === "function");
     const observed = {
-      wordDifficulty_zipf6: pm.wordDifficulty(6),
       betaFromZipf_zipf6: pm.betaFromZipf(6),
-      defaultTheta_threshold3: pm.defaultTheta(3),
       theta_L1_porDefecto: pm.getThetaForLanguage({}, "es", "es"),
       theta_L2_porDefecto: pm.getThetaForLanguage({}, "en", "es"),
-      desfase_logits_zipf6: Number((pm.wordDifficulty(6) - pm.betaFromZipf(6)).toFixed(3)),
-      zpd_offset_L1: offsetL1,
-      zpd_sigma_L1: sigmaL1,
-      minUtilityThreshold: minUtility,
+      theta_L2_esperado: pm.DEFAULT_THETA_L2,
+      exporta_escala_vieja: legacyExports,
+      escribe_llave_vieja: /setItem\(\s*USER_THETA_KEY/.test(profileSrc),
+      migracion_resta: Number(profileSrc.match(/clampTheta\(legacy - (\d+)\)/)?.[1]),
+      saveUserTheta_en_calibracion: (calibrationSrc.match(/saveUserTheta\(/g) ?? []).length,
+      updateLanguageTheta_en_reader: (readerSrc.match(/updateLanguageTheta\(/g) ?? []).length,
+      applyPreviewKnownSignal_en_wordPanel: (wordPanelSrc.match(/applyPreviewKnownSignal\(/g) ?? []).length,
+      ajustes_por_acto_en_wordPanel:
+        (wordPanelSrc.match(/applyPreviewKnownSignal\(/g) ?? []).length,
+      sectionWords_usa_7_menos_zipf: /7\.0\s*-\s*(?:opts\.)?zipf/.test(sectionWordsSrc),
+      sectionWords_usa_4_menos_zipf: /4\.0\s*-\s*opts\.zipf/.test(sectionWordsSrc),
     };
-    // Escenario A: el selector huérfano (beta = 4 - zipf) con theta = 7 - umbral = 4.
-    const scenarioA = [];
-    for (let zipf = 2; zipf <= 7; zipf += 0.5) {
-      scenarioA.push([zipf, zpd(4, 4 - zipf, offsetL1, sigmaL1)]);
-    }
-    const maxA = Math.max(...scenarioA.map(([, w]) => w));
-    // Escenario B: la hoja viva (beta = 7 - zipf) con theta = 0 (calibración saltada).
-    const scenarioB = [];
-    for (let zipf = 2; zipf <= 7; zipf += 0.5) {
-      scenarioB.push([zipf, zpd(0, 7 - zipf, offsetL1, sigmaL1)]);
-    }
-    const bestB = scenarioB.reduce((best, row) => (row[1] > best[1] ? row : best), scenarioB[0]);
-    observed.zpd_escenarioA_max_peso = Number(maxA.toFixed(4));
-    observed.zpd_escenarioA_devuelve_vacio = maxA < minUtility;
-    observed.zpd_escenarioB_mejor_zipf = Number(bestB[0].toFixed(2));
-    observed.zpd_escenarioB_peso = Number(bestB[1].toFixed(4));
-    // Escala viva (β = 7 − zipf): qué rareza se prima según el θ persistido.
-    const bestLiveZipf = (theta) => {
-      let best = [0, -Infinity];
-      for (let zipf = 2; zipf <= 7.001; zipf += 0.05) {
-        const w = zpd(theta, 7 - zipf, offsetL1, sigmaL1);
-        if (w > best[1]) best = [zipf, w];
-      }
-      return Number(best[0].toFixed(2));
-    };
-    observed.zpd_vivo_zipf_con_theta4 = bestLiveZipf(4);
-    observed.zpd_vivo_zipf_con_theta1 = bestLiveZipf(1);
-    observed.zpd_vivo_desplazamiento_zipf = Number(
-      (observed.zpd_vivo_zipf_con_theta1 - observed.zpd_vivo_zipf_con_theta4).toFixed(2),
-    );
     const ok =
-      observed.wordDifficulty_zipf6 === 1 &&
       observed.betaFromZipf_zipf6 === -2 &&
-      observed.defaultTheta_threshold3 === 4 &&
       observed.theta_L1_porDefecto === 0 &&
-      observed.desfase_logits_zipf6 === 3 &&
-      observed.zpd_escenarioA_devuelve_vacio === true &&
-      Math.abs(observed.zpd_vivo_zipf_con_theta4 - 2.35) <= 0.2 &&
-      Math.abs(observed.zpd_vivo_zipf_con_theta1 - 5.35) <= 0.2;
+      observed.theta_L2_porDefecto === observed.theta_L2_esperado &&
+      observed.exporta_escala_vieja.length === 0 &&
+      observed.escribe_llave_vieja === false &&
+      observed.migracion_resta === 3 &&
+      observed.saveUserTheta_en_calibracion === 0 &&
+      observed.updateLanguageTheta_en_reader === 2 &&
+      observed.applyPreviewKnownSignal_en_wordPanel === 1 &&
+      observed.sectionWords_usa_7_menos_zipf === false &&
+      observed.sectionWords_usa_4_menos_zipf === true;
     return {
       kind: "probe",
       probe: "theta-escalas",
       status: ok ? "PASS" : "FAIL",
       detail: ok
-        ? "dos escalas de beta con 3 logits de desfase; el selector ZPD devuelve vacío con theta=4 y la hoja con theta=0 prima zipf≈6"
-        : "los valores observados no reproducen lo que afirma el documento",
-      observed,
-    };
-  },
-
-  "passive-dwell"(root) {
-    const src = readText(root, "src/client/lib/knowledge.ts");
-    const minDwell = Number(src.match(/MIN_PAGE_DWELL_MS = (\d+)/)?.[1]);
-    const perWord = Number(src.match(/MIN_MS_PER_WORD = (\d+)/)?.[1]);
-    const cap = Number(src.match(/MAX_REQUIRED_DWELL_MS = (\d+)/)?.[1]);
-    const required = (words) => Math.min(cap, Math.max(minDwell, Math.round(words * perWord)));
-    const observed = {
-      MIN_PAGE_DWELL_MS: minDwell,
-      MIN_MS_PER_WORD: perWord,
-      MAX_REQUIRED_DWELL_MS: cap,
-      requerido_40_palabras: required(40),
-      requerido_250_palabras: required(250),
-      saturacion_desde_palabras: Math.ceil(cap / perWord),
-      wpm_efectivo_250_palabras: Math.round((250 / (required(250) / 60000))),
-    };
-    const ok = observed.requerido_250_palabras === cap && observed.saturacion_desde_palabras === 75;
-    return {
-      kind: "probe",
-      probe: "passive-dwell",
-      status: ok ? "PASS" : "FAIL",
-      detail: ok
-        ? "el dwell exigido se satura en 12 s: cualquier página de 75+ palabras se marca completa"
-        : "el dwell no se comporta como describe el documento",
+        ? "una sola escala (β = 4 − zipf, neutra en 0), una sola llave y un solo ajuste por acto; la llave vieja solo se migra restando 3"
+        : "el código todavía mezcla escalas o ajusta θ más de una vez por acto",
       observed,
     };
   },
@@ -498,91 +522,6 @@ const PROBES = {
     };
   },
 
-  async "fsrs-init"(root) {
-    const tsfsrs = await import("ts-fsrs");
-    const source = readText(root, "src/client/lib/fsrs.ts");
-    const params = Object.fromEntries(
-      [...source.matchAll(/(\w+): \{ difficulty: ([\d.]+), stability: ([\d.]+) \}/g)].map((m) => [
-        m[1],
-        { difficulty: Number(m[2]), stability: Number(m[3]) },
-      ]),
-    );
-    const scheduler = tsfsrs.fsrs(tsfsrs.generatorParameters({ enable_fuzz: false }));
-    const now = new Date(Date.UTC(2026, 9, 24));
-    const card = tsfsrs.createEmptyCard(now);
-    const modelInit = {};
-    for (const grade of ["Again", "Hard", "Good", "Easy"]) {
-      const next = scheduler.next(card, now, tsfsrs.Rating[grade]).card;
-      modelInit[grade] = {
-        stability: Number(next.stability.toFixed(4)),
-        difficulty: Number(next.difficulty.toFixed(4)),
-        intervalDays: next.scheduled_days,
-      };
-    }
-    const modelGood = modelInit.Good.stability;
-    const observed = {
-      params_manuales: params,
-      init_del_modelo: modelInit,
-      desvio_reader_tap: Number((params.reader_tap.stability - modelGood).toFixed(4)),
-      desvio_pre_reading: Number((params.pre_reading.stability - modelGood).toFixed(4)),
-      desvio_repeated_lookup: Number((params.repeated_lookup.stability - modelGood).toFixed(4)),
-      multiplicador_episodico: source.includes("computeEpisodicMultiplier") ? "presente" : "ausente",
-    };
-    const ok =
-      Object.keys(params).length === 3 &&
-      observed.desvio_reader_tap !== 0 &&
-      observed.desvio_pre_reading !== 0 &&
-      observed.multiplicador_episodico === "presente";
-    return {
-      kind: "probe",
-      probe: "fsrs-init",
-      status: ok ? "PASS" : "FAIL",
-      detail: ok
-        ? "la tarjeta se inicializa con D/S manuales distintos de los del modelo, y el bono episódico se aplica después"
-        : "la inicialización de tarjetas no coincide con lo que describe el documento",
-      observed,
-    };
-  },
-
-  "bank-escala"(root) {
-    const src = readText(root, "src/shared/calibration-bank.ts");
-    const start = src.indexOf("CALIBRATION_BANK_ITEMS_ES");
-    const end = src.indexOf("CALIBRATION_BANK_ITEMS_EN");
-    const slice = start >= 0 && end > start ? src.slice(start, end) : src;
-    const values = [...slice.matchAll(/difficulty: (-?[\d.]+),/g)].map((m) => Number(m[1]));
-    const discrimination = Number(slice.match(/discrimination: ([\d.]+),/)?.[1] ?? 1.35);
-    const prior = Number(
-      readText(root, "src/client/lib/profile-models.ts").match(/CALIBRATION_PRIOR_THETA = ([\d.]+)/)?.[1],
-    );
-    const pKnow = (beta) => 1 / (1 + Math.exp(-discrimination * (prior - beta)));
-    const info = (beta) => discrimination ** 2 * pKnow(beta) * (1 - pKnow(beta));
-    const observed = {
-      items: values.length,
-      min: Math.min(...values),
-      max: Math.max(...values),
-      discriminacion: discrimination,
-      prior_theta: prior,
-      p_conocer_en_el_min: Number(pKnow(Math.min(...values)).toFixed(4)),
-      p_conocer_en_el_max: Number(pKnow(Math.max(...values)).toFixed(4)),
-      info_fisher_maxima: Number(Math.max(...values.map(info)).toFixed(4)),
-      info_fisher_en_beta_0: Number(info(0).toFixed(4)),
-    };
-    const ok =
-      observed.min <= -1.9 &&
-      observed.max >= 2 &&
-      observed.prior_theta === 4 &&
-      observed.p_conocer_en_el_min > 0.99 &&
-      observed.info_fisher_maxima < 0.3;
-    return {
-      kind: "probe",
-      probe: "bank-escala",
-      status: ok ? "PASS" : "FAIL",
-      detail: ok
-        ? `banco logit [${observed.min}, ${observed.max}] con prior θ = ${prior}: P(conocer) mínimo ${observed.p_conocer_en_el_min} e información de Fisher ≤ ${observed.info_fisher_maxima}`
-        : "el banco o el prior no están en las escalas que describe el documento",
-      observed,
-    };
-  },
 };
 
 // ---------- motor ----------
@@ -603,17 +542,11 @@ export async function runAudit(options = {}) {
     version: VERSION,
     generatedAt: new Date().toISOString(),
     root,
-    commit: (() => {
-      try {
-        return fs.readFileSync(path.join(root, ".git/HEAD"), "utf8").trim();
-      } catch {
-        return null;
-      }
-    })(),
+    commit: resolveCommit(root),
     doc: docRel,
     registry: claimsPath,
     online,
-    summary: { claims: claims.length, pass: 0, fail: 0, unverified: 0, skipped: 0 },
+    summary: { claims: claims.length, pass: 0, fail: 0, unverified: 0, skipped: 0, refutedExpected: 0 },
     results: [],
     references: [],
   };
@@ -626,6 +559,7 @@ export async function runAudit(options = {}) {
       if (check.type === "code-anchor") checks.push(checkAnchor(root, check));
       else if (check.type === "code-absent") checks.push(checkAbsent(root, check));
       else if (check.type === "no-importers") checks.push(checkNoImporters(root, check));
+      else if (check.type === "reachable") checks.push(checkReachable(root, check));
       else if (check.type === "probe") {
         const probe = PROBES[check.probe];
         if (!probe) {
@@ -686,12 +620,20 @@ export async function runAudit(options = {}) {
         : codeStatus === "UNVERIFIED" || refStatus === "UNVERIFIED"
           ? "UNVERIFIED"
           : "PASS";
+    const auditVerdict = claim.auditVerdict ?? null;
+    let finalStatus = status;
+    if (auditVerdict?.status === "REFUTADA") {
+      // Refutada por auditoría: se espera que sus comprobaciones fallen.
+      // Si dejan de fallar, el veredicto quedó viejo y hay que revisarlo.
+      finalStatus = status === "FAIL" ? "REFUTED_EXPECTED" : "VERDICT_STALE";
+    }
     report.results.push({
       id: claim.id,
       title: claim.title,
       statement: claim.statement,
       section: claim.section ?? null,
-      status,
+      status: finalStatus,
+      auditVerdict,
       codeStatus,
       refStatus,
       checks,
@@ -699,7 +641,10 @@ export async function runAudit(options = {}) {
   }
   report.references = [...refResults.values()];
   report.summary.pass = report.results.filter((r) => r.status === "PASS").length;
-  report.summary.fail = report.results.filter((r) => r.status === "FAIL").length;
+  report.summary.fail = report.results.filter(
+    (r) => r.status === "FAIL" || r.status === "VERDICT_STALE",
+  ).length;
+  report.summary.refutedExpected = report.results.filter((r) => r.status === "REFUTED_EXPECTED").length;
   report.summary.unverified = report.results.filter((r) => r.status === "UNVERIFIED").length;
   report.summary.skipped = report.results.flatMap((r) => r.checks).filter((c) => c.status === "SKIP").length;
   report.summary.codePass = report.results.filter((r) => r.codeStatus === "PASS").length;
@@ -720,7 +665,15 @@ export async function runAudit(options = {}) {
 
 // ---------- salida ----------
 
-const ICON = { PASS: "✅", FAIL: "❌", UNVERIFIED: "⚠️", SKIP: "⏭️", NOT_CHECKABLE: "📄" };
+const ICON = {
+  PASS: "✅",
+  FAIL: "❌",
+  UNVERIFIED: "⚠️",
+  SKIP: "⏭️",
+  NOT_CHECKABLE: "📄",
+  REFUTED_EXPECTED: "🚫",
+  VERDICT_STALE: "❗",
+};
 
 export function renderMarkdown(report) {
   const lines = [];
@@ -729,11 +682,13 @@ export function renderMarkdown(report) {
   lines.push(`Generado: ${report.generatedAt}`);
   lines.push(`Documento auditado: \`${report.doc}\``);
   lines.push(`Registro: \`${report.registry}\``);
+  lines.push(`Commit: \`${report.commit ?? "desconocido"}\``);
   lines.push(`Red: ${report.online ? "sí (DOI/URL resueltos)" : "no (solo forma de las referencias)"}`);
   lines.push("");
   lines.push(
     `**Veredicto: ${report.verdict}** — ${report.summary.pass} afirmaciones aprobadas, ` +
-      `${report.summary.fail} refutadas, ${report.summary.unverified} sin verificar, ` +
+      `${report.summary.fail} refutadas, ${report.summary.refutedExpected ?? 0} refutadas por auditoría, ` +
+      `${report.summary.unverified} sin verificar, ` +
       `${report.summary.skipped} comprobaciones omitidas.`,
   );
   lines.push("");
@@ -746,6 +701,15 @@ export function renderMarkdown(report) {
     lines.push("");
     lines.push(`Código: **${result.codeStatus ?? "—"}** · Referencias: **${result.refStatus ?? "—"}**`);
     lines.push("");
+    if (result.auditVerdict) {
+      lines.push(
+        `**Veredicto de auditoría (${result.auditVerdict.date}): ${result.auditVerdict.status}** — ${result.auditVerdict.motivo}`,
+      );
+      for (const evidence of result.auditVerdict.evidencia ?? []) {
+        lines.push(`- evidencia: \`${evidence}\``);
+      }
+      lines.push("");
+    }
     for (const check of result.checks) {
       const icon = ICON[check.status] ?? "";
       const label = check.kind === "reference" ? `referencia ${check.id}` : check.kind;
@@ -815,7 +779,11 @@ export function writePack(report, root, outDir) {
     fs.writeFileSync(path.join(excerptsDir, excerptName), `${excerpt}\n`, "utf8");
     manifest.files.push({ file, bytes: content.length, sha256: sha256(content), excerpt: excerptName });
   }
-  manifest.claims = report.results.map((r) => ({ id: r.id, status: r.status }));
+  manifest.claims = report.results.map((r) => ({
+    id: r.id,
+    status: r.status,
+    auditVerdict: r.auditVerdict?.status ?? null,
+  }));
   // El paquete viaja con lo que el auditor necesita leer: documento, encargo y registro.
   const extras = [
     { rel: report.doc, as: path.basename(report.doc) },
@@ -899,7 +867,8 @@ export async function main(argv = process.argv.slice(2), io = { out: process.std
   } else if (!options.quiet) {
     io.out.write(
       `${report.verdict}: ${report.summary.pass}/${report.summary.claims} aprobadas, ` +
-        `${report.summary.fail} refutadas, ${report.summary.unverified} sin verificar · ` +
+        `${report.summary.fail} refutadas, ${report.summary.refutedExpected} refutadas por auditoría · ` +
+        `${report.summary.unverified} sin verificar · ` +
         `código ${report.summary.codePass}/${report.summary.claims} en verde · ` +
         `referencias ${report.summary.referencePass} verificadas, ` +
         `${report.summary.referenceUnverified} sin red, ${report.summary.referenceFail} rotas\n`,

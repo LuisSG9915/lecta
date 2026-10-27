@@ -386,6 +386,12 @@ describe("sessionKeysForBackup", () => {
       expect(keys).toContain(expected);
   });
 
+  it("respalda las respuestas de capítulo por prefijo", () => {
+    expect(
+      sessionKeysForBackup(["chapterFollow:v1:b1:Cap%201", "unrelated:key"]),
+    ).toContain("chapterFollow:v1:b1:Cap%201");
+  });
+
   it("no respalda claves arbitrarias ni duplica", () => {
     const keys = sessionKeysForBackup(["readingWpm", "unrelated:key"]);
     expect(keys).not.toContain("unrelated:key");

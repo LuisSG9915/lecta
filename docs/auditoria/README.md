@@ -36,6 +36,10 @@ Códigos de salida: `0` aprobado (o aprobado con pendientes), `1` alguna afirmac
 - **NOT_CHECKABLE** — la referencia no tiene identificador (se cita por revista y año): hay que
   revisarla a mano.
 - **SKIP** — una sonda desconocida o un tipo de comprobación que el auditor no implementa.
+- **REFUTED_EXPECTED** — la auditoría marcó la afirmación como `REFUTADA` y sus comprobaciones
+  fallan, como se espera. No vuelve `FAIL` el reporte.
+- **VERDICT_STALE** — la afirmación está marcada `REFUTADA`, pero sus comprobaciones ya pasan:
+  el código cambió y hay que revisar el veredicto. Cuenta como fallo.
 
 Cada afirmación separa **Código** y **Referencias**, porque son dos actos distintos: que el
 programa haga lo que el documento dice no valida la ciencia que lo justifica, y al revés.
@@ -60,3 +64,6 @@ programa haga lo que el documento dice no valida la ciencia que lo justifica, y 
 - Los números de línea se buscan con una ventana (±3 por defecto): mover código no rompe el
   anclaje, cambiar el comportamiento sí.
 - Si una sonda no puede importar un módulo en Node, se marca `SKIP` y se dice por qué.
+- `reachable` exige que el símbolo se use en producción fuera del archivo que lo define. No
+  cuentan pruebas, comentarios ni reexportaciones. Toda afirmación que cite una función debería
+  llevar uno.

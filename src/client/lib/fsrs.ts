@@ -1,77 +1,73 @@
 import { createEmptyCard, fsrs, generatorParameters, Rating, type Card, type Grade } from "ts-fsrs";
 
-const scheduler = fsrs(generatorParameters({ enable_fuzz: true }));
-
 export type { Card, Grade };
 export { Rating };
 
-export type CaptureSource = "pre_reading" | "reader_tap" | "repeated_lookup";
+// Horizonte declarado del lector: cuánta retención quiere conservar en
+// cada repaso. Más exigencia acorta los intervalos; menos, los alarga.
+export type RetentionHorizon = "relaxed" | "standard" | "intensive";
 
-export const CAPTURE_SOURCE_PARAMS: Record<
-  CaptureSource,
-  { difficulty: number; stability: number }
-> = {
-  pre_reading: { difficulty: 4.5, stability: 2.0 },
-  reader_tap: { difficulty: 5.5, stability: 1.0 },
-  repeated_lookup: { difficulty: 7.2, stability: 0.4 },
+export const RETENTION_HORIZON_KEY = "lecta:retention_horizon:v1";
+
+export const RETENTION_BY_HORIZON: Record<RetentionHorizon, number> = {
+  relaxed: 0.85,
+  standard: 0.9,
+  intensive: 0.93,
 };
 
-/**
- * Multiplicador episódico según la calificación FSRS cuando se consolida en contexto narrativo real:
- * - Easy (4): x1.35
- * - Good (3): x1.20
- * - Hard/Again (<=2): x1.00
- */
-export function computeEpisodicMultiplier(rating: Grade): number {
-  if (rating === Rating.Easy) return 1.35;
-  if (rating === Rating.Good) return 1.20;
-  return 1.0;
+const schedulers = new Map<number, ReturnType<typeof fsrs>>();
+
+function schedulerFor(requestRetention: number): ReturnType<typeof fsrs> {
+  const clamped = Number(Math.max(0.75, Math.min(0.97, requestRetention)).toFixed(2));
+  let instance = schedulers.get(clamped);
+  if (!instance) {
+    instance = fsrs(generatorParameters({ enable_fuzz: true, request_retention: clamped }));
+    schedulers.set(clamped, instance);
+  }
+  return instance;
+}
+
+export function loadRetentionHorizon(): RetentionHorizon {
+  if (typeof window === "undefined" || !window.localStorage) return "standard";
+  try {
+    const raw = window.localStorage.getItem(RETENTION_HORIZON_KEY);
+    if (raw === "relaxed" || raw === "standard" || raw === "intensive") return raw;
+  } catch {
+    // sin almacenamiento cae al horizonte estándar
+  }
+  return "standard";
+}
+
+export function saveRetentionHorizon(horizon: RetentionHorizon): void {
+  if (typeof window === "undefined" || !window.localStorage) return;
+  try {
+    window.localStorage.setItem(RETENTION_HORIZON_KEY, horizon);
+  } catch {
+    // ignorar error de cuota
+  }
+}
+
+export function requestRetentionFor(
+  horizon: RetentionHorizon = loadRetentionHorizon(),
+): number {
+  return RETENTION_BY_HORIZON[horizon] ?? RETENTION_BY_HORIZON.standard;
 }
 
 export function scheduleReview(
   card: Card | undefined,
   rating: Grade,
   now = new Date(),
-  options?: { episodicMultiplier?: number },
-) {
+  options?: { requestRetention?: number },
+): Card {
   const current: Card = card ?? createEmptyCard(now);
-  const nextCard = scheduler.next(current, now, rating).card;
-  if (options?.episodicMultiplier && options.episodicMultiplier > 1 && rating >= Rating.Good) {
-    nextCard.stability = Number((nextCard.stability * options.episodicMultiplier).toFixed(4));
-  }
-  return nextCard;
-}
-
-export function scheduleEpisodicReview(
-  card: Card | undefined,
-  rating: Grade,
-  now = new Date(),
-  customMultiplier?: number,
-): Card {
-  const multiplier = customMultiplier ?? computeEpisodicMultiplier(rating);
-  return scheduleReview(card, rating, now, { episodicMultiplier: multiplier });
-}
-
-export function newCardWithSource(
-  source: CaptureSource,
-  now = new Date(),
-): Card {
-  const card = createEmptyCard(now);
-  const params = CAPTURE_SOURCE_PARAMS[source];
-  if (params) {
-    card.difficulty = params.difficulty;
-    card.stability = params.stability;
-  }
-  return card;
+  const retention = options?.requestRetention ?? requestRetentionFor();
+  return schedulerFor(retention).next(current, now, rating).card;
 }
 
 // Tarjeta nueva que vence de inmediato: la primera exposición guiada
-// («Aprender») o la captura desde el lector la crea con parámetros iniciales
-// adaptados al origen de la captura (pre_reading, reader_tap, repeated_lookup).
-export function newCard(now = new Date(), source?: CaptureSource): Card {
-  if (source) {
-    return newCardWithSource(source, now);
-  }
+// («Aprender») o la captura desde el lector la crea vacía, y la primera
+// calificación real del lector es la que fija dificultad y estabilidad.
+export function newCard(now = new Date()): Card {
   return createEmptyCard(now);
 }
 

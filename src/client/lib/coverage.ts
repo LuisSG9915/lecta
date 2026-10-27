@@ -46,6 +46,9 @@ export type BookCoverage = {
   missing: number; // sin ficha en el catálogo
   uncertain: number; // con ficha pero sin medición ni evidencia
   newWordsCount?: number; // nuevas palabras útiles que aportaría al cuaderno
+  // Formas del libro que el lector ya tiene en su Cuaderno: la promesa
+  // de «reencuentro» al elegir la siguiente lectura.
+  reencuentrosCount?: number;
 };
 
 // Reúne las tres fuentes del perfil — cuaderno, conocimiento declarado/
@@ -111,6 +114,34 @@ export async function inputsForCoverage(
   };
 }
 
+// Idioma de la cobertura: el de la evidencia por lema («es», «en»).
+// Las etiquetas regionales del EPUB («en-US») se reducen a dos letras.
+export function coverageLanguageOf(language?: string | null): string {
+  return (language || "es").slice(0, 2).toLowerCase();
+}
+
+// Perfil por idioma, leído una sola vez por idioma y lote: cada libro se
+// mide contra lo que el lector sabe de SU idioma. Un fallo deja ese
+// idioma sin insignias (null), sin apagar los demás.
+export function createCoverageInputsLoader(
+  scope: DbScope | undefined,
+  load: (
+    language: string,
+    scope?: DbScope,
+  ) => Promise<CoverageInputs | null> = inputsForCoverage,
+): (language?: string | null) => Promise<CoverageInputs | null> {
+  const cache = new Map<string, Promise<CoverageInputs | null>>();
+  return (language) => {
+    const lang = coverageLanguageOf(language);
+    let pending = cache.get(lang);
+    if (!pending) {
+      pending = load(lang, scope).catch(() => null);
+      cache.set(lang, pending);
+    }
+    return pending;
+  };
+}
+
 // Cobertura de un libro a partir de sus formas + el mapa de fichas
 // (del manifiesto del catálogo o del análisis local — misma forma de
 // dato, mismo resultado).
@@ -132,6 +163,16 @@ export function coverageOfBook(
   const covered = prediction.savedCount + prediction.knownCount;
   const newWordsCount =
     prediction.predicted.length + (prediction.deferred?.length ?? 0);
+  const reencounterLemmas = new Set<string>();
+  for (const form of forms) {
+    const lower = form.toLowerCase();
+    const matched = (entriesByForm[form] ?? []).find((entry) =>
+      inputs.saved.has(entry.lemma.toLowerCase()),
+    );
+    if (matched) reencounterLemmas.add(matched.lemma.toLowerCase());
+    else if (inputs.saved.has(lower))
+      reencounterLemmas.add(entriesByForm[form]?.[0]?.lemma?.toLowerCase() || lower);
+  }
   return {
     percent: prediction.total
       ? Math.round((covered / prediction.total) * 100)
@@ -140,8 +181,31 @@ export function coverageOfBook(
     missing: prediction.missing.length,
     uncertain: prediction.uncertain.length,
     newWordsCount,
+    reencuentrosCount: reencounterLemmas.size,
   };
 }
+
+// Orden de recomendación: los libros en zona fluida o ideal (≥ 86 %)
+// van antes que los que piden más apoyo; dentro de esa zona gana el
+// que repite más palabras del Cuaderno del lector, y a empate manda el
+// mayor porcentaje de cobertura.
+export function compareBookCoverages(a: BookCoverage, b: BookCoverage): number {
+  const aInZone = a.percent >= COVERAGE_IDEAL_MIN ? 1 : 0;
+  const bInZone = b.percent >= COVERAGE_IDEAL_MIN ? 1 : 0;
+  if (aInZone !== bInZone) return bInZone - aInZone;
+  if (aInZone === 1) {
+    const aRe = a.reencuentrosCount ?? 0;
+    const bRe = b.reencuentrosCount ?? 0;
+    if (aRe !== bRe) return bRe - aRe;
+  }
+  return b.percent - a.percent;
+}
+
+// Umbrales únicos de cobertura: la insignia del catálogo, la de la
+// estantería y la etiqueta de nivel leen la misma escala. Por debajo
+// del ideal, el libro pide apoyo; no hay dos números para lo mismo.
+export const COVERAGE_FLUID_MIN = 94;
+export const COVERAGE_IDEAL_MIN = 86;
 
 // Etiqueta humana de la insignia. Conservadora a propósito: un 92%
 // medido con poca evidencia no se anuncia como «en tu nivel» — el
@@ -149,22 +213,22 @@ export function coverageOfBook(
 // no sabe sostener.
 export function coverageLabel(percent: number, confidence: "low" | "mid" | "high") {
   if (confidence === "low") return null;
-  if (percent >= 90) return "En tu nivel";
-  if (percent >= 75) return "Asequible";
-  if (percent >= 60) return "Un reto";
+  if (percent >= COVERAGE_FLUID_MIN) return "Lectura relajada";
+  if (percent >= COVERAGE_IDEAL_MIN) return "Ideal para tu ritmo";
+  if (percent >= 70) return "Un reto";
   return "Exigente";
 }
 
 export type AffinityTier = "fluida" | "reto" | "rico";
 
 export function affinityTierOf(percent: number): AffinityTier {
-  if (percent >= 95) return "fluida";
-  if (percent >= 88) return "reto";
+  if (percent >= COVERAGE_FLUID_MIN) return "fluida";
+  if (percent >= COVERAGE_IDEAL_MIN) return "reto";
   return "rico";
 }
 
 export function affinityBadgeLabel(percent: number): string {
-  if (percent >= 95) return "Lectura Fluida";
-  if (percent >= 88) return "Reto Ideal (i+1)";
+  if (percent >= COVERAGE_FLUID_MIN) return "Lectura Fluida";
+  if (percent >= COVERAGE_IDEAL_MIN) return "Reto Ideal (i+1)";
   return "Rico en Vocabulario";
 }

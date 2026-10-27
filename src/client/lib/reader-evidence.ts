@@ -234,6 +234,7 @@ export function checkPassiveExposure(
   for (const lemma of uniqueLemmas) {
     void recordPassiveExposure(lang, lemma, scope)
       .then((updated) => {
+        if (updated.deleted) return;
         applyKnowledgeRow({
           lemma: updated.lemma,
           known: updated.known,

@@ -1513,7 +1513,8 @@ export async function hasAnyLearningHistory(scope?: DbScope): Promise<boolean> {
 // van literales porque esos módulos ya importan idb (un import de
 // vuelta crearía un ciclo). Los sellos de sync, el ajuste de auth y
 // claves arbitrarias NO migran: no son datos del lector.
-const SESSION_MIGRATABLE_PREFIXES = ["preparation:v1:", "bookStart:v1:"] as const;
+export const CHAPTER_FOLLOW_PREFIX = "chapterFollow:v1:";
+const SESSION_MIGRATABLE_PREFIXES = ["preparation:v1:", "bookStart:v1:", CHAPTER_FOLLOW_PREFIX] as const;
 
 export function isMigratableSessionKey(key: string): boolean {
   return (
@@ -1558,7 +1559,8 @@ export function isBookScopedSessionKey(bookHash: string, key: string): boolean {
   return (
     key === `bookStart:v1:${bookHash}` ||
     key === `bookVocab:v1:${bookHash}` ||
-    key.startsWith(`preparation:v1:${bookHash}:`)
+    key.startsWith(`preparation:v1:${bookHash}:`) ||
+    key.startsWith(`${CHAPTER_FOLLOW_PREFIX}${encodeURIComponent(bookHash)}:`)
   );
 }
 
@@ -2069,6 +2071,9 @@ export async function recordPassiveExposure(
   return withDb(scope, async (db) => {
     const key = knowledgeKey(language, lemma);
     const existing = await db.get("knowledge", key);
+    // Una inferencia pasiva jamás revive lo que el lector borró
+    // (misma regla que mergeKnowledgeWrite): la lápida queda intacta.
+    if (existing?.deleted) return existing;
     const count = (existing?.passiveSeenCount ?? 0) + 1;
     const currentProb = existing?.estimatedKnownProb ?? 0;
     const nextProb = 1 - (1 - currentProb) * 0.82;

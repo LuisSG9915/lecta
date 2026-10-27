@@ -205,6 +205,32 @@ describe("checkPassiveExposure", () => {
     await vi.waitFor(() => expect(data.applyKnowledgeRow).toHaveBeenCalled());
   });
 
+  it("no aplica filas que llegaron como lápida", async () => {
+    mocks.recordPassiveExposure.mockResolvedValue({
+      key: "es:casa",
+      language: "es",
+      lemma: "casa",
+      known: true,
+      source: "declared",
+      updatedAt: 300,
+      deleted: true,
+    });
+    const refs = exposure();
+    const data = input({
+      analysisFor: vi.fn(() => ({
+        state: "ready" as const,
+        forms: ["casa"],
+        entries: {},
+        capitalOnly: new Set<string>(),
+        text: "casa",
+      })),
+    });
+    checkPassiveExposure(refs, data);
+    await vi.waitFor(() => expect(mocks.recordPassiveExposure).toHaveBeenCalled());
+    await Promise.resolve();
+    expect(data.applyKnowledgeRow).not.toHaveBeenCalled();
+  });
+
   it("refuerza el theta cuando una palabra cae en la frontera", () => {
     mocks.loadUserLanguageProfile.mockReturnValue({ thetaByLang: { es: 4 } });
     mocks.betaFromZipf.mockReturnValue(4);

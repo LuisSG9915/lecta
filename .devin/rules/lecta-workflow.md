@@ -6,7 +6,7 @@ description: Flujo de trabajo por fases de Lecta e invariantes de datos reales
 # Lecta — flujo de trabajo
 
 - Lecta se planifica por fases con estados. El plan vigente en
-  `~/.devin/plans/plan-92a9faffd37ea978.md` es la fuente de verdad;
+  `~/.devin/plans/plan-f7d8c145052373c7.md` es la fuente de verdad;
   consúltalo antes de implementar.
 - SWE-2 Max implementa solo diseños cerrados. Las decisiones de producto,
   el contenido editorial y cualquier cambio sobre datos reales los decide

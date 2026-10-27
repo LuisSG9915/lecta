@@ -12,9 +12,16 @@ import {
 } from "../lib/game";
 import { SentenceBuilderGame } from "./SentenceBuilderGame";
 import { WordScrambleGame } from "./WordScrambleGame";
+import { consolidateEpisodicWord } from "../lib/reviews";
+import type { SavedWord } from "../lib/idb";
 import QuoteCardModal from "./QuoteCardModal";
 import Icon from "./Icon";
 import { isFeatureFlagEnabled } from "../lib/settings";
+import {
+  CHAPTER_FOLLOW_OPTIONS,
+  saveChapterFollowAnswer,
+  type ChapterFollowLevel,
+} from "../lib/chapter-follow";
 
 export interface DeepReadingSummaryModalProps {
   summary: DeepReadingSummary;
@@ -30,6 +37,7 @@ export interface DeepReadingSummaryModalProps {
   author?: string;
   chapterTitle?: string;
   onShareQuote?: (quote?: string) => void;
+  onWordConsolidated?: (word: SavedWord) => void;
 }
 
 export default function DeepReadingSummaryModal({
@@ -46,6 +54,7 @@ export default function DeepReadingSummaryModal({
   author,
   chapterTitle,
   onShareQuote,
+  onWordConsolidated,
 }: DeepReadingSummaryModalProps) {
   const companion = useCompanionSafe();
   const durationText =
@@ -59,6 +68,7 @@ export default function DeepReadingSummaryModal({
   const [activeWordIndex, setActiveWordIndex] = useState<number | null>(null);
   const [consolidationCompleted, setConsolidationCompleted] = useState(false);
   const [showQuoteModal, setShowQuoteModal] = useState(false);
+  const [followAnswer, setFollowAnswer] = useState<ChapterFollowLevel | null>(null);
 
   const wordsAssimilated =
     summary.wordsAssimilated ?? Math.max(3, summary.sectionsRead * 4);
@@ -96,6 +106,14 @@ export default function DeepReadingSummaryModal({
     handleContinue();
   };
 
+  const answerFollow = (level: ChapterFollowLevel) => {
+    triggerHaptic("selection");
+    setFollowAnswer(level);
+    if (bookId && chapterTitle) {
+      void saveChapterFollowAnswer(bookId, chapterTitle, level).catch(() => {});
+    }
+  };
+
   const handleMuteThisBook = () => {
     triggerHaptic("selection");
     if (bookId) muteConsolidationForBook(bookId);
@@ -120,7 +138,19 @@ export default function DeepReadingSummaryModal({
   };
 
   const handleSolveStep = () => {
-    void awardEpisodicConsolidation(4).catch(() => {});
+    const current = activeWordIndex !== null ? queue[activeWordIndex] : undefined;
+    if (current) {
+      // Resolver el reto consolida la palabra de verdad en FSRS
+      // (Rating.Good) y deja su repaso en el historial; el XP sale de
+      // ese repaso, no de un premio aparte.
+      void consolidateEpisodicWord(current.item, bookId)
+        .then((word) => {
+          if (word) onWordConsolidated?.(word);
+        })
+        .catch(() => {});
+    } else {
+      void awardEpisodicConsolidation(3).catch(() => {});
+    }
     if (activeWordIndex !== null && activeWordIndex + 1 < queue.length) {
       setActiveWordIndex(activeWordIndex + 1);
     } else {
@@ -359,6 +389,44 @@ export default function DeepReadingSummaryModal({
           </span>
         </div>
       </div>
+
+      {bookId && chapterTitle ? (
+        <section
+          aria-label="Hilo del capítulo"
+          style={{ textAlign: "center", margin: "0 0 var(--s-3)" }}
+        >
+          <p className="meta" style={{ margin: "0 0 var(--s-2)" }}>
+            ¿Seguiste el hilo de este capítulo?
+          </p>
+          {followAnswer ? (
+            <p className="meta" role="status" style={{ margin: 0 }}>
+              Anotado. Tu recorrido lo muestra como tu propia valoración.
+            </p>
+          ) : (
+            <div
+              role="group"
+              aria-label="Tu respuesta"
+              style={{
+                display: "flex",
+                gap: "var(--s-2)",
+                justifyContent: "center",
+                flexWrap: "wrap",
+              }}
+            >
+              {CHAPTER_FOLLOW_OPTIONS.map(({ level, label }) => (
+                <button
+                  key={level}
+                  type="button"
+                  className="theme-option"
+                  onClick={() => answerFollow(level)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
+      ) : null}
 
       {/* Sección: Tu Cosecha en este Capítulo */}
       <div className="deep-summary-harvest" aria-label="Tu cosecha del capítulo">

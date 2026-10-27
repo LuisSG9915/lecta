@@ -1,6 +1,16 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import "../styles/notebook.css";
-import { isDue, newCard, Rating, scheduleReview, type Card, type Grade } from "../lib/fsrs";
+import {
+  isDue,
+  loadRetentionHorizon,
+  newCard,
+  Rating,
+  saveRetentionHorizon,
+  scheduleReview,
+  type Card,
+  type Grade,
+  type RetentionHorizon,
+} from "../lib/fsrs";
 import {
   captureDbScope,
   fillSavedWordMeaning,
@@ -397,6 +407,12 @@ const matchesFilter = (word: SavedWord, filter: FilterId): boolean => {
   return !isNew && s >= 14;
 };
 
+const RETENTION_CHECK_MIN_AGE_DAYS = 30;
+
+const retentionCheckAged = (card: Card | undefined, now = new Date()) =>
+  card?.last_review != null &&
+  new Date(card.last_review).getTime() <= now.getTime() - RETENTION_CHECK_MIN_AGE_DAYS * 86_400_000;
+
 const clozeTextFor = (word: SavedWord) =>
   word.context ? blankWordInContext(word.context, word.form, word.language) : null;
 
@@ -691,6 +707,9 @@ function FullVocabulary({
   } | null>(null);
   const [learnBusy, setLearnBusy] = useState<"" | "action" | "enrich">("");
   const [learnError, setLearnError] = useState("");
+  const [retentionHorizon, setRetentionHorizon] = useState<RetentionHorizon>(() =>
+    loadRetentionHorizon(),
+  );
 
   // La tarjeta candidata de cada calificación se calcula una sola vez al
   // revelar: el botón guarda exactamente lo que su intervalo anuncia.
@@ -868,6 +887,29 @@ function FullVocabulary({
   const dueCount = dueWords.length;
   const learnPending = scopedWords.filter((word) =>
     isLearnPending(word, knownKeys, exposure),
+  );
+
+  // Chequeo de retención a 30 días: palabras ya consolidadas (asentadas
+  // o dominadas) cuya última revisión es la más antigua. No bloquea el
+  // repaso normal; es una comprobación opcional de memoria a largo plazo.
+  const retentionCheckCandidates = useMemo(
+    () =>
+      scopedWords
+        .filter(
+          (word) =>
+            !word.deleted &&
+            !isWordKnown(word) &&
+            (word.card?.reps ?? 0) > 0 &&
+            (word.card?.stability ?? 0) >= 21 &&
+            retentionCheckAged(word.card),
+        )
+        .sort((a, b) => {
+          const aLast = a.card?.last_review ? new Date(a.card.last_review).getTime() : 0;
+          const bLast = b.card?.last_review ? new Date(b.card.last_review).getTime() : 0;
+          return aLast - bLast;
+        })
+        .slice(0, 10),
+    [scopedWords, isWordKnown],
   );
 
   const resetExercise = () => {
@@ -1068,6 +1110,25 @@ function FullVocabulary({
       ...others.map((w) => ({ word: w, mode: targetMode })),
     ];
     beginQueue(items);
+  };
+
+  const startRetentionCheck30d = () => {
+    if (!retentionCheckCandidates.length) return;
+    setPracticeNote("");
+    const items: QueueItem[] = retentionCheckCandidates.map((word) => {
+      const mode: PracticeMode = isEligible(word, "cloze")
+        ? "cloze"
+        : isEligible(word, "choose")
+          ? "choose"
+          : "form";
+      return { word, mode };
+    });
+    beginQueue(items);
+  };
+
+  const changeRetentionHorizon = (next: RetentionHorizon) => {
+    saveRetentionHorizon(next);
+    setRetentionHorizon(next);
   };
 
   // ---------- Aprender (primera exposición guiada) ----------
@@ -1352,20 +1413,10 @@ function FullVocabulary({
     }, 2200);
     // Los ejercicios con ítem del catálogo («contexto») también anotan
     // el intento en su estadística editorial; no bloquea el repaso.
+    // El repaso lo registra `grade` al confirmar con «Continuar»: un
+    // solo evento por ejercicio.
     const scope = captureDbScope();
     if (item.item) void answerItem(item.item.id, correct, scope);
-    void recordReview(
-      {
-        language: item.word.language,
-        form: item.word.form,
-        kind: mapMode(item.mode),
-        rating: correct ? "correct" : "wrong",
-        hints: 0,
-      },
-      scope,
-    ).catch(() => {
-      /* el historial es auxiliar; no deshace el ejercicio */
-    });
   };
 
   // «Escribir» con sesión: la IA revisa la oración (solo viajan la
@@ -1445,16 +1496,8 @@ function FullVocabulary({
   const finishMatchTanda = async (tanda: QueueItem[], fails: Record<string, number>) => {
     for (const item of tanda) {
       const wrongs = fails[item.word.key] ?? 0;
-      void recordReview({
-        language: item.word.language,
-        form: item.word.form,
-        kind: "match",
-        rating: wrongs ? "wrong" : "correct",
-        hints: 0,
-      }).catch(() => {
-        /* el historial es auxiliar; no deshace el ejercicio */
-      });
-      // grade() avanza la cola de a un item; la tanda respeta el orden.
+      // grade() avanza la cola de a un item y registra el repaso (kind
+      // «match»): la tanda respeta el orden y no duplica el evento.
       await grade(item, wrongs ? EXERCISE_RATING.wrong : EXERCISE_RATING.correct);
     }
     setMatchSel(null);
@@ -2299,6 +2342,30 @@ function FullVocabulary({
               </section>
             ) : null}
 
+            {retentionCheckCandidates.length > 0 ? (
+              <section
+                className="nb-review nb-retention-check"
+                aria-label="Chequeo de retención a 30 días"
+              >
+                <p className="eyebrow">
+                  Memoria a largo plazo · {retentionCheckCandidates.length}
+                </p>
+                <p className="meta">
+                  Comprueba en un minuto las palabras que ya llevas semanas
+                  consolidando.
+                </p>
+                <div className="practice-modes" role="group" aria-label="Chequeo de memoria">
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={() => startRetentionCheck30d()}
+                  >
+                    Chequeo 30 días
+                  </button>
+                </div>
+              </section>
+            ) : null}
+
             {languageFilter !== "all" || bookFilter !== "all" ? (
               <div className="nb-scope-notice">
                 <span>
@@ -2362,6 +2429,29 @@ function FullVocabulary({
                         </button>
                       );
                     })}
+                  </div>
+
+                  <div className="nb-filters" role="group" aria-label="Ritmo de repaso">
+                    <span className="meta">Ritmo de repaso</span>
+                    {(
+                      [
+                        { id: "relaxed", label: "Fluido 85%", hint: "Repasa menos seguido: aceptas olvidar un poco más" },
+                        { id: "standard", label: "Equilibrado 90%", hint: "Equilibrio entre esfuerzo y memoria" },
+                        { id: "intensive", label: "Firme 93%", hint: "Repasa más seguido para olvidar menos" },
+                      ] as const
+                    ).map(({ id, label, hint }) => (
+                      <button
+                        key={id}
+                        type="button"
+                        className="theme-option"
+                        title={hint}
+                        data-active={retentionHorizon === id || undefined}
+                        aria-pressed={retentionHorizon === id}
+                        onClick={() => changeRetentionHorizon(id)}
+                      >
+                        {label}
+                      </button>
+                    ))}
                   </div>
 
                   <details className="nb-more-filters">
@@ -2925,16 +3015,6 @@ function FullVocabulary({
                     );
                     return next;
                   });
-                  void recordReview(
-                    {
-                      language: current.word.language,
-                      form: current.word.form,
-                      kind: "word",
-                      rating: "correct",
-                      hints: 0,
-                    },
-                    captureDbScope(),
-                  ).catch(() => {});
                   void grade(current, EXERCISE_RATING.correct);
                 }}
                 onWrong={() => {
@@ -2978,16 +3058,6 @@ function FullVocabulary({
                     );
                     return next;
                   });
-                  void recordReview(
-                    {
-                      language: current.word.language,
-                      form: current.word.form,
-                      kind: "word",
-                      rating: "correct",
-                      hints: 0,
-                    },
-                    captureDbScope(),
-                  ).catch(() => {});
                   void grade(current, EXERCISE_RATING.correct);
                 }}
                 onWrong={() => {
@@ -3030,16 +3100,6 @@ function FullVocabulary({
                     );
                     return next;
                   });
-                  void recordReview(
-                    {
-                      language: current.word.language,
-                      form: current.word.form,
-                      kind: "word",
-                      rating: "correct",
-                      hints: 0,
-                    },
-                    captureDbScope(),
-                  ).catch(() => {});
                   void grade(current, EXERCISE_RATING.correct);
                 }}
                 onWrong={() => {

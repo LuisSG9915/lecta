@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   targetAt: vi.fn(),
   charOffsetAtViewTop: vi.fn(),
   award: vi.fn(),
+  awardConsultOncePerDay: vi.fn(async () => true),
   localDayKey: vi.fn(() => "2026-10-22"),
   captureDbScope: vi.fn(() => ({})),
   getBookLanguage: vi.fn(() => "es"),
@@ -43,6 +44,7 @@ vi.mock("../lib/reading-location", async (orig) => ({
 vi.mock("../lib/game", async (orig) => ({
   ...(await orig<typeof import("../lib/game")>()),
   award: mocks.award,
+  awardConsultOncePerDay: mocks.awardConsultOncePerDay,
   localDayKey: mocks.localDayKey,
 }));
 vi.mock("../lib/idb", async (orig) => ({
@@ -130,7 +132,7 @@ describe("useReaderSelection", () => {
     render(options({ language: "es" }));
     render(options({ language: "fr" }));
     act(() => api.openSelection({ word: "Casa", context: "" }));
-    expect(mocks.updateLanguageTheta).toHaveBeenCalledWith("fr", 3.5, 0, 0.8);
+    expect(mocks.updateLanguageTheta).not.toHaveBeenCalled();
   });
 
   it("abre la ficha: capa de historial, selección, hoja, evidencia y journal", () => {
@@ -150,10 +152,10 @@ describe("useReaderSelection", () => {
       form: "Casa",
       origin: "text",
     });
-    expect(mocks.award).toHaveBeenCalledWith(
-      { kind: "consulted" },
-      {},
-      expect.objectContaining({ dayKey: "2026-10-22" }),
+    expect(mocks.awardConsultOncePerDay).toHaveBeenCalledWith(
+      "es",
+      "Casa",
+      expect.anything(),
     );
     expect(opts.signalCompanion).toHaveBeenCalledWith({ kind: "word_consulted" });
     expect(opts.recordConsult).toHaveBeenCalledWith("Casa");

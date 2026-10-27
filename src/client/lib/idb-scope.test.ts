@@ -269,6 +269,32 @@ describe("migración anónimo→cuenta", () => {
     ).toBe(accountGoal);
   });
 
+  it("las respuestas de capítulo migran una a una y la cuenta conserva la más reciente", async () => {
+    const idb = await freshIdb();
+    await idb.saveSessionValue(
+      "chapterFollow:v1:b1:c1",
+      JSON.stringify({ version: 1, level: "al-dia", updatedAt: 300 }),
+    );
+    await idb.saveSessionValue(
+      "chapterFollow:v1:b1:c2",
+      JSON.stringify({ version: 1, level: "perdido", updatedAt: 100 }),
+    );
+    const accountC2 = JSON.stringify({ version: 1, level: "mas-o-menos", updatedAt: 200 });
+    const accountC3 = JSON.stringify({ version: 1, level: "al-dia", updatedAt: 50 });
+    dbFor("lecta:u:u-follow").stores.set(
+      "session",
+      new Map([
+        ["chapterFollow:v1:b1:c2", accountC2],
+        ["chapterFollow:v1:b1:c3", accountC3],
+      ]),
+    );
+    await idb.setDbUser("u-follow");
+    const session = dbFor("lecta:u:u-follow").stores.get("session");
+    expect(session?.get("chapterFollow:v1:b1:c1")).toContain('"level":"al-dia"');
+    expect(session?.get("chapterFollow:v1:b1:c2")).toBe(accountC2);
+    expect(session?.get("chapterFollow:v1:b1:c3")).toBe(accountC3);
+  });
+
   it("el registro de exposición de Aprender migra con la cuenta", async () => {
     const idb = await freshIdb();
     const exposure = JSON.stringify({
@@ -353,6 +379,24 @@ describe("arbitraje convergente de conocimiento", () => {
     const row = (await idb.listAllKnowledge())[0];
     expect(row.deleted).toBeFalsy();
     expect(row.source).toBe("declared");
+  });
+
+  it("la exposición pasiva no revive una lápida ni mueve su sello", async () => {
+    const idb = await freshIdb();
+    await idb.saveKnowledge(
+      kRow("perenne", { source: "declared", known: true }),
+    );
+    const tombstone = await idb.removeKnowledge(
+      idb.knowledgeKey("es", "perenne"),
+    );
+    expect(tombstone?.deleted).toBe(true);
+
+    await idb.recordPassiveExposure("es", "perenne");
+
+    const row = (await idb.listAllKnowledge())[0];
+    expect(row.deleted).toBe(true);
+    expect(row.updatedAt).toBe(tombstone?.updatedAt);
+    expect(row.passiveSeenCount).toBeUndefined();
   });
 
   it("la escritura redundante (misma fuerza y veredicto) no mueve el sello", async () => {
@@ -755,6 +799,50 @@ describe("palabras guardadas y tarjetas FSRS", () => {
     expect(
       Object.fromEntries(seed.stores.get("savedWords")!),
     ).toEqual(snapshot);
+  });
+
+  it("consolidar un ejercicio al cerrar capítulo avanza la tarjeta y registra el repaso", async () => {
+    const idb = await freshIdb();
+    vi.doMock("./reading-sync", () => ({
+      pushReviewsToServer: vi.fn(),
+    }));
+    vi.doMock("./vocab", () => ({
+      pushWordsToServer: vi.fn(),
+    }));
+    const { consolidateEpisodicWord } = await import("./reviews");
+    const scope = idb.captureDbScope();
+
+    const first = await consolidateEpisodicWord(
+      {
+        lemma: "quimera",
+        surfaceForm: "quimera",
+        lang: "es",
+        shortGloss: "Ilusión",
+        chapterSentence: "Perseguía una quimera.",
+      },
+      "book-1",
+      scope,
+    );
+    expect(first?.form).toBe("quimera");
+    expect(first?.card?.reps).toBe(1);
+    expect(first?.card?.stability).toBeGreaterThan(0);
+
+    const second = await consolidateEpisodicWord(
+      { lemma: "quimera", surfaceForm: "quimera", lang: "es" },
+      "book-1",
+      scope,
+    );
+    expect(second?.card?.reps).toBe(2);
+
+    const reviews = [...dbFor("lecta").stores.get("reviews")!.values()] as {
+      kind: string;
+      rating: string;
+      form: string;
+    }[];
+    expect(reviews).toHaveLength(2);
+    expect(reviews[0].kind).toBe("context");
+    expect(reviews[0].rating).toBe("good");
+    expect(reviews[0].form).toBe("quimera");
   });
 });
 

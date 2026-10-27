@@ -6,6 +6,7 @@ import {
 } from "./idb";
 import type { LexiconEntry } from "./lexicon";
 import { getLanguageTheta } from "./profile-models";
+import { COVERAGE_FLUID_MIN, COVERAGE_IDEAL_MIN } from "./coverage";
 
 // Catálogo público de Lecta: clásicos de dominio público servidos por
 // el worker desde R2 (`/api/catalog*` en src/worker/catalog.ts). Las
@@ -278,14 +279,14 @@ export function getBookAffinityBadge(
 
   // Si se pasa un porcentaje de cobertura de vocabulario (0 a 100)
   if (typeof bookDifficultyOrLevel === "number" && bookDifficultyOrLevel > 10) {
-    if (bookDifficultyOrLevel >= 94) {
+    if (bookDifficultyOrLevel >= COVERAGE_FLUID_MIN) {
       return {
         tone: "relaxed",
         label: "Lectura relajada",
         description: "Para disfrutar de corrido y sin esfuerzo",
       };
     }
-    if (bookDifficultyOrLevel >= 86) {
+    if (bookDifficultyOrLevel >= COVERAGE_IDEAL_MIN) {
       return {
         tone: "ideal",
         label: "Ideal para tu ritmo",

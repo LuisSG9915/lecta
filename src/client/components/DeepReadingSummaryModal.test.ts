@@ -4,8 +4,14 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import DeepReadingSummaryModal from "./DeepReadingSummaryModal";
 import type { DeepReadingSummary } from "../lib/deep-reading";
+import { saveChapterFollowAnswer } from "../lib/chapter-follow";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+vi.mock("../lib/chapter-follow", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/chapter-follow")>()),
+  saveChapterFollowAnswer: vi.fn(async () => undefined),
+}));
 
 describe("DeepReadingSummaryModal", () => {
   let host: HTMLDivElement;
@@ -318,6 +324,45 @@ describe("DeepReadingSummaryModal", () => {
       finalContinueBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     });
     expect(onContinue).toHaveBeenCalledTimes(1);
+  });
+
+  it("anota si seguiste el hilo con un toque y no bloquea continuar", () => {
+    const onContinue = vi.fn();
+    act(() => {
+      root.render(
+        h(DeepReadingSummaryModal, {
+          summary: baseSummary,
+          onClose: vi.fn(),
+          onContinue,
+          bookId: "libro-1",
+          chapterTitle: "Capítulo 1",
+        }),
+      );
+    });
+
+    const lost = [...host.querySelectorAll("button")].find((b) => b.textContent === "Me perdí")!;
+    act(() => {
+      lost.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+
+    expect(saveChapterFollowAnswer).toHaveBeenCalledWith("libro-1", "Capítulo 1", "perdido");
+    expect(host.textContent).toContain("Anotado");
+    expect(host.textContent).not.toContain("Seguí el hilo");
+
+    const continueBtn = [...host.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("Continuar al siguiente capítulo"),
+    )!;
+    act(() => {
+      continueBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+    expect(onContinue).toHaveBeenCalledTimes(1);
+  });
+
+  it("no ofrece el hilo si el capítulo no está identificado", () => {
+    act(() => {
+      root.render(h(DeepReadingSummaryModal, { summary: baseSummary, onClose: vi.fn() }));
+    });
+    expect(host.textContent).not.toContain("¿Seguiste el hilo de este capítulo?");
   });
 
   it("no muestra la tarjeta de consolidación si la cola está vacía", () => {

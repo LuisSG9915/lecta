@@ -443,3 +443,64 @@ describe("awardEpisodicConsolidation (Track 10)", () => {
     expect(game.isConsolidationActive()).toBe(false);
   });
 });
+
+describe("awardConsultOncePerDay", () => {
+  it("la primera consulta del día paga 2 de XP", async () => {
+    const { idb, game } = await freshModules();
+    game.resetGameCache();
+    const scope = idb.captureDbScope();
+
+    await expect(
+      game.awardConsultOncePerDay("es", "casa", scope, T0),
+    ).resolves.toBe(true);
+    expect((await game.loadGame(scope)).xp).toBeCloseTo(2);
+  });
+
+  it("reabrir la misma ficha el mismo día no vuelve a pagar", async () => {
+    const { idb, game } = await freshModules();
+    game.resetGameCache();
+    const scope = idb.captureDbScope();
+
+    await game.awardConsultOncePerDay("es", "casa", scope, T0);
+    await expect(
+      game.awardConsultOncePerDay("es", "casa", scope, T0),
+    ).resolves.toBe(false);
+    expect((await game.loadGame(scope)).xp).toBeCloseTo(2);
+  });
+
+  it("la misma palabra con otra capitalización tampoco paga", async () => {
+    const { idb, game } = await freshModules();
+    game.resetGameCache();
+    const scope = idb.captureDbScope();
+
+    await game.awardConsultOncePerDay("es", "casa", scope, T0);
+    await expect(
+      game.awardConsultOncePerDay("es", "Casa ", scope, T0),
+    ).resolves.toBe(false);
+    expect((await game.loadGame(scope)).xp).toBeCloseTo(2);
+  });
+
+  it("otra palabra del mismo día sí paga", async () => {
+    const { idb, game } = await freshModules();
+    game.resetGameCache();
+    const scope = idb.captureDbScope();
+
+    await game.awardConsultOncePerDay("es", "casa", scope, T0);
+    await expect(
+      game.awardConsultOncePerDay("es", "perro", scope, T0),
+    ).resolves.toBe(true);
+    expect((await game.loadGame(scope)).xp).toBeCloseTo(4);
+  });
+
+  it("al día siguiente la misma palabra vuelve a pagar", async () => {
+    const { idb, game } = await freshModules();
+    game.resetGameCache();
+    const scope = idb.captureDbScope();
+
+    await game.awardConsultOncePerDay("es", "casa", scope, T0);
+    await expect(
+      game.awardConsultOncePerDay("es", "casa", scope, T0 + 86_400_000),
+    ).resolves.toBe(true);
+    expect((await game.loadGame(scope)).xp).toBeCloseTo(4);
+  });
+});

@@ -204,6 +204,70 @@ export function useReaderPagination(options: UseReaderPaginationOptions) {
     optionsRef.current = options;
   });
 
+  // Cierre de capítulo: lo comparten el paso de página (modo `pages`)
+  // y el enlace «Siguiente» del final del texto (modo `scroll`), para
+  // que el lector reciba el mismo cierre y la misma consolidación en
+  // los dos modos de lectura.
+  const completeChapterTo = useCallback(
+    (nextIndex: number, fragment?: string): Promise<unknown> => {
+      const {
+        navigate,
+        checkPassiveExposure,
+        signalCompanion,
+        setDeepSummary,
+        setPostChapterQueue,
+        bookHash,
+        language,
+        sectionWords,
+        bookRef,
+        chapterStartedAtRef,
+        pendingNextChapterRef,
+        currentChapterLookups,
+        currentChapterPrimedWordsRef,
+      } = optionsRef.current;
+      const currentLang =
+        language || (bookRef.current ? getBookLanguage(bookRef.current) : "es");
+      const isL2 = currentLang !== loadNativeLanguage();
+      try {
+        recordChapterCompleted(currentLang);
+      } catch {
+        // Ignorar fallo de guardado
+      }
+      signalCompanion({ kind: "goal_completed", at: Date.now() });
+
+      // Fin de Capítulo: Aprendizaje Pasivo + Consolidación Episódica
+      checkPassiveExposure();
+      const prefs = loadPostChapterConsolidationPrefs();
+      const candidates: EpisodicWordItem[] = [
+        ...currentChapterLookups.current,
+        ...currentChapterPrimedWordsRef.current,
+      ];
+      const queue = isFeatureFlagEnabled("vocabGames")
+        ? buildPostChapterConsolidationQueue(candidates, prefs, isL2, { bookId: bookHash })
+        : [];
+
+      if (queue.length > 0 && isConsolidationActive(bookHash) && isFeatureFlagEnabled("vocabGames")) {
+        setPostChapterQueue(queue);
+        pendingNextChapterRef.current = nextIndex;
+        const durationMinutes = Math.max(
+          1,
+          Math.round((Date.now() - chapterStartedAtRef.current) / 60000),
+        );
+        setDeepSummary({
+          durationMinutes,
+          targetMinutes: 15,
+          sectionsRead: 1,
+          completedNaturally: true,
+          wordsAssimilated: sectionWords,
+        });
+        return Promise.resolve();
+      }
+
+      return navigate("chapter", { index: nextIndex, fragment });
+    },
+    [],
+  );
+
   // Página siguiente/anterior; en los bordes salta de sección (atrás
   // cae al final de la sección anterior, como al retroceder una página
   // en un libro impreso).
@@ -216,12 +280,9 @@ export function useReaderPagination(options: UseReaderPaginationOptions) {
         saveSoon,
         trackMove,
         showNotice,
-        signalCompanion,
         setPageIdx,
         setBarsVisible,
-        setDeepSummary,
         setFatigueSuggestion,
-        setPostChapterQueue,
         bookHash,
         language,
         sectionWords,
@@ -232,10 +293,6 @@ export function useReaderPagination(options: UseReaderPaginationOptions) {
         sectionIndexRef,
         pageTurnTimeRef,
         sessionStartRef,
-        chapterStartedAtRef,
-        pendingNextChapterRef,
-        currentChapterLookups,
-        currentChapterPrimedWordsRef,
         focusTelemetryRef,
         settingsRef,
       } = optionsRef.current;
@@ -308,51 +365,16 @@ export function useReaderPagination(options: UseReaderPaginationOptions) {
       if (next >= pageCountRef.current) {
         // En la última página el ratio ya es ~1: pasar a la sección
         // siguiente cuenta como tramo terminado (el gato celebra).
-        if (sectionIndexRef.current + 1 < sectionTotal) {
-          const nextIndex = sectionIndexRef.current + 1;
-          try {
-            const currentLang = language || (bookRef.current ? getBookLanguage(bookRef.current) : "es");
-            recordChapterCompleted(currentLang);
-          } catch {
-            // Ignorar fallo de guardado
-          }
-          signalCompanion({ kind: "goal_completed", at: Date.now() });
-
-          // Track 6 & 10: Fin de Capítulo: Aprendizaje Pasivo + Consolidación Episódica
-          checkPassiveExposure();
-          const prefs = loadPostChapterConsolidationPrefs();
-          const candidates: EpisodicWordItem[] = [
-            ...currentChapterLookups.current,
-            ...currentChapterPrimedWordsRef.current,
-          ];
-          const queue = isFeatureFlagEnabled("vocabGames")
-            ? buildPostChapterConsolidationQueue(candidates, prefs, isL2, { bookId: bookHash })
-            : [];
-
-          if (queue.length > 0 && isConsolidationActive(bookHash) && isFeatureFlagEnabled("vocabGames")) {
-            setPostChapterQueue(queue);
-            pendingNextChapterRef.current = nextIndex;
-            const durationMinutes = Math.max(1, Math.round((Date.now() - chapterStartedAtRef.current) / 60000));
-            setDeepSummary({
-              durationMinutes,
-              targetMinutes: 15,
-              sectionsRead: 1,
-              completedNaturally: true,
-              wordsAssimilated: sectionWords,
-            });
-            return Promise.resolve();
-          }
-
-          return navigate("chapter", { index: nextIndex });
-        }
+        if (sectionIndexRef.current + 1 < sectionTotal)
+          return completeChapterTo(sectionIndexRef.current + 1);
         return Promise.resolve();
       }
       setPageIdx(next);
       saveSoon();
       return Promise.resolve();
     },
-    [],
+    [completeChapterTo],
   );
 
-  return { goPage };
+  return { goPage, completeChapterTo };
 }

@@ -151,6 +151,21 @@ const flush = async () =>
     await Promise.resolve();
   });
 
+// Espera a que se cumpla una condición asíncrona (escrituras en cola, lecturas
+// de disco). Contar microtareas es frágil: el número de saltos de una escritura
+// por ranura no es contrato y cambia con la carga de la máquina. Si no se
+// cumple en el plazo, falla con el mensaje de la aserción que venga después.
+const waitFor = async (predicate: () => boolean | Promise<boolean>, intentos = 60) => {
+  for (let i = 0; i < intentos; i += 1) {
+    if (await predicate()) return true;
+    await flush();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 1));
+    });
+  }
+  return false;
+};
+
 const click = (el: Element) =>
   act(() => {
     el.dispatchEvent(
@@ -612,9 +627,14 @@ describe("CompanionPanel", () => {
     const poet = button("Poesía")!;
     expect(poet).toBeTruthy();
     click(poet);
-    await flush();
 
-    // Se vistió el look de ese ambiente…
+    // Se vistió el look de ese ambiente (cinco escrituras en cola: se espera al
+    // último campo, no a un número de ticks).
+    await waitFor(
+      async () =>
+        (await game.readCompanionField("equipped.neck", scope))?.value ===
+        "corbatin",
+    );
     expect((await game.readCompanionField("equipped.head", scope))?.value).toBe(
       "boina",
     );
@@ -622,6 +642,11 @@ describe("CompanionPanel", () => {
       "corbatin",
     );
     // …y el ambiente quedó recordado para ese libro, no para otro.
+    await waitFor(
+      async () =>
+        Object.keys((await game.loadCompanionDevicePrefs(scope)).bookMoods ?? {})
+          .length > 0,
+    );
     const prefs = await game.loadCompanionDevicePrefs(scope);
     expect(prefs.bookMoods).toEqual({ "libro-1": "poesia" });
   });

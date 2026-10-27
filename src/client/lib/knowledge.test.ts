@@ -149,6 +149,21 @@ describe("predictSection", () => {
     expect(res.total).toBe(2);
   });
 
+  it("a2) una forma flexionada cuenta como guardada si su lema está en el cuaderno", () => {
+    const res = predictSection(
+      ["corrieron", "rara"],
+      {
+        corrieron: [entry(2.0, { lemma: "correr" })],
+        rara: [entry(2.0, { lemma: "rara" })],
+      },
+      new Set(["correr"]),
+      noKnowledge,
+      3.0,
+    );
+    expect(res.savedCount).toBe(1);
+    expect(forms(res)).toEqual(["rara"]);
+  });
+
   it("b) las formas sin ficha van a missing, aunque haya evidencia sobre ellas", () => {
     // Regla (b) manda sobre (c): sin ficha en el catálogo no hay nada
     // que predecir, aunque el lector declarara conocerla.
@@ -867,8 +882,7 @@ describe("Canales de Retroalimentación Adaptativa (Paso 3)", () => {
     expect(profile.preferredPreviewCount).toBe(3);
   });
 
-  it("recordSilentCalibration ejecuta de forma segura los eventos 'lookup', 'save' y 'known'", () => {
-    expect(() => recordSilentCalibration("efimero", "known", "es")).not.toThrow();
+  it("recordSilentCalibration ejecuta de forma segura los eventos 'lookup' y 'save'", () => {
     expect(() => recordSilentCalibration("casa", "lookup", "es")).not.toThrow();
     expect(() => recordSilentCalibration("perenne", "save", "es")).not.toThrow();
   });

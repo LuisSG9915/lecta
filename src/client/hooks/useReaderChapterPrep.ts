@@ -199,15 +199,7 @@ export function useReaderChapterPrep({
             adjustRef.current,
             baseThresholdRef.current,
           ).threshold,
-        userTheta: loadUserTheta(
-          profileRef.current?.threshold ??
-          estimateProfile(
-            [...evidenceRef.current.values()],
-            adjustRef.current,
-            baseThresholdRef.current,
-          ).threshold,
-          lang,
-        ),
+        userTheta: loadUserTheta(lang),
         isSecondLanguage: lang !== loadNativeLanguage(),
         lex,
       }),
@@ -446,14 +438,22 @@ export function useReaderChapterPrep({
           applyPrediction(index, lang);
           const suggestion = prepRowsFor(result, lang, prepLexRef.current);
           const tocLabel = tocRowsRef.current.find((r) => r.index === index)?.label;
-          const primed: EpisodicWordItem[] = (suggestion?.rows ?? []).slice(0, 5).map((row) => ({
+          // Las palabras del Cuaderno que reaparecen en este capítulo
+          // entran primero al cierre: el repaso ocurre con la oración
+          // real que el lector acaba de leer.
+          const rows = suggestion?.rows ?? [];
+          const prioritized = [
+            ...rows.filter((row) => row.learning),
+            ...rows.filter((row) => !row.learning),
+          ].slice(0, 5);
+          const primed: EpisodicWordItem[] = prioritized.map((row) => ({
             lemma: row.lemma || row.form,
             surfaceForm: row.form,
             lang,
             shortGloss: row.meaning || "",
             chapterSentence: row.context || row.contextSnippet || row.form,
             chapterTitle: tocLabel || `Sección ${index + 1}`,
-            source: "pre-chapter-primed",
+            source: row.learning ? "notebook-reencounter" : "pre-chapter-primed",
             partOfSpeech: row.pos ?? undefined,
           }));
           if (primed.length > 0) {

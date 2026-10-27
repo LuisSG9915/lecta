@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  computeRetentionSummary,
   wordStages,
   totalReadingMs,
   readingRecords,
@@ -62,6 +63,35 @@ describe("wordStages", () => {
     expect(stages.learningCount).toBe(2);
     expect(stages.settledCount).toBe(2);
     expect(stages.masteredCount).toBe(2);
+  });
+});
+
+describe("computeRetentionSummary", () => {
+  it("mide aciertos reales e ignora los autoinformes 'declared'", () => {
+    const reviews: SavedReview[] = [
+      { id: "1", language: "es", form: "a", kind: "cloze", rating: "good", hints: 0, createdAt: 1 },
+      { id: "2", language: "es", form: "b", kind: "word", rating: "easy", hints: 0, createdAt: 2 },
+      { id: "3", language: "es", form: "c", kind: "choose", rating: "correct", hints: 0, createdAt: 3 },
+      { id: "4", language: "es", form: "d", kind: "word", rating: "again", hints: 0, createdAt: 4 },
+      { id: "5", language: "es", form: "e", kind: "declared", rating: "known", hints: 0, createdAt: 5 },
+    ];
+    const summary = computeRetentionSummary([], reviews);
+    expect(summary.verifiedReviewsCount).toBe(4);
+    expect(summary.recallRatePct).toBe(75);
+  });
+
+  it("cuenta palabras con estabilidad de 7 y 30 días solo si hay repasos", () => {
+    const words: SavedWord[] = [
+      word("nueva", { card: card(0, 0) }),
+      word("semana", { card: card(8, 2) }),
+      word("mes", { card: card(30, 3) }),
+      word("mes_alto", { card: card(120, 5) }),
+      word("borrada", { card: card(120, 5), deleted: true }),
+    ];
+    const summary = computeRetentionSummary(words, []);
+    expect(summary.recallRatePct).toBeNull();
+    expect(summary.retained7dCount).toBe(3);
+    expect(summary.retained30dCount).toBe(2);
   });
 });
 

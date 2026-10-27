@@ -207,6 +207,53 @@ export function award(
   return queue;
 }
 
+// Consulta con premio una vez por palabra e idioma en el día local:
+// reabrir la misma ficha no vuelve a pagar. El registro vive en la
+// sesión de la cuenta (clave nueva y versionada); la guarda en memoria
+// cubre dos aperturas seguidas antes de que la escritura confirme.
+export const CONSULT_AWARDS_SESSION_KEY = "lecta:consult_awards:v1";
+const consultAwardedInMemory = new Set<string>();
+
+export async function awardConsultOncePerDay(
+  language: string,
+  word: string,
+  scope?: DbScope,
+  now = Date.now(),
+): Promise<boolean> {
+  const bound = scope ?? captureDbScope();
+  const dayKey = localDayKey(now);
+  const wordKey = `${language.slice(0, 2).toLowerCase()}:${word.trim().toLowerCase()}`;
+  const memoryKey = `${bound.userId ?? "anon"}|${dayKey}|${wordKey}`;
+  if (consultAwardedInMemory.has(memoryKey)) return false;
+  consultAwardedInMemory.add(memoryKey);
+  const raw = await loadSessionValue(CONSULT_AWARDS_SESSION_KEY, bound).catch(
+    () => undefined,
+  );
+  let keys: string[] = [];
+  try {
+    const parsed = typeof raw === "string" ? JSON.parse(raw) : null;
+    if (parsed?.dayKey === dayKey && Array.isArray(parsed.keys))
+      keys = parsed.keys.filter(
+        (key: unknown): key is string => typeof key === "string",
+      );
+  } catch {
+    // registro ilegible: se empieza el día de cero
+  }
+  if (keys.includes(wordKey)) return false;
+  keys.push(wordKey);
+  await saveSessionValue(
+    CONSULT_AWARDS_SESSION_KEY,
+    JSON.stringify({ dayKey, keys }),
+    bound,
+  ).catch(() => undefined);
+  await award({ kind: "consulted" }, bound, {
+    id: `consult:${crypto.randomUUID()}`,
+    at: now,
+    dayKey,
+  });
+  return true;
+}
+
 // La proyección ya entrega ids canónicos («achievement:x», «level:n»,
 // «legacy:y»); esos pasan tal cual. Un id suelto de la versión vieja
 // se traduce buscando su cofre y, si no se reconoce, se conserva como
@@ -370,6 +417,7 @@ export function emitGameChanged() {
 // y aborta sola si venció; las suscripciones las maneja el desmontaje.
 export function resetGameCache() {
   cache = null;
+  consultAwardedInMemory.clear();
 }
 
 // Recompensa XP de consolidación episódica al resolver una palabra al final del capítulo
@@ -399,12 +447,10 @@ export type {
   ConsolidationAttemptMetrics,
   ConsolidationModality,
   EpisodicWordItem,
-  ImplicitFsrsGradeResult,
   MorphologicalDistractorOptions,
   PostChapterConsolidationPrefs,
 } from "./practice";
 export {
-  computeImplicitFsrsGrade,
   buildPostChapterConsolidationQueue,
   recordModalityAttempt,
   loadPostChapterConsolidationPrefs,

@@ -38,10 +38,7 @@ import {
   type SavedWord,
   type SavedBookPosition,
 } from "../lib/idb";
-import {
-  betaFromZipf,
-  updateLanguageTheta,
-} from "../lib/profile-models";
+import { updateLanguageTheta } from "../lib/profile-models";
 import { batchLookup, enrichBatch, lookupWord } from "../lib/lexicon";
 import { scheduleCapturedReview } from "../lib/reviews";
 import {
@@ -147,6 +144,7 @@ import {
 import { pushOverlay, type OverlayHandle } from "../lib/history";
 import {
   dominatedLemmas,
+  markLevel,
   savedFormLevels,
   type MarkLevel,
 } from "../lib/word-level";
@@ -1918,22 +1916,6 @@ export default function Reader({
     [trackEvent, signalCompanion],
   );
 
-  // Avanzar a la sección siguiente habiendo llegado casi al final
-  // cuenta como tramo terminado: el gato celebra. Saltar por el
-  // índice o el buscador no celebra — no es «terminar» el capítulo.
-  const navNextSection = (index: number, fragment?: string) => {
-    if (currentRatioNow() >= 0.85)
-      signalCompanion({ kind: "goal_completed" });
-    trackMove(false);
-    void navigate("chapter", { index, fragment });
-  };
-
-  const navPrevSection = (index: number, fragment?: string) => {
-    trackMove(true);
-    void navigate("chapter", { index, fragment });
-  };
-
-
   // Cargador de sección: parsea, mide, marca y restaura. La lógica vive en
   // hooks/useReaderSectionLoader.ts.
   const { loadSection } = useReaderSectionLoader({
@@ -2801,7 +2783,7 @@ export default function Reader({
   // Página siguiente/anterior; en los bordes salta de sección (atrás
   // cae al final de la sección anterior, como al retroceder una página
   // en un libro impreso). La lógica vive en hooks/useReaderNavigation.ts.
-  const { goPage } = useReaderPagination({
+  const { goPage, completeChapterTo } = useReaderPagination({
     navigate,
     checkPassiveExposure,
     noteActivity,
@@ -2831,6 +2813,24 @@ export default function Reader({
     focusTelemetryRef,
     settingsRef,
   });
+
+  // Avanzar a la sección siguiente habiendo llegado casi al final
+  // cuenta como tramo terminado: el gato celebra y el capítulo se
+  // cierra igual que en modo páginas (consolidación incluida). Saltar
+  // por el índice o el buscador no celebra — no es «terminar».
+  const navNextSection = (index: number, fragment?: string) => {
+    trackMove(false);
+    if (currentRatioNow() >= 0.85) {
+      void completeChapterTo(index, fragment);
+      return;
+    }
+    void navigate("chapter", { index, fragment });
+  };
+
+  const navPrevSection = (index: number, fragment?: string) => {
+    trackMove(true);
+    void navigate("chapter", { index, fragment });
+  };
 
 
   // Espejo del modo para callbacks estables (guardado, teclado,
@@ -2971,8 +2971,14 @@ export default function Reader({
   const onWordSaved = useCallback((word: SavedWord) => {
     ttsRef.current?.noteSavedWord();
     void scheduleCapturedReview(word.form, bookHash, word.context, language).catch(() => {});
+    // La marca del texto sigue la etapa real de la tarjeta: una palabra
+    // asentada no vuelve a «nueva» porque el lector la reencuentre.
+    const level = markLevel(word.card);
     for (const form of [word.form, word.lemma]) {
-      if (form) savedForms.current.set(form.toLowerCase(), "new");
+      if (!form) continue;
+      const key = form.toLowerCase();
+      if (level) savedForms.current.set(key, level);
+      else savedForms.current.delete(key);
     }
     // Reacción afectuosa y alegre del gato al guardar una joya léxica
     setCatSavedWord(true);
@@ -4103,17 +4109,15 @@ export default function Reader({
         onKnowledgeChanged={(row, { form, kind }) => {
           applyKnowledgeRow(row);
           try {
+            // θ ya lo ajusta el emisor del acto (WordPanel y la hoja de
+            // preparación): aquí solo se persiste el repaso y se evita el
+            // segundo empujón sobre la misma señal.
             const currentLang = language || (bookRef.current ? getBookLanguage(bookRef.current) : "es");
-            const zipf = zipfForLemma(row.lemma);
-            const beta = betaFromZipf(zipf);
             if (kind === "saved") {
               void scheduleCapturedReview(form, bookHash, undefined, currentLang).catch(() => {});
-              updateLanguageTheta(currentLang, beta, 0, 1.0);
-            } else if (kind === "declared") {
-              updateLanguageTheta(currentLang, beta, 1, 1.0);
             }
           } catch {
-            // Ignorar fallo al persistir theta
+            // Ignorar fallo al programar el repaso
           }
           trackEvent(
             kind === "saved"
@@ -4240,6 +4244,7 @@ export default function Reader({
             void navigate("chapter", { index: target });
           }
         }}
+        onWordConsolidated={onWordSaved}
         glossaryOpen={glossaryOpen}
         onCloseGlossary={() => setGlossaryOpen(false)}
         onSelectGlossaryTerm={(word) => {

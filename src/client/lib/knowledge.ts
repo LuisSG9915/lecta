@@ -1,5 +1,5 @@
 import { batchLookup, type LexiconEntry } from "./lexicon";
-import { listKnowledge, recordPassiveExposure, saveKnowledge, type DbScope } from "./idb";
+import { listKnowledge, saveKnowledge, type DbScope } from "./idb";
 import { isLearnablePos, measuredZipf } from "../../shared/lexicon";
 import { menteBaseForms, cliticBaseForms, dedupeKey } from "../../shared/word-form";
 export { cliticBaseForms, dedupeKey };
@@ -7,14 +7,10 @@ import { knowledgeArbWins } from "../../shared/reading-data";
 import { calibrationBankZipf } from "../../shared/calibration-bank";
 export { calibrationBankZipf };
 import {
-  adjustThetaOnEasyPin,
   betaFromZipf,
   loadUserLanguageProfile,
-  loadUserTheta,
   saveUserLanguageProfile,
-  saveUserTheta,
   updateThetaForLanguageSignal,
-  wordDifficulty,
   type SupportedBookLang,
   type UserLanguageProfile,
 } from "./profile-models";
@@ -168,6 +164,13 @@ export function predictSection(
     // Las fichas funcionales (numeral, pronombre, preposición…) no son
     // vocabulario aunque el catálogo las conozca y estén medidas.
     let entries = rawEntries.filter((entry) => isLearnablePos(entry.pos));
+    // La forma flexionada cuenta como guardada si el lector ya tiene su
+    // lema en el Cuaderno («corrieron» → «correr»): es un reencuentro,
+    // no vocabulario nuevo que preparar.
+    if (entries.some((entry) => saved.has(entry.lemma.toLowerCase()))) {
+      savedCount += 1;
+      continue;
+    }
     const evidenceOf = (entry: LexiconEntry) =>
       knowledge.get(entry.lemma) ?? knowledge.get(form);
 
@@ -703,33 +706,15 @@ export function updatePreviewFrictionPreference(
  */
 export function recordSilentCalibration(
   word: string,
-  event: "lookup" | "save" | "known",
+  event: "lookup" | "save",
   language = "es",
 ): void {
+  // Una sola señal por acto y en una sola escala: consultar o guardar dice
+  // «no la conocía», que es exactamente la sorpresa del modelo.
+  if (event !== "lookup" && event !== "save") return;
   try {
-    const cleanWord = word.trim().toLowerCase();
-    const currentTheta = loadUserTheta(3.0, language);
-    const zipf = calibrationBankZipf(cleanWord, language);
-    const bw = wordDifficulty(zipf);
-    const beta = betaFromZipf(zipf);
-
-    if (event === "known") {
-      applyPreviewKnownSignal(language, beta);
-    } else if (event === "lookup") {
-      applyWordPanelLookupSignal(language, beta);
-      const step = 0.02;
-      const { newTheta, adjusted } = adjustThetaOnEasyPin(currentTheta, bw, step);
-      if (adjusted) {
-        saveUserTheta(newTheta, language);
-      }
-    } else {
-      // event === "save"
-      const step = 0.05;
-      const { newTheta, adjusted } = adjustThetaOnEasyPin(currentTheta, bw, step);
-      if (adjusted) {
-        saveUserTheta(newTheta, language);
-      }
-    }
+    const beta = betaFromZipf(calibrationBankZipf(word.trim().toLowerCase(), language));
+    applyWordPanelLookupSignal(language, beta);
   } catch {
     // Silencioso
   }
@@ -746,36 +731,6 @@ export function computeRequiredDwellMs(wordCount: number): number {
     MAX_REQUIRED_DWELL_MS,
     Math.max(MIN_PAGE_DWELL_MS, Math.round(wordCount * MIN_MS_PER_WORD)),
   );
-}
-
-export async function processPageTurnForPassiveKnowledge(
-  pageWords: string[],
-  tappedWordsOnPage: Set<string>,
-  dwellTimeMs: number,
-  language = "es",
-  scope?: DbScope,
-): Promise<number> {
-  if (!pageWords || pageWords.length === 0) return 0;
-  const requiredDwellMs = computeRequiredDwellMs(pageWords.length);
-  if (dwellTimeMs < requiredDwellMs) {
-    return 0;
-  }
-  const untapped = new Set<string>();
-  for (const w of pageWords) {
-    const clean = w.trim().toLowerCase();
-    if (!clean || tappedWordsOnPage.has(clean) || tappedWordsOnPage.has(w)) continue;
-    untapped.add(clean);
-  }
-  let count = 0;
-  for (const lemma of untapped) {
-    try {
-      await recordPassiveExposure(language, lemma, scope);
-      count++;
-    } catch {
-      // Ignorar fallo de escritura individual
-    }
-  }
-  return count;
 }
 
 export type KnowledgeStatus = "seen" | "learning" | "known";

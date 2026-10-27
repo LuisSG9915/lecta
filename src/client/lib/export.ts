@@ -789,6 +789,7 @@ const BACKUP_SESSION_PREFIXES = [
   "bookStart:v1:",
   "preparation:v1:",
   "bookVocab:v1:",
+  "chapterFollow:v1:",
 ] as const;
 
 // Lista definitiva de claves de session a respaldar: las explícitas

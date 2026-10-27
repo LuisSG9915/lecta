@@ -337,6 +337,44 @@ describe("useReaderPagination", () => {
     expect(opts.navigate).not.toHaveBeenCalled();
   });
 
+  it("completeChapterTo cierra el capítulo también fuera del paso de página", async () => {
+    mocks.isFeatureFlagEnabled.mockImplementation((flag: string) => flag === "vocabGames");
+    mocks.buildPostChapterConsolidationQueue.mockReturnValue([
+      { item: { lemma: "casa" }, modality: "recognition" },
+    ]);
+    mocks.isConsolidationActive.mockReturnValue(true);
+    const opts = pageOptions({ sectionIndexRef: { current: 2 } });
+    render(opts);
+
+    await act(async () => {
+      await api.completeChapterTo(3, "#final");
+    });
+
+    expect(mocks.recordChapterCompleted).toHaveBeenCalledWith("es");
+    expect(opts.checkPassiveExposure).toHaveBeenCalled();
+    expect(opts.signalCompanion).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "goal_completed" }),
+    );
+    expect(opts.setPostChapterQueue).toHaveBeenCalled();
+    expect(opts.pendingNextChapterRef.current).toBe(3);
+    expect(opts.navigate).not.toHaveBeenCalled();
+  });
+
+  it("completeChapterTo navega al destino cuando no hay nada que consolidar", async () => {
+    const opts = pageOptions();
+    render(opts);
+
+    await act(async () => {
+      await api.completeChapterTo(2, "#final");
+    });
+
+    expect(mocks.recordChapterCompleted).toHaveBeenCalledWith("es");
+    expect(opts.navigate).toHaveBeenCalledWith("chapter", {
+      index: 2,
+      fragment: "#final",
+    });
+  });
+
   it("avisa de la guía visual cuando la telemetría lo pide", async () => {
     mocks.isFeatureFlagEnabled.mockImplementation((flag: string) => flag === "focusTelemetry");
     mocks.evaluateReadingFatigue.mockReturnValue({

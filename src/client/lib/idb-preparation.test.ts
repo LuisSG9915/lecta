@@ -224,6 +224,11 @@ describe("isBookScopedSessionKey", () => {
     expect(isBookScopedSessionKey("abc2", "bookStart:v1:abc")).toBe(false);
   });
 
+  it("las respuestas de capítulo también salen con su libro", () => {
+    expect(isBookScopedSessionKey("abc", "chapterFollow:v1:abc:Cap%201")).toBe(true);
+    expect(isBookScopedSessionKey("abc", "chapterFollow:v1:abc2:Cap%201")).toBe(false);
+  });
+
   it("claves ajenas al ciclo quedan intactas", () => {
     for (const key of [
       "latestBookHash",

@@ -6,6 +6,8 @@
 import { isFeatureFlagEnabled } from "../../lib/settings";
 import { markSectionPreviewed } from "../../lib/chapter-analysis";
 
+const RICH_CHAPTER_KEY_WORDS = 12;
+
 export type ReaderResumeCard = {
   label: string | null;
   lastReadText: string;
@@ -101,6 +103,9 @@ export function ReaderNotices(props: ReaderNoticesProps) {
   {isFeatureFlagEnabled("chapterPriming") && previewSuggested && !showPreview && chapterAnalysis && chapterAnalysis.unknownKeyWords.length > 0 && (
     <div className="reader-chapter-prep-pill" role="status" aria-live="polite">
       <span>
+        {chapterAnalysis.unknownKeyWords.length >= RICH_CHAPTER_KEY_WORDS
+          ? "Capítulo rico en vocabulario · "
+          : null}
         <strong>{chapterAnalysis.unknownKeyWords.length} palabras clave</strong> en este capítulo
       </span>
       <div className="reader-chapter-prep-actions">

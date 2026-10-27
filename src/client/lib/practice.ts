@@ -528,7 +528,7 @@ export interface EpisodicWordItem {
   shortGloss: string;
   chapterSentence: string; // La oración exacta del capítulo que acaba de leer
   chapterTitle: string;
-  source: "pre-chapter-primed" | "in-chapter-lookup";
+  source: "pre-chapter-primed" | "in-chapter-lookup" | "notebook-reencounter";
   partOfSpeech?: string;
 }
 
@@ -538,12 +538,6 @@ export interface ConsolidationAttemptMetrics {
   responseTimeMs: number;
   errorCount: number;
   usedHint: boolean;
-}
-
-export interface ImplicitFsrsGradeResult {
-  grade: 1 | 2 | 3 | 4; // 1=Again, 2=Hard, 3=Good, 4=Easy
-  episodicStabilityMultiplier: number;
-  masteryDeltaTheta: number;
 }
 
 export interface PostChapterConsolidationPrefs {
@@ -561,50 +555,6 @@ export const DEFAULT_CONSOLIDATION_PREFS: PostChapterConsolidationPrefs = {
 };
 
 /**
- * Infiere automáticamente la calificación FSRS (1..4) y el bono de estabilidad episódica
- * a partir de la telemetría de respuesta del usuario, sin pedirle autoevaluación manual.
- */
-export function computeImplicitFsrsGrade(
-  wordLength: number,
-  metrics: ConsolidationAttemptMetrics,
-): ImplicitFsrsGradeResult {
-  const effectiveLen = Math.max(4, wordLength);
-  const msPerChar = metrics.responseTimeMs / effectiveLen;
-
-  if (metrics.errorCount >= 2) {
-    return {
-      grade: 1,
-      episodicStabilityMultiplier: 1.0,
-      masteryDeltaTheta: -0.08,
-    };
-  }
-
-  if (metrics.errorCount === 1 || metrics.usedHint) {
-    return {
-      grade: 2,
-      episodicStabilityMultiplier: 1.0,
-      masteryDeltaTheta: 0.02,
-    };
-  }
-
-  if (msPerChar <= 650) {
-    return {
-      grade: 4,
-      episodicStabilityMultiplier: 1.35,
-      masteryDeltaTheta: 0.14,
-    };
-  }
-
-  return {
-    grade: 3,
-    episodicStabilityMultiplier: 1.2,
-    masteryDeltaTheta: 0.09,
-  };
-}
-
-export const calculateImplicitFsrsGrade = computeImplicitFsrsGrade;
-
-/**
  * Selecciona los 2 o 3 mejores ejercicios al terminar el capítulo priorizando
  * palabras consultadas durante la lectura y palabras vistas en la pre-lectura.
  */
@@ -617,11 +567,29 @@ export function buildPostChapterConsolidationQueue(
   if (!prefs.enabled || candidates.length === 0) return [];
   if (options?.bookId && prefs.mutedBookIds?.includes(options.bookId)) return [];
 
-  // Priorizar las palabras que el usuario necesitó tocar dentro del capítulo, luego las pre-vistas
-  const sorted = [...candidates].sort((a, b) => {
-    if (a.source !== b.source) {
-      return a.source === "in-chapter-lookup" ? -1 : 1;
+  const SOURCE_PRIORITY: Record<EpisodicWordItem["source"], number> = {
+    "in-chapter-lookup": 0,
+    "notebook-reencounter": 1,
+    "pre-chapter-primed": 2,
+  };
+
+  // Una sola entrada por lema, con la fuente de mayor prioridad: la
+  // misma palabra puede llegar consultada y también como reencuentro.
+  const byLemma = new Map<string, EpisodicWordItem>();
+  for (const item of candidates) {
+    const key = (item.lemma || item.surfaceForm).trim().toLowerCase();
+    if (!key) continue;
+    const prev = byLemma.get(key);
+    if (!prev || SOURCE_PRIORITY[item.source] < SOURCE_PRIORITY[prev.source]) {
+      byLemma.set(key, item);
     }
+  }
+
+  // Priorizar las palabras que el usuario tocó en el capítulo, luego
+  // los reencuentros de su Cuaderno y por último las pre-vistas.
+  const sorted = [...byLemma.values()].sort((a, b) => {
+    const diff = SOURCE_PRIORITY[a.source] - SOURCE_PRIORITY[b.source];
+    if (diff !== 0) return diff;
     return b.chapterSentence.length - a.chapterSentence.length;
   });
 

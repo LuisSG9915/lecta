@@ -4,9 +4,12 @@ import path from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import {
   checkAnchor,
+  checkReachable,
   checkReference,
   renderMarkdown,
+  resolveCommit,
   runAudit,
+  stripNonUsage,
   writePack,
 } from "./audit-investigacion.mjs";
 
@@ -28,6 +31,7 @@ describe("audit-investigacion", () => {
     const report = await runAudit({ root: ROOT });
     expect(report.summary.claims).toBe(14);
     expect(report.summary.fail).toBe(0);
+    expect(report.summary.refutedExpected).toBe(0);
     expect(report.summary.codeFail).toBe(0);
     expect(report.summary.codePass).toBe(14);
     // Sin red las referencias quedan pendientes, nunca aprobadas por defecto.
@@ -42,32 +46,21 @@ describe("audit-investigacion", () => {
         .find((result) => result.id === id)
         .checks.find((check) => check.kind === "probe");
     const theta = probe("H3-theta-escala").observed;
-    expect(theta.wordDifficulty_zipf6).toBe(1);
     expect(theta.betaFromZipf_zipf6).toBe(-2);
-    expect(theta.desfase_logits_zipf6).toBe(3);
-    expect(theta.zpd_vivo_zipf_con_theta4).toBeCloseTo(2.35, 1);
-    expect(theta.zpd_vivo_zipf_con_theta1).toBeCloseTo(5.35, 1);
-    expect(theta.zpd_escenarioA_devuelve_vacio).toBe(true);
-
-    const dwell = probe("H5-pasiva").observed;
-    expect(dwell.saturacion_desde_palabras).toBe(75);
-    expect(dwell.requerido_250_palabras).toBe(12_000);
+    expect(theta.theta_L1_porDefecto).toBe(0);
+    expect(theta.theta_L2_porDefecto).toBe(-0.6);
+    expect(theta.exporta_escala_vieja).toEqual([]);
+    expect(theta.escribe_llave_vieja).toBe(false);
+    expect(theta.migracion_resta).toBe(3);
+    expect(theta.saveUserTheta_en_calibracion).toBe(0);
+    expect(theta.applyPreviewKnownSignal_en_wordPanel).toBe(1);
+    expect(theta.sectionWords_usa_7_menos_zipf).toBe(false);
+    expect(theta.sectionWords_usa_4_menos_zipf).toBe(true);
 
     const xp = probe("H7-xp-proxy").observed;
     expect(xp.xp_consulta).toBe(2);
     expect(xp.xp_guardada_rara).toBe(7);
     expect(xp.xp_guardada_comun).toBe(3);
-
-    const fsrs = probe("H6-fsrs-manual").observed;
-    expect(fsrs.params_manuales.reader_tap.stability).toBe(1);
-    expect(fsrs.desvio_reader_tap).not.toBe(0);
-    expect(fsrs.multiplicador_episodico).toBe("presente");
-
-    const bank = probe("H3-cat-prior").observed;
-    expect(bank.prior_theta).toBe(4);
-    expect(bank.min).toBeLessThan(-2);
-    expect(bank.max).toBeGreaterThan(2);
-    expect(bank.info_fisher_maxima).toBeLessThan(0.3);
   }, 60_000);
 
   it("detecta un anclaje roto en vez de dar por buena la cita", () => {
@@ -158,6 +151,86 @@ describe("audit-investigacion", () => {
       { online: true, fetchImpl: fetchMalTitulo },
     );
     expect(malTitulo.status).toBe("FAIL");
+  });
+
+  it("distingue el uso real de una reexportación, un comentario y una prueba", () => {
+    const dir = tmpDir();
+    fs.mkdirSync(path.join(dir, "src"), { recursive: true });
+    fs.writeFileSync(path.join(dir, "src", "a.ts"), "export function foo() { return 1; }\n", "utf8");
+    fs.writeFileSync(path.join(dir, "src", "reexport.ts"), 'export {\n  foo,\n} from "./a";\n', "utf8");
+    fs.writeFileSync(
+      path.join(dir, "src", "comentario.ts"),
+      "// foo() se usaba aquí\nexport const x = 1;\n",
+      "utf8",
+    );
+    fs.writeFileSync(path.join(dir, "src", "a.test.ts"), 'import { foo } from "./a";\nfoo();\n', "utf8");
+
+    const sinUsos = checkReachable(dir, { symbol: "foo", definedIn: "src/a.ts" });
+    expect(sinUsos.status).toBe("FAIL");
+    expect(sinUsos.observed.callers).toEqual([]);
+
+    fs.writeFileSync(
+      path.join(dir, "src", "usa.ts"),
+      'import { foo } from "./a";\n\nexport const y = foo();\n',
+      "utf8",
+    );
+    const conUso = checkReachable(dir, { symbol: "foo", definedIn: "src/a.ts" });
+    expect(conUso.status).toBe("PASS");
+    expect(conUso.observed.callers[0]).toMatchObject({ file: "src/usa.ts", line: 3 });
+  });
+
+  it("stripNonUsage conserva el número de líneas", () => {
+    const texto = [
+      "/* uno",
+      "   dos",
+      "   tres */",
+      "const a = 1;",
+      'import {',
+      "  a,",
+      "  b",
+      '} from "x";',
+    ].join("\n");
+    expect(stripNonUsage(texto).split("\n").length).toBe(texto.split("\n").length);
+  });
+
+  it("resuelve el SHA del commit auditado", () => {
+    expect(resolveCommit(ROOT)).toMatch(/^[0-9a-f]{40}$/);
+  });
+
+  it("un veredicto de auditoría refutado se espera y uno viejo cuenta como fallo", async () => {
+    const dir = tmpDir();
+    fs.writeFileSync(path.join(dir, "muestra.ts"), "const a = 1;\n", "utf8");
+    const auditVerdict = { status: "REFUTADA", date: "2026-10-26", motivo: "x", evidencia: [] };
+    const r1 = {
+      id: "r1",
+      title: "ancla que falla",
+      statement: "el código no dice esto",
+      auditVerdict,
+      checks: [{ type: "code-anchor", file: "muestra.ts", line: 1, window: 0, expect: "const z" }],
+    };
+    const r2 = {
+      id: "r2",
+      title: "ancla que pasa",
+      statement: "el código sí dice esto",
+      auditVerdict,
+      checks: [{ type: "code-anchor", file: "muestra.ts", line: 1, window: 0, expect: "const a" }],
+    };
+    const claimsPath = path.join(dir, "claims.json");
+    fs.writeFileSync(claimsPath, JSON.stringify({ version: 1, claims: [r1, r2], references: {} }), "utf8");
+
+    const report = await runAudit({ root: dir, claimsPath });
+    const byId = (id) => report.results.find((result) => result.id === id);
+    expect(byId("r1").status).toBe("REFUTED_EXPECTED");
+    expect(byId("r2").status).toBe("VERDICT_STALE");
+    expect(report.summary.refutedExpected).toBe(1);
+    expect(report.summary.fail).toBe(1);
+    expect(report.verdict).toBe("FAIL");
+
+    // Otro archivo de registro: el arnés cachea por ruta el texto leído.
+    const soloPath = path.join(dir, "claims-solo.json");
+    fs.writeFileSync(soloPath, JSON.stringify({ version: 1, claims: [r1], references: {} }), "utf8");
+    const soloRefutada = await runAudit({ root: dir, claimsPath: soloPath });
+    expect(soloRefutada.verdict).not.toBe("FAIL");
   });
 
   it("renderiza el reporte y exporta un paquete con hashes", async () => {

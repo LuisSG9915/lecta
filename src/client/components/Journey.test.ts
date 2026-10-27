@@ -13,6 +13,8 @@ let mockWords: SavedWord[] = [];
 let mockPositions: SavedBookPosition[] = [];
 let mockReviews: SavedReview[] = [];
 let mockKnowledge: KnownWord[] = [];
+let mockSessionKeys: string[] = [];
+let mockSession: Record<string, string> = {};
 
 vi.mock("../lib/idb", async (importOriginal) => {
   const mod = await importOriginal<typeof import("../lib/idb")>();
@@ -25,7 +27,8 @@ vi.mock("../lib/idb", async (importOriginal) => {
     listAllReviews: vi.fn(async () => mockReviews),
     listReadingEvents: vi.fn(async () => []),
     listKnowledge: vi.fn(async () => mockKnowledge),
-    loadSessionValue: vi.fn(async () => null),
+    listSessionKeys: vi.fn(async () => mockSessionKeys),
+    loadSessionValue: vi.fn(async (key: string) => mockSession[key] ?? null),
     saveSessionValue: vi.fn(async () => {}),
   };
 });
@@ -99,6 +102,8 @@ describe("Journey (Tu recorrido)", () => {
     ];
     mockKnowledge = [];
     mockCompanionContext = null;
+    mockSessionKeys = [];
+    mockSession = {};
   });
 
   afterEach(() => {
@@ -213,6 +218,26 @@ describe("Journey (Tu recorrido)", () => {
     expect(container?.textContent).toContain("4 días seguidos");
     expect(container?.querySelector(".journey-companion-section")).toBeTruthy();
     expect(container?.querySelectorAll(".journey-seal-item").length).toBe(8);
+  });
+
+  it("muestra cuántos capítulos sentiste al día, como valoración propia", async () => {
+    mockSessionKeys = [
+      "chapterFollow:v1:book-1:Cap%201",
+      "chapterFollow:v1:book-1:Cap%202",
+      "preparation:v1:book-1:cap1",
+    ];
+    mockSession = {
+      "chapterFollow:v1:book-1:Cap%201": JSON.stringify({ version: 1, level: "al-dia", updatedAt: 1 }),
+      "chapterFollow:v1:book-1:Cap%202": JSON.stringify({ version: 1, level: "perdido", updatedAt: 2 }),
+    };
+    const closeMock = vi.fn();
+    await act(async () => {
+      root?.render(h(Journey, { onClose: closeMock, books: sampleBooks }));
+    });
+    await act(async () => {
+      for (let i = 0; i < 6; i++) await Promise.resolve();
+    });
+    expect(container?.textContent).toContain("Seguiste el hilo en 1 de 2 capítulos");
   });
 
   it("muestra la cuadrícula de exlibris para libros concluidos", async () => {

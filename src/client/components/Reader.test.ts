@@ -1287,7 +1287,6 @@ describe("Fase 4: Pruebas de Integración End-to-End en Reader.test.ts", () => {
     const { default: DeepReadingSummaryModal } = await import("./DeepReadingSummaryModal");
     const {
       buildPostChapterConsolidationQueue,
-      calculateImplicitFsrsGrade,
       DEFAULT_CONSOLIDATION_PREFS,
     } = await import("../lib/practice");
 
@@ -1325,18 +1324,6 @@ describe("Fase 4: Pruebas de Integración End-to-End en Reader.test.ts", () => {
     expect(queue[0].item.lemma).toBe("desdén");
     expect(queue[0].item.source).toBe("in-chapter-lookup");
     expect(queue[1].item.lemma).toBe("quimera");
-
-    // 4.2 Calificación FSRS implícita por latencia (sin pedir notas al usuario)
-    const fastResponseGrade = calculateImplicitFsrsGrade(6, {
-      lemma: "desdén",
-      modality: "sentence-cloze",
-      responseTimeMs: 2500, // 2500 / 6 = 416 ms/char <= 650 ms/char
-      errorCount: 0,
-      usedHint: false,
-    });
-    expect(fastResponseGrade.grade).toBe(4); // Fácil implícito
-    expect(fastResponseGrade.episodicStabilityMultiplier).toBe(1.35);
-    expect(fastResponseGrade.masteryDeltaTheta).toBe(0.14);
 
     // 4.3 DeepReadingSummaryModal renderiza el micro-reto y permite continuar
     root = createRoot(host);

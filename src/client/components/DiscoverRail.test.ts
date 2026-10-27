@@ -123,6 +123,31 @@ describe("DiscoverRail", () => {
     expect(badges()).toEqual(["~100%", "~0%"]);
   });
 
+  it("entre libros en tu nivel, el que repite palabras de tu cuaderno va primero", async () => {
+    const books = [book("sin-reencuentros"), book("con-reencuentros")];
+    const vocabs: Record<string, ReturnType<typeof vocab>> = {
+      "sin-reencuentros": vocab([["casa", 6]]),
+      "con-reencuentros": vocab([
+        ["casa", 6],
+        ["perenne", 2.1],
+      ]),
+    };
+    await act(async () => {
+      root.render(
+        h(DiscoverRail, {
+          library: [],
+          onOpen: vi.fn(),
+          onGet: vi.fn(),
+          fetchIndex: async () => index(books),
+          fetchVocab: async (id: string) => vocabs[id] ?? null,
+          loadInputs: async () => ({ ...INPUTS, saved: new Set(["perenne"]) }),
+        }),
+      );
+    });
+
+    expect(titles()).toEqual(["Libro con-reencuentros", "Libro sin-reencuentros"]);
+  });
+
   it("el libro ya en la estantería muestra «Abrir» y abre ese ítem", async () => {
     const owned = shelfItem("abc123");
     const onOpen = vi.fn();
@@ -249,6 +274,61 @@ describe("DiscoverRail", () => {
     const newWords = host.querySelector(".discover-new-words");
     expect(newWords).toBeTruthy();
     expect(newWords?.textContent).toContain("palabras útiles");
+  });
+
+  it("mide cada libro con el perfil de su idioma", async () => {
+    const books = [
+      book("es-1", { title: "Libro en español", language: "es" }),
+      book("en-1", { title: "Book in English", language: "en" }),
+    ];
+    const languages: string[] = [];
+    const loadInputs = vi.fn(async (language: string) => {
+      languages.push(language);
+      return INPUTS;
+    });
+
+    await act(async () => {
+      root.render(
+        h(DiscoverRail, {
+          library: [],
+          onOpen: vi.fn(),
+          onGet: vi.fn(),
+          fetchIndex: async () => index(books),
+          fetchVocab: async () => null,
+          loadInputs,
+        }),
+      );
+    });
+
+    expect(languages.filter((lang) => lang === "es")).toHaveLength(1);
+    expect(languages.filter((lang) => lang === "en")).toHaveLength(1);
+  });
+
+  it("muestra los reencuentros con el Cuaderno al medir la cobertura", async () => {
+    const books = [book("a")];
+    const vocabs = {
+      a: vocab([
+        ["casa", 6],
+        ["perenne", 2.1],
+      ]),
+    };
+
+    await act(async () => {
+      root.render(
+        h(DiscoverRail, {
+          library: [],
+          onOpen: vi.fn(),
+          onGet: vi.fn(),
+          fetchIndex: async () => index(books),
+          fetchVocab: async (id: string) => vocabs[id as keyof typeof vocabs] ?? null,
+          loadInputs: async () => ({ ...INPUTS, saved: new Set(["perenne"]) }),
+        }),
+      );
+    });
+
+    const reencuentros = host.querySelector(".discover-reencuentros");
+    expect(reencuentros).toBeTruthy();
+    expect(reencuentros?.textContent).toContain("Repite 1 palabra de tu cuaderno");
   });
 
   it("muestra la píldora de afinidad .book-affinity-pill con data-tone y label cálido (Fase 1)", async () => {

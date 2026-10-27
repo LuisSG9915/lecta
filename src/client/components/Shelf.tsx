@@ -21,7 +21,7 @@ import {
   affinityBadgeLabel,
   affinityTierOf,
   coverageOfBook,
-  inputsForCoverage,
+  createCoverageInputsLoader,
   type BookCoverage,
 } from "../lib/coverage";
 import { playCompanionSound } from "../lib/companion-audio";
@@ -376,28 +376,32 @@ export default function Shelf({
       navigator as Navigator & { connection?: { saveData?: boolean } }
     ).connection;
     if (connection?.saveData || navigator.onLine === false) return;
-    const hashes = library
+    const targets = library
       .filter((book) => !book.remoteOnly)
-      .map((book) => book.hash);
-    if (!hashes.length) return;
+      .map((book) => ({ hash: book.hash, language: book.language }));
+    if (!targets.length) return;
 
     let cancelled = false;
     void (async () => {
       const scope = captureDbScope();
       // El perfil necesita el catálogo (zipfs de la evidencia): si no
-      // hay red no se puede medir nada y el lote entero se omite.
-      const inputs = await inputsForCoverage("es", scope).catch(() => null);
-      if (!inputs || cancelled) return;
+      // hay red no se puede medir nada y el lote entero se omite. Se
+      // lee una vez por idioma: cada libro se mide con el suyo.
+      const inputsFor = createCoverageInputsLoader(scope);
+      const firstInputs = await inputsFor(targets[0].language);
+      if (!firstInputs || cancelled) return;
       // El manifiesto y su análisis viven en un chunk diferido: la
       // estantería solo lo carga cuando hay red y libros que medir.
       const { loadBookVocab, analyzeStoredBook } = await import(
         "../lib/book-vocab"
       );
-      for (const hash of hashes) {
+      for (const target of targets) {
         if (cancelled) return;
-        let manifest = await loadBookVocab(hash, scope);
+        const inputs = await inputsFor(target.language);
+        if (!inputs || cancelled) continue;
+        let manifest = await loadBookVocab(target.hash, scope);
         if (!manifest) {
-          manifest = await analyzeStoredBook(hash, scope);
+          manifest = await analyzeStoredBook(target.hash, scope);
         }
         if (!manifest || cancelled) continue;
         const coverage = coverageOfBook(
@@ -407,7 +411,7 @@ export default function Shelf({
         );
         setBookCoverages((prev) => {
           const next = new Map(prev);
-          next.set(hash, coverage);
+          next.set(target.hash, coverage);
           return next;
         });
       }
@@ -920,7 +924,11 @@ export default function Shelf({
                       {bookCoverages.get(current.hash) ? (
                         <span
                           className={`shelf-affinity-badge shelf-affinity-badge--${affinityTierOf(bookCoverages.get(current.hash)!.percent)}`}
-                          title={`Afinidad léxica: ${bookCoverages.get(current.hash)!.percent}%`}
+                          title={`Afinidad léxica: ${bookCoverages.get(current.hash)!.percent}%${
+                            bookCoverages.get(current.hash)!.reencuentrosCount
+                              ? ` · Repite ${bookCoverages.get(current.hash)!.reencuentrosCount} de tu cuaderno`
+                              : ""
+                          }`}
                         >
                           {bookCoverages.get(current.hash)!.percent}% vocabulario conocido
                         </span>
@@ -1275,7 +1283,11 @@ export default function Shelf({
                       {cov ? (
                         <span
                           className={`shelf-affinity-badge shelf-affinity-badge--${affinityTierOf(cov.percent)}`}
-                          title={`Afinidad léxica: ~${cov.percent}%`}
+                          title={`Afinidad léxica: ~${cov.percent}%${
+                            cov.reencuentrosCount
+                              ? ` · Repite ${cov.reencuentrosCount} de tu cuaderno`
+                              : ""
+                          }`}
                         >
                           {affinityBadgeLabel(cov.percent)}
                         </span>

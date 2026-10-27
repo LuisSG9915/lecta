@@ -60,6 +60,53 @@ export function totalReadingMs(intervals: TimeInterval[]): number {
   return totalMs(intervals);
 }
 
+export interface RetentionSummary {
+  /** Total de repasos verificados (excluye autoinformes 'declared'). */
+  verifiedReviewsCount: number;
+  /** Porcentaje de aciertos sobre repasos verificados, o null si aún no hay. */
+  recallRatePct: number | null;
+  /** Palabras activas con al menos un repaso y estabilidad FSRS ≥ 7 días. */
+  retained7dCount: number;
+  /** Palabras activas con al menos un repaso y estabilidad FSRS ≥ 30 días. */
+  retained30dCount: number;
+}
+
+// Retención medible con lo que ya se guarda: la calificación de cada
+// repaso y la estabilidad FSRS de cada tarjeta. No mide comprensión;
+// mide si el vocabulario sigue disponible con el tiempo.
+export function computeRetentionSummary(
+  words: SavedWord[],
+  reviews: SavedReview[],
+): RetentionSummary {
+  const verified = reviews.filter((r) => r.kind !== "declared");
+  let hits = 0;
+  for (const r of verified) {
+    if (r.rating === "good" || r.rating === "easy" || r.rating === "correct") {
+      hits += 1;
+    }
+  }
+  const recallRatePct =
+    verified.length > 0 ? Math.round((hits / verified.length) * 100) : null;
+
+  let retained7dCount = 0;
+  let retained30dCount = 0;
+  for (const w of words) {
+    if (w.deleted) continue;
+    const reps = w.card?.reps ?? 0;
+    const stability = w.card?.stability ?? 0;
+    if (reps <= 0) continue;
+    if (stability >= 7) retained7dCount += 1;
+    if (stability >= 30) retained30dCount += 1;
+  }
+
+  return {
+    verifiedReviewsCount: verified.length,
+    recallRatePct,
+    retained7dCount,
+    retained30dCount,
+  };
+}
+
 export interface ReadingRecords {
   bestReadingDay: { dayKey: string; minutes: number } | null;
   longestSessionMinutes: number;

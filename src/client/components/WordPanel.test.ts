@@ -176,6 +176,45 @@ describe("WordPanel - Acciones Rápidas (Fase 4.3)", () => {
     expect(viewBtn?.textContent).toContain("Ver en cuaderno →");
   });
 
+  it("al reencontrar una palabra practicada muestra su etapa de aprendizaje", async () => {
+    const { loadSavedWord } = await import("../lib/idb");
+    vi.mocked(loadSavedWord).mockResolvedValueOnce({
+      key: "es:efimero",
+      form: "efimero",
+      language: "es",
+      savedAt: Date.now(),
+      card: {
+        state: 2,
+        due: Date.now() + 86_400_000,
+        stability: 30,
+        difficulty: 5,
+        elapsed_days: 3,
+        scheduled_days: 10,
+        reps: 3,
+        lapses: 0,
+        last_review: Date.now() - 3 * 86_400_000,
+      },
+    });
+
+    render(
+      h(WordPanel, {
+        word: "efimero",
+        context: "Un momento efimero.",
+        language: "es",
+        bookHash: "book123",
+        onClose: vi.fn(),
+        onSaved: vi.fn(),
+      }),
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const badge = host.querySelector(".word-panel-saved-badge");
+    expect(badge?.textContent).toBe("★ Guardada en tu cuaderno · Asentada");
+  });
+
   it("al tocar '✓ Ya la sé' muestra aviso de recalibración de perfil y llama a onClose", async () => {
     const onClose = vi.fn();
     const onNotice = vi.fn();
@@ -211,6 +250,41 @@ describe("WordPanel - Acciones Rápidas (Fase 4.3)", () => {
       vi.advanceTimersByTime(600);
     });
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it("«Ya la sé» ajusta theta una sola vez y en la llave viva", async () => {
+    window.localStorage.clear();
+    const onRecordSilentCalibration = vi.fn();
+
+    render(
+      h(WordPanel, {
+        word: "efimero",
+        context: "Un momento efimero.",
+        language: "es",
+        bookHash: "book123",
+        onClose: vi.fn(),
+        onSaved: vi.fn(),
+        onRecordSilentCalibration,
+      }),
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // La consulta de ficha sí deja su señal; el acto de declarar no la repite.
+    onRecordSilentCalibration.mockClear();
+    const knownBtn = host.querySelector<HTMLButtonElement>(".btn--quick-known")!;
+    await act(async () => {
+      click(knownBtn);
+    });
+
+    expect(onRecordSilentCalibration).not.toHaveBeenCalled();
+
+    const { loadUserLanguageProfile } = await import("../lib/profile-models");
+    expect(loadUserLanguageProfile().thetaByLang.es).toBeGreaterThan(0);
+    // La llave heredada (escala 7 − zipf) ya no se escribe.
+    expect(window.localStorage.getItem("lecta:user_theta:es:v1")).toBeNull();
   });
 
   it("al tocar '★ Fijar en mi cuaderno' guarda la palabra con prioridad y contexto", async () => {
@@ -531,6 +605,13 @@ describe("WordPanel - Acciones Rápidas (Fase 4.3)", () => {
       window.dispatchEvent(new KeyboardEvent("keydown", { key: "s", bubbles: true }));
     });
     expect(saveKnowledge).toHaveBeenCalled();
+    // Una declaración queda en el historial pero no paga XP.
+    const { recordReview } = await import("../lib/reviews");
+    expect(recordReview).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "declared", rating: "known" }),
+      expect.anything(),
+      { award: false },
+    );
   });
 
   it("dispara automáticamente la consulta de IA cuando la palabra no está en catálogo (OBJ-03)", async () => {

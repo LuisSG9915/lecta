@@ -12,8 +12,10 @@ import {
 } from "../lib/catalog";
 import { getLanguageTheta } from "../lib/profile-models";
 import {
-  coverageLabel,
+  compareBookCoverages,
+  coverageLanguageOf,
   coverageOfBook,
+  createCoverageInputsLoader,
   inputsForCoverage,
   type BookCoverage,
   type CoverageInputs,
@@ -69,9 +71,9 @@ export default function DiscoverRail({
   const [coverages, setCoverages] = useState<Map<string, BookCoverage>>(
     new Map(),
   );
-  const [confidence, setConfidence] = useState<CoverageInputs["confidence"]>(
-    "low",
-  );
+  const [confidenceByLang, setConfidenceByLang] = useState<
+    Map<string, CoverageInputs["confidence"]>
+  >(new Map());
   const [getting, setGetting] = useState<string | null>(null);
   const [errorId, setErrorId] = useState<string | null>(null);
   const [coverBroken, setCoverBroken] = useState<Set<string>>(new Set());
@@ -97,8 +99,9 @@ export default function DiscoverRail({
     };
   }, [fetchIndex]);
 
-  // Coberturas: una sola lectura del perfil, luego un manifiesto a la
-  // vez. Con saveData no se pide nada — el riel funciona sin insignias.
+  // Coberturas: el perfil se lee una vez por idioma, luego un manifiesto
+  // a la vez. Con saveData no se pide nada — el riel funciona sin
+  // insignias.
   useEffect(() => {
     if (!books?.length) return;
     const connection = (
@@ -109,11 +112,17 @@ export default function DiscoverRail({
     let cancelled = false;
     const scope: DbScope | undefined = captureDbScope();
     void (async () => {
-      const inputs = await loadInputs("es", scope).catch(() => null);
-      if (!inputs || cancelled) return;
-      if (!cancelledRef.current) setConfidence(inputs.confidence);
+      const inputsFor = createCoverageInputsLoader(scope, loadInputs);
       for (const book of books.slice(0, VOCAB_PREFETCH_LIMIT)) {
         if (cancelled) return;
+        const lang = coverageLanguageOf(book.language);
+        const inputs = await inputsFor(lang);
+        if (cancelled) return;
+        if (!inputs) continue;
+        if (!cancelledRef.current)
+          setConfidenceByLang((prev) =>
+            prev.get(lang) === inputs.confidence ? prev : new Map(prev).set(lang, inputs.confidence),
+          );
         const manifest = await fetchVocab(book.id, scope).catch(() => null);
         // Un manifiesto que no baja no apaga el resto del riel.
         if (!manifest || cancelled) continue;
@@ -151,8 +160,8 @@ export default function DiscoverRail({
     for (const book of books) {
       (coverages.has(book.id) ? measured : rest).push(book);
     }
-    measured.sort(
-      (a, b) => (coverages.get(b.id)?.percent ?? 0) - (coverages.get(a.id)?.percent ?? 0),
+    measured.sort((a, b) =>
+      compareBookCoverages(coverages.get(a.id)!, coverages.get(b.id)!),
     );
     return [...measured, ...rest];
   }, [books, coverages]);
@@ -204,16 +213,17 @@ export default function DiscoverRail({
           const owned = book.epubSha256
             ? ownedByHash.get(book.epubSha256)
             : undefined;
-          const label = coverage
-            ? coverageLabel(coverage.percent, confidence)
-            : null;
+          const confidence =
+            confidenceByLang.get(coverageLanguageOf(book.language)) ?? "low";
           const palette = coverPalette(book.id);
           const showCover = book.cover && !coverBroken.has(book.id);
           const tags = getBookMoodTags(book);
           const userTheta = getLanguageTheta(book.language || "es");
+          // Una sola etiqueta de nivel: la cobertura manda cuando el
+          // perfil la sostiene; si no, se usa la dificultad curada.
           const affinity = getBookAffinityBadge(
             book.language || "es",
-            coverage?.percent ?? book.difficulty,
+            coverage && confidence !== "low" ? coverage.percent : book.difficulty,
             userTheta,
           );
           return (
@@ -275,10 +285,15 @@ export default function DiscoverRail({
                   {book.title}
                 </p>
                 <p className="meta">{book.author}</p>
-                {label ? <p className="meta discover-label">{label}</p> : null}
                 {coverage?.newWordsCount != null && coverage.newWordsCount > 0 ? (
                   <p className="meta discover-new-words">
                     +{coverage.newWordsCount} palabras útiles
+                  </p>
+                ) : null}
+                {coverage?.reencuentrosCount != null && coverage.reencuentrosCount > 0 ? (
+                  <p className="meta discover-reencuentros">
+                    Repite {coverage.reencuentrosCount}{" "}
+                    {coverage.reencuentrosCount === 1 ? "palabra" : "palabras"} de tu cuaderno
                   </p>
                 ) : null}
               </div>

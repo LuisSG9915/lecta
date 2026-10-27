@@ -22,6 +22,7 @@ import {
   bookLabel,
   calculateInkPoints,
   computeLanguageLexicalGrowth,
+  computeRetentionSummary,
   finishedBookHashes,
   inkPathNodes,
   literaryRankFor,
@@ -44,6 +45,7 @@ import { displayTitle } from "../lib/cover";
 import { CompanionStage } from "./CompanionStage";
 import ReadingActivity from "./ReadingActivity";
 import { dayKeyOf } from "../lib/reading-activity";
+import { summarizeChapterFollows } from "../lib/chapter-follow";
 import {
   parseReadingGoal,
   READING_GOAL_KEY,
@@ -202,6 +204,7 @@ export default function Journey({ onClose, books }: JourneyProps) {
   const [knownWords, setKnownWords] = useState<KnownWord[]>([]);
   const [positions, setPositions] = useState<SavedBookPosition[]>([]);
   const [reviews, setReviews] = useState<SavedReview[]>([]);
+  const [chapterFollows, setChapterFollows] = useState({ answered: 0, atEase: 0 });
 
   // Estados interactivos para hitos y modales
   const [activeMilestone, setActiveMilestone] =
@@ -265,7 +268,22 @@ export default function Journey({ onClose, books }: JourneyProps) {
     () => Math.round(totalMs / 60_000),
     [totalMs],
   );
+  useEffect(() => {
+    let cancelled = false;
+    summarizeChapterFollows(captureDbScope())
+      .then((summary) => {
+        if (!cancelled) setChapterFollows(summary);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const stages = useMemo(() => wordStages(words), [words]);
+  const retention = useMemo(
+    () => computeRetentionSummary(words, reviews),
+    [words, reviews],
+  );
   const settledTotal = stages.settledCount + stages.masteredCount;
   const settledPct =
     stages.total > 0 ? Math.round((settledTotal / stages.total) * 100) : 0;
@@ -793,6 +811,16 @@ export default function Journey({ onClose, books }: JourneyProps) {
                         <strong className="vocab-progress-count">{stages.newCount}</strong>
                       </span>
                     </div>
+                    <p className="meta journey-retention-summary">
+                      {retention.recallRatePct !== null
+                        ? `Retención en repasos: ${retention.recallRatePct}% · ${retention.retained30dCount} con estabilidad de 30+ días (${retention.retained7dCount} con 7+ días)`
+                        : `${retention.retained30dCount} con estabilidad de 30+ días · Haz tu primer repaso en el Cuaderno para medir tu retención`}
+                    </p>
+                    <p className="meta journey-follow-summary">
+                      {chapterFollows.answered > 0
+                        ? `Seguiste el hilo en ${chapterFollows.atEase} de ${chapterFollows.answered} capítulos · tu propia valoración`
+                        : "Al cerrar un capítulo puedes marcar si seguiste el hilo; tu valoración aparecerá aquí"}
+                    </p>
                   </>
                 ) : (
                   <p className="meta">

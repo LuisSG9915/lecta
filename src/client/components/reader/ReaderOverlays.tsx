@@ -112,6 +112,7 @@ export interface ReaderOverlaysProps {
   onShareDeepSummaryQuote?: (quote?: string) => void;
   onContinueDeepSummary?: () => void;
   onCloseDeepSummary?: () => void;
+  onWordConsolidated?: (word: SavedWord) => void;
 
   // BookGlossaryModal
   glossaryOpen?: boolean;
@@ -196,6 +197,7 @@ export function ReaderOverlays({
   onShareDeepSummaryQuote,
   onContinueDeepSummary,
   onCloseDeepSummary,
+  onWordConsolidated,
 
   glossaryOpen = false,
   onCloseGlossary,
@@ -446,6 +448,7 @@ export function ReaderOverlays({
           onShareQuote={onShareDeepSummaryQuote}
           onContinue={onContinueDeepSummary}
           onClose={onCloseDeepSummary}
+          onWordConsolidated={onWordConsolidated}
         />
       ) : null}
 

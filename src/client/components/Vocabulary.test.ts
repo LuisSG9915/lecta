@@ -18,6 +18,7 @@ import { loadUseAi } from "../lib/ai-pref";
 import { saveSessionValue } from "../lib/idb";
 import { pushKnowledgeToServer } from "../lib/reading-sync";
 import { pushWordsToServer } from "../lib/vocab";
+import { RETENTION_HORIZON_KEY } from "../lib/fsrs";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
   true;
@@ -234,8 +235,75 @@ describe("Aprender", () => {
   });
 });
 
-describe("Filtros por idioma y libro", () => {
-  it("muestra selector de idioma si hay palabras en más de un idioma y filtra la lista", async () => {
+describe("Chequeo de retención a 30 días", () => {
+  it("ofrece el chequeo solo con palabras consolidadas y lo arranca al tocar", async () => {
+    const consolidated = {
+      ...createEmptyCard(new Date(0)),
+      reps: 3,
+      stability: 30,
+      state: 2 as const,
+      last_review: new Date(0),
+    };
+    listWordsMock.mockResolvedValue([
+      word({ form: "casa", meaning: "hogar", card: consolidated }),
+    ]);
+    await render();
+
+    expect(text()).toContain("Memoria a largo plazo · 1");
+    await click("Chequeo 30 días");
+    expect(text()).toContain("1 de 1");
+    expect(text()).toContain("hogar");
+  });
+
+  it("no ofrece el chequeo a palabras revisadas hace menos de 30 días", async () => {
+    const recent = {
+      ...createEmptyCard(new Date(0)),
+      reps: 3,
+      stability: 30,
+      state: 2 as const,
+      last_review: new Date(Date.now() - 5 * 86_400_000),
+    };
+    listWordsMock.mockResolvedValue([word({ form: "casa", meaning: "hogar", card: recent })]);
+    await render();
+    expect(text()).not.toContain("Chequeo 30 días");
+  });
+
+  it("no aparece si ninguna palabra llegó a la etapa asentada", async () => {
+    listWordsMock.mockResolvedValue([
+      word({ form: "casa", meaning: "hogar" }),
+    ]);
+    await render();
+    expect(text()).not.toContain("Chequeo 30 días");
+  });
+});
+
+describe("Ritmo de repaso", () => {
+  beforeEach(() => {
+    window.localStorage.removeItem(RETENTION_HORIZON_KEY);
+  });
+  afterEach(() => {
+    window.localStorage.removeItem(RETENTION_HORIZON_KEY);
+  });
+
+  const pressed = (label: string) =>
+    [...host.querySelectorAll("button")]
+      .find((b) => b.textContent === label)
+      ?.getAttribute("aria-pressed");
+
+  it("muestra el ritmo equilibrado por defecto y guarda el que elijas", async () => {
+    listWordsMock.mockResolvedValue([word({ form: "casa", meaning: "hogar" })]);
+    await render();
+    expect(pressed("Equilibrado 90%")).toBe("true");
+    expect(pressed("Fluido 85%")).toBe("false");
+
+    await click("Fluido 85%");
+    expect(window.localStorage.getItem(RETENTION_HORIZON_KEY)).toBe("relaxed");
+    expect(pressed("Fluido 85%")).toBe("true");
+    expect(pressed("Equilibrado 90%")).toBe("false");
+  });
+});
+
+describe("Filtros por idioma y libro", () => {  it("muestra selector de idioma si hay palabras en más de un idioma y filtra la lista", async () => {
     listWordsMock.mockResolvedValue([
       word({ form: "casa", lemma: "casa", language: "es", key: "es:casa", meaning: "hogar" }),
       word({ form: "wander", lemma: "wander", language: "en", key: "en:wander", meaning: "vagar" }),
