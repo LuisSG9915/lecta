@@ -177,7 +177,7 @@ export class LectaApi {
       headers: {
         "content-type": "application/json",
         origin: this.config.baseUrl,
-        "user-agent": "lecta-mcp/0.1.0",
+        "user-agent": "lecta-mcp/0.2.0",
       },
       body: JSON.stringify({
         email: this.config.email,
@@ -227,7 +227,7 @@ export class LectaApi {
     const url = path.startsWith("http") ? path : `${this.config.baseUrl}${path}`;
     const headers: Record<string, string> = {
       accept: "application/json",
-      "user-agent": "lecta-mcp/0.1.0",
+      "user-agent": "lecta-mcp/0.2.0",
       ...(init.headers ?? {}),
     };
 

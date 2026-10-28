@@ -17,6 +17,7 @@ import {
   listStoredBooks,
 } from "../lib/idb";
 import { forceFullResyncFromServer } from "../lib/reading-sync";
+import { APP_VERSION } from "../../shared/app-version";
 
 export interface DiagnosticsModalProps {
   onClose: () => void;
@@ -158,7 +159,7 @@ export default function DiagnosticsModal({ onClose }: DiagnosticsModalProps) {
   const handleCopyReport = async () => {
     const report = {
       app: "Lecta",
-      version: "0.1.0",
+      version: APP_VERSION,
       generatedAt: new Date().toISOString(),
       userAgent: typeof navigator !== "undefined" ? navigator.userAgent : "unknown",
       storage: storageInfo
@@ -211,7 +212,7 @@ export default function DiagnosticsModal({ onClose }: DiagnosticsModalProps) {
         <section className="setting-block">
           <h3 className="eyebrow">Aplicación y sistema</h3>
           <p className="meta" style={{ margin: "var(--s-1) 0" }}>
-            Lecta v0.1.0 · Motor de lectura sin distracciones.
+            Lecta v{APP_VERSION} · Motor de lectura sin distracciones.
           </p>
           <p className="meta" style={{ margin: "var(--s-1) 0" }}>
             Service Worker: {typeof navigator !== "undefined" && navigator.serviceWorker?.controller ? "Activo" : "Inactivo"}

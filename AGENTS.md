@@ -11,7 +11,7 @@
   cierre de cada fase de `docs/plan-8-fases.md`. `pnpm lint` tiene un tope duro de **0
   warnings** (bajó de 28 con la auditoría UX del 2026-10-24, que dejó de bailar el análisis
   del React Compiler y limpió los 20 que quedaban): un warning nuevo rompe el gate.
-  `check:size` va en **178.5 kB** de 215 kB gzip; en peso quedan ~36 kB de margen.
+  `check:size` va en **179.9 kB** de 215 kB gzip; en peso quedan ~35 kB de margen.
 - La suite (`vitest.config.ts`) corre con **4 workers** y timeouts de 15 s. Son 183 archivos con
   jsdom en un portátil de 8 GB que además corre IDE: con un worker por núcleo, un pico de memoria
   mata workers y tumba archivos que no tienen que ver con el cambio (visto el 2026-10-22: 6
@@ -88,11 +88,20 @@
 ## Producción
 
 - URL: `https://lecta.luis-sg9915.workers.dev` — deploy con `pnpm run deploy`.
-- Último deploy: **2026-10-24**, versión `5822f097-e648-4cd7-93ee-9a6195a49747`
-  (auditoría UX + pull por `synced_at` + `/api/health` con chequeo de base).
-  Verificado en caliente: `/api/health` → 200 `{"ok":true,"db":"connected"}`,
-  `/` → 200, `/api/positions` sin sesión → 401, `check-model` con el ONNX de R2
-  intacto y `smoke:auth` completo en verde contra producción.
+- Último deploy: **2026-10-27**, versión `61ae01e8-cfd1-4953-ae0c-d6c2bf96cc81`,
+  Lecta **v0.2.0** (repaso de palabras vencidas por sección, autoevaluación por
+  entrada del índice, horizonte de repaso por cuenta, reencuentros ponderados por
+  apariciones del libro, identidad de capítulo con respaldo y armario por capas).
+  Verificado en caliente: `pnpm gate` en verde antes de subir (`check:size` en
+  179.9/215 kB gzip), `/api/health` → 200 `{"ok":true,"db":"connected","status":"ok"}`,
+  `/` → 200 sirviendo `assets/index-D3hTlvBi.js`, `/api/positions` sin sesión → 401,
+  `check-model` con el ONNX de R2 intacto (`6aec7b19…`) y el string `0.2.0` presente
+  en el chunk `DiagnosticsModal` servido. Sin `smoke:auth`/`smoke:sync`: el cambio es
+  solo de versión, no toca auth ni el contrato de sync.
+- La versión visible sale de `src/shared/app-version.ts` (`APP_VERSION`) y la usan
+  `DiagnosticsModal.tsx` (UI y reporte copiado) y su prueba: al subir de versión
+  hay que tocar ese archivo, `package.json` y `mcp/package.json` (más el
+  `user-agent` `lecta-mcp/<versión>` de `mcp/src/api.ts`).
 - **Hyperdrive `lecta-db` (id `0b4288d9…`) tiene el cache DESACTIVADO a propósito.**
   Con cache activado, una verificación de existencia (`findUserByEmail`) quedó
   servida en stale ~60 s y `request-password-reset` no creaba el token para un

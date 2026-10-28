@@ -4,6 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import DiagnosticsModal from "./DiagnosticsModal";
 import { deleteLocalDb } from "../lib/idb";
+import { APP_VERSION } from "../../shared/app-version";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -56,7 +57,7 @@ describe("DiagnosticsModal", () => {
     });
 
     expect(host.textContent).toContain("Acerca de y Diagnóstico");
-    expect(host.textContent).toContain("Lecta v0.1.0");
+    expect(host.textContent).toContain(`Lecta v${APP_VERSION}`);
     expect(host.textContent).toContain("Libros en dispositivo: 1");
     expect(host.textContent).toContain("Palabras en cuaderno: 2");
     expect(host.textContent).toContain("Registro de errores recientes (1)");
@@ -88,7 +89,7 @@ describe("DiagnosticsModal", () => {
     expect(writeText).toHaveBeenCalled();
     const copiedJson = JSON.parse(writeText.mock.calls[0][0]);
     expect(copiedJson.app).toBe("Lecta");
-    expect(copiedJson.version).toBe("0.1.0");
+    expect(copiedJson.version).toBe(APP_VERSION);
     expect(copiedJson.collections.books).toBe(1);
     expect(copiedJson.collections.words).toBe(2);
   });

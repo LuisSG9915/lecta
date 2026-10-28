@@ -9,7 +9,7 @@ async function main() {
   const config = loadConfig();
   const api = new LectaApi(config);
   const server = new McpServer(
-    { name: "lecta", version: "0.1.0" },
+    { name: "lecta", version: "0.2.0" },
     {
       instructions:
         "Servidor MCP de Lecta: consulta el catálogo léxico, el catálogo de libros y, si hay sesión, el cuaderno de vocabulario, las anotaciones y las estadísticas de lectura de la cuenta. Todas las herramientas son de solo lectura.",
