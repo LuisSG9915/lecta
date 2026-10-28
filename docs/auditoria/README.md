@@ -1,7 +1,25 @@
 # Auditoría de la investigación — cómo usarla
 
-Este directorio contiene el arnés que permite a **otra IA (o a una persona) verificar** las
-afirmaciones de `docs/estrategia-aprendizaje-2026-10-24.md` sin tener que creerle nada al autor.
+Este directorio contiene los arneses que permiten a **otra IA (o a una persona) verificar** las
+afirmaciones del proyecto sin tener que creerle nada al autor.
+
+Hay dos, y no comprueban lo mismo:
+
+| Arnés | Audita | Reporte |
+|---|---|---|
+| `scripts/audit-investigacion.mjs` | `docs/estrategia-aprendizaje-2026-10-24.md` contra el código | `docs/auditoria/reporte.*` |
+| `scripts/audit-cuaderno.mjs` | el **Cuaderno** y la «Sesión Fluida» contra la queja real del usuario | `docs/auditoria/cuaderno/evidencia.*` |
+
+El segundo existe porque una queja de uso («no recuerdo nada al iniciar sesión fluida») no se
+puede auditar leyendo un documento: se audita midiendo qué pide la interfaz en qué orden. Ver
+[`cuaderno/PROMPT-AUDITOR-CUADERNO.md`](cuaderno/PROMPT-AUDITOR-CUADERNO.md) para el encargo y
+`docs/auditoria/cuaderno/evidencia.md` para la última corrida.
+
+---
+
+## Arnés de la estrategia (`audit-investigacion`)
+
+Permite verificar las afirmaciones de `docs/estrategia-aprendizaje-2026-10-24.md`.
 
 ## Piezas
 
@@ -67,3 +85,46 @@ programa haga lo que el documento dice no valida la ciencia que lo justifica, y 
 - `reachable` exige que el símbolo se use en producción fuera del archivo que lo define. No
   cuentan pruebas, comentarios ni reexportaciones. Toda afirmación que cite una función debería
   llevar uno.
+
+---
+
+## Arnés del Cuaderno (`audit-cuaderno`)
+
+No verifica un documento: verifica una **queja**. La hipótesis del registro es que el Cuaderno
+examina antes de enseñar, y cada afirmación declara el anclaje de código que la sostendría.
+
+```bash
+pnpm audit:cuaderno           # 13 afirmaciones, sin red
+pnpm audit:cuaderno:online    # además resuelve las 8 preguntas de investigación en Crossref
+pnpm audit:cuaderno:brief     # encargo ya formateado para pegar en otra sesión
+node scripts/audit-cuaderno.mjs --claim C1-cta-primaria-abre-una-prueba --json
+```
+
+Estados por afirmación (hay un nivel menos que en el otro arnés, porque aquí no hay documento
+que citar, solo comportamiento):
+
+- **CONFIRMADO** — todas las comprobaciones coinciden: el defecto descrito está en el código.
+- **PARCIAL** — unas sí y otras no. Es la señal más útil: alguien tocó media ruta y el registro
+  se quedó a medias. Hay que leerlo antes que nada.
+- **MOVIDO** — ninguna coincide: el código cambió y la afirmación ya no describe el producto.
+  Si la afirmación era un defecto, puede que esté arreglado; si era contexto, hay que reescribirla.
+
+Salida `1` si hay movidas o parciales, `0` si todo coincide. Corre también en `pnpm test`
+(`scripts/audit-cuaderno.test.mjs`), que prueba el arnés contra fixtures temporales: así el
+arnés no puede pasar por accidente cuando el repo cambia.
+
+Los checks son tres y ninguno importa código de la app (el Cuaderno es React + IndexedDB, no se
+puede instanciar en Node sin jsdom y una base falsa):
+
+- `anchor` — un patrón regex dentro de ±N líneas de la línea declarada.
+- `ausente` — un patrón que **no** debe aparecer en un rango (pruebas por ausencia: lo más débil).
+- `orden` — dos anclajes y quién aparece primero (aquí es lo que prueba «prueba antes que estudio»:
+  el héroe en la línea 2013 y la sección «Por aprender» en la 2326).
+
+### Qué NO prueba este arnés
+
+- Que el plan F0–F6 sea el correcto. Es una hipótesis de producto, no un hecho.
+- Que la ciencia de `RESEARCH` sostenga el arreglo: `--online` solo dice que la cita existe.
+  El efecto de pretesting (R2) es un contraargumento real a «presentar primero» y hay que leerlo.
+- Que un anclaje semánticamente correcto sea el que dispara la ruta descrita. Por eso el encargo
+  pide recorrer el embudo a mano: el héroe y `GamePanel` son dos puertas a la misma sesión.

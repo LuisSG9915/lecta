@@ -2013,6 +2013,7 @@ type UserWordInput = {
   card?: unknown;
   senseEntryId?: unknown;
   senseOrder?: unknown;
+  presentedAt?: unknown;
   savedAt?: unknown;
   updatedAt?: unknown;
   deleted?: unknown;
@@ -2067,7 +2068,8 @@ app.get("/api/vocab", async (context) => {
       .query(
         `SELECT language, form, lemma, pos, meaning, context, book_hash AS "bookHash",
                 sense_entry_id AS "senseEntryId", sense_order AS "senseOrder",
-                card, saved_at AS "savedAt", updated_at AS "updatedAt",
+                card, presented_at AS "presentedAt",
+                saved_at AS "savedAt", updated_at AS "updatedAt",
                 synced_at AS "syncedAt", deleted
          FROM lecta_user_words
          WHERE ${filters.join(" AND ")}
@@ -2122,6 +2124,7 @@ app.get("/api/vocab", async (context) => {
       // int8 > 2^53: se devuelve como string; un Number lo truncaría.
       senseEntryId: row.senseEntryId != null ? String(row.senseEntryId) : null,
       senseOrder: row.senseOrder != null ? Number(row.senseOrder) : null,
+      presentedAt: row.presentedAt != null ? Number(row.presentedAt) : null,
       savedAt: Number(row.savedAt),
       updatedAt: Number(row.updatedAt),
       syncedAt: row.syncedAt != null ? Number(row.syncedAt) : Number(row.updatedAt),
@@ -2178,6 +2181,12 @@ app.put("/api/vocab", async (context) => {
         senseEntryId: toCatalogId(input.senseEntryId),
         senseOrder: toSenseOrder(input.senseOrder),
         card: input.card ?? null,
+        // Sello de primera exposición: reloj del cliente acotado al del
+        // servidor, como updatedAt. Ausente queda en null y no borra el previo.
+        presentedAt: (() => {
+          const raw = cleanNumber(input.presentedAt);
+          return raw !== undefined && raw > 0 ? Math.min(raw, serverNow) : null;
+        })(),
         savedAt,
         updatedAt,
         deleted: input.deleted === true,
@@ -2193,13 +2202,15 @@ app.put("/api/vocab", async (context) => {
       const result = await client.query(
       `INSERT INTO lecta_user_words
          (user_id, language, form, lemma, pos, meaning, context, book_hash,
-          sense_entry_id, sense_order, card, saved_at, updated_at, deleted, synced_at)
+          sense_entry_id, sense_order, card, presented_at, saved_at, updated_at,
+          deleted, synced_at)
        SELECT $1,
               j.value ->> 'language', j.value ->> 'form', j.value ->> 'lemma',
               j.value ->> 'pos', j.value ->> 'meaning', j.value ->> 'context',
               j.value ->> 'bookHash',
               (j.value ->> 'senseEntryId')::int8, (j.value ->> 'senseOrder')::int4,
               NULLIF(j.value -> 'card', 'null'::jsonb) AS card,
+              (j.value ->> 'presentedAt')::int8,
               (j.value ->> 'savedAt')::int8, (j.value ->> 'updatedAt')::int8,
               COALESCE((j.value ->> 'deleted')::bool, false),
               $3::int8
@@ -2213,6 +2224,7 @@ app.put("/api/vocab", async (context) => {
            WHEN excluded.deleted THEN NULL
            ELSE COALESCE(NULLIF(excluded.card, 'null'::jsonb), lecta_user_words.card)
          END,
+         presented_at = COALESCE(excluded.presented_at, lecta_user_words.presented_at),
          updated_at = excluded.updated_at,
          deleted = excluded.deleted,
          synced_at = excluded.synced_at

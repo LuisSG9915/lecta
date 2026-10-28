@@ -79,6 +79,10 @@ export interface SavedWord {
   // …305) que no es migrable: dejan de ligar hasta volver a guardar.
   senseEntryId?: string | null;
   senseOrder?: number | null;
+  // Sello de primera exposición (ms). Viaja al servidor para que la ficha
+  // no se repita en otro dispositivo antes del primer repaso; el estado
+  // local equivalente es `learnExposure:v1`.
+  presentedAt?: number | null;
   savedAt: number;
   updatedAt?: number;
   card?: Card;

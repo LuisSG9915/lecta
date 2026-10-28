@@ -2,9 +2,12 @@ import { describe, expect, it, vi } from "vitest";
 import {
   emptyLearnExposure,
   isLearnPending,
+  isWordKnownBy,
   knownKeysFor,
   learnQueue,
   parseLearnExposure,
+  REVIEW_SESSION_SIZE,
+  reviewQueue,
   withExposure,
 } from "./learn";
 import type { Card } from "./fsrs";
@@ -312,3 +315,108 @@ describe("generateMicroStoryWithAi", () => {
 });
 
 
+
+describe("isWordKnownBy", () => {
+  it("reconoce la evidencia por lema y por forma", () => {
+    const keys = knownKeysFor([known("correr")]);
+    expect(isWordKnownBy(word({ form: "corrí", lemma: "correr" }), keys)).toBe(true);
+    expect(isWordKnownBy(word({ form: "correr" }), keys)).toBe(true);
+    expect(isWordKnownBy(word({ form: "cantar", lemma: "cantar" }), keys)).toBe(false);
+  });
+
+  it("una fila tombada no cuenta como conocida", () => {
+    const keys = knownKeysFor([{ ...known("casa"), deleted: true }]);
+    expect(isWordKnownBy(word({ form: "casa" }), keys)).toBe(false);
+  });
+});
+
+describe("reviewQueue", () => {
+  const now = new Date("2026-10-27T12:00:00Z");
+  const past = new Date("2026-10-26T12:00:00Z").toISOString();
+  const future = new Date("2026-10-29T12:00:00Z").toISOString();
+  const reviewed = (over: Partial<SavedWord> = {}) =>
+    word({ card: { reps: 2, stability: 5, due: past } as never, ...over });
+
+  it("excluye las lápidas", () => {
+    const keys = new Set<string>();
+    expect(reviewQueue([reviewed({ deleted: true })], keys, emptyLearnExposure(), now)).toEqual([]);
+  });
+
+  it("excluye lo que el usuario declaró conocido por lema o por forma", () => {
+    const keys = knownKeysFor([known("correr")]);
+    const words = [
+      reviewed({ key: "es:corrí", form: "corrí", lemma: "correr" }),
+      reviewed({ key: "es:correr", form: "correr", lemma: "correr" }),
+    ];
+    expect(reviewQueue(words, keys, emptyLearnExposure(), now)).toEqual([]);
+  });
+
+  it("excluye la exposición con veredicto «known» aunque no haya fila de conocimiento", () => {
+    const item = reviewed({ key: "es:casa", form: "casa" });
+    const exposure = withExposure(emptyLearnExposure(), "es:casa", "known", 1);
+    expect(reviewQueue([item], new Set(), exposure, now)).toEqual([]);
+  });
+
+  it("excluye reps 0 sin exposición: no se examina lo que no se presentó", () => {
+    const item = word({ card: { reps: 0, stability: 0, due: past } as never });
+    expect(reviewQueue([item], new Set(), emptyLearnExposure(), now)).toEqual([]);
+  });
+
+  it("incluye reps 0 con exposición «learn» y vencida", () => {
+    const item = word({ card: { reps: 0, stability: 0, due: past } as never });
+    const exposure = withExposure(emptyLearnExposure(), "es:casa", "learn", 1);
+    expect(reviewQueue([item], new Set(), exposure, now).map((w) => w.key)).toEqual(["es:casa"]);
+  });
+
+  it("excluye lo que aún no vence y no inventa respaldo", () => {
+    const item = reviewed({ card: { reps: 2, stability: 5, due: future } as never });
+    expect(reviewQueue([item], new Set(), emptyLearnExposure(), now)).toEqual([]);
+  });
+
+  it("ordena por priority y después por lo más atrasado", () => {
+    const words = [
+      reviewed({ key: "es:b", form: "b", card: { reps: 2, stability: 5, due: past } as never }),
+      reviewed({ key: "es:a", form: "a", card: { reps: 2, stability: 5, due: past } as never }),
+      reviewed({
+        key: "es:vieja",
+        form: "vieja",
+        card: { reps: 2, stability: 5, due: new Date("2026-10-20T12:00:00Z").toISOString() } as never,
+      }),
+      reviewed({ key: "es:prio", form: "prio", priority: true }),
+    ];
+    expect(reviewQueue(words, new Set(), emptyLearnExposure(), now).map((w) => w.key)).toEqual([
+      "es:prio",
+      "es:vieja",
+      "es:a",
+      "es:b",
+    ]);
+  });
+
+  it("la sesión sirve como máximo REVIEW_SESSION_SIZE palabras", () => {
+    expect(REVIEW_SESSION_SIZE).toBeGreaterThan(0);
+    expect(REVIEW_SESSION_SIZE).toBeLessThanOrEqual(10);
+  });
+});
+
+describe("presentedAt: la ficha no se repite en otro dispositivo", () => {
+  it("una palabra con sello ya no está por aprender, aunque no tenga exposición local", () => {
+    const item = word({ presentedAt: 1 });
+    expect(isLearnPending(item, new Set(), emptyLearnExposure())).toBe(false);
+  });
+
+  it("una palabra con sello y reps 0 entra al repaso cuando vence", () => {
+    const now = new Date("2026-10-27T12:00:00Z");
+    const item = word({
+      presentedAt: 1,
+      card: { reps: 0, stability: 0, due: "2026-10-26T12:00:00.000Z" } as never,
+    });
+    expect(
+      reviewQueue([item], new Set(), emptyLearnExposure(), now).map((w) => w.key),
+    ).toEqual(["es:casa"]);
+  });
+
+  it("un sello ausente o en cero no cambia nada", () => {
+    expect(isLearnPending(word(), new Set(), emptyLearnExposure())).toBe(true);
+    expect(isLearnPending(word({ presentedAt: 0 }), new Set(), emptyLearnExposure())).toBe(true);
+  });
+});

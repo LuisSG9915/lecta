@@ -223,7 +223,7 @@ describe("PracticeCompanionHeader", () => {
     render(
       h(PracticeCompanionHeader, {
         pose: "idle",
-        speech: "¡Vamos a repasar!",
+        speech: "",
         combo: 0,
         mode: "animated",
         onModeChange: vi.fn(),

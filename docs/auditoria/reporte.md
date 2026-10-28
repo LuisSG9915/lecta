@@ -1,9 +1,9 @@
 # Reporte de auditoría — estrategia de aprendizaje de Lecta
 
-Generado: 2026-10-28T01:44:04.604Z
+Generado: 2026-10-28T03:33:29.447Z
 Documento auditado: `docs/estrategia-aprendizaje-2026-10-24.md`
 Registro: `docs/auditoria/claims.json`
-Commit: `1cb769e2c393e0cfff735b62b47bcc92d665f5a7`
+Commit: `6b42f07e6f980ba5decd35fad10802061d6d826b`
 Red: no (solo forma de las referencias)
 
 **Veredicto: PASS_WITH_UNVERIFIED** — 1 afirmaciones aprobadas, 0 refutadas, 0 refutadas por auditoría, 13 sin verificar, 0 comprobaciones omitidas.
@@ -179,8 +179,8 @@ Código: **PASS** · Referencias: **UNVERIFIED**
   - observado: `{"file":"src/client/lib/knowledge.ts","line":55,"text":"export const FAMILIAR_PASSIVE_THRESHOLD = 3;"}`
 - ✅ **PASS** · code-anchor: src/client/lib/reader-evidence.ts:230 coincide con /uniqueLemmas\.size >= 8/
   - observado: `{"file":"src/client/lib/reader-evidence.ts","line":230,"text":"if (uniqueLemmas.size >= 8) break;"}`
-- ✅ **PASS** · code-anchor: src/client/lib/idb.ts:2102 coincide con /if \(existing\?\.deleted\) return existing/
-  - observado: `{"file":"src/client/lib/idb.ts","line":2102,"text":"if (existing?.deleted) return existing;"}`
+- ✅ **PASS** · code-anchor: src/client/lib/idb.ts:2106 coincide con /if \(existing\?\.deleted\) return existing/
+  - observado: `{"file":"src/client/lib/idb.ts","line":2106,"text":"if (existing?.deleted) return existing;"}`
 - ✅ **PASS** · code-absent: /processPageTurnForPassiveKnowledge/ no aparece en src/client/lib/knowledge.ts
 - ⚠️ **UNVERIFIED** · referencia nagy1985: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":"10.2307/747758","url":null}`
@@ -233,8 +233,8 @@ Código: **PASS** · Referencias: **UNVERIFIED**
 - ✅ **PASS** · code-absent: /computeImplicitFsrsGrade|msPerChar <= 650/ no aparece en src/client/lib/practice.ts
 - ✅ **PASS** · code-anchor: src/client/hooks/useReaderNavigation.ts:211 coincide con /const completeChapterTo/
   - observado: `{"file":"src/client/hooks/useReaderNavigation.ts","line":211,"text":"const completeChapterTo = useCallback("}`
-- ✅ **PASS** · code-anchor: src/client/components/Vocabulary.tsx:1501 coincide con /await grade\(item, wrongs/
-  - observado: `{"file":"src/client/components/Vocabulary.tsx","line":1501,"text":"await grade(item, wrongs ? EXERCISE_RATING.wrong : EXERCISE_RATING.correct);"}`
+- ✅ **PASS** · code-anchor: src/client/components/Vocabulary.tsx:1550 coincide con /await grade\(item, wrongs/
+  - observado: `{"file":"src/client/components/Vocabulary.tsx","line":1550,"text":"await grade(item, wrongs ? EXERCISE_RATING.wrong : EXERCISE_RATING.correct);"}`
 - ⚠️ **UNVERIFIED** · referencia rowland2014: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":"10.1037/a0037559","url":null}`
 - ⚠️ **UNVERIFIED** · referencia laufergoldstein2004: forma válida; sin red no se resuelven metadatos (usar --online)
@@ -332,12 +332,12 @@ Código: **PASS** · Referencias: **UNVERIFIED**
 - ✅ **PASS** · code-absent: /postTest|delayedRecall/ no aparece en src
 - ✅ **PASS** · code-anchor: src/client/lib/journey.ts:77 coincide con /export function computeRetentionSummary/
   - observado: `{"file":"src/client/lib/journey.ts","line":77,"text":"export function computeRetentionSummary("}`
-- ✅ **PASS** · code-anchor: src/client/components/Vocabulary.tsx:1115 coincide con /const startRetentionCheck30d/
-  - observado: `{"file":"src/client/components/Vocabulary.tsx","line":1115,"text":"const startRetentionCheck30d = () => {"}`
+- ✅ **PASS** · code-anchor: src/client/components/Vocabulary.tsx:1149 coincide con /const startRetentionCheck30d/
+  - observado: `{"file":"src/client/components/Vocabulary.tsx","line":1149,"text":"const startRetentionCheck30d = () => {"}`
 - ✅ **PASS** · code-anchor: src/client/lib/chapter-follow.ts:52 coincide con /export async function summarizeChapterFollows/
   - observado: `{"file":"src/client/lib/chapter-follow.ts","line":52,"text":"export async function summarizeChapterFollows("}`
-- ✅ **PASS** · code-anchor: src/client/components/Vocabulary.tsx:410 coincide con /const RETENTION_CHECK_MIN_AGE_DAYS = 30/
-  - observado: `{"file":"src/client/components/Vocabulary.tsx","line":410,"text":"const RETENTION_CHECK_MIN_AGE_DAYS = 30;"}`
+- ✅ **PASS** · code-anchor: src/client/components/Vocabulary.tsx:412 coincide con /const RETENTION_CHECK_MIN_AGE_DAYS = 30/
+  - observado: `{"file":"src/client/components/Vocabulary.tsx","line":412,"text":"const RETENTION_CHECK_MIN_AGE_DAYS = 30;"}`
 - ⚠️ **UNVERIFIED** · referencia rowland2014: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":"10.1037/a0037559","url":null}`
 - ⚠️ **UNVERIFIED** · referencia adesope2017: forma válida; sin red no se resuelven metadatos (usar --online)

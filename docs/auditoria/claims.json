@@ -367,7 +367,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/lib/idb.ts",
-          "line": 2102,
+          "line": 2106,
           "window": 1,
           "expect": "if \\(existing\\?\\.deleted\\) return existing",
           "why": "una inferencia pasiva no revive lo borrado"
@@ -467,7 +467,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/components/Vocabulary.tsx",
-          "line": 1501,
+          "line": 1550,
           "window": 1,
           "expect": "await grade\\(item, wrongs",
           "why": "cada ejercicio registra un solo repaso al calificarse"
@@ -660,7 +660,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/components/Vocabulary.tsx",
-          "line": 1115,
+          "line": 1144,
           "window": 10,
           "expect": "const startRetentionCheck30d",
           "why": "chequeo rápido de memoria a largo plazo sobre palabras asentadas"

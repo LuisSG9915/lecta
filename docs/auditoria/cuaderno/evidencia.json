@@ -1,0 +1,806 @@
+{
+  "tool": "audit-cuaderno",
+  "version": 1,
+  "generado": "2026-10-28T03:38:58.203Z",
+  "commit": "6b42f07e6f98",
+  "queja": "no recuerdo para nada las palabras al dar iniciar sesión fluida… primero tengo que aprenderme las palabras, de ahí sí puedo practicar",
+  "resumen": {
+    "total": 15,
+    "confirmadas": 7,
+    "parciales": 0,
+    "movidas": 0,
+    "corregidas": 8,
+    "regresiones": 0
+  },
+  "claims": [
+    {
+      "id": "C1-cta-primaria-abre-una-prueba",
+      "tipo": "corregido",
+      "titulo": "El botón principal del héroe ofrece aprender antes de examinar",
+      "porque": "«no recuerdo para nada las palabras al dar iniciar sesión fluida… primero tengo que aprenderme las palabras, de ahí sí puedo practicar» — el arreglo: con palabras por aprender, el único botón primario abre la ficha y no la prueba.",
+      "checks": [
+        {
+          "tipo": "presente",
+          "estado": "COINCIDE",
+          "detalle": "src/client/components/Vocabulary.tsx:2072 ~ /\\) : learnable\\.length > 0 \\? \\(/",
+          "evidencia": {
+            "file": "src/client/components/Vocabulary.tsx",
+            "line": 2072,
+            "text": ") : learnable.length > 0 ? ("
+          }
+        },
+        {
+          "tipo": "presente",
+          "estado": "COINCIDE",
+          "detalle": "src/client/components/Vocabulary.tsx:2079 ~ /onClick=\\{\\(\\) => startLearn\\(\\)\\}/",
+          "evidencia": {
+            "file": "src/client/components/Vocabulary.tsx",
+            "line": 2079,
+            "text": "onClick={() => startLearn()}"
+          }
+        },
+        {
+          "tipo": "ausente",
+          "estado": "COINCIDE",
+          "detalle": "src/client/components/Vocabulary.tsx:2051-2106 no contiene /Iniciar Sesi[oó]n Fluida/",
+          "evidencia": {}
+        }
+      ],
+      "estado": "CORREGIDO",
+      "coincidencias": "3/3"
+    },
+    {
+      "id": "C2-cola-sale-de-las-vencidas",
+      "tipo": "corregido",
+      "titulo": "La sesión sale de reviewQueue: vencidas, ya presentadas y sin rama de respaldo",
+      "porque": "Se fue la rama scopedWords.slice(0,5), que servía palabras no vencidas, «Ya la conozco» y adelantaba repasos.",
+      "checks": [
+        {
+          "tipo": "presente",
+          "estado": "COINCIDE",
+          "detalle": "src/client/components/Vocabulary.tsx:893 ~ /const reviewWords = reviewQueue\\(scopedWords, knownKeys, exposure\\);/",
+          "evidencia": {
+            "file": "src/client/components/Vocabulary.tsx",
+            "line": 893,
+            "text": "const reviewWords = reviewQueue(scopedWords, knownKeys, exposure);"
+          }
+        },
+        {
+          "tipo": "presente",
+          "estado": "COINCIDE",
+          "detalle": "src/client/lib/learn.ts:145 ~ /!isLearnPending\\(word, knownKeys, exposure\\) &&/",
+          "evidencia": {
+            "file": "src/client/lib/learn.ts",
+            "line": 145,
+            "text": "!isLearnPending(word, knownKeys, exposure) &&"
+          }
+        },
+        {
+          "tipo": "ausente",
+          "estado": "COINCIDE",
+          "detalle": "src/client/components/Vocabulary.tsx:1-9999 no contiene /scopedWords\\.slice\\(0, 5\\)/",
+          "evidencia": {}
+        }
+      ],
+      "estado": "CORREGIDO",
+      "coincidencias": "3/3"
+    },
+    {
+      "id": "C3-tarjeta-nueva-vence-al-crearse",
+      "tipo": "contexto",
+      "titulo": "La tarjeta nace vencida al GUARDAR la palabra en el lector; por eso la cola filtra por exposición",
+      "porque": "scheduleCapturedReview crea newCard() (reps 0, due=ahora) al guardar. La cola no puede decidir solo por vencimiento: exige exposición o reps > 0.",
+      "checks": [
+        {
+          "tipo": "presente",
+          "estado": "COINCIDE",
+          "detalle": "src/client/lib/reviews.ts:75 ~ /const card = existing\\.card \\?\\? newCard\\(\\);/",
+          "evidencia": {
+            "file": "src/client/lib/reviews.ts",
+            "line": 75,
+            "text": "const card = existing.card ?? newCard();"
+          }
+        },
+        {
+          "tipo": "presente",
+          "estado": "COINCIDE",
+          "detalle": "src/client/lib/fsrs.ts:85 ~ /return createEmptyCard\\(now\\);/",
+          "evidencia": {
+            "file": "src/client/lib/fsrs.ts",
+            "line": 85,
+            "text": "return createEmptyCard(now);"
+          }
+        },
+        {
+          "tipo": "presente",
+          "estado": "COINCIDE",
+          "detalle": "src/client/lib/fsrs.ts:89 ~ /return !card \\|\\| new Date\\(card\\.due\\)\\.getTime\\(\\) <= now\\.getTime\\(\\);/",
+          "evidencia": {
+            "file": "src/client/lib/fsrs.ts",
+            "line": 89,
+            "text": "return !card || new Date(card.due).getTime() <= now.getTime();"
+          }
+        }
+      ],
+      "estado": "CONFIRMADO",
+      "coincidencias": "3/3"
+    },
+    {
+      "id": "C4-primer-reto-es-elegir-entre-cuatro",
+      "tipo": "corregido",
+      "titulo": "El reto elige un modo que la palabra puede cumplir y corrige con el significado",
+      "porque": "Una palabra sin oración ya no cae en choose (adivinar al 25 %): pasa al modo significado. Tras responder se muestra forma y significado.",
+      "checks": [
+        {
+          "tipo": "presente",
+          "estado": "COINCIDE",
+          "detalle": "src/client/lib/practice.ts:363 ~ /if \\(isNew \\|\\| stability < 2\\.5\\) \\{/",
+          "evidencia": {
+            "file": "src/client/lib/practice.ts",
+            "line": 363,
+            "text": "if (isNew || stability < 2.5) {"
+          }
+        },
+        {
+          "tipo": "presente",
+          "estado": "COINCIDE",
+          "detalle": "src/client/components/Vocabulary.tsx:1111 ~ /if \\(!isEligible\\(ch\\.word, mode\\)\\) \\{/",
+          "evidencia": {
+            "file": "src/client/components/Vocabulary.tsx",
+            "line": 1111,
+            "text": "if (!isEligible(ch.word, mode)) {"
+          }
+        },
+        {
+          "tipo": "presente",
+          "estado": "COINCIDE",
+          "detalle": "src/client/components/Vocabulary.tsx:3352 ~ /Toca la palabra que falta\\./",
+          "evidencia": {
+            "file": "src/client/components/Vocabulary.tsx",
+            "line": 3352,
+            "text": "<p className=\"meta\">Toca la palabra que falta.</p>"
+          }
+        },
+        {
+          "tipo": "presente",
+          "estado": "COINCIDE",
+          "detalle": "src/client/components/Vocabulary.tsx:3356 ~ /className=\"nb-card-back\" role=\"status\"/",
+          "evidencia": {
+            "file": "src/client/components/Vocabulary.tsx",
+            "line": 3356,
+            "text": "<p className=\"nb-card-back\" role=\"status\">"
+          }
+        }
+      ],
+      "estado": "CORREGIDO",
+      "coincidencias": "4/4"
+    },
+    {
+      "id": "C5-estudio-existe-pero-abajo",
+      "tipo": "corregido",
+      "titulo": "La ficha de presentación es la entrada del héroe; ya no hay bloque enterrado",
+      "porque": "Se quitó la sección «Por aprender · N» que vivía debajo del héroe: el botón primario hace ese trabajo.",
+      "checks": [
+        {
+          "tipo": "ausente",
+          "estado": "COINCIDE",
+          "detalle": "src/client/components/Vocabulary.tsx:1-9999 no contiene /aria-label=\"Palabras por aprender\"/",
+          "evidencia": {}
+        },
+        {
+          "tipo": "presente",
+          "estado": "COINCIDE",
+          "detalle": "src/client/components/Vocabulary.tsx:2079 ~ /onClick=\\{\\(\\) => startLearn\\(\\)\\}/",
+          "evidencia": {
+            "file": "src/client/components/Vocabulary.tsx",
+            "line": 2079,
+            "text": "onClick={() => startLearn()}"
+          }
+        }
+      ],
+      "estado": "CORREGIDO",
+      "coincidencias": "2/2"
+    },
+    {
+      "id": "C6-sesion-puede-ensayar-borradas",
+      "tipo": "contexto",
+      "titulo": "Las lápidas no llegan a la sesión: listSavedWords las filtra antes de que exista dueWords",
+      "porque": "Buscar «deleted» dentro de dueWords era una ausencia usada como prueba. El filtro real está en la carga y al borrar se quita la fila del estado.",
+      "checks": [
+        {
+          "tipo": "presente",
+          "estado": "COINCIDE",
+          "detalle": "src/client/lib/idb.ts:1710 ~ /return all\\.filter\\(\\(word\\) => !word\\.deleted\\);/",
+          "evidencia": {
+            "file": "src/client/lib/idb.ts",
+            "line": 1710,
+            "text": "return all.filter((word) => !word.deleted);"
+          }
+        },
+        {
+          "tipo": "presente",
+          "estado": "COINCIDE",
+          "detalle": "src/client/components/Vocabulary.tsx:756 ~ /listSavedWords\\(/",
+          "evidencia": {
+            "file": "src/client/components/Vocabulary.tsx",
+            "line": 756,
+            "text": "void listSavedWords(undefined, scope)"
+          }
+        }
+      ],
+      "estado": "CONFIRMADO",
+      "coincidencias": "2/2"
+    },
+    {
+      "id": "C7-copia-no-dice-cuantas-faltan",
+      "tipo": "corregido",
+      "titulo": "El botón dice qué hace y con cuántas palabras; no promete minutos",
+      "porque": "«~2 min» y «1 min» describían la misma sesión. Ahora el botón lleva la cifra real y desaparece la promesa de duración.",
+      "checks": [
+        {
+          "tipo": "presente",
+          "estado": "COINCIDE",
+          "detalle": "src/client/components/Vocabulary.tsx:2083 ~ /Aprender \\{learnable\\.length\\}/",
+          "evidencia": {
+            "file": "src/client/components/Vocabulary.tsx",
+            "line": 2083,
+            "text": "Aprender {learnable.length}{\" \"}"
+          }
+        },
+        {
+          "tipo": "presente",
+          "estado": "COINCIDE",
+          "detalle": "src/client/components/Vocabulary.tsx:2100 ~ /Repasar \\{Math\\.min\\(REVIEW_SESSION_SIZE, reviewWords\\.length\\)\\}/",
+          "evidencia": {
+            "file": "src/client/components/Vocabulary.tsx",
+            "line": 2100,
+            "text": "Repasar {Math.min(REVIEW_SESSION_SIZE, reviewWords.length)}{\" \"}"
+          }
+        },
+        {
+          "tipo": "ausente",
+          "estado": "COINCIDE",
+          "detalle": "src/client/components/Vocabulary.tsx:2051-2106 no contiene /~2 min|1 min/",
+          "evidencia": {}
+        }
+      ],
+      "estado": "CORREGIDO",
+      "coincidencias": "3/3"
+    },
+    {
+      "id": "C8-indice-del-heroe-solo-cuenta-hoy",
+      "tipo": "corregido",
+      "titulo": "El encabezado separa «por aprender» de «para repasar»",
+      "porque": "Dos trabajos distintos ya no comparten una sola cifra: la de aprender solo cuenta palabras que pueden entrar a la ficha.",
+      "checks": [
+        {
+          "tipo": "presente",
+          "estado": "COINCIDE",
+          "detalle": "src/client/components/Vocabulary.tsx:1883 ~ /por aprender/",
+          "evidencia": {
+            "file": "src/client/components/Vocabulary.tsx",
+            "line": 1883,
+            "text": "learnable.length > 0 ? ` · ${learnable.length} por aprender` : \"\""
+          }
+        },
+        {
+          "tipo": "presente",
+          "estado": "COINCIDE",
+          "detalle": "src/client/components/Vocabulary.tsx:1121 ~ /para repasar/",
+          "evidencia": {
+            "file": "src/client/components/Vocabulary.tsx",
+            "line": 1121,
+            "text": "\"Estas palabras necesitan una oración o un significado para repasarse.\","
+          }
+        }
+      ],
+      "estado": "CORREGIDO",
+      "coincidencias": "2/2"
+    },
+    {
+      "id": "C9-el-rescate-llega-despues-de-fallar",
+      "tipo": "contexto",
+      "titulo": "La red anti-frustración sigue siendo post-fallo y solo para Nivel 2-3; la corrección nueva está en el modo choose",
+      "porque": "rescueChallenge solo actúa si el fallo fue en Nivel 2 o 3. Para la palabra nueva (Nivel 1), la corrección es ver forma y significado.",
+      "checks": [
+        {
+          "tipo": "presente",
+          "estado": "COINCIDE",
+          "detalle": "src/client/lib/practice.ts:407 ~ /export function rescueChallenge\\(/",
+          "evidencia": {
+            "file": "src/client/lib/practice.ts",
+            "line": 407,
+            "text": "export function rescueChallenge("
+          }
+        },
+        {
+          "tipo": "presente",
+          "estado": "COINCIDE",
+          "detalle": "src/client/components/Vocabulary.tsx:3120 ~ /current\\.adaptiveChallenge\\.level > 1/",
+          "evidencia": {
+            "file": "src/client/components/Vocabulary.tsx",
+            "line": 3120,
+            "text": "if (current.adaptiveChallenge && current.adaptiveChallenge.level > 1) {"
+          }
+        }
+      ],
+      "estado": "CONFIRMADO",
+      "coincidencias": "2/2"
+    },
+    {
+      "id": "C10-dos-puertas-a-la-misma-sesion",
+      "tipo": "contexto",
+      "titulo": "Queda una sola puerta a la sesión: el héroe; la de GamePanel sigue muerta",
+      "porque": "Se quitó «Repaso rápido», que caía a startAdaptiveFlow con otro texto. El CTA adaptive_flow de GamePanel nunca se pinta: el único montaje usa dashboard o ai_workshop.",
+      "checks": [
+        {
+          "tipo": "presente",
+          "estado": "COINCIDE",
+          "detalle": "src/client/components/Vocabulary.tsx:2253 ~ /mode=\\{workshopOpen \\? \"ai_workshop\" : \"dashboard\"\\}/",
+          "evidencia": {
+            "file": "src/client/components/Vocabulary.tsx",
+            "line": 2253,
+            "text": "mode={workshopOpen ? \"ai_workshop\" : \"dashboard\"}"
+          }
+        },
+        {
+          "tipo": "ausente",
+          "estado": "COINCIDE",
+          "detalle": "src/client/components/Vocabulary.tsx:2051-2106 no contiene /notebook-quick-review-cta/",
+          "evidencia": {}
+        }
+      ],
+      "estado": "CONFIRMADO",
+      "coincidencias": "2/2"
+    },
+    {
+      "id": "X1-la-exposicion-ya-se-persiste",
+      "tipo": "contexto",
+      "titulo": "La primera exposición vive por cuenta (learnExposure:v1) y viaja con la palabra (presentedAt)",
+      "porque": "isLearnPending + withExposure arbitran estudio vs repaso y migran de anónimo a cuenta. Además `presentedAt` se guarda en la fila y se sincroniza con `lecta_user_words.presented_at`, así que en otro dispositivo la ficha no se repite antes del primer repaso.",
+      "checks": [
+        {
+          "tipo": "presente",
+          "estado": "COINCIDE",
+          "detalle": "src/client/lib/learn.ts:10 ~ /LEARN_EXPOSURE_KEY = \"learnExposure:v1\"/",
+          "evidencia": {
+            "file": "src/client/lib/learn.ts",
+            "line": 10,
+            "text": "export const LEARN_EXPOSURE_KEY = \"learnExposure:v1\";"
+          }
+        },
+        {
+          "tipo": "presente",
+          "estado": "COINCIDE",
+          "detalle": "src/client/lib/learn.ts:96 ~ /export function isLearnPending\\(/",
+          "evidencia": {
+            "file": "src/client/lib/learn.ts",
+            "line": 96,
+            "text": "export function isLearnPending("
+          }
+        },
+        {
+          "tipo": "presente",
+          "estado": "COINCIDE",
+          "detalle": "src/client/lib/learn.ts:104 ~ /exposure\\.seen\\[word\\.key\\] \\|\\| \\(word\\.presentedAt \\?\\? 0\\) > 0/",
+          "evidencia": {
+            "file": "src/client/lib/learn.ts",
+            "line": 104,
+            "text": "if (exposure.seen[word.key] || (word.presentedAt ?? 0) > 0) return false;"
+          }
+        }
+      ],
+      "estado": "CONFIRMADO",
+      "coincidencias": "3/3"
+    },
+    {
+      "id": "X2-los-modos-ya-estan-gateados-por-datos",
+      "tipo": "contexto",
+      "titulo": "Los modos declaran qué datos necesitan (isEligible) y la sesión lo respeta",
+      "porque": "isEligible define qué pide cada modo; startAdaptiveFlow ahora lo consulta antes de armar el ítem.",
+      "checks": [
+        {
+          "tipo": "presente",
+          "estado": "COINCIDE",
+          "detalle": "src/client/components/Vocabulary.tsx:428 ~ /const isEligible = \\(word: SavedWord, mode: PracticeMode\\) => \\{/",
+          "evidencia": {
+            "file": "src/client/components/Vocabulary.tsx",
+            "line": 428,
+            "text": "const isEligible = (word: SavedWord, mode: PracticeMode) => {"
+          }
+        },
+        {
+          "tipo": "presente",
+          "estado": "COINCIDE",
+          "detalle": "src/client/components/Vocabulary.tsx:1111 ~ /if \\(!isEligible\\(ch\\.word, mode\\)\\) \\{/",
+          "evidencia": {
+            "file": "src/client/components/Vocabulary.tsx",
+            "line": 1111,
+            "text": "if (!isEligible(ch.word, mode)) {"
+          }
+        }
+      ],
+      "estado": "CONFIRMADO",
+      "coincidencias": "2/2"
+    },
+    {
+      "id": "X3-el-primer-paso-del-lector-ya-es-una-ficha",
+      "tipo": "contexto",
+      "titulo": "La ficha de primera exposición ya tiene UI y voz (learnKeep/learnKnown/learnEnrich) y puente a repaso",
+      "porque": "El puente estudio→prueba reutiliza esa ficha, sin duplicar un componente nuevo.",
+      "checks": [
+        {
+          "tipo": "presente",
+          "estado": "COINCIDE",
+          "detalle": "src/client/components/Vocabulary.tsx:1174 ~ /const startLearn = \\(first\\?: SavedWord\\) => \\{/",
+          "evidencia": {
+            "file": "src/client/components/Vocabulary.tsx",
+            "line": 1174,
+            "text": "const startLearn = (first?: SavedWord) => {"
+          }
+        },
+        {
+          "tipo": "presente",
+          "estado": "COINCIDE",
+          "detalle": "src/client/components/Vocabulary.tsx:1230 ~ /const learnKeep = async \\(\\) => \\{/",
+          "evidencia": {
+            "file": "src/client/components/Vocabulary.tsx",
+            "line": 1230,
+            "text": "const learnKeep = async () => {"
+          }
+        },
+        {
+          "tipo": "presente",
+          "estado": "COINCIDE",
+          "detalle": "src/client/components/Vocabulary.tsx:2789 ~ /Repasar esta palabra/",
+          "evidencia": {
+            "file": "src/client/components/Vocabulary.tsx",
+            "line": 2789,
+            "text": "? \"Repasar esta palabra\""
+          }
+        }
+      ],
+      "estado": "CONFIRMADO",
+      "coincidencias": "3/3"
+    },
+    {
+      "id": "C11-cualquier-respuesta-cancela-la-ficha",
+      "tipo": "corregido",
+      "titulo": "Una palabra con reps 0 solo sale de «Por aprender» con una decisión explícita: la cola la excluye",
+      "porque": "isLearnPending sigue excluyendo reps > 0, pero ahora reviewQueue exige exposición o reps > 0: una respuesta al azar ya no puede ser la primera exposición de una palabra.",
+      "checks": [
+        {
+          "tipo": "presente",
+          "estado": "COINCIDE",
+          "detalle": "src/client/lib/learn.ts:129 ~ /export function reviewQueue\\(/",
+          "evidencia": {
+            "file": "src/client/lib/learn.ts",
+            "line": 129,
+            "text": "export function reviewQueue("
+          }
+        },
+        {
+          "tipo": "presente",
+          "estado": "COINCIDE",
+          "detalle": "src/client/lib/learn.ts:105 ~ /if \\(\\(word\\.card\\?\\.reps \\?\\? 0\\) > 0\\) return false;/",
+          "evidencia": {
+            "file": "src/client/lib/learn.ts",
+            "line": 105,
+            "text": "if ((word.card?.reps ?? 0) > 0) return false;"
+          }
+        }
+      ],
+      "estado": "CORREGIDO",
+      "coincidencias": "2/2"
+    },
+    {
+      "id": "C12-modos-libres-tampoco-examinan",
+      "tipo": "corregido",
+      "titulo": "Los modos libres (Hueco, Sílabas, Telar) también salen de reviewWords y avisan cuando no hay nada",
+      "porque": "startPractice usaba dueWords y podía preguntar por palabras nunca presentadas, además de adelantar repasos. Ahora comparte la regla de la sesión y explica por qué los botones están apagados.",
+      "checks": [
+        {
+          "tipo": "presente",
+          "estado": "COINCIDE",
+          "detalle": "src/client/components/Vocabulary.tsx:893 ~ /reviewWords/",
+          "evidencia": {
+            "file": "src/client/components/Vocabulary.tsx",
+            "line": 893,
+            "text": "const reviewWords = reviewQueue(scopedWords, knownKeys, exposure);"
+          }
+        },
+        {
+          "tipo": "presente",
+          "estado": "COINCIDE",
+          "detalle": "src/client/components/Vocabulary.tsx:2127 ~ /disabled=\\{reviewWords\\.filter\\(\\(w\\) => isEligible\\(w, \"cloze\"\\)\\)\\.length === 0\\}/",
+          "evidencia": {
+            "file": "src/client/components/Vocabulary.tsx",
+            "line": 2127,
+            "text": "disabled={reviewWords.filter((w) => isEligible(w, \"cloze\")).length === 0}"
+          }
+        },
+        {
+          "tipo": "presente",
+          "estado": "COINCIDE",
+          "detalle": "src/client/components/Vocabulary.tsx:2183 ~ /Los modos libres usan palabras que ya viste/",
+          "evidencia": {
+            "file": "src/client/components/Vocabulary.tsx",
+            "line": 2183,
+            "text": "? \"Los modos libres usan palabras que ya viste. Aprende primero las nuevas.\""
+          }
+        }
+      ],
+      "estado": "CORREGIDO",
+      "coincidencias": "3/3"
+    }
+  ],
+  "research": [
+    {
+      "id": "R1-recuperacion-antes-que-exposicion",
+      "cuestion": "¿Una palabra desconocida se aprende mejor si se le pide recuperarla antes de presentarla, o al revés?",
+      "cita": {
+        "autor": "Roediger & Karpicke",
+        "anio": 2006,
+        "titulo": "Test-enhanced learning: Taking memory tests improves long-term retention",
+        "revista": "Psychological Science",
+        "doi": "10.1111/j.1467-9280.2006.01693.x"
+      },
+      "buscar": "Test-enhanced learning taking memory tests improves long-term retention",
+      "porQue": "Es la evidencia que sostiene la Sesión Fluida actual (testear). Su condición: el material YA fue estudiado.",
+      "queAtacar": "Comprobar si el estudio midió retención sobre material nunca presentado; si no, no aplica a palabras nuevas."
+    },
+    {
+      "id": "R2-pretesting",
+      "cuestion": "¿Fallar un intento de recuperación antes de estudiar ayuda después? ¿Cuánto y en qué material?",
+      "cita": {
+        "autor": "Richland, Kornell & Kao",
+        "anio": 2009,
+        "titulo": "The pretesting effect: Do unsuccessful retrieval attempts enhance learning?",
+        "revista": "Journal of Experimental Psychology: Applied",
+        "doi": "10.1037/a0016496"
+      },
+      "buscar": "The pretesting effect do unsuccessful retrieval attempts enhance learning",
+      "porQue": "Es el mejor argumento CONTRA el arreglo propuesto (presentar primero). Hay que citarlo, no esquivarlo.",
+      "queAtacar": "El efecto pretesting se mide en material con pistas ricas (prosa, preguntas). ¿Se replica con pares forma-significado aislados y sin retroalimentación inmediata?"
+    },
+    {
+      "id": "R3-fallo-con-retroalimentacion",
+      "cuestion": "¿La recuperación fallida mejora el aprendizaje solo si hay retroalimentación correctiva inmediata?",
+      "cita": {
+        "autor": "Kornell, Hays & Bjork",
+        "anio": 2009,
+        "titulo": "Unsuccessful retrieval attempts enhance subsequent learning",
+        "revista": "Journal of Experimental Psychology: Learning, Memory, and Cognition",
+        "doi": "10.1037/a0015729"
+      },
+      "buscar": "Unsuccessful retrieval attempts enhance subsequent learning",
+      "porQue": "Si la mejora depende de la corrección inmediata, la sesión actual (fallar → rescate con pista) no capitaliza el fallo: lo tapa.",
+      "queAtacar": "¿El rescate de practice.ts:407 muestra la respuesta correcta o solo una pista parcial (prefijo de 2 letras)?"
+    },
+    {
+      "id": "R4-dificultades-deseables",
+      "cuestion": "¿Cuándo una dificultad es «deseable» y cuándo es solo fricción que hace abandonar?",
+      "cita": {
+        "autor": "Bjork & Bjork",
+        "anio": 2011,
+        "titulo": "Making things hard on yourself, but in a good way: Creating desirable difficulties to enhance learning",
+        "revista": "Psychology and the real world (capítulo)",
+        "sinDoi": true
+      },
+      "buscar": "Making things hard on yourself but in a good way creating desirable difficulties",
+      "porQue": "Da el marco para decidir si «que no recuerde nada» es dificultad deseable o fracaso de diseño.",
+      "queAtacar": "La condición de dificultad deseable es éxito alcanzable y alto; con acierto ~azar (4 opciones) no se cumple."
+    },
+    {
+      "id": "R5-repeticiones-para-vocabulario-l2",
+      "cuestion": "¿Cuántos encuentros con una palabra hacen falta antes de exigir recuperación productiva?",
+      "cita": {
+        "autor": "Webb",
+        "anio": 2007,
+        "titulo": "The effects of repetition on vocabulary knowledge",
+        "revista": "Applied Linguistics",
+        "doi": "10.1093/applin/aml048"
+      },
+      "buscar": "The effects of repetition on vocabulary knowledge Webb",
+      "porQue": "Da el orden de magnitud para el umbral de la primera pasada (1 encuentro no basta para reconocimiento con distractores).",
+      "queAtacar": "No es un estudio de caso: 121 estudiantes japoneses, pseudopalabras en contexto y aprendizaje INCIDENTAL (1, 3, 7 y 10 encuentros; ganancias sustanciales a los 10, conocimiento completo pide más). El «8–12» no aplica a estudio intencional con definición."
+    },
+    {
+      "id": "R6-modelo-de-agenda-fsrs",
+      "cuestion": "¿Qué predice FSRS exactamente, y qué NO predice?",
+      "cita": {
+        "autor": "Ye, Su & Cao",
+        "anio": 2022,
+        "titulo": "A Stochastic Shortest Path Algorithm for Optimizing Spaced Repetition Scheduling",
+        "revista": "KDD",
+        "doi": "10.1145/3534678.3539081"
+      },
+      "buscar": "A Stochastic Shortest Path Algorithm for Optimizing Spaced Repetition Scheduling",
+      "porQue": "FSRS predice recuerdo a partir de logs de repaso. Una tarjeta con reps 0 no tiene log: no hay nada que predecir.",
+      "queAtacar": "Verificar que el producto no use la estabilidad predicha como si midiera aprendizaje probado."
+    },
+    {
+      "id": "R7-carga-cognitiva-y-ejemplos",
+      "cuestion": "¿Conviene resolver un problema sin instrucción previa cuando el material es arbitrario (forma-significado)?",
+      "cita": {
+        "autor": "Sweller",
+        "anio": 1988,
+        "titulo": "Cognitive load during problem solving: Effects on learning",
+        "revista": "Cognitive Science",
+        "doi": "10.1207/s15516709cog1202_4"
+      },
+      "buscar": "Cognitive load during problem solving effects on learning Sweller",
+      "porQue": "Para material arbitrario, buscar en el vacío impone carga que no deja traza: apoya presentar antes de exigir.",
+      "queAtacar": "El contraejemplo es «productive failure» (Kapur, 2008), que funciona con conceptos, no con pares léxicos."
+    },
+    {
+      "id": "R8-reconocer-antes-que-recordar",
+      "cuestion": "¿Una interfaz debe pedir reconocimiento o recuerdo según lo que el usuario ya sabe?",
+      "cita": {
+        "autor": "Nielsen",
+        "anio": 1994,
+        "titulo": "10 usability heuristics for user interface design (heurística 6)",
+        "revista": "Nielsen Norman Group",
+        "tipo": "guia"
+      },
+      "buscar": "10 usability heuristics for user interface design recognition rather than recall",
+      "porQue": "Es la heurística que el héroe del Cuaderno incumple: pide reconocer algo que nunca se mostró.",
+      "queAtacar": "La heurística es guía, no medición: no sustituye la evidencia experimental (R1–R3)."
+    },
+    {
+      "id": "R9-generar-error-con-correccion",
+      "cuestion": "¿Generar un intento libre y recibir la respuesta correcta de inmediato supera a solo leer, incluso con vocabulario nuevo?",
+      "cita": {
+        "autor": "Potts & Shanks",
+        "anio": 2014,
+        "titulo": "The benefit of generating errors during learning",
+        "revista": "Journal of Experimental Psychology: General",
+        "doi": "10.1037/a0033194"
+      },
+      "buscar": "The benefit of generating errors during learning",
+      "porQue": "Es el contraargumento más fuerte a «presentar primero»: generar y fallar con corrección inmediata gana a leer. También es la evidencia que respalda la ficha actual (ver la palabra y el contexto, pensar, «Mostrar significado»).",
+      "queAtacar": "En el mismo trabajo, ELEGIR entre opciones y fallar no supera a leer. La mecánica de Lecta (4 formas, sin significado y sin corrección del significado) no capitaliza este efecto; la ficha sí puede."
+    },
+    {
+      "id": "R10-pretesting-con-y-sin-demora",
+      "cuestion": "¿El beneficio de intentar recuperar antes de estudiar depende de que el par tenga relación semántica o de que el estudio venga enseguida?",
+      "cita": {
+        "autor": "Grimaldi & Karpicke",
+        "anio": 2012,
+        "titulo": "When and why do retrieval attempts enhance subsequent encoding?",
+        "revista": "Memory & Cognition",
+        "doi": "10.3758/s13421-011-0174-0"
+      },
+      "buscar": "When and why do retrieval attempts enhance subsequent encoding",
+      "porQue": "Delimita el pretesting: ayuda con pares relacionados, no con pares sin relación, y el beneficio desaparece si hay una demora breve entre el intento y el estudio.",
+      "queAtacar": "Lecta trabaja con pares forma-significado de relación arbitraria y la presentación puede llegar mucho después de la captura: no es la condición donde el pretesting funciona."
+    },
+    {
+      "id": "R11-errores-relacionados",
+      "cuestion": "¿El error ayuda solo cuando se acerca a la respuesta correcta?",
+      "cita": {
+        "autor": "Huelser & Metcalfe",
+        "anio": 2012,
+        "titulo": "Making related errors facilitates learning, but learners do not know it",
+        "revista": "Memory & Cognition",
+        "doi": "10.3758/s13421-011-0167-z"
+      },
+      "buscar": "Making related errors facilitates learning but learners do not know it",
+      "porQue": "Con pares sin relación semántica no hubo beneficio de generar el error. Es la condición típica de una palabra desconocida en otro idioma.",
+      "queAtacar": "Que el efecto sea nulo en pares aislados no autoriza a examinar sin presentar: solo quita el argumento a favor del pretest y deja la carga de la prueba en quien lo defiende."
+    },
+    {
+      "id": "R12-pretesting-y-reconocimiento",
+      "cuestion": "¿El pretesting mejora reconocer la respuesta aunque no mejore recordarla con pista?",
+      "cita": {
+        "autor": "Seabrooke, Mitchell, Wills, Waters & Hollins",
+        "anio": 2021,
+        "titulo": "Pretesting boosts recognition, but not cued recall, of targets from unrelated word pairs",
+        "revista": "Psychonomic Bulletin & Review",
+        "doi": "10.3758/s13423-020-01810-y"
+      },
+      "buscar": "Pretesting boosts recognition but not cued recall of targets from unrelated word pairs",
+      "porQue": "Separa dos tipos de memoria: elegir entre 4 mide reconocimiento, no recuerdo. Un beneficio en reconocimiento no justifica presentar el repaso como si midiera saber la palabra.",
+      "queAtacar": "La sesión actual mide reconocimiento de FORMA en una oración, no significado. Aun con beneficio de reconocimiento, no es lo que el usuario cree que está practicando."
+    }
+  ],
+  "phases": [
+    {
+      "id": "F0",
+      "titulo": "Corregir el registro del arnés",
+      "objetivo": "Que el arnés no confirme afirmaciones falsas ni dé por buenas citas resueltas a otra obra. No toca el producto.",
+      "archivos": [
+        "scripts/audit-cuaderno.mjs (CLAIMS, RESEARCH, PHASES, resolveQuote)",
+        "scripts/audit-cuaderno.test.mjs"
+      ],
+      "aceptacion": [
+        "C6 pasa a contexto y ancla la exclusión en idb.ts:1706",
+        "C10 ancla «Repaso rápido» (Vocabulary.tsx:2028) y la puerta muerta (Vocabulary.tsx:2170)",
+        "resolveQuote consulta el DOI cuando existe y marca DUDOSA si el título no se parece o el año no coincide (±1)",
+        "node scripts/audit-cuaderno.mjs --out /tmp/audit-cuaderno sale 0 sin red"
+      ],
+      "riesgo": "Ninguno de producto. Un arnés mal calibrado hace que F5 declare corregido lo que no lo está.",
+      "puerta": "pnpm test scripts/audit-cuaderno.test.mjs && node scripts/audit-cuaderno.mjs --out /tmp/audit-cuaderno"
+    },
+    {
+      "id": "F1",
+      "titulo": "Regla: solo se repasa lo que ya se presentó",
+      "objetivo": "Que la sesión sirva únicamente palabras vencidas que pasaron por la ficha o por un repaso real, ordenadas por vencimiento, sin rama de respaldo y con un modo que la palabra puede cumplir.",
+      "archivos": [
+        "src/client/lib/learn.ts (reviewQueue, isWordKnownBy)",
+        "src/client/components/Vocabulary.tsx (startAdaptiveFlow, reviewWords)"
+      ],
+      "aceptacion": [
+        "reviewQueue excluye lápidas, conocidas, exposición known, reps 0 sin exposición y no vencidas",
+        "reviewQueue ordena por priority y luego por vencimiento ascendente",
+        "una palabra sin context y con significado entra en modo meaning, no en choose",
+        "no queda ninguna rama que llene la cola con palabras no vencidas"
+      ],
+      "riesgo": "Quien abría el Cuaderno y siempre encontraba algo para practicar ahora puede ver «Estás al día». Es el comportamiento buscado.",
+      "puerta": "pnpm test src/client/lib/learn.test.ts src/client/components/Vocabulary.test.ts && pnpm typecheck && pnpm lint"
+    },
+    {
+      "id": "F2",
+      "titulo": "Héroe con un solo botón principal y cifras separadas",
+      "objetivo": "Que el botón principal diga qué hace y con cuántas palabras (Aprender / Repasar / Seguir leyendo) y que desaparezcan «Repaso rápido» y el bloque «Por aprender».",
+      "archivos": [
+        "src/client/components/Vocabulary.tsx (nb-hero-cta, título del héroe, notebook-count)",
+        "src/client/components/Vocabulary.test.ts"
+      ],
+      "aceptacion": [
+        "una prueba por rama: aprender, repasar, al día, sin palabras",
+        "en cada rama hay exactamente un .btn--primary dentro de .nb-hero-cta",
+        "el encabezado separa «por aprender» de «para repasar»",
+        "no queda la promesa «~2 min» ni el botón «Repaso rápido» del héroe"
+      ],
+      "riesgo": "Cambia el punto de entrada más usado. Hay que conservar el acceso a la práctica con un solo botón y sin duplicarlo.",
+      "puerta": "pnpm test src/client/components/Vocabulary.test.ts && pnpm typecheck && pnpm lint"
+    },
+    {
+      "id": "F3",
+      "titulo": "Puente aprender → repasar y salida de la ficha sin significado",
+      "objetivo": "Que al terminar la ficha se ofrezca repasar las palabras que el usuario quiso aprender, y que una ficha sin significado se pueda pasar.",
+      "archivos": [
+        "src/client/components/Vocabulary.tsx (learn.kept, pantalla de fin, «Pasar por ahora»)"
+      ],
+      "aceptacion": [
+        "guardar 2 palabras abre una cola de 2 con «Repasar estas 2 palabras»",
+        "con 0 guardadas no aparece el puente",
+        "«Pasar por ahora» avanza sin escribir exposición ni tarjeta"
+      ],
+      "riesgo": "La pantalla de fin gana un segundo botón; «Ver el cuaderno» debe quedar como acción secundaria.",
+      "puerta": "pnpm test src/client/components/Vocabulary.test.ts && pnpm typecheck && pnpm lint"
+    },
+    {
+      "id": "F4",
+      "titulo": "Corrección con significado en «Elegir palabra»",
+      "objetivo": "Que tras responder se vea la forma correcta y su significado, y que los distractores sean del mismo idioma que la palabra.",
+      "archivos": [
+        "src/client/components/Vocabulary.tsx (choiceOptions, rama choose)"
+      ],
+      "aceptacion": [
+        "antes de responder el significado no está en pantalla; después sí",
+        "con palabras de dos idiomas, las 4 opciones son del idioma de la palabra"
+      ],
+      "riesgo": "Aparece texto en el modo choose de todos los flujos (sesión, modo libre y juego por fila). Es intencional.",
+      "puerta": "pnpm test src/client/components/Vocabulary.test.ts && pnpm typecheck && pnpm lint"
+    },
+    {
+      "id": "F5",
+      "titulo": "Cierre verificado",
+      "objetivo": "Que el arnés registre los defectos como corregidos y que la puerta completa quede en verde con un recorrido real.",
+      "archivos": [
+        "scripts/audit-cuaderno.mjs (afirmaciones tipo corregido)",
+        "docs/auditoria/cuaderno/evidencia.md",
+        "docs/auditoria/cuaderno/evidencia.json"
+      ],
+      "aceptacion": [
+        "pnpm gate en verde con 0 warnings y check:size bajo 215 kB",
+        "el arnés sale 0 y las afirmaciones de defecto quedan como CORREGIDO",
+        "recorrido en navegador anotado: toques y segundos antes y después"
+      ],
+      "riesgo": "Ninguno: es la puerta de salida. Si algo falla, no se declara cerrado.",
+      "puerta": "pnpm gate && node scripts/audit-cuaderno.mjs"
+    }
+  ]
+}

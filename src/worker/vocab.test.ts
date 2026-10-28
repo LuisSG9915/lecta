@@ -337,3 +337,70 @@ describe("GET /api/vocab — sincronización incremental", () => {
     expect(params).toEqual(["u1", "es", 1700000000000, "perenne"]);
   });
 });
+
+describe("PUT /api/vocab — sello de primera exposición", () => {
+  it("guarda presented_at y no borra el sello previo si el cliente no lo manda", async () => {
+    const response = await putWords([word({ presentedAt: 1_700_000_000_500 })]);
+    expect(response.status).toBe(200);
+
+    const [sql, params] = queryMock.mock.calls[0] as unknown as [
+      string,
+      [string, string],
+    ];
+    expect(sql).toContain("presented_at");
+    expect(sql).toContain("COALESCE(excluded.presented_at, lecta_user_words.presented_at)");
+    const rows = JSON.parse(params[1]) as { presentedAt: number | null }[];
+    expect(rows[0].presentedAt).toBe(1_700_000_000_500);
+
+    const sinSello = await putWords([word()]);
+    expect(sinSello.status).toBe(200);
+    const [, params2] = queryMock.mock.calls[1] as unknown as [string, [string, string]];
+    expect((JSON.parse(params2[1]) as { presentedAt: number | null }[])[0].presentedAt).toBeNull();
+  });
+
+  it("acota un presentedAt del futuro al reloj del servidor", async () => {
+    const future = Date.now() + 600_000;
+    const response = await putWords([word({ presentedAt: future })]);
+    expect(response.status).toBe(200);
+
+    const [, params] = queryMock.mock.calls[0] as unknown as [
+      string,
+      [string, string],
+    ];
+    const rows = JSON.parse(params[1]) as { presentedAt: number }[];
+    expect(rows[0].presentedAt).toBeLessThanOrEqual(Date.now());
+    expect(rows[0].presentedAt).toBeLessThan(future);
+  });
+
+  it("el pull devuelve presentedAt como número", async () => {
+    queryMock.mockResolvedValueOnce({
+      rowCount: 1,
+      rows: [
+        {
+          language: "es",
+          form: "perenne",
+          lemma: "perenne",
+          pos: "adj",
+          meaning: "continuo",
+          context: null,
+          bookHash: null,
+          senseEntryId: null,
+          senseOrder: null,
+          card: null,
+          presentedAt: "1700000000500",
+          savedAt: 1700000000000,
+          updatedAt: 1700000000000,
+          syncedAt: 1700000000000,
+          deleted: false,
+        },
+      ],
+    });
+
+    const response = await app.request("/api/vocab?lang=es", {}, {});
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { words: { presentedAt: unknown }[] };
+    expect(body.words[0].presentedAt).toBe(1_700_000_000_500);
+    const [sql] = queryMock.mock.calls[0] as unknown as [string, unknown[]];
+    expect(sql).toContain('presented_at AS "presentedAt"');
+  });
+});

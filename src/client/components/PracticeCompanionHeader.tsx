@@ -85,7 +85,9 @@ export function PracticeCompanionHeader({
   const getDisplayText = () => {
     if (hintText) return `💡 ${hintText}`;
     if (instruction) return instruction;
-    if (progress && progress.total > 0 && (!speech || speech === "¡Vamos a repasar!")) {
+    // Sin frase propia manda el ánimo por progreso; una frase real (¡Exacto!,
+    // pista) siempre gana.
+    if (progress && progress.total > 0 && !speech) {
       return getProgressEncouragement(progress.current, progress.total);
     }
     return speech;
@@ -164,7 +166,7 @@ export function PracticeCompanionHeader({
                 </span>
               ) : null}
             </div>
-            <p className="practice-cat-text">{displayText}</p>
+            {displayText ? <p className="practice-cat-text">{displayText}</p> : null}
           </div>
         </div>
       </div>

@@ -15,7 +15,6 @@ import {
   captureDbScope,
   fillSavedWordMeaning,
   getActiveUserId,
-  knowledgeKey,
   listAnnotations,
   listKnowledge,
   listSavedWords,
@@ -46,9 +45,12 @@ import {
 import {
   emptyLearnExposure,
   isLearnPending,
+  isWordKnownBy,
   knownKeysFor,
   LEARN_EXPOSURE_KEY,
   parseLearnExposure,
+  REVIEW_SESSION_SIZE,
+  reviewQueue,
   withExposure,
   type LearnExposure,
 } from "../lib/learn";
@@ -621,7 +623,6 @@ export function Vocabulary(props: UnifiedVocabularyProps) {
 }
 
 function FullVocabulary({
-  onStartQuickReview,
   onDeleteWord: _onDeleteWord,
   onClose = () => {},
   books = [],
@@ -704,6 +705,8 @@ function FullVocabulary({
     items: SavedWord[];
     total: number;
     revealed: boolean;
+    // Claves que el usuario quiso aprender en esta sesión: el puente a repaso.
+    kept: string[];
   } | null>(null);
   const [learnBusy, setLearnBusy] = useState<"" | "action" | "enrich">("");
   const [learnError, setLearnError] = useState("");
@@ -728,7 +731,7 @@ function FullVocabulary({
     loadPracticeCompanionMode(),
   );
   const [catPose, setCatPose] = useState<CompanionPose>("idle");
-  const [catSpeech, setCatSpeech] = useState<string>("¡Vamos a repasar!");
+  const [catSpeech, setCatSpeech] = useState<string>("");
   const [combo, setCombo] = useState(0);
   const [hintText, setHintText] = useState<string | null>(null);
   const [hintBusy, setHintBusy] = useState(false);
@@ -869,10 +872,7 @@ function FullVocabulary({
   // la cola de Aprender ni el repaso lo vuelven a ofrecer, aunque la
   // palabra siga listada en el cuaderno.
   const isWordKnown = useCallback(
-    (word: SavedWord) =>
-      knownKeys.has(knowledgeKey(word.language || "es", word.lemma ?? word.form)) ||
-      (word.lemma != null &&
-        knownKeys.has(knowledgeKey(word.language || "es", word.form))),
+    (word: SavedWord) => isWordKnownBy(word, knownKeys),
     [knownKeys],
   );
   const nextDueTs = useMemo(() => {
@@ -881,12 +881,21 @@ function FullVocabulary({
       .map((w) => new Date(w.card!.due).getTime());
     return futureTimestamps.length > 0 ? Math.min(...futureTimestamps) : null;
   }, [scopedWords, isWordKnown]);
-  const dueWords = scopedWords
-    .filter((word) => isDue(word.card) && !isWordKnown(word))
-    .sort((a, b) => (b.priority ? 1 : 0) - (a.priority ? 1 : 0));
-  const dueCount = dueWords.length;
   const learnPending = scopedWords.filter((word) =>
     isLearnPending(word, knownKeys, exposure),
+  );
+  // La corrección IA de «escribir» pide sesión; sin ella el ejercicio
+  // queda en autocalificación directa.
+  const hasSession = Boolean(getActiveUserId());
+  // Todo lo que pregunta (la sesión y los modos libres) sale de aquí: solo
+  // palabras que ya pasaron por la ficha o por un repaso real. Depende de la
+  // hora, así que se calcula en cada render.
+  const reviewWords = reviewQueue(scopedWords, knownKeys, exposure);
+  // Una palabra sin significado no puede entrar al repaso: «Quiero aprenderla»
+  // está deshabilitado. Solo se ofrece como aprendible si la IA puede
+  // definirla en el momento.
+  const learnable = learnPending.filter(
+    (word) => Boolean(word.meaning) || (hasSession && useAi),
   );
 
   // Chequeo de retención a 30 días: palabras ya consolidadas (asentadas
@@ -941,7 +950,7 @@ function FullVocabulary({
   // con acepción; sin conexión o con menos de dos acepciones la
   // palabra no entra en la cola (elegibilidad honesta, no error).
   const buildSenseItems = async (): Promise<QueueItem[]> => {
-    const candidates = dueWords.filter((word) => word.senseEntryId != null);
+    const candidates = reviewWords.filter((word) => word.senseEntryId != null);
     if (!candidates.length) return [];
     const languages = [...new Set(candidates.map((word) => word.language || "es"))];
     const results = await Promise.all(
@@ -989,7 +998,7 @@ function FullVocabulary({
   // generar los que falten (hasta 8 por llamada), así que una cola
   // vacía suele significar «aún no están listos» más que un error.
   const buildItemItems = async (mode: "context" | "clozeNew"): Promise<QueueItem[]> => {
-    const candidates = dueWords.filter(
+    const candidates = reviewWords.filter(
       (word) => word.senseEntryId != null && word.senseOrder != null,
     );
     if (!candidates.length) return [];
@@ -1038,7 +1047,7 @@ function FullVocabulary({
         ? await buildSenseItems()
         : chosen === "context" || chosen === "clozeNew"
           ? await buildItemItems(chosen)
-          : dueWords
+          : reviewWords
               .filter((word) => isEligible(word, chosen))
               .map((word) => ({ word, mode: chosen }));
     if (!items.length) {
@@ -1056,10 +1065,17 @@ function FullVocabulary({
   };
 
 
-  const startAdaptiveFlow = () => {
+  // `onlyKeys` sirve al puente «Repasar estas N palabras» de la ficha.
+  const startAdaptiveFlow = (onlyKeys?: ReadonlySet<string>) => {
     setPracticeNote("");
-    const candidates = dueWords.length > 0 ? dueWords.slice(0, 5) : scopedWords.slice(0, 5);
-    if (!candidates.length) return;
+    const pool = onlyKeys
+      ? reviewWords.filter((word) => onlyKeys.has(word.key))
+      : reviewWords;
+    const candidates = pool.slice(0, REVIEW_SESSION_SIZE);
+    if (!candidates.length) {
+      if (onlyKeys) setPracticeNote("Esas palabras todavía no toca repasarlas.");
+      return;
+    }
 
     const challenges = buildAdaptivePracticeQueue(candidates, {
       pool: scopedWords,
@@ -1067,7 +1083,8 @@ function FullVocabulary({
       hasConnection: typeof navigator !== "undefined" ? navigator.onLine : true,
     });
 
-    const queueItems: QueueItem[] = challenges.map((ch) => {
+    const queueItems: QueueItem[] = [];
+    for (const ch of challenges) {
       let mode: PracticeMode;
       switch (ch.mechanic) {
         case "contextual_cloze":
@@ -1088,21 +1105,38 @@ function FullVocabulary({
         default:
           mode = "choose";
       }
-      return {
-        word: ch.word,
-        mode,
-        adaptiveChallenge: ch,
-      };
-    });
+      // La mecánica se elige por estabilidad, no por datos disponibles: una
+      // palabra sin oración no puede ir a choose (sería adivinar al 25 %) y
+      // una sin significado no puede ir a los modos que la piden.
+      if (!isEligible(ch.word, mode)) {
+        if (isEligible(ch.word, "choose")) mode = "choose";
+        else if (ch.word.meaning) mode = "meaning";
+        else continue;
+      }
+      queueItems.push({ word: ch.word, mode, adaptiveChallenge: ch });
+    }
 
+    if (!queueItems.length) {
+      setPracticeNote(
+        "Estas palabras necesitan una oración o un significado para repasarse.",
+      );
+      return;
+    }
     beginQueue(queueItems);
   };
 
+  // «Partida rápida» pregunta igual que la sesión: solo palabras vencidas que
+  // ya pasaron por la ficha, y el modo que la palabra puede cumplir.
+  const reviewKeys = new Set(reviewWords.map((word) => word.key));
   const handleQuickGame = (targetWord: SavedWord) => {
     triggerHaptic("selection");
     setPracticeNote("");
-    const targetMode: PracticeMode = targetWord.meaning ? "choose" : "form";
-    const others = scopedWords
+    const targetMode: PracticeMode = isEligible(targetWord, "choose")
+      ? "choose"
+      : targetWord.meaning
+        ? "meaning"
+        : "form";
+    const others = reviewWords
       .filter((w) => w.key !== targetWord.key && isEligible(w, targetMode))
       .slice(0, 4);
     const items: QueueItem[] = [
@@ -1140,11 +1174,11 @@ function FullVocabulary({
   const startLearn = (first?: SavedWord) => {
     const items = first
       ? [first, ...learnPending.filter((word) => word.key !== first.key)]
-      : learnPending;
+      : learnable;
     if (!items.length) return;
     setLearnError("");
     setLearnBusy("");
-    setLearn({ items, total: items.length, revealed: false });
+    setLearn({ items, total: items.length, revealed: false, kept: [] });
   };
 
   const advanceLearn = () =>
@@ -1200,14 +1234,29 @@ function FullVocabulary({
     setLearnError("");
     try {
       const scope = captureDbScope();
-      const stored = await updateSavedWord({ ...item, card: newCard() }, scope);
+      // `presentedAt` viaja con la palabra: en otro dispositivo la ficha no
+      // se repite antes del primer repaso.
+      const stored = await updateSavedWord(
+        { ...item, card: newCard(), presentedAt: Date.now() },
+        scope,
+      );
       void pushWordsToServer([stored], scope);
       setWords((list) =>
         list?.map((word) => (word.key === stored.key ? stored : word)) ?? list,
       );
       await persistExposure(item.key, "learn", scope);
       triggerHaptic(12);
-      advanceLearn();
+      // Avanza y anota la palabra para el puente «Repasar estas N palabras».
+      setLearn((current) =>
+        current
+          ? {
+              ...current,
+              kept: [...current.kept, item.key],
+              items: current.items.slice(1),
+              revealed: false,
+            }
+          : current,
+      );
     } catch {
       setLearnError("No se pudo guardar. Intenta de nuevo.");
     } finally {
@@ -1726,17 +1775,24 @@ function FullVocabulary({
         : [];
   const senseLikeAnswer =
     current?.mode === "context" ? current.item?.answerIndex : current?.correctIndex;
-  // La corrección IA de «escribir» pide sesión; sin ella el ejercicio
-  // queda en autocalificación directa.
-  const hasSession = Boolean(getActiveUserId());
   const done = queue ? queue.total - queue.items.length : 0;
 
   // «Elegir palabra»: la forma correcta más tres distractores del
-  // cuaderno, mezclados con semilla estable por palabra.
+  // cuaderno, mezclados con semilla estable por palabra. El pool se limita
+  // al idioma de la palabra: una opción en otro idioma se descarta sin leer.
   const choiceOptions =
     current?.mode === "choose"
       ? shuffleStable(
-          [current.word, ...pickDistractors(current.word, all, 3)],
+          [
+            current.word,
+            ...pickDistractors(
+              current.word,
+              all.filter(
+                (w) => (w.language || "es") === (current.word.language || "es"),
+              ),
+              3,
+            ),
+          ],
           seedFor(current.word.key),
         )
       : [];
@@ -1823,7 +1879,9 @@ function FullVocabulary({
             : queue
               ? `${Math.min(done + 1, queue.total)} de ${queue.total}`
               : words
-                ? `${scopedWords.length === all.length ? all.length : `${scopedWords.length} de ${all.length}`} guardadas · ${dueCount} para hoy`
+                ? `${scopedWords.length === all.length ? all.length : `${scopedWords.length} de ${all.length}`} guardadas${
+                    learnable.length > 0 ? ` · ${learnable.length} por aprender` : ""
+                  } · ${reviewWords.length} para repasar`
                 : ""}
         </span>
       </header>
@@ -1876,11 +1934,17 @@ function FullVocabulary({
                   <div className="nb-hero-header">
                     <span className="nb-hero-eyebrow">La Mesa de Estudio</span>
                     <h2 className="nb-hero-title">
-                      {dueCount > 0
-                        ? `Tienes ${dueCount} ${dueCount === 1 ? "palabra lista" : "palabras listas"} para brillar hoy`
-                        : all.length === 0
-                          ? "Tu cuaderno está esperando tus lecturas"
-                          : `Estás al día. ${nextDueTs !== null ? `El próximo repaso: ${futureRelativeDay(nextDueTs)}` : "Tu mente descansa hoy."}`}
+                      {learnable.length > 0
+                        ? `Tienes ${learnable.length} ${
+                            learnable.length === 1 ? "palabra nueva" : "palabras nuevas"
+                          } para aprender`
+                        : reviewWords.length > 0
+                          ? `Tienes ${reviewWords.length} ${
+                              reviewWords.length === 1 ? "palabra" : "palabras"
+                            } para repasar hoy`
+                          : all.length === 0
+                            ? "Tu cuaderno está esperando tus lecturas"
+                            : `Estás al día. ${nextDueTs !== null ? `El próximo repaso: ${futureRelativeDay(nextDueTs)}` : "Tu mente descansa hoy."}`}
                     </h2>
                   </div>
 
@@ -1994,7 +2058,7 @@ function FullVocabulary({
                     </div>
                   </div>
 
-                  {/* CTA Principal Único */}
+                  {/* CTA Principal Único: un solo botón, con cifra y verbo honestos */}
                   <div className="nb-hero-cta" style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
                     {all.length === 0 ? (
                       <button
@@ -2005,39 +2069,49 @@ function FullVocabulary({
                         <Icon name="shelf" size={16} />
                         <span>Abrir un libro para guardar palabras</span>
                       </button>
+                    ) : learnable.length > 0 ? (
+                      <button
+                        type="button"
+                        className="btn btn--primary nb-hero-btn-flow"
+                        aria-label={`Aprender ${learnable.length} ${
+                          learnable.length === 1 ? "palabra nueva" : "palabras nuevas"
+                        }`}
+                        onClick={() => startLearn()}
+                      >
+                        <Icon name="sparkles" size={16} />
+                        <span>
+                          Aprender {learnable.length}{" "}
+                          {learnable.length === 1 ? "palabra nueva" : "palabras nuevas"}
+                        </span>
+                      </button>
+                    ) : reviewWords.length > 0 ? (
+                      <button
+                        type="button"
+                        className="btn btn--primary nb-hero-btn-flow"
+                        aria-label={`Repasar ${Math.min(REVIEW_SESSION_SIZE, reviewWords.length)} ${
+                          Math.min(REVIEW_SESSION_SIZE, reviewWords.length) === 1
+                            ? "palabra"
+                            : "palabras"
+                        }`}
+                        onClick={() => startAdaptiveFlow()}
+                      >
+                        <Icon name="sparkles" size={16} />
+                        <span>
+                          Repasar {Math.min(REVIEW_SESSION_SIZE, reviewWords.length)}{" "}
+                          {Math.min(REVIEW_SESSION_SIZE, reviewWords.length) === 1
+                            ? "palabra"
+                            : "palabras"}
+                        </span>
+                      </button>
                     ) : (
-                      <>
-                        <button
-                          type="button"
-                          className="btn btn--primary nb-hero-btn-flow"
-                          onClick={startAdaptiveFlow}
-                        >
-                          <Icon name="sparkles" size={16} />
-                          <span>Iniciar Sesión Fluida (~2 min)</span>
-                        </button>
-                        {isFeatureFlagEnabled("vocabGames") && (
-                          <button
-                            type="button"
-                            className="notebook-quick-review-cta"
-                            onClick={() => {
-                              const items = all.map(savedWordToItem);
-                              const session = buildOneMinuteReviewSession(items);
-                              if (onStartQuickReview) {
-                                onStartQuickReview(session);
-                              } else {
-                                startAdaptiveFlow();
-                              }
-                            }}
-                          >
-                            <span className="cta-icon"><Icon name="strategy" size={16} /></span>
-                            <span className="cta-text">
-                              Repaso rápido ({Math.min(5, all.length)}{" "}
-                              {Math.min(5, all.length) === 1 ? "palabra" : "palabras"})
-                            </span>
-                            <span className="cta-badge">1 min</span>
-                          </button>
-                        )}
-                      </>
+                      <button
+                        type="button"
+                        className="btn btn--primary nb-hero-btn-flow"
+                        onClick={onClose}
+                      >
+                        <Icon name="shelf" size={16} />
+                        <span>Seguir leyendo</span>
+                      </button>
                     )}
                   </div>
 
@@ -2050,7 +2124,7 @@ function FullVocabulary({
                           type="button"
                           className="nb-free-mode-card"
                           onClick={() => void startPractice("cloze")}
-                          disabled={all.filter((w) => isEligible(w, "cloze")).length === 0}
+                          disabled={reviewWords.filter((w) => isEligible(w, "cloze")).length === 0}
                           title="Hueco en el Libro · Contexto rápido"
                         >
                           <span className="nb-free-mode-icon" aria-hidden="true"><Icon name="book" size={16} /></span>
@@ -2064,7 +2138,7 @@ function FullVocabulary({
                           type="button"
                           className="nb-free-mode-card"
                           onClick={() => void startPractice("scramble")}
-                          disabled={all.filter((w) => isEligible(w, "scramble")).length === 0}
+                          disabled={reviewWords.filter((w) => isEligible(w, "scramble")).length === 0}
                           title="Sílabas de Tinta · Descifrar palabra"
                         >
                           <span className="nb-free-mode-icon" aria-hidden="true"><Icon name="sparkles" size={16} /></span>
@@ -2078,7 +2152,7 @@ function FullVocabulary({
                           type="button"
                           className="nb-free-mode-card"
                           onClick={() => void startPractice("syntax")}
-                          disabled={all.filter((w) => isEligible(w, "syntax")).length === 0}
+                          disabled={reviewWords.filter((w) => isEligible(w, "syntax")).length === 0}
                           title="Telar de Frases · Ordenar oración"
                         >
                           <span className="nb-free-mode-icon" aria-hidden="true"><Icon name="strategy" size={16} /></span>
@@ -2102,7 +2176,16 @@ function FullVocabulary({
                           </div>
                         </button>
                       </div>
-                      {practiceNote ? <p className="meta nb-practice-note">{practiceNote}</p> : null}
+                      {reviewWords.length === 0 ? (
+                        // Todos los botones quedan deshabilitados: se explica por qué.
+                        <p className="meta nb-practice-note" role="status">
+                          {learnable.length > 0
+                            ? "Los modos libres usan palabras que ya viste. Aprende primero las nuevas."
+                            : "No hay palabras para practicar todavía."}
+                        </p>
+                      ) : practiceNote ? (
+                        <p className="meta nb-practice-note" role="status">{practiceNote}</p>
+                      ) : null}
                     </div>
                   )}
                 </div>
@@ -2168,7 +2251,7 @@ function FullVocabulary({
               <Suspense fallback={null}>
                 <GamePanel
                   mode={workshopOpen ? "ai_workshop" : "dashboard"}
-                  onStartAdaptiveFlow={startAdaptiveFlow}
+                  onStartAdaptiveFlow={() => startAdaptiveFlow()}
                   words={all.map((w) => ({
                     word: w.form,
                     meaning: w.meaning,
@@ -2323,25 +2406,6 @@ function FullVocabulary({
 
         {(tab === "words" || tab === "today") && !queue && !learn ? (
           <section aria-label="Palabras guardadas">
-            {learnPending.length > 0 ? (
-              <section className="nb-review" aria-label="Palabras por aprender">
-                <p className="eyebrow">Por aprender · {learnPending.length}</p>
-                <p className="meta">
-                  Primera vez que las ves con su significado; decide si ya las
-                  conoces o si entran al repaso.
-                </p>
-                <div className="practice-modes" role="group" aria-label="Aprender">
-                  <button
-                    type="button"
-                    className="btn btn--primary"
-                    onClick={() => startLearn()}
-                  >
-                    Aprender
-                  </button>
-                </div>
-              </section>
-            ) : null}
-
             {retentionCheckCandidates.length > 0 ? (
               <section
                 className="nb-review nb-retention-check"
@@ -2643,7 +2707,11 @@ function FullVocabulary({
                                 onRemove={() => void remove(word)}
                                 onSpeak={() => void speakWord(word.form, word.language)}
                                 bookTitle={bookTitle(word.bookHash)}
-                                onQuickGame={() => handleQuickGame(word)}
+                                onQuickGame={
+                                  reviewKeys.has(word.key)
+                                    ? () => handleQuickGame(word)
+                                    : undefined
+                                }
                               />
                             ))}
                           </ul>
@@ -2675,7 +2743,11 @@ function FullVocabulary({
                           onRemove={() => void remove(word)}
                           onSpeak={() => void speakWord(word.form, word.language)}
                           bookTitle={bookTitle(word.bookHash)}
-                          onQuickGame={() => handleQuickGame(word)}
+                          onQuickGame={
+                            reviewKeys.has(word.key)
+                              ? () => handleQuickGame(word)
+                              : undefined
+                          }
                         />
                       ))}
                     </ul>
@@ -2703,6 +2775,21 @@ function FullVocabulary({
                 {learn.total}{" "}
                 {learn.total === 1 ? "palabra vista" : "palabras vistas"}.
               </p>
+              {learn.kept.length > 0 ? (
+                <button
+                  type="button"
+                  className="btn btn--primary"
+                  onClick={() => {
+                    const keys = new Set(learn.kept);
+                    setLearn(null);
+                    startAdaptiveFlow(keys);
+                  }}
+                >
+                  {Math.min(REVIEW_SESSION_SIZE, learn.kept.length) === 1
+                    ? "Repasar esta palabra"
+                    : `Repasar estas ${Math.min(REVIEW_SESSION_SIZE, learn.kept.length)} palabras`}
+                </button>
+              ) : null}
               <button
                 type="button"
                 className="btn--quiet"
@@ -2820,6 +2907,18 @@ function FullVocabulary({
                   >
                     Quiero aprenderla
                   </button>
+                  {!learn.items[0].meaning ? (
+                    // Sin significado no hay nada que aprender ni que repasar:
+                    // se puede pasar sin escribir exposición ni tarjeta.
+                    <button
+                      type="button"
+                      className="btn--quiet"
+                      disabled={Boolean(learnBusy)}
+                      onClick={advanceLearn}
+                    >
+                      Pasar por ahora
+                    </button>
+                  ) : null}
                 </div>
               ) : null}
               {learnError ? (
@@ -3251,6 +3350,14 @@ function FullVocabulary({
                         />
                       ) : null}
                       <p className="meta">Toca la palabra que falta.</p>
+                      {/* Corrección con significado: sin esto, fallar el hueco
+                          no enseña lo que la palabra quiere decir. */}
+                      {answered ? (
+                        <p className="nb-card-back" role="status">
+                          <strong>{current.word.form}</strong>
+                          {current.word.meaning ? ` — ${current.word.meaning}` : ""}
+                        </p>
+                      ) : null}
                     </>
                   ) : current.mode === "context" ? (
                     <>

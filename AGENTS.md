@@ -88,7 +88,22 @@
 ## Producción
 
 - URL: `https://lecta.luis-sg9915.workers.dev` — deploy con `pnpm run deploy`.
-- Último deploy: **2026-10-27** (segundo del día), versión
+- Último deploy: **2026-10-28**, versión
+  `f602a71f-fc61-44f4-b6c9-93a3ee1290a1`, Lecta **v0.2.2**: el Cuaderno enseña
+  antes de examinar (ver «Regla del Cuaderno»). Incluye la migración **016**
+  aplicada en `lecta` antes del worker (desbloquear `lecta_user_words` → `ALTER`
+  → volver a bloquear; 0,8 s y 1,3 s, sin jobs en cola). Verificado en caliente:
+  `pnpm gate` en verde (2720 pruebas, 180.11/215 kB gzip), `/api/health` → 200,
+  `/` → 200 sirviendo `assets/index-BUAHLtMJ.js`, `/api/positions` sin sesión →
+  401, `0.2.2` en `assets/DiagnosticsModal-UfzSsviw.js`, y las frases nuevas
+  (`Seguir leyendo`, `Pasar por ahora`, `Los modos libres usan palabras que ya
+  viste`) en `assets/Vocabulary-U4tEJWaQ.js`. `smoke:sync` contra producción
+  pasó completo; además se probó `/api/vocab` a mano: PUT con `presentedAt` →
+  200, PUT sin el campo no borra el sello y el pull lo devuelve como número.
+  Cuentas temporales creadas: `sync-smoke-1793158594248@example.com` y
+  `vocab-sonda-1793158618958@example.com` (esta segunda solo con una palabra
+  tombada).
+- Deploy anterior: **2026-10-27** (segundo del día), versión
   `57651b95-fe9e-46d6-a703-951fa948545c`, Lecta **v0.2.1**: arreglo del
   «Cargando tu recorrido…» eterno. `openLectaDB` gana un perro guardián
   (`OPEN_WATCHDOG_MS = 12_000`) porque una petición encolada detrás de un
@@ -234,4 +249,24 @@
 - El cierre de capítulo debe pasar por `completeChapterTo`
   (`useReaderNavigation.ts`) en scroll y en páginas, y consolidar la tarjeta con
   `consolidateEpisodicWord` (`reviews.ts`). Un ejercicio resuelto = un repaso.
+- `pnpm audit:cuaderno [--online]` audita el Cuaderno y la sesión de repaso
+  contra el código y escribe `docs/auditoria/cuaderno/evidencia.*`. Corre también
+  en `pnpm test` (`scripts/audit-cuaderno.test.mjs`). Las afirmaciones `corregido`
+  vigilan que el arreglo siga en pie: si desaparecen, el reporte sale 1.
+- Regla del Cuaderno (2026-10-28): la sesión de repaso **y los modos libres**
+  salen de `reviewQueue` (`learn.ts`) — vencidas que ya pasaron por la ficha o por
+  un repaso real. Nunca se examina una palabra con `reps === 0` sin exposición, no
+  hay respaldo con palabras no vencidas y el modo se elige con `isEligible` (sin
+  oración no hay `choose`). El botón principal del héroe ofrece aprender antes de
+  repasar; si no hay nada que practicar, los modos libres quedan apagados y se
+  explica por qué.
+- Las afirmaciones de `audit-cuaderno` usan la comprobación `presente` (busca el
+  patrón en todo el archivo y reporta dónde): mover código no rompe el arnés. Las
+  líneas absolutas (`anchor`) quedan solo para probar el mecanismo; se cambiaron
+  el 2026-10-28 después de que tres ediciones seguidas de `Vocabulary.tsx` dejaran
+  el registro en PARCIAL sin que el arreglo hubiera cambiado.
+- `lecta_user_words.presented_at` (migración **016**, aplicada en `lecta_dev` y en
+  `lecta`) es el sello de primera exposición que viaja con la palabra.
+  **Migración y worker van juntos**: el worker nuevo escribe y lee la columna; con
+  la columna y el worker viejo no se rompe nada. Ya desplegado en v0.2.2.
 

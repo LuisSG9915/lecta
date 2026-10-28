@@ -1,5 +1,6 @@
 import { accountFetch } from "./account-fetch";
 import { loadUseAi } from "./ai-pref";
+import { isDue } from "./fsrs";
 import { knowledgeKey, type DbScope, type KnownWord, type SavedWord } from "./idb";
 
 // Primera exposición guiada («Aprender»): qué palabras ya pasaron por
@@ -77,6 +78,16 @@ export function knownKeysFor(knowledge: KnownWord[]): Set<string> {
   return keys;
 }
 
+// Evidencia vigente de «conocida» por lema y por forma: una guardada sin
+// lematizar quedó claveada por forma.
+export function isWordKnownBy(word: SavedWord, knownKeys: Set<string>): boolean {
+  const language = word.language || "es";
+  return (
+    knownKeys.has(knowledgeKey(language, word.lemma ?? word.form)) ||
+    (word.lemma != null && knownKeys.has(knowledgeKey(language, word.form)))
+  );
+}
+
 // La palabra entra a la cola de Aprender si está viva, nunca se expuso
 // en la ficha, no tiene evidencia de «conocida» (por lema y por forma,
 // porque una guardada sin lematizar quedó claveada por forma) y no se
@@ -88,12 +99,11 @@ export function isLearnPending(
   exposure: LearnExposure,
 ): boolean {
   if (word.deleted) return false;
-  if (exposure.seen[word.key]) return false;
+  // `presentedAt` es el mismo hecho que `learnExposure:v1`, pero viaja con la
+  // palabra: en otro dispositivo la ficha no se repite.
+  if (exposure.seen[word.key] || (word.presentedAt ?? 0) > 0) return false;
   if ((word.card?.reps ?? 0) > 0) return false;
-  const language = word.language || "es";
-  if (knownKeys.has(knowledgeKey(language, word.lemma ?? word.form))) return false;
-  if (word.lemma && knownKeys.has(knowledgeKey(language, word.form))) return false;
-  return true;
+  return !isWordKnownBy(word, knownKeys);
 }
 
 export function learnQueue(
@@ -105,6 +115,42 @@ export function learnQueue(
   return words
     .filter((word) => isLearnPending(word, knownKeys, exposure))
     .sort((a, b) => (b.priority ? 1 : 0) - (a.priority ? 1 : 0));
+}
+
+// Cuántas palabras sirve una sesión de repaso. La cifra vive aquí para que
+// la cola y los textos del héroe no puedan desalinearse.
+export const REVIEW_SESSION_SIZE = 5;
+
+// Vencidas que YA pasaron por la ficha («Quiero aprenderla») o por un repaso
+// real: una palabra con reps 0 y sin exposición no se examina. Sin vencidas
+// no hay respaldo: adelantar repasos escribiría FSRS fuera de plazo.
+// Orden: primero lo que el usuario marcó como prioritario y después lo más
+// atrasado; el desempate por clave mantiene la cola estable entre renders.
+export function reviewQueue(
+  words: SavedWord[],
+  knownKeys: Set<string>,
+  exposure: LearnExposure,
+  now = new Date(),
+): SavedWord[] {
+  const dueOf = (word: SavedWord) => {
+    const due = word.card?.due;
+    return due ? new Date(due).getTime() : 0;
+  };
+  return words
+    .filter(
+      (word) =>
+        !word.deleted &&
+        !isWordKnownBy(word, knownKeys) &&
+        exposure.seen[word.key]?.verdict !== "known" &&
+        !isLearnPending(word, knownKeys, exposure) &&
+        isDue(word.card, now),
+    )
+    .sort(
+      (a, b) =>
+        (b.priority ? 1 : 0) - (a.priority ? 1 : 0) ||
+        dueOf(a) - dueOf(b) ||
+        (a.key < b.key ? -1 : a.key > b.key ? 1 : 0),
+    );
 }
 
 // ---------- El Reto del Escritor (Evaluación de oraciones) ----------

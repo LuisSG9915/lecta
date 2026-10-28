@@ -86,6 +86,12 @@ describe("pushWordsToServer", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it("el sello de primera exposición viaja con la palabra", async () => {
+    const conSello = { ...word("a"), presentedAt: 1_700_000_000_000 };
+    await expect(pushWordsToServer([conSello])).resolves.toMatchObject({ ok: true });
+    expect(putBodies()[0].words[0].presentedAt).toBe(1_700_000_000_000);
+  });
+
   it("500 palabras viajan en un solo PUT y en orden", async () => {
     const words = Array.from({ length: 500 }, (_, i) => word(`w${i}`));
     await expect(pushWordsToServer(words)).resolves.toMatchObject({ ok: true });

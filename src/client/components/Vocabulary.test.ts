@@ -15,7 +15,8 @@ import {
 import { enrichWord } from "../lib/lexicon";
 import { backfillWordMeanings } from "../lib/word-meanings";
 import { loadUseAi } from "../lib/ai-pref";
-import { saveSessionValue } from "../lib/idb";
+import { loadSessionValue, saveSessionValue } from "../lib/idb";
+import { LEARN_EXPOSURE_KEY } from "../lib/learn";
 import { pushKnowledgeToServer } from "../lib/reading-sync";
 import { pushWordsToServer } from "../lib/vocab";
 import { RETENTION_HORIZON_KEY, setActiveRetentionHorizon } from "../lib/fsrs";
@@ -77,6 +78,7 @@ const enrichMock = vi.mocked(enrichWord);
 const useAiMock = vi.mocked(loadUseAi);
 const saveSessionMock = vi.mocked(saveSessionValue);
 const backfillMock = vi.mocked(backfillWordMeanings);
+const loadSessionMock = vi.mocked(loadSessionValue);
 
 const word = (over: Partial<SavedWord> = {}): SavedWord => {
   const form = over.form ?? "casa";
@@ -97,6 +99,7 @@ let root: Root;
 beforeEach(() => {
   vi.clearAllMocks();
   listWordsMock.mockResolvedValue([]);
+  loadSessionMock.mockResolvedValue(null);
   backfillMock.mockImplementation(async (words: SavedWord[]) => words);
   host = document.createElement("div");
   document.body.appendChild(host);
@@ -124,27 +127,28 @@ const click = (label: string) =>
   });
 
 describe("Aprender", () => {
-  it("ofrece la sección solo con pendientes y abre la ficha guiada", async () => {
+  it("el botón principal abre la ficha guiada cuando hay palabras por aprender", async () => {
     listWordsMock.mockResolvedValue([word({ meaning: "hogar" })]);
     await render();
-    expect(text()).toContain("Por aprender · 1");
-    await click("Aprender");
+    expect(text()).toContain("1 por aprender");
+    await click("Aprender 1 palabra nueva");
     expect(text()).toContain("Primera exposición");
     expect(text()).toContain("casa");
     expect(button("Mostrar significado")).toBeTruthy();
     expect(text()).not.toContain("hogar");
   });
 
-  it("no muestra la sección sin palabras pendientes", async () => {
+  it("sin palabras pendientes el botón no ofrece aprender", async () => {
     listWordsMock.mockResolvedValue([]);
     await render();
     expect(text()).not.toContain("Por aprender");
+    expect(text()).toContain("Abrir un libro para guardar palabras");
   });
 
   it("«Ya la conozco» escribe evidencia declarada y la saca de la cola", async () => {
     listWordsMock.mockResolvedValue([word({ meaning: "hogar" })]);
     await render();
-    await click("Aprender");
+    await click("Aprender 1 palabra nueva");
     await click("Mostrar significado");
     await click("Ya la conozco");
     expect(saveKnowledgeMock.mock.calls[0][0]).toEqual(
@@ -153,19 +157,23 @@ describe("Aprender", () => {
     expect(pushKnowledgeToServer).toHaveBeenCalled();
     expect(saveSessionMock).toHaveBeenCalled();
     expect(text()).toContain("Aprender terminado");
-    // La palabra conocida ya no sale como «para hoy» en el contador.
+    // La palabra conocida ya no cuenta como pendiente.
     await click("Ver el cuaderno");
-    expect(text()).toContain("1 guardadas · 0 para hoy");
+    expect(text()).toContain("1 guardadas · 0 para repasar");
   });
 
   it("«Quiero aprenderla» crea la card que la trae al repaso hoy", async () => {
     listWordsMock.mockResolvedValue([word({ meaning: "hogar" })]);
     await render();
-    await click("Aprender");
+    await click("Aprender 1 palabra nueva");
     await click("Mostrar significado");
     await click("Quiero aprenderla");
     expect(updateWordMock.mock.calls[0][0]).toEqual(
-      expect.objectContaining({ key: "es:casa", card: expect.anything() }),
+      expect.objectContaining({
+        key: "es:casa",
+        card: expect.anything(),
+        presentedAt: expect.any(Number),
+      }),
     );
     expect(pushWordsToServer).toHaveBeenCalled();
     expect(text()).toContain("Aprender terminado");
@@ -189,7 +197,7 @@ describe("Aprender", () => {
     });
     fillMock.mockResolvedValue(word({ meaning: "hogar" }));
     await render();
-    await click("Aprender");
+    await click("Aprender 1 palabra nueva");
     await click("Mostrar significado");
     expect(text()).toContain("Sin significado guardado");
     // Sin significado no puede entrar al repaso.
@@ -203,11 +211,21 @@ describe("Aprender", () => {
     ]);
   });
 
-  it("con la IA apagada no ofrece el botón y avisa", async () => {
+  it("sin significado y con la IA apagada no se ofrece aprender; la ficha sigue en la fila", async () => {
     useAiMock.mockResolvedValue(false);
     listWordsMock.mockResolvedValue([word()]);
     await render();
-    await click("Aprender");
+    // No hay forma de guardarla como aprendida, así que el héroe no la cuenta.
+    expect(text()).toContain("Seguir leyendo");
+    // La ficha se abre desde la fila de la palabra.
+    await act(async () => {
+      (host.querySelector(".nb-word-row") as HTMLButtonElement).click();
+      for (let i = 0; i < 6; i++) await Promise.resolve();
+    });
+    await act(async () => {
+      (host.querySelector('button[aria-label="Aprender casa"]') as HTMLButtonElement).click();
+      for (let i = 0; i < 6; i++) await Promise.resolve();
+    });
     await click("Mostrar significado");
     expect(button("Definir con IA")).toBeUndefined();
     expect(text()).toContain("definiciones con IA están apagadas");
@@ -219,7 +237,7 @@ describe("Aprender", () => {
     listWordsMock.mockResolvedValue([word({ meaning: "hogar" })]);
     saveKnowledgeMock.mockRejectedValueOnce(new Error("boom"));
     await render();
-    await click("Aprender");
+    await click("Aprender 1 palabra nueva");
     await click("Mostrar significado");
     await click("Ya la conozco");
     expect(text()).toContain("No se pudo guardar");
@@ -391,8 +409,8 @@ describe("Reestructura del Cuaderno", () => {
     const activeTab = host.querySelector(".nb-tabs button[aria-pressed='true']");
     expect(activeTab?.textContent).toBe("Mi Herbario de Palabras");
     expect(text()).toContain("La Mesa de Estudio");
-    expect(button("Iniciar Sesión Fluida (~2 min)")).toBeTruthy();
-    expect(text()).toContain("Por aprender · 1");
+    expect(button("Aprender 1 palabra nueva")).toBeTruthy();
+    expect(text()).toContain("1 por aprender");
     expect(host.querySelector(".nb-words")).toBeTruthy();
   });
 
@@ -556,7 +574,11 @@ describe("Reestructura del Cuaderno", () => {
         meaning: "superficie que refleja",
         context: "El espejo de la sala",
         lemma: "espejo",
-        card: { reps: 2, stability: 14 } as never,
+        card: {
+          reps: 2,
+          stability: 14,
+          due: new Date(Date.now() - 86_400_000).toISOString(),
+        } as never,
       }),
     ]);
     await render();
@@ -619,10 +641,13 @@ describe("Reestructura del Cuaderno", () => {
     const energyTrack = host.querySelector(".nb-hero-energy-track");
     expect(energyTrack).toBeTruthy();
 
-    // CTA principal único
+    // CTA principal único: una palabra con reps 1 y sin vencimiento no da
+    // nada que aprender ni repasar, así que el botón invita a seguir leyendo.
     const flowBtn = host.querySelector(".nb-hero-btn-flow");
     expect(flowBtn).toBeTruthy();
-    expect(flowBtn?.textContent).toContain("Iniciar Sesión Fluida (~2 min)");
+    expect(flowBtn?.textContent).toContain("Seguir leyendo");
+    expect(host.querySelectorAll(".nb-hero-cta .btn--primary")).toHaveLength(1);
+    expect(host.querySelector(".notebook-quick-review-cta")).toBeNull();
 
     // 4 tarjetas de modos libres
     const freeCards = host.querySelectorAll(".nb-free-mode-card");
@@ -660,7 +685,11 @@ describe("Reestructura del Cuaderno", () => {
         form: "lucero",
         meaning: "estrella brillante",
         context: "El lucero brillaba al amanecer",
-        card: { reps: 2, stability: 5 } as never,
+        card: {
+          reps: 2,
+          stability: 5,
+          due: new Date(Date.now() - 86_400_000).toISOString(),
+        } as never,
       }),
     ]);
     await render();
@@ -883,3 +912,349 @@ describe("Reestructura del Cuaderno", () => {
 });
 
 
+
+describe("Sesión de repaso: solo lo que ya se presentó", () => {
+  const past = () => new Date(Date.now() - 86_400_000).toISOString();
+
+  const exposureFor = (key: string) =>
+    loadSessionMock.mockImplementation(async (clave) =>
+      clave === LEARN_EXPOSURE_KEY
+        ? JSON.stringify({
+            version: 1,
+            seen: { [key]: { at: 1, verdict: "learn" } },
+            updatedAt: 1,
+          })
+        : null,
+    );
+
+  it("separa «por aprender» de «para repasar» y no cuenta lo nunca presentado", async () => {
+    listWordsMock.mockResolvedValue([
+      word({ form: "alondra", meaning: "ave", context: "Cantó la alondra." }),
+      word({
+        form: "brisa",
+        meaning: "viento suave",
+        context: "Sopló la brisa.",
+        card: { reps: 2, stability: 5, due: past() } as never,
+      }),
+      word({
+        form: "cedro",
+        meaning: "árbol",
+        context: "El cedro creció.",
+        card: { reps: 0, stability: 0, due: past() } as never,
+      }),
+    ]);
+    exposureFor("es:cedro");
+    await render();
+
+    // Alondra nunca se presentó: no está lista para repasar.
+    expect(text()).toContain("3 guardadas · 1 por aprender · 2 para repasar");
+    expect(button("Aprender 1 palabra nueva")).toBeTruthy();
+  });
+
+  it("la sesión solo sirve lo ya presentado y vencido", async () => {
+    listWordsMock.mockResolvedValue([
+      word({
+        form: "brisa",
+        meaning: "viento suave",
+        context: "Sopló la brisa.",
+        card: { reps: 2, stability: 5, due: past() } as never,
+      }),
+      word({
+        form: "cedro",
+        meaning: "árbol",
+        context: "El cedro creció.",
+        card: { reps: 0, stability: 0, due: past() } as never,
+      }),
+    ]);
+    exposureFor("es:cedro");
+    await render();
+
+    await click("Repasar 2 palabras");
+    expect(host.querySelector(".nb-practice")).toBeTruthy();
+    expect(text()).toContain("1 de 2");
+  });
+
+  it("sin repasos pendientes no se practica por adelantado", async () => {
+    const future = new Date(Date.now() + 86_400_000 * 2).toISOString();
+    listWordsMock.mockResolvedValue([
+      word({
+        form: "brisa",
+        meaning: "viento suave",
+        card: { reps: 2, stability: 5, due: future } as never,
+      }),
+    ]);
+    await render();
+    const onClose = vi.fn();
+    await act(async () => {
+      root.render(h(Vocabulary, { onClose, books: [] }));
+      for (let i = 0; i < 6; i++) await Promise.resolve();
+    });
+    expect(text()).toContain("Estás al día");
+    await click("Seguir leyendo");
+    expect(onClose).toHaveBeenCalled();
+    expect(host.querySelector(".nb-practice")).toBeNull();
+  });
+
+  it("una palabra sin oración se repasa por su significado, no adivinando el hueco", async () => {
+    listWordsMock.mockResolvedValue([
+      word({
+        form: "lucero",
+        meaning: "estrella brillante",
+        card: { reps: 0, stability: 0, due: past() } as never,
+      }),
+    ]);
+    loadSessionMock.mockImplementation(async (key) =>
+      key === LEARN_EXPOSURE_KEY
+        ? JSON.stringify({
+            version: 1,
+            seen: { "es:lucero": { at: 1, verdict: "learn" } },
+            updatedAt: 1,
+          })
+        : null,
+    );
+    await render();
+
+    await act(async () => {
+      (host.querySelector(".nb-hero-btn-flow") as HTMLButtonElement).click();
+      for (let i = 0; i < 6; i++) await Promise.resolve();
+    });
+
+    expect(text()).toContain("1 de 1");
+    expect(text()).not.toContain("Toca la palabra que falta.");
+    expect(text()).toContain("lucero");
+    // Modo significado: se revela la respuesta y se autocalifica.
+    expect(button("Mostrar respuesta")).toBeTruthy();
+  });
+});
+
+describe("Puente aprender → repasar", () => {
+  it("al terminar la ficha ofrece repasar las palabras que se quisieron aprender", async () => {
+    listWordsMock.mockResolvedValue([
+      word({ form: "casa", meaning: "hogar" }),
+      word({ form: "lucero", meaning: "estrella brillante" }),
+    ]);
+    await render();
+
+    await click("Aprender 2 palabras nuevas");
+    for (const label of ["Mostrar significado", "Quiero aprenderla"]) {
+      await click(label);
+      await click("Mostrar significado");
+      await click("Quiero aprenderla");
+    }
+    expect(text()).toContain("Aprender terminado");
+
+    await click("Repasar estas 2 palabras");
+    expect(host.querySelector(".nb-practice")).toBeTruthy();
+    expect(text()).toContain("1 de 2");
+  });
+
+  it("sin palabras guardadas no aparece el puente", async () => {
+    listWordsMock.mockResolvedValue([word({ form: "casa", meaning: "hogar" })]);
+    await render();
+    await click("Aprender 1 palabra nueva");
+    await click("Mostrar significado");
+    await click("Ya la conozco");
+    expect(text()).toContain("Aprender terminado");
+    expect(text()).not.toContain("Repasar esta palabra");
+  });
+
+  it("«Pasar por ahora» avanza una ficha sin significado sin escribir exposición", async () => {
+    useAiMock.mockResolvedValue(false);
+    listWordsMock.mockResolvedValue([word()]);
+    await render();
+    await act(async () => {
+      (host.querySelector(".nb-word-row") as HTMLButtonElement).click();
+      for (let i = 0; i < 6; i++) await Promise.resolve();
+    });
+    await act(async () => {
+      (host.querySelector('button[aria-label="Aprender casa"]') as HTMLButtonElement).click();
+      for (let i = 0; i < 6; i++) await Promise.resolve();
+    });
+    await click("Mostrar significado");
+    await click("Pasar por ahora");
+
+    expect(text()).toContain("Aprender terminado");
+    const exposureWrites = saveSessionMock.mock.calls.filter(
+      ([key]) => key === LEARN_EXPOSURE_KEY,
+    );
+    expect(exposureWrites).toHaveLength(0);
+  });
+});
+
+describe("Elegir palabra corrige con significado", () => {
+  const past = () => new Date(Date.now() - 86_400_000).toISOString();
+  const exposureFor = (keys: string[]) =>
+    loadSessionMock.mockImplementation(async (clave) =>
+      clave === LEARN_EXPOSURE_KEY
+        ? JSON.stringify({
+            version: 1,
+            seen: Object.fromEntries(keys.map((key) => [key, { at: 1, verdict: "learn" }])),
+            updatedAt: 1,
+          })
+        : null,
+    );
+
+  it("no muestra el significado antes de responder y lo muestra después", async () => {
+    listWordsMock.mockResolvedValue([
+      word({
+        form: "lucero",
+        meaning: "estrella brillante",
+        context: "El lucero brillaba al amanecer",
+        card: { reps: 0, stability: 0, due: past() } as never,
+      }),
+      word({
+        form: "brisa",
+        meaning: "viento suave",
+        card: {
+          reps: 2,
+          stability: 5,
+          due: new Date(Date.now() + 86_400_000).toISOString(),
+        } as never,
+      }),
+    ]);
+    exposureFor(["es:lucero"]);
+    await render();
+    await click("Repasar 1 palabra");
+
+    expect(text()).toContain("Toca la palabra que falta.");
+    expect(text()).not.toContain("estrella brillante");
+
+    const opciones = [...host.querySelectorAll(".choice-option")] as HTMLButtonElement[];
+    const incorrecta = opciones.find((b) => b.textContent !== "lucero");
+    expect(incorrecta).toBeTruthy();
+    await act(async () => {
+      incorrecta!.click();
+      for (let i = 0; i < 6; i++) await Promise.resolve();
+    });
+
+    expect(text()).toContain("estrella brillante");
+    expect(text()).toContain("lucero");
+  });
+
+  it("las opciones son del idioma de la palabra", async () => {
+    const future = new Date(Date.now() + 86_400_000).toISOString();
+    const away = { reps: 2, stability: 5, due: future } as never;
+    const es = ["lucero", "brisa", "cedro", "alba"].map((form) =>
+      word({ form, meaning: `definición de ${form}`, card: away }),
+    );
+    const en = ["whisper", "shadow", "meadow"].map((form) =>
+      word({ form, language: "en", meaning: `meaning of ${form}`, card: away }),
+    );
+    listWordsMock.mockResolvedValue([
+      word({
+        form: "lucero",
+        meaning: "estrella brillante",
+        context: "El lucero brillaba al amanecer",
+        card: { reps: 0, stability: 0, due: past() } as never,
+      }),
+      ...es.slice(1),
+      ...en,
+    ]);
+    exposureFor(["es:lucero"]);
+    await render();
+    await click("Repasar 1 palabra");
+
+    const opciones = [...host.querySelectorAll(".choice-option")].map((b) => b.textContent);
+    expect(opciones).toHaveLength(4);
+    for (const opcion of opciones) {
+      expect(["lucero", "brisa", "cedro", "alba"]).toContain(opcion);
+    }
+  });
+});
+
+describe("Modos libres: tampoco examinan lo nunca presentado", () => {
+  const past = () => new Date(Date.now() - 86_400_000).toISOString();
+
+  it("«Hueco en el Libro» solo sirve palabras ya presentadas y vencidas", async () => {
+    listWordsMock.mockResolvedValue([
+      word({ form: "alondra", meaning: "ave canora", context: "Cantó la alondra al alba." }),
+      word({
+        form: "brisa",
+        meaning: "viento suave",
+        context: "Sopló la brisa fresca.",
+        card: { reps: 2, stability: 5, due: past() } as never,
+      }),
+    ]);
+    await render();
+    await act(async () => {
+      (host.querySelector(".nb-free-mode-card") as HTMLButtonElement).click();
+      for (let i = 0; i < 6; i++) await Promise.resolve();
+    });
+
+    expect(host.querySelector(".nb-practice")).toBeTruthy();
+    expect(text()).toContain("1 de 1");
+    expect(text()).toContain("fresca");
+    expect(text()).not.toContain("alba");
+  });
+
+  it("sin palabras presentadas los modos quedan deshabilitados y se explica por qué", async () => {
+    listWordsMock.mockResolvedValue([
+      word({ form: "alondra", meaning: "ave canora", context: "Cantó la alondra al alba." }),
+    ]);
+    await render();
+
+    const tarjetas = [...host.querySelectorAll(".nb-free-mode-card")] as HTMLButtonElement[];
+    const deshabilitadas = tarjetas.filter((b) => b.disabled);
+    expect(deshabilitadas.length).toBe(3);
+    expect(text()).toContain("Aprende primero las nuevas");
+    expect(host.querySelector(".nb-practice")).toBeNull();
+  });
+});
+
+describe("Partida rápida: misma regla que la sesión", () => {
+  const past = () => new Date(Date.now() - 86_400_000).toISOString();
+  const future = () => new Date(Date.now() + 86_400_000).toISOString();
+
+  const abrirFila = async (form: string) => {
+    const fila = [...host.querySelectorAll(".nb-word-row")].find((b) =>
+      (b.textContent ?? "").includes(form),
+    ) as HTMLButtonElement;
+    await act(async () => {
+      fila.click();
+      for (let i = 0; i < 6; i++) await Promise.resolve();
+    });
+  };
+
+  it("no se ofrece en una palabra que nunca se presentó", async () => {
+    listWordsMock.mockResolvedValue([
+      word({ form: "alondra", meaning: "ave canora", context: "Cantó la alondra." }),
+    ]);
+    await render();
+    await abrirFila("alondra");
+
+    expect(host.querySelector(".btn--quick-game")).toBeNull();
+  });
+
+  it("con una palabra vencida arma la partida solo con palabras repasables", async () => {
+    listWordsMock.mockResolvedValue([
+      word({
+        form: "brisa",
+        meaning: "viento suave",
+        context: "Sopló la brisa fresca.",
+        savedAt: 2,
+        card: { reps: 2, stability: 5, due: past() } as never,
+      }),
+      word({
+        form: "cedro",
+        meaning: "árbol aromático",
+        context: "El cedro creció.",
+        savedAt: 1,
+        card: { reps: 2, stability: 5, due: future() } as never,
+      }),
+    ]);
+    await render();
+    await abrirFila("brisa");
+
+    const boton = host.querySelector(".btn--quick-game") as HTMLButtonElement;
+    expect(boton).toBeTruthy();
+    await act(async () => {
+      boton.click();
+      for (let i = 0; i < 6; i++) await Promise.resolve();
+    });
+
+    expect(host.querySelector(".nb-practice")).toBeTruthy();
+    expect(text()).toContain("1 de 1");
+    expect(text()).toContain("fresca");
+    expect(text()).not.toContain("creció");
+  });
+});

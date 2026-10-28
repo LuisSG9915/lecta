@@ -1,6 +1,6 @@
 {
   "name": "lecta",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@10.30.3",
@@ -25,6 +25,9 @@
     "measure:open": "node scripts/measure-open-latency.mjs",
     "audit:investigacion": "node scripts/audit-investigacion.mjs",
     "audit:investigacion:online": "node scripts/audit-investigacion.mjs --online",
+    "audit:cuaderno": "node scripts/audit-cuaderno.mjs",
+    "audit:cuaderno:online": "node scripts/audit-cuaderno.mjs --online",
+    "audit:cuaderno:brief": "node scripts/audit-cuaderno.mjs --brief",
     "model:upload": "node scripts/upload-model.mjs",
     "mcp": "pnpm --filter @lecta/mcp dev",
     "mcp:build": "pnpm --filter @lecta/mcp build",
