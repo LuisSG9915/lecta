@@ -86,6 +86,21 @@ describe("openLectaDB bajo upgrade bloqueado", () => {
     expect(close).toHaveBeenCalled();
   });
 
+  it("una apertura encolada sin `blocked` rechaza por el perro guardián", async () => {
+    // Caso real: tras un `deleteDatabase` bloqueado, el borrado se queda
+    // en la cola del origen y toda apertura posterior espera sin que el
+    // navegador llegue a disparar `blocked`. Sin tope, la vista cargaría
+    // eterno (es el «Cargando tu recorrido…» que no termina nunca).
+    openDBMock.mockImplementation(() => new Promise(() => {}));
+    const idb = await freshIdb();
+    vi.useFakeTimers();
+    const assertion = expect(idb.loadSessionValue("k")).rejects.toThrow(
+      /no respondió a tiempo/,
+    );
+    await vi.advanceTimersByTimeAsync(13_000);
+    await assertion;
+  });
+
   it("classifyDbError clasifica correctamente los errores de almacenamiento", async () => {
     const { classifyDbError } = await freshIdb();
 

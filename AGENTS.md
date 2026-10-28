@@ -88,16 +88,21 @@
 ## Producción
 
 - URL: `https://lecta.luis-sg9915.workers.dev` — deploy con `pnpm run deploy`.
-- Último deploy: **2026-10-27**, versión `61ae01e8-cfd1-4953-ae0c-d6c2bf96cc81`,
-  Lecta **v0.2.0** (repaso de palabras vencidas por sección, autoevaluación por
-  entrada del índice, horizonte de repaso por cuenta, reencuentros ponderados por
-  apariciones del libro, identidad de capítulo con respaldo y armario por capas).
-  Verificado en caliente: `pnpm gate` en verde antes de subir (`check:size` en
-  179.9/215 kB gzip), `/api/health` → 200 `{"ok":true,"db":"connected","status":"ok"}`,
-  `/` → 200 sirviendo `assets/index-D3hTlvBi.js`, `/api/positions` sin sesión → 401,
-  `check-model` con el ONNX de R2 intacto (`6aec7b19…`) y el string `0.2.0` presente
-  en el chunk `DiagnosticsModal` servido. Sin `smoke:auth`/`smoke:sync`: el cambio es
-  solo de versión, no toca auth ni el contrato de sync.
+- Último deploy: **2026-10-27** (segundo del día), versión
+  `57651b95-fe9e-46d6-a703-951fa948545c`, Lecta **v0.2.1**: arreglo del
+  «Cargando tu recorrido…» eterno. `openLectaDB` gana un perro guardián
+  (`OPEN_WATCHDOG_MS = 12_000`) porque una petición encolada detrás de un
+  `deleteDatabase` bloqueado (otra pestaña con la base abierta) no dispara
+  `blocked` y la promesa no se resolvía nunca; `blocking()` además anula
+  `dbPromise` (antes la conexión cerrada por `versionchange` se seguía usando y
+  las lecturas fallaban en silencio). El recorrido caduca cada lectura con
+  `withDeadline` (6 s), se pinta con lo que haya, avisa y ofrece «Reintentar».
+  Verificado en caliente: `pnpm gate` en verde (`check:size` 180.10/215 kB gzip),
+  `/api/health` → 200, `/` → 200 sirviendo `assets/index-BuDLXHbK.js`,
+  `/api/positions` sin sesión → 401, `0.2.1` presente en `DiagnosticsModal`,
+  `no respondió a tiempo` presente en `assets/idb-DfEFJH3U.js` y
+  `No pudimos leer todo lo guardado` en `assets/Journey-CeHPgxoO.js`. Sin
+  `smoke:auth`/`smoke:sync`: no toca auth ni el contrato de sync.
 - La versión visible sale de `src/shared/app-version.ts` (`APP_VERSION`) y la usan
   `DiagnosticsModal.tsx` (UI y reporte copiado) y su prueba: al subir de versión
   hay que tocar ese archivo, `package.json` y `mcp/package.json` (más el

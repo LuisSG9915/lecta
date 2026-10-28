@@ -148,6 +148,32 @@ describe("Journey (Tu recorrido)", () => {
     expect(container?.textContent).toContain("Nueva");
   });
 
+  it("termina la carga y ofrece reintentar cuando una lectura no responde", async () => {
+    // Regresión: el recorrido se quedaba en «Cargando tu recorrido…» para
+    // siempre cuando una lectura de IndexedDB no se resolvía (base
+    // encolada tras un borrado bloqueado). Ahora caduca y se pinta igual.
+    const idbModule = await import("../lib/idb");
+    vi.mocked(idbModule.listIntervals).mockImplementationOnce(
+      () => new Promise<SavedInterval[]>(() => {}),
+    );
+    vi.useFakeTimers();
+    const onClose = vi.fn();
+    await act(async () => {
+      root?.render(h(Journey, { onClose, books: sampleBooks }));
+    });
+
+    expect(container?.textContent).toContain("Cargando tu recorrido");
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(6_100);
+    });
+
+    expect(container?.textContent).not.toContain("Cargando tu recorrido");
+    expect(container?.textContent).toContain("Tu recorrido");
+    expect(container?.textContent).toContain("Reintentar");
+    vi.useRealTimers();
+  });
+
   it("llama a onClose al pulsar el botón Cerrar", async () => {
     const onClose = vi.fn();
     await act(async () => {

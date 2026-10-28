@@ -367,7 +367,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/lib/idb.ts",
-          "line": 2078,
+          "line": 2102,
           "window": 1,
           "expect": "if \\(existing\\?\\.deleted\\) return existing",
           "why": "una inferencia pasiva no revive lo borrado"
@@ -390,7 +390,7 @@
         "motivo": "El mecanismo descrito por el documento original (marcar todas las palabras de la página con tope de 12 s) era código muerto y se eliminó. La vía viva es más conservadora y ahora respeta las lápidas.",
         "evidencia": [
           "src/client/lib/reader-evidence.ts:184-250",
-          "src/client/lib/idb.ts:2069-2078"
+          "src/client/lib/idb.ts:2093-2102"
         ]
       }
     },

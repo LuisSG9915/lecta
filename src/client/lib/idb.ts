@@ -514,10 +514,35 @@ export function classifyDbError(error: unknown): DbStorageError {
 // se rechaza y el llamador muestra el error en vez de cargar eterno.
 const OPEN_BLOCKED_MS = 8_000;
 
+// Tope duro de la apertura completa. `blocked` solo llega cuando el
+// navegador detecta un cambio de versión retenido; si la petición queda
+// encolada detrás de un `deleteDatabase` pendiente —un borrado con
+// `onblocked` ya respondido sigue en la cola del origen— no hay ningún
+// evento que despierte la promesa y toda lectura posterior (estantería,
+// recorrido) espera sin fin. El perro guardián la rechaza y cada
+// llamador pinta su error en vez de quedarse cargando.
+const OPEN_WATCHDOG_MS = 12_000;
+
 function openLectaDB(name: string) {
   let gaveUp = false;
+  let settled = false;
   let blockedTimer: ReturnType<typeof setTimeout> | undefined;
+  let watchdogTimer: ReturnType<typeof setTimeout> | undefined;
   return new Promise<IDBPDatabase<LectaDB>>((resolve, reject) => {
+    const settle = (finish: () => void) => {
+      if (settled) return;
+      settled = true;
+      if (blockedTimer !== undefined) clearTimeout(blockedTimer);
+      if (watchdogTimer !== undefined) clearTimeout(watchdogTimer);
+      finish();
+    };
+    const fail = (message: string) => {
+      gaveUp = true;
+      settle(() => reject(Object.assign(new Error(message), { name: "TimeoutError" })));
+    };
+    watchdogTimer = setTimeout(() => {
+      fail(`La base local "${name}" no respondió a tiempo; recarga la página.`);
+    }, OPEN_WATCHDOG_MS);
     openDB<LectaDB>(name, DB_VERSION, {
       upgrade(db) {
         if (!db.objectStoreNames.contains("books"))
@@ -554,30 +579,29 @@ function openLectaDB(name: string) {
     // Esta conexión quedó vieja y otra pestaña pide el upgrade:
     // cerrarla es lo único que libera al otro lado (event.target es
     // la base; lo que siga usando esta conexión fallará hasta recargar).
+    // Se anula también la conexión compartida: si fuera la nuestra, la
+    // próxima lectura debe abrir una nueva en vez de fallar para siempre.
     blocking(_currentVersion, _blockedVersion, event) {
       (event.target as IDBDatabase).close();
+      dbPromise = null;
     },
     // Alguien retiene abierta una versión vieja de esta misma base:
     // el reloj evita que la apertura quede pendiente sin respuesta.
     blocked() {
       blockedTimer ??= setTimeout(() => {
-        gaveUp = true;
-        reject(
-          new Error(
-            `La base local "${name}" sigue abierta en otra pestaña; ciérrala y recarga.`,
-          ),
+        fail(
+          `La base local "${name}" sigue abierta en otra pestaña; ciérrala y recarga.`,
         );
       }, OPEN_BLOCKED_MS);
     },
   }).then(
     (db) => {
-      if (blockedTimer !== undefined) clearTimeout(blockedTimer);
       // Si llegó tarde tras el tope no se entrega una conexión
       // fantasma: se cierra y el llamador ya vio el error.
       if (gaveUp) db.close();
-      else resolve(db);
+      else settle(() => resolve(db));
     },
-    reject,
+    (error) => settle(() => reject(error)),
   );
   });
 }

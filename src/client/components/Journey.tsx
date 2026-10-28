@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useModalBehavior } from "../lib/modal";
+import { reportClientError } from "../lib/client-errors";
 import {
   captureDbScope,
   listAllReviews,
@@ -194,11 +195,45 @@ function LexicalCurveSparkline({
   );
 }
 
+// Una lectura de IndexedDB que no se resuelve no puede dejar la vista en
+// «Cargando tu recorrido…» para siempre: cada trabajo caduca, el recorrido
+// se pinta con lo que haya y se ofrece reintentar. El caso real que lo
+// motivó: la base queda encolada detrás de un `deleteDatabase` bloqueado
+// por otra pestaña y no hay ningún evento que despierte la promesa.
+const JOURNEY_READ_TIMEOUT_MS = 6_000;
+
+type DeadlineResult<T> = { value: T; timedOut: boolean };
+
+function withDeadline<T>(
+  work: Promise<T>,
+  fallback: T,
+): Promise<DeadlineResult<T>> {
+  return new Promise<DeadlineResult<T>>((resolve) => {
+    let done = false;
+    const finish = (value: T, timedOut: boolean) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      resolve({ value, timedOut });
+    };
+    const timer = setTimeout(
+      () => finish(fallback, true),
+      JOURNEY_READ_TIMEOUT_MS,
+    );
+    work.then(
+      (value) => finish(value, false),
+      () => finish(fallback, true),
+    );
+  });
+}
+
 export default function Journey({ onClose, books }: JourneyProps) {
   const ref = useRef<HTMLDivElement>(null);
   useModalBehavior(ref, onClose);
 
   const [loading, setLoading] = useState(true);
+  const [loadIssue, setLoadIssue] = useState(false);
+  const [reloadToken, setReloadToken] = useState(0);
   const [intervals, setIntervals] = useState<SavedInterval[]>([]);
   const [words, setWords] = useState<SavedWord[]>([]);
   const [knownWords, setKnownWords] = useState<KnownWord[]>([]);
@@ -217,6 +252,13 @@ export default function Journey({ onClose, books }: JourneyProps) {
   const companion = useCompanionSafe();
   const companionEnabled = Boolean(companion?.enabled && companion?.state);
 
+  // Reintento manual: vuelve a leer el dispositivo sin cerrar el recorrido.
+  const retryLoad = () => {
+    setLoadIssue(false);
+    setLoading(true);
+    setReloadToken((token) => token + 1);
+  };
+
   // Cartas del compañero cargadas desde la sesión
   const [letters, setLetters] = useState<CompanionLetter[]>(() => [
     generateDeterministicCompanionLetter({
@@ -234,34 +276,51 @@ export default function Journey({ onClose, books }: JourneyProps) {
     let cancelled = false;
     const scope = captureDbScope();
     Promise.all([
-      listIntervals(scope).catch(() => []),
-      listSavedWords(undefined, scope).catch(() => []),
-      listPositions(scope).catch(() => []),
-      listAllReviews(scope).catch(() => []),
-      listKnowledge(undefined, scope).catch(() => []),
-      Promise.resolve(loadSessionValue(COMPANION_LETTERS_KEY, scope)).catch(() => null),
-      Promise.resolve(loadSessionValue(READING_GOAL_KEY, scope)).catch(() => null),
-    ]).then(([ints, wrds, pos, revs, knw, rawLetters, rawGoal]) => {
-      if (cancelled) return;
-      setIntervals(ints);
-      setWords(wrds.filter((w) => !w.deleted));
-      setPositions(pos);
-      setReviews(revs);
-      setKnownWords(knw || []);
-      const parsedLetters = parseCompanionLetters(rawLetters);
-      if (parsedLetters.length > 0) {
-        setLetters(parsedLetters);
-      }
-      const parsedGoal = parseReadingGoal(rawGoal);
-      if (parsedGoal) {
-        setSelectedGoalMinutes(15);
-      }
-      setLoading(false);
-    });
+      withDeadline(listIntervals(scope), [] as SavedInterval[]),
+      withDeadline(listSavedWords(undefined, scope), [] as SavedWord[]),
+      withDeadline(listPositions(scope), [] as SavedBookPosition[]),
+      withDeadline(listAllReviews(scope), [] as SavedReview[]),
+      withDeadline(listKnowledge(undefined, scope), [] as KnownWord[]),
+      withDeadline(Promise.resolve(loadSessionValue(COMPANION_LETTERS_KEY, scope)), null),
+      withDeadline(Promise.resolve(loadSessionValue(READING_GOAL_KEY, scope)), null),
+    ])
+      .then(([ints, wrds, pos, revs, knw, rawLetters, rawGoal]) => {
+        if (cancelled) return;
+        setIntervals(ints.value);
+        setWords(wrds.value.filter((w) => !w.deleted));
+        setPositions(pos.value);
+        setReviews(revs.value);
+        setKnownWords(knw.value || []);
+        const parsedLetters = parseCompanionLetters(rawLetters.value);
+        if (parsedLetters.length > 0) {
+          setLetters(parsedLetters);
+        }
+        const parsedGoal = parseReadingGoal(rawGoal.value);
+        if (parsedGoal) {
+          setSelectedGoalMinutes(15);
+        }
+        // Alguna lectura caducó o falló: el recorrido se pinta igual, con un
+        // aviso discreto y la opción de reintentar. Se reporta el hecho (sin
+        // mensaje libre) para poder diagnosticarlo desde los logs.
+        const degraded = [ints, wrds, pos, revs, knw, rawLetters, rawGoal].some(
+          (item) => item.timedOut,
+        );
+        if (!cancelled) setLoadIssue(degraded);
+        if (degraded) {
+          reportClientError({ name: "Recorrido", code: "idb_load_incompleto" });
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setLoadIssue(true);
+      })
+      .finally(() => {
+        // Pase lo que pase, el mensaje de carga no se queda para siempre.
+        if (!cancelled) setLoading(false);
+      });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [reloadToken]);
 
   const totalMs = useMemo(() => totalReadingMs(intervals), [intervals]);
   const totalMinutes = useMemo(
@@ -469,6 +528,14 @@ export default function Journey({ onClose, books }: JourneyProps) {
           </p>
         ) : (
           <>
+            {loadIssue && (
+              <p className="meta" role="status">
+                No pudimos leer todo lo guardado en este dispositivo.{" "}
+                <button type="button" className="btn--quiet" onClick={retryLoad}>
+                  Reintentar
+                </button>
+              </p>
+            )}
             {/* ======================================================== */}
             {/* BLOQUE SUPERIOR: Santuario del Gato y Rango Literario    */}
             {/* ======================================================== */}
