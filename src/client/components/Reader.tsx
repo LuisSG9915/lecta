@@ -951,8 +951,10 @@ export default function Reader({
       const words = await Promise.resolve(listSavedWords(undefined, scope)).catch(() => []);
       const item = pickMidChapterRecall(words, sectionTextRef.current, language);
       if (!item || sectionIndexRef.current !== sectionIndex) return;
-      await Promise.resolve(saveSessionValue(flagKey, "1", scope)).catch(() => undefined);
+      // La tarjeta no espera a la persistencia: se muestra ya y la marca
+      // de «una vez por capítulo» se guarda en segundo plano.
       setMidChapterRecall({ section: sectionIndex, item: { ...item, chapterTitle } });
+      void Promise.resolve(saveSessionValue(flagKey, "1", scope)).catch(() => undefined);
     })().catch(() => undefined);
   }, [state, sectionIndex, bookHash, language, currentChapterId, currentChapterTarget]);
   const visibleMidChapterRecall =

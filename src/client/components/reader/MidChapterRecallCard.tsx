@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { SentenceBuilderGame } from "../SentenceBuilderGame";
 import type { EpisodicWordItem } from "../../lib/practice";
 
@@ -8,8 +9,16 @@ export interface MidChapterRecallCardProps {
 }
 
 export function MidChapterRecallCard({ item, onSolve, onSkip }: MidChapterRecallCardProps) {
+  // El lector puede entrar a la sección con un desplazamiento heredado: sin
+  // esto, el repaso queda arriba de la vista y se pierde.
+  const ref = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    ref.current?.scrollIntoView?.({ block: "nearest" });
+  }, []);
+
   return (
     <section
+      ref={ref}
       aria-label="Repaso antes de leer"
       style={{
         margin: "var(--s-3) 0",

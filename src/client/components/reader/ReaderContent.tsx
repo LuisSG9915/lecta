@@ -181,7 +181,10 @@ export function ReaderContent(props: ReaderContentProps) {
       onDisableCharacterMemory={() => saveCharacterMemoryEnabled(false)}
     />
   ) : null}
-  {midChapterRecall && onMidChapterRecallSolve && onMidChapterRecallSkip ? (
+  {/* En modo páginas el texto vive en columnas de alto fijo: una tarjeta
+      arriba le quita casi todo el área de lectura (medido: 248 px de 687).
+      Ahí el repaso llega en el cierre de capítulo, que ya lo cubre. */}
+  {midChapterRecall && onMidChapterRecallSolve && onMidChapterRecallSkip && settings.layout !== "pages" ? (
     <MidChapterRecallCard
       item={midChapterRecall}
       onSolve={onMidChapterRecallSolve}

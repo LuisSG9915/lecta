@@ -288,7 +288,10 @@ aparece en ella, arriba del texto aparece un micro-cloze de 1 toque con su oraci
 (`MidChapterRecallCard`). Es la versión elegida: se dispara al entrar, no al final
 de la sección; como máximo una vez por capítulo, se puede saltar y solo corre con
 la consolidación activa. Al responder bien consolida la palabra en FSRS
-(Rating.Good), igual que el cierre.
+(Rating.Good), igual que el cierre. Verificado en el navegador con un libro real:
+la tarjeta aparece, se ve y saltar no toca la tarjeta FSRS. En modo páginas no se
+muestra: arriba de las columnas dejaría el área de lectura en 248 px de 687, así
+que ahí el repaso llega solo en el cierre de capítulo.
 
 **Cierre de capítulo**: `buildPostChapterConsolidationQueue` prioriza las palabras
 del cuaderno que reaparecen en el capítulo (`notebook-reencounter`), sin duplicar
