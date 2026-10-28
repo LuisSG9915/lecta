@@ -3,6 +3,7 @@
 // a partir de datos reales del dispositivo (sin tablas nuevas).
 
 import type { KnownWord, SavedReview, SavedWord } from "./idb";
+import type { Card } from "./fsrs";
 import { markLevel } from "./word-level";
 import {
   DEFAULT_USER_LANGUAGE_PROFILE,
@@ -186,6 +187,205 @@ export function finishedBookHashes(
     }
   }
   return [...result];
+}
+
+// ---------- Caminillo de vocabulario (palabras que el recorrido detecta) ----------
+
+// El recorrido sabe dos cosas por separado: cuántas palabras se guardaron y
+// cuánto tiempo se leyó. Lo que no decía es *cuáles* son las que faltan por
+// consolidar. `walkPathWords` cruza las tarjetas FSRS con los repasos reales
+// del historial y produce una lista corta, ordenada por urgencia pedagógica,
+// con el motivo de por qué cada palabra está en el caminillo. Es pura y sin
+// tablas nuevas: deriva todo de `savedWords` y `reviews` que ya se leen.
+
+export type WalkReason = "nueva" | "repaso" | "olvido" | "fragil";
+
+export interface WalkWord {
+  key: string;
+  form: string;
+  lemma?: string;
+  language: string;
+  reason: WalkReason;
+  /** Estabilidad FSRS en días (0 si nunca se ha repasado). */
+  stability: number;
+  /** Repasos registrados para esa forma/lema en el historial. */
+  reviewCount: number;
+  /** Fallos (`again`) registrados: evidencia de que se escapó. */
+  lapseCount: number;
+  savedAt: number;
+  bookTitle?: string;
+  contextSnippet?: string;
+}
+
+export interface WordWalk {
+  /** Palabras ordenadas por urgencia y recortadas a `cap`. */
+  words: WalkWord[];
+  /** Total de palabras candidatas antes del recorte. */
+  totalCandidates: number;
+  dueCount: number;
+  newCount: number;
+  fragileCount: number;
+  /** Etiqueta legible del idioma de la primera palabra, o null si vacío. */
+  primaryLanguage: string | null;
+}
+
+const WALK_REASON_WEIGHT: Record<WalkReason, number> = {
+  repaso: 0,
+  nueva: 1,
+  olvido: 2,
+  fragil: 3,
+};
+
+export const WALK_CAP_DEFAULT = 8;
+
+// Un día de tolerancia: una tarjeta programada para dentro de tres horas
+// sigue siendo «de hoy». La fecha de vencimiento de ts-fsrs puede venir como
+// Date o como ISO según el camino por el que llegó la fila (local o sync).
+const DUE_GRACE_MS = 86_400_000;
+
+function dueToMs(due: Card["due"]): number | null {
+  if (!due) return null;
+  if (due instanceof Date) {
+    const t = due.getTime();
+    return Number.isNaN(t) ? null : t;
+  }
+  if (typeof due === "number") return Number.isFinite(due) ? due : null;
+  if (typeof due === "string") {
+    const t = Date.parse(due);
+    return Number.isNaN(t) ? null : t;
+  }
+  return null;
+}
+
+/**
+ * Caminillo de vocabulario: qué palabras tocar ahora mismo.
+ *
+ * - `repaso`: vencida o por vencer dentro de `dueHorizonDays` (la cola FSRS).
+ * - `nueva`: guardada y todavía sin primer repaso real.
+ * - `olvido`: fallada al menos una vez (`again`) y aún inestable.
+ * - `fragil`: repasada pero con estabilidad < 2 días (a punto de caerse).
+ *
+ * La prioridad es pedagógica: primero lo vencido, luego lo olvidado, después
+ * lo frágil y al final lo nuevo; dentro de cada grupo, por estabilidad
+ * creciente y por guardado más reciente.
+ */
+export function walkPathWords(
+  words: SavedWord[],
+  reviews: SavedReview[] = [],
+  options: {
+    now?: number;
+    cap?: number;
+    dueHorizonDays?: number;
+    language?: string | null;
+  } = {},
+): WordWalk {
+  const now = options.now ?? Date.now();
+  const cap = Math.max(1, options.cap ?? WALK_CAP_DEFAULT);
+  const horizonMs = (options.dueHorizonDays ?? 1) * 86_400_000 + DUE_GRACE_MS;
+  const langFilter = options.language
+    ? options.language.slice(0, 2).toLowerCase()
+    : null;
+
+  // Historial por palabra: se indexan forma y lema en minúsculas porque el
+  // repaso se anota con la forma que se vio en el texto y la tarjeta vive
+  // bajo el lema.
+  const reviewCount = new Map<string, number>();
+  const lapseCount = new Map<string, number>();
+  for (const r of reviews) {
+    if (!r || !r.form) continue;
+    const keys = new Set([
+      `${(r.language || "es").slice(0, 2).toLowerCase()}:${r.form.toLowerCase()}`,
+      r.form.toLowerCase(),
+    ]);
+    for (const k of keys) {
+      reviewCount.set(k, (reviewCount.get(k) ?? 0) + 1);
+      if (r.rating === "again") {
+        lapseCount.set(k, (lapseCount.get(k) ?? 0) + 1);
+      }
+    }
+  }
+
+  const candidates: WalkWord[] = [];
+  let dueCount = 0;
+  let newCount = 0;
+  let fragileCount = 0;
+
+  for (const w of words) {
+    if (w.deleted) continue;
+    const lang = (w.language || "es").slice(0, 2).toLowerCase();
+    if (langFilter && lang !== langFilter) continue;
+
+    const card = w.card;
+    const stability = card?.stability ?? 0;
+    const reps = card?.reps ?? 0;
+    const dueMs = dueToMs(card?.due as Card["due"] | undefined);
+
+    const idKeys = [
+      `${lang}:${(w.lemma || w.form || "").toLowerCase()}`,
+      `${lang}:${(w.form || "").toLowerCase()}`,
+      (w.lemma || "").toLowerCase(),
+      (w.form || "").toLowerCase(),
+    ];
+    let counted = 0;
+    let failed = 0;
+    for (const k of idKeys) {
+      if (!k) continue;
+      counted += reviewCount.get(k) ?? 0;
+      failed += lapseCount.get(k) ?? 0;
+    }
+
+    let reason: WalkReason;
+    if (dueMs !== null && dueMs <= now + horizonMs && reps > 0) {
+      reason = "repaso";
+    } else if (failed > 0 && stability < 21) {
+      reason = "olvido";
+    } else if (reps === 0) {
+      reason = "nueva";
+    } else if (stability < 2) {
+      reason = "fragil";
+    } else {
+      continue;
+    }
+
+    if (reason === "repaso") dueCount += 1;
+    else if (reason === "nueva") newCount += 1;
+    else fragileCount += 1;
+
+    candidates.push({
+      key: w.key,
+      form: w.form,
+      lemma: w.lemma,
+      language: w.language,
+      reason,
+      stability,
+      reviewCount: counted,
+      lapseCount: failed,
+      savedAt: w.savedAt,
+      bookTitle: w.bookTitle,
+      contextSnippet: w.contextSnippet,
+    });
+  }
+
+  candidates.sort((a, b) => {
+    const byReason = WALK_REASON_WEIGHT[a.reason] - WALK_REASON_WEIGHT[b.reason];
+    if (byReason !== 0) return byReason;
+    if (a.stability !== b.stability) return a.stability - b.stability;
+    return b.savedAt - a.savedAt;
+  });
+
+  const primaryLanguage =
+    candidates.length > 0
+      ? (candidates[0].language || "es").slice(0, 2).toLowerCase()
+      : null;
+
+  return {
+    words: candidates.slice(0, cap),
+    totalCandidates: candidates.length,
+    dueCount,
+    newCount,
+    fragileCount,
+    primaryLanguage,
+  };
 }
 
 export interface WeekHistoryItem {
