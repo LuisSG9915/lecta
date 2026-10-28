@@ -1,9 +1,9 @@
 # Reporte de auditoría — estrategia de aprendizaje de Lecta
 
-Generado: 2026-10-28T03:33:29.447Z
+Generado: 2026-10-28T23:08:02.685Z
 Documento auditado: `docs/estrategia-aprendizaje-2026-10-24.md`
 Registro: `docs/auditoria/claims.json`
-Commit: `6b42f07e6f980ba5decd35fad10802061d6d826b`
+Commit: `542754d224856da78ec0498c5b5e0fcf32ba7453`
 Red: no (solo forma de las referencias)
 
 **Veredicto: PASS_WITH_UNVERIFIED** — 1 afirmaciones aprobadas, 0 refutadas, 0 refutadas por auditoría, 13 sin verificar, 0 comprobaciones omitidas.
@@ -27,7 +27,7 @@ Código: **PASS** · Referencias: **UNVERIFIED**
   - observado: `{"file":"src/client/lib/knowledge.ts","line":292,"text":"const total = forms.length;"}`
 - ✅ **PASS** · code-absent: /\btokens?\b/ no aparece en src/client/lib/coverage.ts
 - ✅ **PASS** · reachable: createCoverageInputsLoader se usa en producción (2 archivo/s)
-  - observado: `{"symbol":"createCoverageInputsLoader","callers":[{"file":"src/client/components/DiscoverRail.tsx","line":115,"text":"const inputsFor = createCoverageInputsLoader(scope, loadInputs);"},{"file":"src/client/components/Shelf.tsx","line":390,"text":"const inputsFor = createCoverageInputsLoader(scope);"}]}`
+  - observado: `{"symbol":"createCoverageInputsLoader","callers":[{"file":"src/client/components/DiscoverRail.tsx","line":115,"text":"const inputsFor = createCoverageInputsLoader(scope, loadInputs);"},{"file":"src/client/components/Shelf.tsx","line":407,"text":"const inputsFor = createCoverageInputsLoader(scope);"}]}`
 - ⚠️ **UNVERIFIED** · referencia laufer2010: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":null,"url":"https://eric.ed.gov/?id=EJ887873"}`
 - ⚠️ **UNVERIFIED** · referencia nation2006: forma válida; sin red no se resuelven metadatos (usar --online)
@@ -143,12 +143,12 @@ Código: **PASS** · Referencias: **UNVERIFIED**
 - evidencia: `src/client/lib/profile-models.ts:405-415`
 
 - ✅ **PASS** · doc-mention: el documento contiene ««Ya la conozco» es un juicio, no una prueba»
-- ✅ **PASS** · code-anchor: src/client/components/Reader.tsx:4219 coincide con /updateLanguageTheta\(currentLang, beta, 1, 1\.0\)/
-  - observado: `{"file":"src/client/components/Reader.tsx","line":4219,"text":"updateLanguageTheta(currentLang, beta, 1, 1.0);"}`
+- ✅ **PASS** · code-anchor: src/client/components/Reader.tsx:4458 coincide con /updateLanguageTheta\(currentLang, beta, 1, 1\.0\)/
+  - observado: `{"file":"src/client/components/Reader.tsx","line":4458,"text":"updateLanguageTheta(currentLang, beta, 1, 1.0);"}`
 - ✅ **PASS** · code-anchor: src/client/lib/profile-models.ts:417 coincide con /0\.18 \* \(1 - pKnow\)/
   - observado: `{"file":"src/client/lib/profile-models.ts","line":417,"text":"delta = 0.18 * (1 - pKnow);"}`
-- ✅ **PASS** · code-anchor: src/client/components/WordPanel.tsx:525 coincide con /award: false/
-  - observado: `{"file":"src/client/components/WordPanel.tsx","line":525,"text":"{ award: false },"}`
+- ✅ **PASS** · code-anchor: src/client/components/WordPanel.tsx:544 coincide con /award: false/
+  - observado: `{"file":"src/client/components/WordPanel.tsx","line":544,"text":"{ award: false },"}`
 - ✅ **PASS** · code-anchor: src/client/lib/reviews.ts:47 coincide con /options\.award !== false/
   - observado: `{"file":"src/client/lib/reviews.ts","line":47,"text":"if (options.award !== false) {"}`
 - ⚠️ **UNVERIFIED** · referencia koriat2005: forma válida; sin red no se resuelven metadatos (usar --online)
@@ -330,8 +330,8 @@ Código: **PASS** · Referencias: **UNVERIFIED**
 - ✅ **PASS** · doc-mention: el documento contiene «Nadie mide si se aprende»
 - ✅ **PASS** · code-absent: /comprehension|delayedRetention|chequeoDeComprension/ no aparece en src
 - ✅ **PASS** · code-absent: /postTest|delayedRecall/ no aparece en src
-- ✅ **PASS** · code-anchor: src/client/lib/journey.ts:77 coincide con /export function computeRetentionSummary/
-  - observado: `{"file":"src/client/lib/journey.ts","line":77,"text":"export function computeRetentionSummary("}`
+- ✅ **PASS** · code-anchor: src/client/lib/journey.ts:92 coincide con /export function computeRetentionSummary/
+  - observado: `{"file":"src/client/lib/journey.ts","line":92,"text":"export function computeRetentionSummary("}`
 - ✅ **PASS** · code-anchor: src/client/components/Vocabulary.tsx:1149 coincide con /const startRetentionCheck30d/
   - observado: `{"file":"src/client/components/Vocabulary.tsx","line":1149,"text":"const startRetentionCheck30d = () => {"}`
 - ✅ **PASS** · code-anchor: src/client/lib/chapter-follow.ts:52 coincide con /export async function summarizeChapterFollows/

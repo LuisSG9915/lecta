@@ -2,9 +2,10 @@ import type { MarkLevel } from "./word-level";
 
 const SAVED_CLASS = "saved-word";
 const PREDICTED_CLASS = "predicted-word";
+const RESOLVED_CLASS = "resolved-word";
 // La tarjeta «Antes de leer» vive dentro del contenedor del texto
 // (un portal): su contenido no es parte del libro y nunca se marca.
-const SKIP_SELECTOR = `.${SAVED_CLASS}, .lecta-saved-word, .${PREDICTED_CLASS}, .lecta-unknown-word, .section-preview-slot`;
+const SKIP_SELECTOR = `.${SAVED_CLASS}, .lecta-saved-word, .${PREDICTED_CLASS}, .lecta-unknown-word, .${RESOLVED_CLASS}, .lecta-resolved-word, .section-preview-slot`;
 
 // Marca las formas en el texto del libro: las guardadas llevan
 // «saved-word lecta-saved-word» (con data-level para el desvanecimiento progresivo
@@ -18,14 +19,15 @@ export function markWords(
   saved: Set<string> | Map<string, MarkLevel>,
   predicted: Set<string>,
   language = "es",
+  resolved?: Set<string>,
 ) {
   // Desenrolla marcas previas (p. ej. una palabra que pasó a dominada
   // o una predicha que el lector reconoció o guardó).
-  root.querySelectorAll(`.${SAVED_CLASS}, .lecta-saved-word, .${PREDICTED_CLASS}, .lecta-unknown-word`).forEach((mark) => {
+  root.querySelectorAll(`.${SAVED_CLASS}, .lecta-saved-word, .${PREDICTED_CLASS}, .lecta-unknown-word, .${RESOLVED_CLASS}, .lecta-resolved-word`).forEach((mark) => {
     mark.replaceWith(...mark.childNodes);
   });
   root.normalize();
-  if (!saved.size && !predicted.size) return;
+  if (!saved.size && !predicted.size && (!resolved || !resolved.size)) return;
 
   const segmenter = new Intl.Segmenter(language, { granularity: "word" });
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
@@ -44,7 +46,7 @@ export function markWords(
     const matches = [...segmenter.segment(text)].filter((part) => {
       if (!part.isWordLike) return false;
       const form = part.segment.toLowerCase();
-      return saved.has(form) || predicted.has(form);
+      return saved.has(form) || predicted.has(form) || (resolved && resolved.has(form));
     });
     if (!matches.length) continue;
 
@@ -61,7 +63,9 @@ export function markWords(
         const level = saved instanceof Map ? saved.get(form) : undefined;
         if (level && level !== "new") mark.dataset.level = level;
       } else {
-        mark.className = `${PREDICTED_CLASS} lecta-unknown-word`;
+        mark.className = resolved && resolved.has(form)
+          ? `${RESOLVED_CLASS} lecta-resolved-word`
+          : `${PREDICTED_CLASS} lecta-unknown-word`;
       }
       mark.textContent = marked.nodeValue;
       marked.parentNode?.replaceChild(mark, marked);
@@ -72,7 +76,7 @@ export function markWords(
 
 export function clearChapterMarks(doc: Document): void {
   if (!doc?.body) return;
-  doc.querySelectorAll(`.${SAVED_CLASS}, .lecta-saved-word, .${PREDICTED_CLASS}, .lecta-unknown-word`).forEach((mark) => {
+  doc.querySelectorAll(`.${SAVED_CLASS}, .lecta-saved-word, .${PREDICTED_CLASS}, .lecta-unknown-word, .${RESOLVED_CLASS}, .lecta-resolved-word`).forEach((mark) => {
     mark.replaceWith(...mark.childNodes);
   });
   doc.body.normalize();
@@ -83,7 +87,8 @@ export function applyChapterMarks(
   wordsToMark: Set<string>,
   savedWords: Set<string> | Map<string, MarkLevel>,
   language = "es",
+  resolved?: Set<string>,
 ): void {
   if (!doc?.body) return;
-  markWords(doc.body, savedWords, wordsToMark, language);
+  markWords(doc.body, savedWords, wordsToMark, language, resolved);
 }

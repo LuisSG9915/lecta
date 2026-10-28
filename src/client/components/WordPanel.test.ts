@@ -29,6 +29,8 @@ vi.mock("../lib/lexicon", () => ({
     catTip: "El autor emplea esta palabra para enfatizar el paso del tiempo.",
   })),
   reportSense: vi.fn(),
+  lookupWordInMemory: vi.fn(() => null),
+  primeLexiconMemoryCache: vi.fn(),
 }));
 
 vi.mock("../lib/idb", () => ({

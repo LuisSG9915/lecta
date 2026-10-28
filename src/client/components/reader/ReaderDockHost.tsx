@@ -64,6 +64,12 @@ export interface ReaderDockHostProps {
   handleDismissFocusSuggestion: () => void;
   handleMuteFocusForBook: () => void;
   handleDisableFocusGlobally: () => void;
+  progress?: number;
+  weeklyWordsCount?: number | null;
+  recordToast?: string | null;
+  onDismissRecordToast?: () => void;
+  isReadingActive?: boolean;
+  onStartAudio5Min?: () => void;
 }
 
 export function ReaderDockHost(props: ReaderDockHostProps) {
@@ -112,6 +118,12 @@ export function ReaderDockHost(props: ReaderDockHostProps) {
   handleDismissFocusSuggestion,
   handleMuteFocusForBook,
   handleDisableFocusGlobally,
+  progress,
+  weeklyWordsCount,
+  recordToast,
+  onDismissRecordToast,
+  isReadingActive,
+  onStartAudio5Min,
   } = props;
 
   return (
@@ -143,6 +155,12 @@ export function ReaderDockHost(props: ReaderDockHostProps) {
       recommendedFocusAid={fatigueSuggestion?.recommendedAid}
       focusFatigueReason={fatigueSuggestion?.reason}
       onAcceptFocusAid={handleAcceptFocusAid}
+      bookProgressPct={progress != null ? Math.round(progress * 100) : null}
+      weeklyWordsCount={weeklyWordsCount}
+      recordToast={recordToast}
+      onDismissRecordToast={onDismissRecordToast}
+      isReadingActive={isReadingActive}
+      onStartAudio5Min={onStartAudio5Min}
       onDismissFocusSuggestion={handleDismissFocusSuggestion}
       onMuteFocusForBook={handleMuteFocusForBook}
       onDisableFocusGlobally={handleDisableFocusGlobally}

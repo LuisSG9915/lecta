@@ -30,7 +30,8 @@ export type TtsEndReason =
   | "fatigue"
   | "visibility"
   | "render_change"
-  | "error";
+  | "error"
+  | "sleep_timer";
 
 // Territorio de la sesión: el target (capítulo) que la contiene.
 // El TTS avanza entre secciones físicas dentro de [startSection,

@@ -15,7 +15,7 @@ import {
   stripSoftHyphens,
 } from "../lib/epub";
 import { captureDbScope, saveBookPosition, type SavedBookPosition } from "../lib/idb";
-import { markWords } from "../lib/marks";
+import { applyAttentionBudget } from "../lib/attention-budget";
 import type { PageLayout } from "../lib/pagination";
 import type { EpisodicWordItem } from "../lib/practice";
 import { countWords, MAX_SAMPLE_MS, MIN_SAMPLE_MS, MIN_SAMPLE_WORDS } from "../lib/progress";
@@ -38,6 +38,7 @@ import type { ReaderNavRestore } from "./useReaderNavigation";
 type Ref<T> = { current: T };
 
 export interface UseReaderSectionLoaderOptions {
+  bookHash?: string;
   onError: (message: string) => void;
   /** Idioma del libro; vacío cae al del EPUB. */
   language: string;
@@ -176,10 +177,12 @@ export function useReaderSectionLoader(options: UseReaderSectionLoaderOptions) {
         // predichas) entran desde el primer pintado; si no, llegan al
         // terminar el análisis sobre el contenedor ya montado.
         const prediction = classifyCached(index);
-        markWords(
+        applyAttentionBudget(
           sanitized,
           savedForms.current,
-          new Set((prediction?.predicted ?? []).map((item) => item.form)),
+          (prediction?.predicted ?? []).map((item) => item.form),
+          sanitized.textContent || "",
+          optionsRef.current.bookHash || "",
           lang,
         );
         // «Líneas sintácticas» envuelve el párrafo en unidades con

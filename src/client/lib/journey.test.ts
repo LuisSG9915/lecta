@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  DAY_GOAL_MS,
+  MICRO_SESSION_GOALS_MS,
+  ALLOWED_DAILY_GOAL_MS,
+  getEffectiveDailyGoalMs,
+  getWeeklyLearnedWordsCount,
+  isLongestSessionThisMonth,
+  setJourneySelectorCache,
+  clearJourneySelectorCache,
   computeRetentionSummary,
   wordStages,
   totalReadingMs,
@@ -14,6 +22,7 @@ import {
   computeLanguageLexicalGrowth,
   normalizeThetaScore,
   lexicalGrowthStage,
+  type ReadingGoal,
 } from "./journey";
 import type { Card } from "./fsrs";
 import type { KnownWord, SavedReview, SavedWord } from "./idb";
@@ -441,3 +450,163 @@ describe("Evolución Léxica por Idioma (θ_{u,L}) - Espejo de Progreso Cognitiv
   });
 });
 
+
+describe("Anti-Abandono: Micro-Metas Diarias Configurables (Fase 1)", () => {
+  it("expande DAY_GOAL_MS permitiendo micro-sesiones de 3 min, 5 min y 10 min", () => {
+    expect(DAY_GOAL_MS).toBe(60_000);
+    expect(MICRO_SESSION_GOALS_MS.MICRO_3_MIN).toBe(180_000);
+    expect(MICRO_SESSION_GOALS_MS.MICRO_5_MIN).toBe(300_000);
+    expect(MICRO_SESSION_GOALS_MS.MICRO_10_MIN).toBe(600_000);
+    expect(ALLOWED_DAILY_GOAL_MS).toEqual([60_000, 180_000, 300_000, 600_000]);
+  });
+
+  it("resuelve la meta diaria efectiva con getEffectiveDailyGoalMs", () => {
+    expect(getEffectiveDailyGoalMs(null)).toBe(60_000);
+    expect(getEffectiveDailyGoalMs(undefined)).toBe(60_000);
+    expect(getEffectiveDailyGoalMs(180_000)).toBe(180_000);
+    expect(getEffectiveDailyGoalMs({ dailyGoalMs: 300_000 } as unknown as ReadingGoal)).toBe(300_000);
+    expect(getEffectiveDailyGoalMs({ dailyGoalMs: 0 } as unknown as ReadingGoal)).toBe(60_000);
+  });
+});
+
+describe("Anti-Abandono: getWeeklyLearnedWordsCount", () => {
+  const now = 1_000_000_000;
+  const ONE_DAY = 86_400_000;
+
+  it("cuenta palabras aprendidas/dominadas en los últimos 7 días", () => {
+    clearJourneySelectorCache();
+    const words: SavedWord[] = [
+      // Aprendida hace 2 días (dentro de los 7 días)
+      word("es:reciente", {
+        lemma: "reciente",
+        updatedAt: now - 2 * ONE_DAY,
+        card: card(5, 2),
+      }),
+      // Aprendida hace 10 días (fuera de los 7 días)
+      word("es:antigua", {
+        lemma: "antigua",
+        updatedAt: now - 10 * ONE_DAY,
+        card: card(10, 3),
+      }),
+      // Palabra sin repeticiones / nueva
+      word("es:nueva", {
+        lemma: "nueva",
+        updatedAt: now - 1 * ONE_DAY,
+        card: card(0, 0),
+      }),
+      // Borrada (debe ignorarse)
+      word("es:borrada", {
+        lemma: "borrada",
+        deleted: true,
+        updatedAt: now - 1 * ONE_DAY,
+        card: card(5, 2),
+      }),
+    ];
+
+    const count = getWeeklyLearnedWordsCount(words, [], [], now);
+    expect(count).toBe(1);
+  });
+
+  it("incorpora KnownWords y reviews exitosos recientes evitando duplicados", () => {
+    clearJourneySelectorCache();
+    const words: SavedWord[] = [
+      word("es:libro", {
+        lemma: "libro",
+        updatedAt: now - 1 * ONE_DAY,
+        card: card(3, 1),
+      }),
+    ];
+
+    const knownWords: KnownWord[] = [
+      {
+        key: "es:libro",
+        language: "es",
+        lemma: "libro",
+        known: true,
+        source: "lookup",
+        updatedAt: now - 1 * ONE_DAY,
+      },
+      {
+        key: "es:gato",
+        language: "es",
+        lemma: "gato",
+        known: true,
+        source: "passive",
+        updatedAt: now - 3 * ONE_DAY,
+      },
+    ];
+
+    const reviews: SavedReview[] = [
+      {
+        id: "r1",
+        language: "es",
+        form: "gato",
+        kind: "word",
+        rating: "good",
+        hints: 0,
+        createdAt: now - 2 * ONE_DAY,
+      },
+    ];
+
+    // libro y gato son 2 palabras únicas
+    const count = getWeeklyLearnedWordsCount(words, reviews, knownWords, now);
+    expect(count).toBe(2);
+  });
+
+  it("utiliza el cache memorizado de selectores si no se pasan argumentos", () => {
+    clearJourneySelectorCache();
+    expect(getWeeklyLearnedWordsCount()).toBe(0);
+
+    setJourneySelectorCache({
+      words: [
+        word("es:sol", {
+          lemma: "sol",
+          updatedAt: now - 1 * ONE_DAY,
+          card: card(5, 2),
+        }),
+      ],
+    });
+
+    expect(getWeeklyLearnedWordsCount(undefined, undefined, undefined, now)).toBe(1);
+    clearJourneySelectorCache();
+  });
+});
+
+describe("Anti-Abandono: isLongestSessionThisMonth", () => {
+  const now = 10_000_000;
+  const ONE_DAY = 86_400_000;
+
+  it("detecta si la sesión actual supera el récord de los últimos 30 días", () => {
+    clearJourneySelectorCache();
+    const intervals: TimeInterval[] = [
+      // Sesión de 15 min hace 3 días
+      {
+        startedAt: now - 3 * ONE_DAY,
+        endedAt: now - 3 * ONE_DAY + 15 * 60_000,
+      },
+      // Sesión de 25 min hace 10 días (el récord de este mes)
+      {
+        startedAt: now - 10 * ONE_DAY,
+        endedAt: now - 10 * ONE_DAY + 25 * 60_000,
+      },
+      // Sesión de 60 min hace 45 días (fuera del mes)
+      {
+        startedAt: now - 45 * ONE_DAY,
+        endedAt: now - 45 * ONE_DAY + 60 * 60_000,
+      },
+    ];
+
+    // 20 min no supera los 25 min del mes
+    expect(isLongestSessionThisMonth(20 * 60_000, intervals, now)).toBe(false);
+    // 25 min exactos no lo supera
+    expect(isLongestSessionThisMonth(25 * 60_000, intervals, now)).toBe(false);
+    // 26 min sí supera el récord del mes
+    expect(isLongestSessionThisMonth(26 * 60_000, intervals, now)).toBe(true);
+  });
+
+  it("devuelve true si no hay sesiones previas registradas", () => {
+    clearJourneySelectorCache();
+    expect(isLongestSessionThisMonth(10 * 60_000, [], now)).toBe(true);
+    expect(isLongestSessionThisMonth(0, [], now)).toBe(false);
+  });
+});

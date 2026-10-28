@@ -48,6 +48,11 @@ import DiscoverRail from "./DiscoverRail";
 import Icon from "./Icon";
 import { CompanionButton } from "./CompanionButton";
 import { CompanionStage } from "./CompanionStage";
+import {
+  evaluateHabitReminder,
+  updateAppBadge,
+} from "../lib/localNotificationScheduler";
+import type { NotificationPayload } from "../lib/companionNotification";
 import { useCompanion } from "./CompanionProvider";
 import Sheet from "./Sheet";
 
@@ -368,6 +373,18 @@ export default function Shelf({
   // catálogo (bookVocab:v1:{hash}). Primero lo ya analizado; los que
   // falten se analizan de uno en uno y solo con red — nunca compite
   // con abrir un libro.
+  const [activatedAssists, setActivatedAssists] = useState<Set<string>>(() => new Set());
+
+  const handleActivateAssists = async (targetBook: ShelfItem | { hash: string; language?: string }) => {
+    setActivatedAssists((prev) => new Set(prev).add(targetBook.hash));
+    try {
+      const { enqueueChapterPrimingWords } = await import("../lib/book-vocab");
+      await enqueueChapterPrimingWords(targetBook.hash, targetBook.language || "es", captureDbScope());
+    } catch {
+      // silencioso
+    }
+  };
+
   const [bookCoverages, setBookCoverages] = useState<
     Map<string, BookCoverage>
   >(new Map());
@@ -493,6 +510,52 @@ export default function Shelf({
     const [freshest] = [...positions].sort((a, b) => b.updatedAt - a.updatedAt);
     return freshest ? library.find((book) => book.hash === freshest.bookHash) : undefined;
   }, [latestHash, library, positions]);
+
+  const [habitReminder, setHabitReminder] = useState<NotificationPayload | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      if (!current) {
+        setHabitReminder(null);
+        return;
+      }
+      const pos = positions.find((p) => p.bookHash === current.hash);
+      const lastOpened = pos?.updatedAt ?? current.addedAt ?? 0;
+      const nowMs = Date.now();
+      const daysSince = (nowMs - lastOpened) / (24 * 3600 * 1000);
+      if (daysSince < 2) {
+        setHabitReminder(null);
+        return;
+      }
+
+      const res = evaluateHabitReminder(
+        {
+          bookHash: current.hash,
+          title: displayTitle(current.name, current.title),
+          lastOpenedTimestampMs: lastOpened,
+          textBeforeCursor: pos?.anchor,
+        },
+        {
+          companion: {
+            streakShieldUsedRecently: Boolean(companion.state?.stats?.lastDayKey),
+          },
+        },
+      );
+
+      if (res.eligible && res.payload) {
+        void updateAppBadge(true);
+        setHabitReminder(res.payload);
+      } else {
+        setHabitReminder(null);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [current, positions, companion.state?.stats?.lastDayKey]);
 
   const [heroStrategy, setHeroStrategy] = useState<StrategyPreset | null>(null);
   const [catPetQuote, setCatPetQuote] = useState<string | null>(null);
@@ -937,6 +1000,97 @@ export default function Shelf({
                     </div>
                     <h2 className="shelf-hero-title">{displayTitle(current.name, current.title)}</h2>
                     {current.author ? <p className="meta">{current.author}</p> : null}
+                    {bookCoverages.get(current.hash) && (100 - bookCoverages.get(current.hash)!.percent) > 2 ? (
+                      <div
+                        className="shelf-difficulty-preflight"
+                        role="region"
+                        aria-label="Pre-vuelo de dificultad"
+                        style={{
+                          marginTop: "0.5rem",
+                          padding: "0.4rem 0.65rem",
+                          background: "rgba(127,127,127,0.08)",
+                          borderRadius: "6px",
+                          fontSize: "0.82rem",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: "0.5rem",
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        <span className="shelf-difficulty-preflight__text">
+                          Este libro usa ~{100 - bookCoverages.get(current.hash)!.percent}% de palabras nuevas para ti — ¿Activamos ayudas automáticas?
+                        </span>
+                        {activatedAssists.has(current.hash) ? (
+                          <span className="shelf-difficulty-preflight__done" style={{ fontWeight: 600, color: "var(--vermilion)" }}>
+                            ✓ Ayudas activadas
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            className="shelf-difficulty-preflight__btn btn--activate-assists"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void handleActivateAssists(current);
+                            }}
+                            style={{
+                              border: "1px solid currentColor",
+                              background: "transparent",
+                              borderRadius: "999px",
+                              padding: "0.2rem 0.6rem",
+                              fontSize: "0.76rem",
+                              cursor: "pointer",
+                            }}
+                          >
+                            Activar ayudas
+                          </button>
+                        )}
+                      </div>
+                    ) : null}
+                    {habitReminder && (
+                      <div
+                        className="shelf-companion-habit-card"
+                        role="region"
+                        aria-label="Recordatorio respetuoso del compañero"
+                        style={{
+                          marginTop: "0.6rem",
+                          padding: "0.5rem 0.75rem",
+                          background: "var(--paper-sunken)",
+                          borderLeft: "3px solid var(--accent)",
+                          borderRadius: "6px",
+                          fontSize: "0.85rem",
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: "0.3rem",
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.5rem" }}>
+                          <strong style={{ color: "var(--ink)", display: "flex", alignItems: "center", gap: "4px" }}>
+                            {habitReminder.title}
+                          </strong>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void updateAppBadge(false);
+                              onOpen(current);
+                            }}
+                            className="btn btn--primary"
+                            style={{ padding: "0.25rem 0.65rem", fontSize: "0.8rem", borderRadius: "999px", whiteSpace: "nowrap" }}
+                          >
+                            Leer 3 min
+                          </button>
+                        </div>
+                        <p style={{ margin: 0, color: "var(--ink-muted)", lineHeight: 1.35 }}>
+                          {habitReminder.body}
+                        </p>
+                        {habitReminder.subtitle && (
+                          <span style={{ fontSize: "0.78rem", color: "var(--accent)", fontWeight: 500 }}>
+                            {habitReminder.subtitle}
+                          </span>
+                        )}
+                      </div>
+                    )}
                     {heroPosition ? (
                       <p className="meta shelf-hero-progress">
                         {current.sectionCount
@@ -1314,6 +1468,37 @@ export default function Shelf({
                           }
                         />
                       </span>
+                    ) : null}
+                    {cov && (100 - cov.percent) > 2 ? (
+                      <div
+                        className="shelf-difficulty-preflight-item"
+                        style={{ fontSize: "0.74rem", marginTop: "0.25rem", opacity: 0.9 }}
+                      >
+                        <span>~{100 - cov.percent}% vocabulario nuevo</span>
+                        {activatedAssists.has(book.hash) ? (
+                          <span style={{ marginLeft: "0.4rem", color: "var(--vermilion)" }}>✓ Ayudas activadas</span>
+                        ) : (
+                          <button
+                            type="button"
+                            className="btn--activate-assists"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void handleActivateAssists(book);
+                            }}
+                            style={{
+                              marginLeft: "0.35rem",
+                              background: "transparent",
+                              border: "none",
+                              textDecoration: "underline",
+                              cursor: "pointer",
+                              fontSize: "inherit",
+                              color: "inherit",
+                            }}
+                          >
+                            Activar ayudas
+                          </button>
+                        )}
+                      </div>
                     ) : null}
                     <div className="shelf-book-footer">
                       <span className={`shelf-book-meta meta${isDownloading ? " shelf-book-meta--downloading" : ""}`}>

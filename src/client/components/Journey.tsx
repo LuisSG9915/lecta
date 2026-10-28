@@ -297,7 +297,8 @@ export default function Journey({ onClose, books }: JourneyProps) {
         }
         const parsedGoal = parseReadingGoal(rawGoal.value);
         if (parsedGoal) {
-          setSelectedGoalMinutes(15);
+          const mins = parsedGoal.dailyGoalMs ? Math.round(parsedGoal.dailyGoalMs / 60_000) : 15;
+          setSelectedGoalMinutes(mins);
         }
         // Alguna lectura caducó o falló: el recorrido se pinta igual, con un
         // aviso discreto y la opción de reintentar. Se reporta el hecho (sin
@@ -481,6 +482,7 @@ export default function Journey({ onClose, books }: JourneyProps) {
         Date.now(),
         parsed?.streakShields ?? 0,
         parsed?.lastShieldUsedDay ?? null,
+        minutes * 60_000,
       );
       if (typeof saveSessionValue === "function") {
         await saveSessionValue(READING_GOAL_KEY, serialized, scope);
@@ -1395,7 +1397,7 @@ export default function Journey({ onClose, books }: JourneyProps) {
             </p>
 
             <div className="journey-goal-options" role="radiogroup" aria-label="Minutos diarios">
-              {[5, 10, 15, 20, 30].map((mins) => {
+              {[3, 5, 10, 15, 20, 30].map((mins) => {
                 const isSelected = selectedGoalMinutes === mins;
                 return (
                   <button

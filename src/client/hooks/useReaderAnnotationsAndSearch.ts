@@ -16,7 +16,8 @@ import {
 import { makeBookmark, makePassage, type PassageTone } from "../lib/annotations";
 import { applyPassageMarks } from "../lib/passage-marks";
 import { pushAnnotationsToServer } from "../lib/reading-sync";
-import { explainInPassage } from "../lib/lexicon";
+import { explainInPassage, lookupWord, lookupWordInMemory } from "../lib/lexicon";
+import { recordBookConsultedWord } from "../lib/book-glossary";
 import type { CatPassageExplanationState } from "../components/reader/ReaderOverlays";
 
 export type { CatPassageExplanationState };
@@ -260,85 +261,171 @@ export function useReaderAnnotationsAndSearch({
     setSelButton(null);
   }, [containerRef, title, author, currentChapterTarget, sectionTitle, sectionLabel, sectionIndex, setSelButton]);
 
-  const askCatAboutSelection = useCallback(async () => {
-    const container = containerRef.current;
-    const sel = window.getSelection();
-    if (!container || !sel || sel.isCollapsed || !sel.rangeCount) {
-      setSelButton(null);
-      return;
-    }
-    const text = sel.toString().replace(/\s+/g, " ").trim();
-    if (text.length < 2) {
-      setSelButton(null);
-      return;
-    }
-    sel.removeAllRanges();
-    setSelButton(null);
+  const askCatAboutSelection = useCallback(
+    async (param?: string | { word?: string; passage: string; bookId?: string }) => {
+      let text = "";
+      let word: string | undefined;
+      let targetBookId = bookHash;
 
-    setCatPassageExplanation({
-      passage: text,
-      loading: true,
-      data: null,
-      error: null,
-    });
+      if (typeof param === "object" && param !== null) {
+        text = (param.passage || "").replace(/\s+/g, " ").trim();
+        word = param.word?.trim();
+        if (param.bookId) targetBookId = param.bookId;
+      } else if (typeof param === "string") {
+        text = param.replace(/\s+/g, " ").trim();
+        if (!text.includes(" ") && text.length <= 35 && /^[\p{L}\p{M}'-]+$/u.test(text)) {
+          word = text;
+        }
+      } else {
+        const container = containerRef.current;
+        const sel = window.getSelection();
+        if (!container || !sel || sel.isCollapsed || !sel.rangeCount) {
+          setSelButton(null);
+          return;
+        }
+        text = sel.toString().replace(/\s+/g, " ").trim();
+        if (text.length < 2) {
+          setSelButton(null);
+          return;
+        }
+        if (!text.includes(" ") && text.length <= 35 && /^[\p{L}\p{M}'-]+$/u.test(text)) {
+          word = text;
+        }
+        sel.removeAllRanges();
+      }
 
-    if (!signedIn) {
+      setSelButton(null);
+
+      if (!text && !word) return;
+      if (!text && word) text = word;
+
+      const scope = captureDbScope();
+      let dictEntry: { lemma: string; pos?: string | null; definition: string } | null = null;
+
+      if (word) {
+        // 1. Intento síncrono en memoria (<50 ms / 0 ms)
+        const mem = lookupWordInMemory(word, language);
+        if (mem?.ok && mem.found) {
+          dictEntry = {
+            lemma: mem.lemma ?? word,
+            pos: mem.partOfSpeech ?? null,
+            definition: mem.definitions?.[0] || mem.entries?.[0]?.senses?.[0]?.definition || "",
+          };
+        }
+
+        // Auto-registro en glosario del libro sin bloquear
+        if (targetBookId) {
+          void recordBookConsultedWord(targetBookId, word, scope);
+        }
+      }
+
+      // Inyección inmediata en UI: Bloque 1 presente con dictEntry o skeleton
       setCatPassageExplanation({
         passage: text,
-        loading: false,
-        data: {
-          contextualMeaning: `Apreciación del fragmento: «${text.slice(0, 100)}...»`,
-          toneAndNuance: "Literario",
-          catTip: "Inicia sesión para recibir lecturas profundas con IA en vivo.",
-        },
+        word,
+        dictEntry,
+        loading: true,
+        data: null,
         error: null,
       });
-      return;
-    }
 
-    try {
-      const scope = captureDbScope();
-      const res = await explainInPassage(
-        {
-          sentence: text,
-          bookTitle: title,
-          author,
-          language,
-        },
-        scope,
-      );
-      if (res.ok) {
-        setCatPassageExplanation({
-          passage: text,
-          loading: false,
-          data: {
-            contextualMeaning: res.contextualMeaning,
-            toneAndNuance: res.toneAndNuance,
-            catTip: res.catTip,
-          },
-          error: null,
-        });
-      } else {
-        setCatPassageExplanation({
-          passage: text,
-          loading: false,
-          data: {
-            contextualMeaning: `Apreciación del fragmento: «${text.slice(0, 120)}»`,
-            toneAndNuance: "Literario",
-            catTip: "No pudimos conectar con la IA en este momento, pero disfruta de este pasaje.",
-          },
-          error: null,
-        });
+      // Si había palabra pero no estaba en memoria, la buscamos en IndexedDB/offline de inmediato
+      if (word && !dictEntry) {
+        try {
+          const lookedUp = await lookupWord(word, language, scope);
+          if (lookedUp.ok && lookedUp.found) {
+            dictEntry = {
+              lemma: lookedUp.lemma ?? word,
+              pos: lookedUp.partOfSpeech ?? null,
+              definition: lookedUp.definitions?.[0] || (lookedUp.ok && lookedUp.entries?.[0]?.senses?.[0]?.definition) || "",
+            };
+            setCatPassageExplanation((prev) => (prev ? { ...prev, dictEntry } : null));
+          }
+        } catch {
+          // Fallback silencioso para el diccionario local
+        }
       }
-    } catch {
-      setCatPassageExplanation({
-        passage: text,
-        loading: false,
-        data: null,
-        error: "No se pudo consultar al gato literario.",
-      });
-    }
-  }, [containerRef, signedIn, captureDbScope, title, author, language, setSelButton]);
+
+      if (!signedIn) {
+        setCatPassageExplanation((prev) =>
+          prev
+            ? {
+                ...prev,
+                loading: false,
+                data: {
+                  contextualMeaning: `Apreciación del fragmento: «${text.slice(0, 100)}...»`,
+                  toneAndNuance: "Literario",
+                  catTip: "Inicia sesión para recibir lecturas profundas con IA en vivo.",
+                },
+                error: null,
+              }
+            : null,
+        );
+        return;
+      }
+
+      try {
+        const res = await explainInPassage(
+          {
+            word,
+            lemma: dictEntry?.lemma,
+            localDefinition: dictEntry?.definition,
+            passage: text,
+            sentence: text,
+            bookTitle: title,
+            bookId: targetBookId,
+            author,
+            language,
+          },
+          scope,
+        );
+        if (res.ok) {
+          setCatPassageExplanation((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  loading: false,
+                  data: {
+                    contextualMeaning: res.contextualMeaning,
+                    toneAndNuance: res.toneAndNuance,
+                    catTip: res.catTip,
+                    directMeaning: res.directMeaning,
+                  },
+                  error: null,
+                }
+              : null,
+          );
+        } else {
+          setCatPassageExplanation((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  loading: false,
+                  data: {
+                    contextualMeaning: `Apreciación del fragmento: «${text.slice(0, 120)}»`,
+                    toneAndNuance: "Literario",
+                    catTip: "No pudimos conectar con la IA en este momento, pero disfruta de este pasaje.",
+                  },
+                  error: null,
+                }
+              : null,
+          );
+        }
+      } catch {
+        setCatPassageExplanation((prev) =>
+          prev
+            ? {
+                ...prev,
+                loading: false,
+                data: null,
+                error: "No se pudo consultar al gato literario.",
+              }
+            : null,
+        );
+      }
+    },
+    [containerRef, signedIn, captureDbScope, title, author, language, setSelButton, bookHash],
+  );
 
   const savePassageDirectly = useCallback(
     async (text: string) => {

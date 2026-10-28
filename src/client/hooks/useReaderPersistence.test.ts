@@ -152,4 +152,35 @@ describe("useReaderPersistence", () => {
     expect(savedPositions.get("book-hash-123")).toBeDefined();
     expect(savedPositions.get("book-hash-123")?.sectionIndex).toBe(3);
   });
+
+  it("dispara goal_completed al alcanzar la micro-meta configurada (ej. 3 min)", async () => {
+    const signalCompanion = vi.fn();
+    const onGoalAchieved = vi.fn();
+    const handle = renderHook({
+      dailyGoalMs: 180_000, // 3 min
+      signalCompanion,
+      onGoalAchieved,
+    });
+
+    const now = 20_000;
+    vi.spyOn(Date, "now").mockReturnValue(now);
+    act(() => {
+      handle.current.noteActivity();
+    });
+
+    // Simular que pasaron 185 segundos (superando la micro-meta de 180s)
+    vi.spyOn(Date, "now").mockReturnValue(now + 185_000);
+    await act(async () => {
+      handle.current.noteActivity();
+      handle.current.closeActivity();
+      // Permitir que la promesa de listIntervals resuelva
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(signalCompanion).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "goal_completed" })
+    );
+    expect(onGoalAchieved).toHaveBeenCalled();
+  });
 });

@@ -87,7 +87,7 @@ export interface UseReaderTtsParams {
   setCompanionAudioSuppressed?: (suppressed: boolean) => void;
   navigate?: ReaderNavigateFn;
   trackEvent?: (draft: VisitEventDraft) => void;
-  noteActivity?: () => void;
+  noteActivity?: (force?: boolean) => void;
   closeSheet?: () => void;
 }
 
@@ -128,6 +128,7 @@ export function useReaderTts(params: UseReaderTtsParams = {}) {
   const [ttsConsentOpen, setTtsConsentOpen] = useState(false);
   const [ttsDownloadProgress, setTtsDownloadProgress] = useState<number | null>(null);
   const [isKittenModelDownloaded, setIsKittenModelDownloaded] = useState(false);
+  const [sleepTimerActive, setSleepTimerActive] = useState(false);
 
   // Controlador simplificado de audio
   const audioControllerRef = useRef<TtsAudioController | null>(null);
@@ -205,9 +206,15 @@ export function useReaderTts(params: UseReaderTtsParams = {}) {
         });
       },
       emit: (draft) => ttsFns.current.trackEvent(draft as unknown as VisitEventDraft),
-      noteActivity: () => ttsFns.current.noteActivity(),
-      onSnapshot: setTtsSnap,
+      noteActivity: () => ttsFns.current.noteActivity(true),
+      onSnapshot: (snap) => {
+        setTtsSnap(snap);
+        if (snap.status === "idle" || snap.status === "stopping") {
+          setSleepTimerActive(false);
+        }
+      },
       onSessionEnd: (reason) => {
+        setSleepTimerActive(false);
         if (reason === "error") ttsFns.current.onStatus("No se pudo leer en voz alta.");
       },
       resolveStartIndex: (items) => {
@@ -286,13 +293,14 @@ export function useReaderTts(params: UseReaderTtsParams = {}) {
     const ctl = ttsRef.current;
     if (!ctl) return;
     if (ttsSnap.status !== "speaking" && ttsSnap.status !== "preparing") return;
-    if (docHidden) ctl.pause("visibility");
+    if (docHidden && !sleepTimerActive) ctl.pause("visibility");
     else if (selection) ctl.pause("word_lookup");
     else if (sheet || panelsOpen || prep || companion?.open || companion?.modalOpen) ctl.pause("panel_opened");
     else if (fatigueNotice) ctl.pause("fatigue");
   }, [
     ttsSnap.status,
     docHidden,
+    sleepTimerActive,
     selection,
     sheet,
     panelsOpen,
@@ -383,6 +391,7 @@ export function useReaderTts(params: UseReaderTtsParams = {}) {
   }, []);
 
   const stopTts = useCallback((reason: "user" | "navigation" | "visibility" = "user") => {
+    setSleepTimerActive(false);
     ttsRef.current?.stop(reason);
     audioControllerRef.current?.stop();
   }, []);
@@ -511,7 +520,42 @@ export function useReaderTts(params: UseReaderTtsParams = {}) {
     else audioControllerRef.current?.next();
   }, []);
 
-  return {
+
+
+  const start5MinuteListening = useCallback(() => {
+    const ctl = ttsRef.current;
+    if (!ctl || state !== "ready") return;
+
+    if (loadTtsSettings().consentedAt === null) {
+      consentTts();
+    }
+
+    closeSheet();
+    setSleepTimerActive(true);
+
+    if (ttsSnap.status !== "idle") {
+      ctl.setSleepTimer?.(5 * 60_000);
+      return;
+    }
+
+    const index = sectionIndexRef?.current ?? 0;
+    const range = (catalogRef?.current?.ranges ?? []).find(
+      (r) => r.startSection <= index && index < r.endSection,
+    );
+    ctl.start(
+      {
+        bookHash,
+        targetId: range?.target.id ?? `s${index}`,
+        startSection: range?.startSection ?? index,
+        endSection: range?.endSection ?? index + 1,
+        sectionIndex: index,
+      },
+      0,
+      { sleepTimerMs: 5 * 60_000 },
+    );
+  }, [state, closeSheet, sectionIndexRef, catalogRef, bookHash, ttsSnap.status]);
+
+return {
     // Reader.tsx integration
     ttsRef,
     ttsSnap,
@@ -530,6 +574,8 @@ export function useReaderTts(params: UseReaderTtsParams = {}) {
     stopTts,
     onDomMutated,
     noteSavedWord,
+    start5MinuteListening,
+    sleepTimerActive,
 
     // Standalone hooks.test.ts integration
     ttsStatus: audioStatus,

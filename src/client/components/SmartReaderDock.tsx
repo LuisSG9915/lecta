@@ -7,6 +7,7 @@ import {
 import type { TtsSnapshot } from "../lib/ttsTypes";
 import { unlockAudioContext } from "../lib/kittenTtsEngine";
 import Icon, { type IconName } from "./Icon";
+import { getWeeklyLearnedWordsCount } from "../lib/journey";
 
 import type { FocusAidType } from "../lib/focus-telemetry";
 
@@ -99,6 +100,14 @@ export interface SmartReaderDockProps {
 
   /** Compañero en Lienzo Puro */
   onOpenCatCorner?: () => void;
+
+  /** Fase 1 Anti-Abandono: Píldora de Progreso Invisible y Récord Contextual */
+  bookProgressPct?: number | null;
+  weeklyWordsCount?: number | null;
+  recordToast?: string | null;
+  onDismissRecordToast?: () => void;
+  isReadingActive?: boolean;
+  onStartAudio5Min?: () => void;
 }
 
 export default function SmartReaderDock({
@@ -131,12 +140,59 @@ export default function SmartReaderDock({
   onCaptureWord,
   onStopAudio,
   onOpenCatCorner,
+  bookProgressPct,
+  weeklyWordsCount,
+  recordToast,
+  onDismissRecordToast: _onDismissRecordToast,
+  isReadingActive = false,
+  onStartAudio5Min,
 }: SmartReaderDockProps) {
   const [isModeSheetOpen, setIsModeSheetOpen] = useState(false);
   const [wordCapturedToast, setWordCapturedToast] = useState(false);
   const [isDismissedLocally, setIsDismissedLocally] = useState(false);
   const [isMuteOptionsOpen, setIsMuteOptionsOpen] = useState(false);
   const popoverRef = useRef<HTMLDivElement>(null);
+
+  // Auto-ocultamiento de la píldora al hacer scroll / leer activamente (Fase 1)
+  const [isScrollHidden, setIsScrollHidden] = useState(false);
+  const scrollTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleScroll = () => {
+      setIsScrollHidden(true);
+      if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current);
+      scrollTimerRef.current = window.setTimeout(() => {
+        setIsScrollHidden(false);
+      }, 1800);
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    window.addEventListener("touchmove", handleScroll, { passive: true });
+    window.addEventListener("wheel", handleScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+      window.removeEventListener("touchmove", handleScroll);
+      window.removeEventListener("wheel", handleScroll);
+      if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current);
+    };
+  }, []);
+
+  const displayProgress =
+    typeof bookProgressPct === "number"
+      ? Math.round(Math.max(0, Math.min(100, bookProgressPct)))
+      : (() => {
+          const match = progressText.match(/(\d+)%/);
+          if (match) return parseInt(match[1], 10);
+          return 0;
+        })();
+
+  const displayWeeklyWords =
+    typeof weeklyWordsCount === "number"
+      ? weeklyWordsCount
+      : getWeeklyLearnedWordsCount();
+
+  const isPillHidden = isReadingActive || isScrollHidden;
 
   const progressMeta = formatCompactProgress(progressText);
   const isAudioMode = ttsSnap.status !== "idle" && ttsSnap.status !== "stopping";
@@ -218,6 +274,69 @@ export default function SmartReaderDock({
         data-hidden={isPureCanvas || undefined}
         ref={popoverRef}
       >
+        {/* Toast sutil de Récord Mensual (Fase 1 Anti-Abandono) */}
+        {recordToast && !isPureCanvas && (
+          <div
+            className="reader-record-toast"
+            role="status"
+            aria-live="polite"
+            style={{
+              position: "absolute",
+              bottom: "calc(100% + 44px)",
+              left: "50%",
+              transform: "translateX(-50%)",
+              background: "var(--paper-raised, #1e1e1e)",
+              color: "var(--ink, #ffffff)",
+              padding: "6px 14px",
+              borderRadius: "9999px",
+              border: "1px solid var(--accent, #e5a93c)",
+              fontSize: "0.82rem",
+              fontWeight: 500,
+              boxShadow: "0 4px 16px rgba(0, 0, 0, 0.2)",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              zIndex: 60,
+              whiteSpace: "nowrap",
+              pointerEvents: "none",
+            }}
+          >
+            <span aria-hidden="true">🏆</span>
+            <span>{recordToast}</span>
+          </div>
+        )}
+
+        {/* Píldora de Progreso Invisible (Fase 1 Anti-Abandono - Cero CLS) */}
+        {!isPureCanvas && !isAudioMode && (
+          <div
+            className={`reader-progress-invisible-pill ${isPillHidden ? "is-hidden" : ""}`}
+            role="status"
+            aria-label={`Llevas ${displayProgress}% · ${displayWeeklyWords} palabras nuevas esta semana`}
+            style={{
+              position: "absolute",
+              bottom: "calc(100% + 8px)",
+              left: "50%",
+              transform: isPillHidden
+                ? "translateX(-50%) translateY(4px)"
+                : "translateX(-50%) translateY(0)",
+              background: "var(--paper-raised, rgba(30, 30, 30, 0.85))",
+              color: "var(--ink, #ffffff)",
+              padding: "4px 12px",
+              borderRadius: "9999px",
+              border: "1px solid var(--rule-subtle, rgba(255, 255, 255, 0.1))",
+              fontSize: "0.78rem",
+              fontWeight: 500,
+              boxShadow: "0 2px 10px rgba(0, 0, 0, 0.12)",
+              zIndex: 40,
+              whiteSpace: "nowrap",
+              pointerEvents: "none",
+              opacity: isPillHidden ? 0 : 0.9,
+              transition: "opacity 0.25s ease, transform 0.25s ease",
+            }}
+          >
+            Llevas {displayProgress}% · {displayWeeklyWords} palabras nuevas esta semana
+          </div>
+        )}
         {/* Backdrop transparente que intercepta el toque exterior para cerrar el popover sin pasar de página */}
         {isModeSheetOpen && !isAudioMode && (
           <div
@@ -343,6 +462,34 @@ export default function SmartReaderDock({
                   </span>
                   <span>{suggestionText}</span>
                 </button>
+                {onStartAudio5Min && (
+                  <button
+                    type="button"
+                    className="reader-focus-pill-audio"
+                    onClick={() => {
+                      onStartAudio5Min();
+                      setIsDismissedLocally(true);
+                    }}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      padding: "2px 8px",
+                      margin: 0,
+                      color: "inherit",
+                      cursor: "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "4px",
+                      font: "inherit",
+                      fontSize: "0.82rem",
+                      fontWeight: 500,
+                      borderLeft: "1px solid var(--rule-strong)",
+                    }}
+                    aria-label="Escuchar los próximos 5 min"
+                  >
+                    <span>Escuchar 5 min 🎧</span>
+                  </button>
+                )}
                 <button
                   type="button"
                   className="reader-focus-pill-close"

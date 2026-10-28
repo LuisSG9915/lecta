@@ -1,6 +1,6 @@
 # Auditoría del Cuaderno — estudio antes que prueba
 
-Generado por `scripts/audit-cuaderno.mjs` v1 el 2026-10-28T03:38:58.203Z. Commit: `6b42f07e6f98`.
+Generado por `scripts/audit-cuaderno.mjs` v1 el 2026-10-28T23:08:07.398Z. Commit: `542754d22485`.
 
 ## La queja, en palabras del usuario
 

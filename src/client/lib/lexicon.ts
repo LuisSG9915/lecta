@@ -21,6 +21,48 @@ type LexiconResponseBody = {
   error?: string;
 };
 
+// Caché en memoria para resolución instantánea (<50 ms / 0 ms) al hacer tap
+const lexiconMemoryCache = new Map<string, LexiconEntry[]>();
+
+export function primeLexiconMemoryCache(
+  entriesByForm: Record<string, LexiconEntry[]> | Map<string, LexiconEntry[]>,
+): void {
+  if (entriesByForm instanceof Map) {
+    for (const [form, entries] of entriesByForm.entries()) {
+      lexiconMemoryCache.set(form.toLowerCase(), entries);
+    }
+  } else {
+    for (const [form, entries] of Object.entries(entriesByForm)) {
+      lexiconMemoryCache.set(form.toLowerCase(), entries);
+    }
+  }
+}
+
+export function clearLexiconMemoryCache(): void {
+  lexiconMemoryCache.clear();
+}
+
+export function getLexiconMemoryCacheSize(): number {
+  return lexiconMemoryCache.size;
+}
+
+export function lookupWordInMemory(
+  form: string,
+  sentenceOrLang = "es",
+): (LookupResult & Partial<WordMeaning>) | null {
+  const language =
+    sentenceOrLang && sentenceOrLang.length <= 5 && !sentenceOrLang.includes(" ")
+      ? sentenceOrLang
+      : "es";
+  const norm = form.trim().toLowerCase();
+  const memKey = `${language}:${norm}`;
+  const memEntries = lexiconMemoryCache.get(memKey) ?? lexiconMemoryCache.get(norm);
+  if (memEntries && memEntries.length > 0) {
+    return enrichResult({ ok: true, found: true, entries: memEntries, offline: true }, form);
+  }
+  return null;
+}
+
 async function getCalibrationBankFallbackEntry(form: string, language: string): Promise<LexiconEntry | null> {
   const { calibrationFallbackDefinition, calibrationBankZipf } = await import("../../shared/calibration-bank");
   const normalized = form.trim().toLowerCase();
@@ -52,38 +94,55 @@ async function lookupWordRaw(
   language = "es",
   scope?: DbScope,
 ): Promise<LookupResult> {
-  // Si el navegador avisa que no hay red, consultar memoria local de inmediato
+  const normalized = form.trim().toLowerCase();
+  const memKey = `${language}:${normalized}`;
+
+  // 1. Resolución ultra-rápida (0 ms) en caché de memoria
+  const memCached = lexiconMemoryCache.get(memKey) ?? lexiconMemoryCache.get(normalized);
+  if (memCached && memCached.length > 0) {
+    return { ok: true, found: true, entries: memCached, offline: true };
+  }
+
+  // 2. Resolución local inmediata (<50 ms) en IndexedDB (lexicon cache y cuaderno)
+  const cached = await getCachedLexicon(language, form, scope).catch(() => null);
+  if (cached && cached.length > 0) {
+    lexiconMemoryCache.set(memKey, cached);
+    return { ok: true, found: true, entries: cached, offline: true };
+  }
+
+  const saved = await loadSavedWord(language, form, scope).catch(() => null);
+  if (saved?.meaning?.trim()) {
+    const fallbackEntry: LexiconEntry = {
+      entryId: saved.senseEntryId ?? null,
+      lemma: saved.lemma ?? saved.form,
+      pos: saved.pos ?? null,
+      freqRank: null,
+      zipf: null,
+      senses: [
+        {
+          definition: saved.meaning,
+          example: saved.context ?? null,
+          senseOrder: saved.senseOrder ?? 1,
+        },
+      ],
+    };
+    lexiconMemoryCache.set(memKey, [fallbackEntry]);
+    return { ok: true, found: true, entries: [fallbackEntry], offline: true };
+  }
+
+  const bankFallback = await getCalibrationBankFallbackEntry(form, language);
+  if (bankFallback) {
+    lexiconMemoryCache.set(memKey, [bankFallback]);
+    return { ok: true, found: true, entries: [bankFallback], offline: true };
+  }
+
+  const englishCore = await resolveEnglishCoreEntry(form);
+  if (englishCore) {
+    lexiconMemoryCache.set(memKey, [englishCore]);
+    return { ok: true, found: true, entries: [englishCore], offline: true };
+  }
+
   if (typeof navigator !== "undefined" && !navigator.onLine) {
-    const cached = await getCachedLexicon(language, form, scope).catch(() => null);
-    if (cached && cached.length > 0) {
-      return { ok: true, found: true, entries: cached, offline: true };
-    }
-    const saved = await loadSavedWord(language, form, scope).catch(() => null);
-    if (saved?.meaning?.trim()) {
-      const fallbackEntry: LexiconEntry = {
-        entryId: saved.senseEntryId ?? null,
-        lemma: saved.lemma ?? saved.form,
-        pos: saved.pos ?? null,
-        freqRank: null,
-        zipf: null,
-        senses: [
-          {
-            definition: saved.meaning,
-            example: saved.context ?? null,
-            senseOrder: saved.senseOrder ?? 1,
-          },
-        ],
-      };
-      return { ok: true, found: true, entries: [fallbackEntry], offline: true };
-    }
-    const bankFallback = await getCalibrationBankFallbackEntry(form, language);
-    if (bankFallback) {
-      return { ok: true, found: true, entries: [bankFallback], offline: true };
-    }
-    const englishCore = await resolveEnglishCoreEntry(form);
-    if (englishCore) {
-      return { ok: true, found: true, entries: [englishCore], offline: true };
-    }
     return {
       ok: false,
       error: "Sin conexión con el catálogo. Esta palabra aún no está en la memoria local.",
@@ -124,6 +183,7 @@ async function lookupWordRaw(
     const found = Boolean(data.found);
     const entries = (data.entries as LexiconEntry[]) ?? [];
     if (found && entries.length > 0) {
+      lexiconMemoryCache.set(memKey, entries);
       void saveCachedLexicon(language, form, entries, scope).catch(() => undefined);
       return { ok: true, found, entries };
     }
@@ -404,8 +464,12 @@ export async function explainInContext(
 
 export interface ExplainInPassageInput {
   word?: string;
-  sentence: string;
+  sentence?: string;
+  passage?: string;
+  lemma?: string;
+  localDefinition?: string;
   bookTitle?: string;
+  bookId?: string;
   author?: string;
   language?: string;
   nativeLanguage?: string;
@@ -416,8 +480,19 @@ export type ExplainInPassageResult =
       ok: true;
       directMeaning?: string;
       contextualMeaning: string;
+      contextualNuance?: string;
       toneAndNuance: string;
       catTip: string;
+      dictionary?: {
+        word: string | null;
+        lemma: string | null;
+        definition: string | null;
+      } | null;
+      dictionaryEntry?: {
+        word: string | null;
+        lemma: string | null;
+        definition: string | null;
+      } | null;
       degraded?: boolean;
     }
   | { ok: false; error: string };
@@ -426,13 +501,19 @@ export async function explainInPassage(
   input: ExplainInPassageInput,
   scope?: DbScope,
 ): Promise<ExplainInPassageResult> {
+  const sentence = input.sentence || input.passage || "";
+  const payload = {
+    ...input,
+    sentence,
+    passage: sentence,
+  };
   try {
     const response = await accountFetch(
       "/api/ai/explain-in-passage",
       {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(input),
+        body: JSON.stringify(payload),
       },
       scope,
     );

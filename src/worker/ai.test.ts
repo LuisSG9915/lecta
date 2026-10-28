@@ -1066,6 +1066,19 @@ describe("parsePassageExplanation & buildExplainInPassagePrompt", () => {
     expect(prompt).toContain("Instrucción L1/L2");
     expect(prompt).toContain("El libro está en inglés y el lector es hispanohablante");
   });
+
+  it("buildExplainInPassagePrompt incluye lema, definición local e instrucción anti-duplicación", () => {
+    const prompt = buildExplainInPassagePrompt({
+      word: "leyeron",
+      lemma: "leer",
+      localDefinition: "Pasar la vista por lo escrito comprendiendo su significado.",
+      sentence: "Leyeron hasta bien entrada la noche.",
+    });
+    expect(prompt).toContain("Palabra o expresión a explicar: «leyeron»");
+    expect(prompt).toContain("Lema / forma canónica: «leer»");
+    expect(prompt).toContain("Definición literal ya conocida por el lector: «Pasar la vista por lo escrito");
+    expect(prompt).toContain("Instrucción anti-duplicación");
+  });
 });
 
 describe("page_recap (Recuperar el hilo)", () => {

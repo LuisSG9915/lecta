@@ -17,6 +17,7 @@ import {
   type SavedWord,
 } from "../lib/idb";
 import { lookupWord, type LexiconEntry } from "../lib/lexicon";
+import { getBookConsultedWords } from "../lib/book-glossary";
 import { award, localDayKey } from "../lib/game";
 import { triggerHaptic } from "../lib/haptics";
 
@@ -120,9 +121,10 @@ export default function BookGlossaryModal({
           return;
         }
 
-        const [savedList, knowledgeList] = await Promise.all([
+        const [savedList, knowledgeList, consultedSet] = await Promise.all([
           listSavedWords(language, scope).catch(() => []),
           listAllKnowledge(language, scope).catch(() => []),
+          getBookConsultedWords(bookHash, scope).catch(() => new Set<string>()),
         ]);
 
         if (cancelled) return;
@@ -134,7 +136,7 @@ export default function BookGlossaryModal({
             .map((k) => k.lemma.toLowerCase()),
         );
 
-        const extracted = extractGlossaryTerms(manifest, savedForms, knownLemmas);
+        const extracted = extractGlossaryTerms(manifest, savedForms, knownLemmas, consultedSet);
         setTerms(extracted);
         setTotalForms(manifest.uniqueForms || manifest.forms.length);
         setTotalWordCount(manifest.wordCount || 0);
@@ -158,6 +160,10 @@ export default function BookGlossaryModal({
   // Contadores para las pestañas de filtro
   const cultismsCount = useMemo(
     () => terms.filter((t) => t.isCultism).length,
+    [terms],
+  );
+  const consultedCount = useMemo(
+    () => terms.filter((t) => t.isConsulted).length,
     [terms],
   );
   const savedCount = useMemo(
@@ -496,6 +502,20 @@ export default function BookGlossaryModal({
                   }}
                 >
                   Por aprender ({learningCount.toLocaleString("es")})
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  className="glossary-tab"
+                  aria-selected={filter === "consulted"}
+                  data-active={filter === "consulted" || undefined}
+                  onClick={() => {
+                    triggerHaptic("selection");
+                    setFilter("consulted");
+                    setPage(1);
+                  }}
+                >
+                  Consultadas ({consultedCount.toLocaleString("es")})
                 </button>
               </div>
             </div>

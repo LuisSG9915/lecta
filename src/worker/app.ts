@@ -22,7 +22,10 @@ import {
   EVALUATE_CALL_OPTIONS,
   EVALUATE_SYSTEM_PROMPT,
   EXPLAIN_PASSAGE_CALL_OPTIONS,
+  EXPLAIN_PASSAGE_COMPACT_CALL_OPTIONS,
   EXPLAIN_PASSAGE_SYSTEM_PROMPT,
+  buildCompactExplainPrompt,
+  normalizePassage,
   COMPANION_NOTE_SYSTEM_PROMPT,
   buildCompanionNotePrompt,
   parseCompanionNote,
@@ -1246,15 +1249,42 @@ app.post("/api/ai/micro-story", async (context) => {
 });
 
 // ---------- Explicación literaria en pasaje (B.3.3 & B.4) ----------
-const explainPassageCache = createTtlCache<PassageExplanation>({
+export interface ExplainInPassageResponse extends PassageExplanation {
+  dictionary: {
+    word: string | null;
+    lemma: string | null;
+    definition: string | null;
+  } | null;
+  dictionaryEntry: {
+    word: string | null;
+    lemma: string | null;
+    definition: string | null;
+  } | null;
+  contextualNuance: string;
+  cached?: boolean;
+}
+
+const explainPassageCache = createTtlCache<ExplainInPassageResponse>({
   maxEntries: 200,
   ttlMs: 15 * 60_000,
 });
 
+export function clearExplainPassageCache(): void {
+  explainPassageCache.clear();
+}
+
 app.post("/api/ai/explain-in-passage", async (context) => {
   const body = await context.req.json().catch(() => null);
   const word = typeof body?.word === "string" ? body.word.trim().slice(0, 100) : undefined;
-  const sentence = typeof body?.sentence === "string" ? body.sentence.trim() : "";
+  const sentence =
+    typeof body?.sentence === "string" && body.sentence.trim()
+      ? body.sentence.trim()
+      : typeof body?.passage === "string"
+        ? body.passage.trim()
+        : "";
+  const lemma = typeof body?.lemma === "string" ? body.lemma.trim().slice(0, 100) : undefined;
+  const localDefinition =
+    typeof body?.localDefinition === "string" ? body.localDefinition.trim().slice(0, 500) : undefined;
   const bookTitle = typeof body?.bookTitle === "string" ? body.bookTitle.trim().slice(0, 150) : undefined;
   const author = typeof body?.author === "string" ? body.author.trim().slice(0, 100) : undefined;
   const language = typeof body?.language === "string" ? body.language.trim().slice(0, 10) : "es";
@@ -1267,7 +1297,11 @@ app.post("/api/ai/explain-in-passage", async (context) => {
     return context.json({ error: "El pasaje no puede superar 800 caracteres." }, 400);
   }
 
-  const cacheKey = `${(word ?? "").toLowerCase()}::${sentence.toLowerCase()}::${(bookTitle ?? "").toLowerCase()}::${language}::${nativeLanguage}`;
+  // Fix de Caché: (lemma || word || 'passage').toLowerCase().trim() + ':' + normalizePassage(passage)
+  const keyWord = (lemma || word || "passage").toLowerCase().trim();
+  const normalizedPass = normalizePassage(sentence);
+  const cacheKey = `${keyWord}:${normalizedPass}`;
+
   const cached = explainPassageCache.get(cacheKey);
   if (cached) return context.json({ ...cached, cached: true });
 
@@ -1290,18 +1324,44 @@ app.post("/api/ai/explain-in-passage", async (context) => {
     );
   }
 
+  const isCompact = Boolean(word);
+  const systemPrompt = isCompact
+    ? buildCompactExplainPrompt({
+        word: word!,
+        localDefinition,
+        passage: sentence,
+      })
+    : EXPLAIN_PASSAGE_SYSTEM_PROMPT;
+
+  const userPrompt = isCompact
+    ? `Palabra: «${word}». Pasaje: «${sentence}»`
+    : buildExplainInPassagePrompt({
+        word,
+        sentence,
+        lemma,
+        localDefinition,
+        bookTitle,
+        author,
+        language,
+        nativeLanguage,
+      });
+
+  const callOptions = isCompact
+    ? EXPLAIN_PASSAGE_COMPACT_CALL_OPTIONS
+    : EXPLAIN_PASSAGE_CALL_OPTIONS;
+
   const ai = await callDeepSeek(
     context.env,
     {
-      system: EXPLAIN_PASSAGE_SYSTEM_PROMPT,
-      user: buildExplainInPassagePrompt({ word, sentence, bookTitle, author, language, nativeLanguage }),
+      system: systemPrompt,
+      user: userPrompt,
     },
-    EXPLAIN_PASSAGE_CALL_OPTIONS,
+    callOptions,
   );
 
   const parsed = ai.ok && ai.finishReason !== "length" ? parsePassageExplanation(ai.content) : null;
   logAiCall(
-    EXPLAIN_PASSAGE_CALL_OPTIONS,
+    callOptions,
     ai,
     !ai.ok ? ai.reason : ai.finishReason === "length" ? "truncated" : parsed ? "ok" : "invalid",
   );
@@ -1324,8 +1384,23 @@ app.post("/api/ai/explain-in-passage", async (context) => {
     return context.json({ error: "La IA no devolvió una explicación estructurada correctamente." }, 502);
   }
 
-  explainPassageCache.set(cacheKey, parsed);
-  return context.json(parsed);
+  const dictionary = word || localDefinition
+    ? {
+        word: word ?? null,
+        lemma: lemma ?? word ?? null,
+        definition: localDefinition ?? null,
+      }
+    : null;
+
+  const resultPayload: ExplainInPassageResponse = {
+    ...parsed,
+    dictionary,
+    dictionaryEntry: dictionary,
+    contextualNuance: parsed.contextualMeaning,
+  };
+
+  explainPassageCache.set(cacheKey, resultPayload);
+  return context.json(resultPayload);
 });
 
 const companionNoteCache = createTtlCache<string>({ maxEntries: 100, ttlMs: 20 * 60_000 });

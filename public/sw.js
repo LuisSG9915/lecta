@@ -386,3 +386,52 @@ self.addEventListener("fetch", function (event) {
     })
   );
 });
+
+
+self.addEventListener("message", function (event) {
+  if (event.data && event.data.type === "POST_HABIT_NOTIFICATION" && event.data.payload) {
+    var p = event.data.payload;
+    if (self.registration && typeof self.registration.showNotification === "function") {
+      self.registration.showNotification(p.title, {
+        body: p.subtitle ? p.subtitle + "\n" + p.body : p.body,
+        tag: p.tag,
+        icon: "/icons/icon-192.png",
+        badge: "/icons/badge-72.png",
+        data: { bookHash: p.bookHash },
+      });
+    }
+  }
+});
+
+// Scheduler de Notificaciones Locales Respetuosas y Ventana de Hábito (Fase 4 Anti-Abandono)
+self.addEventListener("periodicsync", function (event) {
+  if (event.tag === "lecta-habit-reminder") {
+    event.waitUntil(
+      self.clients.matchAll({ type: "window" }).then(function (clientList) {
+        if (clientList.length > 0) {
+          clientList[0].postMessage({ type: "CHECK_HABIT_NOTIFICATION" });
+        }
+      })
+    );
+  }
+});
+
+self.addEventListener("notificationclick", function (event) {
+  event.notification.close();
+  if ("clearAppBadge" in self.navigator && typeof self.navigator.clearAppBadge === "function") {
+    self.navigator.clearAppBadge().catch(function () {});
+  }
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(function (clientList) {
+      for (var i = 0; i < clientList.length; i++) {
+        var client = clientList[i];
+        if (client.url && "focus" in client) {
+          return client.focus();
+        }
+      }
+      if (self.clients.openWindow) {
+        return self.clients.openWindow("/");
+      }
+    })
+  );
+});

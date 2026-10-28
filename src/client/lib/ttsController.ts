@@ -1,3 +1,5 @@
+import { saveTtsLandingPosition } from "./tts-landing";
+import { normalizeBlockText } from "./reading-location";
 // Máquina de estados de «Leer en voz alta»: idle | preparing |
 // speaking | paused | stopping. El territorio es el target —
 // [startSection, endSection) del capítulo que contiene la sección
@@ -89,7 +91,9 @@ export type TtsController = {
   // Arranque desde el menú: `ctx` es el target que cubre la sección
   // actual; `startIndex` es la oración de arranque ya resuelta por el
   // Reader (posición guardada → primera visible → 0).
-  start(ctx: TtsTargetContext, startIndex: number): void;
+  start(ctx: TtsTargetContext, startIndex: number, options?: { sleepTimerMs?: number }): void;
+  setSleepTimer?(durationMs: number | null): void;
+  getSleepTimerRemainingMs?(): number | null;
   pause(reason: TtsPauseReason): void;
   resume(): void;
   cycleRate(rates?: TtsRate[]): TtsRate;
@@ -123,6 +127,7 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
   let stallRetries = 0;
   let destroyed = false;
   let speakGen = 0;
+  let sleepTimerDeadline = 0;
 
   // Contadores de la sesión para tts_session_end.
   let startedAt = 0;
@@ -222,7 +227,7 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
   const armHeartbeat = () => {
     stopHeartbeat();
     heartbeat = window.setInterval(() => {
-      if (snap.status === "speaking" && !document.hidden) deps.noteActivity();
+      if (snap.status === "speaking") deps.noteActivity();
     }, HEARTBEAT_MS);
   };
 
@@ -310,6 +315,20 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
       if (el) deps.reveal(el);
     }
 
+    if (ctx) {
+      const currNode = nodeAtPath(root, item.nodePath);
+      const block = currNode?.parentElement?.closest("p, h1, h2, h3, h4, h5, h6, li, blockquote");
+      const anchor = normalizeBlockText(block?.textContent ?? item.text).slice(0, 120);
+      saveTtsLandingPosition({
+        bookHash: ctx.bookHash,
+        sectionIndex: deps.sectionIndex(),
+        sentenceIndex: cursor,
+        paragraphText: item.text,
+        anchor,
+        updatedAt: Date.now(),
+      });
+    }
+
     if (shouldUseKitten()) {
       const engine = deps.kittenEngine ?? kittenTtsEngine;
 
@@ -384,6 +403,25 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
 
   const onEnded = () => {
     if (snap.status !== "speaking") return;
+
+    const isEndOfParagraph = () => {
+      if (cursor >= items.length - 1) return true;
+      const currentItem = items[cursor];
+      const nextItem = items[cursor + 1];
+      const root = deps.root();
+      if (!root || !currentItem || !nextItem) return true;
+      const currNode = nodeAtPath(root, currentItem.nodePath);
+      const nextNode = nodeAtPath(root, nextItem.nodePath);
+      const currBlock = currNode?.parentElement?.closest("p, h1, h2, h3, h4, h5, h6, li, blockquote");
+      const nextBlock = nextNode?.parentElement?.closest("p, h1, h2, h3, h4, h5, h6, li, blockquote");
+      return !nextBlock || currBlock !== nextBlock;
+    };
+
+    if (sleepTimerDeadline > 0 && Date.now() >= sleepTimerDeadline && isEndOfParagraph()) {
+      finish("sleep_timer");
+      return;
+    }
+
     cursor += 1;
     if (cursor < items.length) {
       sentenceCount += 1;
@@ -434,6 +472,7 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
   // Deja todo en idle: cancela voz, limpia marcas, emite el cierre y
   // publica el snapshot. Idempotente — stop durante stopping no repite.
   const finish = (reason: TtsEndReason) => {
+    sleepTimerDeadline = 0;
     if (snap.status === "idle" || snap.status === "stopping") return;
     speakGen += 1;
     publish({ status: "stopping" });
@@ -466,7 +505,7 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
       return snap;
     },
 
-    start(nextCtx, startIndex) {
+    start(nextCtx, startIndex, options?: { sleepTimerMs?: number }) {
       if (destroyed || snap.status !== "idle") return;
       if (!(deps.supported ?? isTtsSupported)()) return;
       settings = loadTtsSettings();
@@ -483,6 +522,7 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
         /* sin motor real: el gate de soportado ya lo cubrió */
       }
       ctx = nextCtx;
+      sleepTimerDeadline = options?.sleepTimerMs && options.sleepTimerMs > 0 ? Date.now() + options.sleepTimerMs : 0;
       startedAt = Date.now();
       sentenceCount = 0;
       lookupCount = 0;
@@ -712,6 +752,14 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
 
     stop(reason) {
       finish(reason);
+    },
+
+    setSleepTimer(durationMs: number | null) {
+      sleepTimerDeadline = durationMs && durationMs > 0 ? Date.now() + durationMs : 0;
+    },
+
+    getSleepTimerRemainingMs() {
+      return sleepTimerDeadline > 0 ? Math.max(0, sleepTimerDeadline - Date.now()) : null;
     },
 
     onSectionRendered() {

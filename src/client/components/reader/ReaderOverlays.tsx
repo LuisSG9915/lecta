@@ -46,11 +46,18 @@ export interface PageRecapState {
 
 export interface CatPassageExplanationState {
   passage: string;
+  word?: string;
+  dictEntry?: {
+    lemma: string;
+    pos?: string | null;
+    definition: string;
+  } | null;
   loading: boolean;
   data: {
     contextualMeaning: string;
     toneAndNuance: string;
     catTip: string;
+    directMeaning?: string;
   } | null;
   error: string | null;
 }
@@ -362,7 +369,7 @@ export function ReaderOverlays({
 
       {catPassageExplanation && onCloseCatExplanation ? (
         <Dialog
-          label="El apunte del Gato"
+          label={catPassageExplanation.word ? `Apunte: «${catPassageExplanation.word}»` : "El apunte del Gato"}
           onClose={onCloseCatExplanation}
           className="dialog--cat-explanation"
         >
@@ -371,7 +378,7 @@ export function ReaderOverlays({
               <span className="cat-dialog-avatar" aria-hidden="true" style={{ display: "inline-flex", verticalAlign: "middle", marginRight: "var(--s-1)" }}>
                 <Icon name="sparkles" size={16} />
               </span>{" "}
-              El apunte del Gato
+              {catPassageExplanation.word ? `Apunte: «${catPassageExplanation.word}»` : "El apunte del Gato"}
             </h2>
             <button
               type="button"
@@ -385,6 +392,32 @@ export function ReaderOverlays({
 
           <div className="cat-passage-quote">“{catPassageExplanation.passage}”</div>
 
+          {/* Bloque 1: Diccionario Offline Instantáneo */}
+          {catPassageExplanation.word || catPassageExplanation.dictEntry ? (
+            <div className="cat-explanation-dict-block" data-testid="cat-explanation-dict-block">
+              {catPassageExplanation.dictEntry ? (
+                <>
+                  <div className="cat-explanation-dict-header">
+                    <span className="cat-explanation-dict-lemma">{catPassageExplanation.dictEntry.lemma}</span>
+                    {catPassageExplanation.dictEntry.pos ? (
+                      <span className="cat-explanation-dict-pos">{catPassageExplanation.dictEntry.pos}</span>
+                    ) : null}
+                    <span className="cat-explanation-dict-badge">Diccionario</span>
+                  </div>
+                  <p className="cat-explanation-dict-definition">
+                    {catPassageExplanation.dictEntry.definition}
+                  </p>
+                </>
+              ) : catPassageExplanation.loading ? (
+                <div className="cat-explanation-dict-skeleton" aria-hidden="true">
+                  <div className="cat-skeleton-line cat-skeleton-line--short" />
+                  <div className="cat-skeleton-line" />
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          {/* Bloque 2: Matiz Contextual del Gato */}
           {catPassageExplanation.loading ? (
             <div className="cat-passage-loading">
               <span className="cat-spinner" aria-hidden="true">
@@ -393,12 +426,18 @@ export function ReaderOverlays({
               <p className="meta">El gato está leyendo con atención el pasaje…</p>
             </div>
           ) : catPassageExplanation.data ? (
-            <div className="cat-passage-result">
+            <div className="cat-passage-result cat-explanation-nuance-block" data-testid="cat-explanation-nuance-block">
               <div className="passage-badge-tone-row">
                 <span className="passage-badge-tone">
                   {catPassageExplanation.data.toneAndNuance}
                 </span>
+                <span className="cat-nuance-badge">Matiz en contexto</span>
               </div>
+              {!catPassageExplanation.dictEntry && catPassageExplanation.data.directMeaning ? (
+                <p className="passage-direct-meaning-text">
+                  {catPassageExplanation.data.directMeaning}
+                </p>
+              ) : null}
               <p className="passage-meaning-text">
                 {catPassageExplanation.data.contextualMeaning}
               </p>

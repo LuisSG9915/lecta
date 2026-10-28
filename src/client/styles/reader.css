@@ -1025,6 +1025,69 @@ mark.saved-passage--dario {
   z-index: 5;
 }
 
+/* Marcador de Aterrizaje Auditivo (Fase 3: Anti-pérdida de posición) */
+.tts-landing-anchor {
+  position: relative;
+  background: var(--paper-sunken);
+  border-left: 3px solid var(--accent);
+  padding-left: 0.5rem;
+  border-radius: 4px;
+  transition: background 0.3s ease, border-color 0.3s ease;
+}
+
+.tts-landing-anchor::before {
+  content: "🎧 Escuchaste hasta aquí";
+  position: absolute;
+  inset-block-start: -1.75rem;
+  inset-inline-start: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.65rem;
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs, 0.72rem);
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--paper-raised);
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  box-shadow: var(--shadow-2);
+  pointer-events: none;
+  animation: resume-badge-fade 8s forwards var(--ease-out);
+  z-index: 10;
+}
+
+/* Píldora de acción ante fatiga (Fase 3 Anti-Abandono) */
+.reader-fatigue-action-pill {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+@media (min-width: 600px) {
+  .reader-fatigue-action-pill {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+}
+
+.reader-fatigue-pill-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.reader-fatigue-btn-focus,
+.reader-fatigue-btn-audio {
+  font-size: 0.85rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
 @keyframes resume-badge-fade {
   0% {
     opacity: 0;
@@ -2065,6 +2128,22 @@ mark.predicted-word {
 /* La raya punteada se enciende en bermellón: indica que responde. */
 mark.predicted-word:hover {
   text-decoration-color: var(--vermilion);
+}
+
+/* Marca ultra-sutil de palabra ya resuelta/consultada en el glosario (sin puntillado intrusivo) */
+mark.resolved-word,
+.lecta-resolved-word {
+  background: none;
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px solid rgba(127, 127, 127, 0.22);
+  cursor: pointer;
+  transition: border-color var(--dur-1) var(--ease-out);
+}
+
+mark.resolved-word:hover,
+.lecta-resolved-word:hover {
+  border-bottom-color: var(--vermilion);
 }
 
 /* Marca persistente de palabra en el cuaderno */
@@ -3885,6 +3964,102 @@ b.lecta-anchor {
     min-width: 44px;
     min-height: 44px;
   }
+}
+
+/* Píldora de Consulta Inmediata en 2 Etapas (Fase 1 Anti-Missclick) */
+.reader__word-pill {
+  flex-direction: column !important;
+  align-items: stretch !important;
+  min-width: 220px;
+  max-width: 320px;
+  padding: 8px 12px;
+  border-radius: var(--r-card, 12px);
+  gap: 6px;
+  background: var(--paper-raised);
+  border: var(--border);
+  box-shadow: var(--shadow-2);
+}
+
+.reader__word-pill-header {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.reader__word-pill-lemma {
+  font-family: var(--font-book, "Literata", Georgia, serif);
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.reader__word-pill-surface {
+  font-size: 0.8rem;
+  color: var(--ink-dim);
+  font-style: italic;
+}
+
+.reader__word-pill-def {
+  margin: 0;
+  font-family: var(--font-ui, system-ui, sans-serif);
+  font-size: 0.82rem;
+  line-height: 1.35;
+  color: var(--ink-muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.reader__word-pill-def--empty {
+  font-style: italic;
+  color: var(--ink-dim);
+}
+
+.reader__word-pill-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 2px;
+  padding-top: 6px;
+  border-top: 1px solid var(--rule);
+}
+
+.reader__word-pill-btn-cat {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--accent-light, #fef3c7);
+  color: var(--accent-dark, #92400e);
+  border: 1px solid var(--accent, #f59e0b);
+  border-radius: var(--r-pill, 9999px);
+  padding: 4px 10px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform var(--dur-1) var(--ease-out);
+}
+
+.reader__word-pill-btn-cat:hover {
+  transform: scale(1.02);
+}
+
+.reader__word-pill-btn-define {
+  background: transparent;
+  color: var(--ink-dim);
+  border: none;
+  font-size: 0.78rem;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: var(--r-sm, 4px);
+  transition: background-color var(--dur-1) var(--ease-out), color var(--dur-1) var(--ease-out);
+}
+
+.reader__word-pill-btn-define:hover {
+  color: var(--ink);
+  background: var(--paper-sunken);
 }
 
 /* =====================================================================
@@ -6599,3 +6774,85 @@ b.lecta-anchor {
 
 
 
+
+/* =====================================================================
+   Panel de Explicación del Gato (FASE 2: Separación de Bloques)
+   ===================================================================== */
+.cat-explanation-dict-block {
+  background: var(--paper-sunken);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+}
+
+.cat-explanation-dict-header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.cat-explanation-dict-lemma {
+  font-weight: 600;
+  font-size: 1rem;
+  color: var(--ink);
+}
+
+.cat-explanation-dict-pos {
+  font-style: italic;
+  font-size: 0.8rem;
+  color: var(--ink-dim);
+}
+
+.cat-explanation-dict-badge,
+.cat-nuance-badge {
+  margin-left: auto;
+  font-size: 0.72rem;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--paper-sunken);
+  color: var(--ink-dim);
+  border: 1px solid var(--rule);
+}
+
+.cat-explanation-dict-definition {
+  margin: 6px 0 0 0;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  color: var(--ink);
+}
+
+.cat-explanation-dict-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.cat-skeleton-line {
+  height: 12px;
+  background: var(--rule);
+  border-radius: 4px;
+  animation: cat-skeleton-pulse 1.5s infinite ease-in-out;
+}
+
+.cat-skeleton-line--short {
+  width: 45%;
+}
+
+@keyframes cat-skeleton-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.85; }
+}
+
+.cat-explanation-nuance-block {
+  border-top: 1px dashed var(--rule);
+  padding-top: 10px;
+}
+
+.passage-direct-meaning-text {
+  font-size: 0.9rem;
+  line-height: 1.45;
+  color: var(--ink);
+  margin-bottom: 6px;
+}

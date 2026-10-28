@@ -286,7 +286,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/components/Reader.tsx",
-          "line": 4217,
+          "line": 4458,
           "window": 2,
           "expect": "updateLanguageTheta\\(currentLang, beta, 1, 1\\.0\\)",
           "why": "onMarkKnown sube theta con outcome 1"
@@ -302,7 +302,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/components/WordPanel.tsx",
-          "line": 525,
+          "line": 544,
           "window": 1,
           "expect": "award: false",
           "why": "el autoinforme no paga XP de repaso"
@@ -652,7 +652,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/lib/journey.ts",
-          "line": 77,
+          "line": 92,
           "window": 6,
           "expect": "export function computeRetentionSummary",
           "why": "calcula la tasa de recuerdo y las palabras consolidadas a 7 y 30 días"

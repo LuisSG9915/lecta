@@ -80,7 +80,8 @@ function main() {
   const child = spawn("npx", ["vitest", "run", ...process.argv.slice(2)], {
     stdio: ["inherit", "pipe", "pipe"],
     env: process.env,
-  });
+    shell: process.platform === "win32",
+      });
 
   let captured = "";
   const forward = (stream, write) => {

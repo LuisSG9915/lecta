@@ -1,3 +1,4 @@
+import { scheduleHabitReminder } from "./localNotificationScheduler";
 // Registro y ciclo de vida del Service Worker de Lecta.
 // Garantiza actualización instantánea en móviles mediante updateViaCache: 'none',
 // comprobaciones en visibilitychange/online, autocuración ante ASSET_MISMATCH_RELOAD
@@ -93,6 +94,30 @@ export async function registerServiceWorker(
           triggerUpdate();
         }
       });
+    }
+
+    // d) Scheduler local de ventana de hábito en visibilidad / pagehide (Fase 4)
+    if (typeof window !== "undefined") {
+      const handleAppLeave = () => {
+        try {
+          const raw = localStorage.getItem("lecta_active_book_context");
+          if (raw) {
+            const activeBook = JSON.parse(raw);
+            void scheduleHabitReminder(activeBook);
+          }
+        } catch {
+          // Ignore
+        }
+      };
+
+      window.addEventListener("pagehide", handleAppLeave, { passive: true });
+      if (typeof document !== "undefined") {
+        document.addEventListener("visibilitychange", () => {
+          if (document.visibilityState === "hidden") {
+            handleAppLeave();
+          }
+        }, { passive: true });
+      }
     }
 
     // c) Cuando el navegador recupere la conexión

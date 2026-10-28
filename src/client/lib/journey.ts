@@ -17,6 +17,21 @@ import {
   totalMs,
   type TimeInterval,
 } from "./reading-activity";
+import {
+  DAY_GOAL_MS,
+  MICRO_SESSION_GOALS_MS,
+  ALLOWED_DAILY_GOAL_MS,
+  getEffectiveDailyGoalMs,
+  type ReadingGoal,
+} from "./reading-goal";
+
+export {
+  DAY_GOAL_MS,
+  MICRO_SESSION_GOALS_MS,
+  ALLOWED_DAILY_GOAL_MS,
+  getEffectiveDailyGoalMs,
+  type ReadingGoal,
+};
 
 export interface WordStages {
   newCount: number;
@@ -676,3 +691,175 @@ export function computeLanguageLexicalGrowth(
 
 export const languageLexicalGrowth = computeLanguageLexicalGrowth;
 
+
+// ---------- Selectores de Anti-Abandono y Micro-Metas (Fase 1) ----------
+
+export interface JourneySelectorCache {
+  words?: SavedWord[];
+  reviews?: SavedReview[];
+  knownWords?: KnownWord[];
+  intervals?: TimeInterval[];
+}
+
+let selectorCache: JourneySelectorCache = {};
+
+export function setJourneySelectorCache(cache: Partial<JourneySelectorCache>): void {
+  selectorCache = { ...selectorCache, ...cache };
+}
+
+export function clearJourneySelectorCache(): void {
+  selectorCache = {};
+}
+
+interface WeeklyWordsMemo {
+  wordsRef?: SavedWord[];
+  reviewsRef?: SavedReview[];
+  knownRef?: KnownWord[];
+  timeBucket: number;
+  result: number;
+}
+
+let weeklyWordsMemo: WeeklyWordsMemo | null = null;
+
+/**
+ * Conteo de palabras que pasaron de nuevas/presentadas a conocidas en los últimos 7 días.
+ * Es liviano, seguro contra nulos y memorizado.
+ */
+const normalizeWordKey = (s: string): string => {
+  const trimmed = s.trim().toLowerCase();
+  const idx = trimmed.indexOf(":");
+  return idx !== -1 ? trimmed.slice(idx + 1) : trimmed;
+};
+
+export function getWeeklyLearnedWordsCount(
+  words?: SavedWord[],
+  reviews?: SavedReview[],
+  knownWords?: KnownWord[],
+  nowMs: number = Date.now(),
+): number {
+  const effectiveWords = words ?? selectorCache.words ?? [];
+  const effectiveReviews = reviews ?? selectorCache.reviews ?? [];
+  const effectiveKnown = knownWords ?? selectorCache.knownWords ?? [];
+
+  const timeBucket = Math.floor(nowMs / 60_000); // 1 minuto de granularidad
+
+  if (
+    weeklyWordsMemo &&
+    weeklyWordsMemo.wordsRef === effectiveWords &&
+    weeklyWordsMemo.reviewsRef === effectiveReviews &&
+    weeklyWordsMemo.knownRef === effectiveKnown &&
+    weeklyWordsMemo.timeBucket === timeBucket
+  ) {
+    return weeklyWordsMemo.result;
+  }
+
+  const SEVEN_DAYS_MS = 7 * 86_400_000;
+  const cutoff = nowMs - SEVEN_DAYS_MS;
+  const learnedSet = new Set<string>();
+
+  for (const w of effectiveWords) {
+    if (w.deleted) continue;
+    const isLearned =
+      (w.card?.reps ?? 0) > 0 ||
+      (w.card && markLevel(w.card) !== "new") ||
+      (w.card?.stability ?? 0) >= 2;
+    if (!isLearned) continue;
+
+    const reviewMs = w.card?.last_review
+      ? typeof w.card.last_review === "number"
+        ? w.card.last_review
+        : new Date(w.card.last_review).getTime()
+      : 0;
+    const stamp = Math.max(reviewMs, w.updatedAt ?? 0, w.savedAt ?? 0);
+    if (stamp >= cutoff && stamp <= nowMs) {
+      const key = normalizeWordKey(w.lemma || w.form || w.key || "");
+      if (key) learnedSet.add(key);
+    }
+  }
+
+  for (const kw of effectiveKnown) {
+    if (kw.deleted) continue;
+    const isKnown =
+      kw.known === true || kw.status === "known" || kw.status === "familiar";
+    if (!isKnown) continue;
+
+    if (kw.updatedAt >= cutoff && kw.updatedAt <= nowMs) {
+      const key = normalizeWordKey(kw.lemma || kw.key || "");
+      if (key) learnedSet.add(key);
+    }
+  }
+
+  for (const r of effectiveReviews) {
+    if (r.createdAt >= cutoff && r.createdAt <= nowMs) {
+      const isSuccess =
+        r.rating === "good" ||
+        r.rating === "easy" ||
+        r.rating === "correct" ||
+        r.rating === "hard";
+      if (isSuccess && r.form) {
+        learnedSet.add(normalizeWordKey(r.form));
+      }
+    }
+  }
+
+  const count = learnedSet.size;
+  weeklyWordsMemo = {
+    wordsRef: effectiveWords,
+    reviewsRef: effectiveReviews,
+    knownRef: effectiveKnown,
+    timeBucket,
+    result: count,
+  };
+
+  return count;
+}
+
+interface LongestSessionMemo {
+  intervalsRef?: TimeInterval[];
+  timeBucket: number;
+  maxPastSessionMs: number;
+}
+
+let longestSessionMemo: LongestSessionMemo | null = null;
+
+/**
+ * Detecta si la sentada actual supera el récord de los últimos 30 días.
+ * Memoriza la sesión máxima de los últimos 30 días para no recomputar en cada segundo.
+ */
+export function isLongestSessionThisMonth(
+  currentSessionMs: number,
+  intervals?: TimeInterval[],
+  nowMs: number = Date.now(),
+): boolean {
+  if (currentSessionMs <= 0) return false;
+
+  const effectiveIntervals = intervals ?? selectorCache.intervals ?? [];
+  const timeBucket = Math.floor(nowMs / 60_000); // 1 minuto de cache
+
+  let maxPastMs: number;
+  if (
+    longestSessionMemo &&
+    longestSessionMemo.intervalsRef === effectiveIntervals &&
+    longestSessionMemo.timeBucket === timeBucket
+  ) {
+    maxPastMs = longestSessionMemo.maxPastSessionMs;
+  } else {
+    const THIRTY_DAYS_MS = 30 * 86_400_000;
+    const cutoff = nowMs - THIRTY_DAYS_MS;
+    const past = effectiveIntervals.filter(
+      (it) => it.endedAt >= cutoff && it.endedAt <= nowMs,
+    );
+    const merged = mergeIntervals(past);
+    maxPastMs = merged.reduce(
+      (max, it) => Math.max(max, it.endedAt - it.startedAt),
+      0,
+    );
+    longestSessionMemo = {
+      intervalsRef: effectiveIntervals,
+      timeBucket,
+      maxPastSessionMs: maxPastMs,
+    };
+  }
+
+  return currentSessionMs > maxPastMs;
+}

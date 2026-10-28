@@ -3,7 +3,9 @@
 //
 // Extraída de Reader.tsx (Fase 7) sin cambiar comportamiento. Es presentacional:
 // recibe estado y callbacks, no posee estado propio.
-import type { CSSProperties, MouseEvent, ReactNode, RefObject } from "react";
+import { useEffect, useRef, type CSSProperties, type MouseEvent, type ReactNode, type RefObject } from "react";
+import { validateTapIntent } from "../../lib/tap-intent-guard";
+import type { ReaderSelectionButton } from "./ReaderSelectionBar";
 import { ReaderRecapBubble } from "../ReaderRecapBubble";
 import type { ReaderSettings } from "../../lib/settings";
 import type { PageLayout } from "../../lib/pagination";
@@ -59,6 +61,9 @@ export interface ReaderContentProps {
   navNextSection: (index: number, fragment?: string) => void;
   navPrevSection: (index: number, fragment?: string) => void;
   openSelection: (hit: WordHit) => void;
+  onSingleWordTap?: (hit: WordHit, clientX: number, clientY: number) => void;
+  selButton?: ReaderSelectionButton | null;
+  setSelButton?: (value: ReaderSelectionButton | null) => void;
   extractWordAtPoint: (
     clientX: number,
     clientY: number,
@@ -80,6 +85,20 @@ export interface ReaderContentProps {
 }
 
 export function ReaderContent(props: ReaderContentProps) {
+  const { setSelButton } = props;
+  const pointerDownPosRef = useRef<{ clientX: number; clientY: number } | null>(null);
+  const lastScrollOrNavTimeRef = useRef<number>(0);
+
+  useEffect(() => {
+    const markScroll = () => {
+      lastScrollOrNavTimeRef.current = Date.now();
+      if (setSelButton) setSelButton(null);
+    };
+    window.addEventListener("scroll", markScroll, { passive: true, capture: true });
+    return () => {
+      window.removeEventListener("scroll", markScroll, { capture: true });
+    };
+  }, [setSelButton]);
   const {
   title,
   containerRef,
@@ -118,6 +137,8 @@ export function ReaderContent(props: ReaderContentProps) {
   navNextSection,
   navPrevSection,
   openSelection,
+  onSingleWordTap,
+  selButton,
   extractWordAtPoint,
   handleContainerDoubleClick,
   handleTriggerReturnRecap,
@@ -265,6 +286,11 @@ export function ReaderContent(props: ReaderContentProps) {
         lastPointerTypeRef.current === "touch" ||
         lastPointerTypeRef.current === "pen" ||
         (typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches);
+      if (selButton && setSelButton) {
+        setSelButton(null);
+        return;
+      }
+
       const sel = window.getSelection();
       const hasSelection = sel && !sel.isCollapsed && sel.rangeCount > 0;
 
@@ -306,7 +332,16 @@ export function ReaderContent(props: ReaderContentProps) {
           } else {
             const hit = extractWordAtPoint(event.clientX, event.clientY, container, language);
             if (hit) {
-              openSelection(hit);
+              const validation = validateTapIntent({
+                downPoint: pointerDownPosRef.current,
+                upPoint: { clientX: event.clientX, clientY: event.clientY },
+                pointerType: "touch",
+                lastScrollOrNavTime: lastScrollOrNavTimeRef.current,
+                word: hit.word,
+              });
+              if (!validation.valid) return;
+              if (onSingleWordTap) onSingleWordTap(hit, event.clientX, event.clientY);
+              else openSelection(hit);
             } else {
               setBarsVisible((v) => !v);
             }
@@ -315,7 +350,16 @@ export function ReaderContent(props: ReaderContentProps) {
           // En modo scroll: si tocó una palabra, abrir ficha; si no, alternar barras
           const hit = extractWordAtPoint(event.clientX, event.clientY, container, language);
           if (hit) {
-            openSelection(hit);
+            const validation = validateTapIntent({
+              downPoint: pointerDownPosRef.current,
+              upPoint: { clientX: event.clientX, clientY: event.clientY },
+              pointerType: "touch",
+              lastScrollOrNavTime: lastScrollOrNavTimeRef.current,
+              word: hit.word,
+            });
+            if (!validation.valid) return;
+            if (onSingleWordTap) onSingleWordTap(hit, event.clientX, event.clientY);
+            else openSelection(hit);
           } else {
             setBarsVisible((v) => !v);
           }
@@ -329,7 +373,16 @@ export function ReaderContent(props: ReaderContentProps) {
 
         const hit = extractWordAtPoint(event.clientX, event.clientY, container, language);
         if (hit) {
-          openSelection(hit);
+          const validation = validateTapIntent({
+            downPoint: pointerDownPosRef.current,
+            upPoint: { clientX: event.clientX, clientY: event.clientY },
+            pointerType: "mouse",
+            lastScrollOrNavTime: lastScrollOrNavTimeRef.current,
+            word: hit.word,
+          });
+          if (!validation.valid) return;
+          if (onSingleWordTap) onSingleWordTap(hit, event.clientX, event.clientY);
+          else openSelection(hit);
         } else {
           if (settings.layout === "pages") {
             const viewport = viewportRef.current ?? container;
@@ -354,6 +407,7 @@ export function ReaderContent(props: ReaderContentProps) {
     onPointerDown={(event) => {
       noteActivity();
       lastPointerTypeRef.current = event.pointerType;
+      pointerDownPosRef.current = { clientX: event.clientX, clientY: event.clientY };
       if (showLongPressHint) {
         setShowLongPressHint(false);
         void saveSessionValue("hint:longPress:v1", "1", captureDbScope()).catch(() => undefined);

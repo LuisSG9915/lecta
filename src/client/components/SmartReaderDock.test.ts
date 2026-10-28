@@ -284,6 +284,27 @@ describe("SmartReaderDock (Track 2: Dock Inteligente Único)", () => {
       expect(onAcceptFocusAid).toHaveBeenCalledWith("focus-ruler");
     });
 
+
+    it("ofrece escuchar los próximos 5 min ante fatiga cognitiva/visual (Fase 3)", () => {
+      const onStartAudio5Min = vi.fn();
+      render({
+        focusSuggestion: {
+          isFatigued: true,
+          reason: "regressions",
+          recommendedAid: "paragraph-focus",
+        },
+        onStartAudio5Min,
+      });
+
+      const audioBtn = container.querySelector(".reader-focus-pill-audio") as HTMLButtonElement;
+      expect(audioBtn).not.toBeNull();
+      expect(audioBtn.textContent).toContain("Escuchar 5 min 🎧");
+
+      act(() => audioBtn.click());
+      expect(onStartAudio5Min).toHaveBeenCalled();
+      expect(container.querySelector(".reader-focus-suggestion-pill")).toBeNull();
+    });
+
     it("al tocar ✕ en la píldora ofrece opciones para silenciar en este libro o siempre", () => {
       const onMuteFocusForBook = vi.fn();
       const onDisableFocusGlobally = vi.fn();
@@ -470,6 +491,42 @@ describe("SmartReaderDock (Track 2: Dock Inteligente Único)", () => {
 
       act(() => pill.click());
       expect(onOpenGlossary).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("Fase 1: Píldora de Progreso Invisible y Récord Contextual (Anti-Abandono)", () => {
+    it("renderiza la píldora de progreso con el formato exacto 'Llevas {progress}% · {weeklyWords} palabras nuevas esta semana'", () => {
+      render({
+        bookProgressPct: 42,
+        weeklyWordsCount: 7,
+      });
+
+      const pill = container.querySelector(".reader-progress-invisible-pill");
+      expect(pill).not.toBeNull();
+      expect(pill?.textContent?.trim()).toBe("Llevas 42% · 7 palabras nuevas esta semana");
+    });
+
+    it("auto-oculta la píldora cuando isReadingActive es true", () => {
+      render({
+        bookProgressPct: 60,
+        weeklyWordsCount: 12,
+        isReadingActive: true,
+      });
+
+      const pill = container.querySelector(".reader-progress-invisible-pill");
+      expect(pill).not.toBeNull();
+      expect(pill?.classList.contains("is-hidden")).toBe(true);
+    });
+
+    it("muestra el toast sutil de récord mensual cuando recordToast está presente", () => {
+      render({
+        recordToast: "Nuevo récord: tu lectura más larga este mes",
+      });
+
+      const toast = container.querySelector(".reader-record-toast");
+      expect(toast).not.toBeNull();
+      expect(toast?.textContent).toContain("Nuevo récord: tu lectura más larga este mes");
+      expect(toast?.textContent).toContain("🏆");
     });
   });
 });

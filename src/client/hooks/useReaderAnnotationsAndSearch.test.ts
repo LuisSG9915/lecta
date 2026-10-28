@@ -57,6 +57,21 @@ vi.mock("../lib/reading-sync", () => ({
   pushAnnotationsToServer: vi.fn(async () => {}),
 }));
 
+vi.mock("../lib/lexicon", () => ({
+  explainInPassage: vi.fn(async () => ({
+    ok: true,
+    contextualMeaning: "Sentido en este contexto.",
+    toneAndNuance: "Lírico",
+    catTip: "Presta atención a la metáfora.",
+  })),
+  lookupWordInMemory: vi.fn(() => null),
+  lookupWord: vi.fn(async () => ({ ok: false, error: "not found" })),
+}));
+
+vi.mock("../lib/book-glossary", () => ({
+  recordBookConsultedWord: vi.fn(async () => {}),
+}));
+
 describe("useReaderAnnotationsAndSearch", () => {
   let container: HTMLDivElement;
   let root: Root;
@@ -189,5 +204,71 @@ describe("useReaderAnnotationsAndSearch", () => {
     expect(handle.current.quoteCard?.bookTitle).toBe("Don Quijote");
     expect(handle.current.quoteCard?.author).toBe("Cervantes");
     expect(handle.current.quoteCard?.chapterTitle).toBe("Capítulo 1");
+  });
+
+  it("askCatAboutSelection inyecta dictEntry de inmediato, registra en glosario y preserva el bloque local tras la respuesta de IA", async () => {
+    const { lookupWordInMemory, explainInPassage } = await import("../lib/lexicon");
+    const { recordBookConsultedWord } = await import("../lib/book-glossary");
+
+    vi.mocked(lookupWordInMemory).mockReturnValue({
+      ok: true,
+      found: true,
+      lemma: "ataraxia",
+      partOfSpeech: "sustantivo",
+      definitions: ["Estado de tranquilidad, serenidad e imperturbabilidad."],
+      entries: [
+        {
+          entryId: "e1",
+          freqRank: 100,
+          zipf: 4.5,
+          lemma: "ataraxia",
+          pos: "sustantivo",
+          senses: [{ definition: "Estado de tranquilidad, serenidad e imperturbabilidad.", example: null, senseOrder: 1 }],
+        },
+      ],
+    });
+
+    const handle = renderHook();
+
+    await act(async () => {
+      await handle.current.askCatAboutSelection({
+        word: "ataraxia",
+        passage: "Buscaba la ataraxia del alma en tiempos inciertos.",
+        bookId: "hash-libro-1",
+      });
+    });
+
+    // 1. Debe haber registrado la palabra en el glosario del libro
+    expect(recordBookConsultedWord).toHaveBeenCalledWith(
+      "hash-libro-1",
+      "ataraxia",
+      expect.anything(),
+    );
+
+    // 2. Debe haber enviado lemma y localDefinition al backend
+    expect(explainInPassage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        word: "ataraxia",
+        lemma: "ataraxia",
+        localDefinition: "Estado de tranquilidad, serenidad e imperturbabilidad.",
+        passage: "Buscaba la ataraxia del alma en tiempos inciertos.",
+        bookTitle: "Don Quijote",
+      }),
+      expect.anything(),
+    );
+
+    // 3. El estado final debe preservar dictEntry intacto (cero pérdida de datos del diccionario local)
+    const explanation = handle.current.catPassageExplanation;
+    expect(explanation).not.toBeNull();
+    expect(explanation?.word).toBe("ataraxia");
+    expect(explanation?.dictEntry).toEqual({
+      lemma: "ataraxia",
+      pos: "sustantivo",
+      definition: "Estado de tranquilidad, serenidad e imperturbabilidad.",
+    });
+    expect(explanation?.loading).toBe(false);
+    expect(explanation?.data?.contextualMeaning).toBe("Sentido en este contexto.");
+    expect(explanation?.data?.toneAndNuance).toBe("Lírico");
+    expect(explanation?.data?.catTip).toBe("Presta atención a la metáfora.");
   });
 });

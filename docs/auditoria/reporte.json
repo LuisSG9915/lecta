@@ -1,9 +1,9 @@
 {
   "tool": "audit-investigacion",
   "version": 1,
-  "generatedAt": "2026-10-28T03:33:29.447Z",
-  "root": "/Users/luis/Desarrollos Devin/lecta",
-  "commit": "6b42f07e6f980ba5decd35fad10802061d6d826b",
+  "generatedAt": "2026-10-28T23:08:02.685Z",
+  "root": "C:\\Users\\Administrador\\Documents\\GitHub\\berllano\\lecta",
+  "commit": "542754d224856da78ec0498c5b5e0fcf32ba7453",
   "doc": "docs/estrategia-aprendizaje-2026-10-24.md",
   "registry": "docs/auditoria/claims.json",
   "online": false,
@@ -86,7 +86,7 @@
               },
               {
                 "file": "src/client/components/Shelf.tsx",
-                "line": 390,
+                "line": 407,
                 "text": "const inputsFor = createCoverageInputsLoader(scope);"
               }
             ]
@@ -522,10 +522,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/components/Reader.tsx:4219 coincide con /updateLanguageTheta\\(currentLang, beta, 1, 1\\.0\\)/",
+          "detail": "src/client/components/Reader.tsx:4458 coincide con /updateLanguageTheta\\(currentLang, beta, 1, 1\\.0\\)/",
           "observed": {
             "file": "src/client/components/Reader.tsx",
-            "line": 4219,
+            "line": 4458,
             "text": "updateLanguageTheta(currentLang, beta, 1, 1.0);"
           }
         },
@@ -542,10 +542,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/components/WordPanel.tsx:525 coincide con /award: false/",
+          "detail": "src/client/components/WordPanel.tsx:544 coincide con /award: false/",
           "observed": {
             "file": "src/client/components/WordPanel.tsx",
-            "line": 525,
+            "line": 544,
             "text": "{ award: false },"
           }
         },
@@ -1251,10 +1251,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/lib/journey.ts:77 coincide con /export function computeRetentionSummary/",
+          "detail": "src/client/lib/journey.ts:92 coincide con /export function computeRetentionSummary/",
           "observed": {
             "file": "src/client/lib/journey.ts",
-            "line": 77,
+            "line": 92,
             "text": "export function computeRetentionSummary("
           }
         },

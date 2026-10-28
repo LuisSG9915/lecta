@@ -228,6 +228,9 @@ export function createTtlCache<V>(options: {
     get size() {
       return entries.size;
     },
+    clear(): void {
+      entries.clear();
+    },
   };
 }
 
@@ -499,6 +502,28 @@ export const EXPLAIN_PASSAGE_CALL_OPTIONS: DeepSeekCallOptions = {
   promptVersion: EXPLAIN_PASSAGE_PROMPT_VERSION,
   maxTokens: AI_CALL_LIMITS.explain_passage,
 };
+
+export const EXPLAIN_PASSAGE_COMPACT_PROMPT_VERSION = "explain-passage-compact-v1";
+
+export const EXPLAIN_PASSAGE_COMPACT_CALL_OPTIONS: DeepSeekCallOptions = {
+  operation: "explain_passage",
+  promptVersion: EXPLAIN_PASSAGE_COMPACT_PROMPT_VERSION,
+  maxTokens: 80,
+};
+
+export function normalizePassage(passage: string): string {
+  return passage.toLowerCase().trim().replace(/\s+/g, " ");
+}
+
+export function buildCompactExplainPrompt(input: {
+  word: string;
+  localDefinition?: string;
+  passage: string;
+}): string {
+  const def = input.localDefinition?.trim();
+  const defSnippet = def ? ` (${def})` : "";
+  return `El lector ya ve la definición de diccionario de '${input.word.trim()}'${defSnippet}. En máximo 25 palabras y 1 sola oración, explica únicamente el matiz, ironía o sentido específico que tiene '${input.word.trim()}' dentro del pasaje: '${input.passage.trim()}'. Prohibido repetir la definición literal o resumir todo el pasaje. Devuelve un JSON: {"contextualMeaning":"<matiz en máximo 25 palabras>","toneAndNuance":"<tono breve>"}`;
+}
 
 export const PAGE_RECAP_CALL_OPTIONS: DeepSeekCallOptions = {
   operation: "page_recap",
@@ -945,6 +970,8 @@ Reglas:
 export function buildExplainInPassagePrompt(input: {
   word?: string;
   sentence: string;
+  lemma?: string;
+  localDefinition?: string;
   bookTitle?: string;
   author?: string;
   language?: string;
@@ -954,12 +981,23 @@ export function buildExplainInPassagePrompt(input: {
   if (input.word && input.word.trim()) {
     parts.push(`Palabra o expresión a explicar: «${input.word.trim()}»`);
   }
+  if (input.lemma && input.lemma.trim() && input.lemma.trim().toLowerCase() !== input.word?.trim().toLowerCase()) {
+    parts.push(`Lema / forma canónica: «${input.lemma.trim()}»`);
+  }
+  if (input.localDefinition && input.localDefinition.trim()) {
+    parts.push(`Definición literal ya conocida por el lector: «${input.localDefinition.trim()}»`);
+  }
   parts.push(`Pasaje u oración: «${input.sentence.trim()}»`);
   if (input.bookTitle?.trim()) {
     parts.push(`Obra: «${input.bookTitle.trim()}»`);
   }
   if (input.author?.trim()) {
     parts.push(`Autor: «${input.author.trim()}»`);
+  }
+  if (input.localDefinition && input.localDefinition.trim()) {
+    parts.push(
+      "Instrucción anti-duplicación: El usuario ya tiene visible la definición literal en el Bloque 1. Enfócate exclusivamente en 'contextualMeaning' (cómo cambia el matiz o uso en esta frase concreta) y 'toneAndNuance'. No repitas la definición literal.",
+    );
   }
   const isEn =
     input.language?.toLowerCase().startsWith("en") ||
@@ -1003,7 +1041,11 @@ export function parsePassageExplanation(raw: string): PassageExplanation | null 
       ? obj.directMeaning.trim().slice(0, 300)
       : undefined;
   const contextualMeaning =
-    typeof obj.contextualMeaning === "string" ? obj.contextualMeaning.trim().slice(0, 300) : "";
+    typeof obj.contextualMeaning === "string"
+      ? obj.contextualMeaning.trim().slice(0, 300)
+      : typeof obj.contextualNuance === "string"
+        ? obj.contextualNuance.trim().slice(0, 300)
+        : "";
   const toneAndNuance =
     typeof obj.toneAndNuance === "string" ? obj.toneAndNuance.trim().slice(0, 150) : "";
   const catTip =

@@ -1,3 +1,5 @@
+import { updateAppBadge, scheduleHabitReminder } from "../lib/localNotificationScheduler";
+import { applyTtsLandingMarker, loadTtsLandingPosition } from "../lib/tts-landing";
 import "../styles/reader.css";
 import {
   useCallback,
@@ -19,7 +21,7 @@ import {
   getBookLanguage,
   getBookTitle,
 } from "../lib/epub";
-import { markWords } from "../lib/marks";
+import { applyAttentionBudget } from "../lib/attention-budget";
 import {
   captureDbScope,
   getStoredBook,
@@ -158,6 +160,21 @@ import { calibrationBankZipf } from "../lib/knowledge";
 import {
   isTtsProgrammaticScroll,
 } from "../lib/ttsGuards";
+import ResumeSessionOverlay, {
+  extractLastSentences,
+  formatSceneRecapOneLine,
+} from "./ResumeSessionOverlay";
+import {
+  DAY_GOAL_MS,
+  READING_GOAL_KEY,
+  parseReadingGoal,
+} from "../lib/reading-goal";
+import {
+  getWeeklyLearnedWordsCount,
+  isLongestSessionThisMonth,
+  setJourneySelectorCache,
+} from "../lib/journey";
+import { isDue } from "../lib/fsrs";
 import {
   setCompanionAudioSuppressed,
   startAmbientPurr,
@@ -173,7 +190,7 @@ import {
   type PageRecapResult,
   type SceneReturnRecap,
 } from "../lib/page-recap";
-import { checkHasInactivityGap } from "../lib/reading-activity";
+import { checkHasInactivityGap, type TimeInterval } from "../lib/reading-activity";
 import {
   checkPassiveExposure as checkPassiveExposureEvidence,
   refreshProfile,
@@ -673,6 +690,13 @@ export default function Reader({
       });
     }
   }, [readerInitialWord, state]);
+
+  useEffect(() => {
+    void updateAppBadge(false);
+    return () => {
+      void scheduleHabitReminder();
+    };
+  }, []);
   // Índice de locuciones (asset estático): se pide al montar el
   // lector para que el PRIMER toque ya lo tenga en memoria — sin
   // red ni IA en el camino de la consulta.
@@ -760,6 +784,16 @@ export default function Reader({
   const sectionTextRef = useRef<string>("");
   const sessionStartRef = useRef<number>(0);
   const pageTurnTimeRef = useRef<number>(0);
+  const longestToastFiredRef = useRef<boolean>(false);
+  const intervalsRef = useRef<TimeInterval[]>([]);
+  const [dailyGoalMs, setDailyGoalMs] = useState<number>(DAY_GOAL_MS);
+  const [recordToast, setRecordToast] = useState<string | null>(null);
+  const weeklyWordsCount = getWeeklyLearnedWordsCount();
+  const [resumeOverlayData, setResumeOverlayData] = useState<{
+    recapLine: string;
+    lastReadSentences: string;
+    hasPendingReviewsDosing: boolean;
+  } | null>(null);
 
   useEffect(() => {
     const now = Date.now();
@@ -767,6 +801,12 @@ export default function Reader({
     if (!chapterStartedAtRef.current) chapterStartedAtRef.current = now;
     if (!pageTurnTimeRef.current) pageTurnTimeRef.current = now;
     if (focusTelemetryRef.current.pageEnteredAt === 0) focusTelemetryRef.current.pageEnteredAt = now;
+    void loadSessionValue(READING_GOAL_KEY, captureDbScope()).then((raw) => {
+      const parsed = parseReadingGoal(raw);
+      if (parsed && typeof parsed.dailyGoalMs === "number" && parsed.dailyGoalMs > 0) {
+        setDailyGoalMs(parsed.dailyGoalMs);
+      }
+    }).catch(() => undefined);
   }, []);
   const [activeBilingualParagraph, setActiveBilingualParagraph] = useState<{
     originalText: string;
@@ -1341,6 +1381,9 @@ export default function Reader({
         full.kind === "fatigue_detected"
       )
         presenceReact();
+      if (full.kind === "goal_completed") {
+        playCompanionSound("purr");
+      }
     },
     [presenceReact],
   );
@@ -1362,7 +1405,28 @@ export default function Reader({
     presenceIdle,
     setCatSleepy,
     paused: readingPaused,
+    dailyGoalMs,
   });
+
+  // Detección de récord mensual (>10 min y supera récord de 30 días) (Fase 1 Anti-Abandono)
+  useEffect(() => {
+    if (state !== "ready" || longestToastFiredRef.current) return;
+    const interval = window.setInterval(() => {
+      const now = Date.now();
+      const currentSessionMs = now - (sessionStartRef.current || now);
+      if (currentSessionMs >= 10 * 60_000 && !longestToastFiredRef.current) {
+        if (isLongestSessionThisMonth(currentSessionMs, intervalsRef.current, now)) {
+          longestToastFiredRef.current = true;
+          setRecordToast("Nuevo récord: tu lectura más larga este mes");
+          signalCompanion({ kind: "goal_completed" });
+          window.setTimeout(() => {
+            setRecordToast(null);
+          }, 5000);
+        }
+      }
+    }, 5000);
+    return () => window.clearInterval(interval);
+  }, [state, signalCompanion]);
 
   // Track 5: Detección de inactividad > 6h para "¿En qué me quedé?" (Track 8: Cero Spoilers)
   useEffect(() => {
@@ -1371,6 +1435,8 @@ export default function Reader({
     const scope = captureDbScope();
     void listIntervals(scope)
       .then((intervals) => {
+        intervalsRef.current = intervals;
+        setJourneySelectorCache({ intervals });
         if (checkHasInactivityGap(intervals, bookHash)) {
           const offset = containerRef.current
             ? charOffsetAtViewTop(containerRef.current, sectionTextRef.current)
@@ -1646,6 +1712,20 @@ export default function Reader({
       updatedAt: Date.now(),
     };
     latestPositionRef.current = pos;
+    try {
+      if (typeof localStorage !== "undefined") {
+        localStorage.setItem(
+          "lecta_active_book_context",
+          JSON.stringify({
+            bookHash,
+            lastOpenedTimestampMs: pos.updatedAt,
+            textBeforeCursor: pos.anchor,
+          }),
+        );
+      }
+    } catch {
+      // Ignore
+    }
     return pos;
   }, [bookHash, currentRatioNow, latestPositionRef]);
   useEffect(() => {
@@ -1755,16 +1835,19 @@ export default function Reader({
       const prediction = classifyCached(index);
       setPrediction(prediction);
       const container = containerRef.current;
-      if (container)
-        markWords(
+      if (container) {
+        applyAttentionBudget(
           container,
           savedForms.current,
-          new Set((prediction?.predicted ?? []).map((item) => item.form)),
+          (prediction?.predicted ?? []).map((item) => item.form),
+          sectionTextRef.current || container.textContent || "",
+          bookHash,
           lang,
         );
+      }
       return prediction;
     },
-    [classifyCached, setPrediction],
+    [classifyCached, setPrediction, bookHash],
   );
   useEffect(() => {
     applyCachedPredictionRef.current = applyCachedPrediction;
@@ -2086,6 +2169,7 @@ export default function Reader({
     nextSentence,
     cycleSpeed,
     stopTts,
+    start5MinuteListening,
   } = useReaderTts({
     bookHash,
     state,
@@ -2283,6 +2367,32 @@ export default function Reader({
             index: entry.sectionIndex,
             restore: { ratio: entry.ratio, anchor: entry.anchor },
           });
+
+          // Pantalla Única de Reentrada >48h (Fase 1 Anti-Abandono)
+          if (saved?.updatedAt && Date.now() - saved.updatedAt > 48 * 3600 * 1000 && !disposed) {
+            void (async () => {
+              try {
+                const offset = containerRef.current
+                  ? charOffsetAtViewTop(containerRef.current, sectionTextRef.current)
+                  : sectionTextRef.current.length;
+                const textBefore = sectionTextRef.current.slice(0, offset) || title;
+                const recap = generateZeroSpoilerSceneRecap(
+                  textBefore,
+                  saved.updatedAt,
+                  Date.now(),
+                  bookLanguage || "es",
+                );
+                const recapLine = formatSceneRecapOneLine(recap);
+                const lastReadSentences = extractLastSentences(textBefore, 2);
+                const allWords = await listSavedWords(undefined, scope).catch(() => []);
+                const pendingDueCount = allWords.filter((w) => !w.deleted && isDue(w.card, new Date())).length;
+                const hasPendingReviewsDosing = pendingDueCount > 25;
+                setResumeOverlayData({ recapLine, lastReadSentences, hasPendingReviewsDosing });
+              } catch {
+                // Silencioso
+              }
+            })();
+          }
           // Marcador de retomar: con la posición quieta ≥3 días el
           // lector perdió el hilo — la tarjeta le dice dónde quedó y
           // le da la opción de releer el capítulo desde su inicio.
@@ -2425,6 +2535,40 @@ export default function Reader({
 
   // Marcas de pasajes guardados en la sección actual. Va después del
   // Menú flotante sobre la selección del usuario.
+  const handleSingleWordTap = useCallback((hit: WordHit, clientX: number, clientY: number) => {
+    const isTouch =
+      lastPointerTypeRef.current === "touch" ||
+      lastPointerTypeRef.current === "pen" ||
+      (typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches);
+
+    let placement: "top" | "bottom" = isTouch ? "bottom" : "top";
+    let y: number;
+    const bottomReserve = isTouch ? 190 : 96;
+
+    if (
+      placement === "bottom" &&
+      clientY + bottomReserve > window.innerHeight &&
+      clientY > bottomReserve
+    ) {
+      placement = "top";
+      y = clientY - 16;
+    } else if (
+      placement === "top" &&
+      clientY < bottomReserve &&
+      clientY + bottomReserve <= window.innerHeight
+    ) {
+      placement = "bottom";
+      y = clientY + 16;
+    } else {
+      y = placement === "bottom" ? clientY + 16 : clientY - 16;
+    }
+
+    const menuHalfW = 140;
+    const clampedX = Math.max(menuHalfW + 12, Math.min(clientX, window.innerWidth - menuHalfW - 12));
+
+    setSelButton({ x: clampedX, y, placement, singleWordHit: hit });
+  }, []);
+
   useEffect(() => {
     let timer: number | undefined;
     const update = () => {
@@ -2450,15 +2594,43 @@ export default function Reader({
       const singleWordHit = wordHitFromRange(range, container, language);
 
       // Si la selección tiene exactamente 1 palabra (o coincide con toque de palabra),
-      // abrir directamente la ficha léxica y NO desplegar la barra de pasajes
+      // desplegar la píldora compacta de palabra en vez del flujo completo de explicación
       if (words.length === 1 || (words.length === 0 && singleWordHit)) {
         const hit = singleWordHit || {
           word: words[0].replace(/[.,;:!?¡¿"«»()]/g, ""),
           context: rawText,
         };
         if (hit.word) {
-          openSelection(hit);
-          setSelButton(null);
+          const isTouch =
+            lastPointerTypeRef.current === "touch" ||
+            lastPointerTypeRef.current === "pen" ||
+            (typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches);
+
+          let placement: "top" | "bottom" = isTouch ? "bottom" : "top";
+          let y = isTouch ? rect.bottom : rect.top;
+          const bottomReserve = isTouch ? 190 : 96;
+
+          if (
+            placement === "bottom" &&
+            rect.bottom + bottomReserve > window.innerHeight &&
+            rect.top > bottomReserve
+          ) {
+            placement = "top";
+            y = rect.top;
+          } else if (
+            placement === "top" &&
+            rect.top < bottomReserve &&
+            rect.bottom + bottomReserve <= window.innerHeight
+          ) {
+            placement = "bottom";
+            y = rect.bottom;
+          }
+
+          const centerX = rect.left + rect.width / 2;
+          const menuHalfW = 140;
+          const clampedX = Math.max(menuHalfW + 12, Math.min(centerX, window.innerWidth - menuHalfW - 12));
+
+          setSelButton({ x: clampedX, y, placement, singleWordHit: hit });
           return;
         }
       }
@@ -2513,7 +2685,6 @@ export default function Reader({
       window.removeEventListener("scroll", hide);
       window.clearTimeout(timer);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [language]);
 
   // Aviso único de descubrimiento para la pulsación larga en táctil (clave por cuenta)
@@ -3284,6 +3455,40 @@ export default function Reader({
   };
 
   // Track 9: Neuro-Foco - Manejadores de píldora adaptativa
+  const handleActivateFocusRule = useCallback(() => {
+    const updatedSettings: ReaderSettings = {
+      ...settings,
+      paragraphFocus: true,
+      focusMode: "paragraph",
+    };
+    setSettings(updatedSettings);
+    saveReaderSettings(updatedSettings, bookHash);
+    setFatigueNotice(false);
+    setFatigueSuggestion(null);
+    triggerHaptic("success");
+  }, [settings, bookHash]);
+
+  const handleStartAudio5Min = useCallback(() => {
+    capturePosition();
+    setFatigueNotice(false);
+    setFatigueSuggestion(null);
+    start5MinuteListening();
+    triggerHaptic("selection");
+  }, [capturePosition, start5MinuteListening]);
+
+  // Marcador de Aterrizaje Auditivo (Fase 3: Anti-pérdida de posición)
+  const prevTtsStatusRef = useRef(ttsSnap.status);
+  useEffect(() => {
+    const prev = prevTtsStatusRef.current;
+    prevTtsStatusRef.current = ttsSnap.status;
+    if ((prev === "speaking" || prev === "stopping") && ttsSnap.status === "idle") {
+      const landing = loadTtsLandingPosition(bookHash);
+      if (landing && containerRef.current) {
+        applyTtsLandingMarker(containerRef.current, landing);
+      }
+    }
+  }, [ttsSnap.status, bookHash]);
+
   const handleAcceptFocusAid = (aid: FocusAidType) => {
     const prof = loadFocusTelemetryProfile();
     const updated = recordFocusAidOutcome(prof, aid, true);
@@ -3829,6 +4034,9 @@ export default function Reader({
         navNextSection={navNextSection}
         navPrevSection={navPrevSection}
         openSelection={openSelection}
+        onSingleWordTap={handleSingleWordTap}
+        selButton={selButton}
+        setSelButton={setSelButton}
         extractWordAtPoint={extractWordAtPoint}
         handleContainerDoubleClick={handleContainerDoubleClick}
         handleTriggerReturnRecap={handleTriggerReturnRecap}
@@ -3925,6 +4133,8 @@ export default function Reader({
         dismissCalibrationNotice={dismissCalibrationNotice}
         fatigueNotice={fatigueNotice}
         setFatigueNotice={setFatigueNotice}
+        onActivateFocusRule={handleActivateFocusRule}
+        onStartAudio5Min={handleStartAudio5Min}
       />
 
       {/* SmartReaderDock (Track 2): Dock Inteligente Único que muta entre Lectura, Audio y Lienzo Puro */}
@@ -3974,8 +4184,36 @@ export default function Reader({
           handleDismissFocusSuggestion={handleDismissFocusSuggestion}
           handleMuteFocusForBook={handleMuteFocusForBook}
           handleDisableFocusGlobally={handleDisableFocusGlobally}
+          progress={progress}
+          weeklyWordsCount={weeklyWordsCount}
+          recordToast={recordToast}
+          onDismissRecordToast={() => setRecordToast(null)}
+          isReadingActive={!readingPaused && !barsShown}
+          onStartAudio5Min={handleStartAudio5Min}
         />
       ) : null}
+
+      {resumeOverlayData && (
+        <div
+          className="resume-session-overlay-wrapper"
+          style={{
+            position: "fixed",
+            top: "65px",
+            left: "50%",
+            transform: "translateX(-50%)",
+            width: "92%",
+            maxWidth: "580px",
+            zIndex: 45,
+          }}
+        >
+          <ResumeSessionOverlay
+            recapLine={resumeOverlayData.recapLine}
+            lastReadSentences={resumeOverlayData.lastReadSentences}
+            hasPendingReviewsDosing={resumeOverlayData.hasPendingReviewsDosing}
+            onResumeReading={() => setResumeOverlayData(null)}
+          />
+        </div>
+      )}
 
       <ReaderFocusLayers
         settings={settings}
@@ -4063,6 +4301,7 @@ export default function Reader({
         openQuoteCardFromSelection={openQuoteCardFromSelection}
         askCatAboutSelection={askCatAboutSelection}
         setDeepModal={setDeepModal}
+        language={language}
       />
 
       <ReaderFloatingLane>

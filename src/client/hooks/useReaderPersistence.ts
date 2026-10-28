@@ -50,6 +50,7 @@ export interface UseReaderPersistenceOptions {
   presenceIdle?: (idle: boolean) => void;
   setCatSleepy?: (sleepy: boolean) => void;
   onGoalAchieved?: () => void;
+  dailyGoalMs?: number;
   paused?: boolean;
 }
 
@@ -63,6 +64,7 @@ export function useReaderPersistence({
   presenceIdle,
   setCatSleepy,
   onGoalAchieved,
+  dailyGoalMs,
   paused = false,
 }: UseReaderPersistenceOptions) {
   const latestPositionRef = useRef<SavedBookPosition | null>(null);
@@ -72,8 +74,8 @@ export function useReaderPersistence({
   const pausedRef = useRef(paused);
 
   // Señal de actividad de lectura
-  const noteActivity = useCallback(() => {
-    if (pausedRef.current || (typeof document !== "undefined" && document.hidden)) return;
+  const noteActivity = useCallback((force = false) => {
+    if (pausedRef.current || (!force && typeof document !== "undefined" && document.hidden)) return;
     const now = Date.now();
     const seg = activityRef.current;
     const delta = eligibleDelta(seg, now, IDLE_MS);
@@ -125,14 +127,15 @@ export function useReaderPersistence({
             tz,
           ).find((d) => d.dayKey === dayKey)?.ms ?? 0;
         const total = saved + (endedAt - seg.startedAt);
-        if (total >= DAY_GOAL_MS) {
+        const targetGoalMs = dailyGoalMs && dailyGoalMs > 0 ? dailyGoalMs : DAY_GOAL_MS;
+        if (total >= targetGoalMs) {
           dayGoalRef.current.done = true;
           if (signalCompanion) signalCompanion({ kind: "goal_completed", at: endedAt });
           if (onGoalAchieved) onGoalAchieved();
         }
       });
     }
-  }, [bookHash, presenceIdle, awardReading, onGoalAchieved, signalCompanion]);
+  }, [bookHash, presenceIdle, awardReading, onGoalAchieved, signalCompanion, dailyGoalMs]);
 
   useEffect(() => {
     pausedRef.current = paused;

@@ -9,9 +9,10 @@ export interface GlossaryTerm {
   isCultism: boolean;
   isSaved: boolean;
   isKnown: boolean;
+  isConsulted?: boolean;
 }
 
-export type GlossaryFilter = "cultisms" | "all" | "saved" | "learning";
+export type GlossaryFilter = "cultisms" | "all" | "saved" | "learning" | "consulted";
 export type GlossarySort = "rarity" | "alpha" | "alpha-desc" | "frequency";
 
 /**
@@ -67,6 +68,7 @@ export function extractGlossaryTerms(
   manifest: BookVocabManifest,
   savedForms = new Set<string>(),
   knownLemmas = new Set<string>(),
+  consultedForms = new Set<string>(),
 ): GlossaryTerm[] {
   const terms: GlossaryTerm[] = [];
   const seenForms = new Set<string>();
@@ -110,6 +112,11 @@ export function extractGlossaryTerms(
             knownLemmas.has(lemmaLow) ||
             knownLemmas.has(form) ||
             knownLemmas.has(formLow),
+          isConsulted:
+            consultedForms.has(form) ||
+            consultedForms.has(formLow) ||
+            consultedForms.has(lemma) ||
+            consultedForms.has(lemmaLow),
         });
         continue;
       }
@@ -125,6 +132,7 @@ export function extractGlossaryTerms(
       isCultism: true, // Términos ausentes del catálogo estándar suelen ser arcaísmos o nombres propios
       isSaved: savedForms.has(form) || savedForms.has(formLow),
       isKnown: knownLemmas.has(form) || knownLemmas.has(formLow),
+      isConsulted: consultedForms.has(form) || consultedForms.has(formLow),
     });
   }
 
@@ -159,6 +167,8 @@ export function filterAndSortGlossary(
     list = list.filter((t) => t.isCultism);
   } else if (filter === "saved") {
     list = list.filter((t) => t.isSaved);
+  } else if (filter === "consulted") {
+    list = list.filter((t) => t.isConsulted);
   } else if (filter === "learning") {
     list = list.filter((t) => !t.isKnown && !t.isSaved);
   }

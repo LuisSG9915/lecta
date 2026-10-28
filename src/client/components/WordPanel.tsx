@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   explainInPassage,
+  lookupWordInMemory,
   lookupWord,
 } from "../lib/lexicon";
 import {
@@ -10,6 +11,7 @@ import {
   type SearchTocRow,
 } from "../lib/book-search";
 import { findLexicalFamily } from "../lib/word-meanings";
+import { recordBookConsultedWord } from "../lib/book-glossary";
 import {
   captureDbScope,
   loadSavedWord,
@@ -168,7 +170,21 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
   const [isTranslatingQuotes, setIsTranslatingQuotes] = useState<boolean>(false);
 
   const [isExpanded, setIsExpanded] = useState(!compactMode);
-  const [localEntry, setLocalEntry] = useState<LocalLexiconEntry | null>(null);
+  const [localEntry, setLocalEntry] = useState<LocalLexiconEntry | null>(() => {
+    const mem = lookupWordInMemory(cleanWord, effectiveLang);
+    if (mem?.ok && mem.found && mem.entries && mem.entries.length > 0) {
+      const primary = mem.entries[0];
+      const sense = primary.senses[0];
+      const family = findLexicalFamily(cleanWord, effectiveLang);
+      return {
+        lemma: primary.lemma || cleanWord.toLowerCase(),
+        partOfSpeech: primary.pos ?? undefined,
+        shortDefinition: sense?.definition ?? "",
+        synonyms: family.slice(0, 4),
+      };
+    }
+    return null;
+  });
   const [contextual, setContextual] = useState<ContextualMeaningResult | null>(null);
   const [isLoadingContext, setIsLoadingContext] = useState<boolean>(true);
   const [isSaved, setIsSaved] = useState<boolean>(isSavedInitial);
@@ -195,6 +211,9 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
 
     // 1. Señal silenciosa para el modelo adaptativo Theta (sin exámenes)
     onRecordSilentCalibration(cleanWord, "lookup");
+    if (bookHash) {
+      void recordBookConsultedWord(bookHash, cleanWord, scope);
+    }
 
     // Verificar si ya está guardada en idb
     void loadSavedWord(effectiveLang, cleanWord, scope)
@@ -334,7 +353,7 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
     }
 
     return () => abortCtrl.abort();
-  }, [cleanWord, effectiveContext, effectiveLang, cacheKey, lookupLocalLexicon, fetchContextualMeaning, onRecordSilentCalibration, bookTitle, author]);
+  }, [cleanWord, effectiveContext, effectiveLang, cacheKey, lookupLocalLexicon, fetchContextualMeaning, onRecordSilentCalibration, bookTitle, author, bookHash]);
 
   // Construcción de la ficha de memoria de personaje (Cero Spoilers)
   useEffect(() => {
@@ -1065,7 +1084,7 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
               {/* Botón retrocompatible para tests existentes */}
               <button
                 type="button"
-                className="btn--explain-passage"
+                className="btn--explain-passage btn--nuance-context"
                 onClick={() => {
                   if (contextual) return;
                   setIsLoadingContext(true);
@@ -1079,7 +1098,7 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
                   cursor: "pointer",
                 }}
               >
-                Explicar en esta frase
+                Ver matiz en este contexto (Explicar en esta frase)
               </button>
             </div>
 

@@ -37,6 +37,8 @@ export interface ReaderNoticesProps {
   dismissCalibrationNotice: () => void;
   fatigueNotice: boolean;
   setFatigueNotice: (value: boolean) => void;
+  onActivateFocusRule?: () => void;
+  onStartAudio5Min?: () => void;
 }
 
 export function ReaderNotices(props: ReaderNoticesProps) {
@@ -61,6 +63,8 @@ export function ReaderNotices(props: ReaderNoticesProps) {
   dismissCalibrationNotice,
   fatigueNotice,
   setFatigueNotice,
+  onActivateFocusRule,
+  onStartAudio5Min,
   } = props;
 
   return (
@@ -163,26 +167,43 @@ export function ReaderNotices(props: ReaderNoticesProps) {
     </div>
   ) : null}
 
-  {/* Pausa 20-20-20: el detector de fatiga (retrocesos tras un
-      tramo largo) la dispara; se descarta al entenderla. */}
+  {/* Transición suave ante fatiga cognitiva/visual (Fase 3 Anti-Abandono) */}
   {fatigueNotice && !resumeCard && !isDeepReading ? (
-    <div className="reader-prep" role="status">
+    <div
+      className="reader-prep reader-fatigue-action-pill"
+      role="status"
+      aria-live="polite"
+    >
       <span className="reader-prep-text">
-        Has retrocedido varias veces en el último rato. Descansa la
-        vista: mira algo lejano unos 20 segundos.
+        Notamos fatiga en la lectura. Elige cómo continuar:
       </span>
-      <button
-        type="button"
-        className="btn reader-prep-open"
-        onClick={() => setFatigueNotice(false)}
-      >
-        Entendido
-      </button>
+      <div className="reader-fatigue-pill-actions">
+        <button
+          type="button"
+          className="btn btn--secondary reader-fatigue-btn-focus"
+          onClick={() => {
+            onActivateFocusRule?.();
+            setFatigueNotice(false);
+          }}
+        >
+          Activar Regla de Foco
+        </button>
+        <button
+          type="button"
+          className="btn btn--primary reader-fatigue-btn-audio"
+          onClick={() => {
+            onStartAudio5Min?.();
+            setFatigueNotice(false);
+          }}
+        >
+          Escuchar los próximos 5 min 🎧
+        </button>
+      </div>
       <button
         type="button"
         className="reader-return-dismiss"
         onClick={() => setFatigueNotice(false)}
-        aria-label="Ocultar sugerencia de descanso"
+        aria-label="Ocultar aviso de fatiga"
       >
         ×
       </button>

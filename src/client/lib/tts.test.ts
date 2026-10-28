@@ -832,6 +832,34 @@ describe("ttsController", () => {
     expect(speakers[0].spoken.at(-1)).toBe("Una.");
   });
 
+
+  it("sleep timer de 5 min detiene la lectura suavemente al finalizar el párrafo y guarda el aterrizaje", async () => {
+    consent();
+    const { deps, events, speakers } = makeDeps([
+      section("<p>Párrafo uno frase uno. Párrafo uno frase dos.</p><p>Párrafo dos frase uno. Párrafo dos frase dos.</p>"),
+    ]);
+    const ctl = createTtsController(deps);
+    ctl.start(CTX, 0, { sleepTimerMs: 300_000 });
+    await flush();
+
+    expect(ctl.snapshot().status).toBe("speaking");
+    expect(ctl.getSleepTimerRemainingMs?.()).toBeGreaterThan(0);
+
+    // Hablar la primera oración del párrafo uno
+    speakers[0].ended();
+
+    // Avanzar el reloj 5 minutos
+    vi.advanceTimersByTime(300_001);
+
+    // Termina la segunda oración del párrafo uno (fin de párrafo)
+    speakers[0].ended();
+
+    // La sesión debe haber finalizado con "sleep_timer" al completar el párrafo
+    const endEv = events.find((e) => e.kind === "tts_session_end");
+    expect(endEv?.endReason).toBe("sleep_timer");
+    expect(ctl.snapshot().status).toBe("idle");
+  });
+
   it("avanza y retrocede de frase con nextSentence y prevSentence", async () => {
     consent();
     const { deps, speakers } = makeDeps([section("<p>Primera. Segunda. Tercera.</p>")]);
