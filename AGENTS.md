@@ -88,7 +88,22 @@
 ## Producción
 
 - URL: `https://lecta.luis-sg9915.workers.dev` — deploy con `pnpm run deploy`.
-- Último deploy: **2026-10-28**, versión
+- Último deploy: **2026-10-28** (segundo del día), versión
+  `6e984244-6664-4d5c-9623-178c97f530c1`, Lecta **v0.2.3**: notificaciones
+  locales de hábito (`periodicsync`/`notificationclick` en `public/sw.js` y
+  `localNotificationScheduler`), overlay «Reanudar sesión de lectura»
+  (`ResumeSessionOverlay` con recuento del pasaje), récord mensual en el
+  recorrido, `tap-intent-guard`, `tts-landing` y modo compacto de
+  `/api/ai/explain-in-passage` (clave de caché lemma+pasaje normalizado y
+  `dictionary`/`contextualNuance` en la respuesta). Sin migraciones.
+  Verificado en caliente: `pnpm gate` en verde (2795 pruebas, 201.27/215 kB
+  gzip), `/api/health` → 200, `/` → 200 sirviendo
+  `assets/index-BULye57G.js`, `/api/positions` sin sesión → 401, `0.2.3` en
+  `assets/DiagnosticsModal-BGE1LbgF.js`, `Reanudar sesión de lectura` en
+  `assets/index-BULye57G.js` y `periodicsync`/`notificationclick`/
+  `lecta-habit-reminder` en `sw.js`. Sin `smoke:auth`/`smoke:sync`: no toca
+  auth ni el contrato de sync.
+- Deploy anterior: **2026-10-28**, versión
   `f602a71f-fc61-44f4-b6c9-93a3ee1290a1`, Lecta **v0.2.2**: el Cuaderno enseña
   antes de examinar (ver «Regla del Cuaderno»). Incluye la migración **016**
   aplicada en `lecta` antes del worker (desbloquear `lecta_user_words` → `ALTER`
@@ -103,21 +118,6 @@
   Cuentas temporales creadas: `sync-smoke-1793158594248@example.com` y
   `vocab-sonda-1793158618958@example.com` (esta segunda solo con una palabra
   tombada).
-- Deploy anterior: **2026-10-27** (segundo del día), versión
-  `57651b95-fe9e-46d6-a703-951fa948545c`, Lecta **v0.2.1**: arreglo del
-  «Cargando tu recorrido…» eterno. `openLectaDB` gana un perro guardián
-  (`OPEN_WATCHDOG_MS = 12_000`) porque una petición encolada detrás de un
-  `deleteDatabase` bloqueado (otra pestaña con la base abierta) no dispara
-  `blocked` y la promesa no se resolvía nunca; `blocking()` además anula
-  `dbPromise` (antes la conexión cerrada por `versionchange` se seguía usando y
-  las lecturas fallaban en silencio). El recorrido caduca cada lectura con
-  `withDeadline` (6 s), se pinta con lo que haya, avisa y ofrece «Reintentar».
-  Verificado en caliente: `pnpm gate` en verde (`check:size` 180.10/215 kB gzip),
-  `/api/health` → 200, `/` → 200 sirviendo `assets/index-BuDLXHbK.js`,
-  `/api/positions` sin sesión → 401, `0.2.1` presente en `DiagnosticsModal`,
-  `no respondió a tiempo` presente en `assets/idb-DfEFJH3U.js` y
-  `No pudimos leer todo lo guardado` en `assets/Journey-CeHPgxoO.js`. Sin
-  `smoke:auth`/`smoke:sync`: no toca auth ni el contrato de sync.
 - La versión visible sale de `src/shared/app-version.ts` (`APP_VERSION`) y la usan
   `DiagnosticsModal.tsx` (UI y reporte copiado) y su prueba: al subir de versión
   hay que tocar ese archivo, `package.json` y `mcp/package.json` (más el
