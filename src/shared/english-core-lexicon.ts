@@ -1461,3 +1461,12 @@ export function getEnglishCoreEntry(word: string): LexiconEntry | null {
 
   return null;
 }
+
+
+export function isCommonEnglishWord(word: string): boolean {
+  const normalized = word.trim().toLowerCase();
+  if (!normalized) return false;
+  if (ENGLISH_CORE_LEXICON[normalized]) return true;
+  if (CALIBRATION_DEFINITIONS_EN[normalized]) return true;
+  return getEnglishCoreEntry(normalized) !== null;
+}

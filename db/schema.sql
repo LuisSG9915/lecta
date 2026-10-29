@@ -106,6 +106,7 @@ CREATE TABLE IF NOT EXISTS user_books (
   r2_key TEXT NOT NULL,
   size_bytes INTEGER NOT NULL DEFAULT 0,
   sha256 TEXT NOT NULL DEFAULT '',
+  has_cover BOOLEAN NOT NULL DEFAULT FALSE,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
   PRIMARY KEY (user_id, book_id)

@@ -404,7 +404,7 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
     void loadChapters().then((chapterTexts) => {
       if (cancelled) return;
       if (chapterTexts.length > 0) {
-        const card = buildZeroSpoilerCharacterCard(cleanWord, chapterTexts, boundary);
+        const card = buildZeroSpoilerCharacterCard(cleanWord, chapterTexts, boundary, bookLanguage || language || "es");
         setCharacterCard(card);
         if (card.totalMentionsUpToCursor > 0 && isCandidateProperNoun && !initialViewMode) {
           setViewMode("character");
@@ -416,7 +416,7 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [cleanWord, sections, toc, currentSectionIndex, currentChapterTitle, effectiveContext, isCandidateProperNoun, initialViewMode, charOffsetInChapter]);
+  }, [cleanWord, sections, toc, currentSectionIndex, currentChapterTitle, effectiveContext, isCandidateProperNoun, initialViewMode, charOffsetInChapter, bookLanguage, language]);
 
   // Traducción de citas para libros en otros idiomas (L2)
   const handleTranslateQuotes = async () => {

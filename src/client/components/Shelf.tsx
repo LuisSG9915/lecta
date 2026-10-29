@@ -10,7 +10,13 @@ import {
 } from "../lib/idb";
 import { CALIBRATION_DONE_KEY } from "../lib/calibration";
 import { triggerHaptic } from "../lib/haptics";
-import { displayTitle, readBookMeta, type BookMeta } from "../lib/cover";
+import {
+  displayTitle,
+  readBookMeta,
+  isHashLikeIdentifier,
+  type BookMeta,
+} from "../lib/cover";
+import { repairRemoteBook } from "../lib/books";
 import { languageName } from "../lib/epub";
 import {
   entriesByFormOf,
@@ -63,7 +69,7 @@ import Sheet from "./Sheet";
 export type ShelfItem = Pick<
   StoredBook,
   "hash" | "name" | "addedAt" | "title" | "author" | "cover" | "sectionCount" | "language"
-> & { remoteOnly?: boolean; pendingUpload?: boolean };
+> & { remoteOnly?: boolean; pendingUpload?: boolean; hasCover?: boolean };
 
 export type ActiveRead = {
   hash: string;
@@ -222,7 +228,26 @@ export default function Shelf({
     }
   };
 
-  const handleBookClick = (book: ShelfItem) => {
+  const handleBookClick = async (book: ShelfItem) => {
+    if (
+      book.remoteOnly &&
+      (book.title === "Libro en la nube" || !book.title || isHashLikeIdentifier(book.title))
+    ) {
+      try {
+        const repaired = await repairRemoteBook(book.hash);
+        if (repaired?.title) {
+          book.title = repaired.title;
+          if (repaired.author) book.author = repaired.author;
+          if (repaired.hasCover) book.hasCover = true;
+          handleLibraryChange();
+        }
+      } catch {
+        // Fallback suave
+      }
+      setOptionsBook(book);
+      return;
+    }
+
     if (onSelect) {
       onSelect(book);
     } else {
@@ -1605,16 +1630,20 @@ export default function Shelf({
                       className="btn btn--primary shelf-options-download-btn"
                       disabled={downloadingHash === optionsBook.hash}
                       onClick={() => {
+                        const target = optionsBook;
+                        setOptionsBook(null);
                         if (onDownloadBook) {
-                          void onDownloadBook(optionsBook);
+                          void onDownloadBook(target);
+                        } else if (onSelect) {
+                          onSelect(target);
                         } else {
-                          handleBookClick(optionsBook);
+                          onOpen(target);
                         }
                       }}
                     >
                       {downloadingHash === optionsBook.hash
                         ? "Descargando libro…"
-                        : "Descargar libro a este dispositivo"}
+                        : "Descargar y abrir"}
                     </button>
                   </div>
                 ) : null}

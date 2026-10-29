@@ -123,8 +123,11 @@ export function ThemeMenu({
   };
 
   const currentTheme: ReaderTheme =
-    settings.theme ??
-    (value === "papel" ? "sepia" : value === "noche" || value === "oled" ? "night" : "paper");
+    settings.theme === "noche" || settings.theme === "oled" || value === "noche" || value === "oled"
+      ? "night"
+      : settings.theme === "papel" || value === "papel"
+        ? "sepia"
+        : "paper";
 
   const currentFontSize = settings.fontSize ?? settings.size ?? 18;
 
@@ -162,30 +165,51 @@ export function ThemeMenu({
       )}
       <div className="theme-row">
         <span className="theme-label">Color de página</span>
-        <div className="theme-swatches">
-          {THEMES.map((t) => (
-            <button
-              key={t}
-              type="button"
-              className={`swatch swatch-${t} ${currentTheme === t ? "is-active" : ""}`}
-              onClick={() => handlePatch({ theme: t })}
-              aria-pressed={currentTheme === t}
-            >
-              <span className="swatch-dot" />
-              <span>{THEME_LABELS[t]}</span>
-            </button>
-          ))}
+        <div className="theme-swatches" role="radiogroup" aria-label="Color de página">
+          {THEMES.map((t) => {
+            const choiceKey: ThemeChoice =
+              t === "paper" ? "blanco" : t === "sepia" ? "papel" : "noche";
+            const swatch = THEME_SWATCHES[choiceKey];
+            const isSelected = currentTheme === t;
+            return (
+              <button
+                key={t}
+                type="button"
+                className={`swatch swatch-${t} ${isSelected ? "is-active" : ""}`}
+                role="radio"
+                aria-checked={isSelected}
+                data-active={isSelected || undefined}
+                onClick={() => handlePatch({ theme: t })}
+                aria-pressed={isSelected}
+              >
+                <span
+                  className="swatch-dot"
+                  style={{
+                    background: swatch.bg,
+                    borderColor: swatch.border,
+                  }}
+                  aria-hidden="true"
+                >
+                  {swatch.fg ? <span style={{ color: swatch.fg }}>A</span> : null}
+                </span>
+                <span className="swatch-name">{THEME_LABELS[t]}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
       <div className="theme-row">
         <span className="theme-label">Letra</span>
-        <div className="font-choices">
+        <div className="font-choices" role="radiogroup" aria-label="Tipografía">
           {FONTS.map((f) => (
             <button
               key={f}
               type="button"
               className={`font-choice font-preview-${f} ${settings.font === f ? "is-active" : ""}`}
+              role="radio"
+              aria-checked={settings.font === f}
+              data-active={settings.font === f || undefined}
               onClick={() => handlePatch({ font: f })}
               aria-pressed={settings.font === f}
             >
@@ -249,6 +273,7 @@ export function ThemeMenu({
               key={lh}
               type="button"
               className={currentLineHeight === lh ? "is-active" : ""}
+              data-active={currentLineHeight === lh || undefined}
               onClick={() =>
                 handlePatch({
                   lineHeight: lh,
@@ -271,6 +296,7 @@ export function ThemeMenu({
               key={m}
               type="button"
               className={currentMargins === m ? "is-active" : ""}
+              data-active={currentMargins === m || undefined}
               onClick={() =>
                 handlePatch({
                   margins: m,

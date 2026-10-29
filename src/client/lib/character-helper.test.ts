@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import {
+  extractCharacterCandidates,
   getCharactersOnPageWithoutSpoilers,
   isLikelyProperNoun,
   buildZeroSpoilerCharacterCard,
@@ -299,6 +300,54 @@ describe("character-helper", () => {
       expect(serialized).not.toContain("puñal");
       expect(serialized).not.toContain("traicionó");
       expect(serialized).not.toContain("SPOILER");
+    });
+  });
+
+  describe("extractCharacterCandidates (filtros anti-ruido y contexto de idioma)", () => {
+    it("caso regresión exacto en inglés: descarta The hall, Four, Security, Another y detecta Sherlock Holmes", () => {
+      const pageText =
+        "The hall was quiet. Four men waited. Security blocked the door. Another guest arrived. Sherlock Holmes waited in the hall.";
+      const candidates = extractCharacterCandidates(pageText, "en");
+      expect(candidates).toEqual(["Sherlock Holmes"]);
+      expect(candidates).not.toContain("The hall");
+      expect(candidates).not.toContain("Four");
+      expect(candidates).not.toContain("Security");
+      expect(candidates).not.toContain("Another");
+    });
+
+    it("caso diálogos y saltos de línea: detecta Holmes intraoracional y descarta Security y Another tras raya o comilla", () => {
+      const pageText = "\n—Security! —shouted the guard.\n“Another!” said Holmes.";
+      const candidates = extractCharacterCandidates(pageText, "en");
+      expect(candidates).toEqual(["Holmes"]);
+      expect(candidates).not.toContain("Security");
+      expect(candidates).not.toContain("Another");
+    });
+
+    it("caso honoríficos en español e inglés: detecta Don Quijote y Sir Arthur, descarta La puerta", () => {
+      const pageText = "Don Quijote habló con Sir Arthur en la sala. La puerta se cerró.";
+      const candidates = extractCharacterCandidates(pageText, "es");
+      expect(candidates).toContain("Don Quijote");
+      expect(candidates).toContain("Sir Arthur");
+      expect(candidates).not.toContain("La puerta");
+      expect(candidates).not.toContain("Don");
+      expect(candidates).not.toContain("Sir");
+    });
+
+    it("getCharactersOnPageWithoutSpoilers filtra candidatos basura en inglés y busca solo nombres propios", async () => {
+      const sections = [
+        section("<p>Sherlock Holmes studied the evidence in Baker Street.</p>"),
+        section("<p>The hall was quiet. Four men waited. Security blocked the door. Another guest arrived. Sherlock Holmes waited in the hall.</p>"),
+      ];
+      const pageText =
+        "The hall was quiet. Four men waited. Security blocked the door. Another guest arrived. Sherlock Holmes waited in the hall.";
+      const results = await getCharactersOnPageWithoutSpoilers({
+        pageText,
+        currentChapterIndex: 1,
+        bookId: "holmes-study",
+        sections,
+        lang: "en",
+      });
+      expect(results.map((r) => r.name)).toEqual(["Sherlock Holmes"]);
     });
   });
 });

@@ -331,6 +331,7 @@ function FullCompanionPanel(props: CompanionPanelProps) {
         bookId: readerContext.bookId,
         sections: readerContext.sections,
         toc: readerContext.toc,
+        lang: readerContext.language ?? "es",
       });
       setCharacterCards(results);
     } catch {

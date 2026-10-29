@@ -57,6 +57,7 @@ import {
 import { pushKnowledgeToServer } from "../lib/reading-sync";
 import { pushWordsToServer, removeWord } from "../lib/vocab";
 import { backfillWordMeanings } from "../lib/word-meanings";
+import { bookDisplayName } from "../lib/cover";
 import { recordReview } from "../lib/reviews";
 import type { ReviewKind, ReviewRating } from "../../shared/reading-data";
 import {
@@ -1663,7 +1664,7 @@ function FullVocabulary({
   const bookTitle = (hash: string | undefined) => {
     if (!hash) return "Sin libro";
     const found = books.find((item) => item.hash === hash);
-    return found ? (found.title ?? found.name) : "Libro que ya no está";
+    return found ? bookDisplayName(found) : "Libro que ya no está";
   };
   const bookAuthor = (hash: string | undefined) => {
     if (!hash) return undefined;

@@ -90,7 +90,7 @@ import {
   type CalibrationProfile,
 } from "../shared/calibration-bank";
 import { checkEpubHeader, checkEpubBuffer, EPUB_MAX_BYTES } from "../shared/epub-check";
-import { extractEpubMeta } from "../shared/epub-meta";
+import { extractEpubMeta, extractEpubCover, isHashLikeIdentifier } from "../shared/epub-meta";
 import { getSession, getSessionUser, SessionInfraError } from "./session";
 import { readingData } from "./reading-data";
 import { companion } from "./companion";
@@ -1792,21 +1792,24 @@ export async function recordUserBook(
     r2Key: string;
     sizeBytes: number;
     sha256: string;
+    hasCover?: boolean;
   },
 ): Promise<void> {
   const now = Date.now();
+  const hasCoverVal = book.hasCover ? true : false;
   let recorded = false;
   if (getConnectionString(env)) {
     const res = await withClient(env, (client) =>
       client.query(
-        `INSERT INTO user_books (user_id, book_id, title, author, r2_key, size_bytes, sha256, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        `INSERT INTO user_books (user_id, book_id, title, author, r2_key, size_bytes, sha256, has_cover, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
          ON CONFLICT (user_id, book_id) DO UPDATE SET
            title = EXCLUDED.title,
            author = EXCLUDED.author,
            r2_key = EXCLUDED.r2_key,
            size_bytes = EXCLUDED.size_bytes,
            sha256 = EXCLUDED.sha256,
+           has_cover = EXCLUDED.has_cover,
            updated_at = EXCLUDED.updated_at`,
         [
           book.userId,
@@ -1816,6 +1819,7 @@ export async function recordUserBook(
           book.r2Key,
           book.sizeBytes,
           book.sha256,
+          hasCoverVal,
           now,
           now,
         ],
@@ -1825,14 +1829,15 @@ export async function recordUserBook(
   }
   if (!recorded && env.DB) {
     await env.DB.prepare(
-      `INSERT INTO user_books (user_id, book_id, title, author, r2_key, size_bytes, sha256, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO user_books (user_id, book_id, title, author, r2_key, size_bytes, sha256, has_cover, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(user_id, book_id) DO UPDATE SET
          title = excluded.title,
          author = excluded.author,
          r2_key = excluded.r2_key,
          size_bytes = excluded.size_bytes,
          sha256 = excluded.sha256,
+         has_cover = excluded.has_cover,
          updated_at = excluded.updated_at`,
     )
       .bind(
@@ -1843,9 +1848,35 @@ export async function recordUserBook(
         book.r2Key,
         book.sizeBytes,
         book.sha256,
+        hasCoverVal ? 1 : 0,
         now,
         now,
       )
+      .run()
+      .catch(() => null);
+  }
+}
+
+export async function setUserBookCover(
+  env: WorkerEnv,
+  userId: string,
+  bookId: string,
+  hasCover: boolean,
+): Promise<void> {
+  const now = Date.now();
+  if (getConnectionString(env)) {
+    await withClient(env, (client) =>
+      client.query(
+        `UPDATE user_books SET has_cover = $1, updated_at = $2 WHERE user_id = $3 AND book_id = $4`,
+        [hasCover, now, userId, bookId],
+      ),
+    ).catch(() => null);
+  }
+  if (env.DB) {
+    await env.DB.prepare(
+      `UPDATE user_books SET has_cover = ?, updated_at = ? WHERE user_id = ? AND book_id = ?`,
+    )
+      .bind(hasCover ? 1 : 0, now, userId, bookId)
       .run()
       .catch(() => null);
   }
@@ -1869,6 +1900,7 @@ export async function deleteUserBookRecord(
 }
 
 const bookKey = (userId: string, hash: string) => `books/${userId}/${hash}.epub`;
+const bookCoverKey = (userId: string, hash: string) => `covers/${userId}/${hash}.jpg`;
 const HASH_PATTERN = /^[a-f0-9]{64}$/;
 
 app.get("/api/books", async (context) => {
@@ -1882,28 +1914,35 @@ app.get("/api/books", async (context) => {
 
   const books = listed.objects.map((object) => {
     const hash = object.key.split("/").pop()?.replace(/\.epub$/, "") ?? "";
-    const title = object.customMetadata?.title ?? "";
+    const rawTitle = object.customMetadata?.title ?? "";
+    const cleanTitle = isHashLikeIdentifier(rawTitle) ? "" : rawTitle;
     const author = object.customMetadata?.author ?? "";
     const name = object.customMetadata?.name ?? "";
     const sections = Number(object.customMetadata?.sections) || 0;
     const language = object.customMetadata?.language ?? "";
+    const hasCover = object.customMetadata?.hasCover === "true";
+    const repairAttemptedAt = object.customMetadata?.repairAttemptedAt;
 
     return {
       hash,
       uploaded: object.uploaded,
-      name: name || (title ? `${title}.epub` : `${hash.slice(0, 8)}.epub`),
-      title: title || name.replace(/\.epub$/i, "") || `Libro ${hash.slice(0, 8)}`,
+      name: name && !isHashLikeIdentifier(name) ? name : (cleanTitle ? `${cleanTitle}.epub` : ""),
+      title: cleanTitle,
       author,
       sections,
       language,
+      hasCover,
+      repairAttemptedAt,
     };
   });
 
-  const repairObj = listed.objects.find((object) => {
-    const title = object.customMetadata?.title ?? "";
-    const language = object.customMetadata?.language ?? "";
-    return !title || !language;
-  });
+  const repairObjs = listed.objects
+    .filter((object) => {
+      const title = object.customMetadata?.title ?? "";
+      const repairAttemptedAt = object.customMetadata?.repairAttemptedAt;
+      return (!title || isHashLikeIdentifier(title)) && !repairAttemptedAt;
+    })
+    .slice(0, 5);
 
   let executionCtx: { waitUntil: (promise: Promise<unknown>) => void } | undefined;
   try {
@@ -1912,48 +1951,71 @@ app.get("/api/books", async (context) => {
     executionCtx = undefined;
   }
 
-  if (repairObj && executionCtx?.waitUntil) {
-    const key = repairObj.key;
-    const hash = key.split("/").pop()?.replace(/\.epub$/, "") ?? "";
+  if (repairObjs.length > 0 && executionCtx?.waitUntil) {
     executionCtx.waitUntil(
-      (async () => {
-        try {
-          const r2Obj = await booksBucket.get(key);
-          if (!r2Obj) return;
-          const data = new Uint8Array(await r2Obj.arrayBuffer());
-          const meta = await extractEpubMeta(data);
-          if (meta?.title) {
-            const repTitle = meta.title.slice(0, 200);
-            const repAuthor = (meta.author ?? "").slice(0, 200);
-            const repSections = meta.sections ? String(meta.sections) : "";
-            const repLang = (meta.language ?? "").slice(0, 10);
-            const repName = `${repTitle}.epub`;
+      Promise.all(
+        repairObjs.map(async (repairObj) => {
+          try {
+            const key = repairObj.key;
+            const hash = key.split("/").pop()?.replace(/\.epub$/, "") ?? "";
+            const r2Obj = await booksBucket.get(key);
+            if (!r2Obj) return;
+            const data = new Uint8Array(await r2Obj.arrayBuffer());
+            const meta = await extractEpubMeta(data);
+            const nowStr = String(Date.now());
+
+            let hasCover = repairObj.customMetadata?.hasCover === "true";
+            if (!hasCover) {
+              const coverResult = await extractEpubCover(data).catch(() => null);
+              if (coverResult && coverResult.data.byteLength <= 300_000) {
+                await booksBucket.put(bookCoverKey(session.user.id, hash), coverResult.data, {
+                  httpMetadata: { contentType: coverResult.mediaType || "image/jpeg" },
+                });
+                hasCover = true;
+              }
+            }
+
+            const repTitle = (meta?.title && !isHashLikeIdentifier(meta.title))
+              ? meta.title.slice(0, 200)
+              : (repairObj.customMetadata?.title ?? "");
+            const repAuthor = (meta?.author ?? repairObj.customMetadata?.author ?? "").slice(0, 200);
+            const repSections = meta?.sections ? String(meta.sections) : (repairObj.customMetadata?.sections ?? "");
+            const repLang = (meta?.language ?? repairObj.customMetadata?.language ?? "").slice(0, 10);
+            const repName = repTitle ? `${repTitle}.epub` : (repairObj.customMetadata?.name ?? "");
+
+            const updatedCustomMetadata: Record<string, string> = {
+              ...repairObj.customMetadata,
+              repairAttemptedAt: nowStr,
+              hasCover: hasCover ? "true" : "false",
+            };
+            if (repName) updatedCustomMetadata.name = repName;
+            if (repTitle) updatedCustomMetadata.title = repTitle;
+            if (repAuthor) updatedCustomMetadata.author = repAuthor;
+            if (repSections) updatedCustomMetadata.sections = repSections;
+            if (repLang) updatedCustomMetadata.language = repLang;
 
             await booksBucket.put(key, data, {
               httpMetadata: { contentType: "application/epub+zip" },
-              customMetadata: {
-                name: repName,
-                title: repTitle,
-                author: repAuthor,
-                sections: repSections,
-                language: repLang,
-              },
+              customMetadata: updatedCustomMetadata,
             });
 
-            await recordUserBook(context.env, {
-              userId: session.user.id,
-              bookId: hash,
-              title: repTitle,
-              author: repAuthor,
-              r2Key: key,
-              sizeBytes: data.byteLength,
-              sha256: hash,
-            });
+            if (repTitle) {
+              await recordUserBook(context.env, {
+                userId: session.user.id,
+                bookId: hash,
+                title: repTitle,
+                author: repAuthor,
+                r2Key: key,
+                sizeBytes: data.byteLength,
+                sha256: hash,
+                hasCover,
+              });
+            }
+          } catch {
+            // Ignora fallos silenciosos en segundo plano
           }
-        } catch {
-          // Ignora fallos silenciosos en segundo plano
-        }
-      })(),
+        }),
+      ),
     );
   }
 
@@ -2014,6 +2076,15 @@ const handleBookUpload = async (
     }
   }
 
+  let hasCover = false;
+  const coverResult = await extractEpubCover(data).catch(() => null);
+  if (coverResult && coverResult.data.byteLength <= 300_000) {
+    await booksBucket.put(bookCoverKey(session.user.id, hash), coverResult.data, {
+      httpMetadata: { contentType: coverResult.mediaType || "image/jpeg" },
+    });
+    hasCover = true;
+  }
+
   const r2Key = bookKey(session.user.id, hash);
   await booksBucket.put(r2Key, data, {
     httpMetadata: { contentType: "application/epub+zip" },
@@ -2023,6 +2094,7 @@ const handleBookUpload = async (
       author,
       sections,
       language,
+      hasCover: hasCover ? "true" : "false",
     },
   });
 
@@ -2034,6 +2106,7 @@ const handleBookUpload = async (
     r2Key,
     sizeBytes: data.byteLength,
     sha256: hash,
+    hasCover,
   });
 
   return context.json({ ok: true, hash });
@@ -2073,8 +2146,152 @@ app.delete("/api/books/:hash", async (context) => {
     return context.json({ error: "Identificador de libro inválido." }, 400);
 
   await booksBucket.delete(bookKey(session.user.id, hash));
+  await booksBucket.delete(bookCoverKey(session.user.id, hash));
   await deleteUserBookRecord(context.env, session.user.id, hash);
   return context.json({ ok: true });
+});
+
+app.put("/api/books/:hash/cover", async (context) => {
+  const booksBucket = context.env.BOOKS;
+  if (!booksBucket)
+    return context.json({ error: "El almacenamiento no está configurado." }, 503);
+  const session = await getSession(context);
+  if (!session) return context.json({ error: "Inicia sesión para guardar portadas." }, 401);
+
+  const hash = context.req.param("hash");
+  if (!HASH_PATTERN.test(hash))
+    return context.json({ error: "Identificador de libro inválido." }, 400);
+
+  const contentType = context.req.header("content-type") || "image/jpeg";
+  if (!["image/jpeg", "image/png", "image/webp"].includes(contentType.toLowerCase())) {
+    return context.json({ error: "Formato de imagen no soportado (use JPEG, PNG o WebP)." }, 400);
+  }
+
+  const data = new Uint8Array(await context.req.arrayBuffer());
+  if (!data.byteLength || data.byteLength > 300_000) {
+    return context.json({ error: "Portada vacía o demasiado grande (máximo 300 KB)." }, 400);
+  }
+
+  await booksBucket.put(bookCoverKey(session.user.id, hash), data, {
+    httpMetadata: { contentType },
+  });
+
+  await setUserBookCover(context.env, session.user.id, hash, true);
+
+  // Intentar actualizar también customMetadata del libro en R2
+  try {
+    const epubObj = await booksBucket.get(bookKey(session.user.id, hash));
+    if (epubObj) {
+      const epubData = new Uint8Array(await epubObj.arrayBuffer());
+      await booksBucket.put(bookKey(session.user.id, hash), epubData, {
+        httpMetadata: epubObj.httpMetadata,
+        customMetadata: {
+          ...epubObj.customMetadata,
+          hasCover: "true",
+        },
+      });
+    }
+  } catch {
+    // Best-effort
+  }
+
+  return context.json({ ok: true });
+});
+
+app.get("/api/books/:hash/cover", async (context) => {
+  const booksBucket = context.env.BOOKS;
+  if (!booksBucket)
+    return context.json({ error: "El almacenamiento no está configurado." }, 503);
+  const session = await getSession(context);
+  if (!session) return context.json({ error: "Inicia sesión para ver portadas." }, 401);
+
+  const hash = context.req.param("hash");
+  if (!HASH_PATTERN.test(hash))
+    return context.json({ error: "Identificador de libro inválido." }, 400);
+
+  const object = await booksBucket.get(bookCoverKey(session.user.id, hash));
+  if (!object) return context.json({ error: "Portada no encontrada." }, 404);
+
+  return new Response(object.body, {
+    headers: {
+      "content-type": object.httpMetadata?.contentType || "image/jpeg",
+      "cache-control": "private, max-age=86400, immutable",
+    },
+  });
+});
+
+app.post("/api/books/:hash/repair", async (context) => {
+  const booksBucket = context.env.BOOKS;
+  if (!booksBucket)
+    return context.json({ error: "El almacenamiento no está configurado." }, 503);
+  const session = await getSession(context);
+  if (!session) return context.json({ error: "Inicia sesión para reparar libros." }, 401);
+
+  const hash = context.req.param("hash");
+  if (!HASH_PATTERN.test(hash))
+    return context.json({ error: "Identificador de libro inválido." }, 400);
+
+  const key = bookKey(session.user.id, hash);
+  const r2Obj = await booksBucket.get(key);
+  if (!r2Obj) return context.json({ error: "Libro no encontrado." }, 404);
+
+  const data = new Uint8Array(await r2Obj.arrayBuffer());
+  const meta = await extractEpubMeta(data);
+  const nowStr = String(Date.now());
+
+  let hasCover = r2Obj.customMetadata?.hasCover === "true";
+  if (!hasCover) {
+    const coverResult = await extractEpubCover(data).catch(() => null);
+    if (coverResult && coverResult.data.byteLength <= 300_000) {
+      await booksBucket.put(bookCoverKey(session.user.id, hash), coverResult.data, {
+        httpMetadata: { contentType: coverResult.mediaType || "image/jpeg" },
+      });
+      hasCover = true;
+    }
+  }
+
+  const repTitle = (meta?.title && !isHashLikeIdentifier(meta.title))
+    ? meta.title.slice(0, 200)
+    : (r2Obj.customMetadata?.title ?? "");
+  const repAuthor = (meta?.author ?? r2Obj.customMetadata?.author ?? "").slice(0, 200);
+  const repSections = meta?.sections ? String(meta.sections) : (r2Obj.customMetadata?.sections ?? "");
+  const repLang = (meta?.language ?? r2Obj.customMetadata?.language ?? "").slice(0, 10);
+  const repName = repTitle ? `${repTitle}.epub` : (r2Obj.customMetadata?.name ?? "");
+
+  const updatedCustomMetadata: Record<string, string> = {
+    ...r2Obj.customMetadata,
+    repairAttemptedAt: nowStr,
+    hasCover: hasCover ? "true" : "false",
+  };
+  if (repName) updatedCustomMetadata.name = repName;
+  if (repTitle) updatedCustomMetadata.title = repTitle;
+  if (repAuthor) updatedCustomMetadata.author = repAuthor;
+  if (repSections) updatedCustomMetadata.sections = repSections;
+  if (repLang) updatedCustomMetadata.language = repLang;
+
+  await booksBucket.put(key, data, {
+    httpMetadata: { contentType: "application/epub+zip" },
+    customMetadata: updatedCustomMetadata,
+  });
+
+  await recordUserBook(context.env, {
+    userId: session.user.id,
+    bookId: hash,
+    title: repTitle,
+    author: repAuthor,
+    r2Key: key,
+    sizeBytes: data.byteLength,
+    sha256: hash,
+    hasCover,
+  });
+
+  return context.json({
+    title: repTitle,
+    author: repAuthor,
+    language: repLang || "es",
+    sectionCount: Number(repSections) || 0,
+    hasCover,
+  });
 });
 
 type UserWordInput = {

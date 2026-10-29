@@ -80,9 +80,10 @@ export const ENGLISH_STOPWORDS = [
   "against", "during", "without", "before", "under", "around", "among",
   "upon", "off", "across", "behind", "beyond", "within", "along",
   "towards", "toward", "near", "despite", "above", "below", "throughout",
-  // conjunciones
+  // conjunciones y conectores
   "and", "but", "or", "nor", "so", "yet", "because", "although", "though",
   "while", "whereas", "if", "unless", "whether", "since", "than",
+  "however", "therefore", "besides", "meanwhile",
   // pronombres personales, reflexivos y posesivos
   "i", "you", "he", "she", "it", "we", "they", "me", "him", "her",
   "us", "them", "my", "your", "his", "its", "our", "their", "mine",
@@ -93,7 +94,7 @@ export const ENGLISH_STOPWORDS = [
   "what", "whatever", "whoever", "whomever", "whichever",
   // indefinidos y cuantificadores
   "all", "some", "any", "no", "every", "each", "both", "either", "neither",
-  "another", "other", "others", "such", "someone", "somebody", "something",
+  "another", "other", "others", "same", "such", "someone", "somebody", "something",
   "anyone", "anybody", "anything", "everyone", "everybody", "everything",
   "nobody", "nothing", "none", "many", "much", "few", "fewer", "little",
   "more", "most", "less", "least", "several", "enough",
@@ -103,6 +104,7 @@ export const ENGLISH_STOPWORDS = [
   "seventeen", "eighteen", "nineteen", "twenty", "thirty", "forty", "fifty",
   "sixty", "seventy", "eighty", "ninety", "hundred", "thousand", "million",
   "billion", "first", "second", "third", "fourth", "fifth", "last", "next",
+  "once", "twice", "good", "new",
   // auxiliares, modales y formas de be / have / do
   "be", "am", "is", "are", "was", "were", "been", "being",
   "have", "has", "had", "having",

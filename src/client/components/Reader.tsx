@@ -1556,8 +1556,9 @@ export default function Reader({
       bookId: bookHash,
       sections: bookRef.current?.sections,
       toc: tocRowsRef.current,
+      language: language ?? "es",
     });
-  }, [companion, page, sectionIndex, bookHash, settings.layout, pageMetrics, state]);
+  }, [companion, page, sectionIndex, bookHash, settings.layout, pageMetrics, state, language]);
 
   // Track 5 & Track 11: Doble toque para traducir párrafo (modo bilingüe fluido en inglés)
   const toggleParagraphTranslation = async (p: HTMLElement) => {

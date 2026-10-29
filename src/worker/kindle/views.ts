@@ -4,6 +4,7 @@
 
 import type { LexiconEntryView } from "../lexicon";
 import type { KindlePrimingWord } from "./epub-reader";
+import { isHashLikeIdentifier } from "../../shared/epub-meta";
 
 export type KindleUser = {
   id: string;
@@ -954,9 +955,13 @@ export function renderHomeView(options: {
             : `/k/read/${encodeURIComponent(b.hash)}?section=${targetSec}&page=${targetPg}`;
           const readLabel = isAtStart ? "Comenzar lectura →" : "Continuar lectura →";
 
+          const displayTitle = (!b.title || isHashLikeIdentifier(b.title))
+            ? (b.author && b.author !== "Autor desconocido" ? `Libro de ${b.author}` : "Libro sin título")
+            : b.title;
+
           return `
             <div class="card">
-              <h2 style="margin:0 0 6px 0; font-size:1.25rem;">${escapeHtml(b.title)}</h2>
+              <h2 style="margin:0 0 6px 0; font-size:1.25rem;">${escapeHtml(displayTitle)}</h2>
               <p style="margin:0 0 10px 0; font-style:italic; color:#444;">${escapeHtml(b.author || "Autor desconocido")}</p>
               <p style="margin:0 0 14px 0; font-size:0.95rem;"><strong>Progreso:</strong> ${escapeHtml(progressText)}</p>
               <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">

@@ -1,5 +1,6 @@
 import { accountFetch } from "./account-fetch";
 import { StaleScopeError, type DbScope } from "./idb";
+import { isHashLikeIdentifier } from "./cover";
 
 export type RemoteBook = {
   hash: string;
@@ -11,6 +12,7 @@ export type RemoteBook = {
   author?: string;
   sections?: number;
   language?: string;
+  hasCover?: boolean;
 };
 
 export type BookUploadMeta = {
@@ -67,7 +69,10 @@ export async function downloadBook(book: RemoteBook, scope?: DbScope) {
     const response = await accountFetch(`/api/books/${book.hash}`, undefined, scope);
     if (!response.ok) return null;
     const data = await response.blob();
-    return new File([data], book.name || `${book.hash.slice(0, 8)}.epub`, {
+    const fallbackName = book.title && !isHashLikeIdentifier(book.title)
+      ? `${book.title}.epub`
+      : `${book.hash}.epub`;
+    return new File([data], book.name && !isHashLikeIdentifier(book.name) ? book.name : fallbackName, {
       type: "application/epub+zip",
     });
   } catch (error) {
@@ -86,5 +91,55 @@ export async function deleteBook(hash: string, scope?: DbScope) {
   } catch (error) {
     if (error instanceof StaleScopeError) throw error;
     return false;
+  }
+}
+
+export async function uploadBookCover(
+  hash: string,
+  cover: Blob,
+  scope?: DbScope,
+): Promise<boolean> {
+  try {
+    const response = await accountFetch(
+      `/api/books/${hash}/cover`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": cover.type || "image/jpeg" },
+        body: cover,
+      },
+      scope,
+    );
+    return response.ok;
+  } catch (error) {
+    if (error instanceof StaleScopeError) throw error;
+    return false;
+  }
+}
+
+export async function fetchBookCover(
+  hash: string,
+  scope?: DbScope,
+): Promise<Blob | null> {
+  try {
+    const response = await accountFetch(`/api/books/${hash}/cover`, undefined, scope);
+    if (!response.ok) return null;
+    return await response.blob();
+  } catch (error) {
+    if (error instanceof StaleScopeError) throw error;
+    return null;
+  }
+}
+
+export async function repairRemoteBook(
+  hash: string,
+  scope?: DbScope,
+): Promise<Partial<RemoteBook> | null> {
+  try {
+    const response = await accountFetch(`/api/books/${hash}/repair`, { method: "POST" }, scope);
+    if (!response.ok) return null;
+    return (await response.json()) as Partial<RemoteBook>;
+  } catch (error) {
+    if (error instanceof StaleScopeError) throw error;
+    return null;
   }
 }

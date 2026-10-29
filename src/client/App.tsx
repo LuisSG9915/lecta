@@ -87,8 +87,15 @@ import {
   loadLastUserId,
   saveLastUserId,
 } from "./lib/last-user";
-import { displayTitle, readBookMeta } from "./lib/cover";
-import { downloadBook, listRemoteBooks } from "./lib/books";
+import {
+  bookDisplayName,
+  coverToJpegBlob,
+  displayTitle,
+  humanizeFilename,
+  isHashLikeIdentifier,
+  readBookMeta,
+} from "./lib/cover";
+import { downloadBook, listRemoteBooks, uploadBookCover } from "./lib/books";
 import { queueBookDelete, queueBookUpload, runBookQueue } from "./lib/book-queue";
 import { getPendingPositionsCount, syncPositions, type PositionConflict } from "./lib/positions-sync";
 
@@ -140,6 +147,7 @@ export default function App() {
     authLink.urlError ? "El enlace ya venció o fue usado. Pide uno nuevo." : "",
   );
   const [checkingLibrary, setCheckingLibrary] = useState(true);
+  const retrofilledCoversRef = useRef<Set<string>>(new Set());
   const [showVocabulary, setShowVocabulary] = useState(false);
   const [showJourney, setShowJourney] = useState(false);
   const [showAccount, setShowAccount] = useState(
@@ -653,29 +661,45 @@ export default function App() {
         language: book.language,
         pendingUpload: pendingUploads.has(book.hash) || undefined,
       }));
+    for (const r of remote) {
+      if (!r.hasCover && !retrofilledCoversRef.current.has(r.hash)) {
+        const local = books.find((b) => b.hash === r.hash);
+        if (local?.cover) {
+          retrofilledCoversRef.current.add(r.hash);
+          const bound = captureDbScope();
+          void coverToJpegBlob(local.cover)
+            .then((jpeg) => uploadBookCover(r.hash, jpeg, bound))
+            .catch(() => {});
+        }
+      }
+    }
+
     const remoteItems: ShelfItem[] = remote
       .filter(
         (item) => !localHashes.has(item.hash) && !pendingDeletes.has(item.hash),
       )
       .sort((a, b) => +new Date(b.uploaded) - +new Date(a.uploaded))
-      .map((item) => ({
-        hash: item.hash,
-        name: item.name || `${item.hash.slice(0, 8)}.epub`,
-        addedAt: +new Date(item.uploaded) || 0,
-        remoteOnly: true,
-        // Los metadatos viajan en el objeto remoto: la ficha muestra
-        // título y autor sin tener que descargar el EPUB.
-        title:
-          item.title ||
-          (!item.name || /^[a-f0-9]{8}\.epub$/i.test(item.name)
-            ? "Libro en la nube"
-            : undefined),
-        author:
-          item.author ||
-          (item.title ? undefined : "Toca para descargar"),
-        sectionCount: item.sections || undefined,
-        language: item.language,
-      }));
+      .map((item) => {
+        const resolvedTitle = bookDisplayName({
+          title: item.title,
+          name: item.name,
+          author: item.author,
+          isRemoteOnly: true,
+        });
+        return {
+          hash: item.hash,
+          name: item.name && !isHashLikeIdentifier(item.name) ? item.name : resolvedTitle,
+          addedAt: +new Date(item.uploaded) || 0,
+          remoteOnly: true,
+          title: resolvedTitle,
+          author:
+            item.author ||
+            (resolvedTitle !== "Libro en la nube" ? undefined : "Toca para descargar"),
+          sectionCount: item.sections || undefined,
+          language: item.language,
+          hasCover: item.hasCover,
+        };
+      });
     setLibrary([...localItems, ...remoteItems]);
     setCheckingLibrary(false);
   }, [sessionUserId]);
@@ -1290,15 +1314,18 @@ export default function App() {
       await saveBook({ hash: item.hash, name: file.name, data: file, addedAt: Date.now() }, scope);
 
       const meta = await readBookMeta(file).catch(() => null);
-      if (meta) {
+      const resolvedTitle = (!meta?.title || isHashLikeIdentifier(meta.title))
+        ? (item.title && !isHashLikeIdentifier(item.title) ? item.title : humanizeFilename(file.name) || undefined)
+        : meta.title;
+      if (meta || resolvedTitle) {
         await updateBookMeta(
           item.hash,
           {
-            title: meta.title,
-            author: meta.author,
-            language: meta.language,
-            sectionCount: meta.sectionCount,
-            cover: meta.cover ?? undefined,
+            title: resolvedTitle || meta?.title,
+            author: meta?.author || item.author,
+            language: meta?.language || item.language,
+            sectionCount: meta?.sectionCount ?? item.sectionCount,
+            cover: meta?.cover ?? undefined,
             metaVersion: 1,
           },
           scope,

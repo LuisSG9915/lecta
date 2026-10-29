@@ -3,6 +3,16 @@ import { act, createElement as h } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Shelf, { type ShelfItem } from "./Shelf";
+import { repairRemoteBook } from "../lib/books";
+
+vi.mock("../lib/books", () => ({
+  repairRemoteBook: vi.fn(async () => ({
+    title: "Libro Reparado",
+    author: "Autor Real",
+    hasCover: true,
+  })),
+  fetchBookCover: vi.fn(async () => null),
+}));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -204,5 +214,47 @@ describe("Pre-Vuelo de Dificultad en Estantería (Fase 2)", () => {
     expect(onOpen).toHaveBeenCalledWith(
       expect.objectContaining({ hash: "h-test-1" }),
     );
+  });
+
+  it("un libro remoteOnly con título 'Libro en la nube' ejecuta repair y abre opciones con botón 'Descargar y abrir'", async () => {
+    const onOpen = vi.fn();
+    const remoteItem: ShelfItem = {
+      hash: "h-remote-cloud",
+      name: "Libro en la nube",
+      addedAt: Date.now(),
+      remoteOnly: true,
+      title: "Libro en la nube",
+    };
+
+    await act(async () => {
+      root.render(
+        h(Shelf, {
+          library: [mockBook, remoteItem],
+          checking: false,
+          onOpen,
+          onRemove: vi.fn(),
+          onAdd: vi.fn(),
+          onLibraryChange: vi.fn(),
+        }),
+      );
+      for (let i = 0; i < 5; i++) await Promise.resolve();
+    });
+
+    const remoteCard = host.querySelector<HTMLButtonElement>('button[aria-label*="Libro en la nube"]');
+    expect(remoteCard).not.toBeNull();
+
+    await act(async () => {
+      remoteCard?.click();
+      await Promise.resolve();
+    });
+
+    // NO abre el lector directamente
+    expect(onOpen).not.toHaveBeenCalled();
+    expect(repairRemoteBook).toHaveBeenCalledWith("h-remote-cloud");
+
+    // Despliega el panel de opciones
+    const downloadBtn = host.querySelector<HTMLButtonElement>(".shelf-options-download-btn");
+    expect(downloadBtn).not.toBeNull();
+    expect(downloadBtn?.textContent).toContain("Descargar y abrir");
   });
 });

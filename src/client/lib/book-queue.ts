@@ -9,8 +9,8 @@ import {
   removeBookOp,
   type DbScope,
 } from "./idb";
-import { deleteBook, uploadBook } from "./books";
-import { readBookMeta } from "./cover";
+import { deleteBook, uploadBook, uploadBookCover } from "./books";
+import { readBookMeta, isHashLikeIdentifier, humanizeFilename, coverToJpegBlob } from "./cover";
 
 // Encola la subida de un libro local a la cuenta; se procesa con
 // runBookQueue (al iniciar sesión o cuando vuelve la conexión).
@@ -23,17 +23,14 @@ export async function queueBookUpload(hash: string, name?: string, scope?: DbSco
   return enqueueBookOp({ kind: "upload", hash, name }, bound);
 }
 
-// Encola el borrado remoto de un libro (el local ya se eliminó).
 export function queueBookDelete(hash: string, scope?: DbScope) {
   return enqueueBookOp({ kind: "delete", hash }, scope);
 }
 
-// Procesa la cola en orden de llegada dentro del contexto capturado:
-// si la cuenta cambia a mitad de la corrida se detiene sin marcar
-// error (las ops quedan para la próxima corrida de la cuenta nueva).
-// Una op que falla queda anotada con su error y no frena a las demás.
-// Devuelve cuántas salieron bien; sin sesión no toca la cola y
-// devuelve 0.
+// Procesa las operaciones pendientes contra la cuenta activa.
+// Devuelve cuántas se completaron. Si la cuenta cambia mientras
+// procesa, para de inmediato (las ops pendientes quedan para la
+// cuenta correcta).
 export async function runBookQueue(scope?: DbScope): Promise<number> {
   const bound = scope ?? captureDbScope();
   if (!bound.userId || !isDbScopeActive(bound)) return 0;
@@ -57,15 +54,34 @@ export async function runBookQueue(scope?: DbScope): Promise<number> {
             let author = book.author;
             let sectionCount = book.sectionCount;
             let language = book.language;
-            if (!title || !author || !language) {
+            let coverBlob = book.cover ?? null;
+
+            if (
+              !title ||
+              !language ||
+              !sectionCount ||
+              isHashLikeIdentifier(title) ||
+              isHashLikeIdentifier(book.name)
+            ) {
               const meta = await readBookMeta(book.data).catch(() => null);
               if (meta) {
                 title = meta.title || title;
                 author = meta.author || author;
                 sectionCount = meta.sectionCount ?? sectionCount;
                 language = meta.language || language;
+                if (!coverBlob && meta.cover) {
+                  coverBlob = meta.cover;
+                }
               }
             }
+
+            if (!title || isHashLikeIdentifier(title)) {
+              const humanized = humanizeFilename(book.name);
+              if (humanized) {
+                title = humanized;
+              }
+            }
+
             ok = await uploadBook(
               op.hash,
               new File([book.data], op.name || book.name),
@@ -79,6 +95,16 @@ export async function runBookQueue(scope?: DbScope): Promise<number> {
               },
               bound,
             );
+
+            // Subida de portada en segundo plano (best-effort)
+            if (ok && coverBlob) {
+              try {
+                const jpeg = await coverToJpegBlob(coverBlob);
+                await uploadBookCover(op.hash, jpeg, bound);
+              } catch {
+                // Falla silenciosamente sin bloquear la cola
+              }
+            }
           }
         } else {
           ok = null;
@@ -95,8 +121,6 @@ export async function runBookQueue(scope?: DbScope): Promise<number> {
         done += 1;
       }
     } catch (error) {
-      // El contexto venció (la sesión cambió durante la corrida): no es
-      // un fallo de la op, así que se queda en la cola sin anotar.
       if (error instanceof StaleScopeError) break;
       await markBookOpError(
         op.id,

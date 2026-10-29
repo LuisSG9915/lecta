@@ -240,6 +240,7 @@
    - Prohibido incluir archivos `.onnx` pesados en el bundle principal del Worker de Cloudflare (< 25 MiB).
    - Implementar pre-síntesis (lookahead buffer de la oración N+1) en `kitten-tts.worker.ts` para eliminar silencios entre frases.
 5. **Verificación Continua**: Después de cada cambio en componentes o librerías, ejecuta `pnpm test` (Vitest) y verifica que no existan regresiones de tipos con TypeScript.
+6. **Identidad Visible Limpia**: Nunca renderizar hashes, IDs o nombres de archivo técnicos como texto visible en cliente ni en Kindle; pasar siempre por `bookDisplayName` (en cliente) o fallbacks limpios en servidor (`isHashLikeIdentifier` / `humanizeFilename`).
 
 ## Auditoría de la estrategia de aprendizaje
 

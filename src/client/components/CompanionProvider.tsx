@@ -219,6 +219,7 @@ export type CompanionReaderContext = {
   bookId: string;
   sections?: SearchSection[];
   toc?: SearchTocRow[];
+  language?: string;
 };
 
 const CompanionContext = createContext<CompanionContextValue | null>(null);

@@ -30,7 +30,7 @@ describe("Cloud Books & Storage Quotas (/api/books)", () => {
     delete: ReturnType<typeof vi.fn>;
     list: ReturnType<typeof vi.fn>;
   };
-  let r2Objects: Map<string, { body: ArrayBuffer; customMetadata?: Record<string, string>; uploaded?: Date }>;
+  let r2Objects: Map<string, { body: ArrayBuffer; customMetadata?: Record<string, string>; uploaded?: Date; httpMetadata?: { contentType?: string } }>;
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -39,8 +39,8 @@ describe("Cloud Books & Storage Quotas (/api/books)", () => {
 
     r2Objects = new Map();
     mockBucket = {
-      put: vi.fn(async (key: string, data: ArrayBuffer, opts?: { customMetadata?: Record<string, string> }) => {
-        r2Objects.set(key, { body: data, customMetadata: opts?.customMetadata, uploaded: new Date() });
+      put: vi.fn(async (key: string, data: ArrayBuffer, opts?: { customMetadata?: Record<string, string>; httpMetadata?: { contentType?: string } }) => {
+        r2Objects.set(key, { body: data, customMetadata: opts?.customMetadata, httpMetadata: opts?.httpMetadata, uploaded: new Date() });
         return {};
       }),
       get: vi.fn(async (key: string) => {
@@ -88,7 +88,8 @@ describe("Cloud Books & Storage Quotas (/api/books)", () => {
     const json = (await res.json()) as { books: Array<{ hash: string; name: string; title: string }> };
     expect(json.books).toHaveLength(1);
     expect(json.books[0].hash).toBe(minimalHash);
-    expect(json.books[0].title).toBe(`Libro ${minimalHash.slice(0, 8)}`);
+    expect(json.books[0].title).toBe("");
+    expect(json.books[0].title).not.toContain("Libro");
 
     // El camino crítico responde sin invocar r2.get()
     expect(mockBucket.get).not.toHaveBeenCalled();
@@ -199,6 +200,118 @@ describe("Cloud Books & Storage Quotas (/api/books)", () => {
     );
   });
 
+  it("GET /api/books repara de forma perezosa hasta 5 libros y marca repairAttemptedAt", async () => {
+    getSessionMock.mockResolvedValueOnce({ user: { id: "user-repair" } });
+
+    r2Objects.set(`books/user-repair/${minimalHash}.epub`, {
+      body: minimalBytes.buffer as ArrayBuffer,
+      customMetadata: { title: "Libro 12345678" },
+      uploaded: new Date(),
+    });
+
+    const waitUntilPromises: Promise<unknown>[] = [];
+    const executionCtx = {
+      waitUntil: (p: Promise<unknown>) => waitUntilPromises.push(p),
+    };
+
+    const res = await app.request(
+      "/api/books",
+      { method: "GET" },
+      { BOOKS: mockBucket as unknown as WorkerEnv["BOOKS"], DATABASE_URL: "postgres://mock" },
+      executionCtx as unknown as ExecutionContext,
+    );
+
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as { books: Array<{ title: string; hash: string }> };
+    expect(json.books[0].title).toBe("");
+
+    expect(waitUntilPromises.length).toBe(1);
+    await Promise.all(waitUntilPromises);
+
+    // Verifica que put fue llamado marcando repairAttemptedAt
+    expect(mockBucket.put).toHaveBeenCalledWith(
+      `books/user-repair/${minimalHash}.epub`,
+      expect.any(Uint8Array),
+      expect.objectContaining({
+        customMetadata: expect.objectContaining({
+          repairAttemptedAt: expect.any(String),
+        }),
+      }),
+    );
+  });
+
+  it("ciclo completo de portadas: PUT /api/books/:hash/cover y GET /api/books/:hash/cover", async () => {
+    getSessionMock.mockResolvedValue({ user: { id: "user-cov" } });
+
+    const queryMock = vi.fn().mockResolvedValue({ rowCount: 1 });
+    vi.spyOn(dbModule, "withClient").mockImplementation(async (_env, callback) => {
+      return callback({ query: queryMock } as unknown as Parameters<typeof callback>[0]);
+    });
+
+    const fakeCover = new Uint8Array([0xff, 0xd8, 0xff, 0xe0]); // magic jpeg
+    const putRes = await app.request(
+      `/api/books/${minimalHash}/cover`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "image/jpeg" },
+        body: fakeCover,
+      },
+      {
+        BOOKS: mockBucket as unknown as WorkerEnv["BOOKS"],
+        DATABASE_URL: "postgres://mock",
+      },
+    );
+    expect(putRes.status).toBe(200);
+    expect(mockBucket.put).toHaveBeenCalledWith(
+      `covers/user-cov/${minimalHash}.jpg`,
+      expect.any(Uint8Array),
+      expect.objectContaining({ httpMetadata: { contentType: "image/jpeg" } }),
+    );
+
+    r2Objects.set(`covers/user-cov/${minimalHash}.jpg`, {
+      body: fakeCover.buffer as ArrayBuffer,
+      customMetadata: {},
+      httpMetadata: { contentType: "image/jpeg" },
+      uploaded: new Date(),
+    });
+
+    const getRes = await app.request(
+      `/api/books/${minimalHash}/cover`,
+      { method: "GET" },
+      { BOOKS: mockBucket as unknown as WorkerEnv["BOOKS"] },
+    );
+    expect(getRes.status).toBe(200);
+    expect(getRes.headers.get("cache-control")).toContain("immutable");
+  });
+
+  it("POST /api/books/:hash/repair devuelve metadatos reparados de inmediato", async () => {
+    getSessionMock.mockResolvedValueOnce({ user: { id: "user-rep-direct" } });
+
+    r2Objects.set(`books/user-rep-direct/${minimalHash}.epub`, {
+      body: minimalBytes.buffer as ArrayBuffer,
+      customMetadata: {},
+      uploaded: new Date(),
+    });
+
+    const queryMock = vi.fn().mockResolvedValue({ rowCount: 1 });
+    vi.spyOn(dbModule, "withClient").mockImplementation(async (_env, callback) => {
+      return callback({ query: queryMock } as unknown as Parameters<typeof callback>[0]);
+    });
+
+    const res = await app.request(
+      `/api/books/${minimalHash}/repair`,
+      { method: "POST" },
+      {
+        BOOKS: mockBucket as unknown as WorkerEnv["BOOKS"],
+        DATABASE_URL: "postgres://mock",
+      },
+    );
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as { title: string; author: string };
+    expect(json.title).toBe("Libro de prueba");
+    expect(json.author).toBe("Equipo Lecta");
+  });
+
   it("DELETE /api/books/:hash borra de R2 y de la tabla user_books", async () => {
     getSessionMock.mockResolvedValueOnce({ user: { id: "user-del" } });
 
@@ -220,6 +333,7 @@ describe("Cloud Books & Storage Quotas (/api/books)", () => {
 
     expect(res.status).toBe(200);
     expect(mockBucket.delete).toHaveBeenCalledWith(`books/user-del/${minimalHash}.epub`);
+    expect(mockBucket.delete).toHaveBeenCalledWith(`covers/user-del/${minimalHash}.jpg`);
     expect(queryMock).toHaveBeenCalledWith(
       expect.stringContaining("DELETE FROM user_books"),
       ["user-del", minimalHash],

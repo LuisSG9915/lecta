@@ -24,6 +24,7 @@ import {
   type KindleUserLexicalState,
 } from "./epub-reader";
 import { ENGLISH_CORE_LEXICON } from "../../shared/english-core-lexicon";
+import { isHashLikeIdentifier, humanizeFilename } from "../../shared/epub-meta";
 import {
   renderChapterPrepView,
   renderHomeView,
@@ -921,8 +922,8 @@ kindleRoutes.get("/", async (c) => {
         }
       }
 
-      if (!title) {
-        title = obj.customMetadata?.name?.replace(/\.epub$/i, "") || "Libro sin título";
+      if (!title || isHashLikeIdentifier(title)) {
+        title = humanizeFilename(obj.customMetadata?.name) || (author && author !== "Autor desconocido" ? `Libro de ${author}` : "Libro sin título");
       }
       if (!author) {
         author = "Autor desconocido";
@@ -970,9 +971,12 @@ kindleRoutes.get("/", async (c) => {
     for (const d1 of userBookList) {
       if (!knownHashes.has(d1.id)) {
         const pos = positionMap.get(d1.id);
+        const resolvedTitle = (!d1.title || isHashLikeIdentifier(d1.title))
+          ? (d1.author && d1.author !== "Autor desconocido" ? `Libro de ${d1.author}` : "Libro sin título")
+          : d1.title;
         books.push({
           hash: d1.id,
-          title: d1.title || "Libro sin título",
+          title: resolvedTitle,
           author: d1.author || "Autor desconocido",
           sections: 1,
           currentSection: pos ? pos.sectionIndex : null,

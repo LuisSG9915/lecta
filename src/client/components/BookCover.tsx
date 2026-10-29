@@ -1,11 +1,21 @@
-import type { CSSProperties } from "react";
-import { coverPalette, coverUrlFor, displayTitle } from "../lib/cover";
+import { useState, useEffect, type CSSProperties } from "react";
+import {
+  coverPalette,
+  coverUrlFor,
+  bookDisplayName,
+  getRemoteCoverObjectUrl,
+  setRemoteCoverCache,
+} from "../lib/cover";
+import { fetchBookCover } from "../lib/books";
 import type { StoredBook } from "../lib/idb";
 
 // Solo los campos que la portada usa: la estantería también pasa
 // ítems «solo en la nube», que no tienen el archivo del libro.
 type BookCoverProps = {
-  book: Pick<StoredBook, "hash" | "name" | "title" | "author" | "cover">;
+  book: Pick<StoredBook, "hash" | "name" | "title" | "author" | "cover"> & {
+    hasCover?: boolean;
+    remoteOnly?: boolean;
+  };
   className?: string;
   progress?: number;
   showRibbon?: boolean;
@@ -20,14 +30,38 @@ export default function BookCover({
   progress,
   showRibbon,
 }: BookCoverProps) {
-  const title = displayTitle(book.name, book.title);
+  const title = bookDisplayName(book);
+  const [remoteCoverUrl, setRemoteCoverUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!book.cover && book.hasCover) {
+      void getRemoteCoverObjectUrl(book.hash).then((cached) => {
+        if (cancelled) return;
+        if (cached) {
+          setRemoteCoverUrl(cached);
+        } else {
+          void fetchBookCover(book.hash).then(async (blob) => {
+            if (cancelled || !blob) return;
+            const url = await setRemoteCoverCache(book.hash, blob);
+            if (!cancelled) setRemoteCoverUrl(url);
+          });
+        }
+      });
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [book.hash, book.cover, book.hasCover]);
+
+  const effectiveCoverUrl = book.cover ? coverUrlFor(book.cover) : remoteCoverUrl;
   const hasRibbon = showRibbon ?? (progress !== undefined && progress > 0);
   const ribbonOffset =
     progress !== undefined
       ? Math.min(85, Math.max(15, Math.round(progress * 100)))
       : 50;
 
-  if (book.cover) {
+  if (effectiveCoverUrl) {
     return (
       <div
         className={`cover cover--3d cover--image ${className ?? ""}`}
@@ -36,7 +70,7 @@ export default function BookCover({
       >
         <img
           className="cover-img"
-          src={coverUrlFor(book.cover)}
+          src={effectiveCoverUrl}
           alt={`Portada de ${title}`}
         />
         <span className="cover-spine-fold" aria-hidden="true" />
