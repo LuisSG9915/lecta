@@ -145,7 +145,19 @@
 ## Producción
 
 - URL: `https://lecta.luis-sg9915.workers.dev` — deploy con `pnpm run deploy`.
-- Último deploy: **2026-10-29** (quinto del día), versión
+- Último deploy: **2026-10-29** (sexto del día), versión
+  `31e91433-9422-4fbd-b527-64e468853496`, Lecta **v0.2.10**: Kindle Zero-Scroll &
+  Pure Paging (filtro Zipf < 4.0 en antesala con salto sin fricción, erradicación de
+  `.cat-notes-box` y de consultas léxicas por página en lectura regular, presupuestos
+  dinámicos sm/md/lg/xl con penalización de 45 chars por salto de bloque, layout CSS
+  100vh paged, nodos inertes `<span class="w">`, pulsación sostenida de 450 ms con
+  fallback por selección nativa, modo `[ 🔍 Consultar ]`, zonas táctiles laterales
+  25%/75% y barra inferior compacta de una línea). Sin migraciones ni secrets nuevos.
+  Verificado en caliente: `pnpm gate` en verde (2943 pruebas, 204.98/215 kB gzip),
+  `/api/health` → 200, `/` → 200 sirviendo `assets/index-Big_LEgH.js`, `0.2.10` en
+  `assets/DiagnosticsModal-DcrEfHD_.js`, `/api/positions` sin sesión → 401, `/k` sirviendo
+  `body.layout-paged`. Sin `smoke:auth`/`smoke:sync`: no toca auth ni el contrato de sync.
+- Deploy anterior: **2026-10-29** (quinto del día), versión
   `459f1541-b018-43c1-867c-e3a552e4bb54`, Lecta **v0.2.8** (redeploy del mismo
   árbol, pedido expresamente; assets idénticos: `assets/index-mHYOojkW.js` con
   sha256 `f156971ab508872c4a33d81af4f7f07293d2fafdb97974de66217ffd5d4c00ad`

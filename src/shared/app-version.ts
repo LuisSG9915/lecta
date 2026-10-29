@@ -6,4 +6,4 @@
  * UI, en el reporte de diagnóstico copiado y en las pruebas. Al subir de
  * versión: este archivo, `package.json` y `mcp/package.json`.
  */
-export const APP_VERSION = "0.2.9";
+export const APP_VERSION = "0.2.10";

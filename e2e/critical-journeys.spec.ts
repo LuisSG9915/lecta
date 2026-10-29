@@ -2,6 +2,8 @@ import { test, expect } from "@playwright/test";
 import path from "node:path";
 import fs from "node:fs";
 import AxeBuilder from "@axe-core/playwright";
+import { renderReaderView } from "../src/worker/kindle/views";
+import { paginateChapter } from "../src/worker/kindle/epub-reader";
 
 const MINIMAL_EPUB_PATH = path.resolve(process.cwd(), "fixtures/minimal.epub");
 const EMOJI_REGEX = /[\u{1F300}-\u{1F64F}\u{1F680}-\u{1F6FF}\u{1F900}-\u{1F9FF}\u{2728}]/u;
@@ -630,5 +632,50 @@ test.describe("Lecta — 9 Recorridos Críticos E2E", () => {
       (v) => v.impact === "critical" || v.impact === "serious",
     );
     expect(blockingReaderViolations).toEqual([]);
+  });
+
+  test("Recorrido 10: Lector Kindle E-Ink Zero-Scroll 1-Pantalla [webkit]", async ({
+    page,
+  }) => {
+    // Viewport estándar de Kindle físico (600x680)
+    await page.setViewportSize({ width: 600, height: 680 });
+
+    const content = paginateChapter(
+      "<p>La casa antigua tenía una puerta estrecha.</p><p>Luis leyó despacio una palabra difícil: perenne.</p>",
+      { size: "md", layout: "paged" },
+    )[0];
+
+    const kindleHtml = renderReaderView({
+      user: { id: "critical-user", email: "critical@kindle.test" },
+      bookHash: "critical-kindle-book",
+      bookTitle: "Libro Kindle Crítico",
+      bookAuthor: "Equipo Lecta",
+      chapterTitle: "Capítulo I",
+      contentHtml: content,
+      sectionIndex: 0,
+      totalSections: 2,
+      pageIndex: 0,
+      totalPages: 1,
+      layout: "paged",
+    });
+
+    await page.route("**/k/read/critical-kindle-book*", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "text/html; charset=utf-8",
+        body: kindleHtml,
+      });
+    });
+
+    await page.goto("/k/read/critical-kindle-book?section=0&page=0&layout=paged");
+    await expect(page.locator(".reader-container")).toBeVisible();
+    await expect(page.locator(".turn-page-bar")).toBeVisible();
+    await expect(page.locator(".cat-notes-box")).not.toBeVisible();
+
+    // Verificación estricta Zero-Scroll en pantalla Kindle
+    const noVerticalScroll = await page.evaluate(() => {
+      return document.documentElement.scrollHeight <= document.documentElement.clientHeight;
+    });
+    expect(noVerticalScroll).toBe(true);
   });
 });

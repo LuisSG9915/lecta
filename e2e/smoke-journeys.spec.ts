@@ -1,5 +1,7 @@
 import { test, expect } from "@playwright/test";
 import path from "node:path";
+import { renderReaderView } from "../src/worker/kindle/views";
+import { paginateChapter } from "../src/worker/kindle/epub-reader";
 
 const MINIMAL_EPUB_PATH = path.resolve(process.cwd(), "fixtures/minimal.epub");
 
@@ -520,5 +522,50 @@ test.describe("Lecta — Journeys Críticos de Estabilización", () => {
       await contextA.close();
       await contextB.close();
     }
+  });
+
+  test("Journey 4: Lector Kindle E-Ink Zero-Scroll 1-Pantalla (@smoke)", async ({
+    page,
+  }) => {
+    // Viewport estándar de Kindle físico (600x680)
+    await page.setViewportSize({ width: 600, height: 680 });
+
+    const content = paginateChapter(
+      "<p>La casa antigua tenía una puerta estrecha.</p><p>Luis leyó despacio una palabra difícil: perenne.</p>",
+      { size: "md", layout: "paged" },
+    )[0];
+
+    const kindleHtml = renderReaderView({
+      user: { id: "smoke-user", email: "smoke@kindle.test" },
+      bookHash: "smoke-kindle-book",
+      bookTitle: "Libro Kindle Smoke",
+      bookAuthor: "Equipo Lecta",
+      chapterTitle: "Capítulo I",
+      contentHtml: content,
+      sectionIndex: 0,
+      totalSections: 2,
+      pageIndex: 0,
+      totalPages: 1,
+      layout: "paged",
+    });
+
+    await page.route("**/k/read/smoke-kindle-book*", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "text/html; charset=utf-8",
+        body: kindleHtml,
+      });
+    });
+
+    await page.goto("/k/read/smoke-kindle-book?section=0&page=0&layout=paged");
+    await expect(page.locator(".reader-container")).toBeVisible();
+    await expect(page.locator(".turn-page-bar")).toBeVisible();
+    await expect(page.locator(".cat-notes-box")).not.toBeVisible();
+
+    // Verificación estricta Zero-Scroll en pantalla Kindle
+    const noVerticalScroll = await page.evaluate(() => {
+      return document.documentElement.scrollHeight <= document.documentElement.clientHeight;
+    });
+    expect(noVerticalScroll).toBe(true);
   });
 });

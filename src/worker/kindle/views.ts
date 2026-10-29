@@ -469,29 +469,89 @@ const KINDLE_CSS = `
   .reader-container {
     max-width: 660px;
     margin: 0 auto;
-    padding: 10px 22px 20px 22px;
+    box-sizing: border-box;
+    padding: 8px 14px;
   }
+  /* Layout paged (1-pantalla Zero-Scroll para Kindle E-ink) */
+  body.layout-paged {
+    height: 100vh;
+    max-height: 100vh;
+    overflow: hidden;
+  }
+  body.layout-paged .reader-container {
+    height: 100vh;
+    max-height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+  body.layout-paged .epub-content {
+    flex: 1 1 auto;
+    overflow: hidden;
+    margin: 0;
+  }
+  /* Layout scroll (lectura continua opcional) */
+  body.layout-scroll {
+    height: auto;
+    overflow-y: auto;
+  }
+  body.layout-scroll .reader-container {
+    height: auto;
+    max-height: none;
+    overflow-y: auto;
+    padding: 8px 14px 24px 14px;
+  }
+
+  /* Barra superior compacta (<= 36px) */
   .reader-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    gap: 8px;
-    padding-bottom: 8px;
+    gap: 6px;
+    height: 32px;
+    max-height: 32px;
+    min-height: 32px;
+    padding: 0 0 2px 0;
     border-bottom: 1px solid #dcdcdc;
-    margin-bottom: 16px;
-    font-size: 0.82rem;
+    margin-bottom: 4px;
+    font-size: 0.8rem;
     line-height: 1.2;
     color: #444444;
+    overflow: hidden;
+  }
+  .reader-header-left {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
   }
   .reader-back-btn {
     display: inline-block;
     color: #222222;
     text-decoration: none;
-    font-size: 0.82rem;
+    font-size: 0.8rem;
     white-space: nowrap;
   }
   .reader-back-btn:hover {
     text-decoration: underline;
+  }
+  .lookup-btn {
+    display: inline-block;
+    background: #ffffff;
+    border: 1px solid #666666;
+    color: #111111;
+    font-size: 0.74rem;
+    padding: 2px 5px;
+    cursor: pointer;
+    line-height: 1.2;
+    border-radius: 0;
+    font-family: inherit;
+  }
+  .lookup-btn.is-active {
+    background: #000000;
+    color: #ffffff;
+    border-color: #000000;
   }
   .reader-header-info {
     flex-grow: 1;
@@ -499,9 +559,9 @@ const KINDLE_CSS = `
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    padding: 0 8px;
+    padding: 0 4px;
     font-size: 0.78rem;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.04em;
     text-transform: uppercase;
   }
   .reader-header-title {
@@ -509,7 +569,7 @@ const KINDLE_CSS = `
     color: #111111;
   }
   .reader-header-sep {
-    margin: 0 4px;
+    margin: 0 3px;
     color: #888888;
   }
   .reader-header-author {
@@ -517,26 +577,54 @@ const KINDLE_CSS = `
     font-style: normal;
   }
   .reader-header-meta {
-    font-size: 0.8rem;
+    font-size: 0.78rem;
     white-space: nowrap;
     color: #222222;
+    display: flex;
+    align-items: center;
+    gap: 4px;
   }
   .reader-header-prep {
-    font-size: 0.78rem;
+    font-size: 0.75rem;
     color: #111111;
     text-decoration: none;
     border: 1px solid #888888;
-    padding: 2px 7px;
-    margin-left: 6px;
+    padding: 2px 5px;
     background: #ffffff;
+  }
+  .reader-header-menu {
+    position: relative;
+    display: inline-block;
+  }
+  .reader-menu-summary {
+    cursor: pointer;
+    font-size: 0.76rem;
+    padding: 2px 5px;
+    border: 1px solid #888888;
+    background: #ffffff;
+    list-style: none;
+  }
+  .reader-menu-summary::-webkit-details-marker {
+    display: none;
+  }
+  .reader-menu-content {
+    position: absolute;
+    right: 0;
+    top: 26px;
+    background: #ffffff;
+    border: 2px solid #000000;
+    padding: 8px 10px;
+    z-index: 100;
+    min-width: 230px;
+    box-shadow: none;
   }
   /* Tarjeta de definición en línea */
   .inline-lookup-card {
     border: 1px solid #111111;
     border-left: 4px solid #000000;
     background: #ffffff;
-    padding: 12px 16px;
-    margin-bottom: 18px;
+    padding: 10px 14px;
+    margin-bottom: 8px;
   }
   .inline-lookup-header {
     display: flex;
@@ -657,18 +745,30 @@ const KINDLE_CSS = `
   .epub-content.mode-lexicon > p:first-of-type {
     text-indent: 0;
   }
-  /* Palabras en modo léxico */
-  a.w.w-lexicon {
-    border-bottom: 2px dotted #000000;
+  /* Palabras interactivas (nodos span.w) */
+  .w {
+    color: inherit;
+    cursor: pointer;
     text-decoration: none;
+    border-bottom: none;
+  }
+  .w.saved {
+    border-bottom: 1.5px dotted #000000;
+  }
+  .w.w-lexicon {
+    border-bottom: 2px dotted #000000;
     font-weight: bold;
   }
-  a.w.w-lexicon sup {
+  .w.w-lexicon sup {
     font-size: 0.72em;
     line-height: 0;
     vertical-align: super;
     font-weight: bold;
     margin-left: 1px;
+  }
+  .lookup-active .w {
+    text-decoration: underline;
+    text-decoration-style: dotted;
   }
   /* Tamaños de fuente */
   .epub-content.size-sm { font-size: 1.0rem; line-height: 1.5; }
@@ -676,111 +776,47 @@ const KINDLE_CSS = `
   .epub-content.size-lg { font-size: 1.35rem; line-height: 1.65; }
   .epub-content.size-xl { font-size: 1.55rem; line-height: 1.72; }
 
-  /* Bloque de Notas del Gato */
-  .cat-notes-box {
-    margin-top: 24px;
-    border: 2px solid #000000;
-    padding: 14px 16px;
-    background: #ffffff;
-  }
-  .cat-notes-title {
-    font-size: 1.08rem;
-    font-weight: bold;
-    border-bottom: 2px solid #000000;
-    padding-bottom: 6px;
-    margin-bottom: 12px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  .cat-note-item {
-    border-bottom: 1px solid #000000;
-    padding: 10px 0;
-  }
-  .cat-note-item:last-child {
-    border-bottom: none;
-  }
-  .cat-note-term {
-    font-weight: bold;
-    font-size: 1.05rem;
-  }
-  .cat-note-pos {
-    font-style: italic;
-    font-size: 0.88rem;
-    margin-left: 6px;
-    color: #444444;
-  }
-  .cat-note-def {
-    margin: 4px 0 8px 0;
-    font-size: 0.95rem;
-    line-height: 1.4;
-  }
-  .cat-note-actions {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-    flex-wrap: wrap;
-  }
-
-  /* Barra para pasar página con un toque ergonómica (25% / 50% / 25%) */
+  /* Barra inferior compacta de una sola línea (<= 36px) */
   .turn-page-bar {
     display: flex;
-    align-items: stretch;
-    gap: 8px;
-    margin-top: 24px;
-    padding-top: 14px;
-    border-top: 2px solid #000000;
+    align-items: center;
+    justify-content: space-between;
+    height: 36px;
+    max-height: 36px;
+    min-height: 36px;
+    margin: 4px 0 0 0;
+    padding: 0 4px;
+    border-top: 1px solid #dcdcdc;
+    font-size: 0.82rem;
+    line-height: 36px;
+    box-sizing: border-box;
     width: 100%;
   }
   .turn-btn {
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    justify-content: center;
-    padding: 10px 8px;
-    border: 2px solid #000000;
+    padding: 0 6px;
     text-decoration: none;
-    font-weight: bold;
-    font-size: 0.95rem;
+    color: #000000;
+    font-size: 0.82rem;
+    white-space: nowrap;
+    border: none;
+    background: transparent;
     cursor: pointer;
-    min-height: 52px;
-    text-align: center;
-    box-sizing: border-box;
-  }
-  .turn-btn-prev {
-    background: #ffffff;
-    color: #000000;
-    flex: 0 0 25%;
-    width: 25%;
-  }
-  .turn-page-indicator {
-    flex: 0 0 50%;
-    width: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.88rem;
-    font-weight: bold;
-    color: #000000;
-    padding: 4px 6px;
-    text-align: center;
-    border: 2px solid #000000;
-    background: #ffffff;
-    box-sizing: border-box;
-    min-height: 52px;
-    line-height: 1.3;
-  }
-  .turn-btn-next {
-    background: #000000;
-    color: #ffffff;
-    flex: 0 0 25%;
-    width: 25%;
-    letter-spacing: 0.02em;
   }
   .turn-btn.disabled {
-    border-color: #888888;
     color: #888888;
-    background: #ffffff;
-    cursor: not-allowed;
+    cursor: default;
+  }
+  .turn-page-indicator {
+    font-size: 0.78rem;
+    color: #444444;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-align: center;
+    flex-grow: 1;
+    padding: 0 4px;
   }
   /* Preparación previa al capítulo (Glosario de apertura) */
   .prep-title {
@@ -1107,6 +1143,7 @@ export function renderReaderView(options: {
   gloss?: boolean;
   catNotes?: CatPageNoteItem[];
   primingOff?: boolean;
+  layout?: "paged" | "scroll";
 }): string {
   const {
     user,
@@ -1123,12 +1160,13 @@ export function renderReaderView(options: {
     lookupResult,
     mode = "clean",
     size = "md",
-    gloss = true,
-    catNotes = [],
+    gloss = false,
+    catNotes: _catNotes = [],
     primingOff = false,
+    layout = "paged",
   } = options;
 
-  const querySuffix = `&mode=${encodeURIComponent(mode)}&size=${encodeURIComponent(size)}&gloss=${gloss ? "1" : "0"}`;
+  const querySuffix = `&mode=${encodeURIComponent(mode)}&size=${encodeURIComponent(size)}&layout=${layout}${gloss ? "&gloss=1" : ""}`;
   const cleanPageUrl = `/k/read/${encodeURIComponent(bookHash)}?section=${sectionIndex}&page=${pageIndex}${querySuffix}`;
 
   const prevUrl =
@@ -1193,56 +1231,7 @@ export function renderReaderView(options: {
     `;
   }
 
-  // Bloque "🐾 Notas del Gato en esta página"
-  let catNotesHtml = "";
-  if ((mode === "lexicon" || gloss) && catNotes && catNotes.length > 0) {
-    catNotesHtml = `
-      <div class="cat-notes-box">
-        <div class="cat-notes-title">
-          <span>🐾 Notas del Gato en esta página</span>
-        </div>
-        <div class="cat-notes-list">
-          ${catNotes
-            .map(
-              (n) => `
-            <div class="cat-note-item">
-              <div>
-                <span class="cat-note-term"><sup>${n.noteIndex}</sup> ${escapeHtml(n.form)}</span>
-                ${n.pos ? `<span class="cat-note-pos">(${escapeHtml(n.pos)})</span>` : ""}
-                ${n.saved ? `<span class="badge-saved" style="margin-left:6px;">✓ En tu Cuaderno</span>` : ""}
-              </div>
-              <div class="cat-note-def">${escapeHtml(n.meaning)}</div>
-              <div class="cat-note-actions">
-                <form method="POST" action="/k/knowledge/mark" style="display:inline;">
-                  <input type="hidden" name="lemma" value="${escapeHtml(n.lemma)}" />
-                  <input type="hidden" name="known" value="1" />
-                  <input type="hidden" name="returnTo" value="${escapeHtml(cleanPageUrl)}" />
-                  <button type="submit" class="btn btn-sm" style="min-height:44px; padding:6px 12px; font-size:0.85rem;">[ ✓ Ya la sé ]</button>
-                </form>
-                ${
-                  !n.saved
-                    ? `
-                  <form method="POST" action="/k/vocab/add" style="display:inline;">
-                    <input type="hidden" name="form" value="${escapeHtml(n.form)}" />
-                    <input type="hidden" name="lemma" value="${escapeHtml(n.lemma)}" />
-                    <input type="hidden" name="pos" value="${escapeHtml(n.pos || "")}" />
-                    <input type="hidden" name="meaning" value="${escapeHtml(n.meaning)}" />
-                    <input type="hidden" name="bookHash" value="${escapeHtml(bookHash)}" />
-                    <input type="hidden" name="returnTo" value="${escapeHtml(cleanPageUrl)}" />
-                    <button type="submit" class="btn btn-sm btn-primary" style="min-height:44px; padding:6px 12px; font-size:0.85rem;">[ ★ A mi cuaderno ]</button>
-                  </form>
-                `
-                    : ""
-                }
-              </div>
-            </div>
-          `,
-            )
-            .join("")}
-        </div>
-      </div>
-    `;
-  }
+  // catNotesHtml retirado de la vista de lectura página a página para garantizar Zero-Scroll
 
   const baseParamUrl = `/k/read/${encodeURIComponent(bookHash)}?section=${sectionIndex}&page=${pageIndex}`;
 
@@ -1254,17 +1243,44 @@ export function renderReaderView(options: {
   <title>${escapeHtml(bookTitle)} (${sectionIndex + 1}/${totalSections} — ${pageIndex + 1}/${totalPages}) — Lecta</title>
   <style>${KINDLE_CSS}</style>
 </head>
-<body class="reader-body">
+<body class="reader-body layout-${escapeHtml(layout)}">
   <div class="reader-container">
     <header class="reader-header">
-      <a href="/k" class="reader-back-btn">← Biblioteca</a>
+      <div class="reader-header-left">
+        <a href="/k" class="reader-back-btn">← Libros</a>
+        <button type="button" id="lookupToggle" class="lookup-btn" title="Alternar modo consulta">[ 🔍 Consultar ]</button>
+      </div>
       <div class="reader-header-info">
         <span class="reader-header-title">${escapeHtml(bookTitle)}</span>
         <span class="reader-header-sep">·</span>
         <span class="reader-header-author">${escapeHtml(bookAuthor)}</span>
       </div>
       <div class="reader-header-meta">
-        Cap. ${sectionIndex + 1}/${totalSections}
+        <details class="reader-header-menu">
+          <summary class="reader-menu-summary">[ Modo / Aa ]</summary>
+          <div class="reader-menu-content">
+            <div class="mode-selector">
+              <span style="font-size:0.8rem; font-weight:bold; display:block; margin-bottom:4px;">Modo:</span>
+              <div style="display:flex; gap:4px; margin-bottom:8px; flex-wrap:wrap;">
+                <a href="${baseParamUrl}&amp;mode=clean&amp;size=${size}&amp;layout=${layout}" class="mode-tab ${mode === "clean" ? "is-active" : ""}">[ Modo Limpio ]</a>
+                <a href="${baseParamUrl}&amp;mode=paragraphs&amp;size=${size}&amp;layout=${layout}" class="mode-tab ${mode === "paragraphs" ? "is-active" : ""}">[ Modo Párrafos ]</a>
+                <a href="${baseParamUrl}&amp;mode=lexicon&amp;size=${size}&amp;layout=${layout}" class="mode-tab ${mode === "lexicon" ? "is-active" : ""}">[ Modo Léxico ]</a>
+              </div>
+              <span style="font-size:0.8rem; font-weight:bold; display:block; margin-bottom:4px;">Letra:</span>
+              <div class="size-selector" style="display:flex; gap:4px; margin-bottom:8px;">
+                <a href="${baseParamUrl}&amp;mode=${mode}&amp;size=sm&amp;layout=${layout}" class="size-btn ${size === "sm" ? "is-active" : ""}">P</a>
+                <a href="${baseParamUrl}&amp;mode=${mode}&amp;size=md&amp;layout=${layout}" class="size-btn ${size === "md" ? "is-active" : ""}">M</a>
+                <a href="${baseParamUrl}&amp;mode=${mode}&amp;size=lg&amp;layout=${layout}" class="size-btn ${size === "lg" ? "is-active" : ""}">G</a>
+                <a href="${baseParamUrl}&amp;mode=${mode}&amp;size=xl&amp;layout=${layout}" class="size-btn ${size === "xl" ? "is-active" : ""}">XG</a>
+              </div>
+              <span style="font-size:0.8rem; font-weight:bold; display:block; margin-bottom:4px;">Disposición:</span>
+              <div style="display:flex; gap:4px;">
+                <a href="${baseParamUrl}&amp;mode=${mode}&amp;size=${size}&amp;layout=paged" class="mode-tab ${layout === "paged" ? "is-active" : ""}">Paginado</a>
+                <a href="${baseParamUrl}&amp;mode=${mode}&amp;size=${size}&amp;layout=scroll" class="mode-tab ${layout === "scroll" ? "is-active" : ""}">Scroll</a>
+              </div>
+            </div>
+          </div>
+        </details>
         <a href="/k/practice?bookHash=${encodeURIComponent(bookHash)}&amp;returnTo=${encodeURIComponent(cleanPageUrl)}" class="reader-header-prep" title="Practicar vocabulario">🎯 Práctica</a>
         <a href="/k/read/${encodeURIComponent(bookHash)}?section=${sectionIndex}&amp;prep=1" class="reader-header-prep" title="Ver vocabulario del capítulo">📖 Prep</a>
         ${
@@ -1274,20 +1290,6 @@ export function renderReaderView(options: {
         }
       </div>
     </header>
-
-    <div class="mode-selector">
-      <span style="font-size:0.85rem; font-weight:bold; margin-right:4px;">Modo:</span>
-      <a href="${baseParamUrl}&amp;mode=clean&amp;size=${size}&amp;gloss=${gloss ? 1 : 0}" class="mode-tab ${mode === "clean" ? "is-active" : ""}">[ Modo Limpio ]</a>
-      <a href="${baseParamUrl}&amp;mode=paragraphs&amp;size=${size}&amp;gloss=${gloss ? 1 : 0}" class="mode-tab ${mode === "paragraphs" ? "is-active" : ""}">[ Modo Párrafos ]</a>
-      <a href="${baseParamUrl}&amp;mode=lexicon&amp;size=${size}&amp;gloss=${gloss ? 1 : 0}" class="mode-tab ${mode === "lexicon" ? "is-active" : ""}">[ Modo Léxico ]</a>
-      <div class="size-selector">
-        <span style="font-size:0.82rem; margin-right:2px;">Letra:</span>
-        <a href="${baseParamUrl}&amp;mode=${mode}&amp;size=sm&amp;gloss=${gloss ? 1 : 0}" class="size-btn ${size === "sm" ? "is-active" : ""}">P</a>
-        <a href="${baseParamUrl}&amp;mode=${mode}&amp;size=md&amp;gloss=${gloss ? 1 : 0}" class="size-btn ${size === "md" ? "is-active" : ""}">M</a>
-        <a href="${baseParamUrl}&amp;mode=${mode}&amp;size=lg&amp;gloss=${gloss ? 1 : 0}" class="size-btn ${size === "lg" ? "is-active" : ""}">G</a>
-        <a href="${baseParamUrl}&amp;mode=${mode}&amp;size=xl&amp;gloss=${gloss ? 1 : 0}" class="size-btn ${size === "xl" ? "is-active" : ""}">XG</a>
-      </div>
-    </div>
 
     ${flashHtml}
 
@@ -1299,28 +1301,129 @@ export function renderReaderView(options: {
       ${contentHtml}
     </div>
 
-    ${catNotesHtml}
-
     <nav class="turn-page-bar">
       ${
         hasPrev && prevUrl
-          ? `<a href="${escapeHtml(prevUrl)}" class="turn-btn turn-btn-prev">[ ← Anterior ]</a>`
-          : `<span class="turn-btn turn-btn-prev disabled">[ ← Anterior ]</span>`
+          ? `<a href="${escapeHtml(prevUrl)}" class="turn-btn turn-btn-prev">[ ← Ant. ]</a>`
+          : `<span class="turn-btn turn-btn-prev disabled">[ ← Ant. ]</span>`
       }
       <div class="turn-page-indicator">
         Pág. ${pageIndex + 1} de ${totalPages} · Cap. ${sectionIndex + 1}${chapterTitle ? `: ${escapeHtml(chapterTitle)}` : ""}
       </div>
       ${
         hasNext && nextUrl
-          ? `<a href="${escapeHtml(nextUrl)}" class="turn-btn turn-btn-next">[ ${
-              pageIndex === totalPages - 1 && sectionIndex < totalSections - 1
-                ? "Siguiente capítulo →"
-                : "Siguiente página →"
-            } ]</a>`
-          : `<span class="turn-btn turn-btn-next disabled">[ Fin del libro ]</span>`
+          ? `<a href="${escapeHtml(nextUrl)}" class="turn-btn turn-btn-next">[ Sig. → ]</a>`
+          : `<span class="turn-btn turn-btn-next disabled">[ Fin ]</span>`
       }
     </nav>
   </div>
+
+  <script>
+  (function() {
+    var lookupBase = ${JSON.stringify(cleanPageUrl)};
+    var prevUrl = ${JSON.stringify(prevUrl || "")};
+    var nextUrl = ${JSON.stringify(nextUrl || "")};
+
+    function triggerLookup(rawWord) {
+      if (!rawWord) return;
+      var w = rawWord.trim().toLowerCase();
+      if (!w || w.length < 2 || w.length > 40) return;
+      var sep = lookupBase.indexOf('?') >= 0 ? '&' : '?';
+      window.location.href = lookupBase + sep + 'lookup=' + encodeURIComponent(w);
+    }
+
+    var content = document.querySelector('.epub-content');
+    var toggleBtn = document.getElementById('lookupToggle');
+
+    if (toggleBtn && content) {
+      toggleBtn.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var active = content.classList.toggle('lookup-active');
+        toggleBtn.classList.toggle('is-active', active);
+        toggleBtn.textContent = active ? '[ ✕ Consulta ON ]' : '[ 🔍 Consultar ]';
+      });
+    }
+
+    var pressTimer = null;
+    var startX = 0;
+    var startY = 0;
+
+    function clearTimer() {
+      if (pressTimer) {
+        clearTimeout(pressTimer);
+        pressTimer = null;
+      }
+    }
+
+    if (content) {
+      content.addEventListener('touchstart', function(e) {
+        var t = e.target;
+        while (t && t !== content && !t.getAttribute('data-w')) {
+          t = t.parentElement;
+        }
+        if (t && t.getAttribute('data-w')) {
+          var touch = e.touches[0];
+          startX = touch.clientX;
+          startY = touch.clientY;
+          clearTimer();
+          pressTimer = setTimeout(function() {
+            pressTimer = null;
+            triggerLookup(t.getAttribute('data-w'));
+          }, 450);
+        }
+      }, false);
+
+      content.addEventListener('touchmove', function(e) {
+        if (pressTimer && e.touches[0]) {
+          var dx = Math.abs(e.touches[0].clientX - startX);
+          var dy = Math.abs(e.touches[0].clientY - startY);
+          if (dx > 10 || dy > 10) {
+            clearTimer();
+          }
+        }
+      }, false);
+
+      content.addEventListener('touchend', function() {
+        clearTimer();
+        var sel = window.getSelection ? window.getSelection().toString().trim() : '';
+        if (sel && sel.length >= 2 && sel.length <= 35) {
+          triggerLookup(sel);
+        }
+      }, false);
+
+      content.addEventListener('touchcancel', clearTimer, false);
+
+      content.addEventListener('click', function(e) {
+        var sel = window.getSelection ? window.getSelection().toString().trim() : '';
+        if (sel) return;
+
+        var isLookupMode = content.classList.contains('lookup-active');
+        if (isLookupMode) {
+          var t = e.target;
+          while (t && t !== content && !t.getAttribute('data-w')) {
+            t = t.parentElement;
+          }
+          if (t && t.getAttribute('data-w')) {
+            e.preventDefault();
+            e.stopPropagation();
+            triggerLookup(t.getAttribute('data-w'));
+            return;
+          }
+        }
+
+        if (e.target.tagName === 'A' || e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT') return;
+
+        var w = window.innerWidth || document.documentElement.clientWidth || 600;
+        if (e.clientX < w * 0.25) {
+          if (prevUrl) window.location.href = prevUrl;
+        } else {
+          if (nextUrl) window.location.href = nextUrl;
+        }
+      }, false);
+    }
+  })();
+  </script>
 </body>
 </html>`;
 }

@@ -148,6 +148,9 @@ describe("epub-reader (Kindle E-ink)", () => {
   });
 
   describe("paginateChapter", () => {
+    const scrollPath = resolve(__dirname, "../../../fixtures/scroll.epub");
+    const scrollBytes = new Uint8Array(readFileSync(scrollPath));
+
     it("divide un texto largo en páginas de longitud controlada", () => {
       const paragraphs = Array.from(
         { length: 10 },
@@ -169,6 +172,58 @@ describe("epub-reader (Kindle E-ink)", () => {
       expect(pages.length).toBe(1);
       expect(pages[0]).toBe(short);
     });
+
+    it("aplica presupuestos dinámicos según tamaño (sm, md, lg, xl) con minimal.epub y scroll.epub", async () => {
+      const minimalChapter = await getEpubChapter(minimalBytes, 0, "test-minimal");
+      expect(minimalChapter).not.toBeNull();
+      const content = minimalChapter!.contentHtml;
+
+      const pSm = paginateChapter(content, { size: "sm" });
+      const pMd = paginateChapter(content, { size: "md" });
+      const pLg = paginateChapter(content, { size: "lg" });
+      const pXl = paginateChapter(content, { size: "xl" });
+
+      expect(pSm.length).toBeGreaterThan(0);
+      expect(pMd.length).toBeGreaterThanOrEqual(pSm.length);
+      expect(pLg.length).toBeGreaterThanOrEqual(pMd.length);
+      expect(pXl.length).toBeGreaterThanOrEqual(pLg.length);
+
+      const scrollChapter = await getEpubChapter(scrollBytes, 0, "test-scroll");
+      if (scrollChapter) {
+        const sSm = paginateChapter(scrollChapter.contentHtml, { size: "sm" });
+        const sMd = paginateChapter(scrollChapter.contentHtml, { size: "md" });
+        const sLg = paginateChapter(scrollChapter.contentHtml, { size: "lg" });
+        const sXl = paginateChapter(scrollChapter.contentHtml, { size: "xl" });
+
+        expect(sSm.length).toBeGreaterThan(0);
+        expect(sMd.length).toBeGreaterThanOrEqual(sSm.length);
+        expect(sLg.length).toBeGreaterThanOrEqual(sMd.length);
+        expect(sXl.length).toBeGreaterThanOrEqual(sLg.length);
+      }
+    });
+
+    it("aplica penalización de 45 caracteres por salto de párrafo (</p>, </blockquote>, </li>)", () => {
+      // 4 párrafos de 60 caracteres = 240 caracteres de texto puro
+      // Con penalización: 240 + 4 * 45 = 420 caracteres equivalentes
+      const fourShortPs = `
+        <p>Párrafo uno con exactamente sesenta caracteres de longitud!!!</p>
+        <p>Párrafo dos con exactamente sesenta caracteres de longitud!!!</p>
+        <p>Párrafo tres con exactamente sesenta caracteres de longitud!!</p>
+        <p>Párrafo cuatro con exactamente sesenta caracteres longitud!!!</p>
+      `;
+      // En size "lg" pageZeroBudget es 280:
+      // Sin penalización (240 caracteres) cabría en 1 página (240 < 280)
+      // Con penalización (420 caracteres) se divide en múltiples páginas
+      const pagesLg = paginateChapter(fourShortPs, { size: "lg" });
+      expect(pagesLg.length).toBeGreaterThan(1);
+    });
+
+    it("soporta modo scroll con presupuesto amplio de 1200 caracteres", () => {
+      const longText = Array.from({ length: 6 }, (_, i) => `<p>Párrafo largo número ${i + 1} para probar layout de lectura continua con amplio presupuesto.</p>`).join("\n");
+      const pagesPaged = paginateChapter(longText, { size: "md", layout: "paged" });
+      const pagesScroll = paginateChapter(longText, { size: "md", layout: "scroll" });
+      expect(pagesScroll.length).toBeLessThanOrEqual(pagesPaged.length);
+    });
   });
 
   describe("extractPageWords", () => {
@@ -187,7 +242,7 @@ describe("epub-reader (Kindle E-ink)", () => {
   });
 
   describe("wrapWordsWithLinks", () => {
-    it("envuelve palabras en enlaces de consulta inline respetando tags HTML y puntuación", () => {
+    it("envuelve palabras en spans data-w inertes respetando tags HTML y puntuación sin generar enlaces <a>", () => {
       const html = '<p class="lead">La casa antigua.</p>';
       const saved = new Set(["antigua"]);
       const wrapped = wrapWordsWithLinks(
@@ -201,19 +256,21 @@ describe("epub-reader (Kindle E-ink)", () => {
       expect(wrapped).toContain('<p class="lead">');
       expect(wrapped).toContain('</p>');
       // La puntuación queda fuera
-      expect(wrapped).toContain('</a>.');
-      // Enlace ordinario a lookup en la misma página
-      expect(wrapped).toContain('/k/read/book123?section=0&amp;page=0&amp;lookup=casa');
-      // Palabra guardada lleva clase saved
-      expect(wrapped).toContain('class="w saved"');
-      expect(wrapped).toContain('>antigua</a>');
+      expect(wrapped).toContain('</span>.');
+      // NO genera enlaces <a> en el cuerpo
+      expect(wrapped).not.toContain('<a href=');
+      expect(wrapped).not.toContain('lookup=casa');
+      // Palabra ordinaria lleva clase w y data-w
+      expect(wrapped).toContain('<span class="w" data-w="casa">casa</span>');
+      // Palabra guardada lleva clase saved y data-w
+      expect(wrapped).toContain('<span class="w saved" data-w="antigua">antigua</span>');
     });
 
     it("no re-envuelve texto que ya está dentro de un enlace <a>", () => {
       const html = '<p><a href="#nota">Nota al pie</a> y texto normal.</p>';
       const wrapped = wrapWordsWithLinks(html, "b1", "/k", new Set());
       expect(wrapped).toContain('<a href="#nota">Nota al pie</a>');
-      expect(wrapped).toContain('/k?lookup=texto');
+      expect(wrapped).toContain('<span class="w" data-w="texto">texto</span>');
     });
   });
 
@@ -271,12 +328,14 @@ describe("epub-reader (Kindle E-ink)", () => {
   });
 
   describe("wrapWordsWithLinks con notedWordsMap (Modo Léxico)", () => {
-    it("añade la clase w-lexicon y superíndice a las palabras anotadas", () => {
+    it("añade la clase w-lexicon, data-w y superíndice a las palabras anotadas sin enlace <a>", () => {
       const html = "<p>Un silencio perenne inundó la estancia.</p>";
       const noted = new Map<string, number>([["perenne", 1]]);
       const wrapped = wrapWordsWithLinks(html, "book123", "/k/read/book123", new Set(), noted);
       expect(wrapped).toContain('class="w w-lexicon"');
-      expect(wrapped).toContain("perenne<sup>1</sup>");
+      expect(wrapped).toContain('data-w="perenne"');
+      expect(wrapped).toContain("perenne<sup>1</sup></span>");
+      expect(wrapped).not.toContain("<a href=");
     });
   });
 
@@ -399,6 +458,23 @@ describe("epub-reader (Kindle E-ink)", () => {
       const lemmas = selected.map((s) => s.lemma);
       expect(lemmas).not.toContain("soledad");
       expect(lemmas).not.toContain("afrenta");
+    });
+
+    it("filtra estrictamente palabras con Zipf >= 4.0 y retorna arreglo vacío cuando solo existen palabras cotidianas", () => {
+      const everydayText = "El hombre abrió la puerta de su casa por la noche y dijo adiós.";
+      const everydayCatalog = new Map([
+        ["casa", { beta: 0.1, gloss: "Edificio para habitar.", pos: "sustantivo", zipf: 5.77 }],
+        ["hombre", { beta: 0.2, gloss: "Ser humano varón.", pos: "sustantivo", zipf: 5.58 }],
+        ["puerta", { beta: 0.3, gloss: "Abertura en una pared.", pos: "sustantivo", zipf: 5.07 }],
+        ["noche", { beta: 0.2, gloss: "Tiempo en que falta la luz del sol.", pos: "sustantivo", zipf: 5.55 }],
+      ]);
+      const state: KindleUserLexicalState = {
+        theta: 0.0,
+        knownLemmas: new Set(),
+        learningRetrievability: new Map(),
+      };
+      const selected = selectKindleChapterPrimingWords(everydayText, "es", state, everydayCatalog);
+      expect(selected).toHaveLength(0);
     });
 
     it("soporta selección en inglés (isForeignLang: true)", () => {

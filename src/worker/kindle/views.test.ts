@@ -8,6 +8,7 @@ import {
   renderLoginView,
   renderKindleLinkView,
   renderPracticeView,
+  renderReaderView,
   type KindleChapterPrimingViewProps,
 } from "./views";
 import type { KindlePrimingWord } from "./epub-reader";
@@ -261,6 +262,66 @@ describe("Kindle Views - Seguridad y Escapado Anti-XSS", () => {
         isFinished: false,
       });
       expect(emptyHtml).toContain("No hay palabras pendientes");
+    });
+  });
+
+  describe("renderReaderView (Kindle Zero-Scroll & Ergonomía)", () => {
+    const baseProps = {
+      user: { id: "u1", email: "lector@kindle.test" },
+      bookHash: "hash-kindle-1",
+      bookTitle: "La Metamorfosis",
+      bookAuthor: "Franz Kafka",
+      chapterTitle: "Capítulo I",
+      contentHtml: '<p><span class="w" data-w="gregor">Gregor</span> <span class="w" data-w="samsa">Samsa</span>.</p>',
+      sectionIndex: 0,
+      totalSections: 3,
+      pageIndex: 0,
+      totalPages: 5,
+    };
+
+    it("no inyecta el bloque de notas al pie cat-notes-box para asegurar 100% Zero-Scroll", () => {
+      const html = renderReaderView({
+        ...baseProps,
+        gloss: false,
+        catNotes: [
+          {
+            form: "perenne",
+            lemma: "perenne",
+            pos: "adj.",
+            meaning: "Que dura indefinidamente.",
+            noteIndex: 1,
+            saved: false,
+          },
+        ],
+      });
+      expect(html).not.toContain("cat-notes-box");
+      expect(html).not.toContain("Notas del Gato en esta página");
+    });
+
+    it("aplica por defecto layout-paged y respeta layout-scroll cuando se solicita", () => {
+      const htmlPaged = renderReaderView(baseProps);
+      expect(htmlPaged).toContain('class="reader-body layout-paged"');
+
+      const htmlScroll = renderReaderView({ ...baseProps, layout: "scroll" });
+      expect(htmlScroll).toContain('class="reader-body layout-scroll"');
+    });
+
+    it("incluye el interruptor [ 🔍 Consultar ] y la barra inferior compacta turn-page-bar", () => {
+      const html = renderReaderView(baseProps);
+      expect(html).toContain('id="lookupToggle"');
+      expect(html).toContain("[ 🔍 Consultar ]");
+      expect(html).toContain("turn-page-bar");
+      expect(html).toContain("[ ← Ant. ]");
+      expect(html).toContain("[ Sig. → ]");
+    });
+
+    it("inyecta el script ultraligero para long-press (450ms) y tap zones laterales", () => {
+      const html = renderReaderView(baseProps);
+      expect(html).toContain("<script>");
+      expect(html).toContain("450");
+      expect(html).toContain("lookup-active");
+      expect(html).toContain("0.25");
+      expect(html).toContain("window.getSelection");
     });
   });
 });

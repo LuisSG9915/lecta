@@ -488,12 +488,13 @@ describe("Kindle Routes (/k and /kindle)", () => {
       expect(html).toContain("reader-header");
       expect(html).toContain("Libro de prueba");
       expect(html).toContain("Equipo Lecta");
-      // Las palabras se convierten en enlaces a consulta inline en la misma página
-      expect(html).toContain("lookup=antigua");
-      expect(html).toContain("lookup=estrecha");
-      expect(html).toContain("lookup=perenne");
+      // Las palabras se convierten en spans inertes con data-w sin enlaces <a> accidentales
+      expect(html).toContain('data-w="antigua"');
+      expect(html).toContain('data-w="estrecha"');
+      expect(html).toContain('data-w="perenne"');
+      expect(html).not.toContain('href="/k/read/mock-hash-1?section=0&amp;page=0&amp;lookup=');
       // Botón directo para pasar página o avanzar al siguiente capítulo
-      expect(html).toMatch(/Siguiente (página|capítulo) →/);
+      expect(html).toContain("[ Sig. → ]");
       // El contenido del libro se presenta limpio sin cajas inferiores de vocabulario
       expect(html).toContain("epub-content");
       expect(html).toContain("turn-page-bar");

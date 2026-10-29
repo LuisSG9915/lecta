@@ -6,12 +6,11 @@ import { setSignedCookie } from "hono/cookie";
 import { getConnectionString, withClient, type WorkerEnv } from "../db";
 import { getSession } from "../session";
 import { createScopedAuth, closePoolSafe } from "../auth";
-import { findEntries, findEntriesForForms, type LexiconEntryView } from "../lexicon";
+import { findEntries, findEntriesForForms } from "../lexicon";
 import { createEmptyCard, fsrs, generatorParameters, Rating, type Card } from "ts-fsrs";
 import {
   estimateThetaFromD1Knowledge,
   extractChapterPrepCandidates,
-  extractPageWords,
   findSentenceWithWord,
   formatChapterHtmlForMode,
   getEpubChapter,
@@ -1197,11 +1196,17 @@ kindleRoutes.get("/read/:hash", async (c) => {
   const rawMode = c.req.query("mode");
   const rawSize = c.req.query("size");
   const rawGloss = c.req.query("gloss");
+  const rawLayout = c.req.query("layout");
   const mode = (rawMode as "clean" | "paragraphs" | "lexicon") || "clean";
   const size = (rawSize as "sm" | "md" | "lg" | "xl") || "md";
-  const gloss = rawGloss !== "0";
-  const querySuffix = `${rawMode ? `&mode=${encodeURIComponent(rawMode)}` : ""}${rawSize ? `&size=${encodeURIComponent(rawSize)}` : ""}${rawGloss !== undefined ? `&gloss=${encodeURIComponent(rawGloss)}` : ""}`;
-  const renderQuerySuffix = `&mode=${encodeURIComponent(mode)}&size=${encodeURIComponent(size)}&gloss=${gloss ? "1" : "0"}`;
+  const gloss = rawGloss === "1";
+  const cookieHeader = c.req.header("cookie") || "";
+  const cookieLayout = cookieHeader.includes("lecta_k_layout=scroll") ? "scroll" : "paged";
+  const layout: "paged" | "scroll" = rawLayout === "scroll" || rawLayout === "paged"
+    ? rawLayout
+    : cookieLayout;
+  const querySuffix = `${rawMode ? `&mode=${encodeURIComponent(rawMode)}` : ""}${rawSize ? `&size=${encodeURIComponent(rawSize)}` : ""}${rawGloss !== undefined ? `&gloss=${encodeURIComponent(rawGloss)}` : ""}${layout !== "paged" ? `&layout=${layout}` : ""}`;
+  const renderQuerySuffix = `&mode=${encodeURIComponent(mode)}&size=${encodeURIComponent(size)}&gloss=${gloss ? "1" : "0"}&layout=${layout}`;
 
   // Si no se especifica la sección en la URL, cargar la última posición guardada (sección y página)
   if (requestedSection === undefined) {
@@ -1359,8 +1364,8 @@ kindleRoutes.get("/read/:hash", async (c) => {
     );
   }
 
-  // Paginación del capítulo en pantallas discretas
-  const pages = paginateChapter(chapter.contentHtml);
+  // Paginación del capítulo en pantallas discretas (Zero-Scroll en modo paged)
+  const pages = paginateChapter(chapter.contentHtml, { size, layout });
   const totalPages = pages.length;
 
   let pageIndex = 0;
@@ -1371,7 +1376,6 @@ kindleRoutes.get("/read/:hash", async (c) => {
   }
 
   const isPrimed = c.req.query("primed") === "1";
-  const cookieHeader = c.req.header("cookie") || "";
   const isPrimingOff = cookieHeader.includes("lecta_k_priming_off=1");
   const isBookMuted = cookieHeader.includes(`lecta_k_mute_${encodeURIComponent(hash)}=1`);
 
@@ -1448,7 +1452,7 @@ kindleRoutes.get("/read/:hash", async (c) => {
     };
 
     // 2. Construir catálogo léxico relevante para este capítulo
-    const lexiconCatalog = new Map<string, { beta: number; gloss: string; pos?: string }>();
+    const lexiconCatalog = new Map<string, { beta: number; gloss: string; pos?: string; zipf?: number | null }>();
 
     if (bookLang === "en") {
       for (const [w, item] of Object.entries(ENGLISH_CORE_LEXICON)) {
@@ -1477,6 +1481,7 @@ kindleRoutes.get("/read/:hash", async (c) => {
                 beta: entry.zipf ? Math.max(0.1, 5.0 - entry.zipf) : 0.6,
                 gloss,
                 pos: entry.pos || undefined,
+                zipf: entry.zipf ?? null,
               });
             }
           }
@@ -1564,62 +1569,17 @@ kindleRoutes.get("/read/:hash", async (c) => {
 
   const currentUrl = `/k/read/${encodeURIComponent(hash)}?section=${chapter.sectionIndex}&page=${pageIndex}${renderQuerySuffix}`;
 
-  // Extraer palabras candidatas de esta página
-  const candidateWords = extractPageWords(rawPageHtml, "es");
-  const pageWords: PageWordItem[] = candidateWords.map((form) => ({
-    form,
-    saved: savedWordsSet.has(form.toLowerCase()),
-  }));
-
-  // Extraer hasta 4 palabras desconocidas para las Notas del Gato
-  const unknownCandidates = candidateWords.filter((w) => !knownSet.has(w.toLowerCase()));
+  // En lectura regular no se extraen palabras ni se consultan notas al pie para Zero-Scroll y rendimiento
+  const pageWords: PageWordItem[] = [];
   const catNotes: CatPageNoteItem[] = [];
-  if (unknownCandidates.length > 0) {
-    const entriesMap: Record<string, LexiconEntryView[]> =
-      (await withClient(c.env, (client) =>
-        findEntriesForForms(client, "es", unknownCandidates.slice(0, 50)),
-      ).catch(() => ({}))) ?? {};
 
-    const seenLemmas = new Set<string>();
-    let noteIdx = 1;
-    for (const form of unknownCandidates) {
-      const entries = entriesMap?.[form] || entriesMap?.[form.toLowerCase()];
-      if (!entries || entries.length === 0) continue;
-      const entry = entries[0];
-      const lemma = entry.lemma || form;
-      const lemmaLower = lemma.toLowerCase();
-      if (knownSet.has(lemmaLower) || seenLemmas.has(lemmaLower)) continue;
-      const firstMeaning = entry.senses?.[0]?.definition?.trim();
-      if (!firstMeaning) continue;
-
-      seenLemmas.add(lemmaLower);
-      catNotes.push({
-        form,
-        lemma,
-        pos: entry.pos || null,
-        meaning: firstMeaning,
-        noteIndex: noteIdx++,
-        saved: savedWordsSet.has(form.toLowerCase()) || savedWordsSet.has(lemmaLower),
-      });
-      if (catNotes.length >= 4) break;
-    }
-  }
-
-  const notedWordsMap = new Map<string, number>();
-  if (mode === "lexicon") {
-    for (const note of catNotes) {
-      notedWordsMap.set(note.form.toLowerCase(), note.noteIndex);
-    }
-  }
-
-  // Formatear texto según modo y enlazar palabras interactivas
+  // Formatear texto según modo y enlazar palabras con spans inertes
   const formattedHtml = formatChapterHtmlForMode(rawPageHtml, mode);
   const interactivePageHtml = wrapWordsWithLinks(
     formattedHtml,
     hash,
     currentUrl,
     savedWordsSet,
-    mode === "lexicon" ? notedWordsMap : undefined,
   );
 
   // Consulta de definición en línea si se pulsó una palabra
@@ -1704,6 +1664,7 @@ kindleRoutes.get("/read/:hash", async (c) => {
       gloss,
       catNotes,
       primingOff: isPrimingOff || isBookMuted,
+      layout,
     }),
   );
 });

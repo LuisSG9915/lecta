@@ -1,33 +1,48 @@
-# Track 7: Kindle & E-Ink Adaptive Pre-Chapter Vocabulary Priming
+# Track 7: Kindle & E-Ink Adaptive Pre-Chapter Vocabulary Priming & Zero-Scroll Pure Paging
 
 ## Objective
-Extend the scientific pre-chapter vocabulary priming space to the Kindle / E-Ink web reader (`src/worker/kindle/`) in 4 clean phases, respecting E-Ink hardware constraints (zero CSS animations/transitions, high-contrast monochrome, 44px+ tap targets, progressive enhancement with HTML forms) and `.agents/rules/lecta-zero-friction.md`.
+Extend the scientific pre-chapter vocabulary priming space and zero-scroll pure paging to the Kindle / E-Ink web reader (`src/worker/kindle/`) in 4 clean phases, respecting E-Ink hardware constraints (zero CSS animations/transitions, high-contrast monochrome, 44px+ tap targets, progressive enhancement with HTML forms) and `.agents/rules/lecta-zero-friction.md`.
 
 ## Phase Breakdown for gemini-3.8-flash
 
-### Phase 1: Edge Lexical Extraction & Rasch ZPD Selector (`src/worker/kindle/epub-reader.ts`)
-- Implement `estimateThetaFromD1Knowledge` using Rasch 1PL (`1 / (1 + exp(-(theta - beta)))`) over D1 `user_knowledge` records.
-- Implement `selectKindleChapterPrimingWords` to select 3 to 5 optimal words per chapter using:
-  `Utility = (1 - P(know)) * ln(1 + chapterFreq) * ZPD_Gaussian(theta, beta)`.
-- Extract the exact chapter sentence (max 140 chars) via `extractCompactContextSentence`.
-- Support both native language books (L1) and foreign language books (L2).
+### Phase 1: Erradicación de Ruido al Pie y Filtro Zipf en Antesala (`views.ts`, `routes.ts`, `epub-reader.ts`)
+- **Eliminación de `.cat-notes-box` en lectura regular**: `gloss = false` por defecto en `renderReaderView`, retirando la inyección del bloque de notas al pie y deprecando/eliminando reglas CSS de `.cat-notes-box` (~350-450 px verticales).
+- **Desactivación de extracción léxica por página**: En `GET /k/read/:hash`, se desactiva `extractPageWords` y el bucle de consultas de notas al pie en páginas regulares, ahorrando CPU y consultas de red.
+- **Endurecimiento del selector de Antesala con filtro Zipf**:
+  - Compuerta de frecuencia léxica usando `public/lexicon/lemmas-freq-es.tsv.gz`.
+  - Descarte estricto de cualquier lema o forma con $\text{Zipf} \ge 4.0$ (palabras cotidianas como *casa*, *hombre*, *puerta*, *dijo*, *noche*).
+  - Priorización de candidatos en la Zona de Desarrollo Próximo (Rasch 1PL) con $\text{Zipf} < 4.0$, seleccionando de 3 a 5 palabras clave.
+  - **Salto sin fricción**: Si se obtienen 0 palabras candidatas, se renderiza directamente el contenido del capítulo sin mostrar antesalas vacías.
 
-### Phase 2: Zero-Friction Routes, 1-Click Disable & D1 Sync (`src/worker/kindle/routes.ts`)
-- When entering `page === 0` of a chapter and priming is enabled (neither `lecta_k_priming_off` nor `lecta_k_mute_:bookId` cookie is set, and `?primed=1` is not set), render the Kindle pre-chapter priming view if there are >= 1 high-utility words.
-- Add `POST /kindle/priming/action` to handle:
-  - `known`: Upsert `status = 'known'` in `user_knowledge` and recalibrate user theta upward.
-  - `save`: Upsert `status = 'learning'` in `user_knowledge` and schedule in `user_reviews` (FSRS).
-  - `mute_book`: Set cookie to hide priming for this `bookId` and redirect immediately to `?primed=1`.
-  - `disable_all`: Set cookie to disable priming globally and redirect immediately to `?primed=1`.
-- Add a toggle link in the Kindle reader top/bottom bar so the user can re-enable or disable pre-reading anytime.
+### Phase 2: Paginación Estricta 1-Pantalla (Zero-Scroll) (`epub-reader.ts`, `routes.ts`, `views.ts`)
+- **Presupuesto dinámico de caracteres en `paginateChapter`**:
+  - `sm`: 620 caracteres (520 en `page === 0` por presencia de `.chapter-heading`).
+  - `md` (default): 480 caracteres (390 en `page === 0`).
+  - `lg`: 360 caracteres (280 en `page === 0`).
+  - `xl`: 260 caracteres (190 en `page === 0`).
+  - **Penalización por saltos de párrafo**: Descuento de 45 caracteres equivalentes por cada cierre de bloque (`</p>`, `</blockquote>`, `</li>`).
+- **Layout CSS paged vs scroll**:
+  - Modo `paged` (default): `.reader-container` con `height: 100vh; max-height: 100vh; overflow: hidden; display: flex; flex-direction: column; justify-content: space-between; padding: 8px 14px;`.
+  - Cabecera `.reader-header` compacta y barra de modo colapsable ($\le 36\text{ px}$).
+  - Franja inferior `.turn-page-bar` de una sola línea ($\le 36\text{ px}$).
+  - Modo `scroll`: `overflow-y: auto; height: auto;` con presupuesto amplio de 1200 caracteres para lectura continua opcional.
 
-### Phase 3: High-Contrast E-Ink UI & In-Chapter Anchors (`src/worker/kindle/views.ts`)
-- Implement `renderKindleChapterPrimingView` with strict E-Ink CSS (`transition: none !important`, `#000` on `#fff`, 2px solid borders, 44px+ buttons) and progressive enhancement (`window.lectaKindleAction` via `fetch` to hide cards without full E-Ink page flash).
-- Implement `injectKindlePrimedAnchors` so the 3–5 pre-read words appear in the chapter HTML with a dashed underline and compact inline gloss.
+### Phase 3: Interacción Léxica por Long-Press y Modo Consulta (`epub-reader.ts`, `views.ts`)
+- **Reemplazo de etiquetas `<a>` por `<span class="w" data-w="...">` inertes**:
+  - `wrapWordsWithLinks` genera `<span class="w" data-w="...">` en vez de enlaces `<a>`, suprimiendo navegaciones accidentales y popups no deseados en el navegador experimental de Kindle.
+  - Estilos CSS sin decoración de hipervínculo en estado inactivo.
+- **Script cliente ultraligero ES5 (< 1.2 kB)**:
+  - Detección de pulsación larga (450 ms) sobre `.w` para consultar definición.
+  - Cancelación de temporizador si ocurre `touchmove` (> 10 px) o `touchend` prematuro.
+  - Fallback por selección nativa (`window.getSelection()`) tras `touchend`.
+  - Interruptor `[ 🔍 Consultar ]` en la barra superior para alternar modo consulta directa con 1-toque.
 
-### Phase 4: Vitest Unit & Route Tests (`epub-reader.test.ts` & `routes.test.ts`)
-- Add unit tests for `selectKindleChapterPrimingWords`, `estimateThetaFromD1Knowledge`, and `extractCompactContextSentence`.
-- Add route tests in `routes.test.ts` verifying:
-  1. Rendering of the pre-chapter view on chapter start.
-  2. Immediate bypass when `?primed=1` or `mute_book` / `disable_all` is triggered.
-  3. D1 `user_knowledge` updates when marking a word as `known` or `save`.
+### Phase 4: Zonas Táctiles (Tap Zones), Ergonomía y Gobernanza (`views.ts`, tests y reglas)
+- **Zonas Táctiles (Tap Zones)** en `.epub-content`:
+  - Toque en el 25% izquierdo: navegar a página anterior.
+  - Toque en el 75% derecho/central: navegar a página siguiente.
+  - No intercepta cuando el modo consulta está activo o cuando hay selección activa.
+- **Barra inferior compacta `.turn-page-bar`**:
+  - Una sola línea ($\le 36\text{ px}$): `[ ← Ant. ] Pág. X de Y · Cap. Z [ Sig. → ]`.
+- **Regla Inquebrantable**:
+  - Regla 7 en `.agents/rules/lecta-zero-friction.md` blindando la experiencia Zero-Scroll y Paging puro.

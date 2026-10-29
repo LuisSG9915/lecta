@@ -902,6 +902,7 @@ Revertir. El archivo en `public/` se puede borrar sin efectos: nadie lo referenc
 | 2026-10-22 | Gate único `pnpm gate` | Cinco comandos a mano se olvidan; uno no |
 | 2026-10-22 | `smoke:auth` deja 2 cuentas en prod | Se acepta y se documenta; no hay borrado automático |
 | 2026-10-22 | Fase 7 se cierra en 4 573 líneas (criterio 1 no alcanzado) | El JSX está agotado: el último bloque eran 94 líneas. Las ~1 073 restantes son lógica y exigen `ReaderEngineContext` + hooks, que §10.2 saca explícitamente de esta fase |
+| 2026-10-29 | Kindle Zero-Scroll & Pure Paging (Track 7) | Eliminación de `.cat-notes-box` y enlaces `<a>` por palabra en `/k/read`; paginación calibrada por tamaño y penalización por saltos de bloque; antesala filtrada con Zipf < 4.0; script ES5 para long-press (450ms) y zonas táctiles laterales (25% / 75%) |
 
 ## 14. Qué cambió respecto a la v1
 

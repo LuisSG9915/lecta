@@ -2,6 +2,9 @@
 // Sin dependencias pesadas: lee el ZIP con DecompressionStream nativo
 // y extrae secciones limpias sin JavaScript para dispositivos de tinta electrónica.
 
+import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { gunzipSync } from "node:zlib";
 import { isStopword } from "../../shared/stopwords";
 import { isWordToken, normalizeWordForm } from "../../shared/word-form";
 
@@ -503,28 +506,79 @@ function splitLongParagraph(blockHtml: string, maxLen = 850): string[] {
   return parts.length > 0 ? parts : [blockHtml];
 }
 
-export function paginateChapter(contentHtml: string, maxCharsPerPage = 850): string[] {
+export type KindleFontSize = "sm" | "md" | "lg" | "xl";
+
+export type PaginateOptions = {
+  size?: KindleFontSize;
+  maxCharsPerPage?: number;
+  layout?: "paged" | "scroll";
+};
+
+export const KINDLE_PAGE_BUDGETS: Record<KindleFontSize, { standard: number; pageZero: number }> = {
+  sm: { standard: 620, pageZero: 520 },
+  md: { standard: 480, pageZero: 390 },
+  lg: { standard: 360, pageZero: 280 },
+  xl: { standard: 260, pageZero: 190 },
+};
+
+export const KINDLE_SCROLL_BUDGET = 1200;
+export const BLOCK_BREAK_PENALTY = 45;
+
+function countBlockClosures(html: string): number {
+  const matches = html.match(/<\/(?:p|blockquote|li)>/gi);
+  return matches ? matches.length : 0;
+}
+
+export function paginateChapter(
+  contentHtml: string,
+  options?: number | PaginateOptions,
+): string[] {
+  let size: KindleFontSize = "md";
+  let maxCharsPerPage: number | undefined;
+  let isScroll = false;
+
+  if (typeof options === "number") {
+    maxCharsPerPage = options;
+  } else if (options && typeof options === "object") {
+    size = options.size || "md";
+    maxCharsPerPage = options.maxCharsPerPage;
+    isScroll = options.layout === "scroll";
+  }
+
+  const standardBudget = isScroll
+    ? (maxCharsPerPage ?? KINDLE_SCROLL_BUDGET)
+    : (maxCharsPerPage ?? KINDLE_PAGE_BUDGETS[size].standard);
+
+  const pageZeroBudget = isScroll
+    ? standardBudget
+    : (maxCharsPerPage ?? KINDLE_PAGE_BUDGETS[size].pageZero);
+
   const rawBlocks = splitHtmlIntoBlocks(contentHtml);
   if (rawBlocks.length === 0) return [contentHtml || "<p>Sin contenido.</p>"];
 
   const expandedBlocks: string[] = [];
   for (const b of rawBlocks) {
-    expandedBlocks.push(...splitLongParagraph(b, maxCharsPerPage));
+    expandedBlocks.push(...splitLongParagraph(b, standardBudget));
   }
 
   const pages: string[] = [];
   let currentPageBlocks: string[] = [];
-  let currentLen = 0;
+  let currentWeight = 0;
 
   for (const block of expandedBlocks) {
-    const blockLen = stripHtml(block).length || 50;
-    if (currentPageBlocks.length > 0 && (currentLen + blockLen > maxCharsPerPage)) {
+    const rawLen = stripHtml(block).length || 50;
+    const closures = countBlockClosures(block);
+    const blockWeight = rawLen + closures * BLOCK_BREAK_PENALTY;
+
+    const currentLimit = pages.length === 0 ? pageZeroBudget : standardBudget;
+
+    if (currentPageBlocks.length > 0 && currentWeight + blockWeight > currentLimit) {
       pages.push(currentPageBlocks.join("\n"));
       currentPageBlocks = [block];
-      currentLen = blockLen;
+      currentWeight = blockWeight;
     } else {
       currentPageBlocks.push(block);
-      currentLen += blockLen;
+      currentWeight += blockWeight;
     }
   }
 
@@ -588,7 +642,7 @@ export function formatChapterHtmlForMode(
 export function wrapWordsWithLinks(
   html: string,
   _bookHash: string,
-  currentUrl: string,
+  _currentUrl: string,
   savedWords: Set<string>,
   notedWordsMap?: Map<string, number>,
 ): string {
@@ -597,8 +651,6 @@ export function wrapWordsWithLinks(
   let inScriptOrStyle = false;
 
   const wordRegex = /([\p{L}\p{M}]{2,}(?:['’][\p{L}\p{M}]+)?)/gu;
-  const safeUrl = currentUrl.replace(/&(?!amp;|lt;|gt;|quot;|#\d+;)/g, "&amp;");
-  const sep = safeUrl.includes("?") ? "&amp;" : "?";
 
   for (let i = 0; i < tokens.length; i++) {
     const token = tokens[i];
@@ -618,14 +670,13 @@ export function wrapWordsWithLinks(
           const lower = word.toLowerCase();
           const isSaved = savedWords.has(lower);
           const noteIndex = notedWordsMap?.get(lower);
-          const href = `${safeUrl}${sep}lookup=${encodeURIComponent(lower)}`;
           let cls = isSaved ? "w saved" : "w";
           let sup = "";
           if (noteIndex != null) {
             cls += " w-lexicon";
             sup = `<sup>${noteIndex}</sup>`;
           }
-          return `<a href="${href}" class="${cls}">${word}${sup}</a>`;
+          return `<span class="${cls}" data-w="${lower}">${word}${sup}</span>`;
         });
       }
     }
@@ -761,17 +812,67 @@ export function extractCompactContextSentence(chapterPlainText: string, surfaceF
   return `${start > 0 ? '…' : ''}${sentence.slice(start, end).trim()}${end < sentence.length ? '…' : ''}`;
 }
 
+let cachedZipfTable: Map<string, number> | null = null;
+
+export function loadZipfTable(): Map<string, number> {
+  if (cachedZipfTable) return cachedZipfTable;
+  const map = new Map<string, number>();
+
+  try {
+    const candidatePaths = [
+      resolve(process.cwd(), "public/lexicon/lemmas-freq-es.tsv.gz"),
+      resolve(__dirname, "../../../public/lexicon/lemmas-freq-es.tsv.gz"),
+    ];
+
+    let foundPath: string | null = null;
+    for (const p of candidatePaths) {
+      if (existsSync(p)) {
+        foundPath = p;
+        break;
+      }
+    }
+
+    if (foundPath) {
+      const buffer = readFileSync(foundPath);
+      const text = new TextDecoder().decode(gunzipSync(buffer));
+      const lines = text.split("\n");
+      for (const line of lines) {
+        const tabIdx = line.indexOf("\t");
+        if (tabIdx > 0) {
+          const lemma = line.slice(0, tabIdx).trim().toLowerCase();
+          const z = parseFloat(line.slice(tabIdx + 1));
+          if (!isNaN(z)) {
+            map.set(lemma, z);
+          }
+        }
+      }
+    }
+  } catch {
+    // Si no está disponible en el entorno o runtime, continúa con mapa vacío
+  }
+
+  cachedZipfTable = map;
+  return map;
+}
+
+export function getZipfFrequency(word: string, lang = "es"): number | null {
+  if (lang !== "es") return null;
+  const table = loadZipfTable();
+  return table.get(word.toLowerCase()) ?? null;
+}
+
 /**
- * Selecciona entre 3 y 5 palabras óptimas para mostrar en la antesala E-Ink del capítulo
+ * Selecciona entre 3 y 5 palabras de verdadero valor pedagógico para la antesala E-Ink.
+ * Aplica una compuerta estricta de frecuencia léxica descartando cualquier lema o forma con Zipf >= 4.0.
  */
 export function selectKindleChapterPrimingWords(
   chapterPlainText: string,
   lang: string,
   userState: KindleUserLexicalState,
-  lexiconCatalog: Map<string, { beta: number; gloss: string; pos?: string }>,
+  lexiconCatalog: Map<string, { beta: number; gloss: string; pos?: string; zipf?: number | null }>,
   options: { maxWords?: number; isForeignLang?: boolean } = {}
 ): KindlePrimingWord[] {
-  const maxWords = options.maxWords ?? 4;
+  const maxWords = options.maxWords ?? 5;
   const isForeign = options.isForeignLang ?? false;
   const normalizedLang = lang.slice(0, 2).toLowerCase() || 'es';
 
@@ -793,7 +894,7 @@ export function selectKindleChapterPrimingWords(
     }
   }
 
-  // 2. Puntuar cada candidato con Rasch + Zona de Desarrollo Próximo (ZPD)
+  // 2. Puntuar cada candidato con Rasch + Zona de Desarrollo Próximo (ZPD) y compuerta Zipf < 4.0
   const scored: KindlePrimingWord[] = [];
   const targetOffset = isForeign ? 0.35 : 0.65;
   const sigma = isForeign ? 1.15 : 1.0;
@@ -801,6 +902,14 @@ export function selectKindleChapterPrimingWords(
   for (const [lemma, info] of freqMap.entries()) {
     const lexEntry = lexiconCatalog.get(lemma);
     if (!lexEntry || !lexEntry.gloss) continue;
+
+    // Compuerta de frecuencia léxica estricta: descartar palabras cotidianas con Zipf >= 4.0
+    // (casa, hombre, puerta, dijo/decir, noche, etc.)
+    const fileZipf = getZipfFrequency(lemma, normalizedLang) ?? getZipfFrequency(info.surface, normalizedLang);
+    const candidateZipf = lexEntry.zipf ?? fileZipf;
+    if (candidateZipf != null && candidateZipf >= 4.0) {
+      continue;
+    }
 
     const pKnown = userState.learningRetrievability.has(lemma)
       ? userState.learningRetrievability.get(lemma)!
