@@ -1395,6 +1395,7 @@ export default function Reader({
     noteActivity,
     closeActivity,
     saveSoon,
+    saveImmediate,
   } = useReaderPersistence({
     bookHash,
     isReady: state === "ready",
@@ -1407,6 +1408,12 @@ export default function Reader({
     paused: readingPaused,
     dailyGoalMs,
   });
+
+  const handleBack = useCallback(() => {
+    void saveImmediate().finally(() => {
+      onBack();
+    });
+  }, [saveImmediate, onBack]);
 
   // Detección de récord mensual (>10 min y supera récord de 30 días) (Fase 1 Anti-Abandono)
   useEffect(() => {
@@ -3985,7 +3992,7 @@ export default function Reader({
         className="measure-probe"
       />
       <ReaderTopBar
-        onBack={onBack}
+        onBack={handleBack}
         title={currentChapterTarget?.label || sectionTitle || title || fileName}
         author={author}
         progress={progress}
@@ -4049,7 +4056,7 @@ export default function Reader({
         onMidChapterRecallSolve={solveMidChapterRecall}
         onMidChapterRecallSkip={skipMidChapterRecall}
         onInternalLinkClick={handleInternalLinkClick}
-        onBack={onBack}
+        onBack={handleBack}
       />
 
       {/* Botones de navegación lateral flotantes */}

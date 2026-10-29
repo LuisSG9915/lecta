@@ -1,0 +1,102 @@
+name: Deploy Smoke Tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_url:
+        description: "Target URL to run smoke tests against"
+        required: false
+        default: "https://lecta.luis-sg9915.workers.dev"
+        type: string
+  deployment_status:
+  schedule:
+    - cron: "0 8 * * *"
+
+permissions:
+  contents: read
+  deployments: read
+  issues: write
+
+jobs:
+  smoke:
+    name: Post-Deploy Smoke Verification
+    if: github.event_name != 'deployment_status' || github.event.deployment_status.state == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run Smoke Tests (Auth & Sync)
+        env:
+          SMOKE_URL: ${{ inputs.target_url || github.event.deployment_status.target_url || secrets.SMOKE_BASE_URL || 'https://lecta.luis-sg9915.workers.dev' }}
+          SMOKE_SYNC_EMAIL: ${{ secrets.SMOKE_SYNC_EMAIL || 'sync-smoke-canonical@example.com' }}
+          SMOKE_SYNC_PASSWORD: ${{ secrets.SMOKE_SYNC_PASSWORD || 'lecta-smoke-2026' }}
+        run: |
+          pnpm smoke:auth
+          pnpm smoke:sync
+
+      - name: Report Smoke Failure Issue
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const targetUrl = '${{ inputs.target_url || github.event.deployment_status.target_url || secrets.SMOKE_BASE_URL || "https://lecta.luis-sg9915.workers.dev" }}';
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const title = '🚨 Regresión detectada en Smoke Tests Post-Deploy';
+            const body = [
+              '### Fallo en Smoke Tests Post-Deploy',
+              '',
+              `- **Target URL:** ${targetUrl}`,
+              `- **Trigger:** \`${context.eventName}\``,
+              `- **Action Run:** [Ver ejecución](${runUrl})`,
+              `- **Commit:** ${context.sha}`,
+              `- **Fecha:** ${new Date().toISOString()}`,
+              '',
+              'Por favor revisa los logs de la ejecución para determinar si hubo problemas de propagación de Cloudflare Workers, credenciales de base de datos o regresiones en los endpoints de sincronización y autenticación.'
+            ].join('\n');
+
+            try {
+              const issues = await github.rest.issues.listForRepo({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                state: 'open',
+                labels: 'smoke-regression'
+              });
+
+              if (issues.data.length > 0) {
+                const existingIssue = issues.data[0];
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: existingIssue.number,
+                  body: `Se ha registrado un nuevo fallo en los smoke tests contra **${targetUrl}**:\n\n${body}`
+                });
+                console.log(`Comentario añadido al issue #${existingIssue.number}`);
+              } else {
+                const newIssue = await github.rest.issues.create({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  title,
+                  body,
+                  labels: ['smoke-regression']
+                });
+                console.log(`Issue creado: #${newIssue.data.number}`);
+              }
+            } catch (err) {
+              console.error('Error gestionando issue de GitHub:', err);
+            }

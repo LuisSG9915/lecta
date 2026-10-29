@@ -1,16 +1,43 @@
-// Prueba de humo del contrato de sincronización: crea una cuenta temporal,
-// escribe posiciones, anotaciones y conocimiento por la API y comprueba que
-// el pull incremental viaja con `syncedAt` del servidor.
+// Prueba de humo del contrato de sincronización:
+// Utiliza una cuenta canónica (o temporal) y realiza operaciones idempotentes (UPSERTs),
+// verificando que el pull incremental viaje con syncedAt del servidor.
+// Limpia y reutiliza el registro canónico para evitar bloat en la base de datos.
 //   node scripts/smoke-sync.mjs                      (dev en 127.0.0.1:5174)
 //   SMOKE_URL=https://lecta.luis-sg9915.workers.dev node scripts/smoke-sync.mjs
-// Igual que `smoke:auth`, **escribe** en el servidor al que apunte: la cuenta
-// queda creada con los datos de prueba.
+
 const BASE = process.env.SMOKE_URL ?? "http://127.0.0.1:5174";
+const CANONICAL_EMAIL = process.env.SMOKE_SYNC_EMAIL ?? "sync-smoke-canonical@example.com";
+const PASSWORD = process.env.SMOKE_SYNC_PASSWORD ?? "lecta-smoke-2026";
+
 let failures = 0;
 const check = (name, cond, detail = "") => {
   if (!cond) failures += 1;
   console.log(`${cond ? "PASS" : "FAIL"} ${name}${detail ? ` — ${detail}` : ""}`);
 };
+
+export async function waitForHealth(baseUrl = BASE, maxAttempts = 3, baseDelayMs = 15000) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const response = await fetch(`${baseUrl}/api/health`, { headers: { origin: baseUrl } });
+      if (response.ok) {
+        const data = await response.json().catch(() => null);
+        if (data?.db === "connected" || data?.ok || data?.status === "ok") {
+          console.log(`PASS Healthcheck OK en intento ${attempt} (${baseUrl})`);
+          return true;
+        }
+      }
+      console.warn(`[health] Intento ${attempt}/${maxAttempts} no saludable (status: ${response.status}).`);
+    } catch (err) {
+      console.warn(`[health] Intento ${attempt}/${maxAttempts} error de conexión: ${err?.message || err}`);
+    }
+    if (attempt < maxAttempts) {
+      const delay = Math.round(baseDelayMs * Math.pow(1.5, attempt - 1));
+      console.log(`[health] Esperando ${Math.round(delay / 1000)}s antes de reintentar...`);
+      await new Promise((r) => setTimeout(r, delay));
+    }
+  }
+  return false;
+}
 
 async function api(path, { method = "GET", body, cookie } = {}) {
   const headers = { origin: BASE };
@@ -30,17 +57,53 @@ async function api(path, { method = "GET", body, cookie } = {}) {
   return { status: response.status, data, setCookie: response.headers.getSetCookie?.() ?? [] };
 }
 
-const email = `sync-smoke-${Date.now()}@example.com`;
-const signUp = await api("/api/auth/sign-up/email", {
-  method: "POST",
-  body: { email, password: "lecta-smoke-2026", name: "Sync Smoke" },
-});
-check("registro", signUp.status === 200, `status ${signUp.status}`);
-const cookie = signUp.setCookie?.find((c) => c.includes("session_token"))?.split(";")[0];
-check("cookie de sesión", Boolean(cookie));
+// 1. Health check con backoff
+const isHealthy = await waitForHealth(BASE);
+check("health 200 + db conectada", isHealthy);
+if (!isHealthy) {
+  console.error("FAIL Servidor no disponible tras reintentos con backoff.");
+  process.exit(1);
+}
 
-const health = await api("/api/health");
-check("health 200 + db conectada", health.status === 200 && health.data?.db === "connected", JSON.stringify(health.data));
+// 2. Autenticación con cuenta canónica (idempotente) o fallback a efímera
+let cookie;
+let emailUsed = CANONICAL_EMAIL;
+
+// Intentar iniciar sesión primero (cuenta canónica persistente)
+let authRes = await api("/api/auth/sign-in/email", {
+  method: "POST",
+  body: { email: CANONICAL_EMAIL, password: PASSWORD },
+});
+
+if (authRes.status === 200) {
+  cookie = authRes.setCookie?.find((c) => c.includes("session_token"))?.split(";")[0];
+  check("inicio de sesión con cuenta canónica", Boolean(cookie));
+} else {
+  // Si no existe, intentar registrarla
+  authRes = await api("/api/auth/sign-up/email", {
+    method: "POST",
+    body: { email: CANONICAL_EMAIL, password: PASSWORD, name: "Sync Smoke Canonical" },
+  });
+  if (authRes.status === 200) {
+    cookie = authRes.setCookie?.find((c) => c.includes("session_token"))?.split(";")[0];
+    check("registro de cuenta canónica", Boolean(cookie));
+  } else {
+    // Fallback a cuenta efímera si las credenciales de la canónica cambiaron
+    emailUsed = `sync-smoke-${Date.now()}@example.com`;
+    console.warn(`Advertencia: No se pudo usar cuenta canónica (status: ${authRes.status}). Usando efímera: ${emailUsed}`);
+    const fallback = await api("/api/auth/sign-up/email", {
+      method: "POST",
+      body: { email: emailUsed, password: PASSWORD, name: "Sync Smoke Fallback" },
+    });
+    cookie = fallback.setCookie?.find((c) => c.includes("session_token"))?.split(";")[0];
+    check("registro de cuenta efímera (fallback)", fallback.status === 200 && Boolean(cookie));
+  }
+}
+
+if (!cookie) {
+  console.error("FAIL No se pudo obtener sesión para pruebas de sync.");
+  process.exit(1);
+}
 
 const sinSesion = await api("/api/positions");
 check("positions sin sesión → 401", sinSesion.status === 401, `status ${sinSesion.status}`);
@@ -101,6 +164,6 @@ check("PUT knowledge", knowPut.status === 200 && knowPut.data?.upserted >= 1, JS
 const knowPull = await api("/api/knowledge?since=0&includeLanguages=1", { cookie });
 check("GET knowledge con syncedAt", (knowPull.data?.rows ?? []).some((k) => k.lemma === "prueba" && Number.isFinite(k.syncedAt)), JSON.stringify(knowPull.data?.rows));
 
-console.log(`cuenta creada en ${BASE}: ${email}`);
+console.log(`Smoke sync completado para cuenta en ${BASE}: ${emailUsed}`);
 console.log(failures === 0 ? "E2E OK" : `E2E CON ${failures} FALLOS`);
 process.exitCode = failures === 0 ? 0 : 1;

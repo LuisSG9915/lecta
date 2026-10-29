@@ -206,6 +206,89 @@ describe("POST /api/ai/explain-in-passage (FASE 3: Latencia, Caché y Anti-Dupli
     expect(data2.cached).toBe(true);
     expect(data2.contextualMeaning).toBe(data1.contextualMeaning);
   });
+
+  // Caso 5: Validación de Payloads y Errores HTTP
+  it("5. Test de Validación de Payload: rechaza pasaje ausente o excesivo con HTTP 400", async () => {
+    const resNoPassage = await app.request(
+      "/api/ai/explain-in-passage",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ word: "hola" }),
+      },
+      fakeEnv,
+    );
+    expect(resNoPassage.status).toBe(400);
+    const jsonNoPassage = (await resNoPassage.json()) as { error: string };
+    expect(jsonNoPassage.error).toContain("Falta el pasaje");
+
+    const resLongPassage = await app.request(
+      "/api/ai/explain-in-passage",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ passage: "a".repeat(801) }),
+      },
+      fakeEnv,
+    );
+    expect(resLongPassage.status).toBe(400);
+    const jsonLong = (await resLongPassage.json()) as { error: string };
+    expect(jsonLong.error).toContain("no puede superar 800 caracteres");
+  });
+
+  it("6. Test de Autenticación: rechaza petición no autenticada con HTTP 401", async () => {
+    getSessionMock.mockResolvedValueOnce(null);
+    const res = await app.request(
+      "/api/ai/explain-in-passage",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ passage: "Un pasaje cualquiera." }),
+      },
+      fakeEnv,
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it("7. Test de Cuota (014_ai_quota.sql): devuelve HTTP 429 al superar el límite horario", async () => {
+    // Simulamos que el UPSERT atómico en lecta_ai_quota devuelve 0 filas (límite superado)
+    vi.spyOn(dbModule, "withClient").mockImplementationOnce(async (_env, callback) => {
+      return callback({
+        query: vi.fn().mockResolvedValue({ rows: [] }),
+      } as unknown as Parameters<typeof callback>[0]);
+    });
+
+    const res = await app.request(
+      "/api/ai/explain-in-passage",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ passage: "Un pasaje cuando la cuota está agotada." }),
+      },
+      fakeEnv,
+    );
+    expect(res.status).toBe(429);
+    const json = (await res.json()) as { error: string };
+    expect(json.error).toContain("límite de explicaciones por hora");
+  });
+
+  it("8. Test de Resiliencia del Proveedor: maneja timeouts o fallos de red con 502/503 controlado", async () => {
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("Provider Network Timeout"));
+
+    const res = await app.request(
+      "/api/ai/explain-in-passage",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ passage: "Un pasaje durante un corte del proveedor." }),
+      },
+      fakeEnv,
+    );
+    expect([502, 503]).toContain(res.status);
+    const json = (await res.json()) as { error: string };
+    expect(json.error).toBeDefined();
+    expect(json.error).not.toContain("Provider Network Timeout"); // No filtra stacktraces
+  });
 });
 
 describe("normalizePassage & buildCompactExplainPrompt", () => {

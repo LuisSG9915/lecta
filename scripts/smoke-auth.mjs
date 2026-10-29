@@ -14,6 +14,30 @@ const check = (name, condition, detail = "") => {
   if (!condition) failures += 1;
 };
 
+export async function waitForHealth(baseUrl = BASE, maxAttempts = 3, baseDelayMs = 15000) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const response = await fetch(`${baseUrl}/api/health`, { headers: { origin: baseUrl } });
+      if (response.ok) {
+        const data = await response.json().catch(() => null);
+        if (data?.db === "connected" || data?.ok || data?.status === "ok") {
+          console.log(`PASS Healthcheck OK en intento ${attempt} (${baseUrl})`);
+          return true;
+        }
+      }
+      console.warn(`[health] Intento ${attempt}/${maxAttempts} no saludable (status: ${response.status}).`);
+    } catch (err) {
+      console.warn(`[health] Intento ${attempt}/${maxAttempts} error de conexión: ${err?.message || err}`);
+    }
+    if (attempt < maxAttempts) {
+      const delay = Math.round(baseDelayMs * Math.pow(1.5, attempt - 1));
+      console.log(`[health] Esperando ${Math.round(delay / 1000)}s antes del siguiente intento (propagación edge)...`);
+      await new Promise((r) => setTimeout(r, delay));
+    }
+  }
+  return false;
+}
+
 async function api(path, { method = "GET", body, cookie, json, baseUrl = BASE } = {}) {
   const headers = { origin: baseUrl };
   if (cookie) headers.cookie = cookie;
@@ -83,6 +107,15 @@ export async function verifyKindleLinkSmokeTest(baseUrl = BASE, sessionCookie = 
 }
 
 export async function runSmokeTests(baseUrl = BASE) {
+  const healthy = await waitForHealth(baseUrl);
+  check("Servidor disponible y saludable (/api/health)", healthy);
+  if (!healthy) {
+    console.log("Servidor no disponible tras reintentos.");
+    failures += 1;
+    process.exitCode = 1;
+    return false;
+  }
+
   const ts = Date.now();
   const USER_A = { email: `a-${ts}@smoke.test`, password: "prueba-smoke-1234", name: "A" };
   const USER_B = { email: `b-${ts}@smoke.test`, password: "prueba-smoke-1234", name: "B" };
@@ -291,6 +324,10 @@ export async function runSmokeTests(baseUrl = BASE) {
     method: "POST", body: { form: "pero", language: "es" }, baseUrl,
   });
   check("stopword sin sesión → 401 primero", stop.status === 401, `status ${stop.status}`);
+
+  // --- limpieza de artefactos creados ---
+  const cleanA = await api(`/api/books/${HASH_A}`, { method: "DELETE", cookie: cookieA, baseUrl });
+  check("Limpieza post-smoke: borrado de libro de prueba de A", cleanA.status === 200 || cleanA.status === 404);
 
   console.log(failures ? `\n${failures} prueba(s) fallaron.` : "\nTodas las pruebas pasaron.");
   if (failures) process.exitCode = 1;

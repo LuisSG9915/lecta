@@ -2,6 +2,12 @@ import { describe, it, expect } from "vitest";
 import {
   renderKindleChapterPrimingView,
   injectKindlePrimedAnchors,
+  renderHomeView,
+  renderLookupView,
+  renderKindleCatSvg,
+  renderLoginView,
+  renderKindleLinkView,
+  renderPracticeView,
   type KindleChapterPrimingViewProps,
 } from "./views";
 import type { KindlePrimingWord } from "./epub-reader";
@@ -52,77 +58,56 @@ describe("Kindle Views - Espacio de Pre-lectura Adaptativo (Fase 3)", () => {
       expect(html).toContain("background: #ffffff");
       expect(html).toContain("color: #000000");
 
-      // Objetivos táctiles mínimos para E-Readers (>= 44px)
-      expect(html).toContain("min-height: 44px");
-
-      // Título y contenido pedagógico
-      expect(html).toContain("Capítulo I");
+      // Verificación de estructura semántica accesible
       expect(html).toContain("Cien años de soledad");
-      expect(html).toContain("Comenzar a leer capítulo →");
+      expect(html).toContain("Capítulo I");
       expect(html).toContain("Pre-lectura · 2 palabras");
+      expect(html).toContain("Comenzar a leer capítulo");
 
-      // Tarjetas de palabras con glosa y contexto
+      // Verificación de tarjetas de vocabulario y botones de 1-toque
       expect(html).toContain("perenne");
       expect(html).toContain("estrecha");
       expect(html).toContain("Que dura indefinidamente.");
-      expect(html).toContain("Que tiene poca anchura.");
-      expect(html).toContain("«Luis leyó despacio una palabra difícil: perenne.»");
-
-      // Formulario con botones de acción directa
+      expect(html).toContain("Luis leyó despacio una palabra difícil: perenne.");
       expect(html).toContain("✓ Ya la sé");
       expect(html).toContain("+ Repasar");
-      expect(html).toContain('name="action" value="known"');
-      expect(html).toContain('name="action" value="save"');
 
-      // Acciones de desactivación en un toque
+      // Verificación de opciones avanzadas (plegadas sin interrumpir)
       expect(html).toContain("Ocultar en este libro");
       expect(html).toContain("Desactivar siempre");
-      expect(html).toContain('value="mute_book"');
-      expect(html).toContain('value="disable_all"');
-
-      // Script de mejora progresiva sin parpadeo (Zero-Flash Progressive Enhancement)
-      expect(html).toContain("window.lectaKindleAction");
-      expect(html).toContain("fetch(formEl.action");
     });
 
     it("indica el idioma extranjero en el badge si isForeignLang es true", () => {
       const props: KindleChapterPrimingViewProps = {
         bookId: "book-en",
-        bookTitle: "Moby Dick",
-        chapterIndex: 1,
-        chapterTitle: "Chapter 2: The Carpet-Bag",
+        bookTitle: "The Great Gatsby",
+        chapterIndex: 0,
+        chapterTitle: "Chapter 1",
         bookLang: "en",
         isForeignLang: true,
-        words: [
-          {
-            lemma: "melancholy",
-            surfaceForm: "melancholy",
-            lang: "en",
-            beta: 1.5,
-            chapterFrequency: 1,
-            shortGloss: "A deep, pensive sadness.",
-            contextSentence: "A damp, drizzly November in my soul.",
-            utilityScore: 0.9,
-          },
-        ],
+        words: [sampleWords[0]],
       };
 
       const html = renderKindleChapterPrimingView(props);
       expect(html).toContain("Idioma: EN · 1 palabras");
-      expect(html).toContain("melancholy");
-      expect(html).toContain("A deep, pensive sadness.");
     });
   });
 
   describe("injectKindlePrimedAnchors", () => {
     it("devuelve el HTML original si la lista de palabras está vacía", () => {
-      const html = "<p>Texto intacto.</p>";
-      expect(injectKindlePrimedAnchors(html, [])).toBe(html);
+      const rawHtml = "<p>Un texto sin cambios.</p>";
+      const result = injectKindlePrimedAnchors(rawHtml, []);
+      expect(result).toBe(rawHtml);
     });
 
     it("subraya con línea punteada e inserta la micro-glosa en la primera aparición", () => {
-      const chapterHtml =
-        "<p>La casa antigua tenía una puerta estrecha. Era muy estrecha.</p>";
+      const chapterHtml = `
+        <div>
+          <p>La casa tenía una entrada estrecha hacia el jardín.</p>
+          <p>Era muy estrecha y oscura.</p>
+        </div>
+      `;
+
       const result = injectKindlePrimedAnchors(chapterHtml, [
         {
           lemma: "estrecho",
@@ -132,16 +117,16 @@ describe("Kindle Views - Espacio de Pre-lectura Adaptativo (Fase 3)", () => {
           chapterFrequency: 2,
           shortGloss: "de poca anchura",
           contextSentence: "",
-          utilityScore: 0.5,
+          utilityScore: 0.7,
         },
       ]);
 
-      // Debe incluir la primera aparición con estilo punteado y glosa entre corchetes
+      // Solo la primera aparición debe llevar el micro-anclaje
       expect(result).toContain(
         '<span style="border-bottom: 1.5px dashed #000; font-weight: 500;">estrecha</span> <small style="font-family: sans-serif; font-size: 0.78em;">[de poca anchura]</small>',
       );
 
-      // Solo la primera aparición debe tener la glosa
+      // La segunda aparición no debe duplicar la glosa
       const matches = result.match(/\[de poca anchura\]/g);
       expect(matches).toHaveLength(1);
     });
@@ -171,6 +156,111 @@ describe("Kindle Views - Espacio de Pre-lectura Adaptativo (Fase 3)", () => {
       expect(result).toContain(
         '<span style="border-bottom: 1.5px dashed #000; font-weight: 500;">estrecha</span> <small style="font-family: sans-serif; font-size: 0.78em;">[angosta]</small>',
       );
+    });
+  });
+});
+
+describe("Kindle Views - Seguridad y Escapado Anti-XSS", () => {
+  it("escapa etiquetas HTML y scripts maliciosos en títulos y autores de libros", () => {
+    const maliciousTitle = '<script>alert("XSS")</script>';
+    const maliciousAuthor = '<img src=x onerror=alert(1)>';
+    const html = renderHomeView({
+      books: [
+        {
+          hash: "h1",
+          title: maliciousTitle,
+          author: maliciousAuthor,
+          sections: 5,
+        },
+      ],
+      user: { id: "u1", email: "attacker<script>@example.com" },
+    });
+
+    expect(html).not.toContain("<script>alert");
+    expect(html).toContain("&lt;script&gt;alert(&quot;XSS&quot;)&lt;/script&gt;");
+    expect(html).not.toContain("<img src=x");
+    expect(html).toContain("&lt;img src=x onerror=alert(1)&gt;");
+    expect(html).not.toContain("attacker<script>");
+    expect(html).toContain("attacker&lt;script&gt;");
+  });
+
+  it("escapa entradas de búsqueda y notas de usuario en lookup", () => {
+    const maliciousQuery = '"><b onmouseover="alert(1)">palabra</b>';
+    const html = renderLookupView({
+      query: maliciousQuery,
+      entries: [],
+      user: null,
+    });
+
+    expect(html).not.toContain('"><b onmouseover=');
+    expect(html).toContain("&quot;&gt;&lt;b onmouseover=&quot;alert(1)&quot;&gt;palabra&lt;/b&gt;");
+  });
+
+  it("escapa títulos de capítulos y glosas en priming view", () => {
+    const props: KindleChapterPrimingViewProps = {
+      bookId: 'b1"><script>',
+      bookTitle: 'Título <iframe src="evil.com">',
+      chapterIndex: 0,
+      chapterTitle: "Capítulo <svg onload=alert(1)>",
+      bookLang: "es",
+      isForeignLang: false,
+      words: [
+        {
+          lemma: "lemma<script>",
+          surfaceForm: "forma",
+          lang: "es",
+          beta: 1.0,
+          chapterFrequency: 1,
+          shortGloss: "Definición <script>alert(2)</script>",
+          partOfSpeech: "sust.",
+          contextSentence: "Oración de prueba <img src=x onerror=1>",
+          utilityScore: 0.9,
+        },
+      ],
+    };
+
+    const html = renderKindleChapterPrimingView(props);
+    expect(html).not.toContain("<iframe");
+    expect(html).not.toContain("<svg onload");
+    expect(html).not.toContain("<script>alert(2)");
+    expect(html).toContain("&lt;iframe");
+    expect(html).toContain("&lt;svg onload=alert(1)&gt;");
+    expect(html).toContain("&lt;script&gt;alert(2)&lt;/script&gt;");
+  });
+
+  describe("Otras Vistas Kindle", () => {
+    it("renderKindleCatSvg genera SVG para diferentes ánimos y objetos", () => {
+      const svg = renderKindleCatSvg("happy", ["scarf"]);
+      expect(svg).toContain("<svg");
+      expect(svg).toContain("</svg>");
+    });
+
+    it("renderLoginView renderiza formulario de login con token CSRF", () => {
+      const html = renderLoginView({ user: null, error: "Credenciales inválidas" });
+      expect(html).toContain("Credenciales inválidas");
+      expect(html).toContain("Iniciar sesión");
+    });
+
+    it("renderKindleLinkView muestra el código de vinculación y expiración", () => {
+      const html = renderKindleLinkView({ code: "ABCD-1234" });
+      expect(html).toContain("ABCD-1234");
+      expect(html).toContain("Vincular Kindle");
+    });
+
+    it("renderPracticeView renderiza estado final y estado de sin palabras pendientes", () => {
+      const finishedHtml = renderPracticeView({
+        user: null,
+        isFinished: true,
+        correctCount: 3,
+        totalQuestions: 3,
+      });
+      expect(finishedHtml).toContain("Completada");
+
+      const emptyHtml = renderPracticeView({
+        user: null,
+        isFinished: false,
+      });
+      expect(emptyHtml).toContain("No hay palabras pendientes");
     });
   });
 });

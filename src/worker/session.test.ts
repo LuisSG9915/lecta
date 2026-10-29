@@ -20,7 +20,12 @@ vi.mock("./auth", async (importOriginal) => {
   };
 });
 
-import { getSession, isSessionInfraError, SessionInfraError } from "./session";
+import {
+  getSession,
+  getSessionUser,
+  isSessionInfraError,
+  SessionInfraError,
+} from "./session";
 
 const env = { DATABASE_URL: "postgres://lecta:test@localhost/lecta_dev" };
 
@@ -136,5 +141,39 @@ describe("getSession", () => {
     const session = await getSession(contextFor({}));
     expect(session).toBeNull();
     expect(closePoolMock).toHaveBeenCalled();
+  });
+
+  it("reconoce códigos de infraestructura de Postgres e Hyperdrive como fallos de servicio (503)", () => {
+    const pgCodes = ["57P01", "57P02", "57P03", "08000", "08006", "ECONNREFUSED", "ETIMEDOUT"];
+    for (const code of pgCodes) {
+      expect(isSessionInfraError({ code })).toBe(true);
+    }
+  });
+
+  it("reconoce mensajes de socket cerrado o timeout de conexión como error de infraestructura", () => {
+    expect(isSessionInfraError({ message: "This socket has been closed" })).toBe(true);
+    expect(isSessionInfraError({ message: "Timeout expired" })).toBe(true);
+    expect(isSessionInfraError({ message: "connect ECONNREFUSED 127.0.0.1:5432" })).toBe(true);
+  });
+
+  it("un token expirado o firma inválida devuelve null de forma controlada sin exponer stacktrace", async () => {
+    getSessionMock.mockResolvedValue(null);
+    const session = await getSession(
+      contextFor({ cookie: "better-auth.session_token=token_invalido_expirado" }),
+    );
+    expect(session).toBeNull();
+    expect(closePoolMock).toHaveBeenCalled();
+  });
+
+  describe("getSessionUser", () => {
+    it("devuelve el usuario de la sesión cuando existe y null cuando no", async () => {
+      getSessionMock.mockResolvedValueOnce({ user: { id: "u42", email: "u@test.com" } });
+      const user = await getSessionUser(contextFor({ cookie: "better-auth.session_token=valid" }));
+      expect(user).toEqual({ id: "u42", email: "u@test.com" });
+
+      getSessionMock.mockResolvedValueOnce(null);
+      const noUser = await getSessionUser(contextFor({ cookie: "better-auth.session_token=invalid" }));
+      expect(noUser).toBeNull();
+    });
   });
 });

@@ -8,7 +8,7 @@ export default defineConfig({
   timeout: 45_000,
   reporter: "list",
   use: {
-    baseURL: "http://localhost:5173",
+    baseURL: "http://localhost:5188",
     trace: "on-first-retry",
   },
   projects: [
@@ -19,15 +19,19 @@ export default defineConfig({
     {
       name: "webkit-iphone",
       use: { ...devices["iPhone 13"], browserName: "webkit" },
-      grep: /\[webkit\]/,
+      grep: process.env.CI ? /@smoke/ : /\[webkit\]|@smoke/,
     },
   ],
   webServer: {
     command: process.env.CI
-      ? "pnpm exec vite preview --port 5173"
-      : "pnpm run build && pnpm exec vite preview --port 5173",
-    url: "http://localhost:5173",
+      ? "pnpm exec vite preview --port 5188"
+      : "pnpm run build && pnpm exec vite preview --port 5188",
+    url: "http://localhost:5188",
     reuseExistingServer: !process.env.CI,
     timeout: 60_000,
+    env: {
+      CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE:
+        "postgresql://mock:mock@localhost:5432/mock",
+    },
   },
 });

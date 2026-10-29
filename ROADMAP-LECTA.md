@@ -45,3 +45,19 @@
 - [x] Agregar pestaña en `src/client/components/ReadingActivity.tsx` mostrando la gráfica de atención y velocidad del usuario → sección «Atención y ritmo»: barras de dwell por día + retrocesos, consultas, ppm estimado y aviso de fatiga (solo datos locales).
 - [x] Ejecutar suite de pruebas completa con `pnpm test` → 760 pruebas en 64 archivos, en verde junto a `typecheck`, `lint` y `build`.
 - [x] Verificar rendimiento en Lighthouse (mantener 60 FPS durante las animaciones del gato) → verificación por construcción: animaciones exclusivamente `transform`/`translate`/`opacity` con `will-change`, `pointer-events: none` en gato y regla, y apagado total con `prefers-reduced-motion` (regla global en `base.css`).
+
+---
+
+## 🛡️ Estabilización de Pruebas y CI
+
+| Fase | Módulo | Estado | Progreso |
+| :--- | :--- | :---: | :--- |
+| **Fase 1** | Estabilización de Pruebas, Cobertura Ratchet y CI | `[DONE]` | `[██████████] 100%` |
+
+### Tareas Completadas:
+- [x] Optimización de memoria en Vitest (`pool: 'forks'`, workers adaptativos `process.env.CI ? 2 : 4`, separación de entornos `node` vs `jsdom`).
+- [x] Refactorización de `.github/workflows/ci.yml` en 4 jobs paralelos (`static`, `unit`, `build`, `e2e`) con `concurrency` y cancelación en progreso.
+- [x] Configuración de dependencias automatizada con Dependabot (`.github/dependabot.yml`).
+- [x] Cierre de huecos de cobertura en `src/worker/**` con umbral ratchet (>=70% líneas/funciones).
+- [x] Pruebas deterministas de extremo a extremo (E2E) con Playwright (`e2e/smoke-journeys.spec.ts`) etiquetadas con `@smoke`.
+- [x] Automatización de Smoke Tests Post-Deploy (`.github/workflows/deploy-smoke.yml`) con reintentos exponenciales y alertas vía GitHub Issues (`smoke-regression`).

@@ -1,5 +1,15 @@
 # Lecta — notas del proyecto
 
+## Convenciones de Testing y CI
+
+- **Aislamiento de entornos en Vitest**: `environmentMatchGlobs` asigna entorno estricto `'node'` a `src/worker/**`, `src/shared/**` y `mcp/src/**`, reservando `'jsdom'` exclusivamente para componentes y hooks de `src/client/**`. Evita fugas de memoria y emulaciones de DOM innecesarias.
+- **Pool de procesos y memoria**: `pool: 'forks'` con workers dinámicos (`process.env.CI ? 2 : 4`) para garantizar que el sistema operativo reclame la memoria tras suites pesadas y prevenir OOM en runners de 2 vCPUs.
+- **Regla de cobertura Ratchet (`pnpm coverage:ratchet`)**: Los umbrales de cobertura en `vitest.config.ts` (líneas y funciones >= 70% en `src/worker/**`) solo aumentan, jamás disminuyen. Nuevos módulos deben nacer con pruebas unitarias herméticas.
+- **CI Paralelizado en 4 Jobs (`.github/workflows/ci.yml`)**: `static` (typecheck + lint, 5m), `unit` (cobertura Vitest, 10m), `build` (compilación y check:size, 8m) corren en paralelo desde t=0; `e2e` (Playwright, 15m) descarga el artefacto `dist/` tras el build.
+- **Pruebas E2E y Tag `@smoke`**: `e2e/smoke-journeys.spec.ts` cubre los 3 recorridos críticos (apertura EPUB, TTS y sincronización de estado entre contextos). En CI, el proyecto WebKit ejecuta exclusivamente tests con `@smoke` (`pnpm test:e2e:smoke`), mientras Chromium corre la suite completa.
+- **Política de Flaky Tests (`docs/flaky-tests.md`)**: Pruebas con fallos intermitentes se registran con causa raíz. Si un test acumula 3 reintentos en 2 semanas, se aísla con `.fixme` y se programa su corrección.
+- **Smoke Tests Post-Deploy (`deploy-smoke.yml`)**: Verificación automática post-despliegue con `pnpm smoke:auth` y `pnpm smoke:sync` usando exponential backoff en `/api/health` para absorber la propagación de Cloudflare Workers, autenticación sobre cuenta canónica (UPSERT idempotente) y reporte automático de issues con etiqueta `smoke-regression` ante fallos.
+
 ## Verificación
 
 - `pnpm typecheck` (cliente + worker + MCP), `pnpm lint`, `pnpm test`, `pnpm build`.
