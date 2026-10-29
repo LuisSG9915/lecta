@@ -32,6 +32,7 @@ export type InlineLookupResult = {
   word: string;
   entries: LexiconEntryView[] | null;
   saved?: boolean;
+  contextSentence?: string | null;
 };
 
 export type PrepWordItem = {
@@ -58,6 +59,7 @@ export type PracticeQuestionItem = {
   word: string;
   lemma: string;
   pos: string | null;
+  contextSentence?: string | null;
   options: { key: "A" | "B" | "C"; text: string; correct: boolean }[];
   questionIndex: number;
   totalQuestions: number;
@@ -624,18 +626,39 @@ const KINDLE_CSS = `
     min-width: 230px;
     box-shadow: none;
   }
-  /* Tarjeta de definición en línea */
+  /* Tarjeta de definición en línea (Flotante en layout-paged para preservar Zero-Scroll) */
+  .inline-lookup-backdrop {
+    display: none;
+  }
+  body.layout-paged .inline-lookup-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 90;
+    background: transparent;
+    text-decoration: none;
+  }
   .inline-lookup-card {
-    border: 1px solid #111111;
-    border-left: 4px solid #000000;
+    border: 2px solid #000000;
+    border-left: 5px solid #000000;
     background: #ffffff;
     padding: 10px 14px;
     margin-bottom: 8px;
+    position: relative;
+    z-index: 95;
+  }
+  body.layout-paged .inline-lookup-card {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: 42px;
+    max-width: 636px;
+    margin: 0 auto;
   }
   .inline-lookup-header {
     display: flex;
     justify-content: space-between;
-    align-items: baseline;
+    align-items: center;
     border-bottom: 1px solid #e0e0e0;
     padding-bottom: 6px;
     margin-bottom: 8px;
@@ -653,13 +676,36 @@ const KINDLE_CSS = `
     margin-left: 8px;
   }
   .inline-lookup-close {
-    display: inline-block;
-    padding: 3px 8px;
-    border: 1px solid #888888;
-    color: #333333;
-    background: #fbfbfb;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    min-width: 44px;
+    padding: 6px 12px;
+    border: 2px solid #000000;
+    color: #000000;
+    background: #ffffff;
     text-decoration: none;
-    font-size: 0.78rem;
+    font-size: 0.82rem;
+    font-weight: bold;
+  }
+  .eink-refresh-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    pointer-events: none;
+    background: #000000;
+  }
+  .practice-episodic-quote {
+    margin: 0 0 16px 0;
+    padding: 8px 12px;
+    border-left: 3px solid #000000;
+    background: #f8f8f8;
+    font-size: 0.95rem;
+    font-style: italic;
+    line-height: 1.45;
+    color: #111111;
   }
   .inline-lookup-def {
     font-size: 0.98rem;
@@ -1204,7 +1250,8 @@ export function renderReaderView(options: {
     const firstMeaning = firstEntry?.senses[0]?.definition || null;
 
     lookupHtml = `
-      <div class="inline-lookup-card">
+      <a href="${escapeHtml(cleanPageUrl)}" class="inline-lookup-backdrop" aria-label="Cerrar definición"></a>
+      <div class="inline-lookup-card" role="dialog" aria-label="Definición de ${escapeHtml(lookupResult.word)}">
         <div class="inline-lookup-header">
           <div>
             <span class="inline-lookup-word">${escapeHtml(lookupResult.word)}</span>
@@ -1228,6 +1275,7 @@ export function renderReaderView(options: {
                 <input type="hidden" name="lemma" value="${escapeHtml(firstEntry?.lemma || lookupResult.word)}" />
                 <input type="hidden" name="pos" value="${escapeHtml(firstEntry?.pos || "")}" />
                 <input type="hidden" name="meaning" value="${escapeHtml(firstMeaning)}" />
+                <input type="hidden" name="context" value="${escapeHtml(lookupResult.contextSentence || "")}" />
                 <input type="hidden" name="bookHash" value="${escapeHtml(bookHash)}" />
                 <input type="hidden" name="returnTo" value="${escapeHtml(cleanPageUrl)}" />
                 <button type="submit" class="btn btn-sm btn-primary" style="padding:6px 12px; font-size:0.85rem; min-height:44px;">+ Guardar en mi Cuaderno</button>
@@ -1332,11 +1380,33 @@ export function renderReaderView(options: {
     </nav>
   </div>
 
+  <div id="einkRefreshOverlay" class="eink-refresh-overlay" aria-hidden="true"></div>
   <script>
   (function() {
     var lookupBase = ${JSON.stringify(cleanPageUrl)};
     var prevUrl = ${JSON.stringify(prevUrl || "")};
     var nextUrl = ${JSON.stringify(nextUrl || "")};
+
+    var overlay = document.getElementById('einkRefreshOverlay');
+    function runEinkWaveformReset() {
+      if (!overlay) return;
+      overlay.style.background = '#000000';
+      overlay.style.display = 'block';
+      setTimeout(function() {
+        overlay.style.background = '#ffffff';
+        setTimeout(function() {
+          overlay.style.display = 'none';
+        }, 80);
+      }, 80);
+    }
+
+    try {
+      var turns = parseInt(sessionStorage.getItem('lecta_eink_turns') || '0', 10) + 1;
+      sessionStorage.setItem('lecta_eink_turns', String(turns));
+      if (turns % 12 === 0) {
+        runEinkWaveformReset();
+      }
+    } catch (_e) {}
 
     function triggerLookup(rawWord) {
       if (!rawWord) return;
@@ -1362,6 +1432,8 @@ export function renderReaderView(options: {
     var pressTimer = null;
     var startX = 0;
     var startY = 0;
+    var startTime = 0;
+    var lastGestureAt = 0;
 
     function clearTimer() {
       if (pressTimer) {
@@ -1372,36 +1444,58 @@ export function renderReaderView(options: {
 
     if (content) {
       content.addEventListener('touchstart', function(e) {
+        if (!e.touches || !e.touches[0]) return;
+        var touch = e.touches[0];
+        startX = touch.clientX;
+        startY = touch.clientY;
+        startTime = Date.now();
+        clearTimer();
+
         var t = e.target;
-        while (t && t !== content && !t.getAttribute('data-w')) {
+        while (t && t !== content && (!t.getAttribute || !t.getAttribute('data-w'))) {
           t = t.parentElement;
         }
-        if (t && t.getAttribute('data-w')) {
-          var touch = e.touches[0];
-          startX = touch.clientX;
-          startY = touch.clientY;
-          clearTimer();
+        if (t && t.getAttribute && t.getAttribute('data-w')) {
+          var word = t.getAttribute('data-w');
           pressTimer = setTimeout(function() {
             pressTimer = null;
-            triggerLookup(t.getAttribute('data-w'));
+            lastGestureAt = Date.now();
+            triggerLookup(word);
           }, 450);
         }
       }, false);
 
       content.addEventListener('touchmove', function(e) {
-        if (pressTimer && e.touches[0]) {
+        if (pressTimer && e.touches && e.touches[0]) {
           var dx = Math.abs(e.touches[0].clientX - startX);
           var dy = Math.abs(e.touches[0].clientY - startY);
-          if (dx > 10 || dy > 10) {
+          if (dx > 12 || dy > 12) {
             clearTimer();
           }
         }
       }, false);
 
-      content.addEventListener('touchend', function() {
+      content.addEventListener('touchend', function(e) {
         clearTimer();
+        var dt = Date.now() - startTime;
+        if (e.changedTouches && e.changedTouches[0] && startTime > 0) {
+          var dx = e.changedTouches[0].clientX - startX;
+          var dy = e.changedTouches[0].clientY - startY;
+          if (Math.abs(dx) >= 45 && Math.abs(dx) > Math.abs(dy) * 1.8 && dt >= 30 && dt <= 900) {
+            lastGestureAt = Date.now();
+            if (dx < 0 && nextUrl) {
+              window.location.href = nextUrl;
+              return;
+            } else if (dx > 0 && prevUrl) {
+              window.location.href = prevUrl;
+              return;
+            }
+          }
+        }
+
         var sel = window.getSelection ? window.getSelection().toString().trim() : '';
         if (sel && sel.length >= 2 && sel.length <= 35) {
+          lastGestureAt = Date.now();
           triggerLookup(sel);
         }
       }, false);
@@ -1409,16 +1503,20 @@ export function renderReaderView(options: {
       content.addEventListener('touchcancel', clearTimer, false);
 
       content.addEventListener('click', function(e) {
+        if (Date.now() - lastGestureAt < 500) {
+          e.preventDefault();
+          return;
+        }
         var sel = window.getSelection ? window.getSelection().toString().trim() : '';
         if (sel) return;
 
         var isLookupMode = content.classList.contains('lookup-active');
         if (isLookupMode) {
           var t = e.target;
-          while (t && t !== content && !t.getAttribute('data-w')) {
+          while (t && t !== content && (!t.getAttribute || !t.getAttribute('data-w'))) {
             t = t.parentElement;
           }
-          if (t && t.getAttribute('data-w')) {
+          if (t && t.getAttribute && t.getAttribute('data-w')) {
             e.preventDefault();
             e.stopPropagation();
             triggerLookup(t.getAttribute('data-w'));
@@ -1758,6 +1856,12 @@ export function renderPracticeView(options: {
             ${question.pos ? `<span style="font-style: italic; font-size: 0.9rem; color: #444;">(${escapeHtml(question.pos)})</span>` : ""}
           </div>
         </div>
+
+        ${
+          question.contextSentence
+            ? `<blockquote class="practice-episodic-quote">«${escapeHtml(question.contextSentence)}»</blockquote>`
+            : ""
+        }
 
         <p style="font-size: 1.05rem; margin: 0 0 16px 0; font-weight: bold;">
           ¿Cuál es la definición correcta?

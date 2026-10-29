@@ -263,6 +263,28 @@ describe("Kindle Views - Seguridad y Escapado Anti-XSS", () => {
       });
       expect(emptyHtml).toContain("No hay palabras pendientes");
     });
+
+    it("renderPracticeView renderiza la cita episódica original cuando está disponible", () => {
+      const html = renderPracticeView({
+        user: null,
+        isFinished: false,
+        question: {
+          word: "perenne",
+          lemma: "perenne",
+          pos: "adj.",
+          contextSentence: "El bosque mantenía un verde perenne en invierno.",
+          options: [
+            { key: "A", text: "Que dura siempre.", correct: true },
+            { key: "B", text: "Que se marchita pronto.", correct: false },
+            { key: "C", text: "Que es transparente.", correct: false },
+          ],
+          questionIndex: 0,
+          totalQuestions: 1,
+        },
+      });
+      expect(html).toContain('class="practice-episodic-quote"');
+      expect(html).toContain("El bosque mantenía un verde perenne en invierno.");
+    });
   });
 
   describe("renderReaderView (Kindle Zero-Scroll & Ergonomía)", () => {
@@ -350,6 +372,39 @@ describe("Kindle Views - Seguridad y Escapado Anti-XSS", () => {
       expect(html).toContain("&amp;margin=lg");
       expect(html).toContain("margin=lg");
       expect(html).toContain('var lookupBase = "/k/read/hash-kindle-1?section=0&page=0&mode=clean&size=md&layout=paged&margin=lg');
+    });
+
+    it("renderiza inline-lookup-backdrop, card role=dialog y campo context en reader view", () => {
+      const html = renderReaderView({
+        ...baseProps,
+        user: { id: "u1", email: "test@example.com", name: "Lector" },
+        lookupResult: {
+          word: "perenne",
+          entries: [
+            {
+              entryId: "e1",
+              lemma: "perenne",
+              pos: "adj.",
+              freqRank: null,
+              zipf: 3.5,
+              senses: [{ definition: "Que dura indefinidamente.", example: "Hojas perennes", senseOrder: 1 }],
+            },
+          ],
+          contextSentence: "La casa antigua tenía un jardín perenne.",
+        },
+      });
+      expect(html).toContain('class="inline-lookup-backdrop"');
+      expect(html).toContain('class="inline-lookup-close"');
+      expect(html).toContain('class="inline-lookup-card" role="dialog"');
+      expect(html).toContain('<input type="hidden" name="context" value="La casa antigua tenía un jardín perenne."');
+    });
+
+    it("incluye einkRefreshOverlay, reseteo de forma de onda y gestos de swipe en reader view", () => {
+      const html = renderReaderView(baseProps);
+      expect(html).toContain('id="einkRefreshOverlay" class="eink-refresh-overlay"');
+      expect(html).toContain("runEinkWaveformReset");
+      expect(html).toContain("lecta_eink_turns");
+      expect(html).toContain("changedTouches");
     });
   });
 });

@@ -17,6 +17,7 @@ import {
   paginateChapter,
   PARAGRAPH_MODE_BREAK_PENALTY,
   parseEpub,
+  readZipEntryBytes,
   resolveZipPath,
   sanitizeKindleHtml,
   selectKindleChapterPrimingWords,
@@ -54,6 +55,19 @@ describe("epub-reader (Kindle E-ink)", () => {
     it("devuelve null si los bytes no son un zip válido", async () => {
       const invalid = new Uint8Array([0, 1, 2, 3]);
       expect(await parseEpub(invalid)).toBeNull();
+    });
+  });
+
+  describe("readZipEntryBytes", () => {
+    it("rechaza entradas zip mayores a 10 MB para prevenir zip bombs", async () => {
+      const dummyView = new DataView(new ArrayBuffer(100));
+      const entryOver10Mb = {
+        compressionMethod: 8,
+        compressedSize: 11 * 1024 * 1024,
+        localHeaderOffset: 0,
+      };
+      const result = await readZipEntryBytes(new Uint8Array(100), dummyView, entryOver10Mb);
+      expect(result).toBeNull();
     });
   });
 
@@ -107,6 +121,31 @@ describe("epub-reader (Kindle E-ink)", () => {
       ]) {
         expect(contentHtml).not.toContain(forbidden);
       }
+    });
+
+    it("elimina meta, base, link, noscript, template, audio, video y on* pegados a / o comillas", () => {
+      const raw = `
+        <body>
+          <meta http-equiv="refresh" content="0;url=http://evil.com">
+          <base href="http://evil.com/">
+          <link rel="stylesheet" href="http://evil.com/style.css">
+          <noscript><iframe src="evil.html"></iframe></noscript>
+          <template><script>alert('template')</script></template>
+          <audio src="evil.mp3" autoplay></audio>
+          <video src="evil.mp4" autoplay></video>
+          <img src="x"/onerror=alert(1)>
+          <a href="#"'onclick=alert(2)>Click</a>
+          <p>Texto limpio</p>
+        </body>
+      `;
+      const { contentHtml } = sanitizeKindleHtml(raw, "OEBPS", "hash-xss-2");
+      expect(contentHtml).toContain("<p>Texto limpio</p>");
+      for (const tag of ["<meta", "<base", "<link", "<noscript", "<template", "<audio", "<video"]) {
+        expect(contentHtml).not.toContain(tag);
+      }
+      expect(contentHtml).not.toContain("onerror");
+      expect(contentHtml).not.toContain("onclick");
+      expect(contentHtml).not.toContain("alert");
     });
 
   describe("getEpubChapter", () => {
@@ -234,6 +273,20 @@ describe("epub-reader (Kindle E-ink)", () => {
       // En modo paragraphs la penalización es 32: 360 + 4 * 32 = 488 > 390
       const pagesParagraphs = paginateChapter(fourShortPs, { size: "xl", mode: "paragraphs" });
       expect(pagesParagraphs.length).toBeGreaterThan(1);
+    });
+
+    it("aplica suelo físico de línea por bloque para evitar desbordamiento con diálogos cortos", () => {
+      // 20 diálogos cortos de ~15 caracteres cada uno
+      const shortDialogues = Array.from(
+        { length: 20 },
+        (_, i) => `<p>—Sí, señor ${i + 1}.</p>`,
+      ).join("\n");
+
+      // En md standard (900 presupuesto), sin suelo físico (20 * 15 + 20 * 22 = 740) entrarían en 1 página,
+      // pero 20 líneas físicas de diálogo exceden una pantalla física de Kindle (máx ~15-18 líneas).
+      // Con el suelo físico de línea (KINDLE_CHARS_PER_LINE.md = 52): 20 * 52 = 1040 > 900 (y > 750 en pageZero)
+      const pages = paginateChapter(shortDialogues, { size: "md" });
+      expect(pages.length).toBeGreaterThan(1);
     });
 
     it("aplica multiplicadores de margen: sm (x1.05) y lg (x0.90)", () => {
@@ -440,6 +493,24 @@ describe("epub-reader (Kindle E-ink)", () => {
       const theta = estimateThetaFromD1Knowledge(records);
       expect(theta).toBeLessThan(0.0);
     });
+
+    it("deduplica registros por palabra conservando el último registro", () => {
+      const records = [
+        { word: "casa", status: "learning", difficultyBeta: 0.1 },
+        { word: "casa", status: "known", difficultyBeta: 0.1 },
+      ];
+      const theta = estimateThetaFromD1Knowledge(records);
+      expect(theta).toBeGreaterThan(0.0);
+    });
+
+    it("infiere dificultad beta desde Zipf cuando difficultyBeta es undefined", () => {
+      const records = [
+        { word: "casa", status: "known" },
+      ];
+      const theta = estimateThetaFromD1Knowledge(records);
+      expect(typeof theta).toBe("number");
+      expect(Number.isFinite(theta)).toBe(true);
+    });
   });
 
   describe("extractCompactContextSentence", () => {
@@ -635,6 +706,42 @@ describe("epub-reader (Kindle E-ink)", () => {
       const lowTheta = estimateThetaFromD1Knowledge(allLearning);
       expect(lowTheta).toBeGreaterThanOrEqual(-3.5);
       expect(lowTheta).toBeLessThan(0.0);
+    });
+
+    it("25 diálogos cortos (Zero-Scroll): produce al menos 2 páginas para impedir desbordamiento", () => {
+      const html = Array.from({ length: 25 }, () => "<p>—¿Vienes hoy?</p>").join("\n");
+      const pages = paginateChapter(html, { size: "md", margin: "md", layout: "paged" });
+      expect(pages.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it("neutraliza XSS con atributo pegado a barra o comilla", () => {
+      const result = sanitizeKindleHtml('<p><img src="https://example.com/a.jpg"/onerror="alert(1)"></p>', '', 'hash');
+      expect(result.contentHtml).not.toContain("onerror");
+    });
+
+    it("invariancia de orden en Rasch MAP: produce exactamente el mismo valor de theta independientemente del orden y deduplica", () => {
+      const records1 = [
+        { word: "efímero", status: "known", difficultyBeta: 1.2 },
+        { word: "ubícuo", status: "learning", difficultyBeta: 0.8 },
+        { word: "perenne", status: "known", difficultyBeta: 1.5 },
+      ];
+      const records2 = [
+        { word: "perenne", status: "known", difficultyBeta: 1.5 },
+        { word: "efímero", status: "known", difficultyBeta: 1.2 },
+        { word: "ubícuo", status: "learning", difficultyBeta: 0.8 },
+      ];
+      const theta1 = estimateThetaFromD1Knowledge(records1);
+      const theta2 = estimateThetaFromD1Knowledge(records2);
+      expect(theta1).toBe(theta2);
+
+      const recordsWithDupes = [
+        { word: "efímero", status: "learning", difficultyBeta: 1.2 },
+        { word: "ubícuo", status: "learning", difficultyBeta: 0.8 },
+        { word: "efímero", status: "known", difficultyBeta: 1.2 },
+        { word: "perenne", status: "known", difficultyBeta: 1.5 },
+      ];
+      const thetaWithDupes = estimateThetaFromD1Knowledge(recordsWithDupes);
+      expect(thetaWithDupes).toBe(theta1);
     });
   });
 });

@@ -138,14 +138,40 @@ export async function readZipEntryBytes(
   if (entry.compressionMethod === 0) {
     return raw;
   }
+  const MAX_UNCOMPRESSED_ENTRY_BYTES = 10 * 1024 * 1024; // 10 MB máx
+  if (entry.compressedSize > MAX_UNCOMPRESSED_ENTRY_BYTES) return null;
+
   if (entry.compressionMethod === 8) {
     try {
       const ds = new DecompressionStream("deflate-raw");
       const writer = ds.writable.getWriter();
-      void writer.write(raw as unknown as BufferSource);
-      void writer.close();
-      const decompressed = await new Response(ds.readable).arrayBuffer();
-      return new Uint8Array(decompressed);
+      const writePromise = writer.write(raw as unknown as BufferSource).then(() => writer.close());
+
+      const reader = ds.readable.getReader();
+      const chunks: Uint8Array[] = [];
+      let totalLength = 0;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value) {
+          totalLength += value.byteLength;
+          if (totalLength > MAX_UNCOMPRESSED_ENTRY_BYTES) {
+            await reader.cancel();
+            return null;
+          }
+          chunks.push(value);
+        }
+      }
+      await writePromise.catch(() => {});
+
+      const result = new Uint8Array(totalLength);
+      let offset = 0;
+      for (const chunk of chunks) {
+        result.set(chunk, offset);
+        offset += chunk.byteLength;
+      }
+      return result;
     } catch {
       return null;
     }
@@ -279,25 +305,27 @@ export function sanitizeKindleHtml(
   // 1. Quitar soft hyphens (\u00AD)
   content = content.replace(/\u00AD/g, "");
 
-  // 2. Eliminar por completo etiquetas ejecutables o con contenido
-  // activo. Se quita el bloque entero, no solo la etiqueta.
-  const dangerousTags = "script|style|iframe|object|embed|form|svg|math";
-  content = content.replace(
-    new RegExp("<(" + dangerousTags + ")\\b[^>]*>[\\s\\S]*?<\\/\\1\\s*>", "gi"),
-    "",
-  );
-  content = content.replace(
-    new RegExp("<\\/?(" + dangerousTags + ")\\b[^>]*>", "gi"),
-    "",
-  );
+  // 2. Eliminar por completo etiquetas ejecutables o con contenido activo (iterativo contra anidamiento).
+  const dangerousTags = "script|style|iframe|object|embed|form|svg|math|meta|base|link|noscript|template|audio|video";
+  let prevSanitized = "";
+  while (content !== prevSanitized) {
+    prevSanitized = content;
+    content = content.replace(
+      new RegExp("<(" + dangerousTags + ")\\b[^>]*>[\\s\\S]*?<\\/\\1\\s*>", "gi"),
+      "",
+    );
+    content = content.replace(
+      new RegExp("<\\/?(" + dangerousTags + ")\\b[^>]*>", "gi"),
+      "",
+    );
+  }
 
-  // 3. Quitar atributos on* y neutralizar URL peligrosas, incluidas las
-  // ofuscadas con entidades, espacios o caracteres de control.
+  // 3. Quitar atributos on* (incluso precedidos por '/' o comillas sin espacio) y neutralizar URL peligrosas.
   content = content.replace(
     /<([a-z][a-z0-9:-]*)([^>]*)>/gi,
     (_tag, name: string, attrs: string) => {
       const cleaned = attrs
-        .replace(/\s+on[a-z0-9_-]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "")
+        .replace(/(?:^|[\s/"'])on[a-z0-9_-]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "")
         .replace(
           /\s+(href|src|xlink:href|action|formaction|poster|background|srcdoc)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi,
           (
@@ -486,17 +514,45 @@ function splitLongParagraph(blockHtml: string, maxLen = 850): string[] {
   const textLen = stripHtml(content).length;
   if (textLen <= maxLen) return [blockHtml];
 
-  // Dividir en límites de oraciones (. , ! , ? )
-  const sentences = content.split(/(?<=[.!?])\s+/);
+  // Dividir en límites de oraciones (. ! ? ; :) y subdividir cláusulas gigantes por comas/espacios
+  const rawSentences = content.split(/(?<=[.!?;:])\s+/);
+  const clauses: string[] = [];
+
+  for (const s of rawSentences) {
+    if (stripHtml(s).length <= maxLen) {
+      clauses.push(s);
+    } else {
+      const tokens = s.split(/(?<=[,——])\s+|\s+/);
+      let chunk = "";
+      let chunkLen = 0;
+      for (const tok of tokens) {
+        const tokLen = stripHtml(tok).length;
+        if (chunk && chunkLen + tokLen + 1 > maxLen) {
+          clauses.push(chunk.trim());
+          chunk = tok;
+          chunkLen = tokLen;
+        } else {
+          chunk = chunk ? `${chunk} ${tok}` : tok;
+          chunkLen += (chunkLen > 0 ? 1 : 0) + tokLen;
+        }
+      }
+      if (chunk.trim()) clauses.push(chunk.trim());
+    }
+  }
+
   const parts: string[] = [];
   let current = "";
+  let currentLen = 0;
 
-  for (const sentence of sentences) {
-    if (current && (current.length + sentence.length > maxLen)) {
+  for (const sentence of clauses) {
+    const sLen = stripHtml(sentence).length;
+    if (current && (currentLen + sLen + 1 > maxLen)) {
       parts.push(`<p${attrs}>${current.trim()}</p>`);
       current = sentence;
+      currentLen = sLen;
     } else {
       current = current ? `${current} ${sentence}` : sentence;
+      currentLen += (currentLen > 0 ? 1 : 0) + sLen;
     }
   }
   if (current.trim()) {
@@ -514,7 +570,7 @@ export interface PaginateOptions {
   margin?: KindleMargin;
   maxCharsPerPage?: number;
   layout?: "paged" | "scroll";
-  mode?: "clean" | "paragraphs";
+  mode?: "clean" | "paragraphs" | "lexicon";
 }
 
 export const KINDLE_PAGE_BUDGETS: Record<KindleFontSize, { standard: number; pageZero: number }> = {
@@ -535,6 +591,13 @@ export const KINDLE_MARGIN_MULTIPLIERS: Record<KindleMargin, number> = {
 
 export const KINDLE_SCROLL_BUDGET = 1200;
 
+const KINDLE_CHARS_PER_LINE: Record<KindleFontSize, number> = {
+  sm: 62,
+  md: 52,
+  lg: 44,
+  xl: 37,
+};
+
 function countBlockClosures(html: string): number {
   const matches = html.match(/<\/(?:p|blockquote|li)>/gi);
   return matches ? matches.length : 0;
@@ -548,7 +611,7 @@ export function paginateChapter(
   let margin: KindleMargin = "md";
   let maxCharsPerPage: number | undefined;
   let isScroll = false;
-  let mode: "clean" | "paragraphs" = "clean";
+  let mode: "clean" | "paragraphs" | "lexicon" = "clean";
 
   if (typeof options === "number") {
     maxCharsPerPage = options;
@@ -567,7 +630,12 @@ export function paginateChapter(
 
   const effectiveStandardBudget = Math.round(baseBudgets.standard * multiplier);
   const effectivePageZeroBudget = Math.round(baseBudgets.pageZero * multiplier);
-  const breakPenalty = mode === "paragraphs" ? PARAGRAPH_MODE_BREAK_PENALTY : BLOCK_BREAK_PENALTY;
+  const breakPenalty =
+    mode === "paragraphs"
+      ? PARAGRAPH_MODE_BREAK_PENALTY
+      : mode === "lexicon"
+        ? 28
+        : BLOCK_BREAK_PENALTY;
 
   const standardBudget = isScroll
     ? (maxCharsPerPage ?? KINDLE_SCROLL_BUDGET)
@@ -577,12 +645,22 @@ export function paginateChapter(
     ? standardBudget
     : (maxCharsPerPage ?? effectivePageZeroBudget);
 
+  // Ancho físico de 1 línea para impedir que >17 diálogos cortos desborden la pantalla
+  const charsPerLine = Math.round((KINDLE_CHARS_PER_LINE[size] ?? 52) * multiplier);
+  const minLineFloorPerBlock =
+    mode === "paragraphs"
+      ? Math.round(charsPerLine * 1.65)
+      : mode === "lexicon"
+        ? Math.round(charsPerLine * 1.35)
+        : charsPerLine;
+
   const rawBlocks = splitHtmlIntoBlocks(contentHtml);
   if (rawBlocks.length === 0) return [contentHtml || "<p>Sin contenido.</p>"];
 
   const expandedBlocks: string[] = [];
-  for (const b of rawBlocks) {
-    expandedBlocks.push(...splitLongParagraph(b, standardBudget));
+  for (let i = 0; i < rawBlocks.length; i++) {
+    const splitLimit = i === 0 ? pageZeroBudget : standardBudget;
+    expandedBlocks.push(...splitLongParagraph(rawBlocks[i], splitLimit));
   }
 
   const pages: string[] = [];
@@ -590,9 +668,15 @@ export function paginateChapter(
   let currentWeight = 0;
 
   for (const block of expandedBlocks) {
-    const rawLen = stripHtml(block).length || 50;
+    const isImageBlock = /<img\b/i.test(block);
+    const strippedLen = stripHtml(block).length;
+    const rawLen = strippedLen || (isImageBlock ? Math.round(standardBudget * 0.45) : 50);
     const closures = countBlockClosures(block);
-    const blockWeight = rawLen + closures * breakPenalty;
+
+    const additiveWeight = rawLen + closures * breakPenalty;
+    const physicalFloorWeight =
+      maxCharsPerPage !== undefined ? additiveWeight : closures * minLineFloorPerBlock;
+    const blockWeight = Math.max(additiveWeight, physicalFloorWeight);
 
     const currentLimit = pages.length === 0 ? pageZeroBudget : standardBudget;
 
@@ -799,16 +883,46 @@ export function computeRaschMastery(theta: number, beta: number): number {
 export function estimateThetaFromD1Knowledge(
   records: Array<{ word: string; status: string; difficultyBeta?: number }>
 ): number {
-  let theta = 0.0;
-  let uncertainty = 1.0;
+  if (!records || records.length === 0) return 0.0;
 
+  // Deduplicar por palabra conservando el último registro
+  const uniqueMap = new Map<string, { status: string; difficultyBeta?: number }>();
   for (const row of records) {
-    const beta = row.difficultyBeta ?? 0.5;
-    const outcome = row.status === 'known' ? 1 : 0;
-    const expected = computeRaschMastery(theta, beta);
-    const k = 0.18 * Math.max(0.3, uncertainty);
-    theta = Math.max(-3.5, Math.min(4.0, theta + k * (outcome - expected)));
-    uncertainty = Math.max(0.25, uncertainty * 0.96);
+    const key = (row.word || "").trim().toLowerCase();
+    if (key) uniqueMap.set(key, row);
+  }
+  if (uniqueMap.size === 0) return 0.0;
+
+  const items: Array<{ outcome: number; beta: number }> = [];
+  for (const [word, row] of uniqueMap.entries()) {
+    let beta = row.difficultyBeta;
+    if (beta == null) {
+      const zipf = getZipfFrequency(word, "es");
+      beta = zipf != null ? Math.max(-2.0, Math.min(3.5, 4.5 - zipf)) : 0.5;
+    }
+    items.push({
+      outcome: row.status === "known" ? 1 : 0,
+      beta,
+    });
+  }
+
+  // Estimación MAP con prior Gaussiano N(0, 1.25^2) vía Newton-Raphson amortiguado
+  let theta = 0.0;
+  const priorPrecision = 0.64; // 1 / 1.25^2
+
+  for (let iter = 0; iter < 5; iter++) {
+    let gradient = -theta * priorPrecision;
+    let fisherInfo = priorPrecision;
+
+    for (const item of items) {
+      const p = computeRaschMastery(theta, item.beta);
+      gradient += item.outcome - p;
+      fisherInfo += p * (1 - p);
+    }
+
+    const step = gradient / Math.max(0.35, fisherInfo);
+    theta = Math.max(-3.5, Math.min(4.0, theta + step));
+    if (Math.abs(step) < 1e-4) break;
   }
 
   return Number(theta.toFixed(4));
@@ -942,7 +1056,7 @@ export function selectKindleChapterPrimingWords(
     const unknownProb = 1 - pKnown;
     if (unknownProb < 0.25) continue;
 
-    const freqWeight = Math.log(1 + info.count);
+    const freqWeight = Math.max(Math.log(1 + info.count), 0.82 + 0.28 * Math.log(info.count));
     const diff = lexEntry.beta - (userState.theta + targetOffset);
     const zpdWeight = Math.exp(-(diff * diff) / (2 * sigma * sigma));
 

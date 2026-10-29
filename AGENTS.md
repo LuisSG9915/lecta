@@ -145,7 +145,23 @@
 ## Producción
 
 - URL: `https://lecta.luis-sg9915.workers.dev` — deploy con `pnpm run deploy`.
-- Último deploy: **2026-10-29** (séptimo del día), versión
+- Último deploy: **2026-10-29** (octavo del día), versión
+  `4eb34332-589b-424e-8c2c-57e732b46e57`, Lecta **v0.2.12**: Auditoría Kindle & E-ink
+  (límite de descompresión 10 MB contra zip bombs en `readZipEntryBytes`, sanitización
+  iterativa anti-XSS en `sanitizeKindleHtml` con bloqueo de meta/base/link/template/audio/video
+  y atributos `on*` pegados, paginación con suelo físico de línea `minLineFloorPerBlock`
+  contra acumulación de diálogos cortos, estimación Rasch MAP con Newton-Raphson amortiguado
+  e inferencia de $\beta$ desde Zipf, overlay `.inline-lookup-card` flotante con backdrop
+  en `layout-paged` para preservar Zero-Scroll, botón de cierre táctil $\ge 44\text{ px}$,
+  mitigación de ghosting `#einkRefreshOverlay` cada 12 páginas, gestos táctiles de swipe
+  horizontal con cerrojo anti-click fantasma de 500 ms, hidratación R2 protegida en `/k`
+  con $\le 1$ EPUB y $\le 15\text{ MB}$, persistencia de contexto episódico en `/vocab/add`
+  y renderizado de cita episódica con orden determinista en `/practice`). Sin migraciones
+  ni secrets nuevos. Verificado en caliente: `pnpm gate` en verde (2964 pruebas, 204.97/215 kB
+  gzip), `/api/health` → 200, `/` → 200 sirviendo `assets/index-avTkuHqQ.js`, `0.2.12` en
+  `assets/DiagnosticsModal-C2Hmlqr0.js`, `/api/positions` sin sesión → 401, `/k` → 200.
+  Sin `smoke:auth`/`smoke:sync`: no toca auth ni el contrato de sync.
+- Deploy anterior: **2026-10-29** (séptimo del día), versión
   `a982618f-04f0-4e9e-94e6-5156394231e4`, Lecta **v0.2.11**: Recalibración del motor
   de paginación Kindle y soporte de márgenes (presupuestos sm: 1150/950, md: 900/750,
   lg: 680/540, xl: 500/390; penalización de salto de bloque de 22 caracteres y 32 en

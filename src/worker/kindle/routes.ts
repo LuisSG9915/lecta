@@ -11,6 +11,7 @@ import { createEmptyCard, fsrs, generatorParameters, Rating, type Card } from "t
 import {
   estimateThetaFromD1Knowledge,
   extractChapterPrepCandidates,
+  extractCompactContextSentence,
   findSentenceWithWord,
   formatChapterHtmlForMode,
   getEpubChapter,
@@ -888,6 +889,10 @@ kindleRoutes.get("/", async (c) => {
     }
   }
 
+  let liveHydrationCount = 0;
+  const MAX_LIVE_HYDRATIONS_PER_REQ = 1;
+  const MAX_HYDRATION_EPUB_BYTES = 15 * 1024 * 1024;
+
   const books: KindleBookItem[] = await Promise.all(
     objects.map(async (obj) => {
       const hash = obj.key.split("/").pop()?.replace(/\.epub$/, "") ?? "";
@@ -895,9 +900,13 @@ kindleRoutes.get("/", async (c) => {
       let author = obj.customMetadata?.author || "";
       let sections = Number(obj.customMetadata?.sections) || 0;
 
-      // Si el libro remoto no tiene título o autor guardado en los metadatos de R2,
-      // lo extraemos directamente del archivo EPUB para que se muestre correctamente.
-      if (!title || !author || !sections) {
+      const canHydrate =
+        (!title || !author || !sections) &&
+        liveHydrationCount < MAX_LIVE_HYDRATIONS_PER_REQ &&
+        (obj.size == null || obj.size <= MAX_HYDRATION_EPUB_BYTES);
+
+      if (canHydrate) {
+        liveHydrationCount += 1;
         try {
           const r2Obj = await c.env.BOOKS!.get(obj.key);
           if (r2Obj) {
@@ -1391,7 +1400,7 @@ kindleRoutes.get("/read/:hash", async (c) => {
     size,
     margin,
     layout,
-    mode: mode === "paragraphs" ? "paragraphs" : "clean",
+    mode,
   });
   const totalPages = pages.length;
 
@@ -1612,6 +1621,7 @@ kindleRoutes.get("/read/:hash", async (c) => {
   // Consulta de definición en línea si se pulsó una palabra
   let lookupResult: InlineLookupResult | null = null;
   if (lookupWord) {
+    const contextSentence = extractCompactContextSentence(stripHtml(rawPageHtml), lookupWord) || null;
     try {
       const entries = await withClient(c.env, (client) =>
         findEntries(client, "es", lookupWord.toLowerCase()),
@@ -1619,11 +1629,13 @@ kindleRoutes.get("/read/:hash", async (c) => {
       lookupResult = {
         word: lookupWord,
         entries: entries || [],
+        contextSentence,
       };
     } catch {
       lookupResult = {
         word: lookupWord,
         entries: [],
+        contextSentence,
       };
     }
   }
@@ -1782,6 +1794,7 @@ kindleRoutes.post("/vocab/add", async (c) => {
   let lemma = typeof body.lemma === "string" ? body.lemma.trim() : form;
   let pos = typeof body.pos === "string" ? body.pos.trim() : null;
   let meaning = typeof body.meaning === "string" ? body.meaning.trim() : null;
+  const context = typeof body.context === "string" && body.context.trim() ? body.context.trim().slice(0, 280) : null;
   const bookHash = typeof body.bookHash === "string" ? body.bookHash.trim() : null;
   const returnTo = typeof body.returnTo === "string" ? body.returnTo : "/k";
 
@@ -1810,15 +1823,16 @@ kindleRoutes.post("/vocab/add", async (c) => {
     await client.query(
       `INSERT INTO lecta_user_words
          (user_id, language, form, lemma, pos, meaning, context, book_hash, saved_at, updated_at, deleted)
-       VALUES ($1, 'es', $2, $3, $4, $5, NULL, $6, $7, $7, false)
+       VALUES ($1, 'es', $2, $3, $4, $5, $6, $7, $8, $8, false)
        ON CONFLICT (user_id, language, form) DO UPDATE SET
          lemma = excluded.lemma,
          pos = excluded.pos,
          meaning = excluded.meaning,
+         context = COALESCE(excluded.context, lecta_user_words.context),
          book_hash = COALESCE(excluded.book_hash, lecta_user_words.book_hash),
          updated_at = excluded.updated_at,
          deleted = false`,
-      [session.user.id, form, lemma, pos, meaning, bookHash, now],
+      [session.user.id, form, lemma, pos, meaning, context, bookHash, now],
     );
   }).catch(() => null);
 
@@ -1892,13 +1906,13 @@ kindleRoutes.get("/practice", async (c) => {
     );
   }
 
-  // Cargar palabras guardadas del usuario para practicar
+  // Cargar palabras guardadas del usuario para practicar (orden determinista por saved_at)
   const wordsRows = await withClient(c.env, (client) =>
     client
       .query(
-        `SELECT form, lemma, pos, meaning, card FROM lecta_user_words
+        `SELECT form, lemma, pos, meaning, context, card FROM lecta_user_words
          WHERE user_id = $1 AND deleted = false AND meaning IS NOT NULL
-         ORDER BY updated_at DESC LIMIT 15`,
+         ORDER BY saved_at DESC, form ASC LIMIT 15`,
         [user.id],
       )
       .then((res) => res.rows)
@@ -1957,6 +1971,7 @@ kindleRoutes.get("/practice", async (c) => {
         word: targetWord.form,
         lemma: targetWord.lemma || targetWord.form,
         pos: targetWord.pos,
+        contextSentence: (targetWord as { context?: string | null }).context ?? null,
         options: optionsList,
         questionIndex: qIndex,
         totalQuestions: 3,

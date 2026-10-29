@@ -729,6 +729,29 @@ describe("Kindle Routes (/k and /kindle)", () => {
       );
     });
 
+    it("guarda la palabra junto con el contexto episódico en lecta_user_words", async () => {
+      getSessionMock.mockResolvedValue({
+        user: { id: "user-1", email: "lector@example.com" },
+      });
+
+      const formData = new FormData();
+      formData.append("form", "perenne");
+      formData.append("lemma", "perenne");
+      formData.append("pos", "adjetivo");
+      formData.append("meaning", "Que dura indefinidamente.");
+      formData.append("context", "El árbol perenne resistía las nevadas.");
+      formData.append("bookHash", "mock-hash-1");
+      formData.append("returnTo", "/k/read/mock-hash-1?section=0&page=0");
+
+      const res = await app.request("/k/vocab/add", { method: "POST", body: formData }, env);
+      expect(res.status).toBe(302);
+
+      expect(dbQueryMock).toHaveBeenCalledWith(
+        expect.stringContaining("INSERT INTO lecta_user_words"),
+        expect.arrayContaining(["user-1", "perenne", "perenne", "adjetivo", "Que dura indefinidamente.", "El árbol perenne resistía las nevadas."]),
+      );
+    });
+
     it("guarda la palabra desde el diccionario y redirige a /k/lookup con saved=1", async () => {
       getSessionMock.mockResolvedValue({
         user: { id: "user-1", email: "lector@example.com" },
@@ -800,6 +823,45 @@ describe("Kindle Routes (/k and /kindle)", () => {
       expect(res.status).toBe(200);
       const html = await res.text();
       expect(html).toContain("Práctica");
+    });
+
+    it("GET /k/practice incluye contexto episódico si está presente en la base de datos", async () => {
+      getSessionMock.mockResolvedValue({
+        user: { id: "user-1", email: "lector@example.com" },
+      });
+      dbQueryMock.mockResolvedValue({
+        rows: [
+          {
+            form: "perenne",
+            lemma: "perenne",
+            pos: "adjetivo",
+            meaning: "Que dura indefinidamente.",
+            context: "El árbol perenne resistía las nevadas.",
+            card: null,
+          },
+          {
+            form: "inefable",
+            lemma: "inefable",
+            pos: "adjetivo",
+            meaning: "Que no se puede explicar con palabras.",
+            context: null,
+            card: null,
+          },
+          {
+            form: "prístino",
+            lemma: "prístino",
+            pos: "adjetivo",
+            meaning: "Antiguo, primero, primitivo o inalterado.",
+            context: null,
+            card: null,
+          },
+        ],
+      });
+
+      const res = await app.request("/k/practice", {}, env);
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).toContain("El árbol perenne resistía las nevadas.");
     });
 
     it("POST /k/practice/answer procesa respuesta y redirige a la siguiente pregunta", async () => {
