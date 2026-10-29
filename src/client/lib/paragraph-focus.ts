@@ -18,14 +18,45 @@ export function getFocusDimOpacity(isDark = false): number {
 const BLOCK_SELECTOR = "p, blockquote, li";
 const SKIP_ANCESTOR = ".section-preview-slot";
 
+// La lista de candidatos se recorre en cada frame de scroll: reconstruirla
+// con `querySelectorAll` + `textContent` era el gasto dominante. Se cachea
+// por contenedor y se invalida cuando el contenido cambia de verdad (otro
+// capítulo) o cuando los nodos cachedeados dejan de estar en el documento.
+const CANDIDATE_CACHE = new WeakMap<
+  ParentNode,
+  { count: number; first: Element | null; list: Element[] }
+>();
+
+function cacheIsFresh(
+  root: ParentNode,
+  cached: { count: number; first: Element | null; list: Element[] },
+): boolean {
+  if (cached.count !== root.childElementCount) return false;
+  if (cached.first !== root.firstElementChild) return false;
+  return cached.list.length === 0 || cached.list[0].isConnected;
+}
+
 /**
  * Obtiene los párrafos y bloques candidatos válidos dentro del contenedor.
  */
 export function getParagraphCandidates(root: ParentNode): Element[] {
-  return Array.from(root.querySelectorAll(BLOCK_SELECTOR)).filter(
+  const cached = CANDIDATE_CACHE.get(root);
+  if (cached && cacheIsFresh(root, cached)) return cached.list;
+  const list = Array.from(root.querySelectorAll(BLOCK_SELECTOR)).filter(
     (el) =>
       !el.closest(SKIP_ANCESTOR) && (el.textContent?.trim().length ?? 0) > 0,
   );
+  CANDIDATE_CACHE.set(root, {
+    count: root.childElementCount,
+    first: root.firstElementChild,
+    list,
+  });
+  return list;
+}
+
+/** Invalida la caché de un contenedor (cambio de capítulo, re-maquetado). */
+export function invalidateParagraphCandidates(root: ParentNode): void {
+  CANDIDATE_CACHE.delete(root);
 }
 
 /**
@@ -227,9 +258,7 @@ export function updateParagraphFocus(
   root: ParentNode,
   targetY?: number,
 ): Element | null {
-  const candidates = Array.from(root.querySelectorAll(BLOCK_SELECTOR)).filter(
-    (el) => !el.closest(SKIP_ANCESTOR) && (el.textContent?.trim().length ?? 0) > 0,
-  );
+  const candidates = getParagraphCandidates(root);
 
   if (candidates.length === 0) {
     clearParagraphFocus(root);
@@ -240,6 +269,39 @@ export function updateParagraphFocus(
   const winW = typeof window !== "undefined" ? window.innerWidth : 1200;
   const focalY = targetY ?? Math.round(winH * 0.38);
 
+  // Los bloques van en orden documental: el que cruza la línea focal se
+  // busca con bisección (O(log M) lecturas de rect) en vez de recorrer el
+  // capítulo entero en cada frame. La ventana de comprobación absorbe el
+  // caso de bloques de altura 0 o columnas fuera de pantalla.
+  let lo = 0;
+  let hi = candidates.length - 1;
+  let pivot = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (candidates[mid].getBoundingClientRect().top <= focalY) {
+      pivot = mid;
+      lo = mid + 1;
+    } else {
+      hi = mid - 1;
+    }
+  }
+
+  if (pivot >= 0) {
+    const start = Math.max(0, pivot);
+    for (let i = start; i < Math.min(candidates.length, start + 3); i += 1) {
+      const el = candidates[i];
+      const rect = el.getBoundingClientRect();
+      if (rect.height === 0 && rect.width === 0) continue;
+      if (rect.right < 0 || rect.left > winW) continue;
+      if (rect.top <= focalY && rect.bottom >= focalY) {
+        focusBlock(root, el);
+        return el;
+      }
+    }
+  }
+
+  // Sin cruce exacto (inicio o fin del texto, o maquetación en columnas
+  // que rompe el orden vertical): el más cercano por distancia.
   let best: Element | null = null;
   let minDistance = Infinity;
 

@@ -110,14 +110,38 @@ export function useReaderPresence({
   }, [machine]);
 
   // El fin de la visita lo marca el reloj de pared: un latido corto
-  // basta para retirarla a tiempo.
+  // basta para retirarla a tiempo. Con el juego apagado o la pestaña
+  // oculta no hay latido que valga: el intervalo se detiene y al volver
+  // se pone al día con una sola evaluación.
   useEffect(() => {
-    const timer = window.setInterval(
-      () => ref.current?.tick(Date.now()),
-      1_000,
-    );
-    return () => window.clearInterval(timer);
-  }, []);
+    if (!enabled) return;
+    if (typeof document === "undefined") return;
+    let timer: number | undefined;
+    const tick = () => ref.current?.tick(Date.now());
+    const start = () => {
+      if (timer !== undefined) return;
+      timer = window.setInterval(tick, 1_000);
+    };
+    const stop = () => {
+      if (timer === undefined) return;
+      window.clearInterval(timer);
+      timer = undefined;
+    };
+    const onVisibility = () => {
+      if (document.hidden) {
+        stop();
+        return;
+      }
+      tick();
+      start();
+    };
+    if (!document.hidden) start();
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      stop();
+    };
+  }, [enabled]);
 
   const activity = useCallback((deltaMs: number) => {
     const ctl = ref.current;

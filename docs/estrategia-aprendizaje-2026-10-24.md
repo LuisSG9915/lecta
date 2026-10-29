@@ -349,7 +349,7 @@ meta-análisis —trátese como hipótesis a medir— y el ranking no está resp
 | Meta semanal | días leídos | días **y** minutos de proceso, nunca «libros/año» | Locke & Latham, 2002 |
 | Pausas | aviso de fatiga por retrocesos | ofrecer pausa de 5–10 min cada 25–30 y «volver en 30 min» con marcador | micro-descansos d = 0,36 vigor / 0,35 fatiga (Albulescu et al., 2022, *PLOS ONE*) |
 | Medida de línea | 65 ch | 55–65 ch por defecto | 55 cpl da mejor comprensión que 100 cpl (Dyson & Haselgrove, 2001) |
-| Layout por defecto | `scroll` (`settings.ts:382`) | `scroll` en narrativa; paginar como opción | En Delgado et al. (2018) el scroll no es moderador y no hay ventaja del papel en textos narrativos; Haverkamp (2022) encuentra ventaja de paginar en textos informativos |
+| Layout por defecto | `scroll` (`settings.ts:388`) | `scroll` en narrativa; paginar como opción | En Delgado et al. (2018) el scroll no es moderador y no hay ventaja del papel en textos narrativos; Haverkamp (2022) encuentra ventaja de paginar en textos informativos |
 
 ---
 

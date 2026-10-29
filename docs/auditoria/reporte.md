@@ -1,9 +1,9 @@
 # Reporte de auditoría — estrategia de aprendizaje de Lecta
 
-Generado: 2026-10-29T03:27:05.053Z
+Generado: 2026-10-29T06:08:06.549Z
 Documento auditado: `docs/estrategia-aprendizaje-2026-10-24.md`
 Registro: `docs/auditoria/claims.json`
-Commit: `6b70e5779a159bd9364da272575abb8cee7ba69e`
+Commit: `21399f189d8624bfbfe9d85813042521e081160b`
 Red: no (solo forma de las referencias)
 
 **Veredicto: PASS_WITH_UNVERIFIED** — 1 afirmaciones aprobadas, 0 refutadas, 0 refutadas por auditoría, 13 sin verificar, 0 comprobaciones omitidas.
@@ -27,7 +27,7 @@ Código: **PASS** · Referencias: **UNVERIFIED**
   - observado: `{"file":"src/client/lib/knowledge.ts","line":292,"text":"const total = forms.length;"}`
 - ✅ **PASS** · code-absent: /\btokens?\b/ no aparece en src/client/lib/coverage.ts
 - ✅ **PASS** · reachable: createCoverageInputsLoader se usa en producción (2 archivo/s)
-  - observado: `{"symbol":"createCoverageInputsLoader","callers":[{"file":"src/client/components/DiscoverRail.tsx","line":115,"text":"const inputsFor = createCoverageInputsLoader(scope, loadInputs);"},{"file":"src/client/components/Shelf.tsx","line":407,"text":"const inputsFor = createCoverageInputsLoader(scope);"}]}`
+  - observado: `{"symbol":"createCoverageInputsLoader","callers":[{"file":"src/client/components/DiscoverRail.tsx","line":115,"text":"const inputsFor = createCoverageInputsLoader(scope, loadInputs);"},{"file":"src/client/components/Shelf.tsx","line":432,"text":"const inputsFor = createCoverageInputsLoader(scope);"}]}`
 - ⚠️ **UNVERIFIED** · referencia laufer2010: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":null,"url":"https://eric.ed.gov/?id=EJ887873"}`
 - ⚠️ **UNVERIFIED** · referencia nation2006: forma válida; sin red no se resuelven metadatos (usar --online)
@@ -73,8 +73,8 @@ Código: **PASS** · Referencias: **UNVERIFIED**
 - ✅ **PASS** · doc-mention: el documento contiene «hasta **40 filas**»
 - ✅ **PASS** · code-anchor: src/client/lib/section-words.ts:201 coincide con /PREPARATION_ROWS_CAP = 40/
   - observado: `{"file":"src/client/lib/section-words.ts","line":201,"text":"export const PREPARATION_ROWS_CAP = 40;"}`
-- ✅ **PASS** · code-anchor: src/client/lib/settings.ts:411 coincide con /chapterPrimingMode: "auto"/
-  - observado: `{"file":"src/client/lib/settings.ts","line":411,"text":"chapterPrimingMode: \"auto\","}`
+- ✅ **PASS** · code-anchor: src/client/lib/settings.ts:418 coincide con /chapterPrimingMode: "auto"/
+  - observado: `{"file":"src/client/lib/settings.ts","line":418,"text":"chapterPrimingMode: \"auto\","}`
 - ✅ **PASS** · code-anchor: src/client/hooks/useReaderChapterPrep.ts:51 coincide con /unknownKeyWordsCount <= 0/
   - observado: `{"file":"src/client/hooks/useReaderChapterPrep.ts","line":51,"text":"if (unknownKeyWordsCount <= 0) return false;"}`
 - ✅ **PASS** · code-anchor: src/client/hooks/useReaderChapterPrep.ts:369 coincide con /opening = "notice"/
@@ -143,12 +143,12 @@ Código: **PASS** · Referencias: **UNVERIFIED**
 - evidencia: `src/client/lib/profile-models.ts:405-415`
 
 - ✅ **PASS** · doc-mention: el documento contiene ««Ya la conozco» es un juicio, no una prueba»
-- ✅ **PASS** · code-anchor: src/client/components/Reader.tsx:4465 coincide con /updateLanguageTheta\(currentLang, beta, 1, 1\.0\)/
-  - observado: `{"file":"src/client/components/Reader.tsx","line":4465,"text":"updateLanguageTheta(currentLang, beta, 1, 1.0);"}`
+- ✅ **PASS** · code-anchor: src/client/components/Reader.tsx:4604 coincide con /updateLanguageTheta\(currentLang, beta, 1, 1\.0\)/
+  - observado: `{"file":"src/client/components/Reader.tsx","line":4604,"text":"updateLanguageTheta(currentLang, beta, 1, 1.0);"}`
 - ✅ **PASS** · code-anchor: src/client/lib/profile-models.ts:417 coincide con /0\.18 \* \(1 - pKnow\)/
   - observado: `{"file":"src/client/lib/profile-models.ts","line":417,"text":"delta = 0.18 * (1 - pKnow);"}`
-- ✅ **PASS** · code-anchor: src/client/components/WordPanel.tsx:544 coincide con /award: false/
-  - observado: `{"file":"src/client/components/WordPanel.tsx","line":544,"text":"{ award: false },"}`
+- ✅ **PASS** · code-anchor: src/client/components/WordPanel.tsx:566 coincide con /award: false/
+  - observado: `{"file":"src/client/components/WordPanel.tsx","line":566,"text":"{ award: false },"}`
 - ✅ **PASS** · code-anchor: src/client/lib/reviews.ts:47 coincide con /options\.award !== false/
   - observado: `{"file":"src/client/lib/reviews.ts","line":47,"text":"if (options.award !== false) {"}`
 - ⚠️ **UNVERIFIED** · referencia koriat2005: forma válida; sin red no se resuelven metadatos (usar --online)
@@ -233,8 +233,8 @@ Código: **PASS** · Referencias: **UNVERIFIED**
 - ✅ **PASS** · code-absent: /computeImplicitFsrsGrade|msPerChar <= 650/ no aparece en src/client/lib/practice.ts
 - ✅ **PASS** · code-anchor: src/client/hooks/useReaderNavigation.ts:211 coincide con /const completeChapterTo/
   - observado: `{"file":"src/client/hooks/useReaderNavigation.ts","line":211,"text":"const completeChapterTo = useCallback("}`
-- ✅ **PASS** · code-anchor: src/client/components/Vocabulary.tsx:1550 coincide con /await grade\(item, wrongs/
-  - observado: `{"file":"src/client/components/Vocabulary.tsx","line":1550,"text":"await grade(item, wrongs ? EXERCISE_RATING.wrong : EXERCISE_RATING.correct);"}`
+- ✅ **PASS** · code-anchor: src/client/components/Vocabulary.tsx:1551 coincide con /await grade\(item, wrongs/
+  - observado: `{"file":"src/client/components/Vocabulary.tsx","line":1551,"text":"await grade(item, wrongs ? EXERCISE_RATING.wrong : EXERCISE_RATING.correct);"}`
 - ⚠️ **UNVERIFIED** · referencia rowland2014: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":"10.1037/a0037559","url":null}`
 - ⚠️ **UNVERIFIED** · referencia laufergoldstein2004: forma válida; sin red no se resuelven metadatos (usar --online)
@@ -282,11 +282,11 @@ Código: **PASS** · Referencias: **UNVERIFIED**
 - evidencia: `src/client/lib/settings.ts:379-382`
 - evidencia: `doi:10.1016/j.edurev.2018.09.003`
 
-- ✅ **PASS** · doc-mention: el documento contiene «`scroll` (`settings.ts:382`)»
-- ✅ **PASS** · code-anchor: src/client/lib/settings.ts:382 coincide con /layout: "scroll"/
-  - observado: `{"file":"src/client/lib/settings.ts","line":382,"text":"layout: \"scroll\","}`
-- ✅ **PASS** · code-anchor: src/client/lib/settings.ts:379 coincide con /measure: 65/
-  - observado: `{"file":"src/client/lib/settings.ts","line":379,"text":"measure: 65,"}`
+- ✅ **PASS** · doc-mention: el documento contiene «`scroll` (`settings.ts:388`)»
+- ✅ **PASS** · code-anchor: src/client/lib/settings.ts:388 coincide con /layout: "scroll"/
+  - observado: `{"file":"src/client/lib/settings.ts","line":388,"text":"layout: \"scroll\","}`
+- ✅ **PASS** · code-anchor: src/client/lib/settings.ts:385 coincide con /measure: 65/
+  - observado: `{"file":"src/client/lib/settings.ts","line":385,"text":"measure: 65,"}`
 - ⚠️ **UNVERIFIED** · referencia delgado2018: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":"10.1016/j.edurev.2018.09.003","url":null}`
 - ⚠️ **UNVERIFIED** · referencia haverkamp2023: forma válida; sin red no se resuelven metadatos (usar --online)
@@ -332,12 +332,12 @@ Código: **PASS** · Referencias: **UNVERIFIED**
 - ✅ **PASS** · code-absent: /postTest|delayedRecall/ no aparece en src
 - ✅ **PASS** · code-anchor: src/client/lib/journey.ts:92 coincide con /export function computeRetentionSummary/
   - observado: `{"file":"src/client/lib/journey.ts","line":92,"text":"export function computeRetentionSummary("}`
-- ✅ **PASS** · code-anchor: src/client/components/Vocabulary.tsx:1149 coincide con /const startRetentionCheck30d/
-  - observado: `{"file":"src/client/components/Vocabulary.tsx","line":1149,"text":"const startRetentionCheck30d = () => {"}`
+- ✅ **PASS** · code-anchor: src/client/components/Vocabulary.tsx:1150 coincide con /const startRetentionCheck30d/
+  - observado: `{"file":"src/client/components/Vocabulary.tsx","line":1150,"text":"const startRetentionCheck30d = () => {"}`
 - ✅ **PASS** · code-anchor: src/client/lib/chapter-follow.ts:52 coincide con /export async function summarizeChapterFollows/
   - observado: `{"file":"src/client/lib/chapter-follow.ts","line":52,"text":"export async function summarizeChapterFollows("}`
-- ✅ **PASS** · code-anchor: src/client/components/Vocabulary.tsx:412 coincide con /const RETENTION_CHECK_MIN_AGE_DAYS = 30/
-  - observado: `{"file":"src/client/components/Vocabulary.tsx","line":412,"text":"const RETENTION_CHECK_MIN_AGE_DAYS = 30;"}`
+- ✅ **PASS** · code-anchor: src/client/components/Vocabulary.tsx:413 coincide con /const RETENTION_CHECK_MIN_AGE_DAYS = 30/
+  - observado: `{"file":"src/client/components/Vocabulary.tsx","line":413,"text":"const RETENTION_CHECK_MIN_AGE_DAYS = 30;"}`
 - ⚠️ **UNVERIFIED** · referencia rowland2014: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":"10.1037/a0037559","url":null}`
 - ⚠️ **UNVERIFIED** · referencia adesope2017: forma válida; sin red no se resuelven metadatos (usar --online)

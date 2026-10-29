@@ -72,6 +72,8 @@ export interface ReaderOverlaysProps {
 
   // WordPanel
   selection: WordHit | null;
+  /** ¿La palabra seleccionada ya está en el Cuaderno? Viene de RAM. */
+  isSavedInitial?: boolean;
   onCloseSelection: () => void;
   onWordSaved?: (word: SavedWord) => void;
   onWordRemoved?: (word: SavedWord) => void;
@@ -165,6 +167,7 @@ export function ReaderOverlays({
   signedIn = false,
 
   selection,
+  isSavedInitial = false,
   onCloseSelection,
   onWordSaved,
   onWordRemoved,
@@ -286,6 +289,7 @@ export function ReaderOverlays({
           currentChapterTitle={currentChapterTitle}
           compactMode={compactMode}
           capsuleHost={wordCapsuleHost}
+          isSavedInitial={isSavedInitial}
           onClose={onCloseSelection}
           onSaved={onWordSaved}
           onRemoved={onWordRemoved}

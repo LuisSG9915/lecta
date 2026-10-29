@@ -105,6 +105,7 @@ describe("parseReaderSettings", () => {
       soundscape: "none",
       highlightLexical: false,
       hideSecondaryIndicators: true,
+      thermalSaver: false,
       visualPacer: false,
       pacerWpm: 210,
     });

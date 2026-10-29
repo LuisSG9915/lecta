@@ -331,6 +331,12 @@ export interface ReaderSettings {
   highlightLexical: boolean;
   /** Oculta indicadores secundarios para lectura sin distracciones. */
   hideSecondaryIndicators: boolean;
+  /**
+   * Ahorro térmico y de batería: apaga los `backdrop-filter` de las
+   * barras persistentes y las animaciones decorativas infinitas. Se
+   * activa también solo cuando el sistema pide movimiento reducido.
+   */
+  thermalSaver: boolean;
   /** Marcapasos visual suave ("Ritmo Guiado") para concentración TDAH. */
   visualPacer: boolean;
   /** Velocidad del marcapasos visual en palabras por minuto (WPM). */
@@ -397,6 +403,7 @@ export const READER_DEFAULTS: ReaderSettings = {
   soundscape: "none",
   highlightLexical: false,
   hideSecondaryIndicators: true,
+  thermalSaver: false,
   visualPacer: false,
   pacerWpm: 210,
   theme: "paper",
@@ -836,6 +843,7 @@ export function parseReaderSettings(raw: string | null): ReaderSettings {
         typeof v.hideSecondaryIndicators === "boolean"
           ? v.hideSecondaryIndicators
           : strategyPreset === "immersive",
+      thermalSaver: v.thermalSaver === true,
       visualPacer: v.visualPacer === true,
       pacerWpm:
         typeof v.pacerWpm === "number" && v.pacerWpm >= 60 && v.pacerWpm <= 600

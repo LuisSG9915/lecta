@@ -5264,3 +5264,33 @@
   }
 }
 
+
+/* =====================================================================
+   Ahorro térmico: el compañero deja de animarse sin parar
+   ---------------------------------------------------------------------
+   Vapor, llama, halo, respiración, cola y parpadeo corren en bucle
+   mientras se lee; en un móvil son capas compuestas que nunca dejan
+   reposar la GPU. Con el ahorro activo (o el sistema pidiendo
+   movimiento reducido) las animaciones se congelan en su frame actual:
+   el gato sigue ahí, quieto. Las transiciones puntuales de interacción
+   no se tocan.
+   ===================================================================== */
+.reader[data-thermal-saver="true"] .cat,
+.reader[data-thermal-saver="true"] .cat *,
+.reader[data-thermal-saver="true"] .cat *::before,
+.reader[data-thermal-saver="true"] .cat *::after,
+.reader[data-thermal-saver="true"] .companion-stage,
+.reader[data-thermal-saver="true"] .companion-stage * {
+  animation-play-state: paused !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reader .cat,
+  .reader .cat *,
+  .reader .cat *::before,
+  .reader .cat *::after,
+  .reader .companion-stage,
+  .reader .companion-stage * {
+    animation-play-state: paused !important;
+  }
+}

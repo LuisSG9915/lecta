@@ -4514,31 +4514,6 @@ b.lecta-anchor {
   padding: 4px 0;
 }
 
-/* =====================================================================
-   Micro-glosas al paso en Modo Neuro-Enfoque / TDAH (< 70px)
-   ===================================================================== */
-.micro-gloss-panel {
-  position: fixed;
-  bottom: calc(var(--s-4, 1rem) + 48px);
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 45;
-  width: min(calc(100vw - 2rem), 420px);
-  min-height: 48px;
-  max-height: 68px;
-  background: var(--paper-raised, #ffffff);
-  border: 1px solid var(--rule-strong, #c9beaa);
-  border-radius: var(--r-sheet, 14px);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.4rem 0.85rem;
-  gap: var(--s-2, 0.5rem);
-  box-sizing: border-box;
-  animation: micro-gloss-in var(--dur-2, 180ms) var(--ease-out);
-}
-
 /* ==========================================================================
    Corrección de Cápsula Flotante (Imagen 1: sin desborde + hint de contexto)
    ========================================================================== */
@@ -4560,6 +4535,7 @@ b.lecta-anchor {
   border-radius: 18px;
   box-sizing: border-box;
   overflow: visible;
+  animation: word-capsule-in var(--dur-2, 180ms) var(--ease-out);
 }
 
 .word-capsule__main {
@@ -4620,15 +4596,30 @@ b.lecta-anchor {
   opacity: 0.95;
 }
 
+/* Confirmación inline del guardado/borrado: sustituye al aviso flotante
+   durante la lectura (0 fricción, sin toasts encima del texto). */
+.word-capsule__notice {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #8ce0b3;
+  animation: fade-in var(--dur-1, 120ms) var(--ease-out);
+}
+
 .word-capsule__actions {
   display: flex;
   align-items: center;
-  gap: 6px;
+  /* 8px entre acciones de 44px: el dedo no cae entre guardar y cerrar. */
+  gap: 8px;
   flex-shrink: 0;
 }
 
 .word-capsule__icon-btn,
 .word-capsule__save-btn {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -4638,10 +4629,28 @@ b.lecta-anchor {
   border: 1px solid rgba(255, 255, 255, 0.16);
   background: rgba(255, 255, 255, 0.08);
   color: inherit;
-  font-size: 1rem;
+  font-size: 1.05rem;
   line-height: 1;
   cursor: pointer;
-  transition: all var(--dur-1, 120ms) ease;
+  transition:
+    transform 0.15s ease,
+    background-color 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+/* Área táctil efectiva de 44×44px sin agrandar el círculo de 36px. */
+.word-capsule__icon-btn::after,
+.word-capsule__save-btn::after,
+.word-capsule__close-btn::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: inherit;
+}
+
+.word-capsule__save-btn:active {
+  transform: scale(0.92);
 }
 
 .word-capsule__save-btn.is-saved {
@@ -4797,7 +4806,7 @@ b.lecta-anchor {
   opacity: 1;
 }
 
-@keyframes micro-gloss-in {
+@keyframes word-capsule-in {
   from {
     opacity: 0;
     transform: translate(-50%, 10px);
@@ -4806,75 +4815,6 @@ b.lecta-anchor {
     opacity: 1;
     transform: translate(-50%, 0);
   }
-}
-
-.micro-gloss-info {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  flex: 1 1 auto;
-}
-
-.micro-gloss-syllables {
-  font-family: var(--font-ui);
-  font-size: var(--fs-xs, 0.75rem);
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  color: var(--vermilion, #9e3a23);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.micro-gloss-meaning {
-  font-family: var(--font-book);
-  font-size: var(--fs-sm, 0.85rem);
-  color: var(--ink, #1f1d1a);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  line-height: 1.25;
-}
-
-.micro-gloss-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  flex: none;
-}
-
-.micro-gloss-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.3rem 0.6rem;
-  font-family: var(--font-ui);
-  font-size: var(--fs-xs, 0.75rem);
-  font-weight: 600;
-  border-radius: var(--r-pill, 999px);
-  background: var(--vermilion-wash, #f3ddd5);
-  color: var(--vermilion, #9e3a23);
-  border: 1px solid transparent;
-  cursor: pointer;
-  transition: all var(--dur-1) var(--ease-out);
-}
-
-.micro-gloss-btn:hover {
-  background: var(--vermilion, #9e3a23);
-  color: #ffffff;
-}
-
-.micro-gloss-close {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  background: transparent;
-  border: none;
-  color: var(--ink-soft, #5c554d);
-  cursor: pointer;
 }
 
 /* =====================================================================
@@ -6875,4 +6815,60 @@ b.lecta-anchor {
   line-height: 1.45;
   color: var(--ink);
   margin-bottom: 6px;
+}
+
+/* =====================================================================
+   Ahorro térmico y batería
+   ---------------------------------------------------------------------
+   En GPUs móviles (Adreno/Mali) cada `backdrop-filter` obliga a
+   re-componer la capa en cada frame del scroll. Con el ajuste activo
+   —o cuando el sistema pide movimiento reducido— las barras
+   persistentes pasan a fondo casi opaco sin desenfoque y las
+   animaciones decorativas se quedan quietas. Las transiciones de
+   interacción se mantienen: ahí no hay animación infinita.
+   ===================================================================== */
+.reader[data-thermal-saver="true"] .reader-dock,
+.reader[data-thermal-saver="true"] .tts-chip,
+.reader[data-thermal-saver="true"] .tts-now-playing,
+.reader[data-thermal-saver="true"] .reader__pacer-bar,
+.reader[data-thermal-saver="true"] .reader-mini-cat-btn,
+.reader[data-thermal-saver="true"] .tts-consent {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  background: color-mix(in srgb, var(--paper-raised) 96%, transparent);
+}
+
+.reader[data-thermal-saver="true"] .smart-reader-dock,
+.reader[data-thermal-saver="true"] .reader-smart-dock {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  background: rgba(24, 24, 27, 0.96);
+}
+
+.reader[data-thermal-saver="true"] .word-capsule {
+  animation: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reader .reader-dock,
+  .reader .tts-chip,
+  .reader .tts-now-playing,
+  .reader .reader__pacer-bar,
+  .reader .reader-mini-cat-btn,
+  .reader .tts-consent {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: color-mix(in srgb, var(--paper-raised) 96%, transparent);
+  }
+
+  .reader .smart-reader-dock,
+  .reader .reader-smart-dock {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background: rgba(24, 24, 27, 0.96);
+  }
+
+  .reader .word-capsule {
+    animation: none !important;
+  }
 }

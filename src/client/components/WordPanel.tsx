@@ -20,6 +20,7 @@ import {
   saveKnowledge,
   saveSessionValue,
   saveWordWithKnowledge,
+  wordKey,
   type KnownWord,
   type SavedWord,
 } from "../lib/idb";
@@ -192,6 +193,12 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
   const [saving, setSaving] = useState(false);
   const [quickNotice, setQuickNotice] = useState<string | null>(null);
   const [_useAi, setUseAi] = useState(true);
+  // Promesa del guardado en vuelo: quitarla antes de que resuelva ya no
+  // cae en el vacío (era el toque perdido de guardar→quitar).
+  const saveInFlightRef = useRef<Promise<SavedWord | null> | null>(null);
+  // Guardado vigente en RAM para el toggle: la cápsula decide con esto,
+  // no con el estado de React, que va un frame por detrás del dedo.
+  const savedRef = useRef<boolean>(isSavedInitial);
 
   // 1. Cargar preferencias de IA
   useEffect(() => {
@@ -219,6 +226,7 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
     void loadSavedWord(effectiveLang, cleanWord, scope)
       .then((stored) => {
         if (!abortCtrl.signal.aborted && stored) {
+          savedRef.current = true;
           setSavedEntry(stored);
           setIsSaved(true);
         }
@@ -453,8 +461,9 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
 
   // Guardar en el cuaderno en 1 solo toque
   const handleSave = async () => {
-    if (isSaved || saving) return;
+    if (savedRef.current) return;
     setSaving(true);
+    savedRef.current = true;
     setIsSaved(true);
     triggerHaptic(12);
 
@@ -465,53 +474,66 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
     const shortDef = localEntry?.shortDefinition || contextual?.inPassageMeaning || "";
     const inPassage = contextual?.inPassageMeaning || localEntry?.shortDefinition || "";
 
-    try {
-      if (onSaveToNotebook) {
-        await onSaveToNotebook({
-          word: cleanWord,
-          lemma,
-          shortDefinition: shortDef,
-          inPassageMeaning: inPassage,
-          sentenceContext: effectiveContext,
-        });
+    const work = (async (): Promise<SavedWord | null> => {
+      try {
+        if (onSaveToNotebook) {
+          await onSaveToNotebook({
+            word: cleanWord,
+            lemma,
+            shortDefinition: shortDef,
+            inPassageMeaning: inPassage,
+            sentenceContext: effectiveContext,
+          });
+        }
+
+        const scope = captureDbScope();
+        const { word: saved } = await saveWordWithKnowledge({
+          word: {
+            form: cleanWord,
+            lemma,
+            meaning: inPassage || shortDef,
+            language: effectiveLang,
+            context: effectiveContext || undefined,
+            bookHash,
+            priority: true,
+          },
+          knowledge: {
+            language: effectiveLang,
+            lemma,
+            known: false,
+            source: "saved",
+            status: "unknown",
+          },
+        }, scope);
+
+        setSavedEntry(saved);
+        onSaved?.(saved);
+
+        incrementCollectionPendingCount("words");
+        scheduleReadingSyncPush("words");
+
+
+        // En la cápsula el mismo botón quita: el aviso lo dice. En la
+        // ficha, el botón guarda y el aviso explica la prioridad.
+        const msg = compactMode
+          ? "★ Guardada · toca de nuevo para quitar"
+          : "Fijada con prioridad en tu cuaderno.";
+        onNotice?.(msg);
+        setQuickNotice(msg);
+        setTimeout(() => setQuickNotice(null), 2500);
+        return saved;
+      } catch {
+        savedRef.current = false;
+        setIsSaved(false);
+        return null;
+      } finally {
+        saveInFlightRef.current = null;
+        setSaving(false);
       }
+    })();
 
-      const scope = captureDbScope();
-      const { word: saved } = await saveWordWithKnowledge({
-        word: {
-          form: cleanWord,
-          lemma,
-          meaning: inPassage || shortDef,
-          language: effectiveLang,
-          context: effectiveContext || undefined,
-          bookHash,
-          priority: true,
-        },
-        knowledge: {
-          language: effectiveLang,
-          lemma,
-          known: false,
-          source: "saved",
-          status: "unknown",
-        },
-      }, scope);
-
-      setSavedEntry(saved);
-      onSaved?.(saved);
-
-      incrementCollectionPendingCount("words");
-      scheduleReadingSyncPush("words");
-
-
-      const msg = "Fijada con prioridad en tu cuaderno.";
-      onNotice?.(msg);
-      setQuickNotice(msg);
-      setTimeout(() => setQuickNotice(null), 2500);
-    } catch {
-      setIsSaved(false);
-    } finally {
-      setSaving(false);
-    }
+    saveInFlightRef.current = work;
+    await work;
   };
 
   // Marcar como conocida ("✓ Ya la sé")
@@ -575,16 +597,30 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
 
   // Quitar del cuaderno
   const handleRemove = async () => {
-    if (!savedEntry) return;
-    const scope = captureDbScope();
-    await removeSavedWord(savedEntry.key, scope);
+    // Respuesta en el primer frame: el dedo ya vio el cambio antes de
+    // que IndexedDB responda.
+    savedRef.current = false;
     setIsSaved(false);
-    setSavedEntry(null);
-    onRemoved?.(savedEntry);
-    const msg = "Eliminada del cuaderno.";
+    triggerHaptic(8);
+    const msg = "Eliminada del cuaderno";
     onNotice?.(msg);
     setQuickNotice(msg);
     setTimeout(() => setQuickNotice(null), 2000);
+
+    // Un guardado en vuelo deja la fila en la base: sin esperarlo, el
+    // borrado se adelantaba y la palabra volvía a la cápsula guardada.
+    const inFlight = saveInFlightRef.current;
+    const pending = inFlight ? await inFlight.catch(() => null) : null;
+
+    const scope = captureDbScope();
+    let entry: SavedWord | null = pending ?? savedEntry;
+    if (!entry) {
+      entry = (await loadSavedWord(effectiveLang, cleanWord, scope).catch(() => undefined)) ?? null;
+    }
+    const key = entry?.key ?? wordKey(effectiveLang, cleanWord.toLowerCase());
+    await removeSavedWord(key, scope).catch(() => undefined);
+    setSavedEntry(null);
+    if (entry) onRemoved?.(entry);
   };
 
   const keyboardHandlersRef = useRef({
@@ -660,9 +696,15 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
               {syllables && <span className="word-capsule__syllables micro-gloss-syllables">{syllables}</span>}
             </div>
             <p className="word-capsule__gloss micro-gloss-def micro-gloss-meaning">{microDef}</p>
-            <span className="word-capsule__context-hint">
-              Ver explicación en esta frase ›
-            </span>
+            {quickNotice ? (
+              <span className="word-capsule__notice" role="status">
+                {quickNotice}
+              </span>
+            ) : (
+              <span className="word-capsule__context-hint">
+                Ver explicación en esta frase ›
+              </span>
+            )}
           </div>
 
           <div className="word-capsule__actions micro-gloss-actions">
@@ -689,10 +731,13 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
                   void handleSave();
                 }
               }}
-              aria-label={isSaved ? "Quitar de mi cuaderno" : "Guardar en mi cuaderno"}
-              title={isSaved ? "Quitar de mi cuaderno" : "Guardar en mi cuaderno"}
+              aria-pressed={isSaved}
+              aria-label={
+                isSaved ? "Guardada en tu cuaderno (toca para quitar)" : "Guardar en cuaderno"
+              }
+              title={isSaved ? "Guardada en tu cuaderno (toca para quitar)" : "Guardar en cuaderno"}
             >
-              ✓
+              <span aria-hidden="true">{isSaved ? "★" : "☆"}</span>
             </button>
             <button
               type="button"
@@ -764,14 +809,6 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
                 title="Quitar de mi cuaderno"
               >
                 Quitar
-              </button>
-              <button
-                type="button"
-                className="btn--view-notebook"
-                onClick={onClose}
-                style={{ display: "none" }}
-              >
-                Ver en cuaderno →
               </button>
             </div>
           ) : (

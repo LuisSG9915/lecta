@@ -173,9 +173,9 @@ describe("WordPanel - Acciones Rápidas (Fase 4.3)", () => {
     expect(removeBtn).not.toBeNull();
     expect(removeBtn?.textContent).toContain("Quitar");
 
-    const viewBtn = host.querySelector<HTMLButtonElement>(".btn--view-notebook");
-    expect(viewBtn).not.toBeNull();
-    expect(viewBtn?.textContent).toContain("Ver en cuaderno →");
+    // El atajo muerto «Ver en cuaderno» ya no se pinta: el Cuaderno se
+    // abre desde el dock, no desde la ficha de una palabra.
+    expect(host.querySelector(".btn--view-notebook")).toBeNull();
   });
 
   it("al reencontrar una palabra practicada muestra su etapa de aprendizaje", async () => {
@@ -489,6 +489,87 @@ describe("WordPanel - Acciones Rápidas (Fase 4.3)", () => {
     const statusRow = header?.querySelector(".word-panel__status-row");
     expect(statusRow).not.toBeNull();
     expect(statusRow?.querySelector(".word-panel__save-cta")).not.toBeNull();
+  });
+
+  it("en compactMode, guardar y quitar en dos toques seguidos borra aunque el guardado siga en vuelo", async () => {
+    const idb = await import("../lib/idb");
+    vi.mocked(idb.removeSavedWord).mockClear();
+    const onRemoved = vi.fn();
+    const onSaved = vi.fn();
+
+    render(
+      h(WordPanel, {
+        word: "efimero",
+        language: "es",
+        bookHash: "bookRace",
+        compactMode: true,
+        onClose: vi.fn(),
+        onSaved,
+        onRemoved,
+      }),
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const saveBtn = host.querySelector<HTMLButtonElement>(".word-capsule__save-btn");
+    expect(saveBtn).not.toBeNull();
+    expect(saveBtn?.getAttribute("aria-pressed")).toBe("false");
+    expect(saveBtn?.textContent).toContain("☆");
+
+    // Primer toque: guarda (la escritura queda en vuelo).
+    click(saveBtn!);
+    expect(saveBtn?.getAttribute("aria-pressed")).toBe("true");
+    expect(saveBtn?.classList.contains("is-saved")).toBe(true);
+
+    // Segundo toque inmediato: debe encolar el borrado tras la promesa.
+    click(saveBtn!);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(idb.removeSavedWord).toHaveBeenCalled();
+    const after = host.querySelector<HTMLButtonElement>(".word-capsule__save-btn");
+    expect(after?.getAttribute("aria-pressed")).toBe("false");
+    expect(after?.classList.contains("is-saved")).toBe(false);
+    expect(after?.textContent).toContain("☆");
+    expect(onRemoved).toHaveBeenCalled();
+  });
+
+  it("en compactMode con isSavedInitial nace guardada y el primer toque quita", async () => {
+    const idb = await import("../lib/idb");
+    vi.mocked(idb.removeSavedWord).mockClear();
+
+    render(
+      h(WordPanel, {
+        word: "efimero",
+        language: "es",
+        bookHash: "bookInitial",
+        compactMode: true,
+        isSavedInitial: true,
+        onClose: vi.fn(),
+        onSaved: vi.fn(),
+      }),
+    );
+
+    // Sin esperar promesas: el estado viene de memoria.
+    const saveBtn = host.querySelector<HTMLButtonElement>(".word-capsule__save-btn");
+    expect(saveBtn).not.toBeNull();
+    expect(saveBtn?.getAttribute("aria-pressed")).toBe("true");
+    expect(saveBtn?.classList.contains("is-saved")).toBe(true);
+    expect(saveBtn?.textContent).toContain("★");
+
+    click(saveBtn!);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(idb.removeSavedWord).toHaveBeenCalledWith("es:efimero", expect.anything());
+    expect(saveBtn?.getAttribute("aria-pressed")).toBe("false");
   });
 
   it("en compactMode renderiza la micro-glosa ultracompacta con silabeo y permite expandir", async () => {

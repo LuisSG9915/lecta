@@ -224,6 +224,19 @@ export default function ReaderSettingsSheet({
               />
             </div>
           ) : null}
+          <div className="setting-row">
+            <span className="setting-label">Ahorro térmico y batería</span>
+            <Toggle
+              label="Ahorro térmico y batería"
+              checked={settings.thermalSaver}
+              onChange={(on) => updateSettings({ thermalSaver: on })}
+            />
+          </div>
+          <p className="meta">
+            Desactiva desenfoques de fondo y suaviza animaciones para evitar
+            calentamiento. Se enciende solo si tu sistema pide movimiento
+            reducido.
+          </p>
           {bookOverride ? (
             <div className="setting-row">
               <span className="setting-label">Este libro tiene ajustes propios</span>

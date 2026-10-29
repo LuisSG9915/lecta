@@ -36,10 +36,12 @@ import {
   saveSessionValue,
   listIntervals,
   loadSessionValue,
+  wordKey,
   type DbScope,
   type SavedWord,
   type SavedBookPosition,
 } from "../lib/idb";
+import { activeFragmentAt, fragElements } from "../lib/scroll-fragments";
 import { updateLanguageTheta } from "../lib/profile-models";
 import { batchLookup, enrichBatch, lookupWord } from "../lib/lexicon";
 import { consolidateEpisodicWord, scheduleCapturedReview } from "../lib/reviews";
@@ -231,6 +233,8 @@ import { useReaderSectionLoader } from "../hooks/useReaderSectionLoader";
 import { useReaderSettings } from "../hooks/useReaderSettings";
 import { downloadBookMarkdown } from "../lib/export";
 import {
+  formatElapsedMinutes,
+  formatRemainingTime,
   requestScreenWakeLock,
   releaseScreenWakeLock,
   triggerHaptic,
@@ -425,7 +429,24 @@ export default function Reader({
   const bookRef = useRef<EpubBook | null>(null);
   const rafPending = useRef(false);
   const lastScrollY = useRef(0);
+  const lastPointerCheckRef = useRef(0);
+  // Última fracción publicada al estado (pasos de 0,5 %).
+  const lastScrollRatioRef = useRef(0);
+  // ¿Hay barra de selección en pantalla? Evita el `setState(null)` por
+  // frame del handler de scroll.
+  const selButtonVisibleRef = useRef(false);
+  // Nodo del contador del retiro: se pinta fuera del ciclo de React.
+  const deepIndicatorRef = useRef<HTMLSpanElement | null>(null);
   const savedForms = useRef<Map<string, MarkLevel>>(new Map());
+  // Claves (`idioma:forma`) de las palabras que ya están en el Cuaderno.
+  // Es la memoria con la que la cápsula nace «guardada» en 0 ms, sin
+  // esperar a IndexedDB ni rebotar el botón.
+  // Claves de las palabras ya guardadas. Es estado (no ref) porque la
+  // cápsula de la ficha lo consulta al pintar: nace guardada en el
+  // primer frame, sin esperar a IndexedDB.
+  const [savedKeys, setSavedKeys] = useState<ReadonlySet<string>>(
+    () => new Set<string>(),
+  );
   const sectionTiming = useRef<{ start: number; startRatio: number; words: number } | null>(null);
   const overlayReleaseRef = useRef<OverlayHandle | null>(null);
   const releaseOverlay = () => {
@@ -826,6 +847,10 @@ export default function Reader({
     placement: "top" | "bottom";
     singleWordHit: WordHit | null;
   } | null>(null);
+  // Espejo de `selButton` para el handler de scroll (no re-suscribe).
+  useEffect(() => {
+    selButtonVisibleRef.current = selButton !== null;
+  }, [selButton]);
   const lastPointerTypeRef = useRef<string>("mouse");
   const [showLongPressHint, setShowLongPressHint] = useState(false);
   const [deepModal, setDeepModal] = useState(false);
@@ -1111,6 +1136,23 @@ export default function Reader({
 
   // Pestaña oculta para el planificador (aparte del seguimiento de
   // actividad, que ya la escucha para cerrar el segmento).
+  // El sistema puede pedir movimiento reducido: se trata como ahorro
+  // térmico aunque el ajuste esté apagado (mismas reglas de CSS).
+  const [systemReducedMotion, setSystemReducedMotion] = useState(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function")
+      return false;
+    return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  });
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function")
+      return;
+    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const onChange = () => setSystemReducedMotion(query.matches);
+    query.addEventListener?.("change", onChange);
+    return () => query.removeEventListener?.("change", onChange);
+  }, []);
+  const thermalSaver = settings.thermalSaver || systemReducedMotion;
+
   const [docHidden, setDocHidden] = useState(() => document.hidden);
   useEffect(() => {
     const onVisibility = () => setDocHidden(document.hidden);
@@ -1285,6 +1327,12 @@ export default function Reader({
   useEffect(() => {
     const onPointerActivity = (e: Event) => {
       lastActivityAtRef.current = Date.now();
+      // `pointermove` dispara hasta 120 veces por segundo: rearmar el
+      // temporizador de zen en cada evento era trabajo térmico puro.
+      // 5 comprobaciones por segundo bastan para el mismo gesto.
+      const now = performance.now();
+      if (now - lastPointerCheckRef.current < 200) return;
+      lastPointerCheckRef.current = now;
       let clientY = 0;
       if ("clientY" in e && typeof (e as { clientY: unknown }).clientY === "number") {
         clientY = (e as { clientY: number }).clientY;
@@ -1309,10 +1357,13 @@ export default function Reader({
     };
   }, [isZenFaded, resetZenFadeTimer]);
 
-  // Chequeo periódico de pasajes densos (B.2)
+  // Chequeo periódico de pasajes densos (B.2). Solo el preset
+  // inmersivo usa el aviso: en los demás no se instancia el intervalo.
   useEffect(() => {
+    if (state !== "ready" || isDeepReading) return;
+    if (settings.strategyPreset !== "immersive") return;
     const checkDenseStall = () => {
-      if (state !== "ready" || isDeepReading) return;
+      if (state !== "ready" || isDeepReading || document.hidden) return;
       const now = Date.now();
       const baselineWpm = loadBaselineWpm();
       const pageWords = Math.max(30, Math.round(sectionWords / (pageCount || 1)));
@@ -1324,16 +1375,14 @@ export default function Reader({
         lastActivityAtRef.current,
       );
       if (isStalled) {
-        if (settings.strategyPreset === "immersive") {
-          setStallBubble(
-            "¿Pasaje denso? Tócame para iluminar el párrafo paso a paso.",
-          );
-          if (stallBubbleTimerRef.current)
-            clearTimeout(stallBubbleTimerRef.current);
-          stallBubbleTimerRef.current = setTimeout(() => {
-            setStallBubble(null);
-          }, 6000);
-        }
+        setStallBubble(
+          "¿Pasaje denso? Tócame para iluminar el párrafo paso a paso.",
+        );
+        if (stallBubbleTimerRef.current)
+          clearTimeout(stallBubbleTimerRef.current);
+        stallBubbleTimerRef.current = setTimeout(() => {
+          setStallBubble(null);
+        }, 6000);
       }
     };
 
@@ -1418,20 +1467,23 @@ export default function Reader({
   // Detección de récord mensual (>10 min y supera récord de 30 días) (Fase 1 Anti-Abandono)
   useEffect(() => {
     if (state !== "ready" || longestToastFiredRef.current) return;
-    const interval = window.setInterval(() => {
+    const check = () => {
+      // El umbral es de 10 minutos: mirar cada minuto llega de sobra y
+      // no despierta el hilo 12 veces por minuto. En pestaña oculta no
+      // se cumplen sesiones de lectura, así que no se evalúa.
+      if (document.hidden || longestToastFiredRef.current) return;
       const now = Date.now();
       const currentSessionMs = now - (sessionStartRef.current || now);
-      if (currentSessionMs >= 10 * 60_000 && !longestToastFiredRef.current) {
-        if (isLongestSessionThisMonth(currentSessionMs, intervalsRef.current, now)) {
-          longestToastFiredRef.current = true;
-          setRecordToast("Nuevo récord: tu lectura más larga este mes");
-          signalCompanion({ kind: "goal_completed" });
-          window.setTimeout(() => {
-            setRecordToast(null);
-          }, 5000);
-        }
-      }
-    }, 5000);
+      if (currentSessionMs < 10 * 60_000) return;
+      if (!isLongestSessionThisMonth(currentSessionMs, intervalsRef.current, now)) return;
+      longestToastFiredRef.current = true;
+      setRecordToast("Nuevo récord: tu lectura más larga este mes");
+      signalCompanion({ kind: "goal_completed" });
+      window.setTimeout(() => {
+        setRecordToast(null);
+      }, 5000);
+    };
+    const interval = window.setInterval(check, 60_000);
     return () => window.clearInterval(interval);
   }, [state, signalCompanion]);
 
@@ -1661,13 +1713,35 @@ export default function Reader({
   // no llegan señales de lectura.
   useEffect(() => {
     if (!catEnabled) return;
-    const timer = window.setInterval(() => {
+    let timer: number | undefined;
+    const tick = () => {
+      // Pestaña oculta: el gato no se ve y el latido solo gastaba
+      // batería. Al volver, la visibilidad dispara un latido único.
+      if (document.hidden) return;
       const now = Date.now();
       signalCompanion({ kind: "tick", at: now });
       const sleepy = isReaderIdleSleepy(focusTrackerRef.current, now);
       setCatSleepy(sleepy);
-    }, 10_000);
-    return () => window.clearInterval(timer);
+    };
+    const start = () => {
+      if (timer !== undefined) return;
+      timer = window.setInterval(tick, 10_000);
+    };
+    const stop = () => {
+      if (timer === undefined) return;
+      window.clearInterval(timer);
+      timer = undefined;
+    };
+    const onVisibility = () => {
+      if (document.hidden) stop();
+      else start();
+    };
+    if (!document.hidden) start();
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      stop();
+    };
   }, [catEnabled, signalCompanion]);
 
   const scrollRatioNow = () => {
@@ -2268,6 +2342,9 @@ export default function Reader({
             : DEFAULT_THRESHOLD_LEARNER;
         const storedWords = await listSavedWords(bookLanguage, scope);
         savedForms.current = savedFormLevels(storedWords);
+        setSavedKeys(
+          new Set(storedWords.map((word) => wordKey(word.language, word.form))),
+        );
         recordDominated(storedWords, bookLanguage, scope);
         setLanguage(bookLanguage);
         const bookTitle = getBookTitle(book);
@@ -2485,6 +2562,9 @@ export default function Reader({
       const scope = captureDbScope();
       const storedWords = await listSavedWords(language, scope);
       savedForms.current = savedFormLevels(storedWords);
+      setSavedKeys(
+        new Set(storedWords.map((word) => wordKey(word.language, word.form))),
+      );
       recordDominated(storedWords, language, scope);
       await refreshProfile(
         { savedForms, evidenceRef, pendingKnowledgeRef, knowledgeMapRef, adjustRef, baseThresholdRef, profileRef },
@@ -2685,7 +2765,13 @@ export default function Reader({
       window.clearTimeout(timer);
       timer = window.setTimeout(update, 200);
     };
-    const hide = () => setSelButton(null);
+    // `scroll` dispara en cada frame: sin esta guarda se pedía un
+    // `setState(null)` por frame aunque no hubiera nada que ocultar.
+    const hide = () => {
+      if (!selButtonVisibleRef.current) return;
+      selButtonVisibleRef.current = false;
+      setSelButton(null);
+    };
     document.addEventListener("selectionchange", onSelection);
     window.addEventListener("scroll", hide, { passive: true });
     return () => {
@@ -2740,16 +2826,23 @@ export default function Reader({
         lastScrollY.current = y;
         if (y < 90 || delta < -4) setBarsVisible(true);
         else if (delta > 4 && y > 160) setBarsVisible(false);
-        setScrollRatio(scrollRatioNow());
+        // La fracción leída solo se publica cada 0,5 %: cada llamada
+        // re-renderiza el lector entero y antes corría una por frame.
+        const nextRatio = scrollRatioNow();
+        if (
+          nextRatio === 0 ||
+          nextRatio === 1 ||
+          Math.abs(nextRatio - lastScrollRatioRef.current) >= 0.005
+        ) {
+          lastScrollRatioRef.current = nextRatio;
+          setScrollRatio(nextRatio);
+        }
         if (containerRef.current && currentSectionTargetsRef.current.length > 1) {
-          const frags = containerRef.current.querySelectorAll("[data-frag-id]");
-          let bestFrag: string | null = null;
-          for (const el of frags) {
-            const rect = el.getBoundingClientRect();
-            if (rect.top <= 180) {
-              bestFrag = el.getAttribute("data-frag-id");
-            }
-          }
+          const bestFrag = activeFragmentAt(
+            fragElements(containerRef.current),
+            180,
+            settingsRef.current?.layout === "pages",
+          );
           if (bestFrag !== activeScrollFragRef.current) {
             activeScrollFragRef.current = bestFrag;
             setActiveScrollFragment(bestFrag);
@@ -3140,21 +3233,45 @@ export default function Reader({
     });
   };
 
-  // Temporizador y ciclo del Retiro de Lectura
+  // Temporizador y ciclo del Retiro de Lectura. El contador se pinta en
+  // su nodo cada segundo y el estado solo cambia al pasar de minuto:
+  // antes cada segundo re-renderizaba el lector entero por un dígito.
   useEffect(() => {
     if (!deepReading?.active) return;
-    const interval = setInterval(() => {
+    const startedAt = deepReading.startedAt;
+    const targetEndedAt = deepReading.targetEndedAt;
+    const targetMinutes = deepReading.targetMinutes;
+    let minuteMark = -1;
+    const paint = (elapsed: number) => {
+      const node = deepIndicatorRef.current;
+      if (!node) return;
+      node.textContent =
+        targetEndedAt != null
+          ? formatRemainingTime(Math.max(0, targetMinutes * 60_000 - elapsed))
+          : formatElapsedMinutes(elapsed);
+    };
+    const interval = window.setInterval(() => {
       const now = Date.now();
-      const elapsed = now - deepReading.startedAt;
-      if (deepReading.targetEndedAt != null && now >= deepReading.targetEndedAt) {
-        clearInterval(interval);
+      const elapsed = now - startedAt;
+      if (targetEndedAt != null && now >= targetEndedAt) {
+        window.clearInterval(interval);
         void finishDeepReading(true);
-      } else {
-        setDeepReading((prev) => (prev ? { ...prev, elapsedMs: elapsed } : null));
+        return;
       }
+      paint(elapsed);
+      const minute = Math.floor(elapsed / 60_000);
+      if (minute === minuteMark) return;
+      minuteMark = minute;
+      setDeepReading((prev) => (prev ? { ...prev, elapsedMs: elapsed } : null));
     }, 1000);
-    return () => clearInterval(interval);
-  }, [deepReading?.active, deepReading?.startedAt, deepReading?.targetEndedAt, finishDeepReading]);
+    return () => window.clearInterval(interval);
+  }, [
+    deepReading?.active,
+    deepReading?.startedAt,
+    deepReading?.targetEndedAt,
+    deepReading?.targetMinutes,
+    finishDeepReading,
+  ]);
 
   const { isFullscreenActive, handleToggleFullscreen } = useReaderShortcutsAndGestures({
     viewportRef,
@@ -3197,6 +3314,13 @@ export default function Reader({
     // La marca del texto sigue la etapa real de la tarjeta: una palabra
     // asentada no vuelve a «nueva» porque el lector la reencuentre.
     const level = markLevel(word.card);
+    const savedKey = wordKey(word.language || language, word.form);
+    setSavedKeys((prev) => {
+      if (prev.has(savedKey)) return prev;
+      const next = new Set(prev);
+      next.add(savedKey);
+      return next;
+    });
     for (const form of [word.form, word.lemma]) {
       if (!form) continue;
       const key = form.toLowerCase();
@@ -3261,6 +3385,13 @@ export default function Reader({
   }, [language, bookHash, onWordSaved, setTtsCapturedToast, ttsRef]);
 
   const onWordRemoved = (word: SavedWord) => {
+    const removedKey = wordKey(word.language || language, word.form);
+    setSavedKeys((prev) => {
+      if (!prev.has(removedKey)) return prev;
+      const next = new Set(prev);
+      next.delete(removedKey);
+      return next;
+    });
     for (const form of [word.form, word.lemma]) {
       if (form) savedForms.current.delete(form.toLowerCase());
     }
@@ -3986,6 +4117,7 @@ export default function Reader({
       data-layout={settings.layout === "pages" ? "pages" : undefined}
       data-hyphens={settings.enableHyphenation || undefined}
       data-fullscreen={isFullscreenActive || undefined}
+      data-thermal-saver={thermalSaver ? "true" : undefined}
     >
       <div
         ref={measureProbeRef}
@@ -4236,6 +4368,7 @@ export default function Reader({
         deepReading={deepReading}
         finishDeepReading={finishDeepReading}
         progress={progress}
+        deepIndicatorRef={deepIndicatorRef}
       />
 
 
@@ -4397,6 +4530,11 @@ export default function Reader({
         sectionIndex={sectionIndex}
         signedIn={signedIn}
         selection={selection}
+        // La cápsula nace con el estado real del Cuaderno: sin esto el
+        // primer toque podía re-guardar una palabra ya guardada.
+        isSavedInitial={
+          selection != null && savedKeys.has(wordKey(language, selection.word))
+        }
         onCloseSelection={closeSelection}
         onWordSaved={onWordSaved}
         onWordRemoved={onWordRemoved}

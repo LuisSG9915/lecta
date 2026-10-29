@@ -1,9 +1,9 @@
 {
   "tool": "audit-investigacion",
   "version": 1,
-  "generatedAt": "2026-10-29T03:27:05.053Z",
-  "root": "C:\\Users\\Administrador\\Documents\\GitHub\\berllano\\lecta",
-  "commit": "6b70e5779a159bd9364da272575abb8cee7ba69e",
+  "generatedAt": "2026-10-29T06:08:06.549Z",
+  "root": "/Users/luis/Desarrollos Devin/lecta",
+  "commit": "21399f189d8624bfbfe9d85813042521e081160b",
   "doc": "docs/estrategia-aprendizaje-2026-10-24.md",
   "registry": "docs/auditoria/claims.json",
   "online": false,
@@ -86,7 +86,7 @@
               },
               {
                 "file": "src/client/components/Shelf.tsx",
-                "line": 407,
+                "line": 432,
                 "text": "const inputsFor = createCoverageInputsLoader(scope);"
               }
             ]
@@ -253,10 +253,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/lib/settings.ts:411 coincide con /chapterPrimingMode: \"auto\"/",
+          "detail": "src/client/lib/settings.ts:418 coincide con /chapterPrimingMode: \"auto\"/",
           "observed": {
             "file": "src/client/lib/settings.ts",
-            "line": 411,
+            "line": 418,
             "text": "chapterPrimingMode: \"auto\","
           }
         },
@@ -522,10 +522,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/components/Reader.tsx:4465 coincide con /updateLanguageTheta\\(currentLang, beta, 1, 1\\.0\\)/",
+          "detail": "src/client/components/Reader.tsx:4604 coincide con /updateLanguageTheta\\(currentLang, beta, 1, 1\\.0\\)/",
           "observed": {
             "file": "src/client/components/Reader.tsx",
-            "line": 4465,
+            "line": 4604,
             "text": "updateLanguageTheta(currentLang, beta, 1, 1.0);"
           }
         },
@@ -542,10 +542,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/components/WordPanel.tsx:544 coincide con /award: false/",
+          "detail": "src/client/components/WordPanel.tsx:566 coincide con /award: false/",
           "observed": {
             "file": "src/client/components/WordPanel.tsx",
-            "line": 544,
+            "line": 566,
             "text": "{ award: false },"
           }
         },
@@ -883,10 +883,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/components/Vocabulary.tsx:1550 coincide con /await grade\\(item, wrongs/",
+          "detail": "src/client/components/Vocabulary.tsx:1551 coincide con /await grade\\(item, wrongs/",
           "observed": {
             "file": "src/client/components/Vocabulary.tsx",
-            "line": 1550,
+            "line": 1551,
             "text": "await grade(item, wrongs ? EXERCISE_RATING.wrong : EXERCISE_RATING.correct);"
           }
         },
@@ -1076,26 +1076,26 @@
         {
           "kind": "doc-mention",
           "status": "PASS",
-          "detail": "el documento contiene «`scroll` (`settings.ts:382`)»",
+          "detail": "el documento contiene «`scroll` (`settings.ts:388`)»",
           "observed": {}
         },
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/lib/settings.ts:382 coincide con /layout: \"scroll\"/",
+          "detail": "src/client/lib/settings.ts:388 coincide con /layout: \"scroll\"/",
           "observed": {
             "file": "src/client/lib/settings.ts",
-            "line": 382,
+            "line": 388,
             "text": "layout: \"scroll\","
           }
         },
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/lib/settings.ts:379 coincide con /measure: 65/",
+          "detail": "src/client/lib/settings.ts:385 coincide con /measure: 65/",
           "observed": {
             "file": "src/client/lib/settings.ts",
-            "line": 379,
+            "line": 385,
             "text": "measure: 65,"
           }
         },
@@ -1261,10 +1261,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/components/Vocabulary.tsx:1149 coincide con /const startRetentionCheck30d/",
+          "detail": "src/client/components/Vocabulary.tsx:1150 coincide con /const startRetentionCheck30d/",
           "observed": {
             "file": "src/client/components/Vocabulary.tsx",
-            "line": 1149,
+            "line": 1150,
             "text": "const startRetentionCheck30d = () => {"
           }
         },
@@ -1281,10 +1281,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/components/Vocabulary.tsx:412 coincide con /const RETENTION_CHECK_MIN_AGE_DAYS = 30/",
+          "detail": "src/client/components/Vocabulary.tsx:413 coincide con /const RETENTION_CHECK_MIN_AGE_DAYS = 30/",
           "observed": {
             "file": "src/client/components/Vocabulary.tsx",
-            "line": 412,
+            "line": 413,
             "text": "const RETENTION_CHECK_MIN_AGE_DAYS = 30;"
           }
         },

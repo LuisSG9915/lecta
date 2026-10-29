@@ -127,8 +127,8 @@
         {
           "type": "code-anchor",
           "file": "src/client/lib/settings.ts",
-          "line": 411,
-          "window": 1,
+          "line": 418,
+          "window": 15,
           "expect": "chapterPrimingMode: \"auto\"",
           "why": "la preparación está activa por defecto"
         },
@@ -286,8 +286,8 @@
         {
           "type": "code-anchor",
           "file": "src/client/components/Reader.tsx",
-          "line": 4465,
-          "window": 2,
+          "line": 4604,
+          "window": 20,
           "expect": "updateLanguageTheta\\(currentLang, beta, 1, 1\\.0\\)",
           "why": "onMarkKnown sube theta con outcome 1"
         },
@@ -302,8 +302,8 @@
         {
           "type": "code-anchor",
           "file": "src/client/components/WordPanel.tsx",
-          "line": 544,
-          "window": 1,
+          "line": 566,
+          "window": 15,
           "expect": "award: false",
           "why": "el autoinforme no paga XP de repaso"
         },
@@ -561,21 +561,21 @@
       "section": "Ajustes",
       "title": "El lector abre en scroll por defecto",
       "statement": "El ajuste por defecto de layout es scroll con medida de 65 caracteres, aunque la evidencia favorece el paginado en textos informativos.",
-      "docQuote": "`scroll` (`settings.ts:382`)",
+      "docQuote": "`scroll` (`settings.ts:388`)",
       "checks": [
         {
           "type": "code-anchor",
           "file": "src/client/lib/settings.ts",
-          "line": 382,
-          "window": 1,
+          "line": 388,
+          "window": 10,
           "expect": "layout: \"scroll\"",
           "why": "valor por defecto del layout"
         },
         {
           "type": "code-anchor",
           "file": "src/client/lib/settings.ts",
-          "line": 379,
-          "window": 1,
+          "line": 385,
+          "window": 10,
           "expect": "measure: 65",
           "why": "medida de línea por defecto"
         }

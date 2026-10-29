@@ -9,6 +9,7 @@ import type { CompanionState } from "../../lib/companion-state";
 import type { DeepReadingState } from "../../lib/deep-reading";
 import { formatElapsedMinutes, formatRemainingTime } from "../../lib/deep-reading";
 import type { ReaderSettings } from "../../lib/settings";
+import type { RefObject } from "react";
 
 export interface ReaderFocusLayersProps {
   settings: ReaderSettings;
@@ -23,6 +24,11 @@ export interface ReaderFocusLayersProps {
   deepReading: DeepReadingState | null;
   finishDeepReading: (completed: boolean) => void | Promise<unknown>;
   progress: number;
+  /**
+   * Nodo del contador de retiro: el lector escribe ahí los segundos sin
+   * re-renderizar 4 500 líneas de JSX cada segundo.
+   */
+  deepIndicatorRef?: RefObject<HTMLSpanElement | null>;
 }
 
 export function ReaderFocusLayers(props: ReaderFocusLayersProps) {
@@ -39,6 +45,7 @@ export function ReaderFocusLayers(props: ReaderFocusLayersProps) {
   deepReading,
   finishDeepReading,
   progress,
+  deepIndicatorRef,
   } = props;
 
   return (
@@ -78,7 +85,7 @@ export function ReaderFocusLayers(props: ReaderFocusLayersProps) {
         className="reader-deep-indicator"
         aria-label="Sesión de retiro de lectura"
       >
-        <span className="reader-deep-indicator-text">
+        <span className="reader-deep-indicator-text" ref={deepIndicatorRef}>
           {deepReading.targetEndedAt
             ? formatRemainingTime(
                 Math.max(
