@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { app, computeAiCacheKey, getCachedAiText, setCachedAiText } from "./app";
 import type { WorkerEnv } from "./db";
 import * as dbModule from "./db";
+import * as sessionModule from "./session";
 import { resetClientErrorLimiters } from "./client-errors";
 
 describe("GET /api/health", () => {
@@ -710,5 +711,125 @@ describe("POST /api/client-errors", () => {
       expect(response.status).toBe(204);
     }
     expect(logged()).toHaveLength(30);
+  });
+});
+
+describe("POST /api/client-errors y lecta_error_signatures", () => {
+  const valid = {
+    name: "TypeError",
+    code: "window.error",
+    route: "/reader?book=98123",
+    version: "prod",
+    frames: ["index-ABC.js:1:234"],
+  };
+  const post = (env: WorkerEnv) =>
+    app.request(
+      "/api/client-errors",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "cf-connecting-ip": "7.7.7.7",
+        },
+        body: JSON.stringify(valid),
+      },
+      env,
+    );
+
+  beforeEach(() => {
+    resetClientErrorLimiters();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("suma el reporte a la fila del día", async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [], rowCount: 1 });
+    vi.spyOn(dbModule, "withClient").mockImplementation(async (_env, run) =>
+      run({ query } as unknown as Parameters<typeof run>[0]),
+    );
+
+    const response = await post({
+      DATABASE_URL: "postgres://user:pass@host:5432/db",
+    } as WorkerEnv);
+
+    expect(response.status).toBe(204);
+    await vi.waitFor(() => expect(query).toHaveBeenCalled());
+    // El mock acumula llamadas de otros casos del archivo: la última es la mía.
+    const [sql, params] = query.mock.calls.at(-1) as [string, unknown[]];
+    expect(sql).toContain("INSERT INTO lecta_error_signatures");
+    // `sanitizeRoute` ya colapsó el id antes de llegar aquí; la normalización
+    // a `:id` es la segunda red (cubierta en client-errors.test.ts).
+    expect(params?.[2]).toBe("/reader");
+    expect(params?.[6]).toBe("index-ABC.js:1:234");
+  });
+
+  it("un fallo al escribir no cambia la respuesta 204", async () => {
+    vi.spyOn(dbModule, "withClient").mockImplementation(async () => {
+      throw new Error("hyperdrive caído");
+    });
+
+    const response = await post({
+      DATABASE_URL: "postgres://user:pass@host:5432/db",
+    } as WorkerEnv);
+
+    expect(response.status).toBe(204);
+  });
+});
+
+describe("GET /api/error-reports", () => {
+  const owner = { LECTA_OWNER_EMAIL: "dueno@example.com" } as WorkerEnv;
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("404 cuando no hay correo de dueño configurado", async () => {
+    const response = await app.request("/api/error-reports", {}, {} as WorkerEnv);
+    expect(response.status).toBe(404);
+  });
+
+  it("404 cuando la sesión no es la del dueño", async () => {
+    vi.spyOn(sessionModule, "getSessionUser").mockResolvedValue({
+      email: "otra-persona@example.com",
+    } as unknown as Awaited<ReturnType<typeof sessionModule.getSessionUser>>);
+
+    const response = await app.request("/api/error-reports", {}, owner);
+    expect(response.status).toBe(404);
+  });
+
+  it("devuelve el agregado al dueño", async () => {
+    vi.spyOn(sessionModule, "getSessionUser").mockResolvedValue({
+      email: "DUENO@example.com",
+    } as unknown as Awaited<ReturnType<typeof sessionModule.getSessionUser>>);
+    const query = vi.fn().mockResolvedValue({
+      rows: [
+        {
+          signature: "abcd1234ef567890",
+          day: "2026-10-29",
+          route: "/reader/*",
+          name: "TypeError",
+          code: "window.error",
+          version: "prod",
+          hits: "3",
+          sample_frames: "a.js:1:2",
+          last_message: null,
+          first_seen: "2026-10-29 10:00:00+00",
+          last_seen: "2026-10-29 12:00:00+00",
+        },
+      ],
+      rowCount: 1,
+    });
+    vi.spyOn(dbModule, "withClient").mockImplementation(async (_env, run) =>
+      run({ query } as unknown as Parameters<typeof run>[0]),
+    );
+
+    const response = await app.request("/api/error-reports?days=7", {}, owner);
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { days: number; rows: Array<{ hits: number }> };
+    expect(body.days).toBe(7);
+    expect(body.rows[0]?.hits).toBe(3);
   });
 });

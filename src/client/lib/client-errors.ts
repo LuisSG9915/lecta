@@ -1,10 +1,12 @@
 // Reporte de errores del navegador al endpoint /api/client-errors.
 //
 // Reglas (Fase 5):
-// - Solo metadatos por defecto: nombre, código, ruta y versión. El `message`
+// - Solo metadatos por defecto: nombre, código, ruta, versión y hasta 3 frames
+//   del stack (archivo:línea:columna de nuestro propio bundle). El `message`
 //   únicamente viaja si el usuario activa «incluir mensaje» en Diagnóstico.
-// - Una huella (`name|code|route`) se envía **una vez por sesión** y como mucho
-//   cinco reportes por carga: un bucle de errores no puede inundar los logs.
+// - Una huella (`name|code|route|frame0`) se envía **una vez por sesión** y como
+//   mucho cinco reportes por carga: un bucle de errores no puede inundar los
+//   logs, pero dos bugs distintos en la misma ruta sí se reportan por separado.
 // - Si el envío falla, se ignora: reportar nunca puede romper la app.
 import { loadFeatureFlags } from "./settings";
 
@@ -13,6 +15,8 @@ export const CLIENT_ERROR_MAX_PER_LOAD = 5;
 const MAX_NAME = 60;
 const MAX_CODE = 60;
 const MAX_MESSAGE = 200;
+const MAX_FRAMES = 3;
+const MAX_FRAME_CHARS = 80;
 
 const sentFingerprints = new Set<string>();
 let sentThisLoad = 0;
@@ -21,6 +25,8 @@ export interface ClientErrorInput {
   name?: string;
   code?: string;
   message?: string;
+  /** Stack del error: de aquí salen los frames, nunca viaja completo. */
+  stack?: string;
 }
 
 /** Solo para pruebas: deja el reporter como recién cargado. */
@@ -38,6 +44,29 @@ function clip(value: string, max: number): string {
   return value.trim().slice(0, max);
 }
 
+/** `app.js:12:345` — solo el archivo y la línea, sin origen ni query. */
+const FRAME_PATTERN = /([A-Za-z0-9_.-]+\.(?:js|mjs|cjs|ts|tsx|jsx)):(\d+)(?::(\d+))?/;
+
+/**
+ * Tres primeros frames del stack, ya limpios: sirven para agrupar en el
+ * servidor (el primero entra en la huella) y para ver quién llamó a qué.
+ * Con sourcemaps subidos al backend esos nombres son legibles.
+ */
+export function topFrames(stack?: string): string[] {
+  if (!stack) return [];
+  const frames: string[] = [];
+  for (const line of stack.split("\n")) {
+    const match = FRAME_PATTERN.exec(line);
+    if (!match) continue;
+    const [, file, lineNumber, column] = match;
+    const frame = column ? `${file}:${lineNumber}:${column}` : `${file}:${lineNumber}`;
+    const clipped = frame.slice(0, MAX_FRAME_CHARS);
+    if (!frames.includes(clipped)) frames.push(clipped);
+    if (frames.length >= MAX_FRAMES) break;
+  }
+  return frames;
+}
+
 /**
  * Envía un error de cliente si los límites y los interruptores lo permiten.
  * Devuelve si se llegó a enviar (útil en pruebas).
@@ -50,13 +79,14 @@ export function reportClientError(input: ClientErrorInput): boolean {
   const name = clip(input.name ?? "Error", MAX_NAME) || "Error";
   const code = clip(input.code ?? "", MAX_CODE);
   const route = currentRoute();
-  const fingerprint = `${name}|${code}|${route}`;
+  const frames = topFrames(input.stack);
+  const fingerprint = `${name}|${code}|${route}|${frames[0] ?? ""}`;
   if (sentFingerprints.has(fingerprint)) return false;
 
   sentFingerprints.add(fingerprint);
   sentThisLoad += 1;
 
-  const payload: Record<string, string> = {
+  const payload: Record<string, string | string[]> = {
     name,
     code,
     route,
@@ -65,6 +95,7 @@ export function reportClientError(input: ClientErrorInput): boolean {
   if (flags.includeErrorMessage && input.message) {
     payload.message = clip(input.message, MAX_MESSAGE);
   }
+  if (frames.length > 0) payload.frames = frames;
 
   try {
     void fetch(CLIENT_ERROR_ENDPOINT, {
@@ -81,7 +112,7 @@ export function reportClientError(input: ClientErrorInput): boolean {
   return true;
 }
 
-/** Extrae nombre/código/mensaje de un `unknown` y lo reporta. */
+/** Extrae nombre/código/mensaje/stack de un `unknown` y lo reporta. */
 export function reportErrorObject(error: unknown, code?: string): boolean {
   if (error instanceof Error) {
     const errorCode =
@@ -89,7 +120,12 @@ export function reportErrorObject(error: unknown, code?: string): boolean {
       (typeof (error as Error & { code?: unknown }).code === "string"
         ? (error as Error & { code: string }).code
         : undefined);
-    return reportClientError({ name: error.name || "Error", code: errorCode, message: error.message });
+    return reportClientError({
+      name: error.name || "Error",
+      code: errorCode,
+      message: error.message,
+      stack: error.stack,
+    });
   }
   return reportClientError({ name: "NonError", code, message: String(error) });
 }

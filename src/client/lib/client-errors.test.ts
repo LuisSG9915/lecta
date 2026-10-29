@@ -8,6 +8,7 @@ import {
   reportClientError,
   reportErrorObject,
   resetClientErrorReporter,
+  topFrames,
 } from "./client-errors";
 
 const fetchMock = vi.fn(
@@ -17,7 +18,9 @@ const fetchMock = vi.fn(
 type FetchCall = [string, RequestInit];
 const fetchCalls = () => fetchMock.mock.calls as unknown as FetchCall[];
 const sentPayloads = () =>
-  fetchCalls().map(([, init]) => JSON.parse(String(init.body)) as Record<string, string>);
+  fetchCalls().map(
+    ([, init]) => JSON.parse(String(init.body)) as Record<string, string | string[]>,
+  );
 
 beforeEach(() => {
   localStorage.clear();
@@ -95,6 +98,59 @@ describe("reportClientError", () => {
     expect(reportClientError({ name: "TypeError" })).toBe(false);
     resetClientErrorReporter();
     expect(reportClientError({ name: "TypeError" })).toBe(true);
+  });
+});
+
+describe("topFrames", () => {
+  it("se queda con los 3 primeros frames y quita el origen", () => {
+    const stack = [
+      "Error: boom",
+      "    at Reader.tsx:12:5",
+      "    at https://lecta.dev/assets/index-ABC.js:1:23456",
+      "    at chunk-XYZ.js:7:8",
+      "    at cuarto.js:9:10",
+    ].join("\n");
+    expect(topFrames(stack)).toEqual([
+      "Reader.tsx:12:5",
+      "index-ABC.js:1:23456",
+      "chunk-XYZ.js:7:8",
+    ]);
+  });
+
+  it("ignora líneas sin archivo y stacks vacíos", () => {
+    expect(topFrames(undefined)).toEqual([]);
+    expect(topFrames("Error: boom\n    at async fetchJson")).toEqual([]);
+  });
+
+  it("no repite el mismo frame", () => {
+    expect(topFrames("at a.js:1:2\nat a.js:1:2")).toEqual(["a.js:1:2"]);
+  });
+});
+
+describe("frames en el reporte", () => {
+  it("viaja una muestra corta y sin mensaje", () => {
+    reportClientError({
+      name: "TypeError",
+      code: "window.error",
+      message: "boom",
+      stack: "Error: boom\n    at Reader.tsx:12:5\n    at app.js:3:4",
+    });
+    const payload = sentPayloads()[0];
+    expect(payload.frames).toEqual(["Reader.tsx:12:5", "app.js:3:4"]);
+    expect(payload).not.toHaveProperty("message");
+  });
+
+  it("dos bugs distintos en la misma ruta se reportan por separado", () => {
+    expect(
+      reportClientError({ name: "TypeError", stack: "at a.js:1:2" }),
+    ).toBe(true);
+    expect(
+      reportClientError({ name: "TypeError", stack: "at b.js:3:4" }),
+    ).toBe(true);
+    expect(
+      reportClientError({ name: "TypeError", stack: "at a.js:1:2" }),
+    ).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
 

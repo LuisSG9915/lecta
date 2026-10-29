@@ -20,6 +20,10 @@ export const CLIENT_ERROR_MAX_NAME = 60;
 export const CLIENT_ERROR_MAX_CODE = 60;
 export const CLIENT_ERROR_MAX_VERSION = 40;
 export const CLIENT_ERROR_MAX_MESSAGE = 200;
+/** Frames que viajan para agrupar y depurar: solo los 3 primeros. */
+export const CLIENT_ERROR_MAX_FRAMES = 3;
+/** Caracteres por frame ya limpio (`index-ABC.js:12:345`). */
+export const CLIENT_ERROR_MAX_FRAME = 80;
 
 /** Primer segmento de ruta que la app reconoce. Lo demás se colapsa a «/otra». */
 const KNOWN_ROUTE_PREFIXES = new Set([
@@ -45,6 +49,8 @@ export interface ClientErrorReport {
   route: string;
   version: string;
   message?: string;
+  /** Frames limpios del stack, del más cercano al más lejano (máx. 3). */
+  frames?: string[];
 }
 
 /**
@@ -72,6 +78,48 @@ export function sanitizeRoute(raw: unknown): string {
   return `/${first}/*`;
 }
 
+/**
+ * UUID, hash largo, número largo o sufijo numérico (`book-98123`): todo eso
+ * identifica un recurso, no una ruta. Si cambia el id, la firma no cambia.
+ */
+const DYNAMIC_SEGMENT =
+  /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|\d{4,}|[0-9a-f]{16,}|[a-z]+[-_]\d{4,})$/i;
+
+/**
+ * Normaliza la ruta **antes** de calcular la huella: un mismo bug en
+ * `/reader/book-98123` y `/reader/book-44512` tiene que dar la misma firma.
+ * Es idempotente, así que se puede aplicar sobre lo que ya devolvió
+ * `sanitizeRoute`.
+ */
+export function normalizeRouteForSignature(route: string): string {
+  return route
+    .split("/")
+    .map((segment) =>
+      segment && (DYNAMIC_SEGMENT.test(segment) || segment.length > 40) && segment !== "*"
+        ? ":id"
+        : segment,
+    )
+    .join("/");
+}
+
+/** `https://host/assets/index-ABC.js:1:234` ⇒ `index-ABC.js:1:234`. */
+const FRAME_PATTERN = /([A-Za-z0-9_.-]+\.(?:js|mjs|cjs|ts|tsx|jsx)):(\d+)(?::(\d+))?/;
+
+/**
+ * Limpia un frame: se queda solo con el archivo y la línea/columna. Nunca
+ * origen, query ni ruta absoluta del dispositivo.
+ */
+export function sanitizeFrame(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim();
+  if (!trimmed || trimmed.length > 300) return null;
+  const match = FRAME_PATTERN.exec(trimmed);
+  if (!match) return null;
+  const [, file, line, column] = match;
+  const frame = column ? `${file}:${line}:${column}` : `${file}:${line}`;
+  return frame.slice(0, CLIENT_ERROR_MAX_FRAME);
+}
+
 function readBounded(value: unknown, max: number): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
@@ -87,7 +135,7 @@ export function parseClientErrorReport(raw: unknown): ClientErrorReport | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
 
   const input = raw as Record<string, unknown>;
-  const allowed = new Set(["name", "code", "route", "version", "message"]);
+  const allowed = new Set(["name", "code", "route", "version", "message", "frames"]);
   for (const key of Object.keys(input)) {
     if (!allowed.has(key)) return null;
   }
@@ -113,6 +161,20 @@ export function parseClientErrorReport(raw: unknown): ClientErrorReport | null {
     message = read;
   }
 
+  // Los frames son diagnóstico, no un interruptor de privacidad: un frame
+  // ilegible se descarta y el reporte sigue (a diferencia de `message`).
+  let frames: string[] | undefined;
+  if (input.frames !== undefined) {
+    if (!Array.isArray(input.frames)) return null;
+    const cleaned: string[] = [];
+    for (const candidate of input.frames) {
+      const frame = sanitizeFrame(candidate);
+      if (frame && !cleaned.includes(frame)) cleaned.push(frame);
+      if (cleaned.length >= CLIENT_ERROR_MAX_FRAMES) break;
+    }
+    if (cleaned.length > 0) frames = cleaned;
+  }
+
   return {
     event: "client_error",
     name,
@@ -120,6 +182,7 @@ export function parseClientErrorReport(raw: unknown): ClientErrorReport | null {
     route: sanitizeRoute(input.route),
     version,
     ...(message ? { message } : {}),
+    ...(frames ? { frames } : {}),
   };
 }
 

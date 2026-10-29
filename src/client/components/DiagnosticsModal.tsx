@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Dialog from "./Dialog";
 import { getStoredErrorLogs, ERROR_LOG_STORAGE_KEY } from "./ErrorBoundary";
 import { getSyncState, type SyncState } from "../lib/sync-state";
@@ -35,6 +35,23 @@ interface ErrorLogEntry {
   url?: string;
 }
 
+/** Fila del agregado del servidor: una incidencia, no un evento. */
+interface ServerErrorRow {
+  signature: string;
+  day: string;
+  route: string;
+  name: string;
+  code: string;
+  version: string;
+  hits: number;
+  sampleFrames: string;
+  lastMessage: string | null;
+  firstSeen: string;
+  lastSeen: string;
+}
+
+type ServerErrorsState = "loading" | "denied" | ServerErrorRow[];
+
 function formatBytes(bytes: number): string {
   if (bytes <= 0) return "0 B";
   if (bytes < 1024) return `${bytes} B`;
@@ -63,6 +80,40 @@ export default function DiagnosticsModal({ onClose }: DiagnosticsModalProps) {
     "idle" | "loading" | "success" | "error"
   >("idle");
   const [resyncMsg, setResyncMsg] = useState("");
+  const [serverErrors, setServerErrors] = useState<ServerErrorsState>("loading");
+
+  /** Pide el agregado del servidor. Solo cambia estado después del `await`. */
+  const fetchServerErrors = useCallback(async (): Promise<ServerErrorsState> => {
+    try {
+      const response = await fetch("/api/error-reports?days=7", {
+        headers: { accept: "application/json" },
+      });
+      // 404 = no eres el dueño (la ruta no se anuncia). No es un fallo.
+      if (response.status === 404) return "denied";
+      if (!response.ok) return [];
+      const data = (await response.json()) as { rows?: ServerErrorRow[] };
+      return Array.isArray(data.rows) ? data.rows : [];
+    } catch {
+      return [];
+    }
+  }, []);
+
+  const loadServerErrors = useCallback(async () => {
+    setServerErrors("loading");
+    setServerErrors(await fetchServerErrors());
+  }, [fetchServerErrors]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      const next = await fetchServerErrors();
+      if (!cancelled) setServerErrors(next);
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchServerErrors]);
 
   const handleResyncFromServer = async () => {
     if (resyncState === "loading") return;
@@ -357,6 +408,67 @@ export default function DiagnosticsModal({ onClose }: DiagnosticsModalProps) {
               </div>
             ))}
           </div>
+        </section>
+
+        <section className="setting-block" aria-label="Salud de la aplicación">
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <h3 className="eyebrow" style={{ margin: 0 }}>Salud de la aplicación (servidor)</h3>
+            <button
+              type="button"
+              className="btn--quiet"
+              style={{ fontSize: "var(--fs-xs)" }}
+              onClick={() => void loadServerErrors()}
+              disabled={serverErrors === "loading"}
+            >
+              {serverErrors === "loading" ? "Actualizando…" : "Actualizar"}
+            </button>
+          </div>
+          <p className="meta" style={{ margin: "var(--s-1) 0" }}>
+            Errores agrupados por huella en los últimos 7 días. Una fila es una
+            incidencia, no un evento: las repeticiones se suman.
+          </p>
+          {serverErrors === "loading" ? (
+            <p className="meta" style={{ margin: "var(--s-1) 0" }}>Consultando…</p>
+          ) : serverErrors === "denied" ? (
+            <p className="meta" style={{ margin: "var(--s-1) 0" }}>
+              Visible solo para la cuenta del dueño.
+            </p>
+          ) : serverErrors.length === 0 ? (
+            <p className="meta" style={{ margin: "var(--s-1) 0" }}>
+              Sin errores agrupados en la ventana.
+            </p>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "var(--s-2)", maxHeight: "240px", overflowY: "auto", fontSize: "var(--fs-xs)", background: "var(--paper-sunken)", padding: "var(--s-2)", borderRadius: "var(--r-sm)" }}>
+              {serverErrors.map((row) => (
+                <div
+                  key={`${row.signature}-${row.day}`}
+                  style={{ borderBottom: "1px solid var(--border)", paddingBottom: "var(--s-1)" }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: "var(--s-2)" }}>
+                    <strong>
+                      {row.hits}× {row.name} en {row.route}
+                    </strong>
+                    <span style={{ fontFamily: "monospace", color: "var(--ink-muted)" }}>
+                      {row.signature}
+                    </span>
+                  </div>
+                  <div style={{ color: "var(--ink-muted)" }}>
+                    v{row.version || "?"} · última{" "}
+                    {new Date(row.lastSeen).toLocaleString()} · primera{" "}
+                    {new Date(row.firstSeen).toLocaleDateString()}
+                  </div>
+                  {row.sampleFrames ? (
+                    <div style={{ fontFamily: "monospace", color: "var(--ink-muted)" }}>
+                      {row.sampleFrames}
+                    </div>
+                  ) : null}
+                  {row.lastMessage ? (
+                    <div style={{ color: "var(--ink-muted)" }}>«{row.lastMessage}»</div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          )}
         </section>
 
         <section className="setting-block">

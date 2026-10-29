@@ -1,9 +1,12 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   CLIENT_ERROR_LIMIT_PER_MINUTE,
+  CLIENT_ERROR_MAX_FRAMES,
   allowClientError,
+  normalizeRouteForSignature,
   parseClientErrorReport,
   resetClientErrorLimiters,
+  sanitizeFrame,
   sanitizeRoute,
 } from "./client-errors";
 
@@ -33,6 +36,53 @@ describe("sanitizeRoute", () => {
 
   it("conserva la raíz", () => {
     expect(sanitizeRoute("/")).toBe("/");
+  });
+});
+
+describe("sanitizeFrame", () => {
+  it("se queda con archivo, línea y columna del bundle", () => {
+    expect(
+      sanitizeFrame("    at Reader.tsx:12:5"),
+    ).toBe("Reader.tsx:12:5");
+    expect(
+      sanitizeFrame(
+        "at https://lecta.luis-sg9915.workers.dev/assets/index-BULye57G.js:1:23456",
+      ),
+    ).toBe("index-BULye57G.js:1:23456");
+  });
+
+  it("descarta frames sin archivo reconocible o con basura", () => {
+    expect(sanitizeFrame("at async fetchJson")).toBeNull();
+    expect(sanitizeFrame("")).toBeNull();
+    expect(sanitizeFrame(42)).toBeNull();
+    expect(sanitizeFrame("x".repeat(400))).toBeNull();
+  });
+
+  it("nunca deja pasar la ruta absoluta del dispositivo", () => {
+    const frame = sanitizeFrame("at /Users/luis/secreto/app.js:1:2");
+    expect(frame).toBe("app.js:1:2");
+    expect(frame).not.toContain("luis");
+  });
+});
+
+describe("normalizeRouteForSignature", () => {
+  it("reemplaza ids dinámicos por :id", () => {
+    expect(normalizeRouteForSignature("/reader/book-98123")).toBe("/reader/:id");
+    expect(normalizeRouteForSignature("/reader/44512")).toBe("/reader/:id");
+    expect(
+      normalizeRouteForSignature("/k/5f2b8c1e-9a3d-4b6e-8c1f-0a2b3c4d5e6f"),
+    ).toBe("/k/:id");
+  });
+
+  it("es idempotente y respeta los comodines", () => {
+    const once = normalizeRouteForSignature("/reader/*");
+    expect(once).toBe("/reader/*");
+    expect(normalizeRouteForSignature(once)).toBe(once);
+    expect(normalizeRouteForSignature("/")).toBe("/");
+  });
+
+  it("no toca palabras normales", () => {
+    expect(normalizeRouteForSignature("/vocabulary")).toBe("/vocabulary");
   });
 });
 
@@ -68,6 +118,28 @@ describe("parseClientErrorReport", () => {
   it("acepta un mensaje corto y lo devuelve", () => {
     const report = parseClientErrorReport({ ...valid, message: "boom" });
     expect(report?.message).toBe("boom");
+  });
+
+  it("limpia los frames y corta en el máximo", () => {
+    const report = parseClientErrorReport({
+      ...valid,
+      frames: ["a.js:1:2", "a.js:1:2", "b.js:3:4", "c.js:5:6", "d.js:7:8"],
+    });
+    expect(report?.frames).toEqual(["a.js:1:2", "b.js:3:4", "c.js:5:6"]);
+    expect(report?.frames).toHaveLength(CLIENT_ERROR_MAX_FRAMES);
+  });
+
+  it("un frame ilegible no tira el reporte", () => {
+    const report = parseClientErrorReport({
+      ...valid,
+      frames: ["basura sin archivo", "a.js:1:2"],
+    });
+    expect(report?.frames).toEqual(["a.js:1:2"]);
+    expect(parseClientErrorReport({ ...valid, frames: ["basura"] })?.frames).toBeUndefined();
+  });
+
+  it("rechaza frames que no son una lista", () => {
+    expect(parseClientErrorReport({ ...valid, frames: "a.js:1:2" })).toBeNull();
   });
 
   it("exige un nombre legible", () => {

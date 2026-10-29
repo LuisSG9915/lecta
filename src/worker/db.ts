@@ -11,6 +11,8 @@ export type WorkerEnv = {
   RESEND_API_KEY?: string;
   RESEND_FROM?: string;
   RESEND_FROM_EMAIL?: string;
+  /** Correo del dueño: abre /api/error-reports y recibe el digest de errores. */
+  LECTA_OWNER_EMAIL?: string;
   BOOKS?: R2Bucket;
   BOOKS_BUCKET?: R2Bucket;
   MODELS_BUCKET?: R2Bucket;

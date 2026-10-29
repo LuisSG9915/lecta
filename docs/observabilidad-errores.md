@@ -1,6 +1,9 @@
 # Observabilidad de errores — apartado propio y librerías OSS
 
-Fecha: 2026-10-29. Estado: **propuesta lista para aplicar** (ningún archivo de `src/` se ha tocado).
+Fecha: 2026-10-29. Estado: **aplicado el 2026-10-29** — el diseño de abajo es el que quedó en el
+código, con los tres ajustes pedidos (ruta normalizada antes de hashear, muestra de 3 frames +
+mensaje + versión, y purga de 30 días en el cron). Ver §5 para el inventario final y las
+diferencias respecto a la propuesta.
 
 Resumen: el proyecto ya tiene captura de errores de punta a punta (cliente, React y worker),
 pero **no tiene agrupación, histórico ni detección automática**: todo cae en Workers Logs
@@ -267,14 +270,14 @@ const nuevas = await client.query(
 if (nuevas.rows.length > 0) await sendErrorDigest(env, nuevas.rows); // Resend ya cableado
 ```
 
-Plus: purga de filas viejas en el mismo cron (`DELETE … WHERE bucket_day < current_date - 90`).
+Plus: purga de filas viejas en el mismo cron (`DELETE … WHERE bucket_day < current_date - 30`).
 
 ---
 
 ## 4. Coste y verificación
 
 - **RUs**: 1 UPSERT por reporte aceptado (≤30/min/isolate, en la práctica decenas/día) y una
-  lectura por apertura de Diagnóstico. Una fila por día y huella; con 90 días de retención son
+  lectura por apertura de Diagnóstico. Una fila por día y huella; con 30 días de retención son
   cientos de filas. Nada frente a `lexicon_*`.
 - **Bundle**: 0 kB nuevos en el cliente (la tabla se pinta con `style` inline, como el resto del
   modal). `@sentry/cloudflare` solo afecta al worker.
@@ -289,3 +292,58 @@ Plus: purga de filas viejas en el mismo cron (`DELETE … WHERE bucket_day < cur
   `app.fetch` en `withSentry`, secret `SENTRY_DSN` → Bugsink propio
   (`docker run -p 8000:8000 bugsink/bugsink`), y `LECTA_OWNER_EMAIL` sigue gobernando el apartado
   propio. Se puede tener todo: SDK en el worker **y** la tabla de huellas para la vista del producto.
+
+---
+
+## 5. Lo que quedó aplicado (2026-10-29)
+
+### 5.1 Diferencias con la propuesta
+
+- **Almacenamiento**: CockroachDB por Hyperdrive (`withClient`, `src/worker/db.ts:58`), no D1. El
+  proyecto no tiene binding `d1_databases`; `env.DB` solo sobrevive como respaldo legacy en
+  `src/worker/kindle/routes.ts`. Se reutiliza la base que ya se paga, sin segundo motor de datos.
+- **Retención 30 días** en vez de 90 (`ERROR_SIGNATURE_KEEP_DAYS` en `src/worker/error-signatures.ts`).
+- **La ruta se normaliza antes del hash** con `normalizeRouteForSignature`
+  (`src/worker/client-errors.ts`): UUID, números de 4+ dígitos, hashes largos y sufijos tipo
+  `book-98123` se vuelven `:id`. Es la segunda red, porque `sanitizeRoute` ya colapsa
+  `/algo/<id>` a `/algo/*` antes.
+- **La huella usa solo el primer frame**, pero la fila guarda `sample_frames` (hasta 3 frames
+  limpios unidos por ` -> `, 200 caracteres), `last_message` (solo si el usuario activó
+  «incluir mensaje del error») y `version`.
+
+### 5.2 Inventario
+
+| Pieza | Dónde |
+|---|---|
+| Tabla | `db/migrations/018_error_signatures.sql` — PK `(bucket_day, signature)`, `hits` por UPSERT |
+| Huella + escritura + lectura + purga + digest | `src/worker/error-signatures.ts` (`fingerprint`, `recordErrorSignature`, `listErrorSignatures`, `purgeErrorSignatures`, `collectErrorDigest`, `sendErrorDigest`) |
+| Saneado de frames y ruta | `src/worker/client-errors.ts` (`sanitizeFrame`, `normalizeRouteForSignature`, `CLIENT_ERROR_MAX_FRAMES = 3`) |
+| Endpoint de lectura | `src/worker/app.ts` `GET /api/error-reports?days=N` — 404 si `LECTA_OWNER_EMAIL` no está o la sesión no es la del dueño; tope de 100 filas |
+| Escritura | `src/worker/app.ts` `POST /api/client-errors` — el 204 no cambia; la escritura va en `waitUntil` y sus errores se ignoran |
+| Cron 05:00 | `src/worker/index.ts` — purga 30 días + `sendErrorDigest` con Resend si alguna firma supera `ERROR_DIGEST_MIN_HITS = 5` |
+| Cliente | `src/client/lib/client-errors.ts` (`topFrames`, frames en el payload, huella con `frame0`) |
+| UI | `src/client/components/DiagnosticsModal.tsx` — bloque «Salud de la aplicación (servidor)» |
+| Secret nuevo | `LECTA_OWNER_EMAIL` (opcional: sin él, la ruta responde 404 y no hay digest) |
+
+### 5.3 Cómo se usa
+
+1. `pnpm db:migrate` (en `lecta_dev`) para crear la tabla.
+2. Definir `LECTA_OWNER_EMAIL` en `wrangler.jsonc` (`vars` o `secrets.required` según el entorno).
+3. Abrir Diagnóstico con la cuenta del dueño: la tabla aparece bajo «Salud de la aplicación».
+4. El cron de las 05:00 poda y, si algo cruzó el umbral, manda el correo.
+
+### 5.4 Pruebas
+
+- `src/worker/error-signatures.test.ts`: huella estable entre ids distintos, distinta por frame o
+  nombre; UPSERT con día, ruta normalizada y muestra de frames; `listErrorSignatures` topa la
+  ventana; `purgeErrorSignatures` devuelve filas borradas; `sendErrorDigest` no envía sin clave,
+  sin dueño o sin filas y sí envía con ellos.
+- `src/worker/client-errors.test.ts`: `sanitizeFrame` (sin rutas del dispositivo),
+  `normalizeRouteForSignature` (idempotente), frames en `parseClientErrorReport` (máximo 3, sin
+  duplicados, un frame ilegible no tira el reporte).
+- `src/worker/app.test.ts`: el POST suma a la tabla, un fallo de escritura no cambia el 204, y
+  `GET /api/error-reports` responde 404 sin dueño/no-dueño y 200 con el agregado al dueño.
+- `src/client/lib/client-errors.test.ts`: `topFrames` (3 primeros, sin origen) y dos bugs distintos
+  en la misma ruta se reportan por separado.
+- `src/client/components/DiagnosticsModal.test.ts`: sección del servidor con filas y mensaje de
+  «solo el dueño» cuando la ruta responde 404.

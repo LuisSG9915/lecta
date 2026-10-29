@@ -1,6 +1,11 @@
 import { app } from "./app";
 import { withClient, type WorkerEnv } from "./db";
 import { EnrichmentWorkflow } from "./enrichment-workflow";
+import {
+  collectErrorDigest,
+  purgeErrorSignatures,
+  sendErrorDigest,
+} from "./error-signatures";
 
 export { EnrichmentWorkflow };
 
@@ -18,6 +23,17 @@ const handler: ExportedHandler<WorkerEnv> = {
           Math.floor((Date.now() - 48 * 3_600_000) / 3_600_000),
         ]);
       }) ?? Promise.resolve()),
+    );
+
+    // Observabilidad: poda de firmas viejas (30 días) + aviso de las que
+    // cruzaron el umbral en las últimas 24 h. Cada paso falla en silencio:
+    // la casa se limpia aunque la base o Resend digan que no.
+    ctx.waitUntil(
+      (async () => {
+        await purgeErrorSignatures(env).catch(() => 0);
+        const rows = await collectErrorDigest(env).catch(() => []);
+        if (rows.length > 0) await sendErrorDigest(env, rows).catch(() => false);
+      })(),
     );
   },
 };

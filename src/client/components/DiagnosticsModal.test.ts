@@ -27,6 +27,10 @@ describe("DiagnosticsModal", () => {
   let root: Root;
 
   beforeEach(() => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(null, { status: 404 })),
+    );
     host = document.createElement("div");
     document.body.appendChild(host);
     root = createRoot(host);
@@ -34,6 +38,8 @@ describe("DiagnosticsModal", () => {
   });
 
   afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
     act(() => root.unmount());
     host.remove();
     document.body.innerHTML = "";
@@ -143,5 +149,60 @@ describe("DiagnosticsModal", () => {
 
     expect(ttsToggle?.textContent).toBe("Desactivado");
     expect(ttsToggle?.getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("muestra el agregado del servidor cuando el dueño tiene acceso", async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            days: 7,
+            rows: [
+              {
+                signature: "abcd1234ef567890",
+                day: "2026-10-29",
+                route: "/reader/*",
+                name: "TypeError",
+                code: "window.error",
+                version: "prod",
+                hits: 12,
+                sampleFrames: "index-ABC.js:1:234",
+                lastMessage: null,
+                firstSeen: "2026-10-29T10:00:00Z",
+                lastSeen: "2026-10-29T12:00:00Z",
+              },
+            ],
+          }),
+          { status: 200 },
+        ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await act(async () => {
+      root.render(h(DiagnosticsModal, { onClose: vi.fn() }));
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/error-reports?days=7",
+      expect.anything(),
+    );
+    expect(host.textContent).toContain("Salud de la aplicación (servidor)");
+    expect(host.textContent).toContain("12× TypeError en /reader/*");
+    expect(host.textContent).toContain("abcd1234ef567890");
+    expect(host.textContent).toContain("index-ABC.js:1:234");
+  });
+
+  it("dice que el agregado es solo del dueño cuando la ruta responde 404", async () => {
+    await act(async () => {
+      root.render(h(DiagnosticsModal, { onClose: vi.fn() }));
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+    });
+
+    expect(host.textContent).toContain("Visible solo para la cuenta del dueño.");
   });
 });

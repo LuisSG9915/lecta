@@ -140,14 +140,27 @@
 - Workers Logs activo (`observability.logs.enabled` en `wrangler.jsonc`): los
   eventos estructurados (`client_error` y compañía) se consultan en el dashboard
   con retención de días, no como histórico.
-- `POST /api/client-errors` recibe errores del navegador **sin sesión y sin base
-  de datos** (no llama a `withClient`): allowlist `name`/`code`/`route`/`version`
-  y, opcional, `message`; tope de 30/min y 300/hora por IP **por isolate** (es un
-  freno a los logs, no seguridad) y rechazo silencioso con 204. La ruta se sanea
-  (`/k/ABCD` → `/k/*`). Interruptores en Diagnóstico: `shareClientErrors` e
-  `includeErrorMessage` (este último apagado por defecto).
+- `POST /api/client-errors` recibe errores del navegador **sin sesión**:
+  allowlist `name`/`code`/`route`/`version`, `frames` (máx. 3, limpiados a
+  `archivo.js:línea:columna`) y, opcional, `message`; tope de 30/min y 300/hora
+  por IP **por isolate** (es un freno a los logs, no seguridad) y rechazo
+  silencioso con 204. La ruta se sanea (`/k/ABCD` → `/k/*`) y se normaliza a
+  `:id` antes de calcular la huella. Interruptores en Diagnóstico:
+  `shareClientErrors` e `includeErrorMessage` (este último apagado por defecto).
+- **Observabilidad de errores** (`docs/observabilidad-errores.md`): el reporte
+  aceptado suma a `lecta_error_signatures` (una fila por `(bucket_day, signature)`,
+  `hits` por UPSERT) dentro de `waitUntil`, y sus errores se tragan — el 204 nunca
+  depende de la base. `signature` = SHA-256 truncado de
+  `name|code|ruta_normalizada|frame0` (`fingerprint` en
+  `src/worker/error-signatures.ts`). La fila guarda `sample_frames` (3 frames),
+  `last_message` (solo con el flag) y `version`. `GET /api/error-reports?days=N`
+  (máx. 30 días, 100 filas) responde **404** si falta `LECTA_OWNER_EMAIL` o la
+  sesión no es la del dueño; lo pinta «Salud de la aplicación (servidor)» en
+  Diagnóstico. El cron de las 05:00 purga lo anterior a 30 días y manda el digest
+  por Resend cuando una firma cruza `ERROR_DIGEST_MIN_HITS = 5`.
 - Secrets en el worker: `DATABASE_URL`, `BETTER_AUTH_SECRET`, `DEEPSEEK_API_KEY`,
-  `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `AI_GATEWAY_KEY`, `AI_GATEWAY_URL`.
+  `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `AI_GATEWAY_KEY`, `AI_GATEWAY_URL`,
+  `LECTA_OWNER_EMAIL` (opcional: abre el agregado de errores y recibe el digest).
   `secrets.required` en `wrangler.jsonc` controla cuáles llegan al `env` en dev
   — si una var no está ahí, el worker no la ve (bug ya corregido con Resend).
 - AI Gateway `lecta` (`gateway.ai.cloudflare.com/v1/<account>/lecta/deepseek`):
@@ -187,6 +200,12 @@
   las columnas estrictamente necesarias y no como los escribe la migración: ver
   la nota de PK completa arriba. Las seis tablas de sync vuelven a estar con
   `schema_locked=true`.
+- **017_book_covers.sql y 018_error_signatures.sql** aplicadas en `lecta_dev` el
+  2026-10-29 (17 y 18 migraciones). 017 pedía `user_books` sin bloquear: se
+  desbloqueó, migró y volvió a bloquear en el mismo minuto. **En `lecta` (prod)
+  no están**: 018 solo es necesaria cuando se despliegue la observabilidad de
+  errores (con la tabla ausente el worker sigue en 204 y la vista responde con
+  lista vacía, porque el error de escritura se traga).
 - **014_ai_quota.sql** aplicada en `lecta_dev` y `lecta` (2026-10-23, 14
   migraciones en cada una): `lecta_ai_quota` es la tabla del UPSERT atómico de
   cuota de IA (PK `user_id, scope, bucket_hour`, FK a `user` con CASCADE). El
