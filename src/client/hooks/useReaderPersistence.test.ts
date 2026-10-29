@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
-import { act, createElement as h } from "react";
+import { act, createElement as h, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   useReaderPersistence,
   type UseReaderPersistenceOptions,
 } from "./useReaderPersistence";
-import type { SavedBookPosition, SavedInterval } from "../lib/idb";
+import { saveBookPosition, type SavedBookPosition, type SavedInterval } from "../lib/idb";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -151,6 +151,112 @@ describe("useReaderPersistence", () => {
 
     expect(savedPositions.get("book-hash-123")).toBeDefined();
     expect(savedPositions.get("book-hash-123")?.sectionIndex).toBe(3);
+  });
+
+  // El lector real pasa una flecha nueva en cada render como
+  // `capturePosition`. Antes, la limpieza del efecto de desmontaje se
+  // reprogramaba en cada render y escribía la posición en IndexedDB
+  // cientos de veces por segundo (medido en el arnés e2e).
+  it("no escribe en IndexedDB en cada render; solo al desmontar", async () => {
+    const capturePosition = vi.fn(() => mockPosition);
+    let bump!: () => void;
+
+    function TestComp() {
+      const [, setTick] = useState(0);
+      bump = () => setTick((t) => t + 1);
+      useReaderPersistence({
+        bookHash: "book-hash-123",
+        isReady: true,
+        capturePosition: () => capturePosition(),
+        signalCompanion: vi.fn(),
+        presenceActivity: vi.fn(),
+        presenceIdle: vi.fn(),
+        setCatSleepy: vi.fn(),
+      });
+      return null;
+    }
+
+    act(() => {
+      root.render(h(TestComp));
+    });
+    await act(async () => {
+      for (let i = 0; i < 5; i++) bump();
+    });
+
+    expect(vi.mocked(saveBookPosition)).toHaveBeenCalledTimes(0);
+
+    act(() => {
+      root.unmount();
+    });
+
+    expect(vi.mocked(saveBookPosition)).toHaveBeenCalledTimes(1);
+  });
+
+  // Al cerrar con «atrás» el libro sale de la pantalla y el documento queda
+  // con el alto de la estantería: medir en ese momento guardaba el principio
+  // del capítulo encima del punto leído.
+  it("saveLatest guarda la última posición conocida aunque el scroll ya se haya ido a 0", async () => {
+    const capturePosition = vi.fn(() => mockPosition);
+    const handle = renderHook({ capturePosition });
+
+    act(() => {
+      handle.current.saveSoon();
+    });
+
+    const alPrincipio: SavedBookPosition = { ...mockPosition, scrollTop: 0, ratio: 0, anchor: "Capítulo 1", anchorOffset: 0 };
+    capturePosition.mockReturnValue(alPrincipio);
+    vi.spyOn(Date, "now").mockReturnValue(5_000);
+
+    await act(async () => {
+      await handle.current.saveLatest();
+    });
+
+    expect(savedPositions.get("book-hash-123")?.scrollTop).toBe(150);
+    expect(savedPositions.get("book-hash-123")?.updatedAt).toBe(5_000);
+  });
+
+  it("el desmontaje no pisa lo que ya guardó el cierre", async () => {
+    const capturePosition = vi.fn(() => mockPosition);
+    const handle = renderHook({ capturePosition });
+
+    act(() => {
+      handle.current.saveSoon();
+    });
+    await act(async () => {
+      await handle.current.saveLatest();
+    });
+
+    const alPrincipio: SavedBookPosition = { ...mockPosition, scrollTop: 0, ratio: 0 };
+    capturePosition.mockReturnValue(alPrincipio);
+    act(() => {
+      root.unmount();
+    });
+
+    expect(savedPositions.get("book-hash-123")?.scrollTop).toBe(150);
+  });
+
+  it("después del cierre, el scroll del documento ya no registra posición", async () => {
+    const capturePosition = vi.fn(() => mockPosition);
+    const handle = renderHook({ capturePosition });
+
+    act(() => {
+      handle.current.saveSoon();
+    });
+    await act(async () => {
+      await handle.current.saveLatest();
+    });
+    vi.mocked(saveBookPosition).mockClear();
+
+    const alPrincipio: SavedBookPosition = { ...mockPosition, scrollTop: 0, ratio: 0 };
+    capturePosition.mockReturnValue(alPrincipio);
+    act(() => {
+      handle.current.saveSoon();
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    });
+
+    expect(vi.mocked(saveBookPosition)).not.toHaveBeenCalled();
   });
 
   it("dispara goal_completed al alcanzar la micro-meta configurada (ej. 3 min)", async () => {

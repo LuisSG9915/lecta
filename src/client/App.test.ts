@@ -24,9 +24,31 @@ vi.mock("./lib/auth", () => ({
   },
 }));
 
+// Orden observable del cierre: el lector guarda su posición, después se
+// desmonta y solo entonces sincroniza. Con «atrás» del navegador el
+// cierre no pasa por el guardado del lector, y el sync llegaba a leer
+// la fila vieja (ver el comentario de closeReader en App.tsx).
+const closeOrder: string[] = [];
+
 vi.mock("./components/Reader", async () => {
-  const { createElement } = await import("react");
-  return { default: () => createElement("div", { className: "reader-stub" }) };
+  const { createElement, useEffect } = await import("react");
+  const ReaderStub = ({
+    positionFlushRef,
+  }: {
+    positionFlushRef?: { current: (() => Promise<void>) | null };
+  }) => {
+    useEffect(() => {
+      if (!positionFlushRef) return;
+      positionFlushRef.current = async () => {
+        closeOrder.push("flush");
+      };
+      return () => {
+        positionFlushRef.current = null;
+      };
+    }, [positionFlushRef]);
+    return createElement("div", { className: "reader-stub" });
+  };
+  return { default: ReaderStub };
 });
 
 // La estantería real jala portadas y metadatos del EPUB; la prueba es del
@@ -292,6 +314,33 @@ describe("App · apertura sin esperar a la red", () => {
     // El sync sigue pendiente y el libro ya está abierto.
     expect(host.querySelector(".reader-stub")).toBeTruthy();
     await act(async () => release({ pulled: 0, conflicts: [] }));
+  });
+});
+
+describe("App · cierre del lector", () => {
+  it("al volver atrás guarda la posición antes de sincronizar", async () => {
+    vi.mocked(syncPositions).mockImplementation(async () => {
+      closeOrder.push("sync");
+      return { pulled: 0, conflicts: [] };
+    });
+    renderRoot();
+    await flush();
+    const card = host.querySelector<HTMLButtonElement>(".shelf-book-cover");
+    expect(card).toBeTruthy();
+    await act(async () => card!.click());
+    await flush();
+    expect(host.querySelector(".reader-stub")).toBeTruthy();
+
+    closeOrder.length = 0;
+    popBack();
+    await flush();
+    await flush();
+
+    expect(host.querySelector(".reader-stub")).toBeNull();
+    expect(closeOrder).toContain("flush");
+    expect(closeOrder.indexOf("flush")).toBeLessThan(
+      closeOrder.indexOf("sync"),
+    );
   });
 });
 

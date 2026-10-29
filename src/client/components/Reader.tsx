@@ -131,8 +131,8 @@ import {
   isFeatureFlagEnabled,
 } from "../lib/settings";
 import {
-  anchorAtViewTop,
   scrollToAnchor,
+  viewTopAnchor,
   charOffsetAtViewTop,
 } from "../lib/reading-location";
 import {
@@ -327,7 +327,14 @@ type ReaderProps = {
     sectionIndex: number;
     ratio?: number;
     anchor?: string;
+    anchorOffset?: number;
   } | null;
+  // El cierre del libro lo decide quien monta el lector (App), y «atrás»
+  // del navegador cierra sin pasar por `onBack`. Este hueco deja que el
+  // cierre guarde la posición *antes* de desmontar y sincronizar: si el
+  // guardado del desmontaje compite con el sync, este último puede leer
+  // la fila vieja y devolver otra posición encima.
+  positionFlushRef?: { current: (() => Promise<void>) | null };
 };
 
 // Caché por sección: la consulta al catálogo se hace una sola vez por
@@ -422,6 +429,7 @@ export default function Reader({
   readerInitialWord,
   positionSyncVersion = 0,
   resumeRequest = null,
+  positionFlushRef,
 }: ReaderProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -840,6 +848,7 @@ export default function Reader({
     sectionIndex: number;
     ratio: number;
     anchor?: string;
+    anchorOffset?: number;
   } | null>(null);
   const [selButton, setSelButton] = useState<{
     x: number;
@@ -867,6 +876,7 @@ export default function Reader({
     Array<{
       sectionIndex: number;
       anchor?: string;
+      anchorOffset?: number;
       ratio: number;
       scrollTop?: number;
       page?: number;
@@ -1438,17 +1448,25 @@ export default function Reader({
   );
 
   const capturePositionRef = useRef<() => SavedBookPosition | null>(() => null);
+  // Identidad estable: `useReaderPersistence` la usa como dependencia de su
+  // limpieza de desmontaje. Con una flecha nueva en cada render, esa
+  // limpieza corría en cada render y escribía la posición en IndexedDB sin
+  // parar (verificado en el arnés e2e: decenas de escrituras por segundo).
+  const capturePositionForHook = useCallback(
+    () => capturePositionRef.current(),
+    [],
+  );
 
   const {
     latestPositionRef,
     noteActivity,
     closeActivity,
     saveSoon,
-    saveImmediate,
+    saveLatest,
   } = useReaderPersistence({
     bookHash,
     isReady: state === "ready",
-    capturePosition: () => capturePositionRef.current(),
+    capturePosition: capturePositionForHook,
     signalCompanion,
     awardReading: (input, scope, receipt) => award(input, scope, receipt),
     presenceActivity,
@@ -1458,11 +1476,40 @@ export default function Reader({
     dailyGoalMs,
   });
 
+  // El scroll de lectura vive en el documento (ver reader.css). Al volver
+  // con «atrás», el navegador restaura el scroll de la entrada anterior (la
+  // estantería, en 0) *antes* de despachar popstate: el cierre medía el tope
+  // del capítulo y lo guardaba encima del punto leído. Con la restauración
+  // manual el navegador no toca el scroll y el cierre guarda lo que había.
+  useEffect(() => {
+    if (typeof history === "undefined" || !("scrollRestoration" in history)) {
+      return;
+    }
+    const previous = history.scrollRestoration;
+    history.scrollRestoration = "manual";
+    return () => {
+      history.scrollRestoration = previous;
+    };
+  }, []);
+
+  // Quien cierra el libro (App) puede pedir el guardado antes de
+  // desmontar. Se guarda la última posición conocida y no una medición
+  // nueva: con el gesto de retroceso el historial ya restauró el scroll
+  // de la estantería (0) y medir aquí guardaba el principio del capítulo
+  // encima del punto leído.
+  useEffect(() => {
+    if (!positionFlushRef) return;
+    positionFlushRef.current = () => saveLatest();
+    return () => {
+      positionFlushRef.current = null;
+    };
+  }, [positionFlushRef, saveLatest]);
+
   const handleBack = useCallback(() => {
-    void saveImmediate().finally(() => {
+    void saveLatest().finally(() => {
       onBack();
     });
-  }, [saveImmediate, onBack]);
+  }, [saveLatest, onBack]);
 
   // Detección de récord mensual (>10 min y supera récord de 30 días) (Fase 1 Anti-Abandono)
   useEffect(() => {
@@ -1772,6 +1819,7 @@ export default function Reader({
     const index = sectionIndexRef.current;
     let ratio: number;
     let anchor: string | undefined;
+    let anchorOffset: number | undefined;
     let scrollTop = 0;
     if (layoutRef.current === "pages") {
       const metrics = metricsRef.current;
@@ -1781,7 +1829,11 @@ export default function Reader({
         : undefined;
     } else {
       ratio = scrollRatioNow();
-      anchor = anchorAtViewTop(container) ?? undefined;
+      // Texto del bloque visible + cuánto de él ya pasó por arriba: sin
+      // la fracción, restaurar plantaría el inicio del párrafo.
+      const viewTop = viewTopAnchor(container);
+      anchor = viewTop?.text;
+      anchorOffset = viewTop?.offset;
       scrollTop = window.scrollY;
     }
     const pos: SavedBookPosition = {
@@ -1791,6 +1843,7 @@ export default function Reader({
       ratio,
       progress: bookProgress(sizes, index, ratio),
       anchor,
+      anchorOffset,
       updatedAt: Date.now(),
     };
     latestPositionRef.current = pos;
@@ -2204,7 +2257,11 @@ export default function Reader({
     appliedResumeKeyRef.current = resumeRequest.key;
     void navigate("resume", {
       index: resumeRequest.sectionIndex,
-      restore: { ratio: resumeRequest.ratio, anchor: resumeRequest.anchor },
+      restore: {
+        ratio: resumeRequest.ratio,
+        anchor: resumeRequest.anchor,
+        anchorOffset: resumeRequest.anchorOffset,
+      },
     });
     onStatus("Continuando desde tu otro dispositivo…");
   }, [resumeRequest, state, navigate, onStatus]);
@@ -2226,7 +2283,11 @@ export default function Reader({
       if (saved.sectionIndex === 0 && (saved.ratio ?? 0) < 0.02) return;
       await navigate("resume", {
         index: saved.sectionIndex,
-        restore: { ratio: saved.ratio, anchor: saved.anchor },
+        restore: {
+          ratio: saved.ratio,
+          anchor: saved.anchor,
+          anchorOffset: saved.anchorOffset,
+        },
       });
       onStatus("Retomando donde lo dejaste en otro dispositivo.");
     })().catch(() => null);
@@ -2450,7 +2511,11 @@ export default function Reader({
         if (entry.kind === "resume") {
           await navigate("resume", {
             index: entry.sectionIndex,
-            restore: { ratio: entry.ratio, anchor: entry.anchor },
+            restore: {
+              ratio: entry.ratio,
+              anchor: entry.anchor,
+              anchorOffset: entry.anchorOffset,
+            },
           });
 
           // Pantalla Única de Reentrada >48h (Fase 1 Anti-Abandono)
@@ -2864,11 +2929,22 @@ export default function Reader({
       const pos = capturePosition();
       if (pos) void saveBookPosition(pos, captureDbScope());
     };
+    // `pagehide` es el último aviso antes de congelar o descargar la
+    // página: el gesto de atrás que sale de la app y el bfcache llegan
+    // ahí sin `visibilitychange` (o con la transacción a medio vuelo).
+    const onPageHide = () => {
+      const pos = capturePosition();
+      if (pos) {
+        void saveBookPosition({ ...pos, updatedAt: Date.now() }, captureDbScope());
+      }
+    };
     window.addEventListener("scroll", onScroll, { passive: true });
     document.addEventListener("visibilitychange", onHide);
+    window.addEventListener("pagehide", onPageHide);
     return () => {
       window.removeEventListener("scroll", onScroll);
       document.removeEventListener("visibilitychange", onHide);
+      window.removeEventListener("pagehide", onPageHide);
     };
   }, [saveSoon, capturePosition, closeActivity, noteActivity]);
 
@@ -2955,7 +3031,9 @@ export default function Reader({
       if (!container) return;
       if (settings.layout === "scroll") {
         if (saved?.anchor) {
-          const scrolled = scrollToAnchor(container, saved.anchor);
+          const scrolled = scrollToAnchor(container, saved.anchor, {
+            offset: saved.anchorOffset,
+          });
           if (!scrolled) {
             const ratio = saved?.ratio ?? 0;
             const max = document.documentElement.scrollHeight - window.innerHeight;
@@ -3017,7 +3095,10 @@ export default function Reader({
         const saved = latestPositionRef.current;
         const max =
           document.documentElement.scrollHeight - window.innerHeight;
-        if (!saved?.anchor || !scrollToAnchor(container, saved.anchor))
+        if (
+          !saved?.anchor ||
+          !scrollToAnchor(container, saved.anchor, { offset: saved.anchorOffset })
+        )
           window.scrollTo(0, (saved?.ratio ?? 0) * Math.max(0, max));
       }
     });
@@ -3414,6 +3495,7 @@ export default function Reader({
         sectionIndex: pos.sectionIndex,
         ratio: pos.ratio ?? 0,
         anchor: pos.anchor,
+        anchorOffset: pos.anchorOffset,
       });
     }
     closeSheet();
@@ -3434,7 +3516,11 @@ export default function Reader({
       trackMove(point.sectionIndex < sectionIndexRef.current);
       navigate("return", {
         index: point.sectionIndex,
-        restore: { ratio: point.ratio, anchor: point.anchor },
+        restore: {
+          ratio: point.ratio,
+          anchor: point.anchor,
+          anchorOffset: point.anchorOffset,
+        },
       });
     }
   };
@@ -3447,6 +3533,7 @@ export default function Reader({
         {
           sectionIndex: currentPos.sectionIndex,
           anchor: currentPos.anchor,
+          anchorOffset: currentPos.anchorOffset,
           ratio: currentPos.ratio ?? 0,
           scrollTop: currentPos.scrollTop,
           page: settings.layout === "pages" ? page : undefined,

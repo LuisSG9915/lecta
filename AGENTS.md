@@ -7,6 +7,8 @@
 - **Regla de cobertura Ratchet (`pnpm coverage:ratchet`)**: Los umbrales de cobertura en `vitest.config.ts` (líneas y funciones >= 70% en `src/worker/**`) solo aumentan, jamás disminuyen. Nuevos módulos deben nacer con pruebas unitarias herméticas.
 - **CI Paralelizado en 4 Jobs (`.github/workflows/ci.yml`)**: `static` (typecheck + lint, 5m), `unit` (cobertura Vitest, 10m), `build` (compilación y check:size, 8m) corren en paralelo desde t=0; `e2e` (Playwright, 15m) descarga el artefacto `dist/` tras el build.
 - **Pruebas E2E y Tag `@smoke`**: `e2e/smoke-journeys.spec.ts` cubre los 3 recorridos críticos (apertura EPUB, TTS y sincronización de estado entre contextos). En CI, el proyecto WebKit ejecuta exclusivamente tests con `@smoke` (`pnpm test:e2e:smoke`), mientras Chromium corre la suite completa.
+- **Guardia de la posición del lector (`e2e/reader-position.spec.ts`)**: importa `fixtures/scroll.epub` (generado por `scripts/make-scroll-fixture.mjs`), lee a media página, espera el guardado perezoso, recarga, abre el libro **desde la estantería** y exige el mismo párrafo con el mismo desplazamiento dentro de él, dos aperturas seguidas. Reimportar el EPUB en cada reapertura era el paso frágil (parsea el zip y pega contra la API simulada del arnés), no la app: se reabre pulsando el libro. Falla con `desplazamiento dentro del párrafo: antes 229px, después 0px` si se pierde la fracción intra-párrafo.
+- **El service worker no recarga la primera visita**: `registerServiceWorker` (`src/client/lib/sw-register.ts`) sólo recarga en `controllerchange` si la página **ya estaba** controlada. `public/sw.js` hace `skipWaiting()` y `clients.claim()`, así que en la primera visita el SW tomaba el control y recargaba la página encima de la importación del libro, la primera sección o la posición restaurada (rompía `smoke-journeys` de forma intermitente). Un arnés e2e que necesite inmunidad total puede stubear `navigator.serviceWorker.register`.
 - **Política de Flaky Tests (`docs/flaky-tests.md`)**: Pruebas con fallos intermitentes se registran con causa raíz. Si un test acumula 3 reintentos en 2 semanas, se aísla con `.fixme` y se programa su corrección.
 - **Smoke Tests Post-Deploy (`deploy-smoke.yml`)**: Verificación automática post-despliegue con `pnpm smoke:auth` y `pnpm smoke:sync` usando exponential backoff en `/api/health` para absorber la propagación de Cloudflare Workers, autenticación sobre cuenta canónica (UPSERT idempotente) y reporte automático de issues con etiqueta `smoke-regression` ante fallos.
 
@@ -21,7 +23,7 @@
   cierre de cada fase de `docs/plan-8-fases.md`. `pnpm lint` tiene un tope duro de **0
   warnings** (bajó de 28 con la auditoría UX del 2026-10-24, que dejó de bailar el análisis
   del React Compiler y limpió los 20 que quedaban): un warning nuevo rompe el gate.
-  `check:size` va en **179.9 kB** de 215 kB gzip; en peso quedan ~35 kB de margen.
+  `check:size` va en **204.8 kB** de 215 kB gzip (avisa al 95%); en peso quedan ~10 kB de margen.
 - La suite (`vitest.config.ts`) corre con **4 workers** y timeouts de 15 s. Son 183 archivos con
   jsdom en un portátil de 8 GB que además corre IDE: con un worker por núcleo, un pico de memoria
   mata workers y tumba archivos que no tienen que ver con el cambio (visto el 2026-10-22: 6
@@ -61,6 +63,15 @@
   `idx_user_reviews_user_created_id` e `idx_user_knowledge_user_updated_lang_lemma`
   se crearon así (`SHOW INDEXES` los muestra con las columnas de la PK añadidas,
   que es justo el efecto buscado).
+- **Sourcemaps de producción**: `vite.config.ts` compila con `sourcemap: "hidden"` y
+  `sourcemapVault()` mueve los `.map` fuera de `dist/` a
+  `artifacts/sourcemaps/<build-id>/` con índice en `artifacts/sourcemaps/index.json`
+  (retiene 20 builds; `artifacts/` es gitignored). Sin eso, `@cloudflare/vite-plugin`
+  los publicaría en `/assets/*.map` con el fuente descargable. Para leer un frame
+  guardado en `lecta_error_signatures` (llegan como `index-CMW2Mu5g.js:2:2667`):
+  `pnpm symbols "<frame>"`, o `pnpm symbols --db [--days 7] [--json]` para la tabla
+  entera resuelta. Usa `@jridgewell/trace-mapping` (devDependency, 0 kB de bundle) y
+  solo lee: nunca escribe. Detalle en `docs/observabilidad-errores.md` §6.
 - `pnpm model:upload` sube el modelo de Kitten TTS a R2
   (`models/kitten-tts-nano-0.8-int8-v1.onnx`; el nombre lleva versión porque la
   ruta se sirve con `Cache-Control: immutable` durante un año).
@@ -80,6 +91,42 @@
   sirve el binario, la voz HD falla y hay que arreglar el despliegue.
   Subir un modelo nuevo = cambiar versión en URL y caché (`lecta-kitten-tts-vN`).
 
+## Posición del lector
+
+- La posición vive en el **scroll del documento** (`src/client/styles/reader.css`), no en una caja
+  interna: `scrollRatioNow()` divide `window.scrollY` entre `scrollHeight - innerHeight`.
+- `SavedBookPosition` (`src/client/lib/idb.ts`) guarda `sectionIndex`, `ratio`, `progress`, `anchor`
+  (texto del primer bloque visible) y **`anchorOffset`**: la fracción 0–1 del bloque ancla que quedó
+  por encima de la ventana. El texto del ancla no distingue «empezando el párrafo» de «229 px dentro»;
+  la fracción sí, y sobrevive a cambios de letra o de ancho.
+- `viewTopAnchor()` / `scrollToAnchor(container, anchor, { offset })` (`src/client/lib/reading-location.ts`)
+  son la pareja capturar/restaurar. El `anchorOffset` viaja en `ReaderNavRestore`, en las decisiones de
+  `resolveEntryTarget` (`src/client/lib/book-start.ts`), en los puntos de retorno (notas, enlaces internos)
+  y en el `resumeRequest` de `App.tsx`.
+- `keepAnchorStable()` vigila el bloque ancla 2,5 s (400 ms de corrección por cuadro y luego sólo cuando
+  cambia `scrollHeight`): el contenido refluye al asentar fuentes, imágenes y resaltados, y sin ese
+  corrector el punto se iba una pantalla atrás. Se aparta en cuanto el lector toca (`wheel`, `pointerdown`,
+  `touchstart`, `keydown`).
+- **Guardar al salir es un solo camino.** `closeReader` (`src/client/App.tsx`) pide al lector su última
+  posición (`positionFlushRef`) y **espera** ese guardado antes de desmontar y de llamar `syncPositions()`.
+  El callback que deja «atrás» en el historial (`openBook` → `pushOverlay`) también llama `closeReader`:
+  antes sólo hacía `setBook(null)`, así que el gesto de retroceso salía sin guardar y sin subir la posición
+  a la cuenta, y el pull de la siguiente apertura devolvía una fila vieja. La flecha interna (`handleBack`)
+  ya guardaba.
+- **Qué NO medir al cerrar.** Cuando el libro sale de la pantalla el documento queda con el alto de la
+  estantería y `window.scrollY` cae a 0: una medición nueva en ese instante guarda «principio del capítulo»
+  encima del punto leído. `useReaderPersistence` expone `saveLatest()` (la última posición capturada en la
+  ref, sin volver a medir) y el cierre usa esa; `closedRef` corta el guardado perezoso pendiente y el del
+  desmontaje, que si no escupía el tope del capítulo después del cierre.
+- **La limpieza de desmontaje del hook tiene que depender sólo de `bookHash`.** Con las funciones del lector
+  en el array (cambian de identidad en cada render) el efecto se reprogramaba en cada render y escribía en
+  IndexedDB cientos de veces por segundo (medido en el arnés: 9 081 escrituras en una apertura). Las
+  funciones se guardan en refs (`saveLatestRef`, `closeActivityRef`).
+- **El servidor no guarda `anchorOffset`**: `/api/positions` sólo persiste `anchor` como texto, así que la
+  precisión es local al dispositivo. Al mezclar el pull (`src/client/lib/positions-sync.ts`) se conserva el
+  `anchorOffset` local si la fila remota apunta al mismo `anchor`; un `anchor` distinto gana (viene de otro
+  dispositivo y ahí no hay fracción que recuperar). Añadirlo al esquema pide migración y autorización expresa.
+
 ## MCP
 
 - `mcp/` es un servidor MCP local (stdio, solo lectura) que proxya la API HTTP
@@ -98,7 +145,64 @@
 ## Producción
 
 - URL: `https://lecta.luis-sg9915.workers.dev` — deploy con `pnpm run deploy`.
-- Último deploy: **2026-10-28** (segundo del día), versión
+- Último deploy: **2026-10-29** (quinto del día), versión
+  `459f1541-b018-43c1-867c-e3a552e4bb54`, Lecta **v0.2.8** (redeploy del mismo
+  árbol, pedido expresamente; assets idénticos: `assets/index-mHYOojkW.js` con
+  sha256 `f156971ab508872c4a33d81af4f7f07293d2fafdb97974de66217ffd5d4c00ad`
+  local y servido, `0.2.8` en `assets/DiagnosticsModal-CXdvC3uH.js`,
+  `/api/health` → 200, `/api/positions` sin sesión → 401). Sigue el arreglo
+  del cierre con «atrás» del navegador.
+- Deploy anterior: **2026-10-29** (cuarto del día), versión
+  `a6671c49-f2c2-4f96-864a-051b3e7ab743`, Lecta **v0.2.8**: el cierre con
+  «atrás» del navegador guarda la posición real (ver «Posición del lector»:
+  `closeReader` en el callback del historial, `saveLatest()`, `closedRef`,
+  limpieza del hook sólo por `bookHash` y `history.scrollRestoration` manual).
+  Sin migraciones ni secrets. Verificado en caliente: `pnpm gate` en verde
+  (2919 pruebas, 204.88/215 kB gzip), `/api/health` → 200, `/` → 200 sirviendo
+  `assets/index-mHYOojkW.js`, `0.2.8` en `assets/DiagnosticsModal-CXdvC3uH.js`,
+  `/api/positions` sin sesión → 401 y una prueba en Chromium contra producción:
+  leer a 229 px dentro de P05, salir con `goBack()` y reabrir desde la
+  estantería → la fila conserva `anchor: "P05"`, `anchorOffset 0.5511`,
+  `scrollTop 1174` y la deriva es **0 px**. Sin `smoke:auth`/`smoke:sync`: no
+  toca auth ni el contrato de sync.
+- Deploy anterior: **2026-10-29** (tercero del día), versión
+  `9f23f970-02f8-4277-8bf1-149e50c6121c`, Lecta **v0.2.7**: la posición real del
+  lector (ver «Posición del lector»: `anchorOffset` + `keepAnchorStable`) y el
+  service worker que ya no recarga la primera visita. Sin migraciones ni secrets
+  nuevos. Verificado en caliente: `pnpm gate` en verde (2913 pruebas,
+  204.82/215 kB gzip), `/api/health` → 200, `/` → 200 sirviendo
+  `assets/index-B69sEL3k.js` (sha256 local idéntico al servido), `0.2.7` en
+  `assets/DiagnosticsModal-C0shL8RD.js`, `/api/positions` sin sesión → 401,
+  `POST /api/client-errors` → 204 con `origin`/`referer`/`user-agent` de
+  navegador (fila borrada después, `name = 'deploy-check'`), `sw-manifest.json`
+  lista el `index-` nuevo y una prueba en Chromium contra producción reabrió el
+  libro con deriva **0 px** (`anchorOffset` 0.5511 → mismo párrafo, mismos 229 px
+  dentro). Sin `smoke:auth`/`smoke:sync`: no toca auth ni el contrato de sync.
+- Deploy anterior: **2026-10-29** (segundo del día), versión
+  `1d2227f1-e37f-4d6d-8706-095d2e16dc32`, Lecta **v0.2.6**: sourcemaps de
+  producción (`sourcemap: "hidden"` + `sourcemapVault()`, ver «Verificación»);
+  los mapas se guardan en `artifacts/sourcemaps/` y no viajan al worker (92
+  assets leídos, ningún `.map`, ningún asset nuevo — el bundle sigue en
+  `assets/index-CMW2Mu5g.js`). Sin migraciones ni secrets nuevos. Verificado en
+  caliente: `/api/health` → 200, `/` → 200, `POST /api/client-errors` → 204
+  (ojo: con `curl` pelado Cloudflare responde **403**; hay que mandar
+  `origin`/`referer`/`user-agent` de navegador) y la fila resultante en `lecta`
+  se desminificó con `pnpm symbols --db` a `src/client/lib/history.ts:19:6
+  (stack)`. Fila de verificación borrada después (`code = 'deploy-smoke'`).
+- Deploy anterior: **2026-10-29**, versión
+  `dcf599cd-5635-45bc-b8a9-88512c250a1c`, Lecta **v0.2.6**: observabilidad de
+  errores (tabla `lecta_error_signatures`, `GET /api/error-reports`, bloque
+  «Salud de la aplicación (servidor)» en Diagnóstico y digest por Resend desde
+  el cron de las 05:00), más migraciones **017** y **018** aplicadas en `lecta`
+  antes del worker. Secret nuevo `LECTA_OWNER_EMAIL` (`wrangler secret put`).
+  Verificado en caliente: `pnpm gate` en verde (2892 pruebas, 204.17/215 kB
+  gzip), `/api/health` → 200, `/` → 200 sirviendo `assets/index-CMW2Mu5g.js`,
+  `Salud de la aplicación` en `assets/DiagnosticsModal-D7_pysK_.js`, `POST
+  /api/client-errors` → 204 y la fila aparece con `sample_frames` y `version`,
+  `GET /api/error-reports` sin sesión → 404. Fila de verificación borrada
+  después (`code = 'deploy-check'`). Sin `smoke:auth`/`smoke:sync`: no toca auth
+  ni el contrato de sync.
+- Deploy anterior: **2026-10-28** (segundo del día), versión
   `6e984244-6664-4d5c-9623-178c97f530c1`, Lecta **v0.2.3**: notificaciones
   locales de hábito (`periodicsync`/`notificationclick` en `public/sw.js` y
   `localNotificationScheduler`), overlay «Reanudar sesión de lectura»
@@ -200,12 +304,13 @@
   las columnas estrictamente necesarias y no como los escribe la migración: ver
   la nota de PK completa arriba. Las seis tablas de sync vuelven a estar con
   `schema_locked=true`.
-- **017_book_covers.sql y 018_error_signatures.sql** aplicadas en `lecta_dev` el
-  2026-10-29 (17 y 18 migraciones). 017 pedía `user_books` sin bloquear: se
-  desbloqueó, migró y volvió a bloquear en el mismo minuto. **En `lecta` (prod)
-  no están**: 018 solo es necesaria cuando se despliegue la observabilidad de
-  errores (con la tabla ausente el worker sigue en 204 y la vista responde con
-  lista vacía, porque el error de escritura se traga).
+- **017_book_covers.sql y 018_error_signatures.sql** aplicadas en `lecta_dev` y
+  en `lecta` el 2026-10-29 (ambas bases en 18 migraciones). Las dos pedían
+  `user_books` sin bloquear: se desbloqueó, se migró con
+  `pnpm db:migrate --remote` y se volvió a bloquear en el mismo minuto, sin jobs
+  en cola. En prod la tabla `lecta_error_signatures` nace vacía; con ella
+  ausente el worker igual responde 204 (el error de escritura se traga), así que
+  migración y deploy pueden ir en cualquier orden.
 - **014_ai_quota.sql** aplicada en `lecta_dev` y `lecta` (2026-10-23, 14
   migraciones en cada una): `lecta_ai_quota` es la tabla del UPSERT atómico de
   cuota de IA (PK `user_id, scope, bucket_hour`, FK a `user` con CASCADE). El

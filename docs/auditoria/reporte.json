@@ -1,9 +1,9 @@
 {
   "tool": "audit-investigacion",
   "version": 1,
-  "generatedAt": "2026-10-29T06:08:06.549Z",
+  "generatedAt": "2026-10-29T08:50:21.623Z",
   "root": "/Users/luis/Desarrollos Devin/lecta",
-  "commit": "21399f189d8624bfbfe9d85813042521e081160b",
+  "commit": "d26e30245ae6422db2915cd8714a4b257d5c7dec",
   "doc": "docs/estrategia-aprendizaje-2026-10-24.md",
   "registry": "docs/auditoria/claims.json",
   "online": false,
@@ -522,10 +522,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/components/Reader.tsx:4604 coincide con /updateLanguageTheta\\(currentLang, beta, 1, 1\\.0\\)/",
+          "detail": "src/client/components/Reader.tsx:4691 coincide con /updateLanguageTheta\\(currentLang, beta, 1, 1\\.0\\)/",
           "observed": {
             "file": "src/client/components/Reader.tsx",
-            "line": 4604,
+            "line": 4691,
             "text": "updateLanguageTheta(currentLang, beta, 1, 1.0);"
           }
         },
@@ -673,10 +673,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/lib/idb.ts:2106 coincide con /if \\(existing\\?\\.deleted\\) return existing/",
+          "detail": "src/client/lib/idb.ts:2110 coincide con /if \\(existing\\?\\.deleted\\) return existing/",
           "observed": {
             "file": "src/client/lib/idb.ts",
-            "line": 2106,
+            "line": 2110,
             "text": "if (existing?.deleted) return existing;"
           }
         },
@@ -873,10 +873,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/hooks/useReaderNavigation.ts:211 coincide con /const completeChapterTo/",
+          "detail": "src/client/hooks/useReaderNavigation.ts:213 coincide con /const completeChapterTo/",
           "observed": {
             "file": "src/client/hooks/useReaderNavigation.ts",
-            "line": 211,
+            "line": 213,
             "text": "const completeChapterTo = useCallback("
           }
         },

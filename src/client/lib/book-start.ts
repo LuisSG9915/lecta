@@ -67,7 +67,14 @@ export async function saveBookStart(
 //   (reabrir tras elegir no repite la pregunta).
 // - Ninguno → pedir elección; la sección cero no se renderiza antes.
 export type EntryDecision =
-  | { kind: "resume"; sectionIndex: number; ratio: number; anchor?: string }
+  | {
+      kind: "resume";
+      sectionIndex: number;
+      ratio: number;
+      anchor?: string;
+      // Fracción del bloque ancla ya leída por arriba (0–1).
+      anchorOffset?: number;
+    }
   | { kind: "target"; target: ChapterTarget }
   | { kind: "ask" };
 
@@ -84,6 +91,8 @@ export function resolveEntryTarget(
       sectionIndex: Math.max(0, index),
       ratio: saved.sectionIndex === index ? saved.ratio ?? 0 : 0,
       anchor: saved.sectionIndex === index ? saved.anchor : undefined,
+      anchorOffset:
+        saved.sectionIndex === index ? saved.anchorOffset : undefined,
     };
   }
   if (start) {

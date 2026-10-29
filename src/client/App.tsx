@@ -177,6 +177,7 @@ export default function App() {
     sectionIndex: number;
     ratio?: number;
     anchor?: string;
+    anchorOffset?: number;
   } | null>(null);
   // Hash del libro que está delante, para no aplicar un sync que llega
   // después de que la persona volvió a la estantería.
@@ -193,6 +194,9 @@ export default function App() {
   const panelRelease = useRef<OverlayHandle | null>(null);
   const calibrationRelease = useRef<OverlayHandle | null>(null);
   const positionRelease = useRef<OverlayHandle | null>(null);
+  // Guardado de posición que el lector registra mientras está montado.
+  // El cierre lo espera antes de desmontar y de sincronizar.
+  const positionFlushRef = useRef<(() => Promise<void>) | null>(null);
   // El libro que esperaba entrar cuando se ofreció la calibración.
   // Ref y no estado: el cierre puede venir de «atrás» (popstate) con
   // un callback viejo, y la ref siempre tiene el pendiente actual.
@@ -247,6 +251,42 @@ export default function App() {
     bookRelease.current = null;
   };
 
+  const closeReader = () => {
+    const flush = positionFlushRef.current;
+    positionFlushRef.current = null;
+    openBookHashRef.current = null;
+    setReaderInitialWord(undefined);
+    setResumeRequest(null);
+    setPositionSync(null);
+    setMessage("");
+    const teardown = () => {
+      startSafeViewTransition(() => {
+        panelRelease.current?.release();
+        panelRelease.current = null;
+        setShowVocabulary(false);
+        setShowAccount(false);
+        setShowJourney(false);
+        releaseBook();
+        setBook(null);
+      });
+      // La posición final de la sesión de lectura sale aquí hacia la
+      // cuenta, para que los demás dispositivos continúen donde quedó.
+      void syncPositions().catch(() => null);
+    };
+    // Guardar antes de cerrar. Con «atrás» del navegador (gesto o botón)
+    // el cierre no pasa por el guardado del lector: el desmontaje escribe
+    // en segundo plano y `syncPositions` alcanzaba a leer la fila vieja y
+    // devolvía otra posición encima de la recién leída. El botón de la
+    // barra sí guardaba antes; el gesto no.
+    if (!flush) {
+      teardown();
+      return;
+    }
+    void flush()
+      .catch(() => undefined)
+      .then(teardown);
+  };
+
   const [lastReadBook, setLastReadBook] = useState<{
     hash: string;
     name: string;
@@ -272,12 +312,13 @@ export default function App() {
       setShowAccount(false);
       setShowJourney(false);
       if (!bookRelease.current) {
+        // «Atrás» del navegador (gesto o botón) cierra por aquí: tiene
+        // que pasar por closeReader para guardar la posición y empujarla
+        // a la cuenta antes de desmontar. Antes solo hacía setBook(null)
+        // y el punto leído se quedaba sin viajar al servidor.
         bookRelease.current = pushOverlay(() => {
           bookRelease.current = null;
-          openBookHashRef.current = null;
-          startSafeViewTransition(() => {
-            setBook(null);
-          });
+          closeReader();
         });
       }
       setBook(ownedSelection);
@@ -330,7 +371,7 @@ export default function App() {
         bookRelease.current = release;
         release.swap(() => {
           bookRelease.current = null;
-          setBook(null);
+          closeReader();
         });
       }
       openBook(selection);
@@ -385,26 +426,6 @@ export default function App() {
     }
     showCalibration(words, null, language);
     return true;
-  };
-
-  const closeReader = () => {
-    openBookHashRef.current = null;
-    setReaderInitialWord(undefined);
-    setResumeRequest(null);
-    setPositionSync(null);
-    setMessage("");
-    startSafeViewTransition(() => {
-      panelRelease.current?.release();
-      panelRelease.current = null;
-      setShowVocabulary(false);
-      setShowAccount(false);
-      setShowJourney(false);
-      releaseBook();
-      setBook(null);
-    });
-    // La posición final de la sesión de lectura sale aquí hacia la
-    // cuenta, para que los demás dispositivos continúen donde quedó.
-    void syncPositions().catch(() => null);
   };
 
   // Corte limpio al cambiar de identidad: el libro abierto, la última
@@ -1276,6 +1297,7 @@ export default function App() {
               sectionIndex: conflict.merged.sectionIndex,
               ratio: conflict.merged.ratio,
               anchor: conflict.merged.anchor,
+              anchorOffset: conflict.merged.anchorOffset,
             });
           });
           return;
@@ -1503,6 +1525,7 @@ export default function App() {
               onError={setError}
               onStatus={setMessage}
               onBack={closeReader}
+              positionFlushRef={positionFlushRef}
               onOpenNotebook={openNotebookOverlay}
               statusText={message}
               errorText={error}

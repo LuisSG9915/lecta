@@ -59,6 +59,10 @@ export interface SavedBookPosition {
   // Inicio del bloque visible al guardar: restaura el punto exacto aunque
   // cambien letra, interlineado o ancho (reading-location.ts).
   anchor?: string;
+  // Fracción del bloque ancla que ya quedó por encima de la ventana
+  // (0–1). Sin ella, restaurar pone el inicio del párrafo arriba y se
+  // pierde hasta una pantalla de lectura dentro del mismo bloque.
+  anchorOffset?: number;
   updatedAt: number;
 }
 

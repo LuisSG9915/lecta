@@ -347,3 +347,57 @@ Plus: purga de filas viejas en el mismo cron (`DELETE … WHERE bucket_day < cur
   en la misma ruta se reportan por separado.
 - `src/client/components/DiagnosticsModal.test.ts`: sección del servidor con filas y mensaje de
   «solo el dueño» cuando la ruta responde 404.
+
+## 6. Desminificar los frames (sourcemaps, 2026-10-29)
+
+Los frames llegan como `index-CMW2Mu5g.js:2:2667`. Eso basta para agrupar y contar, pero no para
+leer dónde falló. En vez de meter `@sentry/browser` en el cliente (+~30 kB gzip sobre un
+presupuesto de 215 kB) o levantar Bugsink/GlitchTip —que solo desminifican eventos en formato
+Sentry, y nuestros frames viajan en un JSON propio— el repo emite mapas y los resuelve offline.
+
+### 6.1 Piezas
+
+1. `sourcemap: "hidden"` en `vite.config.ts` (bloque `build`): genera los `.map` **sin** comentario
+   `sourceMappingURL`, así que el navegador nunca los pide y no hay fuga pasiva del fuente.
+2. `sourcemapVault()` (`vite.config.ts`, antes de `swManifest()`): en `closeBundle` saca los `.map`
+   de `dist/client` y `dist/lecta` a `artifacts/sourcemaps/<build-id>/` y mantiene el índice
+   `artifacts/sourcemaps/index.json` (`assets[archivo.js] = { build, map }`). Sin este paso
+   `@cloudflare/vite-plugin` los publicaría en `/assets/*.map`, con el fuente del cliente
+   descargable por cualquiera. Retiene los **20 builds** más recientes (~11 MB de mapas por build).
+   `artifacts/` ya está en `.gitignore`, así que nada de esto se versiona ni se despliega.
+3. `scripts/symbolicate.mjs` (`pnpm symbols`): usa `@jridgewell/trace-mapping` (devDependency,
+   MIT, no entra al bundle). Traduce `archivo.js:línea:columna` con la columna de V8 pasada a
+   0-based y reporta `src/client/...:línea:columna (función)`.
+
+### 6.2 Uso
+
+```
+pnpm symbols "index-CMW2Mu5g.js:2:2667"
+# → src/client/lib/history.ts:19:6 (stack)
+
+pnpm symbols --db                 # tabla de lecta_error_signatures, resuelta
+pnpm symbols --db --days 7 --json # lo mismo, para pegar en un informe
+```
+
+`--db` es de solo lectura (`SELECT`), imprime la base contra la que corre y no necesita el worker.
+Los frames que ya son fuente (`src/client/components/Reader.tsx:12:5`) pasan tal cual; los de un
+build que ya no está en el índice se marcan `sin mapa para ese build`, que es la señal de que hay
+que subir el límite de retención de builds o mirar la fila el mismo día.
+
+Como los assets llevan hash de contenido, los mapas del build desplegado resuelven cualquier fila
+de esos 30 días mientras el build siga en el índice. Un deploy nuevo añade su propio directorio; no
+hay que subir nada a R2 ni darle los mapas al worker.
+
+### 6.3 Coste
+
+0 kB de bundle (`check:size` sigue en 204.17/215 kB), ~11 MB de disco por build, 1 devDependency y
+1 script. `sw-manifest.json` no incluye `.map` (el vault corre antes), así que el service worker
+tampoco los precachea.
+
+### 6.4 Pruebas
+
+`scripts/symbolicate.test.mjs`: `parseArgs` (frames vs banderas, `--days` recortado a 1..30,
+`--limit` a 1000, bandera desconocida falla), `splitFrames` (flecha de `sample_frames`, vacíos),
+`loadIndex` (mensaje con `pnpm build` cuando falta) y `resolveFrame` (traduce a fuente, acepta
+prefijo de ruta, marca build sin mapa, marca línea sin mapping, deja pasar frames que ya son
+fuente, no revienta con mapa corrupto).

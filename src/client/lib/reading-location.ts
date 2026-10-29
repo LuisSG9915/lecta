@@ -4,21 +4,56 @@
 
 const BLOCK_SELECTOR = "p, h1, h2, h3, h4, h5, h6, li, blockquote, figure, pre, td";
 const ANCHOR_LEN = 120;
+// Un bloque más corto que esto no puede competir como ancla parcial
+// («El» o un epígrafe de dos palabras casa con media sección y dejaría
+// la lectura antes del punto real).
+const MIN_PARTIAL_ANCHOR = 16;
 
 export const normalizeBlockText = (text: string) => text.replace(/\s+/g, " ").trim();
 
-// Texto del primer bloque que cruza la zona de lectura (parte alta de
-// la ventana). Devuelve null si no hay bloques con texto.
-export function anchorAtViewTop(container: HTMLElement): string | null {
-  const horizon = Math.min(window.innerHeight * 0.5, 400);
+const clamp01 = (value: number) => (value < 0 ? 0 : value > 1 ? 1 : value);
+
+const viewTopHorizon = () => Math.min(window.innerHeight * 0.5, 400);
+
+export interface ViewTopAnchor {
+  text: string;
+  /**
+   * Fracción del bloque que quedó por encima del borde superior de la
+   * ventana (0–1). Es la parte de la posición que el texto del ancla no
+   * puede reconstruir: sin ella, restaurar planta el inicio del párrafo
+   * y se pierde hasta una pantalla de lectura.
+   */
+  offset: number;
+}
+
+// Primer bloque que cruza la zona de lectura (parte alta de la ventana),
+// con cuánto de él ya pasó por arriba. Devuelve null si no hay bloques
+// con texto.
+export function viewTopAnchor(container: HTMLElement): ViewTopAnchor | null {
+  const horizon = viewTopHorizon();
   for (const el of container.querySelectorAll(BLOCK_SELECTOR)) {
     const rect = el.getBoundingClientRect();
-    if (rect.bottom > 0 && rect.top < horizon) {
-      const text = normalizeBlockText(el.textContent ?? "").slice(0, ANCHOR_LEN);
-      if (text) return text;
-    }
+    if (rect.bottom <= 0) continue;
+    const text = normalizeBlockText(el.textContent ?? "").slice(0, ANCHOR_LEN);
+    if (!text) continue;
+    const height = rect.height || el.scrollHeight || 0;
+    // El bloque que contiene el borde superior de la ventana es el que se
+    // está leyendo: su fracción reconstruye el punto exacto. Se guarda
+    // como fracción, no como píxeles, para aguantar un cambio de letra o
+    // de ancho de columna. Si el borde cae en el hueco entre dos bloques,
+    // vale el siguiente con la fracción a cero.
+    const containsTop = rect.top <= 0 && height > 0;
+    if (containsTop) return { text, offset: clamp01(-rect.top / height) };
+    if (rect.top < horizon) return { text, offset: 0 };
+    return null;
   }
   return null;
+}
+
+// Texto del ancla visible (sin la fracción). Se mantiene porque el
+// formato guardado en el servidor es solo texto.
+export function anchorAtViewTop(container: HTMLElement): string | null {
+  return viewTopAnchor(container)?.text ?? null;
 }
 
 // Muestra una insignia sutil («Continuar aquí») sobre el bloque restaurado.
@@ -32,29 +67,64 @@ export function showResumeAnchor(el: Element): void {
   }, 6000);
 }
 
-// Busca el bloque cuyo texto arranca como el ancla y lo lleva arriba.
+// Busca el bloque que corresponde al ancla guardada. Prefiere el que
+// empieza con el texto del ancla (el caso normal: el ancla es un prefijo
+// del bloque) y solo si no hay ninguno acepta un bloque entero que el
+// ancla contenga, que es lo que pasa cuando el texto se partió en dos
+// bloques al cambiar el marcado.
+function findAnchorBlock(
+  container: HTMLElement,
+  target: string,
+): HTMLElement | null {
+  const blocks = [...container.querySelectorAll<HTMLElement>(BLOCK_SELECTOR)];
+  for (const el of blocks) {
+    const text = normalizeBlockText(el.textContent ?? "");
+    if (text && text.startsWith(target)) return el;
+  }
+  let best: HTMLElement | null = null;
+  let bestLen = MIN_PARTIAL_ANCHOR - 1;
+  for (const el of blocks) {
+    const text = normalizeBlockText(el.textContent ?? "");
+    if (text.length > bestLen && target.startsWith(text)) {
+      best = el;
+      bestLen = text.length;
+    }
+  }
+  return best;
+}
+
+// Busca el bloque cuyo texto arranca como el ancla y lo lleva arriba,
+// respetando la fracción del bloque que ya se había leído (`offset`).
 // Devuelve false si no se encuentra (la sección cambió de contenido):
 // quien llama cae a la restauración por fracción.
 export function scrollToAnchor(
   container: HTMLElement,
   anchor: string,
-  options?: { markResume?: boolean },
+  options?: { markResume?: boolean; offset?: number },
 ): boolean {
   const target = normalizeBlockText(anchor).slice(0, 40);
   if (!target) return false;
-  for (const el of container.querySelectorAll(BLOCK_SELECTOR)) {
-    const text = normalizeBlockText(el.textContent ?? "");
-    // El ancla puede ser un corte del bloque (más corta) o incluir el
-    // texto completo (más larga): basta que una sea prefijo de la otra.
-    if (text && (text.startsWith(target) || target.startsWith(text))) {
-      el.scrollIntoView({ block: "start" });
-      if (options?.markResume) {
-        showResumeAnchor(el);
-      }
-      return true;
-    }
+  const el = findAnchorBlock(container, target);
+  if (!el) return false;
+  const offset = clamp01(options?.offset ?? 0);
+  if (offset > 0) {
+    // La lectura estaba a media página dentro del bloque: se recoloca la
+    // misma fracción (proporcional, para aguantar un reflujo) en vez de
+    // plantar el inicio del párrafo.
+    const rect = el.getBoundingClientRect();
+    const max = Math.max(
+      0,
+      document.documentElement.scrollHeight - window.innerHeight,
+    );
+    const y = rect.top + window.scrollY - offset * rect.height;
+    window.scrollTo(0, Math.min(Math.max(0, y), max));
+  } else {
+    el.scrollIntoView({ block: "start" });
   }
-  return false;
+  if (options?.markResume) {
+    showResumeAnchor(el);
+  }
+  return true;
 }
 
 // Lleva un fragmento de destino (como `#s2` del índice) a la vista.
@@ -114,11 +184,110 @@ export function describeReadingLocation(
   return targetAt(ranges, sectionIndex, context);
 }
 
+const ANCHOR_TOLERANCE_PX = 12;
+const ANCHOR_KEEP_MS = 2_500;
+// Ventana en la que la colocación recién restaurada se revisa cuadro a
+// cuadro: la primera medida puede caer con los estilos a medio aplicar.
+const ANCHOR_SETTLE_MS = 400;
+
+// Después de restaurar, el contenido puede crecer por arriba un rato
+// más: asientan las fuentes, el cromo del lector o las imágenes de la
+// sección. El bloque ancla se hunde y la lectura aparece unas líneas
+// antes de donde estaba (eso es el «no respeta la posición»). Aquí se
+// corrige solo el desvío medido, desplazando por la diferencia: si la
+// persona ya se movió, se la respeta.
+export function keepAnchorStable(
+  container: HTMLElement,
+  anchor: string,
+  offset = 0,
+  options?: { durationMs?: number; tolerancePx?: number; settleMs?: number },
+): () => void {
+  const target = normalizeBlockText(anchor).slice(0, 40);
+  if (!target) return () => {};
+  const fraction = clamp01(offset);
+  const tolerance = options?.tolerancePx ?? ANCHOR_TOLERANCE_PX;
+  const settleMs = options?.settleMs ?? ANCHOR_SETTLE_MS;
+  const start = Date.now();
+  const deadline = start + (options?.durationMs ?? ANCHOR_KEEP_MS);
+  let stopped = false;
+  let lastHeight = -1;
+  let frame = 0;
+  // Una vez localizado el bloque se reutiliza: recorrer la sección en
+  // cada cuadro para volver a encontrarlo cuesta en capítulos largos.
+  let node: HTMLElement | null = null;
+
+  const correct = () => {
+    if (stopped) return;
+    if (!node || !node.isConnected) node = findAnchorBlock(container, target);
+    const el = node;
+    if (!el || !el.isConnected) return;
+    const rect = el.getBoundingClientRect();
+    const height = rect.height || el.scrollHeight;
+    if (height <= 0) return;
+    // rect.top baja al subir window.scrollY: para llevarlo al valor
+    // buscado hay que moverse el mismo delta en sentido contrario.
+    const delta = rect.top + fraction * height;
+    if (Math.abs(delta) <= tolerance) return;
+    const max = Math.max(
+      0,
+      document.documentElement.scrollHeight - window.innerHeight,
+    );
+    const next = Math.min(Math.max(0, window.scrollY + delta), max);
+    if (Math.abs(next - window.scrollY) >= 1) window.scrollTo(0, next);
+  };
+
+  const tick = () => {
+    if (stopped) return;
+    // Durante el asentamiento se comprueba en cada cuadro (la primera
+    // colocación puede medirse con estilos a medio aplicar); después,
+    // solo cuando el documento cambió de alto. Si nadie crece por
+    // arriba, el desplazamiento es de quien lee.
+    const height = document.documentElement.scrollHeight;
+    if (Date.now() - start < settleMs || height !== lastHeight) {
+      lastHeight = height;
+      correct();
+    }
+    if (Date.now() >= deadline) {
+      stopped = true;
+      return;
+    }
+    frame = requestAnimationFrame(tick);
+  };
+
+  // Cualquier gesto de la persona cancela la vigilancia: su lectura manda.
+  const stop = () => {
+    if (stopped) return;
+    stopped = true;
+    cancelAnimationFrame(frame);
+    container.removeEventListener("load", onMediaLoad, true);
+    window.removeEventListener("pointerdown", stop, true);
+    window.removeEventListener("wheel", stop, true);
+    window.removeEventListener("touchstart", stop, true);
+    window.removeEventListener("keydown", stop, true);
+  };
+
+  const onMediaLoad = () => correct();
+  container.addEventListener("load", onMediaLoad, true);
+  window.addEventListener("pointerdown", stop, true);
+  window.addEventListener("wheel", stop, true);
+  window.addEventListener("touchstart", stop, true);
+  window.addEventListener("keydown", stop, true);
+  const fonts = (
+    document as Document & { fonts?: { ready?: Promise<unknown> } }
+  ).fonts;
+  void fonts?.ready?.then(() => correct()).catch(() => undefined);
+
+  lastHeight = document.documentElement.scrollHeight;
+  frame = requestAnimationFrame(tick);
+
+  return stop;
+}
+
 /**
  * Encuentra el elemento visible más alto dentro del horizonte de lectura.
  */
 export function findVisibleBlockAtViewTop(container: HTMLElement): HTMLElement | null {
-  const horizon = Math.min(window.innerHeight * 0.5, 400);
+  const horizon = viewTopHorizon();
   for (const el of container.querySelectorAll<HTMLElement>(BLOCK_SELECTOR)) {
     const rect = el.getBoundingClientRect();
     if (rect.bottom > 0 && rect.top < horizon) {

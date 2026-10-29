@@ -68,6 +68,11 @@ export function useReaderPersistence({
   paused = false,
 }: UseReaderPersistenceOptions) {
   const latestPositionRef = useRef<SavedBookPosition | null>(null);
+  // El cierre ya guardó: a partir de ahí el scroll del documento puede
+  // caer a 0 (la estantería ocupa el alto que deja el libro al salir) y
+  // esa lectura no es progreso de lectura. Sin la bandera, el guardado del
+  // desmontaje escribía el principio del capítulo encima del punto real.
+  const closedRef = useRef(false);
   const scrollTimer = useRef<number | undefined>(undefined);
   const activityRef = useRef<ActivitySegment | null>(null);
   const dayGoalRef = useRef<DayGoalTracker | null>(null);
@@ -166,6 +171,7 @@ export function useReaderPersistence({
 
   // Guardado debounced de posición
   const saveSoon = useCallback(() => {
+    if (closedRef.current) return;
     const pos = capturePosition();
     if (pos) {
       latestPositionRef.current = pos;
@@ -174,6 +180,7 @@ export function useReaderPersistence({
     if (typeof window !== "undefined") {
       window.clearTimeout(scrollTimer.current);
       scrollTimer.current = window.setTimeout(() => {
+        if (closedRef.current) return;
         const p = capturePosition() ?? pos;
         if (p) {
           latestPositionRef.current = p;
@@ -205,10 +212,49 @@ export function useReaderPersistence({
     [bookHash],
   );
 
-  // Guardado al desmontar o cambiar de libro
+  // Guardado de la última posición conocida, sin volver a medir el DOM.
+  //
+  // Al cerrar el libro con «atrás» del navegador, el historial restaura el
+  // scroll de la estantería (0) antes de que corra el cierre: medir en ese
+  // instante guardaba el principio del capítulo encima del punto leído. La
+  // ref ya trae lo último que se capturó con el libro a la vista.
+  const saveLatest = useCallback(
+    async (overrideScope?: DbScope) => {
+      // El cierre manda: se descarta el guardado perezoso que estuviera en
+      // cola para que no escriba una medición posterior (scroll a 0 del
+      // documento cuando el libro sale de la pantalla).
+      if (typeof window !== "undefined") {
+        window.clearTimeout(scrollTimer.current);
+      }
+      const pos = latestPositionRef.current ?? capturePosition();
+      if (!pos) return;
+      closedRef.current = true;
+      await saveBookPosition({ ...pos, updatedAt: Date.now() }, overrideScope ?? captureDbScope());
+    },
+    [capturePosition],
+  );
+
+  // Guardado al desmontar o cambiar de libro.
+  //
+  // Las dependencias de este efecto son sólo `bookHash`: con las funciones
+  // dentro (que cambian de identidad en cada render del lector) la limpieza
+  // se reprogramaba en cada render y escribía la posición en IndexedDB
+  // cientos de veces por segundo. Verificado en el arnés e2e.
   const latestReady = useRef({ ready: isReady });
   useEffect(() => {
     latestReady.current = { ready: isReady };
+  });
+  useEffect(() => {
+    closedRef.current = false;
+  }, [bookHash]);
+
+  const saveLatestRef = useRef(saveLatest);
+  useEffect(() => {
+    saveLatestRef.current = saveLatest;
+  });
+  const closeActivityRef = useRef(closeActivity);
+  useEffect(() => {
+    closeActivityRef.current = closeActivity;
   });
 
   useEffect(() => {
@@ -216,16 +262,11 @@ export function useReaderPersistence({
       if (typeof window !== "undefined") {
         window.clearTimeout(scrollTimer.current);
       }
-      closeActivity();
-      if (!latestReady.current.ready) return;
-      const pos = latestPositionRef.current ?? capturePosition();
-      if (!pos) return;
-      void saveBookPosition(
-        { ...pos, updatedAt: Date.now() },
-        captureDbScope(),
-      );
+      closeActivityRef.current();
+      if (!latestReady.current.ready || closedRef.current) return;
+      void saveLatestRef.current();
     };
-  }, [bookHash, capturePosition, closeActivity]);
+  }, [bookHash]);
 
   return {
     latestPositionRef,
@@ -235,6 +276,7 @@ export function useReaderPersistence({
     closeActivity,
     saveSoon,
     saveImmediate,
+    saveLatest,
     loadSavedPosition,
   };
 }

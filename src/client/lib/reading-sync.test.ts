@@ -438,6 +438,32 @@ describe("syncPositions", () => {
     );
   });
 
+  it("la fila que aterrizó durante el pull no la pisa una remota más antigua", async () => {
+    // Cerrar el libro con «atrás» guarda la posición en segundo plano y
+    // sincroniza acto seguido. Si el merge se apoya en la foto tomada
+    // antes de la red, una remota que ya era vieja (otro dispositivo,
+    // reloj desincronizado) gana y el punto recién leído desaparece.
+    const fotoVieja = position("b1", { sectionIndex: 0, progress: 0.01, updatedAt: 100 });
+    const guardadaAlCerrar = position("b1", { sectionIndex: 4, progress: 0.55, updatedAt: 900 });
+    const remota = position("b1", { sectionIndex: 0, progress: 0.01, updatedAt: 500 });
+    vi.mocked(listPositions)
+      .mockResolvedValueOnce([fotoVieja])
+      .mockResolvedValue([guardadaAlCerrar]);
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ positions: [remota] }), { status: 200 }),
+      )
+      .mockResolvedValueOnce(okResponse());
+
+    await expect(syncPositions()).resolves.toEqual({ pulled: 0, conflicts: [] });
+
+    expect(saveBookPosition).not.toHaveBeenCalled();
+    const putBody = JSON.parse(
+      vi.mocked(fetch).mock.calls[1][1]?.body as string,
+    ) as { positions: SavedBookPosition[] };
+    expect(putBody.positions).toEqual([guardadaAlCerrar]);
+  });
+
   it("devuelve null y no sella la fecha si el servidor no responde", async () => {
     vi.mocked(fetch).mockResolvedValue(errorResponse());
     await expect(syncPositions()).resolves.toBeNull();

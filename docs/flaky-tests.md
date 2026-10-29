@@ -58,6 +58,7 @@ Al documentar un nuevo caso, añade una fila a la tabla usando la siguiente estr
 | Archivo | Test | Causa Raíz | Estado | Fecha Detección | Reintentos (2 sem) | Notas / PR |
 |---|---|---|---|---|---|---|
 | *(Ejemplo / Plantilla)* | *`src/client/example.test.ts` > `caso intermitente`* | *Timer: debounce sin drenar microtasks* | *Resuelto* | *2026-10-28* | *1* | *Drenado con `vi.runAllTimers()`* |
+| `e2e/reader-position.spec.ts` | `Lecta — la última posición real del lector > reabrir el libro devuelve el mismo punto` | **Race Condition** (entorno): la webServer del arnés corre con `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE=postgresql://mock:mock@localhost:5432/mock`, así que toda ruta con base responde 500/502 y el arranque de la pestaña compite con ese tráfico; en corridas combinadas con `smoke-journeys` el tab de Chromium a veces se cierra (`page.evaluate: Target page, context or browser has been closed`) antes de montar `.reader`. | `Bajo Observación` | `2026-10-29` | `2` | La prueba reintenta la importación una vez y adjunta el estado de pantalla (`pantalla: {...}`) al mensaje de fallo. Pasa sola de forma consistente (`--repeat-each=4` → 4/4). Falta correr el e2e contra una base real o mockear `**/api/**` para quitar el ruido de raíz. |
 
 *(Actualmente la suite corre sin pruebas aisladas con `fixme`)*.
 

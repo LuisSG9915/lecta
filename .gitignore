@@ -12,6 +12,8 @@ artifacts/
 /src/*.epub
 /fixtures/*.epub
 !/fixtures/minimal.epub
+# Libro largo sintético para la prueba de posición (scripts/make-scroll-fixture.mjs)
+!/fixtures/scroll.epub
 
 .DS_Store
 catalog-seed/

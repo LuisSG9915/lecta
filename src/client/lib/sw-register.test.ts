@@ -122,8 +122,22 @@ describe("registerServiceWorker", () => {
     expect(installingWorker.postMessage).toHaveBeenCalledWith({ type: "SKIP_WAITING" });
   });
 
+  it("no recarga la primera vez que un service worker toma el control", async () => {
+    // Primera visita: no había controlador, el SW se instala y llama a
+    // clients.claim(). Recargar aquí no actualiza nada y sí interrumpe la
+    // importación o la sección que se acaba de abrir.
+    const onReload = vi.fn();
+    await registerServiceWorker({ onReload });
+
+    mockContainer.dispatchEvent(new Event("controllerchange"));
+
+    expect(onReload).not.toHaveBeenCalled();
+  });
+
   it("invoca el callback de recarga una única vez al dispararse controllerchange", async () => {
     const onReload = vi.fn();
+    // Página ya controlada: aquí sí hay una versión nueva que aplicar.
+    mockContainer.controller = new MockServiceWorker();
     await registerServiceWorker({ onReload });
 
     expect(onReload).not.toHaveBeenCalled();

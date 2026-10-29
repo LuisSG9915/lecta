@@ -286,7 +286,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/components/Reader.tsx",
-          "line": 4604,
+          "line": 4691,
           "window": 20,
           "expect": "updateLanguageTheta\\(currentLang, beta, 1, 1\\.0\\)",
           "why": "onMarkKnown sube theta con outcome 1"
@@ -367,7 +367,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/lib/idb.ts",
-          "line": 2106,
+          "line": 2110,
           "window": 1,
           "expect": "if \\(existing\\?\\.deleted\\) return existing",
           "why": "una inferencia pasiva no revive lo borrado"
@@ -459,7 +459,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/hooks/useReaderNavigation.ts",
-          "line": 211,
+          "line": 213,
           "window": 1,
           "expect": "const completeChapterTo",
           "why": "el cierre de capítulo es compartido por scroll y páginas"

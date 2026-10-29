@@ -4,8 +4,10 @@ import { createHash } from "node:crypto";
 import {
   copyFileSync,
   existsSync,
+  mkdirSync,
   readFileSync,
   readdirSync,
+  renameSync,
   rmSync,
   statSync,
   unlinkSync,
@@ -116,6 +118,90 @@ function excludeOversizedOnnxAssets(): Plugin {
   };
 }
 
+// Los mapas de producción se emiten con `sourcemap: "hidden"` (el bundle no
+// lleva comentario sourceMappingURL, así que el navegador nunca los pide) y
+// este plugin los saca de dist/ a artifacts/sourcemaps/<build-id>/. Si se
+// quedaran en el directorio de assets, `@cloudflare/vite-plugin` los subiría
+// y cualquiera podría descargar el fuente del cliente en /assets/*.map.
+// El índice acumulado (artifacts/sourcemaps/index.json) es lo que lee
+// scripts/symbolicate.mjs para desminificar los frames de
+// lecta_error_signatures. artifacts/ está en .gitignore.
+function sourcemapVault(): Plugin {
+  const VAULT = resolve(process.cwd(), "artifacts/sourcemaps");
+  const INDEX_FILE = join(VAULT, "index.json");
+
+  type VaultIndex = {
+    builds: { id: string; at: string; assets: number }[];
+    assets: Record<string, { build: string; map: string }>;
+  };
+
+  return {
+    name: "lecta-sourcemap-vault",
+    closeBundle() {
+      const roots = [
+        resolve(process.cwd(), "dist/client"),
+        resolve(process.cwd(), "dist/lecta"),
+      ];
+      const found: { asset: string; file: string }[] = [];
+      const collect = (dir: string) => {
+        if (!existsSync(dir)) return;
+        for (const entry of readdirSync(dir, { withFileTypes: true })) {
+          const full = join(dir, entry.name);
+          if (entry.isDirectory()) {
+            if (!entry.name.startsWith(".")) collect(full);
+            continue;
+          }
+          if (!entry.name.endsWith(".map")) continue;
+          found.push({ asset: entry.name.slice(0, -".map".length), file: full });
+        }
+      };
+      for (const root of roots) collect(root);
+      if (found.length === 0) return;
+
+      found.sort((a, b) => a.asset.localeCompare(b.asset));
+      const buildId = createHash("sha1")
+        .update(found.map((f) => `${f.asset}:${statSync(f.file).size}`).join("\n"))
+        .digest("hex")
+        .slice(0, 10);
+      const buildDir = join(VAULT, buildId);
+      mkdirSync(buildDir, { recursive: true });
+
+      const index: VaultIndex = existsSync(INDEX_FILE)
+        ? (JSON.parse(readFileSync(INDEX_FILE, "utf8")) as VaultIndex)
+        : { builds: [], assets: {} };
+
+      for (const item of found) {
+        const target = join(buildDir, `${item.asset}.map`);
+        if (existsSync(target)) rmSync(target, { force: true });
+        renameSync(item.file, target);
+        index.assets[item.asset] = {
+          build: buildId,
+          map: relative(process.cwd(), target).split("\\").join("/"),
+        };
+      }
+
+      // Retiene los últimos 20 builds: los assets llevan hash propio, así que
+      // un mapa de un build viejo sigue resolviendo las filas de su versión
+      // mientras la tabla guarde 30 días de historial.
+      const builds = index.builds.filter((b) => b.id !== buildId);
+      builds.push({ id: buildId, at: new Date().toISOString(), assets: found.length });
+      const kept = builds.slice(-20);
+      const keptIds = new Set(kept.map((b) => b.id));
+      index.builds = kept;
+      for (const [asset, entry] of Object.entries(index.assets)) {
+        if (!keptIds.has(entry.build)) delete index.assets[asset];
+      }
+      for (const stale of readdirSync(VAULT, { withFileTypes: true })) {
+        if (stale.isDirectory() && !keptIds.has(stale.name)) {
+          rmSync(join(VAULT, stale.name), { recursive: true, force: true });
+        }
+      }
+
+      writeFileSync(INDEX_FILE, `${JSON.stringify(index, null, 1)}\n`);
+    },
+  };
+}
+
 // Emite dist/client/sw-manifest.json tras el build del cliente: la
 // lista de archivos estáticos que el service worker precachea para
 // abrir offline, versionada por su propio contenido (los nombres de
@@ -199,10 +285,17 @@ export default defineConfig({
     cloudflare(),
     excludeOversizedOnnxAssets(),
     onnxWasmPlugin(),
+    // Antes de swManifest(): los .map tienen que estar fuera de dist/ cuando
+    // el manifiesto del service worker recorre el directorio de salida.
+    sourcemapVault(),
     swManifest(),
     stripDevVarsPlugin(),
   ],
   build: {
+    // Mapas para desminificar los frames de lecta_error_signatures.
+    // "hidden" = sin comentario sourceMappingURL: el navegador no los pide y
+    // sourcemapVault() los mueve a artifacts/sourcemaps/ antes del deploy.
+    sourcemap: "hidden",
     modulePreload: {
       resolveDependencies(_filename, deps) {
         return deps.filter((dep) => !dep.includes("lexicon-banks"));

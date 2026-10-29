@@ -56,10 +56,17 @@ export async function registerServiceWorker(
   const reload = options.onReload ?? (() => window.location.reload());
   const storage = options.storage;
 
-  // 1. Escuchar controllerchange para recargar cuando el nuevo SW tome el control
+  // 1. Escuchar controllerchange para recargar cuando el nuevo SW tome el control.
+  // Solo si la página YA estaba controlada: en la primera visita el
+  // service worker se instala y llama a clients.claim(), la página es la
+  // misma que el SW acaba de precachear y recargarla no actualiza nada —
+  // en cambio sí borra lo que se estuviera haciendo (una importación a
+  // medias, la primera sección del libro, la posición recién restaurada).
+  const hadController = Boolean(navigator.serviceWorker.controller);
   let refreshing = false;
   navigator.serviceWorker.addEventListener("controllerchange", () => {
     if (refreshing) return;
+    if (!hadController) return;
     if (!shouldAllowReload(CONTROLLER_RELOAD_KEY, storage)) return;
     refreshing = true;
     reload();

@@ -20,6 +20,7 @@ import type { PageLayout } from "../lib/pagination";
 import type { EpisodicWordItem } from "../lib/practice";
 import { countWords, MAX_SAMPLE_MS, MIN_SAMPLE_MS, MIN_SAMPLE_WORDS } from "../lib/progress";
 import {
+  keepAnchorStable,
   scrollToAnchor,
   scrollToFragment,
   scrollToSnippet,
@@ -92,6 +93,16 @@ export function useReaderSectionLoader(options: UseReaderSectionLoaderOptions) {
   useEffect(() => {
     optionsRef.current = options;
   });
+  // Corrector de deriva del ancla recién restaurado (ver
+  // keepAnchorStable). Vive hasta la siguiente sección o el desmontaje.
+  const anchorKeeperRef = useRef<(() => void) | null>(null);
+  useEffect(
+    () => () => {
+      anchorKeeperRef.current?.();
+      anchorKeeperRef.current = null;
+    },
+    [],
+  );
 
   const loadSection = useCallback(
     async (index: number, restore: ReaderNavRestore = {}) => {
@@ -305,17 +316,38 @@ export function useReaderSectionLoader(options: UseReaderSectionLoaderOptions) {
             const max = doc.scrollHeight - window.innerHeight;
             // Primero el ancla de texto (exacta aunque cambie la letra);
             // si no está en esta sección, la fracción guardada.
-            const anchored = restore.snippet
-              ? scrollToSnippet(container, restore.snippet)
-              : restore.fragment
-                ? scrollToFragment(container, restore.fragment)
-                : restore.anchor
-                  ? scrollToAnchor(container, restore.anchor, { markResume: true })
-                  : false;
-            if (anchored) {
-              // listo
-            } else if (restore.at === "end") window.scrollTo(0, Math.max(0, max));
-            else window.scrollTo(0, (restore.ratio ?? 0) * Math.max(0, max));
+            anchorKeeperRef.current?.();
+            anchorKeeperRef.current = null;
+            let anchoredByText: { anchor: string; offset: number } | null = null;
+            let anchored: boolean;
+            if (restore.snippet) anchored = scrollToSnippet(container, restore.snippet);
+            else if (restore.fragment)
+              anchored = scrollToFragment(container, restore.fragment);
+            else if (restore.anchor) {
+              anchored = scrollToAnchor(container, restore.anchor, {
+                markResume: true,
+                offset: restore.anchorOffset,
+              });
+              if (anchored) {
+                anchoredByText = {
+                  anchor: restore.anchor,
+                  offset: restore.anchorOffset ?? 0,
+                };
+              }
+            } else anchored = false;
+            if (!anchored) {
+              if (restore.at === "end") window.scrollTo(0, Math.max(0, max));
+              else window.scrollTo(0, (restore.ratio ?? 0) * Math.max(0, max));
+            } else if (anchoredByText) {
+              // El ancla se coloca, pero el contenido puede seguir
+              // creciendo por arriba (fuentes, imágenes): se vigila el
+              // desvío durante un par de segundos.
+              anchorKeeperRef.current = keepAnchorStable(
+                container,
+                anchoredByText.anchor,
+                anchoredByText.offset,
+              );
+            }
           }
           sectionTiming.current = {
             start: Date.now(),

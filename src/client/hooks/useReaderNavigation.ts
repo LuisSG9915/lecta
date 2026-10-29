@@ -40,6 +40,8 @@ type Ref<T> = { current: T };
 export type ReaderNavRestore = {
   ratio?: number;
   anchor?: string;
+  // Fracción del bloque ancla que quedó por encima de la ventana (0–1).
+  anchorOffset?: number;
   snippet?: string;
   fragment?: string;
   at?: "end";

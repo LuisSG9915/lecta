@@ -183,7 +183,12 @@ export async function syncPositions(scope?: DbScope): Promise<{
     clearCollectionPagesPending("positions");
   }
 
-  const localByHash = new Map(local.map((item) => [item.bookHash, item]));
+  // El pull tarda lo suyo: un guardado que haya aterrizado mientras
+  // tanto (la posición final de la lectura, al cerrar el libro) tiene
+  // que contar. Con la foto tomada antes de la red, una fila remota más
+  // nueva que esa foto pisaba el punto que el lector acababa de guardar.
+  const localNow = await listPositions(bound);
+  const localByHash = new Map(localNow.map((item) => [item.bookHash, item]));
   const remoteByHash = new Map(remoteAll.map((item) => [item.bookHash, item]));
 
   const conflicts: PositionConflict[] = [];
@@ -195,7 +200,16 @@ export async function syncPositions(scope?: DbScope): Promise<{
     if (item.updatedAt > maxUpdated) maxUpdated = item.updatedAt;
     const existing = localByHash.get(item.bookHash);
     if (!existing || item.updatedAt > existing.updatedAt) {
-      await saveBookPosition(item, bound);
+      // El servidor guarda el ancla como texto, sin la fracción del
+      // bloque que ya se había leído: si la fila remota apunta al mismo
+      // párrafo, se conserva la precisión que este dispositivo conoce.
+      const merged =
+        existing?.anchorOffset != null &&
+        existing.anchor != null &&
+        existing.anchor === item.anchor
+          ? { ...item, anchorOffset: existing.anchorOffset }
+          : item;
+      await saveBookPosition(merged, bound);
       pulled += 1;
       // Solo cuenta como conflicto si el local apuntaba a otro lugar:
       // otra sección o un avance con diferencia visible (>0.5 %).
@@ -215,7 +229,7 @@ export async function syncPositions(scope?: DbScope): Promise<{
 
   // Desacoplar toPush de effectiveSince con orden y cursor seguro
   const lastCursor = getSyncCompoundCursor(bound.userId, "positions:push");
-  const toPush = local
+  const toPush = localNow
     .filter((item) => {
       const remoteItem = remoteByHash.get(item.bookHash);
       if (remoteItem) {
