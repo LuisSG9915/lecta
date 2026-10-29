@@ -8,6 +8,7 @@ import {
   extractChapterPrepCandidates,
   extractCompactContextSentence,
   extractPageWords,
+  extractTagStack,
   findSentenceWithWord,
   formatChapterHtmlForMode,
   getEpubChapter,
@@ -772,13 +773,98 @@ describe("epub-reader (Kindle E-ink)", () => {
     it("bloquea URIs data: peligrosas (SVG/XHTML) y preserva imágenes rasterizadas seguras", () => {
       const svgPayload = '<p><img src="data:image/svg+xml;utf8,<svg onload=alert(1)>"/></p>';
       const rasterPayload = '<p><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="/></p>';
+      const unquotedSvg = '<p><img src=data:image/svg+xml;utf8,<svg>></p>';
+      const singleQuotedSvg = "<p><img src='data:image/svg+xml;utf8,<svg>'></p>";
+      const evilPrefix = '<p><img src="data:image/png-evil;base64,123"></p>';
+      const xhtmlPayload = '<p><a href="data:application/xhtml+xml,payload">link</a></p>';
+      const jpegPayload = '<p><img src="data:image/jpeg;base64,/9j/4AAQSkZJRg=="/></p>';
+      const webpPayload = '<p><img src="data:image/webp;base64,UklGR="></p>';
       
       const resSvg = sanitizeKindleHtml(svgPayload, "", "hash");
       expect(resSvg.contentHtml).toContain('src="#"');
       expect(resSvg.contentHtml).not.toContain("data:image/svg+xml");
 
+      const resUnquotedSvg = sanitizeKindleHtml(unquotedSvg, "", "hash");
+      expect(resUnquotedSvg.contentHtml).toContain('src="#"');
+      expect(resUnquotedSvg.contentHtml).not.toContain("data:image/svg+xml");
+
+      const resSingleQuotedSvg = sanitizeKindleHtml(singleQuotedSvg, "", "hash");
+      expect(resSingleQuotedSvg.contentHtml).toContain('src="#"');
+      expect(resSingleQuotedSvg.contentHtml).not.toContain("data:image/svg+xml");
+
+      const resEvil = sanitizeKindleHtml(evilPrefix, "", "hash");
+      expect(resEvil.contentHtml).toContain('src="#"');
+
+      const resXhtml = sanitizeKindleHtml(xhtmlPayload, "", "hash");
+      expect(resXhtml.contentHtml).toContain('href="#"');
+
       const resRaster = sanitizeKindleHtml(rasterPayload, "", "hash");
       expect(resRaster.contentHtml).toContain("data:image/png;base64,");
+
+      const resJpeg = sanitizeKindleHtml(jpegPayload, "", "hash");
+      expect(resJpeg.contentHtml).toContain("data:image/jpeg;base64,");
+
+      const resWebp = sanitizeKindleHtml(webpPayload, "", "hash");
+      expect(resWebp.contentHtml).toContain("data:image/webp;base64,");
+    });
+  });
+
+  describe("Módulo 1: Subsistema Kindle & E-ink", () => {
+    describe("Hueco 1.1 — Balanceo de etiquetas HTML inline en splitLongParagraph", () => {
+      it("cierra etiquetas inline abiertas al final del fragmento y las reabre con atributos en el siguiente", () => {
+        const longParagraph =
+          '<p class="body">Primera oración introductoria. ' +
+          '<em class="kursiv"><span data-lang="lat">Segunda oración extensa en cursiva que supera el límite. ' +
+          'Tercera oración que continúa dentro de las mismas etiquetas inline.</span></em> ' +
+          'Cuarta oración final fuera de cursiva.</p>';
+
+        const chunks = splitLongParagraph(longParagraph, 80);
+
+        expect(chunks.length).toBeGreaterThan(1);
+        // El primer o segundo corte debe cerrar </span></em> antes de </p>
+        expect(chunks[1]).toContain("</span></em></p>");
+        // El siguiente fragmento debe reabrir <em class="kursiv"><span data-lang="lat">
+        expect(chunks[2]).toMatch(/^<p class="body"><em class="kursiv"><span data-lang="lat">/);
+        // Ningún fragmento debe tener etiquetas desbalanceadas
+        for (const chunk of chunks) {
+          expect(extractTagStack(chunk)).toEqual([]);
+        }
+      });
+    });
+
+    describe("Hueco 1.2 — Partición de bloques semánticos no-<p> (blockquote, div, li)", () => {
+      it("fragmenta un <blockquote> extenso preservando su contenedor y atributos", () => {
+        const s1 = "Querido amigo: te escribo desde tierras lejanas con gran urgencia.";
+        const s2 = "El viaje ha sido sumamente agotador y lleno de peligros inesperados.";
+        const block = `<blockquote id="carta-1" class="epistola">${s1} ${s2}</blockquote>`;
+
+        const chunks = splitLongParagraph(block, 75);
+
+        expect(chunks).toHaveLength(2);
+        expect(chunks[0]).toBe(`<blockquote id="carta-1" class="epistola">${s1}</blockquote>`);
+        // El segundo fragmento conserva la clase pero no duplica el id
+        expect(chunks[1]).toBe(`<blockquote class="epistola">${s2}</blockquote>`);
+      });
+    });
+
+    describe("Hueco 1.3 — Restricción estricta de data-URIs en sanitizeKindleHtml", () => {
+      it('neutraliza data:image/svg+xml y data:application/xhtml+xml a ="#"', () => {
+        const maliciousSvg = '<img src="data:image/svg+xml;base64,PHN2ZyBvbmxvYWQ9ImFsZXJ0KDEpIj4=">';
+        const maliciousXhtml = "<a href=' data:application/xhtml+xml,<html/> '>Link</a>";
+        const maliciousUnquoted = "<img src=data:image/svg+xml;utf8,<svg/>>";
+
+        expect(sanitizeKindleHtml(maliciousSvg)).toBe('<img src="#">');
+        expect(sanitizeKindleHtml(maliciousXhtml)).toBe('<a href="#">Link</a>');
+        expect(sanitizeKindleHtml(maliciousUnquoted)).toBe('<img src="#">');
+      });
+
+      it("permite data-URIs de imágenes rasterizadas seguras (jpeg, png, gif, webp, avif)", () => {
+        const safePng = '<img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==">';
+        const safeAvif = '<img src="data:image/avif;base64,AAAAIGZ0eXBhdmlm">';
+
+        expect(sanitizeKindleHtml(safePng)).toBe(safePng);
+        expect(sanitizeKindleHtml(safeAvif)).toBe(safeAvif);
+      });
     });
   });
 });

@@ -281,11 +281,17 @@ export async function parseEpub(bytes: Uint8Array): Promise<EpubParsed | null> {
   };
 }
 
+export function sanitizeKindleHtml(rawHtml: string): string;
 export function sanitizeKindleHtml(
   rawHtml: string,
   chapterDir: string,
   bookHash: string,
-): { title: string; contentHtml: string } {
+): { title: string; contentHtml: string };
+export function sanitizeKindleHtml(
+  rawHtml: string,
+  chapterDir?: string,
+  bookHash?: string,
+): { title: string; contentHtml: string } | string {
   // Extrae título de <title> o del primer encabezado <h1>/<h2>
   const titleTagMatch = rawHtml.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
   let chapterTitle = titleTagMatch ? decodeXmlEntities(titleTagMatch[1]) : "";
@@ -320,12 +326,23 @@ export function sanitizeKindleHtml(
     );
   }
 
+  // Whitelist estricta para data-URIs: solo imágenes rasterizadas seguras
+  content = content.replace(
+    /=\s*(?:(["'])\s*data:(?!image\/(?:jpeg|png|gif|webp|avif)\b[;,])[^"']*\1|data:(?!image\/(?:jpeg|png|gif|webp|avif)\b[;,])[^\s>]*)/gi,
+    '="#"'
+  );
+
   // 3. Quitar atributos on* (incluso precedidos por '/' o comillas sin espacio) y neutralizar URL peligrosas.
   content = content.replace(
     /<([a-z][a-z0-9:-]*)([^>]*)>/gi,
     (_tag, name: string, attrs: string) => {
       const cleaned = attrs
         .replace(/(?:^|[\s/"'])on[a-z0-9_-]+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "")
+        // Neutraliza cualquier URI data: excepto imágenes rasterizadas seguras: data:image/(jpeg|png|gif|webp|avif)
+        .replace(
+          /=\s*(?:(["'])\s*data:(?!image\/(?:jpeg|png|gif|webp|avif)\b[;,])[^"']*\1|data:(?!image\/(?:jpeg|png|gif|webp|avif)\b[;,])[^\s>]*)/gi,
+          '="#"'
+        )
         .replace(
           /\s+(href|src|xlink:href|action|formaction|poster|background|srcdoc)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi,
           (
@@ -340,7 +357,7 @@ export function sanitizeKindleHtml(
               .filter((char) => char.charCodeAt(0) > 0x20)
               .join("")
               .toLowerCase();
-            return /^(?:javascript|vbscript|data:(?!image\/(?:jpeg|png|gif|webp|avif)))/i.test(normalized)
+            return /^(?:javascript|vbscript|data:(?!image\/(?:jpeg|png|gif|webp|avif)\b[;,]))/i.test(normalized)
               ? " " + attr + '="#"'
               : full;
           },
@@ -358,14 +375,18 @@ export function sanitizeKindleHtml(
       if (/^(https?:|data:|\/\/|#|about:)/i.test(trimmed)) {
         return `${prefix}${quote}${trimmed}${quote}`;
       }
-      const resolved = resolveZipPath(chapterDir, trimmed);
-      const resourceUrl = `/k/read/${encodeURIComponent(bookHash)}/resource?path=${encodeURIComponent(resolved)}`;
+      const resolved = resolveZipPath(chapterDir || "", trimmed);
+      const resourceUrl = `/k/read/${encodeURIComponent(bookHash || "")}/resource?path=${encodeURIComponent(resolved)}`;
       return `${prefix}${quote}${resourceUrl}${quote}`;
     },
   );
 
   // Quitar atributos srcset que puedan romper la carga en navegadores viejos
   content = content.replace(/\s+srcset\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, "");
+
+  if (chapterDir === undefined && bookHash === undefined) {
+    return content.trim();
+  }
 
   return {
     title: chapterTitle || "Capítulo",
@@ -506,26 +527,48 @@ export function splitHtmlIntoBlocks(html: string): string[] {
   return blocks;
 }
 
-interface InlineTag {
+export interface OpenInlineTag {
   tag: string;
-  openHtml: string;
+  openTag: string;
 }
 
-function extractTagStack(html: string, initialStack: InlineTag[] = []): InlineTag[] {
-  const stack: InlineTag[] = initialStack.map((t) => ({ ...t }));
-  const tagRegex = /<\/?([a-z][a-z0-9]*)\b([^>]*)>/gi;
+const TRACKED_INLINE_TAGS = new Set([
+  'em',
+  'strong',
+  'span',
+  'i',
+  'b',
+  'cite',
+  'a',
+  'u',
+  'small',
+  'sub',
+  'sup',
+  'q',
+  'code',
+  'mark',
+  's',
+]);
+
+/**
+ * Rastrea la pila de etiquetas HTML inline abiertas que aún no han sido cerradas
+ * dentro de un fragmento HTML, preservando la etiqueta de apertura con sus atributos.
+ */
+export function extractTagStack(htmlFragment: string): OpenInlineTag[] {
+  const stack: OpenInlineTag[] = [];
+  const tagRegex = /<\/?([a-zA-Z][a-zA-Z0-9]*)\b[^>]*\/?>/g;
   let match: RegExpExecArray | null;
 
-  while ((match = tagRegex.exec(html)) !== null) {
+  while ((match = tagRegex.exec(htmlFragment)) !== null) {
     const fullTag = match[0];
     const tagName = match[1].toLowerCase();
-    const isClosing = fullTag.startsWith("</");
-    const isSelfClosing =
-      fullTag.endsWith("/>") || ["br", "hr", "img", "wbr"].includes(tagName);
 
-    if (isSelfClosing) continue;
+    if (!TRACKED_INLINE_TAGS.has(tagName) || fullTag.endsWith('/>')) {
+      continue;
+    }
 
-    if (isClosing) {
+    if (fullTag.startsWith('</')) {
+      // Cierre LIFO tolerante a anidamiento imperfecto en EPUBs antiguos
       for (let i = stack.length - 1; i >= 0; i--) {
         if (stack[i].tag === tagName) {
           stack.splice(i, 1);
@@ -533,92 +576,89 @@ function extractTagStack(html: string, initialStack: InlineTag[] = []): InlineTa
         }
       }
     } else {
-      stack.push({ tag: tagName, openHtml: fullTag });
+      stack.push({ tag: tagName, openTag: fullTag });
     }
   }
 
   return stack;
 }
 
-export function splitLongParagraph(blockHtml: string, maxLen = 850): string[] {
-  const blockMatch = blockHtml.match(/^<(p|blockquote|div|li|dd)\b([^>]*)>([\s\S]*?)<\/\1>$/i);
-  if (!blockMatch) return [blockHtml];
-  const tag = blockMatch[1];
-  const attrs = blockMatch[2];
-  const content = blockMatch[3];
-
-  // Si contiene etiquetas de bloque hijas (ej. <blockquote><p>...</p></blockquote>), no romper la jerarquía aquí
-  if (/<(?:p|blockquote|div|li|h[1-6]|ul|ol)\b/i.test(content)) {
+/**
+ * Divide bloques semánticos largos (p, blockquote, div, li) en fragmentos que
+ * respetan el presupuesto vertical de Kindle (Zero-Scroll), balanceando las
+ * etiquetas inline abiertas entre fragmentos consecutivos.
+ */
+export function splitLongParagraph(blockHtml: string, maxChars = 650): string[] {
+  // Hueco 1.2: Generalizar selector a p, blockquote, div, li
+  const match = blockHtml.match(/^<(p|blockquote|div|li)\b([^>]*)>([\s\S]*)<\/\1>$/i);
+  if (!match) {
     return [blockHtml];
   }
 
-  const textLen = stripHtml(content).length;
-  if (textLen <= maxLen) return [blockHtml];
+  const tagName = match[1].toLowerCase();
+  const attrs = match[2];
+  const inner = match[3].trim();
 
-  // Dividir en límites de oraciones (. ! ? ; :) y subdividir cláusulas gigantes por comas/espacios
-  const rawSentences = content.split(/(?<=[.!?;:])\s+/);
-  const clauses: string[] = [];
+  // Si contiene etiquetas de bloque hijas (ej. <blockquote><p>...</p></blockquote>), no romper la jerarquía aquí
+  if (/<(?:p|blockquote|div|li|h[1-6]|ul|ol)\b/i.test(inner)) {
+    return [blockHtml];
+  }
 
-  for (const s of rawSentences) {
-    if (stripHtml(s).length <= maxLen) {
-      clauses.push(s);
+  const textLength = inner.replace(/<[^>]+>/g, '').length;
+  if (textLength <= maxChars) {
+    return [blockHtml];
+  }
+
+  const sentences = inner.split(/(?<=[.!?;:])\s+/);
+  if (sentences.length <= 1) {
+    return [blockHtml];
+  }
+
+  const rawChunks: string[] = [];
+  let currentChunk = '';
+  let currentTextLen = 0;
+
+  for (const sentence of sentences) {
+    const sentenceTextLen = sentence.replace(/<[^>]+>/g, '').length;
+
+    if (currentChunk && currentTextLen + 1 + sentenceTextLen > maxChars) {
+      rawChunks.push(currentChunk);
+      currentChunk = sentence;
+      currentTextLen = sentenceTextLen;
     } else {
-      const tokens = s.split(/(?<=[,——])\s+|\s+/);
-      let chunk = "";
-      let chunkLen = 0;
-      for (const tok of tokens) {
-        const tokLen = stripHtml(tok).length;
-        if (chunk && chunkLen + tokLen + 1 > maxLen) {
-          clauses.push(chunk.trim());
-          chunk = tok;
-          chunkLen = tokLen;
-        } else {
-          chunk = chunk ? `${chunk} ${tok}` : tok;
-          chunkLen += (chunkLen > 0 ? 1 : 0) + tokLen;
-        }
-      }
-      if (chunk.trim()) clauses.push(chunk.trim());
+      currentChunk = currentChunk ? `${currentChunk} ${sentence}` : sentence;
+      currentTextLen += (currentChunk === sentence ? 0 : 1) + sentenceTextLen;
     }
   }
 
-  const parts: string[] = [];
-  let current = "";
-  let currentLen = 0;
-  let activeStack: InlineTag[] = [];
-
-  for (const sentence of clauses) {
-    const sLen = stripHtml(sentence).length;
-    if (current && (currentLen + sLen + 1 > maxLen)) {
-      const openAtEnd = extractTagStack(current, activeStack);
-      const closeTagsHtml = openAtEnd
-        .slice()
-        .reverse()
-        .map((t) => `</${t.tag}>`)
-        .join("");
-      const prefixHtml = activeStack.map((t) => t.openHtml).join("");
-      parts.push(`<${tag}${attrs}>${prefixHtml}${current.trim()}${closeTagsHtml}</${tag}>`);
-
-      current = sentence;
-      currentLen = sLen;
-      activeStack = openAtEnd;
-    } else {
-      current = current ? `${current} ${sentence}` : sentence;
-      currentLen += (currentLen > 0 ? 1 : 0) + sLen;
-    }
+  if (currentChunk) {
+    rawChunks.push(currentChunk);
   }
 
-  if (current.trim()) {
-    const openAtEnd = extractTagStack(current, activeStack);
-    const closeTagsHtml = openAtEnd
+  // Evitar duplicar el atributo id="..." en los fragmentos subsecuentes
+  const subsequentAttrs = attrs.replace(/\s+\bid\s*=\s*(?:["'][^"']*["']|[^\s>]+)/gi, '');
+
+  // Hueco 1.1: Balancear etiquetas inline entre fragmentos
+  const balancedBlocks: string[] = [];
+  let activeStack: OpenInlineTag[] = [];
+
+  for (let i = 0; i < rawChunks.length; i++) {
+    const reopenPrefix = activeStack.map((t) => t.openTag).join('');
+    const combinedFragment = reopenPrefix + rawChunks[i];
+
+    activeStack = extractTagStack(combinedFragment);
+
+    const closeSuffix = activeStack
       .slice()
       .reverse()
       .map((t) => `</${t.tag}>`)
-      .join("");
-    const prefixHtml = activeStack.map((t) => t.openHtml).join("");
-    parts.push(`<${tag}${attrs}>${prefixHtml}${current.trim()}${closeTagsHtml}</${tag}>`);
+      .join('');
+
+    const blockAttrs = i === 0 ? attrs : subsequentAttrs;
+    balancedBlocks.push(`<${tagName}${blockAttrs}>${combinedFragment}${closeSuffix}</${tagName}>`);
   }
 
-  return parts.length > 0 ? parts : [blockHtml];
+  return balancedBlocks;
 }
 
 export type KindleFontSize = "sm" | "md" | "lg" | "xl";
