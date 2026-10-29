@@ -251,15 +251,21 @@ export function useReaderAnnotationsAndSearch({
       setSelButton(null);
       return;
     }
+    const clean = text.replace(/\s+/g, " ").trim().toLowerCase();
+    const alreadySaved = passages.some((p) => {
+      if (p.deleted || !p.text) return false;
+      const pClean = p.text.replace(/\s+/g, " ").trim().toLowerCase();
+      return pClean === clean || (clean.length >= 10 && (pClean.includes(clean) || clean.includes(pClean)));
+    });
     setQuoteCard({
       text,
       bookTitle: title,
       author,
       chapterTitle: currentChapterTarget?.label ?? sectionTitle ?? sectionLabel(sectionIndex),
-      alreadySaved: false,
+      alreadySaved,
     });
     setSelButton(null);
-  }, [containerRef, title, author, currentChapterTarget, sectionTitle, sectionLabel, sectionIndex, setSelButton]);
+  }, [containerRef, title, author, currentChapterTarget, sectionTitle, sectionLabel, sectionIndex, setSelButton, passages]);
 
   const askCatAboutSelection = useCallback(
     async (param?: string | { word?: string; passage: string; bookId?: string }) => {

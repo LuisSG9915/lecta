@@ -14,7 +14,6 @@ import { SentenceBuilderGame } from "./SentenceBuilderGame";
 import { WordScrambleGame } from "./WordScrambleGame";
 import { consolidateEpisodicWord } from "../lib/reviews";
 import type { SavedWord } from "../lib/idb";
-import QuoteCardModal from "./QuoteCardModal";
 import Icon from "./Icon";
 import { isFeatureFlagEnabled } from "../lib/settings";
 import {
@@ -51,9 +50,6 @@ export default function DeepReadingSummaryModal({
   onSkipConsolidation,
   harvestWords,
   featuredQuote,
-  bookTitle,
-  author,
-  chapterTitle,
   chapterId,
   onShareQuote,
   onWordConsolidated,
@@ -69,7 +65,6 @@ export default function DeepReadingSummaryModal({
   const [showOptionsMenu, setShowOptionsMenu] = useState(false);
   const [activeWordIndex, setActiveWordIndex] = useState<number | null>(null);
   const [consolidationCompleted, setConsolidationCompleted] = useState(false);
-  const [showQuoteModal, setShowQuoteModal] = useState(false);
   const [followAnswer, setFollowAnswer] = useState<ChapterFollowLevel | null>(null);
 
   const wordsAssimilated =
@@ -88,18 +83,13 @@ export default function DeepReadingSummaryModal({
   }, [harvestWords, queue]);
 
   const defaultQuote =
-    featuredQuote ||
-    (queue.length > 0 && queue[0].item.chapterSentence
-      ? queue[0].item.chapterSentence
-      : "La lectura profunda transforma el tiempo en memoria viva.");
+    featuredQuote?.trim() ||
+    queue.find((q) => q.item.chapterSentence?.trim())?.item.chapterSentence?.trim() ||
+    "La lectura profunda transforma el tiempo en memoria viva.";
 
   const handleCreatePostal = () => {
     triggerHaptic("selection");
-    if (onShareQuote) {
-      onShareQuote(defaultQuote);
-    } else {
-      setShowQuoteModal(true);
-    }
+    onShareQuote?.(defaultQuote);
   };
 
   const handleSkip = () => {
@@ -233,16 +223,6 @@ export default function DeepReadingSummaryModal({
             Continuar al siguiente capítulo →
           </button>
         </div>
-
-        {showQuoteModal ? (
-          <QuoteCardModal
-            text={defaultQuote}
-            bookTitle={bookTitle}
-            author={author}
-            chapterTitle={chapterTitle}
-            onClose={() => setShowQuoteModal(false)}
-          />
-        ) : null}
       </Dialog>
     );
   }
@@ -553,16 +533,6 @@ export default function DeepReadingSummaryModal({
           Continuar al siguiente capítulo →
         </button>
       </div>
-
-      {showQuoteModal ? (
-        <QuoteCardModal
-          text={defaultQuote}
-          bookTitle={bookTitle}
-          author={author}
-          chapterTitle={chapterTitle}
-          onClose={() => setShowQuoteModal(false)}
-        />
-      ) : null}
     </Dialog>
   );
 }

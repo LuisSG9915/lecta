@@ -1088,6 +1088,23 @@ export default function Reader({
     setSelButton,
   });
 
+  const isQuoteAlreadySaved = useCallback(
+    (text?: string | null) => {
+      if (!text) return false;
+      const clean = text.replace(/\s+/g, " ").trim().toLowerCase();
+      if (!clean) return false;
+      return passages.some((p) => {
+        if (p.deleted || !p.text) return false;
+        const pClean = p.text.replace(/\s+/g, " ").trim().toLowerCase();
+        return (
+          pClean === clean ||
+          (clean.length >= 10 && (pClean.includes(clean) || clean.includes(pClean)))
+        );
+      });
+    },
+    [passages],
+  );
+
   useEffect(() => {
     if (quoteCard) {
       if (!quoteReleaseRef.current) {
@@ -3769,7 +3786,7 @@ export default function Reader({
         bookTitle: title,
         author,
         chapterTitle: currentChapterTarget?.label ?? sectionTitle ?? sectionLabel(sectionIndex),
-        alreadySaved: false,
+        alreadySaved: isQuoteAlreadySaved(sel),
       });
       return;
     }
@@ -3784,7 +3801,7 @@ export default function Reader({
       bookTitle: title,
       author,
       chapterTitle: currentChapterTarget?.label ?? sectionTitle ?? sectionLabel(sectionIndex),
-      alreadySaved: false,
+      alreadySaved: isQuoteAlreadySaved(fallbackText),
     });
   };
 
@@ -4730,20 +4747,47 @@ export default function Reader({
           releaseOverlay();
           closePrepLayer();
         }}
-        quoteCard={quoteCard}
+        quoteCard={
+          quoteCard
+            ? {
+                ...quoteCard,
+                alreadySaved:
+                  quoteCard.alreadySaved ??
+                  isQuoteAlreadySaved(quoteCard.text),
+              }
+            : null
+        }
         onCloseQuoteCard={() => setQuoteCard(null)}
         onSaveQuoteCardPassage={(text) => void savePassageDirectly(text)}
+        featuredQuote={
+          postChapterQueue.find((q) => q.item.chapterSentence?.trim())?.item.chapterSentence?.trim() ||
+          passages.find((p) => !p.deleted && p.sectionIndex === sectionIndex && p.text?.trim())?.text?.trim()
+        }
         deepModal={deepModal}
         onStartDeepReading={(config) => void startDeepReading(config)}
         onCloseDeepModal={() => setDeepModal(false)}
         deepSummary={deepSummary}
         postChapterQueue={postChapterQueue}
         onShareDeepSummaryQuote={(quote) => {
+          if (summaryReleaseRef.current) {
+            quoteReleaseRef.current?.release();
+            quoteReleaseRef.current = summaryReleaseRef.current;
+            summaryReleaseRef.current = null;
+            quoteReleaseRef.current.swap(() => setQuoteCard(null));
+          }
+          setDeepSummary(null);
+
+          const chosenQuote =
+            quote?.trim() ||
+            postChapterQueue.find((q) => q.item.chapterSentence?.trim())?.item.chapterSentence?.trim() ||
+            "La lectura profunda transforma el tiempo en memoria viva.";
+
           setQuoteCard({
-            text: quote || "La lectura profunda transforma el tiempo en memoria viva.",
+            text: chosenQuote,
             bookTitle: title,
             author,
             chapterTitle: currentChapterTarget?.label ?? sectionTitle ?? sectionLabel(sectionIndex),
+            alreadySaved: isQuoteAlreadySaved(chosenQuote),
           });
         }}
         onContinueDeepSummary={() => {

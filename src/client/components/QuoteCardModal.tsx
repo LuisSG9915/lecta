@@ -45,8 +45,11 @@ export default function QuoteCardModal({
   const [showBranding, setShowBranding] = useState(true);
   const [includeCompanion, setIncludeCompanion] = useState(companionAvailable);
   const [busy, setBusy] = useState(false);
-  const [statusMsg, setStatusMsg] = useState<string | null>(null);
-  const [savedLocal, setSavedLocal] = useState(alreadySaved);
+  const [statusMsg, setStatusMsg] = useState<string | null>(
+    alreadySaved ? "Pasaje ya guardado en tu Cuaderno." : null,
+  );
+  const [savedLocal, setSavedLocal] = useState(false);
+  const isSaved = alreadySaved || savedLocal;
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -153,7 +156,7 @@ export default function QuoteCardModal({
   };
 
   const handleSaveToNotebook = () => {
-    if (onSavePassage && !savedLocal) {
+    if (onSavePassage && !isSaved) {
       triggerHaptic("success");
       onSavePassage();
       setSavedLocal(true);
@@ -347,13 +350,22 @@ export default function QuoteCardModal({
               >
                 Descargar PNG
               </button>
-              {onSavePassage && !savedLocal ? (
+              {onSavePassage && !isSaved ? (
                 <button
                   type="button"
                   className="btn--quiet"
                   onClick={handleSaveToNotebook}
                 >
                   Guardar en mi Cuaderno
+                </button>
+              ) : onSavePassage && isSaved ? (
+                <button
+                  type="button"
+                  className="btn--quiet"
+                  disabled
+                  aria-disabled="true"
+                >
+                  ✓ Guardado en tu Cuaderno
                 </button>
               ) : null}
             </div>

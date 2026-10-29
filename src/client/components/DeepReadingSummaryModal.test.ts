@@ -403,7 +403,7 @@ describe("DeepReadingSummaryModal", () => {
     expect(text).toContain("destello");
   });
 
-  it("permite crear la postal del capítulo en 1 clic llamando a onShareQuote", () => {
+  it("permite crear la postal del capítulo en 1 clic llamando a onShareQuote con featuredQuote", () => {
     const onClose = vi.fn();
     const onShareQuote = vi.fn();
     act(() => {
@@ -428,18 +428,165 @@ describe("DeepReadingSummaryModal", () => {
       quoteBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     });
 
+    expect(onShareQuote).toHaveBeenCalledTimes(1);
     expect(onShareQuote).toHaveBeenCalledWith("El mar sonreía a lo lejos con dientes de espuma.");
   });
 
-  it("abre QuoteCardModal in situ al pulsar 'Crear postal del capítulo' si no hay onShareQuote", () => {
+  it("prioriza featuredQuote antes de recurrir a la frase del capítulo o al fallback genérico", () => {
+    const onClose = vi.fn();
+    const onShareQuote1 = vi.fn();
+    const consolidationQueue = [
+      {
+        item: {
+          lemma: "quimera",
+          surfaceForm: "quimera",
+          lang: "es",
+          shortGloss: "Ilusión",
+          chapterSentence: "La quimera dorada navegaba el horizonte.",
+          chapterTitle: "Capítulo 1",
+          source: "in-chapter-lookup" as const,
+        },
+        modality: "sentence-cloze" as const,
+      },
+    ];
+
+    // Caso A: featuredQuote tiene prioridad máxima sobre la cola
+    act(() => {
+      root.render(
+        h(DeepReadingSummaryModal, {
+          summary: baseSummary,
+          consolidationQueue,
+          featuredQuote: "Cita destacada prioritaria.",
+          onShareQuote: onShareQuote1,
+          onClose,
+        }),
+      );
+    });
+
+    let quoteBtn = [...host.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("Crear postal del capítulo"),
+    )!;
+    act(() => {
+      quoteBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+    expect(onShareQuote1).toHaveBeenCalledWith("Cita destacada prioritaria.");
+
+    // Caso B: sin featuredQuote, recurre a chapterSentence de la cola
+    const onShareQuote2 = vi.fn();
+    act(() => {
+      root.render(
+        h(DeepReadingSummaryModal, {
+          summary: baseSummary,
+          consolidationQueue,
+          onShareQuote: onShareQuote2,
+          onClose,
+        }),
+      );
+    });
+
+    quoteBtn = [...host.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("Crear postal del capítulo"),
+    )!;
+    act(() => {
+      quoteBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+    expect(onShareQuote2).toHaveBeenCalledWith("La quimera dorada navegaba el horizonte.");
+
+    // Caso C: sin featuredQuote ni chapterSentence, usa el fallback literario genérico
+    const onShareQuote3 = vi.fn();
+    act(() => {
+      root.render(
+        h(DeepReadingSummaryModal, {
+          summary: baseSummary,
+          consolidationQueue: [],
+          onShareQuote: onShareQuote3,
+          onClose,
+        }),
+      );
+    });
+
+    quoteBtn = [...host.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("Crear postal del capítulo"),
+    )!;
+    act(() => {
+      quoteBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+    expect(onShareQuote3).toHaveBeenCalledWith(
+      "La lectura profunda transforma el tiempo en memoria viva.",
+    );
+  });
+
+  it("permite crear la postal desde la pantalla de celebración llamando a onShareQuote", () => {
+    localStorage.clear();
+    const onClose = vi.fn();
+    const onContinue = vi.fn();
+    const onShareQuote = vi.fn();
+    const consolidationQueue = [
+      {
+        item: {
+          lemma: "quimera",
+          surfaceForm: "quimera",
+          lang: "es",
+          shortGloss: "Ilusión o fantasía",
+          chapterSentence: "Perseguía una quimera inalcanzable.",
+          chapterTitle: "Capítulo 1",
+          source: "in-chapter-lookup" as const,
+        },
+        modality: "sentence-cloze" as const,
+      },
+    ];
+
+    act(() => {
+      root.render(
+        h(DeepReadingSummaryModal, {
+          summary: baseSummary,
+          consolidationQueue,
+          featuredQuote: "Frase celebrada del capítulo.",
+          onShareQuote,
+          onContinue,
+          onClose,
+        }),
+      );
+    });
+
+    // Iniciar y resolver el reto
+    const startBtn = [...host.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("Fijar en memoria"),
+    )!;
+    act(() => {
+      startBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+
+    const correctOptionBtn = [...host.querySelectorAll("button")].find(
+      (b) => b.querySelector(".sentence-pool-text")?.textContent?.trim() === "quimera",
+    )!;
+    act(() => {
+      correctOptionBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      vi.advanceTimersByTime(1000);
+    });
+
+    expect(host.textContent).toContain("¡Capítulo sellado en memoria!");
+
+    // Pulsar "Crear postal del capítulo" en la pantalla de celebración
+    const postalBtn = [...host.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("Crear postal del capítulo"),
+    )!;
+    expect(postalBtn).toBeTruthy();
+
+    act(() => {
+      postalBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+
+    expect(onShareQuote).toHaveBeenCalledWith("Frase celebrada del capítulo.");
+  });
+
+  it("no renderiza QuoteCardModal anidado ni duplica .dialog-scrim cuando no se pasa onShareQuote", () => {
     const onClose = vi.fn();
     act(() => {
       root.render(
         h(DeepReadingSummaryModal, {
           summary: baseSummary,
           featuredQuote: "La lectura es un refugio en el tiempo.",
-          bookTitle: "Don Quijote",
-          author: "Cervantes",
           onClose,
         }),
       );
@@ -454,8 +601,10 @@ describe("DeepReadingSummaryModal", () => {
       quoteBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     });
 
-    // Debe abrir QuoteCardModal (Dialog con label o contenido de postal)
-    expect(host.textContent).toContain("Crear postal");
+    // Solo debe existir el .dialog-scrim del resumen, jamás un modal anidado
+    const scrims = document.querySelectorAll(".dialog-scrim");
+    expect(scrims.length).toBe(1);
+    expect(host.querySelector(".quote-modal")).toBeNull();
   });
 });
 

@@ -1,9 +1,9 @@
 {
   "tool": "audit-investigacion",
   "version": 1,
-  "generatedAt": "2026-10-29T08:50:21.623Z",
+  "generatedAt": "2026-10-29T15:35:47.990Z",
   "root": "/Users/luis/Desarrollos Devin/lecta",
-  "commit": "d26e30245ae6422db2915cd8714a4b257d5c7dec",
+  "commit": "a6591865f1182457fd63d9f2994ead24cc46a08f",
   "doc": "docs/estrategia-aprendizaje-2026-10-24.md",
   "registry": "docs/auditoria/claims.json",
   "online": false,
@@ -522,10 +522,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/components/Reader.tsx:4691 coincide con /updateLanguageTheta\\(currentLang, beta, 1, 1\\.0\\)/",
+          "detail": "src/client/components/Reader.tsx:4708 coincide con /updateLanguageTheta\\(currentLang, beta, 1, 1\\.0\\)/",
           "observed": {
             "file": "src/client/components/Reader.tsx",
-            "line": 4691,
+            "line": 4708,
             "text": "updateLanguageTheta(currentLang, beta, 1, 1.0);"
           }
         },
@@ -765,10 +765,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/components/DeepReadingSummaryModal.tsx:148 coincide con /consolidateEpisodicWord\\(current\\.item/",
+          "detail": "src/client/components/DeepReadingSummaryModal.tsx:138 coincide con /consolidateEpisodicWord\\(current\\.item/",
           "observed": {
             "file": "src/client/components/DeepReadingSummaryModal.tsx",
-            "line": 148,
+            "line": 138,
             "text": "void consolidateEpisodicWord(current.item, bookId)"
           }
         },

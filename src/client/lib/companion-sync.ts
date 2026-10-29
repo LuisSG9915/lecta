@@ -33,6 +33,7 @@ import {
   resetGameCache,
   subscribeGame,
 } from "./game";
+import { isSyncPaused } from "./sync-state";
 import {
   COMPANION_BATCH_LIMIT,
   mergeCompanionRegister,
@@ -525,6 +526,7 @@ let rerunRequested = false;
 export function syncCompanion(
   scope?: DbScope,
 ): Promise<CompanionSyncResult | null> {
+  if (isSyncPaused()) return Promise.resolve(null);
   const bound = scope ?? captureDbScope();
   if (!bound.userId || !isDbScopeActive(bound)) return Promise.resolve(null);
   if (inflight) {

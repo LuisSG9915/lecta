@@ -4,8 +4,15 @@ import { createScopedAuth, closePoolSafe } from "./auth";
 export function hasSessionCookie(headers: Headers | Record<string, string>): boolean {
   const cookieHeader =
     headers instanceof Headers ? headers.get("cookie") : headers["cookie"] ?? headers["Cookie"];
-  if (!cookieHeader) return false;
-  return /(?:^|;\s*)(?:__Secure-)?better-auth\.session_token=/i.test(cookieHeader);
+  if (cookieHeader && /(?:^|;\s*)(?:__Secure-)?better-auth\.session_token=/i.test(cookieHeader)) {
+    return true;
+  }
+  const authHeader =
+    headers instanceof Headers ? headers.get("authorization") : headers["authorization"] ?? headers["Authorization"];
+  if (authHeader && /^Bearer\s+/i.test(authHeader)) {
+    return true;
+  }
+  return false;
 }
 
 export type SessionContext = {

@@ -119,6 +119,7 @@ export interface ReaderOverlaysProps {
   // DeepReadingSummaryModal
   deepSummary?: DeepReadingSummary | null;
   postChapterQueue?: Array<{ item: EpisodicWordItem; modality: ConsolidationModality }>;
+  featuredQuote?: string;
   onShareDeepSummaryQuote?: (quote?: string) => void;
   onContinueDeepSummary?: () => void;
   onCloseDeepSummary?: () => void;
@@ -206,6 +207,7 @@ export function ReaderOverlays({
 
   deepSummary = null,
   postChapterQueue = [],
+  featuredQuote,
   onShareDeepSummaryQuote,
   onContinueDeepSummary,
   onCloseDeepSummary,
@@ -471,9 +473,9 @@ export function ReaderOverlays({
           alreadySaved={quoteCard.alreadySaved}
           onClose={onCloseQuoteCard}
           onSavePassage={
-            quoteCard.alreadySaved || !onSaveQuoteCardPassage
-              ? undefined
-              : () => onSaveQuoteCardPassage(quoteCard.text)
+            onSaveQuoteCardPassage
+              ? () => onSaveQuoteCardPassage(quoteCard.text)
+              : undefined
           }
         />
       ) : null}
@@ -486,6 +488,7 @@ export function ReaderOverlays({
         <DeepReadingSummaryModal
           summary={deepSummary}
           consolidationQueue={postChapterQueue}
+          featuredQuote={featuredQuote}
           bookId={bookHash}
           bookTitle={bookTitle}
           author={author}

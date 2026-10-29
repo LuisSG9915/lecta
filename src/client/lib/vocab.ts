@@ -23,6 +23,7 @@ import {
 import { type PushResult } from "./sync-push";
 import {
   clearCollectionPagesPending,
+  isSyncPaused,
   markCollectionPagesPending,
   scheduleReadingSyncContinuation,
 } from "./sync-state";
@@ -42,6 +43,7 @@ export async function pushWordsToServer(
   words: SavedWord[],
   scope?: DbScope,
 ): Promise<PushResult> {
+  if (isSyncPaused()) return { ok: false, acceptedMax: 0 };
   const bound = scope ?? captureDbScope();
   if (!bound.userId || !words.length) return { ok: true, acceptedMax: 0 };
   if (!isDbScopeActive(bound)) return { ok: false, acceptedMax: 0 };
@@ -96,6 +98,7 @@ export async function removeWord(key: string, scope?: DbScope) {
 // Devuelve cuántas palabras llegaron del servidor, o null si no hubo
 // sesión/respuesta o la cuenta cambió a mitad del ciclo.
 export async function syncSavedWords(scope?: DbScope) {
+  if (isSyncPaused()) return null;
   const bound = scope ?? captureDbScope();
   if (!bound.userId || !isDbScopeActive(bound)) return null;
   const localAll = await listAllSavedWords(undefined, bound);

@@ -17,6 +17,7 @@ import {
 import { type PushResult } from "./sync-push";
 import {
   clearCollectionPagesPending,
+  isSyncPaused,
   markCollectionPagesPending,
   scheduleReadingSyncContinuation,
 } from "./sync-state";
@@ -40,6 +41,7 @@ export async function pushPositionsToServer(
   positions: SavedBookPosition[],
   scope?: DbScope,
 ): Promise<PushResult> {
+  if (isSyncPaused()) return { ok: false, acceptedMax: 0 };
   const bound = scope ?? captureDbScope();
   if (!bound.userId || !positions.length) return { ok: true, acceptedMax: 0 };
   if (!isDbScopeActive(bound)) return { ok: false, acceptedMax: 0 };
@@ -111,6 +113,7 @@ export async function syncPositions(scope?: DbScope): Promise<{
   pulled: number;
   conflicts: PositionConflict[];
 } | null> {
+  if (isSyncPaused()) return null;
   const bound = scope ?? captureDbScope();
   if (!bound.userId || !isDbScopeActive(bound)) return null;
 

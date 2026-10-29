@@ -140,10 +140,33 @@ export function registerReadingSyncContinuationRunner(runner: () => void): void 
   registeredContinuationRunner = runner;
 }
 
+let syncPaused = false;
+
+export function pauseSync(): void {
+  syncPaused = true;
+  if (continuationTimer) {
+    clearTimeout(continuationTimer);
+    continuationTimer = null;
+  }
+  if (retryTimer) {
+    clearTimeout(retryTimer);
+    retryTimer = null;
+  }
+}
+
+export function resumeSync(): void {
+  syncPaused = false;
+}
+
+export function isSyncPaused(): boolean {
+  return syncPaused;
+}
+
 export function scheduleReadingSyncContinuation(
   collection?: SyncCollection,
   delayMs = 50,
 ): void {
+  if (syncPaused) return;
   if (collection) {
     markCollectionPagesPending(collection);
   }
@@ -166,6 +189,7 @@ export function registerSyncRetryRunner(runner: () => void): void {
 }
 
 export function scheduleSyncRetry(onRetry?: () => void): void {
+  if (syncPaused) return;
   if (onRetry) registeredRetryCallback = onRetry;
   if (retryTimer) clearTimeout(retryTimer);
   if (retryAttempt >= RETRY_DELAYS_MS.length) return;

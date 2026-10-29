@@ -1,9 +1,9 @@
 # Reporte de auditoría — estrategia de aprendizaje de Lecta
 
-Generado: 2026-10-29T08:50:21.623Z
+Generado: 2026-10-29T15:35:47.990Z
 Documento auditado: `docs/estrategia-aprendizaje-2026-10-24.md`
 Registro: `docs/auditoria/claims.json`
-Commit: `d26e30245ae6422db2915cd8714a4b257d5c7dec`
+Commit: `a6591865f1182457fd63d9f2994ead24cc46a08f`
 Red: no (solo forma de las referencias)
 
 **Veredicto: PASS_WITH_UNVERIFIED** — 1 afirmaciones aprobadas, 0 refutadas, 0 refutadas por auditoría, 13 sin verificar, 0 comprobaciones omitidas.
@@ -143,8 +143,8 @@ Código: **PASS** · Referencias: **UNVERIFIED**
 - evidencia: `src/client/lib/profile-models.ts:405-415`
 
 - ✅ **PASS** · doc-mention: el documento contiene ««Ya la conozco» es un juicio, no una prueba»
-- ✅ **PASS** · code-anchor: src/client/components/Reader.tsx:4691 coincide con /updateLanguageTheta\(currentLang, beta, 1, 1\.0\)/
-  - observado: `{"file":"src/client/components/Reader.tsx","line":4691,"text":"updateLanguageTheta(currentLang, beta, 1, 1.0);"}`
+- ✅ **PASS** · code-anchor: src/client/components/Reader.tsx:4708 coincide con /updateLanguageTheta\(currentLang, beta, 1, 1\.0\)/
+  - observado: `{"file":"src/client/components/Reader.tsx","line":4708,"text":"updateLanguageTheta(currentLang, beta, 1, 1.0);"}`
 - ✅ **PASS** · code-anchor: src/client/lib/profile-models.ts:417 coincide con /0\.18 \* \(1 - pKnow\)/
   - observado: `{"file":"src/client/lib/profile-models.ts","line":417,"text":"delta = 0.18 * (1 - pKnow);"}`
 - ✅ **PASS** · code-anchor: src/client/components/WordPanel.tsx:566 coincide con /award: false/
@@ -204,8 +204,8 @@ Código: **PASS** · Referencias: **UNVERIFIED**
 - ✅ **PASS** · code-absent: /CAPTURE_SOURCE_PARAMS|newCardWithSource|scheduleEpisodicReview/ no aparece en src/client/lib/fsrs.ts
 - ✅ **PASS** · code-anchor: src/client/lib/reviews.ts:93 coincide con /export async function consolidateEpisodicWord/
   - observado: `{"file":"src/client/lib/reviews.ts","line":93,"text":"export async function consolidateEpisodicWord("}`
-- ✅ **PASS** · code-anchor: src/client/components/DeepReadingSummaryModal.tsx:148 coincide con /consolidateEpisodicWord\(current\.item/
-  - observado: `{"file":"src/client/components/DeepReadingSummaryModal.tsx","line":148,"text":"void consolidateEpisodicWord(current.item, bookId)"}`
+- ✅ **PASS** · code-anchor: src/client/components/DeepReadingSummaryModal.tsx:138 coincide con /consolidateEpisodicWord\(current\.item/
+  - observado: `{"file":"src/client/components/DeepReadingSummaryModal.tsx","line":138,"text":"void consolidateEpisodicWord(current.item, bookId)"}`
 - ⚠️ **UNVERIFIED** · referencia ye2022: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":"10.1145/3534678.3539081","url":null}`
 - ⚠️ **UNVERIFIED** · referencia lindsey2014: forma válida; sin red no se resuelven metadatos (usar --online)

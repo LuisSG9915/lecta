@@ -34,11 +34,14 @@ import {
 import { type PushResult } from "./sync-push";
 import {
   clearCollectionPagesPending,
+  isSyncPaused,
   markCollectionPagesPending,
+  pauseSync,
   registerReadingSyncContinuationRunner,
+  resumeSync,
   scheduleReadingSyncContinuation,
 } from "./sync-state";
-export { scheduleReadingSyncContinuation };
+export { pauseSync, resumeSync, scheduleReadingSyncContinuation };
 import { pushWordsToServer, syncSavedWords } from "./vocab";
 import {
   flushPendingPositions,
@@ -82,6 +85,7 @@ export function scheduleReadingSyncPush(
   collection: SyncCollectionKey,
   delayMs = 2000,
 ): void {
+  if (isSyncPaused()) return;
   dirtyCollections.add(collection);
   if (debounceTimer) clearTimeout(debounceTimer);
   debounceTimer = setTimeout(() => {
@@ -94,6 +98,7 @@ export async function flushPendingReadingSync(): Promise<void> {
     clearTimeout(debounceTimer);
     debounceTimer = null;
   }
+  if (isSyncPaused()) return;
   if (dirtyCollections.size === 0 || !pendingFlushRunner) return;
   if (typeof navigator !== "undefined" && navigator.onLine === false) return;
 
@@ -122,6 +127,7 @@ export async function pushAnnotationsToServer(
   annotations: SavedAnnotation[],
   scope?: DbScope,
 ): Promise<PushResult> {
+  if (isSyncPaused()) return { ok: false, acceptedMax: 0 };
   const bound = scope ?? captureDbScope();
   if (!bound.userId || !annotations.length) return { ok: true, acceptedMax: 0 };
   if (!isDbScopeActive(bound)) return { ok: false, acceptedMax: 0 };
@@ -314,6 +320,7 @@ export async function pushActivityToServer(
   intervals: SavedInterval[],
   scope?: DbScope,
 ): Promise<PushResult> {
+  if (isSyncPaused()) return { ok: false, acceptedMax: 0 };
   const bound = scope ?? captureDbScope();
   if (!bound.userId || !intervals.length) return { ok: true, acceptedMax: 0 };
   if (!isDbScopeActive(bound)) return { ok: false, acceptedMax: 0 };
@@ -495,6 +502,7 @@ export async function pushReviewsToServer(
   reviews: SavedReview[],
   scope?: DbScope,
 ): Promise<PushResult> {
+  if (isSyncPaused()) return { ok: false, acceptedMax: 0 };
   const bound = scope ?? captureDbScope();
   if (!bound.userId || !reviews.length) return { ok: true, acceptedMax: 0 };
   if (!isDbScopeActive(bound)) return { ok: false, acceptedMax: 0 };
@@ -672,6 +680,7 @@ export async function pushKnowledgeToServer(
   rows: KnownWord[],
   scope?: DbScope,
 ): Promise<PushResult> {
+  if (isSyncPaused()) return { ok: false, acceptedMax: 0 };
   const bound = scope ?? captureDbScope();
   if (!bound.userId || !rows.length) return { ok: true, acceptedMax: 0 };
   if (!isDbScopeActive(bound)) return { ok: false, acceptedMax: 0 };

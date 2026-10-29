@@ -264,6 +264,7 @@ describe("Account componente Tú y Login", () => {
     expect(accountCard?.querySelector(".account-card-email")?.textContent).toBe("lector@lecta.app");
     expect(accountCard?.textContent).toContain("Cerrar sesión");
     expect(accountCard?.textContent).toContain("Eliminar cuenta");
+    expect(accountCard?.textContent).toContain("Empezar de cero");
     expect(accountCard?.textContent).not.toContain("Iniciar sesión o crear cuenta");
   });
 

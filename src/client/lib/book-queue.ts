@@ -11,6 +11,7 @@ import {
 } from "./idb";
 import { deleteBook, uploadBook, uploadBookCover } from "./books";
 import { readBookMeta, isHashLikeIdentifier, humanizeFilename, coverToJpegBlob } from "./cover";
+import { isSyncPaused } from "./sync-state";
 
 // Encola la subida de un libro local a la cuenta; se procesa con
 // runBookQueue (al iniciar sesión o cuando vuelve la conexión).
@@ -32,6 +33,7 @@ export function queueBookDelete(hash: string, scope?: DbScope) {
 // procesa, para de inmediato (las ops pendientes quedan para la
 // cuenta correcta).
 export async function runBookQueue(scope?: DbScope): Promise<number> {
+  if (isSyncPaused()) return 0;
   const bound = scope ?? captureDbScope();
   if (!bound.userId || !isDbScopeActive(bound)) return 0;
   const ops = (await listBookOps(bound)).sort((a, b) => a.createdAt - b.createdAt);

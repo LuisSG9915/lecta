@@ -75,3 +75,49 @@ export async function withClient<T>(env: WorkerEnv, run: (client: pg.Client) => 
   }
 }
 
+/**
+ * Borra todo el progreso, vocabulario, anotaciones y biblioteca del usuario
+ * dentro de una transacción sin eliminar el registro del usuario (Better Auth)
+ * ni reiniciar la tabla lecta_ai_quota (para evitar que se reinicie la cuenta
+ * repetidamente para eludir cuotas de IA).
+ */
+export async function resetAccountDataDb(
+  clientOrEnv: pg.Client | WorkerEnv,
+  userId: string,
+): Promise<void> {
+  const runQueries = async (client: { query: (sql: string, params?: unknown[]) => Promise<unknown> }) => {
+    await client.query("BEGIN");
+    try {
+      await client.query("DELETE FROM lecta_user_reviews WHERE user_id = $1", [userId]);
+      await client.query("DELETE FROM lecta_user_knowledge WHERE user_id = $1", [userId]);
+      await client.query("DELETE FROM lecta_user_annotations WHERE user_id = $1", [userId]);
+      await client.query("DELETE FROM lecta_user_positions WHERE user_id = $1", [userId]);
+      await client.query("DELETE FROM lecta_user_activity WHERE user_id = $1", [userId]);
+      await client.query("DELETE FROM lecta_user_companion_baselines WHERE user_id = $1", [userId]);
+      await client.query("DELETE FROM lecta_user_companion_events WHERE user_id = $1", [userId]);
+      await client.query("DELETE FROM lecta_user_companion_fields WHERE user_id = $1", [userId]);
+      await client.query("DELETE FROM lecta_user_companion_receipts WHERE user_id = $1", [userId]);
+      await client.query("DELETE FROM lecta_user_words WHERE user_id = $1", [userId]);
+      await client.query("DELETE FROM user_books WHERE user_id = $1", [userId]);
+      await client.query("DELETE FROM kindle_link_codes WHERE user_id = $1", [userId]);
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      throw err;
+    }
+  };
+
+  if ("query" in clientOrEnv && typeof clientOrEnv.query === "function") {
+    await runQueries(clientOrEnv);
+  } else {
+    const env = clientOrEnv as WorkerEnv;
+    if (getConnectionString(env)) {
+      await withClient(env, runQueries);
+    } else if (env.DB) {
+      await env.DB.prepare("DELETE FROM user_books WHERE user_id = ?").bind(userId).run().catch(() => null);
+      await env.DB.prepare("DELETE FROM kindle_link_codes WHERE user_id = ?").bind(userId).run().catch(() => null);
+    }
+  }
+}
+
+

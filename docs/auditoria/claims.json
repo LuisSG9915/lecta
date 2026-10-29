@@ -418,7 +418,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/components/DeepReadingSummaryModal.tsx",
-          "line": 148,
+          "line": 138,
           "window": 1,
           "expect": "consolidateEpisodicWord\\(current\\.item",
           "why": "el reto de cierre llama a la consolidación real"

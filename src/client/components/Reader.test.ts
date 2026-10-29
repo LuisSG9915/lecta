@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createEmptyCard, type Card } from "ts-fsrs";
 import { listAllKnowledge, saveKnowledge, type SavedWord } from "../lib/idb";
 import type { EpisodicWordItem } from "../lib/practice";
+import type { DeepReadingSummary } from "../lib/deep-reading";
 import { recordDominated } from "./Reader";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -1598,6 +1599,134 @@ describe("Fase 4: Pruebas de Integración End-to-End en Reader.test.ts", () => {
     history.replaceState({}, "");
     window.dispatchEvent(new Event("popstate"));
     expect(glossaryOpen).toBe(false);
+  });
+
+  it("6.3 Transición de DeepReadingSummaryModal a QuoteCardModal: unicidad de scrim y guardado de pasaje", async () => {
+    const { createElement: h, act, useState } = await import("react");
+    const { createRoot } = await import("react-dom/client");
+    const { default: ReaderOverlays } = await import("./reader/ReaderOverlays");
+
+    root = createRoot(host);
+    const mockQuote = "La lectura profunda transforma el tiempo en memoria viva.";
+    const saveDirectly = vi.fn();
+
+    function ReaderHarness() {
+      const [deepSummary, setDeepSummary] = useState<DeepReadingSummary | null>({
+        durationMinutes: 20,
+        targetMinutes: 20,
+        sectionsRead: 2,
+        completedNaturally: true,
+        wordsAssimilated: 8,
+        coverageDeltaPercent: 2,
+      });
+      const [quoteCard, setQuoteCard] = useState<{
+        text: string;
+        bookTitle?: string;
+        author?: string;
+        chapterTitle?: string;
+        alreadySaved?: boolean;
+      } | null>(null);
+      const [passages, setPassages] = useState<string[]>([]);
+
+      const isQuoteAlreadySaved = (text: string) => passages.includes(text);
+
+      const handleShareQuote = (quote?: string) => {
+        setDeepSummary(null);
+        const text = quote || mockQuote;
+        setQuoteCard({
+          text,
+          bookTitle: "Libro Test",
+          chapterTitle: "Capítulo Test",
+          alreadySaved: isQuoteAlreadySaved(text),
+        });
+      };
+
+      return h(
+        "div",
+        null,
+        h(
+          "button",
+          { id: "test-reader-focus-anchor" },
+          "Elemento previo",
+        ),
+        h(ReaderOverlays, {
+          bookHash: "test-book-hash",
+          selection: null,
+          onCloseSelection: vi.fn(),
+          catPassageExplanation: null,
+          onCloseCatExplanation: vi.fn(),
+          prep: null,
+          quoteCard: quoteCard
+            ? {
+                ...quoteCard,
+                alreadySaved: quoteCard.alreadySaved ?? isQuoteAlreadySaved(quoteCard.text),
+              }
+            : null,
+          onCloseQuoteCard: () => setQuoteCard(null),
+          onSaveQuoteCardPassage: (text) => {
+            setPassages((prev) => [...prev, text]);
+            saveDirectly(text);
+          },
+          deepSummary,
+          featuredQuote: mockQuote,
+          onShareDeepSummaryQuote: handleShareQuote,
+          onCloseDeepSummary: () => setDeepSummary(null),
+        }),
+      );
+    }
+
+    await act(async () => {
+      root.render(h(ReaderHarness));
+    });
+
+    // Inicialmente solo el resumen tiene scrim (1 solo .dialog-scrim)
+    expect(document.querySelectorAll(".dialog-scrim").length).toBe(1);
+    expect(host.textContent).toContain("Retiro completado");
+    expect(host.querySelector(".quote-modal")).toBeNull();
+
+    // Clic en Crear postal del capítulo
+    const postalBtn = [...host.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("Crear postal del capítulo"),
+    )!;
+    expect(postalBtn).toBeTruthy();
+
+    await act(async () => {
+      postalBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+
+    // Unicidad: DeepReadingSummaryModal desmontado, QuoteCardModal montado, exactamente 1 scrim
+    expect(document.querySelectorAll(".dialog-scrim").length).toBe(1);
+    expect(host.textContent).not.toContain("Retiro completado");
+    expect(host.querySelector(".quote-modal")).not.toBeNull();
+
+    // Interactividad: botón guardar en cuaderno
+    const saveBtn = [...host.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("Guardar en mi Cuaderno"),
+    )!;
+    expect(saveBtn).toBeTruthy();
+
+    await act(async () => {
+      saveBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+
+    expect(saveDirectly).toHaveBeenCalledWith(mockQuote);
+    expect(host.textContent).toContain("Pasaje guardado en tu Cuaderno.");
+    const savedBtn = [...host.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("✓ Guardado en tu Cuaderno"),
+    )!;
+    expect(savedBtn).toBeTruthy();
+    expect(savedBtn.disabled).toBe(true);
+
+    // Escape cierra la postal y remueve el scrim
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 250));
+    });
+
+    expect(host.querySelector(".quote-modal")).toBeNull();
+    expect(document.querySelectorAll(".dialog-scrim").length).toBe(0);
   });
 });
 

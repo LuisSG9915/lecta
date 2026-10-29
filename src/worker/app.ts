@@ -1,6 +1,6 @@
 import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
-import { chunks, getConnectionString, withClient, type WorkerEnv } from "./db";
+import { chunks, getConnectionString, resetAccountDataDb, withClient, type WorkerEnv } from "./db";
 import {
   CLIENT_ERROR_MAX_BODY_BYTES,
   allowClientError,
@@ -82,7 +82,7 @@ export {
   buildPageRecapPrompt,
   buildCharacterCardsPrompt,
 } from "./ai";
-import { createScopedAuth, closePoolSafe } from "./auth";
+import { createScopedAuth, closePoolSafe, purgeR2Prefix } from "./auth";
 import { isStopword } from "../shared/stopwords";
 import { hasUsableDefinition } from "../shared/lexicon";
 import { isFsrsCardShape } from "../shared/reading-data";
@@ -2767,4 +2767,36 @@ app.get("/api/user/books/:bookId/file", async (c) => {
   }
 
   return c.json({ error: "Libro no encontrado en la nube" }, 404);
+});
+
+app.post("/api/account/reset", async (context) => {
+  const session = await getSession(context);
+  if (!session?.user?.id) {
+    return context.json({ error: "No autorizado" }, 401);
+  }
+  const userId = session.user.id;
+
+  try {
+    // 1. Limpiar registros de historial, palabras guardadas y libros en la BD remota
+    // manteniendo intacto el registro del usuario y la tabla ai_quota
+    await resetAccountDataDb(context.env, userId);
+
+    // 2. Reutilizar purgeR2Prefix para limpiar EPUBs y portadas del usuario en R2
+    const booksBucket = context.env.BOOKS ?? context.env.BOOKS_BUCKET;
+    if (booksBucket) {
+      await Promise.all([
+        purgeR2Prefix(booksBucket, `books/${userId}/`),
+        purgeR2Prefix(booksBucket, `covers/${userId}/`),
+        purgeR2Prefix(booksBucket, `user-books/${userId}/`),
+      ]);
+    }
+
+    return context.json({ ok: true, resetAt: new Date().toISOString() });
+  } catch (error) {
+    console.error("Error al reiniciar los datos de la cuenta:", error);
+    return context.json(
+      { error: "No se pudo completar el reinicio de datos." },
+      500,
+    );
+  }
 });

@@ -5,9 +5,12 @@ import pg from "pg";
 import {
   getConnectionString,
   logPostgresError,
+  resetAccountDataDb,
   withClient,
   type WorkerEnv,
 } from "./db";
+
+export { resetAccountDataDb };
 
 type EmailContent = { subject: string; intro: string };
 

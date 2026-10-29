@@ -50,6 +50,7 @@ import RestoreBackupDialog from "./RestoreBackupDialog";
 import DiagnosticsModal from "./DiagnosticsModal";
 import { forceFullResyncFromServer } from "../lib/reading-sync";
 import LegalNotice from "./LegalNotice";
+import { ResetAccountSection } from "./ResetAccountSection";
 import { timeAgo } from "../lib/relative-time";
 import { getDictionaryCacheWordCount, emptyDictionaryCache } from "../lib/offline-dictionary";
 import {
@@ -1120,6 +1121,7 @@ export default function Account({
             </div>
           </form>
         ) : null}
+        <ResetAccountSection userId={session.user.id} />
       </Dialog>
     );
   }
@@ -1258,6 +1260,7 @@ export default function Account({
               </div>
             </form>
           ) : null}
+          <ResetAccountSection userId={session.user.id} />
         </section>
       ) : !isPending ? (
         <section className="account-card" aria-label="Tu cuenta">
