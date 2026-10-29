@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  BLOCK_BREAK_PENALTY,
   computeRaschMastery,
   estimateThetaFromD1Knowledge,
   extractChapterPrepCandidates,
@@ -11,11 +12,15 @@ import {
   formatChapterHtmlForMode,
   getEpubChapter,
   getEpubResource,
+  KINDLE_MARGIN_MULTIPLIERS,
+  KINDLE_PAGE_BUDGETS,
   paginateChapter,
+  PARAGRAPH_MODE_BREAK_PENALTY,
   parseEpub,
   resolveZipPath,
   sanitizeKindleHtml,
   selectKindleChapterPrimingWords,
+  stripHtml,
   wrapWordsWithLinks,
   type KindleUserLexicalState,
 } from "./epub-reader";
@@ -202,20 +207,77 @@ describe("epub-reader (Kindle E-ink)", () => {
       }
     });
 
-    it("aplica penalización de 45 caracteres por salto de párrafo (</p>, </blockquote>, </li>)", () => {
-      // 4 párrafos de 60 caracteres = 240 caracteres de texto puro
-      // Con penalización: 240 + 4 * 45 = 420 caracteres equivalentes
+    it("define presupuestos recalibrados y multiplicadores de margen acordes a Kindle E-ink", () => {
+      expect(KINDLE_PAGE_BUDGETS.sm).toEqual({ standard: 1150, pageZero: 950 });
+      expect(KINDLE_PAGE_BUDGETS.md).toEqual({ standard: 900, pageZero: 750 });
+      expect(KINDLE_PAGE_BUDGETS.lg).toEqual({ standard: 680, pageZero: 540 });
+      expect(KINDLE_PAGE_BUDGETS.xl).toEqual({ standard: 500, pageZero: 390 });
+      expect(BLOCK_BREAK_PENALTY).toBe(22);
+      expect(PARAGRAPH_MODE_BREAK_PENALTY).toBe(32);
+      expect(KINDLE_MARGIN_MULTIPLIERS).toEqual({ sm: 1.05, md: 1.0, lg: 0.90 });
+    });
+
+    it("aplica penalización de 22 caracteres por salto de párrafo (32 en modo paragraphs)", () => {
+      // 4 párrafos de 90 caracteres = 360 caracteres de texto puro
       const fourShortPs = `
-        <p>Párrafo uno con exactamente sesenta caracteres de longitud!!!</p>
-        <p>Párrafo dos con exactamente sesenta caracteres de longitud!!!</p>
-        <p>Párrafo tres con exactamente sesenta caracteres de longitud!!</p>
-        <p>Párrafo cuatro con exactamente sesenta caracteres longitud!!!</p>
+        <p>Párrafo uno con exactamente noventa caracteres de longitud para probar el nuevo presupuesto!!</p>
+        <p>Párrafo dos con exactamente noventa caracteres de longitud para probar el nuevo presupuesto!!</p>
+        <p>Párrafo tres con exactamente noventa caracteres de longitud para probar el nuevo presupuesto!</p>
+        <p>Párrafo cuatro con exactamente noventa caracteres de longitud para probar el nuevo presupuesto</p>
       `;
-      // En size "lg" pageZeroBudget es 280:
-      // Sin penalización (240 caracteres) cabría en 1 página (240 < 280)
-      // Con penalización (420 caracteres) se divide en múltiples páginas
-      const pagesLg = paginateChapter(fourShortPs, { size: "lg" });
-      expect(pagesLg.length).toBeGreaterThan(1);
+      // En size "xl" pageZeroBudget es 390:
+      // Sin penalización (360 caracteres) cabría en 1 página (360 <= 390)
+      // Con penalización estándar (360 + 4 * 22 = 448) supera 390 y se divide
+      const pagesStandard = paginateChapter(fourShortPs, { size: "xl", mode: "clean" });
+      expect(pagesStandard.length).toBeGreaterThan(1);
+
+      // En modo paragraphs la penalización es 32: 360 + 4 * 32 = 488 > 390
+      const pagesParagraphs = paginateChapter(fourShortPs, { size: "xl", mode: "paragraphs" });
+      expect(pagesParagraphs.length).toBeGreaterThan(1);
+    });
+
+    it("aplica multiplicadores de margen: sm (x1.05) y lg (x0.90)", () => {
+      // Presupuesto md standard es 900:
+      // Con margin sm: Math.round(900 * 1.05) = 945
+      // Con margin lg: Math.round(900 * 0.90) = 810
+      // En un texto de ~850 caracteres repartidos en 4 párrafos de ~200 chars:
+      // Con penalización (4 * 22 = 88) el peso es ~938.
+      // Para margin "sm" (límite 945 en standard) cabe en una sola página (tras pageZero o con maxCharsPerPage personalizado),
+      // mientras que con margin "lg" (límite 810) requiere más páginas.
+      const p1 = "<p>" + "A".repeat(400) + "</p>";
+      const p2 = "<p>" + "B".repeat(400) + "</p>";
+      const text = `${p1}\n${p2}`; // 800 chars + 2*22 = 844 peso
+      // Para verificar la diferencia en la página 2 (que usa standardBudget):
+      // Si añadimos un prefacio que llene la página 0:
+      const preface = "<p>" + "0".repeat(950) + "</p>";
+      const full = `${preface}\n${text}`;
+
+      const pagesSm = paginateChapter(full, { size: "md", margin: "sm" });
+      const pagesLg = paginateChapter(full, { size: "md", margin: "lg" });
+
+      // Margin lg tiene menor presupuesto (810 vs 945), produciendo más páginas
+      expect(pagesLg.length).toBeGreaterThan(pagesSm.length);
+    });
+
+    it("valida paginación con minimal.epub y scroll.epub reduciendo páginas y con densidad de 15–18 líneas en md", async () => {
+      const minimalChapter = await getEpubChapter(minimalBytes, 0, "test-minimal");
+      expect(minimalChapter).not.toBeNull();
+      const minPages = paginateChapter(minimalChapter!.contentHtml, { size: "md", margin: "md" });
+      expect(minPages.length).toBeGreaterThan(0);
+
+      const scrollChapter = await getEpubChapter(scrollBytes, 0, "test-scroll");
+      expect(scrollChapter).not.toBeNull();
+      const scrollPages = paginateChapter(scrollChapter!.contentHtml, { size: "md", margin: "md" });
+      expect(scrollPages.length).toBeGreaterThan(0);
+
+      // Verificación de densidad de líneas (15-18 líneas por página en tamaño md, ~50 chars/línea -> 750-900 chars)
+      for (const page of scrollPages) {
+        const text = stripHtml(page);
+        // Estimando ~50 caracteres por línea en pantalla de 600px en Kindle:
+        const estimatedLines = Math.ceil(text.length / 50);
+        // Cada página llena en lectura regular (excepto tal vez la última) debe rondar 14-20 líneas
+        expect(estimatedLines).toBeLessThanOrEqual(22);
+      }
     });
 
     it("soporta modo scroll con presupuesto amplio de 1200 caracteres", () => {

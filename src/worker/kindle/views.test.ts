@@ -323,5 +323,33 @@ describe("Kindle Views - Seguridad y Escapado Anti-XSS", () => {
       expect(html).toContain("0.25");
       expect(html).toContain("window.getSelection");
     });
+
+    it("aplica la clase margin al contenedor y renderiza el selector de márgenes en el menú Aa", () => {
+      const htmlDefault = renderReaderView(baseProps);
+      expect(htmlDefault).toContain('class="reader-container margin-md"');
+      expect(htmlDefault).toContain("Margen:");
+      expect(htmlDefault).toContain("margin-selector");
+      expect(htmlDefault).toContain("margin=sm");
+      expect(htmlDefault).toContain("margin=md");
+      expect(htmlDefault).toContain("margin=lg");
+      expect(htmlDefault).toContain("Estrecho");
+      expect(htmlDefault).toContain("Normal");
+      expect(htmlDefault).toContain("Amplio");
+
+      const htmlSm = renderReaderView({ ...baseProps, margin: "sm" });
+      expect(htmlSm).toContain('class="reader-container margin-sm"');
+      expect(htmlSm).toMatch(/margin=sm[^>]*class="size-btn is-active"/);
+
+      const htmlLg = renderReaderView({ ...baseProps, margin: "lg" });
+      expect(htmlLg).toContain('class="reader-container margin-lg"');
+      expect(htmlLg).toMatch(/margin=lg[^>]*class="size-btn is-active"/);
+    });
+
+    it("preserva el parámetro margin en cleanPageUrl, enlaces del menú y script de zonas táctiles", () => {
+      const html = renderReaderView({ ...baseProps, margin: "lg" });
+      expect(html).toContain("&amp;margin=lg");
+      expect(html).toContain("margin=lg");
+      expect(html).toContain('var lookupBase = "/k/read/hash-kindle-1?section=0&page=0&mode=clean&size=md&layout=paged&margin=lg');
+    });
   });
 });

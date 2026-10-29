@@ -507,22 +507,33 @@ function splitLongParagraph(blockHtml: string, maxLen = 850): string[] {
 }
 
 export type KindleFontSize = "sm" | "md" | "lg" | "xl";
+export type KindleMargin = "sm" | "md" | "lg";
 
-export type PaginateOptions = {
+export interface PaginateOptions {
   size?: KindleFontSize;
+  margin?: KindleMargin;
   maxCharsPerPage?: number;
   layout?: "paged" | "scroll";
-};
+  mode?: "clean" | "paragraphs";
+}
 
 export const KINDLE_PAGE_BUDGETS: Record<KindleFontSize, { standard: number; pageZero: number }> = {
-  sm: { standard: 620, pageZero: 520 },
-  md: { standard: 480, pageZero: 390 },
-  lg: { standard: 360, pageZero: 280 },
-  xl: { standard: 260, pageZero: 190 },
+  sm: { standard: 1150, pageZero: 950 },
+  md: { standard: 900, pageZero: 750 },
+  lg: { standard: 680, pageZero: 540 },
+  xl: { standard: 500, pageZero: 390 },
+};
+
+export const BLOCK_BREAK_PENALTY = 22;
+export const PARAGRAPH_MODE_BREAK_PENALTY = 32;
+
+export const KINDLE_MARGIN_MULTIPLIERS: Record<KindleMargin, number> = {
+  sm: 1.05,
+  md: 1.0,
+  lg: 0.90,
 };
 
 export const KINDLE_SCROLL_BUDGET = 1200;
-export const BLOCK_BREAK_PENALTY = 45;
 
 function countBlockClosures(html: string): number {
   const matches = html.match(/<\/(?:p|blockquote|li)>/gi);
@@ -534,24 +545,37 @@ export function paginateChapter(
   options?: number | PaginateOptions,
 ): string[] {
   let size: KindleFontSize = "md";
+  let margin: KindleMargin = "md";
   let maxCharsPerPage: number | undefined;
   let isScroll = false;
+  let mode: "clean" | "paragraphs" = "clean";
 
   if (typeof options === "number") {
     maxCharsPerPage = options;
   } else if (options && typeof options === "object") {
     size = options.size || "md";
+    margin = options.margin || "md";
     maxCharsPerPage = options.maxCharsPerPage;
     isScroll = options.layout === "scroll";
+    if (options.mode) {
+      mode = options.mode;
+    }
   }
+
+  const multiplier = KINDLE_MARGIN_MULTIPLIERS[margin] ?? 1.0;
+  const baseBudgets = KINDLE_PAGE_BUDGETS[size] ?? KINDLE_PAGE_BUDGETS.md;
+
+  const effectiveStandardBudget = Math.round(baseBudgets.standard * multiplier);
+  const effectivePageZeroBudget = Math.round(baseBudgets.pageZero * multiplier);
+  const breakPenalty = mode === "paragraphs" ? PARAGRAPH_MODE_BREAK_PENALTY : BLOCK_BREAK_PENALTY;
 
   const standardBudget = isScroll
     ? (maxCharsPerPage ?? KINDLE_SCROLL_BUDGET)
-    : (maxCharsPerPage ?? KINDLE_PAGE_BUDGETS[size].standard);
+    : (maxCharsPerPage ?? effectiveStandardBudget);
 
   const pageZeroBudget = isScroll
     ? standardBudget
-    : (maxCharsPerPage ?? KINDLE_PAGE_BUDGETS[size].pageZero);
+    : (maxCharsPerPage ?? effectivePageZeroBudget);
 
   const rawBlocks = splitHtmlIntoBlocks(contentHtml);
   if (rawBlocks.length === 0) return [contentHtml || "<p>Sin contenido.</p>"];
@@ -568,7 +592,7 @@ export function paginateChapter(
   for (const block of expandedBlocks) {
     const rawLen = stripHtml(block).length || 50;
     const closures = countBlockClosures(block);
-    const blockWeight = rawLen + closures * BLOCK_BREAK_PENALTY;
+    const blockWeight = rawLen + closures * breakPenalty;
 
     const currentLimit = pages.length === 0 ? pageZeroBudget : standardBudget;
 

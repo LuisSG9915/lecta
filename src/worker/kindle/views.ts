@@ -3,7 +3,8 @@
 // y tipografía optimizada para pantallas de tinta electrónica.
 
 import type { LexiconEntryView } from "../lexicon";
-import type { KindlePrimingWord } from "./epub-reader";
+import type { KindleMargin, KindlePrimingWord } from "./epub-reader";
+export type { KindleMargin } from "./epub-reader";
 import { isHashLikeIdentifier } from "../../shared/epub-meta";
 
 export type KindleUser = {
@@ -486,10 +487,15 @@ const KINDLE_CSS = `
     flex-direction: column;
     justify-content: space-between;
   }
+  .reader-container.margin-sm { padding: 6px 12px; max-width: 720px; }
+  .reader-container.margin-md { padding: 8px 22px; max-width: 630px; }
+  .reader-container.margin-lg { padding: 10px 38px; max-width: 550px; }
+
   body.layout-paged .epub-content {
     flex: 1 1 auto;
     overflow: hidden;
-    margin: 0;
+    margin: 4px 0 6px 0;
+    max-height: calc(100vh - 82px);
   }
   /* Layout scroll (lectura continua opcional) */
   body.layout-scroll {
@@ -1140,6 +1146,7 @@ export function renderReaderView(options: {
   lookupResult?: InlineLookupResult | null;
   mode?: "clean" | "paragraphs" | "lexicon";
   size?: "sm" | "md" | "lg" | "xl";
+  margin?: KindleMargin;
   gloss?: boolean;
   catNotes?: CatPageNoteItem[];
   primingOff?: boolean;
@@ -1160,13 +1167,14 @@ export function renderReaderView(options: {
     lookupResult,
     mode = "clean",
     size = "md",
+    margin = "md",
     gloss = false,
     catNotes: _catNotes = [],
     primingOff = false,
     layout = "paged",
   } = options;
 
-  const querySuffix = `&mode=${encodeURIComponent(mode)}&size=${encodeURIComponent(size)}&layout=${layout}${gloss ? "&gloss=1" : ""}`;
+  const querySuffix = `&mode=${encodeURIComponent(mode)}&size=${encodeURIComponent(size)}&layout=${layout}&margin=${margin}${gloss ? "&gloss=1" : ""}`;
   const cleanPageUrl = `/k/read/${encodeURIComponent(bookHash)}?section=${sectionIndex}&page=${pageIndex}${querySuffix}`;
 
   const prevUrl =
@@ -1244,7 +1252,7 @@ export function renderReaderView(options: {
   <style>${KINDLE_CSS}</style>
 </head>
 <body class="reader-body layout-${escapeHtml(layout)}">
-  <div class="reader-container">
+  <div class="reader-container margin-${escapeHtml(margin)}">
     <header class="reader-header">
       <div class="reader-header-left">
         <a href="/k" class="reader-back-btn">← Libros</a>
@@ -1262,21 +1270,27 @@ export function renderReaderView(options: {
             <div class="mode-selector">
               <span style="font-size:0.8rem; font-weight:bold; display:block; margin-bottom:4px;">Modo:</span>
               <div style="display:flex; gap:4px; margin-bottom:8px; flex-wrap:wrap;">
-                <a href="${baseParamUrl}&amp;mode=clean&amp;size=${size}&amp;layout=${layout}" class="mode-tab ${mode === "clean" ? "is-active" : ""}">[ Modo Limpio ]</a>
-                <a href="${baseParamUrl}&amp;mode=paragraphs&amp;size=${size}&amp;layout=${layout}" class="mode-tab ${mode === "paragraphs" ? "is-active" : ""}">[ Modo Párrafos ]</a>
-                <a href="${baseParamUrl}&amp;mode=lexicon&amp;size=${size}&amp;layout=${layout}" class="mode-tab ${mode === "lexicon" ? "is-active" : ""}">[ Modo Léxico ]</a>
+                <a href="${baseParamUrl}&amp;mode=clean&amp;size=${size}&amp;layout=${layout}&amp;margin=${margin}" class="mode-tab ${mode === "clean" ? "is-active" : ""}">[ Modo Limpio ]</a>
+                <a href="${baseParamUrl}&amp;mode=paragraphs&amp;size=${size}&amp;layout=${layout}&amp;margin=${margin}" class="mode-tab ${mode === "paragraphs" ? "is-active" : ""}">[ Modo Párrafos ]</a>
+                <a href="${baseParamUrl}&amp;mode=lexicon&amp;size=${size}&amp;layout=${layout}&amp;margin=${margin}" class="mode-tab ${mode === "lexicon" ? "is-active" : ""}">[ Modo Léxico ]</a>
               </div>
               <span style="font-size:0.8rem; font-weight:bold; display:block; margin-bottom:4px;">Letra:</span>
               <div class="size-selector" style="display:flex; gap:4px; margin-bottom:8px;">
-                <a href="${baseParamUrl}&amp;mode=${mode}&amp;size=sm&amp;layout=${layout}" class="size-btn ${size === "sm" ? "is-active" : ""}">P</a>
-                <a href="${baseParamUrl}&amp;mode=${mode}&amp;size=md&amp;layout=${layout}" class="size-btn ${size === "md" ? "is-active" : ""}">M</a>
-                <a href="${baseParamUrl}&amp;mode=${mode}&amp;size=lg&amp;layout=${layout}" class="size-btn ${size === "lg" ? "is-active" : ""}">G</a>
-                <a href="${baseParamUrl}&amp;mode=${mode}&amp;size=xl&amp;layout=${layout}" class="size-btn ${size === "xl" ? "is-active" : ""}">XG</a>
+                <a href="${baseParamUrl}&amp;mode=${mode}&amp;size=sm&amp;layout=${layout}&amp;margin=${margin}" class="size-btn ${size === "sm" ? "is-active" : ""}">P</a>
+                <a href="${baseParamUrl}&amp;mode=${mode}&amp;size=md&amp;layout=${layout}&amp;margin=${margin}" class="size-btn ${size === "md" ? "is-active" : ""}">M</a>
+                <a href="${baseParamUrl}&amp;mode=${mode}&amp;size=lg&amp;layout=${layout}&amp;margin=${margin}" class="size-btn ${size === "lg" ? "is-active" : ""}">G</a>
+                <a href="${baseParamUrl}&amp;mode=${mode}&amp;size=xl&amp;layout=${layout}&amp;margin=${margin}" class="size-btn ${size === "xl" ? "is-active" : ""}">XG</a>
+              </div>
+              <span style="font-size:0.8rem; font-weight:bold; display:block; margin-bottom:4px;">Margen:</span>
+              <div class="margin-selector" style="display:flex; gap:4px; margin-bottom:8px;">
+                <a href="${baseParamUrl}&amp;mode=${mode}&amp;size=${size}&amp;layout=${layout}&amp;margin=sm" class="size-btn ${margin === 'sm' ? 'is-active' : ''}">Estrecho</a>
+                <a href="${baseParamUrl}&amp;mode=${mode}&amp;size=${size}&amp;layout=${layout}&amp;margin=md" class="size-btn ${margin === 'md' ? 'is-active' : ''}">Normal</a>
+                <a href="${baseParamUrl}&amp;mode=${mode}&amp;size=${size}&amp;layout=${layout}&amp;margin=lg" class="size-btn ${margin === 'lg' ? 'is-active' : ''}">Amplio</a>
               </div>
               <span style="font-size:0.8rem; font-weight:bold; display:block; margin-bottom:4px;">Disposición:</span>
               <div style="display:flex; gap:4px;">
-                <a href="${baseParamUrl}&amp;mode=${mode}&amp;size=${size}&amp;layout=paged" class="mode-tab ${layout === "paged" ? "is-active" : ""}">Paginado</a>
-                <a href="${baseParamUrl}&amp;mode=${mode}&amp;size=${size}&amp;layout=scroll" class="mode-tab ${layout === "scroll" ? "is-active" : ""}">Scroll</a>
+                <a href="${baseParamUrl}&amp;mode=${mode}&amp;size=${size}&amp;layout=paged&amp;margin=${margin}" class="mode-tab ${layout === "paged" ? "is-active" : ""}">Paginado</a>
+                <a href="${baseParamUrl}&amp;mode=${mode}&amp;size=${size}&amp;layout=scroll&amp;margin=${margin}" class="mode-tab ${layout === "scroll" ? "is-active" : ""}">Scroll</a>
               </div>
             </div>
           </div>

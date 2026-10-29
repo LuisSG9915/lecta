@@ -1,6 +1,6 @@
 {
   "name": "@lecta/mcp",
-  "version": "0.2.10",
+  "version": "0.2.11",
   "private": true,
   "type": "module",
   "description": "Servidor MCP local para consultar Lecta desde agentes de IA",

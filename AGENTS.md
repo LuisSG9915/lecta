@@ -145,7 +145,20 @@
 ## Producción
 
 - URL: `https://lecta.luis-sg9915.workers.dev` — deploy con `pnpm run deploy`.
-- Último deploy: **2026-10-29** (sexto del día), versión
+- Último deploy: **2026-10-29** (séptimo del día), versión
+  `a982618f-04f0-4e9e-94e6-5156394231e4`, Lecta **v0.2.11**: Recalibración del motor
+  de paginación Kindle y soporte de márgenes (presupuestos sm: 1150/950, md: 900/750,
+  lg: 680/540, xl: 500/390; penalización de salto de bloque de 22 caracteres y 32 en
+  modo paragraphs; multiplicadores de margen sm ×1.05, md ×1.0, lg ×0.90; cookie de
+  preferencia `lecta_k_margin` con max-age de 1 año; selector táctil Estrecho / Normal /
+  Amplio en menú [ Modo / Aa ]; clases de contenedor `.margin-sm`, `.margin-md`,
+  `.margin-lg`; max-height de `calc(100vh - 82px)` en `.epub-content` y preservación
+  completa del parámetro `margin` en navegación y zonas táctiles). Sin migraciones ni
+  secrets nuevos. Verificado en caliente: `pnpm gate` en verde (2950 pruebas, 204.98/215 kB
+  gzip), `/api/health` → 200, `/` → 200 sirviendo `assets/index-Cr5KSmUs.js`, `0.2.11` en
+  `assets/DiagnosticsModal-_44jBwjA.js`, `/api/positions` sin sesión → 401, `/k` → 200.
+  Sin `smoke:auth`/`smoke:sync`: no toca auth ni el contrato de sync.
+- Deploy anterior: **2026-10-29** (sexto del día), versión
   `31e91433-9422-4fbd-b527-64e468853496`, Lecta **v0.2.10**: Kindle Zero-Scroll &
   Pure Paging (filtro Zipf < 4.0 en antesala con salto sin fricción, erradicación de
   `.cat-notes-box` y de consultas léxicas por página en lectura regular, presupuestos

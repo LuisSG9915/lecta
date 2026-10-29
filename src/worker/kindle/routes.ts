@@ -2,7 +2,7 @@
 // Servidas íntegramente con HTML/CSS ligero generado en el Cloudflare Worker.
 
 import { Hono, type Context } from "hono";
-import { setSignedCookie } from "hono/cookie";
+import { getCookie, setSignedCookie } from "hono/cookie";
 import { getConnectionString, withClient, type WorkerEnv } from "../db";
 import { getSession } from "../session";
 import { createScopedAuth, closePoolSafe } from "../auth";
@@ -20,6 +20,7 @@ import {
   selectKindleChapterPrimingWords,
   stripHtml,
   wrapWordsWithLinks,
+  type KindleMargin,
   type KindleUserLexicalState,
 } from "./epub-reader";
 import { ENGLISH_CORE_LEXICON } from "../../shared/english-core-lexicon";
@@ -103,6 +104,15 @@ export function allowKindleStatus(ip: string, now = Date.now()): boolean {
 /** Solo para pruebas: deja el limitador como recién arrancado. */
 export function resetKindleStatusLimiter(): void {
   statusBuckets.clear();
+}
+
+const VALID_MARGINS = new Set<KindleMargin>(["sm", "md", "lg"]);
+
+export function normalizeMargin(value?: string | null): KindleMargin {
+  if (value && VALID_MARGINS.has(value as KindleMargin)) {
+    return value as KindleMargin;
+  }
+  return "md";
 }
 
 export function generateFourCharKindleCode(): string {
@@ -1197,6 +1207,18 @@ kindleRoutes.get("/read/:hash", async (c) => {
   const rawSize = c.req.query("size");
   const rawGloss = c.req.query("gloss");
   const rawLayout = c.req.query("layout");
+  const rawMargin = c.req.query("margin");
+  const cookieMargin = getCookie(c, "lecta_k_margin");
+  const margin = normalizeMargin(rawMargin ?? cookieMargin);
+
+  if (rawMargin && VALID_MARGINS.has(rawMargin as KindleMargin)) {
+    c.header(
+      "Set-Cookie",
+      `lecta_k_margin=${margin}; Path=/; Max-Age=31536000; SameSite=Lax`,
+      { append: true },
+    );
+  }
+
   const mode = (rawMode as "clean" | "paragraphs" | "lexicon") || "clean";
   const size = (rawSize as "sm" | "md" | "lg" | "xl") || "md";
   const gloss = rawGloss === "1";
@@ -1205,8 +1227,8 @@ kindleRoutes.get("/read/:hash", async (c) => {
   const layout: "paged" | "scroll" = rawLayout === "scroll" || rawLayout === "paged"
     ? rawLayout
     : cookieLayout;
-  const querySuffix = `${rawMode ? `&mode=${encodeURIComponent(rawMode)}` : ""}${rawSize ? `&size=${encodeURIComponent(rawSize)}` : ""}${rawGloss !== undefined ? `&gloss=${encodeURIComponent(rawGloss)}` : ""}${layout !== "paged" ? `&layout=${layout}` : ""}`;
-  const renderQuerySuffix = `&mode=${encodeURIComponent(mode)}&size=${encodeURIComponent(size)}&gloss=${gloss ? "1" : "0"}&layout=${layout}`;
+  const querySuffix = `${rawMode ? `&mode=${encodeURIComponent(rawMode)}` : ""}${rawSize ? `&size=${encodeURIComponent(rawSize)}` : ""}${rawGloss !== undefined ? `&gloss=${encodeURIComponent(rawGloss)}` : ""}${layout !== "paged" ? `&layout=${layout}` : ""}&margin=${margin}`;
+  const renderQuerySuffix = `&mode=${encodeURIComponent(mode)}&size=${encodeURIComponent(size)}&gloss=${gloss ? "1" : "0"}&layout=${layout}&margin=${margin}`;
 
   // Si no se especifica la sección en la URL, cargar la última posición guardada (sección y página)
   if (requestedSection === undefined) {
@@ -1365,7 +1387,12 @@ kindleRoutes.get("/read/:hash", async (c) => {
   }
 
   // Paginación del capítulo en pantallas discretas (Zero-Scroll en modo paged)
-  const pages = paginateChapter(chapter.contentHtml, { size, layout });
+  const pages = paginateChapter(chapter.contentHtml, {
+    size,
+    margin,
+    layout,
+    mode: mode === "paragraphs" ? "paragraphs" : "clean",
+  });
   const totalPages = pages.length;
 
   let pageIndex = 0;
@@ -1661,6 +1688,7 @@ kindleRoutes.get("/read/:hash", async (c) => {
       lookupResult,
       mode,
       size,
+      margin,
       gloss,
       catNotes,
       primingOff: isPrimingOff || isBookMuted,

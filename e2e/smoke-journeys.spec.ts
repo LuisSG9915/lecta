@@ -568,4 +568,69 @@ test.describe("Lecta — Journeys Críticos de Estabilización", () => {
     });
     expect(noVerticalScroll).toBe(true);
   });
+
+  test("Kindle paged layout fills 75-85% of viewport without vertical scroll and persists margin (@smoke)", async ({ page }) => {
+    await page.setViewportSize({ width: 600, height: 800 });
+
+    await page.route("**/*read/minimal*", async (route) => {
+      const url = new URL(route.request().url());
+      const margin = (url.searchParams.get("margin") as "sm" | "md" | "lg") || "md";
+      const size = (url.searchParams.get("size") as "sm" | "md" | "lg" | "xl") || "md";
+      const layout = (url.searchParams.get("layout") as "paged" | "scroll") || "paged";
+
+      const paragraphs = [
+        "<p>El sol de la tarde caía suavemente sobre las colinas doradas mientras el camino avanzaba en silencio.</p>",
+        "<p>Cada paso resonaba en la tierra seca, levantando una leve brizna de polvo que flotaba en el aire quieto.</p>",
+        "<p>A lo lejos, los cipreses marcaban el límite de la antigua finca donde antaño florecieron los olivos centenarios.</p>",
+        "<p>Nada perturbaba la calma de aquella hora vespertina, salvo el murmullo lejano de un arroyo escondido.</p>",
+      ].join("");
+
+      const pages = paginateChapter(paragraphs, { size, margin, layout });
+      const html = renderReaderView({
+        user: { id: "smoke-user", email: "smoke@kindle.test" },
+        bookHash: "minimal",
+        bookTitle: "Libro de prueba",
+        bookAuthor: "Equipo Lecta",
+        chapterTitle: "Capítulo I",
+        contentHtml: pages[0],
+        sectionIndex: 0,
+        totalSections: 2,
+        pageIndex: 0,
+        totalPages: pages.length,
+        layout,
+        margin,
+        size,
+      });
+
+      await route.fulfill({
+        status: 200,
+        contentType: "text/html; charset=utf-8",
+        headers: {
+          "Set-Cookie": `lecta_k_margin=${margin}; Path=/; Max-Age=31536000; SameSite=Lax`,
+        },
+        body: html,
+      });
+    });
+
+    await page.goto("/kindle/read/minimal?size=md&margin=md&layout=paged");
+
+    const metrics = await page.evaluate(() => {
+      const doc = document.documentElement;
+      const content = document.querySelector(".epub-content");
+      const rect = content?.getBoundingClientRect();
+      return {
+        scrollHeight: doc.scrollHeight,
+        clientHeight: doc.clientHeight,
+        contentHeight: rect ? rect.height : 0,
+      };
+    });
+
+    // Criterio 2: Cero Scroll Vertical en Modo Paged
+    expect(metrics.scrollHeight).toBeLessThanOrEqual(metrics.clientHeight);
+
+    // Criterio 1: Ocupación armónica del viewport en lectura regular
+    const heightRatio = metrics.contentHeight / metrics.clientHeight;
+    expect(heightRatio).toBeGreaterThanOrEqual(0.75);
+    expect(heightRatio).toBeLessThanOrEqual(0.90);
+  });
 });

@@ -472,7 +472,7 @@ describe("Kindle Routes (/k and /kindle)", () => {
 
       const res = await app.request("/k/read/mock-hash-1", {}, env);
       expect(res.status).toBe(302);
-      expect(res.headers.get("Location")).toBe("/k/read/mock-hash-1?section=1&page=2");
+      expect(res.headers.get("Location")).toBe("/k/read/mock-hash-1?section=1&page=2&margin=md");
     });
 
     it("con section=0 muestra el capítulo 1 paginado con cabecera compacta y botón para pasar página", async () => {
@@ -575,6 +575,55 @@ describe("Kindle Routes (/k and /kindle)", () => {
       const html = await res.text();
       expect(html).toContain("mode-lexicon");
       expect(html).toContain("[ Modo Léxico ]");
+    });
+
+    it("con ?margin=sm y ?margin=lg emite el encabezado Set-Cookie lecta_k_margin", async () => {
+      getSessionMock.mockResolvedValue({
+        user: { id: "user-1", email: "lector@example.com" },
+      });
+
+      const resSm = await app.request("/k/read/mock-hash-1?section=0&page=0&margin=sm", {}, env);
+      expect(resSm.status).toBe(200);
+      const setCookieSm = resSm.headers.get("Set-Cookie");
+      expect(setCookieSm).toContain("lecta_k_margin=sm; Path=/; Max-Age=31536000; SameSite=Lax");
+      const htmlSm = await resSm.text();
+      expect(htmlSm).toContain("reader-container margin-sm");
+
+      const resLg = await app.request("/k/read/mock-hash-1?section=0&page=0&margin=lg", {}, env);
+      expect(resLg.status).toBe(200);
+      const setCookieLg = resLg.headers.get("Set-Cookie");
+      expect(setCookieLg).toContain("lecta_k_margin=lg; Path=/; Max-Age=31536000; SameSite=Lax");
+      const htmlLg = await resLg.text();
+      expect(htmlLg).toContain("reader-container margin-lg");
+    });
+
+    it("utiliza la preferencia de cookie lecta_k_margin=lg cuando no se envía parámetro en la URL", async () => {
+      getSessionMock.mockResolvedValue({
+        user: { id: "user-1", email: "lector@example.com" },
+      });
+
+      const res = await app.request(
+        "/k/read/mock-hash-1?section=0&page=0",
+        { headers: { Cookie: "lecta_k_margin=lg" } },
+        env,
+      );
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).toContain("reader-container margin-lg");
+    });
+
+    it("valores inválidos (?margin=invalid) hacen fallback seguro a md", async () => {
+      getSessionMock.mockResolvedValue({
+        user: { id: "user-1", email: "lector@example.com" },
+      });
+
+      const res = await app.request("/k/read/mock-hash-1?section=0&page=0&margin=invalid", {}, env);
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).toContain("reader-container margin-md");
+      const setCookie = res.headers.get("Set-Cookie");
+      // No debe setear cookie con valor inválido
+      expect(setCookie || "").not.toContain("lecta_k_margin=invalid");
     });
   });
 
