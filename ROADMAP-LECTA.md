@@ -52,7 +52,7 @@
 
 | Fase | Módulo | Estado | Progreso |
 | :--- | :--- | :---: | :--- |
-| **Fase 1** | Estabilización de Pruebas, Cobertura Ratchet y CI | `[DONE]` | `[██████████] 100%` |
+| **Fase 1** | Estabilización de Pruebas, Cobertura Ratchet y CI | `[IN PROGRESS]` | `[█████████░] 90%` |
 
 ### Tareas Completadas:
 - [x] Optimización de memoria en Vitest (`pool: 'forks'`, workers adaptativos `process.env.CI ? 2 : 4`, separación de entornos `node` vs `jsdom`).
@@ -61,3 +61,8 @@
 - [x] Cierre de huecos de cobertura en `src/worker/**` con umbral ratchet (>=70% líneas/funciones).
 - [x] Pruebas deterministas de extremo a extremo (E2E) con Playwright (`e2e/smoke-journeys.spec.ts`) etiquetadas con `@smoke`.
 - [x] Automatización de Smoke Tests Post-Deploy (`.github/workflows/deploy-smoke.yml`) con reintentos exponenciales y alertas vía GitHub Issues (`smoke-regression`).
+
+
+> [!NOTE]
+> **Criterio de Cierre Formal de la Fase 1:**
+> La implementación de código, configuración de CI paralelo, suites herméticas y smoke tests post-deploy está completa al 100%. El estado se mantiene en **90%** hasta verificar la primera corrida real en los runners de GitHub Actions midiendo el tiempo de pared real (≤ 12 min) y activando las reglas de branch protection bloqueantes en el repositorio.

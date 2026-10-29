@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  BETTER_AUTH_SECRET: "ci-test-secret-lecta-32-chars-minimum-key"
+  BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET || 'ci-test-secret-lecta-32-chars-minimum-key' }}
   CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE: "postgresql://postgres:postgres@localhost:5432/lecta"
 
 jobs:
@@ -139,7 +139,16 @@ jobs:
           name: dist
           path: dist/
 
-      - name: Install Playwright Browsers
+      - name: Cache Playwright Browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
+
+      - name: Install Playwright Browsers and System Dependencies
         run: pnpm exec playwright install --with-deps chromium webkit
 
       - name: Run E2E tests

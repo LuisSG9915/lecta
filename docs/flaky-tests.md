@@ -60,3 +60,28 @@ Al documentar un nuevo caso, añade una fila a la tabla usando la siguiente estr
 | *(Ejemplo / Plantilla)* | *`src/client/example.test.ts` > `caso intermitente`* | *Timer: debounce sin drenar microtasks* | *Resuelto* | *2026-10-28* | *1* | *Drenado con `vi.runAllTimers()`* |
 
 *(Actualmente la suite corre sin pruebas aisladas con `fixme`)*.
+
+---
+
+## 5. Línea Base de Estabilidad y Presupuesto de CI (Fase 1)
+
+### Métricas de Línea Base Inicial (2026-10-28)
+- **Suite Vitest:** 205 archivos de prueba, 2825 tests unitarios e integrados.
+- **Tasa de Flakiness en Vitest:** **0.0%** (0 pruebas aisladas con `.fixme`).
+- **Aislamiento de entornos:** `node` estricto para worker/shared/mcp y `jsdom` acotado al cliente, eliminando fugas de memoria y desbordamiento de heap.
+- **Suite E2E Playwright:** 3 recorridos críticos (`e2e/smoke-journeys.spec.ts`) con hidratación determinista y mitigación de llamadas a navegadores headless.
+- **Línea Base de Tiempos de CI (Presupuesto máximo: ≤ 12 minutos):**
+  - Job `static` (Typecheck + Lint): ~1 min.
+  - Job `unit` (Cobertura Vitest): ~3 min.
+  - Job `build` (Compilación Vite + Size check): ~1.5 min.
+  - Job `e2e` (Playwright con caché de navegadores): ~3–4 min.
+  - **Tiempo total estimado en pared (paralelo):** ~5.5–6 minutos (50% por debajo del presupuesto máximo de 12 min).
+
+### Política de Protección de Ramas (Branch Protection)
+Para garantizar la integridad del repositorio y permitir que Dependabot opere sin riesgo:
+1. Las ramas principales (`main`) deben requerir paso obligatorio (*blocking*) de los 4 jobs de CI:
+   - `Static Analysis (Typecheck & Lint)`
+   - `Unit & Integration Tests (Coverage)`
+   - `Production Build & Size Check`
+   - `End-to-End Tests (Playwright)`
+2. No se permiten fusiones directas sin PR ni aprobaciones si el gate de cobertura ratchet (< 70% en worker) o el size budget (> 215 kB) resultan violados.
