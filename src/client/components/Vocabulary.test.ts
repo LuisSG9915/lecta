@@ -541,6 +541,24 @@ describe("Reestructura del Cuaderno", () => {
     expect(button("Quitar")).toBeUndefined();
   });
 
+  it("resalta contextSentence con fallback morfológico ante formas flexionadas", async () => {
+    listWordsMock.mockResolvedValue([
+      word({ form: "correr", meaning: "desplazarse velozmente", context: "Ellos corrían por el sendero", lemma: "correr" }),
+    ]);
+    await render();
+    await click("Palabras");
+
+    const rowBtn = host.querySelector(".nb-word-row") as HTMLButtonElement;
+    await act(async () => {
+      rowBtn.click();
+      for (let i = 0; i < 6; i++) await Promise.resolve();
+    });
+
+    const highlight = host.querySelector(".nb-word-quote-highlight");
+    expect(highlight).toBeTruthy();
+    expect(highlight?.textContent).toBe("corrían");
+  });
+
   it("muestra en la cabecera píldoras de dominio interactivas (Nuevas, En aprendizaje, Dominadas)", async () => {
     listWordsMock.mockResolvedValue([
       word({ form: "nueva", lemma: "nueva", meaning: "m1", card: { reps: 0, stability: 1 } as never }),

@@ -358,6 +358,7 @@ const UNDO_MS = 5000;
 
 // Nivel de estabilidad FSRS en 4 segmentos para el indicador visual
 function getStabilitySegments(s: number): number {
+  if (typeof s !== "number" || Number.isNaN(s) || s <= 0) return 0;
   if (s >= 14) return 4;
   if (s >= 7) return 3;
   if (s >= 2) return 2;
@@ -373,17 +374,47 @@ function renderHighlightedContext(context: string | null | undefined, form: stri
   const lowerTarget = target.toLowerCase();
   const lowerContext = context.toLowerCase();
   const idx = lowerContext.indexOf(lowerTarget);
-  if (idx === -1) return context;
-  const before = context.slice(0, idx);
-  const match = context.slice(idx, idx + target.length);
-  const after = context.slice(idx + target.length);
-  return (
-    <>
-      {before}
-      <mark className="nb-word-quote-highlight">{match}</mark>
-      {after}
-    </>
-  );
+  if (idx !== -1) {
+    const before = context.slice(0, idx);
+    const match = context.slice(idx, idx + target.length);
+    const after = context.slice(idx + target.length);
+    return (
+      <>
+        {before}
+        <mark className="nb-word-quote-highlight">{match}</mark>
+        {after}
+      </>
+    );
+  }
+
+  // Fallback morfológico: si la palabra está flexionada en el texto (raíz léxica de >= 4 chars)
+  if (target.length >= 4) {
+    const stemLen = target.length >= 6 ? 4 : 3;
+    const stem = target.slice(0, stemLen).toLowerCase();
+    const stemIdx = lowerContext.indexOf(stem);
+    if (stemIdx !== -1) {
+      let wordStart = stemIdx;
+      while (wordStart > 0 && /[\p{L}\p{M}]/u.test(context[wordStart - 1])) {
+        wordStart--;
+      }
+      let wordEnd = stemIdx + stem.length;
+      while (wordEnd < context.length && /[\p{L}\p{M}]/u.test(context[wordEnd])) {
+        wordEnd++;
+      }
+      const before = context.slice(0, wordStart);
+      const match = context.slice(wordStart, wordEnd);
+      const after = context.slice(wordEnd);
+      return (
+        <>
+          {before}
+          <mark className="nb-word-quote-highlight">{match}</mark>
+          {after}
+        </>
+      );
+    }
+  }
+
+  return context;
 }
 
 // Etiqueta de estado visible de cada palabra según estabilidad FSRS (S)

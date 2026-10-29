@@ -840,6 +840,7 @@ kindleRoutes.use("*", async (c, next) => {
     c.res.headers.set("Expires", "0");
     c.res.headers.set("Content-Security-Policy", KINDLE_HTML_CSP);
     c.res.headers.set("X-Content-Type-Options", "nosniff");
+    c.res.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   }
 });
 

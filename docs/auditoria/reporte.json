@@ -1,9 +1,9 @@
 {
   "tool": "audit-investigacion",
   "version": 1,
-  "generatedAt": "2026-10-29T15:35:47.990Z",
+  "generatedAt": "2026-10-29T19:45:23.352Z",
   "root": "/Users/luis/Desarrollos Devin/lecta",
-  "commit": "a6591865f1182457fd63d9f2994ead24cc46a08f",
+  "commit": "11401f84ea5566ab827d40da9ebe87a142e88156",
   "doc": "docs/estrategia-aprendizaje-2026-10-24.md",
   "registry": "docs/auditoria/claims.json",
   "online": false,
@@ -883,10 +883,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/components/Vocabulary.tsx:1551 coincide con /await grade\\(item, wrongs/",
+          "detail": "src/client/components/Vocabulary.tsx:1582 coincide con /await grade\\(item, wrongs/",
           "observed": {
             "file": "src/client/components/Vocabulary.tsx",
-            "line": 1551,
+            "line": 1582,
             "text": "await grade(item, wrongs ? EXERCISE_RATING.wrong : EXERCISE_RATING.correct);"
           }
         },
@@ -1261,10 +1261,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/components/Vocabulary.tsx:1150 coincide con /const startRetentionCheck30d/",
+          "detail": "src/client/components/Vocabulary.tsx:1181 coincide con /const startRetentionCheck30d/",
           "observed": {
             "file": "src/client/components/Vocabulary.tsx",
-            "line": 1150,
+            "line": 1181,
             "text": "const startRetentionCheck30d = () => {"
           }
         },
@@ -1281,10 +1281,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/components/Vocabulary.tsx:413 coincide con /const RETENTION_CHECK_MIN_AGE_DAYS = 30/",
+          "detail": "src/client/components/Vocabulary.tsx:444 coincide con /const RETENTION_CHECK_MIN_AGE_DAYS = 30/",
           "observed": {
             "file": "src/client/components/Vocabulary.tsx",
-            "line": 413,
+            "line": 444,
             "text": "const RETENTION_CHECK_MIN_AGE_DAYS = 30;"
           }
         },

@@ -340,7 +340,7 @@ export function sanitizeKindleHtml(
               .filter((char) => char.charCodeAt(0) > 0x20)
               .join("")
               .toLowerCase();
-            return /^(?:javascript|vbscript|data:text\/html)/.test(normalized)
+            return /^(?:javascript|vbscript|data:(?!image\/(?:jpeg|png|gif|webp|avif)))/i.test(normalized)
               ? " " + attr + '="#"'
               : full;
           },
@@ -355,7 +355,7 @@ export function sanitizeKindleHtml(
     /(<img\b[^>]*?\bsrc\s*=\s*)(["'])([^"']+)\2/gi,
     (_full, prefix, quote, srcVal) => {
       const trimmed = srcVal.trim();
-      if (/^(https?:|data:|\/\/)/i.test(trimmed)) {
+      if (/^(https?:|data:|\/\/|#|about:)/i.test(trimmed)) {
         return `${prefix}${quote}${trimmed}${quote}`;
       }
       const resolved = resolveZipPath(chapterDir, trimmed);
@@ -506,11 +506,52 @@ export function splitHtmlIntoBlocks(html: string): string[] {
   return blocks;
 }
 
-function splitLongParagraph(blockHtml: string, maxLen = 850): string[] {
-  const pMatch = blockHtml.match(/^<p\b([^>]*)>([\s\S]*?)<\/p>$/i);
-  if (!pMatch) return [blockHtml];
-  const attrs = pMatch[1];
-  const content = pMatch[2];
+interface InlineTag {
+  tag: string;
+  openHtml: string;
+}
+
+function extractTagStack(html: string, initialStack: InlineTag[] = []): InlineTag[] {
+  const stack: InlineTag[] = initialStack.map((t) => ({ ...t }));
+  const tagRegex = /<\/?([a-z][a-z0-9]*)\b([^>]*)>/gi;
+  let match: RegExpExecArray | null;
+
+  while ((match = tagRegex.exec(html)) !== null) {
+    const fullTag = match[0];
+    const tagName = match[1].toLowerCase();
+    const isClosing = fullTag.startsWith("</");
+    const isSelfClosing =
+      fullTag.endsWith("/>") || ["br", "hr", "img", "wbr"].includes(tagName);
+
+    if (isSelfClosing) continue;
+
+    if (isClosing) {
+      for (let i = stack.length - 1; i >= 0; i--) {
+        if (stack[i].tag === tagName) {
+          stack.splice(i, 1);
+          break;
+        }
+      }
+    } else {
+      stack.push({ tag: tagName, openHtml: fullTag });
+    }
+  }
+
+  return stack;
+}
+
+export function splitLongParagraph(blockHtml: string, maxLen = 850): string[] {
+  const blockMatch = blockHtml.match(/^<(p|blockquote|div|li|dd)\b([^>]*)>([\s\S]*?)<\/\1>$/i);
+  if (!blockMatch) return [blockHtml];
+  const tag = blockMatch[1];
+  const attrs = blockMatch[2];
+  const content = blockMatch[3];
+
+  // Si contiene etiquetas de bloque hijas (ej. <blockquote><p>...</p></blockquote>), no romper la jerarquía aquí
+  if (/<(?:p|blockquote|div|li|h[1-6]|ul|ol)\b/i.test(content)) {
+    return [blockHtml];
+  }
+
   const textLen = stripHtml(content).length;
   if (textLen <= maxLen) return [blockHtml];
 
@@ -543,20 +584,38 @@ function splitLongParagraph(blockHtml: string, maxLen = 850): string[] {
   const parts: string[] = [];
   let current = "";
   let currentLen = 0;
+  let activeStack: InlineTag[] = [];
 
   for (const sentence of clauses) {
     const sLen = stripHtml(sentence).length;
     if (current && (currentLen + sLen + 1 > maxLen)) {
-      parts.push(`<p${attrs}>${current.trim()}</p>`);
+      const openAtEnd = extractTagStack(current, activeStack);
+      const closeTagsHtml = openAtEnd
+        .slice()
+        .reverse()
+        .map((t) => `</${t.tag}>`)
+        .join("");
+      const prefixHtml = activeStack.map((t) => t.openHtml).join("");
+      parts.push(`<${tag}${attrs}>${prefixHtml}${current.trim()}${closeTagsHtml}</${tag}>`);
+
       current = sentence;
       currentLen = sLen;
+      activeStack = openAtEnd;
     } else {
       current = current ? `${current} ${sentence}` : sentence;
       currentLen += (currentLen > 0 ? 1 : 0) + sLen;
     }
   }
+
   if (current.trim()) {
-    parts.push(`<p${attrs}>${current.trim()}</p>`);
+    const openAtEnd = extractTagStack(current, activeStack);
+    const closeTagsHtml = openAtEnd
+      .slice()
+      .reverse()
+      .map((t) => `</${t.tag}>`)
+      .join("");
+    const prefixHtml = activeStack.map((t) => t.openHtml).join("");
+    parts.push(`<${tag}${attrs}>${prefixHtml}${current.trim()}${closeTagsHtml}</${tag}>`);
   }
 
   return parts.length > 0 ? parts : [blockHtml];

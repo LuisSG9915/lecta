@@ -21,6 +21,7 @@ import {
   resolveZipPath,
   sanitizeKindleHtml,
   selectKindleChapterPrimingWords,
+  splitLongParagraph,
   stripHtml,
   wrapWordsWithLinks,
   type KindleUserLexicalState,
@@ -742,6 +743,42 @@ describe("epub-reader (Kindle E-ink)", () => {
       ];
       const thetaWithDupes = estimateThetaFromD1Knowledge(recordsWithDupes);
       expect(thetaWithDupes).toBe(theta1);
+    });
+
+    it("balancea etiquetas inline al dividir párrafos largos sin dejar tags huérfanos", () => {
+      const html = '<p><em>Primera oración larga con suficiente texto para forzar división. Segunda oración que continúa el énfasis.</em></p>';
+      const parts = splitLongParagraph(html, 60);
+      expect(parts.length).toBeGreaterThan(1);
+      // Cada parte debe tener sus etiquetas em balanceadas
+      for (const part of parts) {
+        const opens = (part.match(/<em>/g) || []).length;
+        const closes = (part.match(/<\/em>/g) || []).length;
+        expect(opens).toBe(closes);
+        expect(part.startsWith("<p>")).toBe(true);
+        expect(part.endsWith("</p>")).toBe(true);
+      }
+    });
+
+    it("divide citas extensas en blockquote preservando la etiqueta y el balance", () => {
+      const longQuote = '<blockquote class="epistle">Primera oración muy larga de la carta filosófica. Segunda oración que reflexiona sobre el cosmos y la naturaleza.</blockquote>';
+      const parts = splitLongParagraph(longQuote, 55);
+      expect(parts.length).toBeGreaterThan(1);
+      for (const part of parts) {
+        expect(part.startsWith('<blockquote class="epistle">')).toBe(true);
+        expect(part.endsWith("</blockquote>")).toBe(true);
+      }
+    });
+
+    it("bloquea URIs data: peligrosas (SVG/XHTML) y preserva imágenes rasterizadas seguras", () => {
+      const svgPayload = '<p><img src="data:image/svg+xml;utf8,<svg onload=alert(1)>"/></p>';
+      const rasterPayload = '<p><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="/></p>';
+      
+      const resSvg = sanitizeKindleHtml(svgPayload, "", "hash");
+      expect(resSvg.contentHtml).toContain('src="#"');
+      expect(resSvg.contentHtml).not.toContain("data:image/svg+xml");
+
+      const resRaster = sanitizeKindleHtml(rasterPayload, "", "hash");
+      expect(resRaster.contentHtml).toContain("data:image/png;base64,");
     });
   });
 });

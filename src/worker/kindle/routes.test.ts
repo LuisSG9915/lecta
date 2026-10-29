@@ -662,6 +662,7 @@ describe("Kindle Routes (/k and /kindle)", () => {
     expect(csp).toContain("script-src 'unsafe-inline'");
     expect(csp).toContain("form-action 'self'");
     expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(res.headers.get("referrer-policy")).toBe("strict-origin-when-cross-origin");
   });
 
   describe("GET /k/lookup (Diccionario)", () => {
