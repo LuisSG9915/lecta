@@ -203,15 +203,30 @@ export async function syncPositions(scope?: DbScope): Promise<{
     if (item.updatedAt > maxUpdated) maxUpdated = item.updatedAt;
     const existing = localByHash.get(item.bookHash);
     if (!existing || item.updatedAt > existing.updatedAt) {
-      // El servidor guarda el ancla como texto, sin la fracción del
-      // bloque que ya se había leído: si la fila remota apunta al mismo
-      // párrafo, se conserva la precisión que este dispositivo conoce.
-      const merged =
+      // Si el servidor ya trae anchorOffset válido (0..1), se usa directamente.
+      // Si viene sin él, solo se conserva el anchorOffset local cuando el ancla
+      // textual y la sección coinciden exactamente; si el ancla cambió, se limpia
+      // a undefined para jamás aplicar un offset ajeno a otro párrafo.
+      const remoteHasOffset =
+        typeof item.anchorOffset === "number" &&
+        Number.isFinite(item.anchorOffset) &&
+        item.anchorOffset >= 0 &&
+        item.anchorOffset <= 1;
+      const sameParagraphAsLocal =
         existing?.anchorOffset != null &&
         existing.anchor != null &&
-        existing.anchor === item.anchor
-          ? { ...item, anchorOffset: existing.anchorOffset }
-          : item;
+        item.anchor != null &&
+        existing.sectionIndex === item.sectionIndex &&
+        existing.anchor === item.anchor;
+      const resolvedOffset = remoteHasOffset
+        ? item.anchorOffset
+        : sameParagraphAsLocal
+          ? existing.anchorOffset
+          : undefined;
+      const merged: SavedBookPosition = {
+        ...item,
+        ...(resolvedOffset !== undefined ? { anchorOffset: resolvedOffset } : { anchorOffset: undefined }),
+      };
       await saveBookPosition(merged, bound);
       pulled += 1;
       // Solo cuenta como conflicto si el local apuntaba a otro lugar:

@@ -231,6 +231,7 @@ export type SyncPositionInput = {
   ratio?: unknown;
   progress?: unknown;
   anchor?: unknown;
+  anchorOffset?: unknown;
   updatedAt?: unknown;
 };
 
@@ -241,6 +242,7 @@ export type CleanPosition = {
   ratio: number | null;
   progress: number | null;
   anchor: string | null;
+  anchorOffset: number | null;
   updatedAt: number;
 };
 
@@ -272,6 +274,7 @@ export function cleanPosition(input: SyncPositionInput): CleanPosition | null {
     ratio: fraction(input.ratio),
     progress: fraction(input.progress),
     anchor: text(input.anchor, POSITION_LIMITS.anchor),
+    anchorOffset: fraction(input.anchorOffset),
     updatedAt: stamp(input.updatedAt) ?? Date.now(),
   };
 }

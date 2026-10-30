@@ -217,7 +217,7 @@ export const UnifiedNotebookView: React.FC<{
               </p>
               {item.sentenceContext && (
                 <blockquote className="notebook-word-quote">
-                  “{item.sentenceContext}”
+                  “{renderHighlightedContext(item.sentenceContext, item.word)}”
                 </blockquote>
               )}
             </div>
@@ -356,72 +356,149 @@ const ORDERS = [
 const GROUP_PAGE = 50;
 const UNDO_MS = 5000;
 
-// Nivel de estabilidad FSRS en 4 segmentos para el indicador visual
-function getStabilitySegments(s: number): number {
-  if (typeof s !== "number" || Number.isNaN(s) || s <= 0) return 0;
-  if (s >= 14) return 4;
-  if (s >= 7) return 3;
-  if (s >= 2) return 2;
-  if (s > 0.5) return 1;
+// Sanitiza valores de estabilidad provenientes de tarjetas importadas o remotas
+export function safeStability(s: unknown): number {
+  return typeof s === "number" && Number.isFinite(s) && s > 0 ? s : 0;
+}
+
+// Nivel de estabilidad FSRS en 4 segmentos para el indicador visual (Hueco 3.2)
+export function getStabilitySegments(s: unknown): number {
+  const clean = safeStability(s);
+  if (clean >= 14) return 4;
+  if (clean >= 7) return 3;
+  if (clean >= 2) return 2;
+  if (clean > 0.5) return 1;
   return 0;
 }
 
-// Resalta la palabra dentro del contexto del libro con estilo ámbar suave
-function renderHighlightedContext(context: string | null | undefined, form: string) {
-  if (!context) return null;
-  const target = form.trim();
-  if (!target) return context;
-  const lowerTarget = target.toLowerCase();
-  const lowerContext = context.toLowerCase();
-  const idx = lowerContext.indexOf(lowerTarget);
-  if (idx !== -1) {
-    const before = context.slice(0, idx);
-    const match = context.slice(idx, idx + target.length);
-    const after = context.slice(idx + target.length);
-    return (
-      <>
-        {before}
-        <mark className="nb-word-quote-highlight">{match}</mark>
-        {after}
-      </>
-    );
-  }
+const stripDiacritics = (str: string) =>
+  str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
-  // Fallback morfológico: si la palabra está flexionada en el texto (raíz léxica de >= 4 chars)
-  if (target.length >= 4) {
-    const stemLen = target.length >= 6 ? 4 : 3;
-    const stem = target.slice(0, stemLen).toLowerCase();
-    const stemIdx = lowerContext.indexOf(stem);
-    if (stemIdx !== -1) {
-      let wordStart = stemIdx;
-      while (wordStart > 0 && /[\p{L}\p{M}]/u.test(context[wordStart - 1])) {
-        wordStart--;
-      }
-      let wordEnd = stemIdx + stem.length;
-      while (wordEnd < context.length && /[\p{L}\p{M}]/u.test(context[wordEnd])) {
-        wordEnd++;
-      }
-      const before = context.slice(0, wordStart);
-      const match = context.slice(wordStart, wordEnd);
-      const after = context.slice(wordEnd);
-      return (
-        <>
-          {before}
-          <mark className="nb-word-quote-highlight">{match}</mark>
-          {after}
-        </>
-      );
+// Normaliza alternancias vocálicas y diptongaciones frecuentes en raíces del español
+// (pensar -> piensa, dormir -> duerme, pedir -> pidió, sentir -> sintió)
+const foldSpanishDiphthongs = (str: string) =>
+  stripDiacritics(str)
+    .replace(/ie/g, "e")
+    .replace(/ue/g, "o")
+    .replace(/qu/g, "c")
+    .replace(/gu(?=[ei])/g, "g");
+
+// Extrae la raíz léxica aproximada eliminando desinencias verbales y nominales comunes
+function extractLexicalStem(word: string): string {
+  const clean = stripDiacritics(word).replace(/^[^\p{L}]+|[^\p{L}]+$/gu, "");
+  if (clean.length <= 3) return clean;
+  const stripped = clean.replace(
+    /(?:amiento|imiento|aciones|iciones|abamos|ieramos|aramos|asteis|isteis|aremos|eremos|iremos|arian|erian|irian|ando|iendo|aron|ieron|aban|ian|ando|adas|ados|idas|idos|arse|erse|irse|acion|icion|mente|anza|idad|ar|er|ir|as|es|os|an|en|in|on|ado|ido|aba|ia|ad|ed|id|s)$/u,
+    ""
+  );
+  return stripped.length >= 3 ? stripped : clean.slice(0, Math.max(3, clean.length - 2));
+}
+
+export function findEpisodicHighlightRange(
+  context: string,
+  form: string,
+  lemma?: string,
+): { start: number; end: number } | null {
+  const cleanForm = form.trim().replace(/^[.,;:!?¡¿"'«»([]—–-]+|[.,;:!?¡¿"'«»([]—–-]+$/g, "");
+  const cleanLemma = lemma?.trim().replace(/^[.,;:!?¡¿"'«»([]—–-]+|[.,;:!?¡¿"'«»([]—–-]+$/g, "");
+  const candidates = [cleanForm, cleanLemma, form.trim()].filter(
+    (c): c is string => Boolean(c && c.length > 0),
+  );
+  if (!candidates.length) return null;
+
+  // 1. Si el candidato es una locución (contiene espacios), buscar subcadena directa sin signos externos
+  for (const cand of candidates) {
+    if (/\s/.test(cand)) {
+      const idx = stripDiacritics(context).indexOf(stripDiacritics(cand));
+      if (idx !== -1) return { start: idx, end: idx + cand.length };
     }
   }
 
-  return context;
+  // Tokenizar palabras del pasaje respetando caracteres Unicode
+  const tokens = Array.from(context.matchAll(/[\p{L}\p{M}]+/gu));
+
+  // 2. Coincidencia exacta de token completo (case-insensitive)
+  for (const cand of candidates) {
+    const lowerCand = cand.toLowerCase();
+    const exact = tokens.find((t) => t[0].toLowerCase() === lowerCand);
+    if (exact && exact.index !== undefined) {
+      return { start: exact.index, end: exact.index + exact[0].length };
+    }
+  }
+
+  // 3. Coincidencia de token completo ignorando tildes/diacríticos
+  for (const cand of candidates) {
+    const normCand = stripDiacritics(cand);
+    const match = tokens.find((t) => stripDiacritics(t[0]) === normCand);
+    if (match && match.index !== undefined) {
+      return { start: match.index, end: match.index + match[0].length };
+    }
+  }
+
+  // 4. Buscador de raíz morfológica (lexical stem matcher) para formas conjugadas o flexionadas
+  for (const cand of candidates) {
+    const rawStem = extractLexicalStem(cand);
+    const foldedStem = foldSpanishDiphthongs(rawStem);
+    if (rawStem.length < 3) continue;
+
+    for (const token of tokens) {
+      const tokenText = token[0];
+      const normToken = stripDiacritics(tokenText);
+      const tokenStem = extractLexicalStem(tokenText);
+
+      const matchesRawStem =
+        normToken.startsWith(rawStem) ||
+        (tokenStem.length >= 3 && (rawStem.startsWith(tokenStem) || tokenStem.startsWith(rawStem)));
+
+      const foldedToken = foldSpanishDiphthongs(tokenText);
+      const foldedTokenStem = foldSpanishDiphthongs(tokenStem);
+      const matchesFoldedStem =
+        foldedStem.length >= 3 &&
+        (foldedToken.startsWith(foldedStem) ||
+          (foldedTokenStem.length >= 3 &&
+            (foldedStem.startsWith(foldedTokenStem) || foldedTokenStem.startsWith(foldedStem))));
+
+      if (matchesRawStem || matchesFoldedStem) {
+        return { start: token.index!, end: token.index! + tokenText.length };
+      }
+    }
+  }
+
+  // 5. Fallback final por subcadena si contiene caracteres no léxicos
+  const fallbackIdx = context.toLowerCase().indexOf(cleanForm.toLowerCase());
+  if (fallbackIdx !== -1 && cleanForm.length > 0) {
+    return { start: fallbackIdx, end: fallbackIdx + cleanForm.length };
+  }
+
+  return null;
 }
 
+// Resalta la palabra (o su flexión morfológica) dentro del contexto del libro con estilo ámbar suave (Hueco 3.1)
+export function renderHighlightedContext(
+  context: string | null | undefined,
+  form: string,
+  lemma?: string,
+) {
+  if (!context) return null;
+  if (!form || !form.trim()) return context;
+  const range = findEpisodicHighlightRange(context, form, lemma);
+  if (!range) return context;
+  const before = context.slice(0, range.start);
+  const match = context.slice(range.start, range.end);
+  const after = context.slice(range.end);
+  return (
+    <>
+      {before}
+      <mark className="nb-word-quote-highlight">{match}</mark>
+      {after}
+    </>
+  );
+}
 // Etiqueta de estado visible de cada palabra según estabilidad FSRS (S)
 const stateOf = (word: SavedWord): { label: string; level: MarkLevel | "due" } => {
   if (isDue(word.card)) return { label: "Para hoy", level: "due" };
   const card = word.card;
-  const s = card?.stability ?? 0;
+  const s = safeStability(card?.stability);
   const isNew = !card || (card.reps ?? 0) === 0 || s < 2;
   if (isNew) return { label: "Nuevas", level: "new" };
   if (s < 14) return { label: "En Práctica", level: "learning" };
@@ -434,7 +511,7 @@ const matchesFilter = (word: SavedWord, filter: FilterId): boolean => {
   if (filter === "all") return true;
   if (filter === "due") return isDue(word.card);
   const card = word.card;
-  const s = card?.stability ?? 0;
+  const s = safeStability(card?.stability);
   const isNew = !card || (card.reps ?? 0) === 0 || s < 2;
   if (filter === "new") return isNew;
   if (filter === "learning") return !isNew && s >= 2 && s < 14;
@@ -505,7 +582,7 @@ function WordRow({
   onQuickGame?: () => void;
 }) {
   const detailId = `word-detail-${word.key.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
-  const cardStability = word.card?.stability ?? 0;
+  const cardStability = safeStability(word.card?.stability);
   const stabilityDays = Math.round(cardStability);
   const stabilityPercent = Math.min(
     100,
@@ -584,7 +661,7 @@ function WordRow({
           {word.context ? (
             <div className="nb-word-quote-box">
               <blockquote className="nb-word-quote">
-                “{renderHighlightedContext(word.context, word.form)}”
+                “{renderHighlightedContext(word.context, word.form, word.lemma)}”
               </blockquote>
               {bookTitle ? (
                 <cite className="nb-word-cite">

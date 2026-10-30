@@ -67,13 +67,54 @@ export function requestRetentionFor(
   return RETENTION_BY_HORIZON[horizon] ?? RETENTION_BY_HORIZON.standard;
 }
 
+function sanitizeCard(card: Card | undefined, now: Date): Card {
+  if (!card || typeof card !== "object") return createEmptyCard(now);
+  const empty = createEmptyCard(now);
+  let stability =
+    typeof card.stability === "number" && Number.isFinite(card.stability) && card.stability > 0
+      ? card.stability
+      : 0;
+  let difficulty =
+    typeof card.difficulty === "number" && Number.isFinite(card.difficulty) && card.difficulty > 0
+      ? Math.min(10, Math.max(1, card.difficulty))
+      : 0;
+  // En FSRS un estado válido exige que stability y difficulty sean ambos > 0, o ambos 0 (tarjeta nueva).
+  if (stability === 0 || difficulty === 0) {
+    stability = 0;
+    difficulty = 0;
+  }
+  const reps =
+    typeof card.reps === "number" && Number.isInteger(card.reps) && card.reps >= 0
+      ? card.reps
+      : empty.reps;
+  const lapses =
+    typeof card.lapses === "number" && Number.isInteger(card.lapses) && card.lapses >= 0
+      ? card.lapses
+      : empty.lapses;
+  const state =
+    stability === 0 && difficulty === 0
+      ? 0
+      : typeof card.state === "number" && [0, 1, 2, 3].includes(card.state)
+        ? card.state
+        : 1;
+  return {
+    ...empty,
+    ...card,
+    stability,
+    difficulty,
+    reps,
+    lapses,
+    state,
+  };
+}
+
 export function scheduleReview(
   card: Card | undefined,
   rating: Grade,
   now = new Date(),
   options?: { requestRetention?: number },
 ): Card {
-  const current: Card = card ?? createEmptyCard(now);
+  const current: Card = sanitizeCard(card, now);
   const retention = options?.requestRetention ?? requestRetentionFor();
   return schedulerFor(retention).next(current, now, rating).card;
 }

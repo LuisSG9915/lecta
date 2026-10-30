@@ -107,4 +107,18 @@ describe("Captura intencional", () => {
     const { scheduleCapturedReview } = await import("./fsrs");
     expect(typeof scheduleCapturedReview).toBe("function");
   });
+
+  it("defiende contra tarjetas corruptas con tipos y rangos inválidos", () => {
+    const corruptCard = {
+      stability: "not-a-number",
+      difficulty: 999,
+      reps: -5,
+      lapses: "NaN",
+    } as unknown as import("ts-fsrs").Card;
+    const reviewed = scheduleReview(corruptCard, Rating.Good);
+    expect(typeof reviewed.stability).toBe("number");
+    expect(reviewed.stability).toBeGreaterThan(0);
+    expect(reviewed.difficulty).toBeLessThanOrEqual(10);
+    expect(reviewed.reps).toBeGreaterThanOrEqual(1);
+  });
 });

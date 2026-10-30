@@ -186,6 +186,8 @@ export function describeReadingLocation(
 
 const ANCHOR_TOLERANCE_PX = 12;
 const ANCHOR_KEEP_MS = 2_500;
+// Ventana extendida para reflujos tardíos de imágenes lentas (redes 3G/móviles).
+const MEDIA_LATE_REFLOW_MS = 15_000;
 // Ventana en la que la colocación recién restaurada se revisa cuadro a
 // cuadro: la primera medida puede caer con los estilos a medio aplicar.
 const ANCHOR_SETTLE_MS = 400;
@@ -200,7 +202,12 @@ export function keepAnchorStable(
   container: HTMLElement,
   anchor: string,
   offset = 0,
-  options?: { durationMs?: number; tolerancePx?: number; settleMs?: number },
+  options?: {
+    durationMs?: number;
+    mediaTimeoutMs?: number;
+    tolerancePx?: number;
+    settleMs?: number;
+  },
 ): () => void {
   const target = normalizeBlockText(anchor).slice(0, 40);
   if (!target) return () => {};
@@ -208,24 +215,30 @@ export function keepAnchorStable(
   const tolerance = options?.tolerancePx ?? ANCHOR_TOLERANCE_PX;
   const settleMs = options?.settleMs ?? ANCHOR_SETTLE_MS;
   const start = Date.now();
-  const deadline = start + (options?.durationMs ?? ANCHOR_KEEP_MS);
+  const rafDeadline = start + (options?.durationMs ?? ANCHOR_KEEP_MS);
+  const mediaDeadline =
+    start + Math.max(options?.durationMs ?? ANCHOR_KEEP_MS, options?.mediaTimeoutMs ?? MEDIA_LATE_REFLOW_MS);
+
   let stopped = false;
+  let rafFinished = false;
   let lastHeight = -1;
   let frame = 0;
-  // Una vez localizado el bloque se reutiliza: recorrer la sección en
-  // cada cuadro para volver a encontrarlo cuesta en capítulos largos.
+  let mediaCleanupTimer: number | null = null;
   let node: HTMLElement | null = null;
+  const imgCleanups: Array<() => void> = [];
 
   const correct = () => {
     if (stopped) return;
+    if (Date.now() > mediaDeadline) {
+      stop();
+      return;
+    }
     if (!node || !node.isConnected) node = findAnchorBlock(container, target);
     const el = node;
     if (!el || !el.isConnected) return;
     const rect = el.getBoundingClientRect();
     const height = rect.height || el.scrollHeight;
     if (height <= 0) return;
-    // rect.top baja al subir window.scrollY: para llevarlo al valor
-    // buscado hay que moverse el mismo delta en sentido contrario.
     const delta = rect.top + fraction * height;
     if (Math.abs(delta) <= tolerance) return;
     const max = Math.max(
@@ -237,46 +250,85 @@ export function keepAnchorStable(
   };
 
   const tick = () => {
-    if (stopped) return;
-    // Durante el asentamiento se comprueba en cada cuadro (la primera
-    // colocación puede medirse con estilos a medio aplicar); después,
-    // solo cuando el documento cambió de alto. Si nadie crece por
-    // arriba, el desplazamiento es de quien lee.
+    if (stopped || rafFinished) return;
     const height = document.documentElement.scrollHeight;
     if (Date.now() - start < settleMs || height !== lastHeight) {
       lastHeight = height;
       correct();
     }
-    if (Date.now() >= deadline) {
-      stopped = true;
+    // Al cumplir los 2.500 ms se apaga solo el bucle RAF por cuadro,
+    // pero se mantienen vivos los listeners de imágenes lentas hasta mediaDeadline
+    // siempre que la persona no haya interactuado.
+    if (Date.now() >= rafDeadline) {
+      rafFinished = true;
       return;
     }
     frame = requestAnimationFrame(tick);
   };
 
-  // Cualquier gesto de la persona cancela la vigilancia: su lectura manda.
   const stop = () => {
     if (stopped) return;
     stopped = true;
+    rafFinished = true;
     cancelAnimationFrame(frame);
+    if (mediaCleanupTimer !== null) window.clearTimeout(mediaCleanupTimer);
     container.removeEventListener("load", onMediaLoad, true);
+    while (imgCleanups.length > 0) imgCleanups.pop()?.();
     window.removeEventListener("pointerdown", stop, true);
     window.removeEventListener("wheel", stop, true);
     window.removeEventListener("touchstart", stop, true);
+    window.removeEventListener("touchmove", stop, true);
     window.removeEventListener("keydown", stop, true);
   };
 
-  const onMediaLoad = () => correct();
+  const onMediaLoad = () => {
+    if (stopped) return;
+    lastHeight = document.documentElement.scrollHeight;
+    correct();
+  };
+
+  // Registrar listeners directos sobre cada <img> pendiente y ResizeObserver
+  // para cubrir decodificaciones asíncronas tardías después de los 2.500 ms.
+  const images = container.querySelectorAll<HTMLImageElement>("img");
+  images.forEach((img) => {
+    if (img.complete && img.naturalHeight > 0) return;
+    const onImgSettled = () => {
+      if (stopped) return;
+      if (typeof img.decode === "function") {
+        void img.decode().then(onMediaLoad).catch(onMediaLoad);
+      } else {
+        onMediaLoad();
+      }
+    };
+    img.addEventListener("load", onImgSettled, { once: true });
+    img.addEventListener("error", onImgSettled, { once: true });
+    imgCleanups.push(() => {
+      img.removeEventListener("load", onImgSettled);
+      img.removeEventListener("error", onImgSettled);
+    });
+  });
+
+  if (typeof ResizeObserver !== "undefined") {
+    const ro = new ResizeObserver(() => {
+      if (!stopped && rafFinished) onMediaLoad();
+    });
+    ro.observe(container);
+    imgCleanups.push(() => ro.disconnect());
+  }
+
   container.addEventListener("load", onMediaLoad, true);
   window.addEventListener("pointerdown", stop, true);
   window.addEventListener("wheel", stop, true);
   window.addEventListener("touchstart", stop, true);
+  window.addEventListener("touchmove", stop, true);
   window.addEventListener("keydown", stop, true);
+
   const fonts = (
     document as Document & { fonts?: { ready?: Promise<unknown> } }
   ).fonts;
   void fonts?.ready?.then(() => correct()).catch(() => undefined);
 
+  mediaCleanupTimer = window.setTimeout(stop, Math.max(0, mediaDeadline - start));
   lastHeight = document.documentElement.scrollHeight;
   frame = requestAnimationFrame(tick);
 

@@ -1276,3 +1276,35 @@ describe("Partida rápida: misma regla que la sesión", () => {
     expect(text()).not.toContain("creció");
   });
 });
+
+describe("Hueco 3.1 & 3.2 — Estabilidad y Resalte Morfológico", () => {
+  it("safeStability y getStabilitySegments manejan valores corruptos", async () => {
+    const { safeStability, getStabilitySegments } = await import("./Vocabulary");
+    expect(safeStability(undefined)).toBe(0);
+    expect(safeStability(NaN)).toBe(0);
+    expect(safeStability(-5)).toBe(0);
+    expect(safeStability("10")).toBe(0);
+    expect(safeStability(15)).toBe(15);
+
+    expect(getStabilitySegments(undefined)).toBe(0);
+    expect(getStabilitySegments(NaN)).toBe(0);
+    expect(getStabilitySegments(0.4)).toBe(0);
+    expect(getStabilitySegments(1)).toBe(1);
+    expect(getStabilitySegments(3)).toBe(2);
+    expect(getStabilitySegments(8)).toBe(3);
+    expect(getStabilitySegments(20)).toBe(4);
+  });
+
+  it("findEpisodicHighlightRange encuentra formas flexionadas y alternancias vocálicas", async () => {
+    const { findEpisodicHighlightRange } = await import("./Vocabulary");
+    const ctx = "Él pensó en ella mientras caminaba.";
+    const range = findEpisodicHighlightRange(ctx, "pensar");
+    expect(range).not.toBeNull();
+    expect(ctx.slice(range!.start, range!.end)).toBe("pensó");
+
+    const ctx2 = "Siempre duerme profundamente.";
+    const range2 = findEpisodicHighlightRange(ctx2, "dormir");
+    expect(range2).not.toBeNull();
+    expect(ctx2.slice(range2!.start, range2!.end)).toBe("duerme");
+  });
+});

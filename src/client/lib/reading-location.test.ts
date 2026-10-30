@@ -302,4 +302,28 @@ describe("keepAnchorStable", () => {
       unmount();
     }
   });
+
+  it("sigue re-estabilizando ante carga tardía de imágenes mientras no haya interacción humana", () => {
+    vi.useFakeTimers();
+    const el = block("P05 · Mano mano", 508, 208);
+    const img = document.createElement("img");
+    el.appendChild(img);
+    const c = container(el);
+    const unmount = mount(c);
+    const env = setup({ scrollY: 122 });
+
+    try {
+      const stop = keepAnchorStable(c, "P05 · Mano mano", 0.5468, { durationMs: 50, mediaTimeoutMs: 1000 });
+      vi.advanceTimersByTime(100);
+      env.scrollTo.mockClear();
+
+      img.dispatchEvent(new Event("load"));
+      expect(env.scrollTo).toHaveBeenCalled();
+      stop();
+    } finally {
+      vi.useRealTimers();
+      env.restore();
+      unmount();
+    }
+  });
 });

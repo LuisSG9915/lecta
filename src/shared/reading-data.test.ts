@@ -86,6 +86,13 @@ describe("cleanReview", () => {
     expect(cleaned?.form).toHaveLength(REVIEW_LIMITS.form);
     expect(cleaned?.language).toHaveLength(10);
   });
+
+  it("conserva anchorOffset si es fracción válida y recorta a 0..1", () => {
+    expect(cleanPosition({ ...validPosition, anchorOffset: 0.45 })?.anchorOffset).toBe(0.45);
+    expect(cleanPosition({ ...validPosition, anchorOffset: 1.5 })?.anchorOffset).toBe(1);
+    expect(cleanPosition({ ...validPosition, anchorOffset: -0.2 })?.anchorOffset).toBe(0);
+    expect(cleanPosition({ ...validPosition, anchorOffset: "invalid" })?.anchorOffset).toBeNull();
+  });
 });
 
 const validPosition = {
@@ -107,6 +114,7 @@ describe("cleanPosition", () => {
       ratio: 0.4,
       progress: 0.12,
       anchor: "capítulo tres",
+      anchorOffset: null,
       updatedAt: 1_700_000_000_000,
     });
   });

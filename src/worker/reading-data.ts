@@ -481,6 +481,7 @@ readingData.get("/api/positions", async (context) => {
       .query(
         `SELECT book_hash AS "bookHash", section_index AS "sectionIndex",
                 scroll_top AS "scrollTop", ratio, progress, anchor,
+                anchor_offset AS "anchorOffset",
                 updated_at AS "updatedAt", synced_at AS "syncedAt"
          FROM lecta_user_positions
          WHERE ${filters.join(" AND ")}
@@ -509,6 +510,7 @@ readingData.get("/api/positions", async (context) => {
       scrollTop: Number(row.scrollTop),
       ratio: row.ratio != null ? Number(row.ratio) : null,
       progress: row.progress != null ? Number(row.progress) : null,
+      anchorOffset: row.anchorOffset != null ? Number(row.anchorOffset) : undefined,
       updatedAt: Number(row.updatedAt),
       syncedAt: Number(row.syncedAt ?? row.updatedAt),
     })),
@@ -547,7 +549,7 @@ readingData.put("/api/positions", async (context) => {
     for (const chunk of chunks(positions)) {
       const result = await client.query(
       `INSERT INTO lecta_user_positions
-         (user_id, book_hash, section_index, scroll_top, ratio, progress, anchor, updated_at, synced_at)
+         (user_id, book_hash, section_index, scroll_top, ratio, progress, anchor, anchor_offset, updated_at, synced_at)
        SELECT $1,
               j.value ->> 'bookHash',
               (j.value ->> 'sectionIndex')::int8,
@@ -555,6 +557,7 @@ readingData.put("/api/positions", async (context) => {
               (j.value ->> 'ratio')::float8,
               (j.value ->> 'progress')::float8,
               j.value ->> 'anchor',
+              (j.value ->> 'anchorOffset')::float8,
               (j.value ->> 'updatedAt')::int8,
               $3::int8
        FROM jsonb_array_elements($2::jsonb) AS j(value)
@@ -564,6 +567,7 @@ readingData.put("/api/positions", async (context) => {
           ratio = excluded.ratio,
           progress = excluded.progress,
           anchor = excluded.anchor,
+          anchor_offset = excluded.anchor_offset,
           updated_at = excluded.updated_at,
           synced_at = excluded.synced_at
        WHERE lecta_user_positions.updated_at <= excluded.updated_at`,
