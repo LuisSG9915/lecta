@@ -1307,4 +1307,12 @@ describe("Hueco 3.1 & 3.2 — Estabilidad y Resalte Morfológico", () => {
     expect(range2).not.toBeNull();
     expect(ctx2.slice(range2!.start, range2!.end)).toBe("duerme");
   });
+
+  it("H3.2: findEpisodicHighlightRange conserva los índices exactos en contexto NFD para locuciones", async () => {
+    const { findEpisodicHighlightRange } = await import("./Vocabulary");
+    const rawContext = "La canción caminó a través de la niebla espesa.".normalize("NFD");
+    const range = findEpisodicHighlightRange(rawContext, "a través de");
+    expect(range).not.toBeNull();
+    expect(rawContext.slice(range!.start, range!.end).normalize("NFC")).toBe("a través de");
+  });
 });

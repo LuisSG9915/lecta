@@ -130,4 +130,13 @@ export function isDue(card: Card | undefined, now = new Date()) {
   return !card || new Date(card.due).getTime() <= now.getTime();
 }
 
+export function isReviewDueWord(
+  word: { card?: Card; presentedAt?: number | null; deleted?: boolean },
+  now = new Date(),
+): boolean {
+  if (word.deleted) return false;
+  const hasBeenIntroduced = (word.card?.reps ?? 0) > 0 || (word.presentedAt ?? 0) > 0;
+  return hasBeenIntroduced && isDue(word.card, now);
+}
+
 export { scheduleCapturedReview } from "./reviews";

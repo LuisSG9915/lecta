@@ -1,6 +1,6 @@
 {
   "name": "lecta",
-  "version": "0.2.12",
+  "version": "0.2.13",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@10.30.3",
@@ -36,6 +36,8 @@
     "audit:cuaderno": "node scripts/audit-cuaderno.mjs",
     "audit:cuaderno:online": "node scripts/audit-cuaderno.mjs --online",
     "audit:cuaderno:brief": "node scripts/audit-cuaderno.mjs --brief",
+    "gemini": "node scripts/pack-gemini.mjs",
+    "gemini:clip": "node scripts/pack-gemini.mjs --clipboard",
     "model:upload": "node scripts/upload-model.mjs",
     "mcp": "pnpm --filter @lecta/mcp dev",
     "mcp:build": "pnpm --filter @lecta/mcp build",

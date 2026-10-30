@@ -15,6 +15,7 @@ import {
   getEpubResource,
   KINDLE_MARGIN_MULTIPLIERS,
   KINDLE_PAGE_BUDGETS,
+  normalizeKindleLanguage,
   paginateChapter,
   PARAGRAPH_MODE_BREAK_PENALTY,
   parseEpub,
@@ -513,6 +514,15 @@ describe("epub-reader (Kindle E-ink)", () => {
       expect(typeof theta).toBe("number");
       expect(Number.isFinite(theta)).toBe(true);
     });
+
+    it("Fase 6: infiere dificultad beta neutral en 0.0 cuando zipf no existe y alinea con 4.0 - zipf", () => {
+      const recordsUnknownWord = [
+        { word: "xyznonexistentword123", status: "known" },
+      ];
+      const thetaNeutral = estimateThetaFromD1Knowledge(recordsUnknownWord);
+      expect(Number.isFinite(thetaNeutral)).toBe(true);
+      expect(thetaNeutral).toBeGreaterThan(0.0);
+    });
   });
 
   describe("extractCompactContextSentence", () => {
@@ -864,6 +874,64 @@ describe("epub-reader (Kindle E-ink)", () => {
 
         expect(sanitizeKindleHtml(safePng)).toBe(safePng);
         expect(sanitizeKindleHtml(safeAvif)).toBe(safeAvif);
+      });
+    });
+
+    describe("H1.4 — Sub-partición segura de bloques largos sin puntuación", () => {
+      it("divide un <p> de 1400 caracteres sin puntos en fragmentos <= maxChars sin romper HTML", () => {
+        const sentencePhrase = "palabra larga con sentido literario pero sin punto final, ";
+        const repeated = sentencePhrase.repeat(25); // ~1450 chars
+        const pWithInline = `<p>Inicio del texto, ${repeated}<em>fragmento en cursiva con comas, más texto</em>, y <a href="https://example.com/ref">un enlace con descripción extensa pero sin punto</a>, continuando hasta el cierre final</p>`;
+
+        const maxChars = 400;
+        const blocks = splitLongParagraph(pWithInline, maxChars);
+
+        expect(blocks.length).toBeGreaterThan(1);
+        for (const block of blocks) {
+          expect(block).toMatch(/^<p>/);
+          expect(block).toMatch(/<\/p>$/);
+          const stripped = stripHtml(block);
+          expect(stripped.length).toBeLessThanOrEqual(maxChars);
+          // Verificar que no hay etiquetas HTML partidas a la mitad
+          expect(block).not.toMatch(/<[^>]*$/);
+          expect(block).not.toMatch(/^[^<]*>/);
+          // Verificar que la pila de tags inline está balanceada
+          expect(extractTagStack(block)).toEqual([]);
+        }
+      });
+
+      it("H1.4: splitLongParagraph divide una cláusula larga dentro de <em> precedida por texto plano en depth 0", () => {
+        const innerEm = Array.from({ length: 30 }, (_, i) => `palabra${i} larga`).join(" ");
+        const html = `<p>Él dijo, <em>${innerEm}</em></p>`;
+        const parts = splitLongParagraph(html, 120);
+        expect(parts.length).toBeGreaterThan(2);
+        for (const part of parts) {
+          expect(stripHtml(part).length).toBeLessThanOrEqual(120);
+          expect(part.startsWith("<p>")).toBe(true);
+          expect(part.endsWith("</p>")).toBe(true);
+        }
+      });
+    });
+
+    describe("H1.3 — Normalización de idiomas y soporte multi-idioma en Rasch", () => {
+      it("normaliza códigos BCP-47 de idioma y fallback a 'es'", () => {
+        expect(normalizeKindleLanguage("en-US")).toBe("en");
+        expect(normalizeKindleLanguage("es-MX")).toBe("es");
+        expect(normalizeKindleLanguage("EN")).toBe("en");
+        expect(normalizeKindleLanguage(undefined)).toBe("es");
+        expect(normalizeKindleLanguage(null)).toBe("es");
+        expect(normalizeKindleLanguage("")).toBe("es");
+        expect(normalizeKindleLanguage("x")).toBe("es");
+      });
+
+      it("estimateThetaFromD1Knowledge soporta idiomas dinámicos", () => {
+        const records = [
+          { word: "ephemeral", status: "known", difficultyBeta: 1.2 },
+          { word: "ubiquitous", status: "learning", difficultyBeta: 0.8 },
+        ];
+        const thetaEn = estimateThetaFromD1Knowledge(records, "en");
+        expect(typeof thetaEn).toBe("number");
+        expect(Number.isFinite(thetaEn)).toBe(true);
       });
     });
   });

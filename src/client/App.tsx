@@ -39,7 +39,7 @@ import { decidePendingDelete, PENDING_DELETE_KEY, clearSyncCursors } from "./lib
 import { pushOverlay, type OverlayHandle } from "./lib/history";
 import { sha256Hex } from "./lib/hash";
 import { downloadCatalogEpub, type CatalogBook } from "./lib/catalog";
-import { isDue } from "./lib/fsrs";
+import { isReviewDueWord } from "./lib/fsrs";
 import {
   COMPANION_LETTERS_KEY,
   parseCompanionLetters,
@@ -470,7 +470,7 @@ export default function App() {
       if (cancelled) return;
       let count = 0;
       for (const w of savedWords) {
-        if (isDue(w.card)) count++;
+        if (isReviewDueWord(w)) count++;
       }
       setDueReviewsCount(count);
       const letters = parseCompanionLetters(rawLetters);

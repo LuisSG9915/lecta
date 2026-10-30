@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { makeSignature } from "better-auth/crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import * as epubReader from "./epub-reader";
 import { app } from "../app";
 import {
   memoryCodeStore,
@@ -343,7 +344,7 @@ describe("Kindle Routes (/k and /kindle)", () => {
       expect(buttonClickRes.headers.get("set-cookie")).toContain("token-lector-abc");
       expect(buttonClickRes.headers.get("Location")).toContain("/k/read/ultimo-libro");
       expect(buttonClickRes.headers.get("Location")).toContain("section=3");
-      expect(buttonClickRes.headers.get("Location")).toContain("page=1");
+      expect(buttonClickRes.headers.get("Location")).not.toContain("page=");
     });
 
     it("/kindle/read/123 redirige a /k/read/123", async () => {
@@ -462,17 +463,17 @@ describe("Kindle Routes (/k and /kindle)", () => {
       expect(res.headers.get("Location")).toContain("/k/login");
     });
 
-    it("sin parámetro section, consulta la última posición y redirige incluyendo la página", async () => {
+    it("sin parámetro section, consulta la última posición y redirige a la sección", async () => {
       getSessionMock.mockResolvedValue({
         user: { id: "user-1", email: "lector@example.com" },
       });
       dbQueryMock.mockResolvedValue({
-        rows: [{ sectionIndex: 1, scrollTop: 2 }],
+        rows: [{ sectionIndex: 1, ratio: 0.5 }],
       });
 
       const res = await app.request("/k/read/mock-hash-1", {}, env);
       expect(res.status).toBe(302);
-      expect(res.headers.get("Location")).toBe("/k/read/mock-hash-1?section=1&page=2&margin=md");
+      expect(res.headers.get("Location")).toBe("/k/read/mock-hash-1?section=1&margin=md");
     });
 
     it("con section=0 muestra el capítulo 1 paginado con cabecera compacta y botón para pasar página", async () => {
@@ -555,6 +556,33 @@ describe("Kindle Routes (/k and /kindle)", () => {
       expect(html).toContain("section=0&amp;page=0");
     });
 
+    it("Fase 7: con bookLang='en' siembra ENGLISH_CORE_LEXICON y además consulta findEntriesForForms", async () => {
+      getSessionMock.mockResolvedValue({
+        user: { id: "user-1", email: "lector@example.com" },
+      });
+      const getChapterSpy = vi.spyOn(epubReader, "getEpubChapter").mockResolvedValue({
+        bookTitle: "Test Book",
+        bookAuthor: "Author",
+        chapterTitle: "Chapter One",
+        contentHtml: "<p>The ephemeral beauty of morning light upon the river.</p>",
+        totalSections: 2,
+        sectionIndex: 0,
+        language: "en",
+      });
+
+      try {
+        const res = await app.request("/k/read/mock-hash-1?section=0&prep=1", {}, env);
+        expect(res.status).toBe(200);
+        // Debe consultar findEntriesForForms para 'en'
+        expect(dbQueryMock).toHaveBeenCalledWith(
+          expect.stringContaining("lexicon_forms"),
+          expect.arrayContaining(["en"]),
+        );
+      } finally {
+        getChapterSpy.mockRestore();
+      }
+    });
+
     it("con mode=paragraphs muestra la clase mode-paragraphs y números de párrafo", async () => {
       getSessionMock.mockResolvedValue({
         user: { id: "user-1", email: "lector@example.com" },
@@ -624,6 +652,76 @@ describe("Kindle Routes (/k and /kindle)", () => {
       const setCookie = res.headers.get("Set-Cookie");
       // No debe setear cookie con valor inválido
       expect(setCookie || "").not.toContain("lecta_k_margin=invalid");
+    });
+
+    it("H1.1: restaura página mediante ratio (no scrollTop) y persiste scroll_top=0 y synced_at", async () => {
+      getSessionMock.mockResolvedValue({
+        user: { id: "user-1", email: "lector@example.com" },
+      });
+      // Simulamos posición web previa: scrollTop = 1174, ratio = 0.5 en sección 0
+      dbQueryMock.mockResolvedValue({
+        rows: [{ sectionIndex: 0, scrollTop: 1174, ratio: 0.5 }],
+      });
+
+      const paginateSpy = vi.spyOn(epubReader, "paginateChapter").mockReturnValue(
+        Array.from({ length: 11 }, (_, i) => `<p>Página ${i} con texto de lectura</p>`),
+      );
+
+      try {
+        const res = await app.request("/k/read/mock-hash-1?section=0", {}, env);
+        expect(res.status).toBe(200);
+        const html = await res.text();
+        // Con totalPages = 11 (0..10), ratio = 0.5 corresponde a pageIndex = 5 (página 6 de 11)
+        expect(html).toContain("6/11");
+        expect(html).toContain(">Página</span> 5");
+
+        // Verificar que al persistir la posición en lecta_user_positions:
+        // scroll_top se guarda como 0 (no como 5 ni 1174), y synced_at está presente
+        const positionSaveCall = dbQueryMock.mock.calls.find((call) =>
+          typeof call[0] === "string" && call[0].includes("INSERT INTO lecta_user_positions"),
+        );
+        expect(positionSaveCall).toBeDefined();
+        expect(positionSaveCall![0]).toContain("scroll_top");
+        expect(positionSaveCall![0]).toContain("synced_at");
+        expect(positionSaveCall![0]).toContain("scroll_top = 0");
+        expect(positionSaveCall![0]).toContain("anchor = excluded.anchor");
+        expect(positionSaveCall![0]).toContain("anchor_offset = 0");
+        // El array de parámetros: [userId, hash, sectionIndex, pageRatio, progress, now]
+        // donde $4 es pageRatio (0.5) y no pageIndex ni 1174
+        expect(positionSaveCall![1][3]).toBe(0.5);
+      } finally {
+        paginateSpy.mockRestore();
+      }
+    });
+
+    it("Fase 5: restaura página mediante ancla textual coincidente en el capítulo", async () => {
+      getSessionMock.mockResolvedValue({
+        user: { id: "user-1", email: "lector@example.com" },
+      });
+      // Simulamos posición web previa: anchor presente en página 3
+      dbQueryMock.mockResolvedValue({
+        rows: [{ sectionIndex: 0, ratio: 0.1, anchor: "Texto clave en página tres del capítulo" }],
+      });
+
+      const paginateSpy = vi.spyOn(epubReader, "paginateChapter").mockReturnValue([
+        "<p>Página 0 de introducción</p>",
+        "<p>Página 1 con detalles</p>",
+        "<p>Página 2 con más contenido</p>",
+        "<p>Texto clave en página tres del capítulo con lectura continua</p>",
+        "<p>Página 4 final</p>",
+      ]);
+
+      try {
+        const res = await app.request("/k/read/mock-hash-1?section=0", {}, env);
+        expect(res.status).toBe(200);
+        const html = await res.text();
+        // Debe coincidir con anchorPageIdx = 3 (Página 4 de 5)
+        expect(html).toContain("4/5");
+        expect(html).toContain("Pág. 4 de 5");
+        expect(html).toContain('data-w="clave"');
+      } finally {
+        paginateSpy.mockRestore();
+      }
     });
   });
 
@@ -773,6 +871,35 @@ describe("Kindle Routes (/k and /kindle)", () => {
       expect(location).toContain("saved=1");
       expect(location).toContain("q=perenne");
     });
+
+    it("H1.3: guarda palabra con language='en' insertando 'en' en lecta_user_words y actualiza synced_at", async () => {
+      getSessionMock.mockResolvedValue({
+        user: { id: "user-1", email: "lector@example.com" },
+      });
+
+      const formData = new FormData();
+      formData.append("form", "ephemeral");
+      formData.append("lemma", "ephemeral");
+      formData.append("pos", "adj.");
+      formData.append("meaning", "Lasting for a very short time.");
+      formData.append("language", "en-US");
+      formData.append("bookHash", "mock-hash-1");
+      formData.append("returnTo", "/k/read/mock-hash-1?section=0&page=0");
+
+      const res = await app.request("/k/vocab/add", { method: "POST", body: formData }, env);
+      expect(res.status).toBe(302);
+
+      const insertCall = dbQueryMock.mock.calls.find((call) =>
+        typeof call[0] === "string" && call[0].includes("INSERT INTO lecta_user_words"),
+      );
+      expect(insertCall).toBeDefined();
+      // El parámetro de language debe ser 'en' (normalizado de 'en-US')
+      expect(insertCall![1]).toContain("en");
+      expect(insertCall![1]).not.toContain("es");
+      // H1.2: Debe incluir synced_at tanto en columnas como en DO UPDATE SET
+      expect(insertCall![0]).toContain("synced_at");
+      expect(insertCall![0]).toContain("synced_at = excluded.synced_at");
+    });
   });
 
   describe("POST /k/knowledge/mark", () => {
@@ -793,7 +920,7 @@ describe("Kindle Routes (/k and /kindle)", () => {
       expect(location).toContain("markedKnown=perenne");
 
       expect(dbQueryMock).toHaveBeenCalledWith(
-        expect.stringContaining("INSERT INTO lecta_user_knowledge"),
+        expect.stringMatching(/INSERT INTO lecta_user_knowledge[\s\S]*'preparation'/),
         expect.arrayContaining(["user-1", "perenne", true]),
       );
     });
@@ -906,6 +1033,42 @@ describe("Kindle Routes (/k and /kindle)", () => {
       expect(location).toContain("/k/practice?done=1");
       expect(location).toContain("score=3");
     });
+
+    it("H1.2: POST /k/practice/answer actualiza synced_at en lecta_user_words, reviews y activity", async () => {
+      getSessionMock.mockResolvedValue({
+        user: { id: "user-1", email: "lector@example.com" },
+      });
+
+      const formData = new FormData();
+      formData.append("word", "perenne");
+      formData.append("selectedOption", "B");
+      formData.append("questionIndex", "0");
+      formData.append("totalQuestions", "3");
+      formData.append("correctCount", "0");
+      formData.append("bookHash", "mock-hash-1");
+      formData.append("returnTo", "/k/read/mock-hash-1?section=0&page=0");
+
+      const res = await app.request("/k/practice/answer", { method: "POST", body: formData }, env);
+      expect(res.status).toBe(302);
+
+      const updateWordCall = dbQueryMock.mock.calls.find((call) =>
+        typeof call[0] === "string" && call[0].includes("UPDATE lecta_user_words"),
+      );
+      expect(updateWordCall).toBeDefined();
+      expect(updateWordCall![0]).toContain("synced_at = $2");
+
+      const insertReviewCall = dbQueryMock.mock.calls.find((call) =>
+        typeof call[0] === "string" && call[0].includes("INSERT INTO lecta_user_reviews"),
+      );
+      expect(insertReviewCall).toBeDefined();
+      expect(insertReviewCall![0]).toContain("synced_at");
+
+      const insertActivityCall = dbQueryMock.mock.calls.find((call) =>
+        typeof call[0] === "string" && call[0].includes("INSERT INTO lecta_user_activity"),
+      );
+      expect(insertActivityCall).toBeDefined();
+      expect(insertActivityCall![0]).toContain("synced_at");
+    });
   });
 
   describe("Espacio de Pre-lectura Adaptativo (Fase 2)", () => {
@@ -926,7 +1089,7 @@ describe("Kindle Routes (/k and /kindle)", () => {
       expect(res.status).toBe(303);
       expect(res.headers.get("Location")).toContain("/k/read/mock-hash-1");
       expect(dbQueryMock).toHaveBeenCalledWith(
-        expect.stringContaining("INSERT INTO lecta_user_knowledge"),
+        expect.stringMatching(/INSERT INTO lecta_user_knowledge[\s\S]*'preparation'/),
         expect.arrayContaining(["user-1", "es", "perenne"]),
       );
     });
@@ -949,6 +1112,42 @@ describe("Kindle Routes (/k and /kindle)", () => {
       expect(dbQueryMock).toHaveBeenCalledWith(
         expect.stringContaining("INSERT INTO lecta_user_words"),
         expect.arrayContaining(["user-1", "es", "soledad"]),
+      );
+    });
+
+    it("POST /k/priming/action con action=save persiste presented_at y preserva metadatos en lecta_user_words", async () => {
+      getSessionMock.mockResolvedValueOnce({
+        user: { id: "user-1", email: "lector@example.com" },
+      });
+      const body = new URLSearchParams({
+        action: "save",
+        bookId: "mock-hash-1",
+        chapter: "0",
+        lemma: "efímero",
+        form: "efímera",
+        meaning: "Pasajero, de corta duración.",
+        context: "Una sombra efímera cruzó el patio.",
+        lang: "es",
+      });
+
+      const res = await app.request(
+        "/k/priming/action",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: body.toString(),
+        },
+        env,
+      );
+
+      expect(res.status).toBe(303);
+      const wordInsertCall = dbQueryMock.mock.calls.find((call) =>
+        String(call[0]).includes("INSERT INTO lecta_user_words"),
+      );
+      expect(wordInsertCall).toBeDefined();
+      expect(String(wordInsertCall![0])).toContain("presented_at");
+      expect(String(wordInsertCall![0])).toContain(
+        "presented_at = COALESCE(lecta_user_words.presented_at, excluded.presented_at)",
       );
     });
 

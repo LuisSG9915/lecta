@@ -16,6 +16,7 @@ import {
   formatChapterHtmlForMode,
   getEpubChapter,
   getEpubResource,
+  normalizeKindleLanguage,
   paginateChapter,
   parseEpub,
   selectKindleChapterPrimingWords,
@@ -562,15 +563,14 @@ export async function handleKindleLinkAction(c: Context<{ Bindings: WorkerEnv }>
     try {
       const pos = await withClient(c.env, (client) =>
         client.query(
-          `SELECT book_hash AS "bookHash", section_index AS "sectionIndex", scroll_top AS "scrollTop"
+          `SELECT book_hash AS "bookHash", section_index AS "sectionIndex"
            FROM lecta_user_positions WHERE user_id = $1 ORDER BY updated_at DESC LIMIT 1`,
           [userId],
         ).then((res) => res.rows[0]),
       );
       if (pos?.bookHash) {
         const sec = pos.sectionIndex != null ? Number(pos.sectionIndex) : 0;
-        const page = pos.scrollTop != null ? Number(pos.scrollTop) : 0;
-        redirectUrl = `/k/read/${encodeURIComponent(pos.bookHash)}?section=${sec}&page=${page}`;
+        redirectUrl = `/k/read/${encodeURIComponent(pos.bookHash)}?section=${sec}`;
       }
     } catch {
       /* ignore */
@@ -657,15 +657,14 @@ export async function handleKindleStatus(c: Context<{ Bindings: WorkerEnv }>) {
       try {
         const pos = await withClient(c.env, (client) =>
           client.query(
-            `SELECT book_hash AS "bookHash", section_index AS "sectionIndex", scroll_top AS "scrollTop"
+            `SELECT book_hash AS "bookHash", section_index AS "sectionIndex"
              FROM lecta_user_positions WHERE user_id = $1 ORDER BY updated_at DESC LIMIT 1`,
             [result.userId],
           ).then((res) => res.rows[0]),
         );
         if (pos?.bookHash) {
           const sec = pos.sectionIndex != null ? Number(pos.sectionIndex) : 0;
-          const page = pos.scrollTop != null ? Number(pos.scrollTop) : 0;
-          redirectUrl = `/k/read/${encodeURIComponent(pos.bookHash)}?section=${sec}&page=${page}`;
+          redirectUrl = `/k/read/${encodeURIComponent(pos.bookHash)}?section=${sec}`;
         }
       } catch {
         /* ignore */
@@ -699,7 +698,17 @@ export async function handleKindlePrimingAction(c: Context<{ Bindings: WorkerEnv
   const bookId = String(formData["bookId"] || "");
   const chapterIndex = Number(formData["chapter"] ?? formData["section"] ?? 0);
   const lemma = String(formData["lemma"] || "").trim().toLowerCase();
-  const lang = String(formData["lang"] || "es").slice(0, 2).toLowerCase();
+  const surfaceForm = String(formData["form"] || formData["surfaceForm"] || lemma).trim().toLowerCase() || lemma;
+  const pos = typeof formData["pos"] === "string" && formData["pos"].trim() ? formData["pos"].trim() : null;
+  const meaning = typeof formData["meaning"] === "string" && formData["meaning"].trim()
+    ? formData["meaning"].trim()
+    : typeof formData["gloss"] === "string" && formData["gloss"].trim()
+      ? formData["gloss"].trim()
+      : null;
+  const context = typeof formData["context"] === "string" && formData["context"].trim()
+    ? formData["context"].trim().slice(0, 280)
+    : null;
+  const lang = normalizeKindleLanguage(String(formData["lang"] || "es"));
   const returnUrl = String(
     formData["returnUrl"] || `/k/read/${encodeURIComponent(bookId)}?section=${chapterIndex}`,
   );
@@ -731,12 +740,13 @@ export async function handleKindlePrimingAction(c: Context<{ Bindings: WorkerEnv
         await withClient(c.env, (client) =>
           client.query(
             `INSERT INTO lecta_user_knowledge
-               (user_id, language, lemma, known, source, updated_at, deleted)
-             VALUES ($1, $2, $3, true, 'kindle_prep', $4, false)
+               (user_id, language, lemma, known, source, updated_at, deleted, synced_at)
+             VALUES ($1, $2, $3, true, 'preparation', $4, false, $4)
              ON CONFLICT (user_id, language, lemma) DO UPDATE SET
                known = true,
-               source = 'kindle_prep',
+               source = 'preparation',
                updated_at = excluded.updated_at,
+               synced_at = excluded.synced_at,
                deleted = false`,
             [userId, lang, lemma, now],
           ),
@@ -770,23 +780,31 @@ export async function handleKindlePrimingAction(c: Context<{ Bindings: WorkerEnv
         await withClient(c.env, async (client) => {
           await client.query(
             `INSERT INTO lecta_user_knowledge
-               (user_id, language, lemma, known, source, updated_at, deleted)
-             VALUES ($1, $2, $3, false, 'kindle_prep', $4, false)
+               (user_id, language, lemma, known, source, updated_at, deleted, synced_at)
+             VALUES ($1, $2, $3, false, 'preparation', $4, false, $4)
              ON CONFLICT (user_id, language, lemma) DO UPDATE SET
                known = false,
-               source = 'kindle_prep',
+               source = 'preparation',
                updated_at = excluded.updated_at,
+               synced_at = excluded.synced_at,
                deleted = false`,
             [userId, lang, lemma, now],
           ).catch(() => {});
           await client.query(
             `INSERT INTO lecta_user_words
-               (user_id, language, form, lemma, pos, meaning, context, book_hash, saved_at, updated_at, deleted)
-             VALUES ($1, $2, $3, $3, NULL, NULL, NULL, $4, $5, $5, false)
+               (user_id, language, form, lemma, pos, meaning, context, book_hash, saved_at, updated_at, presented_at, deleted, synced_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9, $9, false, $9)
              ON CONFLICT (user_id, language, form) DO UPDATE SET
+               lemma = COALESCE(excluded.lemma, lecta_user_words.lemma),
+               pos = COALESCE(excluded.pos, lecta_user_words.pos),
+               meaning = COALESCE(excluded.meaning, lecta_user_words.meaning),
+               context = COALESCE(excluded.context, lecta_user_words.context),
+               book_hash = COALESCE(excluded.book_hash, lecta_user_words.book_hash),
+               presented_at = COALESCE(lecta_user_words.presented_at, excluded.presented_at),
                updated_at = excluded.updated_at,
+               synced_at = excluded.synced_at,
                deleted = false`,
-            [userId, lang, lemma, bookId || null, now],
+            [userId, lang, surfaceForm, lemma, pos, meaning, context, bookId || null, now],
           ).catch(() => {});
         }).catch(() => {});
       }
@@ -1240,22 +1258,24 @@ kindleRoutes.get("/read/:hash", async (c) => {
   const querySuffix = `${rawMode ? `&mode=${encodeURIComponent(rawMode)}` : ""}${rawSize ? `&size=${encodeURIComponent(rawSize)}` : ""}${rawGloss !== undefined ? `&gloss=${encodeURIComponent(rawGloss)}` : ""}${layout !== "paged" ? `&layout=${layout}` : ""}&margin=${margin}`;
   const renderQuerySuffix = `&mode=${encodeURIComponent(mode)}&size=${encodeURIComponent(size)}&gloss=${gloss ? "1" : "0"}&layout=${layout}&margin=${margin}`;
 
-  // Si no se especifica la sección en la URL, cargar la última posición guardada (sección y página)
-  if (requestedSection === undefined) {
-    const lastPos = await withClient(c.env, (client) =>
+  // Si no se especifica la sección o página en la URL, cargar la última posición guardada
+  let lastPos: { sectionIndex: number; ratio: number | null; anchor?: string | null } | null = null;
+  if (requestedSection === undefined || requestedPage === undefined) {
+    lastPos = await withClient(c.env, (client) =>
       client
         .query(
-          `SELECT section_index AS "sectionIndex", scroll_top AS "scrollTop" FROM lecta_user_positions
+          `SELECT section_index AS "sectionIndex", ratio, anchor FROM lecta_user_positions
            WHERE user_id = $1 AND book_hash = $2`,
           [user.id, hash],
         )
         .then((res) => res.rows[0])
         .catch(() => null),
     );
+  }
 
+  if (requestedSection === undefined) {
     const targetSection = lastPos ? Number(lastPos.sectionIndex) || 0 : 0;
-    const targetPage = lastPos && lastPos.scrollTop != null ? Math.max(0, Number(lastPos.scrollTop) || 0) : 0;
-    return c.redirect(`/k/read/${encodeURIComponent(hash)}?section=${targetSection}&page=${targetPage}${querySuffix}`);
+    return c.redirect(`/k/read/${encodeURIComponent(hash)}?section=${targetSection}${querySuffix}`);
   }
 
   const sectionIndex = Math.max(0, parseInt(requestedSection, 10) || 0);
@@ -1278,26 +1298,28 @@ kindleRoutes.get("/read/:hash", async (c) => {
     );
   }
 
+  const bookLang = normalizeKindleLanguage(chapter.language);
+
   // Vista de preparación previa al capítulo («Antes de leer»)
   if (isPrep) {
     const cleanText = stripHtml(chapter.contentHtml);
-    const candidateForms = extractChapterPrepCandidates(chapter.contentHtml, "es");
+    const candidateForms = extractChapterPrepCandidates(chapter.contentHtml, bookLang);
 
     const queryRes = await withClient(c.env, (client) =>
       Promise.all([
         client
           .query(
             `SELECT LOWER(lemma) AS lemma FROM lecta_user_knowledge
-             WHERE user_id = $1 AND language = 'es' AND known = true AND deleted = false`,
-            [user.id],
+             WHERE user_id = $1 AND language = $2 AND known = true AND deleted = false`,
+            [user.id, bookLang],
           )
           .then((res) => res.rows)
           .catch(() => []),
         client
           .query(
             `SELECT LOWER(form) AS form FROM lecta_user_words
-             WHERE user_id = $1 AND deleted = false`,
-            [user.id],
+             WHERE user_id = $1 AND language = $2 AND deleted = false`,
+            [user.id, bookLang],
           )
           .then((res) => res.rows)
           .catch(() => []),
@@ -1321,7 +1343,7 @@ kindleRoutes.get("/read/:hash", async (c) => {
     const entriesMap: Record<string, import("../lexicon").LexiconEntryView[]> =
       filteredCandidates.length > 0
         ? ((await withClient(c.env, (client) =>
-            findEntriesForForms(client, "es", filteredCandidates.slice(0, 150)),
+            findEntriesForForms(client, bookLang, filteredCandidates.slice(0, 150)),
           ).catch(() => ({}))) ?? {})
         : {};
 
@@ -1392,6 +1414,7 @@ kindleRoutes.get("/read/:hash", async (c) => {
         savedNotice,
         nextUrl,
         prevUrl,
+        language: bookLang,
       }),
     );
   }
@@ -1403,13 +1426,34 @@ kindleRoutes.get("/read/:hash", async (c) => {
     layout,
     mode,
   });
-  const totalPages = pages.length;
+  const totalPages = Math.max(1, pages.length);
 
   let pageIndex = 0;
   if (requestedPage === "last") {
     pageIndex = Math.max(0, totalPages - 1);
-  } else if (requestedPage !== undefined) {
-    pageIndex = Math.min(Math.max(0, parseInt(requestedPage, 10) || 0), totalPages - 1);
+  } else if (requestedPage !== undefined && requestedPage !== "") {
+    const parsed = Number.parseInt(requestedPage, 10);
+    pageIndex = Number.isFinite(parsed) ? Math.min(Math.max(0, parsed), totalPages - 1) : 0;
+  } else if (lastPos && Number(lastPos.sectionIndex) === sectionIndex) {
+    const normalizedAnchor =
+      typeof lastPos.anchor === "string"
+        ? lastPos.anchor.replace(/\s+/g, " ").trim().slice(0, 40).toLowerCase()
+        : "";
+    const anchorPageIdx =
+      normalizedAnchor.length >= 8
+        ? pages.findIndex((p) =>
+            stripHtml(p).replace(/\s+/g, " ").toLowerCase().includes(normalizedAnchor),
+          )
+        : -1;
+    if (anchorPageIdx >= 0) {
+      pageIndex = anchorPageIdx;
+    } else if (lastPos.ratio != null) {
+      const clampedRatio = Math.min(1, Math.max(0, Number(lastPos.ratio) || 0));
+      pageIndex = Math.min(
+        totalPages - 1,
+        Math.max(0, Math.round(clampedRatio * Math.max(0, totalPages - 1))),
+      );
+    }
   }
 
   const isPrimed = c.req.query("primed") === "1";
@@ -1428,7 +1472,6 @@ kindleRoutes.get("/read/:hash", async (c) => {
     !isPrimingOff &&
     !isBookMuted
   ) {
-    const bookLang = (chapter.language || "es").slice(0, 2).toLowerCase();
     const cleanText = stripHtml(chapter.contentHtml);
 
     // 1. Cargar historial del usuario para estimar theta y lemas conocidos
@@ -1481,7 +1524,7 @@ kindleRoutes.get("/read/:hash", async (c) => {
       else learningRetrievability.set(row.lemma, 0.5);
     }
 
-    const theta = estimateThetaFromD1Knowledge(knowledgeRecords);
+    const theta = estimateThetaFromD1Knowledge(knowledgeRecords, bookLang);
     const userState: KindleUserLexicalState = {
       theta,
       knownLemmas,
@@ -1499,28 +1542,28 @@ kindleRoutes.get("/read/:hash", async (c) => {
           pos: item.pos,
         });
       }
-    } else {
-      const candidateForms = extractChapterPrepCandidates(chapter.contentHtml, "es");
-      const filtered = candidateForms.filter((f) => !knownLemmas.has(f)).slice(0, 100);
-      if (filtered.length > 0 && getConnectionString(c.env)) {
-        const entriesMap: Record<string, import("../lexicon").LexiconEntryView[]> =
-          (await withClient(c.env, (client) =>
-            findEntriesForForms(client, "es", filtered),
-          ).catch(() => ({}))) as Record<string, import("../lexicon").LexiconEntryView[]>;
+    }
 
-        for (const [form, entries] of Object.entries(entriesMap)) {
-          if (Array.isArray(entries) && entries.length > 0) {
-            const entry = entries[0];
-            const gloss = entry.senses?.[0]?.definition?.trim();
-            if (gloss) {
-              const lemma = (entry.lemma || form).toLowerCase();
-              lexiconCatalog.set(lemma, {
-                beta: entry.zipf ? Math.max(0.1, 5.0 - entry.zipf) : 0.6,
-                gloss,
-                pos: entry.pos || undefined,
-                zipf: entry.zipf ?? null,
-              });
-            }
+    const candidateForms = extractChapterPrepCandidates(chapter.contentHtml, bookLang);
+    const filtered = candidateForms.filter((f) => !knownLemmas.has(f)).slice(0, 100);
+    if (filtered.length > 0 && getConnectionString(c.env)) {
+      const entriesMap: Record<string, import("../lexicon").LexiconEntryView[]> =
+        (await withClient(c.env, (client) =>
+          findEntriesForForms(client, bookLang, filtered),
+        ).catch(() => ({}))) as Record<string, import("../lexicon").LexiconEntryView[]>;
+
+      for (const [form, entries] of Object.entries(entriesMap)) {
+        if (Array.isArray(entries) && entries.length > 0) {
+          const entry = entries[0];
+          const gloss = entry.senses?.[0]?.definition?.trim();
+          if (gloss) {
+            const lemma = (entry.lemma || form).toLowerCase();
+            lexiconCatalog.set(lemma, {
+              beta: entry.zipf != null ? Math.max(-2.0, Math.min(3.5, 4.0 - entry.zipf)) : 0.6,
+              gloss,
+              pos: entry.pos || undefined,
+              zipf: entry.zipf ?? null,
+            });
           }
         }
       }
@@ -1574,16 +1617,16 @@ kindleRoutes.get("/read/:hash", async (c) => {
       client
         .query<{ form: string }>(
           `SELECT LOWER(form) AS form FROM lecta_user_words
-           WHERE user_id = $1 AND deleted = false`,
-          [user.id],
+           WHERE user_id = $1 AND language = $2 AND deleted = false`,
+          [user.id, bookLang],
         )
         .then((res) => res.rows)
         .catch(() => []),
       client
         .query<{ lemma: string }>(
           `SELECT LOWER(lemma) AS lemma FROM lecta_user_knowledge
-           WHERE user_id = $1 AND language = 'es' AND known = true AND deleted = false`,
-          [user.id],
+           WHERE user_id = $1 AND language = $2 AND known = true AND deleted = false`,
+          [user.id, bookLang],
         )
         .then((res) => res.rows)
         .catch(() => []),
@@ -1625,7 +1668,7 @@ kindleRoutes.get("/read/:hash", async (c) => {
     const contextSentence = extractCompactContextSentence(stripHtml(rawPageHtml), lookupWord) || null;
     try {
       const entries = await withClient(c.env, (client) =>
-        findEntries(client, "es", lookupWord.toLowerCase()),
+        findEntries(client, bookLang, lookupWord.toLowerCase()),
       );
       lookupResult = {
         word: lookupWord,
@@ -1648,24 +1691,29 @@ kindleRoutes.get("/read/:hash", async (c) => {
     : pageRatio;
 
   const now = Date.now();
+  const pageAnchor =
+    stripHtml(rawPageHtml).replace(/\s+/g, " ").trim().slice(0, 80) || null;
   const savePositionPromise = withClient(c.env, async (client) => {
     await client.query(
       `INSERT INTO lecta_user_positions
-         (user_id, book_hash, section_index, scroll_top, ratio, progress, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+         (user_id, book_hash, section_index, scroll_top, ratio, progress, anchor, anchor_offset, updated_at, synced_at)
+       VALUES ($1, $2, $3, 0, $4, $5, $6, 0, $7, $7)
        ON CONFLICT (user_id, book_hash) DO UPDATE SET
          section_index = excluded.section_index,
-         scroll_top = excluded.scroll_top,
+         scroll_top = 0,
          ratio = excluded.ratio,
          progress = excluded.progress,
-         updated_at = excluded.updated_at
-       WHERE lecta_user_positions.updated_at <= excluded.updated_at`,
-      [user.id, hash, chapter.sectionIndex, pageIndex, pageRatio, progress, now],
+         anchor = excluded.anchor,
+         anchor_offset = 0,
+         updated_at = excluded.updated_at,
+         synced_at = excluded.synced_at
+       WHERE excluded.updated_at >= lecta_user_positions.updated_at`,
+      [user.id, hash, chapter.sectionIndex, pageRatio, progress, pageAnchor, now],
     );
     const actId = `k_${hash}_${chapter.sectionIndex}_${pageIndex}_${now}`;
     await client.query(
-      `INSERT INTO lecta_user_activity (user_id, id, book_hash, started_at, ended_at)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO lecta_user_activity (user_id, id, book_hash, started_at, ended_at, synced_at)
+       VALUES ($1, $2, $3, $4, $5, $5)
        ON CONFLICT (user_id, id) DO NOTHING`,
       [user.id, actId, hash, Math.max(0, now - 60000), now],
     ).catch(() => null);
@@ -1696,6 +1744,7 @@ kindleRoutes.get("/read/:hash", async (c) => {
       totalSections: chapter.totalSections,
       pageIndex,
       totalPages,
+      language: bookLang,
       pageWords,
       savedNotice,
       lookupResult,
@@ -1760,11 +1809,14 @@ kindleRoutes.get("/lookup", async (c) => {
   const returnTo = c.req.query("returnTo") || "/k";
   const bookHash = c.req.query("bookHash") || "";
 
+  const lookupLang = normalizeKindleLanguage(
+    c.req.query("lang") ?? c.req.query("language"),
+  );
   let entries: import("../lexicon").LexiconEntryView[] | null = null;
   if (query) {
     try {
       entries = (await withClient(c.env, (client) =>
-        findEntries(client, "es", query.toLowerCase()),
+        findEntries(client, lookupLang, query.toLowerCase()),
       )) ?? [];
     } catch {
       entries = [];
@@ -1803,11 +1855,15 @@ kindleRoutes.post("/vocab/add", async (c) => {
     return c.redirect(returnTo);
   }
 
+  const language = normalizeKindleLanguage(
+    typeof body.language === "string" ? body.language : (typeof body.lang === "string" ? body.lang : undefined),
+  );
+
   // Si no se proporcionó significado, buscarlo en el catálogo léxico
   if (!meaning) {
     try {
       const entries = await withClient(c.env, (client) =>
-        findEntries(client, "es", form.toLowerCase()),
+        findEntries(client, language, form.toLowerCase()),
       );
       if (entries && entries.length > 0) {
         lemma = entries[0].lemma || lemma;
@@ -1823,8 +1879,8 @@ kindleRoutes.post("/vocab/add", async (c) => {
   await withClient(c.env, async (client) => {
     await client.query(
       `INSERT INTO lecta_user_words
-         (user_id, language, form, lemma, pos, meaning, context, book_hash, saved_at, updated_at, deleted)
-       VALUES ($1, 'es', $2, $3, $4, $5, $6, $7, $8, $8, false)
+         (user_id, language, form, lemma, pos, meaning, context, book_hash, saved_at, updated_at, deleted, synced_at)
+       VALUES ($1, $9, $2, $3, $4, $5, $6, $7, $8, $8, false, $8)
        ON CONFLICT (user_id, language, form) DO UPDATE SET
          lemma = excluded.lemma,
          pos = excluded.pos,
@@ -1832,8 +1888,9 @@ kindleRoutes.post("/vocab/add", async (c) => {
          context = COALESCE(excluded.context, lecta_user_words.context),
          book_hash = COALESCE(excluded.book_hash, lecta_user_words.book_hash),
          updated_at = excluded.updated_at,
+         synced_at = excluded.synced_at,
          deleted = false`,
-      [session.user.id, form, lemma, pos, meaning, context, bookHash, now],
+      [session.user.id, form, lemma, pos, meaning, context, bookHash, now, language],
     );
   }).catch(() => null);
 
@@ -1858,20 +1915,24 @@ kindleRoutes.post("/knowledge/mark", async (c) => {
   const lemma = typeof body.lemma === "string" ? body.lemma.trim().toLowerCase() : "";
   const known = body.known === "1" || body.known === "true";
   const returnTo = typeof body.returnTo === "string" ? body.returnTo : "/k";
+  const language = normalizeKindleLanguage(
+    typeof body.language === "string" ? body.language : (typeof body.lang === "string" ? body.lang : undefined),
+  );
 
   if (lemma) {
     const now = Date.now();
     await withClient(c.env, (client) =>
       client.query(
         `INSERT INTO lecta_user_knowledge
-           (user_id, language, lemma, known, source, updated_at, deleted)
-         VALUES ($1, 'es', $2, $3, 'kindle_prep', $4, false)
+           (user_id, language, lemma, known, source, updated_at, deleted, synced_at)
+         VALUES ($1, $5, $2, $3, 'preparation', $4, false, $4)
          ON CONFLICT (user_id, language, lemma) DO UPDATE SET
            known = excluded.known,
            source = excluded.source,
            updated_at = excluded.updated_at,
+           synced_at = excluded.synced_at,
            deleted = false`,
-        [session.user.id, lemma, known, now],
+        [session.user.id, lemma, known, now, language],
       ),
     ).catch(() => null);
   }
@@ -2013,15 +2074,26 @@ kindleRoutes.post("/practice/answer", async (c) => {
   const actId = `ka_${now}_${Math.random().toString(36).slice(2, 8)}`;
   const eventId = `ke_${now}_${Math.random().toString(36).slice(2, 8)}`;
 
+  const requestedLang = normalizeKindleLanguage(
+    typeof body.language === "string"
+      ? body.language
+      : typeof body.lang === "string"
+        ? body.lang
+        : undefined,
+  );
+
   await withClient(c.env, async (client) => {
     // 1. FSRS en lecta_user_words
-    const existing = await client
-      .query(`SELECT card FROM lecta_user_words WHERE user_id = $1 AND form = $2`, [
-        session.user.id,
-        word,
-      ])
-      .then((res) => res.rows[0]?.card)
+    const existingRow = await client
+      .query<{ card?: unknown; language?: string }>(
+        `SELECT card, language FROM lecta_user_words WHERE user_id = $1 AND form = $2 ORDER BY updated_at DESC LIMIT 1`,
+        [session.user.id, word],
+      )
+      .then((res) => res.rows[0] ?? null)
       .catch(() => null);
+
+    const existing = existingRow?.card ?? null;
+    const wordLang = normalizeKindleLanguage(existingRow?.language ?? requestedLang);
 
     const scheduler = fsrs(generatorParameters({ enable_fuzz: true }));
     let cardObj: Card;
@@ -2045,26 +2117,31 @@ kindleRoutes.post("/practice/answer", async (c) => {
 
     await client
       .query(
-        `UPDATE lecta_user_words SET card = $1, updated_at = $2 WHERE user_id = $3 AND form = $4`,
-        [JSON.stringify(updatedCard), now, session.user.id, word],
+        `UPDATE lecta_user_words
+         SET card = $1,
+             presented_at = COALESCE(presented_at, $2),
+             updated_at = $2,
+             synced_at = $2
+         WHERE user_id = $3 AND language = $4 AND form = $5`,
+        [JSON.stringify(updatedCard), now, session.user.id, wordLang, word],
       )
       .catch(() => null);
 
     // 2. Insertar en lecta_user_reviews
     await client
       .query(
-        `INSERT INTO lecta_user_reviews (user_id, id, language, form, kind, rating, hints, created_at)
-         VALUES ($1, $2, 'es', $3, 'practice', $4, 0, $5)
+        `INSERT INTO lecta_user_reviews (user_id, id, language, form, kind, rating, hints, created_at, synced_at)
+         VALUES ($1, $2, $3, $4, 'practice', $5, 0, $6, $6)
          ON CONFLICT (user_id, id) DO NOTHING`,
-        [session.user.id, reviewId, word, rating, now],
+        [session.user.id, reviewId, wordLang, word, rating, now],
       )
       .catch(() => null);
 
     // 3. Registrar actividad en lecta_user_activity
     await client
       .query(
-        `INSERT INTO lecta_user_activity (user_id, id, book_hash, started_at, ended_at)
-         VALUES ($1, $2, $3, $4, $5)
+        `INSERT INTO lecta_user_activity (user_id, id, book_hash, started_at, ended_at, synced_at)
+         VALUES ($1, $2, $3, $4, $5, $5)
          ON CONFLICT (user_id, id) DO NOTHING`,
         [session.user.id, actId, bookHash || "practice", Math.max(0, now - 30000), now],
       )

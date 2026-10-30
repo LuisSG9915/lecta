@@ -48,7 +48,7 @@ import {
 } from "../lib/settings";
 import type { TipAction } from "../../shared/tip";
 import { levelProgress } from "../lib/gamification";
-import { isDue } from "../lib/fsrs";
+import { isReviewDueWord } from "../lib/fsrs";
 import BookCover from "./BookCover";
 import DiscoverRail from "./DiscoverRail";
 import Icon from "./Icon";
@@ -314,7 +314,7 @@ export default function Shelf({
           if (word.bookHash) {
             counts.set(word.bookHash, (counts.get(word.bookHash) ?? 0) + 1);
           }
-          if (isDue(word.card)) {
+          if (isReviewDueWord(word)) {
             dueTotal += 1;
           }
         }

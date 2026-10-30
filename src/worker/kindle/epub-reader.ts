@@ -584,6 +584,133 @@ export function extractTagStack(htmlFragment: string): OpenInlineTag[] {
 }
 
 /**
+ * Divide un segmento HTML que excede maxChars buscando comas o espacios
+ * únicamente a nivel de texto plano donde no haya etiquetas HTML inline abiertas (depth === 0).
+ */
+function splitOversizedHtmlSegment(segmentHtml: string, maxChars: number): string[] {
+  const plainLength = segmentHtml.replace(/<[^>]*>/g, "").length;
+  if (plainLength <= maxChars) return [segmentHtml];
+
+  // Encontrar índices de corte seguros (en espacios después de coma o espacios simples)
+  // fuera de etiquetas <...> y con depth === 0 de etiquetas inline.
+  const voidTags = new Set(["br", "hr", "img", "input", "meta", "link", "wbr"]);
+  const safeCommaBreaks: number[] = [];
+  const safeSpaceBreaks: number[] = [];
+  const fallbackCommaBreaks: number[] = [];
+  const fallbackSpaceBreaks: number[] = [];
+  let inTag = false;
+  let depth = 0;
+
+  for (let i = 0; i < segmentHtml.length; i++) {
+    const ch = segmentHtml[i];
+    if (ch === "<") {
+      inTag = true;
+      const closeMatch = /^<\/([a-zA-Z0-9:-]+)/.exec(segmentHtml.slice(i));
+      const openMatch = /^<([a-zA-Z0-9:-]+)([^>]*?)(\/?)>/.exec(segmentHtml.slice(i));
+      if (closeMatch) {
+        depth = Math.max(0, depth - 1);
+      } else if (openMatch) {
+        const tagName = openMatch[1].toLowerCase();
+        const selfClosing = openMatch[3] === "/" || voidTags.has(tagName);
+        if (!selfClosing) depth++;
+      }
+      continue;
+    }
+    if (ch === ">") {
+      inTag = false;
+      continue;
+    }
+    if (!inTag && /\s/.test(ch)) {
+      const prevChar = i > 0 ? segmentHtml[i - 1] : "";
+      const isCommaLike = prevChar === "," || prevChar === ";" || prevChar === "—" || prevChar === "-";
+      if (depth === 0) {
+        if (isCommaLike) safeCommaBreaks.push(i);
+        safeSpaceBreaks.push(i);
+      } else {
+        if (isCommaLike) fallbackCommaBreaks.push(i);
+        fallbackSpaceBreaks.push(i);
+      }
+    }
+  }
+
+  const allSpaceBreaks = Array.from(new Set([...safeSpaceBreaks, ...fallbackSpaceBreaks])).sort(
+    (a, b) => a - b,
+  );
+  const allCommaBreaks = Array.from(new Set([...safeCommaBreaks, ...fallbackCommaBreaks])).sort(
+    (a, b) => a - b,
+  );
+  if (allSpaceBreaks.length === 0) return [segmentHtml];
+
+  const pickBreakInWindow = (spaces: number[], commas: number[], fromIdx: number): number => {
+    let candidate = -1;
+    for (const brk of spaces) {
+      if (brk <= fromIdx) continue;
+      const sliceVisibleLen = segmentHtml.slice(fromIdx, brk).replace(/<[^>]*>/g, "").length;
+      if (sliceVisibleLen <= maxChars) {
+        candidate = brk;
+      } else {
+        break;
+      }
+    }
+    for (const cBrk of commas) {
+      if (cBrk <= fromIdx) continue;
+      const sliceVisibleLen = segmentHtml.slice(fromIdx, cBrk).replace(/<[^>]*>/g, "").length;
+      if (sliceVisibleLen >= maxChars * 0.4 && sliceVisibleLen <= maxChars) {
+        candidate = cBrk;
+      } else if (sliceVisibleLen > maxChars) {
+        break;
+      }
+    }
+    return candidate;
+  };
+
+  const chunks: string[] = [];
+  let startIdx = 0;
+
+  while (startIdx < segmentHtml.length) {
+    const remainingHtml = segmentHtml.slice(startIdx).trim();
+    if (remainingHtml.replace(/<[^>]*>/g, "").length <= maxChars) {
+      if (remainingHtml) chunks.push(remainingHtml);
+      break;
+    }
+
+    // 1. Intentar corte ideal con depth === 0 dentro de la ventana actual
+    let bestBreak = pickBreakInWindow(safeSpaceBreaks, safeCommaBreaks, startIdx);
+
+    // 2. Si una etiqueta inline abarca toda la ventana, permitir corte fuera de <...>
+    // (splitLongParagraph balancea la pila de etiquetas inline con extractTagStack)
+    if (bestBreak === -1) {
+      bestBreak = pickBreakInWindow(allSpaceBreaks, allCommaBreaks, startIdx);
+    }
+
+    if (bestBreak === -1) {
+      // Si un token continuo supera maxChars, cortar en el primer espacio disponible tras startIdx
+      const nextBreak = allSpaceBreaks.find((b) => b > startIdx);
+      if (nextBreak === undefined) {
+        chunks.push(remainingHtml);
+        break;
+      }
+      bestBreak = nextBreak;
+    }
+
+    const piece = segmentHtml.slice(startIdx, bestBreak).trim();
+    if (piece) chunks.push(piece);
+    startIdx = bestBreak + 1;
+  }
+
+  return chunks.length > 0 ? chunks : [segmentHtml];
+}
+
+/**
+ * Normaliza códigos de idioma a formato estándar BCP-47 de 2 letras en minúsculas.
+ */
+export function normalizeKindleLanguage(raw?: string | null): string {
+  if (!raw || typeof raw !== "string") return "es";
+  const cleaned = raw.trim().toLowerCase().split(/[-_]/)[0];
+  return cleaned && cleaned.length >= 2 ? cleaned : "es";
+}
+
+/**
  * Divide bloques semánticos largos (p, blockquote, div, li) en fragmentos que
  * respetan el presupuesto vertical de Kindle (Zero-Scroll), balanceando las
  * etiquetas inline abiertas entre fragmentos consecutivos.
@@ -609,7 +736,8 @@ export function splitLongParagraph(blockHtml: string, maxChars = 650): string[] 
     return [blockHtml];
   }
 
-  const sentences = inner.split(/(?<=[.!?;:])\s+/);
+  const rawSentences = inner.split(/(?<=[.!?;:])\s+/);
+  const sentences = rawSentences.flatMap((s) => splitOversizedHtmlSegment(s, maxChars));
   if (sentences.length <= 1) {
     return [blockHtml];
   }
@@ -980,7 +1108,8 @@ export function computeRaschMastery(theta: number, beta: number): number {
  * Estima el parámetro theta del lector para el idioma dado a partir de sus registros en D1 (user_knowledge)
  */
 export function estimateThetaFromD1Knowledge(
-  records: Array<{ word: string; status: string; difficultyBeta?: number }>
+  records: Array<{ word: string; status: string; difficultyBeta?: number }>,
+  language: string = "es",
 ): number {
   if (!records || records.length === 0) return 0.0;
 
@@ -996,8 +1125,8 @@ export function estimateThetaFromD1Knowledge(
   for (const [word, row] of uniqueMap.entries()) {
     let beta = row.difficultyBeta;
     if (beta == null) {
-      const zipf = getZipfFrequency(word, "es");
-      beta = zipf != null ? Math.max(-2.0, Math.min(3.5, 4.5 - zipf)) : 0.5;
+      const zipf = getZipfFrequency(word, normalizeKindleLanguage(language));
+      beta = zipf != null ? Math.max(-2.0, Math.min(3.5, 4.0 - zipf)) : 0.0;
     }
     items.push({
       outcome: row.status === "known" ? 1 : 0,

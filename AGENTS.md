@@ -145,7 +145,22 @@
 ## Producción
 
 - URL: `https://lecta.luis-sg9915.workers.dev` — deploy con `pnpm run deploy`.
-- Último deploy: **2026-10-29** (octavo del día), versión
+- Último deploy: **2026-10-29** (noveno del día), versión
+  `77d3a5bd-e3e6-40ca-bb54-3f7db631daa3`, Lecta **v0.2.13**: Unificación Psicométrica
+  Rasch, Contrato de Sync y Helper Global `isReviewDueWord` (migración CockroachDB **019**
+  `019_positions_anchor_offset.sql` aplicada con cerrojo temporal en dev y prod;
+  preservación de `anchor` y `anchor_offset = 0` en persistencia Kindle y resolución
+  de página por texto antes de ratio; escala Rasch $\beta = 4.0 - \text{zipf}$ neutra en 0;
+  incorporación de `'practice'` a `REVIEW_KINDS` y normalización de fuente `'preparation'`
+  con peso 2 en `knowledgeArbSql`; catálogo híbrido L2 con `findEntriesForForms` en libros
+  en inglés; timer multimedia al inicio de estabilización de ancla; tokenización Unicode
+  original para locuciones en `findEpisodicHighlightRange`; y helper global `isReviewDueWord`
+  exigiendo primera exposición para unificar contadores e insignias en App, Reader,
+  ReadingActivity y Shelf). Verificado en caliente: `pnpm gate` en verde (3003 pruebas,
+  205.52/215 kB gzip), `/api/health` → 200, `/` → 200 sirviendo `assets/index-DfS_cwbW.js`,
+  `0.2.13` en `assets/DiagnosticsModal-RsYfDp1B.js`, `/api/positions` sin sesión → 401,
+  `/k` → 200. Sin `smoke:auth`/`smoke:sync`: no toca auth ni endpoints de sync.
+- Deploy anterior: **2026-10-29** (octavo del día), versión
   `4eb34332-589b-424e-8c2c-57e732b46e57`, Lecta **v0.2.12**: Auditoría Kindle & E-ink
   (límite de descompresión 10 MB contra zip bombs en `readZipEntryBytes`, sanitización
   iterativa anti-XSS en `sanitizeKindleHtml` con bloqueo de meta/base/link/template/audio/video

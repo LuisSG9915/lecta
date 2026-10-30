@@ -25,7 +25,7 @@ vi.mock("../lib/idb", async (importOriginal) => {
         {
           key: "es:palabra",
           bookHash: "h-test-1",
-          card: { due: Date.now() - 1000 },
+          card: { due: Date.now() - 1000, reps: 1 },
         },
       ],
       latestHash: "h-test-1",

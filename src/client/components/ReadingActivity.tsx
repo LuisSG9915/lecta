@@ -10,7 +10,7 @@ import {
   type SavedWord,
   type StoredBook,
 } from "../lib/idb";
-import { isDue } from "../lib/fsrs";
+import { isReviewDueWord } from "../lib/fsrs";
 import {
   computeFlowStateSummary,
   dayKeyOf,
@@ -227,7 +227,7 @@ export default function ReadingActivity({
   const bookRows = [...byBook.entries()].sort((a, b) => b[1] - a[1]);
   const countFor = (hash: string) => {
     const own = words.filter((word) => word.bookHash === hash);
-    return { total: own.length, due: own.filter((word) => isDue(word.card)).length };
+    return { total: own.length, due: own.filter((word) => isReviewDueWord(word)).length };
   };
 
   const exportCsv = () =>

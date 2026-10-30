@@ -406,16 +406,40 @@ export function findEpisodicHighlightRange(
   );
   if (!candidates.length) return null;
 
-  // 1. Si el candidato es una locución (contiene espacios), buscar subcadena directa sin signos externos
+  // Tokenizar palabras del pasaje respetando caracteres Unicode (NFC y NFD)
+  const tokens = Array.from(context.matchAll(/[\p{L}\p{M}]+/gu));
+
+  // 1. Si el candidato es una locución (contiene espacios), buscar secuencia de tokens en coordenadas originales
   for (const cand of candidates) {
     if (/\s/.test(cand)) {
-      const idx = stripDiacritics(context).indexOf(stripDiacritics(cand));
-      if (idx !== -1) return { start: idx, end: idx + cand.length };
+      const candWords = Array.from(cand.matchAll(/[\p{L}\p{M}]+/gu)).map((m) =>
+        stripDiacritics(m[0]),
+      );
+      if (candWords.length > 0 && tokens.length >= candWords.length) {
+        for (let i = 0; i <= tokens.length - candWords.length; i++) {
+          let allMatch = true;
+          for (let k = 0; k < candWords.length; k++) {
+            if (stripDiacritics(tokens[i + k][0]) !== candWords[k]) {
+              allMatch = false;
+              break;
+            }
+          }
+          if (allMatch) {
+            const firstTok = tokens[i];
+            const lastTok = tokens[i + candWords.length - 1];
+            if (firstTok.index !== undefined && lastTok.index !== undefined) {
+              return {
+                start: firstTok.index,
+                end: lastTok.index + lastTok[0].length,
+              };
+            }
+          }
+        }
+      }
+      const rawIdx = context.toLowerCase().indexOf(cand.toLowerCase());
+      if (rawIdx !== -1) return { start: rawIdx, end: rawIdx + cand.length };
     }
   }
-
-  // Tokenizar palabras del pasaje respetando caracteres Unicode
-  const tokens = Array.from(context.matchAll(/[\p{L}\p{M}]+/gu));
 
   // 2. Coincidencia exacta de token completo (case-insensitive)
   for (const cand of candidates) {
@@ -494,12 +518,21 @@ export function renderHighlightedContext(
     </>
   );
 }
-// Etiqueta de estado visible de cada palabra según estabilidad FSRS (S)
-const stateOf = (word: SavedWord): { label: string; level: MarkLevel | "due" } => {
-  if (isDue(word.card)) return { label: "Para hoy", level: "due" };
+const isUnexposedWord = (word: SavedWord, pendingLearn?: boolean): boolean =>
+  pendingLearn ?? ((word.card?.reps ?? 0) === 0 && !((word.presentedAt ?? 0) > 0));
+
+// Etiqueta de estado visible de cada palabra según estabilidad FSRS (S) y primera exposición
+const stateOf = (
+  word: SavedWord,
+  pendingLearn?: boolean,
+): { label: string; level: MarkLevel | "due" } => {
   const card = word.card;
   const s = safeStability(card?.stability);
   const isNew = !card || (card.reps ?? 0) === 0 || s < 2;
+  if (isUnexposedWord(word, pendingLearn)) {
+    return { label: "Nuevas", level: "new" };
+  }
+  if (isDue(card)) return { label: "Para hoy", level: "due" };
   if (isNew) return { label: "Nuevas", level: "new" };
   if (s < 14) return { label: "En Práctica", level: "learning" };
   return { label: "Dominadas", level: "settled" };
@@ -507,13 +540,18 @@ const stateOf = (word: SavedWord): { label: string; level: MarkLevel | "due" } =
 
 const STATE_RANK: Record<string, number> = { due: 0, new: 1, learning: 2, settled: 3 };
 
-const matchesFilter = (word: SavedWord, filter: FilterId): boolean => {
+const matchesFilter = (
+  word: SavedWord,
+  filter: FilterId,
+  pendingLearn?: boolean,
+): boolean => {
   if (filter === "all") return true;
-  if (filter === "due") return isDue(word.card);
+  const pending = isUnexposedWord(word, pendingLearn);
+  if (filter === "due") return !pending && isDue(word.card);
   const card = word.card;
   const s = safeStability(card?.stability);
   const isNew = !card || (card.reps ?? 0) === 0 || s < 2;
-  if (filter === "new") return isNew;
+  if (filter === "new") return pending || isNew;
   if (filter === "learning") return !isNew && s >= 2 && s < 14;
   return !isNew && s >= 14;
 };
@@ -1818,11 +1856,17 @@ function FullVocabulary({
   };
 
   const filtered = scopedWords.filter(
-    (word) => matchesFilter(word, filter) && matchesSearch(word, query),
+    (word) =>
+      matchesFilter(word, filter, isLearnPending(word, knownKeys, exposure)) &&
+      matchesSearch(word, query),
   );
 
   const byForm = (a: SavedWord, b: SavedWord) => a.form.localeCompare(b.form, "es");
-  const stateRank = (word: SavedWord) => STATE_RANK[stateOf(word).level] ?? 3;
+  const stateRank = useCallback(
+    (word: SavedWord) =>
+      STATE_RANK[stateOf(word, isLearnPending(word, knownKeys, exposure)).level] ?? 3,
+    [knownKeys, exposure],
+  );
 
   const groups = new Map<string, SavedWord[]>();
   if (order === "libro") {
@@ -1847,7 +1891,7 @@ function FullVocabulary({
       return [...filtered].sort((a, b) => stateRank(a) - stateRank(b) || byForm(a, b));
     }
     return filtered;
-  }, [filtered, order]);
+  }, [filtered, order, stateRank]);
 
   const shownWords = flatWords.slice(0, listLimit);
 
@@ -1857,7 +1901,7 @@ function FullVocabulary({
     (order !== "fecha" ? 1 : 0);
 
   const countForFilter = (id: FilterId) =>
-    activeScoped.filter((w) => matchesFilter(w, id)).length;
+    activeScoped.filter((w) => matchesFilter(w, id, isLearnPending(w, knownKeys, exposure))).length;
 
   const toggle = (set: Set<string>, key: string, apply: (next: Set<string>) => void) => {
     const next = new Set(set);
@@ -2808,7 +2852,7 @@ function FullVocabulary({
                               <WordRow
                                 key={word.key}
                                 word={word}
-                                state={stateOf(word)}
+                                state={stateOf(word, isLearnPending(word, knownKeys, exposure))}
                                 isOpen={openWords.has(word.key)}
                                 onToggle={() => toggleWordOpen(word.key)}
                                 canLearn={isLearnPending(word, knownKeys, exposure)}
@@ -2844,7 +2888,7 @@ function FullVocabulary({
                         <WordRow
                           key={word.key}
                           word={word}
-                          state={stateOf(word)}
+                          state={stateOf(word, isLearnPending(word, knownKeys, exposure))}
                           isOpen={openWords.has(word.key)}
                           onToggle={() => toggleWordOpen(word.key)}
                           canLearn={isLearnPending(word, knownKeys, exposure)}

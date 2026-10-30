@@ -1197,6 +1197,7 @@ export function renderReaderView(options: {
   catNotes?: CatPageNoteItem[];
   primingOff?: boolean;
   layout?: "paged" | "scroll";
+  language?: string;
 }): string {
   const {
     user,
@@ -1218,6 +1219,7 @@ export function renderReaderView(options: {
     catNotes: _catNotes = [],
     primingOff = false,
     layout = "paged",
+    language = "es",
   } = options;
 
   const querySuffix = `&mode=${encodeURIComponent(mode)}&size=${encodeURIComponent(size)}&layout=${layout}&margin=${margin}${gloss ? "&gloss=1" : ""}`;
@@ -1277,6 +1279,7 @@ export function renderReaderView(options: {
                 <input type="hidden" name="meaning" value="${escapeHtml(firstMeaning)}" />
                 <input type="hidden" name="context" value="${escapeHtml(lookupResult.contextSentence || "")}" />
                 <input type="hidden" name="bookHash" value="${escapeHtml(bookHash)}" />
+                <input type="hidden" name="language" value="${escapeHtml(language)}" />
                 <input type="hidden" name="returnTo" value="${escapeHtml(cleanPageUrl)}" />
                 <button type="submit" class="btn btn-sm btn-primary" style="padding:6px 12px; font-size:0.85rem; min-height:44px;">+ Guardar en mi Cuaderno</button>
               </form>
@@ -1552,6 +1555,7 @@ export function renderChapterPrepView(options: {
   savedNotice?: string | null;
   nextUrl: string;
   prevUrl?: string | null;
+  language?: string;
 }): string {
   const {
     user,
@@ -1565,6 +1569,7 @@ export function renderChapterPrepView(options: {
     savedNotice,
     nextUrl,
     prevUrl,
+    language = "es",
   } = options;
 
   const flashHtml = savedNotice
@@ -1603,6 +1608,7 @@ export function renderChapterPrepView(options: {
                         <input type="hidden" name="pos" value="${escapeHtml(w.pos || "")}" />
                         <input type="hidden" name="meaning" value="${escapeHtml(w.meaning)}" />
                         <input type="hidden" name="bookHash" value="${escapeHtml(bookHash)}" />
+                        <input type="hidden" name="language" value="${escapeHtml(language)}" />
                         <input type="hidden" name="returnTo" value="/k/read/${encodeURIComponent(bookHash)}?section=${sectionIndex}&amp;prep=1" />
                         <button type="submit" class="btn-xs" style="padding:4px 10px; font-size:0.85rem; background:#000000; color:#ffffff; border:none; cursor:pointer;">+ Guardar</button>
                       </form>
@@ -1615,6 +1621,7 @@ export function renderChapterPrepView(options: {
                       <form method="POST" action="/k/knowledge/mark" style="display:inline;">
                         <input type="hidden" name="lemma" value="${escapeHtml(w.lemma)}" />
                         <input type="hidden" name="known" value="1" />
+                        <input type="hidden" name="language" value="${escapeHtml(language)}" />
                         <input type="hidden" name="returnTo" value="/k/read/${encodeURIComponent(bookHash)}?section=${sectionIndex}&amp;prep=1" />
                         <button type="submit" class="btn-xs" style="padding:4px 9px; font-size:0.82rem; background:#ffffff; color:#333333; border:1px solid #777777; cursor:pointer;">Ya la conozco</button>
                       </form>
@@ -1696,8 +1703,9 @@ export function renderLookupView(options: {
   saved?: boolean;
   returnTo?: string;
   bookHash?: string;
+  language?: string;
 }): string {
-  const { user, query, entries, saved, returnTo = "/k", bookHash = "" } = options;
+  const { user, query, entries, saved, returnTo = "/k", bookHash = "", language = "es" } = options;
 
   const backLink = returnTo
     ? `<p><a href="${escapeHtml(returnTo)}" class="btn btn-sm">← Volver al libro</a></p>`
@@ -1748,6 +1756,7 @@ export function renderLookupView(options: {
                 <input type="hidden" name="pos" value="${escapeHtml(entry.pos || "")}" />
                 <input type="hidden" name="meaning" value="${escapeHtml(firstMeaning)}" />
                 <input type="hidden" name="bookHash" value="${escapeHtml(bookHash)}" />
+                <input type="hidden" name="language" value="${escapeHtml(language)}" />
                 <input type="hidden" name="returnTo" value="${escapeHtml(returnTo)}" />
                 <button type="submit" class="btn btn-primary btn-sm">+ Guardar en mi Cuaderno</button>
               </form>

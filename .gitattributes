@@ -1,0 +1,11 @@
+# Excluir diccionarios comprimidos, audio, fuentes binarias y EPUBs al exportar el repositorio (git archive / GitHub zipball / Gemini repo import)
+public/lexicon/*.gz export-ignore
+public/lexicon/locuciones.es.json export-ignore
+public/libros/*.epub export-ignore
+public/audio/*.wav export-ignore
+public/icons/*.png export-ignore
+fixtures/*.epub export-ignore
+src/client/fonts/*.woff2 export-ignore
+pnpm-lock.yaml export-ignore
+docs/auditoria/reporte.json export-ignore
+docs/auditoria/cuaderno/evidencia.json export-ignore

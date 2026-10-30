@@ -176,7 +176,7 @@ import {
   isLongestSessionThisMonth,
   setJourneySelectorCache,
 } from "../lib/journey";
-import { isDue } from "../lib/fsrs";
+import { isReviewDueWord } from "../lib/fsrs";
 import {
   setCompanionAudioSuppressed,
   startAmbientPurr,
@@ -2552,7 +2552,7 @@ export default function Reader({
                 const recapLine = formatSceneRecapOneLine(recap);
                 const lastReadSentences = extractLastSentences(textBefore, 2);
                 const allWords = await listSavedWords(undefined, scope).catch(() => []);
-                const pendingDueCount = allWords.filter((w) => !w.deleted && isDue(w.card, new Date())).length;
+                const pendingDueCount = allWords.filter((w) => isReviewDueWord(w, new Date())).length;
                 const hasPendingReviewsDosing = pendingDueCount > 25;
                 setResumeOverlayData({ recapLine, lastReadSentences, hasPendingReviewsDosing });
               } catch {

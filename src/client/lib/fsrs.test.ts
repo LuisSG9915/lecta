@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   isDue,
+  isReviewDueWord,
   loadRetentionHorizon,
   Rating,
   requestRetentionFor,
@@ -120,5 +121,12 @@ describe("Captura intencional", () => {
     expect(reviewed.stability).toBeGreaterThan(0);
     expect(reviewed.difficulty).toBeLessThanOrEqual(10);
     expect(reviewed.reps).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe("isReviewDueWord", () => {
+  it("excluye palabras recién guardadas sin primera exposición ni repasos previos", () => {
+    expect(isReviewDueWord({ card: undefined, presentedAt: undefined })).toBe(false);
+    expect(isReviewDueWord({ card: undefined, presentedAt: 1700000000000 })).toBe(true);
   });
 });

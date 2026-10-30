@@ -1,4 +1,4 @@
-import { isDue } from "./fsrs";
+import { isReviewDueWord } from "./fsrs";
 import type { SavedWord } from "./idb";
 import { blankWordInContext, type EpisodicWordItem } from "./practice";
 import { firstSentenceWith } from "./section-words";
@@ -23,7 +23,7 @@ export function pickMidChapterRecall(
         !word.deleted &&
         Boolean(word.meaning) &&
         (word.card?.reps ?? 0) > 0 &&
-        isDue(word.card, now) &&
+        isReviewDueWord(word, now) &&
         (word.language || "es").slice(0, 2).toLowerCase() === lang,
     )
     .sort((a, b) => new Date(a.card!.due).getTime() - new Date(b.card!.due).getTime());

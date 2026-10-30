@@ -37,6 +37,12 @@ describe("cleanReview", () => {
     });
   });
 
+  it("acepta kind 'practice' generado desde la práctica Kindle", () => {
+    const cleaned = cleanReview({ ...valid, kind: "practice" });
+    expect(cleaned).not.toBeNull();
+    expect(cleaned?.kind).toBe("practice");
+  });
+
   it("idioma por omisión es 'es' y hints por omisión es 0", () => {
     const cleaned = cleanReview({ ...valid, language: undefined, hints: undefined });
     expect(cleaned?.language).toBe("es");

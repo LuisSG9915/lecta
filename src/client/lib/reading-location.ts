@@ -323,12 +323,15 @@ export function keepAnchorStable(
   window.addEventListener("touchmove", stop, true);
   window.addEventListener("keydown", stop, true);
 
+  mediaCleanupTimer = window.setTimeout(
+    stop,
+    Math.max(0, mediaDeadline - start),
+  );
+
   const fonts = (
     document as Document & { fonts?: { ready?: Promise<unknown> } }
   ).fonts;
   void fonts?.ready?.then(() => correct()).catch(() => undefined);
-
-  mediaCleanupTimer = window.setTimeout(stop, Math.max(0, mediaDeadline - start));
   lastHeight = document.documentElement.scrollHeight;
   frame = requestAnimationFrame(tick);
 
