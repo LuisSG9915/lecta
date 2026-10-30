@@ -61,7 +61,6 @@ export interface ReaderContentProps {
   navNextSection: (index: number, fragment?: string) => void;
   navPrevSection: (index: number, fragment?: string) => void;
   openSelection: (hit: WordHit) => void;
-  onSingleWordTap?: (hit: WordHit, clientX: number, clientY: number) => void;
   selButton?: ReaderSelectionButton | null;
   setSelButton?: (value: ReaderSelectionButton | null) => void;
   extractWordAtPoint: (
@@ -137,7 +136,6 @@ export function ReaderContent(props: ReaderContentProps) {
   navNextSection,
   navPrevSection,
   openSelection,
-  onSingleWordTap,
   selButton,
   extractWordAtPoint,
   handleContainerDoubleClick,
@@ -340,8 +338,7 @@ export function ReaderContent(props: ReaderContentProps) {
                 word: hit.word,
               });
               if (!validation.valid) return;
-              if (onSingleWordTap) onSingleWordTap(hit, event.clientX, event.clientY);
-              else openSelection(hit);
+              openSelection(hit);
             } else {
               setBarsVisible((v) => !v);
             }
@@ -358,8 +355,7 @@ export function ReaderContent(props: ReaderContentProps) {
               word: hit.word,
             });
             if (!validation.valid) return;
-            if (onSingleWordTap) onSingleWordTap(hit, event.clientX, event.clientY);
-            else openSelection(hit);
+            openSelection(hit);
           } else {
             setBarsVisible((v) => !v);
           }
@@ -381,8 +377,7 @@ export function ReaderContent(props: ReaderContentProps) {
             word: hit.word,
           });
           if (!validation.valid) return;
-          if (onSingleWordTap) onSingleWordTap(hit, event.clientX, event.clientY);
-          else openSelection(hit);
+          openSelection(hit);
         } else {
           if (settings.layout === "pages") {
             const viewport = viewportRef.current ?? container;

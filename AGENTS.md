@@ -145,7 +145,23 @@
 ## Producción
 
 - URL: `https://lecta.luis-sg9915.workers.dev` — deploy con `pnpm run deploy`.
-- Último deploy: **2026-10-29** (noveno del día), versión
+- Último deploy: **2026-10-30** (primero del día), versión
+  `1734aa72-ef94-4353-9dad-768c61fde554`, Lecta **v0.2.14**: Tarjeta Única de
+  Palabra sin píldora intermedia (el toque o la selección de 1 palabra abre
+  directo `WordPanel` con ★ guardar en el cuaderno en 1 toque — antes el camino
+  era píldora → «Ficha» → tarjeta y la píldora no tenía acción de guardado;
+  guarda `overlayReleaseRef` en el `selectionchange` para que ningún menú se
+  monte sobre una ficha u hoja abierta — cierra el caso de dos modales para la
+  misma palabra; cada toque registra `word_consulted` como espera la
+  consolidación episódica del Track 10; `ReaderSelectionBar` queda solo como
+  barra de pasajes para selecciones de más de 1 palabra; CSS `.reader__word-pill*`
+  retirado; ancla H4-jol del registro de auditoría actualizada a
+  `Reader.tsx:4644`). Sin migraciones ni secrets nuevos. Verificado en caliente:
+  `pnpm gate` en verde (3001 pruebas, 205.51/215 kB gzip), `/api/health` → 200,
+  `/` → 200 sirviendo `assets/index-CJdUukn_.js`, `0.2.14` en
+  `assets/DiagnosticsModal-DkuXhQHo.js`, `/api/positions` sin sesión → 401,
+  `/k` → 200. Sin `smoke:auth`/`smoke:sync`: no toca auth ni endpoints de sync.
+- Deploy anterior: **2026-10-29** (noveno del día), versión
   `77d3a5bd-e3e6-40ca-bb54-3f7db631daa3`, Lecta **v0.2.13**: Unificación Psicométrica
   Rasch, Contrato de Sync y Helper Global `isReviewDueWord` (migración CockroachDB **019**
   `019_positions_anchor_offset.sql` aplicada con cerrojo temporal en dev y prod;

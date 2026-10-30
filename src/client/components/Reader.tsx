@@ -218,7 +218,7 @@ import { ReaderFloatingBars } from "./reader/ReaderFloatingBars";
 import { ReaderFloatingLane } from "./reader/ReaderFloatingLane";
 import { ReaderFocusLayers } from "./reader/ReaderFocusLayers";
 import { ReaderNotices } from "./reader/ReaderNotices";
-import { ReaderSelectionBar } from "./reader/ReaderSelectionBar";
+import { ReaderSelectionBar, type ReaderSelectionButton } from "./reader/ReaderSelectionBar";
 import ReaderSettingsSheet from "./reader/ReaderSettingsSheet";
 import { ReaderSearchAndTocSheet } from "./reader/ReaderSearchAndTocSheet";
 import { useReaderPersistence } from "../hooks/useReaderPersistence";
@@ -850,12 +850,7 @@ export default function Reader({
     anchor?: string;
     anchorOffset?: number;
   } | null>(null);
-  const [selButton, setSelButton] = useState<{
-    x: number;
-    y: number;
-    placement: "top" | "bottom";
-    singleWordHit: WordHit | null;
-  } | null>(null);
+  const [selButton, setSelButton] = useState<ReaderSelectionButton | null>(null);
   // Espejo de `selButton` para el handler de scroll (no re-suscribe).
   useEffect(() => {
     selButtonVisibleRef.current = selButton !== null;
@@ -2703,42 +2698,6 @@ export default function Reader({
     };
   }, []);
 
-  // Marcas de pasajes guardados en la sección actual. Va después del
-  // Menú flotante sobre la selección del usuario.
-  const handleSingleWordTap = useCallback((hit: WordHit, clientX: number, clientY: number) => {
-    const isTouch =
-      lastPointerTypeRef.current === "touch" ||
-      lastPointerTypeRef.current === "pen" ||
-      (typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches);
-
-    let placement: "top" | "bottom" = isTouch ? "bottom" : "top";
-    let y: number;
-    const bottomReserve = isTouch ? 190 : 96;
-
-    if (
-      placement === "bottom" &&
-      clientY + bottomReserve > window.innerHeight &&
-      clientY > bottomReserve
-    ) {
-      placement = "top";
-      y = clientY - 16;
-    } else if (
-      placement === "top" &&
-      clientY < bottomReserve &&
-      clientY + bottomReserve <= window.innerHeight
-    ) {
-      placement = "bottom";
-      y = clientY + 16;
-    } else {
-      y = placement === "bottom" ? clientY + 16 : clientY - 16;
-    }
-
-    const menuHalfW = 140;
-    const clampedX = Math.max(menuHalfW + 12, Math.min(clientX, window.innerWidth - menuHalfW - 12));
-
-    setSelButton({ x: clampedX, y, placement, singleWordHit: hit });
-  }, []);
-
   useEffect(() => {
     let timer: number | undefined;
     const update = () => {
@@ -2759,50 +2718,30 @@ export default function Reader({
         return;
       }
 
+      // Con una hoja o ficha abierta no se monta un segundo panel:
+      // la selección dentro del libro queda sin menú hasta cerrarla.
+      if (overlayReleaseRef.current) {
+        setSelButton(null);
+        return;
+      }
+
       const rawText = sel.toString().trim();
       const words = rawText.split(/\s+/).filter(Boolean);
       const singleWordHit = wordHitFromRange(range, container, language);
 
-      // Si la selección tiene exactamente 1 palabra (o coincide con toque de palabra),
-      // desplegar la píldora compacta de palabra en vez del flujo completo de explicación
+      // Una sola palabra seleccionada = consulta directa: abre la
+      // tarjeta única (Track 4) en vez de un menú intermedio. Así
+      // nunca hay dos paneles para la misma palabra.
       if (words.length === 1 || (words.length === 0 && singleWordHit)) {
         const hit = singleWordHit || {
           word: words[0].replace(/[.,;:!?¡¿"«»()]/g, ""),
           context: rawText,
         };
         if (hit.word) {
-          const isTouch =
-            lastPointerTypeRef.current === "touch" ||
-            lastPointerTypeRef.current === "pen" ||
-            (typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches);
-
-          let placement: "top" | "bottom" = isTouch ? "bottom" : "top";
-          let y = isTouch ? rect.bottom : rect.top;
-          const bottomReserve = isTouch ? 190 : 96;
-
-          if (
-            placement === "bottom" &&
-            rect.bottom + bottomReserve > window.innerHeight &&
-            rect.top > bottomReserve
-          ) {
-            placement = "top";
-            y = rect.top;
-          } else if (
-            placement === "top" &&
-            rect.top < bottomReserve &&
-            rect.bottom + bottomReserve <= window.innerHeight
-          ) {
-            placement = "bottom";
-            y = rect.bottom;
-          }
-
-          const centerX = rect.left + rect.width / 2;
-          const menuHalfW = 140;
-          const clampedX = Math.max(menuHalfW + 12, Math.min(centerX, window.innerWidth - menuHalfW - 12));
-
-          setSelButton({ x: clampedX, y, placement, singleWordHit: hit });
-          return;
+          window.getSelection()?.removeAllRanges();
+          openSelection(hit);
         }
+        return;
       }
 
       // Si la selección tiene 2 o más palabras, desplegar la barra de pasajes
@@ -2838,7 +2777,7 @@ export default function Reader({
         const menuHalfW = 170;
         const clampedX = Math.max(menuHalfW + 12, Math.min(centerX, window.innerWidth - menuHalfW - 12));
 
-        setSelButton({ x: clampedX, y, placement, singleWordHit: null });
+        setSelButton({ x: clampedX, y, placement });
       } else {
         setSelButton(null);
       }
@@ -2861,7 +2800,7 @@ export default function Reader({
       window.removeEventListener("scroll", hide);
       window.clearTimeout(timer);
     };
-  }, [language]);
+  }, [language, openSelection]);
 
   // Aviso único de descubrimiento para la pulsación larga en táctil (clave por cuenta)
   useEffect(() => {
@@ -4278,7 +4217,6 @@ export default function Reader({
         navNextSection={navNextSection}
         navPrevSection={navPrevSection}
         openSelection={openSelection}
-        onSingleWordTap={handleSingleWordTap}
         selButton={selButton}
         setSelButton={setSelButton}
         extractWordAtPoint={extractWordAtPoint}
@@ -4541,12 +4479,10 @@ export default function Reader({
       <ReaderSelectionBar
         selButton={selButton}
         setSelButton={setSelButton}
-        openSelection={openSelection}
         savePassageSelection={savePassageSelection}
         openQuoteCardFromSelection={openQuoteCardFromSelection}
         askCatAboutSelection={askCatAboutSelection}
         setDeepModal={setDeepModal}
-        language={language}
       />
 
       <ReaderFloatingLane>
