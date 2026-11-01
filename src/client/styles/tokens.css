@@ -60,6 +60,13 @@
   --surface-raised: var(--paper-raised);
   --surface-sunken: var(--paper-sunken);
   --surface-elevated: var(--paper-raised);
+  /* Texto semántico. Faltaba: los componentes que escriben
+     `var(--text-primary, #f5f2eb)` caían al fallback pensado para el tema
+     noche y, sobre `--surface-elevated` (blanco en papel/blanco), dejaban
+     texto crema sobre blanco a 1.12:1 — la tarjeta de palabra se veía vacía.
+     La indirección por `--ink` sí cambia con cada tema. */
+  --text-primary: var(--ink);
+  --text-secondary: var(--ink-soft);
   --bg: var(--paper);
   --shadow-sheet: 0 -8px 30px var(--shadow-sheet-color);
   --shadow-cover:

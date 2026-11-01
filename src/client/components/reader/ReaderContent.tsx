@@ -39,7 +39,8 @@ export interface ReaderContentProps {
   pageMetrics: PageLayout | null;
   ttsSnap: { status: string };
   selection: WordHit | null;
-  setSelection: (selection: WordHit | null) => void;
+  /** Cierra la ficha y suelta la capa de historial que la abrió. */
+  onCloseSelection: () => void;
   setBarsVisible: (updater: boolean | ((prev: boolean) => boolean)) => void;
   setShowLongPressHint: (updater: boolean | ((prev: boolean) => boolean)) => void;
   showLongPressHint: boolean;
@@ -117,7 +118,7 @@ export function ReaderContent(props: ReaderContentProps) {
   pageMetrics,
   ttsSnap,
   selection,
-  setSelection,
+  onCloseSelection,
   setBarsVisible,
   setShowLongPressHint,
   showLongPressHint,
@@ -308,7 +309,11 @@ export function ReaderContent(props: ReaderContentProps) {
         }
 
         if (selection) {
-          setSelection(null);
+          // Cerrar con un toque soltaba solo el estado: la capa de historial
+          // (`overlayReleaseRef`) seguía viva y el listener de
+          // `selectionchange` ignoraba las selecciones siguientes, así que la
+          // palabra dejaba de abrirse hasta recargar. El × ya usaba este camino.
+          onCloseSelection();
           return;
         }
 

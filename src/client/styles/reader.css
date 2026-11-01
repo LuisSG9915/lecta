@@ -4686,7 +4686,9 @@ b.lecta-anchor {
   font-size: 0.82rem;
   font-weight: 600;
   background: var(--accent-primary, #e6b86a);
-  color: #1a1815;
+  /* Antes #1a1815 fijo: 2.83:1 sobre el acento del tema papel. El token
+     por tema da 6.6:1 en claro y 6.7:1 en noche. */
+  color: var(--on-accent, #141619);
   cursor: pointer;
   transition: opacity 120ms ease;
 }

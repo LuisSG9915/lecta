@@ -1493,7 +1493,7 @@ describe("Fase 4: Pruebas de Integración End-to-End en Reader.test.ts", () => {
           pageMetrics: null,
           ttsSnap: { status: "stopped" },
           selection: null,
-          setSelection: vi.fn(),
+          onCloseSelection: vi.fn(),
           setBarsVisible: vi.fn(),
           setShowLongPressHint: vi.fn(),
           showLongPressHint: false,

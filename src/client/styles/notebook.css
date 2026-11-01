@@ -2723,10 +2723,11 @@
 .word-card-pos {
   font-size: 0.72rem;
   text-transform: uppercase;
-  opacity: 0.6;
+  opacity: 0.72;
   padding: 0.1rem 0.4rem;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
+  /* Mismo criterio que components.css: la píldora tiene que existir en claro. */
+  background: color-mix(in srgb, var(--ink, #1F1D1A) 9%, transparent);
 }
 
 .word-card-save-btn {
@@ -2736,7 +2737,7 @@
   font-size: 0.8rem;
   font-weight: 600;
   background: var(--accent-primary, #e6b86a);
-  color: #1a1815;
+  color: var(--on-accent, #141619);
   cursor: pointer;
 }
 

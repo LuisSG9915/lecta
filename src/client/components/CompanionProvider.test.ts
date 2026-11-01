@@ -6,6 +6,7 @@
 import {
   act,
   createElement as h,
+  useEffect,
   type ReactNode,
 } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -504,5 +505,51 @@ describe("movimiento del compañero", () => {
     renderProvider(null, h(MotionProbe));
     await flush();
     expect(probeText()).toBe("true");
+  });
+});
+
+describe("contexto de lectura del lector", () => {
+  // El lector reporta su página desde un efecto con `companion` entre las
+  // dependencias (Reader.tsx, `companion.setReaderContext`). Si publicar el
+  // mismo contenido vuelve a renderizar al proveedor, el efecto se rearma y
+  // el libro queda en «Maximum update depth exceeded» (~24 renders/s): la app
+  // sigue pintando pero pierde toques y la ficha de palabra parpadea.
+  it("publicar el mismo contexto no rearma el efecto del consumidor", async () => {
+    // El conteo vive fuera y se incrementa dentro del efecto (nunca durante
+    // el render: la regla del compilador de React lo prohíbe y es correcta).
+    const runs = { n: 0 };
+    const ContextProbe = () => {
+      const c = useCompanion();
+      // Sin array de dependencias, a propósito: mismo patrón que el lector.
+      // El corte a 30 evita que un bucle descontrolado se lleve por delante
+      // al worker de pruebas (SIGABRT por memoria): la prueba tiene que fallar
+      // con una aserción, no matando el fork.
+      useEffect(() => {
+        runs.n += 1;
+        if (runs.n > 30) return;
+        c.setReaderContext?.({
+          pageText: "La casa antigua tenía una puerta estrecha.",
+          currentChapterIndex: 0,
+          bookId: "abc123",
+          language: "es",
+        });
+      });
+      return h("output", { "data-testid": "probe" }, c.readerContext?.pageText ?? "none");
+    };
+
+    renderProvider(null, h(ContextProbe));
+    await flush();
+    await flush();
+    await flush();
+    const stable = runs.n;
+    await flush();
+    await flush();
+
+    expect(probeText()).toBe("La casa antigua tenía una puerta estrecha.");
+    expect(runs.n).toBe(stable);
+    // Tres pasadas y para: montaje, llegada del estado del compañero y la
+    // publicación idéntica (que ya no re-renderiza). Sin la guarda la cuenta
+    // subía hasta el corte de 30 y el libro se repintaba ~24 veces/s.
+    expect(runs.n).toBeLessThanOrEqual(4);
   });
 });

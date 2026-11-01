@@ -199,4 +199,26 @@ describe("tokens.css", () => {
       expect(cOnAccent, `--on-accent sobre --vermilion en ${themeName} (${cOnAccent.toFixed(2)}:1)`).toBeGreaterThanOrEqual(4.5);
     }
   });
+  // Regresión del 2026-10-31: `--text-primary` no existía en ningún archivo,
+  // así que `var(--text-primary, #f5f2eb)` caía al fallback crema (pensado
+  // para el tema noche) sobre `--surface-elevated` = blanco: la tarjeta de
+  // palabra se pintaba a 1.12:1 y parecía vacía. El token tiene que existir
+  // e ir por `--ink` para que cada tema lo resuelva solo.
+  it("define --text-primary como indirección de --ink", () => {
+    const baseRoot = cssContent.match(/(?:^|\n):root\s*\{([\s\S]*?)\n\}/);
+    expect(baseRoot, "falta el bloque :root base en tokens.css").toBeTruthy();
+    const declaration = baseRoot![1].match(/--text-primary\s*:\s*([^;]+);/);
+    expect(declaration?.[1].trim()).toBe("var(--ink)");
+  });
+
+  it("los botones de acento usan --on-accent, no un color fijo", () => {
+    const files = ["reader.css", "components.css", "notebook.css"].map((name) =>
+      readFileSync(resolve(__dirname, name), "utf-8"),
+    );
+    const ctaRule = files
+      .map((css) => css.match(/\.word-panel__save-cta\s*\{[^}]*\}/)?.[0] ?? "")
+      .find(Boolean);
+    expect(ctaRule, "no se encontró la regla del CTA de guardado").toBeTruthy();
+    expect(ctaRule).toContain("var(--on-accent");
+  });
 });

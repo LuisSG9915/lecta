@@ -2610,10 +2610,12 @@ mark.saved-word[data-level="settled"] {
 .word-card-pos {
   font-size: 0.72rem;
   text-transform: uppercase;
-  opacity: 0.6;
+  opacity: 0.72;
   padding: 0.1rem 0.4rem;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
+  /* Píldora legible en ambos temas: `rgba(255,255,255,.08)` desaparecía
+     sobre la superficie blanca del tema papel. */
+  background: color-mix(in srgb, var(--ink, #1F1D1A) 9%, transparent);
 }
 
 .word-card-save-btn {
@@ -2623,7 +2625,9 @@ mark.saved-word[data-level="settled"] {
   font-size: 0.8rem;
   font-weight: 600;
   background: var(--accent-primary, #e6b86a);
-  color: #1a1815;
+  /* `#1a1815` fijo daba 2.83:1 sobre el acento de papel; el token por tema
+     ya existe y da 6.6:1 en claro y 6.7:1 en noche. */
+  color: var(--on-accent, #141619);
   cursor: pointer;
 }
 

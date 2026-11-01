@@ -2718,13 +2718,6 @@ export default function Reader({
         return;
       }
 
-      // Con una hoja o ficha abierta no se monta un segundo panel:
-      // la selección dentro del libro queda sin menú hasta cerrarla.
-      if (overlayReleaseRef.current) {
-        setSelButton(null);
-        return;
-      }
-
       const rawText = sel.toString().trim();
       const words = rawText.split(/\s+/).filter(Boolean);
       const singleWordHit = wordHitFromRange(range, container, language);
@@ -2744,8 +2737,16 @@ export default function Reader({
         return;
       }
 
-      // Si la selección tiene 2 o más palabras, desplegar la barra de pasajes
+      // Si la selección tiene 2 o más palabras, desplegar la barra de pasajes.
+      // Con una hoja o ficha ya abierta no se monta un segundo panel: la barra
+      // queda suspendida hasta cerrarla. La selección de UNA palabra sí
+      // sustituye la ficha abierta (openSelection hace swap sobre la misma
+      // capa), que es lo que espera quien arrastra el tirador a otra palabra.
       if (words.length >= 2) {
+        if (overlayReleaseRef.current) {
+          setSelButton(null);
+          return;
+        }
         const isTouch =
           lastPointerTypeRef.current === "touch" ||
           lastPointerTypeRef.current === "pen" ||
@@ -4198,7 +4199,7 @@ export default function Reader({
         pageMetrics={pageMetrics}
         ttsSnap={ttsSnap}
         selection={selection}
-        setSelection={setSelection}
+        onCloseSelection={closeSelection}
         setBarsVisible={setBarsVisible}
         setShowLongPressHint={setShowLongPressHint}
         showLongPressHint={showLongPressHint}

@@ -222,6 +222,26 @@ export type CompanionReaderContext = {
   language?: string;
 };
 
+// Comparación campo a campo del contexto de lectura: el lector lo reenvía en
+// cada cambio de página (y en cada render del proveedor) con valores iguales
+// la mayoría de las veces. Las listas se comparan por identidad, que es lo que
+// entrega `bookRef.current.sections` y `tocRowsRef.current`.
+const sameReaderContext = (
+  a: CompanionReaderContext | null,
+  b: CompanionReaderContext | null,
+): boolean => {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    a.pageText === b.pageText &&
+    a.currentChapterIndex === b.currentChapterIndex &&
+    a.bookId === b.bookId &&
+    a.language === b.language &&
+    a.sections === b.sections &&
+    a.toc === b.toc
+  );
+};
+
 const CompanionContext = createContext<CompanionContextValue | null>(null);
 
 export function useCompanion(): CompanionContextValue {
@@ -286,7 +306,16 @@ export function CompanionProvider({
   const [raw, setRaw] = useState<Loaded | null>(null);
   const [activeCare, setActiveCare] = useState<CareKind | null>(null);
   const [open, setOpen] = useState(false);
-  const [readerContext, setReaderContext] = useState<CompanionReaderContext | null>(null);
+  const [readerContext, setReaderContextState] = useState<CompanionReaderContext | null>(null);
+  // El lector reporta su página desde un efecto con `companion` entre las
+  // dependencias. Publicar un clon idéntico del contexto volvía a renderizar
+  // el proveedor, que entregaba un `companion` nuevo, que rearmaba el efecto:
+  // «Maximum update depth exceeded» a ~24 renders/s con el libro abierto
+  // (medido: 73 errores en 3 s). Ignorar escrituras idénticas corta el ciclo
+  // en la fuente, sin depender de que cada consumidor memoice sus deps.
+  const setReaderContext = useCallback((next: CompanionReaderContext | null) => {
+    setReaderContextState((prev) => (sameReaderContext(prev, next) ? prev : next));
+  }, []);
   // Capas modales vivas (hojas/diálogos/consultas) y el reporte de la
   // superficie: con cualquiera de ellos el festejo queda pendiente.
   const [modalLayers, setModalLayers] = useState(() => modalLayerCount());
