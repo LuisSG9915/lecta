@@ -149,7 +149,28 @@
 ## Producción
 
 - URL: `https://lecta.luis-sg9915.workers.dev` — deploy con `pnpm run deploy`.
-- Último deploy: **2026-10-31**, versión
+- Último deploy: **2026-10-31** (segundo del día), versión
+  `f96bc958-e699-4068-8aa0-f286a0df4317`, Lecta **v0.2.15**: el service worker
+  dejaba la app vieja tras un deploy por tres causas — la navegación abortaba
+  el fetch a los 3500 ms y servía el `index.html` cacheado sin avisar en redes
+  lentas; el install/activate pedía `/sw-manifest.json` y el SW viejo activo lo
+  interceptaba sirviendo el manifiesto del deploy anterior (la versión del
+  precaché quedaba atrás para siempre); y el `cache.addAll` de ~86 archivos
+  abortaba todo el install ante un solo 404. Ahora la navegación sirve el
+  caché a los 3,5 s SIN cortar el fetch y avisa `LECTA_NAV_STALE` cuando la
+  copia fresca llega (el cliente recarga sólo en los primeros 45 s de sesión);
+  `/sw-manifest.json` y `/manifest.webmanifest` van siempre a red; el manifiesto
+  se pide con `?v=<ts>` para romper el match del SW viejo; y el precaché tolera
+  fallos por archivo. Incluye además los cambios locales sin commit del árbol
+  (App.tsx, sync-state, account-fetch, retirada de useWordInspector/dom-pipeline).
+  Verificado: `pnpm test` 3 015 en verde, typecheck+lint+build limpios, arnés
+  Node sobre el `sw.js` real 10/10 en navegación y 8/8 en install/activate.
+  En caliente: `/api/health` → 200, `/` → 200 con etag nuevo y `no-store`,
+  `sw.js` sirviendo `LECTA_NAV_STALE`/`manifestRequest` con
+  `SW_VERSION = bfdff50ab2` = `sw-manifest.json`, HTML apuntando a
+  `assets/index-CB48vEmC.js`. Sin `smoke:auth`/`smoke:sync`: no toca auth ni
+  el contrato de sync.
+- Deploy anterior: **2026-10-31**, versión
   `a2bb2686-b7b4-4738-8316-59da56efe83f`, Lecta **v0.2.15**: tarjeta de palabra
   legible y sin bucle de renders. `--text-primary` no existía en ningún CSS, así
   que `var(--text-primary, #f5f2eb)` caía al crema del tema noche sobre
