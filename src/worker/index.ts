@@ -19,8 +19,11 @@ const handler: ExportedHandler<WorkerEnv> = {
         await client.query("DELETE FROM lecta_rate_log WHERE created_at < $1", [
           Date.now() - 48 * 3_600_000,
         ]);
+        // Retención de 30 días: el bucket por hora alcanza para la
+        // cuota (solo importa la hora actual) y ahora también alimenta
+        // el análisis de uso de IA del panel.
         await client.query("DELETE FROM lecta_ai_quota WHERE bucket_hour < $1", [
-          Math.floor((Date.now() - 48 * 3_600_000) / 3_600_000),
+          Math.floor((Date.now() - 30 * 86_400_000) / 3_600_000),
         ]);
       }) ?? Promise.resolve()),
     );

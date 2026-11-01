@@ -131,6 +131,84 @@
   distinto gana (viene de otro dispositivo). Filas escritas por clientes viejos llegan con
   `anchor_offset` nulo → `undefined` en el JSON.
 
+## Portal Kindle (/k)
+
+Portal server-rendered para e-ink (`src/worker/kindle/`): HTML+CSS inline,
+JS mínimo ES5 con mejora progresiva — todo funciona solo con enlaces y
+formularios. Código: `routes.ts` (rutas), `views.ts` (HTML), `epub-reader.ts`
+(zip/EPUB/sanitizar/paginar), `cache.ts` (caché), `timing.ts` (Server-Timing).
+
+- **Caché de capítulos y recursos en R2** (`cache.ts`): claves
+  `kcache/ch/{hash}/{sección}.json` (versión `v` dentro del JSON,
+  `KINDLE_CHAPTER_CACHE_V`) y `kcache/res/{hash}/{ruta}`. Escrituras
+  **best-effort** (`waitUntil`): un fallo de caché nunca rompe la lectura.
+  Hay segunda capa en memoria del isolate (TTL 30 min, máx. 24 capítulos,
+  solo artefactos de texto — jamás conexiones `pg` ni objetos de request).
+  **Al cambiar sanitize, paginación o estructura del artefacto (p. ej. TOC),
+  subir `KINDLE_CHAPTER_CACHE_V`**: las entradas viejas leen miss y se
+  reescriben solas, sin purga manual. `purgeKindleBookCache(bucket, hash)`
+  borra ambos prefijos; se llama al eliminar el libro y en el reset de cuenta.
+- **Preferencias por cuenta**: tabla `lecta_kindle_prefs` (migración 020,
+  una fila por usuario). Fuente única del vocabulario: `src/shared/kindle-prefs.ts`
+  (valores, `KindlePrefs`, `normalizeKindlePrefs`, `KINDLE_PREF_LABELS`,
+  `KINDLE_PREF_FIELDS`) — la usan el worker, `/k/ajustes`, la API y el panel
+  del celular. **Precedencia en `/k/read`: parámetro explícito > fila de la
+  cuenta > cookie del dispositivo > default**; sin fila guardada la cookie
+  mantiene su efecto. El código tolera que la tabla no exista: lectura cae a
+  defaults y escritura responde 503 amable (permite desplegar antes de migrar).
+- **Rutas**: `/k` (estantería; sin sesión redirige a `/kindle` con el código
+  directo), `/kindle` (vinculación por código de 4 letras), `/k/login`,
+  `/k/read/{hash}` (`?section`,`?page`,`?mode`,`?size`,`?margin`,`?layout`,
+  `?toc=1` índice real, `?prep=1` antesala Rasch/ZPD), `/k/read/{hash}/resource`,
+  `/k/lookup`, `/k/vocab/add`, `/k/knowledge/mark`, `/k/practice`,
+  `/k/ajustes` (form sin JS), `/k/preview` (marco) + `/k/preview/page`
+  (página real del lector, overrides `font,size,lh,margin,align,mode,layout`).
+  API JSON: `GET/PUT /api/kindle/prefs`, `GET /api/kindle/status?code=`,
+  `POST /api/kindle/link`.
+- **Viewport real**: el lector escribe la cookie `lecta_k_vp` con
+  `innerWidth×innerHeight` una sola vez (ES5). Se valida con formato estricto
+  `\d{2,5}x\d{2,5}` dentro de 240–4096 y `paginateChapter` escala
+  presupuestos por área (tope 0.7–1.6) y caracteres/línea por ancho
+  (0.8–1.35). Sin cookie → presupuesto de referencia 600×800.
+- **Medición**: `Server-Timing` por etapa en `/k/read` (`db`, `r2`, `parse`,
+  `render`). `pnpm bench:kindle` mide el pipeline CPU sobre un EPUB sintético
+  o `--epub <ruta>` (base medida: ≤5 ms; el coste real es red R2+DB).
+  `pnpm calibrate:kindle` corre un arnés Playwright que renderiza las páginas
+  con el HTML+CSS reales en Chromium a 600×800 / 758×1024 / 1072×1448 y
+  reporta % de páginas desbordadas, llenado mediano y escala sugerida;
+  opciones `--epub`, `--sections`, `--sizes`, `--vp`. Presupuestos
+  calibrados en `KINDLE_PAGE_BUDGETS`/`KINDLE_CHARS_PER_LINE`
+  (`epub-reader.ts`): `sm`1060/`md`830/`lg`625/`xl`460/`xxl`395.
+- **Fuentes auto-hospedadas**: `public/fonts/*.woff2` (Literata, Source
+  Serif 4, Atkinson, OpenDyslexic), servidas como assets estáticos;
+  `@font-face` vive en `KINDLE_CSS` (`views.ts`) con `unicode-range` y
+  `font-display: swap`. Cambiar una familia = archivo nuevo + declaración;
+  nunca CDN.
+- **Panel del celular**: `KindleAppearancePanel` (Cuenta → «Tu Kindle»)
+  carga/guarda vía `/api/kindle/prefs` y embebe `/k/preview/page` en un
+  iframe `sandbox` con debounce — la vista previa es el render real, no una
+  réplica. La navegación DENTRO del marco funciona: los enlaces `/k/read/…`
+  se reescriben a `/k/preview/page?book=…` conservando los overrides (los
+  de salida `/k`, `/k/ajustes` abren pestaña real con `target="_blank"`).
+  **CSP**: todo el portal `/k*` envía `frame-ancestors 'self'`
+  (`kindleHtmlCspFor`) porque el iframe navega entre sus páginas; el resto
+  del HTML del worker conserva `'none'`. La app madre permite
+  `frame-src 'self'` por `default-src`.
+- **Reanudación y enlaces**: la estantería y «Seguir leyendo» nunca fijan
+  `page=` al reanudar — el lector restaura por `anchor`/`ratio`. Los enlaces
+  internos del EPUB (`notas.xhtml#f7`) se reescriben a
+  `/k/read/{hash}?section=N#f7` (aterrizan en la página 0 de la sección:
+  el fragmento exacto es mejora pendiente). TOC real desde nav EPUB3 y NCX.
+- **Actividad del Kindle**: cada paso de página inserta un evento puntual
+  veraz en `lecta_user_activity` (`started_at = ended_at`, 0 minutos) —
+  la bitácora es append-only por `id` y los intervalos fabricados serían
+  descartados por el merge.
+- **Migración 020 pendiente en producción** (`lecta`): orden seguro =
+  deploy primero (el código tolera la tabla ausente), luego
+  `LECTA_MIGRATE_TARGET=lecta pnpm db:migrate`, y verificar `/k`,
+  `/k/ajustes`, `/k/preview` y `GET/PUT /api/kindle/prefs`. Requiere
+  autorización expresa de Luis.
+
 ## MCP
 
 - `mcp/` es un servidor MCP local (stdio, solo lectura) que proxya la API HTTP
@@ -149,7 +227,22 @@
 ## Producción
 
 - URL: `https://lecta.luis-sg9915.workers.dev` — deploy con `pnpm run deploy`.
-- Último deploy: **2026-10-31** (segundo del día), versión
+- Último deploy: **2026-11-01**, versión `a83cde26-aaa5-474e-a1b7-6ae7bc662cad`,
+  Lecta **v0.2.15**: plan Kindle K0–K9 completo (detalle en §«Portal Kindle
+  (/k)»). Nuevo: preferencias de lectura por cuenta (`lecta_kindle_prefs`,
+  migración 020 aplicada a `lecta` el mismo día), `/k/ajustes`, 4 tipografías
+  auto-hospedadas en `/fonts`, caché de capítulos/recursos en R2 (`kcache/`,
+  versión 2), calibración por viewport real (`lecta_k_vp`), TOC nav/NCX con
+  enlaces internos reescritos, portada `/k` con «Seguir leyendo» y repaso del
+  día, `/k/preview` + `/k/preview/page` (vista previa real) y panel «Tu
+  Kindle» en Cuenta. Verificado en caliente: `/api/health` 200, `/k`→302
+  `/kindle` sin sesión, `/k/ajustes`→login, `/k/preview`→`/kindle`,
+  `/k/preview/page`→401, `/api/kindle/prefs`→401 sin sesión,
+  `/fonts/literata-400-latin.woff2` 200; migración 020 aplicada solo en
+  `lecta` (única pendiente), `lecta_kindle_prefs` creada con 0 filas.
+  `pnpm gate` completo en verde antes del deploy (3069 pruebas, bundle
+  206.06/215 kB).
+- Deploy anterior: **2026-10-31** (segundo del día), versión
   `f96bc958-e699-4068-8aa0-f286a0df4317`, Lecta **v0.2.15**: el service worker
   dejaba la app vieja tras un deploy por tres causas — la navegación abortaba
   el fetch a los 3500 ms y servía el `index.html` cacheado sin avisar en redes

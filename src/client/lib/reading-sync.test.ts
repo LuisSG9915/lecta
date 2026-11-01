@@ -726,6 +726,7 @@ describe("BYO-EPUB Cloud Sync (reading-sync)", () => {
       id: "book-123",
       title: "El Quijote",
       author: "Cervantes",
+      language: "es",
       data,
     });
     expect(ok).toBe(true);
@@ -737,6 +738,7 @@ describe("BYO-EPUB Cloud Sync (reading-sync)", () => {
           "Content-Type": "application/epub+zip",
           "x-book-title": encodeURIComponent("El Quijote"),
           "x-book-author": encodeURIComponent("Cervantes"),
+          "x-book-language": "es",
         },
         body: data,
       }),

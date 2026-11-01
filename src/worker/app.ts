@@ -96,14 +96,18 @@ import { getSession, getSessionUser, SessionInfraError } from "./session";
 import { readingData } from "./reading-data";
 import { companion } from "./companion";
 import { catalog } from "./catalog";
+import { admin, ownerUser } from "./admin";
 import {
-  kindleRoutes,
   handleKindleLinkPage,
   handleKindleStatus,
   handleKindleLinkAction,
   handleKindlePrimingAction,
-  KINDLE_HTML_CSP,
+  handleKindlePrefsApiGet,
+  handleKindlePrefsApiPut,
+  kindleRoutes,
+  kindleHtmlCspFor,
 } from "./kindle/routes";
+import { purgeKindleBookCache } from "./kindle/cache";
 
 export const app = new Hono<{ Bindings: WorkerEnv }>();
 
@@ -190,7 +194,7 @@ app.use("*", async (c, next) => {
     c.res.headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
     c.res.headers.set("Pragma", "no-cache");
     c.res.headers.set("Expires", "0");
-    c.res.headers.set("Content-Security-Policy", KINDLE_HTML_CSP);
+    c.res.headers.set("Content-Security-Policy", kindleHtmlCspFor(c.req.path));
     c.res.headers.set("X-Content-Type-Options", "nosniff");
   }
 });
@@ -198,10 +202,13 @@ app.use("*", async (c, next) => {
 app.route("/", readingData);
 app.route("/", companion);
 app.route("/", catalog);
+app.route("/", admin);
 app.route("/k", kindleRoutes);
 app.get("/kindle", handleKindleLinkPage);
 app.get("/kindle/verify", handleKindleStatus);
 app.get("/api/kindle/status", handleKindleStatus);
+app.get("/api/kindle/prefs", handleKindlePrefsApiGet);
+app.put("/api/kindle/prefs", handleKindlePrefsApiPut);
 app.post("/api/kindle/link", handleKindleLinkAction);
 app.post("/kindle/priming/action", handleKindlePrimingAction);
 app.get("/kindle/*", (context) => {
@@ -285,12 +292,8 @@ app.post("/api/client-errors", async (context) => {
 // Apartado «Salud de la aplicación»: el agregado es global, no por usuario,
 // así que solo lo ve el dueño. 404 y no 403: la ruta no se anuncia.
 app.get("/api/error-reports", async (context) => {
-  const owner = context.env?.LECTA_OWNER_EMAIL?.trim().toLowerCase();
-  if (!owner) return context.body(null, 404);
-
-  const user = await getSessionUser(context).catch(() => null);
-  const email = user?.email?.toLowerCase();
-  if (!email || email !== owner) return context.body(null, 404);
+  const user = await ownerUser(context).catch(() => null);
+  if (!user) return context.body(null, 404);
 
   const requested = Number(context.req.query("days") ?? 7);
   const days = Number.isFinite(requested) && requested > 0 ? requested : 7;
@@ -1828,6 +1831,7 @@ export async function recordUserBook(
     bookId: string;
     title: string;
     author: string;
+    language?: string;
     r2Key: string;
     sizeBytes: number;
     sha256: string;
@@ -1838,13 +1842,16 @@ export async function recordUserBook(
   const hasCoverVal = book.hasCover ? true : false;
   let recorded = false;
   if (getConnectionString(env)) {
+    // Tolera la columna `language` ausente (despliegue antes de la
+    // migración 022): cae a la ruta D1 como cuando falta la conexión.
     const res = await withClient(env, (client) =>
       client.query(
-        `INSERT INTO user_books (user_id, book_id, title, author, r2_key, size_bytes, sha256, has_cover, created_at, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        `INSERT INTO user_books (user_id, book_id, title, author, language, r2_key, size_bytes, sha256, has_cover, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
          ON CONFLICT (user_id, book_id) DO UPDATE SET
            title = EXCLUDED.title,
            author = EXCLUDED.author,
+           language = EXCLUDED.language,
            r2_key = EXCLUDED.r2_key,
            size_bytes = EXCLUDED.size_bytes,
            sha256 = EXCLUDED.sha256,
@@ -1855,6 +1862,7 @@ export async function recordUserBook(
           book.bookId,
           book.title,
           book.author,
+          book.language ?? "",
           book.r2Key,
           book.sizeBytes,
           book.sha256,
@@ -1863,16 +1871,17 @@ export async function recordUserBook(
           now,
         ],
       ),
-    );
+    ).catch(() => undefined);
     if (res) recorded = true;
   }
   if (!recorded && env.DB) {
     await env.DB.prepare(
-      `INSERT INTO user_books (user_id, book_id, title, author, r2_key, size_bytes, sha256, has_cover, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO user_books (user_id, book_id, title, author, language, r2_key, size_bytes, sha256, has_cover, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(user_id, book_id) DO UPDATE SET
          title = excluded.title,
          author = excluded.author,
+         language = excluded.language,
          r2_key = excluded.r2_key,
          size_bytes = excluded.size_bytes,
          sha256 = excluded.sha256,
@@ -1884,6 +1893,7 @@ export async function recordUserBook(
         book.bookId,
         book.title,
         book.author,
+        book.language ?? "",
         book.r2Key,
         book.sizeBytes,
         book.sha256,
@@ -2142,6 +2152,7 @@ const handleBookUpload = async (
     bookId: hash,
     title: title || name.replace(/\.epub$/i, "") || hash,
     author,
+    language,
     r2Key,
     sizeBytes: data.byteLength,
     sha256: hash,
@@ -2187,6 +2198,12 @@ app.delete("/api/books/:hash", async (context) => {
   await booksBucket.delete(bookKey(session.user.id, hash));
   await booksBucket.delete(bookCoverKey(session.user.id, hash));
   await deleteUserBookRecord(context.env, session.user.id, hash);
+  // Purgar artefactos Kindle cacheados del libro (K4)
+  try {
+    context.executionCtx.waitUntil(purgeKindleBookCache(booksBucket, hash));
+  } catch {
+    void purgeKindleBookCache(booksBucket, hash);
+  }
   return context.json({ ok: true });
 });
 
@@ -2635,8 +2652,10 @@ app.put("/api/user/books/:bookId/file", async (c) => {
   const bookId = c.req.param("bookId");
   const rawTitle = c.req.header("x-book-title");
   const rawAuthor = c.req.header("x-book-author");
+  const rawLanguage = c.req.header("x-book-language");
   const title = rawTitle ? decodeURIComponent(rawTitle) : bookId;
   const author = rawAuthor ? decodeURIComponent(rawAuthor) : "";
+  const language = rawLanguage ? decodeURIComponent(rawLanguage) : "";
   const sha256 = c.req.header("x-book-sha256") ?? "";
 
   const buffer = await c.req.arrayBuffer();
@@ -2667,6 +2686,7 @@ app.put("/api/user/books/:bookId/file", async (c) => {
     bookId,
     title,
     author,
+    language,
     r2Key,
     sizeBytes: buffer.byteLength,
     sha256,
@@ -2777,6 +2797,31 @@ app.post("/api/account/reset", async (context) => {
   const userId = session.user.id;
 
   try {
+    // 0. Recoger book_id del usuario antes del reset para purgar sus
+    // artefactos Kindle (kcache/*) derivados del contenido
+    let userBookIds: string[] = [];
+    try {
+      if (getConnectionString(context.env)) {
+        const ids = await withClient(context.env, async (client) => {
+          const res = await client.query<{ book_id: string }>(
+            `SELECT book_id FROM user_books WHERE user_id = $1`,
+            [userId],
+          );
+          return res.rows;
+        });
+        userBookIds = (ids ?? []).map((r) => r.book_id);
+      } else if (context.env.DB) {
+        const res = await context.env.DB.prepare(
+          `SELECT book_id FROM user_books WHERE user_id = ?`,
+        )
+          .bind(userId)
+          .all<{ book_id: string }>();
+        userBookIds = (res.results ?? []).map((r) => r.book_id);
+      }
+    } catch {
+      userBookIds = [];
+    }
+
     // 1. Limpiar registros de historial, palabras guardadas y libros en la BD remota
     // manteniendo intacto el registro del usuario y la tabla ai_quota
     await resetAccountDataDb(context.env, userId);
@@ -2788,6 +2833,7 @@ app.post("/api/account/reset", async (context) => {
         purgeR2Prefix(booksBucket, `books/${userId}/`),
         purgeR2Prefix(booksBucket, `covers/${userId}/`),
         purgeR2Prefix(booksBucket, `user-books/${userId}/`),
+        ...userBookIds.map((id) => purgeKindleBookCache(booksBucket, id)),
       ]);
     }
 

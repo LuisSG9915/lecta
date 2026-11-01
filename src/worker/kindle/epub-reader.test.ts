@@ -15,7 +15,10 @@ import {
   getEpubResource,
   KINDLE_MARGIN_MULTIPLIERS,
   KINDLE_PAGE_BUDGETS,
+  kindleViewportScale,
+  kindleWidthScale,
   normalizeKindleLanguage,
+  rewriteInternalLinks,
   paginateChapter,
   PARAGRAPH_MODE_BREAK_PENALTY,
   parseEpub,
@@ -53,6 +56,14 @@ describe("epub-reader (Kindle E-ink)", () => {
       expect(epub?.spine.length).toBe(2);
       expect(epub?.spine[0]?.fullPath).toBe("OEBPS/chapter1.xhtml");
       expect(epub?.spine[1]?.fullPath).toBe("OEBPS/chapter2.xhtml");
+    });
+
+    it("K6: extrae el TOC real del nav EPUB3 con rutas resueltas", async () => {
+      const epub = await parseEpub(minimalBytes);
+      expect(epub?.toc).toEqual([
+        { title: "Capítulo uno", href: "OEBPS/chapter1.xhtml" },
+        { title: "Capítulo dos", href: "OEBPS/chapter2.xhtml" },
+      ]);
     });
 
     it("devuelve null si los bytes no son un zip válido", async () => {
@@ -250,10 +261,10 @@ describe("epub-reader (Kindle E-ink)", () => {
     });
 
     it("define presupuestos recalibrados y multiplicadores de margen acordes a Kindle E-ink", () => {
-      expect(KINDLE_PAGE_BUDGETS.sm).toEqual({ standard: 1150, pageZero: 950 });
-      expect(KINDLE_PAGE_BUDGETS.md).toEqual({ standard: 900, pageZero: 750 });
-      expect(KINDLE_PAGE_BUDGETS.lg).toEqual({ standard: 680, pageZero: 540 });
-      expect(KINDLE_PAGE_BUDGETS.xl).toEqual({ standard: 500, pageZero: 390 });
+      expect(KINDLE_PAGE_BUDGETS.sm).toEqual({ standard: 1060, pageZero: 875 });
+      expect(KINDLE_PAGE_BUDGETS.md).toEqual({ standard: 830, pageZero: 690 });
+      expect(KINDLE_PAGE_BUDGETS.lg).toEqual({ standard: 625, pageZero: 495 });
+      expect(KINDLE_PAGE_BUDGETS.xl).toEqual({ standard: 460, pageZero: 360 });
       expect(BLOCK_BREAK_PENALTY).toBe(22);
       expect(PARAGRAPH_MODE_BREAK_PENALTY).toBe(32);
       expect(KINDLE_MARGIN_MULTIPLIERS).toEqual({ sm: 1.05, md: 1.0, lg: 0.90 });
@@ -342,6 +353,80 @@ describe("epub-reader (Kindle E-ink)", () => {
       const pagesScroll = paginateChapter(longText, { size: "md", layout: "scroll" });
       expect(pagesScroll.length).toBeLessThanOrEqual(pagesPaged.length);
     });
+
+    it("K5: escala los presupuestos según el viewport reportado (más pantalla, menos páginas)", () => {
+      // Geometría de la escala
+      expect(kindleViewportScale(600, 800)).toBe(1);
+      expect(kindleViewportScale(1072, 1448)).toBeGreaterThan(1.6 - 0.01);
+      expect(kindleViewportScale(300, 300)).toBeGreaterThanOrEqual(0.7);
+      expect(kindleViewportScale(0, 800)).toBe(1);
+      expect(kindleViewportScale(600, -5)).toBe(1);
+      expect(kindleWidthScale(600)).toBe(1);
+      expect(kindleWidthScale(1072)).toBeCloseTo(1.35, 2);
+      expect(kindleWidthScale(300)).toBeCloseTo(0.8, 2);
+
+      // Un capítulo largo pagina menos en una pantalla grande
+      const text = Array.from(
+        { length: 30 },
+        (_, i) => `<p>Párrafo ${i + 1} con texto suficiente para llenar varias líneas de la pantalla del lector electrónico y así forzar la paginación.</p>`,
+      ).join("\n");
+      const ref = paginateChapter(text, { size: "md" });
+      const big = paginateChapter(text, {
+        size: "md",
+        viewport: { w: 1072, h: 1448 },
+      });
+      expect(big.length).toBeLessThan(ref.length);
+
+      // Viewport degradado/inválido no rompe: equivale a no reportar
+      const invalid = paginateChapter(text, {
+        size: "md",
+        viewport: { w: 0, h: 0 },
+      });
+      expect(invalid.length).toBe(ref.length);
+    });
+  });
+
+  describe("K6 — TOC e enlaces internos", () => {
+    it("getEpubChapter mapea el TOC a índices de spine sin duplicados", async () => {
+      const chapter = await getEpubChapter(minimalBytes, 0, "hash-x");
+      expect(chapter?.toc).toEqual([
+        { title: "Capítulo uno", sectionIndex: 0 },
+        { title: "Capítulo dos", sectionIndex: 1 },
+      ]);
+    });
+
+    it("rewriteInternalLinks convierte rutas relativas a ?section=N y respeta el resto", () => {
+      const html =
+        '<p>Véase <a href="chapter2.xhtml#n1">la nota 1</a> y ' +
+        '<a href="chapter2.xhtml">el capítulo dos</a>. ' +
+        '<a href="#local">interno</a> <a href="https://x.com/y">web</a> ' +
+        '<a href="../img.png">no-spine</a></p>';
+      const out = rewriteInternalLinks(
+        html,
+        "OEBPS",
+        ["OEBPS/chapter1.xhtml", "OEBPS/chapter2.xhtml"],
+        "hash9",
+      );
+      expect(out).toContain('href="/k/read/hash9?section=1#n1"');
+      expect(out).toContain('href="/k/read/hash9?section=1"');
+      // Los externos, internos y no-spine quedan intactos
+      expect(out).toContain('href="#local"');
+      expect(out).toContain('href="https://x.com/y"');
+      expect(out).toContain('href="../img.png"');
+    });
+
+    it("rewriteInternalLinks respeta rutas con ../ y atributos adicionales", () => {
+      const html = '<a class="fn" href="../text/notas.xhtml#f7" id="l1">[7]</a>';
+      const out = rewriteInternalLinks(
+        html,
+        "OEBPS/caps",
+        ["OEBPS/text/notas.xhtml"],
+        "h",
+      );
+      expect(out).toContain(
+        '<a class="fn" href="/k/read/h?section=0#f7" id="l1">[7]</a>',
+      );
+    });
   });
 
   describe("extractPageWords", () => {
@@ -363,12 +448,7 @@ describe("epub-reader (Kindle E-ink)", () => {
     it("envuelve palabras en spans data-w inertes respetando tags HTML y puntuación sin generar enlaces <a>", () => {
       const html = '<p class="lead">La casa antigua.</p>';
       const saved = new Set(["antigua"]);
-      const wrapped = wrapWordsWithLinks(
-        html,
-        "book123",
-        "/k/read/book123?section=0&page=0",
-        saved,
-      );
+      const wrapped = wrapWordsWithLinks(html, saved);
 
       // Los atributos de las etiquetas no se tocan
       expect(wrapped).toContain('<p class="lead">');
@@ -386,7 +466,7 @@ describe("epub-reader (Kindle E-ink)", () => {
 
     it("no re-envuelve texto que ya está dentro de un enlace <a>", () => {
       const html = '<p><a href="#nota">Nota al pie</a> y texto normal.</p>';
-      const wrapped = wrapWordsWithLinks(html, "b1", "/k", new Set());
+      const wrapped = wrapWordsWithLinks(html, new Set());
       expect(wrapped).toContain('<a href="#nota">Nota al pie</a>');
       expect(wrapped).toContain('<span class="w" data-w="texto">texto</span>');
     });
@@ -445,15 +525,15 @@ describe("epub-reader (Kindle E-ink)", () => {
     });
   });
 
-  describe("wrapWordsWithLinks con notedWordsMap (Modo Léxico)", () => {
-    it("añade la clase w-lexicon, data-w y superíndice a las palabras anotadas sin enlace <a>", () => {
-      const html = "<p>Un silencio perenne inundó la estancia.</p>";
-      const noted = new Map<string, number>([["perenne", 1]]);
-      const wrapped = wrapWordsWithLinks(html, "book123", "/k/read/book123", new Set(), noted);
-      expect(wrapped).toContain('class="w w-lexicon"');
-      expect(wrapped).toContain('data-w="perenne"');
-      expect(wrapped).toContain("perenne<sup>1</sup></span>");
-      expect(wrapped).not.toContain("<a href=");
+  describe("wrapWordsWithLinks con anclas de lectura (K3)", () => {
+    it("envuelve en <b class='anc'> el ~40% inicial de palabras de 4+ letras fuera de encabezados", () => {
+      const html = "<p>Un silencio perenne inundó la estancia.</p><h2>Capítulo perenne</h2>";
+      const wrapped = wrapWordsWithLinks(html, new Set(), { anchors: true });
+      // perenne (7 letras → 3 en negrita) solo en el párrafo: una sola ancla
+      expect(wrapped).toContain('<b class="anc">per</b>enne');
+      expect(wrapped.match(/<b class="anc">per<\/b>/g)).toHaveLength(1);
+      // dentro del encabezado la palabra se envuelve pero sin ancla
+      expect(wrapped).toContain('<h2><span class="w" data-w="capítulo">Capítulo</span> <span class="w" data-w="perenne">perenne</span></h2>');
     });
   });
 

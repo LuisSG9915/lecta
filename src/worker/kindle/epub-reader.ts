@@ -2,9 +2,6 @@
 // Sin dependencias pesadas: lee el ZIP con DecompressionStream nativo
 // y extrae secciones limpias sin JavaScript para dispositivos de tinta electrónica.
 
-import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
-import { gunzipSync } from "node:zlib";
 import { isStopword } from "../../shared/stopwords";
 import { isWordToken, normalizeWordForm } from "../../shared/word-form";
 
@@ -32,6 +29,13 @@ export type ChapterResult = {
   sectionIndex: number;
   totalSections: number;
   language?: string;
+  /** Índice real del EPUB (nav EPUB3 o NCX) mapeado a secciones del spine. */
+  toc?: KindleTocEntry[];
+};
+
+export type KindleTocEntry = {
+  title: string;
+  sectionIndex: number;
 };
 
 type ZipEntryInfo = {
@@ -56,6 +60,87 @@ export function resolveZipPath(baseDir: string, relativePath: string): string {
     }
   }
   return stack.join("/");
+}
+
+/** Índice del EPUB3: enlaces del <nav epub:type="toc"> en orden de
+ * documento. Las rutas quedan resueltas a fullPath del zip. */
+export function parseNavTocLinks(
+  navXml: string,
+  baseDir: string,
+): { title: string; href: string }[] {
+  const navMatch = navXml.match(
+    /<nav\b[^>]*\bepub:type=["'][^"']*\btoc\b[^"']*["'][^>]*>([\s\S]*?)<\/nav>/i,
+  );
+  const scope = navMatch ? navMatch[1] : navXml;
+  const out: { title: string; href: string }[] = [];
+  const aRegex =
+    /<a\b[^>]*\bhref=["']([^"'#]+?)(?:#[^"']*)?["'][^>]*>([\s\S]*?)<\/a>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = aRegex.exec(scope)) !== null) {
+    const title = decodeXmlEntities(m[2].replace(/<[^>]+>/g, "").trim());
+    if (!title) continue;
+    out.push({
+      title,
+      href: resolveZipPath(baseDir, decodeXmlEntities(m[1])),
+    });
+    if (out.length >= 400) break;
+  }
+  return out;
+}
+
+/** Índice del EPUB2: pares navLabel/text + content/src de cada navPoint. */
+export function parseNcxTocLinks(
+  ncxXml: string,
+  baseDir: string,
+): { title: string; href: string }[] {
+  const out: { title: string; href: string }[] = [];
+  const npRegex = /<navPoint\b[\s\S]*?<\/navPoint>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = npRegex.exec(ncxXml)) !== null) {
+    const t = m[0].match(/<text[^>]*>([\s\S]*?)<\/text>/i);
+    const s = m[0].match(/<content\b[^>]*\bsrc=["']([^"']+)["']/i);
+    if (s) {
+      out.push({
+        title: decodeXmlEntities(
+          (t?.[1] ?? "Sección").replace(/<[^>]+>/g, "").trim() || "Sección",
+        ),
+        href: resolveZipPath(
+          baseDir,
+          decodeXmlEntities(s[1]).split("#")[0],
+        ),
+      });
+    }
+    if (out.length >= 400) break;
+  }
+  return out;
+}
+
+/** Reescribe enlaces internos del EPUB (notas al pie, referencias entre
+ * capítulos) a navegación del lector: href="cap2.xhtml#n3" →
+ * /k/read/{hash}?section=4#n3. Los externos y #internos se respetan. */
+export function rewriteInternalLinks(
+  html: string,
+  chapterDir: string,
+  spinePaths: readonly string[],
+  bookHash: string,
+): string {
+  const index = new Map<string, number>(spinePaths.map((p, i) => [p, i]));
+  return html.replace(
+    /<a\b([^>]*?)\bhref\s*=\s*(["'])([^"']*)\2([^>]*)>/gi,
+    (full, pre: string, quote: string, rawHref: string, post: string) => {
+      const href = decodeXmlEntities(rawHref).trim();
+      if (!href || /^(?:#|https?:|mailto:|javascript:|data:|tel:|\/\/)/i.test(href)) {
+        return full;
+      }
+      const [pathPart, frag] = href.split("#", 2);
+      const idx = index.get(resolveZipPath(chapterDir, pathPart));
+      if (idx == null) return full;
+      const url =
+        `/k/read/${encodeURIComponent(bookHash)}?section=${idx}` +
+        (frag ? `#${encodeURIComponent(frag)}` : "");
+      return `<a${pre}href=${quote}${url}${quote}${post}>`;
+    },
+  );
 }
 
 function decodeXmlEntities(str: string): string {
@@ -231,8 +316,11 @@ export async function parseEpub(bytes: Uint8Array): Promise<EpubParsed | null> {
   const author = authorMatch ? decodeXmlEntities(authorMatch[1]) : "Autor desconocido";
   const language = langMatch ? decodeXmlEntities(langMatch[1]) : "es";
 
-  // Manifest items: id -> { href, mediaType }
-  const manifest = new Map<string, { href: string; mediaType: string }>();
+  // Manifest items: id -> { href, mediaType, properties }
+  const manifest = new Map<
+    string,
+    { href: string; mediaType: string; properties?: string }
+  >();
   const itemRegex = /<item\b([^>]+)\/?>/gi;
   let match: RegExpExecArray | null;
   while ((match = itemRegex.exec(opfXml)) !== null) {
@@ -240,10 +328,12 @@ export async function parseEpub(bytes: Uint8Array): Promise<EpubParsed | null> {
     const idMatch = tag.match(/\bid=["']([^"']+)["']/i);
     const hrefMatch = tag.match(/\bhref=["']([^"']+)["']/i);
     const typeMatch = tag.match(/\bmedia-type=["']([^"']+)["']/i);
+    const propMatch = tag.match(/\bproperties=["']([^"']+)["']/i);
     if (idMatch && hrefMatch) {
       manifest.set(idMatch[1], {
         href: hrefMatch[1],
         mediaType: typeMatch ? typeMatch[1] : "",
+        properties: propMatch ? propMatch[1] : "",
       });
     }
   }
@@ -268,8 +358,39 @@ export async function parseEpub(bytes: Uint8Array): Promise<EpubParsed | null> {
     }
   }
 
-  // TOC (opcional: busca nav o ncx para títulos de capítulos)
+  // TOC real del EPUB (K6): nav EPUB3 (manifest properties="nav") o NCX
+  // (media-type application/x-dtbncx+xml, referenciado por <spine toc="…">).
+  // Las rutas se resuelven contra el directorio del propio nav/ncx.
   const toc: { title: string; href: string }[] = [];
+  const navItem = [...manifest.values()].find(
+    (it) =>
+      it.mediaType === "application/xhtml+xml" &&
+      /\bnav\b/.test(it.properties || ""),
+  );
+  const spineTocRef = opfXml.match(/<spine\b[^>]*\btoc=["']([^"']+)["']/i);
+  const ncxItem =
+    (spineTocRef ? manifest.get(spineTocRef[1]) : undefined) ??
+    [...manifest.values()].find(
+      (it) => it.mediaType === "application/x-dtbncx+xml",
+    );
+  const tocSource = navItem ?? ncxItem;
+  if (tocSource) {
+    const tocPath = resolveZipPath(opfDir, tocSource.href);
+    const tocEntry = entries.get(tocPath);
+    const tocXml = tocEntry
+      ? await readZipEntryText(bytes, view, tocEntry)
+      : null;
+    if (tocXml) {
+      const tocDir = tocPath.includes("/")
+        ? tocPath.slice(0, tocPath.lastIndexOf("/"))
+        : "";
+      toc.push(
+        ...(navItem
+          ? parseNavTocLinks(tocXml, tocDir)
+          : parseNcxTocLinks(tocXml, tocDir)),
+      );
+    }
+  }
 
   return {
     title,
@@ -426,14 +547,36 @@ export async function getEpubChapter(
     bookHash,
   );
 
+  // Enlaces internos (notas al pie, referencias) → ?section=N del lector
+  const linkedHtml = rewriteInternalLinks(
+    contentHtml,
+    chapterDir,
+    epub.spine.map((s) => s.fullPath),
+    bookHash,
+  );
+
+  // TOC real → índices de spine, sin duplicados y en orden de documento
+  const spineIndex = new Map<string, number>(
+    epub.spine.map((s, i) => [s.fullPath, i]),
+  );
+  const toc: KindleTocEntry[] = [];
+  const seenSection = new Set<number>();
+  for (const entry of epub.toc) {
+    const idx = spineIndex.get(entry.href);
+    if (idx == null || seenSection.has(idx)) continue;
+    seenSection.add(idx);
+    toc.push({ title: entry.title, sectionIndex: idx });
+  }
+
   return {
     bookTitle: epub.title,
     bookAuthor: epub.author,
     chapterTitle,
-    contentHtml,
+    contentHtml: linkedHtml,
     sectionIndex: validIndex,
     totalSections: epub.spine.length,
     language: epub.language || "es",
+    toc,
   };
 }
 
@@ -789,7 +932,7 @@ export function splitLongParagraph(blockHtml: string, maxChars = 650): string[] 
   return balancedBlocks;
 }
 
-export type KindleFontSize = "sm" | "md" | "lg" | "xl";
+export type KindleFontSize = "sm" | "md" | "lg" | "xl" | "xxl";
 export type KindleMargin = "sm" | "md" | "lg";
 
 export interface PaginateOptions {
@@ -797,14 +940,40 @@ export interface PaginateOptions {
   margin?: KindleMargin;
   maxCharsPerPage?: number;
   layout?: "paged" | "scroll";
-  mode?: "clean" | "paragraphs" | "lexicon";
+  mode?: "clean" | "paragraphs" | "lexicon" | "anchors";
+  viewport?: { w: number; h: number };
 }
 
+/** Viewport contra el que se afinaron KINDLE_PAGE_BUDGETS (Paperwhite ~600×800).
+ * El dispositivo reporta el suyo vía cookie lecta_k_vp y el servidor escala
+ * los presupuestos con la razón geométrica de áreas, acotada. */
+export const KINDLE_REFERENCE_VIEWPORT = { w: 600, h: 800 } as const;
+
+export function kindleViewportScale(w: number, h: number): number {
+  if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return 1;
+  const s = Math.sqrt(
+    (w / KINDLE_REFERENCE_VIEWPORT.w) * (h / KINDLE_REFERENCE_VIEWPORT.h),
+  );
+  return Math.min(1.6, Math.max(0.7, s));
+}
+
+/** Escala solo por el ancho (caracteres por línea). */
+export function kindleWidthScale(w: number): number {
+  if (!Number.isFinite(w) || w <= 0) return 1;
+  return Math.min(1.35, Math.max(0.8, w / KINDLE_REFERENCE_VIEWPORT.w));
+}
+
+// Presupuestos calibrados con el arnés Playwright (scripts/calibrate-kindle.ts,
+// K5): a 600×800 el ~9-10% de las páginas desbordaba y disparaba la reducción
+// de letra de emergencia. Se aplicó un factor conservador 0.92 (la mediana
+// medida en poesía sugería ~0.73; en prosa real el desborde es menor) — queda
+// pendiente afinar con la cookie lecta_k_vp de dispositivos reales.
 export const KINDLE_PAGE_BUDGETS: Record<KindleFontSize, { standard: number; pageZero: number }> = {
-  sm: { standard: 1150, pageZero: 950 },
-  md: { standard: 900, pageZero: 750 },
-  lg: { standard: 680, pageZero: 540 },
-  xl: { standard: 500, pageZero: 390 },
+  sm: { standard: 1060, pageZero: 875 },
+  md: { standard: 830, pageZero: 690 },
+  lg: { standard: 625, pageZero: 495 },
+  xl: { standard: 460, pageZero: 360 },
+  xxl: { standard: 395, pageZero: 305 },
 };
 
 export const BLOCK_BREAK_PENALTY = 22;
@@ -823,6 +992,7 @@ const KINDLE_CHARS_PER_LINE: Record<KindleFontSize, number> = {
   md: 52,
   lg: 44,
   xl: 37,
+  xxl: 32,
 };
 
 function countBlockClosures(html: string): number {
@@ -838,7 +1008,8 @@ export function paginateChapter(
   let margin: KindleMargin = "md";
   let maxCharsPerPage: number | undefined;
   let isScroll = false;
-  let mode: "clean" | "paragraphs" | "lexicon" = "clean";
+  let mode: "clean" | "paragraphs" | "lexicon" | "anchors" = "clean";
+  let viewport: { w: number; h: number } | undefined;
 
   if (typeof options === "number") {
     maxCharsPerPage = options;
@@ -850,9 +1021,12 @@ export function paginateChapter(
     if (options.mode) {
       mode = options.mode;
     }
+    if (options.viewport) viewport = options.viewport;
   }
 
-  const multiplier = KINDLE_MARGIN_MULTIPLIERS[margin] ?? 1.0;
+  const marginMult = KINDLE_MARGIN_MULTIPLIERS[margin] ?? 1.0;
+  const multiplier =
+    marginMult * (viewport ? kindleViewportScale(viewport.w, viewport.h) : 1);
   const baseBudgets = KINDLE_PAGE_BUDGETS[size] ?? KINDLE_PAGE_BUDGETS.md;
 
   const effectiveStandardBudget = Math.round(baseBudgets.standard * multiplier);
@@ -873,7 +1047,11 @@ export function paginateChapter(
     : (maxCharsPerPage ?? effectivePageZeroBudget);
 
   // Ancho físico de 1 línea para impedir que >17 diálogos cortos desborden la pantalla
-  const charsPerLine = Math.round((KINDLE_CHARS_PER_LINE[size] ?? 52) * multiplier);
+  const charsPerLine = Math.round(
+    (KINDLE_CHARS_PER_LINE[size] ?? 52) *
+      marginMult *
+      (viewport ? kindleWidthScale(viewport.w) : 1),
+  );
   const minLineFloorPerBlock =
     mode === "paragraphs"
       ? Math.round(charsPerLine * 1.65)
@@ -974,16 +1152,32 @@ export function formatChapterHtmlForMode(
   });
 }
 
+// Prefijo en negrita para «Anclas de lectura»: ~40 % de las letras de
+// la palabra (4→2, 6→3, 10→4). La apóstrofe queda dentro del prefijo
+// si cae antes del límite.
+export function anchorifyWord(word: string): string {
+  const letters = word.match(/[\p{L}\p{M}]/gu) ?? [];
+  if (letters.length < 4) return word;
+  const take = Math.ceil(letters.length * 0.4);
+  let i = 0;
+  let seen = 0;
+  while (i < word.length && seen < take) {
+    if (/[\p{L}\p{M}]/u.test(word[i])) seen += 1;
+    i += 1;
+  }
+  return `<b class="anc">${word.slice(0, i)}</b>${word.slice(i)}`;
+}
+
 export function wrapWordsWithLinks(
   html: string,
-  _bookHash: string,
-  _currentUrl: string,
   savedWords: Set<string>,
-  notedWordsMap?: Map<string, number>,
+  opts: { anchors?: boolean } = {},
 ): string {
   const tokens = html.split(/(<[^>]+>)/g);
   let inAnchor = false;
   let inScriptOrStyle = false;
+  let inHeading = false;
+  const anchors = opts.anchors === true;
 
   const wordRegex = /([\p{L}\p{M}]{2,}(?:['’][\p{L}\p{M}]+)?)/gu;
 
@@ -998,20 +1192,18 @@ export function wrapWordsWithLinks(
         inScriptOrStyle = true;
       } else if (/^<\/(script|style)>/i.test(token)) {
         inScriptOrStyle = false;
+      } else if (/^<h[1-6]\b/i.test(token)) {
+        inHeading = true;
+      } else if (/^<\/h[1-6]>/i.test(token)) {
+        inHeading = false;
       }
     } else {
       if (!inAnchor && !inScriptOrStyle && token.length > 0) {
         tokens[i] = token.replace(wordRegex, (word) => {
           const lower = word.toLowerCase();
-          const isSaved = savedWords.has(lower);
-          const noteIndex = notedWordsMap?.get(lower);
-          let cls = isSaved ? "w saved" : "w";
-          let sup = "";
-          if (noteIndex != null) {
-            cls += " w-lexicon";
-            sup = `<sup>${noteIndex}</sup>`;
-          }
-          return `<span class="${cls}" data-w="${lower}">${word}${sup}</span>`;
+          const cls = savedWords.has(lower) ? "w saved" : "w";
+          const inner = anchors && !inHeading ? anchorifyWord(word) : word;
+          return `<span class="${cls}" data-w="${lower}">${inner}</span>`;
         });
       }
     }
@@ -1109,7 +1301,7 @@ export function computeRaschMastery(theta: number, beta: number): number {
  */
 export function estimateThetaFromD1Knowledge(
   records: Array<{ word: string; status: string; difficultyBeta?: number }>,
-  language: string = "es",
+  _language: string = "es",
 ): number {
   if (!records || records.length === 0) return 0.0;
 
@@ -1122,15 +1314,10 @@ export function estimateThetaFromD1Knowledge(
   if (uniqueMap.size === 0) return 0.0;
 
   const items: Array<{ outcome: number; beta: number }> = [];
-  for (const [word, row] of uniqueMap.entries()) {
-    let beta = row.difficultyBeta;
-    if (beta == null) {
-      const zipf = getZipfFrequency(word, normalizeKindleLanguage(language));
-      beta = zipf != null ? Math.max(-2.0, Math.min(3.5, 4.0 - zipf)) : 0.0;
-    }
+  for (const [, row] of uniqueMap.entries()) {
     items.push({
       outcome: row.status === "known" ? 1 : 0,
-      beta,
+      beta: row.difficultyBeta ?? 0.0,
     });
   }
 
@@ -1178,55 +1365,6 @@ export function extractCompactContextSentence(chapterPlainText: string, surfaceF
   return `${start > 0 ? '…' : ''}${sentence.slice(start, end).trim()}${end < sentence.length ? '…' : ''}`;
 }
 
-let cachedZipfTable: Map<string, number> | null = null;
-
-export function loadZipfTable(): Map<string, number> {
-  if (cachedZipfTable) return cachedZipfTable;
-  const map = new Map<string, number>();
-
-  try {
-    const candidatePaths = [
-      resolve(process.cwd(), "public/lexicon/lemmas-freq-es.tsv.gz"),
-      resolve(__dirname, "../../../public/lexicon/lemmas-freq-es.tsv.gz"),
-    ];
-
-    let foundPath: string | null = null;
-    for (const p of candidatePaths) {
-      if (existsSync(p)) {
-        foundPath = p;
-        break;
-      }
-    }
-
-    if (foundPath) {
-      const buffer = readFileSync(foundPath);
-      const text = new TextDecoder().decode(gunzipSync(buffer));
-      const lines = text.split("\n");
-      for (const line of lines) {
-        const tabIdx = line.indexOf("\t");
-        if (tabIdx > 0) {
-          const lemma = line.slice(0, tabIdx).trim().toLowerCase();
-          const z = parseFloat(line.slice(tabIdx + 1));
-          if (!isNaN(z)) {
-            map.set(lemma, z);
-          }
-        }
-      }
-    }
-  } catch {
-    // Si no está disponible en el entorno o runtime, continúa con mapa vacío
-  }
-
-  cachedZipfTable = map;
-  return map;
-}
-
-export function getZipfFrequency(word: string, lang = "es"): number | null {
-  if (lang !== "es") return null;
-  const table = loadZipfTable();
-  return table.get(word.toLowerCase()) ?? null;
-}
-
 /**
  * Selecciona entre 3 y 5 palabras de verdadero valor pedagógico para la antesala E-Ink.
  * Aplica una compuerta estricta de frecuencia léxica descartando cualquier lema o forma con Zipf >= 4.0.
@@ -1270,9 +1408,9 @@ export function selectKindleChapterPrimingWords(
     if (!lexEntry || !lexEntry.gloss) continue;
 
     // Compuerta de frecuencia léxica estricta: descartar palabras cotidianas con Zipf >= 4.0
-    // (casa, hombre, puerta, dijo/decir, noche, etc.)
-    const fileZipf = getZipfFrequency(lemma, normalizedLang) ?? getZipfFrequency(info.surface, normalizedLang);
-    const candidateZipf = lexEntry.zipf ?? fileZipf;
+    // (casa, hombre, puerta, dijo/decir, noche, etc.). Única fuente: el
+    // zipf del catálogo léxico (Postgres).
+    const candidateZipf = lexEntry.zipf;
     if (candidateZipf != null && candidateZipf >= 4.0) {
       continue;
     }

@@ -484,3 +484,63 @@ describe("PUT endpoints — validación, autenticación y resolución de conflic
     expect(validKnowledgeCols).toContain("lemma");
   });
 });
+
+describe("PUT /api/daily-summaries — telemetría diaria por dispositivo", () => {
+  const row = {
+    // Ayer en UTC: siempre dentro de la ventana, sea cual sea la fecha real.
+    day: new Date(Date.now() - 86_400_000).toISOString().slice(0, 10),
+    tz: "America/Mexico_City",
+    device: "phone",
+    minutes: 25,
+    dwellMs: 900_000,
+    wordsRead: 3_000,
+    reviews: 10,
+    reviewHits: 8,
+    updatedAt: Date.now() - 1_000,
+  };
+
+  it("exige sesión, rechaza lotes vacíos y persiste una fila válida", async () => {
+    getSessionMock.mockResolvedValueOnce(null);
+    const res401 = await app.request("/api/daily-summaries", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ summaries: [row] }),
+    });
+    expect(res401.status).toBe(401);
+
+    const res400 = await app.request("/api/daily-summaries", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ summaries: [] }),
+    });
+    expect(res400.status).toBe(400);
+
+    // Filas malformadas no tiran el lote: se descartan y la buena entra.
+    queryMock.mockResolvedValueOnce({ rowCount: 1, rows: [] });
+    const res200 = await app.request("/api/daily-summaries", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        summaries: [{ day: "mal", updatedAt: 1 }, row],
+      }),
+    });
+    expect(res200.status).toBe(200);
+    const [sql, params] = queryMock.mock.calls[0] as [string, unknown[]];
+    expect(sql).toContain("INSERT INTO lecta_daily_summaries");
+    expect(sql).toContain("ON CONFLICT (user_id, day, device) DO UPDATE");
+    expect(sql).toContain("updated_at < excluded.updated_at");
+    // El JSON viaja como parámetro — nada interpolado en el SQL.
+    expect(params?.[0]).toBe("u1");
+    expect(String(params?.[1])).toContain(`"day":"${row.day}"`);
+  });
+
+  it("responde 503 amable si la tabla aún no existe", async () => {
+    queryMock.mockRejectedValueOnce(new Error("relation does not exist"));
+    const res = await app.request("/api/daily-summaries", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ summaries: [row] }),
+    });
+    expect(res.status).toBe(503);
+  });
+});

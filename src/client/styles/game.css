@@ -3596,6 +3596,63 @@
   padding-top: 4px;
 }
 
+/* «Tu análisis»: barras densas (24 horas, 14 días, 12 meses) reusan
+   journey-weeks-chart con etiquetas más pequeñas. */
+.journey-weeks-chart--dense {
+  gap: 2px;
+  height: 96px;
+}
+
+.journey-weeks-chart--dense .journey-week-label {
+  font-size: 9px;
+  letter-spacing: 0;
+}
+
+.journey-weeks-chart--dense .journey-week-bar {
+  width: 70%;
+}
+
+.journey-week-bar--recall {
+  background: var(--accent-success);
+}
+
+.journey-insight-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  margin-top: var(--s-4);
+}
+
+.journey-insight-title {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.journey-insight-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.journey-insight-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.journey-insight-book {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+}
+
 /* 6. Sección de Compañero */
 .journey-companion-section {
   padding: var(--s-4);

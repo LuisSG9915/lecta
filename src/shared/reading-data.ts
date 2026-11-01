@@ -483,3 +483,139 @@ export function isFsrsCardShape(
   return true;
 }
 
+
+// ---------- Resumen diario por dispositivo ----------
+//
+// La telemetría que antes solo vivía en el dispositivo (foco, ritmo,
+// retrocesos, fatiga, preparación, TTS, consejos) viaja como UNA fila
+// por (usuario, día, dispositivo): conteos y totales, jamás texto ni
+// palabras. El cliente la recalcula del día entero y la sube con su
+// sello; updated_at arbitra el upsert como en las demás colecciones.
+
+export const DAILY_SUMMARY_LIMITS = {
+  day: 10,
+  tz: 64,
+  device: 16,
+  batch: 40,
+  // Tope por métrica y día: rechaza basura de un cliente roto sin
+  // cortar días enteros legítimos.
+  maxCount: 1_000_000,
+  maxMs: 24 * 3_600_000,
+  // Resúmenes sellados en el futuro lejano ganarían el arbitraje por
+  // updated_at para siempre: se descartan, como en knowledge.
+  futureSkewMs: 300_000,
+  // Ventana de historia que el push envía (coincide con el horizonte
+  // del panel: más allá, el día ya no cambia).
+  maxAgeDays: 400,
+} as const;
+
+// Mismas clases que classifyDevice (shared/admin-insights): el cliente
+// nombra su dispositivo y el servidor solo acepta la lista cerrada.
+export const DAILY_SUMMARY_DEVICES = [
+  "kindle",
+  "phone",
+  "tablet",
+  "desktop",
+  "bot",
+  "unknown",
+] as const;
+export type DailySummaryDevice = (typeof DAILY_SUMMARY_DEVICES)[number];
+
+export type SyncDailySummaryInput = {
+  day?: unknown;
+  tz?: unknown;
+  device?: unknown;
+  minutes?: unknown;
+  dwellMs?: unknown;
+  wordsRead?: unknown;
+  consults?: unknown;
+  regressions?: unknown;
+  fatigue?: unknown;
+  wordsSaved?: unknown;
+  reviews?: unknown;
+  reviewHits?: unknown;
+  prepAnswered?: unknown;
+  prepKnown?: unknown;
+  ttsMs?: unknown;
+  tipsShown?: unknown;
+  tipsAccepted?: unknown;
+  updatedAt?: unknown;
+};
+
+export type CleanDailySummary = {
+  day: string;
+  tz: string;
+  device: DailySummaryDevice;
+  minutes: number;
+  dwellMs: number;
+  wordsRead: number;
+  consults: number;
+  regressions: number;
+  fatigue: number;
+  wordsSaved: number;
+  reviews: number;
+  reviewHits: number;
+  prepAnswered: number;
+  prepKnown: number;
+  ttsMs: number;
+  tipsShown: number;
+  tipsAccepted: number;
+  updatedAt: number;
+};
+
+const DAY_KEY_RE = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
+
+// Métrica de conteo o de duración: finita, no negativa, con tope.
+const capped = (value: unknown, max: number, base = 0): number => {
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n) || n < 0) return base;
+  return Math.min(n, max);
+};
+
+// Valida una fila de resumen diario; devuelve null si le falta día o
+// sello. Las métricas se aceptan con tope (un campo raro no tira la
+// fila: solo se recorta).
+export function cleanDailySummary(
+  input: SyncDailySummaryInput,
+  now = Date.now(),
+): CleanDailySummary | null {
+  const day = text(input.day, DAILY_SUMMARY_LIMITS.day)?.trim();
+  if (!day || !DAY_KEY_RE.test(day)) return null;
+  const dayMs = Date.parse(`${day}T00:00:00Z`);
+  if (!Number.isFinite(dayMs)) return null;
+  if (dayMs > now + DAILY_SUMMARY_LIMITS.futureSkewMs) return null;
+  if (dayMs < now - DAILY_SUMMARY_LIMITS.maxAgeDays * 86_400_000) return null;
+
+  const updatedAt = stamp(input.updatedAt);
+  if (updatedAt === undefined || updatedAt > now + DAILY_SUMMARY_LIMITS.futureSkewMs)
+    return null;
+
+  const tz = text(input.tz, DAILY_SUMMARY_LIMITS.tz)?.trim() || "UTC";
+  const device = inList(
+    text(input.device, DAILY_SUMMARY_LIMITS.device),
+    DAILY_SUMMARY_DEVICES,
+  ) ?? "unknown";
+  const max = DAILY_SUMMARY_LIMITS.maxCount;
+  const maxMs = DAILY_SUMMARY_LIMITS.maxMs;
+
+  return {
+    day,
+    tz,
+    device,
+    minutes: capped(input.minutes, maxMs / 60_000),
+    dwellMs: Math.round(capped(input.dwellMs, maxMs)),
+    wordsRead: Math.round(capped(input.wordsRead, max)),
+    consults: Math.round(capped(input.consults, max)),
+    regressions: Math.round(capped(input.regressions, max)),
+    fatigue: Math.round(capped(input.fatigue, max)),
+    wordsSaved: Math.round(capped(input.wordsSaved, max)),
+    reviews: Math.round(capped(input.reviews, max)),
+    reviewHits: Math.round(capped(input.reviewHits, max)),
+    prepAnswered: Math.round(capped(input.prepAnswered, max)),
+    prepKnown: Math.round(capped(input.prepKnown, max)),
+    ttsMs: Math.round(capped(input.ttsMs, maxMs)),
+    tipsShown: Math.round(capped(input.tipsShown, max)),
+    tipsAccepted: Math.round(capped(input.tipsAccepted, max)),
+    updatedAt,
+  };
+}

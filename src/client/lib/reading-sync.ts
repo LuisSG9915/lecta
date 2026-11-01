@@ -897,6 +897,7 @@ export async function syncUserBookUpload(book: {
   id: string;
   title: string;
   author?: string;
+  language?: string;
   data: ArrayBuffer;
 }): Promise<boolean> {
   try {
@@ -906,6 +907,7 @@ export async function syncUserBookUpload(book: {
         "Content-Type": "application/epub+zip",
         "x-book-title": encodeURIComponent(book.title),
         "x-book-author": encodeURIComponent(book.author ?? ""),
+        "x-book-language": encodeURIComponent(book.language ?? ""),
       },
       body: book.data,
     });

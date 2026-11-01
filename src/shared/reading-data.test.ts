@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  cleanDailySummary,
   cleanKnowledge,
   cleanPosition,
   cleanReview,
+  DAILY_SUMMARY_LIMITS,
   isFsrsCardShape,
   KNOWLEDGE_LIMITS,
   KNOWLEDGE_SOURCE_STRENGTH,
@@ -386,5 +388,89 @@ describe("knowledgeArbSql", () => {
       );
     // Misma tupla que knowledgeArbKey: peso, updatedAt, lápida, veredicto.
     expect(sql).toMatch(/\(CASE.*, t\.updated_at, t\.deleted, NOT t\.known\)/s);
+  });
+});
+
+describe("cleanDailySummary", () => {
+  const now = Date.UTC(2026, 10, 20, 12, 0);
+  const base = {
+    day: "2026-11-19",
+    tz: "America/Mexico_City",
+    device: "desktop",
+    minutes: 30,
+    dwellMs: 1_200_000,
+    wordsRead: 5_000,
+    consults: 4,
+    regressions: 2,
+    fatigue: 0,
+    wordsSaved: 3,
+    reviews: 12,
+    reviewHits: 9,
+    prepAnswered: 6,
+    prepKnown: 5,
+    ttsMs: 60_000,
+    tipsShown: 1,
+    tipsAccepted: 1,
+    updatedAt: now - 1_000,
+  };
+
+  it("acepta un resumen válido con todas las métricas", () => {
+    const clean = cleanDailySummary(base, now);
+    expect(clean).not.toBeNull();
+    expect(clean).toMatchObject({
+      day: "2026-11-19",
+      tz: "America/Mexico_City",
+      device: "desktop",
+      minutes: 30,
+      reviews: 12,
+      reviewHits: 9,
+      updatedAt: now - 1_000,
+    });
+  });
+
+  it("rechaza filas sin día válido o sin sello", () => {
+    expect(cleanDailySummary({ ...base, day: "" }, now)).toBeNull();
+    expect(cleanDailySummary({ ...base, day: "19/11/2026" }, now)).toBeNull();
+    expect(cleanDailySummary({ ...base, day: "2026-13-40" }, now)).toBeNull();
+    expect(cleanDailySummary({ ...base, updatedAt: undefined }, now)).toBeNull();
+    expect(
+      cleanDailySummary(
+        { ...base, updatedAt: now + DAILY_SUMMARY_LIMITS.futureSkewMs + 1 },
+        now,
+      ),
+    ).toBeNull();
+  });
+
+  it("rechaza días en el futuro lejano o fuera de la ventana", () => {
+    const futureDay = new Date(now + 10 * 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+    expect(cleanDailySummary({ ...base, day: futureDay }, now)).toBeNull();
+    const oldDay = new Date(
+      now - (DAILY_SUMMARY_LIMITS.maxAgeDays + 1) * 86_400_000,
+    )
+      .toISOString()
+      .slice(0, 10);
+    expect(cleanDailySummary({ ...base, day: oldDay }, now)).toBeNull();
+  });
+
+  it("recorta métricas fuera de rango y normaliza dispositivo y zona", () => {
+    const clean = cleanDailySummary(
+      {
+        ...base,
+        device: "robot-cocina",
+        tz: "",
+        minutes: -5,
+        reviews: Number.POSITIVE_INFINITY,
+        reviewHits: DAILY_SUMMARY_LIMITS.maxCount + 10,
+      },
+      now,
+    );
+    expect(clean).not.toBeNull();
+    expect(clean?.device).toBe("unknown");
+    expect(clean?.tz).toBe("UTC");
+    expect(clean?.minutes).toBe(0);
+    expect(clean?.reviews).toBe(0);
+    expect(clean?.reviewHits).toBe(DAILY_SUMMARY_LIMITS.maxCount);
   });
 });

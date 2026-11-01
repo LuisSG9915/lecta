@@ -18,7 +18,6 @@
     "lint": "eslint . --max-warnings 0",
     "check:size": "node scripts/check-bundle-budget.mjs",
     "gate": "pnpm typecheck && pnpm lint && node scripts/test-trace.mjs && pnpm run build && pnpm run check:size",
-    "gate": "pnpm typecheck && pnpm lint && node scripts/test-trace.mjs && pnpm run build && pnpm run check:size",
     "symbols": "node --env-file=.env scripts/symbolicate.mjs",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
@@ -41,7 +40,9 @@
     "model:upload": "node scripts/upload-model.mjs",
     "mcp": "pnpm --filter @lecta/mcp dev",
     "mcp:build": "pnpm --filter @lecta/mcp build",
-    "mcp:typecheck": "pnpm --filter @lecta/mcp typecheck"
+    "mcp:typecheck": "pnpm --filter @lecta/mcp typecheck",
+    "bench:kindle": "tsx scripts/bench-kindle.mjs",
+    "calibrate:kindle": "tsx scripts/calibrate-kindle.ts"
   },
   "dependencies": {
     "@zip.js/zip.js": "2.18.2",

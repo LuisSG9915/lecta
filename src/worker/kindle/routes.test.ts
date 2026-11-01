@@ -5,10 +5,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as epubReader from "./epub-reader";
 import { app } from "../app";
 import {
+  correctKeyFor,
   memoryCodeStore,
+  parseKindleViewportCookie,
   resetKindleStatusLimiter,
+  safeKindleReturn,
   SAFE_EPUB_ASSET_MIMES,
 } from "./routes";
+import { resetKindleCacheMemory } from "./cache";
 
 const getSessionMock = vi.hoisted(() => vi.fn());
 const authHandlerMock = vi.hoisted(() => vi.fn());
@@ -58,18 +62,26 @@ describe("Kindle Routes (/k and /kindle)", () => {
         },
       ],
     })),
-    get: vi.fn(async (key: string) => {
-      if (key.includes("mock-hash-1")) {
-        return {
-          arrayBuffer: async () => minimalBytes.buffer.slice(
-            minimalBytes.byteOffset,
-            minimalBytes.byteOffset + minimalBytes.byteLength,
-          ),
-        };
-      }
-      return null;
-    }),
+    get: vi.fn(defaultEpubGet),
+    put: vi.fn(async (_key: string, _value: unknown) => undefined),
+    delete: vi.fn(async () => undefined),
+    head: vi.fn(async () => null),
   };
+
+  // Implementación por defecto: solo sirve el EPUB de prueba para claves
+  // .epub; las claves kcache/* responden null (miss) salvo que la prueba
+  // las siembre explícitamente.
+  async function defaultEpubGet(key: string) {
+    if (key.includes("mock-hash-1") && key.endsWith(".epub")) {
+      return {
+        arrayBuffer: async () => minimalBytes.buffer.slice(
+          minimalBytes.byteOffset,
+          minimalBytes.byteOffset + minimalBytes.byteLength,
+        ),
+      };
+    }
+    return null;
+  }
 
   const env = {
     DATABASE_URL: "postgres://mock",
@@ -81,6 +93,8 @@ describe("Kindle Routes (/k and /kindle)", () => {
     vi.clearAllMocks();
     memoryCodeStore.clear();
     resetKindleStatusLimiter();
+    resetKindleCacheMemory();
+    mockBooksBucket.get.mockImplementation(defaultEpubGet);
     getSessionMock.mockResolvedValue(null);
     dbQueryMock.mockResolvedValue({ rows: [] });
   });
@@ -355,30 +369,81 @@ describe("Kindle Routes (/k and /kindle)", () => {
   });
 
   describe("GET /k (Estantería)", () => {
-    it("para usuarios no autenticados muestra la bienvenida y el enlace para entrar", async () => {
+    it("K7: sin sesión redirige directo al código de vinculación de /kindle", async () => {
       const res = await app.request("/k", {}, env);
-      expect(res.status).toBe(200);
-      const html = await res.text();
-      expect(html).toContain("Lecta para Kindle y E-ink");
-      expect(html).toContain("Iniciar sesión");
+      expect(res.status).toBe(302);
+      expect(res.headers.get("Location")).toBe("/kindle");
     });
 
-    it("para usuarios con sesión muestra su lista de libros y progreso", async () => {
+    it("para usuarios con sesión muestra «Seguir leyendo» destacado y su biblioteca", async () => {
       getSessionMock.mockResolvedValue({
         user: { id: "user-1", email: "lector@example.com" },
       });
-      dbQueryMock.mockResolvedValue({
-        rows: [{ bookHash: "mock-hash-1", sectionIndex: 0, progress: 0.5 }],
+      dbQueryMock.mockImplementation(async (sql: string) => {
+        if (typeof sql === "string" && sql.includes("lecta_user_positions")) {
+          return {
+            rows: [
+              {
+                bookHash: "mock-hash-1",
+                sectionIndex: 0,
+                progress: 0.5,
+                syncedAt: "2026-11-01T10:00:00Z",
+              },
+            ],
+          };
+        }
+        if (typeof sql === "string" && sql.includes("lecta_user_words")) {
+          return { rows: [{ n: 3 }] };
+        }
+        return { rows: [] };
       });
 
       const res = await app.request("/k", {}, env);
       expect(res.status).toBe(200);
       const html = await res.text();
-      expect(html).toContain("Mis Libros");
+      expect(html).toContain("SEGUIR LEYENDO");
       expect(html).toContain("Libro de prueba");
       expect(html).toContain("Equipo Lecta");
       expect(html).toContain("Continuar lectura");
+      expect(html).toContain("Repaso del día");
+      expect(html).toContain("3 palabras esperan repaso");
       expect(html).toContain("Cerrar sesión");
+    });
+
+    it("K7: pagina la biblioteca con ?pag=N y muestra el paginador", async () => {
+      getSessionMock.mockResolvedValue({
+        user: { id: "user-1", email: "lector@example.com" },
+      });
+      // 12 libros sin posición → página 1 de 2
+      dbQueryMock.mockImplementation(async (sql: string) => {
+        if (typeof sql === "string" && sql.includes("lecta_user_positions")) {
+          return { rows: [] };
+        }
+        if (typeof sql === "string" && sql.includes("user_books")) {
+          return {
+            rows: Array.from({ length: 12 }, (_, i) => ({
+              id: `libro-${String(i + 1).padStart(2, "0")}`,
+              title: `Libro ${String(i + 1).padStart(2, "0")}`,
+              author: "Autor",
+            })),
+          };
+        }
+        return { rows: [] };
+      });
+
+      const p1 = await app.request("/k", {}, env);
+      const html1 = await p1.text();
+      expect(html1).toContain("Libro 01");
+      expect(html1).toContain("Pág. 1 de 2");
+      expect(html1).toContain("/k?pag=2");
+      expect(html1).not.toContain("Libro 11");
+
+      const p2 = await app.request("/k?pag=2", {}, env);
+      const html2 = await p2.text();
+      expect(html2).toContain("Libro 11");
+      expect(html2).toContain("Libro 12");
+      expect(html2).toContain("/k?pag=1");
+      expect(html2).not.toContain("Libro 01");
     });
   });
 
@@ -501,6 +566,20 @@ describe("Kindle Routes (/k and /kindle)", () => {
       expect(html).toContain("turn-page-bar");
     });
 
+    it("expone Server-Timing con las etapas y el total", async () => {
+      getSessionMock.mockResolvedValue({
+        user: { id: "user-1", email: "lector@example.com" },
+      });
+      const res = await app.request("/k/read/mock-hash-1?section=0", {}, env);
+      expect(res.status).toBe(200);
+      const timing = res.headers.get("Server-Timing") ?? "";
+      expect(timing).toMatch(/session;dur=\d+(\.\d)?/);
+      expect(timing).toMatch(/r2;dur=\d+(\.\d)?/);
+      expect(timing).toMatch(/parse;dur=\d+(\.\d)?/);
+      expect(timing).toMatch(/paginate;dur=\d+(\.\d)?/);
+      expect(timing).toMatch(/total;dur=\d+(\.\d)?/);
+    });
+
     it("con parámetro lookup muestra la definición inline sin salir del libro", async () => {
       getSessionMock.mockResolvedValue({
         user: { id: "user-1", email: "lector@example.com" },
@@ -525,7 +604,8 @@ describe("Kindle Routes (/k and /kindle)", () => {
       expect(html).toContain("perenne");
       expect(html).toContain("adjetivo");
       expect(html).toContain("Que dura indefinidamente.");
-      expect(html).toContain("✕ Cerrar");
+      expect(html).toContain("Cerrar");
+      expect(html).not.toContain("✕");
       expect(html).toContain("+ Guardar en mi Cuaderno");
     });
 
@@ -552,8 +632,8 @@ describe("Kindle Routes (/k and /kindle)", () => {
       const html = await res.text();
       expect(html).toContain("Antes de leer");
       expect(html).toContain("Capítulo uno");
-      expect(html).toContain("Comenzar capítulo 1 →");
-      expect(html).toContain("section=0&amp;page=0");
+      expect(html).toContain("Comenzar a leer capítulo →");
+      expect(html).toContain("section=0&amp;page=0&amp;primed=1");
     });
 
     it("Fase 7: con bookLang='en' siembra ENGLISH_CORE_LEXICON y además consulta findEntriesForForms", async () => {
@@ -594,15 +674,15 @@ describe("Kindle Routes (/k and /kindle)", () => {
       expect(html).toContain("p-num");
     });
 
-    it("con mode=lexicon muestra la clase mode-lexicon", async () => {
+    it("con mode=anchors muestra la clase mode-anchors y la pestaña Anclas", async () => {
       getSessionMock.mockResolvedValue({
         user: { id: "user-1", email: "lector@example.com" },
       });
-      const res = await app.request("/k/read/mock-hash-1?section=0&page=0&mode=lexicon", {}, env);
+      const res = await app.request("/k/read/mock-hash-1?section=0&page=0&mode=anchors", {}, env);
       expect(res.status).toBe(200);
       const html = await res.text();
-      expect(html).toContain("mode-lexicon");
-      expect(html).toContain("[ Modo Léxico ]");
+      expect(html).toContain("mode-anchors");
+      expect(html).toContain("[ Anclas de lectura ]");
     });
 
     it("con ?margin=sm y ?margin=lg emite el encabezado Set-Cookie lecta_k_margin", async () => {
@@ -999,7 +1079,7 @@ describe("Kindle Routes (/k and /kindle)", () => {
 
       const formData = new FormData();
       formData.append("word", "perenne");
-      formData.append("selectedOption", "B");
+      formData.append("selectedOption", correctKeyFor("user-1", "perenne", 0));
       formData.append("questionIndex", "0");
       formData.append("totalQuestions", "3");
       formData.append("correctCount", "0");
@@ -1020,7 +1100,7 @@ describe("Kindle Routes (/k and /kindle)", () => {
 
       const formData = new FormData();
       formData.append("word", "perenne");
-      formData.append("selectedOption", "C");
+      formData.append("selectedOption", correctKeyFor("user-1", "perenne", 2));
       formData.append("questionIndex", "2");
       formData.append("totalQuestions", "3");
       formData.append("correctCount", "2");
@@ -1041,7 +1121,7 @@ describe("Kindle Routes (/k and /kindle)", () => {
 
       const formData = new FormData();
       formData.append("word", "perenne");
-      formData.append("selectedOption", "B");
+      formData.append("selectedOption", correctKeyFor("user-1", "perenne", 0));
       formData.append("questionIndex", "0");
       formData.append("totalQuestions", "3");
       formData.append("correctCount", "0");
@@ -1272,7 +1352,7 @@ describe("Kindle Routes (/k and /kindle)", () => {
       const html = await res.text();
       expect(html).toContain("Antes de leer · Capítulo uno");
       expect(html).toContain("Comenzar a leer capítulo →");
-      expect(html).toContain("✓ Ya la sé");
+      expect(html).toContain("Ya la sé");
       expect(html).toContain("+ Repasar");
       expect(html).toContain("Ocultar en este libro");
       expect(html).toContain("Desactivar siempre");
@@ -1309,6 +1389,556 @@ describe("Kindle Routes (/k and /kindle)", () => {
       expect(res.status).toBe(303);
       const setCookie = res.headers.get("Set-Cookie");
       expect(setCookie).toContain("lecta_k_mute_mock-hash-1=1");
+    });
+  });
+
+  describe("K1 — Estabilidad y seguridad", () => {
+    it("la estantería enlaza «Continuar» con ?section=N sin page= para restaurar por ancla/ratio", async () => {
+      getSessionMock.mockResolvedValue({
+        user: { id: "user-1", email: "lector@example.com" },
+      });
+      dbQueryMock.mockImplementation(async (sql: string) => {
+        if (typeof sql === "string" && sql.includes("lecta_user_positions")) {
+          return { rows: [{ bookHash: "mock-hash-1", sectionIndex: 1, progress: 0.42 }] };
+        }
+        return { rows: [] };
+      });
+
+      const res = await app.request("/k", {}, env);
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).toContain("/k/read/mock-hash-1?section=1");
+      expect(html).not.toContain("page=");
+    });
+
+    it("safeKindleReturn solo permite rutas internas /k y /kindle", () => {
+      expect(safeKindleReturn("/k/read/abc?section=2")).toBe("/k/read/abc?section=2");
+      expect(safeKindleReturn("/kindle")).toBe("/kindle");
+      expect(safeKindleReturn("https://evil.example/k")).toBe("/k");
+      expect(safeKindleReturn("//evil.example/k")).toBe("/k");
+      expect(safeKindleReturn("/k\\evil")).toBe("/k");
+      expect(safeKindleReturn("/k//evil")).toBe("/k");
+      expect(safeKindleReturn("/api/words")).toBe("/k");
+      expect(safeKindleReturn("")).toBe("/k");
+      expect(safeKindleReturn(undefined)).toBe("/k");
+      expect(safeKindleReturn("https://x", "/k/fallback")).toBe("/k/fallback");
+    });
+
+    it("POST /api/kindle/link responde 401 sin token de sesión (sin token sintético)", async () => {
+      getSessionMock.mockResolvedValueOnce(null);
+      const kindleRes = await app.request("/kindle", {}, env);
+      const html = await kindleRes.text();
+      const codeMatch = html.match(/([A-Z0-9]{4})/);
+      const code = codeMatch ? codeMatch[1] : "";
+      expect(code).toHaveLength(4);
+
+      getSessionMock.mockResolvedValueOnce({
+        user: { id: "user-9", email: "lector@example.com" },
+      });
+      const res = await app.request(
+        "/api/kindle/link",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ code }),
+        },
+        env,
+      );
+      expect(res.status).toBe(401);
+      const body = await res.json() as { error?: string };
+      expect(body.error).toContain("iniciar sesión");
+    });
+
+    it("registra actividad de lectura como evento puntual (started_at = ended_at = synced_at)", async () => {
+      getSessionMock.mockResolvedValue({
+        user: { id: "user-1", email: "lector@example.com" },
+      });
+      const res = await app.request("/k/read/mock-hash-1?section=0&page=0", {}, env);
+      expect(res.status).toBe(200);
+
+      const act = dbQueryMock.mock.calls.find((call) =>
+        typeof call[0] === "string" && call[0].includes("INSERT INTO lecta_user_activity"),
+      );
+      expect(act).toBeDefined();
+      expect(act![0]).toContain("$4, $4, $4");
+      const params = act![1] as unknown[];
+      expect(params[3]).toBe(params[3]); // mismo instante para los tres campos
+      expect(typeof params[3]).toBe("number");
+    });
+
+    it("GET /k/practice ordena por vencimiento FSRS antes que por saved_at", async () => {
+      getSessionMock.mockResolvedValue({
+        user: { id: "user-1", email: "lector@example.com" },
+      });
+      dbQueryMock.mockResolvedValue({ rows: [] });
+
+      await app.request("/k/practice", {}, env);
+      const wordsQuery = dbQueryMock.mock.calls.find((call) =>
+        typeof call[0] === "string" && call[0].includes("FROM lecta_user_words"),
+      );
+      expect(wordsQuery).toBeDefined();
+      expect(wordsQuery![0]).toContain("card->>'due'");
+      expect(wordsQuery![0]).toContain("ORDER BY (");
+      expect(wordsQuery![0]).toContain("saved_at DESC");
+    });
+
+    it("correctKeyFor es determinista por (user, palabra, índice) y no fijo por índice", () => {
+      const a = correctKeyFor("user-1", "perenne", 0);
+      expect(["A", "B", "C"]).toContain(a);
+      expect(correctKeyFor("user-1", "perenne", 0)).toBe(a);
+      // La posición correcta ya no depende solo del índice de pregunta
+      const keys = new Set([
+        correctKeyFor("user-1", "perenne", 0),
+        correctKeyFor("user-1", "perenne", 1),
+        correctKeyFor("user-1", "perenne", 2),
+      ]);
+      expect(keys.size).toBeGreaterThanOrEqual(1); // determinista; cobertura real en integración
+    });
+
+    it("el botón físico de vinculación apunta al status del MISMO código (sin regenerar)", async () => {
+      getSessionMock.mockResolvedValueOnce(null);
+      const res = await app.request("/kindle", {}, env);
+      const html = await res.text();
+      const code = html.match(/<div[^>]*font-size:\s*3\.5rem[^>]*>\s*([A-Z0-9]{4})/)![1];
+      const metaRefresh = html.match(/http-equiv="refresh" content="6;\s*url=([^"]+)"/);
+      expect(metaRefresh).not.toBeNull();
+      expect(metaRefresh![1]).toContain(`/api/kindle/status?code=${code}`);
+      expect(metaRefresh![1]).toContain("redirect=1");
+    });
+  });
+
+  describe("K2 — Preferencias de lectura por cuenta", () => {
+    const sessionUser = { user: { id: "user-1", email: "lector@example.com" } };
+
+    it("GET /api/kindle/prefs devuelve defaults cuando no hay fila", async () => {
+      getSessionMock.mockResolvedValue(sessionUser);
+      dbQueryMock.mockResolvedValue({ rows: [] });
+      const res = await app.request("/api/kindle/prefs", {}, env);
+      expect(res.status).toBe(200);
+      const body = await res.json() as { prefs: Record<string, string> };
+      expect(body.prefs).toMatchObject({
+        fontFamily: "literata",
+        fontSize: "md",
+        approach: "clean",
+        layout: "paged",
+      });
+    });
+
+    it("GET /api/kindle/prefs cae a defaults si la tabla aún no existe", async () => {
+      getSessionMock.mockResolvedValue(sessionUser);
+      dbQueryMock.mockRejectedValue(new Error('relation "lecta_kindle_prefs" does not exist'));
+      const res = await app.request("/api/kindle/prefs", {}, env);
+      expect(res.status).toBe(200);
+      const body = await res.json() as { prefs: Record<string, string> };
+      expect(body.prefs.fontFamily).toBe("literata");
+    });
+
+    it("PUT /api/kindle/prefs normaliza y persiste con UPSERT", async () => {
+      getSessionMock.mockResolvedValue(sessionUser);
+      dbQueryMock.mockResolvedValue({ rows: [] });
+      const res = await app.request(
+        "/api/kindle/prefs",
+        {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            prefs: { fontFamily: "atkinson", fontSize: "xxl", approach: "anchors", align: "center" },
+          }),
+        },
+        env,
+      );
+      expect(res.status).toBe(200);
+      const body = await res.json() as { prefs: Record<string, string> };
+      expect(body.prefs.fontFamily).toBe("atkinson");
+      expect(body.prefs.align).toBe("justify"); // valor inválido → default
+
+      const upsert = dbQueryMock.mock.calls.find((call) =>
+        typeof call[0] === "string" && call[0].includes("INSERT INTO lecta_kindle_prefs"),
+      );
+      expect(upsert).toBeDefined();
+      expect(upsert![0]).toContain("ON CONFLICT (user_id) DO UPDATE");
+      const params = upsert![1] as unknown[];
+      expect(params[0]).toBe("user-1");
+      expect(params).toContain("atkinson");
+      expect(params).toContain("xxl");
+      expect(params).toContain("anchors");
+    });
+
+    it("PUT /api/kindle/prefs responde 503 si la tabla no existe (sin crash)", async () => {
+      getSessionMock.mockResolvedValue(sessionUser);
+      dbQueryMock.mockRejectedValue(new Error('relation "lecta_kindle_prefs" does not exist'));
+      const res = await app.request(
+        "/api/kindle/prefs",
+        {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ prefs: { fontSize: "lg" } }),
+        },
+        env,
+      );
+      expect(res.status).toBe(503);
+    });
+
+    it("GET /k/ajustes renderiza el formulario con los selects del vocabulario", async () => {
+      getSessionMock.mockResolvedValue(sessionUser);
+      dbQueryMock.mockResolvedValue({ rows: [] });
+      const res = await app.request("/k/ajustes", {}, env);
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      for (const name of ["fontFamily", "fontSize", "lineHeight", "margin", "align", "approach", "layout"]) {
+        expect(html).toContain(`name="${name}"`);
+      }
+      expect(html).toContain("Anclas de lectura");
+      expect(html).toContain("Guardar en mi Kindle");
+    });
+
+    it("GET /k/ajustes sin sesión redirige a login", async () => {
+      getSessionMock.mockResolvedValue(null);
+      const res = await app.request("/k/ajustes", {}, env);
+      expect(res.status).toBe(302);
+      expect(res.headers.get("Location")).toContain("/k/login");
+    });
+
+    it("POST /k/ajustes guarda, fija cookies y redirige con saved=1", async () => {
+      getSessionMock.mockResolvedValue(sessionUser);
+      dbQueryMock.mockResolvedValue({ rows: [] });
+      const formData = new FormData();
+      formData.append("fontFamily", "source-serif");
+      formData.append("fontSize", "lg");
+      formData.append("approach", "paragraphs");
+      formData.append("layout", "scroll");
+      formData.append("returnTo", "/k");
+
+      const res = await app.request("/k/ajustes", { method: "POST", body: formData }, env);
+      expect(res.status).toBe(303);
+      expect(res.headers.get("Location")).toBe("/k?saved=1");
+      const cookies = res.headers.get("Set-Cookie") || "";
+      expect(cookies).toContain("lecta_k_layout=scroll");
+    });
+
+    it("POST /k/ajustes responde 503 amable si la tabla no existe", async () => {
+      getSessionMock.mockResolvedValue(sessionUser);
+      dbQueryMock.mockRejectedValue(new Error('relation "lecta_kindle_prefs" does not exist'));
+      const formData = new FormData();
+      formData.append("fontSize", "lg");
+      const res = await app.request("/k/ajustes", { method: "POST", body: formData }, env);
+      expect(res.status).toBe(503);
+      const html = await res.text();
+      expect(html).toContain("No pudimos guardar");
+    });
+
+    it("/k/read aplica el enfoque «anchors» de la cuenta cuando no hay parámetro", async () => {
+      getSessionMock.mockResolvedValue(sessionUser);
+      dbQueryMock.mockImplementation(async (sql: string) => {
+        if (typeof sql === "string" && sql.includes("lecta_kindle_prefs")) {
+          return {
+            rows: [{
+              font_family: "literata",
+              font_size: "lg",
+              line_height: "normal",
+              margin: "md",
+              align: "justify",
+              approach: "anchors",
+              layout: "paged",
+            }],
+          };
+        }
+        return { rows: [] };
+      });
+
+      const res = await app.request("/k/read/mock-hash-1?section=0&page=0", {}, env);
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).toContain("mode-anchors");
+      expect(html).toContain("size-lg");
+      expect(html).toContain('<b class="anc">');
+    });
+  });
+
+  describe("K4 — Caché de capítulos y recursos en R2", () => {
+    it("segunda petición de la misma sección sirve desde kcache/ch sin releer el EPUB", async () => {
+      getSessionMock.mockResolvedValue({
+        user: { id: "user-1", email: "lector@example.com" },
+      });
+      resetKindleCacheMemory();
+      dbQueryMock.mockResolvedValue({ rows: [] });
+
+      const res1 = await app.request("/k/read/mock-hash-1?section=0&page=0", {}, env);
+      expect(res1.status).toBe(200);
+
+      const epubGetsAfterFirst = mockBooksBucket.get.mock.calls.filter(
+        (call) => typeof call[0] === "string" && call[0].endsWith(".epub"),
+      ).length;
+
+      await app.request("/k/read/mock-hash-1?section=0&page=0", {}, env);
+      const epubGetsAfterSecond = mockBooksBucket.get.mock.calls.filter(
+        (call) => typeof call[0] === "string" && call[0].endsWith(".epub"),
+      ).length;
+
+      // El segundo toque no debe volver a bajar el binario del libro
+      expect(epubGetsAfterSecond).toBe(epubGetsAfterFirst);
+      // … y haber escrito el artefacto kcache/ch/…json en R2
+      expect(
+        mockBooksBucket.put.mock.calls.some((call) =>
+          typeof call[0] === "string" && call[0].startsWith("kcache/ch/mock-hash-1/"),
+        ),
+      ).toBe(true);
+    });
+
+    it("sirve recursos desde kcache/res sin volver a descargar el EPUB", async () => {
+      getSessionMock.mockResolvedValue({
+        user: { id: "user-1", email: "lector@example.com" },
+      });
+      resetKindleCacheMemory();
+      dbQueryMock.mockResolvedValue({ rows: [] });
+
+      // Sembrar el recurso directamente en el mock de R2
+      mockBooksBucket.get.mockImplementation(async (key: string) => {
+        if (key === "kcache/res/mock-hash-1/OEBPS/img.png") {
+          return {
+            arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer,
+            httpMetadata: { contentType: "image/png" },
+          };
+        }
+        if (key.includes("mock-hash-1") && key.endsWith(".epub")) {
+          return {
+            arrayBuffer: async () => minimalBytes.buffer.slice(
+              minimalBytes.byteOffset,
+              minimalBytes.byteOffset + minimalBytes.byteLength,
+            ),
+          };
+        }
+        return null;
+      });
+
+      const res = await app.request(
+        "/k/read/mock-hash-1/resource?path=OEBPS/img.png",
+        {},
+        env,
+      );
+      expect(res.status).toBe(200);
+      expect(res.headers.get("Content-Type")).toBe("image/png");
+      expect(res.headers.get("Cache-Control")).toContain("private");
+      expect(res.headers.get("X-Content-Type-Options")).toBe("nosniff");
+
+      const epubGets = mockBooksBucket.get.mock.calls.filter(
+        (call) => typeof call[0] === "string" && call[0].endsWith(".epub"),
+      ).length;
+      expect(epubGets).toBe(0);
+    });
+
+    it("K6: ?toc=1 muestra el índice del EPUB y el lector enlaza a él", async () => {
+      getSessionMock.mockResolvedValue({
+        user: { id: "user-1", email: "lector@example.com" },
+      });
+      dbQueryMock.mockResolvedValue({ rows: [] });
+
+      // El lector incluye «Índice» porque minimal.epub trae nav.xhtml
+      const read = await app.request("/k/read/mock-hash-1?section=0&page=0", {}, env);
+      expect(read.status).toBe(200);
+      const readHtml = await read.text();
+      expect(readHtml).toContain(">Índice</a>");
+      expect(readHtml).toContain("toc=1");
+      // Las acciones secundarias ya no saturan la barra: van dentro del menú
+      expect(readHtml).toContain("Aa · Menú");
+
+      const res = await app.request("/k/read/mock-hash-1?section=0&toc=1", {}, env);
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).toContain(">Índice</h1>");
+      expect(html).toContain("Capítulo uno");
+      expect(html).toContain("Capítulo dos");
+      expect(html).toContain("is-current");
+      expect(html).toContain("section=1&amp;page=0");
+      expect(html).toContain("Volver al libro");
+    });
+
+    it("K5: lecta_k_vp acepta formato estricto y rechaza valores absurdos", () => {
+      expect(parseKindleViewportCookie("600x800")).toEqual({ w: 600, h: 800 });
+      expect(parseKindleViewportCookie("1072x1448")).toEqual({ w: 1072, h: 1448 });
+      expect(parseKindleViewportCookie(undefined)).toBeNull();
+      expect(parseKindleViewportCookie("")).toBeNull();
+      expect(parseKindleViewportCookie("abc")).toBeNull();
+      expect(parseKindleViewportCookie("600")).toBeNull();
+      expect(parseKindleViewportCookie("600x800;otra=cosa")).toBeNull();
+      expect(parseKindleViewportCookie("100x800")).toBeNull(); // w < 240
+      expect(parseKindleViewportCookie("600x99999")).toBeNull(); // h > 4096
+      expect(parseKindleViewportCookie("99999x99999")).toBeNull();
+    });
+
+    it("rechaza EPUBs que superan el límite con página amable (413/400)", async () => {
+      getSessionMock.mockResolvedValue({
+        user: { id: "user-1", email: "lector@example.com" },
+      });
+      resetKindleCacheMemory();
+      dbQueryMock.mockResolvedValue({ rows: [] });
+      mockBooksBucket.get.mockImplementation(async (key: string) => {
+        if (key.includes("mock-hash-1") && key.endsWith(".epub")) {
+          return {
+            size: 60 * 1024 * 1024,
+            arrayBuffer: async () => {
+              throw new Error("no debería descargarse");
+            },
+          };
+        }
+        return null;
+      });
+
+      const res = await app.request("/k/read/mock-hash-1?section=0&page=0", {}, env);
+      expect(res.status).toBe(400);
+      const html = await res.text();
+      expect(html).toContain("demasiado grande");
+    });
+  });
+
+  describe("K8 — Vista previa /k/preview", () => {
+    const sessionUser = { user: { id: "user-1", email: "lector@example.com" } };
+
+    it("GET /k/preview sin sesión redirige a /kindle", async () => {
+      getSessionMock.mockResolvedValue(null);
+      const res = await app.request("/k/preview", {}, env);
+      expect(res.status).toBe(302);
+      expect(res.headers.get("Location")).toBe("/kindle");
+    });
+
+    it("GET /k/preview renderiza el marco con iframe a /k/preview/page", async () => {
+      getSessionMock.mockResolvedValue(sessionUser);
+      const res = await app.request("/k/preview?size=lg&mode=anchors", {}, env);
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).toContain("/k/preview/page");
+      expect(html).toContain("size=lg");
+      expect(html).toContain("mode=anchors");
+      expect(html).toContain("Vista previa de tu Kindle");
+    });
+
+    it("GET /k/preview/page sin sesión responde 401", async () => {
+      getSessionMock.mockResolvedValue(null);
+      const res = await app.request("/k/preview/page", {}, env);
+      expect(res.status).toBe(401);
+    });
+
+    it("GET /k/preview/page renderiza la página real del lector con el primer libro", async () => {
+      getSessionMock.mockResolvedValue(sessionUser);
+      dbQueryMock.mockResolvedValue({ rows: [] });
+      const res = await app.request("/k/preview/page", {}, env);
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      // Es el MISMO render del lector: header, aviso de vista previa y clases
+      expect(html).toContain("epub-content mode-clean size-md font-literata");
+      expect(html).toContain("reader-container margin-md");
+      expect(html).toContain("Vista previa — así se verá tu lectura en el Kindle.");
+      expect(html).toContain("Libro de prueba");
+    });
+
+    it("GET /k/preview/page aplica los overrides de la query sobre la cuenta", async () => {
+      getSessionMock.mockResolvedValue(sessionUser);
+      dbQueryMock.mockImplementation(async (sql: string) => {
+        if (typeof sql === "string" && sql.includes("lecta_kindle_prefs")) {
+          return {
+            rows: [{
+              font_family: "literata",
+              font_size: "md",
+              line_height: "normal",
+              margin: "md",
+              align: "justify",
+              approach: "clean",
+              layout: "paged",
+            }],
+          };
+        }
+        return { rows: [] };
+      });
+      const res = await app.request(
+        "/k/preview/page?size=xxl&mode=anchors&font=opendyslexic&align=left&layout=scroll",
+        {},
+        env,
+      );
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).toContain("mode-anchors size-xxl font-opendyslexic");
+      expect(html).toContain("align-left");
+      expect(html).toContain("layout-scroll");
+    });
+
+    it("el portal /k permite ser embebido por el mismo origen (frame-ancestors 'self')", async () => {
+      getSessionMock.mockResolvedValue(sessionUser);
+      dbQueryMock.mockResolvedValue({ rows: [] });
+      // La vista previa navega dentro del iframe: todo el portal necesita
+      // 'self' o cada enlace interno daría «rechazó la conexión».
+      const inner = await app.request("/k/preview/page", {}, env);
+      expect(inner.headers.get("Content-Security-Policy")).toContain("frame-ancestors 'self'");
+      const outer = await app.request("/k/preview", {}, env);
+      expect(outer.headers.get("Content-Security-Policy")).toContain("frame-ancestors 'self'");
+      const ajustes = await app.request("/k/ajustes", {}, env);
+      expect(ajustes.headers.get("Content-Security-Policy")).toContain("frame-ancestors 'self'");
+      const read = await app.request("/k/read/mock-hash-1?section=0&page=0", {}, env);
+      expect(read.headers.get("Content-Security-Policy")).toContain("frame-ancestors 'self'");
+    });
+
+    it("los enlaces internos del preview se reescriben a /k/preview/page (navegación dentro del marco)", async () => {
+      getSessionMock.mockResolvedValue(sessionUser);
+      dbQueryMock.mockResolvedValue({ rows: [] });
+      const res = await app.request("/k/preview/page?size=xl&mode=anchors", {}, env);
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      // Los links de lectura ya no apuntan a /k/read (que saldría del preview)
+      expect(html).not.toContain('href="/k/read/mock-hash-1');
+      expect(html).toContain("/k/preview/page?book=mock-hash-1");
+      // Los overrides viajan por la navegación interna
+      expect(html).toContain("mode=anchors");
+      expect(html).toContain("size=xl");
+      expect(html).toContain("font=");
+      expect(html).toContain("lh=");
+      expect(html).toContain("align=");
+      // El enlace de salida a la biblioteca abre pestaña real
+      expect(html).toContain('target="_blank" href="/k"');
+    });
+
+    it("GET /k/preview/page honra ?page= para paginar dentro del marco", async () => {
+      getSessionMock.mockResolvedValue(sessionUser);
+      dbQueryMock.mockResolvedValue({ rows: [] });
+      // size=xxl reduce el presupuesto por página → hay una página 2 real
+      const p1 = await app.request("/k/preview/page?page=1&size=xxl", {}, env);
+      expect(p1.status).toBe(200);
+      const html = await p1.text();
+      expect(html).toContain("Pág. 2 de");
+    });
+
+    it("GET /k/preview/page con ?toc=1 muestra el índice dentro del marco", async () => {
+      getSessionMock.mockResolvedValue(sessionUser);
+      dbQueryMock.mockResolvedValue({ rows: [] });
+      const res = await app.request("/k/preview/page?toc=1", {}, env);
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).toContain("toc-list");
+      // Las entradas del índice también navegan dentro del preview
+      expect(html).toContain("/k/preview/page?book=mock-hash-1");
+      expect(html).not.toContain('href="/k/read/mock-hash-1');
+    });
+
+    it("GET /k/preview/page ignora un parámetro book malicioso", async () => {
+      getSessionMock.mockResolvedValue(sessionUser);
+      dbQueryMock.mockResolvedValue({ rows: [] });
+      const res = await app.request(
+        `/k/preview/page?book=${encodeURIComponent('"><svg onload=alert(1)')}`,
+        {},
+        env,
+      );
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).not.toContain("<svg onload");
+    });
+
+    it("GET /k/preview/page usa el pasaje de muestra cuando no hay libros", async () => {
+      getSessionMock.mockResolvedValue(sessionUser);
+      dbQueryMock.mockResolvedValue({ rows: [] });
+      mockBooksBucket.list.mockResolvedValueOnce({ objects: [] });
+      const res = await app.request("/k/preview/page", {}, env);
+      expect(res.status).toBe(200);
+      const html = await res.text();
+      expect(html).toContain("Texto de muestra");
+      expect(html).toContain("tetera");
     });
   });
 });

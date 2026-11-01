@@ -1,0 +1,542 @@
+/* Panel de análisis del dueño. Solo se carga con el modal
+   (lazy), nunca en el arranque. */
+
+.adm-dialog {
+  max-width: 64rem;
+  width: min(64rem, calc(100vw - 1rem));
+  max-height: min(90vh, 64rem);
+  overflow-y: auto;
+}
+
+.adm-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  padding: 0 1.25rem 1.5rem;
+}
+
+.adm-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 0.75rem 1.25rem;
+}
+
+.adm-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+}
+
+.adm-field select {
+  font: inherit;
+  color: var(--ink);
+  background: var(--paper-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.3rem 0.5rem;
+  min-height: 2.25rem;
+}
+
+.adm-check {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 2.25rem;
+}
+
+.adm-note {
+  margin: -0.5rem 0 0;
+}
+
+.adm-loading {
+  padding: 2rem 0;
+  text-align: center;
+}
+
+.adm-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 2rem 0;
+}
+
+.adm-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+  gap: 0.6rem;
+}
+
+.adm-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.65rem 0.75rem;
+  background: var(--paper-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.adm-stat-label {
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+}
+
+.adm-stat-value {
+  font-size: var(--fs-xl);
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.15;
+}
+
+.adm-stat-delta {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+
+.adm-stat-delta.is-up { color: var(--accent-success); }
+.adm-stat-delta.is-down { color: var(--vermilion); }
+.adm-stat-delta.is-flat { color: var(--ink-soft); }
+
+.adm-stat-hint {
+  font-size: var(--fs-xs);
+  color: var(--ink-faint);
+}
+
+.adm-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.adm-sub {
+  margin: 0;
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.adm-two-col {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(20rem, 100%), 1fr));
+  gap: 1rem;
+}
+
+/* ---------- ChartFrame ---------- */
+
+.chart-frame {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  background: var(--paper-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.chart-frame-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.75rem;
+}
+
+.chart-frame-title {
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.chart-frame-hint {
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+}
+
+.chart-frame-body {
+  min-height: 4rem;
+}
+
+.chart-table summary {
+  font-size: var(--fs-sm);
+  color: var(--vermilion);
+  cursor: pointer;
+  padding: 0.25rem 0;
+}
+
+.chart-table-scroll {
+  overflow-x: auto;
+}
+
+.chart-empty {
+  margin: 0;
+  padding: 1.5rem 0;
+  text-align: center;
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+}
+
+/* ---------- Barras verticales ---------- */
+
+.chart-bars {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  height: 9rem;
+}
+
+.chart-bar-col {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.chart-bar-wrap {
+  flex: 1;
+  display: flex;
+  align-items: end;
+}
+
+.chart-bar {
+  width: 100%;
+  background: var(--vermilion);
+  border-radius: 2px 2px 0 0;
+}
+
+.chart-bar-label {
+  font-size: 10px;
+  color: var(--ink-faint);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------- Líneas ---------- */
+
+.chart-line {
+  width: 100%;
+  height: 11rem;
+  display: block;
+}
+
+.chart-axis {
+  stroke: var(--ink-faint);
+  stroke-width: 1;
+}
+
+.chart-axis-max {
+  fill: var(--ink-faint);
+  font-size: 9px;
+}
+
+.chart-line-path {
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.chart-line-tone-0 { stroke: var(--vermilion); }
+.chart-line-tone-1 { stroke: var(--chroma-blue); stroke-dasharray: 6 3; }
+.chart-line-tone-2 { stroke: var(--accent-success); stroke-dasharray: 2 3; }
+.chart-line-tone-3 { stroke: var(--amber); stroke-dasharray: 10 3 2 3; }
+
+.chart-legend {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1rem;
+  margin: 0.25rem 0 0;
+  padding: 0;
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+}
+
+.chart-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.chart-legend-swatch {
+  width: 0.9rem;
+  height: 3px;
+  display: inline-block;
+  background: currentColor;
+}
+
+.chart-legend-item.chart-line-tone-0 .chart-legend-swatch { background: var(--vermilion); }
+.chart-legend-item.chart-line-tone-1 .chart-legend-swatch { background: var(--chroma-blue); }
+.chart-legend-item.chart-line-tone-2 .chart-legend-swatch { background: var(--accent-success); }
+.chart-legend-item.chart-line-tone-3 .chart-legend-swatch { background: var(--amber); }
+
+/* ---------- Mapa de calor ---------- */
+
+.chart-heat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.chart-heat-row {
+  display: grid;
+  grid-template-columns: 2.25rem repeat(var(--cols, 24), 1fr);
+  gap: 2px;
+  align-items: center;
+}
+
+.chart-heat-corner { grid-column: 1; }
+
+.chart-heat-collabel {
+  font-size: 9px;
+  color: var(--ink-faint);
+  text-align: center;
+}
+
+.chart-heat-rowlabel {
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+}
+
+.chart-heat-cell {
+  position: relative;
+  aspect-ratio: 1;
+  min-height: 0.6rem;
+  background: var(--paper-sunken);
+  border-radius: 2px;
+}
+
+.chart-heat-cell > i {
+  position: absolute;
+  inset: 0;
+  background: var(--vermilion);
+  border-radius: 2px;
+  display: block;
+}
+
+/* ---------- Embudo ---------- */
+
+.chart-funnel {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.chart-funnel-step {
+  display: grid;
+  grid-template-columns: minmax(9rem, 14rem) 1fr 3.5rem;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.chart-funnel-meta {
+  display: flex;
+  flex-direction: column;
+}
+
+.chart-funnel-label {
+  font-size: var(--fs-sm);
+  color: var(--ink);
+}
+
+.chart-funnel-count {
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+}
+
+.chart-funnel-track {
+  height: 0.8rem;
+  background: var(--paper-sunken);
+  border-radius: var(--radius-xs);
+}
+
+.chart-funnel-bar {
+  height: 100%;
+  background: var(--vermilion);
+  border-radius: var(--radius-xs);
+}
+
+.chart-funnel-conv {
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+}
+
+.chart-funnel-hint {
+  grid-column: 1 / -1;
+  font-size: var(--fs-xs);
+  color: var(--ink-faint);
+}
+
+/* ---------- Cohortes ---------- */
+
+.chart-cohort {
+  border-collapse: collapse;
+  font-size: var(--fs-xs);
+  width: 100%;
+}
+
+.chart-cohort th,
+.chart-cohort td {
+  padding: 0.3rem 0.4rem;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.chart-cohort thead th {
+  font-weight: 600;
+  color: var(--ink-soft);
+  border-bottom: 1px solid var(--border);
+}
+
+.chart-cohort tbody th {
+  font-weight: 500;
+  text-align: left;
+  color: var(--ink);
+}
+
+.chart-cohort-cell {
+  background: color-mix(
+    in srgb,
+    var(--vermilion) calc(var(--i, 0) * 60%),
+    var(--paper-sunken)
+  );
+}
+
+.chart-cohort-cell .chart-cohort-n {
+  color: var(--ink-soft);
+  font-size: 9px;
+}
+
+.chart-cohort .is-future {
+  color: var(--ink-faint);
+}
+
+/* ---------- Barra por tramos ---------- */
+
+.chart-seg-track {
+  display: flex;
+  height: 1.1rem;
+  border-radius: var(--radius-xs);
+  overflow: hidden;
+  background: var(--paper-sunken);
+}
+
+.chart-seg-part {
+  display: block;
+}
+
+.chart-seg-tone-0 { background: var(--vermilion); }
+.chart-seg-tone-1 { background: var(--chroma-blue); }
+.chart-seg-tone-2 { background: var(--accent-success); }
+.chart-seg-tone-3 { background: var(--amber); }
+.chart-seg-tone-4 { background: var(--chroma-crimson); }
+.chart-seg-tone-5 { background: var(--ink-faint); }
+
+.chart-seg-legend .chart-legend-swatch {
+  height: 0.7rem;
+  width: 0.7rem;
+  border-radius: 2px;
+}
+
+.chart-seg-legend .chart-seg-tone-0 { background: var(--vermilion); }
+.chart-seg-legend .chart-seg-tone-1 { background: var(--chroma-blue); }
+.chart-seg-legend .chart-seg-tone-2 { background: var(--accent-success); }
+.chart-seg-legend .chart-seg-tone-3 { background: var(--amber); }
+.chart-seg-legend .chart-seg-tone-4 { background: var(--chroma-crimson); }
+.chart-seg-legend .chart-seg-tone-5 { background: var(--ink-faint); }
+
+/* ---------- Tabla de datos ---------- */
+
+.adm-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+}
+
+.adm-table th,
+.adm-table td {
+  padding: 0.4rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.adm-table thead th {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.adm-th-sort {
+  appearance: none;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: inherit;
+}
+
+.adm-th-sort.is-active {
+  color: var(--ink);
+}
+
+.adm-th-sort:focus-visible {
+  outline: 2px solid var(--vermilion);
+  outline-offset: 2px;
+}
+
+.adm-user-cell,
+.adm-book-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.adm-user-cell strong,
+.adm-book-cell strong {
+  font-weight: 500;
+}
+
+.adm-accounts-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+}
+
+.adm-accounts-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.adm-search {
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--ink);
+  background: var(--paper-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.35rem 0.6rem;
+  min-height: 2.25rem;
+  min-width: min(16rem, 100%);
+}
+
+.adm-userhead-name {
+  margin: 0;
+  font-size: var(--fs-lg);
+  color: var(--ink);
+}
+
+.adm-userhead p {
+  margin: 0.2rem 0 0;
+}

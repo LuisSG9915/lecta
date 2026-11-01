@@ -103,6 +103,7 @@ CREATE TABLE IF NOT EXISTS user_books (
   book_id TEXT NOT NULL,
   title TEXT NOT NULL,
   author TEXT NOT NULL DEFAULT '',
+  language TEXT NOT NULL DEFAULT '',
   r2_key TEXT NOT NULL,
   size_bytes INTEGER NOT NULL DEFAULT 0,
   sha256 TEXT NOT NULL DEFAULT '',

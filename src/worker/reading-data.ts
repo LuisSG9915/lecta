@@ -7,7 +7,9 @@ import {
   cleanReview,
   cleanPosition,
   cleanKnowledge,
+  cleanDailySummary,
   knowledgeArbSql,
+  DAILY_SUMMARY_LIMITS,
   ANNOTATION_LIMITS,
   ACTIVITY_LIMITS,
   REVIEW_LIMITS,
@@ -18,6 +20,7 @@ import {
   type SyncReviewInput,
   type SyncPositionInput,
   type SyncKnowledgeInput,
+  type SyncDailySummaryInput,
 } from "../shared/reading-data";
 
 function parseSinceParam(param?: string | null): number {
@@ -769,5 +772,83 @@ readingData.put("/api/knowledge", async (context) => {
   });
   if (upserted === undefined)
     return context.json({ error: "El almacenamiento no está configurado." }, 503);
+  return context.json({ ok: true, upserted, serverTime: serverNow });
+});
+
+// Resumen diario por dispositivo (telemetría agregada, solo números).
+// El cliente recalcula su día y lo sube; updated_at arbitra el
+// conflicto como en positions: gana la fila más reciente.
+readingData.put("/api/daily-summaries", async (context) => {
+  if (!getConnectionString(context.env))
+    return context.json({ error: "El almacenamiento no está configurado." }, 503);
+  const session = await getSession(context);
+  if (!session)
+    return context.json({ error: "Inicia sesión para guardar tu resumen." }, 401);
+
+  const serverNow = Date.now();
+  const body = await context.req.json().catch(() => null);
+  const inputs = Array.isArray(body?.summaries)
+    ? (body.summaries as SyncDailySummaryInput[])
+    : [];
+  const rows = inputs
+    .map((item) => cleanDailySummary(item, serverNow))
+    .filter((item): item is NonNullable<typeof item> => item !== null)
+    .map((item) => ({ ...item, updatedAt: Math.min(item.updatedAt, serverNow) }))
+    .slice(0, DAILY_SUMMARY_LIMITS.batch);
+  if (!rows.length)
+    return context.json({ error: "Faltan los resúmenes." }, 400);
+
+  const upserted = await withClient(context.env, async (client) => {
+    let total = 0;
+    for (const chunk of chunks(rows)) {
+      const result = await client
+        .query(
+        `INSERT INTO lecta_daily_summaries
+           (user_id, day, device, tz, minutes, dwell_ms, words_read,
+            consults, regressions, fatigue, words_saved, reviews,
+            review_hits, prep_answered, prep_known, tts_ms,
+            tips_shown, tips_accepted, updated_at, synced_at)
+         SELECT $1,
+                j.value ->> 'day', j.value ->> 'device', j.value ->> 'tz',
+                (j.value ->> 'minutes')::float8,
+                (j.value ->> 'dwellMs')::int8, (j.value ->> 'wordsRead')::int8,
+                (j.value ->> 'consults')::int8, (j.value ->> 'regressions')::int8,
+                (j.value ->> 'fatigue')::int8, (j.value ->> 'wordsSaved')::int8,
+                (j.value ->> 'reviews')::int8, (j.value ->> 'reviewHits')::int8,
+                (j.value ->> 'prepAnswered')::int8, (j.value ->> 'prepKnown')::int8,
+                (j.value ->> 'ttsMs')::int8,
+                (j.value ->> 'tipsShown')::int8, (j.value ->> 'tipsAccepted')::int8,
+                (j.value ->> 'updatedAt')::int8, $3::int8
+         FROM jsonb_array_elements($2::jsonb) AS j(value)
+         ON CONFLICT (user_id, day, device) DO UPDATE SET
+           tz = excluded.tz, minutes = excluded.minutes,
+           dwell_ms = excluded.dwell_ms, words_read = excluded.words_read,
+           consults = excluded.consults, regressions = excluded.regressions,
+           fatigue = excluded.fatigue, words_saved = excluded.words_saved,
+           reviews = excluded.reviews, review_hits = excluded.review_hits,
+           prep_answered = excluded.prep_answered,
+           prep_known = excluded.prep_known,
+           tts_ms = excluded.tts_ms,
+           tips_shown = excluded.tips_shown,
+           tips_accepted = excluded.tips_accepted,
+           updated_at = excluded.updated_at,
+           synced_at = excluded.synced_at
+         WHERE lecta_daily_summaries.updated_at < excluded.updated_at`,
+        [session.user.id, JSON.stringify(chunk), serverNow],
+        )
+        .catch(() => null);
+      if (result === null) return null;
+      total += result.rowCount ?? 0;
+    }
+    return total;
+  });
+  // La tabla puede no existir todavía (despliegue antes de la
+  // migración): se responde 503 amable y el cliente lo reintenta en
+  // el siguiente ciclo, como las preferencias del Kindle.
+  if (upserted === undefined || upserted === null)
+    return context.json(
+      { error: "El resumen diario todavía no está disponible." },
+      503,
+    );
   return context.json({ ok: true, upserted, serverTime: serverNow });
 });

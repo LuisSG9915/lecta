@@ -4,6 +4,18 @@
 
 import type { LexiconEntryView } from "../lexicon";
 import type { KindleMargin, KindlePrimingWord } from "./epub-reader";
+import {
+  DEFAULT_KINDLE_PREFS,
+  KINDLE_ALIGNS,
+  KINDLE_APPROACHES,
+  KINDLE_FONT_FAMILIES,
+  KINDLE_FONT_SIZES,
+  KINDLE_LAYOUTS,
+  KINDLE_LINE_HEIGHTS,
+  KINDLE_MARGINS,
+  KINDLE_PREF_LABELS,
+  type KindlePrefs,
+} from "../../shared/kindle-prefs";
 export type { KindleMargin } from "./epub-reader";
 import { isHashLikeIdentifier } from "../../shared/epub-meta";
 
@@ -19,13 +31,7 @@ export type KindleBookItem = {
   author: string;
   sections: number;
   currentSection?: number | null;
-  currentPage?: number | null;
   progressPercent?: number | null;
-};
-
-export type PageWordItem = {
-  form: string;
-  saved: boolean;
 };
 
 export type InlineLookupResult = {
@@ -33,26 +39,6 @@ export type InlineLookupResult = {
   entries: LexiconEntryView[] | null;
   saved?: boolean;
   contextSentence?: string | null;
-};
-
-export type PrepWordItem = {
-  form: string;
-  lemma: string;
-  pos: string | null;
-  meaning: string;
-  exampleSentence?: string | null;
-  saved: boolean;
-  zipf?: number | null;
-};
-
-export type CatPageNoteItem = {
-  form: string;
-  lemma: string;
-  pos: string | null;
-  meaning: string;
-  noteIndex: number;
-  saved: boolean;
-  known?: boolean;
 };
 
 export type PracticeQuestionItem = {
@@ -65,7 +51,7 @@ export type PracticeQuestionItem = {
   totalQuestions: number;
 };
 
-function escapeHtml(str: string | null | undefined): string {
+export function escapeHtml(str: string | null | undefined): string {
   if (!str) return "";
   return str
     .replace(/&/g, "&amp;")
@@ -169,7 +155,92 @@ export function renderKindleCatSvg(mood: string, equippedItems: string[] = []): 
   `.trim();
 }
 
-const KINDLE_CSS = `
+export const KINDLE_CSS = `
+  /* Fuentes autoalojadas (OFL) servidas como assets estáticos en /fonts/.
+     unicode-range hace que el Kindle descargue solo el subset que usa;
+     format("woff2") es el más compatible con navegadores e-ink viejos. */
+  @font-face {
+    font-family: "Literata";
+    font-style: normal;
+    font-display: swap;
+    font-weight: 200 900;
+    src: url("/fonts/literata-latin-standard-normal.woff2") format("woff2");
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+      U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+      U+2212, U+2215, U+FEFF, U+FFFD;
+  }
+  @font-face {
+    font-family: "Literata";
+    font-style: italic;
+    font-display: swap;
+    font-weight: 200 900;
+    src: url("/fonts/literata-latin-standard-italic.woff2") format("woff2");
+    unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+      U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+      U+2212, U+2215, U+FEFF, U+FFFD;
+  }
+  @font-face {
+    font-family: "Literata";
+    font-style: normal;
+    font-display: swap;
+    font-weight: 200 900;
+    src: url("/fonts/literata-latin-ext-standard-normal.woff2") format("woff2");
+    unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+      U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20AB,
+      U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+  }
+  @font-face {
+    font-family: "Literata";
+    font-style: italic;
+    font-display: swap;
+    font-weight: 200 900;
+    src: url("/fonts/literata-latin-ext-standard-italic.woff2") format("woff2");
+    unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF,
+      U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20AB,
+      U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+  }
+  @font-face {
+    font-family: "Source Serif 4";
+    font-style: normal;
+    font-display: swap;
+    font-weight: 200 900;
+    src: url("/fonts/source-serif-4-latin-opsz-normal.woff2") format("woff2");
+  }
+  @font-face {
+    font-family: "Source Serif 4";
+    font-style: italic;
+    font-display: swap;
+    font-weight: 200 900;
+    src: url("/fonts/source-serif-4-latin-opsz-italic.woff2") format("woff2");
+  }
+  @font-face {
+    font-family: "Atkinson Hyperlegible";
+    font-style: normal;
+    font-display: swap;
+    font-weight: 400;
+    src: url("/fonts/atkinson-next-latin-400-normal.woff2") format("woff2");
+  }
+  @font-face {
+    font-family: "Atkinson Hyperlegible";
+    font-style: normal;
+    font-display: swap;
+    font-weight: 700;
+    src: url("/fonts/atkinson-next-latin-700-normal.woff2") format("woff2");
+  }
+  @font-face {
+    font-family: "OpenDyslexic";
+    font-style: normal;
+    font-display: swap;
+    font-weight: 400;
+    src: url("/fonts/opendyslexic-latin-400-normal.woff2") format("woff2");
+  }
+  @font-face {
+    font-family: "OpenDyslexic";
+    font-style: normal;
+    font-display: swap;
+    font-weight: 700;
+    src: url("/fonts/opendyslexic-latin-700-normal.woff2") format("woff2");
+  }
   *, *:before, *:after {
     box-sizing: border-box;
     transition: none !important;
@@ -363,56 +434,6 @@ const KINDLE_CSS = `
     text-align: center;
     flex-grow: 1;
   }
-  /* Enlaces de palabras interactivas */
-  a.w {
-    color: inherit;
-    text-decoration: none;
-    cursor: pointer;
-  }
-  a.w:hover, a.w:active {
-    background-color: #dcdcdc;
-  }
-  a.w.saved {
-    border-bottom: 1px dotted #444444;
-  }
-  /* Sección de vocabulario de la página */
-  .page-vocab-box {
-    margin-top: 22px;
-    padding: 12px 14px;
-    border: 2px solid #000000;
-    background: #fafafa;
-  }
-  .page-vocab-title {
-    font-size: 1rem;
-    font-weight: bold;
-    margin: 0 0 10px 0;
-    padding-bottom: 4px;
-    border-bottom: 1px solid #000000;
-  }
-  .page-vocab-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    align-items: center;
-  }
-  .vocab-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 8px;
-    border: 1px solid #000000;
-    background: #ffffff;
-    font-size: 0.9rem;
-    line-height: 1.2;
-  }
-  .vocab-chip.saved {
-    background: #e8e8e8;
-    border-style: dashed;
-  }
-  .vocab-chip a.vocab-link {
-    color: #000000;
-    text-decoration: underline;
-  }
   .vocab-inline-form {
     display: inline;
     margin: 0;
@@ -429,18 +450,25 @@ const KINDLE_CSS = `
     cursor: pointer;
     font-weight: bold;
   }
-  .quick-lookup-box {
-    margin-top: 24px;
-    padding: 14px;
+  /* Ajustes de lectura (K2) — <select> nativos: funcionan sin JS y en
+     navegadores e-ink antiguos donde :has() no existe. */
+  .prefs-group {
     border: 2px solid #000000;
-    background: #fbfbfb;
+    padding: 12px 14px;
+    margin-bottom: 14px;
   }
-  .quick-lookup-form {
-    display: flex;
-    gap: 8px;
+  .prefs-group legend {
+    font-weight: bold;
+    padding: 0 6px;
   }
-  .quick-lookup-form input {
-    flex-grow: 1;
+  .prefs-group select {
+    width: 100%;
+    min-height: 48px;
+    padding: 8px 10px;
+    font-size: 1.05rem;
+    border: 2px solid #000000;
+    background: #ffffff;
+    color: #000000;
   }
   /* Diccionario */
   .sense-list {
@@ -475,15 +503,21 @@ const KINDLE_CSS = `
     box-sizing: border-box;
     padding: 8px 14px;
   }
-  /* Layout paged (1-pantalla Zero-Scroll para Kindle E-ink) */
+  /* Layout paged (1-pantalla Zero-Scroll para Kindle E-ink).
+     dvh va después de vh: los motores que lo soportan descuentan la
+     barra propia del navegador; los viejos se quedan con vh. */
   body.layout-paged {
     height: 100vh;
+    height: 100dvh;
     max-height: 100vh;
+    max-height: 100dvh;
     overflow: hidden;
   }
   body.layout-paged .reader-container {
     height: 100vh;
+    height: 100dvh;
     max-height: 100vh;
+    max-height: 100dvh;
     overflow: hidden;
     display: flex;
     flex-direction: column;
@@ -498,6 +532,11 @@ const KINDLE_CSS = `
     overflow: hidden;
     margin: 4px 0 6px 0;
     max-height: calc(100vh - 82px);
+    max-height: calc(100dvh - 82px);
+  }
+  /* Una figura nunca desborda la página: el alto tope es la caja misma. */
+  body.layout-paged .epub-content img {
+    max-height: 100%;
   }
   /* Layout scroll (lectura continua opcional) */
   body.layout-scroll {
@@ -509,6 +548,39 @@ const KINDLE_CSS = `
     max-height: none;
     overflow-y: auto;
     padding: 8px 14px 24px 14px;
+  }
+
+  /* Índice del libro (K6) */
+  .toc-title {
+    font-family: Georgia, "Bookerly", serif;
+    font-size: 1.5rem;
+    margin: 10px 0 8px 0;
+    border-bottom: 2px solid #000000;
+    padding-bottom: 6px;
+  }
+  .toc-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .toc-item a {
+    display: block;
+    padding: 11px 6px;
+    border-bottom: 1px solid #999999;
+    color: #000000;
+    text-decoration: none;
+    font-size: 1.05rem;
+    line-height: 1.35;
+  }
+  .toc-item.is-current a {
+    font-weight: bold;
+    background: #eeeeee;
+  }
+  .toc-empty {
+    padding: 14px 6px;
+    color: #333333;
+    font-size: 1rem;
+    list-style: none;
   }
 
   /* Barra superior compacta (<= 36px) */
@@ -764,19 +836,22 @@ const KINDLE_CSS = `
     color: #ffffff;
   }
   /* Estilos según modo */
-  .epub-content.mode-clean p {
+  .epub-content.mode-clean p,
+  .epub-content.mode-anchors p {
     margin: 0;
     text-indent: 1.35em;
   }
   .epub-content.mode-clean > p:first-of-type,
   .epub-content.mode-clean h1 + p,
-  .epub-content.mode-clean h2 + p {
+  .epub-content.mode-clean h2 + p,
+  .epub-content.mode-anchors > p:first-of-type,
+  .epub-content.mode-anchors h1 + p,
+  .epub-content.mode-anchors h2 + p {
     text-indent: 0;
   }
   .epub-content.mode-paragraphs p {
     margin: 0 0 1.4em 0;
     text-indent: 0;
-    line-height: 1.6;
   }
   .epub-content.mode-paragraphs .p-num {
     font-size: 0.8em;
@@ -807,26 +882,32 @@ const KINDLE_CSS = `
   .w.saved {
     border-bottom: 1.5px dotted #000000;
   }
-  .w.w-lexicon {
-    border-bottom: 2px dotted #000000;
-    font-weight: bold;
-  }
-  .w.w-lexicon sup {
-    font-size: 0.72em;
-    line-height: 0;
-    vertical-align: super;
-    font-weight: bold;
-    margin-left: 1px;
-  }
   .lookup-active .w {
     text-decoration: underline;
     text-decoration-style: dotted;
   }
   /* Tamaños de fuente */
-  .epub-content.size-sm { font-size: 1.0rem; line-height: 1.5; }
-  .epub-content.size-md { font-size: 1.18rem; line-height: 1.58; }
-  .epub-content.size-lg { font-size: 1.35rem; line-height: 1.65; }
-  .epub-content.size-xl { font-size: 1.55rem; line-height: 1.72; }
+  .epub-content.size-sm { font-size: 1.0rem; }
+  .epub-content.size-md { font-size: 1.18rem; }
+  .epub-content.size-lg { font-size: 1.35rem; }
+  .epub-content.size-xl { font-size: 1.55rem; }
+  .epub-content.size-xxl { font-size: 1.8rem; }
+  /* Interlineado configurable (K2/K3) */
+  .epub-content.lh-compact { line-height: 1.42; }
+  .epub-content.lh-normal { line-height: 1.58; }
+  .epub-content.lh-loose { line-height: 1.78; }
+  /* Alineación */
+  .epub-content.align-justify { text-align: justify; }
+  .epub-content.align-left { text-align: left; }
+  /* Familias tipográficas (stacks con fallback hasta el @font-face de K3) */
+  .epub-content.font-literata { font-family: "Literata", Georgia, "Times New Roman", serif; }
+  .epub-content.font-source-serif { font-family: "Source Serif 4", "Source Serif Pro", Georgia, serif; }
+  .epub-content.font-atkinson { font-family: "Atkinson Hyperlegible", Verdana, sans-serif; }
+  .epub-content.font-opendyslexic { font-family: "OpenDyslexic", "Atkinson Hyperlegible", Verdana, sans-serif; }
+  /* Anclas de lectura */
+  .epub-content.mode-anchors .w .anc {
+    font-weight: bold;
+  }
 
   /* Barra inferior compacta de una sola línea (<= 36px) */
   .turn-page-bar {
@@ -957,10 +1038,11 @@ function renderBaseHtml(options: {
   user: KindleUser | null;
   bodyHtml: string;
   returnTo?: string;
+  lang?: string;
 }): string {
-  const { title, user, bodyHtml } = options;
+  const { title, user, bodyHtml, lang = "es" } = options;
   return `<!DOCTYPE html>
-<html lang="es">
+<html lang="${escapeHtml(lang)}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -973,6 +1055,7 @@ function renderBaseHtml(options: {
       <a href="/k" class="brand">Lecta <span style="font-size:0.8rem; font-weight:normal;">[Kindle]</span></a>
       <nav class="nav-links">
         <a href="/k">Biblioteca</a>
+        <a href="/k/ajustes">Ajustes</a>
         <a href="/k/practice">Práctica</a>
         <a href="/k/lookup">Diccionario</a>
         ${
@@ -998,16 +1081,63 @@ function renderBaseHtml(options: {
 export function renderHomeView(options: {
   user: KindleUser | null;
   books: KindleBookItem[];
+  /** Libro destacado «Seguir leyendo» (el de posición más reciente). */
+  heroBook?: KindleBookItem | null;
+  /** Palabras con repaso vencido hoy (FSRS due <= ahora). */
+  dueCount?: number;
+  page?: number;
+  totalPages?: number;
 }): string {
-  const { user, books } = options;
+  const { user, books, heroBook, dueCount, page = 1, totalPages = 1 } = options;
 
   let bodyHtml: string;
 
+  const bookCard = (b: KindleBookItem) => {
+    const sectionNum = (b.currentSection ?? 0) + 1;
+    const totalSec = b.sections || 1;
+    const percent =
+      b.progressPercent != null ? Math.round(b.progressPercent * 100) : null;
+    const progressText =
+      percent !== null
+        ? `Sección ${sectionNum} de ${totalSec} (${percent}%)`
+        : `Sin empezar · ${totalSec} secciones`;
+
+    const targetSec = b.currentSection ?? 0;
+    const isAtStart =
+      (b.currentSection == null || b.currentSection === 0) &&
+      (b.progressPercent == null || b.progressPercent === 0);
+    // Con posición guardada NO se fija page= : la ruta resuelve la
+    // página por ancla o ratio y reanuda dentro del capítulo.
+    const readUrl = isAtStart
+      ? `/k/read/${encodeURIComponent(b.hash)}?section=${targetSec}&page=0`
+      : `/k/read/${encodeURIComponent(b.hash)}?section=${targetSec}`;
+    const readLabel = isAtStart ? "Comenzar lectura →" : "Continuar lectura →";
+
+    const displayTitle = !b.title || isHashLikeIdentifier(b.title)
+      ? b.author && b.author !== "Autor desconocido"
+        ? `Libro de ${b.author}`
+        : "Libro sin título"
+      : b.title;
+
+    return `
+      <div class="card">
+        <h2 style="margin:0 0 6px 0; font-size:1.25rem;">${escapeHtml(displayTitle)}</h2>
+        <p style="margin:0 0 10px 0; font-style:italic; color:#444;">${escapeHtml(b.author || "Autor desconocido")}</p>
+        <p style="margin:0 0 14px 0; font-size:0.95rem;"><strong>Progreso:</strong> ${escapeHtml(progressText)}</p>
+        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+          <a href="${readUrl}" class="btn btn-primary">${readLabel}</a>
+          <a href="/k/read/${encodeURIComponent(b.hash)}?section=${targetSec}&prep=1" class="btn btn-sm">Antes de leer</a>
+        </div>
+      </div>
+    `;
+  };
+
   if (!user) {
+    // Sin sesión la ruta redirige a /kindle; este es el respaldo sin bucket
     bodyHtml = `
       <div class="card" style="text-align:center; padding: 24px 16px;">
         <h1 style="margin-top:0;">Lecta para Kindle y E-ink</h1>
-        <p>Lee tu biblioteca sin sobrecargar el procesador del Kindle. Páginas limpias, sincronización automática de posición y consulta rápida de definiciones.</p>
+        <p>Vincula tu dispositivo con un código de un solo uso o entra con tu cuenta.</p>
         <p style="margin-top: 20px;">
           <a href="/kindle" class="btn btn-primary" style="font-size: 1.15rem; padding: 12px 24px; display: inline-block;">Vincular con código (1 toque)</a>
           <br /><br />
@@ -1016,57 +1146,90 @@ export function renderHomeView(options: {
       </div>
     `;
   } else {
-    const booksHtml = books.length === 0
-      ? `
+    // — «Seguir leyendo»: el libro con la posición más reciente, un toque —
+    let heroHtml = "";
+    if (heroBook) {
+      const targetSec = heroBook.currentSection ?? 0;
+      const percent =
+        heroBook.progressPercent != null
+          ? Math.round(heroBook.progressPercent * 100)
+          : null;
+      const isAtStart =
+        (heroBook.currentSection == null || heroBook.currentSection === 0) &&
+        (heroBook.progressPercent == null || heroBook.progressPercent === 0);
+      const readUrl = isAtStart
+        ? `/k/read/${encodeURIComponent(heroBook.hash)}?section=${targetSec}&page=0`
+        : `/k/read/${encodeURIComponent(heroBook.hash)}?section=${targetSec}`;
+      const displayTitle =
+        !heroBook.title || isHashLikeIdentifier(heroBook.title)
+          ? heroBook.author && heroBook.author !== "Autor desconocido"
+            ? `Libro de ${heroBook.author}`
+            : "Libro sin título"
+          : heroBook.title;
+      heroHtml = `
+        <div class="card" style="border:2px solid #000000; padding:18px; margin-bottom:16px;">
+          <div style="font-size:0.82rem; font-weight:bold; letter-spacing:2px; margin-bottom:6px;">SEGUIR LEYENDO</div>
+          <h1 style="margin:0 0 4px 0; font-size:1.45rem;">${escapeHtml(displayTitle)}</h1>
+          <p style="margin:0 0 12px 0; color:#444; font-size:0.95rem;">
+            ${escapeHtml(heroBook.author || "Autor desconocido")} · Sección ${targetSec + 1}${percent !== null ? ` · ${percent}%` : ""}
+          </p>
+          <a href="${readUrl}" class="btn btn-primary" style="display:block; text-align:center; font-size:1.2rem; padding:16px 20px; text-decoration:none;">${isAtStart ? "Comenzar lectura →" : "Continuar lectura →"}</a>
+        </div>`;
+    }
+
+    const repasoHtml =
+      dueCount && dueCount > 0
+        ? `
+        <div class="card" style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+          <div>
+            <strong>Repaso del día</strong><br />
+            <span style="font-size:0.95rem; color:#444;">${dueCount} palabra${dueCount === 1 ? "" : "s"} esperan repaso.</span>
+          </div>
+          <a href="/k/practice" class="btn btn-primary">Practicar →</a>
+        </div>`
+        : "";
+
+    const booksHtml =
+      books.length === 0
+        ? heroBook
+          ? ""
+          : `
         <div class="card">
           <p><strong>Aún no tienes libros en tu estantería.</strong></p>
           <p>Sube tus libros en formato EPUB desde tu ordenador o móvil en la versión principal de Lecta, y aparecerán aquí automáticamente.</p>
-        </div>
-      `
-      : books
-        .map((b) => {
-          const sectionNum = (b.currentSection ?? 0) + 1;
-          const totalSec = b.sections || 1;
-          const percent = b.progressPercent != null ? Math.round(b.progressPercent * 100) : null;
-          const progressText = percent !== null
-            ? `Sección ${sectionNum} de ${totalSec} (${percent}%)`
-            : `Sin empezar · ${totalSec} secciones`;
+        </div>`
+        : books.map(bookCard).join("");
 
-          const targetSec = b.currentSection ?? 0;
-          const targetPg = b.currentPage ?? 0;
-          const isAtStart =
-            (b.currentSection == null || b.currentSection === 0) &&
-            (b.currentPage == null || b.currentPage === 0) &&
-            (b.progressPercent == null || b.progressPercent === 0);
-          const readUrl = isAtStart
-            ? `/k/read/${encodeURIComponent(b.hash)}?section=${targetSec}&page=0`
-            : `/k/read/${encodeURIComponent(b.hash)}?section=${targetSec}&page=${targetPg}`;
-          const readLabel = isAtStart ? "Comenzar lectura →" : "Continuar lectura →";
-
-          const displayTitle = (!b.title || isHashLikeIdentifier(b.title))
-            ? (b.author && b.author !== "Autor desconocido" ? `Libro de ${b.author}` : "Libro sin título")
-            : b.title;
-
-          return `
-            <div class="card">
-              <h2 style="margin:0 0 6px 0; font-size:1.25rem;">${escapeHtml(displayTitle)}</h2>
-              <p style="margin:0 0 10px 0; font-style:italic; color:#444;">${escapeHtml(b.author || "Autor desconocido")}</p>
-              <p style="margin:0 0 14px 0; font-size:0.95rem;"><strong>Progreso:</strong> ${escapeHtml(progressText)}</p>
-              <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                <a href="${readUrl}" class="btn btn-primary">${readLabel}</a>
-                <a href="/k/read/${encodeURIComponent(b.hash)}?section=${targetSec}&prep=1" class="btn btn-sm">📖 Antes de leer</a>
-              </div>
-            </div>
-          `;
-        })
-        .join("");
+    const pagerHtml =
+      totalPages > 1
+        ? `
+        <nav class="turn-page-bar" style="margin-top:14px;">
+          ${
+            page > 1
+              ? `<a href="/k?pag=${page - 1}" class="turn-btn turn-btn-prev">[ ← Ant. ]</a>`
+              : `<span class="turn-btn turn-btn-prev disabled">[ ← Ant. ]</span>`
+          }
+          <div class="turn-page-indicator">Pág. ${page} de ${totalPages}</div>
+          ${
+            page < totalPages
+              ? `<a href="/k?pag=${page + 1}" class="turn-btn turn-btn-next">[ Sig. → ]</a>`
+              : `<span class="turn-btn turn-btn-next disabled">[ Sig. → ]</span>`
+          }
+        </nav>`
+        : "";
 
     bodyHtml = `
-      <div style="margin-bottom: 20px;">
-        <h1 style="margin: 0 0 6px 0; font-size: 1.5rem;">Mis Libros</h1>
-        <p style="margin: 0; color: #444; font-size: 0.95rem;">Selecciona un libro para reanudar donde lo dejaste:</p>
+      ${heroHtml}
+      ${repasoHtml}
+      ${
+        booksHtml
+          ? `<div style="margin: 6px 0 12px 0;">
+        <h2 style="margin: 0; font-size: 1.2rem;">Biblioteca</h2>
       </div>
       ${booksHtml}
+      ${pagerHtml}`
+          : booksHtml
+      }
     `;
   }
 
@@ -1133,7 +1296,7 @@ export function renderKindleLinkView(options: {
       <p style="color: #444; font-size: 1rem; line-height: 1.5; margin: 1rem 0;">
         Introduce este código de 4 letras en tu celular o PC (donde tengas abierta tu sesión de Lecta en <strong>Cuenta → Conectar mi Kindle</strong>):
       </p>
-      <div style="font-size: 3.5rem; font-weight: bold; letter-spacing: 0.6rem; margin: 1.5rem 0; color: #d97706; font-family: monospace;">
+      <div style="font-size: 3.5rem; font-weight: bold; letter-spacing: 0.6rem; margin: 1.5rem 0; color: #000000; font-family: monospace;">
         ${escapeHtml(code)}
       </div>
 
@@ -1165,7 +1328,7 @@ export function renderKindleLinkView(options: {
       })();
     </script>
     <noscript>
-      <meta http-equiv="refresh" content="5" />
+      <meta http-equiv="refresh" content="6; url=/api/kindle/status?code=${encodeURIComponent(code)}&redirect=1" />
     </noscript>
   `;
 
@@ -1187,17 +1350,19 @@ export function renderReaderView(options: {
   totalSections: number;
   pageIndex: number;
   totalPages: number;
-  pageWords?: PageWordItem[];
   savedNotice?: string | null;
   lookupResult?: InlineLookupResult | null;
-  mode?: "clean" | "paragraphs" | "lexicon";
-  size?: "sm" | "md" | "lg" | "xl";
+  mode?: "clean" | "paragraphs" | "lexicon" | "anchors";
+  size?: "sm" | "md" | "lg" | "xl" | "xxl";
   margin?: KindleMargin;
-  gloss?: boolean;
-  catNotes?: CatPageNoteItem[];
+  fontFamily?: string;
+  lineHeight?: string;
+  align?: string;
   primingOff?: boolean;
   layout?: "paged" | "scroll";
   language?: string;
+  /** URL de la vista de índice (si el EPUB trae nav/NCX). */
+  tocUrl?: string | null;
 }): string {
   const {
     user,
@@ -1215,14 +1380,16 @@ export function renderReaderView(options: {
     mode = "clean",
     size = "md",
     margin = "md",
-    gloss = false,
-    catNotes: _catNotes = [],
+    fontFamily = "literata",
+    lineHeight = "normal",
+    align = "justify",
     primingOff = false,
     layout = "paged",
     language = "es",
+    tocUrl,
   } = options;
 
-  const querySuffix = `&mode=${encodeURIComponent(mode)}&size=${encodeURIComponent(size)}&layout=${layout}&margin=${margin}${gloss ? "&gloss=1" : ""}`;
+  const querySuffix = `&mode=${encodeURIComponent(mode)}&size=${encodeURIComponent(size)}&layout=${layout}&margin=${margin}`;
   const cleanPageUrl = `/k/read/${encodeURIComponent(bookHash)}?section=${sectionIndex}&page=${pageIndex}${querySuffix}`;
 
   const prevUrl =
@@ -1259,7 +1426,7 @@ export function renderReaderView(options: {
             <span class="inline-lookup-word">${escapeHtml(lookupResult.word)}</span>
             ${firstEntry?.pos ? `<span class="inline-lookup-pos">(${escapeHtml(firstEntry.pos)})</span>` : ""}
           </div>
-          <a href="${escapeHtml(cleanPageUrl)}" class="inline-lookup-close" title="Cerrar definición">✕ Cerrar</a>
+          <a href="${escapeHtml(cleanPageUrl)}" class="inline-lookup-close">Cerrar</a>
         </div>
         <div class="inline-lookup-def">
           ${firstMeaning ? escapeHtml(firstMeaning) : "<em>Definición no encontrada en el catálogo.</em>"}
@@ -1295,7 +1462,7 @@ export function renderReaderView(options: {
   const baseParamUrl = `/k/read/${encodeURIComponent(bookHash)}?section=${sectionIndex}&page=${pageIndex}`;
 
   return `<!DOCTYPE html>
-<html lang="es">
+<html lang="${escapeHtml(language)}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -1307,7 +1474,7 @@ export function renderReaderView(options: {
     <header class="reader-header">
       <div class="reader-header-left">
         <a href="/k" class="reader-back-btn">← Libros</a>
-        <button type="button" id="lookupToggle" class="lookup-btn" title="Alternar modo consulta">[ 🔍 Consultar ]</button>
+        <button type="button" id="lookupToggle" class="lookup-btn" aria-pressed="false">Consultar</button>
       </div>
       <div class="reader-header-info">
         <span class="reader-header-title">${escapeHtml(bookTitle)}</span>
@@ -1315,15 +1482,16 @@ export function renderReaderView(options: {
         <span class="reader-header-author">${escapeHtml(bookAuthor)}</span>
       </div>
       <div class="reader-header-meta">
+        ${tocUrl ? `<a href="${escapeHtml(tocUrl)}" class="reader-header-prep" title="Índice del libro">Índice</a>` : ""}
         <details class="reader-header-menu">
-          <summary class="reader-menu-summary">[ Modo / Aa ]</summary>
+          <summary class="reader-menu-summary">Aa · Menú</summary>
           <div class="reader-menu-content">
             <div class="mode-selector">
-              <span style="font-size:0.8rem; font-weight:bold; display:block; margin-bottom:4px;">Modo:</span>
+              <span style="font-size:0.8rem; font-weight:bold; display:block; margin-bottom:4px;">Enfoque:</span>
               <div style="display:flex; gap:4px; margin-bottom:8px; flex-wrap:wrap;">
-                <a href="${baseParamUrl}&amp;mode=clean&amp;size=${size}&amp;layout=${layout}&amp;margin=${margin}" class="mode-tab ${mode === "clean" ? "is-active" : ""}">[ Modo Limpio ]</a>
-                <a href="${baseParamUrl}&amp;mode=paragraphs&amp;size=${size}&amp;layout=${layout}&amp;margin=${margin}" class="mode-tab ${mode === "paragraphs" ? "is-active" : ""}">[ Modo Párrafos ]</a>
-                <a href="${baseParamUrl}&amp;mode=lexicon&amp;size=${size}&amp;layout=${layout}&amp;margin=${margin}" class="mode-tab ${mode === "lexicon" ? "is-active" : ""}">[ Modo Léxico ]</a>
+                <a href="${baseParamUrl}&amp;mode=clean&amp;size=${size}&amp;layout=${layout}&amp;margin=${margin}" class="mode-tab ${mode === "clean" ? "is-active" : ""}">[ Limpio ]</a>
+                <a href="${baseParamUrl}&amp;mode=paragraphs&amp;size=${size}&amp;layout=${layout}&amp;margin=${margin}" class="mode-tab ${mode === "paragraphs" ? "is-active" : ""}">[ Párrafos aireados ]</a>
+                <a href="${baseParamUrl}&amp;mode=anchors&amp;size=${size}&amp;layout=${layout}&amp;margin=${margin}" class="mode-tab ${mode === "anchors" ? "is-active" : ""}">[ Anclas de lectura ]</a>
               </div>
               <span style="font-size:0.8rem; font-weight:bold; display:block; margin-bottom:4px;">Letra:</span>
               <div class="size-selector" style="display:flex; gap:4px; margin-bottom:8px;">
@@ -1339,20 +1507,23 @@ export function renderReaderView(options: {
                 <a href="${baseParamUrl}&amp;mode=${mode}&amp;size=${size}&amp;layout=${layout}&amp;margin=lg" class="size-btn ${margin === 'lg' ? 'is-active' : ''}">Amplio</a>
               </div>
               <span style="font-size:0.8rem; font-weight:bold; display:block; margin-bottom:4px;">Disposición:</span>
-              <div style="display:flex; gap:4px;">
+              <div style="display:flex; gap:4px; margin-bottom:8px;">
                 <a href="${baseParamUrl}&amp;mode=${mode}&amp;size=${size}&amp;layout=paged&amp;margin=${margin}" class="mode-tab ${layout === "paged" ? "is-active" : ""}">Paginado</a>
                 <a href="${baseParamUrl}&amp;mode=${mode}&amp;size=${size}&amp;layout=scroll&amp;margin=${margin}" class="mode-tab ${layout === "scroll" ? "is-active" : ""}">Scroll</a>
+              </div>
+              <a href="/k/ajustes?returnTo=${encodeURIComponent(cleanPageUrl)}" class="mode-tab" style="display:block; text-align:center;">Todos los ajustes (Aa) →</a>
+              <div style="border-top:1px solid #000000; margin-top:8px; padding-top:8px; display:flex; gap:6px; flex-wrap:wrap;">
+                <a href="/k/practice?bookHash=${encodeURIComponent(bookHash)}&amp;returnTo=${encodeURIComponent(cleanPageUrl)}" class="mode-tab" title="Practicar vocabulario">Práctica</a>
+                <a href="/k/read/${encodeURIComponent(bookHash)}?section=${sectionIndex}&amp;prep=1" class="mode-tab" title="Antes de leer: vocabulario del capítulo">Antes de leer</a>
+                ${
+                  primingOff
+                    ? `<form method="POST" action="/kindle/priming/action" style="display:inline; margin:0;"><input type="hidden" name="action" value="enable_all" /><input type="hidden" name="returnUrl" value="${escapeHtml(cleanPageUrl)}" /><button type="submit" class="mode-tab" style="background:#ffffff; border:1px solid #888888; cursor:pointer; font-family:inherit; font-size:inherit;" title="Reactivar la antesala automática">Antesala: apagada</button></form>`
+                    : `<form method="POST" action="/kindle/priming/action" style="display:inline; margin:0;"><input type="hidden" name="action" value="disable_all" /><input type="hidden" name="returnUrl" value="${escapeHtml(cleanPageUrl)}" /><button type="submit" class="mode-tab" style="background:#ffffff; border:1px solid #888888; cursor:pointer; font-family:inherit; font-size:inherit;" title="Silenciar la antesala automática">Antesala: activa</button></form>`
+                }
               </div>
             </div>
           </div>
         </details>
-        <a href="/k/practice?bookHash=${encodeURIComponent(bookHash)}&amp;returnTo=${encodeURIComponent(cleanPageUrl)}" class="reader-header-prep" title="Practicar vocabulario">🎯 Práctica</a>
-        <a href="/k/read/${encodeURIComponent(bookHash)}?section=${sectionIndex}&amp;prep=1" class="reader-header-prep" title="Ver vocabulario del capítulo">📖 Prep</a>
-        ${
-          primingOff
-            ? `<form method="POST" action="/kindle/priming/action" style="display:inline; margin:0;"><input type="hidden" name="action" value="enable_all" /><input type="hidden" name="returnUrl" value="${escapeHtml(cleanPageUrl)}" /><button type="submit" class="reader-header-prep" style="background:#ffffff; border:1px solid #888888; cursor:pointer;" title="Reactivar antesala">✨ Antesala</button></form>`
-            : `<form method="POST" action="/kindle/priming/action" style="display:inline; margin:0;"><input type="hidden" name="action" value="disable_all" /><input type="hidden" name="returnUrl" value="${escapeHtml(cleanPageUrl)}" /><button type="submit" class="reader-header-prep" style="background:#ffffff; border:1px solid #888888; cursor:pointer;" title="Silenciar antesala">✨ Antesala</button></form>`
-        }
       </div>
     </header>
 
@@ -1362,7 +1533,7 @@ export function renderReaderView(options: {
 
     ${pageIndex === 0 && chapterTitle ? `<h2 class="chapter-heading">${escapeHtml(chapterTitle)}</h2>` : ""}
 
-    <div class="epub-content mode-${escapeHtml(mode)} size-${escapeHtml(size)}">
+    <div class="epub-content mode-${escapeHtml(mode)} size-${escapeHtml(size)} font-${escapeHtml(fontFamily)} lh-${escapeHtml(lineHeight)} align-${escapeHtml(align)}">
       ${contentHtml}
     </div>
 
@@ -1422,13 +1593,76 @@ export function renderReaderView(options: {
     var content = document.querySelector('.epub-content');
     var toggleBtn = document.getElementById('lookupToggle');
 
+    // Ajuste al área visible real (solo modo paginado): el navegador de
+    // Kindle declara un viewport más alto que la zona que su barra
+    // inferior deja libre, y el último renglón quedaba tapado a media
+    // letra. Se toma la medida más conservadora entre las fuentes.
+    var isPaged = document.body && document.body.className.indexOf('layout-paged') >= 0;
+    var container = isPaged ? document.querySelector('.reader-container') : null;
+    var vv = window.visualViewport;
+    var visibleH = 0;
+    var vSources = [
+      vv && vv.height,
+      window.innerHeight,
+      document.documentElement ? document.documentElement.clientHeight : 0
+    ];
+    for (var vi = 0; vi < vSources.length; vi++) {
+      var hv = Math.round(vSources[vi] || 0);
+      if (hv > 0 && (visibleH === 0 || hv < visibleH)) visibleH = hv;
+    }
+    if (
+      container &&
+      visibleH > 320 &&
+      (!vv || !vv.scale || vv.scale < 1.05) &&
+      container.clientHeight > visibleH + 2
+    ) {
+      container.style.height = visibleH + 'px';
+      container.style.maxHeight = visibleH + 'px';
+    }
+
+    // Garantía Zero-Scroll: si aun así el contenido desborda la caja
+    // (aviso de palabra guardada, título largo, imagen, margen de bloque),
+    // se reduce la letra de ESTA página hasta que quepa sin recortar
+    // renglones — el texto tapado era ilegible e irrecuperable.
+    if (content && isPaged) {
+      var imgs = content.getElementsByTagName('img');
+      for (var ii = 0; ii < imgs.length; ii++) {
+        imgs[ii].style.maxHeight = Math.max(60, content.clientHeight - 12) + 'px';
+      }
+      var cs = window.getComputedStyle ? getComputedStyle(content) : null;
+      var basePx = cs && cs.fontSize ? parseFloat(cs.fontSize) : 0;
+      if (!basePx || basePx <= 0) basePx = 22;
+      var fitGuard = 0;
+      while (content.scrollHeight > content.clientHeight + 1 && fitGuard < 12) {
+        fitGuard++;
+        content.style.fontSize = (basePx * (1 - fitGuard * 0.035)).toFixed(2) + 'px';
+      }
+    }
+
+    // Reporte del viewport real (K5): una cookie por dispositivo, para que
+    // el servidor escale los presupuestos de página a ESTA pantalla en el
+    // siguiente paso. Sin recarga: la medida viaja con el próximo toque.
+    try {
+      var kvw = Math.round(window.innerWidth || 0);
+      var kvh = Math.round(window.innerHeight || 0);
+      if (kvw >= 240 && kvh >= 240) {
+        var vpVal = kvw + 'x' + kvh;
+        var vpCur = (document.cookie.match(/(?:^|; *)lecta_k_vp=([^;]*)/) || [])[1];
+        if (vpCur !== vpVal) {
+          document.cookie =
+            'lecta_k_vp=' + vpVal + ';path=/k;max-age=31536000;SameSite=Lax';
+        }
+      }
+    } catch (e) { /* sin cookie el servidor usa el presupuesto de referencia */ }
+
     if (toggleBtn && content) {
       toggleBtn.addEventListener('click', function(e) {
         e.preventDefault();
         e.stopPropagation();
         var active = content.classList.toggle('lookup-active');
         toggleBtn.classList.toggle('is-active', active);
-        toggleBtn.textContent = active ? '[ ✕ Consulta ON ]' : '[ 🔍 Consultar ]';
+        toggleBtn.textContent = active ? 'Consultando' : 'Consultar';
+        toggleBtn.setAttribute('aria-pressed', active ? 'true' : 'false');
       });
     }
 
@@ -1543,159 +1777,6 @@ export function renderReaderView(options: {
 </html>`;
 }
 
-export function renderChapterPrepView(options: {
-  user: KindleUser | null;
-  bookHash: string;
-  bookTitle: string;
-  bookAuthor: string;
-  chapterTitle: string;
-  sectionIndex: number;
-  totalSections: number;
-  words: PrepWordItem[];
-  savedNotice?: string | null;
-  nextUrl: string;
-  prevUrl?: string | null;
-  language?: string;
-}): string {
-  const {
-    user,
-    bookHash,
-    bookTitle,
-    bookAuthor,
-    chapterTitle,
-    sectionIndex,
-    totalSections,
-    words,
-    savedNotice,
-    nextUrl,
-    prevUrl,
-    language = "es",
-  } = options;
-
-  const flashHtml = savedNotice
-    ? `<div class="flash flash-success">${escapeHtml(savedNotice)}</div>`
-    : "";
-
-  const wordsHtml =
-    words.length > 0
-      ? `<div class="prep-word-list">
-          ${words
-            .map(
-              (w) => `
-            <div class="prep-word-card">
-              <div class="prep-word-header">
-                <div>
-                  <span class="prep-word-term">${escapeHtml(w.form)}</span>
-                  ${w.pos ? `<span class="prep-word-pos">(${escapeHtml(w.pos)})</span>` : ""}
-                </div>
-                ${w.saved ? `<span class="badge-saved">✓ En tu Cuaderno</span>` : ""}
-              </div>
-              <div class="prep-word-def">
-                ${escapeHtml(w.meaning)}
-              </div>
-              ${
-                w.exampleSentence
-                  ? `<div class="prep-word-example">«${escapeHtml(w.exampleSentence)}»</div>`
-                  : ""
-              }
-              <div class="prep-word-actions">
-                ${
-                  user && !w.saved
-                    ? `
-                      <form method="POST" action="/k/vocab/add" style="display:inline;">
-                        <input type="hidden" name="form" value="${escapeHtml(w.form)}" />
-                        <input type="hidden" name="lemma" value="${escapeHtml(w.lemma)}" />
-                        <input type="hidden" name="pos" value="${escapeHtml(w.pos || "")}" />
-                        <input type="hidden" name="meaning" value="${escapeHtml(w.meaning)}" />
-                        <input type="hidden" name="bookHash" value="${escapeHtml(bookHash)}" />
-                        <input type="hidden" name="language" value="${escapeHtml(language)}" />
-                        <input type="hidden" name="returnTo" value="/k/read/${encodeURIComponent(bookHash)}?section=${sectionIndex}&amp;prep=1" />
-                        <button type="submit" class="btn-xs" style="padding:4px 10px; font-size:0.85rem; background:#000000; color:#ffffff; border:none; cursor:pointer;">+ Guardar</button>
-                      </form>
-                    `
-                    : ""
-                }
-                ${
-                  user
-                    ? `
-                      <form method="POST" action="/k/knowledge/mark" style="display:inline;">
-                        <input type="hidden" name="lemma" value="${escapeHtml(w.lemma)}" />
-                        <input type="hidden" name="known" value="1" />
-                        <input type="hidden" name="language" value="${escapeHtml(language)}" />
-                        <input type="hidden" name="returnTo" value="/k/read/${encodeURIComponent(bookHash)}?section=${sectionIndex}&amp;prep=1" />
-                        <button type="submit" class="btn-xs" style="padding:4px 9px; font-size:0.82rem; background:#ffffff; color:#333333; border:1px solid #777777; cursor:pointer;">Ya la conozco</button>
-                      </form>
-                    `
-                    : ""
-                }
-              </div>
-            </div>
-          `,
-            )
-            .join("")}
-        </div>`
-      : `<div class="prep-empty-card">
-          <p>✓ No se detectaron palabras complejas desconocidas en este capítulo.</p>
-          <p style="margin-top: 8px;">¡Todo listo para empezar la lectura!</p>
-        </div>`;
-
-  return `<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Antes de leer: ${escapeHtml(chapterTitle || `Capítulo ${sectionIndex + 1}`)} — ${escapeHtml(bookTitle)} — Lecta</title>
-  <style>${KINDLE_CSS}</style>
-</head>
-<body class="reader-body">
-  <div class="reader-container">
-    <header class="reader-header">
-      <a href="/k" class="reader-back-btn">← Biblioteca</a>
-      <div class="reader-header-info">
-        <span class="reader-header-title">${escapeHtml(bookTitle)}</span>
-        <span class="reader-header-sep">·</span>
-        <span class="reader-header-author">${escapeHtml(bookAuthor)}</span>
-      </div>
-      <div class="reader-header-meta">
-        Cap. ${sectionIndex + 1}/${totalSections}
-      </div>
-    </header>
-
-    ${flashHtml}
-
-    <div class="prep-header">
-      <h1 class="prep-title">Vocabulario de apertura · ${escapeHtml(chapterTitle || `Capítulo ${sectionIndex + 1}`)}</h1>
-      <p class="prep-subtitle">
-        Palabras seleccionadas para enriquecer tu lectura antes de comenzar este capítulo (${words.length} palabras clave):
-      </p>
-    </div>
-
-    <div style="margin-bottom: 20px;">
-      <a href="${escapeHtml(nextUrl)}" class="turn-btn turn-btn-next" style="display:block; text-align:center; text-decoration:none; padding:13px 18px; font-size:1.05rem;">
-        Comenzar capítulo ${sectionIndex + 1} →
-      </a>
-    </div>
-
-    ${wordsHtml}
-
-    <nav class="turn-page-bar" style="margin-top: 24px;">
-      ${
-        prevUrl
-          ? `<a href="${escapeHtml(prevUrl)}" class="turn-btn turn-btn-prev">← Anterior</a>`
-          : `<a href="/k" class="turn-btn turn-btn-prev">← Biblioteca</a>`
-      }
-      <div class="turn-page-indicator">
-        Cap. ${sectionIndex + 1} de ${totalSections}
-      </div>
-      <a href="${escapeHtml(nextUrl)}" class="turn-btn turn-btn-next">
-        Comenzar capítulo ${sectionIndex + 1} →
-      </a>
-    </nav>
-  </div>
-</body>
-</html>`;
-}
-
 export function renderLookupView(options: {
   user: KindleUser | null;
   query: string;
@@ -1714,7 +1795,7 @@ export function renderLookupView(options: {
   let resultHtml = "";
 
   if (saved) {
-    resultHtml += `<div class="alert alert-success">✓ Palabra «${escapeHtml(query)}» guardada en tu Cuaderno de Lecta.</div>`;
+    resultHtml += `<div class="alert alert-success">Palabra «${escapeHtml(query)}» guardada en tu Cuaderno de Lecta.</div>`;
   }
 
   if (query && entries !== null) {
@@ -1979,7 +2060,7 @@ export function renderKindleChapterPrimingView(props: KindleChapterPrimingViewPr
               <input type="hidden" name="lemma" value="${escapeHtml(w.lemma)}" />
               <input type="hidden" name="lang" value="${escapeHtml(bookLang)}" />
               <input type="hidden" name="returnUrl" value="${escapeHtml(currentUrl)}" />
-              <button type="submit" class="k-btn k-btn--small">✓ Ya la sé</button>
+              <button type="submit" class="k-btn k-btn--small">Ya la sé</button>
             </form>
             <form method="POST" action="/kindle/priming/action" class="k-inline-form" onsubmit="return window.lectaKindleAction(event, this, '${escapeHtml(w.lemma)}', 'save')">
               <input type="hidden" name="action" value="save" />
@@ -2002,7 +2083,7 @@ export function renderKindleChapterPrimingView(props: KindleChapterPrimingViewPr
     .join("\n");
 
   return `<!DOCTYPE html>
-<html lang="es">
+<html lang="${escapeHtml(bookLang)}">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
@@ -2169,7 +2250,7 @@ export function renderKindleChapterPrimingView(props: KindleChapterPrimingViewPr
         card.style.display = 'none';
       } else if (card && actionType === 'save') {
         var btn = formEl.querySelector('button');
-        if (btn) { btn.textContent = '✓ Guardada'; btn.disabled = true; }
+        if (btn) { btn.textContent = 'Guardada'; btn.disabled = true; }
       }
       var data = new FormData(formEl);
       fetch(formEl.action, { method: 'POST', body: data });
@@ -2183,23 +2264,138 @@ export function renderKindleChapterPrimingView(props: KindleChapterPrimingViewPr
 /**
  * Inyecta un anclaje sutil en el HTML del capítulo para las 3-5 palabras pre-vistas
  */
-export function injectKindlePrimedAnchors(
-  chapterHtml: string,
-  primedWords: KindlePrimingWord[],
-): string {
-  if (!primedWords.length) return chapterHtml;
-  let output = chapterHtml;
 
-  for (const item of primedWords) {
-    const escaped = item.surfaceForm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    // Solo ancla la primera aparición fuera de etiquetas HTML
-    const regex = new RegExp(`(^|>[^<]*?)\\b(${escaped})\\b`, "i");
-    output = output.replace(
-      regex,
-      `$1<span style="border-bottom: 1.5px dashed #000; font-weight: 500;">$2</span> <small style="font-family: sans-serif; font-size: 0.78em;">[${escapeHtml(item.shortGloss)}]</small>`,
-    );
-  }
 
-  return output;
+// ── /k/ajustes — Preferencias de lectura Kindle (K2) ──────────────────────
+
+/** K6 — Vista de índice del libro (TOC real del EPUB). */
+export function renderKindleTocView(options: {
+  user: KindleUser | null;
+  bookHash: string;
+  bookTitle: string;
+  bookAuthor: string;
+  toc: { title: string; sectionIndex: number }[];
+  currentSection: number;
+  querySuffix: string;
+  backUrl: string;
+  language?: string;
+}): string {
+  const {
+    bookHash,
+    bookTitle,
+    bookAuthor,
+    toc,
+    currentSection,
+    querySuffix,
+    backUrl,
+    language = "es",
+  } = options;
+
+  const items =
+    toc.length > 0
+      ? toc
+          .map(
+            (entry) => `
+      <li class="toc-item ${entry.sectionIndex === currentSection ? "is-current" : ""}">
+        <a href="/k/read/${encodeURIComponent(bookHash)}?section=${entry.sectionIndex}&amp;page=0${querySuffix}">
+          ${entry.sectionIndex === currentSection ? "▸ " : ""}${escapeHtml(entry.title)}
+        </a>
+      </li>`,
+          )
+          .join("")
+      : `<li class="toc-empty">Este libro no trae índice navegable. Avanza con «Siguiente» para recorrerlo.</li>`;
+
+  return `<!DOCTYPE html>
+<html lang="${escapeHtml(language)}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Índice — ${escapeHtml(bookTitle)} — Lecta</title>
+  <style>${KINDLE_CSS}</style>
+</head>
+<body class="reader-body">
+  <div class="reader-container">
+    <header class="reader-header">
+      <div class="reader-header-left">
+        <a href="${escapeHtml(backUrl)}" class="reader-back-btn">← Volver al libro</a>
+      </div>
+      <div class="reader-header-info">
+        <span class="reader-header-title">${escapeHtml(bookTitle)}</span>
+        <span class="reader-header-sep">·</span>
+        <span class="reader-header-author">${escapeHtml(bookAuthor)}</span>
+      </div>
+      <div class="reader-header-meta">
+        <a href="/k/ajustes?returnTo=${encodeURIComponent(backUrl)}" class="reader-header-prep">Ajustes</a>
+      </div>
+    </header>
+
+    <h1 class="toc-title">Índice</h1>
+    <ol class="toc-list">
+      ${items}
+    </ol>
+  </div>
+</body>
+</html>`;
 }
 
+function prefsSelect(
+  name: string,
+  legend: string,
+  options: readonly string[],
+  current: string,
+): string {
+  const opts = options
+    .map(
+      (v) =>
+        `<option value="${escapeHtml(v)}"${v === current ? " selected" : ""}>${escapeHtml(
+          KINDLE_PREF_LABELS[name]?.[v] ?? v,
+        )}</option>`,
+    )
+    .join("");
+  return `<fieldset class="prefs-group">
+      <legend>${escapeHtml(legend)}</legend>
+      <select name="${escapeHtml(name)}" aria-label="${escapeHtml(legend)}">${opts}</select>
+    </fieldset>`;
+}
+
+export function renderKindleSettingsView(options: {
+  prefs?: KindlePrefs;
+  returnTo?: string;
+  saved?: boolean;
+  error?: string | null;
+  user?: KindleUser | null;
+}): string {
+  const {
+    prefs = DEFAULT_KINDLE_PREFS,
+    returnTo = "/k",
+    saved = false,
+    error = null,
+    user = null,
+  } = options;
+
+  const body = `
+    <h1 style="font-size:1.5rem; margin:0 0 14px;">Ajustes de lectura</h1>
+    ${saved ? `<div class="alert alert-success">Ajustes guardados. Tu Kindle los usará al abrir cualquier página.</div>` : ""}
+    ${error ? `<div class="alert alert-error">${escapeHtml(error)}</div>` : ""}
+    <p style="margin:0 0 16px;">Estos ajustes se guardan en tu cuenta y se aplican en cualquier Kindle vinculado.</p>
+    <form method="POST" action="/k/ajustes">
+      <input type="hidden" name="returnTo" value="${escapeHtml(returnTo)}" />
+      ${prefsSelect("fontFamily", "Tipografía", KINDLE_FONT_FAMILIES, prefs.fontFamily)}
+      ${prefsSelect("fontSize", "Tamaño de letra", KINDLE_FONT_SIZES, prefs.fontSize)}
+      ${prefsSelect("lineHeight", "Interlineado", KINDLE_LINE_HEIGHTS, prefs.lineHeight)}
+      ${prefsSelect("margin", "Margen", KINDLE_MARGINS, prefs.margin)}
+      ${prefsSelect("align", "Alineación", KINDLE_ALIGNS, prefs.align)}
+      ${prefsSelect("approach", "Enfoque de lectura", KINDLE_APPROACHES, prefs.approach)}
+      ${prefsSelect("layout", "Disposición", KINDLE_LAYOUTS, prefs.layout)}
+      <button type="submit" class="btn btn-primary" style="width:100%; min-height:52px; font-size:1.1rem;">Guardar en mi Kindle</button>
+    </form>
+    <p style="margin-top:14px;"><a href="${escapeHtml(returnTo)}">← Volver</a></p>
+  `;
+
+  return renderBaseHtml({
+    title: "Ajustes de lectura",
+    user,
+    bodyHtml: body,
+    lang: "es",
+  });
+}

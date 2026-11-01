@@ -113,6 +113,7 @@ import {
   pullMissingUserBooksFromCloud,
   syncUserBookUpload,
 } from "./lib/reading-sync";
+import { pushDailySummaries } from "./lib/daily-summary";
 import { syncCompanion } from "./lib/companion-sync";
 import { authClient } from "./lib/auth";
 
@@ -995,6 +996,10 @@ export default function App() {
         .catch((err) => {
           recordCollectionSyncFailure("positions", err);
         });
+      // Resumen diario del dispositivo: sube la telemetría del ciclo
+      // (foco, ritmo, repasos) sellada por huella — sin cambios no sube
+      // nada, y un fallo se reintenta en el siguiente ciclo.
+      void pushDailySummaries(scope).catch(() => null);
       try {
         const bookOps = await listBookOps(scope).catch(() => []);
         setPendingChangesCount(bookOps.length + getPendingPositionsCount());
@@ -1248,6 +1253,7 @@ export default function App() {
             id: hash,
             title: initialMeta.title || file.name,
             author: initialMeta.author,
+            language: initialMeta.language,
             data: buf,
           });
         }).catch(() => null);

@@ -12,7 +12,6 @@ import {
   estimateThetaFromD1Knowledge,
   extractChapterPrepCandidates,
   extractCompactContextSentence,
-  findSentenceWithWord,
   formatChapterHtmlForMode,
   getEpubChapter,
   getEpubResource,
@@ -22,27 +21,40 @@ import {
   selectKindleChapterPrimingWords,
   stripHtml,
   wrapWordsWithLinks,
+  type ChapterResult,
   type KindleMargin,
   type KindleUserLexicalState,
 } from "./epub-reader";
 import { ENGLISH_CORE_LEXICON } from "../../shared/english-core-lexicon";
 import { isHashLikeIdentifier, humanizeFilename } from "../../shared/epub-meta";
 import {
-  renderChapterPrepView,
+  escapeHtml,
   renderHomeView,
   renderKindleChapterPrimingView,
   renderKindleLinkView,
+  renderKindleTocView,
   renderLoginView,
   renderReaderView,
   renderLookupView,
   renderPracticeView,
+  renderKindleSettingsView,
   type KindleBookItem,
   type KindleUser,
-  type PageWordItem,
-  type PrepWordItem,
   type InlineLookupResult,
-  type CatPageNoteItem,
 } from "./views";
+import {
+  normalizeKindlePrefs,
+  prefsFromRow,
+  type KindlePrefs,
+} from "../../shared/kindle-prefs";
+import {
+  getCachedChapter,
+  getCachedResource,
+  putCachedChapter,
+  putCachedResource,
+  type CachedChapter,
+} from "./cache";
+import { createTimer } from "./timing";
 
 export interface KindleCodeRecord {
   code: string;
@@ -59,11 +71,197 @@ export type KindleLinkRecord = KindleCodeRecord;
 
 // Respaldo en memoria para tests unitarios donde c.env.DB no está presente
 export const memoryCodeStore = new Map<string, KindleCodeRecord>();
-export const kindleLinkCodes = memoryCodeStore;
 
 const SAFE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // Sin I/1/O/0 para evitar confusión en tinta electrónica
 const CODE_TTL_SECONDS = 600; // 10 minutos
 const STATUS_LIMIT_PER_MINUTE = 20;
+
+// Solo permite volver a rutas internas del portal: cualquier URL
+// absoluta, «//host» o barra invertida cae a la biblioteca.
+export function safeKindleReturn(raw: unknown, fallback = "/k"): string {
+  const s = typeof raw === "string" ? raw.trim() : "";
+  if (!s || s.length > 512) return fallback;
+  if (!(s.startsWith("/k") || s.startsWith("/kindle"))) return fallback;
+  if (s.includes("//") || s.includes("\\")) return fallback;
+  return s;
+}
+
+function fnv1a32(input: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < input.length; i += 1) {
+    h ^= input.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return h >>> 0;
+}
+
+// La opción correcta depende del usuario: quien responde no la puede
+// adivinar por posición, y el POST la recalcula en el servidor.
+export function correctKeyFor(userId: string, word: string, qIndex: number): "A" | "B" | "C" {
+  return (["A", "B", "C"] as const)[fnv1a32(`${userId}:${word}:${qIndex}`) % 3];
+}
+
+// Réplica en SQL de isReviewDueWord (src/client/lib/fsrs.ts): introducida
+// (reps > 0 o presented_at) y vencida (card->>'due' <= ahora).
+// Marcadores: $1 = user_id, $2 = ISO 8601 de «ahora».
+export const KINDLE_DUE_SQL =
+  "deleted = false AND " +
+  "(COALESCE(card->>'reps','0') <> '0' OR COALESCE(presented_at,0) > 0) AND " +
+  "(card IS NULL OR card->>'due' <= $2)";
+
+// ── Preferencias de lectura por cuenta (K2) ───────────────────────────────
+
+/** Lee lecta_kindle_prefs; si la tabla aún no existe (migración pendiente)
+ * o falla la consulta, devuelve los defaults — la lectura nunca se cae.
+ * `persisted` distingue una fila real de los defaults: solo una fila real
+ * debe ganarle a las cookies del dispositivo. */
+export async function loadKindlePrefs(
+  env: WorkerEnv,
+  userId: string,
+): Promise<{ prefs: KindlePrefs; persisted: boolean }> {
+  const row = await withClient(env, (client) =>
+    client
+      .query<Record<string, unknown>>(
+        `SELECT font_family, font_size, line_height, margin, align, approach, layout
+         FROM lecta_kindle_prefs WHERE user_id = $1`,
+        [userId],
+      )
+      .then((res): Record<string, unknown> | null => res.rows[0] ?? null)
+      .catch((): null => null),
+  );
+  return { prefs: prefsFromRow(row), persisted: row != null };
+}
+
+/** UPSERT en lecta_kindle_prefs. Devuelve false si la tabla no existe o la
+ * escritura falla, para que el caller responda 503 en vez de crashear. */
+async function persistKindlePrefs(
+  env: WorkerEnv,
+  userId: string,
+  prefs: KindlePrefs,
+): Promise<boolean> {
+  const now = Date.now();
+  const ok = await withClient(env, (client) =>
+    client
+      .query(
+        `INSERT INTO lecta_kindle_prefs
+           (user_id, font_family, font_size, line_height, margin, align, approach, layout, updated_at, synced_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
+         ON CONFLICT (user_id) DO UPDATE SET
+           font_family = excluded.font_family,
+           font_size = excluded.font_size,
+           line_height = excluded.line_height,
+           margin = excluded.margin,
+           align = excluded.align,
+           approach = excluded.approach,
+           layout = excluded.layout,
+           updated_at = excluded.updated_at,
+           synced_at = excluded.synced_at`,
+        [
+          userId,
+          prefs.fontFamily,
+          prefs.fontSize,
+          prefs.lineHeight,
+          prefs.margin,
+          prefs.align,
+          prefs.approach,
+          prefs.layout,
+          now,
+        ],
+      )
+      .then(() => true)
+      .catch(() => false),
+  );
+  return ok === true;
+}
+
+/** API JSON para el panel «Tu Kindle» del celular (K8). */
+export async function handleKindlePrefsApiGet(c: Context<{ Bindings: WorkerEnv }>) {
+  const session = await getSession(c);
+  if (!session?.user?.id) {
+    return c.json({ error: "Inicia sesión para ver tus ajustes de Kindle." }, 401);
+  }
+  const { prefs, persisted } = await loadKindlePrefs(c.env, session.user.id);
+  return c.json({ prefs, persisted });
+}
+
+export async function handleKindlePrefsApiPut(c: Context<{ Bindings: WorkerEnv }>) {
+  const session = await getSession(c);
+  if (!session?.user?.id) {
+    return c.json({ error: "Inicia sesión para guardar tus ajustes de Kindle." }, 401);
+  }
+  const body = (await c.req.json().catch(() => null)) as { prefs?: unknown } | null;
+  const prefs = normalizeKindlePrefs(body?.prefs ?? body);
+  const ok = await persistKindlePrefs(c.env, session.user.id, prefs);
+  if (!ok) {
+    return c.json(
+      { error: "El servicio de ajustes no está disponible todavía. Intenta de nuevo en unos minutos." },
+      503,
+    );
+  }
+  return c.json({ ok: true, prefs });
+}
+
+/** /k/ajustes — formulario server-rendered, funciona sin JavaScript.
+ * Las rutas se registran más abajo, junto al resto del portal. */
+async function kindleSettingsGet(c: Context<{ Bindings: WorkerEnv }>) {
+  const session = await getSession(c);
+  if (!session?.user?.id) {
+    return c.redirect("/k/login?returnTo=" + encodeURIComponent("/k/ajustes"));
+  }
+  const { prefs } = await loadKindlePrefs(c.env, session.user.id);
+  const returnTo = safeKindleReturn(c.req.query("returnTo"), "/k/ajustes");
+  return c.html(
+    renderKindleSettingsView({
+      prefs,
+      returnTo,
+      saved: c.req.query("saved") === "1",
+      error: null,
+    }),
+  );
+}
+
+async function kindleSettingsPost(c: Context<{ Bindings: WorkerEnv }>) {
+  const session = await getSession(c);
+  if (!session?.user?.id) {
+    return c.redirect("/k/login?returnTo=" + encodeURIComponent("/k/ajustes"), 303);
+  }
+  const form = await c.req.parseBody().catch(() => ({} as Record<string, unknown>));
+  const prefs = normalizeKindlePrefs({
+    fontFamily: form["fontFamily"],
+    fontSize: form["fontSize"],
+    lineHeight: form["lineHeight"],
+    margin: form["margin"],
+    align: form["align"],
+    approach: form["approach"],
+    layout: form["layout"],
+  });
+  const returnTo = safeKindleReturn(form["returnTo"], "/k/ajustes");
+  const ok = await persistKindlePrefs(c.env, session.user.id, prefs);
+  if (!ok) {
+    return c.html(
+      renderKindleSettingsView({
+        prefs,
+        returnTo,
+        saved: false,
+        error: "No pudimos guardar los ajustes ahora. Intenta de nuevo en unos minutos.",
+      }),
+      503,
+    );
+  }
+  // Reflejar layout y margen en las cookies del dispositivo para los enlaces.
+  c.header(
+    "Set-Cookie",
+    `lecta_k_layout=${prefs.layout}; Path=/; Max-Age=31536000; SameSite=Lax`,
+    { append: true },
+  );
+  c.header(
+    "Set-Cookie",
+    `lecta_k_margin=${prefs.margin}; Path=/; Max-Age=31536000; SameSite=Lax`,
+    { append: true },
+  );
+  const target = `${returnTo}${returnTo.includes("?") ? "&" : "?"}saved=1`;
+  return c.redirect(target, 303);
+}
 
 // Recursos del EPUB que el navegador E-ink puede recibir. Nada de HTML,
 // XHTML ni SVG: un recurso activo same-origin en /k sería XSS.
@@ -81,6 +279,19 @@ export const SAFE_EPUB_ASSET_MIMES = new Set([
 
 export const KINDLE_HTML_CSP =
   "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'";
+
+/** Variante embebible solo desde el mismo origen. El portal /k entero la usa
+ * porque la vista previa (/k/preview + panel «Tu Kindle») navega entre sus
+ * páginas dentro del iframe; 'none' rompería cada enlace interno con
+ * «rechazó la conexión». 'self' sigue bloqueando el clickjacking externo. */
+export const KINDLE_HTML_CSP_FRAMED = KINDLE_HTML_CSP.replace(
+  "frame-ancestors 'none'",
+  "frame-ancestors 'self'",
+);
+
+export function kindleHtmlCspFor(path: string): string {
+  return path.startsWith("/k") ? KINDLE_HTML_CSP_FRAMED : KINDLE_HTML_CSP;
+}
 
 // Límite por IP y por isolate para la consulta de estado: el código es
 // corto y el endpoint entrega una sesión, así que no puede ser un oráculo
@@ -552,8 +763,11 @@ export async function handleKindleLinkAction(c: Context<{ Bindings: WorkerEnv }>
     const match = cookieHeader.match(/(?:better-auth\.session_token|__Secure-better-auth\.session_token)=([^;]+)/);
     if (match) userSessionToken = match[1];
   }
-  if (!userSessionToken && session?.user?.id) {
-    userSessionToken = `token_${session.user.id}_${Date.now()}`;
+  if (!userSessionToken) {
+    return c.json(
+      { error: "Vuelve a iniciar sesión en este dispositivo y repite el código." },
+      401,
+    );
   }
 
   // Redirigir a la página exacta del libro actual si el usuario tiene posición previa
@@ -709,16 +923,13 @@ export async function handleKindlePrimingAction(c: Context<{ Bindings: WorkerEnv
     ? formData["context"].trim().slice(0, 280)
     : null;
   const lang = normalizeKindleLanguage(String(formData["lang"] || "es"));
-  const returnUrl = String(
-    formData["returnUrl"] || `/k/read/${encodeURIComponent(bookId)}?section=${chapterIndex}`,
+  const returnUrl = safeKindleReturn(
+    formData["returnUrl"],
+    `/k/read/${encodeURIComponent(bookId)}?section=${chapterIndex}`,
   );
 
   const session = await getSession(c).catch(() => null);
-  const userId =
-    session?.user?.id ||
-    (typeof (c as unknown as { get?: (k: string) => unknown }).get === "function"
-      ? ((c as unknown as { get: (k: string) => unknown }).get("userId") as string | undefined)
-      : undefined);
+  const userId = session?.user?.id;
   const db = c.env?.DB;
   const now = Date.now();
 
@@ -856,7 +1067,7 @@ kindleRoutes.use("*", async (c, next) => {
     c.res.headers.set("Cache-Control", "no-store, no-cache, must-revalidate");
     c.res.headers.set("Pragma", "no-cache");
     c.res.headers.set("Expires", "0");
-    c.res.headers.set("Content-Security-Policy", KINDLE_HTML_CSP);
+    c.res.headers.set("Content-Security-Policy", kindleHtmlCspFor(c.req.path));
     c.res.headers.set("X-Content-Type-Options", "nosniff");
     c.res.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   }
@@ -869,6 +1080,202 @@ kindleRoutes.get("/api/kindle/status", handleKindleStatus);
 kindleRoutes.post("/api/kindle/link", handleKindleLinkAction);
 kindleRoutes.post("/priming/action", handleKindlePrimingAction);
 kindleRoutes.post("/kindle/priming/action", handleKindlePrimingAction);
+kindleRoutes.get("/ajustes", kindleSettingsGet);
+kindleRoutes.post("/ajustes", kindleSettingsPost);
+
+// K8 — Vista previa del Kindle para configurar desde el celular.
+// /k/preview = marco tipo dispositivo con iframe escalado; /k/preview/page =
+// la MISMA página real del lector (mismos HTML, CSS y paginación), con las
+// preferencias de la cuenta y overrides por query para previsualizar cambios.
+const KINDLE_PREVIEW_SAMPLE = `<h2>La casa encendida</h2>
+<p>La luz de la tarde entraba por la ventana y dibujaba rectángulos dorados sobre la mesa de madera. En la cocina sonaba una tetera, y el vapor subía despacio, como si también él tuviera paciencia.</p>
+<p>Mara abrió el cuaderno por la página marcada con una hoja seca. Había palabras que todavía no entendía del todo, pero cada una llevaba una anotación pequeña al margen, escrita con su letra redonda y tranquila.</p>
+<p>Afuera, el patio olía a tierra mojada. Un pájaro cruzó el aire sin prisa, y por un momento todo el cuarto pareció contener la respiración, como si la casa entera leyera con ella.</p>`;
+
+kindleRoutes.get("/preview", async (c) => {
+  const session = await getSession(c);
+  if (!session?.user) {
+    return c.redirect("/kindle");
+  }
+  const search = new URL(c.req.url).search;
+  return c.html(`<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vista previa de tu Kindle — Lecta</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin:0; background:#f4f4f4; color:#111; font-family: Georgia, "Bookerly", serif; display:flex; flex-direction:column; align-items:center; padding:18px 12px; }
+    h1 { font-size:1.15rem; margin:0 0 14px; font-weight:bold; }
+    .kframe { width:336px; border:8px solid #111; border-radius:12px; background:#fff; overflow:hidden; box-shadow:none; }
+    .kframe iframe { display:block; width:620px; height:830px; border:0; transform:scale(0.5); transform-origin:0 0; }
+    .kframe-height { height:419px; }
+    .note { max-width:360px; font-size:0.85rem; color:#555; text-align:center; line-height:1.4; margin:14px 0 0; }
+    .note a { color:#111; }
+  </style>
+</head>
+<body>
+  <h1>Vista previa de tu Kindle</h1>
+  <div class="kframe"><div class="kframe-height"><iframe src="/k/preview/page${escapeHtml(search)}" title="Vista previa del lector Kindle" sandbox="allow-same-origin allow-popups"></iframe></div></div>
+  <p class="note">Tamaño aproximado de un Kindle Paperwhite. Los cambios de ajustes se ven aquí igual que en tu dispositivo.</p>
+  <p class="note"><a href="/k">Ir a mi biblioteca de Kindle →</a></p>
+</body>
+</html>`);
+});
+
+kindleRoutes.get("/preview/page", async (c) => {
+  const session = await getSession(c);
+  if (!session?.user) {
+    return c.text("Inicia sesión para ver la vista previa.", 401);
+  }
+  const user = {
+    id: session.user.id,
+    email: session.user.email,
+    name: session.user.name,
+  };
+
+  const { prefs } = await loadKindlePrefs(c.env, user.id);
+  // Overrides por query: el panel del celular recarga este iframe con la
+  // combinación elegida ANTES de guardarla en la cuenta.
+  const vp = normalizeKindlePrefs({
+    fontFamily: c.req.query("font") ?? prefs.fontFamily,
+    fontSize: c.req.query("size") ?? prefs.fontSize,
+    lineHeight: c.req.query("lh") ?? prefs.lineHeight,
+    margin: c.req.query("margin") ?? prefs.margin,
+    align: c.req.query("align") ?? prefs.align,
+    approach: c.req.query("mode") ?? prefs.approach,
+    layout: c.req.query("layout") ?? prefs.layout,
+  });
+  const mode = vp.approach as "clean" | "paragraphs" | "lexicon" | "anchors";
+  const size = vp.fontSize as "sm" | "md" | "lg" | "xl" | "xxl";
+  const margin = vp.margin as KindleMargin;
+  const layout = vp.layout as "paged" | "scroll";
+
+  // Contenido: el primer libro del usuario, o el pasaje de muestra si no tiene.
+  // La navegación DENTRO del marco funciona (K8 fix): acepta section/page/toc
+  // y los enlaces /k/read se reescriben a esta misma ruta de preview.
+  // El parámetro book viaja dentro del regex de reescritura y del HTML:
+  // solo caracteres seguros (hashes reales o slugs de prueba), nada de
+  // metacaracteres de regex ni de HTML.
+  const bookQuery = c.req.query("book") || "";
+  let bookHash = /^[\w.-]{1,80}$/.test(bookQuery) ? bookQuery : "";
+  const requestedSection = Math.max(
+    0,
+    Number.parseInt(c.req.query("section") ?? "0", 10) || 0,
+  );
+  let chapter: ChapterResult | CachedChapter | null = null;
+  if (!bookHash) {
+    bookHash = (await firstKindleBookHash(c.env, user.id)) ?? "";
+  }
+  if (bookHash) {
+    chapter = (
+      await loadKindleChapterForRead(c, user.id, bookHash, requestedSection)
+    ).chapter;
+    // Sección fuera de rango → volver a la primera
+    if (!chapter && requestedSection > 0) {
+      chapter = (await loadKindleChapterForRead(c, user.id, bookHash, 0)).chapter;
+    }
+  }
+  const contentHtml = chapter?.contentHtml ?? KINDLE_PREVIEW_SAMPLE;
+  const bookTitle = chapter?.bookTitle ?? "Texto de muestra";
+  const bookAuthor = chapter?.bookAuthor ?? "Lecta";
+  const chapterTitle = chapter?.chapterTitle ?? "Vista previa";
+  const sectionIndex = chapter?.sectionIndex ?? 0;
+  const totalSections = chapter?.totalSections ?? 1;
+  const bookLang = normalizeKindleLanguage(chapter?.language);
+  const displayHash = bookHash || "muestra";
+  const renderQuerySuffix = `&mode=${encodeURIComponent(mode)}&size=${encodeURIComponent(size)}&layout=${layout}&margin=${margin}`;
+
+  // Reescribe los enlaces internos del HTML renderizado para que la
+  // navegación siga dentro de la vista previa (con los mismos overrides), y
+  // los enlaces de salida (/k, /k/ajustes) abran la página real en pestaña
+  // nueva en vez de cargarse dentro del marco.
+  const previewExtra = `&font=${encodeURIComponent(vp.fontFamily)}&lh=${encodeURIComponent(vp.lineHeight)}&align=${encodeURIComponent(vp.align)}`;
+  const hashRe = displayHash.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const toPreviewLinks = (html: string): string =>
+    html
+      .replace(
+        new RegExp(`href="/k/read/${hashRe}\\?([^"]*)"`, "g"),
+        (_m, qs) =>
+          `href="/k/preview/page?book=${encodeURIComponent(bookHash)}&${qs}${previewExtra}"`,
+      )
+      .split(`href="/k/read/${displayHash}"`)
+      .join(`href="/k/preview/page?book=${encodeURIComponent(bookHash)}${previewExtra}"`)
+      .split('href="/k"')
+      .join('target="_blank" href="/k"')
+      .split('href="/k/ajustes')
+      .join('target="_blank" href="/k/ajustes');
+
+  // Índice real dentro del marco (?toc=1), igual que en el lector (K6)
+  if (c.req.query("toc") === "1") {
+    return c.html(
+      toPreviewLinks(
+        renderKindleTocView({
+          user,
+          bookHash: displayHash,
+          bookTitle,
+          bookAuthor,
+          toc: chapter?.toc ?? [],
+          currentSection: sectionIndex,
+          querySuffix: renderQuerySuffix,
+          backUrl: `/k/preview/page?book=${encodeURIComponent(bookHash)}&section=${sectionIndex}&page=0${renderQuerySuffix}${previewExtra}`,
+          language: bookLang,
+        }),
+      ),
+    );
+  }
+
+  const viewport = parseKindleViewportCookie(getCookie(c, "lecta_k_vp"));
+  const pages = paginateChapter(contentHtml, {
+    size,
+    margin,
+    layout,
+    mode,
+    viewport: viewport ?? undefined,
+  });
+  const pageIndex = Math.min(
+    Math.max(0, Number.parseInt(c.req.query("page") ?? "0", 10) || 0),
+    Math.max(0, pages.length - 1),
+  );
+  const pageHtml = wrapWordsWithLinks(
+    pages[pageIndex] ?? "<p>Sin contenido.</p>",
+    new Set(),
+    { anchors: mode === "anchors" },
+  );
+
+  return c.html(
+    toPreviewLinks(
+      renderReaderView({
+        user,
+        bookHash: displayHash,
+        bookTitle,
+        bookAuthor,
+        chapterTitle,
+        contentHtml: pageHtml,
+        sectionIndex,
+        totalSections,
+        pageIndex,
+        totalPages: Math.max(1, pages.length),
+        savedNotice: "Vista previa — así se verá tu lectura en el Kindle.",
+        lookupResult: null,
+        mode,
+        size,
+        margin,
+        fontFamily: vp.fontFamily,
+        lineHeight: vp.lineHeight,
+        align: vp.align,
+        primingOff: true,
+        layout,
+        language: bookLang,
+        tocUrl:
+          chapter?.toc && chapter.toc.length > 0
+            ? `/k/preview/page?book=${encodeURIComponent(bookHash)}&section=${sectionIndex}&toc=1${renderQuerySuffix}${previewExtra}`
+            : null,
+      }),
+    ),
+  );
+});
 
 // 1. Estantería principal
 kindleRoutes.get("/", async (c) => {
@@ -877,36 +1284,58 @@ kindleRoutes.get("/", async (c) => {
     ? { id: session.user.id, email: session.user.email, name: session.user.name }
     : null;
 
-  if (!user || !c.env.BOOKS) {
-    return c.html(renderHomeView({ user: null, books: [] }));
+  if (!user) {
+    // K7: sin sesión el código de vinculación se muestra directo (1 toque)
+    return c.redirect("/kindle");
+  }
+  if (!c.env.BOOKS) {
+    return c.html(renderHomeView({ user, books: [] }));
   }
 
   // Listar libros del usuario en R2
   const listed = await c.env.BOOKS.list({ prefix: `books/${user.id}/` }).catch(() => null);
   const objects = listed?.objects ?? [];
 
-  // Obtener posiciones guardadas para mostrar el progreso
-  const positionRows = await withClient(c.env, (client) =>
-    client
-      .query(
-        `SELECT book_hash AS "bookHash", section_index AS "sectionIndex", scroll_top AS "scrollTop", progress
-         FROM lecta_user_positions WHERE user_id = $1`,
-        [user.id],
-      )
-      .then((res) => res.rows)
-      .catch(() => []),
-  );
+  // Posiciones guardadas (con sello de sincronía para el orden por recencia)
+  // + palabras que esperan repaso hoy — una sola ronda a la base
+  const [positionRows, dueRows] =
+    (await withClient(c.env, (client) =>
+      Promise.all([
+        client
+          .query(
+            `SELECT book_hash AS "bookHash", section_index AS "sectionIndex", progress,
+                    synced_at AS "syncedAt"
+             FROM lecta_user_positions WHERE user_id = $1`,
+            [user.id],
+          )
+          .then((res) => res.rows)
+          .catch(() => []),
+        client
+          .query<{ n: number }>(
+            `SELECT COUNT(*)::int AS n FROM lecta_user_words
+             WHERE user_id = $1 AND deleted = false
+               AND card ? 'due' AND (card->>'due')::timestamptz <= now()`,
+            [user.id],
+          )
+          .then((res) => res.rows)
+          .catch(() => []),
+      ]),
+    )) ?? [[], []];
 
-  const positionMap = new Map<string, { sectionIndex: number; pageIndex: number; progress: number }>();
+  const positionMap = new Map<
+    string,
+    { sectionIndex: number; progress: number; syncedAt: string | null }
+  >();
   if (Array.isArray(positionRows)) {
     for (const row of positionRows) {
       positionMap.set(row.bookHash, {
         sectionIndex: Number(row.sectionIndex) || 0,
-        pageIndex: Number(row.scrollTop) || 0,
         progress: row.progress != null ? Number(row.progress) : 0,
+        syncedAt: row.syncedAt != null ? String(row.syncedAt) : null,
       });
     }
   }
+  const dueCount = Number(dueRows?.[0]?.n) || 0;
 
   let liveHydrationCount = 0;
   const MAX_LIVE_HYDRATIONS_PER_REQ = 1;
@@ -974,7 +1403,6 @@ kindleRoutes.get("/", async (c) => {
         author,
         sections,
         currentSection: pos ? pos.sectionIndex : null,
-        currentPage: pos ? pos.pageIndex : null,
         progressPercent: pos ? pos.progress : null,
       };
     }),
@@ -1017,14 +1445,44 @@ kindleRoutes.get("/", async (c) => {
           author: d1.author || "Autor desconocido",
           sections: 1,
           currentSection: pos ? pos.sectionIndex : null,
-          currentPage: pos ? pos.pageIndex : null,
           progressPercent: pos ? pos.progress : null,
         });
       }
     }
   }
 
-  return c.html(renderHomeView({ user, books }));
+  // K7: orden — libros con posición reciente primero (por synced_at desc),
+  // el resto alfabético. El primero con posición es el «Seguir leyendo».
+  const recency = (b: KindleBookItem) =>
+    positionMap.get(b.hash)?.syncedAt ?? "";
+  books.sort((a, b) => {
+    const ra = recency(a);
+    const rb = recency(b);
+    if (ra !== rb) return rb.localeCompare(ra);
+    return a.title.localeCompare(b.title, "es");
+  });
+
+  const heroBook =
+    books.find((b) => b.progressPercent != null && recency(b)) ?? null;
+  const gridBooks = heroBook ? books.filter((b) => b !== heroBook) : books;
+
+  // Biblioteca paginada: 10 por página vía ?pag=N (e-ink no hace scroll feliz)
+  const pageSize = 10;
+  const requestedPage = Number(c.req.query("pag")) || 1;
+  const totalPages = Math.max(1, Math.ceil(gridBooks.length / pageSize));
+  const page = Math.min(Math.max(1, requestedPage), totalPages);
+  const pageBooks = gridBooks.slice((page - 1) * pageSize, page * pageSize);
+
+  return c.html(
+    renderHomeView({
+      user,
+      books: pageBooks,
+      heroBook,
+      dueCount,
+      page,
+      totalPages,
+    }),
+  );
 });
 
 // 2. Iniciar sesión - Formulario
@@ -1033,7 +1491,7 @@ kindleRoutes.get("/login", async (c) => {
   if (session?.user) {
     return c.redirect("/k");
   }
-  const returnTo = c.req.query("returnTo") || "/k";
+  const returnTo = safeKindleReturn(c.req.query("returnTo"));
   const email = c.req.query("email") || "";
   return c.html(renderLoginView({ user: null, email, returnTo }));
 });
@@ -1043,9 +1501,7 @@ kindleRoutes.post("/login", async (c) => {
   const body = (await c.req.parseBody().catch(() => ({}))) as Record<string, unknown>;
   const email = typeof body.email === "string" ? body.email.trim() : "";
   const password = typeof body.password === "string" ? body.password : "";
-  const returnTo = typeof body.returnTo === "string" && body.returnTo.startsWith("/k")
-    ? body.returnTo
-    : "/k";
+  const returnTo = safeKindleReturn(body.returnTo);
 
   if (!email || !password) {
     return c.html(
@@ -1162,17 +1618,25 @@ kindleRoutes.get("/logout", async (c) => {
 });
 
 // Función de carga de binario EPUB para /k con soporte de catálogo y libros de usuario
-export async function loadEpubBufferForKindle(
+/** EPUB máximo servible por /read (K4): por encima, el ZIP entero en
+ * memoria + el parseo por página no son viables ni en cacheado. */
+export const KINDLE_MAX_EPUB_BYTES = 40 * 1024 * 1024;
+
+type EpubObjectLike = { arrayBuffer(): Promise<ArrayBuffer>; size?: number };
+
+/** Devuelve el objeto R2 del EPUB (misma cadena de candidatos que antes)
+ * sin consumir el body: permite revisar .size antes de descargar. */
+export async function loadEpubObjectForKindle(
   env: WorkerEnv,
   userId: string | null,
   bookId: string,
-): Promise<ArrayBuffer | null> {
+): Promise<EpubObjectLike | null> {
   const bucket = env.BOOKS_BUCKET ?? env.BOOKS;
   if (!bucket) return null;
 
   // 1. Intentar desde catálogo público en R2
   const catalogObj = await bucket.get(`catalog/${bookId}.epub`);
-  if (catalogObj) return await catalogObj.arrayBuffer();
+  if (catalogObj) return catalogObj;
 
   // 2. Fallback a libros propios del usuario vinculado en /k
   if (!userId) return null;
@@ -1186,7 +1650,7 @@ export async function loadEpubBufferForKindle(
     });
     if (userBook?.r2_key) {
       const userObj = await bucket.get(userBook.r2_key);
-      if (userObj) return await userObj.arrayBuffer();
+      if (userObj) return userObj;
     }
   } else if (env.DB) {
     const userBook = await env.DB.prepare(
@@ -1198,22 +1662,116 @@ export async function loadEpubBufferForKindle(
 
     if (userBook?.r2_key) {
       const userObj = await bucket.get(userBook.r2_key);
-      if (userObj) return await userObj.arrayBuffer();
+      if (userObj) return userObj;
     }
   }
 
   const userBookObj = await bucket.get(`user-books/${userId}/${bookId}.epub`);
-  if (userBookObj) return await userBookObj.arrayBuffer();
+  if (userBookObj) return userBookObj;
 
   const legacyObj = await bucket.get(`books/${userId}/${bookId}.epub`);
-  if (legacyObj) return await legacyObj.arrayBuffer();
+  if (legacyObj) return legacyObj;
 
   return null;
 }
 
+/** Cookie lecta_k_vp="WxH": viewport real reportado por el lector (K5).
+ * Formato estricto y límites para no dejar escalar a valores absurdos. */
+export function parseKindleViewportCookie(
+  raw: string | undefined,
+): { w: number; h: number } | null {
+  if (!raw) return null;
+  const m = /^(\d{2,5})x(\d{2,5})$/.exec(raw.trim());
+  if (!m) return null;
+  const w = Number(m[1]);
+  const h = Number(m[2]);
+  if (w < 240 || h < 240 || w > 4096 || h > 4096) return null;
+  return { w, h };
+}
+
+/** Primer libro del usuario para la vista previa (K8): user_books en la
+ * base o el primer objeto books/{uid}/ del bucket. null si no tiene ninguno. */
+async function firstKindleBookHash(
+  env: WorkerEnv,
+  userId: string,
+): Promise<string | null> {
+  if (getConnectionString(env)) {
+    const row = await withClient(env, async (client) => {
+      const res = await client.query<{ book_id: string }>(
+        `SELECT book_id FROM user_books WHERE user_id = $1 ORDER BY updated_at DESC LIMIT 1`,
+        [userId],
+      );
+      return res.rows[0];
+    }).catch(() => null);
+    if (row?.book_id) return row.book_id;
+  }
+  const bucket = env.BOOKS_BUCKET ?? env.BOOKS;
+  if (bucket) {
+    const listed = await bucket
+      .list({ prefix: `books/${userId}/`, limit: 1 })
+      .catch(() => null);
+    const key = listed?.objects?.[0]?.key;
+    if (key) {
+      return key.split("/").pop()?.replace(/\.epub$/, "") || null;
+    }
+  }
+  return null;
+}
+
+export async function loadEpubBufferForKindle(
+  env: WorkerEnv,
+  userId: string | null,
+  bookId: string,
+): Promise<ArrayBuffer | null> {
+  const obj = await loadEpubObjectForKindle(env, userId, bookId);
+  return obj ? obj.arrayBuffer() : null;
+}
+
+/** Capítulo cacheado o recién parseado (K4), compartido por /read y
+ * /preview/page (K8). null: parseo imposible; "notFound"/"tooBig" para
+ * que el llamador elija su página de error. */
+async function loadKindleChapterForRead(
+  c: Context<{ Bindings: WorkerEnv }>,
+  userId: string,
+  hash: string,
+  sectionIndex: number,
+): Promise<{
+  chapter: ChapterResult | CachedChapter | null;
+  notFound?: boolean;
+  tooBig?: boolean;
+}> {
+  const bucket = c.env.BOOKS_BUCKET ?? c.env.BOOKS;
+  const cached = await getCachedChapter(bucket, hash, sectionIndex);
+  if (cached) return { chapter: cached };
+
+  const epubObj = await loadEpubObjectForKindle(c.env, userId, hash);
+  if (!epubObj) return { chapter: null, notFound: true };
+  if ((epubObj.size ?? 0) > KINDLE_MAX_EPUB_BYTES) {
+    return { chapter: null, tooBig: true };
+  }
+  const data = new Uint8Array(await epubObj.arrayBuffer());
+  const chapter = await getEpubChapter(data, sectionIndex, hash);
+  if (chapter) {
+    const cacheWrite = putCachedChapter(bucket, hash, chapter);
+    try {
+      c.executionCtx.waitUntil(cacheWrite);
+    } catch {
+      await cacheWrite;
+    }
+  }
+  return { chapter };
+}
+
 // 4. Lector de capítulos
 kindleRoutes.get("/read/:hash", async (c) => {
+  const timer = createTimer();
+  const html = (body: string, status?: 200 | 400 | 404 | 500 | 503) => {
+    timer.mark("render");
+    c.header("Server-Timing", timer.header());
+    return c.html(body, status);
+  };
   const session = await getSession(c);
+  timer.mark("session");
   const hash = c.req.param("hash");
 
   if (!session?.user) {
@@ -1221,7 +1779,7 @@ kindleRoutes.get("/read/:hash", async (c) => {
   }
 
   if (!c.env.BOOKS && !c.env.BOOKS_BUCKET) {
-    return c.html("<h1>Error</h1><p>El almacenamiento no está configurado.</p>", 503);
+    return html("<h1>Error</h1><p>El almacenamiento no está configurado.</p>", 503);
   }
 
   const user = { id: session.user.id, email: session.user.email, name: session.user.name };
@@ -1233,11 +1791,32 @@ kindleRoutes.get("/read/:hash", async (c) => {
   const isPrep = c.req.query("prep") === "1";
   const rawMode = c.req.query("mode");
   const rawSize = c.req.query("size");
-  const rawGloss = c.req.query("gloss");
   const rawLayout = c.req.query("layout");
   const rawMargin = c.req.query("margin");
+
+  // Preferencias de la cuenta + posición guardada en una sola ronda paralela
+  const needsPosition = requestedSection === undefined || requestedPage === undefined;
+  const [{ prefs, persisted: prefsPersisted }, lastPos] = await Promise.all([
+    loadKindlePrefs(c.env, user.id),
+    needsPosition
+      ? withClient(c.env, (client) =>
+          client
+            .query<{ sectionIndex: number; ratio: number | null; anchor: string | null }>(
+              `SELECT section_index AS "sectionIndex", ratio, anchor FROM lecta_user_positions
+               WHERE user_id = $1 AND book_hash = $2`,
+              [user.id, hash],
+            )
+            .then((res) => res.rows[0] ?? null)
+            .catch(() => null),
+        )
+      : Promise.resolve(null),
+  ]);
+  timer.mark("db");
+
+  // Precedencia: parámetro explícito > fila de la cuenta > cookie > default.
+  // Sin fila guardada la cookie del dispositivo conserva su efecto previo.
   const cookieMargin = getCookie(c, "lecta_k_margin");
-  const margin = normalizeMargin(rawMargin ?? cookieMargin);
+  const margin = normalizeMargin(rawMargin ?? (prefsPersisted ? prefs.margin : cookieMargin));
 
   if (rawMargin && VALID_MARGINS.has(rawMargin as KindleMargin)) {
     c.header(
@@ -1247,31 +1826,23 @@ kindleRoutes.get("/read/:hash", async (c) => {
     );
   }
 
-  const mode = (rawMode as "clean" | "paragraphs" | "lexicon") || "clean";
-  const size = (rawSize as "sm" | "md" | "lg" | "xl") || "md";
-  const gloss = rawGloss === "1";
+  const VALID_MODES = new Set(["clean", "paragraphs", "lexicon", "anchors"]);
+  const mode = (rawMode && VALID_MODES.has(rawMode)
+    ? rawMode
+    : prefsPersisted ? prefs.approach : "clean") as
+    "clean" | "paragraphs" | "lexicon" | "anchors";
+  const VALID_SIZES = new Set(["sm", "md", "lg", "xl", "xxl"]);
+  const size = (rawSize && VALID_SIZES.has(rawSize)
+    ? rawSize
+    : prefsPersisted ? prefs.fontSize : "md") as
+    "sm" | "md" | "lg" | "xl" | "xxl";
   const cookieHeader = c.req.header("cookie") || "";
   const cookieLayout = cookieHeader.includes("lecta_k_layout=scroll") ? "scroll" : "paged";
   const layout: "paged" | "scroll" = rawLayout === "scroll" || rawLayout === "paged"
     ? rawLayout
-    : cookieLayout;
-  const querySuffix = `${rawMode ? `&mode=${encodeURIComponent(rawMode)}` : ""}${rawSize ? `&size=${encodeURIComponent(rawSize)}` : ""}${rawGloss !== undefined ? `&gloss=${encodeURIComponent(rawGloss)}` : ""}${layout !== "paged" ? `&layout=${layout}` : ""}&margin=${margin}`;
-  const renderQuerySuffix = `&mode=${encodeURIComponent(mode)}&size=${encodeURIComponent(size)}&gloss=${gloss ? "1" : "0"}&layout=${layout}&margin=${margin}`;
-
-  // Si no se especifica la sección o página en la URL, cargar la última posición guardada
-  let lastPos: { sectionIndex: number; ratio: number | null; anchor?: string | null } | null = null;
-  if (requestedSection === undefined || requestedPage === undefined) {
-    lastPos = await withClient(c.env, (client) =>
-      client
-        .query(
-          `SELECT section_index AS "sectionIndex", ratio, anchor FROM lecta_user_positions
-           WHERE user_id = $1 AND book_hash = $2`,
-          [user.id, hash],
-        )
-        .then((res) => res.rows[0])
-        .catch(() => null),
-    );
-  }
+    : (prefsPersisted ? prefs.layout : cookieLayout);
+  const querySuffix = `${rawMode ? `&mode=${encodeURIComponent(rawMode)}` : ""}${rawSize ? `&size=${encodeURIComponent(rawSize)}` : ""}${layout !== "paged" ? `&layout=${layout}` : ""}&margin=${margin}`;
+  const renderQuerySuffix = `&mode=${encodeURIComponent(mode)}&size=${encodeURIComponent(size)}&layout=${layout}&margin=${margin}`;
 
   if (requestedSection === undefined) {
     const targetSection = lastPos ? Number(lastPos.sectionIndex) || 0 : 0;
@@ -1280,19 +1851,26 @@ kindleRoutes.get("/read/:hash", async (c) => {
 
   const sectionIndex = Math.max(0, parseInt(requestedSection, 10) || 0);
 
-  // Descargar el EPUB de R2 (con fallback a user_books en D1 o catálogo)
-  const epubBuffer = await loadEpubBufferForKindle(c.env, user.id, hash);
-  if (!epubBuffer) {
-    return c.html(
+  // Capítulo desde caché R2/memoria (K4); en miss se descarga el EPUB,
+  // se parsea y se guarda el artefacto derivado del contenido.
+  const loaded = await loadKindleChapterForRead(c, user.id, hash, sectionIndex);
+  timer.mark("r2");
+  timer.mark("parse");
+  if (loaded.notFound) {
+    return html(
       `<h1>Libro no encontrado</h1><p>No se encontró este libro en tu cuenta.</p><p><a href="/k">Volver a la biblioteca</a></p>`,
       404,
     );
   }
-
-  const data = new Uint8Array(epubBuffer);
-  const chapter = await getEpubChapter(data, sectionIndex, hash);
+  if (loaded.tooBig) {
+    return html(
+      `<h1>Libro demasiado grande</h1><p>Este archivo supera el límite para lectura en el dispositivo (40 MB). Ábrelo en la app de tu celular o navegador.</p><p><a href="/k">Volver a la biblioteca</a></p>`,
+      400,
+    );
+  }
+  const chapter = loaded.chapter;
   if (!chapter) {
-    return c.html(
+    return html(
       `<h1>Error de lectura</h1><p>No se pudo procesar el contenido de este libro.</p><p><a href="/k">Volver a la biblioteca</a></p>`,
       500,
     );
@@ -1300,132 +1878,36 @@ kindleRoutes.get("/read/:hash", async (c) => {
 
   const bookLang = normalizeKindleLanguage(chapter.language);
 
-  // Vista de preparación previa al capítulo («Antes de leer»)
-  if (isPrep) {
-    const cleanText = stripHtml(chapter.contentHtml);
-    const candidateForms = extractChapterPrepCandidates(chapter.contentHtml, bookLang);
-
-    const queryRes = await withClient(c.env, (client) =>
-      Promise.all([
-        client
-          .query(
-            `SELECT LOWER(lemma) AS lemma FROM lecta_user_knowledge
-             WHERE user_id = $1 AND language = $2 AND known = true AND deleted = false`,
-            [user.id, bookLang],
-          )
-          .then((res) => res.rows)
-          .catch(() => []),
-        client
-          .query(
-            `SELECT LOWER(form) AS form FROM lecta_user_words
-             WHERE user_id = $1 AND language = $2 AND deleted = false`,
-            [user.id, bookLang],
-          )
-          .then((res) => res.rows)
-          .catch(() => []),
-      ]),
-    );
-
-    const knownRows = queryRes ? queryRes[0] : [];
-    const savedRows = queryRes ? queryRes[1] : [];
-
-    const knownSet = new Set<string>();
-    for (const row of knownRows) {
-      if (row.lemma) knownSet.add(row.lemma);
-    }
-    const savedSet = new Set<string>();
-    for (const row of savedRows) {
-      if (row.form) savedSet.add(row.form);
-    }
-
-    const filteredCandidates = candidateForms.filter((f) => !knownSet.has(f));
-
-    const entriesMap: Record<string, import("../lexicon").LexiconEntryView[]> =
-      filteredCandidates.length > 0
-        ? ((await withClient(c.env, (client) =>
-            findEntriesForForms(client, bookLang, filteredCandidates.slice(0, 150)),
-          ).catch(() => ({}))) ?? {})
-        : {};
-
-    const prepItems: PrepWordItem[] = [];
-    const seenLemmas = new Set<string>();
-
-    for (const form of filteredCandidates) {
-      const entries = entriesMap[form];
-      if (!entries || entries.length === 0) continue;
-      const entry = entries[0];
-      const lemmaLower = (entry.lemma || form).toLowerCase();
-      if (knownSet.has(lemmaLower)) continue;
-      if (seenLemmas.has(lemmaLower)) continue;
-
-      const firstMeaning = entry.senses && entry.senses.length > 0
-        ? entry.senses[0].definition?.trim()
-        : null;
-      if (!firstMeaning) continue;
-
-      seenLemmas.add(lemmaLower);
-      const isSaved = savedSet.has(form) || savedSet.has(lemmaLower);
-      const example = findSentenceWithWord(cleanText, form);
-
-      prepItems.push({
-        form,
-        lemma: entry.lemma || form,
-        pos: entry.pos || null,
-        meaning: firstMeaning,
-        exampleSentence: example,
-        saved: isSaved,
-        zipf: entry.zipf,
-      });
-    }
-
-    // Ordenar: primero las que ya tiene guardadas en Cuaderno, luego por rareza (zipf menor primero)
-    prepItems.sort((a, b) => {
-      if (a.saved && !b.saved) return -1;
-      if (!a.saved && b.saved) return 1;
-      const zipfA = a.zipf ?? 999;
-      const zipfB = b.zipf ?? 999;
-      return zipfA - zipfB;
-    });
-
-    const topWords = prepItems.slice(0, 7);
-
-    let savedNotice: string | null = null;
-    if (savedWord) {
-      savedNotice = `✓ Palabra «${savedWord}» guardada en tu Cuaderno.`;
-    } else if (markedKnown) {
-      savedNotice = `✓ Palabra «${markedKnown}» marcada como conocida.`;
-    }
-
-    const nextUrl = `/k/read/${encodeURIComponent(hash)}?section=${chapter.sectionIndex}&page=0`;
-    const prevUrl = chapter.sectionIndex > 0
-      ? `/k/read/${encodeURIComponent(hash)}?section=${chapter.sectionIndex - 1}&page=last`
-      : `/k`;
-
-    return c.html(
-      renderChapterPrepView({
+  // K6 — Vista de índice del libro (TOC real del EPUB, mismo request del lector)
+  if (c.req.query("toc") === "1") {
+    const requestUrl = new URL(c.req.url);
+    return html(
+      renderKindleTocView({
         user,
         bookHash: hash,
         bookTitle: chapter.bookTitle,
         bookAuthor: chapter.bookAuthor,
-        chapterTitle: chapter.chapterTitle,
-        sectionIndex: chapter.sectionIndex,
-        totalSections: chapter.totalSections,
-        words: topWords,
-        savedNotice,
-        nextUrl,
-        prevUrl,
+        toc: chapter.toc ?? [],
+        currentSection: chapter.sectionIndex,
+        querySuffix: renderQuerySuffix,
+        backUrl: `${requestUrl.pathname}${requestUrl.search
+          .replace(/([?&])toc=1&?/, "$1")
+          .replace(/[?&]$/, "")}`,
         language: bookLang,
       }),
     );
   }
 
   // Paginación del capítulo en pantallas discretas (Zero-Scroll en modo paged)
+  const viewport = parseKindleViewportCookie(getCookie(c, "lecta_k_vp"));
   const pages = paginateChapter(chapter.contentHtml, {
     size,
     margin,
     layout,
     mode,
+    viewport: viewport ?? undefined,
   });
+  timer.mark("paginate");
   const totalPages = Math.max(1, pages.length);
 
   let pageIndex = 0;
@@ -1460,18 +1942,16 @@ kindleRoutes.get("/read/:hash", async (c) => {
   const isPrimingOff = cookieHeader.includes("lecta_k_priming_off=1");
   const isBookMuted = cookieHeader.includes(`lecta_k_mute_${encodeURIComponent(hash)}=1`);
 
-  // Antesala de pre-lectura adaptativa (solo al inicio del capítulo en página 0)
-  if (
-    pageIndex === 0 &&
-    requestedPage !== "last" &&
-    !isPrep &&
-    !lookupWord &&
-    !savedWord &&
-    !markedKnown &&
-    !isPrimed &&
-    !isPrimingOff &&
-    !isBookMuted
-  ) {
+  // Antesala de pre-lectura adaptativa (UNA sola, K6): automática al inicio
+  // del capítulo, o manual vía ?prep=1 — en ese caso siempre se muestra.
+  const wantsPriming =
+    isPrep ||
+    (pageIndex === 0 &&
+      requestedPage !== "last" &&
+      !isPrimed &&
+      !isPrimingOff &&
+      !isBookMuted);
+  if (wantsPriming && !lookupWord && !savedWord && !markedKnown) {
     const cleanText = stripHtml(chapter.contentHtml);
 
     // 1. Cargar historial del usuario para estimar theta y lemas conocidos
@@ -1507,6 +1987,7 @@ kindleRoutes.get("/read/:hash", async (c) => {
               .catch(() => []),
           )
         : []) ?? [];
+    timer.mark("db");
 
     const knowledgeRecords: Array<{ word: string; status: string; difficultyBeta?: number }> = [...d1Rows];
     const knownLemmas = new Set<string>();
@@ -1568,6 +2049,7 @@ kindleRoutes.get("/read/:hash", async (c) => {
         }
       }
     }
+    timer.mark("db");
 
     // 3. Seleccionar palabras óptimas según Rasch + ZPD
     const primingWords = selectKindleChapterPrimingWords(
@@ -1581,13 +2063,13 @@ kindleRoutes.get("/read/:hash", async (c) => {
     if (primingWords.length > 0) {
       let savedNotice: string | null = null;
       if (savedWord) {
-        savedNotice = `✓ Palabra «${savedWord}» guardada en tu Cuaderno.`;
+        savedNotice = `Palabra «${savedWord}» guardada en tu Cuaderno.`;
       } else if (markedKnown) {
-        savedNotice = `✓ Palabra «${markedKnown}» marcada como conocida.`;
+        savedNotice = `Palabra «${markedKnown}» marcada como conocida.`;
       }
 
       const readUrl = `/k/read/${encodeURIComponent(hash)}?section=${chapter.sectionIndex}&page=0&primed=1${renderQuerySuffix}`;
-      return c.html(
+      return html(
         renderKindleChapterPrimingView({
           user,
           bookId: hash,
@@ -1603,6 +2085,7 @@ kindleRoutes.get("/read/:hash", async (c) => {
           isForeignLang: bookLang !== "es",
           words: primingWords,
           readUrl,
+          currentUrl: `${new URL(c.req.url).pathname}${new URL(c.req.url).search}`,
           savedNotice,
         }),
       );
@@ -1611,27 +2094,18 @@ kindleRoutes.get("/read/:hash", async (c) => {
 
   const rawPageHtml = pages[pageIndex] || "<p>Sin contenido.</p>";
 
-  // Obtener palabras guardadas y conocimiento del usuario
-  const [savedWordsRows, knownWordsRows] = (await withClient(c.env, (client) =>
-    Promise.all([
-      client
-        .query<{ form: string }>(
-          `SELECT LOWER(form) AS form FROM lecta_user_words
-           WHERE user_id = $1 AND language = $2 AND deleted = false`,
-          [user.id, bookLang],
-        )
-        .then((res) => res.rows)
-        .catch(() => []),
-      client
-        .query<{ lemma: string }>(
-          `SELECT LOWER(lemma) AS lemma FROM lecta_user_knowledge
-           WHERE user_id = $1 AND language = $2 AND known = true AND deleted = false`,
-          [user.id, bookLang],
-        )
-        .then((res) => res.rows)
-        .catch(() => []),
-    ]),
-  )) ?? [[], []];
+  // Palabras del Cuaderno del usuario en este idioma (para el subrayado)
+  const savedWordsRows = (await withClient(c.env, (client) =>
+    client
+      .query<{ form: string }>(
+        `SELECT LOWER(form) AS form FROM lecta_user_words
+         WHERE user_id = $1 AND language = $2 AND deleted = false`,
+        [user.id, bookLang],
+      )
+      .then((res) => res.rows)
+      .catch(() => []),
+  )) ?? [];
+  timer.mark("db");
 
   const savedWordsSet = new Set<string>();
   if (Array.isArray(savedWordsRows)) {
@@ -1640,26 +2114,16 @@ kindleRoutes.get("/read/:hash", async (c) => {
     }
   }
 
-  const knownSet = new Set<string>();
-  if (Array.isArray(knownWordsRows)) {
-    for (const row of knownWordsRows) {
-      if (row.lemma) knownSet.add(row.lemma);
-    }
-  }
-
-  const currentUrl = `/k/read/${encodeURIComponent(hash)}?section=${chapter.sectionIndex}&page=${pageIndex}${renderQuerySuffix}`;
-
-  // En lectura regular no se extraen palabras ni se consultan notas al pie para Zero-Scroll y rendimiento
-  const pageWords: PageWordItem[] = [];
-  const catNotes: CatPageNoteItem[] = [];
-
-  // Formatear texto según modo y enlazar palabras con spans inertes
-  const formattedHtml = formatChapterHtmlForMode(rawPageHtml, mode);
+  // Formatear texto según modo y enlazar palabras con spans inertes.
+  // «Anclas de lectura» usa formato limpio + prefijos en negrita.
+  const formattedHtml = formatChapterHtmlForMode(
+    rawPageHtml,
+    mode === "anchors" ? "clean" : mode,
+  );
   const interactivePageHtml = wrapWordsWithLinks(
     formattedHtml,
-    hash,
-    currentUrl,
     savedWordsSet,
+    { anchors: mode === "anchors" },
   );
 
   // Consulta de definición en línea si se pulsó una palabra
@@ -1675,6 +2139,7 @@ kindleRoutes.get("/read/:hash", async (c) => {
         entries: entries || [],
         contextSentence,
       };
+      timer.mark("db");
     } catch {
       lookupResult = {
         word: lookupWord,
@@ -1710,12 +2175,15 @@ kindleRoutes.get("/read/:hash", async (c) => {
        WHERE excluded.updated_at >= lecta_user_positions.updated_at`,
       [user.id, hash, chapter.sectionIndex, pageRatio, progress, pageAnchor, now],
     );
+    // Evento puntual por página: la bitácora es append-only por id y el
+    // merge descarta updates de filas ya conocidas, así que no se puede
+    // estirar ended_at después — se registra el instante real.
     const actId = `k_${hash}_${chapter.sectionIndex}_${pageIndex}_${now}`;
     await client.query(
       `INSERT INTO lecta_user_activity (user_id, id, book_hash, started_at, ended_at, synced_at)
-       VALUES ($1, $2, $3, $4, $5, $5)
+       VALUES ($1, $2, $3, $4, $4, $4)
        ON CONFLICT (user_id, id) DO NOTHING`,
-      [user.id, actId, hash, Math.max(0, now - 60000), now],
+      [user.id, actId, hash, now],
     ).catch(() => null);
   }).catch(() => null);
 
@@ -1727,12 +2195,12 @@ kindleRoutes.get("/read/:hash", async (c) => {
 
   let savedNotice: string | null = null;
   if (savedWord) {
-    savedNotice = `¡Guardé «${savedWord}» en tu cuaderno! 🐾`;
+    savedNotice = `Palabra «${savedWord}» guardada en tu Cuaderno.`;
   } else if (markedKnown) {
-    savedNotice = `¡Anotado! Ya conoces «${markedKnown}». 🐾`;
+    savedNotice = `Palabra «${markedKnown}» marcada como conocida.`;
   }
 
-  return c.html(
+  return html(
     renderReaderView({
       user,
       bookHash: hash,
@@ -1745,16 +2213,20 @@ kindleRoutes.get("/read/:hash", async (c) => {
       pageIndex,
       totalPages,
       language: bookLang,
-      pageWords,
       savedNotice,
       lookupResult,
       mode,
       size,
       margin,
-      gloss,
-      catNotes,
+      fontFamily: prefs.fontFamily,
+      lineHeight: prefs.lineHeight,
+      align: prefs.align,
       primingOff: isPrimingOff || isBookMuted,
       layout,
+      tocUrl:
+        (chapter.toc?.length ?? 0) > 0
+          ? `/k/read/${encodeURIComponent(hash)}?section=${chapter.sectionIndex}&toc=1${renderQuerySuffix}`
+          : null,
     }),
   );
 });
@@ -1772,12 +2244,29 @@ kindleRoutes.get("/read/:hash/resource", async (c) => {
     return c.text("Ruta de recurso faltante", 400);
   }
 
-  const epubBuffer = await loadEpubBufferForKindle(c.env, session.user.id, hash);
-  if (!epubBuffer) {
-    return c.text("Libro no encontrado", 404);
+  // Recurso cacheado por (hash, ruta): evita bajar el EPUB entero por imagen
+  const resBucket = c.env.BOOKS_BUCKET ?? c.env.BOOKS;
+  const cachedRes = await getCachedResource(resBucket, hash, resourcePath);
+  if (cachedRes) {
+    return new Response(cachedRes.body, {
+      headers: {
+        "Content-Type": cachedRes.contentType,
+        "Cache-Control": "private, max-age=86400",
+        "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+        "X-Content-Type-Options": "nosniff",
+      },
+    });
   }
 
-  const data = new Uint8Array(epubBuffer);
+  const epubObj = await loadEpubObjectForKindle(c.env, session.user.id, hash);
+  if (!epubObj) {
+    return c.text("Libro no encontrado", 404);
+  }
+  if ((epubObj.size ?? 0) > KINDLE_MAX_EPUB_BYTES) {
+    return c.text("Libro demasiado grande para el dispositivo", 413);
+  }
+
+  const data = new Uint8Array(await epubObj.arrayBuffer());
   const resource = await getEpubResource(data, resourcePath);
   if (!resource) {
     return c.text("Recurso no encontrado en el EPUB", 404);
@@ -1785,6 +2274,19 @@ kindleRoutes.get("/read/:hash/resource", async (c) => {
 
   if (!SAFE_EPUB_ASSET_MIMES.has(resource.mimeType)) {
     return c.text("Unsupported resource type", 415);
+  }
+
+  const cacheWrite = putCachedResource(
+    resBucket,
+    hash,
+    resourcePath,
+    resource.data,
+    resource.mimeType,
+  );
+  try {
+    c.executionCtx.waitUntil(cacheWrite);
+  } catch {
+    void cacheWrite;
   }
 
   return new Response(resource.data as unknown as BodyInit, {
@@ -1849,7 +2351,7 @@ kindleRoutes.post("/vocab/add", async (c) => {
   let meaning = typeof body.meaning === "string" ? body.meaning.trim() : null;
   const context = typeof body.context === "string" && body.context.trim() ? body.context.trim().slice(0, 280) : null;
   const bookHash = typeof body.bookHash === "string" ? body.bookHash.trim() : null;
-  const returnTo = typeof body.returnTo === "string" ? body.returnTo : "/k";
+  const returnTo = safeKindleReturn(body.returnTo);
 
   if (!form) {
     return c.redirect(returnTo);
@@ -1914,7 +2416,7 @@ kindleRoutes.post("/knowledge/mark", async (c) => {
   const body = (await c.req.parseBody().catch(() => ({}))) as Record<string, unknown>;
   const lemma = typeof body.lemma === "string" ? body.lemma.trim().toLowerCase() : "";
   const known = body.known === "1" || body.known === "true";
-  const returnTo = typeof body.returnTo === "string" ? body.returnTo : "/k";
+  const returnTo = safeKindleReturn(body.returnTo);
   const language = normalizeKindleLanguage(
     typeof body.language === "string" ? body.language : (typeof body.lang === "string" ? body.lang : undefined),
   );
@@ -1952,7 +2454,10 @@ kindleRoutes.get("/practice", async (c) => {
   const qIndex = Math.max(0, parseInt(c.req.query("q") || "0", 10) || 0);
   const correctCount = Math.max(0, parseInt(c.req.query("score") || "0", 10) || 0);
   const bookHash = c.req.query("bookHash") || "";
-  const returnTo = c.req.query("returnTo") || (bookHash ? `/k/read/${encodeURIComponent(bookHash)}` : "/k");
+  const returnTo = safeKindleReturn(
+    c.req.query("returnTo"),
+    bookHash ? `/k/read/${encodeURIComponent(bookHash)}` : "/k",
+  );
   const isDone = c.req.query("done") === "1" || qIndex >= 3;
 
   if (isDone) {
@@ -1968,14 +2473,15 @@ kindleRoutes.get("/practice", async (c) => {
     );
   }
 
-  // Cargar palabras guardadas del usuario para practicar (orden determinista por saved_at)
+  // Palabras para practicar: primero las que toca repasar (FSRS), luego
+  // las más recientes del Cuaderno.
   const wordsRows = await withClient(c.env, (client) =>
     client
       .query(
         `SELECT form, lemma, pos, meaning, context, card FROM lecta_user_words
-         WHERE user_id = $1 AND deleted = false AND meaning IS NOT NULL
-         ORDER BY saved_at DESC, form ASC LIMIT 15`,
-        [user.id],
+         WHERE user_id = $1 AND meaning IS NOT NULL
+         ORDER BY (${KINDLE_DUE_SQL}) DESC, saved_at DESC, form ASC LIMIT 15`,
+        [user.id, new Date().toISOString()],
       )
       .then((res) => res.rows)
       .catch(() => []),
@@ -2004,27 +2510,13 @@ kindleRoutes.get("/practice", async (c) => {
   const distractor1 = otherMeanings[0] || fallbackDistractors[0];
   const distractor2 = otherMeanings[1] || fallbackDistractors[1];
 
-  const correctKey: "A" | "B" | "C" = qIndex === 0 ? "B" : qIndex === 1 ? "A" : "C";
-  const optionsList: { key: "A" | "B" | "C"; text: string; correct: boolean }[] = [];
-  if (correctKey === "A") {
-    optionsList.push(
-      { key: "A", text: targetWord.meaning, correct: true },
-      { key: "B", text: distractor1, correct: false },
-      { key: "C", text: distractor2, correct: false },
-    );
-  } else if (correctKey === "B") {
-    optionsList.push(
-      { key: "A", text: distractor1, correct: false },
-      { key: "B", text: targetWord.meaning, correct: true },
-      { key: "C", text: distractor2, correct: false },
-    );
-  } else {
-    optionsList.push(
-      { key: "A", text: distractor1, correct: false },
-      { key: "B", text: distractor2, correct: false },
-      { key: "C", text: targetWord.meaning, correct: true },
-    );
-  }
+  const correctKey = correctKeyFor(user.id, targetWord.form, qIndex);
+  const distractors = [distractor1, distractor2];
+  const optionsList = (["A", "B", "C"] as const).map((key) => ({
+    key,
+    text: key === correctKey ? (targetWord.meaning as string) : distractors.shift()!,
+    correct: key === correctKey,
+  }));
 
   return c.html(
     renderPracticeView({
@@ -2060,9 +2552,9 @@ kindleRoutes.post("/practice/answer", async (c) => {
   const totalQuestions = parseInt(String(body.totalQuestions || "3"), 10) || 3;
   let correctCount = parseInt(String(body.correctCount || "0"), 10) || 0;
   const bookHash = typeof body.bookHash === "string" ? body.bookHash.trim() : "";
-  const returnTo = typeof body.returnTo === "string" ? body.returnTo : "/k";
+  const returnTo = safeKindleReturn(body.returnTo);
 
-  const expectedKey = questionIndex === 0 ? "B" : questionIndex === 1 ? "A" : "C";
+  const expectedKey = correctKeyFor(session.user.id, word, questionIndex);
   const isCorrect = selectedOption === expectedKey;
   if (isCorrect) {
     correctCount++;
@@ -2137,13 +2629,13 @@ kindleRoutes.post("/practice/answer", async (c) => {
       )
       .catch(() => null);
 
-    // 3. Registrar actividad en lecta_user_activity
+    // 3. Registrar actividad en lecta_user_activity (evento puntual, ver K1.5)
     await client
       .query(
         `INSERT INTO lecta_user_activity (user_id, id, book_hash, started_at, ended_at, synced_at)
-         VALUES ($1, $2, $3, $4, $5, $5)
+         VALUES ($1, $2, $3, $4, $4, $4)
          ON CONFLICT (user_id, id) DO NOTHING`,
-        [session.user.id, actId, bookHash || "practice", Math.max(0, now - 30000), now],
+        [session.user.id, actId, bookHash || "practice", now],
       )
       .catch(() => null);
 

@@ -45,6 +45,7 @@ import BookCover from "./BookCover";
 import { displayTitle } from "../lib/cover";
 import { CompanionStage } from "./CompanionStage";
 import ReadingActivity from "./ReadingActivity";
+import JourneyInsights from "./JourneyInsights";
 import { dayKeyOf } from "../lib/reading-activity";
 import { summarizeChapterFollows } from "../lib/chapter-follow";
 import {
@@ -1138,6 +1139,15 @@ export default function Journey({ onClose, books }: JourneyProps) {
                 </div>
               </div>
             </section>
+
+            {/* 4b. Tu análisis: horarios, libros en curso, repasos, año */}
+            <JourneyInsights
+              intervals={intervals}
+              positions={positions}
+              reviews={reviews}
+              words={words}
+              books={books}
+            />
 
             {/* 5. Libros concluidos (Exlibris) */}
             <section

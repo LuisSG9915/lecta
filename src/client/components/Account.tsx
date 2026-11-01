@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { Suspense, lazy, useEffect, useState, type FormEvent } from "react";
 import { authClient } from "../lib/auth";
 import { accountFetch } from "../lib/account-fetch";
 import { PENDING_DELETE_KEY, clearSyncCursors } from "../lib/account-cleanup";
@@ -38,6 +38,7 @@ import {
   vocabLevelLabel,
 } from "../lib/knowledge";
 import { fetchCalibrationSample, type CalibrationWord } from "../lib/calibration";
+import { KindleAppearancePanel } from "./KindleAppearancePanel";
 import {
   parseReadingGoal,
   READING_GOAL_KEY,
@@ -48,6 +49,8 @@ import {
 } from "../lib/export";
 import RestoreBackupDialog from "./RestoreBackupDialog";
 import DiagnosticsModal from "./DiagnosticsModal";
+// El panel de análisis viaja en su propio chunk: solo baja para el dueño.
+const AdminInsights = lazy(() => import("./AdminInsights"));
 import { forceFullResyncFromServer } from "../lib/reading-sync";
 import LegalNotice from "./LegalNotice";
 import { ResetAccountSection } from "./ResetAccountSection";
@@ -226,6 +229,24 @@ export default function Account({
 
   // Diagnóstico y avisos legales
   const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const [showAdmin, setShowAdmin] = useState(false);
+  // null = aún no se sabe; el botón del panel solo aparece cuando el
+  // servidor confirma que la sesión es la del dueño (404 = no lo es).
+  const [isOwner, setIsOwner] = useState<boolean | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    // /api/admin/access es la sonda ligera: 204 = dueño, 404 = no lo es.
+    fetch("/api/admin/access", { headers: { accept: "application/json" } })
+      .then((res) => {
+        if (!cancelled) setIsOwner(res.status === 204);
+      })
+      .catch(() => {
+        if (!cancelled) setIsOwner(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const [showLegal, setShowLegal] = useState<"privacy" | "terms" | null>(null);
   const [resyncLoading, setResyncLoading] = useState(false);
   const [resyncMessage, setResyncMessage] = useState("");
@@ -1682,6 +1703,7 @@ export default function Account({
                   ) : null}
                 </form>
               )}
+              <KindleAppearancePanel />
             </div>
           )}
 
@@ -1709,6 +1731,15 @@ export default function Account({
               >
                 Centro de diagnóstico
               </button>
+              {isOwner ? (
+                <button
+                  type="button"
+                  className="btn--quiet"
+                  onClick={() => setShowAdmin(true)}
+                >
+                  Panel de análisis
+                </button>
+              ) : null}
               <button
                 type="button"
                 className="btn--quiet"
@@ -1765,6 +1796,12 @@ export default function Account({
 
       {showDiagnostics ? (
         <DiagnosticsModal onClose={() => setShowDiagnostics(false)} />
+      ) : null}
+
+      {showAdmin ? (
+        <Suspense fallback={null}>
+          <AdminInsights onClose={() => setShowAdmin(false)} />
+        </Suspense>
       ) : null}
 
       {showLegal ? (
