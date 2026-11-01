@@ -74,6 +74,7 @@ import {
   type StoredBook,
 } from "./lib/idb";
 import {
+  clearSessionExpired,
   recordCollectionSyncFailure,
   recordCollectionSyncSuccess,
   registerSyncRetryRunner,
@@ -790,6 +791,9 @@ export default function App() {
         prevSessionUserId !== undefined &&
         prevSessionUserId !== nextSessionUserId
       ) {
+        // La marca «sesión vencida» es de la identidad que sale; la
+        // sesión nueva parte limpia y el primer sync exitoso confirma.
+        clearSessionExpired();
         if (prevSessionUserId === null && nextSessionUserId !== null) {
           // Inicio de sesión sobre la propia sesión anónima: el libro
           // abierto se adopta en la cuenta nueva en vez de cerrarse.

@@ -34,25 +34,41 @@ export function AppNav({
   const isJourney = active === "journey";
   const isAccount = active === "account";
 
-  const hasError = isSyncInError(sync);
+  const hasError = isSyncInError(sync) || Boolean(sync.sessionExpired);
+  const dotClass = !sync.isOnline
+    ? "is-offline"
+    : hasError
+      ? "is-error"
+      : sync.pendingChangesCount > 0
+        ? "is-pending"
+        : "is-synced";
+
+  const indicatorInner = (
+    <>
+      <span className={`app-nav-sync-dot ${dotClass}`} aria-hidden="true" />
+      <span className="app-nav-sync-text">{syncLabel}</span>
+    </>
+  );
 
   return (
     <nav className="app-nav" aria-label="Principal">
-      <div className="app-nav-sync-indicator" aria-live="polite">
-        <span
-          className={`app-nav-sync-dot ${
-            !sync.isOnline
-              ? "is-offline"
-              : hasError
-                ? "is-error"
-                : sync.pendingChangesCount > 0
-                  ? "is-pending"
-                  : "is-synced"
-          }`}
-          aria-hidden="true"
-        />
-        <span className="app-nav-sync-text">{syncLabel}</span>
-      </div>
+      {sync.sessionExpired ? (
+        // Con la sesión vencida la etiqueta también es la salida:
+        // un toque lleva a Perfil, donde está el formulario de acceso.
+        <button
+          type="button"
+          className="app-nav-sync-indicator is-actionable"
+          aria-live="polite"
+          title="Vuelve a entrar para sincronizar"
+          onClick={() => onNavigate("account")}
+        >
+          {indicatorInner}
+        </button>
+      ) : (
+        <div className="app-nav-sync-indicator" aria-live="polite">
+          {indicatorInner}
+        </div>
+      )}
 
       <div className="app-nav-items">
         <button

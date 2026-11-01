@@ -13,6 +13,12 @@ export interface SwRegisterOptions {
 const RELOAD_DEBOUNCE_MS = 15_000;
 const CONTROLLER_RELOAD_KEY = "lecta_sw_controller_ts";
 const MISMATCH_RELOAD_KEY = "lecta_sw_mismatch_ts";
+const NAV_STALE_RELOAD_KEY = "lecta_sw_navstale_ts";
+// Un aviso LECTA_NAV_STALE solo puede llegar justo tras una navegación en
+// que la red fue lenta: pasado este tiempo la página ya está asentada y
+// recargar interrumpiría una lectura — la copia fresca ya quedó en caché
+// para la próxima apertura.
+const NAV_STALE_WINDOW_MS = 45_000;
 
 /**
  * Lista blanca de nombres de cachés de datos descargables (DLC)
@@ -72,10 +78,26 @@ export async function registerServiceWorker(
     reload();
   });
 
-  // 2. Escuchar mensajes del SW (p. ej. desajuste de hashes en deploy: ASSET_MISMATCH_RELOAD)
+  // 2. Escuchar mensajes del SW:
+  // - ASSET_MISMATCH_RELOAD: desajuste de hashes en deploy.
+  // - LECTA_NAV_STALE: la navegación sirvió el HTML guardado por red lenta
+  //   y la copia fresca llegó después. Recargar solo en los primeros
+  //   segundos de la sesión (la copia nueva ya está en caché, así que la
+  //   recarga sale instantánea y con la versión correcta).
   navigator.serviceWorker.addEventListener("message", (event) => {
     if (event.data?.type === "ASSET_MISMATCH_RELOAD") {
       if (!shouldAllowReload(MISMATCH_RELOAD_KEY, storage)) return;
+      reload();
+      return;
+    }
+    if (event.data?.type === "LECTA_NAV_STALE") {
+      if (
+        typeof performance !== "undefined" &&
+        performance.now() > NAV_STALE_WINDOW_MS
+      ) {
+        return;
+      }
+      if (!shouldAllowReload(NAV_STALE_RELOAD_KEY, storage)) return;
       reload();
     }
   });

@@ -161,6 +161,47 @@ describe("registerServiceWorker", () => {
     expect(onReload).toHaveBeenCalledTimes(1);
   });
 
+  it("recarga ante LECTA_NAV_STALE dentro de la ventana inicial de la sesión", async () => {
+    const onReload = vi.fn();
+    await registerServiceWorker({ onReload });
+
+    mockContainer.dispatchEvent(
+      new MessageEvent("message", { data: { type: "LECTA_NAV_STALE" } }),
+    );
+
+    expect(onReload).toHaveBeenCalledTimes(1);
+  });
+
+  it("ignora LECTA_NAV_STALE si la página ya lleva más de 45s cargada", async () => {
+    const onReload = vi.fn();
+    const nowSpy = vi.spyOn(performance, "now").mockReturnValue(60_000);
+    try {
+      await registerServiceWorker({ onReload });
+
+      mockContainer.dispatchEvent(
+        new MessageEvent("message", { data: { type: "LECTA_NAV_STALE" } }),
+      );
+
+      expect(onReload).not.toHaveBeenCalled();
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
+  it("aplica debounce a recargas consecutivas por LECTA_NAV_STALE", async () => {
+    const onReload = vi.fn();
+    await registerServiceWorker({ onReload });
+
+    const message = () =>
+      mockContainer.dispatchEvent(
+        new MessageEvent("message", { data: { type: "LECTA_NAV_STALE" } }),
+      );
+    message();
+    message();
+
+    expect(onReload).toHaveBeenCalledTimes(1);
+  });
+
   it("previene bucles de recarga con shouldAllowReload dentro de la ventana de 15 segundos", () => {
     const storage = window.sessionStorage;
     const key = "test_reload_key";

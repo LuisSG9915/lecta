@@ -1,4 +1,5 @@
 import { isDbScopeActive, StaleScopeError, type DbScope } from "./idb";
+import { markSessionExpired } from "./sync-state";
 
 // fetch ligado a una cuenta. Declara la identidad esperada con la
 // cabecera `x-lecta-user-id` (el servidor la contrasta con la sesión
@@ -16,5 +17,11 @@ export async function accountFetch(
   if (scope?.userId) headers.set("x-lecta-user-id", scope.userId);
   const response = await fetch(path, { ...init, headers });
   if (scope && !isDbScopeActive(scope)) throw new StaleScopeError();
+  // 401 con cuenta en scope = la sesión murió en el servidor. Sin esta
+  // marca el fallo entra como «reintentando» genérico y la persona cree
+  // que sus datos viajan cuando ya no hay a quién enviarlos.
+  if (response.status === 401 && scope?.userId) {
+    markSessionExpired();
+  }
   return response;
 }

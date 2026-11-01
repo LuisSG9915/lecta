@@ -23,6 +23,10 @@ export interface SyncState {
   pendingChangesCount: number;
   lastSyncError: string | null;
   collections: Record<SyncCollection, CollectionSyncStatus>;
+  // La API respondió 401 habiendo cuenta: la sesión ya no vale en el
+  // servidor aunque el cliente aún la muestre. Se levanta con el
+  // primer sync exitoso o al cambiar de identidad.
+  sessionExpired?: boolean;
 }
 
 const initialCollections: Record<SyncCollection, CollectionSyncStatus> = {
@@ -162,6 +166,18 @@ export function isSyncPaused(): boolean {
   return syncPaused;
 }
 
+// Un 401 con cuenta activa significa «la cookie ya no vale»: no es un
+// fallo de red transitorio y ningún reintento lo va a curar solo.
+export function markSessionExpired(): void {
+  if (currentState.sessionExpired) return;
+  updateSyncState({ sessionExpired: true });
+}
+
+export function clearSessionExpired(): void {
+  if (!currentState.sessionExpired) return;
+  updateSyncState({ sessionExpired: false });
+}
+
 export function scheduleReadingSyncContinuation(
   collection?: SyncCollection,
   delayMs = 50,
@@ -234,6 +250,8 @@ export function recordCollectionSyncSuccess(
     lastSyncError: hasError ? firstError : null,
     lastSyncedAt: hasError ? currentState.lastSyncedAt : timestamp,
     pendingChangesCount: computeEffectivePendingChanges(nextCollections),
+    // Un 200 es la prueba de que la sesión sigue viva.
+    sessionExpired: false,
   });
 
   if (!hasError) {
@@ -292,6 +310,9 @@ export function getSyncStatusLabel(state: SyncState, hasAccount: boolean): strin
   }
   if (!hasAccount) {
     return "Guardado en este dispositivo";
+  }
+  if (state.sessionExpired) {
+    return "Sesión vencida · guardado en este dispositivo";
   }
   if (isSyncInError(state)) {
     return "Guardado local · reintentando sincronizar";

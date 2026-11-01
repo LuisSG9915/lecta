@@ -2,10 +2,14 @@
 // incluidos, para que la app instalada abra y lea sin conexión.
 //
 // Reglas:
-// - Solo GET del mismo origen. /api/, /kindle/ y /sw.js jamás se cachean
-//   (sesiones, vistas e-ink dinámicas y el propio SW no pasan por el almacén).
-// - Navegaciones: red primero con { cache: 'no-store' } y timeout de 3500ms;
-//   copia fresca a «/index.html» y «/» y, solo si falla la red, la versión guardada.
+// - Solo GET del mismo origen. /api/, /kindle/, /sw.js, /sw-manifest.json y
+//   /manifest.webmanifest jamás se cachean (sesiones, vistas e-ink, el propio
+//   SW y los manifiestos de versión no pasan por el almacén: si el manifiesto
+//   quedara en caché, el SW viejo se lo serviría viejo al SW nuevo durante
+//   el install y la versión del precaché quedaría un deploy atrás siempre).
+// - Navegaciones: red primero con { cache: 'no-store' }; si la red tarda más
+//   de 3500ms se sirve la copia guardada SIN abortar el fetch — cuando la
+//   copia fresca llega, se guarda y se avisa LECTA_NAV_STALE para recargar.
 // - Contenido precacheado: cache-first (rellena el cache si falta).
 // - Validación estricta MIME: jamás cachear ni entregar text/html para .css, .js o /assets/*.
 // - Autocuración de assets: reintento y notificación ASSET_MISMATCH_RELOAD ante hashes obsoletos.
@@ -71,11 +75,22 @@ function isValidAssetResponse(requestUrl, response) {
   return true;
 }
 
+// "?v=" rompe el match cache-first del SW viejo que aún controla el scope:
+// los fetch de install/activate los intercepta él, y sin el parámetro le
+// serviría el manifiesto del deploy anterior (con él, la URL no coincide
+// con la entrada cacheada y cae a la red).
+function manifestRequest() {
+  return new Request(
+    self.location.origin + MANIFEST_URL + "?v=" + Date.now(),
+    { cache: "no-store" },
+  );
+}
+
 // 1. Install: activar inmediatamente sin bloquearse en waiting
 self.addEventListener("install", function (event) {
   self.skipWaiting();
   event.waitUntil(
-    fetch(MANIFEST_URL, { cache: "no-store" })
+    fetch(manifestRequest())
       .then(function (res) {
         return res.ok ? res.json() : null;
       })
@@ -85,16 +100,33 @@ self.addEventListener("install", function (event) {
         }
         var version = (manifest && manifest.version) || SW_VERSION || "0";
         var seen = {};
-        var urls = ["/", "/index.html", "/manifest.webmanifest", MANIFEST_URL]
+        var urls = ["/", "/index.html"]
           .concat((manifest && manifest.assets) || [])
           .filter(function (url) {
             if (seen[url]) return false;
             seen[url] = true;
-            return true;
+            // Rutas excluidas del fetch handler: cachearlas es peso muerto
+            // (jamás se leen del almacén) y el manifiesto además se leería
+            // a sí mismo viejo en el próximo install.
+            return (
+              url !== MANIFEST_URL &&
+              url !== "/manifest.webmanifest" &&
+              url !== "/sw.js"
+            );
           });
         cachedName = CACHE_PREFIX + version;
         return caches.open(cachedName).then(function (cache) {
-          return cache.addAll(urls);
+          // cache.addAll aborta TODO el install si una sola URL falla (un
+          // 404, un corte de red) y el SW nuevo se descarta: la app se
+          // queda con el SW viejo. Un archivo que falte aquí se rellena
+          // solo al pedirlo (refillable), así que se tolera por archivo.
+          return Promise.all(
+            urls.map(function (url) {
+              return cache.add(url).catch(function () {
+                return undefined;
+              });
+            })
+          );
         });
       })
       .catch(function () {
@@ -119,7 +151,7 @@ self.addEventListener("activate", function (event) {
     self.clients
       .claim()
       .then(function () {
-        return fetch(MANIFEST_URL, { cache: "no-store" })
+        return fetch(manifestRequest())
           .then(function (res) {
             return res.ok ? res.json() : null;
           })
@@ -170,13 +202,19 @@ self.addEventListener("fetch", function (event) {
   var url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
 
-  // 5. Excluir explícitamente de la caché del Service Worker las rutas /api/*, /kindle/* y /sw.js
+  // 5. Excluir explícitamente de la caché del Service Worker las rutas /api/*,
+  // /kindle/*, /sw.js y los manifiestos de versión. El manifiesto del SW debe
+  // llegar siempre de la red: si se cacheara, el SW viejo se lo serviría
+  // atrasado al SW nuevo en install/activate y la rotación de versiones se
+  // rompería.
   if (
     url.pathname.indexOf("/api/") === 0 ||
     url.pathname.indexOf("/kindle/") === 0 ||
     url.pathname.indexOf("/k/") === 0 ||
     url.pathname === "/k" ||
-    url.pathname === "/sw.js"
+    url.pathname === "/sw.js" ||
+    url.pathname === "/sw-manifest.json" ||
+    url.pathname === "/manifest.webmanifest"
   ) {
     return;
   }
@@ -243,7 +281,11 @@ self.addEventListener("fetch", function (event) {
     return;
   }
 
-  // Navegación: Network-First real sin caché HTTP con timeout de seguridad de 3500ms
+  // Navegación: Network-First real sin caché HTTP. Si la red tarda más de
+  // NAVIGATION_TIMEOUT_MS se sirve la copia guardada para no dejar la página
+  // en espera — pero el fetch sigue vivo: cuando la copia fresca llega se
+  // guarda y se avisa LECTA_NAV_STALE. Antes se abortaba a los 3500ms y el
+  // usuario se quedaba con la versión vieja sin saberlo en redes lentas.
   var isNavigation =
     req.mode === "navigate" ||
     url.pathname === "/" ||
@@ -252,8 +294,8 @@ self.addEventListener("fetch", function (event) {
   if (isNavigation) {
     event.respondWith(
       new Promise(function (resolve) {
-        var controller = typeof AbortController !== "undefined" ? new AbortController() : null;
-        var timer = null;
+        var settled = false;
+        var servedCached = false;
 
         function fallbackToCache() {
           return caches.match("/index.html").then(function (cached) {
@@ -264,22 +306,20 @@ self.addEventListener("fetch", function (event) {
           });
         }
 
-        if (controller) {
-          timer = setTimeout(function () {
-            controller.abort();
-          }, NAVIGATION_TIMEOUT_MS);
-        }
+        var timer = setTimeout(function () {
+          if (settled) return;
+          fallbackToCache().then(function (cached) {
+            if (settled || !cached || (cached.type === "error")) return;
+            settled = true;
+            servedCached = true;
+            resolve(cached);
+          });
+        }, NAVIGATION_TIMEOUT_MS);
 
-        var fetchOptions = { cache: "no-store" };
-        if (controller) {
-          fetchOptions.signal = controller.signal;
-        }
-
-        var networkRequest = new Request(req.url, fetchOptions);
+        var networkRequest = new Request(req.url, { cache: "no-store" });
 
         fetch(networkRequest)
           .then(function (res) {
-            if (timer) clearTimeout(timer);
             if (res && res.ok) {
               var resClone1 = res.clone();
               var resClone2 = res.clone();
@@ -289,17 +329,38 @@ self.addEventListener("fetch", function (event) {
                   cache.put("/", resClone2);
                 });
               });
-              resolve(res);
+              if (!settled) {
+                settled = true;
+                clearTimeout(timer);
+                resolve(res);
+              } else if (servedCached) {
+                // Se sirvió la copia vieja por red lenta y ya llegó la
+                // fresca: avisar para que el cliente recargue si acaba de
+                // abrir. La copia nueva ya quedó en caché.
+                self.clients
+                  .matchAll({ type: "window", includeUncontrolled: true })
+                  .then(function (clients) {
+                    clients.forEach(function (client) {
+                      client.postMessage({ type: "LECTA_NAV_STALE" });
+                    });
+                  });
+              }
               return;
             }
-            if (res) {
-              resolve(res);
-            } else {
-              fallbackToCache().then(resolve);
+            if (!settled) {
+              settled = true;
+              clearTimeout(timer);
+              if (res) {
+                resolve(res);
+              } else {
+                fallbackToCache().then(resolve);
+              }
             }
           })
           .catch(function () {
-            if (timer) clearTimeout(timer);
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
             fallbackToCache().then(resolve);
           });
       })

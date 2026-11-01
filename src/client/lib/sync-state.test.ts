@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   clearCollectionPagesPending,
+  clearSessionExpired,
   getSyncState,
   getSyncStatusLabel,
   isSyncInError,
   markCollectionPagesPending,
+  markSessionExpired,
   recordCollectionSyncError,
   recordCollectionSyncFailure,
   recordCollectionSyncSuccess,
@@ -36,6 +38,7 @@ describe("sync-state", () => {
       lastSyncedAt: null,
       pendingChangesCount: 0,
       lastSyncError: null,
+      sessionExpired: false,
       collections: {
         words: { status: "idle" },
         positions: { status: "idle" },
@@ -200,5 +203,43 @@ describe("sync-state", () => {
     expect(isSyncInError(getSyncState())).toBe(false);
 
     vi.useRealTimers();
+  });
+
+  it("anuncia 'sesión vencida' en lugar del reintento genérico tras un 401", () => {
+    markSessionExpired();
+
+    expect(getSyncState().sessionExpired).toBe(true);
+    expect(getSyncStatusLabel(getSyncState(), true)).toBe(
+      "Sesión vencida · guardado en este dispositivo",
+    );
+
+    // No es un fallo transitorio: los 401 sucesivos no cambian el mensaje.
+    recordCollectionSyncFailure("words", "HTTP 401");
+    expect(getSyncStatusLabel(getSyncState(), true)).toBe(
+      "Sesión vencida · guardado en este dispositivo",
+    );
+  });
+
+  it("deja que 'sin conexión' mande sobre la sesión vencida", () => {
+    markSessionExpired();
+    updateSyncState({ isOnline: false });
+    expect(getSyncStatusLabel(getSyncState(), true)).toBe(
+      "Sin conexión · guardado local",
+    );
+  });
+
+  it("levanta la marca de sesión vencida con un sync exitoso", () => {
+    markSessionExpired();
+    recordCollectionSyncSuccess("words", 2000);
+    expect(getSyncState().sessionExpired).toBe(false);
+  });
+
+  it("clearSessionExpired quita la marca sin tocar el resto del estado", () => {
+    markSessionExpired();
+    clearSessionExpired();
+    expect(getSyncState().sessionExpired).toBe(false);
+    expect(getSyncStatusLabel(getSyncState(), false)).toBe(
+      "Guardado en este dispositivo",
+    );
   });
 });

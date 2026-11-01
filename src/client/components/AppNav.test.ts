@@ -206,5 +206,48 @@ describe("AppNav", () => {
     );
     expect(host.querySelector(".app-nav-sync-dot.is-error")).not.toBeNull();
   });
+
+  it("con la sesión vencida el indicador es un botón que lleva a Perfil", () => {
+    const onNavigate = vi.fn();
+    act(() => {
+      root.render(
+        h(AppNav, {
+          active: "shelf",
+          onNavigate,
+          hasAccount: true,
+          syncState: {
+            isOnline: true,
+            lastSyncedAt: Date.now(),
+            pendingChangesCount: 0,
+            lastSyncError: null,
+            sessionExpired: true,
+            collections: {
+              words: { status: "synced" },
+              positions: { status: "synced" },
+              annotations: { status: "synced" },
+              knowledge: { status: "synced" },
+              activity: { status: "synced" },
+              reviews: { status: "synced" },
+              companion: { status: "synced" },
+            },
+          },
+        }),
+      );
+    });
+
+    const indicator = host.querySelector<HTMLButtonElement>(
+      "button.app-nav-sync-indicator",
+    );
+    expect(indicator).not.toBeNull();
+    expect(indicator?.textContent).toContain(
+      "Sesión vencida · guardado en este dispositivo",
+    );
+    expect(host.querySelector(".app-nav-sync-dot.is-error")).not.toBeNull();
+
+    act(() => {
+      indicator?.click();
+    });
+    expect(onNavigate).toHaveBeenCalledWith("account");
+  });
 });
 

@@ -142,6 +142,21 @@
   background: var(--vermilion);
 }
 
+/* El indicador es botón cuando la sesión venció: la base del estilo es
+   la misma píldora, solo se restauran el toque y el foco visible. */
+button.app-nav-sync-indicator {
+  border: 0;
+  border-bottom: 1px solid var(--rule-faint, rgba(0, 0, 0, 0.05));
+  width: 100%;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+button.app-nav-sync-indicator:focus-visible {
+  outline: 2px solid var(--vermilion);
+  outline-offset: -2px;
+}
+
 /* ---------- Panel de error honesto de base de datos ---------- */
 .db-error-panel {
   display: flex;
