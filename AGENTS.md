@@ -145,7 +145,36 @@
 ## Producción
 
 - URL: `https://lecta.luis-sg9915.workers.dev` — deploy con `pnpm run deploy`.
-- Último deploy: **2026-10-30** (primero del día), versión
+- Último deploy: **2026-10-31**, versión
+  `a2bb2686-b7b4-4738-8316-59da56efe83f`, Lecta **v0.2.15**: tarjeta de palabra
+  legible y sin bucle de renders. `--text-primary` no existía en ningún CSS, así
+  que `var(--text-primary, #f5f2eb)` caía al crema del tema noche sobre
+  `--surface-elevated` blanco: la ficha se veía **vacía** en papel/blanco
+  (1.12:1 medido). Ahora es indirección de `--ink` (`--text-secondary` de
+  `--ink-soft`) y el CTA y los chips usan `--on-accent`: 16.81:1 en papel,
+  13.28:1 en noche. `setReaderContext` del compañero ignora escrituras
+  idénticas (`sameReaderContext`), que era el «Maximum update depth exceeded»
+  a ~24 renders/s del lector (73 errores en 3 s en dev, 1 221 en prod).
+  Cerrar la ficha con un toque libera también la capa de historial
+  (`onCloseSelection`): antes `overlayReleaseRef` quedaba vivo y
+  `selectionchange` ignoraba las selecciones siguientes hasta recargar. La
+  selección de UNA palabra sustituye la ficha abierta (el guard de
+  `overlayReleaseRef` solo suspende ya la barra de pasajes). Pruebas de
+  regresión en `CompanionProvider.test.ts` y `tokens.test.ts`. `docs/plan-8-fases.md`
+  §16 deja la **Fase 9 propuesta** (cabecera de la ficha, zona neutral con
+  umbral en `extractWordAtPoint`, resalte y anclaje, acciones de pasaje dentro de
+  la ficha, un solo camino de cierre, 64 tokens fantasma), sin ejecutar. Sin
+  migraciones ni secrets nuevos. Verificado en caliente: `pnpm gate` en verde
+  (3 004 pruebas, 205.60/215 kB gzip), `/api/health` → 200, `/` → 200 sirviendo
+  `assets/index-BtVzGWYg.js`, `0.2.15` en `assets/DiagnosticsModal-DfM64b4G.js`,
+  `/api/positions` sin sesión → 401, `/k` → 200, y una prueba en Chromium
+  móvil (412×915) contra producción: 0 «Maximum update depth», ficha de
+  «perenne» con `color rgb(31,29,26)` sobre `rgb(255,255,255)`, 7 errores de
+  consola restantes (todos `Executing inline event handler violates … 'script-src
+  'self' 'wasm-unsafe-eval''`, ajenos a este cambio; antes eran 1 221 mezclados
+  con el bucle). `artifacts/ux-word-card/` guarda el antes y el después. Sin
+  `smoke:auth`/`smoke:sync`: no toca auth ni el contrato de sync.
+- Deploy anterior: **2026-10-30** (primero del día), versión
   `1734aa72-ef94-4353-9dad-768c61fde554`, Lecta **v0.2.14**: Tarjeta Única de
   Palabra sin píldora intermedia (el toque o la selección de 1 palabra abre
   directo `WordPanel` con ★ guardar en el cuaderno en 1 toque — antes el camino
