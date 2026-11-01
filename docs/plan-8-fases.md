@@ -3,7 +3,8 @@
 > Base: commit `13e69d3` + Fase 0 aplicada el 2026-10-22.
 > Sustituye a la v1 de este mismo archivo. Los cambios respecto a la v1 están en
 > [§14](#14-qué-cambió-respecto-a-la-v1); las premisas falsas que no hay que repetir, en
-> [§15](#15-apéndice--premisas-que-no-se-deben-repetir).
+> [§15](#15-apéndice--premisas-que-no-se-deben-repetir) y la fase propuesta, en
+> [§16](#16-fase-9-propuesta-2026-10-31--la-tarjeta-de-palabra).
 
 Estado verificado el 2026-10-22, árbol con Fase 0 aplicada:
 
@@ -946,3 +947,67 @@ Revertir. El archivo en `public/` se puede borrar sin efectos: nadie lo referenc
 | El modelo está en R2 | R2 no tiene ningún objeto en `models/` (verificado el 2026-10-22): `/models/…` da 404 y los usuarios descargan **v0.1** por el fallback. La subida inicial es parte de la Fase 2. |
 | La Fase 8 puede esperar al final | La afirmación de descarga pública ya está en la app y el enlace da 404. |
 | `public/lexicon/` hay que crearlo | Ya existe (con `locuciones.es.json`) y ya tiene regla de caché en `_headers`. |
+
+## 16. Fase 9 (propuesta, 2026-10-31) — La tarjeta de palabra
+
+> Propuesta abierta, no aprobada. Nace de la auditoría del 2026-10-31 sobre
+> «seleccionar una palabra»: tres defectos de código y cuatro de composición. Si se
+> aprueba, esta fase se ejecuta después de la 8 y su gate es el mismo `pnpm gate`.
+
+### 16.1 Qué se encontró midiendo (no leyendo)
+
+| Síntoma | Causa real | Medición |
+|---|---|---|
+| La tarjeta sale «en blanco» en tema papel | `var(--text-primary, #f5f2eb)` sobre `--surface-elevated` blanco: **el token no existía** en ningún CSS | «perenne» a **1.12:1**, cita a 1.64:1 (noche: 14.78:1, por eso pasó desapercibido) |
+| El lector va a tirones y pierde toques | `companion.setReaderContext()` publicaba un objeto nuevo en cada efecto y `value` del proveedor no es estable | **73 errores** «Maximum update depth» en 3 s; 1 221 en prod en 4 s |
+| Con la ficha abierta, seleccionar otra palabra no hacía nada | el cierre por toque soltaba el estado pero **no la capa de historial** (`overlayReleaseRef`), y `selectionchange` se apagaba | seleccionar «una» con ficha abierta: sin reacción |
+| Tocar el margen abre una ficha | `extractWordAtPoint` devuelve la palabra más cercana aunque el punto caiga en el hueco | no existe zona neutral: cerrar solo con ×, Escape o atrás |
+
+Arreglado y verificado antes de proponer la fase (v0.2.14 → árbol actual): tokens
+`--text-primary` / `--text-secondary` como indirección de `--ink`, setter idempotente
+`setReaderContext` + `sameReaderContext()`, `onCloseSelection` (cierra y suelta la capa),
+selección de una palabra que **sustituye** la ficha abierta, y dos pruebas de regresión
+(`CompanionProvider.test.ts`, `tokens.test.ts`). `pnpm gate` verde: 3 004 pruebas,
+205.60/215 kB gzip.
+
+### 16.2 Alcance de la fase
+
+1. **Jerarquía de la cabecera.** Hoy «En esta frase del libro:» y «Ver matiz en este
+   contexto (Explicar en esta frase)» comparten fila en dos columnas: se lee como un
+   layout roto. Separar en cita (bloque) + acción (fila propia, un solo verbo).
+2. **Zona neutral.** Umbral de distancia en `extractWordAtPoint` (radio de la caja de la
+   palabra + 25 %): tocar el hueco cierra la ficha o no abre nada, nunca salta a la
+   palabra vecina.
+3. **Anclaje y resalte.** La palabra consultada se resalta mientras la ficha está
+   abierta; la ficha se ancla al borde inferior con un scrim de 12 % para que se lea
+   «esto viene de ahí» y el cierre por toque sea obvio.
+4. **No perder el pasaje.** Con una sola palabra desaparecen las acciones de pasaje
+   (Preguntar, Reflexión, Postal, Tinta). Entran como fila secundaria de la ficha.
+5. **Un solo camino de cierre.** ×, Escape, toque fuera (zona neutral) y gesto atrás
+   hacen lo mismo: `closeSelection()` (libera estado **y** capa). Prueba que exige
+   `history.length` estable tras abrir y cerrar tres veces.
+6. **Vocabulario compartido.** Los 64 tokens fantasma (`--ink-muted` ×29, `--accent` ×23,
+   `--r-sm` ×22, `--rule-subtle` ×22…) se resuelven o se borran: mientras existan, cada
+   tema puede caer en un fallback pensado para otro.
+
+### 16.3 Criterios de aceptación
+
+| # | Criterio | Medición |
+|---|---|---|
+| C1 | Contraste ≥ 4.5:1 en los 4 temas, texto y cita | `tokens.test.ts` ampliado a `--surface-elevated` |
+| C2 | Cero «Maximum update depth» al abrir un libro | `CompanionProvider.test.ts` (efecto ≤ 4 pasadas) |
+| C3 | Tocar el hueco no abre la ficha de otra palabra | e2e `word-card.spec.ts` |
+| C4 | Cambiar de palabra sustituye la ficha, no apila capas | `history.length` estable en el e2e |
+| C5 | Una palabra conserva el acceso a las acciones de pasaje | e2e: «Preguntar» visible en la ficha |
+| C6 | La palabra consultada queda resaltada | captura + clase verificada en DOM |
+| C7 | Cabecera con una sola acción primaria y una secundaria | revisión de captura (Pixel 7 y escritorio) |
+| C8 | `pnpm gate` verde y JS inicial ≤ 215 kB | gate |
+
+### 16.4 Decisiones propuestas
+
+| Fecha | Decisión | Motivo |
+|---|---|---|
+| 2026-10-31 | La tarjeta de palabra gana fase propia (9) en vez de colgarse de la 7 | La 7 se cerró con desvío y su alcance era partir `Reader.tsx`; aquí el objeto es el gesto y la legibilidad, con criterios medibles propios |
+| 2026-10-31 | El fallback `var(--text-primary, #f5f2eb)` no basta como contrato: toda variable usada debe existir | Un fallback pensado para el tema noche sobre superficie blanca da 1.12:1 y ninguna prueba lo vio |
+| 2026-10-31 | `setReaderContext` idempotente en el proveedor, no `useMemo` del `value` | `equipped`/`accessories`/`presence` ya son objetos nuevos por render: memoizar el value no evitaba el bucle y sí añadía riesgo de lint |
+| 2026-10-31 | Zona neutral con umbral, en lugar de «tocar siempre consulta» | Toda la pantalla es superficie de toque: sin hueco neutral, el gesto de cerrar o de «no hacer nada» no existe |
