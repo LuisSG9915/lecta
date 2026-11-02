@@ -226,8 +226,13 @@ describe("Biblioteca comunitaria (/api/books/community + /share)", () => {
     const anon = await app.request("/api/books/community", { method: "GET" }, {});
     expect(anon.status).toBe(401);
 
+    // La entrada solo aparece si la guía está publicada en guides/.
+    mockBucket.list = vi.fn(async () => ({
+      objects: [{ key: `guides/${minimalHash}.json` }],
+      truncated: false,
+    }));
     getSessionMock.mockResolvedValue({ user: { id: "user-lector" } });
-    stubDb(async () => ({
+    const queryMock = stubDb(async () => ({
       rows: [
         {
           book_id: minimalHash,
@@ -256,6 +261,40 @@ describe("Biblioteca comunitaria (/api/books/community + /share)", () => {
       // A1: jamás portada del donante — la tipográfica es del cliente.
       hasCover: false,
     });
+    // El catálogo excluye las copias del propio lector: son libros que
+    // ya tiene — mostrarlos solo daba un 409 al pulsar «Usar en papel».
+    const [sql, params] = queryMock.mock.calls[0] as [string, unknown[]];
+    expect(sql).toContain("user_id <>");
+    expect(params).toEqual(["user-lector"]);
+  });
+
+  it("GET /community omite filas compartidas cuya guía no está publicada", async () => {
+    getSessionMock.mockResolvedValue({ user: { id: "user-lector" } });
+    // Fila shared sin guides/{hash}.json (share viejo o PUT sin guía):
+    // antes se listaba y su attach respondía 404 — mejor no mostrarla.
+    mockBucket.list = vi.fn(async () => ({ objects: [], truncated: false }));
+    stubDb(async () => ({
+      rows: [
+        {
+          book_id: minimalHash,
+          title: "El Quijote",
+          author: "Cervantes",
+          language: "es",
+          size_bytes: 12345,
+          has_cover: false,
+          shared_at: 1000,
+          sharers: 1,
+        },
+      ],
+    }));
+    const res = await app.request(
+      "/api/books/community",
+      { method: "GET" },
+      { BOOKS: mockBucket as unknown as WorkerEnv["BOOKS"], DATABASE_URL: "postgres://mock" },
+    );
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as { books: unknown[] };
+    expect(json.books).toEqual([]);
   });
 
   it("GET /community con columna ausente devuelve lista vacía, no 500", async () => {

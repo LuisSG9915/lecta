@@ -142,6 +142,10 @@ export type AttachResult = {
   // La guía de papel sanitizada por el servidor — lista para guardar
   // en `paperGuide:v1:{hash}` sin una segunda descarga.
   guide?: unknown;
+  // Motivo real que respondió el servidor («Ese libro ya es tuyo»,
+  // «La guía ya no está disponible»…) — sin él toda falla se leía
+  // como problema de conexión.
+  error?: string;
 };
 
 export async function attachCommunityBook(
@@ -152,8 +156,11 @@ export async function attachCommunityBook(
     const response = await accountFetch(`/api/books/community/${hash}/attach`, {
       method: "POST",
     }, scope);
-    if (!response.ok) return { ok: false };
-    return (await response.json()) as AttachResult;
+    const data = (await response.json().catch(() => null)) as
+      | (AttachResult & { error?: string })
+      | null;
+    if (!response.ok) return { ok: false, error: data?.error };
+    return data ?? { ok: false };
   } catch (error) {
     if (error instanceof StaleScopeError) throw error;
     return { ok: false };

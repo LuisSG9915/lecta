@@ -774,6 +774,7 @@ describe("BYO-EPUB Cloud Sync (reading-sync)", () => {
         author: "A2",
         addedAt: 200,
       }),
+      expect.anything(),
     );
   });
 });

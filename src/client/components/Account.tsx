@@ -1785,10 +1785,17 @@ export default function Account({
                     const res = await forceFullResyncFromServer();
                     if (res.ok) {
                       setResyncMessage(
-                        res.diverged
-                          ? "Sincronizado (divergencia detectada)"
-                          : "Sincronizado correctamente",
+                        res.booksDownloaded
+                          ? `Sincronizado · ${res.booksDownloaded} ${
+                              res.booksDownloaded === 1 ? "libro recuperado" : "libros recuperados"
+                            }`
+                          : res.diverged
+                            ? "Sincronizado (divergencia detectada)"
+                            : "Sincronizado correctamente",
                       );
+                      // La biblioteca pudo recuperar libros: repintar la
+                      // estantería sin salir de Cuenta.
+                      if (onRestored) await onRestored();
                     } else {
                       setResyncMessage(res.error || "Error al sincronizar");
                     }

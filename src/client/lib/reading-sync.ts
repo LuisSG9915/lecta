@@ -43,6 +43,7 @@ import {
 } from "./sync-state";
 export { pauseSync, resumeSync, scheduleReadingSyncContinuation };
 import { pushWordsToServer, syncSavedWords } from "./vocab";
+import { runBookQueue } from "./book-queue";
 import {
   flushPendingPositions,
   pushPositionsToServer,
@@ -929,30 +930,42 @@ export async function syncUserBookUpload(book: {
   }
 }
 
-export async function pullMissingUserBooksFromCloud(): Promise<number> {
+export async function pullMissingUserBooksFromCloud(
+  scope?: DbScope,
+): Promise<number> {
+  const bound = scope ?? captureDbScope();
+  if (!bound.userId || !isDbScopeActive(bound)) return 0;
   try {
-    const res = await fetch("/api/user/books");
+    const res = await accountFetch("/api/user/books", undefined, bound);
     if (!res.ok) return 0;
     const { books: remoteBooks } = (await res.json()) as {
       books: Array<{ id: string; title: string; author: string; updatedAt: number }>;
     };
 
-    const localBooks = await listBooks();
+    const localBooks = await listBooks(bound);
     const localIds = new Set(localBooks.map((b) => b.id));
     let downloaded = 0;
 
     for (const remote of remoteBooks) {
       if (localIds.has(remote.id)) continue;
-      const fileRes = await fetch(`/api/user/books/${encodeURIComponent(remote.id)}/file`);
+      if (!isDbScopeActive(bound)) break;
+      const fileRes = await accountFetch(
+        `/api/user/books/${encodeURIComponent(remote.id)}/file`,
+        undefined,
+        bound,
+      );
       if (!fileRes.ok) continue;
       const buffer = await fileRes.arrayBuffer();
-      await saveBook({
-        id: remote.id,
-        title: remote.title,
-        author: remote.author,
-        addedAt: remote.updatedAt,
-        data: buffer,
-      });
+      await saveBook(
+        {
+          id: remote.id,
+          title: remote.title,
+          author: remote.author,
+          addedAt: remote.updatedAt,
+          data: buffer,
+        },
+        bound,
+      );
       downloaded++;
     }
     return downloaded;
@@ -963,6 +976,7 @@ export async function pullMissingUserBooksFromCloud(): Promise<number> {
 
 export interface ResyncResult {
   ok: boolean;
+  booksDownloaded?: number;
   serverCounts?: {
     words: number;
     annotations: number;
@@ -1011,6 +1025,14 @@ export async function forceFullResyncFromServer(
   if (localRev.length) await pushReviewsToServer(localRev, bound);
   if (localPos.length) await pushPositionsToServer(localPos, bound);
   if (localKnow.length) await pushKnowledgeToServer(localKnow, bound);
+
+  // Libros: lo encolado sube y lo que solo vive en la nube (era
+  // user-books/ u objetos que este dispositivo nunca bajó) se descarga —
+  // «Sincronizar» también recupera la biblioteca, no solo el progreso.
+  await runBookQueue(bound).catch(() => 0);
+  const booksDownloaded = await pullMissingUserBooksFromCloud(bound).catch(
+    () => 0,
+  );
 
   // 2. Reiniciar a 0 todos los cursores locales de pull
   resetPullCursors(bound.userId);
@@ -1078,6 +1100,7 @@ export async function forceFullResyncFromServer(
 
   return {
     ok: true,
+    booksDownloaded,
     serverCounts,
     localCounts,
     diverged,

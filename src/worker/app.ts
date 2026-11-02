@@ -1,6 +1,6 @@
 import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
-import { chunks, getConnectionString, isMissingColumnError, readAccountResetAt, resetAccountDataDb, withClient, type WorkerEnv } from "./db";
+import { chunks, getConnectionString, isMissingColumnError, isMissingTableError, readAccountResetAt, resetAccountDataDb, withClient, type WorkerEnv } from "./db";
 import {
   CLIENT_ERROR_MAX_BODY_BYTES,
   allowClientError,
@@ -2053,6 +2053,29 @@ app.get("/api/books", async (context) => {
         paperOnly: true,
       } as (typeof books)[number]);
     }
+    // Era `user-books/` (sync BYO-EPUB anterior): esas filas apuntan
+    // fuera del prefijo books/{userId}/ y la lista de R2 no las trae.
+    // Sin ellas la estantería se ve vacía aunque la cuenta tenga libros.
+    for (const row of await listUserBooksOutsidePrefix(
+      context.env,
+      session.user.id,
+    )) {
+      if (listed.has(row.book_id)) continue;
+      if (flags.get(row.book_id)?.paperOnly) continue;
+      const title = isHashLikeIdentifier(row.title) ? "" : row.title;
+      books.push({
+        hash: row.book_id,
+        uploaded: new Date(Number(row.updated_at) || Date.now()),
+        name: title ? `${title}.epub` : "",
+        title,
+        author: row.author,
+        sections: 0,
+        language: row.language,
+        hasCover: false,
+        repairAttemptedAt: undefined,
+        shared: flags.get(row.book_id)?.shared || undefined,
+      } as (typeof books)[number]);
+    }
   } catch {
     // La lista de libros no depende de la comunidad.
   }
@@ -2263,16 +2286,18 @@ app.get("/api/books/community", async (context) => {
   const session = await getSession(context);
   if (!session) return context.json({ error: "Inicia sesión para ver la comunidad." }, 401);
 
+  // Las copias del propio lector no aparecen: ya las tiene — mostrarlas
+  // solo daba un 409 («Ese libro ya es tuyo») al pulsar «Usar en papel».
   const sqlPg = `SELECT book_id,
        MAX(title) AS title, MAX(author) AS author, MAX(language) AS language,
        MAX(size_bytes) AS size_bytes, BOOL_OR(has_cover) AS has_cover,
        MIN(shared_at) AS shared_at, COUNT(DISTINCT user_id)::int AS sharers
      FROM user_books
-     WHERE shared = true
+     WHERE shared = true AND user_id <> $1
      GROUP BY book_id
      ORDER BY shared_at DESC
      LIMIT 200`;
-  const sqlD1 = sqlPg.replace("BOOL_OR(has_cover)", "MAX(has_cover)").replace("::int", "");
+  const sqlD1 = sqlPg.replace("BOOL_OR(has_cover)", "MAX(has_cover)").replace("::int", "").replace("$1", "?");
 
   const collect = (
     rows: Array<Record<string, unknown>>,
@@ -2289,18 +2314,50 @@ app.get("/api/books/community", async (context) => {
       sharers: Number(row.sharers ?? 1),
     }));
 
+  // Entradas adjuntables de verdad: tienen guía publicada en
+  // `guides/{hash}.json`. Sin este filtro una fila shared vieja (modelo
+  // previo o PUT sin guía) se listaba y su attach respondía 404 siempre.
+  // Si R2 no responde se devuelve la lista sin filtrar (best-effort).
+  const publishedGuides = async (): Promise<Set<string> | null> => {
+    const bucket = context.env.BOOKS;
+    if (!bucket) return null;
+    const hashes = new Set<string>();
+    let cursor: string | undefined;
+    for (let page = 0; page < 20; page++) {
+      const listed = await bucket
+        .list({ prefix: "guides/", cursor, limit: 1000 })
+        .catch(() => null);
+      if (!listed) return null;
+      for (const object of listed.objects) {
+        const match = /^guides\/([a-f0-9]{64})\.json$/.exec(object.key);
+        if (match) hashes.add(match[1]);
+      }
+      if (!listed.truncated) return hashes;
+      cursor = listed.cursor;
+    }
+    return hashes;
+  };
+
+  const finish = async (rows: Array<Record<string, unknown>>) => {
+    const books = collect(rows);
+    const guides = await publishedGuides();
+    if (!guides) return books;
+    return books.filter((book) => guides.has(book.hash));
+  };
+
   if (getConnectionString(context.env)) {
     const res = await withClient(context.env, (client) =>
-      client.query(sqlPg),
+      client.query(sqlPg, [session.user.id]),
     ).catch((err) => (isMissingColumnError(err) ? null : Promise.reject(err)));
     if (res === null) return context.json({ books: [] });
-    return context.json({ books: collect(res?.rows ?? []) });
+    return context.json({ books: await finish(res?.rows ?? []) });
   }
   if (context.env.DB) {
     const res = await context.env.DB.prepare(sqlD1)
+      .bind(session.user.id)
       .all<Record<string, unknown>>()
       .catch(() => null);
-    return context.json({ books: collect(res?.results ?? []) });
+    return context.json({ books: await finish(res?.results ?? []) });
   }
   return context.json({ books: [] });
 });
@@ -2330,10 +2387,30 @@ app.get("/api/books/:hash", async (context) => {
     );
 
   const object = await booksBucket.get(bookKey(session.user.id, hash));
-  if (!object) return context.json({ error: "Libro no encontrado." }, 404);
-  return new Response(object.body, {
-    headers: { "content-type": "application/epub+zip" },
-  });
+  if (object) {
+    return new Response(object.body, {
+      headers: { "content-type": "application/epub+zip" },
+    });
+  }
+
+  // Compatibilidad era `user-books/`: la fila user_books guarda la llave
+  // real del archivo; la ruta convencional cubre filas anteriores a ella.
+  // Solo se sirven llaves dentro del espacio propio del usuario.
+  const r2Key = await readUserBookR2Key(context.env, session.user.id, hash);
+  const legacyPrefix = `user-books/${session.user.id}/`;
+  const candidates = [r2Key, `${legacyPrefix}${hash}.epub`].filter(
+    (key): key is string =>
+      typeof key === "string" && key.startsWith(legacyPrefix),
+  );
+  for (const key of candidates) {
+    const fallback = await booksBucket.get(key);
+    if (fallback) {
+      return new Response(fallback.body, {
+        headers: { "content-type": "application/epub+zip" },
+      });
+    }
+  }
+  return context.json({ error: "Libro no encontrado." }, 404);
 });
 
 // Descarga de la guía de papel: para quien la adjuntó (fila propia) o
@@ -2527,6 +2604,71 @@ async function listUserBookFlags(
     if (res?.results) collect(res.results);
   }
   return flags;
+}
+
+// Filas cuyo EPUB vive fuera del prefijo `books/{userId}/`: la era
+// `user-books/` del sync BYO-EPUB viejo. La lista de R2 no las alcanza,
+// así que GET /api/books las agrega como entradas remotas — sin esto la
+// cuenta se ve vacía aunque tenga libros en la nube. Las filas
+// paper_only se filtran después por flags (su r2_key es la guía).
+type UserBookRow = {
+  book_id: string;
+  title: string;
+  author: string;
+  language: string;
+  updated_at: unknown;
+};
+
+async function listUserBooksOutsidePrefix(
+  env: WorkerEnv,
+  userId: string,
+): Promise<UserBookRow[]> {
+  const sqlPg = `SELECT book_id, title, author, language, updated_at
+     FROM user_books WHERE user_id = $1 AND r2_key NOT LIKE 'books/%'`;
+  const sqlD1 = sqlPg.replace("$1", "?");
+  if (getConnectionString(env)) {
+    const res = await withClient(env, (client) =>
+      client.query<UserBookRow>(sqlPg, [userId]),
+    ).catch((err) => (isMissingColumnError(err) ? null : Promise.reject(err)));
+    // res === undefined → sin conexión pg configurada: caer a D1.
+    if (res) return res.rows;
+    if (res === null) return [];
+  }
+  if (env.DB) {
+    const res = await env.DB.prepare(sqlD1)
+      .bind(userId)
+      .all<UserBookRow>()
+      .catch(() => null);
+    return res?.results ?? [];
+  }
+  return [];
+}
+
+// La llave R2 real del archivo según su fila user_books — la era
+// `user-books/` la guarda explícita; lectura tolerante a tabla ausente
+// (devuelve null y el llamador usa la ruta convencional).
+async function readUserBookR2Key(
+  env: WorkerEnv,
+  userId: string,
+  bookId: string,
+): Promise<string | null> {
+  const sqlPg = `SELECT r2_key FROM user_books WHERE user_id = $1 AND book_id = $2`;
+  const sqlD1 = `SELECT r2_key FROM user_books WHERE user_id = ? AND book_id = ?`;
+  if (getConnectionString(env)) {
+    const res = await withClient(env, (client) =>
+      client.query<{ r2_key: string }>(sqlPg, [userId, bookId]),
+    ).catch((err) => (isMissingTableError(err) ? null : Promise.reject(err)));
+    if (res) return res.rows[0]?.r2_key ?? null;
+    if (res === null) return null;
+  }
+  if (env.DB) {
+    const row = await env.DB.prepare(sqlD1)
+      .bind(userId, bookId)
+      .first<{ r2_key: string }>()
+      .catch(() => null);
+    return row?.r2_key ?? null;
+  }
+  return null;
 }
 
 // Filas paper_only del usuario: guías adjuntadas desde la comunidad.

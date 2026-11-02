@@ -28,6 +28,7 @@ interface UserBookRecord {
   book_id: string;
   title: string;
   author: string;
+  language?: string;
   r2_key?: string;
   size_bytes?: number;
   sha256?: string;
@@ -89,6 +90,23 @@ describe("User Books Cloud Sync (D1, R2, Kindle fallback)", () => {
                 }));
               return { results };
             }
+            if (sql.includes("r2_key NOT LIKE")) {
+              const [userId] = boundParams as [string];
+              const results = Array.from(store.values())
+                .filter(
+                  (v) =>
+                    v.user_id === userId &&
+                    !(v.r2_key ?? "").startsWith("books/"),
+                )
+                .map((v) => ({
+                  book_id: v.book_id,
+                  title: v.title,
+                  author: v.author,
+                  language: v.language ?? "",
+                  updated_at: v.updated_at,
+                }));
+              return { results };
+            }
             return { results: [] };
           }),
           run: vi.fn(async () => {
@@ -127,6 +145,22 @@ describe("User Books Cloud Sync (D1, R2, Kindle fallback)", () => {
           arrayBuffer: async () => data,
         };
       }),
+      list: vi.fn(async ({ prefix }: { prefix: string }) => ({
+        objects: [...r2Store.keys()]
+          .filter((key) => key.startsWith(prefix))
+          .map((key) => ({
+            key,
+            uploaded: new Date(1000),
+            customMetadata: {
+              title: "Título del objeto",
+              author: "Autor",
+              name: "titulo.epub",
+              sections: "3",
+              language: "es",
+              hasCover: "false",
+            },
+          })),
+      })),
     };
   });
 
@@ -263,5 +297,99 @@ describe("User Books Cloud Sync (D1, R2, Kindle fallback)", () => {
       "my-book",
     );
     expect(fromUser).not.toBeNull();
+  });
+
+  // Regresión: libros de la era user-books/ — la fila user_books existe
+  // pero el archivo no está bajo books/{userId}/. Antes del puente,
+  // GET /api/books no los veía y la estantería parecía vacía.
+  const LEGACY_HASH = "ab".repeat(32);
+
+  const seedLegacyBook = () => {
+    store.set(`user-1:${LEGACY_HASH}`, {
+      user_id: "user-1",
+      book_id: LEGACY_HASH,
+      title: "Libro de la era vieja",
+      author: "Autor Viejo",
+      language: "es",
+      r2_key: `user-books/user-1/${LEGACY_HASH}.epub`,
+      updated_at: 5000,
+    });
+    r2Store.set(
+      `user-books/user-1/${LEGACY_HASH}.epub`,
+      minimalBytes.buffer as ArrayBuffer,
+    );
+  };
+
+  it("GET /api/books lista libros cuyo archivo vive en user-books/", async () => {
+    getSessionMock.mockResolvedValue({ user: { id: "user-1" } });
+    seedLegacyBook();
+
+    const res = await app.request(
+      "/api/books",
+      { method: "GET" },
+      { DB: mockDb as WorkerEnv["DB"], BOOKS: mockBucket as WorkerEnv["BOOKS"] },
+    );
+
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as {
+      books: Array<{ hash: string; title: string }>;
+    };
+    const entry = json.books.find((b) => b.hash === LEGACY_HASH);
+    expect(entry).toBeDefined();
+    expect(entry?.title).toBe("Libro de la era vieja");
+  });
+
+  it("GET /api/books/:hash descarga el EPUB guardado en user-books/", async () => {
+    getSessionMock.mockResolvedValue({ user: { id: "user-1" } });
+    seedLegacyBook();
+
+    const res = await app.request(
+      `/api/books/${LEGACY_HASH}`,
+      { method: "GET" },
+      { DB: mockDb as WorkerEnv["DB"], BOOKS: mockBucket as WorkerEnv["BOOKS"] },
+    );
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("application/epub+zip");
+    const downloaded = await res.arrayBuffer();
+    expect(downloaded.byteLength).toBe(minimalBytes.byteLength);
+  });
+
+  it("GET /api/books no duplica un libro que también está en books/", async () => {
+    getSessionMock.mockResolvedValue({ user: { id: "user-1" } });
+    seedLegacyBook();
+    // El mismo hash también tiene objeto moderno: gana la lista de R2.
+    r2Store.set(
+      `books/user-1/${LEGACY_HASH}.epub`,
+      minimalBytes.buffer as ArrayBuffer,
+    );
+
+    const res = await app.request(
+      "/api/books",
+      { method: "GET" },
+      { DB: mockDb as WorkerEnv["DB"], BOOKS: mockBucket as WorkerEnv["BOOKS"] },
+    );
+
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as { books: Array<{ hash: string }> };
+    expect(json.books.filter((b) => b.hash === LEGACY_HASH)).toHaveLength(1);
+  });
+
+  it("GET /api/books/:hash sirve primero el objeto de books/ si existe", async () => {
+    getSessionMock.mockResolvedValue({ user: { id: "user-1" } });
+    seedLegacyBook();
+    const modernBytes = new Uint8Array([80, 75, 3, 4, 1, 2, 3]);
+    r2Store.set(`books/user-1/${LEGACY_HASH}.epub`, modernBytes.buffer);
+
+    const res = await app.request(
+      `/api/books/${LEGACY_HASH}`,
+      { method: "GET" },
+      { DB: mockDb as WorkerEnv["DB"], BOOKS: mockBucket as WorkerEnv["BOOKS"] },
+    );
+
+    expect(res.status).toBe(200);
+    const downloaded = new Uint8Array(await res.arrayBuffer());
+    expect(downloaded.byteLength).toBe(modernBytes.byteLength);
+    expect(downloaded[4]).toBe(1);
   });
 });

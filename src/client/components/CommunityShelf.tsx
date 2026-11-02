@@ -52,7 +52,9 @@ export default function CommunityShelf({ onAttached }: Props) {
     if (result.ok) {
       onAttached?.(book.hash, result.guide);
     } else {
-      setError("No se pudo agregar la guía. Revisa tu conexión.");
+      // El servidor dice el motivo (libro propio, guía retirada…) —
+      // el mensaje de conexión solo aplica cuando no respondió nada.
+      setError(result.error ?? "No se pudo agregar la guía. Revisa tu conexión.");
     }
   };
 

@@ -1681,6 +1681,119 @@ describe("Fase 4: Pruebas de Integración End-to-End en Reader.test.ts", () => {
     }
   });
 
+  it("6.1c Ratón: el click que suelta un arrastre de selección no apaga la barra de pasaje", async () => {
+    const { createElement: h, act } = await import("react");
+    const { createRoot } = await import("react-dom/client");
+    const { ReaderContent } = await import("./reader/ReaderContent");
+    const { READER_DEFAULTS } = await import("../lib/settings");
+
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      writable: true,
+      value: vi.fn(() => ({
+        matches: false,
+        media: "",
+        onchange: null,
+        addEventListener() {},
+        removeEventListener() {},
+        addListener() {},
+        removeListener() {},
+        dispatchEvent: () => false,
+      })),
+    });
+
+    const setSelButton = vi.fn();
+    const setBarsVisible = vi.fn();
+    const openSelection = vi.fn();
+
+    root = createRoot(host);
+    await act(async () => {
+      root.render(
+        h(ReaderContent, {
+          containerRef: { current: document.createElement("div") },
+          viewportRef: { current: document.createElement("div") },
+          lastPointRef: { current: null },
+          settings: READER_DEFAULTS,
+          state: "ready",
+          sectionIndex: 0,
+          sectionTotal: 5,
+          sectionWords: 100,
+          title: "Libro de prueba",
+          sectionTitle: "Capítulo 1",
+          sectionHasImages: false,
+          showChapterTitle: true,
+          strategyPaused: false,
+          page: 1,
+          pageCount: 1,
+          pageAdvance: () => 0,
+          pageMetrics: null,
+          ttsSnap: { status: "stopped" },
+          selection: null,
+          onCloseSelection: vi.fn(),
+          setBarsVisible,
+          setShowLongPressHint: vi.fn(),
+          showLongPressHint: false,
+          recapBubbleVisible: false,
+          recapBubbleLoading: false,
+          recapBubbleBullets: [],
+          setRecapBubbleVisible: vi.fn(),
+          sceneRecap: null,
+          chapterEndCard: null,
+          nextRow: null,
+          prevRow: null,
+          language: "es",
+          noteActivity: vi.fn(),
+          navigate: vi.fn(),
+          goPage: vi.fn(),
+          navNextSection: vi.fn(),
+          navPrevSection: vi.fn(),
+          openSelection,
+          selButton: { x: 100, y: 100, placement: "top" },
+          setSelButton,
+          extractWordAtPoint: () => null,
+          handleContainerDoubleClick: vi.fn(),
+          handleTriggerReturnRecap: vi.fn(),
+          toggleParagraphTranslation: vi.fn(),
+          onInternalLinkClick: vi.fn(),
+          lastTapRef: { current: { time: 0, element: null } },
+          lastPointerTypeRef: { current: "mouse" },
+          pacerIndexRef: { current: 0 },
+          onBack: vi.fn(),
+        }),
+      );
+    });
+
+    const bookContent = host.querySelector<HTMLDivElement>(".book-content");
+    expect(bookContent).toBeTruthy();
+
+    // Selección viva de dos palabras, como queda al soltar un arrastre.
+    const p = document.createElement("p");
+    p.textContent = "dos palabras";
+    bookContent!.appendChild(p);
+    const sel = window.getSelection()!;
+    const range = document.createRange();
+    range.selectNodeContents(p);
+    sel.removeAllRanges();
+    sel.addRange(range);
+
+    // El click del release llega con la selección intacta: la barra
+    // sobrevive y el gesto no alterna barras ni abre la ficha.
+    await act(async () => {
+      p.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(setSelButton).not.toHaveBeenCalled();
+    expect(setBarsVisible).not.toHaveBeenCalled();
+    expect(openSelection).not.toHaveBeenCalled();
+
+    // Un click real colapsa la selección en pointerdown: llega ya sin
+    // rangos y ahí sí cierra la barra.
+    sel.removeAllRanges();
+    await act(async () => {
+      bookContent!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(setSelButton).toHaveBeenCalledWith(null);
+  });
+
   it("6.2 Fase 4.2: Feedback visual toast en Reader y control de modales en el historial", async () => {
     const { createElement: h, act } = await import("react");
     const { createRoot } = await import("react-dom/client");

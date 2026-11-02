@@ -321,13 +321,14 @@ export function ReaderContent(props: ReaderContentProps) {
         lastPointerTypeRef.current === "touch" ||
         lastPointerTypeRef.current === "pen" ||
         (typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches);
-      if (selButton && setSelButton) {
-        setSelButton(null);
-        return;
-      }
 
       const sel = window.getSelection();
       const hasSelection = sel && !sel.isCollapsed && sel.rangeCount > 0;
+
+      if (selButton && setSelButton && !hasSelection) {
+        setSelButton(null);
+        return;
+      }
 
       if (isTouch) {
         // En táctil (modelo Kindle):

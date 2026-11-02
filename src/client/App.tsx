@@ -1066,6 +1066,14 @@ export default function App() {
       // pendiente: las subidas corren detrás — son archivos completos
       // y en datos móviles pueden tardar, no deben retener la lista.
       if (!cancelled) void refreshLibrary();
+      // La recuperación de libros de la era user-books/ no espera a la
+      // cola: un EPUB subiendo en red lenta no debe retrasar bajar la
+      // biblioteca de la cuenta.
+      void pullMissingUserBooksFromCloud(scope)
+        .then((downloaded) => {
+          if (downloaded > 0 && !cancelled) void refreshLibrary();
+        })
+        .catch(() => null);
       await runBookQueue(scope)
         .then(() => {
           setCollectionPendingCount("books", 0);
@@ -1081,9 +1089,6 @@ export default function App() {
             // Ignore
           }
         });
-      void pullMissingUserBooksFromCloud().then((downloaded) => {
-        if (downloaded > 0 && !cancelled) void refreshLibrary();
-      }).catch(() => null);
       // Lo que solo está en la nube ya no baja en automático: aparece
       // en la estantería como «En la nube» y se descarga al tocarlo.
       if (!cancelled) void refreshLibrary();
@@ -1482,6 +1487,11 @@ export default function App() {
   ): Promise<boolean> => {
     const guide = sanitizePaperBookGuide(guideRaw, hash);
     if (!guide) return false;
+    // Defensa: si el EPUB real ya está aquí, la guía comunitaria no lo
+    // reemplaza — un attach «already» sobre un libro propio borraría la
+    // copia local y lo dejaría en solo-papel.
+    const existing = await getStoredBook(hash, scope).catch(() => undefined);
+    if (existing && existing.data.size > 0 && !existing.paperOnly) return true;
     await saveSessionValue(
       paperGuideSessionKey(hash),
       JSON.stringify(guide),
