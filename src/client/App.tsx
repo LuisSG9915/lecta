@@ -543,10 +543,6 @@ export default function App() {
         ? "account"
         : "shelf";
 
-  if ((activeNav === "vocabulary" || showVocabulary) && !hasVisitedVocab) {
-    setHasVisitedVocab(true);
-  }
-
   useLayoutEffect(() => {
     if (book) return;
     const targetY = scrollPositions.current[activeNav] ?? 0;

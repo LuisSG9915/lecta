@@ -19,6 +19,10 @@ export type SessionContext = {
   env: WorkerEnv;
   req: { raw: Request; url: string };
   executionCtx?: { waitUntil: (promise: Promise<unknown>) => void };
+  // Opcional: los handlers de Hono ya traen `c.header`; si existe, los
+  // set-cookie que Better Auth encola durante getSession se anexan a la
+  // respuesta y el navegador renueva el caché firmado de sesión.
+  header?: (name: string, value: string, options?: { append?: boolean }) => void;
 };
 
 export class SessionInfraError extends Error {
@@ -85,7 +89,20 @@ export const getSession = async (context: SessionContext) => {
   try {
     let session: Awaited<ReturnType<typeof auth.api.getSession>> = null;
     try {
-      session = await auth.api.getSession({ headers: context.req.raw.headers });
+      const result = await auth.api.getSession({
+        headers: context.req.raw.headers,
+        returnHeaders: true,
+      });
+      session = result?.response ?? null;
+      // auth.api.getSession devuelve datos, no una Response: los
+      // set-cookie que encola (session_data renovada, cookies viejas
+      // expiradas) hay que pasarlos a la respuesta real o el navegador
+      // jamás recibe el caché renovado y cada request volvería a
+      // consultar la sesión en la base.
+      const setCookies = result?.headers?.getSetCookie?.() ?? [];
+      for (const cookie of setCookies) {
+        context.header?.("set-cookie", cookie, { append: true });
+      }
     } catch (err) {
       if (isSessionInfraError(err)) {
         throw new SessionInfraError("Servicio temporalmente no disponible", { cause: err });

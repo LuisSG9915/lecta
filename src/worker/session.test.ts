@@ -29,6 +29,10 @@ import {
 
 const env = { DATABASE_URL: "postgres://lecta:test@localhost/lecta_dev" };
 
+// auth.api.getSession se invoca con returnHeaders:true y responde
+// { response, headers }; el wrapper desempaqueta `response`.
+const sessionResult = (response: unknown) => ({ response, headers: new Headers() });
+
 const contextFor = (
   headers: Record<string, string>,
   executionCtx?: { waitUntil: (promise: Promise<unknown>) => void },
@@ -52,14 +56,14 @@ describe("getSession", () => {
   });
 
   it("devuelve la sesión cuando no hay encabezado de cuenta", async () => {
-    getSessionMock.mockResolvedValue({ user: { id: "u1" } });
+    getSessionMock.mockResolvedValue(sessionResult({ user: { id: "u1" } }));
     const session = await getSession(contextFor({}));
     expect(session?.user.id).toBe("u1");
     expect(closePoolMock).toHaveBeenCalled();
   });
 
   it("devuelve la sesión cuando el encabezado coincide", async () => {
-    getSessionMock.mockResolvedValue({ user: { id: "u1" } });
+    getSessionMock.mockResolvedValue(sessionResult({ user: { id: "u1" } }));
     const session = await getSession(
       contextFor({ "x-lecta-user-id": "u1" }),
     );
@@ -70,7 +74,7 @@ describe("getSession", () => {
   it("rechaza cuando el encabezado declara otra cuenta", async () => {
     // La cookie ya es de u2 pero la petición nació de u1: viajaba con
     // una sesión vieja y no debe leer ni escribir nada.
-    getSessionMock.mockResolvedValue({ user: { id: "u2" } });
+    getSessionMock.mockResolvedValue(sessionResult({ user: { id: "u2" } }));
     const session = await getSession(
       contextFor({ "x-lecta-user-id": "u1" }),
     );
@@ -79,7 +83,7 @@ describe("getSession", () => {
   });
 
   it("rechaza sin sesión válida aunque el encabezado exista", async () => {
-    getSessionMock.mockResolvedValue(null);
+    getSessionMock.mockResolvedValue(sessionResult(null));
     const session = await getSession(
       contextFor({ "x-lecta-user-id": "u1" }),
     );
@@ -112,13 +116,33 @@ describe("getSession", () => {
   });
 
   it("delega el cierre del pool a executionCtx.waitUntil si está presente", async () => {
-    getSessionMock.mockResolvedValue({ user: { id: "u1" } });
+    getSessionMock.mockResolvedValue(sessionResult({ user: { id: "u1" } }));
     const waitUntilSpy = vi.fn();
     const session = await getSession(
       contextFor({}, { waitUntil: waitUntilSpy }),
     );
     expect(session?.user.id).toBe("u1");
     expect(waitUntilSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("propaga los set-cookie que Better Auth encola al contexto de respuesta", async () => {
+    // Al renovar el session_data firmado (cookieCache) Better Auth
+    // encola set-cookie en los headers de respuesta: si no llegan al
+    // navegador, cada request volvería a consultar la sesión en la base.
+    const headers = new Headers();
+    headers.append("set-cookie", "better-auth.session_data=renovada; Path=/; HttpOnly");
+    getSessionMock.mockResolvedValue({
+      response: { user: { id: "u1" } },
+      headers,
+    });
+    const headerSpy = vi.fn();
+    const session = await getSession({ ...contextFor({}), header: headerSpy });
+    expect(session?.user.id).toBe("u1");
+    expect(headerSpy).toHaveBeenCalledWith(
+      "set-cookie",
+      "better-auth.session_data=renovada; Path=/; HttpOnly",
+      { append: true },
+    );
   });
 
   it("lanza SessionInfraError y cierra el pool ante fallos de conexión o Postgres", async () => {
@@ -157,7 +181,7 @@ describe("getSession", () => {
   });
 
   it("un token expirado o firma inválida devuelve null de forma controlada sin exponer stacktrace", async () => {
-    getSessionMock.mockResolvedValue(null);
+    getSessionMock.mockResolvedValue(sessionResult(null));
     const session = await getSession(
       contextFor({ cookie: "better-auth.session_token=token_invalido_expirado" }),
     );
@@ -167,11 +191,13 @@ describe("getSession", () => {
 
   describe("getSessionUser", () => {
     it("devuelve el usuario de la sesión cuando existe y null cuando no", async () => {
-      getSessionMock.mockResolvedValueOnce({ user: { id: "u42", email: "u@test.com" } });
+      getSessionMock.mockResolvedValueOnce(
+        sessionResult({ user: { id: "u42", email: "u@test.com" } }),
+      );
       const user = await getSessionUser(contextFor({ cookie: "better-auth.session_token=valid" }));
       expect(user).toEqual({ id: "u42", email: "u@test.com" });
 
-      getSessionMock.mockResolvedValueOnce(null);
+      getSessionMock.mockResolvedValueOnce(sessionResult(null));
       const noUser = await getSessionUser(contextFor({ cookie: "better-auth.session_token=invalid" }));
       expect(noUser).toBeNull();
     });

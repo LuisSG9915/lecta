@@ -97,12 +97,22 @@ describe("insertEnrichment", () => {
       "adusta",
     );
 
+    // El insert de formas es por lote (unnest): params[1] lleva todas las
+    // formas vinculadas en una sola llamada.
     const formInserts = calls.filter(
       ({ sql }) => sql.includes("INSERT INTO") && sql.includes("lexicon_forms"),
     );
-    expect(formInserts.map(({ params }) => params[1])).toEqual(
+    expect(formInserts).toHaveLength(1);
+    expect(formInserts[0].params[1]).toEqual(
       expect.arrayContaining(["adusta", "adusto", "adustos"]),
     );
+    const senseInserts = calls.filter(
+      ({ sql }) => sql.includes("INSERT INTO") && sql.includes("lexicon_senses"),
+    );
+    expect(senseInserts).toHaveLength(1);
+    expect(senseInserts[0].params[1]).toEqual([1]);
+    expect(senseInserts[0].params[2]).toEqual(["Severo o seco."]);
+    expect(senseInserts[0].params[3]).toEqual(["Un semblante adusto."]);
   });
 });
 

@@ -310,25 +310,36 @@ export async function insertEnrichment(
     }
     if (!entryId) throw new Error("No se pudo registrar la entrada.");
 
-    const linkedForms = new Set(
-      [requestedForm, enrichment.lemma, ...enrichment.forms]
-        .filter((form): form is string => Boolean(form?.trim()))
-        .map((form) => form.toLowerCase()),
-    );
-    for (const form of linkedForms) {
+    const linkedForms = [
+      ...new Set(
+        [requestedForm, enrichment.lemma, ...enrichment.forms]
+          .filter((form): form is string => Boolean(form?.trim()))
+          .map((form) => form.toLowerCase()),
+      ),
+    ];
+    // Un INSERT por lote, no por fila: cada round-trip a la base remota
+    // cuesta ~100 ms con la transacción abierta.
+    if (linkedForms.length) {
       await client.query(
         `INSERT INTO ${CATALOG}lexicon_forms (language, form, entry_id, source)
-         VALUES ($1, lower($2), $3, 'ai')
+         SELECT $1, lower(f.form), $3, 'ai'
+         FROM unnest($2::text[]) AS f(form)
          ON CONFLICT DO NOTHING`,
-        [language, form, entryId],
+        [language, linkedForms, entryId],
       );
     }
-    for (const [index, sense] of enrichment.senses.entries()) {
+    if (enrichment.senses.length) {
       await client.query(
         `INSERT INTO ${CATALOG}lexicon_senses (entry_id, sense_order, definition, example, status, source)
-         VALUES ($1, $2, $3, $4, 'ok', 'ai')
+         SELECT $1, s.ord, s.def, s.ex, 'ok', 'ai'
+         FROM unnest($2::int4[], $3::text[], $4::text[]) AS s(ord, def, ex)
          ON CONFLICT DO NOTHING`,
-        [entryId, index + 1, sense.definition, sense.example],
+        [
+          entryId,
+          enrichment.senses.map((_, i) => i + 1),
+          enrichment.senses.map((s) => s.definition),
+          enrichment.senses.map((s) => s.example),
+        ],
       );
     }
     await client.query("COMMIT");

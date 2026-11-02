@@ -26,6 +26,9 @@ function onnxWasmPlugin(): Plugin {
 
   return {
     name: "lecta-onnx-wasm",
+    // Solo el cliente sirve /assets/: sin este filtro el writeBundle también
+    // copia el wasm (14 MB) a dist/lecta, el output del worker que jamás lo usa.
+    applyToEnvironment: (environment) => environment.name === "client",
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
         if (
@@ -70,6 +73,13 @@ function excludeOversizedOnnxAssets(): Plugin {
       for (const [fileName, item] of Object.entries(bundle)) {
         const isJsepOrAsyncify =
           fileName.includes(".jsep.") || fileName.includes("asyncify.wasm");
+        // El wasm hasheado que Vite emite por el new URL() interno de
+        // onnxruntime-web nunca se pide: wasmPaths siempre queda fijado a
+        // /assets/ o al CDN. El guion final distingue la copia hasheada
+        // (14 MB muertos) de la plana que sí sirve el HEAD probe.
+        const isUnusedHashedOrtWasm = fileName.includes(
+          "ort-wasm-simd-threaded-",
+        );
         let isOversized = false;
         if (item.type === "asset") {
           const byteLength =
@@ -80,7 +90,7 @@ function excludeOversizedOnnxAssets(): Plugin {
             isOversized = true;
           }
         }
-        if (isJsepOrAsyncify || isOversized) {
+        if (isJsepOrAsyncify || isOversized || isUnusedHashedOrtWasm) {
           delete bundle[fileName];
         }
       }
@@ -99,7 +109,9 @@ function excludeOversizedOnnxAssets(): Plugin {
             if (file.isFile()) {
               const fullPath = join(assetsDir, file.name);
               const shouldRemoveName =
-                file.name.includes(".jsep.") || file.name.includes("asyncify.wasm");
+                file.name.includes(".jsep.") ||
+                file.name.includes("asyncify.wasm") ||
+                file.name.includes("ort-wasm-simd-threaded-");
               if (shouldRemoveName) {
                 unlinkSync(fullPath);
                 continue;
@@ -228,6 +240,16 @@ function swManifest(): Plugin {
           // Se descargan y cachean bajo demanda con consentimiento del usuario.
           if (entry.name.endsWith(".wasm") || entry.name.endsWith(".onnx")) continue;
           const path = `/${relative(outDir, full).split("\\").join("/")}`;
+          // Las tablas /lexicon/*.gz + README son descargas de cumplimiento
+          // de licencia (enlazadas con `download` desde el Aviso legal): la
+          // app no las pide en runtime y precachearlas costaba ~7.6 MB por
+          // instalación. locuciones.es.json se conserva: sí es recurso de
+          // runtime y además se recachea bajo demanda vía refillable().
+          if (
+            path.indexOf("/lexicon/") === 0 &&
+            (path.endsWith(".gz") || path.endsWith("README.md"))
+          )
+            continue;
           if (path === "/sw-manifest.json") continue;
           assets.push(path);
         }

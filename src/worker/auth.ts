@@ -118,6 +118,14 @@ export function createScopedAuth(env: WorkerEnv, baseURL: string) {
     },
     secret: env.BETTER_AUTH_SECRET,
     baseURL,
+    session: {
+      cookieCache: {
+        enabled: true,
+        // 5 min: acota la ventana en que una sesión revocada sigue
+        // válida desde el caché firmado, sin consultar la base.
+        maxAge: 5 * 60,
+      },
+    },
     emailAndPassword: {
       enabled: true,
       sendResetPassword: async ({ user, url }) => {

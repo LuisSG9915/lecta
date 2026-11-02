@@ -3286,40 +3286,26 @@ app.get("/api/sync/counts", async (context) => {
     return context.json({ error: "Inicia sesión para consultar sincronización." }, 401);
 
   const counts = await withClient(context.env, async (client) => {
-    const [words, annotations, activity, reviews, positions, knowledge] =
-      await Promise.all([
-        client.query(
-          `SELECT COUNT(*)::int8 AS count FROM lecta_user_words WHERE user_id = $1 AND deleted = false`,
-          [session.user.id],
-        ),
-        client.query(
-          `SELECT COUNT(*)::int8 AS count FROM lecta_user_annotations WHERE user_id = $1 AND deleted = false`,
-          [session.user.id],
-        ),
-        client.query(
-          `SELECT COUNT(*)::int8 AS count FROM lecta_user_activity WHERE user_id = $1`,
-          [session.user.id],
-        ),
-        client.query(
-          `SELECT COUNT(*)::int8 AS count FROM lecta_user_reviews WHERE user_id = $1`,
-          [session.user.id],
-        ),
-        client.query(
-          `SELECT COUNT(*)::int8 AS count FROM lecta_user_positions WHERE user_id = $1`,
-          [session.user.id],
-        ),
-        client.query(
-          `SELECT COUNT(*)::int8 AS count FROM lecta_user_knowledge WHERE user_id = $1 AND deleted = false`,
-          [session.user.id],
-        ),
-      ]);
+    // Una sola sentencia: seis COUNT sueltos en un solo client se
+    // serializan igual (pg no paraleliza) y pagan ~100 ms por round-trip.
+    const res = await client.query<Record<string, number | string>>(
+      `SELECT
+         (SELECT COUNT(*) FROM lecta_user_words WHERE user_id = $1 AND deleted = false)::int8 AS words,
+         (SELECT COUNT(*) FROM lecta_user_annotations WHERE user_id = $1 AND deleted = false)::int8 AS annotations,
+         (SELECT COUNT(*) FROM lecta_user_activity WHERE user_id = $1)::int8 AS activity,
+         (SELECT COUNT(*) FROM lecta_user_reviews WHERE user_id = $1)::int8 AS reviews,
+         (SELECT COUNT(*) FROM lecta_user_positions WHERE user_id = $1)::int8 AS positions,
+         (SELECT COUNT(*) FROM lecta_user_knowledge WHERE user_id = $1 AND deleted = false)::int8 AS knowledge`,
+      [session.user.id],
+    );
+    const row = res.rows[0] ?? {};
     return {
-      words: Number(words.rows[0]?.count ?? 0),
-      annotations: Number(annotations.rows[0]?.count ?? 0),
-      activity: Number(activity.rows[0]?.count ?? 0),
-      reviews: Number(reviews.rows[0]?.count ?? 0),
-      positions: Number(positions.rows[0]?.count ?? 0),
-      knowledge: Number(knowledge.rows[0]?.count ?? 0),
+      words: Number(row.words ?? 0),
+      annotations: Number(row.annotations ?? 0),
+      activity: Number(row.activity ?? 0),
+      reviews: Number(row.reviews ?? 0),
+      positions: Number(row.positions ?? 0),
+      knowledge: Number(row.knowledge ?? 0),
     };
   });
   if (counts === undefined)
