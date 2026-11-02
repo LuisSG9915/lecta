@@ -6,20 +6,27 @@ import {
   skipCatSession,
   submitCatAnswer,
   type CalibrationWord,
+  type CatResponseRecord,
   type CatSessionState,
 } from "../lib/calibration";
 import { getCalibrationBankByLang } from "../../shared/calibration-bank";
+import { catLevelLabel } from "../lib/vocab-level";
+import { languageName } from "../lib/epub";
 
 export type CalibrationProps = {
   words?: CalibrationWord[];
   language?: string;
+  // Hay un libro esperando entrar al cerrar: el botón de la pantalla
+  // de resultado dice «Continuar al libro →» en vez de «Listo».
+  hasPendingBook?: boolean;
   onDone: () => void;
   onClose?: () => void;
-  onComplete?: (finalTheta: number) => void;
+  onComplete?: (result: { theta: number; history: CatResponseRecord[] }) => void;
 };
 
 export default function Calibration({
   language = "es",
+  hasPendingBook = false,
   onDone,
   onClose,
   onComplete,
@@ -28,29 +35,24 @@ export default function Calibration({
   const [session, setSession] = useState<CatSessionState>(() =>
     initCatSession(language, undefined, getCalibrationBankByLang(language)),
   );
-  const [isFinishing, setIsFinishing] = useState(false);
-  const finishTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // La prueba terminó: se queda abierta esta pantalla de resultado
+  // hasta que la persona toca el botón — nada se cierra solo.
+  const [result, setResult] = useState<{ theta: number } | null>(null);
+  const continueRef = useRef<HTMLButtonElement>(null);
 
   // Reiniciar sesión adaptativa si cambia la prop de idioma (sin useEffect sincrónico)
   if (language !== prevLanguage) {
     setPrevLanguage(language);
     setSession(initCatSession(language, undefined, getCalibrationBankByLang(language)));
-    setIsFinishing(false);
+    setResult(null);
   }
 
-  // Limpieza del timer al desmontar
+  // Al aparecer la pantalla de resultado el foco va a su único botón.
   useEffect(() => {
-    return () => {
-      if (finishTimerRef.current) {
-        clearTimeout(finishTimerRef.current);
-      }
-    };
-  }, []);
+    if (result) continueRef.current?.focus();
+  }, [result]);
 
   const handleSkip = useCallback(() => {
-    if (finishTimerRef.current) {
-      clearTimeout(finishTimerRef.current);
-    }
     skipCatSession(session);
     if (onClose) {
       onClose();
@@ -61,22 +63,20 @@ export default function Calibration({
 
   const handleAnswer = useCallback(
     (known: boolean) => {
-      if (!session.currentItem || isFinishing) return;
+      if (!session.currentItem || result) return;
       const next = submitCatAnswer(session, known, getCalibrationBankByLang(language));
       setSession(next);
 
       if (next.isComplete) {
-        setIsFinishing(true);
-        finishTimerRef.current = setTimeout(() => {
-          onComplete?.(next.theta);
-          onDone();
-        }, 650);
+        setResult({ theta: next.theta });
+        onComplete?.({ theta: next.theta, history: next.history });
       }
     },
-    [session, isFinishing, onComplete, onDone, language],
+    [session, result, onComplete, language],
   );
 
-  // Atajos de teclado para respuesta ultra-rápida (< 1.5 s por palabra)
+  // Atajos de teclado para respuesta ultra-rápida (< 1.5 s por palabra).
+  // En la pantalla de resultado Escape equivale al botón: cerrar hecho.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (
@@ -85,7 +85,13 @@ export default function Calibration({
       ) {
         return;
       }
-      if (isFinishing) return;
+      if (result) {
+        if (e.key === "Escape") {
+          e.preventDefault();
+          onDone();
+        }
+        return;
+      }
 
       if (e.key === "ArrowLeft" || e.key === "1") {
         e.preventDefault();
@@ -101,7 +107,7 @@ export default function Calibration({
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [handleAnswer, handleSkip, isFinishing]);
+  }, [handleAnswer, handleSkip, result, onDone]);
 
   const langLabel =
     session.lang === "en"
@@ -109,7 +115,7 @@ export default function Calibration({
       : "Ajuste rápido · Español (15 s)";
 
   return (
-    <Sheet label="Ajuste rápido de vocabulario" onClose={handleSkip}>
+    <Sheet label="Ajuste rápido de vocabulario" onClose={result ? onDone : handleSkip}>
       <div
         className="cat-calibration-card"
         role="region"
@@ -117,17 +123,19 @@ export default function Calibration({
       >
         <div className="cat-calibration-header">
           <span className="cat-lang-badge">{langLabel}</span>
-          <button
-            type="button"
-            className="cat-skip-btn"
-            onClick={handleSkip}
-            aria-label="Saltar e ir al libro"
-          >
-            Saltar e ir al libro →
-          </button>
+          {result ? null : (
+            <button
+              type="button"
+              className="cat-skip-btn"
+              onClick={handleSkip}
+              aria-label="Saltar e ir al libro"
+            >
+              Saltar e ir al libro →
+            </button>
+          )}
         </div>
 
-        {isFinishing ? (
+        {result ? (
           <div
             className="cat-celebration-stage"
             role="status"
@@ -137,9 +145,20 @@ export default function Calibration({
               <Icon name="sparkles" size={24} />
             </div>
             <p className="cat-celebration-msg">
-              ¡Listo! Lecta ajustó las ayudas del capítulo a tu ritmo.
+              {languageName(session.lang)} listo · Nivel estimado:{" "}
+              {catLevelLabel(result.theta)}
             </p>
-            <p className="cat-celebration-sub">Abriendo tu lectura…</p>
+            <p className="cat-celebration-sub">
+              Lecta ajustará las ayudas de cada capítulo a tu nivel.
+            </p>
+            <button
+              type="button"
+              ref={continueRef}
+              className="cat-action-btn cat-action-btn--primary cat-continue-btn"
+              onClick={onDone}
+            >
+              {hasPendingBook ? "Continuar al libro →" : "Listo"}
+            </button>
           </div>
         ) : session.currentItem ? (
           <>

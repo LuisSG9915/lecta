@@ -14,6 +14,7 @@ import {
 const Reader = lazy(() => import("./components/Reader"));
 const Vocabulary = lazy(() => import("./components/Vocabulary"));
 const Journey = lazy(() => import("./components/Journey"));
+const PaperReading = lazy(() => import("./components/PaperReading"));
 const Account = lazy(() => import("./components/Account"));
 const Calibration = lazy(() => import("./components/Calibration"));
 const RestoreBackupDialog = lazy(() => import("./components/RestoreBackupDialog"));
@@ -29,9 +30,7 @@ import Notice from "./components/Notice";
 import { startSafeViewTransition } from "./lib/view-transition";
 import {
   applyTheme,
-  loadNativeLanguage,
   loadTheme,
-  readerProfileFor,
   saveTheme,
   type ThemeChoice,
 } from "./lib/settings";
@@ -47,7 +46,8 @@ import {
 import {
   CALIBRATION_DONE_KEY,
   calibrationDoneKey,
-  fetchCalibrationSample,
+  catHistoryToCalibration,
+  recordCalibration,
   type CalibrationWord,
 } from "./lib/calibration";
 import {
@@ -190,10 +190,21 @@ export default function App() {
   // primer libro; desde Cuenta se reabre sin libro pendiente.
   const [calibrationWords, setCalibrationWords] = useState<CalibrationWord[] | null>(null);
   const [calibrationLang, setCalibrationLang] = useState("es");
+  // Espejo en estado del libro pendiente (vive en una ref para los
+  // handlers): solo decide el texto del botón de la pantalla final.
+  const [calibrationHasPending, setCalibrationHasPending] = useState(false);
   const [calibrationDone, setCalibrationDone] = useState(false);
   const [readerInitialWord, setReaderInitialWord] = useState<string | undefined>(undefined);
   const bookRelease = useRef<OverlayHandle | null>(null);
   const panelRelease = useRef<OverlayHandle | null>(null);
+  // «Leo este libro en papel»: la pantalla es una capa del historial
+  // como el Cuaderno — «atrás» la cierra (y su hoja de capítulo va
+  // encima, con autoguardado propio).
+  const [paperBook, setPaperBook] = useState<ShelfItem | null>(null);
+  const paperRelease = useRef<OverlayHandle | null>(null);
+  const [vocabFilterRequest, setVocabFilterRequest] = useState<
+    { bookHash: string; nonce: number } | undefined
+  >(undefined);
   const calibrationRelease = useRef<OverlayHandle | null>(null);
   const positionRelease = useRef<OverlayHandle | null>(null);
   // Guardado de posición que el lector registra mientras está montado.
@@ -350,6 +361,7 @@ export default function App() {
     const scope = calibrationScope.current ?? captureDbScope();
     calibrationScope.current = null;
     setCalibrationWords(null);
+    setCalibrationHasPending(false);
     if (markDone) {
       setCalibrationDone(true);
       void saveSessionValue(calibrationDoneKey(calibrationLang), "1", scope).catch(
@@ -399,33 +411,26 @@ export default function App() {
     calibrationRelease.current ??= pushOverlay(onCalibrationBack);
     calibrationScope.current = captureDbScope();
     setCalibrationLang(language);
+    setCalibrationHasPending(Boolean(selection));
     setCalibrationWords(words);
   };
 
   // Abre la prueba de vocabulario desde el aviso del lector (al
-  // terminar el primer capítulo leído) o desde Cuenta. La muestra se
-  // descarga solo aquí, cuando la persona la pide: un fallo de red
-  // avisa y no marca ni bloquea nada. Devuelve si la hoja quedó
-  // abierta — el aviso se mantiene para reintentar cuando no.
+  // terminar el primer capítulo leído) o desde Cuenta. La prueba usa
+  // el banco local empaquetado, así que abre al instante y también
+  // sin conexión. Devuelve si la hoja quedó abierta — el aviso se
+  // mantiene para reintentar cuando no.
   const requestCalibration = async (language = "es"): Promise<boolean> => {
     if (calibrationWords) return true;
-    const profile = readerProfileFor(loadNativeLanguage(), language);
-    const sample = await fetchCalibrationSample(language, profile);
-    let fallbackWords: CalibrationWord[] = [];
-    if (!sample.ok || !sample.words?.length) {
-      const { getCalibrationBankByLang } = await import("../shared/calibration-bank");
-      fallbackWords = getCalibrationBankByLang(language).map((item) => ({
+    const { getCalibrationBankByLang } = await import("../shared/calibration-bank");
+    const words: CalibrationWord[] = getCalibrationBankByLang(language).map(
+      (item) => ({
         lemma: item.word,
         definition: null,
         sampleContext: item.posHint,
-      }));
-    }
-    const words: CalibrationWord[] =
-      sample.ok && sample.words?.length ? sample.words : fallbackWords;
-    if (!words.length) {
-      setError("No se pudo cargar la lista de palabras. Intenta de nuevo con conexión.");
-      return false;
-    }
+      }),
+    );
+    if (!words.length) return false;
     showCalibration(words, null, language);
     return true;
   };
@@ -438,6 +443,7 @@ export default function App() {
     calibrationRelease.current?.release();
     calibrationRelease.current = null;
     setCalibrationWords(null);
+    setCalibrationHasPending(false);
     positionRelease.current?.release();
     positionRelease.current = null;
     setPositionPrompt(null);
@@ -1325,7 +1331,10 @@ export default function App() {
   // Libro solo en la nube: se descarga, se guarda y se abre. La posición
   // remota baja con el mismo sync; el aviso solo aplica si el dispositivo
   // ya guardaba una posición de este libro (si no, no hay conflicto).
-  const openRemoteBook = async (item: ShelfItem, openAfter = true) => {
+  const openRemoteBook = async (
+    item: ShelfItem,
+    openAfter = true,
+  ): Promise<boolean> => {
     setError("");
     setDownloadingHash(item.hash);
     setMessage(`Descargando «${displayTitle(item.name, item.title)}»…`);
@@ -1338,7 +1347,7 @@ export default function App() {
       if (!file) {
         setMessage("");
         setError(`No se pudo descargar «${displayTitle(item.name, item.title)}». Revisa tu conexión e inténtalo de nuevo.`);
-        return;
+        return false;
       }
       const hadLocalPosition = Boolean(
         await loadBookPosition(item.hash, scope).catch(() => undefined),
@@ -1380,6 +1389,7 @@ export default function App() {
       } else {
         setMessage(`«${meta?.title ?? item.title ?? item.name}» guardado en este dispositivo.`);
       }
+      return true;
     } finally {
       setDownloadingHash(null);
     }
@@ -1405,11 +1415,40 @@ export default function App() {
     });
   };
 
-  const handleOpenBookPrep = (b: BookLike) => {
-    if ("hash" in b && b.hash) {
-      const item = library.find((lib) => lib.hash === b.hash) ?? (b as ShelfItem);
-      void openShelfItem(item);
+  // «Leo este libro en papel»: índice de capítulos con vocabulario
+  // para la edición física. Si el libro solo vive en la cuenta primero
+  // se descarga (misma ruta que «Descargar y abrir»); si falla se queda
+  // el aviso de openRemoteBook y no se entra.
+  const handlePaperBook = (item: ShelfItem) => {
+    const enter = () => {
+      paperRelease.current ??= pushOverlay(() => {
+        paperRelease.current = null;
+        setPaperBook(null);
+      });
+      setPaperBook(item);
+    };
+    if (item.remoteOnly) {
+      void openRemoteBook(item, false).then((ok) => {
+        if (ok) enter();
+      });
+    } else {
+      enter();
     }
+  };
+
+  const closePaper = () => {
+    paperRelease.current?.release();
+    paperRelease.current = null;
+    setPaperBook(null);
+  };
+
+  // «Repasar palabras de este libro»: el Cuaderno abre ya filtrado por
+  // la obra; el nonce marca cada petición para no reanclar el filtro
+  // cuando el usuario lo cambia a mano.
+  const openNotebookFromPaper = (bookHash: string) => {
+    setVocabFilterRequest({ bookHash, nonce: Date.now() });
+    closePaper();
+    navigateTo("vocabulary");
   };
 
   const handleOpenCalibration = () => {
@@ -1652,7 +1691,7 @@ export default function App() {
                     hasCalibrated={calibrationDone || Boolean(calibrationWords)}
                     onOpen={openShelfItem}
                     onSelect={handleSelectBook}
-                    onPrepareBook={handleOpenBookPrep}
+                    onPaperBook={handlePaperBook}
                     onStartCalibration={handleOpenCalibration}
                     onRemove={removeBook}
                     onAdd={(file) => void selectBook(file)}
@@ -1662,6 +1701,7 @@ export default function App() {
                     onDownloadBook={(item) => void openRemoteBook(item, false)}
                     downloadingHash={downloadingHash}
                     activityVersion={activityVersion}
+                    vocabVersion={vocabVersion}
                     onOpenVocab={openNotebookOverlay}
                     onOpenPractice={() => navigateTo("vocabulary")}
                     onOpenAccount={() => navigateTo("account")}
@@ -1677,12 +1717,13 @@ export default function App() {
                 <Activity mode={activeNav === "vocabulary" ? "visible" : "hidden"}>
                   <Suspense fallback={<p className="status">Abriendo tu cuaderno…</p>}>
                     <Vocabulary
-                      key={sessionUserId ?? "anon"}
+                      key={`${sessionUserId ?? "anon"}:${vocabFilterRequest?.nonce ?? 0}`}
                       presentation="page"
                       onClose={() => navigateTo("shelf")}
                       books={library}
                       activityVersion={activityVersion}
                       onOpenJourney={() => openJourneyFrom("vocab")}
+                      initialBookFilter={vocabFilterRequest?.bookHash}
                     />
                   </Suspense>
                 </Activity>
@@ -1694,6 +1735,7 @@ export default function App() {
                     key={sessionUserId ?? "anon"}
                     presentation="page"
                     theme={theme}
+                    vocabVersion={vocabVersion}
                     onThemeChange={changeTheme}
                     onClose={() => navigateTo("shelf")}
                     onOpenJourney={() => openJourneyFrom("account")}
@@ -1708,6 +1750,17 @@ export default function App() {
               ) : null}
             </main>
           </ViewTransition>
+
+          {paperBook ? (
+            <Suspense fallback={<p className="status">Abriendo el libro…</p>}>
+              <PaperReading
+                book={paperBook}
+                onClose={closePaper}
+                onOpenNotebook={openNotebookFromPaper}
+              />
+            </Suspense>
+          ) : null}
+
           {lastReadBook &&
           (lastReadBook.ownerUserId === currentOwnerUserId ||
             lastReadBook.ownerUserId === null) &&
@@ -1791,6 +1844,20 @@ export default function App() {
             key={sessionUserId ?? "anon"}
             words={calibrationWords}
             language={calibrationLang}
+            hasPendingBook={calibrationHasPending}
+            onComplete={({ history }) => {
+              // El examen terminó: sus respuestas quedan como
+              // evidencia `calibration` (cobertura, Cuenta, sync).
+              const scope = calibrationScope.current ?? captureDbScope();
+              const { words: answered, answers } =
+                catHistoryToCalibration(history);
+              void (async () => {
+                await recordCalibration(answered, answers, calibrationLang, scope).catch(
+                  () => null,
+                );
+                setVocabVersion((v) => v + 1);
+              })();
+            }}
             onDone={() => closeCalibration(true)}
             onClose={() => closeCalibration(false)}
           />

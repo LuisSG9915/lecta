@@ -1,7 +1,8 @@
 # Modo acompañante — vocabulario para quien lee fuera de la app
 
 **Estado:** propuesta de diseño para auditar (Antigravity). Sin implementar.
-**Fecha:** 2026-11-01.
+**Fecha:** 2026-11-01. Revisada el mismo día contra el código: las citas de
+§2 están verificadas; lo añadido por la revisión va marcado «(rev.)».
 
 ## 1. La idea
 
@@ -46,11 +47,20 @@ y cada «posibles palabras» del siguiente capítulo sale mejor calibrada.
 | `loadUserTheta` | `src/client/lib/profile-models.ts:280` | θ por idioma en escala `4 − zipf` — **esto es "el nivel de vocabulario"** |
 | `confirmPreparation` → `savePreparationBatch` | `src/client/lib/preparation.ts:321` | Transacción conocimiento + Cuaderno, luego push al servidor |
 | `SectionPreview` | `src/client/components/SectionPreview.tsx` | Vista ya desacoplada: recibe filas/respuestas/callbacks |
-| `saveWordWithKnowledge`, `saveVocabEntry` | `src/client/lib/idb.ts`, `vocab.ts:319` | Alta manual de palabra con evidencia `source:"saved"` |
+| `saveWordWithKnowledge`, `saveVocabEntry` | `src/client/lib/idb.ts:1635`, `vocab.ts:319` | Alta manual de palabra con evidencia `source:"saved"` |
+| `lookupWord`, `batchLookup` | `src/client/lib/lexicon.ts:260,283` | Definición del catálogo para el alta manual (con caché offline) |
+| `buildPostChapterConsolidationQueue` | `src/client/lib/practice.ts:561` | Cola de repaso: reencuentros del Cuaderno dentro del capítulo |
+| `recordChapterCompleted` | `src/client/lib/profile-models.ts:600` | Marca «capítulo terminado» en el perfil — ver §5.7 antes de usarla |
+| `menteBaseForms`, `cliticBaseForms`, `isWordToken` | `src/shared/word-form.ts`, `lib/knowledge.ts` | Bases flexivas para el autocompletado del alta manual |
 
 **Aclave:** las piezas de librería están limpias y desacopladas. Lo único soldado
 al lector es el hook `useReaderChapterPrep` (toma ~30 refs de `Reader.tsx`): el
 acompañante debe componer las librerías directamente, no reusar ese hook.
+
+**(rev.) Ojo con `saveVocabEntry` (`vocab.ts:340`):** fija `language:"es"` en la
+palabra y en la evidencia. Para libros en otros idiomas el alta manual va por
+`saveWordWithKnowledge` con el `language` del libro, o se parametriza la
+función.
 
 ### 2.3 El equivalente en servidor (portal `/k`, e-ink)
 
@@ -74,11 +84,16 @@ Estantería / sección «Acompañar lectura»
             └─ Hoja de palabras del capítulo (SectionPreview o variante)
                  ├─ «La conozco» / «No la conozco» → evidencia + Cuaderno
                  ├─ confirmar → confirmPreparation (misma transacción de hoy)
-                 └─ «Agregar palabra» → caja de texto → lookup → saveWordWithKnowledge
+                 ├─ «Agregar palabra» → caja con autocompletado sobre las
+                 │   formas del libro (§5.8) → lookup → saveWordWithKnowledge
+                 └─ «Ya leí este capítulo» (§5.7) → repaso de reencuentros
 ```
 
 Opcional a discutir: «voy por este capítulo» — registrar avance externo para
-sugerir primero el capítulo actual. Ver §5.
+sugerir primero el capítulo actual. Ver §5.4. (rev.) La versión barata para
+v1: recordar solo el «último capítulo abierto» en el store `session` con clave
+propia versionada (`companion:v1:{hash}:last`), sin tocar
+`lecta_user_positions`.
 
 ## 4. Rutas de implementación
 
@@ -127,18 +142,43 @@ para el portal e-ink (su audiencia sí lee en pantalla, es un caso distinto).
    «Palabras por capítulo») o sección propia? El vocabulario de UI lo define Luis.
 2. **Evidencia de «La conozco»:** ¿cuenta igual que la preparación in-app
    (`source:"preparation"`) o con fuente propia (`"acompanante"`)? Cambia cómo
-   pesa en θ y en reportes futuros.
+   pesa en θ y en reportes futuros. (rev.) Recomendación: reusar
+   `"preparation"` al confirmar sugerencias y `"saved"` en el alta manual —
+   son los mismos actos que hoy hace el lector; `source` es texto libre, así
+   que `"acompanante"` es legal pero solo aporta si se van a sacar reportes
+   separados del modo.
 3. **Alta manual:** ¿búsqueda con definición del catálogo (flujo `/k/lookup`) o
    captura libre sin definición? ¿El idioma de la palabra siempre es el del libro?
 4. **«Voy por este capítulo»:** ¿registrar avance externo para ordenar la lista
    de capítulos y priorizar? `lecta_user_positions` guarda `section_index`, pero
    mezclar avance externo con la posición del lector puede corromper el retomado
    — probablemente necesite marca o tabla aparte, o no hacerse en v1.
+   (rev.) Recomendación: v1 con solo «último capítulo abierto» local (clave
+   `companion:v1:{hash}:last` en `session`); el avance externo completo es una
+   decisión aparte con su propio diseño.
 5. **Cuántas palabras por capítulo:** la hoja de lectura topea en 40 y la
    antesala en 5; una lista de estudio para físico quizá quiera ~12–15.
+   (rev.) ~12–15 en la selección principal funciona: `PREPARATION_ROWS_CAP = 40`
+   sigue de tope duro y el resto cae a la bandeja `deferred` colapsada.
 6. **Capítulos ya preparados:** si el registro `preparation:v1:` de ese capítulo
    ya está `reviewed`, ¿mostrar resumen o permitir rehacer? (Misma semántica que
    `decidePreparation`.)
+7. **«Ya leí este capítulo» (rev. — lo que faltaba):** el circuito de
+   aprendizaje (consolidación episódica, cola de reencuentros del Cuaderno,
+   `recordChapterCompleted`) hoy solo se dispara leyendo en la app. Para el
+   lector de papel hay dos sub-decisiones:
+   a) ¿ofrecer la cola de repaso de reencuentros al marcar el capítulo como
+      leído? Recomendado: sí — sin esto las palabras episódicas del lector de
+      papel nunca consolidan;
+   b) ¿contar el capítulo en «Tu recorrido» (`recordChapterCompleted`)?
+      Decidir qué significa la métrica antes de mezclar lectura externa con
+      lectura en pantalla.
+8. **Autocompletado del alta manual (rev.):** escribir con el libro en la otra
+   mano es el punto de máxima fricción. Opciones: (a) autocompletar con las
+   formas del libro — garantiza que la palabra exista, adjunta su frase de
+   contexto e infiere el capítulo donde aparece; (b) captura libre +
+   `lookupWord`. Recomendación: (a) con (b) de reserva, porque la edición
+   física puede no coincidir con el EPUB (§6).
 
 ## 6. Riesgos e invariantes
 
@@ -150,6 +190,17 @@ para el portal e-ink (su audiencia sí lee en pantalla, es un caso distinto).
   mismo patrón que `confirmPrep` (`isDbScopeActive`).
 - **No romper `useReaderChapterPrep`:** el acompañante compone librerías, no
   extrae el hook del lector.
+- **Edición física ≠ EPUB (rev.):** el papel puede ser otra traducción o una
+  edición abreviada. La lista por capítulo es organizativa, no posicional, y
+  el alta manual NO debe exigir que la palabra exista en el EPUB.
+- **Autocompletar pide un índice del libro entero (rev.):** construirlo en
+  idle tras la descarga y cachearlo en IDB con clave versionada propia
+  (`bookForms:v1:{hash}`) — misma regla de migración que `preparation:v1:`.
+- **Cero endpoints nuevos (rev.):** toda escritura reusa `pushWordsToServer` /
+  `pushKnowledgeToServer`; si el diseño pide un endpoint nuevo, algo se salió
+  del camino.
+- **`saveVocabEntry` fijada a `es` (rev.):** ver §2.2 — el alta manual en
+  libros de otro idioma usa `saveWordWithKnowledge` con el idioma del libro.
 - **Bundle:** la superficie completa (parse EPUB + análisis + hoja) va detrás de
   `import()` perezoso; `check:size` es puerta.
 - **Descarga del EPUB:** libros grandes tardan; estado de «Descargando…» como
@@ -169,22 +220,76 @@ para el portal e-ink (su audiencia sí lee en pantalla, es un caso distinto).
    definición del catálogo (o sin ella si no hay ficha).
 5. Sin sesión: todo queda local y se sincroniza después (comportamiento heredado).
 6. `pnpm gate` en verde; la superficie carga diferida sin inflar el arranque.
+7. El alta manual autocompleta desde las formas del libro y, si la palabra no
+   está en el EPUB (edición distinta), se guarda igual tras `lookupWord`.
+8. En un libro en inglés, la palabra agregada a mano queda con `language:"en"`
+   en `savedWords` y `knowledge`.
+9. Un capítulo sin candidatas muestra un estado vacío diseñado — no una hoja
+   en blanco ni un spinner eterno.
 
-## 8. Prompt de auditoría para Antigravity
+## 8. Auditoría con Google Argon
 
-```
-Audita docs/diseno-acompanante-lectura.md como revisor externo, sin escribir código:
+`node scripts/generar-auditoria-acompanante.mjs` genera
+`artifacts/auditoria-acompanante-para-argon.md`: un dossier autocontenido con
+este documento, los archivos citados y las preguntas de auditoría — el mismo
+patrón que `scripts/generar-auditoria-argon.mjs` usó para el subsistema Kindle.
+El dossier se pega entero a Argon; su prompt va embebido al inicio del archivo.
 
-1. Verifica contra el código que el mapa de reutilización (§2) es correcto:
-   archivos, funciones y acoplamientos citados. Señala lo que falte o sobre.
-2. Compara la Ruta A (portal /k) y la Ruta B (app React): ¿la recomendación de B
-   se sostiene? ¿Hay una tercera ruta más simple que no vimos?
-3. Busca invariantes rotos: merges por updatedAt, lápidas, claves preparation:v1:,
-   DbScope por cuenta, presupuesto de bundle, sync offline.
-4. Ataca la §5: ¿qué decisión de producto falta? ¿Cuál de las listadas puedes
-   resolver con evidencia del código en vez de opinión?
-5. Estima el trabajo real de la Ruta B: lista los componentes/hooks nuevos
-   mínimos y qué tests exigiría la regla de cobertura ratchet.
-6. Devuelve: defectos del diseño (crítico/importante/opcional), lo que está bien
-   resuelto, y un plan de fases con verificación por fase si la Ruta B se aprueba.
-```
+## 9. Estado de implementación (2026-11-01)
+
+Implementada la Ruta B completa. Decisiones finales y dónde difieren del
+borrador:
+
+- **Nombre e interna:** etiqueta visible «Leo este libro en papel» (Opciones
+  del libro en la estantería; tocar la portada sigue abriendo el lector —
+  regla zero-friction intacta). En código la superficie es `paperReading`
+  (`Companion` ya es la mascota).
+- **Índice del libro:** se reusa `bookVocab:v1:{hash}` (`loadBookVocab`) —
+  el `bookForms:v1` propuesto se descartó porque el manifiesto ya existe y
+  ya está en borrado/respaldo.
+- **Estado propio:** `paperReading:v1:{hash}` (`lib/paper-reading.ts`) —
+  solo `readTargetIds` + `lastTargetId`; registrado en
+  `isBookScopedSessionKey` y `BACKUP_SESSION_PREFIXES`.
+- **Misma selección del lector:** `buildChapterSuggestionRows`
+  (`lib/preparation-rows.ts`) centraliza la llamada a `buildSuggestionRows`
+  con las mismas fuentes (saved, knowledge, `threshold` de `refreshProfile`,
+  `userTheta`, `isSecondLanguage`) — sin `bookFrequencies` ni umbral aparte,
+  para que las filas coincidan con la antesala. La hoja comparte la caché
+  `chapAn:{hash}:{target}` con el lector (`chapterAnalysisCacheKey`).
+- **Hoja de capítulo propia** (`PaperChapterSheet`), no SectionPreview con
+  prop: la antesala del lector tiene selector de estrategia y «Entrar al
+  capítulo». La fila presentacional sí se comparte
+  (`PreparationAnswerRow`, reexportada de `SectionPreview`).
+- **12 palabras principales** ordenadas por primera aparición en el capítulo
+  (`splitPaperRows`); el resto en «Ver más palabras de este capítulo»
+  (paginado de 8) y «Otras palabras difíciles de medir» colapsadas.
+- **Autoguardado:** cada respuesta es borrador persistido al tocarla;
+  `closeChapter` confirma con `confirmPreparation` al cerrar la hoja, al
+  marcar «Terminé» o al desmontar la pantalla — cerrar el celular no pierde
+  respuestas. «Deshacer» del alta manual solo toca claves creadas en la
+  visita (`manualCreatedRef`).
+- **Alta manual:** autocompletado capítulo → libro → «Buscar en el
+  diccionario»; guarda con `saveWordWithKnowledge` (idioma real del libro),
+  contexto solo si la forma aparece en el capítulo (`contextIfPresent` —
+  `extractChapterContextSnippet` devuelve el inicio cuando no hay
+  coincidencia y guardaría una frase ajena).
+- **«Terminé este capítulo»:** confirma respuestas, marca `readTargetIds`
+  y muestra panel con «Repasar palabras de este libro» (solo si hay
+  palabras del libro en el Cuaderno) — nada de `consolidateEpisodicWord`
+  automático ni minutos fingidos.
+- **Libro solo-en-cuenta:** el botón queda para todos; `openRemoteBook`
+  devuelve `boolean` y el modo entra solo si la descarga cerró bien.
+- **Cuaderno filtrado:** `initialBookFilter` en `Vocabulary`; cada petición
+  remonta la vista por `key` (nonce) — el filtro se aplica una vez y el
+  select queda libre.
+- **Historial:** pantalla y hoja son capas `pushOverlay`; «atrás» cierra la
+  hoja (con autoguardado) antes que la pantalla.
+- **Bundle:** `PaperReading` va por `lazy()` — chunk propio 6.74 kB gzip
+  diferido; arranque inicial quedó en 207.66 kB de 215 kB.
+- **Cobertura:** 6 archivos de prueba unitaria (109 casos), 14 casos de
+  componentes y `e2e/paper-reading.spec.ts` con dos recorridos: local
+  (tap→lector, Opciones→modo, filas, «No la conozco», alta manual,
+  «Terminé», «atrás») y solo-en-cuenta (lista remota → «Leo este libro
+  en papel» → descarga → índice de capítulos).
+- **Puerta:** `pnpm gate` en verde completo — typecheck, lint, 227
+  archivos / 3204 pruebas, build y check:size.

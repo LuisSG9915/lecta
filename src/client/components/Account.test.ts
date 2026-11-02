@@ -123,7 +123,7 @@ describe("Account componente Tú y Login", () => {
     expect(sections.length).toBeGreaterThanOrEqual(2);
     expect(host.textContent).toContain("Lectura y vocabulario");
     expect(host.textContent).toContain("Lengua materna");
-    expect(host.textContent).toContain("Calibración de vocabulario");
+    expect(host.textContent).toContain("Tu nivel y calibración");
     expect(host.textContent).toContain("Meta semanal de lectura");
 
     // Bloque 3: Compañero y logros
@@ -286,7 +286,7 @@ describe("Account componente Tú y Login", () => {
     expect(modal?.querySelector('button[type="submit"]')?.textContent).toBe("Guardar contraseña");
   });
 
-  it("muestra el bloque de enlace con Kindle y el estado de calibración con botón de recalibrar", async () => {
+  it("muestra el bloque de enlace con Kindle y la tarjeta de nivel con un renglón por idioma", async () => {
     render(
       h(Account, {
         presentation: "page",
@@ -302,14 +302,20 @@ describe("Account componente Tú y Login", () => {
     expect(kindleGuide?.textContent).toContain("Modo Kindle");
     expect(kindleGuide?.textContent).toContain("/k");
 
-    // Tarjeta de Nivel y Calibración
+    // Tarjeta de Nivel y Calibración: un renglón por idioma con su
+    // estado real — sin calibrar ofrece «Calibrar», nunca un
+    // porcentaje ni el mensaje viejo de «Aún sin medición».
     const levelCard = host.querySelector(".account-card--level");
     expect(levelCard).toBeTruthy();
     expect(levelCard?.textContent).toContain("Tu nivel y calibración");
-    const recalibrateBtn = Array.from(levelCard?.querySelectorAll("button") ?? []).find(
-      (b) => b.textContent?.includes("Recalibrar mi vocabulario"),
+    expect(levelCard?.textContent).toContain("Español");
+    expect(levelCard?.textContent).toContain("Inglés");
+    expect(levelCard?.textContent).toContain("Sin calibrar");
+    expect(levelCard?.textContent).not.toContain("Aún sin medición");
+    const calibrateBtns = Array.from(levelCard?.querySelectorAll("button") ?? []).filter(
+      (b) => b.textContent?.includes("Calibrar"),
     );
-    expect(recalibrateBtn).toBeTruthy();
+    expect(calibrateBtns.length).toBe(2);
   });
 
   it("renderiza la sección para vincular Kindle por código de 4 letras e input en mayúsculas", async () => {

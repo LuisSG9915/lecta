@@ -97,9 +97,9 @@ describe("DiscoverRail", () => {
   });
 
   it("ordena por cobertura los medidos y conserva el orden curado al final", async () => {
-    // Curado: a, b, c. Cobertura: a ~100% (casa zipf 6 ≥ 3), c ~0%
-    // (rara predicha + una sin ficha), b sin medir → b queda al final
-    // en su lugar curado, no entre medidos.
+    // Curado: a, b, c. Cobertura: a ~100% (casa zipf 6 ≥ 3), c con la
+    // mitad de sus formas sin ficha → «aún sin medir» en vez del ~0%
+    // engañoso, b sin medir → b queda al final en su lugar curado.
     const books = [book("a"), book("b"), book("c")];
     const vocabs: Record<string, ReturnType<typeof vocab>> = {
       a: vocab([["casa", 6]]),
@@ -120,7 +120,7 @@ describe("DiscoverRail", () => {
     // El prefetch es secuencial: a y c medidos, b sin ficha (null →
     // el lazo se detiene ahí y no mide más).
     expect(titles()).toEqual(["Libro a", "Libro c", "Libro b"]);
-    expect(badges()).toEqual(["~100%", "~0%"]);
+    expect(badges()).toEqual(["~100%", "Vocabulario aún sin medir"]);
   });
 
   it("entre libros en tu nivel, el que repite palabras de tu cuaderno va primero", async () => {

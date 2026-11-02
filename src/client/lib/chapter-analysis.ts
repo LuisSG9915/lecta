@@ -45,6 +45,12 @@ export type SerializedChapterAnalysis = {
   text: string;
 };
 
+// Clave de session del análisis por destino: la comparten el lector y
+// la pantalla «Leo este libro en papel» — preparar en una deja listo
+// el análisis para la otra.
+export const chapterAnalysisCacheKey = (bookHash: string, targetId: string) =>
+  `chapAn:${bookHash}:${targetId}`;
+
 export function serializeChapterAnalysis(analysis: ChapterAnalysis): string | null {
   if (analysis.state !== "ready") return null;
   const payload: SerializedChapterAnalysis = {

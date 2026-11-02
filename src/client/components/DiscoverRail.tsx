@@ -13,8 +13,10 @@ import {
 import { getLanguageTheta } from "../lib/profile-models";
 import {
   compareBookCoverages,
+  coverageIsReliable,
   coverageLanguageOf,
   coverageOfBook,
+  COVERAGE_UNMEASURED_LABEL,
   createCoverageInputsLoader,
   inputsForCoverage,
   type BookCoverage,
@@ -261,12 +263,21 @@ export default function DiscoverRail({
                   </div>
                 )}
                 {coverage ? (
-                  <span
-                    className="discover-badge"
-                    title={`Conoces aproximadamente el ${coverage.percent}% del vocabulario de este libro`}
-                  >
-                    ~{coverage.percent}%
-                  </span>
+                  coverageIsReliable(coverage) ? (
+                    <span
+                      className="discover-badge"
+                      title={`Conoces aproximadamente el ${coverage.percent}% del vocabulario de este libro`}
+                    >
+                      ~{coverage.percent}%
+                    </span>
+                  ) : (
+                    <span
+                      className="discover-badge"
+                      title="El catálogo aún no puede medir la mayoría de las palabras de este libro"
+                    >
+                      {COVERAGE_UNMEASURED_LABEL}
+                    </span>
+                  )
                 ) : null}
               </div>
               <div className="discover-meta">

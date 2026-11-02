@@ -510,6 +510,25 @@ export function submitCatAnswer(
 }
 
 /**
+ * Traduce el historial del CAT al formato de recordCalibration:
+ * la palabra del ítem como lema y «Sí la conozco» → "known" /
+ * «No estoy seguro» → "unsure". Nada entra al Cuaderno: solo
+ * queda como evidencia `calibration`, que es lo que leen la
+ * cobertura, Cuenta y el portal Kindle por sincronización.
+ */
+export function catHistoryToCalibration(
+  history: CatResponseRecord[],
+): { words: CalibrationWord[]; answers: CalibrationAnswers } {
+  const words: CalibrationWord[] = [];
+  const answers: CalibrationAnswers = {};
+  for (const record of history) {
+    words.push({ lemma: record.word, definition: null });
+    answers[record.word] = record.known ? "known" : "unsure";
+  }
+  return { words, answers };
+}
+
+/**
  * Salta la calibración en curso preservando la regla Zero-Friction.
  */
 export function skipCatSession(state: CatSessionState): CatSessionState {
@@ -599,6 +618,38 @@ export function skipLanguageCalibration(lang: CalibrationLanguage | string): voi
   }
 
   markLanguageSkipped(norm);
+}
+
+export type LanguageCalibrationStatus = "uncalibrated" | "calibrated" | "skipped";
+
+/**
+ * Estado de la prueba rápida por idioma para Cuenta: distingue
+ * «nunca la hizo», «la terminó» y «decidió saltarla». Las llaves
+ * `lecta:cat_*` son las que escriben markLanguageCalibrated y
+ * markLanguageSkipped; `calibrationDoneKey` a secas solo queda de
+ * marcas antiguas y equivale a «nivel estándar».
+ */
+export function languageCalibrationStatus(lang: string): LanguageCalibrationStatus {
+  const norm = (lang || "es").toLowerCase().startsWith("en") ? "en" : "es";
+  const mem = inMemoryCalibrationStatus.get(norm);
+  if (mem === "done") return "calibrated";
+  if (mem === "skipped") return "skipped";
+  if (typeof window !== "undefined" && window.localStorage) {
+    try {
+      if (window.localStorage.getItem(`lecta:cat_calibrated:${norm}`) === "1") {
+        return "calibrated";
+      }
+      if (window.localStorage.getItem(`lecta:cat_skipped:${norm}`) === "1") {
+        return "skipped";
+      }
+      if (window.localStorage.getItem(calibrationDoneKey(norm)) === "1") {
+        return "skipped";
+      }
+    } catch {
+      // ignorar error de acceso a storage
+    }
+  }
+  return "uncalibrated";
 }
 
 /**

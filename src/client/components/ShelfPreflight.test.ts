@@ -52,7 +52,6 @@ vi.mock("../lib/book-vocab", () => ({
     missing: [],
   })),
   analyzeStoredBook: vi.fn(async () => null),
-  enqueueChapterPrimingWords: vi.fn(async () => ({ enqueued: 20, forms: ["arcano", "efimero"] })),
 }));
 
 vi.mock("../lib/coverage", () => ({
@@ -64,12 +63,17 @@ vi.mock("../lib/coverage", () => ({
     evidenceCount: 10,
   })),
   coverageOfBook: vi.fn(() => ({
-    percent: 92, // 8% fuera de cobertura (> 2%)
+    percent: 92,
     total: 1000,
     missing: 10,
     uncertain: 20,
+    measuredShare: 0.97,
     newWordsCount: 80,
   })),
+  coverageIsReliable: vi.fn(
+    (cov: { measuredShare: number }) => cov.measuredShare >= 0.6,
+  ),
+  COVERAGE_UNMEASURED_LABEL: "Vocabulario aún sin medir",
   affinityTierOf: vi.fn(() => "reto"),
   affinityBadgeLabel: vi.fn(() => "Reto Ideal (i+1)"),
 }));
@@ -109,7 +113,7 @@ const mockBook: ShelfItem = {
   sectionCount: 10,
 };
 
-describe("Pre-Vuelo de Dificultad en Estantería (Fase 2)", () => {
+describe("Cobertura de vocabulario en Estantería (sin escrituras ocultas)", () => {
   let host: HTMLDivElement;
   let root: Root;
 
@@ -126,7 +130,7 @@ describe("Pre-Vuelo de Dificultad en Estantería (Fase 2)", () => {
     host.remove();
   });
 
-  it("muestra el badge amigable de pre-vuelo cuando las palabras nuevas superan el 2%", async () => {
+  it("el destacado muestra «% vocabulario conocido» sin botón de activar ayudas", async () => {
     await act(async () => {
       root.render(
         h(Shelf, {
@@ -141,19 +145,18 @@ describe("Pre-Vuelo de Dificultad en Estantería (Fase 2)", () => {
       for (let i = 0; i < 5; i++) await Promise.resolve();
     });
 
+    const badge = host.querySelector(".shelf-affinity-badge");
+    expect(badge).not.toBeNull();
+    expect(badge?.textContent).toContain("92% vocabulario conocido");
 
-    const preflight = host.querySelector(".shelf-difficulty-preflight");
-    expect(preflight).not.toBeNull();
-    expect(preflight?.textContent).toContain("Este libro usa ~8% de palabras nuevas para ti — ¿Activamos ayudas automáticas?");
-
-    const activateBtn = host.querySelector<HTMLButtonElement>(".btn--activate-assists");
-    expect(activateBtn).not.toBeNull();
-    expect(activateBtn?.textContent).toContain("Activar ayudas");
+    // El pre-vuelo con escrituras al Cuaderno ya no existe: no hay
+    // botón de «Activar ayudas» ni texto de «palabras nuevas».
+    expect(host.querySelector(".btn--activate-assists")).toBeNull();
+    expect(host.querySelector(".shelf-difficulty-preflight")).toBeNull();
+    expect(host.textContent).not.toContain("palabras nuevas");
   });
 
-  it("al aceptar, encola las palabras clave para priming y actualiza el estado", async () => {
-    const { enqueueChapterPrimingWords } = await import("../lib/book-vocab");
-
+  it("las filas muestran el mismo encuadre «% vocabulario conocido», sin botón", async () => {
     await act(async () => {
       root.render(
         h(Shelf, {
@@ -168,23 +171,10 @@ describe("Pre-Vuelo de Dificultad en Estantería (Fase 2)", () => {
       for (let i = 0; i < 5; i++) await Promise.resolve();
     });
 
-    const activateBtn = host.querySelector<HTMLButtonElement>(".btn--activate-assists");
-    expect(activateBtn).not.toBeNull();
-
-    await act(async () => {
-      activateBtn?.click();
-      await Promise.resolve();
-    });
-
-    expect(enqueueChapterPrimingWords).toHaveBeenCalledWith(
-      "h-test-1",
-      "es",
-      expect.anything(),
-    );
-
-    const doneBadge = host.querySelector(".shelf-difficulty-preflight__done");
-    expect(doneBadge).not.toBeNull();
-    expect(doneBadge?.textContent).toContain("Ayudas activadas");
+    const rowChip = host.querySelector(".shelf-difficulty-preflight-item");
+    expect(rowChip).not.toBeNull();
+    expect(rowChip?.textContent).toContain("~92% vocabulario conocido");
+    expect(rowChip?.querySelector("button")).toBeNull();
   });
 
   it("tocar el libro abre el lector en 0 segundos sin modales bloqueantes", async () => {

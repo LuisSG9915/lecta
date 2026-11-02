@@ -17,10 +17,8 @@ import {
   type PreparationRow,
   type PreparationAnswers,
 } from "../lib/preparation";
-import {
-  buildSuggestionRows,
-  type SuggestionRows,
-} from "../lib/section-words";
+import type { SuggestionRows } from "../lib/section-words";
+import { buildChapterSuggestionRows } from "../lib/preparation-rows";
 import {
   planPredictiveChapterPrecache,
   prefetchUpcomingChaptersLexicon,
@@ -36,7 +34,6 @@ import type { BookStartRecord } from "../lib/book-start";
 import type { VisitEventDraft } from "../lib/reading-events";
 import { markLevel, type MarkLevel } from "../lib/word-level";
 import { estimateProfile, type KnowledgeEvidence, type VocabProfile } from "../lib/knowledge";
-import { loadUserTheta } from "../lib/profile-models";
 
 type ReadyAnalysis = Extract<ChapterAnalysis, { state: "ready" }>;
 
@@ -184,25 +181,22 @@ export function useReaderChapterPrep({
       lang: string,
       lex?: Map<string, PreparationRow>,
     ): SuggestionRows =>
-      buildSuggestionRows({
-        language: lang,
-        forms: analysis.forms,
-        entries: analysis.entries,
-        capitalOnly: analysis.capitalOnly,
-        text: analysis.text,
-        saved: savedForms.current,
-        knowledge: knowledgeMapRef.current,
-        threshold:
-          profileRef.current?.threshold ??
-          estimateProfile(
-            [...evidenceRef.current.values()],
-            adjustRef.current,
-            baseThresholdRef.current,
-          ).threshold,
-        userTheta: loadUserTheta(lang),
-        isSecondLanguage: lang !== loadNativeLanguage(),
+      buildChapterSuggestionRows(
+        analysis,
+        lang,
+        {
+          saved: savedForms.current,
+          knowledge: knowledgeMapRef.current,
+          threshold:
+            profileRef.current?.threshold ??
+            estimateProfile(
+              [...evidenceRef.current.values()],
+              adjustRef.current,
+              baseThresholdRef.current,
+            ).threshold,
+        },
         lex,
-      }),
+      ),
     [
       savedForms,
       knowledgeMapRef,

@@ -398,6 +398,12 @@ describe("sessionKeysForBackup", () => {
     ).toContain("midChapterRecall:v1:b1:cap-1");
   });
 
+  it("respalda el registro de lectura en papel por prefijo", () => {
+    expect(
+      sessionKeysForBackup(["paperReading:v1:b1", "unrelated:key"]),
+    ).toContain("paperReading:v1:b1");
+  });
+
   it("no respalda claves arbitrarias ni duplica", () => {
     const keys = sessionKeysForBackup(["readingWpm", "unrelated:key"]);
     expect(keys).not.toContain("unrelated:key");

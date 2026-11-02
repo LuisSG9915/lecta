@@ -89,6 +89,27 @@ export async function preloadAttentionBudgetWords(
   }
 }
 
+// Preferencia de ayuda de vocabulario por libro: la franja de
+// apertura del lector la escribe una vez («on» / «off» /
+// «dismissed») y cada apertura la aplica sobre el interruptor de
+// micro-destacados. Muere con el libro (isBookScopedSessionKey) —
+// `bookHelp:v1:{hash}`. Jamás escribe palabras: es solo la decisión.
+export const bookHelpKey = (bookHash: string) => `bookHelp:v1:${bookHash}`;
+
+// Qué hacer al abrir el libro según la decisión guardada: aplicar la
+// preferencia sin volver a preguntar, preguntar (solo en libros
+// nuevos sin decisión) o nada. «dismissed» («Ahora no») también
+// cuenta como respuesta — sin ella la franja reaparecería en cada
+// apertura.
+export const resolveBookHelpOpening = (
+  decision: string | null,
+  isNewBook: boolean,
+): "apply-on" | "apply-off" | "ask" | "none" => {
+  if (decision === "on") return "apply-on";
+  if (decision === "off") return "apply-off";
+  return decision === null && isNewBook ? "ask" : "none";
+};
+
 // Configuración de micro-destacados activados por libro
 const bookMicroHighlightsMemory = new Map<string, boolean>();
 

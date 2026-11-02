@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import {
   filterAttentionBudgetWords,
   isBookMicroHighlightsEnabled,
+  resolveBookHelpOpening,
   saveBookMicroHighlightsEnabled,
   MAX_ATTENTION_BUDGET,
 } from "./attention-budget";
@@ -97,5 +98,15 @@ describe("Attention Budget & Micro-Highlights (Fase 2)", () => {
 
     saveBookMicroHighlightsEnabled(book, true);
     expect(isBookMicroHighlightsEnabled(book)).toBe(true);
+  });
+
+  it("la franja de ayuda solo pregunta en libro nuevo y sin decisión previa", () => {
+    expect(resolveBookHelpOpening(null, true)).toBe("ask");
+    expect(resolveBookHelpOpening(null, false)).toBe("none");
+    expect(resolveBookHelpOpening("on", true)).toBe("apply-on");
+    expect(resolveBookHelpOpening("off", true)).toBe("apply-off");
+    // «Ahora no» también es respuesta: no se vuelve a preguntar.
+    expect(resolveBookHelpOpening("dismissed", true)).toBe("none");
+    expect(resolveBookHelpOpening("dismissed", false)).toBe("none");
   });
 });

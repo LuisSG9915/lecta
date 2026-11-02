@@ -221,7 +221,14 @@ describe("isBookScopedSessionKey", () => {
     expect(isBookScopedSessionKey("abc", "preparation:v1:abc2:cap1")).toBe(
       false,
     );
+    expect(isBookScopedSessionKey("abc", "paperReading:v1:abc2")).toBe(false);
     expect(isBookScopedSessionKey("abc2", "bookStart:v1:abc")).toBe(false);
+  });
+
+  it("el registro de lectura en papel sale con su libro", () => {
+    expect(isBookScopedSessionKey("abc", "paperReading:v1:abc")).toBe(true);
+    expect(isBookScopedSessionKey("abc", "bookHelp:v1:abc")).toBe(true);
+    expect(isBookScopedSessionKey("abc", "bookHelp:v1:abc2")).toBe(false);
   });
 
   it("las respuestas de capítulo también salen con su libro", () => {

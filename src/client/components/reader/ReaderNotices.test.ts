@@ -25,6 +25,12 @@ const propsWithKeyWords = (keyWords: number): ReaderNoticesProps => ({
   isDeepReading: false,
   acceptCalibrationNotice: vi.fn(),
   dismissCalibrationNotice: vi.fn(),
+  helpNotice: false,
+  helpIsCalibrated: false,
+  acceptHelpNotice: vi.fn(),
+  calibrateHelpNotice: vi.fn(),
+  declineHelpNotice: vi.fn(),
+  dismissHelpNotice: vi.fn(),
   fatigueNotice: false,
   setFatigueNotice: vi.fn(),
 });
@@ -124,5 +130,100 @@ describe("ReaderNotices: píldora de transición ante fatiga (Fase 3)", () => {
     });
     expect(onStartAudio5Min).toHaveBeenCalled();
     expect(setFatigueNotice).toHaveBeenCalledWith(false);
+  });
+});
+
+describe("ReaderNotices: franja de ayuda de vocabulario al abrir libro nuevo", () => {
+  let container: HTMLDivElement;
+  let root: Root;
+
+  beforeEach(() => {
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(() => {
+    act(() => {
+      root.unmount();
+    });
+    container.remove();
+  });
+
+  const renderStrip = (over: Partial<ReaderNoticesProps> = {}) => {
+    act(() => {
+      root.render(
+        h(ReaderNotices, {
+          ...propsWithKeyWords(0),
+          previewSuggested: false,
+          chapterAnalysis: null,
+          helpNotice: true,
+          ...over,
+        }),
+      );
+    });
+    return container.querySelector(".reader-help-strip");
+  };
+
+  it("sin calibrar ofrece medir el nivel en 15 s y activar ayudas", () => {
+    const strip = renderStrip({ helpIsCalibrated: false });
+    expect(strip).not.toBeNull();
+    expect(strip?.textContent).toContain(
+      "¿Te preparo las palabras clave antes de cada capítulo?",
+    );
+    const texts = [...(strip?.querySelectorAll("button") ?? [])].map((b) =>
+      b.textContent?.trim(),
+    );
+    expect(texts).toContain("Medir mi nivel en 15 s");
+    expect(texts).toContain("Activar ayudas");
+    expect(texts).toContain("No, gracias");
+  });
+
+  it("calibrado explica la ayuda y ofrece una sola acción afirmativa", () => {
+    const strip = renderStrip({ helpIsCalibrated: true });
+    expect(strip?.textContent).toContain("ajustadas a tu nivel");
+    const texts = [...(strip?.querySelectorAll("button") ?? [])].map((b) =>
+      b.textContent?.trim(),
+    );
+    expect(texts).toContain("Sí, prepárame");
+    expect(texts).not.toContain("Medir mi nivel en 15 s");
+  });
+
+  it("cada salida llama su callback: aceptar, medir, declinar y descartar", () => {
+    const acceptHelpNotice = vi.fn();
+    const calibrateHelpNotice = vi.fn();
+    const declineHelpNotice = vi.fn();
+    const dismissHelpNotice = vi.fn();
+    const strip = renderStrip({
+      helpIsCalibrated: false,
+      acceptHelpNotice,
+      calibrateHelpNotice,
+      declineHelpNotice,
+      dismissHelpNotice,
+    })!;
+
+    const byText = (t: string) =>
+      [...strip!.querySelectorAll("button")].find((b) =>
+        b.textContent?.trim().includes(t),
+      )!;
+
+    act(() => byText("Medir mi nivel en 15 s").click());
+    expect(calibrateHelpNotice).toHaveBeenCalledTimes(1);
+    act(() => byText("Activar ayudas").click());
+    expect(acceptHelpNotice).toHaveBeenCalledTimes(1);
+    act(() => byText("No, gracias").click());
+    expect(declineHelpNotice).toHaveBeenCalledTimes(1);
+    act(() => strip!.querySelector(".reader-return-dismiss")!.dispatchEvent(
+      new MouseEvent("click", { bubbles: true }),
+    ));
+    expect(dismissHelpNotice).toHaveBeenCalledTimes(1);
+  });
+
+  it("cede a los avisos de mayor prioridad (retomar, preparación, calibración)", () => {
+    const strip = renderStrip({
+      helpIsCalibrated: false,
+      calNotice: true,
+    });
+    expect(strip).toBeNull();
   });
 });

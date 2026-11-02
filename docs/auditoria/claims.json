@@ -64,7 +64,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/lib/coverage.ts",
-          "line": 215,
+          "line": 256,
           "window": 1,
           "expect": "COVERAGE_FLUID_MIN = 94",
           "why": "umbral único de lectura fluida"
@@ -72,7 +72,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/lib/coverage.ts",
-          "line": 216,
+          "line": 257,
           "window": 1,
           "expect": "COVERAGE_IDEAL_MIN = 86",
           "why": "umbral único de reto ideal"
@@ -80,7 +80,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/lib/coverage.ts",
-          "line": 191,
+          "line": 214,
           "window": 1,
           "expect": "reencuentrosCount: reencounterLemmas\\.size",
           "why": "la cobertura cuenta lemas distintos del Cuaderno que reaparecen en el libro"
@@ -135,7 +135,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/hooks/useReaderChapterPrep.ts",
-          "line": 51,
+          "line": 48,
           "window": 2,
           "expect": "unknownKeyWordsCount <= 0",
           "why": "solo se ofrece si hay palabras desconocidas"
@@ -245,7 +245,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/lib/calibration.ts",
-          "line": 543,
+          "line": 562,
           "window": 0,
           "expect": "saveUserLanguageProfile\\(updatedProfile\\)",
           "why": "el CAT persiste θ en el perfil, la única llave"
@@ -286,7 +286,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/components/Reader.tsx",
-          "line": 4644,
+          "line": 4739,
           "window": 20,
           "expect": "updateLanguageTheta\\(currentLang, beta, 1, 1\\.0\\)",
           "why": "onMarkKnown sube theta con outcome 1"
@@ -367,7 +367,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/lib/idb.ts",
-          "line": 2110,
+          "line": 2112,
           "window": 1,
           "expect": "if \\(existing\\?\\.deleted\\) return existing",
           "why": "una inferencia pasiva no revive lo borrado"
@@ -467,7 +467,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/components/Vocabulary.tsx",
-          "line": 1697,
+          "line": 1704,
           "window": 1,
           "expect": "await grade\\(item, wrongs",
           "why": "cada ejercicio registra un solo repaso al calificarse"
@@ -676,7 +676,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/components/Vocabulary.tsx",
-          "line": 559,
+          "line": 563,
           "window": 3,
           "expect": "const RETENTION_CHECK_MIN_AGE_DAYS = 30",
           "why": "el chequeo de retención solo ofrece palabras con 30 o más días desde su último repaso"

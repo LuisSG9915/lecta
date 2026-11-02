@@ -39,10 +39,25 @@ const render = (props: Partial<CalibrationProps> = {}) =>
         onComplete: props.onComplete,
         language: props.language ?? "es",
         words: props.words,
+        hasPendingBook: props.hasPendingBook,
       }),
     );
     await Promise.resolve();
   });
+
+// Responde «Sí la conozco» hasta que la sesión adaptativa termine
+// (el botón desaparece al entrar la pantalla de resultado).
+const answerAll = () => {
+  for (let i = 0; i < 12; i++) {
+    const yesBtn = button("Sí la conozco");
+    if (!yesBtn) break;
+    act(() => {
+      yesBtn.dispatchEvent(
+        new MouseEvent("click", { bubbles: true, cancelable: true }),
+      );
+    });
+  }
+};
 
 const text = () => host.textContent ?? "";
 const button = (label: string) =>
@@ -115,44 +130,53 @@ describe("Calibration (CAT 15-Segundos Zero-Friction)", () => {
     expect(dots[1].classList.contains("is-active")).toBe(true);
   });
 
-  it("finaliza en 6 a 8 clics invocando onComplete y onDone con micro-celebración", async () => {
-    vi.useFakeTimers();
+  it("al terminar muestra la pantalla de resultado y espera el toque en «Listo»", async () => {
     const onDone = vi.fn();
     const onComplete = vi.fn();
 
     await render({ onDone, onComplete });
+    answerAll();
 
-    // Responder sucesivamente hasta que se complete (máx 8 clics)
-    for (let i = 0; i < 8; i++) {
-      const yesBtn = button("Sí la conozco");
-      if (!yesBtn) break;
-      act(() => {
-        yesBtn.dispatchEvent(
-          new MouseEvent("click", { bubbles: true, cancelable: true }),
-        );
-      });
-    }
-
-    // Al completarse, muestra el mensaje amigable sin jerga técnica
+    // Pantalla de resultado con nivel entendible, sin jerga técnica
+    expect(text()).toContain("Español listo · Nivel estimado:");
     expect(text()).toContain(
-      "¡Listo! Lecta ajustó las ayudas del capítulo a tu ritmo.",
+      "Lecta ajustará las ayudas de cada capítulo a tu nivel.",
     );
-    expect(text()).toContain("Abriendo tu lectura…");
 
-    // Avanzar el micro-timer de celebración (650ms)
-    act(() => {
-      vi.advanceTimersByTime(700);
-    });
-
+    // onComplete se dispara al terminar; la hoja NO se cierra sola
     expect(onComplete).toHaveBeenCalledTimes(1);
-    expect(typeof onComplete.mock.calls[0][0]).toBe("number");
+    const result = onComplete.mock.calls[0][0] as {
+      theta: number;
+      history: { word: string; known: boolean }[];
+    };
+    expect(typeof result.theta).toBe("number");
+    expect(result.history.length).toBeGreaterThanOrEqual(6);
+    expect(result.history.every((r) => typeof r.known === "boolean")).toBe(true);
+    expect(onDone).not.toHaveBeenCalled();
+
+    click("Listo");
     expect(onDone).toHaveBeenCalledTimes(1);
 
     // El perfil de idioma fue actualizado
     const profile = loadUserLanguageProfile();
     expect(profile.thetaByLang?.es).toBeDefined();
+  });
 
-    vi.useRealTimers();
+  it("con un libro esperando el botón dice «Continuar al libro →» y Escape cierra igual", async () => {
+    const onDone = vi.fn();
+
+    await render({ onDone, hasPendingBook: true });
+    answerAll();
+
+    expect(text()).toContain("Nivel estimado:");
+    expect(button("Continuar al libro →")).toBeTruthy();
+    expect(button("Listo")).toBeFalsy();
+    expect(onDone).not.toHaveBeenCalled();
+
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    });
+    expect(onDone).toHaveBeenCalledTimes(1);
   });
 
   it("el botón «Saltar e ir al libro →» cierra la prueba en 1 toque y respeta Zero-Friction", async () => {

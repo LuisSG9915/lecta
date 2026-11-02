@@ -26,7 +26,9 @@ import {
 import {
   affinityBadgeLabel,
   affinityTierOf,
+  coverageIsReliable,
   coverageOfBook,
+  COVERAGE_UNMEASURED_LABEL,
   createCoverageInputsLoader,
   type BookCoverage,
 } from "../lib/coverage";
@@ -100,7 +102,10 @@ export type ShelfProps = {
   dueReviewsCount?: number;
   hasCalibrated?: boolean;
   onSelect?: (book: BookLike, initialWord?: string) => void;
-  onPrepareBook?: (book: BookLike) => void;
+  // «Leo este libro en papel»: índice de capítulos con palabras para
+  // quien lee la edición física. El contenedor decide si primero hay
+  // que descargar el libro (remoteOnly).
+  onPaperBook?: (book: ShelfItem) => void;
   onStartCalibration?: () => void;
   onBooksChange?: () => Promise<void> | void;
   onOpenVocab?: () => void;
@@ -126,6 +131,9 @@ export type ShelfProps = {
   // Sube cuando la sincronización trae intervalos nuevos: la meta de
   // la semana relee su progreso sin recargar la estantería.
   activityVersion?: number;
+  // Sube al cerrar la calibración: la cobertura se recalcula con la
+  // evidencia recién guardada sin remontar la estantería.
+  vocabVersion?: number;
   onRequestCalibration?: () => void;
 };
 
@@ -176,7 +184,7 @@ export default function Shelf({
   dueReviewsCount: propDueReviewsCount,
   hasCalibrated,
   onSelect,
-  onPrepareBook,
+  onPaperBook,
   onStartCalibration,
   onBooksChange,
   onOpen = () => {},
@@ -187,6 +195,7 @@ export default function Shelf({
   onDownloadBook,
   downloadingHash,
   activityVersion = 0,
+  vocabVersion = 0,
   onOpenJourney,
   onOpenPractice,
   onRequestCalibration,
@@ -398,18 +407,6 @@ export default function Shelf({
   // catálogo (bookVocab:v1:{hash}). Primero lo ya analizado; los que
   // falten se analizan de uno en uno y solo con red — nunca compite
   // con abrir un libro.
-  const [activatedAssists, setActivatedAssists] = useState<Set<string>>(() => new Set());
-
-  const handleActivateAssists = async (targetBook: ShelfItem | { hash: string; language?: string }) => {
-    setActivatedAssists((prev) => new Set(prev).add(targetBook.hash));
-    try {
-      const { enqueueChapterPrimingWords } = await import("../lib/book-vocab");
-      await enqueueChapterPrimingWords(targetBook.hash, targetBook.language || "es", captureDbScope());
-    } catch {
-      // silencioso
-    }
-  };
-
   const [bookCoverages, setBookCoverages] = useState<
     Map<string, BookCoverage>
   >(new Map());
@@ -462,7 +459,7 @@ export default function Shelf({
     return () => {
       cancelled = true;
     };
-  }, [library]);
+  }, [library, vocabVersion]);
 
   // Consejo del día: una sola petición por montaje; las puertas de
   // tips.ts (sesión, «Usar IA», datos mínimos, cadencia) deciden si
@@ -708,6 +705,7 @@ export default function Shelf({
   }
 
   const heroPosition = current ? positionByHash.get(current.hash) : undefined;
+  const heroCoverage = current ? bookCoverages.get(current.hash) : undefined;
 
   const isFirstTimeReader =
     library.length === 0 ||
@@ -1010,68 +1008,30 @@ export default function Shelf({
                   <div className="shelf-hero-summary">
                     <div className="shelf-hero-eyebrow-row">
                       <p className="eyebrow">Tu Mesa de Lectura</p>
-                      {bookCoverages.get(current.hash) ? (
-                        <span
-                          className={`shelf-affinity-badge shelf-affinity-badge--${affinityTierOf(bookCoverages.get(current.hash)!.percent)}`}
-                          title={`Afinidad léxica: ${bookCoverages.get(current.hash)!.percent}%${
-                            bookCoverages.get(current.hash)!.reencuentrosCount
-                              ? ` · Repite ${bookCoverages.get(current.hash)!.reencuentrosCount} de tu cuaderno`
-                              : ""
-                          }`}
-                        >
-                          {bookCoverages.get(current.hash)!.percent}% vocabulario conocido
-                        </span>
+                      {heroCoverage ? (
+                        coverageIsReliable(heroCoverage) ? (
+                          <span
+                            className={`shelf-affinity-badge shelf-affinity-badge--${affinityTierOf(heroCoverage.percent)}`}
+                            title={`Afinidad léxica: ${heroCoverage.percent}%${
+                              heroCoverage.reencuentrosCount
+                                ? ` · Repite ${heroCoverage.reencuentrosCount} de tu cuaderno`
+                                : ""
+                            }`}
+                          >
+                            {heroCoverage.percent}% vocabulario conocido
+                          </span>
+                        ) : (
+                          <span
+                            className="shelf-affinity-badge"
+                            title="El catálogo aún no puede medir la mayoría de las palabras de este libro"
+                          >
+                            {COVERAGE_UNMEASURED_LABEL}
+                          </span>
+                        )
                       ) : null}
                     </div>
                     <h2 className="shelf-hero-title">{displayTitle(current.name, current.title)}</h2>
                     {current.author ? <p className="meta">{current.author}</p> : null}
-                    {bookCoverages.get(current.hash) && (100 - bookCoverages.get(current.hash)!.percent) > 2 ? (
-                      <div
-                        className="shelf-difficulty-preflight"
-                        role="region"
-                        aria-label="Pre-vuelo de dificultad"
-                        style={{
-                          marginTop: "0.5rem",
-                          padding: "0.4rem 0.65rem",
-                          background: "rgba(127,127,127,0.08)",
-                          borderRadius: "6px",
-                          fontSize: "0.82rem",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          gap: "0.5rem",
-                          flexWrap: "wrap",
-                        }}
-                      >
-                        <span className="shelf-difficulty-preflight__text">
-                          Este libro usa ~{100 - bookCoverages.get(current.hash)!.percent}% de palabras nuevas para ti — ¿Activamos ayudas automáticas?
-                        </span>
-                        {activatedAssists.has(current.hash) ? (
-                          <span className="shelf-difficulty-preflight__done" style={{ fontWeight: 600, color: "var(--vermilion)" }}>
-                            ✓ Ayudas activadas
-                          </span>
-                        ) : (
-                          <button
-                            type="button"
-                            className="shelf-difficulty-preflight__btn btn--activate-assists"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              void handleActivateAssists(current);
-                            }}
-                            style={{
-                              border: "1px solid currentColor",
-                              background: "transparent",
-                              borderRadius: "999px",
-                              padding: "0.2rem 0.6rem",
-                              fontSize: "0.76rem",
-                              cursor: "pointer",
-                            }}
-                          >
-                            Activar ayudas
-                          </button>
-                        )}
-                      </div>
-                    ) : null}
                     {habitReminder && (
                       <div
                         className="shelf-companion-habit-card"
@@ -1461,16 +1421,25 @@ export default function Shelf({
                         </span>
                       ) : null}
                       {cov ? (
-                        <span
-                          className={`shelf-affinity-badge shelf-affinity-badge--${affinityTierOf(cov.percent)}`}
-                          title={`Afinidad léxica: ~${cov.percent}%${
-                            cov.reencuentrosCount
-                              ? ` · Repite ${cov.reencuentrosCount} de tu cuaderno`
-                              : ""
-                          }`}
-                        >
-                          {affinityBadgeLabel(cov.percent)}
-                        </span>
+                        coverageIsReliable(cov) ? (
+                          <span
+                            className={`shelf-affinity-badge shelf-affinity-badge--${affinityTierOf(cov.percent)}`}
+                            title={`Afinidad léxica: ~${cov.percent}%${
+                              cov.reencuentrosCount
+                                ? ` · Repite ${cov.reencuentrosCount} de tu cuaderno`
+                                : ""
+                            }`}
+                          >
+                            {affinityBadgeLabel(cov.percent)}
+                          </span>
+                        ) : (
+                          <span
+                            className="shelf-affinity-badge"
+                            title="El catálogo aún no puede medir la mayoría de las palabras de este libro"
+                          >
+                            {COVERAGE_UNMEASURED_LABEL}
+                          </span>
+                        )
                       ) : null}
                     </button>
                     {total > 0 && total <= 8 ? (
@@ -1494,35 +1463,16 @@ export default function Shelf({
                         />
                       </span>
                     ) : null}
-                    {cov && (100 - cov.percent) > 2 ? (
+                    {cov ? (
                       <div
                         className="shelf-difficulty-preflight-item"
                         style={{ fontSize: "0.74rem", marginTop: "0.25rem", opacity: 0.9 }}
                       >
-                        <span>~{100 - cov.percent}% vocabulario nuevo</span>
-                        {activatedAssists.has(book.hash) ? (
-                          <span style={{ marginLeft: "0.4rem", color: "var(--vermilion)" }}>✓ Ayudas activadas</span>
-                        ) : (
-                          <button
-                            type="button"
-                            className="btn--activate-assists"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              void handleActivateAssists(book);
-                            }}
-                            style={{
-                              marginLeft: "0.35rem",
-                              background: "transparent",
-                              border: "none",
-                              textDecoration: "underline",
-                              cursor: "pointer",
-                              fontSize: "inherit",
-                              color: "inherit",
-                            }}
-                          >
-                            Activar ayudas
-                          </button>
-                        )}
+                        <span>
+                          {coverageIsReliable(cov)
+                            ? `~${cov.percent}% vocabulario conocido`
+                            : COVERAGE_UNMEASURED_LABEL}
+                        </span>
                       </div>
                     ) : null}
                     <div className="shelf-book-footer">
@@ -1648,18 +1598,21 @@ export default function Shelf({
                   </div>
                 ) : null}
 
-                {onPrepareBook && !optionsBook.remoteOnly ? (
+                {onPaperBook ? (
                   <div className="shelf-options-section">
                     <button
                       type="button"
                       className="btn shelf-options-prep-btn"
+                      disabled={downloadingHash === optionsBook.hash}
                       onClick={() => {
                         const target = optionsBook;
                         setOptionsBook(null);
-                        onPrepareBook(target);
+                        onPaperBook(target);
                       }}
                     >
-                      Preparar vocabulario antes de leer…
+                      {downloadingHash === optionsBook.hash
+                        ? "Descargando libro…"
+                        : "Leo este libro en papel"}
                     </button>
                   </div>
                 ) : null}

@@ -165,6 +165,11 @@ function Row({
   );
 }
 
+// Fila presentacional de respuesta conocida/desconocida, compartida
+// con la hoja de «Leo este libro en papel» (mismo diseño, sin la
+// maquinaria de pórtico que rodea a SectionPreview).
+export { Row as PreparationAnswerRow };
+
 function PrimingCardView({
   bookId,
   chapterTitle,

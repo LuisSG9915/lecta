@@ -35,6 +35,14 @@ export interface ReaderNoticesProps {
   isDeepReading: boolean;
   acceptCalibrationNotice: () => void | Promise<unknown>;
   dismissCalibrationNotice: () => void;
+  // Franja de ayuda de vocabulario al abrir un libro nuevo: una sola
+  // vez por libro; «helpIsCalibrated» elige la variante del texto.
+  helpNotice: boolean;
+  helpIsCalibrated: boolean;
+  acceptHelpNotice: () => void;
+  calibrateHelpNotice: () => void | Promise<unknown>;
+  declineHelpNotice: () => void;
+  dismissHelpNotice: () => void;
   fatigueNotice: boolean;
   setFatigueNotice: (value: boolean) => void;
   onActivateFocusRule?: () => void;
@@ -61,6 +69,12 @@ export function ReaderNotices(props: ReaderNoticesProps) {
   isDeepReading,
   acceptCalibrationNotice,
   dismissCalibrationNotice,
+  helpNotice,
+  helpIsCalibrated,
+  acceptHelpNotice,
+  calibrateHelpNotice,
+  declineHelpNotice,
+  dismissHelpNotice,
   fatigueNotice,
   setFatigueNotice,
   onActivateFocusRule,
@@ -160,6 +174,51 @@ export function ReaderNotices(props: ReaderNoticesProps) {
         type="button"
         className="reader-return-dismiss"
         onClick={dismissCalibrationNotice}
+        aria-label="Ahora no"
+      >
+        ×
+      </button>
+    </div>
+  ) : null}
+
+  {/* Ayuda de vocabulario al abrir un libro nuevo: pregunta una
+      sola vez por libro, contextual según si ya calibró el idioma.
+      Nunca bloquea la lectura — misma franja, misma cadena de
+      exclusión que la invitación a calibrar. */}
+  {helpNotice && !prep && !prepNotice && !resumeCard && !calNotice && !isDeepReading ? (
+    <div className="reader-prep reader-help-strip" role="status">
+      <span className="reader-prep-text">
+        {helpIsCalibrated
+          ? "¿Te preparo las palabras clave de cada capítulo, ajustadas a tu nivel?"
+          : "¿Te preparo las palabras clave antes de cada capítulo? 15 segundos bastan para ajustarlas a tu nivel."}
+      </span>
+      {helpIsCalibrated ? null : (
+        <button
+          type="button"
+          className="btn btn--secondary reader-prep-measure"
+          onClick={() => void calibrateHelpNotice()}
+        >
+          Medir mi nivel en 15 s
+        </button>
+      )}
+      <button
+        type="button"
+        className="btn reader-prep-open"
+        onClick={acceptHelpNotice}
+      >
+        {helpIsCalibrated ? "Sí, prepárame" : "Activar ayudas"}
+      </button>
+      <button
+        type="button"
+        className="btn--quiet reader-prep-decline"
+        onClick={declineHelpNotice}
+      >
+        No, gracias
+      </button>
+      <button
+        type="button"
+        className="reader-return-dismiss"
+        onClick={dismissHelpNotice}
         aria-label="Ahora no"
       >
         ×

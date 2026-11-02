@@ -21,7 +21,12 @@ import {
   getBookLanguage,
   getBookTitle,
 } from "../lib/epub";
-import { applyAttentionBudget } from "../lib/attention-budget";
+import {
+  applyAttentionBudget,
+  bookHelpKey,
+  resolveBookHelpOpening,
+  saveBookMicroHighlightsEnabled,
+} from "../lib/attention-budget";
 import {
   captureDbScope,
   getStoredBook,
@@ -157,6 +162,7 @@ import { loadUseAi } from "../lib/ai-pref";
 import {
   calibrationDoneKey,
   hasCalibrationEvidence,
+  languageCalibrationStatus,
 } from "../lib/calibration";
 import { calibrationBankZipf } from "../lib/knowledge";
 import {
@@ -269,6 +275,7 @@ import {
 } from "../lib/book-start";
 import {
   createChapterAnalyzer,
+  chapterAnalysisCacheKey,
   deserializeChapterAnalysis,
   serializeChapterAnalysis,
   type ChapterAnalyzer,
@@ -585,6 +592,13 @@ export default function Reader({
   // solo viendo el tramo antes de su final — retomar, un marcador o un
   // salto que aterriza ya en el final no disparan la invitación.
   const calTrack = useRef<CalibrationTrack | null>(null);
+  // Franja de ayuda de vocabulario al abrir un libro NUEVO (sin
+  // posición guardada): pregunta una sola vez por libro; la decisión
+  // se guarda en `bookHelp:v1:` y solo mueve el interruptor de
+  // micro-destacados — jamás escribe palabras en el Cuaderno.
+  const [helpNotice, setHelpNotice] = useState(false);
+  const [helpIsCalibrated, setHelpIsCalibrated] = useState(false);
+  const helpAskedRef = useRef<string | null>(null);
   const calEvaluated = useRef(false);
   const [language, setLanguage] = useState("es");
   const [selection, setSelection] = useState<WordHit | null>(null);
@@ -2452,12 +2466,12 @@ export default function Reader({
           language: bookLanguage,
           isCurrent: () => bookRef.current === book,
           loadCached: async (targetId) => {
-            const raw = await loadSessionValue(`chapAn:${bookHash}:${targetId}`, scope);
+            const raw = await loadSessionValue(chapterAnalysisCacheKey(bookHash, targetId), scope);
             return raw ? deserializeChapterAnalysis(raw) : null;
           },
           saveCached: async (targetId, result) => {
             const raw = serializeChapterAnalysis(result);
-            if (raw) await saveSessionValue(`chapAn:${bookHash}:${targetId}`, raw, scope);
+            if (raw) await saveSessionValue(chapterAnalysisCacheKey(bookHash, targetId), raw, scope);
           },
         });
         const rows: TocRow[] = catalog.targets.map((target) => ({
@@ -4001,6 +4015,81 @@ export default function Reader({
     );
   };
 
+  // Franja de ayuda de vocabulario: se evalúa una vez por apertura,
+  // solo entrando por el inicio de un libro nuevo (sin posición
+  // guardada o apenas empezado) y solo en es/en — los idiomas con
+  // banco y catálogo. Una decisión guardada manda sobre el default
+  // del interruptor y no vuelve a preguntar.
+  useEffect(() => {
+    if (state !== "ready" || sectionIndex !== 0) return;
+    if (language !== "es" && language !== "en") return;
+    if (helpAskedRef.current === bookHash) return;
+    let cancelled = false;
+    void (async () => {
+      const scope = captureDbScope();
+      const [decision, saved] = await Promise.all([
+        loadSessionValue(bookHelpKey(bookHash), scope).catch(() => null),
+        loadBookPosition(bookHash, scope).catch(() => null),
+      ]);
+      if (cancelled || helpAskedRef.current === bookHash) return;
+      const isNewBook =
+        !saved || (saved.sectionIndex === 0 && (saved.ratio ?? 0) < 0.02);
+      const outcome = resolveBookHelpOpening(decision, isNewBook);
+      if (outcome === "none") return;
+      helpAskedRef.current = bookHash;
+      if (outcome !== "ask") {
+        saveBookMicroHighlightsEnabled(bookHash, outcome === "apply-on");
+        return;
+      }
+      setHelpIsCalibrated(
+        languageCalibrationStatus(language) === "calibrated",
+      );
+      setHelpNotice(true);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [state, sectionIndex, language, bookHash]);
+
+  const saveHelpDecision = (value: "on" | "off" | "dismissed") => {
+    void saveSessionValue(bookHelpKey(bookHash), value, captureDbScope()).catch(
+      () => undefined,
+    );
+  };
+
+  // «Sí, prepárame» / «Activar ayudas»: enciende la ayuda del libro.
+  const acceptHelpNotice = () => {
+    setHelpNotice(false);
+    saveBookMicroHighlightsEnabled(bookHash, true);
+    saveHelpDecision("on");
+  };
+
+  // «Medir mi nivel en 15 s»: abre la prueba; al aceptar la ayuda
+  // queda encendida y la franja se cierra. Si la hoja no abrió, el
+  // aviso se conserva para reintentar, igual que el de calibración.
+  const calibrateHelpNotice = async () => {
+    if (await onRequestCalibration(language)) {
+      setHelpNotice(false);
+      saveBookMicroHighlightsEnabled(bookHash, true);
+      saveHelpDecision("on");
+    }
+  };
+
+  // «No, gracias»: apaga los micro-destacados de este libro y no
+  // vuelve a preguntar.
+  const declineHelpNotice = () => {
+    setHelpNotice(false);
+    saveBookMicroHighlightsEnabled(bookHash, false);
+    saveHelpDecision("off");
+  };
+
+  // «Ahora no» (×): cierra sin apagar nada — la preferencia queda
+  // registrada para no insistir en cada apertura.
+  const dismissHelpNotice = () => {
+    setHelpNotice(false);
+    saveHelpDecision("dismissed");
+  };
+
   const currentTargetIdx = catalog
     ? catalog.targets.findIndex((t) => t.id === currentChapterTarget?.id)
     : -1;
@@ -4314,6 +4403,12 @@ export default function Reader({
         isDeepReading={isDeepReading}
         acceptCalibrationNotice={acceptCalibrationNotice}
         dismissCalibrationNotice={dismissCalibrationNotice}
+        helpNotice={helpNotice}
+        helpIsCalibrated={helpIsCalibrated}
+        acceptHelpNotice={acceptHelpNotice}
+        calibrateHelpNotice={calibrateHelpNotice}
+        declineHelpNotice={declineHelpNotice}
+        dismissHelpNotice={dismissHelpNotice}
         fatigueNotice={fatigueNotice}
         setFatigueNotice={setFatigueNotice}
         onActivateFocusRule={handleActivateFocusRule}

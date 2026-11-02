@@ -1,15 +1,23 @@
-// Carga data/lexicon/*.tsv (de scripts/lexicon-export.py) a la base de
-// DATABASE_URL — misma vía que `pnpm db:migrate`. Idempotente: las
-// formas usan ON CONFLICT DO NOTHING y los lemas no se duplican.
+// Carga data/lexicon/{lang}-*.tsv (de scripts/lexicon-export.py) a la
+// base de DATABASE_URL — misma vía que `pnpm db:migrate`. Idempotente:
+// las formas usan ON CONFLICT DO NOTHING y los lemas no se duplican.
 //
-//   node --env-file=.env scripts/lexicon-load.mjs
+//   node --env-file=.env scripts/lexicon-load.mjs [lang]
 //
+// `lang` es el código de 2 letras (default «es»): lee los TSV de ese
+// idioma y escribe las filas con `language = lang`. Un idioma nuevo
+// solo se carga con autorización expresa — el script existe, la
+// decisión de cargarlo es de producto.
 // Procedencia registrada en lexicon_sources por cada corrida.
 
 import { readFileSync } from "node:fs";
 import pg from "pg";
 
-const LANG = "es";
+const LANG = (process.argv[2] || "es").toLowerCase();
+if (!/^[a-z]{2}$/.test(LANG)) {
+  console.error(`Idioma inválido: ${JSON.stringify(process.argv[2])} — usa el código de 2 letras (es, en…)`);
+  process.exit(1);
+}
 const BATCH = 5000;
 
 // Licencias confirmadas en la revisión de la Fase 2:
@@ -123,12 +131,13 @@ try {
     );
   }
 
-  const { rows: counts } = await client.query(`
-    SELECT
-      (SELECT count(*) FROM lexicon_entries WHERE language = '${LANG}') AS entries,
-      (SELECT count(*) FROM lexicon_forms WHERE language = '${LANG}') AS forms
-  `);
-  console.log(`Listo: ${counts[0].entries} entradas, ${counts[0].forms} formas, ${ambiguous} formas ambiguas.`);
+  const { rows: counts } = await client.query(
+    `SELECT
+      (SELECT count(*) FROM lexicon_entries WHERE language = $1) AS entries,
+      (SELECT count(*) FROM lexicon_forms WHERE language = $1) AS forms`,
+    [LANG],
+  );
+  console.log(`Listo (${LANG}): ${counts[0].entries} entradas, ${counts[0].forms} formas, ${ambiguous} formas ambiguas.`);
 } finally {
   await client.end();
 }

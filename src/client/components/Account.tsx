@@ -37,7 +37,14 @@ import {
   isCredibleKnowledge,
   vocabLevelLabel,
 } from "../lib/knowledge";
-import { fetchCalibrationSample, type CalibrationWord } from "../lib/calibration";
+import {
+  languageCalibrationStatus,
+  type CalibrationWord,
+} from "../lib/calibration";
+import { getCalibrationBankByLang } from "../../shared/calibration-bank";
+import { loadUserLanguageProfile } from "../lib/profile-models";
+import { catLevelLabel } from "../lib/vocab-level";
+import { languageName } from "../lib/epub";
 import { KindleAppearancePanel } from "./KindleAppearancePanel";
 import {
   parseReadingGoal,
@@ -85,13 +92,21 @@ type AccountProps = {
   theme?: ThemeChoice;
   onThemeChange?: (theme: ThemeChoice) => void;
   onRestored?: () => void | Promise<void>;
+  // Sube al cerrar la calibración: el resumen de nivel se relee sin
+  // que el lector tenga que salir y volver a entrar a Cuenta.
+  vocabVersion?: number;
+};
+
+type VocabSummary = {
+  evidenceCount: number;
+  levelLabel: string | null;
 };
 
 async function loadVocabSummary(
   language: string,
   scope: DbScope,
   nativeLang = loadNativeLanguage(),
-): Promise<string> {
+): Promise<VocabSummary> {
   const [allRows, savedWords] = await Promise.all([
     listKnowledge(language, scope).catch(() => []),
     listSavedWords(language, scope).catch(() => []),
@@ -104,18 +119,63 @@ async function loadVocabSummary(
     isCredibleKnowledge(row, savedLemmas),
   );
   if (!rows.length) {
-    return "Aún sin medición; se ofrece una prueba breve al terminar tu primer capítulo.";
+    return { evidenceCount: 0, levelLabel: null };
   }
-  const knownCount = rows.filter((row) => row.known).length;
   const readerProf = readerProfileFor(nativeLang, language);
   const baseThreshold =
     readerProf === "native"
       ? DEFAULT_THRESHOLD_NATIVE
       : DEFAULT_THRESHOLD_LEARNER;
   const profile = await estimateStoredProfile(rows, language, 0, baseThreshold);
-  return profile
-    ? `${knownCount} palabras que ya conoces · nivel estimado: ${vocabLevelLabel(profile.threshold, readerProf)}`
-    : `${knownCount} palabras que ya conoces · sin conexión no se puede estimar el nivel`;
+  return {
+    evidenceCount: rows.length,
+    levelLabel: profile ? vocabLevelLabel(profile.threshold, readerProf) : null,
+  };
+}
+
+// Texto y acción del renglón de un idioma en la tarjeta de nivel.
+// Tres estados reales: sin calibrar, calibrado con la prueba rápida
+// (θ del CAT), y «nivel estándar» si la saltó. La evidencia registrada
+// al leer o calibrar se muestra como contexto, nunca como nivel
+// inventado: sin catálogo solo se muestra el conteo.
+function vocabStatusView(
+  lang: "es" | "en",
+  summary: VocabSummary | null,
+): { text: string; action: "Calibrar" | "Recalibrar" } {
+  const status = languageCalibrationStatus(lang);
+  const theta = loadUserLanguageProfile().thetaByLang?.[lang];
+  const thetaLabel =
+    typeof theta === "number" && Number.isFinite(theta)
+      ? catLevelLabel(theta)
+      : null;
+  const evidenceCount = summary?.evidenceCount ?? 0;
+  const evidenceSuffix = evidenceCount
+    ? ` · ${evidenceCount} palabras registradas`
+    : "";
+
+  if (status === "calibrated") {
+    const level = thetaLabel ?? summary?.levelLabel;
+    return {
+      text: `Calibrado${level ? ` · Nivel estimado: ${level}` : ""}${evidenceSuffix}`,
+      action: "Recalibrar",
+    };
+  }
+  if (status === "skipped") {
+    return {
+      text: summary?.levelLabel
+        ? `Nivel estimado: ${summary.levelLabel}${evidenceSuffix}`
+        : `Usando nivel estándar · Puedes calibrarlo en 15 segundos cuando quieras.${evidenceSuffix}`,
+      action: "Calibrar",
+    };
+  }
+  return {
+    text: summary?.levelLabel
+      ? `Nivel estimado: ${summary.levelLabel}${evidenceSuffix}`
+      : evidenceCount
+        ? `${evidenceCount} palabras registradas · aún sin calibrar`
+        : "Sin calibrar · Toma 15 segundos ajustar las ayudas a tu nivel.",
+    action: "Calibrar",
+  };
 }
 
 function translateAuthError(message?: string): string {
@@ -155,6 +215,7 @@ export default function Account({
   theme,
   onThemeChange,
   onRestored,
+  vocabVersion = 0,
 }: AccountProps) {
   const isPage = presentation === "page";
   const companion = useCompanionSafe();
@@ -214,9 +275,9 @@ export default function Account({
   const [goalDays, setGoalDays] = useState<number | null>(null);
   // Resumen del modelo de conocimiento para «Tu vocabulario»: qué
   // tanto sabe el lector según la evidencia guardada en cada idioma.
-  const [vocabInfoEs, setVocabInfoEs] = useState<string | null>(null);
-  const [vocabInfoEn, setVocabInfoEn] = useState<string | null>(null);
-  const [loadingSampleLang, setLoadingSampleLang] = useState<string | null>(null);
+  const [vocabInfoEs, setVocabInfoEs] = useState<VocabSummary | null>(null);
+  const [vocabInfoEn, setVocabInfoEn] = useState<VocabSummary | null>(null);
+
   const [cachedDictWords, setCachedDictWords] = useState<number | null>(null);
   const [nativeLanguage, setNativeLanguage] = useState<string>(() => loadNativeLanguage());
 
@@ -359,7 +420,7 @@ export default function Account({
     return () => {
       cancelled = true;
     };
-  }, [nativeLanguage]);
+  }, [nativeLanguage, vocabVersion]);
   useEffect(() => {
     if (!userId) return;
     let cancelled = false;
@@ -686,24 +747,19 @@ export default function Account({
     }
   };
 
-  // «Ajustar mi vocabulario»: descarga la muestra aquí (para avisar
-  // si falla) y la hoja la abre App. Al terminar allá solo se guarda
-  // y se cierra.
-  const adjustVocabulary = async (lang = "es") => {
-    if (loadingSampleLang) return;
-    setLoadingSampleLang(lang);
+  // «Ajustar mi vocabulario»: la prueba usa el banco local, así que
+  // abre al instante y también sin conexión; la hoja la monta App y
+  // al terminar guarda y refresca esta pantalla con vocabVersion.
+  const adjustVocabulary = (lang = "es") => {
     setError("");
-    try {
-      const profile = readerProfileFor(nativeLanguage, lang);
-      const sample = await fetchCalibrationSample(lang, profile);
-      if (sample.ok && sample.words.length) {
-        onOpenCalibration(sample.words, lang);
-      } else {
-        setError("No se pudo cargar la lista de palabras. Intenta de nuevo con conexión.");
-      }
-    } finally {
-      setLoadingSampleLang(null);
-    }
+    const words: CalibrationWord[] = getCalibrationBankByLang(lang).map(
+      (item) => ({
+        lemma: item.word,
+        definition: null,
+        sampleContext: item.posHint,
+      }),
+    );
+    if (words.length) onOpenCalibration(words, lang);
   };
 
   const authModalNode = (
@@ -1324,24 +1380,37 @@ export default function Account({
         </section>
       ) : null}
 
-      {/* Tarjeta 2: Tu Nivel y Calibración */}
+      {/* Tarjeta 2: Tu Nivel y Calibración — un renglón por idioma
+          con su estado real (sin calibrar, calibrado o nivel
+          estándar) y una sola acción. */}
       <section className="account-card account-card--level" aria-label="Tu nivel y calibración">
         <div className="account-card-header">
           <strong className="account-card-title">Tu nivel y calibración</strong>
           <p className="account-card-desc">
-            {vocabInfoEs ? vocabInfoEs : "Aún sin calibrar. Afina tu nivel para que Lecta adapte las ayudas léxicas a tus lecturas."}
+            15 segundos bastan para que Lecta ajuste las ayudas de cada capítulo a tu nivel.
           </p>
         </div>
-        <div className="actions">
-          <button
-            type="button"
-            className="btn btn--primary"
-            disabled={loadingSampleLang !== null}
-            onClick={() => void adjustVocabulary("es")}
-          >
-            {loadingSampleLang === "es" ? "Cargando…" : "Recalibrar mi vocabulario"}
-          </button>
-        </div>
+        {(["es", "en"] as const).map((lang) => {
+          const view = vocabStatusView(
+            lang,
+            lang === "es" ? vocabInfoEs : vocabInfoEn,
+          );
+          return (
+            <div className="setting-vocab-row" key={lang}>
+              <div className="setting-vocab-info">
+                <strong>{languageName(lang)}</strong>
+                <span className="meta">{view.text}</span>
+              </div>
+              <button
+                type="button"
+                className="btn--quiet"
+                onClick={() => adjustVocabulary(lang)}
+              >
+                {view.action}
+              </button>
+            </div>
+          );
+        })}
       </section>
 
       {/* Tarjeta 3: Preferencias de Inteligencia Artificial y Datos Offline */}
@@ -1405,42 +1474,6 @@ export default function Account({
         <p className="meta">
           Se usa para calibrar tu nivel de vocabulario, evitar falsas alarmas en palabras comunes y adaptar las explicaciones.
         </p>
-
-        <div className="setting-block">
-          <span className="setting-label">Calibración de vocabulario</span>
-          <div className="setting-vocab-row">
-            <div className="setting-vocab-info">
-              <strong>Español</strong>
-              <span className="meta">
-                {vocabInfoEs === null ? "Revisando lo que conoces…" : vocabInfoEs}
-              </span>
-            </div>
-            <button
-              type="button"
-              className="btn--quiet"
-              disabled={loadingSampleLang !== null}
-              onClick={() => void adjustVocabulary("es")}
-            >
-              {loadingSampleLang === "es" ? "Cargando…" : "Ajustar"}
-            </button>
-          </div>
-          <div className="setting-vocab-row">
-            <div className="setting-vocab-info">
-              <strong>Inglés</strong>
-              <span className="meta">
-                {vocabInfoEn === null ? "Revisando lo que conoces…" : vocabInfoEn}
-              </span>
-            </div>
-            <button
-              type="button"
-              className="btn--quiet"
-              disabled={loadingSampleLang !== null}
-              onClick={() => void adjustVocabulary("en")}
-            >
-              {loadingSampleLang === "en" ? "Cargando…" : "Ajustar"}
-            </button>
-          </div>
-        </div>
 
         <div className="setting-row">
           <span className="setting-label">Meta semanal de lectura</span>

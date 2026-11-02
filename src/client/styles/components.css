@@ -3026,3 +3026,170 @@ mark.saved-word[data-level="settled"] {
 
 
 
+
+/* ---------- Leo este libro en papel ---------- */
+
+.paper-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: var(--paper);
+  color: var(--ink);
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.paper-chapters {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.paper-chapter {
+  width: 100%;
+  text-align: start;
+  border: 0;
+  border-bottom: var(--border);
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  padding: var(--s-3) 0;
+  min-height: 44px;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--s-3);
+}
+
+.paper-chapter-status {
+  flex-shrink: 0;
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+  text-align: end;
+}
+
+.paper-extras {
+  border-top: var(--border);
+  padding-block: var(--s-2);
+}
+
+.paper-extras > summary {
+  cursor: pointer;
+  padding: var(--s-2) 0;
+  color: var(--ink-soft);
+}
+
+.paper-sheet-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  margin-bottom: var(--s-3);
+}
+
+.paper-sheet-head .btn--quiet {
+  align-self: flex-start;
+}
+
+.paper-sheet-title {
+  font-family: var(--font-book);
+  font-size: var(--fs-lg);
+  font-weight: 400;
+  margin: 0;
+}
+
+.paper-add {
+  position: sticky;
+  top: 0;
+  background: var(--paper);
+  padding-block: var(--s-2);
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.paper-add-label {
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+}
+
+.paper-add input {
+  font: inherit;
+  color: inherit;
+  background: var(--paper);
+  border: var(--border);
+  border-radius: var(--radius-m);
+  padding: var(--s-2) var(--s-3);
+  min-height: 44px;
+}
+
+.paper-suggestions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: var(--border);
+  border-radius: var(--radius-m);
+  overflow: hidden;
+}
+
+.paper-suggestion {
+  display: block;
+  width: 100%;
+  text-align: start;
+  border: 0;
+  border-bottom: var(--border);
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  padding: var(--s-2) var(--s-3);
+  min-height: 40px;
+}
+
+.paper-suggestions li:last-child .paper-suggestion {
+  border-bottom: 0;
+}
+
+.paper-suggestion--free {
+  color: var(--ink-soft);
+}
+
+.paper-saved-note {
+  border: var(--border);
+  border-radius: var(--radius-m);
+  padding: var(--s-2) var(--s-3);
+  margin: 0;
+  font-size: var(--fs-sm);
+}
+
+.paper-more {
+  margin-block: var(--s-3);
+}
+
+.paper-more > summary {
+  cursor: pointer;
+  padding: var(--s-2) 0;
+  color: var(--ink-soft);
+}
+
+.paper-sheet-foot {
+  margin-top: var(--s-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.paper-finished {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.paper-finished p {
+  margin: 0;
+}

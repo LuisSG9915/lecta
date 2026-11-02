@@ -134,6 +134,10 @@ export type UnifiedVocabularyProps = {
   onOpenJourney?: () => void;
   presentation?: "overlay" | "page";
   backLabel?: string;
+  // Abrir ya filtrado por una obra (p. ej. desde «Leo este libro en
+  // papel»). El padre remonta la vista en cada petición: la semilla
+  // solo se aplica al montar y el select queda libre después.
+  initialBookFilter?: string;
 };
 
 export const UnifiedNotebookView: React.FC<{
@@ -777,6 +781,7 @@ function FullVocabulary({
   onOpenJourney,
   presentation = "overlay",
   backLabel,
+  initialBookFilter,
 }: UnifiedVocabularyProps) {
   const ref = useRef<HTMLDivElement>(null);
   const isOverlay = presentation !== "page";
@@ -806,7 +811,9 @@ function FullVocabulary({
   const [filter, setFilter] = useState<FilterId>("all");
   const [order, setOrder] = useState<OrderId>("fecha");
   const [languageFilter, setLanguageFilter] = useState<string>("all");
-  const [bookFilter, setBookFilter] = useState<string>("all");
+  const [bookFilter, setBookFilter] = useState<string>(
+    initialBookFilter ?? "all",
+  );
   const [query, setQuery] = useState("");
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [expanded, setExpanded] = useState<Set<string>>(new Set());

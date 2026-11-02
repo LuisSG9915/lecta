@@ -14,6 +14,7 @@ import {
   calibrationDoneKey,
   calibrationDraftKey,
   calibrationRows,
+  catHistoryToCalibration,
   hasCalibrationEvidence,
   initCatSession,
   needsLanguageCalibration,
@@ -27,6 +28,7 @@ import {
   submitCatAnswer,
   type CalibrationAnswers,
   type CalibrationWord,
+  type CatResponseRecord,
   type CatSessionState,
 } from "./calibration";
 import { pushKnowledgeToServer } from "./reading-sync";
@@ -287,6 +289,59 @@ describe("recordCalibration", () => {
     ).rejects.toThrow("tx abortada");
     expect(pushKMock).not.toHaveBeenCalled();
     expect(pushWMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("catHistoryToCalibration", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    userMock.mockReturnValue("u1");
+  });
+
+  const record = (
+    word: string,
+    known: boolean,
+  ): CatResponseRecord => ({
+    itemId: `es-${word}`,
+    word,
+    difficulty: 0,
+    known,
+    thetaBefore: 0,
+    thetaAfter: 0,
+    probabilityAtPresentation: 0.5,
+  });
+
+  it("traduce «Sí la conozco» a known y «No estoy seguro» a unsure", () => {
+    const { words: out, answers: outAnswers } = catHistoryToCalibration([
+      record("casa", true),
+      record("clandestine", false),
+    ]);
+    expect(out).toEqual([
+      { lemma: "casa", definition: null },
+      { lemma: "clandestine", definition: null },
+    ]);
+    expect(outAnswers).toEqual({ casa: "known", clandestine: "unsure" });
+  });
+
+  it("su salida escribe evidencia sin mandar nada al Cuaderno", async () => {
+    const { words: out, answers: outAnswers } = catHistoryToCalibration([
+      record("sosiego", true),
+      record("ignominia", false),
+    ]);
+    await recordCalibration(out, outAnswers, "es");
+
+    const input = batchMock.mock.calls[0][0];
+    expect(input.knowledge).toEqual([
+      { language: "es", lemma: "sosiego", known: true, source: "calibration" },
+      { language: "es", lemma: "ignominia", known: false, source: "calibration" },
+    ]);
+    expect(input.words).toEqual([]);
+  });
+
+  it("historial vacío no produce respuestas", () => {
+    const { words: out, answers: outAnswers } = catHistoryToCalibration([]);
+    expect(out).toEqual([]);
+    expect(outAnswers).toEqual({});
   });
 });
 

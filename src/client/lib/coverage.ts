@@ -13,9 +13,12 @@ import {
   predictSection,
   PROFILE_ADJUST_KEY,
   resolveEvidence,
+  DEFAULT_THRESHOLD_NATIVE,
+  DEFAULT_THRESHOLD_LEARNER,
   type KnowledgeEvidence,
 } from "./knowledge";
 import { batchLookup, type LexiconEntry } from "./lexicon";
+import { loadNativeLanguage, readerProfileFor } from "./settings";
 
 // Cobertura de vocabulario por libro: qué fracción de sus formas únicas
 // el lector ya conoce según su perfil. Una envoltura sobre predictSection
@@ -45,6 +48,11 @@ export type BookCoverage = {
   total: number; // formas únicas analizadas
   missing: number; // sin ficha en el catálogo
   uncertain: number; // con ficha pero sin medición ni evidencia
+  // 0–1: fracción de las formas que el catálogo sí pudo medir (ficha
+  // con frecuencia o evidencia propia). Debajo de COVERAGE_MEASURED_MIN
+  // el porcentaje no se sostiene — «sin ficha» no es «no la conoce» —
+  // y la UI muestra COVERAGE_UNMEASURED_LABEL en lugar del número.
+  measuredShare: number;
   newWordsCount?: number; // nuevas palabras útiles que aportaría al cuaderno
   // Formas del libro que el lector ya tiene en su Cuaderno: la promesa
   // de «reencuentro» al elegir la siguiente lectura.
@@ -92,6 +100,7 @@ export async function inputsForCoverage(
       credible,
       entries,
       baseResult?.ok ? baseResult.entries : {},
+      language,
     );
     for (const [lemma, item] of resolved) {
       knowledge.set(lemma, { lemma, known: item.known });
@@ -102,9 +111,17 @@ export async function inputsForCoverage(
   const storedAdjust = Number(
     await loadSessionValue(PROFILE_ADJUST_KEY, scope).catch(() => null),
   );
+  // El mismo punto de partida que el lector y Cuenta: nativos
+  // arrancan de 2.0 en su lengua y de 3.0 en otra — la insignia
+  // usaba siempre 3.0 y pintaba un nivel distinto del del lector.
+  const baseThreshold =
+    readerProfileFor(loadNativeLanguage(), language) === "native"
+      ? DEFAULT_THRESHOLD_NATIVE
+      : DEFAULT_THRESHOLD_LEARNER;
   const profile = estimateProfile(
     evidence,
     Number.isFinite(storedAdjust) ? storedAdjust : 0,
+    baseThreshold,
   );
   return {
     saved,
@@ -187,10 +204,29 @@ export function coverageOfBook(
     total: prediction.total,
     missing: prediction.missing.length,
     uncertain: prediction.uncertain.length,
+    measuredShare: prediction.total
+      ? (prediction.total -
+          prediction.missing.length -
+          prediction.uncertain.length) /
+        prediction.total
+      : 0,
     newWordsCount,
     reencuentrosCount: reencounterLemmas.size,
     reencuentrosPonderados: [...reencounterLemmas.values()].reduce((sum, n) => sum + n, 0),
   };
+}
+
+// Bajo esta fracción el número de cobertura no es confiable: casi
+// todas las formas quedaron «sin medir» y un porcentaje pintaría una
+// certeza falsa (un libro en inglés sin catálogo marcaría «0 %
+// conocido» como si el lector no conociera nada).
+export const COVERAGE_MEASURED_MIN = 0.6;
+export const COVERAGE_UNMEASURED_LABEL = "Vocabulario aún sin medir";
+
+export function coverageIsReliable(
+  coverage: Pick<BookCoverage, "measuredShare">,
+): boolean {
+  return coverage.measuredShare >= COVERAGE_MEASURED_MIN;
 }
 
 // Orden de recomendación: los libros en zona fluida o ideal (≥ 86 %)
@@ -198,6 +234,11 @@ export function coverageOfBook(
 // que repite más palabras del Cuaderno del lector, y a empate manda el
 // mayor porcentaje de cobertura.
 export function compareBookCoverages(a: BookCoverage, b: BookCoverage): number {
+  // Los libros que el catálogo sí pudo medir van antes que los que
+  // aún no tienen porcentaje confiable.
+  const aOk = coverageIsReliable(a) ? 1 : 0;
+  const bOk = coverageIsReliable(b) ? 1 : 0;
+  if (aOk !== bOk) return bOk - aOk;
   const aInZone = a.percent >= COVERAGE_IDEAL_MIN ? 1 : 0;
   const bInZone = b.percent >= COVERAGE_IDEAL_MIN ? 1 : 0;
   if (aInZone !== bInZone) return bInZone - aInZone;

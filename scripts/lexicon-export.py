@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
 """Exporta el catálogo léxico base de Lecta a TSV (Fase 2).
 
-Genera dos archivos en data/lexicon/ (no versionados):
+Genera dos archivos en data/lexicon/ (no versionados) para el idioma
+pedido (código de 2 letras; «es» por omisión):
 
-  es-forms.tsv   form <TAB> lemma            — de simplemma (es.plzma)
-  es-lemmas.tsv  lemma <TAB> zipf            — zipf medido con wordfreq
+  {lang}-forms.tsv   form <TAB> lemma     — de simplemma ({lang}.plzma)
+  {lang}-lemmas.tsv  lemma <TAB> zipf     — zipf medido con wordfreq
 
 Requisitos (solo para correr esto, no para la app):
 
   python3 -m venv /tmp/lecta-lex-env
   /tmp/lecta-lex-env/bin/pip install simplemma==1.1.2 wordfreq==3.1.1
-  /tmp/lecta-lex-env/bin/python3 scripts/lexicon-export.py
+  /tmp/lecta-lex-env/bin/python3 scripts/lexicon-export.py [lang]
 
-Después: `node --env-file=.env scripts/lexicon-load.mjs` carga los TSV a
-la base indicada por DATABASE_URL.
+Después: `node --env-file=.env scripts/lexicon-load.mjs [lang]` carga
+los TSV a la base indicada por DATABASE_URL. Exportar un idioma nuevo
+es solo preparar los TSV: la carga a la base requiere autorización.
 """
 
 import lzma
@@ -28,12 +30,16 @@ try:
 except ImportError:
     sys.exit("Faltan dependencias: pip install simplemma==1.1.2 wordfreq==3.1.1")
 
-LANG = "es"
+LANG = (sys.argv[1] if len(sys.argv) > 1 else "es").lower()
+if len(LANG) != 2 or not LANG.isalpha():
+    sys.exit(f"Idioma inválido: {LANG!r} — usa el código de 2 letras (es, en…)")
 OUT_DIR = Path("data/lexicon")
 
 
 def load_forms(lang: str) -> dict[str, str]:
     path = Path(DATA_FOLDER) / f"{lang}.plzma"
+    if not path.exists():
+        sys.exit(f"simplemma no trae diccionario para {lang!r}: falta {path.name}")
     raw = pickle.loads(lzma.decompress(path.read_bytes()))
     return {form.decode("utf-8"): lemma.decode("utf-8") for form, lemma in raw.items()}
 

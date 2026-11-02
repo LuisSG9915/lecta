@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  coverageIsReliable,
   coverageLabel,
   coverageLanguageOf,
   compareBookCoverages,
@@ -170,13 +171,66 @@ describe("coverageOfBook", () => {
   });
 
   it("entre libros en tu nivel gana el que más apariciones del cuaderno repite", () => {
-    const pocas = { percent: 90, total: 10, missing: 0, uncertain: 0, reencuentrosCount: 3, reencuentrosPonderados: 3 };
-    const muchas = { percent: 90, total: 10, missing: 0, uncertain: 0, reencuentrosCount: 2, reencuentrosPonderados: 12 };
+    const pocas = { percent: 90, total: 10, missing: 0, uncertain: 0, measuredShare: 1, reencuentrosCount: 3, reencuentrosPonderados: 3 };
+    const muchas = { percent: 90, total: 10, missing: 0, uncertain: 0, measuredShare: 1, reencuentrosCount: 2, reencuentrosPonderados: 12 };
     expect([pocas, muchas].sort(compareBookCoverages)[0]).toBe(muchas);
   });
 
+  it("un libro que el catálogo no pudo medir va después de uno medible", () => {
+    const medible = { percent: 50, total: 10, missing: 0, uncertain: 0, measuredShare: 0.9 };
+    const sinMedir = { percent: 95, total: 10, missing: 9, uncertain: 0, measuredShare: 0.1 };
+    expect([sinMedir, medible].sort(compareBookCoverages)[0]).toBe(medible);
+  });
+
   it("libro vacío no divide entre cero", () => {
-    expect(coverageOfBook([], {}, inputs()).percent).toBe(0);
+    const vacio = coverageOfBook([], {}, inputs());
+    expect(vacio.percent).toBe(0);
+    expect(vacio.measuredShare).toBe(0);
+    expect(coverageIsReliable(vacio)).toBe(false);
+  });
+});
+
+describe("measuredShare — porcentaje honesto", () => {
+  it("descuenta del medido las formas sin ficha y las sin medición", () => {
+    const forms = ["casa", "perenne", "xing", "zzz"];
+    const entriesByForm = {
+      casa: [entry("casa", 6.1)],
+      perenne: [entry("perenne", 2.1)],
+      // xing y zzz sin ficha: missing
+    };
+    const coverage = coverageOfBook(forms, entriesByForm, inputs());
+    // 2 de 4 formas medidas (casa y perenne) → 0.5.
+    expect(coverage.measuredShare).toBe(0.5);
+    expect(coverage.missing).toBe(2);
+    expect(coverageIsReliable(coverage)).toBe(false);
+  });
+
+  it("un libro casi entero sin ficha no es «0 % conocido»: no es medible", () => {
+    // El caso real del reporte: libro en inglés sin catálogo — las
+    // formas caen a missing y el porcentaje crudo diría ~0 %.
+    const forms = ["water", "friend", "house", "window", "casa"];
+    const entriesByForm = { casa: [entry("casa", 6.1)] };
+    const coverage = coverageOfBook(forms, entriesByForm, inputs());
+    expect(coverage.percent).toBe(20);
+    expect(coverage.measuredShare).toBeCloseTo(0.2, 5);
+    expect(coverageIsReliable(coverage)).toBe(false);
+  });
+
+  it("con todo medido es confiable y el guardia toma el 0.6 exacto", () => {
+    const forms = ["casa", "perenne", "corrió", "galaxia", "sol"];
+    const entriesByForm = {
+      casa: [entry("casa", 6.1)],
+      perenne: [entry("perenne", 2.1)],
+      corrió: [entry("correr", 4.5)],
+      galaxia: [entry("galaxia", 3.4)],
+      sol: [entry("sol", 5.9)],
+    };
+    const coverage = coverageOfBook(forms, entriesByForm, inputs());
+    expect(coverage.measuredShare).toBe(1);
+    expect(coverageIsReliable(coverage)).toBe(true);
+
+    expect(coverageIsReliable({ measuredShare: 0.6 })).toBe(true);
+    expect(coverageIsReliable({ measuredShare: 0.59 })).toBe(false);
   });
 });
 
@@ -221,22 +275,54 @@ describe("inputsForCoverage", () => {
     expect(inputs.saved.has("galaxia")).toBe(true);
     expect(inputs.knowledge.get("casa")?.known).toBe(true);
     expect(inputs.knowledge.get("perenne")?.known).toBe(false);
-    // Un conocido frecuente + un desconocido raro: el umbral queda
-    // entre ambos y la confianza es baja con dos filas de evidencia.
-    expect(inputs.threshold).toBeGreaterThan(2.0);
+    // Un conocido frecuente + un desconocido raro son coherentes con
+    // el base nativo (2.0): el umbral no tiene motivo para moverse y
+    // la confianza es baja con dos filas de evidencia.
+    expect(inputs.threshold).toBe(2.0);
     expect(inputs.confidence).toBe("low");
     expect(inputs.evidenceCount).toBe(2);
   });
 
-  it("sin evidencia el umbral cae al base y la confianza es low", async () => {
+  it("sin evidencia el umbral cae al base del perfil y la confianza es low", async () => {
     idbState.knowledge = [];
     idbState.words = [];
     lexiconMock.entries = {};
 
+    // Español para un hispanohablante parte del base nativo (2.0),
+    // igual que el lector; antes la insignia usaba siempre 3.0.
     const inputs = await inputsForCoverage("es");
-    expect(inputs.threshold).toBe(3.0);
+    expect(inputs.threshold).toBe(2.0);
     expect(inputs.confidence).toBe("low");
     expect(inputs.evidenceCount).toBe(0);
+
+    // En inglés (segunda lengua) el base es el de aprendiz (3.0).
+    const inputsEn = await inputsForCoverage("en");
+    expect(inputsEn.threshold).toBe(3.0);
+    expect(inputsEn.evidenceCount).toBe(0);
+  });
+
+  it("la evidencia en inglés sin ficha en el catálogo cae al zipf del banco", async () => {
+    idbState.knowledge = [
+      { key: "en:whisper", language: "en", lemma: "whisper", known: false, source: "calibration", updatedAt: 1 },
+      { key: "en:wander", language: "en", lemma: "wander", known: false, source: "calibration", updatedAt: 1 },
+      { key: "en:delight", language: "en", lemma: "delight", known: false, source: "calibration", updatedAt: 1 },
+      { key: "en:water", language: "en", lemma: "water", known: true, source: "calibration", updatedAt: 1 },
+      { key: "en:friend", language: "en", lemma: "friend", known: true, source: "calibration", updatedAt: 1 },
+    ];
+    idbState.words = [];
+    // Sin fichas en el catálogo inglés: solo el banco da el zipf.
+    lexiconMock.entries = {};
+
+    const inputs = await inputsForCoverage("en");
+
+    expect(inputs.knowledge.get("whisper")?.known).toBe(false);
+    expect(inputs.knowledge.get("water")?.known).toBe(true);
+    // Tres desconocidas en 3.25 (banda del banco) mueven el umbral del
+    // base de aprendiz (3.0) hacia arriba — antes, sin el idioma, el
+    // zipf quedaba null y la evidencia no movía nada.
+    expect(inputs.evidenceCount).toBe(5);
+    expect(inputs.threshold).toBe(3.5);
+    expect(inputs.confidence).toBe("low");
   });
 });
 

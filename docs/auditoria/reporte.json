@@ -1,9 +1,9 @@
 {
   "tool": "audit-investigacion",
   "version": 1,
-  "generatedAt": "2026-10-30T07:00:39.568Z",
+  "generatedAt": "2026-11-01T23:59:22.657Z",
   "root": "/Users/luis/Desarrollos Devin/lecta",
-  "commit": "f4ff05ac3c9963cfe908b4d4fea3699835b6d6a8",
+  "commit": "0d72d94b23229c3be74fada649ebbc99833ccec4",
   "doc": "docs/estrategia-aprendizaje-2026-10-24.md",
   "registry": "docs/auditoria/claims.json",
   "online": false,
@@ -81,12 +81,12 @@
             "callers": [
               {
                 "file": "src/client/components/DiscoverRail.tsx",
-                "line": 115,
+                "line": 117,
                 "text": "const inputsFor = createCoverageInputsLoader(scope, loadInputs);"
               },
               {
                 "file": "src/client/components/Shelf.tsx",
-                "line": 432,
+                "line": 429,
                 "text": "const inputsFor = createCoverageInputsLoader(scope);"
               }
             ]
@@ -155,30 +155,30 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/lib/coverage.ts:215 coincide con /COVERAGE_FLUID_MIN = 94/",
+          "detail": "src/client/lib/coverage.ts:256 coincide con /COVERAGE_FLUID_MIN = 94/",
           "observed": {
             "file": "src/client/lib/coverage.ts",
-            "line": 215,
+            "line": 256,
             "text": "export const COVERAGE_FLUID_MIN = 94;"
           }
         },
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/lib/coverage.ts:216 coincide con /COVERAGE_IDEAL_MIN = 86/",
+          "detail": "src/client/lib/coverage.ts:257 coincide con /COVERAGE_IDEAL_MIN = 86/",
           "observed": {
             "file": "src/client/lib/coverage.ts",
-            "line": 216,
+            "line": 257,
             "text": "export const COVERAGE_IDEAL_MIN = 86;"
           }
         },
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/lib/coverage.ts:191 coincide con /reencuentrosCount: reencounterLemmas\\.size/",
+          "detail": "src/client/lib/coverage.ts:214 coincide con /reencuentrosCount: reencounterLemmas\\.size/",
           "observed": {
             "file": "src/client/lib/coverage.ts",
-            "line": 191,
+            "line": 214,
             "text": "reencuentrosCount: reencounterLemmas.size,"
           }
         },
@@ -263,20 +263,20 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/hooks/useReaderChapterPrep.ts:51 coincide con /unknownKeyWordsCount <= 0/",
+          "detail": "src/client/hooks/useReaderChapterPrep.ts:48 coincide con /unknownKeyWordsCount <= 0/",
           "observed": {
             "file": "src/client/hooks/useReaderChapterPrep.ts",
-            "line": 51,
+            "line": 48,
             "text": "if (unknownKeyWordsCount <= 0) return false;"
           }
         },
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/hooks/useReaderChapterPrep.ts:369 coincide con /opening = \"notice\"/",
+          "detail": "src/client/hooks/useReaderChapterPrep.ts:363 coincide con /opening = \"notice\"/",
           "observed": {
             "file": "src/client/hooks/useReaderChapterPrep.ts",
-            "line": 369,
+            "line": 363,
             "text": "opening = \"notice\";"
           }
         },
@@ -448,10 +448,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/lib/calibration.ts:543 coincide con /saveUserLanguageProfile\\(updatedProfile\\)/",
+          "detail": "src/client/lib/calibration.ts:562 coincide con /saveUserLanguageProfile\\(updatedProfile\\)/",
           "observed": {
             "file": "src/client/lib/calibration.ts",
-            "line": 543,
+            "line": 562,
             "text": "saveUserLanguageProfile(updatedProfile);"
           }
         },
@@ -522,10 +522,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/components/Reader.tsx:4644 coincide con /updateLanguageTheta\\(currentLang, beta, 1, 1\\.0\\)/",
+          "detail": "src/client/components/Reader.tsx:4739 coincide con /updateLanguageTheta\\(currentLang, beta, 1, 1\\.0\\)/",
           "observed": {
             "file": "src/client/components/Reader.tsx",
-            "line": 4644,
+            "line": 4739,
             "text": "updateLanguageTheta(currentLang, beta, 1, 1.0);"
           }
         },
@@ -673,10 +673,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/lib/idb.ts:2110 coincide con /if \\(existing\\?\\.deleted\\) return existing/",
+          "detail": "src/client/lib/idb.ts:2112 coincide con /if \\(existing\\?\\.deleted\\) return existing/",
           "observed": {
             "file": "src/client/lib/idb.ts",
-            "line": 2110,
+            "line": 2112,
             "text": "if (existing?.deleted) return existing;"
           }
         },
@@ -883,10 +883,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/components/Vocabulary.tsx:1697 coincide con /await grade\\(item, wrongs/",
+          "detail": "src/client/components/Vocabulary.tsx:1704 coincide con /await grade\\(item, wrongs/",
           "observed": {
             "file": "src/client/components/Vocabulary.tsx",
-            "line": 1697,
+            "line": 1704,
             "text": "await grade(item, wrongs ? EXERCISE_RATING.wrong : EXERCISE_RATING.correct);"
           }
         },
@@ -1261,10 +1261,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/components/Vocabulary.tsx:1296 coincide con /const startRetentionCheck30d/",
+          "detail": "src/client/components/Vocabulary.tsx:1303 coincide con /const startRetentionCheck30d/",
           "observed": {
             "file": "src/client/components/Vocabulary.tsx",
-            "line": 1296,
+            "line": 1303,
             "text": "const startRetentionCheck30d = () => {"
           }
         },
@@ -1281,10 +1281,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/components/Vocabulary.tsx:559 coincide con /const RETENTION_CHECK_MIN_AGE_DAYS = 30/",
+          "detail": "src/client/components/Vocabulary.tsx:563 coincide con /const RETENTION_CHECK_MIN_AGE_DAYS = 30/",
           "observed": {
             "file": "src/client/components/Vocabulary.tsx",
-            "line": 559,
+            "line": 563,
             "text": "const RETENTION_CHECK_MIN_AGE_DAYS = 30;"
           }
         },
