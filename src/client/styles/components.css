@@ -1049,7 +1049,7 @@ mark.saved-word[data-level="settled"] {
   display: flex;
   align-items: center;
   gap: var(--s-1);
-  color: var(--ink-muted);
+  color: var(--ink-faint);
   font-size: var(--fs-xs);
   margin-bottom: var(--s-2);
 }
@@ -1063,8 +1063,8 @@ mark.saved-word[data-level="settled"] {
   border-left: 3px solid var(--ink-faint);
   background: var(--paper-sunken);
   padding: var(--s-2) var(--s-3);
-  border-radius: var(--r-sm);
-  color: var(--ink-muted);
+  border-radius: var(--radius-sm);
+  color: var(--ink-faint);
 }
 
 .precache-progress-bar {
@@ -1094,9 +1094,9 @@ mark.saved-word[data-level="settled"] {
   margin: 0 2px;
   font-size: 1.05rem;
   line-height: 1;
-  color: var(--ink-muted);
+  color: var(--ink-faint);
   vertical-align: middle;
-  border-radius: var(--r-sm);
+  border-radius: var(--radius-sm);
   min-inline-size: auto;
   min-block-size: auto !important;
   opacity: 0.75;
@@ -1194,7 +1194,7 @@ mark.saved-word[data-level="settled"] {
   padding: var(--s-2) var(--s-3);
   background: var(--paper-raised);
   border: var(--border);
-  border-radius: var(--r-sm);
+  border-radius: var(--radius-sm);
   cursor: pointer;
   text-align: left;
   transition: all var(--dur-1) var(--ease-out);
@@ -1220,7 +1220,7 @@ mark.saved-word[data-level="settled"] {
 .segmented-opt-desc {
   font-family: var(--font-ui);
   font-size: 0.75rem;
-  color: var(--ink-muted);
+  color: var(--ink-faint);
 }
 
 /* Indicador flotante en modo Retiro */
@@ -1249,7 +1249,7 @@ mark.saved-word[data-level="settled"] {
 .reader-deep-indicator-text {
   font-family: var(--font-ui);
   font-size: var(--fs-xs);
-  color: var(--ink-muted);
+  color: var(--ink-faint);
   font-weight: 500;
 }
 
@@ -2576,11 +2576,16 @@ mark.saved-word[data-level="settled"] {
 
 /* --- Tarjeta Única de Palabra (WordPanel) --- */
 .word-unified-card {
-  background: var(--surface-elevated, #201e1b);
-  color: var(--text-primary, #f5f2eb);
+  background: var(--surface-elevated);
+  color: var(--text-primary);
   border-radius: 1.15rem;
   padding: 1rem 1.1rem;
-  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.32), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  /* Scrim de ~12 % tras la ficha (sombra de 100vmax, no intercepta
+     toques: el cierre por toque fuera sigue pasando al contenido). */
+  box-shadow:
+    0 0 0 100vmax color-mix(in srgb, var(--scrim, rgba(43, 37, 32, 0.32)) 38%, transparent),
+    0 18px 42px rgba(0, 0, 0, 0.32),
+    0 0 0 1px rgba(255, 255, 255, 0.08);
   max-width: 440px;
   width: 92vw;
   display: flex;
@@ -2669,6 +2674,38 @@ mark.saved-word[data-level="settled"] {
   font-size: 0.86rem;
   line-height: 1.4;
   margin: 0;
+}
+
+.word-card-context-quote {
+  font-family: var(--font-book);
+  font-size: 0.88rem;
+  font-style: italic;
+  line-height: 1.45;
+  color: var(--ink-soft);
+  margin: 0 0 0.45rem;
+}
+
+.word-card-context-actions {
+  margin-top: 0.5rem;
+  display: flex;
+  justify-content: flex-start;
+}
+
+/* Fila secundaria: acciones de pasaje disponibles también con una
+   sola palabra consultada. */
+.word-card-passage-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding-top: 0.55rem;
+  margin-top: 0.15rem;
+  border-top: 1px solid var(--rule, rgba(120, 95, 70, 0.12));
+}
+
+.word-card-passage-actions .selection-menu-btn {
+  font-size: 0.78rem;
+  padding: 0.3rem 0.6rem;
 }
 
 /* --- Cuaderno Unificado + Botón de Repaso de 1 Minuto --- */
@@ -2793,7 +2830,7 @@ mark.saved-word[data-level="settled"] {
 
 .character-memory-header-tag {
   font-size: 0.74rem;
-  color: var(--ink-muted, #767169);
+  color: var(--ink-faint, #767169);
   font-family: var(--font-ui, sans-serif);
 }
 
@@ -2821,7 +2858,7 @@ mark.saved-word[data-level="settled"] {
 
 .character-quote-empty {
   font-size: 0.82rem;
-  color: var(--ink-muted, #767169);
+  color: var(--ink-faint, #767169);
   margin: 0.2rem 0;
   font-style: italic;
 }
@@ -2894,7 +2931,7 @@ mark.saved-word[data-level="settled"] {
 .btn--disable-character-memory {
   background: transparent;
   border: none;
-  color: var(--ink-muted, inherit);
+  color: var(--ink-faint, inherit);
   font-size: 0.72rem;
   opacity: 0.65;
   cursor: pointer;
@@ -2968,7 +3005,7 @@ mark.saved-word[data-level="settled"] {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: var(--ink-muted, #767169);
+  color: var(--ink-faint, #767169);
   margin-bottom: 0.5rem;
 }
 
@@ -3002,7 +3039,7 @@ mark.saved-word[data-level="settled"] {
 
 .reader-more-assist-desc {
   font-size: 0.74rem;
-  color: var(--ink-muted, #767169);
+  color: var(--ink-faint, #767169);
 }
 
 .reader-more-reactivate-btn {

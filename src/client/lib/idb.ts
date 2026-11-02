@@ -1587,7 +1587,9 @@ export function mergeSessionValue(
 // Claves de session que pertenecen a un libro: su inicio elegido,
 // todas sus preparaciones y el análisis de vocabulario que alimenta
 // la insignia de cobertura. El prefijo lleva dos puntos tras el hash —
-// «abc» no borra lo de «abc2».
+// «abc» no borra lo de «abc2». La caché de análisis por capítulo
+// (`chapAn:`) también muere con el libro: se regenera al abrirlo, no
+// viaja en el respaldo.
 export function isBookScopedSessionKey(bookHash: string, key: string): boolean {
   return (
     key === `bookStart:v1:${bookHash}` ||
@@ -1595,6 +1597,7 @@ export function isBookScopedSessionKey(bookHash: string, key: string): boolean {
     key === `bookHelp:v1:${bookHash}` ||
     key === `paperReading:v1:${bookHash}` ||
     key.startsWith(`preparation:v1:${bookHash}:`) ||
+    key.startsWith(`chapAn:${bookHash}:`) ||
     key.startsWith(`${CHAPTER_FOLLOW_PREFIX}${encodeURIComponent(bookHash)}:`) ||
     key.startsWith(`midChapterRecall:v1:${encodeURIComponent(bookHash)}:`)
   );

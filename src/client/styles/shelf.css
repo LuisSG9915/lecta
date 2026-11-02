@@ -161,7 +161,7 @@
   gap: var(--s-6);
   align-items: stretch;
   background: var(--paper-raised);
-  border: 1px solid var(--rule-subtle, rgba(120, 95, 70, 0.12));
+  border: 1px solid var(--rule, rgba(120, 95, 70, 0.12));
   border-radius: var(--r-2);
   padding: var(--s-5);
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
@@ -312,7 +312,7 @@
   font-size: var(--fs-xs);
   padding: 0.25rem 0.65rem;
   border-radius: var(--r-pill, 999px);
-  border: 1px solid var(--rule-subtle, rgba(120, 95, 70, 0.2));
+  border: 1px solid var(--rule, rgba(120, 95, 70, 0.2));
   background: var(--paper);
   color: var(--ink-soft);
   cursor: pointer;
@@ -380,7 +380,7 @@
   justify-content: space-between;
   gap: var(--s-3);
   min-inline-size: 0;
-  border-inline-start: 1px solid var(--rule-subtle, rgba(120, 95, 70, 0.12));
+  border-inline-start: 1px solid var(--rule, rgba(120, 95, 70, 0.12));
   padding-inline-start: var(--s-5);
 }
 
@@ -437,7 +437,7 @@
   gap: var(--s-3);
   flex-wrap: wrap;
   padding-block-start: var(--s-3);
-  border-block-start: 1px dashed var(--rule-subtle, rgba(120, 95, 70, 0.12));
+  border-block-start: 1px dashed var(--rule, rgba(120, 95, 70, 0.12));
 }
 
 .shelf-hero-activity-bar:empty {
@@ -459,7 +459,7 @@
 
 .goal-ring-bg {
   fill: none;
-  stroke: var(--rule-subtle, rgba(120, 95, 70, 0.15));
+  stroke: var(--rule, rgba(120, 95, 70, 0.15));
   stroke-width: 3.5;
 }
 
@@ -554,7 +554,7 @@
   font-size: var(--fs-xs);
   padding: 0.25rem 0.65rem;
   border-radius: var(--r-pill, 999px);
-  border: 1px solid var(--rule-subtle, rgba(120, 95, 70, 0.2));
+  border: 1px solid var(--rule, rgba(120, 95, 70, 0.2));
   background: var(--paper-raised);
   color: var(--ink-soft);
   cursor: pointer;
@@ -613,7 +613,7 @@
   font-size: var(--fs-sm);
   color: var(--ink);
   background: var(--paper-raised, rgba(0, 0, 0, 0.03));
-  border: 1px solid var(--rule-subtle, rgba(120, 95, 70, 0.2));
+  border: 1px solid var(--rule, rgba(120, 95, 70, 0.2));
   border-radius: var(--r-pill, 999px);
   outline: none;
   transition: border-color var(--dur-1) var(--ease-soft), background var(--dur-1) var(--ease-soft);
@@ -645,7 +645,7 @@
   font-size: var(--fs-xs);
   color: var(--ink);
   background: var(--paper-raised, var(--paper));
-  border: 1px solid var(--rule-subtle, rgba(120, 95, 70, 0.2));
+  border: 1px solid var(--rule, rgba(120, 95, 70, 0.2));
   border-radius: var(--r-pill, 999px);
   cursor: pointer;
   outline: none;
@@ -1277,7 +1277,7 @@
 }
 
 .discover-filter-pill {
-  border: 1px solid var(--rule-subtle, rgba(120, 95, 70, 0.18));
+  border: 1px solid var(--rule, rgba(120, 95, 70, 0.18));
   background: var(--paper-raised);
   color: var(--ink-soft);
   font-family: var(--font-ui);
@@ -1422,7 +1422,7 @@
 
   .shelf-hero-right {
     border-inline-start: none;
-    border-block-start: 1px solid var(--rule-subtle, rgba(120, 95, 70, 0.12));
+    border-block-start: 1px solid var(--rule, rgba(120, 95, 70, 0.12));
     padding-inline-start: 0;
     padding-block-start: var(--s-4);
   }
@@ -1546,7 +1546,7 @@
     gap: var(--s-2);
     width: 100%;
     border-inline-start: none;
-    border-block-start: 1px solid var(--rule-subtle, rgba(120, 95, 70, 0.12));
+    border-block-start: 1px solid var(--rule, rgba(120, 95, 70, 0.12));
     padding-inline-start: 0;
     padding-block-start: var(--s-2);
   }
@@ -1636,7 +1636,7 @@
 .bookstart-l2-hint {
   margin: var(--s-1) 0 var(--s-2) 0;
   font-size: var(--fs-xs);
-  color: var(--ink-muted, #766d62);
+  color: var(--ink-faint, #766d62);
 }
 
 .bookstart-l2-levels {
@@ -1654,7 +1654,7 @@
   min-height: 38px;
   border-radius: var(--r-pill, 999px);
   background: var(--paper);
-  border: 1px solid var(--rule-subtle, rgba(120, 95, 70, 0.2));
+  border: 1px solid var(--rule, rgba(120, 95, 70, 0.2));
   color: var(--ink);
   font-size: var(--fs-xs);
   font-weight: 500;
@@ -1691,7 +1691,7 @@
   gap: var(--s-3);
   padding: var(--s-3);
   background: var(--paper-raised);
-  border: 1px solid var(--rule-subtle, rgba(120, 95, 70, 0.12));
+  border: 1px solid var(--rule, rgba(120, 95, 70, 0.12));
   border-radius: var(--r-1);
   margin-block-end: var(--s-3);
 }
@@ -1710,7 +1710,7 @@
 .bookstart-gems-section {
   padding: var(--s-3);
   background: color-mix(in srgb, var(--accent-primary, #c86d3b) 5%, var(--paper-raised));
-  border: 1px dashed var(--rule-subtle, rgba(120, 95, 70, 0.2));
+  border: 1px dashed var(--rule, rgba(120, 95, 70, 0.2));
   border-radius: var(--r-1);
   margin-block-end: var(--s-3);
 }
@@ -1737,7 +1737,7 @@
   padding: 0.3rem 0.65rem;
   border-radius: var(--r-pill, 999px);
   background: var(--paper);
-  border: 1px solid var(--rule-subtle, rgba(120, 95, 70, 0.2));
+  border: 1px solid var(--rule, rgba(120, 95, 70, 0.2));
   color: var(--ink);
   font-family: var(--font-book);
   font-size: var(--fs-sm);
@@ -1936,7 +1936,7 @@
     color-mix(in srgb, var(--accent-primary, #c86d3b) 10%, var(--paper-raised)) 0%,
     var(--paper-raised) 100%
   );
-  border: 1px solid color-mix(in srgb, var(--accent-primary, #c86d3b) 25%, var(--rule-subtle, rgba(120, 95, 70, 0.15)));
+  border: 1px solid color-mix(in srgb, var(--accent-primary, #c86d3b) 25%, var(--rule, rgba(120, 95, 70, 0.15)));
   border-radius: var(--r-2, 12px);
   padding: var(--s-5, 1.5rem);
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
@@ -2087,7 +2087,7 @@
   padding: 1.15rem 1.35rem;
   margin-block-end: 1.5rem;
   background: var(--paper-raised, #ffffff);
-  border: 1px solid var(--rule-subtle, rgba(120, 95, 70, 0.16));
+  border: 1px solid var(--rule, rgba(120, 95, 70, 0.16));
   border-radius: var(--r-2, 12px);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
   transition: opacity 0.2s ease, transform 0.2s ease;

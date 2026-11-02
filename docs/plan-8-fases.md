@@ -96,7 +96,7 @@ Revierte con `git revert <sha>` salvo que la fase diga otra cosa.
 | 5 | Errores de cliente observables | 3 (presupuesto) y 1 (logs) | 6 | Bajo | M | — · ✅ 2026-10-22 |
 | 6 | Cobertura real + MCP con pruebas | 4, 5 | 7 | Bajo | M | `test:coverage` · ✅ 2026-10-22 |
 | 7 | `Reader.tsx` ≤ 3 500 líneas (objetivo 3 000) | 3, 6 | — | **Alto** (monolito de 5 503 líneas) | L | `test:e2e` por extracción · ⚠️ cerrada con desvío: **3 982** · meta 3 500 retirada |
-| 8 | ODbL descargable de verdad | — | — | Bajo | S | `curl -I` en prod · ✅ 2026-10-22 (pendiente: `senses-es.csv.gz`) |
+| 8 | ODbL descargable de verdad | — | — | Bajo | S | `curl -I` en prod · ✅ 2026-10-22 |
 
 Leyenda: ✅ cerrada con los criterios verificados por comando (§4.7, §5.3, …); ⚠️ cerrada con
 un criterio sin alcanzar y la decisión registrada en §13 (hoy solo la Fase 7, criterio 1).
@@ -949,11 +949,11 @@ Revertir. El archivo en `public/` se puede borrar sin efectos: nadie lo referenc
 | La Fase 8 puede esperar al final | La afirmación de descarga pública ya está en la app y el enlace da 404. |
 | `public/lexicon/` hay que crearlo | Ya existe (con `locuciones.es.json`) y ya tiene regla de caché en `_headers`. |
 
-## 16. Fase 9 (propuesta, 2026-10-31) — La tarjeta de palabra
+## 16. Fase 9 (2026-10-31 → ejecutada 2026-11-01) — La tarjeta de palabra
 
-> Propuesta abierta, no aprobada. Nace de la auditoría del 2026-10-31 sobre
-> «seleccionar una palabra»: tres defectos de código y cuatro de composición. Si se
-> aprueba, esta fase se ejecuta después de la 8 y su gate es el mismo `pnpm gate`.
+> Nació de la auditoría del 2026-10-31 sobre «seleccionar una palabra»: tres
+> defectos de código y cuatro de composición. Ejecutada tras el modo papel
+> (F0–F5); el estado está en §16.5 y el gate verde con los mismos umbrales.
 
 ### 16.1 Qué se encontró midiendo (no leyendo)
 
@@ -1012,3 +1012,25 @@ selección de una palabra que **sustituye** la ficha abierta, y dos pruebas de r
 | 2026-10-31 | El fallback `var(--text-primary, #f5f2eb)` no basta como contrato: toda variable usada debe existir | Un fallback pensado para el tema noche sobre superficie blanca da 1.12:1 y ninguna prueba lo vio |
 | 2026-10-31 | `setReaderContext` idempotente en el proveedor, no `useMemo` del `value` | `equipped`/`accessories`/`presence` ya son objetos nuevos por render: memoizar el value no evitaba el bucle y sí añadía riesgo de lint |
 | 2026-10-31 | Zona neutral con umbral, en lugar de «tocar siempre consulta» | Toda la pantalla es superficie de toque: sin hueco neutral, el gesto de cerrar o de «no hacer nada» no existe |
+| 2026-11-01 | Resalte por CSS Custom Highlight API (`::highlight(lecta-consulted)`), no por mutación del DOM | El rango va en `WordHit.range`; un efecto del lector lo registra al abrir y lo quita al cerrar — el EPUB nunca se reescribe |
+| 2026-11-01 | Scrim 12 % como `box-shadow` de 100vmax bajo la hoja, no como capa nueva | Cero DOM extra y los toques siguen cayendo en el cierre por toque fuera que ya existía |
+| 2026-11-01 | Tokens fantasma se resuelven al token real (o al literal cuando es un valor fijo), nunca con alias nuevos | `--accent`→`--accent-primary`, `--ink-muted`→`--ink-faint`, `--rule-subtle`→`--rule`; `--r-sm`→su literal de px (radio no depende del tema) |
+| 2026-11-01 | Acciones de pasaje en la ficha: cada una cierra la ficha primero y ejecuta sobre palabra/frase guardada | `savePassageRange(range, tone)` y `openQuoteCardFromSelection(texto)` aceptan datos explícitos: no dependen de `window.getSelection()` que ya no existe |
+
+### 16.5 Estado (ejecutada 2026-11-01)
+
+| # | Criterio | Resultado |
+|---|---|---|
+| C1 | Contraste ≥ 4.5:1 en los 4 temas | ✓ `tokens.test.ts` ahora exige `--accent-primary` sobre `--paper-raised` además de ink/ink-soft/vermilion existentes |
+| C2 | Cero «Maximum update depth» | ✓ ya corregido antes de la fase (`CompanionProvider.test.ts` sigue verde) |
+| C3 | Hueco no abre ficha vecina | ✓ e2e: clic junto al encabezado no abre nada; con ficha abierta no muestra otra palabra |
+| C4 | Cambiar de palabra sustituye, no apila | ✓ e2e: `history.length` se mantiene en +1 a través de swap y de dos ciclos abrir/cerrar; unitario exige push/release balanceados |
+| C5 | Acciones de pasaje con una palabra | ✓ e2e: Tinta, Reflexión, Postal y Preguntar visibles en la ficha |
+| C6 | Palabra consultada resaltada | ✓ e2e: `CSS.highlights.has("lecta-consulted")` mientras la ficha está abierta y ausente tras Escape |
+| C7 | Cabecera con jerarquía clara | ✓ cita en `blockquote` (hoy la frase sí se muestra) + fila propia con un solo verbo; pendiente solo la revisión de captura |
+| C8 | `pnpm gate` verde, JS ≤ 215 kB | ✓ 227 archivos / 3 216 pruebas, JS inicial **208.06 kB** (sin cambio) |
+
+Cobertura añadida: `e2e/word-card.spec.ts` (4 pruebas, C3–C6), test de balance
+push/release en `useReaderSelection.test.ts`, test de tokens fantasma y de
+contraste de acento en `tokens.test.ts`. El borde `var(--accent)` de reader.css
+— que nunca se renderizaba por token inexistente — ahora sí pinta.

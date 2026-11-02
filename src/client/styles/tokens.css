@@ -521,8 +521,8 @@
 :root[data-theme="night"],
 [data-theme="dark"],
 .theme-dark {
-  --surface-priming: color-mix(in srgb, var(--paper-sunken, var(--bg-secondary, #1e1e1e)) 90%, var(--accent-primary, var(--accent, #d4a373)) 10%);
-  --border-priming: color-mix(in srgb, var(--rule-strong, var(--border-color, #333333)) 75%, var(--accent-primary, var(--accent, #d4a373)) 25%);
+  --surface-priming: color-mix(in srgb, var(--paper-sunken, var(--bg-secondary, #1e1e1e)) 90%, var(--accent-primary, var(--accent-primary, #d4a373)) 10%);
+  --border-priming: color-mix(in srgb, var(--rule-strong, var(--border-color, #333333)) 75%, var(--accent-primary, var(--accent-primary, #d4a373)) 25%);
   --surface-spoiler-safe: color-mix(in srgb, var(--paper-sunken, var(--bg-secondary, #1e1e1e)) 88%, #4da87a 12%);
   --text-spoiler-safe: #7ce0ad;
   --surface-bilingue-clause: color-mix(in srgb, var(--paper-sunken, var(--bg-secondary, #1e1e1e)) 90%, #6d9dc5 10%);
@@ -533,8 +533,8 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]),
   [data-theme="auto"] {
-    --surface-priming: color-mix(in srgb, var(--paper-sunken, var(--bg-secondary, #1e1e1e)) 90%, var(--accent-primary, var(--accent, #d4a373)) 10%);
-    --border-priming: color-mix(in srgb, var(--rule-strong, var(--border-color, #333333)) 75%, var(--accent-primary, var(--accent, #d4a373)) 25%);
+    --surface-priming: color-mix(in srgb, var(--paper-sunken, var(--bg-secondary, #1e1e1e)) 90%, var(--accent-primary, var(--accent-primary, #d4a373)) 10%);
+    --border-priming: color-mix(in srgb, var(--rule-strong, var(--border-color, #333333)) 75%, var(--accent-primary, var(--accent-primary, #d4a373)) 25%);
     --surface-spoiler-safe: color-mix(in srgb, var(--paper-sunken, var(--bg-secondary, #1e1e1e)) 88%, #4da87a 12%);
     --text-spoiler-safe: #7ce0ad;
     --surface-bilingue-clause: color-mix(in srgb, var(--paper-sunken, var(--bg-secondary, #1e1e1e)) 90%, #6d9dc5 10%);

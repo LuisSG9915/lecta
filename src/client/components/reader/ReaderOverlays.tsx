@@ -74,6 +74,13 @@ export interface ReaderOverlaysProps {
   selection: WordHit | null;
   /** ¿La palabra seleccionada ya está en el Cuaderno? Viene de RAM. */
   isSavedInitial?: boolean;
+  /** Acciones de pasaje que la ficha ofrece en fila secundaria. */
+  wordPassageActions?: {
+    onHighlight?: (tone: "amber" | "salvia" | "dario") => void;
+    onQuoteCard: () => void;
+    onAsk: () => void;
+    onDeepRead: () => void;
+  };
   onCloseSelection: () => void;
   onWordSaved?: (word: SavedWord) => void;
   onWordRemoved?: (word: SavedWord) => void;
@@ -169,6 +176,7 @@ export function ReaderOverlays({
 
   selection,
   isSavedInitial = false,
+  wordPassageActions,
   onCloseSelection,
   onWordSaved,
   onWordRemoved,
@@ -292,6 +300,7 @@ export function ReaderOverlays({
           compactMode={compactMode}
           capsuleHost={wordCapsuleHost}
           isSavedInitial={isSavedInitial}
+          passageActions={wordPassageActions}
           onClose={onCloseSelection}
           onSaved={onWordSaved}
           onRemoved={onWordRemoved}

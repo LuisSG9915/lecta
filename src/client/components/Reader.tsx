@@ -734,6 +734,31 @@ export default function Reader({
     }
   }, [readerInitialWord, state]);
 
+  // La palabra consultada queda resaltada mientras su ficha está
+  // abierta: el range del toque se registra con la Custom Highlight
+  // API y se limpia al cerrar o al abrir otra — sin tocar el DOM del
+  // EPUB ni refluir el texto.
+  useEffect(() => {
+    const registry =
+      typeof CSS !== "undefined" && "highlights" in CSS
+        ? CSS.highlights
+        : null;
+    if (!registry) return;
+    const range = selection?.range;
+    if (!range) {
+      registry.delete("lecta-consulted");
+      return;
+    }
+    try {
+      registry.set("lecta-consulted", new Highlight(range));
+      return () => {
+        registry.delete("lecta-consulted");
+      };
+    } catch {
+      registry.delete("lecta-consulted");
+    }
+  }, [selection]);
+
   useEffect(() => {
     void updateAppBadge(false);
     return () => {
@@ -1070,6 +1095,7 @@ export default function Reader({
     removeMark,
     saveNote,
     savePassageSelection,
+    savePassageRange,
     openQuoteCardFromSelection,
     askCatAboutSelection,
     savePassageDirectly,
@@ -4672,6 +4698,36 @@ export default function Reader({
           selection != null && savedKeys.has(wordKey(language, selection.word))
         }
         onCloseSelection={closeSelection}
+        // Acciones de pasaje en la ficha de palabra: cada una cierra la
+        // ficha y ejecuta la acción sobre su palabra o su frase.
+        wordPassageActions={
+          selection
+            ? {
+                onHighlight: selection.range
+                  ? (tone) => {
+                      const range = selection.range;
+                      closeSelection();
+                      if (range) void savePassageRange(range, tone);
+                    }
+                  : undefined,
+                onQuoteCard: () => {
+                  const text = selection.context || selection.word;
+                  closeSelection();
+                  openQuoteCardFromSelection(text);
+                },
+                onAsk: () => {
+                  const word = selection.word;
+                  const passage = selection.context || selection.word;
+                  closeSelection();
+                  void askCatAboutSelection({ word, passage });
+                },
+                onDeepRead: () => {
+                  closeSelection();
+                  setDeepModal(true);
+                },
+              }
+            : undefined
+        }
         onWordSaved={onWordSaved}
         onWordRemoved={onWordRemoved}
         onKnowledgeChanged={(row, { form, kind }) => {

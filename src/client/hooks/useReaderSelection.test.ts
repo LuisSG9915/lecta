@@ -196,4 +196,26 @@ describe("useReaderSelection", () => {
     expect(opts.releaseOverlay).toHaveBeenCalledTimes(1);
     expect(opts.setSelection).toHaveBeenCalledWith(null);
   });
+
+  it("abrir y cerrar tres veces deja una capa por ciclo (push/release balanceados)", () => {
+    // La misma pareja push/release que usa Reader: cada ciclo abre una
+    // capa y la cierra — nunca quedan capas huérfanas apiladas (C4).
+    const ref: { current: { release: () => void } | null } = { current: null };
+    const releaseOverlay = vi.fn(() => {
+      ref.current?.release();
+      ref.current = null;
+    });
+    const opts = options({
+      overlayReleaseRef: ref as never,
+      releaseOverlay,
+    });
+    render(opts);
+    for (let i = 0; i < 3; i += 1) {
+      act(() => api.openSelection({ word: `w${i}`, context: "" }));
+      act(() => api.closeSelection());
+    }
+    expect(mocks.pushOverlay).toHaveBeenCalledTimes(3);
+    expect(releaseOverlay).toHaveBeenCalledTimes(3);
+    expect(ref.current).toBeNull();
+  });
 });

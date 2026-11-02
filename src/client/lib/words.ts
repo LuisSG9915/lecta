@@ -6,6 +6,10 @@ export type WordHit = {
   // Locución detectada en la oración del toque (fase B): la rellena
   // quien abre la ficha — la extracción en sí no la conoce.
   phrase?: PhraseHit;
+  // Tramo exacto de la palabra tocada: lo usa la ficha para resaltarla
+  // con la Custom Highlight API mientras está abierta. Transitorio — no
+  // se serializa ni sobrevive a un cambio de sección.
+  range?: Range;
 };
 
 // Elige la oración que cubre la posición del toque (offset dentro de
@@ -67,24 +71,23 @@ export function extractWordAtPoint(
   // al pulsar en el margen derecho o fuera del texto cae al final del nodo
   // de texto y seleccionaba erróneamente la última palabra de la línea.
   // Si el navegador provee rectángulos de trazado para la palabra, verificamos
-  // que el toque (clientX, clientY) esté dentro o inmediatamente adyacente
-  // a la palabra (con margen de tolerancia para dedos en pantallas táctiles).
+  // que el toque (clientX, clientY) esté dentro de la caja de la palabra
+  // ampliada un 25 % (zona neutral: el hueco entre palabras o el margen no
+  // abre la ficha de la vecina ni hace nada — cierra la abierta).
+  const wordRange = document.createRange();
+  wordRange.setStart(node, part.index);
+  wordRange.setEnd(node, part.index + part.segment.length);
   try {
-    const wordRange = document.createRange();
-    wordRange.setStart(node, part.index);
-    wordRange.setEnd(node, part.index + part.segment.length);
     const rects = wordRange.getClientRects();
     if (rects && rects.length > 0) {
       const hasLayout = Array.from(rects).some((r) => r.width > 0 || r.height > 0);
       if (hasLayout) {
-        const padX = 14;
-        const padY = 8;
         const hitInside = Array.from(rects).some(
           (r) =>
-            clientX >= r.left - padX &&
-            clientX <= r.right + padX &&
-            clientY >= r.top - padY &&
-            clientY <= r.bottom + padY,
+            clientX >= r.left - r.width * 0.25 &&
+            clientX <= r.right + r.width * 0.25 &&
+            clientY >= r.top - r.height * 0.25 &&
+            clientY <= r.bottom + r.height * 0.25,
         );
         if (!hitInside) return null;
       }
@@ -106,7 +109,7 @@ export function extractWordAtPoint(
     context = findSentence(block.textContent, word, language, range.toString().length);
   }
 
-  return { word, context };
+  return { word, context, range: wordRange };
 }
 
 /**
@@ -153,5 +156,5 @@ export function wordHitFromRange(
     }
   }
 
-  return { word, context };
+  return { word, context, range: range.cloneRange() };
 }

@@ -1,21 +1,21 @@
 {
   "tool": "audit-investigacion",
   "version": 1,
-  "generatedAt": "2026-11-01T23:59:22.657Z",
+  "generatedAt": "2026-11-02T00:31:01.083Z",
   "root": "/Users/luis/Desarrollos Devin/lecta",
-  "commit": "0d72d94b23229c3be74fada649ebbc99833ccec4",
+  "commit": "bff5c42f37d0387168ee1164ed915baa6527398b",
   "doc": "docs/estrategia-aprendizaje-2026-10-24.md",
   "registry": "docs/auditoria/claims.json",
   "online": false,
   "summary": {
     "claims": 14,
     "pass": 1,
-    "fail": 0,
-    "unverified": 13,
+    "fail": 2,
+    "unverified": 11,
     "skipped": 0,
     "refutedExpected": 0,
-    "codePass": 14,
-    "codeFail": 0,
+    "codePass": 12,
+    "codeFail": 2,
     "referencePass": 0,
     "referenceUnverified": 32,
     "referenceFail": 0,
@@ -500,7 +500,7 @@
       "title": "«Ya la conozco» alimenta el nivel como si fuera una prueba",
       "statement": "Marcar «ya la conozco» ajusta θ con outcome 1 y un delta de 0,18 × (1 − P), sin ninguna recuperación verificada de por medio, y el acto se registra sin pagar XP de repaso.",
       "section": "H4",
-      "status": "UNVERIFIED",
+      "status": "FAIL",
       "auditVerdict": {
         "status": "MATIZADA",
         "date": "2026-10-26",
@@ -510,7 +510,7 @@
           "src/client/lib/profile-models.ts:405-415"
         ]
       },
-      "codeStatus": "PASS",
+      "codeStatus": "FAIL",
       "refStatus": "UNVERIFIED",
       "checks": [
         {
@@ -521,12 +521,54 @@
         },
         {
           "kind": "code-anchor",
-          "status": "PASS",
-          "detail": "src/client/components/Reader.tsx:4739 coincide con /updateLanguageTheta\\(currentLang, beta, 1, 1\\.0\\)/",
+          "status": "FAIL",
+          "detail": "src/client/components/Reader.tsx:4719-4759 no contiene /updateLanguageTheta\\(currentLang, beta, 1, 1\\.0\\)/",
           "observed": {
             "file": "src/client/components/Reader.tsx",
-            "line": 4739,
-            "text": "updateLanguageTheta(currentLang, beta, 1, 1.0);"
+            "asked": 4739,
+            "excerpt": [
+              "4719:                   const word = selection.word;",
+              "4720:                   const passage = selection.context || selection.word;",
+              "4721:                   closeSelection();",
+              "4722:                   void askCatAboutSelection({ word, passage });",
+              "4723:                 },",
+              "4724:                 onDeepRead: () => {",
+              "4725:                   closeSelection();",
+              "4726:                   setDeepModal(true);",
+              "4727:                 },",
+              "4728:               }",
+              "4729:             : undefined",
+              "4730:         }",
+              "4731:         onWordSaved={onWordSaved}",
+              "4732:         onWordRemoved={onWordRemoved}",
+              "4733:         onKnowledgeChanged={(row, { form, kind }) => {",
+              "4734:           applyKnowledgeRow(row);",
+              "4735:           try {",
+              "4736:             // θ ya lo ajusta el emisor del acto (WordPanel y la hoja de",
+              "4737:             // preparación): aquí solo se persiste el repaso y se evita el",
+              "4738:             // segundo empujón sobre la misma señal.",
+              "4739:             const currentLang = language || (bookRef.current ? getBookLanguage(bookRef.current) : \"es\");",
+              "4740:             if (kind === \"saved\") {",
+              "4741:               void scheduleCapturedReview(form, bookHash, undefined, currentLang).catch(() => {});",
+              "4742:             }",
+              "4743:           } catch {",
+              "4744:             // Ignorar fallo al programar el repaso",
+              "4745:           }",
+              "4746:           trackEvent(",
+              "4747:             kind === \"saved\"",
+              "4748:               ? {",
+              "4749:                   kind: \"word_saved\",",
+              "4750:                   sectionIndex: sectionIndexRef.current,",
+              "4751:                   form,",
+              "4752:                   lemma: row.lemma,",
+              "4753:                   origin: \"text\",",
+              "4754:                 }",
+              "4755:               : {",
+              "4756:                   kind: \"word_declared_known\",",
+              "4757:                   sectionIndex: sectionIndexRef.current,",
+              "4758:                   lemma: row.lemma,",
+              "4759:                   origin: \"text\","
+            ]
           }
         },
         {
@@ -542,10 +584,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/components/WordPanel.tsx:566 coincide con /award: false/",
+          "detail": "src/client/components/WordPanel.tsx:579 coincide con /award: false/",
           "observed": {
             "file": "src/client/components/WordPanel.tsx",
-            "line": 566,
+            "line": 579,
             "text": "{ award: false },"
           }
         },
@@ -621,7 +663,7 @@
       "title": "La exposición pasiva acota a 8 lemas por paso y respeta lápidas",
       "statement": "La vía viva registra hasta 8 lemas no consultados por paso de página, exige lectura por debajo de 450 ppm, no revive lápidas y mantiene «familiar» a las 3 exposiciones dentro de la sesión.",
       "section": "H5",
-      "status": "UNVERIFIED",
+      "status": "FAIL",
       "auditVerdict": {
         "status": "SOSTENIDA",
         "date": "2026-10-26",
@@ -631,7 +673,7 @@
           "src/client/lib/idb.ts:2093-2102"
         ]
       },
-      "codeStatus": "PASS",
+      "codeStatus": "FAIL",
       "refStatus": "UNVERIFIED",
       "checks": [
         {
@@ -672,12 +714,16 @@
         },
         {
           "kind": "code-anchor",
-          "status": "PASS",
-          "detail": "src/client/lib/idb.ts:2112 coincide con /if \\(existing\\?\\.deleted\\) return existing/",
+          "status": "FAIL",
+          "detail": "src/client/lib/idb.ts:2111-2113 no contiene /if \\(existing\\?\\.deleted\\) return existing/",
           "observed": {
             "file": "src/client/lib/idb.ts",
-            "line": 2112,
-            "text": "if (existing?.deleted) return existing;"
+            "asked": 2112,
+            "excerpt": [
+              "2111:     const key = knowledgeKey(language, lemma);",
+              "2112:     const existing = await db.get(\"knowledge\", key);",
+              "2113:     // Una inferencia pasiva jamás revive lo que el lector borró"
+            ]
           }
         },
         {
@@ -1720,5 +1766,5 @@
       }
     }
   ],
-  "verdict": "PASS_WITH_UNVERIFIED"
+  "verdict": "FAIL"
 }

@@ -190,6 +190,19 @@ describe("tokens.css", () => {
       expect(cVermilionPaper, `--vermilion sobre --paper en ${themeName} (${cVermilionPaper.toFixed(2)}:1)`).toBeGreaterThanOrEqual(4.5);
       expect(cVermilionRaised, `--vermilion sobre --paper-raised en ${themeName} (${cVermilionRaised.toFixed(2)}:1)`).toBeGreaterThanOrEqual(4.5);
 
+      // Contraste C1 de la ficha: --accent-primary (acciones, bordes y
+      // la marca de la cita) sobre la superficie elevada de la tarjeta.
+      const accentPrimaryRaw = parseColor(decls["--accent-primary"]);
+      expect(accentPrimaryRaw, `accent-primary en ${themeName}`).not.toBeNull();
+      const cAccentPrimary = contrastRatio(
+        relativeLuminance(accentPrimaryRaw!.r, accentPrimaryRaw!.g, accentPrimaryRaw!.b),
+        lumPaperRaised,
+      );
+      expect(
+        cAccentPrimary,
+        `--accent-primary sobre --paper-raised en ${themeName} (${cAccentPrimary.toFixed(2)}:1)`,
+      ).toBeGreaterThanOrEqual(4.5);
+
       // Contrast: on-accent sobre vermilion
       const compAccent = onAccent.a < 1 ? compositeOver(onAccent, vermilion) : onAccent;
       const cOnAccent = contrastRatio(
@@ -209,6 +222,26 @@ describe("tokens.css", () => {
     expect(baseRoot, "falta el bloque :root base en tokens.css").toBeTruthy();
     const declaration = baseRoot![1].match(/--text-primary\s*:\s*([^;]+);/);
     expect(declaration?.[1].trim()).toBe("var(--ink)");
+  });
+
+  // Regresión F9.6: tokens nunca definidos en tokens.css. Cuando el navegador
+  // los resolvía caía al fallback inline (un color fijo de un solo tema o, sin
+  // fallback, una declaración inválida que desaparecía del todo, como el borde
+  // de `var(--accent)` en reader.css). Cualquier uso nuevo vuelve a romper C1.
+  it("ninguna hoja usa tokens fantasma (nunca definidos en el contrato de temas)", () => {
+    const ghosts = [
+      /var\(--ink-muted[\s,)]/,
+      /var\(--accent[\s,)]/,
+      /var\(--r-sm[\s,)]/,
+      /var\(--rule-subtle[\s,)]/,
+    ];
+    const files = ["reader.css", "components.css", "notebook.css", "shelf.css", "app.css", "game.css", "tokens.css"];
+    for (const name of files) {
+      const css = readFileSync(resolve(__dirname, name), "utf-8");
+      for (const ghost of ghosts) {
+        expect(css, `${name} usa token fantasma ${ghost}`).not.toMatch(ghost);
+      }
+    }
   });
 
   it("los botones de acento usan --on-accent, no un color fijo", () => {

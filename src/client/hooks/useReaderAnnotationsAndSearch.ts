@@ -201,16 +201,10 @@ export function useReaderAnnotationsAndSearch({
     [captureDbScope, noteDraft, pushAnnotation],
   );
 
-  const savePassageSelection = useCallback(
-    async (color: PassageTone = "amber") => {
-      const sel = window.getSelection();
+  const savePassageRange = useCallback(
+    async (range: Range, color: PassageTone = "amber") => {
       const container = containerRef.current;
-      if (!sel || sel.isCollapsed || !container || !sel.rangeCount) {
-        setSelButton(null);
-        return;
-      }
-      const range = sel.getRangeAt(0);
-      if (!container.contains(range.commonAncestorContainer)) {
+      if (!container || !container.contains(range.commonAncestorContainer)) {
         setSelButton(null);
         return;
       }
@@ -223,12 +217,11 @@ export function useReaderAnnotationsAndSearch({
       const input = makePassage(
         bookHash,
         sectionIndex,
-        sel.toString(),
+        range.toString(),
         before.toString(),
         after.toString(),
         color,
       );
-      sel.removeAllRanges();
       setSelButton(null);
       if (!input) return;
       const scope = captureDbScope();
@@ -239,14 +232,37 @@ export function useReaderAnnotationsAndSearch({
     [containerRef, bookHash, sectionIndex, setSelButton, captureDbScope, pushAnnotation, onStatus],
   );
 
-  const openQuoteCardFromSelection = useCallback(() => {
+  const savePassageSelection = useCallback(
+    async (color: PassageTone = "amber") => {
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed || !sel.rangeCount) {
+        setSelButton(null);
+        return;
+      }
+      const range = sel.getRangeAt(0);
+      sel.removeAllRanges();
+      await savePassageRange(range, color);
+    },
+    [setSelButton, savePassageRange],
+  );
+
+  const openQuoteCardFromSelection = useCallback((explicitText?: string) => {
     const container = containerRef.current;
     const sel = window.getSelection();
-    if (!container || !sel || sel.isCollapsed || !sel.rangeCount) {
+    if (!container) {
       setSelButton(null);
       return;
     }
-    const text = sel.toString().replace(/\s+/g, " ").trim();
+    // Texto explícito (p. ej. la frase de la palabra consultada en la
+    // ficha) o, si no, la selección de texto que tenga el documento.
+    let text = explicitText?.replace(/\s+/g, " ").trim() ?? "";
+    if (!text) {
+      if (!sel || sel.isCollapsed || !sel.rangeCount) {
+        setSelButton(null);
+        return;
+      }
+      text = sel.toString().replace(/\s+/g, " ").trim();
+    }
     if (text.length < 2) {
       setSelButton(null);
       return;
@@ -468,6 +484,7 @@ export function useReaderAnnotationsAndSearch({
     removeMark,
     saveNote,
     savePassageSelection,
+    savePassageRange,
     openQuoteCardFromSelection,
     askCatAboutSelection,
     savePassageDirectly,

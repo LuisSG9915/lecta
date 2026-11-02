@@ -255,7 +255,9 @@ borrador:
   con las mismas fuentes (saved, knowledge, `threshold` de `refreshProfile`,
   `userTheta`, `isSecondLanguage`) — sin `bookFrequencies` ni umbral aparte,
   para que las filas coincidan con la antesala. La hoja comparte la caché
-  `chapAn:{hash}:{target}` con el lector (`chapterAnalysisCacheKey`).
+  `chapAn:{hash}:{target}` con el lector (`chapterAnalysisCacheKey`);
+  registrada en `isBookScopedSessionKey` (muere con el libro; es caché
+  regenerable, no viaja en el respaldo).
 - **Hoja de capítulo propia** (`PaperChapterSheet`), no SectionPreview con
   prop: la antesala del lector tiene selector de estrategia y «Entrar al
   capítulo». La fila presentacional sí se comparte

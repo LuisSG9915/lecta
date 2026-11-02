@@ -222,6 +222,7 @@ describe("isBookScopedSessionKey", () => {
       false,
     );
     expect(isBookScopedSessionKey("abc", "paperReading:v1:abc2")).toBe(false);
+    expect(isBookScopedSessionKey("abc", "chapAn:abc2:cap1")).toBe(false);
     expect(isBookScopedSessionKey("abc2", "bookStart:v1:abc")).toBe(false);
   });
 
@@ -235,6 +236,12 @@ describe("isBookScopedSessionKey", () => {
     expect(isBookScopedSessionKey("abc", "chapterFollow:v1:abc:Cap%201")).toBe(true);
     expect(isBookScopedSessionKey("abc", "chapterFollow:v1:abc2:Cap%201")).toBe(false);
     expect(isBookScopedSessionKey("abc", "midChapterRecall:v1:abc:cap-1")).toBe(true);
+  });
+
+  it("la caché de análisis por capítulo sale con su libro", () => {
+    expect(isBookScopedSessionKey("abc", "chapAn:abc:cap-1")).toBe(true);
+    expect(isBookScopedSessionKey("abc", "chapAn:abc:sec%202")).toBe(true);
+    expect(isBookScopedSessionKey("abc", "chapAn:abc")).toBe(false);
   });
 
   it("claves ajenas al ciclo quedan intactas", () => {

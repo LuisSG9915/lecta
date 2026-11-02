@@ -67,6 +67,15 @@ export interface UnifiedWordPanelProps {
   word: string;
   sentenceContext?: string;
   context?: string; // Retrocompatibilidad con Reader.tsx
+  /** Acciones de pasaje que la ficha ofrece en su fila secundaria
+      (una palabra conserva Tinta, Reflexión, Postal y Preguntar). */
+  passageActions?: {
+    /** Presente solo cuando hay un tramo DOM que resaltar (toque real). */
+    onHighlight?: (tone: "amber" | "salvia" | "dario") => void;
+    onQuoteCard: () => void;
+    onAsk: () => void;
+    onDeepRead: () => void;
+  };
   bookLanguage?: "es" | "en" | string;
   language?: string; // Retrocompatibilidad con Reader.tsx
   bookHash?: string;
@@ -120,6 +129,7 @@ export interface UnifiedWordPanelProps {
 const passageMeaningMemoryCache = new Map<string, ContextualMeaningResult>();
 
 export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
+  passageActions,
   word,
   sentenceContext,
   context,
@@ -188,6 +198,9 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
   });
   const [contextual, setContextual] = useState<ContextualMeaningResult | null>(null);
   const [isLoadingContext, setIsLoadingContext] = useState<boolean>(true);
+  // Reintento explícito de «Explicar en esta frase»: al tocarla el
+  // efecto vuelve a correr (caché en memoria si ya se resolvió).
+  const [contextAttempt, setContextAttempt] = useState(0);
   const [isSaved, setIsSaved] = useState<boolean>(isSavedInitial);
   const [savedEntry, setSavedEntry] = useState<SavedWord | null>(null);
   const [saving, setSaving] = useState(false);
@@ -361,7 +374,7 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
     }
 
     return () => abortCtrl.abort();
-  }, [cleanWord, effectiveContext, effectiveLang, cacheKey, lookupLocalLexicon, fetchContextualMeaning, onRecordSilentCalibration, bookTitle, author, bookHash]);
+  }, [cleanWord, effectiveContext, effectiveLang, cacheKey, lookupLocalLexicon, fetchContextualMeaning, onRecordSilentCalibration, bookTitle, author, bookHash, contextAttempt]);
 
   // Construcción de la ficha de memoria de personaje (Cero Spoilers)
   useEffect(() => {
@@ -1111,33 +1124,16 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
             )}
           </section>
 
-          {/* Bloque 2: "¿Qué significa en esta frase exacta?" (IA integrada en 1 paso, en paralelo y cacheada) */}
+          {/* Bloque 2: la frase del libro en bloque y, en su propia
+              fila, la acción de explicarla (un solo verbo). La
+              explicación llega sola en paralelo; el botón reintenta
+              cuando hace falta. */}
           <section className="word-card-context-box">
-            <div
-              className="word-card-context-label"
-              style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}
-            >
-              <span>En esta frase del libro:</span>
-              {/* Botón retrocompatible para tests existentes */}
-              <button
-                type="button"
-                className="btn--explain-passage btn--nuance-context"
-                onClick={() => {
-                  if (contextual) return;
-                  setIsLoadingContext(true);
-                }}
-                style={{
-                  background: "transparent",
-                  border: "none",
-                  color: "inherit",
-                  fontSize: "0.74rem",
-                  opacity: 0.8,
-                  cursor: "pointer",
-                }}
-              >
-                Ver matiz en este contexto (Explicar en esta frase)
-              </button>
-            </div>
+            {effectiveContext ? (
+              <blockquote className="word-card-context-quote">
+                «{effectiveContext}»
+              </blockquote>
+            ) : null}
 
             {isLoadingContext ? (
               <div className="word-card-context-skeleton" aria-busy="true">
@@ -1173,9 +1169,96 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
                 Sentido literal dentro del pasaje actual.
               </p>
             )}
+
+            <div className="word-card-context-actions">
+              <button
+                type="button"
+                className="btn--explain-passage btn--nuance-context"
+                onClick={() => setContextAttempt((n) => n + 1)}
+              >
+                Explicar en esta frase
+              </button>
+            </div>
           </section>
         </>
       )}
+
+      {/* Fila secundaria: las acciones de pasaje no se pierden con una
+          sola palabra — Tinta, Reflexión, Postal y Preguntar entran en
+          la ficha. Cada acción cierra la ficha (la hace el lector en
+          Reader.tsx al cablear los callbacks). */}
+      {passageActions ? (
+        <div
+          className="word-card-passage-actions"
+          role="group"
+          aria-label="Acciones de pasaje"
+        >
+          {passageActions.onHighlight ? (
+            <div
+              className="selection-highlight-group"
+              role="group"
+              aria-label="Resaltar con tinta"
+            >
+              <button
+                type="button"
+                className="selection-menu-btn selection-save"
+                aria-label="Resaltar con tinta"
+                onClick={() => passageActions.onHighlight?.("amber")}
+              >
+                <Icon name="highlight" size={14} />
+                <span>Tinta</span>
+              </button>
+              <div
+                className="selection-tones-picker"
+                aria-label="Elegir tono de tinta"
+              >
+                <button
+                  type="button"
+                  className="tone-dot tone-dot--amber"
+                  aria-label="Tinta Ámbar"
+                  onClick={() => passageActions.onHighlight?.("amber")}
+                />
+                <button
+                  type="button"
+                  className="tone-dot tone-dot--salvia"
+                  aria-label="Tinta Salvia"
+                  onClick={() => passageActions.onHighlight?.("salvia")}
+                />
+                <button
+                  type="button"
+                  className="tone-dot tone-dot--dario"
+                  aria-label="Tinta Azul Darío"
+                  onClick={() => passageActions.onHighlight?.("dario")}
+                />
+              </div>
+            </div>
+          ) : null}
+          <button
+            type="button"
+            className="selection-menu-btn"
+            onClick={passageActions.onDeepRead}
+          >
+            <Icon name="retreat" size={14} />
+            <span>Reflexión</span>
+          </button>
+          <button
+            type="button"
+            className="selection-menu-btn"
+            onClick={passageActions.onQuoteCard}
+          >
+            <Icon name="quote" size={14} />
+            <span>Postal</span>
+          </button>
+          <button
+            type="button"
+            className="selection-menu-btn selection-ask-cat"
+            onClick={passageActions.onAsk}
+          >
+            <Icon name="sparkles" size={14} />
+            <span>Preguntar</span>
+          </button>
+        </div>
+      ) : null}
 
       {/* Toast de notificación rápida */}
       {quickNotice && (

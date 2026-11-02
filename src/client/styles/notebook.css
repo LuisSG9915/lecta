@@ -1362,7 +1362,7 @@
   margin-block: var(--s-3) var(--s-2);
   padding: var(--s-2) var(--s-3);
   background: var(--paper-raised);
-  border: 1px solid var(--rule-subtle, rgba(120, 95, 70, 0.1));
+  border: 1px solid var(--rule, rgba(120, 95, 70, 0.1));
   border-radius: var(--r-1);
   display: flex;
   flex-direction: column;
@@ -1390,7 +1390,7 @@
 .word-stability-bar {
   inline-size: 100%;
   block-size: 6px;
-  background: var(--rule-subtle, rgba(120, 95, 70, 0.15));
+  background: var(--rule, rgba(120, 95, 70, 0.15));
   border-radius: var(--r-pill, 999px);
   overflow: hidden;
 }
@@ -2269,7 +2269,7 @@
 .vocab-progress-pill {
   padding: 0.3rem 0.75rem;
   border-radius: var(--r-pill, 999px);
-  border: 1px solid var(--rule-subtle, rgba(120, 95, 70, 0.12));
+  border: 1px solid var(--rule, rgba(120, 95, 70, 0.12));
   background: var(--paper-raised);
   cursor: pointer;
   font-family: inherit;
@@ -2689,11 +2689,14 @@
 
 /* --- Tarjeta Única de Palabra (WordPanel) --- */
 .word-unified-card {
-  background: var(--surface-elevated, #201e1b);
-  color: var(--text-primary, #f5f2eb);
+  background: var(--surface-elevated);
+  color: var(--text-primary);
   border-radius: 1.15rem;
   padding: 1rem 1.1rem;
-  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.32), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  box-shadow:
+    0 0 0 100vmax color-mix(in srgb, var(--scrim, rgba(43, 37, 32, 0.32)) 38%, transparent),
+    0 18px 42px rgba(0, 0, 0, 0.32),
+    0 0 0 1px rgba(255, 255, 255, 0.08);
   max-width: 440px;
   width: 92vw;
   display: flex;
@@ -2814,6 +2817,21 @@
   font-size: 0.86rem;
   line-height: 1.4;
   margin: 0;
+}
+
+.word-card-context-quote {
+  font-family: var(--font-book);
+  font-size: 0.88rem;
+  font-style: italic;
+  line-height: 1.45;
+  color: var(--ink-soft);
+  margin: 0 0 0.45rem;
+}
+
+.word-card-context-actions {
+  margin-top: 0.5rem;
+  display: flex;
+  justify-content: flex-start;
 }
 
 .word-card-context-nuance {

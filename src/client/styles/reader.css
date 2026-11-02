@@ -842,6 +842,13 @@
   padding-inline: 1px;
 }
 
+/* Palabra consultada: queda resaltada mientras su ficha está abierta
+   (Custom Highlight API — no toca el DOM del libro). */
+::highlight(lecta-consulted) {
+  background-color: color-mix(in srgb, var(--accent-primary) 28%, transparent);
+  color: inherit;
+}
+
 /* ---------- Marcadores y pasajes ---------- */
 
 .sheet-subtitle {
@@ -1029,7 +1036,7 @@ mark.saved-passage--dario {
 .tts-landing-anchor {
   position: relative;
   background: var(--paper-sunken);
-  border-left: 3px solid var(--accent);
+  border-left: 3px solid var(--accent-primary);
   padding-left: 0.5rem;
   border-radius: 4px;
   transition: background 0.3s ease, border-color 0.3s ease;
@@ -1047,9 +1054,9 @@ mark.saved-passage--dario {
   font-family: var(--font-ui);
   font-size: var(--fs-xs, 0.72rem);
   font-weight: 600;
-  color: var(--accent);
+  color: var(--accent-primary);
   background: var(--paper-raised);
-  border: 1px solid var(--accent);
+  border: 1px solid var(--accent-primary);
   border-radius: 999px;
   box-shadow: var(--shadow-2);
   pointer-events: none;
@@ -2327,7 +2334,7 @@ mark.resolved-word:hover,
   display: inline;
 }
 
-/* El cuerpo de la palabra NUNCA debe bajar de 0.90 ni usar var(--ink-muted) */
+/* El cuerpo de la palabra NUNCA debe bajar de 0.90 ni usar var(--ink-faint) */
 .lecta-bionic-word {
   display: inline;
   opacity: 1 !important;
@@ -2595,7 +2602,7 @@ b.lecta-anchor {
 /* Marcapasos Visual ("Ritmo Guiado" para TDAH) */
 .lecta-pacer-active {
   background: color-mix(in srgb, var(--accent-primary, #c86d3b) 18%, transparent) !important;
-  border-radius: var(--r-sm, 4px);
+  border-radius: 4px;
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-primary, #c86d3b) 32%, transparent);
   transition: background 0.15s ease-out, box-shadow 0.15s ease-out;
 }
@@ -4428,8 +4435,8 @@ b.lecta-anchor {
   transform: translateX(-50%);
   z-index: 45;
   width: min(calc(100vw - 2rem), 440px);
-  background: var(--surface-elevated, #201e1b);
-  color: var(--text-primary, #f5f2eb);
+  background: var(--surface-elevated);
+  color: var(--text-primary);
   border: 1px solid rgba(255, 255, 255, 0.12);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
   height: auto !important;
@@ -5559,7 +5566,7 @@ b.lecta-anchor {
   border: none;
   padding: 0.25rem 0.45rem;
   font-size: 0.95rem;
-  color: var(--ink-muted, #777);
+  color: var(--ink-faint, #777);
   cursor: pointer;
   border-radius: var(--radius-xs, 4px);
   line-height: 1;
@@ -5582,7 +5589,7 @@ b.lecta-anchor {
 
 .recap-loading-text {
   font-size: var(--fs-xs, 0.85rem);
-  color: var(--ink-muted, #666);
+  color: var(--ink-faint, #666);
   font-style: italic;
   margin: 0.25rem 0;
 }
@@ -5604,7 +5611,7 @@ b.lecta-anchor {
 .recap-characters-label {
   font-size: 0.76rem;
   font-weight: 600;
-  color: var(--ink-muted, #767169);
+  color: var(--ink-faint, #767169);
   display: block;
 }
 
@@ -6047,7 +6054,7 @@ b.lecta-anchor {
 .lecta-priming-card__btn-save.is-saved {
   background: color-mix(in srgb, var(--ink) 5%, transparent);
   border-color: var(--border-color, #eee);
-  color: var(--ink-muted, #767169);
+  color: var(--ink-faint, #767169);
   cursor: default;
 }
 
@@ -6353,7 +6360,7 @@ b.lecta-anchor {
   flex-direction: column;
   align-items: flex-start;
   padding: 0.625rem 0.75rem;
-  border-radius: var(--r-sm, 8px);
+  border-radius: 8px;
   border: 1px solid var(--border-subtle, var(--rule));
   background: var(--paper-raised);
   color: var(--ink);
@@ -6413,7 +6420,7 @@ b.lecta-anchor {
   justify-content: center;
   width: 36px;
   height: 36px;
-  border-radius: var(--r-sm, 8px);
+  border-radius: 8px;
   border: 1px solid var(--border-subtle, var(--rule));
   background: var(--paper-raised);
   color: var(--ink);
@@ -6463,7 +6470,7 @@ b.lecta-anchor {
   justify-content: center;
   gap: 3px;
   padding: 8px 6px;
-  border-radius: var(--r-sm, 8px);
+  border-radius: 8px;
   border: 1px solid var(--border-subtle, var(--rule));
   background: var(--paper-raised);
   color: var(--ink);
