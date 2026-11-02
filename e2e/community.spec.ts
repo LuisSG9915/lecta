@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 import path from "node:path";
 import fs from "node:fs";
+import crypto from "node:crypto";
 
 const MINIMAL_EPUB_PATH = path.resolve(process.cwd(), "fixtures/minimal.epub");
 
@@ -36,27 +37,51 @@ const stubLexicon = async (page: import("@playwright/test").Page) => {
 };
 
 /**
- * Biblioteca comunitaria «solo papel»: mi EPUB se ofrece desde Opciones;
- * los libros ajenos se listan en «Comunidad», se adjuntan como copia
- * `paperOnly` (sello «Papel») y jamás abren el lector — el toque lleva
- * al índice del modo papel tras descargar el EPUB para el análisis.
+ * Biblioteca comunitaria «solo papel» (modelo A1): compartir genera la
+ * GUÍA de vocabulario en el dispositivo (índice + formas, cero texto)
+ * y la sube con el PUT /share; adjuntar devuelve la guía y crea la
+ * entrada `paperOnly` local de 0 bytes — jamás se descarga un EPUB y
+ * el toque lleva al índice del modo papel, nunca al lector.
  */
 test.describe("Lecta — biblioteca comunitaria", () => {
-  test("compartir desde Opciones y adjuntar como copia «solo papel»", async ({
+  test("compartir sube la guía y adjuntar instala la copia «solo papel»", async ({
     page,
     context,
   }) => {
     await stubSession(context);
     await stubLexicon(page);
 
-    const ownHash = "a".repeat(64);
-    const communityHash = "b".repeat(64);
     const epubBytes = fs.readFileSync(MINIMAL_EPUB_PATH);
+    // El libro propio es el fixture subido por el input — su hash real.
+    const ownHash = crypto
+      .createHash("sha256")
+      .update(epubBytes)
+      .digest("hex");
+    const communityHash = "b".repeat(64);
+    const communityGuide = {
+      version: 1,
+      bookHash: communityHash,
+      title: "Libro de la comunidad",
+      author: "Autora Vecina",
+      language: "es",
+      updatedAt: 1,
+      chapters: [
+        {
+          id: "cap/uno.xhtml",
+          label: "Capítulo 1",
+          depth: 0,
+          kind: "chapter",
+          forms: ["antigua", "perenne"],
+          capitalOnly: [],
+        },
+      ],
+    };
 
     // Estado mutable del arnés: `shared` cambia tras el PUT /share y
     // `attached` tras el POST /attach — la estantería refleja la fila.
     let shared = false;
     let attached = false;
+    let shareBodyGuide: unknown = null;
 
     await page.route("**/api/books", async (route) => {
       if (route.request().method() !== "GET") return route.fallback();
@@ -77,7 +102,7 @@ test.describe("Lecta — biblioteca comunitaria", () => {
           uploaded: "2026-10-02T00:00:00Z",
           name: "libro-comunidad.epub",
           title: "Libro de la comunidad",
-          sections: 2,
+          sections: 0,
           language: "es",
           paperOnly: true,
         });
@@ -92,6 +117,11 @@ test.describe("Lecta — biblioteca comunitaria", () => {
     await page.route(`**/api/books/${ownHash}/share`, async (route) => {
       if (route.request().method() === "PUT") {
         shared = true;
+        try {
+          shareBodyGuide = route.request().postDataJSON()?.guide ?? null;
+        } catch {
+          shareBodyGuide = null;
+        }
         await route.fulfill({
           status: 200,
           contentType: "application/json",
@@ -113,7 +143,7 @@ test.describe("Lecta — biblioteca comunitaria", () => {
               title: "Libro de la comunidad",
               author: "Autora Vecina",
               language: "es",
-              sizeBytes: 12345,
+              sizeBytes: 0,
               hasCover: false,
               sharers: 2,
             },
@@ -129,22 +159,32 @@ test.describe("Lecta — biblioteca comunitaria", () => {
         await route.fulfill({
           status: 200,
           contentType: "application/json",
-          body: JSON.stringify({ ok: true, hash: communityHash }),
+          body: JSON.stringify({
+            ok: true,
+            hash: communityHash,
+            guide: communityGuide,
+          }),
         });
       },
     );
 
+    // Defensa A1: jamás se pide el EPUB del hash comunitario. Si el
+    // cliente lo intentara, el stub responde 403 y el test lo nota.
+    let epubDownloaded = false;
     await page.route(`**/api/books/${communityHash}`, async (route) => {
       if (route.request().method() !== "GET") return route.fallback();
-      await route.fulfill({
-        status: 200,
-        contentType: "application/epub+zip",
-        body: epubBytes,
-      });
+      epubDownloaded = true;
+      await route.fulfill({ status: 403, body: "paper_only" });
     });
 
     await page.goto("/");
     await expect(page.locator(".shelf-main")).toBeVisible({ timeout: 10_000 });
+
+    // Sube el fixture: la guía de «compartir» se genera del EPUB local.
+    const fileInput = page.locator('input[type="file"][accept*="epub"]');
+    await fileInput.setInputFiles(MINIMAL_EPUB_PATH);
+    await expect(page.locator(".reader")).toBeVisible({ timeout: 15_000 });
+    await page.goBack();
     await expect(page.locator(".shelf-book").first()).toBeVisible({
       timeout: 15_000,
     });
@@ -161,11 +201,26 @@ test.describe("Lecta — biblioteca comunitaria", () => {
     ).toBeVisible({ timeout: 10_000 });
     await page.keyboard.press("Escape");
 
-    // --- Comunidad: sección visible con el libro ajeno ---
+    // La guía viajó en el PUT: capítulos con formas, cero texto.
+    expect(shareBodyGuide).toBeTruthy();
+    const guide = shareBodyGuide as {
+      bookHash: string;
+      chapters: Array<{ forms: string[]; text?: string }>;
+      text?: string;
+    };
+    expect(guide.bookHash).toBe(ownHash);
+    expect(guide.chapters.length).toBeGreaterThan(0);
+    expect(guide.text).toBeUndefined();
+    for (const ch of guide.chapters) {
+      expect(ch.text).toBeUndefined();
+      expect(Array.isArray(ch.forms)).toBe(true);
+    }
+
+    // --- Comunidad: sección visible con la guía ajena ---
     const community = page.locator(".shelf-community");
     await expect(community).toBeVisible({ timeout: 10_000 });
     await expect(community).toContainText("Libro de la comunidad");
-    await expect(community).toContainText("2 lectores");
+    await expect(community).toContainText("Guía de papel");
 
     // --- Adjuntar: «Usar en papel» → copia con sello «Papel» ---
     await community.getByRole("button", { name: "Usar en papel" }).click();
@@ -190,5 +245,10 @@ test.describe("Lecta — biblioteca comunitaria", () => {
     const screen = page.locator(".paper-screen");
     await expect(screen).toBeVisible({ timeout: 20_000 });
     await expect(page.locator(".reader")).toHaveCount(0);
+    // El índice sale de la guía (capítulo declarado por el donante).
+    await expect(screen).toContainText("Capítulo 1", { timeout: 15_000 });
+
+    // A1 verificado de punta a punta: ningún EPUB se descargó.
+    expect(epubDownloaded).toBe(false);
   });
 });

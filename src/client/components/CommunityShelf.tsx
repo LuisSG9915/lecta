@@ -1,20 +1,20 @@
-// Sección «Comunidad» de la estantería (carga diferida): EPUBs que
-// otros lectores compartieron, utilizables solo como ayuda del modo
-// papel — nunca se abren en el lector. Al adjuntar uno, el servidor
-// copia el archivo a la cuenta y la estantería lo muestra con el sello
-// «Papel».
+// Sección «Comunidad» de la estantería (carga diferida): GUÍAS de
+// vocabulario que otros lectores compartieron para acompañar la
+// lectura en papel — nunca el libro electrónico (modelo A1: solo
+// palabras, el EPUB no sale de la cuenta de quien lo compartió). Al
+// adjuntar una, la estantería la muestra con el sello «Papel» y abre
+// el índice del modo papel, jamás el lector.
 import { useEffect, useMemo, useState } from "react";
 import {
   attachCommunityBook,
-  communityCoverUrl,
   listCommunityBooks,
   type CommunityBook,
 } from "../lib/books";
 import Icon from "./Icon";
 
 type Props = {
-  /** Al adjuntar: el padre refresca la estantería (la copia aparece). */
-  onAttached?: (hash: string) => void;
+  /** Al adjuntar: el padre guarda la guía y refresca la estantería. */
+  onAttached?: (hash: string, guide?: unknown) => void;
 };
 
 export default function CommunityShelf({ onAttached }: Props) {
@@ -47,12 +47,12 @@ export default function CommunityShelf({ onAttached }: Props) {
   const attach = async (book: CommunityBook) => {
     setAttaching(book.hash);
     setError("");
-    const ok = await attachCommunityBook(book.hash);
+    const result = await attachCommunityBook(book.hash);
     setAttaching(null);
-    if (ok) {
-      onAttached?.(book.hash);
+    if (result.ok) {
+      onAttached?.(book.hash, result.guide);
     } else {
-      setError("No se pudo agregar el libro. Revisa tu conexión.");
+      setError("No se pudo agregar la guía. Revisa tu conexión.");
     }
   };
 
@@ -61,14 +61,15 @@ export default function CommunityShelf({ onAttached }: Props) {
   if (books === null) return null;
 
   return (
-    <section className="shelf-community" aria-label="Libros de la comunidad">
+    <section className="shelf-community" aria-label="Guías de la comunidad">
       <h2 className="shelf-community-title">Comunidad</h2>
       <p className="meta shelf-community-hint">
-        Libros que otros lectores compartieron — solo como ayuda para leer en papel.
+        Guías de vocabulario que otros lectores compartieron — ayuda para
+        leer tu libro en papel, no para leerlo aquí.
       </p>
       {books.length === 0 ? (
         <p className="meta shelf-community-empty">
-          Todavía no hay libros compartidos. El tuyo puede ser el primero:
+          Todavía no hay guías compartidas. La tuya puede ser la primera:
           Opciones del libro → «Compartir a la comunidad».
         </p>
       ) : (
@@ -87,12 +88,10 @@ export default function CommunityShelf({ onAttached }: Props) {
           <ul className="shelf-community-grid">
             {filtered.map((book) => (
               <li key={book.hash} className="shelf-community-item">
+                {/* Portada tipográfica: las guías no traen la imagen del
+                    donante (la portada es del editorial). */}
                 <span className="shelf-community-cover" aria-hidden="true">
-                  {book.hasCover ? (
-                    <img src={communityCoverUrl(book.hash)} alt="" loading="lazy" />
-                  ) : (
-                    <Icon name="book" size={20} />
-                  )}
+                  <Icon name="book" size={20} />
                 </span>
                 <span className="shelf-community-info">
                   <span className="shelf-community-book-title">{book.title}</span>
@@ -100,8 +99,9 @@ export default function CommunityShelf({ onAttached }: Props) {
                     <span className="meta shelf-community-author">{book.author}</span>
                   ) : null}
                   <span className="meta shelf-community-meta">
-                    {book.language ? `${book.language.toUpperCase()} · ` : ""}
-                    {book.sharers > 1 ? `${book.sharers} lectores` : "1 lector"}
+                    Guía de papel
+                    {book.language ? ` · ${book.language.toUpperCase()}` : ""}
+                    {book.sharers > 1 ? ` · ${book.sharers} lectores` : ""}
                   </span>
                 </span>
                 <button

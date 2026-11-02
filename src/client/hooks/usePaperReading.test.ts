@@ -18,6 +18,8 @@ import type { ChapterAnalysis } from "../lib/chapter-analysis";
 import type { EpubBook, EpubTocItem } from "../lib/epub";
 import type { LexiconEntry } from "../lib/lexicon";
 import type { SavedWord } from "../lib/idb";
+import { openEpub } from "../lib/epub";
+import { fetchBookGuide } from "../lib/books";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
   true;
@@ -74,6 +76,7 @@ const mocks = vi.hoisted(() => ({
   } | null,
   removeWordCalls: [] as string[],
   scopeActive: true,
+  remoteGuide: null as unknown,
 }));
 
 vi.mock("../lib/idb", async (importOriginal) => {
@@ -125,6 +128,30 @@ vi.mock("../lib/epub", async (importOriginal) => {
     getBookLanguage: vi.fn(() => mocks.detectLang),
     getBookTitle: vi.fn(() => "Libro de prueba"),
     getBookAuthor: vi.fn(() => "Autora"),
+  };
+});
+
+vi.mock("../lib/paper-guide", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("../lib/paper-guide")>();
+  return {
+    ...mod,
+    createGuideChapterAnalyzer: vi.fn(() => ({
+      analyze: vi.fn(async () =>
+        mocks.analyzerError
+          ? ({ state: "error", error: "fallo" } as ChapterAnalysis)
+          : mocks.analyzerResult,
+      ),
+      cached: vi.fn(() => undefined),
+      preloadNext: vi.fn(async () => undefined),
+    })),
+  };
+});
+
+vi.mock("../lib/books", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("../lib/books")>();
+  return {
+    ...mod,
+    fetchBookGuide: vi.fn(async () => mocks.remoteGuide),
   };
 });
 
@@ -348,6 +375,7 @@ describe("usePaperReading", () => {
     mocks.removeWordCalls.length = 0;
     mocks.lookupResult = null;
     mocks.scopeActive = true;
+    mocks.remoteGuide = null;
     vi.clearAllMocks();
   });
 
@@ -587,5 +615,102 @@ describe("usePaperReading", () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
     expect(view.result.sheet?.analysis).toBe("ready");
+  });
+
+  // --- Modelo A1: guía comunitaria sin EPUB -------------------------
+
+  const guideJson = (overrides: Record<string, unknown> = {}) =>
+    JSON.stringify({
+      version: 1,
+      bookHash: "h1",
+      title: "Guía compartida",
+      author: "Autora",
+      language: "es",
+      updatedAt: 1,
+      chapters: [
+        {
+          id: "cap/uno.xhtml",
+          label: "Capítulo 1",
+          depth: 0,
+          kind: "chapter",
+          forms: ["zenit"],
+          capitalOnly: [],
+        },
+        {
+          id: "cap/dos.xhtml",
+          label: "Capítulo 2",
+          depth: 0,
+          kind: "chapter",
+          forms: ["brújula"],
+          capitalOnly: [],
+        },
+      ],
+      ...overrides,
+    });
+
+  const installGuide = () => {
+    mocks.storedBook = {
+      hash: "h1",
+      name: "guia.epub",
+      data: new Blob([]), // 0 bytes: solo hay guía, no EPUB
+      paperOnly: true,
+      title: "Guía compartida",
+      language: "es",
+    };
+    mocks.store.set("paperGuide:v1:h1", guideJson());
+    mocks.analyzerResult = analysis(["zenit"], "");
+  };
+
+  it("una guía paperOnly abre el modo papel sin tocar el EPUB", async () => {
+    installGuide();
+    const view = await openAndFlush();
+    expect(view.result.phase).toBe("ready");
+    expect(openEpub).not.toHaveBeenCalled();
+    expect(view.result.entries.map((e) => e.target.id)).toEqual([
+      "cap/uno.xhtml",
+      "cap/dos.xhtml",
+    ]);
+    // La hoja corre con el mismo pipeline y sin texto fuente.
+    const sheet = await firstChapter(view);
+    expect(sheet.analysis).toBe("ready");
+    expect(sheet.text).toBe("");
+  });
+
+  it("la guía se recupera del servidor si IndexedDB la perdió", async () => {
+    installGuide();
+    mocks.store.delete("paperGuide:v1:h1");
+    mocks.remoteGuide = JSON.parse(guideJson());
+    const view = await openAndFlush();
+    expect(view.result.phase).toBe("ready");
+    expect(fetchBookGuide).toHaveBeenCalledWith(
+      "h1",
+      expect.objectContaining({ userId: "u1" }),
+    );
+    // Y quedó persistida de nuevo para el modo offline.
+    expect(mocks.store.get("paperGuide:v1:h1")).toBeTruthy();
+  });
+
+  it("sin guía local ni remota la pantalla queda en error, no en el lector", async () => {
+    installGuide();
+    mocks.store.delete("paperGuide:v1:h1");
+    mocks.remoteGuide = null;
+    const view = render();
+    await flush();
+    expect(view.result.phase).toBe("error");
+    expect(openEpub).not.toHaveBeenCalled();
+  });
+
+  it("el alta manual sobre guía no adjunta contexto (no hay texto fuente)", async () => {
+    installGuide();
+    const view = await openAndFlush();
+    await firstChapter(view);
+    let outcome: ManualSaveOutcome | undefined;
+    await act(async () => {
+      outcome = await view.result.addManualWord("palabrareal");
+    });
+    expect(outcome?.kind).toBe("saved");
+    const call = mocks.saveWordCalls.at(-1)!;
+    expect(call.word.context).toBeUndefined();
+    expect(call.word.bookHash).toBe("h1");
   });
 });

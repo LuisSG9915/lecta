@@ -791,6 +791,7 @@ const BACKUP_SESSION_PREFIXES = [
   "preparation:v1:",
   "bookVocab:v1:",
   "paperReading:v1:",
+  "paperGuide:v1:",
   "chapterFollow:v1:",
   "midChapterRecall:v1:",
 ] as const;

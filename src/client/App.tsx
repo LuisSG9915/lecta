@@ -97,7 +97,8 @@ import {
   isHashLikeIdentifier,
   readBookMeta,
 } from "./lib/cover";
-import { downloadBook, listRemoteBooks, shareBook, uploadBookCover } from "./lib/books";
+import { downloadBook, fetchBookGuide, listRemoteBooks, shareBook, uploadBookCover } from "./lib/books";
+import { paperGuideSessionKey, sanitizePaperBookGuide } from "../shared/paper-guide";
 import { queueBookDelete, queueBookUpload, runBookQueue } from "./lib/book-queue";
 import { getPendingPositionsCount, syncPositions, type PositionConflict } from "./lib/positions-sync";
 
@@ -1471,10 +1472,41 @@ export default function App() {
     });
   };
 
+  // Instala una entrada paper_only local: guía sanitizada en sesión +
+  // StoredBook de 0 bytes con la marca — jamás abre el lector porque
+  // no hay EPUB que abrir.
+  const installPaperGuide = async (
+    hash: string,
+    guideRaw: unknown,
+    scope = captureDbScope(),
+  ): Promise<boolean> => {
+    const guide = sanitizePaperBookGuide(guideRaw, hash);
+    if (!guide) return false;
+    await saveSessionValue(
+      paperGuideSessionKey(hash),
+      JSON.stringify(guide),
+      scope,
+    ).catch(() => undefined);
+    await saveBook(
+      {
+        hash,
+        name: guide.title ? `${guide.title}.epub` : `${hash}.epub`,
+        title: guide.title || undefined,
+        author: guide.author || undefined,
+        language: guide.language || undefined,
+        data: new Blob([]),
+        paperOnly: true,
+        addedAt: Date.now(),
+      },
+      scope,
+    );
+    return true;
+  };
+
   // «Leo este libro en papel»: índice de capítulos con vocabulario
-  // para la edición física. Si el libro solo vive en la cuenta primero
-  // se descarga (misma ruta que «Descargar y abrir»); si falla se queda
-  // el aviso de openRemoteBook y no se entra.
+  // para la edición física. Libro remoto normal → se descarga (misma
+  // ruta que «Descargar y abrir»). Entrada comunitaria paperOnly → se
+  // instala la GUÍA (modelo A1): no hay EPUB que bajar.
   const handlePaperBook = (item: ShelfItem) => {
     const enter = () => {
       paperRelease.current ??= pushOverlay(() => {
@@ -1483,6 +1515,24 @@ export default function App() {
       });
       setPaperBook(item);
     };
+    if (item.remoteOnly && item.paperOnly) {
+      setMessage(`Preparando la guía de «${displayTitle(item.name, item.title)}»…`);
+      void (async () => {
+        const scope = captureDbScope();
+        const guideRaw = await fetchBookGuide(item.hash, scope).catch(
+          () => null,
+        );
+        const ok = guideRaw ? await installPaperGuide(item.hash, guideRaw, scope) : false;
+        setMessage("");
+        if (ok) {
+          await refreshLibrary();
+          enter();
+        } else {
+          setError(`No se pudo preparar la guía de «${displayTitle(item.name, item.title)}». Revisa tu conexión e inténtalo de nuevo.`);
+        }
+      })();
+      return;
+    }
     if (item.remoteOnly) {
       void openRemoteBook(item, false).then((ok) => {
         if (ok) enter();
@@ -1749,7 +1799,34 @@ export default function App() {
                     onSelect={handleSelectBook}
                     onPaperBook={handlePaperBook}
                     onShareBook={async (item, shared) => {
-                      const ok = await shareBook(item.hash, shared, captureDbScope());
+                      const scope = captureDbScope();
+                      let guide: unknown;
+                      if (shared) {
+                        // Modelo A1: se comparte la GUÍA de papel (índice +
+                        // formas), generada aquí mismo desde el EPUB local —
+                        // el archivo jamás sale de esta cuenta. El import es
+                        // diferido para que foliate no entre al arranque.
+                        setMessage(`Preparando la guía de «${displayTitle(item.name, item.title)}»…`);
+                        const stored = await getStoredBook(item.hash, scope).catch(() => undefined);
+                        if (stored?.data?.size) {
+                          const { buildPaperBookGuide } = await import("./lib/paper-guide");
+                          guide = await buildPaperBookGuide(item.hash, stored.data, {
+                            title: stored.title ?? item.title,
+                            author: stored.author ?? item.author,
+                            language: stored.language ?? item.language,
+                          }).catch(() => null);
+                        }
+                        setMessage("");
+                        if (!guide) {
+                          setError(
+                            stored?.data?.size
+                              ? "No se pudo preparar la guía de este libro. Intenta de nuevo."
+                              : "Para compartir su guía, el libro tiene que estar descargado en este dispositivo.",
+                          );
+                          return;
+                        }
+                      }
+                      const ok = await shareBook(item.hash, shared, scope, guide);
                       if (ok) {
                         await refreshLibrary();
                       } else {
@@ -1760,9 +1837,12 @@ export default function App() {
                       sessionUserId ? (
                         <Suspense fallback={null}>
                           <CommunityShelf
-                            onAttached={() => {
-                              setMessage("Libro agregado — abre el índice desde tu estantería.");
-                              void refreshLibrary();
+                            onAttached={(hash, guide) => {
+                              setMessage("Guía agregada — abre el índice desde tu estantería.");
+                              void (async () => {
+                                if (guide) await installPaperGuide(hash, guide);
+                                await refreshLibrary();
+                              })();
                             }}
                           />
                         </Suspense>

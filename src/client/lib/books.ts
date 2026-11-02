@@ -98,9 +98,11 @@ export async function downloadBook(book: RemoteBook, scope?: DbScope) {
   }
 }
 
-// --- Biblioteca comunitaria «solo papel» -----------------------------
-// Compartir es opt-in por libro; adjuntar crea una copia propia
-// paper_only que abre el índice del modo papel, nunca el lector.
+// --- Biblioteca comunitaria «solo papel» (modelo A1) ------------------
+// Compartir es opt-in por libro: se sube la GUÍA de papel generada en
+// este dispositivo (índice + formas por capítulo, cero texto). Adjuntar
+// crea la entrada propia paper_only y devuelve la guía — el EPUB del
+// donante jamás sale de su cuenta.
 
 export async function listCommunityBooks(scope?: DbScope): Promise<CommunityBook[]> {
   try {
@@ -114,10 +116,18 @@ export async function listCommunityBooks(scope?: DbScope): Promise<CommunityBook
   }
 }
 
-export async function shareBook(hash: string, shared: boolean, scope?: DbScope) {
+export async function shareBook(
+  hash: string,
+  shared: boolean,
+  scope?: DbScope,
+  guide?: unknown,
+) {
   try {
     const response = await accountFetch(`/api/books/${hash}/share`, {
       method: shared ? "PUT" : "DELETE",
+      headers:
+        shared && guide ? { "content-type": "application/json" } : undefined,
+      body: shared && guide ? JSON.stringify({ guide }) : undefined,
     }, scope);
     return response.ok;
   } catch (error) {
@@ -126,20 +136,44 @@ export async function shareBook(hash: string, shared: boolean, scope?: DbScope) 
   }
 }
 
-export async function attachCommunityBook(hash: string, scope?: DbScope) {
+export type AttachResult = {
+  ok: boolean;
+  already?: boolean;
+  // La guía de papel sanitizada por el servidor — lista para guardar
+  // en `paperGuide:v1:{hash}` sin una segunda descarga.
+  guide?: unknown;
+};
+
+export async function attachCommunityBook(
+  hash: string,
+  scope?: DbScope,
+): Promise<AttachResult> {
   try {
     const response = await accountFetch(`/api/books/community/${hash}/attach`, {
       method: "POST",
     }, scope);
-    return response.ok;
+    if (!response.ok) return { ok: false };
+    return (await response.json()) as AttachResult;
   } catch (error) {
     if (error instanceof StaleScopeError) throw error;
-    return false;
+    return { ok: false };
   }
 }
 
-export function communityCoverUrl(hash: string): string {
-  return `/api/books/community/${hash}/cover`;
+// La guía de un libro adjuntado: sirve para recuperarla en otro
+// dispositivo o tras limpiar IndexedDB.
+export async function fetchBookGuide(
+  hash: string,
+  scope?: DbScope,
+): Promise<unknown | null> {
+  try {
+    const response = await accountFetch(`/api/books/${hash}/guide`, undefined, scope);
+    if (!response.ok) return null;
+    return await response.json();
+  } catch (error) {
+    if (error instanceof StaleScopeError) throw error;
+    return null;
+  }
 }
 
 export async function deleteBook(hash: string, scope?: DbScope) {

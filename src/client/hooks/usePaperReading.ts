@@ -19,6 +19,15 @@ import {
   type ChapterTarget,
 } from "../lib/chapters";
 import {
+  catalogFromPaperGuide,
+  createGuideChapterAnalyzer,
+} from "../lib/paper-guide";
+import {
+  paperGuideSessionKey,
+  sanitizePaperBookGuide,
+} from "../../shared/paper-guide";
+import { fetchBookGuide } from "../lib/books";
+import {
   createChapterAnalyzer,
   chapterAnalysisCacheKey,
   deserializeChapterAnalysis,
@@ -243,49 +252,106 @@ export function usePaperReading(
         setPhase("error");
         return;
       }
-      const { book, close } = await openEpub(stored.data);
-      if (disposed(seq)) {
-        void close();
-        return;
-      }
-      bookRef.current = book;
-      closeRef.current = close;
-      const detected = await detectBookLanguage(book).catch(() =>
-        getBookLanguage(book),
-      );
-      const lang = stored.language || detected;
-      langRef.current = lang;
-      setLanguage(lang);
-      setTitle(getBookTitle(book));
-      setAuthor(getBookAuthor(book));
 
-      const catalog: ChapterCatalog = buildChapterCatalog(book);
-      rangesRef.current = new Map(
-        catalog.ranges.map((range) => [range.target.id, range]),
-      );
-      analyzerRef.current = createChapterAnalyzer(catalog, {
-        book,
-        language: lang,
-        isCurrent: () => bookRef.current === book,
-        loadCached: async (targetId) => {
-          const raw = await loadSessionValue(
+      const loadCached = async (targetId: string) => {
+        const raw = await loadSessionValue(
+          chapterAnalysisCacheKey(bookHash, targetId),
+          scope,
+        );
+        return raw ? deserializeChapterAnalysis(raw) : null;
+      };
+      const saveCached = async (targetId: string, result: ChapterAnalysis) => {
+        const raw = serializeChapterAnalysis(result);
+        if (raw)
+          await saveSessionValue(
             chapterAnalysisCacheKey(bookHash, targetId),
+            raw,
             scope,
           );
-          return raw ? deserializeChapterAnalysis(raw) : null;
-        },
-        saveCached: async (targetId, result) => {
-          const raw = serializeChapterAnalysis(result);
-          if (raw)
+      };
+
+      let catalog: ChapterCatalog;
+      let guideForms: string[] | null = null;
+      if (stored.paperOnly && stored.data.size === 0) {
+        // Guía comunitaria (modelo A1): no hay EPUB — el catálogo y las
+        // formas vienen del JSON guardado en `paperGuide:v1:` (o se
+        // vuelve a pedir al servidor si este dispositivo la perdió).
+        const guideKey = paperGuideSessionKey(bookHash);
+        const rawGuide = await loadSessionValue(guideKey, scope).catch(
+          () => null,
+        );
+        let guide = rawGuide
+          ? sanitizePaperBookGuide(JSON.parse(rawGuide), bookHash)
+          : null;
+        if (!guide) {
+          const fetched = await fetchBookGuide(bookHash, scope).catch(
+            () => null,
+          );
+          guide = fetched ? sanitizePaperBookGuide(fetched, bookHash) : null;
+          if (guide)
             await saveSessionValue(
-              chapterAnalysisCacheKey(bookHash, targetId),
-              raw,
+              guideKey,
+              JSON.stringify(guide),
               scope,
-            );
-        },
-      });
+            ).catch(() => undefined);
+        }
+        if (disposed(seq)) return;
+        if (!guide) {
+          setPhase("error");
+          return;
+        }
+        const lang = stored.language || guide.language || "es";
+        langRef.current = lang;
+        setLanguage(lang);
+        setTitle(stored.title || guide.title);
+        setAuthor(stored.author || guide.author || undefined);
+        catalog = catalogFromPaperGuide(guide);
+        rangesRef.current = new Map(
+          catalog.ranges.map((range) => [range.target.id, range]),
+        );
+        const analyzer = createGuideChapterAnalyzer(guide, {
+          language: lang,
+          isCurrent: () => analyzerRef.current === analyzer,
+          loadCached,
+          saveCached,
+        });
+        analyzerRef.current = analyzer;
+        // Autocompletado del alta manual: todas las formas de la guía.
+        guideForms = [
+          ...new Set(guide.chapters.flatMap((ch) => ch.forms)),
+        ];
+      } else {
+        const { book, close } = await openEpub(stored.data);
+        if (disposed(seq)) {
+          void close();
+          return;
+        }
+        bookRef.current = book;
+        closeRef.current = close;
+        const detected = await detectBookLanguage(book).catch(() =>
+          getBookLanguage(book),
+        );
+        const lang = stored.language || detected;
+        langRef.current = lang;
+        setLanguage(lang);
+        setTitle(getBookTitle(book));
+        setAuthor(getBookAuthor(book));
+
+        catalog = buildChapterCatalog(book);
+        rangesRef.current = new Map(
+          catalog.ranges.map((range) => [range.target.id, range]),
+        );
+        analyzerRef.current = createChapterAnalyzer(catalog, {
+          book,
+          language: lang,
+          isCurrent: () => bookRef.current === book,
+          loadCached,
+          saveCached,
+        });
+      }
 
       // Perfil del lector por la misma cadena de refreshProfile.
+      const lang = langRef.current;
       const storedWords = await listSavedWords(lang, scope).catch(
         () => [] as SavedWord[],
       );
@@ -344,10 +410,10 @@ export function usePaperReading(
       );
       if (disposed(seq)) return;
       prepRecordsRef.current = new Map(preps);
-      const manifest = await loadBookVocab(bookHash, scope).catch(
-        () => null,
-      );
-      setBookForms(manifest?.forms ?? []);
+      const manifest = guideForms
+        ? null
+        : await loadBookVocab(bookHash, scope).catch(() => null);
+      setBookForms(guideForms ?? manifest?.forms ?? []);
       setExtras(groups.extras.map(entryFor));
       setEntries(groups.reading.map(entryFor));
       setPhase("ready");
