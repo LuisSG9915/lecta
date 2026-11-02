@@ -3,6 +3,12 @@ import type pg from "pg";
 import { getConnectionString, withClient, type WorkerEnv } from "./db";
 import { getSession } from "./session";
 import {
+  lockResetMarker,
+  readResetAck,
+  resetBlockedResponse,
+  StaleResetError,
+} from "./reset-guard";
+import {
   COMPANION_ID_LIMIT,
   validateCompanionBatch,
   type CompanionBatch,
@@ -60,17 +66,23 @@ const conflictSql = (table: string, column: "origin_id" | "id") => `
     WHERE b.payload <> i.payload
   ) AS conflicts`;
 
-// Ejecuta el lote completo en una transacción: primero se detectan
-// conflictos de identidad (abortan antes de escribir nada) y después
-// los cuatro merges, cada uno con su regla. Devuelve los ids que
-// quedaron confirmados tras el commit.
+// Ejecuta el lote completo en una transacción: primero se toma la fila
+// del sello de reinicio con FOR UPDATE — si otro dispositivo reinició
+// la cuenta, el lote aborta antes de resucitar filas — después se
+// detectan conflictos de identidad (abortan antes de escribir nada) y
+// al final los cuatro merges, cada uno con su regla. Devuelve los ids
+// que quedaron confirmados tras el commit.
 async function applyBatch(
   client: pg.Client,
   userId: string,
   batch: CompanionBatch,
+  resetAck: number,
 ) {
   await client.query("BEGIN");
   try {
+    const marker = await lockResetMarker(client, userId);
+    if (marker > resetAck) throw new StaleResetError(marker);
+
     const conflicts: string[] = [];
     for (const [table, column, rows] of [
       ["lecta_user_companion_baselines", "origin_id", batch.baselines],
@@ -207,12 +219,13 @@ companion.put("/api/companion", async (context) => {
 
   // Un reintento por error de serialización (40001) es seguro: el
   // lote completo es idempotente y la transacción se repite entera.
+  const resetAck = readResetAck(context);
   let accepted;
   try {
     accepted = await withClient(context.env, async (client) => {
       for (let attempt = 0; attempt < 3; attempt += 1) {
         try {
-          return await applyBatch(client, session.user.id, batch);
+          return await applyBatch(client, session.user.id, batch, resetAck);
         } catch (err) {
           const code = (err as { code?: string } | null)?.code;
           if (code !== "40001" || attempt === 2) throw err;
@@ -229,6 +242,8 @@ companion.put("/api/companion", async (context) => {
         },
         409,
       );
+    if (err instanceof StaleResetError)
+      return resetBlockedResponse(context, err.resetAt);
     return context.json(
       { error: "No se pudo guardar a tu compañero." },
       503,

@@ -81,6 +81,8 @@ let txSnapshot: ReturnType<typeof cloneDb> | null = null;
 // SQL lanza el error y se consume.
 let failPlan: { match: RegExp; error: Error & { code?: string } }[] = [];
 const queryLog: string[] = [];
+// Sello de reinicio de cuenta (lecta_account_state.reset_at); null = sin fila.
+let resetAt: number | null = null;
 
 const keyOf = (userId: string, id: string) => `${userId}${id}`;
 
@@ -205,6 +207,18 @@ async function fakeQuery(
     return ok();
   }
 
+  // Marcador de reinicio: SAVEPOINT del candado, INSERT ... ON CONFLICT
+  // DO NOTHING (crea la fila con 0 si falta) y SELECT FOR UPDATE.
+  if (sql.startsWith("SAVEPOINT") || sql.startsWith("ROLLBACK TO SAVEPOINT"))
+    return ok();
+  if (sql.includes("INTO lecta_account_state")) {
+    if (resetAt === null) resetAt = 0;
+    return ok();
+  }
+  if (sql.includes("FROM lecta_account_state")) {
+    return ok(resetAt === null ? [] : [{ reset_at: String(resetAt) }]);
+  }
+
   // GET paginado por clave: user_id + clave > after, orden y límite 121.
   if (sql.trimStart().startsWith("SELECT")) {
     const after = params[1] as string | null;
@@ -310,10 +324,10 @@ const field = (
   operationId: string,
 ) => ({ field: name, value, updatedAt, operationId });
 
-const putBatch = (body: unknown) =>
+const putBatch = (body: unknown, headers: Record<string, string> = {}) =>
   companion.request("/api/companion", {
     method: "PUT",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...headers },
     body: typeof body === "string" ? body : JSON.stringify(body),
   });
 
@@ -340,6 +354,7 @@ beforeEach(() => {
   txSnapshot = null;
   failPlan = [];
   queryLog.length = 0;
+  resetAt = null;
   h.session = { user: { id: "u1" } };
   h.conn = "postgres://lecta:test@localhost/lecta_dev";
   h.query = fakeQuery;
@@ -408,6 +423,40 @@ describe("PUT /api/companion — guardas", () => {
     expect(db.events.size).toBe(2);
     expect(db.fields.size).toBe(1);
     expect(queryLog).toContain("COMMIT");
+  });
+
+  it("409 account_reset cuando el sello del cliente es anterior al reinicio", async () => {
+    resetAt = 9_000;
+    const response = await putBatch(batch({ events: [event("e1")] }), {
+      "x-lecta-reset": "1000",
+    });
+    expect(response.status).toBe(409);
+    const body = (await response.json()) as {
+      error?: string;
+      resetAt?: number;
+    };
+    expect(body.error).toBe("account_reset");
+    expect(body.resetAt).toBe(9_000);
+    // La guardia aborta dentro de la transacción: nada se escribió.
+    expect(db.events.size).toBe(0);
+    expect(queryLog).toContain("ROLLBACK");
+    expect(queryLog).not.toContain("COMMIT");
+  });
+
+  it("un sello igual o más nuevo que el del servidor sí pasa", async () => {
+    resetAt = 9_000;
+    const response = await putBatch(batch({ events: [event("e1")] }), {
+      "x-lecta-reset": "9000",
+    });
+    expect(response.status).toBe(200);
+    expect(db.events.size).toBe(1);
+  });
+
+  it("sin cabecera de sello, un reinicio remoto también frena el lote", async () => {
+    resetAt = 9_000;
+    const response = await putBatch(batch({ events: [event("e1")] }));
+    expect(response.status).toBe(409);
+    expect(db.events.size).toBe(0);
   });
 
   it("acepta un lote con logros nuevos y level-seen válidos", async () => {

@@ -115,6 +115,7 @@ import {
 } from "./lib/reading-sync";
 import { pushDailySummaries } from "./lib/daily-summary";
 import { syncCompanion } from "./lib/companion-sync";
+import { checkRemoteReset } from "./lib/account-reset";
 import { authClient } from "./lib/auth";
 
 type BookFileSelection = {
@@ -847,7 +848,7 @@ export default function App() {
       // Contexto de esta transición: todo lo que sigue (syncs, cola,
       // refresco) corre bajo él. Si la sesión vuelve a cambiar, las
       // escrituras aterrizan en la base dueña y la red aborta.
-      const scope = captureDbScope();
+      let scope = captureDbScope();
       if (cancelled) return;
       await hydrateRetentionHorizon(scope);
       if (cancelled) return;
@@ -900,6 +901,16 @@ export default function App() {
       setCheckingLibrary(false);
       void refreshLibrary();
       if (!sessionUserId) return;
+
+      // Antes de empujar nada: si la cuenta se reinició en otro
+      // dispositivo, esta copia local quedó obsoleta — el chequeo la
+      // vacía y devuelve true, y el contexto se recaptura sobre la base
+      // limpia. Sin este paso la copia vieja resucitaría lo borrado.
+      if (await checkRemoteReset(scope, { force: true })) {
+        scope = captureDbScope();
+        void refreshLibrary();
+      }
+      if (!isDbScopeActive(scope)) return;
 
       const pulled = await syncSavedWords(scope)
         .then((res) => {
@@ -1083,8 +1094,15 @@ export default function App() {
     if (!sessionUserId) return;
 
     const runFullSync = async () => {
-      const scope = captureDbScope();
+      let scope = captureDbScope();
       if (!scope.userId) return;
+      // Igual que en el arranque: un reset hecho en otro dispositivo
+      // vacía esta copia antes de que cualquier colección empuje datos.
+      if (await checkRemoteReset(scope)) {
+        scope = captureDbScope();
+        void refreshLibrary();
+      }
+      if (!isDbScopeActive(scope)) return;
       void syncSavedWords(scope)
         .then((res) => {
           if (res !== null) recordCollectionSyncSuccess("words");

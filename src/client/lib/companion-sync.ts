@@ -34,6 +34,7 @@ import {
   subscribeGame,
 } from "./game";
 import { isSyncPaused } from "./sync-state";
+import { checkRemoteReset } from "./account-reset";
 import {
   COMPANION_BATCH_LIMIT,
   mergeCompanionRegister,
@@ -474,9 +475,15 @@ async function reconcileCredits(bound: DbScope): Promise<number | null> {
 // push ya corrió dentro). Solo los commits externos programan.
 let inCycle = false;
 
-async function cycle(bound: DbScope): Promise<CompanionSyncResult | null> {
+async function cycle(initialBound: DbScope): Promise<CompanionSyncResult | null> {
   inCycle = true;
   try {
+    let bound = initialBound;
+    // Si la cuenta se reinició en otro dispositivo, esta copia local
+    // (journal, recepciones, sello acked) quedó obsoleta: el chequeo la
+    // vacía y el ciclo continúa sobre la base limpia — jamás se reenvía
+    // lo que el reset acabó de borrar.
+    if (await checkRemoteReset(bound)) bound = captureDbScope();
     if (!bound.userId || !isDbScopeActive(bound)) return null;
     const sets = ackedSets(await readCompanionAcked(bound));
     let pulled = 0;

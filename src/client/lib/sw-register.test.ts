@@ -275,3 +275,136 @@ describe("registerServiceWorker", () => {
     });
   });
 });
+
+describe("precaché del install en public/sw.js", () => {
+  // El install se ejecuta con el SW viejo aún activo: sus fetch los
+  // intercepta el manejador del viejo. Para "/" e "/index.html" ese
+  // manejador puede responder con su copia cacheada del deploy anterior
+  // (fallback de red lenta) — y ese HTML viejo quedaba precacheado en la
+  // nueva versión de forma permanente. La app se quedaba pegada a la
+  // versión anterior hasta borrar el caché del navegador.
+  it("guarda el shell FRESCO aunque el SW viejo sirva '/' e '/index.html' desde su caché", async () => {
+    const fs = await import("node:fs/promises");
+    const path = await import("node:path");
+    const vm = await import("node:vm");
+    const swPath = path.resolve(process.cwd(), "public/sw.js");
+    const swCode = await fs.readFile(swPath, "utf-8");
+
+    type Listener = (event: { waitUntil: (p: Promise<unknown>) => void }) => void;
+    const listeners: Record<string, Listener[]> = {};
+    const stores = new Map<string, Map<string, Response>>();
+    const urlOf = (req: string | Request) =>
+      typeof req === "string" ? new URL(req, "https://app.test").href : req.url;
+
+    const OLD_HTML = "<html><body>shell VIEJO /assets/app-OLD.js</body></html>";
+    const NEW_HTML = "<html><body>shell NUEVO /assets/app-NEW.js</body></html>";
+    const requested: string[] = [];
+
+    // Simula la red vista a través del SW viejo: "/" e "/index.html" salen
+    // de su caché (shell viejo); cualquier ruta desconocida cae a la red,
+    // donde el fallback SPA del servidor devuelve el shell del deploy
+    // vigente.
+    const mockFetch = vi.fn(async (req: Request) => {
+      const u = new URL(req.url);
+      requested.push(u.pathname);
+      if (u.pathname === "/sw-manifest.json") {
+        return new Response(
+          JSON.stringify({ version: "vNEW", assets: ["/assets/app-NEW.js"] }),
+          { headers: { "content-type": "application/json" } },
+        );
+      }
+      if (u.pathname === "/" || u.pathname === "/index.html") {
+        return new Response(OLD_HTML, { headers: { "content-type": "text/html" } });
+      }
+      if (u.pathname === "/__lecta_shell__") {
+        return new Response(NEW_HTML, { headers: { "content-type": "text/html" } });
+      }
+      if (u.pathname === "/assets/app-NEW.js") {
+        return new Response("console.log('nuevo')", {
+          headers: { "content-type": "text/javascript" },
+        });
+      }
+      return new Response("not found", { status: 404 });
+    });
+
+    const cacheApi = (name: string) => ({
+      add: vi.fn(async (req: string | Request) => {
+        const res = await mockFetch(new Request(urlOf(req)));
+        stores.get(name)!.set(urlOf(req), res);
+      }),
+      put: vi.fn(async (req: string | Request, res: Response) => {
+        stores.get(name)!.set(urlOf(req), res);
+      }),
+      match: vi.fn(async (req: string | Request) => stores.get(name)!.get(urlOf(req))),
+      delete: vi.fn(async (req: string | Request) => stores.get(name)!.delete(urlOf(req))),
+    });
+
+    const cachesMock = {
+      open: async (name: string) => {
+        if (!stores.has(name)) stores.set(name, new Map());
+        return cacheApi(name);
+      },
+      match: async (req: string | Request) => {
+        for (const m of stores.values()) {
+          const hit = m.get(urlOf(req));
+          if (hit) return hit;
+        }
+        return undefined;
+      },
+      keys: async () => [...stores.keys()],
+      delete: async (name: string) => stores.delete(name),
+    };
+
+    const selfMock = {
+      location: { origin: "https://app.test" },
+      addEventListener: (type: string, fn: Listener) => {
+        (listeners[type] ||= []).push(fn);
+      },
+      skipWaiting: vi.fn(),
+      clients: { claim: vi.fn(async () => {}), matchAll: vi.fn(async () => []) },
+      registration: {},
+      navigator: {},
+    };
+
+    const sandbox = {
+      self: selfMock,
+      caches: cachesMock,
+      fetch: mockFetch,
+      Request,
+      Response,
+      URL,
+      Promise,
+      console,
+      Date,
+      setTimeout,
+      clearTimeout,
+    };
+    vm.createContext(sandbox);
+    vm.runInContext(swCode, sandbox);
+
+    let installPromise: Promise<unknown> | undefined;
+    for (const fn of listeners["install"] ?? []) {
+      fn({
+        waitUntil: (p: Promise<unknown>) => {
+          installPromise = p;
+        },
+      });
+    }
+    await installPromise;
+
+    const newCache = stores.get("lecta-v2-vNEW");
+    expect(newCache).toBeDefined();
+
+    const indexRes = newCache!.get("https://app.test/index.html");
+    const rootRes = newCache!.get("https://app.test/");
+    expect(indexRes).toBeDefined();
+    expect(rootRes).toBeDefined();
+    expect(await indexRes!.text()).toBe(NEW_HTML);
+    expect(await rootRes!.text()).toBe(NEW_HTML);
+    expect(newCache!.get("https://app.test/assets/app-NEW.js")).toBeDefined();
+
+    // El install nunca pide las rutas que el SW viejo puede responder con
+    // el shell del deploy anterior.
+    expect(requested.filter((p) => p === "/" || p === "/index.html")).toEqual([]);
+  });
+});

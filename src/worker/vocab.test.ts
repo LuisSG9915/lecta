@@ -86,7 +86,8 @@ describe("PUT /api/vocab — tarjeta FSRS", () => {
     const response = await putWords([word({ card })]);
     expect(response.status).toBe(200);
 
-    const [, params] = queryMock.mock.calls[0] as unknown as [
+    // calls[0..3] = BEGIN + SAVEPOINT + marcador FOR UPDATE; calls[4] el upsert.
+    const [, params] = queryMock.mock.calls[4] as unknown as [
       string,
       [string, string],
     ];
@@ -100,7 +101,7 @@ describe("PUT /api/vocab — tarjeta FSRS", () => {
     const response = await putWords([word(), word({ card: null })]);
     expect(response.status).toBe(200);
 
-    const [sql, params] = queryMock.mock.calls[0] as unknown as [
+    const [sql, params] = queryMock.mock.calls[4] as unknown as [
       string,
       [string, string],
     ];
@@ -123,7 +124,7 @@ describe("PUT /api/vocab — tarjeta FSRS", () => {
     const response = await putWords([word({ updatedAt: futureTime, savedAt: futureTime })]);
     expect(response.status).toBe(200);
 
-    const [, params] = queryMock.mock.calls[0] as unknown as [
+    const [, params] = queryMock.mock.calls[4] as unknown as [
       string,
       [string, string],
     ];
@@ -194,7 +195,8 @@ describe("GET /api/vocab — sincronización incremental", () => {
     expect(putResponse.status).toBe(200);
 
     // Servidor fijó synced_at = serverNow como parámetro $3
-    const [putSql, putParams] = queryMock.mock.calls[0] as unknown as [string, [string, string, number]];
+    // (calls[0..3] = BEGIN + SAVEPOINT + marcador FOR UPDATE, calls[4] = upsert)
+    const [putSql, putParams] = queryMock.mock.calls[4] as unknown as [string, [string, string, number]];
     expect(putSql).toContain("synced_at");
     expect(putParams[2]).toBe(serverNow);
 
@@ -343,7 +345,7 @@ describe("PUT /api/vocab — sello de primera exposición", () => {
     const response = await putWords([word({ presentedAt: 1_700_000_000_500 })]);
     expect(response.status).toBe(200);
 
-    const [sql, params] = queryMock.mock.calls[0] as unknown as [
+    const [sql, params] = queryMock.mock.calls[4] as unknown as [
       string,
       [string, string],
     ];
@@ -354,7 +356,7 @@ describe("PUT /api/vocab — sello de primera exposición", () => {
 
     const sinSello = await putWords([word()]);
     expect(sinSello.status).toBe(200);
-    const [, params2] = queryMock.mock.calls[1] as unknown as [string, [string, string]];
+    const [, params2] = queryMock.mock.calls[10] as unknown as [string, [string, string]];
     expect((JSON.parse(params2[1]) as { presentedAt: number | null }[])[0].presentedAt).toBeNull();
   });
 
@@ -363,7 +365,7 @@ describe("PUT /api/vocab — sello de primera exposición", () => {
     const response = await putWords([word({ presentedAt: future })]);
     expect(response.status).toBe(200);
 
-    const [, params] = queryMock.mock.calls[0] as unknown as [
+    const [, params] = queryMock.mock.calls[4] as unknown as [
       string,
       [string, string],
     ];

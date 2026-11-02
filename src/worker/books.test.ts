@@ -98,7 +98,9 @@ describe("Cloud Books & Storage Quotas (/api/books)", () => {
   it("POST /api/books rechaza con 413 si el usuario supera el límite de 100 libros", async () => {
     getSessionMock.mockResolvedValueOnce({ user: { id: "user-quota-books" } });
 
-    vi.spyOn(dbModule, "withClient").mockImplementationOnce(async (_env, callback) => {
+    // La guardia de reinicio consume la primera consulta (lee reset_at, que
+    // esta fila no trae → 0) y la segunda es la de cuota.
+    vi.spyOn(dbModule, "withClient").mockImplementation(async (_env, callback) => {
       return callback({
         query: vi.fn().mockResolvedValue({
           rows: [{ total_bytes: 10_000_000, book_count: 100 }],
@@ -127,7 +129,7 @@ describe("Cloud Books & Storage Quotas (/api/books)", () => {
   it("PUT /api/books/:hash rechaza con 413 si el usuario supera la cuota de 500 MB", async () => {
     getSessionMock.mockResolvedValueOnce({ user: { id: "user-quota-bytes" } });
 
-    vi.spyOn(dbModule, "withClient").mockImplementationOnce(async (_env, callback) => {
+    vi.spyOn(dbModule, "withClient").mockImplementation(async (_env, callback) => {
       return callback({
         query: vi.fn().mockResolvedValue({
           rows: [{ total_bytes: 500 * 1024 * 1024, book_count: 5 }],

@@ -1,6 +1,6 @@
 import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
-import { chunks, getConnectionString, resetAccountDataDb, withClient, type WorkerEnv } from "./db";
+import { chunks, getConnectionString, readAccountResetAt, resetAccountDataDb, withClient, type WorkerEnv } from "./db";
 import {
   CLIENT_ERROR_MAX_BODY_BYTES,
   allowClientError,
@@ -108,6 +108,14 @@ import {
   kindleHtmlCspFor,
 } from "./kindle/routes";
 import { purgeKindleBookCache } from "./kindle/cache";
+import {
+  isResetBlocked,
+  readResetAck,
+  resetBlockedResponse,
+  staleResetAt,
+  StaleResetError,
+  withResetGuard,
+} from "./reset-guard";
 
 export const app = new Hono<{ Bindings: WorkerEnv }>();
 
@@ -1836,6 +1844,10 @@ export async function recordUserBook(
     sizeBytes: number;
     sha256: string;
     hasCover?: boolean;
+    // Marca de reinicio que el cliente declara; definida, la fila se
+    // escribe dentro de la transacción guardada (StaleResetError si un
+    // reinicio remoto la invalida).
+    resetAck?: number;
   },
 ): Promise<void> {
   const now = Date.now();
@@ -1844,7 +1856,9 @@ export async function recordUserBook(
   if (getConnectionString(env)) {
     // Tolera la columna `language` ausente (despliegue antes de la
     // migración 022): cae a la ruta D1 como cuando falta la conexión.
-    const res = await withClient(env, (client) =>
+    // Con resetAck la fila corre dentro de la transacción guardada: un
+    // sello más nuevo aborta con StaleResetError en vez de resucitar.
+    const insert = (client: Parameters<Parameters<typeof withClient>[1]>[0]) =>
       client.query(
         `INSERT INTO user_books (user_id, book_id, title, author, language, r2_key, size_bytes, sha256, has_cover, created_at, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
@@ -1870,8 +1884,15 @@ export async function recordUserBook(
           now,
           now,
         ],
-      ),
-    ).catch(() => undefined);
+      );
+    const res = await (book.resetAck === undefined
+      ? withClient(env, insert)
+      : withResetGuard(env, book.resetAck, book.userId, insert)
+    ).catch((err: unknown) => {
+      if (err instanceof StaleResetError) throw err;
+      return undefined;
+    });
+    if (isResetBlocked(res)) throw new StaleResetError(res.blockedAt);
     if (res) recorded = true;
   }
   if (!recorded && env.DB) {
@@ -1911,15 +1932,23 @@ export async function setUserBookCover(
   userId: string,
   bookId: string,
   hasCover: boolean,
+  resetAck?: number,
 ): Promise<void> {
   const now = Date.now();
   if (getConnectionString(env)) {
-    await withClient(env, (client) =>
+    const update = (client: Parameters<Parameters<typeof withClient>[1]>[0]) =>
       client.query(
         `UPDATE user_books SET has_cover = $1, updated_at = $2 WHERE user_id = $3 AND book_id = $4`,
         [hasCover, now, userId, bookId],
-      ),
-    ).catch(() => null);
+      );
+    const res = await (resetAck === undefined
+      ? withClient(env, update)
+      : withResetGuard(env, resetAck, userId, update)
+    ).catch((err: unknown) => {
+      if (err instanceof StaleResetError) throw err;
+      return undefined;
+    });
+    if (isResetBlocked(res)) throw new StaleResetError(res.blockedAt);
   }
   if (env.DB) {
     await env.DB.prepare(
@@ -1935,11 +1964,15 @@ export async function deleteUserBookRecord(
   env: WorkerEnv,
   userId: string,
   bookId: string,
+  resetAck?: number,
 ): Promise<void> {
   if (getConnectionString(env)) {
-    await withClient(env, (client) =>
-      client.query(`DELETE FROM user_books WHERE user_id = $1 AND book_id = $2`, [userId, bookId]),
-    );
+    const remove = (client: Parameters<Parameters<typeof withClient>[1]>[0]) =>
+      client.query(`DELETE FROM user_books WHERE user_id = $1 AND book_id = $2`, [userId, bookId]);
+    const res = await (resetAck === undefined
+      ? withClient(env, remove)
+      : withResetGuard(env, resetAck, userId, remove));
+    if (isResetBlocked(res)) throw new StaleResetError(res.blockedAt);
   } else if (env.DB) {
     await env.DB.prepare(`DELETE FROM user_books WHERE user_id = ? AND book_id = ?`)
       .bind(userId, bookId)
@@ -2058,6 +2091,7 @@ app.get("/api/books", async (context) => {
                 sizeBytes: data.byteLength,
                 sha256: hash,
                 hasCover,
+                resetAck: readResetAck(context),
               });
             }
           } catch {
@@ -2080,6 +2114,9 @@ const handleBookUpload = async (
     return context.json({ error: "El almacenamiento no está configurado." }, 503);
   const session = await getSession(context);
   if (!session) return context.json({ error: "Inicia sesión para guardar libros." }, 401);
+
+  const staleReset = await staleResetAt(context.env, context, session.user.id);
+  if (staleReset) return resetBlockedResponse(context, staleReset);
 
   const data = new Uint8Array(await context.req.arrayBuffer());
   if (!data.byteLength || data.byteLength > EPUB_MAX_BYTES)
@@ -2147,17 +2184,30 @@ const handleBookUpload = async (
     },
   });
 
-  await recordUserBook(context.env, {
-    userId: session.user.id,
-    bookId: hash,
-    title: title || name.replace(/\.epub$/i, "") || hash,
-    author,
-    language,
-    r2Key,
-    sizeBytes: data.byteLength,
-    sha256: hash,
-    hasCover,
-  });
+  // La fila corre en la transacción guardada: si un reinicio comiteó
+  // mientras subía el archivo, no queda ni la fila ni el objeto en R2.
+  try {
+    await recordUserBook(context.env, {
+      userId: session.user.id,
+      bookId: hash,
+      title: title || name.replace(/\.epub$/i, "") || hash,
+      author,
+      language,
+      r2Key,
+      sizeBytes: data.byteLength,
+      sha256: hash,
+      hasCover,
+      resetAck: readResetAck(context),
+    });
+  } catch (err) {
+    if (err instanceof StaleResetError) {
+      await booksBucket.delete(r2Key).catch(() => undefined);
+      if (hasCover)
+        await booksBucket.delete(bookCoverKey(session.user.id, hash)).catch(() => undefined);
+      return resetBlockedResponse(context, err.resetAt);
+    }
+    throw err;
+  }
 
   return context.json({ ok: true, hash });
 };
@@ -2191,13 +2241,21 @@ app.delete("/api/books/:hash", async (context) => {
   const session = await getSession(context);
   if (!session) return context.json({ error: "Inicia sesión para borrar libros." }, 401);
 
+  const staleReset = await staleResetAt(context.env, context, session.user.id);
+  if (staleReset) return resetBlockedResponse(context, staleReset);
+
   const hash = context.req.param("hash");
   if (!HASH_PATTERN.test(hash))
     return context.json({ error: "Identificador de libro inválido." }, 400);
 
   await booksBucket.delete(bookKey(session.user.id, hash));
   await booksBucket.delete(bookCoverKey(session.user.id, hash));
-  await deleteUserBookRecord(context.env, session.user.id, hash);
+  try {
+    await deleteUserBookRecord(context.env, session.user.id, hash, readResetAck(context));
+  } catch (err) {
+    if (err instanceof StaleResetError) return resetBlockedResponse(context, err.resetAt);
+    throw err;
+  }
   // Purgar artefactos Kindle cacheados del libro (K4)
   try {
     context.executionCtx.waitUntil(purgeKindleBookCache(booksBucket, hash));
@@ -2213,6 +2271,9 @@ app.put("/api/books/:hash/cover", async (context) => {
     return context.json({ error: "El almacenamiento no está configurado." }, 503);
   const session = await getSession(context);
   if (!session) return context.json({ error: "Inicia sesión para guardar portadas." }, 401);
+
+  const staleReset = await staleResetAt(context.env, context, session.user.id);
+  if (staleReset) return resetBlockedResponse(context, staleReset);
 
   const hash = context.req.param("hash");
   if (!HASH_PATTERN.test(hash))
@@ -2232,7 +2293,15 @@ app.put("/api/books/:hash/cover", async (context) => {
     httpMetadata: { contentType },
   });
 
-  await setUserBookCover(context.env, session.user.id, hash, true);
+  try {
+    await setUserBookCover(context.env, session.user.id, hash, true, readResetAck(context));
+  } catch (err) {
+    if (err instanceof StaleResetError) {
+      await booksBucket.delete(bookCoverKey(session.user.id, hash)).catch(() => undefined);
+      return resetBlockedResponse(context, err.resetAt);
+    }
+    throw err;
+  }
 
   // Intentar actualizar también customMetadata del libro en R2
   try {
@@ -2283,6 +2352,9 @@ app.post("/api/books/:hash/repair", async (context) => {
   const session = await getSession(context);
   if (!session) return context.json({ error: "Inicia sesión para reparar libros." }, 401);
 
+  const staleReset = await staleResetAt(context.env, context, session.user.id);
+  if (staleReset) return resetBlockedResponse(context, staleReset);
+
   const hash = context.req.param("hash");
   if (!HASH_PATTERN.test(hash))
     return context.json({ error: "Identificador de libro inválido." }, 400);
@@ -2330,16 +2402,22 @@ app.post("/api/books/:hash/repair", async (context) => {
     customMetadata: updatedCustomMetadata,
   });
 
-  await recordUserBook(context.env, {
-    userId: session.user.id,
-    bookId: hash,
-    title: repTitle,
-    author: repAuthor,
-    r2Key: key,
-    sizeBytes: data.byteLength,
-    sha256: hash,
-    hasCover,
-  });
+  try {
+    await recordUserBook(context.env, {
+      userId: session.user.id,
+      bookId: hash,
+      title: repTitle,
+      author: repAuthor,
+      r2Key: key,
+      sizeBytes: data.byteLength,
+      sha256: hash,
+      hasCover,
+      resetAck: readResetAck(context),
+    });
+  } catch (err) {
+    if (err instanceof StaleResetError) return resetBlockedResponse(context, err.resetAt);
+    throw err;
+  }
 
   return context.json({
     title: repTitle,
@@ -2544,7 +2622,8 @@ app.put("/api/vocab", async (context) => {
     .slice(0, 500);
   if (!words.length) return context.json({ error: "Faltan las palabras." }, 400);
 
-  const upserted = await withClient(context.env, async (client) => {
+  const resetAck = readResetAck(context);
+  const upserted = await withResetGuard(context.env, resetAck, session.user.id, async (client) => {
     let total = 0;
     for (const chunk of chunks(words)) {
       const result = await client.query(
@@ -2583,6 +2662,8 @@ app.put("/api/vocab", async (context) => {
     }
     return total;
   });
+  if (isResetBlocked(upserted))
+    return resetBlockedResponse(context, upserted.blockedAt);
   if (upserted === undefined)
     return context.json({ error: "El vocabulario no está configurado." }, 503);
   return context.json({ ok: true, upserted, serverTime: serverNow });
@@ -2644,6 +2725,9 @@ app.put("/api/user/books/:bookId/file", async (c) => {
   const user = await getSessionUser(c);
   if (!user) return c.json({ error: "No autenticado" }, 401);
 
+  const staleReset = await staleResetAt(c.env, c, user.id);
+  if (staleReset) return resetBlockedResponse(c, staleReset);
+
   const booksBucket = c.env.BOOKS_BUCKET ?? c.env.BOOKS;
   if (!booksBucket) {
     return c.json({ error: "Almacenamiento no configurado" }, 503);
@@ -2681,16 +2765,25 @@ app.put("/api/user/books/:bookId/file", async (c) => {
   });
 
   const now = Date.now();
-  await recordUserBook(c.env, {
-    userId: user.id,
-    bookId,
-    title,
-    author,
-    language,
-    r2Key,
-    sizeBytes: buffer.byteLength,
-    sha256,
-  });
+  try {
+    await recordUserBook(c.env, {
+      userId: user.id,
+      bookId,
+      title,
+      author,
+      language,
+      r2Key,
+      sizeBytes: buffer.byteLength,
+      sha256,
+      resetAck: readResetAck(c),
+    });
+  } catch (err) {
+    if (err instanceof StaleResetError) {
+      await booksBucket.delete(r2Key).catch(() => undefined);
+      return resetBlockedResponse(c, err.resetAt);
+    }
+    throw err;
+  }
 
   return c.json({ ok: true, bookId, sizeBytes: buffer.byteLength, updatedAt: now });
 });
@@ -2789,6 +2882,41 @@ app.get("/api/user/books/:bookId/file", async (c) => {
   return c.json({ error: "Libro no encontrado en la nube" }, 404);
 });
 
+// Sello del último «borrar datos de la cuenta» (epoch ms; 0 si nunca).
+// Los otros dispositivos lo consultan antes de sincronizar: si es más
+// nuevo que la marca que recuerdan, su copia local quedó obsoleta y
+// tienen que vaciarse antes de empujar nada — sin él, re-subirían lo
+// que la persona acabó de borrar.
+app.get("/api/account/state", async (context) => {
+  const session = await getSession(context);
+  if (!session?.user?.id) {
+    return context.json({ error: "No autorizado" }, 401);
+  }
+  const userId = session.user.id;
+
+  let resetAt = 0;
+  try {
+    if (getConnectionString(context.env)) {
+      resetAt =
+        (await withClient(context.env, (client) =>
+          readAccountResetAt(client, userId),
+        )) ?? 0;
+    } else if (context.env.DB) {
+      const row = await context.env.DB.prepare(
+        "SELECT reset_at FROM lecta_account_state WHERE user_id = ?",
+      )
+        .bind(userId)
+        .first<{ reset_at: number }>()
+        .catch(() => null);
+      resetAt = Number(row?.reset_at) || 0;
+    }
+  } catch (error) {
+    console.error("Error al leer el sello de reinicio de la cuenta:", error);
+  }
+
+  return context.json({ ok: true, resetAt });
+});
+
 app.post("/api/account/reset", async (context) => {
   const session = await getSession(context);
   if (!session?.user?.id) {
@@ -2824,7 +2952,7 @@ app.post("/api/account/reset", async (context) => {
 
     // 1. Limpiar registros de historial, palabras guardadas y libros en la BD remota
     // manteniendo intacto el registro del usuario y la tabla ai_quota
-    await resetAccountDataDb(context.env, userId);
+    const resetAtMs = await resetAccountDataDb(context.env, userId);
 
     // 2. Reutilizar purgeR2Prefix para limpiar EPUBs y portadas del usuario en R2
     const booksBucket = context.env.BOOKS ?? context.env.BOOKS_BUCKET;
@@ -2837,7 +2965,7 @@ app.post("/api/account/reset", async (context) => {
       ]);
     }
 
-    return context.json({ ok: true, resetAt: new Date().toISOString() });
+    return context.json({ ok: true, resetAt: new Date(resetAtMs).toISOString(), resetAtMs });
   } catch (error) {
     console.error("Error al reiniciar los datos de la cuenta:", error);
     return context.json(

@@ -75,19 +75,72 @@ export async function withClient<T>(env: WorkerEnv, run: (client: pg.Client) => 
   }
 }
 
+// 42P01 = tabla inexistente: lecta_account_state llega con la migración
+// 023 y el worker puede desplegar antes — sin la tabla, leer el sello
+// devuelve 0 y escribirlo se omite, igual que antes de la migración.
+export const isMissingTableError = (err: unknown): boolean =>
+  (err as { code?: string } | null)?.code === "42P01";
+
+/**
+ * Sello del último «borrar datos de la cuenta» en epoch ms; 0 si la
+ * cuenta nunca se reinició. Vive en lecta_account_state, fuera de las
+ * tablas que el reset vacía — es la señal con que otro dispositivo se
+ * entera de que su copia local ya no vale.
+ */
+export async function readAccountResetAt(
+  client: { query: (sql: string, params?: unknown[]) => Promise<unknown> },
+  userId: string,
+): Promise<number> {
+  try {
+    const res = (await client.query(
+      "SELECT reset_at FROM lecta_account_state WHERE user_id = $1",
+      [userId],
+    )) as { rows?: Array<{ reset_at?: unknown }> };
+    const stamp = Number(res.rows?.[0]?.reset_at);
+    return Number.isFinite(stamp) && stamp > 0 ? stamp : 0;
+  } catch (err) {
+    if (isMissingTableError(err)) return 0;
+    throw err;
+  }
+}
+
 /**
  * Borra todo el progreso, vocabulario, anotaciones y biblioteca del usuario
  * dentro de una transacción sin eliminar el registro del usuario (Better Auth)
  * ni reiniciar la tabla lecta_ai_quota (para evitar que se reinicie la cuenta
- * repetidamente para eludir cuotas de IA).
+ * repetidamente para eludir cuotas de IA). En la misma transacción deja el
+ * sello del reinicio: cualquier escritura que llegue después con una marca
+ * anterior se rechaza, así un dispositivo con copia vieja no resucita lo
+ * borrado. Devuelve el sello en epoch ms.
  */
 export async function resetAccountDataDb(
   clientOrEnv: pg.Client | WorkerEnv,
   userId: string,
-): Promise<void> {
+): Promise<number> {
+  const resetAt = Date.now();
   const runQueries = async (client: { query: (sql: string, params?: unknown[]) => Promise<unknown> }) => {
     await client.query("BEGIN");
     try {
+      // El sello se escribe ANTES de los borrados: su fila queda
+      // bloqueada por esta transacción y un writer con la guardia
+      // (SELECT ... FOR UPDATE sobre la misma fila) espera a nuestro
+      // COMMIT — al despertar ve el sello nuevo y aborta. Si el writer
+      // ganó antes, sus filas ya comitearon y los DELETEs de abajo las
+      // barren igual que al resto.
+      // El SAVEPOINT es vital: sin la tabla (despliegue antes que la
+      // migración) el error envenenaría la transacción completa.
+      await client.query("SAVEPOINT lecta_reset_marker");
+      try {
+        await client.query(
+          `INSERT INTO lecta_account_state (user_id, reset_at)
+           VALUES ($1, $2)
+           ON CONFLICT (user_id) DO UPDATE SET reset_at = excluded.reset_at`,
+          [userId, resetAt],
+        );
+      } catch (err) {
+        if (!isMissingTableError(err)) throw err;
+        await client.query("ROLLBACK TO SAVEPOINT lecta_reset_marker").catch(() => undefined);
+      }
       await client.query("DELETE FROM lecta_user_reviews WHERE user_id = $1", [userId]);
       await client.query("DELETE FROM lecta_user_knowledge WHERE user_id = $1", [userId]);
       await client.query("DELETE FROM lecta_user_annotations WHERE user_id = $1", [userId]);
@@ -116,8 +169,16 @@ export async function resetAccountDataDb(
     } else if (env.DB) {
       await env.DB.prepare("DELETE FROM user_books WHERE user_id = ?").bind(userId).run().catch(() => null);
       await env.DB.prepare("DELETE FROM kindle_link_codes WHERE user_id = ?").bind(userId).run().catch(() => null);
+      await env.DB.prepare(
+        `INSERT INTO lecta_account_state (user_id, reset_at) VALUES (?, ?)
+         ON CONFLICT (user_id) DO UPDATE SET reset_at = excluded.reset_at`,
+      )
+        .bind(userId, resetAt)
+        .run()
+        .catch(() => null);
     }
   }
+  return resetAt;
 }
 
 

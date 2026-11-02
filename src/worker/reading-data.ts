@@ -2,6 +2,12 @@ import { Hono } from "hono";
 import { withClient, getConnectionString, chunks, type WorkerEnv } from "./db";
 import { getSession } from "./session";
 import {
+  isResetBlocked,
+  readResetAck,
+  resetBlockedResponse,
+  withResetGuard,
+} from "./reset-guard";
+import {
   cleanAnnotation,
   cleanActivity,
   cleanReview,
@@ -132,7 +138,8 @@ readingData.put("/api/annotations", async (context) => {
   if (!annotations.length)
     return context.json({ error: "Faltan las anotaciones." }, 400);
 
-  const upserted = await withClient(context.env, async (client) => {
+  const resetAck = readResetAck(context);
+  const upserted = await withResetGuard(context.env, resetAck, session.user.id, async (client) => {
     let total = 0;
     for (const chunk of chunks(annotations)) {
       const result = await client.query(
@@ -160,6 +167,8 @@ readingData.put("/api/annotations", async (context) => {
     }
     return total;
   });
+  if (isResetBlocked(upserted))
+    return resetBlockedResponse(context, upserted.blockedAt);
   if (upserted === undefined)
     return context.json({ error: "El almacenamiento no está configurado." }, 503);
   return context.json({ ok: true, upserted, serverTime: serverNow });
@@ -282,7 +291,8 @@ readingData.put("/api/activity", async (context) => {
   if (!intervals.length)
     return context.json({ error: "Faltan los intervalos." }, 400);
 
-  const inserted = await withClient(context.env, async (client) => {
+  const resetAck = readResetAck(context);
+  const inserted = await withResetGuard(context.env, resetAck, session.user.id, async (client) => {
     let total = 0;
     for (const chunk of chunks(intervals)) {
       const result = await client.query(
@@ -300,6 +310,8 @@ readingData.put("/api/activity", async (context) => {
     }
     return total;
   });
+  if (isResetBlocked(inserted))
+    return resetBlockedResponse(context, inserted.blockedAt);
   if (inserted === undefined)
     return context.json({ error: "El almacenamiento no está configurado." }, 503);
   return context.json({ ok: true, inserted, serverTime: serverNow });
@@ -417,7 +429,8 @@ readingData.put("/api/reviews", async (context) => {
   if (!reviews.length)
     return context.json({ error: "Faltan los repasos." }, 400);
 
-  const inserted = await withClient(context.env, async (client) => {
+  const resetAck = readResetAck(context);
+  const inserted = await withResetGuard(context.env, resetAck, session.user.id, async (client) => {
     let total = 0;
     for (const chunk of chunks(reviews)) {
       const result = await client.query(
@@ -436,6 +449,8 @@ readingData.put("/api/reviews", async (context) => {
     }
     return total;
   });
+  if (isResetBlocked(inserted))
+    return resetBlockedResponse(context, inserted.blockedAt);
   if (inserted === undefined)
     return context.json({ error: "El almacenamiento no está configurado." }, 503);
   return context.json({ ok: true, inserted, serverTime: serverNow });
@@ -547,7 +562,8 @@ readingData.put("/api/positions", async (context) => {
   if (!positions.length)
     return context.json({ error: "Faltan las posiciones." }, 400);
 
-  const upserted = await withClient(context.env, async (client) => {
+  const resetAck = readResetAck(context);
+  const upserted = await withResetGuard(context.env, resetAck, session.user.id, async (client) => {
     let total = 0;
     for (const chunk of chunks(positions)) {
       const result = await client.query(
@@ -580,6 +596,8 @@ readingData.put("/api/positions", async (context) => {
     }
     return total;
   });
+  if (isResetBlocked(upserted))
+    return resetBlockedResponse(context, upserted.blockedAt);
   if (upserted === undefined)
     return context.json({ error: "El almacenamiento no está configurado." }, 503);
   return context.json({ ok: true, upserted, serverTime: serverNow });
@@ -741,7 +759,8 @@ readingData.put("/api/knowledge", async (context) => {
   if (!rows.length)
     return context.json({ error: "Faltan las palabras conocidas." }, 400);
 
-  const upserted = await withClient(context.env, async (client) => {
+  const resetAck = readResetAck(context);
+  const upserted = await withResetGuard(context.env, resetAck, session.user.id, async (client) => {
     let total = 0;
     for (const chunk of chunks(rows)) {
       const result = await client.query(
@@ -770,6 +789,8 @@ readingData.put("/api/knowledge", async (context) => {
     }
     return total;
   });
+  if (isResetBlocked(upserted))
+    return resetBlockedResponse(context, upserted.blockedAt);
   if (upserted === undefined)
     return context.json({ error: "El almacenamiento no está configurado." }, 503);
   return context.json({ ok: true, upserted, serverTime: serverNow });
@@ -798,7 +819,8 @@ readingData.put("/api/daily-summaries", async (context) => {
   if (!rows.length)
     return context.json({ error: "Faltan los resúmenes." }, 400);
 
-  const upserted = await withClient(context.env, async (client) => {
+  const resetAck = readResetAck(context);
+  const upserted = await withResetGuard(context.env, resetAck, session.user.id, async (client) => {
     let total = 0;
     for (const chunk of chunks(rows)) {
       const result = await client
@@ -842,6 +864,8 @@ readingData.put("/api/daily-summaries", async (context) => {
     }
     return total;
   });
+  if (isResetBlocked(upserted))
+    return resetBlockedResponse(context, upserted.blockedAt);
   // La tabla puede no existir todavía (despliegue antes de la
   // migración): se responde 503 amable y el cliente lo reintenta en
   // el siguiente ciclo, como las preferencias del Kindle.

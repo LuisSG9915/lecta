@@ -3,7 +3,7 @@
 //
 // Extraída de Reader.tsx (Fase 7) sin cambiar comportamiento. Es presentacional:
 // recibe estado y callbacks, no posee estado propio.
-import { useEffect, useRef, type CSSProperties, type MouseEvent, type ReactNode, type RefObject } from "react";
+import { useCallback, useEffect, useRef, type CSSProperties, type MouseEvent, type ReactNode, type RefObject } from "react";
 import { validateTapIntent } from "../../lib/tap-intent-guard";
 import type { ReaderSelectionButton } from "./ReaderSelectionBar";
 import { ReaderRecapBubble } from "../ReaderRecapBubble";
@@ -84,21 +84,52 @@ export interface ReaderContentProps {
   onMidChapterRecallSkip?: () => void;
 }
 
+// Presión sostenida en táctil: el gesto que consulta una palabra no es el
+// toque (se reserva para barras y páginas) sino mantener el dedo ~480 ms
+// sin moverlo. La tolerancia absorbe el temblor natural del dedo.
+const LONG_PRESS_MS = 480;
+const LONG_PRESS_SLOP_PX = 12;
+
 export function ReaderContent(props: ReaderContentProps) {
   const { setSelButton } = props;
   const pointerDownPosRef = useRef<{ clientX: number; clientY: number } | null>(null);
   const lastScrollOrNavTimeRef = useRef<number>(0);
+  // Detector de presión: el timer abre la ficha; `pressConsumed` marca que la
+  // interacción fue una presión (hit o no) para que el click del release no se
+  // comporte como toque — un dedo sostenido jamás alterna barras ni cierra.
+  const pressTimerRef = useRef<number | null>(null);
+  const pressStartRef = useRef<{ x: number; y: number } | null>(null);
+  const pressConsumedRef = useRef(false);
+  // Sello de apertura de la ficha: en dispositivos donde soltar el dedo tras
+  // seleccionar una palabra (presión nativa del OS) sí emite click, ese click
+  // de release cerraba la ficha recién abierta. Una gracia corta lo descarta.
+  const selectionOpenedAtRef = useRef(0);
+  const cancelLongPress = useCallback(() => {
+    if (pressTimerRef.current !== null) {
+      window.clearTimeout(pressTimerRef.current);
+      pressTimerRef.current = null;
+    }
+    pressStartRef.current = null;
+  }, []);
 
   useEffect(() => {
     const markScroll = () => {
       lastScrollOrNavTimeRef.current = Date.now();
+      cancelLongPress();
       if (setSelButton) setSelButton(null);
     };
     window.addEventListener("scroll", markScroll, { passive: true, capture: true });
     return () => {
       window.removeEventListener("scroll", markScroll, { capture: true });
     };
-  }, [setSelButton]);
+  }, [setSelButton, cancelLongPress]);
+
+  // Un timer huérfano no debe abrir la ficha tras desmontar el lector.
+  useEffect(() => cancelLongPress, [cancelLongPress]);
+
+  useEffect(() => {
+    if (props.selection) selectionOpenedAtRef.current = Date.now();
+  }, [props.selection]);
   const {
   title,
   containerRef,
@@ -244,6 +275,11 @@ export function ReaderContent(props: ReaderContentProps) {
     onClick={(event: MouseEvent<HTMLDivElement>) => {
       const container = containerRef.current;
       if (!container) return;
+      // Release de una presión sostenida: no es un toque — sin barras ni cierre.
+      if (pressConsumedRef.current) {
+        pressConsumedRef.current = false;
+        return;
+      }
       if (!strategyPaused && (settings.focusMode === "paragraph" || settings.paragraphFocus)) {
         const block = (event.target as HTMLElement).closest("p, blockquote, li");
         if (block && container.contains(block)) {
@@ -309,6 +345,9 @@ export function ReaderContent(props: ReaderContentProps) {
         }
 
         if (selection) {
+          // El click que suelta la selección nativa no cierra la ficha que
+          // acaba de abrir: solo cuentan los toques posteriores a la gracia.
+          if (Date.now() - selectionOpenedAtRef.current < 400) return;
           // Cerrar con un toque soltaba solo el estado: la capa de historial
           // (`overlayReleaseRef`) seguía viva y el listener de
           // `selectionchange` ignoraba las selecciones siguientes, así que la
@@ -323,7 +362,10 @@ export function ReaderContent(props: ReaderContentProps) {
           return;
         }
 
-        // 2. Navegación táctil en páginas: 25% bordes pasa página, centro busca palabra o alterna barras
+        // 2. El toque no consulta palabras: la consulta es por presión
+        //    sostenida (ver onPointerDown). En páginas, los bordes pasan
+        //    página y el centro alterna barras; en scroll, todo toque
+        //    alterna barras.
         if (settings.layout === "pages") {
           const viewport = viewportRef.current ?? container;
           const rect = viewport.getBoundingClientRect();
@@ -333,37 +375,10 @@ export function ReaderContent(props: ReaderContentProps) {
           } else if (zone === "prev") {
             void goPage(-1);
           } else {
-            const hit = extractWordAtPoint(event.clientX, event.clientY, container, language);
-            if (hit) {
-              const validation = validateTapIntent({
-                downPoint: pointerDownPosRef.current,
-                upPoint: { clientX: event.clientX, clientY: event.clientY },
-                pointerType: "touch",
-                lastScrollOrNavTime: lastScrollOrNavTimeRef.current,
-                word: hit.word,
-              });
-              if (!validation.valid) return;
-              openSelection(hit);
-            } else {
-              setBarsVisible((v) => !v);
-            }
-          }
-        } else {
-          // En modo scroll: si tocó una palabra, abrir ficha; si no, alternar barras
-          const hit = extractWordAtPoint(event.clientX, event.clientY, container, language);
-          if (hit) {
-            const validation = validateTapIntent({
-              downPoint: pointerDownPosRef.current,
-              upPoint: { clientX: event.clientX, clientY: event.clientY },
-              pointerType: "touch",
-              lastScrollOrNavTime: lastScrollOrNavTimeRef.current,
-              word: hit.word,
-            });
-            if (!validation.valid) return;
-            openSelection(hit);
-          } else {
             setBarsVisible((v) => !v);
           }
+        } else {
+          setBarsVisible((v) => !v);
         }
       } else {
         // En ratón (escritorio):
@@ -403,14 +418,66 @@ export function ReaderContent(props: ReaderContentProps) {
     }}
     onPointerMove={(event) => {
       lastPointRef.current = { x: event.clientX, y: event.clientY };
+      // Mover el dedo más que el temblor natural aborta la presión.
+      const pressStart = pressStartRef.current;
+      if (
+        pressStart &&
+        Math.hypot(event.clientX - pressStart.x, event.clientY - pressStart.y) >
+          LONG_PRESS_SLOP_PX
+      ) {
+        cancelLongPress();
+      }
     }}
     onPointerDown={(event) => {
       noteActivity();
       lastPointerTypeRef.current = event.pointerType;
       pointerDownPosRef.current = { clientX: event.clientX, clientY: event.clientY };
+      pressConsumedRef.current = false;
       if (showLongPressHint) {
         setShowLongPressHint(false);
         void saveSessionValue("hint:longPress:v1", "1", captureDbScope()).catch(() => undefined);
+      }
+      // Presión sostenida en táctil = consultar la palabra bajo el dedo.
+      // El toque queda para barras y páginas; la selección nativa del OS
+      // (otra forma de presión) abre por `selectionchange` en Reader.tsx.
+      if ((event.pointerType === "touch" || event.pointerType === "pen") && event.isPrimary) {
+        const startX = event.clientX;
+        const startY = event.clientY;
+        pressStartRef.current = { x: startX, y: startY };
+        if (pressTimerRef.current !== null) window.clearTimeout(pressTimerRef.current);
+        pressTimerRef.current = window.setTimeout(() => {
+          pressTimerRef.current = null;
+          // Sostuvo el dedo sin moverse: el release ya no cuenta como toque.
+          pressConsumedRef.current = true;
+          const container = containerRef.current;
+          if (!container) return;
+          const hit = extractWordAtPoint(startX, startY, container, language);
+          if (!hit) return;
+          // isLongPress: salta el filtro de stopwords y la zona del pulgar —
+          // presionar «la» o «que» a propósito sí consulta. Se conserva el
+          // cooldown de scroll para no abrir la ficha a media sacudida.
+          const validation = validateTapIntent({
+            upPoint: { clientX: startX, clientY: startY },
+            pointerType: "touch",
+            lastScrollOrNavTime: lastScrollOrNavTimeRef.current,
+            word: hit.word,
+            isLongPress: true,
+          });
+          if (!validation.valid) return;
+          triggerHaptic("selection");
+          openSelection(hit);
+        }, LONG_PRESS_MS);
+      }
+    }}
+    onPointerUp={cancelLongPress}
+    onPointerCancel={cancelLongPress}
+    onPointerLeave={cancelLongPress}
+    onContextMenu={(event) => {
+      // El menú nativo de la presión larga (Android) compite con la ficha
+      // que acaba de abrirse; en escritorio el clic derecho sigue igual.
+      const ne = event.nativeEvent as PointerEvent;
+      if (ne.pointerType === "touch" || lastPointerTypeRef.current === "touch") {
+        event.preventDefault();
       }
     }}
     aria-busy={state === "opening"}

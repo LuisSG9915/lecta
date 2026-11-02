@@ -1541,6 +1541,146 @@ describe("Fase 4: Pruebas de Integración End-to-End en Reader.test.ts", () => {
     expect(onInternalLinkClick).toHaveBeenCalledWith("#fn1");
   });
 
+  it("6.1b Táctil: presión sostenida abre la ficha; el toque solo alterna barras", async () => {
+    const { createElement: h, act } = await import("react");
+    const { createRoot } = await import("react-dom/client");
+    const { ReaderContent } = await import("./reader/ReaderContent");
+    const { READER_DEFAULTS } = await import("../lib/settings");
+
+    // jsdom no implementa matchMedia; el acceso cortocircuita con puntero
+    // táctil, pero el stub cubre cualquier camino que lo consulte.
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      writable: true,
+      value: vi.fn(() => ({
+        matches: false,
+        media: "",
+        onchange: null,
+        addEventListener() {},
+        removeEventListener() {},
+        addListener() {},
+        removeListener() {},
+        dispatchEvent: () => false,
+      })),
+    });
+
+    const openSelection = vi.fn();
+    const setBarsVisible = vi.fn();
+    const onCloseSelection = vi.fn();
+    const extractWordAtPoint = vi.fn(() => ({
+      word: "perenne",
+      context: "Una palabra difícil: perenne.",
+    }));
+    const lastPointerTypeRef = { current: "mouse" };
+
+    const touch = (type: string, x = 50, y = 50) =>
+      new PointerEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        pointerType: "touch",
+        clientX: x,
+        clientY: y,
+        isPrimary: true,
+      });
+    const clickAt = (x = 50, y = 50) =>
+      new MouseEvent("click", { bubbles: true, clientX: x, clientY: y });
+
+    root = createRoot(host);
+    await act(async () => {
+      root.render(
+        h(ReaderContent, {
+          containerRef: { current: document.createElement("div") },
+          viewportRef: { current: document.createElement("div") },
+          lastPointRef: { current: null },
+          settings: READER_DEFAULTS,
+          state: "ready",
+          sectionIndex: 0,
+          sectionTotal: 5,
+          sectionWords: 100,
+          title: "Libro de prueba",
+          sectionTitle: "Capítulo 1",
+          sectionHasImages: false,
+          showChapterTitle: true,
+          strategyPaused: false,
+          page: 1,
+          pageCount: 1,
+          pageAdvance: () => 0,
+          pageMetrics: null,
+          ttsSnap: { status: "stopped" },
+          selection: null,
+          onCloseSelection,
+          setBarsVisible,
+          setShowLongPressHint: vi.fn(),
+          showLongPressHint: false,
+          recapBubbleVisible: false,
+          recapBubbleLoading: false,
+          recapBubbleBullets: [],
+          setRecapBubbleVisible: vi.fn(),
+          sceneRecap: null,
+          chapterEndCard: null,
+          nextRow: null,
+          prevRow: null,
+          language: "es",
+          noteActivity: vi.fn(),
+          navigate: vi.fn(),
+          goPage: vi.fn(),
+          navNextSection: vi.fn(),
+          navPrevSection: vi.fn(),
+          openSelection,
+          extractWordAtPoint,
+          handleContainerDoubleClick: vi.fn(),
+          handleTriggerReturnRecap: vi.fn(),
+          toggleParagraphTranslation: vi.fn(),
+          onInternalLinkClick: vi.fn(),
+          lastTapRef: { current: { time: 0, element: null } },
+          lastPointerTypeRef,
+          pacerIndexRef: { current: 0 },
+          onBack: vi.fn(),
+        }),
+      );
+    });
+    const bookContent = host.querySelector<HTMLDivElement>(".book-content");
+    expect(bookContent).toBeTruthy();
+
+    vi.useFakeTimers();
+    try {
+      // 1) Toque rápido: no consulta palabra; alterna barras.
+      bookContent!.dispatchEvent(touch("pointerdown"));
+      bookContent!.dispatchEvent(touch("pointerup"));
+      await act(async () => {
+        bookContent!.dispatchEvent(clickAt());
+      });
+      expect(openSelection).not.toHaveBeenCalled();
+      expect(setBarsVisible).toHaveBeenCalledTimes(1);
+
+      // 2) Presión sostenida: abre la ficha con la palabra del punto y
+      //    consume el click del release (ni cierra ni alterna barras).
+      bookContent!.dispatchEvent(touch("pointerdown"));
+      await act(async () => {
+        vi.advanceTimersByTime(500);
+      });
+      expect(openSelection).toHaveBeenCalledTimes(1);
+      expect(openSelection.mock.calls[0][0]).toMatchObject({ word: "perenne" });
+      bookContent!.dispatchEvent(touch("pointerup"));
+      await act(async () => {
+        bookContent!.dispatchEvent(clickAt());
+      });
+      expect(onCloseSelection).not.toHaveBeenCalled();
+      expect(setBarsVisible).toHaveBeenCalledTimes(1);
+
+      // 3) Presión abortada por desplazamiento (>12px) no consulta.
+      bookContent!.dispatchEvent(touch("pointerdown", 50, 50));
+      bookContent!.dispatchEvent(touch("pointermove", 90, 50));
+      await act(async () => {
+        vi.advanceTimersByTime(600);
+      });
+      bookContent!.dispatchEvent(touch("pointerup", 90, 50));
+      expect(openSelection).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("6.2 Fase 4.2: Feedback visual toast en Reader y control de modales en el historial", async () => {
     const { createElement: h, act } = await import("react");
     const { createRoot } = await import("react-dom/client");

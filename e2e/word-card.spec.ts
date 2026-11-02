@@ -139,6 +139,103 @@ test.describe("Tarjeta de palabra (F9)", () => {
     await expect(page.locator(".reader")).not.toBeVisible({ timeout: 8_000 });
   });
 
+  test("en táctil la ficha se abre por presión, no por toque (gesto de selección)", async ({
+    page,
+  }) => {
+    await openMinimalBook(page);
+
+    // Eventos táctiles sintéticos: el puntero decide el gesto — en
+    // `pointer: coarse` real es la misma ruta que toma un dedo.
+    const touch = async (type: string, x: number, y: number) =>
+      page.evaluate(
+        ({ type, x, y }) => {
+          const el = document.elementFromPoint(x, y) || document.body;
+          el.dispatchEvent(
+            new PointerEvent(type, {
+              bubbles: true,
+              cancelable: true,
+              clientX: x,
+              clientY: y,
+              pointerType: "touch",
+              pointerId: 1,
+              isPrimary: true,
+              button: 0,
+              buttons: type === "pointerup" ? 0 : 1,
+            }),
+          );
+        },
+        { type, x, y },
+      );
+    const clickAt = async (x: number, y: number) =>
+      page.evaluate(
+        ({ x, y }) => {
+          const el = document.elementFromPoint(x, y) || document.body;
+          el.dispatchEvent(
+            new MouseEvent("click", {
+              bubbles: true,
+              cancelable: true,
+              clientX: x,
+              clientY: y,
+            }),
+          );
+        },
+        { x, y },
+      );
+
+    const card = page.locator(".word-unified-card");
+    const coords = await wordCoords(page, "perenne");
+
+    // Toque rápido: la ficha no se abre (el toque es para barras/páginas).
+    await touch("pointerdown", coords.x, coords.y);
+    await page.waitForTimeout(60);
+    await touch("pointerup", coords.x, coords.y);
+    await clickAt(coords.x, coords.y);
+    await page.waitForTimeout(400);
+    await expect(card).not.toBeVisible();
+
+    // Presión sostenida: abre la ficha; el click del release no la cierra.
+    await touch("pointerdown", coords.x, coords.y);
+    await page.waitForTimeout(620);
+    await expect(card).toBeVisible({ timeout: 3_000 });
+    await touch("pointerup", coords.x, coords.y);
+    await clickAt(coords.x, coords.y);
+    await page.waitForTimeout(300);
+    await expect(card).toBeVisible();
+
+    // Guardar desde la ficha abierta por presión persiste en el Cuaderno.
+    await card.locator("button:has-text('Guardar en mi cuaderno')").click();
+    await expect(card.locator(".word-panel-saved-badge")).toBeVisible({ timeout: 5_000 });
+    const stored = await page.evaluate(async () => {
+      const dbs = await indexedDB.databases();
+      for (const info of dbs) {
+        if (!info.name?.startsWith("lecta")) continue;
+        const db = await new Promise<IDBDatabase>((res, rej) => {
+          const req = indexedDB.open(info.name!);
+          req.onsuccess = () => res(req.result);
+          req.onerror = () => rej(req.error);
+        });
+        if (!db.objectStoreNames.contains("savedWords")) {
+          db.close();
+          continue;
+        }
+        const rows = await new Promise<{ form?: string; deleted?: boolean }[]>(
+          (res, rej) => {
+            const tx = db.transaction("savedWords", "readonly");
+            const req = tx.objectStore("savedWords").getAll();
+            req.onsuccess = () => res(req.result);
+            req.onerror = () => rej(req.error);
+          },
+        );
+        db.close();
+        return rows;
+      }
+      return null;
+    });
+    expect(
+      stored?.some((w) => w.form === "perenne" && !w.deleted),
+    ).toBe(true);
+  });
+
   test("la palabra consultada queda resaltada hasta cerrar la ficha (C6)", async ({
     page,
   }) => {

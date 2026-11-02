@@ -10,6 +10,10 @@
 // - Navegaciones: red primero con { cache: 'no-store' }; si la red tarda más
 //   de 3500ms se sirve la copia guardada SIN abortar el fetch — cuando la
 //   copia fresca llega, se guarda y se avisa LECTA_NAV_STALE para recargar.
+// - El install precachea el shell pidiendo /__lecta_shell__ (ruta que el SW
+//   viejo no trata como navegación) y guardándolo bajo "/" e "/index.html":
+//   pedir esas rutas directas le daría al SW viejo la opción de servir el
+//   HTML del deploy anterior si la red tardara más de 3500ms.
 // - Contenido precacheado: cache-first (rellena el cache si falta).
 // - Validación estricta MIME: jamás cachear ni entregar text/html para .css, .js o /assets/*.
 // - Autocuración de assets: reintento y notificación ASSET_MISMATCH_RELOAD ante hashes obsoletos.
@@ -86,6 +90,20 @@ function manifestRequest() {
   );
 }
 
+// El shell (index.html) se pide por una ruta que NO es navegación para el
+// SW viejo: para "/" e "/index.html" su manejador sirve la copia cacheada
+// del deploy anterior cuando la red tarda más de NAVIGATION_TIMEOUT_MS, y
+// el precaché quedaba envenenado con el HTML viejo de forma permanente
+// (la app se quedaba pegada a la versión anterior hasta borrar caché).
+// Una ruta desconocida cae siempre a la red, donde el fallback SPA del
+// servidor devuelve el index.html del deploy vigente.
+var SHELL_URL = "/__lecta_shell__";
+function shellRequest() {
+  return new Request(self.location.origin + SHELL_URL + "?v=" + Date.now(), {
+    cache: "no-store",
+  });
+}
+
 // 1. Install: activar inmediatamente sin bloquearse en waiting
 self.addEventListener("install", function (event) {
   self.skipWaiting();
@@ -100,15 +118,17 @@ self.addEventListener("install", function (event) {
         }
         var version = (manifest && manifest.version) || SW_VERSION || "0";
         var seen = {};
-        var urls = ["/", "/index.html"]
-          .concat((manifest && manifest.assets) || [])
+        var urls = ((manifest && manifest.assets) || [])
           .filter(function (url) {
             if (seen[url]) return false;
             seen[url] = true;
             // Rutas excluidas del fetch handler: cachearlas es peso muerto
             // (jamás se leen del almacén) y el manifiesto además se leería
-            // a sí mismo viejo en el próximo install.
+            // a sí mismo viejo en el próximo install. El shell se guarda
+            // aparte vía shellRequest() por la misma razón.
             return (
+              url !== "/" &&
+              url !== "/index.html" &&
               url !== MANIFEST_URL &&
               url !== "/manifest.webmanifest" &&
               url !== "/sw.js"
@@ -120,13 +140,32 @@ self.addEventListener("install", function (event) {
           // 404, un corte de red) y el SW nuevo se descarta: la app se
           // queda con el SW viejo. Un archivo que falte aquí se rellena
           // solo al pedirlo (refillable), así que se tolera por archivo.
-          return Promise.all(
-            urls.map(function (url) {
-              return cache.add(url).catch(function () {
+          var tasks = urls.map(function (url) {
+            return cache.add(url).catch(function () {
+              return undefined;
+            });
+          });
+          // El shell llega por una ruta no-navegación (ver shellRequest):
+          // así el SW viejo no puede servir su copia vieja por red lenta.
+          // Se guarda bajo las dos claves canónicas que leen las
+          // navegaciones. Si la petición falla, la primera navegación la
+          // rellena desde la red (siempre network-first).
+          tasks.push(
+            fetch(shellRequest())
+              .then(function (res) {
+                if (!res || !res.ok) return undefined;
+                var ct = (res.headers.get("content-type") || "").toLowerCase();
+                if (ct.indexOf("text/html") === -1) return undefined;
+                return Promise.all([
+                  cache.put("/index.html", res.clone()),
+                  cache.put("/", res),
+                ]);
+              })
+              .catch(function () {
                 return undefined;
-              });
-            })
+              }),
           );
+          return Promise.all(tasks);
         });
       })
       .catch(function () {

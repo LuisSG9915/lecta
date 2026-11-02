@@ -36,10 +36,50 @@ describe("resetAccountDataDb", () => {
     expect(sqlStatements.some((sql) => sql.includes("lecta_ai_quota"))).toBe(false);
     expect(sqlStatements.some((sql) => sql.includes("FROM \"user\""))).toBe(false);
 
-    // Todos los DELETE reciben user_123
+    // Todos los DELETE y el sello llevan user_123 como primer parámetro
+    // (SAVEPOINT/ROLLBACK TO SAVEPOINT no llevan parámetros).
     for (const q of executedQueries.slice(1, -1)) {
-      expect(q.params).toEqual(["user_123"]);
+      if (q.params) expect(q.params[0]).toBe("user_123");
     }
+  });
+
+  it("deja el sello del reinicio en lecta_account_state dentro de la misma transacción", async () => {
+    const executedQueries: Array<{ sql: string; params?: unknown[] }> = [];
+    const fakeClient = {
+      query: vi.fn(async (sql: string, params?: unknown[]) => {
+        executedQueries.push({ sql, params });
+        return { rows: [] };
+      }),
+    };
+
+    const resetAt = await resetAccountDataDb(fakeClient as never, "user_123");
+
+    const marker = executedQueries.find((q) =>
+      q.sql.includes("INSERT INTO lecta_account_state"),
+    );
+    expect(marker).toBeDefined();
+    expect(marker!.sql).toContain("ON CONFLICT (user_id) DO UPDATE");
+    expect(marker!.params).toEqual(["user_123", resetAt]);
+    // El sello va antes del COMMIT: un PUT posterior al commit ya lo ve.
+    const markerIndex = executedQueries.indexOf(marker!);
+    expect(executedQueries[executedQueries.length - 1].sql).toBe("COMMIT");
+    expect(markerIndex).toBeLessThan(executedQueries.length - 1);
+    expect(Number.isFinite(resetAt) && resetAt > 0).toBe(true);
+  });
+
+  it("tolera que lecta_account_state aún no exista (despliegue antes que la migración)", async () => {
+    const fakeClient = {
+      query: vi.fn(async (sql: string) => {
+        if (sql.includes("lecta_account_state")) {
+          const err = new Error("relation does not exist") as Error & { code?: string };
+          err.code = "42P01";
+          throw err;
+        }
+        return { rows: [] };
+      }),
+    };
+
+    await expect(resetAccountDataDb(fakeClient as never, "user_123")).resolves.toBeGreaterThan(0);
   });
 
   it("hace ROLLBACK y propaga el error si una consulta falla", async () => {
@@ -98,7 +138,7 @@ describe("POST /api/account/reset", () => {
     });
 
     const dbModule = await import("./db");
-    const resetSpy = vi.spyOn(dbModule, "resetAccountDataDb").mockResolvedValue(undefined);
+    const resetSpy = vi.spyOn(dbModule, "resetAccountDataDb").mockResolvedValue(1_700_000_000_000);
 
     const res = await app.request(
       "/api/account/reset",
@@ -145,5 +185,150 @@ describe("POST /api/account/reset", () => {
     expect(res.status).toBe(500);
     const body = (await res.json()) as { error: string };
     expect(body.error).toContain("No se pudo completar el reinicio");
+  });
+});
+
+describe("GET /api/account/state", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("responde 401 si no hay sesión activa", async () => {
+    const res = await app.request("/api/account/state");
+    expect(res.status).toBe(401);
+  });
+
+  it("devuelve el sello guardado en lecta_account_state", async () => {
+    const sessionModule = await import("./session");
+    vi.spyOn(sessionModule, "getSession").mockResolvedValue({
+      user: { id: "u_state", email: "state@test.com" } as never,
+      session: {} as never,
+    });
+    const dbModule = await import("./db");
+    vi.spyOn(dbModule, "withClient").mockImplementation(async (_env, run) =>
+      run({
+        query: vi.fn(async (sql: string) => {
+          if (sql.includes("lecta_account_state")) {
+            return { rows: [{ reset_at: "4200" }] };
+          }
+          return { rows: [] };
+        }),
+      } as never),
+    );
+
+    const res = await app.request(
+      "/api/account/state",
+      {},
+      { DATABASE_URL: "postgres://mock" },
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ok: boolean; resetAt: number };
+    expect(body.ok).toBe(true);
+    expect(body.resetAt).toBe(4200);
+  });
+
+  it("devuelve 0 cuando la cuenta nunca se reinició", async () => {
+    const sessionModule = await import("./session");
+    vi.spyOn(sessionModule, "getSession").mockResolvedValue({
+      user: { id: "u_fresh", email: "fresh@test.com" } as never,
+      session: {} as never,
+    });
+    const dbModule = await import("./db");
+    vi.spyOn(dbModule, "withClient").mockImplementation(async (_env, run) =>
+      run({
+        query: vi.fn(async () => ({ rows: [] })),
+      } as never),
+    );
+
+    const res = await app.request(
+      "/api/account/state",
+      {},
+      { DATABASE_URL: "postgres://mock" },
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { resetAt: number };
+    expect(body.resetAt).toBe(0);
+  });
+});
+
+describe("guardia de reinicio en escrituras (x-lecta-reset)", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const putAnnotations = (headers: Record<string, string>, env: WorkerEnv) =>
+    app.request(
+      "/api/annotations",
+      {
+        method: "PUT",
+        headers: { "content-type": "application/json", ...headers },
+        body: JSON.stringify({
+          annotations: [
+            {
+              bookHash: "book-1",
+              id: "ann-1",
+              kind: "passage",
+              sectionIndex: 2,
+              text: "Texto",
+              createdAt: 1000,
+              updatedAt: 2000,
+            },
+          ],
+        }),
+      },
+      env,
+    );
+
+  const envWithDb = { DATABASE_URL: "postgres://mock" } as WorkerEnv;
+
+  const stubSessionAndResetAt = async (resetAt: number | null) => {
+    const sessionModule = await import("./session");
+    vi.spyOn(sessionModule, "getSession").mockResolvedValue({
+      user: { id: "u_stale", email: "stale@test.com" } as never,
+      session: {} as never,
+    });
+    const dbModule = await import("./db");
+    const queries: string[] = [];
+    vi.spyOn(dbModule, "withClient").mockImplementation(async (_env, run) =>
+      run({
+        query: vi.fn(async (sql: string) => {
+          queries.push(sql);
+          if (sql.includes("lecta_account_state")) {
+            return { rows: resetAt === null ? [] : [{ reset_at: String(resetAt) }] };
+          }
+          return { rows: [], rowCount: 1 };
+        }),
+      } as never),
+    );
+    return queries;
+  };
+
+  it("rechaza con 409 un PUT cuya marca local es más vieja que el sello — sin tocar filas", async () => {
+    const queries = await stubSessionAndResetAt(9000);
+
+    const res = await putAnnotations({ "x-lecta-reset": "1000" }, envWithDb);
+
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { error: string; resetAt: number };
+    expect(body.error).toBe("account_reset");
+    expect(body.resetAt).toBe(9000);
+    // La escritura jamás llegó: solo corrió la lectura del sello.
+    expect(queries.some((sql) => sql.includes("INSERT INTO lecta_user_annotations"))).toBe(false);
+  });
+
+  it("acepta cuando la marca del cliente ya cubre el reinicio", async () => {
+    await stubSessionAndResetAt(9000);
+
+    const res = await putAnnotations({ "x-lecta-reset": "9000" }, envWithDb);
+
+    expect(res.status).toBe(200);
+  });
+
+  it("sin sello en servidor (cuenta jamás reiniciada) el PUT corre normal", async () => {
+    await stubSessionAndResetAt(null);
+
+    const res = await putAnnotations({}, envWithDb);
+
+    expect(res.status).toBe(200);
   });
 });

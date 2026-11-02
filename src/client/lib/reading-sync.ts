@@ -106,6 +106,18 @@ export async function flushPendingReadingSync(): Promise<void> {
   await pendingFlushRunner();
 }
 
+// Vacía lo sucio y el temporizador sin disparar nada: solo para el
+// borrado de cuenta (local o aprendido del servidor) — una descarga
+// programada sobre datos ya muertos resucitaría lo que el reinicio
+// eliminó.
+export function clearReadingSyncQueues(): void {
+  if (debounceTimer) {
+    clearTimeout(debounceTimer);
+    debounceTimer = null;
+  }
+  dirtyCollections.clear();
+}
+
 if (typeof document !== "undefined") {
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") {

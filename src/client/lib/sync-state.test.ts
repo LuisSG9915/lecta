@@ -205,6 +205,36 @@ describe("sync-state", () => {
     vi.useRealTimers();
   });
 
+  it("tras agotar el backoff rápido sigue reintentando a ritmo lento mientras haya error y conexión", () => {
+    vi.useFakeTimers();
+    resetSyncRetry();
+
+    const onRetryMock = vi.fn();
+    registerSyncRetryRunner(onRetryMock);
+
+    // Backoff rápido: 5 s, 15 s y 45 s.
+    recordCollectionSyncFailure("words", "Fallo");
+    vi.advanceTimersByTime(5_000);
+    expect(onRetryMock).toHaveBeenCalledTimes(1);
+    recordCollectionSyncFailure("words", "Fallo");
+    vi.advanceTimersByTime(15_000);
+    expect(onRetryMock).toHaveBeenCalledTimes(2);
+    recordCollectionSyncFailure("words", "Fallo");
+    vi.advanceTimersByTime(45_000);
+    expect(onRetryMock).toHaveBeenCalledTimes(3);
+
+    // Sin este heartbeat la etiqueta quedaba «reintentando» para
+    // siempre sin reintentar nada: a los 5 min hay otro intento.
+    recordCollectionSyncFailure("words", "Fallo");
+    vi.advanceTimersByTime(299_999);
+    expect(onRetryMock).toHaveBeenCalledTimes(3);
+    vi.advanceTimersByTime(1);
+    expect(onRetryMock).toHaveBeenCalledTimes(4);
+
+    recordCollectionSyncSuccess("words", Date.now());
+    vi.useRealTimers();
+  });
+
   it("anuncia 'sesión vencida' en lugar del reintento genérico tras un 401", () => {
     markSessionExpired();
 

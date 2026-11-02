@@ -87,6 +87,13 @@ export function getPendingPositionsCount(): number {
   return pendingPositionsToFlush.length;
 }
 
+// Vacía la cola en memoria sin enviar nada: solo para el borrado de
+// cuenta (local o aprendido del servidor) — si salieran, resucitarían
+// posiciones que el reinicio acaba de eliminar.
+export function clearPendingPositions(): void {
+  pendingPositionsToFlush = [];
+}
+
 export function flushPendingPositions(scope?: DbScope): Promise<boolean> {
   if (!pendingPositionsToFlush.length) return Promise.resolve(true);
   const items = [...pendingPositionsToFlush];

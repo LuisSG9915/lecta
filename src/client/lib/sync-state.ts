@@ -196,6 +196,11 @@ export function scheduleReadingSyncContinuation(
 }
 
 const RETRY_DELAYS_MS = [5_000, 15_000, 45_000] as const;
+// Agotado el backoff rápido el reintento no muere: con error persistente
+// y conexión se sigue probando a ritmo lento — antes quedaba
+// «reintentando sincronizar» para siempre sin reintentar nada, y lo
+// pendiente se acumulaba en local hasta que alguien abría de nuevo.
+const RETRY_STEADY_MS = 300_000;
 let retryTimer: ReturnType<typeof setTimeout> | null = null;
 let retryAttempt = 0;
 let registeredRetryCallback: (() => void) | null = null;
@@ -208,13 +213,22 @@ export function scheduleSyncRetry(onRetry?: () => void): void {
   if (syncPaused) return;
   if (onRetry) registeredRetryCallback = onRetry;
   if (retryTimer) clearTimeout(retryTimer);
-  if (retryAttempt >= RETRY_DELAYS_MS.length) return;
 
-  const delay = RETRY_DELAYS_MS[retryAttempt++];
+  const delay =
+    retryAttempt < RETRY_DELAYS_MS.length
+      ? RETRY_DELAYS_MS[retryAttempt++]
+      : RETRY_STEADY_MS;
   retryTimer = setTimeout(() => {
     retryTimer = null;
     if (currentState.isOnline) {
       registeredRetryCallback?.();
+    }
+    // Si ese intento también falló, el propio recordCollectionSyncError
+    // vuelve a programar; pero si el runner ni siquiera registró fallo
+    // (p. ej. red cortada a medias), se encadena otro intento lento para
+    // que la etiqueta «reintentando» siga siendo cierta.
+    else if (isSyncInError(currentState)) {
+      scheduleSyncRetry();
     }
   }, delay);
 }

@@ -277,7 +277,12 @@ describe("PUT endpoints — validación, autenticación y resolución de conflic
   });
 
   it("PUT /api/annotations realiza UPSERT con server_synced_at y arbitraje de conflictos", async () => {
-    queryMock.mockResolvedValueOnce({ rowCount: 1, rows: [] });
+    queryMock
+      .mockResolvedValueOnce({ rowCount: 0, rows: [] }) // BEGIN
+      .mockResolvedValueOnce({ rowCount: 0, rows: [] }) // SAVEPOINT
+      .mockResolvedValueOnce({ rowCount: 0, rows: [] }) // INSERT del marcador
+      .mockResolvedValueOnce({ rowCount: 0, rows: [] }) // SELECT FOR UPDATE del sello
+      .mockResolvedValueOnce({ rowCount: 1, rows: [] }); // upsert
     const res = await app.request("/api/annotations", {
       method: "PUT",
       headers: { "content-type": "application/json" },
@@ -300,7 +305,7 @@ describe("PUT endpoints — validación, autenticación y resolución de conflic
     expect(body.ok).toBe(true);
     expect(body.upserted).toBe(1);
 
-    const [sql, params] = queryMock.mock.calls[0] as [string, unknown[]];
+    const [sql, params] = queryMock.mock.calls[4] as [string, unknown[]];
     expect(sql).toContain("INSERT INTO lecta_user_annotations");
     expect(sql).toContain("WHERE lecta_user_annotations.updated_at <= excluded.updated_at");
     expect(params[0]).toBe("u1");
@@ -342,7 +347,7 @@ describe("PUT endpoints — validación, autenticación y resolución de conflic
       }),
     });
     expect(res.status).toBe(200);
-    const [sql] = queryMock.mock.calls[0] as [string];
+    const [sql] = queryMock.mock.calls[4] as [string];
     expect(sql).toContain("INSERT INTO lecta_user_positions");
     expect(sql).toContain("WHERE lecta_user_positions.updated_at <= excluded.updated_at");
   });
@@ -379,7 +384,7 @@ describe("PUT endpoints — validación, autenticación y resolución de conflic
       }),
     });
     expect(res200.status).toBe(200);
-    const [sql] = queryMock.mock.calls[0] as [string];
+    const [sql] = queryMock.mock.calls[4] as [string];
     expect(sql).toContain("INSERT INTO lecta_user_activity");
   });
 
@@ -418,7 +423,7 @@ describe("PUT endpoints — validación, autenticación y resolución de conflic
       }),
     });
     expect(res200.status).toBe(200);
-    const [sql] = queryMock.mock.calls[0] as [string];
+    const [sql] = queryMock.mock.calls[4] as [string];
     expect(sql).toContain("INSERT INTO lecta_user_reviews");
   });
 
@@ -455,7 +460,7 @@ describe("PUT endpoints — validación, autenticación y resolución de conflic
       }),
     });
     expect(res200.status).toBe(200);
-    const [sql] = queryMock.mock.calls[0] as [string];
+    const [sql] = queryMock.mock.calls[4] as [string];
     expect(sql).toContain("INSERT INTO lecta_user_knowledge");
     expect(sql).toContain("ON CONFLICT (user_id, language, lemma) DO UPDATE SET");
     expect(sql).toContain("excluded.updated_at");
@@ -525,7 +530,7 @@ describe("PUT /api/daily-summaries — telemetría diaria por dispositivo", () =
       }),
     });
     expect(res200.status).toBe(200);
-    const [sql, params] = queryMock.mock.calls[0] as [string, unknown[]];
+    const [sql, params] = queryMock.mock.calls[4] as [string, unknown[]];
     expect(sql).toContain("INSERT INTO lecta_daily_summaries");
     expect(sql).toContain("ON CONFLICT (user_id, day, device) DO UPDATE");
     expect(sql).toContain("updated_at < excluded.updated_at");
@@ -535,7 +540,12 @@ describe("PUT /api/daily-summaries — telemetría diaria por dispositivo", () =
   });
 
   it("responde 503 amable si la tabla aún no existe", async () => {
-    queryMock.mockRejectedValueOnce(new Error("relation does not exist"));
+    queryMock
+      .mockResolvedValueOnce({ rowCount: 0, rows: [] }) // BEGIN
+      .mockResolvedValueOnce({ rowCount: 0, rows: [] }) // SAVEPOINT
+      .mockResolvedValueOnce({ rowCount: 0, rows: [] }) // INSERT del marcador
+      .mockResolvedValueOnce({ rowCount: 0, rows: [] }) // SELECT FOR UPDATE del sello
+      .mockRejectedValueOnce(new Error("relation does not exist")); // upsert
     const res = await app.request("/api/daily-summaries", {
       method: "PUT",
       headers: { "content-type": "application/json" },
