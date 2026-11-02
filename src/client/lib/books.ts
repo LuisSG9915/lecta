@@ -13,6 +13,23 @@ export type RemoteBook = {
   sections?: number;
   language?: string;
   hasCover?: boolean;
+  // Flags de la biblioteca comunitaria (fila user_books, migración 024):
+  // `shared` = lo ofrecí a la comunidad; `paperOnly` = copia comunitaria
+  // que solo abre el índice del modo papel, nunca el lector.
+  shared?: boolean;
+  paperOnly?: boolean;
+};
+
+// Entrada del catálogo comunitario: una por sha256 aunque lo compartan
+// varios lectores. Solo metadatos — el EPUB llega al adjuntar.
+export type CommunityBook = {
+  hash: string;
+  title: string;
+  author: string;
+  language: string;
+  sizeBytes: number;
+  hasCover: boolean;
+  sharers: number;
 };
 
 export type BookUploadMeta = {
@@ -79,6 +96,50 @@ export async function downloadBook(book: RemoteBook, scope?: DbScope) {
     if (error instanceof StaleScopeError) throw error;
     return null;
   }
+}
+
+// --- Biblioteca comunitaria «solo papel» -----------------------------
+// Compartir es opt-in por libro; adjuntar crea una copia propia
+// paper_only que abre el índice del modo papel, nunca el lector.
+
+export async function listCommunityBooks(scope?: DbScope): Promise<CommunityBook[]> {
+  try {
+    const response = await accountFetch("/api/books/community", undefined, scope);
+    if (!response.ok) return [];
+    const data = (await response.json()) as { books?: CommunityBook[] };
+    return data.books ?? [];
+  } catch (error) {
+    if (error instanceof StaleScopeError) throw error;
+    return [];
+  }
+}
+
+export async function shareBook(hash: string, shared: boolean, scope?: DbScope) {
+  try {
+    const response = await accountFetch(`/api/books/${hash}/share`, {
+      method: shared ? "PUT" : "DELETE",
+    }, scope);
+    return response.ok;
+  } catch (error) {
+    if (error instanceof StaleScopeError) throw error;
+    return false;
+  }
+}
+
+export async function attachCommunityBook(hash: string, scope?: DbScope) {
+  try {
+    const response = await accountFetch(`/api/books/community/${hash}/attach`, {
+      method: "POST",
+    }, scope);
+    return response.ok;
+  } catch (error) {
+    if (error instanceof StaleScopeError) throw error;
+    return false;
+  }
+}
+
+export function communityCoverUrl(hash: string): string {
+  return `/api/books/community/${hash}/cover`;
 }
 
 export async function deleteBook(hash: string, scope?: DbScope) {

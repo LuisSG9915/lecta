@@ -1,21 +1,21 @@
 {
   "tool": "audit-investigacion",
   "version": 1,
-  "generatedAt": "2026-11-02T00:31:01.083Z",
+  "generatedAt": "2026-11-02T01:59:34.765Z",
   "root": "/Users/luis/Desarrollos Devin/lecta",
-  "commit": "bff5c42f37d0387168ee1164ed915baa6527398b",
+  "commit": "74cc7fcde67e8a16d4ae7243a195b34c2e6349ae",
   "doc": "docs/estrategia-aprendizaje-2026-10-24.md",
   "registry": "docs/auditoria/claims.json",
   "online": false,
   "summary": {
     "claims": 14,
     "pass": 1,
-    "fail": 2,
-    "unverified": 11,
+    "fail": 1,
+    "unverified": 12,
     "skipped": 0,
     "refutedExpected": 0,
-    "codePass": 12,
-    "codeFail": 2,
+    "codePass": 13,
+    "codeFail": 1,
     "referencePass": 0,
     "referenceUnverified": 32,
     "referenceFail": 0,
@@ -86,7 +86,7 @@
               },
               {
                 "file": "src/client/components/Shelf.tsx",
-                "line": 429,
+                "line": 454,
                 "text": "const inputsFor = createCoverageInputsLoader(scope);"
               }
             ]
@@ -500,7 +500,7 @@
       "title": "«Ya la conozco» alimenta el nivel como si fuera una prueba",
       "statement": "Marcar «ya la conozco» ajusta θ con outcome 1 y un delta de 0,18 × (1 − P), sin ninguna recuperación verificada de por medio, y el acto se registra sin pagar XP de repaso.",
       "section": "H4",
-      "status": "FAIL",
+      "status": "UNVERIFIED",
       "auditVerdict": {
         "status": "MATIZADA",
         "date": "2026-10-26",
@@ -510,7 +510,7 @@
           "src/client/lib/profile-models.ts:405-415"
         ]
       },
-      "codeStatus": "FAIL",
+      "codeStatus": "PASS",
       "refStatus": "UNVERIFIED",
       "checks": [
         {
@@ -521,54 +521,12 @@
         },
         {
           "kind": "code-anchor",
-          "status": "FAIL",
-          "detail": "src/client/components/Reader.tsx:4719-4759 no contiene /updateLanguageTheta\\(currentLang, beta, 1, 1\\.0\\)/",
+          "status": "PASS",
+          "detail": "src/client/components/Reader.tsx:4796 coincide con /updateLanguageTheta\\(currentLang, beta, 1, 1\\.0\\)/",
           "observed": {
             "file": "src/client/components/Reader.tsx",
-            "asked": 4739,
-            "excerpt": [
-              "4719:                   const word = selection.word;",
-              "4720:                   const passage = selection.context || selection.word;",
-              "4721:                   closeSelection();",
-              "4722:                   void askCatAboutSelection({ word, passage });",
-              "4723:                 },",
-              "4724:                 onDeepRead: () => {",
-              "4725:                   closeSelection();",
-              "4726:                   setDeepModal(true);",
-              "4727:                 },",
-              "4728:               }",
-              "4729:             : undefined",
-              "4730:         }",
-              "4731:         onWordSaved={onWordSaved}",
-              "4732:         onWordRemoved={onWordRemoved}",
-              "4733:         onKnowledgeChanged={(row, { form, kind }) => {",
-              "4734:           applyKnowledgeRow(row);",
-              "4735:           try {",
-              "4736:             // θ ya lo ajusta el emisor del acto (WordPanel y la hoja de",
-              "4737:             // preparación): aquí solo se persiste el repaso y se evita el",
-              "4738:             // segundo empujón sobre la misma señal.",
-              "4739:             const currentLang = language || (bookRef.current ? getBookLanguage(bookRef.current) : \"es\");",
-              "4740:             if (kind === \"saved\") {",
-              "4741:               void scheduleCapturedReview(form, bookHash, undefined, currentLang).catch(() => {});",
-              "4742:             }",
-              "4743:           } catch {",
-              "4744:             // Ignorar fallo al programar el repaso",
-              "4745:           }",
-              "4746:           trackEvent(",
-              "4747:             kind === \"saved\"",
-              "4748:               ? {",
-              "4749:                   kind: \"word_saved\",",
-              "4750:                   sectionIndex: sectionIndexRef.current,",
-              "4751:                   form,",
-              "4752:                   lemma: row.lemma,",
-              "4753:                   origin: \"text\",",
-              "4754:                 }",
-              "4755:               : {",
-              "4756:                   kind: \"word_declared_known\",",
-              "4757:                   sectionIndex: sectionIndexRef.current,",
-              "4758:                   lemma: row.lemma,",
-              "4759:                   origin: \"text\","
-            ]
+            "line": 4796,
+            "text": "updateLanguageTheta(currentLang, beta, 1, 1.0);"
           }
         },
         {
@@ -715,14 +673,14 @@
         {
           "kind": "code-anchor",
           "status": "FAIL",
-          "detail": "src/client/lib/idb.ts:2111-2113 no contiene /if \\(existing\\?\\.deleted\\) return existing/",
+          "detail": "src/client/lib/idb.ts:2114-2116 no contiene /if \\(existing\\?\\.deleted\\) return existing/",
           "observed": {
             "file": "src/client/lib/idb.ts",
-            "asked": 2112,
+            "asked": 2115,
             "excerpt": [
-              "2111:     const key = knowledgeKey(language, lemma);",
-              "2112:     const existing = await db.get(\"knowledge\", key);",
-              "2113:     // Una inferencia pasiva jamás revive lo que el lector borró"
+              "2114:   lemma: string,",
+              "2115:   scope?: DbScope,",
+              "2116: ): Promise<KnownWord> {"
             ]
           }
         },

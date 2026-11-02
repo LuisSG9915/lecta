@@ -81,6 +81,13 @@ export async function withClient<T>(env: WorkerEnv, run: (client: pg.Client) => 
 export const isMissingTableError = (err: unknown): boolean =>
   (err as { code?: string } | null)?.code === "42P01";
 
+// 42703 = columna inexistente: shared/shared_at/paper_only llegan con la
+// migración 024 y el worker puede desplegar antes — como con las tablas,
+// la ausencia degrada la comunidad a «aún no disponible» en vez de
+// romper la ruta del libro.
+export const isMissingColumnError = (err: unknown): boolean =>
+  (err as { code?: string } | null)?.code === "42703";
+
 /**
  * Sello del último «borrar datos de la cuenta» en epoch ms; 0 si la
  * cuenta nunca se reinició. Vive en lecta_account_state, fuera de las

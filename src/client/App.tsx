@@ -15,6 +15,7 @@ const Reader = lazy(() => import("./components/Reader"));
 const Vocabulary = lazy(() => import("./components/Vocabulary"));
 const Journey = lazy(() => import("./components/Journey"));
 const PaperReading = lazy(() => import("./components/PaperReading"));
+const CommunityShelf = lazy(() => import("./components/CommunityShelf"));
 const Account = lazy(() => import("./components/Account"));
 const Calibration = lazy(() => import("./components/Calibration"));
 const RestoreBackupDialog = lazy(() => import("./components/RestoreBackupDialog"));
@@ -96,7 +97,7 @@ import {
   isHashLikeIdentifier,
   readBookMeta,
 } from "./lib/cover";
-import { downloadBook, listRemoteBooks, uploadBookCover } from "./lib/books";
+import { downloadBook, listRemoteBooks, shareBook, uploadBookCover } from "./lib/books";
 import { queueBookDelete, queueBookUpload, runBookQueue } from "./lib/book-queue";
 import { getPendingPositionsCount, syncPositions, type PositionConflict } from "./lib/positions-sync";
 
@@ -678,6 +679,11 @@ export default function App() {
       ops.filter((op) => op.kind === "delete").map((op) => op.hash),
     );
     const localHashes = new Set(books.map((book) => book.hash));
+    // Flags comunitarios de la fila remota: `paperOnly` se conserva en
+    // el registro local al descargar; `shared` viaja solo por la lista
+    // (compartir siempre requiere red, así que perderlo offline no abre
+    // nada indebido).
+    const remoteByHash = new Map(remote.map((r) => [r.hash, r]));
     const localItems: ShelfItem[] = books
       .sort((a, b) => b.addedAt - a.addedAt)
       .map((book) => ({
@@ -690,6 +696,8 @@ export default function App() {
         sectionCount: book.sectionCount,
         language: book.language,
         pendingUpload: pendingUploads.has(book.hash) || undefined,
+        paperOnly: book.paperOnly || remoteByHash.get(book.hash)?.paperOnly || undefined,
+        shared: remoteByHash.get(book.hash)?.shared || undefined,
       }));
     for (const r of remote) {
       if (!r.hasCover && !retrofilledCoversRef.current.has(r.hash)) {
@@ -728,6 +736,10 @@ export default function App() {
           sectionCount: item.sections || undefined,
           language: item.language,
           hasCover: item.hasCover,
+          // Biblioteca comunitaria: lo ofrecí a otros lectores, o es una
+          // copia adjunta que solo abre el modo papel.
+          shared: item.shared || undefined,
+          paperOnly: item.paperOnly || undefined,
         };
       });
     setLibrary([...localItems, ...remoteItems]);
@@ -1353,6 +1365,12 @@ export default function App() {
     item: ShelfItem,
     openAfter = true,
   ): Promise<boolean> => {
+    // Guard de seguridad: una copia comunitaria nunca abre el lector.
+    // handlePaperBook la descarga con openAfter=false y va al índice.
+    if (item.paperOnly && openAfter) {
+      handlePaperBook(item);
+      return true;
+    }
     setError("");
     setDownloadingHash(item.hash);
     setMessage(`Descargando «${displayTitle(item.name, item.title)}»…`);
@@ -1370,7 +1388,18 @@ export default function App() {
       const hadLocalPosition = Boolean(
         await loadBookPosition(item.hash, scope).catch(() => undefined),
       );
-      await saveBook({ hash: item.hash, name: file.name, data: file, addedAt: Date.now() }, scope);
+      await saveBook(
+        {
+          hash: item.hash,
+          name: file.name,
+          data: file,
+          addedAt: Date.now(),
+          // La copia comunitaria conserva su restricción tras bajar a
+          // IndexedDB — sin el flag local se volvería legible.
+          paperOnly: item.paperOnly || undefined,
+        },
+        scope,
+      );
 
       const meta = await readBookMeta(file).catch(() => null);
       const resolvedTitle = (!meta?.title || isHashLikeIdentifier(meta.title))
@@ -1413,8 +1442,17 @@ export default function App() {
     }
   };
 
-  const openShelfItem = (item: ShelfItem) =>
-    item.remoteOnly ? void openRemoteBook(item) : void openStoredBook(item);
+  const openShelfItem = (item: ShelfItem) => {
+    // Copia comunitaria «solo papel»: el toque abre el índice del modo
+    // papel — jamás el lector, aunque el archivo se descargue para el
+    // análisis de capítulos.
+    if (item.paperOnly) {
+      handlePaperBook(item);
+      return;
+    }
+    if (item.remoteOnly) void openRemoteBook(item);
+    else void openStoredBook(item);
+  };
 
   const handleSelectBook = (
     b: BookLike,
@@ -1710,6 +1748,26 @@ export default function App() {
                     onOpen={openShelfItem}
                     onSelect={handleSelectBook}
                     onPaperBook={handlePaperBook}
+                    onShareBook={async (item, shared) => {
+                      const ok = await shareBook(item.hash, shared, captureDbScope());
+                      if (ok) {
+                        await refreshLibrary();
+                      } else {
+                        setError("No se pudo actualizar el estado compartido. Revisa tu conexión.");
+                      }
+                    }}
+                    communitySection={
+                      sessionUserId ? (
+                        <Suspense fallback={null}>
+                          <CommunityShelf
+                            onAttached={() => {
+                              setMessage("Libro agregado — abre el índice desde tu estantería.");
+                              void refreshLibrary();
+                            }}
+                          />
+                        </Suspense>
+                      ) : undefined
+                    }
                     onStartCalibration={handleOpenCalibration}
                     onRemove={removeBook}
                     onAdd={(file) => void selectBook(file)}

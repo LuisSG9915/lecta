@@ -71,7 +71,15 @@ import Sheet from "./Sheet";
 export type ShelfItem = Pick<
   StoredBook,
   "hash" | "name" | "addedAt" | "title" | "author" | "cover" | "sectionCount" | "language"
-> & { remoteOnly?: boolean; pendingUpload?: boolean; hasCover?: boolean };
+> & {
+  remoteOnly?: boolean;
+  pendingUpload?: boolean;
+  hasCover?: boolean;
+  // Biblioteca comunitaria: `shared` = lo ofrecí a otros lectores;
+  // `paperOnly` = copia adjunta que solo abre el índice del modo papel.
+  shared?: boolean;
+  paperOnly?: boolean;
+};
 
 export type ActiveRead = {
   hash: string;
@@ -121,6 +129,11 @@ export type ShelfProps = {
   onRemove?: (hash: string) => void;
   onAdd?: (file: File) => void;
   onLibraryChange?: () => void;
+  // Compartir (o retirar) un EPUB propio en la biblioteca comunitaria
+  // «solo papel». El padre pega contra la API y refresca la estantería.
+  onShareBook?: (book: ShelfItem, shared: boolean) => Promise<void> | void;
+  // Sección «Comunidad» diferida: la monta App con su propio fetch.
+  communitySection?: React.ReactNode;
   // «Obtener» del riel Descubre: el padre baja el EPUB del catálogo y
   // lo pasa al flujo normal de añadir libro.
   onGetCatalogBook?: (item: CatalogBook) => Promise<void> | void;
@@ -191,6 +204,8 @@ export default function Shelf({
   onRemove = () => {},
   onAdd = () => {},
   onLibraryChange = () => {},
+  onShareBook,
+  communitySection,
   onGetCatalogBook,
   onDownloadBook,
   downloadingHash,
@@ -238,6 +253,16 @@ export default function Shelf({
   };
 
   const handleBookClick = async (book: ShelfItem) => {
+    // Copia comunitaria «solo papel»: el toque en la portada abre el
+    // índice del modo papel, nunca el lector ni la hoja de descarga.
+    if (book.paperOnly) {
+      if (onPaperBook) {
+        onPaperBook(book);
+        return;
+      }
+      setOptionsBook(book);
+      return;
+    }
     if (
       book.remoteOnly &&
       (book.title === "Libro en la nube" || !book.title || isHashLikeIdentifier(book.title))
@@ -1420,6 +1445,15 @@ export default function Shelf({
                           <Icon name={isDownloading ? "clock" : "cloud"} size={13} />
                         </span>
                       ) : null}
+                      {book.paperOnly ? (
+                        <span
+                          className="shelf-paperonly-badge"
+                          title="Libro de la comunidad · Solo lectura en papel"
+                          aria-label="Solo papel"
+                        >
+                          Papel
+                        </span>
+                      ) : null}
                       {cov ? (
                         coverageIsReliable(cov) ? (
                           <span
@@ -1479,7 +1513,9 @@ export default function Shelf({
                       <span className={`shelf-book-meta meta${isDownloading ? " shelf-book-meta--downloading" : ""}`}>
                         {isDownloading
                           ? "Descargando…"
-                          : book.remoteOnly
+                          : book.paperOnly
+                            ? "Toca para ver capítulos"
+                            : book.remoteOnly
                             ? "Toca para descargar"
                             : `${
                                 position && total
@@ -1524,6 +1560,8 @@ export default function Shelf({
             </ul>
           </section>
 
+          {communitySection}
+
           {optionsBook ? (
             <Sheet
               label={`Opciones de ${displayTitle(optionsBook.name, optionsBook.title)}`}
@@ -1560,7 +1598,9 @@ export default function Shelf({
                       <p className="meta shelf-options-author">{optionsBook.author}</p>
                     ) : null}
                     <p className="meta shelf-options-progress">
-                      {optionsBook.remoteOnly
+                      {optionsBook.paperOnly
+                        ? "Libro de la comunidad · Solo lectura en papel"
+                        : optionsBook.remoteOnly
                         ? "Disponible en tu cuenta · Listo para descargar"
                         : (() => {
                             const pos = positionByHash.get(optionsBook.hash);
@@ -1573,7 +1613,7 @@ export default function Shelf({
                   </div>
                 </div>
 
-                {optionsBook.remoteOnly ? (
+                {optionsBook.remoteOnly && !optionsBook.paperOnly ? (
                   <div className="shelf-options-section">
                     <button
                       type="button"
@@ -1614,6 +1654,30 @@ export default function Shelf({
                         ? "Descargando libro…"
                         : "Leo este libro en papel"}
                     </button>
+                  </div>
+                ) : null}
+
+                {onShareBook && !optionsBook.paperOnly ? (
+                  <div className="shelf-options-section">
+                    <button
+                      type="button"
+                      className="btn shelf-options-share-btn"
+                      onClick={() => {
+                        const target = optionsBook;
+                        setOptionsBook(null);
+                        void onShareBook(target, !target.shared);
+                      }}
+                    >
+                      {optionsBook.shared
+                        ? "Dejar de compartir en la comunidad"
+                        : "Compartir a la comunidad"}
+                    </button>
+                    {!optionsBook.shared ? (
+                      <p className="meta shelf-options-hint">
+                        Otros lectores podrán usarlo solo como ayuda en papel —
+                        asegúrate de que es de dominio público o que puedes compartirlo.
+                      </p>
+                    ) : null}
                   </div>
                 ) : null}
 

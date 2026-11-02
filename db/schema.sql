@@ -108,6 +108,9 @@ CREATE TABLE IF NOT EXISTS user_books (
   size_bytes INTEGER NOT NULL DEFAULT 0,
   sha256 TEXT NOT NULL DEFAULT '',
   has_cover BOOLEAN NOT NULL DEFAULT FALSE,
+  shared BOOLEAN NOT NULL DEFAULT FALSE,
+  shared_at BIGINT NOT NULL DEFAULT 0,
+  paper_only BOOLEAN NOT NULL DEFAULT FALSE,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
   PRIMARY KEY (user_id, book_id)
@@ -115,6 +118,9 @@ CREATE TABLE IF NOT EXISTS user_books (
 
 CREATE INDEX IF NOT EXISTS idx_user_books_user
   ON user_books(user_id, updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_user_books_shared
+  ON user_books(book_id) WHERE shared;
 
 -- Índices de sincronización incremental
 CREATE INDEX IF NOT EXISTS idx_user_words_user_lang_updated

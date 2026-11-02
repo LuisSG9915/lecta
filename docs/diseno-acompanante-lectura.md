@@ -295,3 +295,54 @@ borrador:
   en papel» → descarga → índice de capítulos).
 - **Puerta:** `pnpm gate` en verde completo — typecheck, lint, 227
   archivos / 3204 pruebas, build y check:size.
+
+## 10. Biblioteca comunitaria «solo papel» (migración 024)
+
+Los lectores ofrecen sus EPUBs a la comunidad; quien los toma recibe una
+copia `paper_only` que solo abre el índice del modo papel — nunca el
+lector. La restricción vive en la fila y en el registro local, no en la
+interfaz sola.
+
+- **Compartir:** Opciones del libro → «Compartir a la comunidad»
+  (`PUT/DELETE /api/books/:hash/share` → `user_books.shared` +
+  `shared_at`). El aviso pide confirmar dominio público o derecho a
+  compartir. Solo para libros propios — una copia `paperOnly` no se
+  recomparte.
+- **Catálogo:** `GET /api/books/community` agrupa por `book_id` (sha256)
+  — cinco lectores con el mismo EPUB son una entrada; `sharers` cuenta
+  dueños distintos. Registrada ANTES de `/api/books/:hash`: en Hono la
+  ruta con parámetro captura «community» si va primero (detectado por
+  las pruebas).
+- **Adjuntar:** `POST /api/books/community/:hash/attach` copia el objeto
+  R2 del donante (más antiguo con `shared`) a las llaves del usuario,
+  más la portada si la hay, cobra cuota normal y crea la fila con
+  `paper_only=true`. Idempotente (`ON CONFLICT DO NOTHING` + chequeo
+  previo); 409 si el libro ya es tuyo; limpieza del objeto copiado si
+  la fila falla.
+- **Persistencia del candado:** `paperOnly` viaja en `StoredBook`
+  (IndexedDB) al descargar — sin él la copia se volvería legible al
+  pasar de `remoteOnly` a local, y offline el flag remoto no existe.
+  `shared` solo se fusiona desde la lista remota (compartir requiere
+  red; perderlo offline no abre nada indebido).
+- **Interfaz:** sello «Papel» sobre la portada; el toque abre el índice
+  directo (`handleBookClick` → `onPaperBook`); Opciones muestra «Libro
+  de la comunidad · Solo lectura en papel» y oculta «Descargar y abrir»
+  y «Compartir». `openRemoteBook` con `openAfter` redirige al modo
+  papel — guard de código, no solo de botón.
+- **Pre-migración:** columna ausente (42703) degrada a «La comunidad aún
+  no está disponible» (503 amable en share/attach, lista vacía en el
+  catálogo) — el worker puede desplegar antes que la 024, patrón
+  `isMissingColumnError` junto a `isMissingTableError`.
+- **Borrado:** quitar la copia borra solo lo del usuario (objeto R2,
+  fila, cachés `chapAn:`/`paperReading:`); «Dejar de compartir» saca al
+  donante del catálogo pero quien ya adjuntó conserva su copia.
+- **UI:** `CommunityShelf` va por `lazy()` (2.49 kB, 1.13 kB gzip
+  diferido); sección bajo la estantería, solo con sesión; búsqueda por
+  título/autor desde 7 entradas.
+- **Cobertura:** `community-books.test.ts` (10 casos: sesión, dueño,
+  404/409, pre-migración, dedupe, attach con copia R2, fusión de flags)
+  y `e2e/community.spec.ts` (compartir→«Dejar de compartir», sección
+  Comunidad, adjuntar→sello «Papel», Opciones sin «Descargar y abrir»,
+  toque→índice de papel sin lector).
+- **Puerta:** `pnpm gate` en verde — 228 archivos / 3247 pruebas;
+  arranque 209.38 kB de 215 kB (97.4 %, margen 5.6 kB).

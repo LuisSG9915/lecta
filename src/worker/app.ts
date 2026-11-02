@@ -1,6 +1,6 @@
 import { Hono, type Context } from "hono";
 import { bodyLimit } from "hono/body-limit";
-import { chunks, getConnectionString, readAccountResetAt, resetAccountDataDb, withClient, type WorkerEnv } from "./db";
+import { chunks, getConnectionString, isMissingColumnError, readAccountResetAt, resetAccountDataDb, withClient, type WorkerEnv } from "./db";
 import {
   CLIENT_ERROR_MAX_BODY_BYTES,
   allowClientError,
@@ -2018,6 +2018,21 @@ app.get("/api/books", async (context) => {
     };
   });
 
+  // Flags por cuenta que viven en la fila `user_books` (el customMetadata
+  // de R2 no se actualiza sin resubir): `shared` marca libros ofrecidos
+  // a la comunidad y `paper_only` las copias comunitarias que solo abren
+  // el modo papel. Columnas 024 ausentes → mapa vacío, nada cambia.
+  try {
+    const flags = await listUserBookFlags(context.env, session.user.id);
+    for (const book of books) {
+      const flag = flags.get(book.hash);
+      if (flag?.shared) (book as { shared?: boolean }).shared = true;
+      if (flag?.paperOnly) (book as { paperOnly?: boolean }).paperOnly = true;
+    }
+  } catch {
+    // La lista de libros no depende de la comunidad.
+  }
+
   const repairObjs = listed.objects
     .filter((object) => {
       const title = object.customMetadata?.title ?? "";
@@ -2216,6 +2231,54 @@ app.put("/api/books/:hash", (context) => handleBookUpload(context, context.req.p
 app.post("/api/books/:hash", (context) => handleBookUpload(context, context.req.param("hash")));
 app.post("/api/books", (context) => handleBookUpload(context));
 
+// Catálogo comunitario: una entrada por book_id aunque lo compartan
+// varios lectores, ordenado por la primera vez que apareció. Debe
+// registrarse ANTES de `/api/books/:hash`: si no, «community» se traga
+// como hash y el catálogo nunca responde.
+app.get("/api/books/community", async (context) => {
+  const session = await getSession(context);
+  if (!session) return context.json({ error: "Inicia sesión para ver la comunidad." }, 401);
+
+  const sqlPg = `SELECT book_id,
+       MAX(title) AS title, MAX(author) AS author, MAX(language) AS language,
+       MAX(size_bytes) AS size_bytes, BOOL_OR(has_cover) AS has_cover,
+       MIN(shared_at) AS shared_at, COUNT(DISTINCT user_id)::int AS sharers
+     FROM user_books
+     WHERE shared = true
+     GROUP BY book_id
+     ORDER BY shared_at DESC
+     LIMIT 200`;
+  const sqlD1 = sqlPg.replace("BOOL_OR(has_cover)", "MAX(has_cover)").replace("::int", "");
+
+  const collect = (
+    rows: Array<Record<string, unknown>>,
+  ) =>
+    rows.map((row) => ({
+      hash: String(row.book_id),
+      title: String(row.title ?? ""),
+      author: String(row.author ?? ""),
+      language: String(row.language ?? ""),
+      sizeBytes: Number(row.size_bytes ?? 0),
+      hasCover: row.has_cover === true || row.has_cover === 1,
+      sharers: Number(row.sharers ?? 1),
+    }));
+
+  if (getConnectionString(context.env)) {
+    const res = await withClient(context.env, (client) =>
+      client.query(sqlPg),
+    ).catch((err) => (isMissingColumnError(err) ? null : Promise.reject(err)));
+    if (res === null) return context.json({ books: [] });
+    return context.json({ books: collect(res?.rows ?? []) });
+  }
+  if (context.env.DB) {
+    const res = await context.env.DB.prepare(sqlD1)
+      .all<Record<string, unknown>>()
+      .catch(() => null);
+    return context.json({ books: collect(res?.results ?? []) });
+  }
+  return context.json({ books: [] });
+});
+
 app.get("/api/books/:hash", async (context) => {
   const booksBucket = context.env.BOOKS;
   if (!booksBucket)
@@ -2343,6 +2406,335 @@ app.get("/api/books/:hash/cover", async (context) => {
       "cache-control": "private, max-age=86400, immutable",
     },
   });
+});
+
+// ------------------------------------------------------------------
+// Biblioteca comunitaria «solo papel» (migración 024)
+//
+// El lector marca su EPUB como compartido (`shared`): otras cuentas lo
+// ven en la sección «Comunidad» de la estantería y lo adjuntan como
+// copia propia `paper_only`, que abre el índice del modo papel y jamás
+// el lector. El catálogo deduplica por `book_id` (= sha256 del archivo):
+// cinco lectores que comparten el mismo EPUB son una sola entrada.
+// ------------------------------------------------------------------
+
+type BookFlags = { shared: boolean; paperOnly: boolean };
+
+// Flags que viven en la fila (el customMetadata de R2 no se actualiza
+// sin resubir el archivo). Columnas ausentes (despliegue previo a la
+// 024) → mapa vacío: los libros se ven como siempre.
+async function listUserBookFlags(
+  env: WorkerEnv,
+  userId: string,
+): Promise<Map<string, BookFlags>> {
+  const flags = new Map<string, BookFlags>();
+  const sqlPg = `SELECT book_id, shared, paper_only FROM user_books WHERE user_id = $1`;
+  const sqlD1 = `SELECT book_id, shared, paper_only FROM user_books WHERE user_id = ?`;
+  const collect = (rows: Array<{ book_id: unknown; shared: unknown; paper_only: unknown }>) => {
+    for (const row of rows) {
+      flags.set(String(row.book_id), {
+        shared: row.shared === true || row.shared === 1,
+        paperOnly: row.paper_only === true || row.paper_only === 1,
+      });
+    }
+  };
+  if (getConnectionString(env)) {
+    const res = await withClient(env, (client) =>
+      client.query<{ book_id: unknown; shared: unknown; paper_only: unknown }>(sqlPg, [userId]),
+    ).catch((err) => (isMissingColumnError(err) ? undefined : Promise.reject(err)));
+    if (res) collect(res.rows);
+    return flags;
+  }
+  if (env.DB) {
+    const res = await env.DB.prepare(sqlD1).bind(userId).all<{
+      book_id: unknown;
+      shared: unknown;
+      paper_only: unknown;
+    }>().catch(() => null);
+    if (res?.results) collect(res.results);
+  }
+  return flags;
+}
+
+// Fila donante del catálogo: cualquier copia compartida del mismo
+// book_id sirve — el archivo es idéntico (sha256).
+type CommunityDonor = {
+  user_id: string;
+  r2_key: string;
+  title: string;
+  author: string;
+  language: string;
+  size_bytes: number;
+  sha256: string;
+  has_cover: boolean;
+};
+
+async function findCommunityDonor(
+  env: WorkerEnv,
+  bookId: string,
+): Promise<CommunityDonor | null | "unavailable"> {
+  const sqlPg = `SELECT user_id, r2_key, title, author, language, size_bytes, sha256, has_cover
+     FROM user_books
+     WHERE book_id = $1 AND shared = true
+     ORDER BY shared_at ASC
+     LIMIT 1`;
+  const sqlD1 = sqlPg.replace("$1", "?");
+  if (getConnectionString(env)) {
+    const res = await withClient(env, (client) =>
+      client.query<CommunityDonor>(sqlPg, [bookId]),
+    ).catch((err) => (isMissingColumnError(err) ? null : Promise.reject(err)));
+    if (res === null) return "unavailable";
+    return res?.rows[0] ?? null;
+  }
+  if (env.DB) {
+    const row = await env.DB.prepare(sqlD1)
+      .bind(bookId)
+      .first<CommunityDonor>()
+      .catch(() => "unavailable" as const);
+    return row === "unavailable" ? "unavailable" : row ?? null;
+  }
+  return null;
+}
+
+// Compartir / dejar de compartir tu propio libro.
+const setBookShared = async (
+  env: WorkerEnv,
+  context: Context,
+  userId: string,
+  bookId: string,
+  shared: boolean,
+): Promise<Response> => {
+  const now = Date.now();
+  if (getConnectionString(env)) {
+    try {
+      const updated = await withResetGuard(env, readResetAck(context), userId, async (client) => {
+        const res = await client.query(
+          `UPDATE user_books SET shared = $3, shared_at = $4, updated_at = $5
+           WHERE user_id = $1 AND book_id = $2`,
+          [userId, bookId, shared, shared ? now : 0, now],
+        );
+        return res.rowCount ?? 0;
+      });
+      if (isResetBlocked(updated)) return resetBlockedResponse(context, updated.blockedAt);
+      if (updated === undefined)
+        return context.json({ error: "El almacenamiento no está configurado." }, 503);
+      if (updated === 0) return context.json({ error: "Libro no encontrado." }, 404);
+      return context.json({ ok: true, shared });
+    } catch (err) {
+      if (isMissingColumnError(err))
+        return context.json({ error: "La comunidad aún no está disponible." }, 503);
+      throw err;
+    }
+  }
+  if (env.DB) {
+    const res = await env.DB.prepare(
+      `UPDATE user_books SET shared = ?, shared_at = ?, updated_at = ? WHERE user_id = ? AND book_id = ?`,
+    )
+      .bind(shared ? 1 : 0, shared ? now : 0, now, userId, bookId)
+      .run()
+      .catch(() => null);
+    if (!res) return context.json({ error: "La comunidad aún no está disponible." }, 503);
+    if (!res.meta.changes) return context.json({ error: "Libro no encontrado." }, 404);
+    return context.json({ ok: true, shared });
+  }
+  return context.json({ error: "El almacenamiento no está configurado." }, 503);
+};
+
+app.put("/api/books/:hash/share", async (context) => {
+  const session = await getSession(context);
+  if (!session) return context.json({ error: "Inicia sesión para compartir libros." }, 401);
+  const staleReset = await staleResetAt(context.env, context, session.user.id);
+  if (staleReset) return resetBlockedResponse(context, staleReset);
+  const hash = context.req.param("hash");
+  if (!HASH_PATTERN.test(hash))
+    return context.json({ error: "Identificador de libro inválido." }, 400);
+  return setBookShared(context.env, context, session.user.id, hash, true);
+});
+
+app.delete("/api/books/:hash/share", async (context) => {
+  const session = await getSession(context);
+  if (!session) return context.json({ error: "Inicia sesión para compartir libros." }, 401);
+  const staleReset = await staleResetAt(context.env, context, session.user.id);
+  if (staleReset) return resetBlockedResponse(context, staleReset);
+  const hash = context.req.param("hash");
+  if (!HASH_PATTERN.test(hash))
+    return context.json({ error: "Identificador de libro inválido." }, 400);
+  return setBookShared(context.env, context, session.user.id, hash, false);
+});
+
+// Portada de una entrada comunitaria: sale de la copia del donante.
+app.get("/api/books/community/:hash/cover", async (context) => {
+  const booksBucket = context.env.BOOKS;
+  if (!booksBucket)
+    return context.json({ error: "El almacenamiento no está configurado." }, 503);
+  const session = await getSession(context);
+  if (!session) return context.json({ error: "Inicia sesión para ver portadas." }, 401);
+
+  const hash = context.req.param("hash");
+  if (!HASH_PATTERN.test(hash))
+    return context.json({ error: "Identificador de libro inválido." }, 400);
+
+  const donor = await findCommunityDonor(context.env, hash);
+  if (!donor || donor === "unavailable")
+    return context.json({ error: "Portada no encontrada." }, 404);
+
+  const object = await booksBucket.get(bookCoverKey(donor.user_id, hash));
+  if (!object) return context.json({ error: "Portada no encontrada." }, 404);
+  return new Response(object.body, {
+    headers: {
+      "content-type": object.httpMetadata?.contentType || "image/jpeg",
+      "cache-control": "private, max-age=86400, immutable",
+    },
+  });
+});
+
+// Adjuntar: copia el EPUB (y la portada) del donante a las llaves del
+// usuario y crea su fila con paper_only — a partir de ahí se comporta
+// como cualquier libro remoto suyo (cuota incluida), salvo que solo
+// abre el modo papel.
+app.post("/api/books/community/:hash/attach", async (context) => {
+  const booksBucket = context.env.BOOKS;
+  if (!booksBucket)
+    return context.json({ error: "El almacenamiento no está configurado." }, 503);
+  const session = await getSession(context);
+  if (!session) return context.json({ error: "Inicia sesión para guardar libros." }, 401);
+
+  const staleReset = await staleResetAt(context.env, context, session.user.id);
+  if (staleReset) return resetBlockedResponse(context, staleReset);
+
+  const hash = context.req.param("hash");
+  if (!HASH_PATTERN.test(hash))
+    return context.json({ error: "Identificador de libro inválido." }, 400);
+
+  const donor = await findCommunityDonor(context.env, hash);
+  if (donor === "unavailable")
+    return context.json({ error: "La comunidad aún no está disponible." }, 503);
+  if (!donor) return context.json({ error: "Ese libro ya no está en la comunidad." }, 404);
+  if (donor.user_id === session.user.id)
+    return context.json({ error: "Ese libro ya es tuyo." }, 409);
+
+  const myKey = bookKey(session.user.id, hash);
+
+  // Idempotente: si la fila ya existe (attach previo, o el libro era
+  // suyo), no se copia ni se cobra cuota otra vez.
+  if (getConnectionString(context.env)) {
+    const existing = await withClient(context.env, (client) =>
+      client.query(
+        `SELECT 1 FROM user_books WHERE user_id = $1 AND book_id = $2`,
+        [session.user.id, hash],
+      ),
+    ).catch(() => null);
+    if (existing?.rows?.length) return context.json({ ok: true, hash, already: true });
+  }
+
+  const quota = await checkUserBooksQuota(
+    context.env,
+    session.user.id,
+    hash,
+    Number(donor.size_bytes) || 0,
+  );
+  if (!quota.allowed)
+    return context.json({ error: quota.reason || "Cuota de almacenamiento excedida." }, 413);
+
+  const source = await booksBucket.get(donor.r2_key);
+  if (!source) return context.json({ error: "El archivo ya no está disponible." }, 404);
+  const sourceData = new Uint8Array(await source.arrayBuffer());
+  await booksBucket.put(myKey, sourceData, {
+    httpMetadata: source.httpMetadata,
+    customMetadata: { ...source.customMetadata, paperOnly: "true" },
+  });
+
+  if (donor.has_cover) {
+    const cover = await booksBucket.get(bookCoverKey(donor.user_id, hash)).catch(() => null);
+    if (cover) {
+      const coverData = new Uint8Array(await cover.arrayBuffer());
+      await booksBucket
+        .put(bookCoverKey(session.user.id, hash), coverData, {
+          httpMetadata: cover.httpMetadata,
+        })
+        .catch(() => undefined);
+    }
+  }
+
+  const cleanup = () =>
+    Promise.all([
+      booksBucket.delete(myKey).catch(() => undefined),
+      booksBucket.delete(bookCoverKey(session.user.id, hash)).catch(() => undefined),
+    ]);
+
+  const now = Date.now();
+  const insertRow = (client: { query: (sql: string, p?: unknown[]) => Promise<{ rowCount?: number }> }) =>
+    client.query(
+      `INSERT INTO user_books (user_id, book_id, title, author, language, r2_key, size_bytes, sha256, has_cover, shared, shared_at, paper_only, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, false, 0, true, $10, $11)
+       ON CONFLICT (user_id, book_id) DO NOTHING`,
+      [
+        session.user.id,
+        hash,
+        donor.title,
+        donor.author,
+        donor.language,
+        myKey,
+        Number(donor.size_bytes) || sourceData.byteLength,
+        donor.sha256 || hash,
+        donor.has_cover,
+        now,
+        now,
+      ],
+    );
+
+  if (getConnectionString(context.env)) {
+    try {
+      const inserted = await withResetGuard(
+        context.env,
+        readResetAck(context),
+        session.user.id,
+        insertRow,
+      );
+      if (isResetBlocked(inserted)) {
+        await cleanup();
+        return resetBlockedResponse(context, inserted.blockedAt);
+      }
+      if (inserted === undefined) {
+        await cleanup();
+        return context.json({ error: "El almacenamiento no está configurado." }, 503);
+      }
+      return context.json({ ok: true, hash });
+    } catch (err) {
+      await cleanup();
+      if (isMissingColumnError(err))
+        return context.json({ error: "La comunidad aún no está disponible." }, 503);
+      throw err;
+    }
+  }
+  if (context.env.DB) {
+    const res = await context.env.DB.prepare(
+      `INSERT OR IGNORE INTO user_books (user_id, book_id, title, author, language, r2_key, size_bytes, sha256, has_cover, shared, shared_at, paper_only, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 1, ?, ?)`,
+    )
+      .bind(
+        session.user.id,
+        hash,
+        donor.title,
+        donor.author,
+        donor.language,
+        myKey,
+        Number(donor.size_bytes) || sourceData.byteLength,
+        donor.sha256 || hash,
+        donor.has_cover ? 1 : 0,
+        now,
+        now,
+      )
+      .run()
+      .catch(() => null);
+    if (!res) {
+      await cleanup();
+      return context.json({ error: "La comunidad aún no está disponible." }, 503);
+    }
+    return context.json({ ok: true, hash });
+  }
+  await cleanup();
+  return context.json({ error: "El almacenamiento no está configurado." }, 503);
 });
 
 app.post("/api/books/:hash/repair", async (context) => {

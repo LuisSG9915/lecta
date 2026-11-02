@@ -40,6 +40,10 @@ export interface StoredBook {
   cover?: Blob;
   // Marca de que ya intentamos leer los metadatos (aunque haya fallado).
   metaVersion?: number;
+  // Copia de la biblioteca comunitaria: solo abre el índice del modo
+  // papel, jamás el lector. Se persiste local porque la restricción
+  // vale también offline (el flag remoto no siempre está a mano).
+  paperOnly?: boolean;
 }
 
 export interface StoredBookRecord extends Omit<StoredBook, "data"> {
@@ -1269,6 +1273,7 @@ export type SaveBookInput =
       sectionCount?: number;
       cover?: Blob;
       metaVersion?: number;
+      paperOnly?: boolean;
       name?: string;
       hash?: string;
     };
@@ -1318,6 +1323,7 @@ export async function saveBook(book: SaveBookInput, scope?: DbScope): Promise<St
   const sectionCount = "sectionCount" in book ? book.sectionCount : undefined;
   const cover = "cover" in book ? book.cover : undefined;
   const metaVersion = "metaVersion" in book ? book.metaVersion : undefined;
+  const paperOnly = "paperOnly" in book ? book.paperOnly : undefined;
 
   const stored: StoredBookRecord = {
     hash,
@@ -1329,6 +1335,7 @@ export async function saveBook(book: SaveBookInput, scope?: DbScope): Promise<St
     sectionCount,
     cover,
     metaVersion,
+    paperOnly,
     data: buffer,
   };
 
