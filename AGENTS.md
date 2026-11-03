@@ -131,6 +131,31 @@
   distinto gana (viene de otro dispositivo). Filas escritas por clientes viejos llegan con
   `anchor_offset` nulo → `undefined` en el JSON.
 
+## Ficha de palabra (WordPanel)
+
+- **Dos variantes de `/api/ai/explain-in-passage`.** El servidor elige el prompt
+  *compacto* (sólo matiz, ≤80 tokens) únicamente cuando llega `localDefinition`;
+  sin ella usa el prompt completo, que devuelve `directMeaning` además del matiz.
+  La clave de caché del worker lleva la variante (`c:`/`f:` + lema + pasaje
+  normalizado): una respuesta compacta nunca se sirve a una petición completa.
+- **El significado va primero y la explicación sólo al tocar.** Al abrir, el
+  panel sólo consulta el diccionario; si no hay definición y hay sesión + IA,
+  una sola llamada (variante completa) cubre el Significado (`directMeaning ||
+  inPassageMeaning`) y deja la respuesta lista para «En esta frase» — tocar el
+  botón no gasta una segunda consulta. El botón es «¿Qué significa aquí?».
+- **Nunca se pinta el mismo texto dos veces**: si `inPassageMeaning` normalizado
+  coincide con el significado mostrado, la frase sólo muestra `Tono: …` (el tono
+  «Literario» de relleno del servidor se omite, igual que el `catTip` genérico
+  «Fíjate en cómo resuena…», que ya no se pinta en el panel — sigue en
+  «Preguntar»).
+- **El cuaderno guarda el significado mostrado** (diccionario o IA), jamás el
+  matiz de la frase. La caché de sesión de explicaciones lleva versión
+  `passage_meaning:v2:<variante>:`; las entradas `v1` se ignoran solas (es
+  caché efímera, no hace falta migración).
+- **`canExplain` = hay sesión** y la preferencia «Usar IA» (`useAi`) se respetan:
+  sin sesión no hay consultas automáticas y el panel muestra el aviso de
+  iniciar sesión en vez de un botón que siempre fallaría con 401.
+
 ## Portal Kindle (/k)
 
 Portal server-rendered para e-ink (`src/worker/kindle/`): HTML+CSS inline,

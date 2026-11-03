@@ -1348,10 +1348,17 @@ app.post("/api/ai/explain-in-passage", async (context) => {
     return context.json({ error: "El pasaje no puede superar 800 caracteres." }, 400);
   }
 
+  // El prompt compacto (sólo matiz, sin significado) aplica únicamente
+  // cuando el lector ya tiene visible la definición de diccionario: sin
+  // localDefinition la IA debe devolver también el significado directo.
+  const isCompact = Boolean(word && localDefinition);
   // Fix de Caché: (lemma || word || 'passage').toLowerCase().trim() + ':' + normalizePassage(passage)
+  // La variante entra en la clave: una respuesta compacta (sin
+  // directMeaning) nunca se sirve a una petición completa con los
+  // mismos datos.
   const keyWord = (lemma || word || "passage").toLowerCase().trim();
   const normalizedPass = normalizePassage(sentence);
-  const cacheKey = `${keyWord}:${normalizedPass}`;
+  const cacheKey = `${isCompact ? "c" : "f"}:${keyWord}:${normalizedPass}`;
 
   const cached = explainPassageCache.get(cacheKey);
   if (cached) return context.json({ ...cached, cached: true });
@@ -1375,7 +1382,6 @@ app.post("/api/ai/explain-in-passage", async (context) => {
     );
   }
 
-  const isCompact = Boolean(word);
   const systemPrompt = isCompact
     ? buildCompactExplainPrompt({
         word: word!,

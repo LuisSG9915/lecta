@@ -302,7 +302,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/components/WordPanel.tsx",
-          "line": 566,
+          "line": 662,
           "window": 15,
           "expect": "award: false",
           "why": "el autoinforme no paga XP de repaso"
@@ -328,7 +328,7 @@
         "date": "2026-10-26",
         "motivo": "La conclusión se sostiene: «Ya la sé» sigue siendo un juicio. Ahora ajusta θ una sola vez con la dificultad real de la palabra y no paga XP; el pretest bloqueante se descartó por la regla de 1 toque.",
         "evidencia": [
-          "src/client/components/WordPanel.tsx:521-535",
+          "src/client/components/WordPanel.tsx:636-670",
           "src/client/lib/profile-models.ts:405-415"
         ]
       }

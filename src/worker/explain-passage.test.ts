@@ -4,6 +4,7 @@ import * as dbModule from "./db";
 import {
   buildCompactExplainPrompt,
   normalizePassage,
+  EXPLAIN_PASSAGE_CALL_OPTIONS,
   EXPLAIN_PASSAGE_COMPACT_CALL_OPTIONS,
 } from "./ai";
 
@@ -205,6 +206,110 @@ describe("POST /api/ai/explain-in-passage (FASE 3: Latencia, Caché y Anti-Dupli
     const data2 = (await res2.json()) as ExplainInPassageResponse;
     expect(data2.cached).toBe(true);
     expect(data2.contextualMeaning).toBe(data1.contextualMeaning);
+  });
+
+  // Caso 5a: Variante completa — 'word' sin 'localDefinition' no usa el
+  // prompt compacto (que prohíbe dar la definición) y devuelve directMeaning.
+  it("9. Test de Variante Completa: 'word' sin 'localDefinition' usa el prompt completo y devuelve directMeaning", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementationOnce(async (_url, init) => {
+      const parsedBody = JSON.parse(init?.body as string);
+      capturedFetchCalls.push(parsedBody);
+      return new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  directMeaning:
+                    "Zanco, pilote: poste alto que sostiene algo sobre el suelo.",
+                  contextualMeaning:
+                    "Aquí describe edificios elevados sobre pilotes.",
+                  toneAndNuance: "Irónico",
+                  catTip: "El nombre del pueblo es un guiño.",
+                }),
+              },
+              finish_reason: "stop",
+            },
+          ],
+          usage: { prompt_tokens: 40, completion_tokens: 30, total_tokens: 70 },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    });
+
+    const res = await app.request(
+      "/api/ai/explain-in-passage",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          word: "stilt",
+          language: "en",
+          nativeLanguage: "es",
+          passage: "The high, stilt buildings rise above the muddy ground.",
+        }),
+      },
+      fakeEnv,
+    );
+
+    expect(res.status).toBe(200);
+    expect(capturedFetchCalls.length).toBe(1);
+
+    const deepseekCall = capturedFetchCalls[0];
+    const systemPrompt =
+      deepseekCall.messages.find((m) => m.role === "system")?.content ?? "";
+    // Prompt completo: pide significado directo; el compacto lo prohibiría.
+    expect(systemPrompt).toContain("directMeaning");
+    expect(systemPrompt).not.toContain("Prohibido repetir la definición literal");
+    expect(deepseekCall.max_tokens).toBe(EXPLAIN_PASSAGE_CALL_OPTIONS.maxTokens);
+    expect(deepseekCall.max_tokens).not.toBe(80);
+
+    const data = (await res.json()) as ExplainInPassageResponse;
+    expect(data.directMeaning).toBe(
+      "Zanco, pilote: poste alto que sostiene algo sobre el suelo.",
+    );
+    expect(data.contextualMeaning).toBe(
+      "Aquí describe edificios elevados sobre pilotes.",
+    );
+  });
+
+  // Caso 5b: la variante entra en la clave de caché — misma palabra y
+  // pasaje con y sin localDefinition no se sirven la respuesta del otro.
+  it("10. Test de Caché por Variante: compacta y completa no comparten caché", async () => {
+    const base = {
+      word: "efímero",
+      passage: "La gloria es un destello efímero.",
+    };
+
+    const res1 = await app.request(
+      "/api/ai/explain-in-passage",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          ...base,
+          localDefinition: "Que dura poco tiempo.",
+        }),
+      },
+      fakeEnv,
+    );
+    expect(res1.status).toBe(200);
+    expect(capturedFetchCalls.length).toBe(1);
+
+    const res2 = await app.request(
+      "/api/ai/explain-in-passage",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(base),
+      },
+      fakeEnv,
+    );
+    expect(res2.status).toBe(200);
+    // Variante completa = clave distinta: la IA se consulta de nuevo.
+    expect(capturedFetchCalls.length).toBe(2);
+    const data2 = (await res2.json()) as ExplainInPassageResponse;
+    expect(data2.cached).toBeUndefined();
   });
 
   // Caso 5: Validación de Payloads y Errores HTTP

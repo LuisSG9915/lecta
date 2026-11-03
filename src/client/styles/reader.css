@@ -4193,8 +4193,8 @@ b.lecta-anchor {
 
 .btn--explain-passage {
   align-self: flex-start;
-  background: linear-gradient(135deg, rgba(200, 109, 59, 0.12), rgba(217, 119, 6, 0.16));
-  border: 1px solid rgba(200, 109, 59, 0.3);
+  background: var(--paper-raised, transparent);
+  border: 1px solid rgba(200, 109, 59, 0.4);
   color: var(--accent-primary, #b45309);
   font-weight: 600;
   padding: 8px 14px;
@@ -4203,9 +4203,53 @@ b.lecta-anchor {
   transition: all var(--dur-2) var(--ease-out);
 }
 
-.btn--explain-passage:hover {
-  background: linear-gradient(135deg, rgba(200, 109, 59, 0.22), rgba(217, 119, 6, 0.28));
-  border-color: rgba(200, 109, 59, 0.5);
+.btn--explain-passage:hover:not(:disabled) {
+  background: rgba(200, 109, 59, 0.14);
+  border-color: rgba(200, 109, 59, 0.6);
+}
+
+.btn--explain-passage:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.word-card-section-title {
+  margin: 0 0 6px;
+  font-size: var(--fs-xs, 0.78rem);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--ink-soft);
+}
+
+.word-card-ai-source {
+  margin: 2px 0 0;
+  font-size: var(--fs-xs, 0.75rem);
+  color: var(--ink-soft);
+  opacity: 0.85;
+}
+
+.word-card-tone {
+  margin: 6px 0 0;
+  font-size: var(--fs-xs, 0.8rem);
+  font-style: italic;
+  color: var(--ink-soft);
+}
+
+.word-card-retry-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent-primary, #b45309);
+  font-size: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.word-card-context-quote mark {
+  background: rgba(230, 184, 106, 0.35);
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 1px;
 }
 
 .passage-explanation-card {

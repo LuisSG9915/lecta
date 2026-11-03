@@ -1,9 +1,9 @@
 # Reporte de auditoría — estrategia de aprendizaje de Lecta
 
-Generado: 2026-11-02T01:59:34.765Z
+Generado: 2026-11-03T20:14:32.426Z
 Documento auditado: `docs/estrategia-aprendizaje-2026-10-24.md`
 Registro: `docs/auditoria/claims.json`
-Commit: `74cc7fcde67e8a16d4ae7243a195b34c2e6349ae`
+Commit: `e2fcff2bc43a9d2e2f15f44e1dc71e00f759a513`
 Red: no (solo forma de las referencias)
 
 **Veredicto: FAIL** — 1 afirmaciones aprobadas, 1 refutadas, 0 refutadas por auditoría, 12 sin verificar, 0 comprobaciones omitidas.
@@ -43,7 +43,7 @@ Código: **PASS** · Referencias: **UNVERIFIED**
 
 **Veredicto de auditoría (2026-10-26): SOSTENIDA** — Antes había tres juegos de umbrales (90/75/60, 94/86 y 95/88) y Descubre mostraba dos etiquetas contradictorias; hoy hay una sola escala y una sola etiqueta.
 - evidencia: `src/client/lib/coverage.ts:178-207`
-- evidencia: `src/client/lib/catalog.ts:279-300`
+- evidencia: `src/client/lib/catalog.ts:292-315`
 - evidencia: `src/client/components/DiscoverRail.tsx:216-230`
 
 - ✅ **PASS** · doc-mention: el documento contiene «Una sola escala de umbrales»
@@ -53,8 +53,8 @@ Código: **PASS** · Referencias: **UNVERIFIED**
   - observado: `{"file":"src/client/lib/coverage.ts","line":257,"text":"export const COVERAGE_IDEAL_MIN = 86;"}`
 - ✅ **PASS** · code-anchor: src/client/lib/coverage.ts:214 coincide con /reencuentrosCount: reencounterLemmas\.size/
   - observado: `{"file":"src/client/lib/coverage.ts","line":214,"text":"reencuentrosCount: reencounterLemmas.size,"}`
-- ✅ **PASS** · code-anchor: src/client/lib/catalog.ts:283 coincide con /COVERAGE_FLUID_MIN/
-  - observado: `{"file":"src/client/lib/catalog.ts","line":283,"text":"if (bookDifficultyOrLevel >= COVERAGE_FLUID_MIN) {"}`
+- ✅ **PASS** · code-anchor: src/client/lib/catalog.ts:296 coincide con /COVERAGE_FLUID_MIN/
+  - observado: `{"file":"src/client/lib/catalog.ts","line":296,"text":"if (bookDifficultyOrLevel >= COVERAGE_FLUID_MIN) {"}`
 - ⚠️ **UNVERIFIED** · referencia schmitt2011: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":null,"url":"https://eric.ed.gov/?id=EJ928357"}`
 - ⚠️ **UNVERIFIED** · referencia laufer2010: forma válida; sin red no se resuelven metadatos (usar --online)
@@ -132,11 +132,11 @@ Código: **PASS** · Referencias: **UNVERIFIED**
 - ⚠️ **UNVERIFIED** · referencia wilson2019: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":"10.1038/s41467-019-12552-4","url":null}`
 
-### ⚠️ H4-jol — «Ya la conozco» alimenta el nivel como si fuera una prueba
+### ❌ H4-jol — «Ya la conozco» alimenta el nivel como si fuera una prueba
 
 > Marcar «ya la conozco» ajusta θ con outcome 1 y un delta de 0,18 × (1 − P), sin ninguna recuperación verificada de por medio, y el acto se registra sin pagar XP de repaso.
 
-Código: **PASS** · Referencias: **UNVERIFIED**
+Código: **FAIL** · Referencias: **UNVERIFIED**
 
 **Veredicto de auditoría (2026-10-26): MATIZADA** — La conclusión se sostiene: «Ya la sé» sigue siendo un juicio. Ahora ajusta θ una sola vez con la dificultad real de la palabra y no paga XP; el pretest bloqueante se descartó por la regla de 1 toque.
 - evidencia: `src/client/components/WordPanel.tsx:521-535`
@@ -147,8 +147,8 @@ Código: **PASS** · Referencias: **UNVERIFIED**
   - observado: `{"file":"src/client/components/Reader.tsx","line":4796,"text":"updateLanguageTheta(currentLang, beta, 1, 1.0);"}`
 - ✅ **PASS** · code-anchor: src/client/lib/profile-models.ts:417 coincide con /0\.18 \* \(1 - pKnow\)/
   - observado: `{"file":"src/client/lib/profile-models.ts","line":417,"text":"delta = 0.18 * (1 - pKnow);"}`
-- ✅ **PASS** · code-anchor: src/client/components/WordPanel.tsx:579 coincide con /award: false/
-  - observado: `{"file":"src/client/components/WordPanel.tsx","line":579,"text":"{ award: false },"}`
+- ❌ **FAIL** · code-anchor: src/client/components/WordPanel.tsx:551-581 no contiene /award: false/
+  - observado: `{"file":"src/client/components/WordPanel.tsx","asked":566,"excerpt":["551:     } else {","552:       speakWord(cleanWord, effectiveLang);","553:     }","554:   };","555: ","556:   // Guardar en el cuaderno en 1 solo toque","557:   const handleSave = async () => {","558:     if (savedRef.current) return;","559:     setSaving(true);","560:     savedRef.current = true;","561:     setIsSaved(true);","562:     triggerHaptic(12);","563: ","564:     // Señal silenciosa de calibració…`
 - ✅ **PASS** · code-anchor: src/client/lib/reviews.ts:47 coincide con /options\.award !== false/
   - observado: `{"file":"src/client/lib/reviews.ts","line":47,"text":"if (options.award !== false) {"}`
 - ⚠️ **UNVERIFIED** · referencia koriat2005: forma válida; sin red no se resuelven metadatos (usar --online)
@@ -162,11 +162,11 @@ Código: **PASS** · Referencias: **UNVERIFIED**
 - ⚠️ **UNVERIFIED** · referencia kremmel2016: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":null,"url":"https://eric.ed.gov/?id=EJ1120126"}`
 
-### ❌ H5-pasiva — La exposición pasiva acota a 8 lemas por paso y respeta lápidas
+### ⚠️ H5-pasiva — La exposición pasiva acota a 8 lemas por paso y respeta lápidas
 
 > La vía viva registra hasta 8 lemas no consultados por paso de página, exige lectura por debajo de 450 ppm, no revive lápidas y mantiene «familiar» a las 3 exposiciones dentro de la sesión.
 
-Código: **FAIL** · Referencias: **UNVERIFIED**
+Código: **PASS** · Referencias: **UNVERIFIED**
 
 **Veredicto de auditoría (2026-10-26): SOSTENIDA** — El mecanismo descrito por el documento original (marcar todas las palabras de la página con tope de 12 s) era código muerto y se eliminó. La vía viva es más conservadora y ahora respeta las lápidas.
 - evidencia: `src/client/lib/reader-evidence.ts:184-250`
@@ -179,8 +179,8 @@ Código: **FAIL** · Referencias: **UNVERIFIED**
   - observado: `{"file":"src/client/lib/knowledge.ts","line":55,"text":"export const FAMILIAR_PASSIVE_THRESHOLD = 3;"}`
 - ✅ **PASS** · code-anchor: src/client/lib/reader-evidence.ts:230 coincide con /uniqueLemmas\.size >= 8/
   - observado: `{"file":"src/client/lib/reader-evidence.ts","line":230,"text":"if (uniqueLemmas.size >= 8) break;"}`
-- ❌ **FAIL** · code-anchor: src/client/lib/idb.ts:2114-2116 no contiene /if \(existing\?\.deleted\) return existing/
-  - observado: `{"file":"src/client/lib/idb.ts","asked":2115,"excerpt":["2114:   lemma: string,","2115:   scope?: DbScope,","2116: ): Promise<KnownWord> {"]}`
+- ✅ **PASS** · code-anchor: src/client/lib/idb.ts:2123 coincide con /if \(existing\?\.deleted\) return existing/
+  - observado: `{"file":"src/client/lib/idb.ts","line":2123,"text":"if (existing?.deleted) return existing;"}`
 - ✅ **PASS** · code-absent: /processPageTurnForPassiveKnowledge/ no aparece en src/client/lib/knowledge.ts
 - ⚠️ **UNVERIFIED** · referencia nagy1985: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":"10.2307/747758","url":null}`

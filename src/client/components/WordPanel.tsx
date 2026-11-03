@@ -1,5 +1,5 @@
 import "../styles/reader.css";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   explainInPassage,
@@ -57,11 +57,22 @@ export interface LocalLexiconEntry {
 }
 
 export interface ContextualMeaningResult {
+  directMeaning?: string;
   inPassageMeaning: string;
   toneOrNuance?: string;
   catTip?: string;
   cached?: boolean;
 }
+
+// El significado mostrado arriba del panel: del diccionario o, cuando el
+// diccionario no tiene la palabra, del significado directo de la IA.
+type WordMeaning = { text: string; source: "dictionary" | "ai" };
+type MeaningStatus = "loading" | "ready" | "error" | "unavailable";
+// La explicación de la frase sólo sale del reposo cuando el lector la pide.
+type PassageStatus = "idle" | "loading" | "ready" | "error";
+
+const normalizeForCompare = (s: string) =>
+  s.toLowerCase().replace(/\s+/g, " ").trim();
 
 export interface UnifiedWordPanelProps {
   word: string;
@@ -138,7 +149,7 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
   bookHash = "",
   bookTitle,
   author,
-  canExplain: _canExplain = true,
+  canExplain = true,
   isSavedInitial = false,
   compactMode = false,
   capsuleHost = null,
@@ -196,16 +207,23 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
     }
     return null;
   });
-  const [contextual, setContextual] = useState<ContextualMeaningResult | null>(null);
-  const [isLoadingContext, setIsLoadingContext] = useState<boolean>(true);
-  // Reintento explícito de «Explicar en esta frase»: al tocarla el
-  // efecto vuelve a correr (caché en memoria si ya se resolvió).
-  const [contextAttempt, setContextAttempt] = useState(0);
+  const [meaning, setMeaning] = useState<WordMeaning | null>(() => {
+    const def = localEntry?.shortDefinition?.trim();
+    return def ? { text: def, source: "dictionary" } : null;
+  });
+  const [meaningStatus, setMeaningStatus] = useState<MeaningStatus>(
+    localEntry?.shortDefinition?.trim() ? "ready" : "loading",
+  );
+  const [passageState, setPassageState] = useState<PassageStatus>("idle");
+  const [passageResult, setPassageResult] = useState<ContextualMeaningResult | null>(null);
+  const [passageError, setPassageError] = useState<string | null>(null);
   const [isSaved, setIsSaved] = useState<boolean>(isSavedInitial);
   const [savedEntry, setSavedEntry] = useState<SavedWord | null>(null);
   const [saving, setSaving] = useState(false);
   const [quickNotice, setQuickNotice] = useState<string | null>(null);
-  const [_useAi, setUseAi] = useState(true);
+  const [useAi, setUseAi] = useState(true);
+  // Aborta la consulta IA en vuelo (significado o frase) al cerrar el panel.
+  const passageAbortRef = useRef<AbortController | null>(null);
   // Promesa del guardado en vuelo: quitarla antes de que resuelva ya no
   // cae en el vacío (era el toque perdido de guardar→quitar).
   const saveInFlightRef = useRef<Promise<SavedWord | null> | null>(null);
@@ -213,18 +231,164 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
   // no con el estado de React, que va un frame por detrás del dedo.
   const savedRef = useRef<boolean>(isSavedInitial);
 
-  // 1. Cargar preferencias de IA
+  // Al cerrar el panel aborta la consulta IA en vuelo (significado o frase).
   useEffect(() => {
-    let cancelled = false;
-    void loadUseAi(captureDbScope()).then((on) => {
-      if (!cancelled) setUseAi(on);
-    });
     return () => {
-      cancelled = true;
+      passageAbortRef.current?.abort();
+      passageAbortRef.current = null;
     };
   }, []);
 
-  // 2. Fase 1 (0 ms) & Calibración silenciosa & Fase 2 (Paralela)
+  // Consulta IA compartida: el significado (cuando el diccionario no
+  // tiene la palabra) y la explicación de la frase usan la misma ruta.
+  // `localDefinition` decide la variante en el servidor: con ella el
+  // prompt compacto devuelve sólo el matiz; sin ella, el prompt completo
+  // devuelve también el significado directo.
+  const runPassageFetch = useCallback(
+    (opts: {
+      lemma?: string;
+      localDefinition?: string;
+      signal: AbortSignal;
+      onResult: (res: ContextualMeaningResult) => void;
+      onError: (message?: string) => void;
+    }) => {
+      const variant = opts.localDefinition ? "compact" : "full";
+      const pKey = `passage_meaning:v2:${variant}:${cacheKey}`;
+      const scope = captureDbScope();
+
+      const applyResult = (res: ContextualMeaningResult) => {
+        passageMeaningMemoryCache.set(pKey, res);
+        if (typeof saveSessionValue === "function") {
+          void saveSessionValue(pKey, JSON.stringify(res), scope).catch(() => {});
+        }
+        if (!opts.signal.aborted) opts.onResult(res);
+      };
+
+      const cachedMemory = passageMeaningMemoryCache.get(pKey);
+      if (cachedMemory) {
+        applyResult(cachedMemory);
+        return;
+      }
+
+      const storedPromise = typeof loadSessionValue === "function"
+        ? loadSessionValue(pKey, scope).catch(() => null)
+        : Promise.resolve(null);
+
+      void storedPromise.then((stored) => {
+        if (opts.signal.aborted) return;
+        if (stored) {
+          try {
+            applyResult(JSON.parse(stored) as ContextualMeaningResult);
+            return;
+          } catch {
+            // Caché corrupto, continuar con fetch
+          }
+        }
+
+        if (fetchContextualMeaning) {
+          Promise.resolve(
+            fetchContextualMeaning(cleanWord, effectiveContext, effectiveLang, opts.signal),
+          )
+            .then((res) => {
+              if (res) applyResult(res);
+              else opts.onError();
+            })
+            .catch(() => {
+              if (!opts.signal.aborted) opts.onError();
+            });
+          return;
+        }
+
+        const nativeLang = loadNativeLanguage();
+        explainInPassage(
+          {
+            word: cleanWord,
+            lemma: opts.lemma,
+            localDefinition: opts.localDefinition,
+            sentence: effectiveContext || `Palabra: ${cleanWord}`,
+            bookTitle,
+            author,
+            language: effectiveLang,
+            nativeLanguage: nativeLang,
+          },
+          scope,
+        )
+          .then((res) => {
+            if (opts.signal.aborted) return;
+            if (res.ok) {
+              applyResult({
+                directMeaning: res.directMeaning,
+                inPassageMeaning: res.contextualMeaning || res.directMeaning || "",
+                toneOrNuance: res.toneAndNuance,
+                catTip: res.catTip,
+              });
+            } else {
+              opts.onError(res.error);
+            }
+          })
+          .catch(() => {
+            if (!opts.signal.aborted) opts.onError();
+          });
+      });
+    },
+    [cleanWord, effectiveContext, effectiveLang, cacheKey, bookTitle, author, fetchContextualMeaning],
+  );
+
+  // Significado por IA cuando el diccionario no tiene la palabra: la
+  // respuesta completa queda guardada para «En esta frase» (no hay una
+  // segunda consulta al tocarla).
+  const requestAiMeaning = useCallback(
+    (lemma?: string) => {
+      setMeaningStatus("loading");
+      passageAbortRef.current?.abort();
+      const ctrl = new AbortController();
+      passageAbortRef.current = ctrl;
+      runPassageFetch({
+        lemma,
+        signal: ctrl.signal,
+        onResult: (res) => {
+          setMeaning({ text: res.directMeaning || res.inPassageMeaning, source: "ai" });
+          setMeaningStatus("ready");
+          setPassageResult(res);
+        },
+        onError: () => setMeaningStatus("error"),
+      });
+    },
+    [runPassageFetch],
+  );
+
+  // Al tocar «¿Qué significa aquí?»: reutiliza la respuesta si ya llegó
+  // (la consulta del significado la trajo) o pide el matiz con el prompt
+  // compacto cuando hay definición de diccionario.
+  const handleRevealPassage = () => {
+    if (passageState === "loading" || passageState === "ready") return;
+    if (passageResult) {
+      setPassageState("ready");
+      return;
+    }
+    setPassageError(null);
+    setPassageState("loading");
+    passageAbortRef.current?.abort();
+    const ctrl = new AbortController();
+    passageAbortRef.current = ctrl;
+    const localDef = localEntry?.shortDefinition?.trim() || undefined;
+    runPassageFetch({
+      lemma: localEntry?.lemma,
+      localDefinition: localDef,
+      signal: ctrl.signal,
+      onResult: (res) => {
+        setPassageResult(res);
+        setPassageState("ready");
+      },
+      onError: (message) => {
+        setPassageError(message ?? null);
+        setPassageState("error");
+      },
+    });
+  };
+
+  // 2. Fase 1 (0 ms) & Calibración silenciosa & Fase 2: diccionario; si
+  // la palabra falta, la IA aporta el significado (variante completa).
   useEffect(() => {
     const abortCtrl = new AbortController();
     const scope = captureDbScope();
@@ -247,134 +411,51 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
       .catch(() => {});
 
     // 2. Resolución instantánea (0 ms) desde diccionario local / offline / catálogo
-    if (lookupLocalLexicon) {
-      lookupLocalLexicon(cleanWord, effectiveLang)
-        .then((entry) => {
-          if (!abortCtrl.signal.aborted && entry) {
-            setLocalEntry(entry);
-          }
-        })
-        .catch(() => {});
-    } else {
-      lookupWord(cleanWord, effectiveLang, scope)
-        .then((result) => {
-          if (abortCtrl.signal.aborted) return;
-          const family = findLexicalFamily(cleanWord, effectiveLang);
-          if (result.ok && result.found && result.entries.length > 0) {
-            const primary = result.entries[0];
-            const sense = primary.senses[0];
-            setLocalEntry({
-              lemma: primary.lemma || cleanWord.toLowerCase(),
-              partOfSpeech: primary.pos ?? undefined,
-              shortDefinition: sense?.definition ?? "",
-              synonyms: family.slice(0, 4),
-            });
-          } else {
-            // Fallback con familia léxica
-            setLocalEntry({
+    const dictPromise: Promise<LocalLexiconEntry | null> = lookupLocalLexicon
+      ? Promise.resolve()
+          .then(() => lookupLocalLexicon(cleanWord, effectiveLang))
+          .catch(() => null)
+      : lookupWord(cleanWord, effectiveLang, scope)
+          .then((result) => {
+            const family = findLexicalFamily(cleanWord, effectiveLang);
+            if (result.ok && result.found && result.entries.length > 0) {
+              const primary = result.entries[0];
+              const sense = primary.senses[0];
+              return {
+                lemma: primary.lemma || cleanWord.toLowerCase(),
+                partOfSpeech: primary.pos ?? undefined,
+                shortDefinition: sense?.definition ?? "",
+                synonyms: family.slice(0, 4),
+              };
+            }
+            return {
               lemma: cleanWord.toLowerCase(),
               shortDefinition: "",
               synonyms: family.slice(0, 4),
-            });
-          }
-        })
-        .catch(() => {});
-    }
+            };
+          })
+          .catch(() => null);
 
-    // 3. Resolución paralela automática del sentido exacto en la frase del libro (con caché en memoria e IndexedDB)
-    const cachedMemory = passageMeaningMemoryCache.get(cacheKey);
-    if (cachedMemory) {
-      queueMicrotask(() => {
-        if (!abortCtrl.signal.aborted) {
-          setContextual(cachedMemory);
-          setIsLoadingContext(false);
-        }
-      });
-    } else {
-      queueMicrotask(() => {
-        if (!abortCtrl.signal.aborted) {
-          setIsLoadingContext(true);
-        }
-      });
-      // Intentar leer de IndexedDB session cache primero
-      const loadCachePromise = typeof loadSessionValue === "function"
-        ? loadSessionValue(`passage_meaning:${cacheKey}`, scope).catch(() => null)
-        : Promise.resolve(null);
-
-      void loadCachePromise.then((storedCache) => {
-        if (abortCtrl.signal.aborted) return;
-        if (storedCache) {
-          try {
-            const parsed = JSON.parse(storedCache) as ContextualMeaningResult;
-            passageMeaningMemoryCache.set(cacheKey, parsed);
-            setContextual(parsed);
-            setIsLoadingContext(false);
-            return;
-          } catch {
-            // Caché corrupto, continuar con fetch
-          }
-        }
-
-        // Si no hay caché, disparar consulta
-        if (fetchContextualMeaning) {
-          Promise.resolve(
-            fetchContextualMeaning(cleanWord, effectiveContext, effectiveLang, abortCtrl.signal),
-          )
-            .then((res) => {
-              if (!abortCtrl.signal.aborted && res) {
-                passageMeaningMemoryCache.set(cacheKey, res);
-                if (typeof saveSessionValue === "function") {
-                  void saveSessionValue(`passage_meaning:${cacheKey}`, JSON.stringify(res), scope).catch(() => {});
-                }
-                setContextual(res);
-                setIsLoadingContext(false);
-              }
-            })
-            .catch(() => {
-              if (!abortCtrl.signal.aborted) {
-                setIsLoadingContext(false);
-              }
-            });
-        } else {
-          const nativeLang = loadNativeLanguage();
-          explainInPassage(
-            {
-              word: cleanWord,
-              sentence: effectiveContext || `Palabra: ${cleanWord}`,
-              bookTitle,
-              author,
-              language: effectiveLang,
-              nativeLanguage: nativeLang,
-            },
-            scope,
-          )
-            .then((res) => {
-              if (abortCtrl.signal.aborted) return;
-              if (res.ok) {
-                const meaningResult: ContextualMeaningResult = {
-                  inPassageMeaning: res.contextualMeaning || res.directMeaning || "",
-                  toneOrNuance: res.toneAndNuance,
-                  catTip: res.catTip,
-                };
-                passageMeaningMemoryCache.set(cacheKey, meaningResult);
-                if (typeof saveSessionValue === "function") {
-                  void saveSessionValue(`passage_meaning:${cacheKey}`, JSON.stringify(meaningResult), scope).catch(() => {});
-                }
-                setContextual(meaningResult);
-              }
-              setIsLoadingContext(false);
-            })
-            .catch(() => {
-              if (!abortCtrl.signal.aborted) {
-                setIsLoadingContext(false);
-              }
-            });
-        }
-      });
-    }
+    // 3. Si el diccionario no trajo definición y hay IA disponible, la
+    // misma consulta de «En esta frase» aporta el significado directo.
+    void dictPromise.then(async (entry) => {
+      if (abortCtrl.signal.aborted) return;
+      if (entry) setLocalEntry(entry);
+      const aiOn = await loadUseAi(scope).catch(() => true);
+      if (abortCtrl.signal.aborted) return;
+      setUseAi(aiOn);
+      if (entry?.shortDefinition?.trim()) {
+        setMeaning({ text: entry.shortDefinition, source: "dictionary" });
+        setMeaningStatus("ready");
+      } else if (canExplain && aiOn) {
+        requestAiMeaning(entry?.lemma);
+      } else {
+        setMeaningStatus("unavailable");
+      }
+    });
 
     return () => abortCtrl.abort();
-  }, [cleanWord, effectiveContext, effectiveLang, cacheKey, lookupLocalLexicon, fetchContextualMeaning, onRecordSilentCalibration, bookTitle, author, bookHash, contextAttempt]);
+  }, [cleanWord, effectiveLang, lookupLocalLexicon, onRecordSilentCalibration, bookHash, canExplain, requestAiMeaning]);
 
   // Construcción de la ficha de memoria de personaje (Cero Spoilers)
   useEffect(() => {
@@ -484,8 +565,10 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
     onRecordSilentCalibration(cleanWord, "save");
 
     const lemma = localEntry?.lemma ?? cleanWord.toLowerCase();
-    const shortDef = localEntry?.shortDefinition || contextual?.inPassageMeaning || "";
-    const inPassage = contextual?.inPassageMeaning || localEntry?.shortDefinition || "";
+    // El cuaderno guarda el significado mostrado (diccionario o IA),
+    // nunca el matiz de la frase.
+    const shortDef = meaning?.text || "";
+    const inPassage = meaning?.text || "";
 
     const work = (async (): Promise<SavedWord | null> => {
       try {
@@ -681,9 +764,8 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
     const microDef =
       viewMode === "character" && characterCard?.firstMention
         ? `1ª mención: ${characterCard.firstMention.chapterTitle}`
-        : localEntry?.shortDefinition ||
-          contextual?.inPassageMeaning ||
-          (isLoadingContext ? "Consultando..." : "Definición");
+        : meaning?.text ||
+          (meaningStatus === "loading" ? "Consultando..." : "Definición");
 
     const capsule = (
       <div
@@ -770,6 +852,40 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
     );
     return capsuleHost ? createPortal(capsule, capsuleHost) : capsule;
   }
+
+  const aiAllowed = canExplain && useAi;
+  const toneLabel =
+    passageResult?.toneOrNuance?.trim() &&
+    !/^literario$/i.test(passageResult.toneOrNuance.trim())
+      ? passageResult.toneOrNuance.trim()
+      : null;
+  // Regla anti-duplicados: si la explicación de la frase repite el
+  // significado ya mostrado, sólo se pinta el tono.
+  const passageRepeatsMeaning = Boolean(
+    meaning &&
+      passageResult &&
+      normalizeForCompare(passageResult.inPassageMeaning) ===
+        normalizeForCompare(meaning.text),
+  );
+
+  // La palabra resaltada dentro de la cita (forma exacta o lema).
+  const renderContextQuote = () => {
+    const lower = effectiveContext.toLowerCase();
+    let idx = lower.indexOf(cleanWord.toLowerCase());
+    let len = cleanWord.length;
+    if (idx < 0 && localEntry?.lemma) {
+      idx = lower.indexOf(localEntry.lemma.toLowerCase());
+      len = localEntry.lemma.length;
+    }
+    if (idx < 0) return <>«{effectiveContext}»</>;
+    return (
+      <>
+        «{effectiveContext.slice(0, idx)}
+        <mark>{effectiveContext.slice(idx, idx + len)}</mark>
+        {effectiveContext.slice(idx + len)}»
+      </>
+    );
+  };
 
   return (
     <aside
@@ -1104,14 +1220,44 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
         </section>
       ) : (
         <>
-          {/* Bloque 1: Significado directo + Sinónimos (0 ms) */}
+          {/* Bloque 1: qué significa la palabra (diccionario → IA si falta) */}
           <section className="word-card-dictionary-section word-panel-meaning-block">
-            <p className="word-card-short-def word-panel-primary-def">
-              {localEntry?.shortDefinition ||
-                (isLoadingContext
-                  ? "Buscando significado..."
-                  : contextual?.inPassageMeaning || "Significado disponible")}
-            </p>
+            <h4 className="word-card-section-title">Significado</h4>
+            {meaningStatus === "loading" ? (
+              <div className="word-card-context-skeleton" aria-busy="true">
+                <span className="skeleton-line" />
+                <span className="skeleton-line is-short" />
+              </div>
+            ) : meaning ? (
+              <>
+                <p className="word-card-short-def word-panel-primary-def">
+                  {meaning.text}
+                </p>
+                {meaning.source === "ai" ? (
+                  <p className="word-card-ai-source">Significado sugerido por IA</p>
+                ) : null}
+              </>
+            ) : !canExplain ? (
+              <p className="word-card-context-fallback">
+                Esta palabra no está en el diccionario. Inicia sesión para que la
+                IA la explique.
+              </p>
+            ) : meaningStatus === "error" ? (
+              <p className="word-card-context-fallback">
+                No pudimos consultar esta palabra.{" "}
+                <button
+                  type="button"
+                  className="word-card-retry-link"
+                  onClick={() => requestAiMeaning(localEntry?.lemma)}
+                >
+                  Reintentar
+                </button>
+              </p>
+            ) : (
+              <p className="word-card-context-fallback">
+                Esta palabra no está en el diccionario.
+              </p>
+            )}
 
             {localEntry && localEntry.synonyms.length > 0 && (
               <div className="word-card-synonyms">
@@ -1124,62 +1270,55 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
             )}
           </section>
 
-          {/* Bloque 2: la frase del libro en bloque y, en su propia
-              fila, la acción de explicarla (un solo verbo). La
-              explicación llega sola en paralelo; el botón reintenta
-              cuando hace falta. */}
-          <section className="word-card-context-box">
-            {effectiveContext ? (
+          {/* Bloque 2: la frase del libro; su explicación llega sólo al
+              tocarla (la cuota de IA se gasta a petición del lector). */}
+          {effectiveContext ? (
+            <section className="word-card-context-box">
+              <h4 className="word-card-section-title">En esta frase</h4>
               <blockquote className="word-card-context-quote">
-                «{effectiveContext}»
+                {renderContextQuote()}
               </blockquote>
-            ) : null}
 
-            {isLoadingContext ? (
-              <div className="word-card-context-skeleton" aria-busy="true">
-                <span className="skeleton-line" />
-                <span className="skeleton-line is-short" />
-              </div>
-            ) : contextual?.inPassageMeaning ? (
-              <div>
-                <p className="word-card-context-text passage-meaning-text">
-                  {contextual.inPassageMeaning}
-                  {contextual.toneOrNuance && (
-                    <em className="word-card-context-nuance passage-badge-tone">
-                      {" "}· {contextual.toneOrNuance}
-                    </em>
-                  )}
-                </p>
-                {contextual.catTip && (
-                  <p
-                    className="cat-tip-text"
-                    style={{
-                      fontSize: "0.78rem",
-                      opacity: 0.82,
-                      marginTop: "0.35rem",
-                      fontStyle: "italic",
-                    }}
-                  >
-                    {contextual.catTip}
+              {!aiAllowed ? (
+                !canExplain ? (
+                  <p className="word-card-context-fallback">
+                    Inicia sesión para explicar frases con IA.
                   </p>
-                )}
-              </div>
-            ) : (
-              <p className="word-card-context-fallback passage-meaning-text">
-                Sentido literal dentro del pasaje actual.
-              </p>
-            )}
-
-            <div className="word-card-context-actions">
-              <button
-                type="button"
-                className="btn--explain-passage btn--nuance-context"
-                onClick={() => setContextAttempt((n) => n + 1)}
-              >
-                Explicar en esta frase
-              </button>
-            </div>
-          </section>
+                ) : null
+              ) : passageState === "ready" && passageResult ? (
+                <div aria-live="polite">
+                  {(!passageRepeatsMeaning || !toneLabel) && (
+                    <p className="word-card-context-text passage-meaning-text">
+                      {passageResult.inPassageMeaning}
+                    </p>
+                  )}
+                  {toneLabel ? (
+                    <p className="word-card-tone">Tono: {toneLabel}</p>
+                  ) : null}
+                </div>
+              ) : (
+                <div className="word-card-context-actions">
+                  {passageState === "error" ? (
+                    <p className="word-card-context-fallback">
+                      {passageError ?? "No pudimos explicar esta frase."}
+                    </p>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="btn--explain-passage btn--nuance-context"
+                    onClick={handleRevealPassage}
+                    disabled={passageState === "loading"}
+                  >
+                    {passageState === "loading"
+                      ? "Leyendo la frase…"
+                      : passageState === "error"
+                        ? "Reintentar"
+                        : "¿Qué significa aquí?"}
+                  </button>
+                </div>
+              )}
+            </section>
+          ) : null}
         </>
       )}
 

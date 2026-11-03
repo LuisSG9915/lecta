@@ -108,6 +108,12 @@ afterEach(() => {
 });
 
 const render = (node: ReactNode) => act(() => root.render(node));
+// Diccionario y cadena de promesas internas necesitan varios ticks.
+const flush = async (ticks = 8) => {
+  await act(async () => {
+    for (let i = 0; i < ticks; i++) await Promise.resolve();
+  });
+};
 const click = (el: Element) =>
   act(() => {
     el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
@@ -332,7 +338,10 @@ describe("WordPanel - Acciones Rápidas (Fase 4.3)", () => {
     expect(getSyncState().pendingChangesCount).toBeGreaterThan(0);
   });
 
-  it("renderiza la cabecera limpia, definición práctica y botón directo de explicación", async () => {
+  it("abre con la definición de diccionario sin llamar a la IA y ofrece '¿Qué significa aquí?'", async () => {
+    const { explainInPassage } = await import("../lib/lexicon");
+    vi.mocked(explainInPassage).mockClear();
+
     render(
       h(WordPanel, {
         word: "efimero",
@@ -344,9 +353,7 @@ describe("WordPanel - Acciones Rápidas (Fase 4.3)", () => {
       }),
     );
 
-    await act(async () => {
-      await Promise.resolve();
-    });
+    await flush();
 
     const meaningBlock = host.querySelector(".word-panel-meaning-block");
     expect(meaningBlock).not.toBeNull();
@@ -354,12 +361,23 @@ describe("WordPanel - Acciones Rápidas (Fase 4.3)", () => {
       "De corta duración.",
     );
 
+    // Con diccionario disponible no hay consulta IA automática ni se
+    // muestra la explicación sin pedirla.
+    expect(explainInPassage).not.toHaveBeenCalled();
+    expect(host.querySelector(".passage-meaning-text")).toBeNull();
+
     const explainPassageBtn = host.querySelector<HTMLButtonElement>(".btn--explain-passage");
     expect(explainPassageBtn).not.toBeNull();
-    expect(explainPassageBtn?.textContent).toContain("Explicar en esta frase");
+    expect(explainPassageBtn?.textContent).toContain("¿Qué significa aquí?");
+
+    // La palabra queda resaltada dentro de la cita.
+    expect(host.querySelector(".word-card-context-quote mark")?.textContent).toBe("efimero");
   });
 
-  it("al pulsar 'Explicar en esta frase' muestra la explicación contextual de IA", async () => {
+  it("al tocar '¿Qué significa aquí?' muestra el matiz y el tono, sin apunte del gato", async () => {
+    const { explainInPassage } = await import("../lib/lexicon");
+    vi.mocked(explainInPassage).mockClear();
+
     render(
       h(WordPanel, {
         word: "efimero",
@@ -371,31 +389,229 @@ describe("WordPanel - Acciones Rápidas (Fase 4.3)", () => {
       }),
     );
 
-    await act(async () => {
-      await Promise.resolve();
-    });
+    await flush();
 
     const explainPassageBtn = host.querySelector<HTMLButtonElement>(".btn--explain-passage");
     expect(explainPassageBtn).not.toBeNull();
-    expect(explainPassageBtn?.textContent).toContain("Explicar en esta frase");
 
-    // Tocar el botón de IA en pasaje directamente sin menús confusos
     await act(async () => {
       click(explainPassageBtn!);
     });
+    await flush();
 
-    await act(async () => {
-      await Promise.resolve();
-    });
+    // La consulta envía la definición visible para pedir sólo el matiz.
+    expect(explainInPassage).toHaveBeenCalledTimes(1);
+    expect(explainInPassage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        word: "efimero",
+        localDefinition: "De corta duración.",
+      }),
+      expect.anything(),
+    );
 
     expect(host.querySelector(".passage-meaning-text")?.textContent).toContain(
       "Aquí «efímero» alude a la fugacidad del instante poético.",
     );
-    expect(host.querySelector(".passage-badge-tone")?.textContent).toContain(
+    expect(host.querySelector(".word-card-tone")?.textContent).toContain(
       "Lírico y melancólico",
     );
-    expect(host.querySelector(".cat-tip-text")?.textContent).toContain(
-      "El autor emplea esta palabra para enfatizar el paso del tiempo.",
+    // El apunte del gato ya no vive en el panel.
+    expect(host.querySelector(".cat-tip-text")).toBeNull();
+  });
+
+  it("sin definición de diccionario pide el significado a la IA y la frase no repite la consulta", async () => {
+    const { lookupWord, explainInPassage } = await import("../lib/lexicon");
+    vi.mocked(lookupWord).mockResolvedValueOnce({ ok: true, found: false, entries: [] });
+    vi.mocked(explainInPassage).mockClear();
+
+    render(
+      h(WordPanel, {
+        word: "stilt",
+        context: "The high, stilt buildings rise above the muddy ground.",
+        language: "en",
+        bookHash: "bookEng",
+        onClose: vi.fn(),
+        onSaved: vi.fn(),
+      }),
+    );
+
+    await flush();
+
+    // Variante completa: se pidió el significado sin localDefinition.
+    expect(explainInPassage).toHaveBeenCalledTimes(1);
+    expect(explainInPassage).toHaveBeenCalledWith(
+      expect.not.objectContaining({ localDefinition: expect.anything() }),
+      expect.anything(),
+    );
+    expect(host.querySelector(".word-panel-primary-def")?.textContent).toContain(
+      "Fugaz, de corta duración.",
+    );
+    expect(host.querySelector(".word-card-ai-source")?.textContent).toContain(
+      "Significado sugerido por IA",
+    );
+    expect(host.querySelector(".passage-meaning-text")).toBeNull();
+
+    // Al tocar la frase se reutiliza la misma respuesta: 0 consultas extra.
+    const explainPassageBtn = host.querySelector<HTMLButtonElement>(".btn--explain-passage")!;
+    await act(async () => {
+      click(explainPassageBtn);
+    });
+    await flush();
+
+    expect(explainInPassage).toHaveBeenCalledTimes(1);
+    expect(host.querySelector(".passage-meaning-text")?.textContent).toContain(
+      "Aquí «efímero» alude a la fugacidad del instante poético.",
+    );
+  });
+
+  it("si la frase repite el significado (servidor sin directMeaning) no se pinta dos veces", async () => {
+    const { lookupWord, explainInPassage } = await import("../lib/lexicon");
+    vi.mocked(lookupWord).mockResolvedValueOnce({ ok: true, found: false, entries: [] });
+    vi.mocked(explainInPassage).mockClear();
+    vi.mocked(explainInPassage).mockResolvedValueOnce({
+      ok: true,
+      contextualMeaning: "Aquí describe edificios elevados sobre pilotes.",
+      toneAndNuance: "Irónico",
+      catTip: "El nombre del pueblo es un guiño.",
+    });
+
+    render(
+      h(WordPanel, {
+        word: "obstinate",
+        context: "The obstinate mule refused to move an inch.",
+        language: "en",
+        bookHash: "bookEng",
+        onClose: vi.fn(),
+        onSaved: vi.fn(),
+      }),
+    );
+
+    await flush();
+
+    // Sin directMeaning el matiz cubre el significado…
+    expect(host.querySelector(".word-panel-primary-def")?.textContent).toContain(
+      "Aquí describe edificios elevados sobre pilotes.",
+    );
+
+    const explainPassageBtn = host.querySelector<HTMLButtonElement>(".btn--explain-passage")!;
+    await act(async () => {
+      click(explainPassageBtn);
+    });
+    await flush();
+
+    // …y al revelar la frase sólo queda el tono: el texto no se duplica.
+    expect(host.querySelector(".passage-meaning-text")).toBeNull();
+    expect(host.querySelector(".word-card-tone")?.textContent).toContain("Irónico");
+  });
+
+  it("sin sesión y sin diccionario no llama a la IA y muestra el aviso de iniciar sesión", async () => {
+    const { lookupWord, explainInPassage } = await import("../lib/lexicon");
+    vi.mocked(lookupWord).mockResolvedValueOnce({ ok: true, found: false, entries: [] });
+    vi.mocked(explainInPassage).mockClear();
+
+    render(
+      h(WordPanel, {
+        word: "stilt",
+        context: "The high, stilt buildings rise above the muddy ground.",
+        language: "en",
+        bookHash: "bookEng",
+        canExplain: false,
+        onClose: vi.fn(),
+        onSaved: vi.fn(),
+      }),
+    );
+
+    await flush();
+
+    expect(explainInPassage).not.toHaveBeenCalled();
+    const fallbacks = [...host.querySelectorAll(".word-card-context-fallback")].map(
+      (el) => el.textContent,
+    );
+    expect(
+      fallbacks.some((t) => t?.includes("Inicia sesión para que la IA la explique")),
+    ).toBe(true);
+    expect(
+      fallbacks.some((t) => t?.includes("Inicia sesión para explicar frases con IA")),
+    ).toBe(true);
+    expect(host.querySelector(".btn--explain-passage")).toBeNull();
+  });
+
+  it("un error de la IA muestra aviso y 'Reintentar' vuelve a consultar", async () => {
+    const { explainInPassage } = await import("../lib/lexicon");
+    vi.mocked(explainInPassage).mockClear();
+    vi.mocked(explainInPassage).mockResolvedValueOnce({
+      ok: false,
+      error: "Llegaste al límite de explicaciones por hora. Intenta más tarde.",
+    });
+
+    render(
+      h(WordPanel, {
+        word: "efimero",
+        context: "La gloria efimera pasa y no regresa.",
+        language: "es",
+        bookHash: "book123",
+        onClose: vi.fn(),
+        onSaved: vi.fn(),
+      }),
+    );
+
+    await flush();
+
+    const explainPassageBtn = host.querySelector<HTMLButtonElement>(".btn--explain-passage")!;
+    await act(async () => {
+      click(explainPassageBtn);
+    });
+    await flush();
+
+    expect(host.querySelector(".word-card-context-fallback")?.textContent).toContain(
+      "Llegaste al límite de explicaciones por hora",
+    );
+    const retryBtn = host.querySelector<HTMLButtonElement>(".btn--explain-passage")!;
+    expect(retryBtn.textContent).toContain("Reintentar");
+
+    await act(async () => {
+      click(retryBtn);
+    });
+    await flush();
+
+    expect(explainInPassage).toHaveBeenCalledTimes(2);
+    expect(host.querySelector(".passage-meaning-text")?.textContent).toContain(
+      "Aquí «efímero» alude a la fugacidad del instante poético.",
+    );
+  });
+
+  it("al guardar sin diccionario el cuaderno recibe el significado, no el matiz", async () => {
+    const { lookupWord } = await import("../lib/lexicon");
+    const { saveWordWithKnowledge } = await import("../lib/idb");
+    vi.mocked(lookupWord).mockResolvedValueOnce({ ok: true, found: false, entries: [] });
+    vi.mocked(saveWordWithKnowledge).mockClear();
+
+    render(
+      h(WordPanel, {
+        word: "stilt",
+        context: "The high, stilt buildings rise above the muddy ground.",
+        language: "en",
+        bookHash: "bookEng",
+        onClose: vi.fn(),
+        onSaved: vi.fn(),
+      }),
+    );
+
+    await flush();
+
+    const saveBtn = host.querySelector<HTMLButtonElement>(".btn--pin-notebook")!;
+    await act(async () => {
+      click(saveBtn);
+    });
+    await flush();
+
+    expect(saveWordWithKnowledge).toHaveBeenCalledWith(
+      expect.objectContaining({
+        word: expect.objectContaining({
+          meaning: "Fugaz, de corta duración.",
+        }),
+      }),
+      expect.anything(),
     );
   });
 
@@ -635,9 +851,7 @@ describe("WordPanel - Acciones Rápidas (Fase 4.3)", () => {
     await act(async () => {
       click(explainBtn!);
     });
-    await act(async () => {
-      await Promise.resolve();
-    });
+    await flush();
 
     expect(explainInPassage).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -733,10 +947,12 @@ describe("WordPanel - Acciones Rápidas (Fase 4.3)", () => {
       expect.anything(),
     );
 
-    // Debe mostrar la explicación obtenida
-    expect(host.querySelector(".passage-meaning-text")?.textContent).toContain(
-      "Aquí «efímero» alude a la fugacidad del instante poético.",
+    // El significado de la IA queda en el bloque de Significado; la
+    // explicación de la frase sigue esperando al toque del lector.
+    expect(host.querySelector(".word-panel-primary-def")?.textContent).toContain(
+      "Fugaz, de corta duración.",
     );
+    expect(host.querySelector(".passage-meaning-text")).toBeNull();
   });
 
   describe("WordPanel - Tarjeta Única Track 4", () => {
@@ -778,7 +994,7 @@ describe("WordPanel - Acciones Rápidas (Fase 4.3)", () => {
       expect(synonyms).toEqual(["sin1", "sin2"]);
     });
 
-    it("resuelve en paralelo la explicación contextual y la guarda en caché para la frase exacta", async () => {
+    it("resuelve el significado con la consulta de contexto y deja el matiz listo al tocarla", async () => {
       let resolveContextual: (res: ContextualMeaningResult) => void = () => {};
       const fetchContextualMeaning = vi.fn(
         () =>
@@ -808,7 +1024,8 @@ describe("WordPanel - Acciones Rápidas (Fase 4.3)", () => {
       // Mientras carga muestra skeleton
       expect(host.querySelector(".word-card-context-skeleton")).not.toBeNull();
 
-      // Se resuelve la IA contextual
+      // Se resuelve la IA contextual: sin definición de diccionario el
+      // texto cubre el bloque de Significado.
       await act(async () => {
         resolveContextual({
           inPassageMeaning: "Aquí significa una ilusión irrealizable.",
@@ -817,12 +1034,20 @@ describe("WordPanel - Acciones Rápidas (Fase 4.3)", () => {
         for (let i = 0; i < 4; i++) await Promise.resolve();
       });
 
-      expect(host.querySelector(".word-card-context-text")?.textContent).toContain(
+      expect(host.querySelector(".word-panel-primary-def")?.textContent).toContain(
         "Aquí significa una ilusión irrealizable.",
       );
-      expect(host.querySelector(".word-card-context-nuance")?.textContent).toContain(
-        "Melancólico",
-      );
+
+      // Al tocar la frase no hay nueva consulta: el mismo texto no se
+      // repite y sólo queda el tono.
+      const explainPassageBtn = host.querySelector<HTMLButtonElement>(".btn--explain-passage")!;
+      expect(fetchContextualMeaning).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        click(explainPassageBtn);
+      });
+      expect(host.querySelector(".passage-meaning-text")).toBeNull();
+      expect(host.querySelector(".word-card-tone")?.textContent).toContain("Melancólico");
+      expect(fetchContextualMeaning).toHaveBeenCalledTimes(1);
     });
 
     it("al guardar en 1 toque notifica a onSaveToNotebook y a onRecordSilentCalibration con 'save'", async () => {

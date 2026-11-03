@@ -1,9 +1,9 @@
 {
   "tool": "audit-investigacion",
   "version": 1,
-  "generatedAt": "2026-11-02T01:59:34.765Z",
+  "generatedAt": "2026-11-03T20:14:32.426Z",
   "root": "/Users/luis/Desarrollos Devin/lecta",
-  "commit": "74cc7fcde67e8a16d4ae7243a195b34c2e6349ae",
+  "commit": "e2fcff2bc43a9d2e2f15f44e1dc71e00f759a513",
   "doc": "docs/estrategia-aprendizaje-2026-10-24.md",
   "registry": "docs/auditoria/claims.json",
   "online": false,
@@ -139,7 +139,7 @@
         "motivo": "Antes había tres juegos de umbrales (90/75/60, 94/86 y 95/88) y Descubre mostraba dos etiquetas contradictorias; hoy hay una sola escala y una sola etiqueta.",
         "evidencia": [
           "src/client/lib/coverage.ts:178-207",
-          "src/client/lib/catalog.ts:279-300",
+          "src/client/lib/catalog.ts:292-315",
           "src/client/components/DiscoverRail.tsx:216-230"
         ]
       },
@@ -185,10 +185,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/lib/catalog.ts:283 coincide con /COVERAGE_FLUID_MIN/",
+          "detail": "src/client/lib/catalog.ts:296 coincide con /COVERAGE_FLUID_MIN/",
           "observed": {
             "file": "src/client/lib/catalog.ts",
-            "line": 283,
+            "line": 296,
             "text": "if (bookDifficultyOrLevel >= COVERAGE_FLUID_MIN) {"
           }
         },
@@ -500,7 +500,7 @@
       "title": "«Ya la conozco» alimenta el nivel como si fuera una prueba",
       "statement": "Marcar «ya la conozco» ajusta θ con outcome 1 y un delta de 0,18 × (1 − P), sin ninguna recuperación verificada de por medio, y el acto se registra sin pagar XP de repaso.",
       "section": "H4",
-      "status": "UNVERIFIED",
+      "status": "FAIL",
       "auditVerdict": {
         "status": "MATIZADA",
         "date": "2026-10-26",
@@ -510,7 +510,7 @@
           "src/client/lib/profile-models.ts:405-415"
         ]
       },
-      "codeStatus": "PASS",
+      "codeStatus": "FAIL",
       "refStatus": "UNVERIFIED",
       "checks": [
         {
@@ -541,12 +541,44 @@
         },
         {
           "kind": "code-anchor",
-          "status": "PASS",
-          "detail": "src/client/components/WordPanel.tsx:579 coincide con /award: false/",
+          "status": "FAIL",
+          "detail": "src/client/components/WordPanel.tsx:551-581 no contiene /award: false/",
           "observed": {
             "file": "src/client/components/WordPanel.tsx",
-            "line": 579,
-            "text": "{ award: false },"
+            "asked": 566,
+            "excerpt": [
+              "551:     } else {",
+              "552:       speakWord(cleanWord, effectiveLang);",
+              "553:     }",
+              "554:   };",
+              "555: ",
+              "556:   // Guardar en el cuaderno en 1 solo toque",
+              "557:   const handleSave = async () => {",
+              "558:     if (savedRef.current) return;",
+              "559:     setSaving(true);",
+              "560:     savedRef.current = true;",
+              "561:     setIsSaved(true);",
+              "562:     triggerHaptic(12);",
+              "563: ",
+              "564:     // Señal silenciosa de calibración al guardar",
+              "565:     onRecordSilentCalibration(cleanWord, \"save\");",
+              "566: ",
+              "567:     const lemma = localEntry?.lemma ?? cleanWord.toLowerCase();",
+              "568:     // El cuaderno guarda el significado mostrado (diccionario o IA),",
+              "569:     // nunca el matiz de la frase.",
+              "570:     const shortDef = meaning?.text || \"\";",
+              "571:     const inPassage = meaning?.text || \"\";",
+              "572: ",
+              "573:     const work = (async (): Promise<SavedWord | null> => {",
+              "574:       try {",
+              "575:         if (onSaveToNotebook) {",
+              "576:           await onSaveToNotebook({",
+              "577:             word: cleanWord,",
+              "578:             lemma,",
+              "579:             shortDefinition: shortDef,",
+              "580:             inPassageMeaning: inPassage,",
+              "581:             sentenceContext: effectiveContext,"
+            ]
           }
         },
         {
@@ -621,7 +653,7 @@
       "title": "La exposición pasiva acota a 8 lemas por paso y respeta lápidas",
       "statement": "La vía viva registra hasta 8 lemas no consultados por paso de página, exige lectura por debajo de 450 ppm, no revive lápidas y mantiene «familiar» a las 3 exposiciones dentro de la sesión.",
       "section": "H5",
-      "status": "FAIL",
+      "status": "UNVERIFIED",
       "auditVerdict": {
         "status": "SOSTENIDA",
         "date": "2026-10-26",
@@ -631,7 +663,7 @@
           "src/client/lib/idb.ts:2093-2102"
         ]
       },
-      "codeStatus": "FAIL",
+      "codeStatus": "PASS",
       "refStatus": "UNVERIFIED",
       "checks": [
         {
@@ -672,16 +704,12 @@
         },
         {
           "kind": "code-anchor",
-          "status": "FAIL",
-          "detail": "src/client/lib/idb.ts:2114-2116 no contiene /if \\(existing\\?\\.deleted\\) return existing/",
+          "status": "PASS",
+          "detail": "src/client/lib/idb.ts:2123 coincide con /if \\(existing\\?\\.deleted\\) return existing/",
           "observed": {
             "file": "src/client/lib/idb.ts",
-            "asked": 2115,
-            "excerpt": [
-              "2114:   lemma: string,",
-              "2115:   scope?: DbScope,",
-              "2116: ): Promise<KnownWord> {"
-            ]
+            "line": 2123,
+            "text": "if (existing?.deleted) return existing;"
           }
         },
         {
