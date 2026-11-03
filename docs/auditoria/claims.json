@@ -88,7 +88,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/lib/catalog.ts",
-          "line": 283,
+          "line": 296,
           "window": 3,
           "expect": "COVERAGE_FLUID_MIN",
           "why": "la insignia del catálogo usa el mismo umbral"
@@ -104,7 +104,7 @@
         "motivo": "Antes había tres juegos de umbrales (90/75/60, 94/86 y 95/88) y Descubre mostraba dos etiquetas contradictorias; hoy hay una sola escala y una sola etiqueta.",
         "evidencia": [
           "src/client/lib/coverage.ts:178-207",
-          "src/client/lib/catalog.ts:279-300",
+          "src/client/lib/catalog.ts:292-315",
           "src/client/components/DiscoverRail.tsx:216-230"
         ]
       }

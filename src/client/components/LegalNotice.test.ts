@@ -61,7 +61,9 @@ describe("LegalNotice", () => {
     const publicDir = path.resolve(process.cwd(), "public");
     for (const file of [
       "lexicon/forms-es.tsv.gz",
+      "lexicon/forms-en.tsv.gz",
       "lexicon/lemmas-freq-es.tsv.gz",
+      "lexicon/lemmas-freq-en.tsv.gz",
       "lexicon/senses-es.csv.gz",
       "lexicon/README.md",
     ]) {
@@ -69,7 +71,9 @@ describe("LegalNotice", () => {
     }
     const hrefs = [...host.querySelectorAll("a")].map((a) => a.getAttribute("href"));
     expect(hrefs).toContain("/lexicon/forms-es.tsv.gz");
+    expect(hrefs).toContain("/lexicon/forms-en.tsv.gz");
     expect(hrefs).toContain("/lexicon/lemmas-freq-es.tsv.gz");
+    expect(hrefs).toContain("/lexicon/lemmas-freq-en.tsv.gz");
     expect(hrefs).toContain("/lexicon/senses-es.csv.gz");
     expect(hrefs).toContain("/lexicon/README.md");
   });

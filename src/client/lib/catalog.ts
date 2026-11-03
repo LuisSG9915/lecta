@@ -45,10 +45,23 @@ export type CatalogIndex = {
 // léxico deduplicadas y, por forma, los índices que la reconocen. Las
 // bases clíticas/«-mente» también vienen como llaves para que
 // predictSection resuelva igual que con un análisis en vivo.
+// Revisión del catálogo léxico por idioma: sube cuando cambian las
+// fichas contra las que se analizó (entradas, formas o zipfs). Un
+// manifiesto con otra rev se descarta en loadBookVocab y el libro se
+// re-analiza — p. ej. `en` pasa de 0 a 1 al cargar el catálogo inglés.
+export const LEXICON_CATALOG_REV: Record<string, number> = {
+  es: 0,
+  en: 1,
+};
+
 export type BookVocabManifest = {
   v: number;
   wordCount: number;
   uniqueForms: number;
+  // Idioma detectado del análisis y revisión del catálogo usada:
+  // opcionales porque los manifiestos previos a la Fase 7 no los traen.
+  language?: string;
+  catalogRev?: number;
   // Formas propias del libro analizadas (sin stopwords). `byForm` lleva
   // además las bases clíticas/«-mente» como llaves de respaldo — no son
   // formas del libro y por eso no van en `forms`.

@@ -107,7 +107,7 @@ export default function BookGlossaryModal({
         const { loadBookVocab, analyzeStoredBook } = await import(
           "../lib/book-vocab"
         );
-        let manifest = await loadBookVocab(bookHash, scope);
+        let manifest = await loadBookVocab(bookHash, scope, language);
         if (!manifest) {
           manifest = await analyzeStoredBook(bookHash, scope);
         }

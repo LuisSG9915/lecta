@@ -184,6 +184,19 @@ describe("analyzeStoredBook", () => {
     });
     expect(manifest).toBeNull();
   });
+
+  it("estampa el idioma y la revisión del catálogo en el manifiesto", async () => {
+    const manifest = await analyzeStoredBook("h1", undefined, {
+      open: fakeOpen(["La casa"]),
+      extractWords: async () => ["casa"],
+      lookup: async () => ({
+        ok: true as const,
+        entries: { casa: [entry("casa", 6.1)] },
+      }),
+    });
+    expect(manifest!.language).toBe("es");
+    expect(manifest!.catalogRev).toBe(0);
+  });
 });
 
 describe("loadBookVocab", () => {
@@ -195,5 +208,42 @@ describe("loadBookVocab", () => {
     expect(await loadBookVocab("x")).toBeNull();
     store.set(bookVocabKey("x"), JSON.stringify({ v: 2 }));
     expect(await loadBookVocab("x")).toBeNull();
+  });
+
+  it("devuelve null si el catalogRev quedó atrás del vigente (re-analiza)", async () => {
+    const manifest = {
+      v: 1,
+      wordCount: 1,
+      uniqueForms: 1,
+      forms: ["water"],
+      entries: [],
+      byForm: {},
+      missing: [],
+      language: "en",
+      catalogRev: 0,
+    };
+    store.set(bookVocabKey("x"), JSON.stringify(manifest));
+    // en vigente = 1: el análisis contra el catálogo vacío está viejo.
+    expect(await loadBookVocab("x")).toBeNull();
+
+    manifest.catalogRev = 1;
+    store.set(bookVocabKey("x"), JSON.stringify(manifest));
+    expect(await loadBookVocab("x")).not.toBeNull();
+  });
+
+  it("manifiesto legado sin campos: en inglés vence, en español sigue", async () => {
+    const legacy = {
+      v: 1,
+      wordCount: 1,
+      uniqueForms: 1,
+      forms: ["water"],
+      entries: [],
+      byForm: {},
+      missing: [],
+    };
+    store.set(bookVocabKey("x"), JSON.stringify(legacy));
+    // El idioma del llamador decide la revisión esperada.
+    expect(await loadBookVocab("x", undefined, "en")).toBeNull();
+    expect(await loadBookVocab("x", undefined, "es")).not.toBeNull();
   });
 });

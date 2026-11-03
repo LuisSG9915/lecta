@@ -67,6 +67,46 @@ externos.
   `node --env-file=.env scripts/lexicon-wiktionary.mjs`. El orden es estable y el gzip no lleva
   fecha, así que dos ejecuciones sobre el mismo catálogo dan el mismo SHA-256.
 
+## `forms-en.tsv.gz` — forma → lema (inglés)
+
+- **Contenido:** 139 070 pares `forma<TAB>lema`, uno por línea, sin cabecera,
+  UTF-8.
+- **Origen:** diccionario `en` de LemmaGen (`en.plzma`, vía *simplemma* 1.1.2),
+  construido desde el mismo pool documentado para `es`: *Lemmatization Lists*
+  de Michal Měchura (**ODbL 1.0**), Kaikki (CC BY-SA 4.0 + GFDL), FreeLing
+  (LGPLLR), spaCy lookups-data (MIT), UniMorph (CC BY-SA 3.0) y Wikinflection
+  (CC BY 4.0). Por la misma interpretación conservadora adoptada para `es`, la
+  tabla derivada se publica bajo ODbL 1.0.
+- **Derivación:** `scripts/lexicon-export.py en` y `gzip -9`, sin columnas
+  nuevas ni filtro por frecuencia.
+- **Licencia:** ODbL 1.0 (§4.3 y §4.6). Este archivo es la URI de descarga
+  pública.
+- **SHA-256 del `.gz`:**
+  `9aa25f880bc4bee684561cf7f1cdd37ae9abbb67815a09a2685b127fd49fed45`
+- **Generado:** 2026-11-02.
+
+## `lemmas-freq-en.tsv.gz` — lema → zipf (inglés)
+
+- **Contenido:** 50 373 pares `lema<TAB>zipf`, sin cabecera, UTF-8; 38 511 con
+  frecuencia > 0 y el resto con el valor vacío (ausencia de medición, no un 0
+  real). El zipf (0–8) va redondeado a dos decimales.
+- **Origen:** *wordfreq* de Robyn Speer, bajo **CC BY-SA 4.0** (mismos corpus
+  agregados que en la tabla `es`).
+- **Derivación:** `zipf_frequency(lema, "en")` de wordfreq 3.1.1 para cada lema
+  del diccionario anterior.
+- **Licencia:** CC BY-SA 4.0. Atribución a Robyn Speer y a los corpus citados.
+- **SHA-256 del `.gz`:**
+  `31cffc29388c6708b7858381bf4e4dd8b373ecc3634bcd6811fb345d03bea311`
+- **Generado:** 2026-11-02.
+- **Regenerar (ambas tablas `en`):**
+  ```bash
+  python3 -m venv /tmp/lecta-lex-env
+  /tmp/lecta-lex-env/bin/pip install simplemma==1.1.2 wordfreq==3.1.1
+  /tmp/lecta-lex-env/bin/python3 scripts/lexicon-export.py en
+  gzip -9 -c data/lexicon/en-forms.tsv > public/lexicon/forms-en.tsv.gz
+  gzip -9 -c data/lexicon/en-lemmas.tsv > public/lexicon/lemmas-freq-en.tsv.gz
+  ```
+
 ## Notas
 
 - `locuciones.es.json` (frases hechas) se publica aparte y no forma parte de estas

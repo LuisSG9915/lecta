@@ -23,6 +23,16 @@ Esto es análisis de cumplimiento, no asesoría legal.
 La lista `es` de simplemma combina todas las fuentes anteriores; las
 licencias exactas que empaqueta están en `licenses/` de su repo.
 
+**Inglés (`en`, añadido 2026-11-02).** El diccionario `en` de simplemma
+(`en.plzma`, 139 070 formas → 50 373 lemas) proviene del mismo pool de
+listas documentado arriba (Měchura, Kaikki, FreeLing, spaCy, UniMorph,
+Wikinflection): simplemma publica una sola procedencia para todos sus
+diccionarios. Se aplica la misma interpretación conservadora que para
+`es`: la tabla derivada forma→lema se trata como *Derivative Database*
+bajo **ODbL 1.0** y las frecuencias zipf siguen siendo **CC BY-SA 4.0**
+(wordfreq). No hay acepciones `en` cargadas: la tabla `senses` sigue
+siendo solo `es` hasta que se decida una fuente de definiciones.
+
 ## Qué nos obligan
 
 - **ODbL 1.0** (Měchura): nuestra tabla forma→lema es una *Derivative
@@ -54,6 +64,9 @@ licencias exactas que empaqueta están en `licenses/` de su repo.
    - `/lexicon/senses-es.csv.gz` (acepciones del Wikcionario, 184 915 filas) bajo **CC
      BY-SA 4.0 + GFDL**; quedan fuera las acepciones `source='ai'` y las de la semilla. Se
      regenera con `node --env-file=.env scripts/lexicon-export-senses.mjs`.
+   - `/lexicon/forms-en.tsv.gz` (forma→lema `en`, 139 070 pares) bajo **ODbL 1.0** y
+     `/lexicon/lemmas-freq-en.tsv.gz` (lema→zipf `en`, 50 373 pares) bajo **CC BY-SA
+     4.0** — publicados el 2026-11-02 con la Fase 7 del plan de calibración.
 2. Texto de atribución en «Acerca de» (pendiente de implementar):
 
    > Lecta incluye datos léxicos derivados de Simplemma (código MIT,

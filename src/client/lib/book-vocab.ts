@@ -7,7 +7,7 @@ import {
   type DbScope,
 } from "./idb";
 import { cliticBaseForms, dedupeKey, isWordToken, menteBaseForms } from "../../shared/word-form";
-import type { BookVocabManifest } from "./catalog";
+import { LEXICON_CATALOG_REV, type BookVocabManifest } from "./catalog";
 import { batchLookup, type LexiconEntry } from "./lexicon";
 import { extractUniqueWords } from "./segmenter";
 import { sanitizeSectionDocument } from "./sanitize";
@@ -88,10 +88,15 @@ export function buildBookVocabManifest(
   };
 }
 
-// Manifiesto ya guardado para el libro, o null si aún no se analizó.
+// Manifiesto ya guardado para el libro, o null si aún no se analizó o
+// si su `catalogRev` quedó atrás de la revisión vigente del catálogo
+// para su idioma (los llamadores re-analizan en ese caso). `language`
+// es el idioma del libro según el llamador: respaldo para manifiestos
+// escritos antes de que el campo existiera.
 export async function loadBookVocab(
   hash: string,
   scope?: DbScope,
+  language?: string,
 ): Promise<BookVocabManifest | null> {
   const cached = await loadSessionValue(bookVocabKey(hash), scope).catch(
     () => null,
@@ -99,7 +104,11 @@ export async function loadBookVocab(
   if (cached == null) return null;
   try {
     const parsed = JSON.parse(cached) as BookVocabManifest;
-    return parsed?.v === 1 && Array.isArray(parsed.forms) ? parsed : null;
+    if (parsed?.v !== 1 || !Array.isArray(parsed.forms)) return null;
+    const lang = parsed.language ?? language ?? "es";
+    const expected = LEXICON_CATALOG_REV[lang] ?? 0;
+    if ((parsed.catalogRev ?? 0) !== expected) return null;
+    return parsed;
   } catch {
     return null;
   }
@@ -187,6 +196,8 @@ export async function analyzeStoredBook(
     if (formSet.has(form)) occurrences[form] = (occurrences[form] ?? 0) + 1;
   }
   const manifest = buildBookVocabManifest(forms, result.entries, wordCount, occurrences);
+  manifest.language = language;
+  manifest.catalogRev = LEXICON_CATALOG_REV[language] ?? 0;
   void saveSessionValue(
     bookVocabKey(hash),
     JSON.stringify(manifest),

@@ -412,7 +412,9 @@ export function usePaperReading(
       prepRecordsRef.current = new Map(preps);
       const manifest = guideForms
         ? null
-        : await loadBookVocab(bookHash, scope).catch(() => null);
+        : await loadBookVocab(bookHash, scope, langRef.current).catch(
+            () => null,
+          );
       setBookForms(guideForms ?? manifest?.forms ?? []);
       setExtras(groups.extras.map(entryFor));
       setEntries(groups.reading.map(entryFor));

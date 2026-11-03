@@ -463,7 +463,7 @@ export default function Shelf({
         if (cancelled) return;
         const inputs = await inputsFor(target.language);
         if (!inputs || cancelled) continue;
-        let manifest = await loadBookVocab(target.hash, scope);
+        let manifest = await loadBookVocab(target.hash, scope, target.language);
         if (!manifest) {
           manifest = await analyzeStoredBook(target.hash, scope);
         }
