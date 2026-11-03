@@ -252,7 +252,23 @@ formularios. Código: `routes.ts` (rutas), `views.ts` (HTML), `epub-reader.ts`
 ## Producción
 
 - URL: `https://lecta.luis-sg9915.workers.dev` — deploy con `pnpm run deploy`.
-- Último deploy: **2026-11-01**, versión `a83cde26-aaa5-474e-a1b7-6ae7bc662cad`,
+- Último deploy: **2026-11-03**, versión `cbc17829-30ee-4d52-bd3b-a025024ebd3b`,
+  Lecta **v0.2.15**: ficha de palabra con significado primero y explicación
+  al tocar (detalle en §«Ficha de palabra (WordPanel)»). Al abrir ya no se
+  lanza la IA: se muestra el significado del diccionario con la frase del
+  libro como cita y «¿Qué significa aquí?» revela el matiz; sin definición
+  local una sola llamada (variante completa del endpoint, caché `f:`) trae
+  el significado — jamás se persiste en el catálogo remoto. Dedupe de
+  textos repetidos, tono en renglón propio, sin `catTip` ni rellenos en el
+  panel, caché de sesión `passage_meaning:v2`. Sin migraciones nuevas (las
+  24 ya estaban aplicadas en `lecta`). Verificado: `pnpm gate` completo en
+  verde (3 287 pruebas, bundle 208.46/215 kB), `e2e/word-card` 5/5.
+  En caliente: `/api/health` → 200, `/` → 200 sirviendo
+  `assets/index-ZR-MV6AG.js`, `/api/positions` sin sesión → 401, `0.2.15`
+  en `assets/DiagnosticsModal-BBkmSbDn.js`, `passage_meaning:v2` y
+  «Qué significa aquí» en `assets/Reader-9ulDFyGZ.js`. Sin
+  `smoke:auth`/`smoke:sync`: no toca auth ni el contrato de sync.
+- Deploy anterior: **2026-11-01**, versión `a83cde26-aaa5-474e-a1b7-6ae7bc662cad`,
   Lecta **v0.2.15**: plan Kindle K0–K9 completo (detalle en §«Portal Kindle
   (/k)»). Nuevo: preferencias de lectura por cuenta (`lecta_kindle_prefs`,
   migración 020 aplicada a `lecta` el mismo día), `/k/ajustes`, 4 tipografías
