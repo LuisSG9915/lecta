@@ -25,6 +25,7 @@ import {
 import {
   paperGuideSessionKey,
   sanitizePaperBookGuide,
+  type PaperBookGuide,
 } from "../../shared/paper-guide";
 import { fetchBookGuide } from "../lib/books";
 import {
@@ -92,6 +93,7 @@ import type { SuggestionRow } from "../lib/section-words";
 import { lookupWord } from "../lib/lexicon";
 import { loadBookVocab } from "../lib/book-vocab";
 import { pushOverlay, type OverlayHandle } from "../lib/history";
+import { reportClientError, reportErrorObject } from "../lib/client-errors";
 import { pushKnowledgeToServer } from "../lib/reading-sync";
 import { pushWordsToServer, removeWord } from "../lib/vocab";
 import { award, localDayKey } from "../lib/game";
@@ -249,6 +251,12 @@ export function usePaperReading(
       );
       if (disposed(seq)) return;
       if (!stored) {
+        // El libro no está en la base de esta cuenta (restaurado a
+        // medias, cuenta cambiada o IndexedDB limpiada).
+        reportClientError({
+          name: "PaperOpen",
+          code: "stored_book_missing",
+        });
         setPhase("error");
         return;
       }
@@ -280,9 +288,15 @@ export function usePaperReading(
         const rawGuide = await loadSessionValue(guideKey, scope).catch(
           () => null,
         );
-        let guide = rawGuide
-          ? sanitizePaperBookGuide(JSON.parse(rawGuide), bookHash)
-          : null;
+        let guide: PaperBookGuide | null = null;
+        if (rawGuide) {
+          try {
+            guide = sanitizePaperBookGuide(JSON.parse(rawGuide), bookHash);
+          } catch {
+            // Valor de sesión ilegible: la guía se vuelve a pedir abajo
+            // en vez de tumbar la apertura.
+          }
+        }
         if (!guide) {
           const fetched = await fetchBookGuide(bookHash, scope).catch(
             () => null,
@@ -297,6 +311,12 @@ export function usePaperReading(
         }
         if (disposed(seq)) return;
         if (!guide) {
+          // Ni en sesión ni en el servidor: adjunta sin guía publicada,
+          // sin sesión válida o sin red en este momento.
+          reportClientError({
+            name: "PaperOpen",
+            code: "paper_guide_unavailable",
+          });
           setPhase("error");
           return;
         }
@@ -419,8 +439,11 @@ export function usePaperReading(
       setExtras(groups.extras.map(entryFor));
       setEntries(groups.reading.map(entryFor));
       setPhase("ready");
-    } catch {
-      if (!disposed(seq)) setPhase("error");
+    } catch (error) {
+      if (!disposed(seq)) {
+        reportErrorObject(error, "paper_open");
+        setPhase("error");
+      }
     }
   }, [bookHash, entryFor]);
 
