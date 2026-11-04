@@ -883,70 +883,11 @@
   font-size: var(--fs-sm);
 }
 
-.shelf-community-grid {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: var(--s-2);
-}
-
-.shelf-community-item {
-  display: flex;
-  align-items: center;
-  gap: var(--s-3);
-  padding: var(--s-2) var(--s-3);
-  border: 1px solid var(--rule);
-  border-radius: var(--radius-md, 10px);
-  background: var(--paper-raised);
-}
-
-.shelf-community-cover {
-  flex: 0 0 44px;
-  height: 62px;
-  display: grid;
-  place-items: center;
-  border-radius: var(--radius-sm);
-  background: var(--paper-sunken);
-  color: var(--ink-faint);
-  overflow: hidden;
-}
-
-.shelf-community-cover img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.shelf-community-info {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.1rem;
-}
-
-.shelf-community-book-title {
-  font-family: var(--font-book);
-  font-size: var(--fs-base);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.shelf-community-attach {
-  flex: 0 0 auto;
-}
-
 .shelf-community-filters {
   display: flex;
   gap: var(--s-2);
   flex-wrap: wrap;
   margin-bottom: var(--s-3);
-}
-
-.shelf-community-more {
-  margin-top: var(--s-2);
 }
 
 /* Chips de género en la hoja de opciones (al compartir la guía) */
@@ -955,19 +896,6 @@
   flex-wrap: wrap;
   gap: var(--s-2);
   margin-block-end: var(--s-3);
-}
-
-@media (max-width: 40rem) {
-  /* En pantalla angosta el botón baja a su propia línea a ancho
-     completo: la portada y el título conservan toda la primera
-     fila en vez de competir con «Usar en papel». */
-  .shelf-community-item {
-    flex-wrap: wrap;
-  }
-
-  .shelf-community-attach {
-    flex: 1 1 100%;
-  }
 }
 
 /* ---------- Explora (pestañas: Comunidad / Libros gratuitos) ---------- */

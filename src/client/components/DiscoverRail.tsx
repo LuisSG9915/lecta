@@ -218,16 +218,14 @@ export default function DiscoverRail({
         </div>
       </div>
 
-      {ordered.length > 6 ? (
-        <input
-          type="search"
-          className="shelf-community-search"
-          placeholder="Buscar por título o autor"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          aria-label="Buscar en libros gratuitos"
-        />
-      ) : null}
+      <input
+        type="search"
+        className="shelf-community-search"
+        placeholder="Buscar por título o autor"
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+        aria-label="Buscar en libros gratuitos"
+      />
       {filtered.length === 0 ? (
         <p className="meta">Sin libros que coincidan con la búsqueda.</p>
       ) : null}

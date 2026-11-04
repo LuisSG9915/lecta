@@ -10,25 +10,19 @@ import {
   listCommunityBooks,
   type CommunityBook,
 } from "../lib/books";
+import { coverPalette } from "../lib/cover";
 import { BOOK_GENRES } from "../../shared/book-genres";
-import Icon from "./Icon";
 
 type Props = {
   /** Al adjuntar: el padre guarda la guía y refresca la estantería. */
   onAttached?: (hash: string, guide?: unknown) => void;
 };
 
-// La estantería no se estira con el catálogo: colapsada muestra
-// COLLAPSED_COUNT guías y el resto se revela con «Ver todas»; al
-// buscar o filtrar se pintan todas las coincidencias.
-const COLLAPSED_COUNT = 4;
-
 export default function CommunityShelf({ onAttached }: Props) {
   const [books, setBooks] = useState<CommunityBook[] | null>(null);
   const [query, setQuery] = useState("");
   const [lang, setLang] = useState<string | null>(null);
   const [genre, setGenre] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState(false);
   const [attaching, setAttaching] = useState<string | null>(null);
   const [error, setError] = useState("");
 
@@ -75,10 +69,6 @@ export default function CommunityShelf({ onAttached }: Props) {
           b.author.toLowerCase().includes(q)),
     );
   }, [books, query, lang, genre]);
-
-  const narrowing = query.trim() !== "" || lang !== null || genre !== null;
-  const visible =
-    expanded || narrowing ? filtered : filtered.slice(0, COLLAPSED_COUNT);
 
   const attach = async (book: CommunityBook) => {
     setAttaching(book.hash);
@@ -170,65 +160,79 @@ export default function CommunityShelf({ onAttached }: Props) {
               ))}
             </div>
           ) : null}
-          {books.length > 6 ? (
-            <input
-              type="search"
-              className="shelf-community-search"
-              placeholder="Buscar por título o autor"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              aria-label="Buscar en la comunidad"
-            />
-          ) : null}
+          <input
+            type="search"
+            className="shelf-community-search"
+            placeholder="Buscar por título o autor"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            aria-label="Buscar en la comunidad"
+          />
           {error ? <p className="shelf-community-error" role="alert">{error}</p> : null}
           {filtered.length === 0 ? (
             <p className="meta shelf-community-empty">
               Sin guías que coincidan con la búsqueda.
             </p>
           ) : null}
-          <ul className="shelf-community-grid">
-            {visible.map((book) => (
-              <li key={book.hash} className="shelf-community-item">
-                {/* Portada tipográfica: las guías no traen la imagen del
-                    donante (la portada es del editorial). */}
-                <span className="shelf-community-cover" aria-hidden="true">
-                  <Icon name="book" size={20} />
-                </span>
-                <span className="shelf-community-info">
-                  <span className="shelf-community-book-title">{book.title}</span>
-                  {book.author ? (
-                    <span className="meta shelf-community-author">{book.author}</span>
-                  ) : null}
-                  <span className="meta shelf-community-meta">
-                    Guía de papel
-                    {book.language ? ` · ${book.language.toUpperCase()}` : ""}
-                    {book.genre ? ` · ${book.genre}` : ""}
-                    {book.sharers > 1 ? ` · ${book.sharers} lectores` : ""}
-                  </span>
-                </span>
-                <button
-                  type="button"
-                  className="btn shelf-community-attach"
-                  disabled={attaching !== null}
-                  onClick={() => void attach(book)}
-                >
-                  {attaching === book.hash ? "Agregando…" : "Usar en papel"}
-                </button>
-              </li>
-            ))}
+          <ul className="discover-rail">
+            {filtered.map((book) => {
+              const palette = coverPalette(book.hash);
+              return (
+                <li key={book.hash} className="discover-book">
+                  <div className="discover-cover">
+                    {/* Portada tipográfica generada: las guías no traen la
+                        imagen del donante (la portada es del editorial). */}
+                    <div
+                      className="cover cover--generated"
+                      role="img"
+                      aria-label={`Portada de ${book.title}`}
+                      style={
+                        {
+                          "--cover-paper": palette.paper,
+                          "--cover-ink": palette.ink,
+                          "--cover-accent": palette.accent,
+                        } as React.CSSProperties
+                      }
+                    >
+                      <span className="cover-frame">
+                        <span className="cover-title">{book.title}</span>
+                        <span className="cover-ornament" aria-hidden="true" />
+                        <span className="cover-author">{book.author}</span>
+                      </span>
+                    </div>
+                    {book.language ? (
+                      <span className="discover-badge">
+                        {book.language.toUpperCase()}
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="discover-meta">
+                    <div className="discover-tags" aria-label="Etiquetas">
+                      <span className="discover-tag-pill">Guía de papel</span>
+                      {book.genre ? (
+                        <span className="discover-tag-pill">{book.genre}</span>
+                      ) : null}
+                    </div>
+                    <p className="discover-title" title={book.title}>
+                      {book.title}
+                    </p>
+                    <p className="meta">{book.author}</p>
+                    {book.sharers > 1 ? (
+                      <p className="meta">{book.sharers} lectores</p>
+                    ) : null}
+                  </div>
+                  <button
+                    type="button"
+                    className="btn discover-action"
+                    disabled={attaching !== null}
+                    onClick={() => void attach(book)}
+                  >
+                    {attaching === book.hash ? "Agregando…" : "Usar en papel"}
+                  </button>
+                </li>
+              );
+            })}
           </ul>
-          {!narrowing && filtered.length > COLLAPSED_COUNT ? (
-            <button
-              type="button"
-              className="btn--quiet shelf-community-more"
-              aria-expanded={expanded}
-              onClick={() => setExpanded(!expanded)}
-            >
-              {expanded
-                ? "Ver menos"
-                : `Ver todas las guías (${filtered.length})`}
-            </button>
-          ) : null}
         </>
       )}
     </section>
