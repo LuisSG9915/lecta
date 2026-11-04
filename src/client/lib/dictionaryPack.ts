@@ -33,7 +33,7 @@ export interface DictionaryPackInfo {
 // subir la versión (la URL lleva v1) y pegar el nuevo hash aquí.
 export const DICTIONARY_PACKS: Record<DictLanguage, DictionaryPackInfo> = {
   es: {
-    url: "/lexicon/dict-es-v1.bin",
+    url: "/dict/dict-es-v1.bin",
     sha256: "6e98cc32a256e2679f977742c7c9766fe3957bee9765558f4e2597abc7e4435d",
     bytes: 4_822_965,
     version: 1,
@@ -41,7 +41,7 @@ export const DICTIONARY_PACKS: Record<DictLanguage, DictionaryPackInfo> = {
     forms: 336_248,
   },
   en: {
-    url: "/lexicon/dict-en-v1.bin",
+    url: "/dict/dict-en-v1.bin",
     sha256: "209bd2655846ec1e8b6cc9713aa1440289a4605707025f4bb58b9f7451355f01",
     bytes: 501_571,
     version: 1,

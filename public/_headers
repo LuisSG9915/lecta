@@ -86,8 +86,10 @@
   Content-Disposition: attachment; filename="lemmas-freq-en.tsv.gz"
 
 # Diccionarios locales descargables: el nombre lleva la versión
-# (dict-es-v1…), así que el contenido es inmutable por URL.
-/lexicon/dict-*
+# (dict-es-v1…), así que el contenido es inmutable por URL. Viven en
+# /dict/ y no en /lexicon/ para que esta regla no se fusione con la
+# genérica de /lexicon/* (los _headers de Cloudflare concatenan).
+/dict/*
   Cache-Control: public, max-age=31536000, immutable
 
 /lexicon/*

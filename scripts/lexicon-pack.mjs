@@ -1,4 +1,4 @@
-// Genera el diccionario local descargable public/lexicon/dict-<lang>-v1.bin
+// Genera el diccionario local descargable public/dict/dict-<lang>-v1.bin
 // a partir del catálogo de lecta_dev — la misma fuente que el servidor para
 // que lema, pos y glosas coincidan en ambos lados. La extensión es .bin a
 // propósito: con .gz los servidores de desarrollo (vite) sirven
@@ -43,7 +43,7 @@ if (!["es", "en"].includes(LANG)) {
   console.error(`Idioma no soportado: ${JSON.stringify(LANG)} — usa es o en.`);
   process.exit(1);
 }
-const OUT = `public/lexicon/dict-${LANG}-v${VERSION}.bin`;
+const OUT = `public/dict/dict-${LANG}-v${VERSION}.bin`;
 
 const MAX_SENSES = 3;
 const MAX_DEF_CHARS = 180;

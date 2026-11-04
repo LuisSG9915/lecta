@@ -107,7 +107,10 @@ externos.
   gzip -9 -c data/lexicon/en-lemmas.tsv > public/lexicon/lemmas-freq-en.tsv.gz
   ```
 
-## `dict-es-v1.bin` — diccionario local de lectura (español)
+## `/dict/dict-es-v1.bin` — diccionario local de lectura (español)
+
+> Vive bajo `/dict/` (no junto a este README) para que su regla de caché
+> inmutable no se fusione con la genérica de `/lexicon/*` en `_headers`.
 
 - **Contenido:** 126 905 lemas y 336 248 formas flexionadas con sus acepciones
   (hasta 3 por lema, ≤180 caracteres). TSV con líneas `E\tlema\tpos\tdef1␟def2`
@@ -122,7 +125,7 @@ externos.
   `6e98cc32a256e2679f977742c7c9766fe3957bee9765558f4e2597abc7e4435d`
 - **Generado:** 2026-11-03.
 
-## `dict-en-v1.bin` — diccionario local de lectura (inglés→español)
+## `/dict/dict-en-v1.bin` — diccionario local de lectura (inglés→español)
 
 - **Contenido:** 15 233 lemas en inglés y 49 155 formas flexionadas con
   acepciones **en español** (p. ej. `school` → «Escuela, instituto, colegio.»),

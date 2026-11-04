@@ -195,8 +195,8 @@ describe("dictionaryPack", () => {
     const es = packResponse(esTsv);
     stubPackInfo("es", es.sha, es.gz.length);
     const bodies: Record<string, ArrayBuffer> = {
-      "/lexicon/dict-en-v1.bin": new Uint8Array(en.gz).buffer,
-      "/lexicon/dict-es-v1.bin": new Uint8Array(es.gz).buffer,
+      "/dict/dict-en-v1.bin": new Uint8Array(en.gz).buffer,
+      "/dict/dict-es-v1.bin": new Uint8Array(es.gz).buffer,
     };
     vi.stubGlobal(
       "fetch",
