@@ -228,7 +228,11 @@ function refillable(path) {
   return (
     path.indexOf("/assets/") === 0 ||
     path.indexOf("/libros/") === 0 ||
-    path.indexOf("/lexicon/") === 0 ||
+    // /lexicon/dict-* son los diccionarios locales descargables: el
+    // cliente los parsea y guarda en IndexedDB — cachearlos también en
+    // el SW duplicaría varios MB por idioma.
+    (path.indexOf("/lexicon/") === 0 &&
+      path.indexOf("/lexicon/dict-") !== 0) ||
     path.indexOf("/icons/") === 0 ||
     path.indexOf("/audio/") === 0
   );

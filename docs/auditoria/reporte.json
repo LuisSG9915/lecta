@@ -1,21 +1,21 @@
 {
   "tool": "audit-investigacion",
   "version": 1,
-  "generatedAt": "2026-11-03T20:14:32.426Z",
+  "generatedAt": "2026-11-04T03:08:28.198Z",
   "root": "/Users/luis/Desarrollos Devin/lecta",
-  "commit": "e2fcff2bc43a9d2e2f15f44e1dc71e00f759a513",
+  "commit": "2c1b271cf480425a342b6c12b4bbea910815dcab",
   "doc": "docs/estrategia-aprendizaje-2026-10-24.md",
   "registry": "docs/auditoria/claims.json",
   "online": false,
   "summary": {
     "claims": 14,
     "pass": 1,
-    "fail": 1,
-    "unverified": 12,
+    "fail": 0,
+    "unverified": 13,
     "skipped": 0,
     "refutedExpected": 0,
-    "codePass": 13,
-    "codeFail": 1,
+    "codePass": 14,
+    "codeFail": 0,
     "referencePass": 0,
     "referenceUnverified": 32,
     "referenceFail": 0,
@@ -500,17 +500,17 @@
       "title": "«Ya la conozco» alimenta el nivel como si fuera una prueba",
       "statement": "Marcar «ya la conozco» ajusta θ con outcome 1 y un delta de 0,18 × (1 − P), sin ninguna recuperación verificada de por medio, y el acto se registra sin pagar XP de repaso.",
       "section": "H4",
-      "status": "FAIL",
+      "status": "UNVERIFIED",
       "auditVerdict": {
         "status": "MATIZADA",
         "date": "2026-10-26",
         "motivo": "La conclusión se sostiene: «Ya la sé» sigue siendo un juicio. Ahora ajusta θ una sola vez con la dificultad real de la palabra y no paga XP; el pretest bloqueante se descartó por la regla de 1 toque.",
         "evidencia": [
-          "src/client/components/WordPanel.tsx:521-535",
+          "src/client/components/WordPanel.tsx:636-670",
           "src/client/lib/profile-models.ts:405-415"
         ]
       },
-      "codeStatus": "FAIL",
+      "codeStatus": "PASS",
       "refStatus": "UNVERIFIED",
       "checks": [
         {
@@ -522,10 +522,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/components/Reader.tsx:4796 coincide con /updateLanguageTheta\\(currentLang, beta, 1, 1\\.0\\)/",
+          "detail": "src/client/components/Reader.tsx:4808 coincide con /updateLanguageTheta\\(currentLang, beta, 1, 1\\.0\\)/",
           "observed": {
             "file": "src/client/components/Reader.tsx",
-            "line": 4796,
+            "line": 4808,
             "text": "updateLanguageTheta(currentLang, beta, 1, 1.0);"
           }
         },
@@ -541,44 +541,12 @@
         },
         {
           "kind": "code-anchor",
-          "status": "FAIL",
-          "detail": "src/client/components/WordPanel.tsx:551-581 no contiene /award: false/",
+          "status": "PASS",
+          "detail": "src/client/components/WordPanel.tsx:662 coincide con /award: false/",
           "observed": {
             "file": "src/client/components/WordPanel.tsx",
-            "asked": 566,
-            "excerpt": [
-              "551:     } else {",
-              "552:       speakWord(cleanWord, effectiveLang);",
-              "553:     }",
-              "554:   };",
-              "555: ",
-              "556:   // Guardar en el cuaderno en 1 solo toque",
-              "557:   const handleSave = async () => {",
-              "558:     if (savedRef.current) return;",
-              "559:     setSaving(true);",
-              "560:     savedRef.current = true;",
-              "561:     setIsSaved(true);",
-              "562:     triggerHaptic(12);",
-              "563: ",
-              "564:     // Señal silenciosa de calibración al guardar",
-              "565:     onRecordSilentCalibration(cleanWord, \"save\");",
-              "566: ",
-              "567:     const lemma = localEntry?.lemma ?? cleanWord.toLowerCase();",
-              "568:     // El cuaderno guarda el significado mostrado (diccionario o IA),",
-              "569:     // nunca el matiz de la frase.",
-              "570:     const shortDef = meaning?.text || \"\";",
-              "571:     const inPassage = meaning?.text || \"\";",
-              "572: ",
-              "573:     const work = (async (): Promise<SavedWord | null> => {",
-              "574:       try {",
-              "575:         if (onSaveToNotebook) {",
-              "576:           await onSaveToNotebook({",
-              "577:             word: cleanWord,",
-              "578:             lemma,",
-              "579:             shortDefinition: shortDef,",
-              "580:             inPassageMeaning: inPassage,",
-              "581:             sentenceContext: effectiveContext,"
-            ]
+            "line": 662,
+            "text": "{ award: false },"
           }
         },
         {
@@ -1752,5 +1720,5 @@
       }
     }
   ],
-  "verdict": "FAIL"
+  "verdict": "PASS_WITH_UNVERIFIED"
 }

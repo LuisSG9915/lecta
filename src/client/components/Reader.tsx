@@ -2460,6 +2460,18 @@ export default function Reader({
         );
         recordDominated(storedWords, bookLanguage, scope);
         setLanguage(bookLanguage);
+        // Diccionario local: se descarga solo en segundo plano la
+        // primera vez que se abre un libro del idioma (ver
+        // lib/dictionaryPack.ts); fallos silenciosos a propósito.
+        if (bookLanguage === "es" || bookLanguage === "en") {
+          const ensure = () =>
+            import("../lib/dictionaryPack")
+              .then((m) => m.ensureDictionaryPack(bookLanguage))
+              .catch(() => undefined);
+          if (typeof requestIdleCallback === "function")
+            requestIdleCallback(() => void ensure());
+          else setTimeout(() => void ensure(), 4000);
+        }
         const bookTitle = getBookTitle(book);
         const bookAuthor = getBookAuthor(book);
         setTitle(bookTitle);

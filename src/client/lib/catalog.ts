@@ -50,8 +50,8 @@ export type CatalogIndex = {
 // manifiesto con otra rev se descarta en loadBookVocab y el libro se
 // re-analiza — p. ej. `en` pasa de 0 a 1 al cargar el catálogo inglés.
 export const LEXICON_CATALOG_REV: Record<string, number> = {
-  es: 0,
-  en: 1,
+  es: 1,
+  en: 2,
 };
 
 export type BookVocabManifest = {

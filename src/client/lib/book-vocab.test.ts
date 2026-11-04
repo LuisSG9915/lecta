@@ -8,6 +8,7 @@ import {
 } from "./book-vocab";
 import type { LexiconEntry } from "./lexicon";
 import type { StoredBook } from "./idb";
+import { LEXICON_CATALOG_REV } from "./catalog";
 
 const store = vi.hoisted(() => new Map<string, string>());
 const booksMock = vi.hoisted(() => ({
@@ -195,7 +196,7 @@ describe("analyzeStoredBook", () => {
       }),
     });
     expect(manifest!.language).toBe("es");
-    expect(manifest!.catalogRev).toBe(0);
+    expect(manifest!.catalogRev).toBe(LEXICON_CATALOG_REV.es);
   });
 });
 
@@ -223,15 +224,15 @@ describe("loadBookVocab", () => {
       catalogRev: 0,
     };
     store.set(bookVocabKey("x"), JSON.stringify(manifest));
-    // en vigente = 1: el análisis contra el catálogo vacío está viejo.
+    // en vigente > 0: el análisis contra el catálogo vacío está viejo.
     expect(await loadBookVocab("x")).toBeNull();
 
-    manifest.catalogRev = 1;
+    manifest.catalogRev = LEXICON_CATALOG_REV.en;
     store.set(bookVocabKey("x"), JSON.stringify(manifest));
     expect(await loadBookVocab("x")).not.toBeNull();
   });
 
-  it("manifiesto legado sin campos: en inglés vence, en español sigue", async () => {
+  it("manifiesto legado sin campos: vence si la revisión subió", async () => {
     const legacy = {
       v: 1,
       wordCount: 1,
@@ -242,8 +243,9 @@ describe("loadBookVocab", () => {
       missing: [],
     };
     store.set(bookVocabKey("x"), JSON.stringify(legacy));
-    // El idioma del llamador decide la revisión esperada.
+    // Sin catalogRev vale 0: mientras la rev vigente sea > 0 queda
+    // viejo y se re-analiza, en cualquier idioma con catálogo cargado.
     expect(await loadBookVocab("x", undefined, "en")).toBeNull();
-    expect(await loadBookVocab("x", undefined, "es")).not.toBeNull();
+    expect(await loadBookVocab("x", undefined, "es")).toBeNull();
   });
 });

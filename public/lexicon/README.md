@@ -107,6 +107,42 @@ externos.
   gzip -9 -c data/lexicon/en-lemmas.tsv > public/lexicon/lemmas-freq-en.tsv.gz
   ```
 
+## `dict-es-v1.bin` — diccionario local de lectura (español)
+
+- **Contenido:** 126 905 lemas y 336 248 formas flexionadas con sus acepciones
+  (hasta 3 por lema, ≤180 caracteres). TSV con líneas `E\tlema\tpos\tdef1␟def2`
+  y `F\tforma\tlema`; cabecera `#lecta-dict v1 es`. Es el paquete que la app
+  descarga a IndexedDB para resolver palabras sin conexión.
+- **Origen:** acepciones del Wikcionario en español vía kaikki.org (`source =
+  'wiktionary'`), formas del catálogo de Lecta; solo lemas con acepción y, para
+  las formas, lemas con frecuencia zipf ≥ 2.0. Cuando un lema no tiene acepción
+  del Wikcionario entra la acepción semilla propia (27 lemas, de `db/seed.sql`).
+- **Licencia:** CC BY-SA 4.0 + GFDL, igual que `senses-es.csv.gz`.
+- **SHA-256 del `.bin`:**
+  `6e98cc32a256e2679f977742c7c9766fe3957bee9765558f4e2597abc7e4435d`
+- **Generado:** 2026-11-03.
+
+## `dict-en-v1.bin` — diccionario local de lectura (inglés→español)
+
+- **Contenido:** 15 233 lemas en inglés y 49 155 formas flexionadas con
+  acepciones **en español** (p. ej. `school` → «Escuela, instituto, colegio.»),
+  mismo formato que `dict-es-v1`. Ambos `.bin` son TSV comprimido con gzip: la
+  extensión evita que servidores estáticos lo sirvan ya descomprimido con
+  `Content-Encoding: gzip` (el cliente verifica el SHA-256 del archivo crudo).
+- **Origen:** Wikcionario en español vía kaikki.org, sección «Inglés»
+  (`eswiktionary/Inglés`, ~35 000 acepciones): documenta palabras inglesas con
+  glosas en español.
+- **Licencia:** CC BY-SA 4.0 + GFDL.
+- **SHA-256 del `.bin`:**
+  `209bd2655846ec1e8b6cc9713aa1440289a4605707025f4bb58b9f7451355f01`
+- **Generado:** 2026-11-03.
+- **Regenerar (ambos paquetes):**
+  ```bash
+  node --env-file=.env scripts/lexicon-pack.mjs --lang=es
+  node --env-file=.env scripts/lexicon-pack.mjs --lang=en
+  ```
+  Requiere el catálogo cargado (`lexicon-wiktionary.mjs --lang=es|en`).
+
 ## Notas
 
 - `locuciones.es.json` (frases hechas) se publica aparte y no forma parte de estas

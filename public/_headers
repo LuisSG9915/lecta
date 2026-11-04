@@ -85,6 +85,11 @@
   Content-Type: application/gzip
   Content-Disposition: attachment; filename="lemmas-freq-en.tsv.gz"
 
+# Diccionarios locales descargables: el nombre lleva la versión
+# (dict-es-v1…), así que el contenido es inmutable por URL.
+/lexicon/dict-*
+  Cache-Control: public, max-age=31536000, immutable
+
 /lexicon/*
   Cache-Control: public, max-age=86400, stale-while-revalidate=604800
 

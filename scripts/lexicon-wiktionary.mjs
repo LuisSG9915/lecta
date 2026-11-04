@@ -1,9 +1,12 @@
 // Carga acepciones del Wikcionario en español (dump kaikki.org,
 // eswiktionary) al catálogo léxico — la alternativa sin IA a las
-// definiciones. Lee data/lexicon/es-wiktionary.jsonl.gz (o .jsonl)
-// en streaming, una línea JSON por entrada.
+// definiciones. Lee data/lexicon/<lang>-wiktionary.jsonl.gz (o .jsonl)
+// en streaming, una línea JSON por entrada. El volcado por idioma de
+// kaikki ya trae solo ese idioma, con glosas en español — p. ej. la
+// sección «Inglés» documenta palabras en inglés con definiciones en
+// español, que es justo lo que necesita la ficha en libros en inglés.
 //
-//   node --env-file=.env scripts/lexicon-wiktionary.mjs [--limit=N]
+//   node --env-file=.env scripts/lexicon-wiktionary.mjs [--lang=es|en] [--limit=N]
 //
 // Políticas:
 //   · Entradas que ya tienen acepción útil (IA, semilla, cargas
@@ -23,7 +26,15 @@ import { createGunzip } from "node:zlib";
 import { createInterface } from "node:readline";
 import pg from "pg";
 
-const LANG = "es";
+const LANG = process.argv
+  .map((arg) => /^--lang=([a-z]{2})$/.exec(arg)?.[1])
+  .find(Boolean) ?? "es";
+// Nombre de la sección del idioma en kaikki (la URL del volcado).
+const KAIKKI_LANG_NAME = { es: "Español", en: "Inglés" }[LANG];
+if (!KAIKKI_LANG_NAME) {
+  console.error(`Idioma no soportado: ${JSON.stringify(LANG)} — usa es o en.`);
+  process.exit(1);
+}
 const BATCH = 2000;
 // Techo de acepciones por ficha: el Wikcionario puede listar 20+
 // usos raros; las primeras son las comunes y acotan el payload del
@@ -144,12 +155,12 @@ const senseExample = (sense) => {
   return null;
 };
 
-const file = ["data/lexicon/es-wiktionary.jsonl.gz", "data/lexicon/es-wiktionary.jsonl"]
+const file = [`data/lexicon/${LANG}-wiktionary.jsonl.gz`, `data/lexicon/${LANG}-wiktionary.jsonl`]
   .find(existsSync);
 if (!file) {
   console.error(
-    "Falta data/lexicon/es-wiktionary.jsonl.gz — descárgalo de\n" +
-      "  https://kaikki.org/eswiktionary/Español/kaikki.org-dictionary-Español.jsonl.gz",
+    `Falta data/lexicon/${LANG}-wiktionary.jsonl.gz — descárgalo de\n` +
+      `  https://kaikki.org/eswiktionary/${KAIKKI_LANG_NAME}/kaikki.org-dictionary-${KAIKKI_LANG_NAME}.jsonl.gz`,
   );
   process.exit(1);
 }
@@ -299,8 +310,10 @@ try {
     }
     const word = typeof row.word === "string" ? row.word.trim() : "";
     // Frases (espacios) no son consultables como palabra; el dump
-    // también incluye claves raras sin letras.
-    if (!word || /\s/.test(word) || !/\p{L}/u.test(word)) {
+    // también incluye claves raras sin letras. Y por si el archivo
+    // fuese el combinado (no el por-idioma), se respeta lang_code.
+    if (!word || /\s/.test(word) || !/\p{L}/u.test(word) ||
+        (row.lang_code && row.lang_code !== LANG)) {
       stats.skipped += 1;
       continue;
     }
@@ -420,10 +433,10 @@ try {
     `INSERT INTO lexicon_sources (name, version, license, url, loaded_at)
      VALUES ($1, $2, $3, $4, $5)`,
     [
-      "kaikki-eswiktionary",
-      "dump 2026-10-01",
+      `kaikki-eswiktionary-${LANG}`,
+      "dump 2026-11-01",
       "CC BY-SA 4.0 + GFDL",
-      "https://kaikki.org/eswiktionary/Español/",
+      `https://kaikki.org/eswiktionary/${KAIKKI_LANG_NAME}/`,
       Date.now(),
     ],
   );

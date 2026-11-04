@@ -63,6 +63,14 @@ export function lookupWordInMemory(
   return null;
 }
 
+// Diccionario local descargable (es/en): consulta el paquete solo si
+// está instalado — la primera consulta lee la meta y la recuerda.
+async function lookupDictionaryPackLayer(form: string, language: string): Promise<LexiconEntry | null> {
+  if (language !== "es" && language !== "en") return null;
+  const { lookupDictionaryPack } = await import("./dictionaryPack");
+  return lookupDictionaryPack(form, language);
+}
+
 async function getCalibrationBankFallbackEntry(form: string, language: string): Promise<LexiconEntry | null> {
   const { calibrationFallbackDefinition, calibrationBankZipf } = await import("../../shared/calibration-bank");
   const normalized = form.trim().toLowerCase();
@@ -128,6 +136,12 @@ async function lookupWordRaw(
     };
     lexiconMemoryCache.set(memKey, [fallbackEntry]);
     return { ok: true, found: true, entries: [fallbackEntry], offline: true };
+  }
+
+  const packEntry = await lookupDictionaryPackLayer(normalized, language);
+  if (packEntry) {
+    lexiconMemoryCache.set(memKey, [packEntry]);
+    return { ok: true, found: true, entries: [packEntry], offline: true };
   }
 
   const bankFallback = await getCalibrationBankFallbackEntry(form, language);
