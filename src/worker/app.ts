@@ -92,6 +92,7 @@ import {
 } from "../shared/calibration-bank";
 import { checkEpubHeader, checkEpubBuffer, EPUB_MAX_BYTES } from "../shared/epub-check";
 import { extractEpubMeta, extractEpubCover, isHashLikeIdentifier } from "../shared/epub-meta";
+import { genreFromSubjects, isBookGenre } from "../shared/book-genres";
 import { sanitizePaperBookGuide } from "../shared/paper-guide";
 import { getSession, getSessionUser, SessionInfraError } from "./session";
 import { readingData } from "./reading-data";
@@ -1847,6 +1848,10 @@ export async function recordUserBook(
     title: string;
     author: string;
     language?: string;
+    // Género editorial (BOOK_GENRES); "" = sin clasificar. En conflicto
+    // solo pisa si trae valor: la elección manual del lector al
+    // compartir sobrevive a una resubida sin género.
+    genre?: string;
     r2Key: string;
     sizeBytes: number;
     sha256: string;
@@ -1865,9 +1870,10 @@ export async function recordUserBook(
     // migración 022): cae a la ruta D1 como cuando falta la conexión.
     // Con resetAck la fila corre dentro de la transacción guardada: un
     // sello más nuevo aborta con StaleResetError en vez de resucitar.
-    const insert = (client: Parameters<Parameters<typeof withClient>[1]>[0]) =>
-      client.query(
-        `INSERT INTO user_books (user_id, book_id, title, author, language, r2_key, size_bytes, sha256, has_cover, created_at, updated_at)
+    // Dos variantes: con `genre` (migración 025 aplicada) y sin ella
+    // (worker desplegado antes de migrar) — el género es metadato
+    // complementario y jamás debe tirar la fila del libro.
+    const sqlBase = `INSERT INTO user_books (user_id, book_id, title, author, language, r2_key, size_bytes, sha256, has_cover, created_at, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
          ON CONFLICT (user_id, book_id) DO UPDATE SET
            title = EXCLUDED.title,
@@ -1877,21 +1883,40 @@ export async function recordUserBook(
            size_bytes = EXCLUDED.size_bytes,
            sha256 = EXCLUDED.sha256,
            has_cover = EXCLUDED.has_cover,
-           updated_at = EXCLUDED.updated_at`,
-        [
-          book.userId,
-          book.bookId,
-          book.title,
-          book.author,
-          book.language ?? "",
-          book.r2Key,
-          book.sizeBytes,
-          book.sha256,
-          hasCoverVal,
-          now,
-          now,
-        ],
-      );
+           updated_at = EXCLUDED.updated_at`;
+    const sqlGenre = `INSERT INTO user_books (user_id, book_id, title, author, language, r2_key, size_bytes, sha256, has_cover, genre, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+         ON CONFLICT (user_id, book_id) DO UPDATE SET
+           title = EXCLUDED.title,
+           author = EXCLUDED.author,
+           language = EXCLUDED.language,
+           r2_key = EXCLUDED.r2_key,
+           size_bytes = EXCLUDED.size_bytes,
+           sha256 = EXCLUDED.sha256,
+           has_cover = EXCLUDED.has_cover,
+           genre = CASE WHEN EXCLUDED.genre <> '' THEN EXCLUDED.genre ELSE user_books.genre END,
+           updated_at = EXCLUDED.updated_at`;
+    const baseParams = [
+      book.userId,
+      book.bookId,
+      book.title,
+      book.author,
+      book.language ?? "",
+      book.r2Key,
+      book.sizeBytes,
+      book.sha256,
+      hasCoverVal,
+      now,
+      now,
+    ];
+    const insert = (client: Parameters<Parameters<typeof withClient>[1]>[0]) =>
+      client
+        .query(sqlGenre, [...baseParams.slice(0, 9), book.genre ?? "", ...baseParams.slice(9)])
+        .catch((err: unknown) =>
+          isMissingColumnError(err)
+            ? client.query(sqlBase, baseParams)
+            : Promise.reject(err),
+        );
     const res = await (book.resetAck === undefined
       ? withClient(env, insert)
       : withResetGuard(env, book.resetAck, book.userId, insert)
@@ -1903,9 +1928,24 @@ export async function recordUserBook(
     if (res) recorded = true;
   }
   if (!recorded && env.DB) {
+    // Igual que la ruta pg: intenta con `genre` y cae a la variante
+    // sin la columna si el esquema local aún no tiene la migración.
+    const d1BaseParams = [
+      book.userId,
+      book.bookId,
+      book.title,
+      book.author,
+      book.language ?? "",
+      book.r2Key,
+      book.sizeBytes,
+      book.sha256,
+      hasCoverVal ? 1 : 0,
+      now,
+      now,
+    ];
     await env.DB.prepare(
-      `INSERT INTO user_books (user_id, book_id, title, author, language, r2_key, size_bytes, sha256, has_cover, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `INSERT INTO user_books (user_id, book_id, title, author, language, r2_key, size_bytes, sha256, has_cover, genre, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(user_id, book_id) DO UPDATE SET
          title = excluded.title,
          author = excluded.author,
@@ -1914,22 +1954,28 @@ export async function recordUserBook(
          size_bytes = excluded.size_bytes,
          sha256 = excluded.sha256,
          has_cover = excluded.has_cover,
+         genre = CASE WHEN excluded.genre <> '' THEN excluded.genre ELSE user_books.genre END,
          updated_at = excluded.updated_at`,
     )
-      .bind(
-        book.userId,
-        book.bookId,
-        book.title,
-        book.author,
-        book.language ?? "",
-        book.r2Key,
-        book.sizeBytes,
-        book.sha256,
-        hasCoverVal ? 1 : 0,
-        now,
-        now,
-      )
+      .bind(...d1BaseParams.slice(0, 9), book.genre ?? "", ...d1BaseParams.slice(9))
       .run()
+      .catch(() =>
+        env.DB!.prepare(
+          `INSERT INTO user_books (user_id, book_id, title, author, language, r2_key, size_bytes, sha256, has_cover, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(user_id, book_id) DO UPDATE SET
+             title = excluded.title,
+             author = excluded.author,
+             language = excluded.language,
+             r2_key = excluded.r2_key,
+             size_bytes = excluded.size_bytes,
+             sha256 = excluded.sha256,
+             has_cover = excluded.has_cover,
+             updated_at = excluded.updated_at`,
+        )
+          .bind(...d1BaseParams)
+          .run(),
+      )
       .catch(() => null);
   }
 }
@@ -2039,6 +2085,7 @@ app.get("/api/books", async (context) => {
       const flag = flags.get(book.hash);
       if (flag?.shared) (book as { shared?: boolean }).shared = true;
       if (flag?.paperOnly) (book as { paperOnly?: boolean }).paperOnly = true;
+      if (flag?.genre) (book as { genre?: string }).genre = flag.genre;
     }
     // Las entradas paper_only son guías (modelo A1): no hay objeto EPUB
     // en `books/{userId}/`, así que la lista de R2 no las trae. Se
@@ -2080,6 +2127,7 @@ app.get("/api/books", async (context) => {
         hasCover: false,
         repairAttemptedAt: undefined,
         shared: flags.get(row.book_id)?.shared || undefined,
+        genre: flags.get(row.book_id)?.genre || undefined,
       } as (typeof books)[number]);
     }
   } catch {
@@ -2218,8 +2266,10 @@ const handleBookUpload = async (
   let sections = /^\d{1,5}$/.test(meta.sections ?? "") ? meta.sections! : "";
   let name = meta.name?.slice(0, 200) ?? "";
   let language = meta.language?.slice(0, 10) ?? "";
+  // Género editorial de la lista cerrada BOOK_GENRES; "" = sin clasificar.
+  let genre = isBookGenre(meta.genre) ? meta.genre : "";
 
-  if (!title || !language) {
+  if (!title || !language || !genre) {
     const extracted = await extractEpubMeta(data).catch(() => null);
     if (extracted?.title) {
       title = title || extracted.title.slice(0, 200);
@@ -2228,6 +2278,7 @@ const handleBookUpload = async (
       name = name || `${title}.epub`;
       language = language || (extracted.language?.slice(0, 10) ?? "");
     }
+    genre = genre || genreFromSubjects(extracted?.subjects ?? []);
   }
 
   let hasCover = false;
@@ -2261,6 +2312,7 @@ const handleBookUpload = async (
       title: title || name.replace(/\.epub$/i, "") || hash,
       author,
       language,
+      genre,
       r2Key,
       sizeBytes: data.byteLength,
       sha256: hash,
@@ -2294,16 +2346,24 @@ app.get("/api/books/community", async (context) => {
 
   // Las copias del propio lector no aparecen: ya las tiene — mostrarlas
   // solo daba un 409 («Ese libro ya es tuyo») al pulsar «Usar en papel».
-  const sqlPg = `SELECT book_id,
+  // `genre` (migración 025) se pide aparte: sin la columna la consulta
+  // base sigue sirviendo el catálogo — solo sale sin género.
+  const communitySql = (extraCols: string, placeholder: string) =>
+    `SELECT book_id,
        MAX(title) AS title, MAX(author) AS author, MAX(language) AS language,
        MAX(size_bytes) AS size_bytes, BOOL_OR(has_cover) AS has_cover,
-       MIN(shared_at) AS shared_at, COUNT(DISTINCT user_id)::int AS sharers
+       MIN(shared_at) AS shared_at, COUNT(DISTINCT user_id)::int AS sharers${extraCols}
      FROM user_books
-     WHERE shared = true AND user_id <> $1
+     WHERE shared = true AND user_id <> ${placeholder}
      GROUP BY book_id
      ORDER BY shared_at DESC
      LIMIT 200`;
-  const sqlD1 = sqlPg.replace("BOOL_OR(has_cover)", "MAX(has_cover)").replace("::int", "").replace("$1", "?");
+  const toD1 = (sql: string) =>
+    sql.replace("BOOL_OR(has_cover)", "MAX(has_cover)").replace("::int", "").replace("$1", "?");
+  const sqlPg = communitySql(", MAX(genre) AS genre", "$1");
+  const sqlPgBase = communitySql("", "$1");
+  const sqlD1 = toD1(sqlPg);
+  const sqlD1Base = toD1(sqlPgBase);
 
   const collect = (
     rows: Array<Record<string, unknown>>,
@@ -2318,6 +2378,7 @@ app.get("/api/books/community", async (context) => {
       // portada siempre es la tipográfica generada en el cliente.
       hasCover: false,
       sharers: Number(row.sharers ?? 1),
+      genre: String(row.genre ?? ""),
     }));
 
   // Entradas adjuntables de verdad: tienen guía publicada en
@@ -2352,17 +2413,31 @@ app.get("/api/books/community", async (context) => {
   };
 
   if (getConnectionString(context.env)) {
-    const res = await withClient(context.env, (client) =>
+    let res = await withClient(context.env, (client) =>
       client.query(sqlPg, [session.user.id]),
     ).catch((err) => (isMissingColumnError(err) ? null : Promise.reject(err)));
-    if (res === null) return context.json({ books: [] });
+    if (res === null) {
+      // Falta `genre` (pre-025): reintenta sin la columna — la comunidad
+      // sale sin género en vez de vacía. Si falta `shared` (pre-024)
+      // la consulta base también falla y sí devuelve vacío.
+      res = await withClient(context.env, (client) =>
+        client.query(sqlPgBase, [session.user.id]),
+      ).catch((err) => (isMissingColumnError(err) ? null : Promise.reject(err)));
+      if (res === null) return context.json({ books: [] });
+    }
     return context.json({ books: await finish(res?.rows ?? []) });
   }
   if (context.env.DB) {
-    const res = await context.env.DB.prepare(sqlD1)
+    let res = await context.env.DB.prepare(sqlD1)
       .bind(session.user.id)
       .all<Record<string, unknown>>()
       .catch(() => null);
+    if (res === null) {
+      res = await context.env.DB.prepare(sqlD1Base)
+        .bind(session.user.id)
+        .all<Record<string, unknown>>()
+        .catch(() => null);
+    }
     return context.json({ books: await finish(res?.results ?? []) });
   }
   return context.json({ books: [] });
@@ -2574,39 +2649,46 @@ app.get("/api/books/:hash/cover", async (context) => {
 // por `book_id` (= sha256 del archivo origen).
 // ------------------------------------------------------------------
 
-type BookFlags = { shared: boolean; paperOnly: boolean };
+type BookFlags = { shared: boolean; paperOnly: boolean; genre: string };
 
 // Flags que viven en la fila (el customMetadata de R2 no se actualiza
-// sin resubir el archivo). Columnas ausentes (despliegue previo a la
-// 024) → mapa vacío: los libros se ven como siempre.
+// sin resubir el archivo). `genre` (025) se pide primero en la misma
+// consulta; sin la columna se reintenta con las de la 024 — los flags
+// base no se pierden por un género que aún no existe.
 async function listUserBookFlags(
   env: WorkerEnv,
   userId: string,
 ): Promise<Map<string, BookFlags>> {
   const flags = new Map<string, BookFlags>();
-  const sqlPg = `SELECT book_id, shared, paper_only FROM user_books WHERE user_id = $1`;
-  const sqlD1 = `SELECT book_id, shared, paper_only FROM user_books WHERE user_id = ?`;
-  const collect = (rows: Array<{ book_id: unknown; shared: unknown; paper_only: unknown }>) => {
+  const sqlPgGenre = `SELECT book_id, shared, paper_only, genre FROM user_books WHERE user_id = $1`;
+  const sqlPgBase = `SELECT book_id, shared, paper_only FROM user_books WHERE user_id = $1`;
+  const collect = (rows: Array<{ book_id: unknown; shared: unknown; paper_only: unknown; genre?: unknown }>) => {
     for (const row of rows) {
       flags.set(String(row.book_id), {
         shared: row.shared === true || row.shared === 1,
         paperOnly: row.paper_only === true || row.paper_only === 1,
+        genre: String(row.genre ?? ""),
       });
     }
   };
   if (getConnectionString(env)) {
-    const res = await withClient(env, (client) =>
-      client.query<{ book_id: unknown; shared: unknown; paper_only: unknown }>(sqlPg, [userId]),
-    ).catch((err) => (isMissingColumnError(err) ? undefined : Promise.reject(err)));
+    const query = (sql: string) =>
+      withClient(env, (client) =>
+        client.query<{ book_id: unknown; shared: unknown; paper_only: unknown; genre?: unknown }>(sql, [userId]),
+      ).catch((err) => (isMissingColumnError(err) ? null : Promise.reject(err)));
+    const res = (await query(sqlPgGenre)) ?? (await query(sqlPgBase)) ?? undefined;
     if (res) collect(res.rows);
     return flags;
   }
   if (env.DB) {
-    const res = await env.DB.prepare(sqlD1).bind(userId).all<{
-      book_id: unknown;
-      shared: unknown;
-      paper_only: unknown;
-    }>().catch(() => null);
+    const run = (sql: string) =>
+      env.DB!.prepare(sql.replace("$1", "?")).bind(userId).all<{
+        book_id: unknown;
+        shared: unknown;
+        paper_only: unknown;
+        genre?: unknown;
+      }>().catch(() => null);
+    const res = (await run(sqlPgGenre)) ?? (await run(sqlPgBase));
     if (res?.results) collect(res.results);
   }
   return flags;
@@ -2746,22 +2828,41 @@ async function findCommunityDonor(
   return null;
 }
 
-// Compartir / dejar de compartir tu propio libro.
+// Compartir / dejar de compartir tu propio libro. `genre` viaja solo
+// cuando el lector lo declara al compartir (undefined = no tocar la
+// columna): la elección manual pisa a la detectada del EPUB.
 const setBookShared = async (
   env: WorkerEnv,
   context: Context,
   userId: string,
   bookId: string,
   shared: boolean,
+  genre?: string,
 ): Promise<Response> => {
   const now = Date.now();
+  const runUpdate = (
+    client: { query: (sql: string, params?: unknown[]) => Promise<{ rowCount?: number }> },
+    includeGenre: boolean,
+  ) =>
+    client.query(
+      includeGenre
+        ? `UPDATE user_books SET shared = $3, shared_at = $4, updated_at = $5, genre = $6
+           WHERE user_id = $1 AND book_id = $2`
+        : `UPDATE user_books SET shared = $3, shared_at = $4, updated_at = $5
+           WHERE user_id = $1 AND book_id = $2`,
+      includeGenre
+        ? [userId, bookId, shared, shared ? now : 0, now, genre]
+        : [userId, bookId, shared, shared ? now : 0, now],
+    );
   if (getConnectionString(env)) {
     try {
       const updated = await withResetGuard(env, readResetAck(context), userId, async (client) => {
-        const res = await client.query(
-          `UPDATE user_books SET shared = $3, shared_at = $4, updated_at = $5
-           WHERE user_id = $1 AND book_id = $2`,
-          [userId, bookId, shared, shared ? now : 0, now],
+        // Sin la columna (pre-025) se reintenta sin género: compartir
+        // no puede fallar por un metadato complementario.
+        const res = await runUpdate(client, genre !== undefined).catch((err: unknown) =>
+          genre !== undefined && isMissingColumnError(err)
+            ? runUpdate(client, false)
+            : Promise.reject(err),
         );
         return res.rowCount ?? 0;
       });
@@ -2777,12 +2878,22 @@ const setBookShared = async (
     }
   }
   if (env.DB) {
-    const res = await env.DB.prepare(
-      `UPDATE user_books SET shared = ?, shared_at = ?, updated_at = ? WHERE user_id = ? AND book_id = ?`,
-    )
-      .bind(shared ? 1 : 0, shared ? now : 0, now, userId, bookId)
-      .run()
-      .catch(() => null);
+    const runD1 = (includeGenre: boolean) =>
+      env.DB!.prepare(
+        includeGenre
+          ? `UPDATE user_books SET shared = ?, shared_at = ?, updated_at = ?, genre = ? WHERE user_id = ? AND book_id = ?`
+          : `UPDATE user_books SET shared = ?, shared_at = ?, updated_at = ? WHERE user_id = ? AND book_id = ?`,
+      )
+        .bind(
+          ...(includeGenre
+            ? [shared ? 1 : 0, shared ? now : 0, now, genre, userId, bookId]
+            : [shared ? 1 : 0, shared ? now : 0, now, userId, bookId]),
+        )
+        .run()
+        .catch(() => null);
+    const res =
+      (await runD1(genre !== undefined)) ??
+      (genre !== undefined ? await runD1(false) : null);
     if (!res) return context.json({ error: "La comunidad aún no está disponible." }, 503);
     if (!res.meta.changes) return context.json({ error: "Libro no encontrado." }, 404);
     return context.json({ ok: true, shared });
@@ -2805,6 +2916,7 @@ app.put("/api/books/:hash/share", async (context) => {
   // copia ni sale del espacio privado del donante.
   const body = (await context.req.json().catch(() => null)) as {
     guide?: unknown;
+    genre?: unknown;
   } | null;
   if (body?.guide !== undefined) {
     const booksBucket = context.env.BOOKS;
@@ -2817,7 +2929,16 @@ app.put("/api/books/:hash/share", async (context) => {
       httpMetadata: { contentType: "application/json" },
     });
   }
-  return setBookShared(context.env, context, session.user.id, hash, true);
+  // Género declarado al compartir: solo valores de BOOK_GENRES; un
+  // string ajeno se normaliza a "" (la columna queda sin clasificar,
+  // jamás guarda texto libre). Clave ausente = no tocar la columna.
+  const genre =
+    typeof body?.genre === "string"
+      ? isBookGenre(body.genre)
+        ? body.genre
+        : ""
+      : undefined;
+  return setBookShared(context.env, context, session.user.id, hash, true, genre);
 });
 
 app.delete("/api/books/:hash/share", async (context) => {

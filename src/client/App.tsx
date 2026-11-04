@@ -104,6 +104,7 @@ import { getPendingPositionsCount, syncPositions, type PositionConflict } from "
 
 import { checkEpubHeader, EPUB_MAX_BYTES } from "../shared/epub-check";
 import { extractEpubMeta } from "../shared/epub-meta";
+import { genreFromSubjects } from "../shared/book-genres";
 import { syncSavedWords } from "./lib/vocab";
 import {
   flushPendingReadingSync,
@@ -695,6 +696,9 @@ export default function App() {
         pendingUpload: pendingUploads.has(book.hash) || undefined,
         paperOnly: book.paperOnly || remoteByHash.get(book.hash)?.paperOnly || undefined,
         shared: remoteByHash.get(book.hash)?.shared || undefined,
+        // El género de la fila remota manda: es la elección real al
+        // compartir; el detectado local del EPUB solo rellena huecos.
+        genre: remoteByHash.get(book.hash)?.genre || book.genre || undefined,
       }));
     for (const r of remote) {
       if (!r.hasCover && !retrofilledCoversRef.current.has(r.hash)) {
@@ -737,6 +741,7 @@ export default function App() {
           // copia adjunta que solo abre el modo papel.
           shared: item.shared || undefined,
           paperOnly: item.paperOnly || undefined,
+          genre: item.genre || undefined,
         };
       });
     setLibrary([...localItems, ...remoteItems]);
@@ -1239,6 +1244,7 @@ export default function App() {
         author: quickMeta?.author,
         language: quickMeta?.language,
         sectionCount: quickMeta?.sections,
+        genre: genreFromSubjects(quickMeta?.subjects ?? []) || undefined,
         metaVersion: quickMeta ? 1 : undefined,
       };
       openBook({ hash, name: file.name, file }, initialMeta);
@@ -1263,6 +1269,7 @@ export default function App() {
                 language: fullMeta.language || initialMeta.language,
                 sectionCount: fullMeta.sectionCount || initialMeta.sectionCount,
                 cover: fullMeta.cover ?? undefined,
+                genre: fullMeta.genre || initialMeta.genre,
                 metaVersion: 1,
               },
               scope,
@@ -1804,7 +1811,7 @@ export default function App() {
                     onOpen={openShelfItem}
                     onSelect={handleSelectBook}
                     onPaperBook={handlePaperBook}
-                    onShareBook={async (item, shared) => {
+                    onShareBook={async (item, shared, genre) => {
                       const scope = captureDbScope();
                       let guide: unknown;
                       if (shared) {
@@ -1832,7 +1839,7 @@ export default function App() {
                           return;
                         }
                       }
-                      const ok = await shareBook(item.hash, shared, scope, guide);
+                      const ok = await shareBook(item.hash, shared, scope, guide, genre);
                       if (ok) {
                         await refreshLibrary();
                       } else {

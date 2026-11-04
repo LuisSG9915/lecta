@@ -1,21 +1,21 @@
 {
   "tool": "audit-investigacion",
   "version": 1,
-  "generatedAt": "2026-11-04T03:08:28.198Z",
+  "generatedAt": "2026-11-04T03:33:27.432Z",
   "root": "/Users/luis/Desarrollos Devin/lecta",
-  "commit": "2c1b271cf480425a342b6c12b4bbea910815dcab",
+  "commit": "eca8e8306b1abf904ecb7cb546bca69cb5af9aae",
   "doc": "docs/estrategia-aprendizaje-2026-10-24.md",
   "registry": "docs/auditoria/claims.json",
   "online": false,
   "summary": {
     "claims": 14,
     "pass": 1,
-    "fail": 0,
-    "unverified": 13,
+    "fail": 1,
+    "unverified": 12,
     "skipped": 0,
     "refutedExpected": 0,
-    "codePass": 14,
-    "codeFail": 0,
+    "codePass": 13,
+    "codeFail": 1,
     "referencePass": 0,
     "referenceUnverified": 32,
     "referenceFail": 0,
@@ -81,12 +81,12 @@
             "callers": [
               {
                 "file": "src/client/components/DiscoverRail.tsx",
-                "line": 117,
+                "line": 118,
                 "text": "const inputsFor = createCoverageInputsLoader(scope, loadInputs);"
               },
               {
                 "file": "src/client/components/Shelf.tsx",
-                "line": 454,
+                "line": 467,
                 "text": "const inputsFor = createCoverageInputsLoader(scope);"
               }
             ]
@@ -621,7 +621,7 @@
       "title": "La exposición pasiva acota a 8 lemas por paso y respeta lápidas",
       "statement": "La vía viva registra hasta 8 lemas no consultados por paso de página, exige lectura por debajo de 450 ppm, no revive lápidas y mantiene «familiar» a las 3 exposiciones dentro de la sesión.",
       "section": "H5",
-      "status": "UNVERIFIED",
+      "status": "FAIL",
       "auditVerdict": {
         "status": "SOSTENIDA",
         "date": "2026-10-26",
@@ -631,7 +631,7 @@
           "src/client/lib/idb.ts:2093-2102"
         ]
       },
-      "codeStatus": "PASS",
+      "codeStatus": "FAIL",
       "refStatus": "UNVERIFIED",
       "checks": [
         {
@@ -672,12 +672,16 @@
         },
         {
           "kind": "code-anchor",
-          "status": "PASS",
-          "detail": "src/client/lib/idb.ts:2123 coincide con /if \\(existing\\?\\.deleted\\) return existing/",
+          "status": "FAIL",
+          "detail": "src/client/lib/idb.ts:2121-2123 no contiene /if \\(existing\\?\\.deleted\\) return existing/",
           "observed": {
             "file": "src/client/lib/idb.ts",
-            "line": 2123,
-            "text": "if (existing?.deleted) return existing;"
+            "asked": 2122,
+            "excerpt": [
+              "2121:   if (status !== undefined) out.status = status;",
+              "2122:   return out;",
+              "2123: }"
+            ]
           }
         },
         {
@@ -1720,5 +1724,5 @@
       }
     }
   ],
-  "verdict": "PASS_WITH_UNVERIFIED"
+  "verdict": "FAIL"
 }

@@ -938,6 +938,94 @@
   flex: 0 0 auto;
 }
 
+.shelf-community-filters {
+  display: flex;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+  margin-bottom: var(--s-3);
+}
+
+.shelf-community-more {
+  margin-top: var(--s-2);
+}
+
+/* Chips de género en la hoja de opciones (al compartir la guía) */
+.shelf-genre-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin-block-end: var(--s-3);
+}
+
+@media (max-width: 40rem) {
+  /* En pantalla angosta el botón baja a su propia línea a ancho
+     completo: la portada y el título conservan toda la primera
+     fila en vez de competir con «Usar en papel». */
+  .shelf-community-item {
+    flex-wrap: wrap;
+  }
+
+  .shelf-community-attach {
+    flex: 1 1 100%;
+  }
+}
+
+/* ---------- Explora (pestañas: Comunidad / Libros gratuitos) ---------- */
+.shelf-explore {
+  margin-block-start: var(--s-5);
+  /* Ítem del grid .shelf: igual que .discover, sin el tope el
+     contenido ancho (el riel) empuja la página fuera del ancho. */
+  min-inline-size: 0;
+}
+
+.shelf-explore-tabs {
+  display: flex;
+  gap: var(--s-4);
+  border-bottom: 1px solid var(--rule);
+  margin-block-end: var(--s-3);
+}
+
+.shelf-explore-tab {
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 0 0 var(--s-2);
+  margin-block-end: -1px;
+  font-family: var(--font-ui);
+  font-size: var(--fs-base);
+  color: var(--ink-soft);
+  cursor: pointer;
+  border-block-end: 2px solid transparent;
+}
+
+.shelf-explore-tab[aria-selected="true"] {
+  color: var(--ink);
+  font-weight: 600;
+  border-block-end-color: var(--accent-primary);
+}
+
+.shelf-explore-hint {
+  padding: var(--s-3) 0;
+}
+
+/* Dentro del panel la pestaña ya nombra la sección: se ocultan los
+   encabezados propios de cada contenido y los separadores que los
+   distinguían cuando eran secciones independientes. */
+.shelf-explore [role="tabpanel"] .shelf-community {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.shelf-explore [role="tabpanel"] .shelf-community-title,
+.shelf-explore [role="tabpanel"] .discover-head .eyebrow {
+  display: none;
+}
+
+.shelf-explore [role="tabpanel"] .discover {
+  margin-block-start: 0;
+}
+
 @keyframes pulse-badge {
   from {
     transform: scale(0.92);

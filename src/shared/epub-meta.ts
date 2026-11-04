@@ -5,6 +5,9 @@ export type ExtractedEpubMeta = {
   author?: string;
   language?: string;
   sections?: number;
+  // dc:subject crudos del OPF: el género editorial se normaliza aparte
+  // (book-genres.ts) — vienen en cualquier idioma y formato del mundo.
+  subjects?: string[];
 };
 
 export function isHashLikeIdentifier(value?: string | null): boolean {
@@ -209,11 +212,20 @@ export async function extractEpubMeta(
   const rawLang = langMatch ? cleanXmlContent(langMatch[1]) : "";
   const language = detectBookLanguage(rawLang ? `<dc:language>${rawLang}</dc:language>` : opfXml);
 
+  const subjects: string[] = [];
+  for (const match of opfXml.matchAll(
+    /<(?:dc:)?subject\b[^>]*>([\s\S]*?)<\/(?:dc:)?subject>/gi,
+  )) {
+    const subject = cleanXmlContent(match[1]);
+    if (subject) subjects.push(subject);
+  }
+
   return {
     title: title || undefined,
     author: author || undefined,
     language: language || "es",
     sections,
+    subjects: subjects.length ? subjects : undefined,
   };
 }
 

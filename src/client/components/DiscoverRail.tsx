@@ -80,6 +80,7 @@ export default function DiscoverRail({
   const [errorId, setErrorId] = useState<string | null>(null);
   const [coverBroken, setCoverBroken] = useState<Set<string>>(new Set());
   const [activeFilter, setActiveFilter] = useState<string>("Todos");
+  const [query, setQuery] = useState("");
   const cancelledRef = useRef(false);
 
   useEffect(() => {
@@ -169,11 +170,18 @@ export default function DiscoverRail({
     return [...measured, ...rest];
   }, [books, coverages]);
 
-  // Filtrado por tag / estado de ánimo
+  // Filtrado por tag / estado de ánimo y por la búsqueda de la pestaña
+  // «Libros gratuitos» (título o autor).
   const filtered = useMemo(() => {
-    if (!activeFilter || activeFilter === "Todos") return ordered;
-    return ordered.filter((b) => getBookMoodTags(b).includes(activeFilter));
-  }, [ordered, activeFilter]);
+    const q = query.trim().toLowerCase();
+    return ordered.filter(
+      (b) =>
+        (activeFilter === "Todos" || getBookMoodTags(b).includes(activeFilter)) &&
+        (!q ||
+          b.title.toLowerCase().includes(q) ||
+          b.author.toLowerCase().includes(q)),
+    );
+  }, [ordered, activeFilter, query]);
 
   if (!books) return null;
 
@@ -209,6 +217,20 @@ export default function DiscoverRail({
           ))}
         </div>
       </div>
+
+      {ordered.length > 6 ? (
+        <input
+          type="search"
+          className="shelf-community-search"
+          placeholder="Buscar por título o autor"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          aria-label="Buscar en libros gratuitos"
+        />
+      ) : null}
+      {filtered.length === 0 ? (
+        <p className="meta">Sin libros que coincidan con la búsqueda.</p>
+      ) : null}
 
       <ul className="discover-rail">
         {filtered.map((book) => {

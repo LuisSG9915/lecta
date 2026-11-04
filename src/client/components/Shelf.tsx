@@ -49,10 +49,12 @@ import {
   type StrategyPreset,
 } from "../lib/settings";
 import type { TipAction } from "../../shared/tip";
+import { BOOK_GENRES } from "../../shared/book-genres";
 import { levelProgress } from "../lib/gamification";
 import { isReviewDueWord } from "../lib/fsrs";
 import BookCover from "./BookCover";
 import DiscoverRail from "./DiscoverRail";
+import ExploreShelf from "./ExploreShelf";
 import Icon from "./Icon";
 import { CompanionButton } from "./CompanionButton";
 import { CompanionStage } from "./CompanionStage";
@@ -70,7 +72,7 @@ import Sheet from "./Sheet";
 // marca los que aún tienen una subida encolada.
 export type ShelfItem = Pick<
   StoredBook,
-  "hash" | "name" | "addedAt" | "title" | "author" | "cover" | "sectionCount" | "language"
+  "hash" | "name" | "addedAt" | "title" | "author" | "cover" | "sectionCount" | "language" | "genre"
 > & {
   remoteOnly?: boolean;
   pendingUpload?: boolean;
@@ -131,8 +133,11 @@ export type ShelfProps = {
   onLibraryChange?: () => void;
   // Compartir (o retirar) un EPUB propio en la biblioteca comunitaria
   // «solo papel». El padre pega contra la API y refresca la estantería.
-  onShareBook?: (book: ShelfItem, shared: boolean) => Promise<void> | void;
-  // Sección «Comunidad» diferida: la monta App con su propio fetch.
+  // `genre` viaja solo al compartir: la elección de los chips (o ""
+  // si se desmarcó) pisa al género detectado del EPUB.
+  onShareBook?: (book: ShelfItem, shared: boolean, genre?: string) => Promise<void> | void;
+  // Contenido de la pestaña «Comunidad» de la sección Explora:
+  // la monta App con su propio fetch diferido (solo con sesión).
   communitySection?: React.ReactNode;
   // «Obtener» del riel Descubre: el padre baja el EPUB del catálogo y
   // lo pasa al flujo normal de añadir libro.
@@ -227,6 +232,13 @@ export default function Shelf({
   const [goalProgress, setGoalProgress] = useState<WeeklyGoalProgress | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [optionsBook, setOptionsBook] = useState<ShelfItem | null>(null);
+  // Género elegido en los chips al compartir: se siembra con el
+  // detectado del EPUB y puede desmarcarse ("" = sin clasificar).
+  const [shareGenre, setShareGenre] = useState("");
+  const openOptions = (book: ShelfItem | null) => {
+    setOptionsBook(book);
+    setShareGenre(book?.genre ?? "");
+  };
   const [dragging, setDragging] = useState(false);
   const [sampleState, setSampleState] = useState<"idle" | "loading" | "error">(
     "idle",
@@ -260,7 +272,7 @@ export default function Shelf({
         onPaperBook(book);
         return;
       }
-      setOptionsBook(book);
+      openOptions(book);
       return;
     }
     if (
@@ -278,7 +290,7 @@ export default function Shelf({
       } catch {
         // Fallback suave
       }
-      setOptionsBook(book);
+      openOptions(book);
       return;
     }
 
@@ -416,6 +428,7 @@ export default function Shelf({
             language: meta?.language,
             sectionCount: meta?.sectionCount,
             cover: meta?.cover ?? undefined,
+            genre: meta?.genre,
             metaVersion: 1,
           },
           scope,
@@ -1531,7 +1544,7 @@ export default function Shelf({
                         title="Opciones del libro"
                         onClick={(e) => {
                           e.stopPropagation();
-                          setOptionsBook(book);
+                          openOptions(book);
                         }}
                       >
                         ⋯
@@ -1559,8 +1572,6 @@ export default function Shelf({
               </li>
             </ul>
           </section>
-
-          {communitySection}
 
           {optionsBook ? (
             <Sheet
@@ -1659,13 +1670,36 @@ export default function Shelf({
 
                 {onShareBook && !optionsBook.paperOnly ? (
                   <div className="shelf-options-section">
+                    {!optionsBook.shared ? (
+                      <>
+                        <p className="shelf-options-label">Género de la guía</p>
+                        <div className="shelf-genre-chips">
+                          {BOOK_GENRES.map((genre) => (
+                            <button
+                              key={genre}
+                              type="button"
+                              className={`discover-filter-pill${shareGenre === genre ? " discover-filter-pill--active" : ""}`}
+                              aria-pressed={shareGenre === genre}
+                              onClick={() =>
+                                setShareGenre((current) =>
+                                  current === genre ? "" : genre,
+                                )
+                              }
+                            >
+                              {genre}
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    ) : null}
                     <button
                       type="button"
                       className="btn shelf-options-share-btn"
                       onClick={() => {
                         const target = optionsBook;
+                        const genre = shareGenre;
                         setOptionsBook(null);
-                        void onShareBook(target, !target.shared);
+                        void onShareBook(target, !target.shared, genre);
                       }}
                     >
                       {optionsBook.shared
@@ -1777,14 +1811,22 @@ export default function Shelf({
         </>
       )}
 
-      {/* Riel del catálogo público: bajo la retícula y también con la
-          estantería vacía — Descubre es justamente la respuesta a
-          «no sé qué leer». Se oculta solo si no hay índice. */}
-      {onGetCatalogBook ? (
-        <DiscoverRail
-          library={library}
-          onOpen={onOpen}
-          onGet={onGetCatalogBook}
+      {/* «Explora»: Comunidad + Libros gratuitos en pestañas, bajo la
+          retícula y también con la estantería vacía — es la respuesta a
+          «no sé qué leer». Cada pestaña mantiene su propia búsqueda;
+          el catálogo se oculta solo si no hay índice. */}
+      {communitySection || onGetCatalogBook ? (
+        <ExploreShelf
+          community={communitySection}
+          catalog={
+            onGetCatalogBook ? (
+              <DiscoverRail
+                library={library}
+                onOpen={onOpen}
+                onGet={onGetCatalogBook}
+              />
+            ) : undefined
+          }
         />
       ) : null}
     </div>

@@ -297,6 +297,117 @@ describe("Biblioteca comunitaria (/api/books/community + /share)", () => {
     expect(json.books).toEqual([]);
   });
 
+  it("GET /community devuelve el género y tolera la columna ausente (pre-025)", async () => {
+    // La guía publicada permite que la entrada sea adjuntable.
+    mockBucket.list = vi.fn(async () => ({
+      objects: [{ key: `guides/${minimalHash}.json` }],
+      truncated: false,
+    }));
+    getSessionMock.mockResolvedValue({ user: { id: "user-lector" } });
+    const queryMock = stubDb(async () => ({
+      rows: [
+        {
+          book_id: minimalHash,
+          title: "El Quijote",
+          author: "Cervantes",
+          language: "es",
+          size_bytes: 12345,
+          has_cover: false,
+          shared_at: 1000,
+          sharers: 2,
+          genre: "Clásicos",
+        },
+      ],
+    }));
+    const res = await app.request(
+      "/api/books/community",
+      { method: "GET" },
+      { BOOKS: mockBucket as unknown as WorkerEnv["BOOKS"], DATABASE_URL: "postgres://mock" },
+    );
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as { books: Array<Record<string, unknown>> };
+    expect(json.books[0]?.genre).toBe("Clásicos");
+    expect(queryMock.mock.calls[0]?.[0]).toContain("genre");
+  });
+
+  it("GET /community sin columna genre reintenta y devuelve la lista con género vacío", async () => {
+    getSessionMock.mockResolvedValue({ user: { id: "user-lector" } });
+    let calls = 0;
+    stubDb(async (sql: string) => {
+      calls += 1;
+      if (sql.includes("genre")) {
+        const err = new Error("column genre does not exist") as Error & { code: string };
+        err.code = "42703";
+        throw err;
+      }
+      return {
+        rows: [
+          {
+            book_id: minimalHash,
+            title: "El Quijote",
+            author: "Cervantes",
+            language: "es",
+            size_bytes: 1,
+            has_cover: false,
+            shared_at: 1,
+            sharers: 1,
+          },
+        ],
+      };
+    });
+    const res = await app.request(
+      "/api/books/community",
+      { method: "GET" },
+      { BOOKS: mockBucket as unknown as WorkerEnv["BOOKS"], DATABASE_URL: "postgres://mock" },
+    );
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as { books: Array<Record<string, unknown>> };
+    // No hubo guía publicada (list vacío) → queda filtrada, pero la
+    // consulta base sí se ejecutó tras el fallo de la columna.
+    expect(calls).toBe(2);
+    expect(json.books).toEqual([]);
+  });
+
+  it("PUT /share con género lo escribe en la fila; valor ajeno se normaliza a vacío", async () => {
+    getSessionMock.mockResolvedValue({ user: { id: "user-dueno" } });
+    const queryMock = stubDb(async (sql: string) => {
+      if (sql.includes("reset_at")) return { rows: [{ reset_at: 0 }] };
+      if (sql.includes("UPDATE user_books")) return { rowCount: 1 };
+      return { rows: [] };
+    });
+    const res = await app.request(
+      `/api/books/${minimalHash}/share`,
+      {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ genre: "Fantasía" }),
+      },
+      { BOOKS: mockBucket as unknown as WorkerEnv["BOOKS"], DATABASE_URL: "postgres://mock" },
+    );
+    expect(res.status).toBe(200);
+    expect(queryMock).toHaveBeenCalledWith(
+      expect.stringContaining("genre = $6"),
+      expect.arrayContaining(["user-dueno", minimalHash, true, "Fantasía"]),
+    );
+
+    queryMock.mockClear();
+    const resBad = await app.request(
+      `/api/books/${minimalHash}/share`,
+      {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ genre: "Género inventado" }),
+      },
+      { BOOKS: mockBucket as unknown as WorkerEnv["BOOKS"], DATABASE_URL: "postgres://mock" },
+    );
+    expect(resBad.status).toBe(200);
+    // Un valor fuera de BOOK_GENRES se guarda como "" — nunca texto libre.
+    expect(queryMock).toHaveBeenCalledWith(
+      expect.stringContaining("genre = $6"),
+      expect.arrayContaining([""]),
+    );
+  });
+
   it("GET /community con columna ausente devuelve lista vacía, no 500", async () => {
     getSessionMock.mockResolvedValue({ user: { id: "user-lector" } });
     stubDb(async () => {

@@ -56,12 +56,14 @@ export async function runBookQueue(scope?: DbScope): Promise<number> {
             let author = book.author;
             let sectionCount = book.sectionCount;
             let language = book.language;
+            let genre = book.genre;
             let coverBlob = book.cover ?? null;
 
             if (
               !title ||
               !language ||
               !sectionCount ||
+              !genre ||
               isHashLikeIdentifier(title) ||
               isHashLikeIdentifier(book.name)
             ) {
@@ -71,6 +73,7 @@ export async function runBookQueue(scope?: DbScope): Promise<number> {
                 author = meta.author || author;
                 sectionCount = meta.sectionCount ?? sectionCount;
                 language = meta.language || language;
+                genre = genre || meta.genre;
                 if (!coverBlob && meta.cover) {
                   coverBlob = meta.cover;
                 }
@@ -94,6 +97,7 @@ export async function runBookQueue(scope?: DbScope): Promise<number> {
                 author,
                 sectionCount,
                 language,
+                genre,
               },
               bound,
             );

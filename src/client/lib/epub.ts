@@ -158,6 +158,18 @@ export const getBookTitle = (book: EpubBook) =>
 export const getBookAuthor = (book: EpubBook) =>
   flattenMetadataValue(book.metadata?.author) || flattenMetadataValue(book.metadata?.creator);
 
+// dc:subject del OPF: foliate lo expone como string, lista u objetos
+// según el EPUB. Se aplana a textos para que book-genres.ts decida el
+// género editorial.
+export const getBookSubjects = (book: EpubBook): string[] => {
+  const raw = (book.metadata as Record<string, unknown> | undefined)
+    ?.subject;
+  const list = Array.isArray(raw) ? raw : raw != null ? [raw] : [];
+  return list
+    .map((item) => flattenMetadataValue(item).trim())
+    .filter((subject) => subject.length > 0);
+};
+
 export const normalizeLanguage = (raw: unknown): string => {
   if (typeof raw !== "string") return "es";
   const trimmed = raw.trim().toLowerCase();

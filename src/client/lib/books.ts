@@ -18,6 +18,9 @@ export type RemoteBook = {
   // que solo abre el índice del modo papel, nunca el lector.
   shared?: boolean;
   paperOnly?: boolean;
+  // Género editorial detectado al subir (migración 025): sirve para
+  // preseleccionar los chips al compartir desde otro dispositivo.
+  genre?: string;
 };
 
 // Entrada del catálogo comunitario: una por sha256 aunque lo compartan
@@ -30,6 +33,8 @@ export type CommunityBook = {
   sizeBytes: number;
   hasCover: boolean;
   sharers: number;
+  // Uno de BOOK_GENRES o "" cuando la guía no se clasificó todavía.
+  genre: string;
 };
 
 export type BookUploadMeta = {
@@ -37,6 +42,7 @@ export type BookUploadMeta = {
   author?: string;
   sectionCount?: number;
   language?: string;
+  genre?: string;
 };
 
 // Las funciones de libros remotos re-lanzan StaleScopeError: «la cuenta
@@ -54,6 +60,7 @@ export async function uploadBook(
     if (meta.author) params.set("author", meta.author);
     if (meta.sectionCount) params.set("sections", String(meta.sectionCount));
     if (meta.language) params.set("language", meta.language);
+    if (meta.genre) params.set("genre", meta.genre);
     const response = await accountFetch(
       `/api/books/${hash}?${params.toString()}`,
       {
@@ -121,13 +128,20 @@ export async function shareBook(
   shared: boolean,
   scope?: DbScope,
   guide?: unknown,
+  // Género elegido en la hoja de opciones (BOOK_GENRES); "" lo limpia,
+  // undefined no toca la columna. Viaja en el mismo PUT que la guía.
+  genre?: string,
 ) {
   try {
+    const payload =
+      shared && (guide !== undefined || genre !== undefined)
+        ? JSON.stringify({ guide, genre })
+        : undefined;
     const response = await accountFetch(`/api/books/${hash}/share`, {
       method: shared ? "PUT" : "DELETE",
       headers:
-        shared && guide ? { "content-type": "application/json" } : undefined,
-      body: shared && guide ? JSON.stringify({ guide }) : undefined,
+        payload ? { "content-type": "application/json" } : undefined,
+      body: payload,
     }, scope);
     return response.ok;
   } catch (error) {

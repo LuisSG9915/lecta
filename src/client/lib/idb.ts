@@ -38,6 +38,9 @@ export interface StoredBook {
   language?: string;
   sectionCount?: number;
   cover?: Blob;
+  // Género editorial detectado de dc:subject (BOOK_GENRES); al
+  // compartir, los chips lo preseleccionan y la elección pisa a este.
+  genre?: string;
   // Marca de que ya intentamos leer los metadatos (aunque haya fallado).
   metaVersion?: number;
   // Copia de la biblioteca comunitaria: solo abre el índice del modo
@@ -1272,6 +1275,7 @@ export type SaveBookInput =
       language?: string;
       sectionCount?: number;
       cover?: Blob;
+      genre?: string;
       metaVersion?: number;
       paperOnly?: boolean;
       name?: string;
@@ -1322,6 +1326,7 @@ export async function saveBook(book: SaveBookInput, scope?: DbScope): Promise<St
   const language = "language" in book ? book.language : undefined;
   const sectionCount = "sectionCount" in book ? book.sectionCount : undefined;
   const cover = "cover" in book ? book.cover : undefined;
+  const genre = "genre" in book ? book.genre : undefined;
   const metaVersion = "metaVersion" in book ? book.metaVersion : undefined;
   const paperOnly = "paperOnly" in book ? book.paperOnly : undefined;
 
@@ -1334,6 +1339,7 @@ export async function saveBook(book: SaveBookInput, scope?: DbScope): Promise<St
     language,
     sectionCount,
     cover,
+    genre,
     metaVersion,
     paperOnly,
     data: buffer,
@@ -1396,13 +1402,19 @@ export async function getBookData(id: string, scope?: DbScope): Promise<ArrayBuf
 // archivo; metaVersion evita releer libros cuyo intento ya falló.
 export async function updateBookMeta(
   hash: string,
-  meta: Pick<StoredBook, "title" | "author" | "language" | "sectionCount" | "cover" | "metaVersion">,
+  meta: Pick<StoredBook, "title" | "author" | "language" | "sectionCount" | "cover" | "genre" | "metaVersion">,
   scope?: DbScope,
 ) {
   return withDb(scope, async (db) => {
     const book = await db.get("books", hash);
     if (!book) return;
-    await db.put("books", { ...book, ...meta });
+    // Los campos ausentes (undefined) no pisan lo ya guardado: un
+    // género detectado antes no se borra porque la relectura no lo
+    // volvió a mapear.
+    const clean = Object.fromEntries(
+      Object.entries(meta).filter(([, value]) => value !== undefined),
+    );
+    await db.put("books", { ...book, ...clean });
   });
 }
 

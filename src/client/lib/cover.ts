@@ -1,5 +1,6 @@
-import { openEpub, getBookAuthor, getBookLanguage, getBookTitle, detectBookLanguage } from "./epub";
+import { openEpub, getBookAuthor, getBookLanguage, getBookSubjects, getBookTitle, detectBookLanguage } from "./epub";
 import { isHashLikeIdentifier, humanizeFilename } from "../../shared/epub-meta";
+import { genreFromSubjects } from "../../shared/book-genres";
 
 export { isHashLikeIdentifier, humanizeFilename };
 
@@ -13,6 +14,8 @@ export type BookMeta = {
   language: string;
   sectionCount: number;
   cover: Blob | null;
+  // Género editorial normalizado desde dc:subject ("" = sin clasificar).
+  genre?: string;
 };
 
 export function bookDisplayName(item: {
@@ -59,6 +62,7 @@ export async function readBookMeta(file: Blob): Promise<BookMeta | null> {
         language,
         sectionCount: book.sections.length,
         cover,
+        genre: genreFromSubjects(getBookSubjects(book)) || undefined,
       };
     } finally {
       await close();

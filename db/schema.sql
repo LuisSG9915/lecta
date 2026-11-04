@@ -111,6 +111,7 @@ CREATE TABLE IF NOT EXISTS user_books (
   shared BOOLEAN NOT NULL DEFAULT FALSE,
   shared_at BIGINT NOT NULL DEFAULT 0,
   paper_only BOOLEAN NOT NULL DEFAULT FALSE,
+  genre TEXT NOT NULL DEFAULT '',
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
   PRIMARY KEY (user_id, book_id)
