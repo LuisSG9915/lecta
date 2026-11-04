@@ -156,6 +156,36 @@
   sin sesión no hay consultas automáticas y el panel muestra el aviso de
   iniciar sesión en vez de un botón que siempre fallaría con 401.
 
+## Diccionario local descargable (dict-*)
+
+- **Un paquete por idioma** (`public/dict/dict-<lang>-v1.bin`, TSV+gzip):
+  `es` 4.8 MB (126 905 lemas · 336 248 formas), `en` 501 KB (15 233 lemas ·
+  49 155 formas con glosas en español — el Wikcionario en español documenta
+  palabras inglesas). Los genera `scripts/lexicon-pack.mjs --lang=es|en` desde
+  el catálogo de `lecta_dev`; regenerar = subir la versión en la URL y pegar
+  el SHA-256 nuevo en `DICTIONARY_PACKS` (`src/client/lib/dictionaryPack.ts`).
+- **El orden de acepciones refleja al servidor**: fichas por `freq_rank NULLS
+  LAST` y luego cantidad de acepciones («casa» abre sustantivo, «ser» verbo).
+  Acepciones: Wikcionario si la ficha tiene; si no, la semilla propia
+  (`source IS NULL`); las de IA nunca se empaquetan.
+- **Instalación silenciosa al abrir un libro es/en** (`Reader.tsx`,
+  `requestIdleCallback`): descarga → verifica bytes + SHA-256 → parseo en
+  streaming → IndexedDB `lecta-dict-<lang>` (una base por idioma para que la
+  reinstalación solo purgue al suyo). La meta `pack` se escribe al final; un
+  fallo reintenta en la próxima apertura. `lookupDictionaryPack` entra en
+  `lookupWordRaw` tras cuaderno/memoria y antes del banco de calibración y
+  la red — `offline: true` y sin gastar la cuota de IA.
+- **La extensión `.bin` es a propósito**: con `.gz` vite dev sirve
+  `Content-Encoding: gzip` y el fetch llega descomprimido, rompiendo el hash.
+  Y viven en `/dict/`, no `/lexicon/`, porque en `_headers` de Cloudflare las
+  reglas que coinciden se concatenan (se medía un Cache-Control doble).
+- **Catálogo inglés en el servidor**: `lexicon-wiktionary.mjs --lang=en` con
+  el dump `data/lexicon/en-wiktionary.jsonl.gz` (sección «Inglés» de kaikki
+  eswiktionary). Cargado en `lecta_dev` y en `lecta` el 2026-11-03 (19 011
+  fichas, 32 317 acepciones, 65 832 formas; fuente `kaikki-eswiktionary-en`).
+  `LEXICON_CATALOG_REV` quedó `es:1, en:2` — los manifiestos `bookVocab:v1:`
+  con otra rev se re-analizan solos.
+
 ## Portal Kindle (/k)
 
 Portal server-rendered para e-ink (`src/worker/kindle/`): HTML+CSS inline,
@@ -252,7 +282,20 @@ formularios. Código: `routes.ts` (rutas), `views.ts` (HTML), `epub-reader.ts`
 ## Producción
 
 - URL: `https://lecta.luis-sg9915.workers.dev` — deploy con `pnpm run deploy`.
-- Último deploy: **2026-11-03**, versión `cbc17829-30ee-4d52-bd3b-a025024ebd3b`,
+- Último deploy: **2026-11-03** (segundo del día), versión
+  `990381ad-f87b-43df-8bfb-0ae762979aed`, Lecta **v0.2.15**: diccionario local
+  descargable es/en + catálogo inglés cargado en `lecta` (detalle en
+  §«Diccionario local descargable»). Al abrir un libro el paquete de su
+  idioma se instala solo en segundo plano; `school` resuelve
+  «Escuela, instituto, colegio.» sin red ni IA. `pnpm gate` completo en verde
+  (3 294 pruebas, bundle 208.77/215 kB — 97.1%). En caliente:
+  `/api/health` → 200, `/dict/dict-en-v1.bin` y `dict-es-v1.bin` → 200 con
+  `Cache-Control: immutable` (regla única), SHA-256 del `.bin` descargado =
+  el de `DICTIONARY_PACKS`, `school`/`schools`/`run` → acepciones en español
+  por la API, `casa` → «Edificio donde vive una persona o familia.».
+  Instalación real en Puppeteer contra dev: `en` ~3 s, `es` ~23 s en idle.
+  Sin `smoke:auth`/`smoke:sync`: no toca auth ni el contrato de sync.
+- Deploy anterior: **2026-11-03**, versión `cbc17829-30ee-4d52-bd3b-a025024ebd3b`,
   Lecta **v0.2.15**: ficha de palabra con significado primero y explicación
   al tocar (detalle en §«Ficha de palabra (WordPanel)»). Al abrir ya no se
   lanza la IA: se muestra el significado del diccionario con la frase del
