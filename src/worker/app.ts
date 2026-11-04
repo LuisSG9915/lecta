@@ -3514,6 +3514,15 @@ app.get("/api/user/books", async (c) => {
   const user = await getSessionUser(c);
   if (!user) return c.json({ books: [] });
 
+  // Defensa del modelo A1: las entradas paper_only no son libros
+  // descargables — su «archivo» es la guía (r2_key = guides/…). Si
+  // salieran en esta lista, un sync que bajara lo que falta guardaría
+  // el JSON de la guía como EPUB local.
+  const flags = await listUserBookFlags(c.env, user.id).catch(
+    () => new Map<string, BookFlags>(),
+  );
+  const notPaper = (id: unknown) => !flags.get(String(id))?.paperOnly;
+
   if (getConnectionString(c.env)) {
     const rows = await withClient(c.env, async (client) => {
       const res = await client.query<{
@@ -3537,7 +3546,7 @@ app.get("/api/user/books", async (c) => {
         updatedAt: Number(r.updatedat),
       }));
     });
-    if (rows) return c.json({ books: rows });
+    if (rows) return c.json({ books: rows.filter((b) => notPaper(b.id)) });
   }
 
   if (c.env.DB) {
@@ -3546,8 +3555,10 @@ app.get("/api/user/books", async (c) => {
        FROM user_books WHERE user_id = ? ORDER BY updated_at DESC`,
     )
       .bind(user.id)
-      .all();
-    return c.json({ books: results ?? [] });
+      .all<{ id: string }>();
+    return c.json({
+      books: (results ?? []).filter((b) => notPaper(b.id)),
+    });
   }
 
   return c.json({ books: [] });
@@ -3563,6 +3574,19 @@ app.get("/api/user/books/:bookId/file", async (c) => {
   }
 
   const bookId = c.req.param("bookId");
+
+  // Misma defensa A1 que /api/books/:hash — una entrada paper_only no
+  // tiene EPUB; su r2_key apunta a la guía y servirla aquí la haría
+  // pasar por libro descargable.
+  const fileFlags = await listUserBookFlags(c.env, user.id).catch(
+    () => new Map<string, BookFlags>(),
+  );
+  if (fileFlags.get(bookId)?.paperOnly)
+    return c.json(
+      { error: "Esta entrada es una guía de papel, no un libro descargable." },
+      403,
+    );
+
   let r2Key: string | null = null;
 
   if (getConnectionString(c.env)) {

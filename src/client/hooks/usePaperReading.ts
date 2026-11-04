@@ -280,46 +280,52 @@ export function usePaperReading(
 
       let catalog: ChapterCatalog;
       let guideForms: string[] | null = null;
-      if (stored.paperOnly && stored.data.size === 0) {
-        // Guía comunitaria (modelo A1): no hay EPUB — el catálogo y las
-        // formas vienen del JSON guardado en `paperGuide:v1:` (o se
-        // vuelve a pedir al servidor si este dispositivo la perdió).
+
+      // Guía comunitaria (modelo A1): sesión `paperGuide:v1:` primero,
+      // servidor después — también cuando el registro no es paperOnly
+      // pero su EPUB no abre (fila vieja envenenada o blob evacuado):
+      // si la guía existe, el índice papel se repara solo en vez de
+      // quedarse en «No se pudo abrir».
+      const loadGuide = async (): Promise<PaperBookGuide | null> => {
         const guideKey = paperGuideSessionKey(bookHash);
         const rawGuide = await loadSessionValue(guideKey, scope).catch(
           () => null,
         );
-        let guide: PaperBookGuide | null = null;
+        let loaded: PaperBookGuide | null = null;
         if (rawGuide) {
           try {
-            guide = sanitizePaperBookGuide(JSON.parse(rawGuide), bookHash);
+            loaded = sanitizePaperBookGuide(JSON.parse(rawGuide), bookHash);
           } catch {
-            // Valor de sesión ilegible: la guía se vuelve a pedir abajo
-            // en vez de tumbar la apertura.
+            // Valor de sesión ilegible: la guía se vuelve a pedir.
           }
         }
-        if (!guide) {
+        if (!loaded) {
           const fetched = await fetchBookGuide(bookHash, scope).catch(
             () => null,
           );
-          guide = fetched ? sanitizePaperBookGuide(fetched, bookHash) : null;
-          if (guide)
+          loaded = fetched ? sanitizePaperBookGuide(fetched, bookHash) : null;
+          if (loaded)
             await saveSessionValue(
               guideKey,
-              JSON.stringify(guide),
+              JSON.stringify(loaded),
               scope,
             ).catch(() => undefined);
         }
-        if (disposed(seq)) return;
-        if (!guide) {
-          // Ni en sesión ni en el servidor: adjunta sin guía publicada,
-          // sin sesión válida o sin red en este momento.
-          reportClientError({
-            name: "PaperOpen",
-            code: "paper_guide_unavailable",
-          });
-          setPhase("error");
-          return;
-        }
+        return loaded;
+      };
+
+      const wantsGuide = Boolean(stored.paperOnly) && stored.data.size === 0;
+      const opened = wantsGuide
+        ? null
+        : await openEpub(stored.data).catch(() => null);
+      if (disposed(seq)) {
+        void opened?.close();
+        return;
+      }
+      const guide = opened ? null : await loadGuide();
+      if (disposed(seq)) return;
+
+      if (guide) {
         const lang = stored.language || guide.language || "es";
         langRef.current = lang;
         setLanguage(lang);
@@ -340,12 +346,8 @@ export function usePaperReading(
         guideForms = [
           ...new Set(guide.chapters.flatMap((ch) => ch.forms)),
         ];
-      } else {
-        const { book, close } = await openEpub(stored.data);
-        if (disposed(seq)) {
-          void close();
-          return;
-        }
+      } else if (opened) {
+        const { book, close } = opened;
         bookRef.current = book;
         closeRef.current = close;
         const detected = await detectBookLanguage(book).catch(() =>
@@ -368,6 +370,15 @@ export function usePaperReading(
           loadCached,
           saveCached,
         });
+      } else {
+        // Ni EPUB que abra ni guía disponible: adjunta sin publicar,
+        // sesión caduca o sin red — el reporte dice cuál camino falló.
+        reportClientError({
+          name: "PaperOpen",
+          code: wantsGuide ? "paper_guide_unavailable" : "epub_and_guide_missing",
+        });
+        setPhase("error");
+        return;
       }
 
       // Perfil del lector por la misma cadena de refreshProfile.
