@@ -14,6 +14,7 @@ import {
   yearSummary,
 } from "../lib/journey-insights";
 import { formatDuration } from "../lib/reading-activity";
+import JourneyFold from "./JourneyFold";
 
 // «Tu análisis»: cifras personales dentro de «Tu recorrido». Reusa las
 // clases de barras del recorrido (journey-weeks-chart) para no inventar
@@ -85,11 +86,11 @@ export default function JourneyInsights({
       aria-label="Tu análisis"
       data-testid="journey-insights"
     >
-      <h2 className="journey-section-title">Tu análisis</h2>
-      <p className="meta">
-        Cifras medidas en este dispositivo y en tu cuenta. Lo estimado
-        va marcado como estimado.
-      </p>
+      <JourneyFold title="Tu análisis">
+        <p className="meta">
+          Cifras medidas en este dispositivo y en tu cuenta. Lo estimado
+          va marcado como estimado.
+        </p>
 
       {weeksChart ? (
         <div className="journey-insight-block">
@@ -301,6 +302,7 @@ export default function JourneyInsights({
           lectura registrada.
         </p>
       ) : null}
+      </JourneyFold>
     </section>
   );
 }

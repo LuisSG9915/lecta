@@ -1970,7 +1970,7 @@ export default function App() {
                 />
               </div>
               <div className="mini-reader-info">
-                <strong className="mini-reader-title">
+                <strong className="mini-reader-title visually-hidden">
                   {miniReaderBook.title || miniReaderBook.name}
                 </strong>
                 <span className="mini-reader-progress">
@@ -1980,9 +1980,10 @@ export default function App() {
               <button
                 type="button"
                 className="btn btn--primary mini-reader-resume"
+                aria-label={`Continuar leyendo ${miniReaderBook.title || miniReaderBook.name}`}
                 onClick={resumeMiniReader}
               >
-                Continuar leyendo →
+                Continuar
               </button>
             </aside>
           ) : null}

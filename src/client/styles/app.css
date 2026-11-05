@@ -780,6 +780,24 @@ button.app-nav-sync-indicator:focus-visible {
   max-inline-size: 100%;
 }
 
+/* Estilos rápidos: fila de chips + «Personalizado» cuando la mezcla no
+   coincide con ningún preset (G4). */
+.kindle-presets-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s-2) var(--s-3);
+}
+
+.kindle-presets-row .segmented {
+  inline-size: fit-content;
+  max-inline-size: 100%;
+}
+
+.kindle-presets-custom {
+  font-style: italic;
+}
+
 .setting-vocab-row {
   display: flex;
   align-items: center;
@@ -993,21 +1011,24 @@ button.app-nav-sync-indicator:focus-visible {
   50% { transform: scale(1.2); opacity: 1; }
 }
 
-/* Píldora persistente de Lectura en Curso (MiniReaderBar) */
+/* Píldora persistente de Lectura en Curso (MiniReaderBar): compacta y
+   anclada a la derecha para no tapar los rieles horizontales del
+   Cuaderno/Biblioteca. El título solo va para lector de pantalla. */
 .mini-reader-bar {
   position: fixed;
   bottom: calc(56px + env(safe-area-inset-bottom) + 8px);
-  left: var(--s-3, 12px);
+  left: auto;
   right: var(--s-3, 12px);
-  max-width: calc(100vw - 24px);
+  width: auto;
+  max-width: min(20rem, calc(100vw - 24px));
   background: var(--paper-raised);
   border: 1px solid var(--rule);
-  border-radius: var(--r-2, 12px);
+  border-radius: 999px;
   box-shadow: 0 4px 18px rgba(0, 0, 0, 0.12);
-  padding: 8px 12px;
+  padding: 6px 8px 6px 6px;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   z-index: 20;
 }
 
@@ -1021,8 +1042,8 @@ button.app-nav-sync-indicator:focus-visible {
 }
 
 .mini-reader-cover {
-  width: 34px;
-  height: 46px;
+  width: 28px;
+  height: 38px;
   flex-shrink: 0;
   border-radius: 3px;
   overflow: hidden;

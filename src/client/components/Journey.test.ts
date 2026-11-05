@@ -627,6 +627,57 @@ describe("Journey (Tu recorrido)", () => {
       expect(c.getAttribute("cy")).not.toContain("NaN");
     }
   });
+
+  it("pliega «Tu análisis», «Récords» y «Tu horizonte» en móvil (sin matchMedia) conservando el texto en el DOM", async () => {
+    await act(async () => {
+      root?.render(h(Journey, { onClose: vi.fn(), books: sampleBooks }));
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // jsdom no tiene matchMedia → el hook lo trata como móvil:
+    // los tres pliegues existen y arrancan cerrados.
+    const folds = container?.querySelectorAll("details.journey-fold");
+    expect(folds?.length).toBe(3);
+    folds?.forEach((f) => expect(f.hasAttribute("open")).toBe(false));
+
+    // Plegadas, pero el contenido sigue en el DOM para lectores de
+    // pantalla y búsqueda.
+    expect(container?.textContent).toContain("Tu análisis");
+    expect(container?.textContent).toContain("Récords personales");
+    expect(container?.textContent).toContain("Tu horizonte de palabras");
+  });
+
+  it("abre los pliegues de serie cuando matchMedia reporta escritorio (≥64rem)", async () => {
+    const originalMatchMedia = window.matchMedia;
+    window.matchMedia = ((query: string) =>
+      ({
+        matches: true,
+        media: query,
+        onchange: null,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        addListener: () => {},
+        removeListener: () => {},
+        dispatchEvent: () => false,
+      }) as unknown as MediaQueryList) as typeof window.matchMedia;
+
+    try {
+      await act(async () => {
+        root?.render(h(Journey, { onClose: vi.fn(), books: sampleBooks }));
+      });
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      const folds = container?.querySelectorAll("details.journey-fold");
+      expect(folds?.length).toBe(3);
+      folds?.forEach((f) => expect(f.hasAttribute("open")).toBe(true));
+    } finally {
+      window.matchMedia = originalMatchMedia;
+    }
+  });
 });
 
 

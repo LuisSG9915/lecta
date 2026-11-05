@@ -3550,6 +3550,68 @@
   margin: 0;
 }
 
+/* Secciones plegables del recorrido (JourneyFold): en móvil arrancan
+   cerradas para acortar el scroll; en escritorio van siempre abiertas
+   y el resumen deja de comportarse como botón. */
+.journey-fold {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.journey-fold-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+  list-style: none;
+  cursor: pointer;
+  min-height: 44px;
+  margin: -6px -8px;
+  padding: 6px 8px;
+  border-radius: var(--r-2);
+}
+
+.journey-fold-summary::-webkit-details-marker {
+  display: none;
+}
+
+.journey-fold-chevron {
+  margin-inline-start: auto;
+  display: inline-flex;
+  color: var(--ink-soft);
+  transition: transform 0.18s ease;
+}
+
+.journey-fold[open] > .journey-fold-summary .journey-fold-chevron {
+  transform: rotate(90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .journey-fold-chevron {
+    transition: none;
+  }
+}
+
+.journey-fold-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+@media (min-width: 64rem) {
+  .journey-fold-summary {
+    cursor: default;
+    min-height: 0;
+    margin: 0;
+    padding: 0;
+  }
+
+  .journey-fold-chevron {
+    display: none;
+  }
+}
+
 /* 3. Récords personales en tarjeta unificada */
 .journey-records-card {
   background: var(--paper-raised);
@@ -3714,20 +3776,21 @@
 
 /* «Tu análisis» en dos columnas: título e intro ocupan toda la
    fila y las gráficas se emparejan (8 semanas | Cuándo lees,
-   Repasos | Tu año…). */
+   Repasos | Tu año…). La grilla vive en .journey-fold-body porque
+   la sección es plegable (JourneyFold) desde G1. */
 @media (min-width: 64rem) {
-  .journey-insights {
+  .journey-insights .journey-fold-body {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     column-gap: var(--s-4);
     align-items: start;
   }
 
-  .journey-insights > :not(.journey-insight-block) {
+  .journey-insights .journey-fold-body > :not(.journey-insight-block) {
     grid-column: 1 / -1;
   }
 
-  .journey-insights > .journey-insight-block {
+  .journey-insights .journey-fold-body > .journey-insight-block {
     margin-top: 0;
   }
 }

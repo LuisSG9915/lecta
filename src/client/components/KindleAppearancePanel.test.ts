@@ -145,4 +145,57 @@ describe("KindleAppearancePanel", () => {
     });
     expect(host.textContent).toContain("El servicio de ajustes no está disponible todavía.");
   });
+
+  it("los estilos rápidos aplican presets completos y marcan «Personalizado» al mezclar", async () => {
+    await renderPanel();
+    // Las prefs de la cuenta del mock no coinciden con ningún preset.
+    expect(host.textContent).toContain("Personalizado");
+
+    const groups = [...host.querySelectorAll<HTMLElement>('[role="group"]')];
+    const presetGroup = groups.find(
+      (g) => g.getAttribute("aria-label") === "Estilos rápidos",
+    )!;
+    const dislexia = [...presetGroup.querySelectorAll("button")].find(
+      (b) => b.textContent === "Dislexia",
+    )!;
+    await act(async () => {
+      dislexia.click();
+    });
+
+    expect(dislexia.getAttribute("aria-pressed")).toBe("true");
+    expect(host.textContent).not.toContain("Personalizado");
+
+    // La vista previa refleja el preset: OpenDyslexic + párrafos numerados.
+    const content = host.querySelector<HTMLElement>(".kindle-preview-content")!;
+    expect(content.style.fontFamily).toContain("OpenDyslexic");
+    expect(content.querySelector(".kindle-preview-pnum")).toBeTruthy();
+
+    // El PUT envía las prefs resueltas del preset (nunca el id).
+    accountFetchMock.mockClear();
+    accountFetchMock.mockResolvedValue({ ok: true, json: async () => ({ ok: true }) });
+    const saveBtn = [...host.querySelectorAll("button")].find((b) =>
+      b.textContent?.includes("Guardar en mi Kindle"),
+    )!;
+    await act(async () => {
+      saveBtn.click();
+      await Promise.resolve();
+    });
+    const body = JSON.parse(accountFetchMock.mock.calls[0][1].body as string);
+    expect(body.prefs.fontFamily).toBe("opendyslexic");
+    expect(body.prefs.approach).toBe("paragraphs");
+    expect(body.prefs.id).toBeUndefined();
+
+    // Cambiar un ajuste manual convierte la mezcla en «Personalizado».
+    const alignGroup = [...host.querySelectorAll<HTMLElement>('[role="group"]')].find(
+      (g) => g.getAttribute("aria-label") === "Alineación",
+    )!;
+    const justificado = [...alignGroup.querySelectorAll("button")].find(
+      (b) => b.textContent === "Justificado",
+    )!;
+    await act(async () => {
+      justificado.click();
+    });
+    expect(host.textContent).toContain("Personalizado");
+    expect(dislexia.getAttribute("aria-pressed")).toBe("false");
+  });
 });

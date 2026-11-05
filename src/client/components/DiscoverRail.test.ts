@@ -363,5 +363,29 @@ describe("DiscoverRail", () => {
     expect(affinityPills[2].getAttribute("data-tone")).toBe("supported");
     expect(affinityPills[2].textContent).toBe("Con apoyo bilingüe");
   });
+
+  it("no pinta píldoras de mood: una sola etiqueta por libro (la afinidad)", async () => {
+    // La categoría/mood sigue en los filtros de arriba; en la tarjeta
+    // solo va la afinidad para que títulos y «Obtener» alineen (G3).
+    const books = [book("quijote", { title: "Don Quijote", language: "es" })];
+
+    await act(async () => {
+      root.render(
+        h(DiscoverRail, {
+          library: [],
+          onOpen: vi.fn(),
+          onGet: vi.fn(),
+          fetchIndex: async () => index(books),
+          fetchVocab: async () => null,
+          loadInputs: async () => null,
+        }),
+      );
+    });
+
+    const card = host.querySelector(".discover-book");
+    expect(card).toBeTruthy();
+    expect(card?.querySelectorAll(".discover-tag-pill").length).toBe(0);
+    expect(card?.querySelectorAll(".book-affinity-pill").length).toBe(1);
+  });
 });
 

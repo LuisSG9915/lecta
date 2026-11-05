@@ -47,6 +47,7 @@ import { displayTitle } from "../lib/cover";
 import { CompanionStage } from "./CompanionStage";
 import ReadingActivity from "./ReadingActivity";
 import JourneyInsights from "./JourneyInsights";
+import JourneyFold from "./JourneyFold";
 import { dayKeyOf } from "../lib/reading-activity";
 import { summarizeChapterFollows } from "../lib/chapter-follow";
 import {
@@ -909,14 +910,16 @@ export default function Journey({ onClose, books }: JourneyProps) {
               className="journey-section journey-lexical-section"
               aria-label="Tu horizonte de palabras"
             >
-              <div className="journey-section-head">
-                <h2 className="journey-section-title">Tu horizonte de palabras</h2>
-                <span className="meta">
-                  {lexicalGrowths.length === 1
-                    ? "1 idioma activo"
-                    : `${lexicalGrowths.length} idiomas`}
-                </span>
-              </div>
+              <JourneyFold
+                title="Tu horizonte de palabras"
+                headExtra={
+                  <span className="meta">
+                    {lexicalGrowths.length === 1
+                      ? "1 idioma activo"
+                      : `${lexicalGrowths.length} idiomas`}
+                  </span>
+                }
+              >
               <p className="meta">
                 Descubre cómo evoluciona tu vocabulario en cada idioma y el
                 impacto de la lectura fluida sin fricción.
@@ -1029,6 +1032,7 @@ export default function Journey({ onClose, books }: JourneyProps) {
                   </article>
                 ))}
               </div>
+              </JourneyFold>
             </section>
 
             {/* 3. Récords personales */}
@@ -1036,7 +1040,7 @@ export default function Journey({ onClose, books }: JourneyProps) {
               className="journey-section"
               aria-label="Récords personales"
             >
-              <h2 className="journey-section-title">Récords personales</h2>
+              <JourneyFold title="Récords personales">
               <div className="journey-records-card">
                 <div className="journey-record-item">
                   <span className="journey-record-title">Día más lector</span>
@@ -1098,6 +1102,7 @@ export default function Journey({ onClose, books }: JourneyProps) {
                   ) : null}
                 </div>
               </div>
+              </JourneyFold>
             </section>
 
             {/* 4. Tu análisis: semanas, horarios, repasos y año.

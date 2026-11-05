@@ -240,7 +240,6 @@ export default function DiscoverRail({
             confidenceByLang.get(coverageLanguageOf(book.language)) ?? "low";
           const palette = coverPalette(book.id);
           const showCover = book.cover && !coverBroken.has(book.id);
-          const tags = getBookMoodTags(book);
           const userTheta = getLanguageTheta(book.language || "es");
           // Una sola etiqueta de nivel: la cobertura manda cuando el
           // perfil la sostiene; si no, se usa la dificultad curada.
@@ -301,14 +300,10 @@ export default function DiscoverRail({
                 ) : null}
               </div>
               <div className="discover-meta">
-                <div className="discover-tags" aria-label="Etiquetas">
-                  {/* Una sola etiqueta: con dos o tres apiladas los
-                      títulos y botones «Obtener» del riel quedaban
-                      desalineados entre columnas. */}
-                  {tags.slice(0, 1).map((t) => (
-                    <span key={t} className="discover-tag-pill">{t}</span>
-                  ))}
-                </div>
+                {/* Una sola etiqueta por libro (la afinidad personalizada):
+                    con dos o tres apiladas los títulos y botones «Obtener»
+                    del riel quedaban desalineados entre columnas. La
+                    categoría sigue accesible en los filtros de arriba. */}
                 <span
                   className="book-affinity-pill"
                   data-tone={affinity.tone}

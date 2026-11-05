@@ -55,6 +55,76 @@ export const DEFAULT_KINDLE_PREFS: KindlePrefs = {
   layout: "paged",
 };
 
+/* ── Estilos rápidos (presets) ─────────────────────────────────────────
+   Combinaciones completas de las 7 preferencias, aprobadas por producto
+   (fase G4). Son azúcar sobre el formulario: al servidor siempre viajan
+   las prefs resueltas, nunca el id del preset. */
+export const KINDLE_PRESETS = [
+  {
+    id: "clasico",
+    label: "Clásico",
+    prefs: {
+      fontFamily: "literata",
+      fontSize: "md",
+      lineHeight: "normal",
+      margin: "md",
+      align: "justify",
+      approach: "clean",
+      layout: "paged",
+    },
+  },
+  {
+    id: "legible",
+    label: "Alta legibilidad",
+    prefs: {
+      fontFamily: "atkinson",
+      fontSize: "lg",
+      lineHeight: "loose",
+      margin: "md",
+      align: "left",
+      approach: "clean",
+      layout: "paged",
+    },
+  },
+  {
+    id: "dislexia",
+    label: "Dislexia",
+    prefs: {
+      fontFamily: "opendyslexic",
+      fontSize: "lg",
+      lineHeight: "loose",
+      margin: "lg",
+      align: "left",
+      approach: "paragraphs",
+      layout: "paged",
+    },
+  },
+  {
+    id: "agil",
+    label: "Ágil",
+    prefs: {
+      fontFamily: "source-serif",
+      fontSize: "md",
+      lineHeight: "normal",
+      margin: "sm",
+      align: "left",
+      approach: "anchors",
+      layout: "scroll",
+    },
+  },
+] as const satisfies ReadonlyArray<{ id: string; label: string; prefs: KindlePrefs }>;
+
+/** Id del preset que coincide con las prefs actuales, o null si la
+ *  combinación es personalizada (mezcla manual de ajustes). */
+export function matchKindlePreset(prefs: KindlePrefs): string | null {
+  const match = KINDLE_PRESETS.find((preset) =>
+    (Object.keys(preset.prefs) as (keyof KindlePrefs)[]).every(
+      (key) => preset.prefs[key] === prefs[key],
+    ),
+  );
+  return match ? match.id : null;
+}
+
 function pick<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
   return typeof value === "string" && (allowed as readonly string[]).includes(value)
     ? (value as T)

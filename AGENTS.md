@@ -762,3 +762,28 @@ decisiones de producto las tomó Luis; esto documenta las invariantes técnicas.
   lint 0 warnings, build + `check:size` con ~4,5 kB gzip de margen) y capturas
   1440/390 px en `noche` y `papel`.
 
+### Fase G (2026-11): densidad móvil y estilos rápidos
+
+- **`useMediaQuery(query)`** (`src/client/hooks/useMediaQuery.ts`): media query
+  reactiva con `useSyncExternalStore`; sin `matchMedia` (jsdom) regresa `false`
+  — los componentes tratan `false` como móvil.
+- **`JourneyFold`** (`components/JourneyFold.tsx`): sección plegable del
+  recorrido. En móvil arranca cerrada; a ≥64rem va siempre abierta y el
+  summary ignora el clic (chevron oculto). Plegadas: «Tu análisis»,
+  «Récords personales» y «Tu horizonte de palabras». La grilla de 2 columnas
+  del análisis vive en `.journey-insights .journey-fold-body` (los bloques ya
+  no son hijos directos del `section`).
+- **Mini-reproductor móvil**: pastilla compacta anclada a la derecha
+  (`.mini-reader-bar`, `left:auto; right:var(--s-3)`); el título va en
+  `.visually-hidden` para lector de pantalla y el botón es «Continuar» con
+  `aria-label` completo. En escritorio sigue siendo el ítem del riel.
+- **Explora**: una sola píldora visible por libro — la de **afinidad**
+  (`.book-affinity-pill`); la categoría/mood solo vive en los chips de
+  filtro superiores. `CommunityShelf` mantiene sus `discover-tag-pill`
+  propias («Guía de papel», género): no son el mismo control.
+- **Presets Kindle**: `KINDLE_PRESETS` y `matchKindlePreset` en
+  `src/shared/kindle-prefs.ts` («Clásico» = `DEFAULT_KINDLE_PREFS`,
+  «Alta legibilidad», «Dislexia», «Ágil»). En el panel son chips
+  `aria-pressed`; una mezcla manual muestra «Personalizado». Al servidor
+  (`PUT /api/kindle/prefs`) viajan las prefs resueltas, nunca el id.
+

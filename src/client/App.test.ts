@@ -643,10 +643,14 @@ describe("App · navegación principal (Fase 2)", () => {
 
     const bar = host.querySelector(".mini-reader-bar");
     expect(bar).toBeTruthy();
+    // Pastilla compacta: el título es solo para lector de pantalla y
+    // el botón se acorta a «Continuar» con aria-label completo.
     expect(bar?.textContent).toContain("b.epub");
-    expect(bar?.textContent).toContain("Continuar leyendo →");
+    expect(bar?.textContent).toContain("Continuar");
+    const labeledBtn = bar?.querySelector<HTMLButtonElement>('[aria-label*="Continuar leyendo"]');
+    expect(labeledBtn).toBeTruthy();
 
-    // Al pulsar «Continuar leyendo →», reabre el lector
+    // Al pulsar «Continuar», reabre el lector
     const resumeBtn = bar?.querySelector<HTMLButtonElement>(".mini-reader-resume");
     expect(resumeBtn).toBeTruthy();
     await act(async () => resumeBtn!.click());

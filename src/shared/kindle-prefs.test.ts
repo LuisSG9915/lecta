@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_KINDLE_PREFS,
+  KINDLE_PRESETS,
+  matchKindlePreset,
   normalizeKindlePrefs,
   prefsFromRow,
 } from "./kindle-prefs";
@@ -64,5 +66,25 @@ describe("kindle-prefs (K2)", () => {
       approach: "paragraphs",
       layout: "scroll",
     });
+  });
+
+  it("«Clásico» es exactamente el preset por defecto", () => {
+    // Si cambian los defaults de la cuenta, el preset «Clásico» debe
+    // seguirlos: es la promesa de la etiqueta.
+    expect(matchKindlePreset(DEFAULT_KINDLE_PREFS)).toBe("clasico");
+  });
+
+  it("cada preset sobrevive la normalización y se identifica al revés", () => {
+    for (const preset of KINDLE_PRESETS) {
+      const normalized = normalizeKindlePrefs(preset.prefs);
+      expect(normalized).toEqual(preset.prefs);
+      expect(matchKindlePreset(normalized)).toBe(preset.id);
+    }
+  });
+
+  it("una mezcla que no coincide con ningún preset es «Personalizado» (null)", () => {
+    expect(
+      matchKindlePreset({ ...DEFAULT_KINDLE_PREFS, fontSize: "xl" }),
+    ).toBeNull();
   });
 });

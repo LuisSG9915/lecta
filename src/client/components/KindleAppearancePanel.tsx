@@ -3,12 +3,14 @@ import { accountFetch } from "../lib/account-fetch";
 import {
   DEFAULT_KINDLE_PREFS,
   KINDLE_PREF_LABELS,
+  KINDLE_PRESETS,
   KINDLE_PREVIEW_FONT_SIZES,
   KINDLE_PREVIEW_FONT_STACKS,
   KINDLE_PREVIEW_LINE_HEIGHTS,
   KINDLE_PREVIEW_MARGINS,
   KINDLE_PREVIEW_SAMPLE,
   anchorSplitIndex,
+  matchKindlePreset,
   normalizeKindlePrefs,
   type KindleMarginPref,
   type KindleApproach,
@@ -143,6 +145,7 @@ export function KindleAppearancePanel() {
     return <p className="meta">Cargando tus ajustes de Kindle…</p>;
   }
 
+  const activePreset = matchKindlePreset(prefs);
   const margin = KINDLE_PREVIEW_MARGINS[prefs.margin];
   const previewTextStyle: CSSProperties = {
     fontFamily: KINDLE_PREVIEW_FONT_STACKS[prefs.fontFamily],
@@ -157,6 +160,33 @@ export function KindleAppearancePanel() {
       <p className="setting-hint">
         Así se verá tu lectura en el Kindle. Cambia los ajustes y guárdalos en tu cuenta.
       </p>
+
+      {/* Estilos rápidos: combinaciones completas de los 7 ajustes.
+          Al servidor siempre viajan las prefs resueltas, nunca el id. */}
+      <div className="kindle-pref-field kindle-presets">
+        <span className="kindle-pref-legend">Estilos rápidos</span>
+        <div className="kindle-presets-row">
+          <div className="segmented segmented--wrap" role="group" aria-label="Estilos rápidos">
+            {KINDLE_PRESETS.map((preset) => (
+              <button
+                key={preset.id}
+                type="button"
+                data-active={activePreset === preset.id || undefined}
+                aria-pressed={activePreset === preset.id}
+                onClick={() => {
+                  setPrefs(normalizeKindlePrefs(preset.prefs));
+                  setSaved(false);
+                }}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+          {activePreset === null ? (
+            <span className="meta kindle-presets-custom">Personalizado</span>
+          ) : null}
+        </div>
+      </div>
 
       <div className="kindle-panel-grid">
         {/* Vista previa local e inmediata: superficie tipo E-Ink con el
