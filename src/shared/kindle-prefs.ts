@@ -124,3 +124,71 @@ export function prefsFromRow(row: Record<string, unknown> | null | undefined): K
     layout: row.layout,
   });
 }
+
+/* ── Vista previa local ────────────────────────────────────────────────
+   Valores reales del lector /k (src/worker/kindle/views.ts) para que la
+   vista previa inmediata del panel «Tu Kindle» muestre lo mismo que el
+   dispositivo. Una sola fuente: el worker y el cliente importan de aquí. */
+
+export const KINDLE_PREVIEW_FONT_SIZES: Record<KindleFontSize, number> = {
+  sm: 1.0,
+  md: 1.18,
+  lg: 1.35,
+  xl: 1.55,
+  xxl: 1.8,
+};
+
+export const KINDLE_PREVIEW_LINE_HEIGHTS: Record<KindleLineHeight, number> = {
+  compact: 1.42,
+  normal: 1.58,
+  loose: 1.78,
+};
+
+/** Margen del lector en px (vertical / horizontal), como `.margin-*` del /k. */
+export const KINDLE_PREVIEW_MARGINS: Record<KindleMarginPref, { y: number; x: number }> = {
+  sm: { y: 6, x: 12 },
+  md: { y: 8, x: 22 },
+  lg: { y: 10, x: 38 },
+};
+
+export const KINDLE_PREVIEW_FONT_STACKS: Record<KindleFontFamily, string> = {
+  literata: '"Literata", Georgia, "Times New Roman", serif',
+  "source-serif": '"Source Serif 4", "Source Serif Pro", Georgia, serif',
+  atkinson: '"Atkinson Hyperlegible", Verdana, sans-serif',
+  opendyslexic: '"OpenDyslexic", "Atkinson Hyperlegible", Verdana, sans-serif',
+};
+
+/** Pasaje de muestra: el mismo que sirve /k/preview cuando la cuenta no
+ *  tiene libros, ahora compartido para que el panel lo pinte en local. */
+export const KINDLE_PREVIEW_SAMPLE = {
+  title: "La casa encendida",
+  paragraphs: [
+    "La luz de la tarde entraba por la ventana y dibujaba rectángulos dorados sobre la mesa de madera. En la cocina sonaba una tetera, y el vapor subía despacio, como si también él tuviera paciencia.",
+    "Mara abrió el cuaderno por la página marcada con una hoja seca. Había palabras que todavía no entendía del todo, pero cada una llevaba una anotación pequeña al margen, escrita con su letra redonda y tranquila.",
+    "Afuera, el patio olía a tierra mojada. Un pájaro cruzó el aire sin prisa, y por un momento todo el cuarto pareció contener la respiración, como si la casa entera leyera con ella.",
+  ],
+} as const;
+
+export function kindlePreviewSampleHtml(): string {
+  return (
+    `<h2>${KINDLE_PREVIEW_SAMPLE.title}</h2>` +
+    KINDLE_PREVIEW_SAMPLE.paragraphs.map((p) => `<p>${p}</p>`).join("\n")
+  );
+}
+
+/** Índice de corte de la «ancla de lectura»: ~40 % de las letras de la
+ *  palabra (4→2, 6→3, 10→4); la apóstrofe queda dentro del prefijo si cae
+ *  antes del límite. Devuelve 0 para palabras de menos de 4 letras. Lo
+ *  usan el lector /k (`anchorifyWord`) y la vista previa local. */
+export function anchorSplitIndex(word: string): number {
+  const letters = word.match(/[\p{L}\p{M}]/gu) ?? [];
+  if (letters.length < 4) return 0;
+  const take = Math.ceil(letters.length * 0.4);
+  let i = 0;
+  let seen = 0;
+  while (i < word.length && seen < take) {
+    if (/[\p{L}\p{M}]/u.test(word[i])) seen += 1;
+    i += 1;
+  }
+  return i;
+}

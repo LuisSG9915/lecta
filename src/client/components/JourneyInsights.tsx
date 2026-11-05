@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import type {
   SavedBookPosition,
   SavedInterval,
@@ -26,6 +26,9 @@ type JourneyInsightsProps = {
   reviews: SavedReview[];
   words: SavedWord[];
   books: Pick<StoredBook, "hash" | "name" | "title" | "author">[];
+  // Gráfica «Últimas 8 semanas» del recorrido: se pinta como primer
+  // bloque para emparejarla con «Cuándo lees» en la cuadrícula.
+  weeksChart?: ReactNode;
 };
 
 const BAR_COLS = "journey-weeks-chart";
@@ -36,6 +39,7 @@ export default function JourneyInsights({
   reviews,
   words,
   books,
+  weeksChart,
 }: JourneyInsightsProps) {
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
@@ -77,7 +81,7 @@ export default function JourneyInsights({
 
   return (
     <section
-      className="journey-section"
+      className="journey-section journey-insights"
       aria-label="Tu análisis"
       data-testid="journey-insights"
     >
@@ -86,6 +90,13 @@ export default function JourneyInsights({
         Cifras medidas en este dispositivo y en tu cuenta. Lo estimado
         va marcado como estimado.
       </p>
+
+      {weeksChart ? (
+        <div className="journey-insight-block">
+          <h3 className="journey-insight-title">Últimas 8 semanas</h3>
+          {weeksChart}
+        </div>
+      ) : null}
 
       {habits.totalMin > 0 ? (
         <div className="journey-insight-block">

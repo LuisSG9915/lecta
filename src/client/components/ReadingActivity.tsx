@@ -1,4 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
+// Este panel vive tanto en el Cuaderno como en «Tu recorrido»: trae su
+// propia hoja para no depender de que Vocabulary se haya cargado antes.
+import "../styles/notebook.css";
 import {
   captureDbScope,
   listIntervals,
@@ -361,7 +364,7 @@ export default function ReadingActivity({
         </p>
       ) : (
         <>
-          <section aria-label="Últimos siete días">
+          <section aria-label="Últimos siete días" className="act-week-section">
             <h2 className="eyebrow act-eyebrow">Últimos 7 días</h2>
             <ul className="act-days">
               {week.map(({ dayKey, ms }) => (

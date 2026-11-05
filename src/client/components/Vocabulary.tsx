@@ -2633,59 +2633,61 @@ function FullVocabulary({
                     />
                   </label>
 
-                  <div className="nb-filters" role="group" aria-label="Filtrar palabras">
-                    {FILTERS.map(({ id, label }) => {
-                      const count = countForFilter(id);
-                      if (id === "due" && count === 0 && filter !== "due") return null;
-                      return (
-                        <button
-                          key={id}
-                          type="button"
-                          className="theme-option"
-                          data-active={filter === id || undefined}
-                          aria-pressed={filter === id}
-                          onClick={() => {
-                            setFilter(id);
-                            setListLimit(GROUP_PAGE);
-                          }}
-                        >
-                          {label} ({count})
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <div className="nb-tools-row">
+                    <div className="nb-filters" role="group" aria-label="Filtrar palabras">
+                      {FILTERS.map(({ id, label }) => {
+                        const count = countForFilter(id);
+                        if (id === "due" && count === 0 && filter !== "due") return null;
+                        return (
+                          <button
+                            key={id}
+                            type="button"
+                            className="theme-option"
+                            data-active={filter === id || undefined}
+                            aria-pressed={filter === id}
+                            onClick={() => {
+                              setFilter(id);
+                              setListLimit(GROUP_PAGE);
+                            }}
+                          >
+                            {label} ({count})
+                          </button>
+                        );
+                      })}
+                    </div>
 
-                  <div className="nb-filters" role="group" aria-label="Ritmo de repaso">
-                    <span className="meta">Ritmo de repaso</span>
-                    {(
-                      [
-                        { id: "relaxed", label: "Fluido 85%", hint: "Repasa menos seguido: aceptas olvidar un poco más" },
-                        { id: "standard", label: "Equilibrado 90%", hint: "Equilibrio entre esfuerzo y memoria" },
-                        { id: "intensive", label: "Firme 93%", hint: "Repasa más seguido para olvidar menos" },
-                      ] as const
-                    ).map(({ id, label, hint }) => (
-                      <button
-                        key={id}
-                        type="button"
-                        className="theme-option"
-                        title={hint}
-                        data-active={retentionHorizon === id || undefined}
-                        aria-pressed={retentionHorizon === id}
-                        onClick={() => changeRetentionHorizon(id)}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
+                    <details className="nb-more-filters">
+                      <summary className="meta">
+                        <Icon name="sliders" size={14} />
+                        Más filtros
+                        {activeExtraFiltersCount > 0
+                          ? ` · ${activeExtraFiltersCount} activo${activeExtraFiltersCount === 1 ? "" : "s"}`
+                          : ""}
+                      </summary>
+                      <div className="nb-more-filters-content">
+                        <div className="nb-filters" role="group" aria-label="Ritmo de repaso">
+                          <span className="meta">Ritmo de repaso</span>
+                          {(
+                            [
+                              { id: "relaxed", label: "Fluido 85%", hint: "Repasa menos seguido: aceptas olvidar un poco más" },
+                              { id: "standard", label: "Equilibrado 90%", hint: "Equilibrio entre esfuerzo y memoria" },
+                              { id: "intensive", label: "Firme 93%", hint: "Repasa más seguido para olvidar menos" },
+                            ] as const
+                          ).map(({ id, label, hint }) => (
+                            <button
+                              key={id}
+                              type="button"
+                              className="theme-option"
+                              title={hint}
+                              data-active={retentionHorizon === id || undefined}
+                              aria-pressed={retentionHorizon === id}
+                              onClick={() => changeRetentionHorizon(id)}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
 
-                  <details className="nb-more-filters">
-                    <summary className="meta">
-                      Más filtros
-                      {activeExtraFiltersCount > 0
-                        ? ` · ${activeExtraFiltersCount} activo${activeExtraFiltersCount === 1 ? "" : "s"}`
-                        : ""}
-                    </summary>
-                    <div className="nb-more-filters-content">
                       {availableLanguages.length > 1 ? (
                         <div
                           className="nb-filters nb-filters--lang"
@@ -2775,30 +2777,34 @@ function FullVocabulary({
                     </div>
                   </details>
 
-                  <details className="nb-export">
-                    <summary className="meta">Exportar</summary>
-                    <div className="nb-export-menu">
-                      <button type="button" className="btn--quiet" onClick={exportCsv}>
-                        CSV
-                      </button>
-                      <button
-                        type="button"
-                        className="btn--quiet"
-                        onClick={exportAnkiCloze}
-                        title="Exportar para Anki con supresión de partes (Cloze) en la oración del libro"
-                      >
-                        Para Anki
-                      </button>
-                      <button
-                        type="button"
-                        className="btn--quiet"
-                        onClick={exportMarkdownNotebook}
-                        title="Exportar cuaderno completo en Markdown para Obsidian, Notion o PKM"
-                      >
-                        Cuaderno (.md)
-                      </button>
-                    </div>
-                  </details>
+                    <details className="nb-export">
+                      <summary className="meta">
+                        <Icon name="download" size={14} />
+                        Exportar
+                      </summary>
+                      <div className="nb-export-menu">
+                        <button type="button" className="btn--quiet" onClick={exportCsv}>
+                          CSV
+                        </button>
+                        <button
+                          type="button"
+                          className="btn--quiet"
+                          onClick={exportAnkiCloze}
+                          title="Exportar para Anki con supresión de partes (Cloze) en la oración del libro"
+                        >
+                          Para Anki
+                        </button>
+                        <button
+                          type="button"
+                          className="btn--quiet"
+                          onClick={exportMarkdownNotebook}
+                          title="Exportar cuaderno completo en Markdown para Obsidian, Notion o PKM"
+                        >
+                          Cuaderno (.md)
+                        </button>
+                      </div>
+                    </details>
+                  </div>
                 </div>
 
                 {filtered.length === 0 ? (

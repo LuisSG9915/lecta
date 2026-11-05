@@ -1,10 +1,20 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { accountFetch } from "../lib/account-fetch";
 import {
   DEFAULT_KINDLE_PREFS,
-  KINDLE_PREF_FIELDS,
   KINDLE_PREF_LABELS,
+  KINDLE_PREVIEW_FONT_SIZES,
+  KINDLE_PREVIEW_FONT_STACKS,
+  KINDLE_PREVIEW_LINE_HEIGHTS,
+  KINDLE_PREVIEW_MARGINS,
+  KINDLE_PREVIEW_SAMPLE,
+  anchorSplitIndex,
   normalizeKindlePrefs,
+  type KindleMarginPref,
+  type KindleApproach,
+  type KindleAlign,
+  type KindleLayoutPref,
+  type KindleLineHeight,
   type KindlePrefs,
 } from "../../shared/kindle-prefs";
 
@@ -12,31 +22,69 @@ import {
  * Panel «Tu Kindle» (K8): configura la apariencia del lector de tinta
  * electrónica desde el celular. Los ajustes viven en la cuenta (API
  * /api/kindle/prefs) y los consume cualquier Kindle vinculado. La vista
- * previa es la página REAL del lector renderizada por el servidor
- * (/k/preview/page), escalada dentro de un marco tipo Paperwhite.
+ * previa es local e inmediata: el mismo pasaje de muestra y los mismos
+ * mapas de tamaño que el lector /k (shared/kindle-prefs.ts), sin iframe.
  */
 
-const PREVIEW_DEBOUNCE_MS = 450;
+const WORD_RE = /([\p{L}\p{M}]{2,}(?:['’][\p{L}\p{M}]+)?)/gu;
 
-function previewQuery(prefs: KindlePrefs): string {
-  const qs = new URLSearchParams({
-    font: prefs.fontFamily,
-    size: prefs.fontSize,
-    lh: prefs.lineHeight,
-    margin: prefs.margin,
-    align: prefs.align,
-    mode: prefs.approach,
-    layout: prefs.layout,
-  });
-  return qs.toString();
+// Enfoque «Anclas de lectura»: misma regla que el lector /k — negrita en
+// el ~40% inicial de cada palabra de 4+ letras (anchorSplitIndex).
+function anchorize(text: string): ReactNode[] {
+  const parts: ReactNode[] = [];
+  let last = 0;
+  let key = 0;
+  for (const m of text.matchAll(WORD_RE)) {
+    const idx = m.index ?? 0;
+    if (idx > last) parts.push(text.slice(last, idx));
+    const word = m[0];
+    const cut = anchorSplitIndex(word);
+    parts.push(
+      cut > 0 ? (
+        <span key={key++}>
+          <strong className="kindle-preview-anc">{word.slice(0, cut)}</strong>
+          {word.slice(cut)}
+        </span>
+      ) : (
+        word
+      ),
+    );
+    last = idx + word.length;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return parts;
 }
 
-const selectStyle = {
-  width: "100%",
-  minHeight: "44px",
-  fontSize: "1rem",
-  padding: "0.35rem 0.5rem",
-} as const;
+type SegmentedFieldProps = {
+  legend: string;
+  name: keyof KindlePrefs;
+  options: ReadonlyArray<readonly [string, string]>;
+  value: string;
+  onChange: (name: keyof KindlePrefs, value: string) => void;
+};
+
+// Grupo segmentado para opciones cortas (alineación, disposición,
+// enfoque…): mismo control que «Animaciones del gato» en Tú.
+function SegmentedField({ legend, name, options, value, onChange }: SegmentedFieldProps) {
+  return (
+    <div className="kindle-pref-field">
+      <span className="kindle-pref-legend">{legend}</span>
+      <div className="segmented segmented--wrap" role="group" aria-label={legend}>
+        {options.map(([opt, label]) => (
+          <button
+            key={opt}
+            type="button"
+            data-active={value === opt || undefined}
+            aria-pressed={value === opt}
+            onClick={() => onChange(name, opt)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export function KindleAppearancePanel() {
   const [prefs, setPrefs] = useState<KindlePrefs>(DEFAULT_KINDLE_PREFS);
@@ -44,7 +92,6 @@ export function KindleAppearancePanel() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
-  const [previewKey, setPreviewKey] = useState(0);
 
   useEffect(() => {
     let alive = true;
@@ -63,19 +110,6 @@ export function KindleAppearancePanel() {
       alive = false;
     };
   }, []);
-
-  // La vista previa se recarga con calma tras cada cambio (debounce), para no
-  // pedir una página nueva al servidor en cada toque de un selector.
-  useEffect(() => {
-    if (!loaded) return;
-    const t = window.setTimeout(() => setPreviewKey((k) => k + 1), PREVIEW_DEBOUNCE_MS);
-    return () => window.clearTimeout(t);
-  }, [prefs, loaded]);
-
-  const previewSrc = useMemo(
-    () => `/k/preview/page?${previewQuery(prefs)}`,
-    [prefs],
-  );
 
   const update = (name: keyof KindlePrefs, value: string) => {
     setPrefs((prev) => normalizeKindlePrefs({ ...prev, [name]: value }));
@@ -109,92 +143,170 @@ export function KindleAppearancePanel() {
     return <p className="meta">Cargando tus ajustes de Kindle…</p>;
   }
 
+  const margin = KINDLE_PREVIEW_MARGINS[prefs.margin];
+  const previewTextStyle: CSSProperties = {
+    fontFamily: KINDLE_PREVIEW_FONT_STACKS[prefs.fontFamily],
+    fontSize: `${KINDLE_PREVIEW_FONT_SIZES[prefs.fontSize]}rem`,
+    lineHeight: KINDLE_PREVIEW_LINE_HEIGHTS[prefs.lineHeight],
+    textAlign: prefs.align,
+    padding: `${margin.y}px ${margin.x}px`,
+  };
+
   return (
-    <div style={{ marginTop: "var(--s-3, 0.75rem)", borderTop: "1px solid var(--rule, #ddd)", paddingTop: "var(--s-3, 0.75rem)" }}>
-      <strong style={{ display: "block", marginBottom: "var(--s-1, 0.25rem)" }}>Tu Kindle</strong>
-      <p className="meta" style={{ marginBottom: "var(--s-2, 0.5rem)" }}>
+    <div className="kindle-panel">
+      <p className="setting-hint">
         Así se verá tu lectura en el Kindle. Cambia los ajustes y guárdalos en tu cuenta.
       </p>
 
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "center",
-          margin: "0.75rem 0",
-        }}
-      >
-        <div
-          style={{
-            width: "216px",
-            height: "292px",
-            border: "6px solid #111",
-            borderRadius: "10px",
-            overflow: "hidden",
-            background: "#fff",
-          }}
-        >
-          <iframe
-            key={previewKey}
-            src={previewSrc}
-            title="Vista previa del lector Kindle"
-            sandbox="allow-same-origin allow-popups"
-            style={{
-              width: "620px",
-              height: "830px",
-              border: 0,
-              transform: "scale(0.32)",
-              transformOrigin: "0 0",
-            }}
+      <div className="kindle-panel-grid">
+        {/* Vista previa local e inmediata: superficie tipo E-Ink con el
+            pasaje de muestra compartido (sin iframe ni espera de red). */}
+        <div className="kindle-preview-col">
+          <div
+            className={`kindle-preview kindle-preview--${prefs.layout}`}
+            role="img"
+            aria-label={`Vista previa del lector Kindle con ${KINDLE_PREF_LABELS.fontSize[prefs.fontSize]?.toLowerCase() ?? ""} tamaño de letra`}
+          >
+            <div className="kindle-preview-content" style={previewTextStyle}>
+              <h2 className="kindle-preview-title">{KINDLE_PREVIEW_SAMPLE.title}</h2>
+              {KINDLE_PREVIEW_SAMPLE.paragraphs.map((paragraph, i) => (
+                <p
+                  key={i}
+                  className={[
+                    "kindle-preview-p",
+                    prefs.approach === "paragraphs" ? "kindle-preview-p--numbered" : "",
+                    i === 0 && prefs.approach !== "paragraphs" ? "kindle-preview-p--first" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                >
+                  {prefs.approach === "paragraphs" ? (
+                    <span className="kindle-preview-pnum" aria-hidden="true">
+                      §{i + 1}
+                    </span>
+                  ) : null}
+                  {prefs.approach === "anchors" ? anchorize(paragraph) : paragraph}
+                </p>
+              ))}
+            </div>
+            {prefs.layout === "paged" ? (
+              <div className="kindle-preview-bar" aria-hidden="true">
+                ‹&nbsp;&nbsp;18 %&nbsp;&nbsp;›
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="kindle-prefs-controls">
+          <div className="kindle-pref-field">
+            <label className="kindle-pref-legend" htmlFor="kindle-pref-font">
+              Tipografía
+            </label>
+            <select
+              id="kindle-pref-font"
+              aria-label="Tipografía"
+              value={prefs.fontFamily}
+              onChange={(e) => update("fontFamily", e.target.value)}
+            >
+              {Object.entries(KINDLE_PREF_LABELS.fontFamily).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="kindle-pref-field">
+            <label className="kindle-pref-legend" htmlFor="kindle-pref-size">
+              Tamaño de letra
+            </label>
+            <select
+              id="kindle-pref-size"
+              aria-label="Tamaño de letra"
+              value={prefs.fontSize}
+              onChange={(e) => update("fontSize", e.target.value)}
+            >
+              {Object.entries(KINDLE_PREF_LABELS.fontSize).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <SegmentedField
+            legend="Interlineado"
+            name="lineHeight"
+            value={prefs.lineHeight}
+            onChange={update}
+            options={Object.entries(KINDLE_PREF_LABELS.lineHeight) as ReadonlyArray<
+              readonly [KindleLineHeight, string]
+            >}
+          />
+
+          <SegmentedField
+            legend="Margen"
+            name="margin"
+            value={prefs.margin}
+            onChange={update}
+            options={Object.entries(KINDLE_PREF_LABELS.margin) as ReadonlyArray<
+              readonly [KindleMarginPref, string]
+            >}
+          />
+
+          <SegmentedField
+            legend="Alineación"
+            name="align"
+            value={prefs.align}
+            onChange={update}
+            options={Object.entries(KINDLE_PREF_LABELS.align) as ReadonlyArray<
+              readonly [KindleAlign, string]
+            >}
+          />
+
+          <SegmentedField
+            legend="Enfoque de lectura"
+            name="approach"
+            value={prefs.approach}
+            onChange={update}
+            options={Object.entries(KINDLE_PREF_LABELS.approach) as ReadonlyArray<
+              readonly [KindleApproach, string]
+            >}
+          />
+
+          <SegmentedField
+            legend="Disposición"
+            name="layout"
+            value={prefs.layout}
+            onChange={update}
+            options={Object.entries(KINDLE_PREF_LABELS.layout) as ReadonlyArray<
+              readonly [KindleLayoutPref, string]
+            >}
           />
         </div>
       </div>
-      <p className="meta" style={{ textAlign: "center", marginBottom: "0.75rem" }}>
-        <a href={`/k/preview?${previewQuery(prefs)}`} target="_blank" rel="noreferrer">
-          Ver la vista previa a tamaño real →
-        </a>
-      </p>
-
-      {KINDLE_PREF_FIELDS.map((field) => (
-        <label
-          key={field.name}
-          className="meta"
-          style={{ display: "block", marginBottom: "0.6rem", fontWeight: 500 }}
-        >
-          {field.legend}
-          <select
-            aria-label={field.legend}
-            value={prefs[field.name]}
-            onChange={(e) => update(field.name, e.target.value)}
-            style={selectStyle}
-          >
-            {Object.entries(KINDLE_PREF_LABELS[field.name] ?? {}).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
-      ))}
 
       <button
         type="button"
         className="btn btn--primary"
         onClick={save}
         disabled={saving}
-        style={{ width: "100%", minHeight: "48px", marginTop: "0.25rem" }}
+        style={{ minHeight: "48px" }}
       >
         {saving ? "Guardando…" : "Guardar en mi Kindle"}
       </button>
       {saved ? (
-        <p className="meta" style={{ color: "var(--accent, #16a34a)", marginTop: "0.5rem", fontWeight: 500 }}>
+        <p className="meta" style={{ color: "var(--accent, #16a34a)", fontWeight: 500 }}>
           Ajustes guardados. Tu Kindle los usará al abrir cualquier página.
         </p>
       ) : null}
       {error ? (
-        <p className="meta" style={{ color: "var(--danger, #dc2626)", marginTop: "0.5rem" }}>
+        <p className="meta" style={{ color: "var(--danger, #dc2626)" }}>
           {error}
         </p>
       ) : null}
     </div>
   );
 }
+
+export default KindleAppearancePanel;

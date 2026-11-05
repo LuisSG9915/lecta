@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import Icon from "./Icon";
 import {
   getSyncStatusLabel,
@@ -15,6 +16,8 @@ export interface AppNavProps {
   hasJourneyAlert?: boolean;
   syncState?: SyncState;
   hasAccount?: boolean;
+  // Ítem «Continuar» del riel lateral (solo escritorio ≥64rem).
+  resume?: ReactNode;
 }
 
 export function AppNav({
@@ -24,6 +27,7 @@ export function AppNav({
   hasJourneyAlert = false,
   syncState: syncStateProp,
   hasAccount = false,
+  resume,
 }: AppNavProps) {
   const globalSync = useSyncState();
   const sync = syncStateProp ?? globalSync;
@@ -135,6 +139,8 @@ export function AppNav({
           <span className="app-nav-label">Perfil</span>
         </button>
       </div>
+
+      {resume ? <div className="app-nav-resume">{resume}</div> : null}
     </nav>
   );
 }

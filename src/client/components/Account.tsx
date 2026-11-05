@@ -220,9 +220,14 @@ export default function Account({
   const isPage = presentation === "page";
   const companion = useCompanionSafe();
   const progress = companion?.state ? levelProgress(companion.state.xp) : null;
+  const streakDays = companion?.state?.stats.streakDays ?? 0;
   const journeySummary =
     progress?.level != null
-      ? `Nivel ${progress.level} · ${companion?.state?.stats.streakDays ?? 0} días en racha`
+      ? `Nivel ${progress.level + 1} · ${
+          streakDays > 0
+            ? `${streakDays} ${streakDays === 1 ? "día seguido" : "días seguidos"}`
+            : "Sin racha activa"
+        }`
       : "Hitos, ritmo y progreso de lectura";
 
   const { data: session, isPending } = authClient.useSession();
@@ -1286,22 +1291,6 @@ export default function Account({
               {confirmDelete ? "¿Seguro? Borra cuenta, libros y vocabulario" : "Eliminar cuenta"}
             </button>
           </div>
-          {isFeatureFlagEnabled("kindleSync") && (
-            <div className="account-kindle-guide" style={{ marginTop: "var(--s-3)", borderTop: "1px solid var(--rule)", paddingTop: "var(--s-3)" }}>
-              <strong style={{ display: "block", marginBottom: "var(--s-1)" }}>Modo Kindle y Tinta Electrónica</strong>
-              <p className="meta" style={{ marginBottom: "var(--s-2)" }}>Guía visual de 2 pasos para sincronizar con tu Kindle:</p>
-              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                <div style={{ display: "flex", gap: "8px", alignItems: "baseline" }}>
-                  <span style={{ fontWeight: "bold" }}>1.</span>
-                  <span className="meta">Abre el navegador experimental de tu Kindle e ingresa a <strong>/k</strong> (o lecta.app/k).</span>
-                </div>
-                <div style={{ display: "flex", gap: "8px", alignItems: "baseline" }}>
-                  <span style={{ fontWeight: "bold" }}>2.</span>
-                  <span className="meta">Inicia sesión con tu correo ({session.user.email}) para sincronizar libros, posición y notas al instante.</span>
-                </div>
-              </div>
-            </div>
-          )}
           {showChange ? (
             <form className="field" onSubmit={changePassword} style={{ marginTop: "var(--s-3)" }}>
               <label htmlFor="current-password">Contraseña actual</label>
@@ -1361,22 +1350,6 @@ export default function Account({
               Iniciar sesión o crear cuenta
             </button>
           </div>
-          {isFeatureFlagEnabled("kindleSync") && (
-            <div className="account-kindle-guide" style={{ marginTop: "var(--s-3)", borderTop: "1px solid var(--rule)", paddingTop: "var(--s-3)" }}>
-              <strong style={{ display: "block", marginBottom: "var(--s-1)" }}>Modo Kindle y Tinta Electrónica</strong>
-              <p className="meta" style={{ marginBottom: "var(--s-2)" }}>Guía visual de 2 pasos para sincronizar con tu Kindle:</p>
-              <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                <div style={{ display: "flex", gap: "8px", alignItems: "baseline" }}>
-                  <span style={{ fontWeight: "bold" }}>1.</span>
-                  <span className="meta">Abre el navegador experimental de tu Kindle e ingresa a <strong>/k</strong> (o lecta.app/k).</span>
-                </div>
-                <div style={{ display: "flex", gap: "8px", alignItems: "baseline" }}>
-                  <span style={{ fontWeight: "bold" }}>2.</span>
-                  <span className="meta">Inicia sesión con tu cuenta para sincronizar libros, avances y notas al instante.</span>
-                </div>
-              </div>
-            </div>
-          )}
         </section>
       ) : null}
 
@@ -1413,41 +1386,60 @@ export default function Account({
         })}
       </section>
 
-      {/* Tarjeta 3: Preferencias de Inteligencia Artificial y Datos Offline */}
-      <section className="account-card" aria-label="Preferencias de IA y Datos Offline">
+      {/* Tarjeta 3: IA y diccionario — la memoria del diccionario y el
+          interruptor de IA vivían duplicados en «Avanzado y privacidad»;
+          aquí queda una sola versión. */}
+      <section className="account-card" aria-label="Inteligencia artificial y diccionario">
         <div className="account-card-header">
-          <strong className="account-card-title">Preferencias de Inteligencia Artificial y Datos Offline</strong>
+          <strong className="account-card-title">Inteligencia artificial y diccionario</strong>
         </div>
-        <div className="setting-row">
-          <span className="setting-label">Usar IA para definir y corregir</span>
+        <div className="setting-row setting-row--toggle">
+          <div className="setting-info">
+            <span className="setting-label">Usar IA para definir y corregir</span>
+            <p className="setting-hint">
+              {useAi
+                ? "Activo: explicaciones contextuales de pasajes y ayuda adaptativa. Solo viaja la palabra y su oración (máx. 500 caracteres): nunca el libro, tu cuenta ni tu actividad."
+                : "Desactivado: solo definiciones del catálogo local y Wikcionario."}
+            </p>
+          </div>
           <Toggle
             label="Usar IA para definir y corregir"
             checked={useAi}
             onChange={toggleUseAi}
           />
         </div>
-        <p className="meta">
-          {useAi
-            ? "Activo: explicaciones contextuales de pasajes y ayuda adaptativa."
-            : "Desactivado: solo definiciones del catálogo local y Wikcionario."}
-        </p>
-        <div className="setting-row" style={{ marginTop: "var(--s-2)" }}>
-          <span className="setting-label">Memoria del diccionario offline</span>
-          <span className="meta">
-            {cachedDictWords && cachedDictWords > 0
-              ? `${cachedDictWords} palabras cacheadas`
-              : "Sin palabras cacheadas"}
-          </span>
+        <div className="setting-row setting-row--toggle">
+          <div className="setting-info">
+            <span className="setting-label">Memoria del diccionario</span>
+            <p className="setting-hint">
+              {cachedDictWords && cachedDictWords > 0
+                ? `${cachedDictWords} definiciones guardadas en este dispositivo para consulta sin conexión.`
+                : "Las definiciones consultadas o descargadas se conservan aquí para que puedas leer sin conexión."}
+            </p>
+          </div>
+          {cachedDictWords && cachedDictWords > 0 ? (
+            <button
+              type="button"
+              className="btn--quiet"
+              onClick={() => void handleClearDict()}
+            >
+              Liberar memoria ({cachedDictWords} palabras)
+            </button>
+          ) : (
+            <span className="meta">Sin palabras cacheadas</span>
+          )}
         </div>
       </section>
 
-      <section className="account-section" aria-label="Lectura y vocabulario">
-        <h2 className="eyebrow">Lectura y vocabulario</h2>
+      <section className="account-card" aria-label="Lectura y vocabulario">
+        <div className="account-card-header">
+          <strong className="account-card-title">Lectura y vocabulario</strong>
+        </div>
 
         {theme && onThemeChange ? (
           <div className="setting-block">
             <span className="setting-label">Apariencia</span>
-            <p className="meta">
+            <p className="setting-hint">
               Elige el fondo y el contraste que mejor se adapte a tu entorno de lectura.
             </p>
             <div style={{ marginTop: "var(--s-2)" }}>
@@ -1456,8 +1448,13 @@ export default function Account({
           </div>
         ) : null}
 
-        <div className="setting-row">
-          <span className="setting-label">Lengua materna</span>
+        <div className="setting-row setting-row--select">
+          <div className="setting-info">
+            <span className="setting-label">Lengua materna</span>
+            <p className="setting-hint">
+              Se usa para calibrar tu nivel de vocabulario, evitar falsas alarmas en palabras comunes y adaptar las explicaciones.
+            </p>
+          </div>
           <select
             aria-label="Lengua materna"
             value={nativeLanguage}
@@ -1471,12 +1468,14 @@ export default function Account({
             <option value="it">Italiano</option>
           </select>
         </div>
-        <p className="meta">
-          Se usa para calibrar tu nivel de vocabulario, evitar falsas alarmas en palabras comunes y adaptar las explicaciones.
-        </p>
 
-        <div className="setting-row">
-          <span className="setting-label">Meta semanal de lectura</span>
+        <div className="setting-row setting-row--select">
+          <div className="setting-info">
+            <span className="setting-label">Meta semanal de lectura</span>
+            <p className="setting-hint">
+              De lunes a domingo; un día cuenta cuando lees al menos un minuto. La meta se guarda en este dispositivo.
+            </p>
+          </div>
           <select
             aria-label="Días de lectura por semana"
             value={goalDays ?? ""}
@@ -1490,15 +1489,23 @@ export default function Account({
             ))}
           </select>
         </div>
-        <p className="meta">
-          De lunes a domingo; un día cuenta cuando lees al menos un minuto. La meta se guarda en este dispositivo.
-        </p>
       </section>
 
-      <section className="account-section" aria-label="Compañero y logros">
-        <h2 className="eyebrow">Compañero y logros</h2>
-        <div className="setting-row">
-          <span className="setting-label">El gato del cuaderno</span>
+      <section className="account-card" aria-label="Compañero y logros">
+        <div className="account-card-header">
+          <strong className="account-card-title">Compañero y logros</strong>
+          <p className="account-card-desc">
+            Un gato de biblioteca crece contigo en el Cuaderno: niveles, logros y cofres por leer y repasar.{" "}
+            {session?.user
+              ? "Con sesión se guarda en tu cuenta y te acompaña en tus dispositivos."
+              : "Todo queda en este dispositivo."}{" "}
+            Apágalo y Lecta se ve igual que siempre.
+          </p>
+        </div>
+        <div className="setting-row setting-row--toggle">
+          <div className="setting-info">
+            <span className="setting-label">El gato del cuaderno</span>
+          </div>
           <Toggle
             label="El gato del cuaderno"
             checked={gameOn}
@@ -1508,7 +1515,9 @@ export default function Account({
         {gameOn ? (
           <>
             <div className="setting-row setting-row--stack">
-              <span className="setting-label">El gato mientras lees</span>
+              <div className="setting-info">
+                <span className="setting-label">El gato mientras lees</span>
+              </div>
               <div
                 className="segmented segmented--wrap"
                 role="group"
@@ -1535,7 +1544,12 @@ export default function Account({
               </div>
             </div>
             <div className="setting-row setting-row--stack">
-              <span className="setting-label">Animaciones del gato</span>
+              <div className="setting-info">
+                <span className="setting-label">Animaciones del gato</span>
+                <p className="setting-hint">
+                  Solo mueve al gato, sus festejos y sus cofres — el resto de Lecta sigue la regla de tu sistema.
+                </p>
+              </div>
               <div
                 className="segmented segmented--wrap"
                 role="group"
@@ -1562,140 +1576,54 @@ export default function Account({
                 ))}
               </div>
             </div>
-            <p className="meta">
-              Solo mueve al gato, sus festejos y sus cofres — el resto de Lecta sigue la regla de tu sistema.
-            </p>
-            <div className="setting-row">
-              <span className="setting-label">Sonido del gato</span>
+            <div className="setting-row setting-row--toggle">
+              <div className="setting-info">
+                <span className="setting-label">Sonido del gato</span>
+                <p className="setting-hint">
+                  Suena solo al abrir su hoja o mientras lo acaricias, y solo en este dispositivo.
+                </p>
+              </div>
               <Toggle
                 label="Sonido del gato"
                 checked={devicePrefs?.soundEnabled ?? false}
                 onChange={toggleSound}
               />
             </div>
-            <p className="meta">
-              Suena solo al abrir su hoja o mientras lo acaricias, y solo en este dispositivo.
-            </p>
           </>
         ) : null}
-        <p className="meta">
-          Un gato de biblioteca crece contigo en el Cuaderno: niveles, logros y cofres por leer y repasar.{" "}
-          {session?.user
-            ? "Con sesión se guarda en tu cuenta y te acompaña en tus dispositivos."
-            : "Todo queda en este dispositivo."}{" "}
-          Apágalo y Lecta se ve igual que siempre.
-        </p>
       </section>
 
-      <details className="account-advanced-details">
-        <summary className="account-advanced-summary">
-          Avanzado y privacidad
-        </summary>
-        <div className="account-advanced-content">
-          <div className="setting-block">
-            <h3 className="eyebrow">Privacidad y datos</h3>
-            <div className="setting-row">
-              <span className="setting-label">Usar IA para definir y corregir</span>
-              <Toggle
-                label="Usar IA para definir y corregir"
-                checked={useAi}
-                onChange={toggleUseAi}
-              />
-            </div>
-            <p className="meta">
-              Solo viaja la palabra y su oración (≤ 500 caracteres). Nunca el libro, tu
-              cuenta ni tu actividad.
-            </p>
-            <div className="setting-row">
-              <span className="setting-label">Guardar el recorrido de lectura</span>
-              <Toggle
-                label="Guardar el recorrido de lectura"
-                checked={historyOn}
-                onChange={toggleHistory}
-              />
-            </div>
-            <p className="meta">
-              Anota en este dispositivo qué secciones abriste y qué palabras se sugirieron,
-              para revisar y mejorar las sugerencias. No se sube a tu cuenta; sale en la
-              copia de tus datos y se borra solo con el tiempo.
-            </p>
-            <div className="setting-row">
-              <span className="setting-label">Copia de tus datos</span>
-              <div style={{ display: "flex", gap: "var(--s-2)", flexWrap: "wrap" }}>
-                <button
-                  type="button"
-                  className="btn--quiet"
-                  onClick={() =>
-                    void downloadBackup().catch(() =>
-                      setError("No se pudo preparar el respaldo. Intenta de nuevo."),
-                    )
-                  }
-                >
-                  Descargar mis datos (JSON)
-                </button>
-                <RestoreBackupDialog
-                  onRestored={async () => {
-                    setMessage("Respaldo restaurado correctamente.");
-                    if (onRestored) await onRestored();
-                  }}
-                  trigger={(openPicker) => (
-                    <button
-                      type="button"
-                      className="btn--quiet"
-                      onClick={openPicker}
-                    >
-                      Restaurar respaldo (JSON)
-                    </button>
-                  )}
-                />
-              </div>
-            </div>
-            <p className="meta">
-              El respaldo guarda tus palabras, notas, posiciones e historial. Los archivos EPUB no viajan en el archivo de respaldo: si tienes cuenta se descargan desde tu nube, y si lees sin cuenta basta con volver a abrir tu archivo EPUB para recuperar tu progreso automáticamente.
-            </p>
-            <div className="setting-row">
-              <span className="setting-label">Memoria del diccionario</span>
-              {cachedDictWords && cachedDictWords > 0 ? (
-                <button
-                  type="button"
-                  className="btn--quiet"
-                  onClick={() => void handleClearDict()}
-                >
-                  Liberar memoria ({cachedDictWords} palabras)
-                </button>
-              ) : (
-                <span className="meta">Sin palabras cacheadas</span>
-              )}
-            </div>
-            <p className="meta">
-              {cachedDictWords && cachedDictWords > 0
-                ? `${cachedDictWords} definiciones guardadas en este dispositivo para consulta sin conexión.`
-                : "Las definiciones consultadas o descargadas se conservan aquí para que puedas leer sin conexión."}
+      {/* Tu Kindle: una sola tarjeta con la ruta corta del e-reader
+          (/k), el código de vinculación y la apariencia — antes la
+          guía estaba duplicada con rutas distintas (/k y /kindle). */}
+      {isFeatureFlagEnabled("kindleSync") ? (
+        <section className="account-card" aria-label="Tu Kindle y otros lectores de tinta">
+          <div className="account-card-header">
+            <strong className="account-card-title">Tu Kindle y otros lectores de tinta</strong>
+            <p className="account-card-desc">
+              En tu e-reader abre{" "}
+              <strong>{typeof window !== "undefined" ? window.location.host : "lecta.app"}/k</strong>{" "}
+              en su navegador e inicia sesión para leer y sincronizar tu avance.
             </p>
           </div>
-
-          {isFeatureFlagEnabled("kindleSync") && (
-            <div className="setting-block">
-              <h3 className="eyebrow">Lectura en Kindle y Tinta Electrónica</h3>
-              <p className="meta">
-                ¿Tienes un Kindle o lector de tinta electrónica? Abre{" "}
-                <a href="/kindle" target="_blank" rel="noreferrer">
-                  /kindle
-                </a>{" "}
-                desde su navegador para conectarlo en 1 toque con un código de 4 letras y sincronizar tu avance exacto de lectura.
+          {session?.user ? (
+            <>
+              <p className="setting-hint">
+                Para vincular este dispositivo con la pantalla de tu e-reader, escribe el código de 4 letras que aparece allí.
               </p>
               {!showKindlePairForm ? (
-                <button
-                  type="button"
-                  className="btn btn--secondary"
-                  style={{ marginTop: "0.5rem" }}
-                  onClick={() => setShowKindlePairForm(true)}
-                >
-                  Conectar mi Kindle
-                </button>
+                <div className="actions">
+                  <button
+                    type="button"
+                    className="btn btn--secondary"
+                    onClick={() => setShowKindlePairForm(true)}
+                  >
+                    Conectar mi Kindle
+                  </button>
+                </div>
               ) : (
-                <form onSubmit={handleLinkKindle} style={{ marginTop: "0.75rem", maxWidth: "340px" }}>
-                  <label htmlFor="kindle-code-input" className="meta" style={{ display: "block", marginBottom: "0.3rem" }}>
+                <form onSubmit={handleLinkKindle} style={{ maxWidth: "340px" }}>
+                  <label htmlFor="kindle-code-input" className="setting-hint" style={{ display: "block", marginBottom: "0.3rem" }}>
                     Código de 4 letras que aparece en tu Kindle:
                   </label>
                   <div style={{ display: "flex", gap: "0.5rem" }}>
@@ -1736,9 +1664,75 @@ export default function Account({
                   ) : null}
                 </form>
               )}
-              <KindleAppearancePanel />
-            </div>
+            </>
+          ) : (
+            <p className="setting-hint">
+              Inicia sesión en tu cuenta para vincular tu e-reader y sincronizar el avance.
+            </p>
           )}
+          <KindleAppearancePanel />
+        </section>
+      ) : null}
+
+      <details className="account-advanced-details">
+        <summary className="account-advanced-summary">
+          Avanzado y privacidad
+        </summary>
+        <div className="account-advanced-content">
+          <div className="setting-block">
+            <h3 className="eyebrow">Privacidad y datos</h3>
+            <div className="setting-row setting-row--toggle">
+              <div className="setting-info">
+                <span className="setting-label">Guardar el recorrido de lectura</span>
+                <p className="setting-hint">
+                  Anota en este dispositivo qué secciones abriste y qué palabras se sugirieron,
+                  para revisar y mejorar las sugerencias. No se sube a tu cuenta; sale en la
+                  copia de tus datos y se borra solo con el tiempo.
+                </p>
+              </div>
+              <Toggle
+                label="Guardar el recorrido de lectura"
+                checked={historyOn}
+                onChange={toggleHistory}
+              />
+            </div>
+            <div className="setting-row setting-row--toggle">
+              <div className="setting-info">
+                <span className="setting-label">Copia de tus datos</span>
+                <p className="setting-hint">
+                  El respaldo guarda tus palabras, notas, posiciones e historial. Los archivos EPUB no viajan en el archivo de respaldo: si tienes cuenta se descargan desde tu nube, y si lees sin cuenta basta con volver a abrir tu archivo EPUB para recuperar tu progreso automáticamente.
+                </p>
+              </div>
+              <div style={{ display: "flex", gap: "var(--s-2)", flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  className="btn--quiet"
+                  onClick={() =>
+                    void downloadBackup().catch(() =>
+                      setError("No se pudo preparar el respaldo. Intenta de nuevo."),
+                    )
+                  }
+                >
+                  Descargar mis datos (JSON)
+                </button>
+                <RestoreBackupDialog
+                  onRestored={async () => {
+                    setMessage("Respaldo restaurado correctamente.");
+                    if (onRestored) await onRestored();
+                  }}
+                  trigger={(openPicker) => (
+                    <button
+                      type="button"
+                      className="btn--quiet"
+                      onClick={openPicker}
+                    >
+                      Restaurar respaldo (JSON)
+                    </button>
+                  )}
+                />
+              </div>
+            </div>
+          </div>
 
           <div className="setting-block">
             <h3 className="eyebrow">Acerca de y Diagnóstico</h3>

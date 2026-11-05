@@ -12,6 +12,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import "../styles/game.css";
+import Icon from "./Icon";
 import {
   loadGame,
   openGameChest,
@@ -846,9 +847,12 @@ export function GamePanel(props: GamePanelProps) {
                     strokeLinejoin="round"
                   />
                 </svg>
-                <span>
+                <span className="game-chest-text">
                   <span className="game-chest-label">{chest.label}</span>
                   <span className="meta">Toca para abrir</span>
+                </span>
+                <span className="game-chest-arrow" aria-hidden="true">
+                  <Icon name="chevron-right" size={16} />
                 </span>
               </button>
             </li>

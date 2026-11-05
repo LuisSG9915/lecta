@@ -302,7 +302,10 @@ export default function DiscoverRail({
               </div>
               <div className="discover-meta">
                 <div className="discover-tags" aria-label="Etiquetas">
-                  {tags.slice(0, 2).map((t) => (
+                  {/* Una sola etiqueta: con dos o tres apiladas los
+                      títulos y botones «Obtener» del riel quedaban
+                      desalineados entre columnas. */}
+                  {tags.slice(0, 1).map((t) => (
                     <span key={t} className="discover-tag-pill">{t}</span>
                   ))}
                 </div>

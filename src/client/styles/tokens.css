@@ -102,6 +102,18 @@
   --surface-bilingue-clause: color-mix(in srgb, var(--paper-sunken, var(--bg-secondary, #f7f4ee)) 94%, #3b5998 6%);
   --paragraph-dim-opacity: 0.32;
   --priming-anchor-underline: color-mix(in srgb, var(--accent-primary, var(--vermilion, #8c5a32)) 55%, transparent);
+
+  /* Fichas seleccionadas (filtros, modos, pestañas): tono translúcido
+     de vermilion para no competir con el color sólido de .btn--primary,
+     que queda reservado a las acciones principales. */
+  --chip-active-bg: color-mix(in srgb, var(--vermilion) 14%, transparent);
+  --chip-active-border: color-mix(in srgb, var(--vermilion) 45%, transparent);
+  --chip-active-ink: var(--vermilion);
+  /* Contenedor accionable de segundo nivel (cofres, recompensas):
+     tintado cálido con borde sólido — el borde punteado se reserva a
+     zonas de adición y estados «todavía no». */
+  --action-tint-bg: var(--vermilion-wash);
+  --action-tint-border: color-mix(in srgb, var(--vermilion) 35%, transparent);
 }
 
 /* Tema papel sepia (predeterminado claro - Editorial Crema) */

@@ -43,6 +43,7 @@ import {
   type InlineLookupResult,
 } from "./views";
 import {
+  kindlePreviewSampleHtml,
   normalizeKindlePrefs,
   prefsFromRow,
   type KindlePrefs,
@@ -1087,10 +1088,9 @@ kindleRoutes.post("/ajustes", kindleSettingsPost);
 // /k/preview = marco tipo dispositivo con iframe escalado; /k/preview/page =
 // la MISMA página real del lector (mismos HTML, CSS y paginación), con las
 // preferencias de la cuenta y overrides por query para previsualizar cambios.
-const KINDLE_PREVIEW_SAMPLE = `<h2>La casa encendida</h2>
-<p>La luz de la tarde entraba por la ventana y dibujaba rectángulos dorados sobre la mesa de madera. En la cocina sonaba una tetera, y el vapor subía despacio, como si también él tuviera paciencia.</p>
-<p>Mara abrió el cuaderno por la página marcada con una hoja seca. Había palabras que todavía no entendía del todo, pero cada una llevaba una anotación pequeña al margen, escrita con su letra redonda y tranquila.</p>
-<p>Afuera, el patio olía a tierra mojada. Un pájaro cruzó el aire sin prisa, y por un momento todo el cuarto pareció contener la respiración, como si la casa entera leyera con ella.</p>`;
+// El pasaje de muestra se comparte con la vista previa local del panel
+// «Tu Kindle» (src/shared/kindle-prefs.ts → KINDLE_PREVIEW_SAMPLE).
+const KINDLE_PREVIEW_SAMPLE = kindlePreviewSampleHtml();
 
 kindleRoutes.get("/preview", async (c) => {
   const session = await getSession(c);

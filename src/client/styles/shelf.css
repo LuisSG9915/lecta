@@ -325,15 +325,19 @@
   border-color: var(--accent-primary, #c86d3b);
 }
 
+/* El modo elegido se marca con el tono translúcido de ficha —
+   el color sólido de acento queda reservado al botón principal
+   «Continuar leyendo», que antes competía con «Lectura Limpia». */
 .shelf-strategy-pill--active {
-  background: var(--accent-primary, #c86d3b);
-  color: #ffffff;
-  border-color: var(--accent-primary, #c86d3b);
+  background: var(--chip-active-bg);
+  color: var(--chip-active-ink);
+  border-color: var(--chip-active-border);
+  font-weight: 600;
 }
 
 .shelf-strategy-pill--active:hover {
-  background: var(--accent-primary, #c86d3b);
-  color: #ffffff;
+  background: var(--chip-active-bg);
+  color: var(--chip-active-ink);
 }
 
 .shelf-hero-info .actions {
@@ -405,16 +409,18 @@
   transform: scale(1.02);
 }
 
+/* Nota «Tienes N palabras listas»: es información, no una zona de
+   adición — lleva borde sólido tintado, no punteado. */
 .shelf-cat-pending-note {
   display: flex;
   align-items: center;
   gap: var(--s-2);
-  background: color-mix(in srgb, var(--accent-primary, #c86d3b) 10%, var(--paper));
+  background: var(--action-tint-bg);
   padding: 0.35rem 0.65rem;
   border-radius: var(--r-pill, 999px);
   font-size: var(--fs-xs);
   color: var(--ink);
-  border: 1px dashed var(--accent-primary, #c86d3b);
+  border: 1px solid var(--action-tint-border);
 }
 
 .cat-note-icon {
@@ -437,7 +443,7 @@
   gap: var(--s-3);
   flex-wrap: wrap;
   padding-block-start: var(--s-3);
-  border-block-start: 1px dashed var(--rule, rgba(120, 95, 70, 0.12));
+  border-block-start: 1px solid var(--rule, rgba(120, 95, 70, 0.12));
 }
 
 .shelf-hero-activity-bar:empty {
@@ -568,14 +574,15 @@
 }
 
 .shelf-filter-pill--active {
-  background: var(--accent-primary, #c86d3b);
-  color: #ffffff;
-  border-color: var(--accent-primary, #c86d3b);
+  background: var(--chip-active-bg);
+  color: var(--chip-active-ink);
+  border-color: var(--chip-active-border);
+  font-weight: 600;
 }
 
 .shelf-filter-pill--active:hover {
-  background: var(--accent-primary, #c86d3b);
-  color: #ffffff;
+  background: var(--chip-active-bg);
+  color: var(--chip-active-ink);
 }
 
 .shelf-filter-pill--import {
@@ -1422,9 +1429,10 @@
 }
 
 .discover-filter-pill--active {
-  background: var(--accent-primary, #c86d3b);
-  color: #fff;
-  border-color: var(--accent-primary, #c86d3b);
+  background: var(--chip-active-bg);
+  color: var(--chip-active-ink);
+  border-color: var(--chip-active-border);
+  font-weight: 600;
 }
 
 .discover-tags {
@@ -1463,14 +1471,16 @@
   scrollbar-width: thin;
 }
 
+/* La ficha crece hacia abajo y el botón queda anclado al pie:
+   todos los «Obtener» del riel se alinean en la misma línea aunque
+   el título o las etiquetas varíen de largo. */
 .discover-book {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: var(--s-2);
   inline-size: 8rem;
   flex: none;
   scroll-snap-align: start;
-  justify-items: start;
-  align-content: start;
 }
 
 .discover-cover {
@@ -1505,6 +1515,7 @@
 .discover-meta {
   min-width: 0;
   inline-size: 100%;
+  flex: 1;
 }
 
 .discover-title {
@@ -1836,7 +1847,7 @@
 .bookstart-gems-section {
   padding: var(--s-3);
   background: color-mix(in srgb, var(--accent-primary, #c86d3b) 5%, var(--paper-raised));
-  border: 1px dashed var(--rule, rgba(120, 95, 70, 0.2));
+  border: 1px solid var(--rule, rgba(120, 95, 70, 0.2));
   border-radius: var(--r-1);
   margin-block-end: var(--s-3);
 }

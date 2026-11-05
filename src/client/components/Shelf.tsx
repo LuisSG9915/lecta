@@ -1155,6 +1155,7 @@ export default function Shelf({
                         key={strat.id}
                         type="button"
                         className={`shelf-strategy-pill${activeStrategy === strat.id ? " shelf-strategy-pill--active" : ""}`}
+                        aria-pressed={activeStrategy === strat.id}
                         onClick={() => {
                           triggerHaptic(8);
                           setHeroStrategy(strat.id as StrategyPreset);

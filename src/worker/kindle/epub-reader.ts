@@ -2,6 +2,7 @@
 // Sin dependencias pesadas: lee el ZIP con DecompressionStream nativo
 // y extrae secciones limpias sin JavaScript para dispositivos de tinta electrónica.
 
+import { anchorSplitIndex } from "../../shared/kindle-prefs";
 import { isStopword } from "../../shared/stopwords";
 import { isWordToken, normalizeWordForm } from "../../shared/word-form";
 
@@ -1154,17 +1155,11 @@ export function formatChapterHtmlForMode(
 
 // Prefijo en negrita para «Anclas de lectura»: ~40 % de las letras de
 // la palabra (4→2, 6→3, 10→4). La apóstrofe queda dentro del prefijo
-// si cae antes del límite.
+// si cae antes del límite. El corte lo calcula anchorSplitIndex
+// (shared/kindle-prefs) — misma fuente que la vista previa local.
 export function anchorifyWord(word: string): string {
-  const letters = word.match(/[\p{L}\p{M}]/gu) ?? [];
-  if (letters.length < 4) return word;
-  const take = Math.ceil(letters.length * 0.4);
-  let i = 0;
-  let seen = 0;
-  while (i < word.length && seen < take) {
-    if (/[\p{L}\p{M}]/u.test(word[i])) seen += 1;
-    i += 1;
-  }
+  const i = anchorSplitIndex(word);
+  if (i === 0) return word;
   return `<b class="anc">${word.slice(0, i)}</b>${word.slice(i)}`;
 }
 

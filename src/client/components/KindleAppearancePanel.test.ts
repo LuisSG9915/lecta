@@ -50,32 +50,59 @@ describe("KindleAppearancePanel", () => {
     });
   }
 
-  it("carga las preferencias de la cuenta y pinta los 7 selectores", async () => {
+  it("carga las preferencias de la cuenta y pinta selects + segmentados", async () => {
     await renderPanel();
+    // Tipografía y tamaño quedan en selects; las 5 opciones cortas son
+    // grupos segmentados (sin cascada de 7 desplegables).
     const selects = host.querySelectorAll("select");
-    expect(selects).toHaveLength(7);
+    expect(selects).toHaveLength(2);
     const labels = [...selects].map((s) => s.getAttribute("aria-label"));
     expect(labels).toContain("Tipografía");
     expect(labels).toContain("Tamaño de letra");
-    expect(labels).toContain("Enfoque de lectura");
-    // Valores de la cuenta reflejados
     const byLabel = (name: string) =>
       [...selects].find((s) => s.getAttribute("aria-label") === name);
     expect((byLabel("Tipografía") as HTMLSelectElement).value).toBe("source-serif");
-    expect((byLabel("Enfoque de lectura") as HTMLSelectElement).value).toBe("anchors");
-    expect(host.textContent).toContain("Anclas de lectura");
+    expect((byLabel("Tamaño de letra") as HTMLSelectElement).value).toBe("lg");
+
+    const groups = host.querySelectorAll<HTMLElement>('[role="group"]');
+    const groupLabels = [...groups].map((g) => g.getAttribute("aria-label"));
+    for (const legend of [
+      "Interlineado",
+      "Margen",
+      "Alineación",
+      "Enfoque de lectura",
+      "Disposición",
+    ]) {
+      expect(groupLabels).toContain(legend);
+    }
+    // Valores de la cuenta reflejados en el botón presionado de cada grupo.
+    const pressed = [...host.querySelectorAll<HTMLButtonElement>('button[aria-pressed="true"]')];
+    const pressedTexts = pressed.map((b) => b.textContent);
+    expect(pressedTexts).toContain("Amplio"); // interlineado loose
+    expect(pressedTexts).toContain("Estrecho"); // margen sm
+    expect(pressedTexts).toContain("Anclas de lectura");
+    expect(pressedTexts).toContain("Scroll continuo");
   });
 
-  it("la vista previa embebida apunta a /k/preview/page con los ajustes", async () => {
+  it("la vista previa local refleja los ajustes sin iframe", async () => {
     await renderPanel();
-    const iframe = host.querySelector("iframe");
-    expect(iframe).not.toBeNull();
-    const src = iframe!.getAttribute("src")!;
-    expect(src).toContain("/k/preview/page?");
-    expect(src).toContain("font=source-serif");
-    expect(src).toContain("size=lg");
-    expect(src).toContain("mode=anchors");
-    expect(src).toContain("layout=scroll");
+    expect(host.querySelector("iframe")).toBeNull();
+
+    const preview = host.querySelector<HTMLElement>(".kindle-preview");
+    expect(preview).not.toBeNull();
+    expect(preview!.className).toContain("kindle-preview--scroll");
+
+    const content = host.querySelector<HTMLElement>(".kindle-preview-content")!;
+    // size=lg → 1.35rem, align=left, margin=sm → 6px 12px (mapas reales del /k)
+    expect(content.style.fontSize).toBe("1.35rem");
+    expect(content.style.textAlign).toBe("left");
+    expect(content.style.padding).toBe("6px 12px");
+    expect(content.style.fontFamily).toContain("Source Serif");
+    expect(content.style.lineHeight).toBe("1.78");
+
+    // Enfoque «anclas»: prefijos en negrita sobre el pasaje de muestra.
+    const anchors = content.querySelectorAll(".kindle-preview-anc");
+    expect(anchors.length).toBeGreaterThan(0);
   });
 
   it("Guardar en mi Kindle hace PUT /api/kindle/prefs con los ajustes", async () => {

@@ -25,7 +25,9 @@ export type IconName =
   | "download"
   | "focus"
   | "lock"
-  | "highlight";
+  | "highlight"
+  | "sliders"
+  | "chevron-right";
 
 export interface IconProps {
   name: IconName;
@@ -232,5 +234,21 @@ function renderIconPath(name: IconName) {
           <path d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4" />
         </>
       );
+    case "sliders":
+      return (
+        <>
+          <line x1="4" y1="6" x2="12" y2="6" />
+          <line x1="16" y1="6" x2="20" y2="6" />
+          <circle cx="14" cy="6" r="2" />
+          <line x1="4" y1="12" x2="8" y2="12" />
+          <line x1="12" y1="12" x2="20" y2="12" />
+          <circle cx="10" cy="12" r="2" />
+          <line x1="4" y1="18" x2="14" y2="18" />
+          <line x1="18" y1="18" x2="20" y2="18" />
+          <circle cx="16" cy="18" r="2" />
+        </>
+      );
+    case "chevron-right":
+      return <polyline points="9 6 15 12 9 18" />;
   }
 }

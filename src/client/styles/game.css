@@ -190,6 +190,31 @@
   stroke: var(--amber, #d97706);
 }
 
+/* Badges del sello (antes sin estilo: la fracción quedaba en línea
+   junto al medallón y desalineaba toda la cuadrícula). `.seal` ya
+   es `position: relative`, así que se anclan a su borde. */
+.seal-progress-badge {
+  position: absolute;
+  inset-block-end: -0.35rem;
+  inset-inline-start: 50%;
+  translate: -50% 0;
+  font-family: var(--font-ui);
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--vermilion);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.seal-reward-icon {
+  position: absolute;
+  inset-block-start: -0.2rem;
+  inset-inline-end: -0.2rem;
+  font-size: 0.65rem;
+  line-height: 1;
+  filter: drop-shadow(0 0 2px rgba(255, 215, 0, 0.6));
+}
+
 /* ---------- El gato ----------
    Caricatura vectorial suave: formas redondas sobre la paleta
    --cat-* del tema (pelaje naranja, luz de hocico, contorno oscuro
@@ -1494,11 +1519,16 @@
 
 /* ---------- Cofres ---------- */
 
+/* Cofres pendientes en fila compacta: antes eran tres tarjetas
+   apiladas a lo ancho que empujaban el herbario hacia abajo. El
+   borde punteado se retiró: en Lecta el guion corto anuncia zonas
+   de adición y estados «todavía no», no acciones. */
 .game-chests {
   list-style: none;
   margin: 0;
   padding: 0;
   display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
   gap: 0.5rem;
 }
 
@@ -1508,16 +1538,31 @@
   align-items: center;
   gap: 0.7rem;
   padding: 0.6rem 0.75rem;
-  border: 1px dashed var(--vermilion);
+  border: 1px solid var(--action-tint-border);
   border-radius: var(--radius);
-  background: var(--vermilion-wash, transparent);
+  background: var(--action-tint-bg);
   color: var(--ink);
   font: inherit;
   text-align: left;
   cursor: pointer;
+  min-height: 3rem;
   transition:
     border-color var(--dur-1) var(--ease-out),
     background-color var(--dur-1) var(--ease-out);
+}
+
+.game-chest-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.game-chest-arrow {
+  flex-shrink: 0;
+  color: var(--vermilion);
+  display: inline-flex;
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -1529,6 +1574,11 @@
 
 .game-chest:active {
   background: var(--vermilion-wash);
+}
+
+.game-chest:disabled {
+  opacity: 0.65;
+  cursor: default;
 }
 
 .game-chest-fig {
@@ -3398,6 +3448,36 @@
   box-sizing: border-box;
 }
 
+/* Bento de escritorio: el recorrido dejaba más de la mitad de la
+   pantalla vacía en una sola columna de 44rem. En ≥64rem se abre a
+   dos columnas con la pareja «Gato + Rango» a la izquierda y el
+   Sendero de Tinta a la derecha ocupando ambas filas. El orden del
+   DOM se conserva, así que móvil y lector de pantalla leen igual. */
+@media (min-width: 64rem) {
+  .journey-content {
+    max-width: 72rem;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: var(--s-4);
+    row-gap: var(--s-5);
+    align-items: start;
+  }
+
+  .journey-content > * {
+    grid-column: 1 / -1;
+  }
+
+  .journey-content > .journey-sanctuary,
+  .journey-content > .journey-rank-card {
+    grid-column: 1;
+  }
+
+  .journey-content > .journey-ink-section {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+  }
+}
+
 /* 1. Resumen Hero (tarjeta unificada en vez de 3 cajas SaaS) */
 .journey-hero-card {
   display: grid;
@@ -3621,6 +3701,35 @@
   flex-direction: column;
   gap: var(--s-1);
   margin-top: var(--s-4);
+  padding: var(--s-4);
+  background: var(--paper-raised);
+  border: var(--border);
+  border-radius: var(--r-2);
+  box-shadow: var(--shadow-1);
+}
+
+.journey-insight-block .journey-insight-title {
+  margin-block-end: var(--s-1);
+}
+
+/* «Tu análisis» en dos columnas: título e intro ocupan toda la
+   fila y las gráficas se emparejan (8 semanas | Cuándo lees,
+   Repasos | Tu año…). */
+@media (min-width: 64rem) {
+  .journey-insights {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: var(--s-4);
+    align-items: start;
+  }
+
+  .journey-insights > :not(.journey-insight-block) {
+    grid-column: 1 / -1;
+  }
+
+  .journey-insights > .journey-insight-block {
+    margin-top: 0;
+  }
 }
 
 .journey-insight-title {
@@ -3671,11 +3780,13 @@
   gap: var(--s-2);
 }
 
+/* Cuadrícula de sellos: cada columna mide lo mismo para que las
+   etiquetas largas no desplacen a sus vecinas. */
 .journey-seals-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--s-3);
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 5.5rem);
   justify-content: center;
+  gap: var(--s-2);
   padding-top: var(--s-2);
 }
 
@@ -3685,7 +3796,6 @@
   align-items: center;
   text-align: center;
   gap: 4px;
-  max-width: 72px;
 }
 
 .journey-seal-label {
@@ -3693,6 +3803,26 @@
   font-size: var(--fs-xs);
   color: var(--ink-soft);
   line-height: 1.15;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+/* Fracción de progreso del sello bloqueado: píldora bajo el nombre,
+   no apretujada en línea junto al icono. */
+.journey-seal-progress {
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--vermilion);
+  background: var(--vermilion-wash);
+  border: 1px solid var(--chip-active-border);
+  border-radius: 999px;
+  padding-block: 2px;
+  padding-inline: var(--s-2);
+  white-space: nowrap;
 }
 
 /* Santuario del Gato en Journey */
@@ -3805,14 +3935,16 @@
   position: relative;
 }
 
+/* Aviso del siguiente hito: informativo, no accionable ni zona de
+   adición — borde sólido tintado (antes punteado vermilion). */
 .journey-milestone-banner {
   display: flex;
   align-items: center;
   gap: var(--s-2);
   padding: 0.75rem 1rem;
   border-radius: var(--r-2, 8px);
-  background: var(--paper-sunken, #fbf7ee);
-  border: 1px dashed var(--vermilion, #b83d1c);
+  background: var(--action-tint-bg);
+  border: 1px solid var(--action-tint-border);
   margin-block: var(--s-3);
 }
 
@@ -3942,11 +4074,17 @@
   border: 1px solid var(--border-soft, rgba(0, 0, 0, 0.08));
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
   padding: 0.15rem 0.5rem;
-  border-radius: 999px;
-  white-space: nowrap;
-  max-width: 120px;
+  border-radius: var(--r-1, 8px);
+  /* Los nombres de hito («Explorador de Senderos»…) no se cortan:
+     hasta dos líneas centradas dentro de la píldora. */
+  white-space: normal;
+  text-align: center;
+  line-height: 1.2;
+  max-width: 9rem;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
   pointer-events: none;
 }
 

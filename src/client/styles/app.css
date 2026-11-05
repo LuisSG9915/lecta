@@ -223,6 +223,12 @@ button.app-nav-sync-indicator:focus-visible {
   line-height: 1;
 }
 
+/* El ítem «Continuar» del riel solo existe en escritorio: en la
+   barra inferior de móvil la lectura en curso usa la píldora. */
+.app-nav-resume {
+  display: none;
+}
+
 /* En escritorio (≥ 64rem), la barra pasa a ser un riel lateral izquierdo */
 @media (min-width: 64rem) {
   .app-nav {
@@ -276,6 +282,32 @@ button.app-nav-sync-indicator:focus-visible {
     height: 24px;
     border-radius: 0 2px 2px 0;
     view-transition-name: active-nav-indicator;
+  }
+
+  /* Ítem «Continuar» del riel: pegado al pie, justo arriba del
+     indicador de sincronía. En la barra inferior de móvil no se
+     muestra (ahí vive la píldora flotante). */
+  .app-nav-resume {
+    display: block;
+    margin-top: auto;
+  }
+
+  .mini-reader-rail .app-nav-label {
+    font-size: 0.62rem;
+  }
+
+  .mini-reader-rail-cover {
+    display: block;
+    width: 22px;
+    height: 30px;
+    border-radius: 2px;
+    overflow: hidden;
+    box-shadow: 1px 1px 4px rgba(0, 0, 0, 0.18);
+  }
+
+  .mini-reader-rail-cover .cover {
+    width: 100%;
+    height: 100%;
   }
 
   .app-header {
@@ -559,6 +591,195 @@ button.app-nav-sync-indicator:focus-visible {
   margin-block-start: var(--s-2);
 }
 
+/* Fila de ajuste con interruptor o select: título y explicación en
+   una sola columna a la izquierda, control centrado a la derecha.
+   Antes el texto iba debajo de la línea divisoria y parecía del
+   ajuste de abajo. */
+.setting-row--toggle {
+  align-items: center;
+}
+
+.setting-row--select {
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.setting-row--toggle .setting-info,
+.setting-row--select .setting-info {
+  flex: 1;
+  min-inline-size: 0;
+  gap: var(--s-1);
+  padding-inline-end: var(--s-4);
+}
+
+/* La explicación del ajuste: va dentro del mismo bloque que el
+   título (nunca debajo del divisor) y en color secundario —
+   --ink-faint queda para lo decorativo. */
+.setting-hint {
+  margin: 0;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-small);
+  color: var(--ink-soft);
+}
+
+/* Selects dentro de las tarjetas de Tú: fondo elevado y borde
+   visible (en noche/oled el fondo hundido se leía como hueco). */
+.account-card .setting-row select,
+.kindle-prefs-controls select {
+  min-height: 44px;
+  padding: var(--s-1) var(--s-3);
+  background: var(--paper-raised);
+  border: var(--border-strong);
+  border-radius: var(--radius-s);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+}
+
+.account-card .setting-row select:focus,
+.kindle-prefs-controls select:focus {
+  border-color: var(--vermilion);
+  box-shadow: 0 0 0 3px var(--vermilion-wash);
+}
+
+/* Los segmentados de Tú abrazan solo sus opciones; sin este ajuste
+   la píldora se estiraba vacía hasta el borde de la tarjeta. */
+.account-card .setting-row--stack .segmented {
+  align-self: flex-start;
+  inline-size: fit-content;
+  max-inline-size: 100%;
+}
+
+/* ── Panel «Tu Kindle»: vista previa local + controles ───────────────
+   Antes la vista previa era un iframe escalado a la página real del
+   lector: tardaba en cargar y quedaba como un rectángulo blanco roto.
+   Ahora el pasaje de muestra se pinta en local al instante y los
+   ajustes cortos son segmentados en vez de una cascada de selects. */
+
+.kindle-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  border-top: 1px solid var(--rule);
+  padding-top: var(--s-3);
+}
+
+.kindle-panel-grid {
+  display: grid;
+  gap: var(--s-4);
+}
+
+@media (min-width: 40rem) {
+  .kindle-panel-grid {
+    grid-template-columns: minmax(0, 15rem) 1fr;
+    align-items: start;
+  }
+}
+
+/* Superficie tipo E-Ink: gris cálido y texto casi negro, como la tinta
+   electrónica real (no papel blanco ni el oscuro de la app). */
+.kindle-preview {
+  display: flex;
+  flex-direction: column;
+  inline-size: 100%;
+  block-size: 19rem;
+  border: 6px solid #111;
+  border-radius: var(--radius-s);
+  background: #e8e6df;
+  color: #1a1a1a;
+  overflow: hidden;
+}
+
+.kindle-preview--paged .kindle-preview-content {
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+.kindle-preview--scroll .kindle-preview-content {
+  flex: 1 1 auto;
+  overflow-y: auto;
+}
+
+.kindle-preview-title {
+  margin: 0 0 0.6em;
+  font-size: 1.25em;
+  font-weight: bold;
+  font-family: inherit;
+  line-height: 1.2;
+}
+
+.kindle-preview-p {
+  margin: 0;
+  text-indent: 1.35em;
+}
+
+.kindle-preview-p--first {
+  text-indent: 0;
+}
+
+.kindle-preview-p--numbered {
+  text-indent: 0;
+  margin-bottom: 1.4em;
+}
+
+.kindle-preview-pnum {
+  font-size: 0.8em;
+  font-weight: bold;
+  margin-right: 6px;
+  user-select: none;
+}
+
+.kindle-preview-anc {
+  font-weight: bold;
+}
+
+/* Barra inferior tipo «pasar página» del modo paginado. */
+.kindle-preview-bar {
+  flex: 0 0 auto;
+  padding: 0 4px;
+  border-top: 1px solid #dcdcdc;
+  font-size: 0.82rem;
+  line-height: 2;
+  text-align: center;
+  color: #1a1a1a;
+  font-family: var(--font-ui);
+}
+
+.kindle-prefs-controls {
+  display: grid;
+  gap: var(--s-3);
+  align-content: start;
+}
+
+@media (min-width: 40rem) {
+  .kindle-prefs-controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.kindle-pref-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  min-inline-size: 0;
+}
+
+.kindle-pref-legend {
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.kindle-prefs-controls select {
+  inline-size: 100%;
+}
+
+.kindle-prefs-controls .segmented {
+  align-self: flex-start;
+  inline-size: fit-content;
+  max-inline-size: 100%;
+}
+
 .setting-vocab-row {
   display: flex;
   align-items: center;
@@ -791,11 +1012,11 @@ button.app-nav-sync-indicator:focus-visible {
 }
 
 @media (min-width: 64rem) {
+  /* En escritorio la lectura en curso vive en el riel lateral
+     (ítem «Continuar»); la píldora flotante se retira porque
+     tapaba el carrusel de «Guardadas recientemente». */
   .mini-reader-bar {
-    left: auto;
-    right: 24px;
-    bottom: 24px;
-    max-width: 380px;
+    display: none;
   }
 }
 

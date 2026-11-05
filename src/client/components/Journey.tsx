@@ -38,6 +38,7 @@ import {
   Seal,
   FAMILY_TO_SEAL_CATEGORY,
   SEAL_CATEGORY_LABELS,
+  toRoman,
   type SealCategory,
 } from "./Seal";
 import { ProgressInk } from "./ProgressInk";
@@ -691,9 +692,10 @@ export default function Journey({ onClose, books }: JourneyProps) {
                     d="M 50 8 C 78 8, 78 22, 74 22 C 66 22, 22 36, 26 36 C 32 36, 78 50, 74 50 C 68 50, 22 64, 26 64 C 32 64, 76 78, 72 78 C 66 78, 50 88, 50 92"
                     fill="none"
                     stroke="var(--vermilion, #b83d1c)"
-                    strokeWidth="3.5"
+                    strokeWidth="1.5"
                     strokeLinecap="round"
-                    strokeDasharray="4 3"
+                    strokeDasharray="3 5"
+                    vectorEffect="non-scaling-stroke"
                     className="ink-path-stroke"
                   />
                 </svg>
@@ -1098,13 +1100,17 @@ export default function Journey({ onClose, books }: JourneyProps) {
               </div>
             </section>
 
-            {/* 4. Historial de las últimas 8 semanas */}
-            <section
-              className="journey-section"
-              aria-label="Historial de lectura"
-            >
-              <h2 className="journey-section-title">Últimas 8 semanas</h2>
-              <div className="journey-chart-card">
+            {/* 4. Tu análisis: semanas, horarios, repasos y año.
+                «Últimas 8 semanas» viaja como primer bloque del análisis
+                para que las gráficas queden emparejadas en la misma
+                cuadrícula de dos columnas en escritorio. */}
+            <JourneyInsights
+              intervals={intervals}
+              positions={positions}
+              reviews={reviews}
+              words={words}
+              books={books}
+              weeksChart={
                 <div
                   className="journey-weeks-chart"
                   role="region"
@@ -1137,16 +1143,7 @@ export default function Journey({ onClose, books }: JourneyProps) {
                     );
                   })}
                 </div>
-              </div>
-            </section>
-
-            {/* 4b. Tu análisis: horarios, libros en curso, repasos, año */}
-            <JourneyInsights
-              intervals={intervals}
-              positions={positions}
-              reviews={reviews}
-              words={words}
-              books={books}
+              }
             />
 
             {/* 5. Libros concluidos (Exlibris) */}
@@ -1224,7 +1221,7 @@ export default function Journey({ onClose, books }: JourneyProps) {
                       ? `${companion.state.stats.streakDays} ${companion.state.stats.streakDays === 1 ? "día seguido" : "días seguidos"} de lectura`
                       : "Sin racha activa"}
                     {" · "}
-                    {companion.state.xp} puntos acumulados
+                    {Math.floor(companion.state.xp)} puntos acumulados
                   </p>
                   <ProgressInk
                     value={companion.state.xp}
@@ -1255,33 +1252,44 @@ export default function Journey({ onClose, books }: JourneyProps) {
                             role="group"
                             aria-label={`Categoría: ${SEAL_CATEGORY_LABELS[cat]}`}
                           >
-                            {fams.map((fam) => (
-                              <div
-                                key={fam.family}
-                                className="journey-seal-item"
-                                title={`${fam.info.name}: rango ${fam.ranksEarned} de ${fam.ranksTotal}`}
-                              >
-                                <Seal
-                                  family={fam.family}
-                                  rank={fam.ranksEarned}
-                                  maxRank={fam.ranksTotal}
-                                  size={48}
-                                  category={cat}
-                                  progressText={
-                                    fam.nextAchievement
-                                      ? `${Math.floor(fam.current)} / ${fam.goal}`
-                                      : undefined
-                                  }
-                                  rewardIcon={
-                                    fam.ranksEarned > 0 ? "✨" : undefined
-                                  }
-                                  onClick={() => {}}
-                                />
-                                <span className="journey-seal-label">
-                                  {fam.info.name}
-                                </span>
-                              </div>
-                            ))}
+                            {fams.map((fam) => {
+                              const progress =
+                                fam.nextAchievement !== null
+                                  ? `${Math.floor(fam.current)} / ${fam.goal}`
+                                  : null;
+                              return (
+                                <div
+                                  key={fam.family}
+                                  className="journey-seal-item"
+                                  title={`${fam.info.name}: rango ${fam.ranksEarned} de ${fam.ranksTotal}`}
+                                >
+                                  <Seal
+                                    family={fam.family}
+                                    rank={fam.ranksEarned}
+                                    maxRank={fam.ranksTotal}
+                                    size={48}
+                                    category={cat}
+                                    label={
+                                      fam.ranksEarned > 0
+                                        ? `Sello ${fam.info.name}: rango ${toRoman(fam.ranksEarned)} de ${toRoman(fam.ranksTotal)}`
+                                        : `Sello ${fam.info.name}: bloqueado${progress ? `, progreso ${progress}` : ""}`
+                                    }
+                                    rewardIcon={
+                                      fam.ranksEarned > 0 ? "✨" : undefined
+                                    }
+                                    onClick={() => {}}
+                                  />
+                                  <span className="journey-seal-label">
+                                    {fam.info.name}
+                                  </span>
+                                  {fam.ranksEarned === 0 && progress ? (
+                                    <span className="journey-seal-progress">
+                                      {progress}
+                                    </span>
+                                  ) : null}
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
                       );

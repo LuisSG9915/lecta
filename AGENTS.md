@@ -708,3 +708,57 @@ formularios. Código: `routes.ts` (rutas), `views.ts` (HTML), `epub-reader.ts`
   **Migración y worker van juntos**: el worker nuevo escribe y lee la columna; con
   la columna y el worker viejo no se rompe nada. Ya desplegado en v0.2.2.
 
+## Rediseño UX editorial (fases F0–F8, 2026-11)
+
+Rediseño de Tu recorrido, Cuaderno, Biblioteca, Explora, Tú y Tu Kindle para
+reducir scroll, unificar controles y aprovechar el ancho en escritorio. Las
+decisiones de producto las tomó Luis; esto documenta las invariantes técnicas.
+
+- **Tokens compartidos** (`styles/tokens.css`): `--chip-active-*` (chips/filtros
+  activos translúcidos, nunca naranja sólido — el sólido queda reservado al CTA
+  principal), `--action-tint-*`, `--toggle-*`, `--select-*`. Borde punteado solo
+  en zonas de adición/carga (p. ej. «+ Añadir libro»); avisos y estados
+  pendientes usan borde sólido con tinte.
+- **Filas de ajuste** (`styles/app.css`): `.setting-row` con variantes
+  `--toggle`, `--select`, `--stack`. Título + descripción viven en el mismo
+  bloque izquierdo (`.setting-hint` para el texto explicativo) y el control va a
+  la derecha centrado; el divisor va debajo de toda la fila, nunca entre título
+  y descripción.
+- **Breakpoint de escritorio: `64rem`.** El mini-reproductor «Continuar leyendo»
+  es un ítem compacto del riel lateral (`AppNav.tsx`) en ≥64rem; la píldora
+  flotante solo existe en móvil.
+- **Tu recorrido en Bento** (`Journey.tsx` + `game.css`): a ≥64rem el contenedor
+  crece a ~72rem en 2 columnas (compañero + rango a la izquierda, Sendero de
+  Tinta ocupando la derecha en altura). **El orden del DOM no cambia**: móvil y
+  lectores de pantalla siguen viendo una sola columna lógica. El Sendero usa
+  trazo fino (`stroke-dasharray` ~2px) y etiquetas de hasta 2 líneas sin
+  truncar. El mapa de tinta de 28 días usa celdas compactas.
+- **Cuaderno**: los cofres pendientes van en una fila de tarjetas compactas
+  tintadas (`GamePanel.tsx`). La barra del Herbario es una sola (`.nb-tools` en
+  `notebook.css`) con «Ritmo de repaso» dentro de «Más filtros».
+- **Explora**: una sola etiqueta de mood por libro (`tags.slice(0, 1)`) + la
+  píldora de afinidad; los selectores de estrategia llevan `aria-pressed`.
+- **Tú** (`Account.tsx`): todo el contenido en tarjetas `.account-card`
+  uniformes (cuenta/sesión, sincronización, nivel, IA+diccionario,
+  lectura+vocabulario, compañero, Kindle). IA y diccionario viven en UNA sola
+  tarjeta — no volver a duplicar sus controles en «Avanzado». Privacidad,
+  diagnóstico, respaldo y resync van dentro del `<details>` «Avanzado».
+- **Tu Kindle es vista previa local** (`KindleAppearancePanel.tsx`): ya no hay
+  iframe ni 7 selects; renderiza `KINDLE_PREVIEW_SAMPLE` al instante con los
+  mapas compartidos de `src/shared/kindle-prefs.ts` (familia, tamaño,
+  interlineado, margen, alineación, enfoque clean/paragraphs/anchors,
+  disposición paged/scroll). Ese módulo es la fuente única de opciones,
+  etiquetas y normalización tanto para el cliente como para el worker
+  (`worker/kindle/routes.ts` sigue sirviendo `/k/preview` para el e-reader).
+  Guardar sigue siendo `PUT /api/kindle/prefs`.
+- **Temas: jamás colores fijos** en componentes compartidos. `game.css` llevaba
+  fondos/tintas hardcodeados que rompían el tema `papel`; siempre `var(--ink)`,
+  `var(--ink-soft)`, `var(--paper-raised)`, `var(--vermilion)`. Al tocar estilos
+  hay que capturar `papel` y `noche`.
+- **`ReadingActivity.tsx` importa `../styles/notebook.css` directamente**: se
+  renderiza también desde Journey y antes dependía de que `Vocabulary.tsx`
+  cargara la hoja. Si un componente se usa en dos vistas, su CSS viaja con él.
+- Verificación de cierre: `pnpm gate` completo (232 archivos, 3 302 pruebas,
+  lint 0 warnings, build + `check:size` con ~4,5 kB gzip de margen) y capturas
+  1440/390 px en `noche` y `papel`.
+

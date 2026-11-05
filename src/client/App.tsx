@@ -1676,6 +1676,31 @@ export default function App() {
     book !== null &&
     (book.ownerUserId === currentOwnerUserId || book.ownerUserId === null);
 
+  // El libro a medio leer que alimenta la píldora «Lectura en curso»
+  // (móvil) y el ítem «Continuar» del riel lateral (escritorio).
+  const miniReaderBook =
+    lastReadBook &&
+    (lastReadBook.ownerUserId === currentOwnerUserId ||
+      lastReadBook.ownerUserId === null) &&
+    !book &&
+    activeNav !== "shelf"
+      ? lastReadBook
+      : null;
+
+  const resumeMiniReader = () => {
+    if (!miniReaderBook) return;
+    if (miniReaderBook.file) {
+      openBook({
+        hash: miniReaderBook.hash,
+        name: miniReaderBook.name,
+        file: miniReaderBook.file,
+      });
+    } else {
+      const item = library.find((b) => b.hash === miniReaderBook.hash);
+      if (item) void openShelfItem(item);
+    }
+  };
+
   return (
     // El compañero vive una sola vez aquí, sobre todo el contenido:
     // la hoja compartida puede abrirse desde el Cuaderno hoy y desde
@@ -1930,49 +1955,32 @@ export default function App() {
             </Suspense>
           ) : null}
 
-          {lastReadBook &&
-          (lastReadBook.ownerUserId === currentOwnerUserId ||
-            lastReadBook.ownerUserId === null) &&
-          !book &&
-          activeNav !== "shelf" ? (
+          {miniReaderBook ? (
             <aside className="mini-reader-bar" aria-label="Lectura en curso">
               <div className="mini-reader-cover">
                 <BookCover
                   book={{
-                    hash: lastReadBook.hash,
-                    name: lastReadBook.name,
-                    title: lastReadBook.title,
-                    author: lastReadBook.author,
-                    cover: lastReadBook.cover,
+                    hash: miniReaderBook.hash,
+                    name: miniReaderBook.name,
+                    title: miniReaderBook.title,
+                    author: miniReaderBook.author,
+                    cover: miniReaderBook.cover,
                   }}
-                  progress={lastReadBook.progress}
+                  progress={miniReaderBook.progress}
                 />
               </div>
               <div className="mini-reader-info">
                 <strong className="mini-reader-title">
-                  {lastReadBook.title || lastReadBook.name}
+                  {miniReaderBook.title || miniReaderBook.name}
                 </strong>
                 <span className="mini-reader-progress">
-                  {Math.round((lastReadBook.progress ?? 0) * 100)}% leído
+                  {Math.round((miniReaderBook.progress ?? 0) * 100)}% leído
                 </span>
               </div>
               <button
                 type="button"
                 className="btn btn--primary mini-reader-resume"
-                onClick={() => {
-                  if (lastReadBook.file) {
-                    openBook({
-                      hash: lastReadBook.hash,
-                      name: lastReadBook.name,
-                      file: lastReadBook.file,
-                    });
-                  } else {
-                    const item = library.find((b) => b.hash === lastReadBook.hash);
-                    if (item) {
-                      void openShelfItem(item);
-                    }
-                  }
-                }}
+                onClick={resumeMiniReader}
               >
                 Continuar leyendo →
               </button>
@@ -1984,6 +1992,31 @@ export default function App() {
             dueCount={dueReviewsCount}
             hasJourneyAlert={hasJourneyAlert}
             hasAccount={Boolean(sessionUserId)}
+            resume={
+              miniReaderBook ? (
+                <button
+                  type="button"
+                  className="app-nav-item mini-reader-rail"
+                  aria-label={`Continuar leyendo ${miniReaderBook.title || miniReaderBook.name}`}
+                  title={`Continuar leyendo · ${Math.round((miniReaderBook.progress ?? 0) * 100)}% leído`}
+                  onClick={resumeMiniReader}
+                >
+                  <span className="mini-reader-rail-cover" aria-hidden="true">
+                    <BookCover
+                      book={{
+                        hash: miniReaderBook.hash,
+                        name: miniReaderBook.name,
+                        title: miniReaderBook.title,
+                        author: miniReaderBook.author,
+                        cover: miniReaderBook.cover,
+                      }}
+                      progress={miniReaderBook.progress}
+                    />
+                  </span>
+                  <span className="app-nav-label">Continuar</span>
+                </button>
+              ) : null
+            }
           />
         </>
       )}

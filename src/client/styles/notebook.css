@@ -176,7 +176,7 @@
   line-height: var(--lh-read);
   margin-block: var(--s-3) var(--s-2);
   padding-block-start: var(--s-3);
-  border-top: 1px dashed var(--rule-strong);
+  border-top: 1px solid var(--rule);
 }
 
 /* Contextos ligeros en tarjetas de repaso: micro-extracto con
@@ -803,14 +803,40 @@
   transition: height var(--dur-2) var(--ease-out);
 }
 
+/* En escritorio, «Últimos 7 días» y el «Mapa de tinta» quedan
+   pareados en la misma fila del bento del recorrido. */
+@media (min-width: 64rem) {
+  .act {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: var(--s-4);
+    align-items: start;
+  }
+
+  .act > * {
+    grid-column: 1 / -1;
+  }
+
+  .act > .act-week-section {
+    grid-column: 1;
+  }
+
+  .act > .act-month-map-section {
+    grid-column: 2;
+  }
+}
+
 /* Mapa de calor mensual (28 días) */
 .act-month-heatmap {
   margin-block: var(--s-4);
 }
 
+/* Celdas de 1.5rem: antes heredaban el ancho de la columna y los
+   cuadros quedaban enormes junto a las barras semanales. */
 .act-month-grid {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: repeat(7, minmax(0, 1.5rem));
+  justify-content: center;
   gap: 4px;
   margin-block-start: var(--s-2);
 }
@@ -827,29 +853,32 @@
   transform: scale(1.15);
 }
 
+/* La intensidad se mezcla desde --vermilion para que el mapa lea
+   igual en noche, oled y papel (antes eran naranjas fijos de tema
+   claro). */
 .act-month-cell--level-0 {
-  background: var(--paper-sunken, #f0eee6);
+  background: var(--paper-sunken);
   opacity: 0.6;
 }
 
 .act-month-cell--level-1 {
-  background: #ffedd5;
-  border-color: #fed7aa;
+  background: color-mix(in srgb, var(--vermilion) 18%, var(--paper-sunken));
+  border-color: color-mix(in srgb, var(--vermilion) 30%, transparent);
 }
 
 .act-month-cell--level-2 {
-  background: #fdba74;
-  border-color: #fb923c;
+  background: color-mix(in srgb, var(--vermilion) 42%, var(--paper-sunken));
+  border-color: color-mix(in srgb, var(--vermilion) 55%, transparent);
 }
 
 .act-month-cell--level-3 {
-  background: #f97316;
-  border-color: #ea580c;
+  background: color-mix(in srgb, var(--vermilion) 72%, var(--paper-sunken));
+  border-color: color-mix(in srgb, var(--vermilion) 85%, transparent);
 }
 
 .act-month-cell--level-4 {
-  background: var(--vermilion, #b83d1c);
-  border-color: #991b1b;
+  background: var(--vermilion);
+  border-color: var(--vermilion);
 }
 
 /* ---------- Estado de Flujo y Ritmo de Lectura ---------- */
@@ -982,10 +1011,87 @@
   margin-block: var(--s-3) var(--s-2);
 }
 
+/* Barra única del herbario: pestañas a la izquierda y «Más
+   filtros» + «Exportar» como botones secundarios a la derecha —
+   antes flotaban sueltos en líneas aparte y no parecían botones. */
+.nb-tools-row {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: var(--s-1) var(--s-3);
+  margin-block: var(--s-3) var(--s-2);
+}
+
+.nb-tools-row .nb-filters {
+  flex: 1 1 18rem;
+  margin-block: 0;
+  align-items: center;
+}
+
 .nb-filters .theme-option {
   min-height: 2.75rem;
   padding-block: var(--s-1);
   font-size: var(--fs-sm);
+}
+
+/* «Más filtros» y «Exportar» con cara de botón secundario. */
+.nb-more-filters summary,
+.nb-export summary {
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  min-height: 2.75rem;
+  padding: var(--s-1) var(--s-3);
+  font-size: var(--fs-sm);
+  font-family: var(--font-ui);
+  color: var(--ink);
+  background: var(--paper-sunken);
+  border: var(--border);
+  border-radius: var(--r-1);
+  transition:
+    color var(--dur-1) var(--ease-out),
+    border-color var(--dur-1) var(--ease-out);
+}
+
+.nb-more-filters summary::-webkit-details-marker,
+.nb-export summary::-webkit-details-marker {
+  display: none;
+}
+
+.nb-more-filters summary::after,
+.nb-export summary::after {
+  content: "▾";
+  font-size: 0.7em;
+  color: var(--ink-soft);
+  transition: transform var(--dur-1) var(--ease-out);
+}
+
+.nb-more-filters[open] summary::after,
+.nb-export[open] summary::after {
+  transform: rotate(180deg);
+}
+
+.nb-more-filters summary:hover,
+.nb-export summary:hover {
+  color: var(--vermilion);
+  border-color: var(--chip-active-border);
+}
+
+.nb-more-filters summary:focus-visible,
+.nb-export summary:focus-visible {
+  outline: 2px solid var(--vermilion);
+  outline-offset: 2px;
+}
+
+/* El «Ritmo de repaso» vive dentro de Más filtros con su propio
+   rótulo — antes ocupaba una fila completa del herbario. */
+.nb-more-filters-content .nb-filters {
+  margin-block: 0;
+  gap: var(--s-2);
+  align-items: center;
 }
 
 .nb-book-filter {
@@ -1010,27 +1116,7 @@
 }
 
 .nb-more-filters {
-  margin-block: var(--s-2);
-}
-
-.nb-more-filters summary {
-  cursor: pointer;
-  user-select: none;
-  font-size: var(--fs-sm);
-  color: var(--ink-soft);
-  padding-block: var(--s-1);
-  min-height: 44px;
-  display: inline-flex;
-  align-items: center;
-}
-
-.nb-more-filters summary:hover {
-  color: var(--vermilion);
-}
-
-.nb-more-filters summary:focus-visible {
-  outline: 2px solid var(--vermilion);
-  outline-offset: 2px;
+  position: relative;
 }
 
 .nb-more-filters-content {
@@ -1040,28 +1126,25 @@
   gap: var(--s-2);
 }
 
+/* En pantalla ancha el panel cae debajo del botón sin empujar la
+   cuadrícula; en móvil queda en flujo para no salirse de pantalla. */
+@media (min-width: 40rem) {
+  .nb-more-filters[open] .nb-more-filters-content {
+    position: absolute;
+    inset-inline-end: 0;
+    inset-block-start: calc(100% + var(--s-1));
+    z-index: 12;
+    inline-size: min(26rem, 90vw);
+    padding: var(--s-3);
+    background: var(--paper-raised);
+    border: var(--border);
+    border-radius: var(--r-2);
+    box-shadow: var(--shadow-2, 0 8px 24px rgba(0, 0, 0, 0.16));
+  }
+}
+
 .nb-export {
-  margin-block-start: var(--s-2);
-}
-
-.nb-export summary {
-  cursor: pointer;
-  user-select: none;
-  font-size: var(--fs-sm);
-  color: var(--ink-soft);
-  padding-block: var(--s-1);
-  min-height: 44px;
-  display: inline-flex;
-  align-items: center;
-}
-
-.nb-export summary:hover {
-  color: var(--vermilion);
-}
-
-.nb-export summary:focus-visible {
-  outline: 2px solid var(--vermilion);
-  outline-offset: 2px;
+  position: relative;
 }
 
 .nb-export-menu {

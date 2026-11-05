@@ -118,13 +118,14 @@ describe("Account componente Tú y Login", () => {
     // No hay campos de contraseña abiertos en la vista principal
     expect(host.querySelector('input[type="password"]')).toBeNull();
 
-    // Bloque 2: Lectura y vocabulario
-    const sections = host.querySelectorAll(".account-section");
-    expect(sections.length).toBeGreaterThanOrEqual(2);
+    // Bloque 2+: todas las secciones viven en tarjetas uniformes
+    const cards = host.querySelectorAll(".account-card");
+    expect(cards.length).toBeGreaterThanOrEqual(4);
     expect(host.textContent).toContain("Lectura y vocabulario");
     expect(host.textContent).toContain("Lengua materna");
     expect(host.textContent).toContain("Tu nivel y calibración");
     expect(host.textContent).toContain("Meta semanal de lectura");
+    expect(host.textContent).toContain("Inteligencia artificial y diccionario");
 
     // Bloque 3: Compañero y logros
     expect(host.textContent).toContain("Compañero y logros");
@@ -296,11 +297,12 @@ describe("Account componente Tú y Login", () => {
     );
     await flush();
 
-    // Bloque Kindle
-    const kindleGuide = host.querySelector(".account-kindle-guide");
-    expect(kindleGuide).toBeTruthy();
-    expect(kindleGuide?.textContent).toContain("Modo Kindle");
-    expect(kindleGuide?.textContent).toContain("/k");
+    // Tarjeta Kindle dedicada con la ruta corta del e-reader
+    const kindleCard = host.querySelector(
+      'section[aria-label="Tu Kindle y otros lectores de tinta"]',
+    );
+    expect(kindleCard).toBeTruthy();
+    expect(kindleCard?.textContent).toContain("/k");
 
     // Tarjeta de Nivel y Calibración: un renglón por idioma con su
     // estado real — sin calibrar ofrece «Calibrar», nunca un
@@ -319,6 +321,29 @@ describe("Account componente Tú y Login", () => {
   });
 
   it("renderiza la sección para vincular Kindle por código de 4 letras e input en mayúsculas", async () => {
+    // La vinculación del dispositivo solo aparece con sesión iniciada.
+    vi.mocked(authClient.useSession).mockReturnValue({
+      data: {
+        user: {
+          id: "u_123",
+          email: "lector@lecta.app",
+          name: "Lector",
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          emailVerified: true,
+        },
+        session: {
+          id: "s_123",
+          userId: "u_123",
+          token: "tok",
+          expiresAt: new Date(),
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      },
+      isPending: false,
+    } as never);
+
     render(
       h(Account, {
         presentation: "page",
@@ -358,7 +383,9 @@ describe("Account componente Tú y Login", () => {
         }),
       );
       await flush();
-      expect(host.querySelector(".account-kindle-guide")).toBeNull();
+      expect(
+        host.querySelector('section[aria-label="Tu Kindle y otros lectores de tinta"]'),
+      ).toBeNull();
       const connectKindleBtn = Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find(
         (b) => b.textContent?.includes("Conectar mi Kindle"),
       );
