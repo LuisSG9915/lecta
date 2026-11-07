@@ -632,6 +632,32 @@ test.describe("Lecta — 9 Recorridos Críticos E2E", () => {
       (v) => v.impact === "critical" || v.impact === "serious",
     );
     expect(blockingReaderViolations).toEqual([]);
+
+    // Volver a la estantería para auditar otras vistas
+    await page.locator('button[aria-label="Volver a la estantería"]').click();
+    await page.waitForTimeout(500);
+
+    // 5. Auditoría de accesibilidad en el Cuaderno
+    await page.locator('.app-nav-item[data-dest="vocabulary"]').click();
+    await page.waitForTimeout(800);
+    const vocabAxe = await new AxeBuilder({ page })
+      .withTags(["wcag2a", "wcag2aa"])
+      .analyze();
+    const blockingVocabViolations = vocabAxe.violations.filter(
+      (v) => v.impact === "critical" || v.impact === "serious",
+    );
+    expect(blockingVocabViolations).toEqual([]);
+
+    // 6. Auditoría de accesibilidad en Perfil/Cuenta
+    await page.locator('.app-nav-item[data-dest="account"]').click();
+    await page.waitForTimeout(800);
+    const accountAxe = await new AxeBuilder({ page })
+      .withTags(["wcag2a", "wcag2aa"])
+      .analyze();
+    const blockingAccountViolations = accountAxe.violations.filter(
+      (v) => v.impact === "critical" || v.impact === "serious",
+    );
+    expect(blockingAccountViolations).toEqual([]);
   });
 
   test("Recorrido 10: Lector Kindle E-Ink Zero-Scroll 1-Pantalla [webkit]", async ({

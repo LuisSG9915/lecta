@@ -107,7 +107,7 @@
   gap: 6px;
   padding: 3px var(--s-2);
   font-size: 11px;
-  color: var(--ink-faint);
+  color: var(--ink-soft);
   font-family: var(--font-ui);
   background: var(--paper-sunken);
   border-bottom: 1px solid var(--rule-faint, rgba(0, 0, 0, 0.05));
