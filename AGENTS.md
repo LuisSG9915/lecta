@@ -539,11 +539,13 @@ formularios. Código: `routes.ts` (rutas), `views.ts` (HTML), `epub-reader.ts`
   `DiagnosticsModal.tsx` (UI y reporte copiado) y su prueba: al subir de versión
   hay que tocar ese archivo, `package.json` y `mcp/package.json` (más el
   `user-agent` `lecta-mcp/<versión>` de `mcp/src/api.ts`).
-- **Hyperdrive `lecta-db` (id `0b4288d9…`) tiene el cache DESACTIVADO a propósito.**
-  Con cache activado, una verificación de existencia (`findUserByEmail`) quedó
-  servida en stale ~60 s y `request-password-reset` no creaba el token para un
-  usuario recién registrado. Además una sesión revocada podía seguir válida
-  desde el cache. No reactivar el caching sin aislar auth de las lecturas.
+- **Hyperdrive: dos bindings.** `lecta-db` (id `0b4288d9…`) tiene el cache
+  **desactivado** (auth, sesiones, permisos, lecturas post-escritura); `lecta-db-cached`
+  (id `7d2a49ff…`) tiene el cache **activado** (max_age 60s) para lecturas
+  stale-tolerantes del catálogo compartido (`/api/lexicon/*`). El código elige
+  el binding vía `getConnectionString(env, cached)` / `withClient(env, run, cached)`:
+  por defecto (uncached) para auth y sync de usuario; `cached=true` solo en las
+  rutas del catálogo. No rutear auth ni sync de usuario por el binding cached.
 - Workers Logs activo (`observability.logs.enabled` en `wrangler.jsonc`): los
   eventos estructurados (`client_error` y compañía) se consultan en el dashboard
   con retención de días, no como histórico.

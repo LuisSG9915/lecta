@@ -3,6 +3,8 @@ import pg from "pg";
 export type WorkerEnv = {
   DATABASE_URL?: string;
   HYPERDRIVE?: { connectionString: string };
+  /** Binding con caché activado (max_age 60s). Solo para lecturas stale-tolerantes\n   * (catálogo compartido, guías publicadas). NUNCA para auth/sesiones/permisos. */
+  HYPERDRIVE_CACHED?: { connectionString: string };
   DEEPSEEK_API_KEY?: string;
   AI_GATEWAY_URL?: string;
   AI_GATEWAY_KEY?: string;
@@ -24,9 +26,11 @@ export type WorkerEnv = {
 // La conexión vive solo dentro de la petición: los Workers no pueden
 // compartir sockets entre invocaciones. En producción se usa el
 // connectionString de Hyperdrive; en desarrollo local, DATABASE_URL.
-export function getConnectionString(env?: WorkerEnv) {
-  const hyperdrive = env?.HYPERDRIVE?.connectionString;
+export function getConnectionString(env?: WorkerEnv, cached = false) {
+  const binding = cached ? env?.HYPERDRIVE_CACHED : env?.HYPERDRIVE;
+  const hyperdrive = binding?.connectionString;
   if (hyperdrive?.startsWith("postgres")) return hyperdrive;
+  // En dev (sin Hyperdrive) cae a DATABASE_URL (sin caché, igual que antes).
   return env?.DATABASE_URL;
 }
 
@@ -57,8 +61,8 @@ export function logPostgresError(
   console.error(`Postgres ${kind} error:`, msg);
 }
 
-export async function withClient<T>(env: WorkerEnv, run: (client: pg.Client) => Promise<T>) {
-  const connectionString = getConnectionString(env);
+export async function withClient<T>(env: WorkerEnv, run: (client: pg.Client) => Promise<T>, cached = false) {
+  const connectionString = getConnectionString(env, cached);
   if (!connectionString) return undefined;
   const client = new pg.Client({ connectionString });
   if (typeof client.on === "function") {

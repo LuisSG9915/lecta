@@ -38,6 +38,10 @@
 		{
 			"binding": "HYPERDRIVE",
 			"id": "0b4288d943744e1ca438deb90ac235e9"
+		},
+		{
+			"binding": "HYPERDRIVE_CACHED",
+			"id": "7d2a49ff519844f9b53b804ba93e21aa"
 		}
 	],
 	"workflows": [

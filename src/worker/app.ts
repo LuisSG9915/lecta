@@ -377,7 +377,7 @@ app.get("/api/lexicon/lookup", async (context) => {
 
   let entries;
   try {
-    entries = await withClient(context.env, (client) => findEntries(client, language, form));
+    entries = await withClient(context.env, (client) => findEntries(client, language, form), true);
   } catch {
     return context.json({ error: "No se pudo consultar el catálogo." }, 502);
   }
@@ -415,7 +415,7 @@ app.get("/api/lexicon/sample", async (context) => {
   try {
     words = await withClient(context.env, (client) =>
       sampleForCalibration(client, language, profile),
-    );
+    true);
   } catch {
     return context.json({ error: "No se pudo consultar el catálogo." }, 502);
   }
@@ -438,7 +438,7 @@ app.post("/api/lexicon/batch", async (context) => {
   try {
     entries = await withClient(context.env, (client) =>
       findEntriesForForms(client, language, forms),
-    );
+    true);
   } catch {
     return context.json({ error: "No se pudo consultar el catálogo." }, 502);
   }
@@ -471,7 +471,7 @@ const handleEnrich = async (context: Context<{ Bindings: WorkerEnv }>) => {
     try {
       const found = await withClient(context.env, (client) =>
         findEntries(client, language, form),
-      );
+      true);
       if (found) existing = found;
     } catch {
       // Si la base no responde, se continúa con enriquecimiento directo
@@ -563,7 +563,7 @@ app.post("/api/lexicon/enrich-batch", async (context) => {
   try {
     const catalog = await withClient(context.env, (client) =>
       findEntriesForForms(client, language, forms),
-    );
+    true);
     if (catalog === undefined)
       return context.json({ error: "El catálogo no está configurado." }, 503);
     pending = pendingEnrichmentJobs(forms, catalog);
@@ -807,7 +807,7 @@ app.post("/api/lexicon/items", async (context) => {
           )
         : { rows: [] };
       return { existing: existing.rows, missing, senses: senses.rows };
-    });
+    }, true);
     if (catalog === undefined)
       return context.json({ error: "El catálogo no está configurado." }, 503);
 
@@ -1041,7 +1041,7 @@ app.post("/api/lexicon/explain", async (context) => {
     // palabra, se sirve su definición general marcada como degradada.
     const entries = await withClient(context.env, (client) =>
       findEntries(client, language, form),
-    ).catch(() => undefined);
+    true).catch(() => undefined);
     const definition = entries
       ?.flatMap((entry) => entry.senses)
       .find((sense) => sense.definition)?.definition;

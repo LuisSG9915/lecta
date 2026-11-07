@@ -91,7 +91,7 @@
     "*.{ts,tsx,js,mjs}": [
       "eslint --fix"
     ],
-    "*.{css,json,md}": [
+    "*.{css,json}": [
       "prettier --write"
     ]
   }
