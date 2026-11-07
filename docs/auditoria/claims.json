@@ -13,7 +13,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/lib/knowledge.ts",
-          "line": 295,
+          "line": 332,
           "window": 2,
           "expect": "\\(knownCount \\+ savedCount\\) / total",
           "why": "la fórmula del porcentaje usa knownCount+savedCount sobre total"
@@ -21,7 +21,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/lib/knowledge.ts",
-          "line": 292,
+          "line": 329,
           "window": 2,
           "expect": "const total = forms\\.length",
           "why": "total es el número de formas únicas de la sección"
@@ -245,7 +245,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/lib/calibration.ts",
-          "line": 562,
+          "line": 596,
           "window": 0,
           "expect": "saveUserLanguageProfile\\(updatedProfile\\)",
           "why": "el CAT persiste θ en el perfil, la única llave"
@@ -302,7 +302,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/components/WordPanel.tsx",
-          "line": 662,
+          "line": 640,
           "window": 15,
           "expect": "award: false",
           "why": "el autoinforme no paga XP de repaso"
@@ -343,7 +343,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/lib/knowledge.ts",
-          "line": 54,
+          "line": 91,
           "window": 1,
           "expect": "GAMMA_PASSIVE = 0\\.82",
           "why": "decaimiento de la probabilidad estimada"
@@ -351,7 +351,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/lib/knowledge.ts",
-          "line": 55,
+          "line": 92,
           "window": 1,
           "expect": "FAMILIAR_PASSIVE_THRESHOLD = 3",
           "why": "tres exposiciones bastan para «familiar»"
@@ -710,7 +710,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/lib/calibration.ts",
-          "line": 407,
+          "line": 441,
           "window": 1,
           "expect": "startTheta = typeof initialTheta === \"number\" \\? initialTheta : 0\\.0",
           "why": "la sesión del CAT arranca en el centro de la escala"

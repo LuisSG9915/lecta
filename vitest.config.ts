@@ -69,8 +69,8 @@ export default defineConfig({
           functions: 72,
         },
         "src/worker/**": {
-          lines: 70,
-          functions: 70,
+          lines: 75,
+          functions: 72,
         },
         // Fase 6: suelo por archivo para que no vuelvan a bajar.
         "src/client/lib/use-page-gesture.ts": {

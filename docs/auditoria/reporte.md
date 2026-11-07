@@ -1,12 +1,12 @@
 # Reporte de auditoría — estrategia de aprendizaje de Lecta
 
-Generado: 2026-11-04T03:33:27.432Z
+Generado: 2026-11-07T22:40:49.639Z
 Documento auditado: `docs/estrategia-aprendizaje-2026-10-24.md`
 Registro: `docs/auditoria/claims.json`
-Commit: `eca8e8306b1abf904ecb7cb546bca69cb5af9aae`
+Commit: `4bf44e7ccd55754e9947b1f7d4e697de69617b84`
 Red: no (solo forma de las referencias)
 
-**Veredicto: FAIL** — 1 afirmaciones aprobadas, 1 refutadas, 0 refutadas por auditoría, 12 sin verificar, 0 comprobaciones omitidas.
+**Veredicto: PASS_WITH_UNVERIFIED** — 1 afirmaciones aprobadas, 0 refutadas, 0 refutadas por auditoría, 13 sin verificar, 0 comprobaciones omitidas.
 
 ## Afirmaciones
 
@@ -21,13 +21,13 @@ Código: **PASS** · Referencias: **UNVERIFIED**
 - evidencia: `src/client/lib/coverage.ts:114-140`
 
 - ✅ **PASS** · doc-mention: el documento contiene «Se calcula sobre **formas únicas**»
-- ✅ **PASS** · code-anchor: src/client/lib/knowledge.ts:295 coincide con /\(knownCount \+ savedCount\) / total/
-  - observado: `{"file":"src/client/lib/knowledge.ts","line":295,"text":"? Math.max(0, Math.min(100, Math.round(((knownCount + savedCount) / total) * 100)))"}`
-- ✅ **PASS** · code-anchor: src/client/lib/knowledge.ts:292 coincide con /const total = forms\.length/
-  - observado: `{"file":"src/client/lib/knowledge.ts","line":292,"text":"const total = forms.length;"}`
+- ✅ **PASS** · code-anchor: src/client/lib/knowledge.ts:332 coincide con /\(knownCount \+ savedCount\) / total/
+  - observado: `{"file":"src/client/lib/knowledge.ts","line":332,"text":"? Math.max(0, Math.min(100, Math.round(((knownCount + savedCount) / total) * 100)))"}`
+- ✅ **PASS** · code-anchor: src/client/lib/knowledge.ts:329 coincide con /const total = forms\.length/
+  - observado: `{"file":"src/client/lib/knowledge.ts","line":329,"text":"const total = forms.length;"}`
 - ✅ **PASS** · code-absent: /\btokens?\b/ no aparece en src/client/lib/coverage.ts
 - ✅ **PASS** · reachable: createCoverageInputsLoader se usa en producción (2 archivo/s)
-  - observado: `{"symbol":"createCoverageInputsLoader","callers":[{"file":"src/client/components/DiscoverRail.tsx","line":118,"text":"const inputsFor = createCoverageInputsLoader(scope, loadInputs);"},{"file":"src/client/components/Shelf.tsx","line":467,"text":"const inputsFor = createCoverageInputsLoader(scope);"}]}`
+  - observado: `{"symbol":"createCoverageInputsLoader","callers":[{"file":"src/client/components/DiscoverRail.tsx","line":103,"text":"loader: ReturnType<typeof createCoverageInputsLoader>;"},{"file":"src/client/components/Shelf.tsx","line":461,"text":"const inputsFor = createCoverageInputsLoader(scope);"}]}`
 - ⚠️ **UNVERIFIED** · referencia laufer2010: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":null,"url":"https://eric.ed.gov/?id=EJ887873"}`
 - ⚠️ **UNVERIFIED** · referencia nation2006: forma válida; sin red no se resuelven metadatos (usar --online)
@@ -53,8 +53,8 @@ Código: **PASS** · Referencias: **UNVERIFIED**
   - observado: `{"file":"src/client/lib/coverage.ts","line":257,"text":"export const COVERAGE_IDEAL_MIN = 86;"}`
 - ✅ **PASS** · code-anchor: src/client/lib/coverage.ts:214 coincide con /reencuentrosCount: reencounterLemmas\.size/
   - observado: `{"file":"src/client/lib/coverage.ts","line":214,"text":"reencuentrosCount: reencounterLemmas.size,"}`
-- ✅ **PASS** · code-anchor: src/client/lib/catalog.ts:296 coincide con /COVERAGE_FLUID_MIN/
-  - observado: `{"file":"src/client/lib/catalog.ts","line":296,"text":"if (bookDifficultyOrLevel >= COVERAGE_FLUID_MIN) {"}`
+- ✅ **PASS** · code-anchor: src/client/lib/catalog.ts:317 coincide con /COVERAGE_FLUID_MIN/
+  - observado: `{"file":"src/client/lib/catalog.ts","line":317,"text":"if (bookDifficultyOrLevel >= COVERAGE_FLUID_MIN) {"}`
 - ⚠️ **UNVERIFIED** · referencia schmitt2011: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":null,"url":"https://eric.ed.gov/?id=EJ928357"}`
 - ⚠️ **UNVERIFIED** · referencia laufer2010: forma válida; sin red no se resuelven metadatos (usar --online)
@@ -124,8 +124,8 @@ Código: **PASS** · Referencias: **UNVERIFIED**
 - ✅ **PASS** · code-absent: /setItem\(\s*USER_THETA_KEY/ no aparece en src/client/lib/profile-models.ts
 - ✅ **PASS** · code-anchor: src/client/lib/profile-models.ts:530 coincide con /4\.0 - zipf/
   - observado: `{"file":"src/client/lib/profile-models.ts","line":530,"text":"return Number(Math.max(-3.0, Math.min(3.5, 4.0 - zipf)).toFixed(2));"}`
-- ✅ **PASS** · code-anchor: src/client/lib/calibration.ts:562 coincide con /saveUserLanguageProfile\(updatedProfile\)/
-  - observado: `{"file":"src/client/lib/calibration.ts","line":562,"text":"saveUserLanguageProfile(updatedProfile);"}`
+- ✅ **PASS** · code-anchor: src/client/lib/calibration.ts:596 coincide con /saveUserLanguageProfile\(updatedProfile\)/
+  - observado: `{"file":"src/client/lib/calibration.ts","line":596,"text":"saveUserLanguageProfile(updatedProfile);"}`
 - ✅ **PASS** · code-absent: /saveUserTheta\(/ no aparece en src/client/lib/calibration.ts
 - ✅ **PASS** · probe: una sola escala (β = 4 − zipf, neutra en 0), una sola llave y un solo ajuste por acto; la llave vieja solo se migra restando 3
   - observado: `{"betaFromZipf_zipf6":-2,"theta_L1_porDefecto":0,"theta_L2_porDefecto":-0.6,"theta_L2_esperado":-0.6,"exporta_escala_vieja":[],"escribe_llave_vieja":false,"migracion_resta":3,"saveUserTheta_en_calibracion":0,"updateLanguageTheta_en_reader":2,"applyPreviewKnownSignal_en_wordPanel":1,"ajustes_por_acto_en_wordPanel":1,"sectionWords_usa_7_menos_zipf":false,"sectionWords_usa_4_menos_zipf":true}`
@@ -147,8 +147,8 @@ Código: **PASS** · Referencias: **UNVERIFIED**
   - observado: `{"file":"src/client/components/Reader.tsx","line":4808,"text":"updateLanguageTheta(currentLang, beta, 1, 1.0);"}`
 - ✅ **PASS** · code-anchor: src/client/lib/profile-models.ts:417 coincide con /0\.18 \* \(1 - pKnow\)/
   - observado: `{"file":"src/client/lib/profile-models.ts","line":417,"text":"delta = 0.18 * (1 - pKnow);"}`
-- ✅ **PASS** · code-anchor: src/client/components/WordPanel.tsx:662 coincide con /award: false/
-  - observado: `{"file":"src/client/components/WordPanel.tsx","line":662,"text":"{ award: false },"}`
+- ✅ **PASS** · code-anchor: src/client/components/WordPanel.tsx:640 coincide con /award: false/
+  - observado: `{"file":"src/client/components/WordPanel.tsx","line":640,"text":"{ award: false },"}`
 - ✅ **PASS** · code-anchor: src/client/lib/reviews.ts:47 coincide con /options\.award !== false/
   - observado: `{"file":"src/client/lib/reviews.ts","line":47,"text":"if (options.award !== false) {"}`
 - ⚠️ **UNVERIFIED** · referencia koriat2005: forma válida; sin red no se resuelven metadatos (usar --online)
@@ -162,25 +162,25 @@ Código: **PASS** · Referencias: **UNVERIFIED**
 - ⚠️ **UNVERIFIED** · referencia kremmel2016: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":null,"url":"https://eric.ed.gov/?id=EJ1120126"}`
 
-### ❌ H5-pasiva — La exposición pasiva acota a 8 lemas por paso y respeta lápidas
+### ⚠️ H5-pasiva — La exposición pasiva acota a 8 lemas por paso y respeta lápidas
 
 > La vía viva registra hasta 8 lemas no consultados por paso de página, exige lectura por debajo de 450 ppm, no revive lápidas y mantiene «familiar» a las 3 exposiciones dentro de la sesión.
 
-Código: **FAIL** · Referencias: **UNVERIFIED**
+Código: **PASS** · Referencias: **UNVERIFIED**
 
 **Veredicto de auditoría (2026-10-26): SOSTENIDA** — El mecanismo descrito por el documento original (marcar todas las palabras de la página con tope de 12 s) era código muerto y se eliminó. La vía viva es más conservadora y ahora respeta las lápidas.
 - evidencia: `src/client/lib/reader-evidence.ts:184-250`
 - evidencia: `src/client/lib/idb.ts:2093-2102`
 
 - ✅ **PASS** · doc-mention: el documento contiene «La exposición pasiva se acota»
-- ✅ **PASS** · code-anchor: src/client/lib/knowledge.ts:54 coincide con /GAMMA_PASSIVE = 0\.82/
-  - observado: `{"file":"src/client/lib/knowledge.ts","line":54,"text":"export const GAMMA_PASSIVE = 0.82;"}`
-- ✅ **PASS** · code-anchor: src/client/lib/knowledge.ts:55 coincide con /FAMILIAR_PASSIVE_THRESHOLD = 3/
-  - observado: `{"file":"src/client/lib/knowledge.ts","line":55,"text":"export const FAMILIAR_PASSIVE_THRESHOLD = 3;"}`
+- ✅ **PASS** · code-anchor: src/client/lib/knowledge.ts:91 coincide con /GAMMA_PASSIVE = 0\.82/
+  - observado: `{"file":"src/client/lib/knowledge.ts","line":91,"text":"export const GAMMA_PASSIVE = 0.82;"}`
+- ✅ **PASS** · code-anchor: src/client/lib/knowledge.ts:92 coincide con /FAMILIAR_PASSIVE_THRESHOLD = 3/
+  - observado: `{"file":"src/client/lib/knowledge.ts","line":92,"text":"export const FAMILIAR_PASSIVE_THRESHOLD = 3;"}`
 - ✅ **PASS** · code-anchor: src/client/lib/reader-evidence.ts:230 coincide con /uniqueLemmas\.size >= 8/
   - observado: `{"file":"src/client/lib/reader-evidence.ts","line":230,"text":"if (uniqueLemmas.size >= 8) break;"}`
-- ❌ **FAIL** · code-anchor: src/client/lib/idb.ts:2121-2123 no contiene /if \(existing\?\.deleted\) return existing/
-  - observado: `{"file":"src/client/lib/idb.ts","asked":2122,"excerpt":["2121:   if (status !== undefined) out.status = status;","2122:   return out;","2123: }"]}`
+- ✅ **PASS** · code-anchor: src/client/lib/idb.ts:2135 coincide con /if \(existing\?\.deleted\) return existing/
+  - observado: `{"file":"src/client/lib/idb.ts","line":2135,"text":"if (existing?.deleted) return existing;"}`
 - ✅ **PASS** · code-absent: /processPageTurnForPassiveKnowledge/ no aparece en src/client/lib/knowledge.ts
 - ⚠️ **UNVERIFIED** · referencia nagy1985: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":"10.2307/747758","url":null}`
@@ -356,8 +356,8 @@ Código: **PASS** · Referencias: **SKIP**
 - evidencia: `src/client/lib/calibration.ts:407`
 
 - ✅ **PASS** · doc-mention: el documento contiene «el CAT arranca en 0,0»
-- ✅ **PASS** · code-anchor: src/client/lib/calibration.ts:407 coincide con /startTheta = typeof initialTheta === "number" \? initialTheta : 0\.0/
-  - observado: `{"file":"src/client/lib/calibration.ts","line":407,"text":"const startTheta = typeof initialTheta === \"number\" ? initialTheta : 0.0;"}`
+- ✅ **PASS** · code-anchor: src/client/lib/calibration.ts:441 coincide con /startTheta = typeof initialTheta === "number" \? initialTheta : 0\.0/
+  - observado: `{"file":"src/client/lib/calibration.ts","line":441,"text":"const startTheta = typeof initialTheta === \"number\" ? initialTheta : 0.0;"}`
 - ✅ **PASS** · code-absent: /CALIBRATION_PRIOR_THETA|estimateThetaMAP/ no aparece en src/client/lib/profile-models.ts
 
 ## Referencias

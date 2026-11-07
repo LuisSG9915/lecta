@@ -1,21 +1,21 @@
 {
   "tool": "audit-investigacion",
   "version": 1,
-  "generatedAt": "2026-11-04T03:33:27.432Z",
+  "generatedAt": "2026-11-07T22:40:49.639Z",
   "root": "/Users/luis/Desarrollos Devin/lecta",
-  "commit": "eca8e8306b1abf904ecb7cb546bca69cb5af9aae",
+  "commit": "4bf44e7ccd55754e9947b1f7d4e697de69617b84",
   "doc": "docs/estrategia-aprendizaje-2026-10-24.md",
   "registry": "docs/auditoria/claims.json",
   "online": false,
   "summary": {
     "claims": 14,
     "pass": 1,
-    "fail": 1,
-    "unverified": 12,
+    "fail": 0,
+    "unverified": 13,
     "skipped": 0,
     "refutedExpected": 0,
-    "codePass": 13,
-    "codeFail": 1,
+    "codePass": 14,
+    "codeFail": 0,
     "referencePass": 0,
     "referenceUnverified": 32,
     "referenceFail": 0,
@@ -49,20 +49,20 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/lib/knowledge.ts:295 coincide con /\\(knownCount \\+ savedCount\\) / total/",
+          "detail": "src/client/lib/knowledge.ts:332 coincide con /\\(knownCount \\+ savedCount\\) / total/",
           "observed": {
             "file": "src/client/lib/knowledge.ts",
-            "line": 295,
+            "line": 332,
             "text": "? Math.max(0, Math.min(100, Math.round(((knownCount + savedCount) / total) * 100)))"
           }
         },
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/lib/knowledge.ts:292 coincide con /const total = forms\\.length/",
+          "detail": "src/client/lib/knowledge.ts:329 coincide con /const total = forms\\.length/",
           "observed": {
             "file": "src/client/lib/knowledge.ts",
-            "line": 292,
+            "line": 329,
             "text": "const total = forms.length;"
           }
         },
@@ -81,12 +81,12 @@
             "callers": [
               {
                 "file": "src/client/components/DiscoverRail.tsx",
-                "line": 118,
-                "text": "const inputsFor = createCoverageInputsLoader(scope, loadInputs);"
+                "line": 103,
+                "text": "loader: ReturnType<typeof createCoverageInputsLoader>;"
               },
               {
                 "file": "src/client/components/Shelf.tsx",
-                "line": 467,
+                "line": 461,
                 "text": "const inputsFor = createCoverageInputsLoader(scope);"
               }
             ]
@@ -185,10 +185,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/lib/catalog.ts:296 coincide con /COVERAGE_FLUID_MIN/",
+          "detail": "src/client/lib/catalog.ts:317 coincide con /COVERAGE_FLUID_MIN/",
           "observed": {
             "file": "src/client/lib/catalog.ts",
-            "line": 296,
+            "line": 317,
             "text": "if (bookDifficultyOrLevel >= COVERAGE_FLUID_MIN) {"
           }
         },
@@ -448,10 +448,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/lib/calibration.ts:562 coincide con /saveUserLanguageProfile\\(updatedProfile\\)/",
+          "detail": "src/client/lib/calibration.ts:596 coincide con /saveUserLanguageProfile\\(updatedProfile\\)/",
           "observed": {
             "file": "src/client/lib/calibration.ts",
-            "line": 562,
+            "line": 596,
             "text": "saveUserLanguageProfile(updatedProfile);"
           }
         },
@@ -542,10 +542,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/components/WordPanel.tsx:662 coincide con /award: false/",
+          "detail": "src/client/components/WordPanel.tsx:640 coincide con /award: false/",
           "observed": {
             "file": "src/client/components/WordPanel.tsx",
-            "line": 662,
+            "line": 640,
             "text": "{ award: false },"
           }
         },
@@ -621,7 +621,7 @@
       "title": "La exposición pasiva acota a 8 lemas por paso y respeta lápidas",
       "statement": "La vía viva registra hasta 8 lemas no consultados por paso de página, exige lectura por debajo de 450 ppm, no revive lápidas y mantiene «familiar» a las 3 exposiciones dentro de la sesión.",
       "section": "H5",
-      "status": "FAIL",
+      "status": "UNVERIFIED",
       "auditVerdict": {
         "status": "SOSTENIDA",
         "date": "2026-10-26",
@@ -631,7 +631,7 @@
           "src/client/lib/idb.ts:2093-2102"
         ]
       },
-      "codeStatus": "FAIL",
+      "codeStatus": "PASS",
       "refStatus": "UNVERIFIED",
       "checks": [
         {
@@ -643,20 +643,20 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/lib/knowledge.ts:54 coincide con /GAMMA_PASSIVE = 0\\.82/",
+          "detail": "src/client/lib/knowledge.ts:91 coincide con /GAMMA_PASSIVE = 0\\.82/",
           "observed": {
             "file": "src/client/lib/knowledge.ts",
-            "line": 54,
+            "line": 91,
             "text": "export const GAMMA_PASSIVE = 0.82;"
           }
         },
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/lib/knowledge.ts:55 coincide con /FAMILIAR_PASSIVE_THRESHOLD = 3/",
+          "detail": "src/client/lib/knowledge.ts:92 coincide con /FAMILIAR_PASSIVE_THRESHOLD = 3/",
           "observed": {
             "file": "src/client/lib/knowledge.ts",
-            "line": 55,
+            "line": 92,
             "text": "export const FAMILIAR_PASSIVE_THRESHOLD = 3;"
           }
         },
@@ -672,16 +672,12 @@
         },
         {
           "kind": "code-anchor",
-          "status": "FAIL",
-          "detail": "src/client/lib/idb.ts:2121-2123 no contiene /if \\(existing\\?\\.deleted\\) return existing/",
+          "status": "PASS",
+          "detail": "src/client/lib/idb.ts:2135 coincide con /if \\(existing\\?\\.deleted\\) return existing/",
           "observed": {
             "file": "src/client/lib/idb.ts",
-            "asked": 2122,
-            "excerpt": [
-              "2121:   if (status !== undefined) out.status = status;",
-              "2122:   return out;",
-              "2123: }"
-            ]
+            "line": 2135,
+            "text": "if (existing?.deleted) return existing;"
           }
         },
         {
@@ -1354,10 +1350,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/lib/calibration.ts:407 coincide con /startTheta = typeof initialTheta === \"number\" \\? initialTheta : 0\\.0/",
+          "detail": "src/client/lib/calibration.ts:441 coincide con /startTheta = typeof initialTheta === \"number\" \\? initialTheta : 0\\.0/",
           "observed": {
             "file": "src/client/lib/calibration.ts",
-            "line": 407,
+            "line": 441,
             "text": "const startTheta = typeof initialTheta === \"number\" ? initialTheta : 0.0;"
           }
         },
@@ -1724,5 +1720,5 @@
       }
     }
   ],
-  "verdict": "FAIL"
+  "verdict": "PASS_WITH_UNVERIFIED"
 }
