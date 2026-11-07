@@ -1,4 +1,12 @@
-import { useState, type KeyboardEvent, type ReactNode } from "react";
+import {
+  createContext,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
 
 // «Explora»: una sola sección para lo que no está en tu estantería —
 // las guías que otros lectores compartieron (Comunidad) y el catálogo
@@ -9,15 +17,44 @@ import { useState, type KeyboardEvent, type ReactNode } from "react";
 
 type TabId = "community" | "catalog";
 
+export const ExploreCommunityEmptyContext = createContext<(() => void) | null>(
+  null,
+);
+
 type Props = {
   /** Pestaña Comunidad; null sin sesión → el panel invita a entrar. */
   community?: ReactNode;
   /** Pestaña Libros gratuitos (el riel del catálogo). */
   catalog?: ReactNode;
+  /** Acción para ir a Perfil a iniciar sesión cuando no hay cuenta activa. */
+  onOpenAccount?: () => void;
 };
 
-export default function ExploreShelf({ community, catalog }: Props) {
+export default function ExploreShelf({
+  community,
+  catalog,
+  onOpenAccount,
+}: Props) {
   const [tab, setTab] = useState<TabId>(community ? "community" : "catalog");
+  const userPickedTabRef = useRef(false);
+  const communityTabRef = useRef<HTMLButtonElement>(null);
+  const catalogTabRef = useRef<HTMLButtonElement>(null);
+
+  const hasCommunity = Boolean(community);
+  useEffect(() => {
+    if (!userPickedTabRef.current) {
+      setTab(hasCommunity ? "community" : "catalog");
+    }
+  }, [hasCommunity]);
+
+  // Si la comunidad termina de cargar vacía y el lector aún no eligió
+  // pestaña manualmente, mostramos «Libros gratuitos» para no dejar
+  // una pantalla vacía como vista inicial. El callback es estable: no
+  // depende del nodo del catálogo ni del estado, así que no re-dispara
+  // la carga de Comunidad en cada render.
+  const handleCommunityEmpty = useCallback(() => {
+    if (!userPickedTabRef.current) setTab("catalog");
+  }, []);
 
   if (!community && !catalog) return null;
 
@@ -31,10 +68,28 @@ export default function ExploreShelf({ community, catalog }: Props) {
     );
   }
 
+  const selectTab = (next: TabId, focus = false) => {
+    userPickedTabRef.current = true;
+    setTab(next);
+    if (focus) {
+      const target =
+        next === "community" ? communityTabRef.current : catalogTabRef.current;
+      target?.focus();
+    }
+  };
+
   const onTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
-    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
-    event.preventDefault();
-    setTab((current) => (current === "community" ? "catalog" : "community"));
+    if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+      event.preventDefault();
+      const next: TabId = tab === "community" ? "catalog" : "community";
+      selectTab(next, true);
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      selectTab("community", true);
+    } else if (event.key === "End") {
+      event.preventDefault();
+      selectTab("catalog", true);
+    }
   };
 
   return (
@@ -46,25 +101,29 @@ export default function ExploreShelf({ community, catalog }: Props) {
         aria-label="Secciones para descubrir"
       >
         <button
+          ref={communityTabRef}
           type="button"
           role="tab"
           id="explore-tab-community"
           className="shelf-explore-tab"
           aria-selected={tab === "community"}
           aria-controls="explore-panel-community"
-          onClick={() => setTab("community")}
+          tabIndex={tab === "community" ? 0 : -1}
+          onClick={() => selectTab("community")}
           onKeyDown={onTabKeyDown}
         >
           Comunidad
         </button>
         <button
+          ref={catalogTabRef}
           type="button"
           role="tab"
           id="explore-tab-catalog"
           className="shelf-explore-tab"
           aria-selected={tab === "catalog"}
           aria-controls="explore-panel-catalog"
-          onClick={() => setTab("catalog")}
+          tabIndex={tab === "catalog" ? 0 : -1}
+          onClick={() => selectTab("catalog")}
           onKeyDown={onTabKeyDown}
         >
           Libros gratuitos
@@ -77,11 +136,25 @@ export default function ExploreShelf({ community, catalog }: Props) {
         aria-labelledby="explore-tab-community"
         hidden={tab !== "community"}
       >
-        {community ?? (
-          <p className="meta shelf-explore-hint">
-            Inicia sesión para ver las guías que otros lectores compartieron.
-          </p>
-        )}
+        <ExploreCommunityEmptyContext.Provider value={handleCommunityEmpty}>
+          {community ?? (
+            <p className="meta shelf-explore-hint">
+              Inicia sesión para ver las guías que otros lectores compartieron.
+              {onOpenAccount ? (
+                <>
+                  {" "}
+                  <button
+                    type="button"
+                    className="btn--quiet"
+                    onClick={onOpenAccount}
+                  >
+                    Iniciar sesión
+                  </button>
+                </>
+              ) : null}
+            </p>
+          )}
+        </ExploreCommunityEmptyContext.Provider>
       </div>
       <div
         role="tabpanel"

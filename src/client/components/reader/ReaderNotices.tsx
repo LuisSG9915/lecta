@@ -189,8 +189,8 @@ export function ReaderNotices(props: ReaderNoticesProps) {
     <div className="reader-prep reader-help-strip" role="status">
       <span className="reader-prep-text">
         {helpIsCalibrated
-          ? "¿Te preparo las palabras clave de cada capítulo, ajustadas a tu nivel?"
-          : "¿Te preparo las palabras clave antes de cada capítulo? 15 segundos bastan para ajustarlas a tu nivel."}
+          ? "Toca cualquier palabra o personaje mientras lees. ¿Te preparo las palabras clave de cada capítulo, ajustadas a tu nivel?"
+          : "Toca cualquier palabra o personaje mientras lees. ¿Te preparo las palabras clave antes de cada capítulo? 15 segundos bastan para ajustarlas a tu nivel."}
       </span>
       {helpIsCalibrated ? null : (
         <button

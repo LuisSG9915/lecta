@@ -172,7 +172,7 @@ export default function RestoreBackupDialog({
                 padding: "var(--s-2) var(--s-3)",
                 background: "var(--paper-sunken)",
                 borderLeft: "3px solid var(--accent-primary, var(--vermilion))",
-                borderRadius: "0 var(--r-sm) var(--r-sm) 0",
+                borderRadius: "0 var(--radius-sm) var(--radius-sm) 0",
                 fontSize: "var(--fs-xs)",
                 color: "var(--ink-soft)",
                 lineHeight: "1.5",

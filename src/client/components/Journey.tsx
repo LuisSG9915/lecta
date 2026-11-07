@@ -161,12 +161,12 @@ function LexicalCurveSparkline({
           <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
             <stop
               offset="0%"
-              stopColor="var(--accent, #d97757)"
+              stopColor="var(--accent-primary, #a24317)"
               stopOpacity="0.22"
             />
             <stop
               offset="100%"
-              stopColor="var(--accent, #d97757)"
+              stopColor="var(--accent-primary, #a24317)"
               stopOpacity="0.0"
             />
           </linearGradient>
@@ -175,7 +175,7 @@ function LexicalCurveSparkline({
         <path
           d={pathD}
           fill="none"
-          stroke="var(--accent, #d97757)"
+          stroke="var(--accent-primary, #a24317)"
           strokeWidth="2.5"
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -184,14 +184,14 @@ function LexicalCurveSparkline({
           cx={lastPt.x}
           cy={lastPt.y}
           r="7"
-          fill="var(--accent, #d97757)"
+          fill="var(--accent-primary, #a24317)"
           opacity="0.2"
         />
         <circle
           cx={lastPt.x}
           cy={lastPt.y}
           r="4"
-          fill="var(--accent, #d97757)"
+          fill="var(--accent-primary, #a24317)"
         />
       </svg>
     </div>

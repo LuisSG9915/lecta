@@ -58,115 +58,40 @@ export default function ResumeSessionOverlay({
 
   return (
     <div
-      className={`resume-session-overlay ${className}`}
+      className={`resume-session-overlay ${className}`.trim()}
       role="region"
       aria-label="Reanudar sesión de lectura"
-      style={{
-        width: "100%",
-        maxWidth: "600px",
-        margin: "1.5rem auto",
-        padding: "1.25rem 1.5rem",
-        background: "var(--paper-raised, #ffffff)",
-        color: "var(--ink, #1f2937)",
-        borderRadius: "14px",
-        boxShadow: "0 8px 30px rgba(0, 0, 0, 0.12)",
-        border: "1px solid var(--rule-subtle, rgba(0, 0, 0, 0.08))",
-        boxSizing: "border-box",
-        zIndex: 25,
-      }}
     >
-      <div
-        className="resume-session-header"
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "8px",
-          marginBottom: "0.5rem",
-        }}
-      >
-        <span aria-hidden="true" style={{ fontSize: "1.2rem" }}>
+      <div className="resume-session-header">
+        <span aria-hidden="true" className="resume-session-icon">
           📖
         </span>
-        <span
-          style={{
-            fontSize: "0.8rem",
-            textTransform: "uppercase",
-            letterSpacing: "0.05em",
-            fontWeight: 600,
-            opacity: 0.7,
-          }}
-        >
+        <span className="resume-session-kicker">
           Bienvenido de vuelta
         </span>
       </div>
 
       {/* Recap de 1 línea */}
-      <p
-        className="resume-session-recap-text"
-        style={{
-          margin: "0 0 0.85rem 0",
-          fontSize: "1rem",
-          fontWeight: 600,
-          lineHeight: 1.4,
-          color: "var(--ink)",
-        }}
-      >
+      <p className="resume-session-recap-text">
         {recapLine}
       </p>
 
       {/* Extracto sombreado con las últimas 2 oraciones leídas */}
       {lastReadSentences ? (
-        <blockquote
-          className="resume-session-extract"
-          style={{
-            margin: "0 0 1rem 0",
-            padding: "0.75rem 1rem",
-            background: "var(--paper-sunken, rgba(0, 0, 0, 0.03))",
-            borderLeft: "3px solid var(--accent, #4f46e5)",
-            borderRadius: "6px",
-            fontStyle: "italic",
-            fontSize: "0.92rem",
-            lineHeight: 1.5,
-            color: "var(--ink-secondary, #4b5563)",
-          }}
-        >
+        <blockquote className="resume-session-extract">
           «{lastReadSentences}»
         </blockquote>
       ) : null}
 
       {/* Toggle de dosificación si hay > 25 repasos FSRS pendientes */}
       {hasPendingReviewsDosing && (
-        <div
-          className="resume-session-dose-container"
-          style={{
-            marginBottom: "1.25rem",
-            padding: "0.5rem 0.75rem",
-            background: "rgba(79, 70, 229, 0.06)",
-            borderRadius: "8px",
-            border: "1px solid rgba(79, 70, 229, 0.15)",
-          }}
-        >
-          <label
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "10px",
-              cursor: "pointer",
-              fontSize: "0.86rem",
-              lineHeight: 1.35,
-              color: "var(--ink)",
-            }}
-          >
+        <div className="resume-session-dose-container">
+          <label className="resume-session-dose-label">
             <input
               type="checkbox"
+              className="resume-session-dose-checkbox"
               checked={doseReviews}
               onChange={handleToggleDose}
-              style={{
-                width: "16px",
-                height: "16px",
-                accentColor: "var(--accent, #4f46e5)",
-                cursor: "pointer",
-              }}
             />
             <span>
               Dosificar repasos pendientes (3/día) para ir directo a la historia
@@ -178,21 +103,8 @@ export default function ResumeSessionOverlay({
       {/* Único botón primario */}
       <button
         type="button"
-        className="btn--primary resume-session-primary-btn"
+        className="btn btn--primary resume-session-primary-btn"
         onClick={onResumeReading}
-        style={{
-          width: "100%",
-          padding: "0.75rem 1.25rem",
-          fontSize: "0.95rem",
-          fontWeight: 600,
-          borderRadius: "9999px",
-          background: "var(--accent, #4f46e5)",
-          color: "#ffffff",
-          border: "none",
-          cursor: "pointer",
-          boxShadow: "0 2px 8px rgba(79, 70, 229, 0.3)",
-          transition: "transform 0.15s ease, opacity 0.15s ease",
-        }}
       >
         Retomar lectura
       </button>

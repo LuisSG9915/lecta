@@ -94,6 +94,10 @@ import { checkEpubHeader, checkEpubBuffer, EPUB_MAX_BYTES } from "../shared/epub
 import { extractEpubMeta, extractEpubCover, isHashLikeIdentifier } from "../shared/epub-meta";
 import { genreFromSubjects, isBookGenre } from "../shared/book-genres";
 import { sanitizePaperBookGuide } from "../shared/paper-guide";
+import {
+  invalidateCommunityGuides,
+  publishedGuideHashes,
+} from "./community-guides";
 import { getSession, getSessionUser, SessionInfraError } from "./session";
 import { readingData } from "./reading-data";
 import { companion } from "./companion";
@@ -2381,33 +2385,9 @@ app.get("/api/books/community", async (context) => {
       genre: String(row.genre ?? ""),
     }));
 
-  // Entradas adjuntables de verdad: tienen guía publicada en
-  // `guides/{hash}.json`. Sin este filtro una fila shared vieja (modelo
-  // previo o PUT sin guía) se listaba y su attach respondía 404 siempre.
-  // Si R2 no responde se devuelve la lista sin filtrar (best-effort).
-  const publishedGuides = async (): Promise<Set<string> | null> => {
-    const bucket = context.env.BOOKS;
-    if (!bucket) return null;
-    const hashes = new Set<string>();
-    let cursor: string | undefined;
-    for (let page = 0; page < 20; page++) {
-      const listed = await bucket
-        .list({ prefix: "guides/", cursor, limit: 1000 })
-        .catch(() => null);
-      if (!listed) return null;
-      for (const object of listed.objects) {
-        const match = /^guides\/([a-f0-9]{64})\.json$/.exec(object.key);
-        if (match) hashes.add(match[1]);
-      }
-      if (!listed.truncated) return hashes;
-      cursor = listed.cursor;
-    }
-    return hashes;
-  };
-
   const finish = async (rows: Array<Record<string, unknown>>) => {
     const books = collect(rows);
-    const guides = await publishedGuides();
+    const guides = await publishedGuideHashes(context.env.BOOKS);
     if (!guides) return books;
     return books.filter((book) => guides.has(book.hash));
   };
@@ -2928,6 +2908,9 @@ app.put("/api/books/:hash/share", async (context) => {
     await booksBucket.put(guideKey(hash), JSON.stringify(guide), {
       httpMetadata: { contentType: "application/json" },
     });
+    // La guía ya es visible para el listado comunitario: la caché del
+    // isolate debe olvidarla en la siguiente petición.
+    invalidateCommunityGuides();
   }
   // Género declarado al compartir: solo valores de BOOK_GENRES; un
   // string ajeno se normaliza a "" (la columna queda sin clasificar,

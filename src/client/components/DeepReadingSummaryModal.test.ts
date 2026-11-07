@@ -57,6 +57,35 @@ describe("DeepReadingSummaryModal", () => {
     expect(text).toContain("celebra tu lectura");
   });
 
+  it("muestra la vista previa editorial de la postal y envía la cita al pulsar 'Crear postal del capítulo'", () => {
+    const onShareQuote = vi.fn();
+    act(() => {
+      root.render(
+        h(DeepReadingSummaryModal, {
+          summary: baseSummary,
+          featuredQuote: "El arte de leer es recordar con otros ojos.",
+          bookTitle: "Azul…",
+          author: "Rubén Darío",
+          chapterTitle: "El Rey Burgués",
+          onShareQuote,
+          onClose: vi.fn(),
+        }),
+      );
+    });
+
+    const preview = host.querySelector(".deep-summary-postal-preview");
+    expect(preview).not.toBeNull();
+    expect(preview?.textContent).toContain("«El arte de leer es recordar con otros ojos.»");
+    expect(preview?.textContent).toContain("Azul… · Rubén Darío · El Rey Burgués");
+
+    const postalBtn = host.querySelector<HTMLButtonElement>(".deep-summary-quote-btn")!;
+    expect(postalBtn).not.toBeNull();
+    act(() => {
+      postalBtn.click();
+    });
+    expect(onShareQuote).toHaveBeenCalledWith("El arte de leer es recordar con otros ojos.");
+  });
+
   it("permite cerrar y continuar la lectura", () => {
     const onClose = vi.fn();
     const onContinue = vi.fn();

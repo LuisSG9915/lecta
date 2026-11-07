@@ -6,6 +6,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   ViewTransition,
@@ -228,6 +229,12 @@ export default function App() {
   const { data: session, isPending: sessionPending, error: sessionError } =
     authClient.useSession();
   const sessionUserId = session?.user?.id;
+  // Hashes ya en la estantería: la pestaña Comunidad los usa para
+  // marcar «En tu estantería» sin otra consulta.
+  const ownedBookHashes = useMemo(
+    () => new Set(library.map((book) => book.hash)),
+    [library],
+  );
   // Arranque optimista: la última cuenta confirmada abre su base
   // local sin esperar a que resuelva la sesión. Si la sesión llega
   // con otra identidad (o sin sesión), el efecto principal hace la
@@ -1875,6 +1882,7 @@ export default function App() {
                       sessionUserId ? (
                         <Suspense fallback={null}>
                           <CommunityShelf
+                            ownedHashes={ownedBookHashes}
                             onAttached={(hash, guide) => {
                               setMessage("Guía agregada — abre el índice desde tu estantería.");
                               void (async () => {

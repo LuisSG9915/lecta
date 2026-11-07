@@ -193,6 +193,27 @@ export async function catalogVocab(
 
 export const catalogCoverUrl = (id: string) => `/api/catalog/${id}/cover`;
 
+// Extensión estimada de lectura para las tarjetas del catálogo: ~200
+// palabras por minuto, redondeada a pasos de 5 min / 15 min. Null cuando
+// el índice no trae `wordCount` (no inventamos cifras).
+const WORDS_PER_MINUTE = 200;
+
+export function formatBookLength(wordCount?: number): string | null {
+  if (!wordCount || !Number.isFinite(wordCount) || wordCount <= 0) return null;
+  const totalMin = Math.max(5, Math.round(wordCount / WORDS_PER_MINUTE));
+  if (totalMin < 60) {
+    const rounded = Math.max(5, Math.round(totalMin / 5) * 5);
+    return `~${rounded} min`;
+  }
+  const hours = Math.floor(totalMin / 60);
+  const mins = Math.round((totalMin % 60) / 15) * 15;
+  if (mins === 0 || mins === 60 || hours >= 8) {
+    const totalHours = mins === 60 ? hours + 1 : hours;
+    return `~${totalHours} h`;
+  }
+  return `~${hours} h ${mins} min`;
+}
+
 export const CURATED_MOOD_TAGS: Record<string, string[]> = {
   quijote: ["Vocabulario Elevado", "Clásico Universal"],
   celestina: ["Teatro y Drama", "Vocabulario Elevado"],

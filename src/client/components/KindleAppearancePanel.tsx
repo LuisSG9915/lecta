@@ -326,7 +326,7 @@ export function KindleAppearancePanel() {
         {saving ? "Guardando…" : "Guardar en mi Kindle"}
       </button>
       {saved ? (
-        <p className="meta" style={{ color: "var(--accent, #16a34a)", fontWeight: 500 }}>
+        <p className="meta" style={{ color: "var(--success, #3d7a5a)", fontWeight: 500 }}>
           Ajustes guardados. Tu Kindle los usará al abrir cualquier página.
         </p>
       ) : null}

@@ -1077,7 +1077,7 @@ export default function Account({
         <button
           type="button"
           className="btn--quiet"
-          style={{ fontSize: "var(--fs-xs)", color: "var(--ink-muted)" }}
+          style={{ fontSize: "var(--fs-xs)", color: "var(--ink-soft)" }}
           onClick={() => setShowLegal("privacy")}
         >
           Aviso de Privacidad y Términos de Uso
@@ -1653,7 +1653,7 @@ export default function Account({
                     </button>
                   </div>
                   {kindlePairMessage ? (
-                    <p className="meta" style={{ color: "var(--accent, #16a34a)", marginTop: "0.5rem", fontWeight: 500 }}>
+                    <p className="meta" style={{ color: "var(--success, #3d7a5a)", marginTop: "0.5rem", fontWeight: 500 }}>
                       {kindlePairMessage}
                     </p>
                   ) : null}

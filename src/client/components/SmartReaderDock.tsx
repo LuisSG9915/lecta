@@ -280,26 +280,6 @@ export default function SmartReaderDock({
             className="reader-record-toast"
             role="status"
             aria-live="polite"
-            style={{
-              position: "absolute",
-              bottom: "calc(100% + 44px)",
-              left: "50%",
-              transform: "translateX(-50%)",
-              background: "var(--paper-raised, #1e1e1e)",
-              color: "var(--ink, #ffffff)",
-              padding: "6px 14px",
-              borderRadius: "9999px",
-              border: "1px solid var(--accent, #e5a93c)",
-              fontSize: "0.82rem",
-              fontWeight: 500,
-              boxShadow: "0 4px 16px rgba(0, 0, 0, 0.2)",
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-              zIndex: 60,
-              whiteSpace: "nowrap",
-              pointerEvents: "none",
-            }}
           >
             <span aria-hidden="true">🏆</span>
             <span>{recordToast}</span>
@@ -312,27 +292,6 @@ export default function SmartReaderDock({
             className={`reader-progress-invisible-pill ${isPillHidden ? "is-hidden" : ""}`}
             role="status"
             aria-label={`Llevas ${displayProgress}% · ${displayWeeklyWords} palabras nuevas esta semana`}
-            style={{
-              position: "absolute",
-              bottom: "calc(100% + 8px)",
-              left: "50%",
-              transform: isPillHidden
-                ? "translateX(-50%) translateY(4px)"
-                : "translateX(-50%) translateY(0)",
-              background: "var(--paper-raised, rgba(30, 30, 30, 0.85))",
-              color: "var(--ink, #ffffff)",
-              padding: "4px 12px",
-              borderRadius: "9999px",
-              border: "1px solid var(--rule-subtle, rgba(255, 255, 255, 0.1))",
-              fontSize: "0.78rem",
-              fontWeight: 500,
-              boxShadow: "0 2px 10px rgba(0, 0, 0, 0.12)",
-              zIndex: 40,
-              whiteSpace: "nowrap",
-              pointerEvents: "none",
-              opacity: isPillHidden ? 0 : 0.9,
-              transition: "opacity 0.25s ease, transform 0.25s ease",
-            }}
           >
             Llevas {displayProgress}% · {displayWeeklyWords} palabras nuevas esta semana
           </div>
@@ -403,26 +362,9 @@ export default function SmartReaderDock({
         {/* Píldora sutil de Neuro-Foco (Track 9 - Cero Fricción) */}
         {isFeatureFlagEnabled("focusTelemetry") && effectiveIsFatigued && !isDismissedLocally && !isAudioMode && !isPureCanvas && (
           <div
-            className="reader-focus-suggestion-pill"
+            className={`reader-focus-suggestion-pill ${isMuteOptionsOpen ? "is-mute-open" : ""}`.trim()}
             role="status"
             aria-live="polite"
-            style={{
-              margin: "0 auto 8px auto",
-              width: "fit-content",
-              maxWidth: "92vw",
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              padding: isMuteOptionsOpen ? "6px 12px" : "6px 10px 6px 14px",
-              background: "var(--paper-raised)",
-              color: "var(--ink)",
-              borderRadius: "9999px",
-              boxShadow: "var(--shadow-2)",
-              fontSize: "0.86rem",
-              lineHeight: 1.3,
-              zIndex: 50,
-              border: "1px solid var(--rule-strong)",
-            }}
           >
             {!isMuteOptionsOpen ? (
               <>
@@ -432,19 +374,6 @@ export default function SmartReaderDock({
                   onClick={() => {
                     onAcceptFocusAid?.(effectiveAid);
                     setIsDismissedLocally(true);
-                  }}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    padding: 0,
-                    margin: 0,
-                    color: "inherit",
-                    cursor: "pointer",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "6px",
-                    font: "inherit",
-                    fontWeight: 500,
                   }}
                   aria-label={`Sugerencia de enfoque: ${suggestionText}. Toca para activar`}
                 >
@@ -470,21 +399,6 @@ export default function SmartReaderDock({
                       onStartAudio5Min();
                       setIsDismissedLocally(true);
                     }}
-                    style={{
-                      background: "none",
-                      border: "none",
-                      padding: "2px 8px",
-                      margin: 0,
-                      color: "inherit",
-                      cursor: "pointer",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: "4px",
-                      font: "inherit",
-                      fontSize: "0.82rem",
-                      fontWeight: 500,
-                      borderLeft: "1px solid var(--rule-strong)",
-                    }}
                     aria-label="Escuchar los próximos 5 min"
                   >
                     <span>Escuchar 5 min 🎧</span>
@@ -494,22 +408,6 @@ export default function SmartReaderDock({
                   type="button"
                   className="reader-focus-pill-close"
                   onClick={() => setIsMuteOptionsOpen(true)}
-                  style={{
-                    background: "var(--paper-sunken)",
-                    border: "none",
-                    color: "inherit",
-                    borderRadius: "9999px",
-                    width: "20px",
-                    height: "20px",
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    cursor: "pointer",
-                    padding: 0,
-                    marginLeft: "4px",
-                    fontSize: "11px",
-                    opacity: 0.8,
-                  }}
                   aria-label="Opciones para silenciar sugerencias de enfoque"
                   title="Opciones de sugerencias"
                 >
@@ -517,15 +415,7 @@ export default function SmartReaderDock({
                 </button>
               </>
             ) : (
-              <div
-                className="reader-focus-pill-mute-options"
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  flexWrap: "wrap",
-                }}
-              >
+              <div className="reader-focus-pill-mute-options">
                 <button
                   type="button"
                   className="reader-focus-mute-book-btn"
@@ -533,16 +423,6 @@ export default function SmartReaderDock({
                     onMuteFocusForBook?.();
                     setIsDismissedLocally(true);
                     setIsMuteOptionsOpen(false);
-                  }}
-                  style={{
-                    background: "rgba(255, 255, 255, 0.12)",
-                    border: "none",
-                    borderRadius: "6px",
-                    padding: "4px 8px",
-                    color: "inherit",
-                    cursor: "pointer",
-                    font: "inherit",
-                    fontSize: "0.82rem",
                   }}
                 >
                   No sugerir en este libro
@@ -555,16 +435,6 @@ export default function SmartReaderDock({
                     setIsDismissedLocally(true);
                     setIsMuteOptionsOpen(false);
                   }}
-                  style={{
-                    background: "rgba(255, 255, 255, 0.12)",
-                    border: "none",
-                    borderRadius: "6px",
-                    padding: "4px 8px",
-                    color: "inherit",
-                    cursor: "pointer",
-                    font: "inherit",
-                    fontSize: "0.82rem",
-                  }}
                 >
                   Desactivar sugerencias de enfoque siempre
                 </button>
@@ -575,15 +445,6 @@ export default function SmartReaderDock({
                     onDismissFocusSuggestion?.();
                     setIsDismissedLocally(true);
                     setIsMuteOptionsOpen(false);
-                  }}
-                  style={{
-                    background: "none",
-                    border: "none",
-                    color: "inherit",
-                    cursor: "pointer",
-                    padding: "2px 6px",
-                    fontSize: "0.9rem",
-                    opacity: 0.7,
                   }}
                   aria-label="Cerrar"
                 >
@@ -683,7 +544,7 @@ export default function SmartReaderDock({
             </>
           ) : (
             /* ================= MODO AUDIO / TTS ================= */
-            <div className="dock-actions-group dock-audio-group" style={{ width: "100%", justifyContent: "center" }}>
+            <div className="dock-actions-group dock-audio-group">
               {/* Frase anterior */}
               {onPrevSentence ? (
                 <button

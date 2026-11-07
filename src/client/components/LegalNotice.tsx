@@ -95,7 +95,7 @@ export default function LegalNotice({
             <p>
               En cumplimiento con la Ley Federal de Protección de Datos Personales en Posesión de los Particulares (LFPDPPP), se informa la identidad y domicilio del Responsable del Tratamiento:
             </p>
-            <p style={{ fontStyle: "italic", background: "var(--c-surface-2, rgba(0,0,0,0.05))", padding: "var(--s-2)", borderRadius: "var(--r-sm)" }}>
+            <p style={{ fontStyle: "italic", background: "var(--paper-sunken)", padding: "var(--s-2)", borderRadius: "var(--radius-sm)" }}>
               [PENDIENTE DE REVISIÓN POR TITULAR: Nombre/Razón Social, Domicilio y Correo Legal]
             </p>
             <h4 style={{ margin: "var(--s-3) 0 var(--s-1)" }}>Derechos ARCO y procedimiento de revocación</h4>

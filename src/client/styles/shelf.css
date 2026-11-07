@@ -897,6 +897,25 @@
   margin-bottom: var(--s-3);
 }
 
+/* Buscador + «Ver todos» del catálogo dentro de Explora. */
+.discover-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin-block-end: var(--s-3);
+}
+
+.discover-toolbar .shelf-community-search {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  max-inline-size: none;
+  margin-block-end: 0;
+}
+
+.discover-view-toggle {
+  flex: none;
+}
+
 /* Chips de género en la hoja de opciones (al compartir la guía) */
 .shelf-genre-chips {
   display: flex;
@@ -1483,6 +1502,24 @@
   scroll-snap-align: start;
 }
 
+/* «Ver todos»: la misma lista pasa de riel a cuadrícula adaptable sin
+   cambiar el orden ni las tarjetas. */
+.discover-rail--grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+  gap: var(--s-4);
+  overflow: visible;
+  scroll-snap-type: none;
+}
+
+.discover-rail--grid .discover-book {
+  inline-size: auto;
+}
+
+.discover-rail--grid .discover-cover {
+  inline-size: 100%;
+}
+
 .discover-cover {
   position: relative;
   inline-size: 8rem;
@@ -1534,6 +1571,10 @@
 
 .discover-meta .meta {
   margin: 0;
+}
+
+.discover-facts {
+  color: var(--ink-soft);
 }
 
 .discover-label {
@@ -2118,6 +2159,90 @@
   font-family: var(--font-ui);
   font-size: clamp(0.85rem, 2.5vw, 0.95rem);
   line-height: 1.5;
+  color: var(--ink-soft);
+}
+
+.shelf-welcome-gems {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2, 0.5rem);
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.shelf-welcome-gem {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-family: var(--font-ui);
+  font-size: var(--fs-xs, 0.75rem);
+  font-weight: 500;
+  color: var(--ink-soft);
+  background: var(--paper-sunken);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-pill, 999px);
+  padding: 0.2rem 0.65rem;
+}
+
+.shelf-welcome-gem::before {
+  content: "✦";
+  color: var(--accent-primary);
+  font-size: 0.7rem;
+}
+
+.onboarding-finish-btn {
+  margin-block-start: var(--s-3, 0.75rem);
+}
+
+.shelf-companion-habit-card {
+  margin-top: 0.6rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--paper-sunken);
+  border-left: 3px solid var(--accent-primary);
+  border-radius: 6px;
+  font-size: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.shelf-companion-habit-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.shelf-companion-habit-title {
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.shelf-companion-habit-cta {
+  padding: 0.25rem 0.65rem;
+  font-size: 0.8rem;
+  border-radius: var(--r-pill, 999px);
+  white-space: nowrap;
+}
+
+.shelf-companion-habit-body {
+  margin: 0;
+  color: var(--ink-soft);
+  line-height: 1.35;
+}
+
+.shelf-companion-habit-subtitle {
+  font-size: 0.78rem;
+  color: var(--accent-primary);
+  font-weight: 500;
+}
+
+.shelf-difficulty-preflight-item {
+  font-size: 0.74rem;
+  margin-top: 0.25rem;
   color: var(--ink-soft);
 }
 

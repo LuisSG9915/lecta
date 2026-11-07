@@ -160,7 +160,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
               fontFamily: "var(--font-ui, sans-serif)",
               fontSize: "var(--fs-sm, 0.875rem)",
               lineHeight: "var(--lh-ui, 1.45)",
-              color: "var(--ink-muted, #555)",
+              color: "var(--ink-soft, #5c554d)",
               margin: "0 0 var(--s-6, 2rem) 0",
             }}
           >

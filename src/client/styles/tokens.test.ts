@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 function parseColor(val: string): { r: number; g: number; b: number; a: number } | null {
@@ -228,18 +228,35 @@ describe("tokens.css", () => {
   // los resolvía caía al fallback inline (un color fijo de un solo tema o, sin
   // fallback, una declaración inválida que desaparecía del todo, como el borde
   // de `var(--accent)` en reader.css). Cualquier uso nuevo vuelve a romper C1.
-  it("ninguna hoja usa tokens fantasma (nunca definidos en el contrato de temas)", () => {
+  it("ninguna hoja ni componente usa tokens fantasma (nunca definidos en el contrato de temas)", () => {
     const ghosts = [
       /var\(--ink-muted[\s,)]/,
       /var\(--accent[\s,)]/,
       /var\(--r-sm[\s,)]/,
       /var\(--rule-subtle[\s,)]/,
     ];
-    const files = ["reader.css", "components.css", "notebook.css", "shelf.css", "app.css", "game.css", "tokens.css"];
-    for (const name of files) {
+    const cssFiles = ["reader.css", "components.css", "notebook.css", "shelf.css", "app.css", "game.css", "tokens.css"];
+    for (const name of cssFiles) {
       const css = readFileSync(resolve(__dirname, name), "utf-8");
       for (const ghost of ghosts) {
         expect(css, `${name} usa token fantasma ${ghost}`).not.toMatch(ghost);
+      }
+    }
+
+    const componentsDir = resolve(__dirname, "../components");
+    const readerComponentsDir = resolve(componentsDir, "reader");
+    const tsxFiles = [
+      ...readdirSync(componentsDir)
+        .filter((f) => f.endsWith(".tsx"))
+        .map((f) => resolve(componentsDir, f)),
+      ...readdirSync(readerComponentsDir)
+        .filter((f) => f.endsWith(".tsx"))
+        .map((f) => resolve(readerComponentsDir, f)),
+    ];
+    for (const filePath of tsxFiles) {
+      const src = readFileSync(filePath, "utf-8");
+      for (const ghost of ghosts) {
+        expect(src, `${filePath} usa token fantasma ${ghost}`).not.toMatch(ghost);
       }
     }
   });

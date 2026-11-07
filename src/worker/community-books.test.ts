@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { app } from "./app";
+import { resetCommunityGuidesCacheForTests } from "./community-guides";
 import type { WorkerEnv } from "./db";
 import * as dbModule from "./db";
 import type { PaperBookGuide } from "../shared/paper-guide";
@@ -76,6 +77,7 @@ describe("Biblioteca comunitaria (/api/books/community + /share)", () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    resetCommunityGuidesCacheForTests();
     const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", minimalBytes));
     minimalHash = Array.from(digest, (b) => b.toString(16).padStart(2, "0")).join("");
 

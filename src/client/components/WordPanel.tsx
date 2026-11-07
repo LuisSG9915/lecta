@@ -42,6 +42,7 @@ import { syllabifySpanish } from "../lib/syllables";
 import type { PhraseHit } from "../lib/phrases";
 import {
   isLikelyProperNoun,
+  isPotentialCharacterToken,
   buildZeroSpoilerCharacterCard,
   type CharacterMemoryCard,
 } from "../lib/character-helper";
@@ -179,6 +180,8 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
   const userNativeLang = loadNativeLanguage() || "es";
   const isForeignBook = effectiveLang !== userNativeLang;
   const isCandidateProperNoun = isLikelyProperNoun(cleanWord, effectiveContext, effectiveLang);
+  const canBeCharacter =
+    isCandidateProperNoun || isPotentialCharacterToken(cleanWord, effectiveLang);
 
   const [viewMode, setViewMode] = useState<"dictionary" | "character">(
     () => initialViewMode ?? (isCandidateProperNoun ? "character" : "dictionary"),
@@ -460,7 +463,7 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
   // Construcción de la ficha de memoria de personaje (Cero Spoilers)
   useEffect(() => {
     let cancelled = false;
-    const shouldBuildCard = isCandidateProperNoun || Boolean(sections && sections.length > 0);
+    const shouldBuildCard = canBeCharacter || initialViewMode === "character";
     if (!shouldBuildCard) return;
 
     queueMicrotask(() => {
@@ -518,7 +521,7 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [cleanWord, sections, toc, currentSectionIndex, currentChapterTitle, effectiveContext, isCandidateProperNoun, initialViewMode, charOffsetInChapter, bookLanguage, language]);
+  }, [cleanWord, sections, toc, currentSectionIndex, currentChapterTitle, effectiveContext, isCandidateProperNoun, canBeCharacter, initialViewMode, charOffsetInChapter, bookLanguage, language]);
 
   // Traducción de citas para libros en otros idiomas (L2)
   const handleTranslateQuotes = async () => {
@@ -969,27 +972,11 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
         <nav
           className="word-panel-mode-switcher"
           aria-label="Vista del panel"
-          style={{
-            display: "flex",
-            gap: "0.5rem",
-            padding: "0.5rem 1rem 0",
-            borderBottom: "1px solid rgba(127,127,127,0.15)",
-          }}
         >
           <button
             type="button"
             className={`btn--mode-toggle ${viewMode === "character" ? "is-active" : ""}`}
             onClick={() => setViewMode("character")}
-            style={{
-              background: "transparent",
-              border: "none",
-              borderBottom: viewMode === "character" ? "2px solid currentColor" : "2px solid transparent",
-              padding: "0.25rem 0.5rem",
-              fontSize: "0.82rem",
-              fontWeight: viewMode === "character" ? 600 : 400,
-              cursor: "pointer",
-              opacity: viewMode === "character" ? 1 : 0.65,
-            }}
           >
             Personaje
           </button>
@@ -997,16 +984,6 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
             type="button"
             className={`btn--mode-toggle ${viewMode === "dictionary" ? "is-active" : ""}`}
             onClick={() => setViewMode("dictionary")}
-            style={{
-              background: "transparent",
-              border: "none",
-              borderBottom: viewMode === "dictionary" ? "2px solid currentColor" : "2px solid transparent",
-              padding: "0.25rem 0.5rem",
-              fontSize: "0.82rem",
-              fontWeight: viewMode === "dictionary" ? 600 : 400,
-              cursor: "pointer",
-              opacity: viewMode === "dictionary" ? 1 : 0.65,
-            }}
           >
             Diccionario
           </button>
@@ -1018,109 +995,55 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
           className="character-memory-card"
           role="region"
           aria-label={`Memoria de ${cleanWord}`}
-          style={{ padding: "0.75rem 1rem" }}
         >
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              flexWrap: "wrap",
-              gap: "0.5rem",
-              marginBottom: "0.5rem",
-            }}
-          >
+          <div className="character-memory-header">
             {/* Insignia de seguridad: Hasta el Cap. X (Cero Spoilers) */}
-            <div
-              className="character-security-badge"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "0.35rem",
-                fontSize: "0.76rem",
-                fontWeight: 500,
-                padding: "0.2rem 0.5rem",
-                borderRadius: "4px",
-                background: "rgba(127,127,127,0.12)",
-                opacity: 0.9,
-              }}
-            >
+            <div className="character-security-badge">
               <span className="character-security-icon" aria-hidden="true"><Icon name="lock" size={12} /></span>
               <span className="character-security-text">
                 Hasta el {currentChapterTitle || `Cap. ${(currentSectionIndex ?? 0) + 1}`} (Cero Spoilers)
               </span>
             </div>
 
-            <span
-              className="character-memory-header-tag"
-              style={{ fontSize: "0.74rem", opacity: 0.7 }}
-            >
+            <span className="character-memory-header-tag">
               Memoria del libro · Sin spoilers hasta tu página
             </span>
           </div>
 
           {isLoadingCharacter ? (
-            <div className="word-card-context-skeleton" aria-busy="true" style={{ marginTop: "0.5rem" }}>
+            <div className="word-card-context-skeleton" aria-busy="true">
               <span className="skeleton-line" />
               <span className="skeleton-line is-short" />
             </div>
           ) : characterCard ? (
-            <div className="character-memory-content" style={{ marginTop: "0.4rem" }}>
+            <div className="character-memory-content">
               {/* Primera vez que apareció */}
-              <div className="character-mention-block character-first-mention" style={{ marginBottom: "0.65rem" }}>
-                <div
-                  className="character-mention-title"
-                  style={{ fontSize: "0.8rem", fontWeight: 600, opacity: 0.9 }}
-                >
+              <div className="character-mention-block character-first-mention">
+                <div className="character-mention-title">
                   Primera vez que apareció {characterCard.firstMention ? `(${characterCard.firstMention.chapterTitle})` : ""}:
                 </div>
                 {characterCard.firstMention ? (
-                  <blockquote
-                    className="character-quote-text"
-                    style={{
-                      margin: "0.25rem 0",
-                      paddingLeft: "0.6rem",
-                      borderLeft: "2px solid currentColor",
-                      fontStyle: "italic",
-                      fontSize: "0.86rem",
-                      lineHeight: "1.35",
-                      opacity: 0.9,
-                    }}
-                  >
+                  <blockquote className="character-quote-text">
                     «{translatedQuotes?.firstMention || characterCard.firstMention.sentence}»
                   </blockquote>
                 ) : (
-                  <p className="character-quote-empty" style={{ fontSize: "0.82rem", opacity: 0.7, margin: "0.2rem 0" }}>
+                  <p className="character-quote-empty">
                     No se registran apariciones previas.
                   </p>
                 )}
               </div>
 
               {/* Última vez visto antes de aquí */}
-              <div className="character-mention-block character-recent-mention" style={{ marginBottom: "0.65rem" }}>
-                <div
-                  className="character-mention-title"
-                  style={{ fontSize: "0.8rem", fontWeight: 600, opacity: 0.9 }}
-                >
-                  ⏳ Última vez visto antes de aquí {characterCard.recentMention ? `(${characterCard.recentMention.chapterTitle})` : ""}:
+              <div className="character-mention-block character-recent-mention">
+                <div className="character-mention-title">
+                  Última vez visto antes de aquí {characterCard.recentMention ? `(${characterCard.recentMention.chapterTitle})` : ""}:
                 </div>
                 {characterCard.recentMention ? (
-                  <blockquote
-                    className="character-quote-text"
-                    style={{
-                      margin: "0.25rem 0",
-                      paddingLeft: "0.6rem",
-                      borderLeft: "2px solid currentColor",
-                      fontStyle: "italic",
-                      fontSize: "0.86rem",
-                      lineHeight: "1.35",
-                      opacity: 0.9,
-                    }}
-                  >
+                  <blockquote className="character-quote-text">
                     «{translatedQuotes?.recentMention || characterCard.recentMention.sentence}»
                   </blockquote>
                 ) : (
-                  <p className="character-quote-empty" style={{ fontSize: "0.82rem", opacity: 0.7, margin: "0.2rem 0" }}>
+                  <p className="character-quote-empty">
                     {characterCard.firstMention
                       ? "Es su primera escena o intervención en el libro."
                       : "Sin menciones previas en la lectura."}
@@ -1130,17 +1053,11 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
 
               {/* Relación en escena */}
               {characterCard.coOccurringCharacters.length > 0 && (
-                <div className="character-relationships-block" style={{ marginTop: "0.5rem" }}>
-                  <div
-                    className="character-relationships-label"
-                    style={{ fontSize: "0.78rem", fontWeight: 600, marginBottom: "0.25rem", opacity: 0.85 }}
-                  >
+                <div className="character-relationships-block">
+                  <div className="character-relationships-label">
                     Relación en escena:
                   </div>
-                  <div
-                    className="character-companions-pills"
-                    style={{ display: "flex", flexWrap: "wrap", gap: "0.35rem" }}
-                  >
+                  <div className="character-companions-pills">
                     {characterCard.coOccurringCharacters.map((companionName) => (
                       <button
                         key={companionName}
@@ -1148,11 +1065,6 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
                         className="character-companion-pill word-synonym-pill"
                         onClick={() => onSelectWord?.(companionName)}
                         title={`Explorar ${companionName}`}
-                        style={{
-                          cursor: onSelectWord ? "pointer" : "default",
-                          border: "none",
-                          fontSize: "0.78rem",
-                        }}
                       >
                         {companionName}
                       </button>
@@ -1163,21 +1075,12 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
 
               {/* Soporte para Libros en Otros Idiomas (L2): Botón para traducir citas */}
               {isForeignBook && (characterCard.firstMention || characterCard.recentMention) && (
-                <div className="character-translate-action" style={{ marginTop: "0.75rem" }}>
+                <div className="character-translate-action">
                   <button
                     type="button"
                     className="btn--translate-character-quotes"
                     onClick={handleTranslateQuotes}
                     disabled={isTranslatingQuotes}
-                    style={{
-                      background: "transparent",
-                      border: "1px solid currentColor",
-                      borderRadius: "999px",
-                      padding: "0.25rem 0.65rem",
-                      fontSize: "0.78rem",
-                      cursor: isTranslatingQuotes ? "wait" : "pointer",
-                      opacity: isTranslatingQuotes ? 0.6 : 0.88,
-                    }}
                   >
                     {isTranslatingQuotes ? "Traduciendo citas..." : "Traducir citas al español"}
                   </button>
@@ -1185,10 +1088,7 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
               )}
 
               {/* Opción directa para desactivar recordatorio de personajes */}
-              <div
-                className="character-disable-action"
-                style={{ marginTop: "0.85rem", display: "flex", justifyContent: "flex-end" }}
-              >
+              <div className="character-disable-action">
                 <button
                   type="button"
                   className="btn--disable-character-memory"
@@ -1198,22 +1098,13 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
                     onNotice?.("Recordatorio de personajes desactivado.");
                   }}
                   title="Desactivar recordatorio de personajes"
-                  style={{
-                    background: "transparent",
-                    border: "none",
-                    color: "inherit",
-                    fontSize: "0.72rem",
-                    opacity: 0.6,
-                    cursor: "pointer",
-                    textDecoration: "underline",
-                  }}
                 >
                   ✕ Desactivar recordatorio de personajes
                 </button>
               </div>
             </div>
           ) : (
-            <p className="character-quote-empty" style={{ fontSize: "0.85rem", opacity: 0.75, margin: "0.5rem 0" }}>
+            <p className="character-quote-empty">
               No se han encontrado apariciones anteriores de «{cleanWord}».
             </p>
           )}

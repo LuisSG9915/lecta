@@ -108,6 +108,35 @@ export function isIntraSentencePosition(text: string, offset: number): boolean {
 }
 
 /**
+ * Determina rápido si un token puede ser candidato a nombre de personaje
+ * (inicia con mayúscula y no es stopword ni sustantivo común capitalizado).
+ * Evita escanear capítulos del EPUB al tocar palabras comunes en minúscula.
+ */
+export function isPotentialCharacterToken(surfaceToken: string, lang = "es"): boolean {
+  const clean = surfaceToken.replace(/^[^\p{L}]+|[^\p{L}]+$/gu, "");
+  if (clean.length < 2) return false;
+
+  const firstChar = clean.charAt(0);
+  if (firstChar !== firstChar.toUpperCase() || firstChar === firstChar.toLowerCase()) {
+    return false;
+  }
+
+  const lower = clean.toLowerCase();
+  if (HONORIFICS.has(lower)) return true;
+  if (isStopword(lower, lang) || isStopword(lower, "en") || isStopword(lower, "es")) {
+    return false;
+  }
+  if (COMMON_CAPITALIZED_NOUNS.has(lower)) {
+    return false;
+  }
+  if (lang === "en" && isCommonEnglishWord(lower)) {
+    return false;
+  }
+
+  return true;
+}
+
+/**
  * Determina si un token seleccionado dentro de una oración es probablemente un nombre propio (Personaje/Lugar)
  */
 export function isLikelyProperNoun(

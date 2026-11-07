@@ -154,6 +154,8 @@ describe("Shelf - Tu Mesa de Lectura (Fase 5.2)", () => {
 
     // Título del libro
     expect(heroSection?.textContent).toContain("Don Quijote de la Mancha");
+    expect(heroSection?.textContent).toContain("Capítulo 3 de 10 · 45% leído");
+    expect(heroSection?.textContent).not.toContain("Quedan ~5 min");
 
     // Botón continuar con el modo activo (Modo Enfoque)
     const continueBtn = host.querySelector(".btn--hero-continue") as HTMLButtonElement;

@@ -74,84 +74,61 @@ export default function TtsConsentDialog({
         aria-label="Leer en voz alta"
         onClick={(event) => event.stopPropagation()}
       >
-        <h3 className="tts-consent-title" style={{ margin: "0 0 var(--s-2)", fontSize: "var(--fs-1)" }}>
+        <h3 className="tts-consent-title">
           Lectura en voz alta
         </h3>
         <p className="tts-consent-text">
           Lecta incluye el motor neural <strong>KittenTTS Neural (~24 MB)</strong> con 8 voces
-          naturales a 24 kHz. Se descarga <strong>una sola vez</strong> y funciona completamente
-          sin conexión. Lecta jamás envía el texto de tus libros a servidores externos.
+          naturales a 24 kHz para lecturas en inglés (se descarga <strong>una sola vez</strong> y
+          funciona sin conexión), además de la voz de tu dispositivo para español e inglés al
+          instante. Lecta jamás envía el texto de tus libros a servidores externos.
         </p>
 
         {isDownloadingProp ? (
-          <div className="tts-consent-progress" style={{ margin: "var(--s-3) 0" }}>
+          <div className="tts-consent-progress">
             <div
               className="tts-progress-bar"
               role="progressbar"
               aria-valuenow={downloadProgress}
               aria-valuemin={0}
               aria-valuemax={100}
-              style={{
-                height: "8px",
-                background: "var(--paper-sunken, #e4e2dd)",
-                borderRadius: "4px",
-                overflow: "hidden",
-                margin: "var(--s-2) 0",
-              }}
             >
               <div
                 className="tts-progress-fill"
-                style={{
-                  width: `${downloadProgress}%`,
-                  height: "100%",
-                  background: "var(--accent-primary, #c86d3b)",
-                  transition: "width 0.2s ease",
-                }}
+                style={{ width: `${downloadProgress}%` }}
               />
             </div>
-            <p className="tts-progress-text" style={{ fontSize: "var(--fs-xs)", color: "var(--ink-soft)" }}>
+            <p className="tts-progress-text">
               Descargando Voz Neural HD (Offline)... {downloadProgress}%
             </p>
           </div>
         ) : downloading ? (
-          <div className="tts-consent-progress" style={{ margin: "var(--s-3) 0" }}>
+          <div className="tts-consent-progress">
             <div
               className="tts-progress-bar"
               role="progressbar"
               aria-valuenow={percent}
               aria-valuemin={0}
               aria-valuemax={100}
-              style={{
-                height: "8px",
-                background: "var(--paper-sunken, #e4e2dd)",
-                borderRadius: "4px",
-                overflow: "hidden",
-                margin: "var(--s-2) 0",
-              }}
             >
               <div
                 className="tts-progress-fill"
-                style={{
-                  width: `${percent}%`,
-                  height: "100%",
-                  background: "var(--accent-primary, #c86d3b)",
-                  transition: "width 0.2s ease",
-                }}
+                style={{ width: `${percent}%` }}
               />
             </div>
-            <p className="tts-progress-text" style={{ fontSize: "var(--fs-xs)", color: "var(--ink-soft)" }}>
+            <p className="tts-progress-text">
               Descargando modelo neural... {percent}%
             </p>
           </div>
         ) : null}
 
         {errorMsg ? (
-          <p className="tts-consent-error" style={{ color: "var(--accent-danger, #d94848)", fontSize: "var(--fs-xs)" }}>
+          <p className="tts-consent-error">
             {errorMsg}
           </p>
         ) : null}
 
-        <div className="tts-consent-actions" style={{ display: "flex", flexDirection: "column", gap: "var(--s-2)", marginTop: "var(--s-4)" }}>
+        <div className="tts-consent-actions">
           {!isBusy ? (
             <>
               <button
@@ -177,16 +154,14 @@ export default function TtsConsentDialog({
                   className="btn--quiet tts-delete-model-btn"
                   onClick={onDeleteModel}
                   aria-label="Borrar datos de voz offline"
-                  style={{ color: "var(--accent-danger, #d94848)" }}
                 >
                   🗑️ Borrar datos de voz offline (~24 MB)
                 </button>
               ) : null}
               <button
                 type="button"
-                className="btn--quiet"
+                className="btn--quiet tts-dismiss-btn"
                 onClick={onDismiss}
-                style={{ opacity: 0.7 }}
               >
                 Ahora no
               </button>

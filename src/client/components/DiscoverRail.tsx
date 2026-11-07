@@ -1,15 +1,17 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { coverPalette } from "../lib/cover";
 import {
   catalogCoverUrl,
   catalogVocab,
   entriesByFormOf,
+  formatBookLength,
   getBookAffinityBadge,
   getBookMoodTags,
   listCatalog,
   manifestBookForms,
   type CatalogBook,
 } from "../lib/catalog";
+import { normalizeSearchText } from "../lib/search-text";
 import { getLanguageTheta } from "../lib/profile-models";
 import {
   compareBookCoverages,
@@ -48,11 +50,20 @@ type DiscoverRailProps = {
     language: string,
     scope?: DbScope,
   ) => Promise<CoverageInputs | null>;
+  // Sube al cerrar la calibración o al guardar palabras: las coberturas
+  // ya medidas se recalculan con el perfil nuevo sin re-bajar manifiestos.
+  vocabVersion?: number;
 };
 
-// Cuántos manifiestos traer por montaje: alcanza para poblar las
-// insignias visibles sin descargar el catálogo completo cada vez.
-const VOCAB_PREFETCH_LIMIT = 24;
+// El riel muestra esta franja; «Ver todos» despliega el resto en
+// cuadrícula y solo entonces se miden las coberturas que faltan.
+const DISCOVER_RAIL_LIMIT = 12;
+
+type CoverageSource = {
+  forms: string[];
+  entriesByForm: ReturnType<typeof entriesByFormOf>;
+  occurrences?: Record<string, number>;
+};
 
 export const DISCOVER_MOOD_FILTERS = [
   "Todos",
@@ -68,6 +79,7 @@ export default function DiscoverRail({
   fetchIndex = listCatalog,
   fetchVocab = catalogVocab,
   loadInputs = inputsForCoverage,
+  vocabVersion = 0,
 }: DiscoverRailProps) {
   const [books, setBooks] = useState<CatalogBook[] | null>(null);
   const [coverages, setCoverages] = useState<Map<string, BookCoverage>>(
@@ -81,7 +93,15 @@ export default function DiscoverRail({
   const [coverBroken, setCoverBroken] = useState<Set<string>>(new Set());
   const [activeFilter, setActiveFilter] = useState<string>("Todos");
   const [query, setQuery] = useState("");
+  const [expanded, setExpanded] = useState(false);
   const cancelledRef = useRef(false);
+  const sourcesRef = useRef(new Map<string, CoverageSource>());
+  const attemptedRef = useRef(new Set<string>());
+  const inputsLoaderRef = useRef<{
+    version: number;
+    load: NonNullable<DiscoverRailProps["loadInputs"]>;
+    loader: ReturnType<typeof createCoverageInputsLoader>;
+  } | null>(null);
 
   useEffect(() => {
     cancelledRef.current = false;
@@ -102,38 +122,98 @@ export default function DiscoverRail({
     };
   }, [fetchIndex]);
 
-  // Coberturas: el perfil se lee una vez por idioma, luego un manifiesto
-  // a la vez. Con saveData no se pide nada — el riel funciona sin
-  // insignias.
+  // Perfil de cobertura: un cargador por (vocabVersion, loadInputs) para
+  // no releer IndexedDB en cada cambio de filtro ni al recorrer el
+  // catálogo; al subir vocabVersion se crea uno nuevo y se recalcula.
+  const getInputsLoader = useCallback(() => {
+    const current = inputsLoaderRef.current;
+    if (
+      !current ||
+      current.version !== vocabVersion ||
+      current.load !== loadInputs
+    ) {
+      const loader = createCoverageInputsLoader(captureDbScope(), loadInputs);
+      inputsLoaderRef.current = {
+        version: vocabVersion,
+        load: loadInputs,
+        loader,
+      };
+      return loader;
+    }
+    return current.loader;
+  }, [vocabVersion, loadInputs]);
+
+  // Filtrado por tag / estado de ánimo y búsqueda (título o autor), en
+  // el orden curado del índice: es la base estable de qué medir y qué
+  // pintar; el orden final lo decide `ordered` con las coberturas.
+  const baseFiltered = useMemo(() => {
+    if (!books) return [];
+    const q = normalizeSearchText(query);
+    return books.filter(
+      (b) =>
+        (activeFilter === "Todos" || getBookMoodTags(b).includes(activeFilter)) &&
+        (!q ||
+          normalizeSearchText(b.title).includes(q) ||
+          normalizeSearchText(b.author).includes(q)),
+    );
+  }, [books, activeFilter, query]);
+
+  // Solo se miden los libros que el lector puede ver: la franja del
+  // riel o, al desplegar la cuadrícula, todo lo filtrado. El conjunto
+  // no depende de las coberturas, así que medir no reordena el objetivo.
+  const coverageTargets = useMemo(
+    () => (expanded ? baseFiltered : baseFiltered.slice(0, DISCOVER_RAIL_LIMIT)),
+    [baseFiltered, expanded],
+  );
+
+  // Trae los manifiestos que faltan de los objetivos visibles y mide
+  // cada uno en cuanto llega. De uno en uno y con guarda saveData para
+  // no competir con la lectura; un manifiesto fallido no apaga el resto.
   useEffect(() => {
-    if (!books?.length) return;
+    if (!books?.length || coverageTargets.length === 0) return;
     const connection = (
       navigator as Navigator & { connection?: { saveData?: boolean } }
     ).connection;
     if (connection?.saveData) return;
 
     let cancelled = false;
-    const scope: DbScope | undefined = captureDbScope();
+    const scope = captureDbScope();
+    const inputsFor = getInputsLoader();
     void (async () => {
-      const inputsFor = createCoverageInputsLoader(scope, loadInputs);
-      for (const book of books.slice(0, VOCAB_PREFETCH_LIMIT)) {
+      for (const book of coverageTargets) {
         if (cancelled) return;
+        if (sourcesRef.current.has(book.id) || attemptedRef.current.has(book.id)) {
+          continue;
+        }
         const lang = coverageLanguageOf(book.language);
         const inputs = await inputsFor(lang);
         if (cancelled) return;
+        // Sin perfil medible no se gasta la descarga del manifiesto ni
+        // se marca como intentado: si vocabVersion trae evidencia nueva,
+        // este mismo libro vuelve a la cola y sí se mide.
         if (!inputs) continue;
         if (!cancelledRef.current)
           setConfidenceByLang((prev) =>
-            prev.get(lang) === inputs.confidence ? prev : new Map(prev).set(lang, inputs.confidence),
+            prev.get(lang) === inputs.confidence
+              ? prev
+              : new Map(prev).set(lang, inputs.confidence),
           );
+        attemptedRef.current.add(book.id);
         const manifest = await fetchVocab(book.id, scope).catch(() => null);
+        if (cancelled) return;
         // Un manifiesto que no baja no apaga el resto del riel.
-        if (!manifest || cancelled) continue;
+        if (!manifest) continue;
+        const source: CoverageSource = {
+          forms: manifestBookForms(manifest),
+          entriesByForm: entriesByFormOf(manifest),
+          occurrences: manifest.occurrences,
+        };
+        sourcesRef.current.set(book.id, source);
         const coverage = coverageOfBook(
-          manifestBookForms(manifest),
-          entriesByFormOf(manifest),
+          source.forms,
+          source.entriesByForm,
           inputs,
-          manifest.occurrences,
+          source.occurrences,
         );
         if (cancelled) return;
         setCoverages((prev) => {
@@ -146,9 +226,54 @@ export default function DiscoverRail({
     return () => {
       cancelled = true;
     };
-    // El índice llega una vez; el perfil se relee en el próximo
-    // montaje (volver a la estantería tras leer).
-  }, [books, fetchVocab, loadInputs]);
+  }, [books, coverageTargets, fetchVocab, getInputsLoader]);
+
+  // Al cambiar vocabVersion (o el cargador de perfil) se recalculan las
+  // coberturas con los manifiestos ya en memoria: sin red y sin perder
+  // el orden estable del catálogo.
+  useEffect(() => {
+    if (!books?.length || sourcesRef.current.size === 0) return;
+    const connection = (
+      navigator as Navigator & { connection?: { saveData?: boolean } }
+    ).connection;
+    if (connection?.saveData) return;
+
+    let cancelled = false;
+    const inputsFor = getInputsLoader();
+    void (async () => {
+      const bookById = new Map(books.map((book) => [book.id, book]));
+      for (const [id, source] of sourcesRef.current) {
+        if (cancelled) return;
+        const book = bookById.get(id);
+        if (!book) continue;
+        const lang = coverageLanguageOf(book.language);
+        const inputs = await inputsFor(lang);
+        if (cancelled) return;
+        if (!inputs) continue;
+        if (!cancelledRef.current)
+          setConfidenceByLang((prev) =>
+            prev.get(lang) === inputs.confidence
+              ? prev
+              : new Map(prev).set(lang, inputs.confidence),
+          );
+        const coverage = coverageOfBook(
+          source.forms,
+          source.entriesByForm,
+          inputs,
+          source.occurrences,
+        );
+        if (cancelled) return;
+        setCoverages((prev) => {
+          const next = new Map(prev);
+          next.set(id, coverage);
+          return next;
+        });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [books, getInputsLoader]);
 
   const ownedByHash = useMemo(
     () => new Map(library.map((book) => [book.hash, book])),
@@ -170,18 +295,15 @@ export default function DiscoverRail({
     return [...measured, ...rest];
   }, [books, coverages]);
 
-  // Filtrado por tag / estado de ánimo y por la búsqueda de la pestaña
-  // «Libros gratuitos» (título o autor).
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return ordered.filter(
-      (b) =>
-        (activeFilter === "Todos" || getBookMoodTags(b).includes(activeFilter)) &&
-        (!q ||
-          b.title.toLowerCase().includes(q) ||
-          b.author.toLowerCase().includes(q)),
-    );
-  }, [ordered, activeFilter, query]);
+  const baseFilteredIds = useMemo(
+    () => new Set(baseFiltered.map((book) => book.id)),
+    [baseFiltered],
+  );
+  const filtered = useMemo(
+    () => ordered.filter((book) => baseFilteredIds.has(book.id)),
+    [ordered, baseFilteredIds],
+  );
+  const visible = expanded ? filtered : filtered.slice(0, DISCOVER_RAIL_LIMIT);
 
   if (!books) return null;
 
@@ -202,15 +324,14 @@ export default function DiscoverRail({
     <section aria-label="Descubre" className="discover">
       <div className="discover-head">
         <h2 className="eyebrow shelf-eyebrow">Descubre</h2>
-        <div className="discover-filters" role="tablist" aria-label="Filtros de catálogo">
+        <div className="discover-filters" role="group" aria-label="Filtros de catálogo">
           {DISCOVER_MOOD_FILTERS.map((filter) => (
             <button
               key={filter}
               type="button"
               className={`discover-filter-pill${activeFilter === filter ? " discover-filter-pill--active" : ""}`}
               onClick={() => setActiveFilter(filter)}
-              role="tab"
-              aria-selected={activeFilter === filter}
+              aria-pressed={activeFilter === filter}
             >
               {filter}
             </button>
@@ -218,20 +339,32 @@ export default function DiscoverRail({
         </div>
       </div>
 
-      <input
-        type="search"
-        className="shelf-community-search"
-        placeholder="Buscar por título o autor"
-        value={query}
-        onChange={(event) => setQuery(event.target.value)}
-        aria-label="Buscar en libros gratuitos"
-      />
+      <div className="discover-toolbar">
+        <input
+          type="search"
+          className="shelf-community-search"
+          placeholder="Buscar por título o autor"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          aria-label="Buscar en libros gratuitos"
+        />
+        {filtered.length > DISCOVER_RAIL_LIMIT ? (
+          <button
+            type="button"
+            className="btn--quiet discover-view-toggle"
+            aria-pressed={expanded}
+            onClick={() => setExpanded((prev) => !prev)}
+          >
+            {expanded ? "Ver en riel" : `Ver todos (${filtered.length})`}
+          </button>
+        ) : null}
+      </div>
       {filtered.length === 0 ? (
         <p className="meta">Sin libros que coincidan con la búsqueda.</p>
       ) : null}
 
-      <ul className="discover-rail">
-        {filtered.map((book) => {
+      <ul className={`discover-rail${expanded ? " discover-rail--grid" : ""}`}>
+        {visible.map((book) => {
           const coverage = coverages.get(book.id);
           const owned = book.epubSha256
             ? ownedByHash.get(book.epubSha256)
@@ -248,6 +381,12 @@ export default function DiscoverRail({
             coverage && confidence !== "low" ? coverage.percent : book.difficulty,
             userTheta,
           );
+          const facts = [
+            book.language?.slice(0, 2).toUpperCase(),
+            formatBookLength(book.wordCount),
+          ]
+            .filter(Boolean)
+            .join(" · ");
           return (
             <li key={book.id} className="discover-book">
               <div className="discover-cover">
@@ -315,6 +454,7 @@ export default function DiscoverRail({
                   {book.title}
                 </p>
                 <p className="meta">{book.author}</p>
+                {facts ? <p className="meta discover-facts">{facts}</p> : null}
                 {coverage?.newWordsCount != null && coverage.newWordsCount > 0 ? (
                   <p className="meta discover-new-words">
                     +{coverage.newWordsCount} palabras útiles

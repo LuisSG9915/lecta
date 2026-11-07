@@ -24,7 +24,7 @@ export function MidChapterRecallCard({ item, onSolve, onSkip }: MidChapterRecall
         margin: "var(--s-3) 0",
         padding: "var(--s-3)",
         background: "var(--paper-sunken)",
-        borderRadius: "var(--r-sm)",
+        borderRadius: "var(--radius-sm)",
       }}
     >
       <p className="meta" style={{ margin: "0 0 var(--s-2)" }}>

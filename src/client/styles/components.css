@@ -2795,6 +2795,32 @@ mark.saved-word[data-level="settled"] {
    ===================================================================== */
 
 /* 1. Tarjeta de Personaje «Cero Spoilers» en WordPanel */
+.word-panel-mode-switcher {
+  display: flex;
+  gap: var(--s-2, 0.5rem);
+  padding: var(--s-2, 0.5rem) var(--s-4, 1rem) 0;
+  border-bottom: 1px solid var(--border-color, var(--rule));
+}
+
+.btn--mode-toggle {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 0.3rem 0.6rem;
+  font-family: var(--font-ui, sans-serif);
+  font-size: var(--fs-sm, 0.85rem);
+  font-weight: 500;
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: color var(--dur-1, 120ms) ease, border-color var(--dur-1, 120ms) ease;
+}
+
+.btn--mode-toggle.is-active {
+  color: var(--accent-primary, var(--vermilion, #8c5a32));
+  border-bottom-color: var(--accent-primary, var(--vermilion, #8c5a32));
+  font-weight: 600;
+}
+
 .character-memory-card {
   margin-top: 0.75rem;
   padding: 0.9rem 1rem;
@@ -2803,6 +2829,19 @@ mark.saved-word[data-level="settled"] {
   border: 1px solid var(--border-color, #e2dcd3);
   color: var(--ink);
   font-family: var(--font-ui, sans-serif);
+}
+
+.character-memory-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.character-memory-content {
+  margin-top: 0.4rem;
 }
 
 .character-security-badge,
@@ -2816,7 +2855,6 @@ mark.saved-word[data-level="settled"] {
   border-radius: 999px;
   background: var(--surface-spoiler-safe);
   color: var(--text-spoiler-safe);
-  margin-bottom: 0.5rem;
 }
 
 .character-security-icon {
@@ -2850,9 +2888,10 @@ mark.saved-word[data-level="settled"] {
   margin: 0.35rem 0 0.65rem;
   padding-left: 0.7rem;
   border-left: 2px solid var(--accent-primary, var(--vermilion, #8c5a32));
+  font-family: var(--font-book);
   font-style: italic;
   font-size: 0.9rem;
-  line-height: 1.4;
+  line-height: 1.45;
   color: var(--ink-soft);
 }
 

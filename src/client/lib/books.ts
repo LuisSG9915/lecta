@@ -111,16 +111,28 @@ export async function downloadBook(book: RemoteBook, scope?: DbScope) {
 // crea la entrada propia paper_only y devuelve la guía — el EPUB del
 // donante jamás sale de su cuenta.
 
-export async function listCommunityBooks(scope?: DbScope): Promise<CommunityBook[]> {
+export type CommunityBooksResult = {
+  ok: boolean;
+  books: CommunityBook[];
+};
+
+export async function listCommunityBooksResult(
+  scope?: DbScope,
+): Promise<CommunityBooksResult> {
   try {
     const response = await accountFetch("/api/books/community", undefined, scope);
-    if (!response.ok) return [];
+    if (!response.ok) return { ok: false, books: [] };
     const data = (await response.json()) as { books?: CommunityBook[] };
-    return data.books ?? [];
+    return { ok: true, books: data.books ?? [] };
   } catch (error) {
     if (error instanceof StaleScopeError) throw error;
-    return [];
+    return { ok: false, books: [] };
   }
+}
+
+export async function listCommunityBooks(scope?: DbScope): Promise<CommunityBook[]> {
+  const result = await listCommunityBooksResult(scope);
+  return result.books;
 }
 
 export async function shareBook(

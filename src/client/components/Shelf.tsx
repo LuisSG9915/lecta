@@ -18,6 +18,7 @@ import {
 } from "../lib/cover";
 import { repairRemoteBook } from "../lib/books";
 import { languageName } from "../lib/epub";
+import { normalizeSearchText } from "../lib/search-text";
 import {
   entriesByFormOf,
   manifestBookForms,
@@ -96,14 +97,6 @@ export type ActiveRead = {
 export type BookLike = ShelfItem | (BookMeta & { hash?: string; name?: string; file?: File });
 
 export type ShelfSortBy = "recent" | "title" | "progress";
-
-function normalizeText(text: string): string {
-  return text
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .trim();
-}
 
 export type ShelfProps = {
   books?: (BookMeta | ShelfItem)[];
@@ -216,6 +209,7 @@ export default function Shelf({
   downloadingHash,
   activityVersion = 0,
   vocabVersion = 0,
+  onOpenAccount,
   onOpenJourney,
   onOpenPractice,
   onRequestCalibration,
@@ -663,11 +657,11 @@ export default function Shelf({
       });
     }
 
-    const q = normalizeText(searchQuery);
+    const q = normalizeSearchText(searchQuery);
     if (q) {
       result = result.filter((book) => {
-        const title = normalizeText(book.title || book.name || "");
-        const author = normalizeText(book.author || "");
+        const title = normalizeSearchText(book.title || book.name || "");
+        const author = normalizeSearchText(book.author || "");
         return title.includes(q) || author.includes(q);
       });
     }
@@ -810,6 +804,11 @@ export default function Shelf({
             <p className="shelf-welcome-hero-subtitle">
               Abre nuestra edición interactiva de muestra o elige una obra gratuita abajo. Lecta preparará las palabras difíciles antes de cada capítulo.
             </p>
+            <ul className="shelf-welcome-gems" aria-label="Qué incluye tu lectura">
+              <li className="shelf-welcome-gem">Significado al instante en 1 toque</li>
+              <li className="shelf-welcome-gem">Memoria de personajes sin spoilers</li>
+              <li className="shelf-welcome-gem">Voz y enfoque adaptativo</li>
+            </ul>
             <div className="shelf-welcome-hero-actions">
               <button
                 type="button"
@@ -865,13 +864,12 @@ export default function Shelf({
             <div className="onboarding-celebration">
               <p className="onboarding-celebration-title">¡Ritual de inicio completado!</p>
               <p className="meta">
-                Has desbloqueado la <strong>Bufanda de Invierno</strong> (<code>scarf_amber</code>) en el clóset de tu compañero.
+                Has desbloqueado la <strong>Bufanda de Invierno</strong> en el clóset de tu compañero.
               </p>
               <button
                 type="button"
-                className="btn btn--primary"
+                className="btn btn--primary onboarding-finish-btn"
                 onClick={finishOnboarding}
-                style={{ marginTop: "12px" }}
               >
                 Comenzar a disfrutar Lecta →
               </button>
@@ -1075,20 +1073,9 @@ export default function Shelf({
                         className="shelf-companion-habit-card"
                         role="region"
                         aria-label="Recordatorio respetuoso del compañero"
-                        style={{
-                          marginTop: "0.6rem",
-                          padding: "0.5rem 0.75rem",
-                          background: "var(--paper-sunken)",
-                          borderLeft: "3px solid var(--accent)",
-                          borderRadius: "6px",
-                          fontSize: "0.85rem",
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: "0.3rem",
-                        }}
                       >
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "0.5rem" }}>
-                          <strong style={{ color: "var(--ink)", display: "flex", alignItems: "center", gap: "4px" }}>
+                        <div className="shelf-companion-habit-head">
+                          <strong className="shelf-companion-habit-title">
                             {habitReminder.title}
                           </strong>
                           <button
@@ -1098,17 +1085,16 @@ export default function Shelf({
                               void updateAppBadge(false);
                               onOpen(current);
                             }}
-                            className="btn btn--primary"
-                            style={{ padding: "0.25rem 0.65rem", fontSize: "0.8rem", borderRadius: "999px", whiteSpace: "nowrap" }}
+                            className="btn btn--primary shelf-companion-habit-cta"
                           >
                             Leer 3 min
                           </button>
                         </div>
-                        <p style={{ margin: 0, color: "var(--ink-muted)", lineHeight: 1.35 }}>
+                        <p className="shelf-companion-habit-body">
                           {habitReminder.body}
                         </p>
                         {habitReminder.subtitle && (
-                          <span style={{ fontSize: "0.78rem", color: "var(--accent)", fontWeight: 500 }}>
+                          <span className="shelf-companion-habit-subtitle">
                             {habitReminder.subtitle}
                           </span>
                         )}
@@ -1117,7 +1103,7 @@ export default function Shelf({
                     {heroPosition ? (
                       <p className="meta shelf-hero-progress">
                         {current.sectionCount
-                          ? `Capítulo ${heroPosition.sectionIndex + 1} de ${current.sectionCount} · Quedan ~5 min en este capítulo`
+                          ? `Capítulo ${heroPosition.sectionIndex + 1} de ${current.sectionCount} · ${Math.round(progressOf(heroPosition, current.sectionCount) * 100)}% leído`
                           : "Lectura en curso"}
                         {" · "}
                         te quedaste aquí {relativeDay(heroPosition.updatedAt)}
@@ -1512,10 +1498,7 @@ export default function Shelf({
                       </span>
                     ) : null}
                     {cov ? (
-                      <div
-                        className="shelf-difficulty-preflight-item"
-                        style={{ fontSize: "0.74rem", marginTop: "0.25rem", opacity: 0.9 }}
-                      >
+                      <div className="shelf-difficulty-preflight-item">
                         <span>
                           {coverageIsReliable(cov)
                             ? `~${cov.percent}% vocabulario conocido`
@@ -1819,12 +1802,14 @@ export default function Shelf({
       {communitySection || onGetCatalogBook ? (
         <ExploreShelf
           community={communitySection}
+          onOpenAccount={onOpenAccount}
           catalog={
             onGetCatalogBook ? (
               <DiscoverRail
                 library={library}
                 onOpen={onOpen}
                 onGet={onGetCatalogBook}
+                vocabVersion={vocabVersion}
               />
             ) : undefined
           }

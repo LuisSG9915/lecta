@@ -303,7 +303,7 @@ export default function DiagnosticsModal({ onClose }: DiagnosticsModalProps) {
               : ""}
           </p>
           {syncState.collections ? (
-            <div style={{ marginTop: "var(--s-1)", fontSize: "var(--fs-xs)", color: "var(--ink-muted)" }}>
+            <div style={{ marginTop: "var(--s-1)", fontSize: "var(--fs-xs)", color: "var(--ink-soft)" }}>
               Colecciones: {Object.entries(syncState.collections).map(([k, v]) => `${k}: ${v.status}`).join(" · ")}
             </div>
           ) : null}
@@ -389,7 +389,7 @@ export default function DiagnosticsModal({ onClose }: DiagnosticsModalProps) {
                   alignItems: "center",
                   padding: "var(--s-2)",
                   background: "var(--paper-sunken)",
-                  borderRadius: "var(--r-sm)",
+                  borderRadius: "var(--radius-sm)",
                 }}
               >
                 <div>
@@ -438,7 +438,7 @@ export default function DiagnosticsModal({ onClose }: DiagnosticsModalProps) {
               Sin errores agrupados en la ventana.
             </p>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: "var(--s-2)", maxHeight: "240px", overflowY: "auto", fontSize: "var(--fs-xs)", background: "var(--paper-sunken)", padding: "var(--s-2)", borderRadius: "var(--r-sm)" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "var(--s-2)", maxHeight: "240px", overflowY: "auto", fontSize: "var(--fs-xs)", background: "var(--paper-sunken)", padding: "var(--s-2)", borderRadius: "var(--radius-sm)" }}>
               {serverErrors.map((row) => (
                 <div
                   key={`${row.signature}-${row.day}`}
@@ -448,22 +448,22 @@ export default function DiagnosticsModal({ onClose }: DiagnosticsModalProps) {
                     <strong>
                       {row.hits}× {row.name} en {row.route}
                     </strong>
-                    <span style={{ fontFamily: "monospace", color: "var(--ink-muted)" }}>
+                    <span style={{ fontFamily: "monospace", color: "var(--ink-soft)" }}>
                       {row.signature}
                     </span>
                   </div>
-                  <div style={{ color: "var(--ink-muted)" }}>
+                  <div style={{ color: "var(--ink-soft)" }}>
                     v{row.version || "?"} · última{" "}
                     {new Date(row.lastSeen).toLocaleString()} · primera{" "}
                     {new Date(row.firstSeen).toLocaleDateString()}
                   </div>
                   {row.sampleFrames ? (
-                    <div style={{ fontFamily: "monospace", color: "var(--ink-muted)" }}>
+                    <div style={{ fontFamily: "monospace", color: "var(--ink-soft)" }}>
                       {row.sampleFrames}
                     </div>
                   ) : null}
                   {row.lastMessage ? (
-                    <div style={{ color: "var(--ink-muted)" }}>«{row.lastMessage}»</div>
+                    <div style={{ color: "var(--ink-soft)" }}>«{row.lastMessage}»</div>
                   ) : null}
                 </div>
               ))}
@@ -497,11 +497,11 @@ export default function DiagnosticsModal({ onClose }: DiagnosticsModalProps) {
               No hay errores capturados recientemente.
             </p>
           ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: "var(--s-2)", maxHeight: "180px", overflowY: "auto", fontSize: "var(--fs-xs)", fontFamily: "monospace", background: "var(--paper-sunken)", padding: "var(--s-2)", borderRadius: "var(--r-sm)" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "var(--s-2)", maxHeight: "180px", overflowY: "auto", fontSize: "var(--fs-xs)", fontFamily: "monospace", background: "var(--paper-sunken)", padding: "var(--s-2)", borderRadius: "var(--radius-sm)" }}>
               {recentErrors.map((err, idx) => (
                 <div key={idx} style={{ borderBottom: idx < recentErrors.length - 1 ? "1px solid var(--border)" : "none", paddingBottom: "var(--s-1)" }}>
                   <div><strong>{new Date(err.timestamp).toLocaleTimeString()}:</strong> {err.message}</div>
-                  {err.url && <div style={{ color: "var(--ink-muted)" }}>{err.url}</div>}
+                  {err.url && <div style={{ color: "var(--ink-soft)" }}>{err.url}</div>}
                 </div>
               ))}
             </div>

@@ -5277,6 +5277,117 @@
    Fase 2: Tu Cosecha en este Capítulo y Postal Compartible
    --------------------------------------------------------------------------- */
 
+.deep-summary-companion {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin: var(--s-3) 0 var(--s-1);
+}
+
+.deep-summary-companion-avatar {
+  width: 72px;
+  height: 72px;
+}
+
+.deep-summary-center {
+  text-align: center;
+}
+
+.deep-summary-lead {
+  text-align: center;
+  padding: 0 0 var(--s-2);
+}
+
+.deep-summary-headline {
+  font-style: normal;
+  font-size: 1.125rem;
+  margin: 0 auto var(--s-1);
+}
+
+.deep-summary-subquote {
+  font-style: italic;
+  font-size: var(--fs-sm);
+}
+
+.deep-summary-stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--s-2);
+  margin: var(--s-3) 0;
+  background: var(--paper-sunken);
+  padding: var(--s-3);
+  border-radius: var(--radius-sm, 6px);
+  text-align: center;
+}
+
+.deep-summary-stat-value {
+  display: block;
+  font-size: 1.25rem;
+  color: var(--ink);
+}
+
+.deep-summary-stat-value.is-accent {
+  color: var(--vermilion, #b8332a);
+}
+
+.deep-summary-stat-label {
+  font-size: var(--fs-xs);
+}
+
+.deep-summary-follow {
+  text-align: center;
+  margin: 0 0 var(--s-3);
+}
+
+.deep-summary-follow-prompt {
+  margin: 0 0 var(--s-2);
+}
+
+.deep-summary-follow-done {
+  margin: 0;
+}
+
+.deep-summary-follow-options {
+  display: flex;
+  gap: var(--s-2);
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.deep-summary-footer {
+  margin-top: var(--s-4);
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+}
+
+.consolidation-runner-body {
+  margin-top: var(--s-2);
+}
+
+.deep-summary-postal-preview {
+  margin-top: 0.85rem;
+  padding: 0.75rem 0.9rem;
+  background: var(--paper-sunken);
+  border-left: 3px solid var(--accent-primary, var(--vermilion));
+  border-radius: var(--radius-sm, 6px);
+}
+
+.deep-summary-postal-quote {
+  margin: 0;
+  font-family: var(--font-book);
+  font-style: italic;
+  font-size: var(--fs-sm, 0.88rem);
+  line-height: 1.45;
+  color: var(--ink);
+}
+
+.deep-summary-postal-meta {
+  margin: 0.3rem 0 0;
+  font-size: var(--fs-xs, 0.75rem);
+}
+
 .deep-summary-harvest {
   margin: var(--s-3) 0;
   padding: 1rem 1.15rem;

@@ -79,6 +79,15 @@ const titles = () =>
 const badges = () =>
   [...host.querySelectorAll(".discover-badge")].map((el) => el.textContent);
 
+const setSearchValue = (input: HTMLInputElement, value: string) => {
+  const setter = Object.getOwnPropertyDescriptor(
+    HTMLInputElement.prototype,
+    "value",
+  )!.set!;
+  setter.call(input, value);
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+};
+
 describe("DiscoverRail", () => {
   it("sin índice no pinta nada", async () => {
     await act(async () => {
@@ -386,6 +395,111 @@ describe("DiscoverRail", () => {
     expect(card).toBeTruthy();
     expect(card?.querySelectorAll(".discover-tag-pill").length).toBe(0);
     expect(card?.querySelectorAll(".book-affinity-pill").length).toBe(1);
+  });
+
+  it("busca por título y autor sin acentos", async () => {
+    const books = [
+      book("becquer", {
+        title: "Obras escogidas",
+        author: "Gustavo Adolfo Bécquer",
+      }),
+      book("galdo", {
+        title: "Fortunata y Jacinta",
+        author: "Benito Pérez Galdós",
+      }),
+      book("corazon", { title: "El corazón", author: "Anónimo" }),
+    ];
+
+    await act(async () => {
+      root.render(
+        h(DiscoverRail, {
+          library: [],
+          onOpen: vi.fn(),
+          onGet: vi.fn(),
+          fetchIndex: async () => index(books),
+          fetchVocab: async () => null,
+          loadInputs: async () => null,
+        }),
+      );
+    });
+
+    const input = host.querySelector<HTMLInputElement>(
+      'input[aria-label="Buscar en libros gratuitos"]',
+    )!;
+
+    await act(async () => setSearchValue(input, "becquer"));
+    expect(titles()).toEqual(["Obras escogidas"]);
+
+    await act(async () => setSearchValue(input, "galdos"));
+    expect(titles()).toEqual(["Fortunata y Jacinta"]);
+
+    await act(async () => setSearchValue(input, "corazon"));
+    expect(titles()).toEqual(["El corazón"]);
+  });
+
+  it("«Ver todos» despliega la cuadrícula completa y vuelve al riel", async () => {
+    const books = Array.from({ length: 15 }, (_, i) =>
+      book(`b${String(i + 1).padStart(2, "0")}`),
+    );
+
+    await act(async () => {
+      root.render(
+        h(DiscoverRail, {
+          library: [],
+          onOpen: vi.fn(),
+          onGet: vi.fn(),
+          fetchIndex: async () => index(books),
+          fetchVocab: async () => null,
+          loadInputs: async () => null,
+        }),
+      );
+    });
+
+    expect(titles()).toHaveLength(12);
+    const toggle = host.querySelector<HTMLButtonElement>(
+      ".discover-view-toggle",
+    )!;
+    expect(toggle.textContent).toBe("Ver todos (15)");
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    expect(host.querySelector(".discover-rail--grid")).toBeNull();
+
+    await act(async () => toggle.click());
+    expect(titles()).toHaveLength(15);
+    expect(host.querySelector(".discover-rail--grid")).not.toBeNull();
+    expect(toggle.textContent).toBe("Ver en riel");
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
+
+    await act(async () => toggle.click());
+    expect(titles()).toHaveLength(12);
+    expect(host.querySelector(".discover-rail--grid")).toBeNull();
+  });
+
+  it("recalcula coberturas al subir vocabVersion sin re-bajar manifiestos", async () => {
+    const books = [book("a")];
+    const fetchVocab = vi.fn(async () => vocab([["casa", 6]]));
+    const loadInputs = vi.fn(async () => INPUTS);
+    const props = {
+      library: [],
+      onOpen: vi.fn(),
+      onGet: vi.fn(),
+      fetchIndex: async () => index(books),
+      fetchVocab,
+      loadInputs,
+    };
+
+    await act(async () => {
+      root.render(h(DiscoverRail, { ...props, vocabVersion: 0 }));
+    });
+    expect(badges()).toContain("~100%");
+    expect(fetchVocab).toHaveBeenCalledTimes(1);
+    expect(loadInputs).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      root.render(h(DiscoverRail, { ...props, vocabVersion: 1 }));
+    });
+    expect(loadInputs).toHaveBeenCalledTimes(2);
+    expect(fetchVocab).toHaveBeenCalledTimes(1);
+    expect(badges()).toContain("~100%");
   });
 });
 

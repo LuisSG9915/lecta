@@ -49,7 +49,7 @@ export default function DeepReadingSummaryModal({
   bookId,
   onSkipConsolidation,
   harvestWords,
-  featuredQuote,
+  featuredQuote, bookTitle, author, chapterTitle,
   chapterId,
   onShareQuote,
   onWordConsolidated,
@@ -169,16 +169,8 @@ export default function DeepReadingSummaryModal({
           </button>
         </div>
 
-        <div
-          className="deep-summary-companion"
-          style={{
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            margin: "var(--s-3) 0 var(--s-1)",
-          }}
-        >
-          <div style={{ width: 76, height: 76 }}>
+        <div className="deep-summary-companion">
+          <div className="deep-summary-companion-avatar">
             {companion ? (
               <Companion
                 stage={companion.stage}
@@ -187,26 +179,23 @@ export default function DeepReadingSummaryModal({
                 pose="celebrate"
               />
             ) : (
-              <div style={{ textAlign: "center" }} aria-hidden="true">
+              <div className="deep-summary-center" aria-hidden="true">
                 <Icon name="sparkles" size={32} />
               </div>
             )}
           </div>
         </div>
 
-        <div style={{ textAlign: "center", padding: "0 0 var(--s-2)" }}>
-          <p
-            className="card-context"
-            style={{ fontStyle: "normal", fontSize: "1.125rem", margin: "0 auto var(--s-1)" }}
-          >
+        <div className="deep-summary-lead">
+          <p className="card-context deep-summary-headline">
             Fijaste {queue.length} palabras clave de este capítulo
           </p>
-          <p className="meta" style={{ fontStyle: "italic", fontSize: "var(--fs-sm)" }}>
+          <p className="meta deep-summary-subquote">
             «{companion?.name ?? "Michi"} celebra tu memoria literaria: la estabilidad de recuerdo se ha consolidado en tu catálogo personal.»
           </p>
         </div>
 
-        <div style={{ marginTop: "var(--s-4)", display: "flex", justifyContent: "flex-end", gap: "var(--s-2)", flexWrap: "wrap" }}>
+        <div className="deep-summary-footer">
           <button
             type="button"
             className="btn--quiet deep-summary-quote-btn"
@@ -247,7 +236,7 @@ export default function DeepReadingSummaryModal({
           </button>
         </div>
 
-        <div style={{ marginTop: "var(--s-2)" }}>
+        <div className="consolidation-runner-body">
           {active.modality === "word-scramble" ? (
             <WordScrambleGame
               key={`scramble-${active.item.lemma}`}
@@ -277,6 +266,8 @@ export default function DeepReadingSummaryModal({
   // -------------------------------------------------------------------------
   // VISTA: RESUMEN DEL CAPÍTULO + TARJETA DE CONSOLIDACIÓN (25 SEGUNDOS)
   // -------------------------------------------------------------------------
+  const postalAttribution = [bookTitle, author, chapterTitle].filter(Boolean).join(" · ");
+
   return (
     <Dialog label="Retiro de lectura completado" onClose={onClose}>
       <div className="sheet-head">
@@ -292,16 +283,8 @@ export default function DeepReadingSummaryModal({
       </div>
 
       {/* Celebración con el Gato */}
-      <div
-        className="deep-summary-companion"
-        style={{
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-          margin: "var(--s-3) 0 var(--s-1)",
-        }}
-      >
-        <div style={{ width: 68, height: 68 }}>
+      <div className="deep-summary-companion">
+        <div className="deep-summary-companion-avatar">
           {companion ? (
             <Companion
               stage={companion.stage}
@@ -310,63 +293,52 @@ export default function DeepReadingSummaryModal({
               pose="celebrate"
             />
           ) : (
-            <div style={{ textAlign: "center" }} aria-hidden="true">
+            <div className="deep-summary-center" aria-hidden="true">
               <Icon name="sparkles" size={28} />
             </div>
           )}
         </div>
       </div>
 
-      <div style={{ textAlign: "center", padding: "0 0 var(--s-2)" }}>
-        <p className="card-context" style={{ fontStyle: "normal", fontSize: "1.125rem", margin: "0 auto var(--s-1)" }}>
+      <div className="deep-summary-lead">
+        <p className="card-context deep-summary-headline">
           {durationText} de inmersión profunda
         </p>
-        <p className="meta" style={{ fontStyle: "italic", fontSize: "var(--fs-sm)" }}>
+        <p className="meta deep-summary-subquote">
           «{companion?.name ?? "Michi"} celebra tu lectura: incorporaste {wordsAssimilated} palabras de forma natural y avanzaste en tu dominio del libro.»
         </p>
       </div>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: "var(--s-2)",
-          margin: "var(--s-3) 0",
-          background: "var(--paper-sunken)",
-          padding: "var(--s-3)",
-          borderRadius: "var(--r-sm)",
-          textAlign: "center",
-        }}
-      >
+      <div className="deep-summary-stats-grid">
         <div>
-          <strong style={{ display: "block", fontSize: "1.25rem", color: "var(--ink)" }}>
+          <strong className="deep-summary-stat-value">
             {summary.durationMinutes} min
           </strong>
-          <span className="meta" style={{ fontSize: "var(--fs-xs)" }}>
+          <span className="meta deep-summary-stat-label">
             Tiempo en retiro
           </span>
         </div>
         <div>
-          <strong style={{ display: "block", fontSize: "1.25rem", color: "var(--ink)" }}>
+          <strong className="deep-summary-stat-value">
             {summary.sectionsRead}
           </strong>
-          <span className="meta" style={{ fontSize: "var(--fs-xs)" }}>
+          <span className="meta deep-summary-stat-label">
             {summary.sectionsRead === 1 ? "Sección leída" : "Secciones leídas"}
           </span>
         </div>
         <div>
-          <strong style={{ display: "block", fontSize: "1.25rem", color: "var(--vermilion, #b8332a)" }}>
+          <strong className="deep-summary-stat-value is-accent">
             +{wordsAssimilated}
           </strong>
-          <span className="meta" style={{ fontSize: "var(--fs-xs)" }}>
+          <span className="meta deep-summary-stat-label">
             Palabras asimiladas
           </span>
         </div>
         <div>
-          <strong style={{ display: "block", fontSize: "1.25rem", color: "var(--ink)" }}>
+          <strong className="deep-summary-stat-value">
             +{coverageDelta}%
           </strong>
-          <span className="meta" style={{ fontSize: "var(--fs-xs)" }}>
+          <span className="meta deep-summary-stat-label">
             Incremento de cobertura
           </span>
         </div>
@@ -375,25 +347,20 @@ export default function DeepReadingSummaryModal({
       {bookId && chapterId ? (
         <section
           aria-label="Hilo del capítulo"
-          style={{ textAlign: "center", margin: "0 0 var(--s-3)" }}
+          className="deep-summary-follow"
         >
-          <p className="meta" style={{ margin: "0 0 var(--s-2)" }}>
+          <p className="meta deep-summary-follow-prompt">
             ¿Seguiste el hilo de este capítulo?
           </p>
           {followAnswer ? (
-            <p className="meta" role="status" style={{ margin: 0 }}>
+            <p className="meta deep-summary-follow-done" role="status">
               Anotado. Tu recorrido lo muestra como tu propia valoración.
             </p>
           ) : (
             <div
               role="group"
               aria-label="Tu respuesta"
-              style={{
-                display: "flex",
-                gap: "var(--s-2)",
-                justifyContent: "center",
-                flexWrap: "wrap",
-              }}
+              className="deep-summary-follow-options"
             >
               {CHAPTER_FOLLOW_OPTIONS.map(({ level, label }) => (
                 <button
@@ -430,14 +397,22 @@ export default function DeepReadingSummaryModal({
             ))}
           </div>
         ) : null}
-        <div className="deep-summary-harvest-actions">
-          <button
-            type="button"
-            className="deep-summary-quote-btn"
-            onClick={handleCreatePostal}
-          >
-            Crear postal del capítulo
-          </button>
+        <div className="deep-summary-postal-preview">
+          <blockquote className="deep-summary-postal-quote">
+            «{defaultQuote}»
+          </blockquote>
+          {postalAttribution ? (
+            <p className="meta deep-summary-postal-meta">{postalAttribution}</p>
+          ) : null}
+          <div className="deep-summary-harvest-actions">
+            <button
+              type="button"
+              className="deep-summary-quote-btn"
+              onClick={handleCreatePostal}
+            >
+              Crear postal del capítulo
+            </button>
+          </div>
         </div>
       </div>
 
@@ -493,15 +468,7 @@ export default function DeepReadingSummaryModal({
         </div>
       ) : null}
 
-      <div
-        style={{
-          marginTop: "var(--s-4)",
-          display: "flex",
-          justifyContent: "flex-end",
-          gap: "var(--s-2)",
-          flexWrap: "wrap",
-        }}
-      >
+      <div className="deep-summary-footer">
         <button
           type="button"
           className="btn--quiet"

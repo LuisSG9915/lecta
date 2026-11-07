@@ -1279,6 +1279,35 @@ describe("WordPanel - Acciones Rápidas (Fase 4.3)", () => {
         "[ES] Dr. Watson met Sherlock Holmes",
       );
     });
+
+    it("no escanea capítulos del EPUB ni muestra pestaña Personaje al consultar una palabra común en minúscula", async () => {
+      const createDocSpy = vi.fn(async () =>
+        new DOMParser().parseFromString(
+          "<body><p>Un momento efimero de lectura.</p></body>",
+          "text/html",
+        ),
+      );
+      const sections = [{ createDocument: createDocSpy }];
+
+      render(
+        h(WordPanel, {
+          word: "efimero",
+          sentenceContext: "Un momento efimero de lectura.",
+          language: "es",
+          sections,
+          currentSectionIndex: 0,
+          currentChapterTitle: "Capítulo 1",
+          onClose: vi.fn(),
+          onSaved: vi.fn(),
+        }),
+      );
+
+      await flush();
+
+      expect(createDocSpy).not.toHaveBeenCalled();
+      expect(host.querySelector(".word-panel-mode-switcher")).toBeNull();
+      expect(host.querySelector(".character-memory-card")).toBeNull();
+    });
   });
 });
 
