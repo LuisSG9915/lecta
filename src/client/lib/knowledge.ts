@@ -4,8 +4,45 @@ import { isLearnablePos, measuredZipf } from "../../shared/lexicon";
 import { menteBaseForms, cliticBaseForms, dedupeKey } from "../../shared/word-form";
 export { cliticBaseForms, dedupeKey };
 import { knowledgeArbWins } from "../../shared/reading-data";
-import { calibrationBankZipf } from "../../shared/calibration-bank";
-export { calibrationBankZipf };
+import type { CalibrationProfile } from "../../shared/calibration-bank";
+
+// Carga perezosa del banco de calibración: evita arrastrar
+// `calibration-bank` en el grafo de arranque de knowledge.ts. El módulo
+// se cachea tras la primera carga.
+let calibrationBankModule: typeof import("../../shared/calibration-bank") | null =
+  null;
+let calibrationBankPromise: Promise<
+  typeof import("../../shared/calibration-bank")
+> | null = null;
+
+export function loadCalibrationBank(): Promise<
+  typeof import("../../shared/calibration-bank")
+> {
+  if (calibrationBankModule) return Promise.resolve(calibrationBankModule);
+  if (!calibrationBankPromise) {
+    calibrationBankPromise = import("../../shared/calibration-bank").then((m) => {
+      calibrationBankModule = m;
+      return m;
+    });
+  }
+  return calibrationBankPromise;
+}
+
+// Dispara la carga en cuanto se importa knowledge.ts (p. ej. al abrir
+// el lector) para que el caché esté listo antes del primer lookup.
+void loadCalibrationBank();
+
+export function calibrationBankZipf(
+  lemma: string,
+  language = "es",
+  profile: CalibrationProfile = "native",
+): number | null {
+  if (!calibrationBankModule) {
+    void loadCalibrationBank();
+    return null;
+  }
+  return calibrationBankModule.calibrationBankZipf(lemma, language, profile);
+}
 import {
   betaFromZipf,
   loadUserLanguageProfile,

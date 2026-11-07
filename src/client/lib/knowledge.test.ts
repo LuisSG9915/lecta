@@ -16,6 +16,7 @@ import {
   applyWordPanelLookupSignal,
   updatePreviewFrictionPreference,
   recordSilentCalibration,
+  loadCalibrationBank,
   type KnowledgeEvidence,
 } from "./knowledge";
 import type { UserLanguageProfile } from "./profile-models";
@@ -762,7 +763,8 @@ describe("resolveEvidence", () => {
     expect(out.get("abrir")?.known).toBe(false);
   });
 
-  it("palabra del banco de calibración en inglés resuelve su zipf de banda cuando no hay catálogo", () => {
+  it("palabra del banco de calibración en inglés resuelve su zipf de banda cuando no hay catálogo", async () => {
+    await loadCalibrationBank();
     const out = resolveEvidence(
       [
         { lemma: "clandestine", known: false },

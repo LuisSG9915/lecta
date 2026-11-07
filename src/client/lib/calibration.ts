@@ -8,12 +8,46 @@ import {
 } from "./idb";
 import { pushKnowledgeToServer } from "./reading-sync";
 import { pushWordsToServer } from "./vocab";
-import {
-  getCalibrationBankByLang,
-  type CalibrationBankItem,
-  type CalibrationLanguage,
-  type CalibrationProfile,
+import type {
+  CalibrationBankItem,
+  CalibrationLanguage,
+  CalibrationProfile,
 } from "../../shared/calibration-bank";
+
+// Carga perezosa del banco de calibración: evita arrastrar
+// `calibration-bank` (~1.6 kLOC) en el grafo de arranque. El módulo
+// se cachea tras la primera carga para no re-importarlo.
+let calibrationBankModule: typeof import("../../shared/calibration-bank") | null =
+  null;
+let calibrationBankPromise: Promise<
+  typeof import("../../shared/calibration-bank")
+> | null = null;
+
+export function loadCalibrationBank(): Promise<
+  typeof import("../../shared/calibration-bank")
+> {
+  if (calibrationBankModule) {
+    return Promise.resolve(calibrationBankModule);
+  }
+  if (!calibrationBankPromise) {
+    calibrationBankPromise = import("../../shared/calibration-bank").then(
+      (m) => {
+        calibrationBankModule = m;
+        return m;
+      },
+    );
+  }
+  return calibrationBankPromise;
+}
+
+function getCalibrationBankByLangSync(lang: string): CalibrationBankItem[] {
+  if (calibrationBankModule) {
+    return calibrationBankModule.getCalibrationBankByLang(lang);
+  }
+  // Dispara la carga para la próxima vez; mientras, sin banco.
+  void loadCalibrationBank();
+  return [];
+}
 import {
   loadUserLanguageProfile,
   saveUserLanguageProfile,
@@ -367,7 +401,7 @@ export function selectNextCatItem(
   state: Pick<CatSessionState, "lang" | "theta" | "answeredIds">,
   bank?: CalibrationBankItem[],
 ): CalibrationBankItem | null {
-  const candidatesBank = bank ?? getCalibrationBankByLang(state.lang);
+  const candidatesBank = bank ?? getCalibrationBankByLangSync(state.lang);
   const answeredSet = new Set(state.answeredIds);
   const candidates = candidatesBank.filter((item) => !answeredSet.has(item.id));
   if (candidates.length === 0) return null;

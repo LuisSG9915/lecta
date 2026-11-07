@@ -22,6 +22,7 @@ import {
   recordCalibration,
   resetCalibrationStatusForTesting,
   selectNextCatItem,
+  loadCalibrationBank,
   serializeCalibrationDraft,
   skipCatSession,
   skipLanguageCalibration,
@@ -370,8 +371,9 @@ describe("Frases de contexto del banco de calibración", () => {
 });
 
 describe("Motor CAT de 15 Segundos y Máquina de Estados Adaptativa", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     resetCalibrationStatusForTesting();
+    await loadCalibrationBank();
   });
 
   it("selectNextCatItem selecciona el ítem no respondido con P más cercana a 0.50 y descarta respondidos", () => {
