@@ -1,0 +1,7 @@
+dist
+coverage
+node_modules
+mcp/dist
+artifacts
+.wrangler
+pnpm-lock.yaml
