@@ -395,12 +395,21 @@ app.get("/api/lexicon/lookup", async (context) => {
 // de su banda — el selector verifica la medición real, nada entra a
 // ciegas desde el banco.
 // Disponible en español e inglés.
+const sampleCache = createTtlCache<{ words: unknown; version: string }>({
+  maxEntries: 4,
+  ttlMs: 5 * 60_000,
+});
+
 app.get("/api/lexicon/sample", async (context) => {
   const language = context.req.query("language")?.trim() || "es";
   const rawProfile = context.req.query("profile")?.trim();
   const profile: CalibrationProfile = rawProfile === "learner" ? "learner" : "native";
   if (language !== "es" && language !== "en")
     return context.json({ error: "La muestra solo existe en español e inglés por ahora." }, 400);
+
+  const cacheKey = `${language}:${profile}`;
+  const cached = sampleCache.get(cacheKey);
+  if (cached) return context.json({ ...cached, cached: true });
 
   let words;
   try {
@@ -412,7 +421,9 @@ app.get("/api/lexicon/sample", async (context) => {
   }
 
   if (!words) return context.json({ error: "El catálogo no está configurado." }, 503);
-  return context.json({ words, version: calibrationBankVersion(language, profile) });
+  const payload = { words, version: calibrationBankVersion(language, profile) };
+  sampleCache.set(cacheKey, payload);
+  return context.json(payload);
 });
 
 app.post("/api/lexicon/batch", async (context) => {
