@@ -710,6 +710,18 @@ formularios. Código: `routes.ts` (rutas), `views.ts` (HTML), `epub-reader.ts`
   **Migración y worker van juntos**: el worker nuevo escribe y lee la columna; con
   la columna y el worker viejo no se rompe nada. Ya desplegado en v0.2.2.
 
+## Deuda de complejidad (2026-11)
+
+- `Reader.tsx` (4 934 líneas), `Vocabulary.tsx` (3 783) y `app.ts` worker (3 716) son
+  componentes/módulos monolíticos. Concentran estado, efectos, callbacks y JSX.
+- **Plan de refactor (incremental, cada fase con `pnpm gate` verde)**:
+  - Fase R1 — hooks de estado: `useReaderTts`, `useReaderSelection`, `useReaderAnchoring`.
+  - Fase R2 — subcomponentes: `ReaderTtsDock`, `ReaderSelectionOverlay`, `ReaderChapterHeader`.
+  - Fase R3 — orquestador: Reader.tsx queda como compositor (~800 líneas).
+- Cada fase se valida con tests unitarios del hook extraído y, para R2/R3, con
+  `e2e/smoke-journeys.spec.ts` y `e2e/reader-position.spec.ts`.
+- **No mezclar con cambios funcionales**: una fase = un PR/commit aislado.
+
 ## Rediseño UX editorial (fases F0–F8, 2026-11)
 
 Rediseño de Tu recorrido, Cuaderno, Biblioteca, Explora, Tú y Tu Kindle para
