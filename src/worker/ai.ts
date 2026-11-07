@@ -54,7 +54,9 @@ export function validateEnrichment(data: unknown): ValidatedEnrichment | null {
   const pos = typeof raw.pos === "string" ? raw.pos.trim().toLowerCase() : "";
   if (!lemma || !POS_VALUES.has(pos)) return null;
   const forms = Array.isArray(raw.forms)
-    ? raw.forms.filter((f): f is string => typeof f === "string" && f.trim().length > 0 && f.length <= 60)
+    ? raw.forms.filter(
+        (f): f is string => typeof f === "string" && f.trim().length > 0 && f.length <= 60,
+      )
     : [];
   const senses = Array.isArray(raw.senses)
     ? raw.senses
@@ -106,10 +108,7 @@ export const AI_CALL_LIMITS = {
 } as const satisfies Record<DeepSeekOperation, number>;
 
 export type LectaAiTaskType =
-  | 'word_context'
-  | 'paragraph_translate'
-  | 'page_recap'
-  | 'character_cards';
+  "word_context" | "paragraph_translate" | "page_recap" | "character_cards";
 
 export interface AiTaskBudget {
   task: LectaAiTaskType;
@@ -120,25 +119,25 @@ export interface AiTaskBudget {
 
 export const AI_TASK_BUDGETS: Record<LectaAiTaskType, AiTaskBudget> = {
   word_context: {
-    task: 'word_context',
+    task: "word_context",
     maxInputChars: 280,
     maxOutputTokens: 75,
     temperature: 0.15,
   },
   paragraph_translate: {
-    task: 'paragraph_translate',
+    task: "paragraph_translate",
     maxInputChars: 900,
     maxOutputTokens: 260,
     temperature: 0.1,
   },
   page_recap: {
-    task: 'page_recap',
+    task: "page_recap",
     maxInputChars: 2400,
     maxOutputTokens: 140,
     temperature: 0.25,
   },
   character_cards: {
-    task: 'character_cards',
+    task: "character_cards",
     maxInputChars: 1600,
     maxOutputTokens: 120,
     temperature: 0.2,
@@ -150,10 +149,10 @@ export const AI_TASK_BUDGETS: Record<LectaAiTaskType, AiTaskBudget> = {
  * sin cortar palabras a la mitad.
  */
 export function clampInputText(text: string, maxChars: number): string {
-  const clean = text.replace(/\s+/g, ' ').trim();
+  const clean = text.replace(/\s+/g, " ").trim();
   if (clean.length <= maxChars) return clean;
   const sliced = clean.slice(0, maxChars);
-  const lastSpace = sliced.lastIndexOf(' ');
+  const lastSpace = sliced.lastIndexOf(" ");
   return lastSpace > maxChars * 0.7 ? sliced.slice(0, lastSpace) : sliced;
 }
 
@@ -183,16 +182,13 @@ export const AI_RETRY_BASE_MS = 400;
 const RETRYABLE_STATUS = new Set([408, 429, 500, 502, 503, 504]);
 const RETRY_AFTER_CAP_MS = 10_000;
 
-const sleepMs = (ms: number) =>
-  new Promise<void>((resolve) => setTimeout(resolve, ms));
+const sleepMs = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 const retryAfterMs = (response: Response | null) => {
   const raw = response?.headers.get("retry-after");
   if (!raw) return 0;
   const seconds = Number(raw);
-  return Number.isFinite(seconds) && seconds > 0
-    ? Math.min(seconds * 1000, RETRY_AFTER_CAP_MS)
-    : 0;
+  return Number.isFinite(seconds) && seconds > 0 ? Math.min(seconds * 1000, RETRY_AFTER_CAP_MS) : 0;
 };
 
 // Caché TTL en memoria del aislante para respuestas IA efímeras (por
@@ -200,10 +196,20 @@ const retryAfterMs = (response: Response | null) => {
 // catálogo): sin binding KV, la memoria del worker es el nivel
 // correcto para un dato regenerable. El tope desaloja la entrada más
 // vieja (el Map conserva el orden de inserción).
-export function createTtlCache<V>(options: {
-  maxEntries?: number;
-  ttlMs?: number;
-} = {}) {
+interface TtlCache<V> {
+  get(key: string): V | undefined;
+  set(key: string, value: V): void;
+  delete(key: string): void;
+  readonly size: number;
+  clear(): void;
+}
+
+export function createTtlCache<V>(
+  options: {
+    maxEntries?: number;
+    ttlMs?: number;
+  } = {},
+): TtlCache<V> {
   const maxEntries = options.maxEntries ?? 200;
   const ttlMs = options.ttlMs ?? 10 * 60_000;
   const entries = new Map<string, { value: V; expires: number }>();
@@ -222,8 +228,10 @@ export function createTtlCache<V>(options: {
     set(key: string, value: V): void {
       entries.delete(key);
       entries.set(key, { value, expires: Date.now() + ttlMs });
-      while (entries.size > maxEntries)
-        entries.delete(entries.keys().next().value!);
+      while (entries.size > maxEntries) entries.delete(entries.keys().next().value!);
+    },
+    delete(key: string): void {
+      entries.delete(key);
     },
     get size() {
       return entries.size;
@@ -281,9 +289,7 @@ type DeepSeekResponse = {
 };
 
 const toNonNegativeInt = (value: unknown): number | null =>
-  typeof value === "number" && Number.isInteger(value) && value >= 0
-    ? value
-    : null;
+  typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : null;
 
 // Acepta tanto los campos prompt_cache_* propios de DeepSeek como el
 // detalle prompt_tokens_details.cached_tokens del formato OpenAI.
@@ -296,9 +302,7 @@ function mapUsage(raw: DeepSeekResponse["usage"]): DeepSeekUsage {
       toNonNegativeInt(raw?.prompt_cache_hit_tokens) ??
       toNonNegativeInt(raw?.prompt_tokens_details?.cached_tokens),
     cacheMissTokens: toNonNegativeInt(raw?.prompt_cache_miss_tokens),
-    reasoningTokens: toNonNegativeInt(
-      raw?.completion_tokens_details?.reasoning_tokens,
-    ),
+    reasoningTokens: toNonNegativeInt(raw?.completion_tokens_details?.reasoning_tokens),
   };
 }
 
@@ -315,19 +319,14 @@ export async function callDeepSeek(
   options: DeepSeekCallOptions,
 ): Promise<DeepSeekResult> {
   if (!Number.isInteger(options.maxTokens) || options.maxTokens <= 0)
-    throw new Error(
-      `callDeepSeek(${options.operation}): maxTokens debe ser un entero positivo`,
-    );
+    throw new Error(`callDeepSeek(${options.operation}): maxTokens debe ser un entero positivo`);
   if (!env.DEEPSEEK_API_KEY)
     return { ok: false, reason: "not-configured", status: null, attempts: 0 };
 
   const gatewayUrl = env.AI_GATEWAY_URL?.trim();
   const apiBase = (gatewayUrl || "https://api.deepseek.com").replace(/\/+$/, "");
   const startedAt = Date.now();
-  const maxAttempts = Math.max(
-    1,
-    Math.min(options.retry?.maxAttempts ?? AI_MAX_ATTEMPTS, 5),
-  );
+  const maxAttempts = Math.max(1, Math.min(options.retry?.maxAttempts ?? AI_MAX_ATTEMPTS, 5));
   const baseDelayMs = options.retry?.baseDelayMs ?? AI_RETRY_BASE_MS;
   const sleep = options.retry?.sleep ?? sleepMs;
 
@@ -336,9 +335,7 @@ export async function callDeepSeek(
     headers: {
       "content-type": "application/json",
       authorization: `Bearer ${env.DEEPSEEK_API_KEY}`,
-      ...(env.AI_GATEWAY_KEY
-        ? { "cf-aig-authorization": `Bearer ${env.AI_GATEWAY_KEY}` }
-        : {}),
+      ...(env.AI_GATEWAY_KEY ? { "cf-aig-authorization": `Bearer ${env.AI_GATEWAY_KEY}` } : {}),
       // Solo con AI Gateway: pide no guardar el payload en los logs
       // del gateway (los prompts pueden contener texto del usuario).
       ...(gatewayUrl ? { "cf-aig-collect-log-payload": "false" } : {}),
@@ -402,8 +399,7 @@ export async function callDeepSeek(
         content,
         usage: mapUsage(data.usage),
         model: typeof data.model === "string" ? data.model : null,
-        finishReason:
-          typeof choice?.finish_reason === "string" ? choice.finish_reason : null,
+        finishReason: typeof choice?.finish_reason === "string" ? choice.finish_reason : null,
         durationMs: Date.now() - startedAt,
         attempts: attempt,
       };
@@ -411,9 +407,7 @@ export async function callDeepSeek(
 
     const retryable = response === null || RETRYABLE_STATUS.has(response.status);
     if (!retryable || attempt >= maxAttempts) break;
-    await sleep(
-      Math.max(baseDelayMs * 2 ** (attempt - 1), retryAfterMs(response)),
-    );
+    await sleep(Math.max(baseDelayMs * 2 ** (attempt - 1), retryAfterMs(response)));
   }
 
   return {
@@ -425,12 +419,7 @@ export async function callDeepSeek(
 }
 
 export type AiCallOutcome =
-  | "ok"
-  | "invalid"
-  | "truncated"
-  | "not-configured"
-  | "api-error"
-  | "rate-limited";
+  "ok" | "invalid" | "truncated" | "not-configured" | "api-error" | "rate-limited";
 
 // Evento de consumo para observabilidad: atribución por operación y
 // tokens reportados, jamás prompt, contenido, credenciales ni usuario.
@@ -537,10 +526,12 @@ export async function requestEnrichment(
 ) {
   const nativeLanguage = input.nativeLanguage ?? "es";
   const systemPrompt = buildEnrichmentSystemPrompt(input.language, nativeLanguage);
-  const langDetails = input.nativeLanguage && input.nativeLanguage !== input.language
-    ? ` (idioma: ${input.language}, lengua materna del lector: ${nativeLanguage})`
-    : ` (idioma: ${input.language})`;
-  const userPrompt = `Palabra: «${input.form}»${langDetails}` +
+  const langDetails =
+    input.nativeLanguage && input.nativeLanguage !== input.language
+      ? ` (idioma: ${input.language}, lengua materna del lector: ${nativeLanguage})`
+      : ` (idioma: ${input.language})`;
+  const userPrompt =
+    `Palabra: «${input.form}»${langDetails}` +
     (input.context ? `\nAparece en esta oración: «${input.context}»` : "");
 
   const result = await callDeepSeek(
@@ -585,10 +576,7 @@ Reglas: "sentence" es una oración en inglés natural de 6 a 18 palabras que usa
 }
 
 export function buildItemPrompt(lemma: string, pos: string | null, definition: string) {
-  return (
-    `Palabra: «${lemma}»${pos ? ` (${pos})` : ""}\n` +
-    `Sentido correcto: «${definition}»`
-  );
+  return `Palabra: «${lemma}»${pos ? ` (${pos})` : ""}\n` + `Sentido correcto: «${definition}»`;
 }
 
 export type ValidatedItem = { sentence: string; distractors: string[] };
@@ -609,9 +597,7 @@ export function parseItem(raw: string): ValidatedItem | null {
   if (!sentence || sentence.length > 200) return null;
   if (sentence.split(/\s+/).filter(Boolean).length < 4) return null;
   if (!Array.isArray(obj.distractors) || obj.distractors.length !== 3) return null;
-  const distractors = obj.distractors.map((d) =>
-    typeof d === "string" ? d.trim() : "",
-  );
+  const distractors = obj.distractors.map((d) => (typeof d === "string" ? d.trim() : ""));
   const seen = new Set<string>();
   for (const distractor of distractors) {
     if (!distractor || distractor.length > 200) return null;
@@ -665,8 +651,7 @@ export function parseVerify(raw: string): VerifiedSentence | null {
   if (typeof data !== "object" || data === null) return null;
   const obj = data as Record<string, unknown>;
   if (typeof obj.correct !== "boolean") return null;
-  const feedback =
-    typeof obj.feedback === "string" ? obj.feedback.trim().slice(0, 200) : "";
+  const feedback = typeof obj.feedback === "string" ? obj.feedback.trim().slice(0, 200) : "";
   return { correct: obj.correct, feedback };
 }
 
@@ -789,36 +774,27 @@ export function parseTip(raw: string): ValidatedTip | null {
 export function sanitizeTipContext(body: unknown): TipContext | null {
   if (typeof body !== "object" || body === null) return null;
   const raw = body as Record<string, unknown>;
-  const dayKey =
-    typeof raw.dayKey === "string" ? raw.dayKey.slice(0, 16) : "";
+  const dayKey = typeof raw.dayKey === "string" ? raw.dayKey.slice(0, 16) : "";
   if (!dayKey) return null;
   const int = (v: unknown, min: number, max: number) =>
-    typeof v === "number" && Number.isFinite(v)
-      ? Math.max(min, Math.min(max, Math.round(v)))
-      : 0;
-  const days = (Array.isArray(raw.days) ? raw.days : [])
-    .slice(0, 14)
-    .map((d) => {
-      const r = (typeof d === "object" && d !== null ? d : {}) as Record<
-        string,
-        unknown
-      >;
-      return {
-        dayKey: typeof r.dayKey === "string" ? r.dayKey.slice(0, 16) : "",
-        minutes: int(r.minutes, 0, 1440),
-        regressions: int(r.regressions, 0, 10_000),
-        consults: int(r.consults, 0, 10_000),
-        fatigue: int(r.fatigue, 0, 10_000),
-        wpm: int(r.wpm, 0, 2_000),
-      };
-    });
+    typeof v === "number" && Number.isFinite(v) ? Math.max(min, Math.min(max, Math.round(v))) : 0;
+  const days = (Array.isArray(raw.days) ? raw.days : []).slice(0, 14).map((d) => {
+    const r = (typeof d === "object" && d !== null ? d : {}) as Record<string, unknown>;
+    return {
+      dayKey: typeof r.dayKey === "string" ? r.dayKey.slice(0, 16) : "",
+      minutes: int(r.minutes, 0, 1440),
+      regressions: int(r.regressions, 0, 10_000),
+      consults: int(r.consults, 0, 10_000),
+      fatigue: int(r.fatigue, 0, 10_000),
+      wpm: int(r.wpm, 0, 2_000),
+    };
+  });
   return {
     dayKey,
     localHour: int(raw.localHour, 0, 23),
     daysSinceLastRead: int(raw.daysSinceLastRead, 0, 36_500),
     days,
-    focusMode:
-      typeof raw.focusMode === "string" ? raw.focusMode.slice(0, 16) : "off",
+    focusMode: typeof raw.focusMode === "string" ? raw.focusMode.slice(0, 16) : "off",
     weeklyGoalDays:
       typeof raw.weeklyGoalDays === "number" && Number.isFinite(raw.weeklyGoalDays)
         ? Math.max(0, Math.min(7, Math.round(raw.weeklyGoalDays)))
@@ -876,15 +852,12 @@ export function parseEvaluateSentence(raw: string): EvaluatedSentence | null {
         ? 100
         : 40;
   const catReaction =
-    obj.catReaction === "purring" ||
-    obj.catReaction === "curious" ||
-    obj.catReaction === "thinking"
+    obj.catReaction === "purring" || obj.catReaction === "curious" || obj.catReaction === "thinking"
       ? obj.catReaction
       : obj.isCorrect
         ? "purring"
         : "curious";
-  const feedback =
-    typeof obj.feedback === "string" ? obj.feedback.trim().slice(0, 300) : "";
+  const feedback = typeof obj.feedback === "string" ? obj.feedback.trim().slice(0, 300) : "";
   if (!feedback) return null;
   const improvedVersion =
     typeof obj.improvedVersion === "string" && obj.improvedVersion.trim()
@@ -939,10 +912,8 @@ export function parseMicroStory(raw: string): MicroStory | null {
   }
   if (typeof data !== "object" || data === null) return null;
   const obj = data as Record<string, unknown>;
-  const title =
-    typeof obj.title === "string" ? obj.title.trim().slice(0, 100) : "";
-  const story =
-    typeof obj.story === "string" ? obj.story.trim().slice(0, 600) : "";
+  const title = typeof obj.title === "string" ? obj.title.trim().slice(0, 100) : "";
+  const story = typeof obj.story === "string" ? obj.story.trim().slice(0, 600) : "";
   if (!title || !story) return null;
   if (!/\[\[.+?\]\]/.test(story)) return null;
   const wordsUsed = Array.isArray(obj.wordsUsed)
@@ -981,7 +952,11 @@ export function buildExplainInPassagePrompt(input: {
   if (input.word && input.word.trim()) {
     parts.push(`Palabra o expresión a explicar: «${input.word.trim()}»`);
   }
-  if (input.lemma && input.lemma.trim() && input.lemma.trim().toLowerCase() !== input.word?.trim().toLowerCase()) {
+  if (
+    input.lemma &&
+    input.lemma.trim() &&
+    input.lemma.trim().toLowerCase() !== input.word?.trim().toLowerCase()
+  ) {
     parts.push(`Lema / forma canónica: «${input.lemma.trim()}»`);
   }
   if (input.localDefinition && input.localDefinition.trim()) {
@@ -1048,8 +1023,7 @@ export function parsePassageExplanation(raw: string): PassageExplanation | null 
         : "";
   const toneAndNuance =
     typeof obj.toneAndNuance === "string" ? obj.toneAndNuance.trim().slice(0, 150) : "";
-  const catTip =
-    typeof obj.catTip === "string" ? obj.catTip.trim().slice(0, 300) : "";
+  const catTip = typeof obj.catTip === "string" ? obj.catTip.trim().slice(0, 300) : "";
 
   if (!contextualMeaning && !directMeaning) return null;
   const result: PassageExplanation = {
@@ -1109,7 +1083,8 @@ export function parseCompanionNote(raw: string): CompanionNoteResponse | null {
   const obj = data as Record<string, unknown>;
   const title = typeof obj.title === "string" ? obj.title.trim().slice(0, 80) : "";
   const note = typeof obj.note === "string" ? obj.note.trim().slice(0, 300) : "";
-  const signOff = typeof obj.signOff === "string" ? obj.signOff.trim().slice(0, 60) : "Tu gato lector 🐾";
+  const signOff =
+    typeof obj.signOff === "string" ? obj.signOff.trim().slice(0, 60) : "Tu gato lector 🐾";
   if (!note) return null;
   return {
     title: title || "¡Carta de tu compañero!",
@@ -1127,9 +1102,10 @@ Reglas:
 - "hookQuestion": una pregunta sugerente que despierte la curiosidad para seguir leyendo sin spoilers.
 - Máximo 90 tokens en total. Tono empático, lúcido y literario.`;
 
-export function buildPageRecapPrompt(
-  recentPagesText: string,
-): { prompt: string; budget: AiTaskBudget };
+export function buildPageRecapPrompt(recentPagesText: string): {
+  prompt: string;
+  budget: AiTaskBudget;
+};
 export function buildPageRecapPrompt(input: {
   text: string;
   bookTitle?: string;
@@ -1181,7 +1157,8 @@ export function parsePageRecap(raw: string): PageRecapResponse | null {
     typeof obj.hookQuestion === "string" ? obj.hookQuestion.trim().slice(0, 160) : "";
   if (bullets.length === 0 && !hookQuestion) return null;
   return {
-    bullets: bullets.length > 0 ? bullets : ["El texto avanza en el pensamiento central del autor."],
+    bullets:
+      bullets.length > 0 ? bullets : ["El texto avanza en el pensamiento central del autor."],
     hookQuestion: hookQuestion || "¿Hacia dónde nos llevará el siguiente paso?",
   };
 }
@@ -1193,10 +1170,14 @@ export function deterministicPageRecapFallback(text: string): PageRecapResponse 
     .map((s) => s.trim())
     .filter((s) => s.length > 15);
   const b1 = sentences[0]
-    ? (sentences[0].length > 80 ? sentences[0].slice(0, 77) + "..." : sentences[0])
+    ? sentences[0].length > 80
+      ? sentences[0].slice(0, 77) + "..."
+      : sentences[0]
     : "La lectura transcurre en este punto de la obra.";
   const b2 = sentences[1]
-    ? (sentences[1].length > 80 ? sentences[1].slice(0, 77) + "..." : sentences[1])
+    ? sentences[1].length > 80
+      ? sentences[1].slice(0, 77) + "..."
+      : sentences[1]
     : "Los personajes y reflexiones continúan desenvolviéndose.";
   return {
     bullets: [b1, b2],
@@ -1229,9 +1210,12 @@ export function buildCharacterRecapPrompt(input: CharacterRecapInput): string {
   const parts: string[] = [];
   parts.push(`Entidad / Personaje / Lugar a recordar: «${input.entityName.trim()}»`);
   if (input.bookTitle) parts.push(`Libro: «${input.bookTitle.trim()}»`);
-  if (input.currentChapterTitle) parts.push(`Capítulo actual del lector: «${input.currentChapterTitle.trim()}»`);
+  if (input.currentChapterTitle)
+    parts.push(`Capítulo actual del lector: «${input.currentChapterTitle.trim()}»`);
   parts.push("Fragmentos donde aparece hasta este momento del libro:");
-  const excerpts = input.excerptsSoFar.slice(0, 5).map((e, i) => `${i + 1}. «${e.trim().slice(0, 280)}»`);
+  const excerpts = input.excerptsSoFar
+    .slice(0, 5)
+    .map((e, i) => `${i + 1}. «${e.trim().slice(0, 280)}»`);
   parts.push(excerpts.join("\n"));
   return parts.join("\n\n");
 }
@@ -1282,7 +1266,7 @@ export function deterministicCharacterRecapFallback(
 export function buildContextualWordPrompt(
   word: string,
   sentence: string,
-  lang: 'es' | 'en' = 'es',
+  lang: "es" | "en" = "es",
 ): { prompt: string; budget: AiTaskBudget } {
   const budget = AI_TASK_BUDGETS.word_context;
   const safeWord = clampInputText(word, 45);
@@ -1298,9 +1282,10 @@ export function buildContextualWordPrompt(
 /**
  * 2. Prompt ultra-compacto para Doble Toque en Párrafo (BilingueParagraph.tsx / translate.ts)
  */
-export function buildParagraphTranslationPrompt(
-  paragraph: string,
-): { prompt: string; budget: AiTaskBudget } {
+export function buildParagraphTranslationPrompt(paragraph: string): {
+  prompt: string;
+  budget: AiTaskBudget;
+} {
   const budget = AI_TASK_BUDGETS.paragraph_translate;
   const safeParagraph = clampInputText(paragraph, budget.maxInputChars);
 
@@ -1319,7 +1304,7 @@ export function buildCharacterCardsPrompt(
   priorMentionsSnippet: string,
 ): { prompt: string; budget: AiTaskBudget } {
   const budget = AI_TASK_BUDGETS.character_cards;
-  const safeNames = names.slice(0, 4).join(', ');
+  const safeNames = names.slice(0, 4).join(", ");
   const safeContext = clampInputText(priorMentionsSnippet, budget.maxInputChars);
 
   const prompt =
@@ -1328,6 +1313,3 @@ export function buildCharacterCardsPrompt(
 
   return { prompt, budget };
 }
-
-
-

@@ -1,5 +1,5 @@
 import type pg from "pg";
-import { ENRICHMENT_MODEL, ENRICHMENT_PROMPT_VERSION } from "./ai";
+import { ENRICHMENT_MODEL, ENRICHMENT_PROMPT_VERSION, createTtlCache } from "./ai";
 import { hasUsableDefinition } from "../shared/lexicon";
 import {
   CALIBRATION_PER_BAND,
@@ -75,9 +75,29 @@ export function groupEntries(rows: LookupRow[]) {
   return [...entries.values()];
 }
 
+// Caché de lectura del catálogo compartido (read-only, TTL corto).
+// Reduce RUs en consultas repetidas de la misma forma. Se invalida en
+// insertEnrichment. Desactivado en tests para no contaminar entre casos.
+const isTestEnv = !!process.env.VITEST;
+const entriesCache = createTtlCache<LexiconEntryView[]>({
+  maxEntries: 2000,
+  ttlMs: 60_000,
+});
+
+export function resetLexiconCacheForTests(): void {
+  entriesCache.clear();
+}
+
 export async function findEntries(client: pg.Client, language: string, form: string) {
+  const key = `${language}:${form.trim().toLowerCase()}`;
+  if (!isTestEnv) {
+    const cached = entriesCache.get(key);
+    if (cached) return cached;
+  }
   const { rows } = await client.query<LookupRow>(LOOKUP_SQL, [language, form]);
-  return groupEntries(rows);
+  const result = groupEntries(rows);
+  if (!isTestEnv) entriesCache.set(key, result);
+  return result;
 }
 
 // El límite se aplica a las FORMAS consultadas (abajo), nunca a las
@@ -99,19 +119,49 @@ export async function findEntriesForForms(client: pg.Client, language: string, f
     ...new Set(forms.map((form) => form.trim().toLowerCase()).filter(Boolean)),
   ].slice(0, MAX_FORMS_PER_BATCH);
   if (!normalized.length) return {};
-  const { rows } = await client.query<LookupRow & { queried_form: string }>(BATCH_SQL, [
-    language,
-    normalized,
-  ]);
-  const byForm = new Map<string, LookupRow[]>();
-  for (const row of rows) {
-    const list = byForm.get(row.queried_form);
-    if (list) list.push(row);
-    else byForm.set(row.queried_form, [row]);
+
+  if (isTestEnv) {
+    const { rows } = await client.query<LookupRow & { queried_form: string }>(BATCH_SQL, [
+      language,
+      normalized,
+    ]);
+    const byForm = new Map<string, LookupRow[]>();
+    for (const row of rows) {
+      const list = byForm.get(row.queried_form);
+      if (list) list.push(row);
+      else byForm.set(row.queried_form, [row]);
+    }
+    return Object.fromEntries(
+      [...byForm.entries()].map(([form, grouped]) => [form, groupEntries(grouped)]),
+    );
   }
-  return Object.fromEntries(
-    [...byForm.entries()].map(([form, grouped]) => [form, groupEntries(grouped)]),
-  );
+
+  const result: Record<string, LexiconEntryView[]> = {};
+  const missing: string[] = [];
+  for (const form of normalized) {
+    const cached = entriesCache.get(`${language}:${form}`);
+    if (cached) result[form] = cached;
+    else missing.push(form);
+  }
+  if (missing.length) {
+    const { rows } = await client.query<LookupRow & { queried_form: string }>(BATCH_SQL, [
+      language,
+      missing,
+    ]);
+    const byForm = new Map<string, LookupRow[]>();
+    for (const row of rows) {
+      const list = byForm.get(row.queried_form);
+      if (list) list.push(row);
+      else byForm.set(row.queried_form, [row]);
+    }
+    for (const form of missing) {
+      const grouped = byForm.get(form) ?? [];
+      const entries = groupEntries(grouped);
+      result[form] = entries;
+      entriesCache.set(`${language}:${form}`, entries);
+    }
+  }
+  return result;
 }
 
 // ---------- Muestra para la calibración inicial ----------
@@ -142,7 +192,7 @@ const SAMPLE_BANK_SQL = `
 
 export type SampleWord = { lemma: string; definition: string | null };
 
-const shuffle = <T,>(list: T[]): T[] => {
+const shuffle = <T>(list: T[]): T[] => {
   for (let i = list.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [list[i], list[j]] = [list[j], list[i]];
@@ -188,11 +238,7 @@ export async function sampleForCalibration(
         .sort(
           (a, b) =>
             b.def_count - a.def_count ||
-            (BigInt(a.id) < BigInt(b.id)
-              ? -1
-              : BigInt(a.id) > BigInt(b.id)
-                ? 1
-                : 0),
+            (BigInt(a.id) < BigInt(b.id) ? -1 : BigInt(a.id) > BigInt(b.id) ? 1 : 0),
         )[0];
       if (
         dominant &&
@@ -341,6 +387,10 @@ export async function insertEnrichment(
           enrichment.senses.map((s) => s.example),
         ],
       );
+    }
+    if (!isTestEnv) {
+      for (const form of linkedForms) entriesCache.delete(`${language}:${form}`);
+      entriesCache.delete(`${language}:${enrichment.lemma.trim().toLowerCase()}`);
     }
     await client.query("COMMIT");
     return entryId;
