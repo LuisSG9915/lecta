@@ -282,7 +282,8 @@ formularios. Código: `routes.ts` (rutas), `views.ts` (HTML), `epub-reader.ts`
 ## Producción
 
 - URL: `https://lecta.luis-sg9915.workers.dev` — deploy con `pnpm run deploy`.
-- Último deploy: **2026-11-03** (segundo del día), versión
+- Último deploy: **2026-11-07**, versión `7c3cc5cf-6c00-4e66-b4e6-be84606c9b78`, Lecta **v0.2.15**: mejoras de rendimiento (lazy calibration-bank, memoización de componentes hoja, caché TTL en findEntries y /api/lexicon/sample), DX (husky + lint-staged + prettier), accesibilidad (contraste, aria-label, axe en 4 vistas), bundle (margen recuperado a 15.4 kB), Hyperdrive aislado (auth uncached + catalog cached con 2 bindings), cobertura worker 75/72 + reset-guard tests. `pnpm gate` verde (3327 pruebas). Verificado en caliente: `/api/health` → 200, `/api/lexicon/lookup` (casa) → acepción, `/` → 200.
+- Deploy anterior: **2026-11-03** (segundo del día), versión
   `990381ad-f87b-43df-8bfb-0ae762979aed`, Lecta **v0.2.15**: diccionario local
   descargable es/en + catálogo inglés cargado en `lecta` (detalle en
   §«Diccionario local descargable»). Al abrir un libro el paquete de su
