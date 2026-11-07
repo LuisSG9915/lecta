@@ -5,6 +5,7 @@
 // estado viven en el lector.
 import { isFeatureFlagEnabled } from "../../lib/settings";
 import { markSectionPreviewed } from "../../lib/chapter-analysis";
+import { memo } from "react";
 
 const RICH_CHAPTER_KEY_WORDS = 12;
 
@@ -49,7 +50,7 @@ export interface ReaderNoticesProps {
   onStartAudio5Min?: () => void;
 }
 
-export function ReaderNotices(props: ReaderNoticesProps) {
+export const ReaderNotices = memo(function ReaderNotices(props: ReaderNoticesProps) {
   const {
   resumeCard,
   rereadChapter,
@@ -270,4 +271,4 @@ export function ReaderNotices(props: ReaderNoticesProps) {
   ) : null}
     </>
   );
-}
+});

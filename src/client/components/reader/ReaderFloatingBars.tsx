@@ -1,3 +1,4 @@
+import { memo } from "react";
 // Barras flotantes del lector: marcapasos visual, aviso de palabra capturada
 // por TTS y párrafo bilingüe traducido.
 //
@@ -27,7 +28,7 @@ export interface ReaderFloatingBarsProps {
   setBilingualMode: (mode: "off" | "auto" | "tier-1-only" | "tier-3-always") => void;
 }
 
-export function ReaderFloatingBars(props: ReaderFloatingBarsProps) {
+function ReaderFloatingBarsImpl(props: ReaderFloatingBarsProps) {
   const {
   settings,
   state,
@@ -132,3 +133,5 @@ export function ReaderFloatingBars(props: ReaderFloatingBarsProps) {
     </>
   );
 }
+
+export const ReaderFloatingBars = memo(ReaderFloatingBarsImpl);

@@ -11,6 +11,7 @@ import {
   type FormEvent,
   type KeyboardEvent,
 } from "react";
+import { memo } from "react";
 import "../styles/game.css";
 import Sheet from "./Sheet";
 import { Companion } from "./Companion";
@@ -123,7 +124,7 @@ export type CompanionPanelProps = Partial<UnifiedCompanionPanelProps> & {
   readerContext?: CompanionReaderContext | null;
 };
 
-export function CatCornerSheet({
+function CatCornerSheetImpl({
   catName = "Miso",
   catMoodMessage,
   streakDays = 0,
@@ -270,7 +271,7 @@ function withTryOn(
   return [...filtered, tryOn];
 }
 
-export function CompanionPanel(props: CompanionPanelProps) {
+function CompanionPanelImpl(props: CompanionPanelProps) {
   if (props.renderStagePreview) {
     return (
       <CatCornerSheet
@@ -1676,3 +1677,6 @@ function FullCompanionPanel(props: CompanionPanelProps) {
     </Sheet>
   );
 }
+
+export const CompanionPanel = memo(CompanionPanelImpl);
+export const CatCornerSheet = memo(CatCornerSheetImpl);

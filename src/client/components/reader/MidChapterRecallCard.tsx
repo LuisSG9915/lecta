@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { memo } from "react";
 import { SentenceBuilderGame } from "../SentenceBuilderGame";
 import type { EpisodicWordItem } from "../../lib/practice";
 
@@ -8,7 +9,7 @@ export interface MidChapterRecallCardProps {
   onSkip: () => void;
 }
 
-export function MidChapterRecallCard({ item, onSolve, onSkip }: MidChapterRecallCardProps) {
+function MidChapterRecallCardImpl({ item, onSolve, onSkip }: MidChapterRecallCardProps) {
   // El lector puede entrar a la sección con un desplazamiento heredado: sin
   // esto, el repaso queda arriba de la vista y se pierde.
   const ref = useRef<HTMLElement | null>(null);
@@ -47,3 +48,5 @@ export function MidChapterRecallCard({ item, onSolve, onSkip }: MidChapterRecall
     </section>
   );
 }
+
+export const MidChapterRecallCard = memo(MidChapterRecallCardImpl);

@@ -2,7 +2,7 @@
 // tinta, cita, reflexión y preguntar al compañero. La consulta de una
 // sola palabra abre directo la tarjeta única (WordPanel, Track 4):
 // no hay píldora intermedia, así nunca hay dos paneles para lo mismo.
-import { useEffect } from "react";
+import { useEffect, memo } from "react";
 import Icon from "../Icon";
 
 export type ReaderSelectionButton = {
@@ -20,7 +20,7 @@ export interface ReaderSelectionBarProps {
   setDeepModal: (value: boolean) => void;
 }
 
-export function ReaderSelectionBar(props: ReaderSelectionBarProps) {
+export const ReaderSelectionBar = memo(function ReaderSelectionBar(props: ReaderSelectionBarProps) {
   const {
     selButton,
     setSelButton,
@@ -143,4 +143,4 @@ export function ReaderSelectionBar(props: ReaderSelectionBarProps) {
       </button>
     </div>
   );
-}
+});

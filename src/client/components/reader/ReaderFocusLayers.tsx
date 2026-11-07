@@ -10,6 +10,7 @@ import type { DeepReadingState } from "../../lib/deep-reading";
 import { formatElapsedMinutes, formatRemainingTime } from "../../lib/deep-reading";
 import type { ReaderSettings } from "../../lib/settings";
 import type { RefObject } from "react";
+import { memo } from "react";
 
 export interface ReaderFocusLayersProps {
   settings: ReaderSettings;
@@ -31,7 +32,7 @@ export interface ReaderFocusLayersProps {
   deepIndicatorRef?: RefObject<HTMLSpanElement | null>;
 }
 
-export function ReaderFocusLayers(props: ReaderFocusLayersProps) {
+function ReaderFocusLayersImpl(props: ReaderFocusLayersProps) {
   const {
   settings,
   state,
@@ -124,3 +125,5 @@ export function ReaderFocusLayers(props: ReaderFocusLayersProps) {
     </>
   );
 }
+
+export const ReaderFocusLayers = memo(ReaderFocusLayersImpl);

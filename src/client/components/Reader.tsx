@@ -464,10 +464,10 @@ export default function Reader({
   );
   const sectionTiming = useRef<{ start: number; startRatio: number; words: number } | null>(null);
   const overlayReleaseRef = useRef<OverlayHandle | null>(null);
-  const releaseOverlay = () => {
+  const releaseOverlay = useCallback(() => {
     overlayReleaseRef.current?.release();
     overlayReleaseRef.current = null;
-  };
+  }, []);
   const tocRowsRef = useRef<TocRow[]>([]);
   const currentChapterPrimedWordsRef = useRef<EpisodicWordItem[]>([]);
   const ttsStopOnNavRef = useRef<(() => void) | null>(null);
@@ -1770,10 +1770,10 @@ export default function Reader({
     setSheet(kind);
   };
 
-  const closeSheet = () => {
+  const closeSheet = useCallback(() => {
     releaseOverlay();
     setSheet(null);
-  };
+  }, [releaseOverlay, setSheet]);
 
   const openSettings = (tab: ReaderSettingsTab = "appearance") => {
     const resolvedTab = tab === "strategy" ? "appearance" : tab;
@@ -3493,7 +3493,7 @@ export default function Reader({
 
   // Saltos desde hojas (índice, búsqueda, marcadores): guardan el punto
   // de partida para «Volver a donde estaba».
-  const jumpTo = (
+  const jumpTo = useCallback((
     index: number,
     locate?: { anchor?: string; snippet?: string; fragment?: string },
     intent: NavIntent = "lookup",
@@ -3516,7 +3516,7 @@ export default function Reader({
       fragment: locate?.fragment,
       restore: { anchor: locate?.anchor, snippet: locate?.snippet },
     });
-  };
+  }, [setReturnPoint, closeSheet, trackMove, navigate, latestPositionRef]);
 
   const goBack = () => {
     const point = returnPoint;
@@ -3595,7 +3595,7 @@ export default function Reader({
   // «Releer el capítulo» del marcador de retomar: salta al inicio del
   // destino con jumpTo — eso deja «Volver a donde estaba» armado para
   // regresar a la posición exacta tras el repaso.
-  const rereadChapter = () => {
+  const rereadChapter = useCallback(() => {
     const card = resumeCard;
     setResumeCard(null);
     if (!card?.rereadTo) return;
@@ -3609,7 +3609,7 @@ export default function Reader({
       { fragment: card.rereadTo.fragment },
       "chapter",
     );
-  };
+  }, [resumeCard, setResumeCard, trackEvent, jumpTo]);
 
   // El modo de preparación lo leen los callbacks de navegación sin
   // depender del ciclo de render.
@@ -4040,18 +4040,18 @@ export default function Reader({
   // «Ajustar mi vocabulario»: la descarga corre por App; si la hoja no
   // llegó a abrirse (sin conexión o muestra vacía) el aviso se conserva
   // para reintentar.
-  const acceptCalibrationNotice = async () => {
+  const acceptCalibrationNotice = useCallback(async () => {
     if (await onRequestCalibration(language)) setCalNotice(false);
-  };
+  }, [onRequestCalibration, language, setCalNotice]);
 
   // «Ahora no»: cierra la oferta automática — la prueba queda a mano
   // desde Cuenta, con el borrador si se empezó.
-  const dismissCalibrationNotice = () => {
+  const dismissCalibrationNotice = useCallback(() => {
     setCalNotice(false);
     void saveSessionValue(calibrationDoneKey(language), "1", captureDbScope()).catch(
       () => undefined,
     );
-  };
+  }, [language, setCalNotice]);
 
   // Franja de ayuda de vocabulario: se evalúa una vez por apertura,
   // solo entrando por el inicio de un libro nuevo (sin posición
@@ -4089,44 +4089,44 @@ export default function Reader({
     };
   }, [state, sectionIndex, language, bookHash]);
 
-  const saveHelpDecision = (value: "on" | "off" | "dismissed") => {
+  const saveHelpDecision = useCallback((value: "on" | "off" | "dismissed") => {
     void saveSessionValue(bookHelpKey(bookHash), value, captureDbScope()).catch(
       () => undefined,
     );
-  };
+  }, [bookHash]);
 
   // «Sí, prepárame» / «Activar ayudas»: enciende la ayuda del libro.
-  const acceptHelpNotice = () => {
+  const acceptHelpNotice = useCallback(() => {
     setHelpNotice(false);
     saveBookMicroHighlightsEnabled(bookHash, true);
     saveHelpDecision("on");
-  };
+  }, [bookHash, saveHelpDecision, setHelpNotice]);
 
   // «Medir mi nivel en 15 s»: abre la prueba; al aceptar la ayuda
   // queda encendida y la franja se cierra. Si la hoja no abrió, el
   // aviso se conserva para reintentar, igual que el de calibración.
-  const calibrateHelpNotice = async () => {
+  const calibrateHelpNotice = useCallback(async () => {
     if (await onRequestCalibration(language)) {
       setHelpNotice(false);
       saveBookMicroHighlightsEnabled(bookHash, true);
       saveHelpDecision("on");
     }
-  };
+  }, [onRequestCalibration, language, bookHash, saveHelpDecision, setHelpNotice]);
 
   // «No, gracias»: apaga los micro-destacados de este libro y no
   // vuelve a preguntar.
-  const declineHelpNotice = () => {
+  const declineHelpNotice = useCallback(() => {
     setHelpNotice(false);
     saveBookMicroHighlightsEnabled(bookHash, false);
     saveHelpDecision("off");
-  };
+  }, [bookHash, saveHelpDecision, setHelpNotice]);
 
   // «Ahora no» (×): cierra sin apagar nada — la preferencia queda
   // registrada para no insistir en cada apertura.
-  const dismissHelpNotice = () => {
+  const dismissHelpNotice = useCallback(() => {
     setHelpNotice(false);
     saveHelpDecision("dismissed");
-  };
+  }, [saveHelpDecision, setHelpNotice]);
 
   const currentTargetIdx = catalog
     ? catalog.targets.findIndex((t) => t.id === currentChapterTarget?.id)

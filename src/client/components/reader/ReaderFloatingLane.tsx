@@ -2,11 +2,14 @@
 // dock (toast, pista, marcapasos, párrafo bilingüe) se apila aquí en columna;
 // nunca se posiciona a mano en `bottom`, así no se pisan entre sí.
 import type { ReactNode } from "react";
+import { memo } from "react";
 
-export function ReaderFloatingLane({ children }: { children: ReactNode }) {
+function ReaderFloatingLaneImpl({ children }: { children: ReactNode }) {
   return (
     <div className="reader-floating-lane">
       {children}
     </div>
   );
 }
+
+export const ReaderFloatingLane = memo(ReaderFloatingLaneImpl);

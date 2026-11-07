@@ -1,5 +1,6 @@
 import "../styles/reader.css";
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { memo } from "react";
 import { createPortal } from "react-dom";
 import {
   explainInPassage,
@@ -65,12 +66,12 @@ export interface ContextualMeaningResult {
   cached?: boolean;
 }
 
-// El significado mostrado arriba del panel: del diccionario o, cuando el
-// diccionario no tiene la palabra, del significado directo de la IA.
 type WordMeaning = { text: string; source: "dictionary" | "ai" };
 type MeaningStatus = "loading" | "ready" | "error" | "unavailable";
-// La explicación de la frase sólo sale del reposo cuando el lector la pide.
 type PassageStatus = "idle" | "loading" | "ready" | "error";
+
+// Niveles de disclosure progresivo
+type DisclosureLevel = 1 | 2 | 3;
 
 const normalizeForCompare = (s: string) =>
   s.toLowerCase().replace(/\s+/g, " ").trim();
@@ -78,18 +79,15 @@ const normalizeForCompare = (s: string) =>
 export interface UnifiedWordPanelProps {
   word: string;
   sentenceContext?: string;
-  context?: string; // Retrocompatibilidad con Reader.tsx
-  /** Acciones de pasaje que la ficha ofrece en su fila secundaria
-      (una palabra conserva Tinta, Reflexión, Postal y Preguntar). */
+  context?: string;
   passageActions?: {
-    /** Presente solo cuando hay un tramo DOM que resaltar (toque real). */
     onHighlight?: (tone: "amber" | "salvia" | "dario") => void;
     onQuoteCard: () => void;
     onAsk: () => void;
     onDeepRead: () => void;
   };
   bookLanguage?: "es" | "en" | string;
-  language?: string; // Retrocompatibilidad con Reader.tsx
+  language?: string;
   bookHash?: string;
   bookTitle?: string;
   author?: string;
@@ -97,7 +95,6 @@ export interface UnifiedWordPanelProps {
   canExplain?: boolean;
   isSavedInitial?: boolean;
   compactMode?: boolean;
-  /** Nodo de la franja flotante donde montar la cápsula (evita el fixed). */
   capsuleHost?: HTMLElement | null;
   sections?: SearchSection[];
   toc?: SearchTocRow[];
@@ -106,7 +103,6 @@ export interface UnifiedWordPanelProps {
   charOffsetInChapter?: number;
   onSelectWord?: (word: string) => void;
   initialViewMode?: "dictionary" | "character";
-  // Inyección de helpers actuales en src/client/lib/
   lookupLocalLexicon?: (word: string, lang: "es" | "en") => Promise<LocalLexiconEntry | null>;
   fetchContextualMeaning?: (
     word: string,
@@ -137,10 +133,9 @@ export interface UnifiedWordPanelProps {
   onClose: () => void;
 }
 
-// Caché en memoria de sesión (complementa IndexedDB en idb.ts)
 const passageMeaningMemoryCache = new Map<string, ContextualMeaningResult>();
 
-export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
+const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
   passageActions,
   word,
   sentenceContext,
@@ -195,6 +190,8 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
   const [isTranslatingQuotes, setIsTranslatingQuotes] = useState<boolean>(false);
 
   const [isExpanded, setIsExpanded] = useState(!compactMode);
+  // NUEVO: Nivel de disclosure progresivo (1 = significado + guardar, 2 = matiz + tono, 3 = todo)
+  const [disclosureLevel, setDisclosureLevel] = useState<DisclosureLevel>(1);
   const [localEntry, setLocalEntry] = useState<LocalLexiconEntry | null>(() => {
     const mem = lookupWordInMemory(cleanWord, effectiveLang);
     if (mem?.ok && mem.found && mem.entries && mem.entries.length > 0) {
@@ -219,22 +216,16 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
   );
   const [passageState, setPassageState] = useState<PassageStatus>("idle");
   const [passageResult, setPassageResult] = useState<ContextualMeaningResult | null>(null);
-  const [passageError, setPassageError] = useState<string | null>(null);
+  const [passageError, setPassageError] = useState<string | null>(null); // Used in error display
   const [isSaved, setIsSaved] = useState<boolean>(isSavedInitial);
   const [savedEntry, setSavedEntry] = useState<SavedWord | null>(null);
   const [saving, setSaving] = useState(false);
   const [quickNotice, setQuickNotice] = useState<string | null>(null);
   const [useAi, setUseAi] = useState(true);
-  // Aborta la consulta IA en vuelo (significado o frase) al cerrar el panel.
   const passageAbortRef = useRef<AbortController | null>(null);
-  // Promesa del guardado en vuelo: quitarla antes de que resuelva ya no
-  // cae en el vacío (era el toque perdido de guardar→quitar).
   const saveInFlightRef = useRef<Promise<SavedWord | null> | null>(null);
-  // Guardado vigente en RAM para el toggle: la cápsula decide con esto,
-  // no con el estado de React, que va un frame por detrás del dedo.
   const savedRef = useRef<boolean>(isSavedInitial);
 
-  // Al cerrar el panel aborta la consulta IA en vuelo (significado o frase).
   useEffect(() => {
     return () => {
       passageAbortRef.current?.abort();
@@ -242,11 +233,6 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
     };
   }, []);
 
-  // Consulta IA compartida: el significado (cuando el diccionario no
-  // tiene la palabra) y la explicación de la frase usan la misma ruta.
-  // `localDefinition` decide la variante en el servidor: con ella el
-  // prompt compacto devuelve sólo el matiz; sin ella, el prompt completo
-  // devuelve también el significado directo.
   const runPassageFetch = useCallback(
     (opts: {
       lemma?: string;
@@ -337,9 +323,6 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
     [cleanWord, effectiveContext, effectiveLang, cacheKey, bookTitle, author, fetchContextualMeaning],
   );
 
-  // Significado por IA cuando el diccionario no tiene la palabra: la
-  // respuesta completa queda guardada para «En esta frase» (no hay una
-  // segunda consulta al tocarla).
   const requestAiMeaning = useCallback(
     (lemma?: string) => {
       setMeaningStatus("loading");
@@ -360,13 +343,16 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
     [runPassageFetch],
   );
 
-  // Al tocar «¿Qué significa aquí?»: reutiliza la respuesta si ya llegó
-  // (la consulta del significado la trajo) o pide el matiz con el prompt
-  // compacto cuando hay definición de diccionario.
+  // NUEVO: Handler para revelar nivel 2 (matiz contextual)
   const handleRevealPassage = () => {
-    if (passageState === "loading" || passageState === "ready") return;
+    triggerHaptic(8);
+    if (passageState === "loading" || passageState === "ready") {
+      setDisclosureLevel(2);
+      return;
+    }
     if (passageResult) {
       setPassageState("ready");
+      setDisclosureLevel(2);
       return;
     }
     setPassageError(null);
@@ -382,6 +368,7 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
       onResult: (res) => {
         setPassageResult(res);
         setPassageState("ready");
+        setDisclosureLevel(2);
       },
       onError: (message) => {
         setPassageError(message ?? null);
@@ -390,19 +377,21 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
     });
   };
 
-  // 2. Fase 1 (0 ms) & Calibración silenciosa & Fase 2: diccionario; si
-  // la palabra falta, la IA aporta el significado (variante completa).
+  // NUEVO: Handler para expandir a nivel 3 (todo)
+  const handleExpandAll = () => {
+    triggerHaptic(6);
+    setDisclosureLevel(3);
+  };
+
   useEffect(() => {
     const abortCtrl = new AbortController();
     const scope = captureDbScope();
 
-    // 1. Señal silenciosa para el modelo adaptativo Theta (sin exámenes)
     onRecordSilentCalibration(cleanWord, "lookup");
     if (bookHash) {
       void recordBookConsultedWord(bookHash, cleanWord, scope);
     }
 
-    // Verificar si ya está guardada en idb
     void loadSavedWord(effectiveLang, cleanWord, scope)
       .then((stored) => {
         if (!abortCtrl.signal.aborted && stored) {
@@ -413,7 +402,6 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
       })
       .catch(() => {});
 
-    // 2. Resolución instantánea (0 ms) desde diccionario local / offline / catálogo
     const dictPromise: Promise<LocalLexiconEntry | null> = lookupLocalLexicon
       ? Promise.resolve()
           .then(() => lookupLocalLexicon(cleanWord, effectiveLang))
@@ -439,8 +427,6 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
           })
           .catch(() => null);
 
-    // 3. Si el diccionario no trajo definición y hay IA disponible, la
-    // misma consulta de «En esta frase» aporta el significado directo.
     void dictPromise.then(async (entry) => {
       if (abortCtrl.signal.aborted) return;
       if (entry) setLocalEntry(entry);
@@ -460,7 +446,6 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
     return () => abortCtrl.abort();
   }, [cleanWord, effectiveLang, lookupLocalLexicon, onRecordSilentCalibration, bookHash, canExplain, requestAiMeaning]);
 
-  // Construcción de la ficha de memoria de personaje (Cero Spoilers)
   useEffect(() => {
     let cancelled = false;
     const shouldBuildCard = canBeCharacter || initialViewMode === "character";
@@ -523,7 +508,6 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
     };
   }, [cleanWord, sections, toc, currentSectionIndex, currentChapterTitle, effectiveContext, isCandidateProperNoun, canBeCharacter, initialViewMode, charOffsetInChapter, bookLanguage, language]);
 
-  // Traducción de citas para libros en otros idiomas (L2)
   const handleTranslateQuotes = async () => {
     if (!characterCard || isTranslatingQuotes) return;
     setIsTranslatingQuotes(true);
@@ -546,7 +530,6 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
     }
   };
 
-  // Pronunciación de voz
   const handleSpeak = () => {
     triggerHaptic(6);
     if (onSpeakWord) {
@@ -556,7 +539,6 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
     }
   };
 
-  // Guardar en el cuaderno en 1 solo toque
   const handleSave = async () => {
     if (savedRef.current) return;
     setSaving(true);
@@ -564,12 +546,9 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
     setIsSaved(true);
     triggerHaptic(12);
 
-    // Señal silenciosa de calibración al guardar
     onRecordSilentCalibration(cleanWord, "save");
 
     const lemma = localEntry?.lemma ?? cleanWord.toLowerCase();
-    // El cuaderno guarda el significado mostrado (diccionario o IA),
-    // nunca el matiz de la frase.
     const shortDef = meaning?.text || "";
     const inPassage = meaning?.text || "";
 
@@ -611,9 +590,6 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
         incrementCollectionPendingCount("words");
         scheduleReadingSyncPush("words");
 
-
-        // En la cápsula el mismo botón quita: el aviso lo dice. En la
-        // ficha, el botón guarda y el aviso explica la prioridad.
         const msg = compactMode
           ? "★ Guardada · toca de nuevo para quitar"
           : "Fijada con prioridad en tu cuaderno.";
@@ -635,7 +611,6 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
     await work;
   };
 
-  // Marcar como conocida ("✓ Ya la sé")
   const handleQuickKnown = async () => {
     if (saving) return;
     setSaving(true);
@@ -665,8 +640,6 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
         { award: false },
       ).catch(() => {});
 
-      // Un solo ajuste por acto: θ sube con la dificultad real de la palabra
-      // (4 − zipf), no con un 3,5/2,5 inventado según haya definición corta.
       applyPreviewKnownSignal(
         effectiveLang,
         betaFromZipf(calibrationBankZipf(lemma, effectiveLang)),
@@ -683,8 +656,6 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
     }
   };
 
-  // Etapa real de la palabra guardada: el lector la ve al reencontrarla
-  // en el texto, no solo dentro del Cuaderno.
   const savedStage =
     savedEntry?.card && (savedEntry.card.reps ?? 0) > 0
       ? markLevel(savedEntry.card) === "learning"
@@ -694,10 +665,7 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
           : "Dominada"
       : null;
 
-  // Quitar del cuaderno
   const handleRemove = async () => {
-    // Respuesta en el primer frame: el dedo ya vio el cambio antes de
-    // que IndexedDB responda.
     savedRef.current = false;
     setIsSaved(false);
     triggerHaptic(8);
@@ -706,8 +674,6 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
     setQuickNotice(msg);
     setTimeout(() => setQuickNotice(null), 2000);
 
-    // Un guardado en vuelo deja la fila en la base: sin esperarlo, el
-    // borrado se adelantaba y la palabra volvía a la cápsula guardada.
     const inFlight = saveInFlightRef.current;
     const pending = inFlight ? await inFlight.catch(() => null) : null;
 
@@ -737,7 +703,6 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
     };
   });
 
-  // Atajos de teclado rápidos: 'p' (pronunciar), 'g' (guardar), 's' (ya la sé), Escape (cerrar)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
@@ -761,7 +726,6 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  // Modo ultracompacto (Cápsula rápida / micro-glosa)
   if (compactMode && !isExpanded) {
     const syllables = effectiveLang === "es" ? syllabifySpanish(cleanWord) : cleanWord;
     const microDef =
@@ -862,8 +826,6 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
     !/^literario$/i.test(passageResult.toneOrNuance.trim())
       ? passageResult.toneOrNuance.trim()
       : null;
-  // Regla anti-duplicados: si la explicación de la frase repite el
-  // significado ya mostrado, sólo se pinta el tono.
   const passageRepeatsMeaning = Boolean(
     meaning &&
       passageResult &&
@@ -871,7 +833,6 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
         normalizeForCompare(meaning.text),
   );
 
-  // La palabra resaltada dentro de la cita (forma exacta o lema).
   const renderContextQuote = () => {
     const lower = effectiveContext.toLowerCase();
     let idx = lower.indexOf(cleanWord.toLowerCase());
@@ -890,13 +851,19 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
     );
   };
 
+  // Determinar si mostrar botón "Más" (nivel 3)
+  const showMoreButton = 
+    (isCandidateProperNoun && characterCard) ||
+    (isForeignBook && characterCard) ||
+    passageActions ||
+    (localEntry?.synonyms && localEntry.synonyms.length > 0);
+
   return (
     <aside
       className="word-unified-card sheet"
       role="dialog"
       aria-label={`Significado de ${cleanWord}`}
     >
-      {/* Cabecera responsiva con botón X garantizado en fila superior y estado en 2ª fila */}
       <header className="word-panel__header word-card-header">
         <div className="word-panel__top-row">
           <div className="word-panel__title-group word-card-title-group">
@@ -915,7 +882,6 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
             </button>
           </div>
 
-          {/* Botón X explícito siempre visible en móvil y escritorio */}
           <button
             type="button"
             className="word-panel__close-btn word-card-close-btn"
@@ -927,7 +893,6 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
           </button>
         </div>
 
-        {/* Segunda fila dedicada para el estado de guardado sin aplastar el título */}
         <div className="word-panel__status-row word-card-actions">
           {isSaved ? (
             <div className="word-panel__saved-bar">
@@ -967,7 +932,6 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
         </div>
       </header>
 
-      {/* Selector de modo inteligente: Personaje / Diccionario */}
       {(isCandidateProperNoun || Boolean(characterCard && characterCard.totalMentionsUpToCursor > 0)) && (
         <nav
           className="word-panel-mode-switcher"
@@ -997,14 +961,12 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
           aria-label={`Memoria de ${cleanWord}`}
         >
           <div className="character-memory-header">
-            {/* Insignia de seguridad: Hasta el Cap. X (Cero Spoilers) */}
             <div className="character-security-badge">
               <span className="character-security-icon" aria-hidden="true"><Icon name="lock" size={12} /></span>
               <span className="character-security-text">
                 Hasta el {currentChapterTitle || `Cap. ${(currentSectionIndex ?? 0) + 1}`} (Cero Spoilers)
               </span>
             </div>
-
             <span className="character-memory-header-tag">
               Memoria del libro · Sin spoilers hasta tu página
             </span>
@@ -1017,7 +979,6 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
             </div>
           ) : characterCard ? (
             <div className="character-memory-content">
-              {/* Primera vez que apareció */}
               <div className="character-mention-block character-first-mention">
                 <div className="character-mention-title">
                   Primera vez que apareció {characterCard.firstMention ? `(${characterCard.firstMention.chapterTitle})` : ""}:
@@ -1033,7 +994,6 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
                 )}
               </div>
 
-              {/* Última vez visto antes de aquí */}
               <div className="character-mention-block character-recent-mention">
                 <div className="character-mention-title">
                   Última vez visto antes de aquí {characterCard.recentMention ? `(${characterCard.recentMention.chapterTitle})` : ""}:
@@ -1051,7 +1011,6 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
                 )}
               </div>
 
-              {/* Relación en escena */}
               {characterCard.coOccurringCharacters.length > 0 && (
                 <div className="character-relationships-block">
                   <div className="character-relationships-label">
@@ -1073,7 +1032,6 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
                 </div>
               )}
 
-              {/* Soporte para Libros en Otros Idiomas (L2): Botón para traducir citas */}
               {isForeignBook && (characterCard.firstMention || characterCard.recentMention) && (
                 <div className="character-translate-action">
                   <button
@@ -1087,7 +1045,6 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
                 </div>
               )}
 
-              {/* Opción directa para desactivar recordatorio de personajes */}
               <div className="character-disable-action">
                 <button
                   type="button"
@@ -1111,7 +1068,6 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
         </section>
       ) : (
         <>
-          {/* Bloque 1: qué significa la palabra (diccionario → IA si falta) */}
           <section className="word-card-dictionary-section word-panel-meaning-block">
             <h4 className="word-card-section-title">Significado</h4>
             {meaningStatus === "loading" ? (
@@ -1161,8 +1117,6 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
             )}
           </section>
 
-          {/* Bloque 2: la frase del libro; su explicación llega sólo al
-              tocarla (la cuota de IA se gasta a petición del lector). */}
           {effectiveContext ? (
             <section className="word-card-context-box">
               <h4 className="word-card-section-title">En esta frase</h4>
@@ -1176,18 +1130,7 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
                     Inicia sesión para explicar frases con IA.
                   </p>
                 ) : null
-              ) : passageState === "ready" && passageResult ? (
-                <div aria-live="polite">
-                  {(!passageRepeatsMeaning || !toneLabel) && (
-                    <p className="word-card-context-text passage-meaning-text">
-                      {passageResult.inPassageMeaning}
-                    </p>
-                  )}
-                  {toneLabel ? (
-                    <p className="word-card-tone">Tono: {toneLabel}</p>
-                  ) : null}
-                </div>
-              ) : (
+              ) : disclosureLevel === 1 ? (
                 <div className="word-card-context-actions">
                   {passageState === "error" ? (
                     <p className="word-card-context-fallback">
@@ -1207,90 +1150,148 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
                         : "¿Qué significa aquí?"}
                   </button>
                 </div>
+              ) : disclosureLevel === 2 ? (
+                <div className="word-card-passage-meaning" aria-live="polite">
+                  {(!passageRepeatsMeaning || !toneLabel) && passageResult && (
+                    <p className="word-card-context-text passage-meaning-text">
+                      {passageResult.inPassageMeaning}
+                    </p>
+                  )}
+                  {toneLabel ? (
+                    <p className="word-card-tone">Tono: {toneLabel}</p>
+                  ) : null}
+                  {showMoreButton && (
+                    <button
+                      type="button"
+                      className="btn--expand-all"
+                      onClick={handleExpandAll}
+                    >
+                      Ver más ›
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <>
+                  {passageResult && (
+                    <div className="word-card-passage-meaning" aria-live="polite">
+                      {(!passageRepeatsMeaning || !toneLabel) && (
+                        <p className="word-card-context-text passage-meaning-text">
+                          {passageResult.inPassageMeaning}
+                        </p>
+                      )}
+                      {toneLabel ? (
+                        <p className="word-card-tone">Tono: {toneLabel}</p>
+                      ) : null}
+                    </div>
+                  )}
+
+                  {localEntry && localEntry.synonyms.length > 0 && disclosureLevel === 3 && (
+                    <div className="word-panel-lexical-family">
+                      <span className="lexical-family-label">Familia léxica:</span>
+                      <div className="lexical-family-chips">
+                        {localEntry.synonyms.slice(0, 6).map((syn) => (
+                          <span key={syn} className="lexical-chip">{syn}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {passageState === "error" && passageError && disclosureLevel >= 2 && (
+                    <p className="word-card-context-fallback" style={{marginTop: "var(--s-2)"}}>
+                      {passageError}
+                    </p>
+                  )}
+
+                  {passageActions ? (
+                    <div
+                      className="word-card-passage-actions"
+                      role="group"
+                      aria-label="Acciones de pasaje"
+                    >
+                      {passageActions.onHighlight ? (
+                        <div
+                          className="selection-highlight-group"
+                          role="group"
+                          aria-label="Resaltar con tinta"
+                        >
+                          <button
+                            type="button"
+                            className="selection-menu-btn selection-save"
+                            aria-label="Resaltar con tinta"
+                            onClick={() => passageActions.onHighlight?.("amber")}
+                          >
+                            <Icon name="highlight" size={14} />
+                            <span>Tinta</span>
+                          </button>
+                          <div
+                            className="selection-tones-picker"
+                            aria-label="Elegir tono de tinta"
+                          >
+                            <button
+                              type="button"
+                              className="tone-dot tone-dot--amber"
+                              aria-label="Tinta Ámbar"
+                              onClick={() => passageActions.onHighlight?.("amber")}
+                            />
+                            <button
+                              type="button"
+                              className="tone-dot tone-dot--salvia"
+                              aria-label="Tinta Salvia"
+                              onClick={() => passageActions.onHighlight?.("salvia")}
+                            />
+                            <button
+                              type="button"
+                              className="tone-dot tone-dot--dario"
+                              aria-label="Tinta Azul Darío"
+                              onClick={() => passageActions.onHighlight?.("dario")}
+                            />
+                          </div>
+                        </div>
+                      ) : null}
+                      <button
+                        type="button"
+                        className="selection-menu-btn"
+                        onClick={passageActions.onDeepRead}
+                      >
+                        <Icon name="retreat" size={14} />
+                        <span>Reflexión</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="selection-menu-btn"
+                        onClick={passageActions.onQuoteCard}
+                      >
+                        <Icon name="quote" size={14} />
+                        <span>Postal</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="selection-menu-btn selection-ask-cat"
+                        onClick={passageActions.onAsk}
+                      >
+                        <Icon name="sparkles" size={14} />
+                        <span>Preguntar</span>
+                      </button>
+                    </div>
+                  ) : null}
+
+                  {isCandidateProperNoun && disclosureLevel === 3 && (
+                    <button
+                      type="button"
+                      className="btn--switch-to-character"
+                      onClick={() => setViewMode("character")}
+                    >
+                      <Icon name="you" size={14} />
+                      <span>Ver como personaje</span>
+                    </button>
+                  )}
+                </>
               )}
             </section>
           ) : null}
         </>
       )}
 
-      {/* Fila secundaria: las acciones de pasaje no se pierden con una
-          sola palabra — Tinta, Reflexión, Postal y Preguntar entran en
-          la ficha. Cada acción cierra la ficha (la hace el lector en
-          Reader.tsx al cablear los callbacks). */}
-      {passageActions ? (
-        <div
-          className="word-card-passage-actions"
-          role="group"
-          aria-label="Acciones de pasaje"
-        >
-          {passageActions.onHighlight ? (
-            <div
-              className="selection-highlight-group"
-              role="group"
-              aria-label="Resaltar con tinta"
-            >
-              <button
-                type="button"
-                className="selection-menu-btn selection-save"
-                aria-label="Resaltar con tinta"
-                onClick={() => passageActions.onHighlight?.("amber")}
-              >
-                <Icon name="highlight" size={14} />
-                <span>Tinta</span>
-              </button>
-              <div
-                className="selection-tones-picker"
-                aria-label="Elegir tono de tinta"
-              >
-                <button
-                  type="button"
-                  className="tone-dot tone-dot--amber"
-                  aria-label="Tinta Ámbar"
-                  onClick={() => passageActions.onHighlight?.("amber")}
-                />
-                <button
-                  type="button"
-                  className="tone-dot tone-dot--salvia"
-                  aria-label="Tinta Salvia"
-                  onClick={() => passageActions.onHighlight?.("salvia")}
-                />
-                <button
-                  type="button"
-                  className="tone-dot tone-dot--dario"
-                  aria-label="Tinta Azul Darío"
-                  onClick={() => passageActions.onHighlight?.("dario")}
-                />
-              </div>
-            </div>
-          ) : null}
-          <button
-            type="button"
-            className="selection-menu-btn"
-            onClick={passageActions.onDeepRead}
-          >
-            <Icon name="retreat" size={14} />
-            <span>Reflexión</span>
-          </button>
-          <button
-            type="button"
-            className="selection-menu-btn"
-            onClick={passageActions.onQuoteCard}
-          >
-            <Icon name="quote" size={14} />
-            <span>Postal</span>
-          </button>
-          <button
-            type="button"
-            className="selection-menu-btn selection-ask-cat"
-            onClick={passageActions.onAsk}
-          >
-            <Icon name="sparkles" size={14} />
-            <span>Preguntar</span>
-          </button>
-        </div>
-      ) : null}
-
-      {/* Toast de notificación rápida */}
       {quickNotice && (
         <div className="word-panel-notice-toast" role="status" aria-live="polite">
           {quickNotice}
@@ -1300,4 +1301,5 @@ export const WordPanel: React.FC<UnifiedWordPanelProps> = ({
   );
 };
 
+export const WordPanel = memo(WordPanelImpl);
 export default WordPanel;

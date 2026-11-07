@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { memo } from "react";
 
 export interface ProgressInkProps {
   value: number;
@@ -15,7 +16,7 @@ export interface ProgressInkProps {
   checkpointReached?: boolean;
 }
 
-export function ProgressInk({
+function ProgressInkImpl({
   value,
   max,
   floor = 0,
@@ -162,7 +163,7 @@ export function ProgressInk({
     <div
       className={`progress-ink progress-ink--${variant} ${className}`.trim()}
       role="progressbar"
-      aria-label={label}
+      aria-label={label ?? "Progreso"}
       aria-valuenow={Math.round(value)}
       aria-valuemin={floor}
       aria-valuemax={max}
@@ -185,3 +186,5 @@ export function ProgressInk({
     </div>
   );
 }
+
+export const ProgressInk = memo(ProgressInkImpl);

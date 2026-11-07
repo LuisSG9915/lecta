@@ -1,3 +1,4 @@
+import { memo } from "react";
 import Icon from "../Icon";
 import { ProgressInk } from "../ProgressInk";
 
@@ -13,7 +14,7 @@ export interface ReaderTopBarProps {
   onOpenMore: () => void;
 }
 
-export function ReaderTopBar({
+function ReaderTopBarImpl({
   onBack,
   title,
   author,
@@ -91,4 +92,5 @@ export function ReaderTopBar({
   );
 }
 
-export default ReaderTopBar;
+
+export const ReaderTopBar = memo(ReaderTopBarImpl);
