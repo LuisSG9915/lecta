@@ -71,15 +71,12 @@ function excludeOversizedOnnxAssets(): Plugin {
     name: "exclude-oversized-onnx-assets",
     generateBundle(_, bundle) {
       for (const [fileName, item] of Object.entries(bundle)) {
-        const isJsepOrAsyncify =
-          fileName.includes(".jsep.") || fileName.includes("asyncify.wasm");
+        const isJsepOrAsyncify = fileName.includes(".jsep.") || fileName.includes("asyncify.wasm");
         // El wasm hasheado que Vite emite por el new URL() interno de
         // onnxruntime-web nunca se pide: wasmPaths siempre queda fijado a
         // /assets/ o al CDN. El guion final distingue la copia hasheada
         // (14 MB muertos) de la plana que sí sirve el HEAD probe.
-        const isUnusedHashedOrtWasm = fileName.includes(
-          "ort-wasm-simd-threaded-",
-        );
+        const isUnusedHashedOrtWasm = fileName.includes("ort-wasm-simd-threaded-");
         let isOversized = false;
         if (item.type === "asset") {
           const byteLength =
@@ -150,10 +147,7 @@ function sourcemapVault(): Plugin {
   return {
     name: "lecta-sourcemap-vault",
     closeBundle() {
-      const roots = [
-        resolve(process.cwd(), "dist/client"),
-        resolve(process.cwd(), "dist/lecta"),
-      ];
+      const roots = [resolve(process.cwd(), "dist/client"), resolve(process.cwd(), "dist/lecta")];
       const found: { asset: string; file: string }[] = [];
       const collect = (dir: string) => {
         if (!existsSync(dir)) return;
@@ -256,14 +250,8 @@ function swManifest(): Plugin {
       };
       walk(outDir);
       assets.sort();
-      const version = createHash("sha1")
-        .update(assets.join("\n"))
-        .digest("hex")
-        .slice(0, 10);
-      writeFileSync(
-        join(outDir, "sw-manifest.json"),
-        `${JSON.stringify({ version, assets })}\n`,
-      );
+      const version = createHash("sha1").update(assets.join("\n")).digest("hex").slice(0, 10);
+      writeFileSync(join(outDir, "sw-manifest.json"), `${JSON.stringify({ version, assets })}\n`);
 
       // Sincroniza SW_VERSION en sw.js generado con el hash de sw-manifest.json
       const swDist = join(outDir, "sw.js");
@@ -320,7 +308,12 @@ export default defineConfig({
     sourcemap: "hidden",
     modulePreload: {
       resolveDependencies(_filename, deps) {
-        return deps.filter((dep) => !dep.includes("lexicon-banks"));
+        return deps.filter(
+          (dep) =>
+            !dep.includes("lexicon-banks") &&
+            !dep.includes("companion-data") &&
+            !dep.includes("reading-activity"),
+        );
       },
     },
     rollupOptions: {
