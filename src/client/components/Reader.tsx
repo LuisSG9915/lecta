@@ -93,11 +93,8 @@ import {
   updateParagraphFocus,
 } from "../lib/paragraph-focus";
 import {
-  detectFatigue,
   detectDensePassageStall,
   loadBaselineWpm,
-  newFocusTracker,
-  recordMove,
   resetDenseStallPage,
   recordFocusAidOutcome,
   muteBookFocusSuggestions,
@@ -221,6 +218,7 @@ import { useReaderTts } from "../hooks/useReaderTts";
 import { useReaderCompanion } from "../hooks/useReaderCompanion";
 import { useReaderDeepReading } from "../hooks/useReaderDeepReading";
 import { useReaderChrome } from "../hooks/useReaderChrome";
+import { useReaderTrackMove } from "../hooks/useReaderTrackMove";
 import { useReaderSelection } from "../hooks/useReaderSelection";
 import {
   useReaderNavigation,
@@ -2033,31 +2031,14 @@ export default function Reader({
   // retroceso queda además en el trayecto. Si la tasa de regresiones
   // ya muestra cansancio: bostezo del gato, aviso 20-20-20 y la
   // muestra que lo provocó en el trayecto.
-  const trackMove = useCallback(
-    (back: boolean) => {
-      const at = Date.now();
-      const t =
-        focusTrackerRef.current ??
-        (focusTrackerRef.current = newFocusTracker(at));
-      recordMove(t, at, back);
-      if (back)
-        trackEvent({
-          kind: "page_regressed",
-          sectionIndex: sectionIndexRef.current,
-        });
-      const hit = detectFatigue(t, at);
-      if (!hit) return;
-      trackEvent({
-        kind: "fatigue_flag",
-        sectionIndex: sectionIndexRef.current,
-        regressions: hit.backs,
-        moves: hit.moves,
-      });
-      signalCompanion({ kind: "fatigue_detected", at });
-      setFatigueNotice(true);
-    },
-    [trackEvent, signalCompanion, setFatigueNotice],
-  );
+  // Hook de telemetría de movimiento (R3a).
+  const { trackMove } = useReaderTrackMove({
+    focusTrackerRef,
+    sectionIndexRef,
+    trackEvent,
+    signalCompanion,
+    setFatigueNotice,
+  });
 
   // Cargador de sección: parsea, mide, marca y restaura. La lógica vive en
   // hooks/useReaderSectionLoader.ts.
