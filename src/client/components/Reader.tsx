@@ -216,7 +216,7 @@ import { useReaderPersistence } from "../hooks/useReaderPersistence";
 import { useReaderAnnotationsAndSearch } from "../hooks/useReaderAnnotationsAndSearch";
 import { useReaderTts } from "../hooks/useReaderTts";
 import { useReaderCompanion } from "../hooks/useReaderCompanion";
-import { useReaderDeepReading } from "../hooks/useReaderDeepReading";
+import { useReaderDeepReadingCycle } from "../hooks/useReaderDeepReadingCycle";
 import { useReaderChrome } from "../hooks/useReaderChrome";
 import { useReaderTrackMove } from "../hooks/useReaderTrackMove";
 import { useReaderSelection } from "../hooks/useReaderSelection";
@@ -227,20 +227,10 @@ import {
 import { useReaderSectionLoader } from "../hooks/useReaderSectionLoader";
 import { useReaderSettings } from "../hooks/useReaderSettings";
 import { downloadBookMarkdown } from "../lib/export";
-import {
-  formatElapsedMinutes,
-  formatRemainingTime,
-  requestScreenWakeLock,
-  releaseScreenWakeLock,
-  triggerHaptic,
-  type DeepReadingConfig,
-  type DeepReadingSummary,
-} from "../lib/deep-reading";
+import { triggerHaptic } from "../lib/deep-reading";
 import {
   isFullscreenSupported,
-  toggleFullscreen,
 } from "../lib/fullscreen";
-import { playCompanionSound } from "../lib/companion-audio";
 import { useCompanion } from "./CompanionProvider";
 import {
   buildChapterCatalog,
@@ -437,7 +427,6 @@ export default function Reader({
   // frame del handler de scroll.
   const selButtonVisibleRef = useRef(false);
   // Nodo del contador del retiro: se pinta fuera del ciclo de React.
-  const deepIndicatorRef = useRef<HTMLSpanElement | null>(null);
   const savedForms = useRef<Map<string, MarkLevel>>(new Map());
   // Claves (`idioma:forma`) de las palabras que ya están en el Cuaderno.
   // Es la memoria con la que la cápsula nace «guardada» en 0 ms, sin
@@ -891,20 +880,25 @@ export default function Reader({
 
   // Hook del Retiro de lectura (R1c): estado deep reading + derivados.
   // La lógica de ciclo (finish/start/timer) sigue en Reader.tsx.
+  const deepCycle = useReaderDeepReadingCycle({
+    sectionIndexRef,
+    setBarsVisible,
+  });
   const {
     deepModal,
     setDeepModal,
     pageRecap,
     setPageRecap,
     deepReading,
-    setDeepReading,
     deepSummary,
     setDeepSummary,
     returnPositions,
     setReturnPositions,
-    deepReadingRef,
     isDeepReading,
-  } = useReaderDeepReading();
+    finishDeepReading,
+    startDeepReading,
+    deepIndicatorRef,
+  } = deepCycle;
   // Nodo de la franja flotante para la cápsula de palabra (portal).
   const [wordCapsuleHost, setWordCapsuleHost] = useState<HTMLDivElement | null>(null);
 
@@ -968,7 +962,6 @@ export default function Reader({
       summaryReleaseRef.current?.release();
     };
   }, []);
-  const wakeLockRef = useRef<WakeLockSentinel | null>(null);
   const [page, setPage] = useState(0);
   const [pageCount, setPageCount] = useState(1);
   const [pageMetrics, setPageMetrics] = useState<PageLayout | null>(null);
@@ -3058,117 +3051,6 @@ export default function Reader({
 
 
   // Modo Retiro de lectura: ciclo de sesión inmersiva, bloqueo de pantalla y cierre
-  const finishDeepReading = useCallback(async (natural = false) => {
-    if (wakeLockRef.current) {
-      await releaseScreenWakeLock(wakeLockRef.current);
-      wakeLockRef.current = null;
-    }
-    await toggleFullscreen(false);
-
-    if (natural) {
-      playCompanionSound("purr");
-      triggerHaptic("success");
-    } else {
-      triggerHaptic("light");
-    }
-
-    const current = deepReadingRef.current;
-    if (current) {
-      const elapsed = Date.now() - current.startedAt;
-      const durationMinutes = Math.max(1, Math.round(elapsed / 60_000));
-      const sectionsRead = Math.max(
-        1,
-        Math.abs(sectionIndexRef.current - current.initialSectionIndex) + 1,
-      );
-
-      // Si duró más de 45 segundos, mostrar resumen de cierre sereno
-      if (elapsed >= 45_000) {
-        const wordsAssimilated = Math.max(3, sectionsRead * 4);
-        const coverageDeltaPercent = Math.max(1, Math.min(5, sectionsRead));
-        const summary: DeepReadingSummary = {
-          durationMinutes,
-          targetMinutes: current.targetMinutes,
-          sectionsRead,
-          completedNaturally: natural,
-          wordsAssimilated,
-          coverageDeltaPercent,
-        };
-        setDeepSummary(summary);
-      }
-    }
-
-    setDeepReading(null);
-  }, [setDeepReading, deepReadingRef, setDeepSummary]);
-
-  const startDeepReading = async (config: DeepReadingConfig) => {
-    setDeepModal(false);
-    triggerHaptic("success");
-    if (config.fullscreen) {
-      await toggleFullscreen(true);
-    }
-    if (config.keepScreenAwake) {
-      wakeLockRef.current = await requestScreenWakeLock();
-    }
-    setBarsVisible(false);
-    const now = Date.now();
-    const targetEndedAt =
-      config.durationMinutes > 0
-        ? now + config.durationMinutes * 60_000
-        : null;
-
-    setDeepReading({
-      active: true,
-      targetMinutes: config.durationMinutes,
-      startedAt: now,
-      targetEndedAt,
-      elapsedMs: 0,
-      initialSectionIndex: sectionIndexRef.current,
-      sectionsRead: 1,
-      wordsRead: 0,
-    });
-  };
-
-  // Temporizador y ciclo del Retiro de Lectura. El contador se pinta en
-  // su nodo cada segundo y el estado solo cambia al pasar de minuto:
-  // antes cada segundo re-renderizaba el lector entero por un dígito.
-  useEffect(() => {
-    if (!deepReading?.active) return;
-    const startedAt = deepReading.startedAt;
-    const targetEndedAt = deepReading.targetEndedAt;
-    const targetMinutes = deepReading.targetMinutes;
-    let minuteMark = -1;
-    const paint = (elapsed: number) => {
-      const node = deepIndicatorRef.current;
-      if (!node) return;
-      node.textContent =
-        targetEndedAt != null
-          ? formatRemainingTime(Math.max(0, targetMinutes * 60_000 - elapsed))
-          : formatElapsedMinutes(elapsed);
-    };
-    const interval = window.setInterval(() => {
-      const now = Date.now();
-      const elapsed = now - startedAt;
-      if (targetEndedAt != null && now >= targetEndedAt) {
-        window.clearInterval(interval);
-        void finishDeepReading(true);
-        return;
-      }
-      paint(elapsed);
-      const minute = Math.floor(elapsed / 60_000);
-      if (minute === minuteMark) return;
-      minuteMark = minute;
-      setDeepReading((prev) => (prev ? { ...prev, elapsedMs: elapsed } : null));
-    }, 1000);
-    return () => window.clearInterval(interval);
-  }, [
-    deepReading?.active,
-    deepReading?.startedAt,
-    deepReading?.targetEndedAt,
-    deepReading?.targetMinutes,
-    finishDeepReading,
-    setDeepReading,
-  ]);
-
   const { isFullscreenActive, handleToggleFullscreen } = useReaderShortcutsAndGestures({
     viewportRef,
     containerRef,
