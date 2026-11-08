@@ -82,7 +82,6 @@ import {
   bookProgress,
   minutesLeft,
   updateWpm,
-  DEFAULT_WPM,
 } from "../lib/progress";
 import { award, localDayKey } from "../lib/game";
 import {
@@ -97,7 +96,6 @@ import {
   detectFatigue,
   detectDensePassageStall,
   loadBaselineWpm,
-  newDenseStallDetector,
   newFocusTracker,
   recordMove,
   resetDenseStallPage,
@@ -107,7 +105,6 @@ import {
   loadFocusTelemetryProfile,
   saveFocusTelemetryProfile,
   type FocusAidType,
-  type DenseStallDetector,
   type FocusTracker,
 } from "../lib/focus-telemetry";
 import {
@@ -223,6 +220,7 @@ import { useReaderAnnotationsAndSearch } from "../hooks/useReaderAnnotationsAndS
 import { useReaderTts } from "../hooks/useReaderTts";
 import { useReaderCompanion } from "../hooks/useReaderCompanion";
 import { useReaderDeepReading } from "../hooks/useReaderDeepReading";
+import { useReaderChrome } from "../hooks/useReaderChrome";
 import { useReaderSelection } from "../hooks/useReaderSelection";
 import {
   useReaderNavigation,
@@ -435,7 +433,6 @@ export default function Reader({
   const bookRef = useRef<EpubBook | null>(null);
   const rafPending = useRef(false);
   const lastScrollY = useRef(0);
-  const lastPointerCheckRef = useRef(0);
   // Última fracción publicada al estado (pasos de 0,5 %).
   const lastScrollRatioRef = useRef(0);
   // ¿Hay barra de selección en pantalla? Evita el `setState(null)` por
@@ -766,22 +763,34 @@ export default function Reader({
   } | null>(null);
   const [sheet, setSheet] = useState<SheetKind | null>(null);
   const [settingsTab, setSettingsTab] = useState<ReaderSettingsTab>("appearance");
-  const [barsVisible, setBarsVisible] = useState(true);
-  const [scrollRatio, setScrollRatio] = useState(0);
-  const [wpm, setWpm] = useState(DEFAULT_WPM);
   const [settings, setSettings] = useState<ReaderSettings>(() => loadReaderSettings(bookHash));
-  const [strategyPaused, setStrategyPaused] = useState(false);
-  const [pacerPaused, setPacerPaused] = useState(false);
   const pacerIndexRef = useRef<number>(0);
   const [ttsCapturedToast, setTtsCapturedToast] = useState<string | null>(null);
-  // Barra Zen auto-desvanecible (B.1)
-  const [isZenFaded, setIsZenFaded] = useState(false);
-  const zenFadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Telemetría de pasaje denso (B.2)
-  const denseStallDetectorRef = useRef<DenseStallDetector>(
-    newDenseStallDetector(0),
-  );
+  // Hook del chrome del lector (R1b): barras, scroll, zen, stall, pacer.
+  const {
+    barsVisible,
+    setBarsVisible,
+    scrollRatio,
+    setScrollRatio,
+    wpm,
+    setWpm,
+    strategyPaused,
+    setStrategyPaused,
+    pacerPaused,
+    setPacerPaused,
+    isZenFaded,
+    setIsZenFaded,
+    stallBubble,
+    setStallBubble,
+    toastMessage,
+    setToastMessage,
+    zenFadeTimerRef,
+    denseStallDetectorRef,
+    stallBubbleTimerRef,
+    lastActivityAtRef,
+    lastPointerCheckRef,
+  } = useReaderChrome();
 
   const focusTelemetryRef = useRef({
     pageEnteredAt: 0,
@@ -815,9 +824,6 @@ export default function Reader({
     };
   }, [prepNotice]);
 
-  const lastActivityAtRef = useRef<number>(0);
-  const [stallBubble, setStallBubble] = useState<string | null>(null);
-  const stallBubbleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [bookOverride, setBookOverride] = useState(() => hasBookReaderSettings(bookHash));
   const [seenStatus, setSeenStatus] = useState(statusText);
 
@@ -884,7 +890,6 @@ export default function Reader({
   const lastPointerTypeRef = useRef<string>("mouse");
   const [showLongPressHint, setShowLongPressHint] = useState(false);
   const [glossaryOpen, setGlossaryOpen] = useState(false);
-  const [toastMessage, setToastMessage] = useState<string>("");
 
   // Hook del Retiro de lectura (R1c): estado deep reading + derivados.
   // La lógica de ciclo (finish/start/timer) sigue en Reader.tsx.
@@ -924,7 +929,7 @@ export default function Reader({
       clearTimeout(showTimer);
       clearTimeout(hideTimer);
     };
-  }, [statusText]);
+  }, [statusText, setToastMessage]);
 
   const glossaryReleaseRef = useRef<OverlayHandle | null>(null);
   const quoteReleaseRef = useRef<OverlayHandle | null>(null);
@@ -1224,7 +1229,7 @@ export default function Reader({
     setSettings(updated);
     saveReaderSettings(updated, bookHash);
     triggerHaptic("success");
-  }, [settings, bookHash]);
+  }, [settings, bookHash, setStallBubble, stallBubbleTimerRef]);
 
   // Hook del compañero (R1a): encapsula la máquina local, la presencia,
   // el ajuste de render al ocultar, los timers de toque/guardado y las
@@ -1269,7 +1274,7 @@ export default function Reader({
     zenFadeTimerRef.current = setTimeout(() => {
       setIsZenFaded(true);
     }, 3000);
-  }, []);
+  }, [setIsZenFaded, zenFadeTimerRef]);
 
   // Al cambiar de página o sección, reinicia temporizador Zen y limpia pasaje denso
   const navKey = `${sectionIndex}:${page}`;
@@ -1291,7 +1296,7 @@ export default function Reader({
       resetDenseStallPage(denseStallDetectorRef.current, Date.now());
     }
     if (stallBubbleTimerRef.current) clearTimeout(stallBubbleTimerRef.current);
-  }, [navKey]);
+  }, [navKey, zenFadeTimerRef, setIsZenFaded, denseStallDetectorRef, stallBubbleTimerRef]);
 
   // Escucha de actividad de puntero y toques para despertar la barra Zen y registrar telemetría
   useEffect(() => {
@@ -1325,7 +1330,7 @@ export default function Reader({
       window.removeEventListener("touchstart", onPointerActivity);
       if (zenFadeTimerRef.current) clearTimeout(zenFadeTimerRef.current);
     };
-  }, [isZenFaded, resetZenFadeTimer]);
+  }, [isZenFaded, resetZenFadeTimer, lastActivityAtRef, lastPointerCheckRef, zenFadeTimerRef]);
 
   // Chequeo periódico de pasajes densos (B.2). Solo el preset
   // inmersivo usa el aviso: en los demás no se instancia el intervalo.
@@ -1367,6 +1372,10 @@ export default function Reader({
     sectionWords,
     pageCount,
     settings.strategyPreset,
+    denseStallDetectorRef,
+    lastActivityAtRef,
+    setStallBubble,
+    stallBubbleTimerRef,
   ]);
 
   if (seenStatus !== statusText) setSeenStatus(statusText);
@@ -1788,7 +1797,7 @@ export default function Reader({
       }
       return { ms: spent, words: Math.max(0, Math.round(wordsRead)) };
     },
-    [wpm],
+    [wpm, setWpm],
   );
 
   // ---------- Predicción por sección (perfil del lector) ----------
@@ -2775,7 +2784,7 @@ export default function Reader({
       document.removeEventListener("visibilitychange", onHide);
       window.removeEventListener("pagehide", onPageHide);
     };
-  }, [saveSoon, capturePosition, closeActivity, noteActivity]);
+  }, [saveSoon, capturePosition, closeActivity, noteActivity, setBarsVisible, setScrollRatio]);
 
   // Recomponer la paginación conservando el ancla: al cambiar modo,
   // columnas, fuente, tamaño, sección — y cuando la ventana o las
