@@ -3966,6 +3966,25 @@ export default function Reader({
       </div>
     ) : null;
 
+  // Variables calculadas para el JSX (R3h Fase 1): estabilizar identidades.
+  const isSavedInitial =
+    selection != null && savedKeys.has(wordKey(language, selection.word));
+  const currentChapterTitle =
+    currentChapterTarget?.label ??
+    catalog?.targets?.find((t) => t.sectionIndex === sectionIndex)?.label ??
+    sectionTitle;
+  const compactMode =
+    longPressSelection ||
+    (!strategyPaused &&
+      (settings.strategyPreset === "focus" ||
+        settings.focusMode === "chromatic" ||
+        settings.paragraphFocus ||
+        settings.syntacticLines ||
+        settings.chromaticGuide));
+  const featuredQuote =
+    postChapterQueue.find((q) => q.item.chapterSentence?.trim())?.item.chapterSentence?.trim() ||
+    passages.find((p) => !p.deleted && p.sectionIndex === sectionIndex && p.text?.trim())?.text?.trim();
+
   return (
     <div
       className="reader reader-shell"
@@ -4206,18 +4225,7 @@ export default function Reader({
       ) : null}
 
       {resumeOverlayData && (
-        <div
-          className="resume-session-overlay-wrapper"
-          style={{
-            position: "fixed",
-            top: "65px",
-            left: "50%",
-            transform: "translateX(-50%)",
-            width: "92%",
-            maxWidth: "580px",
-            zIndex: 45,
-          }}
-        >
+        <div className="resume-session-overlay-wrapper">
           <ResumeSessionOverlay
             recapLine={resumeOverlayData.recapLine}
             lastReadSentences={resumeOverlayData.lastReadSentences}
@@ -4402,9 +4410,7 @@ export default function Reader({
         selection={selection}
         // La cápsula nace con el estado real del Cuaderno: sin esto el
         // primer toque podía re-guardar una palabra ya guardada.
-        isSavedInitial={
-          selection != null && savedKeys.has(wordKey(language, selection.word))
-        }
+        isSavedInitial={isSavedInitial}
         onCloseSelection={closeSelection}
         // Acciones de pasaje en la ficha de palabra: cada una cierra la
         // ficha y ejecuta la acción sobre su palabra o su frase.
@@ -4472,21 +4478,9 @@ export default function Reader({
         toc={catalog?.targets?.map((t) => ({ index: t.sectionIndex, label: t.label }))}
         charOffsetInChapter={charOffsetInChapter}
         currentChapterId={currentChapterId}
-        currentChapterTitle={
-          currentChapterTarget?.label ??
-          catalog?.targets?.find((t) => t.sectionIndex === sectionIndex)?.label ??
-          sectionTitle
-        }
+        currentChapterTitle={currentChapterTitle}
         wordCapsuleHost={wordCapsuleHost}
-        compactMode={
-          longPressSelection ||
-          (!strategyPaused &&
-            (settings.strategyPreset === "focus" ||
-              settings.focusMode === "chromatic" ||
-              settings.paragraphFocus ||
-              settings.syntacticLines ||
-              settings.chromaticGuide))
-        }
+        compactMode={compactMode}
         prep={prep}
         onRowsPresented={recordPresented}
         onAnswerPrep={answerPrep}
@@ -4556,10 +4550,7 @@ export default function Reader({
         }
         onCloseQuoteCard={() => setQuoteCard(null)}
         onSaveQuoteCardPassage={(text) => void savePassageDirectly(text)}
-        featuredQuote={
-          postChapterQueue.find((q) => q.item.chapterSentence?.trim())?.item.chapterSentence?.trim() ||
-          passages.find((p) => !p.deleted && p.sectionIndex === sectionIndex && p.text?.trim())?.text?.trim()
-        }
+        featuredQuote={featuredQuote}
         deepModal={deepModal}
         onStartDeepReading={(config) => void startDeepReading(config)}
         onCloseDeepModal={() => setDeepModal(false)}
