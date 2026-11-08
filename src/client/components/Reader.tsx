@@ -2177,7 +2177,7 @@ export default function Reader({
     nextSentence,
     cycleSpeed,
     stopTts,
-    start5MinuteListening,
+    handleStartAudio5Min,
   } = useReaderTts({
     bookHash,
     state,
@@ -2204,6 +2204,9 @@ export default function Reader({
     noteActivity,
     closeSheet,
     onShowNotice: onStatus,
+    capturePosition,
+    setFatigueNotice,
+    setFatigueSuggestion,
   });
 
   useEffect(() => {
@@ -3394,14 +3397,6 @@ export default function Reader({
     setFatigueSuggestion(null);
     triggerHaptic("success");
   }, [settings, bookHash, setFatigueNotice]);
-
-  const handleStartAudio5Min = useCallback(() => {
-    capturePosition();
-    setFatigueNotice(false);
-    setFatigueSuggestion(null);
-    start5MinuteListening();
-    triggerHaptic("selection");
-  }, [capturePosition, start5MinuteListening, setFatigueNotice]);
 
   // Marcador de Aterrizaje Auditivo (Fase 3: Anti-pérdida de posición)
   const prevTtsStatusRef = useRef(ttsSnap.status);

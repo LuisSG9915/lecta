@@ -38,6 +38,8 @@ import { pageOfElement, type PageLayout } from '../lib/pagination';
 import type { ChapterCatalog } from '../lib/chapters';
 import type { SavedBookPosition } from '../lib/idb';
 import type { VisitEventDraft } from '../lib/reading-events';
+import type { FocusSuggestion } from '../components/SmartReaderDock';
+import { triggerHaptic } from '../lib/deep-reading';
 
 export type ReaderNavigateFn = (
   intent: "initial" | "chapter" | "resume" | "lookup" | "return",
@@ -89,6 +91,9 @@ export interface UseReaderTtsParams {
   trackEvent?: (draft: VisitEventDraft) => void;
   noteActivity?: (force?: boolean) => void;
   closeSheet?: () => void;
+  capturePosition?: () => SavedBookPosition | null;
+  setFatigueNotice?: (value: boolean) => void;
+  setFatigueSuggestion?: (value: FocusSuggestion | null) => void;
 }
 
 export function useReaderTts(params: UseReaderTtsParams = {}) {
@@ -120,6 +125,9 @@ export function useReaderTts(params: UseReaderTtsParams = {}) {
     trackEvent = () => undefined,
     noteActivity = () => undefined,
     closeSheet = () => undefined,
+    capturePosition = () => null,
+    setFatigueNotice = () => undefined,
+    setFatigueSuggestion = () => undefined,
   } = params;
 
   // Controlador Reader (integración completa de lectura)
@@ -555,6 +563,14 @@ export function useReaderTts(params: UseReaderTtsParams = {}) {
     );
   }, [state, closeSheet, sectionIndexRef, catalogRef, bookHash, ttsSnap.status]);
 
+  const handleStartAudio5Min = useCallback(() => {
+    capturePosition();
+    setFatigueNotice(false);
+    setFatigueSuggestion(null);
+    start5MinuteListening();
+    triggerHaptic("selection");
+  }, [capturePosition, start5MinuteListening, setFatigueNotice, setFatigueSuggestion]);
+
 return {
     // Reader.tsx integration
     ttsRef,
@@ -575,6 +591,7 @@ return {
     onDomMutated,
     noteSavedWord,
     start5MinuteListening,
+    handleStartAudio5Min,
     sleepTimerActive,
 
     // Standalone hooks.test.ts integration
