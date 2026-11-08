@@ -84,6 +84,7 @@ import {
   updateWpm,
 } from "../lib/progress";
 import { award, localDayKey } from "../lib/game";
+import type { KnownWord } from "../lib/idb";
 import {
   applySyntacticLines,
   clearSyntacticLines,
@@ -3980,6 +3981,62 @@ export default function Reader({
     postChapterQueue.find((q) => q.item.chapterSentence?.trim())?.item.chapterSentence?.trim() ||
     passages.find((p) => !p.deleted && p.sectionIndex === sectionIndex && p.text?.trim())?.text?.trim();
 
+  const handleKnowledgeChanged = useCallback((row: KnownWord, { form, kind }: { form: string; kind: "saved" | "declared" }) => {
+    applyKnowledgeRow(row);
+    try {
+      const currentLang = language || (bookRef.current ? getBookLanguage(bookRef.current) : "es");
+      if (kind === "saved") {
+        void scheduleCapturedReview(form, bookHash, undefined, currentLang).catch(() => {});
+      }
+    } catch {
+      // Ignorar fallo al programar el repaso
+    }
+    trackEvent(
+      kind === "saved"
+        ? {
+            kind: "word_saved",
+            sectionIndex: sectionIndexRef.current,
+            form,
+            lemma: row.lemma,
+            origin: "text",
+          }
+        : {
+            kind: "word_declared_known",
+            sectionIndex: sectionIndexRef.current,
+            lemma: row.lemma,
+            origin: "text",
+          },
+    );
+  }, [applyKnowledgeRow, language, bookHash, trackEvent, sectionIndexRef]);
+
+  const wordPassageActions = useMemo(() => {
+    if (!selection) return undefined;
+    return {
+      onHighlight: selection.range
+        ? (tone: "amber" | "salvia" | "dario") => {
+            const range = selection.range;
+            closeSelection();
+            if (range) void savePassageRange(range, tone);
+          }
+        : undefined,
+      onQuoteCard: () => {
+        const text = selection.context || selection.word;
+        closeSelection();
+        openQuoteCardFromSelection(text);
+      },
+      onAsk: () => {
+        const word = selection.word;
+        const passage = selection.context || selection.word;
+        closeSelection();
+        void askCatAboutSelection({ word, passage });
+      },
+      onDeepRead: () => {
+        closeSelection();
+        setDeepModal(true);
+      },
+    };
+  }, [selection, closeSelection, savePassageRange, openQuoteCardFromSelection, askCatAboutSelection, setDeepModal]);
+
   return (
     <div
       className="reader reader-shell"
@@ -4409,66 +4466,10 @@ export default function Reader({
         onCloseSelection={closeSelection}
         // Acciones de pasaje en la ficha de palabra: cada una cierra la
         // ficha y ejecuta la acción sobre su palabra o su frase.
-        wordPassageActions={
-          selection
-            ? {
-                onHighlight: selection.range
-                  ? (tone) => {
-                      const range = selection.range;
-                      closeSelection();
-                      if (range) void savePassageRange(range, tone);
-                    }
-                  : undefined,
-                onQuoteCard: () => {
-                  const text = selection.context || selection.word;
-                  closeSelection();
-                  openQuoteCardFromSelection(text);
-                },
-                onAsk: () => {
-                  const word = selection.word;
-                  const passage = selection.context || selection.word;
-                  closeSelection();
-                  void askCatAboutSelection({ word, passage });
-                },
-                onDeepRead: () => {
-                  closeSelection();
-                  setDeepModal(true);
-                },
-              }
-            : undefined
-        }
+        wordPassageActions={wordPassageActions}
         onWordSaved={onWordSaved}
         onWordRemoved={onWordRemoved}
-        onKnowledgeChanged={(row, { form, kind }) => {
-          applyKnowledgeRow(row);
-          try {
-            // θ ya lo ajusta el emisor del acto (WordPanel y la hoja de
-            // preparación): aquí solo se persiste el repaso y se evita el
-            // segundo empujón sobre la misma señal.
-            const currentLang = language || (bookRef.current ? getBookLanguage(bookRef.current) : "es");
-            if (kind === "saved") {
-              void scheduleCapturedReview(form, bookHash, undefined, currentLang).catch(() => {});
-            }
-          } catch {
-            // Ignorar fallo al programar el repaso
-          }
-          trackEvent(
-            kind === "saved"
-              ? {
-                  kind: "word_saved",
-                  sectionIndex: sectionIndexRef.current,
-                  form,
-                  lemma: row.lemma,
-                  origin: "text",
-                }
-              : {
-                  kind: "word_declared_known",
-                  sectionIndex: sectionIndexRef.current,
-                  lemma: row.lemma,
-                  origin: "text",
-                },
-          );
-        }}
+        onKnowledgeChanged={handleKnowledgeChanged}
         bookSections={bookSections}
         toc={catalog?.targets?.map((t) => ({ index: t.sectionIndex, label: t.label }))}
         charOffsetInChapter={charOffsetInChapter}
