@@ -187,7 +187,6 @@ import {
   requestPageRecap,
   requestLastPagesRecap,
   generateZeroSpoilerSceneRecap,
-  type PageRecapResult,
   type SceneReturnRecap,
 } from "../lib/page-recap";
 import { checkHasInactivityGap, type TimeInterval } from "../lib/reading-activity";
@@ -223,6 +222,7 @@ import { useReaderPersistence } from "../hooks/useReaderPersistence";
 import { useReaderAnnotationsAndSearch } from "../hooks/useReaderAnnotationsAndSearch";
 import { useReaderTts } from "../hooks/useReaderTts";
 import { useReaderCompanion } from "../hooks/useReaderCompanion";
+import { useReaderDeepReading } from "../hooks/useReaderDeepReading";
 import { useReaderSelection } from "../hooks/useReaderSelection";
 import {
   useReaderNavigation,
@@ -238,7 +238,6 @@ import {
   releaseScreenWakeLock,
   triggerHaptic,
   type DeepReadingConfig,
-  type DeepReadingState,
   type DeepReadingSummary,
 } from "../lib/deep-reading";
 import {
@@ -884,27 +883,25 @@ export default function Reader({
   }, [selButton]);
   const lastPointerTypeRef = useRef<string>("mouse");
   const [showLongPressHint, setShowLongPressHint] = useState(false);
-  const [deepModal, setDeepModal] = useState(false);
-  const [pageRecap, setPageRecap] = useState<{
-    loading: boolean;
-    data: PageRecapResult | null;
-    error: string | null;
-  } | null>(null);
   const [glossaryOpen, setGlossaryOpen] = useState(false);
-  const [deepReading, setDeepReading] = useState<DeepReadingState | null>(null);
-  const [deepSummary, setDeepSummary] = useState<DeepReadingSummary | null>(null);
-
-  const [returnPositions, setReturnPositions] = useState<
-    Array<{
-      sectionIndex: number;
-      anchor?: string;
-      anchorOffset?: number;
-      ratio: number;
-      scrollTop?: number;
-      page?: number;
-    }>
-  >([]);
   const [toastMessage, setToastMessage] = useState<string>("");
+
+  // Hook del Retiro de lectura (R1c): estado deep reading + derivados.
+  // La lógica de ciclo (finish/start/timer) sigue en Reader.tsx.
+  const {
+    deepModal,
+    setDeepModal,
+    pageRecap,
+    setPageRecap,
+    deepReading,
+    setDeepReading,
+    deepSummary,
+    setDeepSummary,
+    returnPositions,
+    setReturnPositions,
+    deepReadingRef,
+    isDeepReading,
+  } = useReaderDeepReading();
   // Nodo de la franja flotante para la cápsula de palabra (portal).
   const [wordCapsuleHost, setWordCapsuleHost] = useState<HTMLDivElement | null>(null);
 
@@ -959,7 +956,7 @@ export default function Reader({
         handle.release();
       }
     }
-  }, [deepSummary]);
+  }, [deepSummary, setDeepSummary]);
 
   useEffect(() => {
     return () => {
@@ -968,7 +965,6 @@ export default function Reader({
       summaryReleaseRef.current?.release();
     };
   }, []);
-  const isDeepReading = Boolean(deepReading?.active);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
   const [page, setPage] = useState(0);
   const [pageCount, setPageCount] = useState(1);
@@ -3072,11 +3068,6 @@ export default function Reader({
 
 
   // Modo Retiro de lectura: ciclo de sesión inmersiva, bloqueo de pantalla y cierre
-  const deepReadingRef = useRef<DeepReadingState | null>(null);
-  useEffect(() => {
-    deepReadingRef.current = deepReading;
-  }, [deepReading]);
-
   const finishDeepReading = useCallback(async (natural = false) => {
     if (wakeLockRef.current) {
       await releaseScreenWakeLock(wakeLockRef.current);
@@ -3117,7 +3108,7 @@ export default function Reader({
     }
 
     setDeepReading(null);
-  }, [setDeepReading]);
+  }, [setDeepReading, deepReadingRef, setDeepSummary]);
 
   const startDeepReading = async (config: DeepReadingConfig) => {
     setDeepModal(false);
@@ -3185,6 +3176,7 @@ export default function Reader({
     deepReading?.targetEndedAt,
     deepReading?.targetMinutes,
     finishDeepReading,
+    setDeepReading,
   ]);
 
   const { isFullscreenActive, handleToggleFullscreen } = useReaderShortcutsAndGestures({
@@ -3385,7 +3377,7 @@ export default function Reader({
         void navigate("chapter", { index: sectionIndexRef.current, fragment });
       }
     }
-  }, [capturePosition, settings.layout, page, navigate]);
+  }, [capturePosition, settings.layout, page, navigate, setReturnPositions]);
 
   const handleReturnFromFootnote = useCallback(() => {
     setReturnPositions((prev) => {
@@ -3408,7 +3400,7 @@ export default function Reader({
       });
       return prev.slice(0, -1);
     });
-  }, [navigate, settings.layout]);
+  }, [navigate, settings.layout, setReturnPositions]);
 
   // «Releer el capítulo» del marcador de retomar: salta al inicio del
   // destino con jumpTo — eso deja «Volver a donde estaba» armado para
