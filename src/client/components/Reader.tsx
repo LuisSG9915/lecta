@@ -219,6 +219,7 @@ import { useReaderTts } from "../hooks/useReaderTts";
 import { useReaderCompanion } from "../hooks/useReaderCompanion";
 import { useReaderDeepReadingCycle } from "../hooks/useReaderDeepReadingCycle";
 import { useReaderChrome } from "../hooks/useReaderChrome";
+import { useReaderResizeRemeasure } from "../hooks/useReaderResizeRemeasure";
 import { useReaderUiState } from "../hooks/useReaderUiState";
 import { useReaderTrackMove } from "../hooks/useReaderTrackMove";
 import { useReaderSelection } from "../hooks/useReaderSelection";
@@ -2967,26 +2968,13 @@ export default function Reader({
     sectionIndex,
   ]);
 
-  useEffect(() => {
-    if (settings.layout !== "pages" || state !== "ready") return;
-    const viewport = viewportRef.current;
-    if (!viewport) return;
-    let timer: number | undefined;
-    let cancelled = false;
-    const observer = new ResizeObserver(() => {
-      window.clearTimeout(timer);
-      timer = window.setTimeout(remeasure, 120);
-    });
-    observer.observe(viewport);
-    void document.fonts?.ready?.then?.(() => {
-      if (!cancelled) remeasure();
-    });
-    return () => {
-      cancelled = true;
-      observer.disconnect();
-      window.clearTimeout(timer);
-    };
-  }, [settings.layout, state, sectionIndex, remeasure]);
+  useReaderResizeRemeasure({
+    settings: { layout: settings.layout },
+    state,
+    sectionIndex,
+    viewportRef,
+    remeasure,
+  });
 
   useEffect(() => {
     pageEnteredAtRef.current = Date.now();
