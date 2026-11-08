@@ -405,7 +405,7 @@ describe("Recalibración de Luminancia, Contraste AAA y Separación de Barras Fl
     // Verificar contraste AAA y no oscurecimiento de anclas biónicas
     expect(css).toMatch(/\.lecta-bionic-word\s*\{[^}]*opacity:\s*1/);
     expect(css).toMatch(/\.lecta-bionic-anchor[^{]*\{[^}]*font-weight:\s*700/);
-    expect(css).toMatch(/data-theme="night"[^{]*\{[^}]*color:\s*#FFFFFF/);
+    expect(css).toMatch(/data-theme="night"[^{]*\{[^}]*color:\s*#ffffff/i);
     expect(css).toMatch(/data-strategy-contrast="high"/);
   });
 

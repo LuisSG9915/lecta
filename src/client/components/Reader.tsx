@@ -86,13 +86,6 @@ import {
 } from "../lib/progress";
 import { award, localDayKey } from "../lib/game";
 import {
-  initialCompanion,
-  reduceCompanion,
-  type CompanionMachine,
-  type CompanionSignal,
-  type CompanionState,
-} from "../lib/companion-state";
-import {
   applySyntacticLines,
   clearSyntacticLines,
 } from "../lib/syntactic-lines";
@@ -103,7 +96,6 @@ import {
 import {
   detectFatigue,
   detectDensePassageStall,
-  isReaderIdleSleepy,
   loadBaselineWpm,
   newDenseStallDetector,
   newFocusTracker,
@@ -230,6 +222,7 @@ import { ReaderSearchAndTocSheet } from "./reader/ReaderSearchAndTocSheet";
 import { useReaderPersistence } from "../hooks/useReaderPersistence";
 import { useReaderAnnotationsAndSearch } from "../hooks/useReaderAnnotationsAndSearch";
 import { useReaderTts } from "../hooks/useReaderTts";
+import { useReaderCompanion } from "../hooks/useReaderCompanion";
 import { useReaderSelection } from "../hooks/useReaderSelection";
 import {
   useReaderNavigation,
@@ -254,7 +247,6 @@ import {
 } from "../lib/fullscreen";
 import { playCompanionSound } from "../lib/companion-audio";
 import { useCompanion } from "./CompanionProvider";
-import { useReaderPresence } from "../lib/reader-presence";
 import {
   buildChapterCatalog,
   suggestedChapterTarget,
@@ -551,11 +543,6 @@ export default function Reader({
   const imgUrlsRef = useRef<string[]>([]);
   // loadBlob del zip del EPUB (EPUB no lo declara en su tipo público).
   const loadBlobRef = useRef<((name: string) => Promise<Blob | null>) | null>(null);
-  // Máquina del gato acompañante (companion-state): vive en ref —
-  // solo se refleja a estado cuando cambia el estado visible.
-  const companionRef = useRef<CompanionMachine | null>(null);
-  // book_opened se envía una sola vez por apertura del libro.
-  const companionOpenedRef = useRef(false);
   // Ventana de regresiones para el detector de fatiga (Fase 3).
   const focusTrackerRef = useRef<FocusTracker | null>(null);
   // Rastreo de exposición pasiva por página (Fase 4).
@@ -1157,26 +1144,6 @@ export default function Reader({
   // Gato acompañante en el lector: el aspecto (etapa, accesorios,
   // nombre, presencia) viene del CompanionProvider único — aquí solo
   // queda el estado visible de la máquina local de lectura.
-  const [catState, setCatState] = useState<CompanionState | null>(null);
-  const [catSleepy, setCatSleepy] = useState(false);
-  // Sugerencia de pausa 20-20-20 cuando la telemetría marca fatiga.
-  const [fatigueNotice, setFatigueNotice] = useState(false);
-  // Marcador de retomar: contexto visible al reabrir el libro tras
-  // días sin leerlo (diseño: plan-marcador-retomar). Máxima prioridad
-  // en la franja de avisos — es el mensaje de apertura.
-  const [resumeCard, setResumeCard] = useState<{
-    label: string | null;
-    lastReadText: string;
-    daysSince: number;
-    savedInRange: number;
-    rereadTo: { index: number; fragment?: string } | null;
-  } | null>(null);
-  // Segmento de lectura abierto: empieza con la primera señal real y
-
-
-  // Compañero desde el proveedor único: preferencia del juego, etapa,
-  // accesorios equipados, nombre y modo de presencia de la cuenta —
-  // el lector no carga estado de perfil propio (eso vive arriba).
   const companion = useCompanion();
   const catEnabled = companion.enabled === true;
   const presenceMode = companion.presence;
@@ -1237,80 +1204,19 @@ export default function Reader({
     };
   }, []);
 
-  // Planificador de presencia (fase 5): recibe señales reales del
-  // lector y decide cuándo se ve el gato según el modo de la cuenta.
-  // Las callbacks devueltas son estables (entran en deps de
-  // noteActivity sin rearmar sus efectos).
-  const {
-    visible: catVisible,
-    greeting: catGreeting,
-    greet: greetCat,
-    suppressed: catSuppressed,
-    setSuppressed: setCatSuppressed,
-    activity: presenceActivity,
-    idle: presenceIdle,
-    react: presenceReact,
-  } = useReaderPresence({
-    enabled: catEnabled,
-    mode: presenceMode,
-    ready: state === "ready",
-    overlay: presenceOverlay,
-    hidden: docHidden,
-    machine: catState,
-  });
+  // Marcador de retomar: contexto visible al reabrir el libro tras
+  // días sin leerlo (diseño: plan-marcador-retomar). Máxima prioridad
+  // en la franja de avisos — es el mensaje de apertura.
+  const [resumeCard, setResumeCard] = useState<{
+    label: string | null;
+    lastReadText: string;
+    daysSince: number;
+    savedInRange: number;
+    rereadTo: { index: number; fragment?: string } | null;
+  } | null>(null);
 
-  // Los festejos del inbox esperan contexto seguro: con presencia
-  // «off», supresión por libro o cualquier capa encima quedan
-  // pendientes sin marcar como vistos.
-  const setCelebrationBlocked = companion.setCelebrationBlocked;
-  const celebrationBlocked =
-    !catEnabled ||
-    presenceMode === "off" ||
-    catSuppressed ||
-    presenceOverlay;
-  useEffect(() => {
-    setCelebrationBlocked(celebrationBlocked);
-    return () => setCelebrationBlocked(false);
-  }, [celebrationBlocked, setCelebrationBlocked]);
-
-  // Desvanecer al ocultar: la visita queda un instante montada con
-  // data-out (la animación de salida vive en reader.css; con
-  // reduced-motion el navegador la reduce sola y no se nota).
-  const [catRendered, setCatRendered] = useState(false);
-  const [catLeaving, setCatLeaving] = useState(false);
-  // Ajuste durante el render (como `seenStatus` más abajo): sube en
-  // cuanto la presencia lo dice; al ocultar queda en salida un tramo
-  // y el temporizador de abajo la retira.
-  if (catVisible && catLeaving) {
-    // Volvió antes de acabar el fundido: se queda sin transición.
-    setCatLeaving(false);
-  } else if (catVisible && !catRendered) {
-    setCatRendered(true);
-  } else if (!catVisible && catRendered && !catLeaving) {
-    setCatLeaving(true);
-  }
-  useEffect(() => {
-    if (!catLeaving) return;
-    const timer = window.setTimeout(() => {
-      setCatRendered(false);
-      setCatLeaving(false);
-    }, 420);
-    return () => window.clearTimeout(timer);
-  }, [catLeaving]);
-  // Con el juego apagado la máquina se retira en el efecto de abajo;
-  // aquí se suelta su estado visible (ajuste durante el render).
-  if (!catEnabled && catState !== null) setCatState(null);
-  // ¿Se dibuja el gato ahora? Solo si el juego está encendido, la
-  // máquina local existe y el planificador lo dice.
-  const catShown = catEnabled && catRendered && catState !== null;
-
-  // Al tocar al gato del lector reacciona con un brinco antes de
-  // abrir su hoja: el gesto se siente vivo, no como un acceso seco.
-  // El temporizador vive en ref para limpiarlo al desmontar.
-  const catTapTimer = useRef<number | null>(null);
-  const [catTap, setCatTap] = useState(false);
-  const [catSavedWord, setCatSavedWord] = useState(false);
-  const catSavedWordTimer = useRef<number | null>(null);
+  // Burbuja «¿En qué me quedé?»: callback consumido por el hook del
+  // compañero.
   const onStallBubbleClick = useCallback(() => {
     setStallBubble(null);
     if (stallBubbleTimerRef.current) clearTimeout(stallBubbleTimerRef.current);
@@ -1324,34 +1230,39 @@ export default function Reader({
     triggerHaptic("success");
   }, [settings, bookHash]);
 
-  const onCatTap = () => {
-    if (stallBubble) {
-      onStallBubbleClick();
-      return;
-    }
-    if (catTapTimer.current !== null) return;
-    // Movimiento reducido: el brinco no se anima y la espera de 600ms
-    // sería tiempo muerto — la hoja abre de inmediato.
-    if (companion.reducedMotion) {
-      companion.openPanel();
-      return;
-    }
-    setCatTap(true);
-    catTapTimer.current = window.setTimeout(() => {
-      catTapTimer.current = null;
-      setCatTap(false);
-      companion.openPanel();
-    }, 600);
-  };
-  useEffect(
-    () => () => {
-      if (catTapTimer.current !== null)
-        window.clearTimeout(catTapTimer.current);
-      if (catSavedWordTimer.current !== null)
-        window.clearTimeout(catSavedWordTimer.current);
-    },
-    [],
-  );
+  // Hook del compañero (R1a): encapsula la máquina local, la presencia,
+  // el ajuste de render al ocultar, los timers de toque/guardado y las
+  // señales. Ver src/client/hooks/useReaderCompanion.ts.
+  const {
+    catState,
+    catSleepy,
+    setCatSleepy,
+    catShown,
+    catLeaving,
+    catTap,
+    catSavedWord,
+    signalCompanion,
+    catGreeting,
+    catSuppressed,
+    setCatSuppressed,
+    presenceActivity,
+    presenceIdle,
+    presenceReact,
+    onCatTap,
+    flashCatSavedWord,
+    fatigueNotice,
+    setFatigueNotice,
+  } = useReaderCompanion({
+    companion,
+    catEnabled,
+    presenceMode,
+    state,
+    presenceOverlay,
+    docHidden,
+    stallBubble,
+    onStallBubbleClick,
+    focusTrackerRef,
+  });
 
   // Barra Zen auto-desvanecible (B.1): a los 3s de lectura activa o tras cambiar de página,
   // la barra superior se desvanece suavemente a opacidad 0.15. Un movimiento de ratón o
@@ -1463,42 +1374,6 @@ export default function Reader({
   ]);
 
   if (seenStatus !== statusText) setSeenStatus(statusText);
-
-  // ---------- Gato acompañante y telemetría de foco ----------
-
-  // Única puerta a la máquina del gato: nunca asigna sin cambiar —
-  // el re-render solo corre cuando cambia el estado visible. La
-  // actividad continua (scroll, páginas) se acota a una señal cada
-  // 4 s: el estado visible no cambia por cada píxel recorrido.
-  const signalCompanion = useCallback(
-    (sig: Omit<CompanionSignal, "at"> & { at?: number }) => {
-      const m = companionRef.current;
-      if (!m) return;
-      const full: CompanionSignal = { ...sig, at: sig.at ?? Date.now() };
-      if (
-        full.kind === "reading_activity" &&
-        (m.state === "reading" || m.state === "deep_focus") &&
-        full.at - m.lastActiveAt < 4_000
-      )
-        return;
-      const next = reduceCompanion(m, full);
-      companionRef.current = next;
-      setCatState((prev) => (prev === next.state ? prev : next.state));
-      // Momentos con peso hacen asomar al gato a responder aunque no
-      // toque visita programada: consulta de palabra, meta del día o
-      // fatiga. El enfriamiento propio de react() evita el acoso.
-      if (
-        full.kind === "word_consulted" ||
-        full.kind === "goal_completed" ||
-        full.kind === "fatigue_detected"
-      )
-        presenceReact();
-      if (full.kind === "goal_completed") {
-        playCompanionSound("purr");
-      }
-    },
-    [presenceReact],
-  );
 
   const capturePositionRef = useRef<() => SavedBookPosition | null>(() => null);
   // Identidad estable: `useReaderPersistence` la usa como dependencia de su
@@ -1783,66 +1658,6 @@ export default function Reader({
   };
 
 
-
-  // Compañero de lectura: la máquina local solo existe con el juego
-  // encendido (lo dice el proveedor único, nada se recarga aquí). Al
-  // quedar lista la lectura se le avisa book_opened una vez; si el
-  // juego se apaga la máquina se retira entera — el catState suelto
-  // lo limpia el ajuste de render de abajo.
-  useEffect(() => {
-    if (!catEnabled) {
-      companionRef.current = null;
-      companionOpenedRef.current = false;
-      return;
-    }
-    if (!companionRef.current)
-      companionRef.current = initialCompanion(Date.now());
-    // Publica el estado vigente de la máquina (tick la refleja sin
-    // cambiarla — el setter real vive dentro de signalCompanion).
-    signalCompanion({ kind: "tick", at: Date.now() });
-    if (state === "ready" && !companionOpenedRef.current) {
-      companionOpenedRef.current = true;
-      signalCompanion({ kind: "book_opened", at: Date.now() });
-      // Saludo de bienvenida: asoma con la pata en alto al abrir el
-      // libro (el planificador lo da una sola vez por lectura).
-      greetCat();
-    }
-  }, [catEnabled, state, signalCompanion, greetCat]);
-
-  // Latido del gato: caduca los transitorios y lo acuesta cuando ya
-  // no llegan señales de lectura.
-  useEffect(() => {
-    if (!catEnabled) return;
-    let timer: number | undefined;
-    const tick = () => {
-      // Pestaña oculta: el gato no se ve y el latido solo gastaba
-      // batería. Al volver, la visibilidad dispara un latido único.
-      if (document.hidden) return;
-      const now = Date.now();
-      signalCompanion({ kind: "tick", at: now });
-      const sleepy = isReaderIdleSleepy(focusTrackerRef.current, now);
-      setCatSleepy(sleepy);
-    };
-    const start = () => {
-      if (timer !== undefined) return;
-      timer = window.setInterval(tick, 10_000);
-    };
-    const stop = () => {
-      if (timer === undefined) return;
-      window.clearInterval(timer);
-      timer = undefined;
-    };
-    const onVisibility = () => {
-      if (document.hidden) stop();
-      else start();
-    };
-    if (!document.hidden) start();
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => {
-      document.removeEventListener("visibilitychange", onVisibility);
-      stop();
-    };
-  }, [catEnabled, signalCompanion]);
 
   const scrollRatioNow = () => {
     const doc = document.documentElement;
@@ -2236,7 +2051,7 @@ export default function Reader({
       signalCompanion({ kind: "fatigue_detected", at });
       setFatigueNotice(true);
     },
-    [trackEvent, signalCompanion],
+    [trackEvent, signalCompanion, setFatigueNotice],
   );
 
   // Cargador de sección: parsea, mide, marca y restaura. La lógica vive en
@@ -3427,18 +3242,12 @@ export default function Reader({
       else savedForms.current.delete(key);
     }
     // Reacción afectuosa y alegre del gato al guardar una joya léxica
-    setCatSavedWord(true);
-    if (catSavedWordTimer.current !== null)
-      window.clearTimeout(catSavedWordTimer.current);
-    catSavedWordTimer.current = window.setTimeout(() => {
-      catSavedWordTimer.current = null;
-      setCatSavedWord(false);
-    }, 2400);
+    flashCatSavedWord();
     // Reclasifica la sección visible: la palabra pasa a «guardada»
     // tanto en la tarjeta como en las marcas del texto.
     applyPrediction(sectionIndexRef.current, language);
     onStatus(`«${word.form}» ya está en tu cuaderno.`);
-  }, [language, applyPrediction, onStatus, bookHash, ttsRef]);
+  }, [language, applyPrediction, onStatus, bookHash, ttsRef, flashCatSavedWord]);
 
   const handleTtsCaptureWord = useCallback(async () => {
     const ctl = ttsRef.current;
@@ -3710,7 +3519,7 @@ export default function Reader({
     setFatigueNotice(false);
     setFatigueSuggestion(null);
     triggerHaptic("success");
-  }, [settings, bookHash]);
+  }, [settings, bookHash, setFatigueNotice]);
 
   const handleStartAudio5Min = useCallback(() => {
     capturePosition();
@@ -3718,7 +3527,7 @@ export default function Reader({
     setFatigueSuggestion(null);
     start5MinuteListening();
     triggerHaptic("selection");
-  }, [capturePosition, start5MinuteListening]);
+  }, [capturePosition, start5MinuteListening, setFatigueNotice]);
 
   // Marcador de Aterrizaje Auditivo (Fase 3: Anti-pérdida de posición)
   const prevTtsStatusRef = useRef(ttsSnap.status);
