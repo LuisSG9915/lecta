@@ -1,8 +1,8 @@
 {
   "tool": "audit-cuaderno",
   "version": 1,
-  "generado": "2026-10-30T04:28:37.881Z",
-  "commit": "3cbc1f5f1aca",
+  "generado": "2026-11-08T04:39:38.923Z",
+  "commit": "270ed04cdab4",
   "queja": "no recuerdo para nada las palabras al dar iniciar sesión fluida… primero tengo que aprenderme las palabras, de ahí sí puedo practicar",
   "resumen": {
     "total": 15,
@@ -22,20 +22,20 @@
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:2225 ~ /\\) : learnable\\.length > 0 \\? \\(/",
+          "detalle": "src/client/components/Vocabulary.tsx:2279 ~ /\\) : learnable\\.length > 0 \\? \\(/",
           "evidencia": {
             "file": "src/client/components/Vocabulary.tsx",
-            "line": 2225,
+            "line": 2279,
             "text": ") : learnable.length > 0 ? ("
           }
         },
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:2232 ~ /onClick=\\{\\(\\) => startLearn\\(\\)\\}/",
+          "detalle": "src/client/components/Vocabulary.tsx:2286 ~ /onClick=\\{\\(\\) => startLearn\\(\\)\\}/",
           "evidencia": {
             "file": "src/client/components/Vocabulary.tsx",
-            "line": 2232,
+            "line": 2286,
             "text": "onClick={() => startLearn()}"
           }
         },
@@ -58,10 +58,10 @@
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:1040 ~ /const reviewWords = reviewQueue\\(scopedWords, knownKeys, exposure\\);/",
+          "detalle": "src/client/components/Vocabulary.tsx:1094 ~ /const reviewWords = reviewQueue\\(scopedWords, knownKeys, exposure\\);/",
           "evidencia": {
             "file": "src/client/components/Vocabulary.tsx",
-            "line": 1040,
+            "line": 1094,
             "text": "const reviewWords = reviewQueue(scopedWords, knownKeys, exposure);"
           }
         },
@@ -144,30 +144,30 @@
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:1258 ~ /if \\(!isEligible\\(ch\\.word, mode\\)\\) \\{/",
+          "detalle": "src/client/components/Vocabulary.tsx:1312 ~ /if \\(!isEligible\\(ch\\.word, mode\\)\\) \\{/",
           "evidencia": {
             "file": "src/client/components/Vocabulary.tsx",
-            "line": 1258,
+            "line": 1312,
             "text": "if (!isEligible(ch.word, mode)) {"
           }
         },
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:3505 ~ /Toca la palabra que falta\\./",
+          "detalle": "src/client/components/Vocabulary.tsx:3565 ~ /Toca la palabra que falta\\./",
           "evidencia": {
             "file": "src/client/components/Vocabulary.tsx",
-            "line": 3505,
+            "line": 3565,
             "text": "<p className=\"meta\">Toca la palabra que falta.</p>"
           }
         },
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:3509 ~ /className=\"nb-card-back\" role=\"status\"/",
+          "detalle": "src/client/components/Vocabulary.tsx:3569 ~ /className=\"nb-card-back\" role=\"status\"/",
           "evidencia": {
             "file": "src/client/components/Vocabulary.tsx",
-            "line": 3509,
+            "line": 3569,
             "text": "<p className=\"nb-card-back\" role=\"status\">"
           }
         }
@@ -190,10 +190,10 @@
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:2232 ~ /onClick=\\{\\(\\) => startLearn\\(\\)\\}/",
+          "detalle": "src/client/components/Vocabulary.tsx:2286 ~ /onClick=\\{\\(\\) => startLearn\\(\\)\\}/",
           "evidencia": {
             "file": "src/client/components/Vocabulary.tsx",
-            "line": 2232,
+            "line": 2286,
             "text": "onClick={() => startLearn()}"
           }
         }
@@ -210,20 +210,20 @@
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/lib/idb.ts:1714 ~ /return all\\.filter\\(\\(word\\) => !word\\.deleted\\);/",
+          "detalle": "src/client/lib/idb.ts:1739 ~ /return all\\.filter\\(\\(word\\) => !word\\.deleted\\);/",
           "evidencia": {
             "file": "src/client/lib/idb.ts",
-            "line": 1714,
+            "line": 1739,
             "text": "return all.filter((word) => !word.deleted);"
           }
         },
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:903 ~ /listSavedWords\\(/",
+          "detalle": "src/client/components/Vocabulary.tsx:957 ~ /listSavedWords\\(/",
           "evidencia": {
             "file": "src/client/components/Vocabulary.tsx",
-            "line": 903,
+            "line": 957,
             "text": "void listSavedWords(undefined, scope)"
           }
         }
@@ -240,20 +240,20 @@
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:2236 ~ /Aprender \\{learnable\\.length\\}/",
+          "detalle": "src/client/components/Vocabulary.tsx:2290 ~ /Aprender \\{learnable\\.length\\}/",
           "evidencia": {
             "file": "src/client/components/Vocabulary.tsx",
-            "line": 2236,
+            "line": 2290,
             "text": "Aprender {learnable.length}{\" \"}"
           }
         },
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:2253 ~ /Repasar \\{Math\\.min\\(REVIEW_SESSION_SIZE, reviewWords\\.length\\)\\}/",
+          "detalle": "src/client/components/Vocabulary.tsx:2307 ~ /Repasar \\{Math\\.min\\(REVIEW_SESSION_SIZE, reviewWords\\.length\\)\\}/",
           "evidencia": {
             "file": "src/client/components/Vocabulary.tsx",
-            "line": 2253,
+            "line": 2307,
             "text": "Repasar {Math.min(REVIEW_SESSION_SIZE, reviewWords.length)}{\" \"}"
           }
         },
@@ -276,20 +276,20 @@
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:2036 ~ /por aprender/",
+          "detalle": "src/client/components/Vocabulary.tsx:2090 ~ /por aprender/",
           "evidencia": {
             "file": "src/client/components/Vocabulary.tsx",
-            "line": 2036,
+            "line": 2090,
             "text": "learnable.length > 0 ? ` · ${learnable.length} por aprender` : \"\""
           }
         },
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:1268 ~ /para repasar/",
+          "detalle": "src/client/components/Vocabulary.tsx:1322 ~ /para repasar/",
           "evidencia": {
             "file": "src/client/components/Vocabulary.tsx",
-            "line": 1268,
+            "line": 1322,
             "text": "\"Estas palabras necesitan una oración o un significado para repasarse.\","
           }
         }
@@ -316,10 +316,10 @@
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:3273 ~ /current\\.adaptiveChallenge\\.level > 1/",
+          "detalle": "src/client/components/Vocabulary.tsx:3333 ~ /current\\.adaptiveChallenge\\.level > 1/",
           "evidencia": {
             "file": "src/client/components/Vocabulary.tsx",
-            "line": 3273,
+            "line": 3333,
             "text": "if (current.adaptiveChallenge && current.adaptiveChallenge.level > 1) {"
           }
         }
@@ -336,10 +336,10 @@
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:2406 ~ /mode=\\{workshopOpen \\? \"ai_workshop\" : \"dashboard\"\\}/",
+          "detalle": "src/client/components/Vocabulary.tsx:2460 ~ /mode=\\{workshopOpen \\? \"ai_workshop\" : \"dashboard\"\\}/",
           "evidencia": {
             "file": "src/client/components/Vocabulary.tsx",
-            "line": 2406,
+            "line": 2460,
             "text": "mode={workshopOpen ? \"ai_workshop\" : \"dashboard\"}"
           }
         },
@@ -402,20 +402,20 @@
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:575 ~ /const isEligible = \\(word: SavedWord, mode: PracticeMode\\) => \\{/",
+          "detalle": "src/client/components/Vocabulary.tsx:626 ~ /const isEligible = \\(word: SavedWord, mode: PracticeMode\\) => \\{/",
           "evidencia": {
             "file": "src/client/components/Vocabulary.tsx",
-            "line": 575,
+            "line": 626,
             "text": "const isEligible = (word: SavedWord, mode: PracticeMode) => {"
           }
         },
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:1258 ~ /if \\(!isEligible\\(ch\\.word, mode\\)\\) \\{/",
+          "detalle": "src/client/components/Vocabulary.tsx:1312 ~ /if \\(!isEligible\\(ch\\.word, mode\\)\\) \\{/",
           "evidencia": {
             "file": "src/client/components/Vocabulary.tsx",
-            "line": 1258,
+            "line": 1312,
             "text": "if (!isEligible(ch.word, mode)) {"
           }
         }
@@ -432,30 +432,30 @@
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:1321 ~ /const startLearn = \\(first\\?: SavedWord\\) => \\{/",
+          "detalle": "src/client/components/Vocabulary.tsx:1375 ~ /const startLearn = \\(first\\?: SavedWord\\) => \\{/",
           "evidencia": {
             "file": "src/client/components/Vocabulary.tsx",
-            "line": 1321,
+            "line": 1375,
             "text": "const startLearn = (first?: SavedWord) => {"
           }
         },
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:1377 ~ /const learnKeep = async \\(\\) => \\{/",
+          "detalle": "src/client/components/Vocabulary.tsx:1431 ~ /const learnKeep = async \\(\\) => \\{/",
           "evidencia": {
             "file": "src/client/components/Vocabulary.tsx",
-            "line": 1377,
+            "line": 1431,
             "text": "const learnKeep = async () => {"
           }
         },
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:2942 ~ /Repasar esta palabra/",
+          "detalle": "src/client/components/Vocabulary.tsx:3002 ~ /Repasar esta palabra/",
           "evidencia": {
             "file": "src/client/components/Vocabulary.tsx",
-            "line": 2942,
+            "line": 3002,
             "text": "? \"Repasar esta palabra\""
           }
         }
@@ -502,30 +502,30 @@
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:1040 ~ /reviewWords/",
+          "detalle": "src/client/components/Vocabulary.tsx:1094 ~ /reviewWords/",
           "evidencia": {
             "file": "src/client/components/Vocabulary.tsx",
-            "line": 1040,
+            "line": 1094,
             "text": "const reviewWords = reviewQueue(scopedWords, knownKeys, exposure);"
           }
         },
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:2280 ~ /disabled=\\{reviewWords\\.filter\\(\\(w\\) => isEligible\\(w, \"cloze\"\\)\\)\\.length === 0\\}/",
+          "detalle": "src/client/components/Vocabulary.tsx:2334 ~ /disabled=\\{reviewWords\\.filter\\(\\(w\\) => isEligible\\(w, \"cloze\"\\)\\)\\.length === 0\\}/",
           "evidencia": {
             "file": "src/client/components/Vocabulary.tsx",
-            "line": 2280,
+            "line": 2334,
             "text": "disabled={reviewWords.filter((w) => isEligible(w, \"cloze\")).length === 0}"
           }
         },
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:2336 ~ /Los modos libres usan palabras que ya viste/",
+          "detalle": "src/client/components/Vocabulary.tsx:2390 ~ /Los modos libres usan palabras que ya viste/",
           "evidencia": {
             "file": "src/client/components/Vocabulary.tsx",
-            "line": 2336,
+            "line": 2390,
             "text": "? \"Los modos libres usan palabras que ya viste. Aprende primero las nuevas.\""
           }
         }
@@ -775,9 +775,7 @@
       "id": "F4",
       "titulo": "Corrección con significado en «Elegir palabra»",
       "objetivo": "Que tras responder se vea la forma correcta y su significado, y que los distractores sean del mismo idioma que la palabra.",
-      "archivos": [
-        "src/client/components/Vocabulary.tsx (choiceOptions, rama choose)"
-      ],
+      "archivos": ["src/client/components/Vocabulary.tsx (choiceOptions, rama choose)"],
       "aceptacion": [
         "antes de responder el significado no está en pantalla; después sí",
         "con palabras de dos idiomas, las 4 opciones son del idioma de la palabra"

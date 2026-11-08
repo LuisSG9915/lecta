@@ -1,9 +1,9 @@
 {
   "tool": "audit-investigacion",
   "version": 1,
-  "generatedAt": "2026-11-07T22:40:49.639Z",
+  "generatedAt": "2026-11-08T04:39:50.029Z",
   "root": "/Users/luis/Desarrollos Devin/lecta",
-  "commit": "4bf44e7ccd55754e9947b1f7d4e697de69617b84",
+  "commit": "270ed04cdab4e30335d929bd4d1c3d4e0cfbe2c5",
   "doc": "docs/estrategia-aprendizaje-2026-10-24.md",
   "registry": "docs/auditoria/claims.json",
   "online": false,
@@ -32,10 +32,7 @@
         "status": "MATIZADA",
         "date": "2026-10-26",
         "motivo": "La fórmula sí usa formas únicas y ahora cada libro se mide con su idioma. Pasar a tokens sube la cifra en vez de bajarla (simulación: 88 % de tipos ≈ 98 % de tokens), así que la insignia es conservadora.",
-        "evidencia": [
-          "src/client/lib/knowledge.ts:288",
-          "src/client/lib/coverage.ts:114-140"
-        ]
+        "evidencia": ["src/client/lib/knowledge.ts:288", "src/client/lib/coverage.ts:114-140"]
       },
       "codeStatus": "PASS",
       "refStatus": "UNVERIFIED",
@@ -335,9 +332,7 @@
         "status": "SOSTENIDA",
         "date": "2026-10-26",
         "motivo": "El selector huérfano y su constructor de candidatas se eliminaron en lugar de conectarse: había dos motores de selección y solo uno tenía pruebas de uso real.",
-        "evidencia": [
-          "src/client/lib/section-words.ts:89-160"
-        ]
+        "evidencia": ["src/client/lib/section-words.ts:89-160"]
       },
       "codeStatus": "PASS",
       "refStatus": "UNVERIFIED",
@@ -522,10 +517,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/components/Reader.tsx:4808 coincide con /updateLanguageTheta\\(currentLang, beta, 1, 1\\.0\\)/",
+          "detail": "src/client/components/Reader.tsx:4822 coincide con /updateLanguageTheta\\(currentLang, beta, 1, 1\\.0\\)/",
           "observed": {
             "file": "src/client/components/Reader.tsx",
-            "line": 4808,
+            "line": 4822,
             "text": "updateLanguageTheta(currentLang, beta, 1, 1.0);"
           }
         },
@@ -542,10 +537,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/components/WordPanel.tsx:640 coincide con /award: false/",
+          "detail": "src/client/components/WordPanel.tsx:639 coincide con /award: false/",
           "observed": {
             "file": "src/client/components/WordPanel.tsx",
-            "line": 640,
+            "line": 639,
             "text": "{ award: false },"
           }
         },
@@ -883,10 +878,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/components/Vocabulary.tsx:1704 coincide con /await grade\\(item, wrongs/",
+          "detail": "src/client/components/Vocabulary.tsx:1751 coincide con /await grade\\(item, wrongs/",
           "observed": {
             "file": "src/client/components/Vocabulary.tsx",
-            "line": 1704,
+            "line": 1751,
             "text": "await grade(item, wrongs ? EXERCISE_RATING.wrong : EXERCISE_RATING.correct);"
           }
         },
@@ -1002,11 +997,7 @@
             "xp_guardada_comun": 3,
             "xp_repaso_good": 3,
             "xp_libro_terminado": 50,
-            "logros_de_rarezas": [
-              "raras_5",
-              "raras_25",
-              "raras_75"
-            ]
+            "logros_de_rarezas": ["raras_5", "raras_25", "raras_75"]
           }
         },
         {
@@ -1065,10 +1056,7 @@
         "status": "MATIZADA",
         "date": "2026-10-26",
         "motivo": "El código es correcto, pero la evidencia no respalda cambiar el valor por defecto en novelas: en Delgado et al. (2018) el scroll no es moderador y no hay ventaja del papel en narrativa.",
-        "evidencia": [
-          "src/client/lib/settings.ts:379-382",
-          "doi:10.1016/j.edurev.2018.09.003"
-        ]
+        "evidencia": ["src/client/lib/settings.ts:379-382", "doi:10.1016/j.edurev.2018.09.003"]
       },
       "codeStatus": "PASS",
       "refStatus": "UNVERIFIED",
@@ -1155,9 +1143,7 @@
         "status": "SOSTENIDA",
         "date": "2026-10-26",
         "motivo": "No hay push en todo el repositorio; el recordatorio queda in-app y el ruido de SMS médicos y archivos .ics se retiró del documento.",
-        "evidencia": [
-          "src/client"
-        ]
+        "evidencia": ["src/client"]
       },
       "codeStatus": "PASS",
       "refStatus": "UNVERIFIED",
@@ -1261,10 +1247,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/components/Vocabulary.tsx:1303 coincide con /const startRetentionCheck30d/",
+          "detail": "src/client/components/Vocabulary.tsx:1350 coincide con /const startRetentionCheck30d/",
           "observed": {
             "file": "src/client/components/Vocabulary.tsx",
-            "line": 1303,
+            "line": 1350,
             "text": "const startRetentionCheck30d = () => {"
           }
         },
@@ -1281,10 +1267,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/components/Vocabulary.tsx:563 coincide con /const RETENTION_CHECK_MIN_AGE_DAYS = 30/",
+          "detail": "src/client/components/Vocabulary.tsx:610 coincide con /const RETENTION_CHECK_MIN_AGE_DAYS = 30/",
           "observed": {
             "file": "src/client/components/Vocabulary.tsx",
-            "line": 563,
+            "line": 610,
             "text": "const RETENTION_CHECK_MIN_AGE_DAYS = 30;"
           }
         },

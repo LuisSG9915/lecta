@@ -1108,7 +1108,7 @@ kindleRoutes.get("/preview", async (c) => {
     * { box-sizing: border-box; }
     body { margin:0; background:#f4f4f4; color:#111; font-family: Georgia, "Bookerly", serif; display:flex; flex-direction:column; align-items:center; padding:18px 12px; }
     h1 { font-size:1.15rem; margin:0 0 14px; font-weight:bold; }
-    .kframe { width:336px; border:8px solid #111; border-radius:12px; background:#fff; overflow:hidden; box-shadow:none; }
+    .kframe { width:100%; max-width:336px; border:8px solid #111; border-radius:12px; background:#fff; overflow:hidden; box-shadow:none; }
     .kframe iframe { display:block; width:620px; height:830px; border:0; transform:scale(0.5); transform-origin:0 0; }
     .kframe-height { height:419px; }
     .note { max-width:360px; font-size:0.85rem; color:#555; text-align:center; line-height:1.4; margin:14px 0 0; }

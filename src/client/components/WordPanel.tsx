@@ -179,7 +179,7 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
     isCandidateProperNoun || isPotentialCharacterToken(cleanWord, effectiveLang);
 
   const [viewMode, setViewMode] = useState<"dictionary" | "character">(
-    () => initialViewMode ?? (isCandidateProperNoun ? "character" : "dictionary"),
+    () => initialViewMode ?? "dictionary",
   );
   const [characterCard, setCharacterCard] = useState<CharacterMemoryCard | null>(null);
   const [isLoadingCharacter, setIsLoadingCharacter] = useState<boolean>(false);
@@ -496,9 +496,8 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
       if (chapterTexts.length > 0) {
         const card = buildZeroSpoilerCharacterCard(cleanWord, chapterTexts, boundary, bookLanguage || language || "es");
         setCharacterCard(card);
-        if (card.totalMentionsUpToCursor > 0 && isCandidateProperNoun && !initialViewMode) {
-          setViewMode("character");
-        }
+        // Por defecto se abre en el diccionario; la tarjeta de personaje
+        // queda disponible mediante el selector manual (no se fuerza).
       }
       setIsLoadingCharacter(false);
     });
@@ -549,8 +548,8 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
     onRecordSilentCalibration(cleanWord, "save");
 
     const lemma = localEntry?.lemma ?? cleanWord.toLowerCase();
-    const shortDef = meaning?.text || "";
-    const inPassage = meaning?.text || "";
+    const shortDef = meaning?.text || localEntry?.shortDefinition?.trim() || "";
+    const inPassage = meaning?.text || localEntry?.shortDefinition?.trim() || "";
 
     const work = (async (): Promise<SavedWord | null> => {
       try {
@@ -726,6 +725,8 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
+  const aiAllowed = canExplain && useAi;
+
   if (compactMode && !isExpanded) {
     const syllables = effectiveLang === "es" ? syllabifySpanish(cleanWord) : cleanWord;
     const microDef =
@@ -763,9 +764,17 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
                 {quickNotice}
               </span>
             ) : (
-              <span className="word-capsule__context-hint">
+              <button
+                type="button"
+                className="word-capsule__context-hint"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleRevealPassage();
+                  setIsExpanded(true);
+                }}
+              >
                 Ver explicación en esta frase ›
-              </span>
+              </button>
             )}
           </div>
 
@@ -820,7 +829,6 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
     return capsuleHost ? createPortal(capsule, capsuleHost) : capsule;
   }
 
-  const aiAllowed = canExplain && useAi;
   const toneLabel =
     passageResult?.toneOrNuance?.trim() &&
     !/^literario$/i.test(passageResult.toneOrNuance.trim())
@@ -939,6 +947,7 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
         >
           <button
             type="button"
+            aria-pressed={viewMode === "character"}
             className={`btn--mode-toggle ${viewMode === "character" ? "is-active" : ""}`}
             onClick={() => setViewMode("character")}
           >
@@ -946,6 +955,7 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
           </button>
           <button
             type="button"
+            aria-pressed={viewMode === "dictionary"}
             className={`btn--mode-toggle ${viewMode === "dictionary" ? "is-active" : ""}`}
             onClick={() => setViewMode("dictionary")}
           >

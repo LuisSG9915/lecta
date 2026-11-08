@@ -790,7 +790,7 @@ describe("Reestructura del Cuaderno", () => {
 
       const ctaBtn = host.querySelector<HTMLButtonElement>(".notebook-quick-review-cta")!;
       expect(ctaBtn).not.toBeNull();
-      expect(ctaBtn.textContent).toContain("Repaso rápido (2 palabras)");
+      expect(ctaBtn.textContent).toContain("Repaso rápido · 2 palabras");
       expect(ctaBtn.textContent).toContain("1 min");
 
       // Al tocar el CTA llama a onStartQuickReview con las rondas calculadas

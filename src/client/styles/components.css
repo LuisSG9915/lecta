@@ -1100,7 +1100,9 @@ mark.saved-word[data-level="settled"] {
   min-inline-size: auto;
   min-block-size: auto !important;
   opacity: 0.75;
-  transition: transform var(--dur-1) var(--ease-out), opacity var(--dur-1) var(--ease-out);
+  transition:
+    transform var(--dur-1) var(--ease-out),
+    opacity var(--dur-1) var(--ease-out);
 }
 
 .btn--pronounce:hover,
@@ -1174,8 +1176,14 @@ mark.saved-word[data-level="settled"] {
 }
 
 @keyframes fadeInToast {
-  from { opacity: 0; transform: translateY(-4px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* Retiro de Lectura */
@@ -1481,7 +1489,9 @@ mark.saved-word[data-level="settled"] {
   font-family: var(--font-ui);
   font-size: var(--fs-base);
   color: var(--ink);
-  transition: border-color var(--dur-1) ease, box-shadow var(--dur-1) ease;
+  transition:
+    border-color var(--dur-1) ease,
+    box-shadow var(--dur-1) ease;
 }
 
 .glossary-search-input:focus {
@@ -1683,7 +1693,10 @@ mark.saved-word[data-level="settled"] {
   border: var(--border);
   border-radius: var(--r-2);
   background: var(--paper);
-  transition: border-color var(--dur-1) ease, box-shadow var(--dur-1) ease, transform var(--dur-1) ease;
+  transition:
+    border-color var(--dur-1) ease,
+    box-shadow var(--dur-1) ease,
+    transform var(--dur-1) ease;
   overflow: hidden;
 }
 
@@ -2409,7 +2422,9 @@ mark.saved-word[data-level="settled"] {
   color: var(--ink-soft, #666);
   cursor: pointer;
   border-radius: var(--r-1, 6px);
-  transition: color 150ms ease, background-color 150ms ease;
+  transition:
+    color 150ms ease,
+    background-color 150ms ease;
   white-space: nowrap;
 }
 
@@ -2493,7 +2508,10 @@ mark.saved-word[data-level="settled"] {
   border-radius: var(--radius-md, var(--r-2, 12px));
   cursor: pointer;
   touch-action: manipulation;
-  transition: transform 80ms ease, background-color 150ms, border-color 150ms;
+  transition:
+    transform 80ms ease,
+    background-color 150ms,
+    border-color 150ms;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -2512,7 +2530,7 @@ mark.saved-word[data-level="settled"] {
 .cat-action-btn--primary {
   background: var(--accent-primary, var(--vermilion, #c84b31));
   border-color: var(--accent-primary, var(--vermilion, #c84b31));
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .cat-action-btn--primary:hover {
@@ -2521,7 +2539,7 @@ mark.saved-word[data-level="settled"] {
 
 .cat-action-btn--primary .cal-btn-key {
   background: rgba(255, 255, 255, 0.2);
-  color: #fff;
+  color: var(--on-accent);
   border-color: rgba(255, 255, 255, 0.3);
 }
 
@@ -2566,8 +2584,14 @@ mark.saved-word[data-level="settled"] {
 }
 
 @keyframes catWordFadeIn {
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* ==========================================================================
@@ -2620,7 +2644,7 @@ mark.saved-word[data-level="settled"] {
   border-radius: 999px;
   /* Píldora legible en ambos temas: `rgba(255,255,255,.08)` desaparecía
      sobre la superficie blanca del tema papel. */
-  background: color-mix(in srgb, var(--ink, #1F1D1A) 9%, transparent);
+  background: color-mix(in srgb, var(--ink, #1f1d1a) 9%, transparent);
 }
 
 .word-card-save-btn {
@@ -2812,7 +2836,9 @@ mark.saved-word[data-level="settled"] {
   font-weight: 500;
   color: var(--ink-soft);
   cursor: pointer;
-  transition: color var(--dur-1, 120ms) ease, border-color var(--dur-1, 120ms) ease;
+  transition:
+    color var(--dur-1, 120ms) ease,
+    border-color var(--dur-1, 120ms) ease;
 }
 
 .btn--mode-toggle.is-active {
@@ -3088,7 +3114,8 @@ mark.saved-word[data-level="settled"] {
   border-radius: 999px;
   color: var(--accent-primary, var(--vermilion, #9e3a23));
   background: color-mix(in srgb, var(--accent-primary, var(--vermilion, #9e3a23)) 10%, transparent);
-  border: 1px solid color-mix(in srgb, var(--accent-primary, var(--vermilion, #9e3a23)) 30%, transparent);
+  border: 1px solid
+    color-mix(in srgb, var(--accent-primary, var(--vermilion, #9e3a23)) 30%, transparent);
   cursor: pointer;
   transition: all 0.15s ease;
 }
@@ -3096,12 +3123,6 @@ mark.saved-word[data-level="settled"] {
 .reader-more-reactivate-btn:hover {
   background: color-mix(in srgb, var(--accent-primary, var(--vermilion, #9e3a23)) 20%, transparent);
 }
-
-
-
-
-
-
 
 /* ---------- Leo este libro en papel ---------- */
 

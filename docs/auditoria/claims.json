@@ -39,19 +39,12 @@
           "why": "la cobertura se mide por idioma con un cargador que usa la app"
         }
       ],
-      "citations": [
-        "laufer2010",
-        "nation2006",
-        "schmitt2011"
-      ],
+      "citations": ["laufer2010", "nation2006", "schmitt2011"],
       "auditVerdict": {
         "status": "MATIZADA",
         "date": "2026-10-26",
         "motivo": "La fórmula sí usa formas únicas y ahora cada libro se mide con su idioma. Pasar a tokens sube la cifra en vez de bajarla (simulación: 88 % de tipos ≈ 98 % de tokens), así que la insignia es conservadora.",
-        "evidencia": [
-          "src/client/lib/knowledge.ts:288",
-          "src/client/lib/coverage.ts:114-140"
-        ]
+        "evidencia": ["src/client/lib/knowledge.ts:288", "src/client/lib/coverage.ts:114-140"]
       }
     },
     {
@@ -94,10 +87,7 @@
           "why": "la insignia del catálogo usa el mismo umbral"
         }
       ],
-      "citations": [
-        "schmitt2011",
-        "laufer2010"
-      ],
+      "citations": ["schmitt2011", "laufer2010"],
       "auditVerdict": {
         "status": "SOSTENIDA",
         "date": "2026-10-26",
@@ -157,11 +147,7 @@
           "why": "el tope cognitivo declarado (Cowan) es 5, no 40"
         }
       ],
-      "citations": [
-        "yanagisawa2020",
-        "elleman2009",
-        "webb2009"
-      ],
+      "citations": ["yanagisawa2020", "elleman2009", "webb2009"],
       "auditVerdict": {
         "status": "SOSTENIDA",
         "date": "2026-10-26",
@@ -194,17 +180,12 @@
           "why": "la utilidad viva usa la escala única"
         }
       ],
-      "citations": [
-        "yanagisawa2020",
-        "nation2006"
-      ],
+      "citations": ["yanagisawa2020", "nation2006"],
       "auditVerdict": {
         "status": "SOSTENIDA",
         "date": "2026-10-26",
         "motivo": "El selector huérfano y su constructor de candidatas se eliminaron en lugar de conectarse: había dos motores de selección y solo uno tenía pruebas de uso real.",
-        "evidencia": [
-          "src/client/lib/section-words.ts:89-160"
-        ]
+        "evidencia": ["src/client/lib/section-words.ts:89-160"]
       }
     },
     {
@@ -262,9 +243,7 @@
           "why": "una escala, una llave y un ajuste por acto en todos los módulos"
         }
       ],
-      "citations": [
-        "wilson2019"
-      ],
+      "citations": ["wilson2019"],
       "auditVerdict": {
         "status": "SOSTENIDA",
         "date": "2026-10-26",
@@ -286,7 +265,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/components/Reader.tsx",
-          "line": 4796,
+          "line": 4822,
           "window": 20,
           "expect": "updateLanguageTheta\\(currentLang, beta, 1, 1\\.0\\)",
           "why": "onMarkKnown sube theta con outcome 1"
@@ -379,11 +358,7 @@
           "why": "el mecanismo de página completa se retiró"
         }
       ],
-      "citations": [
-        "nagy1985",
-        "pigada2006",
-        "waring2003"
-      ],
+      "citations": ["nagy1985", "pigada2006", "waring2003"],
       "auditVerdict": {
         "status": "SOSTENIDA",
         "date": "2026-10-26",
@@ -467,16 +442,13 @@
         {
           "type": "code-anchor",
           "file": "src/client/components/Vocabulary.tsx",
-          "line": 1704,
+          "line": 1751,
           "window": 1,
           "expect": "await grade\\(item, wrongs",
           "why": "cada ejercicio registra un solo repaso al calificarse"
         }
       ],
-      "citations": [
-        "rowland2014",
-        "laufergoldstein2004"
-      ],
+      "citations": ["rowland2014", "laufergoldstein2004"],
       "auditVerdict": {
         "status": "SOSTENIDA",
         "date": "2026-10-26",
@@ -540,12 +512,7 @@
           "why": "valores de XP observados al ejecutar applyGameEvent"
         }
       ],
-      "citations": [
-        "deci1999",
-        "howard2021",
-        "sailer2020",
-        "harkin2016"
-      ],
+      "citations": ["deci1999", "howard2021", "sailer2020", "harkin2016"],
       "auditVerdict": {
         "status": "MATIZADA",
         "date": "2026-10-26",
@@ -580,20 +547,12 @@
           "why": "medida de línea por defecto"
         }
       ],
-      "citations": [
-        "delgado2018",
-        "haverkamp2023",
-        "sanchez2009",
-        "dyson2001"
-      ],
+      "citations": ["delgado2018", "haverkamp2023", "sanchez2009", "dyson2001"],
       "auditVerdict": {
         "status": "MATIZADA",
         "date": "2026-10-26",
         "motivo": "El código es correcto, pero la evidencia no respalda cambiar el valor por defecto en novelas: en Delgado et al. (2018) el scroll no es moderador y no hay ventaja del papel en narrativa.",
-        "evidencia": [
-          "src/client/lib/settings.ts:379-382",
-          "doi:10.1016/j.edurev.2018.09.003"
-        ]
+        "evidencia": ["src/client/lib/settings.ts:379-382", "doi:10.1016/j.edurev.2018.09.003"]
       }
     },
     {
@@ -605,25 +564,17 @@
       "checks": [
         {
           "type": "code-absent",
-          "scope": [
-            "src/client"
-          ],
+          "scope": ["src/client"],
           "pattern": "pushManager|showNotification|Notification\\.requestPermission",
           "why": "si aparece, el documento se equivoca sobre la infraestructura"
         }
       ],
-      "citations": [
-        "gollwitzer2006",
-        "thakkar2016",
-        "lally2010"
-      ],
+      "citations": ["gollwitzer2006", "thakkar2016", "lally2010"],
       "auditVerdict": {
         "status": "SOSTENIDA",
         "date": "2026-10-26",
         "motivo": "No hay push en todo el repositorio; el recordatorio queda in-app y el ruido de SMS médicos y archivos .ics se retiró del documento.",
-        "evidencia": [
-          "src/client"
-        ]
+        "evidencia": ["src/client"]
       }
     },
     {
@@ -635,17 +586,13 @@
       "checks": [
         {
           "type": "code-absent",
-          "scope": [
-            "src"
-          ],
+          "scope": ["src"],
           "pattern": "comprehension|delayedRetention|chequeoDeComprension",
           "why": "ningún identificador mide comprensión lectora objetiva"
         },
         {
           "type": "code-absent",
-          "scope": [
-            "src"
-          ],
+          "scope": ["src"],
           "pattern": "postTest|delayedRecall",
           "why": "tampoco hay post-test de comprensión"
         },
@@ -660,7 +607,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/components/Vocabulary.tsx",
-          "line": 1296,
+          "line": 1350,
           "window": 10,
           "expect": "const startRetentionCheck30d",
           "why": "chequeo rápido de memoria a largo plazo sobre palabras asentadas"
@@ -676,17 +623,13 @@
         {
           "type": "code-anchor",
           "file": "src/client/components/Vocabulary.tsx",
-          "line": 563,
+          "line": 610,
           "window": 3,
           "expect": "const RETENTION_CHECK_MIN_AGE_DAYS = 30",
           "why": "el chequeo de retención solo ofrece palabras con 30 o más días desde su último repaso"
         }
       ],
-      "citations": [
-        "rowland2014",
-        "adesope2017",
-        "harkin2016"
-      ],
+      "citations": ["rowland2014", "adesope2017", "harkin2016"],
       "auditVerdict": {
         "status": "MATIZADA",
         "date": "2026-10-27",
@@ -739,477 +682,309 @@
       "cite": "Laufer & Ravenhorst-Kalovski (2010), Reading in a Foreign Language 22(1), 15–30 — umbrales 95 %/98 %",
       "url": "https://eric.ed.gov/?id=EJ887873",
       "level": "estudio primario",
-      "yearAnyOf": [
-        2010
-      ]
+      "yearAnyOf": [2010]
     },
     "nation2006": {
       "cite": "Nation (2006), Canadian Modern Language Review 63(1) — tamaño léxico por modalidad",
       "doi": "10.3138/cmlr.63.1.59",
       "level": "corpus",
-      "titleIncludes": [
-        "How Large a Vocabulary"
-      ],
-      "yearAnyOf": [
-        2006
-      ]
+      "titleIncludes": ["How Large a Vocabulary"],
+      "yearAnyOf": [2006]
     },
     "schmitt2011": {
       "cite": "Schmitt, Jiang & Grabe (2011), Modern Language Journal 95(1), 26–43 — relación lineal cobertura-comprensión",
       "url": "https://eric.ed.gov/?id=EJ928357",
       "level": "estudio primario",
-      "yearAnyOf": [
-        2011
-      ]
+      "yearAnyOf": [2011]
     },
     "yanagisawa2020": {
       "cite": "Yanagisawa, Webb & Uchihara (2020), Studies in Second Language Acquisition — glosas 45,3 % vs 26,6 %",
       "doi": "10.1017/S0272263119000688",
       "level": "meta-análisis",
-      "titleIncludes": [
-        "GLOSSING"
-      ],
-      "yearAnyOf": [
-        2020
-      ]
+      "titleIncludes": ["GLOSSING"],
+      "yearAnyOf": [2020]
     },
     "webb2009": {
       "cite": "Webb (2009), Canadian Modern Language Review — asistencia durante la lectura supera a la previa",
       "level": "estudio primario",
       "doi": "10.3138/cmlr.65.3.441",
-      "titleIncludes": [
-        "Pre-learning Vocabulary"
-      ],
-      "yearAnyOf": [
-        2009
-      ]
+      "titleIncludes": ["Pre-learning Vocabulary"],
+      "yearAnyOf": [2009]
     },
     "elleman2009": {
       "cite": "Elleman, Lindo, Morphy & Compton (2009), Journal of Research on Educational Effectiveness 2(1), 1–44 — d = 0,50 vs 0,10",
       "doi": "10.1080/19345740802539200",
       "level": "meta-análisis",
-      "titleIncludes": [
-        "Vocabulary Instruction"
-      ],
-      "yearAnyOf": [
-        2009
-      ]
+      "titleIncludes": ["Vocabulary Instruction"],
+      "yearAnyOf": [2009]
     },
     "koriat2005": {
       "cite": "Koriat & Bjork (2005), JEP:LMC 31(2) — ilusiones de competencia",
       "doi": "10.1037/0278-7393.31.2.187",
       "level": "experimental",
-      "titleIncludes": [
-        "Illusions of Competence"
-      ],
-      "yearAnyOf": [
-        2005
-      ]
+      "titleIncludes": ["Illusions of Competence"],
+      "yearAnyOf": [2005]
     },
     "laufergoldstein2004": {
       "cite": "Laufer & Goldstein (2004), Language Learning 54(3) — reconocimiento vs recuerdo",
       "doi": "10.1111/j.0023-8333.2004.00260.x",
       "level": "experimental",
-      "titleIncludes": [
-        "Testing Vocabulary Knowledge"
-      ],
-      "yearAnyOf": [
-        2004
-      ]
+      "titleIncludes": ["Testing Vocabulary Knowledge"],
+      "yearAnyOf": [2004]
     },
     "richland2009": {
       "cite": "Richland, Kornell & Kao (2009), JEP:Applied 15(3) — efecto de la prueba previa",
       "doi": "10.1037/a0016496",
       "level": "experimental",
-      "titleIncludes": [
-        "pretesting effect"
-      ],
-      "yearAnyOf": [
-        2009
-      ]
+      "titleIncludes": ["pretesting effect"],
+      "yearAnyOf": [2009]
     },
     "kornell2009": {
       "cite": "Kornell, Hays & Bjork (2009), JEP:LMC 35(4) — fallar con feedback no daña",
       "doi": "10.1037/a0015729",
       "level": "experimental",
-      "titleIncludes": [
-        "Unsuccessful retrieval attempts"
-      ],
-      "yearAnyOf": [
-        2009
-      ]
+      "titleIncludes": ["Unsuccessful retrieval attempts"],
+      "yearAnyOf": [2009]
     },
     "waring2003": {
       "cite": "Waring & Takaki (2003), Reading in a Foreign Language 15(2) — ninguna palabra con <8 encuentros se retuvo",
       "url": "https://eric.ed.gov/?id=EJ676380",
       "level": "estudio primario",
-      "yearAnyOf": [
-        2003
-      ]
+      "yearAnyOf": [2003]
     },
     "pigada2006": {
       "cite": "Pigada & Schmitt (2006), Reading in a Foreign Language 18(1) — aprendizaje parcial y necesidad de encuentros",
       "url": "https://eric.ed.gov/?id=EJ759833",
       "level": "estudio primario",
-      "yearAnyOf": [
-        2006
-      ]
+      "yearAnyOf": [2006]
     },
     "nagy1985": {
       "cite": "Nagy, Herman & Anderson (1985), Reading Research Quarterly 20(2), 233–253 — 5–15 % por exposición",
       "level": "estudio primario",
       "doi": "10.2307/747758",
-      "titleIncludes": [
-        "Learning Words from Context"
-      ],
-      "yearAnyOf": [
-        1985
-      ]
+      "titleIncludes": ["Learning Words from Context"],
+      "yearAnyOf": [1985]
     },
     "nation2014": {
       "cite": "Nation (2014), Reading in a Foreign Language 26(2) — 2 novelas por millar",
       "url": "https://eric.ed.gov/?id=EJ1044345",
       "level": "corpus",
-      "yearAnyOf": [
-        2014
-      ]
+      "yearAnyOf": [2014]
     },
     "cepeda2008": {
       "cite": "Cepeda et al. (2008), Psychological Science 19(11) — 20–40 % a una semana, 5–10 % a un año",
       "doi": "10.1111/j.1467-9280.2008.02209.x",
       "level": "replicado",
-      "titleIncludes": [
-        "Spacing Effects"
-      ],
-      "yearAnyOf": [
-        2008
-      ]
+      "titleIncludes": ["Spacing Effects"],
+      "yearAnyOf": [2008]
     },
     "cepeda2006": {
       "cite": "Cepeda et al. (2006), Psychological Bulletin 132(3) — 317 experimentos de práctica distribuida",
       "doi": "10.1037/0033-2909.132.3.354",
       "level": "meta-análisis",
-      "titleIncludes": [
-        "Distributed practice"
-      ],
-      "yearAnyOf": [
-        2006
-      ]
+      "titleIncludes": ["Distributed practice"],
+      "yearAnyOf": [2006]
     },
     "rowland2014": {
       "cite": "Rowland (2014), Psychological Bulletin 140(6) — g ≈ 0,50 para práctica de recuperación",
       "doi": "10.1037/a0037559",
       "level": "meta-análisis",
-      "titleIncludes": [
-        "testing versus restudy"
-      ],
-      "yearAnyOf": [
-        2014
-      ]
+      "titleIncludes": ["testing versus restudy"],
+      "yearAnyOf": [2014]
     },
     "adesope2017": {
       "cite": "Adesope, Trevisan & Sundararajan (2017), Review of Educational Research 87(3) — g ≈ 0,61 con feedback",
       "doi": "10.3102/0034654316689306",
       "level": "meta-análisis",
-      "titleIncludes": [
-        "Practice Testing"
-      ],
-      "yearAnyOf": [
-        2017
-      ]
+      "titleIncludes": ["Practice Testing"],
+      "yearAnyOf": [2017]
     },
     "ye2022": {
       "cite": "Ye, Su & Cao (2022), KDD — SSP-MMC/FSRS, +12,6 % de coste de memorización",
       "doi": "10.1145/3534678.3539081",
       "level": "benchmark de logs",
-      "titleIncludes": [
-        "Stochastic Shortest Path"
-      ],
-      "yearAnyOf": [
-        2022
-      ]
+      "titleIncludes": ["Stochastic Shortest Path"],
+      "yearAnyOf": [2022]
     },
     "lindsey2014": {
       "cite": "Lindsey et al. (2014), Psychological Science 25(3) — +16,5 % de retención con personalización",
       "doi": "10.1177/0956797613504302",
       "level": "replicado",
-      "titleIncludes": [
-        "Long-Term Knowledge Retention"
-      ],
-      "yearAnyOf": [
-        2014
-      ]
+      "titleIncludes": ["Long-Term Knowledge Retention"],
+      "yearAnyOf": [2014]
     },
     "deci1999": {
       "cite": "Deci, Koestner & Ryan (1999), Psychological Bulletin 125(6) — d ≈ −0,40 por recompensas contingentes",
       "doi": "10.1037/0033-2909.125.6.627",
       "level": "meta-análisis",
-      "titleIncludes": [
-        "extrinsic rewards"
-      ],
-      "yearAnyOf": [
-        1999
-      ]
+      "titleIncludes": ["extrinsic rewards"],
+      "yearAnyOf": [1999]
     },
     "howard2021": {
       "cite": "Howard et al. (2021), Perspectives on Psychological Science — la regulación externa no predice persistencia",
       "doi": "10.1177/1745691620966789",
       "level": "meta-análisis",
-      "titleIncludes": [
-        "Student Motivation"
-      ],
-      "yearAnyOf": [
-        2021
-      ]
+      "titleIncludes": ["Student Motivation"],
+      "yearAnyOf": [2021]
     },
     "sailer2020": {
       "cite": "Sailer & Homner (2020), Educational Psychology Review — g = 0,49 / 0,36 / 0,25",
       "url": "https://eric.ed.gov/?id=EJ1245270",
       "level": "meta-análisis",
-      "yearAnyOf": [
-        2020
-      ]
+      "yearAnyOf": [2020]
     },
     "harkin2016": {
       "cite": "Harkin et al. (2016), Psychological Bulletin — monitoreo del progreso, d = 0,40",
       "doi": "10.1037/bul0000025",
       "level": "meta-análisis",
-      "titleIncludes": [
-        "monitoring goal progress"
-      ],
-      "yearAnyOf": [
-        2016
-      ]
+      "titleIncludes": ["monitoring goal progress"],
+      "yearAnyOf": [2016]
     },
     "gollwitzer2006": {
       "cite": "Gollwitzer & Sheeran (2006), Advances in Experimental Social Psychology — d = 0,65",
       "doi": "10.1016/S0065-2601(06)38002-1",
       "level": "meta-análisis",
-      "titleIncludes": [
-        "Implementation Intentions"
-      ],
-      "yearAnyOf": [
-        2006
-      ]
+      "titleIncludes": ["Implementation Intentions"],
+      "yearAnyOf": [2006]
     },
     "thakkar2016": {
       "cite": "Thakkar et al. (2016), JAMA Internal Medicine — recordatorios SMS, OR 2,11",
       "doi": "10.1001/jamainternmed.2015.7667",
       "level": "meta-análisis",
-      "titleIncludes": [
-        "Text Messaging"
-      ],
-      "yearAnyOf": [
-        2016
-      ]
+      "titleIncludes": ["Text Messaging"],
+      "yearAnyOf": [2016]
     },
     "lally2010": {
       "cite": "Lally et al. (2010), European Journal of Social Psychology 40(6), 998–1009 — 66 días de mediana",
       "doi": "10.1002/ejsp.674",
       "level": "replicado",
-      "titleIncludes": [
-        "habits formed"
-      ],
-      "yearAnyOf": [
-        2009,
-        2010
-      ]
+      "titleIncludes": ["habits formed"],
+      "yearAnyOf": [2009, 2010]
     },
     "delgado2018": {
       "cite": "Delgado et al. (2018), Educational Research Review 25 — g = −0,21 papel > pantalla",
       "doi": "10.1016/j.edurev.2018.09.003",
       "level": "meta-análisis",
-      "titleIncludes": [
-        "printed books"
-      ],
-      "yearAnyOf": [
-        2018
-      ]
+      "titleIncludes": ["printed books"],
+      "yearAnyOf": [2018]
     },
     "haverkamp2023": {
       "cite": "Haverkamp et al. (2023), Reading and Writing 36(7) — paginar vs mover texto",
       "doi": "10.1007/s11145-022-10328-9",
       "level": "experimental",
-      "titleIncludes": [
-        "text movement"
-      ],
-      "yearAnyOf": [
-        2022,
-        2023
-      ]
+      "titleIncludes": ["text movement"],
+      "yearAnyOf": [2022, 2023]
     },
     "sanchez2009": {
       "cite": "Sanchez & Wiley (2009), Human Factors — el scroll castiga a baja memoria de trabajo",
       "doi": "10.1177/0018720809352788",
       "level": "experimental",
-      "titleIncludes": [
-        "Scroll or Not to Scroll"
-      ],
-      "yearAnyOf": [
-        2009
-      ]
+      "titleIncludes": ["Scroll or Not to Scroll"],
+      "yearAnyOf": [2009]
     },
     "dyson2001": {
       "cite": "Dyson & Haselgrove (2001), IJHCS — velocidad máxima en ~55 caracteres",
       "doi": "10.1006/ijhc.2001.0458",
       "level": "experimental",
-      "titleIncludes": [
-        "line length"
-      ],
-      "yearAnyOf": [
-        2001
-      ]
+      "titleIncludes": ["line length"],
+      "yearAnyOf": [2001]
     },
     "albulescu2022": {
       "cite": "Albulescu et al. (2022), PLOS ONE — micro-descansos d = 0,36 vigor / 0,35 fatiga",
       "doi": "10.1371/journal.pone.0272460",
       "level": "meta-análisis",
-      "titleIncludes": [
-        "break"
-      ],
-      "yearAnyOf": [
-        2022
-      ]
+      "titleIncludes": ["break"],
+      "yearAnyOf": [2022]
     },
     "clintonlisell2023": {
       "cite": "Clinton-Lisell (2023), meta-análisis de lectura con audio (preprint)",
       "doi": "10.31219/osf.io/ku6tv",
       "level": "preprint",
-      "titleIncludes": [
-        "Reading while listening"
-      ],
-      "yearAnyOf": [
-        2023
-      ]
+      "titleIncludes": ["Reading while listening"],
+      "yearAnyOf": [2023]
     },
     "griffiths1992": {
       "cite": "Griffiths (1992), TESOL Quarterly 26(2) — umbral ~200 wpm",
       "doi": "10.2307/3587015",
       "level": "experimental",
-      "titleIncludes": [
-        "Speech Rate"
-      ],
-      "yearAnyOf": [
-        1992
-      ]
+      "titleIncludes": ["Speech Rate"],
+      "yearAnyOf": [1992]
     },
     "kim2020": {
       "cite": "Kim, Lee & Lee (2020), Language Teaching Research — glosa L1 > L2, g = 0,33",
       "doi": "10.1177/1362168820981394",
       "level": "meta-análisis",
-      "titleIncludes": [
-        "L1 and L2 glosses"
-      ],
-      "yearAnyOf": [
-        2020
-      ]
+      "titleIncludes": ["L1 and L2 glosses"],
+      "yearAnyOf": [2020]
     },
     "kremmel2016": {
       "cite": "Kremmel & Schmitt (2016), Language Assessment Quarterly — los test inflan el saber",
       "url": "https://eric.ed.gov/?id=EJ1120126",
       "level": "estudio primario",
-      "yearAnyOf": [
-        2016
-      ]
+      "yearAnyOf": [2016]
     },
     "wilson2019": {
       "cite": "Wilson et al. (2019), Nature Communications — regla del 85 % de acierto",
       "doi": "10.1038/s41467-019-12552-4",
       "level": "modelo computacional",
-      "titleIncludes": [
-        "Eighty Five Percent"
-      ],
-      "yearAnyOf": [
-        2019
-      ]
+      "titleIncludes": ["Eighty Five Percent"],
+      "yearAnyOf": [2019]
     },
     "kirschner2006": {
       "cite": "Kirschner, Sweller & Clark (2006), Educational Psychologist — guía explícita para novatos",
       "doi": "10.1207/s15326985ep4102_1",
       "level": "revisión",
-      "titleIncludes": [
-        "Minimal Guidance"
-      ],
-      "yearAnyOf": [
-        2006
-      ]
+      "titleIncludes": ["Minimal Guidance"],
+      "yearAnyOf": [2006]
     },
     "milkman2014": {
       "cite": "Milkman, Minson & Volpp (2014), Management Science — temptation bundling, +51 %",
       "doi": "10.1287/mnsc.2013.1784",
       "level": "experimental",
-      "titleIncludes": [
-        "Temptation Bundling"
-      ],
-      "yearAnyOf": [
-        2014
-      ]
+      "titleIncludes": ["Temptation Bundling"],
+      "yearAnyOf": [2014]
     },
     "dai2014": {
       "cite": "Dai, Milkman & Riis (2014), Management Science — fresh start effect",
       "doi": "10.1287/mnsc.2014.1901",
       "level": "correlacional",
-      "titleIncludes": [
-        "Fresh Start"
-      ],
-      "yearAnyOf": [
-        2014
-      ]
+      "titleIncludes": ["Fresh Start"],
+      "yearAnyOf": [2014]
     },
     "locke2002": {
       "cite": "Locke & Latham (2002), American Psychologist — metas específicas y difíciles",
       "doi": "10.1037/0003-066X.57.9.705",
       "level": "revisión",
-      "titleIncludes": [
-        "goal setting"
-      ],
-      "yearAnyOf": [
-        2002
-      ]
+      "titleIncludes": ["goal setting"],
+      "yearAnyOf": [2002]
     },
     "ryandeci2000": {
       "cite": "Ryan & Deci (2000), American Psychologist — autonomía, competencia y relación",
       "doi": "10.1037/0003-066X.55.1.68",
       "level": "revisión",
-      "titleIncludes": [
-        "Self-determination"
-      ],
-      "yearAnyOf": [
-        2000
-      ]
+      "titleIncludes": ["Self-determination"],
+      "yearAnyOf": [2000]
     },
     "patall2008": {
       "cite": "Patall, Cooper & Robinson (2008), Psychological Bulletin — elegir aumenta motivación intrínseca",
       "doi": "10.1037/0033-2909.134.2.270",
       "level": "meta-análisis",
-      "titleIncludes": [
-        "choice"
-      ],
-      "yearAnyOf": [
-        2008
-      ]
+      "titleIncludes": ["choice"],
+      "yearAnyOf": [2008]
     },
     "szpunar2013": {
       "cite": "Szpunar, Khan & Schacter (2013), PNAS — tests intercalados reducen la divagación",
       "doi": "10.1073/pnas.1221764110",
       "level": "experimental",
-      "titleIncludes": [
-        "mind wandering"
-      ],
-      "yearAnyOf": [
-        2013
-      ]
+      "titleIncludes": ["mind wandering"],
+      "yearAnyOf": [2013]
     },
     "killingsworth2010": {
       "cite": "Killingsworth & Gilbert (2010), Science — 46,9 % del tiempo despierto divagando",
       "doi": "10.1126/science.1192439",
       "level": "experimental",
-      "titleIncludes": [
-        "Wandering Mind"
-      ],
-      "yearAnyOf": [
-        2010
-      ]
+      "titleIncludes": ["Wandering Mind"],
+      "yearAnyOf": [2010]
     },
     "rayner2016": {
       "cite": "Rayner et al. (2016), Psychological Science in the Public Interest — la lectura veloz sacrifica comprensión",

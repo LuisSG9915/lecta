@@ -1200,6 +1200,15 @@ export default function Shelf({
                       setCatPetQuote("¡Nos quedamos en la mejor parte del capítulo! ¿Leemos 5 minutos?");
                       window.setTimeout(() => setCatPetQuote(null), 6000);
                     }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        triggerHaptic(12);
+                        playCompanionSound("purr");
+                        setCatPetQuote("¡Nos quedamos en la mejor parte del capítulo! ¿Leemos 5 minutos?");
+                        window.setTimeout(() => setCatPetQuote(null), 6000);
+                      }
+                    }}
                     role="button"
                     tabIndex={0}
                     aria-label={`Acariciar a ${companion.name}`}

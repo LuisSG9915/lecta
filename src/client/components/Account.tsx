@@ -1653,12 +1653,12 @@ export default function Account({
                     </button>
                   </div>
                   {kindlePairMessage ? (
-                    <p className="meta" style={{ color: "var(--success, #3d7a5a)", marginTop: "0.5rem", fontWeight: 500 }}>
+                    <p className="meta" style={{ color: "var(--success)", marginTop: "0.5rem", fontWeight: 500 }}>
                       {kindlePairMessage}
                     </p>
                   ) : null}
                   {kindlePairError ? (
-                    <p className="meta" style={{ color: "var(--danger, #dc2626)", marginTop: "0.5rem" }}>
+                    <p className="meta" style={{ color: "var(--danger, var(--chroma-crimson))", marginTop: "0.5rem" }}>
                       {kindlePairError}
                     </p>
                   ) : null}

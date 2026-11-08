@@ -62,6 +62,8 @@ export interface ReaderContentProps {
   navNextSection: (index: number, fragment?: string) => void;
   navPrevSection: (index: number, fragment?: string) => void;
   openSelection: (hit: WordHit) => void;
+  /** Apertura por presión sostenida: fuerza el pill (cápsula rápida). */
+  onLongPressSelection?: (hit: WordHit) => void;
   selButton?: ReaderSelectionButton | null;
   setSelButton?: (value: ReaderSelectionButton | null) => void;
   extractWordAtPoint: (
@@ -168,6 +170,7 @@ export function ReaderContent(props: ReaderContentProps) {
   navNextSection,
   navPrevSection,
   openSelection,
+  onLongPressSelection,
   selButton,
   extractWordAtPoint,
   handleContainerDoubleClick,
@@ -465,8 +468,10 @@ export function ReaderContent(props: ReaderContentProps) {
             isLongPress: true,
           });
           if (!validation.valid) return;
+          if (selection) return;
           triggerHaptic("selection");
-          openSelection(hit);
+          try { window.getSelection()?.removeAllRanges(); } catch { /* noop */ }
+          (onLongPressSelection ?? openSelection)(hit);
         }, LONG_PRESS_MS);
       }
     }}

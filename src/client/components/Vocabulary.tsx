@@ -146,6 +146,7 @@ export const UnifiedNotebookView: React.FC<{
   onDeleteWord?: (id: string) => void;
 }> = ({ words, onStartQuickReview, onDeleteWord }) => {
   const [searchQuery, setSearchQuery] = useState("");
+  const companion = useCompanionSafe();
 
   const filteredWords = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -168,26 +169,72 @@ export const UnifiedNotebookView: React.FC<{
           <h1 className="notebook-title">Tu Cuaderno</h1>
           <p className="notebook-subtitle">
             {words.length === 0
-              ? "Toca cualquier palabra mientras lees para guardarla aquí."
+              ? "Las palabras que guardes mientras lees aparecerán aquí."
               : `${words.length} ${words.length === 1 ? "palabra guardada" : "palabras guardadas"} de tus lecturas`}
           </p>
         </div>
 
-        {words.length > 0 && isFeatureFlagEnabled("vocabGames") && (
-          <button
-            type="button"
-            className="notebook-quick-review-cta"
-            onClick={() => onStartQuickReview?.(quickSession)}
-          >
-            <span className="cta-icon"><Icon name="strategy" size={16} /></span>
-            <span className="cta-text">
-              Repaso rápido ({Math.min(5, words.length)}{" "}
-              {Math.min(5, words.length) === 1 ? "palabra" : "palabras"})
-            </span>
-            <span className="cta-badge">1 min</span>
-          </button>
-        )}
+        <div className="notebook-hero-side">
+          {companion?.enabled && companion?.state && (
+            <div className="notebook-companion" role="button" tabIndex={0} aria-label={`Acariciar a ${companion.name}`}>
+              <Companion
+                name={companion.name}
+                stage={companion.stage}
+                mood={companion.mood}
+                accessories={companion.accessories}
+                decorative
+                size={100}
+                onPet={() => {
+                  playCompanionSound("purr");
+                  triggerHaptic(12);
+                }}
+              />
+            </div>
+          )}
+
+          {words.length > 0 && isFeatureFlagEnabled("vocabGames") && (
+            <button
+              type="button"
+              className="notebook-quick-review-cta"
+              onClick={() => onStartQuickReview?.(quickSession)}
+            >
+              <span className="cta-icon"><Icon name="strategy" size={16} /></span>
+              <span className="cta-text">
+                Repaso rápido · {Math.min(5, words.length)}{" "}
+                {Math.min(5, words.length) === 1 ? "palabra" : "palabras"}
+              </span>
+              <span className="cta-badge">1 min</span>
+            </button>
+          )}
+        </div>
       </header>
+
+      {words.length === 0 && (
+        <div className="notebook-empty-state">
+          {companion?.enabled && companion?.state && (
+            <div className="notebook-empty-companion" role="button" tabIndex={0} aria-label={`Acariciar a ${companion.name}`}>
+              <Companion
+                name={companion.name}
+                stage={companion.stage}
+                mood={companion.mood}
+                accessories={companion.accessories}
+                decorative
+                size={120}
+                onPet={() => {
+                  playCompanionSound("purr");
+                  triggerHaptic(12);
+                }}
+              />
+            </div>
+          )}
+          <p className="notebook-empty-text">
+            Toca cualquier palabra mientras lees para guardarla en tu cuaderno.
+          </p>
+          <p className="notebook-empty-hint">
+            {companion?.name ? `${companion.name} te acompañará mientras aprendes.` : ""}
+          </p>
+        </div>
+      )}
 
       {/* Buscador instantáneo */}
       {words.length > 0 && (
@@ -2368,7 +2415,7 @@ function FullVocabulary({
                     type="button"
                     className="btn--quiet nb-recent-all-btn"
                     onClick={() => setTab("words")}
-                    style={{ fontSize: "var(--fs-xs, 0.75rem)", padding: "2px 8px" }}
+                    style={{ fontSize: "var(--fs-xs, 0.75rem)", padding: "6px 10px", minHeight: "44px", display: "inline-flex", alignItems: "center" }}
                     aria-label={`Ver todas las ${all.length} palabras en Mi Herbario`}
                   >
                     {`Ver todas (${all.length}) →`}

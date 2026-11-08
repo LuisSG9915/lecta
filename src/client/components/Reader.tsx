@@ -602,6 +602,7 @@ export default function Reader({
   const calEvaluated = useRef(false);
   const [language, setLanguage] = useState("es");
   const [selection, setSelection] = useState<WordHit | null>(null);
+  const [longPressSelection, setLongPressSelection] = useState(false);
   const [charOffsetInChapter, setCharOffsetInChapter] = useState(0);
 
   const applyCachedPredictionRef = useRef<((index: number, lang: string) => SectionPrediction | null) | null>(null);
@@ -2175,7 +2176,7 @@ export default function Reader({
   // Las capas del lector son mutuamente excluyentes: abrir una cierra la
   // anterior y reutiliza su entrada de historial cuando existe. La lógica vive
   // en hooks/useReaderSelection.ts.
-  const { openSelection, closeSelection } = useReaderSelection({
+  const { openSelection: openSelectionBase, closeSelection: closeSelectionBase } = useReaderSelection({
     language,
     setSelection,
     setSheet,
@@ -2198,6 +2199,14 @@ export default function Reader({
     releaseOverlay,
     noteActivity,
   });
+  const openSelection = useCallback((hit: WordHit) => {
+    setLongPressSelection(false);
+    openSelectionBase(hit);
+  }, [openSelectionBase]);
+  const closeSelection = useCallback(() => {
+    setLongPressSelection(false);
+    closeSelectionBase();
+  }, [closeSelectionBase]);
 
 
   // Avance o retroceso de navegación hacia la ventana de fatiga; el
@@ -4345,6 +4354,10 @@ export default function Reader({
         navNextSection={navNextSection}
         navPrevSection={navPrevSection}
         openSelection={openSelection}
+        onLongPressSelection={(hit) => {
+          setLongPressSelection(true);
+          openSelectionBase(hit);
+        }}
         selButton={selButton}
         setSelButton={setSelButton}
         extractWordAtPoint={extractWordAtPoint}
@@ -4783,12 +4796,13 @@ export default function Reader({
         }
         wordCapsuleHost={wordCapsuleHost}
         compactMode={
-          !strategyPaused &&
-          (settings.strategyPreset === "focus" ||
-            settings.focusMode === "chromatic" ||
-            settings.paragraphFocus ||
-            settings.syntacticLines ||
-            settings.chromaticGuide)
+          longPressSelection ||
+          (!strategyPaused &&
+            (settings.strategyPreset === "focus" ||
+              settings.focusMode === "chromatic" ||
+              settings.paragraphFocus ||
+              settings.syntacticLines ||
+              settings.chromaticGuide))
         }
         prep={prep}
         onRowsPresented={recordPresented}

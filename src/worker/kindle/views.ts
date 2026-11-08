@@ -589,9 +589,9 @@ export const KINDLE_CSS = `
     justify-content: space-between;
     align-items: center;
     gap: 6px;
-    height: 32px;
-    max-height: 32px;
-    min-height: 32px;
+    height: 36px;
+    max-height: 36px;
+    min-height: 36px;
     padding: 0 0 2px 0;
     border-bottom: 1px solid #dcdcdc;
     margin-bottom: 4px;
@@ -612,6 +612,8 @@ export const KINDLE_CSS = `
     text-decoration: none;
     font-size: 0.8rem;
     white-space: nowrap;
+    min-height: 44px;
+    padding: 8px 4px;
   }
   .reader-back-btn:hover {
     text-decoration: underline;
@@ -622,7 +624,8 @@ export const KINDLE_CSS = `
     border: 1px solid #666666;
     color: #111111;
     font-size: 0.74rem;
-    padding: 2px 5px;
+    padding: 6px 10px;
+    min-height: 44px;
     cursor: pointer;
     line-height: 1.2;
     border-radius: 0;
@@ -679,7 +682,8 @@ export const KINDLE_CSS = `
   .reader-menu-summary {
     cursor: pointer;
     font-size: 0.76rem;
-    padding: 2px 5px;
+    padding: 6px 10px;
+    min-height: 44px;
     border: 1px solid #888888;
     background: #ffffff;
     list-style: none;
@@ -695,7 +699,8 @@ export const KINDLE_CSS = `
     border: 2px solid #000000;
     padding: 8px 10px;
     z-index: 100;
-    min-width: 230px;
+    max-width: calc(100vw - 16px);
+    min-width: 180px;
     box-shadow: none;
   }
   /* Tarjeta de definición en línea (Flotante en layout-paged para preservar Zero-Scroll) */
@@ -723,7 +728,7 @@ export const KINDLE_CSS = `
     position: fixed;
     left: 12px;
     right: 12px;
-    bottom: 42px;
+    bottom: 52px;
     max-width: 636px;
     margin: 0 auto;
   }
@@ -821,8 +826,8 @@ export const KINDLE_CSS = `
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-height: 38px;
-    min-width: 38px;
+    min-height: 44px;
+    min-width: 44px;
     padding: 4px 8px;
     border: 1.5px solid #000000;
     background: #ffffff;
@@ -914,20 +919,21 @@ export const KINDLE_CSS = `
     display: flex;
     align-items: center;
     justify-content: space-between;
-    height: 36px;
-    max-height: 36px;
-    min-height: 36px;
+    height: 44px;
+    max-height: 44px;
+    min-height: 44px;
     margin: 4px 0 0 0;
     padding: 0 4px;
     border-top: 1px solid #dcdcdc;
     font-size: 0.82rem;
-    line-height: 36px;
+    line-height: 44px;
     box-sizing: border-box;
     width: 100%;
   }
   .turn-btn {
     display: inline-flex;
     align-items: center;
+    min-height: 44px;
     padding: 0 6px;
     text-decoration: none;
     color: #000000;
@@ -1470,7 +1476,7 @@ export function renderReaderView(options: {
   <style>${KINDLE_CSS}</style>
 </head>
 <body class="reader-body layout-${escapeHtml(layout)}">
-  <div class="reader-container margin-${escapeHtml(margin)}">
+  <main class="reader-container margin-${escapeHtml(margin)}">
     <header class="reader-header">
       <div class="reader-header-left">
         <a href="/k" class="reader-back-btn">← Libros</a>
@@ -1552,7 +1558,7 @@ export function renderReaderView(options: {
           : `<span class="turn-btn turn-btn-next disabled">[ Fin ]</span>`
       }
     </nav>
-  </div>
+  </main>
 
   <div id="einkRefreshOverlay" class="eink-refresh-overlay" aria-hidden="true"></div>
   <script>
@@ -1862,7 +1868,7 @@ export function renderLookupView(options: {
       <form action="/k/lookup" method="GET" class="quick-lookup-form">
         <input type="hidden" name="returnTo" value="${escapeHtml(returnTo)}" />
         <input type="hidden" name="bookHash" value="${escapeHtml(bookHash)}" />
-        <input type="text" name="q" class="form-control" value="${escapeHtml(query)}" placeholder="Escribe una palabra..." required autofocus />
+        <input type="text" name="q" class="form-control" aria-label="Palabra a buscar en el diccionario" value="${escapeHtml(query)}" placeholder="Escribe una palabra..." required />
         <button type="submit" class="btn btn-primary">Buscar</button>
       </form>
     </div>
@@ -2086,7 +2092,7 @@ export function renderKindleChapterPrimingView(props: KindleChapterPrimingViewPr
 <html lang="${escapeHtml(bookLang)}">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Antes de leer · ${escapeHtml(chapterTitle)}</title>
   <style>
     /* E-Ink High Contrast Zero-Flicker Styles */
@@ -2184,7 +2190,7 @@ export function renderKindleChapterPrimingView(props: KindleChapterPrimingViewPr
       color: #000000;
     }
     .k-btn--small {
-      min-height: 38px;
+      min-height: 44px;
       padding: 6px 10px;
       font-size: 14px;
     }
@@ -2314,7 +2320,7 @@ export function renderKindleTocView(options: {
   <style>${KINDLE_CSS}</style>
 </head>
 <body class="reader-body">
-  <div class="reader-container">
+  <main class="reader-container">
     <header class="reader-header">
       <div class="reader-header-left">
         <a href="${escapeHtml(backUrl)}" class="reader-back-btn">← Volver al libro</a>
@@ -2333,7 +2339,7 @@ export function renderKindleTocView(options: {
     <ol class="toc-list">
       ${items}
     </ol>
-  </div>
+  </main>
 </body>
 </html>`;
 }
