@@ -218,6 +218,7 @@ import { useReaderTts } from "../hooks/useReaderTts";
 import { useReaderCompanion } from "../hooks/useReaderCompanion";
 import { useReaderDeepReadingCycle } from "../hooks/useReaderDeepReadingCycle";
 import { useReaderChrome } from "../hooks/useReaderChrome";
+import { useReaderUiState } from "../hooks/useReaderUiState";
 import { useReaderTrackMove } from "../hooks/useReaderTrackMove";
 import { useReaderSelection } from "../hooks/useReaderSelection";
 import {
@@ -557,7 +558,6 @@ export default function Reader({
   // del libro al terminar el primer tramo leído, si la cuenta no ha
   // calibrado ni descartado la oferta («calibrationDone»). La franja
   // espera; «Ahora no» marca la llave y cierra la vía automática.
-  const [calNotice, setCalNotice] = useState(false);
   // Tramo candidato a «primer lectura real» de la apertura: se arma
   // solo viendo el tramo antes de su final — retomar, un marcador o un
   // salto que aterriza ya en el final no disparan la invitación.
@@ -566,8 +566,6 @@ export default function Reader({
   // posición guardada): pregunta una sola vez por libro; la decisión
   // se guarda en `bookHelp:v1:` y solo mueve el interruptor de
   // micro-destacados — jamás escribe palabras en el Cuaderno.
-  const [helpNotice, setHelpNotice] = useState(false);
-  const [helpIsCalibrated, setHelpIsCalibrated] = useState(false);
   const helpAskedRef = useRef<string | null>(null);
   const calEvaluated = useRef(false);
   const [language, setLanguage] = useState("es");
@@ -749,10 +747,8 @@ export default function Reader({
     total: number;
   } | null>(null);
   const [sheet, setSheet] = useState<SheetKind | null>(null);
-  const [settingsTab, setSettingsTab] = useState<ReaderSettingsTab>("appearance");
   const [settings, setSettings] = useState<ReaderSettings>(() => loadReaderSettings(bookHash));
   const pacerIndexRef = useRef<number>(0);
-  const [ttsCapturedToast, setTtsCapturedToast] = useState<string | null>(null);
 
   // Hook del chrome del lector (R1b): barras, scroll, zen, stall, pacer.
   const {
@@ -778,6 +774,30 @@ export default function Reader({
     lastActivityAtRef,
     lastPointerCheckRef,
   } = useReaderChrome();
+
+  // Hook de estado UI simple (R3i, subconjunto bajo riesgo).
+  const {
+    calNotice,
+    setCalNotice,
+    helpNotice,
+    setHelpNotice,
+    helpIsCalibrated,
+    setHelpIsCalibrated,
+    showLongPressHint,
+    setShowLongPressHint,
+    recordToast,
+    setRecordToast,
+    ttsCapturedToast,
+    setTtsCapturedToast,
+    glossaryOpen,
+    setGlossaryOpen,
+    settingsTab,
+    setSettingsTab,
+    activeBilingualParagraph,
+    setActiveBilingualParagraph,
+    wordCapsuleHost,
+    setWordCapsuleHost,
+  } = useReaderUiState();
 
   const focusTelemetryRef = useRef({
     pageEnteredAt: 0,
@@ -835,7 +855,6 @@ export default function Reader({
   const longestToastFiredRef = useRef<boolean>(false);
   const intervalsRef = useRef<TimeInterval[]>([]);
   const [dailyGoalMs, setDailyGoalMs] = useState<number>(DAY_GOAL_MS);
-  const [recordToast, setRecordToast] = useState<string | null>(null);
   const weeklyWordsCount = getWeeklyLearnedWordsCount();
   const [resumeOverlayData, setResumeOverlayData] = useState<{
     recapLine: string;
@@ -856,11 +875,6 @@ export default function Reader({
       }
     }).catch(() => undefined);
   }, []);
-  const [activeBilingualParagraph, setActiveBilingualParagraph] = useState<{
-    originalText: string;
-    translatedText?: string;
-  } | null>(null);
-
   // Track 5: Doble toque para traducir párrafo
   const lastTapRef = useRef<{ time: number; element: HTMLElement | null }>({ time: 0, element: null });
   const [returnPoint, setReturnPoint] = useState<{
@@ -875,8 +889,6 @@ export default function Reader({
     selButtonVisibleRef.current = selButton !== null;
   }, [selButton]);
   const lastPointerTypeRef = useRef<string>("mouse");
-  const [showLongPressHint, setShowLongPressHint] = useState(false);
-  const [glossaryOpen, setGlossaryOpen] = useState(false);
 
   // Hook del Retiro de lectura (R1c): estado deep reading + derivados.
   // La lógica de ciclo (finish/start/timer) sigue en Reader.tsx.
@@ -900,8 +912,6 @@ export default function Reader({
     deepIndicatorRef,
   } = deepCycle;
   // Nodo de la franja flotante para la cápsula de palabra (portal).
-  const [wordCapsuleHost, setWordCapsuleHost] = useState<HTMLDivElement | null>(null);
-
   useEffect(() => {
     // Un estado vacío significa «ya terminó»: retirar el aviso en el
     // acto evita que «Abriendo libro…» siga visible con el libro listo.
@@ -939,7 +949,7 @@ export default function Reader({
         handle.release();
       }
     }
-  }, [glossaryOpen]);
+  }, [glossaryOpen, setGlossaryOpen]);
 
   useEffect(() => {
     if (deepSummary) {
@@ -1456,7 +1466,7 @@ export default function Reader({
     };
     const interval = window.setInterval(check, 60_000);
     return () => window.clearInterval(interval);
-  }, [state, signalCompanion]);
+  }, [state, signalCompanion, setRecordToast]);
 
   // Track 5: Detección de inactividad > 6h para "¿En qué me quedé?" (Track 8: Cero Spoilers)
   useEffect(() => {
@@ -2679,7 +2689,7 @@ export default function Reader({
       }
     });
     return () => window.clearTimeout(timer);
-  }, [state]);
+  }, [state, setShowLongPressHint]);
 
   // Barras que se retiran al bajar y vuelven al subir, y guardado de
   // posición con la fracción leída de la sección. En modo paginado el
@@ -3717,7 +3727,7 @@ export default function Reader({
       }
       setCalNotice(true);
     })();
-  }, [state, sectionIndex, viewRatio, language, rangeFor]);
+  }, [state, sectionIndex, viewRatio, language, rangeFor, setCalNotice]);
 
   // «Ajustar mi vocabulario»: la descarga corre por App; si la hoja no
   // llegó a abrirse (sin conexión o muestra vacía) el aviso se conserva
@@ -3769,7 +3779,7 @@ export default function Reader({
     return () => {
       cancelled = true;
     };
-  }, [state, sectionIndex, language, bookHash]);
+  }, [state, sectionIndex, language, bookHash, setHelpIsCalibrated, setHelpNotice]);
 
   const saveHelpDecision = useCallback((value: "on" | "off" | "dismissed") => {
     void saveSessionValue(bookHelpKey(bookHash), value, captureDbScope()).catch(
