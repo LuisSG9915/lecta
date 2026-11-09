@@ -22,6 +22,58 @@ import type { R2Bucket } from "@cloudflare/workers-types";
 export const KINDLE_CHAPTER_CACHE_V = 2;
 export const KINDLE_RESOURCE_CACHE_PREFIX = "kcache/res/";
 
+
+async function gzipBytes(data: Uint8Array): Promise<Uint8Array> {
+  const cs = new CompressionStream("gzip");
+  const writer = cs.writable.getWriter();
+  const writePromise = writer.write(data as unknown as BufferSource).then(() => writer.close());
+  const reader = cs.readable.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (value) {
+      chunks.push(value);
+      total += value.byteLength;
+    }
+  }
+  await writePromise.catch(() => {});
+  const out = new Uint8Array(total);
+  let off = 0;
+  for (const c of chunks) {
+    out.set(c, off);
+    off += c.byteLength;
+  }
+  return out;
+}
+
+async function gunzipBytes(data: Uint8Array): Promise<Uint8Array> {
+  const ds = new DecompressionStream("gzip");
+  const writer = ds.writable.getWriter();
+  const writePromise = writer.write(data as unknown as BufferSource).then(() => writer.close());
+  const reader = ds.readable.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (value) {
+      chunks.push(value);
+      total += value.byteLength;
+    }
+  }
+  await writePromise.catch(() => {});
+  const out = new Uint8Array(total);
+  let off = 0;
+  for (const c of chunks) {
+    out.set(c, off);
+    off += c.byteLength;
+  }
+  return out;
+}
+
+
 const CHAPTER_MEM_TTL_MS = 30 * 60 * 1000;
 const CHAPTER_MEM_MAX = 24;
 
@@ -67,7 +119,15 @@ export async function getCachedChapter(
   try {
     const obj = await bucket.get(key);
     if (!obj) return null;
-    const parsed = JSON.parse(await obj.text()) as CachedChapter;
+    let raw: string;
+    if (obj.httpMetadata?.contentEncoding === "gzip") {
+      const buf = await obj.arrayBuffer();
+      const dec = await gunzipBytes(new Uint8Array(buf));
+      raw = new TextDecoder().decode(dec);
+    } else {
+      raw = await obj.text();
+    }
+    const parsed = JSON.parse(raw) as CachedChapter;
     if (parsed?.v !== KINDLE_CHAPTER_CACHE_V || typeof parsed.contentHtml !== "string") {
       return null;
     }
@@ -88,8 +148,9 @@ export async function putCachedChapter(
   const full: CachedChapter = { v: KINDLE_CHAPTER_CACHE_V, ...chapter };
   touchChapterMem(key, full);
   try {
-    await bucket.put(key, JSON.stringify(full), {
-      httpMetadata: { contentType: "application/json; charset=utf-8" },
+    const gz = await gzipBytes(new TextEncoder().encode(JSON.stringify(full)));
+    await bucket.put(key, gz, {
+      httpMetadata: { contentType: "application/json; charset=utf-8", contentEncoding: "gzip" },
     });
   } catch {
     // Cache best-effort: la lectura nunca falla por el caché

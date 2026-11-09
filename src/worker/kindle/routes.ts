@@ -20,6 +20,7 @@ import {
   parseEpub,
   selectKindleChapterPrimingWords,
   stripHtml,
+  applyHighlights,
   wrapWordsWithLinks,
   type ChapterResult,
   type KindleMargin,
@@ -43,6 +44,7 @@ import {
   type InlineLookupResult,
 } from "./views";
 import {
+  KINDLE_FONT_FAMILIES,
   kindlePreviewSampleHtml,
   normalizeKindlePrefs,
   prefsFromRow,
@@ -56,6 +58,8 @@ import {
   type CachedChapter,
 } from "./cache";
 import { createTimer } from "./timing";
+
+const VALID_KINDLE_FONT_FAMILIES = new Set<string>(KINDLE_FONT_FAMILIES);
 
 export interface KindleCodeRecord {
   code: string;
@@ -1793,6 +1797,8 @@ kindleRoutes.get("/read/:hash", async (c) => {
   const rawSize = c.req.query("size");
   const rawLayout = c.req.query("layout");
   const rawMargin = c.req.query("margin");
+  const rawFont = c.req.query("font");
+  const rawInvert = c.req.query("invert");
 
   // Preferencias de la cuenta + posición guardada en una sola ronda paralela
   const needsPosition = requestedSection === undefined || requestedPage === undefined;
@@ -1836,8 +1842,17 @@ kindleRoutes.get("/read/:hash", async (c) => {
     ? rawSize
     : prefsPersisted ? prefs.fontSize : "md") as
     "sm" | "md" | "lg" | "xl" | "xxl";
+  const fontFamily = (rawFont && VALID_KINDLE_FONT_FAMILIES.has(rawFont)
+    ? rawFont
+    : prefsPersisted ? prefs.fontFamily : "literata");
   const cookieHeader = c.req.header("cookie") || "";
   const cookieLayout = cookieHeader.includes("lecta_k_layout=scroll") ? "scroll" : "paged";
+  let inverted = cookieHeader.includes("lecta_k_invert=1");
+  if (rawInvert === "1") { inverted = true; }
+  if (rawInvert === "0") { inverted = false; }
+  if (rawInvert === "1" || rawInvert === "0") {
+    c.header("Set-Cookie", `lecta_k_invert=${inverted ? "1" : "0"}; Path=/; Max-Age=31536000; SameSite=Lax`, { append: true });
+  }
   const layout: "paged" | "scroll" = rawLayout === "scroll" || rawLayout === "paged"
     ? rawLayout
     : (prefsPersisted ? prefs.layout : cookieLayout);
@@ -1898,9 +1913,24 @@ kindleRoutes.get("/read/:hash", async (c) => {
     );
   }
 
+  // Resaltados sincronizados del usuario para este capítulo/sección
+  const highlightRows = getConnectionString(c.env)
+    ? await withClient(c.env, (client) =>
+        client
+          .query<{ text: string }>(
+            `SELECT text FROM lecta_user_highlights
+             WHERE user_id = $1 AND book_hash = $2 AND section_index = $3 AND deleted = false`,
+            [user.id, hash, sectionIndex],
+          )
+          .then((res) => res.rows.map((r) => r.text))
+          .catch(() => []),
+      )
+    : [];
+  const highlightedHtml = applyHighlights(chapter.contentHtml, highlightRows ?? []);
+
   // Paginación del capítulo en pantallas discretas (Zero-Scroll en modo paged)
   const viewport = parseKindleViewportCookie(getCookie(c, "lecta_k_vp"));
-  const pages = paginateChapter(chapter.contentHtml, {
+  const pages = paginateChapter(highlightedHtml, {
     size,
     margin,
     layout,
@@ -2200,6 +2230,26 @@ kindleRoutes.get("/read/:hash", async (c) => {
     savedNotice = `Palabra «${markedKnown}» marcada como conocida.`;
   }
 
+  // Bitácora de lectura: un evento puntual por paso de página (veraz, 0 min).
+  try {
+    const now = Date.now();
+    const activityPromise = withClient(c.env, (client) =>
+      client.query(
+        `INSERT INTO lecta_user_activity (user_id, id, book_hash, started_at, ended_at)
+         VALUES ($1, $2, $3, $4, $4)
+         ON CONFLICT (user_id, id) DO NOTHING`,
+        [user.id, crypto.randomUUID(), hash, now],
+      ),
+    );
+    if (c.executionCtx && typeof c.executionCtx.waitUntil === "function") {
+      c.executionCtx.waitUntil(activityPromise.catch(() => {}));
+    } else {
+      await activityPromise.catch(() => {});
+    }
+  } catch {
+    /* best-effort */
+  }
+
   return html(
     renderReaderView({
       user,
@@ -2218,11 +2268,12 @@ kindleRoutes.get("/read/:hash", async (c) => {
       mode,
       size,
       margin,
-      fontFamily: prefs.fontFamily,
+      fontFamily,
       lineHeight: prefs.lineHeight,
       align: prefs.align,
       primingOff: isPrimingOff || isBookMuted,
       layout,
+      inverted,
       tocUrl:
         (chapter.toc?.length ?? 0) > 0
           ? `/k/read/${encodeURIComponent(hash)}?section=${chapter.sectionIndex}&toc=1${renderQuerySuffix}`
@@ -2404,6 +2455,32 @@ kindleRoutes.post("/vocab/add", async (c) => {
 
   const redirectUrl = `/k/lookup?q=${encodeURIComponent(form)}&saved=1&returnTo=${encodeURIComponent(returnTo)}&bookHash=${encodeURIComponent(bookHash || "")}`;
   return c.redirect(redirectUrl);
+});
+
+// 7b. Guardar un resaltado de pasaje del lector
+kindleRoutes.post("/highlight/add", async (c) => {
+  const session = await getSession(c);
+  if (!session?.user) {
+    return c.redirect("/k/login");
+  }
+  const body = (await c.req.parseBody().catch(() => ({}))) as Record<string, unknown>;
+  const text = typeof body.text === "string" ? body.text.trim() : "";
+  const bookHash = typeof body.bookHash === "string" ? body.bookHash.trim() : "";
+  const section = Number.parseInt(String(body.section ?? "0"), 10) || 0;
+  const returnTo = safeKindleReturn(body.returnTo, "/k");
+  if (text && text.length >= 4 && text.length <= 600 && bookHash) {
+    const now = Date.now();
+    await withClient(c.env, (client) =>
+      client.query(
+        `INSERT INTO lecta_user_highlights
+           (user_id, book_hash, section_index, text, created_at, updated_at, deleted, synced_at)
+         VALUES ($1, $2, $3, $4, $5, $5, false, $5)`,
+        [session.user.id, bookHash, section, text, now],
+      ),
+    ).catch(() => null);
+  }
+  const separator = returnTo.includes("?") ? "&" : "?";
+  return c.redirect(`${returnTo}${separator}highlighted=1`, 303);
 });
 
 // 8. Marcar palabra como conocida o desconocida en la preparación

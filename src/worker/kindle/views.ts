@@ -887,6 +887,13 @@ export const KINDLE_CSS = `
   .w.saved {
     border-bottom: 1.5px dotted #000000;
   }
+  /* Subrayado de pasajes (progresivo, sin servidor) */
+  mark.hl, .epub-content p.hl {
+    background: transparent;
+    text-decoration: underline;
+    text-decoration-thickness: 2px;
+    text-underline-offset: 3px;
+  }
   .lookup-active .w {
     text-decoration: underline;
     text-decoration-style: dotted;
@@ -919,16 +926,20 @@ export const KINDLE_CSS = `
     display: flex;
     align-items: center;
     justify-content: space-between;
-    height: 44px;
-    max-height: 44px;
-    min-height: 44px;
-    margin: 4px 0 0 0;
+    height: 36px;
+    max-height: 36px;
+    min-height: 36px;
+    margin: 2px 0 0 0;
     padding: 0 4px;
     border-top: 1px solid #dcdcdc;
-    font-size: 0.82rem;
-    line-height: 44px;
+    font-size: 0.78rem;
+    line-height: 36px;
     box-sizing: border-box;
     width: 100%;
+  }
+  .turn-page-bar .turn-btn {
+    min-height: 36px;
+    line-height: 36px;
   }
   .turn-btn {
     display: inline-flex;
@@ -1365,6 +1376,7 @@ export function renderReaderView(options: {
   lineHeight?: string;
   align?: string;
   primingOff?: boolean;
+  inverted?: boolean;
   layout?: "paged" | "scroll";
   language?: string;
   /** URL de la vista de índice (si el EPUB trae nav/NCX). */
@@ -1390,6 +1402,7 @@ export function renderReaderView(options: {
     lineHeight = "normal",
     align = "justify",
     primingOff = false,
+    inverted = false,
     layout = "paged",
     language = "es",
     tocUrl,
@@ -1473,9 +1486,10 @@ export function renderReaderView(options: {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${escapeHtml(bookTitle)} (${sectionIndex + 1}/${totalSections} — ${pageIndex + 1}/${totalPages}) — Lecta</title>
+  ${nextUrl ? `<link rel="prefetch" href="${escapeHtml(nextUrl)}" />` : ""}
   <style>${KINDLE_CSS}</style>
 </head>
-<body class="reader-body layout-${escapeHtml(layout)}">
+<body class="reader-body layout-${escapeHtml(layout)}${inverted ? " inverted" : ""}">
   <main class="reader-container margin-${escapeHtml(margin)}">
     <header class="reader-header">
       <div class="reader-header-left">
@@ -1488,6 +1502,7 @@ export function renderReaderView(options: {
         <span class="reader-header-author">${escapeHtml(bookAuthor)}</span>
       </div>
       <div class="reader-header-meta">
+        <span id="fitIndicator" style="display:none; font-size:0.7rem; color:#888;" title="Letra ajustada a esta página">≈</span>
         ${tocUrl ? `<a href="${escapeHtml(tocUrl)}" class="reader-header-prep" title="Índice del libro">Índice</a>` : ""}
         <details class="reader-header-menu">
           <summary class="reader-menu-summary">Aa · Menú</summary>
@@ -1495,31 +1510,58 @@ export function renderReaderView(options: {
             <div class="mode-selector">
               <span style="font-size:0.8rem; font-weight:bold; display:block; margin-bottom:4px;">Enfoque:</span>
               <div style="display:flex; gap:4px; margin-bottom:8px; flex-wrap:wrap;">
-                <a href="${baseParamUrl}&amp;mode=clean&amp;size=${size}&amp;layout=${layout}&amp;margin=${margin}" class="mode-tab ${mode === "clean" ? "is-active" : ""}">[ Limpio ]</a>
-                <a href="${baseParamUrl}&amp;mode=paragraphs&amp;size=${size}&amp;layout=${layout}&amp;margin=${margin}" class="mode-tab ${mode === "paragraphs" ? "is-active" : ""}">[ Párrafos aireados ]</a>
-                <a href="${baseParamUrl}&amp;mode=anchors&amp;size=${size}&amp;layout=${layout}&amp;margin=${margin}" class="mode-tab ${mode === "anchors" ? "is-active" : ""}">[ Anclas de lectura ]</a>
+                <a href="${baseParamUrl}&amp;mode=clean&amp;size=${size}&amp;layout=${layout}&amp;margin=${margin}&amp;font=${fontFamily}" class="mode-tab ${mode === "clean" ? "is-active" : ""}">[ Limpio ]</a>
+                <a href="${baseParamUrl}&amp;mode=paragraphs&amp;size=${size}&amp;layout=${layout}&amp;margin=${margin}&amp;font=${fontFamily}" class="mode-tab ${mode === "paragraphs" ? "is-active" : ""}">[ Párrafos aireados ]</a>
+                <a href="${baseParamUrl}&amp;mode=anchors&amp;size=${size}&amp;layout=${layout}&amp;margin=${margin}&amp;font=${fontFamily}" class="mode-tab ${mode === "anchors" ? "is-active" : ""}">[ Anclas de lectura ]</a>
               </div>
               <span style="font-size:0.8rem; font-weight:bold; display:block; margin-bottom:4px;">Letra:</span>
               <div class="size-selector" style="display:flex; gap:4px; margin-bottom:8px;">
-                <a href="${baseParamUrl}&amp;mode=${mode}&amp;size=sm&amp;layout=${layout}&amp;margin=${margin}" class="size-btn ${size === "sm" ? "is-active" : ""}">P</a>
-                <a href="${baseParamUrl}&amp;mode=${mode}&amp;size=md&amp;layout=${layout}&amp;margin=${margin}" class="size-btn ${size === "md" ? "is-active" : ""}">M</a>
-                <a href="${baseParamUrl}&amp;mode=${mode}&amp;size=lg&amp;layout=${layout}&amp;margin=${margin}" class="size-btn ${size === "lg" ? "is-active" : ""}">G</a>
-                <a href="${baseParamUrl}&amp;mode=${mode}&amp;size=xl&amp;layout=${layout}&amp;margin=${margin}" class="size-btn ${size === "xl" ? "is-active" : ""}">XG</a>
+                <a href="${baseParamUrl}&amp;mode=${mode}&amp;size=sm&amp;layout=${layout}&amp;margin=${margin}&amp;font=${fontFamily}" class="size-btn ${size === "sm" ? "is-active" : ""}">P</a>
+                <a href="${baseParamUrl}&amp;mode=${mode}&amp;size=md&amp;layout=${layout}&amp;margin=${margin}&amp;font=${fontFamily}" class="size-btn ${size === "md" ? "is-active" : ""}">M</a>
+                <a href="${baseParamUrl}&amp;mode=${mode}&amp;size=lg&amp;layout=${layout}&amp;margin=${margin}&amp;font=${fontFamily}" class="size-btn ${size === "lg" ? "is-active" : ""}">G</a>
+                <a href="${baseParamUrl}&amp;mode=${mode}&amp;size=xl&amp;layout=${layout}&amp;margin=${margin}&amp;font=${fontFamily}" class="size-btn ${size === "xl" ? "is-active" : ""}">XG</a>
+                <a href="${baseParamUrl}&amp;mode=${mode}&amp;size=xxl&amp;layout=${layout}&amp;margin=${margin}&amp;font=${fontFamily}" class="size-btn ${size === "xxl" ? "is-active" : ""}">EG</a>
+              </div>
+              <span style="font-size:0.8rem; font-weight:bold; display:block; margin-bottom:4px;">Tipografía:</span>
+              <div style="display:flex; gap:4px; margin-bottom:8px; flex-wrap:wrap;">
+                <a href="${baseParamUrl}&amp;mode=${mode}&amp;size=${size}&amp;layout=${layout}&amp;margin=${margin}&amp;font=literata" class="size-btn ${fontFamily === "literata" ? "is-active" : ""}">Literata</a>
+                <a href="${baseParamUrl}&amp;mode=${mode}&amp;size=${size}&amp;layout=${layout}&amp;margin=${margin}&amp;font=source-serif" class="size-btn ${fontFamily === "source-serif" ? "is-active" : ""}">Source</a>
+                <a href="${baseParamUrl}&amp;mode=${mode}&amp;size=${size}&amp;layout=${layout}&amp;margin=${margin}&amp;font=atkinson" class="size-btn ${fontFamily === "atkinson" ? "is-active" : ""}">Atkinson</a>
+                <a href="${baseParamUrl}&amp;mode=${mode}&amp;size=${size}&amp;layout=${layout}&amp;margin=${margin}&amp;font=opendyslexic" class="size-btn ${fontFamily === "opendyslexic" ? "is-active" : ""}">Dyslexic</a>
               </div>
               <span style="font-size:0.8rem; font-weight:bold; display:block; margin-bottom:4px;">Margen:</span>
               <div class="margin-selector" style="display:flex; gap:4px; margin-bottom:8px;">
-                <a href="${baseParamUrl}&amp;mode=${mode}&amp;size=${size}&amp;layout=${layout}&amp;margin=sm" class="size-btn ${margin === 'sm' ? 'is-active' : ''}">Estrecho</a>
-                <a href="${baseParamUrl}&amp;mode=${mode}&amp;size=${size}&amp;layout=${layout}&amp;margin=md" class="size-btn ${margin === 'md' ? 'is-active' : ''}">Normal</a>
-                <a href="${baseParamUrl}&amp;mode=${mode}&amp;size=${size}&amp;layout=${layout}&amp;margin=lg" class="size-btn ${margin === 'lg' ? 'is-active' : ''}">Amplio</a>
+                <a href="${baseParamUrl}&amp;mode=${mode}&amp;size=${size}&amp;layout=${layout}&amp;margin=sm&amp;font=${fontFamily}" class="size-btn ${margin === 'sm' ? 'is-active' : ''}">Estrecho</a>
+                <a href="${baseParamUrl}&amp;mode=${mode}&amp;size=${size}&amp;layout=${layout}&amp;margin=md&amp;font=${fontFamily}" class="size-btn ${margin === 'md' ? 'is-active' : ''}">Normal</a>
+                <a href="${baseParamUrl}&amp;mode=${mode}&amp;size=${size}&amp;layout=${layout}&amp;margin=lg&amp;font=${fontFamily}" class="size-btn ${margin === 'lg' ? 'is-active' : ''}">Amplio</a>
               </div>
               <span style="font-size:0.8rem; font-weight:bold; display:block; margin-bottom:4px;">Disposición:</span>
               <div style="display:flex; gap:4px; margin-bottom:8px;">
-                <a href="${baseParamUrl}&amp;mode=${mode}&amp;size=${size}&amp;layout=paged&amp;margin=${margin}" class="mode-tab ${layout === "paged" ? "is-active" : ""}">Paginado</a>
-                <a href="${baseParamUrl}&amp;mode=${mode}&amp;size=${size}&amp;layout=scroll&amp;margin=${margin}" class="mode-tab ${layout === "scroll" ? "is-active" : ""}">Scroll</a>
+                <a href="${baseParamUrl}&amp;mode=${mode}&amp;size=${size}&amp;layout=paged&amp;margin=${margin}&amp;font=${fontFamily}" class="mode-tab ${layout === "paged" ? "is-active" : ""}">Paginado</a>
+                <a href="${baseParamUrl}&amp;mode=${mode}&amp;size=${size}&amp;layout=scroll&amp;margin=${margin}&amp;font=${fontFamily}" class="mode-tab ${layout === "scroll" ? "is-active" : ""}">Scroll</a>
               </div>
               <a href="/k/ajustes?returnTo=${encodeURIComponent(cleanPageUrl)}" class="mode-tab" style="display:block; text-align:center;">Todos los ajustes (Aa) →</a>
+              <form method="POST" action="/k/ajustes" style="margin:6px 0 0 0;">
+                <input type="hidden" name="fontFamily" value="${escapeHtml(fontFamily)}" />
+                <input type="hidden" name="fontSize" value="${escapeHtml(size)}" />
+                <input type="hidden" name="lineHeight" value="${escapeHtml(lineHeight)}" />
+                <input type="hidden" name="margin" value="${escapeHtml(margin)}" />
+                <input type="hidden" name="align" value="${escapeHtml(align)}" />
+                <input type="hidden" name="approach" value="${escapeHtml(mode === "lexicon" ? "clean" : mode)}" />
+                <input type="hidden" name="layout" value="${escapeHtml(layout)}" />
+                <input type="hidden" name="returnTo" value="${escapeHtml(cleanPageUrl)}" />
+                <button type="submit" class="mode-tab" style="display:block; width:100%; text-align:center; cursor:pointer; font-family:inherit; font-size:inherit; background:#f4f4f4;">Guardar estos ajustes</button>
+              </form>
               <div style="border-top:1px solid #000000; margin-top:8px; padding-top:8px; display:flex; gap:6px; flex-wrap:wrap;">
                 <a href="/k/practice?bookHash=${encodeURIComponent(bookHash)}&amp;returnTo=${encodeURIComponent(cleanPageUrl)}" class="mode-tab" title="Practicar vocabulario">Práctica</a>
+                <button type="button" id="hlSaveBtn" class="mode-tab" title="Subrayar la selección actual" style="display:none; cursor:pointer; font-family:inherit; font-size:inherit; background:#f4f4f4;">Subrayar selección</button>
+                <a href="${baseParamUrl}&amp;mode=${mode}&amp;size=${size}&amp;layout=${layout}&amp;margin=${margin}&amp;font=${fontFamily}&amp;invert=${inverted ? "0" : "1"}" class="mode-tab" title="Modo invertido para E-ink">${inverted ? "Modo normal" : "Modo invertido"}</a>
+                <form id="hlForm" method="POST" action="/k/highlight/add" style="display:none;">
+                  <input type="hidden" name="bookHash" value="${escapeHtml(bookHash)}" />
+                  <input type="hidden" name="section" value="${sectionIndex}" />
+                  <input type="hidden" name="text" id="hlText" value="" />
+                  <input type="hidden" name="returnTo" value="${escapeHtml(cleanPageUrl)}" />
+                </form>
                 <a href="/k/read/${encodeURIComponent(bookHash)}?section=${sectionIndex}&amp;prep=1" class="mode-tab" title="Antes de leer: vocabulario del capítulo">Antes de leer</a>
                 ${
                   primingOff
@@ -1564,6 +1606,7 @@ export function renderReaderView(options: {
   <script>
   (function() {
     var lookupBase = ${JSON.stringify(cleanPageUrl)};
+    var hlMode = false;
     var prevUrl = ${JSON.stringify(prevUrl || "")};
     var nextUrl = ${JSON.stringify(nextUrl || "")};
 
@@ -1639,9 +1682,15 @@ export function renderReaderView(options: {
       var basePx = cs && cs.fontSize ? parseFloat(cs.fontSize) : 0;
       if (!basePx || basePx <= 0) basePx = 22;
       var fitGuard = 0;
-      while (content.scrollHeight > content.clientHeight + 1 && fitGuard < 12) {
+      while (content.scrollHeight > content.clientHeight + 1 && fitGuard < 3) {
         fitGuard++;
-        content.style.fontSize = (basePx * (1 - fitGuard * 0.035)).toFixed(2) + 'px';
+        content.style.fontSize = (basePx * (1 - fitGuard * 0.028)).toFixed(2) + 'px';
+      }
+      if (fitGuard > 0) {
+        try {
+          var ind = document.getElementById('fitIndicator');
+          if (ind) ind.style.display = 'inline';
+        } catch (e) {}
       }
     }
 
@@ -1746,6 +1795,7 @@ export function renderReaderView(options: {
       content.addEventListener('touchcancel', clearTimer, false);
 
       content.addEventListener('click', function(e) {
+        if (hlMode) return;
         if (Date.now() - lastGestureAt < 500) {
           e.preventDefault();
           return;
@@ -1776,6 +1826,40 @@ export function renderReaderView(options: {
           if (nextUrl) window.location.href = nextUrl;
         }
       }, false);
+    }
+
+    // --- Subrayado de pasajes: selección -> POST /k/highlight/add ---
+    var hlBtn = document.getElementById('hlSaveBtn');
+    var hlText = document.getElementById('hlText');
+    var hlForm = document.getElementById('hlForm');
+    function currentSelection() {
+      try { return (window.getSelection ? window.getSelection().toString() : '').trim(); }
+      catch (e) { return ''; }
+    }
+    if (content) {
+      content.addEventListener('mouseup', function() {
+        var sel = currentSelection();
+        if (sel.length >= 4 && sel.length <= 600 && hlBtn) {
+          hlBtn.style.display = 'inline-flex';
+        } else if (hlBtn) {
+          hlBtn.style.display = 'none';
+        }
+      });
+      content.addEventListener('touchend', function() {
+        setTimeout(function() {
+          var sel = currentSelection();
+          if (sel.length >= 4 && sel.length <= 600 && hlBtn) hlBtn.style.display = 'inline-flex';
+          else if (hlBtn) hlBtn.style.display = 'none';
+        }, 50);
+      });
+    }
+    if (hlBtn && hlText && hlForm) {
+      hlBtn.addEventListener('click', function() {
+        var sel = currentSelection();
+        if (!sel) return;
+        hlText.value = sel;
+        hlForm.submit();
+      });
     }
   })();
   </script>
@@ -2297,6 +2381,11 @@ export function renderKindleTocView(options: {
     language = "es",
   } = options;
 
+  const currentIdx = toc.findIndex((e) => e.sectionIndex === currentSection);
+  const progressPercent =
+    toc.length > 0 && currentIdx >= 0
+      ? Math.round(((currentIdx + 1) / toc.length) * 100)
+      : null;
   const items =
     toc.length > 0
       ? toc
@@ -2305,6 +2394,7 @@ export function renderKindleTocView(options: {
       <li class="toc-item ${entry.sectionIndex === currentSection ? "is-current" : ""}">
         <a href="/k/read/${encodeURIComponent(bookHash)}?section=${entry.sectionIndex}&amp;page=0${querySuffix}">
           ${entry.sectionIndex === currentSection ? "▸ " : ""}${escapeHtml(entry.title)}
+          ${entry.sectionIndex < currentSection ? " ✓" : ""}
         </a>
       </li>`,
           )
@@ -2331,6 +2421,7 @@ export function renderKindleTocView(options: {
         <span class="reader-header-author">${escapeHtml(bookAuthor)}</span>
       </div>
       <div class="reader-header-meta">
+        ${progressPercent !== null ? `<span class="reader-header-prep" title="Progreso en el índice">${progressPercent}%</span>` : ""}
         <a href="/k/ajustes?returnTo=${encodeURIComponent(backUrl)}" class="reader-header-prep">Ajustes</a>
       </div>
     </header>

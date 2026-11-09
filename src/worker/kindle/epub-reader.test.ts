@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  applyHighlights,
   BLOCK_BREAK_PENALTY,
   computeRaschMastery,
   estimateThetaFromD1Knowledge,
@@ -261,10 +262,10 @@ describe("epub-reader (Kindle E-ink)", () => {
     });
 
     it("define presupuestos recalibrados y multiplicadores de margen acordes a Kindle E-ink", () => {
-      expect(KINDLE_PAGE_BUDGETS.sm).toEqual({ standard: 1060, pageZero: 875 });
-      expect(KINDLE_PAGE_BUDGETS.md).toEqual({ standard: 830, pageZero: 690 });
-      expect(KINDLE_PAGE_BUDGETS.lg).toEqual({ standard: 625, pageZero: 495 });
-      expect(KINDLE_PAGE_BUDGETS.xl).toEqual({ standard: 460, pageZero: 360 });
+      expect(KINDLE_PAGE_BUDGETS.sm).toEqual({ standard: 1180, pageZero: 970 });
+      expect(KINDLE_PAGE_BUDGETS.md).toEqual({ standard: 920, pageZero: 760 });
+      expect(KINDLE_PAGE_BUDGETS.lg).toEqual({ standard: 690, pageZero: 560 });
+      expect(KINDLE_PAGE_BUDGETS.xl).toEqual({ standard: 510, pageZero: 400 });
       expect(BLOCK_BREAK_PENALTY).toBe(22);
       expect(PARAGRAPH_MODE_BREAK_PENALTY).toBe(32);
       expect(KINDLE_MARGIN_MULTIPLIERS).toEqual({ sm: 1.05, md: 1.0, lg: 0.90 });
@@ -1013,6 +1014,61 @@ describe("epub-reader (Kindle E-ink)", () => {
         expect(typeof thetaEn).toBe("number");
         expect(Number.isFinite(thetaEn)).toBe(true);
       });
+    });
+  });
+
+  describe("applyHighlights", () => {
+    it("envuelve el pasaje exacto en <mark class=\"hl\">", () => {
+      expect(applyHighlights("<p>Hola mundo cruel</p>", ["mundo cruel"])).toBe(
+        '<p>Hola <mark class="hl">mundo cruel</mark></p>',
+      );
+    });
+
+    it("marca todas las ocurrencias del pasaje", () => {
+      const out = applyHighlights("<p>el mar el mar</p>", ["el mar"]);
+      expect(out.match(/<mark class="hl">/g)).toHaveLength(2);
+    });
+
+    it("no anida marcas con pasajes duplicados o solapados", () => {
+      const out = applyHighlights("<p>the quick brown fox</p>", [
+        "quick brown",
+        "quick",
+        "quick brown",
+      ]);
+      expect(out.match(/<mark class="hl">/g)).toHaveLength(1);
+      expect(out.match(/<\/mark>/g)).toHaveLength(1);
+      expect(out).toContain('<mark class="hl">quick brown</mark>');
+    });
+
+    it("ignora pasajes de menos de 4 caracteres y listas vacías", () => {
+      const html = "<p>el mar</p>";
+      expect(applyHighlights(html, ["el"])).toBe(html);
+      expect(applyHighlights(html, [])).toBe(html);
+      expect(applyHighlights(html, ["   "])).toBe(html);
+    });
+
+    it("no cruza etiquetas HTML", () => {
+      const html = '<p>uno <b>dos tres</b> cuatro</p>';
+      expect(applyHighlights(html, ["uno dos"])).toBe(html);
+      expect(applyHighlights(html, ["dos tres"])).toBe(
+        '<p>uno <b><mark class="hl">dos tres</mark></b> cuatro</p>',
+      );
+    });
+
+    it("tolera entidades HTML donde la selección trae el carácter literal", () => {
+      expect(applyHighlights("<p>Tom &amp; Jerry</p>", ["Tom & Jerry"])).toBe(
+        '<p><mark class="hl">Tom &amp; Jerry</mark></p>',
+      );
+      expect(applyHighlights("<p>hola&nbsp;mundo</p>", ["hola mundo"])).toBe(
+        '<p><mark class="hl">hola&nbsp;mundo</mark></p>',
+      );
+    });
+
+    it("respeta mayúsculas y caracteres especiales literales", () => {
+      expect(applyHighlights("<p>hola</p>", ["Hola"])).toBe("<p>hola</p>");
+      expect(applyHighlights("<p>a+b = c</p>", ["a+b = c"])).toBe(
+        '<p><mark class="hl">a+b = c</mark></p>',
+      );
     });
   });
 });

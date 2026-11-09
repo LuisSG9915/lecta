@@ -970,11 +970,11 @@ export function kindleWidthScale(w: number): number {
 // medida en poesía sugería ~0.73; en prosa real el desborde es menor) — queda
 // pendiente afinar con la cookie lecta_k_vp de dispositivos reales.
 export const KINDLE_PAGE_BUDGETS: Record<KindleFontSize, { standard: number; pageZero: number }> = {
-  sm: { standard: 1060, pageZero: 875 },
-  md: { standard: 830, pageZero: 690 },
-  lg: { standard: 625, pageZero: 495 },
-  xl: { standard: 460, pageZero: 360 },
-  xxl: { standard: 395, pageZero: 305 },
+  sm: { standard: 1180, pageZero: 970 },
+  md: { standard: 920, pageZero: 760 },
+  lg: { standard: 690, pageZero: 560 },
+  xl: { standard: 510, pageZero: 400 },
+  xxl: { standard: 435, pageZero: 340 },
 };
 
 export const BLOCK_BREAK_PENALTY = 22;
@@ -1442,3 +1442,78 @@ export function selectKindleChapterPrimingWords(
     .slice(0, maxWords);
 }
 
+
+const HIGHLIGHT_ENTITY_ALT: Record<string, string> = {
+  "&": "&(?:amp;)?",
+  '"': '(?:"|&quot;|&#34;|&#x22;)',
+  "'": "(?:'|&apos;|&#39;|&#x27;)",
+};
+
+function highlightPatternFor(passage: string): RegExp | null {
+  const trimmed = (passage || "").trim();
+  if (trimmed.length < 4) return null;
+  const words = trimmed.split(/\s+/).filter(Boolean).map((w) => {
+    const escaped = w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    // La selección guarda el carácter literal; el HTML puede traer la entidad.
+    return escaped.replace(/[&"']/g, (ch) => HIGHLIGHT_ENTITY_ALT[ch] ?? ch);
+  });
+  if (words.length === 0) return null;
+  try {
+    return new RegExp(words.join("(?:\\s+|&nbsp;|&#160;|&#xA0;)"), "g");
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Envuelve en <mark class="hl"> las ocurrencias de los pasajes resaltados
+ * por el usuario dentro del HTML del capítulo (solo nodos de texto).
+ * Los rangos se calculan sobre el texto original y se fusionan antes de
+ * envolver, así pasajes duplicados o solapados no anidan <mark>.
+ */
+export function applyHighlights(html: string, passages: string[]): string {
+  if (!passages || passages.length === 0) return html;
+  const patterns: RegExp[] = [];
+  const seen = new Set<string>();
+  for (const passage of passages) {
+    const key = (passage || "").trim();
+    if (key.length < 4 || seen.has(key)) continue;
+    seen.add(key);
+    const pattern = highlightPatternFor(passage);
+    if (pattern) patterns.push(pattern);
+  }
+  if (patterns.length === 0) return html;
+  const tokens = html.split(/(<[^>]+>)/g);
+  for (let i = 0; i < tokens.length; i += 2) {
+    const text = tokens[i];
+    if (!text) continue;
+    const ranges: Array<[number, number]> = [];
+    for (const pattern of patterns) {
+      pattern.lastIndex = 0;
+      let match: RegExpExecArray | null;
+      while ((match = pattern.exec(text)) !== null) {
+        ranges.push([match.index, match.index + match[0].length]);
+        if (match[0].length === 0) pattern.lastIndex += 1;
+      }
+    }
+    if (ranges.length === 0) continue;
+    ranges.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    const merged: Array<[number, number]> = [];
+    for (const [start, end] of ranges) {
+      const last = merged[merged.length - 1];
+      if (last && start <= last[1]) {
+        last[1] = Math.max(last[1], end);
+      } else {
+        merged.push([start, end]);
+      }
+    }
+    let out = "";
+    let pos = 0;
+    for (const [start, end] of merged) {
+      out += text.slice(pos, start) + `<mark class="hl">${text.slice(start, end)}</mark>`;
+      pos = end;
+    }
+    tokens[i] = out + text.slice(pos);
+  }
+  return tokens.join("");
+}
