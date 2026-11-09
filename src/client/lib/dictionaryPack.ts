@@ -41,12 +41,12 @@ export const DICTIONARY_PACKS: Record<DictLanguage, DictionaryPackInfo> = {
     forms: 336_248,
   },
   en: {
-    url: "/dict/dict-en-v2.bin",
-    sha256: "5f4b14d7ee83318ddbe22bfef9accef9ce02cd17166eb1c98e1125301ac43aa7",
-    bytes: 501_567,
-    version: 2,
-    lemmas: 15_233,
-    forms: 49_155,
+    url: "/dict/dict-en-v3.bin",
+    sha256: "b114e32134bdbc9ab119c2d47e9d397056b8a72758f3a401b484fafdb36ef825",
+    bytes: 514_972,
+    version: 3,
+    lemmas: 15_611,
+    forms: 49_304,
   },
 };
 

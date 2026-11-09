@@ -35,7 +35,7 @@ import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
 import pg from "pg";
 
-const VERSION = 2;
+const VERSION = 3;
 const LANG = process.argv
   .map((arg) => /^--lang=([a-z]{2})$/.exec(arg)?.[1])
   .find(Boolean) ?? "es";
