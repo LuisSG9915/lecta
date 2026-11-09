@@ -26,6 +26,14 @@ test-results/
 playwright-report/
 coverage/
 
+# Screenshots de capturas de pantalla locales
+.openchamber/screenshots/
+
 # MCP: artefactos de compilación y caché local del modelo TTS
 mcp/dist/
 .cache/
+
+# Artefactos del enriquecimiento del núcleo inglés
+scripts/.enrich-english-core.progress.json
+scripts/.enrich-english-ia.progress.json
+src/shared/english-core-lexicon.generated.ts

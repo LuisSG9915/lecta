@@ -9,6 +9,7 @@ import {
   type WordMeaning,
 } from "./idb";
 import type { LexiconEntry } from "../../shared/lexicon";
+import { generateLookupCandidates } from "../../shared/word-form";
 export type { LexiconEntry };
 
 export type LookupResult =
@@ -55,10 +56,13 @@ export function lookupWordInMemory(
       ? sentenceOrLang
       : "es";
   const norm = form.trim().toLowerCase();
-  const memKey = `${language}:${norm}`;
-  const memEntries = lexiconMemoryCache.get(memKey) ?? lexiconMemoryCache.get(norm);
-  if (memEntries && memEntries.length > 0) {
-    return enrichResult({ ok: true, found: true, entries: memEntries, offline: true }, form);
+  const candidates = generateLookupCandidates(norm, language);
+  for (const cand of candidates) {
+    const memKey = `${language}:${cand}`;
+    const memEntries = lexiconMemoryCache.get(memKey) ?? lexiconMemoryCache.get(cand);
+    if (memEntries && memEntries.length > 0) {
+      return enrichResult({ ok: true, found: true, entries: memEntries, offline: true }, form);
+    }
   }
   return null;
 }
@@ -68,33 +72,51 @@ export function lookupWordInMemory(
 async function lookupDictionaryPackLayer(form: string, language: string): Promise<LexiconEntry | null> {
   if (language !== "es" && language !== "en") return null;
   const { lookupDictionaryPack } = await import("./dictionaryPack");
-  return lookupDictionaryPack(form, language);
+  for (const cand of generateLookupCandidates(form, language)) {
+    const entry = await lookupDictionaryPack(cand, language);
+    if (entry) return entry;
+  }
+  return null;
 }
 
 async function getCalibrationBankFallbackEntry(form: string, language: string): Promise<LexiconEntry | null> {
   const { calibrationFallbackDefinition, calibrationBankZipf } = await import("../../shared/calibration-bank");
-  const normalized = form.trim().toLowerCase();
-  const def = calibrationFallbackDefinition(normalized, language);
-  if (!def) return null;
-  return {
-    entryId: null,
-    lemma: normalized,
-    pos: null,
-    freqRank: null,
-    zipf: calibrationBankZipf(normalized, language),
-    senses: [
-      {
-        definition: def,
-        example: null,
-        senseOrder: 1,
-      },
-    ],
-  };
+  for (const cand of generateLookupCandidates(form, language)) {
+    const normalized = cand.trim().toLowerCase();
+    const def = calibrationFallbackDefinition(normalized, language);
+    if (!def) continue;
+    return {
+      entryId: null,
+      lemma: normalized,
+      pos: null,
+      freqRank: null,
+      zipf: calibrationBankZipf(normalized, language),
+      senses: [
+        {
+          definition: def,
+          example: null,
+          senseOrder: 1,
+        },
+      ],
+    };
+  }
+  return null;
 }
 
 async function resolveEnglishCoreEntry(form: string): Promise<LexiconEntry | null> {
   const { getEnglishCoreEntry } = await import("../../shared/english-core-lexicon");
-  return getEnglishCoreEntry(form);
+  for (const cand of generateLookupCandidates(form, "en")) {
+    const entry = getEnglishCoreEntry(cand);
+    if (entry) return entry;
+  }
+  return null;
+}
+
+async function normalizeLookupForm(form: string): Promise<string> {
+  return form
+    .trim()
+    .toLowerCase()
+    .replace(/^[^\p{L}]+|[^\p{L}]+$/gu, "");
 }
 
 async function lookupWordRaw(
@@ -102,7 +124,11 @@ async function lookupWordRaw(
   language = "es",
   scope?: DbScope,
 ): Promise<LookupResult> {
-  const normalized = form.trim().toLowerCase();
+  const normalized = await normalizeLookupForm(form);
+  if (!normalized) {
+    return { ok: true, found: false, entries: [] };
+  }
+
   const memKey = `${language}:${normalized}`;
 
   // 1. Resolución ultra-rápida (0 ms) en caché de memoria
@@ -150,7 +176,7 @@ async function lookupWordRaw(
     return { ok: true, found: true, entries: [bankFallback], offline: true };
   }
 
-  const englishCore = await resolveEnglishCoreEntry(form);
+  const englishCore = await resolveEnglishCoreEntry(normalized);
   if (englishCore) {
     lexiconMemoryCache.set(memKey, [englishCore]);
     return { ok: true, found: true, entries: [englishCore], offline: true };
@@ -164,15 +190,34 @@ async function lookupWordRaw(
     };
   }
 
-  const params = new URLSearchParams({ form, lang: language });
+  const params = new URLSearchParams({ form: normalized, lang: language });
   try {
     const response = await accountFetch(`/api/lexicon/lookup?${params}`, undefined, scope);
     if (response.status === 404) {
-      const bankFallback = await getCalibrationBankFallbackEntry(form, language);
+      for (const cand of generateLookupCandidates(normalized, language).slice(1, 6)) {
+        try {
+          const candResponse = await accountFetch(
+            `/api/lexicon/lookup?${new URLSearchParams({ form: cand, lang: language })}`,
+            undefined,
+            scope,
+          );
+          if (candResponse.status === 404) continue;
+          const candData = (await candResponse.json()) as LexiconResponseBody;
+          const candEntries = (candData.entries as LexiconEntry[]) ?? [];
+          if (candResponse.ok && candData.found && candEntries.length > 0) {
+            lexiconMemoryCache.set(memKey, candEntries);
+            void saveCachedLexicon(language, form, candEntries, scope).catch(() => undefined);
+            return { ok: true, found: true, entries: candEntries };
+          }
+        } catch {
+          // continuar
+        }
+      }
+      const bankFallback = await getCalibrationBankFallbackEntry(normalized, language);
       if (bankFallback) {
         return { ok: true, found: true, entries: [bankFallback], offline: true };
       }
-      const englishCore = await resolveEnglishCoreEntry(form);
+      const englishCore = await resolveEnglishCoreEntry(normalized);
       if (englishCore) {
         return { ok: true, found: true, entries: [englishCore], offline: true };
       }
@@ -184,11 +229,11 @@ async function lookupWordRaw(
       if (cached && cached.length > 0) {
         return { ok: true, found: true, entries: cached, offline: true };
       }
-      const bankFallback = await getCalibrationBankFallbackEntry(form, language);
+      const bankFallback = await getCalibrationBankFallbackEntry(normalized, language);
       if (bankFallback) {
         return { ok: true, found: true, entries: [bankFallback], offline: true };
       }
-      const englishCore = await resolveEnglishCoreEntry(form);
+      const englishCore = await resolveEnglishCoreEntry(normalized);
       if (englishCore) {
         return { ok: true, found: true, entries: [englishCore], offline: true };
       }
@@ -201,11 +246,33 @@ async function lookupWordRaw(
       void saveCachedLexicon(language, form, entries, scope).catch(() => undefined);
       return { ok: true, found, entries };
     }
+    // La forma exacta no está en el catálogo: probar candidatos (flexiones)
+    // para cubrir plurales, gerundios, participios, etc., especialmente en
+    // inglés, donde la tabla de formas puede no incluir todas las variantes.
+    for (const cand of generateLookupCandidates(normalized, language).slice(1, 6)) {
+      try {
+        const candResponse = await accountFetch(
+          `/api/lexicon/lookup?${new URLSearchParams({ form: cand, lang: language })}`,
+          undefined,
+          scope,
+        );
+        if (candResponse.status === 404) continue;
+        const candData = (await candResponse.json()) as LexiconResponseBody;
+        const candEntries = (candData.entries as LexiconEntry[]) ?? [];
+        if (candResponse.ok && candData.found && candEntries.length > 0) {
+          lexiconMemoryCache.set(memKey, candEntries);
+          void saveCachedLexicon(language, form, candEntries, scope).catch(() => undefined);
+          return { ok: true, found: true, entries: candEntries };
+        }
+      } catch {
+        // continuar con el siguiente candidato
+      }
+    }
     const bankFallback = await getCalibrationBankFallbackEntry(form, language);
     if (bankFallback) {
       return { ok: true, found: true, entries: [bankFallback], offline: true };
     }
-    const englishCore = await resolveEnglishCoreEntry(form);
+    const englishCore = await resolveEnglishCoreEntry(normalized);
     if (englishCore) {
       return { ok: true, found: true, entries: [englishCore], offline: true };
     }
@@ -239,7 +306,7 @@ async function lookupWordRaw(
     if (bankFallback) {
       return { ok: true, found: true, entries: [bankFallback], offline: true };
     }
-    const englishCore = await resolveEnglishCoreEntry(form);
+    const englishCore = await resolveEnglishCoreEntry(normalized);
     if (englishCore) {
       return { ok: true, found: true, entries: [englishCore], offline: true };
     }

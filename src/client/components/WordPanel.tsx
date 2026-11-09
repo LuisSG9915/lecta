@@ -1097,7 +1097,15 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
             ) : !canExplain ? (
               <p className="word-card-context-fallback">
                 Esta palabra no está en el diccionario. Inicia sesión para que la
-                IA la explique.
+                IA la explique.{" "}
+                <a
+                  className="word-card-retry-link"
+                  href={`https://es.wiktionary.org/wiki/${encodeURIComponent(cleanWord)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Buscar en Wiktionary
+                </a>
               </p>
             ) : meaningStatus === "error" ? (
               <p className="word-card-context-fallback">
@@ -1109,10 +1117,35 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
                 >
                   Reintentar
                 </button>
+                {" · "}
+                <a
+                  className="word-card-retry-link"
+                  href={`https://es.wiktionary.org/wiki/${encodeURIComponent(cleanWord)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Wiktionary
+                </a>
               </p>
             ) : (
               <p className="word-card-context-fallback">
-                Esta palabra no está en el diccionario.
+                Esta palabra no está en el diccionario.{" "}
+                <button
+                  type="button"
+                  className="word-card-retry-link"
+                  onClick={() => requestAiMeaning(localEntry?.lemma)}
+                >
+                  Definir con IA
+                </button>
+                {" · "}
+                <a
+                  className="word-card-retry-link"
+                  href={`https://es.wiktionary.org/wiki/${encodeURIComponent(cleanWord)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Wiktionary
+                </a>
               </p>
             )}
 

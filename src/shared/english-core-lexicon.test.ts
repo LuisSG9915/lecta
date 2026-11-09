@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { ENGLISH_CORE_LEXICON, getEnglishCoreEntry } from "./english-core-lexicon";
 
 describe("ENGLISH_CORE_LEXICON", () => {
-  it("contiene más de 250 palabras literarias y narrativas en inglés con definiciones en español", () => {
+  it("contiene más de 2000 palabras literarias y narrativas en inglés con definiciones en español", () => {
     const keys = Object.keys(ENGLISH_CORE_LEXICON);
-    expect(keys.length).toBeGreaterThanOrEqual(250);
+    expect(keys.length).toBeGreaterThanOrEqual(2000);
 
     for (const key of keys) {
       const item = ENGLISH_CORE_LEXICON[key];
