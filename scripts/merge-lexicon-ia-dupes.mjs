@@ -23,7 +23,7 @@
 // Antes de escribir hace un respaldo JSON en artifacts/lexicon-merge-backup-*.json.
 
 import pg from "pg";
-import { writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import zlib from "node:zlib";
 import { createReadStream } from "node:fs";
 import readline from "node:readline";
@@ -31,8 +31,13 @@ import readline from "node:readline";
 const args = process.argv.slice(2);
 const apply = args.includes("--apply");
 const dbArg = args.find((a) => a.startsWith("--db="))?.split("=")[1];
+const proposalPath = args.find((a) => a.startsWith("--proposal="))?.split("=")[1];
 if (dbArg && !["dev", "prod"].includes(dbArg)) {
   console.error("--db debe ser dev o prod");
+  process.exit(1);
+}
+if (proposalPath && !existsSync(proposalPath)) {
+  console.error(`No existe la propuesta: ${proposalPath}`);
   process.exit(1);
 }
 
@@ -167,6 +172,28 @@ async function backupPairs(client, pairs) {
   return out;
 }
 
+// Modo propuesta: pares 'merge' (target existe) + updates 'update' (target no existe),
+// resueltos contra el estado actual de la base.
+async function findPairsFromProposal(client, proposal) {
+  const { rows: all } = await client.query(
+    `SELECT id::text AS id, lemma, pos FROM lexicon_entries WHERE language = 'en'`,
+  );
+  const byPair = new Map(all.map((r) => [`${r.lemma}::${r.pos ?? ""}`, r.id]));
+  const pairs = [];
+  const updates = [];
+  const skipped = [];
+  for (const item of proposal) {
+    if (item.decision === "merge") {
+      const tId = byPair.get(`${item.lemma}::${item.target}`);
+      if (tId && tId !== item.id) pairs.push({ eId: item.id, tId, lemma: item.lemma, from: "sustantivo", to: item.target, source: item.source });
+      else skipped.push(`${item.lemma}::${item.target}`);
+    } else if (item.decision === "update") {
+      updates.push({ id: item.id, lemma: item.lemma, target: item.target });
+    }
+  }
+  return { pairs, updates, skipped };
+}
+
 async function verify(client) {
   const q = async (sql) => (await client.query(sql)).rows[0];
   return {
@@ -177,8 +204,9 @@ async function verify(client) {
   };
 }
 
-const dumpPos = await loadDumpPos();
-console.log(`dump: ${dumpPos.size} lemas`);
+const dumpPos = proposalPath ? null : await loadDumpPos();
+if (dumpPos) console.log(`dump: ${dumpPos.size} lemas`);
+const proposal = proposalPath ? JSON.parse(readFileSync(proposalPath, "utf8")) : null;
 
 const targets = apply && dbArg ? [{ name: dbArg === "dev" ? "lecta_dev" : "lecta", url: dbArg === "dev" ? devUrl : prodUrl }]
   : [{ name: "lecta_dev", url: devUrl }, { name: "lecta", url: prodUrl }];
@@ -188,17 +216,20 @@ for (const t of targets) {
   await client.connect();
   try {
     const before = await verify(client);
-    const pairs = await findPairs(client, dumpPos);
-    console.log(`[${t.name}] pares a fusionar: ${pairs.length} | entries ia/ai: ${before.iaAiEntries}`);
-    if (!pairs.length) continue;
+    const { pairs, updates, skipped } = proposal
+      ? await findPairsFromProposal(client, proposal)
+      : { pairs: await findPairs(client, dumpPos), updates: [], skipped: [] };
+    if (skipped?.length) console.log(`[${t.name}] omitidos (target ya no existe): ${skipped.length}`);
+    console.log(`[${t.name}] pares a fusionar: ${pairs.length} | updates de pos: ${updates.length} | entries ia/ai: ${before.iaAiEntries}`);
+    if (!pairs.length && !updates.length) continue;
     if (!apply) { console.log(`[${t.name}] dry-run (sin escritura).`); continue; }
 
-    const backup = await backupPairs(client, pairs);
+    const backup = await backupPairs(client, [...pairs, ...updates.map((u) => ({ eId: u.id }))]);
     const file = `artifacts/lexicon-merge-backup-${t.name}-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
     writeFileSync(file, JSON.stringify(backup));
     console.log(`[${t.name}] respaldo: ${file}`);
 
-    const stats = { sensesMoved: 0, sensesDup: 0, formsMoved: 0, formsDup: 0, entriesDeleted: 0 };
+    const stats = { sensesMoved: 0, sensesDup: 0, formsMoved: 0, formsDup: 0, entriesDeleted: 0, updatesApplied: 0 };
     const CHUNK = 40;
     for (let i = 0; i < pairs.length; i += CHUNK) {
       const slice = pairs.slice(i, i + CHUNK);
@@ -211,6 +242,17 @@ for (const t of targets) {
         throw new Error(`chunk ${i / CHUNK} falló: ${err.message}`, { cause: err });
       }
       if ((i / CHUNK) % 5 === 0) console.log(`[${t.name}] ${i + slice.length}/${pairs.length} pares…`);
+    }
+
+    // Updates de POS sin target existente (guardia NOT EXISTS + idempotente).
+    for (const u of updates) {
+      const res = await client.query(
+        `UPDATE lexicon_entries E SET pos = $2
+         WHERE E.id = $1::int8 AND E.language = 'en' AND E.pos = 'sustantivo'
+           AND NOT EXISTS (SELECT 1 FROM lexicon_entries x
+                           WHERE x.language = 'en' AND x.lemma = E.lemma AND x.pos = $2 AND x.id <> E.id)`,
+        [u.id, u.target]);
+      stats.updatesApplied += res.rowCount ?? 0;
     }
     const after = await verify(client);
     console.log(`[${t.name}] stats:`, JSON.stringify(stats));
