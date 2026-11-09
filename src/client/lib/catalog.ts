@@ -21,6 +21,9 @@ export type CatalogBook = {
   title: string;
   author: string;
   language?: string;
+  // Sinopsis corta curada (≤320 caracteres) para la vista previa del
+  // catálogo; viaja en `catalog/index.json`, nunca texto del EPUB.
+  synopsis?: string;
   issued?: string | null;
   subjects?: string[];
   wordCount?: number;
@@ -51,7 +54,7 @@ export type CatalogIndex = {
 // re-analiza — p. ej. `en` pasa de 0 a 1 al cargar el catálogo inglés.
 export const LEXICON_CATALOG_REV: Record<string, number> = {
   es: 1,
-  en: 2,
+  en: 4,
 };
 
 export type BookVocabManifest = {
@@ -232,6 +235,16 @@ export const CURATED_MOOD_TAGS: Record<string, string[]> = {
   "navidad-montanas": ["Ideal para sesiones de 10 min", "Costumbrismo"],
   "cuentos-mi-tiempo": ["Ideal para sesiones de 10 min", "Cuentos"],
   "cuentos-ingenuos": ["Ideal para sesiones de 10 min", "Narrativa Breve"],
+  "alice-wonderland": ["Fantasía", "Clásico Universal"],
+  "pride-prejudice": ["Novela de Época", "Clásico Universal"],
+  "picture-dorian-gray": ["Gótico", "Clásico Universal"],
+  "happy-prince-tales": ["Cuentos y teatro", "Clásico Universal"],
+  frankenstein: ["Gótico", "Ciencia ficción", "Vocabulario Elevado"],
+  "christmas-carol": ["Cuentos y teatro", "Navidad", "Clásico Universal"],
+  "jekyll-hyde": ["Gótico", "Ciencia ficción", "Clásico Universal"],
+  "treasure-island": ["Aventura", "Clásico Universal"],
+  "call-of-the-wild": ["Aventura", "Naturaleza", "Clásico Universal"],
+  "tom-sawyer": ["Aventura", "Humor", "Clásico Universal"],
 };
 
 export function getBookMoodTags(book: CatalogBook): string[] {
@@ -243,13 +256,40 @@ export function getBookMoodTags(book: CatalogBook): string[] {
   } else if (book.wordCount && book.wordCount > 90_000) {
     tags.push("Vocabulario Elevado");
   }
-  if (book.subjects?.some((s) => /poes[ií]a|modernism/i.test(s))) {
+  const haystack = `${book.title} ${(book.subjects ?? []).join(" ")}`.toLowerCase();
+  if (/poes[ií]a|poetry|poem|modernism/.test(haystack)) {
     tags.push("Poesía y Modernismo");
+  }
+  // Cuentos, relatos, teatro y obras breves: «short stories» y «tales»
+  // sí; «stories» a secas no (p. ej. «Children's stories» de Alicia).
+  if (
+    /cuento|relato|teatro|drama|comed|traged|short stor|\btales?\b|\bplays?\b|theatre|theater/.test(
+      haystack,
+    )
+  ) {
+    tags.push("Cuentos y teatro");
   }
   if (tags.length === 0) {
     tags.push("Clásico Literario");
   }
   return tags;
+}
+
+// Texto editorial corto para la vista previa: la sinopsis curada del
+// índice manda; si el libro no la trae se arma una nota con época,
+// extensión y etiquetas ya calculadas (sin inventar argumentos).
+export function describeCatalogBook(book: CatalogBook): string {
+  const synopsis = book.synopsis?.trim();
+  if (synopsis) return synopsis;
+  const tags = getBookMoodTags(book).filter((tag) => tag !== "Clásico Literario");
+  const year = book.issued?.match(/\d{4}/)?.[0];
+  const parts = [
+    year ? `Publicado en ${year}` : null,
+    formatBookLength(book.wordCount),
+    ...tags,
+  ].filter(Boolean);
+  if (parts.length) return `${parts.join(" · ")}.`;
+  return "Clásico de dominio público en el catálogo de Lecta.";
 }
 
 // Descarga el EPUB del catálogo y lo devuelve como File listo para el

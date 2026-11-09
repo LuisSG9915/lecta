@@ -501,5 +501,128 @@ describe("DiscoverRail", () => {
     expect(fetchVocab).toHaveBeenCalledTimes(1);
     expect(badges()).toContain("~100%");
   });
+
+  it("filtra por idioma y por ritmo de afinidad", async () => {
+    const books = [
+      book("es-1", { title: "Libro en español", language: "es" }),
+      book("en-1", { title: "Book in English", language: "en" }),
+    ];
+    await act(async () => {
+      root.render(
+        h(DiscoverRail, {
+          library: [],
+          onOpen: vi.fn(),
+          onGet: vi.fn(),
+          fetchIndex: async () => index(books),
+          fetchVocab: async () => null,
+          loadInputs: async () => null,
+        }),
+      );
+    });
+
+    const langGroup = host.querySelector<HTMLElement>(
+      '[aria-label="Filtrar por idioma"]',
+    )!;
+    const enPill = [...langGroup.querySelectorAll("button")].find(
+      (b) => b.textContent === "EN",
+    )!;
+    await act(async () => enPill.click());
+    expect(titles()).toEqual(["Book in English"]);
+
+    const allLang = [...langGroup.querySelectorAll("button")].find(
+      (b) => b.textContent === "Todos",
+    )!;
+    await act(async () => allLang.click());
+
+    const paceGroup = host.querySelector<HTMLElement>(
+      '[aria-label="Filtrar por ritmo"]',
+    )!;
+    const supported = [...paceGroup.querySelectorAll("button")].find(
+      (b) => b.textContent === "Con apoyo",
+    )!;
+    await act(async () => supported.click());
+    expect(titles()).toEqual(["Book in English"]);
+
+    const ideal = [...paceGroup.querySelectorAll("button")].find(
+      (b) => b.textContent === "Ideal para tu ritmo",
+    )!;
+    await act(async () => ideal.click());
+    expect(titles()).toEqual(["Libro en español"]);
+  });
+
+  it("abre la hoja de vista previa y obtiene el libro desde ella", async () => {
+    const onGet = vi.fn(async () => undefined);
+    const books = [
+      book("a", {
+        title: "Vista Previa",
+        author: "Autor X",
+        language: "es",
+        synopsis: "Sinopsis de prueba.",
+        wordCount: 36_000,
+      }),
+    ];
+    await act(async () => {
+      root.render(
+        h(DiscoverRail, {
+          library: [],
+          onOpen: vi.fn(),
+          onGet,
+          fetchIndex: async () => index(books),
+          fetchVocab: async () => null,
+          loadInputs: async () => null,
+        }),
+      );
+    });
+
+    const coverButton = host.querySelector<HTMLButtonElement>(
+      ".discover-cover--action",
+    )!;
+    await act(async () => coverButton.click());
+
+    const sheet = host.querySelector(".sheet");
+    expect(sheet).toBeTruthy();
+    expect(sheet?.textContent).toContain("Vista Previa");
+    expect(sheet?.textContent).toContain("Autor X");
+    expect(sheet?.textContent).toContain("Sinopsis de prueba.");
+    expect(sheet?.textContent).toContain("~3 h");
+
+    const obtain = [...sheet!.querySelectorAll("button")].find(
+      (b) => b.textContent === "Obtener libro",
+    )!;
+    await act(async () => obtain.click());
+    expect(onGet).toHaveBeenCalledWith(books[0]);
+    expect(host.querySelector(".sheet")).toBeNull();
+  });
+
+  it("desde la vista previa ofrece «Abrir» cuando el libro ya está en la estantería", async () => {
+    const owned = shelfItem("abc123");
+    const onOpen = vi.fn();
+    const books = [book("a", { title: "Ya lo tengo", epubSha256: "abc123" })];
+    await act(async () => {
+      root.render(
+        h(DiscoverRail, {
+          library: [owned],
+          onOpen,
+          onGet: vi.fn(),
+          fetchIndex: async () => index(books),
+          fetchVocab: async () => null,
+          loadInputs: async () => null,
+        }),
+      );
+    });
+
+    const titleButton = host.querySelector<HTMLButtonElement>(
+      ".discover-title--action",
+    )!;
+    await act(async () => titleButton.click());
+
+    const sheet = host.querySelector(".sheet")!;
+    const open = [...sheet.querySelectorAll("button")].find(
+      (b) => b.textContent === "Abrir",
+    )!;
+    await act(async () => open.click());
+    expect(onOpen).toHaveBeenCalledWith(owned);
+    expect(host.querySelector(".sheet")).toBeNull();
+  });
 });
 

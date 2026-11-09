@@ -3,6 +3,7 @@ import { coverPalette } from "../lib/cover";
 import {
   catalogCoverUrl,
   catalogVocab,
+  describeCatalogBook,
   entriesByFormOf,
   formatBookLength,
   getBookAffinityBadge,
@@ -25,6 +26,7 @@ import {
   type CoverageInputs,
 } from "../lib/coverage";
 import { captureDbScope, type DbScope } from "../lib/idb";
+import Sheet from "./Sheet";
 import type { ShelfItem } from "./Shelf";
 
 // «Descubre»: el riel del catálogo público bajo la estantería. Nunca
@@ -67,10 +69,22 @@ type CoverageSource = {
 
 export const DISCOVER_MOOD_FILTERS = [
   "Todos",
+  "Cuentos y teatro",
   "Ideal para sesiones de 10 min",
   "Poesía y Modernismo",
   "Vocabulario Elevado",
 ];
+
+// «Ritmo» = la misma afinidad que pinta la tarjeta (cobertura medida si
+// ya llegó; si no, la dificultad/θ del idioma). El valor filtra por tono.
+export const DISCOVER_PACE_FILTERS = [
+  { value: "all", label: "Todo ritmo" },
+  { value: "relaxed", label: "Lectura relajada" },
+  { value: "ideal", label: "Ideal para tu ritmo" },
+  { value: "supported", label: "Con apoyo" },
+] as const;
+
+type PaceFilter = (typeof DISCOVER_PACE_FILTERS)[number]["value"];
 
 export default function DiscoverRail({
   library,
@@ -92,10 +106,15 @@ export default function DiscoverRail({
   const [errorId, setErrorId] = useState<string | null>(null);
   const [coverBroken, setCoverBroken] = useState<Set<string>>(new Set());
   const [activeFilter, setActiveFilter] = useState<string>("Todos");
+  const [languageFilter, setLanguageFilter] = useState<string | null>(null);
+  const [paceFilter, setPaceFilter] = useState<PaceFilter>("all");
+  const [previewBook, setPreviewBook] = useState<CatalogBook | null>(null);
+  const [previewExamples, setPreviewExamples] = useState<string[]>([]);
   const [query, setQuery] = useState("");
   const [expanded, setExpanded] = useState(false);
   const cancelledRef = useRef(false);
   const sourcesRef = useRef(new Map<string, CoverageSource>());
+  const inputsByLangRef = useRef(new Map<string, CoverageInputs>());
   const attemptedRef = useRef(new Set<string>());
   const inputsLoaderRef = useRef<{
     version: number;
@@ -152,11 +171,46 @@ export default function DiscoverRail({
     return books.filter(
       (b) =>
         (activeFilter === "Todos" || getBookMoodTags(b).includes(activeFilter)) &&
+        (!languageFilter || coverageLanguageOf(b.language) === languageFilter) &&
         (!q ||
           normalizeSearchText(b.title).includes(q) ||
           normalizeSearchText(b.author).includes(q)),
     );
-  }, [books, activeFilter, query]);
+  }, [books, activeFilter, languageFilter, query]);
+
+  // Idiomas presentes en TODO el índice (no solo lo filtrado): las
+  // píldoras de idioma solo aparecen cuando hay más de uno.
+  const catalogLanguages = useMemo(() => {
+    if (!books) return [];
+    return [
+      ...new Set(books.map((book) => coverageLanguageOf(book.language))),
+    ].sort();
+  }, [books]);
+
+  const thetaByLang = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const lang of catalogLanguages) map.set(lang, getLanguageTheta(lang));
+    return map;
+  }, [catalogLanguages]);
+
+  // Mismo criterio que la tarjeta: cobertura medida si el perfil la
+  // sostiene; si no, la dificultad/θ del idioma. Se usa para el filtro
+  // de ritmo sin duplicar la lógica de la insignia.
+  const affinityTone = useCallback(
+    (book: CatalogBook) => {
+      const lang = coverageLanguageOf(book.language);
+      const coverage = coverages.get(book.id);
+      const confidence = confidenceByLang.get(lang) ?? "low";
+      const value =
+        coverage && confidence !== "low" ? coverage.percent : book.difficulty;
+      return getBookAffinityBadge(
+        book.language || "es",
+        value,
+        thetaByLang.get(lang) ?? getLanguageTheta(lang),
+      ).tone;
+    },
+    [coverages, confidenceByLang, thetaByLang],
+  );
 
   // Solo se miden los libros que el lector puede ver: la franja del
   // riel o, al desplegar la cuadrícula, todo lo filtrado. El conjunto
@@ -192,6 +246,7 @@ export default function DiscoverRail({
         // se marca como intentado: si vocabVersion trae evidencia nueva,
         // este mismo libro vuelve a la cola y sí se mide.
         if (!inputs) continue;
+        inputsByLangRef.current.set(lang, inputs);
         if (!cancelledRef.current)
           setConfidenceByLang((prev) =>
             prev.get(lang) === inputs.confidence
@@ -250,6 +305,7 @@ export default function DiscoverRail({
         const inputs = await inputsFor(lang);
         if (cancelled) return;
         if (!inputs) continue;
+        inputsByLangRef.current.set(lang, inputs);
         if (!cancelledRef.current)
           setConfidenceByLang((prev) =>
             prev.get(lang) === inputs.confidence
@@ -300,24 +356,91 @@ export default function DiscoverRail({
     [baseFiltered],
   );
   const filtered = useMemo(
-    () => ordered.filter((book) => baseFilteredIds.has(book.id)),
-    [ordered, baseFilteredIds],
+    () =>
+      ordered.filter(
+        (book) =>
+          baseFilteredIds.has(book.id) &&
+          (paceFilter === "all" || affinityTone(book) === paceFilter),
+      ),
+    [ordered, baseFilteredIds, paceFilter, affinityTone],
   );
   const visible = expanded ? filtered : filtered.slice(0, DISCOVER_RAIL_LIMIT);
 
   if (!books) return null;
 
-  const get = async (book: CatalogBook) => {
+  const get = async (book: CatalogBook, closePreview = false) => {
     if (getting) return;
     setGetting(book.id);
     setErrorId(null);
     try {
       await onGet(book);
+      if (closePreview) setPreviewBook(null);
     } catch {
       if (!cancelledRef.current) setErrorId(book.id);
     } finally {
       if (!cancelledRef.current) setGetting(null);
     }
+  };
+
+  // Presentación compartida entre la tarjeta y la hoja de vista previa:
+  // una sola fuente para cobertura, afinidad, portada y datos duros.
+  const viewOf = (book: CatalogBook) => {
+    const coverage = coverages.get(book.id);
+    const owned = book.epubSha256
+      ? ownedByHash.get(book.epubSha256)
+      : undefined;
+    const lang = coverageLanguageOf(book.language);
+    const confidence = confidenceByLang.get(lang) ?? "low";
+    const palette = coverPalette(book.id);
+    const showCover = book.cover && !coverBroken.has(book.id);
+    const userTheta =
+      thetaByLang.get(lang) ?? getLanguageTheta(book.language || "es");
+    const affinity = getBookAffinityBadge(
+      book.language || "es",
+      coverage && confidence !== "low" ? coverage.percent : book.difficulty,
+      userTheta,
+    );
+    const facts = [
+      book.language?.slice(0, 2).toUpperCase(),
+      formatBookLength(book.wordCount),
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    return { coverage, owned, confidence, palette, showCover, affinity, facts };
+  };
+
+  // Lemas del Cuaderno presentes en el libro, solo si el manifiesto y
+  // el perfil ya están en memoria (la vista previa no baja nada). Lee
+  // refs: solo puede llamarse desde efectos/handlers, nunca en render.
+  const cuadernoExamples = (book: CatalogBook): string[] => {
+    const source = sourcesRef.current.get(book.id);
+    const inputs = inputsByLangRef.current.get(
+      coverageLanguageOf(book.language),
+    );
+    if (!source || !inputs) return [];
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const form of source.forms) {
+      for (const entry of source.entriesByForm[form] ?? []) {
+        const lemma = entry.lemma?.toLowerCase();
+        if (!lemma || seen.has(lemma)) continue;
+        if (inputs.saved.has(form) || inputs.saved.has(lemma)) {
+          seen.add(lemma);
+          out.push(entry.lemma);
+          if (out.length >= 5) return out;
+        }
+      }
+    }
+    return out;
+  };
+
+  const previewView = previewBook ? viewOf(previewBook) : null;
+
+  // Abre la vista previa calculando los ejemplos del Cuaderno en el
+  // handler: los refs ya están llenos cuando el lector toca la tarjeta.
+  const openPreview = (book: CatalogBook) => {
+    setPreviewExamples(cuadernoExamples(book));
+    setPreviewBook(book);
   };
 
   return (
@@ -337,6 +460,52 @@ export default function DiscoverRail({
             </button>
           ))}
         </div>
+      </div>
+
+      {catalogLanguages.length > 1 ? (
+        <div
+          className="discover-filters"
+          role="group"
+          aria-label="Filtrar por idioma"
+        >
+          <button
+            type="button"
+            className={`discover-filter-pill${languageFilter === null ? " discover-filter-pill--active" : ""}`}
+            aria-pressed={languageFilter === null}
+            onClick={() => setLanguageFilter(null)}
+          >
+            Todos
+          </button>
+          {catalogLanguages.map((lang) => (
+            <button
+              key={lang}
+              type="button"
+              className={`discover-filter-pill${languageFilter === lang ? " discover-filter-pill--active" : ""}`}
+              aria-pressed={languageFilter === lang}
+              onClick={() => setLanguageFilter(lang)}
+            >
+              {lang.toUpperCase()}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      <div
+        className="discover-filters"
+        role="group"
+        aria-label="Filtrar por ritmo"
+      >
+        {DISCOVER_PACE_FILTERS.map((filter) => (
+          <button
+            key={filter.value}
+            type="button"
+            className={`discover-filter-pill${paceFilter === filter.value ? " discover-filter-pill--active" : ""}`}
+            aria-pressed={paceFilter === filter.value}
+            onClick={() => setPaceFilter(filter.value)}
+          >
+            {filter.label}
+          </button>
+        ))}
       </div>
 
       <div className="discover-toolbar">
@@ -365,43 +534,28 @@ export default function DiscoverRail({
 
       <ul className={`discover-rail${expanded ? " discover-rail--grid" : ""}`}>
         {visible.map((book) => {
-          const coverage = coverages.get(book.id);
-          const owned = book.epubSha256
-            ? ownedByHash.get(book.epubSha256)
-            : undefined;
-          const confidence =
-            confidenceByLang.get(coverageLanguageOf(book.language)) ?? "low";
-          const palette = coverPalette(book.id);
-          const showCover = book.cover && !coverBroken.has(book.id);
-          const userTheta = getLanguageTheta(book.language || "es");
-          // Una sola etiqueta de nivel: la cobertura manda cuando el
-          // perfil la sostiene; si no, se usa la dificultad curada.
-          const affinity = getBookAffinityBadge(
-            book.language || "es",
-            coverage && confidence !== "low" ? coverage.percent : book.difficulty,
-            userTheta,
-          );
-          const facts = [
-            book.language?.slice(0, 2).toUpperCase(),
-            formatBookLength(book.wordCount),
-          ]
-            .filter(Boolean)
-            .join(" · ");
+          const { coverage, owned, palette, showCover, affinity, facts } =
+            viewOf(book);
           return (
             <li key={book.id} className="discover-book">
-              <div className="discover-cover">
+              <button
+                type="button"
+                className="discover-cover discover-cover--action"
+                onClick={() => openPreview(book)}
+                aria-label={`Ver vista previa de ${book.title}`}
+              >
                 {showCover ? (
                   <img
                     className="cover"
                     src={catalogCoverUrl(book.id)}
-                    alt={`Portada de ${book.title}`}
+                    alt=""
                     loading="lazy"
                     onError={() =>
                       setCoverBroken((prev) => new Set(prev).add(book.id))
                     }
                   />
                 ) : (
-                  <div
+                  <span
                     className="cover cover--generated"
                     role="img"
                     aria-label={`Portada de ${book.title}`}
@@ -418,7 +572,7 @@ export default function DiscoverRail({
                       <span className="cover-ornament" aria-hidden="true" />
                       <span className="cover-author">{book.author}</span>
                     </span>
-                  </div>
+                  </span>
                 )}
                 {coverage ? (
                   coverageIsReliable(coverage) ? (
@@ -437,7 +591,7 @@ export default function DiscoverRail({
                     </span>
                   )
                 ) : null}
-              </div>
+              </button>
               <div className="discover-meta">
                 {/* Una sola etiqueta por libro (la afinidad personalizada):
                     con dos o tres apiladas los títulos y botones «Obtener»
@@ -450,9 +604,14 @@ export default function DiscoverRail({
                 >
                   {affinity.label}
                 </span>
-                <p className="discover-title" title={book.title}>
+                <button
+                  type="button"
+                  className="discover-title discover-title--action"
+                  title={book.title}
+                  onClick={() => openPreview(book)}
+                >
                   {book.title}
-                </p>
+                </button>
                 <p className="meta">{book.author}</p>
                 {facts ? <p className="meta discover-facts">{facts}</p> : null}
                 {coverage?.newWordsCount != null && coverage.newWordsCount > 0 ? (
@@ -494,6 +653,130 @@ export default function DiscoverRail({
           );
         })}
       </ul>
+
+      {previewBook && previewView ? (
+        <Sheet
+          label={`Vista previa de ${previewBook.title}`}
+          onClose={() => setPreviewBook(null)}
+        >
+          <div className="discover-preview">
+            <div className="discover-preview-cover">
+              {previewView.showCover ? (
+                <img
+                  className="cover"
+                  src={catalogCoverUrl(previewBook.id)}
+                  alt={`Portada de ${previewBook.title}`}
+                  onError={() =>
+                    setCoverBroken((prev) =>
+                      new Set(prev).add(previewBook.id),
+                    )
+                  }
+                />
+              ) : (
+                <div
+                  className="cover cover--generated"
+                  role="img"
+                  aria-label={`Portada de ${previewBook.title}`}
+                  style={
+                    {
+                      "--cover-paper": previewView.palette.paper,
+                      "--cover-ink": previewView.palette.ink,
+                      "--cover-accent": previewView.palette.accent,
+                    } as React.CSSProperties
+                  }
+                >
+                  <span className="cover-frame">
+                    <span className="cover-title">{previewBook.title}</span>
+                    <span className="cover-ornament" aria-hidden="true" />
+                    <span className="cover-author">{previewBook.author}</span>
+                  </span>
+                </div>
+              )}
+            </div>
+            <div className="discover-preview-body">
+              <span
+                className="book-affinity-pill"
+                data-tone={previewView.affinity.tone}
+                title={previewView.affinity.description}
+              >
+                {previewView.affinity.label}
+              </span>
+              <h3 className="discover-preview-title">{previewBook.title}</h3>
+              <p className="meta">{previewBook.author}</p>
+              {previewView.facts ? (
+                <p className="meta discover-facts">{previewView.facts}</p>
+              ) : null}
+              {previewBook.wordCount ? (
+                <p className="meta discover-facts">
+                  ≈ {previewBook.wordCount.toLocaleString("es-MX")} palabras
+                </p>
+              ) : null}
+              {previewView.coverage ? (
+                coverageIsReliable(previewView.coverage) ? (
+                  <p className="meta discover-preview-coverage">
+                    ~{previewView.coverage.percent}% del vocabulario ya lo
+                    conoces
+                  </p>
+                ) : (
+                  <p className="meta discover-preview-coverage">
+                    {COVERAGE_UNMEASURED_LABEL}
+                  </p>
+                )
+              ) : null}
+              {previewView.coverage?.newWordsCount != null &&
+              previewView.coverage.newWordsCount > 0 ? (
+                <p className="meta discover-new-words">
+                  +{previewView.coverage.newWordsCount} palabras útiles
+                </p>
+              ) : null}
+              {previewView.coverage?.reencuentrosCount != null &&
+              previewView.coverage.reencuentrosCount > 0 ? (
+                <p className="meta discover-reencuentros">
+                  Repite {previewView.coverage.reencuentrosCount}{" "}
+                  {previewView.coverage.reencuentrosCount === 1
+                    ? "palabra"
+                    : "palabras"}{" "}
+                  de tu cuaderno
+                </p>
+              ) : null}
+              {previewExamples.length ? (
+                <p className="meta discover-preview-cuaderno">
+                  Del cuaderno: {previewExamples.join(", ")}
+                </p>
+              ) : null}
+              <p className="discover-preview-synopsis">
+                {describeCatalogBook(previewBook)}
+              </p>
+              {previewView.owned ? (
+                <button
+                  type="button"
+                  className="btn discover-action"
+                  onClick={() => {
+                    onOpen(previewView.owned!);
+                    setPreviewBook(null);
+                  }}
+                >
+                  Abrir
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="btn discover-action"
+                  onClick={() => void get(previewBook, true)}
+                  disabled={getting !== null}
+                >
+                  {getting === previewBook.id ? "Descargando…" : "Obtener libro"}
+                </button>
+              )}
+              {errorId === previewBook.id ? (
+                <p className="meta" role="alert">
+                  No se pudo descargar. Inténtalo de nuevo.
+                </p>
+              ) : null}
+            </div>
+          </div>
+        </Sheet>
+      ) : null}
     </section>
   );
 }

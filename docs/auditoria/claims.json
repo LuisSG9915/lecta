@@ -81,7 +81,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/lib/catalog.ts",
-          "line": 317,
+          "line": 357,
           "window": 3,
           "expect": "COVERAGE_FLUID_MIN",
           "why": "la insignia del catálogo usa el mismo umbral"

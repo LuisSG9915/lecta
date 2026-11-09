@@ -1568,6 +1568,49 @@ export default function App() {
     setPaperBook(null);
   };
 
+  // Compartir (o retirar) la guía de papel de un libro propio. La usa
+  // la hoja de opciones de la estantería y el botón «Compartir un libro
+  // tuyo» de la pestaña Comunidad — una sola ruta para ambos.
+  const handleShareBook = async (
+    item: ShelfItem,
+    shared: boolean,
+    genre?: string,
+  ) => {
+    const scope = captureDbScope();
+    let guide: unknown;
+    if (shared) {
+      // Modelo A1: se comparte la GUÍA de papel (índice +
+      // formas), generada aquí mismo desde el EPUB local —
+      // el archivo jamás sale de esta cuenta. El import es
+      // diferido para que foliate no entre al arranque.
+      setMessage(`Preparando la guía de «${displayTitle(item.name, item.title)}»…`);
+      const stored = await getStoredBook(item.hash, scope).catch(() => undefined);
+      if (stored?.data?.size) {
+        const { buildPaperBookGuide } = await import("./lib/paper-guide");
+        guide = await buildPaperBookGuide(item.hash, stored.data, {
+          title: stored.title ?? item.title,
+          author: stored.author ?? item.author,
+          language: stored.language ?? item.language,
+        }).catch(() => null);
+      }
+      setMessage("");
+      if (!guide) {
+        setError(
+          stored?.data?.size
+            ? "No se pudo preparar la guía de este libro. Intenta de nuevo."
+            : "Para compartir su guía, el libro tiene que estar descargado en este dispositivo.",
+        );
+        return;
+      }
+    }
+    const ok = await shareBook(item.hash, shared, scope, guide, genre);
+    if (ok) {
+      await refreshLibrary();
+    } else {
+      setError("No se pudo actualizar el estado compartido. Revisa tu conexión.");
+    }
+  };
+
   // «Repasar palabras de este libro»: el Cuaderno abre ya filtrado por
   // la obra; el nonce marca cada petición para no reanclar el filtro
   // cuando el usuario lo cambia a mano.
@@ -1843,46 +1886,18 @@ export default function App() {
                     onOpen={openShelfItem}
                     onSelect={handleSelectBook}
                     onPaperBook={handlePaperBook}
-                    onShareBook={async (item, shared, genre) => {
-                      const scope = captureDbScope();
-                      let guide: unknown;
-                      if (shared) {
-                        // Modelo A1: se comparte la GUÍA de papel (índice +
-                        // formas), generada aquí mismo desde el EPUB local —
-                        // el archivo jamás sale de esta cuenta. El import es
-                        // diferido para que foliate no entre al arranque.
-                        setMessage(`Preparando la guía de «${displayTitle(item.name, item.title)}»…`);
-                        const stored = await getStoredBook(item.hash, scope).catch(() => undefined);
-                        if (stored?.data?.size) {
-                          const { buildPaperBookGuide } = await import("./lib/paper-guide");
-                          guide = await buildPaperBookGuide(item.hash, stored.data, {
-                            title: stored.title ?? item.title,
-                            author: stored.author ?? item.author,
-                            language: stored.language ?? item.language,
-                          }).catch(() => null);
-                        }
-                        setMessage("");
-                        if (!guide) {
-                          setError(
-                            stored?.data?.size
-                              ? "No se pudo preparar la guía de este libro. Intenta de nuevo."
-                              : "Para compartir su guía, el libro tiene que estar descargado en este dispositivo.",
-                          );
-                          return;
-                        }
-                      }
-                      const ok = await shareBook(item.hash, shared, scope, guide, genre);
-                      if (ok) {
-                        await refreshLibrary();
-                      } else {
-                        setError("No se pudo actualizar el estado compartido. Revisa tu conexión.");
-                      }
-                    }}
+                    onShareBook={handleShareBook}
                     communitySection={
                       sessionUserId ? (
                         <Suspense fallback={null}>
                           <CommunityShelf
                             ownedHashes={ownedBookHashes}
+                            shareableBooks={library.filter(
+                              (book) => !book.paperOnly && !book.remoteOnly,
+                            )}
+                            onShareBook={(book, genre) =>
+                              handleShareBook(book, true, genre)
+                            }
                             onAttached={(hash, guide) => {
                               setMessage("Guía agregada — abre el índice desde tu estantería.");
                               void (async () => {

@@ -3,8 +3,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   catalogVocab,
   downloadCatalogEpub,
+  describeCatalogBook,
   entriesByFormOf,
   getBookAffinityBadge,
+  getBookMoodTags,
   isCatalogIndex,
   isVocabManifest,
   listCatalog,
@@ -155,6 +157,66 @@ describe("manifiesto → vista de predictSection", () => {
     expect(isCatalogIndex({ books: "x" })).toBe(false);
     expect(isVocabManifest(MANIFEST)).toBe(true);
     expect(isVocabManifest({ v: 1 })).toBe(false);
+  });
+});
+
+describe("getBookMoodTags / describeCatalogBook", () => {
+  it("devuelve la sinopsis curada cuando el índice la trae", () => {
+    const text = describeCatalogBook({
+      id: "alice-wonderland",
+      gutenbergId: 11,
+      title: "Alice's Adventures in Wonderland",
+      author: "Lewis Carroll",
+      cover: false,
+      synopsis: "Una niña cae por una madriguera.",
+    });
+    expect(text).toBe("Una niña cae por una madriguera.");
+  });
+
+  it("arma una nota editorial con época, extensión y etiquetas", () => {
+    const text = describeCatalogBook({
+      id: "sin-sinopsis",
+      gutenbergId: 1,
+      title: "Obra sin ficha",
+      author: "Autor",
+      cover: false,
+      issued: "1890-01-01",
+      wordCount: 36_000,
+    });
+    expect(text).toContain("Publicado en 1890");
+    expect(text).toContain("~3 h");
+  });
+
+  it("reconoce cuentos/teatro por título o subjects sin confundir «stories»", () => {
+    expect(
+      getBookMoodTags({
+        id: "x",
+        gutenbergId: 1,
+        title: "Cuentos de la Alhambra",
+        author: "A",
+        cover: false,
+      }),
+    ).toContain("Cuentos y teatro");
+    expect(
+      getBookMoodTags({
+        id: "y",
+        gutenbergId: 1,
+        title: "Alice's Adventures in Wonderland",
+        author: "B",
+        cover: false,
+        subjects: ["Children's stories, English"],
+      }),
+    ).not.toContain("Cuentos y teatro");
+    expect(
+      getBookMoodTags({
+        id: "z",
+        gutenbergId: 1,
+        title: "Obra",
+        author: "C",
+        cover: false,
+        subjects: ["Short stories, English"],
+      }),
+    ).toContain("Cuentos y teatro");
   });
 });
 

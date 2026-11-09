@@ -8,6 +8,7 @@ import {
   buildVocabManifest,
   cliticBaseForms,
   menteBaseForms,
+  englishBaseForms,
   formsWithBases,
   loadStopwords,
   buildResolvedManifest,
@@ -26,7 +27,7 @@ const RDF = ({ creators = [], trls = [], edts = [], lang = "es" } = {}) => `<?xm
   <pgterms:ebook rdf:about="ebooks/2000">
     <dcterms:title>Don Quijote</dcterms:title>
     <dcterms:rights>Public domain in the USA.</dcterms:rights>
-    <dcterms:language><rdf:Description><rdf:value>es</rdf:value>${lang !== "es" ? `<rdf:value>${lang}</rdf:value>` : ""}</rdf:Description></dcterms:language>
+    <dcterms:language><rdf:Description><rdf:value>${lang}</rdf:value></rdf:Description></dcterms:language>
     <dcterms:issued>1999-11-01</dcterms:issued>
     <dcterms:subject><rdf:Description><rdf:value>Picaresque literature</rdf:value></rdf:Description></dcterms:subject>
     ${creators.map((a) => `<dcterms:creator>${a}</dcterms:creator>`).join("")}
@@ -59,6 +60,12 @@ describe("parseRdf", () => {
     const meta = parseRdf(RDF());
     expect(meta.contributors).toEqual([]);
     expect(meta.languages).toContain("es");
+  });
+
+  it("lee un RDF en inglés con su propio idioma", () => {
+    const meta = parseRdf(RDF({ lang: "en" }));
+    expect(meta.languages).toEqual(["en"]);
+    expect(meta.languages).not.toContain("es");
   });
 });
 
@@ -196,6 +203,22 @@ describe("cliticBaseForms / menteBaseForms", () => {
     expect(all).toContain("lenta");
     expect(all).toContain("lento");
   });
+
+  it("englishBaseForms deriva plurales, -ing, -ed, -ly e -ies/-ied", () => {
+    expect(englishBaseForms("houses")).toEqual(expect.arrayContaining(["house"]));
+    expect(englishBaseForms("running")).toEqual(expect.arrayContaining(["run"]));
+    expect(englishBaseForms("loved")).toEqual(expect.arrayContaining(["love"]));
+    expect(englishBaseForms("quickly")).toContain("quick");
+    expect(englishBaseForms("stories")).toContain("story");
+    expect(englishBaseForms("replied")).toContain("reply");
+    expect(englishBaseForms("casa")).toEqual([]);
+  });
+
+  it("formsWithBases en inglés no arrastra bases españolas", () => {
+    const all = formsWithBases(["houses", "tomándose"], "en");
+    expect(all).toContain("house");
+    expect(all).not.toContain("tomando");
+  });
 });
 
 describe("loadStopwords", () => {
@@ -210,6 +233,16 @@ describe("loadStopwords", () => {
 
   it("rechaza una lista sospechosamente corta (parseo roto)", () => {
     expect(() => loadStopwords('const SPANISH_STOPWORDS = ["el"];')).toThrow();
+  });
+
+  it("extrae ENGLISH_STOPWORDS cuando se pide inglés", () => {
+    const src =
+      'const ENGLISH_STOPWORDS = [\n  "the", "and",\n' +
+      `${'"x",'.repeat(120)}\n];\n`;
+    const set = loadStopwords(src, "en");
+    expect(set.has("the")).toBe(true);
+    expect(set.has("and")).toBe(true);
+    expect(set.size).toBe(3);
   });
 });
 
@@ -252,6 +285,20 @@ describe("buildResolvedManifest", () => {
     expect(m.wordCount).toBe(4); // el texto íntegro sí cuenta
     expect(m.missing).toEqual([]);
   });
+
+  it("en inglés aliasa la flexión a la ficha del lema base", () => {
+    const enEntries = {
+      house: [{ entryId: "30", lemma: "house", pos: "noun", zipf: 5.4 }],
+      story: [{ entryId: "31", lemma: "story", pos: "noun", zipf: 5.0 }],
+    };
+    const m = buildResolvedManifest("houses stories", enEntries, {
+      stopwords: new Set(),
+      language: "en",
+    });
+    expect(m.byForm.houses).toEqual(m.byForm.house);
+    expect(m.byForm.stories).toEqual(m.byForm.story);
+    expect(m.missing).toEqual([]);
+  });
 });
 
 describe("validateCurationItem", () => {
@@ -264,5 +311,31 @@ describe("validateCurationItem", () => {
   it("rechaza id con mayúsculas/espacios y campos vacíos", () => {
     const errs = validateCurationItem({ id: "Don Quijote", gutenbergId: 0, title: " ", author: "" });
     expect(errs).toHaveLength(4);
+  });
+
+  it("acepta language en y synopsis corta", () => {
+    expect(
+      validateCurationItem({
+        id: "alice-wonderland",
+        gutenbergId: 11,
+        title: "Alice's Adventures in Wonderland",
+        author: "Lewis Carroll",
+        language: "en",
+        synopsis: "Una niña cae por una madriguera.",
+      }),
+    ).toEqual([]);
+  });
+
+  it("rechaza language desconocido y synopsis vacía o larga", () => {
+    const base = { id: "x", gutenbergId: 1, title: "T", author: "A" };
+    expect(validateCurationItem({ ...base, language: "fr" })).toContain(
+      "language inválido: fr",
+    );
+    expect(validateCurationItem({ ...base, synopsis: "  " })).toContain(
+      "synopsis inválida",
+    );
+    expect(
+      validateCurationItem({ ...base, synopsis: "x".repeat(321) }),
+    ).toContain("synopsis demasiado larga");
   });
 });

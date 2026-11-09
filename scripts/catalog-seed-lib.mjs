@@ -255,12 +255,77 @@ export function menteBaseForms(form) {
   return root.endsWith("a") ? [root, `${root.slice(0, -1)}o`] : [root];
 }
 
+// Réplica de las reglas inglesas de generateLookupCandidates
+// (src/shared/word-form.ts): el seed corre en Node sin transpilar, así
+// que las flexiones candidatas se derivan aquí con la misma prioridad.
+export function englishBaseForms(form) {
+  const clean = form.trim().toLowerCase();
+  if (clean.length < 4) return [];
+  const out = [];
+  const push = (candidate) => {
+    if (
+      typeof candidate === "string" &&
+      candidate.length >= 3 &&
+      candidate !== clean &&
+      !out.includes(candidate)
+    ) {
+      out.push(candidate);
+    }
+  };
+
+  if (clean.endsWith("ies") && clean.length > 4) {
+    push(`${clean.slice(0, -3)}y`);
+  }
+  if (clean.endsWith("ied") && clean.length > 4) {
+    push(`${clean.slice(0, -3)}y`);
+  }
+  if (clean.endsWith("ing") && clean.length > 5) {
+    const root = clean.slice(0, -3);
+    push(root);
+    push(`${root}e`);
+    if (root.length >= 3 && root[root.length - 1] === root[root.length - 2]) {
+      push(root.slice(0, -1));
+    }
+  }
+  if (clean.endsWith("ed") && clean.length > 4) {
+    const rootNoEd = clean.slice(0, -2);
+    push(rootNoEd);
+    push(clean.slice(0, -1));
+    if (
+      rootNoEd.length >= 3 &&
+      rootNoEd[rootNoEd.length - 1] === rootNoEd[rootNoEd.length - 2]
+    ) {
+      push(rootNoEd.slice(0, -1));
+    }
+  }
+  if (clean.endsWith("ly") && clean.length > 4) {
+    push(clean.slice(0, -2));
+    if (clean.endsWith("ily") && clean.length > 4) {
+      push(`${clean.slice(0, -3)}y`);
+    }
+  }
+  if (clean.endsWith("es") && clean.length > 3) {
+    push(clean.slice(0, -2));
+    push(clean.slice(0, -1));
+  }
+  if (clean.endsWith("s") && !clean.endsWith("ss") && clean.length > 3) {
+    push(clean.slice(0, -1));
+  }
+  return out;
+}
+
 // Todas las formas a resolver: las del libro más sus bases verificables.
-export function formsWithBases(forms) {
+// En español son las bases clíticas/«-mente»; en inglés, las flexiones
+// candidatas (plural, -ing, -ed, -ly, -ies/-ied) para que una forma del
+// libro sin ficha propia aún resuelva contra el lema en el manifiesto.
+export function formsWithBases(forms, language = "es") {
   const all = new Set(forms);
   for (const form of forms) {
-    for (const base of cliticBaseForms(form)) all.add(base);
-    for (const base of menteBaseForms(form)) all.add(base);
+    const bases =
+      language === "en"
+        ? englishBaseForms(form)
+        : [...cliticBaseForms(form), ...menteBaseForms(form)];
+    for (const base of bases) all.add(base);
   }
   return [...all];
 }
@@ -269,11 +334,22 @@ export function formsWithBases(forms) {
 // corre en Node sin transpilar, pero la lista es un array literal —
 // extraerla mantiene una sola fuente (menos de 100 ítems = parseo
 // roto, se aborta en vez de filtrar a medias).
-export function loadStopwords(stopwordsTsSource) {
+export function loadStopwords(stopwordsTsSource, language = "es") {
+  const constName =
+    language === "en"
+      ? "ENGLISH_STOPWORDS"
+      : language === "es"
+        ? "SPANISH_STOPWORDS"
+        : null;
+  if (!constName) {
+    throw new Error(`Idioma de stopwords no soportado: ${language}`);
+  }
   const block = stopwordsTsSource.match(
-    /const SPANISH_STOPWORDS = \[([\s\S]*?)\];/,
+    new RegExp(`const ${constName} = \\[([\\s\\S]*?)\\];`),
   );
-  if (!block) throw new Error("No encontré SPANISH_STOPWORDS en stopwords.ts");
+  if (!block) {
+    throw new Error(`No encontré ${constName} en stopwords.ts`);
+  }
   const words = [...block[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]);
   if (words.length < 100) {
     throw new Error(`Lista de stopwords sospechosamente corta (${words.length})`);
@@ -284,7 +360,11 @@ export function loadStopwords(stopwordsTsSource) {
 // Arma el manifest resuelto a partir de la respuesta del léxico:
 // `entriesByForm` = { forma: [{entryId, lemma, pos, zipf}, ...] } con la
 // misma forma que devuelve findEntriesForForms/groupEntries (sin senses).
-export function buildResolvedManifest(text, entriesByForm, { stopwords } = {}) {
+export function buildResolvedManifest(
+  text,
+  entriesByForm,
+  { stopwords, language = "es" } = {},
+) {
   const raw = buildVocabManifest(text);
   const bookForms = new Set(
     stopwords ? raw.forms.filter((f) => !stopwords.has(f)) : raw.forms,
@@ -317,8 +397,26 @@ export function buildResolvedManifest(text, entriesByForm, { stopwords } = {}) {
     }
     byForm[form] = idxs;
   }
+  // En inglés predictSection no conoce las flexiones: la forma del libro
+  // se aliasa a la primera base candidata que sí resolvió en el léxico
+  // («houses» → «house») para que la cobertura no la marque como nueva.
+  if (language === "en") {
+    for (const form of bookForms) {
+      if (byForm[form]) continue;
+      const idxs = [];
+      for (const candidate of englishBaseForms(form)) {
+        const list = byForm[candidate];
+        if (list?.length) idxs.push(...list);
+      }
+      if (idxs.length) byForm[form] = [...new Set(idxs)];
+    }
+  }
   for (const form of bookForms) {
     if (byForm[form]) continue;
+    if (language === "en") {
+      missing.push(form);
+      continue;
+    }
     const bases = [...cliticBaseForms(form), ...menteBaseForms(form)];
     if (!bases.some((b) => byForm[b]?.length)) missing.push(form);
   }
@@ -346,5 +444,16 @@ export function validateCurationItem(item) {
   }
   if (!item.title?.trim()) errors.push("falta title");
   if (!item.author?.trim()) errors.push("falta author");
+  const language = item.language ?? "es";
+  if (language !== "es" && language !== "en") {
+    errors.push(`language inválido: ${item.language}`);
+  }
+  if (item.synopsis !== undefined) {
+    if (typeof item.synopsis !== "string" || !item.synopsis.trim()) {
+      errors.push("synopsis inválida");
+    } else if (item.synopsis.trim().length > 320) {
+      errors.push("synopsis demasiado larga");
+    }
+  }
   return errors;
 }

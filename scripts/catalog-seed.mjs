@@ -54,7 +54,12 @@ async function fetchOk(url, { as = "buffer", retries = 3 } = {}) {
     try {
       const res = await fetch(url, {
         headers: { "User-Agent": "lecta-catalog-seed/1.0" },
-        signal: AbortSignal.timeout(30_000),
+        // Los EPUB con ilustraciones de Gutenberg pueden pasar de 30 MB
+        // y Gutenberg los sirve lento: CATALOG_SEED_FETCH_TIMEOUT_MS da
+        // margen sin cambiar el defecto para el resto del catálogo.
+        signal: AbortSignal.timeout(
+          Number(process.env.CATALOG_SEED_FETCH_TIMEOUT_MS) || 30_000,
+        ),
       });
       if (res.status === 404) return { status: 404, data: null };
       if (!res.ok) {
@@ -137,18 +142,18 @@ const LEXICON_SQL = `
   SELECT f.form AS queried_form, e.id AS entry_id, e.lemma, e.pos, e.zipf
   FROM lecta_dev.lexicon_forms f
   JOIN lecta_dev.lexicon_entries e ON e.id = f.entry_id
-  WHERE f.language = 'es' AND f.form = ANY($1)
+  WHERE f.language = $2 AND f.form = ANY($1)
   ORDER BY f.form, e.zipf DESC NULLS LAST
 `;
 const LEXICON_CHUNK = 2000;
 
-async function resolveForms(client, forms) {
+async function resolveForms(client, forms, language) {
   // Map, no objeto plano: formas como «constructor» o «toString» son
   // propiedades heredadas de Object.prototype y romperían el ??=.
   const out = new Map();
   for (let i = 0; i < forms.length; i += LEXICON_CHUNK) {
     const chunk = forms.slice(i, i + LEXICON_CHUNK);
-    const { rows } = await client.query(LEXICON_SQL, [chunk]);
+    const { rows } = await client.query(LEXICON_SQL, [chunk, language]);
     for (const row of rows) {
       const list = out.get(row.queried_form) ?? [];
       if (!out.has(row.queried_form)) out.set(row.queried_form, list);
@@ -167,12 +172,13 @@ async function resolveForms(client, forms) {
   return Object.fromEntries(out);
 }
 
-// ctx en modo seed: { client: pg.Client, stopwords: Set<string> }
+// ctx en modo seed: { client: pg.Pool, stopwordsByLang: Record<lang, Set> }
 async function processItem(item, deathYearMax, ctx) {
   const out = { id: item.id, gutenbergId: item.gutenbergId, title: item.title, author: item.author };
 
   const invalid = validateCurationItem(item);
   if (invalid.length) return { status: "skipped", ...out, reasons: invalid };
+  const expectedLang = item.language ?? "es";
 
   const rdf = await fetchOk(RDF_URL(item.gutenbergId), { as: "text" });
   if (rdf.status !== 200) {
@@ -180,8 +186,12 @@ async function processItem(item, deathYearMax, ctx) {
   }
   const meta = parseRdf(rdf.data);
 
-  if (!meta.languages.includes("es")) {
-    return { status: "skipped", ...out, reasons: [`idioma no es 'es': ${meta.languages.join(", ")}`] };
+  if (!meta.languages.includes(expectedLang)) {
+    return {
+      status: "skipped",
+      ...out,
+      reasons: [`idioma no es '${expectedLang}': ${meta.languages.join(", ")}`],
+    };
   }
 
   const rights = rightsCheck(meta.contributors, { deathYearMax });
@@ -204,7 +214,8 @@ async function processItem(item, deathYearMax, ctx) {
   const entry = {
     status: "ok",
     ...out,
-    language: "es",
+    language: expectedLang,
+    synopsis: item.synopsis?.trim() || undefined,
     issued: meta.issued,
     subjects: meta.subjects,
     epubUrl: epub.url,
@@ -221,13 +232,19 @@ async function processItem(item, deathYearMax, ctx) {
       return { status: "skipped", ...out, reasons: [`EPUB no descargó (HTTP ${epubFile.status})`] };
     }
     const text = await epubText(epubFile.data);
-    // El manifiesto resuelve las formas contra el léxico (formas del
-    // libro + bases clíticas/«-mente») — la cobertura del cliente se
-    // calcula en local sin más consultas por libro.
+    // El manifiesto resuelve las formas contra el léxico del idioma del
+    // libro (formas del libro + bases verificables: clíticas/«-mente»
+    // en español, flexiones candidatas en inglés) — la cobertura del
+    // cliente se calcula en local sin más consultas por libro.
     const forms = [...new Set(tokenizeForms(text))];
-    const resolved = await resolveForms(ctx.client, formsWithBases(forms));
+    const resolved = await resolveForms(
+      ctx.client,
+      formsWithBases(forms, expectedLang),
+      expectedLang,
+    );
     const manifest = buildResolvedManifest(text, resolved, {
-      stopwords: ctx.stopwords,
+      stopwords: ctx.stopwordsByLang?.[expectedLang] ?? ctx.stopwordsByLang?.es,
+      language: expectedLang,
     });
     if (manifest.wordCount < 2000) {
       return { status: "skipped", ...out, reasons: [`demasiado corto (${manifest.wordCount} palabras)`] };
@@ -293,10 +310,17 @@ async function main() {
       max: Math.max(2, CONCURRENCY),
     });
     await client.query("SELECT 1");
-    const stopwords = loadStopwords(
-      readFileSync(join(HERE, "..", "src", "shared", "stopwords.ts"), "utf8"),
+    const stopwordsSource = readFileSync(
+      join(HERE, "..", "src", "shared", "stopwords.ts"),
+      "utf8",
     );
-    ctx = { client, stopwords };
+    ctx = {
+      client,
+      stopwordsByLang: {
+        es: loadStopwords(stopwordsSource, "es"),
+        en: loadStopwords(stopwordsSource, "en"),
+      },
+    };
   }
 
   let cursor = 0;
@@ -362,6 +386,7 @@ async function main() {
       title: b.title,
       author: b.author,
       language: b.language,
+      synopsis: b.synopsis,
       issued: b.issued,
       subjects: b.subjects,
       wordCount: b.wordCount,

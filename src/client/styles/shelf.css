@@ -877,6 +877,18 @@
 
 .shelf-community-empty {
   padding: var(--s-3) 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-2);
+}
+
+.shelf-community-share {
+  margin-block-end: var(--s-2);
+}
+
+.shelf-community-share-cta {
+  margin-block-start: var(--s-2);
 }
 
 .shelf-community-search {
@@ -1593,6 +1605,166 @@
 
 .discover-action {
   min-height: 2.75rem;
+}
+
+/* Portada y título abren la vista previa: se ven igual que antes,
+   solo que ahora son botones reales con foco visible. */
+.discover-cover--action {
+  display: block;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+.discover-title--action {
+  inline-size: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+.discover-cover--action:hover .cover,
+.discover-title--action:hover {
+  color: var(--accent-primary, #c86d3b);
+}
+
+.discover-cover--action:focus-visible,
+.discover-title--action:focus-visible {
+  outline: 2px solid var(--accent-primary, #c86d3b);
+  outline-offset: 2px;
+}
+
+/* Hoja de vista previa del libro gratuito. */
+.discover-preview {
+  display: flex;
+  gap: var(--s-4);
+  align-items: flex-start;
+}
+
+.discover-preview-cover {
+  inline-size: 9rem;
+  block-size: 13.5rem;
+  flex: none;
+}
+
+.discover-preview-cover .cover {
+  inline-size: 100%;
+  block-size: 100%;
+  object-fit: cover;
+  border-radius: var(--r-1);
+}
+
+.discover-preview-body {
+  min-inline-size: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.discover-preview-title {
+  margin: 0;
+  font-family: var(--font-book);
+  font-size: var(--fs-lg, 1.25rem);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.discover-preview-synopsis {
+  margin: 0;
+  color: var(--ink-soft);
+  line-height: 1.5;
+}
+
+/* Vista previa de la guía comunitaria: índice de capítulos y nota
+   del modelo A1 (solo vocabulario, nunca el libro). */
+.discover-preview-coverage {
+  color: var(--ink-soft);
+}
+
+.discover-preview-chapters {
+  margin-block-start: var(--s-2);
+}
+
+.discover-preview-chapters-title {
+  margin: 0 0 var(--s-1);
+  font-weight: 600;
+}
+
+.discover-preview-chapters ol {
+  margin: 0;
+  padding-inline-start: var(--s-4);
+  max-block-size: 16rem;
+  overflow-y: auto;
+}
+
+.discover-preview-chapters li {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding-block: 0.15rem;
+}
+
+.discover-preview-note {
+  color: var(--ink-soft);
+  font-size: var(--fs-sm);
+}
+
+/* Reencuentros del Cuaderno en la tarjeta/hoja (misma idea que
+   .discover-new-words, pero en tinta suave: no es una ganancia nueva). */
+.discover-reencuentros {
+  font-size: var(--fs-xs);
+  color: var(--ink-soft);
+  margin-block-start: 0.15rem;
+}
+
+/* Selector de libro propio dentro de la hoja «Compartir guía». */
+.discover-preview-books {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  max-block-size: 18rem;
+  overflow-y: auto;
+  margin-block-end: var(--s-3);
+}
+
+.discover-share-book {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-sm);
+  background: var(--paper-raised);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  cursor: pointer;
+  text-align: left;
+}
+
+.discover-share-book--active {
+  border-color: var(--accent-primary, #c86d3b);
+  background: color-mix(in srgb, var(--accent-primary, #c86d3b) 8%, var(--paper-raised));
+}
+
+.discover-share-book-title {
+  font-weight: 600;
+  font-size: var(--fs-sm);
+}
+
+@media (max-width: 40rem) {
+  .discover-preview {
+    flex-direction: column;
+  }
+  .discover-preview-cover {
+    inline-size: 100%;
+    block-size: auto;
+    aspect-ratio: 2 / 3;
+  }
 }
 
 @media (forced-colors: active) {
