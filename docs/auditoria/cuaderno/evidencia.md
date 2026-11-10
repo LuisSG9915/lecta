@@ -1,6 +1,6 @@
 # Auditoría del Cuaderno — estudio antes que prueba
 
-Generado por `scripts/audit-cuaderno.mjs` v1 el 2026-11-10T03:00:21.851Z. Commit: `e420b848315a`.
+Generado por `scripts/audit-cuaderno.mjs` v1 el 2026-11-10T17:45:43.212Z. Commit: `15c38f8de19e`.
 
 ## La queja, en palabras del usuario
 
@@ -8,20 +8,20 @@ Generado por `scripts/audit-cuaderno.mjs` v1 el 2026-11-10T03:00:21.851Z. Commit
 
 ## Veredicto
 
-- Afirmaciones confirmadas: **7/15** · parciales: **0** · movidas: **0** · correcciones en pie: **8** · regresiones: **0**
+- Afirmaciones confirmadas: **10/23** · parciales: **0** · movidas: **0** · correcciones en pie: **13** · regresiones: **0**
 - Código de salida esperado: `0` (defecto donde decimos y correcciones en su sitio)
 
 ## Afirmaciones
 
 | id | estado | tipo | qué comprueba |
 |---|---|---|---|
-| `C1-cta-primaria-abre-una-prueba` | ✔ CORREGIDO | corregido | El botón principal del héroe ofrece aprender antes de examinar |
+| `C1-cta-primaria-abre-una-prueba` | ✔ CORREGIDO | corregido | El héroe ofrece «Repasar» como principal cuando hay vencidas y «Aprender» siempre disponible (principal si no hay vencidas) |
 | `C2-cola-sale-de-las-vencidas` | ✔ CORREGIDO | corregido | La sesión sale de reviewQueue: vencidas, ya presentadas y sin rama de respaldo |
 | `C3-tarjeta-nueva-vence-al-crearse` | ✔ CONFIRMADO | contexto | La tarjeta nace vencida al GUARDAR la palabra en el lector; por eso la cola filtra por exposición |
 | `C4-primer-reto-es-elegir-entre-cuatro` | ✔ CORREGIDO | corregido | El reto elige un modo que la palabra puede cumplir y corrige con el significado |
 | `C5-estudio-existe-pero-abajo` | ✔ CORREGIDO | corregido | La ficha de presentación es la entrada del héroe; ya no hay bloque enterrado |
 | `C6-sesion-puede-ensayar-borradas` | ✔ CONFIRMADO | contexto | Las lápidas no llegan a la sesión: listSavedWords las filtra antes de que exista dueWords |
-| `C7-copia-no-dice-cuantas-faltan` | ✔ CORREGIDO | corregido | El botón dice qué hace y con cuántas palabras; no promete minutos |
+| `C7-copia-no-dice-cuantas-faltan` | ✔ CORREGIDO | corregido | El botón dice qué hace y con cuántas palabras (la tanda real y de cuántas hay); no promete minutos |
 | `C8-indice-del-heroe-solo-cuenta-hoy` | ✔ CORREGIDO | corregido | El encabezado separa «por aprender» de «para repasar» |
 | `C9-el-rescate-llega-despues-de-fallar` | ✔ CONFIRMADO | contexto | La red anti-frustración sigue siendo post-fallo y solo para Nivel 2-3; la corrección nueva está en el modo choose |
 | `C10-dos-puertas-a-la-misma-sesion` | ✔ CONFIRMADO | contexto | Queda una sola puerta a la sesión: el héroe; la de GamePanel sigue muerta |
@@ -30,18 +30,28 @@ Generado por `scripts/audit-cuaderno.mjs` v1 el 2026-11-10T03:00:21.851Z. Commit
 | `X3-el-primer-paso-del-lector-ya-es-una-ficha` | ✔ CONFIRMADO | contexto | La ficha de primera exposición ya tiene UI y voz (learnKeep/learnKnown/learnEnrich) y puente a repaso |
 | `C11-cualquier-respuesta-cancela-la-ficha` | ✔ CORREGIDO | corregido | Una palabra con reps 0 solo sale de «Por aprender» con una decisión explícita: la cola la excluye |
 | `C12-modos-libres-tampoco-examinan` | ✔ CORREGIDO | corregido | Los modos libres (Hueco, Sílabas, Telar) también salen de reviewWords y avisan cuando no hay nada |
+| `C16-pista-respeta-ia-y-se-registra` | ✔ CORREGIDO | corregido | La pista del gato respeta «Usar IA», se descarta si la tarjeta cambió y el repaso registra cuántas se pidieron |
+| `C17-rescate-exige-datos-del-modo` | ✔ CORREGIDO | corregido | El rescate tras fallar solo baja a «elegir palabra» si hay oración; si no, al significado |
+| `C18-calificar-sobre-la-version-vigente` | ✔ CORREGIDO | corregido | Calificar guarda sobre la palabra vigente del estado, no sobre la copia de la cola, y el relleno de significados no pisa filas más nuevas |
+| `C19-sin-tarjetas-en-blanco-ni-parejas-de-una` | ✔ CORREGIDO | corregido | Partida rápida y chequeo de 30 días no arman tarjetas sin nada que mostrar; Parejas pide al menos dos palabras y no deja una tanda de una |
+| `C20-pasar-no-vuelve-al-frente` | ✔ CORREGIDO | corregido | Las fichas sin significado y las pasadas con «Pasar por ahora» van al final de la siguiente tanda |
+| `C13-modos-libres-a-la-vista` | ✔ CONFIRMADO | defecto | Los modos libres siguen a la vista en el héroe: no hay <details> que los pliegue |
+| `C14-gamificacion-en-el-heroe` | ✔ CONFIRMADO | defecto | «Energía Léxica» con Combo y puntos sigue en el héroe y el cierre pinta «XP / Nivel» |
+| `C15-no-hay-cierre-unico-de-sesion` | ✔ CONFIRMADO | defecto | No existe el cierre «Terminado por hoy.»; el repaso cierra con «Repaso terminado.» y «Terminar por hoy» sale sin cierre |
 
 ### ✔ `C1-cta-primaria-abre-una-prueba`
 
-**El botón principal del héroe ofrece aprender antes de examinar**
+**El héroe ofrece «Repasar» como principal cuando hay vencidas y «Aprender» siempre disponible (principal si no hay vencidas)**
 
-_Por qué:_ «no recuerdo para nada las palabras al dar iniciar sesión fluida… primero tengo que aprenderme las palabras, de ahí sí puedo practicar» — el arreglo: con palabras por aprender, el único botón primario abre la ficha y no la prueba.
+_Por qué:_ «no recuerdo para nada las palabras al dar iniciar sesión fluida… primero tengo que aprenderme las palabras, de ahí sí puedo practicar» — la sesión de repaso ya nunca examina lo no presentado (C2), así que el botón principal puede repasar sin riesgo; «Aprender» queda como segundo botón (decisión de Luis, 2026-11-10: repasar primero) y vuelve a ser el principal sin vencidas.
 
-- ✔ src/client/components/Vocabulary.tsx:2405 ~ /\) : learnable\.length > 0 \? \(/
+- ✔ src/client/components/Vocabulary.tsx:2533 ~ /\) : reviewWords\.length > 0 \? \(/
+  - `) : reviewWords.length > 0 ? (`
+- ✔ src/client/components/Vocabulary.tsx:2567 ~ /\) : learnable\.length > 0 \? \(/
   - `) : learnable.length > 0 ? (`
-- ✔ src/client/components/Vocabulary.tsx:2412 ~ /onClick=\{\(\) => startLearn\(\)\}/
+- ✔ src/client/components/Vocabulary.tsx:2561 ~ /onClick=\{\(\) => startLearn\(\)\}/
   - `onClick={() => startLearn()}`
-- ✔ src/client/components/Vocabulary.tsx:2051-2106 no contiene /Iniciar Sesi[oó]n Fluida/
+- ✔ src/client/components/Vocabulary.tsx:1-9999 no contiene /Iniciar Sesi[oó]n Fluida/
 
 ### ✔ `C2-cola-sale-de-las-vencidas`
 
@@ -49,7 +59,7 @@ _Por qué:_ «no recuerdo para nada las palabras al dar iniciar sesión fluida�
 
 _Por qué:_ Se fue la rama scopedWords.slice(0,5), que servía palabras no vencidas, «Ya la conozco» y adelantaba repasos.
 
-- ✔ src/client/components/Vocabulary.tsx:1022 ~ /const reviewWords = reviewQueue\(scopedWords, knownKeys, exposure\);/
+- ✔ src/client/components/Vocabulary.tsx:1053 ~ /const reviewWords = reviewQueue\(scopedWords, knownKeys, exposure\);/
   - `const reviewWords = reviewQueue(scopedWords, knownKeys, exposure);`
 - ✔ src/client/lib/learn.ts:151 ~ /!isLearnPending\(word, knownKeys, exposure\) &&/
   - `!isLearnPending(word, knownKeys, exposure) &&`
@@ -74,13 +84,13 @@ _Por qué:_ scheduleCapturedReview crea newCard() (reps 0, due=ahora) al guardar
 
 _Por qué:_ Una palabra sin oración ya no cae en choose (adivinar al 25 %): pasa al modo significado. Tras responder se muestra forma y significado.
 
-- ✔ src/client/lib/practice.ts:363 ~ /if \(isNew \|\| stability < 2\.5\) \{/
+- ✔ src/client/lib/practice.ts:381 ~ /if \(isNew \|\| stability < 2\.5\) \{/
   - `if (isNew || stability < 2.5) {`
-- ✔ src/client/components/Vocabulary.tsx:1238 ~ /if \(!isEligible\(ch\.word, mode\)\) \{/
+- ✔ src/client/components/Vocabulary.tsx:1292 ~ /if \(!isEligible\(ch\.word, mode\)\) \{/
   - `if (!isEligible(ch.word, mode)) {`
-- ✔ src/client/components/Vocabulary.tsx:3807 ~ /Toca la palabra que falta\./
+- ✔ src/client/components/Vocabulary.tsx:3906 ~ /Toca la palabra que falta\./
   - `<p className="meta">Toca la palabra que falta.</p>`
-- ✔ src/client/components/Vocabulary.tsx:3811 ~ /className="nb-card-back" role="status"/
+- ✔ src/client/components/Vocabulary.tsx:3910 ~ /className="nb-card-back" role="status"/
   - `<p className="nb-card-back" role="status">`
 
 ### ✔ `C5-estudio-existe-pero-abajo`
@@ -90,7 +100,7 @@ _Por qué:_ Una palabra sin oración ya no cae en choose (adivinar al 25 %): pas
 _Por qué:_ Se quitó la sección «Por aprender · N» que vivía debajo del héroe: el botón primario hace ese trabajo.
 
 - ✔ src/client/components/Vocabulary.tsx:1-9999 no contiene /aria-label="Palabras por aprender"/
-- ✔ src/client/components/Vocabulary.tsx:2412 ~ /onClick=\{\(\) => startLearn\(\)\}/
+- ✔ src/client/components/Vocabulary.tsx:2561 ~ /onClick=\{\(\) => startLearn\(\)\}/
   - `onClick={() => startLearn()}`
 
 ### ✔ `C6-sesion-puede-ensayar-borradas`
@@ -101,18 +111,18 @@ _Por qué:_ Buscar «deleted» dentro de dueWords era una ausencia usada como pr
 
 - ✔ src/client/lib/idb.ts:1739 ~ /return all\.filter\(\(word\) => !word\.deleted\);/
   - `return all.filter((word) => !word.deleted);`
-- ✔ src/client/components/Vocabulary.tsx:885 ~ /listSavedWords\(/
+- ✔ src/client/components/Vocabulary.tsx:902 ~ /listSavedWords\(/
   - `void listSavedWords(undefined, scope)`
 
 ### ✔ `C7-copia-no-dice-cuantas-faltan`
 
-**El botón dice qué hace y con cuántas palabras; no promete minutos**
+**El botón dice qué hace y con cuántas palabras (la tanda real y de cuántas hay); no promete minutos**
 
-_Por qué:_ «~2 min» y «1 min» describían la misma sesión. Ahora el botón lleva la cifra real y desaparece la promesa de duración.
+_Por qué:_ «~2 min» y «1 min» describían la misma sesión, y «Aprender 43 palabras nuevas» abría una tanda de 5. Ahora el botón lleva la cifra de la tanda (`Aprender 5 de 43`) y desaparece la promesa de duración.
 
-- ✔ src/client/components/Vocabulary.tsx:2416 ~ /Aprender \{learnable\.length\}/
-  - `Aprender {learnable.length}{" "}`
-- ✔ src/client/components/Vocabulary.tsx:2433 ~ /Repasar \{Math\.min\(REVIEW_SESSION_SIZE, reviewWords\.length\)\}/
+- ✔ src/client/components/Vocabulary.tsx:1064 ~ /Aprender \$\{learnBatch\} de \$\{learnable\.length\}/
+  - `? `Aprender ${learnBatch} de ${learnable.length} ${learnNoun}``
+- ✔ src/client/components/Vocabulary.tsx:2550 ~ /Repasar \{Math\.min\(REVIEW_SESSION_SIZE, reviewWords\.length\)\}/
   - `Repasar {Math.min(REVIEW_SESSION_SIZE, reviewWords.length)}{" "}`
 - ✔ src/client/components/Vocabulary.tsx:2051-2106 no contiene /~2 min|1 min/
 
@@ -122,9 +132,9 @@ _Por qué:_ «~2 min» y «1 min» describían la misma sesión. Ahora el botón
 
 _Por qué:_ Dos trabajos distintos ya no comparten una sola cifra: la de aprender solo cuenta palabras que pueden entrar a la ficha.
 
-- ✔ src/client/components/Vocabulary.tsx:2216 ~ /por aprender/
+- ✔ src/client/components/Vocabulary.tsx:2344 ~ /por aprender/
   - `learnable.length > 0 ? ` · ${learnable.length} por aprender` : ""`
-- ✔ src/client/components/Vocabulary.tsx:1248 ~ /para repasar/
+- ✔ src/client/components/Vocabulary.tsx:1302 ~ /para repasar/
   - `"Estas palabras necesitan una oración o un significado para repasarse.",`
 
 ### ✔ `C9-el-rescate-llega-despues-de-fallar`
@@ -133,10 +143,10 @@ _Por qué:_ Dos trabajos distintos ya no comparten una sola cifra: la de aprende
 
 _Por qué:_ rescueChallenge solo actúa si el fallo fue en Nivel 2 o 3. Para la palabra nueva (Nivel 1), la corrección es ver forma y significado.
 
-- ✔ src/client/lib/practice.ts:407 ~ /export function rescueChallenge\(/
+- ✔ src/client/lib/practice.ts:425 ~ /export function rescueChallenge\(/
   - `export function rescueChallenge(`
-- ✔ src/client/components/Vocabulary.tsx:3582 ~ /current\.adaptiveChallenge\.level > 1/
-  - `if (current.adaptiveChallenge && current.adaptiveChallenge.level > 1) {`
+- ✔ src/client/components/Vocabulary.tsx:2014 ~ /challenge\.level <= 1/
+  - `if (!challenge || challenge.level <= 1) return false;`
 
 ### ✔ `C10-dos-puertas-a-la-misma-sesion`
 
@@ -144,7 +154,7 @@ _Por qué:_ rescueChallenge solo actúa si el fallo fue en Nivel 2 o 3. Para la 
 
 _Por qué:_ Se quitó «Repaso rápido», que caía a startAdaptiveFlow con otro texto. El CTA adaptive_flow de GamePanel nunca se pinta: el único montaje usa dashboard o ai_workshop.
 
-- ✔ src/client/components/Vocabulary.tsx:2653 ~ /mode=\{workshopOpen \? "ai_workshop" : "dashboard"\}/
+- ✔ src/client/components/Vocabulary.tsx:2791 ~ /mode=\{workshopOpen \? "ai_workshop" : "dashboard"\}/
   - `mode={workshopOpen ? "ai_workshop" : "dashboard"}`
 - ✔ src/client/components/Vocabulary.tsx:2051-2106 no contiene /notebook-quick-review-cta/
 
@@ -169,7 +179,7 @@ _Por qué:_ isEligible define qué pide cada modo; startAdaptiveFlow ahora lo co
 
 - ✔ src/client/components/Vocabulary.tsx:527 ~ /const isEligible = \(word: SavedWord, mode: PracticeMode\) => \{/
   - `const isEligible = (word: SavedWord, mode: PracticeMode) => {`
-- ✔ src/client/components/Vocabulary.tsx:1238 ~ /if \(!isEligible\(ch\.word, mode\)\) \{/
+- ✔ src/client/components/Vocabulary.tsx:1292 ~ /if \(!isEligible\(ch\.word, mode\)\) \{/
   - `if (!isEligible(ch.word, mode)) {`
 
 ### ✔ `X3-el-primer-paso-del-lector-ya-es-una-ficha`
@@ -178,11 +188,11 @@ _Por qué:_ isEligible define qué pide cada modo; startAdaptiveFlow ahora lo co
 
 _Por qué:_ El puente estudio→prueba reutiliza esa ficha, sin duplicar un componente nuevo.
 
-- ✔ src/client/components/Vocabulary.tsx:1337 ~ /const startLearn = \(first\?: SavedWord\) => \{/
+- ✔ src/client/components/Vocabulary.tsx:1407 ~ /const startLearn = \(first\?: SavedWord\) => \{/
   - `const startLearn = (first?: SavedWord) => {`
-- ✔ src/client/components/Vocabulary.tsx:1422 ~ /const learnKeep = async \(\) => \{/
+- ✔ src/client/components/Vocabulary.tsx:1506 ~ /const learnKeep = async \(\) => \{/
   - `const learnKeep = async () => {`
-- ✔ src/client/components/Vocabulary.tsx:3216 ~ /Repasar esta palabra/
+- ✔ src/client/components/Vocabulary.tsx:3354 ~ /Repasar esta palabra/
   - `? "Repasar esta palabra"`
 
 ### ✔ `C11-cualquier-respuesta-cancela-la-ficha`
@@ -204,10 +214,102 @@ _Por qué:_ startPractice usaba dueWords y podía preguntar por palabras nunca p
 
 - ✔ src/client/components/Vocabulary.tsx:372 ~ /reviewWords/
   - `// salen de reviewWords — nunca de palabras sin exponer.`
-- ✔ src/client/components/Vocabulary.tsx:2460 ~ /disabled=\{reviewWords\.filter\(\(w\) => isEligible\(w, "cloze"\)\)\.length === 0\}/
+- ✔ src/client/components/Vocabulary.tsx:2598 ~ /disabled=\{reviewWords\.filter\(\(w\) => isEligible\(w, "cloze"\)\)\.length === 0\}/
   - `disabled={reviewWords.filter((w) => isEligible(w, "cloze")).length === 0}`
-- ✔ src/client/components/Vocabulary.tsx:2582 ~ /Los modos libres usan palabras que ya viste/
+- ✔ src/client/components/Vocabulary.tsx:2720 ~ /Los modos libres usan palabras que ya viste/
   - `? "Los modos libres usan palabras que ya viste. Aprende primero las nuevas."`
+
+### ✔ `C16-pista-respeta-ia-y-se-registra`
+
+**La pista del gato respeta «Usar IA», se descarta si la tarjeta cambió y el repaso registra cuántas se pidieron**
+
+_Por qué:_ askCatHint solo pedía sesión, el historial siempre guardaba hints: 0 y una respuesta tardía se pintaba sobre la tarjeta siguiente.
+
+- ✔ src/client/components/Vocabulary.tsx:1049 ~ /const canHint = hasSession && useAi;/
+  - `const canHint = hasSession && useAi;`
+- ✔ src/client/components/Vocabulary.tsx:1730 ~ /hints: hintsUsedRef\.current,/
+  - `hints: hintsUsedRef.current,`
+- ✔ src/client/components/Vocabulary.tsx:2044 ~ /const stillHere = \(\) => hintForRef\.current === forKey;/
+  - `const stillHere = () => hintForRef.current === forKey;`
+
+### ✔ `C17-rescate-exige-datos-del-modo`
+
+**El rescate tras fallar solo baja a «elegir palabra» si hay oración; si no, al significado**
+
+_Por qué:_ El rescate mandaba siempre a choose: sin oración era adivinar entre cuatro, lo que la regla del Cuaderno prohíbe.
+
+- ✔ src/client/components/Vocabulary.tsx:2012 ~ /const tryRescue = \(item: QueueItem, speech: string\): boolean =>/
+  - `const tryRescue = (item: QueueItem, speech: string): boolean => {`
+- ✔ src/client/components/Vocabulary.tsx:2015 ~ /const rescueMode: PracticeMode \| null = isEligible\(item\.word, "choose"\)/
+  - `const rescueMode: PracticeMode | null = isEligible(item.word, "choose")`
+
+### ✔ `C18-calificar-sobre-la-version-vigente`
+
+**Calificar guarda sobre la palabra vigente del estado, no sobre la copia de la cola, y el relleno de significados no pisa filas más nuevas**
+
+_Por qué:_ grade escribía {...copiaDeLaCola, card}: un significado rellenado después (o un repaso del taller) se perdía.
+
+- ✔ src/client/components/Vocabulary.tsx:1718 ~ /wordsRef\.current\?\.find\(\(w\) => w\.key === queued\.key/
+  - `wordsRef.current?.find((w) => w.key === queued.key && !w.deleted) ?? queued;`
+- ✔ src/client/components/Vocabulary.tsx:921 ~ /return m && \(m\.updatedAt \?\? 0\) >= \(w\.updatedAt \?\? 0\) \? m : w;/
+  - `return m && (m.updatedAt ?? 0) >= (w.updatedAt ?? 0) ? m : w;`
+
+### ✔ `C19-sin-tarjetas-en-blanco-ni-parejas-de-una`
+
+**Partida rápida y chequeo de 30 días no arman tarjetas sin nada que mostrar; Parejas pide al menos dos palabras y no deja una tanda de una**
+
+_Por qué:_ El modo «Palabra» de reserva pintaba una tarjeta en blanco sin significado, y una tanda de una sola pareja se resolvía sola como acierto.
+
+- ✔ src/client/components/Vocabulary.tsx:1319 ~ /Esta palabra necesita un significado o una oración para repasarse\./
+  - `setSaveError("Esta palabra necesita un significado o una oración para repasarse.");`
+- ✔ src/client/components/Vocabulary.tsx:1238 ~ /Parejas necesita al menos dos palabras con significado\./
+  - `setPracticeNote("Parejas necesita al menos dos palabras con significado.");`
+- ✔ src/client/components/Vocabulary.tsx:1243 ~ /items\.length % MATCH_TANDA === 1/
+  - `if (items.length % MATCH_TANDA === 1) queueItems = items.slice(0, -1);`
+
+### ✔ `C20-pasar-no-vuelve-al-frente`
+
+**Las fichas sin significado y las pasadas con «Pasar por ahora» van al final de la siguiente tanda**
+
+_Por qué:_ «Pasar por ahora» no escribe exposición, así que la palabra volvía al frente de cada tanda y tapaba a las demás.
+
+- ✔ src/client/components/Vocabulary.tsx:1414 ~ /learnPassedRef\.current\.has\(word\.key\) \? 2 : word\.meaning \? 0 : 1/
+  - `learnPassedRef.current.has(word.key) ? 2 : word.meaning ? 0 : 1;`
+- ✔ src/client/components/Vocabulary.tsx:3518 ~ /onClick=\{passLearn\}/
+  - `onClick={passLearn}`
+
+### ✔ `C13-modos-libres-a-la-vista`
+
+**Los modos libres siguen a la vista en el héroe: no hay <details> que los pliegue**
+
+_Por qué:_ El plan v1 (Fase 1) pedía colapsarlos; el 2026-11-09 se añadió además «Más ejercicios». Decisión de Luis (2026-11-10): un solo plegable «Más formas de practicar», cerrado por defecto.
+
+- ✔ src/client/components/Vocabulary.tsx:2591 ~ /<div className="nb-free-modes">/
+  - `<div className="nb-free-modes">`
+- ✔ src/client/components/Vocabulary.tsx:1-9999 no contiene /<details[^>]*nb-free-modes/
+
+### ✔ `C14-gamificacion-en-el-heroe`
+
+**«Energía Léxica» con Combo y puntos sigue en el héroe y el cierre pinta «XP / Nivel»**
+
+_Por qué:_ El plan v1 (Fase 2) pedía sacar XP y Combo del flujo principal; el bloque nb-hero-energy es de 2026-10-13 y no se ha movido. La racha debe vivir solo en el cierre de sesión.
+
+- ✔ src/client/components/Vocabulary.tsx:2492 ~ /<div className="nb-hero-energy"/
+  - `<div className="nb-hero-energy" aria-label="Energía Léxica y Racha">`
+- ✔ src/client/components/Vocabulary.tsx:2496 ~ /<span>Energía Léxica</span>/
+  - `<span>Energía Léxica</span>`
+- ✔ src/client/components/Vocabulary.tsx:3562 ~ /⭐ \{Math\.round\(companion\.state\.xp\)\} XP/
+  - `⭐ {Math.round(companion.state.xp)} XP`
+
+### ✔ `C15-no-hay-cierre-unico-de-sesion`
+
+**No existe el cierre «Terminado por hoy.»; el repaso cierra con «Repaso terminado.» y «Terminar por hoy» sale sin cierre**
+
+_Por qué:_ El plan v1 (Fase 3) describía un cierre único con próxima fecha y racha. La frase no existe en src/ ni en el historial de git; el botón de salida hace setQueue(null) directo.
+
+- ✔ src/client/components/Vocabulary.tsx:1-9999 no contiene /Terminado por hoy/
+- ✔ src/client/components/Vocabulary.tsx:3550 ~ /Repaso terminado\.</p>/
+  - `<p className="nb-done-title">Repaso terminado.</p>`
 
 ## Preguntas de investigación
 
