@@ -1130,7 +1130,7 @@ mark.saved-word[data-level="settled"] {
   font-weight: 500;
   padding: 4px 10px;
   border-radius: 9999px;
-  border: 1px solid var(--border-soft);
+  border: 1px solid var(--rule);
   background: var(--paper-raised);
   color: var(--ink);
   cursor: pointer;
@@ -1144,7 +1144,7 @@ mark.saved-word[data-level="settled"] {
 .btn--quick-action:hover,
 .btn--quick-action:focus-visible {
   border-color: var(--vermilion);
-  background: var(--paper-dim);
+  background: var(--paper-sunken);
   color: var(--vermilion);
 }
 
@@ -1164,9 +1164,9 @@ mark.saved-word[data-level="settled"] {
 .word-panel-notice-toast {
   background: var(--paper-raised);
   color: var(--ink);
-  border: 1px solid var(--border-soft);
+  border: 1px solid var(--rule);
   border-left: 3px solid var(--vermilion);
-  border-radius: var(--r-md);
+  border-radius: var(--radius-s);
   padding: var(--s-2) var(--s-3);
   margin-bottom: var(--s-3);
   font-family: var(--font-ui);
