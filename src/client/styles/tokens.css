@@ -148,7 +148,7 @@
   --paper-sunken: #f0e7d5;
   --ink: #1f1d1a;
   --ink-soft: #5c554d;
-  --ink-faint: #8a7f72;
+  --ink-faint: #70655a;
   --rule: rgba(120, 95, 70, 0.12);
   --rule-strong: #c9beaa;
   --border-warm: 1px solid rgba(120, 95, 70, 0.12);
@@ -199,7 +199,7 @@
   --paper-sunken: #f2f0ea;
   --ink: #26241f;
   --ink-soft: #55534c;
-  --ink-faint: #8b877c;
+  --ink-faint: #706c62;
   --rule: #e3ded3;
   --rule-strong: #cfc9ba;
   --vermilion: #9e3a23;
@@ -247,7 +247,7 @@
   --paper-sunken: #0d0f11;
   --ink: #eae6df;
   --ink-soft: #a3a9b1;
-  --ink-faint: #7b8189;
+  --ink-faint: #868c94;
   --rule: rgba(255, 245, 230, 0.08);
   --rule-strong: #4b4f56;
   --border-warm: 1px solid rgba(255, 245, 230, 0.08);
@@ -351,11 +351,11 @@
     --paper-sunken: #0d0f11;
     --ink: #eae6df;
     --ink-soft: #a3a9b1;
-    --ink-faint: #7b8189;
+    --ink-faint: #868c94;
     --rule: rgba(255, 245, 230, 0.08);
     --rule-strong: #4b4f56;
     --border-warm: 1px solid rgba(255, 245, 230, 0.08);
-    --vermilion: #e07a5f;
+    --vermilion: #e08a58;
     --vermilion-bright: #e8886e;
     --vermilion-wash: rgba(224, 122, 95, 0.18);
     --ochre: #e9c46a;
@@ -377,7 +377,7 @@
     --warning: #d9b65c;
     --warning-wash: rgba(217, 182, 92, 0.18);
     --danger: var(--vermilion);
-    --on-accent: #17181a;
+    --on-accent: #141619;
     --accent-primary: #e08a58;
     --accent-focus: #38bdf8;
     --accent-success: #8fb996;
@@ -577,12 +577,12 @@
   --surface-priming: color-mix(
     in srgb,
     var(--paper-sunken, var(--bg-secondary, #1e1e1e)) 90%,
-    var(--accent-primary, var(--accent-primary, #d4a373)) 10%
+    var(--accent-primary, #d4a373) 10%
   );
   --border-priming: color-mix(
     in srgb,
     var(--rule-strong, var(--border-color, #333333)) 75%,
-    var(--accent-primary, var(--accent-primary, #d4a373)) 25%
+    var(--accent-primary, #d4a373) 25%
   );
   --surface-spoiler-safe: color-mix(
     in srgb,
@@ -605,12 +605,12 @@
     --surface-priming: color-mix(
       in srgb,
       var(--paper-sunken, var(--bg-secondary, #1e1e1e)) 90%,
-      var(--accent-primary, var(--accent-primary, #d4a373)) 10%
+      var(--accent-primary, #d4a373) 10%
     );
     --border-priming: color-mix(
       in srgb,
       var(--rule-strong, var(--border-color, #333333)) 75%,
-      var(--accent-primary, var(--accent-primary, #d4a373)) 25%
+      var(--accent-primary, #d4a373) 25%
     );
     --surface-spoiler-safe: color-mix(
       in srgb,

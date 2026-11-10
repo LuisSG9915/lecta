@@ -15,7 +15,7 @@ colors:
   paper-sunken: "#f0e7d5"
   ink: "#1f1d1a"
   ink-soft: "#5c554d"
-  ink-faint: "#8a7f72"
+  ink-faint: "#70655a"
   rule: "rgba(120, 95, 70, 0.12)"
   rule-strong: "#c9beaa"
   on-accent: "#ffffff"
