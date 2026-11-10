@@ -698,8 +698,9 @@ formularios. Código: `routes.ts` (rutas), `views.ts` (HTML), `epub-reader.ts`
   salen de `reviewQueue` (`learn.ts`) — vencidas que ya pasaron por la ficha o por
   un repaso real. Nunca se examina una palabra con `reps === 0` sin exposición, no
   hay respaldo con palabras no vencidas y el modo se elige con `isEligible` (sin
-  oración no hay `choose`). El botón principal del héroe ofrece aprender antes de
-  repasar; si no hay nada que practicar, los modos libres quedan apagados y se
+  oración no hay `choose`). El botón principal del héroe es «Repasar» cuando hay
+  vencidas (decisión de 2026-11-10: repasar primero) y «Aprender» queda como
+  segundo botón; sin vencidas «Aprender» es el principal; si no hay nada que practicar, los modos libres quedan apagados y se
   explica por qué.
 - Las afirmaciones de `audit-cuaderno` usan la comprobación `presente` (busca el
   patrón en todo el archivo y reporta dónde): mover código no rompe el arnés. Las
@@ -713,8 +714,9 @@ formularios. Código: `routes.ts` (rutas), `views.ts` (HTML), `epub-reader.ts`
 
 ## Deuda de complejidad (2026-11)
 
-- `Reader.tsx` (4 934 líneas), `Vocabulary.tsx` (3 783) y `app.ts` worker (3 716) son
-  componentes/módulos monolíticos. Concentran estado, efectos, callbacks y JSX.
+- `Reader.tsx` (4 934 líneas) y `app.ts` worker (3 716) son componentes/módulos
+  monolíticos. Concentran estado, efectos, callbacks y JSX. `Vocabulary.tsx` ya se
+  partió (plan v2 del Cuaderno, Fase 5, 2026-11-10: 4 085 → 864 líneas, ver abajo).
 - **Plan de refactor (incremental, cada fase con `pnpm gate` verde)**:
   - Fase R1 — hooks de estado: `useReaderTts`, `useReaderSelection`, `useReaderAnchoring`.
   - Fase R2 — subcomponentes: `ReaderTtsDock`, `ReaderSelectionOverlay`, `ReaderChapterHeader`.
@@ -722,6 +724,24 @@ formularios. Código: `routes.ts` (rutas), `views.ts` (HTML), `epub-reader.ts`
 - Cada fase se valida con tests unitarios del hook extraído y, para R2/R3, con
   `e2e/smoke-journeys.spec.ts` y `e2e/reader-position.spec.ts`.
 - **No mezclar con cambios funcionales**: una fase = un PR/commit aislado.
+- **Estructura del Cuaderno tras partir `Vocabulary.tsx`** (sin cambios funcionales;
+  `Vocabulary.tsx` es el compositor: monta los hooks, decide qué vista pintar y
+  guarda lo pequeño que cruza vistas — pestaña, citas, avisos de deshacer, taller):
+  - `src/client/lib/notebook-model.ts` — modelo puro (tipos, `wordStage`/`stateOf`/
+    `matchesFilter`, `isEligible`, búsqueda, constantes). Sin React; con pruebas propias.
+  - Hooks en `src/client/hooks/`: `useNotebookData` (carga y estado de palabras,
+    conocimiento, exposición, «Usar IA»), `useHerbarioView` (filtros, ámbito, listas
+    derivadas, nombres de libros), `useLearnSession` (ficha de Aprender),
+    `useReviewSession` (cola, calificación FSRS, modos, pistas, rescate, cierre) y
+    `usePracticeCompanion` (pose, frase y racha del gato).
+  - Componentes en `src/client/components/notebook/`: `NotebookHero`, `FreeModes`,
+    `HerbarioPanel`, `WordRow`, `LearnSessionView`, `PracticeCard`, `ReviewDone`,
+    `QuotesPanel`. Reciben el objeto del hook (`view`, `session`, `review`) y no leen
+    estado por su cuenta.
+  - `audit-cuaderno` busca en el grupo `@notebook` (Vocabulary.tsx + estos módulos):
+    mover código entre ellos no rompe las afirmaciones. `Vocabulary.tsx` reexporta
+    `findEpisodicHighlightRange`, `renderHighlightedContext`, `safeStability` y
+    `getStabilitySegments` porque las pruebas los importan por esa vía histórica.
 
 ## Rediseño UX editorial (fases F0–F8, 2026-11)
 

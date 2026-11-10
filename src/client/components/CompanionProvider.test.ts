@@ -122,7 +122,6 @@ import * as idb from "../lib/idb";
 import * as game from "../lib/game";
 import { emptyGameState, type GameChest } from "../lib/gamification";
 import {
-  catReducedMotion,
   CompanionProvider,
   drawableAccessories,
   effectiveEquipped,
@@ -130,6 +129,7 @@ import {
   ownedArticles,
   useCompanion,
 } from "./CompanionProvider";
+import { catReducedMotion } from "../lib/cat-motion";
 import type { CompanionRegister } from "../../shared/companion-data";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =

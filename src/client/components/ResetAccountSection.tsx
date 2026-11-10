@@ -43,7 +43,7 @@ export function ResetAccountSection({
 
   return (
     <div
-      className="reset-account-box rounded-xl border border-amber-500/30 bg-amber-500/5 p-4"
+      className="reset-account-box"
       style={{
         border: "1px solid var(--warning, #d97706)",
         background: "var(--warning-wash, rgba(217, 119, 6, 0.08))",
@@ -52,9 +52,7 @@ export function ResetAccountSection({
         marginTop: "var(--s-4, 1rem)",
       }}
     >
-      <div
-        className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between"
-        style={{
+      <div style={{
           display: "flex",
           flexDirection: "column",
           gap: "var(--s-2, 0.5rem)",
@@ -62,9 +60,7 @@ export function ResetAccountSection({
         }}
       >
         <div>
-          <h3
-            className="text-base font-semibold text-amber-900 dark:text-amber-200"
-            style={{
+          <h3 style={{
               fontFamily: "var(--font-ui)",
               fontSize: "var(--fs-base, 1rem)",
               fontWeight: 600,
@@ -74,9 +70,7 @@ export function ResetAccountSection({
           >
             Empezar de cero
           </h3>
-          <p
-            className="text-sm text-neutral-600 dark:text-neutral-400"
-            style={{
+          <p style={{
               color: "var(--ink-soft)",
               fontSize: "var(--fs-sm, 0.85rem)",
               margin: 0,
@@ -91,7 +85,6 @@ export function ResetAccountSection({
           <button
             type="button"
             onClick={() => setIsConfirmOpen(true)}
-            className="shrink-0 rounded-lg border border-amber-600/40 bg-amber-500/10 px-3.5 py-2 text-sm font-medium text-amber-800 transition hover:bg-amber-500/20 dark:text-amber-200"
             style={{
               alignSelf: "flex-start",
               borderRadius: "var(--radius-s, 8px)",
@@ -112,7 +105,7 @@ export function ResetAccountSection({
 
       {isConfirmOpen && (
         <div
-          className="confirm-zone mt-4 space-y-3 border-t border-amber-500/20 pt-4"
+          className="confirm-zone"
           style={{
             marginTop: "var(--s-3, 0.75rem)",
             paddingTop: "var(--s-3, 0.75rem)",
@@ -122,18 +115,14 @@ export function ResetAccountSection({
             gap: "var(--s-2, 0.5rem)",
           }}
         >
-          <p
-            className="text-xs text-neutral-600 dark:text-neutral-300"
-            style={{
+          <p style={{
               fontSize: "var(--fs-xs, 0.75rem)",
               color: "var(--ink-soft)",
               margin: 0,
             }}
           >
             Esta acción eliminará permanentemente tus palabras, repasos SRS, anotaciones y libros sincronizados en todos tus dispositivos. Escribe{" "}
-            <strong
-              className="font-mono text-amber-700 dark:text-amber-300"
-              style={{
+            <strong style={{
                 fontFamily: "monospace",
                 color: "var(--amber, #b45309)",
                 fontWeight: 700,
@@ -151,7 +140,6 @@ export function ResetAccountSection({
             placeholder={CONFIRM_KEYWORD}
             disabled={isLoading}
             aria-label="Confirmar reinicio de cuenta"
-            className="w-full rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900"
             style={{
               width: "100%",
               borderRadius: "var(--radius-s, 8px)",
@@ -167,7 +155,6 @@ export function ResetAccountSection({
           {error && (
             <p
               role="alert"
-              className="text-xs font-medium text-red-600 dark:text-red-400"
               style={{
                 fontSize: "var(--fs-xs, 0.75rem)",
                 fontWeight: 500,
@@ -179,9 +166,7 @@ export function ResetAccountSection({
             </p>
           )}
 
-          <div
-            className="flex items-center justify-end gap-2"
-            style={{
+          <div style={{
               display: "flex",
               alignItems: "center",
               justifyContent: "flex-end",
@@ -197,7 +182,6 @@ export function ResetAccountSection({
                 setConfirmText("");
                 setError(null);
               }}
-              className="rounded-lg px-3 py-1.5 text-sm text-neutral-600 hover:bg-neutral-200/60 dark:text-neutral-400 dark:hover:bg-neutral-800"
               style={{
                 borderRadius: "var(--radius-s, 8px)",
                 border: "none",
@@ -214,7 +198,7 @@ export function ResetAccountSection({
               type="button"
               disabled={!canConfirm}
               onClick={handleReset}
-              className="btn-reset-confirm rounded-lg bg-amber-600 px-3.5 py-1.5 text-sm font-medium text-white transition hover:bg-amber-700 disabled:opacity-40"
+              className="btn-reset-confirm"
               style={{
                 borderRadius: "var(--radius-s, 8px)",
                 border: "1px solid var(--amber, #d97706)",

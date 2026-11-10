@@ -112,6 +112,16 @@ describe("Companion render", () => {
     expect(svg().getAttribute("class")).toContain("cat--p-celebrate");
   });
 
+  it("still pinta la misma silueta pero marca cat--still", () => {
+    render(h(Companion, { ...base, still: true }));
+    const el = svg();
+    expect(el.getAttribute("class")).toContain("cat--still");
+    expect(el.querySelector(".cat-body")).toBeTruthy();
+    // Sin still no aparece la marca.
+    render(h(Companion, { ...base }));
+    expect(svg().getAttribute("class")).not.toContain("cat--still");
+  });
+
   it("bufanda y collar juntos: solo se dibuja la bufanda", () => {
     render(h(Companion, { ...base, accessories: ["bufanda", "collar"] }));
     expect(svg().querySelector(".cat-wear--bufanda")).toBeTruthy();

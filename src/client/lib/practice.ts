@@ -124,15 +124,33 @@ export function ratingToCorrect(rating: Grade): boolean {
 
 // Distractores para «elegir palabra»: otras formas del cuaderno,
 // preferentemente de la misma categoría (pos); si no alcanzan se
-// rellena con cualquier pos. Determinista: se recorre el pool en
-// orden estable por key, así la misma palabra siempre ofrece las
-// mismas opciones.
+// rellena con cualquier pos. Determinista por palabra: el orden del pool
+// depende de un hash de (palabra objetivo, candidata), así la misma palabra
+// siempre ofrece las mismas opciones y el orden no depende del pool, pero
+// distintas palabras reciben distractores distintos. Antes se ordenaba por
+// key y todas las tarjetas repetían los mismos primeros candidatos, de modo
+// que se acertaba por descarte.
+const distractorRank = (target: SavedWord, candidate: SavedWord): number => {
+  // FNV-1a de 32 bits sobre «objetivo|candidata».
+  let hash = 0x811c9dc5;
+  const text = `${target.key}|${candidate.key}`;
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash;
+};
+
 export function pickDistractors(
   target: SavedWord,
   pool: SavedWord[],
   count = 3,
 ): SavedWord[] {
-  const ordered = [...pool].sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+  const ordered = [...pool].sort(
+    (a, b) =>
+      distractorRank(target, a) - distractorRank(target, b) ||
+      (a.key < b.key ? -1 : a.key > b.key ? 1 : 0),
+  );
   const seen = new Set([target.form.toLowerCase()]);
   const samePos: SavedWord[] = [];
   const others: SavedWord[] = [];

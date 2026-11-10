@@ -34,6 +34,7 @@ import {
   type BookCoverage,
 } from "../lib/coverage";
 import { playCompanionSound } from "../lib/companion-audio";
+import { catMotionReduced } from "../lib/cat-motion";
 import { relativeDay } from "../lib/relative-time";
 import {
   parseReadingGoal,
@@ -163,7 +164,7 @@ const startOfDay = (ts: number) => {
 const SHELF_GREET_MS = 4_000;
 let shelfGreetedThisSession = false;
 export function takeShelfGreeting(): boolean {
-  if (shelfGreetedThisSession) return false;
+  if (shelfGreetedThisSession || catMotionReduced()) return false;
   shelfGreetedThisSession = true;
   return true;
 }

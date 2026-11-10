@@ -81,6 +81,11 @@ import {
   setSoundEnabled,
   stopCompanionSound,
 } from "../lib/companion-audio";
+import {
+  applyCatMotion,
+  catReducedMotion,
+  prefersReducedMotion,
+} from "../lib/cat-motion";
 
 // ---- Resolución pura de ropa y humor (exportada para pruebas) ----
 
@@ -272,27 +277,9 @@ type Loaded = {
   loadedAt: number;
 };
 
-const prefersReducedMotion = () =>
-  typeof window !== "undefined" &&
-  typeof window.matchMedia === "function" &&
-  window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-// Resolución pura del modo efectivo: «full» siempre anima (aunque el
-// sistema pida reducir), «reduced» siempre reduce y «system» sigue
-// al sistema operativo.
-export function catReducedMotion(
-  motion: CompanionMotion,
-  systemPrefers: boolean,
-): boolean {
-  return motion === "reduced" || (motion === "system" && systemPrefers);
-}
-
-// La preferencia en el DOM: <html data-cat-motion> es la llave con la
-// que el CSS decide si las animaciones marcadas «cat-anim» viven
-// (full), se reducen (reduced) o siguen al sistema (system).
-export function applyCatMotion(motion: CompanionMotion) {
-  document.documentElement.dataset.catMotion = motion;
-}
+// catReducedMotion / applyCatMotion / prefersReducedMotion viven en
+// ../lib/cat-motion: el CSS ya lee <html data-cat-motion> y los timers
+// de React (parpadeo, saludo) leen la misma fuente.
 
 export function CompanionProvider({
   userId,

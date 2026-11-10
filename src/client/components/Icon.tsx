@@ -27,7 +27,37 @@ export type IconName =
   | "lock"
   | "highlight"
   | "sliders"
-  | "chevron-right";
+  | "chevron-right"
+  | "paw"
+  | "cat"
+  | "bulb"
+  | "trophy"
+  | "target"
+  | "users"
+  | "sprout"
+  | "trash"
+  | "pin"
+  | "droplet"
+  | "glasses"
+  | "gift"
+  | "zap"
+  | "wave"
+  | "edit"
+  | "shuffle"
+  | "shield"
+  | "compass"
+  | "star"
+  | "check"
+  | "pause"
+  | "skip-back"
+  | "skip-forward"
+  | "retry"
+  | "scroll"
+  | "chart"
+  | "shirt"
+  | "bowl"
+  | "text"
+  | "ban";
 
 export interface IconProps {
   name: IconName;
@@ -250,5 +280,215 @@ function renderIconPath(name: IconName) {
       );
     case "chevron-right":
       return <polyline points="9 6 15 12 9 18" />;
+    case "paw":
+      return (
+        <>
+          <circle cx="11" cy="4" r="2" />
+          <circle cx="18" cy="8" r="2" />
+          <circle cx="20" cy="16" r="2" />
+          <path d="M9 11a5 5 0 0 0-5 5c0 2.5 2 4.5 4.5 4.5 1.5 0 2.5-.5 3.5-1.5l2-2 2 2c1 1 2 1.5 3.5 1.5 2.5 0 4.5-2 4.5-4.5a5 5 0 0 0-5-5c-1.5 0-2.5.5-3.5 1.5l-2 2-2-2C11.5 11.5 10.5 11 9 11Z" />
+        </>
+      );
+    case "cat":
+      return (
+        <>
+          <path d="M4 10l1.5-5L10 7" />
+          <path d="M20 10l-1.5-5L14 7" />
+          <circle cx="12" cy="13" r="7" />
+          <path d="M9.5 12.5h.01M14.5 12.5h.01" strokeWidth="2.4" />
+          <path d="M11 15.5h2l-1 1.5z" fill="currentColor" stroke="none" />
+          <path d="M6.5 15.5h.01M17.5 15.5h.01" strokeWidth="2.4" />
+        </>
+      );
+    case "bulb":
+      return (
+        <>
+          <path d="M9 18h6" />
+          <path d="M10 22h4" />
+          <path d="M12 2a7 7 0 0 0-4 12.7c.6.5 1 1.4 1 2.3h6c0-.9.4-1.8 1-2.3A7 7 0 0 0 12 2Z" />
+        </>
+      );
+    case "trophy":
+      return (
+        <>
+          <path d="M8 21h8" />
+          <path d="M12 17v4" />
+          <path d="M7 4h10v5a5 5 0 0 1-10 0V4Z" />
+          <path d="M7 6H4a2 2 0 0 0 2 4h1M17 6h3a2 2 0 0 1-2 4h-1" />
+        </>
+      );
+    case "target":
+      return (
+        <>
+          <circle cx="12" cy="12" r="9" />
+          <circle cx="12" cy="12" r="5" />
+          <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
+        </>
+      );
+    case "users":
+      return (
+        <>
+          <circle cx="9" cy="8" r="3.5" />
+          <path d="M2.5 20v-1a6.5 6.5 0 0 1 13 0v1" />
+          <path d="M16 4.6a3.5 3.5 0 0 1 0 6.8" />
+          <path d="M17.5 14.5a6.5 6.5 0 0 1 4 5.5v1" />
+        </>
+      );
+    case "sprout":
+      return (
+        <>
+          <path d="M7 20h10" />
+          <path d="M12 20v-8" />
+          <path d="M12 12c0-4 3-7 8-7 0 4-3 7-8 7Z" />
+          <path d="M12 12c0-3-2.5-5-6-5 0 3 2.5 5 6 5Z" />
+        </>
+      );
+    case "trash":
+      return (
+        <>
+          <path d="M4 7h16" />
+          <path d="M9 7V4h6v3" />
+          <path d="M6 7l1 14h10l1-14" />
+          <path d="M10 11v6M14 11v6" />
+        </>
+      );
+    case "pin":
+      return (
+        <>
+          <path d="M12 17v5" />
+          <path d="M9 3h6l-1 7 3 3H7l3-3-1-7Z" />
+        </>
+      );
+    case "droplet":
+      return <path d="M12 2.7s6.5 7 6.5 11.3a6.5 6.5 0 0 1-13 0C5.5 9.7 12 2.7 12 2.7Z" />;
+    case "glasses":
+      return (
+        <>
+          <circle cx="6" cy="15" r="4" />
+          <circle cx="18" cy="15" r="4" />
+          <path d="M10 15h4" />
+          <path d="M2 13l-1-3M22 13l1-3" />
+        </>
+      );
+    case "gift":
+      return (
+        <>
+          <rect x="3" y="8" width="18" height="4" rx="1" />
+          <path d="M12 8v13" />
+          <path d="M5 12v9h14v-9" />
+          <path d="M12 8c-2 0-4.5-1-4.5-3S10 2 12 8Zm0 0c2 0 4.5-1 4.5-3S14 2 12 8Z" />
+        </>
+      );
+    case "zap":
+      return <polygon points="13 2 4 14 11 14 9 22 20 10 13 10 13 2" />;
+    case "wave":
+      return (
+        <>
+          <path d="M2 8c2.5 0 2.5 2 5 2s2.5-2 5-2 2.5 2 5 2 2.5-2 5-2" />
+          <path d="M2 14c2.5 0 2.5 2 5 2s2.5-2 5-2 2.5 2 5 2 2.5-2 5-2" />
+        </>
+      );
+    case "edit":
+      return (
+        <>
+          <path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+          <path d="M15 5l4 4" />
+        </>
+      );
+    case "shuffle":
+      return (
+        <>
+          <polyline points="16 3 21 3 21 8" />
+          <line x1="4" y1="20" x2="21" y2="3" />
+          <polyline points="21 16 21 21 16 21" />
+          <line x1="15" y1="15" x2="21" y2="21" />
+          <line x1="4" y1="4" x2="9" y2="9" />
+        </>
+      );
+    case "shield":
+      return <path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4Z" />;
+    case "compass":
+      return (
+        <>
+          <circle cx="12" cy="12" r="9" />
+          <polygon points="15.5 8.5 13 13 8.5 15.5 11 11 15.5 8.5" />
+        </>
+      );
+    case "star":
+      return (
+        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+      );
+    case "check":
+      return <polyline points="20 6 9 17 4 12" />;
+    case "pause":
+      return (
+        <>
+          <rect x="6" y="4" width="4" height="16" rx="1" />
+          <rect x="14" y="4" width="4" height="16" rx="1" />
+        </>
+      );
+    case "skip-back":
+      return (
+        <>
+          <polygon points="19 20 9 12 19 4 19 20" />
+          <line x1="5" y1="19" x2="5" y2="5" />
+        </>
+      );
+    case "skip-forward":
+      return (
+        <>
+          <polygon points="5 4 15 12 5 20 5 4" />
+          <line x1="19" y1="5" x2="19" y2="19" />
+        </>
+      );
+    case "retry":
+      return (
+        <>
+          <polyline points="1 4 1 10 7 10" />
+          <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+        </>
+      );
+    case "scroll":
+      return (
+        <>
+          <path d="M19 17V5a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2Z" transform="rotate(90 12 12)" />
+          <path d="M8 9h8M8 13h5" />
+        </>
+      );
+    case "chart":
+      return (
+        <>
+          <line x1="18" y1="20" x2="18" y2="10" />
+          <line x1="12" y1="20" x2="12" y2="4" />
+          <line x1="6" y1="20" x2="6" y2="14" />
+          <line x1="3" y1="20" x2="21" y2="20" />
+        </>
+      );
+    case "shirt":
+      return (
+        <path d="M20.38 3.46 16 2a4 4 0 0 1-8 0L3.62 3.46a2 2 0 0 0-1.34 2.23l.58 3.47a1 1 0 0 0 .99.84H6v10a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V10h2.15a1 1 0 0 0 .99-.84l.58-3.47a2 2 0 0 0-1.34-2.23Z" />
+      );
+    case "bowl":
+      return (
+        <>
+          <path d="M2 12h20a10 10 0 0 1-20 0Z" />
+          <path d="M7 8c0-2 2-3 2-5M12 8c0-2 2-3 2-5M17 8c0-2 2-3 2-5" />
+        </>
+      );
+    case "text":
+      return (
+        <>
+          <path d="M4 7V4h16v3" />
+          <path d="M9 20h6" />
+          <path d="M12 4v16" />
+        </>
+      );
+    case "ban":
+      return (
+        <>
+          <circle cx="12" cy="12" r="9" />
+          <line x1="5.6" y1="5.6" x2="18.4" y2="18.4" />
+        </>
+      );
   }
 }

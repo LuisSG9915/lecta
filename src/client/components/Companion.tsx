@@ -23,6 +23,7 @@ import {
   type EquippedSlot,
 } from "../../shared/companion-data";
 import { triggerHaptic } from "../lib/haptics";
+import { catMotionReduced } from "../lib/cat-motion";
 
 // Gestos transitorios: la clase cat--p-* anima una iteración corta o
 // un bucle suave mientras el controlador mantenga la pose; «idle» es
@@ -68,6 +69,9 @@ export interface CompanionProps {
   // Dentro de un botón el dibujo es decorativo: sin role ni título,
   // el label lo pone el elemento interactivo que lo contiene.
   decorative?: boolean;
+  // Miniatura estática (armario): sin temporizadores ni animaciones —
+  // el mismo arte, quieto. No usar donde el gato deba vivir.
+  still?: boolean;
   // Fracción leída [0, 1] o desplazamiento horizontal [-2, 2] px para seguimiento ocular
   gazeProgress?: number;
   gazeOffset?: number;
@@ -369,6 +373,7 @@ export function Companion({
   pose,
   name,
   decorative = false,
+  still = false,
   gazeProgress,
   gazeOffset,
   coatId,
@@ -397,12 +402,13 @@ export function Companion({
     activeMood === "asleep" || activeMood === "sleeping" || focus === "sleep";
 
   useEffect(() => {
-    if (sleeping) return;
+    if (sleeping || still) return;
     let blinkTimer: ReturnType<typeof setTimeout>;
     let blinkDurationTimer: ReturnType<typeof setTimeout>;
     let isMounted = true;
 
     const scheduleBlink = () => {
+      if (catMotionReduced()) return;
       const delay = 2800 + Math.random() * 3000;
       blinkTimer = setTimeout(() => {
         if (!isMounted) return;
@@ -432,15 +438,16 @@ export function Companion({
       clearTimeout(blinkTimer);
       clearTimeout(blinkDurationTimer);
     };
-  }, [sleeping]);
+  }, [sleeping, still]);
 
   useEffect(() => {
-    if (sleeping) return;
+    if (sleeping || still) return;
     let twitchTimer: ReturnType<typeof setTimeout>;
     let twitchDurationTimer: ReturnType<typeof setTimeout>;
     let isMounted = true;
 
     const scheduleTwitch = () => {
+      if (catMotionReduced()) return;
       const delay = 6000 + Math.random() * 5000;
       twitchTimer = setTimeout(() => {
         if (!isMounted) return;
@@ -460,7 +467,7 @@ export function Companion({
       clearTimeout(twitchTimer);
       clearTimeout(twitchDurationTimer);
     };
-  }, [sleeping]);
+  }, [sleeping, still]);
 
   // Seguimiento ocular suave (Bloque 2.3)
   const computedGazeX =
@@ -538,7 +545,8 @@ export function Companion({
     `cat cat-anim cat--${activeMood} cat--mood-${activeMood} cat--s${s} ${coatCls}` +
     (focus ? ` cat--f-${focus}` : "") +
     (act && act !== "idle" ? ` cat--p-${act}` : "") +
-    (isBooped ? " cat--boop" : "");
+    (isBooped ? " cat--boop" : "") +
+    (still ? " cat--still" : "");
 
   // Manejo de zonas táctiles (Bloque 3)
   const handleHeadDown = () => {

@@ -138,17 +138,36 @@ describe("pickDistractors", () => {
 
   it("prefers same-pos words before falling back", () => {
     const picked = pickDistractors(target, pool, 3);
-    expect(picked.map((item) => item.key)).toEqual(["es:breve", "es:etéreo", "es:casa"]);
+    // Las dos de la misma categoría (adj) van primero; la tercera es de relleno.
+    expect(new Set(picked.slice(0, 2).map((item) => item.key))).toEqual(
+      new Set(["es:breve", "es:etéreo"]),
+    );
+    expect(picked).toHaveLength(3);
   });
 
   it("fills with any pos when same-pos is not enough", () => {
     const picked = pickDistractors(target, pool, 4);
-    expect(picked.map((item) => item.key)).toEqual([
-      "es:breve",
-      "es:etéreo",
-      "es:casa",
-      "es:correr",
-    ]);
+    expect(new Set(picked.slice(0, 2).map((item) => item.key))).toEqual(
+      new Set(["es:breve", "es:etéreo"]),
+    );
+    expect(new Set(picked.slice(2).map((item) => item.key))).toEqual(
+      new Set(["es:casa", "es:correr"]),
+    );
+  });
+
+  it("gives different words different distractors instead of the same first ones", () => {
+    const big = Array.from({ length: 30 }, (_, i) =>
+      word({ key: `es:w${String(i).padStart(2, "0")}`, form: `w${i}`, pos: "adj" }),
+    );
+    const triples = new Set(
+      big.slice(0, 12).map((t) =>
+        pickDistractors(t, big, 3)
+          .map((item) => item.key)
+          .join(","),
+      ),
+    );
+    // Con orden por key todas las tarjetas (salvo las primeras) repetían w00,w01,w02.
+    expect(triples.size).toBeGreaterThan(6);
   });
 
   it("returns fewer than count when the pool is small", () => {
