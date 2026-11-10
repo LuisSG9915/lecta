@@ -283,6 +283,23 @@ describe("Aprender", () => {
     expect(button("Repasar estas 2 palabras")).toBeTruthy();
   });
 
+  it("la pantalla de cierre ya no marca sesión activa", async () => {
+    listWordsMock.mockResolvedValue([word({ meaning: "hogar" })]);
+    await render();
+    await click("Aprender 1 palabra nueva");
+    expect(
+      host.querySelector(".notebook")?.getAttribute("data-session"),
+    ).toBe("learn");
+    await click("Mostrar significado");
+    await click("Ya la conozco");
+    expect(text()).toContain("Aprender terminado");
+    // La barra de navegación debe volver: sin sesión activa el
+    // atributo se retira aunque el estado de la tanda persista.
+    expect(
+      host.querySelector(".notebook")?.getAttribute("data-session"),
+    ).toBeNull();
+  });
+
   it("«Terminar por ahora» conserva el puente a repaso de lo aprendido", async () => {
     listWordsMock.mockResolvedValue([
       word({ form: "casa", meaning: "hogar" }),

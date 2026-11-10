@@ -1,6 +1,6 @@
 # Auditoría del Cuaderno — estudio antes que prueba
 
-Generado por `scripts/audit-cuaderno.mjs` v1 el 2026-11-09T15:15:40.740Z. Commit: `14d91c1cd01f`.
+Generado por `scripts/audit-cuaderno.mjs` v1 el 2026-11-10T03:00:21.851Z. Commit: `e420b848315a`.
 
 ## La queja, en palabras del usuario
 
@@ -37,9 +37,9 @@ Generado por `scripts/audit-cuaderno.mjs` v1 el 2026-11-09T15:15:40.740Z. Commit
 
 _Por qué:_ «no recuerdo para nada las palabras al dar iniciar sesión fluida… primero tengo que aprenderme las palabras, de ahí sí puedo practicar» — el arreglo: con palabras por aprender, el único botón primario abre la ficha y no la prueba.
 
-- ✔ src/client/components/Vocabulary.tsx:2391 ~ /\) : learnable\.length > 0 \? \(/
+- ✔ src/client/components/Vocabulary.tsx:2405 ~ /\) : learnable\.length > 0 \? \(/
   - `) : learnable.length > 0 ? (`
-- ✔ src/client/components/Vocabulary.tsx:2398 ~ /onClick=\{\(\) => startLearn\(\)\}/
+- ✔ src/client/components/Vocabulary.tsx:2412 ~ /onClick=\{\(\) => startLearn\(\)\}/
   - `onClick={() => startLearn()}`
 - ✔ src/client/components/Vocabulary.tsx:2051-2106 no contiene /Iniciar Sesi[oó]n Fluida/
 
@@ -49,7 +49,7 @@ _Por qué:_ «no recuerdo para nada las palabras al dar iniciar sesión fluida�
 
 _Por qué:_ Se fue la rama scopedWords.slice(0,5), que servía palabras no vencidas, «Ya la conozco» y adelantaba repasos.
 
-- ✔ src/client/components/Vocabulary.tsx:1011 ~ /const reviewWords = reviewQueue\(scopedWords, knownKeys, exposure\);/
+- ✔ src/client/components/Vocabulary.tsx:1022 ~ /const reviewWords = reviewQueue\(scopedWords, knownKeys, exposure\);/
   - `const reviewWords = reviewQueue(scopedWords, knownKeys, exposure);`
 - ✔ src/client/lib/learn.ts:151 ~ /!isLearnPending\(word, knownKeys, exposure\) &&/
   - `!isLearnPending(word, knownKeys, exposure) &&`
@@ -76,11 +76,11 @@ _Por qué:_ Una palabra sin oración ya no cae en choose (adivinar al 25 %): pas
 
 - ✔ src/client/lib/practice.ts:363 ~ /if \(isNew \|\| stability < 2\.5\) \{/
   - `if (isNew || stability < 2.5) {`
-- ✔ src/client/components/Vocabulary.tsx:1227 ~ /if \(!isEligible\(ch\.word, mode\)\) \{/
+- ✔ src/client/components/Vocabulary.tsx:1238 ~ /if \(!isEligible\(ch\.word, mode\)\) \{/
   - `if (!isEligible(ch.word, mode)) {`
-- ✔ src/client/components/Vocabulary.tsx:3768 ~ /Toca la palabra que falta\./
+- ✔ src/client/components/Vocabulary.tsx:3807 ~ /Toca la palabra que falta\./
   - `<p className="meta">Toca la palabra que falta.</p>`
-- ✔ src/client/components/Vocabulary.tsx:3772 ~ /className="nb-card-back" role="status"/
+- ✔ src/client/components/Vocabulary.tsx:3811 ~ /className="nb-card-back" role="status"/
   - `<p className="nb-card-back" role="status">`
 
 ### ✔ `C5-estudio-existe-pero-abajo`
@@ -90,7 +90,7 @@ _Por qué:_ Una palabra sin oración ya no cae en choose (adivinar al 25 %): pas
 _Por qué:_ Se quitó la sección «Por aprender · N» que vivía debajo del héroe: el botón primario hace ese trabajo.
 
 - ✔ src/client/components/Vocabulary.tsx:1-9999 no contiene /aria-label="Palabras por aprender"/
-- ✔ src/client/components/Vocabulary.tsx:2398 ~ /onClick=\{\(\) => startLearn\(\)\}/
+- ✔ src/client/components/Vocabulary.tsx:2412 ~ /onClick=\{\(\) => startLearn\(\)\}/
   - `onClick={() => startLearn()}`
 
 ### ✔ `C6-sesion-puede-ensayar-borradas`
@@ -101,7 +101,7 @@ _Por qué:_ Buscar «deleted» dentro de dueWords era una ausencia usada como pr
 
 - ✔ src/client/lib/idb.ts:1739 ~ /return all\.filter\(\(word\) => !word\.deleted\);/
   - `return all.filter((word) => !word.deleted);`
-- ✔ src/client/components/Vocabulary.tsx:874 ~ /listSavedWords\(/
+- ✔ src/client/components/Vocabulary.tsx:885 ~ /listSavedWords\(/
   - `void listSavedWords(undefined, scope)`
 
 ### ✔ `C7-copia-no-dice-cuantas-faltan`
@@ -110,9 +110,9 @@ _Por qué:_ Buscar «deleted» dentro de dueWords era una ausencia usada como pr
 
 _Por qué:_ «~2 min» y «1 min» describían la misma sesión. Ahora el botón lleva la cifra real y desaparece la promesa de duración.
 
-- ✔ src/client/components/Vocabulary.tsx:2402 ~ /Aprender \{learnable\.length\}/
+- ✔ src/client/components/Vocabulary.tsx:2416 ~ /Aprender \{learnable\.length\}/
   - `Aprender {learnable.length}{" "}`
-- ✔ src/client/components/Vocabulary.tsx:2419 ~ /Repasar \{Math\.min\(REVIEW_SESSION_SIZE, reviewWords\.length\)\}/
+- ✔ src/client/components/Vocabulary.tsx:2433 ~ /Repasar \{Math\.min\(REVIEW_SESSION_SIZE, reviewWords\.length\)\}/
   - `Repasar {Math.min(REVIEW_SESSION_SIZE, reviewWords.length)}{" "}`
 - ✔ src/client/components/Vocabulary.tsx:2051-2106 no contiene /~2 min|1 min/
 
@@ -122,9 +122,9 @@ _Por qué:_ «~2 min» y «1 min» describían la misma sesión. Ahora el botón
 
 _Por qué:_ Dos trabajos distintos ya no comparten una sola cifra: la de aprender solo cuenta palabras que pueden entrar a la ficha.
 
-- ✔ src/client/components/Vocabulary.tsx:2202 ~ /por aprender/
+- ✔ src/client/components/Vocabulary.tsx:2216 ~ /por aprender/
   - `learnable.length > 0 ? ` · ${learnable.length} por aprender` : ""`
-- ✔ src/client/components/Vocabulary.tsx:1237 ~ /para repasar/
+- ✔ src/client/components/Vocabulary.tsx:1248 ~ /para repasar/
   - `"Estas palabras necesitan una oración o un significado para repasarse.",`
 
 ### ✔ `C9-el-rescate-llega-despues-de-fallar`
@@ -135,7 +135,7 @@ _Por qué:_ rescueChallenge solo actúa si el fallo fue en Nivel 2 o 3. Para la 
 
 - ✔ src/client/lib/practice.ts:407 ~ /export function rescueChallenge\(/
   - `export function rescueChallenge(`
-- ✔ src/client/components/Vocabulary.tsx:3543 ~ /current\.adaptiveChallenge\.level > 1/
+- ✔ src/client/components/Vocabulary.tsx:3582 ~ /current\.adaptiveChallenge\.level > 1/
   - `if (current.adaptiveChallenge && current.adaptiveChallenge.level > 1) {`
 
 ### ✔ `C10-dos-puertas-a-la-misma-sesion`
@@ -144,7 +144,7 @@ _Por qué:_ rescueChallenge solo actúa si el fallo fue en Nivel 2 o 3. Para la 
 
 _Por qué:_ Se quitó «Repaso rápido», que caía a startAdaptiveFlow con otro texto. El CTA adaptive_flow de GamePanel nunca se pinta: el único montaje usa dashboard o ai_workshop.
 
-- ✔ src/client/components/Vocabulary.tsx:2624 ~ /mode=\{workshopOpen \? "ai_workshop" : "dashboard"\}/
+- ✔ src/client/components/Vocabulary.tsx:2653 ~ /mode=\{workshopOpen \? "ai_workshop" : "dashboard"\}/
   - `mode={workshopOpen ? "ai_workshop" : "dashboard"}`
 - ✔ src/client/components/Vocabulary.tsx:2051-2106 no contiene /notebook-quick-review-cta/
 
@@ -169,7 +169,7 @@ _Por qué:_ isEligible define qué pide cada modo; startAdaptiveFlow ahora lo co
 
 - ✔ src/client/components/Vocabulary.tsx:527 ~ /const isEligible = \(word: SavedWord, mode: PracticeMode\) => \{/
   - `const isEligible = (word: SavedWord, mode: PracticeMode) => {`
-- ✔ src/client/components/Vocabulary.tsx:1227 ~ /if \(!isEligible\(ch\.word, mode\)\) \{/
+- ✔ src/client/components/Vocabulary.tsx:1238 ~ /if \(!isEligible\(ch\.word, mode\)\) \{/
   - `if (!isEligible(ch.word, mode)) {`
 
 ### ✔ `X3-el-primer-paso-del-lector-ya-es-una-ficha`
@@ -178,11 +178,11 @@ _Por qué:_ isEligible define qué pide cada modo; startAdaptiveFlow ahora lo co
 
 _Por qué:_ El puente estudio→prueba reutiliza esa ficha, sin duplicar un componente nuevo.
 
-- ✔ src/client/components/Vocabulary.tsx:1326 ~ /const startLearn = \(first\?: SavedWord\) => \{/
+- ✔ src/client/components/Vocabulary.tsx:1337 ~ /const startLearn = \(first\?: SavedWord\) => \{/
   - `const startLearn = (first?: SavedWord) => {`
-- ✔ src/client/components/Vocabulary.tsx:1411 ~ /const learnKeep = async \(\) => \{/
+- ✔ src/client/components/Vocabulary.tsx:1422 ~ /const learnKeep = async \(\) => \{/
   - `const learnKeep = async () => {`
-- ✔ src/client/components/Vocabulary.tsx:3177 ~ /Repasar esta palabra/
+- ✔ src/client/components/Vocabulary.tsx:3216 ~ /Repasar esta palabra/
   - `? "Repasar esta palabra"`
 
 ### ✔ `C11-cualquier-respuesta-cancela-la-ficha`
@@ -204,9 +204,9 @@ _Por qué:_ startPractice usaba dueWords y podía preguntar por palabras nunca p
 
 - ✔ src/client/components/Vocabulary.tsx:372 ~ /reviewWords/
   - `// salen de reviewWords — nunca de palabras sin exponer.`
-- ✔ src/client/components/Vocabulary.tsx:2446 ~ /disabled=\{reviewWords\.filter\(\(w\) => isEligible\(w, "cloze"\)\)\.length === 0\}/
+- ✔ src/client/components/Vocabulary.tsx:2460 ~ /disabled=\{reviewWords\.filter\(\(w\) => isEligible\(w, "cloze"\)\)\.length === 0\}/
   - `disabled={reviewWords.filter((w) => isEligible(w, "cloze")).length === 0}`
-- ✔ src/client/components/Vocabulary.tsx:2554 ~ /Los modos libres usan palabras que ya viste/
+- ✔ src/client/components/Vocabulary.tsx:2582 ~ /Los modos libres usan palabras que ya viste/
   - `? "Los modos libres usan palabras que ya viste. Aprende primero las nuevas."`
 
 ## Preguntas de investigación

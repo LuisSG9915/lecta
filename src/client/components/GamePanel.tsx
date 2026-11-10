@@ -396,6 +396,11 @@ export function GamePanel(props: GamePanelProps) {
                   <strong>Sentido:</strong> {currentWord.meaning}
                 </p>
               ) : null}
+              {currentWord.context ? (
+                <p className="ai-word-example">
+                  <strong>En tu libro:</strong> «{currentWord.context}»
+                </p>
+              ) : null}
               {availableWords.length > 1 ? (
                 <div style={{ marginTop: "0.5rem", display: "flex", gap: "0.4rem", flexWrap: "wrap", alignItems: "center" }}>
                   {/* Con un cuaderno grande no se pintan 150 botones:

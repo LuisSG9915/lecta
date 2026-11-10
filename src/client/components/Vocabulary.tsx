@@ -839,6 +839,7 @@ function FullVocabulary({
   // La tarjeta candidata de cada calificación se calcula una sola vez al
   // revelar: el botón guarda exactamente lo que su intervalo anuncia.
   const candidates = useRef<Map<Grade, Card> | null>(null);
+  const workshopAnchorRef = useRef<HTMLDivElement>(null);
   const gradingRef = useRef(false);
   const undoTimer = useRef<number | undefined>(undefined);
   const matchFlashTimer = useRef<number | undefined>(undefined);
@@ -2511,7 +2512,21 @@ function FullVocabulary({
                         <button
                           type="button"
                           className="nb-free-mode-card"
-                          onClick={() => setWorkshopOpen((prev) => !prev)}
+                          onClick={() => {
+                            const opening = !workshopOpen;
+                            setWorkshopOpen(opening);
+                            // El taller se monta debajo del héroe: al abrirlo
+                            // lo traemos a la vista en vez de dejar que el
+                            // lector adivine que apareció más abajo.
+                            if (opening) {
+                              requestAnimationFrame(() =>
+                                workshopAnchorRef.current?.scrollIntoView({
+                                  behavior: "smooth",
+                                  block: "start",
+                                }),
+                              );
+                            }
+                          }}
                           disabled={reviewWords.length === 0}
                           title="Taller con el Gato IA · Generativo"
                         >
@@ -2632,24 +2647,35 @@ function FullVocabulary({
             ) : null}
 
             {isFeatureFlagEnabled("vocabGames") && (
-              <Suspense fallback={null}>
-                <GamePanel
-                  mode={workshopOpen ? "ai_workshop" : "dashboard"}
-                  onStartAdaptiveFlow={() => startAdaptiveFlow()}
-                  // El taller solo trabaja con palabras ya expuestas:
-                  // nunca examina ni produce sobre palabras sin ficha.
-                  words={reviewWords.map((w) => ({
-                    word: w.form,
-                    meaning: w.meaning,
-                    bookTitle: wordBookTitle(w),
-                    lemma: w.lemma,
-                    key: w.key,
-                  }))}
-                  onChallengeComplete={handleWorkshopComplete}
-                  showIdentity={false}
-                  onClose={() => setWorkshopOpen(false)}
-                />
-              </Suspense>
+              <div ref={workshopAnchorRef}>
+                <Suspense fallback={null}>
+                  <GamePanel
+                    mode={workshopOpen ? "ai_workshop" : "dashboard"}
+                    onStartAdaptiveFlow={() => startAdaptiveFlow()}
+                    // El taller solo trabaja con palabras ya expuestas:
+                    // nunca examina ni produce sobre palabras sin ficha.
+                    // Las más afianzadas primero: para escribir una
+                    // oración hace falta recordar la palabra, así que la
+                    // cola «más atrasada» del repaso no sirve aquí.
+                    words={[...reviewWords]
+                      .sort(
+                        (a, b) =>
+                          (b.card?.stability ?? 0) - (a.card?.stability ?? 0),
+                      )
+                      .map((w) => ({
+                        word: w.form,
+                        meaning: w.meaning,
+                        bookTitle: wordBookTitle(w),
+                        lemma: w.lemma,
+                        key: w.key,
+                        context: w.context,
+                      }))}
+                    onChallengeComplete={handleWorkshopComplete}
+                    showIdentity={false}
+                    onClose={() => setWorkshopOpen(false)}
+                  />
+                </Suspense>
+              </div>
             )}
 
             <div className="segmented nb-tabs" role="group" aria-label="Secciones del cuaderno">

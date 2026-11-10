@@ -4691,6 +4691,18 @@
   color: var(--ink-soft, #666);
 }
 
+/* La frase del libro donde se guardó la palabra: modelo concreto
+   para que el Reto del Escritor no arranque de cero. */
+.ai-word-example {
+  margin: 0.35rem 0 0;
+  font-size: var(--fs-sm, 0.88rem);
+  color: var(--ink-soft, #666);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 /* Selector de palabra del taller cuando el cuaderno es grande:
    las primeras 8 quedan como botones y el resto vive aquí. */
 .ai-word-select {
