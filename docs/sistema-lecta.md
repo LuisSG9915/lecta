@@ -113,11 +113,9 @@ en `lecta`.
 - DeepSeek (`deepseek-flash` vía `callDeepSeek` en `src/worker/ai.ts`),
   opcionalmente a través de un AI Gateway de Cloudflare
   (`AI_GATEWAY_URL`; vacío = `api.deepseek.com` directo).
-- Cinco operaciones: `enrich` (fichas nuevas), `item` (ejercicios),
-  `verify` (corregir oración escrita por el lector), `explain`
-  (explicación en contexto) y `tip` (consejo diario de lectura,
-  proactivo — ver §5.11). Cada una tiene tope de tokens y cuota
-  horaria propia.
+- Nueve operaciones (`DeepSeekOperation`); la tabla con ruta, propósito y llamador está en
+  `docs/concentracion-y-lectura.md` §1. Cada una tiene tope de tokens y
+  cuota horaria propia. El consejo diario no usa IA (§5.11).
 
 ---
 
@@ -431,48 +429,36 @@ Patrón común (`*-sync.ts` + `reading-data.ts` del worker):
   `modelVersion` guardados por fila, telemetría `lecta.ai_call`.
 - Cuotas por hora natural y scope (`lecta_ai_quota`, una fila por
   cuenta/scope/hora): enriquecer 60, ítems 24, verificar 30, explicar 30,
-  tip 6, evaluar 40, micro-relato 20, page-recap 40, traducir 60 y
-  companion-note 12. El incremento y la comprobación del tope son un solo
+  evaluar 40, micro-relato 20, page-recap 40 y traducir 60. El
+  incremento y la comprobación del tope son un solo
   `INSERT ... ON CONFLICT DO UPDATE ... WHERE ... RETURNING`; `RETURNING`
-  vacío se traduce a 429. (El tip mantiene su cadencia real ≤1/día por
-  cuenta — ver §5.11.)
+  vacío se traduce a 429.
 - `catalog-seed.mjs --seed` (`buildResolvedManifest`) resuelve las
   formas de cada libro del catálogo contra `lexicon_forms`/`entries`
   en lotes de 2 000 y emite `.vocab.json` — el mismo análisis que haría
   `predictSection` en vivo, precomputado con bases clíticas/«-mente»
   como llaves extra. Usa `pg.Pool` (los workers consultan en paralelo).
 
-### 5.11 El consejo diario («tip», IA proactiva)
+### 5.11 El consejo diario («tip», reglas locales)
 
-La única operación IA que inicia la app (las demás responden a un toque
-del lector). Diseño: `docs/concentracion-y-lectura.md` §4 y
-`~/.devin/plans/plan-tip-lectura-ia.md`.
+Se calcula en el dispositivo con reglas y plantillas, sin IA, desde el
+2026-11-10 (antes lo generaba DeepSeek). Diseño y motivo del cambio:
+`docs/concentracion-y-lectura.md` §4.
 
-- **Superficie**: tarjeta en la estantería al montarla (no en el
-  Reader: la franja `.reader-prep` ya la ocupan los avisos de
-  preparación, y un consejo en medio de la lectura contradiría la
-  evidencia). Si la pestaña está oculta al llegar la respuesta, el tip
-  se descarta — una impresión no vista no cuenta.
-- **Elegibilidad** (`tips.ts::tipEligible`): sesión + «Usar IA» +
-  ≥2 días con ≥5 min de lectura en los últimos 14 (`focusByDay`); sin
-  historial suficiente ni siquiera se llama. Timeout 8 s.
-- **Contexto** (`TipContext` en `shared/tip.ts`): solo agregados —
-  minutos/día, regresiones, consultas, avisos de fatiga, PPM, meta —
-  saneado a enteros acotados en el servidor (`sanitizeTipContext`).
-  Nunca texto del libro.
-- **Cadencia**: la *generación* es ≤1 por cuenta y día — `tipCache`
-  (TTL 20 h) marca `userId:dayKey` y un segundo dispositivo recibe
-  silencio, no el mismo consejo. La *visualización* queda por
-  dispositivo (`tipLastDay` en `session`).
-- **Silencio válido**: `{tip: null}` es resultado preferible a un
-  consejo genérico; el prompt lo exige y el cliente no muestra nada.
-  La regla anti-moralización del prompt prohíbe enmarcar días sin
-  leer o la meta como deuda.
-- **Acciones reales**: `action` `focus_ruler`/`syntactic` aplica el
-  ajuste con `saveReaderSettings` (no solo lo sugiere); `none` muestra
-  «Me sirve». Medición local: `tip_shown` / `tip_accepted` —
-  aceptación ≠ eficacia (la eficacia se evalúa offline comparando
-  `DayFocus` post-aceptación contra el baseline).
+- **Superficie**: tarjeta en la estantería (no en el Reader: un
+  consejo en medio de la lectura contradiría la evidencia). Se calcula
+  al montar y otra vez cuando queda activa la base de la cuenta
+  (`dbUserId`). Si la pestaña está oculta, el tip se descarta.
+- **Reglas** (`tips.ts::composeTip`): compara el último día con ≥5 min
+  de lectura contra la mediana de al menos dos días anteriores de la
+  ventana de 14 (`focusByDay`). Más retrocesos de lo habitual → regla
+  de foco; ritmo ≤75 % del habitual → líneas sintácticas; en otro
+  caso, silencio. Umbrales: heurística propia.
+- **Cadencia**: ≤1 consejo por día en cada dispositivo (`tipLastDay`
+  en `session`); un día sin consejo no la consume.
+- **Acciones reales**: `focus_ruler`/`syntactic` aplica el ajuste con
+  `saveReaderSettings`. Medición local: `tip_shown` (`promptVersion:
+  "tip-local-v1"`) / `tip_accepted` — aceptación ≠ eficacia.
 
 ---
 
@@ -494,7 +480,6 @@ email+password, request/reset password, delete-user con callback.
 | `POST /api/lexicon/items/answer` | Registra respuesta de un ítem |
 | `POST /api/lexicon/verify-sentence` | Corrige oración escrita (sin contexto del libro) |
 | `POST /api/lexicon/explain` | Explicación en contexto (cacheada en memoria por clave) |
-| `POST /api/lexicon/tip` | Consejo diario; caché de generación por cuenta:día, hit → silencio |
 | `GET/PUT /api/vocab` | Merge del cuaderno (PUT ≤ 500) |
 | `GET/PUT /api/annotations` | Merge marcadores/pasajes |
 | `GET/PUT /api/activity` | Anexar/leer intervalos |
@@ -600,7 +585,6 @@ src/
 │   ├── companion-data.ts    eventos, proyección y merges del juego
 │   ├── gamification.ts      XP, niveles, logros
 │   ├── calibration-bank.ts  banco editorial por bandas
-│   ├── tip.ts               contrato TipContext/TipAction del consejo
 │   ├── stopwords.ts         funcionales que no son vocabulario
 │   └── epub-check.ts        firma ZIP + tope 50 MB
 db/

@@ -27,9 +27,6 @@ import {
   EXPLAIN_PASSAGE_SYSTEM_PROMPT,
   buildCompactExplainPrompt,
   normalizePassage,
-  COMPANION_NOTE_SYSTEM_PROMPT,
-  buildCompanionNotePrompt,
-  parseCompanionNote,
   STORY_CALL_OPTIONS,
   STORY_SYSTEM_PROMPT,
   buildEvaluatePrompt,
@@ -50,7 +47,6 @@ import {
   buildVerifyPrompt,
   buildVerifySystemPrompt,
   callDeepSeek,
-  COMPANION_NOTE_CALL_OPTIONS,
   PAGE_RECAP_CALL_OPTIONS,
   PAGE_RECAP_SYSTEM_PROMPT,
   buildPageRecapPrompt,
@@ -1382,76 +1378,6 @@ app.post("/api/ai/explain-in-passage", async (context) => {
   return context.json(resultPayload);
 });
 
-const companionNoteCache = createTtlCache<string>({ maxEntries: 100, ttlMs: 20 * 60_000 });
-
-app.post("/api/ai/companion-note", async (context) => {
-  const body = await context.req.json().catch(() => null);
-  const catName = typeof body?.catName === "string" ? body.catName.trim().slice(0, 50) : "Michi";
-  const achievement = typeof body?.achievement === "string" ? body.achievement.trim().slice(0, 100) : undefined;
-  const rankName = typeof body?.rankName === "string" ? body.rankName.trim().slice(0, 100) : undefined;
-  const bookTitle = typeof body?.bookTitle === "string" ? body.bookTitle.trim().slice(0, 150) : undefined;
-  const masteredWord = typeof body?.masteredWord === "string" ? body.masteredWord.trim().slice(0, 100) : undefined;
-
-  const session = await getSession(context);
-  if (!session?.user?.id) {
-    return context.json({ error: "Inicia sesión para recibir cartas del compañero." }, 401);
-  }
-
-  const fallback = () =>
-    context.json({
-      title: "¡Felicidades por tu lectura, amigo!",
-      note: `¡Qué gran paso diste hoy con tu lectura! Me encanta ver cómo sigues enriqueciendo tus libros día a día.`,
-      signOff: `Con cariño, ${catName} 🐾`,
-      fallback: true,
-    });
-
-  // La nota depende de la cuenta y del contexto exacto: misma entrada,
-  // misma carta. El userId evita reutilizar una nota personalizada de
-  // otra cuenta y la cuota solo se gasta cuando de verdad hay llamada.
-  const cacheKey = await computeAiCacheKey(
-    "companion_note",
-    [session.user.id, catName, achievement ?? "", rankName ?? "", bookTitle ?? "", masteredWord ?? ""].join("::"),
-  );
-  const cached =
-    getCachedAiText(cacheKey) ??
-    companionNoteCache.get(cacheKey);
-  const cachedNote = cached ? parseCompanionNote(cached) : null;
-  if (cachedNote) return context.json({ ...cachedNote, cached: true });
-
-  if (!context.env.DEEPSEEK_API_KEY) return fallback();
-
-  const allowed = await consumeRateUnits(
-    context.env,
-    session.user.id,
-    1,
-    COMPANION_NOTE_UNITS_PER_HOUR,
-    "companion-note",
-  );
-  if (!allowed) {
-    return context.json(
-      { error: "Llegaste al límite de cartas del compañero por ahora. Intenta más tarde." },
-      429,
-    );
-  }
-
-  const ai = await callDeepSeek(
-    context.env,
-    {
-      system: COMPANION_NOTE_SYSTEM_PROMPT,
-      user: buildCompanionNotePrompt({ catName, achievement, rankName, bookTitle, masteredWord }),
-    },
-    COMPANION_NOTE_CALL_OPTIONS,
-  );
-
-  const parsed = ai.ok ? parseCompanionNote(ai.content) : null;
-  if (!parsed) return fallback();
-
-  const serialized = JSON.stringify(parsed);
-  setCachedAiText(cacheKey, serialized);
-  companionNoteCache.set(cacheKey, serialized);
-  return context.json(parsed);
-});
-
 app.post("/api/ai/page-recap", async (context) => {
   const body = await context.req.json().catch(() => null);
   const text = typeof body?.text === "string" ? body.text.trim() : "";
@@ -1676,7 +1602,6 @@ const EVALUATE_UNITS_PER_HOUR = 40;
 const STORY_UNITS_PER_HOUR = 20;
 const PAGE_RECAP_UNITS_PER_HOUR = 40;
 const TRANSLATE_UNITS_PER_HOUR = 60;
-const COMPANION_NOTE_UNITS_PER_HOUR = 12;
 const HOUR_MS = 3_600_000;
 
 // Cuota por (cuenta, alcance, hora natural). El incremento y la

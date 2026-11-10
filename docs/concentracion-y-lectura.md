@@ -37,7 +37,7 @@ repasarlas con FSRS hasta aprenderlas.
   de usuario) y `HYPERDRIVE_CACHED` con caché (lecturas del catálogo
   léxico compartido). Better Auth (magic link, contraseña, borrado con
   verificación). EPUBs en R2.
-- **IA (DeepSeek vía AI Gateway)** en `src/worker/ai.ts`: diez
+- **IA (DeepSeek vía AI Gateway)** en `src/worker/ai.ts`: nueve
   operaciones (`DeepSeekOperation`) con prompt versionado, tope de
   tokens, timeout y reintentos. Preferencia «Usar IA» por cuenta
   (`useAi`, encendida por defecto); `lookup`/`batch`/`sample` del
@@ -54,13 +54,13 @@ repasarlas con FSRS hasta aprenderlas.
   | `story` | `/api/ai/micro-story` | microcuento con las palabras guardadas | `learn.ts` |
   | `page_recap` | `/api/ai/page-recap` | resumen de lo último leído, a pedido | `page-recap.ts`, desde los botones de resumen del lector |
   | `character_recap` | `/api/ai/character-recap` | quién es un personaje hasta el punto leído | `lexicon.ts` |
-  | `companion_note` | `/api/ai/companion-note` | nota del gato | **ningún llamador en el cliente** |
 
-  Dos operaciones chocan con los principios de §4 y tienen la decisión
-  pendiente: `companion_note` («cariñosas y motivadoras», contra «no
-  usar IA para mensajes de ánimo»; además no la llama nadie) y
-  `page_recap` (su prompt arranca con «un lector que se distrajo»,
-  que afirma un estado del lector).
+  *Decisiones (2026-11-10)*: se retiró `companion_note` (notas
+  «cariñosas y motivadoras» del gato), que chocaba con «no usar IA
+  para mensajes de ánimo» y no tenía ningún llamador en el cliente. El
+  prompt de `page_recap` (`page-recap-v2`) ya no arranca suponiendo
+  que el lector «se distrajo»: dice que el lector pidió el repaso y
+  prohíbe afirmar su estado.
 
 ### Flujo de lectura
 
@@ -444,8 +444,8 @@ cadencia.
 - «Dónde quedaste» al retomar tras días — **implementado sin IA**:
   `ResumeSessionOverlay` arma el resumen en local con guardarraíl
   anti-spoiler (no resume más allá del punto de corte). La versión con
-  IA (`page_recap`) existe a pedido del lector; queda corregir el
-  arranque de su prompt (ver la tabla de IA en §1).
+  IA (`page_recap`) existe a pedido del lector y su prompt no supone
+  por qué lo pide (ver la tabla de IA en §1).
 - No usar IA para: decidir fatiga (regla auditable), calificar
   palabras (FSRS no se toca), mensajes de ánimo (las reglas locales
   bastan y son gratis), ni **interpretar series temporales del
