@@ -52,10 +52,14 @@ jobs:
       - name: Report Smoke Failure Issue
         if: failure()
         uses: actions/github-script@v7
+        env:
+          # Las expresiones solo aceptan literales con comillas simples; y
+          # pasar la URL por env evita interpolarla dentro del script.
+          TARGET_URL: ${{ inputs.target_url || github.event.deployment_status.target_url || secrets.SMOKE_BASE_URL || 'https://lecta.luis-sg9915.workers.dev' }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const targetUrl = '${{ inputs.target_url || github.event.deployment_status.target_url || secrets.SMOKE_BASE_URL || "https://lecta.luis-sg9915.workers.dev" }}';
+            const targetUrl = process.env.TARGET_URL;
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             const title = '🚨 Regresión detectada en Smoke Tests Post-Deploy';
             const body = [

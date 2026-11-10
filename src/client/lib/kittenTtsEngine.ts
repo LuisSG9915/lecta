@@ -341,10 +341,13 @@ export class KittenTtsEngine {
     }
 
     const blob = new Blob(chunks as unknown as BlobPart[], { type: "application/octet-stream" });
+    // Un solo ArrayBuffer para el hash y para la caché: un Response
+    // construido sobre bytes no depende de que el Blob sea el nativo.
+    const bytes = await blob.arrayBuffer();
 
     // Verificar integridad ANTES de escribir en caché: un binario alterado no se guarda.
     if (expectedSha256) {
-      const actual = await sha256Hex(await blob.arrayBuffer());
+      const actual = await sha256Hex(bytes);
       if (actual !== expectedSha256.toLowerCase()) {
         this.progress = {
           status: "error",
@@ -367,7 +370,7 @@ export class KittenTtsEngine {
       if (expectedSha256) {
         headers["x-model-sha256"] = expectedSha256.toLowerCase();
       }
-      await cache.put(modelUrl, new Response(blob, { headers }));
+      await cache.put(modelUrl, new Response(bytes, { headers }));
       await purgeLegacyModelCaches();
     }
 
