@@ -698,8 +698,9 @@ formularios. Código: `routes.ts` (rutas), `views.ts` (HTML), `epub-reader.ts`
   salen de `reviewQueue` (`learn.ts`) — vencidas que ya pasaron por la ficha o por
   un repaso real. Nunca se examina una palabra con `reps === 0` sin exposición, no
   hay respaldo con palabras no vencidas y el modo se elige con `isEligible` (sin
-  oración no hay `choose`). El botón principal del héroe ofrece aprender antes de
-  repasar; si no hay nada que practicar, los modos libres quedan apagados y se
+  oración no hay `choose`). El botón principal del héroe es «Repasar» cuando hay
+  vencidas (decisión de 2026-11-10: repasar primero) y «Aprender» queda como
+  segundo botón; sin vencidas «Aprender» es el principal; si no hay nada que practicar, los modos libres quedan apagados y se
   explica por qué.
 - Las afirmaciones de `audit-cuaderno` usan la comprobación `presente` (busca el
   patrón en todo el archivo y reporta dónde): mover código no rompe el arnés. Las

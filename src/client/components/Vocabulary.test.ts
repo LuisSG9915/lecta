@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, createElement as h } from "react";
+import { act, createElement, createElement as h } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createEmptyCard } from "ts-fsrs";
@@ -12,7 +12,8 @@ import {
   updateSavedWord,
   type SavedWord,
 } from "../lib/idb";
-import { enrichWord } from "../lib/lexicon";
+import { enrichWord, explainInContext } from "../lib/lexicon";
+import { recordReview } from "../lib/reviews";
 import { backfillWordMeanings } from "../lib/word-meanings";
 import { loadUseAi } from "../lib/ai-pref";
 import { loadSessionValue, saveSessionValue } from "../lib/idb";
@@ -52,6 +53,20 @@ vi.mock("../lib/lexicon", () => ({
   fetchItems: vi.fn(async () => ({ ok: true, items: [] })),
   answerItem: vi.fn(async () => true),
   verifySentence: vi.fn(async () => ({ ok: true, correct: true, feedback: "" })),
+  explainInContext: vi.fn(async () => ({ ok: true, explanation: "una pista" })),
+}));
+vi.mock("../lib/reviews", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../lib/reviews")>()),
+  recordReview: vi.fn(async () => undefined),
+}));
+const scrambleProps = vi.hoisted(() => ({
+  current: null as { onWrong?: () => void; onSolve?: () => void } | null,
+}));
+vi.mock("./WordScrambleGame", () => ({
+  WordScrambleGame: (props: { onWrong?: () => void; onSolve?: () => void }) => {
+    scrambleProps.current = props;
+    return null;
+  },
 }));
 vi.mock("../lib/word-meanings", () => ({
   backfillWordMeanings: vi.fn(async (words: SavedWord[]) => words),
@@ -78,6 +93,24 @@ vi.mock("./GamePanel", () => ({
   },
 }));
 vi.mock("./ReadingActivity", () => ({ default: () => null }));
+// El encabezado real no pinta nada sin compañero; aquí solo importa el
+// contrato de la pista: se ofrece si llega onAskHint y muestra su texto.
+vi.mock("./PracticeCompanionHeader", () => ({
+  PracticeCompanionHeader: (props: {
+    onAskHint?: () => void;
+    hintBusy?: boolean;
+    hintText?: string | null;
+  }) =>
+    props.onAskHint && !props.hintText
+      ? createElement(
+          "button",
+          { type: "button", disabled: props.hintBusy, onClick: props.onAskHint },
+          props.hintBusy ? "Pensando…" : "💡 Pista",
+        )
+      : props.hintText
+        ? createElement("p", { className: "hint-text" }, props.hintText)
+        : null,
+}));
 
 const listWordsMock = vi.mocked(listSavedWords);
 const saveKnowledgeMock = vi.mocked(saveKnowledge);
@@ -87,6 +120,8 @@ const enrichMock = vi.mocked(enrichWord);
 const useAiMock = vi.mocked(loadUseAi);
 const saveSessionMock = vi.mocked(saveSessionValue);
 const backfillMock = vi.mocked(backfillWordMeanings);
+const explainMock = vi.mocked(explainInContext);
+const recordReviewMock = vi.mocked(recordReview);
 const loadSessionMock = vi.mocked(loadSessionValue);
 
 const word = (over: Partial<SavedWord> = {}): SavedWord => {
@@ -274,7 +309,7 @@ describe("Aprender", () => {
       ),
     );
     await render();
-    await click("Aprender 7 palabras nuevas");
+    await click("Aprender 5 de 7 palabras nuevas");
     // La tanda es de 5 aunque queden 7 pendientes por aprender.
     expect(text()).toContain("1 de 5");
     for (let i = 0; i < 3; i++) {
@@ -1435,6 +1470,300 @@ describe("Partida rápida: misma regla que la sesión", () => {
     expect(text()).toContain("1 de 1");
     expect(text()).toContain("fresca");
     expect(text()).not.toContain("creció");
+  });
+});
+
+describe("Plan de simplificación — Fase 1 (comportamiento)", () => {
+  const past = () => new Date(Date.now() - 86_400_000).toISOString();
+  const settle = () =>
+    act(async () => {
+      for (let i = 0; i < 10; i++) await Promise.resolve();
+    });
+  const exposureFor = (keys: string[]) =>
+    loadSessionMock.mockImplementation(async (clave) =>
+      clave === LEARN_EXPOSURE_KEY
+        ? JSON.stringify({
+            version: 1,
+            seen: Object.fromEntries(keys.map((key) => [key, { at: 1, verdict: "learn" }])),
+            updatedAt: 1,
+          })
+        : null,
+    );
+  const dueWord = (over: Partial<SavedWord> = {}) =>
+    word({
+      meaning: "viento suave",
+      context: "Sopló la brisa fresca.",
+      card: { reps: 2, stability: 1, due: past() } as never,
+      ...over,
+    });
+  const cardFront = () => host.querySelector(".nb-card-front strong")?.textContent;
+  const startReview = async (label: string) => {
+    await click(label);
+    expect(host.querySelector(".nb-practice")).toBeTruthy();
+  };
+
+  describe("B1 · repasar primero", () => {
+    it("con vencidas el botón principal es «Repasar» y «Aprender» queda secundario", async () => {
+      listWordsMock.mockResolvedValue([
+        dueWord({ form: "brisa" }),
+        word({ form: "alondra", meaning: "ave" }),
+      ]);
+      await render();
+      const botones = [...host.querySelectorAll(".nb-hero-btn-flow")] as HTMLButtonElement[];
+      expect(botones.map((b) => b.textContent)).toEqual([
+        "Repasar 1 palabra",
+        "Aprender 1 palabra nueva",
+      ]);
+      expect(botones[0].classList.contains("btn--primary")).toBe(true);
+      expect(botones[1].classList.contains("btn--primary")).toBe(false);
+      expect(text()).toContain("para repasar hoy");
+    });
+
+    it("sin vencidas «Aprender» vuelve a ser el principal", async () => {
+      listWordsMock.mockResolvedValue([word({ form: "alondra", meaning: "ave" })]);
+      await render();
+      const botones = [...host.querySelectorAll(".nb-hero-btn-flow")] as HTMLButtonElement[];
+      expect(botones).toHaveLength(1);
+      expect(botones[0].textContent).toBe("Aprender 1 palabra nueva");
+      expect(botones[0].classList.contains("btn--primary")).toBe(true);
+    });
+  });
+
+  describe("B2 · la tanda real", () => {
+    it("dice cuántas abre de cuántas hay pendientes", async () => {
+      listWordsMock.mockResolvedValue(
+        Array.from({ length: 7 }, (_, i) => word({ form: `p${i}`, meaning: `m${i}` })),
+      );
+      await render();
+      expect(button("Aprender 5 de 7 palabras nuevas")).toBeTruthy();
+      expect(button("Aprender 7 palabras nuevas")).toBeUndefined();
+    });
+  });
+
+  describe("B3 · pista del gato", () => {
+    beforeEach(() => {
+      // clearAllMocks no restaura implementaciones: otras pruebas apagan la IA.
+      useAiMock.mockResolvedValue(true);
+      listWordsMock.mockResolvedValue([
+        dueWord({ form: "brisa", savedAt: 2 }),
+        dueWord({ form: "cedro", meaning: "árbol", context: "El cedro creció.", savedAt: 1 }),
+      ]);
+      exposureFor(["es:brisa", "es:cedro"]);
+    });
+
+    it("sin «Usar IA» no se ofrece la pista", async () => {
+      useAiMock.mockResolvedValue(false);
+      await render();
+      await startReview("Repasar 2 palabras");
+      expect(button("💡 Pista")).toBeUndefined();
+    });
+
+    it("con IA se ofrece y el repaso registra cuántas pistas se pidieron", async () => {
+      await render();
+      await startReview("Repasar 2 palabras");
+      await click("💡 Pista");
+      await settle();
+      expect(explainMock).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        (host.querySelector(".choice-option") as HTMLButtonElement).click();
+        for (let i = 0; i < 4; i++) await Promise.resolve();
+      });
+      await click("Continuar");
+      expect(recordReviewMock.mock.calls[0][0]).toEqual(
+        expect.objectContaining({ hints: 1 }),
+      );
+    });
+
+    it("una pista que llega tarde no se pinta sobre la tarjeta siguiente", async () => {
+      let resolveHint: (value: { ok: true; explanation: string }) => void = () => {};
+      explainMock.mockImplementationOnce(
+        () => new Promise((resolve) => (resolveHint = resolve)) as never,
+      );
+      await render();
+      await startReview("Repasar 2 palabras");
+      await click("💡 Pista");
+      await act(async () => {
+        (host.querySelector(".choice-option") as HTMLButtonElement).click();
+        for (let i = 0; i < 4; i++) await Promise.resolve();
+      });
+      await click("Continuar");
+      expect(text()).toContain("2 de 2");
+      await act(async () => {
+        resolveHint({ ok: true, explanation: "pista tardía de la tarjeta anterior" });
+        for (let i = 0; i < 6; i++) await Promise.resolve();
+      });
+      expect(text()).not.toContain("pista tardía");
+      // La tarjeta nueva puede pedir la suya: no quedó «Pensando…» colgado.
+      expect(button("💡 Pista")).toBeTruthy();
+    });
+  });
+
+  describe("B4 · rescate con sentido", () => {
+    const level2 = (over: Partial<SavedWord>) =>
+      dueWord({ card: { reps: 3, stability: 5, due: past() } as never, ...over });
+
+    it("con oración rescata a «elegir palabra»", async () => {
+      listWordsMock.mockResolvedValue([level2({ form: "brisa" })]);
+      exposureFor(["es:brisa"]);
+      await render();
+      await startReview("Repasar 1 palabra");
+      expect(scrambleProps.current).toBeTruthy();
+      await act(async () => {
+        scrambleProps.current?.onWrong?.();
+        for (let i = 0; i < 4; i++) await Promise.resolve();
+      });
+      expect(text()).toContain("Toca la palabra que falta.");
+    });
+
+    it("sin oración rescata al significado y no a adivinar entre cuatro", async () => {
+      listWordsMock.mockResolvedValue([level2({ form: "brisa", context: undefined })]);
+      exposureFor(["es:brisa"]);
+      await render();
+      await startReview("Repasar 1 palabra");
+      await act(async () => {
+        scrambleProps.current?.onWrong?.();
+        for (let i = 0; i < 4; i++) await Promise.resolve();
+      });
+      expect(text()).not.toContain("Toca la palabra que falta.");
+      expect(host.querySelector(".choice-option")).toBeNull();
+      expect(button("Mostrar respuesta")).toBeTruthy();
+    });
+  });
+
+  describe("B5 · calificar no pisa un significado recién rellenado", () => {
+    it("guarda sobre la palabra vigente y no sobre la copia de la cola", async () => {
+      let releaseBackfill: () => void = () => {};
+      backfillMock.mockImplementation(
+        async (words: SavedWord[]) =>
+          new Promise((resolve) => {
+            releaseBackfill = () =>
+              resolve(
+                words.map((w) => ({ ...w, meaning: "viento suave", updatedAt: (w.updatedAt ?? 0) + 1 })),
+              );
+          }),
+      );
+      listWordsMock.mockResolvedValue([dueWord({ form: "brisa", meaning: undefined })]);
+      exposureFor(["es:brisa"]);
+      await render();
+      await startReview("Repasar 1 palabra");
+      // El relleno termina con la sesión ya armada.
+      await act(async () => {
+        releaseBackfill();
+        for (let i = 0; i < 6; i++) await Promise.resolve();
+      });
+      await act(async () => {
+        (host.querySelector(".choice-option") as HTMLButtonElement).click();
+        for (let i = 0; i < 4; i++) await Promise.resolve();
+      });
+      await click("Continuar");
+      expect(updateWordMock.mock.calls[0][0]).toEqual(
+        expect.objectContaining({ key: "es:brisa", meaning: "viento suave" }),
+      );
+    });
+  });
+
+  describe("B6 · sin tarjeta en blanco", () => {
+    it("«Partida rápida» no arma nada con una palabra sin significado ni oración", async () => {
+      listWordsMock.mockResolvedValue([
+        word({ form: "vacía", card: { reps: 2, stability: 1, due: past() } as never }),
+      ]);
+      exposureFor(["es:vacía"]);
+      await render();
+      await act(async () => {
+        (host.querySelector(".nb-word-row") as HTMLButtonElement).click();
+        for (let i = 0; i < 4; i++) await Promise.resolve();
+      });
+      await act(async () => {
+        (host.querySelector(".btn--quick-game") as HTMLButtonElement).click();
+        for (let i = 0; i < 4; i++) await Promise.resolve();
+      });
+      expect(host.querySelector(".nb-practice")).toBeNull();
+      expect(text()).toContain("necesita un significado o una oración");
+    });
+
+    it("el chequeo de 30 días omite las que no tienen nada que mostrar", async () => {
+      const consolidated = {
+        ...createEmptyCard(new Date(0)),
+        reps: 3,
+        stability: 30,
+        state: 2 as const,
+        last_review: new Date(0),
+      };
+      listWordsMock.mockResolvedValue([
+        word({ form: "vacía", card: consolidated }),
+        word({ form: "casa", meaning: "hogar", card: consolidated }),
+      ]);
+      await render();
+      await click("Chequeo 30 días");
+      expect(text()).toContain("1 de 1");
+      expect(text()).toContain("hogar");
+    });
+  });
+
+  describe("B7 · Parejas pide al menos dos", () => {
+    const parejas = () =>
+      [...host.querySelectorAll(".nb-free-mode-card")].find(
+        (b) => b.querySelector(".nb-free-mode-name")?.textContent === "Parejas",
+      ) as HTMLButtonElement;
+
+    it("con una sola palabra no arma la tanda y lo explica", async () => {
+      listWordsMock.mockResolvedValue([dueWord({ form: "brisa" })]);
+      exposureFor(["es:brisa"]);
+      await render();
+      await act(async () => {
+        parejas().click();
+        for (let i = 0; i < 4; i++) await Promise.resolve();
+      });
+      expect(host.querySelector(".nb-practice")).toBeNull();
+      expect(text()).toContain("Parejas necesita al menos dos palabras");
+    });
+
+    it("no deja una palabra suelta como tanda de una", async () => {
+      const palabras = ["a1", "b2", "c3", "d4", "e5"].map((form, i) =>
+        dueWord({ form, meaning: `sentido ${i}`, savedAt: 10 - i }),
+      );
+      listWordsMock.mockResolvedValue(palabras);
+      exposureFor(palabras.map((w) => w.key));
+      await render();
+      await act(async () => {
+        parejas().click();
+        for (let i = 0; i < 4; i++) await Promise.resolve();
+      });
+      // 5 elegibles: una tanda de 4; la quinta queda para otra ronda.
+      expect(text()).toContain("de 4");
+    });
+  });
+
+  describe("B9 · «Pasar por ahora» no vuelve al frente", () => {
+    it("las fichas sin significado van detrás de las que sí lo tienen", async () => {
+      listWordsMock.mockResolvedValue([
+        word({ form: "sin", savedAt: 9 }),
+        word({ form: "con", meaning: "algo", savedAt: 1 }),
+      ]);
+      await render();
+      await click("Aprender 2 palabras nuevas");
+      expect(cardFront()).toBe("con");
+    });
+
+    it("una ficha pasada no encabeza la siguiente tanda", async () => {
+      useAiMock.mockResolvedValue(false);
+      listWordsMock.mockResolvedValue([
+        word({ form: "sinuno", savedAt: 9 }),
+        word({ form: "sindos", savedAt: 8 }),
+        word({ form: "con", meaning: "algo", savedAt: 1 }),
+      ]);
+      await render();
+      await click("Aprender 3 palabras nuevas");
+      await click("Mostrar significado");
+      await click("Quiero aprenderla");
+      expect(cardFront()).toBe("sinuno");
+      await click("Mostrar significado");
+      await click("Pasar por ahora");
+      expect(cardFront()).toBe("sindos");
+      await click("Terminar por ahora");
+      await click("Seguir aprendiendo (2)");
+      expect(cardFront()).toBe("sindos");
+    });
   });
 });
 

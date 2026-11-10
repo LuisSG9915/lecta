@@ -738,6 +738,12 @@ function FullVocabulary({
   useModalBehavior(ref, onClose, { enabled: isOverlay });
 
   const [words, setWords] = useState<SavedWord[] | null>(null);
+  // Copia al día de `words` para los manejadores asíncronos (calificar):
+  // la cola guarda la palabra de cuando se armó y no debe pisar lo posterior.
+  const wordsRef = useRef<SavedWord[] | null>(null);
+  useEffect(() => {
+    wordsRef.current = words;
+  }, [words]);
   const [loadError, setLoadError] = useState(false);
   const [tab, setTab] = useState<"words" | "quotes" | "activity" | "today">("words");
   const [listLimit, setListLimit] = useState(GROUP_PAGE);
@@ -844,6 +850,8 @@ function FullVocabulary({
   // reto califica una sola vez — reintentarlo en la misma sesión no
   // debe inflar la estabilidad FSRS como si fueran repasos espaciados.
   const workshopCreditedRef = useRef<Set<string>>(new Set());
+  // Palabras a las que se les dio «Pasar por ahora» en este montaje.
+  const learnPassedRef = useRef<Set<string>>(new Set());
   const gradingRef = useRef(false);
   const undoTimer = useRef<number | undefined>(undefined);
   const matchFlashTimer = useRef<number | undefined>(undefined);
@@ -868,6 +876,11 @@ function FullVocabulary({
   const [combo, setCombo] = useState(0);
   const [hintText, setHintText] = useState<string | null>(null);
   const [hintBusy, setHintBusy] = useState(false);
+  // Palabra a la que pertenece la pista en vuelo (si la cola avanza antes de
+  // la respuesta, se descarta) y pistas pedidas en la tarjeta actual: viajan
+  // al historial como `hints` del repaso.
+  const hintForRef = useRef<string | null>(null);
+  const hintsUsedRef = useRef(0);
   const catPoseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearCatTimer = () => {
@@ -897,7 +910,19 @@ function FullVocabulary({
         const merged = await backfillWordMeanings(sorted, {}, scope).catch(
           () => null,
         );
-        if (!cancelled && merged) setWords(merged);
+        if (!cancelled && merged) {
+          // El relleno trabaja sobre la lista de cuando empezó: si mientras
+          // tanto se calificó o editó una palabra, gana la fila más nueva.
+          const byKey = new Map(merged.map((w) => [w.key, w]));
+          setWords((prev) =>
+            prev
+              ? prev.map((w) => {
+                  const m = byKey.get(w.key);
+                  return m && (m.updatedAt ?? 0) >= (w.updatedAt ?? 0) ? m : w;
+                })
+              : merged,
+          );
+        }
       })
       .catch(() => {
         if (!cancelled) setLoadError(true);
@@ -1020,6 +1045,8 @@ function FullVocabulary({
   // La corrección IA de «escribir» pide sesión; sin ella el ejercicio
   // queda en autocalificación directa.
   const hasSession = Boolean(getActiveUserId());
+  // La pista del gato llama a la IA: pide sesión y la preferencia «Usar IA».
+  const canHint = hasSession && useAi;
   // Todo lo que pregunta (la sesión y los modos libres) sale de aquí: solo
   // palabras que ya pasaron por la ficha o por un repaso real. Depende de la
   // hora, así que se calcula en cada render.
@@ -1028,6 +1055,14 @@ function FullVocabulary({
   // resuelve en la ficha (IA si hay sesión, o escrito a mano) antes de
   // «Quiero aprenderla». Ninguna queda bloqueada por falta de datos.
   const learnable = learnPending;
+  // La ficha sirve tandas de LEARN_SESSION_SIZE: el botón dice cuántas
+  // abre de verdad y de cuántas pendientes, no promete todas.
+  const learnBatch = Math.min(LEARN_SESSION_SIZE, learnable.length);
+  const learnNoun = learnable.length === 1 ? "palabra nueva" : "palabras nuevas";
+  const learnLabel =
+    learnable.length > learnBatch
+      ? `Aprender ${learnBatch} de ${learnable.length} ${learnNoun}`
+      : `Aprender ${learnBatch} ${learnNoun}`;
 
   // Chequeo de retención a 30 días: palabras ya consolidadas (asentadas
   // o dominadas) cuya última revisión es la más antigua. No bloquea el
@@ -1058,6 +1093,9 @@ function FullVocabulary({
     setSaveError("");
     setAnswered(null);
     setHintText(null);
+    setHintBusy(false);
+    hintForRef.current = null;
+    hintsUsedRef.current = 0;
     setMatchSel(null);
     setMatchDone(new Set());
     setMatchFails({});
@@ -1192,7 +1230,19 @@ function FullVocabulary({
         );
       return;
     }
-    beginQueue(items);
+    let queueItems = items;
+    if (chosen === "match") {
+      // Una tanda de parejas pide al menos dos: con una sola palabra el par
+      // se resolvería solo y contaría como acierto.
+      if (items.length < 2) {
+        setPracticeNote("Parejas necesita al menos dos palabras con significado.");
+        return;
+      }
+      // La cola va en tandas de MATCH_TANDA: si sobraría una suelta, se deja
+      // fuera de esta ronda en vez de convertirla en una tanda de una.
+      if (items.length % MATCH_TANDA === 1) queueItems = items.slice(0, -1);
+    }
+    beginQueue(queueItems);
   };
 
 
@@ -1262,11 +1312,16 @@ function FullVocabulary({
   const handleQuickGame = (targetWord: SavedWord) => {
     triggerHaptic("selection");
     setPracticeNote("");
+    setSaveError("");
+    // Sin oración ni significado no hay nada que mostrar: «Palabra» pintaría
+    // una tarjeta en blanco, así que no se arma la partida.
+    if (!isEligible(targetWord, "choose") && !targetWord.meaning) {
+      setSaveError("Esta palabra necesita un significado o una oración para repasarse.");
+      return;
+    }
     const targetMode: PracticeMode = isEligible(targetWord, "choose")
       ? "choose"
-      : targetWord.meaning
-        ? "meaning"
-        : "form";
+      : "meaning";
     const others = reviewWords
       .filter((w) => w.key !== targetWord.key && isEligible(w, targetMode))
       .slice(0, 4);
@@ -1318,14 +1373,23 @@ function FullVocabulary({
   const startRetentionCheck30d = () => {
     if (!retentionCheckCandidates.length) return;
     setPracticeNote("");
-    const items: QueueItem[] = retentionCheckCandidates.map((word) => {
-      const mode: PracticeMode = isEligible(word, "cloze")
+    setSaveError("");
+    // Cada palabra entra con un modo que puede cumplir; sin oración ni
+    // significado no hay tarjeta que mostrar y se omite.
+    const items: QueueItem[] = retentionCheckCandidates.flatMap((word) => {
+      const mode: PracticeMode | null = isEligible(word, "cloze")
         ? "cloze"
         : isEligible(word, "choose")
           ? "choose"
-          : "form";
-      return { word, mode };
+          : word.meaning
+            ? "form"
+            : null;
+      return mode ? [{ word, mode }] : [];
     });
+    if (!items.length) {
+      setSaveError("Esas palabras necesitan un significado o una oración para repasarse.");
+      return;
+    }
     beginQueue(items);
   };
 
@@ -1344,16 +1408,30 @@ function FullVocabulary({
     // Tandas de LEARN_SESSION_SIZE: aprender de a 5 cierra el ciclo
     // enseñar→practicar antes de perder el hilo; el resto espera en
     // learnPending para «Seguir aprendiendo».
-    const items = (
-      first
-        ? [first, ...learnPending.filter((word) => word.key !== first.key)]
-        : learnable
-    ).slice(0, LEARN_SESSION_SIZE);
+    // Las que ya se pasaron «por ahora» o no tienen significado van al final:
+    // si no, volverían al frente de cada tanda y taparían a las demás.
+    const rank = (word: SavedWord) =>
+      learnPassedRef.current.has(word.key) ? 2 : word.meaning ? 0 : 1;
+    const rest = (
+      first ? learnPending.filter((word) => word.key !== first.key) : learnable
+    )
+      .map((word, index) => ({ word, index }))
+      .sort((a, b) => rank(a.word) - rank(b.word) || a.index - b.index)
+      .map(({ word }) => word);
+    const items = (first ? [first, ...rest] : rest).slice(0, LEARN_SESSION_SIZE);
     if (!items.length) return;
     setLearnError("");
     setLearnBusy("");
     setLearnDraft("");
     setLearn({ items, total: items.length, revealed: false, kept: [] });
+  };
+
+  // «Pasar por ahora» no escribe exposición: se recuerda aquí para que la
+  // palabra no vuelva al frente de la siguiente tanda en esta sesión.
+  const passLearn = () => {
+    const key = learn?.items[0]?.key;
+    if (key) learnPassedRef.current.add(key);
+    advanceLearn();
   };
 
   const advanceLearn = () =>
@@ -1632,7 +1710,12 @@ function FullVocabulary({
     setSaveError("");
     try {
       const scope = captureDbScope();
-      const { word } = item;
+      const { word: queued } = item;
+      // La cola guarda la copia de cuando se armó: si entre tanto llegó un
+      // significado (relleno del catálogo) o el taller acreditó la palabra,
+      // se guarda sobre la versión vigente y no se pisa con la vieja.
+      const word =
+        wordsRef.current?.find((w) => w.key === queued.key && !w.deleted) ?? queued;
       const card = candidates.current?.get(rating) ?? scheduleReview(word.card, rating);
       const stored = await updateSavedWord({ ...word, card }, scope);
       void pushWordsToServer([stored], scope);
@@ -1644,7 +1727,7 @@ function FullVocabulary({
           form: word.form,
           kind: mapMode(item.mode),
           rating: ratingString(rating),
-          hints: 0,
+          hints: hintsUsedRef.current,
         },
         scope,
       ).catch(() => {
@@ -1695,6 +1778,9 @@ function FullVocabulary({
       setPreviews(null);
       setAnswered(null);
       setHintText(null);
+      setHintBusy(false);
+      hintForRef.current = null;
+      hintsUsedRef.current = 0;
       setWriteText("");
       setWritePick(null);
       setVerifyResult(null);
@@ -1919,13 +2005,46 @@ function FullVocabulary({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [learn, learnBusy]);
 
+  // Rescate tras fallar un reto de nivel > 1: baja a un ejercicio más amable.
+  // «Elegir palabra» solo si la palabra tiene oración donde abrir el hueco
+  // (sin ella es adivinar entre cuatro); si no, «Significado»; y si tampoco
+  // hay significado no se rescata y el reto se reintenta como estaba.
+  const tryRescue = (item: QueueItem, speech: string): boolean => {
+    const challenge = item.adaptiveChallenge;
+    if (!challenge || challenge.level <= 1) return false;
+    const rescueMode: PracticeMode | null = isEligible(item.word, "choose")
+      ? "choose"
+      : item.word.meaning
+        ? "meaning"
+        : null;
+    if (!rescueMode) return false;
+    const rescued = rescueChallenge(challenge, scopedWords);
+    setQueue((prev) => {
+      if (!prev) return prev;
+      const nextItems = [...prev.items];
+      nextItems[0] = { ...item, mode: rescueMode, adaptiveChallenge: rescued };
+      return { ...prev, items: nextItems };
+    });
+    setCatPose("greet");
+    setCatSpeech(rescueMode === "choose" ? speech : "¡Tranquilo! Probemos con el significado.");
+    setHintText(rescued.hint ?? null);
+    setCombo(0);
+    return true;
+  };
+
   const askCatHint = () => {
-    if (!current || hintBusy) return;
+    if (!current || hintBusy || !canHint) return;
+    const forKey = current.word.key;
+    hintForRef.current = forKey;
+    hintsUsedRef.current += 1;
     setHintBusy(true);
     setCatSpeech("Pensando en una pista…");
     const scope = captureDbScope();
+    // Si la cola ya avanzó, la respuesta tardía no se pinta sobre otra tarjeta.
+    const stillHere = () => hintForRef.current === forKey;
     void explainInContext(current.word.form, current.word.language, current.word.context, scope, loadNativeLanguage())
       .then((res) => {
+        if (!stillHere()) return;
         if (res.ok && res.explanation) {
           setHintText(res.explanation);
           setCatSpeech("¡Aquí tienes una pista!");
@@ -1939,13 +2058,16 @@ function FullVocabulary({
         }
       })
       .catch(() => {
+        if (!stillHere()) return;
         const fallback = current.word.meaning
           ? `Significado: «${current.word.meaning.slice(0, 50)}…»`
           : "Intenta recordar el pasaje del libro.";
         setHintText(fallback);
         setCatSpeech("Pista del cuaderno");
       })
-      .finally(() => setHintBusy(false));
+      .finally(() => {
+        if (stillHere()) setHintBusy(false);
+      });
   };
 
   const remove = async (word: SavedWord) => {
@@ -2273,14 +2395,14 @@ function FullVocabulary({
                   <div className="nb-hero-header">
                     <span className="nb-hero-eyebrow">La Mesa de Estudio</span>
                     <h2 className="nb-hero-title">
-                      {learnable.length > 0
-                        ? `Tienes ${learnable.length} ${
-                            learnable.length === 1 ? "palabra nueva" : "palabras nuevas"
-                          } para aprender`
-                        : reviewWords.length > 0
-                          ? `Tienes ${reviewWords.length} ${
-                              reviewWords.length === 1 ? "palabra" : "palabras"
-                            } para repasar hoy`
+                      {reviewWords.length > 0
+                        ? `Tienes ${reviewWords.length} ${
+                            reviewWords.length === 1 ? "palabra" : "palabras"
+                          } para repasar hoy`
+                        : learnable.length > 0
+                          ? `Tienes ${learnable.length} ${
+                              learnable.length === 1 ? "palabra nueva" : "palabras nuevas"
+                            } para aprender`
                           : all.length === 0
                             ? "Tu cuaderno está esperando tus lecturas"
                             : `Estás al día. ${nextDueTs !== null ? `El próximo repaso: ${futureRelativeDay(nextDueTs)}` : "Tu mente descansa hoy."}`}
@@ -2408,39 +2530,49 @@ function FullVocabulary({
                         <Icon name="shelf" size={16} />
                         <span>Abrir un libro para guardar palabras</span>
                       </button>
+                    ) : reviewWords.length > 0 ? (
+                      // Repasar primero: lo vencido se atrasa si el botón
+                      // principal siempre manda a aprender. «Aprender» queda
+                      // como segundo botón mientras haya palabras nuevas.
+                      <>
+                        <button
+                          type="button"
+                          className="btn btn--primary nb-hero-btn-flow"
+                          aria-label={`Repasar ${Math.min(REVIEW_SESSION_SIZE, reviewWords.length)} ${
+                            Math.min(REVIEW_SESSION_SIZE, reviewWords.length) === 1
+                              ? "palabra"
+                              : "palabras"
+                          }`}
+                          onClick={() => startAdaptiveFlow()}
+                        >
+                          <Icon name="sparkles" size={16} />
+                          <span>
+                            Repasar {Math.min(REVIEW_SESSION_SIZE, reviewWords.length)}{" "}
+                            {Math.min(REVIEW_SESSION_SIZE, reviewWords.length) === 1
+                              ? "palabra"
+                              : "palabras"}
+                          </span>
+                        </button>
+                        {learnable.length > 0 ? (
+                          <button
+                            type="button"
+                            className="btn nb-hero-btn-flow"
+                            aria-label={learnLabel}
+                            onClick={() => startLearn()}
+                          >
+                            <span>{learnLabel}</span>
+                          </button>
+                        ) : null}
+                      </>
                     ) : learnable.length > 0 ? (
                       <button
                         type="button"
                         className="btn btn--primary nb-hero-btn-flow"
-                        aria-label={`Aprender ${learnable.length} ${
-                          learnable.length === 1 ? "palabra nueva" : "palabras nuevas"
-                        }`}
+                        aria-label={learnLabel}
                         onClick={() => startLearn()}
                       >
                         <Icon name="sparkles" size={16} />
-                        <span>
-                          Aprender {learnable.length}{" "}
-                          {learnable.length === 1 ? "palabra nueva" : "palabras nuevas"}
-                        </span>
-                      </button>
-                    ) : reviewWords.length > 0 ? (
-                      <button
-                        type="button"
-                        className="btn btn--primary nb-hero-btn-flow"
-                        aria-label={`Repasar ${Math.min(REVIEW_SESSION_SIZE, reviewWords.length)} ${
-                          Math.min(REVIEW_SESSION_SIZE, reviewWords.length) === 1
-                            ? "palabra"
-                            : "palabras"
-                        }`}
-                        onClick={() => startAdaptiveFlow()}
-                      >
-                        <Icon name="sparkles" size={16} />
-                        <span>
-                          Repasar {Math.min(REVIEW_SESSION_SIZE, reviewWords.length)}{" "}
-                          {Math.min(REVIEW_SESSION_SIZE, reviewWords.length) === 1
-                            ? "palabra"
-                            : "palabras"}
-                        </span>
+                        <span>{learnLabel}</span>
                       </button>
                     ) : (
                       <button
@@ -3383,7 +3515,7 @@ function FullVocabulary({
                       type="button"
                       className="btn--quiet"
                       disabled={Boolean(learnBusy)}
-                      onClick={advanceLearn}
+                      onClick={passLearn}
                     >
                       Pasar por ahora
                     </button>
@@ -3479,7 +3611,7 @@ function FullVocabulary({
               combo={combo}
               mode={companionMode}
               onModeChange={updateCompanionMode}
-              onAskHint={hasSession && current.mode !== "write" ? askCatHint : undefined}
+              onAskHint={canHint && current.mode !== "write" ? askCatHint : undefined}
               hintBusy={hintBusy}
               hintText={hintText}
               progress={{
@@ -3572,7 +3704,7 @@ function FullVocabulary({
                 disabled={grading}
                 hintText={hintText}
                 hintBusy={hintBusy}
-                onAskHint={hasSession ? askCatHint : undefined}
+                onAskHint={canHint ? askCatHint : undefined}
                 onSolve={() => {
                   setCombo((prev) => {
                     const next = prev + 1;
@@ -3585,20 +3717,7 @@ function FullVocabulary({
                   void grade(current, EXERCISE_RATING.correct);
                 }}
                 onWrong={() => {
-                  if (current.adaptiveChallenge && current.adaptiveChallenge.level > 1) {
-                    const rescued = rescueChallenge(current.adaptiveChallenge, scopedWords);
-                    setQueue((prev) => {
-                      if (!prev) return prev;
-                      const nextItems = [...prev.items];
-                      nextItems[0] = { ...current, mode: "choose", adaptiveChallenge: rescued };
-                      return { ...prev, items: nextItems };
-                    });
-                    setCatPose("greet");
-                    setCatSpeech("¡No pasa nada! El gato te ayuda: inténtalo en contexto.");
-                    setHintText(rescued.hint ?? null);
-                    setCombo(0);
-                    return;
-                  }
+                  if (tryRescue(current, "¡No pasa nada! El gato te ayuda: inténtalo en contexto.")) return;
                   setCatPose("greet");
                   setCatSpeech("Casi... ¡revisa el orden de las letras!");
                   setCombo(0);
@@ -3615,7 +3734,7 @@ function FullVocabulary({
                 disabled={grading}
                 hintText={hintText}
                 hintBusy={hintBusy}
-                onAskHint={hasSession ? askCatHint : undefined}
+                onAskHint={canHint ? askCatHint : undefined}
                 onSolve={() => {
                   setCombo((prev) => {
                     const next = prev + 1;
@@ -3628,20 +3747,7 @@ function FullVocabulary({
                   void grade(current, EXERCISE_RATING.correct);
                 }}
                 onWrong={() => {
-                  if (current.adaptiveChallenge && current.adaptiveChallenge.level > 1) {
-                    const rescued = rescueChallenge(current.adaptiveChallenge, scopedWords);
-                    setQueue((prev) => {
-                      if (!prev) return prev;
-                      const nextItems = [...prev.items];
-                      nextItems[0] = { ...current, mode: "choose", adaptiveChallenge: rescued };
-                      return { ...prev, items: nextItems };
-                    });
-                    setCatPose("greet");
-                    setCatSpeech("¡Tranquilo! Vamos a ver la palabra en su oración.");
-                    setHintText(rescued.hint ?? null);
-                    setCombo(0);
-                    return;
-                  }
+                  if (tryRescue(current, "¡Tranquilo! Vamos a ver la palabra en su oración.")) return;
                   setCatPose("greet");
                   setCatSpeech("Casi... revisa la función de la palabra.");
                   setCombo(0);
@@ -3657,7 +3763,7 @@ function FullVocabulary({
                 disabled={grading}
                 hintText={hintText}
                 hintBusy={hintBusy}
-                onAskHint={hasSession ? askCatHint : undefined}
+                onAskHint={canHint ? askCatHint : undefined}
                 onSolve={() => {
                   setCombo((prev) => {
                     const next = prev + 1;
@@ -3670,20 +3776,7 @@ function FullVocabulary({
                   void grade(current, EXERCISE_RATING.correct);
                 }}
                 onWrong={() => {
-                  if (current.adaptiveChallenge && current.adaptiveChallenge.level > 1) {
-                    const rescued = rescueChallenge(current.adaptiveChallenge, scopedWords);
-                    setQueue((prev) => {
-                      if (!prev) return prev;
-                      const nextItems = [...prev.items];
-                      nextItems[0] = { ...current, mode: "choose", adaptiveChallenge: rescued };
-                      return { ...prev, items: nextItems };
-                    });
-                    setCatPose("greet");
-                    setCatSpeech("¡No pasa nada! Reconozcamos la palabra primero.");
-                    setHintText(rescued.hint ?? null);
-                    setCombo(0);
-                    return;
-                  }
+                  if (tryRescue(current, "¡No pasa nada! Reconozcamos la palabra primero.")) return;
                   setCatPose("greet");
                   setCatSpeech("Revisa el orden de las palabras.");
                   setCombo(0);

@@ -1,9 +1,9 @@
 {
   "tool": "audit-investigacion",
   "version": 1,
-  "generatedAt": "2026-11-10T03:00:22.100Z",
+  "generatedAt": "2026-11-10T17:48:39.585Z",
   "root": "/Users/luis/Desarrollos Devin/lecta",
-  "commit": "e420b848315a724046704f5d9fee2eca5c03d378",
+  "commit": "aebc4bdb3d813c6e35a34e722bc2eac0c13d1072",
   "doc": "docs/estrategia-aprendizaje-2026-10-24.md",
   "registry": "docs/auditoria/claims.json",
   "online": false,
@@ -88,7 +88,7 @@
               },
               {
                 "file": "src/client/components/Shelf.tsx",
-                "line": 461,
+                "line": 462,
                 "text": "const inputsFor = createCoverageInputsLoader(scope);"
               }
             ]
@@ -883,10 +883,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/components/Vocabulary.tsx:1826 coincide con /await grade\\(item, wrongs/",
+          "detail": "src/client/components/Vocabulary.tsx:1918 coincide con /await grade\\(item, wrongs/",
           "observed": {
             "file": "src/client/components/Vocabulary.tsx",
-            "line": 1826,
+            "line": 1918,
             "text": "await grade(item, wrongs ? EXERCISE_RATING.wrong : EXERCISE_RATING.correct);"
           }
         },
@@ -1252,10 +1252,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/components/Vocabulary.tsx:1312 coincide con /const startRetentionCheck30d/",
+          "detail": "src/client/components/Vocabulary.tsx:1373 coincide con /const startRetentionCheck30d/",
           "observed": {
             "file": "src/client/components/Vocabulary.tsx",
-            "line": 1312,
+            "line": 1373,
             "text": "const startRetentionCheck30d = () => {"
           }
         },

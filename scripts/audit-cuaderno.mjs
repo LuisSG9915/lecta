@@ -56,9 +56,15 @@ export const CLAIMS = [
   {
     id: "C1-cta-primaria-abre-una-prueba",
     tipo: "corregido",
-    titulo: "El botón principal del héroe ofrece aprender antes de examinar",
-    porque: `«${USER_QUOTE}» — el arreglo: con palabras por aprender, el único botón primario abre la ficha y no la prueba.`,
+    titulo:
+      "El héroe ofrece «Repasar» como principal cuando hay vencidas y «Aprender» siempre disponible (principal si no hay vencidas)",
+    porque: `«${USER_QUOTE}» — la sesión de repaso ya nunca examina lo no presentado (C2), así que el botón principal puede repasar sin riesgo; «Aprender» queda como segundo botón (decisión de Luis, 2026-11-10: repasar primero) y vuelve a ser el principal sin vencidas.`,
     checks: [
+      {
+        tipo: "presente",
+        file: "src/client/components/Vocabulary.tsx",
+        expect: "\\) : reviewWords\\.length > 0 \\? \\(",
+      },
       {
         tipo: "presente",
         file: "src/client/components/Vocabulary.tsx",
@@ -72,8 +78,8 @@ export const CLAIMS = [
       {
         tipo: "ausente",
         file: "src/client/components/Vocabulary.tsx",
-        from: 2051,
-        to: 2106,
+        from: 1,
+        to: 9999,
         pattern: "Iniciar Sesi[oó]n Fluida",
       },
     ],
@@ -203,14 +209,15 @@ export const CLAIMS = [
   {
     id: "C7-copia-no-dice-cuantas-faltan",
     tipo: "corregido",
-    titulo: "El botón dice qué hace y con cuántas palabras; no promete minutos",
+    titulo:
+      "El botón dice qué hace y con cuántas palabras (la tanda real y de cuántas hay); no promete minutos",
     porque:
-      "«~2 min» y «1 min» describían la misma sesión. Ahora el botón lleva la cifra real y desaparece la promesa de duración.",
+      "«~2 min» y «1 min» describían la misma sesión, y «Aprender 43 palabras nuevas» abría una tanda de 5. Ahora el botón lleva la cifra de la tanda (`Aprender 5 de 43`) y desaparece la promesa de duración.",
     checks: [
       {
         tipo: "presente",
         file: "src/client/components/Vocabulary.tsx",
-        expect: "Aprender \\{learnable\\.length\\}",
+        expect: "Aprender \\$\\{learnBatch\\} de \\$\\{learnable\\.length\\}",
       },
       {
         tipo: "presente",
@@ -261,7 +268,7 @@ export const CLAIMS = [
       {
         tipo: "presente",
         file: "src/client/components/Vocabulary.tsx",
-        expect: "current\\.adaptiveChallenge\\.level > 1",
+        expect: "challenge\\.level <= 1",
       },
     ],
   },
@@ -397,6 +404,192 @@ export const CLAIMS = [
         tipo: "presente",
         file: "src/client/components/Vocabulary.tsx",
         expect: "Los modos libres usan palabras que ya viste",
+      },
+    ],
+  },
+  // --- Fase 1 del plan v2 (2026-11-10): comportamiento ---
+  {
+    id: "C16-pista-respeta-ia-y-se-registra",
+    tipo: "corregido",
+    titulo:
+      "La pista del gato respeta «Usar IA», se descarta si la tarjeta cambió y el repaso registra cuántas se pidieron",
+    porque:
+      "askCatHint solo pedía sesión, el historial siempre guardaba hints: 0 y una respuesta tardía se pintaba sobre la tarjeta siguiente.",
+    checks: [
+      {
+        tipo: "presente",
+        file: "src/client/components/Vocabulary.tsx",
+        expect: "const canHint = hasSession && useAi;",
+      },
+      {
+        tipo: "presente",
+        file: "src/client/components/Vocabulary.tsx",
+        expect: "hints: hintsUsedRef\\.current,",
+      },
+      {
+        tipo: "presente",
+        file: "src/client/components/Vocabulary.tsx",
+        expect: "const stillHere = \\(\\) => hintForRef\\.current === forKey;",
+      },
+    ],
+  },
+  {
+    id: "C17-rescate-exige-datos-del-modo",
+    tipo: "corregido",
+    titulo:
+      "El rescate tras fallar solo baja a «elegir palabra» si hay oración; si no, al significado",
+    porque:
+      "El rescate mandaba siempre a choose: sin oración era adivinar entre cuatro, lo que la regla del Cuaderno prohíbe.",
+    checks: [
+      {
+        tipo: "presente",
+        file: "src/client/components/Vocabulary.tsx",
+        expect: "const tryRescue = \\(item: QueueItem, speech: string\\): boolean =>",
+      },
+      {
+        tipo: "presente",
+        file: "src/client/components/Vocabulary.tsx",
+        expect: 'const rescueMode: PracticeMode \\| null = isEligible\\(item\\.word, "choose"\\)',
+      },
+    ],
+  },
+  {
+    id: "C18-calificar-sobre-la-version-vigente",
+    tipo: "corregido",
+    titulo:
+      "Calificar guarda sobre la palabra vigente del estado, no sobre la copia de la cola, y el relleno de significados no pisa filas más nuevas",
+    porque:
+      "grade escribía {...copiaDeLaCola, card}: un significado rellenado después (o un repaso del taller) se perdía.",
+    checks: [
+      {
+        tipo: "presente",
+        file: "src/client/components/Vocabulary.tsx",
+        expect: "wordsRef\\.current\\?\\.find\\(\\(w\\) => w\\.key === queued\\.key",
+      },
+      {
+        tipo: "presente",
+        file: "src/client/components/Vocabulary.tsx",
+        expect: "return m && \\(m\\.updatedAt \\?\\? 0\\) >= \\(w\\.updatedAt \\?\\? 0\\) \\? m : w;",
+      },
+    ],
+  },
+  {
+    id: "C19-sin-tarjetas-en-blanco-ni-parejas-de-una",
+    tipo: "corregido",
+    titulo:
+      "Partida rápida y chequeo de 30 días no arman tarjetas sin nada que mostrar; Parejas pide al menos dos palabras y no deja una tanda de una",
+    porque:
+      "El modo «Palabra» de reserva pintaba una tarjeta en blanco sin significado, y una tanda de una sola pareja se resolvía sola como acierto.",
+    checks: [
+      {
+        tipo: "presente",
+        file: "src/client/components/Vocabulary.tsx",
+        expect: "Esta palabra necesita un significado o una oración para repasarse\\.",
+      },
+      {
+        tipo: "presente",
+        file: "src/client/components/Vocabulary.tsx",
+        expect: "Parejas necesita al menos dos palabras con significado\\.",
+      },
+      {
+        tipo: "presente",
+        file: "src/client/components/Vocabulary.tsx",
+        expect: "items\\.length % MATCH_TANDA === 1",
+      },
+    ],
+  },
+  {
+    id: "C20-pasar-no-vuelve-al-frente",
+    tipo: "corregido",
+    titulo:
+      "Las fichas sin significado y las pasadas con «Pasar por ahora» van al final de la siguiente tanda",
+    porque:
+      "«Pasar por ahora» no escribe exposición, así que la palabra volvía al frente de cada tanda y tapaba a las demás.",
+    checks: [
+      {
+        tipo: "presente",
+        file: "src/client/components/Vocabulary.tsx",
+        expect: "learnPassedRef\\.current\\.has\\(word\\.key\\) \\? 2 : word\\.meaning \\? 0 : 1",
+      },
+      {
+        tipo: "presente",
+        file: "src/client/components/Vocabulary.tsx",
+        expect: "onClick=\\{passLearn\\}",
+      },
+    ],
+  },
+  // --- Fase 0 del plan v2 (docs/plan-simplificacion-cuaderno.md, 2026-11-10) ---
+  // Las fases 1–3 de la v1 se dieron por completadas sin estarlo. Estas tres
+  // afirmaciones son DEFECTOS vigentes: mientras coincidan salen CONFIRMADO
+  // (exit 0); cuando la Fase 2 arregle cada una dejan de coincidir, el arnés
+  // sale 1 y hay que pasarlas a tipo «corregido» con las comprobaciones
+  // invertidas (la rejilla DENTRO de un <details>, etc.), no borrarlas.
+  {
+    id: "C13-modos-libres-a-la-vista",
+    tipo: "defecto",
+    titulo:
+      "Los modos libres siguen a la vista en el héroe: no hay <details> que los pliegue",
+    porque:
+      "El plan v1 (Fase 1) pedía colapsarlos; el 2026-11-09 se añadió además «Más ejercicios». Decisión de Luis (2026-11-10): un solo plegable «Más formas de practicar», cerrado por defecto.",
+    checks: [
+      {
+        tipo: "presente",
+        file: "src/client/components/Vocabulary.tsx",
+        expect: '<div className="nb-free-modes">',
+      },
+      {
+        tipo: "ausente",
+        file: "src/client/components/Vocabulary.tsx",
+        from: 1,
+        to: 9999,
+        pattern: "<details[^>]*nb-free-modes",
+      },
+    ],
+  },
+  {
+    id: "C14-gamificacion-en-el-heroe",
+    tipo: "defecto",
+    titulo:
+      "«Energía Léxica» con Combo y puntos sigue en el héroe y el cierre pinta «XP / Nivel»",
+    porque:
+      "El plan v1 (Fase 2) pedía sacar XP y Combo del flujo principal; el bloque nb-hero-energy es de 2026-10-13 y no se ha movido. La racha debe vivir solo en el cierre de sesión.",
+    checks: [
+      {
+        tipo: "presente",
+        file: "src/client/components/Vocabulary.tsx",
+        expect: '<div className="nb-hero-energy"',
+      },
+      {
+        tipo: "presente",
+        file: "src/client/components/Vocabulary.tsx",
+        expect: "<span>Energía Léxica</span>",
+      },
+      {
+        tipo: "presente",
+        file: "src/client/components/Vocabulary.tsx",
+        expect: "⭐ \\{Math\\.round\\(companion\\.state\\.xp\\)\\} XP",
+      },
+    ],
+  },
+  {
+    id: "C15-no-hay-cierre-unico-de-sesion",
+    tipo: "defecto",
+    titulo:
+      "No existe el cierre «Terminado por hoy.»; el repaso cierra con «Repaso terminado.» y «Terminar por hoy» sale sin cierre",
+    porque:
+      "El plan v1 (Fase 3) describía un cierre único con próxima fecha y racha. La frase no existe en src/ ni en el historial de git; el botón de salida hace setQueue(null) directo.",
+    checks: [
+      {
+        tipo: "ausente",
+        file: "src/client/components/Vocabulary.tsx",
+        from: 1,
+        to: 9999,
+        pattern: "Terminado por hoy",
+      },
+      {
+        tipo: "presente",
+        file: "src/client/components/Vocabulary.tsx",
+        expect: 'Repaso terminado\\.</p>',
       },
     ],
   },

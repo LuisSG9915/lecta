@@ -442,7 +442,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/components/Vocabulary.tsx",
-          "line": 1832,
+          "line": 1918,
           "window": 3,
           "expect": "await grade\\(item, wrongs",
           "why": "cada ejercicio registra un solo repaso al calificarse"
@@ -607,7 +607,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/components/Vocabulary.tsx",
-          "line": 1311,
+          "line": 1373,
           "window": 10,
           "expect": "const startRetentionCheck30d",
           "why": "chequeo rápido de memoria a largo plazo sobre palabras asentadas"
