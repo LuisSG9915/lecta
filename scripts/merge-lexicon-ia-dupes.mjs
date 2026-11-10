@@ -181,17 +181,20 @@ async function findPairsFromProposal(client, proposal) {
   const byPair = new Map(all.map((r) => [`${r.lemma}::${r.pos ?? ""}`, r.id]));
   const pairs = [];
   const updates = [];
+  const deletes = [];
   const skipped = [];
   for (const item of proposal) {
     if (item.decision === "merge") {
-      const tId = byPair.get(`${item.lemma}::${item.target}`);
+      const tId = byPair.get(`${item.tLemma ?? item.lemma}::${item.target}`);
       if (tId && tId !== item.id) pairs.push({ eId: item.id, tId, lemma: item.lemma, from: "sustantivo", to: item.target, source: item.source });
-      else skipped.push(`${item.lemma}::${item.target}`);
+      else skipped.push(`${item.tLemma ?? item.lemma}::${item.target}`);
     } else if (item.decision === "update") {
       updates.push({ id: item.id, lemma: item.lemma, target: item.target });
+    } else if (item.decision === "delete") {
+      deletes.push(item.id);
     }
   }
-  return { pairs, updates, skipped };
+  return { pairs, updates, deletes, skipped };
 }
 
 async function verify(client) {
@@ -216,15 +219,15 @@ for (const t of targets) {
   await client.connect();
   try {
     const before = await verify(client);
-    const { pairs, updates, skipped } = proposal
+    const { pairs, updates, deletes, skipped } = proposal
       ? await findPairsFromProposal(client, proposal)
-      : { pairs: await findPairs(client, dumpPos), updates: [], skipped: [] };
+      : { pairs: await findPairs(client, dumpPos), updates: [], deletes: [], skipped: [] };
     if (skipped?.length) console.log(`[${t.name}] omitidos (target ya no existe): ${skipped.length}`);
-    console.log(`[${t.name}] pares a fusionar: ${pairs.length} | updates de pos: ${updates.length} | entries ia/ai: ${before.iaAiEntries}`);
-    if (!pairs.length && !updates.length) continue;
+    console.log(`[${t.name}] pares a fusionar: ${pairs.length} | updates de pos: ${updates.length} | borrados: ${deletes.length} | entries ia/ai: ${before.iaAiEntries}`);
+    if (!pairs.length && !updates.length && !deletes.length) continue;
     if (!apply) { console.log(`[${t.name}] dry-run (sin escritura).`); continue; }
 
-    const backup = await backupPairs(client, [...pairs, ...updates.map((u) => ({ eId: u.id }))]);
+    const backup = await backupPairs(client, [...pairs, ...updates.map((u) => ({ eId: u.id })), ...deletes.map((id) => ({ eId: id }))]);
     const file = `artifacts/lexicon-merge-backup-${t.name}-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
     writeFileSync(file, JSON.stringify(backup));
     console.log(`[${t.name}] respaldo: ${file}`);
@@ -253,6 +256,12 @@ for (const t of targets) {
                            WHERE x.language = 'en' AND x.lemma = E.lemma AND x.pos = $2 AND x.id <> E.id)`,
         [u.id, u.target]);
       stats.updatesApplied += res.rowCount ?? 0;
+    }
+
+    // Borrados directos (contaminación): senses y forms hacen cascade.
+    for (const id of deletes) {
+      const res = await client.query(`DELETE FROM lexicon_entries WHERE id = $1::int8`, [id]);
+      stats.entriesDeleted += res.rowCount ?? 0;
     }
     const after = await verify(client);
     console.log(`[${t.name}] stats:`, JSON.stringify(stats));
