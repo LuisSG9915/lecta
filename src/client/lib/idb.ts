@@ -274,7 +274,7 @@ export type ReadingEvent = ReadingEventBase &
         ms: number;
         words: number;
       }
-    // Aviso de fatiga emitido (bostezo del gato + sugerencia 20-20-20):
+    // Umbral de fatiga cruzado (bostezo del gato + aviso por retrocesos):
     // queda la muestra que lo provocó para auditar el umbral.
     | {
         kind: "fatigue_flag";
@@ -283,7 +283,7 @@ export type ReadingEvent = ReadingEventBase &
         moves: number;
       }
     // Consejo diario de la estantería mostrado / aceptado: mide si
-    // las intervenciones IA sirven (sin guardar el texto del tip).
+    // los consejos sirven (sin guardar el texto del tip).
     // Son los únicos eventos sin visita ni libro: nacen fuera del
     // lector.
     | {

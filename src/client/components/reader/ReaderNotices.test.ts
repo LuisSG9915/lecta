@@ -3,6 +3,10 @@ import { act, createElement as h } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ReaderNotices, type ReaderNoticesProps } from "./ReaderNotices";
+import {
+  isFocusSuggestionMuted,
+  loadFocusTelemetryProfile,
+} from "../../lib/focus-telemetry";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -109,7 +113,8 @@ describe("ReaderNotices: píldora de transición ante fatiga (Fase 3)", () => {
 
     const pill = container.querySelector(".reader-fatigue-action-pill");
     expect(pill).not.toBeNull();
-    expect(pill?.textContent).toContain("Notamos fatiga en la lectura");
+    expect(pill?.textContent).toContain("Volviste atrás varias veces");
+    expect(pill?.textContent).not.toMatch(/fatiga|cansad/i);
 
     const focusBtn = container.querySelector(".reader-fatigue-btn-focus") as HTMLButtonElement;
     expect(focusBtn).not.toBeNull();
@@ -130,6 +135,27 @@ describe("ReaderNotices: píldora de transición ante fatiga (Fase 3)", () => {
     });
     expect(onStartAudio5Min).toHaveBeenCalled();
     expect(setFatigueNotice).toHaveBeenCalledWith(false);
+  });
+
+  it("«No volver a mostrar» apaga las sugerencias de foco y cierra", () => {
+    localStorage.clear();
+    const setFatigueNotice = vi.fn();
+    act(() => {
+      root.render(
+        h(ReaderNotices, {
+          ...propsWithKeyWords(0),
+          fatigueNotice: true,
+          setFatigueNotice,
+        }),
+      );
+    });
+    const muteBtn = container.querySelector(".reader-fatigue-btn-mute") as HTMLButtonElement;
+    expect(muteBtn.textContent).toBe("No volver a mostrar");
+    act(() => {
+      muteBtn.click();
+    });
+    expect(setFatigueNotice).toHaveBeenCalledWith(false);
+    expect(isFocusSuggestionMuted(loadFocusTelemetryProfile())).toBe(true);
   });
 });
 

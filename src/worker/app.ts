@@ -42,15 +42,11 @@ import {
   type MicroStory,
   type PassageExplanation,
   ITEM_CALL_OPTIONS,
-  TIP_CALL_OPTIONS,
-  TIP_PROMPT_VERSION,
-  TIP_SYSTEM_PROMPT,
   VERIFY_CALL_OPTIONS,
   buildExplainPrompt,
   buildExplainSystemPrompt,
   buildItemPrompt,
   buildItemSystemPrompt,
-  buildTipPrompt,
   buildVerifyPrompt,
   buildVerifySystemPrompt,
   callDeepSeek,
@@ -69,10 +65,8 @@ import {
   logAiCall,
   parseExplain,
   parseItem,
-  parseTip,
   parseVerify,
   requestEnrichment,
-  sanitizeTipContext,
   AI_TASK_BUDGETS,
   buildParagraphTranslationPrompt,
 } from "./ai";
@@ -1066,94 +1060,6 @@ app.post("/api/lexicon/explain", async (context) => {
   return context.json({ explanation: parsed.explanation });
 });
 
-// Consejo diario de lectura en la estantería (única función IA
-// proactiva — sin gesto del usuario). Viajan solo agregados saneados;
-// el cliente guarda la cadencia (1/día) y los eventos de aceptación.
-// El silencio ({tip:null}) es un resultado válido y se cachea igual
-// que un consejo: una recarga no vuelve a preguntar.
-//
-// La caché es marcador de GENERACIÓN, no de contenido: una vez que la
-// cuenta consultó hoy, cualquier otro dispositivo recibe silencio en
-// vez del mismo tip — la cadencia «una al día» sería por cuenta y no
-// serviría el mismo consejo dos veces. El TTL debe outlast el día: la
-// clave ya lleva el día local, así que una entrada vieja jamás choca
-// con el día siguiente.
-const tipCache = createTtlCache<string>({
-  maxEntries: 200,
-  ttlMs: 20 * 3_600_000,
-});
-
-app.post("/api/lexicon/tip", async (context) => {
-  const body = await context.req.json().catch(() => null);
-  const tipContext = sanitizeTipContext(body);
-  if (!tipContext)
-    return context.json({ error: "Falta el día local." }, 400);
-  if (!getConnectionString(context.env))
-    return context.json({ error: "El servicio no está configurado." }, 503);
-  const session = await getSession(context);
-  if (!session)
-    return context.json({ error: "Inicia sesión para recibir consejos." }, 401);
-
-  const cacheKey = `${session.user.id}:${tipContext.dayKey}`;
-  if (tipCache.get(cacheKey)) {
-    // Ya hubo consulta hoy desde otro dispositivo: el consejo del día
-    // ya se entregó (o la IA eligió silencio) — no se repite.
-    return context.json({
-      tip: null,
-      action: "none",
-      version: TIP_PROMPT_VERSION,
-      cached: true,
-    });
-  }
-
-  const allowed = await consumeRateUnits(
-    context.env,
-    session.user.id,
-    1,
-    TIP_UNITS_PER_HOUR,
-    "tip",
-  );
-  if (!allowed)
-    return context.json(
-      { error: "Llegaste al límite de consejos por ahora. Intenta más tarde." },
-      429,
-    );
-
-  const ai = await callDeepSeek(
-    context.env,
-    { system: TIP_SYSTEM_PROMPT, user: buildTipPrompt(tipContext) },
-    TIP_CALL_OPTIONS,
-  );
-  const parsed =
-    ai.ok && ai.finishReason !== "length" ? parseTip(ai.content) : null;
-  logAiCall(
-    TIP_CALL_OPTIONS,
-    ai,
-    !ai.ok ? ai.reason : ai.finishReason === "length" ? "truncated" : parsed ? "ok" : "invalid",
-  );
-  if (!ai.ok)
-    return context.json(
-      {
-        error:
-          ai.reason === "not-configured"
-            ? "Los consejos con IA no están configurados."
-            : ai.reason === "rate-limited"
-              ? "La IA está saturada. Intenta de nuevo en unos minutos."
-              : "La IA no pudo pensar un consejo.",
-      },
-      ai.reason === "api-error" ? 502 : 503,
-    );
-  if (!parsed)
-    return context.json({ error: "La IA no devolvió un consejo válido." }, 502);
-  const payload = {
-    tip: parsed.tip,
-    action: parsed.action,
-    version: TIP_PROMPT_VERSION,
-  };
-  tipCache.set(cacheKey, JSON.stringify(payload));
-  return context.json(payload);
-});
-
 // ---------- El Reto del Escritor y Cuento de Tinta IA ----------
 const evaluateCache = createTtlCache<EvaluatedSentence>({ maxEntries: 150, ttlMs: 15 * 60_000 });
 const storyCache = createTtlCache<MicroStory>({ maxEntries: 100, ttlMs: 30 * 60_000 });
@@ -1766,7 +1672,6 @@ const ENRICH_UNITS_PER_HOUR = 60;
 const ITEM_UNITS_PER_HOUR = 24;
 const VERIFY_UNITS_PER_HOUR = 30;
 const EXPLAIN_UNITS_PER_HOUR = 30;
-const TIP_UNITS_PER_HOUR = 6;
 const EVALUATE_UNITS_PER_HOUR = 40;
 const STORY_UNITS_PER_HOUR = 20;
 const PAGE_RECAP_UNITS_PER_HOUR = 40;

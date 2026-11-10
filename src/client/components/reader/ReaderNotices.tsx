@@ -1,9 +1,14 @@
 // Franja de avisos flotantes del lector: marcador de retomar, sugerencia de
-// preparación de capítulo, invitación a la calibración y pausa 20-20-20.
+// preparación de capítulo, invitación a la calibración y aviso por retrocesos.
 //
 // Extraída de Reader.tsx (Fase 7). Solo pinta; el orden de prioridad y el
 // estado viven en el lector.
 import { isFeatureFlagEnabled } from "../../lib/settings";
+import {
+  loadFocusTelemetryProfile,
+  saveFocusTelemetryProfile,
+  setFocusAutoSuggestEnabled,
+} from "../../lib/focus-telemetry";
 import { markSectionPreviewed } from "../../lib/chapter-analysis";
 import { memo } from "react";
 
@@ -227,7 +232,8 @@ export const ReaderNotices = memo(function ReaderNotices(props: ReaderNoticesPro
     </div>
   ) : null}
 
-  {/* Transición suave ante fatiga cognitiva/visual (Fase 3 Anti-Abandono) */}
+  {/* Aviso por retrocesos (Fase 3 Anti-Abandono). Nombra la señal
+      observable, nunca un estado del lector (docs/concentracion-y-lectura.md §4). */}
   {fatigueNotice && !resumeCard && !isDeepReading ? (
     <div
       className="reader-prep reader-fatigue-action-pill"
@@ -235,7 +241,8 @@ export const ReaderNotices = memo(function ReaderNotices(props: ReaderNoticesPro
       aria-live="polite"
     >
       <span className="reader-prep-text">
-        Notamos fatiga en la lectura. Elige cómo continuar:
+        Volviste atrás varias veces en los últimos minutos. Puede ser buena
+        relectura; si te cuesta seguir el renglón, prueba:
       </span>
       <div className="reader-fatigue-pill-actions">
         <button
@@ -258,12 +265,24 @@ export const ReaderNotices = memo(function ReaderNotices(props: ReaderNoticesPro
         >
           Escuchar los próximos 5 min 🎧
         </button>
+        <button
+          type="button"
+          className="btn btn--quiet reader-fatigue-btn-mute"
+          onClick={() => {
+            saveFocusTelemetryProfile(
+              setFocusAutoSuggestEnabled(loadFocusTelemetryProfile(), false),
+            );
+            setFatigueNotice(false);
+          }}
+        >
+          No volver a mostrar
+        </button>
       </div>
       <button
         type="button"
         className="reader-return-dismiss"
         onClick={() => setFatigueNotice(false)}
-        aria-label="Ocultar aviso de fatiga"
+        aria-label="Ocultar este aviso"
       >
         ×
       </button>

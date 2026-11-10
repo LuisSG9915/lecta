@@ -1,11 +1,9 @@
-// Consejo diario de lectura en la estantería: la única llamada IA
-// proactiva del producto. Las reglas vienen de
-// docs/concentracion-y-lectura.md §4 y están pensadas para proteger
-// el canal: cadencia de 1 llamada por día y dispositivo, mínimo de
-// datos para no pedir consejos genéricos, y silencio como resultado
-// válido del servidor.
+// Consejo diario de lectura en la estantería, calculado en el
+// dispositivo con reglas y plantillas (sin IA). Base del diseño:
+// docs/concentracion-y-lectura.md §4. Compara el último día leído
+// contra la mediana de los días anteriores de la ventana, nombra el
+// dato que dispara el consejo y calla en cualquier otro caso.
 
-import { accountFetch } from "./account-fetch";
 import {
   captureDbScope,
   listReadingEvents,
@@ -16,150 +14,164 @@ import {
 } from "./idb";
 import { dayWpm, focusByDay } from "./focus-telemetry";
 import { dayKeyOf } from "./reading-activity";
-import { parseReadingGoal, READING_GOAL_KEY } from "./reading-goal";
-import { loadUseAi } from "./ai-pref";
 import { loadReaderSettings } from "./settings";
-import type { TipContext, TipDayStats, TipResponse } from "../../shared/tip";
 
-// Clave de cadencia (session store, por cuenta): día local de la
-// última llamada completada. Se consume haya o no tip.
+// Acciones que la tarjeta ejecuta de verdad; «none» es solo informativo.
+export type TipAction = "none" | "focus_ruler" | "syntactic";
+
+// Un día de lectura agregado, reducido a lo que las reglas miran.
+export type TipDayStats = {
+  // Día local «AAAA-MM-DD» del lector.
+  dayKey: string;
+  // Minutos con la sección en pantalla (dwell), truncados.
+  minutes: number;
+  // Retrocesos de página o sección.
+  regressions: number;
+  // Ritmo estimado en palabras por minuto; 0 = muestra insuficiente.
+  wpm: number;
+};
+
+export type TipContext = {
+  // Día local en que se calcula; también es la clave de cadencia.
+  dayKey: string;
+  // Más reciente primero.
+  days: TipDayStats[];
+  focusMode: string;
+};
+
+export type TipOutcome = {
+  tip: string;
+  action: TipAction;
+  version: string;
+  tipDay: string;
+};
+
+// Versión de las plantillas: viaja en tip_shown como promptVersion.
+export const TIP_TEMPLATE_VERSION = "tip-local-v1";
+
+// Clave de cadencia (session store, por cuenta): día local del último
+// consejo mostrado. Un día sin señal no la consume.
 export const TIP_LAST_DAY_KEY = "tipLastDay";
 
-// Ventana de agregados enviada al servidor.
 export const TIP_WINDOW_DAYS = 14;
-// Mínimo de historial para pedir consejo: sin datos recientes la IA
-// solo podría devolver generalidades, y un tip genérico diario
-// degrada la señal del canal entero.
-export const TIP_MIN_ACTIVE_DAYS = 2;
+// Un día cuenta para comparar si tuvo ≥5 min de lectura.
 export const TIP_MIN_DAY_MS = 5 * 60_000;
-// El consejo no puede tardar más que entrar a la estantería; pasado
-// el plazo se descarta en silencio.
-export const TIP_REQUEST_TIMEOUT_MS = 8_000;
+// Días de referencia (además del comparado) para que la mediana
+// signifique algo.
+export const TIP_MIN_BASELINE_DAYS = 2;
 
-// Un día «leído» pide al menos un minuto en pantalla — mismo criterio
-// que la meta de días de reading-activity.
-const READ_DAY_MIN_MS = 60_000;
+// Umbrales: heurística propia (docs/concentracion-y-lectura.md §4).
+const REGRESSION_MIN_COUNT = 8;
+const REGRESSION_RATE_RATIO = 1.5;
+const PACE_DROP_RATIO = 0.75;
 
-// Diferencia en días naturales entre dos «AAAA-MM-DD» (mediodía UTC
-// para no tropezar con cambios de horario).
-function dayDiff(later: string, earlier: string): number {
-  const at = (key: string) => {
-    const [y, m, d] = key.split("-").map(Number);
-    return Date.UTC(y, m - 1, d, 12);
-  };
-  return Math.max(0, Math.round((at(later) - at(earlier)) / 86_400_000));
-}
-
-// Agrega los eventos del trayecto en el contexto que viaja a la IA.
-// Pura: los eventos ya vienen leídos (listReadingEvents sin filtro —
-// el consejo es de hábito, no de un libro).
+// Agrega los eventos del trayecto por día local. Pura: los eventos ya
+// vienen leídos (sin filtro de libro — el consejo es de hábito).
 export function buildTipContext(
   events: ReadingEvent[],
-  opts: { focusMode: string; weeklyGoalDays: number | null },
+  opts: { focusMode: string },
   now = Date.now(),
   timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone,
 ): TipContext {
   const today = dayKeyOf(now, timeZone);
-  const byDay = focusByDay(events, timeZone).filter(
-    (d) => d.dwellMs > 0 && d.dayKey <= today,
-  );
-  // El último día leído se busca sobre el dwell crudo: redondear a
-  // minutos movería un día de 59 s al lado de «leído».
-  const lastRead = byDay.filter((d) => d.dwellMs >= READ_DAY_MIN_MS).at(-1);
-  const days: TipDayStats[] = byDay
+  const days: TipDayStats[] = focusByDay(events, timeZone)
+    .filter((d) => d.dwellMs > 0 && d.dayKey <= today)
     .map((d) => ({
       dayKey: d.dayKey,
-      // Minutos truncados: 4.9 min leídos son 4 — redondear inflaría
-      // tanto el mínimo de datos como el contexto que ve la IA.
+      // Truncados: 4.9 min leídos son 4 — redondear inflaría el mínimo.
       minutes: Math.floor(d.dwellMs / 60_000),
       regressions: d.regressions,
-      consults: d.consults,
-      fatigue: d.fatigue,
       wpm: dayWpm(d),
     }))
     .reverse()
     .slice(0, TIP_WINDOW_DAYS);
-  return {
-    dayKey: today,
-    localHour: new Date(now).getHours(),
-    daysSinceLastRead: lastRead ? dayDiff(today, lastRead.dayKey) : 0,
-    days,
-    focusMode: opts.focusMode,
-    weeklyGoalDays: opts.weeklyGoalDays,
-  };
+  return { dayKey: today, days, focusMode: opts.focusMode };
 }
 
-// ¿Hay suficiente historial para que un consejo sea personal? Menos
-// de TIP_MIN_ACTIVE_DAYS días con ≥5 min en la ventana → no se llama.
+function countedDays(ctx: TipContext): TipDayStats[] {
+  return ctx.days.filter((d) => d.minutes * 60_000 >= TIP_MIN_DAY_MS);
+}
+
+// ¿Hay un día que comparar y referencia suficiente detrás?
 export function hasTipData(ctx: TipContext): boolean {
-  return (
-    ctx.days.filter((d) => d.minutes * 60_000 >= TIP_MIN_DAY_MS).length >=
-    TIP_MIN_ACTIVE_DAYS
-  );
+  return countedDays(ctx).length >= 1 + TIP_MIN_BASELINE_DAYS;
 }
 
-// Puertas del canal (todas antes de llamar): sesión, «Usar IA»,
-// datos mínimos y cadencia diaria. Pura — la IO la hace
-// maybeRequestTip.
 export function tipEligible(input: {
-  userId: string | null | undefined;
-  useAi: boolean;
   lastTipDay: string | null;
   ctx: TipContext;
 }): boolean {
-  if (!input.userId || !input.useAi) return false;
   if (input.lastTipDay === input.ctx.dayKey) return false;
   return hasTipData(input.ctx);
 }
 
-export type TipOutcome = TipResponse & { tipDay: string };
+function median(values: number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+}
 
-// Orquesta el consejo del día: lee preferencias e historial, aplica
-// las puertas y consume la cadencia al completar la llamada (con o
-// sin tip). Devuelve null ante cualquier no — la estantería se queda
-// igual, que es la respuesta correcta a un canal opcional.
-export async function maybeRequestTip(
+// Elige a lo más un consejo. Retrocesos antes que ritmo: es la señal
+// más directa y su ayuda (la regla) es la menos invasiva.
+export function composeTip(
+  ctx: TipContext,
+): { tip: string; action: TipAction } | null {
+  const [day, ...baseline] = countedDays(ctx);
+  if (!day || baseline.length < TIP_MIN_BASELINE_DAYS) return null;
+  const when = day.dayKey === ctx.dayKey ? "Hoy" : "La última vez que leíste";
+
+  const usualRate = median(baseline.map((d) => d.regressions / d.minutes));
+  const rate = day.regressions / day.minutes;
+  if (
+    ctx.focusMode !== "ruler" &&
+    day.regressions >= REGRESSION_MIN_COUNT &&
+    rate >= usualRate * REGRESSION_RATE_RATIO
+  ) {
+    return {
+      action: "focus_ruler",
+      tip: `${when} volviste atrás ${day.regressions} veces en ${day.minutes} min, más que en tus días habituales. Eso puede ser buena relectura; si te cuesta seguir el renglón, la regla de foco lo marca.`,
+    };
+  }
+
+  const paced = baseline.filter((d) => d.wpm > 0);
+  if (
+    ctx.focusMode !== "syntactic" &&
+    day.wpm > 0 &&
+    paced.length >= TIP_MIN_BASELINE_DAYS
+  ) {
+    const usualWpm = Math.round(median(paced.map((d) => d.wpm)));
+    if (day.wpm <= usualWpm * PACE_DROP_RATIO) {
+      return {
+        action: "syntactic",
+        tip: `${when} leíste a unas ${day.wpm} palabras por minuto; tus días habituales rondan las ${usualWpm}. Un día lento también puede ser un buen día. Si quieres, las líneas sintácticas parten el texto en grupos de sentido.`,
+      };
+    }
+  }
+  return null;
+}
+
+// Orquesta el consejo del día: lee historial y cadencia, aplica las
+// reglas y consume el día solo si hay consejo. Devuelve null ante
+// cualquier no — la estantería se queda igual.
+export async function loadDailyTip(
   scope?: DbScope,
 ): Promise<TipOutcome | null> {
   const bound = scope ?? captureDbScope();
   try {
-    if (!bound.userId) return null;
-    if (!(await loadUseAi(bound))) return null;
-    const [events, lastTipDay, rawGoal] = await Promise.all([
+    const [events, lastTipDay] = await Promise.all([
       listReadingEvents(undefined, bound),
       loadSessionValue(TIP_LAST_DAY_KEY, bound),
-      loadSessionValue(READING_GOAL_KEY, bound),
     ]);
     const ctx = buildTipContext(events, {
       focusMode: loadReaderSettings().focusMode,
-      weeklyGoalDays: parseReadingGoal(rawGoal)?.daysPerWeek ?? null,
     });
-    if (!tipEligible({ userId: bound.userId, useAi: true, lastTipDay, ctx }))
-      return null;
-    const response = await accountFetch(
-      "/api/lexicon/tip",
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(ctx),
-        signal: AbortSignal.timeout(TIP_REQUEST_TIMEOUT_MS),
-      },
-      bound,
-    );
-    // La llamada terminó: el día queda consumido sea cual sea la
-    // respuesta. Un fallo de red (antes de esta línea) no consume.
+    if (!tipEligible({ lastTipDay, ctx })) return null;
+    const composed = composeTip(ctx);
+    if (!composed) return null;
     await saveSessionValue(TIP_LAST_DAY_KEY, ctx.dayKey, bound).catch(
       () => undefined,
     );
-    if (!response.ok) return null;
-    const data = (await response.json()) as Partial<TipResponse>;
-    if (typeof data.tip !== "string" || !data.tip) return null;
-    return {
-      tip: data.tip,
-      action: data.action ?? "none",
-      version: typeof data.version === "string" ? data.version : "tip-v1",
-      tipDay: ctx.dayKey,
-    };
+    return { ...composed, version: TIP_TEMPLATE_VERSION, tipDay: ctx.dayKey };
   } catch {
     return null;
   }

@@ -2034,7 +2034,7 @@ export default function Reader({
 
   // Avance o retroceso de navegación hacia la ventana de fatiga; el
   // retroceso queda además en el trayecto. Si la tasa de regresiones
-  // ya muestra cansancio: bostezo del gato, aviso 20-20-20 y la
+  // supera el umbral: bostezo del gato, aviso por retrocesos y la
   // muestra que lo provocó en el trayecto.
   // Hook de telemetría de movimiento (R3a).
   const { trackMove } = useReaderTrackMove({
@@ -2043,6 +2043,7 @@ export default function Reader({
     trackEvent,
     signalCompanion,
     setFatigueNotice,
+    bookHash,
   });
 
   // Cargador de sección: parsea, mide, marca y restaura. La lógica vive en

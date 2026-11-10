@@ -1075,6 +1075,12 @@ mark.saved-passage--dario {
   gap: 0.6rem;
 }
 
+/* El aviso nombra la señal en una frase completa: se parte en líneas
+   en vez de cortarse con elipsis como el resto de la franja. */
+.reader-fatigue-action-pill .reader-prep-text {
+  white-space: normal;
+}
+
 @media (min-width: 600px) {
   .reader-fatigue-action-pill {
     flex-direction: row;

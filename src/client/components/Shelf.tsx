@@ -42,7 +42,7 @@ import {
   type WeeklyGoalProgress,
 } from "../lib/reading-goal";
 import { dayKeyOf } from "../lib/reading-activity";
-import { maybeRequestTip, type TipOutcome } from "../lib/tips";
+import { loadDailyTip, type TipAction, type TipOutcome } from "../lib/tips";
 import { trackReadingEvent } from "../lib/reading-events";
 import {
   loadActivityHidden,
@@ -50,7 +50,6 @@ import {
   saveReaderSettings,
   type StrategyPreset,
 } from "../lib/settings";
-import type { TipAction } from "../../shared/tip";
 import { BOOK_GENRES } from "../../shared/book-genres";
 import { levelProgress } from "../lib/gamification";
 import { isReviewDueWord } from "../lib/fsrs";
@@ -143,6 +142,9 @@ export type ShelfProps = {
   // Sube cuando la sincronización trae intervalos nuevos: la meta de
   // la semana relee su progreso sin recargar la estantería.
   activityVersion?: number;
+  // Cuenta cuya base local ya está activa (App la fija tras setDbUser).
+  // El consejo del día se recalcula cuando cambia.
+  dbUserId?: string | null;
   // Sube al cerrar la calibración: la cobertura se recalcula con la
   // evidencia recién guardada sin remontar la estantería.
   vocabVersion?: number;
@@ -209,6 +211,7 @@ export default function Shelf({
   onDownloadBook,
   downloadingHash,
   activityVersion = 0,
+  dbUserId = null,
   vocabVersion = 0,
   onOpenAccount,
   onOpenJourney,
@@ -305,10 +308,10 @@ export default function Shelf({
   // La preferencia se lee una vez: cambiarla en el Cuaderno se aplica
   // la próxima vez que la estantería se monta.
   const [activityHidden] = useState(() => loadActivityHidden());
-  // Consejo diario con IA: a lo más uno por día y dispositivo (la
-  // cadencia vive en tips.ts). Se pide al montar la estantería —
-  // breakpoint de inicio de sesión — y queda registrado con
-  // tip_shown/tip_accepted para medir si los consejos sirven.
+  // Consejo diario local (reglas y plantillas, sin IA): a lo más uno
+  // por día en este dispositivo (la cadencia vive en tips.ts). Se
+  // calcula al montar la estantería —breakpoint de inicio de sesión—
+  // y queda registrado con tip_shown/tip_accepted.
   const [tip, setTip] = useState<TipOutcome | null>(null);
   const [todayKey, setTodayKey] = useState<string>("");
   // Compañero del proveedor único: la tarjeta compacta muestra su
@@ -494,17 +497,24 @@ export default function Shelf({
     };
   }, [library, vocabVersion]);
 
-  // Consejo del día: una sola petición por montaje; las puertas de
-  // tips.ts (sesión, «Usar IA», datos mínimos, cadencia) deciden si
-  // siquiera sale la llamada. La tarjeta vive hasta aceptar o cerrar.
+  // Consejo del día: un cálculo por montaje y otro cada vez que queda
+  // activa otra base local (al abrir la app la estantería se monta
+  // antes de que setDbUser termine y leería la base anónima). Las
+  // puertas de tips.ts (datos mínimos, cadencia) y sus reglas deciden
+  // si hay tarjeta. La tarjeta vive hasta aceptar o cerrar.
   useEffect(() => {
     let cancelled = false;
     const scope = captureDbScope();
-    void maybeRequestTip(scope).then((outcome) => {
-      if (!outcome || cancelled) return;
-      // Si la pestaña quedó oculta mientras respondía la IA, el tip se
-      // descarta entero: una tarjeta que nadie vio no cuenta como
-      // impresión y reaparecer de la nada al volver confunde.
+    void loadDailyTip(scope).then((outcome) => {
+      if (cancelled) return;
+      // La tarjeta de otra cuenta nunca sobrevive al cambio.
+      if (!outcome) {
+        setTip(null);
+        return;
+      }
+      // Si la pestaña quedó oculta mientras se leía el historial, el
+      // tip se descarta entero: una tarjeta que nadie vio no cuenta
+      // como impresión y reaparecer de la nada al volver confunde.
       if (document.hidden) return;
       setTip(outcome);
       void trackReadingEvent(
@@ -522,7 +532,7 @@ export default function Shelf({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [dbUserId]);
 
   const acceptTip = () => {
     if (!tip) return;
@@ -995,7 +1005,7 @@ export default function Shelf({
         </section>
       ) : (
         <>
-          {/* Consejo del día (IA): tarjeta transitoria de sesión.
+          {/* Consejo del día (local): tarjeta transitoria de sesión.
               Aceptar aplica la acción si la hay y cierra; × solo
               cierra. Sin consejo la estantería no cambia nada. */}
           {tip ? (

@@ -86,8 +86,11 @@ repasarlas con FSRS hasta aprenderlas.
   «Regla de foco» (franja clara de 1/3/6 líneas que sigue al puntero y vela el resto).
 - **Telemetría de foco** (`focus-telemetry.ts`): ventana deslizante
   5 min de movimientos; tras ≥25 min de tramo continuo, ≥8 movimientos
-  y ≥35 % de retrocesos → `fatigue_flag` (cooldown 10 min) → aviso
-  20-20-20 + bostezo del gato. **Heurística propia sin validar.**
+  y ≥35 % de retrocesos → `fatigue_flag` (cooldown 10 min) → bostezo
+  del gato y aviso que nombra la señal («Volviste atrás varias veces…»)
+  con regla de foco, audio 5 min o «No volver a mostrar» (respeta el
+  silencio global y por libro de las sugerencias de foco).
+  **Heurística propia sin validar.**
 - **Máquina del gato** (`companion-state.ts`): sleep → reading →
   **deep_focus tras 10 min sin interrupción** (heurística propia);
   consulta → curious; fatiga → yawn; meta → celebrating. En deep_focus
@@ -330,10 +333,10 @@ posteriores a la aceptación contra el baseline del mismo lector, sin
 nueva instrumentación. A futuro, micro-checks opcionales (el cloze de
 fin de capítulo ya es infraestructura) cerrarían la brecha de verdad.
 
-Nota de cadencia: la *generación* del tip es a lo sumo una por cuenta
-y día (caché del worker marca «ya se consultó hoy»); la *visualización*
-queda por dispositivo (session store). El segundo dispositivo del día
-recibe silencio, no el mismo consejo repetido.
+Nota de cadencia: el consejo diario se calcula en el dispositivo y se
+muestra a lo sumo una vez por día y cuenta en cada dispositivo
+(`tipLastDay` en el session store). Un día sin señal no consume la
+cadencia.
 
 ### Principios para cualquier mensaje de IA
 
@@ -360,13 +363,33 @@ recibe silencio, no el mismo consejo repetido.
 
 ### Usos candidatos (mismo riel técnico actual)
 
-- `operation: "tip"` en `callDeepSeek` — **implementado**: consejo en
-  la estantería al abrir la app (no en el Reader: la franja ya la
-  ocupa el aviso de preparación) sobre agregados de ≤14 días.
-  `tip-v1`, 160 tokens, cadencia 1/día por dispositivo, rate limit
-  6/h, silencio válido, acciones cerradas (`focus_ruler`/`syntactic`)
-  que aplican el ajuste de verdad. Instrumentado con
-  `tip_shown`/`tip_accepted`.
+- **Consejo diario de la estantería — implementado sin IA**
+  (`src/client/lib/tips.ts`, plantillas `tip-local-v1`). Compara el
+  último día con ≥5 min de lectura contra la mediana de al menos dos
+  días anteriores de la ventana de 14:
+  - retrocesos: ≥8 y tasa por minuto ≥1,5× la habitual → ofrece la
+    regla de foco (si no la usa ya);
+  - ritmo: ≤75 % de la mediana de ppm → ofrece las líneas
+    sintácticas (si no las usa ya);
+  - en cualquier otro caso, silencio.
+
+  Cada plantilla nombra el dato que la dispara y admite la lectura
+  benigna de la señal («puede ser buena relectura», «un día lento
+  también puede ser un buen día»). Los umbrales son `heurística
+  propia`. Instrumentado con `tip_shown` (`promptVersion:
+  "tip-local-v1"`) y `tip_accepted`.
+
+  *Decisión (2026-11-10)*: hasta esta fecha el consejo lo generaba
+  DeepSeek (`operation: "tip"`, `tip-v1`). Se retiró porque le pedía
+  al modelo interpretar la serie de 14 días, justo lo que prohíbe la
+  última viñeta de esta lista; sus dos acciones tienen evidencia
+  preliminar, de modo que el LLM no aportaba más que redactar; y
+  mandaba agregados de comportamiento a un tercero en una llamada que
+  el lector no pedía. Con reglas locales el consejo es auditable, no
+  sale del dispositivo, no gasta cuota y no necesita caché de
+  cadencia en el worker. Se descartó también conservar el LLM solo
+  para redactar un hallazgo calculado en el cliente: unas pocas
+  plantillas cubren ese trabajo.
 - «Dónde quedaste» al retomar tras días: el candidato mejor
   sustentado; con guardarraíl anti-spoiler (no resumir más allá del
   punto de corte).

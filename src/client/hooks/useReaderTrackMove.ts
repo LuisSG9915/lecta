@@ -6,6 +6,8 @@ import {
   newFocusTracker,
   recordMove,
   detectFatigue,
+  isFocusSuggestionMuted,
+  loadFocusTelemetryProfile,
 } from "../lib/focus-telemetry";
 import type { CompanionSignal } from "../lib/companion-state";
 import type { VisitEventDraft } from "../lib/reading-events";
@@ -16,6 +18,7 @@ export type UseReaderTrackMoveParams = {
   trackEvent: (event: VisitEventDraft) => void;
   signalCompanion: (sig: Omit<CompanionSignal, "at"> & { at?: number }) => void;
   setFatigueNotice: (v: boolean) => void;
+  bookHash: string;
 };
 
 export function useReaderTrackMove({
@@ -24,6 +27,7 @@ export function useReaderTrackMove({
   trackEvent,
   signalCompanion,
   setFatigueNotice,
+  bookHash,
 }: UseReaderTrackMoveParams): { trackMove: (back: boolean) => void } {
   const trackMove = useCallback(
     (back: boolean) => {
@@ -46,9 +50,12 @@ export function useReaderTrackMove({
         moves: hit.moves,
       });
       signalCompanion({ kind: "fatigue_detected", at });
+      // El aviso respeta «No volver a mostrar» (global o por libro);
+      // el evento se registra igual: es telemetría, no interrupción.
+      if (isFocusSuggestionMuted(loadFocusTelemetryProfile(), bookHash)) return;
       setFatigueNotice(true);
     },
-    [trackEvent, signalCompanion, setFatigueNotice, focusTrackerRef, sectionIndexRef],
+    [trackEvent, signalCompanion, setFatigueNotice, focusTrackerRef, sectionIndexRef, bookHash],
   );
 
   return { trackMove };
