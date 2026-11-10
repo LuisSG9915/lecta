@@ -47,6 +47,7 @@ vi.mock("../lib/idb", async (importOriginal) => {
 });
 vi.mock("../lib/lexicon", () => ({
   batchLookup: vi.fn(async () => ({ ok: true, entries: {} })),
+  lookupWord: vi.fn(async () => ({ ok: true, found: false, entries: [] })),
   enrichWord: vi.fn(async () => ({ ok: true, found: true, entries: [] })),
   fetchItems: vi.fn(async () => ({ ok: true, items: [] })),
   answerItem: vi.fn(async () => true),
@@ -132,7 +133,7 @@ describe("Aprender", () => {
     await render();
     expect(text()).toContain("1 por aprender");
     await click("Aprender 1 palabra nueva");
-    expect(text()).toContain("Primera exposición");
+    expect(text()).toContain("qué crees que significa");
     expect(text()).toContain("casa");
     expect(button("Mostrar significado")).toBeTruthy();
     expect(text()).not.toContain("hogar");
@@ -211,26 +212,40 @@ describe("Aprender", () => {
     ]);
   });
 
-  it("sin significado y con la IA apagada no se ofrece aprender; la ficha sigue en la fila", async () => {
+  it("sin significado y con la IA apagada se aprende escribiéndolo a mano", async () => {
     useAiMock.mockResolvedValue(false);
     listWordsMock.mockResolvedValue([word()]);
+    fillMock.mockResolvedValue(word({ meaning: "hogar" }));
     await render();
-    // No hay forma de guardarla como aprendida, así que el héroe no la cuenta.
-    expect(text()).toContain("Seguir leyendo");
-    // La ficha se abre desde la fila de la palabra.
-    await act(async () => {
-      (host.querySelector(".nb-word-row") as HTMLButtonElement).click();
-      for (let i = 0; i < 6; i++) await Promise.resolve();
-    });
-    await act(async () => {
-      (host.querySelector('button[aria-label="Aprender casa"]') as HTMLButtonElement).click();
-      for (let i = 0; i < 6; i++) await Promise.resolve();
-    });
+    // Sin IA la palabra sigue siendo aprendible: el héroe la ofrece y la
+    // ficha permite definirla a mano en vez de dejarla bloqueada.
+    await click("Aprender 1 palabra nueva");
     await click("Mostrar significado");
     expect(button("Definir con IA")).toBeUndefined();
-    expect(text()).toContain("definiciones con IA están apagadas");
+    expect(text()).toContain("Sin significado guardado");
     // «Ya la conozco» sigue disponible sin definición.
     expect(button("Ya la conozco")?.disabled).toBe(false);
+    // Significado manual: al guardarlo, «Quiero aprenderla» se habilita.
+    const input = host.querySelector(
+      ".nb-learn-meaning-input",
+    ) as HTMLInputElement;
+    expect(input).toBeTruthy();
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+      )!.set!;
+      setter.call(input, "hogar");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      for (let i = 0; i < 6; i++) await Promise.resolve();
+    });
+    await click("Guardar significado");
+    expect(fillMock.mock.calls[0].slice(0, 3)).toEqual([
+      "es:casa",
+      1,
+      expect.objectContaining({ meaning: "hogar" }),
+    ]);
+    expect(button("Quiero aprenderla")?.disabled).toBe(false);
   });
 
   it("un fallo al guardar muestra error y no avanza", async () => {
@@ -241,7 +256,64 @@ describe("Aprender", () => {
     await click("Mostrar significado");
     await click("Ya la conozco");
     expect(text()).toContain("No se pudo guardar");
-    expect(text()).toContain("Primera exposición");
+    expect(text()).toContain("qué crees que significa");
+  });
+
+  it("sirve tandas de 5 y al terminar ofrece seguir con las siguientes", async () => {
+    listWordsMock.mockResolvedValue(
+      Array.from({ length: 7 }, (_, i) =>
+        word({ form: `palabra${i}`, meaning: `sentido ${i}` }),
+      ),
+    );
+    await render();
+    await click("Aprender 7 palabras nuevas");
+    // La tanda es de 5 aunque queden 7 pendientes por aprender.
+    expect(text()).toContain("1 de 5");
+    for (let i = 0; i < 3; i++) {
+      await click("Mostrar significado");
+      await click("Ya la conozco");
+    }
+    for (let i = 0; i < 2; i++) {
+      await click("Mostrar significado");
+      await click("Quiero aprenderla");
+    }
+    expect(text()).toContain("Aprender terminado");
+    expect(text()).toContain("quedan 2 por aprender");
+    expect(button("Seguir aprendiendo (2)")).toBeTruthy();
+    expect(button("Repasar estas 2 palabras")).toBeTruthy();
+  });
+
+  it("«Terminar por ahora» conserva el puente a repaso de lo aprendido", async () => {
+    listWordsMock.mockResolvedValue([
+      word({ form: "casa", meaning: "hogar" }),
+      word({ form: "perro", meaning: "can", savedAt: 2 }),
+    ]);
+    await render();
+    await click("Aprender 2 palabras nuevas");
+    await click("Mostrar significado");
+    await click("Quiero aprenderla");
+    // Sale a mitad de tanda habiendo aprendido una palabra.
+    await click("Terminar por ahora");
+    expect(text()).toContain("Aprender terminado");
+    expect(button("Repasar esta palabra")).toBeTruthy();
+  });
+
+  it("el teclado guía la ficha: Espacio revela y 1 decide «Ya la conozco»", async () => {
+    listWordsMock.mockResolvedValue([word({ meaning: "hogar" })]);
+    await render();
+    await click("Aprender 1 palabra nueva");
+    expect(text()).not.toContain("hogar");
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: " " }));
+      for (let i = 0; i < 6; i++) await Promise.resolve();
+    });
+    expect(text()).toContain("hogar");
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "1" }));
+      for (let i = 0; i < 6; i++) await Promise.resolve();
+    });
+    expect(saveKnowledgeMock).toHaveBeenCalled();
+    expect(text()).toContain("Aprender terminado");
   });
 
   it("una palabra ya repasada no entra a la cola", async () => {
@@ -559,7 +631,7 @@ describe("Reestructura del Cuaderno", () => {
     expect(highlight?.textContent).toBe("corrían");
   });
 
-  it("muestra en la cabecera píldoras de dominio interactivas (Nuevas, En aprendizaje, Dominadas)", async () => {
+  it("muestra en la cabecera píldoras de dominio interactivas (Nuevas, En Práctica, Dominadas)", async () => {
     listWordsMock.mockResolvedValue([
       word({ form: "nueva", lemma: "nueva", meaning: "m1", card: { reps: 0, stability: 1 } as never }),
       word({ form: "aprendiendo", lemma: "aprendiendo", meaning: "m2", card: { reps: 1, stability: 5 } as never }),
@@ -571,7 +643,7 @@ describe("Reestructura del Cuaderno", () => {
     expect(pills.length).toBe(3);
     const pillTexts = [...pills].map((p) => p.textContent?.trim());
     expect(pillTexts.some((t) => t?.includes("Nuevas"))).toBe(true);
-    expect(pillTexts.some((t) => t?.includes("En aprendizaje"))).toBe(true);
+    expect(pillTexts.some((t) => t?.includes("En Práctica"))).toBe(true);
     expect(pillTexts.some((t) => t?.includes("Dominadas"))).toBe(true);
 
     // Al tocar la píldora de "Nuevas", salta a la pestaña Palabras con filtro activo
@@ -635,7 +707,7 @@ describe("Reestructura del Cuaderno", () => {
     expect(quickGameBtn?.textContent).toContain("Partida rápida (3 min)");
   });
 
-  it("Hero Card muestra La Mesa de Estudio con el Gato, energía léxica, CTA y 4 modos libres", async () => {
+  it("Hero Card muestra La Mesa de Estudio con el Gato, energía léxica, CTA y modos libres", async () => {
     listWordsMock.mockResolvedValue([
       word({
         form: "murmullo",
@@ -667,14 +739,16 @@ describe("Reestructura del Cuaderno", () => {
     expect(host.querySelectorAll(".nb-hero-cta .btn--primary")).toHaveLength(1);
     expect(host.querySelector(".notebook-quick-review-cta")).toBeNull();
 
-    // 4 tarjetas de modos libres
+    // Tarjetas de modos libres: 4 juegos + taller IA + «Más ejercicios»
     const freeCards = host.querySelectorAll(".nb-free-mode-card");
-    expect(freeCards.length).toBe(4);
+    expect(freeCards.length).toBe(6);
     const freeNames = [...freeCards].map((c) => c.querySelector(".nb-free-mode-name")?.textContent);
     expect(freeNames).toContain("Hueco en el Libro");
     expect(freeNames).toContain("Sílabas de Tinta");
     expect(freeNames).toContain("Telar de Frases");
+    expect(freeNames).toContain("Parejas");
     expect(freeNames).toContain("Taller con el Gato IA");
+    expect(freeNames).toContain("Más ejercicios");
   });
 
   it("el control segmentado permite alternar entre Mi Herbario de Palabras y Citas y Hallazgos", async () => {
@@ -1213,9 +1287,47 @@ describe("Modos libres: tampoco examinan lo nunca presentado", () => {
 
     const tarjetas = [...host.querySelectorAll(".nb-free-mode-card")] as HTMLButtonElement[];
     const deshabilitadas = tarjetas.filter((b) => b.disabled);
-    expect(deshabilitadas.length).toBe(3);
+    // Hueco, Sílabas, Telar, Parejas y Taller IA apagados; «Más
+    // ejercicios» queda activo porque solo despliega la lista.
+    expect(deshabilitadas.length).toBe(5);
     expect(text()).toContain("Aprende primero las nuevas");
     expect(host.querySelector(".nb-practice")).toBeNull();
+  });
+
+  it("«Más ejercicios» despliega los demás modos de práctica", async () => {
+    listWordsMock.mockResolvedValue([
+      word({
+        form: "brisa",
+        meaning: "viento suave",
+        context: "Sopló la brisa fresca.",
+        card: { reps: 2, stability: 5, due: past() } as never,
+      }),
+    ]);
+    await render();
+    expect(host.querySelector(".nb-free-modes-grid--extra")).toBeNull();
+    const moreBtn = [
+      ...host.querySelectorAll(".nb-free-mode-card"),
+    ].find(
+      (b) =>
+        b.querySelector(".nb-free-mode-name")?.textContent === "Más ejercicios",
+    ) as HTMLButtonElement;
+    await act(async () => {
+      moreBtn.click();
+      for (let i = 0; i < 6; i++) await Promise.resolve();
+    });
+    const extra = host.querySelector(".nb-free-modes-grid--extra");
+    expect(extra).toBeTruthy();
+    const nombres = [...extra!.querySelectorAll(".nb-free-mode-name")].map(
+      (n) => n.textContent,
+    );
+    expect(nombres).toContain("Significado");
+    expect(nombres).toContain("Escribir");
+    // El modo «Parejas» también está en la fila principal.
+    expect(
+      [...host.querySelectorAll(".nb-free-mode-name")].some(
+        (n) => n.textContent === "Parejas",
+      ),
+    ).toBe(true);
   });
 });
 

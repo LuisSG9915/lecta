@@ -1,9 +1,9 @@
 {
   "tool": "audit-investigacion",
   "version": 1,
-  "generatedAt": "2026-11-08T04:39:50.029Z",
+  "generatedAt": "2026-11-09T15:19:05.113Z",
   "root": "/Users/luis/Desarrollos Devin/lecta",
-  "commit": "270ed04cdab4e30335d929bd4d1c3d4e0cfbe2c5",
+  "commit": "c9e1f6f37a787522f80378f2256d0d33bb8ec64e",
   "doc": "docs/estrategia-aprendizaje-2026-10-24.md",
   "registry": "docs/auditoria/claims.json",
   "online": false,
@@ -72,13 +72,18 @@
         {
           "kind": "reachable",
           "status": "PASS",
-          "detail": "createCoverageInputsLoader se usa en producción (2 archivo/s)",
+          "detail": "createCoverageInputsLoader se usa en producción (3 archivo/s)",
           "observed": {
             "symbol": "createCoverageInputsLoader",
             "callers": [
               {
+                "file": "src/client/components/CommunityShelf.tsx",
+                "line": 132,
+                "text": "loader: ReturnType<typeof createCoverageInputsLoader>;"
+              },
+              {
                 "file": "src/client/components/DiscoverRail.tsx",
-                "line": 103,
+                "line": 122,
                 "text": "loader: ReturnType<typeof createCoverageInputsLoader>;"
               },
               {
@@ -182,10 +187,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/lib/catalog.ts:317 coincide con /COVERAGE_FLUID_MIN/",
+          "detail": "src/client/lib/catalog.ts:357 coincide con /COVERAGE_FLUID_MIN/",
           "observed": {
             "file": "src/client/lib/catalog.ts",
-            "line": 317,
+            "line": 357,
             "text": "if (bookDifficultyOrLevel >= COVERAGE_FLUID_MIN) {"
           }
         },
@@ -517,10 +522,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/components/Reader.tsx:4822 coincide con /updateLanguageTheta\\(currentLang, beta, 1, 1\\.0\\)/",
+          "detail": "src/client/components/Reader.tsx:4483 coincide con /updateLanguageTheta\\(currentLang, beta, 1, 1\\.0\\)/",
           "observed": {
             "file": "src/client/components/Reader.tsx",
-            "line": 4822,
+            "line": 4483,
             "text": "updateLanguageTheta(currentLang, beta, 1, 1.0);"
           }
         },
@@ -537,10 +542,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/components/WordPanel.tsx:639 coincide con /award: false/",
+          "detail": "src/client/components/WordPanel.tsx:641 coincide con /award: false/",
           "observed": {
             "file": "src/client/components/WordPanel.tsx",
-            "line": 639,
+            "line": 641,
             "text": "{ award: false },"
           }
         },
@@ -878,10 +883,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/components/Vocabulary.tsx:1751 coincide con /await grade\\(item, wrongs/",
+          "detail": "src/client/components/Vocabulary.tsx:1825 coincide con /await grade\\(item, wrongs/",
           "observed": {
             "file": "src/client/components/Vocabulary.tsx",
-            "line": 1751,
+            "line": 1825,
             "text": "await grade(item, wrongs ? EXERCISE_RATING.wrong : EXERCISE_RATING.correct);"
           }
         },
@@ -1247,10 +1252,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/components/Vocabulary.tsx:1350 coincide con /const startRetentionCheck30d/",
+          "detail": "src/client/components/Vocabulary.tsx:1311 coincide con /const startRetentionCheck30d/",
           "observed": {
             "file": "src/client/components/Vocabulary.tsx",
-            "line": 1350,
+            "line": 1311,
             "text": "const startRetentionCheck30d = () => {"
           }
         },
@@ -1267,10 +1272,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/components/Vocabulary.tsx:610 coincide con /const RETENTION_CHECK_MIN_AGE_DAYS = 30/",
+          "detail": "src/client/components/Vocabulary.tsx:511 coincide con /const RETENTION_CHECK_MIN_AGE_DAYS = 30/",
           "observed": {
             "file": "src/client/components/Vocabulary.tsx",
-            "line": 610,
+            "line": 511,
             "text": "const RETENTION_CHECK_MIN_AGE_DAYS = 30;"
           }
         },

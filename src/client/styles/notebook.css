@@ -631,6 +631,34 @@
   margin-block-start: var(--s-4);
 }
 
+/* Significado escrito a mano en la ficha de «Aprender»: campo único
+   con etiqueta visible para quien no puede usar la IA. */
+.nb-learn-meaning-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  margin-block-start: var(--s-3);
+  max-inline-size: 34rem;
+}
+
+.nb-learn-meaning-label {
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+}
+
+.nb-learn-meaning-input {
+  font: inherit;
+  padding: var(--s-2) var(--s-3);
+  border: var(--border);
+  border-radius: var(--r-1);
+  background: var(--paper-raised);
+  color: var(--ink);
+}
+
+.nb-learn-meaning-form .btn {
+  align-self: flex-start;
+}
+
 .nb-done {
   margin-block-start: var(--s-7);
   text-align: center;
@@ -2625,6 +2653,14 @@
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
   gap: var(--s-2);
+}
+
+/* Segunda fila de «Más ejercicios»: mismo grid, separada de la
+   principal para que se lea como despliegue y no como duplicado. */
+.nb-free-modes-grid--extra {
+  margin-block-start: var(--s-2);
+  padding-block-start: var(--s-2);
+  border-block-start: 1px solid var(--rule);
 }
 
 .nb-free-mode-card {

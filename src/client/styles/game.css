@@ -4691,6 +4691,19 @@
   color: var(--ink-soft, #666);
 }
 
+/* Selector de palabra del taller cuando el cuaderno es grande:
+   las primeras 8 quedan como botones y el resto vive aquí. */
+.ai-word-select {
+  font: inherit;
+  font-size: 0.8rem;
+  padding: 0.2rem 0.5rem;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: var(--paper);
+  color: var(--ink);
+  max-width: 10rem;
+}
+
 .ai-sentence-textarea {
   width: 100%;
   border-radius: 10px;

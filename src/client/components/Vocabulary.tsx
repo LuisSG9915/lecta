@@ -38,6 +38,7 @@ import {
   enrichWord,
   explainInContext,
   fetchItems,
+  lookupWord,
   verifySentence,
   type LexiconEntry,
   type LexiconItem,
@@ -48,6 +49,7 @@ import {
   isWordKnownBy,
   knownKeysFor,
   LEARN_EXPOSURE_KEY,
+  LEARN_SESSION_SIZE,
   parseLearnExposure,
   REVIEW_SESSION_SIZE,
   reviewQueue,
@@ -59,6 +61,12 @@ import { pushWordsToServer, removeWord } from "../lib/vocab";
 import { backfillWordMeanings } from "../lib/word-meanings";
 import { bookDisplayName } from "../lib/cover";
 import { recordReview } from "../lib/reviews";
+import { applyPreviewKnownSignal, calibrationBankZipf } from "../lib/knowledge";
+import { betaFromZipf } from "../lib/profile-models";
+import {
+  findEpisodicHighlightRange,
+  renderHighlightedContext,
+} from "../lib/word-highlight";
 import type { ReviewKind, ReviewRating } from "../../shared/reading-data";
 import {
   blankWordInContext,
@@ -84,7 +92,10 @@ export {
   type SavedWordItem,
   type OneMinuteReviewRound,
 };
-import { markLevel, type MarkLevel } from "../lib/word-level";
+// Reexportados desde lib/word-highlight: los tests y el herbario los
+// consumen por esta vía histórica.
+export { findEpisodicHighlightRange, renderHighlightedContext };
+import { type MarkLevel } from "../lib/word-level";
 import { loadUseAi } from "../lib/ai-pref";
 const GamePanel = lazy(() => import("./GamePanel").then((m) => ({ default: m.GamePanel })));
 import { formatInterval, futureRelativeDay } from "../lib/relative-time";
@@ -118,7 +129,7 @@ import { SentenceBuilderGame } from "./SentenceBuilderGame";
 import { isGrammarEligible, isSentenceEligible } from "../lib/grammar";
 import { languageName } from "../lib/epub";
 import { speakWord } from "../lib/speech";
-import Icon from "./Icon";
+import Icon, { type IconName } from "./Icon";
 
 export type UnifiedVocabularyProps = {
   words?: SavedWordItem[];
@@ -131,6 +142,12 @@ export type UnifiedVocabularyProps = {
   // Sube cuando la sincronización trae intervalos nuevos; la pestaña
   // de actividad relee su progreso sin remontar el panel.
   activityVersion?: number;
+  // Sube cuando el vocabulario cambia fuera del cuaderno (lector,
+  // sincronización, calibración): recarga la lista sin remontar.
+  vocabVersion?: number;
+  // Avisa al padre tras cada mutación local (guardar, borrar, calificar,
+  // aprender) para que el globo de pendientes se actualice al instante.
+  onVocabChange?: () => void;
   onOpenJourney?: () => void;
   presentation?: "overlay" | "page";
   backLabel?: string;
@@ -350,6 +367,25 @@ const EXERCISE_MODES: ReadonlySet<PracticeMode> = new Set([
 // Palabras por tanda del juego de parejas.
 const MATCH_TANDA = 4;
 
+// Modos de práctica ya construidos que no caben en la fila principal
+// de «Elegir modo libre»: se despliegan con «Más ejercicios». Todos
+// salen de reviewWords — nunca de palabras sin exponer.
+const EXTRA_MODES: {
+  id: PracticeMode;
+  name: string;
+  hint: string;
+  icon: IconName;
+}[] = [
+  { id: "meaning", name: "Significado", hint: "Significado → palabra", icon: "quote" },
+  { id: "form", name: "Palabra", hint: "Palabra → significado", icon: "notebook" },
+  { id: "choose", name: "Elegir palabra", hint: "Completa el hueco", icon: "search" },
+  { id: "grammar", name: "Categoría", hint: "Rol en la frase", icon: "sliders" },
+  { id: "sense", name: "Acepción", hint: "Elige el sentido", icon: "bookmark" },
+  { id: "context", name: "Contexto", hint: "Oración nueva (IA)", icon: "book" },
+  { id: "clozeNew", name: "Oración nueva", hint: "Escribe el hueco (IA)", icon: "sparkle" },
+  { id: "write", name: "Escribir", hint: "Frase propia", icon: "highlight" },
+];
+
 // Modo de repaso → tipo de anotación en el historial (reviews.kind).
 const KIND_BY_MODE: Record<PracticeMode, ReviewKind> = {
   meaning: "meaning",
@@ -422,155 +458,26 @@ export function getStabilitySegments(s: unknown): number {
   return 0;
 }
 
-const stripDiacritics = (str: string) =>
-  str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-
-// Normaliza alternancias vocálicas y diptongaciones frecuentes en raíces del español
-// (pensar -> piensa, dormir -> duerme, pedir -> pidió, sentir -> sintió)
-const foldSpanishDiphthongs = (str: string) =>
-  stripDiacritics(str)
-    .replace(/ie/g, "e")
-    .replace(/ue/g, "o")
-    .replace(/qu/g, "c")
-    .replace(/gu(?=[ei])/g, "g");
-
-// Extrae la raíz léxica aproximada eliminando desinencias verbales y nominales comunes
-function extractLexicalStem(word: string): string {
-  const clean = stripDiacritics(word).replace(/^[^\p{L}]+|[^\p{L}]+$/gu, "");
-  if (clean.length <= 3) return clean;
-  const stripped = clean.replace(
-    /(?:amiento|imiento|aciones|iciones|abamos|ieramos|aramos|asteis|isteis|aremos|eremos|iremos|arian|erian|irian|ando|iendo|aron|ieron|aban|ian|ando|adas|ados|idas|idos|arse|erse|irse|acion|icion|mente|anza|idad|ar|er|ir|as|es|os|an|en|in|on|ado|ido|aba|ia|ad|ed|id|s)$/u,
-    ""
-  );
-  return stripped.length >= 3 ? stripped : clean.slice(0, Math.max(3, clean.length - 2));
-}
-
-export function findEpisodicHighlightRange(
-  context: string,
-  form: string,
-  lemma?: string,
-): { start: number; end: number } | null {
-  const cleanForm = form.trim().replace(/^[.,;:!?¡¿"'«»([]—–-]+|[.,;:!?¡¿"'«»([]—–-]+$/g, "");
-  const cleanLemma = lemma?.trim().replace(/^[.,;:!?¡¿"'«»([]—–-]+|[.,;:!?¡¿"'«»([]—–-]+$/g, "");
-  const candidates = [cleanForm, cleanLemma, form.trim()].filter(
-    (c): c is string => Boolean(c && c.length > 0),
-  );
-  if (!candidates.length) return null;
-
-  // Tokenizar palabras del pasaje respetando caracteres Unicode (NFC y NFD)
-  const tokens = Array.from(context.matchAll(/[\p{L}\p{M}]+/gu));
-
-  // 1. Si el candidato es una locución (contiene espacios), buscar secuencia de tokens en coordenadas originales
-  for (const cand of candidates) {
-    if (/\s/.test(cand)) {
-      const candWords = Array.from(cand.matchAll(/[\p{L}\p{M}]+/gu)).map((m) =>
-        stripDiacritics(m[0]),
-      );
-      if (candWords.length > 0 && tokens.length >= candWords.length) {
-        for (let i = 0; i <= tokens.length - candWords.length; i++) {
-          let allMatch = true;
-          for (let k = 0; k < candWords.length; k++) {
-            if (stripDiacritics(tokens[i + k][0]) !== candWords[k]) {
-              allMatch = false;
-              break;
-            }
-          }
-          if (allMatch) {
-            const firstTok = tokens[i];
-            const lastTok = tokens[i + candWords.length - 1];
-            if (firstTok.index !== undefined && lastTok.index !== undefined) {
-              return {
-                start: firstTok.index,
-                end: lastTok.index + lastTok[0].length,
-              };
-            }
-          }
-        }
-      }
-      const rawIdx = context.toLowerCase().indexOf(cand.toLowerCase());
-      if (rawIdx !== -1) return { start: rawIdx, end: rawIdx + cand.length };
-    }
-  }
-
-  // 2. Coincidencia exacta de token completo (case-insensitive)
-  for (const cand of candidates) {
-    const lowerCand = cand.toLowerCase();
-    const exact = tokens.find((t) => t[0].toLowerCase() === lowerCand);
-    if (exact && exact.index !== undefined) {
-      return { start: exact.index, end: exact.index + exact[0].length };
-    }
-  }
-
-  // 3. Coincidencia de token completo ignorando tildes/diacríticos
-  for (const cand of candidates) {
-    const normCand = stripDiacritics(cand);
-    const match = tokens.find((t) => stripDiacritics(t[0]) === normCand);
-    if (match && match.index !== undefined) {
-      return { start: match.index, end: match.index + match[0].length };
-    }
-  }
-
-  // 4. Buscador de raíz morfológica (lexical stem matcher) para formas conjugadas o flexionadas
-  for (const cand of candidates) {
-    const rawStem = extractLexicalStem(cand);
-    const foldedStem = foldSpanishDiphthongs(rawStem);
-    if (rawStem.length < 3) continue;
-
-    for (const token of tokens) {
-      const tokenText = token[0];
-      const normToken = stripDiacritics(tokenText);
-      const tokenStem = extractLexicalStem(tokenText);
-
-      const matchesRawStem =
-        normToken.startsWith(rawStem) ||
-        (tokenStem.length >= 3 && (rawStem.startsWith(tokenStem) || tokenStem.startsWith(rawStem)));
-
-      const foldedToken = foldSpanishDiphthongs(tokenText);
-      const foldedTokenStem = foldSpanishDiphthongs(tokenStem);
-      const matchesFoldedStem =
-        foldedStem.length >= 3 &&
-        (foldedToken.startsWith(foldedStem) ||
-          (foldedTokenStem.length >= 3 &&
-            (foldedStem.startsWith(foldedTokenStem) || foldedTokenStem.startsWith(foldedStem))));
-
-      if (matchesRawStem || matchesFoldedStem) {
-        return { start: token.index!, end: token.index! + tokenText.length };
-      }
-    }
-  }
-
-  // 5. Fallback final por subcadena si contiene caracteres no léxicos
-  const fallbackIdx = context.toLowerCase().indexOf(cleanForm.toLowerCase());
-  if (fallbackIdx !== -1 && cleanForm.length > 0) {
-    return { start: fallbackIdx, end: fallbackIdx + cleanForm.length };
-  }
-
-  return null;
-}
-
-// Resalta la palabra (o su flexión morfológica) dentro del contexto del libro con estilo ámbar suave (Hueco 3.1)
-export function renderHighlightedContext(
-  context: string | null | undefined,
-  form: string,
-  lemma?: string,
-) {
-  if (!context) return null;
-  if (!form || !form.trim()) return context;
-  const range = findEpisodicHighlightRange(context, form, lemma);
-  if (!range) return context;
-  const before = context.slice(0, range.start);
-  const match = context.slice(range.start, range.end);
-  const after = context.slice(range.end);
-  return (
-    <>
-      {before}
-      <mark className="nb-word-quote-highlight">{match}</mark>
-      {after}
-    </>
-  );
-}
 const isUnexposedWord = (word: SavedWord, pendingLearn?: boolean): boolean =>
   pendingLearn ?? ((word.card?.reps ?? 0) === 0 && !((word.presentedAt ?? 0) > 0));
+
+// Clasificación única del ciclo de vida de una palabra en el cuaderno:
+// la comparten las píldoras del héroe, los filtros del herbario y la
+// etiqueta de cada fila, así sus números siempre cuadran.
+//   new       → sin exponer o tarjeta recién creada (S < 2 días)
+//   learning  → en práctica (2 ≤ S < 14 días)
+//   settled   → dominada (S ≥ 14 días)
+// «due» no es una etapa sino un estado de agenda: se superpone a
+// cualquiera de las tres (una dominada puede tocar repaso hoy).
+type WordStage = "new" | "learning" | "settled";
+const wordStage = (word: SavedWord, pendingLearn?: boolean): WordStage => {
+  const card = word.card;
+  const s = safeStability(card?.stability);
+  const isNew = !card || (card.reps ?? 0) === 0 || s < 2;
+  if (isUnexposedWord(word, pendingLearn) || isNew) return "new";
+  if (s < 14) return "learning";
+  return "settled";
+};
 
 // Etiqueta de estado visible de cada palabra según estabilidad FSRS (S) y primera exposición
 const stateOf = (
@@ -578,14 +485,13 @@ const stateOf = (
   pendingLearn?: boolean,
 ): { label: string; level: MarkLevel | "due" } => {
   const card = word.card;
-  const s = safeStability(card?.stability);
-  const isNew = !card || (card.reps ?? 0) === 0 || s < 2;
   if (isUnexposedWord(word, pendingLearn)) {
     return { label: "Nuevas", level: "new" };
   }
   if (isDue(card)) return { label: "Para hoy", level: "due" };
-  if (isNew) return { label: "Nuevas", level: "new" };
-  if (s < 14) return { label: "En Práctica", level: "learning" };
+  const stage = wordStage(word, pendingLearn);
+  if (stage === "new") return { label: "Nuevas", level: "new" };
+  if (stage === "learning") return { label: "En Práctica", level: "learning" };
   return { label: "Dominadas", level: "settled" };
 };
 
@@ -597,14 +503,9 @@ const matchesFilter = (
   pendingLearn?: boolean,
 ): boolean => {
   if (filter === "all") return true;
-  const pending = isUnexposedWord(word, pendingLearn);
-  if (filter === "due") return !pending && isDue(word.card);
-  const card = word.card;
-  const s = safeStability(card?.stability);
-  const isNew = !card || (card.reps ?? 0) === 0 || s < 2;
-  if (filter === "new") return pending || isNew;
-  if (filter === "learning") return !isNew && s >= 2 && s < 14;
-  return !isNew && s >= 14;
+  if (filter === "due")
+    return !isUnexposedWord(word, pendingLearn) && isDue(word.card);
+  return wordStage(word, pendingLearn) === filter;
 };
 
 const RETENTION_CHECK_MIN_AGE_DAYS = 30;
@@ -825,6 +726,8 @@ function FullVocabulary({
   onClose = () => {},
   books = [],
   activityVersion,
+  vocabVersion,
+  onVocabChange,
   onOpenJourney,
   presentation = "overlay",
   backLabel,
@@ -894,6 +797,9 @@ function FullVocabulary({
   // Aviso suave cuando un modo no puede armar su cola (p. ej. acepciones sin conexión).
   const [practiceNote, setPracticeNote] = useState("");
   const [workshopOpen, setWorkshopOpen] = useState(false);
+  // «Más ejercicios»: despliega los modos de práctica que no caben en
+  // la fila principal de la portada.
+  const [moreModesOpen, setMoreModesOpen] = useState(false);
   // Preferencia «Usar IA» (Cuenta): una lectura al abrir el cuaderno.
   // Apagada, los modos que llaman al generador (contexto, oración
   // nueva) lo avisan y la corrección de «escribir» no se ofrece.
@@ -908,9 +814,24 @@ function FullVocabulary({
     revealed: boolean;
     // Claves que el usuario quiso aprender en esta sesión: el puente a repaso.
     kept: string[];
+    // true cuando se sale antes de vaciar la cola («Terminar por
+    // ahora»): la pantalla final conserva el puente a repaso.
+    done?: boolean;
   } | null>(null);
   const [learnBusy, setLearnBusy] = useState<"" | "action" | "enrich">("");
   const [learnError, setLearnError] = useState("");
+  // Significado escrito a mano en la ficha cuando la IA no aplica.
+  // Se guarda junto a la clave del ítem: al pasar a otra palabra el
+  // borrador se lee vacío sin necesidad de un efecto de reseteo.
+  const [learnDraftFor, setLearnDraftFor] = useState<{
+    key: string;
+    text: string;
+  }>({ key: "", text: "" });
+  const learnItemKey = learn?.items[0]?.key ?? "";
+  const learnDraft =
+    learnDraftFor.key === learnItemKey ? learnDraftFor.text : "";
+  const setLearnDraft = (text: string) =>
+    setLearnDraftFor({ key: learnItemKey, text });
   const [retentionHorizon, setRetentionHorizon] = useState<RetentionHorizon>(() =>
     loadRetentionHorizon(),
   );
@@ -926,6 +847,12 @@ function FullVocabulary({
   const continueRef = useRef<HTMLButtonElement>(null);
   const writeAreaRef = useRef<HTMLTextAreaElement>(null);
   const companion = useCompanionSafe();
+
+  // Avisa al padre (App) que el vocabulario cambió: el globo de
+  // pendientes de la barra y el perfil se recalculan al instante.
+  const notifyVocabChange = useCallback(() => {
+    onVocabChange?.();
+  }, [onVocabChange]);
 
   // Compañero en juegos y repasos (animado / tranquilo / oculto) y su interactividad.
   const [companionMode, setCompanionMode] = useState<PracticeCompanionMode>(() =>
@@ -988,7 +915,9 @@ function FullVocabulary({
       window.clearTimeout(undoTimer.current);
       window.clearTimeout(matchFlashTimer.current);
     };
-  }, []);
+    // vocabVersion: el padre avisa cuando el vocabulario cambia fuera
+    // (lector, sync, calibración) y el cuaderno abierto se recarga.
+  }, [vocabVersion]);
 
   const all = useMemo(() => words ?? [], [words]);
 
@@ -1048,26 +977,6 @@ function FullVocabulary({
 
   const activeScoped = useMemo(() => scopedWords.filter((w) => !w.deleted), [scopedWords]);
 
-  // Estadísticas de progreso del cuaderno (Asentada / Aprendiendo / Nueva)
-  const progressStats = useMemo(() => {
-    let settled = 0;
-    let learning = 0;
-    let newWords = 0;
-
-    for (const w of activeScoped) {
-      const lvl = markLevel(w.card);
-      if (lvl === "settled" || lvl === null) {
-        settled += 1;
-      } else if (lvl === "learning") {
-        learning += 1;
-      } else {
-        newWords += 1;
-      }
-    }
-
-    return { total: activeScoped.length, settled, learning, newWords };
-  }, [activeScoped]);
-
   const knownKeys = useMemo(() => knownKeysFor(knowledge), [knowledge]);
   // Un lema declarado «ya la conozco» sale del vocabulario activo: ni
   // la cola de Aprender ni el repaso lo vuelven a ofrecer, aunque la
@@ -1076,6 +985,24 @@ function FullVocabulary({
     (word: SavedWord) => isWordKnownBy(word, knownKeys),
     [knownKeys],
   );
+
+  // Estadísticas de progreso del cuaderno: las píldoras del héroe
+  // cuentan con la misma clasificación (wordStage) que los filtros y
+  // las filas, así el número de cada píldora coincide con su filtro.
+  const progressStats = useMemo(() => {
+    let settled = 0;
+    let learning = 0;
+    let newWords = 0;
+
+    for (const w of activeScoped) {
+      const stage = wordStage(w, isLearnPending(w, knownKeys, exposure));
+      if (stage === "settled") settled += 1;
+      else if (stage === "learning") learning += 1;
+      else newWords += 1;
+    }
+
+    return { total: activeScoped.length, settled, learning, newWords };
+  }, [activeScoped, knownKeys, exposure]);
   const nextDueTs = useMemo(() => {
     const futureTimestamps = scopedWords
       .filter((w) => !w.deleted && w.card?.due && !isDue(w.card) && !isWordKnown(w))
@@ -1092,12 +1019,10 @@ function FullVocabulary({
   // palabras que ya pasaron por la ficha o por un repaso real. Depende de la
   // hora, así que se calcula en cada render.
   const reviewWords = reviewQueue(scopedWords, knownKeys, exposure);
-  // Una palabra sin significado no puede entrar al repaso: «Quiero aprenderla»
-  // está deshabilitado. Solo se ofrece como aprendible si la IA puede
-  // definirla en el momento.
-  const learnable = learnPending.filter(
-    (word) => Boolean(word.meaning) || (hasSession && useAi),
-  );
+  // Toda palabra pendiente es aprendible: si no tiene significado se
+  // resuelve en la ficha (IA si hay sesión, o escrito a mano) antes de
+  // «Quiero aprenderla». Ninguna queda bloqueada por falta de datos.
+  const learnable = learnPending;
 
   // Chequeo de retención a 30 días: palabras ya consolidadas (asentadas
   // o dominadas) cuya última revisión es la más antigua. No bloquea el
@@ -1347,6 +1272,42 @@ function FullVocabulary({
     beginQueue(items);
   };
 
+  // El Reto del Escritor del taller IA: superar la oración cuenta como
+  // repaso real de la palabra (tarjeta FSRS + historial), no como
+  // juego suelto. Solo palabras ya expuestas pueden llegar aquí: el
+  // taller se alimenta de reviewWords.
+  const handleWorkshopComplete = (wordKey: string, score: number) => {
+    const target = all.find((w) => w.key === wordKey && !w.deleted);
+    if (!target || isLearnPending(target, knownKeys, exposure)) return;
+    const rating = score >= 85 ? Rating.Easy : Rating.Good;
+    void (async () => {
+      try {
+        const scope = captureDbScope();
+        const card = scheduleReview(target.card, rating);
+        const stored = await updateSavedWord({ ...target, card }, scope);
+        void pushWordsToServer([stored], scope);
+        void recordReview(
+          {
+            language: target.language,
+            form: target.form,
+            kind: "write",
+            rating: ratingString(rating),
+            hints: 0,
+          },
+          scope,
+        ).catch(() => {
+          /* el historial es auxiliar; no deshace la calificación */
+        });
+        setWords((list) =>
+          list?.map((w) => (w.key === stored.key ? stored : w)) ?? list,
+        );
+        notifyVocabChange();
+      } catch {
+        /* el taller no bloquea por un fallo de guardado */
+      }
+    })();
+  };
+
   const startRetentionCheck30d = () => {
     if (!retentionCheckCandidates.length) return;
     setPracticeNote("");
@@ -1373,12 +1334,18 @@ function FullVocabulary({
   // «Quiero aprenderla» crea la card FSRS que la trae al repaso hoy.
 
   const startLearn = (first?: SavedWord) => {
-    const items = first
-      ? [first, ...learnPending.filter((word) => word.key !== first.key)]
-      : learnable;
+    // Tandas de LEARN_SESSION_SIZE: aprender de a 5 cierra el ciclo
+    // enseñar→practicar antes de perder el hilo; el resto espera en
+    // learnPending para «Seguir aprendiendo».
+    const items = (
+      first
+        ? [first, ...learnPending.filter((word) => word.key !== first.key)]
+        : learnable
+    ).slice(0, LEARN_SESSION_SIZE);
     if (!items.length) return;
     setLearnError("");
     setLearnBusy("");
+    setLearnDraft("");
     setLearn({ items, total: items.length, revealed: false, kept: [] });
   };
 
@@ -1410,6 +1377,7 @@ function FullVocabulary({
           lemma: (item.lemma ?? item.form).toLowerCase(),
           known: true,
           source: "declared",
+          status: "known",
         },
         scope,
       );
@@ -1418,8 +1386,30 @@ function FullVocabulary({
         row,
       ]);
       void pushKnowledgeToServer([row], scope);
+      // Misma señal que «✓ Ya la sé» del lector: la palabra declarada
+      // conocida sube theta del idioma y queda en el historial.
+      void recordReview(
+        {
+          language: item.language || "es",
+          form: item.form,
+          kind: "declared",
+          rating: "known",
+        },
+        scope,
+        { award: false },
+      ).catch(() => {});
+      applyPreviewKnownSignal(
+        item.language || "es",
+        betaFromZipf(
+          calibrationBankZipf(
+            (item.lemma ?? item.form).toLowerCase(),
+            item.language || "es",
+          ),
+        ),
+      );
       await persistExposure(item.key, "known", scope);
       triggerHaptic(12);
+      notifyVocabChange();
       advanceLearn();
     } catch {
       setLearnError("No se pudo guardar. Intenta de nuevo.");
@@ -1445,6 +1435,7 @@ function FullVocabulary({
       setWords((list) =>
         list?.map((word) => (word.key === stored.key ? stored : word)) ?? list,
       );
+      notifyVocabChange();
       await persistExposure(item.key, "learn", scope);
       triggerHaptic(12);
       // Avanza y anota la palabra para el puente «Repasar estas N palabras».
@@ -1465,9 +1456,10 @@ function FullVocabulary({
     }
   };
 
-  // Sin significado guardado: la IA define la palabra en el momento
-  // (mismo endpoint que la ficha del lector) y el relleno respeta el
-  // compare-and-set por sello — un repaso o borrado concurrente gana.
+  // Sin significado guardado: primero el diccionario (capas locales
+  // y catálogo, sin gastar IA) y si no hay ficha, la IA define la
+  // palabra en el momento. El relleno respeta el compare-and-set por
+  // sello — un repaso o borrado concurrente gana.
   const learnEnrich = async () => {
     const item = learn?.items[0];
     if (!item || learnBusy) return;
@@ -1475,6 +1467,61 @@ function FullVocabulary({
     setLearnError("");
     try {
       const scope = captureDbScope();
+      const applyFill = async (
+        fill: Pick<
+          SavedWord,
+          "meaning" | "lemma" | "pos" | "senseEntryId" | "senseOrder"
+        >,
+      ) => {
+        const stored = await fillSavedWordMeaning(
+          item.key,
+          item.updatedAt,
+          fill,
+          scope,
+        );
+        if (stored) {
+          void pushWordsToServer([stored], scope);
+          setWords((list) =>
+            list?.map((word) => (word.key === stored.key ? stored : word)) ?? list,
+          );
+          notifyVocabChange();
+          setLearn((current) =>
+            current
+              ? {
+                  ...current,
+                  items: current.items.map((word) =>
+                    word.key === stored.key ? stored : word,
+                  ),
+                }
+              : current,
+          );
+          return true;
+        }
+        return false;
+      };
+
+      // 1. Diccionario: memoria, caché, paquete descargable y catálogo.
+      const looked = await lookupWord(
+        item.form,
+        item.language || "es",
+        scope,
+      ).catch(() => null);
+      const lookedEntry = looked?.ok ? looked.entries[0] : undefined;
+      const lookedSense = lookedEntry?.senses[0];
+      if (lookedEntry && lookedSense?.definition) {
+        const filled = await applyFill({
+          meaning: lookedSense.definition,
+          lemma: lookedEntry.lemma ?? undefined,
+          pos: lookedEntry.pos ?? undefined,
+          senseEntryId: lookedEntry.entryId ?? undefined,
+          senseOrder: lookedSense.senseOrder ?? undefined,
+        });
+        if (filled) return;
+        setLearnError("La palabra cambió mientras tanto; inténtalo de nuevo.");
+        return;
+      }
+
+      // 2. IA: misma consulta que la ficha del lector.
       const result = await enrichWord(
         item.form,
         item.language || "es",
@@ -1492,36 +1539,62 @@ function FullVocabulary({
         setLearnError("La IA no devolvió una definición. Intenta de nuevo.");
         return;
       }
-      const stored = await fillSavedWordMeaning(
-        item.key,
-        item.updatedAt,
-        {
-          meaning: sense.definition,
-          lemma: entry.lemma,
-          pos: entry.pos ?? undefined,
-          senseEntryId: entry.entryId ?? undefined,
-          senseOrder: sense.senseOrder,
-        },
-        scope,
-      );
-      if (stored) {
-        void pushWordsToServer([stored], scope);
-        setWords((list) =>
-          list?.map((word) => (word.key === stored.key ? stored : word)) ?? list,
-        );
-        setLearn((current) =>
-          current
-            ? {
-                ...current,
-                items: current.items.map((word) =>
-                  word.key === stored.key ? stored : word,
-                ),
-              }
-            : current,
-        );
+      const filled = await applyFill({
+        meaning: sense.definition,
+        lemma: entry.lemma,
+        pos: entry.pos ?? undefined,
+        senseEntryId: entry.entryId ?? undefined,
+        senseOrder: sense.senseOrder ?? undefined,
+      });
+      if (!filled) {
+        setLearnError("La palabra cambió mientras tanto; inténtalo de nuevo.");
       }
     } catch {
       setLearnError("Sin conexión con el catálogo.");
+    } finally {
+      setLearnBusy("");
+    }
+  };
+
+  // Significado escrito a mano: la palabra sin ficha de diccionario ni
+  // IA no queda bloqueada — el lector la define y «Quiero aprenderla»
+  // se habilita igual que tras el relleno automático.
+  const learnSaveMeaning = async () => {
+    const item = learn?.items[0];
+    const meaning = learnDraft.trim();
+    if (!item || !meaning || learnBusy) return;
+    setLearnBusy("action");
+    setLearnError("");
+    try {
+      const scope = captureDbScope();
+      const stored = await fillSavedWordMeaning(
+        item.key,
+        item.updatedAt,
+        { meaning },
+        scope,
+      );
+      if (!stored) {
+        setLearnError("La palabra cambió mientras escribías; inténtalo de nuevo.");
+        return;
+      }
+      void pushWordsToServer([stored], scope);
+      setWords((list) =>
+        list?.map((word) => (word.key === stored.key ? stored : word)) ?? list,
+      );
+      notifyVocabChange();
+      setLearnDraft("");
+      setLearn((current) =>
+        current
+          ? {
+              ...current,
+              items: current.items.map((word) =>
+                word.key === stored.key ? stored : word,
+              ),
+            }
+          : current,
+      );
+    } catch {
+      setLearnError("No se pudo guardar el significado. Intenta de nuevo.");
     } finally {
       setLearnBusy("");
     }
@@ -1605,6 +1678,7 @@ function FullVocabulary({
       }, 2200);
 
       setWords((list) => list?.map((w) => (w.key === word.key ? stored : w)) ?? list);
+      notifyVocabChange();
       setQueue((current) => {
         if (!current) return current;
         if (current.items.length === 1) setFinishedAt(Date.now());
@@ -1803,6 +1877,41 @@ function FullVocabulary({
     else if (currentKey) revealButtonRef.current?.focus();
   }, [revealed, answered, writePick, currentKey, currentMode]);
 
+  // Teclado de la ficha de «Aprender»: Espacio muestra el significado;
+  // ya revelada, 1 = «Ya la conozco» y 2 = «Quiero aprenderla». Se
+  // ignora mientras se escribe el significado a mano.
+  useEffect(() => {
+    if (!learn || learn.done || learn.items.length === 0) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.repeat || event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        target.closest("input, textarea, select, [contenteditable]")
+      )
+        return;
+      if (event.key === " " && !learn.revealed) {
+        event.preventDefault();
+        setLearn((current) =>
+          current && !current.revealed ? { ...current, revealed: true } : current,
+        );
+        return;
+      }
+      if (!learn.revealed) return;
+      if (event.key === "1") {
+        event.preventDefault();
+        void learnKnown();
+      } else if (event.key === "2") {
+        event.preventDefault();
+        void learnKeep();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+    // learnKnown/learnKeep leen el estado fresco por closure del render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [learn, learnBusy]);
+
   const askCatHint = () => {
     if (!current || hintBusy) return;
     setHintBusy(true);
@@ -1836,6 +1945,7 @@ function FullVocabulary({
     try {
       await removeWord(word.key, captureDbScope());
       setWords((list) => list?.filter((w) => w.key !== word.key) ?? list);
+      notifyVocabChange();
       window.clearTimeout(undoTimer.current);
       setUndo({ word });
       undoTimer.current = window.setTimeout(() => setUndo(null), UNDO_MS);
@@ -1856,6 +1966,7 @@ function FullVocabulary({
       setWords((list) =>
         list ? [...list.filter((w) => w.key !== restored.key), restored] : [restored],
       );
+      notifyVocabChange();
     } catch {
       setSaveError(`No se pudo recuperar «${undo.word.form}».`);
     }
@@ -1873,6 +1984,11 @@ function FullVocabulary({
   };
   const bookName = (hash: string | undefined) =>
     hash ? bookTitle(hash) : undefined;
+  // Título visible del libro de una palabra: el copiado al guardarla
+  // o el que resuelve la estantería por hash. Sin ninguno, undefined
+  // y la interfaz muestra el genérico «De tus lecturas recientes».
+  const wordBookTitle = (word: SavedWord) =>
+    word.bookTitle || bookName(word.bookHash);
 
   useEffect(() => {
     if (tab !== "quotes" || quotes !== null) return;
@@ -2055,7 +2171,16 @@ function FullVocabulary({
       role={isOverlay ? "dialog" : undefined}
       aria-modal={isOverlay ? "true" : undefined}
       aria-label="Cuaderno"
-      data-session={queue ? "queue" : learn ? "learn" : undefined}
+      // La sesión solo cuenta mientras hay ejercicios o fichas por
+      // resolver: en la pantalla de cierre la barra de navegación
+      // ya debe estar disponible para irse a otra sección.
+      data-session={
+        queue && queue.items.length > 0
+          ? "queue"
+          : learn && !learn.done && learn.items.length > 0
+            ? "learn"
+            : undefined
+      }
     >
       {undo ? (
         <Notice
@@ -2213,7 +2338,7 @@ function FullVocabulary({
                           aria-pressed={filter === "learning"}
                         >
                           <span className="vocab-progress-dot" aria-hidden="true" />
-                          <span className="vocab-progress-name">En aprendizaje</span>
+                          <span className="vocab-progress-name">En Práctica</span>
                           <strong className="vocab-progress-count">{progressStats.learning}</strong>
                         </button>
                         <button
@@ -2372,8 +2497,22 @@ function FullVocabulary({
                         <button
                           type="button"
                           className="nb-free-mode-card"
+                          onClick={() => void startPractice("match")}
+                          disabled={reviewWords.filter((w) => isEligible(w, "match")).length === 0}
+                          title="Parejas · Une cada palabra con su significado"
+                        >
+                          <span className="nb-free-mode-icon" aria-hidden="true"><Icon name="bookmark" size={16} /></span>
+                          <div className="nb-free-mode-info">
+                            <strong className="nb-free-mode-name">Parejas</strong>
+                            <span className="nb-free-mode-time">Palabra ↔ significado</span>
+                          </div>
+                        </button>
+
+                        <button
+                          type="button"
+                          className="nb-free-mode-card"
                           onClick={() => setWorkshopOpen((prev) => !prev)}
-                          disabled={all.length === 0}
+                          disabled={reviewWords.length === 0}
                           title="Taller con el Gato IA · Generativo"
                         >
                           <span className="nb-free-mode-icon" aria-hidden="true"><Icon name="sparkles" size={16} /></span>
@@ -2382,7 +2521,45 @@ function FullVocabulary({
                             <span className="nb-free-mode-time">Generativo</span>
                           </div>
                         </button>
+
+                        <button
+                          type="button"
+                          className="nb-free-mode-card nb-free-mode-more"
+                          onClick={() => setMoreModesOpen((prev) => !prev)}
+                          aria-expanded={moreModesOpen}
+                          title="Más ejercicios · El resto de modos de práctica"
+                        >
+                          <span className="nb-free-mode-icon" aria-hidden="true"><Icon name="more" size={16} /></span>
+                          <div className="nb-free-mode-info">
+                            <strong className="nb-free-mode-name">
+                              {moreModesOpen ? "Menos ejercicios" : "Más ejercicios"}
+                            </strong>
+                            <span className="nb-free-mode-time">
+                              {moreModesOpen ? "Ocultar modos" : "Otros modos de práctica"}
+                            </span>
+                          </div>
+                        </button>
                       </div>
+                      {moreModesOpen ? (
+                        <div className="nb-free-modes-grid nb-free-modes-grid--extra" role="group" aria-label="Más modos de práctica">
+                          {EXTRA_MODES.map(({ id, name, hint, icon }) => (
+                            <button
+                              key={id}
+                              type="button"
+                              className="nb-free-mode-card"
+                              onClick={() => void startPractice(id)}
+                              disabled={reviewWords.filter((w) => isEligible(w, id)).length === 0}
+                              title={`${name} · ${hint}`}
+                            >
+                              <span className="nb-free-mode-icon" aria-hidden="true"><Icon name={icon} size={16} /></span>
+                              <div className="nb-free-mode-info">
+                                <strong className="nb-free-mode-name">{name}</strong>
+                                <span className="nb-free-mode-time">{hint}</span>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      ) : null}
                       {reviewWords.length === 0 ? (
                         // Todos los botones quedan deshabilitados: se explica por qué.
                         <p className="meta nb-practice-note" role="status">
@@ -2459,12 +2636,17 @@ function FullVocabulary({
                 <GamePanel
                   mode={workshopOpen ? "ai_workshop" : "dashboard"}
                   onStartAdaptiveFlow={() => startAdaptiveFlow()}
-                  words={all.map((w) => ({
+                  // El taller solo trabaja con palabras ya expuestas:
+                  // nunca examina ni produce sobre palabras sin ficha.
+                  words={reviewWords.map((w) => ({
                     word: w.form,
                     meaning: w.meaning,
-                    bookTitle: w.bookHash ? bookTitle(w.bookHash) : undefined,
+                    bookTitle: wordBookTitle(w),
                     lemma: w.lemma,
+                    key: w.key,
                   }))}
+                  onChallengeComplete={handleWorkshopComplete}
+                  showIdentity={false}
                   onClose={() => setWorkshopOpen(false)}
                 />
               </Suspense>
@@ -2919,7 +3101,7 @@ function FullVocabulary({
                                 onLearn={() => startLearn(word)}
                                 onRemove={() => void remove(word)}
                                 onSpeak={() => void speakWord(word.form, word.language)}
-                                bookTitle={bookTitle(word.bookHash)}
+                                bookTitle={wordBookTitle(word) ?? bookTitle(word.bookHash)}
                                 onQuickGame={
                                   reviewKeys.has(word.key)
                                     ? () => handleQuickGame(word)
@@ -2955,7 +3137,7 @@ function FullVocabulary({
                           onLearn={() => startLearn(word)}
                           onRemove={() => void remove(word)}
                           onSpeak={() => void speakWord(word.form, word.language)}
-                          bookTitle={bookTitle(word.bookHash)}
+                          bookTitle={wordBookTitle(word) ?? bookTitle(word.bookHash)}
                           onQuickGame={
                             reviewKeys.has(word.key)
                               ? () => handleQuickGame(word)
@@ -2981,12 +3163,18 @@ function FullVocabulary({
         ) : null}
 
         {learn ? (
-          learn.items.length === 0 ? (
+          learn.done || learn.items.length === 0 ? (
             <div className="nb-done">
               <p className="nb-done-title">Aprender terminado.</p>
               <p className="meta">
-                {learn.total}{" "}
-                {learn.total === 1 ? "palabra vista" : "palabras vistas"}.
+                {learn.total - learn.items.length}{" "}
+                {learn.total - learn.items.length === 1
+                  ? "palabra vista"
+                  : "palabras vistas"}
+                {learnPending.length > 0
+                  ? ` · quedan ${learnPending.length} por aprender`
+                  : ""}
+                .
               </p>
               {learn.kept.length > 0 ? (
                 <button
@@ -3001,6 +3189,16 @@ function FullVocabulary({
                   {Math.min(REVIEW_SESSION_SIZE, learn.kept.length) === 1
                     ? "Repasar esta palabra"
                     : `Repasar estas ${Math.min(REVIEW_SESSION_SIZE, learn.kept.length)} palabras`}
+                </button>
+              ) : null}
+              {learnPending.length > 0 ? (
+                <button
+                  type="button"
+                  className={learn.kept.length > 0 ? "btn" : "btn btn--primary"}
+                  onClick={() => startLearn()}
+                >
+                  Seguir aprendiendo (
+                  {Math.min(LEARN_SESSION_SIZE, learnPending.length)})
                 </button>
               ) : null}
               <button
@@ -3019,14 +3217,15 @@ function FullVocabulary({
                 combo={combo}
                 mode={companionMode}
                 onModeChange={updateCompanionMode}
-                bookTitle={learn.items[0].bookTitle}
               />
-              <p className="meta nb-practice-meta">Primera exposición</p>
+              <p className="meta nb-practice-meta">
+                Lee la frase del libro: ¿qué crees que significa aquí?
+              </p>
               <div className="index-card nb-card">
                 <div className="game-book-eco-row">
                   <span className="game-book-eco-pill">
-                    {learn.items[0].bookTitle
-                      ? `Eco de: ${learn.items[0].bookTitle}`
+                    {wordBookTitle(learn.items[0])
+                      ? `Eco de: ${wordBookTitle(learn.items[0])}`
                       : "De tus lecturas recientes"}
                   </span>
                 </div>
@@ -3054,6 +3253,8 @@ function FullVocabulary({
                     text={learn.items[0].context}
                     target={learn.items[0].form}
                     language={learn.items[0].language}
+                    highlightTarget
+                    lemma={learn.items[0].lemma ?? undefined}
                   />
                 ) : null}
                 {learn.revealed ? (
@@ -3062,7 +3263,8 @@ function FullVocabulary({
                   ) : (
                     <>
                       <p className="nb-card-back meta">
-                        Sin significado guardado.
+                        Sin significado guardado: sin él no puede entrar
+                        al repaso.
                       </p>
                       {hasSession && useAi ? (
                         <button
@@ -3075,13 +3277,35 @@ function FullVocabulary({
                             ? "Consultando…"
                             : "Definir con IA"}
                         </button>
-                      ) : (
-                        <p className="meta">
-                          {hasSession
-                            ? "Las definiciones con IA están apagadas; actívalas en Cuenta."
-                            : "Inicia sesión para definirla con IA."}
-                        </p>
-                      )}
+                      ) : null}
+                      <form
+                        className="nb-learn-meaning-form"
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          void learnSaveMeaning();
+                        }}
+                      >
+                        <label className="nb-learn-meaning-label" htmlFor={`learn-meaning-${learn.items[0].key}`}>
+                          ¿Qué significa? Escríbelo tú:
+                        </label>
+                        <input
+                          id={`learn-meaning-${learn.items[0].key}`}
+                          type="text"
+                          className="nb-learn-meaning-input"
+                          value={learnDraft}
+                          disabled={Boolean(learnBusy)}
+                          onChange={(event) => setLearnDraft(event.target.value)}
+                          placeholder="Escribe el significado"
+                          autoComplete="off"
+                        />
+                        <button
+                          type="submit"
+                          className="btn"
+                          disabled={Boolean(learnBusy) || !learnDraft.trim()}
+                        >
+                          Guardar significado
+                        </button>
+                      </form>
                     </>
                   )
                 ) : (
@@ -3142,7 +3366,7 @@ function FullVocabulary({
               <button
                 type="button"
                 className="btn--quiet nb-quit"
-                onClick={() => setLearn(null)}
+                onClick={() => setLearn({ ...learn, done: true })}
               >
                 Terminar por ahora
               </button>
@@ -3230,7 +3454,6 @@ function FullVocabulary({
                 current: queue.total - queue.items.length + 1,
                 total: queue.total,
               }}
-              bookTitle={current.word.bookTitle}
               instruction={
                 current.mode === "scramble"
                   ? "Toca las fichas en orden para completar la palabra del pasaje."
@@ -3245,8 +3468,8 @@ function FullVocabulary({
             />
             <div className="nb-practice-progress-row">
               <span className="game-book-eco-pill">
-                {current.word.bookTitle
-                  ? `Eco de: ${current.word.bookTitle}`
+                {wordBookTitle(current.word)
+                  ? `Eco de: ${wordBookTitle(current.word)}`
                   : "De tus lecturas recientes"}
               </span>
               <span className="nb-practice-counter meta">
@@ -3545,13 +3768,6 @@ function FullVocabulary({
             ) : EXERCISE_MODES.has(current.mode) ? (
               <>
                 <div className="index-card nb-card">
-                  <div className="game-book-eco-row">
-                    <span className="game-book-eco-pill">
-                      {current.word.bookTitle
-                        ? `Eco de: ${current.word.bookTitle}`
-                        : "De tus lecturas recientes"}
-                    </span>
-                  </div>
                   {current.mode === "choose" ? (
                     <>
                       {cloze ? (
@@ -3582,6 +3798,8 @@ function FullVocabulary({
                           text={current.item.sentence}
                           target={current.word.form}
                           language={current.word.language}
+                          highlightTarget
+                          lemma={current.word.lemma ?? undefined}
                         />
                       ) : null}
                       <p className="meta">
@@ -3611,6 +3829,8 @@ function FullVocabulary({
                           text={current.word.context}
                           target={current.word.form}
                           language={current.word.language}
+                          highlightTarget
+                          lemma={current.word.lemma ?? undefined}
                         />
                       ) : null}
                       <p className="meta">¿Qué acepción corresponde aquí?</p>
@@ -3722,6 +3942,8 @@ function FullVocabulary({
                           text={current.word.context}
                           target={current.word.form}
                           language={current.word.language}
+                          highlightTarget
+                          lemma={current.word.lemma ?? undefined}
                         />
                       ) : null}
                     </>
@@ -3819,6 +4041,7 @@ function FullVocabulary({
                 ? [savedWord, ...prev.filter((w) => w.key !== savedWord.key)]
                 : [savedWord],
             );
+            notifyVocabChange();
           }}
         />
       ) : null}

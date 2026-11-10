@@ -442,7 +442,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/components/Vocabulary.tsx",
-          "line": 1751,
+          "line": 1825,
           "window": 1,
           "expect": "await grade\\(item, wrongs",
           "why": "cada ejercicio registra un solo repaso al calificarse"
@@ -607,7 +607,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/components/Vocabulary.tsx",
-          "line": 1350,
+          "line": 1311,
           "window": 10,
           "expect": "const startRetentionCheck30d",
           "why": "chequeo rápido de memoria a largo plazo sobre palabras asentadas"
@@ -623,7 +623,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/components/Vocabulary.tsx",
-          "line": 610,
+          "line": 511,
           "window": 3,
           "expect": "const RETENTION_CHECK_MIN_AGE_DAYS = 30",
           "why": "el chequeo de retención solo ofrece palabras con 30 o más días desde su último repaso"

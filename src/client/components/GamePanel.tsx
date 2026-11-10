@@ -95,6 +95,9 @@ export interface GamePanelProps {
     bookTitle?: string;
     lemma?: string;
     context?: string;
+    // Clave SavedWord («lang:forma»): permite al taller devolver el
+    // reto superado al cuaderno para calificar la tarjeta FSRS.
+    key?: string;
   }>;
   consolidationQueue?: Array<{
     item: {
@@ -115,6 +118,13 @@ export interface GamePanelProps {
   currentBookTitle?: string;
   currentReview?: ReviewState;
   onRate?: (rating: Rating) => void;
+  // false esconde la cabecera de identidad (gato + nivel + puntos +
+  // racha) del panel: el héroe del cuaderno ya la muestra y duplicarla
+  // ensucia la portada. Solo afecta al modo dashboard.
+  showIdentity?: boolean;
+  // El Reto del Escritor superado (score ≥ 60): el padre califica la
+  // tarjeta FSRS de esa palabra y la anota en el historial.
+  onChallengeComplete?: (wordKey: string, score: number) => void;
 }
 
 export function GamePanel(props: GamePanelProps) {
@@ -135,6 +145,8 @@ export function GamePanel(props: GamePanelProps) {
     currentBookTitle,
     currentReview,
     onRate,
+    showIdentity = true,
+    onChallengeComplete,
   } = props;
   const {
     enabled,
@@ -268,6 +280,11 @@ export function GamePanel(props: GamePanelProps) {
           scope,
         );
         setEvalResult(result);
+        // Reto superado: la palabra vuelve al cuaderno como repaso
+        // real (tarjeta FSRS + historial), no como juego suelto.
+        if (result.ok && result.score >= 60 && currentWord.key) {
+          onChallengeComplete?.(currentWord.key, result.score);
+        }
       } finally {
         setEvaluating(false);
       }
@@ -380,8 +397,11 @@ export function GamePanel(props: GamePanelProps) {
                 </p>
               ) : null}
               {availableWords.length > 1 ? (
-                <div style={{ marginTop: "0.5rem", display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
-                  {availableWords.map((w, idx) => (
+                <div style={{ marginTop: "0.5rem", display: "flex", gap: "0.4rem", flexWrap: "wrap", alignItems: "center" }}>
+                  {/* Con un cuaderno grande no se pintan 150 botones:
+                      las primeras 8 quedan a un toque y el resto se
+                      elige en el selector. */}
+                  {availableWords.slice(0, 8).map((w, idx) => (
                     <button
                       key={w.word + idx}
                       type="button"
@@ -401,6 +421,24 @@ export function GamePanel(props: GamePanelProps) {
                       {w.word}
                     </button>
                   ))}
+                  {availableWords.length > 8 ? (
+                    <select
+                      className="ai-word-select"
+                      aria-label="Elegir otra palabra del cuaderno"
+                      value={selectedWordIndex}
+                      onChange={(e) => {
+                        setSelectedWordIndex(Number(e.target.value));
+                        setEvalResult(null);
+                        setSentenceInput("");
+                      }}
+                    >
+                      {availableWords.map((w, idx) => (
+                        <option key={w.word + idx} value={idx}>
+                          {w.word}
+                        </option>
+                      ))}
+                    </select>
+                  ) : null}
                 </div>
               ) : null}
             </div>
@@ -731,6 +769,7 @@ export function GamePanel(props: GamePanelProps) {
           </button>
         </div>
       ) : null}
+      {showIdentity ? (
       <div className="game-head">
         <CompanionButton
           stage={stage}
@@ -767,6 +806,7 @@ export function GamePanel(props: GamePanelProps) {
           ) : null}
         </div>
       </div>
+      ) : null}
 
       {revealed ? (
         <div

@@ -121,6 +121,12 @@ export function learnQueue(
 // la cola y los textos del héroe no puedan desalinearse.
 export const REVIEW_SESSION_SIZE = 5;
 
+// Cuántas palabras toma cada tanda de «Aprender»: de a 5 se memoriza
+// mejor que una lista larga, y el puente al repaso llega antes de
+// perder el hilo. La cola sigue esperando en learnPending para la
+// siguiente tanda («Seguir aprendiendo»).
+export const LEARN_SESSION_SIZE = 5;
+
 // Vencidas que YA pasaron por la ficha («Quiero aprenderla») o por un repaso
 // real: una palabra con reps 0 y sin exposición no se examina. Sin vencidas
 // no hay respaldo: adelantar repasos escribiría FSRS fuera de plazo.

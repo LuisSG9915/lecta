@@ -2182,6 +2182,7 @@ export function mergePreparationWord(
       meaning: existing.meaning ?? word.meaning,
       context: existing.context ?? word.context,
       bookHash: existing.bookHash ?? word.bookHash,
+      bookTitle: existing.bookTitle ?? word.bookTitle,
       senseEntryId: existing.senseEntryId ?? word.senseEntryId,
       senseOrder: existing.senseOrder ?? word.senseOrder,
       card: existing.card ?? word.card,

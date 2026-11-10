@@ -1756,7 +1756,7 @@ export default function App() {
     // la hoja compartida puede abrirse desde el Cuaderno hoy y desde
     // Estantería o Lector después sin duplicar instancias ni estado.
     <CompanionProvider userId={dbUserId}>
-    <div className="app">
+    <div className="app" data-nav={activeNav}>
       {book && canRenderCurrentBook ? (
         <>
           <Suspense fallback={<p className="status">Abriendo el libro…</p>}>
@@ -1797,6 +1797,8 @@ export default function App() {
                 onClose={closeNotebookOverlay}
                 books={library}
                 activityVersion={activityVersion}
+                vocabVersion={vocabVersion}
+                onVocabChange={() => setVocabVersion((v) => v + 1)}
                 onOpenJourney={() => openJourneyFrom("vocab")}
               />
             </Suspense>
@@ -1939,6 +1941,8 @@ export default function App() {
                       onClose={() => navigateTo("shelf")}
                       books={library}
                       activityVersion={activityVersion}
+                      vocabVersion={vocabVersion}
+                      onVocabChange={() => setVocabVersion((v) => v + 1)}
                       onOpenJourney={() => openJourneyFrom("vocab")}
                       initialBookFilter={vocabFilterRequest?.bookHash}
                     />

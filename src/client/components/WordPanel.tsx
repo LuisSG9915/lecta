@@ -569,9 +569,11 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
             form: cleanWord,
             lemma,
             meaning: inPassage || shortDef,
+            pos: localEntry?.partOfSpeech ?? undefined,
             language: effectiveLang,
             context: effectiveContext || undefined,
             bookHash,
+            bookTitle: bookTitle || undefined,
             priority: true,
           },
           knowledge: {

@@ -322,8 +322,11 @@ button.app-nav-sync-indicator:focus-visible {
   }
 }
 
-/* Ocultar barra durante sesión de repaso / aprender */
-.app:has(.notebook[data-session]) .app-nav {
+/* Ocultar barra durante sesión de repaso / aprender. Solo cuando el
+   cuaderno es la vista activa: el <Activity> oculto conserva el DOM
+   (y el data-session) de una sesión pausada, y sin [data-nav] la
+   barra quedaría escondida también en Estantería y demás secciones. */
+.app[data-nav="vocabulary"]:has(.notebook[data-session]) .app-nav {
   display: none;
 }
 
@@ -355,7 +358,7 @@ button.app-nav-sync-indicator:focus-visible {
   bottom: calc(124px + env(safe-area-inset-bottom) + var(--s-3));
 }
 
-.app:has(.notebook[data-session]) .app-notices {
+.app[data-nav="vocabulary"]:has(.notebook[data-session]) .app-notices {
   bottom: calc(env(safe-area-inset-bottom) + var(--s-3));
 }
 
@@ -432,7 +435,9 @@ button.app-nav-sync-indicator:focus-visible {
   padding: 2px var(--s-2);
   cursor: pointer;
   margin-inline-start: var(--s-1);
-  transition: opacity var(--dur-1) var(--ease-out), background-color var(--dur-1) var(--ease-out);
+  transition:
+    opacity var(--dur-1) var(--ease-out),
+    background-color var(--dur-1) var(--ease-out);
 }
 
 .app-notice-action:hover {
@@ -1007,8 +1012,15 @@ button.app-nav-sync-indicator:focus-visible {
 }
 
 @keyframes pulse-sparkle {
-  0%, 100% { transform: scale(1); opacity: 0.9; }
-  50% { transform: scale(1.2); opacity: 1; }
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.9;
+  }
+  50% {
+    transform: scale(1.2);
+    opacity: 1;
+  }
 }
 
 /* Píldora persistente de Lectura en Curso (MiniReaderBar): compacta y
@@ -1098,4 +1110,3 @@ button.app-nav-sync-indicator:focus-visible {
     padding-bottom: calc(136px + env(safe-area-inset-bottom, 0px));
   }
 }
-
