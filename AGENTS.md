@@ -1,5 +1,25 @@
 # Lecta — notas del proyecto
 
+## Principios de trabajo con código (karpathy-guidelines)
+
+Inspirados en las observaciones de Andrej Karpathy sobre errores típicos de LLMs al programar
+(plugin `andrej-karpathy-skills`, MIT). Aplican a todo cambio; para tareas triviales, criterio propio.
+
+1. **Piensa antes de programar.** Declara supuestos. Si hay varias interpretaciones, preséntalas
+   en vez de elegir en silencio. Si algo no está claro, para y pregunta. Si existe un enfoque más
+   simple, dilo.
+2. **Simplicidad primero.** Solo lo pedido: sin abstracciones para un único uso, sin
+   configurabilidad no solicitada, sin manejo de errores para escenarios imposibles. Si algo
+   podría ser 50 líneas y tiene 200, reescríbelo.
+3. **Cambios quirúrgicos.** Toca solo lo necesario y respeta el estilo existente. No «mejores»
+   código, comentarios ni formato ajenos. El código muerto que no es tuyo se menciona, no se borra.
+   Quita solo los imports, variables y funciones que tu cambio dejó huérfanos. Cada línea
+   modificada debe poder rastrearse hasta la petición.
+4. **Ejecución guiada por objetivos.** Define el criterio verificable antes de codificar: un test
+   que reproduzca el bug y luego pase; tests antes y después de un refactor. Para tareas de varios
+   pasos, enuncia un plan corto con una comprobación por paso. Un criterio débil («que funcione»)
+   obliga a preguntar constantemente.
+
 ## Convenciones de Testing y CI
 
 - **Aislamiento de entornos en Vitest**: `environmentMatchGlobs` asigna entorno estricto `'node'` a `src/worker/**`, `src/shared/**` y `mcp/src/**`, reservando `'jsdom'` exclusivamente para componentes y hooks de `src/client/**`. Evita fugas de memoria y emulaciones de DOM innecesarias.
