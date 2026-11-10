@@ -54,7 +54,7 @@ export type CatalogIndex = {
 // re-analiza — p. ej. `en` pasa de 0 a 1 al cargar el catálogo inglés.
 export const LEXICON_CATALOG_REV: Record<string, number> = {
   es: 1,
-  en: 6,
+  en: 7,
 };
 
 export type BookVocabManifest = {
@@ -76,7 +76,7 @@ export type BookVocabManifest = {
 };
 
 const INDEX_KEY = "catalogIndex:v1";
-const vocabKey = (id: string) => `catalogVocab:v1:${id}`;
+const vocabKey = (id: string) => `catalogVocab:v2:${id}`;
 
 const fetchJson = async (path: string) => {
   const response = await fetch(path);

@@ -92,7 +92,7 @@ import {
 } from "./dictionaryPack";
 
 const PACK_TSV = [
-  "#lecta-dict v4 en",
+  "#lecta-dict v5 en",
   "E\tschool\tsustantivo\tEscuela, instituto, colegio.\x1FCardumen, banco de peces.",
   "E\tstilt\tsustantivo\tZanco.\x1FPilar elevado.",
   "F\tschools\tschool",
@@ -195,7 +195,7 @@ describe("dictionaryPack", () => {
     const es = packResponse(esTsv);
     stubPackInfo("es", es.sha, es.gz.length);
     const bodies: Record<string, ArrayBuffer> = {
-      "/dict/dict-en-v4.bin": new Uint8Array(en.gz).buffer,
+      "/dict/dict-en-v5.bin": new Uint8Array(en.gz).buffer,
       "/dict/dict-es-v1.bin": new Uint8Array(es.gz).buffer,
     };
     vi.stubGlobal(

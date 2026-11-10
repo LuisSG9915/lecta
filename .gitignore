@@ -36,4 +36,6 @@ mcp/dist/
 # Artefactos del enriquecimiento del núcleo inglés
 scripts/.enrich-english-core.progress.json
 scripts/.enrich-english-ia.progress.json
+scripts/.enrich-stubs-catalogo.progress.json
+scripts/.enrich-stubs-catalogo.prod.json
 src/shared/english-core-lexicon.generated.ts

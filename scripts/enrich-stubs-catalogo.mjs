@@ -37,6 +37,11 @@ const LIMIT = get("limit") ? Number(get("limit")) : Infinity;
 const CONCURRENCY = get("concurrency") ? Number(get("concurrency")) : 4;
 const APPLY = args.includes("--apply");
 const DB_ARG = get("db");
+// Progreso por base: el default es compartido; --progress=<archivo> permite
+// corridas independientes (p. ej. dev ya hecho, prod pendiente).
+const PROGRESS = get("progress")
+  ? path.join(ROOT, get("progress"))
+  : PROGRESS_FILE;
 
 if (APPLY && DB_ARG !== "dev" && DB_ARG !== "prod") {
   console.error("--apply requiere --db=dev o --db=prod");
@@ -265,16 +270,16 @@ async function applyEntry(pool, stubId, lemma, ai) {
 // ---------- Progreso ----------
 
 function loadProgress() {
-  if (!existsSync(PROGRESS_FILE)) return new Set();
+  if (!existsSync(PROGRESS)) return new Set();
   try {
-    return new Set(JSON.parse(fs.readFileSync(PROGRESS_FILE, "utf8")).done);
+    return new Set(JSON.parse(fs.readFileSync(PROGRESS, "utf8")).done);
   } catch {
     return new Set();
   }
 }
 
 function saveProgress(doneSet) {
-  fs.writeFileSync(PROGRESS_FILE, JSON.stringify({ done: [...doneSet] }, null, 2));
+  fs.writeFileSync(PROGRESS, JSON.stringify({ done: [...doneSet] }, null, 2));
 }
 
 // ---------- Main ----------
