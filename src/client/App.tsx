@@ -1920,6 +1920,7 @@ export default function App() {
                     onDownloadBook={(item) => void openRemoteBook(item, false)}
                     downloadingHash={downloadingHash}
                     activityVersion={activityVersion}
+                    dbUserId={dbUserId}
                     vocabVersion={vocabVersion}
                     onOpenVocab={openNotebookOverlay}
                     onOpenPractice={() => navigateTo("vocabulary")}

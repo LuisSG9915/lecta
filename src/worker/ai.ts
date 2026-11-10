@@ -1,6 +1,5 @@
 import type { ValidatedEnrichment } from "./lexicon";
 import type { WorkerEnv } from "./db";
-import { TIP_ACTIONS, type TipAction, type TipContext } from "../shared/tip";
 
 // Modelo y versión del prompt se guardan en cada entrada creada para
 // poder auditar o regenerar contenido por versión.
@@ -9,7 +8,6 @@ export const ENRICHMENT_PROMPT_VERSION = "enrich-1";
 export const ITEM_PROMPT_VERSION = "item-v1";
 export const VERIFY_PROMPT_VERSION = "verify-v1";
 export const EXPLAIN_PROMPT_VERSION = "explain-v1";
-export const TIP_PROMPT_VERSION = "tip-v1";
 export const EVALUATE_PROMPT_VERSION = "evaluate-v1";
 export const STORY_PROMPT_VERSION = "story-v1";
 export const EXPLAIN_PASSAGE_PROMPT_VERSION = "explain-passage-v1";
@@ -81,7 +79,6 @@ export type DeepSeekOperation =
   | "item"
   | "verify"
   | "explain"
-  | "tip"
   | "evaluate"
   | "story"
   | "explain_passage"
@@ -98,7 +95,6 @@ export const AI_CALL_LIMITS = {
   item: 256,
   verify: 128,
   explain: 192,
-  tip: 160,
   evaluate: 180,
   story: 180,
   explain_passage: 384,
@@ -468,12 +464,6 @@ export const EXPLAIN_CALL_OPTIONS: DeepSeekCallOptions = {
   maxTokens: AI_CALL_LIMITS.explain,
 };
 
-export const TIP_CALL_OPTIONS: DeepSeekCallOptions = {
-  operation: "tip",
-  promptVersion: TIP_PROMPT_VERSION,
-  maxTokens: AI_CALL_LIMITS.tip,
-};
-
 export const EVALUATE_CALL_OPTIONS: DeepSeekCallOptions = {
   operation: "evaluate",
   promptVersion: EVALUATE_PROMPT_VERSION,
@@ -706,100 +696,6 @@ export function parseExplain(raw: string): Explanation | null {
   const explanation =
     typeof obj.explanation === "string" ? obj.explanation.trim().slice(0, 400) : "";
   return explanation ? { explanation } : null;
-}
-
-// ---------- Tip de lectura diario (única operación proactiva) ----------
-//
-// El consejo de la estantería es la única intervención IA sin gesto
-// del usuario, así que su prompt es el más restrictivo: debe nombrar
-// el dato observable que lo motiva y puede responder con silencio.
-// El cliente registra tip_shown/tip_accepted para auditar si estos
-// consejos sirven de algo (docs/concentracion-y-lectura.md §4).
-
-export const TIP_SYSTEM_PROMPT = `Eres un coach de lectura en español neutro. Recibes agregados observables del lector (minutos por día, retrocesos, consultas, avisos de fatiga, ritmo estimado) y decides si hoy hay UN consejo útil. Devuelve SOLO un objeto JSON válido con esta forma exacta, sin texto extra:
-{"tip":"<consejo>" o null,"action":"none"|"focus_ruler"|"syntactic"}
-Reglas:
-- "tip": máximo 45 palabras, segunda persona, amable, jamás un regaño. Nombra el dato observable que lo motiva (ej. "ayer retrocediste más que tu media").
-- "action": "focus_ruler" solo si el consejo es probar la regla de foco (banda que vela el texto de alrededor); "syntactic" solo si es probar las líneas sintácticas (texto cortado por unidades de sentido); "none" para cualquier otro consejo o cuando tip es null.
-- Si las señales no justifican un consejo concreto hoy, devuelve {"tip":null,"action":"none"}: el silencio es un resultado válido y preferible a un consejo genérico.
-- Jamás sugieras ni menciones condiciones o diagnósticos (TDAH, dislexia, ansiedad) ni estados emocionales: solo datos observables y conductas.
-- Los días sin leer y la meta semanal NUNCA son deuda, retraso ni incumplimiento: una pausa es un retomo natural, no una falta. Nada de «llegas tarde a tu meta» ni «llevas X días sin leer» como reproche.
-- Las señales son ambiguas: un retroceso puede ser relectura sana y un día lento puede ser un buen día. Propón con humildad; nunca afirmes en qué estado está el lector.`;
-
-// Serializa el contexto como texto breve para el prompt. Todo llega
-// ya saneado por sanitizeTipContext: solo enteros acotados.
-export function buildTipPrompt(ctx: TipContext): string {
-  const lines = ctx.days.map(
-    (d) =>
-      `${d.dayKey}: ${d.minutes} min, ${d.regressions} retrocesos, ` +
-      `${d.consults} consultas, ${d.fatigue} avisos de fatiga, ` +
-      `${d.wpm > 0 ? `${d.wpm} ppm` : "ritmo sin muestra"}`,
-  );
-  return [
-    `Hora local: ${ctx.localHour}`,
-    `Días desde la última lectura: ${ctx.daysSinceLastRead}`,
-    `Modo de concentración actual: ${ctx.focusMode}`,
-    `Meta semanal: ${ctx.weeklyGoalDays ?? "sin meta"} días`,
-    "Días recientes (más nuevo primero):",
-    ...lines,
-  ].join("\n");
-}
-
-export type ValidatedTip = { tip: string | null; action: TipAction };
-
-// Valida la respuesta: tip null o cadena ≤240 caracteres; action
-// fuera del enum se degrada a "none" (no se tira un tip bueno por un
-// campo secundario malo). Otro formato → null.
-export function parseTip(raw: string): ValidatedTip | null {
-  let data: unknown;
-  try {
-    data = JSON.parse(raw);
-  } catch {
-    return null;
-  }
-  if (typeof data !== "object" || data === null) return null;
-  const obj = data as Record<string, unknown>;
-  if (obj.tip !== null && typeof obj.tip !== "string") return null;
-  const tip = typeof obj.tip === "string" ? obj.tip.trim() : null;
-  if (tip !== null && (tip.length === 0 || tip.length > 240)) return null;
-  const action: TipAction = TIP_ACTIONS.includes(obj.action as TipAction)
-    ? (obj.action as TipAction)
-    : "none";
-  return { tip, action };
-}
-
-// Sanea el cuerpo de la petición a un TipContext de solo números
-// acotados y cadenas cortas: lo que entre va al prompt, así que nada
-// puede inyectar texto libre en él.
-export function sanitizeTipContext(body: unknown): TipContext | null {
-  if (typeof body !== "object" || body === null) return null;
-  const raw = body as Record<string, unknown>;
-  const dayKey = typeof raw.dayKey === "string" ? raw.dayKey.slice(0, 16) : "";
-  if (!dayKey) return null;
-  const int = (v: unknown, min: number, max: number) =>
-    typeof v === "number" && Number.isFinite(v) ? Math.max(min, Math.min(max, Math.round(v))) : 0;
-  const days = (Array.isArray(raw.days) ? raw.days : []).slice(0, 14).map((d) => {
-    const r = (typeof d === "object" && d !== null ? d : {}) as Record<string, unknown>;
-    return {
-      dayKey: typeof r.dayKey === "string" ? r.dayKey.slice(0, 16) : "",
-      minutes: int(r.minutes, 0, 1440),
-      regressions: int(r.regressions, 0, 10_000),
-      consults: int(r.consults, 0, 10_000),
-      fatigue: int(r.fatigue, 0, 10_000),
-      wpm: int(r.wpm, 0, 2_000),
-    };
-  });
-  return {
-    dayKey,
-    localHour: int(raw.localHour, 0, 23),
-    daysSinceLastRead: int(raw.daysSinceLastRead, 0, 36_500),
-    days,
-    focusMode: typeof raw.focusMode === "string" ? raw.focusMode.slice(0, 16) : "off",
-    weeklyGoalDays:
-      typeof raw.weeklyGoalDays === "number" && Number.isFinite(raw.weeklyGoalDays)
-        ? Math.max(0, Math.min(7, Math.round(raw.weeklyGoalDays)))
-        : null,
-  };
 }
 
 // ---------- Evaluación de frases ("El Reto del Escritor") ----------

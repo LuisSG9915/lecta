@@ -80,6 +80,9 @@ vi.mock("./CompanionProvider", () => ({
   })),
 }));
 
+const loadDailyTip = vi.hoisted(() => vi.fn(async () => null as unknown));
+vi.mock("../lib/tips", () => ({ loadDailyTip }));
+
 vi.mock("./BookCover", () => ({
   default: () => h("div", { className: "mock-book-cover" }, "Cover"),
 }));
@@ -118,6 +121,47 @@ afterEach(() => {
   act(() => root.unmount());
   host.remove();
   document.body.innerHTML = "";
+});
+
+describe("Shelf - consejo del día", () => {
+  it("recalcula el consejo cuando la base de la cuenta queda activa", async () => {
+    const tipText = "Hoy volviste atrás 12 veces en 20 min.";
+    loadDailyTip.mockReset();
+    // Primer montaje con la base anónima: sin historial, sin consejo.
+    loadDailyTip.mockResolvedValueOnce(null);
+    loadDailyTip.mockResolvedValueOnce({
+      tip: tipText,
+      action: "focus_ruler",
+      version: "tip-local-v1",
+      tipDay: "2026-03-10",
+    });
+    const props = {
+      library: mockLibrary,
+      checking: false,
+      onOpen: vi.fn(),
+      onRemove: vi.fn(),
+      onAdd: vi.fn(),
+      onLibraryChange: vi.fn(),
+      onGetCatalogBook: vi.fn(),
+      onDownloadBook: vi.fn(),
+    };
+    const flush = async () => {
+      for (let i = 0; i < 6; i++) await Promise.resolve();
+    };
+
+    await act(async () => {
+      root.render(h(Shelf, { ...props, dbUserId: null }));
+      await flush();
+    });
+    expect(host.querySelector(".shelf-tip")).toBeNull();
+
+    await act(async () => {
+      root.render(h(Shelf, { ...props, dbUserId: "u1" }));
+      await flush();
+    });
+    expect(loadDailyTip).toHaveBeenCalledTimes(2);
+    expect(host.querySelector(".shelf-tip")?.textContent).toContain(tipText);
+  });
 });
 
 describe("Shelf - Tu Mesa de Lectura (Fase 5.2)", () => {
