@@ -237,6 +237,8 @@ describe("tokens.css", () => {
       /var\(--border-soft[\s,)]/,
       /var\(--paper-dim[\s,)]/,
       /var\(--r-md[\s,)]/,
+      /var\(--border-subtle[\s,)]/,
+      /var\(--card-bg[\s,)]/,
     ];
     const cssFiles = ["reader.css", "components.css", "notebook.css", "shelf.css", "app.css", "game.css", "tokens.css"];
     for (const name of cssFiles) {
