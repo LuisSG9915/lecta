@@ -5,6 +5,11 @@ segunda opinión externa. Sirve como insumo para diseñar funciones y
 prompts de IA: qué funciona según la literatura, qué hace ya Lecta y
 qué señales tiene disponibles.
 
+El mapa técnico (§1) y el estado de las brechas (§3) se revisaron
+contra el código el **2026-11-10** (Lecta v0.2.15). Los valores que
+cambian con el código (umbrales, listas de eventos) se citan con su
+archivo: ante una diferencia, manda el código.
+
 ## Cómo leer la certeza de cada afirmación
 
 Cada hallazgo lleva una etiqueta de nivel de evidencia:
@@ -28,24 +33,43 @@ repasarlas con FSRS hasta aprenderlas.
   IndexedDB por cuenta (`lecta` anónimo, `lecta:u:<id>`); offline-first
   con service worker propio (`public/sw.js`, precache + red primero).
 - **Worker**: Cloudflare Workers + Hono + `pg` por request → CockroachDB
-  vía Hyperdrive (caché apagado a propósito). Better Auth (magic link,
-  contraseña, borrado con verificación). EPUBs en R2.
-- **IA (DeepSeek vía AI Gateway)** en `src/worker/ai.ts`, cuatro
-  operaciones con prompt versionado, tope de tokens, timeout 8 s y
-  reintentos: `enrich` (ficha léxica JSON que se guarda en el catálogo
-  compartido `lecta_dev.lexicon_*`), `item` (ejercicio de opción con
-  distractores), `verify` (corrige oración escrita por el usuario),
-  `explain` (sentido en contexto, efímera, caché TTL 10 min).
-  Preferencia «Usar IA» por cuenta (`useAi`, default encendida);
-  `lookup`/`batch`/`sample` del catálogo son públicos y no usan IA.
+  vía Hyperdrive con dos bindings: `HYPERDRIVE` sin caché (auth, sync
+  de usuario) y `HYPERDRIVE_CACHED` con caché (lecturas del catálogo
+  léxico compartido). Better Auth (magic link, contraseña, borrado con
+  verificación). EPUBs en R2.
+- **IA (DeepSeek vía AI Gateway)** en `src/worker/ai.ts`: diez
+  operaciones (`DeepSeekOperation`) con prompt versionado, tope de
+  tokens, timeout y reintentos. Preferencia «Usar IA» por cuenta
+  (`useAi`, encendida por defecto); `lookup`/`batch`/`sample` del
+  catálogo son públicos y no usan IA.
+
+  | Operación | Ruta | Para qué | Quién la llama |
+  |---|---|---|---|
+  | `enrich` | `/api/ai/enrich` | ficha léxica que se guarda en el catálogo compartido | `lexicon.ts` |
+  | `item` | `/api/lexicon/items` | ejercicio de opción con distractores | `useReviewSession` (repaso del Cuaderno) |
+  | `verify` | `/api/lexicon/verify-sentence` | corrige una oración del lector | `lexicon.ts` |
+  | `explain` | `/api/lexicon/explain` | sentido en contexto (efímera) | WordPanel |
+  | `explain_passage` | `/api/ai/explain-in-passage`, `/api/ai/translate` | significado y matiz en la frase; traducción de párrafo | WordPanel, `translate.ts` |
+  | `evaluate` | `/api/ai/evaluate-sentence` | evalúa la oración de «Aprender» | `learn.ts` |
+  | `story` | `/api/ai/micro-story` | microcuento con las palabras guardadas | `learn.ts` |
+  | `page_recap` | `/api/ai/page-recap` | resumen de lo último leído, a pedido | `page-recap.ts`, desde los botones de resumen del lector |
+  | `character_recap` | `/api/ai/character-recap` | quién es un personaje hasta el punto leído | `lexicon.ts` |
+  | `companion_note` | `/api/ai/companion-note` | nota del gato | **ningún llamador en el cliente** |
+
+  Dos operaciones chocan con los principios de §4 y tienen la decisión
+  pendiente: `companion_note` («cariñosas y motivadoras», contra «no
+  usar IA para mensajes de ánimo»; además no la llama nadie) y
+  `page_recap` (su prompt arranca con «un lector que se distrajo»,
+  que afirma un estado del lector).
 
 ### Flujo de lectura
 
 1. **Estantería** → abrir libro (local, R2 o catálogo público).
    Posición sincronizada con arbitraje por `updatedAt`.
 2. **Calibración** de vocabulario: opcional tras el primer tramo leído
-   o desde Cuenta; muestra ≤18 palabras en 6 bandas zipf; escribe
-   evidencia de conocimiento.
+   o desde Cuenta; test adaptativo (CAT) de 6 a 8 ítems que se detiene
+   cuando el error estándar converge (`calibration.ts`); escribe θ en
+   el perfil del idioma.
 3. **Análisis de capítulo** (local): segmentación por oraciones
    (`Intl.Segmenter` en worker de segmentación), lemas vía catálogo,
    predicción de palabras desconocidas por perfil.
@@ -69,7 +93,8 @@ repasarlas con FSRS hasta aprenderlas.
    estimado por día, actividad por libro.
 9. **Cobertura** (`coverage.ts`): insignia por libro con % de formas
    únicas que el perfil ya conoce o tiene guardadas (umbrales propios
-   90/75/60 → «En tu nivel»/«Asequible»/«Un reto»/«Exigente»). Misma
+   94/86/70 → «Lectura relajada»/«Ideal para tu ritmo»/«Un reto»/
+   «Exigente», `coverageLabel` en `coverage.ts`). Misma
    cadena de clasificación del lector (`predictSection`) sobre el
    manifiesto precomputado del seed o análisis local.
 10. **Gamificación**: XP (min leído = 1, consulta 2, guardada 3 +4 si
@@ -99,10 +124,32 @@ repasarlas con FSRS hasta aprenderlas.
   always; solo cuenta «tiempo elegible» (señales reales, no reloj);
   capas, pestaña oculta o idle pausan sin acumular deuda; supresión
   por libro no persiste.
+- **Modo Retiro de lectura** (`useReaderDeepReading.ts`): mientras
+  está activo, el aviso de retrocesos no se muestra.
+- **Retomar la lectura**: hay dos mecanismos sin unificar. Tras más
+  de 48 h, `ResumeSessionOverlay` muestra un resumen sin spoilers
+  calculado en local, sin IA (`generateZeroSpoilerSceneRecap`,
+  `page-recap.ts`), y las dos últimas oraciones leídas; el resumen
+  con IA (`page_recap`) solo sale si el lector lo pide. Con la
+  posición quieta 3 días o más
+  (`RESUME_CARD_MIN_DAYS` en `Reader.tsx`), la franja muestra la
+  tarjeta «Quedaste en…» con opción de releer el capítulo.
+- **Micro-cloze a mitad de capítulo** (`MidChapterRecallCard`): al
+  entrar a una sección con una palabra vencida del Cuaderno, un
+  ejercicio de un toque, como máximo una vez por capítulo y solo en
+  modo scroll.
+- **Autoevaluación al cerrar capítulo**: «¿Seguiste el hilo?»
+  (`DeepReadingSummaryModal`), mostrada en «Tu recorrido» como
+  valoración propia, no como medida de comprensión.
+- **Recordatorio de hábito** (`localNotificationScheduler.ts`):
+  notificación local del service worker (`periodicsync`), fuera de la
+  app.
 - **Eventos de trayecto** (`reading-events.ts`, local, 90 días,
-  apagable): `target_entered`, `preparation_*`, `word_consulted`,
-  `word_saved`, `word_declared_known`, `page_regressed`,
-  `section_dwell` (ms + palabras), `fatigue_flag`. De ahí salen WPM/día,
+  apagable; tipos en `ReadingEvent`, `idb.ts`): `target_entered`,
+  `preparation_*`, `word_consulted`, `word_saved`,
+  `word_declared_known`, `page_regressed`, `section_dwell` (ms +
+  palabras), `fatigue_flag`, `resume_shown`/`resume_reread`,
+  `tip_shown`/`tip_accepted`, `tts_*` y `upload`. De ahí salen WPM/día,
   regresiones, consultas y fatiga por día.
 
 ## 2. Evidencia: qué sabemos sobre concentrarse leyendo
@@ -280,17 +327,21 @@ repasarlas con FSRS hasta aprenderlas.
 | Gato acompañante | evita daño motivacional (nunca regaña) — eso sí está en el espíritu de la evidencia; «sin costo atencional» no está probado: en modo playful es un distractor visual potencial. Gamificación: efectos moderados y dependientes de contexto, con decaimiento por novedad (Sailer & Homner 2020) |
 | WPM estimado por día | diagnóstico interno; no gamificar velocidad (speed reading desmentido) |
 
-### Brechas que la evidencia sugiere (sin implementar)
+### Brechas que la evidencia sugiere
 
-- **Marcador de retomar**: al volver de pausa larga o días después,
-  dónde quedó + contexto cercano ≈ «ready-to-resume plan»
-  (evidencia indirecta, pero barata y de bajo riesgo).
+- **Marcador de retomar — implementado** (ver «Retomar la lectura» en
+  §1): dónde quedó + contexto cercano ≈ «ready-to-resume plan»
+  (evidencia indirecta, pero barata y de bajo riesgo). Pendiente
+  fuera de este documento: unificar los dos mecanismos (48 h y 3 días).
 - **Meta de la sesión** antes de abrir (opcional): instrucciones de
   relevancia protegen comprensión en contextos con distractores.
 - **Acomodación**: los primeros minutos son frágiles — no ofrecer
   preparación pesada ni festejos ahí (regla derivable: <5 min de
   sesión → no intervenir).
-- **TTS read-along**: mayor evidencia por esfuerzo que cualquier tip
+- **TTS read-along — parcial**: ya hay lectura en voz alta con
+  resaltado por oración (`ttsController.ts`; `TtsHighlightMode` solo
+  admite `"sentence"`) y voz neural opcional. Falta la sincronía
+  palabra por palabra. Mayor evidencia por esfuerzo que cualquier tip
   de IA para lectores débiles; no usa el riel DeepSeek.
 - **Racha flexible/congelador**: si la racha pesa en la motivación,
   la evidencia de aversión a la pérdida la sugiere.
@@ -390,9 +441,11 @@ cadencia.
   cadencia en el worker. Se descartó también conservar el LLM solo
   para redactar un hallazgo calculado en el cliente: unas pocas
   plantillas cubren ese trabajo.
-- «Dónde quedaste» al retomar tras días: el candidato mejor
-  sustentado; con guardarraíl anti-spoiler (no resumir más allá del
-  punto de corte).
+- «Dónde quedaste» al retomar tras días — **implementado sin IA**:
+  `ResumeSessionOverlay` arma el resumen en local con guardarraíl
+  anti-spoiler (no resume más allá del punto de corte). La versión con
+  IA (`page_recap`) existe a pedido del lector; queda corregir el
+  arranque de su prompt (ver la tabla de IA en §1).
 - No usar IA para: decidir fatiga (regla auditable), calificar
   palabras (FSRS no se toca), mensajes de ánimo (las reglas locales
   bastan y son gratis), ni **interpretar series temporales del
