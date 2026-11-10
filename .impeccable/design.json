@@ -1,0 +1,513 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-10T00:00:00Z",
+  "title": "Design System: Lecta",
+  "extensions": {
+    "colorMeta": {
+      "vermilion": {
+        "role": "primary",
+        "displayName": "Bermellón de corrector",
+        "canonical": "#9e3a23",
+        "tonalRamp": [
+          "#2b0d06",
+          "#4f1a0d",
+          "#752816",
+          "#9e3a23",
+          "#c05a40",
+          "#d98a74",
+          "#ecbbac",
+          "#f8e6df"
+        ]
+      },
+      "vermilion-bright": {
+        "role": "primary",
+        "displayName": "Bermellón vivo",
+        "canonical": "#a24317",
+        "tonalRamp": [
+          "#2b1004",
+          "#51200a",
+          "#793110",
+          "#a24317",
+          "#c4683c",
+          "#dc9672",
+          "#edc2ab",
+          "#f9e8de"
+        ]
+      },
+      "vermilion-wash": {
+        "role": "primary",
+        "displayName": "Lavado bermellón",
+        "canonical": "#f3ddd5",
+        "tonalRamp": [
+          "#3a221b",
+          "#6b4539",
+          "#9c6b5b",
+          "#c59585",
+          "#deb9ac",
+          "#f3ddd5",
+          "#f8eae5",
+          "#fcf5f2"
+        ]
+      },
+      "ochre": {
+        "role": "secondary",
+        "displayName": "Ocre de resaltador",
+        "canonical": "#d4a43a",
+        "tonalRamp": [
+          "#2e2206",
+          "#5a430f",
+          "#876619",
+          "#b08826",
+          "#d4a43a",
+          "#e2c074",
+          "#eedaab",
+          "#f9f0dc"
+        ]
+      },
+      "sage": {
+        "role": "tertiary",
+        "displayName": "Salvia",
+        "canonical": "#43694d",
+        "tonalRamp": [
+          "#0f1f14",
+          "#213a29",
+          "#32513c",
+          "#43694d",
+          "#678c71",
+          "#93b09b",
+          "#c1d3c6",
+          "#e8efea"
+        ]
+      },
+      "success": {
+        "role": "tertiary",
+        "displayName": "Verde de acierto",
+        "canonical": "#3d7a5a",
+        "tonalRamp": [
+          "#0c2318",
+          "#1b402d",
+          "#2c5d43",
+          "#3d7a5a",
+          "#629a7d",
+          "#90b9a3",
+          "#c0d9cc",
+          "#e8f2ec"
+        ]
+      },
+      "amber": {
+        "role": "tertiary",
+        "displayName": "Ámbar",
+        "canonical": "#8a6a1e",
+        "tonalRamp": [
+          "#241b05",
+          "#45340c",
+          "#674f15",
+          "#8a6a1e",
+          "#ad8b3f",
+          "#c9ad73",
+          "#e1cfab",
+          "#f5eddc"
+        ]
+      },
+      "accent-focus": {
+        "role": "tertiary",
+        "displayName": "Azul de foco",
+        "canonical": "#3b6e8c",
+        "tonalRamp": [
+          "#0b1e29",
+          "#1a394b",
+          "#2a536b",
+          "#3b6e8c",
+          "#618fab",
+          "#90b1c6",
+          "#c0d3df",
+          "#e8eff4"
+        ]
+      },
+      "cat-fur": {
+        "role": "tertiary",
+        "displayName": "Naranja del gato",
+        "canonical": "#e8833a",
+        "tonalRamp": [
+          "#331703",
+          "#663009",
+          "#9a4b14",
+          "#c96a25",
+          "#e8833a",
+          "#f0a873",
+          "#f6cdae",
+          "#fceee2"
+        ]
+      },
+      "paper": {
+        "role": "neutral",
+        "displayName": "Papel",
+        "canonical": "#faf6f0",
+        "tonalRamp": [
+          "#2a2620",
+          "#575045",
+          "#857b6c",
+          "#b0a696",
+          "#d3cabc",
+          "#e9e2d6",
+          "#faf6f0",
+          "#fdfbf8"
+        ]
+      },
+      "paper-raised": {
+        "role": "neutral",
+        "displayName": "Papel elevado",
+        "canonical": "#ffffff",
+        "tonalRamp": [
+          "#262626",
+          "#525252",
+          "#7f7f7f",
+          "#a9a9a9",
+          "#cdcdcd",
+          "#e6e6e6",
+          "#f6f6f6",
+          "#ffffff"
+        ]
+      },
+      "paper-sunken": {
+        "role": "neutral",
+        "displayName": "Papel hundido",
+        "canonical": "#f0e7d5",
+        "tonalRamp": [
+          "#2a2416",
+          "#564b32",
+          "#837451",
+          "#ad9d77",
+          "#cdbf9f",
+          "#e2d6bc",
+          "#f0e7d5",
+          "#f9f4ea"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Tinta",
+        "canonical": "#1f1d1a",
+        "tonalRamp": [
+          "#1f1d1a",
+          "#3d3a35",
+          "#5c5851",
+          "#7d786f",
+          "#9f9a90",
+          "#c1bcb3",
+          "#dfdbd4",
+          "#f3f1ed"
+        ]
+      },
+      "ink-soft": {
+        "role": "neutral",
+        "displayName": "Tinta suave",
+        "canonical": "#5c554d",
+        "tonalRamp": [
+          "#211e1a",
+          "#3f3a34",
+          "#5c554d",
+          "#7c746b",
+          "#9d958b",
+          "#beb7ae",
+          "#dcd7d0",
+          "#f2f0ec"
+        ]
+      },
+      "ink-faint": {
+        "role": "neutral",
+        "displayName": "Tinta tenue",
+        "canonical": "#8a7f72",
+        "tonalRamp": [
+          "#231f1a",
+          "#443d35",
+          "#675d52",
+          "#8a7f72",
+          "#a99f93",
+          "#c6beb4",
+          "#e0dbd4",
+          "#f4f1ed"
+        ]
+      },
+      "rule": {
+        "role": "neutral",
+        "displayName": "Filete",
+        "canonical": "rgba(120, 95, 70, 0.12)",
+        "tonalRamp": [
+          "#2b2218",
+          "#57452f",
+          "#785f46",
+          "#a08a72",
+          "#c2b19d",
+          "#ddd1c2",
+          "#eee7dd",
+          "#f9f6f1"
+        ]
+      },
+      "rule-strong": {
+        "role": "neutral",
+        "displayName": "Filete fuerte",
+        "canonical": "#c9beaa",
+        "tonalRamp": [
+          "#28231a",
+          "#514836",
+          "#7b6e55",
+          "#a39679",
+          "#c9beaa",
+          "#dcd4c5",
+          "#ece7dd",
+          "#f8f6f1"
+        ]
+      },
+      "on-accent": {
+        "role": "neutral",
+        "displayName": "Sobre acento",
+        "canonical": "#ffffff",
+        "tonalRamp": [
+          "#262626",
+          "#525252",
+          "#7f7f7f",
+          "#a9a9a9",
+          "#cdcdcd",
+          "#e6e6e6",
+          "#f6f6f6",
+          "#ffffff"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Título de vista y momentos de cierre." },
+      "headline": { "displayName": "Headline", "purpose": "Títulos de sección, hojas y diálogos." },
+      "title": { "displayName": "Title", "purpose": "Títulos de tarjeta y de libro." },
+      "body": { "displayName": "Body", "purpose": "Texto de interfaz." },
+      "read": {
+        "displayName": "Read",
+        "purpose": "Texto del libro; ajustable desde el panel Aa, medida 65ch."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Antetítulos en mayúsculas y etiquetas de navegación."
+      }
+    },
+    "shadows": [
+      {
+        "name": "shadow-1",
+        "value": "0 1px 3px rgba(43, 37, 32, 0.08), 0 1px 2px rgba(43, 37, 32, 0.05)",
+        "purpose": "Reposo: tarjetas y pomo del interruptor."
+      },
+      {
+        "name": "shadow-2",
+        "value": "0 4px 12px -2px rgba(43, 37, 32, 0.12), 0 2px 6px -1px rgba(43, 37, 32, 0.08)",
+        "purpose": "Levantado: elementos flotantes temporales."
+      },
+      {
+        "name": "shadow-sheet",
+        "value": "0 -8px 30px rgba(43, 37, 32, 0.14)",
+        "purpose": "Hoja inferior, proyectada hacia arriba."
+      },
+      {
+        "name": "shadow-cover",
+        "value": "1px 1px 0 rgba(0, 0, 0, 0.08), 4px 6px 14px -6px rgba(43, 37, 32, 0.35)",
+        "purpose": "Portadas de libro."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-out",
+        "value": "cubic-bezier(0.22, 1, 0.36, 1)",
+        "purpose": "Curva por defecto de transiciones de estado."
+      },
+      {
+        "name": "ease-soft",
+        "value": "cubic-bezier(0.4, 0, 0.2, 1)",
+        "purpose": "Cambios suaves de color en fichas."
+      },
+      {
+        "name": "ease-page",
+        "value": "cubic-bezier(0.2, 0.8, 0.2, 1)",
+        "purpose": "Paso de página."
+      },
+      {
+        "name": "ease-settle",
+        "value": "cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "Asentado de hojas y paneles."
+      },
+      { "name": "ease-exit", "value": "cubic-bezier(0.4, 0, 1, 1)", "purpose": "Salidas." },
+      { "name": "dur-1", "value": "120ms", "purpose": "Hover, presión, foco." },
+      { "name": "dur-2", "value": "180ms", "purpose": "Velos y cambios de pista." },
+      { "name": "dur-3", "value": "260ms", "purpose": "Pomo del interruptor y entradas cortas." },
+      { "name": "dur-5", "value": "320ms", "purpose": "Entradas de hoja." },
+      { "name": "dur-6", "value": "480ms", "purpose": "Transiciones largas." },
+      { "name": "dur-exit", "value": "160ms", "purpose": "Salidas." }
+    ],
+    "breakpoints": [{ "name": "desktop", "value": "64rem" }],
+    "themes": [
+      {
+        "name": "papel",
+        "scheme": "light",
+        "paper": "#faf6f0",
+        "paper-raised": "#ffffff",
+        "paper-sunken": "#f0e7d5",
+        "ink": "#1f1d1a",
+        "ink-soft": "#5c554d",
+        "vermilion": "#9e3a23",
+        "on-accent": "#ffffff"
+      },
+      {
+        "name": "blanco",
+        "scheme": "light",
+        "paper": "#ffffff",
+        "paper-raised": "#ffffff",
+        "paper-sunken": "#f2f0ea",
+        "ink": "#26241f",
+        "ink-soft": "#55534c",
+        "vermilion": "#9e3a23",
+        "on-accent": "#ffffff"
+      },
+      {
+        "name": "noche",
+        "scheme": "dark",
+        "paper": "#141619",
+        "paper-raised": "#1c1f24",
+        "paper-sunken": "#0d0f11",
+        "ink": "#eae6df",
+        "ink-soft": "#a3a9b1",
+        "vermilion": "#e08a58",
+        "on-accent": "#141619"
+      },
+      {
+        "name": "oled",
+        "scheme": "dark",
+        "paper": "#000000",
+        "paper-raised": "#141619",
+        "paper-sunken": "#000000",
+        "ink": "#e8eaed",
+        "ink-soft": "#a7adb5",
+        "vermilion": "#e8886e",
+        "on-accent": "#000000"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Botón",
+      "kind": "button",
+      "refersTo": "button",
+      "description": "Acción secundaria por defecto.",
+      "html": "<button class=\"ds-btn\">Aprender</button>",
+      "css": ".ds-btn { min-height: 44px; padding: var(--s-2) var(--s-4); border: 1px solid var(--rule-strong); border-radius: var(--r-1); background: var(--paper-raised); color: var(--ink); font-family: var(--font-ui); font-size: var(--fs-base); font-weight: 500; cursor: pointer; transition: background-color var(--dur-1) var(--ease-out), border-color var(--dur-1) var(--ease-out), transform var(--dur-1) var(--ease-out); } .ds-btn:hover { border-color: var(--ink-soft); } .ds-btn:active { transform: translateY(1px); } .ds-btn:focus-visible { outline: 2px solid var(--vermilion); outline-offset: 2px; }"
+    },
+    {
+      "name": "Botón principal",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "La única acción principal de la pantalla.",
+      "html": "<button class=\"ds-btn-primary\">Repasar</button>",
+      "css": ".ds-btn-primary { min-height: 44px; padding: var(--s-2) var(--s-4); border: 1px solid var(--vermilion); border-radius: var(--r-1); background: var(--vermilion); color: var(--on-accent); font-family: var(--font-ui); font-size: var(--fs-base); font-weight: 500; cursor: pointer; transition: background-color var(--dur-1) var(--ease-out), border-color var(--dur-1) var(--ease-out), transform var(--dur-1) var(--ease-out); } .ds-btn-primary:hover { background: color-mix(in srgb, var(--vermilion) 88%, var(--ink)); border-color: color-mix(in srgb, var(--vermilion) 88%, var(--ink)); } .ds-btn-primary:active { transform: translateY(1px); } .ds-btn-primary:focus-visible { outline: 2px solid var(--vermilion); outline-offset: 2px; }"
+    },
+    {
+      "name": "Botón discreto",
+      "kind": "button",
+      "refersTo": "button-quiet",
+      "description": "Acción terciaria sin caja.",
+      "html": "<button class=\"ds-btn-quiet\">Pasar por ahora</button>",
+      "css": ".ds-btn-quiet { min-height: 44px; padding: var(--s-2) var(--s-3); border: none; background: none; color: var(--vermilion); font-family: var(--font-ui); font-size: var(--fs-base); font-weight: 500; cursor: pointer; text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 0.18em; transition: text-decoration-color var(--dur-1) var(--ease-out); } .ds-btn-quiet:hover { text-decoration-color: var(--vermilion); } .ds-btn-quiet:focus-visible { outline: 2px solid var(--vermilion); outline-offset: 2px; }"
+    },
+    {
+      "name": "Campo",
+      "kind": "input",
+      "refersTo": "field",
+      "description": "Campo de texto con etiqueta encima.",
+      "html": "<label class=\"ds-field\"><span>Correo</span><input type=\"email\" placeholder=\"tu@correo.com\"></label>",
+      "css": ".ds-field { display: grid; gap: var(--s-2); font-family: var(--font-ui); } .ds-field span { font-size: var(--fs-sm); color: var(--ink-soft); } .ds-field input { min-height: 44px; padding: var(--s-2) var(--s-3); border: 1px solid var(--rule); border-radius: var(--r-1); background: var(--paper-sunken); color: var(--ink); font: inherit; font-size: var(--fs-base); transition: border-color var(--dur-1) var(--ease-out), box-shadow var(--dur-1) var(--ease-out); } .ds-field input:focus { outline: none; border-color: var(--vermilion); box-shadow: 0 0 0 3px var(--vermilion-wash); }"
+    },
+    {
+      "name": "Fichas",
+      "kind": "chip",
+      "refersTo": "chip",
+      "description": "Filtros y modos; la activa usa el tono translúcido, nunca el sólido.",
+      "html": "<div class=\"ds-chips\"><button class=\"ds-chip\" aria-pressed=\"true\">Todas</button><button class=\"ds-chip\" aria-pressed=\"false\">Por repasar</button><button class=\"ds-chip\" aria-pressed=\"false\">Dominadas</button></div>",
+      "css": ".ds-chips { display: flex; gap: var(--s-2); flex-wrap: wrap; } .ds-chip { font-family: var(--font-ui); font-size: var(--fs-xs); padding: 0.25rem 0.65rem; border-radius: var(--r-pill); border: 1px solid var(--rule); background: var(--paper); color: var(--ink-soft); cursor: pointer; transition: all var(--dur-1) var(--ease-soft); } .ds-chip:hover { background: var(--paper-raised); color: var(--ink); border-color: var(--vermilion); } .ds-chip[aria-pressed=\"true\"] { background: var(--chip-active-bg); color: var(--chip-active-ink); border-color: var(--chip-active-border); font-weight: 600; } .ds-chip:focus-visible { outline: 2px solid var(--vermilion); outline-offset: 2px; }"
+    },
+    {
+      "name": "Tarjeta con fila de ajuste",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Tarjeta de Tú con una fila de ajuste e interruptor.",
+      "html": "<section class=\"ds-card\"><h3 class=\"ds-card-title\">Lectura</h3><div class=\"ds-setting\"><div><p class=\"ds-setting-name\">Usar IA</p><p class=\"ds-setting-hint\">Explica una palabra dentro de su frase cuando lo pides.</p></div><button class=\"ds-switch\" role=\"switch\" aria-checked=\"true\" aria-label=\"Usar IA\"><span class=\"ds-switch-knob\"></span></button></div></section>",
+      "css": ".ds-card { background: var(--paper-raised); border: 1px solid var(--rule); border-radius: var(--r-2); padding: var(--s-4); display: flex; flex-direction: column; gap: var(--s-3); box-shadow: var(--shadow-1); font-family: var(--font-ui); color: var(--ink); } .ds-card-title { margin: 0; font-family: var(--font-book); font-weight: 500; font-size: var(--fs-lg); line-height: var(--lh-display); } .ds-setting { display: flex; align-items: center; } .ds-setting > div { flex: 1; display: grid; gap: var(--s-1); padding-inline-end: var(--s-4); } .ds-setting-name { margin: 0; } .ds-setting-hint { margin: 0; font-size: var(--fs-sm); line-height: var(--lh-small); color: var(--ink-soft); } .ds-switch { position: relative; flex: none; inline-size: 3.25rem; block-size: 2.75rem; padding: 0; border: none; background: transparent; cursor: pointer; } .ds-switch::before { content: \"\"; position: absolute; inset-inline: 0; inset-block: 8px; border-radius: 999px; background: var(--rule-strong); transition: background-color var(--dur-2) var(--ease-out); } .ds-switch-knob { position: absolute; inset-block-start: 11px; inset-inline-start: 3px; inline-size: 22px; block-size: 22px; border-radius: 50%; background: var(--paper-raised); box-shadow: var(--shadow-1); transition: transform var(--dur-3) cubic-bezier(0.34, 1.56, 0.64, 1); } .ds-switch[aria-checked=\"true\"]::before { background: var(--vermilion-bright); } .ds-switch[aria-checked=\"true\"] .ds-switch-knob { transform: translateX(24px); } .ds-switch:focus-visible { outline: 2px solid var(--vermilion); outline-offset: 2px; }"
+    },
+    {
+      "name": "Navegación",
+      "kind": "nav",
+      "refersTo": "nav-item",
+      "description": "Barra inferior en móvil; riel lateral desde 64rem.",
+      "html": "<nav class=\"ds-nav\"><button class=\"ds-nav-item\" aria-current=\"page\">Biblioteca</button><button class=\"ds-nav-item\">Cuaderno</button><button class=\"ds-nav-item\">Recorrido</button><button class=\"ds-nav-item\">Tú</button></nav>",
+      "css": ".ds-nav { display: flex; justify-content: space-around; align-items: center; height: 52px; background: var(--paper-raised); border-top: 1px solid var(--rule); } .ds-nav-item { flex: 1 1 0; position: relative; min-height: 48px; max-width: 7rem; padding: var(--s-1) var(--s-2); background: transparent; border: none; color: var(--ink-soft); font-family: var(--font-ui); font-size: var(--fs-xs); font-weight: 500; cursor: pointer; transition: color var(--dur-1) var(--ease-out); } .ds-nav-item:hover { color: var(--ink); } .ds-nav-item[aria-current=\"page\"] { color: var(--vermilion); font-weight: 600; } .ds-nav-item[aria-current=\"page\"]::after { content: \"\"; position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: 24px; height: 3px; border-radius: 0 0 2px 2px; background: var(--vermilion); } .ds-nav-item:focus-visible { outline: 2px solid var(--vermilion); outline-offset: 2px; }"
+    },
+    {
+      "name": "Hoja inferior",
+      "kind": "custom",
+      "refersTo": "sheet",
+      "description": "Contenedor de la ficha de palabra: opaco, esquinas superiores de 14 px.",
+      "html": "<div class=\"ds-sheet\"><p class=\"ds-sheet-eyebrow\">adjetivo</p><h3 class=\"ds-sheet-title\">perenne</h3><p class=\"ds-sheet-body\">Que dura siempre o mucho tiempo.</p></div>",
+      "css": ".ds-sheet { width: min(48rem, 100%); border: 1px solid var(--rule); border-bottom: none; border-radius: var(--r-sheet) var(--r-sheet) 0 0; background: var(--paper-raised); box-shadow: var(--shadow-sheet); padding: var(--s-4) var(--s-5) var(--s-5); color: var(--ink); } .ds-sheet-eyebrow { margin: 0 0 var(--s-1); font-family: var(--font-ui); font-size: var(--fs-xs); font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-soft); } .ds-sheet-title { margin: 0 0 var(--s-2); font-family: var(--font-book); font-weight: 500; font-size: var(--fs-xl); line-height: var(--lh-display); } .ds-sheet-body { margin: 0; font-family: var(--font-ui); line-height: var(--lh-ui); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "Cuaderno de lector",
+    "overview": "Lecta se ve como el cuaderno de alguien que lee mucho: papel con grano, tinta casi negra, márgenes limpios y una sola tinta de color para lo que importa. El libro es el protagonista; todo lo demás (ficha de palabra, Cuaderno, recorrido) se comporta como anotaciones alrededor de la página, nunca como una aplicación que compite con ella.\n\nLa forma es de imprenta: esquinas casi rectas, filetes finos, serif de libro en los títulos y sans humanista en los controles. La profundidad es papel en capas (hundido, base, elevado), no objetos flotando. El sistema vive en cuatro temas con los mismos nombres de token: `papel` (sepia, predeterminado claro), `blanco`, `noche` (pizarra) y `oled`. Los valores del frontmatter son los de `papel`; los otros temas cambian el valor, nunca el papel que cumple cada token. La fuente de verdad es `src/client/styles/tokens.css`.\n\nEl gato compañero es la única figura ilustrada y el único lugar donde aparece el naranja de su pelaje.",
+    "keyCharacteristics": [
+      "Papel con grano sutil y tinta cálida; nunca blanco y negro puros en `papel`.",
+      "Un solo acento, bermellón, reservado a la acción principal y al estado actual.",
+      "Serif de libro para títulos y lectura; sans humanista para la interfaz.",
+      "Esquinas de 2–4 px en controles y tarjetas; píldora solo en fichas.",
+      "Profundidad por tono de papel y filete; sombra mínima y ambiental.",
+      "Objetivos táctiles de 44 px; móvil vertical como diseño de referencia."
+    ],
+    "rules": [
+      {
+        "name": "La regla de la tinta única",
+        "body": "El bermellón sólido pertenece a una sola acción por pantalla: la principal. Todo lo demás que esté «activo» (fichas, filtros, modos, pestañas) usa el tono translúcido `--chip-active-*` (14 % de fondo, 45 % de borde).",
+        "section": "colors"
+      },
+      {
+        "name": "La regla del tema vivo",
+        "body": "Ningún componente escribe un color fijo. Siempre `var(--ink)`, `var(--paper-raised)`, `var(--vermilion)`; un hex suelto rompe `papel` o `noche`. Cada cambio de estilo se revisa en ambos.",
+        "section": "colors"
+      },
+      {
+        "name": "La regla de los 16 px",
+        "body": "Ningún control de formulario baja de `--fs-base`: iOS hace zoom al enfocar campos menores.",
+        "section": "typography"
+      },
+      {
+        "name": "La regla del oficio",
+        "body": "Serif para lo que se lee, sans para lo que se acciona. Un botón nunca va en Literata; un título nunca en Alegreya Sans.",
+        "section": "typography"
+      },
+      {
+        "name": "La regla del papel sólido",
+        "body": "Las hojas y fichas sobre el texto llevan fondo opaco `paper-raised`: el texto del libro nunca se transparenta a través de una superficie con contenido.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do usar tokens de `tokens.css` para todo color, radio, espacio y duración, y revisar cada cambio en `papel` y `noche`.",
+      "Do reservar el bermellón sólido para la acción principal de la pantalla.",
+      "Do mantener 44 px de alto mínimo en todo lo que se toca.",
+      "Do poner el CSS de un componente en una hoja que viaje con él si se usa en más de una vista.",
+      "Do animar con `transform` y `opacity`, con las curvas y duraciones de `--ease-*` y `--dur-*`; todo se apaga con `prefers-reduced-motion`.",
+      "Do dar a la información texto en `ink` o `ink-soft`."
+    ],
+    "donts": [
+      "Don't escribir colores fijos en componentes compartidos.",
+      "Don't marcar fichas, filtros o pestañas activas con relleno bermellón sólido.",
+      "Don't usar borde punteado fuera de zonas de adición o carga.",
+      "Don't usar `ink-faint` para texto que informa.",
+      "Don't poner dos barras flotantes inferiores a la vez en el lector.",
+      "Don't mostrar el mismo control o el mismo texto dos veces en una vista.",
+      "Don't bajar un control de formulario de 16 px de letra."
+    ]
+  }
+}
