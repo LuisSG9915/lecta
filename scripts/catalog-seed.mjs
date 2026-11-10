@@ -227,7 +227,12 @@ async function processItem(item, deathYearMax, ctx) {
   };
 
   if (MODE === "seed") {
-    const epubFile = await fetchOk(epub.url);
+    // Reutiliza el EPUB ya descargado en corridas anteriores: Gutenberg
+    // sirve los EPUB grandes a ~1 MB/s y la descarga se corta por tiempo.
+    const localEpub = join(OUT_DIR, `${item.id}.epub`);
+    const epubFile = existsSync(localEpub)
+      ? { status: 200, data: new Uint8Array(readFileSync(localEpub)) }
+      : await fetchOk(epub.url);
     if (epubFile.status !== 200) {
       return { status: "skipped", ...out, reasons: [`EPUB no descargó (HTTP ${epubFile.status})`] };
     }

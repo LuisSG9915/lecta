@@ -54,7 +54,7 @@ export type CatalogIndex = {
 // re-analiza — p. ej. `en` pasa de 0 a 1 al cargar el catálogo inglés.
 export const LEXICON_CATALOG_REV: Record<string, number> = {
   es: 1,
-  en: 5,
+  en: 6,
 };
 
 export type BookVocabManifest = {
