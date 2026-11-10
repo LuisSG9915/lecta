@@ -65,6 +65,7 @@ const POS_MAP = {
 
 const SKIP_POS = new Set([
   "character", "symbol", "syllable", "infix", "prefix", "suffix", "affix",
+  "unknown",
 ]);
 
 // ---------- IA ----------
@@ -235,7 +236,10 @@ async function main() {
     if (!pos || SKIP_POS.has(pos)) { skippedPos++; continue; }
 
     const key = `${word}|${pos}`;
-    if (hasSense.has(key) || doneSet.has(key)) {
+    // hasSense guarda pos en español (la DB) y el dump trae pos en inglés:
+    // hay que comparar en el mismo idioma o la dedup nunca matchea.
+    const dbKey = `${word}|${POS_MAP[pos] ?? ""}`;
+    if (hasSense.has(dbKey) || doneSet.has(key)) {
       skippedExisting++;
       continue;
     }
@@ -266,7 +270,9 @@ async function main() {
       const item = queue[i];
       try {
         const def = await generateDefinition(item.word, item.pos);
-        results.push({ ...item, ...def });
+        // El pos de la entrada es el del dump (inglés → POS_MAP); el que
+        // devuelve la IA viene en español y no sirve para insertEntry.
+        results.push({ ...item, definition: def.definition, translation: def.translation });
         doneSet.add(`${item.word}|${item.pos}`);
         completed++;
         if (completed % 25 === 0) {
