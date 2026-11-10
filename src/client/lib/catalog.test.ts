@@ -117,7 +117,9 @@ describe("downloadCatalogEpub", () => {
   it("devuelve un File con nombre de título y autor", async () => {
     fetchStub(async (url) =>
       url === "/api/catalog/quijote/epub"
-        ? new Response(new Blob(["PK epub"]), { status: 200 })
+        ? // Cuerpo de texto, no Blob: el Blob de jsdom no es el nativo
+          // y el Response de Node 22 lo rechaza (`object.stream`).
+          new Response("PK epub", { status: 200 })
         : jsonResponse(null, 404),
     );
     const file = await downloadCatalogEpub(INDEX.books[0]);

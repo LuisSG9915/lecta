@@ -103,11 +103,16 @@ jobs:
       - name: Check bundle budget
         run: pnpm check:size
 
+      # `vite preview` (Cloudflare plugin) lee .wrangler/deploy/config.json,
+      # que el build escribe fuera de dist/: sin él, el e2e no arranca.
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: dist
-          path: dist/
+          path: |
+            dist/
+            .wrangler/deploy/config.json
+          include-hidden-files: true
           retention-days: 1
 
   e2e:
@@ -137,7 +142,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: dist
-          path: dist/
+          path: .
 
       - name: Cache Playwright Browsers
         uses: actions/cache@v4
