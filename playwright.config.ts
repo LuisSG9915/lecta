@@ -32,6 +32,10 @@ export default defineConfig({
     env: {
       CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE:
         "postgresql://mock:mock@localhost:5432/mock",
+      // Segundo binding (catálogo con caché): sin su cadena local
+      // `vite preview` no arranca.
+      CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE_CACHED:
+        "postgresql://mock:mock@localhost:5432/mock",
     },
   },
 });

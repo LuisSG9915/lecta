@@ -13,6 +13,7 @@ concurrency:
 env:
   BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET || 'ci-test-secret-lecta-32-chars-minimum-key' }}
   CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE: "postgresql://postgres:postgres@localhost:5432/lecta"
+  CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE_CACHED: "postgresql://postgres:postgres@localhost:5432/lecta"
 
 jobs:
   static:
