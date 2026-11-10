@@ -840,6 +840,10 @@ function FullVocabulary({
   // revelar: el botón guarda exactamente lo que su intervalo anuncia.
   const candidates = useRef<Map<Grade, Card> | null>(null);
   const workshopAnchorRef = useRef<HTMLDivElement>(null);
+  // Palabras del taller ya acreditadas en este montaje: superar el
+  // reto califica una sola vez — reintentarlo en la misma sesión no
+  // debe inflar la estabilidad FSRS como si fueran repasos espaciados.
+  const workshopCreditedRef = useRef<Set<string>>(new Set());
   const gradingRef = useRef(false);
   const undoTimer = useRef<number | undefined>(undefined);
   const matchFlashTimer = useRef<number | undefined>(undefined);
@@ -1278,8 +1282,10 @@ function FullVocabulary({
   // juego suelto. Solo palabras ya expuestas pueden llegar aquí: el
   // taller se alimenta de reviewWords.
   const handleWorkshopComplete = (wordKey: string, score: number) => {
+    if (workshopCreditedRef.current.has(wordKey)) return;
     const target = all.find((w) => w.key === wordKey && !w.deleted);
     if (!target || isLearnPending(target, knownKeys, exposure)) return;
+    workshopCreditedRef.current.add(wordKey);
     const rating = score >= 85 ? Rating.Easy : Rating.Good;
     void (async () => {
       try {

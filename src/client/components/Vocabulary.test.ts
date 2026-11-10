@@ -68,7 +68,15 @@ vi.mock("../lib/vocab", () => ({
   pushWordsToServer: vi.fn(async () => true),
   removeWord: vi.fn(async () => true),
 }));
-vi.mock("./GamePanel", () => ({ GamePanel: () => null }));
+const gamePanelProps = vi.hoisted(() => ({
+  current: null as { onChallengeComplete?: (key: string, score: number) => void } | null,
+}));
+vi.mock("./GamePanel", () => ({
+  GamePanel: (props: { onChallengeComplete?: (key: string, score: number) => void }) => {
+    gamePanelProps.current = props;
+    return null;
+  },
+}));
 vi.mock("./ReadingActivity", () => ({ default: () => null }));
 
 const listWordsMock = vi.mocked(listSavedWords);
@@ -1345,6 +1353,30 @@ describe("Modos libres: tampoco examinan lo nunca presentado", () => {
         (n) => n.textContent === "Parejas",
       ),
     ).toBe(true);
+  });
+
+  it("el Reto del Escritor acredita FSRS una sola vez por palabra", async () => {
+    listWordsMock.mockResolvedValue([
+      word({
+        form: "brisa",
+        meaning: "viento suave",
+        context: "Sopló la brisa fresca.",
+        card: { reps: 2, stability: 5, due: past() } as never,
+      }),
+    ]);
+    await render();
+    const complete = async (key: string, score: number) => {
+      await act(async () => {
+        gamePanelProps.current?.onChallengeComplete?.(key, score);
+        for (let i = 0; i < 10; i++) await Promise.resolve();
+      });
+    };
+    await complete("es:brisa", 90);
+    expect(updateWordMock).toHaveBeenCalledTimes(1);
+    // Reenviar el reto superado con la misma palabra no vuelve a
+    // calificar la tarjeta: serían repasos artificiales sin espacio.
+    await complete("es:brisa", 92);
+    expect(updateWordMock).toHaveBeenCalledTimes(1);
   });
 });
 
