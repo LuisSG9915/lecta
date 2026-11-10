@@ -253,6 +253,7 @@ export function CompanionStage({
   };
 
   const spawnParticles = useCallback(() => {
+    if (reducedMotion) return;
     const count = 3 + Math.floor(Math.random() * 3); // 3 a 5 partículas
     const newParticles: PetParticle[] = [];
     for (let i = 0; i < count; i++) {
@@ -268,7 +269,7 @@ export function CompanionStage({
     setTimeout(() => {
       setParticles((prev) => prev.filter((p) => !newParticles.includes(p)));
     }, 1800);
-  }, []);
+  }, [reducedMotion]);
 
   const endDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
     const track = pointerTrackRef.current;

@@ -895,6 +895,17 @@
   transform-origin: 0% 100%;
 }
 
+/* Miniatura quieta (armario): mismo arte, sin timers ni animaciones.
+   Los componentes ya no programan parpadeo/orejas; aquí se apagan las
+   animaciones CSS (respiración, cola, guiños) del resto del árbol. */
+.cat--still,
+.cat--still *,
+.cat--still *::before,
+.cat--still *::after {
+  animation: none !important;
+  transition: none !important;
+}
+
 /* Respiración suave en vigilia y lectura: el pecho se infla. */
 .cat--awake .cat-body,
 .cat--f-reading .cat-body,
@@ -2098,7 +2109,8 @@
 .companion-name-input {
   flex: 1;
   min-inline-size: 0;
-  font-size: var(--fs-sm);
+  /* 16 px mínimo: iOS hace zoom al enfocar controles <16 px. */
+  font-size: var(--fs-base);
   padding: var(--s-1) var(--s-2);
 }
 

@@ -35,6 +35,34 @@ export function isPersistentDlcCache(cacheName: string): boolean {
   return (PERSISTENT_DLC_CACHE_NAMES as readonly string[]).includes(cacheName);
 }
 
+// En dev no se registra el SW, pero uno viejo del mismo origen (un
+// `vite preview` de producción, por ejemplo) sigue controlando la
+// página y sirve assets de producción que ya no existen en dev: la
+// app queda cargando para siempre. Se desregistra y se purgan sus
+// cachés — menos las DLC (modelo TTS, diccionarios), que son pesadas
+// de volver a bajar y no estorban en dev.
+export async function clearForeignServiceWorker(): Promise<void> {
+  if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) {
+    return;
+  }
+  try {
+    const regs = await navigator.serviceWorker.getRegistrations();
+    await Promise.all(regs.map((r) => r.unregister()));
+  } catch {
+    /* sin soporte o denegado: no es bloqueante */
+  }
+  try {
+    const keys = await caches.keys();
+    await Promise.all(
+      keys
+        .filter((k) => k.startsWith("lecta") && !isPersistentDlcCache(k))
+        .map((k) => caches.delete(k)),
+    );
+  } catch {
+    /* CacheStorage puede no existir */
+  }
+}
+
 export function shouldAllowReload(key: string, storage?: Storage): boolean {
   try {
     const s = storage ?? (typeof window !== "undefined" ? window.sessionStorage : undefined);

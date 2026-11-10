@@ -321,7 +321,7 @@ export default function DiagnosticsModal({ onClose }: DiagnosticsModalProps) {
                 className="meta"
                 style={{
                   fontSize: "var(--fs-xs)",
-                  color: resyncState === "error" ? "var(--danger, #dc2626)" : "inherit",
+                  color: resyncState === "error" ? "var(--danger)" : "inherit",
                 }}
               >
                 {resyncMsg}

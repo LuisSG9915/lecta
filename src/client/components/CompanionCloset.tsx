@@ -451,6 +451,7 @@ export function CompanionCloset({
                       mood="awake"
                       accessories={[coat.article]}
                       decorative
+                      still
                     />
                   </span>
                   <span className="companion-card-title">{coat.name}</span>
@@ -524,6 +525,7 @@ export function CompanionCloset({
                       mood="awake"
                       accessories={pocket(article)}
                       decorative
+                      still
                     />
                     {isBlocked ? (
                       <span className="companion-card-lock" aria-hidden="true">

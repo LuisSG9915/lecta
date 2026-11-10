@@ -22,7 +22,7 @@ import {
   writeCompanionField,
 } from "../lib/game";
 import { setSoundEnabled } from "../lib/companion-audio";
-import { applyCatMotion } from "./CompanionProvider";
+import { applyCatMotion } from "../lib/cat-motion";
 import {
   COMPANION_MOTION,
   READING_PRESENCE,
@@ -1658,7 +1658,7 @@ export default function Account({
                     </p>
                   ) : null}
                   {kindlePairError ? (
-                    <p className="meta" style={{ color: "var(--danger, var(--chroma-crimson))", marginTop: "0.5rem" }}>
+                    <p className="meta" style={{ color: "var(--danger)", marginTop: "0.5rem" }}>
                       {kindlePairError}
                     </p>
                   ) : null}

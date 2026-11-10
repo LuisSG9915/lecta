@@ -50,7 +50,9 @@
         color: var(--ink);
       }
       @media (prefers-color-scheme: dark) {
-        :root:not([data-theme="papel"]):not([data-theme="blanco"]):not([data-theme="paper"]):not([data-theme="white"]):not([data-theme="sepia"]):not([data-theme="light"]) {
+        /* Los temas oscuros explícitos quedan fuera: cada uno tiene su
+           bloque propio arriba y oled necesita el negro puro. */
+        :root:not([data-theme="papel"]):not([data-theme="blanco"]):not([data-theme="paper"]):not([data-theme="white"]):not([data-theme="sepia"]):not([data-theme="light"]):not([data-theme="noche"]):not([data-theme="night"]):not([data-theme="oled"]) {
           --paper: #141619;
           --ink: #EAE6DF;
           --bg: var(--paper);

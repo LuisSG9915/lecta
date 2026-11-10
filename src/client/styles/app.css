@@ -638,7 +638,8 @@ button.app-nav-sync-indicator:focus-visible {
   border-radius: var(--radius-s);
   color: var(--ink);
   font-family: var(--font-ui);
-  font-size: var(--fs-sm);
+  /* 16 px mínimo: iOS hace zoom al enfocar controles <16 px. */
+  font-size: var(--fs-base);
 }
 
 .account-card .setting-row select:focus,

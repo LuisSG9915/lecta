@@ -5,7 +5,10 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import { initCssGuard } from "./lib/css-guard";
 import { installClientErrorReporting } from "./lib/client-errors";
 import { applyTheme, loadTheme } from "./lib/settings";
-import { registerServiceWorker } from "./lib/sw-register";
+import {
+  clearForeignServiceWorker,
+  registerServiceWorker,
+} from "./lib/sw-register";
 import "./styles.css";
 
 initCssGuard();
@@ -22,6 +25,10 @@ if (import.meta.env.PROD && "serviceWorker" in navigator) {
       void registerServiceWorker();
     });
   }
+} else {
+  // En dev, un SW viejo del mismo origen (preview de producción)
+  // seguiría controlando la página con assets que ya no existen.
+  void clearForeignServiceWorker();
 }
 
 createRoot(document.getElementById("root")!).render(
