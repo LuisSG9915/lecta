@@ -7,6 +7,7 @@ import {
   isResetBlocked,
   resetBlockedResponse,
   StaleResetError,
+  lockResetMarker,
 } from "./reset-guard";
 
 function makeContext(headers: Record<string, string> = {}) {
@@ -65,5 +66,33 @@ describe("StaleResetError", () => {
     expect(err.name).toBe("StaleResetError");
     expect(err.resetAt).toBe(123);
     expect(err.message).toContain("123");
+  });
+});
+
+describe("lockResetMarker", () => {
+  it("sin la tabla del marcador devuelve 0 aunque falle el ROLLBACK TO SAVEPOINT", async () => {
+    const seen: string[] = [];
+    const client = {
+      query: async (sql: string) => {
+        seen.push(sql);
+        if (sql.includes("INSERT INTO lecta_account_state")) {
+          throw Object.assign(new Error("relation does not exist"), { code: "42P01" });
+        }
+        if (sql.startsWith("ROLLBACK TO SAVEPOINT")) throw new Error("conexión caída");
+        return { rows: [] };
+      },
+    };
+    expect(await lockResetMarker(client, "u1")).toBe(0);
+    expect(seen.at(-1)).toBe("ROLLBACK TO SAVEPOINT lecta_reset_marker");
+  });
+
+  it("propaga errores que no son de tabla inexistente", async () => {
+    const client = {
+      query: async (sql: string) => {
+        if (sql.includes("INSERT INTO")) throw new Error("timeout");
+        return { rows: [] };
+      },
+    };
+    await expect(lockResetMarker(client, "u1")).rejects.toThrow("timeout");
   });
 });

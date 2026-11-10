@@ -4433,7 +4433,7 @@ b.lecta-anchor {
   margin: var(--s-2, 0.5rem) 0;
   padding: 8px 10px;
   background: var(--paper-sunken);
-  border-radius: var(--r-md, 8px);
+  border-radius: var(--radius-s);
   border: 1px dashed rgba(200, 109, 59, 0.25);
 }
 
@@ -4452,7 +4452,7 @@ b.lecta-anchor {
   padding: 3px 9px;
   border-radius: 999px;
   background: var(--paper-raised);
-  border: 1px solid var(--border-soft);
+  border: 1px solid var(--rule);
   color: var(--ink);
 }
 
@@ -4466,7 +4466,7 @@ b.lecta-anchor {
   background: var(--paper-raised);
   border: 1px solid rgba(24, 144, 255, 0.25);
   border-left: 3px solid var(--chroma-blue);
-  border-radius: var(--r-md, 8px);
+  border-radius: var(--radius-s);
 }
 
 .spoiler-free-header {
