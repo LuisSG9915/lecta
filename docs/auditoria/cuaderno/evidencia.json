@@ -1,15 +1,15 @@
 {
   "tool": "audit-cuaderno",
   "version": 1,
-  "generado": "2026-11-10T17:48:39.840Z",
-  "commit": "aebc4bdb3d81",
+  "generado": "2026-11-10T19:02:35.229Z",
+  "commit": "2c8f9c0aca8d",
   "queja": "no recuerdo para nada las palabras al dar iniciar sesión fluida… primero tengo que aprenderme las palabras, de ahí sí puedo practicar",
   "resumen": {
-    "total": 23,
-    "confirmadas": 10,
+    "total": 27,
+    "confirmadas": 7,
     "parciales": 0,
     "movidas": 0,
-    "corregidas": 13,
+    "corregidas": 20,
     "regresiones": 0
   },
   "claims": [
@@ -22,37 +22,37 @@
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:2533 ~ /\\) : reviewWords\\.length > 0 \\? \\(/",
+          "detalle": "src/client/components/notebook/NotebookHero.tsx:210 ~ /\\) : reviewWordCount > 0 \\? \\(/",
           "evidencia": {
-            "file": "src/client/components/Vocabulary.tsx",
-            "line": 2533,
-            "text": ") : reviewWords.length > 0 ? ("
+            "file": "src/client/components/notebook/NotebookHero.tsx",
+            "line": 210,
+            "text": ") : reviewWordCount > 0 ? ("
           }
         },
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:2567 ~ /\\) : learnable\\.length > 0 \\? \\(/",
+          "detalle": "src/client/components/notebook/NotebookHero.tsx:244 ~ /\\) : learnableCount > 0 \\? \\(/",
           "evidencia": {
-            "file": "src/client/components/Vocabulary.tsx",
-            "line": 2567,
-            "text": ") : learnable.length > 0 ? ("
+            "file": "src/client/components/notebook/NotebookHero.tsx",
+            "line": 244,
+            "text": ") : learnableCount > 0 ? ("
           }
         },
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:2561 ~ /onClick=\\{\\(\\) => startLearn\\(\\)\\}/",
+          "detalle": "src/client/components/notebook/LearnSessionView.tsx:97 ~ /onClick=\\{\\(\\) => startLearn\\(\\)\\}/",
           "evidencia": {
-            "file": "src/client/components/Vocabulary.tsx",
-            "line": 2561,
+            "file": "src/client/components/notebook/LearnSessionView.tsx",
+            "line": 97,
             "text": "onClick={() => startLearn()}"
           }
         },
         {
           "tipo": "ausente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:1-9999 no contiene /Iniciar Sesi[oó]n Fluida/",
+          "detalle": "ningún archivo del Cuaderno contiene /Iniciar Sesi[oó]n Fluida/",
           "evidencia": {}
         }
       ],
@@ -68,11 +68,11 @@
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:1053 ~ /const reviewWords = reviewQueue\\(scopedWords, knownKeys, exposure\\);/",
+          "detalle": "src/client/components/Vocabulary.tsx:261 ~ /\\(\\) => reviewQueue\\(scopedWords, knownKeys, exposure\\),/",
           "evidencia": {
             "file": "src/client/components/Vocabulary.tsx",
-            "line": 1053,
-            "text": "const reviewWords = reviewQueue(scopedWords, knownKeys, exposure);"
+            "line": 261,
+            "text": "() => reviewQueue(scopedWords, knownKeys, exposure),"
           }
         },
         {
@@ -88,7 +88,7 @@
         {
           "tipo": "ausente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:1-9999 no contiene /scopedWords\\.slice\\(0, 5\\)/",
+          "detalle": "ningún archivo del Cuaderno contiene /scopedWords\\.slice\\(0, 5\\)/",
           "evidencia": {}
         }
       ],
@@ -154,30 +154,30 @@
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:1292 ~ /if \\(!isEligible\\(ch\\.word, mode\\)\\) \\{/",
+          "detalle": "src/client/hooks/useReviewSession.ts:358 ~ /if \\(!isEligible\\(ch\\.word, mode\\)\\) \\{/",
           "evidencia": {
-            "file": "src/client/components/Vocabulary.tsx",
-            "line": 1292,
+            "file": "src/client/hooks/useReviewSession.ts",
+            "line": 358,
             "text": "if (!isEligible(ch.word, mode)) {"
           }
         },
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:3906 ~ /Toca la palabra que falta\\./",
+          "detalle": "src/client/components/notebook/PracticeCard.tsx:406 ~ /Toca la palabra que falta\\./",
           "evidencia": {
-            "file": "src/client/components/Vocabulary.tsx",
-            "line": 3906,
+            "file": "src/client/components/notebook/PracticeCard.tsx",
+            "line": 406,
             "text": "<p className=\"meta\">Toca la palabra que falta.</p>"
           }
         },
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:3910 ~ /className=\"nb-card-back\" role=\"status\"/",
+          "detalle": "src/client/components/notebook/PracticeCard.tsx:410 ~ /className=\"nb-card-back\" role=\"status\"/",
           "evidencia": {
-            "file": "src/client/components/Vocabulary.tsx",
-            "line": 3910,
+            "file": "src/client/components/notebook/PracticeCard.tsx",
+            "line": 410,
             "text": "<p className=\"nb-card-back\" role=\"status\">"
           }
         }
@@ -194,16 +194,16 @@
         {
           "tipo": "ausente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:1-9999 no contiene /aria-label=\"Palabras por aprender\"/",
+          "detalle": "ningún archivo del Cuaderno contiene /aria-label=\"Palabras por aprender\"/",
           "evidencia": {}
         },
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:2561 ~ /onClick=\\{\\(\\) => startLearn\\(\\)\\}/",
+          "detalle": "src/client/components/notebook/LearnSessionView.tsx:97 ~ /onClick=\\{\\(\\) => startLearn\\(\\)\\}/",
           "evidencia": {
-            "file": "src/client/components/Vocabulary.tsx",
-            "line": 2561,
+            "file": "src/client/components/notebook/LearnSessionView.tsx",
+            "line": 97,
             "text": "onClick={() => startLearn()}"
           }
         }
@@ -230,10 +230,10 @@
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:902 ~ /listSavedWords\\(/",
+          "detalle": "src/client/hooks/useNotebookData.ts:69 ~ /listSavedWords\\(/",
           "evidencia": {
-            "file": "src/client/components/Vocabulary.tsx",
-            "line": 902,
+            "file": "src/client/hooks/useNotebookData.ts",
+            "line": 69,
             "text": "void listSavedWords(undefined, scope)"
           }
         }
@@ -250,27 +250,27 @@
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:1064 ~ /Aprender \\$\\{learnBatch\\} de \\$\\{learnable\\.length\\}/",
+          "detalle": "src/client/components/Vocabulary.tsx:287 ~ /Aprender \\$\\{learnBatch\\} de \\$\\{learnable\\.length\\}/",
           "evidencia": {
             "file": "src/client/components/Vocabulary.tsx",
-            "line": 1064,
+            "line": 287,
             "text": "? `Aprender ${learnBatch} de ${learnable.length} ${learnNoun}`"
           }
         },
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:2550 ~ /Repasar \\{Math\\.min\\(REVIEW_SESSION_SIZE, reviewWords\\.length\\)\\}/",
+          "detalle": "src/client/components/notebook/NotebookHero.tsx:227 ~ /Repasar \\{Math\\.min\\(REVIEW_SESSION_SIZE, reviewWordCount\\)\\}/",
           "evidencia": {
-            "file": "src/client/components/Vocabulary.tsx",
-            "line": 2550,
-            "text": "Repasar {Math.min(REVIEW_SESSION_SIZE, reviewWords.length)}{\" \"}"
+            "file": "src/client/components/notebook/NotebookHero.tsx",
+            "line": 227,
+            "text": "Repasar {Math.min(REVIEW_SESSION_SIZE, reviewWordCount)}{\" \"}"
           }
         },
         {
           "tipo": "ausente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:2051-2106 no contiene /~2 min|1 min/",
+          "detalle": "ningún archivo del Cuaderno contiene /~2 min|1 min/",
           "evidencia": {}
         }
       ],
@@ -286,21 +286,21 @@
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:2344 ~ /por aprender/",
+          "detalle": "src/client/components/Vocabulary.tsx:597 ~ /por aprender/",
           "evidencia": {
             "file": "src/client/components/Vocabulary.tsx",
-            "line": 2344,
+            "line": 597,
             "text": "learnable.length > 0 ? ` · ${learnable.length} por aprender` : \"\""
           }
         },
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:1302 ~ /para repasar/",
+          "detalle": "src/client/components/Vocabulary.tsx:598 ~ /para repasar/",
           "evidencia": {
             "file": "src/client/components/Vocabulary.tsx",
-            "line": 1302,
-            "text": "\"Estas palabras necesitan una oración o un significado para repasarse.\","
+            "line": 598,
+            "text": "} · ${reviewWords.length} para repasar`"
           }
         }
       ],
@@ -326,10 +326,10 @@
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:2014 ~ /challenge\\.level <= 1/",
+          "detalle": "src/client/hooks/useReviewSession.ts:708 ~ /challenge\\.level <= 1/",
           "evidencia": {
-            "file": "src/client/components/Vocabulary.tsx",
-            "line": 2014,
+            "file": "src/client/hooks/useReviewSession.ts",
+            "line": 708,
             "text": "if (!challenge || challenge.level <= 1) return false;"
           }
         }
@@ -346,17 +346,17 @@
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:2791 ~ /mode=\\{workshopOpen \\? \"ai_workshop\" : \"dashboard\"\\}/",
+          "detalle": "src/client/components/Vocabulary.tsx:679 ~ /mode=\\{workshopOpen \\? \"ai_workshop\" : \"dashboard\"\\}/",
           "evidencia": {
             "file": "src/client/components/Vocabulary.tsx",
-            "line": 2791,
+            "line": 679,
             "text": "mode={workshopOpen ? \"ai_workshop\" : \"dashboard\"}"
           }
         },
         {
           "tipo": "ausente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:2051-2106 no contiene /notebook-quick-review-cta/",
+          "detalle": "ningún archivo del Cuaderno contiene /notebook-quick-review-cta/",
           "evidencia": {}
         }
       ],
@@ -412,20 +412,20 @@
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:527 ~ /const isEligible = \\(word: SavedWord, mode: PracticeMode\\) => \\{/",
+          "detalle": "src/client/lib/notebook-model.ts:227 ~ /const isEligible = \\(word: SavedWord, mode: PracticeMode\\) => \\{/",
           "evidencia": {
-            "file": "src/client/components/Vocabulary.tsx",
-            "line": 527,
-            "text": "const isEligible = (word: SavedWord, mode: PracticeMode) => {"
+            "file": "src/client/lib/notebook-model.ts",
+            "line": 227,
+            "text": "export const isEligible = (word: SavedWord, mode: PracticeMode) => {"
           }
         },
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:1292 ~ /if \\(!isEligible\\(ch\\.word, mode\\)\\) \\{/",
+          "detalle": "src/client/hooks/useReviewSession.ts:358 ~ /if \\(!isEligible\\(ch\\.word, mode\\)\\) \\{/",
           "evidencia": {
-            "file": "src/client/components/Vocabulary.tsx",
-            "line": 1292,
+            "file": "src/client/hooks/useReviewSession.ts",
+            "line": 358,
             "text": "if (!isEligible(ch.word, mode)) {"
           }
         }
@@ -442,30 +442,30 @@
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:1407 ~ /const startLearn = \\(first\\?: SavedWord\\) => \\{/",
+          "detalle": "src/client/hooks/useLearnSession.ts:87 ~ /const startLearn = \\(first\\?: SavedWord\\) => \\{/",
           "evidencia": {
-            "file": "src/client/components/Vocabulary.tsx",
-            "line": 1407,
+            "file": "src/client/hooks/useLearnSession.ts",
+            "line": 87,
             "text": "const startLearn = (first?: SavedWord) => {"
           }
         },
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:1506 ~ /const learnKeep = async \\(\\) => \\{/",
+          "detalle": "src/client/hooks/useLearnSession.ts:186 ~ /const learnKeep = async \\(\\) => \\{/",
           "evidencia": {
-            "file": "src/client/components/Vocabulary.tsx",
-            "line": 1506,
+            "file": "src/client/hooks/useLearnSession.ts",
+            "line": 186,
             "text": "const learnKeep = async () => {"
           }
         },
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:3354 ~ /Repasar esta palabra/",
+          "detalle": "src/client/components/notebook/LearnSessionView.tsx:89 ~ /Repasar esta palabra/",
           "evidencia": {
-            "file": "src/client/components/Vocabulary.tsx",
-            "line": 3354,
+            "file": "src/client/components/notebook/LearnSessionView.tsx",
+            "line": 89,
             "text": "? \"Repasar esta palabra\""
           }
         }
@@ -512,30 +512,30 @@
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:372 ~ /reviewWords/",
+          "detalle": "src/client/components/Vocabulary.tsx:260 ~ /reviewWords/",
           "evidencia": {
             "file": "src/client/components/Vocabulary.tsx",
-            "line": 372,
-            "text": "// salen de reviewWords — nunca de palabras sin exponer."
+            "line": 260,
+            "text": "const reviewWords = useMemo("
           }
         },
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:2598 ~ /disabled=\\{reviewWords\\.filter\\(\\(w\\) => isEligible\\(w, \"cloze\"\\)\\)\\.length === 0\\}/",
+          "detalle": "src/client/components/notebook/FreeModes.tsx:41 ~ /disabled=\\{eligibleCount\\.cloze === 0\\}/",
           "evidencia": {
-            "file": "src/client/components/Vocabulary.tsx",
-            "line": 2598,
-            "text": "disabled={reviewWords.filter((w) => isEligible(w, \"cloze\")).length === 0}"
+            "file": "src/client/components/notebook/FreeModes.tsx",
+            "line": 41,
+            "text": "disabled={eligibleCount.cloze === 0}"
           }
         },
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:2720 ~ /Los modos libres usan palabras que ya viste/",
+          "detalle": "src/client/components/notebook/FreeModes.tsx:128 ~ /Los modos libres usan palabras que ya viste/",
           "evidencia": {
-            "file": "src/client/components/Vocabulary.tsx",
-            "line": 2720,
+            "file": "src/client/components/notebook/FreeModes.tsx",
+            "line": 128,
             "text": "? \"Los modos libres usan palabras que ya viste. Aprende primero las nuevas.\""
           }
         }
@@ -552,30 +552,30 @@
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:1049 ~ /const canHint = hasSession && useAi;/",
+          "detalle": "src/client/components/Vocabulary.tsx:249 ~ /const canHint = hasSession && useAi;/",
           "evidencia": {
             "file": "src/client/components/Vocabulary.tsx",
-            "line": 1049,
+            "line": 249,
             "text": "const canHint = hasSession && useAi;"
           }
         },
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:1730 ~ /hints: hintsUsedRef\\.current,/",
+          "detalle": "src/client/hooks/useReviewSession.ts:470 ~ /hints: hintsUsedRef\\.current,/",
           "evidencia": {
-            "file": "src/client/components/Vocabulary.tsx",
-            "line": 1730,
+            "file": "src/client/hooks/useReviewSession.ts",
+            "line": 470,
             "text": "hints: hintsUsedRef.current,"
           }
         },
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:2044 ~ /const stillHere = \\(\\) => hintForRef\\.current === forKey;/",
+          "detalle": "src/client/hooks/useReviewSession.ts:738 ~ /const stillHere = \\(\\) => hintForRef\\.current === forKey;/",
           "evidencia": {
-            "file": "src/client/components/Vocabulary.tsx",
-            "line": 2044,
+            "file": "src/client/hooks/useReviewSession.ts",
+            "line": 738,
             "text": "const stillHere = () => hintForRef.current === forKey;"
           }
         }
@@ -592,20 +592,20 @@
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:2012 ~ /const tryRescue = \\(item: QueueItem, speech: string\\): boolean =>/",
+          "detalle": "src/client/hooks/useReviewSession.ts:706 ~ /const tryRescue = \\(item: QueueItem, speech: string\\): boolean =>/",
           "evidencia": {
-            "file": "src/client/components/Vocabulary.tsx",
-            "line": 2012,
+            "file": "src/client/hooks/useReviewSession.ts",
+            "line": 706,
             "text": "const tryRescue = (item: QueueItem, speech: string): boolean => {"
           }
         },
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:2015 ~ /const rescueMode: PracticeMode \\| null = isEligible\\(item\\.word, \"choose\"\\)/",
+          "detalle": "src/client/hooks/useReviewSession.ts:709 ~ /const rescueMode: PracticeMode \\| null = isEligible\\(item\\.word, \"choose\"\\)/",
           "evidencia": {
-            "file": "src/client/components/Vocabulary.tsx",
-            "line": 2015,
+            "file": "src/client/hooks/useReviewSession.ts",
+            "line": 709,
             "text": "const rescueMode: PracticeMode | null = isEligible(item.word, \"choose\")"
           }
         }
@@ -622,20 +622,20 @@
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:1718 ~ /wordsRef\\.current\\?\\.find\\(\\(w\\) => w\\.key === queued\\.key/",
+          "detalle": "src/client/hooks/useReviewSession.ts:458 ~ /wordsRef\\.current\\?\\.find\\(\\(w\\) => w\\.key === queued\\.key/",
           "evidencia": {
-            "file": "src/client/components/Vocabulary.tsx",
-            "line": 1718,
+            "file": "src/client/hooks/useReviewSession.ts",
+            "line": 458,
             "text": "wordsRef.current?.find((w) => w.key === queued.key && !w.deleted) ?? queued;"
           }
         },
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:921 ~ /return m && \\(m\\.updatedAt \\?\\? 0\\) >= \\(w\\.updatedAt \\?\\? 0\\) \\? m : w;/",
+          "detalle": "src/client/hooks/useNotebookData.ts:88 ~ /return m && \\(m\\.updatedAt \\?\\? 0\\) >= \\(w\\.updatedAt \\?\\? 0\\) \\? m : w;/",
           "evidencia": {
-            "file": "src/client/components/Vocabulary.tsx",
-            "line": 921,
+            "file": "src/client/hooks/useNotebookData.ts",
+            "line": 88,
             "text": "return m && (m.updatedAt ?? 0) >= (w.updatedAt ?? 0) ? m : w;"
           }
         }
@@ -652,30 +652,30 @@
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:1319 ~ /Esta palabra necesita un significado o una oración para repasarse\\./",
+          "detalle": "src/client/hooks/useReviewSession.ts:384 ~ /Esta palabra necesita un significado o una oración para repasarse\\./",
           "evidencia": {
-            "file": "src/client/components/Vocabulary.tsx",
-            "line": 1319,
+            "file": "src/client/hooks/useReviewSession.ts",
+            "line": 384,
             "text": "setSaveError(\"Esta palabra necesita un significado o una oración para repasarse.\");"
           }
         },
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:1238 ~ /Parejas necesita al menos dos palabras con significado\\./",
+          "detalle": "src/client/hooks/useReviewSession.ts:304 ~ /Parejas necesita al menos dos palabras con significado\\./",
           "evidencia": {
-            "file": "src/client/components/Vocabulary.tsx",
-            "line": 1238,
+            "file": "src/client/hooks/useReviewSession.ts",
+            "line": 304,
             "text": "setPracticeNote(\"Parejas necesita al menos dos palabras con significado.\");"
           }
         },
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:1243 ~ /items\\.length % MATCH_TANDA === 1/",
+          "detalle": "src/client/hooks/useReviewSession.ts:309 ~ /items\\.length % MATCH_TANDA === 1/",
           "evidencia": {
-            "file": "src/client/components/Vocabulary.tsx",
-            "line": 1243,
+            "file": "src/client/hooks/useReviewSession.ts",
+            "line": 309,
             "text": "if (items.length % MATCH_TANDA === 1) queueItems = items.slice(0, -1);"
           }
         }
@@ -692,20 +692,20 @@
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:1414 ~ /learnPassedRef\\.current\\.has\\(word\\.key\\) \\? 2 : word\\.meaning \\? 0 : 1/",
+          "detalle": "src/client/hooks/useLearnSession.ts:94 ~ /learnPassedRef\\.current\\.has\\(word\\.key\\) \\? 2 : word\\.meaning \\? 0 : 1/",
           "evidencia": {
-            "file": "src/client/components/Vocabulary.tsx",
-            "line": 1414,
+            "file": "src/client/hooks/useLearnSession.ts",
+            "line": 94,
             "text": "learnPassedRef.current.has(word.key) ? 2 : word.meaning ? 0 : 1;"
           }
         },
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:3518 ~ /onClick=\\{passLearn\\}/",
+          "detalle": "src/client/components/notebook/LearnSessionView.tsx:253 ~ /onClick=\\{passLearn\\}/",
           "evidencia": {
-            "file": "src/client/components/Vocabulary.tsx",
-            "line": 3518,
+            "file": "src/client/components/notebook/LearnSessionView.tsx",
+            "line": 253,
             "text": "onClick={passLearn}"
           }
         }
@@ -715,95 +715,271 @@
     },
     {
       "id": "C13-modos-libres-a-la-vista",
-      "tipo": "defecto",
-      "titulo": "Los modos libres siguen a la vista en el héroe: no hay <details> que los pliegue",
-      "porque": "El plan v1 (Fase 1) pedía colapsarlos; el 2026-11-09 se añadió además «Más ejercicios». Decisión de Luis (2026-11-10): un solo plegable «Más formas de practicar», cerrado por defecto.",
+      "tipo": "corregido",
+      "titulo": "Los modos libres viven en un solo <details> «Más formas de practicar», cerrado por defecto",
+      "porque": "El plan v1 (Fase 1) pedía colapsarlos y el 2026-11-09 se añadió «Más ejercicios» a la vista. Decisión de Luis (2026-11-10): un solo plegable; los 5 modos, el taller y los 8 extra comparten rejilla.",
       "checks": [
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:2591 ~ /<div className=\"nb-free-modes\">/",
+          "detalle": "src/client/components/notebook/FreeModes.tsx:34 ~ /<details className=\"nb-free-modes\">/",
           "evidencia": {
-            "file": "src/client/components/Vocabulary.tsx",
-            "line": 2591,
-            "text": "<div className=\"nb-free-modes\">"
+            "file": "src/client/components/notebook/FreeModes.tsx",
+            "line": 34,
+            "text": "<details className=\"nb-free-modes\">"
+          }
+        },
+        {
+          "tipo": "presente",
+          "estado": "COINCIDE",
+          "detalle": "src/client/components/notebook/FreeModes.tsx:35 ~ /Más formas de practicar</summary>/",
+          "evidencia": {
+            "file": "src/client/components/notebook/FreeModes.tsx",
+            "line": 35,
+            "text": "<summary className=\"nb-free-modes-label\">Más formas de practicar</summary>"
           }
         },
         {
           "tipo": "ausente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:1-9999 no contiene /<details[^>]*nb-free-modes/",
+          "detalle": "ningún archivo del Cuaderno contiene /moreModesOpen|nb-free-mode-more/",
           "evidencia": {}
         }
       ],
-      "estado": "CONFIRMADO",
-      "coincidencias": "2/2"
+      "estado": "CORREGIDO",
+      "coincidencias": "3/3"
     },
     {
       "id": "C14-gamificacion-en-el-heroe",
-      "tipo": "defecto",
-      "titulo": "«Energía Léxica» con Combo y puntos sigue en el héroe y el cierre pinta «XP / Nivel»",
-      "porque": "El plan v1 (Fase 2) pedía sacar XP y Combo del flujo principal; el bloque nb-hero-energy es de 2026-10-13 y no se ha movido. La racha debe vivir solo en el cierre de sesión.",
+      "tipo": "corregido",
+      "titulo": "El héroe ya no muestra «Energía Léxica», Combo ni puntos; el cierre ya no pinta «XP / Nivel»",
+      "porque": "El plan v1 (Fase 2) pedía sacar XP y Combo del flujo principal. La racha vive solo en el cierre de sesión.",
       "checks": [
         {
-          "tipo": "presente",
+          "tipo": "ausente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:2492 ~ /<div className=\"nb-hero-energy\"/",
-          "evidencia": {
-            "file": "src/client/components/Vocabulary.tsx",
-            "line": 2492,
-            "text": "<div className=\"nb-hero-energy\" aria-label=\"Energía Léxica y Racha\">"
-          }
+          "detalle": "ningún archivo del Cuaderno contiene /nb-hero-energy|Energía Léxica/",
+          "evidencia": {}
+        },
+        {
+          "tipo": "ausente",
+          "estado": "COINCIDE",
+          "detalle": "ningún archivo del Cuaderno contiene /⭐|levelProgress/",
+          "evidencia": {}
         },
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:2496 ~ /<span>Energía Léxica</span>/",
+          "detalle": "src/client/components/notebook/ReviewDone.tsx:45 ~ /Racha de \\$\\{streakDays\\} días\\./",
           "evidencia": {
-            "file": "src/client/components/Vocabulary.tsx",
-            "line": 2496,
-            "text": "<span>Energía Léxica</span>"
-          }
-        },
-        {
-          "tipo": "presente",
-          "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:3562 ~ /⭐ \\{Math\\.round\\(companion\\.state\\.xp\\)\\} XP/",
-          "evidencia": {
-            "file": "src/client/components/Vocabulary.tsx",
-            "line": 3562,
-            "text": "⭐ {Math.round(companion.state.xp)} XP"
+            "file": "src/client/components/notebook/ReviewDone.tsx",
+            "line": 45,
+            "text": "{streakDays && streakDays > 1 ? ` Racha de ${streakDays} días.` : \"\"}"
           }
         }
       ],
-      "estado": "CONFIRMADO",
+      "estado": "CORREGIDO",
       "coincidencias": "3/3"
     },
     {
       "id": "C15-no-hay-cierre-unico-de-sesion",
-      "tipo": "defecto",
-      "titulo": "No existe el cierre «Terminado por hoy.»; el repaso cierra con «Repaso terminado.» y «Terminar por hoy» sale sin cierre",
-      "porque": "El plan v1 (Fase 3) describía un cierre único con próxima fecha y racha. La frase no existe en src/ ni en el historial de git; el botón de salida hace setQueue(null) directo.",
+      "tipo": "corregido",
+      "titulo": "Cierre único «Terminado por hoy.» con próxima fecha y racha; «Terminar por hoy» pasa por él",
+      "porque": "El plan v1 (Fase 3) describía un cierre único. Vaciar la cola y salir a mitad (si ya se repasó algo) llegan a la misma pantalla; sin repasos, sale al cuaderno sin cierre.",
       "checks": [
+        {
+          "tipo": "presente",
+          "estado": "COINCIDE",
+          "detalle": "src/client/components/notebook/ReviewDone.tsx:39 ~ /Terminado por hoy\\.</p>/",
+          "evidencia": {
+            "file": "src/client/components/notebook/ReviewDone.tsx",
+            "line": 39,
+            "text": "<p className=\"nb-done-title\">Terminado por hoy.</p>"
+          }
+        },
         {
           "tipo": "ausente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:1-9999 no contiene /Terminado por hoy/",
+          "detalle": "ningún archivo del Cuaderno contiene /Repaso terminado\\.</p>/",
           "evidencia": {}
         },
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/components/Vocabulary.tsx:3550 ~ /Repaso terminado\\.</p>/",
+          "detalle": "src/client/components/notebook/PracticeCard.tsx:640 ~ /onClick=\\{\\(\\) => endSessionForToday\\(Date\\.now\\(\\)\\)\\}/",
           "evidencia": {
-            "file": "src/client/components/Vocabulary.tsx",
-            "line": 3550,
-            "text": "<p className=\"nb-done-title\">Repaso terminado.</p>"
+            "file": "src/client/components/notebook/PracticeCard.tsx",
+            "line": 640,
+            "text": "onClick={() => endSessionForToday(Date.now())}"
           }
         }
       ],
-      "estado": "CONFIRMADO",
-      "coincidencias": "2/2"
+      "estado": "CORREGIDO",
+      "coincidencias": "3/3"
+    },
+    {
+      "id": "C21-una-sola-cuenta-del-ciclo-de-vida",
+      "tipo": "corregido",
+      "titulo": "«Nuevas» (píldora, filtro y fila) es exactamente «por aprender»; una declarada conocida cuenta como dominada",
+      "porque": "wordStage contaba como «nueva» también a las ya repasadas con S < 2 días y a las conocidas, así que la píldora no cuadraba con el encabezado. Ahora hay un solo WordLifecycle (pending/known) para píldoras, filtros, filas y orden.",
+      "checks": [
+        {
+          "tipo": "presente",
+          "estado": "COINCIDE",
+          "detalle": "src/client/lib/notebook-model.ts:170 ~ /type WordLifecycle = \\{ pending: boolean; known: boolean \\};/",
+          "evidencia": {
+            "file": "src/client/lib/notebook-model.ts",
+            "line": 170,
+            "text": "export type WordLifecycle = { pending: boolean; known: boolean };"
+          }
+        },
+        {
+          "tipo": "presente",
+          "estado": "COINCIDE",
+          "detalle": "src/client/hooks/useHerbarioView.ts:112 ~ /const lifecycle = useCallback\\(/",
+          "evidencia": {
+            "file": "src/client/hooks/useHerbarioView.ts",
+            "line": 112,
+            "text": "const lifecycle = useCallback("
+          }
+        },
+        {
+          "tipo": "ausente",
+          "estado": "COINCIDE",
+          "detalle": "ningún archivo del Cuaderno contiene /isUnexposedWord/",
+          "evidencia": {}
+        }
+      ],
+      "estado": "CORREGIDO",
+      "coincidencias": "3/3"
+    },
+    {
+      "id": "C22-deshacer-unico-y-citas-reversibles",
+      "tipo": "corregido",
+      "titulo": "Un solo aviso de deshacer por palabra; borrar una cita se puede deshacer y un fallo de guardado se muestra",
+      "porque": "El aviso de «se quitó del cuaderno» se pintaba dos veces, y removeQuote tragaba el error y no ofrecía recuperar la cita.",
+      "checks": [
+        {
+          "tipo": "ausente",
+          "estado": "COINCIDE",
+          "detalle": "ningún archivo del Cuaderno contiene /className=\"nb-undo\"/",
+          "evidencia": {}
+        },
+        {
+          "tipo": "presente",
+          "estado": "COINCIDE",
+          "detalle": "src/client/components/Vocabulary.tsx:485 ~ /const restoreQuote = async \\(\\) =>/",
+          "evidencia": {
+            "file": "src/client/components/Vocabulary.tsx",
+            "line": 485,
+            "text": "const restoreQuote = async () => {"
+          }
+        },
+        {
+          "tipo": "presente",
+          "estado": "COINCIDE",
+          "detalle": "src/client/components/Vocabulary.tsx:475 ~ /No se pudo quitar la cita\\. Intenta de nuevo\\./",
+          "evidencia": {
+            "file": "src/client/components/Vocabulary.tsx",
+            "line": 475,
+            "text": "setSaveError(\"No se pudo quitar la cita. Intenta de nuevo.\");"
+          }
+        }
+      ],
+      "estado": "CORREGIDO",
+      "coincidencias": "3/3"
+    },
+    {
+      "id": "C23-chips-gato-y-glifos-accesibles",
+      "tipo": "corregido",
+      "titulo": "Chips recientes como lista de botones sin glifos de texto; el chip limpia lo que esconde la palabra; el gato solo con compañero activo y con el mismo manejador en clic y teclado",
+      "porque": "Los chips eran botones con role=listitem, tocarlos no hacía nada visible bajo un filtro, el gato se pintaba con el compañero apagado y su teclado no hacía lo mismo que el clic.",
+      "checks": [
+        {
+          "tipo": "presente",
+          "estado": "COINCIDE",
+          "detalle": "src/client/components/Vocabulary.tsx:652 ~ /<ul className=\"nb-recent-track\">/",
+          "evidencia": {
+            "file": "src/client/components/Vocabulary.tsx",
+            "line": 652,
+            "text": "<ul className=\"nb-recent-track\">"
+          }
+        },
+        {
+          "tipo": "ausente",
+          "estado": "COINCIDE",
+          "detalle": "ningún archivo del Cuaderno contiene /role=\"listitem\"|aria-hidden=\"true\">★|\"▸ \"|\"▾ \"/",
+          "evidencia": {}
+        },
+        {
+          "tipo": "presente",
+          "estado": "COINCIDE",
+          "detalle": "src/client/components/Vocabulary.tsx:220 ~ /setFilter\\(\"all\"\\);/",
+          "evidencia": {
+            "file": "src/client/components/Vocabulary.tsx",
+            "line": 220,
+            "text": "setFilter(\"all\");"
+          }
+        },
+        {
+          "tipo": "presente",
+          "estado": "COINCIDE",
+          "detalle": "src/client/components/Vocabulary.tsx:315 ~ /const heroCompanion = companion\\?\\.enabled && companion\\.state \\? companion : null;/",
+          "evidencia": {
+            "file": "src/client/components/Vocabulary.tsx",
+            "line": 315,
+            "text": "const heroCompanion = companion?.enabled && companion.state ? companion : null;"
+          }
+        }
+      ],
+      "estado": "CORREGIDO",
+      "coincidencias": "4/4"
+    },
+    {
+      "id": "C24-sin-codigo-muerto-y-calculos-memoizados",
+      "tipo": "corregido",
+      "titulo": "Sin UnifiedNotebookView, pestaña «today» ni MODES.needs; cola, conteos y filtrado memoizados (búsqueda diferida con índice)",
+      "porque": "UnifiedNotebookView no se usaba (App nunca pasa words) y cada render recalculaba reviewQueue, ~14 filtros con regex y la lista filtrada, también en cada tecla del buscador. Medido con 400 palabras en jsdom: mediana por tecla 21 ms → 15 ms.",
+      "checks": [
+        {
+          "tipo": "ausente",
+          "estado": "COINCIDE",
+          "detalle": "ningún archivo del Cuaderno contiene /UnifiedNotebookView|tab === \"today\"|needs: \"/",
+          "evidencia": {}
+        },
+        {
+          "tipo": "presente",
+          "estado": "COINCIDE",
+          "detalle": "src/client/components/Vocabulary.tsx:261 ~ /\\(\\) => reviewQueue\\(scopedWords, knownKeys, exposure\\),/",
+          "evidencia": {
+            "file": "src/client/components/Vocabulary.tsx",
+            "line": 261,
+            "text": "() => reviewQueue(scopedWords, knownKeys, exposure),"
+          }
+        },
+        {
+          "tipo": "presente",
+          "estado": "COINCIDE",
+          "detalle": "src/client/hooks/useHerbarioView.ts:168 ~ /const deferredQuery = useDeferredValue\\(query\\);/",
+          "evidencia": {
+            "file": "src/client/hooks/useHerbarioView.ts",
+            "line": 168,
+            "text": "const deferredQuery = useDeferredValue(query);"
+          }
+        },
+        {
+          "tipo": "presente",
+          "estado": "COINCIDE",
+          "detalle": "src/client/components/Vocabulary.tsx:267 ~ /const eligibleCount = useMemo\\(/",
+          "evidencia": {
+            "file": "src/client/components/Vocabulary.tsx",
+            "line": 267,
+            "text": "const eligibleCount = useMemo(() => {"
+          }
+        }
+      ],
+      "estado": "CORREGIDO",
+      "coincidencias": "4/4"
     }
   ],
   "research": [

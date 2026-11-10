@@ -2243,53 +2243,6 @@
   padding: var(--s-1) var(--s-3);
 }
 
-/* ---------- Resumen de progreso al finalizar repaso ---------- */
-
-.nb-done-progress {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-2);
-  margin-block: var(--s-3);
-  padding: var(--s-3);
-  background: var(--paper-raised);
-  border: var(--border);
-  border-radius: var(--r-2);
-  text-align: start;
-}
-
-.nb-done-stats {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--s-2);
-}
-
-.nb-done-badge {
-  font-weight: 700;
-  color: var(--vermilion);
-  font-size: var(--fs-md);
-}
-
-.nb-done-level {
-  font-size: var(--fs-sm);
-  color: var(--ink-soft);
-}
-
-.nb-done-bar {
-  inline-size: 100%;
-  block-size: 8px;
-  background: var(--paper-sunken);
-  border-radius: var(--r-pill);
-  overflow: hidden;
-}
-
-.nb-done-fill {
-  block-size: 100%;
-  background: var(--sage);
-  border-radius: var(--r-pill);
-  transition: inline-size var(--dur-3) var(--ease-out);
-}
-
 @keyframes slot-pop {
   0% {
     transform: scale(0.85);
@@ -2496,7 +2449,13 @@
   }
 }
 
+/* Sin compañero activo no hay columna del gato: el resumen ocupa todo el ancho. */
+.nb-hero-study-desk--solo {
+  grid-template-columns: 1fr;
+}
+
 .nb-hero-companion-pane {
+  align-self: start;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -2565,47 +2524,10 @@
   line-height: var(--lh-tight, 1.25);
 }
 
-.nb-hero-energy {
-  margin-block-end: var(--s-4);
-}
-
-.nb-hero-energy-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-size: var(--fs-xs);
-  color: var(--ink-soft);
-  margin-block-end: var(--s-1);
-}
-
-.nb-hero-energy-label {
-  display: flex;
-  align-items: center;
-  gap: var(--s-1);
-  font-weight: 500;
-}
-
-.nb-hero-energy-streak {
-  font-weight: 600;
-  color: var(--ink);
-}
-
-.nb-hero-energy-track {
-  inline-size: 100%;
-  height: 7px;
-  background: var(--paper-sunken, rgba(0, 0, 0, 0.06));
-  border-radius: 999px;
-  overflow: hidden;
-}
-
-.nb-hero-energy-fill {
-  height: 100%;
-  background: linear-gradient(90deg, var(--accent-primary, #c86d3b), var(--ochre, #e09f3e));
-  border-radius: 999px;
-  transition: inline-size 0.4s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
 .nb-hero-cta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
   margin-block-end: var(--s-4);
 }
 
@@ -2637,30 +2559,70 @@
   transform: translateY(0);
 }
 
+/* Botón secundario del héroe («Aprender» cuando hay vencidas): neutro, para
+   que el naranja sólido quede solo en la acción principal. */
+.nb-hero-btn-flow:not(.btn--primary) {
+  background: var(--paper-raised);
+  color: var(--ink);
+  border: 1px solid var(--rule);
+  box-shadow: none;
+}
+
+.nb-hero-btn-flow:not(.btn--primary):hover:not(:disabled) {
+  border-color: var(--vermilion);
+  box-shadow: none;
+}
+
+/* Modos libres: un solo <details> cerrado por defecto bajo el botón
+   principal. La cabecera es un control táctil de ≥44px. */
 .nb-free-modes {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-2);
+  display: block;
 }
 
 .nb-free-modes-label {
-  font-size: var(--fs-xs);
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  min-block-size: 44px;
+  font-size: var(--fs-sm);
   color: var(--ink-soft);
   font-weight: 500;
+  cursor: pointer;
+  list-style: none;
+}
+
+.nb-free-modes-label::-webkit-details-marker {
+  display: none;
+}
+
+.nb-free-modes-label::after {
+  content: "";
+  inline-size: 0.5em;
+  block-size: 0.5em;
+  border-inline-end: 2px solid currentColor;
+  border-block-end: 2px solid currentColor;
+  transform: rotate(45deg);
+  transition: transform var(--dur-2, 0.2s) var(--ease-out, ease-out);
+}
+
+.nb-free-modes[open] > .nb-free-modes-label::after {
+  transform: rotate(-135deg);
+}
+
+.nb-free-modes-label:focus-visible {
+  outline: 2px solid var(--vermilion);
+  outline-offset: 2px;
 }
 
 .nb-free-modes-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
   gap: var(--s-2);
+  margin-block-start: var(--s-2);
 }
 
-/* Segunda fila de «Más ejercicios»: mismo grid, separada de la
-   principal para que se lea como despliegue y no como duplicado. */
-.nb-free-modes-grid--extra {
+.nb-free-modes .nb-practice-note {
   margin-block-start: var(--s-2);
-  padding-block-start: var(--s-2);
-  border-block-start: 1px solid var(--rule);
 }
 
 .nb-free-mode-card {
@@ -2730,6 +2692,9 @@
 
 .nb-recent-track,
 .vocab__recent-strip {
+  list-style: none;
+  margin: 0;
+  padding-inline: 0;
   display: flex;
   gap: var(--s-2);
   overflow-x: auto;
@@ -2738,6 +2703,66 @@
   scrollbar-width: thin;
   -webkit-mask-image: linear-gradient(to right, #000 0%, #000 calc(100% - 24px), transparent 100%);
   mask-image: linear-gradient(to right, #000 0%, #000 calc(100% - 24px), transparent 100%);
+}
+
+.nb-recent-track > li {
+  flex-shrink: 0;
+}
+
+.nb-recent-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-block-end: 6px;
+}
+
+.nb-recent-all-btn {
+  font-size: var(--fs-xs);
+  padding: 6px 10px;
+  min-block-size: 44px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.nb-recent-chip-meaning {
+  opacity: 0.8;
+  font-size: 0.85em;
+  max-inline-size: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nb-actions-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-block-end: var(--s-3);
+}
+
+.nb-quotes-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.nb-done-actions {
+  display: flex;
+  gap: var(--s-2);
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-block-start: var(--s-3);
+}
+
+.nb-group-chevron {
+  display: inline-flex;
+  vertical-align: middle;
+  margin-inline-end: var(--s-1);
+  transition: transform var(--dur-2, 0.2s) var(--ease-out, ease-out);
+}
+
+.nb-group-toggle[aria-expanded="true"] .nb-group-chevron {
+  transform: rotate(90deg);
 }
 
 .nb-recent-chip {
@@ -2772,8 +2797,8 @@
 }
 
 .nb-recent-chip-star {
+  display: inline-flex;
   color: var(--accent-primary, #e08a58);
-  font-size: 0.8em;
 }
 
 .nb-recent-chip-text {

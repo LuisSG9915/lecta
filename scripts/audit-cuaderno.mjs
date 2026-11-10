@@ -62,24 +62,24 @@ export const CLAIMS = [
     checks: [
       {
         tipo: "presente",
-        file: "src/client/components/Vocabulary.tsx",
-        expect: "\\) : reviewWords\\.length > 0 \\? \\(",
+        file: "@notebook",
+        expect: "\\) : reviewWordCount > 0 \\? \\(",
       },
       {
         tipo: "presente",
-        file: "src/client/components/Vocabulary.tsx",
-        expect: "\\) : learnable\\.length > 0 \\? \\(",
+        file: "@notebook",
+        expect: "\\) : learnableCount > 0 \\? \\(",
       },
       {
         tipo: "presente",
-        file: "src/client/components/Vocabulary.tsx",
+        file: "@notebook",
         expect: "onClick=\\{\\(\\) => startLearn\\(\\)\\}",
       },
       {
         tipo: "ausente",
-        file: "src/client/components/Vocabulary.tsx",
+        file: "@notebook",
         from: 1,
-        to: 9999,
+        to: 99999,
         pattern: "Iniciar Sesi[oó]n Fluida",
       },
     ],
@@ -94,8 +94,8 @@ export const CLAIMS = [
     checks: [
       {
         tipo: "presente",
-        file: "src/client/components/Vocabulary.tsx",
-        expect: "const reviewWords = reviewQueue\\(scopedWords, knownKeys, exposure\\);",
+        file: "@notebook",
+        expect: "\\(\\) => reviewQueue\\(scopedWords, knownKeys, exposure\\),",
       },
       {
         tipo: "presente",
@@ -104,9 +104,9 @@ export const CLAIMS = [
       },
       {
         tipo: "ausente",
-        file: "src/client/components/Vocabulary.tsx",
+        file: "@notebook",
         from: 1,
-        to: 9999,
+        to: 99999,
         pattern: "scopedWords\\.slice\\(0, 5\\)",
       },
     ],
@@ -150,17 +150,17 @@ export const CLAIMS = [
       },
       {
         tipo: "presente",
-        file: "src/client/components/Vocabulary.tsx",
+        file: "@notebook",
         expect: "if \\(!isEligible\\(ch\\.word, mode\\)\\) \\{",
       },
       {
         tipo: "presente",
-        file: "src/client/components/Vocabulary.tsx",
+        file: "@notebook",
         expect: "Toca la palabra que falta\\.",
       },
       {
         tipo: "presente",
-        file: "src/client/components/Vocabulary.tsx",
+        file: "@notebook",
         expect: 'className="nb-card-back" role="status"',
       },
     ],
@@ -174,14 +174,14 @@ export const CLAIMS = [
     checks: [
       {
         tipo: "ausente",
-        file: "src/client/components/Vocabulary.tsx",
+        file: "@notebook",
         from: 1,
-        to: 9999,
+        to: 99999,
         pattern: 'aria-label="Palabras por aprender"',
       },
       {
         tipo: "presente",
-        file: "src/client/components/Vocabulary.tsx",
+        file: "@notebook",
         expect: "onClick=\\{\\(\\) => startLearn\\(\\)\\}",
       },
     ],
@@ -201,7 +201,7 @@ export const CLAIMS = [
       },
       {
         tipo: "presente",
-        file: "src/client/components/Vocabulary.tsx",
+        file: "@notebook",
         expect: "listSavedWords\\(",
       },
     ],
@@ -216,19 +216,19 @@ export const CLAIMS = [
     checks: [
       {
         tipo: "presente",
-        file: "src/client/components/Vocabulary.tsx",
+        file: "@notebook",
         expect: "Aprender \\$\\{learnBatch\\} de \\$\\{learnable\\.length\\}",
       },
       {
         tipo: "presente",
-        file: "src/client/components/Vocabulary.tsx",
-        expect: "Repasar \\{Math\\.min\\(REVIEW_SESSION_SIZE, reviewWords\\.length\\)\\}",
+        file: "@notebook",
+        expect: "Repasar \\{Math\\.min\\(REVIEW_SESSION_SIZE, reviewWordCount\\)\\}",
       },
       {
         tipo: "ausente",
-        file: "src/client/components/Vocabulary.tsx",
-        from: 2051,
-        to: 2106,
+        file: "@notebook",
+        from: 1,
+        to: 99999,
         pattern: "~2 min|1 min",
       },
     ],
@@ -242,12 +242,12 @@ export const CLAIMS = [
     checks: [
       {
         tipo: "presente",
-        file: "src/client/components/Vocabulary.tsx",
+        file: "@notebook",
         expect: "por aprender",
       },
       {
         tipo: "presente",
-        file: "src/client/components/Vocabulary.tsx",
+        file: "@notebook",
         expect: "para repasar",
       },
     ],
@@ -267,7 +267,7 @@ export const CLAIMS = [
       },
       {
         tipo: "presente",
-        file: "src/client/components/Vocabulary.tsx",
+        file: "@notebook",
         expect: "challenge\\.level <= 1",
       },
     ],
@@ -281,14 +281,14 @@ export const CLAIMS = [
     checks: [
       {
         tipo: "presente",
-        file: "src/client/components/Vocabulary.tsx",
+        file: "@notebook",
         expect: 'mode=\\{workshopOpen \\? "ai_workshop" : "dashboard"\\}',
       },
       {
         tipo: "ausente",
-        file: "src/client/components/Vocabulary.tsx",
-        from: 2051,
-        to: 2106,
+        file: "@notebook",
+        from: 1,
+        to: 99999,
         pattern: "notebook-quick-review-cta",
       },
     ],
@@ -327,12 +327,12 @@ export const CLAIMS = [
     checks: [
       {
         tipo: "presente",
-        file: "src/client/components/Vocabulary.tsx",
+        file: "@notebook",
         expect: "const isEligible = \\(word: SavedWord, mode: PracticeMode\\) => \\{",
       },
       {
         tipo: "presente",
-        file: "src/client/components/Vocabulary.tsx",
+        file: "@notebook",
         expect: "if \\(!isEligible\\(ch\\.word, mode\\)\\) \\{",
       },
     ],
@@ -347,17 +347,17 @@ export const CLAIMS = [
     checks: [
       {
         tipo: "presente",
-        file: "src/client/components/Vocabulary.tsx",
+        file: "@notebook",
         expect: "const startLearn = \\(first\\?: SavedWord\\) => \\{",
       },
       {
         tipo: "presente",
-        file: "src/client/components/Vocabulary.tsx",
+        file: "@notebook",
         expect: "const learnKeep = async \\(\\) => \\{",
       },
       {
         tipo: "presente",
-        file: "src/client/components/Vocabulary.tsx",
+        file: "@notebook",
         expect: "Repasar esta palabra",
       },
     ],
@@ -392,17 +392,17 @@ export const CLAIMS = [
     checks: [
       {
         tipo: "presente",
-        file: "src/client/components/Vocabulary.tsx",
+        file: "@notebook",
         expect: "reviewWords",
       },
       {
         tipo: "presente",
-        file: "src/client/components/Vocabulary.tsx",
-        expect: 'disabled=\\{reviewWords\\.filter\\(\\(w\\) => isEligible\\(w, "cloze"\\)\\)\\.length === 0\\}',
+        file: "@notebook",
+        expect: "disabled=\\{eligibleCount\\.cloze === 0\\}",
       },
       {
         tipo: "presente",
-        file: "src/client/components/Vocabulary.tsx",
+        file: "@notebook",
         expect: "Los modos libres usan palabras que ya viste",
       },
     ],
@@ -418,17 +418,17 @@ export const CLAIMS = [
     checks: [
       {
         tipo: "presente",
-        file: "src/client/components/Vocabulary.tsx",
+        file: "@notebook",
         expect: "const canHint = hasSession && useAi;",
       },
       {
         tipo: "presente",
-        file: "src/client/components/Vocabulary.tsx",
+        file: "@notebook",
         expect: "hints: hintsUsedRef\\.current,",
       },
       {
         tipo: "presente",
-        file: "src/client/components/Vocabulary.tsx",
+        file: "@notebook",
         expect: "const stillHere = \\(\\) => hintForRef\\.current === forKey;",
       },
     ],
@@ -443,12 +443,12 @@ export const CLAIMS = [
     checks: [
       {
         tipo: "presente",
-        file: "src/client/components/Vocabulary.tsx",
+        file: "@notebook",
         expect: "const tryRescue = \\(item: QueueItem, speech: string\\): boolean =>",
       },
       {
         tipo: "presente",
-        file: "src/client/components/Vocabulary.tsx",
+        file: "@notebook",
         expect: 'const rescueMode: PracticeMode \\| null = isEligible\\(item\\.word, "choose"\\)',
       },
     ],
@@ -463,12 +463,12 @@ export const CLAIMS = [
     checks: [
       {
         tipo: "presente",
-        file: "src/client/components/Vocabulary.tsx",
+        file: "@notebook",
         expect: "wordsRef\\.current\\?\\.find\\(\\(w\\) => w\\.key === queued\\.key",
       },
       {
         tipo: "presente",
-        file: "src/client/components/Vocabulary.tsx",
+        file: "@notebook",
         expect: "return m && \\(m\\.updatedAt \\?\\? 0\\) >= \\(w\\.updatedAt \\?\\? 0\\) \\? m : w;",
       },
     ],
@@ -483,17 +483,17 @@ export const CLAIMS = [
     checks: [
       {
         tipo: "presente",
-        file: "src/client/components/Vocabulary.tsx",
+        file: "@notebook",
         expect: "Esta palabra necesita un significado o una oración para repasarse\\.",
       },
       {
         tipo: "presente",
-        file: "src/client/components/Vocabulary.tsx",
+        file: "@notebook",
         expect: "Parejas necesita al menos dos palabras con significado\\.",
       },
       {
         tipo: "presente",
-        file: "src/client/components/Vocabulary.tsx",
+        file: "@notebook",
         expect: "items\\.length % MATCH_TANDA === 1",
       },
     ],
@@ -508,88 +508,219 @@ export const CLAIMS = [
     checks: [
       {
         tipo: "presente",
-        file: "src/client/components/Vocabulary.tsx",
+        file: "@notebook",
         expect: "learnPassedRef\\.current\\.has\\(word\\.key\\) \\? 2 : word\\.meaning \\? 0 : 1",
       },
       {
         tipo: "presente",
-        file: "src/client/components/Vocabulary.tsx",
+        file: "@notebook",
         expect: "onClick=\\{passLearn\\}",
       },
     ],
   },
-  // --- Fase 0 del plan v2 (docs/plan-simplificacion-cuaderno.md, 2026-11-10) ---
-  // Las fases 1–3 de la v1 se dieron por completadas sin estarlo. Estas tres
-  // afirmaciones son DEFECTOS vigentes: mientras coincidan salen CONFIRMADO
-  // (exit 0); cuando la Fase 2 arregle cada una dejan de coincidir, el arnés
-  // sale 1 y hay que pasarlas a tipo «corregido» con las comprobaciones
-  // invertidas (la rejilla DENTRO de un <details>, etc.), no borrarlas.
+  // --- Fase 2 del plan v2 (2026-11-10): superficie ---
+  // Nacieron como defectos (Fase 0) y pasaron a «corregido» al cerrar la Fase 2:
+  // las comprobaciones describen ahora el arreglo.
   {
     id: "C13-modos-libres-a-la-vista",
-    tipo: "defecto",
+    tipo: "corregido",
     titulo:
-      "Los modos libres siguen a la vista en el héroe: no hay <details> que los pliegue",
+      "Los modos libres viven en un solo <details> «Más formas de practicar», cerrado por defecto",
     porque:
-      "El plan v1 (Fase 1) pedía colapsarlos; el 2026-11-09 se añadió además «Más ejercicios». Decisión de Luis (2026-11-10): un solo plegable «Más formas de practicar», cerrado por defecto.",
+      "El plan v1 (Fase 1) pedía colapsarlos y el 2026-11-09 se añadió «Más ejercicios» a la vista. Decisión de Luis (2026-11-10): un solo plegable; los 5 modos, el taller y los 8 extra comparten rejilla.",
     checks: [
       {
         tipo: "presente",
-        file: "src/client/components/Vocabulary.tsx",
-        expect: '<div className="nb-free-modes">',
+        file: "@notebook",
+        expect: '<details className="nb-free-modes">',
+      },
+      {
+        tipo: "presente",
+        file: "@notebook",
+        expect: "Más formas de practicar</summary>",
       },
       {
         tipo: "ausente",
-        file: "src/client/components/Vocabulary.tsx",
+        file: "@notebook",
         from: 1,
-        to: 9999,
-        pattern: "<details[^>]*nb-free-modes",
+        to: 99999,
+        pattern: "moreModesOpen|nb-free-mode-more",
       },
     ],
   },
   {
     id: "C14-gamificacion-en-el-heroe",
-    tipo: "defecto",
+    tipo: "corregido",
     titulo:
-      "«Energía Léxica» con Combo y puntos sigue en el héroe y el cierre pinta «XP / Nivel»",
+      "El héroe ya no muestra «Energía Léxica», Combo ni puntos; el cierre ya no pinta «XP / Nivel»",
     porque:
-      "El plan v1 (Fase 2) pedía sacar XP y Combo del flujo principal; el bloque nb-hero-energy es de 2026-10-13 y no se ha movido. La racha debe vivir solo en el cierre de sesión.",
+      "El plan v1 (Fase 2) pedía sacar XP y Combo del flujo principal. La racha vive solo en el cierre de sesión.",
     checks: [
       {
-        tipo: "presente",
-        file: "src/client/components/Vocabulary.tsx",
-        expect: '<div className="nb-hero-energy"',
+        tipo: "ausente",
+        file: "@notebook",
+        from: 1,
+        to: 99999,
+        pattern: "nb-hero-energy|Energía Léxica",
+      },
+      {
+        tipo: "ausente",
+        file: "@notebook",
+        from: 1,
+        to: 99999,
+        pattern: "⭐|levelProgress",
       },
       {
         tipo: "presente",
-        file: "src/client/components/Vocabulary.tsx",
-        expect: "<span>Energía Léxica</span>",
-      },
-      {
-        tipo: "presente",
-        file: "src/client/components/Vocabulary.tsx",
-        expect: "⭐ \\{Math\\.round\\(companion\\.state\\.xp\\)\\} XP",
+        file: "@notebook",
+        expect: "Racha de \\$\\{streakDays\\} días\\.",
       },
     ],
   },
   {
     id: "C15-no-hay-cierre-unico-de-sesion",
-    tipo: "defecto",
+    tipo: "corregido",
     titulo:
-      "No existe el cierre «Terminado por hoy.»; el repaso cierra con «Repaso terminado.» y «Terminar por hoy» sale sin cierre",
+      "Cierre único «Terminado por hoy.» con próxima fecha y racha; «Terminar por hoy» pasa por él",
     porque:
-      "El plan v1 (Fase 3) describía un cierre único con próxima fecha y racha. La frase no existe en src/ ni en el historial de git; el botón de salida hace setQueue(null) directo.",
+      "El plan v1 (Fase 3) describía un cierre único. Vaciar la cola y salir a mitad (si ya se repasó algo) llegan a la misma pantalla; sin repasos, sale al cuaderno sin cierre.",
     checks: [
       {
+        tipo: "presente",
+        file: "@notebook",
+        expect: 'Terminado por hoy\\.</p>',
+      },
+      {
         tipo: "ausente",
-        file: "src/client/components/Vocabulary.tsx",
+        file: "@notebook",
         from: 1,
-        to: 9999,
-        pattern: "Terminado por hoy",
+        to: 99999,
+        pattern: "Repaso terminado\\.</p>",
       },
       {
         tipo: "presente",
-        file: "src/client/components/Vocabulary.tsx",
-        expect: 'Repaso terminado\\.</p>',
+        file: "@notebook",
+        expect: "onClick=\\{\\(\\) => endSessionForToday\\(Date\\.now\\(\\)\\)\\}",
+      },
+    ],
+  },
+  // --- Fase 3 del plan v2 (2026-11-10): cifras, texto y accesibilidad ---
+  {
+    id: "C21-una-sola-cuenta-del-ciclo-de-vida",
+    tipo: "corregido",
+    titulo:
+      "«Nuevas» (píldora, filtro y fila) es exactamente «por aprender»; una declarada conocida cuenta como dominada",
+    porque:
+      "wordStage contaba como «nueva» también a las ya repasadas con S < 2 días y a las conocidas, así que la píldora no cuadraba con el encabezado. Ahora hay un solo WordLifecycle (pending/known) para píldoras, filtros, filas y orden.",
+    checks: [
+      {
+        tipo: "presente",
+        file: "@notebook",
+        expect: "type WordLifecycle = \\{ pending: boolean; known: boolean \\};",
+      },
+      {
+        tipo: "presente",
+        file: "@notebook",
+        expect: "const lifecycle = useCallback\\(",
+      },
+      {
+        tipo: "ausente",
+        file: "@notebook",
+        from: 1,
+        to: 99999,
+        pattern: "isUnexposedWord",
+      },
+    ],
+  },
+  {
+    id: "C22-deshacer-unico-y-citas-reversibles",
+    tipo: "corregido",
+    titulo:
+      "Un solo aviso de deshacer por palabra; borrar una cita se puede deshacer y un fallo de guardado se muestra",
+    porque:
+      "El aviso de «se quitó del cuaderno» se pintaba dos veces, y removeQuote tragaba el error y no ofrecía recuperar la cita.",
+    checks: [
+      {
+        tipo: "ausente",
+        file: "@notebook",
+        from: 1,
+        to: 99999,
+        pattern: 'className="nb-undo"',
+      },
+      {
+        tipo: "presente",
+        file: "@notebook",
+        expect: "const restoreQuote = async \\(\\) =>",
+      },
+      {
+        tipo: "presente",
+        file: "@notebook",
+        expect: "No se pudo quitar la cita\\. Intenta de nuevo\\.",
+      },
+    ],
+  },
+  {
+    id: "C23-chips-gato-y-glifos-accesibles",
+    tipo: "corregido",
+    titulo:
+      "Chips recientes como lista de botones sin glifos de texto; el chip limpia lo que esconde la palabra; el gato solo con compañero activo y con el mismo manejador en clic y teclado",
+    porque:
+      "Los chips eran botones con role=listitem, tocarlos no hacía nada visible bajo un filtro, el gato se pintaba con el compañero apagado y su teclado no hacía lo mismo que el clic.",
+    checks: [
+      {
+        tipo: "presente",
+        file: "@notebook",
+        expect: '<ul className="nb-recent-track">',
+      },
+      {
+        tipo: "ausente",
+        file: "@notebook",
+        from: 1,
+        to: 99999,
+        pattern: 'role="listitem"|aria-hidden="true">★|"▸ "|"▾ "',
+      },
+      {
+        tipo: "presente",
+        file: "@notebook",
+        expect: 'setFilter\\("all"\\);',
+      },
+      {
+        tipo: "presente",
+        file: "@notebook",
+        expect: "const heroCompanion = companion\\?\\.enabled && companion\\.state \\? companion : null;",
+      },
+    ],
+  },
+  // --- Fase 4 del plan v2 (2026-11-10): limpieza y rendimiento ---
+  {
+    id: "C24-sin-codigo-muerto-y-calculos-memoizados",
+    tipo: "corregido",
+    titulo:
+      "Sin UnifiedNotebookView, pestaña «today» ni MODES.needs; cola, conteos y filtrado memoizados (búsqueda diferida con índice)",
+    porque:
+      "UnifiedNotebookView no se usaba (App nunca pasa words) y cada render recalculaba reviewQueue, ~14 filtros con regex y la lista filtrada, también en cada tecla del buscador. Medido con 400 palabras en jsdom: mediana por tecla 21 ms → 15 ms.",
+    checks: [
+      {
+        tipo: "ausente",
+        file: "@notebook",
+        from: 1,
+        to: 99999,
+        pattern: "UnifiedNotebookView|tab === \"today\"|needs: \"",
+      },
+      {
+        tipo: "presente",
+        file: "@notebook",
+        expect: "\\(\\) => reviewQueue\\(scopedWords, knownKeys, exposure\\),",
+      },
+      {
+        tipo: "presente",
+        file: "@notebook",
+        expect: "const deferredQuery = useDeferredValue\\(query\\);",
+      },
+      {
+        tipo: "presente",
+        file: "@notebook",
+        expect: "const eligibleCount = useMemo\\(",
       },
     ],
   },
@@ -961,7 +1092,50 @@ function anchorHit(lines, line, expect, window = 3) {
   };
 }
 
+// El Cuaderno ya no vive en un solo archivo (Fase 5 del plan v2): «@notebook»
+// expande a Vocabulary.tsx, los componentes de components/notebook/, los hooks
+// useNotebook*/useLearn*/useReview*/useHerbario*/usePractice* y el modelo puro.
+// «presente» busca en todos y reporta dónde; «ausente» exige que no esté en ninguno.
+export function notebookFiles(root) {
+  const list = ["src/client/components/Vocabulary.tsx", "src/client/lib/notebook-model.ts"];
+  const dir = (rel, test) => {
+    const abs = path.join(root, rel);
+    if (!fs.existsSync(abs)) return;
+    for (const name of fs.readdirSync(abs).sort()) {
+      if (test(name)) list.push(path.posix.join(rel, name));
+    }
+  };
+  dir("src/client/components/notebook", (n) => /\.tsx$/.test(n) && !/\.test\./.test(n));
+  dir("src/client/hooks", (n) =>
+    /^use(Notebook|Learn|Review|Herbario|Practice)[A-Za-z]*\.ts$/.test(n) && !/\.test\./.test(n),
+  );
+  return list;
+}
+
 export function runCheck(root, check) {
+  if (check.file === "@notebook" && (check.tipo === "presente" || check.tipo === "ausente")) {
+    const results = notebookFiles(root).map((file) => runCheck(root, { ...check, file }));
+    if (check.tipo === "presente") {
+      const hit = results.find((r) => r.estado === "COINCIDE");
+      return (
+        hit ?? {
+          tipo: "presente",
+          estado: "NO_COINCIDE",
+          detalle: `ningún archivo del Cuaderno contiene /${check.expect}/`,
+          evidencia: {},
+        }
+      );
+    }
+    const miss = results.find((r) => r.estado === "NO_COINCIDE");
+    return (
+      miss ?? {
+        tipo: "ausente",
+        estado: "COINCIDE",
+        detalle: `ningún archivo del Cuaderno contiene /${check.pattern}/`,
+        evidencia: {},
+      }
+    );
+  }
   const lines = readLines(root, check.file);
   if (check.tipo === "anchor") {
     const hit = anchorHit(lines, check.line, check.expect, check.window ?? 3);

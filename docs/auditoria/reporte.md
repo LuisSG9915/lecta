@@ -1,9 +1,9 @@
 # Reporte de auditoría — estrategia de aprendizaje de Lecta
 
-Generado: 2026-11-10T17:48:39.585Z
+Generado: 2026-11-10T19:02:49.995Z
 Documento auditado: `docs/estrategia-aprendizaje-2026-10-24.md`
 Registro: `docs/auditoria/claims.json`
-Commit: `aebc4bdb3d813c6e35a34e722bc2eac0c13d1072`
+Commit: `2c8f9c0aca8d80ae6dc821d414efbb12723fe4ba`
 Red: no (solo forma de las referencias)
 
 **Veredicto: PASS_WITH_UNVERIFIED** — 1 afirmaciones aprobadas, 0 refutadas, 0 refutadas por auditoría, 13 sin verificar, 0 comprobaciones omitidas.
@@ -233,8 +233,8 @@ Código: **PASS** · Referencias: **UNVERIFIED**
 - ✅ **PASS** · code-absent: /computeImplicitFsrsGrade|msPerChar <= 650/ no aparece en src/client/lib/practice.ts
 - ✅ **PASS** · code-anchor: src/client/hooks/useReaderNavigation.ts:213 coincide con /const completeChapterTo/
   - observado: `{"file":"src/client/hooks/useReaderNavigation.ts","line":213,"text":"const completeChapterTo = useCallback("}`
-- ✅ **PASS** · code-anchor: src/client/components/Vocabulary.tsx:1918 coincide con /await grade\(item, wrongs/
-  - observado: `{"file":"src/client/components/Vocabulary.tsx","line":1918,"text":"await grade(item, wrongs ? EXERCISE_RATING.wrong : EXERCISE_RATING.correct);"}`
+- ✅ **PASS** · code-anchor: src/client/hooks/useReviewSession.ts:646 coincide con /await grade\(item, wrongs/
+  - observado: `{"file":"src/client/hooks/useReviewSession.ts","line":646,"text":"await grade(item, wrongs ? EXERCISE_RATING.wrong : EXERCISE_RATING.correct);"}`
 - ⚠️ **UNVERIFIED** · referencia rowland2014: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":"10.1037/a0037559","url":null}`
 - ⚠️ **UNVERIFIED** · referencia laufergoldstein2004: forma válida; sin red no se resuelven metadatos (usar --online)
@@ -326,18 +326,20 @@ Código: **PASS** · Referencias: **UNVERIFIED**
 - evidencia: `src/client/components/Journey.tsx`
 - evidencia: `src/client/lib/journey.ts`
 - evidencia: `src/client/components/Vocabulary.tsx`
+- evidencia: `src/client/hooks/useReviewSession.ts`
+- evidencia: `src/client/lib/notebook-model.ts`
 
 - ✅ **PASS** · doc-mention: el documento contiene «Nadie mide si se aprende»
 - ✅ **PASS** · code-absent: /comprehension|delayedRetention|chequeoDeComprension/ no aparece en src
 - ✅ **PASS** · code-absent: /postTest|delayedRecall/ no aparece en src
 - ✅ **PASS** · code-anchor: src/client/lib/journey.ts:92 coincide con /export function computeRetentionSummary/
   - observado: `{"file":"src/client/lib/journey.ts","line":92,"text":"export function computeRetentionSummary("}`
-- ✅ **PASS** · code-anchor: src/client/components/Vocabulary.tsx:1373 coincide con /const startRetentionCheck30d/
-  - observado: `{"file":"src/client/components/Vocabulary.tsx","line":1373,"text":"const startRetentionCheck30d = () => {"}`
+- ✅ **PASS** · code-anchor: src/client/hooks/useReviewSession.ts:404 coincide con /const startRetentionCheck30d/
+  - observado: `{"file":"src/client/hooks/useReviewSession.ts","line":404,"text":"const startRetentionCheck30d = () => {"}`
 - ✅ **PASS** · code-anchor: src/client/lib/chapter-follow.ts:52 coincide con /export async function summarizeChapterFollows/
   - observado: `{"file":"src/client/lib/chapter-follow.ts","line":52,"text":"export async function summarizeChapterFollows("}`
-- ✅ **PASS** · code-anchor: src/client/components/Vocabulary.tsx:511 coincide con /const RETENTION_CHECK_MIN_AGE_DAYS = 30/
-  - observado: `{"file":"src/client/components/Vocabulary.tsx","line":511,"text":"const RETENTION_CHECK_MIN_AGE_DAYS = 30;"}`
+- ✅ **PASS** · code-anchor: src/client/lib/notebook-model.ts:211 coincide con /const RETENTION_CHECK_MIN_AGE_DAYS = 30/
+  - observado: `{"file":"src/client/lib/notebook-model.ts","line":211,"text":"export const RETENTION_CHECK_MIN_AGE_DAYS = 30;"}`
 - ⚠️ **UNVERIFIED** · referencia rowland2014: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":"10.1037/a0037559","url":null}`
 - ⚠️ **UNVERIFIED** · referencia adesope2017: forma válida; sin red no se resuelven metadatos (usar --online)

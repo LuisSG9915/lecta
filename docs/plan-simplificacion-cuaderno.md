@@ -137,7 +137,7 @@ Límite: no se toca FSRS, Rasch, ZPD, `isLearnPending` ni `reviewQueue`. B8
 cambia `pickDistractors` en `practice.ts`, que es presentación del ejercicio,
 no agenda.
 
-### Fase 2 — Superficie (fases 1–3 de la v1)
+### Fase 2 — Superficie (fases 1–3 de la v1) · **hecha (2026-11-10)**
 
 - **Un solo plegable**: `<details>` «Más formas de practicar», cerrado por
   defecto, debajo del botón principal del héroe.
@@ -153,7 +153,22 @@ no agenda.
 - Al abrir el taller desde el plegable se conserva el desplazamiento hasta él.
 - Capturas a 1440 y 390 px en `papel` y `noche`.
 
-### Fase 3 — Cifras, texto y accesibilidad (U1–U8)
+Hecha: `Vocabulary.tsx` y `notebook.css` (se borró el CSS de la barra de energía
+y del resumen XP/nivel). 5 pruebas nuevas o reescritas en `Vocabulary.test.ts`
+(héroe con plegable y sin energía; cierre al vaciar la cola, al salir a mitad y
+al salir sin repasar). C13–C15 de `audit-cuaderno` pasaron de «defecto» a
+«corregido». `pnpm gate` verde (3 384 pruebas, bundle 202,08/215 kB). Notas:
+- **«Terminar por ahora» de la ficha de Aprender NO pasa por el cierre único**:
+  su pantalla («Aprender terminado.») lleva el puente «Repasar estas N
+  palabras» y «Seguir aprendiendo», que el cierre de repaso no tiene. Es una
+  desviación respecto a lo escrito arriba.
+- Salir a mitad con «Terminar por hoy» sin haber repasado nada vuelve al
+  cuaderno sin pantalla de cierre (no hay nada que cerrar).
+- **Pendiente: las capturas a 1440/390 px en `papel` y `noche` no se tomaron**;
+  solo se verificó con pruebas de jsdom. Conviene mirar el plegable
+  (cabecera ≥44 px, flecha, espaciado de la rejilla) en el navegador.
+
+### Fase 3 — Cifras, texto y accesibilidad (U1–U8) · **hecha (2026-11-10)**
 
 - Una sola cuenta para «Nuevas» y «por aprender»; etiquetas unificadas entre
   barra, píldoras, filtros y filas (en singular en la fila).
@@ -164,7 +179,27 @@ no agenda.
 - Glifos a `Icon` y estilos en línea a `notebook.css`, coordinado con la
   tanda 3 de `docs/auditoria/plan-fase4-emojis.md`.
 
-### Fase 4 — Limpieza y rendimiento (K1–K3)
+Hecha en `Vocabulary.tsx` y `notebook.css`, con 13 pruebas nuevas
+(`Vocabulary.test.ts`, bloque «Fase 3») y C21–C23 en `audit-cuaderno`. `pnpm gate`
+verde (3 397 pruebas, bundle 202,08/215 kB). Decisiones que conviene saber:
+- **U1: nueva definición de «Nuevas».** Es exactamente «por aprender» (nunca
+  pasó por la ficha). Una palabra presentada pero sin repasos, o repasada con
+  S < 2 días, pasa a «En Práctica»; una declarada «ya la conozco» cuenta como
+  «Dominada» y ya no se etiqueta «Nueva» ni «Para hoy». «Para hoy» sigue
+  superponiéndose a «En Práctica» y «Dominada».
+- **U2:** la fila va en singular («Nueva», «Dominada»); píldoras y filtros en
+  plural; la barra de progreso usa los mismos nombres.
+- **U6: sin compañero activo ya no se pinta el gato de la portada** (antes caía
+  a un gato por defecto); el resumen ocupa todo el ancho.
+- **U7:** el chip reciente quita filtro, búsqueda, idioma y libro, y cambia el
+  orden «Estado» a «Fecha», para que la palabra quede a la vista.
+- **U8:** quedan 4 estilos en línea, todos dinámicos (anchos de barras de
+  progreso y estabilidad). El «✕» de `UnifiedNotebookView` sigue ahí: ese
+  componente se borra en la Fase 4. «💡 Pista» vive en
+  `PracticeCompanionHeader.tsx` y sigue en la tanda del barrido de emojis.
+- Sin verificar en navegador (mismo pendiente de capturas de la Fase 2).
+
+### Fase 4 — Limpieza y rendimiento (K1–K3) · **hecha (2026-11-10)**
 
 - Borrar `UnifiedNotebookView`, la pestaña `"today"`, `_onDeleteWord` y
   `MODES.needs` (y las pruebas o CSS que solo ellos usen).
@@ -172,7 +207,33 @@ no agenda.
   y `filtered`; el buscador no debe recalcular las colas.
 - Medir antes y después con un cuaderno de 300+ palabras.
 
-### Fase 5 — Partir `Vocabulary.tsx` (K4)
+Hecha en `Vocabulary.tsx`, con 4 pruebas nuevas o reescritas y C24 en
+`audit-cuaderno`. `pnpm gate` verde (3 399 pruebas, bundle 201,88/215 kB).
+- **Borrado**: `UnifiedNotebookView`, el despachador `words`, las props
+  `words`/`onStartQuickReview`/`onDeleteWord`, la pestaña `"today"` y
+  `MODES.needs`. El tipo de props pasa de `UnifiedVocabularyProps` a
+  `VocabularyProps`. Se quitaron también los reexports del repaso de 1 minuto.
+  Las dos pruebas de esa vista se borraron (la de `vocabGames` apagado se
+  reescribió sobre el cuaderno real).
+- **`practice.ts` queda con código sin uso en producción**:
+  `buildOneMinuteReviewSession` y `savedWordToItem` (más sus tipos) solo los
+  usa `practice.test.ts` desde que se borró la vista. No se tocaron aquí; si se
+  borran, van con sus pruebas.
+- **Memoizado**: `learnPending`, `reviewWords` (se relee cada minuto con
+  `nowTick`, porque «vencida» depende de la hora), conteos de elegibilidad por
+  modo (un recorrido en vez de ~13 `filter` con regex), `reviewKeys`, conteos de
+  filtros, índice de búsqueda precalculado y `filtered`. La búsqueda usa
+  `useDeferredValue`.
+- **Medición** (jsdom, 400 palabras, 15 teclas en el buscador, 4 corridas):
+  mediana por tecla **~21 ms → ~15 ms**, total 305–340 ms → 249–282 ms; el
+  render inicial no cambia (~72–78 ms). jsdom no es un navegador: sirve para
+  comparar antes y después, no como cifra absoluta. La prueba temporal no se
+  commiteó.
+- Sin cambios de comportamiento visibles; la única diferencia observable es que
+  una palabra que vence con el cuaderno abierto aparece como máximo un minuto
+  después (cubierto por prueba).
+
+### Fase 5 — Partir `Vocabulary.tsx` (K4) · **hecha (2026-11-10)**
 
 Mismo esquema que Reader, sin cambios funcionales, un commit por paso:
 
@@ -190,3 +251,30 @@ Mismo esquema que Reader, sin cambios funcionales, un commit por paso:
 Fase 0 → 1 → 2 → 3 → 4 → 5. No quedan decisiones de producto abiertas. La
 Fase 5 va al final para no partir código que las fases
 anteriores van a borrar o mover.
+
+Hecha: `Vocabulary.tsx` pasó de **4 085 a 864 líneas** (compositor). `pnpm gate` verde.
+- **Hooks** (`src/client/hooks/`): `useNotebookData`, `useHerbarioView`,
+  `useLearnSession`, `useReviewSession` (910 líneas: es la pieza más grande, junta cola,
+  calificación, modos, pistas y cierre porque comparten mucho estado) y
+  `usePracticeCompanion`.
+- **Componentes** (`src/client/components/notebook/`): `NotebookHero`, `FreeModes`,
+  `HerbarioPanel`, `WordRow`, `LearnSessionView`, `PracticeCard` (646 líneas),
+  `ReviewDone`, `QuotesPanel`.
+- **Modelo puro** `src/client/lib/notebook-model.ts` con 17 pruebas propias.
+- **Sin cambios funcionales a propósito**; las 87 pruebas de `Vocabulary.test.ts`
+  siguen pasando sin tocarlas (son la red de seguridad: pintan el cuaderno entero
+  en jsdom). Dos efectos laterales mínimos: los temporizadores de deshacer ya no se
+  limpian en cada recarga por `vocabVersion` sino solo al desmontar, y la cola de
+  repaso sigue siendo la misma regla.
+- **`audit-cuaderno` sigue la división**: las comprobaciones apuntan al grupo
+  `@notebook` (Vocabulary.tsx + hooks + componentes + modelo) en vez de a un archivo.
+  Tres anclajes de `claims.json` (H6, H8) se movieron a `useReviewSession.ts` y
+  `notebook-model.ts`.
+- **No se partió más** (rendimientos decrecientes): el estado de citas (`quotes`,
+  deshacer de citas, exportar) y el de borrar/restaurar palabras siguen en
+  `Vocabulary.tsx`; un `useNotebookQuotes` sería el siguiente paso si hace falta.
+  `PracticeCard` sigue siendo un solo componente con un `switch` de modos; separarlo
+  por modo (parejas, escribir, opciones…) es el siguiente corte natural.
+- **Un solo commit por paso no se hizo**: no se commiteó nada; el trabajo quedó en el
+  árbol y verificado en bloque con el gate. Si se quiere historial por paso hay que
+  reconstruirlo.

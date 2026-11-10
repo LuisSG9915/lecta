@@ -1,9 +1,9 @@
 {
   "tool": "audit-investigacion",
   "version": 1,
-  "generatedAt": "2026-11-10T17:48:39.585Z",
+  "generatedAt": "2026-11-10T19:02:49.995Z",
   "root": "/Users/luis/Desarrollos Devin/lecta",
-  "commit": "aebc4bdb3d813c6e35a34e722bc2eac0c13d1072",
+  "commit": "2c8f9c0aca8d80ae6dc821d414efbb12723fe4ba",
   "doc": "docs/estrategia-aprendizaje-2026-10-24.md",
   "registry": "docs/auditoria/claims.json",
   "online": false,
@@ -883,10 +883,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/components/Vocabulary.tsx:1918 coincide con /await grade\\(item, wrongs/",
+          "detail": "src/client/hooks/useReviewSession.ts:646 coincide con /await grade\\(item, wrongs/",
           "observed": {
-            "file": "src/client/components/Vocabulary.tsx",
-            "line": 1918,
+            "file": "src/client/hooks/useReviewSession.ts",
+            "line": 646,
             "text": "await grade(item, wrongs ? EXERCISE_RATING.wrong : EXERCISE_RATING.correct);"
           }
         },
@@ -1215,7 +1215,9 @@
           "src/client/components/DeepReadingSummaryModal.tsx",
           "src/client/components/Journey.tsx",
           "src/client/lib/journey.ts",
-          "src/client/components/Vocabulary.tsx"
+          "src/client/components/Vocabulary.tsx",
+          "src/client/hooks/useReviewSession.ts",
+          "src/client/lib/notebook-model.ts"
         ]
       },
       "codeStatus": "PASS",
@@ -1252,10 +1254,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/components/Vocabulary.tsx:1373 coincide con /const startRetentionCheck30d/",
+          "detail": "src/client/hooks/useReviewSession.ts:404 coincide con /const startRetentionCheck30d/",
           "observed": {
-            "file": "src/client/components/Vocabulary.tsx",
-            "line": 1373,
+            "file": "src/client/hooks/useReviewSession.ts",
+            "line": 404,
             "text": "const startRetentionCheck30d = () => {"
           }
         },
@@ -1272,11 +1274,11 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/components/Vocabulary.tsx:511 coincide con /const RETENTION_CHECK_MIN_AGE_DAYS = 30/",
+          "detail": "src/client/lib/notebook-model.ts:211 coincide con /const RETENTION_CHECK_MIN_AGE_DAYS = 30/",
           "observed": {
-            "file": "src/client/components/Vocabulary.tsx",
-            "line": 511,
-            "text": "const RETENTION_CHECK_MIN_AGE_DAYS = 30;"
+            "file": "src/client/lib/notebook-model.ts",
+            "line": 211,
+            "text": "export const RETENTION_CHECK_MIN_AGE_DAYS = 30;"
           }
         },
         {

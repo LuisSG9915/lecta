@@ -6,7 +6,10 @@ import { createEmptyCard } from "ts-fsrs";
 import Vocabulary from "./Vocabulary";
 import {
   fillSavedWordMeaning,
+  listAnnotations,
+  listKnowledge,
   listSavedWords,
+  updateAnnotation,
   putSavedWord,
   saveKnowledge,
   updateSavedWord,
@@ -32,6 +35,7 @@ vi.mock("../lib/idb", async (importOriginal) => {
     listSavedWords: vi.fn(async () => []),
     listKnowledge: vi.fn(async () => []),
     listAnnotations: vi.fn(async () => []),
+    updateAnnotation: vi.fn(async (a: Record<string, unknown>) => a),
     loadSessionValue: vi.fn(async () => null),
     saveSessionValue: vi.fn(async () => undefined),
     saveKnowledge: vi.fn(async (row: Record<string, unknown>) => ({
@@ -93,6 +97,14 @@ vi.mock("./GamePanel", () => ({
   },
 }));
 vi.mock("./ReadingActivity", () => ({ default: () => null }));
+// Compañero controlable: sin proveedor es null (compañero apagado).
+const companionMock = vi.hoisted(() => ({ current: null as Record<string, unknown> | null }));
+vi.mock("./CompanionProvider", () => ({
+  useCompanionSafe: () => companionMock.current,
+}));
+vi.mock("./Companion", () => ({
+  Companion: () => createElement("span", { className: "fake-cat" }),
+}));
 // El encabezado real no pinta nada sin compañero; aquí solo importa el
 // contrato de la pista: se ofrece si llega onAskHint y muestra su texto.
 vi.mock("./PracticeCompanionHeader", () => ({
@@ -142,6 +154,7 @@ let root: Root;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  companionMock.current = null;
   listWordsMock.mockResolvedValue([]);
   loadSessionMock.mockResolvedValue(null);
   backfillMock.mockImplementation(async (words: SavedWord[]) => words);
@@ -767,7 +780,7 @@ describe("Reestructura del Cuaderno", () => {
     expect(quickGameBtn?.textContent).toContain("Partida rápida (3 min)");
   });
 
-  it("Hero Card muestra La Mesa de Estudio con el Gato, energía léxica, CTA y modos libres", async () => {
+  it("Hero Card muestra La Mesa de Estudio con el Gato, CTA único y modos libres plegados", async () => {
     listWordsMock.mockResolvedValue([
       word({
         form: "murmullo",
@@ -783,13 +796,13 @@ describe("Reestructura del Cuaderno", () => {
     expect(heroCard).toBeTruthy();
     expect(heroCard?.textContent).toContain("La Mesa de Estudio");
 
-    // Gato interactivo
-    const catWrapper = host.querySelector(".nb-hero-cat-wrapper");
-    expect(catWrapper).toBeTruthy();
+    // Sin compañero activo no se pinta el gato y el resumen ocupa todo el ancho.
+    expect(host.querySelector(".nb-hero-cat-wrapper")).toBeNull();
+    expect(host.querySelector(".nb-hero-study-desk--solo")).toBeTruthy();
 
-    // Barra de energía léxica
-    const energyTrack = host.querySelector(".nb-hero-energy-track");
-    expect(energyTrack).toBeTruthy();
+    // Sin gamificación en el héroe: ni barra de energía ni combo.
+    expect(host.querySelector(".nb-hero-energy")).toBeNull();
+    expect(text()).not.toContain("Energía Léxica");
 
     // CTA principal único: una palabra con reps 1 y sin vencimiento no da
     // nada que aprender ni repasar, así que el botón invita a seguir leyendo.
@@ -799,16 +812,23 @@ describe("Reestructura del Cuaderno", () => {
     expect(host.querySelectorAll(".nb-hero-cta .btn--primary")).toHaveLength(1);
     expect(host.querySelector(".notebook-quick-review-cta")).toBeNull();
 
-    // Tarjetas de modos libres: 4 juegos + taller IA + «Más ejercicios»
+    // Modos libres: un solo plegable cerrado; dentro, 4 juegos + taller IA
+    // + los 8 ejercicios extra en una misma rejilla.
+    const plegable = host.querySelector("details.nb-free-modes") as HTMLDetailsElement;
+    expect(plegable).toBeTruthy();
+    expect(plegable.open).toBe(false);
+    expect(plegable.querySelector("summary")?.textContent).toBe("Más formas de practicar");
+    expect(host.querySelectorAll(".nb-free-modes-grid")).toHaveLength(1);
     const freeCards = host.querySelectorAll(".nb-free-mode-card");
-    expect(freeCards.length).toBe(6);
+    expect(freeCards.length).toBe(13);
     const freeNames = [...freeCards].map((c) => c.querySelector(".nb-free-mode-name")?.textContent);
     expect(freeNames).toContain("Hueco en el Libro");
     expect(freeNames).toContain("Sílabas de Tinta");
     expect(freeNames).toContain("Telar de Frases");
     expect(freeNames).toContain("Parejas");
     expect(freeNames).toContain("Taller con el Gato IA");
-    expect(freeNames).toContain("Más ejercicios");
+    expect(freeNames).toContain("Escribir");
+    expect(freeNames).not.toContain("Más ejercicios");
   });
 
   it("el control segmentado permite alternar entre Mi Herbario de Palabras y Citas y Hallazgos", async () => {
@@ -882,114 +902,23 @@ describe("Reestructura del Cuaderno", () => {
   });
 
   describe("Cuaderno Unificado y Repaso de 1 Minuto (Track 4)", () => {
-    it("renderiza la vista unificada con hero header, botón de repaso rápido y buscador", async () => {
-      const wordsData = [
-        {
-          id: "1",
-          word: "solsticio",
-          shortDefinition: "Momento del año en que el sol alcanza su mayor altura.",
-          bookTitle: "Cien años de soledad",
-          sentenceContext: "Esperaban con paciencia el solsticio de verano.",
-          dueTimestamp: Date.now() - 1000,
-          stability: 1.5,
-        },
-        {
-          id: "2",
-          word: "crepúsculo",
-          shortDefinition: "Claridad que hay desde que raya el día hasta que sale el sol.",
-          bookTitle: "El Aleph",
-          sentenceContext: "Caminaron bajo el suave crepúsculo.",
-          dueTimestamp: Date.now() + 5000,
-          stability: 3.0,
-        },
-      ];
-
-      const onStartQuickReview = vi.fn();
-      const onDeleteWord = vi.fn();
-
-      await act(async () => {
-        root.render(
-          h(Vocabulary, {
-            words: wordsData,
-            onStartQuickReview,
-            onDeleteWord,
-            onClose: vi.fn(),
-          }),
-        );
-        for (let i = 0; i < 4; i++) await Promise.resolve();
-      });
-
-      expect(host.textContent).toContain("Tu Cuaderno");
-      expect(host.textContent).toContain("2 palabras guardadas de tus lecturas");
-
-      const ctaBtn = host.querySelector<HTMLButtonElement>(".notebook-quick-review-cta")!;
-      expect(ctaBtn).not.toBeNull();
-      expect(ctaBtn.textContent).toContain("Repaso rápido · 2 palabras");
-      expect(ctaBtn.textContent).toContain("1 min");
-
-      // Al tocar el CTA llama a onStartQuickReview con las rondas calculadas
-      await act(async () => {
-        ctaBtn.click();
-      });
-      expect(onStartQuickReview).toHaveBeenCalledTimes(1);
-      const rounds = onStartQuickReview.mock.calls[0][0];
-      expect(rounds.length).toBe(2);
-      expect(rounds[0].item.word).toBe("solsticio");
-      expect(rounds[0].assignedGame).toBe("flash-choice");
-      expect(rounds[1].item.word).toBe("crepúsculo");
-      expect(rounds[1].assignedGame).toBe("word-scramble");
-
-      // Buscador instantáneo
-      const searchInput = host.querySelector<HTMLInputElement>(".notebook-search-input")!;
-      expect(searchInput).not.toBeNull();
-      await act(async () => {
-        const setter = Object.getOwnPropertyDescriptor(
-          HTMLInputElement.prototype,
-          "value",
-        )!.set!;
-        setter.call(searchInput, "Aleph");
-        searchInput.dispatchEvent(new Event("input", { bubbles: true }));
-        searchInput.dispatchEvent(new Event("change", { bubbles: true }));
-      });
-
-      expect(host.textContent).toContain("crepúsculo");
-      expect(host.textContent).not.toContain("solsticio");
-
-      // Botón de eliminar
-      const deleteBtn = host.querySelector<HTMLButtonElement>(".notebook-word-delete-btn")!;
-      expect(deleteBtn).not.toBeNull();
-      await act(async () => {
-        deleteBtn.click();
-      });
-      expect(onDeleteWord).toHaveBeenCalledWith("2");
-    });
-
-    it("oculta minijuegos y botones de repaso rápido si featureFlags.vocabGames está desactivado", async () => {
+    it("oculta los modos libres y el taller si featureFlags.vocabGames está desactivado", async () => {
       const { saveFeatureFlags } = await import("../lib/settings");
       saveFeatureFlags({ vocabGames: false });
       try {
-        const words = [
-          {
-            id: "1",
-            word: "solsticio",
-            shortDefinition: "Época en que el Sol se halla en uno de los trópicos.",
-            dueTimestamp: Date.now() - 1000,
-            stability: 1.2,
-          },
-        ];
-        await act(async () => {
-          root.render(
-            h(Vocabulary, {
-              words,
-              presentation: "page",
-              onClose: () => {},
-            }),
-          );
-          for (let i = 0; i < 4; i++) await Promise.resolve();
-        });
+        listWordsMock.mockResolvedValue([
+          word({
+            form: "solsticio",
+            meaning: "Época en que el Sol se halla en uno de los trópicos.",
+            card: { reps: 2, stability: 1, due: new Date(Date.now() - 1000).toISOString() } as never,
+          }),
+        ]);
+        gamePanelProps.current = null;
+        await render();
 
-        expect(host.querySelector(".notebook-quick-review-cta")).toBeNull();
+        expect(host.querySelector(".nb-hero-card")).toBeTruthy();
         expect(host.querySelector(".nb-free-modes")).toBeNull();
+        expect(gamePanelProps.current).toBeNull();
       } finally {
         saveFeatureFlags({ vocabGames: true });
       }
@@ -1347,14 +1276,15 @@ describe("Modos libres: tampoco examinan lo nunca presentado", () => {
 
     const tarjetas = [...host.querySelectorAll(".nb-free-mode-card")] as HTMLButtonElement[];
     const deshabilitadas = tarjetas.filter((b) => b.disabled);
-    // Hueco, Sílabas, Telar, Parejas y Taller IA apagados; «Más
-    // ejercicios» queda activo porque solo despliega la lista.
-    expect(deshabilitadas.length).toBe(5);
+    // Sin palabras presentadas todos los modos quedan apagados (5 de la
+    // fila principal + 8 extra); ya no hay botón «Más ejercicios».
+    expect(deshabilitadas.length).toBe(tarjetas.length);
+    expect(tarjetas.length).toBe(13);
     expect(text()).toContain("Aprende primero las nuevas");
     expect(host.querySelector(".nb-practice")).toBeNull();
   });
 
-  it("«Más ejercicios» despliega los demás modos de práctica", async () => {
+  it("los demás modos viven en la misma rejilla plegable, sin «Más ejercicios»", async () => {
     listWordsMock.mockResolvedValue([
       word({
         form: "brisa",
@@ -1364,30 +1294,16 @@ describe("Modos libres: tampoco examinan lo nunca presentado", () => {
       }),
     ]);
     await render();
+    const plegable = host.querySelector("details.nb-free-modes") as HTMLDetailsElement;
+    expect(plegable.open).toBe(false);
     expect(host.querySelector(".nb-free-modes-grid--extra")).toBeNull();
-    const moreBtn = [
-      ...host.querySelectorAll(".nb-free-mode-card"),
-    ].find(
-      (b) =>
-        b.querySelector(".nb-free-mode-name")?.textContent === "Más ejercicios",
-    ) as HTMLButtonElement;
-    await act(async () => {
-      moreBtn.click();
-      for (let i = 0; i < 6; i++) await Promise.resolve();
-    });
-    const extra = host.querySelector(".nb-free-modes-grid--extra");
-    expect(extra).toBeTruthy();
-    const nombres = [...extra!.querySelectorAll(".nb-free-mode-name")].map(
+    const nombres = [...plegable.querySelectorAll(".nb-free-mode-name")].map(
       (n) => n.textContent,
     );
     expect(nombres).toContain("Significado");
     expect(nombres).toContain("Escribir");
-    // El modo «Parejas» también está en la fila principal.
-    expect(
-      [...host.querySelectorAll(".nb-free-mode-name")].some(
-        (n) => n.textContent === "Parejas",
-      ),
-    ).toBe(true);
+    expect(nombres).toContain("Parejas");
+    expect(nombres).not.toContain("Más ejercicios");
   });
 
   it("el Reto del Escritor acredita FSRS una sola vez por palabra", async () => {
@@ -1764,6 +1680,422 @@ describe("Plan de simplificación — Fase 1 (comportamiento)", () => {
       await click("Seguir aprendiendo (2)");
       expect(cardFront()).toBe("sindos");
     });
+  });
+});
+
+describe("Plan de simplificación — Fase 2 (superficie)", () => {
+  const past = () => new Date(Date.now() - 86_400_000).toISOString();
+  const exposureFor = (keys: string[]) =>
+    loadSessionMock.mockImplementation(async (clave) =>
+      clave === LEARN_EXPOSURE_KEY
+        ? JSON.stringify({
+            version: 1,
+            seen: Object.fromEntries(keys.map((key) => [key, { at: 1, verdict: "learn" }])),
+            updatedAt: 1,
+          })
+        : null,
+    );
+  const dueWord = (form: string, savedAt: number) =>
+    word({
+      form,
+      savedAt,
+      meaning: "sentido",
+      context: `Una ${form} cualquiera.`,
+      card: { reps: 2, stability: 1, due: past() } as never,
+    });
+  const responder = async () => {
+    await act(async () => {
+      (host.querySelector(".choice-option") as HTMLButtonElement).click();
+      for (let i = 0; i < 4; i++) await Promise.resolve();
+    });
+    await click("Continuar");
+  };
+
+  it("vaciar la cola cierra con «Terminado por hoy.» y la próxima fecha", async () => {
+    listWordsMock.mockResolvedValue([dueWord("brisa", 1)]);
+    exposureFor(["es:brisa"]);
+    await render();
+    await click("Repasar 1 palabra");
+    await responder();
+    expect(text()).toContain("Terminado por hoy.");
+    expect(text()).not.toContain("Repaso terminado.");
+    expect(text()).toContain("1 palabra repasada");
+    expect(text()).toMatch(/Vuelve en|Nada pendiente/);
+    expect(text()).not.toContain("XP");
+    expect(button("Volver a mi lectura")).toBeTruthy();
+  });
+
+  it("«Terminar por hoy» a mitad de sesión pasa por el mismo cierre", async () => {
+    listWordsMock.mockResolvedValue([dueWord("brisa", 2), dueWord("cedro", 1)]);
+    exposureFor(["es:brisa", "es:cedro"]);
+    await render();
+    await click("Repasar 2 palabras");
+    await responder();
+    expect(text()).toContain("2 de 2");
+    await click("Terminar por hoy");
+    expect(text()).toContain("Terminado por hoy.");
+    expect(text()).toContain("1 palabra repasada");
+    expect(host.querySelector(".nb-practice")).toBeNull();
+  });
+
+  it("«Terminar por hoy» sin haber repasado nada vuelve al cuaderno sin cierre", async () => {
+    listWordsMock.mockResolvedValue([dueWord("brisa", 1)]);
+    exposureFor(["es:brisa"]);
+    await render();
+    await click("Repasar 1 palabra");
+    await click("Terminar por hoy");
+    expect(text()).not.toContain("Terminado por hoy.");
+    expect(host.querySelector(".nb-hero-card")).toBeTruthy();
+  });
+});
+
+describe("Plan de simplificación — Fase 3 (cifras, texto y accesibilidad)", () => {
+  const past = () => new Date(Date.now() - 86_400_000).toISOString();
+  const future = () => new Date(Date.now() + 20 * 86_400_000).toISOString();
+  const listKnowledgeMock = vi.mocked(listKnowledge);
+  const listAnnotationsMock = vi.mocked(listAnnotations);
+  const updateAnnotationMock = vi.mocked(updateAnnotation);
+  const settle = () =>
+    act(async () => {
+      for (let i = 0; i < 8; i++) await Promise.resolve();
+    });
+  const pill = (stage: "new" | "learning" | "settled") =>
+    host.querySelector(`.vocab-progress-item--${stage} .vocab-progress-count`)?.textContent;
+  const exposureFor = (keys: string[]) =>
+    loadSessionMock.mockImplementation(async (clave) =>
+      clave === LEARN_EXPOSURE_KEY
+        ? JSON.stringify({
+            version: 1,
+            seen: Object.fromEntries(keys.map((key) => [key, { at: 1, verdict: "learn" }])),
+            updatedAt: 1,
+          })
+        : null,
+    );
+  const rowStates = () =>
+    [...host.querySelectorAll(".nb-word")].map((li) => [
+      li.querySelector(".nb-word-lemma")?.textContent,
+      li.querySelector(".nb-state")?.textContent,
+    ]);
+
+  beforeEach(() => {
+    listKnowledgeMock.mockResolvedValue([]);
+    listAnnotationsMock.mockResolvedValue([]);
+  });
+
+  describe("U1–U2 · una sola cuenta y las mismas etiquetas", () => {
+    const palabras = () => [
+      // nunca presentada: «por aprender»
+      word({ form: "alondra", savedAt: 5 }),
+      // presentada (ficha) pero sin repasos todavía: en práctica, ya no «nueva»
+      word({ form: "cedro", savedAt: 4, card: { reps: 0, stability: 0, due: past() } as never }),
+      // repasada con poca estabilidad: en práctica
+      word({ form: "brisa", savedAt: 3, card: { reps: 2, stability: 1, due: future() } as never }),
+      // estable: dominada
+      word({ form: "roble", savedAt: 2, card: { reps: 6, stability: 20, due: future() } as never }),
+    ];
+
+    it("«Nuevas» es exactamente lo que el encabezado llama «por aprender»", async () => {
+      listWordsMock.mockResolvedValue(palabras());
+      exposureFor(["es:cedro"]);
+      await render();
+      expect(text()).toContain("1 por aprender");
+      expect(pill("new")).toBe("1");
+      expect(pill("learning")).toBe("2");
+      expect(pill("settled")).toBe("1");
+    });
+
+    it("la fila lleva la misma etiqueta que la píldora, en singular", async () => {
+      listWordsMock.mockResolvedValue(palabras());
+      exposureFor(["es:cedro"]);
+      await render();
+      expect(Object.fromEntries(rowStates() as [string, string][])).toEqual({
+        alondra: "Nueva",
+        // Presentada y vencida: «Para hoy» se superpone a su etapa (en práctica).
+        cedro: "Para hoy",
+        brisa: "En Práctica",
+        roble: "Dominada",
+      });
+    });
+
+    it("una palabra declarada conocida cuenta como dominada, no como «Nueva»", async () => {
+      listWordsMock.mockResolvedValue([word({ form: "sol", savedAt: 1 })]);
+      listKnowledgeMock.mockResolvedValue([
+        { key: "es:sol", language: "es", lemma: "sol", known: true, source: "declared", updatedAt: 1 },
+      ]);
+      await render();
+      expect(pill("new")).toBe("0");
+      expect(pill("settled")).toBe("1");
+      expect(text()).not.toContain("por aprender");
+    });
+
+    it("el filtro «Nuevas» lista las mismas palabras que cuenta la píldora", async () => {
+      listWordsMock.mockResolvedValue(palabras());
+      exposureFor(["es:cedro"]);
+      await render();
+      await click("Nuevas (1)");
+      expect(rowStates()).toEqual([["alondra", "Nueva"]]);
+    });
+
+    it("la barra de progreso usa los mismos nombres que las píldoras", async () => {
+      listWordsMock.mockResolvedValue(palabras());
+      exposureFor(["es:cedro"]);
+      await render();
+      const titulos = [...host.querySelectorAll(".vocab-progress-seg")].map((n) =>
+        n.getAttribute("title"),
+      );
+      expect(titulos).toEqual(["1 dominadas", "2 en práctica", "1 nuevas"]);
+    });
+  });
+
+  describe("Revisión en navegador · el significado no se repite", () => {
+    it("al abrir una fila el significado se lee una sola vez", async () => {
+      listWordsMock.mockResolvedValue([word({ form: "casa", meaning: "Edificio donde vive una familia." })]);
+      await render();
+      expect(host.querySelectorAll(".nb-word-preview")).toHaveLength(1);
+      await act(async () => {
+        (host.querySelector(".nb-word-row") as HTMLButtonElement).click();
+        for (let i = 0; i < 4; i++) await Promise.resolve();
+      });
+      const apariciones = (host.querySelector(".nb-word")?.textContent ?? "").split(
+        "Edificio donde vive una familia.",
+      ).length - 1;
+      expect(apariciones).toBe(1);
+    });
+  });
+
+  describe("U3 · un solo aviso de deshacer", () => {
+    it("al quitar una palabra solo hay un «Deshacer»", async () => {
+      listWordsMock.mockResolvedValue([word({ form: "casa", meaning: "hogar" })]);
+      await render();
+      await act(async () => {
+        (host.querySelector(".nb-word-row") as HTMLButtonElement).click();
+        for (let i = 0; i < 4; i++) await Promise.resolve();
+      });
+      await click("Quitar");
+      const deshacer = [...host.querySelectorAll("button")].filter(
+        (b) => b.textContent === "Deshacer",
+      );
+      expect(deshacer).toHaveLength(1);
+    });
+  });
+
+  describe("U4 · citas: deshacer y error visible", () => {
+    const cita = {
+      key: "q1",
+      kind: "passage",
+      text: "Una frase memorable",
+      createdAt: 1,
+      updatedAt: 1,
+      bookHash: "h1",
+    } as never;
+    const abrirCitas = async () => {
+      listWordsMock.mockResolvedValue([word({ form: "casa", meaning: "hogar" })]);
+      listAnnotationsMock.mockResolvedValue([cita]);
+      await render();
+      await click("Citas y Hallazgos");
+      await settle();
+    };
+
+    it("quitar una cita ofrece recuperarla", async () => {
+      await abrirCitas();
+      expect(text()).toContain("Una frase memorable");
+      await click("Eliminar");
+      expect(updateAnnotationMock.mock.calls[0][0]).toEqual(
+        expect.objectContaining({ key: "q1", deleted: true }),
+      );
+      expect(text()).not.toContain("Una frase memorable");
+      expect(text()).toContain("La cita se quitó del cuaderno.");
+      await click("Deshacer");
+      expect(updateAnnotationMock.mock.calls[1][0]).toEqual(
+        expect.objectContaining({ key: "q1", deleted: false }),
+      );
+      expect(text()).toContain("Una frase memorable");
+    });
+
+    it("si no se pudo guardar, la cita se queda y se avisa", async () => {
+      await abrirCitas();
+      updateAnnotationMock.mockRejectedValueOnce(new Error("boom"));
+      await click("Eliminar");
+      expect(text()).toContain("Una frase memorable");
+      expect(text()).toContain("No se pudo quitar la cita");
+      expect(text()).not.toContain("La cita se quitó del cuaderno.");
+    });
+  });
+
+  describe("U5 · chips recientes", () => {
+    it("son una lista real de botones, sin roles que pisen el del botón", async () => {
+      listWordsMock.mockResolvedValue([
+        word({ form: "efímero", savedAt: 1 }),
+        word({ form: "resplandor", savedAt: 2 }),
+      ]);
+      await render();
+      const lista = host.querySelector("ul.nb-recent-track");
+      expect(lista).toBeTruthy();
+      const items = lista!.querySelectorAll(":scope > li > button.nb-recent-chip");
+      expect(items).toHaveLength(2);
+      expect(lista!.querySelector("[role=listitem]")).toBeNull();
+      expect(lista!.querySelector(".nb-recent-chip-star svg")).toBeTruthy();
+      expect(host.querySelector(".nb-recent-chip-star")?.textContent).not.toContain("★");
+    });
+  });
+
+  describe("U6 · gato de la portada", () => {
+    const companion = () => ({
+      enabled: true,
+      state: { xp: 0 },
+      name: "Misi",
+      stage: 1,
+      mood: "awake",
+      accessories: [],
+    });
+
+    it("sin compañero activo no se pinta", async () => {
+      listWordsMock.mockResolvedValue([word({ form: "casa" })]);
+      companionMock.current = { ...companion(), enabled: false };
+      await render();
+      expect(host.querySelector(".nb-hero-cat-wrapper")).toBeNull();
+      expect(host.querySelector(".nb-hero-study-desk--solo")).toBeTruthy();
+    });
+
+    it("clic y teclado hacen lo mismo", async () => {
+      listWordsMock.mockResolvedValue([word({ form: "casa" })]);
+      companionMock.current = companion();
+      await render();
+      const gato = () => host.querySelector(".nb-hero-cat-wrapper") as HTMLElement;
+      expect(gato()).toBeTruthy();
+      expect(host.querySelector(".nb-hero-study-desk--solo")).toBeNull();
+      await act(async () => {
+        gato().dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+        for (let i = 0; i < 4; i++) await Promise.resolve();
+      });
+      // El teclado también cambia la frase, no solo la pose.
+      expect(host.querySelector(".nb-hero-cat-bubble")?.textContent).toContain(
+        "¡A leer y repasar con ganas!",
+      );
+    });
+  });
+
+  describe("U7 · el chip lleva a la palabra aunque haya filtros", () => {
+    it("quita el filtro que la escondía y abre la ficha", async () => {
+      listWordsMock.mockResolvedValue([
+        word({
+          form: "brisa",
+          meaning: "viento suave",
+          savedAt: 9,
+          card: { reps: 2, stability: 1, due: future() } as never,
+        }),
+        word({
+          form: "roble",
+          meaning: "árbol",
+          savedAt: 1,
+          card: { reps: 6, stability: 20, due: future() } as never,
+        }),
+      ]);
+      await render();
+      await click("Dominadas (1)");
+      expect(rowStates()).toEqual([["roble", "Dominada"]]);
+      const chip = [...host.querySelectorAll(".nb-recent-chip")].find((c) =>
+        (c.textContent ?? "").includes("brisa"),
+      ) as HTMLButtonElement;
+      await act(async () => {
+        chip.click();
+        for (let i = 0; i < 4; i++) await Promise.resolve();
+      });
+      expect(rowStates().map(([form]) => form)).toContain("brisa");
+      expect(host.querySelector(".nb-word-detail")?.textContent).toContain("viento suave");
+    });
+
+    it("también vence una búsqueda que no la incluía", async () => {
+      listWordsMock.mockResolvedValue([
+        word({ form: "brisa", meaning: "viento suave", savedAt: 9 }),
+        word({ form: "roble", meaning: "árbol", savedAt: 1 }),
+      ]);
+      await render();
+      const input = host.querySelector(".nb-search input") as HTMLInputElement;
+      await act(async () => {
+        Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(
+          input,
+          "roble",
+        );
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        for (let i = 0; i < 4; i++) await Promise.resolve();
+      });
+      expect(rowStates().map(([form]) => form)).toEqual(["roble"]);
+      const chip = [...host.querySelectorAll(".nb-recent-chip")].find((c) =>
+        (c.textContent ?? "").includes("brisa"),
+      ) as HTMLButtonElement;
+      await act(async () => {
+        chip.click();
+        for (let i = 0; i < 4; i++) await Promise.resolve();
+      });
+      expect(rowStates().map(([form]) => form)).toContain("brisa");
+    });
+  });
+});
+
+describe("Plan de simplificación — Fase 4 (limpieza y rendimiento)", () => {
+  it("la cola de repaso se relee con la hora: una palabra que vence con el cuaderno abierto aparece", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
+    try {
+      listWordsMock.mockResolvedValue([
+        word({
+          form: "brisa",
+          meaning: "viento suave",
+          context: "Sopló la brisa fresca.",
+          card: {
+            reps: 2,
+            stability: 1,
+            due: new Date(Date.now() + 30_000).toISOString(),
+          } as never,
+        }),
+      ]);
+      await render();
+      expect(button("Repasar 1 palabra")).toBeUndefined();
+      await act(async () => {
+        vi.advanceTimersByTime(61_000);
+        for (let i = 0; i < 4; i++) await Promise.resolve();
+      });
+      expect(button("Repasar 1 palabra")).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("buscar sigue filtrando con el índice precalculado (sin acentos ni mayúsculas)", async () => {
+    listWordsMock.mockResolvedValue([
+      word({ form: "murciélago", meaning: "mamífero volador", savedAt: 2 }),
+      word({ form: "roble", meaning: "árbol", savedAt: 1 }),
+    ]);
+    await render();
+    const input = host.querySelector(".nb-search input") as HTMLInputElement;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(
+        input,
+        "MURCIELAGO",
+      );
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      for (let i = 0; i < 4; i++) await Promise.resolve();
+    });
+    const filas = [...host.querySelectorAll(".nb-word-lemma")].map((n) => n.textContent);
+    expect(filas).toEqual(["murciélago"]);
+  });
+
+  it("el conteo de cada filtro sale de un solo recorrido y coincide con la lista", async () => {
+    listWordsMock.mockResolvedValue([
+      word({ form: "a1", savedAt: 3 }),
+      word({ form: "b2", savedAt: 2, card: { reps: 2, stability: 1, due: new Date(Date.now() + 86_400_000).toISOString() } as never }),
+      word({ form: "c3", savedAt: 1, card: { reps: 6, stability: 20, due: new Date(Date.now() + 86_400_000).toISOString() } as never }),
+    ]);
+    await render();
+    for (const [label, esperadas] of [
+      ["Todas (3)", 3],
+      ["Nuevas (1)", 1],
+      ["En Práctica (1)", 1],
+      ["Dominadas (1)", 1],
+    ] as const) {
+      await click(label);
+      expect(host.querySelectorAll(".nb-word")).toHaveLength(esperadas);
+    }
   });
 });
 
