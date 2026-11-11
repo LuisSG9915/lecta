@@ -1,0 +1,850 @@
+<!doctype html>
+<html lang="es-MX">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lecta — Lee. Las palabras se quedan.</title>
+<meta name="description" content="Lecta es una app para leer libros que te enseña las palabras que no conoces. En español y en inglés, en tu celular y tu compu. Crea tu cuenta gratis.">
+<meta property="og:title" content="Lecta — Lee. Las palabras se quedan.">
+<meta property="og:description" content="Toca una palabra, guárdala y Lecta te la recuerda antes de que se te olvide. Gratis.">
+<meta property="og:image" content="web/og.jpg">
+<meta property="og:locale" content="es_MX">
+<meta name="theme-color" content="#faf6f0">
+<link rel="icon" href="web/icon-192.png">
+<link rel="preload" href="fonts/literata-latin-standard-normal.woff2" as="font" type="font/woff2" crossorigin>
+<style>
+@font-face{font-family:"Literata Variable";font-style:normal;font-weight:200 900;font-display:swap;src:url("fonts/literata-latin-standard-normal.woff2") format("woff2-variations")}
+@font-face{font-family:"Literata Variable";font-style:italic;font-weight:200 900;font-display:swap;src:url("fonts/literata-latin-standard-italic.woff2") format("woff2-variations")}
+@font-face{font-family:"Alegreya Sans";font-weight:400;font-display:swap;src:url("fonts/alegreya-sans-latin-400-normal.woff2") format("woff2")}
+@font-face{font-family:"Alegreya Sans";font-weight:500;font-display:swap;src:url("fonts/alegreya-sans-latin-500-normal.woff2") format("woff2")}
+@font-face{font-family:"Alegreya Sans";font-weight:700;font-display:swap;src:url("fonts/alegreya-sans-latin-700-normal.woff2") format("woff2")}
+
+:root{
+  --vermilion:#9e3a23; --vermilion-bright:#a24317; --vermilion-wash:#f3ddd5;
+  --ochre:#d4a43a; --ochre-wash:#f5e6bf; --sage:#43694d; --mist:#6f8fa0; --amber:#8a6a1e;
+  --paper:#faf6f0; --paper-raised:#ffffff; --paper-sunken:#f0e7d5;
+  --ink:#1f1d1a; --ink-soft:#5c554d; --ink-faint:#70655a;
+  --rule:rgba(120,95,70,.14); --rule-strong:#c9beaa; --on-accent:#fff;
+  --night:#141b2b; --night-2:#1d2740; --night-ink:#efe6d6; --night-soft:#b9b2c6; --moon:#f3c77a;
+  --serif:"Literata Variable",Literata,Georgia,"Times New Roman",serif;
+  --sans:"Alegreya Sans","Gill Sans","Segoe UI","Trebuchet MS",sans-serif;
+  --r-1:2px; --r-2:4px; --r-sheet:14px; --r-pill:999px;
+  --shadow-1:0 1px 2px rgba(60,40,20,.08),0 2px 8px rgba(60,40,20,.06);
+  --shadow-2:0 6px 14px rgba(60,40,20,.10),0 18px 40px rgba(60,40,20,.12);
+  --ease-out:cubic-bezier(.16,1,.3,1); --ease-spring:cubic-bezier(.34,1.56,.64,1);
+  --gutter:clamp(1rem,4vw,2.5rem); --max:72rem;
+  --grain:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .35 0 0 0 0 .25 0 0 0 0 .15 0 0 0 .09 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+*,*::before,*::after{box-sizing:border-box}
+html{scroll-behavior:smooth;-webkit-text-size-adjust:100%;scroll-padding-top:5rem}
+body{margin:0;background:var(--paper) var(--grain);color:var(--ink);font:400 1.0625rem/1.5 var(--sans);overflow-x:hidden}
+::selection{background:color-mix(in srgb,var(--ochre) 45%,transparent);color:var(--ink)}
+img{max-width:100%;display:block}
+a{color:var(--vermilion);text-underline-offset:.2em;text-decoration-thickness:1px}
+:focus-visible{outline:2px solid var(--vermilion);outline-offset:2px;border-radius:var(--r-1)}
+h1,h2,h3{font-family:var(--serif);font-weight:500;line-height:1.08;text-wrap:balance;margin:0;letter-spacing:-.015em}
+p{margin:0;text-wrap:pretty}
+.wrap{max-width:var(--max);margin:0 auto;padding:0 var(--gutter)}
+.vh{position:absolute!important;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* ---------- Botones ---------- */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;min-height:44px;padding:.6rem 1.15rem;border-radius:var(--r-1);font:500 1.0625rem/1 var(--sans);text-decoration:none;cursor:pointer;border:1px solid var(--rule-strong);background:var(--paper-raised);color:var(--ink);transition:transform .15s var(--ease-out),background .2s,border-color .2s,box-shadow .2s}
+.btn:hover{border-color:var(--ink-soft)}
+.btn:active{transform:translateY(1px)}
+.btn--primary{background:var(--vermilion);border-color:var(--vermilion);color:var(--on-accent);box-shadow:var(--shadow-1)}
+.btn--primary:hover{background:color-mix(in srgb,var(--vermilion) 88%,var(--ink));border-color:transparent}
+.btn--lg{min-height:52px;padding:.8rem 1.5rem;font-size:1.15rem}
+.btn--quiet{border-color:transparent;background:transparent;color:var(--vermilion);padding-inline:.6rem}
+.btn--quiet:hover{text-decoration:underline;border-color:transparent}
+.btn svg{width:1.1em;height:1.1em;flex:none}
+
+/* ---------- Navegación ---------- */
+.nav{position:sticky;top:0;z-index:40;background:color-mix(in srgb,var(--paper) 88%,transparent);backdrop-filter:saturate(1.2) blur(10px);-webkit-backdrop-filter:saturate(1.2) blur(10px);border-bottom:1px solid transparent;transition:border-color .3s}
+.nav.is-stuck{border-bottom-color:var(--rule)}
+.nav .wrap{display:flex;align-items:center;gap:1rem;min-height:64px}
+.brand{display:flex;align-items:center;gap:.55rem;font:italic 500 1.6rem/1 var(--serif);color:var(--ink);text-decoration:none;letter-spacing:-.02em}
+.brand img{width:34px;height:34px;margin-top:-4px}
+.nav__links{display:flex;gap:.25rem;margin-left:auto;align-items:center}
+.nav__links a:not(.btn){color:var(--ink-soft);text-decoration:none;padding:.6rem .7rem;font-weight:500;border-radius:var(--r-1)}
+.nav__links a:not(.btn):hover{color:var(--ink)}
+@media (max-width:40rem){.nav__links a:not(.btn){display:none}.nav .btn{min-height:40px;padding:.5rem .9rem;font-size:1rem}}
+
+/* ---------- Hero ---------- */
+.hero{position:relative;padding:clamp(2.5rem,7vw,5.5rem) 0 0}
+.hero .wrap{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:clamp(2rem,5vw,4.5rem);align-items:center}
+.hero h1{font-size:clamp(3rem,8.4vw,6rem);line-height:.98;letter-spacing:-.035em}
+.hero h1 em{font-style:normal;color:var(--vermilion)}
+.hero__lede{margin-top:1.4rem;font-size:clamp(1.15rem,1.9vw,1.35rem);line-height:1.45;color:var(--ink-soft);max-width:34ch}
+.hero__cta{display:flex;flex-wrap:wrap;gap:.75rem;align-items:center;margin-top:2rem}
+.hero__note{margin-top:1rem;color:var(--ink-soft);font-size:.98rem;display:flex;flex-wrap:wrap;gap:.35rem 1.1rem}
+.hero__note span{display:inline-flex;align-items:center;gap:.35rem}
+.hero__note svg{width:15px;height:15px;color:var(--sage)}
+
+/* Página de libro tocable */
+.page{position:relative;background:var(--paper-raised);border-radius:var(--r-2);box-shadow:var(--shadow-2);padding:clamp(1.5rem,3.4vw,2.6rem) clamp(1.4rem,3.2vw,2.6rem) clamp(1.6rem,3vw,2.2rem);transform:rotate(-1.2deg);transition:transform .6s var(--ease-out)}
+.page::before{content:"";position:absolute;inset:0;border-radius:inherit;background:var(--grain);opacity:.7;pointer-events:none}
+.page::after{content:"";position:absolute;left:8%;right:8%;bottom:-10px;height:10px;background:var(--paper-raised);border-radius:0 0 var(--r-2) var(--r-2);box-shadow:var(--shadow-1);z-index:-1;transform:rotate(.8deg)}
+.page__chapter{font:500 .8rem/1 var(--sans);letter-spacing:.22em;text-transform:uppercase;color:var(--ink-soft)}
+.page__text{margin-top:1.1rem;font:400 clamp(1.18rem,2vw,1.42rem)/1.7 var(--serif);color:var(--ink)}
+.page__text p+p{margin-top:.9rem;color:var(--ink-soft)}
+.w{all:unset;cursor:pointer;position:relative;border-radius:2px;background-image:linear-gradient(transparent 62%,color-mix(in srgb,var(--ochre) 0%,transparent) 62%);text-decoration:underline dotted color-mix(in srgb,var(--vermilion) 70%,transparent);text-decoration-thickness:2px;text-underline-offset:.24em;transition:background-color .25s,color .25s}
+.w:hover{background-color:color-mix(in srgb,var(--ochre) 28%,transparent)}
+.w:focus-visible{outline:2px solid var(--vermilion);outline-offset:2px}
+.w[aria-expanded="true"]{background-color:var(--vermilion-wash);color:var(--vermilion);text-decoration-color:var(--vermilion)}
+.w.is-saved{text-decoration-style:solid;text-decoration-color:var(--sage)}
+.w.hint{animation:hint 2.4s var(--ease-out) 1.2s 2}
+@keyframes hint{0%,100%{background-color:transparent}35%{background-color:color-mix(in srgb,var(--ochre) 40%,transparent)}}
+.page__tip{margin-top:1.4rem;display:flex;align-items:center;gap:.55rem;font-size:.95rem;color:var(--ink-soft);border-top:1px solid var(--rule);padding-top:1rem}
+.page__tip svg{width:18px;height:18px;color:var(--vermilion);flex:none}
+.page__tip b{color:var(--ink);font-weight:700}
+.saved-count{margin-left:auto;display:inline-flex;align-items:center;gap:.35rem;font-weight:700;color:var(--sage);white-space:nowrap}
+.saved-count .n{display:inline-block;min-width:1ch;text-align:center}
+.saved-count.bump .n{animation:bump .5s var(--ease-spring)}
+@keyframes bump{40%{transform:scale(1.6)}}
+
+/* Ficha */
+.ficha{position:absolute;z-index:5;left:50%;width:min(23rem,calc(100% + 1rem));background:var(--paper-raised);border-radius:var(--r-sheet);box-shadow:0 2px 6px rgba(40,25,10,.08),0 24px 60px rgba(40,25,10,.22);padding:1.4rem 1.4rem 1.2rem;transform-origin:50% 0;opacity:0;visibility:hidden;transform:translate(-50%,10px) scale(.97);transition:opacity .25s,transform .45s var(--ease-out),visibility 0s .3s}
+.ficha.is-open{opacity:1;visibility:visible;transform:translate(-50%,0) scale(1);transition:opacity .2s,transform .5s var(--ease-out),visibility 0s}
+.ficha__close{position:absolute;top:.4rem;right:.4rem;width:44px;height:44px;border:0;background:none;border-radius:var(--r-pill);color:var(--ink-soft);cursor:pointer;display:grid;place-items:center}
+.ficha__close:hover{background:var(--paper-sunken);color:var(--ink)}
+.ficha__close svg{width:18px;height:18px}
+.ficha__pos{font:700 .78rem/1 var(--sans);letter-spacing:.2em;text-transform:uppercase;color:var(--vermilion)}
+.ficha__word{font:500 clamp(2.3rem,5vw,2.9rem)/1 var(--serif);letter-spacing:-.03em;margin:.45rem 0 .55rem}
+.ficha__def{font:400 1.12rem/1.45 var(--serif)}
+.ficha__quote{margin:.9rem 0 0;padding:.1rem 0 .1rem .85rem;border-left:1px solid var(--ochre);font:italic 400 1rem/1.5 var(--serif);color:var(--ink-soft)}
+.ficha__quote b{font-style:normal;color:var(--vermilion);font-weight:600}
+.ficha__here{margin-top:.8rem;font:400 1rem/1.5 var(--serif);color:var(--ink);background:var(--paper-sunken);border-radius:var(--r-2);padding:.7rem .8rem;display:none}
+.ficha__here.is-on{display:block;animation:rise .4s var(--ease-out)}
+.ficha__here small{display:block;margin-top:.35rem;font:500 .85rem/1.3 var(--sans);color:var(--ink-soft)}
+.ficha__actions{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:1.1rem}
+.ficha__actions .btn{min-height:44px;border-radius:var(--r-pill);padding-inline:1.1rem}
+.btn--save.is-saved{background:var(--sage);border-color:var(--sage);box-shadow:none}
+.btn--save svg{transition:transform .5s var(--ease-spring)}
+.btn--save.is-saved svg{transform:rotate(72deg) scale(1.15)}
+@keyframes rise{from{opacity:0;transform:translateY(6px)}}
+
+.fly{position:fixed;z-index:60;pointer-events:none;font:600 1.1rem/1 var(--serif);color:var(--sage);background:var(--paper-raised);padding:.35rem .6rem;border-radius:var(--r-pill);box-shadow:var(--shadow-2)}
+
+.hero__plus{margin-top:.6rem;color:var(--ink-soft);font-size:.98rem}
+.picker{padding:clamp(3.5rem,8vw,6rem) 0 clamp(1rem,3vw,2rem)}
+.picker__head{display:flex;flex-wrap:wrap;gap:1rem 3rem;align-items:end;justify-content:space-between}
+.picker h2{font-size:clamp(2.1rem,4.6vw,3.4rem);max-width:15ch}
+.picker__head p{max-width:36ch;color:var(--ink-soft);font-size:1.15rem}
+.picks{border:0;min-width:0;margin:clamp(1.6rem,4vw,2.4rem) 0 0;padding:0;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:.75rem}
+.pick{position:relative;display:block;background:var(--bg);border-radius:var(--r-2);padding:1rem .5rem 1.1rem;text-align:center;cursor:pointer;box-shadow:var(--shadow-1);transition:transform .5s var(--ease-spring),box-shadow .3s,opacity .3s}
+.pick input{position:absolute;opacity:0;inset:0;width:100%;height:100%;margin:0;cursor:pointer}
+.pick img{width:100%;aspect-ratio:1;height:auto;filter:drop-shadow(0 10px 10px rgba(0,0,0,.25));transition:transform .6s var(--ease-spring)}
+.pick span{display:block;margin-top:.4rem;font:italic 400 1.1rem/1.2 var(--serif);color:#fff8ee}
+.pick[style*="e9b44c"] span{color:#2a1c06}
+.pick i{position:absolute;top:.5rem;right:.5rem;width:1.75rem;height:1.75rem;border-radius:50%;background:var(--paper-raised);color:var(--vermilion);display:grid;place-items:center;transform:scale(0);transition:transform .45s var(--ease-spring)}
+.pick i svg{width:1rem;height:1rem}
+.pick:hover{transform:translateY(-4px)}
+.pick:hover img{transform:rotate(-3deg)}
+.picks:has(:checked) .pick:not(:has(:checked)){opacity:.86}
+.pick:has(:checked){transform:translateY(-10px);box-shadow:var(--shadow-2);outline:3px solid var(--ink);outline-offset:3px}
+.pick:has(:checked) img{transform:scale(1.08)}
+.pick:has(:checked) i{transform:scale(1)}
+.pick:has(:focus-visible){outline:3px solid var(--vermilion);outline-offset:3px}
+.pick.hop img{animation:hop .6s var(--ease-out)}
+@keyframes hop{35%{transform:translateY(-14%) scale(1.1)}}
+.picker__say{display:flex;flex-wrap:wrap;align-items:center;gap:1rem 1.5rem;margin-top:1.8rem}
+.bubble{background:var(--paper-raised);border:1px solid var(--rule);border-radius:3px var(--r-sheet) var(--r-sheet) var(--r-sheet);padding:.7rem 1rem;font:italic 400 1.15rem/1.35 var(--serif);box-shadow:var(--shadow-1);max-width:28rem}
+.soon{display:inline-block;vertical-align:middle;margin-left:.4rem;padding:.2rem .6rem;border-radius:var(--r-pill);font:700 .78rem/1.3 var(--sans);letter-spacing:.06em;text-transform:uppercase;background:color-mix(in srgb,var(--vermilion) 12%,transparent);border:1px solid color-mix(in srgb,var(--vermilion) 45%,transparent);color:var(--vermilion)}
+.sticky-cta{display:none}
+
+/* ---------- Sendero ---------- */
+.trail{position:relative;overflow-x:clip;padding:clamp(1rem,3vw,2rem) 0 0}
+#inkEnd{transition:opacity .4s}
+.trail__ink{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible;z-index:2;mix-blend-mode:difference}
+.trail__ink path{fill:none;stroke:#fff;stroke-linecap:round;stroke-linejoin:round}
+.trail__ink .base{stroke-width:2;stroke-dasharray:2 10;opacity:.28}
+.trail__ink .drawn{stroke-width:5;filter:url(#inkEdge)}
+.trail .wrap{position:relative;display:grid;grid-template-columns:minmax(14rem,19rem) minmax(0,1fr);gap:clamp(2rem,5vw,4.5rem)}
+.trail__aside{position:sticky;top:5.5rem;align-self:start;height:calc(100vh - 7rem);max-height:40rem;display:flex;flex-direction:column;justify-content:center;z-index:1}
+.cat-stack{position:relative;aspect-ratio:1;width:100%}
+.cat-stack img{position:absolute;inset:0;width:100%;height:100%;opacity:0;transform:translateY(14px) scale(.86);transition:opacity .45s,transform .7s var(--ease-spring);filter:drop-shadow(0 16px 16px rgba(70,40,10,.2))}
+.cat-stack img.is-on{opacity:1;transform:none}
+.cat-sun{position:absolute;inset:6% 6% 10%;border-radius:50%;background:radial-gradient(circle at 40% 38%,#ec7a4e,var(--vermilion) 70%);opacity:0;transform:scale(.6);transition:opacity .6s,transform .9s var(--ease-out)}
+.trail[data-stage="5"] .cat-sun{opacity:1;transform:none}
+.cat-label{text-align:center;margin-top:.8rem}
+.cat-label b{display:block;font:700 .8rem/1 var(--sans);letter-spacing:.24em;color:var(--vermilion)}
+.cat-label i{display:block;margin-top:.35rem;font:italic 400 1.5rem/1.1 var(--serif)}
+.cat-dots{display:flex;justify-content:center;gap:.45rem;margin-top:.9rem}
+.cat-dots span{width:8px;height:8px;border-radius:50%;background:var(--rule-strong);transition:background .3s,transform .3s}
+.cat-dots span.is-on{background:var(--vermilion);transform:scale(1.25)}
+
+.stages{min-width:0}
+.stage{position:relative;min-height:min(88vh,52rem);display:flex;flex-direction:column;justify-content:center;padding:clamp(3rem,8vw,5rem) 0}
+.stage__head{display:flex;align-items:center;gap:1rem}
+.stage > :not(.stage__head):not(.night-field){margin-left:3.75rem}
+.stage__node{flex:none;width:2.75rem;height:2.75rem;border-radius:50%;display:grid;place-items:center;font:700 1rem/1 var(--sans);background:var(--paper);border:2px solid var(--ink);color:var(--ink);position:relative;z-index:3;transition:background .4s,color .4s,transform .5s var(--ease-spring)}
+.stage.is-reached .stage__node{background:var(--ink);color:var(--paper);transform:scale(1.08)}
+.stage__mini{display:none;margin:0 0 0 auto;text-align:center}
+.stage__mini img{width:84px;height:84px}
+.stage__mini figcaption{font:italic 400 .95rem/1.1 var(--serif);color:inherit;opacity:.8}
+.stage h2{margin-top:1.1rem;font-size:clamp(2.1rem,4.6vw,3.4rem);max-width:16ch}
+.stage__lede{margin-top:1rem;font-size:clamp(1.1rem,1.6vw,1.25rem);color:var(--ink-soft);max-width:44ch;line-height:1.5}
+.stage__body{margin-top:clamp(1.8rem,4vw,2.6rem)}
+
+/* Etapa 1: imagen de ficha */
+.shot{border-radius:var(--r-2);overflow:hidden;box-shadow:var(--shadow-2);background:var(--paper-sunken)}
+.shot img{width:100%;height:auto}
+.facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(12rem,1fr));gap:1rem 2rem;margin-top:1.6rem;padding:0;list-style:none}
+.facts li{border-top:1px solid var(--rule-strong);padding-top:.75rem;color:var(--ink-soft);line-height:1.45}
+.facts b{display:block;color:var(--ink);font:500 1.15rem/1.25 var(--serif);margin-bottom:.2rem}
+
+/* Etapa 2: Herbario */
+.herbario{position:relative;background:#f4ead2 var(--grain);border-radius:var(--r-2);box-shadow:var(--shadow-2);padding:clamp(1.2rem,3vw,2rem);overflow:hidden}
+.herbario::before{content:"";position:absolute;inset:12px;border:1px solid rgba(120,95,70,.22);pointer-events:none}
+.herbario__head{display:flex;flex-wrap:wrap;align-items:baseline;gap:.3rem 1rem;position:relative}
+.herbario__head h3{font-size:clamp(1.9rem,3.6vw,2.6rem)}
+.herbario__head p{font:500 .82rem/1 var(--sans);letter-spacing:.2em;text-transform:uppercase;color:var(--ink-soft)}
+.plants{position:relative;-webkit-mask-image:linear-gradient(90deg,#000 88%,transparent);mask-image:linear-gradient(90deg,#000 88%,transparent);display:flex;gap:clamp(.4rem,1.5vw,1rem);align-items:flex-end;margin-top:1rem;min-height:clamp(250px,32vw,330px);overflow-x:auto;scrollbar-width:thin;padding-bottom:.4rem}
+.plant{flex:0 0 clamp(5.6rem,11vw,7.6rem);display:flex;flex-direction:column;align-items:center}
+.plant svg{width:100%;height:clamp(170px,22vw,230px);overflow:visible}
+.plant .stem,.plant .leaf{transition:stroke-dashoffset 1.2s var(--ease-out),transform .8s var(--ease-spring),opacity .4s}
+.plant .stem{stroke-dasharray:var(--len);stroke-dashoffset:var(--len)}
+.plant .leaf,.plant .bloom{transform:scale(0);transform-box:fill-box;transform-origin:var(--o,50% 100%)}
+.plant.is-grown .stem{stroke-dashoffset:0}
+.plant.is-grown .leaf,.plant.is-grown .bloom{transform:scale(1)}
+.tag{margin-top:-.4rem;background:var(--paper-raised);box-shadow:var(--shadow-1);padding:.45rem .55rem .4rem;text-align:center;min-width:100%;transform:rotate(var(--rot,0deg))}
+.tag b{display:block;font:500 clamp(1.05rem,1.8vw,1.3rem)/1.1 var(--serif)}
+.tag small{display:block;margin-top:.15rem;font:700 .62rem/1 var(--sans);letter-spacing:.16em;text-transform:uppercase;color:var(--vermilion)}
+.plant.is-new .tag{outline:2px solid var(--sage);outline-offset:2px}
+.herbario__foot{position:relative;margin-top:1rem;font-size:.98rem;color:var(--ink-soft)}
+
+/* Etapa 3: repaso */
+.review{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr);gap:clamp(1.2rem,3vw,2rem);align-items:center}
+.card{position:relative;background:var(--paper-raised);border-radius:var(--r-2);box-shadow:var(--shadow-2);padding:clamp(1.3rem,3vw,2rem);min-height:20rem;display:flex;flex-direction:column}
+.card__meta{font-size:.95rem;color:var(--ink-soft);display:flex;align-items:center;gap:.4rem}
+.card__meta svg{width:16px;height:16px;color:var(--ochre)}
+.card__quote{margin-top:1rem;font:italic 400 clamp(1.2rem,2.2vw,1.45rem)/1.5 var(--serif)}
+.card__quote b{font-style:normal;font-weight:600;color:var(--vermilion)}
+.card__q{margin-top:1rem;font:500 1.1rem/1.4 var(--sans)}
+.card__answer{margin-top:1rem;font:400 1.15rem/1.45 var(--serif);padding:.8rem .9rem;background:var(--paper-sunken);border-radius:var(--r-2)}
+.card__answer[hidden]{display:none}
+.card__answer:not([hidden]){animation:rise .45s var(--ease-out)}
+.card__actions{margin-top:auto;padding-top:1.2rem;display:flex;flex-wrap:wrap;gap:.5rem}
+.grade{flex:1 1 7rem;flex-direction:column;gap:.2rem;padding-block:.55rem;line-height:1.1}
+.grade small{font-size:.85rem;color:var(--ink-soft);font-weight:400}
+.grade[aria-pressed="true"]{background:color-mix(in srgb,var(--vermilion) 12%,var(--paper-raised));border-color:color-mix(in srgb,var(--vermilion) 45%,transparent);color:var(--vermilion)}
+.card__done{margin-top:1rem;font:italic 400 1.1rem/1.4 var(--serif);color:var(--sage)}
+.calendar{list-style:none;margin:0;padding:0;display:grid;gap:.55rem}
+.calendar li{display:grid;grid-template-columns:4.6rem 1fr;align-items:center;gap:.8rem;padding:.6rem .8rem;border-radius:var(--r-2);background:color-mix(in srgb,var(--paper-raised) 70%,transparent);border:1px solid var(--rule);transition:background .4s,border-color .4s,transform .5s var(--ease-out)}
+.calendar time{font:700 .82rem/1 var(--sans);letter-spacing:.1em;text-transform:uppercase;color:var(--ink-soft)}
+.calendar span{font:500 1.05rem/1.2 var(--serif)}
+.calendar li.is-next{background:var(--vermilion-wash);border-color:color-mix(in srgb,var(--vermilion) 35%,transparent);transform:translateX(6px)}
+.calendar li.is-next time{color:var(--vermilion)}
+
+/* Etapa 4: noche (voz + Kindle) */
+.stage--night{color:var(--night-ink)}
+.night-field{position:absolute;z-index:-1;top:0;bottom:0;left:-100vw;right:-100vw;background:linear-gradient(180deg,var(--night) 0%,var(--night-2) 50%,var(--night) 100%)}
+.stage--night .stage__lede{color:var(--night-soft)}
+.stage--night .stage__node{border-color:var(--night-ink);background:var(--night);color:var(--night-ink)}
+.stage--night.is-reached .stage__node{background:var(--night-ink);color:var(--night)}
+.stage--night a{color:var(--moon)}
+.trail[data-stage="4"] .cat-label i{color:var(--night-ink)}
+body.is-night .nav{background:color-mix(in srgb,var(--night) 86%,transparent)}
+body.is-night .nav .brand,body.is-night .nav__links a:not(.btn){color:var(--night-ink)}
+.devices{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:1.2rem;align-items:stretch}
+.devices figure{margin:0;border-radius:var(--r-2);overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,.35);background:#0c1220}
+.devices figure img{width:100%;height:100%;object-fit:cover}
+.devices figcaption{padding:.8rem 1rem;font-size:.98rem;color:var(--night-soft);background:#0f1626}
+.devices figcaption b{color:var(--night-ink);font-weight:700}
+.code{display:flex;gap:.45rem;margin-top:.6rem}
+.code span{width:2.6rem;height:3rem;display:grid;place-items:center;font:500 1.6rem/1 var(--serif);border:1.5px solid var(--night-ink);border-radius:var(--r-1);color:var(--night-ink);transform:rotateX(90deg);transition:transform .6s var(--ease-spring)}
+.code.is-on span{transform:none}
+.code.is-on span:nth-child(2){transition-delay:.12s}.code.is-on span:nth-child(3){transition-delay:.24s}.code.is-on span:nth-child(4){transition-delay:.36s}
+.sync{display:flex;flex-wrap:wrap;gap:.5rem 1.4rem;margin-top:1.4rem;color:var(--night-soft);font-size:1rem}
+.sync span{display:inline-flex;align-items:center;gap:.45rem}
+.sync svg{width:18px;height:18px;color:var(--moon)}
+
+/* ---------- Precios ---------- */
+.pricing{position:relative}
+.pricing h2{max-width:20ch}
+.toggle{display:inline-flex;margin-top:1.6rem;padding:3px;border-radius:var(--r-pill);background:var(--paper-sunken);border:1px solid var(--rule)}
+.toggle button{all:unset;cursor:pointer;min-height:40px;padding:0 1rem;border-radius:var(--r-pill);font:500 1rem/40px var(--sans);color:var(--ink-soft);transition:background .25s,color .25s}
+.toggle button[aria-pressed="true"]{background:var(--paper-raised);color:var(--ink);box-shadow:var(--shadow-1)}
+.toggle button:focus-visible{outline:2px solid var(--vermilion);outline-offset:2px}
+.toggle .save{font-weight:700;color:var(--sage);margin-left:.3rem}
+.plans{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);gap:clamp(1rem,2.5vw,1.6rem);margin-top:1.6rem;align-items:stretch}
+.plan{position:relative;border-radius:var(--r-2);padding:clamp(1.4rem,3vw,2.1rem);display:flex;flex-direction:column;overflow:hidden}
+.plan--free{background:var(--paper-raised);border:1px solid var(--rule);box-shadow:var(--shadow-1)}
+.plan--plus{background:var(--paper-raised);border:1px solid var(--rule);box-shadow:var(--shadow-2)}
+.plan--plus .price__n{color:var(--vermilion)}
+.plan > *{position:relative;z-index:1}
+.plan h3{font-size:clamp(1.7rem,3vw,2.2rem)}
+.plan__for{margin-top:.4rem;font-size:1.05rem;color:var(--ink-soft)}
+.price{display:flex;align-items:baseline;gap:.4rem;margin-top:1.3rem;font-variant-numeric:tabular-nums lining-nums}
+.price__n{font:500 clamp(3rem,6vw,4.2rem)/1 var(--serif);letter-spacing:-.04em}
+.price__unit{font-size:1.05rem;color:var(--ink-soft)}
+.price__sub{min-height:1.5em;margin-top:.35rem;font-size:.98rem;color:var(--ink-soft);font-variant-numeric:tabular-nums}
+.plan ul{list-style:none;padding:0;margin:1.4rem 0 0;display:grid;gap:.7rem}
+.plan li{display:grid;grid-template-columns:1.25rem 1fr;gap:.6rem;line-height:1.4}
+.plan li svg{width:1.1rem;height:1.1rem;margin-top:.18rem}
+.plan--free li svg{color:var(--sage)}
+.plan--plus li svg{color:var(--vermilion)}
+.plan li b{font-weight:700}
+.plan__cta{margin-top:auto;padding-top:1.8rem}
+.plan__cta .btn{width:100%}
+.plan__fine{margin-top:.7rem;font-size:.95rem;color:var(--ink-soft);text-align:center}
+.plans__rule{margin-top:1.4rem;font:italic 400 1.15rem/1.5 var(--serif);color:var(--ink-soft);max-width:52ch}
+.price__n.swap{animation:swap .45s var(--ease-out)}
+@keyframes swap{from{opacity:0;transform:translateY(-.25em)}}
+
+/* ---------- Pelajes ---------- */
+
+/* ---------- Preguntas ---------- */
+.faq{padding:clamp(3rem,7vw,5rem) 0}
+.faq .wrap{display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr);gap:clamp(1.5rem,5vw,4rem)}
+.faq h2{font-size:clamp(2rem,4.2vw,3rem)}
+.faq details{border-top:1px solid var(--rule-strong)}
+.faq details:last-child{border-bottom:1px solid var(--rule-strong)}
+.faq summary{list-style:none;cursor:pointer;display:flex;gap:1rem;align-items:center;justify-content:space-between;min-height:3.6rem;padding:.9rem 0;font:500 1.2rem/1.3 var(--serif)}
+.faq summary::-webkit-details-marker{display:none}
+.faq summary svg{width:20px;height:20px;flex:none;color:var(--vermilion);transition:transform .35s var(--ease-out)}
+.faq details[open] summary svg{transform:rotate(45deg)}
+.faq details p{padding:0 0 1.2rem;color:var(--ink-soft);max-width:60ch;line-height:1.55}
+
+/* ---------- Cierre ---------- */
+.close{position:relative;color:var(--night-ink);background:var(--night);overflow:hidden;isolation:isolate}
+.close__art{position:absolute;inset:0;z-index:-1}
+.close__art img{width:100%;height:100%;object-fit:cover;object-position:70% 50%}
+.close__art::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(14,18,32,.92) 0%,rgba(14,18,32,.7) 38%,rgba(14,18,32,0) 70%)}
+.close .wrap{min-height:clamp(30rem,62vw,44rem);display:flex;flex-direction:column;justify-content:center;padding-block:4rem}
+.close h2{font-size:clamp(2.6rem,6vw,4.6rem);max-width:12ch;line-height:1}
+.close h2 em{font-style:normal;color:var(--moon)}
+.close p{margin-top:1.1rem;font-size:1.2rem;color:var(--night-soft);max-width:30ch}
+.close .btn{margin-top:1.8rem;align-self:flex-start}
+footer{background:var(--night);color:var(--night-soft);font-size:.95rem}
+footer .wrap{display:flex;flex-wrap:wrap;gap:.6rem 2rem;align-items:center;justify-content:space-between;padding-block:1.6rem;border-top:1px solid rgba(255,255,255,.08)}
+footer a{color:var(--night-ink)}
+
+/* ---------- Revelado ---------- */
+.reveal{transition:opacity .9s var(--ease-out),transform .9s var(--ease-out),filter .9s var(--ease-out)}
+.js .reveal:not(.is-in){opacity:0;transform:translateY(22px);filter:blur(4px)}
+
+/* ---------- Responsivo ---------- */
+@media (max-width:60rem){
+  .hero .wrap{grid-template-columns:1fr}
+  .page{transform:rotate(-.6deg)}
+  .trail .wrap{grid-template-columns:minmax(0,1fr)}
+  .trail__aside{display:none}
+  .stage__mini{display:block}
+  .stage{min-height:auto;padding:3rem 0}
+  .review,.devices,.plans,.faq .wrap{grid-template-columns:1fr}
+  .picks{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;scroll-padding-inline:var(--gutter);margin-inline:calc(-1 * var(--gutter));padding:14px var(--gutter) .6rem;scrollbar-width:none}
+  .pick{flex:0 0 min(42%,11rem);scroll-snap-align:start}
+  .stage > :not(.stage__head):not(.night-field){margin-left:0}
+  .stage{padding-left:3.4rem}
+  .stage__head{margin-left:-3.4rem}
+  .close__art::after{background:linear-gradient(180deg,rgba(14,18,32,.35) 0%,rgba(14,18,32,.92) 62%)}
+  .close .wrap{justify-content:flex-end}
+  .close__art img{object-position:72% 30%}
+}
+@media (max-width:40rem){
+  .sticky-cta{display:flex;align-items:center;gap:.6rem;position:fixed;z-index:30;left:0;right:0;bottom:0;padding:.55rem var(--gutter) calc(.55rem + env(safe-area-inset-bottom));background:var(--paper-raised);border-top:1px solid var(--rule);box-shadow:0 -6px 20px rgba(60,40,20,.1);transform:translateY(110%);transition:transform .45s var(--ease-out)}
+  .sticky-cta.is-on{transform:none}
+  .sticky-cta img{width:44px;height:44px;flex:none}
+  .sticky-cta .btn{flex:1}
+  .ficha{z-index:70}
+  footer{padding-bottom:4.5rem}
+  .ficha{position:fixed;left:0;right:0;bottom:0;top:auto;width:auto;border-radius:var(--r-sheet) var(--r-sheet) 0 0;padding-bottom:calc(1.2rem + env(safe-area-inset-bottom));transform:translateY(105%);transform-origin:50% 100%}
+  .ficha.is-open{transform:none}
+  .ficha::before{content:"";display:block;width:40px;height:4px;border-radius:2px;background:var(--rule-strong);margin:-.5rem auto .9rem}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition-duration:.01ms!important;scroll-behavior:auto!important}
+  .js .reveal:not(.is-in){opacity:1;transform:none;filter:none}
+}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <filter id="inkEdge" x="-5%" y="-5%" width="110%" height="110%"><feTurbulence type="fractalNoise" baseFrequency=".05" numOctaves="2" seed="11"/><feDisplacementMap in="SourceGraphic" scale="4" xChannelSelector="R" yChannelSelector="G"/></filter>
+  <symbol id="i-star" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2.8l2.7 6 6.5.6-4.9 4.3 1.5 6.4L12 16.8 6.2 20.1l1.5-6.4L2.8 9.4l6.5-.6z"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.5l4.8 4.6L19.5 7"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="i-hand" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M9 11V5.5a1.5 1.5 0 013 0V11m0-1.5a1.5 1.5 0 013 0V12m0-1a1.5 1.5 0 013 0v4a6 6 0 01-6 6h-1.2a6 6 0 01-4.6-2.2L4 15.5a1.6 1.6 0 012.4-2.1L9 15"/></symbol>
+  <symbol id="i-leaf" viewBox="0 0 24 24"><path fill="currentColor" d="M20 4c-9 0-15 4.5-15 11 0 1.6.4 3 1 4.2C8 14 11.5 10.6 16 8.5c-4 2.6-7 6-8.6 11 1 .4 2 .5 3.1.5C17 20 20 13 20 4z"/></symbol>
+  <symbol id="i-wifi-off" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M3 3l18 18M8.5 16.5a5 5 0 017 0M5 13a10 10 0 015.2-2.7M19 13a10 10 0 00-2.3-1.6M2 9.5a15 15 0 015-2.8M22 9.5A15 15 0 0011.5 5"/><circle cx="12" cy="19.5" r="1.2" fill="currentColor"/></symbol>
+  <symbol id="i-sync" viewBox="0 0 24 24"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M20 7a8.5 8.5 0 00-15 2M4 17a8.5 8.5 0 0015-2M20 3v4h-4M4 21v-4h4"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 24 24"><path fill="currentColor" d="M20 14.5A8.5 8.5 0 019.5 4a8.5 8.5 0 1010.5 10.5z"/></symbol>
+</svg>
+
+<header class="nav" id="nav">
+  <div class="wrap">
+    <a class="brand" href="#top" aria-label="Lecta, inicio"><img src="web/gato-ginger-3.webp" data-stage="3" alt="" width="34" height="34">Lecta</a>
+    <nav class="nav__links" aria-label="Principal">
+      <a href="#gatos">Elige tu gato</a>
+      <a href="#sendero">Cómo funciona</a>
+      <a href="#precios">Precios</a>
+      <a class="btn btn--primary" href="https://lecta.luis-sg9915.workers.dev/" data-cta>Crear cuenta gratis</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+  <section class="hero" aria-labelledby="hero-title">
+    <div class="wrap">
+      <div>
+        <h1 id="hero-title">Lee. Las palabras <em>se quedan.</em></h1>
+        <p class="hero__lede">Lee tus libros en Lecta. Cuando no entiendas una palabra, tócala: te decimos qué significa, la guardamos y te la recordamos después.</p>
+        <div class="hero__cta">
+          <a class="btn btn--primary btn--lg" href="https://lecta.luis-sg9915.workers.dev/" data-cta>Crear mi cuenta gratis</a>
+          <a class="btn btn--quiet" href="#precios">Ver precios</a>
+        </div>
+        <p class="hero__note">
+          <span><svg aria-hidden="true"><use href="#i-check"/></svg>Gratis para siempre</span>
+          <span><svg aria-hidden="true"><use href="#i-check"/></svg>Sin tarjeta</span>
+          <span><svg aria-hidden="true"><use href="#i-check"/></svg>Funciona sin internet</span>
+        </p>
+        <p class="hero__plus">Lecta+ desde $59 al mes, muy pronto.</p>
+      </div>
+
+      <div class="page-wrap" style="position:relative">
+        <article class="page" id="page" aria-label="Página de muestra: toca una palabra subrayada">
+          <p class="page__chapter">Capítulo tres</p>
+          <div class="page__text">
+            <p>La casa olía a <button class="w" data-w="membrillo" aria-expanded="false" aria-controls="ficha">membrillo</button> y a lluvia vieja. En el patio, un naranjo <button class="w hint" data-w="perenne" aria-expanded="false" aria-controls="ficha">perenne</button> seguía verde contra el invierno, <span style="white-space:nowrap"><button class="w" data-w="terco" aria-expanded="false" aria-controls="ficha">terco</button>,</span> como si nadie le hubiera avisado del frío.</p>
+            <p>Dejó el libro abierto sobre la mesa. Supo que esa palabra ya no se le iba a olvidar.</p>
+          </div>
+          <p class="page__tip"><svg aria-hidden="true"><use href="#i-hand"/></svg><span><b>Toca una palabra</b> subrayada.</span><span class="saved-count" id="savedCount" aria-live="polite"><svg aria-hidden="true" width="16" height="16"><use href="#i-leaf"/></svg><span class="n">0</span>&nbsp;guardadas</span></p>
+        </article>
+
+        <div class="ficha" id="ficha" role="dialog" aria-modal="false" aria-labelledby="fichaWord">
+          <button class="ficha__close" type="button" aria-label="Cerrar ficha"><svg aria-hidden="true"><use href="#i-x"/></svg></button>
+          <p class="ficha__pos" id="fichaPos"></p>
+          <p class="ficha__word" id="fichaWord"></p>
+          <p class="ficha__def" id="fichaDef"></p>
+          <blockquote class="ficha__quote" id="fichaQuote"></blockquote>
+          <p class="ficha__here" id="fichaHere"></p>
+          <div class="ficha__actions">
+            <button class="btn btn--primary btn--save" type="button" id="fichaSave"><svg aria-hidden="true"><use href="#i-star"/></svg><span>Guardar</span></button>
+            <button class="btn" type="button" id="fichaWhy">¿Qué significa aquí?</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="picker" id="gatos" aria-labelledby="picker-title">
+    <div class="wrap">
+      <div class="picker__head">
+        <h2 id="picker-title">Elige al gato que va a leer contigo.</h2>
+        <p>Te acompaña en cada página, festeja cada palabra nueva y crece mientras lees. Escoge el tuyo desde ahora.</p>
+      </div>
+      <fieldset class="picks"><legend class="vh">Elige tu gato</legend><label class="pick" style="--bg:#2a3160"><input type="radio" name="gato" value="ginger" data-name="Naranja Miel" checked><img src="web/gato-ginger-3.webp" alt="" width="240" height="240"><span>Naranja Miel</span><i aria-hidden="true"><svg aria-hidden="true"><use href="#i-check"/></svg></i></label><label class="pick" style="--bg:#e9b44c"><input type="radio" name="gato" value="tuxedo" data-name="Tinta y Crema"><img src="web/gato-tuxedo-3.webp" alt="" width="240" height="240"><span>Tinta y Crema</span><i aria-hidden="true"><svg aria-hidden="true"><use href="#i-check"/></svg></i></label><label class="pick" style="--bg:#3f7896"><input type="radio" name="gato" value="latte" data-name="Crema Canela"><img src="web/gato-latte-3.webp" alt="" width="240" height="240"><span>Crema Canela</span><i aria-hidden="true"><svg aria-hidden="true"><use href="#i-check"/></svg></i></label><label class="pick" style="--bg:#b34a2c"><input type="radio" name="gato" value="mist" data-name="Gris Neblina"><img src="web/gato-mist-3.webp" alt="" width="240" height="240"><span>Gris Neblina</span><i aria-hidden="true"><svg aria-hidden="true"><use href="#i-check"/></svg></i></label><label class="pick" style="--bg:#4d7859"><input type="radio" name="gato" value="calico" data-name="Calicó Literario"><img src="web/gato-calico-3.webp" alt="" width="240" height="240"><span>Calicó Literario</span><i aria-hidden="true"><svg aria-hidden="true"><use href="#i-check"/></svg></i></label></fieldset>
+      <div class="picker__say">
+        <p class="bubble" id="bubble" aria-live="polite">Hola, soy Naranja Miel. Yo te acompaño mientras lees.</p>
+        <a class="btn btn--primary btn--lg" href="https://lecta.luis-sg9915.workers.dev/" data-cta id="pickCta">Empezar con Naranja Miel</a>
+      </div>
+    </div>
+  </section>
+
+
+  <section class="trail" id="sendero" data-stage="1" aria-label="Cómo funciona Lecta">
+    <svg class="trail__ink" id="ink" aria-hidden="true"><path class="base" id="inkBase"/><path class="drawn" id="inkDrawn"/><circle id="inkEnd" r="9" fill="#fff"/></svg>
+    <div class="wrap">
+      <aside class="trail__aside" aria-hidden="true">
+        <div class="cat-stack" id="catStack">
+          <div class="cat-sun"></div>
+          <img src="web/gato-ginger-0.webp" data-stage="0" alt="" class="is-on" width="360" height="360">
+          <img src="web/gato-ginger-1.webp" data-stage="1" alt="" width="360" height="360" loading="lazy">
+          <img src="web/gato-ginger-2.webp" data-stage="2" alt="" width="360" height="360" loading="lazy">
+          <img src="web/gato-ginger-3.webp" data-stage="3" alt="" width="360" height="360" loading="lazy">
+          <img src="web/gato-ginger-4.webp" data-stage="4" alt="" width="360" height="360" loading="lazy">
+        </div>
+        <div class="cat-label"><i id="catName">recién llegado</i></div>
+        <div class="cat-dots" id="catDots"><span class="is-on"></span><span></span><span></span><span></span><span></span></div>
+      </aside>
+
+      <div class="stages">
+        <!-- 1 -->
+        <article class="stage" data-stage="1" data-name="recién llegado">
+          <div class="stage__head"><span class="stage__node">1</span><figure class="stage__mini" aria-hidden="true"><img src="web/gato-ginger-0.webp" data-stage="0" alt="" width="84" height="84" loading="lazy"><figcaption>recién llegado</figcaption></figure></div>
+          <h2 class="reveal">Toca la palabra que no entiendes.</h2>
+          <p class="stage__lede reveal">Te sale qué significa ahí mismo, con la frase del libro. No tienes que salirte a buscarla ni perder dónde ibas.</p>
+          <div class="stage__body reveal">
+            <figure class="shot" style="margin:0"><img src="web/ficha-palabra.webp" alt="La ficha de la palabra «perenne» abierta sobre la página: adjetivo, su significado, la frase del libro y los botones Guardar y ¿Qué significa aquí?" width="1200" height="900" loading="lazy"></figure>
+            <ul class="facts">
+              <li><b>Diccionario incluido</b>En español y en inglés. Funciona aunque no tengas internet.</li>
+              <li><b>Inglés explicado en español</b>Si lees en inglés, te lo explicamos en tu idioma.</li>
+              <li><b>Aviso antes del capítulo</b>Con Lecta+ ves desde antes las palabras difíciles que vienen.</li>
+            </ul>
+          </div>
+        </article>
+
+        <!-- 2 -->
+        <article class="stage" data-stage="2" data-name="curioso">
+          <div class="stage__head"><span class="stage__node">2</span><figure class="stage__mini" aria-hidden="true"><img src="web/gato-ginger-1.webp" data-stage="1" alt="" width="84" height="84" loading="lazy"><figcaption>curioso</figcaption></figure></div>
+          <h2 class="reveal">Cada palabra que guardas se queda contigo.</h2>
+          <p class="stage__lede reveal">Tus palabras llegan a tu Herbario: tu colección, cada una con la frase donde la encontraste. Las que guardaste arriba ya están aquí.</p>
+          <div class="stage__body reveal">
+            <div class="herbario">
+              <div class="herbario__head"><h3>Herbario</h3></div>
+              <div class="plants" id="plants" role="list" aria-label="Palabras del Herbario"></div>
+              <p class="herbario__foot" id="herbFoot">Estas son palabras de ejemplo. En Lecta guardas todas las que quieras.</p>
+            </div>
+          </div>
+        </article>
+
+        <!-- 3 -->
+        <article class="stage" data-stage="3" data-name="joven lector">
+          <div class="stage__head"><span class="stage__node">3</span><figure class="stage__mini" aria-hidden="true"><img src="web/gato-ginger-2.webp" data-stage="2" alt="" width="84" height="84" loading="lazy"><figcaption>joven lector</figcaption></figure></div>
+          <h2 class="reveal">Lecta te la recuerda antes de que se te olvide.</h2>
+          <p class="stage__lede reveal">Cada cierto tiempo te pregunta por tus palabras, siempre con la frase del libro. Si te la sabes, te la pregunta más adelante; si no, pronto. Tú no organizas nada.</p>
+          <div class="stage__body reveal">
+            <div class="review">
+              <div class="card" id="card">
+                <p class="card__meta"><svg aria-hidden="true"><use href="#i-star"/></svg>La guardaste leyendo el capítulo tres</p>
+                <p class="card__quote">«…un naranjo <b>perenne</b> seguía verde contra el invierno…»</p>
+                <p class="card__q">¿Recuerdas qué significa <i>perenne</i>?</p>
+                <p class="card__answer" id="cardAnswer" hidden>Que dura siempre o por mucho tiempo; que no pierde la hoja.</p>
+                <div class="card__actions" id="cardActions">
+                  <button class="btn btn--primary" type="button" id="reveal" style="flex:1">Mostrar significado</button>
+                </div>
+              </div>
+              <ol class="calendar" id="calendar" aria-label="Próximos repasos de perenne">
+                <li data-g="0"><time>hoy</time><span>Otra vez, en 10 minutos</span></li>
+                <li data-g="1"><time>jueves</time><span>Bien, en 4 días</span></li>
+                <li data-g="2"><time>en 11 días</time><span>Fácil, casi tuya</span></li>
+                <li><time>después</time><span>Cada vez más lejos</span></li>
+              </ol>
+            </div>
+          </div>
+        </article>
+
+        <!-- 4 -->
+        <article class="stage stage--night" data-stage="4" data-name="lector">
+          <div class="night-field" aria-hidden="true"></div>
+          <div class="stage__head"><span class="stage__node">4</span><figure class="stage__mini" aria-hidden="true"><img src="web/gato-ginger-3.webp" data-stage="3" alt="" width="84" height="84" loading="lazy"><figcaption>lector</figcaption></figure></div>
+          <h2 class="reveal">Sigue leyendo donde te quedaste.</h2>
+          <p class="stage__lede reveal">Empieza en el celular y sigue en la compu: tu página y tus palabras te esperan. Y si no puedes leer, Lecta te lee el libro en voz alta.</p>
+          <div class="stage__body reveal">
+            <div class="devices">
+              <figure><img src="web/kindle.webp" alt="Un Kindle mostrando Don Quijote con la ficha de «adarga» y, al lado, el gato dormido con el código de vinculación MIAU" width="1200" height="900" loading="lazy">
+                <figcaption><b>También en tu Kindle, con Lecta+.</b> Lo conectas con un código de 4 letras.<div class="code" id="code" aria-label="Código de ejemplo: MIAU"><span>M</span><span>I</span><span>A</span><span>U</span></div></figcaption></figure>
+              <figure><img src="web/voz.webp" alt="El gato con audífonos rodeado de anillos de texto que suenan" width="1200" height="900" loading="lazy">
+                <figcaption><b>Te lee en voz alta.</b> Con voces que suenan naturales, aunque no tengas internet.</figcaption></figure>
+            </div>
+            <p class="sync"><span><svg aria-hidden="true"><use href="#i-sync"/></svg>Celular y compu</span><span><svg aria-hidden="true"><use href="#i-wifi-off"/></svg>Funciona sin internet</span><span><svg aria-hidden="true"><use href="#i-moon"/></svg>Modo claro y modo noche</span></p>
+          </div>
+        </article>
+
+        <!-- 5 -->
+        <article class="stage pricing" data-stage="5" data-name="bibliotecario" id="precios">
+          <div class="stage__head"><span class="stage__node">5</span><figure class="stage__mini" aria-hidden="true"><img src="web/gato-ginger-4.webp" data-stage="4" alt="" width="84" height="84" loading="lazy"><figcaption>bibliotecario</figcaption></figure></div>
+          <h2 class="reveal">Empieza gratis. Lecta+ llega muy pronto.</h2>
+          <div class="toggle" role="group" aria-label="Periodo de pago">
+            <button type="button" data-period="mes" aria-pressed="false">Mensual</button>
+            <button type="button" data-period="anual" aria-pressed="true">Anual <span class="save">ahorra $209</span></button>
+          </div>
+          <div class="plans reveal">
+            <div class="plan plan--free">
+              <h3>Gratis</h3>
+              <p class="plan__for">Todo lo que necesitas para leer y aprender palabras.</p>
+              <p class="price"><span class="price__n">$0</span><span class="price__unit">MXN</span></p>
+              <p class="price__sub">Para siempre. Solo creas tu cuenta.</p>
+              <ul><li><svg aria-hidden="true"><use href="#i-check"/></svg><span>Lee todos los libros que quieras, en español e inglés</span></li><li><svg aria-hidden="true"><use href="#i-check"/></svg><span>Toca una palabra y mira qué significa, <b>con o sin internet</b></span></li><li><svg aria-hidden="true"><use href="#i-check"/></svg><span>Guarda tus palabras y repásalas</span></li><li><svg aria-hidden="true"><use href="#i-check"/></svg><span>Sigue donde te quedaste, en celular y compu</span></li><li><svg aria-hidden="true"><use href="#i-check"/></svg><span>Te lee el libro en voz alta</span></li><li><svg aria-hidden="true"><use href="#i-check"/></svg><span><b>Un gato</b> a elegir entre cinco</span></li></ul>
+              <div class="plan__cta"><a class="btn btn--primary btn--lg" href="https://lecta.luis-sg9915.workers.dev/" data-cta>Crear cuenta gratis</a></div>
+            </div>
+            <div class="plan plan--plus">
+              <h3>Lecta+ <span class="soon">Muy pronto</span></h3>
+              <p class="plan__for">Más ayuda y más lugares donde leer.</p>
+              <p class="price"><span class="price__n" id="priceN">$499</span><span class="price__unit" id="priceUnit">MXN al año</span></p>
+              <p class="price__sub" id="priceSub">Son $42 al mes: ahorras $209.</p>
+              <ul><li><svg aria-hidden="true"><use href="#i-check"/></svg><span><b>Todo lo de Gratis</b>, más:</span></li><li><svg aria-hidden="true"><use href="#i-check"/></svg><span><b>Lee en tu Kindle</b></span></li><li><svg aria-hidden="true"><use href="#i-check"/></svg><span>Explicaciones con IA: qué quiere decir la palabra en esa frase</span></li><li><svg aria-hidden="true"><use href="#i-check"/></svg><span>Las palabras difíciles de cada capítulo, antes de leerlo</span></li><li><svg aria-hidden="true"><use href="#i-check"/></svg><span>Tus libros guardados en la nube, en todos tus aparatos</span></li><li><svg aria-hidden="true"><use href="#i-check"/></svg><span>Cambia de gato cuando quieras y ponle accesorios</span></li></ul>
+              <div class="plan__cta"><a class="btn btn--lg" href="https://lecta.luis-sg9915.workers.dev/" data-cta>Avísame cuando salga</a><p class="plan__fine">Todavía no se puede pagar. Crea tu cuenta gratis y te avisamos en la app.</p></div>
+            </div>
+          </div>
+          <p class="plans__rule reveal">Precios en pesos mexicanos.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="faq" aria-labelledby="faq-title">
+    <div class="wrap">
+      <h2 id="faq-title" class="reveal">Preguntas antes de empezar.</h2>
+      <div class="reveal">
+        <details><summary>¿Cuánto cuesta?<svg aria-hidden="true"><use href="#i-plus"/></svg></summary><p>Lecta es gratis. Más adelante habrá Lecta+, con Kindle, explicaciones con IA y más, por $59 al mes o $499 al año. Todavía no se puede pagar.</p></details>
+        <details><summary>¿Necesito crear una cuenta?<svg aria-hidden="true"><use href="#i-plus"/></svg></summary><p>Sí. Es gratis y toma un minuto. Con tu cuenta se guardan tus libros, tus palabras y la página donde te quedaste.</p></details>
+        <details><summary>¿Qué libros puedo leer?<svg aria-hidden="true"><use href="#i-plus"/></svg></summary><p>Los libros digitales que ya tengas (en formato EPUB, el más común) y los clásicos gratuitos que vienen dentro de Lecta. En español o en inglés.</p></details>
+        <details><summary>¿Funciona sin internet?<svg aria-hidden="true"><use href="#i-plus"/></svg></summary><p>Sí. Después de abrir Lecta la primera vez, puedes leer, guardar palabras y repasar aunque no tengas señal.</p></details>
+        <details><summary>¿Tengo que estudiar o hacer tarea?<svg aria-hidden="true"><use href="#i-plus"/></svg></summary><p>No. Tú lees. Lecta guarda tus palabras y te pregunta por ellas de vez en cuando, en uno o dos minutos.</p></details>
+        <details><summary>¿Cómo funciona en el Kindle?<svg aria-hidden="true"><use href="#i-plus"/></svg></summary><p>Con Lecta+ abres Lecta en el navegador de tu Kindle y lo conectas con un código de 4 letras. Lo que leas ahí aparece también en tu celular.</p></details>
+      </div>
+    </div>
+  </section>
+
+  <section class="close" aria-labelledby="close-title">
+    <div class="close__art" aria-hidden="true"><picture><source media="(max-width:60rem)" srcset="web/hero-noche-movil.webp"><img src="web/hero-noche.webp" alt="" loading="lazy" width="1600" height="900"></picture></div>
+    <div class="wrap">
+      <h2 id="close-title">Esta noche, lee un capítulo. <em>Mañana sabrás más palabras.</em></h2>
+      <p>Crea tu cuenta gratis y empieza con el libro que tú elijas.</p>
+      <a class="btn btn--primary btn--lg" href="https://lecta.luis-sg9915.workers.dev/" data-cta>Crear mi cuenta gratis</a>
+    </div>
+  </section>
+</main>
+
+<div class="sticky-cta" id="stickyCta" aria-hidden="true"><img src="web/gato-ginger-3.webp" data-stage="3" alt="" width="44" height="44"><a class="btn btn--primary" href="https://lecta.luis-sg9915.workers.dev/" data-cta tabindex="-1">Crear mi cuenta gratis</a></div>
+
+<footer>
+  <div class="wrap">
+    <span>Lecta · tu cuaderno de lectura</span>
+    <span>Hecho para leer en español e inglés · <a href="https://lecta.luis-sg9915.workers.dev/">Abrir la app</a></span>
+  </div>
+</footer>
+
+<script>
+(() => {
+  document.documentElement.classList.add("js");
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const $ = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+
+  /* ---------- Elegir gato ---------- */
+  const APP = "https://lecta.luis-sg9915.workers.dev/";
+  const picks = $$('input[name="gato"]');
+  function setCoat(coat, announce) {
+    const input = picks.find(i => i.value === coat) || picks[0];
+    input.checked = true;
+    const name = input.dataset.name;
+    $$("img[data-stage]").forEach(im => { im.src = `web/gato-${input.value}-${im.dataset.stage}.webp`; });
+    $$("a[data-cta]").forEach(a => { a.href = `${APP}?gato=${input.value}`; });
+    $("#pickCta").textContent = "Empezar con " + name;
+    if (announce) {
+      $("#bubble").textContent = `Hola, soy ${name}. Yo te acompaño mientras lees.`;
+      const tile = input.closest(".pick");
+      tile.classList.remove("hop"); void tile.offsetWidth; tile.classList.add("hop");
+    }
+    try { localStorage.setItem("lecta:gato", input.value); } catch {}
+  }
+  picks.forEach(i => i.addEventListener("change", () => setCoat(i.value, true)));
+  let storedCoat = null;
+  try { storedCoat = localStorage.getItem("lecta:gato"); } catch {}
+  setCoat(storedCoat || "ginger", Boolean(storedCoat));
+
+  /* ---------- Botón fijo en celular ---------- */
+  const sticky = $("#stickyCta");
+  new IntersectionObserver(([e]) => {
+    const on = !e.isIntersecting && e.boundingClientRect.top < 0;
+    sticky.classList.toggle("is-on", on);
+    sticky.setAttribute("aria-hidden", !on);
+    $("a", sticky).tabIndex = on ? 0 : -1;
+  }).observe($(".hero__cta"));
+
+  /* ---------- Navegación pegada ---------- */
+  const nav = $("#nav");
+  const onScrollNav = () => nav.classList.toggle("is-stuck", scrollY > 8);
+  addEventListener("scroll", onScrollNav, { passive: true }); onScrollNav();
+
+  /* ---------- Ficha de palabra ---------- */
+  const DICT = {
+    membrillo: { pos: "sustantivo", def: "Fruto amarillo y muy aromático del árbol del mismo nombre; con él se hace el ate.", quote: "La casa olía a <b>membrillo</b> y a lluvia vieja.", here: "Aquí no hay fruta a la vista: es un olor, y ese olor pinta una casa vieja, dulce y cerrada." },
+    perenne: { pos: "adjetivo", def: "Que dura siempre o por mucho tiempo; que no pierde la hoja.", quote: "…un naranjo <b>perenne</b> seguía verde contra el invierno…", here: "Además de la botánica, el naranjo resiste: la palabra le da al árbol algo de terquedad." },
+    terco: { pos: "adjetivo", def: "Que se mantiene firme en una idea o actitud aunque haya razones para cambiarla.", quote: "…seguía verde contra el invierno, <b>terco</b>, como si nadie le hubiera avisado del frío.", here: "Se lo dice a un árbol como a una persona: el naranjo se niega a aceptar el invierno." },
+  };
+  const BUBBLES = ["¡Esa es buena! Va a tu Herbario.", "Otra más. Ya casi crezco.", "Tres palabras y ni saliste de la página."];
+  const saved = new Set();
+  const ficha = $("#ficha"), page = $("#page"), wrap = $(".page-wrap");
+  let current = null, opener = null;
+
+  function openFicha(btn) {
+    const w = btn.dataset.w, d = DICT[w];
+    $$(".w").forEach(b => b.setAttribute("aria-expanded", b === btn));
+    btn.classList.remove("hint");
+    current = w; opener = btn;
+    $("#fichaPos").textContent = d.pos;
+    $("#fichaWord").textContent = w;
+    $("#fichaDef").textContent = d.def;
+    $("#fichaQuote").innerHTML = "«" + d.quote + "»";
+    const here = $("#fichaHere");
+    here.classList.remove("is-on");
+    here.innerHTML = d.here + "<small>Así responde «¿Qué significa aquí?» en Lecta+.</small>";
+    syncSave();
+    if (matchMedia("(min-width: 40.01rem)").matches) {
+      const r = btn.getBoundingClientRect(), wr = wrap.getBoundingClientRect();
+      ficha.style.top = (r.bottom - wr.top + 12) + "px";
+    } else ficha.style.top = "";
+    ficha.classList.add("is-open");
+    $("#fichaSave").focus({ preventScroll: true });
+  }
+  function closeFicha() {
+    if (!ficha.classList.contains("is-open")) return;
+    ficha.classList.remove("is-open");
+    $$(".w").forEach(b => b.setAttribute("aria-expanded", "false"));
+    if (opener) opener.focus({ preventScroll: true });
+    current = null;
+  }
+  function syncSave() {
+    const s = $("#fichaSave"), on = saved.has(current);
+    s.classList.toggle("is-saved", on);
+    s.querySelector("span").textContent = on ? "Guardada" : "Guardar";
+    s.setAttribute("aria-pressed", on);
+  }
+  $$(".w").forEach(b => b.addEventListener("click", e => { e.stopPropagation(); b.getAttribute("aria-expanded") === "true" ? closeFicha() : openFicha(b); }));
+  $(".ficha__close").addEventListener("click", closeFicha);
+  $("#fichaWhy").addEventListener("click", () => $("#fichaHere").classList.add("is-on"));
+  document.addEventListener("click", e => { if (!ficha.contains(e.target)) closeFicha(); });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") closeFicha(); });
+
+  $("#fichaSave").addEventListener("click", e => {
+    if (!current || saved.has(current)) return;
+    saved.add(current);
+    opener.classList.add("is-saved");
+    syncSave();
+    const count = $("#savedCount");
+    if (!reduce) {
+      const from = e.currentTarget.getBoundingClientRect(), to = count.getBoundingClientRect();
+      const fly = document.createElement("span");
+      fly.className = "fly"; fly.textContent = current;
+      document.body.append(fly);
+      fly.animate([
+        { transform: `translate(${from.left}px,${from.top}px) scale(1)`, opacity: 1 },
+        { transform: `translate(${(from.left + to.left) / 2}px,${Math.min(from.top, to.top) - 80}px) scale(.9)`, opacity: 1, offset: .5 },
+        { transform: `translate(${to.left}px,${to.top}px) scale(.4)`, opacity: 0 }
+      ], { duration: 750, easing: "cubic-bezier(.5,0,.3,1)" }).onfinish = () => fly.remove();
+    }
+    setTimeout(() => {
+      count.querySelector(".n").textContent = saved.size;
+      count.classList.remove("bump"); void count.offsetWidth; count.classList.add("bump");
+    }, reduce ? 0 : 700);
+    $("#bubble").textContent = BUBBLES[Math.min(saved.size, 3) - 1];
+    addPlant(current, DICT[current].pos, true);
+  });
+
+  /* ---------- Herbario ---------- */
+  const COLORS = [["#b85a3c", "#9e3a23", "#e8835f"], ["#5d8a63", "#2f4f39", null], ["#8eaab6", "#3f5a63", "#f3efe2"], ["#d2a63c", "#7a5a12", null], ["#4f7a5a", "#24382b", "#b8432a"]];
+  const plants = $("#plants");
+  let plantIx = 0;
+  function plantSVG(i) {
+    const [leaf, stem, bloom] = COLORS[i % COLORS.length];
+    const lean = [-6, 4, -2, 7, -4][i % 5];
+    const top = 18 + (i % 3) * 8;
+    const d = `M60 200 C ${58 + lean} 150, ${62 - lean} 90, ${60 + lean * 1.6} ${top}`;
+    let leaves = "";
+    const n = 6 + (i % 3);
+    for (let k = 0; k < n; k++) {
+      const t = 0.18 + (k / n) * 0.72;
+      const y = 200 - t * (200 - top);
+      const x = 60 + lean * t * 1.2;
+      const side = k % 2 ? 1 : -1;
+      const s = 1 - t * 0.45;
+      leaves += `<path class="leaf" style="--o:${side > 0 ? "0% 50%" : "100% 50%"};transition-delay:${0.25 + k * 0.08}s" d="M${x} ${y} q ${side * 16 * s} ${-14 * s} ${side * 34 * s} ${-6 * s} q ${-side * 14 * s} ${14 * s} ${-side * 34 * s} ${6 * s}z" fill="${leaf}" opacity=".92"/>`;
+    }
+    const b = bloom ? `<g class="bloom" style="--o:50% 50%;transition-delay:${0.3 + n * 0.08}s">${[0, 72, 144, 216, 288].map(a => `<ellipse cx="${60 + lean * 1.6}" cy="${top - 9}" rx="5" ry="10" fill="${bloom}" transform="rotate(${a} ${60 + lean * 1.6} ${top})"/>`).join("")}<circle cx="${60 + lean * 1.6}" cy="${top}" r="3.6" fill="#d4a43a"/></g>` : "";
+    return `<svg viewBox="0 0 120 210" aria-hidden="true"><path class="stem" d="${d}" stroke="${stem}" stroke-width="2.2" fill="none" style="--len:220"/>${leaves}${b}<rect x="40" y="150" width="40" height="12" fill="#e9cf86" opacity=".7" transform="rotate(${lean / 2} 60 156)"/></svg>`;
+  }
+  function addPlant(word, pos, isNew) {
+    if ($(`.plant[data-w="${word}"]`, plants)) return;
+    const el = document.createElement("div");
+    el.className = "plant" + (isNew ? " is-new" : "");
+    el.dataset.w = word; el.setAttribute("role", "listitem");
+    el.innerHTML = plantSVG(plantIx) + `<div class="tag" style="--rot:${[-2, 1.5, -1, 2, -1.5][plantIx % 5]}deg"><b>${word}</b><small>${pos}</small></div>`;
+    plantIx++;
+    isNew ? plants.prepend(el) : plants.append(el);
+    if (plantsVisible || reduce) requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add("is-grown")));
+    if (isNew) $("#herbFoot").textContent = `Ya tienes ${saved.size} ${saved.size === 1 ? "palabra tuya" : "palabras tuyas"} aquí. En Lecta guardas todas las que quieras.`;
+  }
+  let plantsVisible = false;
+  [["arrebol", "sustantivo"], ["sosiego", "sustantivo"], ["bruma", "sustantivo"], ["linde", "sustantivo"], ["desvelo", "sustantivo"]].forEach(([w, p]) => addPlant(w, p, false));
+  new IntersectionObserver((es, o) => es.forEach(e => {
+    if (!e.isIntersecting) return;
+    plantsVisible = true;
+    $$(".plant", plants).forEach((p, i) => setTimeout(() => p.classList.add("is-grown"), reduce ? 0 : i * 140));
+    o.disconnect();
+  }), { threshold: .35 }).observe(plants);
+
+  /* ---------- Repaso ---------- */
+  $("#reveal").addEventListener("click", () => {
+    $("#cardAnswer").hidden = false;
+    const acts = $("#cardActions");
+    acts.innerHTML = [["Otra vez", "10 min"], ["Bien", "4 días"], ["Fácil", "11 días"]]
+      .map(([a, b], i) => `<button class="btn grade" type="button" data-g="${i}" aria-pressed="false">${a}<small>${b}</small></button>`).join("");
+    $(".grade", acts).focus();
+    $$(".grade", acts).forEach(g => g.addEventListener("click", () => {
+      $$(".grade", acts).forEach(x => x.setAttribute("aria-pressed", x === g));
+      $$("#calendar li").forEach(li => li.classList.toggle("is-next", li.dataset.g === g.dataset.g));
+      let done = $(".card__done");
+      if (!done) { done = document.createElement("p"); done.className = "card__done"; done.setAttribute("aria-live", "polite"); $("#card").append(done); }
+      done.textContent = ["La vuelves a ver en un rato, con su frase.", "Nos vemos el jueves, perenne.", "Esta ya es casi tuya."][g.dataset.g];
+    }));
+  });
+
+  /* ---------- Precios ---------- */
+  const PRICES = { anual: ["$499", "MXN al año", "Son $42 al mes: ahorras $209."], mes: ["$59", "MXN al mes", "Pagas mes con mes."] };
+  $$(".toggle button").forEach(b => b.addEventListener("click", () => {
+    $$(".toggle button").forEach(x => x.setAttribute("aria-pressed", x === b));
+    const [n, u, s] = PRICES[b.dataset.period];
+    const pn = $("#priceN");
+    pn.textContent = n; pn.classList.remove("swap"); void pn.offsetWidth; pn.classList.add("swap");
+    $("#priceUnit").textContent = u; $("#priceSub").textContent = s;
+  }));
+
+  /* ---------- Revelado ---------- */
+  const rev = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add("is-in"); rev.unobserve(e.target); } }), { rootMargin: "0px 0px -10% 0px" });
+  $$(".reveal").forEach(el => rev.observe(el));
+  const code = $("#code");
+  new IntersectionObserver((es, o) => es.forEach(e => { if (e.isIntersecting) { code.classList.add("is-on"); o.disconnect(); } }), { threshold: .6 }).observe(code);
+
+  /* ---------- Sendero: tinta, etapas y gato ---------- */
+  const trail = $("#sendero"), ink = $("#ink"), base = $("#inkBase"), drawn = $("#inkDrawn");
+  const stages = $$(".stage", trail), imgs = $$("#catStack img"), dots = $$("#catDots span");
+  let len = 0, nodes = [];
+  function layoutInk() {
+    const tr = trail.getBoundingClientRect();
+    nodes = stages.map(s => { const n = $(".stage__node", s).getBoundingClientRect(); return { x: n.left - tr.left + n.width / 2, y: n.top - tr.top + n.height / 2 }; });
+    const startX = matchMedia("(max-width: 60rem)").matches ? nodes[0].x : Math.max(24, nodes[0].x - 120);
+    let d = `M ${startX} 0`;
+    let prev = { x: startX, y: 0 };
+    nodes.forEach((p, i) => {
+      const sway = (i % 2 ? 1 : -1) * Math.min(60, tr.width * .05);
+      d += ` C ${prev.x + sway} ${prev.y + (p.y - prev.y) * .45}, ${p.x - sway} ${p.y - (p.y - prev.y) * .45}, ${p.x} ${p.y}`;
+      prev = p;
+    });
+    const pl = $("#precios .plans").getBoundingClientRect();
+    const endY = pl.bottom - tr.top;
+    d += ` L ${prev.x} ${endY}`;
+    const end = $("#inkEnd"); end.setAttribute("cx", prev.x); end.setAttribute("cy", endY);
+    ink.setAttribute("viewBox", `0 0 ${tr.width} ${tr.height}`);
+    base.setAttribute("d", d); drawn.setAttribute("d", d);
+    len = drawn.getTotalLength();
+    drawn.style.strokeDasharray = len;
+    drawInk();
+  }
+  function drawInk() {
+    const tr = trail.getBoundingClientRect();
+    const p = Math.min(1, Math.max(0, (innerHeight * .55 - tr.top) / tr.height));
+    drawn.style.strokeDashoffset = reduce ? 0 : len * (1 - p);
+    $("#inkEnd").style.opacity = p > .98 || reduce ? 1 : 0;
+    let active = 1;
+    stages.forEach((s, i) => {
+      const r = $(".stage__node", s).getBoundingClientRect();
+      const reached = r.top < innerHeight * .6;
+      s.classList.toggle("is-reached", reached);
+      if (reached) active = i + 1;
+    });
+    if (trail.dataset.stage != active) setStage(active);
+    const night = trail.dataset.stage === "4" && tr.top < 0 && matchMedia("(min-width: 60.01rem)").matches;
+    document.body.classList.toggle("is-night", night);
+  }
+  function setStage(n) {
+    trail.dataset.stage = n;
+    imgs.forEach((im, i) => im.classList.toggle("is-on", i === n - 1));
+    dots.forEach((d, i) => d.classList.toggle("is-on", i < n));
+    $("#catName").textContent = stages[n - 1].dataset.name;
+  }
+  let raf = 0;
+  addEventListener("scroll", () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; drawInk(); }); }, { passive: true });
+  addEventListener("resize", () => requestAnimationFrame(layoutInk));
+  addEventListener("load", layoutInk);
+  document.fonts && document.fonts.ready.then(layoutInk);
+  new ResizeObserver(() => requestAnimationFrame(layoutInk)).observe($(".stages"));
+  layoutInk();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "buried-raster",
+        "value": "*",
+        "files": ["marketing/landing/index.html"],
+        "createdAt": "2026-11-11T04:51:45.523Z",
+        "reason": "Claude: sendero cat-stack crossfades five stage cutouts; inactive ones sit at opacity 0 by design"
+      }
+    ]
+  }
+}

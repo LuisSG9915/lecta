@@ -39,3 +39,7 @@ scripts/.enrich-english-ia.progress.json
 scripts/.enrich-stubs-catalogo.progress.json
 scripts/.enrich-stubs-catalogo.prod.json
 src/shared/english-core-lexicon.generated.ts
+
+# Fuentes PNG de la landing (55 MB): se regeneran con
+# `node scripts/landing-art/render.mjs`; se publica marketing/landing/web/.
+/marketing/landing/*.png

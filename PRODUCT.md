@@ -39,8 +39,9 @@ consecuencia de leer, no de estudiar aparte.
 ## Operating Context
 
 - Sesiones de lectura largas en celular, a menudo sin conexión; la app
-  funciona local primero (IndexedDB) y sin cuenta. La cuenta solo añade
-  sincronización entre dispositivos.
+  funciona local primero (IndexedDB). Decidido el 2026-11-11: todas las
+  personas crean una cuenta para usar Lecta (pendiente de implementar; hoy
+  la app todavía abre sin cuenta).
 - Vistas principales: Biblioteca (estantería), Lector, ficha de palabra,
   Cuaderno (Herbario, Aprender, Repasar, modos libres), Tu recorrido, Explora
   (catálogo), Tú (cuenta y ajustes).
@@ -92,7 +93,16 @@ consecuencia de leer, no de estudiar aparte.
 - Capturas de la ficha de palabra en `artifacts/ux-word-card/`.
 - Iconos de la app en `public/icons/`; tipografías auto-hospedadas del portal
   Kindle en `public/fonts/`.
-- No hay testimonios, cifras de usuarios, prensa ni precios: no inventarlos.
+- No hay testimonios, cifras de usuarios ni prensa: no inventarlos.
+- Precios decididos (landing `marketing/landing/`, 2026-11-11): **Gratis**
+  $0 MXN con cuenta (leer, diccionario, Herbario y repasos, voz, un gato a
+  elegir entre cinco, y la posición y las palabras guardadas en todos los
+  dispositivos) y **Lecta+** $59 MXN/mes o $499 MXN/año (portal Kindle,
+  explicaciones con IA, palabras previstas antes de cada capítulo, libros en
+  la nube, cambiar de gato y accesorios). Lecta+ se anuncia como «Muy pronto».
+- Pendiente en la app para cumplir lo que dice la landing: cobro, cuenta
+  obligatoria, recibir el gato elegido (`?gato=<pelaje>`) y limitar a Lecta+
+  Kindle, IA, palabras previstas, libros en la nube y cambio de gato.
 
 ## Product Principles
 
