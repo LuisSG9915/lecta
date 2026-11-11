@@ -1149,16 +1149,16 @@ mark.saved-word[data-level="settled"] {
 }
 
 .btn--quick-known:hover {
-  background: color-mix(in srgb, #2d6a4f 12%, transparent);
-  border-color: #2d6a4f;
-  color: #2d6a4f;
+  background: var(--success-wash);
+  border-color: var(--success);
+  color: var(--success);
 }
 
 .btn--pin-notebook.is-pinned,
 .btn--pin-notebook:hover {
-  background: color-mix(in srgb, #d4a373 15%, transparent);
-  border-color: #d4a373;
-  color: #b07d48;
+  background: var(--warning-wash);
+  border-color: var(--amber);
+  color: var(--amber);
 }
 
 .word-panel-notice-toast {

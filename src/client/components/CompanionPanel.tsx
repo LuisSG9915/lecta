@@ -1058,8 +1058,8 @@ function FullCompanionPanel(props: CompanionPanelProps) {
                                 style={{
                                   padding: "var(--s-2) var(--s-3)",
                                   borderRadius: "var(--radius-s)",
-                                  background: "var(--card-bg, rgba(0, 0, 0, 0.04))",
-                                  border: "1px solid var(--border-subtle, rgba(0, 0, 0, 0.08))",
+                                  background: "var(--paper-sunken)",
+                                  border: "1px solid var(--rule)",
                                 }}
                               >
                                 <strong

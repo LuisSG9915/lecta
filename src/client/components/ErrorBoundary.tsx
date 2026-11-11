@@ -136,7 +136,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
           style={{
             maxWidth: "32rem",
             width: "100%",
-            border: "1px solid var(--border-subtle, rgba(0, 0, 0, 0.12))",
+            border: "1px solid var(--rule)",
             borderRadius: "var(--radius-s, 8px)",
             padding: "var(--s-6, 2rem)",
             backgroundColor: "var(--bg-card, var(--bg, #fff))",
