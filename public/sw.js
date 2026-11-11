@@ -254,6 +254,9 @@ self.addEventListener("fetch", function (event) {
     url.pathname.indexOf("/kindle/") === 0 ||
     url.pathname.indexOf("/k/") === 0 ||
     url.pathname === "/k" ||
+    // Landing de marketing: página estática aparte, siempre de la red.
+    url.pathname === "/inicio" ||
+    url.pathname.indexOf("/inicio/") === 0 ||
     url.pathname === "/sw.js" ||
     url.pathname === "/sw-manifest.json" ||
     url.pathname === "/manifest.webmanifest"

@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react";
 import { createHash } from "node:crypto";
 import {
   copyFileSync,
+  cpSync,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -208,6 +209,27 @@ function sourcemapVault(): Plugin {
   };
 }
 
+// Publica la landing de marketing en /inicio/: copia la página estática de
+// marketing/landing/ (HTML, JS, fuentes e imágenes web) a dist/client/inicio/.
+// No pasa por el bundler ni cuenta para el presupuesto de la app. Los
+// `.json` de web/ son notas de procedencia de cada imagen y no se publican.
+function landingPage(): Plugin {
+  return {
+    name: "lecta-landing-page",
+    applyToEnvironment: (environment) => environment.name === "client",
+    writeBundle() {
+      const from = resolve(process.cwd(), "marketing/landing");
+      const to = resolve(process.cwd(), "dist/client/inicio");
+      for (const file of ["index.html", "landing.js"]) cpSync(join(from, file), join(to, file));
+      cpSync(join(from, "fonts"), join(to, "fonts"), { recursive: true });
+      cpSync(join(from, "web"), join(to, "web"), {
+        recursive: true,
+        filter: (src) => !src.endsWith(".json"),
+      });
+    },
+  };
+}
+
 // Emite dist/client/sw-manifest.json tras el build del cliente: la
 // lista de archivos estáticos que el service worker precachea para
 // abrir offline, versionada por su propio contenido (los nombres de
@@ -245,6 +267,8 @@ function swManifest(): Plugin {
           )
             continue;
           if (path === "/sw-manifest.json") continue;
+          // La landing (/inicio/) no es parte de la app: no se precachea.
+          if (path.indexOf("/inicio/") === 0) continue;
           assets.push(path);
         }
       };
@@ -298,6 +322,7 @@ export default defineConfig({
     // Antes de swManifest(): los .map tienen que estar fuera de dist/ cuando
     // el manifiesto del service worker recorre el directorio de salida.
     sourcemapVault(),
+    landingPage(),
     swManifest(),
     stripDevVarsPlugin(),
   ],
