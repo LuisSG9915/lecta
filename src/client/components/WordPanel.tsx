@@ -1,7 +1,6 @@
 import "../styles/reader.css";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { memo } from "react";
-import { createPortal } from "react-dom";
 import {
   explainInPassage,
   lookupWordInMemory,
@@ -39,7 +38,6 @@ import {
   calibrationBankZipf,
   recordSilentCalibration,
 } from "../lib/knowledge";
-import { syllabifySpanish } from "../lib/syllables";
 import type { PhraseHit } from "../lib/phrases";
 import {
   isLikelyProperNoun,
@@ -94,8 +92,6 @@ export interface UnifiedWordPanelProps {
   phrase?: PhraseHit;
   canExplain?: boolean;
   isSavedInitial?: boolean;
-  compactMode?: boolean;
-  capsuleHost?: HTMLElement | null;
   sections?: SearchSection[];
   toc?: SearchTocRow[];
   currentSectionIndex?: number;
@@ -147,8 +143,6 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
   author,
   canExplain = true,
   isSavedInitial = false,
-  compactMode = false,
-  capsuleHost = null,
   sections,
   toc,
   currentSectionIndex,
@@ -189,7 +183,6 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
   } | null>(null);
   const [isTranslatingQuotes, setIsTranslatingQuotes] = useState<boolean>(false);
 
-  const [isExpanded, setIsExpanded] = useState(!compactMode);
   // NUEVO: Nivel de disclosure progresivo (1 = significado + guardar, 2 = matiz + tono, 3 = todo)
   const [disclosureLevel, setDisclosureLevel] = useState<DisclosureLevel>(1);
   const [localEntry, setLocalEntry] = useState<LocalLexiconEntry | null>(() => {
@@ -591,9 +584,7 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
         incrementCollectionPendingCount("words");
         scheduleReadingSyncPush("words");
 
-        const msg = compactMode
-          ? "★ Guardada · toca de nuevo para quitar"
-          : "Fijada con prioridad en tu cuaderno.";
+        const msg = "Fijada con prioridad en tu cuaderno.";
         onNotice?.(msg);
         setQuickNotice(msg);
         setTimeout(() => setQuickNotice(null), 2500);
@@ -728,108 +719,6 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
   }, []);
 
   const aiAllowed = canExplain && useAi;
-
-  if (compactMode && !isExpanded) {
-    const syllables = effectiveLang === "es" ? syllabifySpanish(cleanWord) : cleanWord;
-    const microDef =
-      viewMode === "character" && characterCard?.firstMention
-        ? `1ª mención: ${characterCard.firstMention.chapterTitle}`
-        : meaning?.text ||
-          (meaningStatus === "loading" ? "Consultando..." : "Definición");
-
-    const capsule = (
-      <div
-        className="word-capsule micro-gloss-panel"
-        role="dialog"
-        aria-label={`Definición rápida de ${cleanWord}`}
-      >
-        <div className="word-capsule__main">
-          <div
-            className="word-capsule__content micro-gloss-info"
-            onClick={() => setIsExpanded(true)}
-            role="button"
-            tabIndex={0}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                setIsExpanded(true);
-              }
-            }}
-          >
-            <div className="word-capsule__header">
-              <strong className="word-capsule__lemma micro-gloss-word">{cleanWord}</strong>
-              {syllables && <span className="word-capsule__syllables micro-gloss-syllables">{syllables}</span>}
-            </div>
-            <p className="word-capsule__gloss micro-gloss-def micro-gloss-meaning">{microDef}</p>
-            {quickNotice ? (
-              <span className="word-capsule__notice" role="status">
-                {quickNotice}
-              </span>
-            ) : (
-              <button
-                type="button"
-                className="word-capsule__context-hint"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleRevealPassage();
-                  setIsExpanded(true);
-                }}
-              >
-                Ver explicación en esta frase ›
-              </button>
-            )}
-          </div>
-
-          <div className="word-capsule__actions micro-gloss-actions">
-            <button
-              type="button"
-              className="word-capsule__icon-btn btn--pronounce micro-gloss-btn"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleSpeak();
-              }}
-              aria-label="Escuchar pronunciación"
-              title="Escuchar pronunciación"
-            >
-              <Icon name="speaker" size={16} />
-            </button>
-            <button
-              type="button"
-              className={`word-capsule__save-btn btn--quick-known micro-gloss-btn ${isSaved ? "is-saved" : ""}`}
-              onClick={(e) => {
-                e.stopPropagation();
-                if (isSaved) {
-                  void handleRemove();
-                } else {
-                  void handleSave();
-                }
-              }}
-              aria-pressed={isSaved}
-              aria-label={
-                isSaved ? "Guardada en tu cuaderno (toca para quitar)" : "Guardar en cuaderno"
-              }
-              title={isSaved ? "Guardada en tu cuaderno (toca para quitar)" : "Guardar en cuaderno"}
-            >
-              <span aria-hidden="true">{isSaved ? "★" : "☆"}</span>
-            </button>
-            <button
-              type="button"
-              className="word-capsule__close-btn micro-gloss-close"
-              onClick={(e) => {
-                e.stopPropagation();
-                onClose();
-              }}
-              aria-label="Cerrar definición"
-              title="Cerrar definición"
-            >
-              ×
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-    return capsuleHost ? createPortal(capsule, capsuleHost) : capsule;
-  }
 
   const toneLabel =
     passageResult?.toneOrNuance?.trim() &&

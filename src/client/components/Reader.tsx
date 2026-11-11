@@ -572,7 +572,6 @@ export default function Reader({
   const calEvaluated = useRef(false);
   const [language, setLanguage] = useState("es");
   const [selection, setSelection] = useState<WordHit | null>(null);
-  const [longPressSelection, setLongPressSelection] = useState(false);
   const [charOffsetInChapter, setCharOffsetInChapter] = useState(0);
 
   const applyCachedPredictionRef = useRef<((index: number, lang: string) => SectionPrediction | null) | null>(null);
@@ -797,8 +796,6 @@ export default function Reader({
     setSettingsTab,
     activeBilingualParagraph,
     setActiveBilingualParagraph,
-    wordCapsuleHost,
-    setWordCapsuleHost,
   } = useReaderUiState();
 
   const focusTelemetryRef = useRef({
@@ -1999,7 +1996,7 @@ export default function Reader({
   // Las capas del lector son mutuamente excluyentes: abrir una cierra la
   // anterior y reutiliza su entrada de historial cuando existe. La lógica vive
   // en hooks/useReaderSelection.ts.
-  const { openSelection: openSelectionBase, closeSelection: closeSelectionBase } = useReaderSelection({
+  const { openSelection, closeSelection } = useReaderSelection({
     language,
     setSelection,
     setSheet,
@@ -2022,15 +2019,6 @@ export default function Reader({
     releaseOverlay,
     noteActivity,
   });
-  const openSelection = useCallback((hit: WordHit) => {
-    setLongPressSelection(false);
-    openSelectionBase(hit);
-  }, [openSelectionBase]);
-  const closeSelection = useCallback(() => {
-    setLongPressSelection(false);
-    closeSelectionBase();
-  }, [closeSelectionBase]);
-
 
   // Avance o retroceso de navegación hacia la ventana de fatiga; el
   // retroceso queda además en el trayecto. Si la tasa de regresiones
@@ -3958,14 +3946,6 @@ export default function Reader({
     currentChapterTarget?.label ??
     catalog?.targets?.find((t) => t.sectionIndex === sectionIndex)?.label ??
     sectionTitle;
-  const compactMode =
-    longPressSelection ||
-    (!strategyPaused &&
-      (settings.strategyPreset === "focus" ||
-        settings.focusMode === "chromatic" ||
-        settings.paragraphFocus ||
-        settings.syntacticLines ||
-        settings.chromaticGuide));
   const featuredQuote =
     postChapterQueue.find((q) => q.item.chapterSentence?.trim())?.item.chapterSentence?.trim() ||
     passages.find((p) => !p.deleted && p.sectionIndex === sectionIndex && p.text?.trim())?.text?.trim();
@@ -4097,10 +4077,6 @@ export default function Reader({
         navNextSection={navNextSection}
         navPrevSection={navPrevSection}
         openSelection={openSelection}
-        onLongPressSelection={(hit) => {
-          setLongPressSelection(true);
-          openSelectionBase(hit);
-        }}
         selButton={selButton}
         setSelButton={setSelButton}
         extractWordAtPoint={extractWordAtPoint}
@@ -4381,11 +4357,6 @@ export default function Reader({
           </div>
         ) : null}
 
-        <div
-          ref={setWordCapsuleHost}
-          className="reader-floating-capsule-slot"
-        />
-
         {returnPoint ? (
           <div className="reader-return">
             <button
@@ -4449,7 +4420,7 @@ export default function Reader({
         sectionIndex={sectionIndex}
         signedIn={signedIn}
         selection={selection}
-        // La cápsula nace con el estado real del Cuaderno: sin esto el
+        // La ficha nace con el estado real del Cuaderno: sin esto el
         // primer toque podía re-guardar una palabra ya guardada.
         isSavedInitial={isSavedInitial}
         onCloseSelection={closeSelection}
@@ -4464,8 +4435,6 @@ export default function Reader({
         charOffsetInChapter={charOffsetInChapter}
         currentChapterId={currentChapterId}
         currentChapterTitle={currentChapterTitle}
-        wordCapsuleHost={wordCapsuleHost}
-        compactMode={compactMode}
         prep={prep}
         onRowsPresented={recordPresented}
         onAnswerPrep={answerPrep}

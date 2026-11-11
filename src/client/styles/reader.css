@@ -4597,162 +4597,6 @@ b.lecta-anchor {
 }
 
 /* ==========================================================================
-   Corrección de Cápsula Flotante (Imagen 1: sin desborde + hint de contexto)
-   ========================================================================== */
-.word-capsule {
-  position: fixed;
-  bottom: calc(var(--s-4, 1rem) + 48px);
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 45;
-  width: min(calc(100vw - 2rem), 440px);
-  background: var(--surface-elevated);
-  color: var(--text-primary);
-  border: 1px solid var(--rule-strong);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
-  height: auto !important;
-  min-height: unset;
-  max-height: none;
-  padding: 12px 14px;
-  border-radius: 18px;
-  box-sizing: border-box;
-  overflow: visible;
-  animation: word-capsule-in var(--dur-2, 180ms) var(--ease-out);
-}
-
-.word-capsule__main {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  width: 100%;
-}
-
-.word-capsule__content {
-  flex: 1 1 auto;
-  min-width: 0;
-  cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.word-capsule__header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 8px;
-  line-height: 1.25;
-}
-
-.word-capsule__lemma {
-  font-size: 1.1rem;
-  font-weight: 700;
-  color: var(--text-primary);
-  margin: 0;
-}
-
-.word-capsule__syllables {
-  font-size: 0.82rem;
-  color: var(--accent-primary);
-}
-
-.word-capsule__gloss {
-  margin: 2px 0 0;
-  font-size: 0.93rem;
-  line-height: 1.38;
-  color: var(--text-secondary);
-  overflow-wrap: break-word;
-  white-space: normal;
-}
-
-/* Indicador claro de que tocar la cápsula abre el contexto del libro */
-.word-capsule__context-hint {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  margin-top: 6px;
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: var(--warning);
-  opacity: 0.95;
-  background: none;
-  border: none;
-  padding: 0;
-  cursor: pointer;
-  font-family: inherit;
-}
-
-/* Confirmación inline del guardado/borrado: sustituye al aviso flotante
-   durante la lectura (0 fricción, sin toasts encima del texto). */
-.word-capsule__notice {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  margin-top: 6px;
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: var(--success);
-  animation: fade-in var(--dur-1, 120ms) var(--ease-out);
-}
-
-.word-capsule__actions {
-  display: flex;
-  align-items: center;
-  /* 8px entre acciones de 44px: el dedo no cae entre guardar y cerrar. */
-  gap: 8px;
-  flex-shrink: 0;
-}
-
-.word-capsule__icon-btn,
-.word-capsule__save-btn {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 999px;
-  border: 1px solid var(--rule-strong);
-  background: color-mix(in srgb, var(--ink) 8%, transparent);
-  color: inherit;
-  font-size: 1.05rem;
-  line-height: 1;
-  cursor: pointer;
-  transition:
-    transform 0.15s ease,
-    background-color 0.15s ease,
-    color 0.15s ease,
-    border-color 0.15s ease;
-}
-
-/* Área táctil efectiva de 44×44px sin agrandar el círculo de 36px. */
-.word-capsule__icon-btn::after,
-.word-capsule__save-btn::after,
-.word-capsule__close-btn::after {
-  content: "";
-  position: absolute;
-  inset: -4px;
-  border-radius: inherit;
-}
-
-.word-capsule__save-btn:active {
-  transform: scale(0.92);
-}
-
-.word-capsule__save-btn.is-saved {
-  background: color-mix(in srgb, var(--success) 28%, transparent);
-  border-color: color-mix(in srgb, var(--success) 40%, transparent);
-  color: var(--success);
-}
-
-.word-capsule__icon-btn:hover,
-.word-capsule__save-btn:hover,
-.word-capsule__close-btn:hover {
-  background: color-mix(in srgb, var(--ink) 12%, transparent);
-}
-
-/* ==========================================================================
    Corrección de Cabecera de WordPanel en Móvil (Imagen 2: botón X + badge)
    ========================================================================== */
 .word-panel__header {
@@ -4812,8 +4656,7 @@ b.lecta-anchor {
 }
 
 /* Botón X siempre visible en móvil y escritorio con área táctil de 38x38px */
-.word-panel__close-btn,
-.word-capsule__close-btn {
+.word-panel__close-btn {
   display: inline-flex !important;
   align-items: center;
   justify-content: center;
@@ -4893,17 +4736,6 @@ b.lecta-anchor {
 
 .word-panel__unsave-link:hover {
   opacity: 1;
-}
-
-@keyframes word-capsule-in {
-  from {
-    opacity: 0;
-    transform: translate(-50%, 10px);
-  }
-  to {
-    opacity: 1;
-    transform: translate(-50%, 0);
-  }
 }
 
 .reader-record-toast {
@@ -5661,41 +5493,11 @@ b.lecta-anchor {
   margin: 0;
 }
 
-/* La cápsula de palabra entra en la misma cola: deja de ser un fixed que
-   competía con el dock y empuja hacia arriba al marcapasos si hace falta. */
-.reader-floating-capsule-slot {
-  order: 0;
-  inline-size: 100%;
-  display: flex;
-  justify-content: center;
-}
-
-.reader-floating-capsule-slot:empty {
-  display: none;
-}
-
-.reader-floating-capsule-slot .word-capsule {
-  position: static;
-  inset: auto;
-  transform: none;
-  inline-size: 100%;
-  max-inline-size: 440px;
-  z-index: auto;
-}
-
-/* El gato reposa sobre la cápsula; con el marcapasos activo se retira para no
-   posarse encima de la barra de ritmo. */
+/* El gato se retira con el marcapasos o los avisos para no posarse encima. */
 .reader:has(.reader__pacer-bar) .dock-companion-perch,
 .reader:has(.reader-hint-toast) .dock-companion-perch,
-.reader:has(.reader-status-toast) .dock-companion-perch,
-.reader:has(.word-capsule) .reader-hint-toast {
+.reader:has(.reader-status-toast) .dock-companion-perch {
   display: none;
-}
-
-.reader:has(.word-capsule) .dock-companion-perch {
-  opacity: 0;
-  transform: scale(0.85);
-  pointer-events: none;
 }
 
 /* Popover de Modos: encima de la cápsula, nunca tapado por ella ni por el backdrop */
@@ -7213,10 +7015,6 @@ b.lecta-anchor {
   background: rgba(24, 24, 27, 0.96);
 }
 
-.reader[data-thermal-saver="true"] .word-capsule {
-  animation: none !important;
-}
-
 @media (prefers-reduced-motion: reduce) {
   .reader .reader-dock,
   .reader .tts-chip,
@@ -7234,10 +7032,6 @@ b.lecta-anchor {
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
     background: rgba(24, 24, 27, 0.96);
-  }
-
-  .reader .word-capsule {
-    animation: none !important;
   }
 }
 

@@ -1,9 +1,9 @@
 {
   "tool": "audit-investigacion",
   "version": 1,
-  "generatedAt": "2026-11-10T19:02:49.995Z",
+  "generatedAt": "2026-11-11T00:35:06.430Z",
   "root": "/Users/luis/Desarrollos Devin/lecta",
-  "commit": "2c8f9c0aca8d80ae6dc821d414efbb12723fe4ba",
+  "commit": "e2eb0cd9471444a63ed9004b7e4fdae839a8cf00",
   "doc": "docs/estrategia-aprendizaje-2026-10-24.md",
   "registry": "docs/auditoria/claims.json",
   "online": false,
@@ -88,7 +88,7 @@
               },
               {
                 "file": "src/client/components/Shelf.tsx",
-                "line": 462,
+                "line": 465,
                 "text": "const inputsFor = createCoverageInputsLoader(scope);"
               }
             ]
@@ -522,10 +522,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/components/Reader.tsx:4483 coincide con /updateLanguageTheta\\(currentLang, beta, 1, 1\\.0\\)/",
+          "detail": "src/client/components/Reader.tsx:4453 coincide con /updateLanguageTheta\\(currentLang, beta, 1, 1\\.0\\)/",
           "observed": {
             "file": "src/client/components/Reader.tsx",
-            "line": 4483,
+            "line": 4453,
             "text": "updateLanguageTheta(currentLang, beta, 1, 1.0);"
           }
         },
@@ -542,10 +542,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/components/WordPanel.tsx:641 coincide con /award: false/",
+          "detail": "src/client/components/WordPanel.tsx:632 coincide con /award: false/",
           "observed": {
             "file": "src/client/components/WordPanel.tsx",
-            "line": 641,
+            "line": 632,
             "text": "{ award: false },"
           }
         },

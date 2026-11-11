@@ -22,8 +22,6 @@ export type UseReaderUiStateResult = {
   setSettingsTab: (v: "appearance" | "book" | "strategy") => void;
   activeBilingualParagraph: { originalText: string; translatedText?: string } | null;
   setActiveBilingualParagraph: (v: { originalText: string; translatedText?: string } | null) => void;
-  wordCapsuleHost: HTMLDivElement | null;
-  setWordCapsuleHost: (v: HTMLDivElement | null) => void;
 };
 
 export function useReaderUiState(): UseReaderUiStateResult {
@@ -39,7 +37,6 @@ export function useReaderUiState(): UseReaderUiStateResult {
     originalText: string;
     translatedText?: string;
   } | null>(null);
-  const [wordCapsuleHost, setWordCapsuleHost] = useState<HTMLDivElement | null>(null);
 
   return {
     calNotice,
@@ -60,7 +57,5 @@ export function useReaderUiState(): UseReaderUiStateResult {
     setSettingsTab,
     activeBilingualParagraph,
     setActiveBilingualParagraph,
-    wordCapsuleHost,
-    setWordCapsuleHost,
   };
 }

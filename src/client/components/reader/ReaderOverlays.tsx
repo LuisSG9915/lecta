@@ -93,8 +93,6 @@ export interface ReaderOverlaysProps {
   charOffsetInChapter?: number;
   currentChapterTitle?: string;
   currentChapterId?: string;
-  compactMode?: boolean;
-  wordCapsuleHost?: HTMLElement | null;
 
   // SectionPreview
   prep: PrepState | null;
@@ -186,8 +184,6 @@ export function ReaderOverlays({
   charOffsetInChapter = 0,
   currentChapterTitle,
   currentChapterId,
-  compactMode = false,
-  wordCapsuleHost = null,
 
   prep,
   onRowsPresented,
@@ -297,8 +293,6 @@ export function ReaderOverlays({
           currentSectionIndex={sectionIndex}
           charOffsetInChapter={charOffsetInChapter}
           currentChapterTitle={currentChapterTitle}
-          compactMode={compactMode}
-          capsuleHost={wordCapsuleHost}
           isSavedInitial={isSavedInitial}
           passageActions={wordPassageActions}
           onClose={onCloseSelection}
