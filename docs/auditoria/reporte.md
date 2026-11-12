@@ -1,9 +1,9 @@
 # Reporte de auditoría — estrategia de aprendizaje de Lecta
 
-Generado: 2026-11-12T03:31:04.712Z
+Generado: 2026-11-12T03:47:58.965Z
 Documento auditado: `docs/estrategia-aprendizaje-2026-10-24.md`
 Registro: `docs/auditoria/claims.json`
-Commit: `ea9048fdd7a9e496a01f39d60bec902c5994396f`
+Commit: `5fffe317a452122745a63be4647aa279d84e5838`
 Red: no (solo forma de las referencias)
 
 **Veredicto: FAIL** — 1 afirmaciones aprobadas, 1 refutadas, 0 refutadas por auditoría, 12 sin verificar, 0 comprobaciones omitidas.
@@ -143,8 +143,8 @@ Código: **FAIL** · Referencias: **UNVERIFIED**
 - evidencia: `src/client/lib/profile-models.ts:405-415`
 
 - ✅ **PASS** · doc-mention: el documento contiene ««Ya la conozco» es un juicio, no una prueba»
-- ❌ **FAIL** · code-anchor: src/client/components/Reader.tsx:4458-4498 no contiene /updateLanguageTheta\(currentLang, beta, 1, 1\.0\)/
-  - observado: `{"file":"src/client/components/Reader.tsx","asked":4478,"excerpt":["4458:           language={language}","4459:           setBilingualMode={setBilingualMode}","4460:         />","4461:       </ReaderFloatingLane>","4462:       <ReaderOverlays","4463:         bookHash={bookHash}","4464:         bookTitle={title}","4465:         author={author}","4466:         language={language}","4467:         sectionIndex={sectionIndex}","4468:         signedIn={signedIn}","4469:         sel…`
+- ❌ **FAIL** · code-anchor: src/client/components/Reader.tsx:4480-4520 no contiene /updateLanguageTheta\(currentLang, beta, 1, 1\.0\)/
+  - observado: `{"file":"src/client/components/Reader.tsx","asked":4500,"excerpt":["4480:           isDeepReading={isDeepReading}","4481:           pacerPaused={pacerPaused}","4482:           setPacerPaused={setPacerPaused}","4483:           updateSettings={updateSettings}","4484:           ttsCapturedToast={ttsCapturedToast}","4485:           activeBilingualParagraph={activeBilingualParagraph}","4486:           bookHash={bookHash}","4487:           language={language}","4488:           setB…`
 - ✅ **PASS** · code-anchor: src/client/lib/profile-models.ts:417 coincide con /0\.18 \* \(1 - pKnow\)/
   - observado: `{"file":"src/client/lib/profile-models.ts","line":417,"text":"delta = 0.18 * (1 - pKnow);"}`
 - ✅ **PASS** · code-anchor: src/client/components/WordPanel.tsx:632 coincide con /award: false/

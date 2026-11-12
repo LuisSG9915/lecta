@@ -116,7 +116,11 @@ export function ReaderContent(props: ReaderContentProps) {
   }, []);
 
   useEffect(() => {
-    const markScroll = () => {
+    const markScroll = (event: Event) => {
+      // Deslizar la fila del menú de selección no es leer: ni cierra el
+      // menú ni cuenta como scroll.
+      const target = event.target;
+      if (target instanceof Element && target.closest(".selection-menu")) return;
       lastScrollOrNavTimeRef.current = Date.now();
       cancelLongPress();
       if (setSelButton) setSelButton(null);

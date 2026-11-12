@@ -95,6 +95,17 @@ test("presión larga → mini menú; ampliar la selección → tinta en el libro
   await expect(define).toBeVisible({ timeout: 3_000 });
   await expect(card).not.toBeVisible();
   expect(await page.evaluate(() => String(window.getSelection()))).toBe("perenne");
+  // Tiradores propios (la barra «Copiar / Seleccionar todo» de Android se
+  // oculta al reaplicar la selección) y «Copiar» en el menú.
+  await expect(page.locator(".selection-handle")).toHaveCount(2);
+  await expect(bar.locator(".selection-copy")).toHaveCount(1);
+  // Deslizar la fila del menú no lo cierra.
+  await bar.evaluate((el) => {
+    el.scrollLeft = el.scrollWidth;
+    el.dispatchEvent(new Event("scroll"));
+  });
+  await page.waitForTimeout(200);
+  await expect(define).toBeVisible();
 
   // 2. Se amplía la selección a 4 palabras (como al arrastrar el tirador):
   //    el menú pasa a modo pasaje, sin «Significado».

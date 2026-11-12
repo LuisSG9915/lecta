@@ -585,6 +585,7 @@ export default function Reader({
   // rearma en cada render): cubre los 7 sitios que llaman setSelection.
   const selectionRef = useRef<WordHit | null>(null);
   const keepNativeSelectionRef = useRef(false);
+  const reappliedRangeRef = useRef<Range | null>(null);
   useEffect(() => {
     selectionRef.current = selection;
     if (selection) return;
@@ -2607,6 +2608,27 @@ export default function Reader({
         setSelButton(null);
         return;
       }
+      // Táctil: Android dibuja su barra «Copiar / Seleccionar todo» sobre la
+      // selección nativa y no hay API para quitarla. Reaplicar la misma
+      // selección por código la oculta (y también sus tiradores: el menú
+      // pinta tiradores propios). Una vez por rango: el siguiente
+      // selectionchange llega con el rango ya aplicado.
+      if (isTouchInput(lastPointerTypeRef.current)) {
+        const applied = reappliedRangeRef.current;
+        const same =
+          applied &&
+          applied.startContainer === range.startContainer &&
+          applied.startOffset === range.startOffset &&
+          applied.endContainer === range.endContainer &&
+          applied.endOffset === range.endOffset;
+        if (!same) {
+          const clone = range.cloneRange();
+          reappliedRangeRef.current = clone;
+          sel.removeAllRanges();
+          sel.addRange(clone);
+          return;
+        }
+      }
 
       const rawText = sel.toString().trim();
       const words = rawText.split(/\s+/).filter(Boolean);
@@ -2678,7 +2700,13 @@ export default function Reader({
         const menuHalfW = 170;
         const clampedX = Math.max(menuHalfW + 12, Math.min(centerX, window.innerWidth - menuHalfW - 12));
 
-        setSelButton({ x: clampedX, y, placement, word: words.length <= 1 && hit ? hit : undefined });
+        setSelButton({
+          x: clampedX,
+          y,
+          placement,
+          word: words.length <= 1 && hit ? hit : undefined,
+          touch: isTouch,
+        });
       } else {
         setSelButton(null);
       }
@@ -4385,6 +4413,7 @@ export default function Reader({
         askCatAboutSelection={askCatAboutSelection}
         setDeepModal={setDeepModal}
         onDefine={openSelection}
+        containerRef={containerRef}
       />
 
       <ReaderFloatingLane>

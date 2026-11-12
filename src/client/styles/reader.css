@@ -7049,3 +7049,32 @@ b.lecta-anchor {
   max-width: 580px;
   z-index: 45;
 }
+
+/* Tiradores propios de la selección táctil (ReaderSelectionBar): sustituyen
+   a los de Android, que se van junto con su barra «Copiar / Seleccionar
+   todo» al reaplicar la selección por código. Gota de 20 px apuntando al
+   extremo; la zona táctil llega a 44 px con ::before. */
+.selection-handle {
+  position: fixed;
+  z-index: 26;
+  width: 20px;
+  height: 20px;
+  background: var(--vermilion);
+  touch-action: none;
+  cursor: grab;
+}
+
+.selection-handle--start {
+  border-radius: 50% 0 50% 50%;
+  transform: translateX(-100%);
+}
+
+.selection-handle--end {
+  border-radius: 0 50% 50% 50%;
+}
+
+.selection-handle::before {
+  content: "";
+  position: absolute;
+  inset: -12px;
+}
