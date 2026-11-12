@@ -1,5 +1,6 @@
 import type { SavedAnnotation } from "./idb";
 import { foldWithMap } from "./book-search";
+import { textBlockOf } from "./words";
 
 // Marca los pasajes guardados dentro del texto del libro. Preferida:
 // CSS Custom Highlight API (no toca el DOM, así no rompe las marcas
@@ -24,7 +25,7 @@ function foldContainer(root: HTMLElement): { folded: string; map: NodeMap } {
   const folded: string[] = [];
   const map: NodeMap = [];
   let lastWasSpace = false;
-  for (const node of nodes) {
+  for (const [index, node] of nodes.entries()) {
     const data = node.nodeValue ?? "";
     for (let i = 0; i < data.length; i += 1) {
       const decomposed = data[i].normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
@@ -38,7 +39,13 @@ function foldContainer(root: HTMLElement): { folded: string; map: NodeMap } {
     }
     // Entre bloques no hay espacio implícito en textContent, pero un
     // salto de párrafo sí separa palabras al seleccionar: lo agregamos.
-    if (node.nextSibling === null && !lastWasSpace) {
+    // Solo al cambiar de bloque: el final de un <em>, una marca o un
+    // span biónico no separa nada («quimera,» / «qui|mera»).
+    const next = nodes[index + 1];
+    const block = textBlockOf(node);
+    const nextBlock = next ? textBlockOf(next) : null;
+    const boundary = !next || (block || nextBlock ? block !== nextBlock : node.nextSibling === null);
+    if (boundary && !lastWasSpace) {
       folded.push(" ");
       map.push({ node, offset: data.length });
       lastWasSpace = true;

@@ -237,7 +237,9 @@ export default function DeepReadingSummaryModal({
         </div>
 
         <div className="consolidation-runner-body">
-          {active.modality === "word-scramble" ? (
+          {/* Sin opciones reales para el hueco (<2) se ordena la palabra:
+              un cloze sin elección se resolvería sin leer. */}
+          {active.modality === "word-scramble" || (active.item.options?.length ?? 0) < 2 ? (
             <WordScrambleGame
               key={`scramble-${active.item.lemma}`}
               targetWord={active.item.surfaceForm || active.item.lemma}
@@ -255,6 +257,8 @@ export default function DeepReadingSummaryModal({
               shortGloss={active.item.shortGloss}
               language={active.item.lang}
               mode="cloze"
+              options={active.item.options}
+              targetLemma={active.item.lemma}
               onSolve={handleSolveStep}
             />
           )}

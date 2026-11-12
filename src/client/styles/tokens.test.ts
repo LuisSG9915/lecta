@@ -277,3 +277,24 @@ describe("tokens.css", () => {
     expect(ctaRule).toContain("var(--on-accent");
   });
 });
+
+describe("conectores sintácticos", () => {
+  // «sin embargo», «no obstante»… se envuelven en [data-connector] para que
+  // las anclas biónicas los salten, pero no responden a nada: un subrayado
+  // ahí promete «palabra consultable» y es ruido (plan-lectura-flaquezas F1).
+  it("ninguna hoja subraya [data-connector]", () => {
+    const sheets = [
+      ...readdirSync(__dirname)
+        .filter((f) => f.endsWith(".css"))
+        .map((f) => resolve(__dirname, f)),
+      resolve(__dirname, "../styles.css"),
+    ];
+    for (const sheet of sheets) {
+      const css = readFileSync(sheet, "utf-8");
+      for (const block of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+        if (!block[1].includes("data-connector")) continue;
+        expect(block[2], `${sheet}: ${block[1].trim()}`).not.toMatch(/text-decoration/);
+      }
+    }
+  });
+});

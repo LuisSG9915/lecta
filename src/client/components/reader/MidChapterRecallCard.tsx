@@ -38,6 +38,8 @@ function MidChapterRecallCardImpl({ item, onSolve, onSkip }: MidChapterRecallCar
         shortGloss={item.shortGloss}
         language={item.lang}
         mode="cloze"
+        options={item.options}
+        targetLemma={item.lemma}
         onSolve={() => onSolve()}
       />
       <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "var(--s-2)" }}>

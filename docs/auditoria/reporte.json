@@ -1,9 +1,9 @@
 {
   "tool": "audit-investigacion",
   "version": 1,
-  "generatedAt": "2026-11-11T00:35:06.430Z",
+  "generatedAt": "2026-11-12T02:37:30.488Z",
   "root": "/Users/luis/Desarrollos Devin/lecta",
-  "commit": "e2eb0cd9471444a63ed9004b7e4fdae839a8cf00",
+  "commit": "297003ae0a2e3ab1bbb2a10c3d6ff7a25c05c3c7",
   "doc": "docs/estrategia-aprendizaje-2026-10-24.md",
   "registry": "docs/auditoria/claims.json",
   "online": false,
@@ -522,10 +522,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/components/Reader.tsx:4453 coincide con /updateLanguageTheta\\(currentLang, beta, 1, 1\\.0\\)/",
+          "detail": "src/client/components/Reader.tsx:4478 coincide con /updateLanguageTheta\\(currentLang, beta, 1, 1\\.0\\)/",
           "observed": {
             "file": "src/client/components/Reader.tsx",
-            "line": 4453,
+            "line": 4478,
             "text": "updateLanguageTheta(currentLang, beta, 1, 1.0);"
           }
         },
@@ -873,10 +873,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/hooks/useReaderNavigation.ts:213 coincide con /const completeChapterTo/",
+          "detail": "src/client/hooks/useReaderNavigation.ts:217 coincide con /const completeChapterTo/",
           "observed": {
             "file": "src/client/hooks/useReaderNavigation.ts",
-            "line": 213,
+            "line": 217,
             "text": "const completeChapterTo = useCallback("
           }
         },
@@ -1274,10 +1274,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/lib/notebook-model.ts:211 coincide con /const RETENTION_CHECK_MIN_AGE_DAYS = 30/",
+          "detail": "src/client/lib/notebook-model.ts:207 coincide con /const RETENTION_CHECK_MIN_AGE_DAYS = 30/",
           "observed": {
             "file": "src/client/lib/notebook-model.ts",
-            "line": 211,
+            "line": 207,
             "text": "export const RETENTION_CHECK_MIN_AGE_DAYS = 30;"
           }
         },

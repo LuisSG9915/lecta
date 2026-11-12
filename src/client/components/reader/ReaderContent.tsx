@@ -4,7 +4,7 @@
 // Extraída de Reader.tsx (Fase 7) sin cambiar comportamiento. Es presentacional:
 // recibe estado y callbacks, no posee estado propio.
 import { useCallback, useEffect, useRef, type CSSProperties, type MouseEvent, type ReactNode, type RefObject } from "react";
-import { validateTapIntent } from "../../lib/tap-intent-guard";
+import { isTouchInput, validateTapIntent } from "../../lib/tap-intent-guard";
 import type { ReaderSelectionButton } from "./ReaderSelectionBar";
 import { ReaderRecapBubble } from "../ReaderRecapBubble";
 import type { ReaderSettings } from "../../lib/settings";
@@ -317,10 +317,7 @@ export function ReaderContent(props: ReaderContentProps) {
         return;
       }
 
-      const isTouch =
-        lastPointerTypeRef.current === "touch" ||
-        lastPointerTypeRef.current === "pen" ||
-        (typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches);
+      const isTouch = isTouchInput(lastPointerTypeRef.current);
 
       const sel = window.getSelection();
       const hasSelection = sel && !sel.isCollapsed && sel.rangeCount > 0;
@@ -467,7 +464,12 @@ export function ReaderContent(props: ReaderContentProps) {
           if (!validation.valid) return;
           if (selection) return;
           triggerHaptic("selection");
-          try { window.getSelection()?.removeAllRanges(); } catch { /* noop */ }
+          // Si el sistema ya creó su selección nativa, la ficha la abre
+          // `selectionchange` (Reader.tsx) y la selección queda viva para
+          // arrastrar los tiradores y subrayar una cita. El temporizador
+          // solo abre en dispositivos que no crean selección.
+          const native = window.getSelection();
+          if (native && !native.isCollapsed && native.rangeCount > 0 && container.contains(native.getRangeAt(0).commonAncestorContainer)) return;
           openSelection(hit);
         }, LONG_PRESS_MS);
       }

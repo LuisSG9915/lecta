@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { extractWordAtPoint, wordHitFromRange } from "./words";
+import { extractWordAtPoint, sameWordHit, sentenceRangeForHit, wordHitFromRange, type WordHit } from "./words";
 
 // jsdom no implementa caretRangeFromPoint: se stubbea en cada prueba
 // y se restaura el valor original (undefined) al terminar.
@@ -162,5 +162,57 @@ describe("wordHitFromRange", () => {
     range.setEnd(node, 5);
 
     expect(wordHitFromRange(range, root, "es")).toBeNull();
+  });
+});
+
+describe("sentenceRangeForHit / sameWordHit", () => {
+  const setup = (html: string) => {
+    const div = document.createElement("div");
+    div.innerHTML = html;
+    document.body.appendChild(div);
+    return div;
+  };
+  const hitFor = (root: HTMLElement, word: string): WordHit => {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    while (walker.nextNode()) {
+      const node = walker.currentNode as Text;
+      const at = node.data.indexOf(word);
+      if (at === -1) continue;
+      const range = document.createRange();
+      range.setStart(node, at);
+      range.setEnd(node, at + word.length);
+      return { word, range };
+    }
+    throw new Error(`no ${word}`);
+  };
+
+  it("cubre la oración entera con <em> pegado a la puntuación", () => {
+    const root = setup("<p>Antes hubo otra. Era una <em>quimera</em>, dijo él. Y siguió.</p>");
+    expect(sentenceRangeForHit(hitFor(root, "quimera"), "es")?.toString()).toBe("Era una quimera, dijo él.");
+  });
+
+  it("cubre la oración con la palabra dentro de mark.predicted-word", () => {
+    const root = setup('<p>Uno. La <mark class="predicted-word">perenne</mark> sombra cayó. Dos.</p>');
+    expect(sentenceRangeForHit(hitFor(root, "perenne"), "es")?.toString()).toBe("La perenne sombra cayó.");
+  });
+
+  it("cubre la oración con anclas biónicas (palabras partidas en spans)", () => {
+    const root = setup(
+      '<p>Uno. <span class="lecta-bionic-word"><span class="lecta-bionic-anchor">Qui</span>mera</span> veloz. Dos.</p>',
+    );
+    expect(sentenceRangeForHit(hitFor(root, "mera"), "es")?.toString()).toBe("Quimera veloz.");
+  });
+
+  it("null sin rango", () => {
+    expect(sentenceRangeForHit({ word: "x" }, "es")).toBeNull();
+  });
+
+  it("misma palabra y sitio aunque el rango venga con puntuación delante", () => {
+    const root = setup("<p>Dijo «quimera» y calló.</p>");
+    const tap = hitFor(root, "quimera");
+    const native = hitFor(root, "«quimera");
+    expect(sameWordHit(tap, { ...native, word: "Quimera" })).toBe(true);
+    const other = setup("<p>Dijo «quimera» y calló.</p>");
+    expect(sameWordHit(tap, hitFor(other, "quimera"))).toBe(false);
   });
 });

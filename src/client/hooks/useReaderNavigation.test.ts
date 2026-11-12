@@ -32,6 +32,16 @@ const mocks = vi.hoisted(() => ({
   getBookLanguage: vi.fn(() => "es"),
 }));
 
+const episodic = (form: string) => ({
+  lemma: form,
+  surfaceForm: form,
+  lang: "es",
+  shortGloss: "",
+  chapterSentence: `La ${form} desapareció al amanecer.`,
+  chapterTitle: "",
+  source: "in-chapter-lookup" as const,
+});
+
 vi.mock("../lib/ttsGuards", async (orig) => ({
   ...(await orig<typeof import("../lib/ttsGuards")>()),
   isTtsProgrammaticNav: mocks.isTtsProgrammaticNav,
@@ -321,7 +331,7 @@ describe("useReaderPagination", () => {
   it("si hay cola de consolidación, la abre en vez de navegar", async () => {
     mocks.isFeatureFlagEnabled.mockImplementation((flag: string) => flag === "vocabGames");
     mocks.buildPostChapterConsolidationQueue.mockReturnValue([
-      { item: { lemma: "casa" }, modality: "recognition" },
+      { item: episodic("casa"), modality: "word-scramble" },
     ]);
     mocks.isConsolidationActive.mockReturnValue(true);
     const opts = pageOptions({ pageRef: { current: 4 } });
@@ -340,7 +350,7 @@ describe("useReaderPagination", () => {
   it("completeChapterTo cierra el capítulo también fuera del paso de página", async () => {
     mocks.isFeatureFlagEnabled.mockImplementation((flag: string) => flag === "vocabGames");
     mocks.buildPostChapterConsolidationQueue.mockReturnValue([
-      { item: { lemma: "casa" }, modality: "recognition" },
+      { item: episodic("casa"), modality: "word-scramble" },
     ]);
     mocks.isConsolidationActive.mockReturnValue(true);
     const opts = pageOptions({ sectionIndexRef: { current: 2 } });
@@ -358,6 +368,41 @@ describe("useReaderPagination", () => {
     expect(opts.setPostChapterQueue).toHaveBeenCalled();
     expect(opts.pendingNextChapterRef.current).toBe(3);
     expect(opts.navigate).not.toHaveBeenCalled();
+  });
+
+  it("el hueco del cierre trae opciones reales del cuaderno (savedWordsRef)", async () => {
+    mocks.isFeatureFlagEnabled.mockImplementation((flag: string) => flag === "vocabGames");
+    mocks.buildPostChapterConsolidationQueue.mockReturnValue([
+      { item: episodic("quimera"), modality: "sentence-cloze" },
+    ]);
+    mocks.isConsolidationActive.mockReturnValue(true);
+    const savedWordsRef = {
+      current: ["montaña", "linterna", "sombra"].map((form) => ({ key: `es:${form}`, form, language: "es", savedAt: 1 })),
+    };
+    const opts = pageOptions({ sectionIndexRef: { current: 2 }, savedWordsRef });
+    render(opts);
+    await act(async () => {
+      await api.completeChapterTo(3);
+    });
+    const [[queue]] = (opts.setPostChapterQueue as ReturnType<typeof vi.fn>).mock.calls;
+    expect(queue[0].modality).toBe("sentence-cloze");
+    expect(queue[0].item.options).toHaveLength(4);
+  });
+
+  it("sin palabras guardadas el hueco pasa a ordenar letras", async () => {
+    mocks.isFeatureFlagEnabled.mockImplementation((flag: string) => flag === "vocabGames");
+    mocks.buildPostChapterConsolidationQueue.mockReturnValue([
+      { item: episodic("quimera"), modality: "sentence-cloze" },
+    ]);
+    mocks.isConsolidationActive.mockReturnValue(true);
+    const opts = pageOptions({ sectionIndexRef: { current: 2 }, savedWordsRef: { current: [] } });
+    render(opts);
+    await act(async () => {
+      await api.completeChapterTo(3);
+    });
+    const [[queue]] = (opts.setPostChapterQueue as ReturnType<typeof vi.fn>).mock.calls;
+    expect(queue[0].modality).toBe("word-scramble");
+    expect(queue[0].item.options).toBeUndefined();
   });
 
   it("completeChapterTo navega al destino cuando no hay nada que consolidar", async () => {

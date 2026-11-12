@@ -43,12 +43,22 @@ const word = (form: string, over: Partial<SavedWord> & { due?: Date; reps?: numb
   };
 };
 
+// Palabras del cuaderno que aún no vencen: no se repasan, pero sirven de
+// distractores reales para el hueco.
+const FILLERS = [word("linterna", { due: FUTURE }), word("montaña", { due: FUTURE }), word("lento", { due: FUTURE })];
+
 describe("pickMidChapterRecall", () => {
   it("elige una palabra vencida del cuaderno que aparece en la sección", () => {
-    const item = pickMidChapterRecall([word("quimera")], TEXT, "es", NOW);
+    const item = pickMidChapterRecall([word("quimera"), ...FILLERS], TEXT, "es", NOW);
     expect(item?.surfaceForm).toBe("quimera");
     expect(item?.chapterSentence).toBe("La quimera desapareció al amanecer.");
     expect(item?.source).toBe("notebook-reencounter");
+    expect(item?.options).toHaveLength(4);
+    expect(item?.options).toContain("quimera");
+  });
+
+  it("sin palabras reales para distraer salta la tarjeta", () => {
+    expect(pickMidChapterRecall([word("quimera"), word("lento", { due: FUTURE })], TEXT, "es", NOW)).toBeNull();
   });
 
   it("ignora tarjetas nuevas, las que aún no vencen, borradas, sin significado y las que no aparecen", () => {
@@ -69,7 +79,11 @@ describe("pickMidChapterRecall", () => {
   it("prefiere la que venció antes", () => {
     const text = "La quimera y el dragón volvieron.";
     const items = pickMidChapterRecall(
-      [word("dragón", { due: new Date("2026-10-25T00:00:00Z") }), word("quimera", { due: new Date("2026-10-21T00:00:00Z") })],
+      [
+        word("dragón", { due: new Date("2026-10-25T00:00:00Z") }),
+        word("quimera", { due: new Date("2026-10-21T00:00:00Z") }),
+        ...FILLERS,
+      ],
       text,
       "es",
       NOW,

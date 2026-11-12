@@ -24,6 +24,8 @@ import {
 } from "../lib/practice";
 import { recordChapterCompleted } from "../lib/profile-models";
 import { scrollToFragment } from "../lib/reading-location";
+import { attachClozeOptions } from "../lib/episodic-cloze";
+import type { SavedWord } from "../lib/idb";
 import {
   isFeatureFlagEnabled,
   loadNativeLanguage,
@@ -107,6 +109,8 @@ export interface UseReaderPaginationOptions {
   pendingNextChapterRef: Ref<number | null>;
   currentChapterLookups: Ref<EpisodicWordItem[]>;
   currentChapterPrimedWordsRef: Ref<EpisodicWordItem[]>;
+  /** Palabras guardadas del idioma del libro: distractores reales del hueco. */
+  savedWordsRef?: Ref<SavedWord[]>;
   focusTelemetryRef: Ref<{
     recordPageTurn: (wordsOnPage?: number, dwellMs?: number) => boolean;
   }>;
@@ -247,9 +251,12 @@ export function useReaderPagination(options: UseReaderPaginationOptions) {
       const queue = isFeatureFlagEnabled("vocabGames")
         ? buildPostChapterConsolidationQueue(candidates, prefs, isL2, { bookId: bookHash })
         : [];
+      // Opciones del hueco con palabras reales del cuaderno; sin ellas el
+      // cloze pasa a ordenar letras o sale (nunca no-palabras).
+      const withOptions = attachClozeOptions(queue, optionsRef.current.savedWordsRef?.current ?? []);
 
-      if (queue.length > 0 && isConsolidationActive(bookHash) && isFeatureFlagEnabled("vocabGames")) {
-        setPostChapterQueue(queue);
+      if (withOptions.length > 0 && isConsolidationActive(bookHash) && isFeatureFlagEnabled("vocabGames")) {
+        setPostChapterQueue(withOptions);
         pendingNextChapterRef.current = nextIndex;
         const durationMinutes = Math.max(
           1,

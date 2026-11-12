@@ -1136,79 +1136,6 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
                     </p>
                   )}
 
-                  {passageActions ? (
-                    <div
-                      className="word-card-passage-actions"
-                      role="group"
-                      aria-label="Acciones de pasaje"
-                    >
-                      {passageActions.onHighlight ? (
-                        <div
-                          className="selection-highlight-group"
-                          role="group"
-                          aria-label="Resaltar con tinta"
-                        >
-                          <button
-                            type="button"
-                            className="selection-menu-btn selection-save"
-                            aria-label="Resaltar con tinta"
-                            onClick={() => passageActions.onHighlight?.("amber")}
-                          >
-                            <Icon name="highlight" size={14} />
-                            <span>Tinta</span>
-                          </button>
-                          <div
-                            className="selection-tones-picker"
-                            aria-label="Elegir tono de tinta"
-                          >
-                            <button
-                              type="button"
-                              className="tone-dot tone-dot--amber"
-                              aria-label="Tinta Ámbar"
-                              onClick={() => passageActions.onHighlight?.("amber")}
-                            />
-                            <button
-                              type="button"
-                              className="tone-dot tone-dot--salvia"
-                              aria-label="Tinta Salvia"
-                              onClick={() => passageActions.onHighlight?.("salvia")}
-                            />
-                            <button
-                              type="button"
-                              className="tone-dot tone-dot--dario"
-                              aria-label="Tinta Azul Darío"
-                              onClick={() => passageActions.onHighlight?.("dario")}
-                            />
-                          </div>
-                        </div>
-                      ) : null}
-                      <button
-                        type="button"
-                        className="selection-menu-btn"
-                        onClick={passageActions.onDeepRead}
-                      >
-                        <Icon name="retreat" size={14} />
-                        <span>Reflexión</span>
-                      </button>
-                      <button
-                        type="button"
-                        className="selection-menu-btn"
-                        onClick={passageActions.onQuoteCard}
-                      >
-                        <Icon name="quote" size={14} />
-                        <span>Postal</span>
-                      </button>
-                      <button
-                        type="button"
-                        className="selection-menu-btn selection-ask-cat"
-                        onClick={passageActions.onAsk}
-                      >
-                        <Icon name="sparkles" size={14} />
-                        <span>Preguntar</span>
-                      </button>
-                    </div>
-                  ) : null}
-
                   {isCandidateProperNoun && disclosureLevel === 3 && (
                     <button
                       type="button"
@@ -1221,6 +1148,81 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
                   )}
                 </>
               )}
+
+              {/* Acciones de pasaje siempre a la vista (decisión 2026-11-11):
+                  subrayar la frase no depende de la IA ni de «Ver más». */}
+              {passageActions ? (
+                <div
+                  className="word-card-passage-actions"
+                  role="group"
+                  aria-label="Acciones de pasaje"
+                >
+                  {passageActions.onHighlight ? (
+                    <div
+                      className="selection-highlight-group"
+                      role="group"
+                      aria-label="Resaltar con tinta"
+                    >
+                      <button
+                        type="button"
+                        className="selection-menu-btn selection-save"
+                        aria-label="Resaltar con tinta"
+                        onClick={() => passageActions.onHighlight?.("amber")}
+                      >
+                        <Icon name="highlight" size={14} />
+                        <span>Tinta</span>
+                      </button>
+                      <div
+                        className="selection-tones-picker"
+                        aria-label="Elegir tono de tinta"
+                      >
+                        <button
+                          type="button"
+                          className="tone-dot tone-dot--amber"
+                          aria-label="Tinta Ámbar"
+                          onClick={() => passageActions.onHighlight?.("amber")}
+                        />
+                        <button
+                          type="button"
+                          className="tone-dot tone-dot--salvia"
+                          aria-label="Tinta Salvia"
+                          onClick={() => passageActions.onHighlight?.("salvia")}
+                        />
+                        <button
+                          type="button"
+                          className="tone-dot tone-dot--dario"
+                          aria-label="Tinta Azul Darío"
+                          onClick={() => passageActions.onHighlight?.("dario")}
+                        />
+                      </div>
+                    </div>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="selection-menu-btn"
+                    onClick={passageActions.onDeepRead}
+                  >
+                    <Icon name="retreat" size={14} />
+                    <span>Reflexión</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="selection-menu-btn"
+                    onClick={passageActions.onQuoteCard}
+                  >
+                    <Icon name="quote" size={14} />
+                    <span>Postal</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="selection-menu-btn selection-ask-cat"
+                    onClick={passageActions.onAsk}
+                  >
+                    <Icon name="sparkles" size={14} />
+                    <span>Preguntar</span>
+                  </button>
+                </div>
+              ) : null}
             </section>
           ) : null}
         </>

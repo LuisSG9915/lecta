@@ -124,6 +124,7 @@ describe("DeepReadingSummaryModal", () => {
           chapterSentence: "Perseguía una quimera inalcanzable.",
           chapterTitle: "Capítulo 1",
           source: "in-chapter-lookup" as const,
+          options: ["linterna", "quimera", "montaña", "sombra"],
         },
         modality: "sentence-cloze" as const,
       },
@@ -196,6 +197,7 @@ describe("DeepReadingSummaryModal", () => {
           chapterSentence: "Perseguía una quimera inalcanzable.",
           chapterTitle: "Capítulo 1",
           source: "in-chapter-lookup" as const,
+          options: ["linterna", "quimera", "montaña", "sombra"],
         },
         modality: "sentence-cloze" as const,
       },
@@ -252,6 +254,7 @@ describe("DeepReadingSummaryModal", () => {
           chapterSentence: "Perseguía una quimera inalcanzable.",
           chapterTitle: "Capítulo 1",
           source: "in-chapter-lookup" as const,
+          options: ["linterna", "quimera", "montaña", "sombra"],
         },
         modality: "sentence-cloze" as const,
       },
@@ -299,6 +302,7 @@ describe("DeepReadingSummaryModal", () => {
           chapterSentence: "Perseguía una quimera inalcanzable.",
           chapterTitle: "Capítulo 1",
           source: "in-chapter-lookup" as const,
+          options: ["linterna", "quimera", "montaña", "sombra"],
         },
         modality: "sentence-cloze" as const,
       },
@@ -353,6 +357,33 @@ describe("DeepReadingSummaryModal", () => {
       finalContinueBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     });
     expect(onContinue).toHaveBeenCalledTimes(1);
+  });
+
+  it("un hueco sin opciones reales se convierte en ordenar letras", () => {
+    localStorage.clear();
+    const consolidationQueue = [
+      {
+        item: {
+          lemma: "quimera",
+          surfaceForm: "quimera",
+          lang: "es",
+          shortGloss: "Ilusión o fantasía",
+          chapterSentence: "Perseguía una quimera inalcanzable.",
+          chapterTitle: "Capítulo 1",
+          source: "in-chapter-lookup" as const,
+        },
+        modality: "sentence-cloze" as const,
+      },
+    ];
+    act(() => {
+      root.render(h(DeepReadingSummaryModal, { summary: baseSummary, consolidationQueue, onClose: vi.fn() }));
+    });
+    const startBtn = [...host.querySelectorAll("button")].find((b) => b.textContent?.includes("Fijar en memoria"))!;
+    act(() => {
+      startBtn.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    });
+    expect(host.querySelector(".sentence-cloze-game")).toBeNull();
+    expect(host.querySelectorAll(".sentence-cloze-option-btn").length).toBe(0);
   });
 
   it("anota si seguiste el hilo con un toque y no bloquea continuar", () => {
@@ -560,6 +591,7 @@ describe("DeepReadingSummaryModal", () => {
           chapterSentence: "Perseguía una quimera inalcanzable.",
           chapterTitle: "Capítulo 1",
           source: "in-chapter-lookup" as const,
+          options: ["linterna", "quimera", "montaña", "sombra"],
         },
         modality: "sentence-cloze" as const,
       },

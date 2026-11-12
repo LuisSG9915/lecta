@@ -1,9 +1,9 @@
 # Reporte de auditoría — estrategia de aprendizaje de Lecta
 
-Generado: 2026-11-11T00:35:06.430Z
+Generado: 2026-11-12T02:37:30.488Z
 Documento auditado: `docs/estrategia-aprendizaje-2026-10-24.md`
 Registro: `docs/auditoria/claims.json`
-Commit: `e2eb0cd9471444a63ed9004b7e4fdae839a8cf00`
+Commit: `297003ae0a2e3ab1bbb2a10c3d6ff7a25c05c3c7`
 Red: no (solo forma de las referencias)
 
 **Veredicto: PASS_WITH_UNVERIFIED** — 1 afirmaciones aprobadas, 0 refutadas, 0 refutadas por auditoría, 13 sin verificar, 0 comprobaciones omitidas.
@@ -143,8 +143,8 @@ Código: **PASS** · Referencias: **UNVERIFIED**
 - evidencia: `src/client/lib/profile-models.ts:405-415`
 
 - ✅ **PASS** · doc-mention: el documento contiene ««Ya la conozco» es un juicio, no una prueba»
-- ✅ **PASS** · code-anchor: src/client/components/Reader.tsx:4453 coincide con /updateLanguageTheta\(currentLang, beta, 1, 1\.0\)/
-  - observado: `{"file":"src/client/components/Reader.tsx","line":4453,"text":"updateLanguageTheta(currentLang, beta, 1, 1.0);"}`
+- ✅ **PASS** · code-anchor: src/client/components/Reader.tsx:4478 coincide con /updateLanguageTheta\(currentLang, beta, 1, 1\.0\)/
+  - observado: `{"file":"src/client/components/Reader.tsx","line":4478,"text":"updateLanguageTheta(currentLang, beta, 1, 1.0);"}`
 - ✅ **PASS** · code-anchor: src/client/lib/profile-models.ts:417 coincide con /0\.18 \* \(1 - pKnow\)/
   - observado: `{"file":"src/client/lib/profile-models.ts","line":417,"text":"delta = 0.18 * (1 - pKnow);"}`
 - ✅ **PASS** · code-anchor: src/client/components/WordPanel.tsx:632 coincide con /award: false/
@@ -231,8 +231,8 @@ Código: **PASS** · Referencias: **UNVERIFIED**
 
 - ✅ **PASS** · doc-mention: el documento contiene «Sin calificación implícita por velocidad»
 - ✅ **PASS** · code-absent: /computeImplicitFsrsGrade|msPerChar <= 650/ no aparece en src/client/lib/practice.ts
-- ✅ **PASS** · code-anchor: src/client/hooks/useReaderNavigation.ts:213 coincide con /const completeChapterTo/
-  - observado: `{"file":"src/client/hooks/useReaderNavigation.ts","line":213,"text":"const completeChapterTo = useCallback("}`
+- ✅ **PASS** · code-anchor: src/client/hooks/useReaderNavigation.ts:217 coincide con /const completeChapterTo/
+  - observado: `{"file":"src/client/hooks/useReaderNavigation.ts","line":217,"text":"const completeChapterTo = useCallback("}`
 - ✅ **PASS** · code-anchor: src/client/hooks/useReviewSession.ts:646 coincide con /await grade\(item, wrongs/
   - observado: `{"file":"src/client/hooks/useReviewSession.ts","line":646,"text":"await grade(item, wrongs ? EXERCISE_RATING.wrong : EXERCISE_RATING.correct);"}`
 - ⚠️ **UNVERIFIED** · referencia rowland2014: forma válida; sin red no se resuelven metadatos (usar --online)
@@ -338,8 +338,8 @@ Código: **PASS** · Referencias: **UNVERIFIED**
   - observado: `{"file":"src/client/hooks/useReviewSession.ts","line":404,"text":"const startRetentionCheck30d = () => {"}`
 - ✅ **PASS** · code-anchor: src/client/lib/chapter-follow.ts:52 coincide con /export async function summarizeChapterFollows/
   - observado: `{"file":"src/client/lib/chapter-follow.ts","line":52,"text":"export async function summarizeChapterFollows("}`
-- ✅ **PASS** · code-anchor: src/client/lib/notebook-model.ts:211 coincide con /const RETENTION_CHECK_MIN_AGE_DAYS = 30/
-  - observado: `{"file":"src/client/lib/notebook-model.ts","line":211,"text":"export const RETENTION_CHECK_MIN_AGE_DAYS = 30;"}`
+- ✅ **PASS** · code-anchor: src/client/lib/notebook-model.ts:207 coincide con /const RETENTION_CHECK_MIN_AGE_DAYS = 30/
+  - observado: `{"file":"src/client/lib/notebook-model.ts","line":207,"text":"export const RETENTION_CHECK_MIN_AGE_DAYS = 30;"}`
 - ⚠️ **UNVERIFIED** · referencia rowland2014: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":"10.1037/a0037559","url":null}`
 - ⚠️ **UNVERIFIED** · referencia adesope2017: forma válida; sin red no se resuelven metadatos (usar --online)

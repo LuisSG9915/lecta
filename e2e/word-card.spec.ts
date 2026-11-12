@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import path from "node:path";
+import { clickAt as clickAtPoint, touch as touchAt } from "./helpers/touch";
 
 const MINIMAL_EPUB_PATH = path.resolve(process.cwd(), "fixtures/minimal.epub");
 
@@ -144,43 +145,8 @@ test.describe("Tarjeta de palabra (F9)", () => {
   }) => {
     await openMinimalBook(page);
 
-    // Eventos táctiles sintéticos: el puntero decide el gesto — en
-    // `pointer: coarse` real es la misma ruta que toma un dedo.
-    const touch = async (type: string, x: number, y: number) =>
-      page.evaluate(
-        ({ type, x, y }) => {
-          const el = document.elementFromPoint(x, y) || document.body;
-          el.dispatchEvent(
-            new PointerEvent(type, {
-              bubbles: true,
-              cancelable: true,
-              clientX: x,
-              clientY: y,
-              pointerType: "touch",
-              pointerId: 1,
-              isPrimary: true,
-              button: 0,
-              buttons: type === "pointerup" ? 0 : 1,
-            }),
-          );
-        },
-        { type, x, y },
-      );
-    const clickAt = async (x: number, y: number) =>
-      page.evaluate(
-        ({ x, y }) => {
-          const el = document.elementFromPoint(x, y) || document.body;
-          el.dispatchEvent(
-            new MouseEvent("click", {
-              bubbles: true,
-              cancelable: true,
-              clientX: x,
-              clientY: y,
-            }),
-          );
-        },
-        { x, y },
-      );
+    const touch = (type: string, x: number, y: number) => touchAt(page, type, x, y);
+    const clickAt = (x: number, y: number) => clickAtPoint(page, x, y);
 
     const card = page.locator(".word-unified-card");
     const coords = await wordCoords(page, "perenne");

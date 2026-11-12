@@ -15,6 +15,7 @@ const item: EpisodicWordItem = {
   chapterSentence: "La quimera desapareció al amanecer.",
   chapterTitle: "Capítulo 2",
   source: "notebook-reencounter",
+  options: ["linterna", "quimera", "montaña", "sombra"],
 };
 
 describe("MidChapterRecallCard", () => {

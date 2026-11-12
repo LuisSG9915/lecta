@@ -84,3 +84,47 @@ export function validateTapIntent(input: TapIntentValidationInput): TapIntentRes
 
   return { valid: true };
 }
+
+/**
+ * ¿Entrada táctil? Tipo de puntero touch/pen o, si no se conoce, pantalla
+ * de puntero grueso. Lo comparten el listener de selección y el toque del
+ * lector (antes había dos copias idénticas).
+ */
+export function isTouchInput(pointerType?: string | null): boolean {
+  if (pointerType === "touch" || pointerType === "pen") return true;
+  return typeof window !== "undefined" && typeof window.matchMedia === "function"
+    ? window.matchMedia("(pointer: coarse)").matches
+    : false;
+}
+
+export type SelectionIntent = "ignore" | "open-card" | "passage-bar" | "close-card-then-bar";
+
+export interface SelectionIntentInput {
+  /** Palabras de la selección (split por espacios, como el listener). */
+  words: number;
+  /** La palabra limpia quedó vacía (solo puntuación o espacios). */
+  emptyWord: boolean;
+  /** Hay ficha de palabra abierta (también la de `readerInitialWord`). */
+  cardOpen: boolean;
+  /** Hay otra hoja abierta (no la ficha). */
+  sheetOpen: boolean;
+  /** La selección es la misma palabra, en el mismo sitio, que la ficha. */
+  sameWord: boolean;
+}
+
+/**
+ * Qué hacer con la selección del lector. Una palabra abre la ficha (o la
+ * sustituye); dos o más montan la barra de pasajes, cerrando antes la
+ * ficha: así quien abre una palabra con presión larga puede arrastrar los
+ * tiradores y subrayar una cita.
+ */
+export function classifySelection(input: SelectionIntentInput): SelectionIntent {
+  if (input.words <= 1) {
+    if (input.emptyWord) return "ignore";
+    if (input.cardOpen && input.sameWord) return "ignore";
+    return "open-card";
+  }
+  if (input.cardOpen) return "close-card-then-bar";
+  if (input.sheetOpen) return "ignore";
+  return "passage-bar";
+}

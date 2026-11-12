@@ -2,6 +2,7 @@ import { isReviewDueWord } from "./fsrs";
 import type { SavedWord } from "./idb";
 import { blankWordInContext, type EpisodicWordItem } from "./practice";
 import { firstSentenceWith } from "./section-words";
+import { episodicClozeOptions } from "./episodic-cloze";
 
 export function isForwardStepIntoSection(previous: number, current: number): boolean {
   return previous >= 0 && current === previous + 1;
@@ -31,7 +32,7 @@ export function pickMidChapterRecall(
     const form = word.form.trim();
     const sentence = firstSentenceWith(sectionText, form, language);
     if (!sentence || !blankWordInContext(sentence, form, language)) continue;
-    return {
+    const item: EpisodicWordItem = {
       lemma: word.lemma || form,
       surfaceForm: form,
       lang: language,
@@ -41,6 +42,11 @@ export function pickMidChapterRecall(
       source: "notebook-reencounter",
       partOfSpeech: word.pos ?? undefined,
     };
+    // Sin ≥2 palabras reales del cuaderno para distraer, el hueco se
+    // resolvería sin leer: se prueba el siguiente vencido.
+    const options = episodicClozeOptions(item, words);
+    if (!options) continue;
+    return { ...item, options };
   }
   return null;
 }

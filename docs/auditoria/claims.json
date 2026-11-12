@@ -265,7 +265,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/components/Reader.tsx",
-          "line": 4453,
+          "line": 4478,
           "window": 20,
           "expect": "updateLanguageTheta\\(currentLang, beta, 1, 1\\.0\\)",
           "why": "onMarkKnown sube theta con outcome 1"
@@ -434,7 +434,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/hooks/useReaderNavigation.ts",
-          "line": 213,
+          "line": 217,
           "window": 1,
           "expect": "const completeChapterTo",
           "why": "el cierre de capítulo es compartido por scroll y páginas"
@@ -623,7 +623,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/lib/notebook-model.ts",
-          "line": 211,
+          "line": 207,
           "window": 3,
           "expect": "const RETENTION_CHECK_MIN_AGE_DAYS = 30",
           "why": "el chequeo de retención solo ofrece palabras con 30 o más días desde su último repaso"

@@ -417,12 +417,15 @@ describe("awardEpisodicConsolidation (Track 10)", () => {
 
   it("re-exporta y ejecuta generateMorphologicalDistractors y generateClozeOptions", async () => {
     const { game } = await freshModules();
-    const distractors = game.generateMorphologicalDistractors("susurró", { lang: "es", count: 2 });
-    expect(distractors.length).toBe(2);
-    expect(distractors).not.toContain("susurró");
+    const distractors = game.generateMorphologicalDistractors("susurró", {
+      lang: "es",
+      count: 2,
+      candidates: ["camino", "montaña"],
+    });
+    expect(distractors).toEqual(["camino", "montaña"]);
 
     const cloze = game.generateClozeOptions("whisper", { lang: "en", count: 3, seed: 123 });
-    expect(cloze.options.length).toBe(3);
+    expect(cloze.options).toEqual(["whisper"]);
     expect(cloze.options[cloze.correctIndex]).toBe("whisper");
   });
 

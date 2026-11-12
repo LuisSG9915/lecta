@@ -12,7 +12,8 @@ import {
 } from "react";
 import type { EpubBook } from "../lib/epub";
 import type { WordHit } from "../lib/words";
-import { extractWordAtPoint, wordHitFromRange } from "../lib/words";
+import { extractWordAtPoint, sameWordHit, sentenceRangeForHit, wordHitFromRange } from "../lib/words";
+import { classifySelection, isTouchInput } from "../lib/tap-intent-guard";
 import { useReaderShortcutsAndGestures } from "../hooks/useReaderShortcutsAndGestures";
 import {
   openEpub,
@@ -200,6 +201,7 @@ import {
   isConsolidationActive,
 } from "../lib/practice";
 import { isForwardStepIntoSection, midChapterRecallKey, pickMidChapterRecall } from "../lib/mid-chapter-recall";
+import { removeSavedWord, upsertSavedWord } from "../lib/episodic-cloze";
 import { BilingueParagraph } from "./BilingueParagraph";
 import type { FocusSuggestion } from "./SmartReaderDock";
 import { ReaderTopBar } from "./reader/ReaderTopBar";
@@ -431,6 +433,9 @@ export default function Reader({
   const selButtonVisibleRef = useRef(false);
   // Nodo del contador del retiro: se pinta fuera del ciclo de React.
   const savedForms = useRef<Map<string, MarkLevel>>(new Map());
+  // Palabras guardadas del idioma del libro: distractores reales para el
+  // hueco del repaso de fin de capítulo (lib/episodic-cloze.ts).
+  const savedWordsRef = useRef<SavedWord[]>([]);
   // Claves (`idioma:forma`) de las palabras que ya están en el Cuaderno.
   // Es la memoria con la que la cápsula nace «guardada» en 0 ms, sin
   // esperar a IndexedDB ni rebotar el botón.
@@ -572,6 +577,21 @@ export default function Reader({
   const calEvaluated = useRef(false);
   const [language, setLanguage] = useState("es");
   const [selection, setSelection] = useState<WordHit | null>(null);
+  // Espejo de `selection` para el listener de `selectionchange` (que no se
+  // rearma en cada render): cubre los 7 sitios que llaman setSelection.
+  const selectionRef = useRef<WordHit | null>(null);
+  useEffect(() => {
+    selectionRef.current = selection;
+    if (selection) return;
+    // Al cerrar la ficha (×, toque, atrás, otra hoja) se suelta la
+    // selección nativa de una palabra que quedó viva en táctil; la de un
+    // pasaje se conserva para la barra.
+    const sel = window.getSelection();
+    const container = containerRef.current;
+    if (!sel || sel.isCollapsed || !sel.rangeCount || !container) return;
+    if (!container.contains(sel.getRangeAt(0).commonAncestorContainer)) return;
+    if (sel.toString().trim().split(/\s+/).filter(Boolean).length <= 1) sel.removeAllRanges();
+  }, [selection]);
   const [charOffsetInChapter, setCharOffsetInChapter] = useState(0);
 
   const applyCachedPredictionRef = useRef<((index: number, lang: string) => SectionPrediction | null) | null>(null);
@@ -2261,6 +2281,7 @@ export default function Reader({
             ? DEFAULT_THRESHOLD_NATIVE
             : DEFAULT_THRESHOLD_LEARNER;
         const storedWords = await listSavedWords(bookLanguage, scope);
+        savedWordsRef.current = storedWords;
         savedForms.current = savedFormLevels(storedWords);
         setSavedKeys(
           new Set(storedWords.map((word) => wordKey(word.language, word.form))),
@@ -2497,6 +2518,7 @@ export default function Reader({
     void (async () => {
       const scope = captureDbScope();
       const storedWords = await listSavedWords(language, scope);
+      savedWordsRef.current = storedWords;
       savedForms.current = savedFormLevels(storedWords);
       setSavedKeys(
         new Set(storedWords.map((word) => wordKey(word.language, word.form))),
@@ -2580,37 +2602,35 @@ export default function Reader({
       const rawText = sel.toString().trim();
       const words = rawText.split(/\s+/).filter(Boolean);
       const singleWordHit = wordHitFromRange(range, container, language);
-
-      // Una sola palabra seleccionada = consulta directa: abre la
-      // tarjeta única (Track 4) en vez de un menú intermedio. Así
-      // nunca hay dos paneles para la misma palabra.
-      if (words.length === 1 || (words.length === 0 && singleWordHit)) {
-        const hit = singleWordHit || {
-          word: words[0].replace(/[.,;:!?¡¿"«»()]/g, ""),
-          context: rawText,
-        };
-        if (hit.word) {
-          window.getSelection()?.removeAllRanges();
-          openSelection(hit);
-        }
+      const hit: WordHit | null =
+        words.length <= 1
+          ? singleWordHit ||
+            (words[0] ? { word: words[0].replace(/[.,;:!?¡¿"«»()]/g, ""), context: rawText } : null)
+          : null;
+      const card = selectionRef.current;
+      const isTouch = isTouchInput(lastPointerTypeRef.current);
+      // Una palabra = ficha directa (Track 4, sin menú intermedio); dos o
+      // más = barra de pasajes, cerrando antes la ficha. En táctil la
+      // selección nativa queda viva para poder arrastrar los tiradores.
+      const intent = classifySelection({
+        words: words.length,
+        emptyWord: !hit?.word,
+        cardOpen: card !== null,
+        sheetOpen: card === null && overlayReleaseRef.current !== null,
+        sameWord: Boolean(card && hit && sameWordHit(card, hit)),
+      });
+      if (intent === "ignore") {
+        if (words.length >= 2) setSelButton(null);
         return;
       }
+      if (intent === "open-card" && hit) {
+        if (!isTouch) window.getSelection()?.removeAllRanges();
+        openSelection(hit);
+        return;
+      }
+      if (intent === "close-card-then-bar") closeSelection();
 
-      // Si la selección tiene 2 o más palabras, desplegar la barra de pasajes.
-      // Con una hoja o ficha ya abierta no se monta un segundo panel: la barra
-      // queda suspendida hasta cerrarla. La selección de UNA palabra sí
-      // sustituye la ficha abierta (openSelection hace swap sobre la misma
-      // capa), que es lo que espera quien arrastra el tirador a otra palabra.
       if (words.length >= 2) {
-        if (overlayReleaseRef.current) {
-          setSelButton(null);
-          return;
-        }
-        const isTouch =
-          lastPointerTypeRef.current === "touch" ||
-          lastPointerTypeRef.current === "pen" ||
-          (typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches);
-
         let placement: "top" | "bottom" = isTouch ? "bottom" : "top";
         let y = isTouch ? rect.bottom : rect.top;
         // Reserva para la franja flotante + dock: el menú no debe caer
@@ -2660,7 +2680,7 @@ export default function Reader({
       window.removeEventListener("scroll", hide);
       window.clearTimeout(timer);
     };
-  }, [language, openSelection]);
+  }, [language, openSelection, closeSelection]);
 
   // Aviso único de descubrimiento para la pulsación larga en táctil (clave por cuenta)
   useEffect(() => {
@@ -3010,6 +3030,7 @@ export default function Reader({
     pendingNextChapterRef,
     currentChapterLookups,
     currentChapterPrimedWordsRef,
+    savedWordsRef,
     focusTelemetryRef,
     settingsRef,
   });
@@ -3083,6 +3104,7 @@ export default function Reader({
     // La marca del texto sigue la etapa real de la tarjeta: una palabra
     // asentada no vuelve a «nueva» porque el lector la reencuentre.
     const level = markLevel(word.card);
+    savedWordsRef.current = upsertSavedWord(savedWordsRef.current, word);
     const savedKey = wordKey(word.language || language, word.form);
     setSavedKeys((prev) => {
       if (prev.has(savedKey)) return prev;
@@ -3148,6 +3170,7 @@ export default function Reader({
   }, [language, bookHash, onWordSaved, setTtsCapturedToast, ttsRef]);
 
   const onWordRemoved = (word: SavedWord) => {
+    savedWordsRef.current = removeSavedWord(savedWordsRef.current, word.key);
     const removedKey = wordKey(word.language || language, word.form);
     setSavedKeys((prev) => {
       if (!prev.has(removedKey)) return prev;
@@ -3983,7 +4006,9 @@ export default function Reader({
     return {
       onHighlight: selection.range
         ? (tone: "amber" | "salvia" | "dario") => {
-            const range = selection.range;
+            // La tinta de la ficha subraya la oración entera, no solo la
+            // palabra tocada; sin oración medible cae a la palabra.
+            const range = sentenceRangeForHit(selection, language) ?? selection.range;
             closeSelection();
             if (range) void savePassageRange(range, tone);
           }
@@ -4004,7 +4029,7 @@ export default function Reader({
         setDeepModal(true);
       },
     };
-  }, [selection, closeSelection, savePassageRange, openQuoteCardFromSelection, askCatAboutSelection, setDeepModal]);
+  }, [selection, language, closeSelection, savePassageRange, openQuoteCardFromSelection, askCatAboutSelection, setDeepModal]);
 
   return (
     <div
@@ -4475,7 +4500,11 @@ export default function Reader({
               },
             },
             scope,
-          );
+          )
+            .then(({ word }) => {
+              savedWordsRef.current = upsertSavedWord(savedWordsRef.current, word);
+            })
+            .catch(() => {});
         }}
         onMuteForBook={(id) => {
           muteBookForPriming(id);

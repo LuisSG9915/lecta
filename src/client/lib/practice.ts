@@ -1,6 +1,8 @@
 import { Rating, type Grade } from "./fsrs";
 import type { SavedWord } from "./idb";
 import { markLevel } from "./word-level";
+import { normalizeSearchText } from "./search-text";
+import { normalizeWordForm } from "../../shared/word-form";
 
 const BLANK = "_____";
 
@@ -182,6 +184,43 @@ export function shuffleStable<T>(items: T[], seed: number): T[] {
     [result[i], result[j]] = [result[j], result[i]];
   }
   return result;
+}
+
+// Semilla estable por palabra o tanda: las opciones no cambian de
+// orden entre renders ni si se interrumpe y retoma el repaso.
+export const seedFor = (text: string) => {
+  let seed = 7;
+  for (let i = 0; i < text.length; i++) seed = (seed * 31 + text.charCodeAt(i)) >>> 0;
+  return seed;
+};
+
+// Claves de «misma palabra»: lema, lema normalizado y forma normalizada,
+// sin acentos ni mayúsculas. Los ítems episódicos suelen traer la forma
+// superficial como lema, así que se comparan las tres.
+export function lemmaKeys(lemma: string | undefined, form: string, lang = "es"): Set<string> {
+  const keys = new Set<string>();
+  const add = (value: string | undefined) => {
+    const key = value ? normalizeSearchText(value) : "";
+    if (key) keys.add(key);
+  };
+  add(lemma);
+  if (lemma) add(normalizeWordForm(lemma, lang));
+  add(normalizeWordForm(form, lang));
+  return keys;
+}
+
+// Dos palabras son la misma si comparten clave o un prefijo de ≥5 letras:
+// atrapa flexiones del español sin lema de catálogo («susurró»/«susurraba»).
+// Perder a veces un distractor legítimo («presentar»/«presencia») es aceptado.
+const SAME_WORD_PREFIX = 5;
+export function sameWordKeys(a: Set<string>, b: Set<string>): boolean {
+  for (const x of a) {
+    for (const y of b) {
+      if (x === y) return true;
+      if (x.length >= SAME_WORD_PREFIX && y.length >= SAME_WORD_PREFIX && x.slice(0, SAME_WORD_PREFIX) === y.slice(0, SAME_WORD_PREFIX)) return true;
+    }
+  }
+  return false;
 }
 
 // Modo de cada palabra en la mezcla «Repasar hoy»: con oración
@@ -548,6 +587,8 @@ export interface EpisodicWordItem {
   chapterTitle: string;
   source: "pre-chapter-primed" | "in-chapter-lookup" | "notebook-reencounter";
   partOfSpeech?: string;
+  /** Opciones del hueco ya resueltas (episodic-cloze.ts): objetivo + palabras reales del cuaderno. */
+  options?: string[];
 }
 
 export interface ConsolidationAttemptMetrics {
@@ -831,7 +872,7 @@ export interface ClozeOptionsResult {
   correctIndex: number;
 }
 
-function matchCase(source: string, target: string): string {
+export function matchCase(source: string, target: string): string {
   if (!source || !target) return target;
   if (source[0] === source[0].toUpperCase() && source[0] !== source[0].toLowerCase()) {
     return target.charAt(0).toUpperCase() + target.slice(1);
@@ -840,8 +881,10 @@ function matchCase(source: string, target: string): string {
 }
 
 /**
- * Genera distractores morfológicamente coherentes para una palabra clave,
- * alternando desinencias verbales, flexiones o sufijos según el idioma (L1/L2).
+ * Distractores para un hueco: solo palabras reales de `candidates` (≠ objetivo,
+ * longitud ±4). Antes inventaba variantes por sufijo de la misma palabra
+ * («inteligibless», «inteligibleses»): el ejercicio se resolvía sin leer. Sin
+ * candidatos devuelve `[]`.
  */
 export function generateMorphologicalDistractors(
   targetWord: string,
@@ -850,8 +893,6 @@ export function generateMorphologicalDistractors(
   const clean = targetWord.trim();
   if (!clean) return [];
 
-  const lang = (options?.lang ?? "es").toLowerCase();
-  const isEn = lang.startsWith("en");
   const count = Math.max(1, options?.count ?? 2);
   const targetLower = clean.toLowerCase();
 
@@ -880,162 +921,6 @@ export function generateMorphologicalDistractors(
       addVariant(cand);
       if (results.length >= count) return results.slice(0, count);
     }
-  }
-
-  // 2. Reglas morfológicas para inglés (L2)
-  if (isEn) {
-    if (targetLower.endsWith("ing") && targetLower.length > 4) {
-      const base = targetLower.slice(0, -3);
-      addVariant(base + "ed");
-      addVariant(base + "s");
-      addVariant(base);
-      addVariant(base + "er");
-    } else if (targetLower.endsWith("ed") && targetLower.length > 4) {
-      const base = targetLower.slice(0, -2);
-      addVariant(base + "ing");
-      addVariant(base + "s");
-      addVariant(base);
-      addVariant(base + "er");
-    } else if (targetLower.endsWith("ly") && targetLower.length > 4) {
-      const base = targetLower.slice(0, -2);
-      addVariant(base);
-      addVariant(base + "ness");
-      addVariant(base + "ful");
-    } else if (targetLower.endsWith("tion") && targetLower.length > 5) {
-      const base = targetLower.slice(0, -4);
-      addVariant(base + "tive");
-      addVariant(base + "ting");
-      addVariant(base + "ted");
-    } else if (targetLower.endsWith("ful") && targetLower.length > 4) {
-      const base = targetLower.slice(0, -3);
-      addVariant(base + "less");
-      addVariant(base + "fully");
-      addVariant(base + "ness");
-    } else if (targetLower.endsWith("able") && targetLower.length > 5) {
-      const base = targetLower.slice(0, -4);
-      addVariant(base + "ably");
-      addVariant(base + "ed");
-      addVariant(base + "ing");
-    } else if (targetLower.endsWith("s") && targetLower.length > 3) {
-      const base = targetLower.endsWith("es") ? targetLower.slice(0, -2) : targetLower.slice(0, -1);
-      addVariant(base + "ed");
-      addVariant(base + "ing");
-      addVariant(base);
-    } else {
-      addVariant(targetLower + "ing");
-      addVariant(targetLower + "ed");
-      addVariant(targetLower + "s");
-      addVariant(targetLower + "er");
-    }
-  } else {
-    // 3. Reglas morfológicas para español (L1)
-    if (targetLower.endsWith("mente") && targetLower.length > 6) {
-      const base = targetLower.slice(0, -5);
-      addVariant(base);
-      addVariant(base + "s");
-      addVariant(base.slice(0, -1) + "ez");
-    } else if (targetLower.endsWith("ando") && targetLower.length > 5) {
-      const base = targetLower.slice(0, -4);
-      addVariant(base + "ar");
-      addVariant(base + "aba");
-      addVariant(base + "ado");
-      addVariant(base + "ó");
-    } else if (targetLower.endsWith("iendo") && targetLower.length > 6) {
-      const base = targetLower.slice(0, -5);
-      addVariant(base + "er");
-      addVariant(base + "ir");
-      addVariant(base + "ía");
-      addVariant(base + "ido");
-      addVariant(base + "ió");
-    } else if (targetLower.endsWith("ado") && targetLower.length > 4) {
-      const base = targetLower.slice(0, -3);
-      addVariant(base + "ar");
-      addVariant(base + "ando");
-      addVariant(base + "aba");
-      addVariant(base + "ó");
-    } else if (targetLower.endsWith("ido") && targetLower.length > 4) {
-      const base = targetLower.slice(0, -3);
-      addVariant(base + "er");
-      addVariant(base + "ir");
-      addVariant(base + "iendo");
-      addVariant(base + "ió");
-    } else if (targetLower.endsWith("aba") && targetLower.length > 4) {
-      const base = targetLower.slice(0, -3);
-      addVariant(base + "ar");
-      addVariant(base + "ando");
-      addVariant(base + "ó");
-    } else if (targetLower.endsWith("ía") && targetLower.length > 3) {
-      const base = targetLower.slice(0, -2);
-      addVariant(base + "er");
-      addVariant(base + "ir");
-      addVariant(base + "ió");
-    } else if (targetLower.endsWith("ó") && targetLower.length > 2) {
-      const base = targetLower.slice(0, -1);
-      addVariant(base + "aba");
-      addVariant(base + "ar");
-      addVariant(base + "ando");
-    } else if (targetLower.endsWith("ió") && targetLower.length > 3) {
-      const base = targetLower.slice(0, -2);
-      addVariant(base + "ía");
-      addVariant(base + "er");
-      addVariant(base + "iendo");
-    } else if (targetLower.endsWith("ar") && targetLower.length > 3) {
-      const base = targetLower.slice(0, -2);
-      addVariant(base + "aba");
-      addVariant(base + "ando");
-      addVariant(base + "ó");
-      addVariant(base + "ado");
-    } else if (targetLower.endsWith("er") && targetLower.length > 3) {
-      const base = targetLower.slice(0, -2);
-      addVariant(base + "ía");
-      addVariant(base + "iendo");
-      addVariant(base + "ió");
-      addVariant(base + "ido");
-    } else if (targetLower.endsWith("ir") && targetLower.length > 3) {
-      const base = targetLower.slice(0, -2);
-      addVariant(base + "ía");
-      addVariant(base + "iendo");
-      addVariant(base + "ió");
-      addVariant(base + "ido");
-    } else if (targetLower.endsWith("ción") && targetLower.length > 5) {
-      const base = targetLower.slice(0, -4);
-      addVariant(base + "dor");
-      addVariant(base + "miento");
-      addVariant(base + "ivo");
-    } else if (targetLower.endsWith("oso") || targetLower.endsWith("osa")) {
-      const base = targetLower.slice(0, -3);
-      addVariant(base + "idad");
-      addVariant(base + "al");
-      addVariant(base + (targetLower.endsWith("oso") ? "osa" : "oso"));
-    } else if (targetLower.endsWith("able") || targetLower.endsWith("ible")) {
-      const base = targetLower.slice(0, -4);
-      addVariant(base + "idad");
-      addVariant(base + "ado");
-      addVariant(base + "ante");
-    } else if (targetLower.endsWith("o") || targetLower.endsWith("a")) {
-      const base = targetLower.slice(0, -1);
-      addVariant(base + (targetLower.endsWith("o") ? "a" : "o"));
-      addVariant(base + "os");
-      addVariant(base + "as");
-      addVariant(base + "ito");
-    }
-  }
-
-  // 4. Mecanismo de contingencia si no se alcanzó el conteo requerido
-  const fallbackAffixes = isEn
-    ? ["s", "ed", "ing", "er", "ly", "ish"]
-    : ["s", "es", "ito", "ón", "ero", "ado"];
-
-  for (const affix of fallbackAffixes) {
-    if (results.length >= count) break;
-    addVariant(targetLower + affix);
-  }
-
-  if (results.length < count) {
-    const lastChar = targetLower.slice(-1);
-    const altChar = lastChar === "a" ? "o" : lastChar === "o" ? "e" : "a";
-    addVariant(targetLower.slice(0, -1) + altChar);
-    addVariant(targetLower + (isEn ? "y" : "al"));
   }
 
   return results.slice(0, count);

@@ -2313,12 +2313,6 @@ mark.resolved-word:hover,
   letter-spacing: -0.005em;
 }
 
-/* Conectores complejos para fijaciones sacádicas */
-.book-content [data-connector="true"] {
-  text-decoration: underline dotted var(--accent-subtle, rgba(200, 109, 59, 0.45));
-  text-underline-offset: 3px;
-}
-
 /* Sangría en cascada: las cláusulas dependientes o conectores dan un paso
    hacia la derecha para visualizar la jerarquía del árbol de la oración. */
 .book-content .syn-line[data-sub] {

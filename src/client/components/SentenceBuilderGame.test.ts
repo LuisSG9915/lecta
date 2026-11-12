@@ -170,6 +170,62 @@ describe("SentenceBuilderGame", () => {
   });
 
   describe("Modo Hueco Contextual Episódico (Cloze)", () => {
+    it("sin opciones para elegir muestra la cita y «Saltar» sin dar crédito", () => {
+      const onSolve = vi.fn();
+      const onSkip = vi.fn();
+      render(
+        h(SentenceBuilderGame, {
+          targetWord: "inteligibles",
+          mode: "cloze",
+          chapterSentence: "Farfullan piropos apenas inteligibles.",
+          onSolve,
+          onSkip,
+        }),
+      );
+      expect(host.querySelectorAll(".sentence-cloze-option-btn").length).toBe(0);
+      expect(host.textContent).not.toContain("Descartar opción");
+      expect(host.querySelector(".nb-keys-hint")).toBeNull();
+      act(() => {
+        window.dispatchEvent(new KeyboardEvent("keydown", { key: "1" }));
+      });
+      expect(onSolve).not.toHaveBeenCalled();
+      const skip = Array.from(host.querySelectorAll("button")).find((b) => b.textContent === "Saltar");
+      expect(skip).toBeDefined();
+      if (skip) click(skip);
+      expect(onSkip).toHaveBeenCalledTimes(1);
+      expect(onSolve).not.toHaveBeenCalled();
+    });
+
+    it("oculta la pista si nombra la respuesta como palabra completa", () => {
+      render(
+        h(SentenceBuilderGame, {
+          targetWord: "susurró",
+          targetLemma: "susurrar",
+          mode: "cloze",
+          chapterSentence: "Ella susurró su nombre.",
+          shortGloss: "Pasado de susurrar",
+          options: ["susurró", "camino", "montaña"],
+          onSolve: vi.fn(),
+        }),
+      );
+      expect(host.querySelector(".sentence-cloze-gloss")).toBeNull();
+      expect(host.textContent).not.toContain("Pasado de susurrar");
+    });
+
+    it("no oculta la pista por coincidencias dentro de otra palabra", () => {
+      render(
+        h(SentenceBuilderGame, {
+          targetWord: "sol",
+          mode: "cloze",
+          chapterSentence: "El sol caía sobre el mar.",
+          shortGloss: "Astro solitario del día",
+          options: ["sol", "camino", "montaña"],
+          onSolve: vi.fn(),
+        }),
+      );
+      expect(host.querySelector(".sentence-cloze-gloss")?.textContent).toContain("solitario");
+    });
+
     it("renderiza la cita del capítulo con hueco elegante, glosa y 3 opciones", () => {
       render(
         h(SentenceBuilderGame, {
@@ -177,9 +233,13 @@ describe("SentenceBuilderGame", () => {
           mode: "cloze",
           chapterSentence: "El viento soplaba con furia.",
           shortGloss: "Mover el aire con fuerza",
+          options: ["camino", "soplaba", "montaña"],
           onSolve: vi.fn(),
         }),
       );
+
+      // El enunciado no nombra la respuesta.
+      expect(host.querySelector(".sentence-card-prompt")?.textContent).not.toContain("soplaba");
 
       expect(host.querySelector(".sentence-cloze-quote")?.textContent).toContain("El viento");
       const slot = host.querySelector(".sentence-cloze-slot.is-blank");
@@ -280,7 +340,7 @@ describe("SentenceBuilderGame", () => {
       expect(wrongOptions.length).toBe(1);
     });
 
-    it("genera automáticamente opciones coherentes cuando no se pasa el prop options", () => {
+    it("resuelve el hueco con las opciones recibidas", () => {
       const onSolve = vi.fn();
       render(
         h(SentenceBuilderGame, {
@@ -288,6 +348,7 @@ describe("SentenceBuilderGame", () => {
           mode: "cloze",
           chapterSentence: "Perseguía una quimera inalcanzable por los montes.",
           shortGloss: "Ilusión fantástica",
+          options: ["linterna", "quimera", "montaña"],
           onSolve,
         }),
       );

@@ -5,7 +5,8 @@ import {
   type SentenceToken,
 } from "../lib/grammar";
 import { splitSentenceIntoSyntacticChunks } from "../lib/syntactic-lines";
-import { conciseMeaning } from "../lib/practice";
+import { conciseMeaning, lemmaKeys } from "../lib/practice";
+import { normalizeSearchText } from "../lib/search-text";
 import { generateClozeOptions } from "../lib/game";
 import { triggerHaptic, triggerPurrHaptic } from "../lib/haptics";
 import { playCompanionSound } from "../lib/companion-audio";
@@ -32,6 +33,26 @@ export interface SentenceBuilderGameProps {
   readonly shortGloss?: string;
   readonly options?: string[];
   readonly autoPronounceOnSolve?: boolean;
+  /** Lema del objetivo: la pista se oculta si lo nombra (además de `targetWord`). */
+  readonly targetLemma?: string;
+  /** Salida sin crédito cuando el hueco no tiene opciones para elegir. */
+  readonly onSkip?: () => void;
+}
+
+/**
+ * ¿La pista nombra la respuesta? Palabra completa (tokens \p{L}+ de la glosa
+ * normalizada) frente a las claves del lema: «sol» no delata «solitario».
+ */
+export function glossRevealsTarget(
+  gloss: string,
+  targetWord: string,
+  targetLemma: string | undefined,
+  language: string,
+): boolean {
+  if (!gloss.trim()) return false;
+  const keys = lemmaKeys(targetLemma, targetWord, language);
+  const tokens = normalizeSearchText(gloss).match(/\p{L}+/gu) ?? [];
+  return tokens.some((token) => keys.has(token));
 }
 
 export interface SplitSentenceTargetResult {
@@ -122,6 +143,8 @@ export function SentenceBuilderGame({
   shortGloss,
   options,
   autoPronounceOnSolve = true,
+  targetLemma,
+  onSkip,
 }: SentenceBuilderGameProps) {
   const isClozeMode =
     mode === "cloze" ||
@@ -134,7 +157,10 @@ export function SentenceBuilderGame({
       ? sentence
       : `Encontramos en la lectura la palabra ${targetWord}.`;
 
-  const effectiveMeaning = shortGloss?.trim() || meaning?.trim() || "";
+  const rawMeaning = shortGloss?.trim() || meaning?.trim() || "";
+  // En el hueco la pista no puede nombrar la respuesta.
+  const effectiveMeaning =
+    isClozeMode && glossRevealsTarget(rawMeaning, targetWord, targetLemma, language) ? "" : rawMeaning;
   const isForeign = Boolean(language && !language.toLowerCase().startsWith("es"));
 
   // -------------------------------------------------------------------------
@@ -149,6 +175,8 @@ export function SentenceBuilderGame({
     if (options && options.length > 0) return options;
     return generateClozeOptions(targetWord, { lang: language, count: 3 }).options;
   }, [options, targetWord, language]);
+  // Con una sola opción (la respuesta) no hay nada que elegir.
+  const canChoose = clozeOptions.length >= 2;
 
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [wrongOptions, setWrongOptions] = useState<Set<string>>(() => new Set());
@@ -278,7 +306,7 @@ export function SentenceBuilderGame({
 
   // Atajos de teclado para Cloze (teclas 1, 2, 3)
   useEffect(() => {
-    if (!isClozeMode || disabled || isClozeSolved) return;
+    if (!isClozeMode || !canChoose || disabled || isClozeSolved) return;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (
         event.target instanceof HTMLInputElement ||
@@ -294,7 +322,7 @@ export function SentenceBuilderGame({
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isClozeMode, disabled, isClozeSolved, clozeOptions, handleSelectClozeOption]);
+  }, [isClozeMode, canChoose, disabled, isClozeSolved, clozeOptions, handleSelectClozeOption]);
 
   // Manejadores de modo Syntax
   const checkOrder = useCallback(
@@ -445,6 +473,31 @@ export function SentenceBuilderGame({
   // -------------------------------------------------------------------------
   // RENDER: VISTA CLOZE (Hueco Contextual)
   // -------------------------------------------------------------------------
+  if (isClozeMode && !canChoose) {
+    // Sin opciones para elegir: se muestra la cita completa y se ofrece
+    // saltar. Nunca `onSolve`: daría crédito de repaso (FSRS Good) sin
+    // ejercicio.
+    return (
+      <div className="sentence-builder-game sentence-cloze-game" role="region" aria-label="Cita del capítulo">
+        <div className="index-card nb-card sentence-builder-card sentence-cloze-card">
+          <p className="sentence-card-prompt meta">
+            <span className="sentence-card-title">Cita del Capítulo</span>
+          </p>
+          <div className="sentence-cloze-quote-wrapper">
+            <p className="sentence-cloze-quote">“{effectiveSentence}”</p>
+          </div>
+        </div>
+        {onSkip ? (
+          <div className="sentence-actions">
+            <button type="button" className="btn--quiet sentence-action-btn" onClick={onSkip}>
+              Saltar
+            </button>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
   if (isClozeMode) {
     const targetLower = targetWord.trim().toLowerCase();
     return (
@@ -455,7 +508,7 @@ export function SentenceBuilderGame({
       >
         <div className="index-card nb-card sentence-builder-card sentence-cloze-card">
           <p className="sentence-card-prompt meta">
-            <span className="sentence-card-title">Cita del Capítulo:</span> Completa el espacio para «<strong>{targetWord}</strong>»:
+            <span className="sentence-card-title">Cita del Capítulo:</span> Completa la frase del capítulo:
           </p>
 
           <div className="sentence-cloze-quote-wrapper">
@@ -487,7 +540,7 @@ export function SentenceBuilderGame({
           ) : null}
         </div>
 
-        {/* 3 Opciones morfológicamente coherentes */}
+        {/* Objetivo + palabras reales del cuaderno (lib/episodic-cloze.ts) */}
         <div
           className="sentence-cloze-options"
           role="group"

@@ -114,13 +114,9 @@ export const ratingString = (rating: Grade): ReviewRating => {
   return "good";
 };
 
-// Semilla estable por palabra o tanda: las opciones no cambian de
-// orden entre renders ni si se interrumpe y retoma el repaso.
-export const seedFor = (text: string) => {
-  let seed = 7;
-  for (let i = 0; i < text.length; i++) seed = (seed * 31 + text.charCodeAt(i)) >>> 0;
-  return seed;
-};
+// `seedFor` vive en practice.ts (junto a shuffleStable); se reexporta aquí
+// para sus importadores de siempre.
+export { seedFor } from "./practice";
 
 export const GRADES: { rating: Grade; label: string; key: string }[] = [
   { rating: Rating.Again, label: "Otra vez", key: "1" },

@@ -38,6 +38,20 @@ describe("findPassageRange", () => {
     expect(findPassageRange(c, { text: "corazon" })?.toString()).toBe("Corazón");
   });
 
+  it("encuentra la oración con <em> pegado a la puntuación", () => {
+    const c = container("<p>Era una <em>quimera</em>, dijo él.</p>");
+    expect(findPassageRange(c, { text: "Era una quimera, dijo él." })?.toString()).toBe(
+      "Era una quimera, dijo él.",
+    );
+  });
+
+  it("encuentra la oración con palabras partidas en spans (anclas biónicas)", () => {
+    const c = container(
+      '<p><span class="b"><span class="a">qui</span>mera</span> <span class="b"><span class="a">ve</span>loz</span>.</p>',
+    );
+    expect(findPassageRange(c, { text: "quimera veloz." })?.toString()).toBe("quimera veloz.");
+  });
+
   it("devuelve null cuando el texto no está", () => {
     const c = container("<p>otro contenido</p>");
     expect(findPassageRange(c, { text: "no existe" })).toBeNull();

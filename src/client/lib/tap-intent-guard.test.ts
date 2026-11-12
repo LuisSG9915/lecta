@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  classifySelection,
   isStopwordMissclick,
+  isTouchInput,
   validateTapIntent,
 } from "./tap-intent-guard";
 
@@ -129,5 +131,30 @@ describe("tap-intent-guard", () => {
       expect(stopwordRes.valid).toBe(false);
       expect(stopwordRes.reason).toBe("stopword");
     });
+  });
+});
+
+describe("classifySelection", () => {
+  const base = { words: 1, emptyWord: false, cardOpen: false, sheetOpen: false, sameWord: false };
+  it.each([
+    [{ ...base, emptyWord: true }, "ignore"],
+    [{ ...base, words: 0, emptyWord: true }, "ignore"],
+    [{ ...base, sheetOpen: true }, "open-card"],
+    [{ ...base, words: 2, sheetOpen: true }, "ignore"],
+    [{ ...base }, "open-card"],
+    [{ ...base, cardOpen: true }, "open-card"],
+    [{ ...base, cardOpen: true, sameWord: true }, "ignore"],
+    [{ ...base, words: 3 }, "passage-bar"],
+    [{ ...base, words: 4, cardOpen: true }, "close-card-then-bar"],
+  ] as const)("%o → %s", (input, expected) => {
+    expect(classifySelection(input)).toBe(expected);
+  });
+});
+
+describe("isTouchInput", () => {
+  it("touch y pen son táctiles; ratón no (sin puntero grueso)", () => {
+    expect(isTouchInput("touch")).toBe(true);
+    expect(isTouchInput("pen")).toBe(true);
+    expect(isTouchInput("mouse")).toBe(false);
   });
 });

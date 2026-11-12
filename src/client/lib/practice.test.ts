@@ -766,26 +766,19 @@ describe("Track 10 — Consolidación Episódica Post-Capítulo", () => {
   });
 
   describe("generateMorphologicalDistractors y generateClozeOptions (Fase 2)", () => {
-    it("genera distractores morfológicos en español para verbos flexionados", () => {
-      const distractors = generateMorphologicalDistractors("caminar", { lang: "es", count: 2 });
-      expect(distractors).toHaveLength(2);
-      expect(distractors).not.toContain("caminar");
-      // Debe contener variantes verbales como caminaba, caminando, caminó, etc.
-      expect(distractors.every((d) => d.startsWith("camin"))).toBe(true);
+    it("sin candidatos no inventa variantes de la misma palabra", () => {
+      // Antes: «inteligibless», «inteligibleses» (sufijos de contingencia).
+      expect(generateMorphologicalDistractors("inteligibles", { lang: "es", count: 2 })).toEqual([]);
+      expect(generateMorphologicalDistractors("wandering", { lang: "en", count: 2 })).toEqual([]);
     });
 
-    it("genera distractores morfológicos en inglés (L2) para participios o gerundios", () => {
-      const distractors = generateMorphologicalDistractors("wandering", { lang: "en", count: 2 });
-      expect(distractors).toHaveLength(2);
-      expect(distractors).not.toContain("wandering");
-      expect(distractors.some((d) => d === "wandered" || d === "wanders" || d === "wander")).toBe(true);
-    });
-
-    it("respeta la mayúscula inicial del término original", () => {
-      const distractors = generateMorphologicalDistractors("Susurró", { lang: "es", count: 2 });
-      expect(distractors).toHaveLength(2);
-      expect(distractors[0][0]).toBe(distractors[0][0].toUpperCase());
-      expect(distractors[1][0]).toBe(distractors[1][0].toUpperCase());
+    it("respeta la mayúscula inicial del término original en los candidatos", () => {
+      const distractors = generateMorphologicalDistractors("Susurró", {
+        lang: "es",
+        count: 2,
+        candidates: ["camino", "montaña"],
+      });
+      expect(distractors).toEqual(["Camino", "Montaña"]);
     });
 
     it("prioriza palabras candidatas del capítulo de longitud similar", () => {
@@ -801,10 +794,21 @@ describe("Track 10 — Consolidación Episódica Post-Capítulo", () => {
     });
 
     it("generateClozeOptions devuelve opciones barajadas y el correctIndex exacto", () => {
-      const res = generateClozeOptions("perenne", { lang: "es", count: 3, seed: 42 });
+      const res = generateClozeOptions("perenne", {
+        lang: "es",
+        count: 3,
+        seed: 42,
+        candidates: ["camino", "montaña"],
+      });
       expect(res.options).toHaveLength(3);
       expect(res.options[res.correctIndex]).toBe("perenne");
       expect(new Set(res.options.map((o) => o.toLowerCase())).size).toBe(3);
+    });
+
+    it("generateClozeOptions sin candidatos devuelve solo el objetivo", () => {
+      const res = generateClozeOptions("inteligibles", { lang: "es", count: 3 });
+      expect(res.options).toEqual(["inteligibles"]);
+      expect(res.correctIndex).toBe(0);
     });
   });
 });
