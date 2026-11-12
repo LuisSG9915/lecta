@@ -1,5 +1,11 @@
 import { test, expect, type Page } from "@playwright/test";
 import path from "node:path";
+import { withTestSession } from "./helpers/session";
+
+// La cuenta es obligatoria: sin sesión la app muestra la bienvenida.
+test.beforeEach(async ({ context }) => {
+  await withTestSession(context);
+});
 
 // La posición del lector es el único estado que, si se guarda mal, se
 // pierde del todo: cada apertura vuelve a guardar lo que acaba de
@@ -169,7 +175,7 @@ const storedRow = (page: Page) =>
     () =>
       new Promise<{ anchor: string | null; anchorOffset?: number } | null>(
         (resolve) => {
-          const req = window.indexedDB.open("lecta");
+          const req = window.indexedDB.open("lecta:u:u_e2e_test");
           req.onsuccess = () => {
             const db = req.result;
             const tx = db.transaction("positions", "readonly");

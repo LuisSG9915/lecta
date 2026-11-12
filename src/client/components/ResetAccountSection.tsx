@@ -64,7 +64,9 @@ export function ResetAccountSection({
               fontFamily: "var(--font-ui)",
               fontSize: "var(--fs-base, 1rem)",
               fontWeight: 600,
-              color: "var(--amber, #b45309)",
+              // Texto informativo en tinta: el ámbar sobre su lavado no llega
+              // a 4.5:1 (axe en «Tú» con sesión, Recorrido 9).
+              color: "var(--ink)",
               margin: "0 0 var(--s-1, 0.25rem) 0",
             }}
           >
@@ -93,7 +95,7 @@ export function ResetAccountSection({
               padding: "var(--s-2, 0.5rem) var(--s-3, 0.75rem)",
               fontSize: "var(--fs-sm, 0.85rem)",
               fontWeight: 500,
-              color: "var(--amber, #b45309)",
+              color: "var(--ink)",
               cursor: "pointer",
               marginTop: "var(--s-2, 0.5rem)",
             }}

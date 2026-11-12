@@ -1,6 +1,12 @@
 import { test, expect, type Page } from "@playwright/test";
 import path from "node:path";
 import { clickAt as clickAtPoint, touch as touchAt } from "./helpers/touch";
+import { withTestSession } from "./helpers/session";
+
+// La cuenta es obligatoria: sin sesión la app muestra la bienvenida.
+test.beforeEach(async ({ context }) => {
+  await withTestSession(context);
+});
 
 const MINIMAL_EPUB_PATH = path.resolve(process.cwd(), "fixtures/minimal.epub");
 
@@ -178,7 +184,8 @@ test.describe("Tarjeta de palabra (F9)", () => {
     const stored = await page.evaluate(async () => {
       const dbs = await indexedDB.databases();
       for (const info of dbs) {
-        if (!info.name?.startsWith("lecta")) continue;
+        // La palabra vive en la base de la cuenta (withTestSession), no en la anónima.
+        if (info.name !== "lecta:u:u_e2e_test") continue;
         const db = await new Promise<IDBDatabase>((res, rej) => {
           const req = indexedDB.open(info.name!);
           req.onsuccess = () => res(req.result);

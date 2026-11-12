@@ -251,6 +251,123 @@ describe("GET /api/account/state", () => {
   });
 });
 
+describe("plan en GET /api/account/state y PUT /api/account/starter-coat", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const mockSession = async (id = "u_plan") => {
+    const sessionModule = await import("./session");
+    vi.spyOn(sessionModule, "getSession").mockResolvedValue({
+      user: { id, email: `${id}@test.com` } as never,
+      session: {} as never,
+    });
+  };
+
+  const mockDb = async (handler: (sql: string, params?: unknown[]) => unknown) => {
+    const dbModule = await import("./db");
+    const query = vi.fn(async (sql: string, params?: unknown[]) => handler(sql, params));
+    vi.spyOn(dbModule, "withClient").mockImplementation(async (_env, run) =>
+      run({ query } as never),
+    );
+    return query;
+  };
+
+  const env = { DATABASE_URL: "postgres://mock" };
+
+  it("account/state incluye plan, pelaje y vencimiento", async () => {
+    await mockSession();
+    await mockDb((sql) => {
+      if (sql.includes("lecta_user_plan")) {
+        return {
+          rows: [{ plan: "founder_lifetime", starter_coat: "mist", plan_expires_at: null }],
+        };
+      }
+      return { rows: [] };
+    });
+    const res = await app.request("/api/account/state", {}, env);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body).toMatchObject({
+      ok: true,
+      plan: "founder_lifetime",
+      starterCoat: "mist",
+      planExpiresAt: null,
+    });
+  });
+
+  it("account/state sin fila de plan responde free", async () => {
+    await mockSession();
+    await mockDb(() => ({ rows: [] }));
+    const res = await app.request("/api/account/state", {}, env);
+    expect(((await res.json()) as { plan: string }).plan).toBe("free");
+  });
+
+  it("account/state omite plan ante un error distinto de 42P01", async () => {
+    await mockSession();
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    await mockDb((sql) => {
+      if (sql.includes("lecta_user_plan")) throw new Error("pg roto");
+      return { rows: [{ reset_at: "7" }] };
+    });
+    const res = await app.request("/api/account/state", {}, env);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body.resetAt).toBe(7);
+    expect("plan" in body).toBe(false);
+  });
+
+  const putCoat = (coat: unknown, envArg: WorkerEnv = env) =>
+    app.request(
+      "/api/account/starter-coat",
+      {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ coat }),
+      },
+      envArg,
+    );
+
+  it("starter-coat sin sesión responde 401", async () => {
+    const res = await putCoat("mist");
+    expect(res.status).toBe(401);
+  });
+
+  it("starter-coat con pelaje inválido responde 400", async () => {
+    await mockSession();
+    const res = await putCoat("pelaje-mist");
+    expect(res.status).toBe(400);
+  });
+
+  it("starter-coat escribe una vez y luego devuelve el guardado", async () => {
+    await mockSession();
+    await mockDb((sql) => {
+      if (sql.includes("INSERT INTO lecta_user_plan")) return { rows: [{ starter_coat: "calico" }] };
+      return { rows: [] };
+    });
+    const first = await putCoat("calico");
+    expect(first.status).toBe(200);
+    expect(await first.json()).toEqual({ starterCoat: "calico" });
+
+    vi.restoreAllMocks();
+    await mockSession();
+    await mockDb((sql) => {
+      if (sql.includes("INSERT INTO lecta_user_plan")) return { rows: [] };
+      return { rows: [{ plan: "free", starter_coat: "calico" }] };
+    });
+    const second = await putCoat("ginger");
+    expect(second.status).toBe(200);
+    expect(await second.json()).toEqual({ starterCoat: "calico" });
+  });
+
+  it("starter-coat sin tabla (42P01) responde 503", async () => {
+    await mockSession();
+    await mockDb(() => {
+      throw Object.assign(new Error("relation does not exist"), { code: "42P01" });
+    });
+    const res = await putCoat("mist");
+    expect(res.status).toBe(503);
+  });
+});
+
 describe("guardia de reinicio en escrituras (x-lecta-reset)", () => {
   beforeEach(() => {
     vi.restoreAllMocks();

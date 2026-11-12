@@ -65,6 +65,8 @@ import {
 } from "../lib/localNotificationScheduler";
 import type { NotificationPayload } from "../lib/companionNotification";
 import { useCompanion } from "./CompanionProvider";
+import CoatChoice, { needsCoatChoice } from "./CoatChoice";
+import { useUserPlan } from "../lib/account-plan";
 import Sheet from "./Sheet";
 
 // Ítem de la estantería: lo que hace falta para dibujar la tarjeta,
@@ -318,6 +320,7 @@ export default function Shelf({
   // etapa, ropa equipada, nombre y nivel, y su botón abre la hoja de
   // cuidado compartida — nada se carga aquí.
   const companion = useCompanion();
+  const userPlan = useUserPlan();
   const showCompanion = companion.enabled === true && companion.state !== null;
   // Saludo una vez por sesión: la primera vez que la estantería
   // muestra al gato, saluda con la pata unos segundos. Marca en
@@ -854,6 +857,8 @@ export default function Shelf({
           </div>
         </section>
       ) : null}
+
+      {needsCoatChoice(userPlan) ? <CoatChoice /> : null}
 
       {showOnboarding ? (
         <section className="shelf-onboarding-card" aria-label="Bienvenida a Lecta">

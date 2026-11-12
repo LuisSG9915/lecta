@@ -21,9 +21,12 @@ repetición espaciada (FSRS). Antes de cada capítulo, la app predice
 qué palabras probablemente no conoce y ofrece marcarlas ("Antes de
 leer"). Un gato compañero da puntos, niveles y logros por leer.
 
-Funciona **sin conexión** (todo vive primero en IndexedDB) y **sin
-cuenta** (uso anónimo); al crear cuenta, los datos anónimos migran y
-empiezan a sincronizarse entre dispositivos.
+Funciona **sin conexión** (todo vive primero en IndexedDB). La **cuenta es
+obligatoria** para entrar (docs/designs/2026-11-12-planes-y-landing.md): la
+primera vez hace falta conexión para crearla; con la sesión iniciada (o con
+la última cuenta recordada en el dispositivo) todo funciona offline. Los datos
+de la base anónima `lecta` de versiones anteriores migran a la cuenta al
+iniciar sesión.
 
 Audiencia: lectores que quieren ampliar vocabulario leyendo. La
 interfaz está en español (México) y usa palabras sencillas; los

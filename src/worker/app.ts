@@ -7,6 +7,8 @@ import {
   parseClientErrorReport,
 } from "./client-errors";
 import { listErrorSignatures, recordErrorSignature } from "./error-signatures";
+import { getUserPlan, setStarterCoat, type UserPlanSnapshot } from "./plan-store";
+import { isStarterCoat } from "../shared/plan";
 import {
   CATALOG,
   findEntries,
@@ -3540,12 +3542,22 @@ app.get("/api/account/state", async (context) => {
   const userId = session.user.id;
 
   let resetAt = 0;
+  // Plan de la cuenta (027). Ante un error que no sea 42P01 se omite y el
+  // cliente conserva su caché; sin tabla, getUserPlan ya devuelve el
+  // fail-open founder_lifetime.
+  let plan: UserPlanSnapshot | null = null;
   try {
     if (getConnectionString(context.env)) {
       resetAt =
-        (await withClient(context.env, (client) =>
-          readAccountResetAt(client, userId),
-        )) ?? 0;
+        (await withClient(context.env, async (client) => {
+          const stamp = await readAccountResetAt(client, userId);
+          try {
+            plan = await getUserPlan(client, userId);
+          } catch (error) {
+            console.error("Error al leer el plan de la cuenta:", error);
+          }
+          return stamp;
+        })) ?? 0;
     } else if (context.env.DB) {
       const row = await context.env.DB.prepare(
         "SELECT reset_at FROM lecta_account_state WHERE user_id = ?",
@@ -3559,7 +3571,43 @@ app.get("/api/account/state", async (context) => {
     console.error("Error al leer el sello de reinicio de la cuenta:", error);
   }
 
-  return context.json({ ok: true, resetAt });
+  const snapshot = plan as UserPlanSnapshot | null;
+  return context.json({
+    ok: true,
+    resetAt,
+    ...(snapshot
+      ? {
+          plan: snapshot.plan,
+          starterCoat: snapshot.starterCoat,
+          planExpiresAt: snapshot.expiresAt,
+        }
+      : {}),
+  });
+});
+
+// Pelaje inicial elegido en el landing o en el onboarding. Se escribe una
+// sola vez: si ya existe, responde el guardado sin pisarlo.
+app.put("/api/account/starter-coat", async (context) => {
+  const session = await getSession(context);
+  if (!session?.user?.id) {
+    return context.json({ error: "No autorizado" }, 401);
+  }
+  const userId = session.user.id;
+  const body = (await context.req.json().catch(() => null)) as { coat?: unknown } | null;
+  if (!isStarterCoat(body?.coat)) {
+    return context.json({ error: "Pelaje no válido" }, 400);
+  }
+  const coat = body.coat;
+  const result = await withClient(context.env, async (client) => {
+    const outcome = await setStarterCoat(client, userId, coat);
+    if (outcome !== "exists") return { outcome, starterCoat: coat };
+    const current = await getUserPlan(client, userId);
+    return { outcome, starterCoat: current.starterCoat ?? coat };
+  });
+  if (!result || result.outcome === "unavailable") {
+    return context.json({ error: "Servicio temporalmente no disponible" }, 503);
+  }
+  return context.json({ starterCoat: result.starterCoat });
 });
 
 app.post("/api/account/reset", async (context) => {

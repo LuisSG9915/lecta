@@ -33,6 +33,7 @@ import {
   type Achievement,
   type GameState,
 } from "./gamification";
+import type { UserPlan } from "../../shared/plan";
 
 // Orden de pintado de las ranuras: de la cabeza a los pies.
 export const SLOT_ORDER: EquippedSlot[] = ["head", "neck", "face", "body", "coat"];
@@ -202,6 +203,10 @@ export function sortForGrid(
 
 export type ClosetRequirement =
   | { kind: "free" }
+  // Lecta+ (docs/designs/2026-11-12-planes-y-landing.md): en plan free solo
+  // el chaleco y el pelaje inicial están disponibles. ratio 0 para que la
+  // barra de avance no cambie de forma.
+  | { kind: "plan"; text: string; ratio: number }
   | {
       kind: "level";
       level: number;
@@ -251,13 +256,48 @@ const achievementFor = (article: string): Achievement | null => {
   return ACHIEVEMENTS.find((a) => a.id === reward.id) ?? null;
 };
 
+// Plan de la cuenta para el guardarropa. `plan` null = desconocido: se
+// comporta como hasta ahora (sin requisito de plan).
+export type ClosetPlanContext = {
+  plan: UserPlan | null;
+  starterArticle: string | null;
+};
+
+// Artículo del pelaje inicial (`calico` → `pelaje-calico`).
+export function starterArticleFor(coat: string | null | undefined): string | null {
+  if (!coat) return null;
+  const def = (COMPANION_COATS as Record<string, { articleId: string } | undefined>)[coat];
+  return def?.articleId ?? null;
+}
+
+// Lo que el plan deja usar del inventario: el pelaje inicial siempre; en
+// free, solo el chaleco y ese pelaje (lo ganado se conserva pero no se usa).
+export function planOwnedArticles(
+  owned: ReadonlySet<string>,
+  ctx?: ClosetPlanContext,
+): Set<string> {
+  const starter = ctx?.starterArticle ?? null;
+  if (ctx?.plan === "free") {
+    return new Set(starter ? ["chaleco", starter] : ["chaleco"]);
+  }
+  const result = new Set(owned);
+  if (starter) result.add(starter);
+  return result;
+}
+
 // Requisito legible: lo que falta para tener la prenda, con número.
 // `null` = prenda sin requisito (el chaleco) o ya disponible.
+// Orden: pelaje inicial → plan → poseída → sin estado → logro → nivel.
 export function closetRequirement(
   article: CompanionArticle,
   state: GameState | null,
   owned: ReadonlySet<string>,
+  ctx?: ClosetPlanContext,
 ): ClosetRequirement | null {
+  if (ctx?.starterArticle && article === ctx.starterArticle) return null;
+  if (ctx?.plan === "free" && article !== "chaleco") {
+    return { kind: "plan", text: "Lecta+", ratio: 0 };
+  }
   if (owned.has(article)) return null;
   if (!state) return null;
 
@@ -333,7 +373,7 @@ const distanceOf = (req: ClosetRequirement): number =>
 // niveles antes que los logros: «faltan 30 pts» es una distancia
 // comparable; «1 hora» y «30 puntos» no lo son.
 const kindRank = (req: ClosetRequirement): number =>
-  req.kind === "level" ? 0 : req.kind === "achievement" ? 1 : 2;
+  req.kind === "level" ? 0 : req.kind === "achievement" ? 1 : req.kind === "free" ? 2 : 3;
 
 // La prenda bloqueada MÁS CERCA de conseguirse: es la frase que convierte
 // el armario en una lista de cosas por hacer («a 13 puntos de las Gafas»).
@@ -341,13 +381,15 @@ export function nextUnlock(
   state: GameState | null,
   owned: ReadonlySet<string>,
   candidates: readonly CompanionArticle[],
+  ctx?: ClosetPlanContext,
 ): ClosetHint | null {
   if (!state) return null;
   let best: ClosetHint | null = null;
   for (const article of candidates) {
     if (owned.has(article)) continue;
-    const requirement = closetRequirement(article, state, owned);
-    if (!requirement || requirement.kind === "free") continue;
+    const requirement = closetRequirement(article, state, owned, ctx);
+    // Lo que pide Lecta+ no es una meta de lectura: no entra en «a N pts».
+    if (!requirement || requirement.kind === "free" || requirement.kind === "plan") continue;
     const ratio = requirement.ratio;
     const distance = distanceOf(requirement);
     // Más avance gana; a igual avance, la escalera de niveles y dentro de

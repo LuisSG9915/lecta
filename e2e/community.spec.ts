@@ -2,6 +2,12 @@ import { test, expect } from "@playwright/test";
 import path from "node:path";
 import fs from "node:fs";
 import crypto from "node:crypto";
+import { withTestSession } from "./helpers/session";
+
+// La cuenta es obligatoria: sin sesión la app muestra la bienvenida.
+test.beforeEach(async ({ context }) => {
+  await withTestSession(context);
+});
 
 const MINIMAL_EPUB_PATH = path.resolve(process.cwd(), "fixtures/minimal.epub");
 

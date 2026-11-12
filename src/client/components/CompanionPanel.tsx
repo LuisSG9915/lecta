@@ -64,7 +64,15 @@ import {
   companionGreeting,
   type CareKind,
 } from "../lib/companion-interactions";
-import { closetComment, lookForMood, lookStatus } from "../lib/companion-closet";
+import {
+  closetComment,
+  lookForMood,
+  lookStatus,
+  planOwnedArticles,
+  starterArticleFor,
+  type ClosetPlanContext,
+} from "../lib/companion-closet";
+import { useUserPlan } from "../lib/account-plan";
 import {
   buildPortraitPng,
   downloadBlob,
@@ -300,6 +308,7 @@ function CompanionPanelImpl(props: CompanionPanelProps) {
 }
 
 function FullCompanionPanel(props: CompanionPanelProps) {
+  const userPlan = useUserPlan();
   const {
     state,
     name = "Michi",
@@ -638,12 +647,21 @@ function FullCompanionPanel(props: CompanionPanelProps) {
   };
 
   const prog = state ? levelProgress(state.xp) : null;
+  // Plan de la cuenta: el pelaje inicial siempre es tuyo; en free, lo demás
+  // pide Lecta+ (docs/designs/2026-11-12-planes-y-landing.md).
+  const planCtx: ClosetPlanContext = {
+    plan: userPlan?.plan ?? null,
+    starterArticle: starterArticleFor(userPlan?.starterCoat),
+  };
   const owned = state
-    ? new Set<string>([
-        "chaleco",
-        ...unlockedAccessories(state),
-        ...unlockedCoats(state),
-      ])
+    ? planOwnedArticles(
+        new Set<string>([
+          "chaleco",
+          ...unlockedAccessories(state),
+          ...unlockedCoats(state),
+        ]),
+        planCtx,
+      )
     : new Set<string>();
 
   const chests = state ? pendingChests(state) : [];
@@ -1435,6 +1453,7 @@ function FullCompanionPanel(props: CompanionPanelProps) {
                   onTryOn={handleTryOn}
                   onClearTryOn={clearTryOn}
                   tryOnArticle={tryOnArticle}
+                  planCtx={planCtx}
                 />
               </div>
             ) : null}

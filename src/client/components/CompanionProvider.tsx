@@ -49,6 +49,8 @@ import {
   readCompanionRegisters,
 } from "../lib/idb";
 import { pushOverlay, type OverlayHandle } from "../lib/history";
+import { useUserPlan } from "../lib/account-plan";
+import { planOwnedArticles, starterArticleFor } from "../lib/companion-closet";
 import { modalLayerCount, subscribeModalLayers } from "../lib/modal";
 import {
   pendingCelebrations,
@@ -110,6 +112,9 @@ export function ownedArticles(state: GameState): Set<string> {
 export function effectiveEquipped(
   registers: CompanionRegister[],
   state: GameState,
+  // Pelaje inicial de la cuenta (landing u onboarding): es el default del
+  // pelaje mientras la persona no elija otro en el armario.
+  starterArticle: string | null = null,
 ): EquippedItems {
   if (registers.some((r) => r.field.startsWith("equipped."))) {
     return getEquippedItems(registers);
@@ -120,8 +125,9 @@ export function effectiveEquipped(
     neck: inv.has("bufanda") ? "bufanda" : inv.has("collar") ? "collar" : null,
     head: inv.has("moño") ? "moño" : null,
     face: inv.has("anteojos") ? "anteojos" : null,
-    // El pelaje no se autoequipa: el naranja natural es el default.
-    coat: null,
+    // El pelaje no se autoequipa: el naranja natural es el default, salvo
+    // que la cuenta haya elegido un pelaje inicial.
+    coat: starterArticle,
   };
 }
 
@@ -290,6 +296,7 @@ export function CompanionProvider({
   userId: string | null;
   children: ReactNode;
 }) {
+  const userPlan = useUserPlan();
   const [raw, setRaw] = useState<Loaded | null>(null);
   const [activeCare, setActiveCare] = useState<CareKind | null>(null);
   const [open, setOpen] = useState(false);
@@ -484,11 +491,15 @@ export function CompanionProvider({
   const registers = loaded?.registers ?? [];
   const state = loaded?.state ?? null;
   const name = nameFrom(registers);
+  const planCtx = {
+    plan: userPlan?.plan ?? null,
+    starterArticle: starterArticleFor(userPlan?.starterCoat),
+  };
   const equipped = state
-    ? effectiveEquipped(registers, state)
+    ? effectiveEquipped(registers, state, planCtx.starterArticle)
     : { body: null, neck: null, head: null, face: null, coat: null };
   const accessories = state
-    ? drawableAccessories(equipped, ownedArticles(state))
+    ? drawableAccessories(equipped, planOwnedArticles(ownedArticles(state), planCtx))
     : [];
   // El humor combina la última actividad de lectura con el último
   // cuidado — el registro despierta al gato sin tocar el juego.

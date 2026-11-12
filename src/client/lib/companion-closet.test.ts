@@ -16,6 +16,7 @@ import {
   labelFor,
   lookStatus,
   nextUnlock,
+  planOwnedArticles,
   readingTimeFor,
   requiredLevel,
   SEASONAL_WINDOWS,
@@ -23,6 +24,7 @@ import {
   seasonalWindow,
   slotInventory,
   sortForGrid,
+  starterArticleFor,
   storyFor,
   surpriseLook,
 } from "./companion-closet";
@@ -229,6 +231,50 @@ describe("la prenda más cerca", () => {
 
   it("sin estado no hay pista", () => {
     expect(nextUnlock(null, owned(), gridArticles("all"))).toBeNull();
+  });
+});
+
+describe("plan de la cuenta (Lecta+)", () => {
+  const free = { plan: "free" as const, starterArticle: "pelaje-calico" };
+  const plus = { plan: "lecta_plus" as const, starterArticle: "pelaje-calico" };
+
+  it("starterArticleFor mapea el pelaje a su artículo", () => {
+    expect(starterArticleFor("calico")).toBe("pelaje-calico");
+    expect(starterArticleFor("latte")).toBe("pelaje-siames");
+    expect(starterArticleFor(null)).toBeNull();
+    expect(starterArticleFor("nope")).toBeNull();
+  });
+
+  it("el pelaje inicial nunca tiene requisito", () => {
+    expect(closetRequirement("pelaje-calico", state(), owned(), free)).toBeNull();
+  });
+
+  it("en free todo salvo el chaleco y el inicial pide Lecta+", () => {
+    const s = state({ xp: 1_000_000 });
+    expect(closetRequirement("pelaje-gris", s, owned("pelaje-gris"), free)).toEqual({
+      kind: "plan",
+      text: "Lecta+",
+      ratio: 0,
+    });
+    expect(closetRequirement("chaleco", s, owned(), free)).toBeNull();
+  });
+
+  it("con Lecta+ siguen los requisitos de siempre", () => {
+    expect(closetRequirement("pelaje-gris", state(), owned(), plus)?.kind).not.toBe("plan");
+  });
+
+  it("planOwnedArticles: free solo deja chaleco y el inicial; Lecta+ suma el inicial", () => {
+    expect([...planOwnedArticles(owned("pelaje-gris", "moño"), free)].sort()).toEqual([
+      "chaleco",
+      "pelaje-calico",
+    ]);
+    expect(planOwnedArticles(owned("moño"), plus).has("pelaje-calico")).toBe(true);
+    expect(planOwnedArticles(owned("moño")).has("moño")).toBe(true);
+  });
+
+  it("nextUnlock no propone lo que pide Lecta+", () => {
+    const s = state({ stats: { ...emptyGameState().stats, saved: 38 } });
+    expect(nextUnlock(s, owned(), gridArticles("all"), free)).toBeNull();
   });
 });
 

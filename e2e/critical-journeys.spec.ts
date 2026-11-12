@@ -4,6 +4,12 @@ import fs from "node:fs";
 import AxeBuilder from "@axe-core/playwright";
 import { renderReaderView } from "../src/worker/kindle/views";
 import { paginateChapter } from "../src/worker/kindle/epub-reader";
+import { withTestSession } from "./helpers/session";
+
+// La cuenta es obligatoria: sin sesión la app muestra la bienvenida.
+test.beforeEach(async ({ context }) => {
+  await withTestSession(context);
+});
 
 const MINIMAL_EPUB_PATH = path.resolve(process.cwd(), "fixtures/minimal.epub");
 const EMOJI_REGEX = /[\u{1F300}-\u{1F64F}\u{1F680}-\u{1F6FF}\u{1F900}-\u{1F9FF}\u{2728}]/u;
@@ -81,7 +87,7 @@ test.describe("Lecta — 9 Recorridos Críticos E2E", () => {
     // Esperar a que el libro y la posición queden asentados en IndexedDB
     await page.waitForFunction(async () => {
       return new Promise<boolean>((resolve) => {
-        const req = window.indexedDB.open("lecta");
+        const req = window.indexedDB.open("lecta:u:u_e2e_test");
         req.onsuccess = () => {
           const db = req.result;
           if (!db.objectStoreNames.contains("books")) {
@@ -207,7 +213,7 @@ test.describe("Lecta — 9 Recorridos Críticos E2E", () => {
     // Esperar a que el libro quede asentado en IndexedDB antes de recargar
     await page.waitForFunction(async () => {
       return new Promise<boolean>((resolve) => {
-        const req = window.indexedDB.open("lecta");
+        const req = window.indexedDB.open("lecta:u:u_e2e_test");
         req.onsuccess = () => {
           const db = req.result;
           if (!db.objectStoreNames.contains("books")) {
@@ -406,7 +412,7 @@ test.describe("Lecta — 9 Recorridos Críticos E2E", () => {
     // En IndexedDB NO debe existir ningún libro con data.size === 0
     const zeroByteBooks = await page.evaluate(async () => {
       return new Promise<unknown[]>((resolve) => {
-        const req = indexedDB.open("lecta");
+        const req = indexedDB.open("lecta:u:u_e2e_test");
         req.onsuccess = () => {
           const db = req.result;
           if (!db.objectStoreNames.contains("books")) return resolve([]);

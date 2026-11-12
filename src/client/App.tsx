@@ -23,6 +23,7 @@ const RestoreBackupDialog = lazy(() => import("./components/RestoreBackupDialog"
 // Modales que solo se montan a petición: fuera del arranque (Fase 3).
 const DiagnosticsModal = lazy(() => import("./components/DiagnosticsModal"));
 const LegalNotice = lazy(() => import("./components/LegalNotice"));
+const Welcome = lazy(() => import("./components/Welcome"));
 import { CompanionProvider } from "./components/CompanionProvider";
 import Shelf, { type ShelfItem, type BookLike } from "./components/Shelf";
 import BookCover from "./components/BookCover";
@@ -120,6 +121,12 @@ import {
 import { pushDailySummaries } from "./lib/daily-summary";
 import { syncCompanion } from "./lib/companion-sync";
 import { checkRemoteReset } from "./lib/account-reset";
+import {
+  claimStarterCoat,
+  loadPlan,
+  pollPlanUntilPlus,
+  rememberStarterCoat,
+} from "./lib/account-plan";
 import { authClient } from "./lib/auth";
 
 type BookFileSelection = {
@@ -138,15 +145,21 @@ type BookSelection = BookFileSelection & {
 export default function App() {
   // Enlace de restablecer contraseña (o error de enlace) leído una vez
   // al montar; la URL queda limpia desde el inicio.
+  // Parser único de la URL (docs/designs/2026-11-12-planes-y-landing.md):
+  // también el pelaje del landing (?gato=, se guarda antes de limpiar la
+  // URL para sobrevivir al magic link) y la vuelta de Checkout (?carne=1).
   const [authLink] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     const token = params.get("token") ?? undefined;
     const urlError = params.get("error") ?? undefined;
     const deleted = params.get("cuenta") === "eliminada";
-    if (token || urlError || deleted) {
+    const gato = params.get("gato");
+    const carne = params.get("carne") === "1";
+    if (gato) rememberStarterCoat(gato);
+    if (token || urlError || deleted || gato !== null || carne) {
       window.history.replaceState(null, "", window.location.pathname);
     }
-    return { token, urlError, deleted };
+    return { token, urlError, deleted, carne };
   });
   const [book, setBook] = useState<BookSelection | null>(null);
   const [message, setMessage] = useState("");
@@ -158,7 +171,7 @@ export default function App() {
   const [showVocabulary, setShowVocabulary] = useState(false);
   const [showJourney, setShowJourney] = useState(false);
   const [showAccount, setShowAccount] = useState(
-    Boolean(authLink.token || authLink.urlError || authLink.deleted),
+    Boolean(authLink.token || authLink.urlError || authLink.deleted || authLink.carne),
   );
   const [hasVisitedVocab, setHasVisitedVocab] = useState(false);
   const scrollPositions = useRef<Partial<Record<NavDestination, number>>>({});
@@ -247,6 +260,18 @@ export default function App() {
   const [dbStorageError, setDbStorageError] = useState<DbStorageError | null>(null);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [showLegal, setShowLegal] = useState<"privacy" | "terms" | null>(null);
+  const [online, setOnline] = useState(() =>
+    typeof navigator === "undefined" ? true : navigator.onLine !== false,
+  );
+  useEffect(() => {
+    const update = () => setOnline(navigator.onLine !== false);
+    window.addEventListener("online", update);
+    window.addEventListener("offline", update);
+    return () => {
+      window.removeEventListener("online", update);
+      window.removeEventListener("offline", update);
+    };
+  }, []);
 
   useEffect(() => {
     // Precarga el Lector durante la holgura del navegador para que abrir un libro sea inmediato.
@@ -923,6 +948,10 @@ export default function App() {
       void refreshLibrary();
       if (!sessionUserId) return;
 
+      // Plan de la cuenta: la caché local primero (sirve offline);
+      // checkRemoteReset trae el plan fresco en el mismo cuerpo.
+      await loadPlan(sessionUserId, scope);
+
       // Antes de empujar nada: si la cuenta se reinició en otro
       // dispositivo, esta copia local quedó obsoleta — el chequeo la
       // vacía y devuelve true, y el contexto se recaptura sobre la base
@@ -932,6 +961,12 @@ export default function App() {
         void refreshLibrary();
       }
       if (!isDbScopeActive(scope)) return;
+
+      // Pelaje elegido en el landing (?gato= / lecta:gato): se reclama una
+      // sola vez. Al volver de Stripe Checkout (?carne=1) el webhook puede
+      // llegar tarde: se consulta el plan unos segundos.
+      void claimStarterCoat(sessionUserId, scope);
+      if (authLink.carne) void pollPlanUntilPlus(sessionUserId, scope);
 
       const pulled = await syncSavedWords(scope)
         .then((res) => {
@@ -1129,6 +1164,8 @@ export default function App() {
         void refreshLibrary();
       }
       if (!isDbScopeActive(scope)) return;
+      const fullSyncUserId = scope.userId;
+      if (fullSyncUserId) void claimStarterCoat(fullSyncUserId, scope);
       void syncSavedWords(scope)
         .then((res) => {
           if (res !== null) recordCollectionSyncSuccess("words");
@@ -1750,6 +1787,43 @@ export default function App() {
       if (item) void openShelfItem(item);
     }
   };
+
+  // Cuenta obligatoria (docs/designs/2026-11-12-planes-y-landing.md).
+  // Tabla de decisión, gana la primera fila:
+  //   enlace de restablecer (?token=) sin sesión → Welcome en modo reset;
+  //   sesión → la app; sesión resolviendo → la app (carga, como hoy);
+  //   error de red/servidor → la base local si hay lastUserId, si no Welcome;
+  //   sin sesión en línea → Welcome (el efecto de sesión borra lastUserId);
+  //   sin sesión y sin red → la base local si hay lastUserId, si no Welcome
+  //   con el aviso de conexión única.
+  const sessionInconclusive =
+    Boolean(sessionError) && sessionError?.status !== 401 && !sessionUserId;
+  const showWelcome =
+    !sessionUserId &&
+    (Boolean(authLink.token) ||
+      (!sessionPending &&
+        (sessionInconclusive || !online ? !optimisticUserId : true)));
+
+  if (showWelcome) {
+    return (
+      <>
+        <Suspense fallback={<p className="status">Abriendo Lecta…</p>}>
+          <Welcome
+            resetToken={resetToken}
+            onResetDone={() => setResetToken(undefined)}
+            offline={!online}
+            notice={error || message || undefined}
+            onShowLegal={setShowLegal}
+          />
+        </Suspense>
+        {showLegal ? (
+          <Suspense fallback={null}>
+            <LegalNotice initialTab={showLegal} onClose={() => setShowLegal(null)} />
+          </Suspense>
+        ) : null}
+      </>
+    );
+  }
 
   return (
     // El compañero vive una sola vez aquí, sobre todo el contenido:

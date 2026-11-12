@@ -165,3 +165,36 @@ La primera línea de stdout debe ser un JSON-RPC válido con
 - `my_words` completa definiciones faltantes contra `/api/lexicon/batch`
   sin escribir en la base.
 - `reading_stats` agrupa por la zona horaria local del proceso MCP.
+
+## Interface
+
+- Paquete `@lecta/mcp` (`package.json`, `private`, Node `>=20`).
+  Scripts: `build` (`tsc -p tsconfig.json` → `dist/`), `dev`
+  (`tsx src/index.ts`), `start` (`node dist/index.js`), `typecheck`.
+- Desde la raíz: `pnpm mcp` (dev), `pnpm mcp:build`, `pnpm mcp:typecheck`
+  (también lo encadena `pnpm typecheck`).
+- Fuente y contrato de símbolos: [src/README.md](./src/README.md)
+  (`loadConfig`, `LectaApi`, `LectaApiError`, `LectaAuthError`,
+  `parseCookieHeader`, `registerTools`).
+- Herramientas MCP: ver la tabla de «Herramientas» arriba.
+
+## Invariants
+
+- Ninguna herramienta escribe en la cuenta; el MCP no abre conexión a la
+  base: solo habla con la API HTTP.
+- stdout queda reservado para JSON-RPC; los avisos van a stderr.
+- Credenciales solo por entorno y solo en memoria.
+- `mcp/dist/` es artefacto de build (ignorado por git).
+- Al subir la versión de la app hay que tocar `mcp/package.json` y el
+  `user-agent` `lecta-mcp/<versión>` de `src/api.ts` (AGENTS.md §Producción).
+
+## Side Effects
+
+- Peticiones HTTP a `LECTA_BASE_URL` (prod por defecto), incluido
+  `POST /api/auth/sign-in/email` al iniciar sesión.
+- `pnpm mcp:build` escribe `mcp/dist/`.
+
+## Verification
+
+- Run: `pnpm mcp:typecheck`
+- Run: `pnpm test`

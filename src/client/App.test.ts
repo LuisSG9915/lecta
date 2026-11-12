@@ -259,7 +259,12 @@ beforeEach(() => {
   host = document.createElement("div");
   document.body.appendChild(host);
   root = createRoot(host);
-  vi.mocked(authClient.useSession).mockReturnValue({ data: null, isPending: false } as never);
+  // La cuenta es obligatoria (docs/designs/2026-11-12-planes-y-landing.md):
+  // las pruebas de la app parten con sesión; las de la bienvenida la quitan.
+  vi.mocked(authClient.useSession).mockReturnValue({
+    data: { user: { id: "u1" } },
+    isPending: false,
+  } as never);
   vi.mocked(listStoredBooks).mockResolvedValue([
     { hash: "h1", name: "b.epub", addedAt: 1, data: new Blob() },
   ] as never);
@@ -440,6 +445,69 @@ describe("App · quitar libro", () => {
   });
 });
 
+describe("App · cuenta obligatoria (tabla de decisión)", () => {
+  const setOnline = (value: boolean) =>
+    Object.defineProperty(navigator, "onLine", { configurable: true, get: () => value });
+
+  afterEach(() => {
+    setOnline(true);
+    localStorage.clear();
+  });
+
+  const waitWelcome = async () => {
+    for (let i = 0; i < 50 && !host.querySelector(".welcome"); i += 1) await flush();
+  };
+
+  it("sin sesión y en línea muestra la bienvenida y no la estantería", async () => {
+    vi.mocked(authClient.useSession).mockReturnValue({ data: null, isPending: false } as never);
+    renderRoot();
+    await waitWelcome();
+    expect(host.querySelector(".welcome")).toBeTruthy();
+    expect(host.querySelector(".shelf-stub")).toBeNull();
+    expect(host.querySelector("nav.app-nav")).toBeNull();
+  });
+
+  it("sin sesión, sin red y sin cuenta previa muestra el aviso de conexión única", async () => {
+    setOnline(false);
+    vi.mocked(authClient.useSession).mockReturnValue({ data: null, isPending: false } as never);
+    renderRoot();
+    await waitWelcome();
+    expect(host.querySelector("[data-testid='welcome-offline']")).toBeTruthy();
+  });
+
+  it("sin red pero con cuenta previa abre la base local", async () => {
+    setOnline(false);
+    localStorage.setItem("lecta:last-user", "u-prev");
+    vi.mocked(authClient.useSession).mockReturnValue({
+      data: null,
+      isPending: false,
+      error: { status: 0 },
+    } as never);
+    renderRoot();
+    await flush();
+    expect(host.querySelector(".welcome")).toBeNull();
+    expect(host.querySelector(".shelf-stub")).toBeTruthy();
+  });
+
+  it("?gato= se guarda antes de limpiar la URL", async () => {
+    vi.mocked(authClient.useSession).mockReturnValue({ data: null, isPending: false } as never);
+    window.history.replaceState({}, "", "/?gato=calico");
+    renderRoot();
+    await waitWelcome();
+    expect(localStorage.getItem("lecta:gato")).toBe("calico");
+    expect(window.location.search).toBe("");
+  });
+
+  it("?carne=1 abre «Tú»", async () => {
+    window.history.replaceState({}, "", "/?carne=1");
+    renderRoot();
+    await flush();
+    const nav = host.querySelector("nav.app-nav");
+    const accountBtn = nav?.querySelector<HTMLButtonElement>('[data-dest="account"]');
+    expect(accountBtn?.getAttribute("aria-current")).toBe("page");
+  });
+});
+
 describe("App · navegación principal (Fase 2)", () => {
   it("cabecera solo contiene la marca Lecta y no tiene botones de navegación ni menú de tema", async () => {
     renderRoot();
@@ -559,6 +627,9 @@ describe("App · navegación principal (Fase 2)", () => {
     );
     expect(closetBtn).toBeTruthy();
 
+    // El chunk de la hoja se resuelve antes del clic: ahora arrastra el
+    // store del plan y su primera transformación tarda más que el bucle.
+    await import("./components/CompanionPanel");
     await act(async () => closetBtn!.click());
     // La hoja es diferida (React.lazy): se espera a que resuelva el chunk.
     for (let i = 0; i < 100 && !host.querySelector(".sheet.sheet--stage"); i += 1) {
@@ -570,7 +641,18 @@ describe("App · navegación principal (Fase 2)", () => {
     expect(host.querySelector("#companion-panel-closet")).toBeTruthy();
   });
 
-  it("enlace con token abre directamente el destino Perfil", async () => {
+  it("enlace con token sin sesión abre la bienvenida en modo restablecer", async () => {
+    vi.mocked(authClient.useSession).mockReturnValue({ data: null, isPending: false } as never);
+    window.history.replaceState({}, "", "/?token=reset123");
+    renderRoot();
+    for (let i = 0; i < 50 && !host.querySelector(".welcome"); i += 1) await flush();
+
+    expect(host.querySelector(".welcome")).toBeTruthy();
+    expect(host.querySelector("#modal-reset-password")).toBeTruthy();
+    expect(host.querySelector("nav.app-nav")).toBeNull();
+  });
+
+  it("enlace con token con sesión abre directamente el destino Perfil", async () => {
     window.history.replaceState({}, "", "/?token=reset123");
     renderRoot();
     await flush();
@@ -660,7 +742,7 @@ describe("App · navegación principal (Fase 2)", () => {
   });
 
   it("preserva el idioma de los libros locales en la estantería", async () => {
-    vi.mocked(listStoredBooks).mockResolvedValueOnce([
+    vi.mocked(listStoredBooks).mockResolvedValue([
       {
         hash: "h-en",
         name: "red-queen.epub",
@@ -681,7 +763,7 @@ describe("App · navegación principal (Fase 2)", () => {
   });
 
   it("muestra panel de error honesto cuando falla IndexedDB, sin mostrar estantería vacía", async () => {
-    vi.mocked(listStoredBooks).mockRejectedValueOnce(
+    vi.mocked(listStoredBooks).mockRejectedValue(
       new Error("La base local sigue abierta en otra pestaña"),
     );
 
@@ -706,7 +788,7 @@ describe("App · navegación principal (Fase 2)", () => {
   });
 
   it("tras fallo inicial de IndexedDB, pulsar 'Reintentar conexión' exitoso apaga checkingLibrary y muestra la estantería", async () => {
-    vi.mocked(listStoredBooks).mockRejectedValueOnce(
+    vi.mocked(listStoredBooks).mockRejectedValue(
       new Error("La base local sigue abierta en otra pestaña"),
     );
 
@@ -718,7 +800,7 @@ describe("App · navegación principal (Fase 2)", () => {
     expect(host.querySelector(".shelf-stub")).toBeNull();
 
     // Al reintentar, la base se abre exitosamente con un libro
-    vi.mocked(listStoredBooks).mockResolvedValueOnce([
+    vi.mocked(listStoredBooks).mockResolvedValue([
       {
         hash: "b-recuperado",
         name: "libro-recuperado.epub",
@@ -748,6 +830,8 @@ describe("App · navegación principal (Fase 2)", () => {
   });
 
   it("conserva el marcador de borrado si deleteAccountDb queda bloqueado", async () => {
+    // Tras el borrado no hay sesión: la app muestra la bienvenida con el aviso.
+    vi.mocked(authClient.useSession).mockReturnValue({ data: null, isPending: false } as never);
     window.history.replaceState({}, "", "/?cuenta=eliminada");
     localStorage.setItem(PENDING_DELETE_KEY, "user-A");
     vi.mocked(deleteAccountDb).mockResolvedValue(false);
@@ -761,6 +845,8 @@ describe("App · navegación principal (Fase 2)", () => {
   });
 
   it("consume el marcador de borrado solo cuando deleteAccountDb confirma", async () => {
+    // Tras el borrado no hay sesión: la app muestra la bienvenida con el aviso.
+    vi.mocked(authClient.useSession).mockReturnValue({ data: null, isPending: false } as never);
     window.history.replaceState({}, "", "/?cuenta=eliminada");
     localStorage.setItem(PENDING_DELETE_KEY, "user-A");
     vi.mocked(deleteAccountDb).mockResolvedValue(true);

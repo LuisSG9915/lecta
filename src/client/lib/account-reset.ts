@@ -10,6 +10,7 @@ import { clearPendingPositions } from "./positions-sync";
 import { clearReadingSyncQueues } from "./reading-sync";
 import { resetGameCache } from "./game";
 import { registerAccountResetHandler, accountFetch } from "./account-fetch";
+import { savePlan } from "./account-plan";
 
 // ---------- Vaciar la copia local porque el servidor ya no la tiene ----------
 //
@@ -86,6 +87,8 @@ export async function checkRemoteReset(
       const data = (await response.json().catch(() => null)) as {
         resetAt?: unknown;
       } | null;
+      // El mismo cuerpo trae el plan (027): se publica sin pedirlo dos veces.
+      await savePlan(userId, data, scope);
       const remote = Number(data?.resetAt);
       if (!Number.isFinite(remote) || remote <= readLocalResetMarker(userId)) {
         lastResetCheckAt = Date.now();

@@ -40,6 +40,7 @@ import {
   surpriseLook,
   closetRequirement,
   type ClosetFilter,
+  type ClosetPlanContext,
 } from "../lib/companion-closet";
 import type { GameState } from "../lib/gamification";
 import { triggerHaptic } from "../lib/haptics";
@@ -71,6 +72,8 @@ export interface CompanionClosetProps {
   onTryOn: (article: CompanionArticle, reqLevel: number | null) => void;
   onClearTryOn: () => void;
   tryOnArticle: CompanionArticle | null;
+  // Plan de la cuenta: en free los requisitos dicen «Lecta+».
+  planCtx?: ClosetPlanContext;
 }
 
 // Barra de avance del requisito: 3 px, tinta de acento, sin animación de
@@ -87,6 +90,7 @@ function RequirementBar({ ratio }: { ratio: number }) {
 }
 
 export function CompanionCloset({
+  planCtx,
   equipped,
   stage,
   owned,
@@ -144,7 +148,7 @@ export function CompanionCloset({
   // Lo que ya lleva puesto no se explica con un candado: la ficha lo dice
   // y no vuelve a pedir el nivel que ya cruzaste.
   const focusedReq =
-    focused && !focusedDrawn ? closetRequirement(focused, state, owned) : null;
+    focused && !focusedDrawn ? closetRequirement(focused, state, owned, planCtx) : null;
   const focusedOwned = focusedOwned0;
   const focusedSlot = focusedSlot0;
   const focusedEquipped = focusedDrawn;
@@ -154,6 +158,7 @@ export function CompanionCloset({
     state,
     owned,
     gridArticles("all").concat(coats.map((c) => c.article)),
+    planCtx,
   );
   const choose = (slot: EquippedSlot, article: string | null) => {
     if (equipBusy) return;
@@ -412,7 +417,7 @@ export function CompanionCloset({
               const available = isOwned || isNatural;
               const req = available
                 ? null
-                : closetRequirement(coat.article, state, owned);
+                : closetRequirement(coat.article, state, owned, planCtx);
               // La paleta manda, no el id exacto: «pelaje-dorado» y
               // «pelaje-atigrado» son el mismo color.
               const isOn = activeCoatId === coat.id;
@@ -493,7 +498,7 @@ export function CompanionCloset({
               const isOn = equipped[slot] === article;
               const isBlocked = !owned.has(article);
               const req = isBlocked
-                ? closetRequirement(article, state, owned)
+                ? closetRequirement(article, state, owned, planCtx)
                 : null;
               return (
                 <button
