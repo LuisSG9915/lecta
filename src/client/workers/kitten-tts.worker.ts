@@ -1,33 +1,51 @@
 // src/client/workers/kitten-tts.worker.ts
-// Worker de inferencia para KittenTTS (<25MB, 24kHz)
-// Pipeline oficial de inferencia ONNX alineado con kittenml/kittentts_legacy/onnx_model.py:
-// 1. Normalización de texto en inglés (kittenNormalize.ts)
-// 2. Conversión a fonemas IPA y tokenización con 178 símbolos y padding 0 al inicio y final (kittenPhonemizer.ts)
-// 3. Inferencia con tensores input_ids [1, N], style [1, 256] y speed [1] (kittenVoicesData.ts)
-// 4. Recorte de padding del modelo y silencios muertos con transferencia Zero-Copy del buffer PCM.
+// Worker de inferencia TTS multi-motor (Kitten nano 0.8 inglés + Piper VITS es_MX).
+// Comparte una sola instancia de onnxruntime-web (WASM, numThreads=1) y mantiene
+// COMO MÁXIMO una InferenceSession viva: al cambiar de motor se libera la sesión
+// anterior antes de crear la nueva (los pesos quedan en CacheStorage y recargan
+// sin red). Cola con prioridad high/low y cancelación por época, igual que antes.
+//
+// Pipeline Kitten: normalizeEnglishText → phonemas IPA → input_ids/style/speed.
+// Pipeline Piper:  normalizeSpanishText → SpanishG2P → Encoder → input/input_lengths/scales.
 
 import type { KittenVoiceId } from "../lib/ttsTypes";
 import { getVoiceEmbedding, registerVoiceEmbedding } from "../lib/kittenVoicesData";
 import { normalizeEnglishText } from "../lib/kittenNormalize";
 import { prepareKittenInputIds } from "../lib/kittenPhonemizer";
-import { KITTEN_CACHE_NAME } from "../lib/kittenModel";
+import { KITTEN_CACHE_NAME, KITTEN_MODEL_URL } from "../lib/kittenModel";
+import {
+  PIPER_CACHE_NAME,
+  PIPER_CONFIG_URL,
+  PIPER_MODEL_URL,
+} from "../lib/piperModel";
+import {
+  parsePiperModelConfig,
+  textToPiperIds,
+  type PiperModelConfig,
+} from "../lib/piperPhonemizer";
 
 export const ORT_WASM_VERSION = "1.30.0";
 export const ORT_WASM_CDN_BASE = `https://cdn.jsdelivr.net/npm/onnxruntime-web@${ORT_WASM_VERSION}/dist/`;
 
 export { normalizeEnglishText };
 
+export type TtsEngineKind = "kitten" | "piper";
+
 export type WorkerRequest =
   | {
       type: "INIT" | "init";
+      engine?: TtsEngineKind;
       modelUrl?: string;
       modelBuffer?: ArrayBuffer;
+      /** JSON del `.onnx.json` de Piper (phoneme_id_map, escalas, sample rate). */
+      configBuffer?: ArrayBuffer;
       voicesData?: Record<string, unknown>;
     }
   | {
       type: "SYNTHESIZE" | "synthesize";
       jobId?: string;
       id?: string;
+      engine?: TtsEngineKind;
       text: string;
       voiceId?: KittenVoiceId | string;
       speed?: number;
@@ -50,6 +68,8 @@ export type WorkerResponse =
       audioData: Float32Array;
       sampleRate: number;
       epoch: number;
+      /** ms de inferencia ONNX en el worker (diagnóstico RTF). */
+      synthMs?: number;
     }
   | {
       type: "SYNTHESIS_ERROR" | "synthesize_error";
@@ -61,23 +81,38 @@ export type WorkerResponse =
 
 interface SynthJob {
   jobId: string;
+  engine: TtsEngineKind;
   text: string;
-  voiceId: KittenVoiceId;
+  voiceId: KittenVoiceId | string;
   speed: number;
   priority: "high" | "low";
   epoch: number;
 }
 
+type OnnxTensorData = Float32Array | Int32Array | BigInt64Array | Uint8Array;
+
 type OnnxInferenceSession = {
   inputNames: readonly string[];
   outputNames: readonly string[];
-  run(feeds: Record<string, unknown>): Promise<Record<string, { data: Float32Array }>>;
+  run(feeds: Record<string, { data: OnnxTensorData }>): Promise<
+    Record<string, { data: OnnxTensorData }>
+  >;
+  release?: () => Promise<void>;
 };
 
-const SAMPLE_RATE = 24000;
+type OrtModule = Awaited<typeof import("onnxruntime-web/wasm")>;
+
+const KITTEN_SAMPLE_RATE = 24000;
+const PIPER_DEFAULT_SAMPLE_RATE = 22050;
+
 let currentEpoch = 0;
 let isProcessing = false;
-let onnxSession: OnnxInferenceSession | null = null;
+let ortModule: OrtModule | null = null;
+
+// Una sola sesión ONNX viva a la vez (RAM de móvil).
+let kittenSession: OnnxInferenceSession | null = null;
+let piperSession: OnnxInferenceSession | null = null;
+let piperConfig: PiperModelConfig | null = null;
 
 function postWorkerMessage(message: WorkerResponse, transfer?: Transferable[]): void {
   if (typeof self !== "undefined" && typeof self.postMessage === "function") {
@@ -93,11 +128,9 @@ function postWorkerMessage(message: WorkerResponse, transfer?: Transferable[]): 
 const jobQueue: SynthJob[] = [];
 
 function enqueueJob(job: SynthJob) {
-  // Evitar duplicados en la cola
   const existingIdx = jobQueue.findIndex((j) => j.jobId === job.jobId);
   if (existingIdx !== -1) {
     if (job.priority === "high") {
-      // Promover a prioridad alta si ya estaba como lookahead
       const [existing] = jobQueue.splice(existingIdx, 1);
       existing.priority = "high";
       jobQueue.unshift(existing);
@@ -107,7 +140,6 @@ function enqueueJob(job: SynthJob) {
   }
 
   if (job.priority === "high") {
-    // Insertar después del último 'high' pero antes de cualquier 'low'
     const firstLowIdx = jobQueue.findIndex((j) => j.priority === "low");
     if (firstLowIdx === -1) {
       jobQueue.push(job);
@@ -134,7 +166,23 @@ async function processNextJob() {
     }
 
     try {
-      const rawSamples = await runKittenInference(job.text, job.voiceId, job.speed);
+      // Garantiza la sesión del motor correcto antes de sintetizar
+      // (libera la sesión ONNX del otro motor si estaba activa).
+      await ensureEngine(job.engine);
+
+      const synthStart = performance.now();
+      const result =
+        job.engine === "piper"
+          ? await runPiperInference(job.text, job.voiceId, job.speed)
+          : {
+              samples: await runKittenInference(
+                job.text,
+                job.voiceId as KittenVoiceId,
+                job.speed,
+              ),
+              sampleRate: KITTEN_SAMPLE_RATE,
+            };
+      const synthMs = Math.round(performance.now() - synthStart);
 
       // Verificar de nuevo tras la inferencia por si se canceló mientras calculaba
       if (job.epoch < currentEpoch) {
@@ -142,7 +190,7 @@ async function processNextJob() {
       }
 
       // Crear una copia fresca independiente antes de transferir para evitar buffers detached
-      const pcm = new Float32Array(rawSamples);
+      const pcm = new Float32Array(result.samples);
 
       const response: WorkerResponse = {
         type: "SYNTHESIS_DONE",
@@ -150,8 +198,9 @@ async function processNextJob() {
         id: job.jobId,
         pcm,
         audioData: pcm,
-        sampleRate: SAMPLE_RATE,
+        sampleRate: result.sampleRate,
         epoch: job.epoch,
+        synthMs,
       };
 
       // Transferencia Zero-Copy del ArrayBuffer al hilo principal
@@ -173,12 +222,16 @@ async function processNextJob() {
 }
 
 /**
- * Elimina silencios muertos al principio y final del tensor de salida
- * para que la oración N y la N+1 se encadenen con ritmo humano natural.
- * Garantiza siempre devolver un buffer no-vacío (mínimo 240 muestras) para
+ * Elimina silencios muertos al principio y final del tensor de salida.
+ * `sampleRate` solo ajusta el colchón de 40 ms (Kitten 24 kHz, Piper 22.05 kHz).
+ * Garantiza siempre devolver un buffer no-vacío (mínimo ~240 muestras) para
  * prevenir que audioCtx.createBuffer falle con "The number of frames is 0".
  */
-export function trimLeadingAndTrailingSilence(samples: Float32Array, threshold = 0.003): Float32Array {
+export function trimLeadingAndTrailingSilence(
+  samples: Float32Array,
+  threshold = 0.003,
+  sampleRate = KITTEN_SAMPLE_RATE,
+): Float32Array {
   if (!samples || samples.length === 0) {
     return new Float32Array(240);
   }
@@ -189,19 +242,122 @@ export function trimLeadingAndTrailingSilence(samples: Float32Array, threshold =
   while (start < end && Math.abs(samples[start]) < threshold) start++;
   while (end > start && Math.abs(samples[end]) < threshold) end--;
 
-  // Si toda la muestra era silencio o no supera el umbral
   if (start >= end) {
     return new Float32Array(240);
   }
 
-  // Dejar un pequeño colchón de 40ms (aprox 960 muestras a 24kHz) para evitar clics de fase
-  const pad = Math.floor(SAMPLE_RATE * 0.04);
+  const pad = Math.floor(sampleRate * 0.025);
   const safeStart = Math.max(0, start - pad);
   const safeEnd = Math.min(samples.length, end + pad);
 
   const trimmed = samples.slice(safeStart, safeEnd);
   return trimmed.length > 0 ? trimmed : new Float32Array(240);
 }
+
+// ---------------------------------------------------------------------------
+// Sesiones ONNX: una sola activa (Kitten XOR Piper)
+// ---------------------------------------------------------------------------
+
+async function releaseSession(session: OnnxInferenceSession | null): Promise<void> {
+  if (!session) return;
+  try {
+    if (typeof session.release === "function") {
+      await session.release();
+    }
+  } catch {
+    // liberar es best-effort
+  }
+}
+
+/** Crea una InferenceSession desde un ArrayBuffer ya descargado. */
+async function createSessionFromBuffer(buffer: ArrayBuffer): Promise<OnnxInferenceSession> {
+  const ort = await configureOrtWasmEnv();
+  return (await ort.InferenceSession.create(buffer, {
+    executionProviders: ["wasm"],
+  })) as unknown as OnnxInferenceSession;
+}
+
+/** Lee un modelo desde CacheStorage (sin red) y crea la sesión. */
+async function createSessionFromCache(
+  cacheName: string,
+  modelUrl: string,
+  minBytes: number,
+): Promise<OnnxInferenceSession> {
+  if (typeof caches === "undefined") {
+    throw new Error("CacheStorage no disponible");
+  }
+  const cache = await caches.open(cacheName);
+  const match = await cache.match(modelUrl);
+  if (!match || match.status !== 200) {
+    throw new Error(`Modelo no descargado en caché (${modelUrl})`);
+  }
+  const buf = await match.arrayBuffer();
+  if (buf.byteLength < minBytes) {
+    throw new Error("Modelo en caché truncado o corrupto");
+  }
+  return createSessionFromBuffer(buf);
+}
+
+async function loadPiperConfigFromCache(): Promise<PiperModelConfig | null> {
+  if (typeof caches === "undefined") return null;
+  try {
+    const cache = await caches.open(PIPER_CACHE_NAME);
+    const match = await cache.match(PIPER_CONFIG_URL);
+    if (!match || match.status !== 200) return null;
+    const text = await match.text();
+    return parsePiperModelConfig(JSON.parse(text));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Garantiza que el motor pedido tenga su sesión ONNX lista y que sea la
+ * única viva. Si el otro motor estaba activo, libera su sesión primero.
+ */
+async function ensureEngine(engine: TtsEngineKind): Promise<void> {
+  if (engine === "kitten" && kittenSession) {
+    return;
+  }
+  if (engine === "piper" && piperSession && piperConfig) {
+    return;
+  }
+
+  // Liberar la sesión del otro motor antes de instanciar la nueva.
+  if (engine === "kitten") {
+    await releaseSession(piperSession);
+    piperSession = null;
+  } else {
+    await releaseSession(kittenSession);
+    kittenSession = null;
+  }
+
+  if (engine === "kitten") {
+    kittenSession = await createSessionFromCache(
+      KITTEN_CACHE_NAME,
+      KITTEN_MODEL_URL,
+      10_000_000,
+    );
+    return;
+  }
+
+  // Piper: necesita sesión + config (phoneme_id_map, escalas, sample rate).
+  if (!piperConfig) {
+    piperConfig = await loadPiperConfigFromCache();
+  }
+  if (!piperConfig?.phoneme_id_map) {
+    throw new Error("Configuración del modelo Piper no disponible");
+  }
+  piperSession = await createSessionFromCache(
+    PIPER_CACHE_NAME,
+    PIPER_MODEL_URL,
+    10_000_000,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Pipeline Kitten (inglés, 24 kHz)
+// ---------------------------------------------------------------------------
 
 /**
  * Ejecuta inferencia ONNX usando los tensores exactos del modelo KittenTTS:
@@ -216,20 +372,20 @@ async function runKittenInference(
 ): Promise<Float32Array> {
   const cleanText = normalizeEnglishText(text);
   if (!cleanText) {
-    return new Float32Array(SAMPLE_RATE / 10); // 100ms silencio si texto vacío
+    return new Float32Array(KITTEN_SAMPLE_RATE / 10); // 100ms silencio si texto vacío
   }
 
-  if (!onnxSession) {
+  if (!kittenSession) {
     throw new Error(
       "KittenTTS ONNX session is not initialized. Model weights must be downloaded and initialized before synthesis.",
     );
   }
 
-  const ort = await import("onnxruntime-web/wasm");
+  const ort = await configureOrtWasmEnv();
   const tokenIds = prepareKittenInputIds(cleanText);
   const voiceEmbedding = getVoiceEmbedding(voiceId);
 
-  const inputNames = onnxSession.inputNames;
+  const inputNames = kittenSession.inputNames;
   const inputIdName =
     inputNames.find(
       (n) => n === "input_ids" || n.toLowerCase().includes("id") || n.toLowerCase().includes("text"),
@@ -253,7 +409,6 @@ async function runKittenInference(
     inputNames[2] ??
     "speed";
 
-  // 1. input_ids: tensor int64 [1, ids.length] con tokens envueltos en [0, ...ids, 0]
   const feeds: Record<string, unknown> = {
     [inputIdName]: new ort.Tensor(
       "int64",
@@ -262,18 +417,16 @@ async function runKittenInference(
     ),
   };
 
-  // 2. style: tensor float32 [1, 256] del embedding acústico real
   if (inputNames.includes(styleName) || inputNames.length > 1) {
     feeds[styleName] = new ort.Tensor("float32", voiceEmbedding, [1, voiceEmbedding.length]);
   }
 
-  // 3. speed: tensor float32 [1] con la velocidad de habla
   if (inputNames.includes(speedName) || inputNames.length > 2) {
     feeds[speedName] = new ort.Tensor("float32", new Float32Array([speed]), [1]);
   }
 
-  const results = await onnxSession.run(feeds);
-  const outputName = onnxSession.outputNames[0];
+  const results = await kittenSession.run(feeds as never);
+  const outputName = kittenSession.outputNames[0];
   const outputTensor = results[outputName];
   if (!outputTensor) {
     throw new Error(`KittenTTS ONNX inference produced no output tensor for '${outputName}'`);
@@ -285,31 +438,138 @@ async function runKittenInference(
       ? rawData
       : Float32Array.from(rawData as ArrayLike<number>);
 
-  // Recorte dinámico de silencio real al inicio y final del audio generado
-  return trimLeadingAndTrailingSilence(rawSamples, 0.003);
+  return trimLeadingAndTrailingSilence(rawSamples, 0.003, KITTEN_SAMPLE_RATE);
 }
 
-async function configureOrtWasmEnv(): Promise<typeof import("onnxruntime-web/wasm")> {
+// ---------------------------------------------------------------------------
+// Pipeline Piper VITS (es_MX, 22.05 kHz)
+// ---------------------------------------------------------------------------
+
+interface PiperInferenceResult {
+  samples: Float32Array;
+  sampleRate: number;
+}
+
+/**
+ * Tensores exactos del contrato VITS de Piper:
+ *   input: int64 [1, N] — IDs del Encoder (BOS…PAD…EOS)
+ *   input_lengths: int64 [1]
+ *   scales: float32 [3] — noise_scale, length_scale, noise_w
+ *   sid: int64 [1] — solo si num_speakers > 1
+ * length_scale es inversamente proporcional a la velocidad.
+ */
+async function runPiperInference(
+  text: string,
+  voiceId: string,
+  speed: number,
+): Promise<PiperInferenceResult> {
+  const session = piperSession;
+  const config = piperConfig;
+  const phonemeIdMap = config?.phoneme_id_map;
+  if (!session || !config || !phonemeIdMap) {
+    throw new Error("Piper ONNX session/config is not initialized");
+  }
+
+  const sampleRate = config.audio?.sample_rate ?? PIPER_DEFAULT_SAMPLE_RATE;
+  const ids = textToPiperIds(text, phonemeIdMap);
+  if (ids.length === 0) {
+    return { samples: new Float32Array(Math.floor(sampleRate / 10)), sampleRate };
+  }
+
+  const ort = await configureOrtWasmEnv();
+  const names = session.inputNames;
+  const inputName = names.find((n) => n === "input") ?? names[0] ?? "input";
+  const lengthsName =
+    names.find((n) => n.toLowerCase().includes("length")) ?? "input_lengths";
+  const scalesName =
+    names.find((n) => n.toLowerCase().includes("scale")) ?? "scales";
+
+  const feeds: Record<string, unknown> = {
+    [inputName]: new ort.Tensor(
+      "int64",
+      BigInt64Array.from(ids.map(BigInt)),
+      [1, ids.length],
+    ),
+    [lengthsName]: new ort.Tensor(
+      "int64",
+      BigInt64Array.from([BigInt(ids.length)]),
+      [1],
+    ),
+  };
+
+  const inference = config.inference ?? {};
+  const baseLengthScale = inference.length_scale ?? 1.0;
+  const clampedSpeed = Math.max(0.5, Math.min(2.0, speed || 1));
+  const effectiveLengthScale = baseLengthScale / clampedSpeed;
+  feeds[scalesName] = new ort.Tensor(
+    "float32",
+    new Float32Array([
+      inference.noise_scale ?? 0.667,
+      effectiveLengthScale,
+      inference.noise_w ?? 0.8,
+    ]),
+    [3],
+  );
+
+  const numSpeakers = config.num_speakers ?? 1;
+  if (numSpeakers > 1) {
+    const sidName = names.find((n) => n.toLowerCase().includes("sid") || n.toLowerCase().includes("speaker")) ?? "sid";
+    const sidMap = config.speaker_id_map ?? {};
+    const sid = typeof sidMap[voiceId] === "number" ? sidMap[voiceId] : 0;
+    feeds[sidName] = new ort.Tensor("int64", BigInt64Array.from([BigInt(sid)]), [1]);
+  }
+
+  const results = await session.run(feeds as never);
+  const outputName = session.outputNames[0];
+  const outputTensor = results[outputName] ?? results.output;
+  if (!outputTensor) {
+    throw new Error(`Piper ONNX inference produced no output tensor for '${outputName}'`);
+  }
+
+  const rawData = outputTensor.data;
+  const rawSamples =
+    rawData instanceof Float32Array
+      ? rawData
+      : Float32Array.from(rawData as ArrayLike<number>);
+
+  return {
+    samples: trimLeadingAndTrailingSilence(rawSamples, 0.003, sampleRate),
+    sampleRate,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Configuración ORT WASM (compartida por ambos motores)
+// ---------------------------------------------------------------------------
+
+async function configureOrtWasmEnv(): Promise<OrtModule> {
+  if (ortModule) return ortModule;
   const ort = await import("onnxruntime-web/wasm");
 
-  // Configuración explícita de rutas de WebAssembly:
-  // Intentar usar /assets/ localmente; si no está disponible o devuelve SPA HTML fallback,
-  // caer limpiamente al CDN oficial de jsdelivr.
   let wasmBase = "/assets/";
   if (typeof fetch === "function") {
     try {
-      const testUrl =
-        typeof self !== "undefined" && self.location?.origin
-          ? new URL("/assets/ort-wasm-simd-threaded.wasm", self.location.origin).href
-          : "/assets/ort-wasm-simd-threaded.wasm";
-      const resp = await fetch(testUrl, { method: "HEAD" });
-      const contentType = (resp.headers.get("content-type") || "").toLowerCase();
-      const isWasm =
-        resp.ok &&
-        resp.status === 200 &&
-        (contentType.includes("application/wasm") || contentType.includes("wasm")) &&
-        !contentType.includes("text/html");
-      if (!isWasm) {
+      // ORT importa el .mjs (glue Emscripten) y luego descarga el .wasm:
+      // ambos deben existir en /assets/ o el backend wasm no arranca.
+      const probe = async (name: string, mimes: string[]) => {
+        const url =
+          typeof self !== "undefined" && self.location?.origin
+            ? new URL(`/assets/${name}`, self.location.origin).href
+            : `/assets/${name}`;
+        const resp = await fetch(url, { method: "HEAD" });
+        const contentType = (resp.headers.get("content-type") || "").toLowerCase();
+        return (
+          resp.ok &&
+          resp.status === 200 &&
+          !contentType.includes("text/html") &&
+          mimes.some((m) => contentType.includes(m))
+        );
+      };
+      const [wasmOk, mjsOk] = await Promise.all([
+        probe("ort-wasm-simd-threaded.wasm", ["wasm"]),
+        probe("ort-wasm-simd-threaded.mjs", ["javascript", "ecmascript", "text/plain"]),
+      ]);
+      if (!wasmOk || !mjsOk) {
         wasmBase = ORT_WASM_CDN_BASE;
       }
     } catch {
@@ -319,8 +579,6 @@ async function configureOrtWasmEnv(): Promise<typeof import("onnxruntime-web/was
 
   ort.env.wasm.wasmPaths = wasmBase;
 
-  // Si no hay SharedArrayBuffer o el worker no corre en un contexto crossOriginIsolated,
-  // forzar numThreads = 1 para evitar bloqueos y fallos silenciosos al instanciar pthread workers
   const hasSharedArrayBuffer =
     typeof SharedArrayBuffer !== "undefined" &&
     typeof self !== "undefined" &&
@@ -334,50 +592,20 @@ async function configureOrtWasmEnv(): Promise<typeof import("onnxruntime-web/was
   }
 
   ort.env.wasm.proxy = false;
+  ortModule = ort;
   return ort;
 }
 
-async function initOnnxSession(modelBuffer?: ArrayBuffer, modelUrl?: string): Promise<void> {
-  const ort = await configureOrtWasmEnv();
-
-  if (modelBuffer) {
-    onnxSession = (await ort.InferenceSession.create(modelBuffer, {
-      executionProviders: ["wasm"],
-    })) as unknown as OnnxInferenceSession;
-    return;
-  }
-
-  if (modelUrl && typeof caches !== "undefined") {
-    try {
-      const cache = await caches.open(KITTEN_CACHE_NAME);
-      const match = await cache.match(modelUrl);
-      if (match && match.status === 200) {
-        const buf = await match.arrayBuffer();
-        if (buf.byteLength >= 10_000_000) {
-          onnxSession = (await ort.InferenceSession.create(buf, {
-            executionProviders: ["wasm"],
-          })) as unknown as OnnxInferenceSession;
-          return;
-        }
-      }
-    } catch {
-      // ignore
-    }
-  }
-
-  if (modelUrl) {
-    onnxSession = (await ort.InferenceSession.create(modelUrl, {
-      executionProviders: ["wasm"],
-    })) as unknown as OnnxInferenceSession;
-  }
-}
+// ---------------------------------------------------------------------------
+// Mensajes del worker
+// ---------------------------------------------------------------------------
 
 if (typeof self !== "undefined") {
   self.onerror = (event: string | Event, _source?: string, _lineno?: number, _colno?: number, error?: Error) => {
     const errorMsg = error?.message || (typeof event === "string" ? event : "Unknown worker error");
     postWorkerMessage({
       type: "INIT_ERROR",
-      error: `KittenTTS worker error: ${errorMsg}`,
+      error: `TTS worker error: ${errorMsg}`,
     } satisfies WorkerResponse);
   };
 
@@ -386,7 +614,7 @@ if (typeof self !== "undefined") {
     const errorMsg = reason instanceof Error ? reason.message : String(reason);
     postWorkerMessage({
       type: "INIT_ERROR",
-      error: `KittenTTS worker unhandled rejection: ${errorMsg}`,
+      error: `TTS worker unhandled rejection: ${errorMsg}`,
     } satisfies WorkerResponse);
   };
 
@@ -397,6 +625,7 @@ if (typeof self !== "undefined") {
     switch (msg.type) {
       case "INIT":
       case "init": {
+        const engine: TtsEngineKind = msg.engine ?? "kitten";
         try {
           if (msg.voicesData) {
             for (const [vId, vData] of Object.entries(msg.voicesData)) {
@@ -405,7 +634,48 @@ if (typeof self !== "undefined") {
               }
             }
           }
-          await initOnnxSession(msg.modelBuffer, msg.modelUrl);
+
+          if (engine === "piper") {
+            // Config del modelo (.onnx.json): llega como buffer en INIT o se
+            // recupera de CacheStorage al sintetizar.
+            if (msg.configBuffer) {
+              const text = new TextDecoder().decode(msg.configBuffer);
+              piperConfig = parsePiperModelConfig(JSON.parse(text));
+            }
+            if (msg.modelBuffer) {
+              // Liberar la sesión del otro motor y crear la de Piper.
+              await releaseSession(kittenSession);
+              kittenSession = null;
+              await releaseSession(piperSession);
+              piperSession = await createSessionFromBuffer(msg.modelBuffer);
+            } else {
+              await ensureEngine("piper");
+            }
+          } else {
+            // Kitten: mismo comportamiento de antes (buffer → cache → URL).
+            await releaseSession(piperSession);
+            piperSession = null;
+            if (!kittenSession) {
+              if (msg.modelBuffer) {
+                kittenSession = await createSessionFromBuffer(msg.modelBuffer);
+              } else {
+                const url = msg.modelUrl ?? KITTEN_MODEL_URL;
+                try {
+                  kittenSession = await createSessionFromCache(
+                    KITTEN_CACHE_NAME,
+                    url,
+                    10_000_000,
+                  );
+                } catch {
+                  const ort = await configureOrtWasmEnv();
+                  kittenSession = (await ort.InferenceSession.create(url, {
+                    executionProviders: ["wasm"],
+                  })) as unknown as OnnxInferenceSession;
+                }
+              }
+            }
+          }
+
           postWorkerMessage({ type: "INIT_DONE" } satisfies WorkerResponse);
           void processNextJob();
         } catch (err) {
@@ -422,8 +692,9 @@ if (typeof self !== "undefined") {
         const jobId = msg.jobId ?? msg.id ?? `job_${Date.now()}_${Math.random()}`;
         enqueueJob({
           jobId,
+          engine: msg.engine ?? "kitten",
           text: msg.text,
-          voiceId: (msg.voiceId as KittenVoiceId) || "expr-voice-2-f",
+          voiceId: msg.voiceId ?? "expr-voice-2-f",
           speed: msg.speed ?? 1,
           priority: msg.priority ?? "high",
           epoch: msg.epoch ?? currentEpoch,
@@ -434,7 +705,6 @@ if (typeof self !== "undefined") {
       case "CANCEL_EPOCH":
       case "cancel_epoch": {
         currentEpoch = msg.epoch;
-        // Limpiar inmediatamente de la cola todos los trabajos de épocas anteriores
         for (let i = jobQueue.length - 1; i >= 0; i--) {
           if (jobQueue[i].epoch < currentEpoch) {
             jobQueue.splice(i, 1);

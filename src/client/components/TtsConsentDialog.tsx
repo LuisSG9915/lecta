@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import type { TtsEngineMode } from "../lib/ttsTypes";
-import { downloadKittenModel, kittenTtsEngine } from "../lib/kittenTtsEngine";
+import { kittenTtsEngine } from "../lib/kittenTtsEngine";
+import type { TtsEngineKind } from "../workers/kitten-tts.worker";
 
 export interface TtsConsentDialogProps {
   onAccept: (engine?: TtsEngineMode) => void;
@@ -8,18 +9,31 @@ export interface TtsConsentDialogProps {
   downloadProgress?: number | null; // 0 a 100
   isModelDownloaded?: boolean;
   onDeleteModel?: () => void;
+  /** Idioma del libro: «es» ofrece la voz Piper VITS; el resto, KittenTTS. */
+  bookLanguage?: string;
 }
 
 // Diálogo de consentimiento y preparación de «Leer en voz alta»:
-// Explica la voz neural KittenTTS (~24 MB, descargada una sola vez y guardada
-// offline en CacheStorage) frente a la voz ligera del sistema (0 MB).
+// Explica la voz neural (~24 MB inglés KittenTTS / ~63 MB español Piper VITS,
+// descargada una sola vez y guardada offline en CacheStorage) frente a la voz
+// ligera del sistema (0 MB).
 export default function TtsConsentDialog({
   onAccept,
   onDismiss,
   downloadProgress,
   isModelDownloaded,
   onDeleteModel,
+  bookLanguage,
 }: TtsConsentDialogProps) {
+  const neuralKind: TtsEngineKind = bookLanguage?.toLowerCase().startsWith("es")
+    ? "piper"
+    : "kitten";
+  const neuralName = neuralKind === "piper" ? "Piper VITS es_MX" : "KittenTTS Neural";
+  const neuralSize = neuralKind === "piper" ? "~63 MB" : "~24 MB";
+  const neuralDescription =
+    neuralKind === "piper"
+      ? "con la voz neuronal claude-high en español mexicano a 22 kHz"
+      : "con 8 voces naturales a 24 kHz para lecturas en inglés";
   const [downloading, setDownloading] = useState(false);
   const [percent, setPercent] = useState(0);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -44,10 +58,10 @@ export default function TtsConsentDialog({
     setPercent(0);
 
     try {
-      await downloadKittenModel((progress) => {
-        setPercent(progress.percent);
+      await kittenTtsEngine.downloadEngineModel(neuralKind, (p) => {
+        setPercent(p.percent);
       });
-      await kittenTtsEngine.init();
+      await kittenTtsEngine.init(undefined, neuralKind);
       onAccept("kitten-neural");
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Error al descargar el modelo.";
@@ -78,10 +92,10 @@ export default function TtsConsentDialog({
           Lectura en voz alta
         </h3>
         <p className="tts-consent-text">
-          Lecta incluye el motor neural <strong>KittenTTS Neural (~24 MB)</strong> con 8 voces
-          naturales a 24 kHz para lecturas en inglés (se descarga <strong>una sola vez</strong> y
-          funciona sin conexión), además de la voz de tu dispositivo para español e inglés al
-          instante. Lecta jamás envía el texto de tus libros a servidores externos.
+          Lecta incluye el motor neural <strong>{neuralName} ({neuralSize})</strong>{" "}
+          {neuralDescription} (se descarga <strong>una sola vez</strong> y funciona sin
+          conexión), además de la voz de tu dispositivo al instante. Lecta jamás envía
+          el texto de tus libros a servidores externos.
         </p>
 
         {isDownloadingProp ? (
@@ -136,9 +150,9 @@ export default function TtsConsentDialog({
                 className="btn btn--primary"
                 onClick={handleDownloadNeural}
                 data-autofocus
-                aria-label="Descargar modelo neural KittenTTS"
+                aria-label={`Descargar modelo neural ${neuralName}`}
               >
-                Descargar KittenTTS Neural (24 MB)
+                Descargar {neuralName} ({neuralSize})
               </button>
               <button
                 type="button"
@@ -155,7 +169,7 @@ export default function TtsConsentDialog({
                   onClick={onDeleteModel}
                   aria-label="Borrar datos de voz offline"
                 >
-                  🗑️ Borrar datos de voz offline (~24 MB)
+                  🗑️ Borrar datos de voz offline ({neuralSize})
                 </button>
               ) : null}
               <button

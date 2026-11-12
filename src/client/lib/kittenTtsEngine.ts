@@ -4,7 +4,7 @@
 // Lookahead Buffer (N+1 y N+2) con cola LRU de 8 oraciones, y síntesis acelerada con Zero-Copy.
 
 import type { KittenVoiceId, ModelDownloadProgress } from "./ttsTypes";
-import type { WorkerRequest, WorkerResponse } from "../workers/kitten-tts.worker";
+import type { TtsEngineKind, WorkerRequest, WorkerResponse } from "../workers/kitten-tts.worker";
 import {
   KITTEN_CACHE_NAME,
   KITTEN_MODEL_BYTES,
@@ -12,6 +12,13 @@ import {
   KITTEN_MODEL_URL,
   LEGACY_KITTEN_CACHE_NAMES,
 } from "./kittenModel";
+import {
+  PIPER_CACHE_NAME,
+  PIPER_CONFIG_URL,
+  PIPER_MODEL_BYTES,
+  PIPER_MODEL_SHA256,
+  PIPER_MODEL_URL,
+} from "./piperModel";
 
 // Se reexportan para no romper a quien ya las importaba desde el motor; la fuente
 // de verdad es `kittenModel.ts`, compartida con el worker y el service worker.
@@ -25,9 +32,42 @@ export {
 
 export const KITTEN_IDLE_TIMEOUT_MS = 3 * 60 * 1000; // 3 minutos
 export const WORKER_INFERENCE_TIMEOUT_MS = 12000; // 12 segundos límite por oración
+// Piper VITS (~63 MB) es ~2.5× más pesado que Kitten: en gama media una
+// oración larga puede tardar >12 s; el tope sube para no cortar a la mitad.
+export const PIPER_INFERENCE_TIMEOUT_MS = 30000;
 const MAX_PREFETCH_CACHE_ITEMS = 8; // Máximo de oraciones pre-sintetizadas en RAM
 /** Tamaño mínimo aceptable antes de comprobar el hash: por debajo es un corte de red. */
 const MIN_MODEL_BYTES = 10_000_000;
+
+/** Metadatos del modelo ONNX por motor neural (kitten = inglés, piper = español). */
+interface NeuralModelConfig {
+  cacheName: string;
+  modelUrl: string;
+  configUrl?: string;
+  sha256: string;
+  bytes: number;
+  label: string;
+}
+
+export function neuralModelConfig(engine: TtsEngineKind = "kitten"): NeuralModelConfig {
+  if (engine === "piper") {
+    return {
+      cacheName: PIPER_CACHE_NAME,
+      modelUrl: PIPER_MODEL_URL,
+      configUrl: PIPER_CONFIG_URL,
+      sha256: PIPER_MODEL_SHA256,
+      bytes: PIPER_MODEL_BYTES,
+      label: "Piper es_MX",
+    };
+  }
+  return {
+    cacheName: KITTEN_CACHE_NAME,
+    modelUrl: KITTEN_MODEL_URL,
+    sha256: KITTEN_MODEL_SHA256,
+    bytes: KITTEN_MODEL_BYTES,
+    label: "KittenTTS",
+  };
+}
 
 /** SHA-256 en hex minúsculas, para comparar con `KITTEN_MODEL_SHA256`. */
 async function sha256Hex(data: ArrayBuffer): Promise<string> {
@@ -55,7 +95,15 @@ interface PendingJob {
   resolve: (buffer: AudioBuffer) => void;
   reject: (err: Error) => void;
   epoch: number;
+  engine: TtsEngineKind;
   timer?: ReturnType<typeof setTimeout> | number;
+}
+
+/** Última síntesis reportada por el worker (diagnóstico RTF por motor). */
+export interface LastSynthStats {
+  engine: TtsEngineKind;
+  synthMs: number;
+  audioMs: number;
 }
 
 import { normalizeEnglishText, numberToEnglishWords } from "./kittenNormalize";
@@ -121,9 +169,17 @@ export class KittenTtsEngine {
   private ready = false;
   private initPromise: Promise<boolean> | null = null;
   private progress: ModelDownloadProgress = { status: "idle", percent: 0 };
+  // Progreso por motor: «auto» del controlador no debe confundir el modelo
+  // de un idioma con el del otro (kitten 24 MB vs piper ~63 MB).
+  private progressByEngine: Record<TtsEngineKind, ModelDownloadProgress> = {
+    kitten: { status: "idle", percent: 0 },
+    piper: { status: "idle", percent: 0 },
+  };
+  private initEngine: TtsEngineKind = "kitten";
 
   // Trabajos esperando respuesta del Web Worker
   private pendingJobs = new Map<string, PendingJob>();
+  private lastSynthStats: LastSynthStats | null = null;
 
   // Lookahead Buffer: guarda promesas de AudioBuffer listas o en proceso (LRU de 8 oraciones)
   private lookaheadCache = new Map<string, Promise<AudioBuffer>>();
@@ -138,6 +194,7 @@ export class KittenTtsEngine {
       void this.isModelDownloaded().then((cached) => {
         if (cached) {
           this.progress = { status: "ready", percent: 100 };
+          this.progressByEngine.kitten = { status: "ready", percent: 100 };
         }
       });
     }
@@ -226,8 +283,13 @@ export class KittenTtsEngine {
     return this.ready;
   }
 
-  getModelProgress(): ModelDownloadProgress {
-    return this.progress;
+  getModelProgress(engine: TtsEngineKind = "kitten"): ModelDownloadProgress {
+    return this.progressByEngine[engine];
+  }
+
+  /** Diagnóstico: ms de inferencia vs ms de audio de la última síntesis. */
+  getLastSynthStats(): LastSynthStats | null {
+    return this.lastSynthStats;
   }
 
   setReadyForTesting(ready: boolean): void {
@@ -245,10 +307,11 @@ export class KittenTtsEngine {
   async isModelDownloaded(
     modelUrl = KITTEN_MODEL_URL,
     expectedSha256: string = KITTEN_MODEL_SHA256,
+    cacheName = KITTEN_CACHE_NAME,
   ): Promise<boolean> {
     if (typeof caches === "undefined") return false;
     try {
-      const cache = await caches.open(KITTEN_CACHE_NAME);
+      const cache = await caches.open(cacheName);
       const match = await cache.match(modelUrl);
       if (!match) return false;
       const status = match.status ?? 200;
@@ -271,16 +334,24 @@ export class KittenTtsEngine {
    * Sin fallbacks: el binario vive en R2 con la versión en el nombre, así que un 404
    * es un error de despliegue, no una razón para servir otra versión del modelo.
    */
+  /** Versión engine-aware: elige caché/URL/hash según el motor neural. */
+  async isEngineModelDownloaded(engine: TtsEngineKind = "kitten"): Promise<boolean> {
+    const cfg = neuralModelConfig(engine);
+    return this.isModelDownloaded(cfg.modelUrl, cfg.sha256, cfg.cacheName);
+  }
+
   async downloadModelWithProgress(
     onProgress?: (p: DownloadProgress) => void,
     modelUrl = KITTEN_MODEL_URL,
     expectedSha256: string = KITTEN_MODEL_SHA256,
+    cacheName = KITTEN_CACHE_NAME,
+    expectedBytes = KITTEN_MODEL_BYTES,
   ): Promise<void> {
-    if (await this.isModelDownloaded(modelUrl, expectedSha256)) {
+    if (await this.isModelDownloaded(modelUrl, expectedSha256, cacheName)) {
       this.progress = { status: "ready", percent: 100 };
       onProgress?.({
-        loadedBytes: KITTEN_MODEL_BYTES,
-        totalBytes: KITTEN_MODEL_BYTES,
+        loadedBytes: expectedBytes,
+        totalBytes: expectedBytes,
         percent: 100,
       });
       return;
@@ -314,7 +385,7 @@ export class KittenTtsEngine {
     }
 
     const declaredBytes = Number(response.headers.get("content-length")) || 0;
-    const contentLength = declaredBytes || KITTEN_MODEL_BYTES;
+    const contentLength = declaredBytes || expectedBytes;
     const reader = response.body.getReader();
     const chunks: Uint8Array[] = [];
     let loadedBytes = 0;
@@ -361,7 +432,7 @@ export class KittenTtsEngine {
     }
 
     if (typeof caches !== "undefined") {
-      const cache = await caches.open(KITTEN_CACHE_NAME);
+      const cache = await caches.open(cacheName);
       const headers: Record<string, string> = {
         "Content-Type": "application/octet-stream",
         "Content-Length": String(blob.size),
@@ -371,7 +442,9 @@ export class KittenTtsEngine {
         headers["x-model-sha256"] = expectedSha256.toLowerCase();
       }
       await cache.put(modelUrl, new Response(bytes, { headers }));
-      await purgeLegacyModelCaches();
+      if (cacheName === KITTEN_CACHE_NAME) {
+        await purgeLegacyModelCaches();
+      }
     }
 
     this.progress = { status: "ready", percent: 100 };
@@ -379,17 +452,18 @@ export class KittenTtsEngine {
   }
 
   /**
-   * Permite al usuario liberar los ~24 MB desde el menú de ajustes si lo desea.
+   * Permite al usuario liberar el modelo desde el menú de ajustes si lo desea.
    */
-  async removeDownloadedModel(): Promise<void> {
+  async removeDownloadedModel(engine: TtsEngineKind = "kitten"): Promise<void> {
     this.stop();
     this.worker?.terminate();
     this.worker = null;
     this.ready = false;
     this.initPromise = null;
     this.progress = { status: "idle", percent: 0 };
+    this.progressByEngine[engine] = { status: "idle", percent: 0 };
     if (typeof caches !== "undefined") {
-      await caches.delete(KITTEN_CACHE_NAME);
+      await caches.delete(neuralModelConfig(engine).cacheName);
     }
   }
 
@@ -419,6 +493,7 @@ export class KittenTtsEngine {
     if (msg.type === "INIT_DONE" || msg.type === "init_done") {
       this.ready = true;
       this.progress = { status: "ready", percent: 100 };
+      this.progressByEngine[this.initEngine] = { status: "ready", percent: 100 };
       return;
     }
 
@@ -439,7 +514,15 @@ export class KittenTtsEngine {
       try {
         const rawPcm = msg.pcm ?? msg.audioData;
         const cleanSamples = sanitizeAudioSamples(rawPcm);
-        const sampleRate = 24000;
+        // Kitten devuelve 24 kHz; Piper lee audio.sample_rate del .onnx.json.
+        const sampleRate = msg.sampleRate || 24000;
+        if (typeof msg.synthMs === "number") {
+          this.lastSynthStats = {
+            engine: pending.engine,
+            synthMs: msg.synthMs,
+            audioMs: Math.round((cleanSamples.length / sampleRate) * 1000),
+          };
+        }
         const ctx = this.getAudioContext();
 
         if (ctx && typeof ctx.createBuffer === "function") {
@@ -504,10 +587,12 @@ export class KittenTtsEngine {
 
   /**
    * Inicializa el Web Worker bajo demanda solo cuando se va a usar.
+   * `engine` elige qué modelo se envía al worker (kitten por defecto).
    */
-  async ensureInitialized(modelUrl = KITTEN_MODEL_URL): Promise<boolean> {
+  async ensureInitialized(engine: TtsEngineKind = "kitten"): Promise<boolean> {
     if (this.ready && this.worker) return true;
     if (this.initPromise) return this.initPromise;
+    this.initEngine = engine;
 
     this.initPromise = new Promise<boolean>((resolve) => {
       const worker = this.getWorker();
@@ -534,6 +619,7 @@ export class KittenTtsEngine {
           cleanup();
           this.ready = true;
           this.progress = { status: "ready", percent: 100 };
+          this.progressByEngine[this.initEngine] = { status: "ready", percent: 100 };
           resolve(true);
         } else if (msg.type === "INIT_ERROR" || msg.type === "init_error") {
           cleanup();
@@ -543,6 +629,7 @@ export class KittenTtsEngine {
             percent: 0,
             errorMessage: msg.error || "Error al inicializar sesión ONNX",
           };
+          this.progressByEngine[this.initEngine] = this.progress;
           resolve(false);
         }
       };
@@ -555,6 +642,7 @@ export class KittenTtsEngine {
           percent: 0,
           errorMessage: e.message || "Error fatal en Web Worker de KittenTTS",
         };
+        this.progressByEngine[this.initEngine] = this.progress;
         resolve(false);
       };
 
@@ -563,14 +651,35 @@ export class KittenTtsEngine {
 
       void (async () => {
         try {
-          const buffer = await getKittenModelBuffer(modelUrl);
-          if (buffer) {
-            worker.postMessage({ type: "INIT", modelBuffer: buffer } satisfies WorkerRequest, [buffer]);
+          if (engine === "piper") {
+            const cfg = neuralModelConfig("piper");
+            const [modelBuffer, configBuffer] = await Promise.all([
+              getCachedModelBuffer(cfg.cacheName, cfg.modelUrl, cfg.sha256),
+              getCachedModelBuffer(cfg.cacheName, cfg.configUrl!, ""),
+            ]);
+            if (modelBuffer) {
+              worker.postMessage(
+                {
+                  type: "INIT",
+                  engine: "piper",
+                  modelBuffer,
+                  configBuffer: configBuffer ?? undefined,
+                } satisfies WorkerRequest,
+                configBuffer ? [modelBuffer, configBuffer] : [modelBuffer],
+              );
+            } else {
+              worker.postMessage({ type: "INIT", engine: "piper" } satisfies WorkerRequest);
+            }
           } else {
-            worker.postMessage({ type: "INIT", modelUrl } satisfies WorkerRequest);
+            const buffer = await getKittenModelBuffer();
+            if (buffer) {
+              worker.postMessage({ type: "INIT", engine: "kitten", modelBuffer: buffer } satisfies WorkerRequest, [buffer]);
+            } else {
+              worker.postMessage({ type: "INIT", engine: "kitten", modelUrl: KITTEN_MODEL_URL } satisfies WorkerRequest);
+            }
           }
         } catch {
-          worker.postMessage({ type: "INIT", modelUrl } satisfies WorkerRequest);
+          worker.postMessage({ type: "INIT", engine } satisfies WorkerRequest);
         }
       })();
     }).finally(() => {
@@ -580,24 +689,83 @@ export class KittenTtsEngine {
     return this.initPromise;
   }
 
-  async init(onProgress?: (progress: ModelDownloadProgress) => void): Promise<boolean> {
+  /**
+   * Descarga el modelo del motor indicado. Para Piper baja además el
+   * `.onnx.json` (~5 KB) que el worker necesita para phonemizar.
+   */
+  async downloadEngineModel(
+    engine: TtsEngineKind = "kitten",
+    onProgress?: (p: DownloadProgress) => void,
+  ): Promise<void> {
+    if (engine === "piper") {
+      const cfg = neuralModelConfig("piper");
+      await this.downloadModelWithProgress(
+        (p) => {
+          this.progressByEngine.piper = {
+            status: p.percent >= 100 ? "ready" : "downloading",
+            percent: p.percent,
+          };
+          onProgress?.(p);
+        },
+        cfg.modelUrl,
+        cfg.sha256,
+        cfg.cacheName,
+        cfg.bytes,
+      );
+      // El JSON de config es diminuto: se baja y cachea sin barra propia.
+      if (cfg.configUrl && typeof caches !== "undefined") {
+        try {
+          const cache = await caches.open(cfg.cacheName);
+          if (!(await cache.match(cfg.configUrl))) {
+            const res = await fetch(cfg.configUrl);
+            if (res.ok) {
+              const body = await res.arrayBuffer();
+              await cache.put(
+                cfg.configUrl,
+                new Response(body, {
+                  headers: { "Content-Type": "application/json" },
+                }),
+              );
+            }
+          }
+        } catch {
+          // Si falla el JSON, el worker lo reportará al sintetizar.
+        }
+      }
+      return;
+    }
+    await this.downloadModelWithProgress((p) => {
+      this.progressByEngine.kitten = {
+        status: p.percent >= 100 ? "ready" : "downloading",
+        percent: p.percent,
+      };
+      onProgress?.(p);
+    });
+  }
+
+  async init(
+    onProgress?: (progress: ModelDownloadProgress) => void,
+    engine: TtsEngineKind = "kitten",
+  ): Promise<boolean> {
     if (!this.isSupported()) {
       return false;
     }
 
     try {
-      const cached = await this.isModelDownloaded();
+      const cfg = neuralModelConfig(engine);
+      const cached = await this.isModelDownloaded(cfg.modelUrl, cfg.sha256, cfg.cacheName);
       if (!cached) {
-        await downloadKittenModel((p) => {
-          this.progress = p;
-          onProgress?.(p);
+        await this.downloadEngineModel(engine, (p) => {
+          this.progress = { status: p.percent >= 100 ? "ready" : "downloading", percent: p.percent };
+          onProgress?.(this.progress);
         });
       } else {
         this.progress = { status: "ready", percent: 100 };
+        this.progressByEngine[engine] = { status: "ready", percent: 100 };
         onProgress?.(this.progress);
       }
 
-      const ok = await this.ensureInitialized();
+      const ok = await this.ensureInitialized(engine);
       this.ready = ok;
       return ok;
     } catch (err) {
@@ -607,12 +775,13 @@ export class KittenTtsEngine {
         percent: 0,
         errorMessage: err instanceof Error ? err.message : String(err),
       };
+      this.progressByEngine[engine] = this.progress;
       return false;
     }
   }
 
-  private makeJobKey(text: string, voiceId: string, speed: number): string {
-    return `${voiceId}:${speed.toFixed(2)}:${text.trim()}`;
+  private makeJobKey(text: string, voiceId: string, speed: number, engine: TtsEngineKind): string {
+    return `${engine}:${voiceId}:${speed.toFixed(2)}:${text.trim()}`;
   }
 
   /**
@@ -623,8 +792,9 @@ export class KittenTtsEngine {
     voiceId: string,
     speed: number,
     priority: "high" | "low",
+    engine: TtsEngineKind = "kitten",
   ): Promise<AudioBuffer> {
-    const key = this.makeJobKey(text, voiceId, speed);
+    const key = this.makeJobKey(text, voiceId, speed, engine);
 
     // Reutilizar promesa/buffer si ya está en lookahead
     const existing = this.lookaheadCache.get(key);
@@ -634,6 +804,7 @@ export class KittenTtsEngine {
           type: "SYNTHESIZE",
           jobId: key,
           id: key,
+          engine,
           text,
           voiceId,
           speed,
@@ -663,18 +834,20 @@ export class KittenTtsEngine {
                 this.pendingJobs.delete(key);
                 pending.reject(
                   new Error(
-                    `KittenTTS inference timed out after ${WORKER_INFERENCE_TIMEOUT_MS}ms`,
+                    `TTS inference timed out after ${jobTimeoutMs}ms`,
                   ),
                 );
               }
             }, WORKER_INFERENCE_TIMEOUT_MS)
           : undefined;
 
-        this.pendingJobs.set(key, { resolve, reject, epoch: currentEpoch, timer });
+        const jobTimeoutMs = engine === "piper" ? PIPER_INFERENCE_TIMEOUT_MS : WORKER_INFERENCE_TIMEOUT_MS;
+        this.pendingJobs.set(key, { resolve, reject, epoch: currentEpoch, engine, timer });
         worker.postMessage({
           type: "SYNTHESIZE",
           jobId: key,
           id: key,
+          engine,
           text,
           voiceId,
           speed,
@@ -728,13 +901,14 @@ export class KittenTtsEngine {
     voiceId: string,
     speed: number,
     lookaheadCount = 2,
+    engine: TtsEngineKind = "kitten",
   ): void {
     for (let offset = 0; offset < lookaheadCount; offset++) {
       const targetIdx = nextIndex + offset;
       if (targetIdx >= 0 && targetIdx < sentences.length) {
         const sentenceText = sentences[targetIdx]?.trim();
         if (sentenceText) {
-          void this.requestAudioBuffer(sentenceText, voiceId, speed, "low");
+          void this.requestAudioBuffer(sentenceText, voiceId, speed, "low", engine);
         }
       }
     }
@@ -748,9 +922,11 @@ export class KittenTtsEngine {
     currentIndex: number;
     voiceId: string;
     speed: number;
+    engine?: TtsEngineKind;
     onSentenceAudioStart?: () => void;
   }): Promise<void> {
     const { sentences, currentIndex, voiceId, speed, onSentenceAudioStart } = options;
+    const engine = options.engine ?? "kitten";
     const text = sentences[currentIndex]?.trim();
     if (!text) return;
 
@@ -765,24 +941,25 @@ export class KittenTtsEngine {
     this.attachVisibilityGuard();
 
     try {
-      if (!(await this.isModelDownloaded())) {
+      if (!(await this.isEngineModelDownloaded(engine))) {
         try {
-          await this.downloadModelWithProgress();
+          await this.downloadEngineModel(engine);
         } catch {
           // Si falla la descarga, ensureInitialized reportará el error
         }
       }
-      const ok = await this.ensureInitialized();
+      const ok = await this.ensureInitialized(engine);
       if (!ok) {
-        throw new Error("KittenTTS engine failed to initialize");
+        throw new Error("TTS neural engine failed to initialize");
       }
       const activeEpoch = this.epoch;
 
       // 1. Pedir la oración actual N (si ya estaba en el Lookahead Buffer, se resuelve en 0ms)
-      const bufferPromise = this.requestAudioBuffer(text, voiceId, speed, "high");
+      const bufferPromise = this.requestAudioBuffer(text, voiceId, speed, "high", engine);
 
       // 2. Disparar de inmediato en el Worker la pre-síntesis de N+1 y N+2
-      this.prefetchUpcoming(sentences, currentIndex + 1, voiceId, speed, 2);
+      //    (Piper es más lento: un colchón extra reduce las pausas entre bloques).
+      this.prefetchUpcoming(sentences, currentIndex + 1, voiceId, speed, engine === "piper" ? 3 : 2, engine);
 
       const audioBuffer = await bufferPromise;
 
@@ -859,9 +1036,10 @@ export class KittenTtsEngine {
 
   async synthesize(
     text: string,
-    voiceId: KittenVoiceId = "expr-voice-2-f",
+    voiceId: KittenVoiceId | string = "expr-voice-2-f",
     speed = 1,
     priority: "high" | "low" = "high",
+    engine: TtsEngineKind = "kitten",
   ): Promise<AudioBuffer> {
     this.unlockAudioContext();
     if (this.idleTimer) {
@@ -872,18 +1050,18 @@ export class KittenTtsEngine {
     this.attachVisibilityGuard();
 
     try {
-      if (!(await this.isModelDownloaded())) {
+      if (!(await this.isEngineModelDownloaded(engine))) {
         try {
-          await this.downloadModelWithProgress();
+          await this.downloadEngineModel(engine);
         } catch {
           // Si falla la descarga, ensureInitialized reportará el error
         }
       }
-      const ok = await this.ensureInitialized();
+      const ok = await this.ensureInitialized(engine);
       if (!ok) {
-        throw new Error("KittenTTS engine failed to initialize");
+        throw new Error("TTS neural engine failed to initialize");
       }
-      return await this.requestAudioBuffer(text, voiceId, speed, priority);
+      return await this.requestAudioBuffer(text, voiceId, speed, priority, engine);
     } finally {
       this.activeRequests = Math.max(0, this.activeRequests - 1);
       this.scheduleIdleRelease();
@@ -892,8 +1070,9 @@ export class KittenTtsEngine {
 
   async synthesizeLookahead(
     text: string,
-    voiceId: KittenVoiceId = "expr-voice-2-f",
+    voiceId: KittenVoiceId | string = "expr-voice-2-f",
     speed = 1,
+    engine: TtsEngineKind = "kitten",
   ): Promise<AudioBuffer> {
     if (this.idleTimer) {
       clearTimeout(this.idleTimer);
@@ -901,16 +1080,16 @@ export class KittenTtsEngine {
     }
     this.activeRequests++;
     try {
-      if (!(await this.isModelDownloaded())) {
+      if (!(await this.isEngineModelDownloaded(engine))) {
         try {
-          await this.downloadModelWithProgress();
+          await this.downloadEngineModel(engine);
         } catch {
           // Si falla la descarga, ensureInitialized reportará el error
         }
       }
-      const ok = await this.ensureInitialized();
-      if (!ok) throw new Error("KittenTTS engine failed to initialize");
-      return await this.requestAudioBuffer(text, voiceId, speed, "low");
+      const ok = await this.ensureInitialized(engine);
+      if (!ok) throw new Error("TTS neural engine failed to initialize");
+      return await this.requestAudioBuffer(text, voiceId, speed, "low", engine);
     } finally {
       this.activeRequests = Math.max(0, this.activeRequests - 1);
       this.scheduleIdleRelease();
@@ -1042,13 +1221,19 @@ export async function isKittenModelCached(
   return kittenTtsEngine.isModelDownloaded(modelUrl, expectedSha256);
 }
 
-export async function getKittenModelBuffer(
-  modelUrl = KITTEN_MODEL_URL,
-  expectedSha256: string = KITTEN_MODEL_SHA256,
+/**
+ * Lee un artefacto del modelo desde CacheStorage validando el sello
+ * `x-model-sha256` guardado al descargar (sin recalcular el hash).
+ * Genérico para Kitten (.onnx) y Piper (.onnx + .onnx.json).
+ */
+export async function getCachedModelBuffer(
+  cacheName: string,
+  modelUrl: string,
+  expectedSha256 = "",
 ): Promise<ArrayBuffer | null> {
   if (typeof caches === "undefined") return null;
   try {
-    const cache = await caches.open(KITTEN_CACHE_NAME);
+    const cache = await caches.open(cacheName);
     const res = await cache.match(modelUrl);
     if (!res || res.status !== 200) return null;
     const contentType = (res.headers?.get("content-type") || "").toLowerCase();
@@ -1056,8 +1241,6 @@ export async function getKittenModelBuffer(
       await cache.delete(modelUrl);
       return null;
     }
-    // El hash se verificó al descargar y quedó en la respuesta cacheada: aquí solo
-    // se compara el sello, no se recalculan 24 MB en cada arranque.
     if (expectedSha256) {
       const cachedHash = (res.headers.get("x-model-sha256") || "").toLowerCase();
       if (cachedHash !== expectedSha256.toLowerCase()) {
@@ -1066,8 +1249,8 @@ export async function getKittenModelBuffer(
       }
     }
     const buffer = await res.arrayBuffer();
-    // Validar integridad mínima: si el buffer tiene menos de 10 MB, está truncado/corrupto
-    if (buffer.byteLength < MIN_MODEL_BYTES) {
+    // Validar integridad mínima: por debajo de 10 MB está truncado/corrupto.
+    if (expectedSha256 && buffer.byteLength < MIN_MODEL_BYTES) {
       await cache.delete(modelUrl);
       return null;
     }
@@ -1075,6 +1258,13 @@ export async function getKittenModelBuffer(
   } catch {
     return null;
   }
+}
+
+export async function getKittenModelBuffer(
+  modelUrl = KITTEN_MODEL_URL,
+  expectedSha256: string = KITTEN_MODEL_SHA256,
+): Promise<ArrayBuffer | null> {
+  return getCachedModelBuffer(KITTEN_CACHE_NAME, modelUrl, expectedSha256);
 }
 
 export async function downloadKittenModel(

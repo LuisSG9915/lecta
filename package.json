@@ -48,6 +48,7 @@
     "format:check": "prettier --check ."
   },
   "dependencies": {
+    "@piper-plus/g2p": "0.4.2",
     "@zip.js/zip.js": "2.18.2",
     "better-auth": "1.7.6",
     "dompurify": "3.4.16",

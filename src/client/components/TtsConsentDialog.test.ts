@@ -38,7 +38,7 @@ describe("TtsConsentDialog", () => {
     });
 
     expect(container.textContent).toContain("KittenTTS Neural (~24 MB)");
-    expect(container.textContent).toContain("Descargar KittenTTS Neural (24 MB)");
+    expect(container.textContent).toContain("Descargar KittenTTS Neural (~24 MB)");
     expect(container.textContent).toContain("Usar voz ligera del sistema (0 MB)");
   });
 
@@ -61,11 +61,12 @@ describe("TtsConsentDialog", () => {
   it("descarga el modelo neural mostrando progreso y activa kitten-neural", async () => {
     const onAccept = vi.fn();
     const downloadSpy = vi
-      .spyOn(kittenEngine, "downloadKittenModel")
-      .mockImplementation(async (onProgress) => {
-        onProgress?.({ status: "downloading", percent: 50 });
-        onProgress?.({ status: "ready", percent: 100 });
+      .spyOn(kittenEngine.kittenTtsEngine, "downloadEngineModel")
+      .mockImplementation(async (_engine, onProgress) => {
+        onProgress?.({ loadedBytes: 50, totalBytes: 100, percent: 50 });
+        onProgress?.({ loadedBytes: 100, totalBytes: 100, percent: 100 });
       });
+    vi.spyOn(kittenEngine.kittenTtsEngine, "init").mockResolvedValue(true);
 
     render({
       onAccept,
@@ -81,7 +82,37 @@ describe("TtsConsentDialog", () => {
       downloadBtn?.click();
     });
 
-    expect(downloadSpy).toHaveBeenCalled();
+    expect(downloadSpy).toHaveBeenCalledWith("kitten", expect.any(Function));
+    expect(onAccept).toHaveBeenCalledWith("kitten-neural");
+  });
+
+  it("con bookLanguage='es' ofrece la voz neural Piper VITS (~63 MB)", async () => {
+    const onAccept = vi.fn();
+    const downloadSpy = vi
+      .spyOn(kittenEngine.kittenTtsEngine, "downloadEngineModel")
+      .mockResolvedValue(undefined);
+    const initSpy = vi
+      .spyOn(kittenEngine.kittenTtsEngine, "init")
+      .mockResolvedValue(true);
+
+    render({
+      onAccept,
+      onDismiss: vi.fn(),
+      bookLanguage: "es",
+    });
+
+    expect(container.textContent).toContain("Piper VITS es_MX (~63 MB)");
+    expect(container.textContent).toContain("Descargar Piper VITS es_MX (~63 MB)");
+
+    const downloadBtn = Array.from(container.querySelectorAll("button")).find((btn) =>
+      btn.textContent?.includes("Descargar Piper VITS"),
+    );
+    await act(async () => {
+      downloadBtn?.click();
+    });
+
+    expect(downloadSpy).toHaveBeenCalledWith("piper", expect.any(Function));
+    expect(initSpy).toHaveBeenCalledWith(undefined, "piper");
     expect(onAccept).toHaveBeenCalledWith("kitten-neural");
   });
 

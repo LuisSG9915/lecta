@@ -293,7 +293,7 @@ describe("kittenTtsEngine", () => {
     }
     const trimmed = trimLeadingAndTrailingSilence(samples, 0.003);
     expect(trimmed.length).toBeLessThan(total);
-    expect(trimmed.length).toBeCloseTo(15000 - 5000 + 960 * 2, -2);
+    expect(trimmed.length).toBeCloseTo(15000 - 5000 + 600 * 2, -2);
     expect(trimmed.some((v) => v > 0.4)).toBe(true);
   });
 
@@ -435,7 +435,7 @@ describe("kittenTtsEngine", () => {
       speed: 1,
     });
 
-    expect(prefetchSpy).toHaveBeenCalledWith(sentences, 1, "expr-voice-2-f", 1, 2);
+    expect(prefetchSpy).toHaveBeenCalledWith(sentences, 1, "expr-voice-2-f", 1, 2, "kitten");
   });
 
   it("init() devuelve false y mantiene ready = false ante INIT_ERROR del Worker", async () => {
@@ -1168,7 +1168,7 @@ describe("ttsController", () => {
     expect(nativeSpeaker.speak).not.toHaveBeenCalled();
   });
 
-  it("shouldUseKitten no activa KittenTTS en libros en español cuando corre sin mock de pruebas", async () => {
+  it("con neural activo, los libros en español rutean al motor Piper (no a la voz del sistema)", async () => {
     consent();
     saveTtsSettings({
       ...loadTtsSettings(),
@@ -1197,7 +1197,39 @@ describe("ttsController", () => {
     ctl.start(CTX, 0);
     await flush();
 
-    // Para libros en español, debe usar el speaker nativo y no KittenTTS
+    // Español + neural explícito → motor Piper VITS, no la voz nativa.
+    expect(nativeSpeaker.speak).not.toHaveBeenCalled();
+    expect(ctl.snapshot().activeEngine).toBe("piper-neural");
+  });
+
+  it("en modo auto, un libro en español sin modelo Piper descargado usa la voz del sistema", async () => {
+    consent();
+    saveTtsSettings({
+      ...loadTtsSettings(),
+      engine: "auto",
+      kittenVoice: "expr-voice-2-f",
+    });
+
+    const nativeSpeaker = {
+      speak: vi.fn(),
+      pause: vi.fn(),
+      resume: vi.fn(),
+      cancel: vi.fn(),
+      speakingNow: () => false,
+      setRate: vi.fn(),
+    };
+
+    const { deps } = makeDeps([
+      section("<p>Este es un texto en idioma español.</p>"),
+    ]);
+    deps.language = () => "es";
+    deps.kittenEngine = undefined;
+    deps.makeSpeaker = () => nativeSpeaker;
+
+    const ctl = createTtsController(deps);
+    ctl.start(CTX, 0);
+    await flush();
+
     expect(nativeSpeaker.speak).toHaveBeenCalledWith("Este es un texto en idioma español.", 1);
     expect(ctl.snapshot().activeEngine).toBe("browser");
   });

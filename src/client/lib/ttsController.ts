@@ -18,6 +18,8 @@ import { loadTtsSettings, saveTtsSettings } from "./ttsSettings";
 import { isTtsSupported } from "./ttsSettings";
 import { isFeatureFlagEnabled } from "./settings";
 import { kittenTtsEngine, type KittenTtsEngine } from "./kittenTtsEngine";
+import { PIPER_VOICE_ID } from "./piperModel";
+import type { TtsEngineKind } from "../workers/kitten-tts.worker";
 import {
   KITTEN_VOICES,
   TTS_IDLE,
@@ -141,25 +143,47 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
   const lookaheadBuffers = new Map<number, AudioBuffer>();
   const lookaheadPending = new Set<number>();
 
-  const shouldUseKitten = (): boolean => {
+  /**
+   * Motor neural según el idioma del libro: inglés → Kitten nano 0.8 (24 kHz),
+   * español → Piper VITS es_MX (22.05 kHz). `null` = usar voz del sistema.
+   * En tests con `deps.kittenEngine` mockeado se conserva kitten para no romper
+   * los arneses existentes sea cual sea el idioma.
+   */
+  const neuralEngineKind = (): TtsEngineKind | null => {
     if (!isFeatureFlagEnabled("neuralTts")) {
-      return false;
+      return null;
     }
-    const isEn = deps.language().toLowerCase().startsWith("en");
+    const lang = deps.language().toLowerCase();
     const isTestMock = Boolean(deps.kittenEngine);
-    if (!isEn && !isTestMock) {
-      return false;
+    let kind: TtsEngineKind | null;
+    if (lang.startsWith("en")) {
+      kind = "kitten";
+    } else if (lang.startsWith("es")) {
+      kind = "piper";
+    } else {
+      kind = isTestMock ? "kitten" : null;
     }
-    if (settings.engine === "kitten-neural") return true;
+    if (!kind) return null;
+    if (settings.engine === "kitten-neural") return kind;
     if (settings.engine === "auto") {
       const engine = deps.kittenEngine ?? kittenTtsEngine;
+      // El progreso es por motor: «kitten descargado» no habilita Piper.
+      const prog =
+        typeof engine.getModelProgress === "function"
+          ? engine.getModelProgress(kind)
+          : engine.getModelProgress();
       const isReadyOrDownloaded =
-        engine.isReady() ||
-        engine.getModelProgress().status === "ready";
-      return isEn && engine.isSupported() && isReadyOrDownloaded;
+        engine.isReady() || prog.status === "ready";
+      return engine.isSupported() && isReadyOrDownloaded ? kind : null;
     }
-    return false;
+    return null;
   };
+
+  const shouldUseKitten = (): boolean => neuralEngineKind() !== null;
+
+  /** Voz neural del motor activo (Piper tiene una sola voz es_MX). */
+  const neuralVoiceId = (kind: TtsEngineKind): string =>
+    kind === "piper" ? PIPER_VOICE_ID : settings.kittenVoice;
 
   const acquireWakeLock = async () => {
     if (typeof navigator !== "undefined" && "wakeLock" in navigator && navigator.wakeLock?.request) {
@@ -184,7 +208,8 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
   };
 
   const publish = (next: Partial<TtsSnapshot>) => {
-    const active = shouldUseKitten() ? "kitten-neural" : "browser";
+    const kind = neuralEngineKind();
+    const active = kind === "piper" ? "piper-neural" : kind === "kitten" ? "kitten-neural" : "browser";
     snap = {
       ...snap,
       engine: settings.engine,
@@ -268,10 +293,14 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
   };
 
   const triggerLookahead = () => {
-    if (!shouldUseKitten()) return;
+    const kind = neuralEngineKind();
+    if (!kind) return;
     const engine = deps.kittenEngine ?? kittenTtsEngine;
-    // Buffer anticipado lookahead = 2 con prioridad "low" para no bloquear la oración actual
-    for (let offset = 1; offset <= 2; offset++) {
+    const voice = neuralVoiceId(kind);
+    // Buffer anticipado con prioridad "low" para no bloquear la oración actual.
+    // Piper es ~2.5× más pesado que Kitten: en gama media necesita una oración de más colchón.
+    const lookaheadDepth = kind === "piper" ? 3 : 2;
+    for (let offset = 1; offset <= lookaheadDepth; offset++) {
       const targetIdx = cursor + offset;
       if (
         targetIdx < items.length &&
@@ -282,8 +311,8 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
         const text = items[targetIdx].text;
         const synthLookahead =
           typeof engine.synthesizeLookahead === "function"
-            ? engine.synthesizeLookahead(text, settings.kittenVoice, settings.rate)
-            : engine.synthesize(text, settings.kittenVoice, settings.rate, "low");
+            ? engine.synthesizeLookahead(text, voice as KittenVoiceId, settings.rate, kind)
+            : engine.synthesize(text, voice as KittenVoiceId, settings.rate, "low", kind);
         void synthLookahead
           .then((buf) => {
             if (destroyed) return;
@@ -329,8 +358,10 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
       });
     }
 
-    if (shouldUseKitten()) {
+    const neuralKind = neuralEngineKind();
+    if (neuralKind) {
       const engine = deps.kittenEngine ?? kittenTtsEngine;
+      const neuralVoice = neuralVoiceId(neuralKind);
 
       const preSynthesized = lookaheadBuffers.get(cursor);
       if (preSynthesized) {
@@ -347,7 +378,13 @@ export function createTtsController(deps: TtsControllerDeps): TtsController {
         }
       } else {
         // 1. Encolar primero la oración actual con prioridad high
-        const synthPromise = engine.synthesize(item.text, settings.kittenVoice, settings.rate);
+        const synthPromise = engine.synthesize(
+          item.text,
+          neuralVoice as KittenVoiceId,
+          settings.rate,
+          "high",
+          neuralKind,
+        );
         // 2. Disparar lookahead después con prioridad low
         triggerLookahead();
 
@@ -890,11 +927,23 @@ export async function playSentencesLoop(params: {
   // Desbloqueo síncrono del AudioContext dentro de la interacción del usuario
   kittenTtsEngine.unlockAudioContext();
 
+  // Motor neural por idioma: es → Piper VITS, resto → Kitten nano 0.8.
+  const neuralKind: TtsEngineKind | null =
+    engineMode === "kitten-hd" || engineMode === "kitten-neural"
+      ? language?.toLowerCase().startsWith("es")
+        ? "piper"
+        : "kitten"
+      : null;
+  const neuralVoice = neuralKind === "piper" ? PIPER_VOICE_ID : voiceId;
+
   let canUseKitten = false;
-  if (engineMode === "kitten-hd" || engineMode === "kitten-neural") {
-    const downloaded = await kittenTtsEngine.isModelDownloaded();
+  if (neuralKind) {
+    const downloaded = await kittenTtsEngine.isEngineModelDownloaded(neuralKind);
     if (!downloaded) {
-      const ok = await kittenTtsEngine.init((p) => onDownloadProgress?.(p.percent));
+      const ok = await kittenTtsEngine.init(
+        (p) => onDownloadProgress?.(p.percent),
+        neuralKind,
+      );
       canUseKitten = ok && kittenTtsEngine.isReady();
     } else {
       canUseKitten = true;
@@ -910,8 +959,9 @@ export async function playSentencesLoop(params: {
         await kittenTtsEngine.speakSentenceWithLookahead({
           sentences,
           currentIndex: i,
-          voiceId,
+          voiceId: neuralVoice,
           speed,
+          engine: neuralKind ?? "kitten",
           onSentenceAudioStart: () => onHighlightSentence(i),
         });
       } catch (err) {

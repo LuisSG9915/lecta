@@ -19,11 +19,14 @@ import { defineConfig, type Plugin } from "vite";
 
 // Garantiza que el binario WASM de ONNX Runtime esté disponible sin hash en /assets/
 // tanto en desarrollo local (middleware de Vite) como en producción (copia en dist/client/assets).
+// ORT 1.30 también importa el .mjs (glue de Emscripten) desde la misma carpeta:
+// servir solo el .wasm dejaba el backend caído ("no available backend found").
 function onnxWasmPlugin(): Plugin {
-  const wasmSrc = join(
-    process.cwd(),
-    "node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.wasm",
-  );
+  const ortDist = join(process.cwd(), "node_modules/onnxruntime-web/dist");
+  const ORT_FILES: Record<string, string> = {
+    "ort-wasm-simd-threaded.wasm": "application/wasm",
+    "ort-wasm-simd-threaded.mjs": "text/javascript",
+  };
 
   return {
     name: "lecta-onnx-wasm",
@@ -32,14 +35,15 @@ function onnxWasmPlugin(): Plugin {
     applyToEnvironment: (environment) => environment.name === "client",
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
-        if (
-          req.url === "/assets/ort-wasm-simd-threaded.wasm" ||
-          req.url === "/ort-wasm-simd-threaded.wasm"
-        ) {
-          if (existsSync(wasmSrc)) {
-            res.setHeader("Content-Type", "application/wasm");
+        const path = (req.url || "").split("?")[0];
+        const base = path.split("/").pop() || "";
+        const contentType = ORT_FILES[base];
+        if (contentType && (path === `/assets/${base}` || path === `/${base}`)) {
+          const src = join(ortDist, base);
+          if (existsSync(src)) {
+            res.setHeader("Content-Type", contentType);
             res.setHeader("Cache-Control", "no-cache");
-            res.end(readFileSync(wasmSrc));
+            res.end(readFileSync(src));
             return;
           }
         }
@@ -47,16 +51,18 @@ function onnxWasmPlugin(): Plugin {
       });
     },
     writeBundle(options) {
-      if (!existsSync(wasmSrc)) return;
       const targetDirs = [
         options.dir ? join(options.dir, "assets") : null,
         join(process.cwd(), "dist/client/assets"),
       ].filter((d): d is string => !!d);
 
       for (const dir of targetDirs) {
-        if (existsSync(dir)) {
-          const dest = join(dir, "ort-wasm-simd-threaded.wasm");
-          copyFileSync(wasmSrc, dest);
+        if (!existsSync(dir)) continue;
+        for (const file of Object.keys(ORT_FILES)) {
+          const src = join(ortDist, file);
+          if (existsSync(src)) {
+            copyFileSync(src, join(dir, file));
+          }
         }
       }
     },
@@ -314,6 +320,12 @@ function stripDevVarsPlugin(): Plugin {
 }
 
 export default defineConfig({
+  // onnxruntime-web/wasm se importa dinámicamente dentro del worker de
+  // KittenTTS en la primera descarga del modelo: sin declararlo, esbuild lo
+  // descubre a mitad de sesión y Vite recarga la página («reinicia el sitio»).
+  optimizeDeps: {
+    include: ["onnxruntime-web/wasm"],
+  },
   plugins: [
     react(),
     cloudflare(),

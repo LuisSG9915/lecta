@@ -150,20 +150,23 @@ export function useReaderTts(params: UseReaderTtsParams = {}) {
   const [showConsentDialog, setShowConsentDialog] = useState(false);
   const [pendingVoiceURI, setPendingVoiceURI] = useState<string | null>(null);
 
-  // Verificar si el modelo KittenTTS está descargado al abrir diálogo de consentimiento
+  // Motor neural del libro: es → Piper VITS, resto → Kitten nano 0.8.
+  const neuralKind = language?.toLowerCase().startsWith("es") ? "piper" : "kitten";
+
+  // Verificar si el modelo neural del idioma está descargado al abrir el diálogo
   useEffect(() => {
     if (ttsConsentOpen) {
-      void kittenTtsEngine.isModelDownloaded().then((downloaded) => {
+      void kittenTtsEngine.isEngineModelDownloaded(neuralKind).then((downloaded) => {
         setIsKittenModelDownloaded(downloaded);
       });
     }
-  }, [ttsConsentOpen]);
+  }, [ttsConsentOpen, neuralKind]);
 
   const handleDeleteTtsModel = useCallback(async () => {
-    await kittenTtsEngine.removeDownloadedModel();
+    await kittenTtsEngine.removeDownloadedModel(neuralKind);
     setIsKittenModelDownloaded(false);
     setTtsDownloadProgress(null);
-  }, []);
+  }, [neuralKind]);
 
   // Espejos de funciones para el controlador Reader
   const ttsFns = useRef({

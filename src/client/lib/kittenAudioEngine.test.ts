@@ -295,6 +295,7 @@ describe("KittenTTS Web Audio & Memory Lifecycle (Fase 2)", () => {
         "expr-voice-2-f",
         1,
         "low",
+        "kitten",
       );
     });
 
@@ -305,7 +306,7 @@ describe("KittenTTS Web Audio & Memory Lifecycle (Fase 2)", () => {
 
       await expect(
         engine.synthesizeLookahead("Lookahead failure test", "expr-voice-2-f", 1),
-      ).rejects.toThrow("KittenTTS engine failed to initialize");
+      ).rejects.toThrow("TTS neural engine failed to initialize");
     });
   });
 });

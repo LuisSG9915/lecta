@@ -117,7 +117,7 @@ export type TtsSnapshot = {
   pauseReason: TtsPauseReason | null;
   engine?: TtsEngineMode;
   kittenVoice?: KittenVoiceId;
-  activeEngine?: "kitten-neural" | "browser";
+  activeEngine?: "kitten-neural" | "piper-neural" | "browser";
 };
 
 export const TTS_IDLE: TtsSnapshot = {

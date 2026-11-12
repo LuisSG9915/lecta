@@ -10,6 +10,7 @@ import Icon, { type IconName } from "./Icon";
 import { getWeeklyLearnedWordsCount } from "../lib/journey";
 
 import type { FocusAidType } from "../lib/focus-telemetry";
+import TtsDebugPanel from "./TtsDebugPanel";
 
 export interface FocusSuggestion {
   isFatigued: boolean;
@@ -241,7 +242,8 @@ export default function SmartReaderDock({
     window.setTimeout(() => setWordCapturedToast(false), 1800);
   };
 
-  const isNeuralVoice = ttsSnap.activeEngine === "kitten-neural";
+  const isNeuralVoice =
+    ttsSnap.activeEngine === "kitten-neural" || ttsSnap.activeEngine === "piper-neural";
 
   return (
     <>
@@ -615,7 +617,7 @@ export default function SmartReaderDock({
                   className={`dock-audio-pill-btn dock-pill-btn ${isNeuralVoice ? "is-hd-active" : ""}`}
                   onClick={onOpenVoiceSelector}
                   aria-label="Elegir voz"
-                  title={isNeuralVoice ? "Voz KittenTTS Neural HD activa" : "Voz del sistema. Toca para cambiar o descargar HD"}
+                  title={isNeuralVoice ? "Voz neural HD activa" : "Voz del sistema. Toca para cambiar o descargar HD"}
                 >
                   <span aria-hidden="true">
                     <Icon name={isNeuralVoice ? "sparkles" : "speaker"} size={14} />
@@ -653,6 +655,9 @@ export default function SmartReaderDock({
           )}
         </nav>
       </div>
+
+      {/* Diagnóstico TTS temporal (activar con ?ttsdebug=1) */}
+      <TtsDebugPanel ttsSnap={ttsSnap} />
     </>
   );
 }

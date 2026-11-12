@@ -522,6 +522,7 @@ export function ReaderOverlays({
           downloadProgress={ttsDownloadProgress}
           isModelDownloaded={isKittenModelDownloaded}
           onDeleteModel={onDeleteTtsModel}
+          bookLanguage={language}
         />
       ) : null}
 

@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@piper-plus/g2p':
+        specifier: 0.4.2
+        version: 0.4.2
       '@zip.js/zip.js':
         specifier: 2.18.2
         version: 2.18.2
@@ -1009,6 +1012,10 @@ packages:
 
   '@oxc-project/types@0.152.0':
     resolution: {integrity: sha512-oM/5rLBm2tPkg0iBgkH/FOeR3PCDpY19GTgAZjMFM8h9WI9VW7cLgzp6nwtarYKmovavIQZ+Fe/RKX/8C8O/Rw==}
+
+  '@piper-plus/g2p@0.4.2':
+    resolution: {integrity: sha512-iEuynnOXOmZw88dUfyLrolRO0U3gIviIAqJR0N8SbFvoKq/dFtmZkBFtgpThk8Lk+r+rcfW0se+PkJqMPJgE4g==}
+    engines: {node: '>=24.0.0'}
 
   '@playwright/test@1.64.1':
     resolution: {integrity: sha512-IaYGml/nSOiZWROfPtuIL7neuu9qDOZ3TNvNljUIrhDMxiGTgPjzj/g9p9RxpS2tSepPDRY+UwAaEeiKtUvIAg==}
@@ -3317,6 +3324,8 @@ snapshots:
   '@opentelemetry/semantic-conventions@1.43.0': {}
 
   '@oxc-project/types@0.152.0': {}
+
+  '@piper-plus/g2p@0.4.2': {}
 
   '@playwright/test@1.64.1':
     dependencies:
