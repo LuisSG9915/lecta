@@ -89,6 +89,9 @@ export interface ReaderContentProps {
 // sin moverlo. La tolerancia absorbe el temblor natural del dedo.
 const LONG_PRESS_MS = 480;
 const LONG_PRESS_SLOP_PX = 12;
+// Margen para que el sistema cree su selección nativa (con tiradores)
+// antes de seleccionar la palabra por código.
+const NATIVE_SELECTION_GRACE_MS = 300;
 
 export function ReaderContent(props: ReaderContentProps) {
   const { setSelButton } = props;
@@ -464,27 +467,36 @@ export function ReaderContent(props: ReaderContentProps) {
           if (!validation.valid) return;
           if (selection) return;
           triggerHaptic("selection");
-          // Si el sistema ya creó su selección nativa, la ficha la abre
-          // `selectionchange` (Reader.tsx) y la selección queda viva para
-          // arrastrar los tiradores y subrayar una cita. El temporizador
-          // solo abre en dispositivos que no crean selección.
-          const native = window.getSelection();
-          if (native && !native.isCollapsed && native.rangeCount > 0 && container.contains(native.getRangeAt(0).commonAncestorContainer)) return;
-          openSelection(hit);
+          // La presión selecciona la palabra: `selectionchange` (Reader.tsx)
+          // abre el mini menú («Significado», tinta…) y los tiradores quedan
+          // libres para ampliar la cita. Si el sistema ya creó su selección
+          // nativa, se respeta. (Ya no hay onContextMenu con preventDefault:
+          // en Android suprimía la selección nativa y sus tiradores —
+          // verificado por adb el 2026-11-11.)
+          // La selección nativa de Android llega unos ms después del
+          // temporizador; solo si no aparece se crea por código (sin
+          // tiradores, pero con el mismo menú).
+          const hasNative = () => {
+            const native = window.getSelection();
+            return Boolean(native && !native.isCollapsed && native.rangeCount > 0 && container.contains(native.getRangeAt(0).commonAncestorContainer));
+          };
+          if (hasNative()) return;
+          window.setTimeout(() => {
+            if (hasNative()) return;
+            const native = window.getSelection();
+            if (native && hit.range) {
+              native.removeAllRanges();
+              native.addRange(hit.range.cloneRange());
+            } else {
+              openSelection(hit);
+            }
+          }, NATIVE_SELECTION_GRACE_MS);
         }, LONG_PRESS_MS);
       }
     }}
     onPointerUp={cancelLongPress}
     onPointerCancel={cancelLongPress}
     onPointerLeave={cancelLongPress}
-    onContextMenu={(event) => {
-      // El menú nativo de la presión larga (Android) compite con la ficha
-      // que acaba de abrirse; en escritorio el clic derecho sigue igual.
-      const ne = event.nativeEvent as PointerEvent;
-      if (ne.pointerType === "touch" || lastPointerTypeRef.current === "touch") {
-        event.preventDefault();
-      }
-    }}
     aria-busy={state === "opening"}
     aria-label="Contenido de la sección"
   />

@@ -1,21 +1,21 @@
 {
   "tool": "audit-investigacion",
   "version": 1,
-  "generatedAt": "2026-11-12T02:37:30.488Z",
+  "generatedAt": "2026-11-12T03:31:04.712Z",
   "root": "/Users/luis/Desarrollos Devin/lecta",
-  "commit": "297003ae0a2e3ab1bbb2a10c3d6ff7a25c05c3c7",
+  "commit": "ea9048fdd7a9e496a01f39d60bec902c5994396f",
   "doc": "docs/estrategia-aprendizaje-2026-10-24.md",
   "registry": "docs/auditoria/claims.json",
   "online": false,
   "summary": {
     "claims": 14,
     "pass": 1,
-    "fail": 0,
-    "unverified": 13,
+    "fail": 1,
+    "unverified": 12,
     "skipped": 0,
     "refutedExpected": 0,
-    "codePass": 14,
-    "codeFail": 0,
+    "codePass": 13,
+    "codeFail": 1,
     "referencePass": 0,
     "referenceUnverified": 32,
     "referenceFail": 0,
@@ -500,7 +500,7 @@
       "title": "«Ya la conozco» alimenta el nivel como si fuera una prueba",
       "statement": "Marcar «ya la conozco» ajusta θ con outcome 1 y un delta de 0,18 × (1 − P), sin ninguna recuperación verificada de por medio, y el acto se registra sin pagar XP de repaso.",
       "section": "H4",
-      "status": "UNVERIFIED",
+      "status": "FAIL",
       "auditVerdict": {
         "status": "MATIZADA",
         "date": "2026-10-26",
@@ -510,7 +510,7 @@
           "src/client/lib/profile-models.ts:405-415"
         ]
       },
-      "codeStatus": "PASS",
+      "codeStatus": "FAIL",
       "refStatus": "UNVERIFIED",
       "checks": [
         {
@@ -521,12 +521,54 @@
         },
         {
           "kind": "code-anchor",
-          "status": "PASS",
-          "detail": "src/client/components/Reader.tsx:4478 coincide con /updateLanguageTheta\\(currentLang, beta, 1, 1\\.0\\)/",
+          "status": "FAIL",
+          "detail": "src/client/components/Reader.tsx:4458-4498 no contiene /updateLanguageTheta\\(currentLang, beta, 1, 1\\.0\\)/",
           "observed": {
             "file": "src/client/components/Reader.tsx",
-            "line": 4478,
-            "text": "updateLanguageTheta(currentLang, beta, 1, 1.0);"
+            "asked": 4478,
+            "excerpt": [
+              "4458:           language={language}",
+              "4459:           setBilingualMode={setBilingualMode}",
+              "4460:         />",
+              "4461:       </ReaderFloatingLane>",
+              "4462:       <ReaderOverlays",
+              "4463:         bookHash={bookHash}",
+              "4464:         bookTitle={title}",
+              "4465:         author={author}",
+              "4466:         language={language}",
+              "4467:         sectionIndex={sectionIndex}",
+              "4468:         signedIn={signedIn}",
+              "4469:         selection={selection}",
+              "4470:         // La ficha nace con el estado real del Cuaderno: sin esto el",
+              "4471:         // primer toque podía re-guardar una palabra ya guardada.",
+              "4472:         isSavedInitial={isSavedInitial}",
+              "4473:         onCloseSelection={closeSelection}",
+              "4474:         // Acciones de pasaje en la ficha de palabra: cada una cierra la",
+              "4475:         // ficha y ejecuta la acción sobre su palabra o su frase.",
+              "4476:         wordPassageActions={wordPassageActions}",
+              "4477:         onWordSaved={onWordSaved}",
+              "4478:         onWordRemoved={onWordRemoved}",
+              "4479:         onKnowledgeChanged={handleKnowledgeChanged}",
+              "4480:         bookSections={bookSections}",
+              "4481:         toc={catalog?.targets?.map((t) => ({ index: t.sectionIndex, label: t.label }))}",
+              "4482:         charOffsetInChapter={charOffsetInChapter}",
+              "4483:         currentChapterId={currentChapterId}",
+              "4484:         currentChapterTitle={currentChapterTitle}",
+              "4485:         prep={prep}",
+              "4486:         onRowsPresented={recordPresented}",
+              "4487:         onAnswerPrep={answerPrep}",
+              "4488:         onConfirmPrep={() => void confirmPrep()}",
+              "4489:         onSkipPrep={skipPrep}",
+              "4490:         onRetryPrep={() => void retryPrep()}",
+              "4491:         onClosePrep={() => {",
+              "4492:           releaseOverlay();",
+              "4493:           closePrepLayer();",
+              "4494:         }}",
+              "4495:         onDiscardPrep={discardPrep}",
+              "4496:         initialStrategy={settings.strategyPreset}",
+              "4497:         onSelectStrategy={(preset) => selectStrategyPreset(preset)}",
+              "4498:         onMarkKnown={(lemma, beta) => {"
+            ]
           }
         },
         {
@@ -1713,5 +1755,5 @@
       }
     }
   ],
-  "verdict": "PASS_WITH_UNVERIFIED"
+  "verdict": "FAIL"
 }

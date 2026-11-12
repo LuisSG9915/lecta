@@ -1010,7 +1010,8 @@ mark.saved-word[data-level="settled"] {
   }
 }
 
-.selection-menu button {
+/* Los puntos de tono tienen su propio tamaño y relleno (reader.css). */
+.selection-menu button:not(.tone-dot) {
   padding: 6px 12px;
   min-height: 2rem;
   font-family: var(--font-ui);
@@ -1027,7 +1028,7 @@ mark.saved-word[data-level="settled"] {
     color var(--dur-1) var(--ease-out);
 }
 
-.selection-menu button:hover {
+.selection-menu button:not(.tone-dot):hover {
   background: var(--paper-sunken);
   color: var(--vermilion);
 }
@@ -1037,7 +1038,7 @@ mark.saved-word[data-level="settled"] {
     padding: 4px;
     gap: 4px;
   }
-  .selection-menu button {
+  .selection-menu button:not(.tone-dot) {
     min-height: 2.75rem; /* 44px táctil */
     padding: 0.65rem 1rem;
     font-size: var(--fs-sm);

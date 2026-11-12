@@ -146,6 +146,12 @@ describe("classifySelection", () => {
     [{ ...base, cardOpen: true, sameWord: true }, "ignore"],
     [{ ...base, words: 3 }, "passage-bar"],
     [{ ...base, words: 4, cardOpen: true }, "close-card-then-bar"],
+    // Táctil: una palabra abre el mini menú, no la ficha.
+    [{ ...base, isTouch: true }, "passage-bar"],
+    [{ ...base, isTouch: true, cardOpen: true }, "close-card-then-bar"],
+    [{ ...base, isTouch: true, cardOpen: true, sameWord: true }, "ignore"],
+    [{ ...base, isTouch: true, sheetOpen: true }, "ignore"],
+    [{ ...base, isTouch: true, emptyWord: true }, "ignore"],
   ] as const)("%o → %s", (input, expected) => {
     expect(classifySelection(input)).toBe(expected);
   });

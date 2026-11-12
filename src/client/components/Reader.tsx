@@ -399,6 +399,10 @@ export const PRESET_LABELS: Record<ReadingStrategyPreset, string> = {
   custom: "Ajustado",
 };
 
+// Espacio bajo la selección táctil para los tiradores nativos (gota de
+// ~22 px + margen de agarre).
+const TOUCH_HANDLE_CLEARANCE_PX = 44;
+
 export default function Reader({
   bookHash,
   file,
@@ -580,9 +584,14 @@ export default function Reader({
   // Espejo de `selection` para el listener de `selectionchange` (que no se
   // rearma en cada render): cubre los 7 sitios que llaman setSelection.
   const selectionRef = useRef<WordHit | null>(null);
+  const keepNativeSelectionRef = useRef(false);
   useEffect(() => {
     selectionRef.current = selection;
     if (selection) return;
+    if (keepNativeSelectionRef.current) {
+      keepNativeSelectionRef.current = false;
+      return;
+    }
     // Al cerrar la ficha (×, toque, atrás, otra hoja) se suelta la
     // selección nativa de una palabra que quedó viva en táctil; la de un
     // pasaje se conserva para la barra.
@@ -2618,6 +2627,7 @@ export default function Reader({
         cardOpen: card !== null,
         sheetOpen: card === null && overlayReleaseRef.current !== null,
         sameWord: Boolean(card && hit && sameWordHit(card, hit)),
+        isTouch,
       });
       if (intent === "ignore") {
         if (words.length >= 2) setSelButton(null);
@@ -2628,22 +2638,33 @@ export default function Reader({
         openSelection(hit);
         return;
       }
-      if (intent === "close-card-then-bar") closeSelection();
+      if (intent === "close-card-then-bar") {
+        // La selección nativa sigue siendo la del menú: el efecto de
+        // cierre de la ficha no debe soltarla.
+        keepNativeSelectionRef.current = true;
+        closeSelection();
+      }
 
-      if (words.length >= 2) {
+      if (words.length >= 2 || (isTouch && hit)) {
         let placement: "top" | "bottom" = isTouch ? "bottom" : "top";
-        let y = isTouch ? rect.bottom : rect.top;
+        // En táctil el menú baja más allá de los tiradores nativos (que
+        // cuelgan bajo la selección): encima los taparía y el arrastre caería
+        // en el menú (visto por adb el 2026-11-11). Arriba queda la barra
+        // «Copiar / Seleccionar todo» del sistema.
+        const handleClearance = isTouch ? TOUCH_HANDLE_CLEARANCE_PX : 0;
+        let y = isTouch ? rect.bottom + handleClearance : rect.top;
         // Reserva para la franja flotante + dock: el menú no debe caer
         // encima de la cápsula ni de las acciones de lectura.
         const bottomReserve = isTouch ? 190 : 96;
 
         if (
           placement === "bottom" &&
-          rect.bottom + bottomReserve > window.innerHeight &&
+          rect.bottom + handleClearance + bottomReserve > window.innerHeight &&
           rect.top > bottomReserve
         ) {
           placement = "top";
-          y = rect.top;
+          // En táctil, por encima de la barra del sistema.
+          y = rect.top - (isTouch ? TOUCH_HANDLE_CLEARANCE_PX : 0);
         } else if (
           placement === "top" &&
           rect.top < bottomReserve &&
@@ -2657,7 +2678,7 @@ export default function Reader({
         const menuHalfW = 170;
         const clampedX = Math.max(menuHalfW + 12, Math.min(centerX, window.innerWidth - menuHalfW - 12));
 
-        setSelButton({ x: clampedX, y, placement });
+        setSelButton({ x: clampedX, y, placement, word: words.length <= 1 && hit ? hit : undefined });
       } else {
         setSelButton(null);
       }
@@ -4363,6 +4384,7 @@ export default function Reader({
         openQuoteCardFromSelection={openQuoteCardFromSelection}
         askCatAboutSelection={askCatAboutSelection}
         setDeepModal={setDeepModal}
+        onDefine={openSelection}
       />
 
       <ReaderFloatingLane>
@@ -4378,7 +4400,7 @@ export default function Reader({
 
         {showLongPressHint && !toastMessage ? (
           <div className="reader-hint-toast" role="status" aria-live="polite">
-            Mantén presionada una palabra para ver qué significa.
+            Mantén presionada una palabra para ver su significado o subrayar.
           </div>
         ) : null}
 

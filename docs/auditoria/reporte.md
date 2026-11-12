@@ -1,12 +1,12 @@
 # Reporte de auditoría — estrategia de aprendizaje de Lecta
 
-Generado: 2026-11-12T02:37:30.488Z
+Generado: 2026-11-12T03:31:04.712Z
 Documento auditado: `docs/estrategia-aprendizaje-2026-10-24.md`
 Registro: `docs/auditoria/claims.json`
-Commit: `297003ae0a2e3ab1bbb2a10c3d6ff7a25c05c3c7`
+Commit: `ea9048fdd7a9e496a01f39d60bec902c5994396f`
 Red: no (solo forma de las referencias)
 
-**Veredicto: PASS_WITH_UNVERIFIED** — 1 afirmaciones aprobadas, 0 refutadas, 0 refutadas por auditoría, 13 sin verificar, 0 comprobaciones omitidas.
+**Veredicto: FAIL** — 1 afirmaciones aprobadas, 1 refutadas, 0 refutadas por auditoría, 12 sin verificar, 0 comprobaciones omitidas.
 
 ## Afirmaciones
 
@@ -132,19 +132,19 @@ Código: **PASS** · Referencias: **UNVERIFIED**
 - ⚠️ **UNVERIFIED** · referencia wilson2019: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":"10.1038/s41467-019-12552-4","url":null}`
 
-### ⚠️ H4-jol — «Ya la conozco» alimenta el nivel como si fuera una prueba
+### ❌ H4-jol — «Ya la conozco» alimenta el nivel como si fuera una prueba
 
 > Marcar «ya la conozco» ajusta θ con outcome 1 y un delta de 0,18 × (1 − P), sin ninguna recuperación verificada de por medio, y el acto se registra sin pagar XP de repaso.
 
-Código: **PASS** · Referencias: **UNVERIFIED**
+Código: **FAIL** · Referencias: **UNVERIFIED**
 
 **Veredicto de auditoría (2026-10-26): MATIZADA** — La conclusión se sostiene: «Ya la sé» sigue siendo un juicio. Ahora ajusta θ una sola vez con la dificultad real de la palabra y no paga XP; el pretest bloqueante se descartó por la regla de 1 toque.
 - evidencia: `src/client/components/WordPanel.tsx:636-670`
 - evidencia: `src/client/lib/profile-models.ts:405-415`
 
 - ✅ **PASS** · doc-mention: el documento contiene ««Ya la conozco» es un juicio, no una prueba»
-- ✅ **PASS** · code-anchor: src/client/components/Reader.tsx:4478 coincide con /updateLanguageTheta\(currentLang, beta, 1, 1\.0\)/
-  - observado: `{"file":"src/client/components/Reader.tsx","line":4478,"text":"updateLanguageTheta(currentLang, beta, 1, 1.0);"}`
+- ❌ **FAIL** · code-anchor: src/client/components/Reader.tsx:4458-4498 no contiene /updateLanguageTheta\(currentLang, beta, 1, 1\.0\)/
+  - observado: `{"file":"src/client/components/Reader.tsx","asked":4478,"excerpt":["4458:           language={language}","4459:           setBilingualMode={setBilingualMode}","4460:         />","4461:       </ReaderFloatingLane>","4462:       <ReaderOverlays","4463:         bookHash={bookHash}","4464:         bookTitle={title}","4465:         author={author}","4466:         language={language}","4467:         sectionIndex={sectionIndex}","4468:         signedIn={signedIn}","4469:         sel…`
 - ✅ **PASS** · code-anchor: src/client/lib/profile-models.ts:417 coincide con /0\.18 \* \(1 - pKnow\)/
   - observado: `{"file":"src/client/lib/profile-models.ts","line":417,"text":"delta = 0.18 * (1 - pKnow);"}`
 - ✅ **PASS** · code-anchor: src/client/components/WordPanel.tsx:632 coincide con /award: false/

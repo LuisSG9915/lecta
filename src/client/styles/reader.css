@@ -4032,9 +4032,18 @@ b.lecta-anchor {
     max-width: calc(100vw - 24px) !important;
     width: auto !important;
     transform: none !important;
-    justify-content: center;
-    flex-wrap: wrap;
+    /* Una sola fila: con «Significado» + tinta + 3 tonos + 3 acciones no
+       cabe en 390 px, así que se desliza en horizontal en vez de partirse
+       en dos filas que tapan el texto (visto por adb el 2026-11-11). */
+    justify-content: flex-start;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
     box-sizing: border-box;
+  }
+
+  .selection-menu::-webkit-scrollbar {
+    display: none;
   }
 
   .selection-menu[data-placement="bottom"],
@@ -4043,9 +4052,10 @@ b.lecta-anchor {
   }
 
   .selection-menu-btn,
-  .selection-menu button {
+  .selection-menu button:not(.tone-dot) {
+    flex-shrink: 0;
     min-height: 44px;
-    padding: 8px 12px;
+    padding: 8px 10px;
     display: inline-flex;
     align-items: center;
     justify-content: center;

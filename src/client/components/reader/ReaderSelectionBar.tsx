@@ -1,14 +1,18 @@
-// Menú de acciones de selección del lector para pasajes (>1 palabra):
-// tinta, cita, reflexión y preguntar al compañero. La consulta de una
-// sola palabra abre directo la tarjeta única (WordPanel, Track 4):
-// no hay píldora intermedia, así nunca hay dos paneles para lo mismo.
+// Menú de acciones de selección del lector: tinta, reflexión, postal y
+// preguntar al compañero. En táctil la presión larga selecciona la
+// palabra y abre este menú (con «Significado» primero) en vez de la
+// ficha: así los tiradores quedan libres para ampliar la cita. Con ratón
+// el clic sobre una palabra sigue abriendo la ficha directa.
 import { useEffect, memo } from "react";
 import Icon from "../Icon";
+import type { WordHit } from "../../lib/words";
 
 export type ReaderSelectionButton = {
   x: number;
   y: number;
   placement: "top" | "bottom";
+  /** Selección de una sola palabra: el menú ofrece «Significado». */
+  word?: WordHit;
 };
 
 export interface ReaderSelectionBarProps {
@@ -18,6 +22,8 @@ export interface ReaderSelectionBarProps {
   openQuoteCardFromSelection: () => void;
   askCatAboutSelection: (param?: string | { word?: string; passage: string; bookId?: string }) => void | Promise<unknown>;
   setDeepModal: (value: boolean) => void;
+  /** Abre la ficha de la palabra seleccionada. */
+  onDefine?: (hit: WordHit) => void;
 }
 
 export const ReaderSelectionBar = memo(function ReaderSelectionBar(props: ReaderSelectionBarProps) {
@@ -28,6 +34,7 @@ export const ReaderSelectionBar = memo(function ReaderSelectionBar(props: Reader
     openQuoteCardFromSelection,
     askCatAboutSelection,
     setDeepModal,
+    onDefine,
   } = props;
 
   // Auto-dismiss sin fricción: si el usuario hace scroll o toca fuera de la barra
@@ -58,6 +65,26 @@ export const ReaderSelectionBar = memo(function ReaderSelectionBar(props: Reader
       onPointerDown={(event) => event.stopPropagation()}
       onClick={(event) => event.stopPropagation()}
     >
+      {/* 0. Significado: solo cuando la selección es una palabra */}
+      {selButton.word && onDefine ? (
+        <button
+          type="button"
+          className="selection-menu-btn selection-define"
+          title="Ver qué significa"
+          aria-label="Ver qué significa"
+          onPointerDown={(event) => event.preventDefault()}
+          onClick={() => {
+            const hit = selButton.word!;
+            window.getSelection()?.removeAllRanges();
+            setSelButton(null);
+            onDefine(hit);
+          }}
+        >
+          <Icon name="book" size={14} />
+          <span>Significado</span>
+        </button>
+      ) : null}
+
       {/* 1. Resaltar con tinta (3 tonos: Ámbar, Salvia, Azul Darío) */}
       <div className="selection-highlight-group" role="group" aria-label="Resaltar con tinta">
         <button

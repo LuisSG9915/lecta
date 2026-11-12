@@ -5,13 +5,14 @@ import { touch } from "./helpers/touch";
 const MINIMAL_EPUB_PATH = path.resolve(process.cwd(), "fixtures/minimal.epub");
 
 /**
- * plan-lectura-flaquezas F3: en móvil, abrir una palabra con presión larga
- * no puede cerrar el camino a subrayar una cita. La selección nativa queda
- * viva; al extenderla a varias palabras la ficha se cierra y aparece la
- * barra de pasajes; «Tinta» guarda y pinta el pasaje en el libro.
+ * plan-lectura-flaquezas F3 (ajuste 2026-11-11 tras probar en Android): en
+ * táctil la presión larga selecciona la palabra y abre un mini menú
+ * («Significado», tinta, postal…), no la ficha. La selección queda viva para
+ * ampliarla con los tiradores; con varias palabras el menú pasa a modo
+ * pasaje y «Tinta» guarda y pinta el pasaje en el libro.
  *
- * Los eventos son sintéticos: no prueban los tiradores reales del sistema
- * (eso queda para la verificación manual en Android del plan, paso 8).
+ * Los eventos son sintéticos: los tiradores reales se probaron por adb en
+ * un Android (Brave/Chrome 157).
  */
 test.use({ viewport: { width: 412, height: 915 }, hasTouch: true, isMobile: true });
 
@@ -77,34 +78,33 @@ async function selectFromWord(page: Page, target: string, words: number) {
   );
 }
 
-test("presión larga + extender la selección → barra de pasajes y tinta en el libro", async ({ page }) => {
+test("presión larga → mini menú; ampliar la selección → tinta en el libro", async ({ page }) => {
   await openMinimalBook(page);
   const card = page.locator(".word-unified-card");
+  const bar = page.locator(".reader__passage-bar");
+  const define = bar.locator(".selection-define");
 
-  // 1. Presión sostenida sobre «perenne» abre la ficha.
+  // 1. Presión sostenida sobre «perenne»: selecciona la palabra y abre el
+  //    mini menú con «Significado» (no la ficha).
   const one = await selectFromWord(page, "perenne", 1);
   expect(one?.text).toBe("perenne");
   await page.evaluate(() => window.getSelection()!.removeAllRanges());
   await touch(page, "pointerdown", one!.x, one!.y);
-  await page.waitForTimeout(620);
-  await expect(card).toBeVisible({ timeout: 3_000 });
+  await page.waitForTimeout(1_100);
   await touch(page, "pointerup", one!.x, one!.y);
+  await expect(define).toBeVisible({ timeout: 3_000 });
+  await expect(card).not.toBeVisible();
+  expect(await page.evaluate(() => String(window.getSelection()))).toBe("perenne");
 
-  // 2. Llega la selección nativa de esa misma palabra: la ficha sigue
-  //    (misma palabra, mismo sitio → no se reabre).
-  await selectFromWord(page, "perenne", 1);
-  await page.waitForTimeout(400);
-  await expect(card).toBeVisible();
-
-  // 3. Se extiende a 4 palabras: la ficha se cierra y aparece la barra.
+  // 2. Se amplía la selección a 4 palabras (como al arrastrar el tirador):
+  //    el menú pasa a modo pasaje, sin «Significado».
   const four = await selectFromWord(page, "perenne", 4);
   expect(four?.text.split(/\s+/).length).toBeGreaterThanOrEqual(2);
   await page.waitForTimeout(400);
-  await expect(card).not.toBeVisible();
-  const bar = page.locator(".reader__passage-bar");
   await expect(bar).toBeVisible();
+  await expect(define).toHaveCount(0);
 
-  // 4. «Tinta» guarda el pasaje y lo pinta en el texto.
+  // 3. «Tinta» guarda el pasaje y lo pinta en el texto.
   await bar.locator(".selection-save").click();
   await expect
     .poll(

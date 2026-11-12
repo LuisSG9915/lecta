@@ -110,18 +110,22 @@ export interface SelectionIntentInput {
   sheetOpen: boolean;
   /** La selección es la misma palabra, en el mismo sitio, que la ficha. */
   sameWord: boolean;
+  /** Entrada táctil: una palabra abre el mini menú, no la ficha. */
+  isTouch?: boolean;
 }
 
 /**
- * Qué hacer con la selección del lector. Una palabra abre la ficha (o la
- * sustituye); dos o más montan la barra de pasajes, cerrando antes la
- * ficha: así quien abre una palabra con presión larga puede arrastrar los
- * tiradores y subrayar una cita.
+ * Qué hacer con la selección del lector. Con ratón, una palabra abre la
+ * ficha (o la sustituye). En táctil, una palabra abre el mini menú
+ * («Significado», tinta…) y deja los tiradores libres para ampliar la
+ * selección; dos o más palabras montan la barra de pasajes, cerrando antes
+ * la ficha si estaba abierta.
  */
 export function classifySelection(input: SelectionIntentInput): SelectionIntent {
   if (input.words <= 1) {
     if (input.emptyWord) return "ignore";
     if (input.cardOpen && input.sameWord) return "ignore";
+    if (input.isTouch) return input.cardOpen ? "close-card-then-bar" : input.sheetOpen ? "ignore" : "passage-bar";
     return "open-card";
   }
   if (input.cardOpen) return "close-card-then-bar";

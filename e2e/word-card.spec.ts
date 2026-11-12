@@ -140,7 +140,7 @@ test.describe("Tarjeta de palabra (F9)", () => {
     await expect(page.locator(".reader")).not.toBeVisible({ timeout: 8_000 });
   });
 
-  test("en táctil la ficha se abre por presión, no por toque (gesto de selección)", async ({
+  test("en táctil la presión abre el mini menú y «Significado» la ficha (gesto de selección)", async ({
     page,
   }) => {
     await openMinimalBook(page);
@@ -159,14 +159,18 @@ test.describe("Tarjeta de palabra (F9)", () => {
     await page.waitForTimeout(400);
     await expect(card).not.toBeVisible();
 
-    // Presión sostenida: abre la ficha; el click del release no la cierra.
+    // Presión sostenida: selecciona la palabra y abre el mini menú (no la
+    // ficha); el click del release no lo cierra. «Significado» abre la ficha.
     await touch("pointerdown", coords.x, coords.y);
-    await page.waitForTimeout(620);
-    await expect(card).toBeVisible({ timeout: 3_000 });
+    await page.waitForTimeout(1_100);
     await touch("pointerup", coords.x, coords.y);
     await clickAt(coords.x, coords.y);
     await page.waitForTimeout(300);
-    await expect(card).toBeVisible();
+    const define = page.locator(".reader__passage-bar .selection-define");
+    await expect(define).toBeVisible({ timeout: 3_000 });
+    await expect(card).not.toBeVisible();
+    await define.click();
+    await expect(card).toBeVisible({ timeout: 3_000 });
 
     // Guardar desde la ficha abierta por presión persiste en el Cuaderno.
     await card.locator("button:has-text('Guardar en mi cuaderno')").click();

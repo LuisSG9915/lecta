@@ -1653,11 +1653,13 @@ describe("Fase 4: Pruebas de Integración End-to-End en Reader.test.ts", () => {
       expect(openSelection).not.toHaveBeenCalled();
       expect(setBarsVisible).toHaveBeenCalledTimes(1);
 
-      // 2) Presión sostenida: abre la ficha con la palabra del punto y
-      //    consume el click del release (ni cierra ni alterna barras).
+      // 2) Presión sostenida: sin rango para seleccionar (el mock no lo
+      //    trae) cae a la ficha tras el margen de la selección nativa
+      //    (480 + 300 ms) y consume el click del release. Con rango, la
+      //    presión selecciona la palabra y abre el mini menú (e2e).
       bookContent!.dispatchEvent(touch("pointerdown"));
       await act(async () => {
-        vi.advanceTimersByTime(500);
+        vi.advanceTimersByTime(800);
       });
       expect(openSelection).toHaveBeenCalledTimes(1);
       expect(openSelection.mock.calls[0][0]).toMatchObject({ word: "perenne" });
