@@ -11,7 +11,7 @@ export const EXPLAIN_PROMPT_VERSION = "explain-v1";
 export const EVALUATE_PROMPT_VERSION = "evaluate-v1";
 export const STORY_PROMPT_VERSION = "story-v1";
 export const EXPLAIN_PASSAGE_PROMPT_VERSION = "explain-passage-v1";
-export const PAGE_RECAP_PROMPT_VERSION = "page-recap-v1";
+export const PAGE_RECAP_PROMPT_VERSION = "page-recap-v2";
 export const CHARACTER_RECAP_PROMPT_VERSION = "character-recap-v1";
 
 const POS_VALUES = new Set([
@@ -82,7 +82,6 @@ export type DeepSeekOperation =
   | "evaluate"
   | "story"
   | "explain_passage"
-  | "companion_note"
   | "page_recap"
   | "character_recap";
 
@@ -98,7 +97,6 @@ export const AI_CALL_LIMITS = {
   evaluate: 180,
   story: 180,
   explain_passage: 384,
-  companion_note: 120,
   page_recap: 90,
   character_recap: 256,
 } as const satisfies Record<DeepSeekOperation, number>;
@@ -933,65 +931,9 @@ export function parsePassageExplanation(raw: string): PassageExplanation | null 
   return result;
 }
 
-// ---------- Cartas y Notas del Compañero (Lecta v2.0 - B.2) ----------
-
-export const COMPANION_NOTE_PROMPT_VERSION = "companion-note-v1";
-
-export const COMPANION_NOTE_CALL_OPTIONS: DeepSeekCallOptions = {
-  operation: "companion_note",
-  promptVersion: COMPANION_NOTE_PROMPT_VERSION,
-  maxTokens: AI_CALL_LIMITS.companion_note,
-};
-
-export const COMPANION_NOTE_SYSTEM_PROMPT = `Eres el gato compañero lector de Lecta. Redacta una carta o nota muy breve (exactamente 2 oraciones) y entrañable firmada por ti. Felicita al lector por su logro, rango o lectura reciente e integra con naturalidad la palabra indicada o el libro actual. Devuelve estrictamente SOLO un objeto JSON válido con esta forma exacta:
-{"title":"<título corto y cálido de la carta>","note":"<exactamente 2 oraciones cariñosas y motivadoras>","signOff":"<firma del gato con huellitas>"}`;
-
-export function buildCompanionNotePrompt(input: {
-  catName?: string;
-  achievement?: string;
-  bookTitle?: string;
-  masteredWord?: string;
-  rankName?: string;
-}): string {
-  const parts: string[] = [];
-  parts.push(`Nombre del gato: ${input.catName || "Michi"}`);
-  if (input.achievement) parts.push(`Logro alcanzado: ${input.achievement}`);
-  if (input.rankName) parts.push(`Nuevo rango literario: ${input.rankName}`);
-  if (input.bookTitle) parts.push(`Libro actual: «${input.bookTitle}»`);
-  if (input.masteredWord) parts.push(`Palabra aprendida: «${input.masteredWord}»`);
-  return parts.join("\n");
-}
-
-export interface CompanionNoteResponse {
-  title: string;
-  note: string;
-  signOff: string;
-}
-
-export function parseCompanionNote(raw: string): CompanionNoteResponse | null {
-  let data: unknown;
-  try {
-    data = JSON.parse(raw);
-  } catch {
-    return null;
-  }
-  if (typeof data !== "object" || data === null) return null;
-  const obj = data as Record<string, unknown>;
-  const title = typeof obj.title === "string" ? obj.title.trim().slice(0, 80) : "";
-  const note = typeof obj.note === "string" ? obj.note.trim().slice(0, 300) : "";
-  const signOff =
-    typeof obj.signOff === "string" ? obj.signOff.trim().slice(0, 60) : "Tu gato lector 🐾";
-  if (!note) return null;
-  return {
-    title: title || "¡Carta de tu compañero!",
-    note,
-    signOff,
-  };
-}
-
 // ---------- Rescate de lectura / Recuperar el hilo (Lecta TDAH) ----------
 
-export const PAGE_RECAP_SYSTEM_PROMPT = `Eres el gato compañero lector de Lecta. Ayudas a un lector que se distrajo o leyó en piloto automático a recuperar el hilo de la página actual sin abrumarlo. Devuelve estrictamente SOLO un objeto JSON válido con esta forma exacta, sin texto extra ni markdown:
+export const PAGE_RECAP_SYSTEM_PROMPT = `Eres el gato compañero lector de Lecta. El lector pidió un repaso de la página actual: ayúdalo a retomar el hilo sin abrumarlo. No supongas por qué lo pide ni afirmes en qué estado está. Devuelve estrictamente SOLO un objeto JSON válido con esta forma exacta, sin texto extra ni markdown:
 {"bullets":["<idea clave 1 en máx 15 palabras>","<idea clave 2 en máx 15 palabras>"],"hookQuestion":"<pregunta intrigante de 1 oración sobre lo que está pasando o por venir>"}
 Reglas:
 - "bullets": exactamente 2 puntos clave ultra sintéticos que resuman la acción o pensamiento de la página.

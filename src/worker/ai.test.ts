@@ -23,6 +23,7 @@ import {
   ITEM_PROMPT_VERSION,
   PAGE_RECAP_CALL_OPTIONS,
   PAGE_RECAP_PROMPT_VERSION,
+  PAGE_RECAP_SYSTEM_PROMPT,
   CHARACTER_RECAP_CALL_OPTIONS,
   CHARACTER_RECAP_PROMPT_VERSION,
   parseCharacterRecap,
@@ -977,7 +978,9 @@ describe("page_recap (Recuperar el hilo)", () => {
   it("respeta el límite de 90 tokens y versión de prompt", () => {
     expect(PAGE_RECAP_CALL_OPTIONS.maxTokens).toBe(90);
     expect(PAGE_RECAP_CALL_OPTIONS.promptVersion).toBe(PAGE_RECAP_PROMPT_VERSION);
-    expect(PAGE_RECAP_PROMPT_VERSION).toBe("page-recap-v1");
+    expect(PAGE_RECAP_PROMPT_VERSION).toBe("page-recap-v2");
+    // §4 de docs/concentracion-y-lectura.md: no inferir estados del lector.
+    expect(PAGE_RECAP_SYSTEM_PROMPT).not.toMatch(/distraj|piloto automático|cansad|fatiga/i);
   });
 
   it("parsePageRecap valida JSON correcto con bullets y hookQuestion", () => {

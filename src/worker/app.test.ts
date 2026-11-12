@@ -401,11 +401,6 @@ describe("Blindaje de rutas IA (Tarea 1.1)", () => {
     expect(res.status).toBe(401);
   });
 
-  it("companion-note responde 401 sin sesión", async () => {
-    const res = await post("/api/ai/companion-note", { catName: "Michi" });
-    expect(res.status).toBe(401);
-  });
-
   it("corta cuerpos de más de 64 KB con 413 antes de parsear el JSON", async () => {
     const res = await post("/api/ai/page-recap", "x".repeat(65 * 1024));
     expect(res.status).toBe(413);
