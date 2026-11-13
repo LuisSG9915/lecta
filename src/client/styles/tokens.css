@@ -70,7 +70,9 @@
   --bg: var(--paper);
   /* Superficies con nombre del Bloque 3 (lista cerrada). */
   --surface-dock: var(--paper-raised);
-  --surface-herbarium: linear-gradient(var(--ochre-wash), var(--ochre-wash)) var(--paper);
+  /* Cuaderno botánico: 12 % de ocre sobre el papel del tema. El --ochre-wash
+     (22–28 %) es para resaltes: como fondo de página en noche se ve barroso. */
+  --surface-herbarium: color-mix(in srgb, var(--ochre) 12%, var(--paper));
   --surface-kindle: var(--night);
   --ink-on-night: var(--night-ink);
   --shadow-sheet: 0 -8px 30px var(--shadow-sheet-color);
