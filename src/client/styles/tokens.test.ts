@@ -124,6 +124,34 @@ describe("tokens.css", () => {
     expect(cssContent).toContain("--ease-soft: cubic-bezier(0.4, 0, 0.2, 1);");
   });
 
+  it("Bloque 3: pizarra noche del landing en los 5 bloques, legible", () => {
+    for (const [themeName, decls] of Object.entries(themes)) {
+      for (const name of ["--night", "--night-2", "--night-ink", "--night-soft", "--moon", "--mist"]) {
+        expect(decls[name], `${name} en ${themeName}`).toBeDefined();
+      }
+      const night = parseColor(decls["--night"])!;
+      const ink = parseColor(decls["--night-ink"])!;
+      const ratio = contrastRatio(
+        relativeLuminance(ink.r, ink.g, ink.b),
+        relativeLuminance(night.r, night.g, night.b),
+      );
+      expect(ratio, `--night-ink sobre --night en ${themeName} (${ratio.toFixed(2)}:1)`).toBeGreaterThanOrEqual(4.5);
+    }
+    expect(themes.papel["--rule"]).toBe("rgba(120, 95, 70, 0.14)");
+    expect(themes.blanco["--rule"]).toBe("rgba(120, 95, 70, 0.14)");
+  });
+
+  it("Bloque 3: curva del landing, superficies con nombre y pelajes", () => {
+    expect(cssContent).toContain("--ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);");
+    for (const name of ["--surface-dock", "--surface-herbarium", "--surface-kindle", "--ink-on-night"]) {
+      expect(cssContent).toContain(`${name}:`);
+    }
+    // Las paletas por pelaje viven aquí, fuera de los bloques de tema.
+    for (const coat of ["tuxedo", "latte", "ginger", "mist", "calico"]) {
+      expect(cssContent).toContain(`.cat.cat--coat-${coat}`);
+    }
+  });
+
   it("mantiene paridad exacta de tokens de color entre todos los temas", () => {
     const getColorVarNames = (theme: ThemeDeclarations) => {
       return Object.entries(theme)
