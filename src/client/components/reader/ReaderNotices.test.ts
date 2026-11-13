@@ -77,6 +77,34 @@ describe("ReaderNotices: aviso de capítulo rico en vocabulario", () => {
 });
 
 
+describe("ReaderNotices: palabras previstas en plan free (Lecta+)", () => {
+  it("muestra la nota de Lecta+ y se cierra sin bloquear la lectura", () => {
+    const container = document.createElement("div");
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    const dismiss = vi.fn();
+    act(() => {
+      root.render(
+        h(ReaderNotices, {
+          ...propsWithKeyWords(0),
+          previewSuggested: false,
+          prepPlanNote: true,
+          dismissPrepPlanNote: dismiss,
+        }),
+      );
+    });
+    expect(container.querySelector(".plan-note")?.textContent).toContain(
+      "Las palabras previstas son de Lecta+.",
+    );
+    act(() => {
+      container.querySelector<HTMLButtonElement>("[aria-label='Cerrar aviso']")!.click();
+    });
+    expect(dismiss).toHaveBeenCalled();
+    act(() => root.unmount());
+    container.remove();
+  });
+});
+
 describe("ReaderNotices: píldora de transición ante fatiga (Fase 3)", () => {
   let container: HTMLDivElement;
   let root: Root;

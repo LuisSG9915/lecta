@@ -374,6 +374,65 @@ describe("WordPanel - Acciones Rápidas (Fase 4.3)", () => {
     expect(host.querySelector(".word-card-context-quote mark")?.textContent).toBe("efimero");
   });
 
+  it("cuenta free: '¿Qué significa aquí?' muestra la nota de Lecta+ sin llamar a la IA", async () => {
+    const { explainInPassage } = await import("../lib/lexicon");
+    vi.mocked(explainInPassage).mockClear();
+
+    render(
+      h(WordPanel, {
+        word: "efimero",
+        context: "Un momento efimero en el libro.",
+        language: "es",
+        bookHash: "book123",
+        planLocked: true,
+        onClose: vi.fn(),
+        onSaved: vi.fn(),
+      }),
+    );
+    await flush();
+
+    const btn = host.querySelector<HTMLButtonElement>(".btn--explain-passage");
+    expect(btn).not.toBeNull();
+    await act(async () => {
+      click(btn!);
+    });
+    await flush();
+
+    expect(explainInPassage).not.toHaveBeenCalled();
+    expect(host.querySelector(".plan-note")?.textContent).toContain(
+      "La explicación en contexto es de Lecta+.",
+    );
+    // El significado del diccionario sigue a la vista.
+    expect(host.textContent).toContain("De corta duración.");
+  });
+
+  it("un 402 del servidor también pinta la nota de Lecta+", async () => {
+    const { explainInPassage } = await import("../lib/lexicon");
+    vi.mocked(explainInPassage).mockResolvedValueOnce({
+      ok: false,
+      error: "Esta función es de Lecta+.",
+      code: "LECTA_PLUS_REQUIRED",
+    });
+
+    render(
+      h(WordPanel, {
+        word: "efimero",
+        context: "Un momento efimero en el libro.",
+        language: "es",
+        bookHash: "book402",
+        onClose: vi.fn(),
+        onSaved: vi.fn(),
+      }),
+    );
+    await flush();
+    await act(async () => {
+      click(host.querySelector<HTMLButtonElement>(".btn--explain-passage")!);
+    });
+    await flush();
+
+    expect(host.querySelector(".plan-note")).not.toBeNull();
+  });
+
   it("al tocar '¿Qué significa aquí?' muestra el matiz y el tono, sin apunte del gato", async () => {
     const { explainInPassage } = await import("../lib/lexicon");
     vi.mocked(explainInPassage).mockClear();

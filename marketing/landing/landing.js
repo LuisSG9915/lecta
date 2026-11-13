@@ -7,13 +7,18 @@
   /* ---------- Elegir gato ---------- */
   const APP = "https://lecta.luis-sg9915.workers.dev/";
   const picks = $$('input[name="gato"]');
+  // El pelaje solo viaja a la app (?gato= y lecta:gato) si la persona lo
+  // eligió: al cargar la página no se guarda nada ni se reescribe ningún
+  // enlace, para que la app ofrezca el selector a quien no eligió.
   function setCoat(coat, announce) {
     const input = picks.find(i => i.value === coat) || picks[0];
     input.checked = true;
     const name = input.dataset.name;
     $$("img[data-stage]").forEach(im => { im.src = `web/gato-${input.value}-${im.dataset.stage}.webp`; });
-    $$("a[data-cta]").forEach(a => { a.href = `${APP}?gato=${input.value}`; });
     $("#pickCta").textContent = "Empezar con " + name;
+    if (!announce) return;
+    $$("a[data-cta]").forEach(a => { a.href = `${APP}?gato=${input.value}`; });
+    $$("a[data-cta-plus]").forEach(a => { a.href = `${APP}?gato=${input.value}&carne=1`; });
     if (announce) {
       $("#bubble").textContent = `Hola, soy ${name}. Yo te acompaño mientras lees.`;
       const tile = input.closest(".pick");

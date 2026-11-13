@@ -15,6 +15,11 @@ export type WorkerEnv = {
   RESEND_FROM_EMAIL?: string;
   /** Correo del dueño: abre /api/error-reports y recibe el digest de errores. */
   LECTA_OWNER_EMAIL?: string;
+  /** Stripe (docs/designs/2026-11-12-planes-y-landing.md): sin SDK, fetch directo. */
+  STRIPE_SECRET_KEY?: string;
+  STRIPE_WEBHOOK_SECRET?: string;
+  STRIPE_PRICE_MONTHLY_ID?: string;
+  STRIPE_PRICE_YEARLY_ID?: string;
   BOOKS?: R2Bucket;
   BOOKS_BUCKET?: R2Bucket;
   MODELS_BUCKET?: R2Bucket;

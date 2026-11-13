@@ -48,6 +48,7 @@ import {
 import { translateParagraph } from "../lib/translate";
 import { saveCharacterMemoryEnabled } from "../lib/page-recap";
 import Icon from "./Icon";
+import PlanNote from "./PlanNote";
 
 export interface LocalLexiconEntry {
   lemma: string;
@@ -91,6 +92,8 @@ export interface UnifiedWordPanelProps {
   author?: string;
   phrase?: PhraseHit;
   canExplain?: boolean;
+  /** Cuenta free: la IA en contexto es de Lecta+ y se muestra PlanNote. */
+  planLocked?: boolean;
   isSavedInitial?: boolean;
   sections?: SearchSection[];
   toc?: SearchTocRow[];
@@ -142,6 +145,7 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
   bookTitle,
   author,
   canExplain = true,
+  planLocked = false,
   isSavedInitial = false,
   sections,
   toc,
@@ -210,6 +214,8 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
   const [passageState, setPassageState] = useState<PassageStatus>("idle");
   const [passageResult, setPassageResult] = useState<ContextualMeaningResult | null>(null);
   const [passageError, setPassageError] = useState<string | null>(null); // Used in error display
+  // 402 de Lecta+ (o cuenta free): la ficha pinta PlanNote en vez de la IA.
+  const [planNoteShown, setPlanNoteShown] = useState(false);
   const [isSaved, setIsSaved] = useState<boolean>(isSavedInitial);
   const [savedEntry, setSavedEntry] = useState<SavedWord | null>(null);
   const [saving, setSaving] = useState(false);
@@ -232,7 +238,7 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
       localDefinition?: string;
       signal: AbortSignal;
       onResult: (res: ContextualMeaningResult) => void;
-      onError: (message?: string) => void;
+      onError: (message?: string, code?: string) => void;
     }) => {
       const variant = opts.localDefinition ? "compact" : "full";
       const pKey = `passage_meaning:v2:${variant}:${cacheKey}`;
@@ -305,7 +311,7 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
                 catTip: res.catTip,
               });
             } else {
-              opts.onError(res.error);
+              opts.onError(res.error, res.code);
             }
           })
           .catch(() => {
@@ -330,7 +336,10 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
           setMeaningStatus("ready");
           setPassageResult(res);
         },
-        onError: () => setMeaningStatus("error"),
+        onError: (_message, code) => {
+          if (code) setPlanNoteShown(true);
+          setMeaningStatus(code ? "unavailable" : "error");
+        },
       });
     },
     [runPassageFetch],
@@ -339,6 +348,10 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
   // NUEVO: Handler para revelar nivel 2 (matiz contextual)
   const handleRevealPassage = () => {
     triggerHaptic(8);
+    if (planLocked) {
+      setPlanNoteShown(true);
+      return;
+    }
     if (passageState === "loading" || passageState === "ready") {
       setDisclosureLevel(2);
       return;
@@ -363,7 +376,12 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
         setPassageState("ready");
         setDisclosureLevel(2);
       },
-      onError: (message) => {
+      onError: (message, code) => {
+        if (code) {
+          setPlanNoteShown(true);
+          setPassageState("idle");
+          return;
+        }
         setPassageError(message ?? null);
         setPassageState("error");
       },
@@ -429,7 +447,7 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
       if (entry?.shortDefinition?.trim()) {
         setMeaning({ text: entry.shortDefinition, source: "dictionary" });
         setMeaningStatus("ready");
-      } else if (canExplain && aiOn) {
+      } else if (canExplain && !planLocked && aiOn) {
         requestAiMeaning(entry?.lemma);
       } else {
         setMeaningStatus("unavailable");
@@ -437,7 +455,7 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
     });
 
     return () => abortCtrl.abort();
-  }, [cleanWord, effectiveLang, lookupLocalLexicon, onRecordSilentCalibration, bookHash, canExplain, requestAiMeaning]);
+  }, [cleanWord, effectiveLang, lookupLocalLexicon, onRecordSilentCalibration, bookHash, canExplain, planLocked, requestAiMeaning]);
 
   useEffect(() => {
     let cancelled = false;
@@ -985,6 +1003,18 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
                   <p className="word-card-ai-source">Significado sugerido por IA</p>
                 ) : null}
               </>
+            ) : planLocked ? (
+              <p className="word-card-context-fallback">
+                Esta palabra no está en el diccionario.{" "}
+                <a
+                  className="word-card-retry-link"
+                  href={`https://es.wiktionary.org/wiki/${encodeURIComponent(cleanWord)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Buscar en Wiktionary
+                </a>
+              </p>
             ) : !canExplain ? (
               <p className="word-card-context-fallback">
                 Esta palabra no está en el diccionario. Inicia sesión para que la
@@ -1058,7 +1088,12 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
                 {renderContextQuote()}
               </blockquote>
 
-              {!aiAllowed ? (
+              {planNoteShown ? (
+                <PlanNote
+                  title="La explicación en contexto es de Lecta+."
+                  detail="El significado de arriba siempre es tuyo."
+                />
+              ) : !aiAllowed ? (
                 !canExplain ? (
                   <p className="word-card-context-fallback">
                     Inicia sesión para explicar frases con IA.

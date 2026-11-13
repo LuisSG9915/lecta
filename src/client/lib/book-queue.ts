@@ -9,7 +9,7 @@ import {
   removeBookOp,
   type DbScope,
 } from "./idb";
-import { deleteBook, uploadBook, uploadBookCover } from "./books";
+import { deleteBook, registerBookMeta, uploadBook, uploadBookCover } from "./books";
 import { readBookMeta, isHashLikeIdentifier, humanizeFilename, coverToJpegBlob } from "./cover";
 import { isSyncPaused } from "./sync-state";
 
@@ -22,6 +22,28 @@ export async function queueBookUpload(hash: string, name?: string, scope?: DbSco
     return;
   }
   return enqueueBookOp({ kind: "upload", hash, name }, bound);
+}
+
+// Libro propio en una cuenta free (027): se registran solo los metadatos.
+export async function queueBookMeta(hash: string, name?: string, scope?: DbScope) {
+  const bound = scope ?? captureDbScope();
+  const book = await getStoredBook(hash, bound);
+  if (!book) return;
+  return enqueueBookOp({ kind: "meta", hash, name }, bound);
+}
+
+/**
+ * Encola lo que corresponde al plan: siempre los metadatos (para que otro
+ * dispositivo vea el libro) y, con Lecta+, además el archivo.
+ */
+export async function queueBookSync(
+  hash: string,
+  name: string | undefined,
+  withFile: boolean,
+  scope?: DbScope,
+) {
+  await queueBookMeta(hash, name, scope);
+  if (withFile) await queueBookUpload(hash, name, scope);
 }
 
 export function queueBookDelete(hash: string, scope?: DbScope) {
@@ -44,7 +66,16 @@ export async function runBookQueue(scope?: DbScope): Promise<number> {
       // null = la op ya no aplica y sale de la cola sin ser error
       // (p. ej. el libro se borró del dispositivo antes de subirse).
       let ok: boolean | null;
-      if (op.kind === "upload") {
+      if (op.kind === "meta") {
+        const book = await getStoredBook(op.hash, bound);
+        ok = book
+          ? await registerBookMeta(
+              op.hash,
+              { title: book.title, author: book.author, language: book.language },
+              bound,
+            )
+          : null;
+      } else if (op.kind === "upload") {
         const book = await getStoredBook(op.hash, bound);
         if (book) {
           if (!book.data || book.data.size === 0) {

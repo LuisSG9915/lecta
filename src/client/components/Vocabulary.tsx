@@ -81,6 +81,7 @@ import { useHerbarioView } from "../hooks/useHerbarioView";
 import { useLearnSession } from "../hooks/useLearnSession";
 import { useReviewSession } from "../hooks/useReviewSession";
 import Icon from "./Icon";
+import { useUserPlan } from "../lib/account-plan";
 
 export type VocabularyProps = {
   onClose?: () => void;
@@ -116,6 +117,7 @@ export function Vocabulary({
   backLabel,
   initialBookFilter,
 }: VocabularyProps) {
+  const userPlan = useUserPlan();
   const ref = useRef<HTMLDivElement>(null);
   const isOverlay = presentation !== "page";
   useModalBehavior(ref, onClose, { enabled: isOverlay });
@@ -632,6 +634,7 @@ export function Vocabulary({
                   practiceNote={practiceNote}
                   onStartPractice={startPractice}
                   onToggleWorkshop={toggleWorkshop}
+                  locked={userPlan?.plan === "free"}
                 />
               )}
             </NotebookHero>

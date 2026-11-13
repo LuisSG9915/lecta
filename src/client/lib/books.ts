@@ -21,6 +21,9 @@ export type RemoteBook = {
   // Género editorial detectado al subir (migración 025): sirve para
   // preseleccionar los chips al compartir desde otro dispositivo.
   genre?: string;
+  // Migración 027: false = libro propio registrado solo con metadatos (plan
+  // free); el archivo no está en la nube y se adjunta en este dispositivo.
+  hasFile?: boolean;
 };
 
 // Entrada del catálogo comunitario: una por sha256 aunque lo compartan
@@ -69,7 +72,38 @@ export async function uploadBook(
       },
       scope,
     );
+    // 402 = la nube de EPUB es de Lecta+: la operación ya no aplica (null la
+    // saca de la cola sin marcarla como error).
+    if (response.status === 402) return null;
     return response.ok;
+  } catch (error) {
+    if (error instanceof StaleScopeError) throw error;
+    return false;
+  }
+}
+
+/**
+ * Registra un libro propio solo con metadatos (gratis, migración 027) para
+ * que la estantería de otro dispositivo lo vea. true = registrado;
+ * null = 4xx (no tiene sentido reintentar); false = 5xx o sin red.
+ */
+export async function registerBookMeta(
+  hash: string,
+  meta: { title?: string; author?: string; language?: string },
+  scope?: DbScope,
+): Promise<boolean | null> {
+  try {
+    const response = await accountFetch(
+      `/api/user/books/${hash}/meta`,
+      {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ...meta, sha256: hash }),
+      },
+      scope,
+    );
+    if (response.ok) return true;
+    return response.status >= 400 && response.status < 500 ? null : false;
   } catch (error) {
     if (error instanceof StaleScopeError) throw error;
     return false;
@@ -89,19 +123,28 @@ export async function listRemoteBooks(scope?: DbScope): Promise<RemoteBook[]> {
 }
 
 export async function downloadBook(book: RemoteBook, scope?: DbScope) {
+  return (await downloadBookWithStatus(book, scope)).file;
+}
+
+/** Como downloadBook, pero distingue el 402 de Lecta+ de un fallo de red. */
+export async function downloadBookWithStatus(
+  book: RemoteBook,
+  scope?: DbScope,
+): Promise<{ file: File | null; status: number }> {
   try {
     const response = await accountFetch(`/api/books/${book.hash}`, undefined, scope);
-    if (!response.ok) return null;
+    if (!response.ok) return { file: null, status: response.status };
     const data = await response.blob();
     const fallbackName = book.title && !isHashLikeIdentifier(book.title)
       ? `${book.title}.epub`
       : `${book.hash}.epub`;
-    return new File([data], book.name && !isHashLikeIdentifier(book.name) ? book.name : fallbackName, {
+    const file = new File([data], book.name && !isHashLikeIdentifier(book.name) ? book.name : fallbackName, {
       type: "application/epub+zip",
     });
+    return { file, status: response.status };
   } catch (error) {
     if (error instanceof StaleScopeError) throw error;
-    return null;
+    return { file: null, status: 0 };
   }
 }
 

@@ -1,12 +1,12 @@
 # Reporte de auditoría — estrategia de aprendizaje de Lecta
 
-Generado: 2026-11-12T03:47:58.965Z
+Generado: 2026-11-12T22:53:07.090Z
 Documento auditado: `docs/estrategia-aprendizaje-2026-10-24.md`
 Registro: `docs/auditoria/claims.json`
-Commit: `5fffe317a452122745a63be4647aa279d84e5838`
+Commit: `97167f5bc6e18ce4ff9d44772eb29935889fcb0b`
 Red: no (solo forma de las referencias)
 
-**Veredicto: FAIL** — 1 afirmaciones aprobadas, 1 refutadas, 0 refutadas por auditoría, 12 sin verificar, 0 comprobaciones omitidas.
+**Veredicto: FAIL** — 1 afirmaciones aprobadas, 3 refutadas, 0 refutadas por auditoría, 10 sin verificar, 0 comprobaciones omitidas.
 
 ## Afirmaciones
 
@@ -27,7 +27,7 @@ Código: **PASS** · Referencias: **UNVERIFIED**
   - observado: `{"file":"src/client/lib/knowledge.ts","line":329,"text":"const total = forms.length;"}`
 - ✅ **PASS** · code-absent: /\btokens?\b/ no aparece en src/client/lib/coverage.ts
 - ✅ **PASS** · reachable: createCoverageInputsLoader se usa en producción (3 archivo/s)
-  - observado: `{"symbol":"createCoverageInputsLoader","callers":[{"file":"src/client/components/CommunityShelf.tsx","line":132,"text":"loader: ReturnType<typeof createCoverageInputsLoader>;"},{"file":"src/client/components/DiscoverRail.tsx","line":122,"text":"loader: ReturnType<typeof createCoverageInputsLoader>;"},{"file":"src/client/components/Shelf.tsx","line":465,"text":"const inputsFor = createCoverageInputsLoader(scope);"}]}`
+  - observado: `{"symbol":"createCoverageInputsLoader","callers":[{"file":"src/client/components/CommunityShelf.tsx","line":132,"text":"loader: ReturnType<typeof createCoverageInputsLoader>;"},{"file":"src/client/components/DiscoverRail.tsx","line":122,"text":"loader: ReturnType<typeof createCoverageInputsLoader>;"},{"file":"src/client/components/Shelf.tsx","line":470,"text":"const inputsFor = createCoverageInputsLoader(scope);"}]}`
 - ⚠️ **UNVERIFIED** · referencia laufer2010: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":null,"url":"https://eric.ed.gov/?id=EJ887873"}`
 - ⚠️ **UNVERIFIED** · referencia nation2006: forma válida; sin red no se resuelven metadatos (usar --online)
@@ -60,11 +60,11 @@ Código: **PASS** · Referencias: **UNVERIFIED**
 - ⚠️ **UNVERIFIED** · referencia laufer2010: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":null,"url":"https://eric.ed.gov/?id=EJ887873"}`
 
-### ⚠️ H2-preparacion-40 — La preparación automática ofrece hasta 40 filas y entra por aviso
+### ❌ H2-preparacion-40 — La preparación automática ofrece hasta 40 filas y entra por aviso
 
 > La hoja «Antes de leer» admite hasta 40 filas y no interrumpe: el código degrada la apertura automática a un aviso, y el lector la abre con «Preparar antes de leer».
 
-Código: **PASS** · Referencias: **UNVERIFIED**
+Código: **FAIL** · Referencias: **UNVERIFIED**
 
 **Veredicto de auditoría (2026-10-26): SOSTENIDA** — La hoja no se abre sola: el lector ve una pastilla y decide. El tope de 40 se conserva para la consulta bajo demanda, y la tarjeta rápida muestra 3 cartas y 8 filas por página.
 - evidencia: `src/client/hooks/useReaderChapterPrep.ts:365-375`
@@ -75,10 +75,10 @@ Código: **PASS** · Referencias: **UNVERIFIED**
   - observado: `{"file":"src/client/lib/section-words.ts","line":201,"text":"export const PREPARATION_ROWS_CAP = 40;"}`
 - ✅ **PASS** · code-anchor: src/client/lib/settings.ts:418 coincide con /chapterPrimingMode: "auto"/
   - observado: `{"file":"src/client/lib/settings.ts","line":418,"text":"chapterPrimingMode: \"auto\","}`
-- ✅ **PASS** · code-anchor: src/client/hooks/useReaderChapterPrep.ts:48 coincide con /unknownKeyWordsCount <= 0/
-  - observado: `{"file":"src/client/hooks/useReaderChapterPrep.ts","line":48,"text":"if (unknownKeyWordsCount <= 0) return false;"}`
-- ✅ **PASS** · code-anchor: src/client/hooks/useReaderChapterPrep.ts:363 coincide con /opening = "notice"/
-  - observado: `{"file":"src/client/hooks/useReaderChapterPrep.ts","line":363,"text":"opening = \"notice\";"}`
+- ❌ **FAIL** · code-anchor: src/client/hooks/useReaderChapterPrep.ts:46-50 no contiene /unknownKeyWordsCount <= 0/
+  - observado: `{"file":"src/client/hooks/useReaderChapterPrep.ts","asked":48,"excerpt":["46:   _coveragePct?: number,","47:   unknownKeyWordsCount = 0,","48:   // «Palabras previstas» es de Lecta+: una cuenta free no recibe la hoja.","49:   plan: UserPlan | null = null,","50: ): boolean {"]}`
+- ❌ **FAIL** · code-anchor: src/client/hooks/useReaderChapterPrep.ts:363-375 no contiene /opening = "notice"/
+  - observado: `{"file":"src/client/hooks/useReaderChapterPrep.ts","asked":369,"excerpt":["363:       );","364:       if (bookRef.current !== book) return;","365:       if (","366:         isPrimingMutedForBook(bookHash) ||","367:         settingsRef.current?.chapterPrimingMode === \"off\"","368:       ) {","369:         setPrepNotice(null);","370:         return;","371:       }","372:       const decision = decidePreparation({","373:         mode: settingsRef.current?.preparationMode ?? \"a…`
 - ✅ **PASS** · code-anchor: src/client/lib/section-words.ts:508 coincide con /MAX_PREVIEW_WORDS = 5/
   - observado: `{"file":"src/client/lib/section-words.ts","line":508,"text":"export const MAX_PREVIEW_WORDS = 5;"}`
 - ⚠️ **UNVERIFIED** · referencia yanagisawa2020: forma válida; sin red no se resuelven metadatos (usar --online)
@@ -132,23 +132,23 @@ Código: **PASS** · Referencias: **UNVERIFIED**
 - ⚠️ **UNVERIFIED** · referencia wilson2019: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":"10.1038/s41467-019-12552-4","url":null}`
 
-### ❌ H4-jol — «Ya la conozco» alimenta el nivel como si fuera una prueba
+### ⚠️ H4-jol — «Ya la conozco» alimenta el nivel como si fuera una prueba
 
 > Marcar «ya la conozco» ajusta θ con outcome 1 y un delta de 0,18 × (1 − P), sin ninguna recuperación verificada de por medio, y el acto se registra sin pagar XP de repaso.
 
-Código: **FAIL** · Referencias: **UNVERIFIED**
+Código: **PASS** · Referencias: **UNVERIFIED**
 
 **Veredicto de auditoría (2026-10-26): MATIZADA** — La conclusión se sostiene: «Ya la sé» sigue siendo un juicio. Ahora ajusta θ una sola vez con la dificultad real de la palabra y no paga XP; el pretest bloqueante se descartó por la regla de 1 toque.
 - evidencia: `src/client/components/WordPanel.tsx:636-670`
 - evidencia: `src/client/lib/profile-models.ts:405-415`
 
 - ✅ **PASS** · doc-mention: el documento contiene ««Ya la conozco» es un juicio, no una prueba»
-- ❌ **FAIL** · code-anchor: src/client/components/Reader.tsx:4480-4520 no contiene /updateLanguageTheta\(currentLang, beta, 1, 1\.0\)/
-  - observado: `{"file":"src/client/components/Reader.tsx","asked":4500,"excerpt":["4480:           isDeepReading={isDeepReading}","4481:           pacerPaused={pacerPaused}","4482:           setPacerPaused={setPacerPaused}","4483:           updateSettings={updateSettings}","4484:           ttsCapturedToast={ttsCapturedToast}","4485:           activeBilingualParagraph={activeBilingualParagraph}","4486:           bookHash={bookHash}","4487:           language={language}","4488:           setB…`
+- ✅ **PASS** · code-anchor: src/client/components/Reader.tsx:4533 coincide con /updateLanguageTheta\(currentLang, beta, 1, 1\.0\)/
+  - observado: `{"file":"src/client/components/Reader.tsx","line":4533,"text":"updateLanguageTheta(currentLang, beta, 1, 1.0);"}`
 - ✅ **PASS** · code-anchor: src/client/lib/profile-models.ts:417 coincide con /0\.18 \* \(1 - pKnow\)/
   - observado: `{"file":"src/client/lib/profile-models.ts","line":417,"text":"delta = 0.18 * (1 - pKnow);"}`
-- ✅ **PASS** · code-anchor: src/client/components/WordPanel.tsx:632 coincide con /award: false/
-  - observado: `{"file":"src/client/components/WordPanel.tsx","line":632,"text":"{ award: false },"}`
+- ✅ **PASS** · code-anchor: src/client/components/WordPanel.tsx:650 coincide con /award: false/
+  - observado: `{"file":"src/client/components/WordPanel.tsx","line":650,"text":"{ award: false },"}`
 - ✅ **PASS** · code-anchor: src/client/lib/reviews.ts:47 coincide con /options\.award !== false/
   - observado: `{"file":"src/client/lib/reviews.ts","line":47,"text":"if (options.award !== false) {"}`
 - ⚠️ **UNVERIFIED** · referencia koriat2005: forma válida; sin red no se resuelven metadatos (usar --online)
@@ -162,11 +162,11 @@ Código: **FAIL** · Referencias: **UNVERIFIED**
 - ⚠️ **UNVERIFIED** · referencia kremmel2016: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":null,"url":"https://eric.ed.gov/?id=EJ1120126"}`
 
-### ⚠️ H5-pasiva — La exposición pasiva acota a 8 lemas por paso y respeta lápidas
+### ❌ H5-pasiva — La exposición pasiva acota a 8 lemas por paso y respeta lápidas
 
 > La vía viva registra hasta 8 lemas no consultados por paso de página, exige lectura por debajo de 450 ppm, no revive lápidas y mantiene «familiar» a las 3 exposiciones dentro de la sesión.
 
-Código: **PASS** · Referencias: **UNVERIFIED**
+Código: **FAIL** · Referencias: **UNVERIFIED**
 
 **Veredicto de auditoría (2026-10-26): SOSTENIDA** — El mecanismo descrito por el documento original (marcar todas las palabras de la página con tope de 12 s) era código muerto y se eliminó. La vía viva es más conservadora y ahora respeta las lápidas.
 - evidencia: `src/client/lib/reader-evidence.ts:184-250`
@@ -179,8 +179,8 @@ Código: **PASS** · Referencias: **UNVERIFIED**
   - observado: `{"file":"src/client/lib/knowledge.ts","line":92,"text":"export const FAMILIAR_PASSIVE_THRESHOLD = 3;"}`
 - ✅ **PASS** · code-anchor: src/client/lib/reader-evidence.ts:230 coincide con /uniqueLemmas\.size >= 8/
   - observado: `{"file":"src/client/lib/reader-evidence.ts","line":230,"text":"if (uniqueLemmas.size >= 8) break;"}`
-- ✅ **PASS** · code-anchor: src/client/lib/idb.ts:2135 coincide con /if \(existing\?\.deleted\) return existing/
-  - observado: `{"file":"src/client/lib/idb.ts","line":2135,"text":"if (existing?.deleted) return existing;"}`
+- ❌ **FAIL** · code-anchor: src/client/lib/idb.ts:2134-2136 no contiene /if \(existing\?\.deleted\) return existing/
+  - observado: `{"file":"src/client/lib/idb.ts","asked":2135,"excerpt":["2134:   language: string,","2135:   lemma: string,","2136:   scope?: DbScope,"]}`
 - ✅ **PASS** · code-absent: /processPageTurnForPassiveKnowledge/ no aparece en src/client/lib/knowledge.ts
 - ⚠️ **UNVERIFIED** · referencia nagy1985: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":"10.2307/747758","url":null}`
@@ -219,11 +219,11 @@ Código: **PASS** · Referencias: **UNVERIFIED**
 - ⚠️ **UNVERIFIED** · referencia adesope2017: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":"10.3102/0034654316689306","url":null}`
 
-### ⚠️ H6-implicito-tiempo — Sin calificación implícita por velocidad y un solo registro por ejercicio
+### ❌ H6-implicito-tiempo — Sin calificación implícita por velocidad y un solo registro por ejercicio
 
 > La calificación por tiempo (≤ 650 ms/carácter ⇒ Easy) ya no existe en el código, y el cierre de capítulo ocurre igual en modo scroll y en modo páginas.
 
-Código: **PASS** · Referencias: **UNVERIFIED**
+Código: **FAIL** · Referencias: **UNVERIFIED**
 
 **Veredicto de auditoría (2026-10-26): SOSTENIDA** — La velocidad como proxy de dominio se eliminó en vez de conectarse, y el doble registro de repasos en el Cuaderno se corrigió: un ejercicio, un evento.
 - evidencia: `src/client/lib/practice.ts:535-555`
@@ -233,8 +233,8 @@ Código: **PASS** · Referencias: **UNVERIFIED**
 - ✅ **PASS** · code-absent: /computeImplicitFsrsGrade|msPerChar <= 650/ no aparece en src/client/lib/practice.ts
 - ✅ **PASS** · code-anchor: src/client/hooks/useReaderNavigation.ts:217 coincide con /const completeChapterTo/
   - observado: `{"file":"src/client/hooks/useReaderNavigation.ts","line":217,"text":"const completeChapterTo = useCallback("}`
-- ✅ **PASS** · code-anchor: src/client/hooks/useReviewSession.ts:646 coincide con /await grade\(item, wrongs/
-  - observado: `{"file":"src/client/hooks/useReviewSession.ts","line":646,"text":"await grade(item, wrongs ? EXERCISE_RATING.wrong : EXERCISE_RATING.correct);"}`
+- ❌ **FAIL** · code-anchor: src/client/hooks/useReviewSession.ts:643-649 no contiene /await grade\(item, wrongs/
+  - observado: `{"file":"src/client/hooks/useReviewSession.ts","asked":646,"excerpt":["643:       setMatchFlash(meaningKey);","644:       window.clearTimeout(matchFlashTimer.current);","645:       matchFlashTimer.current = window.setTimeout(() => setMatchFlash(null), 700);","646:     }","647:   };","648: ","649:   const finishMatchTanda = async (tanda: QueueItem[], fails: Record<string, number>) => {"]}`
 - ⚠️ **UNVERIFIED** · referencia rowland2014: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":"10.1037/a0037559","url":null}`
 - ⚠️ **UNVERIFIED** · referencia laufergoldstein2004: forma válida; sin red no se resuelven metadatos (usar --online)
@@ -334,8 +334,8 @@ Código: **PASS** · Referencias: **UNVERIFIED**
 - ✅ **PASS** · code-absent: /postTest|delayedRecall/ no aparece en src
 - ✅ **PASS** · code-anchor: src/client/lib/journey.ts:92 coincide con /export function computeRetentionSummary/
   - observado: `{"file":"src/client/lib/journey.ts","line":92,"text":"export function computeRetentionSummary("}`
-- ✅ **PASS** · code-anchor: src/client/hooks/useReviewSession.ts:404 coincide con /const startRetentionCheck30d/
-  - observado: `{"file":"src/client/hooks/useReviewSession.ts","line":404,"text":"const startRetentionCheck30d = () => {"}`
+- ✅ **PASS** · code-anchor: src/client/hooks/useReviewSession.ts:412 coincide con /const startRetentionCheck30d/
+  - observado: `{"file":"src/client/hooks/useReviewSession.ts","line":412,"text":"const startRetentionCheck30d = () => {"}`
 - ✅ **PASS** · code-anchor: src/client/lib/chapter-follow.ts:52 coincide con /export async function summarizeChapterFollows/
   - observado: `{"file":"src/client/lib/chapter-follow.ts","line":52,"text":"export async function summarizeChapterFollows("}`
 - ✅ **PASS** · code-anchor: src/client/lib/notebook-model.ts:207 coincide con /const RETENTION_CHECK_MIN_AGE_DAYS = 30/

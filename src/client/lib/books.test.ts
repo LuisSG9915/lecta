@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { deleteBook, downloadBook, listRemoteBooks, uploadBook, type RemoteBook } from "./books";
+import { downloadBookWithStatus, registerBookMeta } from "./books";
 import * as accountFetchModule from "./account-fetch";
 import { StaleScopeError, type DbScope } from "./idb";
 
@@ -174,6 +175,35 @@ describe("books client library", () => {
       vi.spyOn(accountFetchModule, "accountFetch").mockRejectedValue(new Error("Timeout"));
 
       expect(await deleteBook("hash-err", dummyScope)).toBe(false);
+    });
+  });
+
+  describe("Lecta+ (027)", () => {
+    it("uploadBook devuelve null ante el 402: la operación sale de la cola", async () => {
+      vi.spyOn(accountFetchModule, "accountFetch").mockResolvedValue(new Response("{}", { status: 402 }));
+      const file = new File([new Uint8Array([1])], "a.epub");
+      expect(await uploadBook("h", file, {}, dummyScope)).toBeNull();
+    });
+
+    it("registerBookMeta: 200 → true, 4xx → null, 5xx → false", async () => {
+      const spy = vi.spyOn(accountFetchModule, "accountFetch");
+      spy.mockResolvedValueOnce(new Response("{}", { status: 200 }));
+      expect(await registerBookMeta("ab", { title: "T" }, dummyScope)).toBe(true);
+      const [path, init] = spy.mock.calls[0] as [string, RequestInit];
+      expect(path).toBe("/api/user/books/ab/meta");
+      expect(JSON.parse(String(init.body))).toEqual({ title: "T", sha256: "ab" });
+      spy.mockResolvedValueOnce(new Response("{}", { status: 413 }));
+      expect(await registerBookMeta("ab", {}, dummyScope)).toBeNull();
+      spy.mockResolvedValueOnce(new Response("{}", { status: 503 }));
+      expect(await registerBookMeta("ab", {}, dummyScope)).toBe(false);
+    });
+
+    it("downloadBookWithStatus distingue el 402", async () => {
+      vi.spyOn(accountFetchModule, "accountFetch").mockResolvedValue(new Response("{}", { status: 402 }));
+      expect(await downloadBookWithStatus({ hash: "h", uploaded: "", name: "a.epub" }, dummyScope)).toEqual({
+        file: null,
+        status: 402,
+      });
     });
   });
 });

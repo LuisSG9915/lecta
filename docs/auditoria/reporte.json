@@ -1,21 +1,21 @@
 {
   "tool": "audit-investigacion",
   "version": 1,
-  "generatedAt": "2026-11-12T03:47:58.965Z",
+  "generatedAt": "2026-11-12T22:53:07.090Z",
   "root": "/Users/luis/Desarrollos Devin/lecta",
-  "commit": "5fffe317a452122745a63be4647aa279d84e5838",
+  "commit": "97167f5bc6e18ce4ff9d44772eb29935889fcb0b",
   "doc": "docs/estrategia-aprendizaje-2026-10-24.md",
   "registry": "docs/auditoria/claims.json",
   "online": false,
   "summary": {
     "claims": 14,
     "pass": 1,
-    "fail": 1,
-    "unverified": 12,
+    "fail": 3,
+    "unverified": 10,
     "skipped": 0,
     "refutedExpected": 0,
-    "codePass": 13,
-    "codeFail": 1,
+    "codePass": 11,
+    "codeFail": 3,
     "referencePass": 0,
     "referenceUnverified": 32,
     "referenceFail": 0,
@@ -88,7 +88,7 @@
               },
               {
                 "file": "src/client/components/Shelf.tsx",
-                "line": 465,
+                "line": 470,
                 "text": "const inputsFor = createCoverageInputsLoader(scope);"
               }
             ]
@@ -223,7 +223,7 @@
       "title": "La preparación automática ofrece hasta 40 filas y entra por aviso",
       "statement": "La hoja «Antes de leer» admite hasta 40 filas y no interrumpe: el código degrada la apertura automática a un aviso, y el lector la abre con «Preparar antes de leer».",
       "section": "H2",
-      "status": "UNVERIFIED",
+      "status": "FAIL",
       "auditVerdict": {
         "status": "SOSTENIDA",
         "date": "2026-10-26",
@@ -233,7 +233,7 @@
           "src/client/components/reader/ReaderNotices.tsx:101-131"
         ]
       },
-      "codeStatus": "PASS",
+      "codeStatus": "FAIL",
       "refStatus": "UNVERIFIED",
       "checks": [
         {
@@ -264,22 +264,42 @@
         },
         {
           "kind": "code-anchor",
-          "status": "PASS",
-          "detail": "src/client/hooks/useReaderChapterPrep.ts:48 coincide con /unknownKeyWordsCount <= 0/",
+          "status": "FAIL",
+          "detail": "src/client/hooks/useReaderChapterPrep.ts:46-50 no contiene /unknownKeyWordsCount <= 0/",
           "observed": {
             "file": "src/client/hooks/useReaderChapterPrep.ts",
-            "line": 48,
-            "text": "if (unknownKeyWordsCount <= 0) return false;"
+            "asked": 48,
+            "excerpt": [
+              "46:   _coveragePct?: number,",
+              "47:   unknownKeyWordsCount = 0,",
+              "48:   // «Palabras previstas» es de Lecta+: una cuenta free no recibe la hoja.",
+              "49:   plan: UserPlan | null = null,",
+              "50: ): boolean {"
+            ]
           }
         },
         {
           "kind": "code-anchor",
-          "status": "PASS",
-          "detail": "src/client/hooks/useReaderChapterPrep.ts:363 coincide con /opening = \"notice\"/",
+          "status": "FAIL",
+          "detail": "src/client/hooks/useReaderChapterPrep.ts:363-375 no contiene /opening = \"notice\"/",
           "observed": {
             "file": "src/client/hooks/useReaderChapterPrep.ts",
-            "line": 363,
-            "text": "opening = \"notice\";"
+            "asked": 369,
+            "excerpt": [
+              "363:       );",
+              "364:       if (bookRef.current !== book) return;",
+              "365:       if (",
+              "366:         isPrimingMutedForBook(bookHash) ||",
+              "367:         settingsRef.current?.chapterPrimingMode === \"off\"",
+              "368:       ) {",
+              "369:         setPrepNotice(null);",
+              "370:         return;",
+              "371:       }",
+              "372:       const decision = decidePreparation({",
+              "373:         mode: settingsRef.current?.preparationMode ?? \"auto\",",
+              "374:         intent: via,",
+              "375:         record,"
+            ]
           }
         },
         {
@@ -500,7 +520,7 @@
       "title": "«Ya la conozco» alimenta el nivel como si fuera una prueba",
       "statement": "Marcar «ya la conozco» ajusta θ con outcome 1 y un delta de 0,18 × (1 − P), sin ninguna recuperación verificada de por medio, y el acto se registra sin pagar XP de repaso.",
       "section": "H4",
-      "status": "FAIL",
+      "status": "UNVERIFIED",
       "auditVerdict": {
         "status": "MATIZADA",
         "date": "2026-10-26",
@@ -510,7 +530,7 @@
           "src/client/lib/profile-models.ts:405-415"
         ]
       },
-      "codeStatus": "FAIL",
+      "codeStatus": "PASS",
       "refStatus": "UNVERIFIED",
       "checks": [
         {
@@ -521,54 +541,12 @@
         },
         {
           "kind": "code-anchor",
-          "status": "FAIL",
-          "detail": "src/client/components/Reader.tsx:4480-4520 no contiene /updateLanguageTheta\\(currentLang, beta, 1, 1\\.0\\)/",
+          "status": "PASS",
+          "detail": "src/client/components/Reader.tsx:4533 coincide con /updateLanguageTheta\\(currentLang, beta, 1, 1\\.0\\)/",
           "observed": {
             "file": "src/client/components/Reader.tsx",
-            "asked": 4500,
-            "excerpt": [
-              "4480:           isDeepReading={isDeepReading}",
-              "4481:           pacerPaused={pacerPaused}",
-              "4482:           setPacerPaused={setPacerPaused}",
-              "4483:           updateSettings={updateSettings}",
-              "4484:           ttsCapturedToast={ttsCapturedToast}",
-              "4485:           activeBilingualParagraph={activeBilingualParagraph}",
-              "4486:           bookHash={bookHash}",
-              "4487:           language={language}",
-              "4488:           setBilingualMode={setBilingualMode}",
-              "4489:         />",
-              "4490:       </ReaderFloatingLane>",
-              "4491:       <ReaderOverlays",
-              "4492:         bookHash={bookHash}",
-              "4493:         bookTitle={title}",
-              "4494:         author={author}",
-              "4495:         language={language}",
-              "4496:         sectionIndex={sectionIndex}",
-              "4497:         signedIn={signedIn}",
-              "4498:         selection={selection}",
-              "4499:         // La ficha nace con el estado real del Cuaderno: sin esto el",
-              "4500:         // primer toque podía re-guardar una palabra ya guardada.",
-              "4501:         isSavedInitial={isSavedInitial}",
-              "4502:         onCloseSelection={closeSelection}",
-              "4503:         // Acciones de pasaje en la ficha de palabra: cada una cierra la",
-              "4504:         // ficha y ejecuta la acción sobre su palabra o su frase.",
-              "4505:         wordPassageActions={wordPassageActions}",
-              "4506:         onWordSaved={onWordSaved}",
-              "4507:         onWordRemoved={onWordRemoved}",
-              "4508:         onKnowledgeChanged={handleKnowledgeChanged}",
-              "4509:         bookSections={bookSections}",
-              "4510:         toc={catalog?.targets?.map((t) => ({ index: t.sectionIndex, label: t.label }))}",
-              "4511:         charOffsetInChapter={charOffsetInChapter}",
-              "4512:         currentChapterId={currentChapterId}",
-              "4513:         currentChapterTitle={currentChapterTitle}",
-              "4514:         prep={prep}",
-              "4515:         onRowsPresented={recordPresented}",
-              "4516:         onAnswerPrep={answerPrep}",
-              "4517:         onConfirmPrep={() => void confirmPrep()}",
-              "4518:         onSkipPrep={skipPrep}",
-              "4519:         onRetryPrep={() => void retryPrep()}",
-              "4520:         onClosePrep={() => {"
-            ]
+            "line": 4533,
+            "text": "updateLanguageTheta(currentLang, beta, 1, 1.0);"
           }
         },
         {
@@ -584,10 +562,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/components/WordPanel.tsx:632 coincide con /award: false/",
+          "detail": "src/client/components/WordPanel.tsx:650 coincide con /award: false/",
           "observed": {
             "file": "src/client/components/WordPanel.tsx",
-            "line": 632,
+            "line": 650,
             "text": "{ award: false },"
           }
         },
@@ -663,7 +641,7 @@
       "title": "La exposición pasiva acota a 8 lemas por paso y respeta lápidas",
       "statement": "La vía viva registra hasta 8 lemas no consultados por paso de página, exige lectura por debajo de 450 ppm, no revive lápidas y mantiene «familiar» a las 3 exposiciones dentro de la sesión.",
       "section": "H5",
-      "status": "UNVERIFIED",
+      "status": "FAIL",
       "auditVerdict": {
         "status": "SOSTENIDA",
         "date": "2026-10-26",
@@ -673,7 +651,7 @@
           "src/client/lib/idb.ts:2093-2102"
         ]
       },
-      "codeStatus": "PASS",
+      "codeStatus": "FAIL",
       "refStatus": "UNVERIFIED",
       "checks": [
         {
@@ -714,12 +692,16 @@
         },
         {
           "kind": "code-anchor",
-          "status": "PASS",
-          "detail": "src/client/lib/idb.ts:2135 coincide con /if \\(existing\\?\\.deleted\\) return existing/",
+          "status": "FAIL",
+          "detail": "src/client/lib/idb.ts:2134-2136 no contiene /if \\(existing\\?\\.deleted\\) return existing/",
           "observed": {
             "file": "src/client/lib/idb.ts",
-            "line": 2135,
-            "text": "if (existing?.deleted) return existing;"
+            "asked": 2135,
+            "excerpt": [
+              "2134:   language: string,",
+              "2135:   lemma: string,",
+              "2136:   scope?: DbScope,"
+            ]
           }
         },
         {
@@ -887,7 +869,7 @@
       "title": "Sin calificación implícita por velocidad y un solo registro por ejercicio",
       "statement": "La calificación por tiempo (≤ 650 ms/carácter ⇒ Easy) ya no existe en el código, y el cierre de capítulo ocurre igual en modo scroll y en modo páginas.",
       "section": "H6",
-      "status": "UNVERIFIED",
+      "status": "FAIL",
       "auditVerdict": {
         "status": "SOSTENIDA",
         "date": "2026-10-26",
@@ -897,7 +879,7 @@
           "src/client/hooks/useReaderNavigation.ts:201-270"
         ]
       },
-      "codeStatus": "PASS",
+      "codeStatus": "FAIL",
       "refStatus": "UNVERIFIED",
       "checks": [
         {
@@ -924,12 +906,20 @@
         },
         {
           "kind": "code-anchor",
-          "status": "PASS",
-          "detail": "src/client/hooks/useReviewSession.ts:646 coincide con /await grade\\(item, wrongs/",
+          "status": "FAIL",
+          "detail": "src/client/hooks/useReviewSession.ts:643-649 no contiene /await grade\\(item, wrongs/",
           "observed": {
             "file": "src/client/hooks/useReviewSession.ts",
-            "line": 646,
-            "text": "await grade(item, wrongs ? EXERCISE_RATING.wrong : EXERCISE_RATING.correct);"
+            "asked": 646,
+            "excerpt": [
+              "643:       setMatchFlash(meaningKey);",
+              "644:       window.clearTimeout(matchFlashTimer.current);",
+              "645:       matchFlashTimer.current = window.setTimeout(() => setMatchFlash(null), 700);",
+              "646:     }",
+              "647:   };",
+              "648: ",
+              "649:   const finishMatchTanda = async (tanda: QueueItem[], fails: Record<string, number>) => {"
+            ]
           }
         },
         {
@@ -1296,10 +1286,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/hooks/useReviewSession.ts:404 coincide con /const startRetentionCheck30d/",
+          "detail": "src/client/hooks/useReviewSession.ts:412 coincide con /const startRetentionCheck30d/",
           "observed": {
             "file": "src/client/hooks/useReviewSession.ts",
-            "line": 404,
+            "line": 412,
             "text": "const startRetentionCheck30d = () => {"
           }
         },

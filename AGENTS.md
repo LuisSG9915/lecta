@@ -596,7 +596,9 @@ formularios. Código: `routes.ts` (rutas), `views.ts` (HTML), `epub-reader.ts`
   por Resend cuando una firma cruza `ERROR_DIGEST_MIN_HITS = 5`.
 - Secrets en el worker: `DATABASE_URL`, `BETTER_AUTH_SECRET`, `DEEPSEEK_API_KEY`,
   `RESEND_API_KEY`, `RESEND_FROM_EMAIL`, `AI_GATEWAY_KEY`, `AI_GATEWAY_URL`,
-  `LECTA_OWNER_EMAIL` (opcional: abre el agregado de errores y recibe el digest).
+  `LECTA_OWNER_EMAIL` (opcional: abre el agregado de errores y recibe el digest),
+  `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_MONTHLY_ID`,
+  `STRIPE_PRICE_YEARLY_ID` (cobro de Lecta+).
   `secrets.required` en `wrangler.jsonc` controla cuáles llegan al `env` en dev
   — si una var no está ahí, el worker no la ve (bug ya corregido con Resend).
 - AI Gateway `lecta` (`gateway.ai.cloudflare.com/v1/<account>/lecta/deepseek`):
@@ -609,6 +611,38 @@ formularios. Código: `routes.ts` (rutas), `views.ts` (HTML), `epub-reader.ts`
 - `RESEND_FROM_EMAIL` usa `onboarding@resend.dev`: Resend solo entrega al
   correo dueño de la cuenta hasta verificar un dominio propio.
 - `BETTER_AUTH_URL` no se fija en prod: el código cae al origen de la petición.
+
+## Planes Gratis / Lecta+ (Stripe)
+
+Diseño: `docs/designs/2026-11-12-planes-y-landing.md`.
+
+- **Plan por cuenta**: tabla `lecta_user_plan` (migración 027). Sin fila =
+  `free`; cuentas anteriores a 2026-11-13T00:00Z = `founder_lifetime`.
+  `lecta_plus` vence en `plan_expires_at` + 3 días de gracia. La 027 está
+  aplicada en `lecta_dev` (2026-11-12); en `lecta` va **después** del deploy
+  del worker y nunca antes del corte. Tablas nuevas de CockroachDB nacen con
+  `schema_locked=true`: para la 027 hubo que desbloquear `lecta_user_plan` y
+  `user_books`, migrar y volver a bloquear.
+- **Worker**: `plan-store.ts` (lectura/escritura; `loadUserPlan` es la única
+  puerta), `plan-middleware.ts` (`requireLectaPlus` por ruta, nunca con
+  `app.use`; `requireKindlePlan` en `/k/*` y `/kindle/priming/action`),
+  `billing.ts` (`/api/billing/{checkout,portal,webhook}`) y `stripe.ts`
+  (API REST sin SDK, `Stripe-Version: 2025-03-31.basil`; cancelación al
+  borrar la cuenta en `beforeDelete`).
+- **Rutas con gating** (402 `{ code: "LECTA_PLUS_REQUIRED" }`): las 9 de IA en
+  contexto, `/api/lexicon/items(/answer)`, binarios propios (`PUT/POST
+  /api/books(/:hash)`, `GET /api/books/:hash`, `PUT/GET
+  /api/user/books/:bookId/file`), `/api/kindle/prefs` y vincular Kindle.
+  Libres: `enrich*`, listas, catálogo y `PUT /api/user/books/:bookId/meta`.
+- **Pruebas del worker**: mockean `loadUserPlan` de `./plan-store`
+  (fundador por defecto); con `getSession` en `Once`, el middleware se lo
+  come: usar `mockResolvedValue`.
+- **Rollout de Stripe**: antes del deploy, `wrangler secret put` de
+  `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_MONTHLY_ID` y
+  `STRIPE_PRICE_YEARLY_ID` (están en `secrets.required`) y las mismas
+  entradas en `.dev.vars`. El endpoint del webhook se crea en Stripe con
+  `api_version=2025-03-31.basil`; pruebas locales con
+  `stripe listen --latest --forward-to localhost:<port>/api/billing/webhook`.
 
 ## Cuentas y correo
 

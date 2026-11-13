@@ -8,6 +8,8 @@ import {
 } from "./client-errors";
 import { listErrorSignatures, recordErrorSignature } from "./error-signatures";
 import { getUserPlan, setStarterCoat, type UserPlanSnapshot } from "./plan-store";
+import { requireLectaPlus, type PlanVariables } from "./plan-middleware";
+import { billing } from "./billing";
 import { isStarterCoat } from "../shared/plan";
 import {
   CATALOG,
@@ -104,6 +106,7 @@ import {
   handleKindleStatus,
   handleKindleLinkAction,
   handleKindlePrimingAction,
+  requireKindlePlan,
   handleKindlePrefsApiGet,
   handleKindlePrefsApiPut,
   kindleRoutes,
@@ -213,14 +216,15 @@ app.route("/", readingData);
 app.route("/", companion);
 app.route("/", catalog);
 app.route("/", admin);
+app.route("/", billing);
 app.route("/k", kindleRoutes);
 app.get("/kindle", handleKindleLinkPage);
 app.get("/kindle/verify", handleKindleStatus);
 app.get("/api/kindle/status", handleKindleStatus);
-app.get("/api/kindle/prefs", handleKindlePrefsApiGet);
-app.put("/api/kindle/prefs", handleKindlePrefsApiPut);
+app.get("/api/kindle/prefs", requireLectaPlus, handleKindlePrefsApiGet);
+app.put("/api/kindle/prefs", requireLectaPlus, handleKindlePrefsApiPut);
 app.post("/api/kindle/link", handleKindleLinkAction);
-app.post("/kindle/priming/action", handleKindlePrimingAction);
+app.post("/kindle/priming/action", requireKindlePlan, handleKindlePrimingAction);
 app.get("/kindle/*", (context) => {
   const p = context.req.path.replace(/^\/kindle/, "/k");
   return context.redirect(p);
@@ -741,7 +745,7 @@ const ITEM_SELECT_SQL = `
     ON s.entry_id = i.entry_id AND s.sense_order = i.sense_order
 `;
 
-app.post("/api/lexicon/items", async (context) => {
+app.post("/api/lexicon/items", requireLectaPlus, async (context) => {
   const body = await context.req.json().catch(() => null);
   const rawRefs: unknown[] = Array.isArray(body?.refs) ? body.refs : [];
   const refs = [
@@ -755,7 +759,7 @@ app.post("/api/lexicon/items", async (context) => {
   if (!refs.length) return context.json({ error: "Faltan las acepciones." }, 400);
   if (!getConnectionString(context.env))
     return context.json({ error: "El catálogo no está configurado." }, 503);
-  const session = await getSession(context);
+  const session = context.get("session");
   if (!session)
     return context.json({ error: "Inicia sesión para practicar." }, 401);
 
@@ -882,7 +886,7 @@ app.post("/api/lexicon/items", async (context) => {
 
 // Registro de intentos del ejercicio: sube attempts siempre y correct
 // solo cuando el cliente reporta acierto.
-app.post("/api/lexicon/items/answer", async (context) => {
+app.post("/api/lexicon/items/answer", requireLectaPlus, async (context) => {
   const body = await context.req.json().catch(() => null);
   const id = typeof body?.id === "string" ? body.id.trim() : "";
   const correct = body?.correct;
@@ -890,7 +894,7 @@ app.post("/api/lexicon/items/answer", async (context) => {
     return context.json({ error: "Falta la respuesta." }, 400);
   if (!getConnectionString(context.env))
     return context.json({ error: "El catálogo no está configurado." }, 503);
-  const session = await getSession(context);
+  const session = context.get("session");
   if (!session)
     return context.json({ error: "Inicia sesión para practicar." }, 401);
 
@@ -913,7 +917,7 @@ app.post("/api/lexicon/items/answer", async (context) => {
 // (ejercicio «write»). Privacidad: solo viajan la forma, el sentido
 // esperado y el texto propio del usuario — nunca el contexto del libro
 // ni identificadores de ficha o cuenta (la sesión solo gobierna cuota).
-app.post("/api/lexicon/verify-sentence", async (context) => {
+app.post("/api/lexicon/verify-sentence", requireLectaPlus, async (context) => {
   const body = await context.req.json().catch(() => null);
   const form = typeof body?.form === "string" ? body.form.trim() : "";
   const meaning = typeof body?.meaning === "string" ? body.meaning.trim() : "";
@@ -924,7 +928,7 @@ app.post("/api/lexicon/verify-sentence", async (context) => {
     return context.json({ error: "Falta la oración o la palabra." }, 400);
   if (!getConnectionString(context.env))
     return context.json({ error: "El catálogo no está configurado." }, 503);
-  const session = await getSession(context);
+  const session = context.get("session");
   if (!session)
     return context.json({ error: "Inicia sesión para practicar." }, 401);
 
@@ -979,7 +983,7 @@ app.post("/api/lexicon/verify-sentence", async (context) => {
 // el aislante no tiene costo.
 const explainCache = createTtlCache<string>({ maxEntries: 200 });
 
-app.post("/api/lexicon/explain", async (context) => {
+app.post("/api/lexicon/explain", requireLectaPlus, async (context) => {
   const body = await context.req.json().catch(() => null);
   const form = typeof body?.form === "string" ? body.form.trim() : "";
   const language = typeof body?.language === "string" ? body.language.trim() : "es";
@@ -989,7 +993,7 @@ app.post("/api/lexicon/explain", async (context) => {
     return context.json({ error: "Faltan la palabra o la oración." }, 400);
   if (!getConnectionString(context.env))
     return context.json({ error: "El catálogo no está configurado." }, 503);
-  const session = await getSession(context);
+  const session = context.get("session");
   if (!session)
     return context.json({ error: "Inicia sesión para pedir explicaciones." }, 401);
 
@@ -1066,7 +1070,7 @@ app.post("/api/lexicon/explain", async (context) => {
 const evaluateCache = createTtlCache<EvaluatedSentence>({ maxEntries: 150, ttlMs: 15 * 60_000 });
 const storyCache = createTtlCache<MicroStory>({ maxEntries: 100, ttlMs: 30 * 60_000 });
 
-app.post("/api/ai/evaluate-sentence", async (context) => {
+app.post("/api/ai/evaluate-sentence", requireLectaPlus, async (context) => {
   const body = await context.req.json().catch(() => null);
   const word = typeof body?.word === "string" ? body.word.trim() : "";
   const targetSense = typeof body?.targetSense === "string" ? body.targetSense.trim() : "";
@@ -1084,7 +1088,7 @@ app.post("/api/ai/evaluate-sentence", async (context) => {
   const cached = evaluateCache.get(cacheKey);
   if (cached) return context.json({ ...cached, cached: true });
 
-  const session = await getSession(context);
+  const session = context.get("session");
   if (!session) {
     return context.json({ error: "Inicia sesión para evaluar oraciones con IA." }, 401);
   }
@@ -1141,7 +1145,7 @@ app.post("/api/ai/evaluate-sentence", async (context) => {
   return context.json(parsed);
 });
 
-app.post("/api/ai/micro-story", async (context) => {
+app.post("/api/ai/micro-story", requireLectaPlus, async (context) => {
   const body = await context.req.json().catch(() => null);
   const wordsRaw = Array.isArray(body?.words) ? body.words : [];
   const styleHint = typeof body?.styleHint === "string" ? body.styleHint.trim().slice(0, 100) : undefined;
@@ -1166,7 +1170,7 @@ app.post("/api/ai/micro-story", async (context) => {
   const cached = storyCache.get(cacheKey);
   if (cached) return context.json({ ...cached, cached: true });
 
-  const session = await getSession(context);
+  const session = context.get("session");
   if (!session) {
     return context.json({ error: "Inicia sesión para generar micro-relatos con IA." }, 401);
   }
@@ -1248,7 +1252,7 @@ export function clearExplainPassageCache(): void {
   explainPassageCache.clear();
 }
 
-app.post("/api/ai/explain-in-passage", async (context) => {
+app.post("/api/ai/explain-in-passage", requireLectaPlus, async (context) => {
   const body = await context.req.json().catch(() => null);
   const word = typeof body?.word === "string" ? body.word.trim().slice(0, 100) : undefined;
   const sentence =
@@ -1287,7 +1291,7 @@ app.post("/api/ai/explain-in-passage", async (context) => {
   const cached = explainPassageCache.get(cacheKey);
   if (cached) return context.json({ ...cached, cached: true });
 
-  const session = await getSession(context);
+  const session = context.get("session");
   if (!session) {
     return context.json({ error: "Inicia sesión para pedir explicaciones literarias con IA." }, 401);
   }
@@ -1386,7 +1390,7 @@ app.post("/api/ai/explain-in-passage", async (context) => {
 
 const companionNoteCache = createTtlCache<string>({ maxEntries: 100, ttlMs: 20 * 60_000 });
 
-app.post("/api/ai/companion-note", async (context) => {
+app.post("/api/ai/companion-note", requireLectaPlus, async (context) => {
   const body = await context.req.json().catch(() => null);
   const catName = typeof body?.catName === "string" ? body.catName.trim().slice(0, 50) : "Michi";
   const achievement = typeof body?.achievement === "string" ? body.achievement.trim().slice(0, 100) : undefined;
@@ -1394,7 +1398,7 @@ app.post("/api/ai/companion-note", async (context) => {
   const bookTitle = typeof body?.bookTitle === "string" ? body.bookTitle.trim().slice(0, 150) : undefined;
   const masteredWord = typeof body?.masteredWord === "string" ? body.masteredWord.trim().slice(0, 100) : undefined;
 
-  const session = await getSession(context);
+  const session = context.get("session");
   if (!session?.user?.id) {
     return context.json({ error: "Inicia sesión para recibir cartas del compañero." }, 401);
   }
@@ -1454,7 +1458,7 @@ app.post("/api/ai/companion-note", async (context) => {
   return context.json(parsed);
 });
 
-app.post("/api/ai/page-recap", async (context) => {
+app.post("/api/ai/page-recap", requireLectaPlus, async (context) => {
   const body = await context.req.json().catch(() => null);
   const text = typeof body?.text === "string" ? body.text.trim() : "";
   const bookTitle = typeof body?.bookTitle === "string" ? body.bookTitle.trim().slice(0, 150) : undefined;
@@ -1464,7 +1468,7 @@ app.post("/api/ai/page-recap", async (context) => {
     return context.json({ error: "Se requiere el texto de la página para resumir." }, 400);
   }
 
-  const session = await getSession(context);
+  const session = context.get("session");
   if (!session?.user?.id) {
     return context.json({ error: "Inicia sesión para resumir páginas con IA." }, 401);
   }
@@ -1521,7 +1525,7 @@ app.post("/api/ai/page-recap", async (context) => {
   return context.json(parsed);
 });
 
-app.post("/api/ai/translate", async (context) => {
+app.post("/api/ai/translate", requireLectaPlus, async (context) => {
   const body = await context.req.json().catch(() => null);
   const text = typeof body?.text === "string" ? body.text.trim() : "";
   const from = typeof body?.from === "string" ? body.from : "en";
@@ -1531,7 +1535,7 @@ app.post("/api/ai/translate", async (context) => {
     return context.json({ error: "Se requiere texto para traducir." }, 400);
   }
 
-  const session = await getSession(context);
+  const session = context.get("session");
   if (!session?.user?.id) {
     return context.json({ error: "Inicia sesión para traducir párrafos con IA." }, 401);
   }
@@ -1588,7 +1592,7 @@ const characterRecapCache = createTtlCache<CharacterRecapResponse>({
   ttlMs: 20 * 60_000,
 });
 
-app.post("/api/ai/character-recap", async (context) => {
+app.post("/api/ai/character-recap", requireLectaPlus, async (context) => {
   const body = await context.req.json().catch(() => null);
   const entityName = typeof body?.entityName === "string" ? body.entityName.trim().slice(0, 100) : "";
   const bookTitle = typeof body?.bookTitle === "string" ? body.bookTitle.trim().slice(0, 150) : undefined;
@@ -1620,7 +1624,7 @@ app.post("/api/ai/character-recap", async (context) => {
     return context.json(deterministicCharacterRecapFallback(entityName, excerptsSoFar));
   }
 
-  const session = await getSession(context);
+  const session = context.get("session");
   if (!session) {
     return context.json(deterministicCharacterRecapFallback(entityName, excerptsSoFar));
   }
@@ -1818,6 +1822,21 @@ export async function recordUserBook(
            has_cover = EXCLUDED.has_cover,
            genre = CASE WHEN EXCLUDED.genre <> '' THEN EXCLUDED.genre ELSE user_books.genre END,
            updated_at = EXCLUDED.updated_at`;
+    // Tercera variante (027): la subida deja el archivo en R2, así que la
+    // fila pasa a has_file = true aunque antes fuera solo de metadatos.
+    const sqlGenreFile = `INSERT INTO user_books (user_id, book_id, title, author, language, r2_key, size_bytes, sha256, has_cover, genre, has_file, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, true, $11, $12)
+         ON CONFLICT (user_id, book_id) DO UPDATE SET
+           title = EXCLUDED.title,
+           author = EXCLUDED.author,
+           language = EXCLUDED.language,
+           r2_key = EXCLUDED.r2_key,
+           size_bytes = EXCLUDED.size_bytes,
+           sha256 = EXCLUDED.sha256,
+           has_cover = EXCLUDED.has_cover,
+           genre = CASE WHEN EXCLUDED.genre <> '' THEN EXCLUDED.genre ELSE user_books.genre END,
+           has_file = EXCLUDED.has_file,
+           updated_at = EXCLUDED.updated_at`;
     const baseParams = [
       book.userId,
       book.bookId,
@@ -1831,9 +1850,16 @@ export async function recordUserBook(
       now,
       now,
     ];
+    const genreParams = [...baseParams.slice(0, 9), book.genre ?? "", ...baseParams.slice(9)];
+    // Cadena ante 42703: genre + has_file → genre → base.
     const insert = (client: Parameters<Parameters<typeof withClient>[1]>[0]) =>
       client
-        .query(sqlGenre, [...baseParams.slice(0, 9), book.genre ?? "", ...baseParams.slice(9)])
+        .query(sqlGenreFile, genreParams)
+        .catch((err: unknown) =>
+          isMissingColumnError(err)
+            ? client.query(sqlGenre, genreParams)
+            : Promise.reject(err),
+        )
         .catch((err: unknown) =>
           isMissingColumnError(err)
             ? client.query(sqlBase, baseParams)
@@ -2027,6 +2053,7 @@ app.get("/api/books", async (context) => {
         repairAttemptedAt: undefined,
         paperOnly: true,
       } as (typeof books)[number]);
+      listed.add(row.book_id);
     }
     // Era `user-books/` (sync BYO-EPUB anterior): esas filas apuntan
     // fuera del prefijo books/{userId}/ y la lista de R2 no las trae.
@@ -2051,6 +2078,26 @@ app.get("/api/books", async (context) => {
         shared: flags.get(row.book_id)?.shared || undefined,
         genre: flags.get(row.book_id)?.genre || undefined,
       } as (typeof books)[number]);
+      listed.add(row.book_id);
+    }
+    // 027: libros propios de cuentas free (solo metadatos). Se listan con
+    // hasFile: false para que el cliente pida adjuntar el archivo.
+    for (const row of await listMetaOnlyRows(context.env, session.user.id)) {
+      if (listed.has(row.book_id)) continue;
+      const title = isHashLikeIdentifier(row.title) ? "" : row.title;
+      books.push({
+        hash: row.book_id,
+        uploaded: new Date(Number(row.created_at) || Date.now()),
+        name: title ? `${title}.epub` : "",
+        title,
+        author: row.author,
+        sections: 0,
+        language: row.language,
+        hasCover: false,
+        repairAttemptedAt: undefined,
+        hasFile: false,
+      } as (typeof books)[number]);
+      listed.add(row.book_id);
     }
   } catch {
     // La lista de libros no depende de la comunidad.
@@ -2144,13 +2191,13 @@ app.get("/api/books", async (context) => {
 });
 
 const handleBookUpload = async (
-  context: Context<{ Bindings: WorkerEnv }>,
+  context: Context<{ Bindings: WorkerEnv; Variables: PlanVariables }>,
   declaredHash?: string,
 ) => {
   const booksBucket = context.env.BOOKS;
   if (!booksBucket)
     return context.json({ error: "El almacenamiento no está configurado." }, 503);
-  const session = await getSession(context);
+  const session = context.get("session");
   if (!session) return context.json({ error: "Inicia sesión para guardar libros." }, 401);
 
   const staleReset = await staleResetAt(context.env, context, session.user.id);
@@ -2254,9 +2301,9 @@ const handleBookUpload = async (
   return context.json({ ok: true, hash });
 };
 
-app.put("/api/books/:hash", (context) => handleBookUpload(context, context.req.param("hash")));
-app.post("/api/books/:hash", (context) => handleBookUpload(context, context.req.param("hash")));
-app.post("/api/books", (context) => handleBookUpload(context));
+app.put("/api/books/:hash", requireLectaPlus, (context) => handleBookUpload(context, context.req.param("hash")));
+app.post("/api/books/:hash", requireLectaPlus, (context) => handleBookUpload(context, context.req.param("hash")));
+app.post("/api/books", requireLectaPlus, (context) => handleBookUpload(context));
 
 // Catálogo comunitario: una entrada por book_id aunque lo compartan
 // varios lectores, ordenado por la primera vez que apareció. Debe
@@ -2341,11 +2388,11 @@ app.get("/api/books/community", async (context) => {
   return context.json({ books: [] });
 });
 
-app.get("/api/books/:hash", async (context) => {
+app.get("/api/books/:hash", requireLectaPlus, async (context) => {
   const booksBucket = context.env.BOOKS;
   if (!booksBucket)
     return context.json({ error: "El almacenamiento no está configurado." }, 503);
-  const session = await getSession(context);
+  const session = context.get("session");
   if (!session) return context.json({ error: "Inicia sesión para ver tus libros." }, 401);
 
   const hash = context.req.param("hash");
@@ -2611,10 +2658,19 @@ async function listUserBooksOutsidePrefix(
 ): Promise<UserBookRow[]> {
   const sqlPg = `SELECT book_id, title, author, language, updated_at
      FROM user_books WHERE user_id = $1 AND r2_key NOT LIKE 'books/%'`;
+  // 027: las filas solo de metadatos (has_file = false) no tienen archivo;
+  // sin la columna (worker antes de migrar) se reintenta sin el filtro.
+  const sqlPgFile = `${sqlPg} AND has_file = true`;
   const sqlD1 = sqlPg.replace("$1", "?");
   if (getConnectionString(env)) {
     const res = await withClient(env, (client) =>
-      client.query<UserBookRow>(sqlPg, [userId]),
+      client
+        .query<UserBookRow>(sqlPgFile, [userId])
+        .catch((err: unknown) =>
+          isMissingColumnError(err)
+            ? client.query<UserBookRow>(sqlPg, [userId])
+            : Promise.reject(err),
+        ),
     ).catch((err) => (isMissingColumnError(err) ? null : Promise.reject(err)));
     // res === undefined → sin conexión pg configurada: caer a D1.
     if (res) return res.rows;
@@ -2688,6 +2744,21 @@ async function listPaperOnlyRows(
     return res?.results ?? [];
   }
   return [];
+}
+
+// Libros propios registrados solo con metadatos (027, plan free): la fila
+// existe para que la estantería de otro dispositivo los vea, pero no hay
+// archivo. Sin la columna has_file → [].
+async function listMetaOnlyRows(env: WorkerEnv, userId: string): Promise<PaperOnlyRow[]> {
+  if (!getConnectionString(env)) return [];
+  const res = await withClient(env, (client) =>
+    client.query<PaperOnlyRow>(
+      `SELECT book_id, title, author, language, created_at
+       FROM user_books WHERE user_id = $1 AND has_file = false`,
+      [userId],
+    ),
+  ).catch((err) => (isMissingColumnError(err) ? null : Promise.reject(err)));
+  return res?.rows ?? [];
 }
 
 // Fila donante del catálogo: cualquier copia compartida del mismo
@@ -3344,8 +3415,70 @@ app.get("/api/sync/counts", async (context) => {
 
 // ---------- Sincronización Cloud de EPUBs Propios (BYO-EPUB) en CockroachDB/D1 y R2 ----------
 
-app.put("/api/user/books/:bookId/file", async (c) => {
+// Libro propio solo con metadatos (027): gratis y con sesión. Registra la
+// fila para que la estantería de otro dispositivo vea el libro; el archivo
+// se adjunta allá (emparejado por sha256). Nunca toca r2_key, size_bytes ni
+// has_file de una fila que ya tenga archivo.
+app.put("/api/user/books/:bookId/meta", async (c) => {
   const user = await getSessionUser(c);
+  if (!user) return c.json({ error: "No autenticado" }, 401);
+  const bookId = c.req.param("bookId");
+  const body = (await c.req.json().catch(() => null)) as {
+    title?: unknown;
+    author?: unknown;
+    language?: unknown;
+    sha256?: unknown;
+  } | null;
+  const text = (value: unknown, max: number) =>
+    typeof value === "string" ? value.trim().slice(0, max) : "";
+  const sha256 = text(body?.sha256, 64).toLowerCase();
+  if (!HASH_PATTERN.test(bookId) || sha256 !== bookId) {
+    return c.json({ error: "El archivo no coincide con el libro." }, 400);
+  }
+  if (!getConnectionString(c.env)) {
+    return c.json({ error: "Servicio temporalmente no disponible" }, 503);
+  }
+  const quota = await checkUserBooksQuota(c.env, user.id, bookId, 0);
+  if (!quota.allowed) {
+    return c.json({ error: quota.reason ?? "Llegaste al límite de libros de tu cuenta." }, 413);
+  }
+  const now = Date.now();
+  const params = [
+    user.id,
+    bookId,
+    text(body?.title, 300),
+    text(body?.author, 200),
+    text(body?.language, 16),
+    sha256,
+    now,
+  ];
+  const insert = (client: Parameters<Parameters<typeof withClient>[1]>[0]) =>
+    client.query(
+      `INSERT INTO user_books (user_id, book_id, title, author, language, r2_key, size_bytes, sha256, has_file, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, '', 0, $6, false, $7, $7)
+       ON CONFLICT (user_id, book_id) DO UPDATE SET
+         title = EXCLUDED.title,
+         author = EXCLUDED.author,
+         language = EXCLUDED.language,
+         updated_at = EXCLUDED.updated_at`,
+      params,
+    );
+  let res;
+  try {
+    res = await withResetGuard(c.env, readResetAck(c), user.id, insert);
+  } catch (err) {
+    if (err instanceof StaleResetError) return resetBlockedResponse(c, err.resetAt);
+    if (isMissingColumnError(err)) {
+      return c.json({ error: "Servicio temporalmente no disponible" }, 503);
+    }
+    throw err;
+  }
+  if (isResetBlocked(res)) return resetBlockedResponse(c, res.blockedAt);
+  return c.json({ ok: true, hasFile: false });
+});
+
+app.put("/api/user/books/:bookId/file", requireLectaPlus, async (c) => {
+  const user = c.get("session")?.user ?? null;
   if (!user) return c.json({ error: "No autenticado" }, 401);
 
   const staleReset = await staleResetAt(c.env, c, user.id);
@@ -3434,9 +3567,26 @@ app.get("/api/user/books", async (c) => {
         sha256: string;
         updatedat: number | string;
       }>(
+        // 027: sin archivo no hay nada que bajar; sin la columna se
+        // reintenta con la consulta anterior.
         `SELECT book_id AS id, title, author, size_bytes AS sizebytes, sha256, updated_at AS updatedat
-         FROM user_books WHERE user_id = $1 ORDER BY updated_at DESC`,
+         FROM user_books WHERE user_id = $1 AND has_file = true ORDER BY updated_at DESC`,
         [user.id],
+      ).catch((err: unknown) =>
+        isMissingColumnError(err)
+          ? client.query<{
+              id: string;
+              title: string;
+              author: string;
+              sizebytes: number | string;
+              sha256: string;
+              updatedat: number | string;
+            }>(
+              `SELECT book_id AS id, title, author, size_bytes AS sizebytes, sha256, updated_at AS updatedat
+               FROM user_books WHERE user_id = $1 ORDER BY updated_at DESC`,
+              [user.id],
+            )
+          : Promise.reject(err),
       );
       return res.rows.map((r) => ({
         id: r.id,
@@ -3465,8 +3615,8 @@ app.get("/api/user/books", async (c) => {
   return c.json({ books: [] });
 });
 
-app.get("/api/user/books/:bookId/file", async (c) => {
-  const user = await getSessionUser(c);
+app.get("/api/user/books/:bookId/file", requireLectaPlus, async (c) => {
+  const user = c.get("session")?.user ?? null;
   if (!user) return c.json({ error: "No autenticado" }, 401);
 
   const booksBucket = c.env.BOOKS_BUCKET ?? c.env.BOOKS;

@@ -3291,3 +3291,26 @@ mark.saved-word[data-level="settled"] {
 .paper-finished p {
   margin: 0;
 }
+
+/* Nota al margen de Lecta+: filete fino a la izquierda del texto, sin caja
+   ni sombra; tinta para la información, bermellón solo en el enlace. */
+.plan-note {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-1);
+  margin: var(--s-2) 0;
+  padding-inline-start: var(--s-3);
+  border-inline-start: 1px solid var(--rule-strong);
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+.plan-note__title {
+  color: var(--ink);
+  font-weight: 600;
+}
+.plan-note__detail {
+  color: var(--ink-soft);
+}
+.plan-note__link {
+  color: var(--vermilion);
+}

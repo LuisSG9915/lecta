@@ -1,6 +1,10 @@
 import { Suspense, lazy, useEffect, useState, type FormEvent } from "react";
 import { authClient } from "../lib/auth";
 import AuthForms, { translateAuthError } from "./AuthForms";
+import ReaderCard from "./ReaderCard";
+import PlanNote from "./PlanNote";
+import { useUserPlan } from "../lib/account-plan";
+import { hasLectaPlus } from "../../shared/plan";
 import { accountFetch } from "../lib/account-fetch";
 import { PENDING_DELETE_KEY, clearSyncCursors } from "../lib/account-cleanup";
 import {
@@ -206,6 +210,7 @@ export default function Account({
       : "Hitos, ritmo y progreso de lectura";
 
   const { data: session, isPending } = authClient.useSession();
+  const userPlan = useUserPlan();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -815,6 +820,9 @@ export default function Account({
         </p>
       ) : null}
 
+      {/* Carné de Lector: plan de la cuenta (Lecta+). */}
+      {!isPending && session?.user ? <ReaderCard plan={userPlan} /> : null}
+
       {/* Tarjeta 1: Sincronización y Modo Kindle */}
       {!isPending && session?.user ? (
         <section className="account-card" aria-label="Tu cuenta">
@@ -1174,7 +1182,12 @@ export default function Account({
               en su navegador e inicia sesión para leer y sincronizar tu avance.
             </p>
           </div>
-          {session?.user ? (
+          {session?.user && userPlan && !hasLectaPlus(userPlan.plan) ? (
+            <PlanNote
+              title="Leer en tu Kindle es de Lecta+."
+              detail="Tu posición y tus palabras siguen guardadas en tu cuenta."
+            />
+          ) : session?.user ? (
             <>
               <p className="setting-hint">
                 Para vincular este dispositivo con la pantalla de tu e-reader, escribe el código de 4 letras que aparece allí.

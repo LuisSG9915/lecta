@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { queueBookDelete, queueBookUpload, runBookQueue } from "./book-queue";
+import { queueBookSync } from "./book-queue";
 import * as idbModule from "./idb";
 import * as booksApi from "./books";
 import * as coverModule from "./cover";
@@ -206,6 +207,44 @@ describe("book-queue guards and processor", () => {
       const done = await runBookQueue();
       expect(done).toBe(0);
       expect(markErrorSpy).toHaveBeenCalledWith("op-err", "Unexpected crash", expect.anything());
+    });
+  });
+
+  describe("Lecta+ (027): metadatos para free", () => {
+    it("queueBookSync sin archivo encola solo los metadatos", async () => {
+      const enqueue = vi.spyOn(idbModule, "enqueueBookOp").mockResolvedValue({} as never);
+      vi.spyOn(idbModule, "getStoredBook").mockResolvedValue({
+        hash: "b1",
+        name: "b.epub",
+        addedAt: 1,
+        data: new Blob([new Uint8Array([1])]),
+      });
+      await queueBookSync("b1", "b.epub", false);
+      expect(enqueue).toHaveBeenCalledTimes(1);
+      expect(enqueue.mock.calls[0][0]).toMatchObject({ kind: "meta", hash: "b1" });
+      enqueue.mockClear();
+      await queueBookSync("b1", "b.epub", true);
+      expect(enqueue.mock.calls.map((c) => (c[0] as { kind: string }).kind)).toEqual(["meta", "upload"]);
+    });
+
+    it("runBookQueue registra la operación meta y la saca de la cola", async () => {
+      vi.spyOn(idbModule, "captureDbScope").mockReturnValue({ userId: "u1", generation: 1 } as never);
+      vi.spyOn(idbModule, "isDbScopeActive").mockReturnValue(true);
+      vi.spyOn(idbModule, "listBookOps").mockResolvedValue([
+        { id: "op-m", kind: "meta", hash: "b1", createdAt: 1 },
+      ] as never);
+      vi.spyOn(idbModule, "getStoredBook").mockResolvedValue({
+        hash: "b1",
+        name: "b.epub",
+        addedAt: 1,
+        title: "Libro",
+        data: new Blob([new Uint8Array([1])]),
+      });
+      const register = vi.spyOn(booksApi, "registerBookMeta").mockResolvedValue(true);
+      const remove = vi.spyOn(idbModule, "removeBookOp").mockResolvedValue(undefined as never);
+      expect(await runBookQueue()).toBe(1);
+      expect(register).toHaveBeenCalledWith("b1", expect.objectContaining({ title: "Libro" }), expect.anything());
+      expect(remove).toHaveBeenCalledWith("op-m", expect.anything());
     });
   });
 });

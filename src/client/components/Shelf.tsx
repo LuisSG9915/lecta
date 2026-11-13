@@ -84,6 +84,8 @@ export type ShelfItem = Pick<
   // `paperOnly` = copia adjunta que solo abre el índice del modo papel.
   shared?: boolean;
   paperOnly?: boolean;
+  // Migración 027: false = libro propio sin archivo en la nube (plan free).
+  hasFile?: boolean;
 };
 
 export type ActiveRead = {

@@ -1,0 +1,316 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { Hono } from "hono";
+import type { WorkerEnv } from "./db";
+import { billing, expiresAtForSubscription, verifyStripeSignature } from "./billing";
+import { cancelBillingForDeletion, cancelSubscriptionForDeletion } from "./stripe";
+
+const getSessionMock = vi.hoisted(() => vi.fn());
+const loadUserPlanMock = vi.hoisted(() => vi.fn());
+const queryMock = vi.hoisted(() => vi.fn());
+const withClientMock = vi.hoisted(() => vi.fn());
+
+vi.mock("./session", () => ({
+  getSession: (...args: unknown[]) => getSessionMock(...args),
+}));
+vi.mock("./plan-store", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./plan-store")>()),
+  loadUserPlan: (...args: unknown[]) => loadUserPlanMock(...args),
+}));
+vi.mock("./db", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./db")>()),
+  withClient: (...args: unknown[]) => withClientMock(...args),
+}));
+
+const SECRET = "whsec_test";
+const env: WorkerEnv = {
+  STRIPE_SECRET_KEY: "sk_test",
+  STRIPE_WEBHOOK_SECRET: SECRET,
+  STRIPE_PRICE_MONTHLY_ID: "price_m",
+  STRIPE_PRICE_YEARLY_ID: "price_y",
+};
+
+const app = new Hono<{ Bindings: WorkerEnv }>().route("/", billing);
+
+const plan = (over: Record<string, unknown> = {}) => ({
+  plan: "free",
+  starterCoat: null,
+  expiresAt: null,
+  stripeCustomerId: null,
+  stripeSubscriptionId: null,
+  degraded: false,
+  ...over,
+});
+
+async function sign(body: string, t = Math.floor(Date.now() / 1000)) {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(SECRET),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(`${t}.${body}`));
+  const hex = [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  return `t=${t},v1=${hex}`;
+}
+
+const jsonResponse = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+
+beforeEach(() => {
+  getSessionMock.mockReset();
+  loadUserPlanMock.mockReset();
+  queryMock.mockReset();
+  withClientMock.mockReset();
+  withClientMock.mockImplementation(async (_env, run) => run({ query: queryMock }));
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+describe("verifyStripeSignature", () => {
+  it("acepta una firma válida, también entre varios v1", async () => {
+    const body = '{"id":"evt_1"}';
+    const header = await sign(body);
+    expect(await verifyStripeSignature(body, header, SECRET)).toBe(true);
+    expect(await verifyStripeSignature(body, `v1=deadbeef,${header}`, SECRET)).toBe(true);
+  });
+
+  it("rechaza firma inválida, vencida o ausente", async () => {
+    const body = '{"id":"evt_1"}';
+    expect(await verifyStripeSignature(body, await sign("otro"), SECRET)).toBe(false);
+    const old = await sign(body, Math.floor(Date.now() / 1000) - 600);
+    expect(await verifyStripeSignature(body, old, SECRET)).toBe(false);
+    expect(await verifyStripeSignature(body, null, SECRET)).toBe(false);
+  });
+});
+
+describe("expiresAtForSubscription", () => {
+  const now = 1_000_000_000_000;
+  it("activa, en prueba, vencida y sin pagar toman el fin del periodo del item", () => {
+    for (const status of ["active", "trialing", "past_due", "unpaid"]) {
+      expect(
+        expiresAtForSubscription({ status, items: { data: [{ current_period_end: 50 }] } }, "x", now),
+      ).toBe(50_000);
+    }
+  });
+  it("cancelada, expirada y pausada toman ended_at (o ahora)", () => {
+    expect(expiresAtForSubscription({ status: "canceled", ended_at: 7 }, "x", now)).toBe(7000);
+    expect(expiresAtForSubscription({ status: "incomplete_expired" }, "x", now)).toBe(now);
+    expect(expiresAtForSubscription({ status: "paused" }, "x", now)).toBe(now);
+    expect(
+      expiresAtForSubscription({ status: "active", ended_at: 9 }, "customer.subscription.deleted", now),
+    ).toBe(9000);
+  });
+  it("incomplete no escribe nada", () => {
+    expect(expiresAtForSubscription({ status: "incomplete" }, "x", now)).toBeUndefined();
+  });
+});
+
+describe("POST /api/billing/checkout", () => {
+  const checkout = (body: unknown) =>
+    app.request(
+      "/api/billing/checkout",
+      { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) },
+      env,
+    );
+
+  it("sin sesión responde 401", async () => {
+    getSessionMock.mockResolvedValue(null);
+    expect((await checkout({ period: "yearly" })).status).toBe(401);
+  });
+
+  it("orden de respuestas: 400 → 503 → 409", async () => {
+    getSessionMock.mockResolvedValue({ user: { id: "u1" } });
+    expect((await checkout({ period: "weekly" })).status).toBe(400);
+    loadUserPlanMock.mockResolvedValue(undefined);
+    expect((await checkout({ period: "yearly" })).status).toBe(503);
+    loadUserPlanMock.mockResolvedValue(plan({ plan: "founder_lifetime", degraded: true }));
+    expect((await checkout({ period: "yearly" })).status).toBe(503);
+    loadUserPlanMock.mockResolvedValue(plan({ plan: "founder_lifetime" }));
+    expect((await checkout({ period: "yearly" })).status).toBe(409);
+  });
+
+  it("free recibe la URL de Checkout; el cliente solo manda el periodo", async () => {
+    getSessionMock.mockResolvedValue({ user: { id: "u1" } });
+    loadUserPlanMock.mockResolvedValue(plan({ stripeCustomerId: "cus_9" }));
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(jsonResponse({ url: "https://checkout.stripe.com/x" }));
+    const res = await checkout({ period: "yearly" });
+    expect(await res.json()).toEqual({ url: "https://checkout.stripe.com/x" });
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("https://api.stripe.com/v1/checkout/sessions");
+    const form = new URLSearchParams(String(init.body));
+    expect(form.get("line_items[0][price]")).toBe("price_y");
+    expect(form.get("client_reference_id")).toBe("u1");
+    expect(form.get("subscription_data[metadata][user_id]")).toBe("u1");
+    expect(form.get("customer")).toBe("cus_9");
+    expect((init.headers as Record<string, string>)["stripe-version"]).toBe("2025-03-31.basil");
+  });
+});
+
+describe("POST /api/billing/portal", () => {
+  it("sin cliente de Stripe responde 404", async () => {
+    getSessionMock.mockResolvedValue({ user: { id: "u1" } });
+    loadUserPlanMock.mockResolvedValue(plan());
+    const res = await app.request("/api/billing/portal", { method: "POST" }, env);
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("POST /api/billing/webhook", () => {
+  const deliver = async (event: unknown) => {
+    const body = JSON.stringify(event);
+    return app.request(
+      "/api/billing/webhook",
+      { method: "POST", headers: { "stripe-signature": await sign(body) }, body },
+      env,
+    );
+  };
+  const subEvent = (type: string, sub: Record<string, unknown>) => ({
+    id: "evt_sub",
+    type,
+    data: { object: { id: "sub_1", customer: "cus_1", ...sub } },
+  });
+  const sqlCalls = () => queryMock.mock.calls.map((call) => String(call[0]));
+
+  it("firma inválida responde 400 sin tocar la base", async () => {
+    const res = await app.request(
+      "/api/billing/webhook",
+      { method: "POST", headers: { "stripe-signature": "t=1,v1=00" }, body: "{}" },
+      env,
+    );
+    expect(res.status).toBe(400);
+    expect(withClientMock).not.toHaveBeenCalled();
+  });
+
+  it("evento repetido: responde 200 sin aplicar cambios", async () => {
+    queryMock.mockImplementation(async () => ({ rows: [] }));
+    const res = await deliver(
+      subEvent("customer.subscription.updated", { status: "active", metadata: { user_id: "u1" } }),
+    );
+    expect(res.status).toBe(200);
+    expect(sqlCalls().some((sql) => sql.includes("INSERT INTO lecta_user_plan"))).toBe(false);
+  });
+
+  it("resuelve por metadata.user_id y escribe el vencimiento del item", async () => {
+    queryMock.mockImplementation(async (sql: string) => {
+      if (sql.includes("lecta_stripe_events")) return { rows: [{ event_id: "evt_sub" }] };
+      if (sql.includes('FROM "user"')) return { rows: [{ "?column?": 1 }] };
+      return { rows: [] };
+    });
+    const res = await deliver(
+      subEvent("customer.subscription.updated", {
+        status: "past_due",
+        metadata: { user_id: "u1" },
+        items: { data: [{ current_period_end: 100 }] },
+      }),
+    );
+    expect(res.status).toBe(200);
+    const upsert = queryMock.mock.calls.find((call) => String(call[0]).includes("INSERT INTO lecta_user_plan"));
+    expect(upsert?.[1]).toEqual(["u1", "cus_1", "sub_1", 100_000, expect.any(Number)]);
+    expect(sqlCalls()).toContain("COMMIT");
+  });
+
+  it("evento en desorden sin cuenta: ROLLBACK y 500 para que Stripe reintente", async () => {
+    queryMock.mockImplementation(async (sql: string) => {
+      if (sql.includes("lecta_stripe_events")) return { rows: [{ event_id: "evt_sub" }] };
+      return { rows: [] };
+    });
+    const res = await deliver(subEvent("customer.subscription.created", { status: "active" }));
+    expect(res.status).toBe(500);
+    expect(sqlCalls()).toContain("ROLLBACK");
+  });
+
+  it("checkout.session.completed resuelve por client_reference_id y pide la suscripción", async () => {
+    queryMock.mockImplementation(async (sql: string) => {
+      if (sql.includes("lecta_stripe_events")) return { rows: [{ event_id: "evt_co" }] };
+      if (sql.includes('FROM "user"')) return { rows: [{}] };
+      return { rows: [] };
+    });
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      jsonResponse({ id: "sub_2", customer: "cus_2", status: "active", items: { data: [{ current_period_end: 9 }] } }),
+    );
+    const res = await deliver({
+      id: "evt_co",
+      type: "checkout.session.completed",
+      data: { object: { status: "complete", subscription: "sub_2", customer: "cus_2", client_reference_id: "u2" } },
+    });
+    expect(res.status).toBe(200);
+    const upsert = queryMock.mock.calls.find((call) => String(call[0]).includes("INSERT INTO lecta_user_plan"));
+    expect(upsert?.[1]).toEqual(["u2", "cus_2", "sub_2", 9000, expect.any(Number)]);
+  });
+
+  it("incomplete registra el evento sin escribir el plan", async () => {
+    queryMock.mockImplementation(async (sql: string) => {
+      if (sql.includes("lecta_stripe_events")) return { rows: [{ event_id: "evt_sub" }] };
+      if (sql.includes('FROM "user"')) return { rows: [{}] };
+      return { rows: [] };
+    });
+    const res = await deliver(
+      subEvent("customer.subscription.created", { status: "incomplete", metadata: { user_id: "u1" } }),
+    );
+    expect(res.status).toBe(200);
+    expect(sqlCalls().some((sql) => sql.includes("INSERT INTO lecta_user_plan"))).toBe(false);
+  });
+
+  it("sin tabla (42P01): ROLLBACK y 503", async () => {
+    queryMock.mockImplementation(async (sql: string) => {
+      if (sql.includes("lecta_stripe_events")) {
+        throw Object.assign(new Error("relation does not exist"), { code: "42P01" });
+      }
+      return { rows: [] };
+    });
+    const res = await deliver(
+      subEvent("customer.subscription.updated", { status: "active", metadata: { user_id: "u1" } }),
+    );
+    expect(res.status).toBe(503);
+  });
+
+  it("tipos no manejados se aceptan sin tocar la base", async () => {
+    const res = await deliver({ id: "evt_x", type: "invoice.paid", data: { object: {} } });
+    expect(res.status).toBe(200);
+    expect(withClientMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("cancelación al borrar la cuenta", () => {
+  it("sin suscripción no llama a Stripe", async () => {
+    loadUserPlanMock.mockResolvedValue(plan());
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    await cancelBillingForDeletion(env, "u1");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("free con el periodo vencido omite la llamada", async () => {
+    loadUserPlanMock.mockResolvedValue(plan({ stripeSubscriptionId: "sub_1", expiresAt: 5 }));
+    const fetchMock = vi.spyOn(globalThis, "fetch");
+    await cancelBillingForDeletion(env, "u1", 10);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("cancela una suscripción vigente", async () => {
+    loadUserPlanMock.mockResolvedValue(plan({ plan: "lecta_plus", stripeSubscriptionId: "sub_1" }));
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse({ status: "canceled" }));
+    await cancelBillingForDeletion(env, "u1");
+    expect(fetchMock.mock.calls[0][0]).toBe("https://api.stripe.com/v1/subscriptions/sub_1");
+    expect((fetchMock.mock.calls[0][1] as RequestInit).method).toBe("DELETE");
+  });
+
+  it("404 / resource_missing y ya cancelada cuentan como éxito", async () => {
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(jsonResponse({ error: { code: "resource_missing" } }, 404))
+      .mockResolvedValueOnce(
+        jsonResponse({ error: { message: "This subscription is already canceled." } }, 400),
+      );
+    await expect(cancelSubscriptionForDeletion(env, "sub_1")).resolves.toBeUndefined();
+    await expect(cancelSubscriptionForDeletion(env, "sub_1")).resolves.toBeUndefined();
+  });
+
+  it("otro error aborta el borrado", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse({ error: { code: "api_error" } }, 500));
+    await expect(cancelSubscriptionForDeletion(env, "sub_1")).rejects.toThrow();
+  });
+});

@@ -48,6 +48,9 @@ logic lives in [../lib](../lib/README.md) and the stateful reader and notebook l
   [CommunityShelf.tsx:CommunityShelf] and [DiscoverRail.tsx:DiscoverRail] (with
   [DiscoverRail.tsx:DISCOVER_MOOD_FILTERS] and [DiscoverRail.tsx:DISCOVER_PACE_FILTERS]):
   community guides and the public catalog.
+- [PlanNote.tsx:PlanNote] Nota al margen de Lecta+ (2 líneas + enlace `/?carne=1`), sin estado: la usan WordPanel, ReaderNotices, FreeModes y la tarjeta de Kindle en «Tú».
+- [ReaderCard.tsx:ReaderCard] Carné de Lector en «Tú» (import estático dentro del chunk lazy de Account): estados free / Lecta+ / Mecenas, selector Mensual / Anual y botones a `/api/billing/checkout` y `/portal`.
+- [AttachBookSheet.tsx:AttachBookSheet] (lazy) «Adjunta tu archivo o pasa a Lecta+»: empareja el EPUB por `sha256` exacto (`lib/epub-intake.ts`) y, si coincide, lo guarda y abre el libro.
 - [Welcome.tsx:Welcome] (lazy) Bienvenida sin sesión: la cuenta es obligatoria. Muestra el gato del landing, [AuthForms.tsx:AuthForms] y, sin red, el aviso de conexión única. App la elige con la tabla de decisión de `App.tsx`.
 - [AuthForms.tsx:AuthForms] Formularios de acceso (entrar, crear cuenta, enlace, recuperar, restablecer) compartidos por Account y Welcome; exporta `translateAuthError`.
 - [CoatChoice.tsx:CoatChoice] Paso «Elige a tu gato» en la estantería, solo para cuentas `free` sin pelaje inicial (`needsCoatChoice`).

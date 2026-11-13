@@ -5,6 +5,13 @@ import { Hono, type Context } from "hono";
 import { getCookie, setSignedCookie } from "hono/cookie";
 import { getConnectionString, withClient, type WorkerEnv } from "../db";
 import { getSession } from "../session";
+import { loadUserPlan } from "../plan-store";
+import {
+  LECTA_PLUS_ERROR,
+  LECTA_PLUS_REQUIRED,
+  createRequireKindlePlan,
+} from "../plan-middleware";
+import { hasLectaPlus } from "../../shared/plan";
 import { createScopedAuth, closePoolSafe } from "../auth";
 import { findEntries, findEntriesForForms } from "../lexicon";
 import { createEmptyCard, fsrs, generatorParameters, Rating, type Card } from "ts-fsrs";
@@ -33,6 +40,7 @@ import {
   renderHomeView,
   renderKindleChapterPrimingView,
   renderKindleLinkView,
+  renderKindlePlanRequiredView,
   renderKindleTocView,
   renderLoginView,
   renderReaderView,
@@ -778,6 +786,21 @@ export async function handleKindleLinkAction(c: Context<{ Bindings: WorkerEnv }>
   // Redirigir a la página exacta del libro actual si el usuario tiene posición previa
   let redirectUrl = "/k";
   const userId = session?.user?.id;
+  // Vincular un Kindle es de Lecta+: hace falta la cuenta resuelta (un
+  // userId vacío ya no se acepta) y su plan.
+  if (!userId) {
+    return c.json(
+      { error: "Vuelve a iniciar sesión en este dispositivo y repite el código." },
+      401,
+    );
+  }
+  const plan = await loadUserPlan(c.env, userId).catch(() => undefined);
+  if (!plan) {
+    return c.json({ error: "Servicio temporalmente no disponible" }, 503);
+  }
+  if (!hasLectaPlus(plan.plan)) {
+    return c.json({ error: LECTA_PLUS_ERROR, code: LECTA_PLUS_REQUIRED }, 402);
+  }
   if (userId) {
     try {
       const pos = await withClient(c.env, (client) =>
@@ -1077,6 +1100,11 @@ kindleRoutes.use("*", async (c, next) => {
     c.res.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   }
 });
+
+// Lecta+ (docs/designs/2026-11-12-planes-y-landing.md): el portal pide plan.
+// Sin sesión deja pasar (los handlers redirigen); vinculación y login exentos.
+export const requireKindlePlan = createRequireKindlePlan(renderKindlePlanRequiredView);
+kindleRoutes.use("*", requireKindlePlan);
 
 kindleRoutes.get("/kindle", handleKindleLinkPage);
 kindleRoutes.get("/link", handleKindleLinkPage);

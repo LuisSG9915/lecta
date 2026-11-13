@@ -2,6 +2,7 @@ import { betterAuth } from "better-auth";
 import { magicLink } from "better-auth/plugins";
 import { Kysely, PostgresDialect } from "kysely";
 import pg from "pg";
+import { cancelBillingForDeletion } from "./stripe";
 import {
   getConnectionString,
   logPostgresError,
@@ -146,6 +147,9 @@ export function createScopedAuth(env: WorkerEnv, baseURL: string) {
           });
         },
         beforeDelete: async (user) => {
+          // Primero Stripe: si la cancelación falla, el borrado se aborta y
+          // la persona no queda pagando una cuenta que ya no existe.
+          await cancelBillingForDeletion(env, user.id);
           await purgeUserData(env, user.id);
         },
       },

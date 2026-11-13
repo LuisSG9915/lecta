@@ -55,6 +55,11 @@ describe("useReaderChapterPrep", () => {
   });
 
   describe("shouldAutoShowPreview & markSectionPreviewed", () => {
+    it("una cuenta free nunca recibe la hoja de preparación (Lecta+)", () => {
+      expect(shouldAutoShowPreview("auto", "book-free", 0, 80, 5, "free")).toBe(false);
+      expect(shouldAutoShowPreview("auto", "book-free", 0, 80, 5, "lecta_plus")).toBe(true);
+    });
+
     it("devuelve false si chapterPreviewMode es 'off'", () => {
       expect(shouldAutoShowPreview("off", "book1", 0, 80, 5)).toBe(false);
     });

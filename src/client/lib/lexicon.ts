@@ -576,7 +576,13 @@ export type ExplainInPassageResult =
       } | null;
       degraded?: boolean;
     }
-  | { ok: false; error: string };
+  | { ok: false; error: string; code?: typeof LECTA_PLUS_REQUIRED };
+
+/** Código del 402 de las rutas de Lecta+ (docs/designs/2026-11-12-planes-y-landing.md). */
+export const LECTA_PLUS_REQUIRED = "LECTA_PLUS_REQUIRED" as const;
+
+const planCode = (status: number, data: { code?: unknown } | null) =>
+  status === 402 && data?.code === LECTA_PLUS_REQUIRED ? { code: LECTA_PLUS_REQUIRED } : {};
 
 export async function explainInPassage(
   input: ExplainInPassageInput,
@@ -604,9 +610,14 @@ export async function explainInPassage(
       toneAndNuance?: string;
       catTip?: string;
       error?: string;
+      code?: string;
     };
     if (!response.ok) {
-      return { ok: false, error: data.error ?? "No se pudo obtener la explicación." };
+      return {
+        ok: false,
+        error: data.error ?? "No se pudo obtener la explicación.",
+        ...planCode(response.status, data),
+      };
     }
     if (!data.contextualMeaning && !data.directMeaning) {
       return { ok: false, error: "La IA no devolvió una explicación válida." };
@@ -728,7 +739,7 @@ export type LexiconItem = {
 
 export type ItemsResult =
   | { ok: true; items: LexiconItem[] }
-  | { ok: false; error: string };
+  | { ok: false; error: string; code?: typeof LECTA_PLUS_REQUIRED };
 
 // Pide ítems para una lista de acepciones (entryId + senseOrder). El
 // entryId es int8 > 2^53 y viaja como string: quien tenga una fila
@@ -750,9 +761,13 @@ export async function fetchItems(
       },
       scope,
     );
-    const data = (await response.json()) as { items?: LexiconItem[]; error?: string };
+    const data = (await response.json()) as { items?: LexiconItem[]; error?: string; code?: string };
     if (!response.ok)
-      return { ok: false, error: data.error ?? "No se pudieron cargar los ejercicios." };
+      return {
+        ok: false,
+        error: data.error ?? "No se pudieron cargar los ejercicios.",
+        ...planCode(response.status, data),
+      };
     return { ok: true, items: data.items ?? [] };
   } catch {
     return { ok: false, error: "Sin conexión con el catálogo." };

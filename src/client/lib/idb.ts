@@ -375,7 +375,8 @@ export type ReadingEvent = ReadingEventBase &
 // sesión o conexión al hacer el cambio local.
 export interface BookOp {
   id: string;
-  kind: "upload" | "delete";
+  // "meta" = registrar solo metadatos del libro propio (plan free, 027).
+  kind: "upload" | "delete" | "meta";
   hash: string;
   name?: string;
   createdAt: number;
@@ -1565,7 +1566,14 @@ export async function hasAnyLearningHistory(scope?: DbScope): Promise<boolean> {
 // vuelta crearía un ciclo). Los sellos de sync, el ajuste de auth y
 // claves arbitrarias NO migran: no son datos del lector.
 export const CHAPTER_FOLLOW_PREFIX = "chapterFollow:v1:";
-const SESSION_MIGRATABLE_PREFIXES = ["preparation:v1:", "bookStart:v1:", CHAPTER_FOLLOW_PREFIX] as const;
+// "plan-note:prep:" = la nota de Lecta+ de «Palabras previstas» ya mostrada
+// en ese libro (docs/designs/2026-11-12-planes-y-landing.md).
+const SESSION_MIGRATABLE_PREFIXES = [
+  "preparation:v1:",
+  "bookStart:v1:",
+  CHAPTER_FOLLOW_PREFIX,
+  "plan-note:prep:",
+] as const;
 
 export function isMigratableSessionKey(key: string): boolean {
   return (

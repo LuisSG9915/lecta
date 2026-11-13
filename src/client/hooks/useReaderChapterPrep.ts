@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, type MutableRefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type MutableRefObject } from "react";
 import type { SectionPreviewRow } from "../components/SectionPreview";
 import type { ChapterTarget, ChapterCatalog, ChapterRange } from "../lib/chapters";
 import { targetAt } from "../lib/chapters";
@@ -24,7 +24,9 @@ import {
   prefetchUpcomingChaptersLexicon,
 } from "../lib/offline-dictionary";
 import { isPrimingMutedForBook, loadNativeLanguage, isFeatureFlagEnabled } from "../lib/settings";
-import { hasAnyLearningHistory, type DbScope } from "../lib/idb";
+import { hasAnyLearningHistory, loadSessionValue, saveSessionValue, type DbScope } from "../lib/idb";
+import { useUserPlan } from "../lib/account-plan";
+import type { UserPlan } from "../../shared/plan";
 import type { EpisodicWordItem } from "../lib/practice";
 import type { EpubBook } from "../lib/epub";
 import { getBookLanguage } from "../lib/epub";
@@ -43,7 +45,10 @@ export function shouldAutoShowPreview(
   sectionIndex: number,
   _coveragePct?: number,
   unknownKeyWordsCount = 0,
+  // «Palabras previstas» es de Lecta+: una cuenta free no recibe la hoja.
+  plan: UserPlan | null = null,
 ): boolean {
+  if (plan === "free") return false;
   if (chapterPreviewMode === "off") return false;
   if (unknownKeyWordsCount <= 0) return false;
   const key = `lecta:previewed:${bookId}:${sectionIndex}`;
@@ -168,6 +173,15 @@ export function useReaderChapterPrep({
   const [prepNotice, setPrepNotice] = useState<PrepNoticeState | null>(null);
   const [previewSuggested, setPreviewSuggested] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  // Lecta+ (docs/designs/2026-11-12-planes-y-landing.md): en free la hoja de
+  // preparación no se abre; se muestra la nota del gato, una vez por libro
+  // en automático y siempre que se pida a mano.
+  const userPlan = useUserPlan();
+  const [prepPlanNote, setPrepPlanNote] = useState(false);
+  const planFreeRef = useRef(false);
+  useEffect(() => {
+    planFreeRef.current = userPlan?.plan === "free";
+  }, [userPlan]);
 
   const prepRef = useRef<PrepSheetState | null>(null);
   const prepLexRef = useRef(new Map<string, PreparationRow>());
@@ -235,6 +249,10 @@ export function useReaderChapterPrep({
   const openPrepSheet = useCallback(
     async (target: ChapterTarget, record: PreparationRecord | null) => {
       if (!isFeatureFlagEnabled("chapterPriming")) return;
+      if (planFreeRef.current) {
+        setPrepPlanNote(true);
+        return;
+      }
       const scope = captureDbScope();
       const cat = catalogRef.current;
       const analyzer = analyzerRef.current;
@@ -389,11 +407,24 @@ export function useReaderChapterPrep({
             target.sectionIndex,
             95,
             count ?? 0,
+            planFreeRef.current ? "free" : null,
           )
         ) {
           setPreviewSuggested(true);
         } else {
           setPreviewSuggested(false);
+          // Free con palabras por preparar: nota de Lecta+ una vez por libro.
+          if (planFreeRef.current && (count ?? 0) > 0) {
+            const noteKey = `plan-note:prep:${bookHash}`;
+            const noteScope = captureDbScope();
+            void loadSessionValue(noteKey, noteScope)
+              .then((seen) => {
+                if (seen) return;
+                setPrepPlanNote(true);
+                return saveSessionValue(noteKey, "1", noteScope);
+              })
+              .catch(() => undefined);
+          }
         }
         return;
       }
@@ -752,6 +783,8 @@ export function useReaderChapterPrep({
     discardPrep,
     openPrepManual,
     dismissPrepNotice,
+    prepPlanNote,
+    dismissPrepPlanNote: () => setPrepPlanNote(false),
     recordPresented,
     resetPrepForBook,
   };

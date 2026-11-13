@@ -63,6 +63,7 @@ import { playCompanionSound } from "../lib/companion-audio";
 import { loadNativeLanguage } from "../lib/settings";
 
 import type { UsePracticeCompanionResult } from "./usePracticeCompanion";
+import { useUserPlan } from "../lib/account-plan";
 
 export type UseReviewSessionArgs = {
   /** Cola de repaso: ya presentadas, vencidas y no conocidas (ver reviewQueue). */
@@ -122,6 +123,7 @@ export function useReviewSession({
   const [matchFlash, setMatchFlash] = useState<string | null>(null);
   // Aviso suave cuando un modo no puede armar su cola (p. ej. acepciones sin conexión).
   const [practiceNote, setPracticeNote] = useState("");
+  const userPlan = useUserPlan();
   // La tarjeta candidata de cada calificación se calcula una sola vez al
   // revelar: el botón guarda exactamente lo que su intervalo anuncia.
   const candidates = useRef<Map<Grade, Card> | null>(null);
@@ -269,6 +271,12 @@ export function useReviewSession({
 
   const startPractice = async (chosen: PracticeMode) => {
     setPracticeNote("");
+    // Lecta+ (docs/designs/2026-11-12-planes-y-landing.md): en free los modos
+    // libres no arman cola ni piden ítems; «Repasar» no pasa por aquí.
+    if (userPlan?.plan === "free") {
+      setPracticeNote("Los modos libres son de Lecta+.");
+      return;
+    }
     // Con la IA apagada estos modos no pueden armar cola (fetchItems
     // sirve ítems generados con IA): se avisa y no se llama.
     if ((chosen === "context" || chosen === "clozeNew") && !useAi) {

@@ -5,6 +5,25 @@ import * as dbModule from "./db";
 import * as sessionModule from "./session";
 import { resetClientErrorLimiters } from "./client-errors";
 
+// Bloque 2 (docs/designs/2026-11-12-planes-y-landing.md): las rutas con gating
+// consultan el plan con loadUserPlan. Por defecto la cuenta es fundadora, así
+// la consulta no pasa por withClient ni consume los mocks de la base.
+const loadUserPlanMock = vi.hoisted(() =>
+  vi.fn(async () => ({
+    plan: "founder_lifetime" as const,
+    starterCoat: null,
+    expiresAt: null,
+    stripeCustomerId: null,
+    stripeSubscriptionId: null,
+    degraded: false,
+  })),
+);
+vi.mock("./plan-store", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./plan-store")>()),
+  loadUserPlan: loadUserPlanMock,
+}));
+
+
 describe("GET /api/health", () => {
   it("devuelve 503 con db unreachable si la base de datos no está disponible", async () => {
     vi.spyOn(dbModule, "withClient").mockResolvedValueOnce(undefined);
@@ -178,6 +197,18 @@ describe("POST /api/lexicon/enrich", () => {
 });
 
 describe("POST /api/lexicon/items", () => {
+  // Con gating (Bloque 2) el middleware exige sesión antes de validar el
+  // body: se simula una cuenta para que 400/503 sigan siendo alcanzables.
+  beforeEach(() => {
+    vi.spyOn(sessionModule, "getSession").mockResolvedValue({
+      user: { id: "u-gated" },
+      session: {},
+    } as unknown as Awaited<ReturnType<typeof sessionModule.getSession>>);
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   const post = (body: unknown, env?: object) =>
     app.request(
       "/api/lexicon/items",
@@ -241,6 +272,18 @@ describe("POST /api/lexicon/items", () => {
 });
 
 describe("POST /api/lexicon/items/answer", () => {
+  // Con gating (Bloque 2) el middleware exige sesión antes de validar el
+  // body: se simula una cuenta para que 400/503 sigan siendo alcanzables.
+  beforeEach(() => {
+    vi.spyOn(sessionModule, "getSession").mockResolvedValue({
+      user: { id: "u-gated" },
+      session: {},
+    } as unknown as Awaited<ReturnType<typeof sessionModule.getSession>>);
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   const post = (body: unknown, env?: object) =>
     app.request(
       "/api/lexicon/items/answer",
@@ -264,6 +307,18 @@ describe("POST /api/lexicon/items/answer", () => {
 });
 
 describe("POST /api/lexicon/verify-sentence", () => {
+  // Con gating (Bloque 2) el middleware exige sesión antes de validar el
+  // body: se simula una cuenta para que 400/503 sigan siendo alcanzables.
+  beforeEach(() => {
+    vi.spyOn(sessionModule, "getSession").mockResolvedValue({
+      user: { id: "u-gated" },
+      session: {},
+    } as unknown as Awaited<ReturnType<typeof sessionModule.getSession>>);
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   const post = (body: unknown, env?: object) =>
     app.request(
       "/api/lexicon/verify-sentence",
@@ -301,6 +356,18 @@ describe("POST /api/lexicon/verify-sentence", () => {
 });
 
 describe("POST /api/ai/evaluate-sentence", () => {
+  // Con gating (Bloque 2) el middleware exige sesión antes de validar el
+  // body: se simula una cuenta para que 400/503 sigan siendo alcanzables.
+  beforeEach(() => {
+    vi.spyOn(sessionModule, "getSession").mockResolvedValue({
+      user: { id: "u-gated" },
+      session: {},
+    } as unknown as Awaited<ReturnType<typeof sessionModule.getSession>>);
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   const post = (body: unknown, env?: object) =>
     app.request(
       "/api/ai/evaluate-sentence",
@@ -329,6 +396,7 @@ describe("POST /api/ai/evaluate-sentence", () => {
   });
 
   it("requires authenticated session", async () => {
+    vi.mocked(sessionModule.getSession).mockResolvedValue(null);
     const response = await post({
       word: "efímero",
       targetSense: "Pasajero",
@@ -339,6 +407,18 @@ describe("POST /api/ai/evaluate-sentence", () => {
 });
 
 describe("POST /api/ai/micro-story", () => {
+  // Con gating (Bloque 2) el middleware exige sesión antes de validar el
+  // body: se simula una cuenta para que 400/503 sigan siendo alcanzables.
+  beforeEach(() => {
+    vi.spyOn(sessionModule, "getSession").mockResolvedValue({
+      user: { id: "u-gated" },
+      session: {},
+    } as unknown as Awaited<ReturnType<typeof sessionModule.getSession>>);
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   const post = (body: unknown, env?: object) =>
     app.request(
       "/api/ai/micro-story",
@@ -357,6 +437,7 @@ describe("POST /api/ai/micro-story", () => {
   });
 
   it("requires authenticated session", async () => {
+    vi.mocked(sessionModule.getSession).mockResolvedValue(null);
     const response = await post({
       words: [{ word: "tinta", meaning: "Líquido para escribir" }],
     });

@@ -10,6 +10,7 @@ import {
   setFocusAutoSuggestEnabled,
 } from "../../lib/focus-telemetry";
 import { markSectionPreviewed } from "../../lib/chapter-analysis";
+import PlanNote from "../PlanNote";
 import { memo } from "react";
 
 const RICH_CHAPTER_KEY_WORDS = 12;
@@ -35,6 +36,9 @@ export interface ReaderNoticesProps {
   bookHash: string;
   sectionIndex: number;
   dismissPrepNotice: () => void;
+  /** Lecta+: nota del gato en vez de la preparación (cuenta free). */
+  prepPlanNote?: boolean;
+  dismissPrepPlanNote?: () => void;
   calNotice: boolean;
   prep: unknown;
   prepNotice: unknown;
@@ -69,6 +73,8 @@ export const ReaderNotices = memo(function ReaderNotices(props: ReaderNoticesPro
   bookHash,
   sectionIndex,
   dismissPrepNotice,
+  prepPlanNote = false,
+  dismissPrepPlanNote,
   calNotice,
   prep,
   prepNotice,
@@ -117,6 +123,24 @@ export const ReaderNotices = memo(function ReaderNotices(props: ReaderNoticesPro
         className="reader-return-dismiss"
         onClick={() => setResumeCard(null)}
         aria-label="Seguir leyendo"
+      >
+        ×
+      </button>
+    </div>
+  ) : null}
+
+  {/* Lecta+: en free la preparación se vuelve una nota al margen, sin bloquear. */}
+  {prepPlanNote && !isDeepReading ? (
+    <div className="reader-chapter-prep-pill" role="status" aria-live="polite">
+      <PlanNote
+        title="Las palabras previstas son de Lecta+."
+        detail="Sigue leyendo: tocar cualquier palabra te da su significado."
+      />
+      <button
+        type="button"
+        className="btn--quiet"
+        aria-label="Cerrar aviso"
+        onClick={() => dismissPrepPlanNote?.()}
       >
         ×
       </button>

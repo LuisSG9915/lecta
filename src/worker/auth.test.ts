@@ -209,6 +209,41 @@ describe("purga total al borrar la cuenta", () => {
     expect(remove).toHaveBeenNthCalledWith(2, ["books/u1/c.epub"]);
   });
 
+  it("beforeDelete cancela la suscripción de Stripe antes de purgar", async () => {
+    const stripeModule = await import("./stripe");
+    const order: string[] = [];
+    const cancel = vi
+      .spyOn(stripeModule, "cancelBillingForDeletion")
+      .mockImplementation(async () => {
+        order.push("stripe");
+      });
+    const list = vi.fn(async () => {
+      order.push("purge");
+      return { objects: [], truncated: false, cursor: "" };
+    });
+    const bucket = { list, delete: vi.fn() } as unknown as R2Bucket;
+    createAuth({ ...envWithDb, BOOKS: bucket }, "https://lecta.test");
+    await lastAuthConfig().user.deleteUser.beforeDelete({ id: "u1" });
+    expect(cancel).toHaveBeenCalledWith(expect.anything(), "u1");
+    expect(order[0]).toBe("stripe");
+    cancel.mockRestore();
+  });
+
+  it("beforeDelete aborta el borrado si Stripe falla", async () => {
+    const stripeModule = await import("./stripe");
+    const cancel = vi
+      .spyOn(stripeModule, "cancelBillingForDeletion")
+      .mockRejectedValue(new Error("No se pudo cancelar tu suscripción."));
+    const list = vi.fn();
+    const bucket = { list, delete: vi.fn() } as unknown as R2Bucket;
+    createAuth({ ...envWithDb, BOOKS: bucket }, "https://lecta.test");
+    await expect(
+      lastAuthConfig().user.deleteUser.beforeDelete({ id: "u1" }),
+    ).rejects.toThrow("No se pudo cancelar");
+    expect(list).not.toHaveBeenCalled();
+    cancel.mockRestore();
+  });
+
   it("beforeDelete purga books/, user-books/ y las tablas user_books y kindle_link_codes", async () => {
     const list = vi.fn(async ({ prefix }: { prefix: string }) => ({
       objects: [{ key: prefix + "a.epub" }],

@@ -5,6 +5,25 @@ import { app } from "./app";
 import { loadEpubBufferForKindle } from "./kindle/routes";
 import type { WorkerEnv } from "./db";
 
+// Bloque 2 (docs/designs/2026-11-12-planes-y-landing.md): las rutas con gating
+// consultan el plan con loadUserPlan. Por defecto la cuenta es fundadora, así
+// la consulta no pasa por withClient ni consume los mocks de la base.
+const loadUserPlanMock = vi.hoisted(() =>
+  vi.fn(async () => ({
+    plan: "founder_lifetime" as const,
+    starterCoat: null,
+    expiresAt: null,
+    stripeCustomerId: null,
+    stripeSubscriptionId: null,
+    degraded: false,
+  })),
+);
+vi.mock("./plan-store", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./plan-store")>()),
+  loadUserPlan: loadUserPlanMock,
+}));
+
+
 const getSessionMock = vi.hoisted(() => vi.fn());
 
 vi.mock("./session", () => ({
@@ -15,11 +34,105 @@ vi.mock("./session", () => ({
   },
 }));
 
+// Almacén pg en memoria (Bloque 2, docs/designs/2026-11-12-planes-y-landing.md):
+// withClient ejecuta el callback con un cliente que entiende las formas de
+// SQL que tocan estas rutas. Sin rama D1: el env ya no lleva DB.
+const pgStore = vi.hoisted(() => new Map<string, Record<string, unknown>>());
+
+function pgQuery(sql: string, params: unknown[] = []): { rows: Record<string, unknown>[] } {
+  const text = sql.replace(/\s+/g, " ").trim();
+  const rowsOf = (userId: unknown) =>
+    [...pgStore.values()].filter((row) => row.user_id === userId);
+  if (/^(BEGIN|COMMIT|ROLLBACK|SAVEPOINT|RELEASE)/.test(text)) return { rows: [] };
+  if (text.includes("lecta_account_state")) return { rows: [] };
+  if (text.startsWith("INSERT INTO user_books")) {
+    const cols = text.slice(text.indexOf("(") + 1, text.indexOf(")")).split(",").map((c) => c.trim());
+    const values = text.slice(text.indexOf("VALUES (") + 8, text.indexOf(")", text.indexOf("VALUES ("))).split(",").map((v) => v.trim());
+    const row: Record<string, unknown> = {};
+    cols.forEach((col, i) => {
+      const v = values[i];
+      row[col] = /^\$\d+$/.test(v) ? params[Number(v.slice(1)) - 1] : v === "true" ? true : v === "false" ? false : v === "''" ? "" : Number(v);
+    });
+    const key = `${row.user_id}:${row.book_id}`;
+    const prev = pgStore.get(key);
+    if (prev && row.has_file === false) {
+      // /meta sobre una fila existente: solo metadatos, nunca r2_key,
+      // size_bytes ni has_file (igual que su DO UPDATE).
+      pgStore.set(key, { ...prev, title: row.title, author: row.author, language: row.language });
+    } else {
+      pgStore.set(key, { has_file: true, ...prev, ...row });
+    }
+    return { rows: [] };
+  }
+  if (text.includes("SUM(size_bytes)")) {
+    const rows = rowsOf(params[0]).filter((row) => row.book_id !== params[1]);
+    return {
+      rows: [
+        {
+          total_bytes: rows.reduce((sum, row) => sum + Number(row.size_bytes ?? 0), 0),
+          book_count: rows.length,
+        },
+      ],
+    };
+  }
+  if (text.startsWith("SELECT r2_key")) {
+    const row = pgStore.get(`${params[0]}:${params[1]}`);
+    return { rows: row ? [{ r2_key: row.r2_key, title: row.title }] : [] };
+  }
+  if (text.includes("SELECT book_id AS id")) {
+    return {
+      rows: rowsOf(params[0])
+        .filter((row) => !text.includes("has_file = true") || row.has_file !== false)
+        .map((row) => ({
+          id: row.book_id,
+          title: row.title,
+          author: row.author,
+          sizebytes: row.size_bytes ?? 0,
+          sha256: row.sha256 ?? "",
+          updatedat: row.updated_at ?? 0,
+        })),
+    };
+  }
+  if (text.includes("r2_key NOT LIKE")) {
+    return {
+      rows: rowsOf(params[0])
+        .filter((row) => !String(row.r2_key ?? "").startsWith("books/"))
+        .filter((row) => !text.includes("has_file = true") || row.has_file !== false)
+        .map((row) => ({ ...row, language: row.language ?? "" })),
+    };
+  }
+  if (text.includes("has_file = false")) {
+    return {
+      rows: rowsOf(params[0])
+        .filter((row) => row.has_file === false)
+        .map((row) => ({ ...row, language: row.language ?? "" })),
+    };
+  }
+  if (text.includes("paper_only = true")) {
+    return { rows: rowsOf(params[0]).filter((row) => row.paper_only === true) };
+  }
+  if (text.includes("SELECT book_id, shared, paper_only")) {
+    return {
+      rows: rowsOf(params[0]).map((row) => ({
+        book_id: row.book_id,
+        shared: row.shared ?? false,
+        paper_only: row.paper_only ?? false,
+        genre: row.genre ?? "",
+      })),
+    };
+  }
+  return { rows: [] };
+}
+
 vi.mock("./db", async (importOriginal) => {
   const original = await importOriginal<typeof import("./db")>();
   return {
     ...original,
     getConnectionString: () => "postgres://mock",
+    withClient: async (
+      _env: unknown,
+      run: (client: { query: (sql: string, params?: unknown[]) => Promise<unknown> }) => Promise<unknown>,
+    ) => run({ query: async (sql: string, params?: unknown[]) => pgQuery(sql, params) }),
   };
 });
 
@@ -36,102 +149,30 @@ interface UserBookRecord {
   updated_at?: number;
 }
 
-describe("User Books Cloud Sync (D1, R2, Kindle fallback)", () => {
+describe("User Books Cloud Sync (pg en memoria, R2, Kindle fallback)", () => {
   const minimalPath = resolve(__dirname, "../../fixtures/minimal.epub");
   const minimalBytes = new Uint8Array(readFileSync(minimalPath));
 
-  let mockDb: unknown;
   let mockBucket: unknown;
-  let store: Map<string, UserBookRecord>;
+  const store = {
+    set: (key: string, row: UserBookRecord) => pgStore.set(key, { has_file: true, ...row }),
+    has: (key: string) => pgStore.has(key),
+    get: (key: string) => pgStore.get(key),
+  };
   let r2Store: Map<string, ArrayBuffer>;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    store = new Map();
+    pgStore.clear();
+    loadUserPlanMock.mockResolvedValue({
+      plan: "founder_lifetime",
+      starterCoat: null,
+      expiresAt: null,
+      stripeCustomerId: null,
+      stripeSubscriptionId: null,
+      degraded: false,
+    });
     r2Store = new Map();
-
-    mockDb = {
-      prepare: vi.fn((sql: string) => {
-        let boundParams: unknown[] = [];
-        const stmt = {
-          bind: (...params: unknown[]) => {
-            boundParams = params;
-            return stmt;
-          },
-          first: vi.fn(async () => {
-            if (sql.includes("SUM(size_bytes)")) {
-              let total = 0;
-              for (const item of store.values()) {
-                if (item.user_id === boundParams[0] && item.book_id !== boundParams[1]) {
-                  total += item.size_bytes ?? 0;
-                }
-              }
-              return { total };
-            }
-            if (sql.includes("SELECT r2_key")) {
-              const [userId, bookId] = boundParams as [string, string];
-              const item = store.get(`${userId}:${bookId}`);
-              return item ? { r2_key: item.r2_key, title: item.title } : null;
-            }
-            return null;
-          }),
-          all: vi.fn(async () => {
-            if (sql.includes("SELECT book_id AS id")) {
-              const [userId] = boundParams as [string];
-              const results = Array.from(store.values())
-                .filter((v) => v.user_id === userId)
-                .map((v) => ({
-                  id: v.book_id,
-                  title: v.title,
-                  author: v.author,
-                  sizeBytes: v.size_bytes,
-                  sha256: v.sha256,
-                  updatedAt: v.updated_at,
-                }));
-              return { results };
-            }
-            if (sql.includes("r2_key NOT LIKE")) {
-              const [userId] = boundParams as [string];
-              const results = Array.from(store.values())
-                .filter(
-                  (v) =>
-                    v.user_id === userId &&
-                    !(v.r2_key ?? "").startsWith("books/"),
-                )
-                .map((v) => ({
-                  book_id: v.book_id,
-                  title: v.title,
-                  author: v.author,
-                  language: v.language ?? "",
-                  updated_at: v.updated_at,
-                }));
-              return { results };
-            }
-            return { results: [] };
-          }),
-          run: vi.fn(async () => {
-            if (sql.includes("INSERT INTO user_books")) {
-              const [userId, bookId, title, author, r2Key, sizeBytes, sha256, createdAt, updatedAt] =
-                boundParams as [string, string, string, string, string, number, string, number, number];
-              store.set(`${userId}:${bookId}`, {
-                user_id: userId,
-                book_id: bookId,
-                title,
-                author,
-                r2_key: r2Key,
-                size_bytes: sizeBytes,
-                sha256,
-                created_at: createdAt,
-                updated_at: updatedAt,
-              });
-              return { success: true };
-            }
-            return { success: true };
-          }),
-        };
-        return stmt;
-      }),
-    };
 
     mockBucket = {
       put: vi.fn(async (key: string, data: ArrayBuffer) => {
@@ -173,7 +214,7 @@ describe("User Books Cloud Sync (D1, R2, Kindle fallback)", () => {
         method: "PUT",
         body: minimalBytes.buffer,
       },
-      { DB: mockDb as WorkerEnv["DB"], BOOKS: mockBucket as WorkerEnv["BOOKS"] },
+      { BOOKS: mockBucket as WorkerEnv["BOOKS"] },
     );
 
     expect(res.status).toBe(401);
@@ -188,13 +229,13 @@ describe("User Books Cloud Sync (D1, R2, Kindle fallback)", () => {
         method: "PUT",
         body: new Uint8Array([1, 2, 3, 4]).buffer,
       },
-      { DB: mockDb as WorkerEnv["DB"], BOOKS: mockBucket as WorkerEnv["BOOKS"] },
+      { BOOKS: mockBucket as WorkerEnv["BOOKS"] },
     );
 
     expect(res.status).toBe(400);
   });
 
-  it("PUT /api/user/books/:bookId/file guarda el EPUB en R2 y D1", async () => {
+  it("PUT /api/user/books/:bookId/file guarda el EPUB en R2 y en user_books", async () => {
     getSessionMock.mockResolvedValueOnce({ user: { id: "user-1" } });
 
     const res = await app.request(
@@ -207,7 +248,7 @@ describe("User Books Cloud Sync (D1, R2, Kindle fallback)", () => {
         },
         body: minimalBytes.buffer,
       },
-      { DB: mockDb as WorkerEnv["DB"], BOOKS: mockBucket as WorkerEnv["BOOKS"] },
+      { BOOKS: mockBucket as WorkerEnv["BOOKS"] },
     );
 
     expect(res.status).toBe(200);
@@ -217,7 +258,7 @@ describe("User Books Cloud Sync (D1, R2, Kindle fallback)", () => {
 
     // Verificar en R2
     expect(r2Store.has("user-books/user-1/book-abc.epub")).toBe(true);
-    // Verificar en D1
+    // Verificar en la base (pg en memoria)
     expect(store.has("user-1:book-abc")).toBe(true);
   });
 
@@ -237,7 +278,7 @@ describe("User Books Cloud Sync (D1, R2, Kindle fallback)", () => {
     const res = await app.request(
       "/api/user/books",
       { method: "GET" },
-      { DB: mockDb as WorkerEnv["DB"], BOOKS: mockBucket as WorkerEnv["BOOKS"] },
+      { BOOKS: mockBucket as WorkerEnv["BOOKS"] },
     );
 
     expect(res.status).toBe(200);
@@ -262,7 +303,7 @@ describe("User Books Cloud Sync (D1, R2, Kindle fallback)", () => {
     const res = await app.request(
       "/api/user/books/b1/file",
       { method: "GET" },
-      { DB: mockDb as WorkerEnv["DB"], BOOKS: mockBucket as WorkerEnv["BOOKS"] },
+      { BOOKS: mockBucket as WorkerEnv["BOOKS"] },
     );
 
     expect(res.status).toBe(200);
@@ -275,13 +316,13 @@ describe("User Books Cloud Sync (D1, R2, Kindle fallback)", () => {
     // 1. Desde catálogo
     r2Store.set("catalog/cat-book.epub", minimalBytes.buffer as ArrayBuffer);
     const fromCat = await loadEpubBufferForKindle(
-      { DB: mockDb as WorkerEnv["DB"], BOOKS: mockBucket as WorkerEnv["BOOKS"] } as WorkerEnv,
+      { BOOKS: mockBucket as WorkerEnv["BOOKS"] } as WorkerEnv,
       "user-1",
       "cat-book",
     );
     expect(fromCat).not.toBeNull();
 
-    // 2. Desde user_books en D1
+    // 2. Desde user_books
     store.set("user-1:my-book", {
       user_id: "user-1",
       book_id: "my-book",
@@ -292,7 +333,7 @@ describe("User Books Cloud Sync (D1, R2, Kindle fallback)", () => {
     r2Store.set("user-books/user-1/my-book.epub", minimalBytes.buffer as ArrayBuffer);
 
     const fromUser = await loadEpubBufferForKindle(
-      { DB: mockDb as WorkerEnv["DB"], BOOKS: mockBucket as WorkerEnv["BOOKS"] } as WorkerEnv,
+      { BOOKS: mockBucket as WorkerEnv["BOOKS"] } as WorkerEnv,
       "user-1",
       "my-book",
     );
@@ -327,7 +368,7 @@ describe("User Books Cloud Sync (D1, R2, Kindle fallback)", () => {
     const res = await app.request(
       "/api/books",
       { method: "GET" },
-      { DB: mockDb as WorkerEnv["DB"], BOOKS: mockBucket as WorkerEnv["BOOKS"] },
+      { BOOKS: mockBucket as WorkerEnv["BOOKS"] },
     );
 
     expect(res.status).toBe(200);
@@ -346,7 +387,7 @@ describe("User Books Cloud Sync (D1, R2, Kindle fallback)", () => {
     const res = await app.request(
       `/api/books/${LEGACY_HASH}`,
       { method: "GET" },
-      { DB: mockDb as WorkerEnv["DB"], BOOKS: mockBucket as WorkerEnv["BOOKS"] },
+      { BOOKS: mockBucket as WorkerEnv["BOOKS"] },
     );
 
     expect(res.status).toBe(200);
@@ -367,7 +408,7 @@ describe("User Books Cloud Sync (D1, R2, Kindle fallback)", () => {
     const res = await app.request(
       "/api/books",
       { method: "GET" },
-      { DB: mockDb as WorkerEnv["DB"], BOOKS: mockBucket as WorkerEnv["BOOKS"] },
+      { BOOKS: mockBucket as WorkerEnv["BOOKS"] },
     );
 
     expect(res.status).toBe(200);
@@ -384,12 +425,106 @@ describe("User Books Cloud Sync (D1, R2, Kindle fallback)", () => {
     const res = await app.request(
       `/api/books/${LEGACY_HASH}`,
       { method: "GET" },
-      { DB: mockDb as WorkerEnv["DB"], BOOKS: mockBucket as WorkerEnv["BOOKS"] },
+      { BOOKS: mockBucket as WorkerEnv["BOOKS"] },
     );
 
     expect(res.status).toBe(200);
     const downloaded = new Uint8Array(await res.arrayBuffer());
     expect(downloaded.byteLength).toBe(modernBytes.byteLength);
     expect(downloaded[4]).toBe(1);
+  });
+
+  // ---- Bloque 2: libros propios solo con metadatos (027) y gating ----
+  const META_HASH = "cd".repeat(32);
+  const putMeta = (body: Record<string, unknown>, hash = META_HASH) =>
+    app.request(
+      `/api/user/books/${hash}/meta`,
+      {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      },
+      { BOOKS: mockBucket as WorkerEnv["BOOKS"] },
+    );
+
+  it("PUT /meta registra la fila sin archivo (gratis, con sesión)", async () => {
+    getSessionMock.mockResolvedValue({ user: { id: "user-1" } });
+    loadUserPlanMock.mockResolvedValue({ ...(await loadUserPlanMock()), plan: "free" as never });
+    const res = await putMeta({ title: "Mi libro", author: "Yo", language: "es", sha256: META_HASH });
+    expect(res.status).toBe(200);
+    expect(store.get(`user-1:${META_HASH}`)).toMatchObject({ r2_key: "", has_file: false, size_bytes: 0 });
+  });
+
+  it("PUT /meta rechaza un sha256 distinto del libro y no escribe", async () => {
+    getSessionMock.mockResolvedValue({ user: { id: "user-1" } });
+    const res = await putMeta({ title: "x", sha256: "ef".repeat(32) });
+    expect(res.status).toBe(400);
+    expect(store.has(`user-1:${META_HASH}`)).toBe(false);
+  });
+
+  it("PUT /meta sin sesión responde 401", async () => {
+    getSessionMock.mockResolvedValue(null);
+    const res = await putMeta({ sha256: META_HASH });
+    expect(res.status).toBe(401);
+  });
+
+  it("PUT /meta nunca pisa r2_key ni has_file de una fila con archivo", async () => {
+    getSessionMock.mockResolvedValue({ user: { id: "user-1" } });
+    store.set(`user-1:${META_HASH}`, {
+      user_id: "user-1",
+      book_id: META_HASH,
+      title: "Viejo",
+      author: "A",
+      r2_key: `books/user-1/${META_HASH}.epub`,
+      size_bytes: 999,
+    });
+    const res = await putMeta({ title: "Nuevo", author: "B", sha256: META_HASH });
+    expect(res.status).toBe(200);
+    expect(store.get(`user-1:${META_HASH}`)).toMatchObject({
+      title: "Nuevo",
+      r2_key: `books/user-1/${META_HASH}.epub`,
+      size_bytes: 999,
+      has_file: true,
+    });
+  });
+
+  it("PUT /meta respeta el tope de libros de la cuenta (413)", async () => {
+    getSessionMock.mockResolvedValue({ user: { id: "user-1" } });
+    for (let i = 0; i < 100; i += 1) {
+      store.set(`user-1:b${i}`, { user_id: "user-1", book_id: `b${i}`, title: "t", author: "a" });
+    }
+    const res = await putMeta({ sha256: META_HASH });
+    expect(res.status).toBe(413);
+  });
+
+  it("GET /api/books lista los libros sin archivo con hasFile: false y sin duplicar", async () => {
+    getSessionMock.mockResolvedValue({ user: { id: "user-1" } });
+    await putMeta({ title: "Solo metadatos", sha256: META_HASH });
+    const res = await app.request("/api/books", { method: "GET" }, { BOOKS: mockBucket as WorkerEnv["BOOKS"] });
+    const json = (await res.json()) as { books: Array<{ hash: string; hasFile?: boolean }> };
+    const entries = json.books.filter((b) => b.hash === META_HASH);
+    expect(entries).toHaveLength(1);
+    expect(entries[0].hasFile).toBe(false);
+  });
+
+  it("GET /api/user/books excluye las filas sin archivo", async () => {
+    getSessionMock.mockResolvedValue({ user: { id: "user-1" } });
+    await putMeta({ title: "Solo metadatos", sha256: META_HASH });
+    const res = await app.request("/api/user/books", { method: "GET" }, { BOOKS: mockBucket as WorkerEnv["BOOKS"] });
+    const json = (await res.json()) as { books: Array<{ id: string }> };
+    expect(json.books.some((b) => b.id === META_HASH)).toBe(false);
+  });
+
+  it("una cuenta free recibe 402 al subir o bajar binarios", async () => {
+    getSessionMock.mockResolvedValue({ user: { id: "user-1" } });
+    loadUserPlanMock.mockResolvedValue({ ...(await loadUserPlanMock()), plan: "free" as never });
+    const env = { BOOKS: mockBucket as WorkerEnv["BOOKS"] };
+    const put = await app.request("/api/user/books/b1/file", { method: "PUT", body: minimalBytes.buffer }, env);
+    const get = await app.request("/api/user/books/b1/file", { method: "GET" }, env);
+    const getBook = await app.request(`/api/books/${LEGACY_HASH}`, { method: "GET" }, env);
+    for (const res of [put, get, getBook]) {
+      expect(res.status).toBe(402);
+      expect(((await res.json()) as { code: string }).code).toBe("LECTA_PLUS_REQUIRED");
+    }
   });
 });

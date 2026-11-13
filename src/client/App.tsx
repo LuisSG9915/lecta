@@ -24,6 +24,7 @@ const RestoreBackupDialog = lazy(() => import("./components/RestoreBackupDialog"
 const DiagnosticsModal = lazy(() => import("./components/DiagnosticsModal"));
 const LegalNotice = lazy(() => import("./components/LegalNotice"));
 const Welcome = lazy(() => import("./components/Welcome"));
+const AttachBookSheet = lazy(() => import("./components/AttachBookSheet"));
 import { CompanionProvider } from "./components/CompanionProvider";
 import Shelf, { type ShelfItem, type BookLike } from "./components/Shelf";
 import BookCover from "./components/BookCover";
@@ -99,12 +100,11 @@ import {
   isHashLikeIdentifier,
   readBookMeta,
 } from "./lib/cover";
-import { downloadBook, fetchBookGuide, listRemoteBooks, shareBook, uploadBookCover } from "./lib/books";
+import { downloadBookWithStatus, fetchBookGuide, listRemoteBooks, shareBook, uploadBookCover } from "./lib/books";
 import { paperGuideSessionKey, sanitizePaperBookGuide } from "../shared/paper-guide";
-import { queueBookDelete, queueBookUpload, runBookQueue } from "./lib/book-queue";
+import { queueBookDelete, queueBookSync, queueBookUpload, runBookQueue } from "./lib/book-queue";
 import { getPendingPositionsCount, syncPositions, type PositionConflict } from "./lib/positions-sync";
 
-import { checkEpubHeader, EPUB_MAX_BYTES } from "../shared/epub-check";
 import { extractEpubMeta } from "../shared/epub-meta";
 import { genreFromSubjects } from "../shared/book-genres";
 import { syncSavedWords } from "./lib/vocab";
@@ -124,9 +124,13 @@ import { checkRemoteReset } from "./lib/account-reset";
 import {
   claimStarterCoat,
   loadPlan,
+  planStore,
   pollPlanUntilPlus,
   rememberStarterCoat,
+  useUserPlan,
 } from "./lib/account-plan";
+import { hasLectaPlus } from "../shared/plan";
+import { checkEpubFile, epubCheckMessage } from "./lib/epub-intake";
 import { authClient } from "./lib/auth";
 
 type BookFileSelection = {
@@ -260,6 +264,8 @@ export default function App() {
   const [dbStorageError, setDbStorageError] = useState<DbStorageError | null>(null);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [showLegal, setShowLegal] = useState<"privacy" | "terms" | null>(null);
+  // Hoja «Adjunta tu archivo o pasa a Lecta+» (libro propio sin archivo).
+  const [attachFor, setAttachFor] = useState<ShelfItem | null>(null);
   const [online, setOnline] = useState(() =>
     typeof navigator === "undefined" ? true : navigator.onLine !== false,
   );
@@ -731,6 +737,7 @@ export default function App() {
         // El género de la fila remota manda: es la elección real al
         // compartir; el detectado local del EPUB solo rellena huecos.
         genre: remoteByHash.get(book.hash)?.genre || book.genre || undefined,
+        hasFile: remoteByHash.get(book.hash)?.hasFile,
       }));
     for (const r of remote) {
       if (!r.hasCover && !retrofilledCoversRef.current.has(r.hash)) {
@@ -774,11 +781,34 @@ export default function App() {
           shared: item.shared || undefined,
           paperOnly: item.paperOnly || undefined,
           genre: item.genre || undefined,
+          hasFile: item.hasFile,
         };
       });
     setLibrary([...localItems, ...remoteItems]);
     setCheckingLibrary(false);
   }, [sessionUserId]);
+
+  // Paso a Lecta+: los libros locales cuya fila remota no tiene archivo se
+  // suben solos, una vez, cuando el plan cambia de algo que no es Lecta+.
+  const userPlan = useUserPlan();
+  const hadPlusRef = useRef<boolean | null>(null);
+  useEffect(() => {
+    const plus = hasLectaPlus(userPlan?.plan);
+    const before = hadPlusRef.current;
+    hadPlusRef.current = userPlan ? plus : before;
+    if (!plus || before === true || !userPlan) return;
+    const scope = captureDbScope();
+    void (async () => {
+      const remote = await listRemoteBooks(scope).catch(() => []);
+      const local = new Set((await listStoredBooks(scope).catch(() => [])).map((b) => b.hash));
+      const pending = remote.filter((r) => r.hasFile === false && local.has(r.hash));
+      for (const row of pending) await queueBookUpload(row.hash, row.name, scope);
+      if (pending.length) {
+        await runBookQueue(scope).catch(() => 0);
+        void refreshLibrary();
+      }
+    })();
+  }, [userPlan, refreshLibrary]);
 
   // El panel abierto por el enlace también es una capa del historial:
   // el botón atrás lo cierra como a cualquier otro panel.
@@ -1101,7 +1131,13 @@ export default function App() {
       for (const storedBook of localBooks) {
         if (!remoteHashes.has(storedBook.hash)) {
           if (storedBook.data && storedBook.data.size > 0) {
-            await queueBookUpload(storedBook.hash, storedBook.name, scope);
+            // Free: solo metadatos; Lecta+: también el archivo (027).
+            await queueBookSync(
+              storedBook.hash,
+              storedBook.name,
+              hasLectaPlus(planStore.get()?.plan),
+              scope,
+            );
           }
         }
       }
@@ -1264,19 +1300,14 @@ export default function App() {
 
   const selectBook = async (file: File) => {
     setError("");
-    if (!file.size || file.size > EPUB_MAX_BYTES) {
-      setMessage("");
-      setError("El archivo está vacío o pesa más de 50 MB.");
-      return;
-    }
     setMessage("Comprobando el archivo…");
     try {
-      // Comprobación mínima antes de guardar: firma ZIP y mimetype,
-      // sin cargar el libro completo todavía.
-      const head = new Uint8Array(await file.slice(0, 4096).arrayBuffer());
-      if (!checkEpubHeader(head).ok) {
+      // Comprobación mínima antes de guardar: tamaño, firma ZIP y
+      // mimetype, sin cargar el libro completo todavía.
+      const check = await checkEpubFile(file);
+      if (!check.ok) {
         setMessage("");
-        setError("Este archivo no parece un EPUB válido. Lecta solo acepta .epub de texto adaptable y sin protección.");
+        setError(epubCheckMessage(check));
         return;
       }
       const hash = await sha256Hex(file);
@@ -1334,10 +1365,13 @@ export default function App() {
       // La subida pasa por la cola persistente: sin conexión queda
       // encolada y la tarjeta se marca «Pendiente de subir».
       if (sessionUserId) {
-        void queueBookUpload(hash, file.name, scope)
+        // Free: solo metadatos (el libro aparece en otro dispositivo y ahí
+        // se adjunta); Lecta+: también el archivo a R2.
+        const withFile = hasLectaPlus(planStore.get()?.plan);
+        void queueBookSync(hash, file.name, withFile, scope)
           .then(() => runBookQueue(scope))
           .then(() => refreshLibrary());
-        void file.arrayBuffer().then((buf) => {
+        if (withFile) void file.arrayBuffer().then((buf) => {
           void syncUserBookUpload({
             id: hash,
             title: initialMeta.title || file.name,
@@ -1429,10 +1463,16 @@ export default function App() {
     setMessage(`Descargando «${displayTitle(item.name, item.title)}»…`);
     try {
       const scope = captureDbScope();
-      const file = await downloadBook(
+      const { file, status } = await downloadBookWithStatus(
         { hash: item.hash, uploaded: "", name: item.name },
         scope,
-      ).catch(() => null);
+      ).catch(() => ({ file: null, status: 0 }));
+      if (!file && status === 402) {
+        // La nube de EPUB es de Lecta+: se ofrece adjuntar el archivo.
+        setMessage("");
+        setAttachFor(item);
+        return false;
+      }
       if (!file) {
         setMessage("");
         setError(`No se pudo descargar «${displayTitle(item.name, item.title)}». Revisa tu conexión e inténtalo de nuevo.`);
@@ -1501,6 +1541,11 @@ export default function App() {
     // análisis de capítulos.
     if (item.paperOnly) {
       handlePaperBook(item);
+      return;
+    }
+    // Libro propio sin archivo en la nube (free, 027): se adjunta aquí.
+    if (item.remoteOnly && (item.hasFile === false || planStore.get()?.plan === "free")) {
+      setAttachFor(item);
       return;
     }
     if (item.remoteOnly) void openRemoteBook(item);
@@ -2215,6 +2260,23 @@ export default function App() {
           <LegalNotice
             initialTab={showLegal}
             onClose={() => setShowLegal(null)}
+          />
+        </Suspense>
+      ) : null}
+      {attachFor ? (
+        <Suspense fallback={null}>
+          <AttachBookSheet
+            item={attachFor}
+            onClose={() => setAttachFor(null)}
+            onAttached={async (item) => {
+              setAttachFor(null);
+              await refreshLibrary();
+              await openStoredBook(item);
+            }}
+            onOpenCarne={() => {
+              setAttachFor(null);
+              setShowAccount(true);
+            }}
           />
         </Suspense>
       ) : null}

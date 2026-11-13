@@ -64,6 +64,17 @@ database is Postgres/CockroachDB through Hyperdrive, not D1.
   sin base), `setStarterCoat` (`written` / `exists` / `unavailable`),
   `upsertPlanFromStripe` (nunca rebaja a `founder_lifetime`). Tabla
   `lecta_user_plan` (migración 027).
+- `[billing.ts]` — router `billing`: `POST /api/billing/checkout {period}`
+  (400 → 503 → 409; solo `monthly`/`yearly`, nunca montos), `POST
+  /api/billing/portal` (404 sin cliente) y `POST /api/billing/webhook`
+  (firma HMAC con tolerancia de 300 s, idempotente por `lecta_stripe_events`,
+  cuenta por `client_reference_id` / `metadata.user_id` /
+  `stripe_customer_id`; sin cuenta → ROLLBACK + 500; 42P01 → 503).
+  Exporta `verifyStripeSignature` y `expiresAtForSubscription`.
+- `[stripe.ts]` — `stripeRequest` (fetch a `api.stripe.com/v1` con
+  `Stripe-Version` fija), `cancelSubscriptionForDeletion` (404 /
+  `resource_missing` / ya cancelada = éxito) y `cancelBillingForDeletion`,
+  que `auth.ts` llama en `beforeDelete` antes de purgar.
 - `[plan-middleware.ts]` — `requireLectaPlus` (401 / 503 / 402
   `{ code: "LECTA_PLUS_REQUIRED" }`, deja la sesión en `c.get("session")`) y
   `createRequireKindlePlan` (sin sesión deja pasar; rutas exentas
@@ -85,6 +96,8 @@ database is Postgres/CockroachDB through Hyperdrive, not D1.
 | `[app.ts:app]` | `GET /api/health`; `POST /api/client-errors`; `GET /api/error-reports`; `GET,HEAD /models/:filename`; `GET,POST /api/auth/*`; `GET /api/lexicon/lookup`, `GET /api/lexicon/sample`, `POST /api/lexicon/{batch,enrich,enrich-batch,report,items,items/answer,verify-sentence,explain}`; `POST /api/ai/{enrich,evaluate-sentence,micro-story,explain-in-passage,companion-note,page-recap,translate,character-recap}`; `GET /api/books`, `PUT,POST /api/books/:hash`, `POST /api/books`, `GET /api/books/community`, `GET,DELETE /api/books/:hash`, `GET /api/books/:hash/guide`, `PUT,GET /api/books/:hash/cover`, `PUT,DELETE /api/books/:hash/share`, `GET /api/books/community/:hash/cover`, `POST /api/books/community/:hash/attach`, `POST /api/books/:hash/repair`; `GET,PUT /api/vocab`; `GET /api/sync/counts`; `PUT,GET /api/user/books/:bookId/file`, `GET /api/user/books`; `GET /api/account/state` (con `plan`, `starterCoat`, `planExpiresAt`; omite `plan` ante un error que no sea 42P01), `PUT /api/account/starter-coat` (escritura única; 400 pelaje inválido, 503 sin tabla), `POST /api/account/reset`; Kindle top-level wiring (`/kindle`, `/kindle/verify`, `/api/kindle/{status,prefs,link}`, `/kindle/priming/action`, `/kindle/*` rewritten to `/k/*`); `app.route("/k", kindleRoutes)` |
 | `[reading-data.ts:readingData]` | `GET,PUT /api/{annotations,activity,reviews,positions,knowledge}`; `PUT /api/daily-summaries` |
 | `[companion.ts:companion]` | `GET,PUT /api/companion` |
+| `[billing.ts:billing]` | `POST /api/billing/checkout`, `POST /api/billing/portal`, `POST /api/billing/webhook` |
+| `[app.ts:app]` (027) | `PUT /api/user/books/:bookId/meta` (gratis: fila solo de metadatos, `r2_key = ''`, `has_file = false`; 400 si `sha256 ≠ bookId`, 413 por tope de libros, 503 ante 42703). `GET /api/books` suma esas filas con `hasFile: false`; `GET /api/user/books` las excluye. |
 | `[catalog.ts:catalog]` | `GET /api/catalog`, `GET /api/catalog/:id/:kind` (`epub`/`vocab`/`cover`) |
 | `[admin.ts:admin]` | `GET /api/admin/access`, `GET /api/admin/insights`, `GET /api/admin/users/:id` |
 

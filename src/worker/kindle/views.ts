@@ -1356,6 +1356,25 @@ export function renderKindleLinkView(options: {
   });
 }
 
+/**
+ * Nota al margen de Lecta+ (docs/designs/2026-11-12-planes-y-landing.md): el
+ * portal e-ink es de Lecta+. Sin JavaScript; enlaza al Carné en la app.
+ */
+export function renderKindlePlanRequiredView(): string {
+  const bodyHtml = `
+    <div class="card" style="max-width: 520px; margin: 2rem auto; padding: 2rem 1.5rem;">
+      <h1 style="font-size: 1.4rem; margin-top: 0;">Leer en tu Kindle es de Lecta+</h1>
+      <p style="font-size: 1rem; line-height: 1.5;">
+        Tu posición y tus palabras siguen guardadas en tu cuenta. Para leer aquí,
+        activa Lecta+ desde «Tú» en tu celular o tu compu.
+      </p>
+      <p><a href="/?carne=1" class="btn btn-primary" style="display: block; text-align: center; padding: 12px; text-decoration: none;">Ver Lecta+</a></p>
+      <p><a href="/k/logout">Cerrar sesión en este Kindle</a></p>
+    </div>
+  `;
+  return renderBaseHtml({ title: "Lecta+", user: null, bodyHtml });
+}
+
 export function renderReaderView(options: {
   user: KindleUser | null;
   bookHash: string;

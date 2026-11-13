@@ -1202,3 +1202,52 @@ button.app-nav-sync-indicator:focus-visible {
   inline-size: 3.5rem;
   block-size: 3.5rem;
 }
+
+/* Carné de Lector: ficha de biblioteca, filete doble arriba, sin sombra. */
+.reader-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-4);
+  background: var(--paper-raised);
+  border: 1px solid var(--rule);
+  border-top: 3px double var(--rule-strong);
+  border-radius: var(--r-2);
+}
+.reader-card__state {
+  font-family: var(--font-book);
+  font-weight: 500;
+  font-size: var(--fs-lg);
+  color: var(--ink);
+}
+.reader-card__detail {
+  margin: 0;
+  color: var(--ink-soft);
+}
+.reader-card__periods {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--s-2);
+}
+.reader-card__period {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s-1);
+  min-height: 44px;
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--r-1);
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+.reader-card__period[aria-pressed="true"] {
+  background: var(--chip-active-bg);
+  border-color: var(--chip-active-border);
+  color: var(--chip-active-ink);
+}
+.reader-card__price {
+  font-size: var(--fs-sm);
+}

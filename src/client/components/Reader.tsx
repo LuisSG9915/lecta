@@ -688,6 +688,8 @@ export default function Reader({
     discardPrep,
     openPrepManual,
     dismissPrepNotice,
+    prepPlanNote,
+    dismissPrepPlanNote,
     recordPresented,
     resetPrepForBook,
   } = useReaderChapterPrep({
@@ -4241,6 +4243,8 @@ export default function Reader({
         bookHash={bookHash}
         sectionIndex={sectionIndex}
         dismissPrepNotice={dismissPrepNotice}
+        prepPlanNote={prepPlanNote}
+        dismissPrepPlanNote={dismissPrepPlanNote}
         calNotice={calNotice}
         prep={prep}
         prepNotice={prepNotice}

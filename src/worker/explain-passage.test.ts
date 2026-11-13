@@ -8,6 +8,25 @@ import {
   EXPLAIN_PASSAGE_COMPACT_CALL_OPTIONS,
 } from "./ai";
 
+// Bloque 2 (docs/designs/2026-11-12-planes-y-landing.md): las rutas con gating
+// consultan el plan con loadUserPlan. Por defecto la cuenta es fundadora, así
+// la consulta no pasa por withClient ni consume los mocks de la base.
+const loadUserPlanMock = vi.hoisted(() =>
+  vi.fn(async () => ({
+    plan: "founder_lifetime" as const,
+    starterCoat: null,
+    expiresAt: null,
+    stripeCustomerId: null,
+    stripeSubscriptionId: null,
+    degraded: false,
+  })),
+);
+vi.mock("./plan-store", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./plan-store")>()),
+  loadUserPlan: loadUserPlanMock,
+}));
+
+
 const getSessionMock = vi.hoisted(() => vi.fn());
 vi.mock("./session", () => ({
   getSession: (...args: unknown[]) => getSessionMock(...args),

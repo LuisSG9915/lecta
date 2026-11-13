@@ -19,6 +19,8 @@ import TtsConsentDialog from "../TtsConsentDialog";
 import ReaderMoreMenu from "../ReaderMoreMenu";
 import Dialog from "../Dialog";
 import Icon from "../Icon";
+import { useUserPlan } from "../../lib/account-plan";
+import { hasLectaPlus } from "../../../shared/plan";
 
 export interface PrepState {
   target: ChapterTarget;
@@ -245,6 +247,10 @@ export function ReaderOverlays({
   isFullscreen = false,
   fullscreenSupported = false,
 }: ReaderOverlaysProps) {
+  // Cuenta free (plan conocido sin Lecta+): la ficha muestra PlanNote en vez
+  // de pedir la IA en contexto (docs/designs/2026-11-12-planes-y-landing.md).
+  const userPlan = useUserPlan();
+  const planLocked = signedIn && userPlan !== null && !hasLectaPlus(userPlan.plan);
   return (
     <>
       {prep && isFeatureFlagEnabled("chapterPriming") ? (
@@ -284,6 +290,7 @@ export function ReaderOverlays({
           context={selection.context}
           phrase={selection.phrase}
           canExplain={signedIn}
+          planLocked={planLocked}
           language={language}
           bookHash={bookHash}
           bookTitle={bookTitle}

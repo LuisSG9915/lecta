@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { makeSignature } from "better-auth/crypto";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as epubReader from "./epub-reader";
 import { app } from "../app";
 import {
@@ -13,6 +13,25 @@ import {
   SAFE_EPUB_ASSET_MIMES,
 } from "./routes";
 import { resetKindleCacheMemory } from "./cache";
+
+// Bloque 2 (docs/designs/2026-11-12-planes-y-landing.md): las rutas con gating
+// consultan el plan con loadUserPlan. Por defecto la cuenta es fundadora, así
+// la consulta no pasa por withClient ni consume los mocks de la base.
+const loadUserPlanMock = vi.hoisted(() =>
+  vi.fn(async () => ({
+    plan: "founder_lifetime" as const,
+    starterCoat: null,
+    expiresAt: null,
+    stripeCustomerId: null,
+    stripeSubscriptionId: null,
+    degraded: false,
+  })),
+);
+vi.mock("../plan-store", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../plan-store")>()),
+  loadUserPlan: loadUserPlanMock,
+}));
+
 
 const getSessionMock = vi.hoisted(() => vi.fn());
 const authHandlerMock = vi.hoisted(() => vi.fn());
@@ -97,6 +116,74 @@ describe("Kindle Routes (/k and /kindle)", () => {
     mockBooksBucket.get.mockImplementation(defaultEpubGet);
     getSessionMock.mockResolvedValue(null);
     dbQueryMock.mockResolvedValue({ rows: [] });
+  });
+
+  describe("Lecta+ en el portal (Bloque 2)", () => {
+    const freePlan = {
+      plan: "free" as const,
+      starterCoat: null,
+      expiresAt: null,
+      stripeCustomerId: null,
+      stripeSubscriptionId: null,
+      degraded: false,
+    };
+    afterEach(() => {
+      loadUserPlanMock.mockResolvedValue({ ...freePlan, plan: "founder_lifetime" as never });
+    });
+
+    it("una cuenta free recibe la nota HTML con 402 y sin <script>", async () => {
+      getSessionMock.mockResolvedValue({ user: { id: "user-1" } });
+      loadUserPlanMock.mockResolvedValue(freePlan as never);
+      const res = await app.request("/k/read/mock-hash-1", {}, env);
+      expect(res.status).toBe(402);
+      expect(res.headers.get("content-type")).toContain("text/html");
+      const html = await res.text();
+      expect(html).toContain("Lecta+");
+      expect(html).not.toContain("<script");
+    });
+
+    it("las rutas exentas no consultan el plan", async () => {
+      loadUserPlanMock.mockClear();
+      getSessionMock.mockResolvedValue({ user: { id: "user-1" } });
+      await app.request("/k/login", {}, env);
+      await app.request("/k/verify?code=ABCD", {}, env);
+      expect(loadUserPlanMock).not.toHaveBeenCalled();
+    });
+
+    it("sin sesión /k sigue redirigiendo (no responde 402)", async () => {
+      getSessionMock.mockResolvedValue(null);
+      const res = await app.request("/k", {}, env);
+      expect(res.status).toBe(302);
+    });
+
+    it("vincular un Kindle sin Lecta+ responde 402", async () => {
+      getSessionMock.mockResolvedValue({ user: { id: "user-1" }, session: { token: "t" } });
+      loadUserPlanMock.mockResolvedValue(freePlan as never);
+      const res = await app.request(
+        "/api/kindle/link",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ code: "ABCD" }),
+        },
+        env,
+      );
+      expect(res.status).toBe(402);
+    });
+
+    it("vincular sin cuenta resuelta (userId vacío) se rechaza", async () => {
+      getSessionMock.mockResolvedValue(null);
+      const res = await app.request(
+        "/api/kindle/link",
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ code: "ABCD", userSessionToken: "tok" }),
+        },
+        env,
+      );
+      expect(res.status).toBe(401);
+    });
   });
 
   describe("Portal Kindle y vinculación por código de 4 letras", () => {
@@ -1196,7 +1283,8 @@ describe("Kindle Routes (/k and /kindle)", () => {
     });
 
     it("POST /k/priming/action con action=save persiste presented_at y preserva metadatos en lecta_user_words", async () => {
-      getSessionMock.mockResolvedValueOnce({
+      // requireKindlePlan también lee la sesión: un Once lo consumiría él.
+      getSessionMock.mockResolvedValue({
         user: { id: "user-1", email: "lector@example.com" },
       });
       const body = new URLSearchParams({
