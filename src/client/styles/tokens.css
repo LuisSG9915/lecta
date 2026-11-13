@@ -196,6 +196,9 @@
      contorno legible y nariz rosa. */
   /* Pizarra noche del landing (docs/designs/2026-11-12-planes-y-landing.md):
      superficie fija del dock de audio y del bloque Kindle. */
+  /* Lectura biónica: ancla y cuerpo de alto contraste (antes hex en reader.css). */
+  --ink-anchor: #0d0c0a;
+  --ink-rest: #26231f;
   --night: #141b2b;
   --night-2: #1d2740;
   --night-ink: #efe6d6;
@@ -252,6 +255,9 @@
   /* Gato compañero: misma paleta que en papel. */
   /* Pizarra noche del landing (docs/designs/2026-11-12-planes-y-landing.md):
      superficie fija del dock de audio y del bloque Kindle. */
+  /* Lectura biónica: ancla y cuerpo de alto contraste (antes hex en reader.css). */
+  --ink-anchor: #0d0c0a;
+  --ink-rest: #26231f;
   --night: #141b2b;
   --night-2: #1d2740;
   --night-ink: #efe6d6;
@@ -312,6 +318,9 @@
      distingue tanto del pelaje como del fondo oscuro. */
   /* Pizarra noche del landing (docs/designs/2026-11-12-planes-y-landing.md):
      superficie fija del dock de audio y del bloque Kindle. */
+  /* Lectura biónica: ancla y cuerpo de alto contraste (antes hex en reader.css). */
+  --ink-anchor: #ffffff;
+  --ink-rest: #eae6df;
   --night: #141b2b;
   --night-2: #1d2740;
   --night-ink: #efe6d6;
@@ -371,6 +380,9 @@
   /* Gato compañero: misma paleta oscura que en noche. */
   /* Pizarra noche del landing (docs/designs/2026-11-12-planes-y-landing.md):
      superficie fija del dock de audio y del bloque Kindle. */
+  /* Lectura biónica: ancla y cuerpo de alto contraste (antes hex en reader.css). */
+  --ink-anchor: #ffffff;
+  --ink-rest: #e8eaed;
   --night: #0b0f18;
   --night-2: #141b2b;
   --night-ink: #efe6d6;
@@ -431,6 +443,9 @@
     /* Gato compañero: misma paleta oscura que en noche. */
     /* Pizarra noche del landing (docs/designs/2026-11-12-planes-y-landing.md):
        superficie fija del dock de audio y del bloque Kindle. */
+    /* Lectura biónica: ancla y cuerpo de alto contraste (antes hex en reader.css). */
+    --ink-anchor: #ffffff;
+    --ink-rest: #eae6df;
     --night: #141b2b;
     --night-2: #1d2740;
     --night-ink: #efe6d6;

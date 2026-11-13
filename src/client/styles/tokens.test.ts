@@ -138,6 +138,12 @@ describe("tokens.css", () => {
       expect(ratio, `--night-ink sobre --night en ${themeName} (${ratio.toFixed(2)}:1)`).toBeGreaterThanOrEqual(4.5);
     }
     expect(themes.papel["--rule"]).toBe("rgba(120, 95, 70, 0.14)");
+    // Lectura biónica: ancla blanca en oscuro y casi negra en claro.
+    expect(themes.noche["--ink-anchor"]).toBe("#ffffff");
+    expect(themes.oled["--ink-anchor"]).toBe("#ffffff");
+    expect(themes["auto-dark"]["--ink-anchor"]).toBe("#ffffff");
+    expect(themes.papel["--ink-anchor"]).toBe("#0d0c0a");
+    expect(themes.blanco["--ink-rest"]).toBe("#26231f");
     expect(themes.blanco["--rule"]).toBe("rgba(120, 95, 70, 0.14)");
   });
 

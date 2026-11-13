@@ -405,7 +405,8 @@ describe("Recalibración de Luminancia, Contraste AAA y Separación de Barras Fl
     // Verificar contraste AAA y no oscurecimiento de anclas biónicas
     expect(css).toMatch(/\.lecta-bionic-word\s*\{[^}]*opacity:\s*1/);
     expect(css).toMatch(/\.lecta-bionic-anchor[^{]*\{[^}]*font-weight:\s*700/);
-    expect(css).toMatch(/data-theme="night"[^{]*\{[^}]*color:\s*#ffffff/i);
+    // Bloque 3: el blanco del ancla en noche vive en el token --ink-anchor.
+    expect(css).toMatch(/data-theme="night"[^{]*\{[^}]*color:\s*var\(--ink-anchor\)/i);
     expect(css).toMatch(/data-strategy-contrast="high"/);
   });
 

@@ -1372,8 +1372,8 @@ mark.saved-passage--dario {
 }
 
 .reader-hint-toast--captured {
-  background: color-mix(in srgb, var(--paper-raised) 92%, var(--accent-primary, #c86d3b));
-  border-color: color-mix(in srgb, var(--accent-primary, #c86d3b) 45%, transparent);
+  background: color-mix(in srgb, var(--paper-raised) 92%, var(--accent-primary));
+  border-color: color-mix(in srgb, var(--accent-primary) 45%, transparent);
   color: var(--ink);
   font-weight: 500;
   z-index: 35;
@@ -1717,7 +1717,7 @@ mark.saved-passage--dario {
   border-color: var(--vermilion);
   box-shadow:
     0 0 0 2px var(--vermilion),
-    0 4px 14px -2px rgba(158, 58, 35, 0.18);
+    var(--shadow-1);
   background: var(--paper-raised);
 }
 
@@ -1879,9 +1879,7 @@ mark.saved-passage--dario {
 
 .font-card[data-active="true"] {
   border-color: var(--vermilion);
-  box-shadow:
-    0 0 0 2px var(--vermilion),
-    0 2px 8px var(--shadow-1);
+  box-shadow: 0 0 0 2px var(--vermilion);
 }
 
 .font-card-sample {
@@ -2169,7 +2167,7 @@ mark.resolved-word:hover,
 
 /* Marca persistente de palabra en el cuaderno */
 .lecta-saved-word {
-  text-decoration: underline solid var(--accent-primary, #e08a58);
+  text-decoration: underline solid var(--accent-primary);
   text-decoration-thickness: 2px;
   text-underline-offset: 4px;
   background: rgba(224, 138, 88, 0.12);
@@ -2371,7 +2369,7 @@ b.lecta-anchor {
   display: inline;
 }
 
-/* En modo oscuro: ancla biónica con brillo blanco superior (#FFFFFF) en líneas neutras */
+/* En modo oscuro: ancla biónica con brillo blanco superior en líneas neutras */
 :root[data-theme="noche"] .lecta-bionic-anchor,
 :root[data-theme="night"] .lecta-bionic-anchor,
 :root[data-theme="oled"] .lecta-bionic-anchor,
@@ -2390,26 +2388,26 @@ b.lecta-anchor {
 [data-theme="noche"] b.lecta-anchor,
 [data-theme="night"] b.lecta-anchor,
 [data-theme="oled"] b.lecta-anchor {
-  color: #ffffff;
-  -webkit-text-fill-color: #ffffff;
+  color: var(--ink-anchor);
+  -webkit-text-fill-color: var(--ink-anchor);
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]) .lecta-bionic-anchor,
   :root:not([data-theme]) .lecta-fixation-anchor,
   :root:not([data-theme]) b.lecta-anchor {
-    color: #ffffff;
-    -webkit-text-fill-color: #ffffff;
+    color: var(--ink-anchor);
+    -webkit-text-fill-color: var(--ink-anchor);
   }
 }
 
-/* En modo claro: ancla biónica con negro profundo #0D0C0A y cuerpo #26231F (contraste > 11:1) */
+/* En modo claro: ancla biónica en --ink-anchor y cuerpo en --ink-rest (contraste > 11:1) */
 :root,
 :root[data-theme="papel"],
 :root[data-theme="paper"],
 :root[data-theme="blanco"],
 :root[data-theme="white"] {
-  --bionic-rest-ink: #26231f;
+  --bionic-rest-ink: var(--ink-rest);
 }
 
 :root[data-theme="papel"] .lecta-bionic-anchor,
@@ -2436,8 +2434,8 @@ b.lecta-anchor {
 [data-theme="paper"] b.lecta-anchor,
 [data-theme="blanco"] b.lecta-anchor,
 [data-theme="white"] b.lecta-anchor {
-  color: #0d0c0a;
-  -webkit-text-fill-color: #0d0c0a;
+  color: var(--ink-anchor);
+  -webkit-text-fill-color: var(--ink-anchor);
 }
 
 :root[data-theme="papel"] .lecta-bionic-rest,
@@ -2448,7 +2446,7 @@ b.lecta-anchor {
 [data-theme="paper"] .lecta-bionic-rest,
 [data-theme="blanco"] .lecta-bionic-rest,
 [data-theme="white"] .lecta-bionic-rest {
-  color: #26231f;
+  color: var(--ink-rest);
 }
 
 /* Guía cromática (BeeLine): gradiente continuo de alta luminancia (OBJ-02) */
@@ -2474,8 +2472,8 @@ b.lecta-anchor {
 .syn-line[data-chunk-cycle="0"] .lecta-bionic-anchor,
 .syn-line[data-chunk-cycle="0"] .lecta-fixation-anchor,
 .syn-line[data-chunk-cycle="0"] b.lecta-anchor {
-  -webkit-text-fill-color: var(--chroma-anchor-a-bright, #bce0ff) !important;
-  color: var(--chroma-anchor-a-bright, #bce0ff) !important;
+  -webkit-text-fill-color: var(--chroma-anchor-a-bright) !important;
+  color: var(--chroma-anchor-a-bright) !important;
 }
 
 .lecta-syntactic-chunk[data-chunk-cycle="1"],
@@ -2500,8 +2498,8 @@ b.lecta-anchor {
 .syn-line[data-chunk-cycle="1"] .lecta-bionic-anchor,
 .syn-line[data-chunk-cycle="1"] .lecta-fixation-anchor,
 .syn-line[data-chunk-cycle="1"] b.lecta-anchor {
-  -webkit-text-fill-color: var(--chroma-ink-base-bright, #ffffff) !important;
-  color: var(--chroma-ink-base-bright, #ffffff) !important;
+  -webkit-text-fill-color: var(--chroma-ink-base-bright) !important;
+  color: var(--chroma-ink-base-bright) !important;
 }
 
 .lecta-syntactic-chunk[data-chunk-cycle="2"],
@@ -2526,8 +2524,8 @@ b.lecta-anchor {
 .syn-line[data-chunk-cycle="2"] .lecta-bionic-anchor,
 .syn-line[data-chunk-cycle="2"] .lecta-fixation-anchor,
 .syn-line[data-chunk-cycle="2"] b.lecta-anchor {
-  -webkit-text-fill-color: var(--chroma-anchor-b-bright, #ffd0c2) !important;
-  color: var(--chroma-anchor-b-bright, #ffd0c2) !important;
+  -webkit-text-fill-color: var(--chroma-anchor-b-bright) !important;
+  color: var(--chroma-anchor-b-bright) !important;
 }
 
 .lecta-syntactic-chunk[data-chunk-cycle="3"],
@@ -2552,8 +2550,8 @@ b.lecta-anchor {
 .syn-line[data-chunk-cycle="3"] .lecta-bionic-anchor,
 .syn-line[data-chunk-cycle="3"] .lecta-fixation-anchor,
 .syn-line[data-chunk-cycle="3"] b.lecta-anchor {
-  -webkit-text-fill-color: var(--chroma-anchor-b-bright, #ffd0c2) !important;
-  color: var(--chroma-anchor-b-bright, #ffd0c2) !important;
+  -webkit-text-fill-color: var(--chroma-anchor-b-bright) !important;
+  color: var(--chroma-anchor-b-bright) !important;
 }
 
 /* Fallback de compatibilidad para selector 3n sin data-chunk-cycle */
@@ -2578,8 +2576,8 @@ b.lecta-anchor {
 .book-content[data-focus-mode="chromatic"]
   .syn-line:not([data-chunk-cycle]):nth-child(3n + 1)
   b.lecta-anchor {
-  -webkit-text-fill-color: var(--chroma-anchor-a-bright, #bce0ff) !important;
-  color: var(--chroma-anchor-a-bright, #bce0ff) !important;
+  -webkit-text-fill-color: var(--chroma-anchor-a-bright) !important;
+  color: var(--chroma-anchor-a-bright) !important;
 }
 
 .book-content[data-focus-mode="chromatic"] .syn-line:not([data-chunk-cycle]):nth-child(3n + 2) {
@@ -2603,8 +2601,8 @@ b.lecta-anchor {
 .book-content[data-focus-mode="chromatic"]
   .syn-line:not([data-chunk-cycle]):nth-child(3n + 2)
   b.lecta-anchor {
-  -webkit-text-fill-color: var(--chroma-anchor-b-bright, #ffd0c2) !important;
-  color: var(--chroma-anchor-b-bright, #ffd0c2) !important;
+  -webkit-text-fill-color: var(--chroma-anchor-b-bright) !important;
+  color: var(--chroma-anchor-b-bright) !important;
 }
 
 .book-content[data-focus-mode="chromatic"] .syn-line:not([data-chunk-cycle]):nth-child(3n) {
@@ -2628,8 +2626,8 @@ b.lecta-anchor {
 .book-content[data-focus-mode="chromatic"]
   .syn-line:not([data-chunk-cycle]):nth-child(3n)
   b.lecta-anchor {
-  -webkit-text-fill-color: var(--chroma-ink-base-bright, #ffffff) !important;
-  color: var(--chroma-ink-base-bright, #ffffff) !important;
+  -webkit-text-fill-color: var(--chroma-ink-base-bright) !important;
+  color: var(--chroma-ink-base-bright) !important;
 }
 
 /* En temas claros, las anclas cromáticas mantienen tinta carbón de alto contraste */
@@ -2649,15 +2647,15 @@ b.lecta-anchor {
 [data-theme="paper"] .lecta-syntactic-chunk .lecta-bionic-anchor,
 [data-theme="blanco"] .lecta-syntactic-chunk .lecta-bionic-anchor,
 [data-theme="white"] .lecta-syntactic-chunk .lecta-bionic-anchor {
-  -webkit-text-fill-color: #0d0c0a !important;
-  color: #0d0c0a !important;
+  -webkit-text-fill-color: var(--ink-anchor) !important;
+  color: var(--ink-anchor) !important;
 }
 
 /* Marcapasos Visual ("Ritmo Guiado" para TDAH) */
 .lecta-pacer-active {
-  background: color-mix(in srgb, var(--accent-primary, #c86d3b) 18%, transparent) !important;
+  background: color-mix(in srgb, var(--accent-primary) 18%, transparent) !important;
   border-radius: 4px;
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-primary, #c86d3b) 32%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-primary) 32%, transparent);
   transition:
     background 0.15s ease-out,
     box-shadow 0.15s ease-out;
@@ -2675,7 +2673,7 @@ b.lecta-anchor {
   -webkit-text-fill-color: initial !important;
   opacity: 1 !important;
   color: var(--ink) !important;
-  text-decoration: underline dotted var(--accent-primary, #c86d3b);
+  text-decoration: underline dotted var(--accent-primary);
   text-underline-offset: 4px;
 }
 
@@ -2790,8 +2788,8 @@ b.lecta-anchor {
 [data-theme="noche"] [data-strategy-contrast="high"] b.lecta-anchor,
 [data-theme="night"] [data-strategy-contrast="high"] b.lecta-anchor,
 [data-theme="oled"] [data-strategy-contrast="high"] b.lecta-anchor {
-  color: #ffffff !important;
-  -webkit-text-fill-color: #ffffff !important;
+  color: var(--ink-anchor) !important;
+  -webkit-text-fill-color: var(--ink-anchor) !important;
   text-shadow: 0 0 1px rgba(255, 255, 255, 0.4);
 }
 
@@ -2807,8 +2805,8 @@ b.lecta-anchor {
 :root[data-theme="paper"] [data-strategy-contrast="high"] b.lecta-anchor,
 :root[data-theme="blanco"] [data-strategy-contrast="high"] b.lecta-anchor,
 :root[data-theme="white"] [data-strategy-contrast="high"] b.lecta-anchor {
-  color: #000000 !important;
-  -webkit-text-fill-color: #000000 !important;
+  color: var(--ink-anchor) !important;
+  -webkit-text-fill-color: var(--ink-anchor) !important;
 }
 
 [data-strategy-contrast="high"] .lecta-bionic-rest {
@@ -2998,10 +2996,10 @@ b.lecta-anchor {
 .focus-ruler-band {
   position: absolute;
   inset-inline: 0;
-  border-block: 1px solid var(--ruler-border, rgba(200, 109, 59, 0.28));
+  border-block: 1px solid var(--ruler-border, color-mix(in srgb, var(--vermilion) 28%, transparent));
   box-shadow:
-    0 -1px 4px -1px rgba(200, 109, 59, 0.15),
-    0 1px 4px -1px rgba(200, 109, 59, 0.15);
+    0 -1px 4px -1px color-mix(in srgb, var(--vermilion) 15%, transparent),
+    0 1px 4px -1px color-mix(in srgb, var(--vermilion) 15%, transparent);
   transition: inset-block-start 100ms ease-out;
 }
 
@@ -3114,8 +3112,8 @@ b.lecta-anchor {
   -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
   border: 1px solid var(--rule);
-  border-radius: var(--r-full, 9999px);
-  box-shadow: 0 4px 20px -2px rgba(31, 29, 26, 0.08);
+  border-radius: var(--r-2);
+  box-shadow: var(--shadow-2);
   pointer-events: auto;
   transition:
     opacity var(--dur-2, 0.25s) var(--ease-out),
@@ -3228,7 +3226,7 @@ b.lecta-anchor {
   background: var(--paper-raised);
   border: 1px solid var(--vermilion);
   border-radius: var(--r-2, 12px);
-  box-shadow: 0 4px 18px rgba(31, 29, 26, 0.12);
+  box-shadow: var(--shadow-2);
   cursor: pointer;
   text-align: left;
   animation: companion-bubble-pop 250ms cubic-bezier(0.22, 1, 0.36, 1);
@@ -3270,6 +3268,9 @@ b.lecta-anchor {
 /* Oración hablada: tinte claro + raya bermellón inferior para que se
    distinga en ambos temas; clone repite el acabado al partir líneas. */
 [data-tts-sentence] {
+  /* Es un <mark>: sin esto hereda el negro del navegador y en noche la
+     frase hablada quedaba en tinta oscura sobre fondo oscuro. */
+  color: inherit;
   background: color-mix(in srgb, var(--rule-strong) 40%, transparent);
   border-radius: var(--r-1);
   -webkit-box-decoration-break: clone;
@@ -3347,8 +3348,8 @@ b.lecta-anchor {
 }
 
 .tts-engine-badge--neural {
-  color: var(--accent-primary, #c86d3b);
-  background: color-mix(in srgb, var(--accent-primary, #c86d3b) 12%, transparent);
+  color: var(--accent-primary);
+  background: color-mix(in srgb, var(--accent-primary) 12%, transparent);
 }
 
 .tts-engine-badge--browser {
@@ -3389,7 +3390,7 @@ b.lecta-anchor {
 }
 
 .tts-voice-select:focus-visible {
-  outline: 2px solid var(--accent-primary, #c86d3b);
+  outline: 2px solid var(--accent-primary);
 }
 
 /* Velocidad: el número es la etiqueta; el aria-label lleva el rol. */
@@ -3435,8 +3436,8 @@ b.lecta-anchor {
 
 .tts-chip-capture {
   font-weight: 600;
-  color: var(--accent-primary, #c86d3b);
-  background: color-mix(in srgb, var(--accent-primary, #c86d3b) 12%, transparent);
+  color: var(--accent-primary);
+  background: color-mix(in srgb, var(--accent-primary) 12%, transparent);
   border-radius: var(--r-pill);
   padding: 2px 10px;
   min-block-size: 44px;
@@ -3444,11 +3445,11 @@ b.lecta-anchor {
 }
 
 .tts-chip-capture:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--accent-primary, #c86d3b) 20%, transparent);
+  background: color-mix(in srgb, var(--accent-primary) 20%, transparent);
 }
 
 .tts-chip-capture--active {
-  background: var(--accent-primary, #c86d3b) !important;
+  background: var(--accent-primary) !important;
   color: var(--on-accent) !important;
 }
 
@@ -3959,7 +3960,7 @@ b.lecta-anchor {
 
 .selection-menu-btn:hover {
   background: var(--paper-sunken);
-  color: var(--accent-primary, #b45309);
+  color: var(--accent-primary);
 }
 
 .selection-highlight-group {
@@ -4147,7 +4148,7 @@ b.lecta-anchor {
   padding: 0.5rem;
   min-width: 44px;
   min-height: 44px;
-  border-radius: 6px;
+  border-radius: var(--r-1);
 }
 
 .word-panel-body {
@@ -4164,7 +4165,7 @@ b.lecta-anchor {
   gap: 12px;
   background: var(--paper-sunken);
   border: 1px dashed var(--vermilion);
-  border-radius: 12px;
+  border-radius: var(--r-2);
   padding: 14px 16px;
   margin: var(--s-2, 0.5rem) 0;
 }
@@ -4180,7 +4181,7 @@ b.lecta-anchor {
 .word-panel-practical-meaning {
   background: var(--paper-sunken);
   border: 1px solid var(--rule);
-  border-radius: 12px;
+  border-radius: var(--r-2);
   padding: 12px 14px;
 }
 
@@ -4205,7 +4206,7 @@ b.lecta-anchor {
 /* Acordeón "Más detalles y nota personal" */
 .word-panel-details-accordion {
   border: 1px solid var(--rule);
-  border-radius: 10px;
+  border-radius: var(--r-2);
   background: var(--paper);
   overflow: hidden;
   transition: all var(--dur-2) var(--ease-out);
@@ -4246,7 +4247,7 @@ b.lecta-anchor {
   font-size: var(--fs-sm, 0.88rem);
   line-height: 1.4;
   padding: 8px 10px;
-  border-radius: 8px;
+  border-radius: var(--r-1);
   border: 1px solid var(--rule);
   background: var(--paper-sunken);
   color: var(--ink);
@@ -4272,9 +4273,9 @@ b.lecta-anchor {
   align-items: center;
   gap: var(--s-2, 0.5rem);
   padding: 10px 14px;
-  background: var(--paper-raised, #ffffff);
+  background: var(--paper-raised);
   border-top: 1px solid var(--rule);
-  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 -1px 0 var(--rule);
   z-index: 10;
   margin: var(--s-3, 0.75rem) -1rem -1rem;
 }
@@ -4304,7 +4305,7 @@ b.lecta-anchor {
 .word-panel-level-1-sense {
   background: var(--paper-sunken);
   border: 1px solid var(--rule);
-  border-radius: 12px;
+  border-radius: var(--r-2);
   padding: 12px 14px;
 }
 
@@ -4319,7 +4320,7 @@ b.lecta-anchor {
   align-self: flex-start;
   background: var(--paper-raised, transparent);
   border: 1px solid rgba(200, 109, 59, 0.4);
-  color: var(--accent-primary, #b45309);
+  color: var(--accent-primary);
   font-weight: 600;
   padding: 8px 14px;
   border-radius: var(--r-pill);
@@ -4363,7 +4364,7 @@ b.lecta-anchor {
   background: none;
   border: none;
   padding: 0;
-  color: var(--accent-primary, #b45309);
+  color: var(--accent-primary);
   font-size: inherit;
   text-decoration: underline;
   cursor: pointer;
@@ -4379,8 +4380,8 @@ b.lecta-anchor {
 .passage-explanation-card {
   background: var(--paper-raised);
   border: 1px solid rgba(200, 109, 59, 0.2);
-  border-left: 3px solid var(--accent-primary, #b45309);
-  border-radius: 10px;
+  border-left: 3px solid var(--accent-primary);
+  border-radius: var(--r-2);
   padding: 10px 12px;
   display: flex;
   flex-direction: column;
@@ -4396,7 +4397,7 @@ b.lecta-anchor {
   padding: 2px 7px;
   border-radius: 999px;
   background: rgba(200, 109, 59, 0.15);
-  color: var(--accent-primary, #b45309);
+  color: var(--accent-primary);
 }
 
 .passage-meaning-text {
@@ -4412,7 +4413,7 @@ b.lecta-anchor {
   align-items: flex-start;
   gap: 8px;
   background: var(--paper-sunken);
-  border-radius: 8px;
+  border-radius: var(--r-2);
   padding: 8px 10px;
 }
 
@@ -4437,7 +4438,7 @@ b.lecta-anchor {
   margin: var(--s-2, 0.5rem) 0;
   padding: 8px 10px;
   background: var(--paper-sunken);
-  border-radius: var(--radius-s);
+  border-radius: var(--r-2);
   border: 1px dashed rgba(200, 109, 59, 0.25);
 }
 
@@ -4470,7 +4471,7 @@ b.lecta-anchor {
   background: var(--paper-raised);
   border: 1px solid rgba(24, 144, 255, 0.25);
   border-left: 3px solid var(--chroma-blue);
-  border-radius: var(--radius-s);
+  border-radius: var(--r-2);
 }
 
 .spoiler-free-header {
@@ -4528,7 +4529,7 @@ b.lecta-anchor {
   gap: 6px;
   padding: 8px 10px;
   background: var(--paper-sunken);
-  border-radius: 6px;
+  border-radius: var(--r-2);
   border-left: 2px solid var(--chroma-blue);
 }
 
@@ -4565,7 +4566,7 @@ b.lecta-anchor {
   background: var(--paper-sunken);
   border-left: 3px solid var(--rule);
   padding: 8px 12px;
-  border-radius: 0 8px 8px 0;
+  border-radius: 0 var(--r-2) var(--r-2) 0;
   margin-bottom: 12px;
 }
 
@@ -4652,7 +4653,7 @@ b.lecta-anchor {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 6px;
+  border-radius: var(--r-1);
 }
 
 .word-panel__audio-btn:hover {
@@ -4715,10 +4716,10 @@ b.lecta-anchor {
   padding: 6px 14px;
   font-size: 0.82rem;
   font-weight: 600;
-  background: var(--accent-primary, #e6b86a);
-  /* Antes #1a1815 fijo: 2.83:1 sobre el acento del tema papel. El token
+  background: var(--accent-primary);
+  /* Antes un tono oscuro fijo: 2.83:1 sobre el acento del tema papel. El token
      por tema da 6.6:1 en claro y 6.7:1 en noche. */
-  color: var(--on-accent, #141619);
+  color: var(--on-accent);
   cursor: pointer;
   transition: opacity 120ms ease;
 }
@@ -4870,7 +4871,7 @@ b.lecta-anchor {
 .reader-focus-disable-always-btn {
   background: var(--paper-sunken);
   border: 1px solid var(--rule);
-  border-radius: var(--radius-sm, 6px);
+  border-radius: var(--r-1);
   padding: 4px 8px;
   color: inherit;
   cursor: pointer;
@@ -4940,7 +4941,7 @@ b.lecta-anchor {
   padding: 0.75rem 1rem;
   background: var(--paper-sunken);
   border-left: 3px solid var(--accent-primary);
-  border-radius: var(--radius-sm, 6px);
+  border-radius: var(--r-2);
   font-family: var(--font-book);
   font-style: italic;
   font-size: 0.92rem;
@@ -4952,7 +4953,7 @@ b.lecta-anchor {
   margin-bottom: 1.25rem;
   padding: 0.5rem 0.75rem;
   background: var(--action-tint-bg);
-  border-radius: var(--radius-s, 8px);
+  border-radius: var(--r-2);
   border: 1px solid var(--action-tint-border);
 }
 
@@ -4988,7 +4989,7 @@ b.lecta-anchor {
 .strategy-preview-box {
   padding: var(--s-3, 0.75rem);
   border-radius: var(--r-2, 4px);
-  background: var(--paper-sunken, #f0e7d5);
+  background: var(--paper-sunken);
   border: 1px solid var(--rule, rgba(120, 95, 70, 0.12));
   margin-top: var(--s-3, 0.75rem);
   font-family: var(--font-book);
@@ -5009,13 +5010,13 @@ b.lecta-anchor {
 
 @keyframes progress-checkpoint-flash {
   0% {
-    box-shadow: 0 0 0 0 rgba(200, 109, 59, 0.8);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--vermilion) 80%, transparent);
   }
   30% {
-    box-shadow: 0 0 12px 3px rgba(200, 109, 59, 0.9);
+    box-shadow: 0 0 12px 3px color-mix(in srgb, var(--vermilion) 90%, transparent);
   }
   100% {
-    box-shadow: 0 0 0 0 rgba(200, 109, 59, 0);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--vermilion) 0%, transparent);
   }
 }
 
@@ -5024,7 +5025,7 @@ b.lecta-anchor {
   top: -18px;
   right: -6px;
   font-size: 0.75rem;
-  color: var(--vermilion, #9e3a23);
+  color: var(--vermilion);
   animation: ink-drops-float 1.2s var(--ease-out) forwards;
   pointer-events: none;
 }
@@ -5095,7 +5096,7 @@ b.lecta-anchor {
 }
 
 .dialog--page-recap .bullet-dot {
-  color: var(--vermilion, #9e3a23);
+  color: var(--vermilion);
   font-weight: bold;
 }
 
@@ -5106,7 +5107,7 @@ b.lecta-anchor {
   padding: var(--s-3);
   background: var(--paper-sunken);
   border-radius: var(--r-2);
-  border-left: 3px solid var(--vermilion, #9e3a23);
+  border-left: 3px solid var(--vermilion);
   margin-top: var(--s-3);
   font-size: var(--fs-sm);
 }
@@ -5164,21 +5165,31 @@ b.lecta-anchor {
   max-width: min(520px, calc(100vw - 20px));
   min-height: 48px;
   padding: 6px 10px;
-  border-radius: 9999px;
-  background: rgba(24, 24, 27, 0.92);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.5);
+  /* Bloque 3: geometría de imprenta y superficie del tema; en modo audio el
+     dock pasa a la pizarra noche del landing. */
+  --dock-bg: var(--surface-dock);
+  --dock-ink: var(--ink);
+  --dock-ink-soft: var(--ink-soft);
+  --dock-hover: color-mix(in srgb, var(--ink) 8%, transparent);
+  --dock-border: var(--rule-strong);
+  border-radius: var(--r-2);
+  background: var(--dock-bg);
+  border: 1px solid var(--dock-border);
+  box-shadow: var(--shadow-2);
   box-sizing: border-box;
   overflow: visible;
-  color: var(--text-main, #ffffff);
+  color: var(--dock-ink);
 }
 
 .smart-reader-dock.is-audio-mode,
 .reader-smart-dock.is-audio-mode {
   justify-content: center;
   gap: 4px;
+  --dock-bg: var(--night);
+  --dock-ink: var(--ink-on-night);
+  --dock-ink-soft: var(--night-soft);
+  --dock-hover: color-mix(in srgb, var(--night-ink) 12%, transparent);
+  --dock-border: var(--night-2);
 }
 
 /* Metadatos de progreso elásticos (nunca empujan botones fuera) */
@@ -5191,7 +5202,7 @@ b.lecta-anchor {
   text-overflow: ellipsis;
   font-size: 0.75rem;
   line-height: 1.2;
-  color: var(--text-muted, #a1a1aa);
+  color: var(--dock-ink-soft);
   padding-left: 4px;
 }
 
@@ -5225,7 +5236,7 @@ b.lecta-anchor {
   font-weight: 500;
   white-space: nowrap;
   flex-shrink: 0;
-  color: var(--text-main, #ffffff);
+  color: var(--dock-ink);
   background: transparent;
   border: none;
   cursor: pointer;
@@ -5237,7 +5248,7 @@ b.lecta-anchor {
 .dock-pill-btn:hover,
 .dock-action-btn:hover,
 .dock-audio-pill-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--dock-hover);
 }
 
 .dock-pill-btn:active,
@@ -5264,7 +5275,7 @@ b.lecta-anchor {
   height: 44px;
   min-height: 44px;
   padding: 0 12px;
-  background: var(--vermilion, #c86d3b);
+  background: var(--vermilion);
   color: var(--on-accent) !important;
   font-weight: 600;
   border-radius: 9999px;
@@ -5289,8 +5300,8 @@ b.lecta-anchor {
 }
 
 .dock-audio-pill-btn.is-hd-active {
-  background: rgba(200, 109, 59, 0.2);
-  color: var(--vermilion, #c86d3b);
+  background: color-mix(in srgb, var(--vermilion) 20%, transparent);
+  color: var(--vermilion);
   font-weight: 600;
 }
 
@@ -5309,7 +5320,7 @@ b.lecta-anchor {
   align-items: center;
   justify-content: center;
   font-size: 0.85rem;
-  color: var(--text-muted, #a1a1aa);
+  color: var(--dock-ink-soft);
   background: transparent;
   border: none;
   border-radius: 9999px;
@@ -5321,8 +5332,8 @@ b.lecta-anchor {
 }
 
 .dock-audio-close-btn:hover {
-  color: var(--ink);
-  background: var(--paper-sunken);
+  color: var(--dock-ink);
+  background: var(--dock-hover);
 }
 
 /* Backdrop transparente que intercepta clics fuera del popover sin pasar de página */
@@ -5514,7 +5525,7 @@ b.lecta-anchor {
   max-height: min(62vh, 420px);
   margin-bottom: 16px;
   padding: 12px;
-  border-radius: 20px;
+  border-radius: var(--r-2);
   /* Superficie del tema: el popover se lee sobre papel, sepia, noche y OLED.
      Antes usaba tokens del tema oscuro que no existen fuera de él (texto
      blanco sobre papel blanco: títulos invisibles). */
@@ -5544,7 +5555,7 @@ b.lecta-anchor {
   align-items: flex-start;
   text-align: left;
   padding: 10px 12px;
-  border-radius: 12px;
+  border-radius: var(--r-2);
   border: 1px solid var(--rule);
   background: var(--paper);
   color: var(--ink);
@@ -5668,7 +5679,7 @@ b.lecta-anchor {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+  box-shadow: var(--shadow-2);
   color: var(--ink);
   position: relative;
   transition:
@@ -5713,7 +5724,7 @@ b.lecta-anchor {
   display: inline-flex;
   align-items: center;
   gap: 0.45rem;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  box-shadow: var(--shadow-1);
   transition:
     transform 150ms ease,
     background-color 150ms ease,
@@ -5723,7 +5734,7 @@ b.lecta-anchor {
 .reader-section-preview-pill:hover {
   transform: translateY(-1px);
   background: color-mix(in srgb, var(--vermilion) 18%, var(--paper-raised));
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-2);
 }
 
 .reader-section-preview-pill .pill-cta {
@@ -5743,10 +5754,10 @@ b.lecta-anchor {
   transform: translateX(-50%);
   z-index: 40;
   width: min(92vw, 440px);
-  background: var(--paper-raised, #ffffff);
+  background: var(--paper-raised);
   border: 1px solid var(--border-color, color-mix(in srgb, var(--ink) 12%, transparent));
-  border-radius: var(--radius-m, 12px);
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.12);
+  border-radius: var(--r-2);
+  box-shadow: var(--shadow-2);
   padding: 0.9rem 1.1rem;
   font-family: var(--font-ui, sans-serif);
   animation: recapBubbleDrop 260ms cubic-bezier(0.16, 1, 0.3, 1);
@@ -5797,9 +5808,9 @@ b.lecta-anchor {
   border: none;
   padding: 0.25rem 0.45rem;
   font-size: 0.95rem;
-  color: var(--ink-faint, #777);
+  color: var(--ink-faint);
   cursor: pointer;
-  border-radius: var(--radius-xs, 4px);
+  border-radius: var(--r-1);
   line-height: 1;
   min-width: 44px;
   min-height: 44px;
@@ -5822,7 +5833,7 @@ b.lecta-anchor {
 
 .recap-loading-text {
   font-size: var(--fs-xs, 0.85rem);
-  color: var(--ink-faint, #666);
+  color: var(--ink-faint);
   font-style: italic;
   margin: 0.25rem 0;
 }
@@ -5830,7 +5841,7 @@ b.lecta-anchor {
 .recap-last-snippet {
   margin: 0.35rem 0 0.55rem;
   padding-left: 0.7rem;
-  border-left: 2px solid var(--accent-primary, var(--vermilion, #8c5a32));
+  border-left: 2px solid var(--accent-primary, var(--vermilion));
   font-style: italic;
   font-size: 0.88rem;
   line-height: 1.4;
@@ -5844,7 +5855,7 @@ b.lecta-anchor {
 .recap-characters-label {
   font-size: 0.76rem;
   font-weight: 600;
-  color: var(--ink-faint, #767169);
+  color: var(--ink-faint);
   display: block;
 }
 
@@ -5860,7 +5871,7 @@ b.lecta-anchor {
   font-size: 0.76rem;
   padding: 0.18rem 0.55rem;
   border-radius: 999px;
-  border: 1px solid var(--border-color, #d5cfc4);
+  border: 1px solid var(--border-color);
   background: color-mix(in srgb, var(--ink) 4%, transparent);
   color: var(--ink);
   font-family: var(--font-ui, sans-serif);
@@ -5868,9 +5879,9 @@ b.lecta-anchor {
 }
 
 .recap-character-pill:hover {
-  background: color-mix(in srgb, var(--accent-primary, var(--vermilion, #8c5a32)) 12%, transparent);
-  border-color: var(--accent-primary, var(--vermilion, #8c5a32));
-  color: var(--accent-primary, var(--vermilion, #8c5a32));
+  background: color-mix(in srgb, var(--accent-primary, var(--vermilion)) 12%, transparent);
+  border-color: var(--accent-primary, var(--vermilion));
+  color: var(--accent-primary, var(--vermilion));
 }
 
 .recap-bullets-list {
@@ -5883,8 +5894,8 @@ b.lecta-anchor {
 }
 
 .recap-action-btn {
-  background: var(--vermilion, #9e3a23);
-  color: var(--on-accent, #ffffff);
+  background: var(--vermilion);
+  color: var(--on-accent);
   border: none;
   border-radius: 9999px;
   padding: 0.4rem 0.9rem;
@@ -5918,7 +5929,7 @@ b.lecta-anchor {
 
 .paragraph-translating-indicator {
   font-size: 0.85em;
-  color: var(--accent-primary, var(--vermilion, #8c5a32));
+  color: var(--accent-primary, var(--vermilion));
   font-style: italic;
   margin-left: 0.5rem;
 }
@@ -5934,7 +5945,7 @@ b.lecta-anchor {
   font-size: 0.82rem;
   line-height: 1.35;
   padding: 0.18rem 0.55rem;
-  border-radius: 6px;
+  border-radius: var(--r-1);
   background: var(--surface-priming);
   border: 1px solid var(--border-priming);
   color: var(--ink);
@@ -5942,7 +5953,7 @@ b.lecta-anchor {
 }
 
 .lecta-bilingue__gloss-chip strong {
-  color: var(--accent-primary, var(--vermilion, #8c5a32));
+  color: var(--accent-primary, var(--vermilion));
   font-weight: 700;
 }
 
@@ -5950,8 +5961,8 @@ b.lecta-anchor {
   margin-top: 0.55rem;
   padding: 0.55rem 0.85rem;
   background: var(--surface-bilingue-clause);
-  border-left: 3px solid var(--accent-primary, var(--vermilion, #8c5a32));
-  border-radius: 0 8px 8px 0;
+  border-left: 3px solid var(--accent-primary, var(--vermilion));
+  border-radius: 0 var(--r-2) var(--r-2) 0;
   font-size: 0.92rem;
   line-height: 1.5;
   color: var(--ink);
@@ -5973,8 +5984,8 @@ b.lecta-anchor {
   margin-top: 0.65rem;
   padding-top: 0.55rem;
   padding-left: 0.75rem;
-  border-top: 1px dashed var(--border-color, #dcd6cc);
-  border-left: 2px solid var(--accent-primary, var(--vermilion, #8c5a32));
+  border-top: 1px dashed var(--border-color);
+  border-left: 2px solid var(--accent-primary, var(--vermilion));
   color: color-mix(in srgb, var(--ink) 86%, transparent);
   font-size: 0.95em;
   opacity: 0.88;
@@ -5996,10 +6007,9 @@ b.lecta-anchor {
 }
 
 .lecta-bilingue__step-btn {
-  background: color-mix(in srgb, var(--accent-primary, var(--vermilion, #8c5a32)) 10%, transparent);
-  border: 1px solid
-    color-mix(in srgb, var(--accent-primary, var(--vermilion, #8c5a32)) 25%, transparent);
-  color: var(--accent-primary, var(--vermilion, #8c5a32));
+  background: color-mix(in srgb, var(--accent-primary, var(--vermilion)) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-primary, var(--vermilion)) 25%, transparent);
+  color: var(--accent-primary, var(--vermilion));
   padding: 0.22rem 0.65rem;
   border-radius: 999px;
   font-size: 0.78rem;
@@ -6010,7 +6020,7 @@ b.lecta-anchor {
 }
 
 .lecta-bilingue__step-btn:hover {
-  background: color-mix(in srgb, var(--accent-primary, var(--vermilion, #8c5a32)) 18%, transparent);
+  background: color-mix(in srgb, var(--accent-primary, var(--vermilion)) 18%, transparent);
 }
 
 .lecta-bilingue__prefs {
@@ -6040,10 +6050,10 @@ b.lecta-anchor {
   top: calc(100% + 4px);
   z-index: 30;
   min-width: 230px;
-  background: var(--paper-raised, #ffffff);
-  border: 1px solid var(--border-color, #dcd6cc);
-  border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  background: var(--paper-raised);
+  border: 1px solid var(--border-color);
+  border-radius: var(--r-2);
+  box-shadow: var(--shadow-2);
   padding: 0.35rem;
   display: flex;
   flex-direction: column;
@@ -6075,10 +6085,10 @@ b.lecta-anchor {
   padding: 1.5rem 1.75rem;
   background: var(--surface-priming);
   border: 1px solid var(--border-priming);
-  border-radius: 14px;
-  box-shadow: 0 6px 24px -8px rgba(0, 0, 0, 0.06);
+  border-radius: var(--r-2);
+  box-shadow: var(--shadow-1);
   font-family: var(--font-book, serif);
-  color: var(--ink, #26241f);
+  color: var(--ink);
   box-sizing: border-box;
 }
 
@@ -6096,13 +6106,13 @@ b.lecta-anchor {
   align-items: center;
   gap: var(--s-2, 0.5rem);
   font-size: var(--text-xs, 0.75rem);
-  color: var(--ink-soft, #767169);
+  color: var(--ink-soft);
   font-family: var(--font-ui, sans-serif);
 }
 
 .lecta-chapter-priming__badge {
-  background: color-mix(in srgb, var(--accent-primary, var(--vermilion, #8c5a32)) 14%, transparent);
-  color: var(--accent-primary, var(--vermilion, #8c5a32));
+  background: color-mix(in srgb, var(--accent-primary, var(--vermilion)) 14%, transparent);
+  color: var(--accent-primary, var(--vermilion));
   font-weight: 700;
   padding: 0.2rem 0.6rem;
   border-radius: 999px;
@@ -6118,18 +6128,18 @@ b.lecta-anchor {
 .lecta-chapter-priming__options-btn {
   background: none;
   border: 1px solid transparent;
-  color: var(--ink-soft, #767169);
+  color: var(--ink-soft);
   font-size: var(--text-xs, 0.75rem);
   font-family: var(--font-ui, sans-serif);
   padding: 0.25rem 0.5rem;
-  border-radius: var(--radius-sm, 4px);
+  border-radius: var(--r-1);
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .lecta-chapter-priming__options-btn:hover {
   background: color-mix(in srgb, var(--ink) 6%, transparent);
-  color: var(--ink, #26241f);
+  color: var(--ink);
 }
 
 .lecta-chapter-priming__dropdown {
@@ -6138,11 +6148,11 @@ b.lecta-anchor {
   top: calc(100% + 6px);
   z-index: 30;
   min-width: 220px;
-  background: var(--paper-raised, #ffffff);
-  border: 1px solid var(--border-color, #dcd6cc);
-  border-radius: 10px;
+  background: var(--paper-raised);
+  border: 1px solid var(--border-color);
+  border-radius: var(--r-2);
   padding: 0.35rem;
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.12);
+  box-shadow: var(--shadow-2);
   display: flex;
   flex-direction: column;
   gap: 0.2rem;
@@ -6155,10 +6165,10 @@ b.lecta-anchor {
   border: none;
   padding: 0.5rem 0.85rem;
   font-size: 0.84rem;
-  color: var(--ink, #26241f);
+  color: var(--ink);
   font-family: var(--font-ui, sans-serif);
   cursor: pointer;
-  border-radius: 6px;
+  border-radius: var(--r-1);
   transition: background 0.15s ease;
 }
 
@@ -6171,13 +6181,13 @@ b.lecta-anchor {
   font-size: 1.35rem;
   font-weight: 700;
   margin: 0 0 0.35rem 0;
-  color: var(--ink, #26241f);
+  color: var(--ink);
   line-height: 1.3;
 }
 
 .lecta-chapter-priming__subtitle {
   font-size: 0.9rem;
-  color: var(--ink-soft, #767169);
+  color: var(--ink-soft);
   margin: 0 0 1.15rem 0;
   font-family: var(--font-ui, sans-serif);
   line-height: 1.45;
@@ -6195,10 +6205,10 @@ b.lecta-anchor {
 .lecta-priming-card {
   padding: 0.9rem 1.1rem;
   margin-bottom: 0.65rem;
-  background: var(--paper-raised, #ffffff);
-  border: 1px solid var(--border-color, #e5e0d8);
-  border-radius: 10px;
-  box-shadow: 0 2px 8px -2px rgba(0, 0, 0, 0.04);
+  background: var(--paper-raised);
+  border: 1px solid var(--border-color);
+  border-radius: var(--r-2);
+  box-shadow: var(--shadow-1);
   transition:
     transform 0.18s ease,
     opacity 0.18s ease;
@@ -6223,14 +6233,14 @@ b.lecta-anchor {
   font-family: var(--font-book, serif);
   font-size: 1.18rem;
   font-weight: 700;
-  color: var(--ink, #26241f);
+  color: var(--ink);
   letter-spacing: -0.01em;
 }
 
 .lecta-priming-card__pos {
   font-size: 0.74rem;
   font-family: var(--font-ui, sans-serif);
-  color: var(--ink-soft, #767169);
+  color: var(--ink-soft);
   background: color-mix(in srgb, var(--ink) 6%, transparent);
   padding: 0.14rem 0.48rem;
   border-radius: 4px;
@@ -6258,10 +6268,10 @@ b.lecta-anchor {
 
 .lecta-priming-card__btn-known {
   background: none;
-  border: 1px solid var(--border-color, #ddd4c4);
-  color: var(--ink-soft, #767169);
+  border: 1px solid var(--border-color);
+  color: var(--ink-soft);
   padding: 0.25rem 0.65rem;
-  border-radius: var(--radius-xs, 4px);
+  border-radius: var(--r-1);
   font-size: 0.78rem;
   font-family: var(--font-ui, sans-serif);
   cursor: pointer;
@@ -6269,17 +6279,17 @@ b.lecta-anchor {
 }
 
 .lecta-priming-card__btn-known:hover {
-  background: color-mix(in srgb, var(--accent-primary, var(--vermilion, #8c5a32)) 8%, transparent);
-  color: var(--accent-primary, var(--vermilion, #8c5a32));
-  border-color: var(--accent-primary, var(--vermilion, #8c5a32));
+  background: color-mix(in srgb, var(--accent-primary, var(--vermilion)) 8%, transparent);
+  color: var(--accent-primary, var(--vermilion));
+  border-color: var(--accent-primary, var(--vermilion));
 }
 
 .lecta-priming-card__btn-save {
-  background: color-mix(in srgb, var(--accent-primary, var(--vermilion, #8c5a32)) 8%, transparent);
-  border: 1px solid var(--accent-primary, var(--vermilion, #8c5a32));
-  color: var(--accent-primary, var(--vermilion, #8c5a32));
+  background: color-mix(in srgb, var(--accent-primary, var(--vermilion)) 8%, transparent);
+  border: 1px solid var(--accent-primary, var(--vermilion));
+  color: var(--accent-primary, var(--vermilion));
   padding: 0.25rem 0.65rem;
-  border-radius: var(--radius-xs, 4px);
+  border-radius: var(--r-1);
   font-size: 0.78rem;
   font-family: var(--font-ui, sans-serif);
   font-weight: 600;
@@ -6289,15 +6299,15 @@ b.lecta-anchor {
 
 .lecta-priming-card__btn-save.is-saved {
   background: color-mix(in srgb, var(--ink) 5%, transparent);
-  border-color: var(--border-color, #eee);
-  color: var(--ink-faint, #767169);
+  border-color: var(--border-color);
+  color: var(--ink-faint);
   cursor: default;
 }
 
 .lecta-priming-card__gloss {
   font-family: var(--font-ui, sans-serif);
   font-size: 0.92rem;
-  color: var(--ink, #333);
+  color: var(--ink);
   margin: 0.35rem 0 0;
   line-height: 1.45;
 }
@@ -6308,7 +6318,7 @@ b.lecta-anchor {
   border-left: 2px solid var(--border-priming);
   font-style: italic;
   font-size: 0.92rem;
-  color: var(--ink-soft, #666);
+  color: var(--ink-soft);
   opacity: 0.88;
   line-height: 1.45;
 }
@@ -6320,11 +6330,11 @@ b.lecta-anchor {
 }
 
 .lecta-chapter-priming__start-btn {
-  background: var(--accent-primary, var(--vermilion, #8c5a32));
-  color: var(--on-accent, #ffffff);
+  background: var(--accent-primary, var(--vermilion));
+  color: var(--on-accent);
   border: none;
   padding: 0.65rem 1.35rem;
-  border-radius: var(--radius-sm, 6px);
+  border-radius: var(--r-1);
   font-family: var(--font-ui, sans-serif);
   font-weight: 600;
   font-size: 0.92rem;
@@ -6351,7 +6361,7 @@ b.lecta-anchor {
   border: 1px solid var(--border-priming);
   font-size: 0.82rem;
   color: var(--ink);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--shadow-2);
   min-height: 36px;
 }
 
@@ -6393,7 +6403,7 @@ b.lecta-anchor {
   .lecta-chapter-priming {
     margin: 1rem 0.5rem 1.5rem;
     padding: 1.15rem 1rem;
-    border-radius: 10px;
+    border-radius: var(--r-2);
   }
   .lecta-priming-card {
     padding: 0.75rem 0.85rem;
@@ -6448,7 +6458,7 @@ b.lecta-anchor {
 
 .reader-chapter-prep-btn {
   background: var(--vermilion);
-  color: #fff;
+  color: var(--on-accent);
   border: none;
   border-radius: 9999px;
   padding: 0.25rem 0.65rem;
@@ -6468,7 +6478,7 @@ b.lecta-anchor {
 .reader-chapter-prep-dismiss {
   background: transparent;
   border: none;
-  color: var(--text-muted, #64748b);
+  color: var(--ink-soft);
   font-size: 0.9rem;
   cursor: pointer;
   padding: 0.15rem 0.35rem;
@@ -6480,7 +6490,7 @@ b.lecta-anchor {
 }
 
 .reader-chapter-prep-dismiss:hover {
-  color: var(--text-primary, #1e293b);
+  color: var(--text-primary);
 }
 
 /* ==========================================================================
@@ -6521,21 +6531,21 @@ b.lecta-anchor {
 }
 
 .smart-dock-btn.smart-dock-pill.is-easy {
-  background: rgba(34, 197, 94, 0.16);
-  color: #22c55e;
-  border-color: rgba(34, 197, 94, 0.32);
+  background: color-mix(in srgb, var(--success) 16%, transparent);
+  color: var(--success);
+  border-color: color-mix(in srgb, var(--success) 32%, transparent);
 }
 
 .smart-dock-btn.smart-dock-pill.is-moderate {
-  background: rgba(234, 179, 8, 0.16);
-  color: #eab308;
-  border-color: rgba(234, 179, 8, 0.32);
+  background: color-mix(in srgb, var(--warning) 16%, transparent);
+  color: var(--warning);
+  border-color: color-mix(in srgb, var(--warning) 32%, transparent);
 }
 
 .smart-dock-btn.smart-dock-pill.is-challenging {
-  background: rgba(249, 115, 22, 0.16);
-  color: #f97316;
-  border-color: rgba(249, 115, 22, 0.32);
+  background: color-mix(in srgb, var(--vermilion) 16%, transparent);
+  color: var(--vermilion);
+  border-color: color-mix(in srgb, var(--vermilion) 32%, transparent);
 }
 
 /* Panel ThemeMenu con lenguaje claro */
@@ -6603,7 +6613,7 @@ b.lecta-anchor {
   flex-direction: column;
   align-items: flex-start;
   padding: 0.625rem 0.75rem;
-  border-radius: 8px;
+  border-radius: var(--r-1);
   border: 1px solid var(--rule);
   background: var(--paper-raised);
   color: var(--ink);
@@ -6673,7 +6683,7 @@ b.lecta-anchor {
   justify-content: center;
   width: 36px;
   height: 36px;
-  border-radius: 8px;
+  border-radius: var(--r-1);
   border: 1px solid var(--rule);
   background: var(--paper-raised);
   color: var(--ink);
@@ -6723,7 +6733,7 @@ b.lecta-anchor {
   justify-content: center;
   gap: 3px;
   padding: 8px 6px;
-  border-radius: 8px;
+  border-radius: var(--r-1);
   border: 1px solid var(--rule);
   background: var(--paper-raised);
   color: var(--ink);
@@ -6755,39 +6765,39 @@ b.lecta-anchor {
 }
 
 .game-rate-again {
-  border-color: rgba(239, 68, 68, 0.3);
-  color: #ef4444;
+  border-color: color-mix(in srgb, var(--danger) 30%, transparent);
+  color: var(--danger);
 }
 
 .game-rate-again:hover {
-  background: rgba(239, 68, 68, 0.08);
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
 }
 
 .game-rate-hard {
-  border-color: rgba(245, 158, 11, 0.3);
-  color: #f59e0b;
+  border-color: color-mix(in srgb, var(--warning) 30%, transparent);
+  color: var(--warning);
 }
 
 .game-rate-hard:hover {
-  background: rgba(245, 158, 11, 0.08);
+  background: color-mix(in srgb, var(--warning) 8%, transparent);
 }
 
 .game-rate-good {
-  border-color: rgba(59, 130, 246, 0.3);
-  color: #3b82f6;
+  border-color: color-mix(in srgb, var(--ink) 30%, transparent);
+  color: var(--ink);
 }
 
 .game-rate-good:hover {
-  background: rgba(59, 130, 246, 0.08);
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
 }
 
 .game-rate-easy {
-  border-color: rgba(34, 197, 94, 0.3);
-  color: #22c55e;
+  border-color: color-mix(in srgb, var(--success) 30%, transparent);
+  color: var(--success);
 }
 
 .game-rate-easy:hover {
-  background: rgba(34, 197, 94, 0.08);
+  background: color-mix(in srgb, var(--success) 8%, transparent);
 }
 
 /* ==========================================================================
@@ -6842,9 +6852,9 @@ b.lecta-anchor {
   height: 38px;
   border-radius: 999px;
   border: 1px solid var(--rule-strong);
-  background: var(--surface-elevated, #fdfaf3);
-  color: var(--text-primary, #2c2623);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.14);
+  background: var(--surface-elevated);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-2);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -6854,8 +6864,8 @@ b.lecta-anchor {
 }
 
 .focus-ruler.is-pinned .focus-ruler__handle {
-  border-color: var(--accent-primary, #8c5a32);
-  background: var(--surface-accent, #f7efe2);
+  border-color: var(--accent-primary);
+  background: var(--paper-sunken);
 }
 
 .focus-ruler__handle:active {
@@ -6910,7 +6920,7 @@ b.lecta-anchor {
 .cat-explanation-dict-block {
   background: var(--paper-sunken);
   border: 1px solid var(--rule);
-  border-radius: 8px;
+  border-radius: var(--r-2);
   padding: 10px 12px;
   margin-bottom: 12px;
 }
@@ -7016,7 +7026,7 @@ b.lecta-anchor {
 .reader[data-thermal-saver="true"] .reader-smart-dock {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
-  background: rgba(24, 24, 27, 0.96);
+  background: var(--dock-bg);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -7035,7 +7045,7 @@ b.lecta-anchor {
   .reader .reader-smart-dock {
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
-    background: rgba(24, 24, 27, 0.96);
+    background: var(--dock-bg);
   }
 }
 
