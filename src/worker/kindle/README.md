@@ -93,10 +93,8 @@ The main app also wires these exports at top level ([`../app.ts`](../app.ts)):
 - The `lecta_k_vp` viewport cookie is accepted only in strict `WxH` form within
   bounds (`[routes.ts:parseKindleViewportCookie]`).
 - Database access goes through `withClient` from [`../db.ts`](../db.ts)
-  (Postgres/CockroachDB via Hyperdrive). Several handlers also contain a fallback
-  branch for `env.DB` (`D1Database` type, `.prepare()`); `wrangler.jsonc` declares
-  no D1 binding, so that branch is not the production path. `memoryCodeStore` is
-  the in-memory fallback when no database is configured (unit tests).
+  (Postgres/CockroachDB via Hyperdrive). `memoryCodeStore` is the in-memory
+  fallback when no database is configured (unit tests).
 
 ## Side Effects
 
@@ -105,7 +103,7 @@ The main app also wires these exports at top level ([`../app.ts`](../app.ts)):
   page turn), `lecta_user_words`, `lecta_user_knowledge`, `lecta_user_reviews`,
   `lecta_user_highlights`, `lecta_user_companion_events`; lexicon lookups via
   `findEntries`/`findEntriesForForms` ([`../lexicon.ts`](../lexicon.ts)).
-- R2 (`env.BOOKS_BUCKET ?? env.BOOKS`): reads `books/{userId}/…` EPUBs; writes
+- R2 (`env.BOOKS`): reads `books/{userId}/…` EPUBs; writes
   best-effort cache keys `kcache/ch/{hash}/{section}.json` and
   `kcache/res/{hash}/{path}` (via `waitUntil`); `/k` shelf may write EPUB metadata
   back to the object.

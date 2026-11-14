@@ -82,7 +82,7 @@ export interface KindleCodeRecord {
 
 export type KindleLinkRecord = KindleCodeRecord;
 
-// Respaldo en memoria para tests unitarios donde c.env.DB no está presente
+// Respaldo en memoria para tests unitarios y dev sin conexión pg configurada
 export const memoryCodeStore = new Map<string, KindleCodeRecord>();
 
 const SAFE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // Sin I/1/O/0 para evitar confusión en tinta electrónica
@@ -361,7 +361,6 @@ export function cleanExpiredKindleCodes() {
 }
 
 export async function createKindleLinkCode(
-  db?: D1Database,
   customCode?: string,
   env?: WorkerEnv,
 ): Promise<KindleCodeRecord> {
@@ -391,36 +390,15 @@ export async function createKindleLinkCode(
         );
       });
     } catch {
-      // Fallback a D1 / memoria
+      // Fallback a memoria
     }
   }
 
-  if (db && typeof db.prepare === "function") {
-    try {
-      await db
-        .prepare(`DELETE FROM kindle_link_codes WHERE expires_at < ?`)
-        .bind(nowSec)
-        .run()
-        .catch(() => {});
-
-      await db
-        .prepare(
-          `INSERT INTO kindle_link_codes (code, status, user_id, session_token, created_at, expires_at)
-           VALUES (?, 'pending', NULL, NULL, ?, ?)
-           ON CONFLICT(code) DO UPDATE SET status = 'pending', user_id = NULL, session_token = NULL, created_at = excluded.created_at, expires_at = excluded.expires_at`,
-        )
-        .bind(code, nowSec, record.expiresAt)
-        .run();
-    } catch {
-      // En tests con mocks parciales de D1, el Map en memoria mantiene el flujo vivo
-    }
-  }
 
   return record;
 }
 
 export async function linkKindleCodeFromMobile(params: {
-  db?: D1Database;
   code: string;
   userId: string;
   sessionToken: string;
@@ -482,60 +460,11 @@ export async function linkKindleCodeFromMobile(params: {
         return { ok: true, redirectUrl: params.redirectUrl };
       }
     } catch {
-      // Fallback a D1 / memoria
+      // Fallback a memoria
     }
   }
 
-  // 2. Intentar actualizar en D1 si está disponible
-  if (params.db && typeof params.db.prepare === "function") {
-    try {
-      const row = await params.db
-        .prepare(
-          `SELECT code, status, expires_at FROM kindle_link_codes WHERE code = ? LIMIT 1`,
-        )
-        .bind(cleanCode)
-        .first<{ code: string; status: string; expires_at?: number }>();
-
-      if (row) {
-        if ((row.expires_at != null && row.expires_at < nowSec) || (row.status && row.status !== "pending")) {
-          return { ok: false, error: "Código expirado o ya utilizado." };
-        }
-        await params.db
-          .prepare(
-            `UPDATE kindle_link_codes
-             SET status = 'linked', user_id = ?, session_token = ?
-             WHERE code = ?`,
-          )
-          .bind(params.userId, params.sessionToken, cleanCode)
-          .run();
-
-        const mem = memoryCodeStore.get(cleanCode);
-        if (mem) {
-          mem.status = "linked";
-          mem.userId = params.userId;
-          mem.sessionToken = params.sessionToken;
-          mem.userToken = params.sessionToken;
-          if (params.redirectUrl) mem.redirectUrl = params.redirectUrl;
-        } else {
-          memoryCodeStore.set(cleanCode, {
-            code: cleanCode,
-            status: "linked",
-            userId: params.userId,
-            sessionToken: params.sessionToken,
-            userToken: params.sessionToken,
-            createdAt: nowSec,
-            expiresAt: nowSec + CODE_TTL_SECONDS,
-            redirectUrl: params.redirectUrl,
-          });
-        }
-        return { ok: true, redirectUrl: params.redirectUrl };
-      }
-    } catch {
-      // Fallback al store en memoria
-    }
-  }
-
-  // 3. Fallback en memoria (tests unitarios o dev local sin migración corrida)
+  // 2. Fallback en memoria (tests unitarios o dev local sin migración corrida)
   const memRecord = memoryCodeStore.get(cleanCode);
   if (!memRecord || (memRecord.expiresAt && memRecord.expiresAt < nowSec) || memRecord.status !== "pending") {
     return { ok: false, error: "Código inválido o expirado." };
@@ -550,7 +479,6 @@ export async function linkKindleCodeFromMobile(params: {
 }
 
 export async function consumeLinkedKindleCode(
-  db?: D1Database | undefined,
   code?: string,
   env?: WorkerEnv,
 ): Promise<{ status: "pending" | "linked" | "expired" | "not_found"; sessionToken?: string; userId?: string; redirectUrl?: string }> {
@@ -589,7 +517,7 @@ export async function consumeLinkedKindleCode(
   };
 
   // 1. Postgres: DELETE ... RETURNING consume el código exactamente una
-  // vez. Si el código no vive en Postgres, se sigue con D1/memoria.
+  // vez. Si el código no vive en Postgres, se sigue con la memoria.
   if (env && getConnectionString(env)) {
     try {
       const outcome = await withClient<ConsumeOutcome>(env, async (client) => {
@@ -651,58 +579,6 @@ export async function consumeLinkedKindleCode(
       }
       if (outcome && "pending" in outcome) return { status: "pending" };
     } catch {
-      // Fallback a D1 / memoria
-    }
-  }
-
-  // 2. D1: mismo DELETE ... RETURNING para que un código se canjee una
-  // sola vez aunque dos pestañas consulten a la vez.
-  if (db && typeof db.prepare === "function") {
-    try {
-      const row = await db
-        .prepare(
-          `DELETE FROM kindle_link_codes
-           WHERE code = ? AND status = 'linked' AND expires_at >= ?
-           RETURNING session_token, user_id`,
-        )
-        .bind(cleanCode, nowSec)
-        .first<{ session_token: string | null; user_id: string | null }>();
-      if (row?.session_token) {
-        const mem = memoryCodeStore.get(cleanCode);
-        memoryCodeStore.delete(cleanCode);
-        return {
-          status: "linked",
-          sessionToken: row.session_token,
-          userId: row.user_id ?? undefined,
-          redirectUrl: mem?.redirectUrl,
-        };
-      }
-      const state = await db
-        .prepare(
-          `SELECT status, expires_at FROM kindle_link_codes WHERE code = ? LIMIT 1`,
-        )
-        .bind(cleanCode)
-        .first<{ status: string; expires_at?: number }>();
-      if (state) {
-        if (state.expires_at != null && state.expires_at < nowSec) {
-          await db
-            .prepare(`DELETE FROM kindle_link_codes WHERE code = ?`)
-            .bind(cleanCode)
-            .run();
-          memoryCodeStore.delete(cleanCode);
-          return { status: "expired" };
-        }
-        if (state.status !== "pending") {
-          await db
-            .prepare(`DELETE FROM kindle_link_codes WHERE code = ?`)
-            .bind(cleanCode)
-            .run();
-          memoryCodeStore.delete(cleanCode);
-          return { status: "not_found" };
-        }
-        return { status: "pending" };
-      }
-    } catch {
       // Fallback a memoria
     }
   }
@@ -739,22 +615,11 @@ export async function handleKindleLinkPage(c: Context<{ Bindings: WorkerEnv }>) 
       } catch {
         /* ignore */
       }
-    } else if (c.env?.DB && typeof c.env.DB.prepare === "function") {
-      try {
-        const row = await c.env.DB.prepare(
-          `SELECT code, status, expires_at FROM kindle_link_codes WHERE code = ? AND status = 'pending' LIMIT 1`,
-        ).bind(queryCode).first<{ code: string; status: string; expires_at?: number }>();
-        if (row && (row.expires_at == null || row.expires_at > nowSec)) {
-          code = queryCode;
-        }
-      } catch {
-        /* ignore */
-      }
     }
   }
 
   if (!code) {
-    const record = await createKindleLinkCode(c.env?.DB, undefined, c.env);
+    const record = await createKindleLinkCode(undefined, c.env);
     code = record.code;
   }
 
@@ -820,7 +685,6 @@ export async function handleKindleLinkAction(c: Context<{ Bindings: WorkerEnv }>
   }
 
   const result = await linkKindleCodeFromMobile({
-    db: c.env?.DB,
     code,
     userId: userId || "",
     sessionToken: userSessionToken,
@@ -856,7 +720,7 @@ export async function handleKindleStatus(c: Context<{ Bindings: WorkerEnv }>) {
     return c.json({ error: "La vinculación no está configurada." }, 503);
   }
 
-  const result = await consumeLinkedKindleCode(c.env?.DB, code, c.env);
+  const result = await consumeLinkedKindleCode(code, c.env);
 
   const isHtml =
     c.req.query("redirect") === "1" ||
@@ -958,23 +822,10 @@ export async function handleKindlePrimingAction(c: Context<{ Bindings: WorkerEnv
 
   const session = await getSession(c).catch(() => null);
   const userId = session?.user?.id;
-  const db = c.env?.DB;
   const now = Date.now();
 
   if (userId) {
     if (action === "known" && lemma) {
-      if (db && typeof db.prepare === "function") {
-        await db
-          .prepare(
-            `INSERT INTO user_knowledge (user_id, word, lang, status, encounters, updated_at)
-             VALUES (?1, ?2, ?3, 'known', 1, ?4)
-             ON CONFLICT(user_id, word, lang)
-             DO UPDATE SET status = 'known', encounters = encounters + 1, updated_at = ?4`,
-          )
-          .bind(userId, lemma, lang, now)
-          .run()
-          .catch(() => {});
-      }
       if (getConnectionString(c.env)) {
         await withClient(c.env, (client) =>
           client.query(
@@ -992,29 +843,6 @@ export async function handleKindlePrimingAction(c: Context<{ Bindings: WorkerEnv
         ).catch(() => {});
       }
     } else if (action === "save" && lemma) {
-      if (db && typeof db.prepare === "function") {
-        await db
-          .prepare(
-            `INSERT INTO user_knowledge (user_id, word, lang, status, encounters, updated_at)
-             VALUES (?1, ?2, ?3, 'learning', 1, ?4)
-             ON CONFLICT(user_id, word, lang)
-             DO UPDATE SET status = 'learning', encounters = encounters + 1, updated_at = ?4`,
-          )
-          .bind(userId, lemma, lang, now)
-          .run()
-          .catch(() => {});
-
-        // Inicializar repaso espaciado FSRS en user_reviews
-        await db
-          .prepare(
-            `INSERT INTO user_reviews (user_id, word, next_review_at, stability, difficulty, reps, lapses, state, updated_at)
-             VALUES (?1, ?2, ?3, 1.5, 5.0, 0, 0, 'new', ?3)
-             ON CONFLICT(user_id, word) DO NOTHING`,
-          )
-          .bind(userId, lemma, now + 86_400_000)
-          .run()
-          .catch(() => {});
-      }
       if (getConnectionString(c.env)) {
         await withClient(c.env, async (client) => {
           await client.query(
@@ -1450,17 +1278,6 @@ kindleRoutes.get("/", async (c) => {
       return res.rows;
     });
     if (rows) userBookList = rows;
-  } else if (c.env.DB) {
-    const d1Result = await c.env.DB.prepare(
-      `SELECT book_id AS id, title, author FROM user_books WHERE user_id = ? ORDER BY updated_at DESC`,
-    )
-      .bind(user.id)
-      .all<{ id: string; title: string; author: string }>()
-      .catch(() => null);
-
-    if (d1Result?.results) {
-      userBookList = d1Result.results;
-    }
   }
 
   if (userBookList.length > 0) {
@@ -1663,7 +1480,7 @@ export async function loadEpubObjectForKindle(
   userId: string | null,
   bookId: string,
 ): Promise<EpubObjectLike | null> {
-  const bucket = env.BOOKS_BUCKET ?? env.BOOKS;
+  const bucket = env.BOOKS;
   if (!bucket) return null;
 
   // 1. Intentar desde catálogo público en R2
@@ -1680,18 +1497,6 @@ export async function loadEpubObjectForKindle(
       );
       return res.rows[0];
     });
-    if (userBook?.r2_key) {
-      const userObj = await bucket.get(userBook.r2_key);
-      if (userObj) return userObj;
-    }
-  } else if (env.DB) {
-    const userBook = await env.DB.prepare(
-      `SELECT r2_key FROM user_books WHERE user_id = ? AND book_id = ?`,
-    )
-      .bind(userId, bookId)
-      .first<{ r2_key: string }>()
-      .catch(() => null);
-
     if (userBook?.r2_key) {
       const userObj = await bucket.get(userBook.r2_key);
       if (userObj) return userObj;
@@ -1737,7 +1542,7 @@ async function firstKindleBookHash(
     }).catch(() => null);
     if (row?.book_id) return row.book_id;
   }
-  const bucket = env.BOOKS_BUCKET ?? env.BOOKS;
+  const bucket = env.BOOKS;
   if (bucket) {
     const listed = await bucket
       .list({ prefix: `books/${userId}/`, limit: 1 })
@@ -1772,7 +1577,7 @@ async function loadKindleChapterForRead(
   notFound?: boolean;
   tooBig?: boolean;
 }> {
-  const bucket = c.env.BOOKS_BUCKET ?? c.env.BOOKS;
+  const bucket = c.env.BOOKS;
   const cached = await getCachedChapter(bucket, hash, sectionIndex);
   if (cached) return { chapter: cached };
 
@@ -1810,7 +1615,7 @@ kindleRoutes.get("/read/:hash", async (c) => {
     return c.redirect(`/k/login?returnTo=${encodeURIComponent(c.req.url)}`);
   }
 
-  if (!c.env.BOOKS && !c.env.BOOKS_BUCKET) {
+  if (!c.env.BOOKS) {
     return html("<h1>Error</h1><p>El almacenamiento no está configurado.</p>", 503);
   }
 
@@ -2013,25 +1818,6 @@ kindleRoutes.get("/read/:hash", async (c) => {
     const cleanText = stripHtml(chapter.contentHtml);
 
     // 1. Cargar historial del usuario para estimar theta y lemas conocidos
-    let d1Rows: Array<{ word: string; status: string; difficultyBeta?: number }> = [];
-    if (c.env?.DB && typeof c.env.DB.prepare === "function") {
-      try {
-        const res = await c.env.DB.prepare(
-          `SELECT word, status FROM user_knowledge WHERE user_id = ? AND lang = ?`,
-        )
-          .bind(user.id, bookLang)
-          .all<{ word: string; status: string }>();
-        if (res?.results) {
-          d1Rows = res.results.map((r) => ({
-            word: r.word.toLowerCase(),
-            status: r.status,
-          }));
-        }
-      } catch {
-        /* fallback */
-      }
-    }
-
     const pgKnowledge =
       (getConnectionString(c.env)
         ? await withClient(c.env, (client) =>
@@ -2047,14 +1833,9 @@ kindleRoutes.get("/read/:hash", async (c) => {
         : []) ?? [];
     timer.mark("db");
 
-    const knowledgeRecords: Array<{ word: string; status: string; difficultyBeta?: number }> = [...d1Rows];
+    const knowledgeRecords: Array<{ word: string; status: string; difficultyBeta?: number }> = [];
     const knownLemmas = new Set<string>();
     const learningRetrievability = new Map<string, number>();
-
-    for (const r of d1Rows) {
-      if (r.status === "known") knownLemmas.add(r.word);
-      else if (r.status === "learning") learningRetrievability.set(r.word, 0.5);
-    }
 
     for (const row of pgKnowledge) {
       const status = row.known ? "known" : "learning";
@@ -2324,7 +2105,7 @@ kindleRoutes.get("/read/:hash/resource", async (c) => {
   }
 
   // Recurso cacheado por (hash, ruta): evita bajar el EPUB entero por imagen
-  const resBucket = c.env.BOOKS_BUCKET ?? c.env.BOOKS;
+  const resBucket = c.env.BOOKS;
   const cachedRes = await getCachedResource(resBucket, hash, resourcePath);
   if (cachedRes) {
     return new Response(cachedRes.body, {

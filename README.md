@@ -80,11 +80,6 @@ Restricciones duras. Cada una cita dónde la impone el código.
     `withClient`). Binding `HYPERDRIVE` sin caché para auth y sync de
     usuario; `HYPERDRIVE_CACHED` solo para lecturas del catálogo.
   - Archivos: R2, binding `BOOKS` (`lecta-books`).
-  - **D1 no es la base de datos.** PRODUCT.md menciona D1, pero
-    `wrangler.jsonc` no declara `d1_databases`. `DB?: D1Database`
-    (`src/worker/db.ts:23`) es un tipo sin binding, y las ramas
-    `env.DB.prepare` de `app.ts` y `kindle/routes.ts` nunca corren en
-    producción.
 - **El catálogo léxico vive solo en `lecta_dev`** y se consulta como
   `lecta_dev.lexicon_*` (`src/worker/lexicon.ts:CATALOG`).
 - **Datos de usuario por merge y nunca reescritos.** Se sincronizan por

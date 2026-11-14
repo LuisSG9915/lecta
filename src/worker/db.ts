@@ -21,11 +21,8 @@ export type WorkerEnv = {
   STRIPE_PRICE_MONTHLY_ID?: string;
   STRIPE_PRICE_YEARLY_ID?: string;
   BOOKS?: R2Bucket;
-  BOOKS_BUCKET?: R2Bucket;
-  MODELS_BUCKET?: R2Bucket;
   TTS_MODEL_CDN_URL?: string;
   ENRICHMENT_WORKFLOW?: Workflow<{ forms: string[]; language?: string }>;
-  DB?: D1Database;
 };
 
 // La conexión vive solo dentro de la petición: los Workers no pueden
@@ -182,16 +179,6 @@ export async function resetAccountDataDb(
     const env = clientOrEnv as WorkerEnv;
     if (getConnectionString(env)) {
       await withClient(env, runQueries);
-    } else if (env.DB) {
-      await env.DB.prepare("DELETE FROM user_books WHERE user_id = ?").bind(userId).run().catch(() => null);
-      await env.DB.prepare("DELETE FROM kindle_link_codes WHERE user_id = ?").bind(userId).run().catch(() => null);
-      await env.DB.prepare(
-        `INSERT INTO lecta_account_state (user_id, reset_at) VALUES (?, ?)
-         ON CONFLICT (user_id) DO UPDATE SET reset_at = excluded.reset_at`,
-      )
-        .bind(userId, resetAt)
-        .run()
-        .catch(() => null);
     }
   }
   return resetAt;

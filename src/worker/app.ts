@@ -321,7 +321,7 @@ app.on(["GET", "HEAD"], "/models/:filename", async (c) => {
     return c.json({ error: "Invalid model filename" }, 400);
   }
 
-  const modelsBucket = c.env?.BOOKS ?? c.env?.MODELS_BUCKET ?? c.env?.BOOKS_BUCKET;
+  const modelsBucket = c.env?.BOOKS;
   if (!modelsBucket) {
     return c.text("Model not found", 404);
   }
@@ -1726,7 +1726,6 @@ export async function checkUserBooksQuota(
 ): Promise<{ allowed: boolean; reason?: string }> {
   let totalBytes = 0;
   let bookCount = 0;
-  let resolved = false;
 
   if (getConnectionString(env)) {
     const res = await withClient(env, (client) =>
@@ -1742,18 +1741,7 @@ export async function checkUserBooksQuota(
     if (res?.rows[0]) {
       totalBytes = Number(res.rows[0].total_bytes);
       bookCount = Number(res.rows[0].book_count);
-      resolved = true;
     }
-  }
-  if (!resolved && env.DB) {
-    const row = await env.DB.prepare(
-      `SELECT COALESCE(SUM(size_bytes), 0) AS total, COUNT(*) AS count FROM user_books WHERE user_id = ? AND book_id != ?`,
-    )
-      .bind(userId, bookId)
-      .first<{ total: number; count: number }>()
-      .catch(() => null);
-    totalBytes = Number(row?.total ?? 0);
-    bookCount = Number(row?.count ?? 0);
   }
 
   if (bookCount >= MAX_USER_BOOKS) {
@@ -1790,10 +1778,10 @@ export async function recordUserBook(
 ): Promise<void> {
   const now = Date.now();
   const hasCoverVal = book.hasCover ? true : false;
-  let recorded = false;
   if (getConnectionString(env)) {
     // Tolera la columna `language` ausente (despliegue antes de la
-    // migración 022): cae a la ruta D1 como cuando falta la conexión.
+    // migración 022): el error se traga y la fila no se registra, como
+    // cuando falta la conexión.
     // Con resetAck la fila corre dentro de la transacción guardada: un
     // sello más nuevo aborta con StaleResetError en vez de resucitar.
     // Dos variantes: con `genre` (migración 025 aplicada) y sin ella
@@ -1873,58 +1861,6 @@ export async function recordUserBook(
       return undefined;
     });
     if (isResetBlocked(res)) throw new StaleResetError(res.blockedAt);
-    if (res) recorded = true;
-  }
-  if (!recorded && env.DB) {
-    // Igual que la ruta pg: intenta con `genre` y cae a la variante
-    // sin la columna si el esquema local aún no tiene la migración.
-    const d1BaseParams = [
-      book.userId,
-      book.bookId,
-      book.title,
-      book.author,
-      book.language ?? "",
-      book.r2Key,
-      book.sizeBytes,
-      book.sha256,
-      hasCoverVal ? 1 : 0,
-      now,
-      now,
-    ];
-    await env.DB.prepare(
-      `INSERT INTO user_books (user_id, book_id, title, author, language, r2_key, size_bytes, sha256, has_cover, genre, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(user_id, book_id) DO UPDATE SET
-         title = excluded.title,
-         author = excluded.author,
-         language = excluded.language,
-         r2_key = excluded.r2_key,
-         size_bytes = excluded.size_bytes,
-         sha256 = excluded.sha256,
-         has_cover = excluded.has_cover,
-         genre = CASE WHEN excluded.genre <> '' THEN excluded.genre ELSE user_books.genre END,
-         updated_at = excluded.updated_at`,
-    )
-      .bind(...d1BaseParams.slice(0, 9), book.genre ?? "", ...d1BaseParams.slice(9))
-      .run()
-      .catch(() =>
-        env.DB!.prepare(
-          `INSERT INTO user_books (user_id, book_id, title, author, language, r2_key, size_bytes, sha256, has_cover, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-           ON CONFLICT(user_id, book_id) DO UPDATE SET
-             title = excluded.title,
-             author = excluded.author,
-             language = excluded.language,
-             r2_key = excluded.r2_key,
-             size_bytes = excluded.size_bytes,
-             sha256 = excluded.sha256,
-             has_cover = excluded.has_cover,
-             updated_at = excluded.updated_at`,
-        )
-          .bind(...d1BaseParams)
-          .run(),
-      )
-      .catch(() => null);
   }
 }
 
@@ -1951,14 +1887,6 @@ export async function setUserBookCover(
     });
     if (isResetBlocked(res)) throw new StaleResetError(res.blockedAt);
   }
-  if (env.DB) {
-    await env.DB.prepare(
-      `UPDATE user_books SET has_cover = ?, updated_at = ? WHERE user_id = ? AND book_id = ?`,
-    )
-      .bind(hasCover ? 1 : 0, now, userId, bookId)
-      .run()
-      .catch(() => null);
-  }
 }
 
 export async function deleteUserBookRecord(
@@ -1974,11 +1902,6 @@ export async function deleteUserBookRecord(
       ? withClient(env, remove)
       : withResetGuard(env, resetAck, userId, remove));
     if (isResetBlocked(res)) throw new StaleResetError(res.blockedAt);
-  } else if (env.DB) {
-    await env.DB.prepare(`DELETE FROM user_books WHERE user_id = ? AND book_id = ?`)
-      .bind(userId, bookId)
-      .run()
-      .catch(() => null);
   }
 }
 
@@ -2327,12 +2250,8 @@ app.get("/api/books/community", async (context) => {
      GROUP BY book_id
      ORDER BY shared_at DESC
      LIMIT 200`;
-  const toD1 = (sql: string) =>
-    sql.replace("BOOL_OR(has_cover)", "MAX(has_cover)").replace("::int", "").replace("$1", "?");
   const sqlPg = communitySql(", MAX(genre) AS genre", "$1");
   const sqlPgBase = communitySql("", "$1");
-  const sqlD1 = toD1(sqlPg);
-  const sqlD1Base = toD1(sqlPgBase);
 
   const collect = (
     rows: Array<Record<string, unknown>>,
@@ -2371,19 +2290,6 @@ app.get("/api/books/community", async (context) => {
       if (res === null) return context.json({ books: [] });
     }
     return context.json({ books: await finish(res?.rows ?? []) });
-  }
-  if (context.env.DB) {
-    let res = await context.env.DB.prepare(sqlD1)
-      .bind(session.user.id)
-      .all<Record<string, unknown>>()
-      .catch(() => null);
-    if (res === null) {
-      res = await context.env.DB.prepare(sqlD1Base)
-        .bind(session.user.id)
-        .all<Record<string, unknown>>()
-        .catch(() => null);
-    }
-    return context.json({ books: await finish(res?.results ?? []) });
   }
   return context.json({ books: [] });
 });
@@ -2625,17 +2531,6 @@ async function listUserBookFlags(
     if (res) collect(res.rows);
     return flags;
   }
-  if (env.DB) {
-    const run = (sql: string) =>
-      env.DB!.prepare(sql.replace("$1", "?")).bind(userId).all<{
-        book_id: unknown;
-        shared: unknown;
-        paper_only: unknown;
-        genre?: unknown;
-      }>().catch(() => null);
-    const res = (await run(sqlPgGenre)) ?? (await run(sqlPgBase));
-    if (res?.results) collect(res.results);
-  }
   return flags;
 }
 
@@ -2661,7 +2556,6 @@ async function listUserBooksOutsidePrefix(
   // 027: las filas solo de metadatos (has_file = false) no tienen archivo;
   // sin la columna (worker antes de migrar) se reintenta sin el filtro.
   const sqlPgFile = `${sqlPg} AND has_file = true`;
-  const sqlD1 = sqlPg.replace("$1", "?");
   if (getConnectionString(env)) {
     const res = await withClient(env, (client) =>
       client
@@ -2672,16 +2566,9 @@ async function listUserBooksOutsidePrefix(
             : Promise.reject(err),
         ),
     ).catch((err) => (isMissingColumnError(err) ? null : Promise.reject(err)));
-    // res === undefined → sin conexión pg configurada: caer a D1.
+    // res === undefined → sin conexión pg configurada: lista vacía.
     if (res) return res.rows;
     if (res === null) return [];
-  }
-  if (env.DB) {
-    const res = await env.DB.prepare(sqlD1)
-      .bind(userId)
-      .all<UserBookRow>()
-      .catch(() => null);
-    return res?.results ?? [];
   }
   return [];
 }
@@ -2695,20 +2582,12 @@ async function readUserBookR2Key(
   bookId: string,
 ): Promise<string | null> {
   const sqlPg = `SELECT r2_key FROM user_books WHERE user_id = $1 AND book_id = $2`;
-  const sqlD1 = `SELECT r2_key FROM user_books WHERE user_id = ? AND book_id = ?`;
   if (getConnectionString(env)) {
     const res = await withClient(env, (client) =>
       client.query<{ r2_key: string }>(sqlPg, [userId, bookId]),
     ).catch((err) => (isMissingTableError(err) ? null : Promise.reject(err)));
     if (res) return res.rows[0]?.r2_key ?? null;
     if (res === null) return null;
-  }
-  if (env.DB) {
-    const row = await env.DB.prepare(sqlD1)
-      .bind(userId, bookId)
-      .first<{ r2_key: string }>()
-      .catch(() => null);
-    return row?.r2_key ?? null;
   }
   return null;
 }
@@ -2729,19 +2608,11 @@ async function listPaperOnlyRows(
 ): Promise<PaperOnlyRow[]> {
   const sqlPg = `SELECT book_id, title, author, language, created_at
      FROM user_books WHERE user_id = $1 AND paper_only = true`;
-  const sqlD1 = sqlPg.replace("$1", "?");
   if (getConnectionString(env)) {
     const res = await withClient(env, (client) =>
       client.query<PaperOnlyRow>(sqlPg, [userId]),
     ).catch((err) => (isMissingColumnError(err) ? null : Promise.reject(err)));
     return res?.rows ?? [];
-  }
-  if (env.DB) {
-    const res = await env.DB.prepare(sqlD1)
-      .bind(userId)
-      .all<PaperOnlyRow>()
-      .catch(() => null);
-    return res?.results ?? [];
   }
   return [];
 }
@@ -2779,20 +2650,12 @@ async function findCommunityDonor(
      WHERE book_id = $1 AND shared = true
      ORDER BY shared_at ASC
      LIMIT 1`;
-  const sqlD1 = sqlPg.replace("$1", "?");
   if (getConnectionString(env)) {
     const res = await withClient(env, (client) =>
       client.query<CommunityDonor>(sqlPg, [bookId]),
     ).catch((err) => (isMissingColumnError(err) ? null : Promise.reject(err)));
     if (res === null) return "unavailable";
     return res?.rows[0] ?? null;
-  }
-  if (env.DB) {
-    const row = await env.DB.prepare(sqlD1)
-      .bind(bookId)
-      .first<CommunityDonor>()
-      .catch(() => "unavailable" as const);
-    return row === "unavailable" ? "unavailable" : row ?? null;
   }
   return null;
 }
@@ -2845,27 +2708,6 @@ const setBookShared = async (
         return context.json({ error: "La comunidad aún no está disponible." }, 503);
       throw err;
     }
-  }
-  if (env.DB) {
-    const runD1 = (includeGenre: boolean) =>
-      env.DB!.prepare(
-        includeGenre
-          ? `UPDATE user_books SET shared = ?, shared_at = ?, updated_at = ?, genre = ? WHERE user_id = ? AND book_id = ?`
-          : `UPDATE user_books SET shared = ?, shared_at = ?, updated_at = ? WHERE user_id = ? AND book_id = ?`,
-      )
-        .bind(
-          ...(includeGenre
-            ? [shared ? 1 : 0, shared ? now : 0, now, genre, userId, bookId]
-            : [shared ? 1 : 0, shared ? now : 0, now, userId, bookId]),
-        )
-        .run()
-        .catch(() => null);
-    const res =
-      (await runD1(genre !== undefined)) ??
-      (genre !== undefined ? await runD1(false) : null);
-    if (!res) return context.json({ error: "La comunidad aún no está disponible." }, 503);
-    if (!res.meta.changes) return context.json({ error: "Libro no encontrado." }, 404);
-    return context.json({ ok: true, shared });
   }
   return context.json({ error: "El almacenamiento no está configurado." }, 503);
 };
@@ -3025,30 +2867,6 @@ app.post("/api/books/community/:hash/attach", async (context) => {
         return context.json({ error: "La comunidad aún no está disponible." }, 503);
       throw err;
     }
-  }
-  if (context.env.DB) {
-    const res = await context.env.DB.prepare(
-      `INSERT OR IGNORE INTO user_books (user_id, book_id, title, author, language, r2_key, size_bytes, sha256, has_cover, shared, shared_at, paper_only, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 1, ?, ?)`,
-    )
-      .bind(
-        session.user.id,
-        hash,
-        title,
-        author,
-        language,
-        guideKey(hash),
-        0,
-        hash,
-        0,
-        now,
-        now,
-      )
-      .run()
-      .catch(() => null);
-    if (!res)
-      return context.json({ error: "La comunidad aún no está disponible." }, 503);
-    return context.json({ ok: true, hash, guide });
   }
   return context.json({ error: "El almacenamiento no está configurado." }, 503);
 });
@@ -3413,7 +3231,7 @@ app.get("/api/sync/counts", async (context) => {
   return context.json({ counts, serverTime: Date.now() });
 });
 
-// ---------- Sincronización Cloud de EPUBs Propios (BYO-EPUB) en CockroachDB/D1 y R2 ----------
+// ---------- Sincronización Cloud de EPUBs Propios (BYO-EPUB) en CockroachDB y R2 ----------
 
 // Libro propio solo con metadatos (027): gratis y con sesión. Registra la
 // fila para que la estantería de otro dispositivo vea el libro; el archivo
@@ -3484,7 +3302,7 @@ app.put("/api/user/books/:bookId/file", requireLectaPlus, async (c) => {
   const staleReset = await staleResetAt(c.env, c, user.id);
   if (staleReset) return resetBlockedResponse(c, staleReset);
 
-  const booksBucket = c.env.BOOKS_BUCKET ?? c.env.BOOKS;
+  const booksBucket = c.env.BOOKS;
   if (!booksBucket) {
     return c.json({ error: "Almacenamiento no configurado" }, 503);
   }
@@ -3600,17 +3418,6 @@ app.get("/api/user/books", async (c) => {
     if (rows) return c.json({ books: rows.filter((b) => notPaper(b.id)) });
   }
 
-  if (c.env.DB) {
-    const { results } = await c.env.DB.prepare(
-      `SELECT book_id AS id, title, author, size_bytes AS sizeBytes, sha256, updated_at AS updatedAt
-       FROM user_books WHERE user_id = ? ORDER BY updated_at DESC`,
-    )
-      .bind(user.id)
-      .all<{ id: string }>();
-    return c.json({
-      books: (results ?? []).filter((b) => notPaper(b.id)),
-    });
-  }
 
   return c.json({ books: [] });
 });
@@ -3619,7 +3426,7 @@ app.get("/api/user/books/:bookId/file", requireLectaPlus, async (c) => {
   const user = c.get("session")?.user ?? null;
   if (!user) return c.json({ error: "No autenticado" }, 401);
 
-  const booksBucket = c.env.BOOKS_BUCKET ?? c.env.BOOKS;
+  const booksBucket = c.env.BOOKS;
   if (!booksBucket) {
     return c.json({ error: "Almacenamiento no configurado" }, 503);
   }
@@ -3648,14 +3455,6 @@ app.get("/api/user/books/:bookId/file", requireLectaPlus, async (c) => {
       ),
     );
     r2Key = res?.rows[0]?.r2_key ?? null;
-  } else if (c.env.DB) {
-    const row = await c.env.DB.prepare(
-      `SELECT r2_key FROM user_books WHERE user_id = ? AND book_id = ?`,
-    )
-      .bind(user.id, bookId)
-      .first<{ r2_key: string }>()
-      .catch(() => null);
-    r2Key = row?.r2_key ?? null;
   }
 
   const keysToTry = [
@@ -3708,14 +3507,6 @@ app.get("/api/account/state", async (context) => {
           }
           return stamp;
         })) ?? 0;
-    } else if (context.env.DB) {
-      const row = await context.env.DB.prepare(
-        "SELECT reset_at FROM lecta_account_state WHERE user_id = ?",
-      )
-        .bind(userId)
-        .first<{ reset_at: number }>()
-        .catch(() => null);
-      resetAt = Number(row?.reset_at) || 0;
     }
   } catch (error) {
     console.error("Error al leer el sello de reinicio de la cuenta:", error);
@@ -3781,13 +3572,6 @@ app.post("/api/account/reset", async (context) => {
           return res.rows;
         });
         userBookIds = (ids ?? []).map((r) => r.book_id);
-      } else if (context.env.DB) {
-        const res = await context.env.DB.prepare(
-          `SELECT book_id FROM user_books WHERE user_id = ?`,
-        )
-          .bind(userId)
-          .all<{ book_id: string }>();
-        userBookIds = (res.results ?? []).map((r) => r.book_id);
       }
     } catch {
       userBookIds = [];
@@ -3798,7 +3582,7 @@ app.post("/api/account/reset", async (context) => {
     const resetAtMs = await resetAccountDataDb(context.env, userId);
 
     // 2. Reutilizar purgeR2Prefix para limpiar EPUBs y portadas del usuario en R2
-    const booksBucket = context.env.BOOKS ?? context.env.BOOKS_BUCKET;
+    const booksBucket = context.env.BOOKS;
     if (booksBucket) {
       await Promise.all([
         purgeR2Prefix(booksBucket, `books/${userId}/`),

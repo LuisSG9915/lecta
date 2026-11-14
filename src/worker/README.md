@@ -20,11 +20,6 @@ first only for `/api/*`, `/k`, `/k/*`, `/kindle`, `/kindle/*`, `/models/*`
 | `ENRICHMENT_WORKFLOW` | Workflow `lecta-enrichment` | class `[enrichment-workflow.ts:EnrichmentWorkflow]` |
 | cron `0 5 * * *` | trigger | `[index.ts:handler.scheduled]` |
 
-`WorkerEnv` also types `BOOKS_BUCKET?` and `MODELS_BUCKET?` (R2) and `DB?:
-D1Database`; none of these has a binding in `wrangler.jsonc`. Code reads them only
-as fallbacks (`env.BOOKS_BUCKET ?? env.BOOKS`, `env.DB?.prepare(...)` branches). The
-database is Postgres/CockroachDB through Hyperdrive, not D1.
-
 ## Interface
 
 ### Entry and modules

@@ -324,80 +324,63 @@ describe("Kindle Routes (/k and /kindle)", () => {
       expect(blocked.status).toBe(429);
     });
 
-    it("utiliza c.env.DB cuando está disponible para registrar y vincular códigos D1", async () => {
-      const mockD1Rows = new Map<string, Record<string, unknown>>();
-      const mockDb = {
-        prepare: vi.fn((sql: string) => ({
-          bind: (...args: unknown[]) => ({
-            run: vi.fn(async () => {
-              if (sql.includes("INSERT INTO kindle_link_codes")) {
-                mockD1Rows.set(args[0] as string, {
-                  code: args[0],
-                  status: "pending",
-                  created_at: Math.floor(Date.now() / 1000),
-                });
-              } else if (sql.includes("UPDATE kindle_link_codes")) {
-                const [userId, userToken, code] = args;
-                const existing = mockD1Rows.get(code as string) || { code };
-                mockD1Rows.set(code as string, {
-                  ...existing,
-                  status: "linked",
-                  user_id: userId,
-                  session_token: userToken,
-                });
-              }
-              return { success: true };
-            }),
-            first: vi.fn(async () => {
-              const code = args[0] as string;
-              return mockD1Rows.get(code) || null;
-            }),
-          }),
-        })),
-      };
+    it("registra y vincula el código en kindle_link_codes por la conexión pg", async () => {
+      const rows = new Map<string, { status: string; session_token: string | null; user_id: string | null }>();
+      const future = Math.floor(Date.now() / 1000) + 600;
+      dbQueryMock.mockImplementation(async (sql: string, params: unknown[] = []) => {
+        if (sql.includes("INSERT INTO kindle_link_codes")) {
+          rows.set(String(params[0]), { status: "pending", session_token: null, user_id: null });
+        } else if (sql.includes("UPDATE kindle_link_codes")) {
+          const [userId, token, code] = params as [string, string, string];
+          rows.set(code, { status: "linked", session_token: token, user_id: userId });
+        } else if (sql.includes("SELECT code, status, expires_at FROM kindle_link_codes")) {
+          const row = rows.get(String(params[0]));
+          return { rows: row ? [{ code: params[0], status: row.status, expires_at: future }] : [] };
+        } else if (sql.includes("DELETE FROM kindle_link_codes") && sql.includes("RETURNING")) {
+          const row = rows.get(String(params[0]));
+          if (row?.status === "linked") {
+            rows.delete(String(params[0]));
+            return { rows: [{ session_token: row.session_token, user_id: row.user_id }] };
+          }
+        }
+        return { rows: [] };
+      });
 
-      const d1Env = {
-        ...env,
-        DB: mockDb as unknown as D1Database,
-      };
-
-      // 1. Generar código con D1
+      // 1. Generar código: INSERT en kindle_link_codes.
       getSessionMock.mockResolvedValueOnce(null);
-      const kindleRes = await app.request("/kindle", {}, d1Env);
+      const kindleRes = await app.request("/kindle", {}, env);
       expect(kindleRes.status).toBe(200);
-      expect(mockDb.prepare).toHaveBeenCalledWith(
+      expect(dbQueryMock).toHaveBeenCalledWith(
         expect.stringContaining("INSERT INTO kindle_link_codes"),
+        expect.any(Array),
       );
-
       const html = await kindleRes.text();
-      const codeMatch = html.match(/<div[^>]*font-size:\s*3\.5rem[^>]*>\s*([A-Z0-9]{4})\s*<\/div>/);
-      const code = codeMatch ? codeMatch[1] : "";
+      const code = html.match(/<div[^>]*font-size:\s*3\.5rem[^>]*>\s*([A-Z0-9]{4})\s*<\/div>/)?.[1] ?? "";
       expect(code).toHaveLength(4);
 
-      // 2. Vincular código
+      // 2. Vincular desde el celular: UPDATE … SET status = 'linked'.
       getSessionMock.mockResolvedValueOnce({
-        user: { id: "d1-user", email: "d1@example.com" },
+        user: { id: "pg-user", email: "pg@example.com" },
       });
       const linkRes = await app.request(
         "/api/kindle/link",
         {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ code, userSessionToken: "d1-session-token" }),
+          body: JSON.stringify({ code, userSessionToken: "pg-session-token" }),
         },
-        d1Env,
+        env,
       );
       expect(linkRes.status).toBe(200);
-      expect(mockDb.prepare).toHaveBeenCalledWith(
-        expect.stringContaining("UPDATE kindle_link_codes"),
+      expect(dbQueryMock).toHaveBeenCalledWith(
+        expect.stringMatching(/UPDATE kindle_link_codes\s+SET status = 'linked'/),
+        ["pg-user", "pg-session-token", code],
       );
 
-      // 3. Consultar estado desde Kindle
-      const statusRes = await app.request(`/api/kindle/status?code=${code}`, {}, d1Env);
+      // 3. El Kindle canjea el código y recibe la sesión.
+      const statusRes = await app.request(`/api/kindle/status?code=${code}`, {}, env);
       expect(statusRes.status).toBe(200);
-      const statusJson = (await statusRes.json()) as { linked: boolean };
-      expect(statusJson.linked).toBe(true);
-      expect(statusRes.headers.get("set-cookie")).toContain("d1-session-token");
+      expect(statusRes.headers.get("set-cookie")).toContain("pg-session-token");
     });
 
     it("muestra el botón físico HTML 'Ya ingresé el código en mi celular → Entrar' en la pantalla de vinculación", async () => {
