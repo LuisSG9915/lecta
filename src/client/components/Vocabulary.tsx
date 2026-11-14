@@ -867,6 +867,7 @@ export function Vocabulary({
             review={review}
             practiceCompanion={practiceCompanion}
             streakDays={companion?.enabled ? companion.state?.stats?.streakDays : undefined}
+            pendingCount={reviewWords.length}
             onClose={onClose}
           />
         ) : null}

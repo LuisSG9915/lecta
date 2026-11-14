@@ -1807,7 +1807,7 @@ describe("Plan de simplificación — Fase 2 (superficie)", () => {
     expect(text()).toContain("Terminado por hoy.");
     expect(text()).not.toContain("Repaso terminado.");
     expect(text()).toContain("1 palabra repasada");
-    expect(text()).toMatch(/Vuelve en|Nada pendiente/);
+    expect(text()).toMatch(/vuelve en|Nada pendiente|Te queda/);
     expect(text()).not.toContain("XP");
     expect(button("Volver a mi lectura")).toBeTruthy();
   });
