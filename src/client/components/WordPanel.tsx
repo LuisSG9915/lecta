@@ -217,6 +217,8 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
   // 402 de Lecta+ (o cuenta free): la ficha pinta PlanNote en vez de la IA.
   const [planNoteShown, setPlanNoteShown] = useState(false);
   const [isSaved, setIsSaved] = useState<boolean>(isSavedInitial);
+  // Brote: solo al guardar aquí, no al abrir una palabra ya guardada.
+  const [sprouted, setSprouted] = useState(false);
   const [savedEntry, setSavedEntry] = useState<SavedWord | null>(null);
   const [saving, setSaving] = useState(false);
   const [quickNotice, setQuickNotice] = useState<string | null>(null);
@@ -554,6 +556,7 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
     setSaving(true);
     savedRef.current = true;
     setIsSaved(true);
+    setSprouted(true);
     triggerHaptic(12);
 
     onRecordSilentCalibration(cleanWord, "save");
@@ -610,6 +613,7 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
       } catch {
         savedRef.current = false;
         setIsSaved(false);
+        setSprouted(false);
         return null;
       } finally {
         saveInFlightRef.current = null;
@@ -813,7 +817,10 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
         <div className="word-panel__status-row word-card-actions">
           {isSaved ? (
             <div className="word-panel__saved-bar">
-              <span className="word-panel__saved-pill word-panel-saved-badge">
+              <span
+                className="word-panel__saved-pill word-panel-saved-badge"
+                data-sprout={sprouted || undefined}
+              >
                 ★ Guardada en tu cuaderno{savedStage ? ` · ${savedStage}` : ""}
               </span>
               <button
