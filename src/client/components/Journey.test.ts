@@ -496,13 +496,11 @@ describe("Journey (Tu recorrido)", () => {
         updatedAt: 1,
       },
       {
-        key: "es:perenne",
+        key: "es:alborada",
         language: "es",
-        lemma: "perenne",
-        known: false,
-        status: "familiar",
-        passiveSeenCount: 3,
-        source: "inferred",
+        lemma: "alborada",
+        known: true,
+        source: "preparation",
         updatedAt: 1,
       },
       {
@@ -527,7 +525,7 @@ describe("Journey (Tu recorrido)", () => {
     expect(container?.textContent).toContain("Tu horizonte de palabras");
 
     // 2. Contadores de desglose pasivo vs activo
-    // Pasivas: vislumbrar, perenne = 2
+    // Pasivas: vislumbrar, alborada = 2
     expect(container?.textContent).toContain("Absorbidas de corrido (2)");
     // Activas: inmarcesible (in-chapter-lookup) + casa, perro (en Cuaderno) = 3
     expect(container?.textContent).toContain("Exploradas al tocar (3)");

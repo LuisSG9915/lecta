@@ -4,6 +4,7 @@
 
 import type { KnownWord, SavedReview, SavedWord } from "./idb";
 import { markLevel } from "./word-level";
+import { isRecallHit } from "../../shared/admin-insights";
 import {
   DEFAULT_USER_LANGUAGE_PROFILE,
   getThetaForLanguage,
@@ -96,9 +97,7 @@ export function computeRetentionSummary(
   const verified = reviews.filter((r) => r.kind !== "declared");
   let hits = 0;
   for (const r of verified) {
-    if (r.rating === "good" || r.rating === "easy" || r.rating === "correct") {
-      hits += 1;
-    }
+    if (isRecallHit(r.rating)) hits += 1;
   }
   const recallRatePct =
     verified.length > 0 ? Math.round((hits / verified.length) * 100) : null;
@@ -599,8 +598,6 @@ export function computeLanguageLexicalGrowth(
       }
 
       const isPassiveConsolidated =
-        kw.status === "familiar" ||
-        (kw.passiveSeenCount ?? 0) >= 3 ||
         kw.source === "passive" ||
         kw.source === "passive_frontier" ||
         kw.source === "preparation" ||
@@ -780,7 +777,7 @@ export function getWeeklyLearnedWordsCount(
   for (const kw of effectiveKnown) {
     if (kw.deleted) continue;
     const isKnown =
-      kw.known === true || kw.status === "known" || kw.status === "familiar";
+      kw.known === true || kw.status === "known";
     if (!isKnown) continue;
 
     if (kw.updatedAt >= cutoff && kw.updatedAt <= nowMs) {

@@ -169,6 +169,9 @@ export function useReviewSession({
   // Espejo de hintsUsedRef para pintar: el botón «💡 Pista» se oculta cuando
   // el reto actual ya pidió su pista (una por reto).
   const [hintUsed, setHintUsed] = useState(false);
+  // Un fallo en el reto actual (también antes de un rescate a un modo más
+  // fácil): el acierto posterior ya no es recuperación y se califica Again.
+  const missedRef = useRef(false);
   const petIndexRef = useRef(0);
 
   const resetExercise = () => {
@@ -180,6 +183,7 @@ export function useReviewSession({
     setHintBusy(false);
     hintForRef.current = null;
     hintsUsedRef.current = 0;
+    missedRef.current = false;
     setHintUsed(false);
     setMatchSel(null);
     setMatchDone(new Set());
@@ -486,9 +490,10 @@ export function useReviewSession({
 
   // Devuelve true si guardó la calificación; false si otra calificación estaba
   // en curso o si el guardado falló (saveError ya lo explica).
-  const grade = async (item: QueueItem, rating: Grade): Promise<boolean> => {
+  const grade = async (item: QueueItem, requested: Grade): Promise<boolean> => {
     // Bloqueo inmediato: un doble clic o dos teclas no avanzan dos tarjetas.
     if (gradingRef.current) return false;
+    const rating: Grade = missedRef.current ? Rating.Again : requested;
     gradingRef.current = true;
     setGrading(true);
     setSaveError("");
@@ -564,6 +569,7 @@ export function useReviewSession({
       setHintBusy(false);
       hintForRef.current = null;
       hintsUsedRef.current = 0;
+      missedRef.current = false;
       setHintUsed(false);
       setWriteText("");
       setWritePick(null);
@@ -734,6 +740,7 @@ export function useReviewSession({
   // (sin ella es adivinar entre cuatro); si no, «Significado»; y si tampoco
   // hay significado no se rescata y el reto se reintenta como estaba.
   const tryRescue = (item: QueueItem, speech: string): boolean => {
+    missedRef.current = true;
     const challenge = item.adaptiveChallenge;
     if (!challenge || challenge.level <= 1) return false;
     const rescueMode: PracticeMode | null = isEligible(item.word, "choose")

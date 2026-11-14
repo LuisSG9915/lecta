@@ -26,7 +26,6 @@ import {
   type KnowledgeEvidence,
   type VocabProfile,
 } from "./knowledge";
-import { betaFromZipf, loadUserLanguageProfile, updateLanguageTheta } from "./profile-models";
 import type { MarkLevel } from "./word-level";
 
 /** Un ref de React visto desde aquí: `lib/` no depende de React. */
@@ -61,6 +60,8 @@ export interface ExposureRefs {
   consultedInPageRef: Ref<Set<string>>;
   pageCountRef: Ref<number>;
   pageEnteredAtRef: Ref<number>;
+  /** Página que se acaba de leer (antes de moverse). */
+  pageRef: Ref<number>;
   sectionIndexRef: Ref<number>;
   savedForms: Ref<Map<string, MarkLevel>>;
 }
@@ -69,7 +70,8 @@ export interface PassiveExposureInput {
   language: string;
   sectionWords: number;
   analysisFor: (index: number) => ReadyAnalysis | undefined;
-  applyKnowledgeRow: (row: KnowledgeRow) => void;
+  /** false al retroceder: volver atrás no es leer la página otra vez. */
+  forward?: boolean;
 }
 
 // Perfil del lector: la evidencia en ambas direcciones calibra el
@@ -178,9 +180,36 @@ export async function refreshProfile(
   profileRef.current = next;
 }
 
-// Comprobación de inferencia implícita por exposición pasiva (Fase 4):
-// Si la permanencia en la página fue válida (>= 8s y < 450 ppm) y no se consultó
-// la palabra en WordPanel, se actualiza su probabilidad de conocimiento.
+/**
+ * Formas del análisis que caen en la página `page` de `totalPages`: el
+ * texto de la sección se reparte en partes iguales por tokens. Con una
+ * sola página (scroll) es la sección entera.
+ */
+export function pageForms(
+  analysis: Pick<ReadyAnalysis, "forms" | "text">,
+  page: number,
+  totalPages: number,
+): string[] {
+  const known = new Set(analysis.forms.map((f) => f.toLowerCase()));
+  const tokens = analysis.text.toLowerCase().match(/\p{L}+(?:['’]\p{L}+)*/gu) ?? [];
+  const pages = Math.max(1, totalPages);
+  const index = Math.min(Math.max(0, page), pages - 1);
+  const size = Math.ceil(tokens.length / pages);
+  const slice = tokens.slice(index * size, (index + 1) * size);
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const token of slice) {
+    if (!known.has(token) || seen.has(token)) continue;
+    seen.add(token);
+    out.push(token);
+  }
+  return out;
+}
+
+// Exposición pasiva: si la permanencia en la página fue válida (dwell
+// proporcional y < 450 ppm), suma un encuentro a hasta 8 lemas de ESA
+// página que el lector no consultó. Es métrica (`passiveSeenCount`), no
+// evidencia: no toca θ, ni el perfil, ni el estado de la palabra.
 export function checkPassiveExposure(
   refs: ExposureRefs,
   input: PassiveExposureInput,
@@ -190,13 +219,15 @@ export function checkPassiveExposure(
     consultedInPageRef,
     pageCountRef,
     pageEnteredAtRef,
+    pageRef,
     sectionIndexRef,
     savedForms,
   } = refs;
-  const { language, sectionWords, analysisFor, applyKnowledgeRow } = input;
+  const { language, sectionWords, analysisFor, forward = true } = input;
   const now = Date.now();
-  if (pageEnteredAtRef.current === 0) {
+  if (pageEnteredAtRef.current === 0 || !forward) {
     pageEnteredAtRef.current = now;
+    consultedInPageRef.current.clear();
     return;
   }
   const dwellMs = now - pageEnteredAtRef.current;
@@ -205,20 +236,19 @@ export function checkPassiveExposure(
   const totalPages = Math.max(1, pageCountRef.current);
   const wordsInPage = Math.max(1, Math.round(sectionWords / totalPages));
   const requiredDwellMs = computeRequiredDwellMs(wordsInPage);
-  if (dwellMs < requiredDwellMs) return;
-
-  const speedWpm = Math.round(wordsInPage / (dwellMs / 60000));
-  if (speedWpm >= 450) return;
-
+  const speedWpm = Math.round(wordsInPage / (Math.max(1, dwellMs) / 60000));
   const analysis = analysisFor(sectionIndexRef.current);
-  if (!analysis) return;
+  if (dwellMs < requiredDwellMs || speedWpm >= 450 || !analysis) {
+    consultedInPageRef.current.clear();
+    return;
+  }
 
   const book = bookRef.current;
   const lang = language || (book ? getBookLanguage(book) : "es");
   const consulted = consultedInPageRef.current;
 
-  const candidates = analysis.forms.filter(
-    (f) => !consulted.has(f.toLowerCase()),
+  const candidates = pageForms(analysis, pageRef.current, totalPages).filter(
+    (f) => !consulted.has(f),
   );
   const uniqueLemmas = new Set<string>();
   for (const f of candidates) {
@@ -232,35 +262,7 @@ export function checkPassiveExposure(
 
   const scope = captureDbScope();
   for (const lemma of uniqueLemmas) {
-    void recordPassiveExposure(lang, lemma, scope)
-      .then((updated) => {
-        if (updated.deleted) return;
-        applyKnowledgeRow({
-          lemma: updated.lemma,
-          known: updated.known,
-          status: updated.status,
-          passiveSeenCount: updated.passiveSeenCount,
-          estimatedKnownProb: updated.estimatedKnownProb,
-        });
-      })
-      .catch(() => {});
-  }
-  // Aprendizaje pasivo adaptativo: refuerzo sutil para palabras en frontera (theta ≈ beta) no consultadas
-  try {
-    const profile = loadUserLanguageProfile();
-    const normLang = lang.slice(0, 2).toLowerCase() || "es";
-    const currentTheta = profile.thetaByLang[normLang] ?? 0.0;
-    for (const f of candidates) {
-      const entry = analysis.entries[f]?.[0];
-      if (!entry) continue;
-      const beta = betaFromZipf(entry.zipf);
-      if (Math.abs(currentTheta - beta) <= 1.0) {
-        updateLanguageTheta(lang, beta, 1, 0.25);
-        break;
-      }
-    }
-  } catch {
-    // Ignorar fallo de almacenamiento
+    void recordPassiveExposure(lang, lemma, scope).catch(() => {});
   }
   consultedInPageRef.current.clear();
 }

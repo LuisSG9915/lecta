@@ -1595,6 +1595,29 @@ describe("Plan de simplificación — Fase 1 (comportamiento)", () => {
       expect(text()).toContain("Toca la palabra que falta.");
     });
 
+    it("el acierto tras el rescate no cuenta como recuperación: se califica Again", async () => {
+      listWordsMock.mockResolvedValue([level2({ form: "brisa" })]);
+      exposureFor(["es:brisa"]);
+      await render();
+      await startReview("Repasar 1 palabra");
+      await act(async () => {
+        scrambleProps.current?.onWrong?.();
+        for (let i = 0; i < 4; i++) await Promise.resolve();
+      });
+      const right = [...host.querySelectorAll<HTMLButtonElement>(".choice-option")].find(
+        (b) => b.textContent?.trim() === "brisa",
+      );
+      expect(right).toBeTruthy();
+      await act(async () => {
+        right!.click();
+        for (let i = 0; i < 4; i++) await Promise.resolve();
+      });
+      await click("Continuar");
+      expect(recordReviewMock.mock.calls.at(-1)?.[0]).toEqual(
+        expect.objectContaining({ form: "brisa", rating: "again" }),
+      );
+    });
+
     it("sin oración rescata al significado y no a adivinar entre cuatro", async () => {
       listWordsMock.mockResolvedValue([level2({ form: "brisa", context: undefined })]);
       exposureFor(["es:brisa"]);

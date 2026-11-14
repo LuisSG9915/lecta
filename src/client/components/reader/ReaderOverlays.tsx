@@ -74,6 +74,8 @@ export interface ReaderOverlaysProps {
 
   // WordPanel
   selection: WordHit | null;
+  /** Zipf medido de una forma en el análisis del capítulo. */
+  zipfForForm?: (form: string) => number | null;
   /** ¿La palabra seleccionada ya está en el Cuaderno? Viene de RAM. */
   isSavedInitial?: boolean;
   /** Acciones de pasaje que la ficha ofrece en fila secundaria. */
@@ -175,6 +177,7 @@ export function ReaderOverlays({
   signedIn = false,
 
   selection,
+  zipfForForm,
   isSavedInitial = false,
   wordPassageActions,
   onCloseSelection,
@@ -301,6 +304,7 @@ export function ReaderOverlays({
           charOffsetInChapter={charOffsetInChapter}
           currentChapterTitle={currentChapterTitle}
           isSavedInitial={isSavedInitial}
+          zipfFor={zipfForForm}
           passageActions={wordPassageActions}
           onClose={onCloseSelection}
           onSaved={onWordSaved}

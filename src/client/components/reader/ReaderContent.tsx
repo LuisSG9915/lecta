@@ -80,7 +80,7 @@ export interface ReaderContentProps {
   pacerIndexRef: RefObject<number>;
   onBack: () => void;
   midChapterRecall?: EpisodicWordItem | null;
-  onMidChapterRecallSolve?: () => void;
+  onMidChapterRecallSolve?: (outcome?: { errorCount?: number; usedHint?: boolean }) => void;
   onMidChapterRecallSkip?: () => void;
 }
 

@@ -1,8 +1,8 @@
 {
   "tool": "audit-cuaderno",
   "version": 1,
-  "generado": "2026-11-14T15:49:06.517Z",
-  "commit": "7d4f1f8bc2ed",
+  "generado": "2026-11-14T16:31:14.521Z",
+  "commit": "fa363ca897d9",
   "queja": "no recuerdo para nada las palabras al dar iniciar sesión fluida… primero tengo que aprenderme las palabras, de ahí sí puedo practicar",
   "resumen": {
     "total": 27,
@@ -154,10 +154,10 @@
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/hooks/useReviewSession.ts:400 ~ /if \\(!isEligible\\(ch\\.word, mode\\)\\) \\{/",
+          "detalle": "src/client/hooks/useReviewSession.ts:404 ~ /if \\(!isEligible\\(ch\\.word, mode\\)\\) \\{/",
           "evidencia": {
             "file": "src/client/hooks/useReviewSession.ts",
-            "line": 400,
+            "line": 404,
             "text": "if (!isEligible(ch.word, mode)) {"
           }
         },
@@ -326,10 +326,10 @@
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/hooks/useReviewSession.ts:738 ~ /challenge\\.level <= 1/",
+          "detalle": "src/client/hooks/useReviewSession.ts:745 ~ /challenge\\.level <= 1/",
           "evidencia": {
             "file": "src/client/hooks/useReviewSession.ts",
-            "line": 738,
+            "line": 745,
             "text": "if (!challenge || challenge.level <= 1) return false;"
           }
         }
@@ -422,10 +422,10 @@
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/hooks/useReviewSession.ts:400 ~ /if \\(!isEligible\\(ch\\.word, mode\\)\\) \\{/",
+          "detalle": "src/client/hooks/useReviewSession.ts:404 ~ /if \\(!isEligible\\(ch\\.word, mode\\)\\) \\{/",
           "evidencia": {
             "file": "src/client/hooks/useReviewSession.ts",
-            "line": 400,
+            "line": 404,
             "text": "if (!isEligible(ch.word, mode)) {"
           }
         }
@@ -558,20 +558,20 @@
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/hooks/useReviewSession.ts:514 ~ /hints: hintsUsedRef\\.current,/",
+          "detalle": "src/client/hooks/useReviewSession.ts:519 ~ /hints: hintsUsedRef\\.current,/",
           "evidencia": {
             "file": "src/client/hooks/useReviewSession.ts",
-            "line": 514,
+            "line": 519,
             "text": "hints: hintsUsedRef.current,"
           }
         },
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/hooks/useReviewSession.ts:772 ~ /const stillHere = \\(\\) => hintForRef\\.current === forKey;/",
+          "detalle": "src/client/hooks/useReviewSession.ts:779 ~ /const stillHere = \\(\\) => hintForRef\\.current === forKey;/",
           "evidencia": {
             "file": "src/client/hooks/useReviewSession.ts",
-            "line": 772,
+            "line": 779,
             "text": "const stillHere = () => hintForRef.current === forKey;"
           }
         }
@@ -588,20 +588,20 @@
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/hooks/useReviewSession.ts:736 ~ /const tryRescue = \\(item: QueueItem, speech: string\\): boolean =>/",
+          "detalle": "src/client/hooks/useReviewSession.ts:742 ~ /const tryRescue = \\(item: QueueItem, speech: string\\): boolean =>/",
           "evidencia": {
             "file": "src/client/hooks/useReviewSession.ts",
-            "line": 736,
+            "line": 742,
             "text": "const tryRescue = (item: QueueItem, speech: string): boolean => {"
           }
         },
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/hooks/useReviewSession.ts:739 ~ /const rescueMode: PracticeMode \\| null = isEligible\\(item\\.word, \"choose\"\\)/",
+          "detalle": "src/client/hooks/useReviewSession.ts:746 ~ /const rescueMode: PracticeMode \\| null = isEligible\\(item\\.word, \"choose\"\\)/",
           "evidencia": {
             "file": "src/client/hooks/useReviewSession.ts",
-            "line": 739,
+            "line": 746,
             "text": "const rescueMode: PracticeMode | null = isEligible(item.word, \"choose\")"
           }
         }
@@ -618,10 +618,10 @@
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/hooks/useReviewSession.ts:502 ~ /wordsRef\\.current\\?\\.find\\(\\(w\\) => w\\.key === queued\\.key/",
+          "detalle": "src/client/hooks/useReviewSession.ts:507 ~ /wordsRef\\.current\\?\\.find\\(\\(w\\) => w\\.key === queued\\.key/",
           "evidencia": {
             "file": "src/client/hooks/useReviewSession.ts",
-            "line": 502,
+            "line": 507,
             "text": "wordsRef.current?.find((w) => w.key === queued.key && !w.deleted) ?? queued;"
           }
         },
@@ -648,30 +648,30 @@
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/hooks/useReviewSession.ts:426 ~ /Esta palabra necesita un significado o una oración para repasarse\\./",
+          "detalle": "src/client/hooks/useReviewSession.ts:430 ~ /Esta palabra necesita un significado o una oración para repasarse\\./",
           "evidencia": {
             "file": "src/client/hooks/useReviewSession.ts",
-            "line": 426,
+            "line": 430,
             "text": "setSaveError(\"Esta palabra necesita un significado o una oración para repasarse.\");"
           }
         },
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/hooks/useReviewSession.ts:346 ~ /Parejas necesita al menos dos palabras con significado\\./",
+          "detalle": "src/client/hooks/useReviewSession.ts:350 ~ /Parejas necesita al menos dos palabras con significado\\./",
           "evidencia": {
             "file": "src/client/hooks/useReviewSession.ts",
-            "line": 346,
+            "line": 350,
             "text": "setPracticeNote(\"Parejas necesita al menos dos palabras con significado.\");"
           }
         },
         {
           "tipo": "presente",
           "estado": "COINCIDE",
-          "detalle": "src/client/hooks/useReviewSession.ts:351 ~ /items\\.length % MATCH_TANDA === 1/",
+          "detalle": "src/client/hooks/useReviewSession.ts:355 ~ /items\\.length % MATCH_TANDA === 1/",
           "evidencia": {
             "file": "src/client/hooks/useReviewSession.ts",
-            "line": 351,
+            "line": 355,
             "text": "if (items.length % MATCH_TANDA === 1) queueItems = items.slice(0, -1);"
           }
         }

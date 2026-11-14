@@ -211,17 +211,9 @@ export function predictSection(
     const evidenceOf = (entry: LexiconEntry) =>
       knowledge.get(entry.lemma) ?? knowledge.get(form);
 
-    const isFamiliarOrKnown = (entry: LexiconEntry) => {
-      const ev = evidenceOf(entry);
-      if (!ev) return false;
-      if (ev.known === true) return true;
-      if (
-        ev.status === "familiar" ||
-        (ev.passiveSeenCount ?? 0) >= FAMILIAR_PASSIVE_THRESHOLD
-      )
-        return true;
-      return false;
-    };
+    // Solo lo declarado o probado cuenta como conocida: la exposición
+    // pasiva («familiar», `passiveSeenCount`) es métrica, no evidencia.
+    const isFamiliarOrKnown = (entry: LexiconEntry) => evidenceOf(entry)?.known === true;
 
     // «-mente»: la raíz sin sufijo es el adjetivo («perfectamente» →
     // «perfecta»/«perfecto»). Si esa raíz es un adjetivo común para
@@ -745,16 +737,34 @@ export function recordSilentCalibration(
   word: string,
   event: "lookup" | "save",
   language = "es",
+  zipf?: number | null,
 ): void {
-  // Una sola señal por acto y en una sola escala: consultar o guardar dice
-  // «no la conocía», que es exactamente la sorpresa del modelo.
+  // Una sola señal por palabra y día, en una sola escala: consultar o
+  // guardar dice «no la conocía», que es exactamente la sorpresa del
+  // modelo. Consultar y luego guardar es el mismo acto, no dos.
   if (event !== "lookup" && event !== "save") return;
+  const normLang = (language || "es").slice(0, 2).toLowerCase() || "es";
+  const normWord = word.trim().toLowerCase();
+  if (!normWord) return;
+  const key = `${normLang}:${normWord}:${new Date().toDateString()}`;
+  if (silentSignalsToday.has(key)) return;
+  silentSignalsToday.add(key);
   try {
-    const beta = betaFromZipf(calibrationBankZipf(word.trim().toLowerCase(), language));
-    applyWordPanelLookupSignal(language, beta);
+    // La dificultad sale de la medición del texto (análisis del capítulo);
+    // el banco CAT solo cubre unas pocas palabras.
+    const measured = typeof zipf === "number" && Number.isFinite(zipf) ? zipf : null;
+    const beta = betaFromZipf(measured ?? calibrationBankZipf(normWord, normLang));
+    applyWordPanelLookupSignal(normLang, beta);
   } catch {
     // Silencioso
   }
+}
+
+const silentSignalsToday = new Set<string>();
+
+/** Solo para pruebas: olvida las señales emitidas hoy. */
+export function resetSilentCalibrationForTests(): void {
+  silentSignalsToday.clear();
 }
 
 // ---------- Umbral de Lectura Pasiva Proporcional ----------

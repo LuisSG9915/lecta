@@ -74,11 +74,13 @@ export function isTestAccount(email: string | null | undefined): boolean {
 // ---------- Regla de aciertos (espejo de computeRetentionSummary) ----------
 
 // Repaso verificado = cualquier tipo que no sea autoinforme 'declared'.
-// Acierto = calificación 'good', 'easy' o 'correct'. Tiene que ser la
+// Acierto = cualquier calificación que no sea fallo ('again', 'wrong'):
+// un acierto con opciones del Cuaderno se programa como 'hard' y sigue
+// siendo acierto. Tiene que ser la
 // MISMA regla que `computeRetentionSummary` (client/src/lib/journey.ts)
 // para que el panel y «Tu recorrido» den el mismo porcentaje.
 export const REVIEW_KIND_EXCLUDED_FROM_RECALL = "declared";
-export const RECALL_HIT_RATINGS = ["good", "easy", "correct"] as const;
+export const RECALL_HIT_RATINGS = ["hard", "good", "easy", "correct"] as const;
 
 export function isRecallHit(rating: string): boolean {
   return (RECALL_HIT_RATINGS as readonly string[]).includes(rating);

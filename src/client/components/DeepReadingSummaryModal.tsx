@@ -12,7 +12,7 @@ import {
 } from "../lib/game";
 import { SentenceBuilderGame } from "./SentenceBuilderGame";
 import { WordScrambleGame } from "./WordScrambleGame";
-import { consolidateEpisodicWord } from "../lib/reviews";
+import { consolidateEpisodicWord, type EpisodicOutcome } from "../lib/reviews";
 import type { SavedWord } from "../lib/idb";
 import Icon from "./Icon";
 import { isFeatureFlagEnabled } from "../lib/settings";
@@ -129,13 +129,13 @@ export default function DeepReadingSummaryModal({
     }
   };
 
-  const handleSolveStep = () => {
+  const handleSolveStep = (metrics?: EpisodicOutcome) => {
     const current = activeWordIndex !== null ? queue[activeWordIndex] : undefined;
     if (current) {
-      // Resolver el reto consolida la palabra de verdad en FSRS
-      // (Rating.Good) y deja su repaso en el historial; el XP sale de
-      // ese repaso, no de un premio aparte.
-      void consolidateEpisodicWord(current.item, bookId)
+      // El reto se califica por lo que pasó antes de acertar: error o
+      // pista = Again, primer intento = Hard. Una palabra nueva solo se
+      // codifica (sin nota) y una no vencida acertada no se adelanta.
+      void consolidateEpisodicWord(current.item, bookId, undefined, metrics)
         .then((word) => {
           if (word) onWordConsolidated?.(word);
         })

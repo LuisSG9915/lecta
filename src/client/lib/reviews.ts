@@ -7,7 +7,7 @@ import {
   type SavedReview,
   type SavedWord,
 } from "./idb";
-import { newCard, Rating, scheduleReview } from "./fsrs";
+import { isReviewDueWord, newCard, Rating, scheduleReview } from "./fsrs";
 import { pushReviewsToServer } from "./reading-sync";
 import { pushWordsToServer } from "./vocab";
 import { award, localDayKey } from "./game";
@@ -84,11 +84,34 @@ export async function scheduleCapturedReview(
   }).catch(() => {});
 }
 
+/** Resultado del reto: lo que el lector hizo antes de acertar. */
+export type EpisodicOutcome = { errorCount?: number; usedHint?: boolean };
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 /**
- * Consolida en FSRS (Rating.Good) una palabra resuelta al cerrar un capítulo.
- * Si la palabra ya estaba en el Cuaderno, avanza su tarjeta; si provenía de una
- * consulta o preparación del capítulo, la incorpora al Cuaderno con su primer
- * repaso completado y registra un único evento de repaso (con su XP).
+ * Nota FSRS de un reto de cierre o micro-cloze. Elegir entre opciones
+ * vale lo mismo que en el Cuaderno (`Hard`); cualquier error o pista es
+ * un fallo (`Again`). Nunca `Good`: el ejercicio deja reintentar.
+ */
+export function episodicRating(outcome?: EpisodicOutcome): typeof Rating.Again | typeof Rating.Hard {
+  const failed = (outcome?.errorCount ?? 0) > 0 || outcome?.usedHint === true;
+  return failed ? Rating.Again : Rating.Hard;
+}
+
+/**
+ * Registra en FSRS un reto resuelto al cerrar un capítulo (o el micro-cloze).
+ *
+ * - Palabra ya presentada y vencida (`isReviewDueWord`): se califica con
+ *   `episodicRating`.
+ * - Palabra sin repasos que aún no tocaba (nueva o recién consultada): el
+ *   reto es codificación, no repaso. Se crea o conserva la tarjeta sin
+ *   calificar, se marca como presentada y su primera recuperación queda
+ *   para mañana.
+ * - Palabra con repasos y no vencida: un fallo sí se registra (`Again`); un
+ *   acierto no toca la tarjeta, porque adelantar el repaso no es espaciar.
+ *
+ * Solo deja evento de repaso (y su XP) cuando la tarjeta se calificó.
  */
 export async function consolidateEpisodicWord(
   item: {
@@ -101,6 +124,7 @@ export async function consolidateEpisodicWord(
   },
   bookHash?: string,
   scope?: DbScope,
+  outcome?: EpisodicOutcome,
 ): Promise<SavedWord | null> {
   const bound = scope ?? captureDbScope();
   const language = (item.lang || "es").slice(0, 2).toLowerCase() || "es";
@@ -109,6 +133,8 @@ export async function consolidateEpisodicWord(
   if (!form) return null;
   const now = new Date();
   const nowMs = now.getTime();
+  const rating = episodicRating(outcome);
+  let graded = false;
 
   const stored = await withDb(bound, async (db) => {
     const formK = wordKey(language, form);
@@ -116,11 +142,20 @@ export async function consolidateEpisodicWord(
     const existing =
       (await db.get("savedWords", formK)) ??
       (lemmaK !== formK ? await db.get("savedWords", lemmaK) : undefined);
-    const nextCard = scheduleReview(
-      existing && !existing.deleted ? existing.card : undefined,
-      Rating.Good,
-      now,
-    );
+    const active = existing && !existing.deleted ? existing : undefined;
+    const reps = active?.card?.reps ?? 0;
+    let nextCard: SavedWord["card"];
+    if ((active && isReviewDueWord(active, now)) || (reps > 0 && rating === Rating.Again)) {
+      nextCard = scheduleReview(active?.card, rating, now);
+      graded = true;
+    } else if (reps === 0) {
+      const tomorrow = new Date(nowMs + DAY_MS);
+      const base = active?.card ?? newCard(now);
+      const due = new Date(base.due).getTime() > tomorrow.getTime() ? base.due : tomorrow;
+      nextCard = { ...base, due };
+    } else {
+      return active ?? null;
+    }
     const updated: SavedWord = existing
       ? {
           ...existing,
@@ -129,6 +164,7 @@ export async function consolidateEpisodicWord(
           context: existing.context || item.chapterSentence || undefined,
           pos: existing.pos ?? item.partOfSpeech ?? null,
           bookHash: existing.bookHash || bookHash,
+          presentedAt: existing.presentedAt ?? nowMs,
           card: nextCard,
           updatedAt: nowMs,
         }
@@ -141,6 +177,7 @@ export async function consolidateEpisodicWord(
           meaning: item.shortGloss || undefined,
           context: item.chapterSentence || undefined,
           bookHash,
+          presentedAt: nowMs,
           card: nextCard,
           savedAt: nowMs,
           updatedAt: nowMs,
@@ -149,19 +186,21 @@ export async function consolidateEpisodicWord(
     return updated;
   }).catch(() => null);
 
-  if (stored) {
+  if (stored && stored.updatedAt === nowMs) {
     void pushWordsToServer([stored], bound);
   }
-  await recordReview(
-    {
-      language,
-      form,
-      kind: "context",
-      rating: "good",
-      hints: 0,
-    },
-    bound,
-  ).catch(() => undefined);
+  if (graded) {
+    await recordReview(
+      {
+        language,
+        form,
+        kind: "context",
+        rating: rating === Rating.Again ? "again" : "hard",
+        hints: outcome?.usedHint ? 1 : 0,
+      },
+      bound,
+    ).catch(() => undefined);
+  }
   return stored;
 }
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   nextChapterUtility,
   buildSuggestionRows,
+  countFormTokens,
   cleanContextSentence,
   extractChapterContextSnippet,
   MAX_PREVIEW_WORDS,
@@ -138,6 +139,40 @@ describe("Algoritmo Next-Chapter Utility (Fase 4.2)", () => {
     // 'efimero' debe preceder a 'obsolescente' por mayor retorno de inversión de lectura
     expect(rows.rows[0].form).toBe("efimero");
     expect(rows.rows[1].form).toBe("obsolescente");
+  });
+
+  it("buildSuggestionRows cuenta repeticiones en el texto aunque las formas lleguen sin duplicados", () => {
+    const entry = (lemma: string): LexiconEntry[] => [
+      {
+        entryId: null,
+        freqRank: null,
+        lemma,
+        pos: "adjetivo",
+        zipf: 2.5,
+        senses: [{ definition: "Definición.", example: null, senseOrder: null }],
+      },
+    ];
+    // Misma rareza; «umbrío» sale cuatro veces, «lóbrego» una. El análisis
+    // real entrega formas únicas: el orden lo tiene que decidir el texto.
+    // «lóbrego» va primero en `forms` y en orden alfabético: sin el conteo
+    // por texto quedaría arriba.
+    const rows = buildSuggestionRows({
+      language: "es",
+      forms: ["lóbrego", "umbrío"],
+      entries: { lóbrego: entry("lóbrego"), umbrío: entry("umbrío") },
+      capitalOnly: new Set(),
+      text: "Un patio umbrío. La sala lóbrega, no: un pasillo lóbrego. El cuarto umbrío. Un rostro umbrío. Todo umbrío.",
+      saved: new Map(),
+      knowledge: new Map(),
+      threshold: 3.0,
+      userTheta: 1.0,
+    });
+    expect(rows.rows.map((r) => r.form)).toEqual(["umbrío", "lóbrego"]);
+  });
+
+  it("countFormTokens cuenta tokens del texto y cae a 1 sin texto", () => {
+    expect(countFormTokens("Sombra, sombra y luz.", ["sombra", "luz"]).get("sombra")).toBe(2);
+    expect(countFormTokens("", ["sombra"]).get("sombra")).toBe(1);
   });
 
   it("en modo L2 prioriza palabras narrativas de alta utilidad (repeticiones >= 2, B1-C1) sobre hapax legomena oscuras", () => {

@@ -9,6 +9,12 @@ números de línea son del árbol al 2026-10-26. El registro verificable de cada
 afirmación vive en `docs/auditoria/claims.json` y se reproduce con
 `node scripts/audit-investigacion.mjs`.
 
+> **Vigencia (2026-11-14).** Una revisión Goldfish contrastó este documento con el
+> código del 2026-11-14 y encontró que varias afirmaciones de «hecho» no se
+> cumplen. Las secciones afectadas llevan una nota **Estado real** y la lista
+> priorizada vive en §10. Informe completo:
+> `docs/revision-egm/2026-11-14-estrategia/goldfish_review_report.md`.
+
 ---
 
 ## 0. Veredicto en cuatro frases
@@ -19,7 +25,10 @@ afirmación vive en `docs/auditoria/claims.json` y se reproduce con
 2. **El circuito ya está cerrado de punta a punta**: guardar crea la tarjeta,
    leer produce evidencia, consultar y marcar «ya la conozco» ajustan el nivel,
    y resolver el reto de fin de capítulo **avanza la tarjeta en FSRS** en modo
-   scroll y en modo páginas.
+   scroll y en modo páginas. **Estado real (2026-11-14):** el circuito está
+   conectado pero no es fiable: el reto puntúa `Good` aunque el lector falle,
+   la exposición pasiva sube θ y la consulta mueve θ del idioma equivocado
+   (§10).
 3. **Lo que se corrigió en esta ronda**: una sola escala de θ, una sola escala de
    umbrales de cobertura, XP que ya no se puede farmear, autoinforme que no paga
    como repaso, exposición pasiva acotada y sin revivir borrados, y retiro del
@@ -38,14 +47,14 @@ afirmación vive en `docs/auditoria/claims.json` y se reproduce con
 | Abrir | Toca el libro en la estantería y entra al lector en el mismo gesto | `App.tsx` `openStoredBook`, `Shelf.tsx` |
 | Calibrar (opcional) | CAT adaptativo de 6–8 ítems con banco logit; arranca en θ = 0,0 y escribe θ en `lecta:user_language_profile:v1` | `Calibration.tsx:29`, `calibration.ts:400-470` |
 | Antes del capítulo | Aviso no intrusivo («N palabras clave en este capítulo»); la hoja se abre solo si el lector la pide y ofrece hasta **40 filas** y 3 cartas rápidas | `useReaderChapterPrep.ts:365-411`, `section-words.ts:201` |
-| Orden de esas filas | Utilidad = P(desconocer) × (1 + 1.4·ln f_cap + 0.6·ln f_libro) × zona i+1 × locución × peso L2, en la escala 4 − zipf | `section-words.ts:106-160` |
-| Leer | Scroll por defecto, medida 65 ch, 18 px | `settings.ts:379-382`, `:403` |
-| Tocar palabra | Ficha lateral sin navegar; glosa barata | `WordPanel.tsx`, `Reader.tsx:4140+` |
-| Guardar | Crea una tarjeta FSRS vacía (la primera calificación real la fija) y la deja en el Cuaderno | `fsrs.ts:16-20`, `reviews.ts:60-84` |
-| Reencontrar | La ficha muestra la etapa real: «En práctica», «Asentada» o «Dominada» | `WordPanel.tsx:546-560` |
-| Pasar página | La exposición pasiva registra hasta 8 lemas no consultados, con dwell proporcional y por debajo de 450 ppm; no revive palabras borradas | `reader-evidence.ts:184-250`, `idb.ts:2069-2078` |
-| Cerrar capítulo | Reto de 2–3 ejercicios (cloze del contexto real, scramble, matiz); cada uno resuelto **consolida la palabra en FSRS (Good)** y registra un repaso | `DeepReadingSummaryModal.tsx:122-145`, `reviews.ts:86-160` |
-| Cuaderno | «Por aprender», «Repasar hoy» y práctica con ts-fsrs 5.4.2; un ejercicio, un evento de repaso | `Vocabulary.tsx`, `practice.ts:520-640` |
+| Orden de esas filas | Diseño: utilidad = P(desconocer) × (1 + 1.4·ln(1+f_cap) + 0.6·ln(1+f_libro)) × zona i+1 × locución × peso L2, en la escala 4 − zipf. **Estado real:** `f_cap` vale siempre 1 (se cuenta sobre formas únicas) y `bookFrequencies` no se pasa, así que el término de frecuencia es constante | `section-words.ts:106-160`, `:238-242`, `chapter-analysis.ts:169`, `preparation-rows.ts:33-35` |
+| Leer | Scroll por defecto, medida 65 ch, 18 px | `settings.ts:383-388` |
+| Consultar palabra | Con ratón, un toque abre la ficha; en táctil, presión larga → mini menú → «Significado» → ficha. La ficha muestra el significado de inmediato | `ReaderContent.tsx:370-479`, `ReaderSelectionBar.tsx:203-219`, `ReaderOverlays.tsx:286-310`, `WordPanel.tsx` |
+| Guardar | Crea una tarjeta FSRS vacía (la primera calificación real la fija) y la deja en el Cuaderno | `fsrs.ts:125-127`, `reviews.ts:60-84` |
+| Reencontrar | La ficha muestra la etapa real: «En práctica», «Asentada» o «Dominada». **Estado real:** reconsultar una palabra guardada no registra fallo de recuerdo y reencontrarla sin consultar no deja rastro | `WordPanel.tsx:673-680` |
+| Pasar página | Diseño: la exposición pasiva registra hasta 8 lemas no consultados, con dwell proporcional y por debajo de 450 ppm; no revive palabras borradas. **Estado real:** los 8 lemas son siempre los primeros de la sección, no los de la página; cuenta también al retroceder; en scroll solo dispara al cerrar capítulo | `reader-evidence.ts:184-266`, `idb.ts:2133-2168`, `useReaderNavigation.ts:245`, `:310` |
+| Cerrar capítulo | Reto de 2–3 ejercicios (cloze del contexto real, scramble); cada uno resuelto consolida la palabra con `Good` y registra un repaso. **Estado real:** el ejercicio reintenta hasta acertar y la nota es `Good` sin mirar errores, pistas ni vencimiento | `DeepReadingSummaryModal.tsx:132-152`, `reviews.ts:86-160` |
+| Cuaderno | «Por aprender», «Repasar hoy» y práctica con ts-fsrs 5.4.2; un ejercicio, un evento de repaso | `Vocabulary.tsx`, `practice.ts:389-456` (`buildAdaptivePracticeQueue`) |
 | Medallas | XP por minuto leído, consulta (2, una vez por palabra al día), guardada (3 + 4 si es rara), repaso; racha ×1.1 | `shared/gamification.ts:85-100`, `:555-575` |
 
 Lectura del mapa: hay **una sola vía de selección** para la preparación, **una
@@ -53,6 +62,17 @@ sola escala de nivel** y **una sola fuente de verdad de la tarjeta**. Antes hab�
 dos motores de selección y tres escalas de θ; el segundo motor y el código muerto
 se retiraron en lugar de conectarse, porque no tenían consumidor y duplicaban una
 decisión ya tomada: section-words.ts quedó sin selectores duplicados.
+
+**Estado real (2026-11-14):** la escala es una, pero hay dos estimadores vivos
+(`estimateProfile` en zipf para cobertura y predicción; θ Rasch para utilidad y
+CAT) y tres reglas de actualización de θ (§H3). La tarjeta tampoco tiene una sola
+fuente: el portal Kindle programa con su propio FSRS
+(`src/worker/kindle/routes.ts:2476-2493`, con fuzz, sin `request_retention` y
+acierto = `Good`). Sigue habiendo código sin consumidor en producción:
+`buildOneMinuteReviewSession` y `savedWordToItem` (`practice.ts`),
+`MAX_PREVIEW_WORDS` (`section-words.ts:508`), `updatePreviewFrictionPreference`,
+`applyChapterCompletionPassiveLoop` y `updatePassiveExposureState`
+(`knowledge.ts`).
 
 ---
 
@@ -100,7 +120,12 @@ lineal sin umbral abrupto: el número exacto importa menos que *no mentir sobre 
   d = 0,10 (Elleman et al., 2009, *J. Research on Educational Effectiveness*
   2(1), 1–44). Ambas cosas caben: una preparación breve y opcional.
 - Pre-enseñar 40 palabras antes de un capítulo choca con memoria de trabajo: el
-  código ya conoce a Cowan (3–5) en `MAX_PREVIEW_WORDS` (`section-words.ts:506`).
+  código declara a Cowan (3–5) en `MAX_PREVIEW_WORDS` (`section-words.ts:508`),
+  pero esa constante no tiene consumidor.
+- **Estado real:** `currentChapterPrimedWordsRef` se llena al terminar el
+  análisis aunque la hoja no se abra (`useReaderChapterPrep.ts:466-486`) y no se
+  vacía al cambiar de capítulo. Esas palabras entran al reto de cierre y, al
+  consolidarse, al Cuaderno, aunque el lector nunca las haya visto.
 
 **Qué hacer**: que la tarjeta rápida priorice 3–5 palabras frontera y el resto
 quede bajo demanda, como ya hace el flujo actual.
@@ -126,12 +151,32 @@ es lo que la evidencia de la zona de desarrollo próximo pide (Wilson et al.,
 **Qué hacer**: añadir un test que falle si alguien vuelve a introducir una
 segunda escala o una segunda llave. El arnés de auditoría ya lo hace por fuera.
 
+**Estado real (2026-11-14):** la escala y la llave son una, las reglas que la
+mueven no. La ficha usa `updateThetaForLanguageSignal` (delta 0,18·(1−P), tope
+±3,5; `profile-models.ts:404-440`); la hoja de preparación y «Guardar para
+practicar» usan `updateLanguageTheta` (otro delta y tope [−3,5, 4,0];
+`Reader.tsx:4544-4576`); y la exposición pasiva llama `updateLanguageTheta` con
+resultado 1 en cada página válida (`reader-evidence.ts:248-261`), así que θ sube
+solo por leer. θ se guarda en localStorage sin `userId`. La migración de la
+llave vieja resta 3 solo si el valor es ≥ 2,5 y no pisa un θ ya distinto de 0
+(`profile-models.ts:252-260`).
+
 ### H4. «Ya la conozco» es un juicio, no una prueba
 
-- `onMarkKnown` → `updateLanguageTheta(lang, β, 1, 1.0)`, delta = 0,18 × (1 − P)
-  (`profile-models.ts:405-415`; `Reader.tsx:4165-4178`).
-- El acto se registra en el historial **sin pagar XP de repaso** y ajusta θ una
-  sola vez con la dificultad real de la palabra (`WordPanel.tsx:521-535`).
+- En la ficha, «Ya la sé» → `applyPreviewKnownSignal` →
+  `updateThetaForLanguageSignal('explicit_known')`, delta = 0,18 × (1 − P)
+  (`WordPanel.tsx:628-671`, `profile-models.ts:404-440`). En la hoja de
+  preparación, `onMarkKnown` usa otra regla: `updateLanguageTheta(lang, β, 1, 1.0)`
+  (`Reader.tsx:4544-4549`), guarda evidencia `inferred` y no registra historial.
+- En la ficha el acto se registra en el historial **sin pagar XP de repaso**.
+- **Estado real:** β no es «la dificultad real de la palabra». Sale de
+  `calibrationBankZipf`, que solo conoce las palabras del banco CAT; fuera de él
+  devuelve `null` y `betaFromZipf(null)` = 0,5. Además, consultar y guardar
+  llaman `recordSilentCalibration` sin idioma (`WordPanel.tsx:403`, `:562`), que
+  por defecto usa `"es"` (`knowledge.ts:744-758`): en un libro en inglés cada
+  consulta baja θ de español, y consultar + guardar son dos bajadas. Los atajos
+  de teclado de la ficha escuchan en `window` y «s» declara conocida una palabra
+  ya guardada (`WordPanel.tsx:720-741`).
 - Los juicios de aprendizaje son sistemáticamente **sobreconfiados** (Koriat &
   Bjork, 2005, *JEP:LMC* 31(2); nivel: experimental replicado).
 - Reconocer no es saber: la puntuación cae al pasar de reconocimiento pasivo a
@@ -147,20 +192,38 @@ examen que bloquee la lectura.
 
 ### H5. La exposición pasiva se acota
 
-`checkPassiveExposure` (`reader-evidence.ts:184-250`) registra **hasta 8 lemas
+`checkPassiveExposure` (`reader-evidence.ts:184-266`) registra **hasta 8 lemas
 no consultados** por paso de página válido, exige dwell proporcional
-(`palabras × 160 ms`, con suelo de 3 s) y una velocidad menor a 450 ppm. A las 3
-exposiciones la palabra pasa a «familiar» **dentro de la sesión**; al recargar,
-la evidencia inferida sin respaldo se descarta (`isCredibleKnowledge`) y una
-lámina borrada nunca revive (`idb.ts:2069-2078`).
+(`palabras × 160 ms`, con suelo de 3 s y tope `MAX_REQUIRED_DWELL_MS` de 12 s) y
+una velocidad menor a 450 ppm. A las 3 exposiciones la palabra pasa a
+«familiar»; una lápida borrada nunca revive (`idb.ts:2143`).
+
+**Estado real (2026-11-14):**
+
+- Los candidatos salen de `analysis.forms`, las formas únicas de **toda la
+  sección** en orden de aparición (`chapter-analysis.ts:169`): cada paso de
+  página suma a los mismos 8 primeros lemas, no a los de la página leída.
+  También cuenta al retroceder (`useReaderNavigation.ts:310`) y en modo scroll
+  solo dispara al cerrar el capítulo (`:245`).
+- `recordPassiveExposure` **sí** persiste `status: "familiar"` en IndexedDB
+  (`idb.ts:2133-2168`) y se sincroniza (`reading-sync.ts:844-847`).
+  `journey.ts:601-614` y `:780-790` cuentan «familiar» como palabra aprendida, y
+  `predictSection` la trata como conocida (`knowledge.ts:214-224`, `:280-292`).
+- A la vez, `Reader.tsx:659-680` mete esas filas en la evidencia como
+  `known: false` y la hoja las prioriza como `explicit_unknown`
+  (`section-words.ts:328-330`).
+- Cada página válida sube θ (`reader-evidence.ts:248-261`).
+
+El mismo acto —leer sin consultar— sube θ, baja el umbral del perfil e infla
+«palabras aprendidas». Lo que sigue describe la intención, no el código actual.
 
 La adquisición incidental real por exposición es 5–15 % (Nagy, Herman &
 Anderson, 1985, *RRQ* 20(2)), y en lectura extensiva hacen falta muchos
 encuentros para el significado; con menos de 8 no se retuvo ninguna palabra en el
 estudio de Waring & Takaki (2003, *RFL* 15(2)). Marcar «familiar» tras tres
-pasadas de página es una promesa que la evidencia no sostiene, por eso ahora la
-exposición **no escribe evidencia permanente** ni compite con lo que el lector
-declaró.
+pasadas de página es una promesa que la evidencia no sostiene: la exposición no
+debería escribir evidencia permanente ni competir con lo que el lector declaró.
+Hoy hace las dos cosas (ver arriba).
 
 **Qué hacer**: usar la exposición solo como métrica de recomendación
 («esta palabra ya te rodeó tres veces») y no como conocimiento.
@@ -171,13 +234,24 @@ declaró.
   primera calificación real fija dificultad y estabilidad (`fsrs.ts:1-28`). Los
   parámetros por origen de captura y el multiplicador episódico se retiraron:
   inflaban intervalos sin que el modelo lo pidiera.
-- Resolver el reto de cierre **consolida de verdad**: `consolidateEpisodicWord`
-  avanza la tarjeta con `Rating.Good`, la incorpora al Cuaderno si venía de una
-  consulta o de la preparación, y registra **un solo** repaso
-  (`reviews.ts:86-160`).
+- Resolver el reto de cierre llama a `consolidateEpisodicWord`, que avanza la
+  tarjeta con `Rating.Good`, la incorpora al Cuaderno si venía de una consulta o
+  de la preparación, y registra **un solo** repaso (`reviews.ts:86-160`).
+- **Estado real (2026-11-14): no es una recuperación verificada.**
+  `SentenceBuilderGame.tsx:241-277` y `WordScrambleGame.tsx:265-304` dejan
+  reintentar hasta acertar; el scramble ilumina la ficha correcta a los 8 s
+  (`:239-263`). `DeepReadingSummaryModal.tsx:132-152`, `Reader.tsx:1105-1108` y
+  `MidChapterRecallCard.tsx:43` ignoran `errorCount` y `usedHint`, y
+  `reviews.ts:119-123` aplica `Good` sin condición, aunque la tarjeta no esté
+  vencida y aunque la palabra sea nueva (la primera nota llega minutos después
+  de consultarla). FSRS nunca ve un fallo y la tarea más fácil (lector, `Good`)
+  puntúa más que la difícil (Cuaderno, `Hard`). Además pone `deleted: false`
+  (`reviews.ts:127`), así que revive palabras quitadas, y solo busca por
+  `wordKey(form)`/`wordKey(lemma)`: otra flexión de una palabra guardada crea una
+  tarjeta nueva y la original no avanza.
 - El cierre de capítulo ocurre igual en modo scroll y en modo páginas: el enlace
   «Siguiente» al final del texto llama a `completeChapterTo`
-  (`useReaderNavigation.ts:201-270`).
+  (`useReaderNavigation.ts:217-278`).
 - FSRS-6 es la mejor opción pública: log loss 0,346 vs 0,368 (DASH) y 0,469
   (HLR) en el benchmark abierto de la comunidad (9.999 colecciones, 349,9 M
   repasos; es un benchmark sobre *logs*, sin arbitraje). El paper de SSP-MMC
@@ -187,7 +261,11 @@ declaró.
   *Psych. Science* 25(3)).
 - **Sin calificación implícita por velocidad**: la regla «≤ 650 ms/carácter ⇒
   Easy» se retiró. El tiempo es proxy débil de dominio y *Easy* es la
-  calificación que más dispara el intervalo.
+  calificación que más dispara el intervalo. **Estado real:** sigue habiendo
+  `Easy` automático por otra vía: el taller IA aplica `Rating.Easy` con
+  puntuación ≥ 85 sin mirar vencimiento (`Vocabulary.tsx:354-386`) y su veredicto
+  precarga la nota en «Escribir» (`useReviewSession.ts:659-660`). El umbral de
+  650 ms sigue vivo para elegir modalidad (`practice.ts:705`), no para calificar.
 - Antes no había **horizonte declarado**: FSRS trabajaba con `request_retention`
   implícito ~0,9, y el intervalo óptimo escala con el retraso del examen (20–40 %
   del horizonte a una semana, 5–10 % a un año; Cepeda et al., 2008, *Psych.
@@ -220,7 +298,10 @@ la curva propia del lector cuando haya datos suficientes.
 
 **Qué hacer**: XP por capítulo terminado y por recuperación exitosa en repaso
 espaciado; retirar el bonus por rareza (o invertirlo a utilidad: frecuencia ×
-frontera).
+frontera). **Pendiente (2026-11-14):** guardar sigue pagando 3 + 4 si es rara
+(`gamification.ts:558-564`), los logros solo cuentan palabras guardadas
+(`:306-332`) y el reto del lector (3 XP, `Good`) paga más que un acierto del
+Cuaderno (2 XP, `Hard`).
 
 ### H8. Nadie mide si se aprende
 
@@ -231,6 +312,16 @@ frontera).
   cuántas palabras tienen memoria estimada de 7 y 30 días (la estabilidad de FSRS); «Tu
   recorrido» lo muestra junto a las etapas, y el Cuaderno ofrece un «Chequeo 30
   días» de un minuto sobre las palabras asentadas con 30 o más días desde su último repaso.
+- **Estado real (2026-11-14): la tasa de acierto está invertida.**
+  `computeRetentionSummary` (`journey.ts:96-101`) cuenta como acierto solo
+  good/easy/correct, pero un acierto del Cuaderno es `Hard`
+  (`practice.ts:114-117`) y cuenta como fallo; el `Good` incondicional del lector
+  cuenta como acierto. En los minijuegos del Cuaderno los errores tampoco llegan
+  a FSRS: `onSolve` aplica `Hard` sin importar reintentos
+  (`PracticeCard.tsx:233-279`), `onWrong` cambia a un reto más fácil sin
+  registrar `Again` (`useReviewSession.ts:736-757`) y la pista no cambia la nota.
+  El «Chequeo 30 días» califica con `grade` palabras no vencidas: mezcla medir
+  con programar.
 - El propio `docs/concentracion-y-lectura.md` §4 lo declara: «Lo que Lecta NO
   mide: comprensión».
 - La palanca con mejor evidencia para cerrar eso es barata: recuperación con
@@ -287,15 +378,28 @@ Hulstijn 2001 sobre carga de implicación).
 aparece en ella, arriba del texto aparece un micro-cloze de 1 toque con su oración
 (`MidChapterRecallCard`). Es la versión elegida: se dispara al entrar, no al final
 de la sección; como máximo una vez por capítulo, se puede saltar y solo corre con
-la consolidación activa. Al responder bien consolida la palabra en FSRS
-(Rating.Good), igual que el cierre. Verificado en el navegador con un libro real:
+la consolidación activa. Al resolverse consolida la palabra en FSRS
+(Rating.Good), igual que el cierre, y con el mismo defecto: no mira errores ni
+pistas (§H6). Solo encuentra la forma exacta guardada, sin flexiones
+(`mid-chapter-recall.ts:33`), y en modo páginas consume la marca de «una vez por
+capítulo» aunque no se muestre. Verificado en el navegador con un libro real:
 la tarjeta aparece, se ve y saltar no toca la tarjeta FSRS. En modo páginas no se
 muestra: arriba de las columnas dejaría el área de lectura en 248 px de 687, así
 que ahí el repaso llega solo en el cierre de capítulo.
 
 **Cierre de capítulo**: `buildPostChapterConsolidationQueue` prioriza las palabras
 del cuaderno que reaparecen en el capítulo (`notebook-reencounter`), sin duplicar
-lemas. Ese criterio es de reencuentro, no de vencimiento FSRS.
+lemas. Ese criterio es de reencuentro, no de vencimiento FSRS. **Estado real:**
+abrir la hoja de preparación sobrescribe esa fuente con `pre-chapter-primed`
+(`recordPresented`, `useReaderChapterPrep.ts:730-742`), así que la prioridad solo
+se cumple si la hoja no se abrió. Las consultas se vacían por sección
+(`useReaderSectionLoader.ts:243`) y el cierre es por capítulo: en capítulos de
+varias secciones se pierden las de las primeras.
+
+**Falta el reencuentro como señal.** La exposición excluye las palabras
+guardadas (`reader-evidence.ts:227`): reencontrar una palabra del Cuaderno en el
+texto no deja rastro, y reconsultar una «Asentada» no registra un fallo de
+recuerdo. `reencuentros_por_palabra` (§6) no tiene fuente.
 
 ### M3. Lectura con audio de ritmo controlado (y modo manos libres)
 
@@ -339,6 +443,32 @@ estudios, N = 19.951) y el efecto se amplifica cuando el avance **se registra y
 se hace público** (Harkin et al., 2016). Los clubes de lectura no tienen
 meta-análisis —trátese como hipótesis a medir— y el ranking no está respaldado.
 
+### M6. Escalera por estabilidad y contexto nuevo en el Cuaderno
+
+**Idea**: elegir el tipo de ejercicio por la estabilidad de la tarjeta
+(reconocimiento → recuerdo con pista → producción verificada) y, para palabras
+asentadas, usar oraciones nuevas sacadas de los libros del lector en lugar de la
+oración capturada.
+
+**Por qué**: hoy `modeForWord` (`practice.ts:232-239`) alterna el modo por
+posición en la cola, el cloze usa siempre la misma oración y los distractores son
+fijos por palabra (`:135-167`): con varios repasos se memoriza el ítem, no la
+palabra. Los modos de producción («Significado», «Palabra») se autocalifican,
+que es la sobreconfianza de H4. La variabilidad de contexto y la progresión de
+dificultad son dos de las palancas con evidencia que §M2 ya cita.
+
+### M7. Adivinar antes de ver la glosa
+
+**Idea**: para palabras frontera, opción de un toque «¿qué crees que significa?»
+antes de mostrar la glosa, y luego verificar. Opcional y apagada por defecto en
+L1.
+
+**Por qué**: `WordPanel.tsx:443-456` muestra el significado de inmediato: la
+carga de implicación es baja (tocar → ver → guardar). Inferir y comprobar añade
+el componente de *evaluación* de Laufer & Hulstijn (2001) y el intento previo
+mejora la retención aunque salga mal (Richland, Kornell & Kao, 2009), sin
+bloquear la lectura si es un toque opcional.
+
 ---
 
 ## 4. Ajustes de una línea con respaldo (no requieren diseño)
@@ -358,10 +488,15 @@ meta-análisis —trátese como hipótesis a medir— y el ranking no está resp
 - **No gamificar velocidad.** El WPM es diagnóstico; leer rápido sacrifica
   comprensión (Rayner et al., 2016, *PSPI*). No hay medalla por WPM.
 - **No inflar la cobertura** para que la insignia se vea bonita: el lector
-  abandona el capítulo difícil y la app queda mal calibrada.
+  abandona el capítulo difícil y la app queda mal calibrada. **Hoy se infla en el
+  cierre:** «+N palabras asimiladas» usa N = total de palabras de la sección
+  (`useReaderNavigation.ts:270`), «+1 % de cobertura» es el valor por defecto
+  (`DeepReadingSummaryModal.tsx:72-73`) y el texto afirma que «la estabilidad se
+  ha consolidado» (`:191-194`).
 - **No interrumpir a media línea.** Toda intervención va en *breakpoint*.
 - **No usar IA para juzgar fatiga ni para calificar palabras.** FSRS no se toca;
-  las reglas locales bastan y son auditables.
+  las reglas locales bastan y son auditables. Hoy se incumple en el taller IA
+  del Cuaderno (§H6).
 - **No añadir otra capa flotante.** Ya hay franja única; el siguiente aviso
   debe reemplazar, no apilar.
 - **No conectar código muerto solo porque existe.** Un módulo con pruebas y sin
@@ -372,9 +507,13 @@ meta-análisis —trátese como hipótesis a medir— y el ranking no está resp
 
 ## 6. Plan por impacto (sin tocar producción)
 
-**P0 — lo que el lector ya nota**
+Antes de todo esto van los defectos de §10: sin ellos, cualquier palanca nueva
+se mide con datos contaminados.
+
+**P0 — lo que el lector ya nota** (todos pendientes)
 1. Cobertura por tokens como métrica interna y aviso de capítulo difícil.
-2. Micro-cloze opcional en lugar de «¿la conoces?» en las 3–5 palabras frontera.
+2. Micro-cloze opcional en lugar de «¿la conoces?» en las 3–5 palabras frontera
+   (`SectionPreview` sigue usando `onMarkKnown`).
 3. XP por capítulo terminado y por recuperación exitosa; retirar el bonus por
    rareza.
 
@@ -382,12 +521,15 @@ meta-análisis —trátese como hipótesis a medir— y el ranking no está resp
 4. Repaso en el texto (M2): hecho al entrar a una sección con palabras vencidas, una vez por capítulo.
 5. Chequeo de retención a 30 días (hecho, con 30 días de retraso) y autoevaluación del hilo al cerrar capítulo (hechos); la medida objetiva de comprensión queda pospuesta hasta tener datos de uso (H8).
 6. Contrato si–entonces (M4) con tarjeta in-app.
-7. Reencuentro léxico ordenado por apariciones (M1).
+7. Reencuentro léxico ordenado por apariciones (M1): hecho en Descubre.
+8. Escalera por estabilidad y contexto nuevo en el Cuaderno (M6).
+9. Adivinar antes de ver la glosa (M7).
 
 **P2 — profundidad**
-8. Audio de ritmo controlado y modo manos libres (M3).
-9. Tira semanal compartible (M5).
-10. Horizonte de retención declarado y ajuste de `request_retention`.
+10. Audio de ritmo controlado y modo manos libres (M3).
+11. Tira semanal compartible (M5).
+12. Ajustar `request_retention` con la curva propia del lector (el horizonte
+    declarado ya está hecho, H6).
 
 ### Instrumentación mínima para saber si funcionó
 
@@ -400,9 +542,13 @@ de datos que ya se guardan (`reading-events.ts`, `reviews`).
 
 ## 7. Respuesta directa a la pregunta
 
-**¿Es buena la estrategia para aprender?** Sí, y ahora el circuito está
-completo: el lector guarda, lee, recibe evidencia, ve su etapa y el ejercicio de
-cierre mueve de verdad la tarjeta. Lo que falta no es motor, es medición.
+**¿Es buena la estrategia para aprender?** La arquitectura sí: glosa en el punto
+de necesidad, FSRS-6, cloze sobre la oración real y θ Rasch. La ejecución no
+(revisión del 2026-11-14): el reto de cierre puntúa `Good` aunque el lector
+falle, la exposición pasiva cuenta las palabras equivocadas y sube θ, la
+consulta mueve θ del idioma equivocado, la repetición en el texto no pesa en la
+preparación y la tasa de acierto está invertida. Lo que falta no es solo
+medición: primero hay que corregir las señales que alimentan el motor (§10).
 
 **¿Hay mejores maneras de poner al lector en la aplicación?** Sí, y no son de
 gamificación: son de **reencuentro** (que sus palabras vuelvan en el siguiente
@@ -414,8 +560,13 @@ después).
 
 ## 8. Cómo se audita este documento
 
-Nada de lo anterior pide confianza. El registro `docs/auditoria/claims.json`
-convierte las afirmaciones en comprobaciones ejecutables: cita textual en este
+El registro `docs/auditoria/claims.json` convierte las afirmaciones en
+comprobaciones ejecutables, pero sus comprobaciones son de presencia de código,
+no de comportamiento: no detectaron ninguno de los defectos de §10 (la de H5 solo
+busca `uniqueLemmas.size >= 8` y pasa con el defecto presente; la de H4 se ancla
+en el camino de la hoja, no en la ficha; varias evidencias citan líneas viejas).
+Faltan sondas de comportamiento: página contra capítulo en la exposición, idioma
+de la señal de consulta y nota según errores en el reto. Cada comprobación: cita textual en este
 documento, anclaje `archivo:línea` con patrón, comprobación de que la función
 citada **se usa en producción**, sonda que observa valores reales y referencia
 con DOI contrastado contra Crossref.
@@ -485,3 +636,63 @@ farmear, «Ya la sé» pagando XP como repaso, consolidación que pagaba siempre
 «Fácil», doble bajada de θ al abrir una ficha, doble registro de repasos en el
 Cuaderno, tarjetas marcadas como «nuevas» al reencontrar una palabra asentada y
 lápidas de conocimiento que la exposición pasiva podía revivir.
+
+> La revisión del 2026-11-14 (§10) encontró que tres de estas correcciones no se
+> sostienen en el código actual: la consolidación paga siempre `Good` (no
+> «Fácil», pero sin mirar errores), consultar y guardar siguen siendo dos bajadas
+> de θ, y la consolidación sí revive lápidas del Cuaderno.
+
+---
+
+## 10. Revisión Goldfish del 2026-11-14: defectos pendientes
+
+Contraste del documento con el código del 2026-11-14 por dos revisores
+independientes (crítica de diseño y precisión técnica). Detalle, citas y
+justificación: `docs/revision-egm/2026-11-14-estrategia/goldfish_review_report.md`.
+Ninguno está corregido todavía; esta lista es el orden propuesto.
+
+**P0 — señales que contaminan el motor** (corregidos en código el 2026-11-14;
+las notas «Estado real» de las secciones anteriores describen el árbol previo)
+
+1. **Reto de cierre y micro-cloze** — hecho. `consolidateEpisodicWord` recibe
+   `errorCount`/`usedHint`: error o pista = `Again`, primer intento = `Hard`
+   (`episodicRating`, `reviews.ts`). Palabra sin repasos que aún no tocaba = se
+   crea o conserva la tarjeta sin calificar, se marca presentada y vence mañana;
+   palabra con repasos no vencida = un fallo sí cuenta, un acierto no adelanta el
+   repaso. El scramble cuenta como pista la ficha iluminada a los 8 s.
+2. **Exposición pasiva** — hecho. Formas de la página leída (`pageForms`, reparto
+   del texto por tokens), solo al avanzar; `recordPassiveExposure` solo suma
+   `passiveSeenCount` en filas existentes (no crea filas ni cambia
+   `known`/`status`); sin llamada a θ; `predictSection` y `journey.ts` ya no
+   cuentan «familiar» ni `passiveSeenCount ≥ 3` como conocida o aprendida.
+3. **Señal de consulta** — hecho. `recordSilentCalibration(word, event, lang,
+   zipf)` con `effectiveLang` y el zipf medido del análisis (`zipfForForm` en el
+   lector); una señal por palabra y día (consultar y guardar es un acto).
+4. **Frecuencia en la preparación** — hecho a nivel de capítulo:
+   `countFormTokens` cuenta tokens del texto. **Pendiente:** `bookFrequencies`
+   sigue sin pasarse (`preparation-rows.ts`).
+5. **Tasa de acierto** — hecho. `RECALL_HIT_RATINGS` incluye `hard` en cliente,
+   `admin-insights.ts` y el SQL de `worker/admin.ts`.
+6. **Errores del Cuaderno** — hecho. Un error en un minijuego marca el reto
+   (`missedRef` en `useReviewSession`) y el acierto posterior, también tras el
+   rescate, se califica `Again`.
+
+**P1 — coherencia del circuito**
+
+7. Solo entran al reto palabras presentadas o consultadas; conservar la fuente
+   `notebook-reencounter`; vaciar la lista por capítulo; ningún alta al Cuaderno
+   sin confirmación (§H2, §M2).
+8. La consolidación no revive lápidas y resuelve por lema contra el Cuaderno;
+   filtrar palabras declaradas o quitadas (§H6).
+9. Registrar el reencuentro: consulta de palabra con `reps > 0` = `Again`;
+   reencuentro sin consulta = evento `reencounter` sin nota FSRS (§M2).
+10. Unificar las tres reglas de θ y documentar o derivar los dos estimadores
+    (§H3).
+11. Retirar el `Easy` automático del taller IA (§H6).
+12. Cifras reales en el modal de cierre: consultadas, guardadas y repasadas (§5).
+13. Atajos de la ficha limitados al foco del panel; «Ya la sé» no actúa sobre
+    palabras guardadas (§H4).
+14. Un solo programador FSRS: el portal Kindle usa el del cliente o respeta
+    `request_retention` y la nota del Cuaderno (§1).
+15. Retirar o conectar el código sin consumidor listado en §1.
+16. Sondas de comportamiento en `claims.json` (§8).

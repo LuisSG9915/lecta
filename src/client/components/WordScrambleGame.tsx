@@ -250,6 +250,9 @@ export function WordScrambleGame({
           (t) => !t.used && t.char === nextExpected,
         );
         if (matchingTile) {
+          // Iluminar la ficha correcta es una pista: el acierto ya no es
+          // recuperación sin ayuda.
+          usedHintRef.current = true;
           setIdleHintId(matchingTile.id);
         }
       }

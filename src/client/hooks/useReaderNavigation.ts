@@ -82,7 +82,7 @@ export interface UseReaderNavigationOptions {
 
 export interface UseReaderPaginationOptions {
   navigate: ReaderNavigate;
-  checkPassiveExposure: () => void;
+  checkPassiveExposure: (forward?: boolean) => void;
   noteActivity: () => void;
   saveSoon: () => void;
   trackMove: (back: boolean) => void;
@@ -307,7 +307,7 @@ export function useReaderPagination(options: UseReaderPaginationOptions) {
       } = optionsRef.current;
       noteActivity();
       trackMove(delta < 0);
-      checkPassiveExposure();
+      checkPassiveExposure(delta > 0);
 
       // Al avanzar página, pasa a lectura inmersiva ocultando las barras
       if (delta > 0) {

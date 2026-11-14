@@ -208,6 +208,32 @@ export const PREPARATION_ROWS_CAP = 40;
 // son vocabulario que se prepare. La evidencia explícita
 // «no la conozco» manda sobre todo lo demás: entra a la selección
 // principal aunque la forma no tenga ficha.
+/**
+ * Apariciones de cada forma en el texto, contadas como tokens (minúsculas).
+ * Las formas que el texto no contiene (o sin texto) valen las veces que
+ * aparecen en `forms`, como mínimo 1.
+ */
+export function countFormTokens(
+  text: string | undefined,
+  forms: readonly string[],
+): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const f of forms) {
+    const lower = f.toLowerCase();
+    counts.set(lower, (counts.get(lower) ?? 0) + 1);
+  }
+  if (!text) return counts;
+  const tokens = new Map<string, number>();
+  for (const token of text.toLowerCase().match(/\p{L}+(?:['’]\p{L}+)*/gu) ?? []) {
+    tokens.set(token, (tokens.get(token) ?? 0) + 1);
+  }
+  for (const form of counts.keys()) {
+    const n = tokens.get(form);
+    if (n && n > 0) counts.set(form, n);
+  }
+  return counts;
+}
+
 export function buildSuggestionRows(input: {
   language: string;
   forms: string[];
@@ -234,12 +260,10 @@ export function buildSuggestionRows(input: {
   isSecondLanguage?: boolean;
 }): SuggestionRows {
   const { language, entries, capitalOnly, text, saved, knowledge, threshold, lex } = input;
-  // Frecuencias de aparición de formas en el capítulo para Next-Chapter Utility
-  const chapterFrequencies = new Map<string, number>();
-  for (const f of input.forms) {
-    const lower = f.toLowerCase();
-    chapterFrequencies.set(lower, (chapterFrequencies.get(lower) ?? 0) + 1);
-  }
+  // Frecuencias de aparición de formas en el capítulo para Next-Chapter Utility.
+  // `forms` llega sin duplicados (el análisis guarda formas únicas), así que
+  // las apariciones se cuentan como tokens del texto; sin texto, una por forma.
+  const chapterFrequencies = countFormTokens(input.text, input.forms);
   // Barrera local además de la del análisis: dígitos, puntuación
   // residual y palabras funcionales nunca llegan a la hoja, ni a la
   // selección ni a la consulta secundaria.

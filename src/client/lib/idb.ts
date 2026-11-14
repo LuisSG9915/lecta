@@ -2130,37 +2130,25 @@ export function mergeKnowledgeWrite(
   return out;
 }
 
+// Exposición pasiva = métrica, no evidencia: solo suma `passiveSeenCount`
+// en una fila que ya existe (consultada, declarada o preparada). No crea
+// filas, no cambia `known`/`status`/probabilidad y jamás revive una lápida:
+// pasar una página sin consultar no prueba que la palabra se conozca
+// (Waring & Takaki 2003), y una fila nueva `known: false` se leía como
+// «desconocida» en la preparación.
 export async function recordPassiveExposure(
   language: string,
   lemma: string,
   scope?: DbScope,
-): Promise<KnownWord> {
+): Promise<KnownWord | null> {
   return withDb(scope, async (db) => {
     const key = knowledgeKey(language, lemma);
     const existing = await db.get("knowledge", key);
-    // Una inferencia pasiva jamás revive lo que el lector borró
-    // (misma regla que mergeKnowledgeWrite): la lápida queda intacta.
-    if (existing?.deleted) return existing;
-    const count = (existing?.passiveSeenCount ?? 0) + 1;
-    const currentProb = existing?.estimatedKnownProb ?? 0;
-    const nextProb = 1 - (1 - currentProb) * 0.82;
-    const status: "unknown" | "familiar" | "known" =
-      existing?.known
-        ? "known"
-        : count >= 3
-          ? "familiar"
-          : (existing?.status ?? "unknown");
-    const now = Date.now();
+    if (!existing || existing.deleted) return null;
     const updated: KnownWord = {
-      key,
-      language,
-      lemma: lemma.toLowerCase(),
-      known: existing?.known ?? (status === "known"),
-      source: existing?.source ?? "inferred",
-      updatedAt: now,
-      passiveSeenCount: count,
-      estimatedKnownProb: nextProb,
-      status,
+      ...existing,
+      passiveSeenCount: (existing.passiveSeenCount ?? 0) + 1,
+      updatedAt: Date.now(),
     };
     await db.put("knowledge", updated);
     return updated;

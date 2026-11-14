@@ -16,10 +16,11 @@ import {
   applyWordPanelLookupSignal,
   updatePreviewFrictionPreference,
   recordSilentCalibration,
+  resetSilentCalibrationForTests,
   loadCalibrationBank,
   type KnowledgeEvidence,
 } from "./knowledge";
-import type { UserLanguageProfile } from "./profile-models";
+import { loadUserLanguageProfile, type UserLanguageProfile } from "./profile-models";
 
 const entry = (zipf: number | null, over: Partial<LexiconEntry> = {}): LexiconEntry => ({
   entryId: null,
@@ -887,6 +888,31 @@ describe("Canales de Retroalimentación Adaptativa (Paso 3)", () => {
   it("recordSilentCalibration ejecuta de forma segura los eventos 'lookup' y 'save'", () => {
     expect(() => recordSilentCalibration("casa", "lookup", "es")).not.toThrow();
     expect(() => recordSilentCalibration("perenne", "save", "es")).not.toThrow();
+  });
+
+  it("recordSilentCalibration: idioma del libro, zipf medido y una señal por palabra al día", () => {
+    resetSilentCalibrationForTests();
+    localStorage.clear();
+    const thetas = () => loadUserLanguageProfile().thetaByLang;
+    const before = thetas();
+    // Libro en inglés: la consulta baja θ_en y no toca θ_es.
+    recordSilentCalibration("threshold", "lookup", "en", 2.0);
+    const afterLookup = thetas();
+    expect(afterLookup.en ?? 0).toBeLessThan(before.en ?? 0);
+    expect(afterLookup.es ?? 0).toBe(before.es ?? 0);
+    // Guardar la misma palabra el mismo día no es una segunda bajada.
+    recordSilentCalibration("threshold", "save", "en", 2.0);
+    expect(thetas().en).toBe(afterLookup.en);
+    // La dificultad medida pesa: una palabra rara baja menos que una común.
+    resetSilentCalibrationForTests();
+    localStorage.clear();
+    recordSilentCalibration("rara", "lookup", "es", 1.5);
+    const dropRare = (before.es ?? 0) - (thetas().es ?? 0);
+    resetSilentCalibrationForTests();
+    localStorage.clear();
+    recordSilentCalibration("comun", "lookup", "es", 6.0);
+    const dropCommon = (before.es ?? 0) - (thetas().es ?? 0);
+    expect(dropCommon).toBeGreaterThan(dropRare);
   });
 });
 

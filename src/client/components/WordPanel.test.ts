@@ -873,7 +873,7 @@ describe("WordPanel - Acciones Rápidas (Fase 4.3)", () => {
       );
 
       // Calibración silenciosa registrada en 'lookup'
-      expect(onRecordSilentCalibration).toHaveBeenCalledWith("alborada", "lookup");
+      expect(onRecordSilentCalibration).toHaveBeenCalledWith("alborada", "lookup", "es", undefined);
 
       await act(async () => {
         await Promise.resolve();
@@ -977,7 +977,7 @@ describe("WordPanel - Acciones Rápidas (Fase 4.3)", () => {
         click(saveBtn);
       });
 
-      expect(onRecordSilentCalibration).toHaveBeenCalledWith("quimera", "save");
+      expect(onRecordSilentCalibration).toHaveBeenCalledWith("quimera", "save", "es", undefined);
       expect(onSaveToNotebook).toHaveBeenCalledWith(
         expect.objectContaining({
           word: "quimera",

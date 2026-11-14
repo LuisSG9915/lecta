@@ -114,11 +114,11 @@ describe("regla de aciertos", () => {
     expect(isVerifiedReview("practice")).toBe(true);
   });
 
-  it("cuenta good, easy y correct como aciertos", () => {
-    for (const r of ["good", "easy", "correct"]) {
+  it("cuenta hard, good, easy y correct como aciertos", () => {
+    for (const r of ["hard", "good", "easy", "correct"]) {
       expect(isRecallHit(r)).toBe(true);
     }
-    for (const r of ["again", "hard", "wrong", "known"]) {
+    for (const r of ["again", "wrong", "known"]) {
       expect(isRecallHit(r)).toBe(false);
     }
   });

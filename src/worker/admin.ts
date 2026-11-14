@@ -184,7 +184,7 @@ FROM (
          count(*)::numeric,
          count(*) FILTER (WHERE kind <> 'declared')::numeric,
          count(*) FILTER (WHERE kind <> 'declared'
-                          AND rating IN ('good','easy','correct'))::numeric
+                          AND rating IN ('hard','good','easy','correct'))::numeric
     FROM lecta_user_reviews
    WHERE created_at >= $1::float8 AND created_at <= $2::float8
    GROUP BY user_id, (to_timestamp(created_at::float8/1000) AT TIME ZONE $3)::date
@@ -300,7 +300,7 @@ FROM (
   SELECT 'reviews', user_id, NULL, NULL, count(*)::numeric,
          count(*) FILTER (WHERE kind <> 'declared')::numeric,
          count(*) FILTER (WHERE kind <> 'declared'
-                          AND rating IN ('good','easy','correct'))::numeric
+                          AND rating IN ('hard','good','easy','correct'))::numeric
     FROM lecta_user_reviews GROUP BY user_id
   UNION ALL
   SELECT 'annotations', user_id, NULL, NULL, count(*)::numeric,

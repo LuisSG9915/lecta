@@ -399,6 +399,20 @@ describe("arbitraje convergente de conocimiento", () => {
     expect(row.passiveSeenCount).toBeUndefined();
   });
 
+  it("la exposición pasiva es métrica: no crea filas ni cambia el estado de una existente", async () => {
+    const idb = await freshIdb();
+    expect(await idb.recordPassiveExposure("es", "nueva")).toBeNull();
+    expect(await idb.listAllKnowledge()).toHaveLength(0);
+
+    await idb.saveKnowledge(kRow("perenne", { known: false, source: "declared", updatedAt: 100 }));
+    for (let i = 0; i < 3; i++) await idb.recordPassiveExposure("es", "perenne");
+    const row = (await idb.listAllKnowledge())[0];
+    expect(row.passiveSeenCount).toBe(3);
+    expect(row.known).toBe(false);
+    expect(row.status).toBeUndefined();
+    expect(row.source).toBe("declared");
+  });
+
   it("la escritura redundante (misma fuerza y veredicto) no mueve el sello", async () => {
     const idb = await freshIdb();
     await idb.saveKnowledge(
@@ -801,7 +815,7 @@ describe("palabras guardadas y tarjetas FSRS", () => {
     ).toEqual(snapshot);
   });
 
-  it("consolidar un ejercicio al cerrar capítulo avanza la tarjeta y registra el repaso", async () => {
+  it("consolidar un ejercicio al cerrar capítulo: codifica la nueva, califica la vencida y no adelanta la no vencida", async () => {
     const idb = await freshIdb();
     vi.doMock("./reading-sync", () => ({
       pushReviewsToServer: vi.fn(),
@@ -811,38 +825,45 @@ describe("palabras guardadas y tarjetas FSRS", () => {
     }));
     const { consolidateEpisodicWord } = await import("./reviews");
     const scope = idb.captureDbScope();
+    const reviewsOf = () =>
+      [...(dbFor("lecta").stores.get("reviews")?.values() ?? [])] as {
+        kind: string;
+        rating: string;
+        form: string;
+      }[];
+    const item = { lemma: "quimera", surfaceForm: "quimera", lang: "es" };
 
+    // Palabra nueva: el reto es codificación. Tarjeta sin calificar,
+    // presentada y con su primera recuperación para mañana; sin repaso.
     const first = await consolidateEpisodicWord(
-      {
-        lemma: "quimera",
-        surfaceForm: "quimera",
-        lang: "es",
-        shortGloss: "Ilusión",
-        chapterSentence: "Perseguía una quimera.",
-      },
+      { ...item, shortGloss: "Ilusión", chapterSentence: "Perseguía una quimera." },
       "book-1",
       scope,
     );
     expect(first?.form).toBe("quimera");
-    expect(first?.card?.reps).toBe(1);
-    expect(first?.card?.stability).toBeGreaterThan(0);
+    expect(first?.card?.reps).toBe(0);
+    expect(first?.presentedAt).toBeGreaterThan(0);
+    expect(new Date(first!.card!.due).getTime()).toBeGreaterThan(Date.now() + 23 * 3600_000);
+    expect(reviewsOf()).toHaveLength(0);
 
-    const second = await consolidateEpisodicWord(
-      { lemma: "quimera", surfaceForm: "quimera", lang: "es" },
-      "book-1",
-      scope,
-    );
-    expect(second?.card?.reps).toBe(2);
+    // Ya vencida: acierto al primer intento = Hard (como el Cuaderno).
+    const due = { ...first!, card: { ...first!.card!, due: new Date(Date.now() - 1000) } };
+    dbFor("lecta").stores.get("savedWords")!.set(due.key, due);
+    const second = await consolidateEpisodicWord(item, "book-1", scope, { errorCount: 0, usedHint: false });
+    expect(second?.card?.reps).toBe(1);
+    expect(reviewsOf().map((r) => r.rating)).toEqual(["hard"]);
+    expect(reviewsOf()[0].kind).toBe("context");
 
-    const reviews = [...dbFor("lecta").stores.get("reviews")!.values()] as {
-      kind: string;
-      rating: string;
-      form: string;
-    }[];
-    expect(reviews).toHaveLength(2);
-    expect(reviews[0].kind).toBe("context");
-    expect(reviews[0].rating).toBe("good");
-    expect(reviews[0].form).toBe("quimera");
+    // No vencida y acertada: no se adelanta el repaso.
+    const third = await consolidateEpisodicWord(item, "book-1", scope);
+    expect(third?.card?.reps).toBe(1);
+    expect(reviewsOf()).toHaveLength(1);
+
+    // No vencida pero fallada: el fallo sí llega a FSRS.
+    const fourth = await consolidateEpisodicWord(item, "book-1", scope, { errorCount: 1 });
+    expect(fourth?.card?.reps).toBe(2);
+    expect(new Date(fourth!.card!.due).getTime()).toBeLessThan(Date.now() + 3600_000);
+    expect(reviewsOf().map((r) => r.rating)).toEqual(["hard", "again"]);
   });
 });
 

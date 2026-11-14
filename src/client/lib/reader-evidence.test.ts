@@ -126,6 +126,7 @@ describe("checkPassiveExposure", () => {
     consultedInPageRef: ref(new Set<string>()),
     pageCountRef: ref(1),
     pageEnteredAtRef: ref(Date.now() - 60_000),
+    pageRef: ref(0),
     sectionIndexRef: ref(0),
     savedForms: ref(new Map<string, never>()),
     ...over,
@@ -141,7 +142,6 @@ describe("checkPassiveExposure", () => {
       capitalOnly: new Set<string>(),
       text: "casa perro",
     })),
-    applyKnowledgeRow: vi.fn(),
     ...over,
   });
 
@@ -202,50 +202,46 @@ describe("checkPassiveExposure", () => {
     expect(registered).not.toContain("gato");
     expect(new Set(registered).size).toBe(8);
     expect(refs.consultedInPageRef.current.size).toBe(0);
-    await vi.waitFor(() => expect(data.applyKnowledgeRow).toHaveBeenCalled());
   });
 
-  it("no aplica filas que llegaron como lápida", async () => {
-    mocks.recordPassiveExposure.mockResolvedValue({
-      key: "es:casa",
-      language: "es",
-      lemma: "casa",
-      known: true,
-      source: "declared",
-      updatedAt: 300,
-      deleted: true,
+  it("solo cuenta las formas de la página leída, no las primeras de la sección", () => {
+    const forms = ["uno", "dos", "tres", "cuatro", "cinco", "seis"];
+    const refs = exposure({ pageCountRef: ref(3), pageRef: ref(2) });
+    const data = input({
+      sectionWords: 6,
+      analysisFor: vi.fn(() => ({
+        state: "ready" as const,
+        forms,
+        entries: {},
+        capitalOnly: new Set<string>(),
+        text: forms.join(" "),
+      })),
     });
+    checkPassiveExposure(refs, data);
+    expect(mocks.recordPassiveExposure.mock.calls.map((call) => call[1])).toEqual(["cinco", "seis"]);
+  });
+
+  it("al retroceder no cuenta: volver atrás no es leer otra vez", () => {
+    const refs = exposure();
+    checkPassiveExposure(refs, input({ forward: false }));
+    expect(mocks.recordPassiveExposure).not.toHaveBeenCalled();
+  });
+
+  it("no mueve θ: leer sin consultar no es evidencia de nivel", () => {
+    mocks.loadUserLanguageProfile.mockReturnValue({ thetaByLang: { es: 4 } });
+    mocks.betaFromZipf.mockReturnValue(4);
     const refs = exposure();
     const data = input({
       analysisFor: vi.fn(() => ({
         state: "ready" as const,
         forms: ["casa"],
-        entries: {},
-        capitalOnly: new Set<string>(),
-        text: "casa",
-      })),
-    });
-    checkPassiveExposure(refs, data);
-    await vi.waitFor(() => expect(mocks.recordPassiveExposure).toHaveBeenCalled());
-    await Promise.resolve();
-    expect(data.applyKnowledgeRow).not.toHaveBeenCalled();
-  });
-
-  it("refuerza el theta cuando una palabra cae en la frontera", () => {
-    mocks.loadUserLanguageProfile.mockReturnValue({ thetaByLang: { es: 4 } });
-    mocks.betaFromZipf.mockReturnValue(4);
-    const refs = exposure();
-    const forms = ["casa"];
-    const data = input({
-      analysisFor: vi.fn(() => ({
-        state: "ready" as const,
-        forms,
         entries: { casa: [entry("casa", 4)] },
         capitalOnly: new Set<string>(),
         text: "casa",
       })),
     });
     checkPassiveExposure(refs, data);
-    expect(mocks.updateLanguageTheta).toHaveBeenCalledWith("es", 4, 1, 0.25);
+    expect(mocks.recordPassiveExposure).toHaveBeenCalled();
+    expect(mocks.updateLanguageTheta).not.toHaveBeenCalled();
   });
 });

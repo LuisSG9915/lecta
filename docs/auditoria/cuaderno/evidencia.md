@@ -1,6 +1,6 @@
 # Auditoría del Cuaderno — estudio antes que prueba
 
-Generado por `scripts/audit-cuaderno.mjs` v1 el 2026-11-14T15:49:06.517Z. Commit: `7d4f1f8bc2ed`.
+Generado por `scripts/audit-cuaderno.mjs` v1 el 2026-11-14T16:31:14.521Z. Commit: `fa363ca897d9`.
 
 ## La queja, en palabras del usuario
 
@@ -90,7 +90,7 @@ _Por qué:_ Una palabra sin oración ya no cae en choose (adivinar al 25 %): pas
 
 - ✔ src/client/lib/practice.ts:420 ~ /if \(isNew \|\| stability < 2\.5\) \{/
   - `if (isNew || stability < 2.5) {`
-- ✔ src/client/hooks/useReviewSession.ts:400 ~ /if \(!isEligible\(ch\.word, mode\)\) \{/
+- ✔ src/client/hooks/useReviewSession.ts:404 ~ /if \(!isEligible\(ch\.word, mode\)\) \{/
   - `if (!isEligible(ch.word, mode)) {`
 - ✔ src/client/components/notebook/PracticeCard.tsx:403 ~ /Toca la palabra que falta\./
   - `<p className="meta">Toca la palabra que falta.</p>`
@@ -149,7 +149,7 @@ _Por qué:_ rescueChallenge solo actúa si el fallo fue en Nivel 2 o 3. Para la 
 
 - ✔ src/client/lib/practice.ts:464 ~ /export function rescueChallenge\(/
   - `export function rescueChallenge(`
-- ✔ src/client/hooks/useReviewSession.ts:738 ~ /challenge\.level <= 1/
+- ✔ src/client/hooks/useReviewSession.ts:745 ~ /challenge\.level <= 1/
   - `if (!challenge || challenge.level <= 1) return false;`
 
 ### ✔ `C10-dos-puertas-a-la-misma-sesion`
@@ -183,7 +183,7 @@ _Por qué:_ isEligible define qué pide cada modo; startAdaptiveFlow ahora lo co
 
 - ✔ src/client/lib/notebook-model.ts:223 ~ /const isEligible = \(word: SavedWord, mode: PracticeMode\) => \{/
   - `export const isEligible = (word: SavedWord, mode: PracticeMode) => {`
-- ✔ src/client/hooks/useReviewSession.ts:400 ~ /if \(!isEligible\(ch\.word, mode\)\) \{/
+- ✔ src/client/hooks/useReviewSession.ts:404 ~ /if \(!isEligible\(ch\.word, mode\)\) \{/
   - `if (!isEligible(ch.word, mode)) {`
 
 ### ✔ `X3-el-primer-paso-del-lector-ya-es-una-ficha`
@@ -230,9 +230,9 @@ _Por qué:_ askCatHint solo pedía sesión, el historial siempre guardaba hints:
 
 - ✔ src/client/components/Vocabulary.tsx:251 ~ /const canHint = hasSession && useAi;/
   - `const canHint = hasSession && useAi;`
-- ✔ src/client/hooks/useReviewSession.ts:514 ~ /hints: hintsUsedRef\.current,/
+- ✔ src/client/hooks/useReviewSession.ts:519 ~ /hints: hintsUsedRef\.current,/
   - `hints: hintsUsedRef.current,`
-- ✔ src/client/hooks/useReviewSession.ts:772 ~ /const stillHere = \(\) => hintForRef\.current === forKey;/
+- ✔ src/client/hooks/useReviewSession.ts:779 ~ /const stillHere = \(\) => hintForRef\.current === forKey;/
   - `const stillHere = () => hintForRef.current === forKey;`
 
 ### ✔ `C17-rescate-exige-datos-del-modo`
@@ -241,9 +241,9 @@ _Por qué:_ askCatHint solo pedía sesión, el historial siempre guardaba hints:
 
 _Por qué:_ El rescate mandaba siempre a choose: sin oración era adivinar entre cuatro, lo que la regla del Cuaderno prohíbe.
 
-- ✔ src/client/hooks/useReviewSession.ts:736 ~ /const tryRescue = \(item: QueueItem, speech: string\): boolean =>/
+- ✔ src/client/hooks/useReviewSession.ts:742 ~ /const tryRescue = \(item: QueueItem, speech: string\): boolean =>/
   - `const tryRescue = (item: QueueItem, speech: string): boolean => {`
-- ✔ src/client/hooks/useReviewSession.ts:739 ~ /const rescueMode: PracticeMode \| null = isEligible\(item\.word, "choose"\)/
+- ✔ src/client/hooks/useReviewSession.ts:746 ~ /const rescueMode: PracticeMode \| null = isEligible\(item\.word, "choose"\)/
   - `const rescueMode: PracticeMode | null = isEligible(item.word, "choose")`
 
 ### ✔ `C18-calificar-sobre-la-version-vigente`
@@ -252,7 +252,7 @@ _Por qué:_ El rescate mandaba siempre a choose: sin oración era adivinar entre
 
 _Por qué:_ grade escribía {...copiaDeLaCola, card}: un significado rellenado después (o un repaso del taller) se perdía.
 
-- ✔ src/client/hooks/useReviewSession.ts:502 ~ /wordsRef\.current\?\.find\(\(w\) => w\.key === queued\.key/
+- ✔ src/client/hooks/useReviewSession.ts:507 ~ /wordsRef\.current\?\.find\(\(w\) => w\.key === queued\.key/
   - `wordsRef.current?.find((w) => w.key === queued.key && !w.deleted) ?? queued;`
 - ✔ src/client/hooks/useNotebookData.ts:88 ~ /return m && \(m\.updatedAt \?\? 0\) >= \(w\.updatedAt \?\? 0\) \? m : w;/
   - `return m && (m.updatedAt ?? 0) >= (w.updatedAt ?? 0) ? m : w;`
@@ -263,11 +263,11 @@ _Por qué:_ grade escribía {...copiaDeLaCola, card}: un significado rellenado d
 
 _Por qué:_ El modo «Palabra» de reserva pintaba una tarjeta en blanco sin significado, y una tanda de una sola pareja se resolvía sola como acierto.
 
-- ✔ src/client/hooks/useReviewSession.ts:426 ~ /Esta palabra necesita un significado o una oración para repasarse\./
+- ✔ src/client/hooks/useReviewSession.ts:430 ~ /Esta palabra necesita un significado o una oración para repasarse\./
   - `setSaveError("Esta palabra necesita un significado o una oración para repasarse.");`
-- ✔ src/client/hooks/useReviewSession.ts:346 ~ /Parejas necesita al menos dos palabras con significado\./
+- ✔ src/client/hooks/useReviewSession.ts:350 ~ /Parejas necesita al menos dos palabras con significado\./
   - `setPracticeNote("Parejas necesita al menos dos palabras con significado.");`
-- ✔ src/client/hooks/useReviewSession.ts:351 ~ /items\.length % MATCH_TANDA === 1/
+- ✔ src/client/hooks/useReviewSession.ts:355 ~ /items\.length % MATCH_TANDA === 1/
   - `if (items.length % MATCH_TANDA === 1) queueItems = items.slice(0, -1);`
 
 ### ✔ `C20-pasar-no-vuelve-al-frente`

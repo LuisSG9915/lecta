@@ -83,10 +83,13 @@ describe("computeRetentionSummary", () => {
       { id: "3", language: "es", form: "c", kind: "choose", rating: "correct", hints: 0, createdAt: 3 },
       { id: "4", language: "es", form: "d", kind: "word", rating: "again", hints: 0, createdAt: 4 },
       { id: "5", language: "es", form: "e", kind: "declared", rating: "known", hints: 0, createdAt: 5 },
+      { id: "6", language: "es", form: "f", kind: "practice", rating: "hard", hints: 0, createdAt: 6 },
+      { id: "7", language: "es", form: "g", kind: "choose", rating: "wrong", hints: 0, createdAt: 7 },
     ];
     const summary = computeRetentionSummary([], reviews);
-    expect(summary.verifiedReviewsCount).toBe(4);
-    expect(summary.recallRatePct).toBe(75);
+    // «hard» es el acierto con opciones del Cuaderno: cuenta como acierto.
+    expect(summary.verifiedReviewsCount).toBe(6);
+    expect(summary.recallRatePct).toBe(67);
   });
 
   it("cuenta palabras con memoria estimada de 7 y 30 días solo si hay repasos", () => {
@@ -359,7 +362,7 @@ describe("Evolución Léxica por Idioma (θ_{u,L}) - Espejo de Progreso Cognitiv
         source: "passive_frontier",
         updatedAt: 1,
       },
-      // 2. Pasiva: familiaridad por 3+ exposiciones pasivas sin consulta
+      // 2. NO cuenta: «familiar» por 3+ pasadas de página es métrica, no dominio
       {
         key: "es:perenne",
         language: "es",
@@ -401,12 +404,12 @@ describe("Evolución Léxica por Idioma (θ_{u,L}) - Espejo de Progreso Cognitiv
       savedWords,
     });
 
-    // 3 pasivas (vislumbrar, perenne, alborada) y 2 activas (inmarcesible, uberrimo)
-    expect(growth.passiveMasteredCount).toBe(3);
+    // 2 pasivas (vislumbrar, alborada) y 2 activas (inmarcesible, uberrimo);
+    // perenne solo fue vista de pasada.
+    expect(growth.passiveMasteredCount).toBe(2);
     expect(growth.activeQueriedCount).toBe(2);
-    expect(growth.totalMasteredCount).toBe(5);
-    // Ratio pasivo: 3 / 5 = 60%
-    expect(growth.passiveRatioPercent).toBe(60);
+    expect(growth.totalMasteredCount).toBe(4);
+    expect(growth.passiveRatioPercent).toBe(50);
 
     // Curva sparkline: mínimo 2 puntos válidos y normalizados
     expect(growth.curvePoints.length).toBeGreaterThanOrEqual(2);

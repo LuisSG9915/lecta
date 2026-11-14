@@ -51,7 +51,7 @@ import {
 import { activeFragmentAt, fragElements } from "../lib/scroll-fragments";
 import { updateLanguageTheta } from "../lib/profile-models";
 import { batchLookup, enrichBatch, lookupWord } from "../lib/lexicon";
-import { consolidateEpisodicWord, scheduleCapturedReview } from "../lib/reviews";
+import { consolidateEpisodicWord, scheduleCapturedReview, type EpisodicOutcome } from "../lib/reviews";
 import {
   selectEnrichmentCandidates,
   selectSavedForEnrichment,
@@ -1102,9 +1102,10 @@ export default function Reader({
   }, [state, sectionIndex, bookHash, language, currentChapterId, currentChapterTarget]);
   const visibleMidChapterRecall =
     midChapterRecall && midChapterRecall.section === sectionIndex ? midChapterRecall.item : null;
-  const solveMidChapterRecall = () => {
+  const solveMidChapterRecall = (outcome?: EpisodicOutcome) => {
     setMidChapterRecall(null);
-    if (visibleMidChapterRecall) void consolidateEpisodicWord(visibleMidChapterRecall, bookHash).catch(() => undefined);
+    if (visibleMidChapterRecall)
+      void consolidateEpisodicWord(visibleMidChapterRecall, bookHash, undefined, outcome).catch(() => undefined);
   };
   const skipMidChapterRecall = () => setMidChapterRecall(null);
 
@@ -1994,6 +1995,17 @@ export default function Reader({
   useEffect(() => {
     zipfForLemmaRef.current = zipfForLemma;
   }, [zipfForLemma]);
+  // Zipf de una forma tal como aparece en el texto: la ficha la usa como
+  // dificultad de la señal de consulta (sin ella, β salía del banco CAT,
+  // que casi nunca tiene la palabra).
+  const zipfForForm = useCallback(
+    (form: string): number | null => {
+      const key = form.trim().toLowerCase();
+      const cached = analysisFor(sectionIndexRef.current);
+      return measuredZipf(cached?.entries[key], key) ?? calibrationBankZipf(key, language);
+    },
+    [analysisFor, language],
+  );
 
   // Evidencia nueva aplicada de inmediato: perfil reestimado y la
   // sección visible reclasificada sin esperar otra recarga.
@@ -3056,12 +3068,12 @@ export default function Reader({
   // Exposición pasiva: la lógica vive en lib/reader-evidence.ts; aquí solo se
   // le pasan los refs y el estado que lee.
   const checkPassiveExposure = useCallback(
-    () =>
+    (forward = true) =>
       checkPassiveExposureEvidence(
-        { bookRef, consultedInPageRef, pageCountRef, pageEnteredAtRef, sectionIndexRef, savedForms },
-        { language, sectionWords, analysisFor, applyKnowledgeRow },
+        { bookRef, consultedInPageRef, pageCountRef, pageEnteredAtRef, pageRef, sectionIndexRef, savedForms },
+        { language, sectionWords, analysisFor, forward },
       ),
-    [analysisFor, sectionWords, applyKnowledgeRow, language],
+    [analysisFor, sectionWords, language],
   );
 
   // Página siguiente/anterior; en los bordes salta de sección (atrás
@@ -4513,6 +4525,7 @@ export default function Reader({
         sectionIndex={sectionIndex}
         signedIn={signedIn}
         selection={selection}
+        zipfForForm={zipfForForm}
         // La ficha nace con el estado real del Cuaderno: sin esto el
         // primer toque podía re-guardar una palabra ya guardada.
         isSavedInitial={isSavedInitial}

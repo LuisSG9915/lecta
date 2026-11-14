@@ -2,10 +2,11 @@ import { useEffect, useRef } from "react";
 import { memo } from "react";
 import { SentenceBuilderGame } from "../SentenceBuilderGame";
 import type { EpisodicWordItem } from "../../lib/practice";
+import type { EpisodicOutcome } from "../../lib/reviews";
 
 export interface MidChapterRecallCardProps {
   item: EpisodicWordItem;
-  onSolve: () => void;
+  onSolve: (outcome?: EpisodicOutcome) => void;
   onSkip: () => void;
 }
 
@@ -40,7 +41,7 @@ function MidChapterRecallCardImpl({ item, onSolve, onSkip }: MidChapterRecallCar
         mode="cloze"
         options={item.options}
         targetLemma={item.lemma}
-        onSolve={() => onSolve()}
+        onSolve={(metrics) => onSolve(metrics)}
       />
       <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "var(--s-2)" }}>
         <button type="button" className="btn--quiet" onClick={onSkip}>

@@ -13,7 +13,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/lib/knowledge.ts",
-          "line": 332,
+          "line": 324,
           "window": 2,
           "expect": "\\(knownCount \\+ savedCount\\) / total",
           "why": "la fórmula del porcentaje usa knownCount+savedCount sobre total"
@@ -21,7 +21,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/lib/knowledge.ts",
-          "line": 329,
+          "line": 321,
           "window": 2,
           "expect": "const total = forms\\.length",
           "why": "total es el número de formas únicas de la sección"
@@ -141,7 +141,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/lib/section-words.ts",
-          "line": 508,
+          "line": 532,
           "window": 1,
           "expect": "MAX_PREVIEW_WORDS = 5",
           "why": "el tope cognitivo declarado (Cowan) es 5, no 40"
@@ -265,7 +265,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/components/Reader.tsx",
-          "line": 4529,
+          "line": 4556,
           "window": 20,
           "expect": "updateLanguageTheta\\(currentLang, beta, 1, 1\\.0\\)",
           "why": "onMarkKnown sube theta con outcome 1"
@@ -281,7 +281,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/components/WordPanel.tsx",
-          "line": 640,
+          "line": 658,
           "window": 15,
           "expect": "award: false",
           "why": "el autoinforme no paga XP de repaso"
@@ -338,7 +338,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/lib/reader-evidence.ts",
-          "line": 230,
+          "line": 260,
           "window": 1,
           "expect": "uniqueLemmas\\.size >= 8",
           "why": "el paso registra como máximo 8 lemas"
@@ -346,10 +346,10 @@
         {
           "type": "code-anchor",
           "file": "src/client/lib/idb.ts",
-          "line": 2143,
+          "line": 2147,
           "window": 1,
-          "expect": "if \\(existing\\?\\.deleted\\) return existing",
-          "why": "una inferencia pasiva no revive lo borrado"
+          "expect": "if \\(!existing \\|\\| existing\\.deleted\\) return null",
+          "why": "una inferencia pasiva no revive lo borrado ni crea filas"
         },
         {
           "type": "code-absent",
@@ -385,7 +385,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/lib/reviews.ts",
-          "line": 93,
+          "line": 116,
           "window": 1,
           "expect": "export async function consolidateEpisodicWord",
           "why": "la consolidación de capítulo actualiza la tarjeta"
@@ -442,7 +442,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/hooks/useReviewSession.ts",
-          "line": 705,
+          "line": 711,
           "window": 3,
           "expect": "await grade\\(item, wrongs",
           "why": "cada ejercicio registra un solo repaso al calificarse"

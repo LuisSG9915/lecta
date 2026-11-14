@@ -127,7 +127,10 @@ export interface UnifiedWordPanelProps {
     word: string,
     event: "lookup" | "save" | "known",
     language?: string,
+    zipf?: number | null,
   ) => void;
+  /** Zipf medido de la palabra en el texto (análisis del capítulo), si lo hay. */
+  zipfFor?: (word: string) => number | null;
   onNotice?: (message: string) => void;
   onClose: () => void;
 }
@@ -162,6 +165,7 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
   onRemoved,
   onKnowledgeChanged,
   onRecordSilentCalibration = recordSilentCalibration,
+  zipfFor,
   onNotice,
   onClose,
 }) => {
@@ -396,11 +400,18 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
     setDisclosureLevel(3);
   };
 
+  // La medición cambia de identidad al llegar el análisis del capítulo:
+  // vía ref para no relanzar la consulta (ni la señal) por eso.
+  const zipfForRef = useRef(zipfFor);
+  useEffect(() => {
+    zipfForRef.current = zipfFor;
+  }, [zipfFor]);
+
   useEffect(() => {
     const abortCtrl = new AbortController();
     const scope = captureDbScope();
 
-    onRecordSilentCalibration(cleanWord, "lookup");
+    onRecordSilentCalibration(cleanWord, "lookup", effectiveLang, zipfForRef.current?.(cleanWord));
     if (bookHash) {
       void recordBookConsultedWord(bookHash, cleanWord, scope);
     }
@@ -559,7 +570,7 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
     setSprouted(true);
     triggerHaptic(12);
 
-    onRecordSilentCalibration(cleanWord, "save");
+    onRecordSilentCalibration(cleanWord, "save", effectiveLang, zipfFor?.(cleanWord));
 
     const lemma = localEntry?.lemma ?? cleanWord.toLowerCase();
     const shortDef = meaning?.text || localEntry?.shortDefinition?.trim() || "";

@@ -46,7 +46,7 @@ describe("Inferencia Implícita por Exposición Pasiva (Fase 4.1)", () => {
     expect(s.passiveSeenCount).toBe(2);
   });
 
-  it("predictSection omite sugerir palabras promovidas a 'familiar' o con >= 3 exposiciones pasivas", () => {
+  it("predictSection no trata la exposición pasiva ('familiar', >= 3 pasadas) como conocimiento", () => {
     const entry: LexiconEntry = {
       entryId: null,
       freqRank: null,
@@ -65,21 +65,26 @@ describe("Inferencia Implícita por Exposición Pasiva (Fase 4.1)", () => {
     expect(pred1.predicted.length).toBe(1);
     expect(pred1.predicted[0].form).toBe("perenne");
 
-    // Caso 2: Con status familiar por 3 exposiciones pasivas, no se predice
+    // Caso 2: «familiar» por exposición no es evidencia: se sigue prediciendo
     const familiarKnowledge = new Map([
       ["perenne", { lemma: "perenne", known: false, status: "familiar" as const, passiveSeenCount: 3 }],
     ]);
     const pred2 = predictSection(["perenne"], entriesByForm, new Set(), familiarKnowledge, 3.0);
-    expect(pred2.predicted.length).toBe(0);
-    expect(pred2.knownCount).toBe(1);
+    expect(pred2.predicted.map((p) => p.form)).toEqual(["perenne"]);
+    expect(pred2.knownCount).toBe(0);
 
-    // Caso 3: Con passiveSeenCount >= 3 sin status explícito
+    // Caso 3: passiveSeenCount >= 3 tampoco
     const countKnowledge = new Map([
       ["perenne", { lemma: "perenne", known: false, passiveSeenCount: 4 }],
     ]);
     const pred3 = predictSection(["perenne"], entriesByForm, new Set(), countKnowledge, 3.0);
-    expect(pred3.predicted.length).toBe(0);
-    expect(pred3.knownCount).toBe(1);
+    expect(pred3.predicted.map((p) => p.form)).toEqual(["perenne"]);
+
+    // Caso 4: lo declarado sí manda
+    const declared = new Map([["perenne", { lemma: "perenne", known: true }]]);
+    const pred4 = predictSection(["perenne"], entriesByForm, new Set(), declared, 3.0);
+    expect(pred4.predicted.length).toBe(0);
+    expect(pred4.knownCount).toBe(1);
   });
 });
 
