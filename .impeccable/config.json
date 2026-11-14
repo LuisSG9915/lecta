@@ -9,6 +9,13 @@
         "files": ["marketing/landing/index.html"],
         "createdAt": "2026-11-11T04:51:45.523Z",
         "reason": "Claude: sendero cat-stack crossfades five stage cutouts; inactive ones sit at opacity 0 by design"
+      },
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": ["src/client/styles/game.css"],
+        "createdAt": "2026-11-14T02:59:46.858Z",
+        "reason": "Claude: L4590 es la cola triangular de .game-ai-speech-bubble::before (border-right 8px con top/bottom transparentes), no un acento de tarjeta; los 5 side-tabs reales del archivo se pasaron a filetes de 1px en fcfe16d"
       }
     ]
   }
