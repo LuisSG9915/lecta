@@ -173,7 +173,7 @@ button.app-nav-sync-indicator:focus-visible {
   border: var(--border);
   border-radius: var(--radius-s);
   padding: var(--s-6);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  box-shadow: var(--shadow-1);
 }
 
 .db-error-title {
@@ -300,9 +300,9 @@ button.app-nav-sync-indicator:focus-visible {
     display: block;
     width: 22px;
     height: 30px;
-    border-radius: 2px;
+    border-radius: var(--r-1);
     overflow: hidden;
-    box-shadow: 1px 1px 4px rgba(0, 0, 0, 0.18);
+    box-shadow: var(--shadow-cover);
   }
 
   .mini-reader-rail-cover .cover {
@@ -663,11 +663,30 @@ button.app-nav-sync-indicator:focus-visible {
    ajustes cortos son segmentados en vez de una cascada de selects. */
 
 .kindle-panel {
+  /* Pizarra noche del landing (Bloque 3), igual en todos los temas: los
+     tokens se reasignan aquí para que textos, segmentados y CTA lean sobre
+     la noche sin reglas propias. La pantalla E-Ink conserva su gris. */
+  --ink: var(--ink-on-night);
+  --ink-soft: var(--night-soft);
+  --ink-faint: var(--night-soft);
+  --rule: color-mix(in srgb, var(--night-ink) 14%, transparent);
+  --rule-strong: color-mix(in srgb, var(--night-ink) 28%, transparent);
+  --paper: var(--night);
+  --paper-raised: var(--night-2);
+  --paper-sunken: color-mix(in srgb, var(--night-ink) 7%, var(--night));
+  --vermilion: var(--moon);
+  --accent-primary: var(--moon);
+  --on-accent: var(--night);
+  --chip-active-bg: color-mix(in srgb, var(--moon) 16%, transparent);
+  --chip-active-border: color-mix(in srgb, var(--moon) 45%, transparent);
+  --chip-active-ink: var(--moon);
   display: flex;
   flex-direction: column;
   gap: var(--s-3);
-  border-top: 1px solid var(--rule);
-  padding-top: var(--s-3);
+  padding: var(--s-4);
+  border-radius: var(--r-2);
+  background: var(--surface-kindle);
+  color: var(--ink-on-night);
 }
 
 .kindle-panel-grid {
@@ -689,10 +708,10 @@ button.app-nav-sync-indicator:focus-visible {
   flex-direction: column;
   inline-size: 100%;
   block-size: 19rem;
-  border: 6px solid #111;
+  border: 6px solid var(--eink-ink);
   border-radius: var(--radius-s);
-  background: #e8e6df;
-  color: #1a1a1a;
+  background: var(--eink-paper);
+  color: var(--eink-ink);
   overflow: hidden;
 }
 
@@ -743,11 +762,11 @@ button.app-nav-sync-indicator:focus-visible {
 .kindle-preview-bar {
   flex: 0 0 auto;
   padding: 0 4px;
-  border-top: 1px solid #dcdcdc;
+  border-top: 1px solid color-mix(in srgb, var(--eink-ink) 14%, transparent);
   font-size: 0.82rem;
   line-height: 2;
   text-align: center;
-  color: #1a1a1a;
+  color: var(--eink-ink);
   font-family: var(--font-ui);
 }
 
@@ -989,23 +1008,23 @@ button.app-nav-sync-indicator:focus-visible {
   position: absolute;
   top: -4px;
   right: -8px;
-  background: var(--vermilion, #b83a24);
-  color: #ffffff;
+  background: var(--vermilion);
+  color: var(--on-accent);
   font-size: 10px;
   font-weight: 700;
   line-height: 1;
   padding: 2px 5px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   min-width: 15px;
   text-align: center;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  box-shadow: var(--shadow-1);
 }
 
 .app-nav-sparkle {
   position: absolute;
   top: -3px;
   right: -6px;
-  color: var(--amber-rich, #c98818);
+  color: var(--ochre);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1036,8 +1055,8 @@ button.app-nav-sync-indicator:focus-visible {
   max-width: min(20rem, calc(100vw - 24px));
   background: var(--paper-raised);
   border: 1px solid var(--rule);
-  border-radius: 999px;
-  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.12);
+  border-radius: var(--r-pill);
+  box-shadow: var(--shadow-2);
   padding: 6px 8px 6px 6px;
   display: flex;
   align-items: center;
@@ -1058,9 +1077,9 @@ button.app-nav-sync-indicator:focus-visible {
   width: 28px;
   height: 38px;
   flex-shrink: 0;
-  border-radius: 3px;
+  border-radius: var(--r-1);
   overflow: hidden;
-  box-shadow: 1px 1px 4px rgba(0, 0, 0, 0.18);
+  box-shadow: var(--shadow-cover);
 }
 
 .mini-reader-cover .cover {
@@ -1080,7 +1099,7 @@ button.app-nav-sync-indicator:focus-visible {
   font-family: var(--font-title, Georgia, serif);
   font-size: 0.88rem;
   font-weight: 600;
-  color: var(--ink, #1a1a1a);
+  color: var(--ink);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1088,7 +1107,7 @@ button.app-nav-sync-indicator:focus-visible {
 
 .mini-reader-progress {
   font-size: 0.78rem;
-  color: var(--ink-soft, #666666);
+  color: var(--ink-soft);
 }
 
 .mini-reader-resume {
@@ -1096,7 +1115,7 @@ button.app-nav-sync-indicator:focus-visible {
   font-size: 0.84rem;
   padding: 6px 14px;
   min-height: 36px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   white-space: nowrap;
 }
 

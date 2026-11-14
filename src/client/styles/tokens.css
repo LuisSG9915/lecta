@@ -75,6 +75,10 @@
   --surface-herbarium: color-mix(in srgb, var(--ochre) 12%, var(--paper));
   --surface-kindle: var(--night);
   --ink-on-night: var(--night-ink);
+  /* Pantalla E-Ink de la vista previa «Tu Kindle»: gris cálido y tinta casi
+     negra del aparato real, iguales en todos los temas. */
+  --eink-paper: #e8e6df;
+  --eink-ink: #1a1a1a;
   --shadow-sheet: 0 -8px 30px var(--shadow-sheet-color);
   --shadow-cover: 1px 1px 0 rgba(0, 0, 0, 0.08), 4px 6px 14px -6px rgba(43, 37, 32, 0.35);
 
