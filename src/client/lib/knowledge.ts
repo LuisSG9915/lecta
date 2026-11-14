@@ -87,36 +87,6 @@ export {
   type VocabProfile,
 };
 
-// Inferencia implícita por exposición pasiva.
-export const GAMMA_PASSIVE = 0.82;
-export const FAMILIAR_PASSIVE_THRESHOLD = 3;
-
-export function updatePassiveExposureState(current: {
-  passiveSeenCount?: number;
-  estimatedKnownProb?: number;
-  status?: "unknown" | "familiar" | "known";
-  known?: boolean;
-}): {
-  passiveSeenCount: number;
-  estimatedKnownProb: number;
-  status: "unknown" | "familiar" | "known";
-} {
-  const count = (current.passiveSeenCount ?? 0) + 1;
-  const currentProb = current.estimatedKnownProb ?? 0;
-  const estimatedKnownProb = 1 - (1 - currentProb) * GAMMA_PASSIVE;
-  const status: "unknown" | "familiar" | "known" =
-    current.known
-      ? "known"
-      : count >= FAMILIAR_PASSIVE_THRESHOLD
-        ? "familiar"
-        : (current.status ?? "unknown");
-  return {
-    passiveSeenCount: count,
-    estimatedKnownProb,
-    status,
-  };
-}
-
 // ---------- Predicción por sección ----------
 
 // Tope de la lista de predichas por sección.
@@ -533,19 +503,6 @@ export function vocabLevelLabel(
   return "en desarrollo";
 }
 
-export interface ChapterCandidateFeedbackItem {
-  lemma: string;
-  beta: number;
-  wasConsultedInWordPanel?: boolean;
-}
-
-export interface ChapterCompletionPassiveLoopOptions {
-  profile?: UserLanguageProfile;
-  lang?: string;
-  candidates: ChapterCandidateFeedbackItem[];
-  isFluidReadingPace?: boolean;
-}
-
 /**
  * Canal A: Al marcar una palabra como conocida ("✓ Ya la sé" en pre-lectura o WordPanel),
  * dispara la señal 'explicit_known' para actualizar thetaByLang[lang].
@@ -618,108 +575,6 @@ export function applyWordPanelLookupSignal(
     ...updated,
     theta: updated.theta,
     thetaByLang: updated.thetaByLang ?? profile.thetaByLang,
-  };
-
-  if (shouldPersist) {
-    saveUserLanguageProfile(result);
-  }
-  return result;
-}
-
-/**
- * Canal C: Al completar un capítulo, las palabras candidatas en la frontera (|theta - beta| <= 1.1)
- * no consultadas en WordPanel reciben la señal 'passive_frontier' si la velocidad de lectura fue fluida.
- */
-export function applyChapterCompletionPassiveLoop(
-  profileOrOptions: UserLanguageProfile | ChapterCompletionPassiveLoopOptions,
-  langArg?: string,
-  candidatesArg?: ChapterCandidateFeedbackItem[],
-  isFluidReadingPaceArg = true,
-): UserLanguageProfile {
-  let profile: UserLanguageProfile;
-  let lang: string;
-  let candidates: ChapterCandidateFeedbackItem[];
-  let isFluidReadingPace: boolean;
-  let shouldPersist = false;
-
-  if ("candidates" in profileOrOptions) {
-    shouldPersist = profileOrOptions.profile === undefined;
-    profile = profileOrOptions.profile ?? loadUserLanguageProfile();
-    lang = profileOrOptions.lang ?? "es";
-    candidates = profileOrOptions.candidates;
-    isFluidReadingPace = profileOrOptions.isFluidReadingPace ?? true;
-  } else {
-    profile = profileOrOptions;
-    lang = langArg ?? "es";
-    candidates = candidatesArg ?? [];
-    isFluidReadingPace = isFluidReadingPaceArg;
-  }
-
-  const normLang = (lang || "es").slice(0, 2).toLowerCase() as SupportedBookLang;
-  let currentProfile: UserLanguageProfile = { ...profile };
-
-  if (isFluidReadingPace) {
-    for (const candidate of candidates) {
-      if (candidate.wasConsultedInWordPanel) continue;
-      const updated = updateThetaForLanguageSignal(
-        currentProfile,
-        normLang,
-        candidate.beta,
-        "passive_frontier",
-      );
-      currentProfile = {
-        ...currentProfile,
-        ...updated,
-        theta: updated.theta,
-        thetaByLang: updated.thetaByLang ?? currentProfile.thetaByLang,
-      };
-    }
-  }
-
-  const currentCount = currentProfile.chaptersCompletedByLang[normLang] ?? 0;
-  const result: UserLanguageProfile = {
-    ...currentProfile,
-    chaptersCompletedByLang: {
-      ...currentProfile.chaptersCompletedByLang,
-      [normLang]: currentCount + 1,
-    },
-  };
-
-  if (shouldPersist) {
-    saveUserLanguageProfile(result);
-  }
-  return result;
-}
-
-/**
- * Canal D: Adaptación de fricción. Si el usuario omite la tarjeta de pre-lectura
- * durante 3 capítulos consecutivos, reduce la cantidad preferida de palabras de 5 (o 4) a 3.
- */
-export function updatePreviewFrictionPreference(
-  profileOrInteracted: UserLanguageProfile | boolean,
-  maybeInteracted?: boolean,
-): UserLanguageProfile {
-  let profile: UserLanguageProfile;
-  let interacted: boolean;
-  let shouldPersist = false;
-
-  if (typeof profileOrInteracted === "boolean") {
-    shouldPersist = true;
-    profile = loadUserLanguageProfile();
-    interacted = profileOrInteracted;
-  } else {
-    profile = profileOrInteracted;
-    interacted = Boolean(maybeInteracted);
-  }
-
-  const skips = interacted ? 0 : (profile.consecutivePreviewSkips ?? 0) + 1;
-  const currentCount = profile.preferredPreviewCount ?? 4;
-  const nextCount = skips >= 3 ? 3 : currentCount;
-
-  const result: UserLanguageProfile = {
-    ...profile,
-    consecutivePreviewSkips: skips,
-    preferredPreviewCount: nextCount,
   };
 
   if (shouldPersist) {

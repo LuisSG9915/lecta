@@ -1212,6 +1212,8 @@ describe("Kindle Routes (/k and /kindle)", () => {
       );
       expect(insertReviewCall).toBeDefined();
       expect(insertReviewCall![0]).toContain("synced_at");
+      // Acierto con opciones = «hard», como en el Cuaderno.
+      expect(insertReviewCall![1]).toContain("hard");
 
       const insertActivityCall = dbQueryMock.mock.calls.find((call) =>
         typeof call[0] === "string" && call[0].includes("INSERT INTO lecta_user_activity"),

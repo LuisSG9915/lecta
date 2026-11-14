@@ -7,7 +7,6 @@ import {
   THETA_MIGRATION_KEY,
   predictWordMasteryProbability,
   betaFromZipf,
-  updateLanguageTheta,
   loadUserLanguageProfile,
   saveUserLanguageProfile,
   recordChapterCompleted,
@@ -87,33 +86,9 @@ describe("Modelo Psicométrico Rasch 1PL y theta por idioma (Track 6)", () => {
     expect(betaFromZipf(6.0)).toBe(-2.0);
   });
 
-  it("updateLanguageTheta con outcome = 1 incrementa theta y reduce incertidumbre", () => {
-    const profile = { ...DEFAULT_USER_LANGUAGE_PROFILE };
-    const beta = 1.0;
-    const updated = updateLanguageTheta(profile, "es", beta, 1);
-
-    expect(updated.thetaByLang.es).toBeGreaterThan(0.0);
-    expect(updated.uncertaintyByLang.es).toBeLessThan(1.0);
-    // El inglés no debe haber cambiado
-    expect(updated.thetaByLang.en).toBe(0.0);
-  });
-
-  it("updateLanguageTheta con outcome = 0 decrementa theta y reduce incertidumbre", () => {
-    const profile = { ...DEFAULT_USER_LANGUAGE_PROFILE, thetaByLang: { es: 1.0 } };
-    const beta = -0.5; // Palabra fácil desconocida
-    const updated = updateLanguageTheta(profile, "es", beta, 0);
-
-    expect(updated.thetaByLang.es).toBeLessThan(1.0);
-    expect(updated.uncertaintyByLang.es).toBeLessThan(1.0);
-  });
-
-  it("soporta actualización directa persistida y conteo de capítulos", () => {
+  it("persiste el perfil y cuenta capítulos por idioma", () => {
     localStorage.clear();
-    const updated = updateLanguageTheta("en", 0.5, 1);
-    expect(updated.thetaByLang.en).toBeGreaterThan(0.0);
-
-    const loaded = loadUserLanguageProfile();
-    expect(loaded.thetaByLang.en).toBe(updated.thetaByLang.en);
+    expect(loadUserLanguageProfile().thetaByLang.en ?? 0).toBe(DEFAULT_USER_LANGUAGE_PROFILE.thetaByLang.en ?? 0);
 
     const afterChapter = recordChapterCompleted("en");
     expect(afterChapter.chaptersCompletedByLang.en).toBe(1);

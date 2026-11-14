@@ -5,7 +5,6 @@ import {
   countFormTokens,
   cleanContextSentence,
   extractChapterContextSnippet,
-  MAX_PREVIEW_WORDS,
   MAX_CONTEXT_SNIPPET_CHARS,
 } from "./section-words";
 import type { LexiconEntry } from "./lexicon";
@@ -245,8 +244,7 @@ describe("Algoritmo Next-Chapter Utility (Fase 4.2)", () => {
 });
 
 describe("Contexto de la preparación (Paso 2)", () => {
-  it("exporta las constantes de memoria de Cowan y snippet contextual", () => {
-    expect(MAX_PREVIEW_WORDS).toBe(5);
+  it("exporta el tope del snippet contextual", () => {
     expect(MAX_CONTEXT_SNIPPET_CHARS).toBe(140);
   });
 

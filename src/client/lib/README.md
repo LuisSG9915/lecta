@@ -50,8 +50,8 @@ disk.
 
 ### Knowledge, psychometrics, FSRS and learning
 
-- [profile-models.ts:betaFromZipf], [profile-models.ts:loadUserLanguageProfile], [profile-models.ts:saveUserLanguageProfile], [profile-models.ts:updateLanguageTheta], [profile-models.ts:predictWordMasteryProbability], [profile-models.ts:migrateLegacyTheta], [profile-models.ts:estimateProfile].
-- [knowledge.ts:predictSection], [knowledge.ts:resolveEvidence], [knowledge.ts:applyWordPanelLookupSignal], [knowledge.ts:applyChapterCompletionPassiveLoop], [knowledge.ts:markWordStatus], [knowledge.ts:computeRequiredDwellMs], [reader-evidence.ts:checkPassiveExposure].
+- [profile-models.ts:betaFromZipf], [profile-models.ts:loadUserLanguageProfile], [profile-models.ts:saveUserLanguageProfile], [profile-models.ts:predictWordMasteryProbability], [profile-models.ts:migrateLegacyTheta], [profile-models.ts:estimateProfile].
+- [knowledge.ts:predictSection], [knowledge.ts:resolveEvidence], [knowledge.ts:applyWordPanelLookupSignal], [knowledge.ts:markWordStatus], [knowledge.ts:computeRequiredDwellMs], [reader-evidence.ts:checkPassiveExposure].
 - [calibration.ts:initCatSession], [calibration.ts:submitCatAnswer], [calibration.ts:selectNextCatItem], [calibration.ts:needsLanguageCalibration], [calibration.ts:fetchCalibrationSample].
 - [fsrs.ts:scheduleReview], [fsrs.ts:newCard], [fsrs.ts:isDue], [fsrs.ts:isReviewDueWord], [fsrs.ts:loadRetentionHorizon]; [reviews.ts:recordReview], [reviews.ts:consolidateEpisodicWord].
 - [learn.ts:reviewQueue], [learn.ts:learnQueue], [learn.ts:isLearnPending], [learn.ts:evaluateSentenceLocally], [learn.ts:generateMicroStoryWithAi]; [notebook-model.ts:isEligible], [notebook-model.ts:wordStage], [notebook-model.ts:matchesFilter]; [practice.ts:buildAdaptivePracticeQueue], [practice.ts:buildPostChapterConsolidationQueue], [practice.ts:generateClozeOptions]; [episodic-cloze.ts:episodicClozeOptions].

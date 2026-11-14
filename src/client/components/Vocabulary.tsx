@@ -8,6 +8,7 @@ import {
 } from "react";
 import "../styles/notebook.css";
 import {
+  isReviewDueWord,
   loadRetentionHorizon,
   Rating,
   saveRetentionHorizon,
@@ -351,12 +352,16 @@ export function Vocabulary({
   } = review;
 
   const reviewKeys = useMemo(() => new Set(reviewWords.map((word) => word.key)), [reviewWords]);
-  const handleWorkshopComplete = (wordKey: string, score: number) => {
+  const handleWorkshopComplete = (wordKey: string) => {
     if (workshopCreditedRef.current.has(wordKey)) return;
     const target = all.find((w) => w.key === wordKey && !w.deleted);
     if (!target || isLearnPending(target, knownKeys, exposure)) return;
+    // Escribir una oración propia es producción: vale `Good`, nunca `Easy`
+    // por la nota de la IA (la IA no califica FSRS). Y solo si la tarjeta
+    // ya tocaba: adelantar un repaso no es espaciar.
+    if (!isReviewDueWord(target)) return;
     workshopCreditedRef.current.add(wordKey);
-    const rating = score >= 85 ? Rating.Easy : Rating.Good;
+    const rating = Rating.Good;
     void (async () => {
       try {
         const scope = captureDbScope();

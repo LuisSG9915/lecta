@@ -454,6 +454,7 @@ const PROBES = {
       migracion_resta: Number(profileSrc.match(/clampTheta\(legacy - (\d+)\)/)?.[1]),
       saveUserTheta_en_calibracion: (calibrationSrc.match(/saveUserTheta\(/g) ?? []).length,
       updateLanguageTheta_en_reader: (readerSrc.match(/updateLanguageTheta\(/g) ?? []).length,
+      applyPreviewKnownSignal_en_reader: (readerSrc.match(/applyPreviewKnownSignal\(/g) ?? []).length,
       applyPreviewKnownSignal_en_wordPanel: (wordPanelSrc.match(/applyPreviewKnownSignal\(/g) ?? []).length,
       ajustes_por_acto_en_wordPanel:
         (wordPanelSrc.match(/applyPreviewKnownSignal\(/g) ?? []).length,
@@ -468,7 +469,8 @@ const PROBES = {
       observed.escribe_llave_vieja === false &&
       observed.migracion_resta === 3 &&
       observed.saveUserTheta_en_calibracion === 0 &&
-      observed.updateLanguageTheta_en_reader === 2 &&
+      observed.updateLanguageTheta_en_reader === 0 &&
+      observed.applyPreviewKnownSignal_en_reader === 1 &&
       observed.applyPreviewKnownSignal_en_wordPanel === 1 &&
       observed.sectionWords_usa_7_menos_zipf === false &&
       observed.sectionWords_usa_4_menos_zipf === true;
@@ -479,6 +481,40 @@ const PROBES = {
       detail: ok
         ? "una sola escala (β = 4 − zipf, neutra en 0), una sola llave y un solo ajuste por acto; la llave vieja solo se migra restando 3"
         : "el código todavía mezcla escalas o ajusta θ más de una vez por acto",
+      observed,
+    };
+  },
+
+  // Revisión del 2026-11-14: las señales que alimentan FSRS y θ dicen lo
+  // que pasó. Sondas de comportamiento sobre el código que corre: la regla
+  // de acierto se ejecuta; el resto se observa en el fuente porque esos
+  // módulos importan sin extensión y no cargan en Node.
+  async "senales-aprendizaje"(root) {
+    const ai = await importTs(root, "src/shared/admin-insights.ts");
+    const evidenceSrc = readText(root, "src/client/lib/reader-evidence.ts");
+    const reviewsSrc = readText(root, "src/client/lib/reviews.ts");
+    const modalSrc = readText(root, "src/client/components/DeepReadingSummaryModal.tsx");
+    const panelSrc = readText(root, "src/client/components/WordPanel.tsx");
+    const wordsSrc = readText(root, "src/client/lib/section-words.ts");
+    const observed = {
+      hard_es_acierto: ai.isRecallHit("hard"),
+      again_es_fallo: !ai.isRecallHit("again"),
+      exposicion_por_pagina: /pageForms\(analysis, pageRef\.current/.test(evidenceSrc),
+      exposicion_sin_theta: !/updateLanguageTheta|betaFromZipf/.test(evidenceSrc),
+      reto_sin_good: !/Rating\.Good/.test(reviewsSrc),
+      reto_por_errores: /episodicRating\(outcome\)/.test(reviewsSrc),
+      modal_pasa_metricas: /consolidateEpisodicWord\(current\.item, bookId, undefined, metrics\)/.test(modalSrc),
+      consulta_con_idioma: /onRecordSilentCalibration\(cleanWord, "lookup", effectiveLang/.test(panelSrc),
+      frecuencia_por_tokens: /countFormTokens\(input\.text/.test(wordsSrc),
+    };
+    const ok = Object.values(observed).every(Boolean);
+    return {
+      kind: "probe",
+      probe: "senales-aprendizaje",
+      status: ok ? "PASS" : "FAIL",
+      detail: ok
+        ? "acierto con opciones cuenta; exposición por página y sin θ; reto calificado por errores; consulta en el idioma del libro; frecuencia por tokens"
+        : "alguna señal volvió a mentir: revisar observed",
       observed,
     };
   },

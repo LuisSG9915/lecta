@@ -49,7 +49,6 @@ import {
   type SavedBookPosition,
 } from "../lib/idb";
 import { activeFragmentAt, fragElements } from "../lib/scroll-fragments";
-import { updateLanguageTheta } from "../lib/profile-models";
 import { batchLookup, enrichBatch, lookupWord } from "../lib/lexicon";
 import { consolidateEpisodicWord, scheduleCapturedReview, type EpisodicOutcome } from "../lib/reviews";
 import {
@@ -153,7 +152,11 @@ import {
   hasCalibrationEvidence,
   languageCalibrationStatus,
 } from "../lib/calibration";
-import { calibrationBankZipf } from "../lib/knowledge";
+import {
+  applyPreviewKnownSignal,
+  applyWordPanelLookupSignal,
+  calibrationBankZipf,
+} from "../lib/knowledge";
 import {
   isTtsProgrammaticScroll,
 } from "../lib/ttsGuards";
@@ -4556,13 +4559,15 @@ export default function Reader({
         onSelectStrategy={(preset) => selectStrategyPreset(preset)}
         onMarkKnown={(lemma, beta) => {
           const currentLang = language || (bookRef.current ? getBookLanguage(bookRef.current) : "es");
-          updateLanguageTheta(currentLang, beta, 1, 1.0);
+          // Misma regla que «Ya la sé» en la ficha: una sola forma de mover θ.
+          applyPreviewKnownSignal(currentLang, beta);
           const scope = captureDbScope();
           void saveKnowledge({ language: currentLang, lemma, known: true, source: "inferred" }, scope);
         }}
         onSaveToPractice={(lemma, beta) => {
           const currentLang = language || (bookRef.current ? getBookLanguage(bookRef.current) : "es");
-          updateLanguageTheta(currentLang, beta, 0, 0.5);
+          // «Quiero aprenderla» = no la conocía: la misma señal que consultarla.
+          applyWordPanelLookupSignal(currentLang, beta);
           const scope = captureDbScope();
           void saveWordWithKnowledge(
             {

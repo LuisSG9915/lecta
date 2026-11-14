@@ -15,6 +15,9 @@ import { hasLectaPlus } from "../../shared/plan";
 import { createScopedAuth, closePoolSafe } from "../auth";
 import { findEntries, findEntriesForForms } from "../lexicon";
 import { createEmptyCard, fsrs, generatorParameters, Rating, type Card } from "ts-fsrs";
+
+// Retención del ritmo «Equilibrado» (RETENTION_BY_HORIZON.standard del cliente).
+const KINDLE_REQUEST_RETENTION = 0.9;
 import {
   estimateThetaFromD1Knowledge,
   extractChapterPrepCandidates,
@@ -2447,7 +2450,9 @@ kindleRoutes.post("/practice/answer", async (c) => {
   }
 
   const now = Date.now();
-  const rating = isCorrect ? "good" : "again";
+  // Misma regla que el Cuaderno (EXERCISE_RATING en practice.ts): acertar
+  // eligiendo entre opciones vale «hard»; fallar, «again».
+  const rating = isCorrect ? "hard" : "again";
   const reviewId = `kr_${now}_${Math.random().toString(36).slice(2, 8)}`;
   const actId = `ka_${now}_${Math.random().toString(36).slice(2, 8)}`;
   const eventId = `ke_${now}_${Math.random().toString(36).slice(2, 8)}`;
@@ -2473,7 +2478,12 @@ kindleRoutes.post("/practice/answer", async (c) => {
     const existing = existingRow?.card ?? null;
     const wordLang = normalizeKindleLanguage(existingRow?.language ?? requestedLang);
 
-    const scheduler = fsrs(generatorParameters({ enable_fuzz: true }));
+    // Mismo programador que el cliente (fsrs.ts): fuzz y retención del ritmo
+    // «Equilibrado». El ritmo elegido vive solo en el dispositivo y no llega
+    // al servidor, así que aquí se usa el de por defecto.
+    const scheduler = fsrs(
+      generatorParameters({ enable_fuzz: true, request_retention: KINDLE_REQUEST_RETENTION }),
+    );
     let cardObj: Card;
     try {
       cardObj =
@@ -2489,7 +2499,7 @@ kindleRoutes.post("/practice/answer", async (c) => {
     const scheduled = scheduler.next(
       cardObj,
       new Date(now),
-      isCorrect ? Rating.Good : Rating.Again,
+      isCorrect ? Rating.Hard : Rating.Again,
     );
     const updatedCard = scheduled.card;
 

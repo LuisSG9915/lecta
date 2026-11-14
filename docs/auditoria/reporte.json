@@ -1,9 +1,9 @@
 {
   "tool": "audit-investigacion",
   "version": 1,
-  "generatedAt": "2026-11-14T16:31:29.605Z",
+  "generatedAt": "2026-11-14T20:35:40.722Z",
   "root": "/Users/luis/Desarrollos Devin/lecta",
-  "commit": "fa363ca897d9a1d6de4ee2a9708bed5ee30dfd93",
+  "commit": "71efd96878aa96777e208c9333547c85e7a9464a",
   "doc": "docs/estrategia-aprendizaje-2026-10-24.md",
   "registry": "docs/auditoria/claims.json",
   "online": false,
@@ -46,20 +46,20 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/lib/knowledge.ts:324 coincide con /\\(knownCount \\+ savedCount\\) / total/",
+          "detail": "src/client/lib/knowledge.ts:294 coincide con /\\(knownCount \\+ savedCount\\) / total/",
           "observed": {
             "file": "src/client/lib/knowledge.ts",
-            "line": 324,
+            "line": 294,
             "text": "? Math.max(0, Math.min(100, Math.round(((knownCount + savedCount) / total) * 100)))"
           }
         },
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/lib/knowledge.ts:321 coincide con /const total = forms\\.length/",
+          "detail": "src/client/lib/knowledge.ts:291 coincide con /const total = forms\\.length/",
           "observed": {
             "file": "src/client/lib/knowledge.ts",
-            "line": 321,
+            "line": 291,
             "text": "const total = forms.length;"
           }
         },
@@ -265,32 +265,28 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/hooks/useReaderChapterPrep.ts:53 coincide con /unknownKeyWordsCount <= 0/",
+          "detail": "src/client/hooks/useReaderChapterPrep.ts:54 coincide con /unknownKeyWordsCount <= 0/",
           "observed": {
             "file": "src/client/hooks/useReaderChapterPrep.ts",
-            "line": 53,
+            "line": 54,
             "text": "if (unknownKeyWordsCount <= 0) return false;"
           }
         },
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/hooks/useReaderChapterPrep.ts:381 coincide con /opening = \"notice\"/",
+          "detail": "src/client/hooks/useReaderChapterPrep.ts:399 coincide con /opening = \"notice\"/",
           "observed": {
             "file": "src/client/hooks/useReaderChapterPrep.ts",
-            "line": 381,
+            "line": 399,
             "text": "opening = \"notice\";"
           }
         },
         {
-          "kind": "code-anchor",
+          "kind": "code-absent",
           "status": "PASS",
-          "detail": "src/client/lib/section-words.ts:532 coincide con /MAX_PREVIEW_WORDS = 5/",
-          "observed": {
-            "file": "src/client/lib/section-words.ts",
-            "line": 532,
-            "text": "export const MAX_PREVIEW_WORDS = 5;"
-          }
+          "detail": "/MAX_PREVIEW_WORDS/ no aparece en src/client/lib/section-words.ts",
+          "observed": {}
         },
         {
           "kind": "reference",
@@ -475,7 +471,8 @@
             "escribe_llave_vieja": false,
             "migracion_resta": 3,
             "saveUserTheta_en_calibracion": 0,
-            "updateLanguageTheta_en_reader": 2,
+            "updateLanguageTheta_en_reader": 0,
+            "applyPreviewKnownSignal_en_reader": 1,
             "applyPreviewKnownSignal_en_wordPanel": 1,
             "ajustes_por_acto_en_wordPanel": 1,
             "sectionWords_usa_7_menos_zipf": false,
@@ -522,11 +519,11 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/components/Reader.tsx:4559 coincide con /updateLanguageTheta\\(currentLang, beta, 1, 1\\.0\\)/",
+          "detail": "src/client/components/Reader.tsx:4563 coincide con /applyPreviewKnownSignal\\(currentLang, beta\\)/",
           "observed": {
             "file": "src/client/components/Reader.tsx",
-            "line": 4559,
-            "text": "updateLanguageTheta(currentLang, beta, 1, 1.0);"
+            "line": 4563,
+            "text": "applyPreviewKnownSignal(currentLang, beta);"
           }
         },
         {
@@ -542,20 +539,20 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/components/WordPanel.tsx:665 coincide con /award: false/",
+          "detail": "src/client/components/WordPanel.tsx:671 coincide con /award: false/",
           "observed": {
             "file": "src/client/components/WordPanel.tsx",
-            "line": 665,
+            "line": 671,
             "text": "{ award: false },"
           }
         },
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/lib/reviews.ts:47 coincide con /options\\.award !== false/",
+          "detail": "src/client/lib/reviews.ts:48 coincide con /options\\.award !== false/",
           "observed": {
             "file": "src/client/lib/reviews.ts",
-            "line": 47,
+            "line": 48,
             "text": "if (options.award !== false) {"
           }
         },
@@ -641,24 +638,16 @@
           "observed": {}
         },
         {
-          "kind": "code-anchor",
+          "kind": "code-absent",
           "status": "PASS",
-          "detail": "src/client/lib/knowledge.ts:91 coincide con /GAMMA_PASSIVE = 0\\.82/",
-          "observed": {
-            "file": "src/client/lib/knowledge.ts",
-            "line": 91,
-            "text": "export const GAMMA_PASSIVE = 0.82;"
-          }
+          "detail": "/updatePassiveExposureState/ no aparece en src/client/lib/knowledge.ts",
+          "observed": {}
         },
         {
-          "kind": "code-anchor",
+          "kind": "code-absent",
           "status": "PASS",
-          "detail": "src/client/lib/knowledge.ts:92 coincide con /FAMILIAR_PASSIVE_THRESHOLD = 3/",
-          "observed": {
-            "file": "src/client/lib/knowledge.ts",
-            "line": 92,
-            "text": "export const FAMILIAR_PASSIVE_THRESHOLD = 3;"
-          }
+          "detail": "/updateLanguageTheta/ no aparece en src/client/lib/reader-evidence.ts",
+          "observed": {}
         },
         {
           "kind": "code-anchor",
@@ -747,6 +736,23 @@
           "observed": {}
         },
         {
+          "kind": "probe",
+          "probe": "senales-aprendizaje",
+          "status": "PASS",
+          "detail": "acierto con opciones cuenta; exposición por página y sin θ; reto calificado por errores; consulta en el idioma del libro; frecuencia por tokens",
+          "observed": {
+            "hard_es_acierto": true,
+            "again_es_fallo": true,
+            "exposicion_por_pagina": true,
+            "exposicion_sin_theta": true,
+            "reto_sin_good": true,
+            "reto_por_errores": true,
+            "modal_pasa_metricas": true,
+            "consulta_con_idioma": true,
+            "frecuencia_por_tokens": true
+          }
+        },
+        {
           "kind": "code-absent",
           "status": "PASS",
           "detail": "/CAPTURE_SOURCE_PARAMS|newCardWithSource|scheduleEpisodicReview/ no aparece en src/client/lib/fsrs.ts",
@@ -755,10 +761,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/lib/reviews.ts:116 coincide con /export async function consolidateEpisodicWord/",
+          "detail": "src/client/lib/reviews.ts:123 coincide con /export async function consolidateEpisodicWord/",
           "observed": {
             "file": "src/client/lib/reviews.ts",
-            "line": 116,
+            "line": 123,
             "text": "export async function consolidateEpisodicWord("
           }
         },

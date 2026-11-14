@@ -1,5 +1,6 @@
 import {
   captureDbScope,
+  knowledgeKey,
   saveReview,
   withDb,
   wordKey,
@@ -112,6 +113,12 @@ export function episodicRating(outcome?: EpisodicOutcome): typeof Rating.Again |
  *   acierto no toca la tarjeta, porque adelantar el repaso no es espaciar.
  *
  * Solo deja evento de repaso (y su XP) cuando la tarjeta se calificó.
+ *
+ * Nunca revive una palabra que el lector quitó, ni da de alta una que
+ * declaró conocida («Ya la sé») o que solo vio en la hoja de preparación
+ * (`pre-chapter-primed`): el alta al Cuaderno necesita una consulta. La
+ * palabra se busca por forma y, si no, por lema entre las guardadas, así
+ * que otra flexión avanza la tarjeta que ya existe.
  */
 export async function consolidateEpisodicWord(
   item: {
@@ -121,6 +128,7 @@ export async function consolidateEpisodicWord(
     shortGloss?: string;
     chapterSentence?: string;
     partOfSpeech?: string;
+    source?: "pre-chapter-primed" | "in-chapter-lookup" | "notebook-reencounter";
   },
   bookHash?: string,
   scope?: DbScope,
@@ -139,10 +147,21 @@ export async function consolidateEpisodicWord(
   const stored = await withDb(bound, async (db) => {
     const formK = wordKey(language, form);
     const lemmaK = wordKey(language, lemma);
-    const existing =
+    const byKey =
       (await db.get("savedWords", formK)) ??
       (lemmaK !== formK ? await db.get("savedWords", lemmaK) : undefined);
-    const active = existing && !existing.deleted ? existing : undefined;
+    if (byKey?.deleted) return null;
+    const existing =
+      byKey ??
+      (await db.getAll("savedWords")).find(
+        (w) => !w.deleted && w.language === language && (w.lemma || w.form) === lemma,
+      );
+    if (!existing) {
+      if (item.source === "pre-chapter-primed") return null;
+      const declared = await db.get("knowledge", knowledgeKey(language, lemma));
+      if (declared && !declared.deleted && declared.known) return null;
+    }
+    const active = existing;
     const reps = active?.card?.reps ?? 0;
     let nextCard: SavedWord["card"];
     if ((active && isReviewDueWord(active, now)) || (reps > 0 && rating === Rating.Again)) {
@@ -159,7 +178,6 @@ export async function consolidateEpisodicWord(
     const updated: SavedWord = existing
       ? {
           ...existing,
-          deleted: false,
           meaning: existing.meaning || item.shortGloss || undefined,
           context: existing.context || item.chapterSentence || undefined,
           pos: existing.pos ?? item.partOfSpeech ?? null,
@@ -204,3 +222,37 @@ export async function consolidateEpisodicWord(
   return stored;
 }
 
+
+/**
+ * Reconsultar en el libro una palabra que ya pasó por repaso dice «no la
+ * recordé»: FSRS registra `Again` (sin XP), como mucho una vez al día por
+ * palabra. Si hoy ya hubo un repaso de esa tarjeta, no se castiga de nuevo.
+ * Devuelve la palabra actualizada o null si no correspondía.
+ */
+export async function recordLookupLapse(
+  word: SavedWord,
+  scope?: DbScope,
+  now = new Date(),
+): Promise<SavedWord | null> {
+  if (word.deleted || (word.card?.reps ?? 0) <= 0 || !word.card) return null;
+  const today = localDayKey(now.getTime());
+  const last = word.card.last_review ? new Date(word.card.last_review).getTime() : 0;
+  if (last && localDayKey(last) === today) return null;
+  const bound = scope ?? captureDbScope();
+  const card = scheduleReview(word.card, Rating.Again, now);
+  const stored = await withDb(bound, async (db) => {
+    const current = await db.get("savedWords", word.key);
+    if (!current || current.deleted) return null;
+    const updated: SavedWord = { ...current, card, updatedAt: now.getTime() };
+    await db.put("savedWords", updated);
+    return updated;
+  }).catch(() => null);
+  if (!stored) return null;
+  void pushWordsToServer([stored], bound);
+  await recordReview(
+    { language: stored.language, form: stored.form, kind: "context", rating: "again", hints: 0 },
+    bound,
+    { award: false },
+  ).catch(() => undefined);
+  return stored;
+}

@@ -1,9 +1,9 @@
 # Reporte de auditoría — estrategia de aprendizaje de Lecta
 
-Generado: 2026-11-14T16:31:29.605Z
+Generado: 2026-11-14T20:35:40.722Z
 Documento auditado: `docs/estrategia-aprendizaje-2026-10-24.md`
 Registro: `docs/auditoria/claims.json`
-Commit: `fa363ca897d9a1d6de4ee2a9708bed5ee30dfd93`
+Commit: `71efd96878aa96777e208c9333547c85e7a9464a`
 Red: no (solo forma de las referencias)
 
 **Veredicto: PASS_WITH_UNVERIFIED** — 1 afirmaciones aprobadas, 0 refutadas, 0 refutadas por auditoría, 13 sin verificar, 0 comprobaciones omitidas.
@@ -21,10 +21,10 @@ Código: **PASS** · Referencias: **UNVERIFIED**
 - evidencia: `src/client/lib/coverage.ts:114-140`
 
 - ✅ **PASS** · doc-mention: el documento contiene «Se calcula sobre **formas únicas**»
-- ✅ **PASS** · code-anchor: src/client/lib/knowledge.ts:324 coincide con /\(knownCount \+ savedCount\) / total/
-  - observado: `{"file":"src/client/lib/knowledge.ts","line":324,"text":"? Math.max(0, Math.min(100, Math.round(((knownCount + savedCount) / total) * 100)))"}`
-- ✅ **PASS** · code-anchor: src/client/lib/knowledge.ts:321 coincide con /const total = forms\.length/
-  - observado: `{"file":"src/client/lib/knowledge.ts","line":321,"text":"const total = forms.length;"}`
+- ✅ **PASS** · code-anchor: src/client/lib/knowledge.ts:294 coincide con /\(knownCount \+ savedCount\) / total/
+  - observado: `{"file":"src/client/lib/knowledge.ts","line":294,"text":"? Math.max(0, Math.min(100, Math.round(((knownCount + savedCount) / total) * 100)))"}`
+- ✅ **PASS** · code-anchor: src/client/lib/knowledge.ts:291 coincide con /const total = forms\.length/
+  - observado: `{"file":"src/client/lib/knowledge.ts","line":291,"text":"const total = forms.length;"}`
 - ✅ **PASS** · code-absent: /\btokens?\b/ no aparece en src/client/lib/coverage.ts
 - ✅ **PASS** · reachable: createCoverageInputsLoader se usa en producción (3 archivo/s)
   - observado: `{"symbol":"createCoverageInputsLoader","callers":[{"file":"src/client/components/CommunityShelf.tsx","line":132,"text":"loader: ReturnType<typeof createCoverageInputsLoader>;"},{"file":"src/client/components/DiscoverRail.tsx","line":122,"text":"loader: ReturnType<typeof createCoverageInputsLoader>;"},{"file":"src/client/components/Shelf.tsx","line":470,"text":"const inputsFor = createCoverageInputsLoader(scope);"}]}`
@@ -75,12 +75,11 @@ Código: **PASS** · Referencias: **UNVERIFIED**
   - observado: `{"file":"src/client/lib/section-words.ts","line":201,"text":"export const PREPARATION_ROWS_CAP = 40;"}`
 - ✅ **PASS** · code-anchor: src/client/lib/settings.ts:418 coincide con /chapterPrimingMode: "auto"/
   - observado: `{"file":"src/client/lib/settings.ts","line":418,"text":"chapterPrimingMode: \"auto\","}`
-- ✅ **PASS** · code-anchor: src/client/hooks/useReaderChapterPrep.ts:53 coincide con /unknownKeyWordsCount <= 0/
-  - observado: `{"file":"src/client/hooks/useReaderChapterPrep.ts","line":53,"text":"if (unknownKeyWordsCount <= 0) return false;"}`
-- ✅ **PASS** · code-anchor: src/client/hooks/useReaderChapterPrep.ts:381 coincide con /opening = "notice"/
-  - observado: `{"file":"src/client/hooks/useReaderChapterPrep.ts","line":381,"text":"opening = \"notice\";"}`
-- ✅ **PASS** · code-anchor: src/client/lib/section-words.ts:532 coincide con /MAX_PREVIEW_WORDS = 5/
-  - observado: `{"file":"src/client/lib/section-words.ts","line":532,"text":"export const MAX_PREVIEW_WORDS = 5;"}`
+- ✅ **PASS** · code-anchor: src/client/hooks/useReaderChapterPrep.ts:54 coincide con /unknownKeyWordsCount <= 0/
+  - observado: `{"file":"src/client/hooks/useReaderChapterPrep.ts","line":54,"text":"if (unknownKeyWordsCount <= 0) return false;"}`
+- ✅ **PASS** · code-anchor: src/client/hooks/useReaderChapterPrep.ts:399 coincide con /opening = "notice"/
+  - observado: `{"file":"src/client/hooks/useReaderChapterPrep.ts","line":399,"text":"opening = \"notice\";"}`
+- ✅ **PASS** · code-absent: /MAX_PREVIEW_WORDS/ no aparece en src/client/lib/section-words.ts
 - ⚠️ **UNVERIFIED** · referencia yanagisawa2020: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":"10.1017/S0272263119000688","url":null}`
 - ⚠️ **UNVERIFIED** · referencia elleman2009: forma válida; sin red no se resuelven metadatos (usar --online)
@@ -128,7 +127,7 @@ Código: **PASS** · Referencias: **UNVERIFIED**
   - observado: `{"file":"src/client/lib/calibration.ts","line":596,"text":"saveUserLanguageProfile(updatedProfile);"}`
 - ✅ **PASS** · code-absent: /saveUserTheta\(/ no aparece en src/client/lib/calibration.ts
 - ✅ **PASS** · probe: una sola escala (β = 4 − zipf, neutra en 0), una sola llave y un solo ajuste por acto; la llave vieja solo se migra restando 3
-  - observado: `{"betaFromZipf_zipf6":-2,"theta_L1_porDefecto":0,"theta_L2_porDefecto":-0.6,"theta_L2_esperado":-0.6,"exporta_escala_vieja":[],"escribe_llave_vieja":false,"migracion_resta":3,"saveUserTheta_en_calibracion":0,"updateLanguageTheta_en_reader":2,"applyPreviewKnownSignal_en_wordPanel":1,"ajustes_por_acto_en_wordPanel":1,"sectionWords_usa_7_menos_zipf":false,"sectionWords_usa_4_menos_zipf":true}`
+  - observado: `{"betaFromZipf_zipf6":-2,"theta_L1_porDefecto":0,"theta_L2_porDefecto":-0.6,"theta_L2_esperado":-0.6,"exporta_escala_vieja":[],"escribe_llave_vieja":false,"migracion_resta":3,"saveUserTheta_en_calibracion":0,"updateLanguageTheta_en_reader":0,"applyPreviewKnownSignal_en_reader":1,"applyPreviewKnownSignal_en_wordPanel":1,"ajustes_por_acto_en_wordPanel":1,"sectionWords_usa_7_menos_zipf":false,"sectionWords_usa_4_menos_zipf":true}`
 - ⚠️ **UNVERIFIED** · referencia wilson2019: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":"10.1038/s41467-019-12552-4","url":null}`
 
@@ -143,14 +142,14 @@ Código: **PASS** · Referencias: **UNVERIFIED**
 - evidencia: `src/client/lib/profile-models.ts:405-415`
 
 - ✅ **PASS** · doc-mention: el documento contiene ««Ya la conozco» es un juicio, no una prueba»
-- ✅ **PASS** · code-anchor: src/client/components/Reader.tsx:4559 coincide con /updateLanguageTheta\(currentLang, beta, 1, 1\.0\)/
-  - observado: `{"file":"src/client/components/Reader.tsx","line":4559,"text":"updateLanguageTheta(currentLang, beta, 1, 1.0);"}`
+- ✅ **PASS** · code-anchor: src/client/components/Reader.tsx:4563 coincide con /applyPreviewKnownSignal\(currentLang, beta\)/
+  - observado: `{"file":"src/client/components/Reader.tsx","line":4563,"text":"applyPreviewKnownSignal(currentLang, beta);"}`
 - ✅ **PASS** · code-anchor: src/client/lib/profile-models.ts:417 coincide con /0\.18 \* \(1 - pKnow\)/
   - observado: `{"file":"src/client/lib/profile-models.ts","line":417,"text":"delta = 0.18 * (1 - pKnow);"}`
-- ✅ **PASS** · code-anchor: src/client/components/WordPanel.tsx:665 coincide con /award: false/
-  - observado: `{"file":"src/client/components/WordPanel.tsx","line":665,"text":"{ award: false },"}`
-- ✅ **PASS** · code-anchor: src/client/lib/reviews.ts:47 coincide con /options\.award !== false/
-  - observado: `{"file":"src/client/lib/reviews.ts","line":47,"text":"if (options.award !== false) {"}`
+- ✅ **PASS** · code-anchor: src/client/components/WordPanel.tsx:671 coincide con /award: false/
+  - observado: `{"file":"src/client/components/WordPanel.tsx","line":671,"text":"{ award: false },"}`
+- ✅ **PASS** · code-anchor: src/client/lib/reviews.ts:48 coincide con /options\.award !== false/
+  - observado: `{"file":"src/client/lib/reviews.ts","line":48,"text":"if (options.award !== false) {"}`
 - ⚠️ **UNVERIFIED** · referencia koriat2005: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":"10.1037/0278-7393.31.2.187","url":null}`
 - ⚠️ **UNVERIFIED** · referencia laufergoldstein2004: forma válida; sin red no se resuelven metadatos (usar --online)
@@ -173,10 +172,8 @@ Código: **PASS** · Referencias: **UNVERIFIED**
 - evidencia: `src/client/lib/idb.ts:2093-2102`
 
 - ✅ **PASS** · doc-mention: el documento contiene «La exposición pasiva se acota»
-- ✅ **PASS** · code-anchor: src/client/lib/knowledge.ts:91 coincide con /GAMMA_PASSIVE = 0\.82/
-  - observado: `{"file":"src/client/lib/knowledge.ts","line":91,"text":"export const GAMMA_PASSIVE = 0.82;"}`
-- ✅ **PASS** · code-anchor: src/client/lib/knowledge.ts:92 coincide con /FAMILIAR_PASSIVE_THRESHOLD = 3/
-  - observado: `{"file":"src/client/lib/knowledge.ts","line":92,"text":"export const FAMILIAR_PASSIVE_THRESHOLD = 3;"}`
+- ✅ **PASS** · code-absent: /updatePassiveExposureState/ no aparece en src/client/lib/knowledge.ts
+- ✅ **PASS** · code-absent: /updateLanguageTheta/ no aparece en src/client/lib/reader-evidence.ts
 - ✅ **PASS** · code-anchor: src/client/lib/reader-evidence.ts:260 coincide con /uniqueLemmas\.size >= 8/
   - observado: `{"file":"src/client/lib/reader-evidence.ts","line":260,"text":"if (uniqueLemmas.size >= 8) break;"}`
 - ✅ **PASS** · code-anchor: src/client/lib/idb.ts:2147 coincide con /if \(!existing \|\| existing\.deleted\) return null/
@@ -201,9 +198,11 @@ Código: **PASS** · Referencias: **UNVERIFIED**
 - evidencia: `src/client/components/DeepReadingSummaryModal.tsx:122-145`
 
 - ✅ **PASS** · doc-mention: el documento contiene «Tarjetas limpias y consolidación conectada»
+- ✅ **PASS** · probe: acierto con opciones cuenta; exposición por página y sin θ; reto calificado por errores; consulta en el idioma del libro; frecuencia por tokens
+  - observado: `{"hard_es_acierto":true,"again_es_fallo":true,"exposicion_por_pagina":true,"exposicion_sin_theta":true,"reto_sin_good":true,"reto_por_errores":true,"modal_pasa_metricas":true,"consulta_con_idioma":true,"frecuencia_por_tokens":true}`
 - ✅ **PASS** · code-absent: /CAPTURE_SOURCE_PARAMS|newCardWithSource|scheduleEpisodicReview/ no aparece en src/client/lib/fsrs.ts
-- ✅ **PASS** · code-anchor: src/client/lib/reviews.ts:116 coincide con /export async function consolidateEpisodicWord/
-  - observado: `{"file":"src/client/lib/reviews.ts","line":116,"text":"export async function consolidateEpisodicWord("}`
+- ✅ **PASS** · code-anchor: src/client/lib/reviews.ts:123 coincide con /export async function consolidateEpisodicWord/
+  - observado: `{"file":"src/client/lib/reviews.ts","line":123,"text":"export async function consolidateEpisodicWord("}`
 - ✅ **PASS** · code-anchor: src/client/components/DeepReadingSummaryModal.tsx:138 coincide con /consolidateEpisodicWord\(current\.item/
   - observado: `{"file":"src/client/components/DeepReadingSummaryModal.tsx","line":138,"text":"void consolidateEpisodicWord(current.item, bookId, undefined, metrics)"}`
 - ⚠️ **UNVERIFIED** · referencia ye2022: forma válida; sin red no se resuelven metadatos (usar --online)

@@ -67,10 +67,10 @@ export default function DeepReadingSummaryModal({
   const [consolidationCompleted, setConsolidationCompleted] = useState(false);
   const [followAnswer, setFollowAnswer] = useState<ChapterFollowLevel | null>(null);
 
-  const wordsAssimilated =
-    summary.wordsAssimilated ?? Math.max(3, summary.sectionsRead * 4);
-  const coverageDelta =
-    summary.coverageDeltaPercent ?? (summary.sectionsRead > 0 ? 1 : 0);
+  // Solo cifras medidas: `wordsAssimilated` trae las palabras leídas del
+  // capítulo (no «asimiladas»); la cobertura no se mide aquí, así que no se
+  // muestra un incremento inventado.
+  const wordsRead = summary.wordsAssimilated ?? null;
 
   const queue = useMemo(() => consolidationQueue ?? [], [consolidationQueue]);
   const allowVocabGames = isFeatureFlagEnabled("vocabGames");
@@ -156,9 +156,9 @@ export default function DeepReadingSummaryModal({
   // -------------------------------------------------------------------------
   if (consolidationCompleted) {
     return (
-      <Dialog label="Capítulo sellado en memoria" onClose={handleContinue}>
+      <Dialog label="Repaso del capítulo hecho" onClose={handleContinue}>
         <div className="sheet-head">
-          <h2 className="sheet-title">¡Capítulo sellado en memoria!</h2>
+          <h2 className="sheet-title">Repaso del capítulo hecho</h2>
           <button
             type="button"
             className="btn--quiet"
@@ -188,10 +188,10 @@ export default function DeepReadingSummaryModal({
 
         <div className="deep-summary-lead">
           <p className="card-context deep-summary-headline">
-            Fijaste {queue.length} palabras clave de este capítulo
+            Practicaste {queue.length} {queue.length === 1 ? "palabra" : "palabras"} de este capítulo
           </p>
           <p className="meta deep-summary-subquote">
-            «{companion?.name ?? "Michi"} celebra tu memoria literaria: la estabilidad de recuerdo se ha consolidado en tu catálogo personal.»
+            «{companion?.name ?? "Michi"} las guarda: volverán a tu repaso cuando toque.»
           </p>
         </div>
 
@@ -309,7 +309,7 @@ export default function DeepReadingSummaryModal({
           {durationText} de inmersión profunda
         </p>
         <p className="meta deep-summary-subquote">
-          «{companion?.name ?? "Michi"} celebra tu lectura: incorporaste {wordsAssimilated} palabras de forma natural y avanzaste en tu dominio del libro.»
+          «{companion?.name ?? "Michi"} celebra tu lectura{wordsRead ? `: ${wordsRead.toLocaleString("es")} palabras leídas` : ""}.»
         </p>
       </div>
 
@@ -330,22 +330,14 @@ export default function DeepReadingSummaryModal({
             {summary.sectionsRead === 1 ? "Sección leída" : "Secciones leídas"}
           </span>
         </div>
-        <div>
-          <strong className="deep-summary-stat-value is-accent">
-            +{wordsAssimilated}
-          </strong>
-          <span className="meta deep-summary-stat-label">
-            Palabras asimiladas
-          </span>
-        </div>
-        <div>
-          <strong className="deep-summary-stat-value">
-            +{coverageDelta}%
-          </strong>
-          <span className="meta deep-summary-stat-label">
-            Incremento de cobertura
-          </span>
-        </div>
+        {wordsRead ? (
+          <div>
+            <strong className="deep-summary-stat-value is-accent">
+              {wordsRead.toLocaleString("es")}
+            </strong>
+            <span className="meta deep-summary-stat-label">Palabras leídas</span>
+          </div>
+        ) : null}
       </div>
 
       {bookId && chapterId ? (
@@ -386,10 +378,12 @@ export default function DeepReadingSummaryModal({
         <div className="deep-summary-harvest-header">
           <div className="deep-summary-harvest-title-row">
             <h3 className="deep-summary-harvest-title">Tu Cosecha en este Capítulo</h3>
-            <span className="deep-summary-harvest-count">+{wordsAssimilated} palabras</span>
+            <span className="deep-summary-harvest-count">
+              {harvestList.length} {harvestList.length === 1 ? "palabra" : "palabras"}
+            </span>
           </div>
           <p className="deep-summary-harvest-desc">
-            ¡Leíste este capítulo de corrido integrando nuevas palabras en contexto!
+            Las palabras que tocaste o volviste a encontrar en este capítulo.
           </p>
         </div>
         {harvestList.length > 0 ? (

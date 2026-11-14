@@ -114,6 +114,17 @@ export async function loadBookVocab(
   }
 }
 
+/**
+ * Apariciones por forma en el libro entero, desde el manifiesto. Los
+ * manifiestos anteriores a `occurrences` no traen conteo: null.
+ */
+export function bookFrequenciesOf(
+  manifest: BookVocabManifest | null | undefined,
+): Map<string, number> | null {
+  if (!manifest?.occurrences) return null;
+  return new Map(Object.entries(manifest.occurrences).map(([k, v]) => [k.toLowerCase(), v]));
+}
+
 // Analiza el EPUB guardado de punta a punta: texto por sección con el
 // mismo saneamiento del lector, formas únicas con las mismas barreras
 // (token de palabra, no stopword, minúsculas) y las bases derivadas en

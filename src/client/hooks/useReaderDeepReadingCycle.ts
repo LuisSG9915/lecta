@@ -64,15 +64,13 @@ export function useReaderDeepReadingCycle({
         );
 
         if (elapsed >= 45_000) {
-          const wordsAssimilated = Math.max(3, sectionsRead * 4);
-          const coverageDeltaPercent = Math.max(1, Math.min(5, sectionsRead));
+          // Sin cifras inventadas: el resumen del retiro no mide palabras
+          // ni cobertura, así que no las trae.
           const summary: DeepReadingSummary = {
             durationMinutes,
             targetMinutes: current.targetMinutes,
             sectionsRead,
             completedNaturally: natural,
-            wordsAssimilated,
-            coverageDeltaPercent,
           };
           setDeepSummary(summary);
         }

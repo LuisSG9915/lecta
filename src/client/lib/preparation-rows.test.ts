@@ -56,6 +56,22 @@ describe("buildChapterSuggestionRows", () => {
     expect(actual.deferred).toEqual(expected.deferred);
   });
 
+  it("las apariciones en el libro entero suben una palabra en la hoja", () => {
+    // Misma rareza y una sola aparición en el capítulo: sin conteo del libro
+    // decide el orden alfabético («lóbrego» primero).
+    const twin = {
+      state: "ready" as const,
+      forms: ["lóbrego", "umbrío"],
+      entries: { lóbrego: [entry("lóbrego", 2.5, "adjetivo")], umbrío: [entry("umbrío", 2.5, "adjetivo")] },
+      capitalOnly: new Set<string>(),
+      text: "Un pasillo lóbrego y un patio umbrío.",
+    };
+    const ctx = { saved: new Map<string, never>(), knowledge: new Map(), threshold: 3.0 };
+    expect(buildChapterSuggestionRows(twin, "es", ctx).rows.map((r) => r.form)).toEqual(["lóbrego", "umbrío"]);
+    const withBook = { ...ctx, bookFrequencies: new Map([["umbrío", 30], ["lóbrego", 1]]) };
+    expect(buildChapterSuggestionRows(twin, "es", withBook).rows.map((r) => r.form)).toEqual(["umbrío", "lóbrego"]);
+  });
+
   it("un umbral distinto cambia la selección (la puerta es el umbral)", () => {
     const ctx = (threshold: number) => ({
       saved: new Map<string, never>(),

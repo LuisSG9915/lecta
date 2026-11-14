@@ -2,6 +2,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   analyzeStoredBook,
+  bookFrequenciesOf,
   bookVocabKey,
   buildBookVocabManifest,
   loadBookVocab,
@@ -247,5 +248,14 @@ describe("loadBookVocab", () => {
     // viejo y se re-analiza, en cualquier idioma con catálogo cargado.
     expect(await loadBookVocab("x", undefined, "en")).toBeNull();
     expect(await loadBookVocab("x", undefined, "es")).toBeNull();
+  });
+});
+
+describe("bookFrequenciesOf", () => {
+  it("convierte occurrences en mapa y devuelve null sin conteo", () => {
+    expect(bookFrequenciesOf(null)).toBeNull();
+    const manifest = buildBookVocabManifest(["Casa"], {}, 10, { Casa: 4 });
+    expect(bookFrequenciesOf(manifest)?.get("casa")).toBe(4);
+    expect(bookFrequenciesOf(buildBookVocabManifest(["casa"], {}, 10))).toBeNull();
   });
 });

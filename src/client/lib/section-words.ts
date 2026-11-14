@@ -528,10 +528,6 @@ export function extractKeyWordFromSentence(
 
 // ---------- Selector Científico de Palabras Pre-Capítulo (ZPD + Cowan) ----------
 
-/** Límite cognitivo de Cowan (4 ± 1 bloques) por defecto para pre-lectura */
-export const MAX_PREVIEW_WORDS = 5;
-export const MIN_PREVIEW_WORDS = 3;
-export const MAX_PREVIEW_WORDS_L2_TECHNICAL = 7;
 export const MAX_CONTEXT_SNIPPET_CHARS = 140;
 
 /**

@@ -19,6 +19,7 @@ import {
 } from "../lib/preparation";
 import type { SuggestionRows } from "../lib/section-words";
 import { buildChapterSuggestionRows } from "../lib/preparation-rows";
+import { bookFrequenciesOf, loadBookVocab } from "../lib/book-vocab";
 import {
   planPredictiveChapterPrecache,
   prefetchUpcomingChaptersLexicon,
@@ -183,6 +184,22 @@ export function useReaderChapterPrep({
     planFreeRef.current = userPlan?.plan === "free";
   }, [userPlan]);
 
+  // Apariciones de cada forma en el libro entero: pesan en la utilidad
+  // de la hoja (una palabra que vuelve en el libro rinde más).
+  const bookFreqRef = useRef<Map<string, number> | null>(null);
+  useEffect(() => {
+    bookFreqRef.current = null;
+    let alive = true;
+    void loadBookVocab(bookHash, captureDbScope(), language)
+      .then((manifest) => {
+        if (alive) bookFreqRef.current = bookFrequenciesOf(manifest);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [bookHash, language, captureDbScope]);
+
   const prepRef = useRef<PrepSheetState | null>(null);
   const prepLexRef = useRef(new Map<string, PreparationRow>());
   const prepDismissed = useRef(new Set<string>());
@@ -208,6 +225,7 @@ export function useReaderChapterPrep({
               adjustRef.current,
               baseThresholdRef.current,
             ).threshold,
+          bookFrequencies: bookFreqRef.current ?? undefined,
         },
         lex,
       ),
@@ -463,27 +481,26 @@ export function useReaderChapterPrep({
           applyPrediction(index, lang);
           const suggestion = prepRowsFor(result, lang, prepLexRef.current);
           const tocLabel = tocRowsRef.current.find((r) => r.index === index)?.label;
-          // Las palabras del Cuaderno que reaparecen en este capítulo
-          // entran primero al cierre: el repaso ocurre con la oración
-          // real que el lector acaba de leer.
+          // Al cierre solo entran las palabras del Cuaderno que reaparecen en
+          // este capítulo (el lector las guardó y las acaba de leer). Las
+          // demás filas de la hoja entran solo si la hoja se mostró
+          // (`recordPresented`). Se reemplaza siempre: sin reencuentros la
+          // lista queda vacía y no arrastra el capítulo anterior.
           const rows = suggestion?.rows ?? [];
-          const prioritized = [
-            ...rows.filter((row) => row.learning),
-            ...rows.filter((row) => !row.learning),
-          ].slice(0, 5);
-          const primed: EpisodicWordItem[] = prioritized.map((row) => ({
-            lemma: row.lemma || row.form,
-            surfaceForm: row.form,
-            lang,
-            shortGloss: row.meaning || "",
-            chapterSentence: row.context || row.contextSnippet || row.form,
-            chapterTitle: tocLabel || `Sección ${index + 1}`,
-            source: row.learning ? "notebook-reencounter" : "pre-chapter-primed",
-            partOfSpeech: row.pos ?? undefined,
-          }));
-          if (primed.length > 0) {
-            currentChapterPrimedWordsRef.current = primed;
-          }
+          currentChapterPrimedWordsRef.current = rows
+            .filter((row) => row.learning)
+            .slice(0, 5)
+            .map((row) => ({
+              lemma: row.lemma || row.form,
+              surfaceForm: row.form,
+              lang,
+              shortGloss: row.meaning || "",
+              chapterSentence: row.context || row.contextSnippet || row.form,
+              chapterTitle: tocLabel || `Sección ${index + 1}`,
+              source: "notebook-reencounter" as const,
+              partOfSpeech: row.pos ?? undefined,
+            }))
+            .filter((item) => item.chapterSentence !== item.surfaceForm);
           void evaluatePreparation(index, "analysis-settled");
         }
       } finally {
@@ -737,9 +754,13 @@ export function useReaderChapterPrep({
         source: "pre-chapter-primed",
         partOfSpeech: row.pos ?? undefined,
       }));
-      if (freshPrimed.length > 0) {
-        currentChapterPrimedWordsRef.current = freshPrimed;
+      // Se suman a los reencuentros sin pisar su fuente ni duplicar lemas.
+      const merged = [...currentChapterPrimedWordsRef.current];
+      for (const item of freshPrimed) {
+        if (item.chapterSentence === item.surfaceForm) continue;
+        if (!merged.some((m) => m.lemma === item.lemma)) merged.push(item);
       }
+      currentChapterPrimedWordsRef.current = merged;
     },
     [language, trackEvent, currentChapterPrimedWordsRef],
   );

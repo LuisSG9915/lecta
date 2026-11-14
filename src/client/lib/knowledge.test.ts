@@ -14,7 +14,6 @@ import {
   vocabLevelLabel,
   applyPreviewKnownSignal,
   applyWordPanelLookupSignal,
-  updatePreviewFrictionPreference,
   recordSilentCalibration,
   resetSilentCalibrationForTests,
   loadCalibrationBank,
@@ -854,35 +853,6 @@ describe("Canales de Retroalimentación Adaptativa (Paso 3)", () => {
     const updated = applyWordPanelLookupSignal(highProfile, "es", -0.5);
     expect(updated.thetaByLang.es).toBeLessThan(highProfile.thetaByLang.es);
     expect(updated.theta).toBe(updated.thetaByLang.es);
-  });
-
-  it("updatePreviewFrictionPreference reduce preferredPreviewCount de 5 a 3 con 3 omisiones consecutivas", () => {
-    // Estado inicial: 5 palabras preferidas
-    let profile: UserLanguageProfile = {
-      ...baseProfile,
-      preferredPreviewCount: 5,
-      consecutivePreviewSkips: 0,
-    };
-
-    // Omisión 1
-    profile = updatePreviewFrictionPreference(profile, false);
-    expect(profile.consecutivePreviewSkips).toBe(1);
-    expect(profile.preferredPreviewCount).toBe(5);
-
-    // Omisión 2
-    profile = updatePreviewFrictionPreference(profile, false);
-    expect(profile.consecutivePreviewSkips).toBe(2);
-    expect(profile.preferredPreviewCount).toBe(5);
-
-    // Omisión 3: Se alcanza el umbral de fricción -> reduce a 3 palabras
-    profile = updatePreviewFrictionPreference(profile, false);
-    expect(profile.consecutivePreviewSkips).toBe(3);
-    expect(profile.preferredPreviewCount).toBe(3);
-
-    // Interacción del usuario: reinicia el contador de omisiones a 0
-    profile = updatePreviewFrictionPreference(profile, true);
-    expect(profile.consecutivePreviewSkips).toBe(0);
-    expect(profile.preferredPreviewCount).toBe(3);
   });
 
   it("recordSilentCalibration ejecuta de forma segura los eventos 'lookup' y 'save'", () => {

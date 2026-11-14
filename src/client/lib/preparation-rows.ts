@@ -28,11 +28,13 @@ export type ChapterRowsContext = {
     }
   >;
   threshold: number;
+  /** Apariciones de cada forma en el libro entero (manifiesto `bookVocab`). */
+  bookFrequencies?: ReadonlyMap<string, number>;
 };
 
 // Misma llamada que hace la preparación del lector: mismos datos de
-// entrada, mismas filas. `bookFrequencies` queda fuera a propósito —
-// el lector no lo pasa y la lista debe ser idéntica.
+// entrada, mismas filas. Las dos superficies pasan `bookFrequencies` del
+// mismo manifiesto, así que la lista sigue siendo idéntica.
 export function buildChapterSuggestionRows(
   analysis: ReadyAnalysis,
   lang: string,
@@ -48,6 +50,7 @@ export function buildChapterSuggestionRows(
     saved: ctx.saved,
     knowledge: ctx.knowledge,
     threshold: ctx.threshold,
+    bookFrequencies: ctx.bookFrequencies,
     userTheta: loadUserTheta(lang),
     isSecondLanguage: lang !== loadNativeLanguage(),
     lex,

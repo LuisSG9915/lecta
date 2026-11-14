@@ -40,7 +40,7 @@ describe("DeepReadingSummaryModal", () => {
     coverageDeltaPercent: 2,
   };
 
-  it("muestra la duración, palabras asimiladas y cobertura del libro", () => {
+  it("muestra la duración y las palabras leídas, sin cobertura inventada", () => {
     const onClose = vi.fn();
     act(() => {
       root.render(h(DeepReadingSummaryModal, { summary: baseSummary, onClose }));
@@ -50,10 +50,10 @@ describe("DeepReadingSummaryModal", () => {
     expect(text).toContain("20 minutos");
     expect(text).toContain("3");
     expect(text).toContain("Secciones leídas");
-    expect(text).toContain("+12");
-    expect(text).toContain("Palabras asimiladas");
-    expect(text).toContain("+2%");
-    expect(text).toContain("Incremento de cobertura");
+    expect(text).toContain("12");
+    expect(text).toContain("Palabras leídas");
+    expect(text).not.toContain("asimiladas");
+    expect(text).not.toContain("Incremento de cobertura");
     expect(text).toContain("celebra tu lectura");
   });
 
@@ -345,8 +345,8 @@ describe("DeepReadingSummaryModal", () => {
     });
 
     // Debe transicionar a la pantalla de celebración
-    expect(host.textContent).toContain("¡Capítulo sellado en memoria!");
-    expect(host.textContent).toContain("Fijaste 1 palabras clave de este capítulo");
+    expect(host.textContent).toContain("Repaso del capítulo hecho");
+    expect(host.textContent).toContain("Practicaste 1 palabra de este capítulo");
 
     const finalContinueBtn = [...host.querySelectorAll("button")].find((b) =>
       b.textContent?.includes("Continuar al siguiente capítulo"),
@@ -457,7 +457,7 @@ describe("DeepReadingSummaryModal", () => {
 
     const text = host.textContent ?? "";
     expect(text).toContain("Tu Cosecha en este Capítulo");
-    expect(text).toContain("¡Leíste este capítulo de corrido integrando nuevas palabras en contexto!");
+    expect(text).toContain("3 palabras");
     expect(text).toContain("alborada");
     expect(text).toContain("crepúsculo");
     expect(text).toContain("destello");
@@ -626,7 +626,7 @@ describe("DeepReadingSummaryModal", () => {
       vi.advanceTimersByTime(1000);
     });
 
-    expect(host.textContent).toContain("¡Capítulo sellado en memoria!");
+    expect(host.textContent).toContain("Repaso del capítulo hecho");
 
     // Pulsar "Crear postal del capítulo" en la pantalla de celebración
     const postalBtn = [...host.querySelectorAll("button")].find((b) =>

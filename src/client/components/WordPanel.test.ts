@@ -67,6 +67,7 @@ vi.mock("../lib/reading-sync", () => ({
 
 vi.mock("../lib/reviews", () => ({
   recordReview: vi.fn(async () => ({})),
+  recordLookupLapse: vi.fn(async () => null),
 }));
 
 vi.mock("../lib/ai-pref", () => ({
@@ -758,7 +759,7 @@ describe("WordPanel - Acciones Rápidas (Fase 4.3)", () => {
 
   it("responde a atajos de teclado rápidos 'p' (pronunciar), 'g' (guardar/fijar) y 's' (ya la sé)", async () => {
     const { speakWord } = await import("../lib/speech");
-    const { saveWordWithKnowledge, saveKnowledge } = await import("../lib/idb");
+    const { saveKnowledge } = await import("../lib/idb");
     const onSaved = vi.fn();
     const onClose = vi.fn();
 
@@ -783,12 +784,11 @@ describe("WordPanel - Acciones Rápidas (Fase 4.3)", () => {
     });
     expect(speakWord).toHaveBeenCalledWith("efimero", "es");
 
-    // 2. Probar atajo 'g' (guarda en cuaderno)
+    // 2. Con modificador no es atajo: Cmd+S no declara nada
     await act(async () => {
-      window.dispatchEvent(new KeyboardEvent("keydown", { key: "g", bubbles: true }));
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "s", metaKey: true, bubbles: true }));
     });
-    expect(saveWordWithKnowledge).toHaveBeenCalled();
-    expect(onSaved).toHaveBeenCalled();
+    expect(saveKnowledge).not.toHaveBeenCalled();
 
     // 3. Probar atajo 's' (marcar como conocida)
     await act(async () => {
@@ -802,6 +802,34 @@ describe("WordPanel - Acciones Rápidas (Fase 4.3)", () => {
       expect.anything(),
       { award: false },
     );
+  });
+
+  it("atajo 'g' guarda y después 's' ya no declara conocida la palabra guardada", async () => {
+    const { saveWordWithKnowledge, saveKnowledge } = await import("../lib/idb");
+    const onSaved = vi.fn();
+    render(
+      h(WordPanel, {
+        word: "efimero",
+        language: "es",
+        context: "El destello fue efímero pero intenso.",
+        bookHash: "book123",
+        onClose: vi.fn(),
+        onSaved,
+      }),
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "g", bubbles: true }));
+    });
+    expect(saveWordWithKnowledge).toHaveBeenCalled();
+    expect(onSaved).toHaveBeenCalled();
+    vi.mocked(saveKnowledge).mockClear();
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "s", bubbles: true }));
+    });
+    expect(saveKnowledge).not.toHaveBeenCalled();
   });
 
   it("dispara automáticamente la consulta de IA cuando la palabra no está en catálogo (OBJ-03)", async () => {

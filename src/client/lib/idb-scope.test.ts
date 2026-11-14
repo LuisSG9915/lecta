@@ -3,6 +3,8 @@
 // base dueña. IndexedDB se simula con un Map por base; `openDB` se
 // sustituye pero el resto del módulo corre de verdad.
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createEmptyCard } from "ts-fsrs";
+import type { SavedWord } from "./idb";
 
 const KEY_PATHS: Record<string, string> = {
   books: "hash",
@@ -864,6 +866,78 @@ describe("palabras guardadas y tarjetas FSRS", () => {
     expect(fourth?.card?.reps).toBe(2);
     expect(new Date(fourth!.card!.due).getTime()).toBeLessThan(Date.now() + 3600_000);
     expect(reviewsOf().map((r) => r.rating)).toEqual(["hard", "again"]);
+  });
+});
+
+describe("consolidateEpisodicWord: altas y lápidas", () => {
+  const setup = async () => {
+    const idb = await freshIdb();
+    vi.doMock("./reading-sync", () => ({ pushReviewsToServer: vi.fn() }));
+    vi.doMock("./vocab", () => ({ pushWordsToServer: vi.fn() }));
+    const { consolidateEpisodicWord } = await import("./reviews");
+    return { idb, consolidateEpisodicWord, scope: idb.captureDbScope() };
+  };
+
+  it("no revive una palabra quitada", async () => {
+    const { consolidateEpisodicWord, scope } = await setup();
+    dbFor("lecta").stores.set("savedWords", new Map([["es:brisa", word("brisa", { deleted: true })]]));
+    const out = await consolidateEpisodicWord({ lemma: "brisa", lang: "es", source: "in-chapter-lookup" }, "b", scope);
+    expect(out).toBeNull();
+    expect((dbFor("lecta").stores.get("savedWords")!.get("es:brisa") as SavedWord).deleted).toBe(true);
+  });
+
+  it("otra flexión avanza la tarjeta guardada por lema y no crea otra", async () => {
+    const { consolidateEpisodicWord, scope } = await setup();
+    const due = { ...createEmptyCard(new Date(0)), reps: 2, stability: 3, state: 2 as const, due: new Date(0), last_review: new Date(0) };
+    dbFor("lecta").stores.set(
+      "savedWords",
+      new Map([["es:corrió", word("corrió", { lemma: "correr", card: due, presentedAt: 1 })]]),
+    );
+    const out = await consolidateEpisodicWord(
+      { lemma: "correr", surfaceForm: "corrieron", lang: "es", source: "notebook-reencounter" },
+      "b",
+      scope,
+    );
+    expect(out?.key).toBe("es:corrió");
+    expect(out?.card?.reps).toBe(3);
+    expect(dbFor("lecta").stores.get("savedWords")!.has("es:corrieron")).toBe(false);
+  });
+
+  it("no da de alta una palabra solo preparada ni una declarada conocida", async () => {
+    const { idb, consolidateEpisodicWord, scope } = await setup();
+    expect(
+      await consolidateEpisodicWord({ lemma: "quimera", lang: "es", source: "pre-chapter-primed" }, "b", scope),
+    ).toBeNull();
+    await idb.saveKnowledge(kRow("ardid", { known: true, source: "declared", updatedAt: 1 }));
+    expect(
+      await consolidateEpisodicWord({ lemma: "ardid", lang: "es", source: "in-chapter-lookup" }, "b", scope),
+    ).toBeNull();
+    expect(dbFor("lecta").stores.get("savedWords")?.size ?? 0).toBe(0);
+  });
+});
+
+describe("recordLookupLapse", () => {
+  it("reconsultar una palabra repasada registra Again una vez al día y sin XP", async () => {
+    const idb = await freshIdb();
+    vi.doMock("./reading-sync", () => ({ pushReviewsToServer: vi.fn() }));
+    vi.doMock("./vocab", () => ({ pushWordsToServer: vi.fn() }));
+    const { recordLookupLapse } = await import("./reviews");
+    const scope = idb.captureDbScope();
+    const yesterday = new Date(Date.now() - 36 * 3600_000);
+    const card = { ...createEmptyCard(yesterday), reps: 3, stability: 10, state: 2 as const, last_review: yesterday, due: new Date(Date.now() + 5 * 86400_000) };
+    const saved = word("brisa", { card });
+    dbFor("lecta").stores.set("savedWords", new Map([["es:brisa", saved]]));
+
+    const first = await recordLookupLapse(saved, scope);
+    expect(first?.card?.reps).toBe(4);
+    expect(new Date(first!.card!.due).getTime()).toBeLessThan(Date.now() + 86400_000);
+    const reviews = [...dbFor("lecta").stores.get("reviews")!.values()] as { rating: string }[];
+    expect(reviews.map((r) => r.rating)).toEqual(["again"]);
+
+    // Mismo día: no se castiga dos veces.
+    expect(await recordLookupLapse(first!, scope)).toBeNull();
+    // Palabra nunca repasada: nada.
+    expect(await recordLookupLapse(word("nueva", { card: createEmptyCard() }), scope)).toBeNull();
   });
 });
 

@@ -1,6 +1,6 @@
 # Auditoría del Cuaderno — estudio antes que prueba
 
-Generado por `scripts/audit-cuaderno.mjs` v1 el 2026-11-14T16:31:14.521Z. Commit: `fa363ca897d9`.
+Generado por `scripts/audit-cuaderno.mjs` v1 el 2026-11-14T20:37:11.525Z. Commit: `71efd96878aa`.
 
 ## La queja, en palabras del usuario
 
@@ -63,7 +63,7 @@ _Por qué:_ «no recuerdo para nada las palabras al dar iniciar sesión fluida�
 
 _Por qué:_ Se fue la rama scopedWords.slice(0,5), que servía palabras no vencidas, «Ya la conozco» y adelantaba repasos.
 
-- ✔ src/client/components/Vocabulary.tsx:263 ~ /\(\) => reviewQueue\(scopedWords, knownKeys, exposure\),/
+- ✔ src/client/components/Vocabulary.tsx:264 ~ /\(\) => reviewQueue\(scopedWords, knownKeys, exposure\),/
   - `() => reviewQueue(scopedWords, knownKeys, exposure),`
 - ✔ src/client/lib/learn.ts:151 ~ /!isLearnPending\(word, knownKeys, exposure\) &&/
   - `!isLearnPending(word, knownKeys, exposure) &&`
@@ -75,7 +75,7 @@ _Por qué:_ Se fue la rama scopedWords.slice(0,5), que servía palabras no venci
 
 _Por qué:_ scheduleCapturedReview crea newCard() (reps 0, due=ahora) al guardar. La cola no puede decidir solo por vencimiento: exige exposición o reps > 0.
 
-- ✔ src/client/lib/reviews.ts:75 ~ /const card = existing\.card \?\? newCard\(\);/
+- ✔ src/client/lib/reviews.ts:76 ~ /const card = existing\.card \?\? newCard\(\);/
   - `const card = existing.card ?? newCard();`
 - ✔ src/client/lib/fsrs.ts:71 ~ /return createEmptyCard\(now\);/
   - `if (!card || typeof card !== "object") return createEmptyCard(now);`
@@ -124,7 +124,7 @@ _Por qué:_ Buscar «deleted» dentro de dueWords era una ausencia usada como pr
 
 _Por qué:_ «~2 min» y «1 min» describían la misma sesión, y «Aprender 43 palabras nuevas» abría una tanda de 5. Ahora el botón lleva la cifra de la tanda (`Aprender 5 de 43`) y desaparece la promesa de duración.
 
-- ✔ src/client/components/Vocabulary.tsx:289 ~ /Aprender \$\{learnBatch\} de \$\{learnable\.length\}/
+- ✔ src/client/components/Vocabulary.tsx:290 ~ /Aprender \$\{learnBatch\} de \$\{learnable\.length\}/
   - `? `Aprender ${learnBatch} de ${learnable.length} ${learnNoun}``
 - ✔ src/client/components/notebook/NotebookHero.tsx:227 ~ /Repasar \{Math\.min\(REVIEW_SESSION_SIZE, reviewWordCount\)\}/
   - `Repasar {Math.min(REVIEW_SESSION_SIZE, reviewWordCount)}{" "}`
@@ -136,9 +136,9 @@ _Por qué:_ «~2 min» y «1 min» describían la misma sesión, y «Aprender 43
 
 _Por qué:_ Dos trabajos distintos ya no comparten una sola cifra: la de aprender solo cuenta palabras que pueden entrar a la ficha.
 
-- ✔ src/client/components/Vocabulary.tsx:628 ~ /por aprender/
+- ✔ src/client/components/Vocabulary.tsx:633 ~ /por aprender/
   - `learnable.length > 0 ? ` · ${learnable.length} por aprender` : ""`
-- ✔ src/client/components/Vocabulary.tsx:629 ~ /para repasar/
+- ✔ src/client/components/Vocabulary.tsx:634 ~ /para repasar/
   - `} · ${reviewWords.length} para repasar``
 
 ### ✔ `C9-el-rescate-llega-despues-de-fallar`
@@ -158,7 +158,7 @@ _Por qué:_ rescueChallenge solo actúa si el fallo fue en Nivel 2 o 3. Para la 
 
 _Por qué:_ Se quitó «Repaso rápido», que caía a startAdaptiveFlow con otro texto. El CTA adaptive_flow de GamePanel nunca se pinta: el único montaje usa dashboard o ai_workshop.
 
-- ✔ src/client/components/Vocabulary.tsx:711 ~ /mode=\{workshopOpen \? "ai_workshop" : "dashboard"\}/
+- ✔ src/client/components/Vocabulary.tsx:716 ~ /mode=\{workshopOpen \? "ai_workshop" : "dashboard"\}/
   - `mode={workshopOpen ? "ai_workshop" : "dashboard"}`
 - ✔ ningún archivo del Cuaderno contiene /notebook-quick-review-cta/
 
@@ -216,7 +216,7 @@ _Por qué:_ isLearnPending sigue excluyendo reps > 0, pero ahora reviewQueue exi
 
 _Por qué:_ startPractice usaba dueWords y podía preguntar por palabras nunca presentadas, además de adelantar repasos. Ahora comparte la regla de la sesión y explica por qué los botones están apagados.
 
-- ✔ src/client/components/Vocabulary.tsx:262 ~ /reviewWords/
+- ✔ src/client/components/Vocabulary.tsx:263 ~ /reviewWords/
   - `const reviewWords = useMemo(`
 - ✘ ningún archivo del Cuaderno contiene /disabled=\{eligibleCount\.cloze === 0\}/
 - ✔ src/client/components/notebook/FreeModes.tsx:137 ~ /Los modos libres usan palabras que ya viste/
@@ -228,7 +228,7 @@ _Por qué:_ startPractice usaba dueWords y podía preguntar por palabras nunca p
 
 _Por qué:_ askCatHint solo pedía sesión, el historial siempre guardaba hints: 0 y una respuesta tardía se pintaba sobre la tarjeta siguiente.
 
-- ✔ src/client/components/Vocabulary.tsx:251 ~ /const canHint = hasSession && useAi;/
+- ✔ src/client/components/Vocabulary.tsx:252 ~ /const canHint = hasSession && useAi;/
   - `const canHint = hasSession && useAi;`
 - ✔ src/client/hooks/useReviewSession.ts:519 ~ /hints: hintsUsedRef\.current,/
   - `hints: hintsUsedRef.current,`
@@ -313,7 +313,7 @@ _Por qué:_ El plan v1 (Fase 3) describía un cierre único. Vaciar la cola y sa
 - ✔ src/client/components/notebook/ReviewDone.tsx:39 ~ /Terminado por hoy\.</p>/
   - `<p className="nb-done-title">Terminado por hoy.</p>`
 - ✔ ningún archivo del Cuaderno contiene /Repaso terminado\.</p>/
-- ✔ src/client/components/Vocabulary.tsx:613 ~ /\(\) => void review\.exitSession\(\)/
+- ✔ src/client/components/Vocabulary.tsx:618 ~ /\(\) => void review\.exitSession\(\)/
   - `onClick={sessionKind === "queue" ? () => void review.exitSession() : exitLearn}`
 
 ### ✔ `C21-una-sola-cuenta-del-ciclo-de-vida`
@@ -335,9 +335,9 @@ _Por qué:_ wordStage contaba como «nueva» también a las ya repasadas con S <
 _Por qué:_ El aviso de «se quitó del cuaderno» se pintaba dos veces, y removeQuote tragaba el error y no ofrecía recuperar la cita.
 
 - ✔ ningún archivo del Cuaderno contiene /className="nb-undo"/
-- ✔ src/client/components/Vocabulary.tsx:487 ~ /const restoreQuote = async \(\) =>/
+- ✔ src/client/components/Vocabulary.tsx:492 ~ /const restoreQuote = async \(\) =>/
   - `const restoreQuote = async () => {`
-- ✔ src/client/components/Vocabulary.tsx:477 ~ /No se pudo quitar la cita\. Intenta de nuevo\./
+- ✔ src/client/components/Vocabulary.tsx:482 ~ /No se pudo quitar la cita\. Intenta de nuevo\./
   - `setSaveError("No se pudo quitar la cita. Intenta de nuevo.");`
 
 ### ✔ `C23-chips-gato-y-glifos-accesibles`
@@ -346,12 +346,12 @@ _Por qué:_ El aviso de «se quitó del cuaderno» se pintaba dos veces, y remov
 
 _Por qué:_ Los chips eran botones con role=listitem, tocarlos no hacía nada visible bajo un filtro, el gato se pintaba con el compañero apagado y su teclado no hacía lo mismo que el clic.
 
-- ✔ src/client/components/Vocabulary.tsx:684 ~ /<ul className="nb-recent-track">/
+- ✔ src/client/components/Vocabulary.tsx:689 ~ /<ul className="nb-recent-track">/
   - `<ul className="nb-recent-track">`
 - ✔ ningún archivo del Cuaderno contiene /role="listitem"|aria-hidden="true">★|"▸ "|"▾ "/
-- ✔ src/client/components/Vocabulary.tsx:222 ~ /setFilter\("all"\);/
+- ✔ src/client/components/Vocabulary.tsx:223 ~ /setFilter\("all"\);/
   - `setFilter("all");`
-- ✔ src/client/components/Vocabulary.tsx:317 ~ /const heroCompanion = companion\?\.enabled && companion\.state \? companion : null;/
+- ✔ src/client/components/Vocabulary.tsx:318 ~ /const heroCompanion = companion\?\.enabled && companion\.state \? companion : null;/
   - `const heroCompanion = companion?.enabled && companion.state ? companion : null;`
 
 ### ✔ `C24-sin-codigo-muerto-y-calculos-memoizados`
@@ -361,11 +361,11 @@ _Por qué:_ Los chips eran botones con role=listitem, tocarlos no hacía nada vi
 _Por qué:_ UnifiedNotebookView no se usaba (App nunca pasa words) y cada render recalculaba reviewQueue, ~14 filtros con regex y la lista filtrada, también en cada tecla del buscador. Medido con 400 palabras en jsdom: mediana por tecla 21 ms → 15 ms.
 
 - ✔ ningún archivo del Cuaderno contiene /UnifiedNotebookView|tab === "today"|needs: "/
-- ✔ src/client/components/Vocabulary.tsx:263 ~ /\(\) => reviewQueue\(scopedWords, knownKeys, exposure\),/
+- ✔ src/client/components/Vocabulary.tsx:264 ~ /\(\) => reviewQueue\(scopedWords, knownKeys, exposure\),/
   - `() => reviewQueue(scopedWords, knownKeys, exposure),`
 - ✔ src/client/hooks/useHerbarioView.ts:168 ~ /const deferredQuery = useDeferredValue\(query\);/
   - `const deferredQuery = useDeferredValue(query);`
-- ✔ src/client/components/Vocabulary.tsx:269 ~ /const eligibleCount = useMemo\(/
+- ✔ src/client/components/Vocabulary.tsx:270 ~ /const eligibleCount = useMemo\(/
   - `const eligibleCount = useMemo(() => {`
 
 ## Preguntas de investigación

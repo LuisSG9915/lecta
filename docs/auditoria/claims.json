@@ -13,7 +13,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/lib/knowledge.ts",
-          "line": 324,
+          "line": 294,
           "window": 2,
           "expect": "\\(knownCount \\+ savedCount\\) / total",
           "why": "la fórmula del porcentaje usa knownCount+savedCount sobre total"
@@ -21,7 +21,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/lib/knowledge.ts",
-          "line": 321,
+          "line": 291,
           "window": 2,
           "expect": "const total = forms\\.length",
           "why": "total es el número de formas únicas de la sección"
@@ -133,18 +133,16 @@
         {
           "type": "code-anchor",
           "file": "src/client/hooks/useReaderChapterPrep.ts",
-          "line": 383,
+          "line": 399,
           "window": 6,
           "expect": "opening = \"notice\"",
           "why": "la apertura automática se degrada a aviso no intrusivo"
         },
         {
-          "type": "code-anchor",
+          "type": "code-absent",
           "file": "src/client/lib/section-words.ts",
-          "line": 532,
-          "window": 1,
-          "expect": "MAX_PREVIEW_WORDS = 5",
-          "why": "el tope cognitivo declarado (Cowan) es 5, no 40"
+          "pattern": "MAX_PREVIEW_WORDS",
+          "why": "la constante de Cowan sin consumidor se retiró (2026-11-14)"
         }
       ],
       "citations": ["yanagisawa2020", "elleman2009", "webb2009"],
@@ -265,10 +263,10 @@
         {
           "type": "code-anchor",
           "file": "src/client/components/Reader.tsx",
-          "line": 4556,
-          "window": 20,
-          "expect": "updateLanguageTheta\\(currentLang, beta, 1, 1\\.0\\)",
-          "why": "onMarkKnown sube theta con outcome 1"
+          "line": 4563,
+          "window": 2,
+          "expect": "applyPreviewKnownSignal\\(currentLang, beta\\)",
+          "why": "onMarkKnown de la hoja usa la misma señal explicit_known que la ficha"
         },
         {
           "type": "code-anchor",
@@ -320,20 +318,16 @@
       "docQuote": "La exposición pasiva se acota",
       "checks": [
         {
-          "type": "code-anchor",
+          "type": "code-absent",
           "file": "src/client/lib/knowledge.ts",
-          "line": 91,
-          "window": 1,
-          "expect": "GAMMA_PASSIVE = 0\\.82",
-          "why": "decaimiento de la probabilidad estimada"
+          "pattern": "updatePassiveExposureState",
+          "why": "la exposición ya no promueve a «familiar» (2026-11-14)"
         },
         {
-          "type": "code-anchor",
-          "file": "src/client/lib/knowledge.ts",
-          "line": 92,
-          "window": 1,
-          "expect": "FAMILIAR_PASSIVE_THRESHOLD = 3",
-          "why": "tres exposiciones bastan para «familiar»"
+          "type": "code-absent",
+          "file": "src/client/lib/reader-evidence.ts",
+          "pattern": "updateLanguageTheta",
+          "why": "la exposición pasiva no mueve θ"
         },
         {
           "type": "code-anchor",
@@ -377,6 +371,11 @@
       "docQuote": "Tarjetas limpias y consolidación conectada",
       "checks": [
         {
+          "type": "probe",
+          "probe": "senales-aprendizaje",
+          "why": "las señales del reto, la exposición, la consulta y la tasa de acierto dicen lo que pasó (revisión 2026-11-14)"
+        },
+        {
           "type": "code-absent",
           "file": "src/client/lib/fsrs.ts",
           "pattern": "CAPTURE_SOURCE_PARAMS|newCardWithSource|scheduleEpisodicReview",
@@ -385,7 +384,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/lib/reviews.ts",
-          "line": 116,
+          "line": 123,
           "window": 1,
           "expect": "export async function consolidateEpisodicWord",
           "why": "la consolidación de capítulo actualiza la tarjeta"

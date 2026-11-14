@@ -91,7 +91,7 @@ import {
 } from "../lib/paper-reading";
 import type { SuggestionRow } from "../lib/section-words";
 import { lookupWord } from "../lib/lexicon";
-import { loadBookVocab } from "../lib/book-vocab";
+import { bookFrequenciesOf, loadBookVocab } from "../lib/book-vocab";
 import { pushOverlay, type OverlayHandle } from "../lib/history";
 import { reportClientError, reportErrorObject } from "../lib/client-errors";
 import { pushKnowledgeToServer } from "../lib/reading-sync";
@@ -154,6 +154,8 @@ export function usePaperReading(
   const rangesRef = useRef<Map<string, ChapterRange>>(new Map());
   const scopeRef = useRef<DbScope | undefined>(undefined);
   const langRef = useRef("es");
+  // Mismo conteo por libro que la hoja del lector: listas idénticas.
+  const bookFreqRef = useRef<Map<string, number> | null>(null);
   // Mismas fuentes del perfil que el lector: mismas filas de salida.
   const savedFormsRef = useRef<Map<string, MarkLevel>>(new Map());
   const savedTermsRef = useRef<Set<string>>(new Set());
@@ -446,6 +448,7 @@ export function usePaperReading(
         : await loadBookVocab(bookHash, scope, langRef.current).catch(
             () => null,
           );
+      bookFreqRef.current = bookFrequenciesOf(manifest);
       setBookForms(guideForms ?? manifest?.forms ?? []);
       setExtras(groups.extras.map(entryFor));
       setEntries(groups.reading.map(entryFor));
@@ -496,6 +499,7 @@ export function usePaperReading(
         saved: savedFormsRef.current,
         knowledge: knowledgeMapRef.current,
         threshold: thresholdRef.current,
+        bookFrequencies: bookFreqRef.current ?? undefined,
       },
       lexRef.current,
     );

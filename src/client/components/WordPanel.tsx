@@ -26,7 +26,7 @@ import {
 } from "../lib/idb";
 import { pushKnowledgeToServer, scheduleReadingSyncPush } from "../lib/reading-sync";
 import { incrementCollectionPendingCount } from "../lib/sync-state";
-import { recordReview } from "../lib/reviews";
+import { recordLookupLapse, recordReview } from "../lib/reviews";
 import { loadUseAi } from "../lib/ai-pref";
 import { loadNativeLanguage } from "../lib/settings";
 import { triggerHaptic } from "../lib/haptics";
@@ -417,11 +417,15 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
     }
 
     void loadSavedWord(effectiveLang, cleanWord, scope)
-      .then((stored) => {
-        if (!abortCtrl.signal.aborted && stored) {
-          savedRef.current = true;
-          setSavedEntry(stored);
-          setIsSaved(true);
+      .then(async (stored) => {
+        if (abortCtrl.signal.aborted || !stored) return;
+        savedRef.current = true;
+        setSavedEntry(stored);
+        setIsSaved(true);
+        // Consultar en el libro una palabra ya repasada = no la recordó.
+        if (bookHash) {
+          const lapsed = await recordLookupLapse(stored, scope).catch(() => null);
+          if (lapsed && !abortCtrl.signal.aborted) setSavedEntry(lapsed);
         }
       })
       .catch(() => {});
@@ -637,7 +641,9 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
   };
 
   const handleQuickKnown = async () => {
-    if (saving) return;
+    // Una palabra del Cuaderno no se declara «conocida» encima de su
+    // tarjeta: eso lo decide el repaso.
+    if (saving || savedRef.current) return;
     setSaving(true);
     triggerHaptic(10);
     try {
@@ -733,6 +739,10 @@ const WordPanelImpl: React.FC<UnifiedWordPanelProps> = ({
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
         return;
       }
+      // Atajos de una tecla: nunca con modificadores (Cmd+S, Ctrl+P…) ni
+      // escribiendo en un campo editable.
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.target instanceof HTMLElement && e.target.isContentEditable) return;
       if (e.key === "p" || e.key === "P") {
         e.preventDefault();
         keyboardHandlersRef.current.handleSpeak();

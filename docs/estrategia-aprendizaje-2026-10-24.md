@@ -157,7 +157,14 @@ mueven no. La ficha usa `updateThetaForLanguageSignal` (delta 0,18·(1−P), top
 practicar» usan `updateLanguageTheta` (otro delta y tope [−3,5, 4,0];
 `Reader.tsx:4544-4576`); y la exposición pasiva llama `updateLanguageTheta` con
 resultado 1 en cada página válida (`reader-evidence.ts:248-261`), así que θ sube
-solo por leer. θ se guarda en localStorage sin `userId`. La migración de la
+solo por leer. θ se guarda en localStorage sin `userId`.
+
+**Dos estimadores, a propósito (2026-11-14).** `estimateProfile` da un umbral
+en zipf a partir de la evidencia declarada y probada; gobierna la predicción
+de la sección y la cobertura. θ Rasch (`thetaByLang`) gobierna la utilidad de
+la hoja, el CAT y la dificultad relativa. Desde la revisión ninguna señal los
+empuja en sentidos opuestos: la exposición pasiva ya no toca a ninguno y
+todas las señales de θ pasan por `updateThetaForLanguageSignal`. La migración de la
 llave vieja resta 3 solo si el valor es ≥ 2,5 y no pisa un θ ya distinto de 0
 (`profile-models.ts:252-260`).
 
@@ -669,30 +676,50 @@ las notas «Estado real» de las secciones anteriores describen el árbol previo
    zipf)` con `effectiveLang` y el zipf medido del análisis (`zipfForForm` en el
    lector); una señal por palabra y día (consultar y guardar es un acto).
 4. **Frecuencia en la preparación** — hecho a nivel de capítulo:
-   `countFormTokens` cuenta tokens del texto. **Pendiente:** `bookFrequencies`
-   sigue sin pasarse (`preparation-rows.ts`).
+   `countFormTokens` cuenta tokens del texto; `bookFrequencies` llega desde el
+   manifiesto del libro (ver P1 abajo).
 5. **Tasa de acierto** — hecho. `RECALL_HIT_RATINGS` incluye `hard` en cliente,
    `admin-insights.ts` y el SQL de `worker/admin.ts`.
 6. **Errores del Cuaderno** — hecho. Un error en un minijuego marca el reto
    (`missedRef` en `useReviewSession`) y el acierto posterior, también tras el
    rescate, se califica `Again`.
 
-**P1 — coherencia del circuito**
+**P1 — coherencia del circuito** (corregidos en código el 2026-11-14, segunda tanda)
 
-7. Solo entran al reto palabras presentadas o consultadas; conservar la fuente
-   `notebook-reencounter`; vaciar la lista por capítulo; ningún alta al Cuaderno
-   sin confirmación (§H2, §M2).
-8. La consolidación no revive lápidas y resuelve por lema contra el Cuaderno;
-   filtrar palabras declaradas o quitadas (§H6).
-9. Registrar el reencuentro: consulta de palabra con `reps > 0` = `Again`;
-   reencuentro sin consulta = evento `reencounter` sin nota FSRS (§M2).
-10. Unificar las tres reglas de θ y documentar o derivar los dos estimadores
-    (§H3).
-11. Retirar el `Easy` automático del taller IA (§H6).
-12. Cifras reales en el modal de cierre: consultadas, guardadas y repasadas (§5).
-13. Atajos de la ficha limitados al foco del panel; «Ya la sé» no actúa sobre
-    palabras guardadas (§H4).
-14. Un solo programador FSRS: el portal Kindle usa el del cliente o respeta
-    `request_retention` y la nota del Cuaderno (§1).
-15. Retirar o conectar el código sin consumidor listado en §1.
-16. Sondas de comportamiento en `claims.json` (§8).
+7. **Reto de cierre** — hecho. Al terminar el análisis solo entran las palabras
+   del Cuaderno que reaparecen (`notebook-reencounter`); las filas de la hoja
+   entran solo si la hoja se mostró (`recordPresented` suma sin pisar la
+   fuente). La lista se reemplaza por capítulo y se descartan filas sin oración.
+8. **Consolidación** — hecho. No revive lápidas; busca por forma y luego por
+   lema entre las guardadas (otra flexión avanza la tarjeta existente); no da
+   de alta palabras solo preparadas (`pre-chapter-primed`) ni declaradas
+   conocidas.
+9. **Reencuentro** — hecho en parte. Reconsultar en el libro una palabra con
+   `reps > 0` registra `Again` sin XP, una vez al día (`recordLookupLapse`). El
+   reencuentro sin consulta sigue sin registrarse: necesitaría un tipo de
+   repaso nuevo en el contrato de sync.
+10. **θ** — hecho. La hoja usa las mismas señales que la ficha
+    (`applyPreviewKnownSignal` / `applyWordPanelLookupSignal`);
+    `updateLanguageTheta` se retiró. Siguen dos estimadores a propósito (§H3).
+11. **Taller IA** — hecho. Vale `Good` (nunca `Easy`) y solo si la tarjeta ya
+    tocaba. La IA sigue precargando la nota en «Escribir», pero el lector la
+    confirma.
+12. **Modal de cierre** — hecho. «Palabras leídas» (cifra real) en lugar de
+    «asimiladas»; sin «+1 % de cobertura» ni «sellado en memoria»; el resumen
+    del retiro ya no fabrica cifras.
+13. **Atajos de la ficha** — hecho. Se ignoran con Cmd/Ctrl/Alt y en campos
+    editables; «Ya la sé» no actúa sobre una palabra guardada.
+14. **Kindle** — hecho. Acierto con opciones = `hard` y `request_retention` 0,9
+    (ritmo «Equilibrado»); el ritmo elegido por el lector vive solo en el
+    dispositivo y no llega al servidor.
+15. **Código sin consumidor** — retirado: `buildOneMinuteReviewSession`,
+    `savedWordToItem`, `MAX_PREVIEW_WORDS`, `updatePreviewFrictionPreference`,
+    `applyChapterCompletionPassiveLoop`, `updatePassiveExposureState` y
+    `updateLanguageTheta`.
+16. **Arnés** — sonda de comportamiento `senales-aprendizaje` en H6 (regla de
+    acierto ejecutada; exposición por página y sin θ; reto calificado por
+    errores; consulta en el idioma del libro; frecuencia por tokens).
+
+**P0-4 completo**: la hoja también pondera las apariciones en el libro entero
+(`bookFrequenciesOf` del manifiesto `bookVocab`), igual en el lector y en «Leo
+este libro en papel».
