@@ -53,18 +53,19 @@ export function PracticeCard({
     answerOption,
     answered,
     askCatHint,
+    catTap,
     checkWriteSentence,
     choiceOptions,
     cloze,
     clozeNewText,
     continueRef,
     done,
-    endSessionForToday,
     firstGradeRef,
     grade,
     grading,
     hintBusy,
     hintText,
+    hintUsed,
     matchDone,
     matchFlash,
     matchLeft,
@@ -100,8 +101,31 @@ export function PracticeCard({
     setCatPose,
     setCatSpeech,
     setCombo,
+    settleCatAfter,
     updateCompanionMode,
   } = practiceCompanion;
+
+  // Minijuegos: la racha suma al resolver (grade no la repite) y el gato
+  // vuelve a «idle» pasados 2,2 s para no celebrar en el reto siguiente.
+  const solveReaction = (speech: string, streakSpeech: (n: number) => string) => {
+    const next = combo + 1;
+    setCombo(next);
+    setCatPose(next >= 3 ? "playful_hop" : "celebrate");
+    setCatSpeech(next >= 3 ? streakSpeech(next) : speech);
+    settleCatAfter(2200);
+  };
+  const wrongReaction = (speech: string) => {
+    setCatPose("pet");
+    setCatSpeech(speech);
+    setCombo(0);
+    settleCatAfter(2200);
+  };
+  const hintBox =
+    hintText && current.mode !== "write" ? (
+      <p className="scramble-hint-box" role="status">
+        💡 {hintText}
+      </p>
+    ) : null;
 
   return (
     <div className="nb-practice">
@@ -112,8 +136,9 @@ export function PracticeCard({
         mode={companionMode}
         onModeChange={updateCompanionMode}
         onAskHint={canHint && current.mode !== "write" ? askCatHint : undefined}
+        onCatTap={catTap}
         hintBusy={hintBusy}
-        hintText={hintText}
+        hintUsed={hintUsed}
         progress={{
           current: done + 1,
           total: queueTotal,
@@ -137,8 +162,7 @@ export function PracticeCard({
             : "De tus lecturas recientes"}
         </span>
         <span className="nb-practice-counter meta">
-          {MODES.find((m) => m.id === current.mode)?.label ? `${MODES.find((m) => m.id === current.mode)?.label} · ` : ""}
-          {done + 1} de {queueTotal}
+          {MODES.find((m) => m.id === current.mode)?.label ?? ""}
         </span>
       </div>
 
@@ -206,21 +230,12 @@ export function PracticeCard({
           hintBusy={hintBusy}
           onAskHint={canHint ? askCatHint : undefined}
           onSolve={() => {
-            setCombo((prev) => {
-              const next = prev + 1;
-              setCatPose("celebrate");
-              setCatSpeech(
-                next >= 3 ? `¡En racha! x${next}` : "¡Palabra descifrada!",
-              );
-              return next;
-            });
+            solveReaction("¡Palabra descifrada!", (n) => `¡En racha! x${n}`);
             void grade(current, EXERCISE_RATING.correct);
           }}
           onWrong={() => {
             if (tryRescue(current, "¡No pasa nada! El gato te ayuda: inténtalo en contexto.")) return;
-            setCatPose("greet");
-            setCatSpeech("Casi... ¡revisa el orden de las letras!");
-            setCombo(0);
+            wrongReaction("Casi... ¡revisa el orden de las letras!");
           }}
         />
       ) : current.mode === "grammar" ? (
@@ -236,21 +251,12 @@ export function PracticeCard({
           hintBusy={hintBusy}
           onAskHint={canHint ? askCatHint : undefined}
           onSolve={() => {
-            setCombo((prev) => {
-              const next = prev + 1;
-              setCatPose("celebrate");
-              setCatSpeech(
-                next >= 3 ? `¡Gramática en racha! x${next}` : "¡Categoría acertada!",
-              );
-              return next;
-            });
+            solveReaction("¡Categoría acertada!", (n) => `¡Gramática en racha! x${n}`);
             void grade(current, EXERCISE_RATING.correct);
           }}
           onWrong={() => {
             if (tryRescue(current, "¡Tranquilo! Vamos a ver la palabra en su oración.")) return;
-            setCatPose("greet");
-            setCatSpeech("Casi... revisa la función de la palabra.");
-            setCombo(0);
+            wrongReaction("Casi... revisa la función de la palabra.");
           }}
         />
       ) : current.mode === "syntax" ? (
@@ -265,21 +271,12 @@ export function PracticeCard({
           hintBusy={hintBusy}
           onAskHint={canHint ? askCatHint : undefined}
           onSolve={() => {
-            setCombo((prev) => {
-              const next = prev + 1;
-              setCatPose("celebrate");
-              setCatSpeech(
-                next >= 3 ? `¡Sintaxis en racha! x${next}` : "¡Oración ordenada!",
-              );
-              return next;
-            });
+            solveReaction("¡Oración ordenada!", (n) => `¡Sintaxis en racha! x${n}`);
             void grade(current, EXERCISE_RATING.correct);
           }}
           onWrong={() => {
             if (tryRescue(current, "¡No pasa nada! Reconozcamos la palabra primero.")) return;
-            setCatPose("greet");
-            setCatSpeech("Revisa el orden de las palabras.");
-            setCombo(0);
+            wrongReaction("Revisa el orden de las palabras.");
           }}
         />
       ) : current.mode === "write" ? (
@@ -376,7 +373,7 @@ export function PracticeCard({
           {writePick ? (
             <button
               type="button"
-              className="btn btn--primary"
+              className="btn btn--primary nb-continue"
               ref={continueRef}
               disabled={grading}
               onClick={() =>
@@ -404,14 +401,7 @@ export function PracticeCard({
                   />
                 ) : null}
                 <p className="meta">Toca la palabra que falta.</p>
-                {/* Corrección con significado: sin esto, fallar el hueco
-                    no enseña lo que la palabra quiere decir. */}
-                {answered ? (
-                  <p className="nb-card-back" role="status">
-                    <strong>{current.word.form}</strong>
-                    {current.word.meaning ? ` — ${current.word.meaning}` : ""}
-                  </p>
-                ) : null}
+                {hintBox}
               </>
             ) : current.mode === "context" ? (
               <>
@@ -430,6 +420,7 @@ export function PracticeCard({
                 <p className="meta">
                   ¿Qué significa «{current.word.form}» en esta oración?
                 </p>
+                {hintBox}
               </>
             ) : (
               <>
@@ -459,6 +450,7 @@ export function PracticeCard({
                   />
                 ) : null}
                 <p className="meta">¿Qué acepción corresponde aquí?</p>
+                {hintBox}
               </>
             )}
           </div>
@@ -513,10 +505,44 @@ export function PracticeCard({
                 ))}
           </div>
 
+          <p className="meta nb-keys-hint nb-keys-hint--kbd">
+            Teclas 1–{Math.min(9, current.mode === "choose" ? choiceOptions.length : senseLikeOptions.length)} eligen
+          </p>
+
+          {/* El resultado va debajo de las opciones: no las empuja. Es la única
+              región que lo anuncia (el globo del gato no repite). */}
+          {answered ? (
+            <div className="nb-answer-foot" role="status">
+              <p
+                className={`nb-answer-verdict${
+                  current.mode === "choose" ? "" : " visually-hidden"
+                }`}
+              >
+                {answered.correct
+                  ? "Correcto"
+                  : `Incorrecto: era “${
+                      current.mode === "choose"
+                        ? current.word.form
+                        : senseLikeAnswer != null
+                          ? (senseLikeOptions[senseLikeAnswer] ?? "")
+                          : ""
+                    }”`}
+              </p>
+              {/* Corrección con significado: sin esto, fallar el hueco
+                  no enseña lo que la palabra quiere decir. */}
+              {current.mode === "choose" ? (
+                <p className="nb-card-back">
+                  <strong>{current.word.form}</strong>
+                  {current.word.meaning ? ` — ${current.word.meaning}` : ""}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
           {answered ? (
             <button
               type="button"
-              className="btn btn--primary"
+              className="btn btn--primary nb-continue"
               ref={continueRef}
               disabled={grading}
               onClick={() =>
@@ -573,6 +599,7 @@ export function PracticeCard({
                 ) : null}
               </>
             )}
+            {hintBox}
 
             {revealed ? (
               <p className="nb-card-back">
@@ -628,19 +655,11 @@ export function PracticeCard({
                   </div>
                 ))}
               </div>
-              <p className="meta nb-keys-hint">Teclas 1–4 califican · Espacio muestra la respuesta</p>
+              <p className="meta nb-keys-hint nb-keys-hint--kbd">Teclas 1–4 califican · Espacio muestra la respuesta</p>
             </>
           ) : null}
         </>
       )}
-
-      <button
-        type="button"
-        className="btn--quiet nb-quit"
-        onClick={() => endSessionForToday(Date.now())}
-      >
-        Terminar por hoy
-      </button>
     </div>
   );
 }

@@ -13,7 +13,7 @@ files of this directory.
 
 | File | Key exports |
 | --- | --- |
-| `app-version.ts` | `APP_VERSION` (`"0.2.15"`) |
+| `app-version.ts` | `APP_VERSION` (`"0.2.16"`) |
 | `reading-data.ts` | Sync limits and cleaners: `ANNOTATION_LIMITS`/`cleanAnnotation`, `ACTIVITY_LIMITS`/`cleanActivity`, `REVIEW_LIMITS`/`REVIEW_KINDS`/`REVIEW_RATINGS`/`cleanReview`, `POSITION_LIMITS`/`cleanPosition`, `KNOWLEDGE_LIMITS`/`KNOWLEDGE_SOURCES`/`KNOWLEDGE_SOURCE_STRENGTH`/`cleanKnowledge`, `knowledgeArbKey`, `knowledgeArbWins`, `knowledgeArbSql`, `isFsrsCardShape`, `DAILY_SUMMARY_LIMITS`/`DAILY_SUMMARY_DEVICES`/`cleanDailySummary` |
 | `companion-data.ts` | `CompanionSnapshot`, `CompanionBatch`, `COMPANION_FIELDS`, `RECEIPT_KINDS`, `receiptIdFor`/`parseReceiptId`, `COMPANION_ARTICLES`, `COMPANION_COATS`/`COMPANION_COAT_IDS`/`resolveCoatId`, `mergeLegacyBaselines`, `mergeCompanionRegister`, `getEquippedItems`, `projectGame`, `projectChests`, `pendingAchievementCredits`, `bestStreak`, `validateCompanionBatch`, `COMPANION_BATCH_LIMIT` (120), `COMPANION_ID_LIMIT` (200) |
 | `gamification.ts` | `GameState`, `GameEvent`, `emptyGameState`, `LEVELS`, `levelFor`, `levelProgress`, `XP_REVIEW`, `RARE_ZIPF_BELOW`, `catMood`, `catStageForLevel`, `ACHIEVEMENTS`, `ACHIEVEMENT_FAMILIES`, `familyProgress`, `dayKeyOf`, `daysBetween` |

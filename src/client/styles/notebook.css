@@ -43,6 +43,16 @@
   gap: var(--s-3);
 }
 
+.notebook--page[data-session] .notebook-bar {
+  /* Durante la sesión «Terminar por hoy» vive en la barra: se queda a la
+     vista aunque se desplace la tarjeta. */
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 2;
+  background: var(--grain), var(--surface-herbarium);
+  padding-block-start: var(--s-2);
+}
+
 .notebook--page .notebook-title {
   font-family: var(--font-book);
   font-size: var(--fs-2xl);
@@ -155,7 +165,7 @@
 }
 
 .nb-card {
-  margin-block: var(--s-4) var(--s-5);
+  margin-block: var(--s-3);
   padding: var(--s-5) var(--s-5) var(--s-5) var(--s-6);
   background: var(--paper-raised);
   border: var(--border);
@@ -228,8 +238,8 @@
 .practice-cat-bar {
   display: flex;
   flex-direction: column;
-  gap: var(--s-2);
-  padding: var(--s-3);
+  gap: var(--s-1);
+  padding: var(--s-2);
   margin-block-end: var(--s-3);
   background: var(--paper-raised, var(--paper));
   border: var(--border);
@@ -242,23 +252,12 @@
 .practice-header-progress {
   display: flex;
   align-items: center;
-  gap: var(--s-2);
   inline-size: 100%;
-  padding-block-end: var(--s-2);
-  border-bottom: 1px solid var(--rule);
-}
-
-.practice-progress-text {
-  font-family: var(--font-ui);
-  font-size: var(--fs-xs);
-  font-weight: 600;
-  color: var(--ink-soft);
-  white-space: nowrap;
 }
 
 .practice-progress-track {
   flex: 1;
-  block-size: 6px;
+  block-size: 4px;
   background: var(--rule, var(--line));
   border-radius: var(--r-pill, 999px);
   overflow: hidden;
@@ -297,8 +296,8 @@
 }
 
 .practice-cat-avatar {
-  inline-size: 56px;
-  block-size: 56px;
+  inline-size: 72px;
+  block-size: 72px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -320,6 +319,20 @@
 .practice-cat-avatar svg {
   inline-size: 100%;
   block-size: 100%;
+}
+
+/* Reacción: crece el gato interior, no el contenedor (sin alto de layout y
+   sin chocar con el transform de :hover / :active). `.cat-anim` respeta el
+   movimiento reducido global y la excepción data-cat-motion="full". */
+.practice-cat-avatar .cat-anim {
+  position: relative;
+  transform-origin: bottom center;
+  transition: transform var(--dur-2) var(--ease-out);
+}
+
+.practice-cat-avatar[data-reacting] .cat-anim {
+  z-index: 1;
+  transform: scale(1.25);
 }
 
 .practice-cat-content {
@@ -358,11 +371,46 @@
   line-height: 1.35;
 }
 
+/* En repaso y Aprender el globo se queda en 2 líneas: su alto no empuja la
+   tarjeta. ReviewDone y el panel de juegos no lo recortan. */
+.practice-cat-bar[data-tap] .practice-cat-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
 .practice-cat-actions {
   display: flex;
   align-items: center;
-  gap: var(--s-2);
+  gap: var(--s-1);
   flex-shrink: 0;
+  align-self: flex-start;
+}
+
+.practice-cat-actions .btn--quiet {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+/* En móvil las acciones son iconos de 44 px: el texto queda para lector de
+   pantalla (cada botón lleva aria-label). */
+@media (width < 64rem) {
+  .practice-cat-actions .btn--quiet {
+    justify-content: center;
+    min-inline-size: 44px;
+    min-block-size: 44px;
+  }
+
+  .practice-cat-action-label {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
 }
 
 .practice-cat-combo {
@@ -469,6 +517,14 @@
   text-align: center;
 }
 
+/* Leyendas de teclado: sin puntero fino no hay teclado que usar. Las demás
+   .nb-keys-hint (Parejas, minijuegos) son instrucciones táctiles. */
+@media not (pointer: fine) {
+  .nb-keys-hint--kbd {
+    display: none;
+  }
+}
+
 /* Opciones de «elegir palabra» y «acepción»: columna de botones que
    hereda el tratamiento .btn; el acierto va en salvia y el error en
    bermellón, con peso/tachado para no depender solo del color. */
@@ -476,31 +532,98 @@
   display: flex;
   flex-direction: column;
   gap: var(--s-2);
-  margin-block: var(--s-3) var(--s-4);
+  margin-block: var(--s-3) var(--s-2);
 }
 
 .choice-option {
   inline-size: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
   text-align: start;
   font-weight: 400;
+  line-height: 1.3;
   block-size: auto;
   white-space: normal;
+  /* 2 px desde el inicio: al responder solo cambia el color, no el alto. */
+  border: 2px solid var(--rule-strong);
   transition:
     border-color var(--dur-1) var(--ease-out),
     color var(--dur-1) var(--ease-out),
     background-color var(--dur-1) var(--ease-out);
 }
 
+/* Respondida: sigue deshabilitada (sin clic ni tabulador) pero sin la
+   opacidad global de button:disabled; solo se atenúan las que no son ni la
+   correcta ni la elegida. */
+.choice-option:disabled {
+  opacity: 1;
+}
+
+.choice-option:disabled:not(.is-correct):not(.is-wrong) {
+  opacity: 0.55;
+}
+
+/* El wash se pinta sobre --paper-raised: es el color que mide la prueba de
+   contraste de tokens.test.ts. */
 .choice-option.is-correct {
-  border-color: var(--sage);
-  color: var(--sage);
+  border-color: var(--success);
+  background: linear-gradient(var(--success-wash), var(--success-wash)), var(--paper-raised);
+  color: var(--ink);
   font-weight: 600;
+  animation: lecta-pop 220ms var(--ease-out);
+}
+
+.choice-option.is-correct::after {
+  content: "✓";
+  margin-inline-start: auto;
+  font-weight: 700;
+  color: var(--success);
 }
 
 .choice-option.is-wrong {
   border-color: var(--vermilion);
-  color: var(--vermilion);
+  background: linear-gradient(var(--vermilion-wash), var(--vermilion-wash)), var(--paper-raised);
+  color: var(--ink);
   text-decoration: line-through;
+  animation: lecta-shake var(--dur-3) var(--ease-out);
+}
+
+.choice-option.is-wrong::after {
+  content: "✕";
+  /* inline-block: el tachado del texto no se propaga a la marca. */
+  display: inline-block;
+  margin-inline-start: auto;
+  font-weight: 700;
+  color: var(--vermilion);
+  text-decoration: none;
+}
+
+/* Resultado debajo de las opciones (no las empuja) y «Continuar» fijo al
+   borde inferior cuando no cabe: sigue siendo hijo de .nb-practice, así el
+   sticky puede fijarse aunque el pie quede fuera de la ventana. */
+.nb-answer-foot {
+  margin-block: 0 var(--s-2);
+}
+
+.nb-answer-foot .nb-card-back {
+  margin-block: 0;
+}
+
+.nb-answer-verdict {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.nb-continue {
+  position: sticky;
+  inset-block-end: calc(env(safe-area-inset-bottom) + var(--s-2));
+  z-index: 1;
+  inline-size: 100%;
+  box-shadow: 0 -6px 14px -6px rgb(0 0 0 / 0.25);
 }
 
 /* Parejas: dos columnas de botones; el par resuelto se atenúa y se
@@ -631,10 +754,6 @@
 .write-grades .btn[aria-pressed="true"] {
   border-color: var(--vermilion);
   font-weight: 600;
-}
-
-.nb-quit {
-  margin-block-start: var(--s-4);
 }
 
 /* Significado escrito a mano en la ficha de «Aprender»: campo único
@@ -2025,7 +2144,7 @@
   border-bottom-color: var(--sage);
   background: var(--sage-wash);
   color: var(--sage-ink);
-  animation: pop-match var(--dur-2) var(--ease-out);
+  animation: lecta-pop var(--dur-2) var(--ease-out);
 }
 
 .grammar-cat-btn.is-wrong {
@@ -2263,6 +2382,18 @@
   }
   50% {
     transform: translateY(-6px);
+  }
+}
+
+@keyframes lecta-pop {
+  0% {
+    transform: scale(0.97);
+  }
+  60% {
+    transform: scale(1.02);
+  }
+  100% {
+    transform: scale(1);
   }
 }
 

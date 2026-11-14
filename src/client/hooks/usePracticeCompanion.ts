@@ -18,8 +18,13 @@ export type UsePracticeCompanionResult = {
   setCatSpeech: (speech: string) => void;
   combo: number;
   setCombo: (value: number | ((prev: number) => number)) => void;
-  /** Vuelve a «idle» pasados `ms`; reemplaza el temporizador anterior. */
-  settleCatAfter: (ms: number) => void;
+  /** Vuelve a `to` («idle» por defecto) pasados `ms`; reemplaza el temporizador anterior. */
+  settleCatAfter: (ms: number, to?: CompanionPose) => void;
+  /** Pose de resultado del reto actual: a ella vuelve el gato tras una caricia. */
+  resultPose: CompanionPose;
+  setResultPose: (pose: CompanionPose) => void;
+  /** Cambio de reto: cancela el temporizador y deja pose y resultado en «idle». */
+  resetCat: () => void;
 };
 
 export function usePracticeCompanion(): UsePracticeCompanionResult {
@@ -29,6 +34,7 @@ export function usePracticeCompanion(): UsePracticeCompanionResult {
   const [catPose, setCatPose] = useState<CompanionPose>("idle");
   const [catSpeech, setCatSpeech] = useState<string>("");
   const [combo, setCombo] = useState(0);
+  const [resultPose, setResultPose] = useState<CompanionPose>("idle");
   const catPoseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearCatTimer = useCallback(() => {
@@ -40,15 +46,21 @@ export function usePracticeCompanion(): UsePracticeCompanionResult {
   useEffect(() => clearCatTimer, [clearCatTimer]);
 
   const settleCatAfter = useCallback(
-    (ms: number) => {
+    (ms: number, to: CompanionPose = "idle") => {
       clearCatTimer();
       catPoseTimer.current = setTimeout(() => {
-        setCatPose("idle");
+        setCatPose(to);
         catPoseTimer.current = null;
       }, ms);
     },
     [clearCatTimer],
   );
+
+  const resetCat = useCallback(() => {
+    clearCatTimer();
+    setResultPose("idle");
+    setCatPose("idle");
+  }, [clearCatTimer]);
 
   const updateCompanionMode = useCallback((mode: PracticeCompanionMode) => {
     setCompanionMode(mode);
@@ -65,5 +77,8 @@ export function usePracticeCompanion(): UsePracticeCompanionResult {
     combo,
     setCombo,
     settleCatAfter,
+    resultPose,
+    setResultPose,
+    resetCat,
   };
 }

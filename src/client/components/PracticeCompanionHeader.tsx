@@ -11,7 +11,13 @@ export interface PracticeCompanionHeaderProps {
   mode: PracticeCompanionMode;
   onModeChange: (mode: PracticeCompanionMode) => void;
   onAskHint?: () => void;
+  /** Toque al avatar (repaso y Aprender): el hook decide pista o caricia. Con
+   *  él el gato crece al reaccionar, el globo se recorta a 2 líneas y deja de
+   *  anunciarse (el resultado lo anuncia la tarjeta). */
+  onCatTap?: () => void;
   hintBusy?: boolean;
+  /** El reto actual ya pidió su pista: se oculta «💡 Pista». */
+  hintUsed?: boolean;
   hintText?: string | null;
   progress?: { current: number; total: number };
   instruction?: string;
@@ -34,7 +40,9 @@ export function PracticeCompanionHeader({
   mode,
   onModeChange,
   onAskHint,
+  onCatTap,
   hintBusy = false,
+  hintUsed = false,
   hintText,
   progress,
   instruction,
@@ -70,6 +78,10 @@ export function PracticeCompanionHeader({
   const handleCatClick = () => {
     triggerHaptic("selection");
     playCompanionSound("purr");
+    if (onCatTap) {
+      onCatTap();
+      return;
+    }
     if (onAskHint && !hintBusy) {
       onAskHint();
     }
@@ -95,20 +107,24 @@ export function PracticeCompanionHeader({
 
   const displayText = getDisplayText();
 
+  const tappable = Boolean(onCatTap);
+  const reacting = tappable && mode === "animated" && pose !== "idle";
+  const showHintButton = Boolean(onAskHint) && !hintUsed && !hintText;
+
   return (
-    <aside className="practice-cat-bar" aria-label={`Compañero ${name}`}>
-      {/* Barra de progreso de sesión integrada si se proporciona */}
+    <aside
+      className="practice-cat-bar"
+      aria-label={`Compañero ${name}`}
+      data-tap={tappable || undefined}
+    >
+      {/* Barra de progreso de sesión: el número vive en la cabecera del
+          Cuaderno («3 de 5»), que se ve aunque el gato esté oculto. */}
       {progress && progress.total > 0 ? (
-        <div
-          className="practice-header-progress"
-          aria-label={`Progreso: Reto ${progress.current} de ${progress.total}`}
-        >
-          <span className="practice-progress-text">
-            Reto {progress.current} de {progress.total}
-          </span>
+        <div className="practice-header-progress">
           <div
             className="practice-progress-track"
             role="progressbar"
+            aria-label={`Progreso: reto ${progress.current} de ${progress.total}`}
             aria-valuenow={progress.current}
             aria-valuemin={1}
             aria-valuemax={progress.total}
@@ -128,6 +144,7 @@ export function PracticeCompanionHeader({
           className="practice-cat-avatar"
           role="button"
           tabIndex={0}
+          data-reacting={reacting || undefined}
           onClick={handleCatClick}
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") {
@@ -149,7 +166,10 @@ export function PracticeCompanionHeader({
         </div>
 
         <div className="practice-cat-content">
-          <div className="practice-cat-speech-bubble" role="status">
+          <div
+            className="practice-cat-speech-bubble"
+            {...(tappable ? { "aria-live": "off" as const } : { role: "status" })}
+          >
             <div className="practice-cat-meta-row">
               <strong className="practice-cat-name">{name}</strong>
               {bookTitle ? (
@@ -169,30 +189,35 @@ export function PracticeCompanionHeader({
             {displayText ? <p className="practice-cat-text">{displayText}</p> : null}
           </div>
         </div>
-      </div>
 
-      <div className="practice-cat-actions">
-        {onAskHint && !hintText ? (
+        <div className="practice-cat-actions">
+          {showHintButton ? (
+            <button
+              type="button"
+              className="btn--quiet practice-cat-hint-btn"
+              disabled={hintBusy}
+              onClick={onAskHint}
+              aria-label="Pedir una pista"
+              title={`Pedir una pista a ${name}`}
+            >
+              <span aria-hidden="true">💡</span>
+              <span className="practice-cat-action-label">
+                {hintBusy ? "Pensando…" : "Pista"}
+              </span>
+            </button>
+          ) : null}
+
           <button
             type="button"
-            className="btn--quiet practice-cat-hint-btn"
-            disabled={hintBusy}
-            onClick={onAskHint}
-            title={`Pedir una pista a ${name}`}
+            className="btn--quiet practice-cat-mode-btn"
+            onClick={cycleMode}
+            title={`Carácter del gato: ${modeLabel}. Toca para cambiar.`}
+            aria-label={`Carácter del gato: ${modeLabel}`}
           >
-            {hintBusy ? "Pensando…" : "💡 Pista"}
+            <span aria-hidden="true" className="practice-cat-mode-icon">🐾</span>
+            <span className="practice-cat-action-label">{modeLabel}</span>
           </button>
-        ) : null}
-
-        <button
-          type="button"
-          className="btn--quiet practice-cat-mode-btn"
-          onClick={cycleMode}
-          title={`Modo del compañero: ${modeLabel}. Toca para cambiar.`}
-          aria-label={`Modo del compañero: ${modeLabel}`}
-        >
-          {modeLabel}
-        </button>
+        </div>
       </div>
     </aside>
   );

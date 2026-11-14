@@ -145,7 +145,8 @@ describe("PracticeCompanionHeader", () => {
     expect(onAskHint).toHaveBeenCalledTimes(1);
 
     const modeBtn = host.querySelector(".practice-cat-mode-btn");
-    expect(modeBtn?.textContent).toBe("Animado");
+    expect(modeBtn?.getAttribute("aria-label")).toBe("Carácter del gato: Animado");
+    expect(modeBtn?.querySelector(".practice-cat-action-label")?.textContent).toBe("Animado");
     if (modeBtn) click(modeBtn);
     expect(onModeChange).toHaveBeenCalledWith("calm");
   });
@@ -184,8 +185,10 @@ describe("PracticeCompanionHeader", () => {
       }),
     );
 
-    // Barra de progreso de sesión
-    expect(host.textContent).toContain("Reto 3 de 5");
+    // Barra de progreso de sesión: sin texto (el número vive en la cabecera
+    // del Cuaderno), con su valor para lector de pantalla.
+    expect(host.textContent).not.toContain("Reto 3 de 5");
+    expect(host.querySelector('[role="progressbar"]')?.getAttribute("aria-valuenow")).toBe("3");
     const progressFill = host.querySelector(".practice-progress-fill") as HTMLElement;
     expect(progressFill).not.toBeNull();
     expect(progressFill.style.inlineSize).toBe("60%");
@@ -237,5 +240,82 @@ describe("PracticeCompanionHeader", () => {
     // Debe mostrar la píldora de eco literario
     expect(host.textContent).toContain("📖 Eco de: Cien años de soledad");
   });
-});
 
+  describe("con onCatTap (repaso y Aprender)", () => {
+    const companion = () =>
+      vi.spyOn(CompanionProviderModule, "useCompanionSafe").mockReturnValue({
+        enabled: true,
+        state: {} as never,
+        name: "Michi",
+        equipped: { body: null, neck: null, head: null, face: null, coat: null },
+        accessories: [],
+        mood: "awake",
+        stage: 1,
+        presence: "visits",
+        modalOpen: false,
+        reducedMotion: false,
+        activeCare: null,
+        open: false,
+        openPanel: vi.fn(),
+        closePanel: vi.fn(),
+        setCelebrationBlocked: vi.fn(),
+        care: vi.fn(),
+      });
+
+    it("el toque al avatar llama a onCatTap y no a onAskHint", () => {
+      companion();
+      const onCatTap = vi.fn();
+      const onAskHint = vi.fn();
+      render(
+        h(PracticeCompanionHeader, {
+          pose: "idle",
+          speech: "",
+          combo: 0,
+          mode: "animated",
+          onModeChange: vi.fn(),
+          onAskHint,
+          onCatTap,
+        }),
+      );
+      click(host.querySelector(".practice-cat-avatar")!);
+      expect(onCatTap).toHaveBeenCalledTimes(1);
+      expect(onAskHint).not.toHaveBeenCalled();
+    });
+
+    it("crece al reaccionar, el globo no se anuncia y «Pista» se oculta si ya se usó", () => {
+      companion();
+      render(
+        h(PracticeCompanionHeader, {
+          pose: "celebrate",
+          speech: "¡Exacto!",
+          combo: 0,
+          mode: "animated",
+          onModeChange: vi.fn(),
+          onAskHint: vi.fn(),
+          onCatTap: vi.fn(),
+          hintUsed: true,
+        }),
+      );
+      expect(host.querySelector(".practice-cat-avatar")?.hasAttribute("data-reacting")).toBe(true);
+      const bubble = host.querySelector(".practice-cat-speech-bubble")!;
+      expect(bubble.getAttribute("role")).toBeNull();
+      expect(bubble.getAttribute("aria-live")).toBe("off");
+      expect(host.querySelector(".practice-cat-hint-btn")).toBeNull();
+    });
+
+    it("sin onCatTap (cierre de sesión) no crece y el globo sí se anuncia", () => {
+      companion();
+      render(
+        h(PracticeCompanionHeader, {
+          pose: "celebrate",
+          speech: "¡Repaso terminado!",
+          combo: 0,
+          mode: "animated",
+          onModeChange: vi.fn(),
+        }),
+      );
+      expect(host.querySelector(".practice-cat-avatar")?.hasAttribute("data-reacting")).toBe(false);
+      expect(host.querySelector(".practice-cat-speech-bubble")?.getAttribute("role")).toBe("status");
+    });
+  });
+});

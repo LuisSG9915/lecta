@@ -161,7 +161,7 @@ export const CLAIMS = [
       {
         tipo: "presente",
         file: "@notebook",
-        expect: 'className="nb-card-back" role="status"',
+        expect: 'className="nb-answer-foot" role="status"',
       },
     ],
   },
@@ -600,7 +600,7 @@ export const CLAIMS = [
       {
         tipo: "presente",
         file: "@notebook",
-        expect: "onClick=\\{\\(\\) => endSessionForToday\\(Date\\.now\\(\\)\\)\\}",
+        expect: "\\(\\) => void review\\.exitSession\\(\\)",
       },
     ],
   },

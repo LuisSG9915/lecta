@@ -1,6 +1,6 @@
 # Auditoría del Cuaderno — estudio antes que prueba
 
-Generado por `scripts/audit-cuaderno.mjs` v1 el 2026-11-10T19:02:35.229Z. Commit: `2c8f9c0aca8d`.
+Generado por `scripts/audit-cuaderno.mjs` v1 el 2026-11-14T15:49:06.517Z. Commit: `7d4f1f8bc2ed`.
 
 ## La queja, en palabras del usuario
 
@@ -8,8 +8,8 @@ Generado por `scripts/audit-cuaderno.mjs` v1 el 2026-11-10T19:02:35.229Z. Commit
 
 ## Veredicto
 
-- Afirmaciones confirmadas: **7/27** · parciales: **0** · movidas: **0** · correcciones en pie: **20** · regresiones: **0**
-- Código de salida esperado: `0` (defecto donde decimos y correcciones en su sitio)
+- Afirmaciones confirmadas: **7/27** · parciales: **1** · movidas: **0** · correcciones en pie: **19** · regresiones: **0**
+- Código de salida esperado: `1` (el código se movió, el defecto ya no está o una corrección desapareció: revisar, no silenciar)
 
 ## Afirmaciones
 
@@ -29,7 +29,7 @@ Generado por `scripts/audit-cuaderno.mjs` v1 el 2026-11-10T19:02:35.229Z. Commit
 | `X2-los-modos-ya-estan-gateados-por-datos` | ✔ CONFIRMADO | contexto | Los modos declaran qué datos necesitan (isEligible) y la sesión lo respeta |
 | `X3-el-primer-paso-del-lector-ya-es-una-ficha` | ✔ CONFIRMADO | contexto | La ficha de primera exposición ya tiene UI y voz (learnKeep/learnKnown/learnEnrich) y puente a repaso |
 | `C11-cualquier-respuesta-cancela-la-ficha` | ✔ CORREGIDO | corregido | Una palabra con reps 0 solo sale de «Por aprender» con una decisión explícita: la cola la excluye |
-| `C12-modos-libres-tampoco-examinan` | ✔ CORREGIDO | corregido | Los modos libres (Hueco, Sílabas, Telar) también salen de reviewWords y avisan cuando no hay nada |
+| `C12-modos-libres-tampoco-examinan` | ◐ PARCIAL | corregido | Los modos libres (Hueco, Sílabas, Telar) también salen de reviewWords y avisan cuando no hay nada |
 | `C16-pista-respeta-ia-y-se-registra` | ✔ CORREGIDO | corregido | La pista del gato respeta «Usar IA», se descarta si la tarjeta cambió y el repaso registra cuántas se pidieron |
 | `C17-rescate-exige-datos-del-modo` | ✔ CORREGIDO | corregido | El rescate tras fallar solo baja a «elegir palabra» si hay oración; si no, al significado |
 | `C18-calificar-sobre-la-version-vigente` | ✔ CORREGIDO | corregido | Calificar guarda sobre la palabra vigente del estado, no sobre la copia de la cola, y el relleno de significados no pisa filas más nuevas |
@@ -53,7 +53,7 @@ _Por qué:_ «no recuerdo para nada las palabras al dar iniciar sesión fluida�
   - `) : reviewWordCount > 0 ? (`
 - ✔ src/client/components/notebook/NotebookHero.tsx:244 ~ /\) : learnableCount > 0 \? \(/
   - `) : learnableCount > 0 ? (`
-- ✔ src/client/components/notebook/LearnSessionView.tsx:97 ~ /onClick=\{\(\) => startLearn\(\)\}/
+- ✔ src/client/components/notebook/LearnSessionView.tsx:100 ~ /onClick=\{\(\) => startLearn\(\)\}/
   - `onClick={() => startLearn()}`
 - ✔ ningún archivo del Cuaderno contiene /Iniciar Sesi[oó]n Fluida/
 
@@ -63,7 +63,7 @@ _Por qué:_ «no recuerdo para nada las palabras al dar iniciar sesión fluida�
 
 _Por qué:_ Se fue la rama scopedWords.slice(0,5), que servía palabras no vencidas, «Ya la conozco» y adelantaba repasos.
 
-- ✔ src/client/components/Vocabulary.tsx:261 ~ /\(\) => reviewQueue\(scopedWords, knownKeys, exposure\),/
+- ✔ src/client/components/Vocabulary.tsx:263 ~ /\(\) => reviewQueue\(scopedWords, knownKeys, exposure\),/
   - `() => reviewQueue(scopedWords, knownKeys, exposure),`
 - ✔ src/client/lib/learn.ts:151 ~ /!isLearnPending\(word, knownKeys, exposure\) &&/
   - `!isLearnPending(word, knownKeys, exposure) &&`
@@ -88,14 +88,14 @@ _Por qué:_ scheduleCapturedReview crea newCard() (reps 0, due=ahora) al guardar
 
 _Por qué:_ Una palabra sin oración ya no cae en choose (adivinar al 25 %): pasa al modo significado. Tras responder se muestra forma y significado.
 
-- ✔ src/client/lib/practice.ts:381 ~ /if \(isNew \|\| stability < 2\.5\) \{/
+- ✔ src/client/lib/practice.ts:420 ~ /if \(isNew \|\| stability < 2\.5\) \{/
   - `if (isNew || stability < 2.5) {`
-- ✔ src/client/hooks/useReviewSession.ts:358 ~ /if \(!isEligible\(ch\.word, mode\)\) \{/
+- ✔ src/client/hooks/useReviewSession.ts:400 ~ /if \(!isEligible\(ch\.word, mode\)\) \{/
   - `if (!isEligible(ch.word, mode)) {`
-- ✔ src/client/components/notebook/PracticeCard.tsx:406 ~ /Toca la palabra que falta\./
+- ✔ src/client/components/notebook/PracticeCard.tsx:403 ~ /Toca la palabra que falta\./
   - `<p className="meta">Toca la palabra que falta.</p>`
-- ✔ src/client/components/notebook/PracticeCard.tsx:410 ~ /className="nb-card-back" role="status"/
-  - `<p className="nb-card-back" role="status">`
+- ✔ src/client/components/notebook/PracticeCard.tsx:515 ~ /className="nb-answer-foot" role="status"/
+  - `<div className="nb-answer-foot" role="status">`
 
 ### ✔ `C5-estudio-existe-pero-abajo`
 
@@ -104,7 +104,7 @@ _Por qué:_ Una palabra sin oración ya no cae en choose (adivinar al 25 %): pas
 _Por qué:_ Se quitó la sección «Por aprender · N» que vivía debajo del héroe: el botón primario hace ese trabajo.
 
 - ✔ ningún archivo del Cuaderno contiene /aria-label="Palabras por aprender"/
-- ✔ src/client/components/notebook/LearnSessionView.tsx:97 ~ /onClick=\{\(\) => startLearn\(\)\}/
+- ✔ src/client/components/notebook/LearnSessionView.tsx:100 ~ /onClick=\{\(\) => startLearn\(\)\}/
   - `onClick={() => startLearn()}`
 
 ### ✔ `C6-sesion-puede-ensayar-borradas`
@@ -113,7 +113,7 @@ _Por qué:_ Se quitó la sección «Por aprender · N» que vivía debajo del h�
 
 _Por qué:_ Buscar «deleted» dentro de dueWords era una ausencia usada como prueba. El filtro real está en la carga y al borrar se quita la fila del estado.
 
-- ✔ src/client/lib/idb.ts:1739 ~ /return all\.filter\(\(word\) => !word\.deleted\);/
+- ✔ src/client/lib/idb.ts:1747 ~ /return all\.filter\(\(word\) => !word\.deleted\);/
   - `return all.filter((word) => !word.deleted);`
 - ✔ src/client/hooks/useNotebookData.ts:69 ~ /listSavedWords\(/
   - `void listSavedWords(undefined, scope)`
@@ -124,7 +124,7 @@ _Por qué:_ Buscar «deleted» dentro de dueWords era una ausencia usada como pr
 
 _Por qué:_ «~2 min» y «1 min» describían la misma sesión, y «Aprender 43 palabras nuevas» abría una tanda de 5. Ahora el botón lleva la cifra de la tanda (`Aprender 5 de 43`) y desaparece la promesa de duración.
 
-- ✔ src/client/components/Vocabulary.tsx:287 ~ /Aprender \$\{learnBatch\} de \$\{learnable\.length\}/
+- ✔ src/client/components/Vocabulary.tsx:289 ~ /Aprender \$\{learnBatch\} de \$\{learnable\.length\}/
   - `? `Aprender ${learnBatch} de ${learnable.length} ${learnNoun}``
 - ✔ src/client/components/notebook/NotebookHero.tsx:227 ~ /Repasar \{Math\.min\(REVIEW_SESSION_SIZE, reviewWordCount\)\}/
   - `Repasar {Math.min(REVIEW_SESSION_SIZE, reviewWordCount)}{" "}`
@@ -136,9 +136,9 @@ _Por qué:_ «~2 min» y «1 min» describían la misma sesión, y «Aprender 43
 
 _Por qué:_ Dos trabajos distintos ya no comparten una sola cifra: la de aprender solo cuenta palabras que pueden entrar a la ficha.
 
-- ✔ src/client/components/Vocabulary.tsx:597 ~ /por aprender/
+- ✔ src/client/components/Vocabulary.tsx:628 ~ /por aprender/
   - `learnable.length > 0 ? ` · ${learnable.length} por aprender` : ""`
-- ✔ src/client/components/Vocabulary.tsx:598 ~ /para repasar/
+- ✔ src/client/components/Vocabulary.tsx:629 ~ /para repasar/
   - `} · ${reviewWords.length} para repasar``
 
 ### ✔ `C9-el-rescate-llega-despues-de-fallar`
@@ -147,9 +147,9 @@ _Por qué:_ Dos trabajos distintos ya no comparten una sola cifra: la de aprende
 
 _Por qué:_ rescueChallenge solo actúa si el fallo fue en Nivel 2 o 3. Para la palabra nueva (Nivel 1), la corrección es ver forma y significado.
 
-- ✔ src/client/lib/practice.ts:425 ~ /export function rescueChallenge\(/
+- ✔ src/client/lib/practice.ts:464 ~ /export function rescueChallenge\(/
   - `export function rescueChallenge(`
-- ✔ src/client/hooks/useReviewSession.ts:708 ~ /challenge\.level <= 1/
+- ✔ src/client/hooks/useReviewSession.ts:738 ~ /challenge\.level <= 1/
   - `if (!challenge || challenge.level <= 1) return false;`
 
 ### ✔ `C10-dos-puertas-a-la-misma-sesion`
@@ -158,7 +158,7 @@ _Por qué:_ rescueChallenge solo actúa si el fallo fue en Nivel 2 o 3. Para la 
 
 _Por qué:_ Se quitó «Repaso rápido», que caía a startAdaptiveFlow con otro texto. El CTA adaptive_flow de GamePanel nunca se pinta: el único montaje usa dashboard o ai_workshop.
 
-- ✔ src/client/components/Vocabulary.tsx:679 ~ /mode=\{workshopOpen \? "ai_workshop" : "dashboard"\}/
+- ✔ src/client/components/Vocabulary.tsx:711 ~ /mode=\{workshopOpen \? "ai_workshop" : "dashboard"\}/
   - `mode={workshopOpen ? "ai_workshop" : "dashboard"}`
 - ✔ ningún archivo del Cuaderno contiene /notebook-quick-review-cta/
 
@@ -181,9 +181,9 @@ _Por qué:_ isLearnPending + withExposure arbitran estudio vs repaso y migran de
 
 _Por qué:_ isEligible define qué pide cada modo; startAdaptiveFlow ahora lo consulta antes de armar el ítem.
 
-- ✔ src/client/lib/notebook-model.ts:227 ~ /const isEligible = \(word: SavedWord, mode: PracticeMode\) => \{/
+- ✔ src/client/lib/notebook-model.ts:223 ~ /const isEligible = \(word: SavedWord, mode: PracticeMode\) => \{/
   - `export const isEligible = (word: SavedWord, mode: PracticeMode) => {`
-- ✔ src/client/hooks/useReviewSession.ts:358 ~ /if \(!isEligible\(ch\.word, mode\)\) \{/
+- ✔ src/client/hooks/useReviewSession.ts:400 ~ /if \(!isEligible\(ch\.word, mode\)\) \{/
   - `if (!isEligible(ch.word, mode)) {`
 
 ### ✔ `X3-el-primer-paso-del-lector-ya-es-una-ficha`
@@ -196,7 +196,7 @@ _Por qué:_ El puente estudio→prueba reutiliza esa ficha, sin duplicar un comp
   - `const startLearn = (first?: SavedWord) => {`
 - ✔ src/client/hooks/useLearnSession.ts:186 ~ /const learnKeep = async \(\) => \{/
   - `const learnKeep = async () => {`
-- ✔ src/client/components/notebook/LearnSessionView.tsx:89 ~ /Repasar esta palabra/
+- ✔ src/client/components/notebook/LearnSessionView.tsx:92 ~ /Repasar esta palabra/
   - `? "Repasar esta palabra"`
 
 ### ✔ `C11-cualquier-respuesta-cancela-la-ficha`
@@ -210,17 +210,16 @@ _Por qué:_ isLearnPending sigue excluyendo reps > 0, pero ahora reviewQueue exi
 - ✔ src/client/lib/learn.ts:105 ~ /if \(\(word\.card\?\.reps \?\? 0\) > 0\) return false;/
   - `if ((word.card?.reps ?? 0) > 0) return false;`
 
-### ✔ `C12-modos-libres-tampoco-examinan`
+### ◐ `C12-modos-libres-tampoco-examinan`
 
 **Los modos libres (Hueco, Sílabas, Telar) también salen de reviewWords y avisan cuando no hay nada**
 
 _Por qué:_ startPractice usaba dueWords y podía preguntar por palabras nunca presentadas, además de adelantar repasos. Ahora comparte la regla de la sesión y explica por qué los botones están apagados.
 
-- ✔ src/client/components/Vocabulary.tsx:260 ~ /reviewWords/
+- ✔ src/client/components/Vocabulary.tsx:262 ~ /reviewWords/
   - `const reviewWords = useMemo(`
-- ✔ src/client/components/notebook/FreeModes.tsx:41 ~ /disabled=\{eligibleCount\.cloze === 0\}/
-  - `disabled={eligibleCount.cloze === 0}`
-- ✔ src/client/components/notebook/FreeModes.tsx:128 ~ /Los modos libres usan palabras que ya viste/
+- ✘ ningún archivo del Cuaderno contiene /disabled=\{eligibleCount\.cloze === 0\}/
+- ✔ src/client/components/notebook/FreeModes.tsx:137 ~ /Los modos libres usan palabras que ya viste/
   - `? "Los modos libres usan palabras que ya viste. Aprende primero las nuevas."`
 
 ### ✔ `C16-pista-respeta-ia-y-se-registra`
@@ -229,11 +228,11 @@ _Por qué:_ startPractice usaba dueWords y podía preguntar por palabras nunca p
 
 _Por qué:_ askCatHint solo pedía sesión, el historial siempre guardaba hints: 0 y una respuesta tardía se pintaba sobre la tarjeta siguiente.
 
-- ✔ src/client/components/Vocabulary.tsx:249 ~ /const canHint = hasSession && useAi;/
+- ✔ src/client/components/Vocabulary.tsx:251 ~ /const canHint = hasSession && useAi;/
   - `const canHint = hasSession && useAi;`
-- ✔ src/client/hooks/useReviewSession.ts:470 ~ /hints: hintsUsedRef\.current,/
+- ✔ src/client/hooks/useReviewSession.ts:514 ~ /hints: hintsUsedRef\.current,/
   - `hints: hintsUsedRef.current,`
-- ✔ src/client/hooks/useReviewSession.ts:738 ~ /const stillHere = \(\) => hintForRef\.current === forKey;/
+- ✔ src/client/hooks/useReviewSession.ts:772 ~ /const stillHere = \(\) => hintForRef\.current === forKey;/
   - `const stillHere = () => hintForRef.current === forKey;`
 
 ### ✔ `C17-rescate-exige-datos-del-modo`
@@ -242,9 +241,9 @@ _Por qué:_ askCatHint solo pedía sesión, el historial siempre guardaba hints:
 
 _Por qué:_ El rescate mandaba siempre a choose: sin oración era adivinar entre cuatro, lo que la regla del Cuaderno prohíbe.
 
-- ✔ src/client/hooks/useReviewSession.ts:706 ~ /const tryRescue = \(item: QueueItem, speech: string\): boolean =>/
+- ✔ src/client/hooks/useReviewSession.ts:736 ~ /const tryRescue = \(item: QueueItem, speech: string\): boolean =>/
   - `const tryRescue = (item: QueueItem, speech: string): boolean => {`
-- ✔ src/client/hooks/useReviewSession.ts:709 ~ /const rescueMode: PracticeMode \| null = isEligible\(item\.word, "choose"\)/
+- ✔ src/client/hooks/useReviewSession.ts:739 ~ /const rescueMode: PracticeMode \| null = isEligible\(item\.word, "choose"\)/
   - `const rescueMode: PracticeMode | null = isEligible(item.word, "choose")`
 
 ### ✔ `C18-calificar-sobre-la-version-vigente`
@@ -253,7 +252,7 @@ _Por qué:_ El rescate mandaba siempre a choose: sin oración era adivinar entre
 
 _Por qué:_ grade escribía {...copiaDeLaCola, card}: un significado rellenado después (o un repaso del taller) se perdía.
 
-- ✔ src/client/hooks/useReviewSession.ts:458 ~ /wordsRef\.current\?\.find\(\(w\) => w\.key === queued\.key/
+- ✔ src/client/hooks/useReviewSession.ts:502 ~ /wordsRef\.current\?\.find\(\(w\) => w\.key === queued\.key/
   - `wordsRef.current?.find((w) => w.key === queued.key && !w.deleted) ?? queued;`
 - ✔ src/client/hooks/useNotebookData.ts:88 ~ /return m && \(m\.updatedAt \?\? 0\) >= \(w\.updatedAt \?\? 0\) \? m : w;/
   - `return m && (m.updatedAt ?? 0) >= (w.updatedAt ?? 0) ? m : w;`
@@ -264,11 +263,11 @@ _Por qué:_ grade escribía {...copiaDeLaCola, card}: un significado rellenado d
 
 _Por qué:_ El modo «Palabra» de reserva pintaba una tarjeta en blanco sin significado, y una tanda de una sola pareja se resolvía sola como acierto.
 
-- ✔ src/client/hooks/useReviewSession.ts:384 ~ /Esta palabra necesita un significado o una oración para repasarse\./
+- ✔ src/client/hooks/useReviewSession.ts:426 ~ /Esta palabra necesita un significado o una oración para repasarse\./
   - `setSaveError("Esta palabra necesita un significado o una oración para repasarse.");`
-- ✔ src/client/hooks/useReviewSession.ts:304 ~ /Parejas necesita al menos dos palabras con significado\./
+- ✔ src/client/hooks/useReviewSession.ts:346 ~ /Parejas necesita al menos dos palabras con significado\./
   - `setPracticeNote("Parejas necesita al menos dos palabras con significado.");`
-- ✔ src/client/hooks/useReviewSession.ts:309 ~ /items\.length % MATCH_TANDA === 1/
+- ✔ src/client/hooks/useReviewSession.ts:351 ~ /items\.length % MATCH_TANDA === 1/
   - `if (items.length % MATCH_TANDA === 1) queueItems = items.slice(0, -1);`
 
 ### ✔ `C20-pasar-no-vuelve-al-frente`
@@ -279,7 +278,7 @@ _Por qué:_ «Pasar por ahora» no escribe exposición, así que la palabra volv
 
 - ✔ src/client/hooks/useLearnSession.ts:94 ~ /learnPassedRef\.current\.has\(word\.key\) \? 2 : word\.meaning \? 0 : 1/
   - `learnPassedRef.current.has(word.key) ? 2 : word.meaning ? 0 : 1;`
-- ✔ src/client/components/notebook/LearnSessionView.tsx:253 ~ /onClick=\{passLearn\}/
+- ✔ src/client/components/notebook/LearnSessionView.tsx:257 ~ /onClick=\{passLearn\}/
   - `onClick={passLearn}`
 
 ### ✔ `C13-modos-libres-a-la-vista`
@@ -288,9 +287,9 @@ _Por qué:_ «Pasar por ahora» no escribe exposición, así que la palabra volv
 
 _Por qué:_ El plan v1 (Fase 1) pedía colapsarlos y el 2026-11-09 se añadió «Más ejercicios» a la vista. Decisión de Luis (2026-11-10): un solo plegable; los 5 modos, el taller y los 8 extra comparten rejilla.
 
-- ✔ src/client/components/notebook/FreeModes.tsx:34 ~ /<details className="nb-free-modes">/
+- ✔ src/client/components/notebook/FreeModes.tsx:38 ~ /<details className="nb-free-modes">/
   - `<details className="nb-free-modes">`
-- ✔ src/client/components/notebook/FreeModes.tsx:35 ~ /Más formas de practicar</summary>/
+- ✔ src/client/components/notebook/FreeModes.tsx:39 ~ /Más formas de practicar</summary>/
   - `<summary className="nb-free-modes-label">Más formas de practicar</summary>`
 - ✔ ningún archivo del Cuaderno contiene /moreModesOpen|nb-free-mode-more/
 
@@ -314,8 +313,8 @@ _Por qué:_ El plan v1 (Fase 3) describía un cierre único. Vaciar la cola y sa
 - ✔ src/client/components/notebook/ReviewDone.tsx:39 ~ /Terminado por hoy\.</p>/
   - `<p className="nb-done-title">Terminado por hoy.</p>`
 - ✔ ningún archivo del Cuaderno contiene /Repaso terminado\.</p>/
-- ✔ src/client/components/notebook/PracticeCard.tsx:640 ~ /onClick=\{\(\) => endSessionForToday\(Date\.now\(\)\)\}/
-  - `onClick={() => endSessionForToday(Date.now())}`
+- ✔ src/client/components/Vocabulary.tsx:613 ~ /\(\) => void review\.exitSession\(\)/
+  - `onClick={sessionKind === "queue" ? () => void review.exitSession() : exitLearn}`
 
 ### ✔ `C21-una-sola-cuenta-del-ciclo-de-vida`
 
@@ -323,7 +322,7 @@ _Por qué:_ El plan v1 (Fase 3) describía un cierre único. Vaciar la cola y sa
 
 _Por qué:_ wordStage contaba como «nueva» también a las ya repasadas con S < 2 días y a las conocidas, así que la píldora no cuadraba con el encabezado. Ahora hay un solo WordLifecycle (pending/known) para píldoras, filtros, filas y orden.
 
-- ✔ src/client/lib/notebook-model.ts:170 ~ /type WordLifecycle = \{ pending: boolean; known: boolean \};/
+- ✔ src/client/lib/notebook-model.ts:166 ~ /type WordLifecycle = \{ pending: boolean; known: boolean \};/
   - `export type WordLifecycle = { pending: boolean; known: boolean };`
 - ✔ src/client/hooks/useHerbarioView.ts:112 ~ /const lifecycle = useCallback\(/
   - `const lifecycle = useCallback(`
@@ -336,9 +335,9 @@ _Por qué:_ wordStage contaba como «nueva» también a las ya repasadas con S <
 _Por qué:_ El aviso de «se quitó del cuaderno» se pintaba dos veces, y removeQuote tragaba el error y no ofrecía recuperar la cita.
 
 - ✔ ningún archivo del Cuaderno contiene /className="nb-undo"/
-- ✔ src/client/components/Vocabulary.tsx:485 ~ /const restoreQuote = async \(\) =>/
+- ✔ src/client/components/Vocabulary.tsx:487 ~ /const restoreQuote = async \(\) =>/
   - `const restoreQuote = async () => {`
-- ✔ src/client/components/Vocabulary.tsx:475 ~ /No se pudo quitar la cita\. Intenta de nuevo\./
+- ✔ src/client/components/Vocabulary.tsx:477 ~ /No se pudo quitar la cita\. Intenta de nuevo\./
   - `setSaveError("No se pudo quitar la cita. Intenta de nuevo.");`
 
 ### ✔ `C23-chips-gato-y-glifos-accesibles`
@@ -347,12 +346,12 @@ _Por qué:_ El aviso de «se quitó del cuaderno» se pintaba dos veces, y remov
 
 _Por qué:_ Los chips eran botones con role=listitem, tocarlos no hacía nada visible bajo un filtro, el gato se pintaba con el compañero apagado y su teclado no hacía lo mismo que el clic.
 
-- ✔ src/client/components/Vocabulary.tsx:652 ~ /<ul className="nb-recent-track">/
+- ✔ src/client/components/Vocabulary.tsx:684 ~ /<ul className="nb-recent-track">/
   - `<ul className="nb-recent-track">`
 - ✔ ningún archivo del Cuaderno contiene /role="listitem"|aria-hidden="true">★|"▸ "|"▾ "/
-- ✔ src/client/components/Vocabulary.tsx:220 ~ /setFilter\("all"\);/
+- ✔ src/client/components/Vocabulary.tsx:222 ~ /setFilter\("all"\);/
   - `setFilter("all");`
-- ✔ src/client/components/Vocabulary.tsx:315 ~ /const heroCompanion = companion\?\.enabled && companion\.state \? companion : null;/
+- ✔ src/client/components/Vocabulary.tsx:317 ~ /const heroCompanion = companion\?\.enabled && companion\.state \? companion : null;/
   - `const heroCompanion = companion?.enabled && companion.state ? companion : null;`
 
 ### ✔ `C24-sin-codigo-muerto-y-calculos-memoizados`
@@ -362,11 +361,11 @@ _Por qué:_ Los chips eran botones con role=listitem, tocarlos no hacía nada vi
 _Por qué:_ UnifiedNotebookView no se usaba (App nunca pasa words) y cada render recalculaba reviewQueue, ~14 filtros con regex y la lista filtrada, también en cada tecla del buscador. Medido con 400 palabras en jsdom: mediana por tecla 21 ms → 15 ms.
 
 - ✔ ningún archivo del Cuaderno contiene /UnifiedNotebookView|tab === "today"|needs: "/
-- ✔ src/client/components/Vocabulary.tsx:261 ~ /\(\) => reviewQueue\(scopedWords, knownKeys, exposure\),/
+- ✔ src/client/components/Vocabulary.tsx:263 ~ /\(\) => reviewQueue\(scopedWords, knownKeys, exposure\),/
   - `() => reviewQueue(scopedWords, knownKeys, exposure),`
 - ✔ src/client/hooks/useHerbarioView.ts:168 ~ /const deferredQuery = useDeferredValue\(query\);/
   - `const deferredQuery = useDeferredValue(query);`
-- ✔ src/client/components/Vocabulary.tsx:267 ~ /const eligibleCount = useMemo\(/
+- ✔ src/client/components/Vocabulary.tsx:269 ~ /const eligibleCount = useMemo\(/
   - `const eligibleCount = useMemo(() => {`
 
 ## Preguntas de investigación

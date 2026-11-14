@@ -325,8 +325,17 @@ button.app-nav-sync-indicator:focus-visible {
 /* Ocultar barra durante sesión de repaso / aprender. Solo cuando el
    cuaderno es la vista activa: el <Activity> oculto conserva el DOM
    (y el data-session) de una sesión pausada, y sin [data-nav] la
-   barra quedaría escondida también en Estantería y demás secciones. */
-.app[data-nav="vocabulary"]:has(.notebook[data-session]) .app-nav {
+   barra quedaría escondida también en Estantería y demás secciones.
+   Solo en móvil: en escritorio es un riel lateral que no quita alto y deja
+   ir a Biblioteca o a Tú a mitad de sesión. */
+@media (width < 64rem) {
+  .app[data-nav="vocabulary"]:has(.notebook[data-session]) .app-nav {
+    display: none;
+  }
+}
+
+/* Durante la sesión la píldora de lectura en curso no tapa «Continuar». */
+.app[data-nav="vocabulary"]:has(.notebook[data-session]) .mini-reader-bar {
   display: none;
 }
 
@@ -358,8 +367,10 @@ button.app-nav-sync-indicator:focus-visible {
   bottom: calc(124px + env(safe-area-inset-bottom) + var(--s-3));
 }
 
+/* En sesión no hay barra abajo, pero «Continuar» puede estar fijo al borde:
+   el aviso queda por encima de él (48 px + margen). */
 .app[data-nav="vocabulary"]:has(.notebook[data-session]) .app-notices {
-  bottom: calc(env(safe-area-inset-bottom) + var(--s-3));
+  bottom: calc(56px + env(safe-area-inset-bottom) + var(--s-3));
 }
 
 @media (pointer: coarse) {

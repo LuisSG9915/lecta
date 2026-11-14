@@ -540,6 +540,29 @@ export function Vocabulary({
     void downloadNotebookMarkdown();
   };
 
+  // La sesión solo cuenta mientras hay ejercicios o fichas por resolver: en la
+  // pantalla de cierre la barra de navegación ya debe estar disponible.
+  const sessionKind =
+    queue && queue.items.length > 0
+      ? "queue"
+      : learn && !learn.done && learn.items.length > 0
+        ? "learn"
+        : undefined;
+  // Calificación, revisión IA o tanda de parejas guardándose: salir ahora
+  // dejaría trabajo a medias.
+  const exitBusy =
+    review.grading ||
+    review.verifying ||
+    Boolean(learnSession.learnBusy) ||
+    (review.tanda.length > 0 && review.matchDone.size === review.tanda.length);
+  // Aprender: muestra la pantalla final (conserva learn.kept); sin ninguna
+  // ficha vista vuelve a la portada, como el repaso.
+  const exitLearn = () => {
+    if (!learn) return;
+    if (learn.items.length === learn.total) learnSession.setLearn(null);
+    else learnSession.setLearn({ ...learn, done: true });
+  };
+
   return (
     <div
       ref={ref}
@@ -550,13 +573,7 @@ export function Vocabulary({
       // La sesión solo cuenta mientras hay ejercicios o fichas por
       // resolver: en la pantalla de cierre la barra de navegación
       // ya debe estar disponible para irse a otra sección.
-      data-session={
-        queue && queue.items.length > 0
-          ? "queue"
-          : learn && !learn.done && learn.items.length > 0
-            ? "learn"
-            : undefined
-      }
+      data-session={sessionKind}
     >
       {undo ? (
         <Notice
@@ -584,6 +601,18 @@ export function Vocabulary({
             data-autofocus
           >
             {backLabel ?? "‹ Volver"}
+          </button>
+        ) : null}
+        {sessionKind ? (
+          // Única forma de terminar la sesión: arriba y siempre a la vista
+          // (la barra es sticky durante la sesión).
+          <button
+            type="button"
+            className="btn--quiet nb-exit"
+            disabled={exitBusy}
+            onClick={sessionKind === "queue" ? () => void review.exitSession() : exitLearn}
+          >
+            Terminar por hoy
           </button>
         ) : null}
         <h1 className="notebook-title">
@@ -809,6 +838,7 @@ export function Vocabulary({
             wordBookTitle={wordBookTitle}
             startAdaptiveFlow={startAdaptiveFlow}
             revealButtonRef={revealButtonRef}
+            onCatTap={petHeroCat}
           />
         ) : null}
 

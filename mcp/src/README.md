@@ -64,7 +64,7 @@ transporte stdio (`index.ts`). Guía de uso y configuración de clientes en
   [`tools.ts:VOCAB_CACHE_MAX`] = 3 libros.
 - `reading_stats` marca `partial: true` si `activity.hasMore` o
   `reviews.hasMore`.
-- Versiones: `user-agent` `lecta-mcp/0.2.15` en `api.ts`; el `serverInfo` de
+- Versiones: `user-agent` `lecta-mcp/0.2.16` en `api.ts`; el `serverInfo` de
   `index.ts` declara `0.2.0` (no se sube junto con `APP_VERSION`).
 
 ## Side Effects

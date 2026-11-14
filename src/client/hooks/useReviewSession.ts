@@ -34,6 +34,7 @@ import {
 import {
   blankWordInContext,
   buildAdaptivePracticeQueue,
+  conciseMeaning,
   EXERCISE_RATING,
   pickDistractors,
   ratingToCorrect,
@@ -63,6 +64,22 @@ import { playCompanionSound } from "../lib/companion-audio";
 import { loadNativeLanguage } from "../lib/settings";
 
 import type { UsePracticeCompanionResult } from "./usePracticeCompanion";
+import type { CompanionPose } from "../components/Companion";
+
+// Modos con opciones: el resultado se ve al tocar una opción (answerOption) y
+// la pose de resultado se mantiene hasta el cambio de reto.
+const OPTION_MODES: ReadonlySet<PracticeMode> = new Set(["choose", "sense", "context"]);
+// Modos donde `grade` es el que muestra el resultado: autocalificación y
+// «Escribir». En el resto (opciones, parejas, minijuegos) la racha, la pose y
+// la frase ya las puso quien mostró el resultado, y `grade` no las repite.
+const GRADE_REACTS: ReadonlySet<PracticeMode> = new Set([
+  "meaning",
+  "form",
+  "cloze",
+  "clozeNew",
+  "write",
+]);
+const PET_PHRASES = ["Prrr…", "¡Mrrau!", "Aquí sigo contigo."];
 import { useUserPlan } from "../lib/account-plan";
 
 export type UseReviewSessionArgs = {
@@ -95,7 +112,16 @@ export function useReviewSession({
   setSaveError,
   practiceCompanion,
 }: UseReviewSessionArgs) {
-  const { setCatPose, setCatSpeech, setCombo, settleCatAfter } = practiceCompanion;
+  const {
+    combo,
+    setCatPose,
+    setCatSpeech,
+    setCombo,
+    settleCatAfter,
+    resultPose,
+    setResultPose,
+    resetCat,
+  } = practiceCompanion;
   const [queue, setQueue] = useState<{ total: number; items: QueueItem[] } | null>(null);
   const [revealed, setRevealed] = useState(false);
   const [previews, setPreviews] = useState<string[] | null>(null);
@@ -140,6 +166,10 @@ export function useReviewSession({
   // al historial como `hints` del repaso.
   const hintForRef = useRef<string | null>(null);
   const hintsUsedRef = useRef(0);
+  // Espejo de hintsUsedRef para pintar: el botón «💡 Pista» se oculta cuando
+  // el reto actual ya pidió su pista (una por reto).
+  const [hintUsed, setHintUsed] = useState(false);
+  const petIndexRef = useRef(0);
 
   const resetExercise = () => {
     setRevealed(false);
@@ -150,6 +180,7 @@ export function useReviewSession({
     setHintBusy(false);
     hintForRef.current = null;
     hintsUsedRef.current = 0;
+    setHintUsed(false);
     setMatchSel(null);
     setMatchDone(new Set());
     setMatchFails({});
@@ -172,8 +203,11 @@ export function useReviewSession({
   // «Terminar por hoy» pasa por el mismo cierre que vaciar la cola: si ya se
   // repasó algo se muestra «Terminado por hoy.» con la próxima fecha y la
   // racha; si no se hizo nada, vuelve al cuaderno sin pantalla de cierre.
-  const endSessionForToday = (now: number) => {
-    const reviewed = queue ? queue.total - queue.items.length : 0;
+  // `extra` cuenta el reto que exitSession acaba de calificar: la cola de este
+  // render todavía no refleja que grade lo quitó.
+  const endSessionForToday = (now: number, extra = 0) => {
+    const reviewed = (queue ? queue.total - queue.items.length : 0) + extra;
+    resetCat();
     if (reviewed <= 0) {
       setQueue(null);
       return;
@@ -450,9 +484,11 @@ export function useReviewSession({
     setRevealed(true);
   };
 
-  const grade = async (item: QueueItem, rating: Grade) => {
+  // Devuelve true si guardó la calificación; false si otra calificación estaba
+  // en curso o si el guardado falló (saveError ya lo explica).
+  const grade = async (item: QueueItem, rating: Grade): Promise<boolean> => {
     // Bloqueo inmediato: un doble clic o dos teclas no avanzan dos tarjetas.
-    if (gradingRef.current) return;
+    if (gradingRef.current) return false;
     gradingRef.current = true;
     setGrading(true);
     setSaveError("");
@@ -487,29 +523,32 @@ export function useReviewSession({
       if (item.mode === "clozeNew" && item.item)
         void answerItem(item.item.id, ratingToCorrect(rating), scope);
 
-      const isCorrect = ratingToCorrect(rating);
-      if (isCorrect) {
-        setCombo((prev) => {
-          const next = prev + 1;
-          if (next >= 3) {
-            setCatPose("celebrate");
-            setCatSpeech(`¡Imparable! Racha de ${next} aciertos`);
-          } else {
-            setCatPose("celebrate");
-            setCatSpeech(rating === Rating.Easy ? "¡Excelente trabajo!" : "¡Muy bien!");
-          }
-          return next;
-        });
-        triggerHaptic("success");
-        triggerPurrHaptic();
-        playCompanionSound("purr");
-      } else {
-        setCombo(0);
-        setCatPose("idle");
-        setCatSpeech("Casi... la repasaremos de nuevo.");
-        triggerHaptic(rating === Rating.Again ? 8 : 12);
+      if (GRADE_REACTS.has(item.mode)) {
+        if (ratingToCorrect(rating)) {
+          const next = combo + 1;
+          setCombo(next);
+          setCatPose(next >= 3 ? "playful_hop" : "celebrate");
+          setCatSpeech(
+            next >= 3
+              ? `¡Imparable! Racha de ${next} aciertos`
+              : rating === Rating.Easy
+                ? "¡Excelente trabajo!"
+                : "¡Muy bien!",
+          );
+          triggerHaptic("success");
+          triggerPurrHaptic();
+          playCompanionSound("purr");
+        } else {
+          setCombo(0);
+          setCatPose("pet");
+          setCatSpeech(`Era «${item.word.form}».`);
+          triggerHaptic(rating === Rating.Again ? 8 : 12);
+        }
+        settleCatAfter(2200);
+      } else if (OPTION_MODES.has(item.mode)) {
+        // La pose de resultado duraba lo que el reto: al avanzar se limpia.
+        resetCat();
       }
-      settleCatAfter(2200);
 
       setWords((list) => list?.map((w) => (w.key === word.key ? stored : w)) ?? list);
       notifyVocabChange();
@@ -525,18 +564,33 @@ export function useReviewSession({
       setHintBusy(false);
       hintForRef.current = null;
       hintsUsedRef.current = 0;
+      setHintUsed(false);
       setWriteText("");
       setWritePick(null);
       setVerifyResult(null);
       setVerifyError("");
       writeItemRef.current = null;
       candidates.current = null;
+      return true;
     } catch {
       setSaveError("No se pudo guardar la calificación. Intenta de nuevo.");
+      return false;
     } finally {
       gradingRef.current = false;
       setGrading(false);
     }
+  };
+
+  // Frase del gato al fallar una opción: nombra la respuesta correcta.
+  const wrongAnswerSpeech = (item: QueueItem): string => {
+    if (item.mode === "choose") return `Era «${item.word.form}». La próxima la tienes.`;
+    const options =
+      item.mode === "context"
+        ? (item.item?.options ?? [])
+        : (item.entry?.senses ?? []).map((sense) => sense.definition);
+    const answer = item.mode === "context" ? item.item?.answerIndex : item.correctIndex;
+    const text = answer != null ? options[answer] : undefined;
+    return text ? `Era «${conciseMeaning(text, 60)}».` : "¡Ánimo! Vamos con la siguiente.";
   };
 
   // Ejercicios con opciones («elegir palabra», «acepción», «contexto»):
@@ -548,26 +602,24 @@ export function useReviewSession({
     if (!item || answered) return;
     triggerHaptic(correct ? 14 : 24);
     setAnswered({ picked, correct });
+    // Racha en un solo punto: aquí, donde el lector ve el resultado; grade no
+    // la vuelve a sumar en los modos con opciones. La pose se mantiene
+    // mientras dure el reto (sin temporizador).
+    let pose: CompanionPose;
     if (correct) {
-      setCombo((prev) => {
-        const next = prev + 1;
-        if (next >= 3) {
-          setCatPose("celebrate");
-          setCatSpeech(`¡En racha! x${next}`);
-        } else {
-          setCatPose("celebrate");
-          setCatSpeech("¡Exacto!");
-        }
-        return next;
-      });
+      const next = combo + 1;
+      setCombo(next);
+      pose = next >= 3 ? "playful_hop" : "celebrate";
+      setCatSpeech(next >= 3 ? `¡En racha! x${next}` : "¡Exacto!");
       triggerPurrHaptic();
       playCompanionSound("purr");
     } else {
       setCombo(0);
-      setCatPose("idle");
-      setCatSpeech("¡Ánimo! Vamos con la siguiente.");
+      pose = "pet";
+      setCatSpeech(wrongAnswerSpeech(item));
     }
-    settleCatAfter(2200);
+    setCatPose(pose);
+    setResultPose(pose);
     // Los ejercicios con ítem del catálogo («contexto») también anotan
     // el intento en su estadística editorial; no bloquea el repaso.
     // El repaso lo registra `grade` al confirmar con «Continuar»: un
@@ -617,28 +669,27 @@ export function useReviewSession({
     if (meaningKey === matchSel) {
       triggerPurrHaptic();
       playCompanionSound("purr");
-      setCatPose("celebrate");
-      settleCatAfter(1500);
       const nextDone = new Set(matchDone).add(meaningKey);
       setMatchDone(nextDone);
       setMatchSel(null);
-      setCombo((prev) => {
-        const next = prev + 1;
-        if (nextDone.size === tanda.length) {
-          setCatSpeech("¡Tanda de parejas completada con éxito!");
-        } else if (next >= 3) {
-          setCatSpeech(`¡Parejas en racha! x${next}`);
-        } else {
-          setCatSpeech("¡Pareja encontrada!");
-        }
-        return next;
-      });
+      const next = combo + 1;
+      setCombo(next);
+      setCatPose(next >= 3 ? "playful_hop" : "celebrate");
+      setCatSpeech(
+        nextDone.size === tanda.length
+          ? "¡Tanda de parejas completada con éxito!"
+          : next >= 3
+            ? `¡Parejas en racha! x${next}`
+            : "¡Pareja encontrada!",
+      );
+      settleCatAfter(2200);
       if (tanda.length > 0 && nextDone.size === tanda.length)
         void finishMatchTanda(tanda, matchFails);
     } else {
       setCombo(0);
-      setCatPose("greet");
-      setCatSpeech("Ese no corresponde... ¡sigue buscando.");
+      setCatPose("pet");
+      setCatSpeech("Esa no. Prueba otra.");
+      settleCatAfter(2200);
       setMatchFails((fails) => ({ ...fails, [matchSel]: (fails[matchSel] ?? 0) + 1 }));
       setMatchFlash(meaningKey);
       window.clearTimeout(matchFlashTimer.current);
@@ -651,7 +702,9 @@ export function useReviewSession({
       const wrongs = fails[item.word.key] ?? 0;
       // grade() avanza la cola de a un item y registra el repaso (kind
       // «match»): la tanda respeta el orden y no duplica el evento.
-      await grade(item, wrongs ? EXERCISE_RATING.wrong : EXERCISE_RATING.correct);
+      const saved = await grade(item, wrongs ? EXERCISE_RATING.wrong : EXERCISE_RATING.correct);
+      // Si un guardado falla se corta la tanda: el resto sigue vencido.
+      if (!saved) break;
     }
     setMatchSel(null);
     setMatchDone(new Set());
@@ -659,39 +712,6 @@ export function useReviewSession({
     setMatchFlash(null);
   };
 
-  // Espacio revela la respuesta; 1–4 califican una vez revelada.
-  useEffect(() => {
-    if (!queue) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.repeat || event.metaKey || event.ctrlKey || event.altKey) return;
-      const target = event.target;
-      if (
-        target instanceof HTMLElement &&
-        target.closest("input, textarea, select, [contenteditable]")
-      )
-        return;
-      const current = queue.items[0];
-      if (!current) return;
-      // Los ejercicios con opciones se responden con sus botones;
-      // las teclas de autovaloración no aplican.
-      if (EXERCISE_MODES.has(current.mode)) return;
-      if (event.key === " " && !revealed) {
-        if (target instanceof HTMLElement && target.closest("button")) return;
-        event.preventDefault();
-        reveal();
-        return;
-      }
-      const match = GRADES.find((item) => item.key === event.key);
-      if (match && revealed) {
-        event.preventDefault();
-        void grade(current, match.rating);
-      }
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-    // grade/reveal se releen de closures actuales en cada render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queue, revealed]);
 
   // Foco a la acción siguiente: al revelar → primera calificación;
   // al responder una opción o autocalificar en «escribir» → «Continuar»;
@@ -699,11 +719,13 @@ export function useReviewSession({
   const current = queue?.items[0];
   const currentKey = current?.word.key;
   const currentMode = current?.mode;
+  // `preventScroll`: enfocar no debe desplazar la página (el salto al responder).
   useEffect(() => {
-    if (revealed) firstGradeRef.current?.focus();
-    else if (answered || writePick) continueRef.current?.focus();
-    else if (currentMode === "write") writeAreaRef.current?.focus();
-    else if (currentKey) revealButtonRef.current?.focus();
+    const opts = { preventScroll: true };
+    if (revealed) firstGradeRef.current?.focus(opts);
+    else if (answered || writePick) continueRef.current?.focus(opts);
+    else if (currentMode === "write") writeAreaRef.current?.focus(opts);
+    else if (currentKey) revealButtonRef.current?.focus(opts);
   }, [revealed, answered, writePick, currentKey, currentMode]);
 
 
@@ -734,11 +756,15 @@ export function useReviewSession({
     return true;
   };
 
+  // Una pista por reto: el gato, el botón «💡 Pista» y los minijuegos pasan por
+  // aquí. Una pista de rescate (tryRescue) no cuenta. «Escribir» no pide pista.
   const askCatHint = () => {
     if (!current || hintBusy || !canHint) return;
+    if (hintsUsedRef.current > 0 || current.mode === "write") return;
     const forKey = current.word.key;
     hintForRef.current = forKey;
     hintsUsedRef.current += 1;
+    setHintUsed(true);
     setHintBusy(true);
     setCatSpeech("Pensando en una pista…");
     const scope = captureDbScope();
@@ -770,6 +796,54 @@ export function useReviewSession({
       .finally(() => {
         if (stillHere()) setHintBusy(false);
       });
+  };
+
+  // Caricia: pose «pet» y vuelta a la pose de resultado del reto.
+  const pet = () => {
+    setCatPose("pet");
+    setCatSpeech(PET_PHRASES[petIndexRef.current % PET_PHRASES.length]);
+    petIndexRef.current += 1;
+    settleCatAfter(1200, resultPose);
+  };
+
+  // Toque al gato: el primero de cada reto pide la pista si la hay y aún no se
+  // respondió; el resto, y todos sin pista posible, son una caricia.
+  const catTap = () => {
+    if (
+      current &&
+      !answered &&
+      !writePick &&
+      current.mode !== "write" &&
+      canHint &&
+      !hintUsed &&
+      !hintBusy
+    ) {
+      askCatHint();
+      return;
+    }
+    pet();
+  };
+
+  // «Terminar por hoy» desde la cabecera: califica la respuesta pendiente
+  // (opción tocada o autocalificación de «Escribir») y cierra. Si el guardado
+  // falla, la sesión sigue y saveError lo explica.
+  const exitSession = async () => {
+    if (gradingRef.current) return;
+    const item = queue?.items[0];
+    let extra = 0;
+    if (item && (answered || writePick)) {
+      const rating = answered
+        ? answered.correct
+          ? EXERCISE_RATING.correct
+          : EXERCISE_RATING.wrong
+        : writePick === "good"
+          ? Rating.Good
+          : Rating.Again;
+      const saved = await grade(item, rating);
+      if (!saved) return;
+      extra = 1;
+    }
+    endSessionForToday(Date.now(), extra);
   };
 
 
@@ -813,6 +887,58 @@ export function useReviewSession({
         )
       : [];
 
+  // Espacio revela la respuesta; 1–4 califican una vez revelada.
+  useEffect(() => {
+    if (!queue) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.repeat || event.metaKey || event.ctrlKey || event.altKey) return;
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        target.closest("input, textarea, select, [contenteditable]")
+      )
+        return;
+      const current = queue.items[0];
+      if (!current) return;
+      // Modos con opciones: las teclas 1–9 eligen la opción en esa posición.
+      // Con la opción ya respondida no hacen nada (no se responde dos veces).
+      if (OPTION_MODES.has(current.mode)) {
+        if (answered) return;
+        const index = Number(event.key) - 1;
+        if (!Number.isInteger(index) || index < 0 || index > 8) return;
+        if (current.mode === "choose") {
+          const option = choiceOptions[index];
+          if (!option) return;
+          event.preventDefault();
+          answerOption(option.key, option.key === current.word.key);
+        } else {
+          if (index >= senseLikeOptions.length) return;
+          event.preventDefault();
+          answerOption(String(index), index === senseLikeAnswer);
+        }
+        return;
+      }
+      // El resto de modos de ejercicio se responden con sus botones;
+      // las teclas de autovaloración no aplican.
+      if (EXERCISE_MODES.has(current.mode)) return;
+      if (event.key === " " && !revealed) {
+        if (target instanceof HTMLElement && target.closest("button")) return;
+        event.preventDefault();
+        reveal();
+        return;
+      }
+      const match = GRADES.find((item) => item.key === event.key);
+      if (match && revealed) {
+        event.preventDefault();
+        void grade(current, match.rating);
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+    // grade/reveal se releen de closures actuales en cada render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queue, revealed, answered]);
+
   // «Parejas»: la tanda vigente (hasta 4) y las dos columnas mezcladas.
   const tanda =
     current?.mode === "match" ? (queue?.items.slice(0, MATCH_TANDA) ?? []) : [];
@@ -842,6 +968,9 @@ export function useReviewSession({
     answerOption,
     answered,
     askCatHint,
+    catTap,
+    exitSession,
+    hintUsed,
     beginQueue,
     buildItemItems,
     buildSenseItems,

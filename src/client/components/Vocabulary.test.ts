@@ -106,22 +106,41 @@ vi.mock("./Companion", () => ({
   Companion: () => createElement("span", { className: "fake-cat" }),
 }));
 // El encabezado real no pinta nada sin compañero; aquí solo importa el
-// contrato de la pista: se ofrece si llega onAskHint y muestra su texto.
+// contrato: «💡 Pista» se ofrece si llega onAskHint y el reto aún no la usó,
+// y el avatar llama a onCatTap. El texto de la pista lo pinta la tarjeta.
 vi.mock("./PracticeCompanionHeader", () => ({
   PracticeCompanionHeader: (props: {
     onAskHint?: () => void;
+    onCatTap?: () => void;
     hintBusy?: boolean;
-    hintText?: string | null;
+    hintUsed?: boolean;
+    combo?: number;
+    pose?: string;
+    speech?: string;
   }) =>
-    props.onAskHint && !props.hintText
-      ? createElement(
-          "button",
-          { type: "button", disabled: props.hintBusy, onClick: props.onAskHint },
-          props.hintBusy ? "Pensando…" : "💡 Pista",
-        )
-      : props.hintText
-        ? createElement("p", { className: "hint-text" }, props.hintText)
+    createElement(
+      "div",
+      {
+        "data-testid": "cat-state",
+        "data-combo": props.combo,
+        "data-pose": props.pose,
+        "data-speech": props.speech,
+      },
+      props.onAskHint && !props.hintUsed
+        ? createElement(
+            "button",
+            { type: "button", disabled: props.hintBusy, onClick: props.onAskHint },
+            props.hintBusy ? "Pensando…" : "💡 Pista",
+          )
         : null,
+      props.onCatTap
+        ? createElement(
+            "button",
+            { type: "button", "data-testid": "cat-tap", onClick: props.onCatTap },
+            "gato",
+          )
+        : null,
+    ),
 }));
 
 const listWordsMock = vi.mocked(listSavedWords);
@@ -356,7 +375,17 @@ describe("Aprender", () => {
     ).toBeNull();
   });
 
-  it("«Terminar por ahora» conserva el puente a repaso de lo aprendido", async () => {
+  it("salir de Aprender sin ver ninguna ficha vuelve a la portada", async () => {
+    listWordsMock.mockResolvedValue([word({ meaning: "hogar" })]);
+    await render();
+    await click("Aprender 1 palabra nueva");
+    expect(button("Terminar por hoy")?.closest(".notebook-bar")).toBeTruthy();
+    await click("Terminar por hoy");
+    expect(text()).not.toContain("Aprender terminado");
+    expect(host.querySelector(".nb-hero-card")).toBeTruthy();
+  });
+
+  it("«Terminar por hoy» conserva el puente a repaso de lo aprendido", async () => {
     listWordsMock.mockResolvedValue([
       word({ form: "casa", meaning: "hogar" }),
       word({ form: "perro", meaning: "can", savedAt: 2 }),
@@ -366,7 +395,7 @@ describe("Aprender", () => {
     await click("Mostrar significado");
     await click("Quiero aprenderla");
     // Sale a mitad de tanda habiendo aprendido una palabra.
-    await click("Terminar por ahora");
+    await click("Terminar por hoy");
     expect(text()).toContain("Aprender terminado");
     expect(button("Repasar esta palabra")).toBeTruthy();
   });
@@ -1512,6 +1541,41 @@ describe("Plan de simplificación — Fase 1 (comportamiento)", () => {
       // La tarjeta nueva puede pedir la suya: no quedó «Pensando…» colgado.
       expect(button("💡 Pista")).toBeTruthy();
     });
+
+    it("una pista por reto: tocar al gato dos veces pide la pista una sola vez", async () => {
+      await render();
+      await startReview("Repasar 2 palabras");
+      const cat = host.querySelector('[data-testid="cat-tap"]') as HTMLElement;
+      await act(async () => {
+        cat.click();
+        for (let i = 0; i < 6; i++) await Promise.resolve();
+      });
+      await act(async () => {
+        cat.click();
+        for (let i = 0; i < 6; i++) await Promise.resolve();
+      });
+      expect(explainMock).toHaveBeenCalledTimes(1);
+      // Ya pedida: el botón se oculta y la pista se ve dentro de la tarjeta.
+      expect(button("💡 Pista")).toBeUndefined();
+      expect(host.querySelector(".nb-card .scramble-hint-box")).toBeTruthy();
+    });
+
+    it("tocar al gato después de responder no pide pista: es una caricia", async () => {
+      await render();
+      await startReview("Repasar 2 palabras");
+      await act(async () => {
+        (host.querySelector(".choice-option") as HTMLButtonElement).click();
+        for (let i = 0; i < 4; i++) await Promise.resolve();
+      });
+      await act(async () => {
+        (host.querySelector('[data-testid="cat-tap"]') as HTMLElement).click();
+        for (let i = 0; i < 4; i++) await Promise.resolve();
+      });
+      expect(explainMock).not.toHaveBeenCalled();
+      expect(
+        (host.querySelector('[data-testid="cat-state"]') as HTMLElement).dataset.pose,
+      ).toBe("pet");
+    });
   });
 
   describe("B4 · rescate con sentido", () => {
@@ -1676,7 +1740,7 @@ describe("Plan de simplificación — Fase 1 (comportamiento)", () => {
       await click("Mostrar significado");
       await click("Pasar por ahora");
       expect(cardFront()).toBe("sindos");
-      await click("Terminar por ahora");
+      await click("Terminar por hoy");
       await click("Seguir aprendiendo (2)");
       expect(cardFront()).toBe("sindos");
     });
@@ -1746,6 +1810,150 @@ describe("Plan de simplificación — Fase 2 (superficie)", () => {
     await click("Terminar por hoy");
     expect(text()).not.toContain("Terminado por hoy.");
     expect(host.querySelector(".nb-hero-card")).toBeTruthy();
+  });
+
+  // ---- Repaso del Cuaderno (docs/designs/2026-11-13-cuaderno-repaso.md) ----
+  // Cuaderno con dos vencidas de oración propia y tres distractores no
+  // vencidos: la tarjeta tiene cuatro opciones y la oración dice cuál toca.
+  const CONTEXTS: Record<string, string> = {
+    brisa: "Sopló la brisa del mar.",
+    cedro: "El cedro del jardín creció.",
+  };
+  const seed = () => {
+    listWordsMock.mockResolvedValue([
+      word({ ...dueWord("brisa", 2), context: CONTEXTS.brisa }),
+      word({ ...dueWord("cedro", 1), context: CONTEXTS.cedro }),
+      word({ form: "duna", meaning: "arena", savedAt: 0 }),
+      word({ form: "roca", meaning: "piedra", savedAt: 0 }),
+      word({ form: "nube", meaning: "vapor", savedAt: 0 }),
+    ]);
+    exposureFor(["es:brisa", "es:cedro"]);
+  };
+  const catState = () => host.querySelector('[data-testid="cat-state"]') as HTMLElement;
+  const options = () => [...host.querySelectorAll(".choice-option")] as HTMLButtonElement[];
+  // La forma del reto actual sale de su oración (el hueco no la muestra).
+  const currentForm = () =>
+    (host.querySelector(".nb-card")?.textContent ?? "").includes("mar") ? "brisa" : "cedro";
+  const pick = (correct: boolean) =>
+    options().find((b) => (b.textContent === currentForm()) === correct)!;
+  const tap = async (el: HTMLElement) =>
+    act(async () => {
+      el.click();
+      for (let i = 0; i < 6; i++) await Promise.resolve();
+    });
+  const key = async (k: string) =>
+    act(async () => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: k }));
+      for (let i = 0; i < 4; i++) await Promise.resolve();
+    });
+
+  it("D1: «Terminar por hoy» vive en la cabecera, no al final de la tarjeta", async () => {
+    seed();
+    await render();
+    await click("Repasar 2 palabras");
+    expect(button("Terminar por hoy")?.closest(".notebook-bar")).toBeTruthy();
+    expect(host.querySelector(".nb-practice")?.textContent).not.toContain("Terminar por hoy");
+  });
+
+  it("D1: salir con una respuesta sin confirmar la califica y la cuenta", async () => {
+    seed();
+    await render();
+    await click("Repasar 2 palabras");
+    await tap(pick(true));
+    await click("Terminar por hoy");
+    expect(updateWordMock).toHaveBeenCalledTimes(1);
+    expect(text()).toContain("Terminado por hoy.");
+    expect(text()).toContain("1 palabra repasada");
+  });
+
+  it("D1: si el guardado falla al salir, la sesión sigue", async () => {
+    seed();
+    updateWordMock.mockRejectedValueOnce(new Error("idb"));
+    await render();
+    await click("Repasar 2 palabras");
+    await tap(pick(true));
+    await click("Terminar por hoy");
+    expect(host.querySelector(".nb-practice")).toBeTruthy();
+    expect(text()).not.toContain("Terminado por hoy.");
+  });
+
+  it("D2: el resultado va en un único role=status debajo de las opciones", async () => {
+    seed();
+    await render();
+    await click("Repasar 2 palabras");
+    await tap(pick(false));
+    const statuses = host.querySelectorAll('.nb-practice [role="status"]');
+    expect(statuses).toHaveLength(1);
+    const foot = host.querySelector(".nb-answer-foot")!;
+    expect(foot.getAttribute("role")).toBe("status");
+    expect(foot.textContent).toContain(`Incorrecto: era “${currentForm()}”`);
+    expect(host.querySelector(".nb-card .nb-card-back")).toBeNull();
+    expect(
+      host.querySelector(".choice-list")!.compareDocumentPosition(foot) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("D2: enfocar «Continuar» no desplaza la página", async () => {
+    seed();
+    const focus = vi.spyOn(HTMLElement.prototype, "focus");
+    await render();
+    await click("Repasar 2 palabras");
+    focus.mockClear();
+    await tap(pick(true));
+    const continuar = button("Continuar")!;
+    expect(continuar.classList.contains("nb-continue")).toBe(true);
+    const index = focus.mock.contexts.indexOf(continuar);
+    expect(index).toBeGreaterThanOrEqual(0);
+    expect(focus.mock.calls[index][0]).toEqual({ preventScroll: true });
+    focus.mockRestore();
+  });
+
+  it("D4: las opciones respondidas siguen deshabilitadas y marcadas", async () => {
+    seed();
+    await render();
+    await click("Repasar 2 palabras");
+    await tap(pick(false));
+    expect(options().every((b) => b.disabled)).toBe(true);
+    expect(host.querySelectorAll(".choice-option.is-correct")).toHaveLength(1);
+    expect(host.querySelectorAll(".choice-option.is-wrong")).toHaveLength(1);
+  });
+
+  it("A4: dos aciertos seguidos dejan la racha en 2, no en 4", async () => {
+    seed();
+    await render();
+    await click("Repasar 2 palabras");
+    await tap(pick(true));
+    expect(catState().dataset.combo).toBe("1");
+    await click("Continuar");
+    await tap(pick(true));
+    expect(catState().dataset.combo).toBe("2");
+    await click("Continuar");
+    expect(catState().dataset.combo).toBe("2");
+  });
+
+  it("D5: al fallar el gato acaricia y nombra la palabra; al avanzar vuelve a idle", async () => {
+    seed();
+    await render();
+    await click("Repasar 2 palabras");
+    const form = currentForm();
+    await tap(pick(false));
+    expect(catState().dataset.pose).toBe("pet");
+    expect(catState().dataset.speech).toBe(`Era «${form}». La próxima la tienes.`);
+    await click("Continuar");
+    expect(catState().dataset.pose).toBe("idle");
+  });
+
+  it("D6: la tecla 2 elige la segunda opción y otra tecla después no cambia nada", async () => {
+    seed();
+    await render();
+    await click("Repasar 2 palabras");
+    await key("2");
+    const second = options()[1];
+    expect(second.classList.contains("is-correct") || second.classList.contains("is-wrong")).toBe(true);
+    const before = options().map((b) => b.className).join("|");
+    await key("3");
+    expect(options().map((b) => b.className).join("|")).toBe(before);
   });
 });
 

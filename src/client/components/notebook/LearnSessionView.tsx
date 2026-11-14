@@ -33,6 +33,8 @@ type LearnSessionViewProps = {
   startAdaptiveFlow: (onlyKeys?: ReadonlySet<string>) => void;
   /** Foco inicial del botón «Mostrar significado» (lo comparte la sesión de repaso). */
   revealButtonRef: React.RefObject<HTMLButtonElement | null>;
+  /** Toque al gato: una caricia (Aprender no pide pistas). */
+  onCatTap: () => void;
 };
 
 export function LearnSessionView({
@@ -45,6 +47,7 @@ export function LearnSessionView({
   wordBookTitle,
   startAdaptiveFlow,
   revealButtonRef,
+  onCatTap,
 }: LearnSessionViewProps) {
   const {
     learnBusy,
@@ -116,6 +119,7 @@ export function LearnSessionView({
           combo={combo}
           mode={companionMode}
           onModeChange={updateCompanionMode}
+          onCatTap={onCatTap}
         />
         <p className="meta nb-practice-meta">
           Lee la frase del libro: ¿qué crees que significa aquí?
@@ -262,13 +266,6 @@ export function LearnSessionView({
             {learnError}
           </p>
         ) : null}
-        <button
-          type="button"
-          className="btn--quiet nb-quit"
-          onClick={() => setLearn({ ...learn, done: true })}
-        >
-          Terminar por ahora
-        </button>
       </div>
     )
   );

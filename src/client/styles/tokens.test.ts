@@ -246,6 +246,26 @@ describe("tokens.css", () => {
       expect(cOnAccent, `--on-accent sobre --vermilion en ${themeName} (${cOnAccent.toFixed(2)}:1)`).toBeGreaterThanOrEqual(4.5);
     }
   });
+  // Repaso del Cuaderno (docs/designs/2026-11-13-cuaderno-repaso.md, D4): la
+  // opción respondida pinta el wash sobre --paper-raised con texto --ink. En
+  // papel/blanco --vermilion-wash es opaco, así que el contraste se mide.
+  it("las opciones respondidas del repaso leen ≥ 4.5:1 en todos los temas", () => {
+    for (const [themeName, decls] of Object.entries(themes)) {
+      const ink = parseColor(decls["--ink"])!;
+      const raised = parseColor(decls["--paper-raised"])!;
+      for (const wash of ["--success-wash", "--vermilion-wash"]) {
+        const washColor = parseColor(decls[wash]);
+        expect(washColor, `${wash} en ${themeName}`).not.toBeNull();
+        const bg = compositeOver(washColor!, raised);
+        const ratio = contrastRatio(
+          relativeLuminance(ink.r, ink.g, ink.b),
+          relativeLuminance(bg.r, bg.g, bg.b),
+        );
+        expect(ratio, `--ink sobre ${wash} en ${themeName} (${ratio.toFixed(2)}:1)`).toBeGreaterThanOrEqual(4.5);
+      }
+    }
+  });
+
   // Regresión del 2026-10-31: `--text-primary` no existía en ningún archivo,
   // así que `var(--text-primary, #f5f2eb)` caía al fallback crema (pensado
   // para el tema noche) sobre `--surface-elevated` = blanco: la tarjeta de
