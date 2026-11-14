@@ -589,14 +589,21 @@
   animation: lecta-shake var(--dur-3) var(--ease-out);
 }
 
+.choice-option.is-wrong {
+  position: relative;
+  padding-inline-end: calc(var(--s-4) + 1em);
+}
+
+/* Absoluto: el tachado del texto no se propaga a la marca (en un flex el
+   ::after sería un ítem de bloque y heredaría la línea). */
 .choice-option.is-wrong::after {
   content: "✕";
-  /* inline-block: el tachado del texto no se propaga a la marca. */
-  display: inline-block;
-  margin-inline-start: auto;
+  position: absolute;
+  inset-inline-end: var(--s-4);
+  inset-block-start: 50%;
+  transform: translateY(-50%);
   font-weight: 700;
   color: var(--vermilion);
-  text-decoration: none;
 }
 
 /* Resultado debajo de las opciones (no las empuja) y «Continuar» fijo al

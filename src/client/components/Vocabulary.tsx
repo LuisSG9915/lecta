@@ -553,6 +553,21 @@ export function Vocabulary({
       : learn && !learn.done && learn.items.length > 0
         ? "learn"
         : undefined;
+  // Al empezar una sesión: arriba de todo (la portada pudo quedar desplazada y
+  // el gato quedaría bajo la barra fija) y el gato sin la frase ni la racha
+  // de la sesión anterior.
+  const { resetCat, setCombo } = practiceCompanion;
+  const prevSessionRef = useRef<typeof sessionKind>(undefined);
+  useEffect(() => {
+    const started = sessionKind !== undefined && prevSessionRef.current === undefined;
+    prevSessionRef.current = sessionKind;
+    if (!started) return;
+    resetCat();
+    setCombo(0);
+    setCatSpeech("");
+    if (isOverlay) ref.current?.scrollTo?.({ top: 0 });
+    else window.scrollTo({ top: 0 });
+  }, [sessionKind, isOverlay, resetCat, setCombo, setCatSpeech]);
   // Calificación, revisión IA o tanda de parejas guardándose: salir ahora
   // dejaría trabajo a medias.
   const exitBusy =

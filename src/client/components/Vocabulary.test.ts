@@ -1967,6 +1967,26 @@ describe("Plan de simplificación — Fase 2 (superficie)", () => {
     expect(catState().dataset.pose).toBe("idle");
   });
 
+  it("una sesión nueva empieza arriba y sin la frase ni la racha de la anterior", async () => {
+    seed();
+    // Presentación overlay (la de render): se desplaza el propio cuaderno.
+    const scrollTo = vi.fn();
+    const original = HTMLElement.prototype.scrollTo;
+    HTMLElement.prototype.scrollTo = scrollTo as never;
+    await render();
+    await click("Repasar 2 palabras");
+    await tap(pick(true));
+    await click("Terminar por hoy");
+    expect(catState().dataset.combo).toBe("1");
+    await click("Ver el cuaderno");
+    scrollTo.mockClear();
+    await click("Aprender 3 palabras nuevas");
+    expect(catState().dataset.combo).toBe("0");
+    expect(catState().dataset.speech).toBe("");
+    expect(scrollTo).toHaveBeenCalledWith({ top: 0 });
+    HTMLElement.prototype.scrollTo = original;
+  });
+
   it("D6: la tecla 2 elige la segunda opción y otra tecla después no cambia nada", async () => {
     seed();
     await render();
