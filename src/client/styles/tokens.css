@@ -793,3 +793,29 @@
   --cat-fur: #e9b04b;
   --cat-fur-light: #f9e7bc;
 }
+
+/* ---------------------------------------------------------------------
+   Prendas y atrezo del gato (Bloque 3): colores de ilustración, fijos por
+   prenda y no por tema, como los pelajes. Los usa game.css.
+   --------------------------------------------------------------------- */
+:root {
+  --wear-boina: #365341;
+  --wear-capa: #73222e;
+  --wear-beret-poet: #2f3846;
+  --wear-wizard-hat: #1e1b4b;
+  --wear-laurel-stem: #2d5a3f;
+  --wear-laurel-leaf: #437a54;
+  --wear-laurel-edge: #1f3f2b;
+  --wear-cape-modernist: #1e3a8a;
+  --wear-bowtie: #1f2937;
+  --wear-bowtie-knot: #374151;
+  --wear-detective-cape: #78350f;
+  --wear-detective-collar: #92400e;
+  --wear-panuelo: #7d2b20;
+  --wear-gafas-sol: #2b2622;
+  --wear-abrigo: #4a5a6a;
+  --wear-abrigo-collar: #6b7a88;
+  --wear-pluma: #f4efe4;
+  --prop-tea: #a65e2e;
+  --prop-candle-wax: #faf6eb;
+}

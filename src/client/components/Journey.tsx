@@ -550,6 +550,11 @@ export default function Journey({ onClose, books }: JourneyProps) {
                 aria-label="Santuario del Gato"
               >
                 <div className="journey-sanctuary-scene">
+                  {/* Etapa máxima (bibliotecario, catStageForLevel = 4): sol
+                      bermellón detrás del gato, como en el landing. */}
+                  {companion.stage >= 4 ? (
+                    <span className="journey-sanctuary-sun" aria-hidden="true" />
+                  ) : null}
                   <CompanionStage
                     name={companion.name}
                     stage={companion.stage}

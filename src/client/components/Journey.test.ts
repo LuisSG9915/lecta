@@ -246,6 +246,31 @@ describe("Journey (Tu recorrido)", () => {
     expect(container?.querySelectorAll(".journey-seal-item").length).toBe(8);
   });
 
+  it("pinta el sol bermellón solo en la etapa máxima del gato (bibliotecario)", async () => {
+    const baseState = emptyGameState();
+    const renderAt = async (stage: number) => {
+      mockCompanionContext = {
+        enabled: true,
+        name: "Michi",
+        stage,
+        mood: "happy",
+        state: { ...baseState, xp: stage === 4 ? 2200 : 120 },
+      };
+      await act(async () => {
+        root?.render(h(Journey, { onClose: vi.fn(), books: sampleBooks }));
+      });
+      await act(async () => {
+        await Promise.resolve();
+      });
+      return container?.querySelector(".journey-sanctuary-sun") ?? null;
+    };
+
+    expect(await renderAt(2)).toBeNull();
+    const sun = await renderAt(4);
+    expect(sun).toBeTruthy();
+    expect(sun?.getAttribute("aria-hidden")).toBe("true");
+  });
+
   it("muestra cuántos capítulos sentiste al día, como valoración propia", async () => {
     mockSessionKeys = [
       "chapterFollow:v1:book-1:Cap%201",
