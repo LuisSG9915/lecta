@@ -11,6 +11,7 @@ import {
   type MouseEvent,
 } from "react";
 import type { EpubBook } from "../lib/epub";
+import { bookDisplayName } from "../lib/cover";
 import type { WordHit } from "../lib/words";
 import { extractWordAtPoint, sameWordHit, sentenceRangeForHit, wordHitFromRange } from "../lib/words";
 import { classifySelection, isTouchInput } from "../lib/tap-intent-guard";
@@ -360,6 +361,18 @@ import {
   shouldAutoShowPreview,
 } from "../hooks/useReaderChapterPrep";
 export { markSectionPreviewed, shouldAutoShowPreview };
+
+// Título de la barra superior: capítulo o sección si los hay; si no, el
+// libro por `bookDisplayName`, que nunca deja ver un hash ni el nombre
+// técnico del archivo (regla «Identidad Visible Limpia»).
+export function readerTopBarTitle(
+  chapterLabel: string | undefined,
+  sectionTitle: string | undefined,
+  title: string | undefined,
+  fileName: string,
+): string {
+  return chapterLabel || sectionTitle || bookDisplayName({ title, name: fileName });
+}
 
 // Registra las palabras dominadas (repasadas, con ≥90 días de
 // estabilidad) como evidencia «conocida» inferida: alimenta el
@@ -4105,7 +4118,7 @@ export default function Reader({
       />
       <ReaderTopBar
         onBack={handleBack}
-        title={currentChapterTarget?.label || sectionTitle || title || fileName}
+        title={readerTopBarTitle(currentChapterTarget?.label, sectionTitle, title, fileName)}
         author={author}
         progress={progress}
         isZenFaded={isZenFaded}

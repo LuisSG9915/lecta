@@ -4,7 +4,7 @@ import { createEmptyCard, type Card } from "ts-fsrs";
 import { listAllKnowledge, saveKnowledge, type SavedWord } from "../lib/idb";
 import type { EpisodicWordItem } from "../lib/practice";
 import type { DeepReadingSummary } from "../lib/deep-reading";
-import { recordDominated } from "./Reader";
+import { readerTopBarTitle, recordDominated } from "./Reader";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -155,6 +155,15 @@ describe("recordDominated", () => {
 });
 
 describe("Zen HUD & Estrategias (B.1 & B.2)", () => {
+  it("la barra superior nunca muestra un nombre de archivo tipo hash", () => {
+    const hashName = "3f9a1c2b7d4e5f60a1b2c3d4e5f6a7b8.epub";
+    expect(readerTopBarTitle(undefined, "", "", hashName)).toBe("Libro sin título");
+    expect(readerTopBarTitle(undefined, "", "", "el_jardin-secreto.epub")).toBe("El Jardin Secreto");
+    expect(readerTopBarTitle(undefined, "", "La Regenta", hashName)).toBe("La Regenta");
+    expect(readerTopBarTitle("Capítulo 2", "Sección", "La Regenta", hashName)).toBe("Capítulo 2");
+    expect(readerTopBarTitle(undefined, "Prólogo", "La Regenta", hashName)).toBe("Prólogo");
+  });
+
   it("PRESET_LABELS cubre todas las estrategias de lectura", async () => {
     const { PRESET_LABELS } = await import("./Reader");
     expect(PRESET_LABELS.focus).toBe("Enfoque");
