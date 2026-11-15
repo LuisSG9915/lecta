@@ -40,6 +40,7 @@
     const q = (coat ? `gato=${coat}&` : "") + `src=${encodeURIComponent(SRC)}`;
     $$("a[data-cta]").forEach(a => { a.href = `${APP}?${q}`; });
     $$("a[data-cta-plus]").forEach(a => { a.href = `${APP}?${q}&carne=1`; });
+    $$("a[data-cta-try]").forEach(a => { a.href = `${APP}?probar=${a.dataset.ctaTry}&${q}`; });
   }
   function setCoat(coat, announce) {
     const input = picks.find(i => i.value === coat) || picks[0];

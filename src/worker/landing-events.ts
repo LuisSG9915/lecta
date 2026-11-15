@@ -24,6 +24,8 @@ export const LANDING_EVENTS = new Set([
   "cta:plan-plus",
   "cta:close",
   "cta:sticky",
+  "cta:try-es",
+  "cta:try-en",
   "demo_open",
   "demo_save",
   "demo_reveal",

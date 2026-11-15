@@ -14,6 +14,8 @@ import {
 import { PENDING_DELETE_KEY } from "./lib/account-cleanup";
 import { listRemoteBooks } from "./lib/books";
 import { syncPositions } from "./lib/positions-sync";
+import { downloadCatalogEpub } from "./lib/catalog";
+import { readFileSync } from "node:fs";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
   true;
@@ -201,6 +203,16 @@ vi.mock("./lib/positions-sync", () => ({
 }));
 
 vi.mock("./lib/vocab", () => ({ syncSavedWords: vi.fn(async () => undefined) }));
+// «Probar con un clásico»: la descarga devuelve un EPUB real mínimo.
+vi.mock("./lib/catalog", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./lib/catalog")>()),
+  downloadCatalogEpub: vi.fn(
+    async () =>
+      new File([readFileSync("fixtures/minimal.epub")], "Marianela.epub", {
+        type: "application/epub+zip",
+      }),
+  ),
+}));
 
 vi.mock("./lib/reading-sync", () => ({
   syncActivity: vi.fn(async () => undefined),
@@ -496,6 +508,37 @@ describe("App · cuenta obligatoria (tabla de decisión)", () => {
     await waitWelcome();
     expect(localStorage.getItem("lecta:gato")).toBe("calico");
     expect(window.location.search).toBe("");
+  });
+
+  it("?probar=marianela sin sesión abre el lector, no la bienvenida ni la estantería", async () => {
+    vi.mocked(authClient.useSession).mockReturnValue({ data: null, isPending: false } as never);
+    window.history.replaceState({}, "", "/?probar=marianela&src=google.com");
+    renderRoot();
+    for (let i = 0; i < 100 && !host.querySelector(".reader-stub"); i += 1) await flush();
+    expect(vi.mocked(downloadCatalogEpub)).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "marianela" }),
+    );
+    expect(host.querySelector(".reader-stub")).toBeTruthy();
+    expect(host.querySelector(".welcome")).toBeNull();
+    expect(host.querySelector(".shelf-stub")).toBeNull();
+    expect(window.location.search).toBe("");
+
+    // Cerrar el libro («atrás») termina la prueba: vuelve la bienvenida
+    // con el aviso de crear cuenta.
+    await act(async () => window.history.back());
+    await waitWelcome();
+    expect(host.querySelector(".welcome")?.textContent).toContain(
+      "seguir leyendo «Marianela»",
+    );
+  });
+
+  it("?probar= con un libro fuera de la lista muestra la bienvenida", async () => {
+    vi.mocked(authClient.useSession).mockReturnValue({ data: null, isPending: false } as never);
+    window.history.replaceState({}, "", "/?probar=quijote");
+    renderRoot();
+    await waitWelcome();
+    expect(host.querySelector(".welcome")).toBeTruthy();
+    expect(vi.mocked(downloadCatalogEpub)).not.toHaveBeenCalled();
   });
 
   it("?src= de la landing se guarda antes de limpiar la URL", async () => {

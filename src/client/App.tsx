@@ -5,6 +5,7 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useEffectEvent,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -42,6 +43,7 @@ import { decidePendingDelete, PENDING_DELETE_KEY, clearSyncCursors } from "./lib
 import { pushOverlay, type OverlayHandle } from "./lib/history";
 import { sha256Hex } from "./lib/hash";
 import { downloadCatalogEpub, type CatalogBook } from "./lib/catalog";
+import { parseTrialBook, type TrialBook } from "./lib/trial";
 import { isReviewDueWord } from "./lib/fsrs";
 import {
   COMPANION_LETTERS_KEY,
@@ -161,14 +163,23 @@ export default function App() {
     const gato = params.get("gato");
     const src = params.get("src");
     const carne = params.get("carne") === "1";
+    const probar = params.get("probar");
     if (gato) rememberStarterCoat(gato);
     rememberLandingSource(src);
-    if (token || urlError || deleted || gato !== null || src !== null || carne) {
+    if (
+      token || urlError || deleted || gato !== null || src !== null || carne || probar !== null
+    ) {
       window.history.replaceState(null, "", window.location.pathname);
     }
-    return { token, urlError, deleted, carne };
+    return { token, urlError, deleted, carne, trial: parseTrialBook(probar) };
   });
   const [book, setBook] = useState<BookSelection | null>(null);
+  // «Probar con un clásico» (lib/trial.ts): loading → reading → ended.
+  // Mientras no esté `ended`, la falta de sesión no manda a Welcome.
+  const [trial, setTrial] = useState<"loading" | "reading" | "ended" | null>(
+    authLink.trial ? "loading" : null,
+  );
+  const trialBookSeen = useRef(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState(
     authLink.urlError ? "El enlace ya venció o fue usado. Pide uno nuevo." : "",
@@ -264,6 +275,9 @@ export default function App() {
   // nunca antes): el compañero solo ve datos de la base vigente — un
   // cambio de cuenta lo limpia y recarga con el contexto nuevo.
   const [dbUserId, setDbUserId] = useState<string | null>(null);
+  // La base activa ya es la que dictó la sesión (no la optimista de
+  // `lastUserId`): el libro de prueba se importa recién entonces.
+  const [sessionDbReady, setSessionDbReady] = useState(false);
   const [dbStorageError, setDbStorageError] = useState<DbStorageError | null>(null);
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [showLegal, setShowLegal] = useState<"privacy" | "terms" | null>(null);
@@ -934,6 +948,7 @@ export default function App() {
       // Ya es seguro: la base activa es la de esta cuenta — el
       // compañero recarga con ella (y limpia lo de la cuenta previa).
       setDbUserId(scope.userId);
+      setSessionDbReady(true);
 
       // La base local solo se limpia si el correo de confirmación
       // redirigió aquí; cerrar sesión o un enlace vencido no bastan.
@@ -1393,11 +1408,37 @@ export default function App() {
   // «Obtener» del riel Descubre: el EPUB del catálogo entra por el
   // mismo tubo que un archivo elegido a mano — validación, dedup por
   // hash (si ya está, abre el existente) y subida a la cuenta.
-  const getCatalogBook = async (item: CatalogBook) => {
+  const getCatalogBook = async (item: Pick<CatalogBook, "id" | "title" | "author">) => {
     const file = await downloadCatalogEpub(item);
     if (!file) throw new Error("catalog download failed");
     await selectBook(file);
   };
+
+  // «Probar con un clásico»: con la base de la sesión ya activa (anónima
+  // o de cuenta) se descarga el libro y entra por el tubo normal. Con
+  // cuenta no hay modo prueba: el libro queda en su estantería.
+  const trialBook = authLink.trial;
+  const trialStarted = useRef(false);
+  const openTrialBook = useEffectEvent((item: TrialBook) => getCatalogBook(item));
+  useEffect(() => {
+    if (trial !== "loading" || !sessionDbReady || !trialBook) return;
+    if (trialStarted.current) return;
+    trialStarted.current = true;
+    const withAccount = Boolean(sessionUserId);
+    openTrialBook(trialBook)
+      .then(() => setTrial(withAccount ? null : "reading"))
+      .catch(() => {
+        setError(`No pudimos abrir «${trialBook.title}». Revisa tu conexión.`);
+        setTrial(withAccount ? null : "ended");
+      });
+  }, [trial, sessionDbReady, trialBook, sessionUserId]);
+  // Al cerrar el libro de prueba (flecha, «atrás» o gesto) termina el
+  // modo prueba y vuelve Welcome, con el aviso de crear cuenta.
+  useEffect(() => {
+    if (trial !== "reading") return;
+    if (book) trialBookSeen.current = true;
+    else if (trialBookSeen.current) setTrial("ended");
+  }, [trial, book]);
 
   const openStoredBook = async (item: ShelfItem) => {
     setError("");
@@ -1844,15 +1885,27 @@ export default function App() {
   //   sin sesión en línea → Welcome (el efecto de sesión borra lastUserId);
   //   sin sesión y sin red → la base local si hay lastUserId, si no Welcome
   //   con el aviso de conexión única.
+  // Excepción: «Probar con un clásico» (lib/trial.ts) muestra solo el
+  // lector mientras dura la prueba; nunca la estantería ni el resto.
   const sessionInconclusive =
     Boolean(sessionError) && sessionError?.status !== 401 && !sessionUserId;
+  const trialOpen = !sessionUserId && (trial === "loading" || trial === "reading");
   const showWelcome =
+    !trialOpen &&
     !sessionUserId &&
     (Boolean(authLink.token) ||
       (!sessionPending &&
         (sessionInconclusive || !online ? !optimisticUserId : true)));
 
+  if (trialOpen && !book) {
+    return <p className="status">Abriendo «{trialBook?.title}»…</p>;
+  }
+
   if (showWelcome) {
+    const trialNotice =
+      trial === "ended" && trialBook && !error
+        ? `Crea tu cuenta gratis para seguir leyendo «${trialBook.title}» donde te quedaste. Lo que guardaste en esta prueba pasa a tu cuenta.`
+        : undefined;
     return (
       <>
         <Suspense fallback={<p className="status">Abriendo Lecta…</p>}>
@@ -1860,7 +1913,7 @@ export default function App() {
             resetToken={resetToken}
             onResetDone={() => setResetToken(undefined)}
             offline={!online}
-            notice={error || message || undefined}
+            notice={trialNotice || error || message || undefined}
             onShowLegal={setShowLegal}
           />
         </Suspense>

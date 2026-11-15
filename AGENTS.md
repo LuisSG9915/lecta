@@ -677,6 +677,24 @@ Diseño: `docs/designs/2026-11-12-planes-y-landing.md`.
   `api_version=2025-03-31.basil`; pruebas locales con
   `stripe listen --latest --forward-to localhost:<port>/api/billing/webhook`.
 
+## Probar con un clásico (sin cuenta)
+
+- Única excepción a la cuenta obligatoria: `/?probar=<id>` (allowlist en
+  `src/client/lib/trial.ts`: `marianela`, `alice-wonderland`) abre ese
+  clásico en el lector sin sesión. `App.tsx` lleva `trial`
+  (`loading` → `reading` → `ended`): mientras no sea `ended` no se muestra
+  `Welcome` ni la estantería (solo «Abriendo…» y el lector). El libro se
+  importa con `getCatalogBook` **después** de `sessionDbReady` (la base ya es
+  la que dictó la sesión, no la optimista de `lastUserId`), así que cae en
+  la base anónima `lecta`. Al cerrar el libro (flecha, «atrás») `trial` pasa
+  a `ended` y `Welcome` muestra «Crea tu cuenta gratis para seguir leyendo
+  «…»». Lo guardado pasa a la cuenta por `migrateAnonymousToUser` al
+  registrarse en el mismo navegador. Con sesión, `?probar=` solo añade el
+  libro a la estantería.
+- Sin sesión la ficha usa el diccionario local y la IA muestra «Inicia
+  sesión…» (`canExplain`). Botones en la landing: `data-cta-try`, eventos
+  `cta:try-es` / `cta:try-en`.
+
 ## Cuentas y correo
 
 - Magic link (10 min), correo+contraseña, "olvidé contraseña" y borrado de

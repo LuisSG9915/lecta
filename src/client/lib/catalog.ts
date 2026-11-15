@@ -296,7 +296,7 @@ export function describeCatalogBook(book: CatalogBook): string {
 // flujo normal de «Añadir libro» (misma validación y dedup por hash que
 // cualquier EPUB local).
 export async function downloadCatalogEpub(
-  book: CatalogBook,
+  book: Pick<CatalogBook, "id" | "title" | "author">,
 ): Promise<File | null> {
   const response = await fetch(`/api/catalog/${book.id}/epub`).catch(
     () => null,
