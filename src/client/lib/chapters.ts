@@ -95,6 +95,8 @@ const FRONT_LABELS = new Set([
   "epigraph",
   "epigrafe",
   "contents",
+  "chapters",
+  "capitulos",
   "table of contents",
   "toc",
   "indice",
@@ -171,7 +173,9 @@ export const normalizeLabel = (label: string) =>
  * Detector positivo bilingüe (ES/EN) de etiquetas que indican un capítulo real.
  */
 export function isLikelyChapterLabel(label: string): boolean {
-  const trimmed = label.trim();
+  // Guiones de adorno antes del número: «-I- Perdido», «— 3 —»
+  // (Project Gutenberg los usa en muchos clásicos en español).
+  const trimmed = label.trim().replace(/^[-–—]+\s*/, "");
   if (!trimmed) return false;
   const norm = normalizeLabel(trimmed);
   if (FRONT_LABELS.has(norm) || BACK_LABELS.has(norm)) return false;

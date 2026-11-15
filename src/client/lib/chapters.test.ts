@@ -286,6 +286,41 @@ describe("suggestedChapterTarget", () => {
     expect(suggestedChapterTarget(catalog, "Novela")?.label).toBe("Cap 1");
   });
 
+  it("Gutenberg con capítulos como fragmentos y numeral entre guiones (Marianela)", () => {
+    // Un solo XHTML con todo el libro; el índice trae el título, una
+    // entrada «Capítulos:» y luego «-I- Perdido», «-II- Guiado»…
+    const catalog = buildChapterCatalog(
+      book(
+        ["wrap.xhtml", "h0.xhtml", "h1.xhtml"],
+        [
+          entry("Marianela", "h0.xhtml#p0"),
+          entry("Capítulos:", "h0.xhtml#p1"),
+          entry("-I- Perdido", "h0.xhtml#p2"),
+          entry("-II- Guiado", "h0.xhtml#p3"),
+        ],
+      ),
+    );
+    expect(suggestedChapterTarget(catalog, "Marianela")?.label).toBe("-I- Perdido");
+  });
+
+  it("Gutenberg en inglés: salta edición y Contents (Alice)", () => {
+    const catalog = buildChapterCatalog(
+      book(
+        ["wrap.xhtml", "h0.xhtml", "h1.xhtml", "h2.xhtml"],
+        [
+          entry("Alice’s Adventures in Wonderland", "h0.xhtml#p0"),
+          entry("THE MILLENNIUM FULCRUM EDITION 3.0", "h0.xhtml#p1"),
+          entry("Contents", "h0.xhtml#p2"),
+          entry("CHAPTER I. Down the Rabbit-Hole", "h1.xhtml#p3"),
+          entry("CHAPTER II. The Pool of Tears", "h2.xhtml#p4"),
+        ],
+      ),
+    );
+    expect(
+      suggestedChapterTarget(catalog, "Alice's Adventures in Wonderland")?.label,
+    ).toBe("CHAPTER I. Down the Rabbit-Hole");
+  });
+
   it("rotulado con acentos y signos también se filtra", () => {
     const catalog = buildChapterCatalog(
       book(
