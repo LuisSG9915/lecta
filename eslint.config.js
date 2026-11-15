@@ -11,6 +11,10 @@ export default tseslint.config(
       ".wrangler/**",
       "artifacts/**",
       "coverage/**",
+      // Skills de agentes instaladas (código de terceros, no de Lecta).
+      ".agents/**",
+      ".claude/skills/**",
+      ".devin/**",
     ],
   },
   js.configs.recommended,
