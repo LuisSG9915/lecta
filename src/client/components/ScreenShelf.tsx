@@ -5,13 +5,12 @@ import {
   fetchSeasonEpisodes,
   fetchTvSeasons,
   requestScreenGuide,
-  ScreenApiError,
-  screenPosterUrl,
   searchScreen,
+  screenPosterUrl,
   type ScreenSearchItem,
-  type ScreenTvDetail,
 } from "../lib/screen";
 import type { ScreenGuideObject, ScreenWorkRef } from "../../shared/screen-guide";
+import ScreenPrepareSheet from "./ScreenPrepareSheet";
 import type { ShelfItem } from "./Shelf";
 
 // «Series y películas»: obras audiovisuales preparadas («Tus
@@ -19,9 +18,11 @@ import type { ShelfItem } from "./Shelf";
 // mismo que el modo papel: preparar el vocabulario de un episodio o
 // película y abrir la hoja de palabras — nunca el diálogo.
 //
-// Toda la red pasa por /api/screen/* que exige sesión; los errores
-// del servidor (401/404/429/503) se muestran tal cual y el fallo de
-// red ofrece «Reintentar».
+// La búsqueda pinta tarjetas con póster que abren la hoja de
+// preparación (ScreenPrepareSheet); «Otro episodio» la abre con el
+// idioma fijo de la obra instalada. Toda la red pasa por
+// /api/screen/* que exige sesión; los errores del servidor se
+// muestran tal cual y el fallo de red ofrece «Reintentar».
 
 type Props = {
   /** Obras ya preparadas en este dispositivo (mediaKind). */
@@ -40,50 +41,47 @@ type Props = {
     guide: ScreenGuideObject;
     title: string;
   }) => Promise<boolean>;
-  /** Inyectables para pruebas. */
+  /** Capítulos preparados de una obra (para ✓ y «Ver palabras»). */
+  loadPreparedChapters?: (hash: string) => Promise<string[]>;
+  /** Inyectables para pruebas (la hoja los recibe por ScreenShelf). */
   fetchSearch?: typeof searchScreen;
   fetchSeasons?: typeof fetchTvSeasons;
   fetchEpisodes?: typeof fetchSeasonEpisodes;
   requestGuide?: typeof requestScreenGuide;
 };
 
-const SEARCH_DEBOUNCE_MS = 350;
-
-const errorMessage = (error: unknown): string => {
-  if (error instanceof ScreenApiError) {
-    if (error.status === 0)
-      return "Sin conexión. Revisa tu red e inténtalo de nuevo.";
-    if (error.status === 401)
-      return "Inicia sesión para preparar vocabulario.";
-    return error.message;
-  }
-  return "No pudimos completar la acción. Intenta más tarde.";
+// Qué obra abre la hoja de preparación: un resultado de búsqueda o
+// «Otro episodio» de un título instalado (con idioma fijo).
+type SheetTarget = {
+  type: "movie" | "tv";
+  imdbId: string;
+  title: string;
+  year?: string;
+  fixedLanguage?: "en" | "es";
 };
+
+const SEARCH_DEBOUNCE_MS = 350;
 
 export default function ScreenShelf({
   works,
   onOpenWork,
   onRemoveWork,
   onPrepareWork,
+  loadPreparedChapters,
   fetchSearch = searchScreen,
-  fetchSeasons = fetchTvSeasons,
-  fetchEpisodes = fetchSeasonEpisodes,
-  requestGuide = requestScreenGuide,
+  fetchSeasons,
+  fetchEpisodes,
+  requestGuide,
 }: Props) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<ScreenSearchItem[] | null>(null);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState("");
-  const [selected, setSelected] = useState<ScreenSearchItem | null>(null);
-  const [language, setLanguage] = useState<"en" | "es">("en");
-  const [detail, setDetail] = useState<ScreenTvDetail | null>(null);
-  const [detailError, setDetailError] = useState("");
-  const [season, setSeason] = useState<number | null>(null);
-  const [episodes, setEpisodes] = useState<number[] | null>(null);
-  const [episodesError, setEpisodesError] = useState("");
-  const [episode, setEpisode] = useState<number | null>(null);
-  const [preparing, setPreparing] = useState(false);
-  const [prepareError, setPrepareError] = useState("");
+  const [sheetTarget, setSheetTarget] = useState<SheetTarget | null>(null);
+  // «Quitar» en dos pasos: el hash en confirmación o null.
+  const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
+  // Pósters cuya imagen falló: quedan el bloque de color de la paleta.
+  const [posterBroken, setPosterBroken] = useState<Set<string>>(new Set());
   const searchSeq = useRef(0);
 
   // La búsqueda espera 350 ms (mismo patrón que «Más clásicos»). Los
@@ -124,101 +122,113 @@ export default function ScreenShelf({
     }
   };
 
-  // Elegir (o quitar) un resultado reinicia toda la selección: el
-  // detalle de series y los episodios se vuelven a pedir abajo.
-  const chooseResult = (item: ScreenSearchItem | null) => {
-    setSelected(item);
-    setDetail(null);
-    setDetailError("");
-    setSeason(null);
-    setEpisodes(null);
-    setEpisode(null);
-    setPrepareError("");
-  };
-
-  // Al elegir una serie se piden sus temporadas (detalle OMDb).
-  useEffect(() => {
-    if (selected?.type !== "tv") return;
-    let cancelled = false;
-    void fetchSeasons(selected.imdbId)
-      .then((d) => {
-        if (cancelled) return;
-        if (d) setDetail(d);
-        else setDetailError("No encontramos las temporadas de esta serie.");
-      })
-      .catch(() => {
-        if (!cancelled) setDetailError("No pudimos cargar las temporadas.");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [selected, fetchSeasons]);
-
-  const onSeasonChange = (value: string) => {
-    setSeason(value === "" ? null : Number(value));
-    setEpisodes(null);
-    setEpisode(null);
-    setEpisodesError("");
-  };
-
-  // Al elegir temporada se piden sus episodios (solo números).
-  useEffect(() => {
-    if (selected?.type !== "tv" || season == null) return;
-    let cancelled = false;
-    void fetchEpisodes(selected.imdbId, season)
-      .then((list) => {
-        if (cancelled) return;
-        if (list) setEpisodes(list);
-        else setEpisodesError("No encontramos episodios en esta temporada.");
-      })
-      .catch(() => {
-        if (!cancelled) setEpisodesError("No pudimos cargar los episodios.");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [selected, season, fetchEpisodes]);
-
-  const canPrepare =
-    selected != null &&
-    !preparing &&
-    (selected.type === "movie" || (season != null && episode != null));
-
-  const prepare = async () => {
-    if (!selected || !canPrepare) return;
-    setPreparing(true);
-    setPrepareError("");
-    try {
-      const ref: ScreenWorkRef =
-        selected.type === "tv"
-          ? {
-              type: "tv",
-              imdbId: selected.imdbId,
-              language,
-              season: season as number,
-              episode: episode as number,
-            }
-          : { type: "movie", imdbId: selected.imdbId, language };
-      const { guide } = await requestGuide(ref);
-      const ok = await onPrepareWork({
-        ref,
-        guide,
-        title: selected.title,
-      });
-      if (!ok) setPrepareError("No pudimos guardar la guía. Intenta más tarde.");
-    } catch (error) {
-      setPrepareError(errorMessage(error));
-    } finally {
-      setPreparing(false);
-    }
-  };
-
-  const resetSelection = () => {
-    chooseResult(null);
-  };
+  const openSheet = (target: SheetTarget) => setSheetTarget(target);
 
   return (
     <div className="screen-shelf">
+      <section aria-label="Buscar serie o película">
+        <label className="screen-search-label" htmlFor="screen-search">
+          Busca una serie o película
+        </label>
+        <input
+          id="screen-search"
+          type="search"
+          className="screen-search-input"
+          value={query}
+          onChange={(event) => onQueryChange(event.target.value)}
+          placeholder="Título o palabra clave"
+          autoComplete="off"
+        />
+        {searching ? (
+          <p className="meta" role="status">
+            Buscando…
+          </p>
+        ) : null}
+        {searchError ? (
+          <p className="meta" role="alert">
+            {searchError}{" "}
+            <button
+              type="button"
+              className="btn--quiet"
+              onClick={() => onQueryChange(query)}
+            >
+              Reintentar
+            </button>
+          </p>
+        ) : null}
+        {results && !searching ? (
+          results.length ? (
+            <ul className="discover-rail discover-rail--grid">
+              {results.map((item) => {
+                const palette = coverPalette(item.imdbId);
+                const showPoster =
+                  item.hasPoster && !posterBroken.has(item.imdbId);
+                return (
+                  <li key={item.imdbId} className="discover-book">
+                    <button
+                      type="button"
+                      className="discover-cover discover-cover--action"
+                      onClick={() =>
+                        openSheet({
+                          type: item.type,
+                          imdbId: item.imdbId,
+                          title: item.title,
+                          year: item.year || undefined,
+                        })
+                      }
+                      aria-label={`Preparar ${item.title}`}
+                    >
+                      {showPoster ? (
+                        <img
+                          className="cover"
+                          src={screenPosterUrl(item.imdbId)}
+                          alt=""
+                          loading="lazy"
+                          onError={() =>
+                            setPosterBroken((prev) =>
+                              new Set(prev).add(item.imdbId),
+                            )
+                          }
+                        />
+                      ) : (
+                        <span
+                          className="cover screen-poster-fallback"
+                          style={{ background: palette.paper }}
+                          aria-hidden="true"
+                        />
+                      )}
+                    </button>
+                    <div className="discover-meta">
+                      <button
+                        type="button"
+                        className="discover-title discover-title--action"
+                        title={item.title}
+                        onClick={() =>
+                          openSheet({
+                            type: item.type,
+                            imdbId: item.imdbId,
+                            title: item.title,
+                            year: item.year || undefined,
+                          })
+                        }
+                      >
+                        {item.title}
+                      </button>
+                      <p className="meta">
+                        {item.type === "tv" ? "Serie" : "Película"}
+                        {item.year ? ` · ${item.year}` : ""}
+                      </p>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <p className="meta">Sin resultados. Prueba con otro título.</p>
+          )
+        ) : null}
+      </section>
+
       {works.length ? (
         <section aria-label="Tus títulos">
           <h3 className="eyebrow">Tus títulos</h3>
@@ -247,14 +257,56 @@ export default function ScreenShelf({
                     </span>
                   </span>
                 </button>
-                <button
-                  type="button"
-                  className="btn--quiet screen-work-remove"
-                  aria-label={`Quitar ${work.title || work.name}`}
-                  onClick={() => onRemoveWork(work.hash)}
-                >
-                  Quitar
-                </button>
+                <span className="screen-work-actions">
+                  {work.mediaKind === "tv" && work.imdbId ? (
+                    <button
+                      type="button"
+                      className="btn--quiet"
+                      onClick={() =>
+                        openSheet({
+                          type: "tv",
+                          imdbId: work.imdbId as string,
+                          title: work.title || work.name,
+                          fixedLanguage:
+                            work.language === "es" ? "es" : "en",
+                        })
+                      }
+                    >
+                      Otro episodio
+                    </button>
+                  ) : null}
+                  {confirmRemove === work.hash ? (
+                    <span className="screen-confirm">
+                      <span className="meta">
+                        ¿Quitar de este dispositivo?
+                      </span>
+                      <button
+                        type="button"
+                        className="btn--quiet"
+                        onClick={() => onRemoveWork(work.hash)}
+                      >
+                        Sí, quitar
+                      </button>
+                      <button
+                        type="button"
+                        className="btn--quiet"
+                        autoFocus
+                        onClick={() => setConfirmRemove(null)}
+                      >
+                        Cancelar
+                      </button>
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn--quiet screen-work-remove"
+                      aria-label={`Quitar ${work.title || work.name}`}
+                      onClick={() => setConfirmRemove(work.hash)}
+                    >
+                      Quitar
+                    </button>
+                  )}
+                </span>
               </li>
             ))}
           </ul>
@@ -265,170 +317,21 @@ export default function ScreenShelf({
         </p>
       )}
 
-      <section aria-label="Buscar serie o película">
-        <label className="screen-search-label" htmlFor="screen-search">
-          Busca una serie o película
-        </label>
-        <input
-          id="screen-search"
-          type="search"
-          className="screen-search-input"
-          value={query}
-          onChange={(event) => onQueryChange(event.target.value)}
-          placeholder="Título o palabra clave"
-          autoComplete="off"
+      {sheetTarget ? (
+        <ScreenPrepareSheet
+          type={sheetTarget.type}
+          imdbId={sheetTarget.imdbId}
+          title={sheetTarget.title}
+          year={sheetTarget.year}
+          fixedLanguage={sheetTarget.fixedLanguage}
+          works={works}
+          loadPreparedChapters={loadPreparedChapters}
+          onClose={() => setSheetTarget(null)}
+          onPrepare={onPrepareWork}
+          fetchSeasons={fetchSeasons}
+          fetchEpisodes={fetchEpisodes}
+          requestGuide={requestGuide}
         />
-        {searching ? (
-          <p className="meta" role="status">
-            Buscando…
-          </p>
-        ) : null}
-        {searchError ? (
-          <p className="meta" role="alert">
-            {searchError}
-          </p>
-        ) : null}
-        {results && !searching ? (
-          results.length ? (
-            <ul className="screen-results">
-              {results.map((item) => (
-                <li key={item.imdbId}>
-                  <button
-                    type="button"
-                    className="screen-result"
-                    aria-pressed={selected?.imdbId === item.imdbId}
-                    onClick={() =>
-                      chooseResult(
-                        selected?.imdbId === item.imdbId ? null : item,
-                      )
-                    }
-                  >
-                    {item.hasPoster ? (
-                      <img
-                        className="screen-result-poster"
-                        src={screenPosterUrl(item.imdbId)}
-                        alt=""
-                        loading="lazy"
-                      />
-                    ) : (
-                      <span
-                        className="screen-result-poster screen-result-poster--fallback"
-                        style={{
-                          background: coverPalette(item.imdbId).paper,
-                        }}
-                        aria-hidden="true"
-                      />
-                    )}
-                    <span className="screen-result-meta">
-                      <strong>{item.title}</strong>
-                      <span className="meta">
-                        {item.type === "tv" ? "Serie" : "Película"}
-                        {item.year ? ` · ${item.year}` : ""}
-                      </span>
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="meta">Sin resultados. Prueba con otro título.</p>
-          )
-        ) : null}
-      </section>
-
-      {selected ? (
-        <section aria-label={`Preparar ${selected.title}`}>
-          <h3 className="eyebrow">{selected.title}</h3>
-          <div className="screen-prepare">
-            <label htmlFor="screen-lang">Idioma del audio</label>
-            <select
-              id="screen-lang"
-              value={language}
-              onChange={(event) =>
-                setLanguage(event.target.value === "es" ? "es" : "en")
-              }
-            >
-              <option value="en">Inglés</option>
-              <option value="es">Español</option>
-            </select>
-
-            {selected.type === "tv" ? (
-              <>
-                <label htmlFor="screen-season">Temporada</label>
-                <select
-                  id="screen-season"
-                  value={season ?? ""}
-                  onChange={(event) => onSeasonChange(event.target.value)}
-                  disabled={!detail}
-                >
-                  <option value="">Elige…</option>
-                  {detail
-                    ? Array.from(
-                        { length: Math.max(detail.seasons ?? 0, 1) },
-                        (_, i) => i + 1,
-                      ).map((n) => (
-                        <option key={n} value={n}>
-                          {n}
-                        </option>
-                      ))
-                    : null}
-                </select>
-                {detailError ? (
-                  <p className="meta" role="alert">
-                    {detailError}
-                  </p>
-                ) : null}
-
-                <label htmlFor="screen-episode">Episodio</label>
-                <select
-                  id="screen-episode"
-                  value={episode ?? ""}
-                  onChange={(event) =>
-                    setEpisode(
-                      event.target.value === ""
-                        ? null
-                        : Number(event.target.value),
-                    )
-                  }
-                  disabled={!episodes}
-                >
-                  <option value="">Elige…</option>
-                  {episodes?.map((n) => (
-                    <option key={n} value={n}>
-                      {n}
-                    </option>
-                  ))}
-                </select>
-                {episodesError ? (
-                  <p className="meta" role="alert">
-                    {episodesError}
-                  </p>
-                ) : null}
-              </>
-            ) : null}
-
-            <button
-              type="button"
-              className="btn"
-              disabled={!canPrepare}
-              onClick={() => void prepare()}
-            >
-              {preparing ? "Preparando…" : "Preparar vocabulario"}
-            </button>
-            {prepareError ? (
-              <p className="meta" role="alert">
-                {prepareError}
-              </p>
-            ) : null}
-            <button
-              type="button"
-              className="btn--quiet"
-              onClick={resetSelection}
-            >
-              Elegir otro
-            </button>
-          </div>
-        </section>
       ) : null}
 
       <p className="meta screen-privacy">

@@ -1175,4 +1175,22 @@ describe("restoreBackupToDb", () => {
     const retrievedBytes = new Uint8Array(await retrieved!.data.arrayBuffer());
     expect(retrievedBytes).toEqual(rawBytes);
   });
+
+  it("saveBook persiste mediaKind e imdbId de las obras de pantalla", async () => {
+    const idb = await freshIdb();
+    const hash = "d".repeat(64);
+    await idb.saveBook({
+      hash,
+      name: "game-of-thrones",
+      title: "Game of Thrones",
+      data: new Blob([]),
+      addedAt: Date.now(),
+      paperOnly: true,
+      mediaKind: "tv",
+      imdbId: "tt0944947",
+    });
+    const retrieved = await idb.getStoredBook(hash);
+    expect(retrieved?.mediaKind).toBe("tv");
+    expect(retrieved?.imdbId).toBe("tt0944947");
+  });
 });

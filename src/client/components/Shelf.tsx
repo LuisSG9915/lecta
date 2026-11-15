@@ -79,7 +79,7 @@ import Sheet from "./Sheet";
 // marca los que aún tienen una subida encolada.
 export type ShelfItem = Pick<
   StoredBook,
-  "hash" | "name" | "addedAt" | "title" | "author" | "cover" | "sectionCount" | "language" | "genre" | "mediaKind"
+  "hash" | "name" | "addedAt" | "title" | "author" | "cover" | "sectionCount" | "language" | "genre" | "mediaKind" | "imdbId"
 > & {
   remoteOnly?: boolean;
   pendingUpload?: boolean;

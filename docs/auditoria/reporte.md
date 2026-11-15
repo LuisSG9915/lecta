@@ -1,9 +1,9 @@
 # Reporte de auditoría — estrategia de aprendizaje de Lecta
 
-Generado: 2026-11-15T22:59:31.660Z
+Generado: 2026-11-15T23:30:36.067Z
 Documento auditado: `docs/estrategia-aprendizaje-2026-10-24.md`
 Registro: `docs/auditoria/claims.json`
-Commit: `53564757e90f5820d88d2cd65cee46492a475a2b`
+Commit: `5a7794ae6515b58e07959aa5ba1c6be3718d20af`
 Red: no (solo forma de las referencias)
 
 **Veredicto: PASS_WITH_UNVERIFIED** — 1 afirmaciones aprobadas, 0 refutadas, 0 refutadas por auditoría, 13 sin verificar, 0 comprobaciones omitidas.
@@ -176,8 +176,8 @@ Código: **PASS** · Referencias: **UNVERIFIED**
 - ✅ **PASS** · code-absent: /updateLanguageTheta/ no aparece en src/client/lib/reader-evidence.ts
 - ✅ **PASS** · code-anchor: src/client/lib/reader-evidence.ts:260 coincide con /uniqueLemmas\.size >= 8/
   - observado: `{"file":"src/client/lib/reader-evidence.ts","line":260,"text":"if (uniqueLemmas.size >= 8) break;"}`
-- ✅ **PASS** · code-anchor: src/client/lib/idb.ts:2155 coincide con /if \(!existing \|\| existing\.deleted\) return null/
-  - observado: `{"file":"src/client/lib/idb.ts","line":2155,"text":"if (!existing || existing.deleted) return null;"}`
+- ✅ **PASS** · code-anchor: src/client/lib/idb.ts:2163 coincide con /if \(!existing \|\| existing\.deleted\) return null/
+  - observado: `{"file":"src/client/lib/idb.ts","line":2163,"text":"if (!existing || existing.deleted) return null;"}`
 - ✅ **PASS** · code-absent: /processPageTurnForPassiveKnowledge/ no aparece en src/client/lib/knowledge.ts
 - ⚠️ **UNVERIFIED** · referencia nagy1985: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":"10.2307/747758","url":null}`

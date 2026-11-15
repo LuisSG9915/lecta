@@ -340,7 +340,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/lib/idb.ts",
-          "line": 2154,
+          "line": 2163,
           "window": 1,
           "expect": "if \\(!existing \\|\\| existing\\.deleted\\) return null",
           "why": "una inferencia pasiva no revive lo borrado ni crea filas"

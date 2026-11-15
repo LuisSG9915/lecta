@@ -1,9 +1,9 @@
 {
   "tool": "audit-investigacion",
   "version": 1,
-  "generatedAt": "2026-11-15T22:59:31.660Z",
+  "generatedAt": "2026-11-15T23:30:36.067Z",
   "root": "/Users/luis/Desarrollos Devin/lecta",
-  "commit": "53564757e90f5820d88d2cd65cee46492a475a2b",
+  "commit": "5a7794ae6515b58e07959aa5ba1c6be3718d20af",
   "doc": "docs/estrategia-aprendizaje-2026-10-24.md",
   "registry": "docs/auditoria/claims.json",
   "online": false,
@@ -662,10 +662,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/lib/idb.ts:2155 coincide con /if \\(!existing \\|\\| existing\\.deleted\\) return null/",
+          "detail": "src/client/lib/idb.ts:2163 coincide con /if \\(!existing \\|\\| existing\\.deleted\\) return null/",
           "observed": {
             "file": "src/client/lib/idb.ts",
-            "line": 2155,
+            "line": 2163,
             "text": "if (!existing || existing.deleted) return null;"
           }
         },

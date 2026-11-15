@@ -773,6 +773,7 @@ export default function App() {
         pendingUpload: pendingUploads.has(book.hash) || undefined,
         paperOnly: book.paperOnly || remoteByHash.get(book.hash)?.paperOnly || undefined,
         mediaKind: book.mediaKind,
+        imdbId: book.imdbId,
         shared: remoteByHash.get(book.hash)?.shared || undefined,
         // El género de la fila remota manda: es la elección real al
         // compartir; el detectado local del EPUB solo rellena huecos.
@@ -1791,6 +1792,7 @@ export default function App() {
         data: new Blob([]),
         paperOnly: true,
         mediaKind: ref.type,
+        imdbId: ref.imdbId,
         addedAt: previous?.addedAt ?? Date.now(),
       },
       scope,
@@ -1827,8 +1829,27 @@ export default function App() {
       sectionCount: stored.sectionCount,
       language: stored.language,
       mediaKind: stored.mediaKind,
+      imdbId: stored.imdbId,
       paperOnly: true,
     };
+  };
+
+  // Capítulos ya preparados de una obra de pantalla (ids «sNN eNN» /
+  // «movie»): la hoja de preparación los usa para marcar episodios y
+  // proponer el siguiente. Lee la misma clave de sesión que escribe
+  // installScreenWork; cualquier fallo devuelve lista vacía.
+  const loadScreenChapters = async (hash: string): Promise<string[]> => {
+    const scope = captureDbScope();
+    const raw = await loadSessionValue(paperGuideSessionKey(hash), scope).catch(
+      () => null,
+    );
+    if (!raw) return [];
+    try {
+      const guide = sanitizePaperBookGuide(JSON.parse(raw), hash);
+      return guide?.chapters.map((ch) => ch.id) ?? [];
+    } catch {
+      return [];
+    }
   };
 
   // ScreenShelf ya pidió la guía al worker; aquí solo se instala y se
@@ -2257,6 +2278,7 @@ export default function App() {
                             onOpenWork={handlePaperBook}
                             onRemoveWork={(hash) => void removeScreenWork(hash)}
                             onPrepareWork={handlePrepareScreenWork}
+                            loadPreparedChapters={loadScreenChapters}
                           />
                         </Suspense>
                       ) : undefined

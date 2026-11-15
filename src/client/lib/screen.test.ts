@@ -4,6 +4,7 @@ import {
   fetchTvSeasons,
   mergeScreenChapter,
   mergeScreenChapterPhrases,
+  nextEpisodeAfter,
   parseScreenPhrasesRecord,
   requestScreenGuide,
   ScreenApiError,
@@ -323,5 +324,24 @@ describe("antispoiler — la guía fusionada no puede llevar texto del guion", (
     }
     expect(guide.chapters[0].id).toBe("s01e02");
     expect(guide.chapters[0].label).toBe("T1 · E2");
+  });
+});
+
+describe("nextEpisodeAfter", () => {
+  it("devuelve null sin capítulos o sin ids de episodio", () => {
+    expect(nextEpisodeAfter([])).toBeNull();
+    expect(nextEpisodeAfter(["movie", "notas"])).toBeNull();
+    expect(nextEpisodeAfter(["s01e0x", "xe1", "capítulo 3"])).toBeNull();
+  });
+
+  it("propone el siguiente episodio del mayor preparado", () => {
+    expect(nextEpisodeAfter(["s01e01"])).toEqual({
+      season: 1,
+      episode: 2,
+    });
+    // Desordenados: gana la temporada/episodio más alto, no el último.
+    expect(
+      nextEpisodeAfter(["s02e05", "s01e09", "s02e01", "movie"]),
+    ).toEqual({ season: 2, episode: 6 });
   });
 });

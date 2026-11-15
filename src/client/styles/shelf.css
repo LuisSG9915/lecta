@@ -2696,8 +2696,8 @@
 }
 
 .screen-work-open .cover {
-  inline-size: 3rem;
-  block-size: 4.5rem;
+  inline-size: 3.5rem;
+  block-size: 5.25rem;
   flex: none;
   border-radius: var(--r-1);
 }
@@ -2717,8 +2717,20 @@
   white-space: nowrap;
 }
 
-.screen-work-remove {
+/* Acciones de la obra («Otro episodio», «Quitar»): en 360 px bajan a
+   su propia línea bajo el título en vez de apretar el lomo. */
+.screen-work-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
   flex: none;
+}
+
+.screen-confirm {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  flex-wrap: wrap;
 }
 
 .screen-search-label {
@@ -2739,81 +2751,88 @@
   border-radius: var(--r-1);
 }
 
-.screen-results {
-  list-style: none;
-  margin: var(--s-3) 0 0;
-  padding: 0;
+/* Resultados de búsqueda: la misma cuadrícula de tarjetas con
+   póster que usa el catálogo gratuito. */
+.screen-poster-fallback {
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+  border-radius: var(--r-1);
+}
+
+/* Hoja de preparación: cabecera con póster + título + cerrar, y
+   cuerpo con idioma, temporadas y rejilla de episodios. */
+.screen-sheet {
   display: flex;
   flex-direction: column;
-  gap: var(--s-2);
+  gap: var(--s-4);
 }
 
-.screen-result {
-  appearance: none;
-  inline-size: 100%;
+.screen-sheet-head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: var(--s-3);
-  padding: var(--s-2);
-  border: 1px solid var(--rule);
-  border-radius: var(--r-1);
-  background: var(--paper-raised);
-  font: inherit;
-  color: inherit;
-  text-align: start;
-  cursor: pointer;
 }
 
-.screen-result[aria-pressed="true"] {
-  border-color: var(--accent-primary);
-}
-
-.screen-result-poster {
-  inline-size: 2.25rem;
-  block-size: 3.25rem;
+.screen-sheet-poster {
+  inline-size: 3.5rem;
+  block-size: 5.25rem;
   flex: none;
   object-fit: cover;
-  border-radius: calc(var(--r-1) * 0.6);
+  border-radius: var(--r-1);
 }
 
-.screen-result-poster--fallback {
+.screen-sheet-poster--fallback {
   display: block;
+  border-radius: var(--r-1);
 }
 
-.screen-result-meta {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15em;
+.screen-sheet-title {
+  flex: 1;
   min-inline-size: 0;
 }
 
-.screen-result-meta strong {
-  font-size: var(--fs-sm);
+.screen-sheet-title h3 {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: var(--fs-lg);
   color: var(--ink);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.screen-prepare {
+.screen-sheet-body {
   display: flex;
   flex-direction: column;
+  gap: var(--s-3);
+}
+
+.screen-ep-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(2.75rem, 1fr));
   gap: var(--s-2);
-  max-inline-size: 22rem;
 }
 
-.screen-prepare label {
-  font-size: var(--fs-sm);
-  color: var(--ink-soft);
-}
-
-.screen-prepare select {
-  font: inherit;
-  color: var(--ink);
-  padding: var(--s-2) var(--s-3);
-  background: var(--paper-raised);
+.screen-ep {
+  appearance: none;
+  min-block-size: 2.75rem;
+  padding: var(--s-1) var(--s-2);
   border: 1px solid var(--rule);
   border-radius: var(--r-1);
+  background: var(--paper-raised);
+  font: inherit;
+  font-variant-numeric: oldstyle-nums;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.screen-ep--active {
+  border-color: var(--chip-active-border);
+  background: var(--chip-active-bg);
+  color: var(--chip-active-ink);
+}
+
+.screen-ep:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
 }
 
 .screen-privacy {

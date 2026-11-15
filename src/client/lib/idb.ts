@@ -51,6 +51,11 @@ export interface StoredBook {
   // papel se arma por episodios (mergeScreenChapter); viaja igual que
   // paperOnly — opcional, sin migración de IndexedDB.
   mediaKind?: "movie" | "tv";
+  // Identidad externa de la obra de pantalla (tt1234567): con ella
+  // «Otro episodio» reabre la preparación sin volver a buscar el
+  // título. Las obras viejas no lo tienen y se curan solas al
+  // preparar otro episodio.
+  imdbId?: string;
 }
 
 export interface StoredBookRecord extends Omit<StoredBook, "data"> {
@@ -1284,6 +1289,7 @@ export type SaveBookInput =
       metaVersion?: number;
       paperOnly?: boolean;
       mediaKind?: "movie" | "tv";
+      imdbId?: string;
       name?: string;
       hash?: string;
     };
@@ -1336,6 +1342,7 @@ export async function saveBook(book: SaveBookInput, scope?: DbScope): Promise<St
   const metaVersion = "metaVersion" in book ? book.metaVersion : undefined;
   const paperOnly = "paperOnly" in book ? book.paperOnly : undefined;
   const mediaKind = "mediaKind" in book ? book.mediaKind : undefined;
+  const imdbId = "imdbId" in book ? book.imdbId : undefined;
 
   const stored: StoredBookRecord = {
     hash,
@@ -1350,6 +1357,7 @@ export async function saveBook(book: SaveBookInput, scope?: DbScope): Promise<St
     metaVersion,
     paperOnly,
     mediaKind,
+    imdbId,
     data: buffer,
   };
 

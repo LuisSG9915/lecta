@@ -31,6 +31,21 @@ export class ScreenApiError extends Error {
   }
 }
 
+// Mensajes de error de /api/screen/* tal como los definió el plan:
+// el status 0 es fallo de red, 401 pide sesión y el resto muestra el
+// texto del servidor (404 «sin subtítulos», 429 «demasiados», 503
+// «no disponible»).
+export const screenErrorMessage = (error: unknown): string => {
+  if (error instanceof ScreenApiError) {
+    if (error.status === 0)
+      return "Sin conexión. Revisa tu red e inténtalo de nuevo.";
+    if (error.status === 401)
+      return "Inicia sesión para preparar vocabulario.";
+    return error.message;
+  }
+  return "No pudimos completar la acción. Intenta más tarde.";
+};
+
 export type ScreenSearchItem = {
   imdbId: string;
   type: "movie" | "tv";
@@ -115,6 +130,30 @@ export async function fetchSeasonEpisodes(
 
 // El póster se sirve por el propio worker (la CSP solo permite
 // img-src 'self'): la URL nunca sale del dominio de Lecta.
+// Siguiente episodio a preparar: el mayor «sNNeNN» de los capítulos
+// ya instalados +1 en la misma temporada. null si no hay ninguno —
+// la hoja de preparación deja la elección al lector.
+export function nextEpisodeAfter(
+  chapterIds: string[],
+): { season: number; episode: number } | null {
+  let best: { season: number; episode: number } | null = null;
+  for (const id of chapterIds) {
+    const match = /^s(\d+)e(\d+)$/.exec(id);
+    if (!match) continue;
+    const season = Number(match[1]);
+    const episode = Number(match[2]);
+    if (!Number.isInteger(season) || !Number.isInteger(episode)) continue;
+    if (
+      !best ||
+      season > best.season ||
+      (season === best.season && episode > best.episode)
+    ) {
+      best = { season, episode };
+    }
+  }
+  return best ? { season: best.season, episode: best.episode + 1 } : null;
+}
+
 export const screenPosterUrl = (imdbId: string) =>
   `/api/screen/poster?imdbId=${encodeURIComponent(imdbId)}`;
 
