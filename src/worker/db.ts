@@ -24,6 +24,8 @@ export type WorkerEnv = {
   /** «Series y películas»: SubDL (subtítulos) y OMDb (metadatos/póster). */
   SUBDL_API_KEY?: string;
   OMDB_API_KEY?: string;
+  /** Rieles de descubrimiento (Trakt); sin llave se sirve la lista curada. */
+  TRACKT_API_KEY?: string;
   /** Assets estáticos; el Worker les devuelve lo que no es ruta suya. */
   ASSETS?: Fetcher;
   TTS_MODEL_CDN_URL?: string;

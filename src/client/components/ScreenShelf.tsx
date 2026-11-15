@@ -1,12 +1,16 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import BookCover from "./BookCover";
 import { coverPalette } from "../lib/cover";
 import {
+  fetchScreenDiscover,
+  fetchScreenRelated,
   fetchSeasonEpisodes,
   fetchTvSeasons,
   requestScreenGuide,
   searchScreen,
   screenPosterUrl,
+  tasteSeeds,
+  type ScreenDiscoverPayload,
   type ScreenSearchItem,
 } from "../lib/screen";
 import type { ScreenGuideObject, ScreenWorkRef } from "../../shared/screen-guide";
@@ -48,6 +52,8 @@ type Props = {
   fetchSeasons?: typeof fetchTvSeasons;
   fetchEpisodes?: typeof fetchSeasonEpisodes;
   requestGuide?: typeof requestScreenGuide;
+  fetchDiscover?: typeof fetchScreenDiscover;
+  fetchRelated?: typeof fetchScreenRelated;
 };
 
 // Qué obra abre la hoja de preparación: un resultado de búsqueda o
@@ -72,6 +78,8 @@ export default function ScreenShelf({
   fetchSeasons,
   fetchEpisodes,
   requestGuide,
+  fetchDiscover = fetchScreenDiscover,
+  fetchRelated = fetchScreenRelated,
 }: Props) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<ScreenSearchItem[] | null>(null);
@@ -83,6 +91,19 @@ export default function ScreenShelf({
   // Pósters cuya imagen falló: quedan el bloque de color de la paleta.
   const [posterBroken, setPosterBroken] = useState<Set<string>>(new Set());
   const searchSeq = useRef(0);
+  // Rieles de descubrimiento: Trakt o respaldo curado (el worker
+  // decide). null = aún no responde o falló — no se pinta nada.
+  const [discover, setDiscover] = useState<ScreenDiscoverPayload | null>(
+    null,
+  );
+  const [discoverLoading, setDiscoverLoading] = useState(true);
+  // «Porque preparaste X»: relacionados por semilla, clave
+  // "movie:tt…"/"tv:tt…".
+  const [relatedBySeed, setRelatedBySeed] = useState<
+    Record<string, ScreenSearchItem[]>
+  >({});
+  const seeds = useMemo(() => tasteSeeds(works), [works]);
+  const lastSeedsKey = useRef("");
 
   // La búsqueda espera 350 ms (mismo patrón que «Más clásicos»). Los
   // estados de carga/vacío se ajustan en el handler del input; el
@@ -122,7 +143,117 @@ export default function ScreenShelf({
     }
   };
 
+  // Rieles de descubrimiento: una sola carga al montar; el worker
+  // responde Trakt o la lista curada. Si falla no se pinta nada.
+  useEffect(() => {
+    let cancelled = false;
+    void fetchDiscover()
+      .then((payload) => {
+        if (cancelled) return;
+        setDiscover(payload);
+        setDiscoverLoading(false);
+      })
+      .catch(() => {
+        if (!cancelled) setDiscoverLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchDiscover]);
+
+  // «Porque preparaste X»: un /api/screen/related por semilla. Solo
+  // se repite si cambia el conjunto de semillas (no en cada render).
+  useEffect(() => {
+    const key = seeds.map((s) => `${s.type}:${s.imdbId}`).join("|");
+    if (key === lastSeedsKey.current) return;
+    lastSeedsKey.current = key;
+    if (!seeds.length) return;
+    let cancelled = false;
+    void Promise.all(
+      seeds.map((seed) =>
+        fetchRelated(seed.imdbId, seed.type).then(
+          (items) => [`${seed.type}:${seed.imdbId}`, items] as const,
+        ),
+      ),
+    ).then((entries) => {
+      if (!cancelled) setRelatedBySeed(Object.fromEntries(entries));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [seeds, fetchRelated]);
+
   const openSheet = (target: SheetTarget) => setSheetTarget(target);
+
+  // La tarjeta es la misma en resultados y en rieles: póster (o
+  // portada tipográfica) + título + tipo/año; tocar abre la hoja de
+  // preparación.
+  const renderItem = (item: ScreenSearchItem) => {
+    const palette = coverPalette(item.imdbId);
+    const showPoster = item.hasPoster && !posterBroken.has(item.imdbId);
+    const open = () =>
+      openSheet({
+        type: item.type,
+        imdbId: item.imdbId,
+        title: item.title,
+        year: item.year || undefined,
+      });
+    return (
+      <li key={item.imdbId} className="discover-book">
+        <button
+          type="button"
+          className="discover-cover discover-cover--action"
+          onClick={open}
+          aria-label={`Preparar ${item.title}`}
+        >
+          {showPoster ? (
+            <img
+              className="cover"
+              src={screenPosterUrl(item.imdbId)}
+              alt=""
+              loading="lazy"
+              onError={() =>
+                setPosterBroken((prev) => new Set(prev).add(item.imdbId))
+              }
+            />
+          ) : (
+            <span
+              className="cover screen-poster-fallback"
+              style={{ background: palette.paper }}
+              aria-hidden="true"
+            />
+          )}
+        </button>
+        <div className="discover-meta">
+          <button
+            type="button"
+            className="discover-title discover-title--action"
+            title={item.title}
+            onClick={open}
+          >
+            {item.title}
+          </button>
+          <p className="meta">
+            {item.type === "tv" ? "Serie" : "Película"}
+            {item.year ? ` · ${item.year}` : ""}
+          </p>
+        </div>
+      </li>
+    );
+  };
+
+  // Lo ya instalado no se ofrece de nuevo en ningún riel.
+  const installedIds = useMemo(
+    () =>
+      new Set(
+        works
+          .map((w) => w.imdbId)
+          .filter((id): id is string => typeof id === "string"),
+      ),
+    [works],
+  );
+
+  const searchingNow = query.trim().length > 0;
 
   return (
     <div className="screen-shelf">
@@ -159,69 +290,7 @@ export default function ScreenShelf({
         {results && !searching ? (
           results.length ? (
             <ul className="discover-rail discover-rail--grid">
-              {results.map((item) => {
-                const palette = coverPalette(item.imdbId);
-                const showPoster =
-                  item.hasPoster && !posterBroken.has(item.imdbId);
-                return (
-                  <li key={item.imdbId} className="discover-book">
-                    <button
-                      type="button"
-                      className="discover-cover discover-cover--action"
-                      onClick={() =>
-                        openSheet({
-                          type: item.type,
-                          imdbId: item.imdbId,
-                          title: item.title,
-                          year: item.year || undefined,
-                        })
-                      }
-                      aria-label={`Preparar ${item.title}`}
-                    >
-                      {showPoster ? (
-                        <img
-                          className="cover"
-                          src={screenPosterUrl(item.imdbId)}
-                          alt=""
-                          loading="lazy"
-                          onError={() =>
-                            setPosterBroken((prev) =>
-                              new Set(prev).add(item.imdbId),
-                            )
-                          }
-                        />
-                      ) : (
-                        <span
-                          className="cover screen-poster-fallback"
-                          style={{ background: palette.paper }}
-                          aria-hidden="true"
-                        />
-                      )}
-                    </button>
-                    <div className="discover-meta">
-                      <button
-                        type="button"
-                        className="discover-title discover-title--action"
-                        title={item.title}
-                        onClick={() =>
-                          openSheet({
-                            type: item.type,
-                            imdbId: item.imdbId,
-                            title: item.title,
-                            year: item.year || undefined,
-                          })
-                        }
-                      >
-                        {item.title}
-                      </button>
-                      <p className="meta">
-                        {item.type === "tv" ? "Serie" : "Película"}
-                        {item.year ? ` · ${item.year}` : ""}
-                      </p>
-                    </div>
-                  </li>
-                );
-              })}
+              {results.map(renderItem)}
             </ul>
           ) : (
             <p className="meta">Sin resultados. Prueba con otro título.</p>
@@ -316,6 +385,60 @@ export default function ScreenShelf({
           Prepara el vocabulario antes de ver una serie o película.
         </p>
       )}
+
+      {/* Rieles de descubrimiento: solo sin texto en el buscador.
+          «Porque preparaste X» sale de /api/screen/related por cada
+          semilla; el resto llega en /api/screen/discover (Trakt o
+          respaldo curado — el origen no cambia la presentación). */}
+      {!searchingNow ? (
+        <div className="screen-discover">
+          {discoverLoading ? (
+            <p className="meta" role="status">
+              Cargando recomendaciones…
+            </p>
+          ) : null}
+          {seeds.map((seed) => {
+            const seedKey = `${seed.type}:${seed.imdbId}`;
+            const seedTitle = seed.title || "este título";
+            const items = (relatedBySeed[seedKey] ?? []).filter(
+              (item) => !installedIds.has(item.imdbId),
+            );
+            if (!items.length) return null;
+            return (
+              <section
+                key={seedKey}
+                aria-label={`Porque preparaste ${seedTitle}`}
+                className="screen-discover-rail"
+              >
+                <h3 className="eyebrow">Porque preparaste «{seedTitle}»</h3>
+                <ul className="discover-rail">{items.map(renderItem)}</ul>
+              </section>
+            );
+          })}
+          {discover?.rails.map((rail) => {
+            const items = rail.items.filter(
+              (item) => !installedIds.has(item.imdbId),
+            );
+            if (!items.length) return null;
+            const label =
+              rail.id === "trending"
+                ? "En tendencia"
+                : rail.id === "recent"
+                  ? "Estrenos recientes"
+                  : "Populares";
+            return (
+              <section
+                key={rail.id}
+                aria-label={label}
+                className="screen-discover-rail"
+              >
+                <h3 className="eyebrow">{label}</h3>
+                <ul className="discover-rail">{items.map(renderItem)}</ul>
+              </section>
+            );
+          })}
+        </div>
+      ) : null}
 
       {sheetTarget ? (
         <ScreenPrepareSheet

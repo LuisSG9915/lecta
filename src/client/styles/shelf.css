@@ -2838,3 +2838,21 @@
 .screen-privacy {
   margin: 0;
 }
+
+/* Rieles de descubrimiento («En tendencia», «Porque preparaste X»…):
+   cada sección es un título eyebrow + el riel horizontal existente. */
+.screen-discover {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+}
+
+.screen-discover-rail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.screen-discover-rail .eyebrow {
+  margin: 0;
+}

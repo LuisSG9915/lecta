@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  fetchScreenDiscover,
+  fetchScreenRelated,
   fetchSeasonEpisodes,
   fetchTvSeasons,
   mergeScreenChapter,
@@ -12,6 +14,7 @@ import {
   screenPhrasesKey,
   screenPosterUrl,
   searchScreen,
+  tasteSeeds,
 } from "./screen";
 import type { ScreenGuideObject } from "../../shared/screen-guide";
 import type { PaperBookGuide } from "../../shared/paper-guide";
@@ -343,5 +346,94 @@ describe("nextEpisodeAfter", () => {
     expect(
       nextEpisodeAfter(["s02e05", "s01e09", "s02e01", "movie"]),
     ).toEqual({ season: 2, episode: 6 });
+  });
+});
+
+describe("descubrimiento (discover/related)", () => {
+  it("fetchScreenDiscover valida source y rieles, descarta items inválidos", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        jsonResponse({
+          source: "trakt",
+          rails: [
+            {
+              id: "trending",
+              items: [
+                { imdbId: "tt0000001", type: "movie", title: "M", year: "2020", hasPoster: true },
+                { imdbId: "tt0000002", type: "raro", title: "X" },
+                "basura",
+              ],
+            },
+            { id: "inventado", items: [{ imdbId: "tt9", type: "movie", title: "Y" }] },
+            { id: "recent", items: [] },
+          ],
+        }),
+      ),
+    );
+    const payload = await fetchScreenDiscover();
+    expect(payload?.source).toBe("trakt");
+    // Riel vacío y riel con id desconocido se omiten.
+    expect(payload?.rails).toHaveLength(1);
+    expect(payload?.rails[0].id).toBe("trending");
+    expect(payload?.rails[0].items).toHaveLength(1);
+    const [url] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toBe("/api/screen/discover");
+  });
+
+  it("fetchScreenDiscover devuelve null ante fallo o forma rota", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({}, 503)));
+    expect(await fetchScreenDiscover()).toBeNull();
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({ source: "otro" })));
+    expect(await fetchScreenDiscover()).toBeNull();
+  });
+
+  it("fetchScreenRelated devuelve items válidos y [] ante fallo", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        jsonResponse({
+          items: [
+            { imdbId: "tt7777777", type: "tv", title: "S", year: "2021", hasPoster: true },
+            { imdbId: "tt8888888", type: "raro", title: "X" },
+          ],
+        }),
+      ),
+    );
+    const items = await fetchScreenRelated("tt0133093", "movie");
+    expect(items).toHaveLength(1);
+    expect(items[0].imdbId).toBe("tt7777777");
+    const [url] = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(url).toBe(
+      "/api/screen/related?imdbId=tt0133093&type=movie",
+    );
+
+    vi.stubGlobal("fetch", vi.fn(async () => Promise.reject(new Error("down"))));
+    expect(await fetchScreenRelated("tt0133093", "tv")).toEqual([]);
+  });
+});
+
+describe("tasteSeeds", () => {
+  it("devuelve hasta 2 obras con imdbId, las más recientes", () => {
+    const seeds = tasteSeeds([
+      { imdbId: "tt0000001", mediaKind: "movie", addedAt: 100, title: "Vieja" },
+      { imdbId: "tt0000002", mediaKind: "tv", addedAt: 300, title: "Nueva" },
+      { imdbId: "tt0000003", mediaKind: "movie", addedAt: 200, title: "Media" },
+      { imdbId: "malo", mediaKind: "movie", addedAt: 400 },
+      { imdbId: "tt0000004", mediaKind: undefined, addedAt: 500 },
+      { imdbId: "tt0000005", addedAt: 600 }, // sin mediaKind
+    ]);
+    expect(seeds).toEqual([
+      { imdbId: "tt0000002", type: "tv", title: "Nueva" },
+      { imdbId: "tt0000003", type: "movie", title: "Media" },
+    ]);
+  });
+
+  it("cae al name cuando no hay title y ordena sin mutar la entrada", () => {
+    const works = [
+      { imdbId: "tt0000001", mediaKind: "movie", addedAt: 1, name: "Solo nombre" },
+    ];
+    expect(tasteSeeds(works)[0].title).toBe("Solo nombre");
+    expect(works[0].addedAt).toBe(1);
   });
 });

@@ -441,6 +441,10 @@ describe("Account componente Tú y Login", () => {
     );
     expect(termsBtn).toBeTruthy();
 
+    // Crédito exigido por la política de Trakt.
+    expect(host.textContent).toContain("vienen de Trakt");
+    expect(host.textContent).toContain("no está avalada ni certificada por Trakt");
+
     // Abrir modal de diagnóstico
     await act(async () => diagBtn!.click());
     await flush();

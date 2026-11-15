@@ -157,6 +157,115 @@ export function nextEpisodeAfter(
 export const screenPosterUrl = (imdbId: string) =>
   `/api/screen/poster?imdbId=${encodeURIComponent(imdbId)}`;
 
+// ------------------------------------------------------------------
+// Descubrimiento — rieles de Trakt con respaldo curado en el worker
+// ------------------------------------------------------------------
+
+export type ScreenDiscoverRailId = "trending" | "recent" | "popular";
+
+export type ScreenDiscoverRail = {
+  id: ScreenDiscoverRailId;
+  items: ScreenSearchItem[];
+};
+
+export type ScreenDiscoverPayload = {
+  source: "trakt" | "curated";
+  rails: ScreenDiscoverRail[];
+};
+
+const RAIL_IDS = new Set<ScreenDiscoverRailId>([
+  "trending",
+  "recent",
+  "popular",
+]);
+
+// Null en cualquier fallo: la sección simplemente no pinta rieles y
+// el buscador sigue funcionando igual.
+export async function fetchScreenDiscover(
+  signal?: AbortSignal,
+): Promise<ScreenDiscoverPayload | null> {
+  const response = await fetch("/api/screen/discover", { signal }).catch(
+    () => null,
+  );
+  if (!response?.ok) return null;
+  const data = (await response.json().catch(() => null)) as {
+    source?: unknown;
+    rails?: unknown;
+  } | null;
+  if (
+    (data?.source !== "trakt" && data?.source !== "curated") ||
+    !Array.isArray(data.rails)
+  ) {
+    return null;
+  }
+  const rails: ScreenDiscoverRail[] = [];
+  const seen = new Set<ScreenDiscoverRailId>();
+  for (const rail of data.rails) {
+    const r = rail as { id?: unknown; items?: unknown } | null;
+    if (
+      typeof r?.id !== "string" ||
+      !RAIL_IDS.has(r.id as ScreenDiscoverRailId) ||
+      seen.has(r.id as ScreenDiscoverRailId) ||
+      !Array.isArray(r.items)
+    ) {
+      continue;
+    }
+    seen.add(r.id as ScreenDiscoverRailId);
+    const items = r.items.filter(isSearchItem).slice(0, 16);
+    if (items.length) rails.push({ id: r.id as ScreenDiscoverRailId, items });
+  }
+  return { source: data.source, rails };
+}
+
+// Obras relacionadas con una ya preparada («Porque preparaste X»).
+// [] ante cualquier fallo — el riel se oculta solo.
+export async function fetchScreenRelated(
+  imdbId: string,
+  type: "movie" | "tv",
+  signal?: AbortSignal,
+): Promise<ScreenSearchItem[]> {
+  const response = await fetch(
+    `/api/screen/related?imdbId=${encodeURIComponent(imdbId)}&type=${type}`,
+    { signal },
+  ).catch(() => null);
+  if (!response?.ok) return [];
+  const data = (await response.json().catch(() => null)) as {
+    items?: unknown;
+  } | null;
+  if (!Array.isArray(data?.items)) return [];
+  return data.items.filter(isSearchItem).slice(0, 12);
+}
+
+const IMDB_ID_RE = /^tt\d{7,9}$/;
+
+export type TasteSeed = { imdbId: string; type: "movie" | "tv"; title: string };
+
+type TasteSeedInput = {
+  imdbId?: string;
+  mediaKind?: string;
+  addedAt?: number;
+  title?: string;
+  name?: string;
+};
+
+// Semillas de gusto: hasta 2 obras instaladas con imdbId, las más
+// recientes por addedAt. El tipo sale de mediaKind (movie/tv) y el
+// título alimenta la etiqueta «Porque preparaste «X»».
+export function tasteSeeds(works: readonly TasteSeedInput[]): TasteSeed[] {
+  const eligible = works.filter(
+    (w) =>
+      typeof w.imdbId === "string" &&
+      IMDB_ID_RE.test(w.imdbId) &&
+      (w.mediaKind === "movie" || w.mediaKind === "tv"),
+  );
+  eligible.sort((a, b) => (b.addedAt ?? 0) - (a.addedAt ?? 0));
+  return eligible.slice(0, 2).map((w) => ({
+    imdbId: w.imdbId as string,
+    type: w.mediaKind as "movie" | "tv",
+    title: w.title || w.name || "",
+  }));
+}
+
 // Pide (o recoge de R2) la guía de UN episodio/película. Lanza
 // ScreenApiError con el status del servidor (401/404/429/503) o 0
 // para fallo de red — el componente muestra el mensaje del servidor.

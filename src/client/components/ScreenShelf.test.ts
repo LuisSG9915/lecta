@@ -418,4 +418,121 @@ describe("ScreenShelf", () => {
     });
     expect(host.textContent).toContain("Sin resultados.");
   });
+
+  const railItem = (imdbId: string, title: string) => ({
+    imdbId,
+    type: "movie" as const,
+    title,
+    year: "2020",
+    hasPoster: false,
+  });
+
+  it("pinta los rieles y oculta vacíos e instalados", async () => {
+    await render({
+      works: [work({ imdbId: "tt9999999", title: "Ya instalada" })],
+      fetchDiscover: vi.fn(async () => ({
+        source: "curated" as const,
+        rails: [
+          {
+            id: "trending" as const,
+            items: [
+              railItem("tt1111111", "Tendencia uno"),
+              railItem("tt9999999", "Instalada de nuevo"),
+            ],
+          },
+          { id: "recent" as const, items: [] },
+          { id: "popular" as const, items: [railItem("tt2222222", "Popular uno")] },
+        ],
+      })),
+      // La semilla (la obra instalada) pide related y recibe justo el
+      // imdbId ya instalado: el riel queda vacío y no se pinta.
+      fetchRelated: vi.fn(async () => [
+        railItem("tt9999999", "Repetida"),
+      ]),
+    });
+    await flushDeep();
+
+    expect(host.textContent).toContain("En tendencia");
+    expect(host.textContent).toContain("Tendencia uno");
+    expect(host.textContent).not.toContain("Instalada de nuevo");
+    expect(host.textContent).toContain("Populares");
+    expect(host.textContent).toContain("Popular uno");
+    // Riel vacío → su título no aparece.
+    expect(host.textContent).not.toContain("Estrenos recientes");
+    // Related solo trajo lo ya instalado → «Porque preparaste» oculto.
+    expect(host.textContent).not.toContain("Porque preparaste");
+    expect(host.textContent).not.toContain("Repetida");
+  });
+
+  it("«Porque preparaste» usa la obra más reciente como semilla", async () => {
+    const fetchRelated = vi.fn(async (imdbId: string) =>
+      imdbId === "tt0000002"
+        ? [railItem("tt5555555", "Similar nueva")]
+        : [],
+    );
+    await render({
+      works: [
+        work({
+          hash: "h-old",
+          title: "Obra vieja",
+          imdbId: "tt0000001",
+          mediaKind: "movie",
+          addedAt: 100,
+        }),
+        work({
+          hash: "h-new",
+          title: "Obra nueva",
+          imdbId: "tt0000002",
+          mediaKind: "tv",
+          addedAt: 200,
+        }),
+      ],
+      fetchDiscover: vi.fn(async () => ({
+        source: "curated" as const,
+        rails: [],
+      })),
+      fetchRelated,
+    });
+    await flushDeep();
+
+    // Las dos semillas recientes piden related; solo la nueva trajo.
+    expect(fetchRelated).toHaveBeenCalledWith("tt0000002", "tv");
+    expect(fetchRelated).toHaveBeenCalledWith("tt0000001", "movie");
+    expect(host.textContent).toContain("Porque preparaste «Obra nueva»");
+    expect(host.textContent).toContain("Similar nueva");
+    expect(host.textContent).not.toContain("Porque preparaste «Obra vieja»");
+  });
+
+  it("con texto en el buscador los rieles desaparecen", async () => {
+    await render({
+      fetchDiscover: vi.fn(async () => ({
+        source: "trakt" as const,
+        rails: [
+          { id: "popular" as const, items: [railItem("tt2222222", "Popular uno")] },
+        ],
+      })),
+      fetchRelated: vi.fn(async () => []),
+    });
+    await flushDeep();
+    expect(host.querySelector(".screen-discover")).not.toBeNull();
+    expect(host.textContent).toContain("Populares");
+
+    await typeSearch("matrix");
+    expect(host.querySelector(".screen-discover")).toBeNull();
+    expect(host.textContent).not.toContain("Populares");
+    // Los resultados de búsqueda sí aparecen.
+    expect(host.textContent).toContain("Matrix");
+  });
+
+  it("si discover falla no se pintan rieles y la búsqueda sigue", async () => {
+    await render({
+      fetchDiscover: vi.fn(async () => null),
+      fetchRelated: vi.fn(async () => []),
+    });
+    await flushDeep();
+    expect(host.querySelector(".screen-discover-rail")).toBeNull();
+
+    await typeSearch("matrix");
+    expect(host.textContent).toContain("Matrix");
+  });
 });

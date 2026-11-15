@@ -1329,7 +1329,8 @@ export default function Account({
               >
                 Tablas derivadas y licencias
               </a>
-              .
+              . Las listas de series y películas vienen de Trakt. Lecta usa Trakt,
+              pero no está avalada ni certificada por Trakt.
             </p>
             <div style={{ display: "flex", gap: "var(--s-2)", marginTop: "var(--s-2)", flexWrap: "wrap", alignItems: "center" }}>
               <button

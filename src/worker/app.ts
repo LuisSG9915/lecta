@@ -108,6 +108,7 @@ import { readingData } from "./reading-data";
 import { companion } from "./companion";
 import { catalog } from "./catalog";
 import { screen } from "./screen";
+import { screenDiscover } from "./screen-discover";
 import { consumeRateUnits } from "./rate-limit";
 import { admin, ownerUser } from "./admin";
 import {
@@ -226,6 +227,7 @@ app.route("/", readingData);
 app.route("/", companion);
 app.route("/", catalog);
 app.route("/", screen);
+app.route("/", screenDiscover);
 app.route("/", admin);
 app.route("/", billing);
 app.route("/k", kindleRoutes);
