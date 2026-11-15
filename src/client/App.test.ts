@@ -510,6 +510,21 @@ describe("App · cuenta obligatoria (tabla de decisión)", () => {
     expect(window.location.search).toBe("");
   });
 
+  it("el refetch de sesión (isPending otra vez true) no esconde la bienvenida", async () => {
+    // better-auth, sin sesión, pone isPending: true en cada refetch por
+    // foco (máx. uno cada 5 s): la bienvenida parpadeaba hacia la estantería.
+    vi.mocked(authClient.useSession).mockReturnValue({ data: null, isPending: false } as never);
+    renderRoot();
+    await waitWelcome();
+    expect(host.querySelector(".welcome")).toBeTruthy();
+
+    vi.mocked(authClient.useSession).mockReturnValue({ data: null, isPending: true } as never);
+    renderRoot();
+    await flush();
+    expect(host.querySelector(".welcome")).toBeTruthy();
+    expect(host.querySelector(".shelf-stub")).toBeNull();
+  });
+
   it("?probar=marianela sin sesión abre el lector, no la bienvenida ni la estantería", async () => {
     vi.mocked(authClient.useSession).mockReturnValue({ data: null, isPending: false } as never);
     window.history.replaceState({}, "", "/?probar=marianela&src=google.com");

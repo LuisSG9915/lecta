@@ -257,8 +257,14 @@ export default function App() {
   // Identidad confirmada en la pasada anterior del efecto de sesión.
   // undefined = todavía no hay veredicto; null = modo anónimo.
   const prevSessionUserIdRef = useRef<string | null | undefined>(undefined);
-  const { data: session, isPending: sessionPending, error: sessionError } =
+  const { data: session, isPending: sessionLoading, error: sessionError } =
     authClient.useSession();
+  // «Pendiente» solo hasta el primer veredicto. Sin sesión, better-auth
+  // vuelve a poner isPending: true en cada refetch por foco (máx. uno
+  // cada 5 s) y la bienvenida parpadeaba hacia la estantería.
+  const [sessionSettled, setSessionSettled] = useState(false);
+  if (!sessionLoading && !sessionSettled) setSessionSettled(true);
+  const sessionPending = sessionLoading && !sessionSettled;
   const sessionUserId = session?.user?.id;
   // Hashes ya en la estantería: la pestaña Comunidad los usa para
   // marcar «En tu estantería» sin otra consulta.
