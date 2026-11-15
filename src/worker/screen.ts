@@ -110,6 +110,12 @@ type OmdbPayload = {
 };
 
 const IMDB_ID_RE = /^tt\d{7,9}$/;
+// OMDb responde "True"/"False" con mayúscula (la sonda real lo
+// confirmó el 2026-11-16); las pruebas de antes usaban "true" y por
+// eso el detalle de serie siempre daba 404 en producción.
+const omdbOk = (data: OmdbPayload | null | undefined) =>
+  typeof data?.Response === "string" &&
+  data.Response.toLowerCase() === "true";
 // Solo pósters servidos por los hosts que OMDb usa de verdad: la URL
 // nunca viene del cliente, pero el allowlist evita que un Poster
 // manipulado convierta la ruta en un proxy abierto.
@@ -140,7 +146,7 @@ async function fetchOmdbDetail(
       const p = detail.Poster;
       posterUrlCache.set(
         imdbId,
-        detail.Response === "true" &&
+        omdbOk(detail) &&
           typeof p === "string" &&
           p !== "" &&
           p !== "N/A"
@@ -172,7 +178,7 @@ async function fetchOmdbEpisodes(
     );
     if (!res.ok) return null;
     const data = (await res.json()) as OmdbPayload;
-    if (data?.Response !== "true" || !Array.isArray(data.Episodes)) {
+    if (!omdbOk(data) || !Array.isArray(data.Episodes)) {
       omdbSeasonCache.set(cacheKey, null);
       return null;
     }
@@ -270,7 +276,7 @@ screen.get("/api/screen/tv/:imdbId", async (context) => {
     return context.json({ error: "Identificador inválido." }, 400);
   }
   const detail = await fetchOmdbDetail(context.env, imdbId);
-  if (!detail || detail.Response !== "true" || detail.Type !== "series") {
+  if (!detail || !omdbOk(detail) || detail.Type !== "series") {
     return notFound(context);
   }
   const parsed = Number.parseInt(detail.totalSeasons ?? "", 10);

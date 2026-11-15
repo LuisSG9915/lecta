@@ -271,7 +271,7 @@ describe("GET /api/screen/search", () => {
       expect(url).toContain("s=severance");
       expect(url).toContain("apikey=omdb-test-key");
       return jsonRes({
-        Response: "true",
+        Response: "True",
         Search: [
           {
             Title: "Película Uno",
@@ -341,7 +341,7 @@ describe("GET /api/screen/search", () => {
     let calls = 0;
     fetchHandler = async () => {
       calls += 1;
-      return jsonRes({ Response: "true", Search: [] });
+      return jsonRes({ Response: "True", Search: [] });
     };
     const { env: e } = env();
     await get(e, "/api/screen/search?q=dracula", app);
@@ -357,7 +357,7 @@ describe("GET /api/screen/tv", () => {
     fetchHandler = async (url) => {
       expect(url).toContain("i=tt01111111");
       return jsonRes({
-        Response: "true",
+        Response: "True",
         Title: "Severance",
         Type: "series",
         totalSeasons: "3",
@@ -378,7 +378,7 @@ describe("GET /api/screen/tv", () => {
 
   it("una película en la ruta de serie también es 404", async () => {
     fetchHandler = async () =>
-      jsonRes({ Response: "true", Title: "Film", Type: "movie" });
+      jsonRes({ Response: "True", Title: "Film", Type: "movie" });
     expect((await get(env().env, "/api/screen/tv/tt05555555")).status).toBe(404);
   });
 });
@@ -389,7 +389,7 @@ describe("GET /api/screen/tv/:imdbId/season/:n", () => {
       expect(url).toContain("i=tt01111111");
       expect(url).toContain("Season=1");
       return jsonRes({
-        Response: "true",
+        Response: "True",
         Episodes: [
           { Episode: "1", Title: "Secreto Uno" },
           { Episode: "2", Title: "Secreto Dos" },
@@ -423,7 +423,7 @@ describe("GET /api/screen/tv/:imdbId/season/:n", () => {
 
 describe("GET /api/screen/poster", () => {
   const posterDetail = (poster: string) =>
-    jsonRes({ Response: "true", Title: "X", Type: "movie", Poster: poster });
+    jsonRes({ Response: "True", Title: "X", Type: "movie", Poster: poster });
 
   it("reenvía el póster solo desde hosts permitidos, inmutable", async () => {
     fetchHandler = async (url) => {
@@ -503,7 +503,7 @@ describe("GET /api/screen/poster", () => {
         omdbCalls.push(url);
         if (url.includes("s=")) {
           return jsonRes({
-            Response: "true",
+            Response: "True",
             Search: [
               {
                 Title: "Matrix",
