@@ -5,7 +5,7 @@
   const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
   /* ---------- Elegir gato ---------- */
-  const APP = "https://lecta.luis-sg9915.workers.dev/";
+  const APP = "/";
   const picks = $$('input[name="gato"]');
   // El pelaje solo viaja a la app (?gato= y lecta:gato) si la persona lo
   // eligió: al cargar la página no se guarda nada ni se reescribe ningún

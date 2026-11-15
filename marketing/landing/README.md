@@ -29,7 +29,7 @@ renderiza `scripts/landing-art/render.mjs`; la página usa las versiones
 - El JS va en archivo aparte porque la CSP del sitio (`script-src 'self'`)
   bloquea scripts en línea; no añadir `<script>` en línea ni handlers
   `on*`.
-- Todos los CTA apuntan a `https://lecta.luis-sg9915.workers.dev/?gato=<pelaje>`
+- Todos los CTA apuntan a `/?gato=<pelaje>` (relativo: misma app en `lectal.app` y en `workers.dev`)
   (`landing.js:APP`, `setCoat`); pelaje por defecto `ginger`.
 - Respeta `prefers-reduced-motion` (`reduce`): sin animación de vuelo ni
   dibujo progresivo de tinta.
