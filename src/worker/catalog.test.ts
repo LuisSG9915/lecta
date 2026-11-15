@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { catalog } from "./catalog";
 
 // El índice se cachea en memoria del isolate ~5 min: las pruebas que
@@ -7,6 +7,49 @@ async function freshCatalog() {
   vi.resetModules();
   return (await import("./catalog")).catalog;
 }
+
+// Sesión y base simuladas (mismo patrón que community-books/quota):
+// getSession devuelve lo que cada prueba dicte y withClient entrega un
+// cliente cuyo query es el mock central — las rutas del catálogo no
+// llaman a ninguno de los dos salvo la búsqueda y el EPUB pg-.
+const getSessionMock = vi.hoisted(() => vi.fn());
+vi.mock("./session", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./session")>();
+  return {
+    ...actual,
+    getSession: (...args: unknown[]) => getSessionMock(...args),
+    getSessionUser: async (...args: unknown[]) => {
+      const s = await getSessionMock(...args);
+      return s?.user ?? null;
+    },
+  };
+});
+
+const queryMock = vi.hoisted(() => vi.fn());
+vi.mock("./db", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./db")>();
+  return {
+    ...actual,
+    withClient: async (
+      _env: unknown,
+      run: (client: { query: typeof queryMock }) => Promise<unknown>,
+      _cached?: boolean,
+    ) => run({ query: queryMock }),
+  };
+});
+
+const fetchMock = vi.hoisted(() => vi.fn());
+
+beforeEach(() => {
+  getSessionMock.mockReset().mockResolvedValue(null);
+  queryMock.mockReset().mockResolvedValue({ rows: [] });
+  fetchMock.mockReset();
+  vi.stubGlobal("fetch", fetchMock);
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 // Bucket R2 falso: un Map clave→contenido con la forma que el endpoint
 // usa (`body` para streams de archivo, `text()` para el índice). Lo
@@ -129,5 +172,424 @@ describe("GET /api/catalog/:id/:kind", () => {
   it("503 sin binding", async () => {
     const res = await get({}, "/api/catalog/quijote/epub");
     expect(res.status).toBe(503);
+  });
+});
+
+// ---------- Búsqueda en el índice propio de Gutenberg ----------
+
+const SQL_SEARCH = "SELECT gutenberg_id, language, title, author, subjects";
+const SQL_INDEXED = "SELECT 1 AS ok FROM";
+const SQL_QUOTA = "INSERT INTO lecta_ai_quota";
+
+const gbRow = (over: Record<string, unknown> = {}) => ({
+  gutenberg_id: 1342,
+  language: "es",
+  title: "Don Quijote",
+  author: "Cervantes",
+  subjects: ["Fiction", "Spanish literature"],
+  ...over,
+});
+
+// Enruta el query mock según la sentencia: búsqueda, comprobación de
+// índice y cuota comparten el mismo withClient.
+const installCatalogDb = (opts: {
+  rows?: Record<string, unknown>[];
+  indexed?: boolean;
+  quotaOk?: boolean;
+} = {}) => {
+  queryMock.mockImplementation((sql: string) => {
+    if (sql.includes(SQL_SEARCH)) {
+      return Promise.resolve({ rows: opts.rows ?? [] });
+    }
+    if (sql.includes(SQL_INDEXED)) {
+      return Promise.resolve({
+        rows: opts.indexed === false ? [] : [{ ok: 1 }],
+      });
+    }
+    if (sql.includes(SQL_QUOTA)) {
+      return Promise.resolve({
+        rows: opts.quotaOk === false ? [] : [{ units_used: 1 }],
+      });
+    }
+    return Promise.resolve({ rows: [] });
+  });
+};
+
+describe("GET /api/catalog/search", () => {
+  it("devuelve la forma del contrato sin sesión", async () => {
+    const app = await freshCatalog();
+    installCatalogDb({
+      rows: [
+        gbRow(),
+        gbRow({
+          gutenberg_id: 84,
+          title: "Frankenstein",
+          author: "Shelley",
+          language: "en",
+          subjects: ["Gothic fiction"],
+        }),
+      ],
+    });
+    const res = await get({}, "/api/catalog/search?q=quijote", app);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("cache-control")).toContain("public");
+    const body = (await res.json()) as {
+      page: number;
+      hasMore: boolean;
+      books: Record<string, unknown>[];
+    };
+    expect(body.page).toBe(0);
+    expect(body.hasMore).toBe(false);
+    expect(body.books).toEqual([
+      {
+        id: "pg-1342",
+        gutenbergId: 1342,
+        title: "Don Quijote",
+        author: "Cervantes",
+        language: "es",
+        subjects: ["Fiction", "Spanish literature"],
+        cover: false,
+      },
+      {
+        id: "pg-84",
+        gutenbergId: 84,
+        title: "Frankenstein",
+        author: "Shelley",
+        language: "en",
+        subjects: ["Gothic fiction"],
+        cover: false,
+      },
+    ]);
+    expect(getSessionMock).not.toHaveBeenCalled();
+  });
+
+  it("sin q ni filtros devuelve los más descargados (ORDER BY downloads)", async () => {
+    const app = await freshCatalog();
+    installCatalogDb({ rows: [] });
+    const res = await get({}, "/api/catalog/search", app);
+    expect(res.status).toBe(200);
+    const [sql, params] = queryMock.mock.calls[0] as [string, unknown[]];
+    expect(sql).toContain("ORDER BY downloads DESC, gutenberg_id");
+    expect(sql).not.toContain("WHERE");
+    expect(params).toEqual([25, 0]);
+  });
+
+  it("normaliza q como search_text y exige todas las palabras", async () => {
+    const app = await freshCatalog();
+    installCatalogDb({ rows: [] });
+    await get({}, "/api/catalog/search?q=Bécquer%20poesía&lang=es", app);
+    const [sql, params] = queryMock.mock.calls[0] as [string, unknown[]];
+    expect(sql).toContain("language = $1");
+    expect(sql).toContain("search_text LIKE '%' || $2 || '%'");
+    expect(sql).toContain("search_text LIKE '%' || $3 || '%'");
+    expect(sql).toContain("AND");
+    expect(params.slice(0, 3)).toEqual(["es", "becquer", "poesia"]);
+  });
+
+  it("escapa los comodines de LIKE en los términos", async () => {
+    const app = await freshCatalog();
+    installCatalogDb({ rows: [] });
+    await get({}, "/api/catalog/search?q=100%25_", app);
+    const [, params] = queryMock.mock.calls[0] as [string, unknown[]];
+    expect(params[0]).toBe("100\\%\\_");
+  });
+
+  it("filtra por tema sobre subjects en minúsculas", async () => {
+    const app = await freshCatalog();
+    installCatalogDb({ rows: [] });
+    await get({}, "/api/catalog/search?topic=Fiction", app);
+    const [sql, params] = queryMock.mock.calls[0] as [string, unknown[]];
+    expect(sql).toContain("unnest(subjects)");
+    expect(sql).toContain("lower(s) LIKE");
+    expect(params[0]).toBe("fiction");
+  });
+
+  it("pagina con OFFSET = page*24 y la fila 25 solo marca hasMore", async () => {
+    const app = await freshCatalog();
+    const rows = Array.from({ length: 25 }, (_, i) =>
+      gbRow({ gutenberg_id: 2000 + i }),
+    );
+    installCatalogDb({ rows });
+    const res = await get({}, "/api/catalog/search?page=2", app);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      page: number;
+      hasMore: boolean;
+      books: unknown[];
+    };
+    expect(body.page).toBe(2);
+    expect(body.hasMore).toBe(true);
+    expect(body.books).toHaveLength(24);
+    const [, params] = queryMock.mock.calls[0] as [string, unknown[]];
+    expect(params).toEqual([25, 48]);
+  });
+
+  it("cachea la búsqueda en el isolate: misma consulta, una ida a la base", async () => {
+    const app = await freshCatalog();
+    installCatalogDb({ rows: [gbRow()] });
+    await get({}, "/api/catalog/search?q=uno", app);
+    await get({}, "/api/catalog/search?q=uno", app);
+    // « Uno » normaliza a la misma clave de caché.
+    await get({}, "/api/catalog/search?q=%20Uno%20", app);
+    const searches = queryMock.mock.calls.filter(([sql]) =>
+      String(sql).includes(SQL_SEARCH),
+    );
+    expect(searches).toHaveLength(1);
+  });
+
+  it("tabla ausente → 200 con lista vacía (migración pendiente)", async () => {
+    const app = await freshCatalog();
+    queryMock.mockRejectedValue(
+      Object.assign(new Error("relation does not exist"), { code: "42P01" }),
+    );
+    const res = await get({}, "/api/catalog/search?q=x", app);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { hasMore: boolean; books: unknown[] };
+    expect(body).toEqual({ page: 0, hasMore: false, books: [] });
+  });
+
+  it.each([
+    ["/api/catalog/search?q=" + "a".repeat(81), "q larga"],
+    ["/api/catalog/search?topic=" + "a".repeat(41), "tema largo"],
+    ["/api/catalog/search?lang=fr", "idioma inválido"],
+    ["/api/catalog/search?page=50", "página fuera de rango"],
+    ["/api/catalog/search?page=-1", "página negativa"],
+    ["/api/catalog/search?page=1.5", "página no entera"],
+  ])("400 en parámetros inválidos: %s", async (path) => {
+    const app = await freshCatalog();
+    const res = await get({}, path, app);
+    expect(res.status).toBe(400);
+    expect(queryMock).not.toHaveBeenCalled();
+  });
+});
+
+// ---------- EPUB de Gutenberg bajo demanda ----------
+
+// Bucket R2 con estado: put escribe y get lo devuelve, como el bucket
+// real. Los EPUB de prueba empiezan con la firma ZIP «PK».
+function fakeR2(initial: Record<string, string | Uint8Array> = {}) {
+  const encoder = new TextEncoder();
+  const store = new Map<string, Uint8Array>(
+    Object.entries(initial).map(([k, v]) => [
+      k,
+      typeof v === "string" ? encoder.encode(v) : v,
+    ]),
+  );
+  const gets: string[] = [];
+  const puts: { key: string; bytes: number }[] = [];
+  return {
+    store,
+    gets,
+    puts,
+    bucket: {
+      async get(key: string) {
+        gets.push(key);
+        const body = store.get(key);
+        if (body == null) return null;
+        return {
+          body,
+          text: async () => new TextDecoder().decode(body),
+        };
+      },
+      async put(key: string, body: ArrayBuffer | Uint8Array) {
+        puts.push({ key, bytes: body.byteLength });
+        store.set(
+          key,
+          body instanceof Uint8Array ? body : new Uint8Array(body),
+        );
+      },
+    },
+  };
+}
+
+const EPUB_BYTES = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 1, 2, 3]);
+
+const okEpubFetch = () =>
+  fetchMock.mockImplementation(() =>
+    Promise.resolve(
+      new Response(EPUB_BYTES, {
+        status: 200,
+        headers: { "content-length": String(EPUB_BYTES.byteLength) },
+      }),
+    ),
+  );
+
+describe("GET /api/catalog/pg-<id>/epub bajo demanda", () => {
+  it("cacheado en R2 se sirve sin sesión ni fetch", async () => {
+    const app = await freshCatalog();
+    const r2 = fakeR2({ "catalog/pg-1342.epub": EPUB_BYTES });
+    const res = await get(
+      { BOOKS: r2.bucket },
+      "/api/catalog/pg-1342/epub",
+      app,
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("application/epub+zip");
+    expect(res.headers.get("cache-control")).toContain("immutable");
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(getSessionMock).not.toHaveBeenCalled();
+  });
+
+  it("sin sesión → 401 antes de tocar la base ni gutenberg.org", async () => {
+    const app = await freshCatalog();
+    installCatalogDb({ indexed: true });
+    const res = await get(
+      { BOOKS: fakeR2().bucket },
+      "/api/catalog/pg-1342/epub",
+      app,
+    );
+    expect(res.status).toBe(401);
+    expect(((await res.json()) as { error: string }).error).toContain(
+      "Inicia sesión",
+    );
+    expect(queryMock).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("id fuera del índice → 404 sin cuota ni descarga", async () => {
+    const app = await freshCatalog();
+    getSessionMock.mockResolvedValue({ user: { id: "u1" } });
+    installCatalogDb({ indexed: false });
+    const res = await get(
+      { BOOKS: fakeR2().bucket },
+      "/api/catalog/pg-1342/epub",
+      app,
+    );
+    expect(res.status).toBe(404);
+    const sqls = queryMock.mock.calls.map(([sql]) => String(sql));
+    expect(sqls.some((sql) => sql.includes(SQL_QUOTA))).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("cuota agotada → 429 sin descargar", async () => {
+    const app = await freshCatalog();
+    getSessionMock.mockResolvedValue({ user: { id: "u1" } });
+    installCatalogDb({ indexed: true, quotaOk: false });
+    const res = await get(
+      { BOOKS: fakeR2().bucket },
+      "/api/catalog/pg-1342/epub",
+      app,
+    );
+    expect(res.status).toBe(429);
+    expect(((await res.json()) as { error: string }).error).toContain(
+      "muchos libros",
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("respuesta que no empieza con PK → 502", async () => {
+    const app = await freshCatalog();
+    getSessionMock.mockResolvedValue({ user: { id: "u1" } });
+    installCatalogDb({ indexed: true });
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(
+        new Response(new TextEncoder().encode("NOTAZIP"), { status: 200 }),
+      ),
+    );
+    const res = await get(
+      { BOOKS: fakeR2().bucket },
+      "/api/catalog/pg-1342/epub",
+      app,
+    );
+    expect(res.status).toBe(502);
+  });
+
+  it("content-length por encima de 25 MB → 502 sin leer el cuerpo", async () => {
+    const app = await freshCatalog();
+    getSessionMock.mockResolvedValue({ user: { id: "u1" } });
+    installCatalogDb({ indexed: true });
+    fetchMock.mockImplementation(() =>
+      Promise.resolve({
+        ok: true,
+        headers: {
+          get: (name: string) =>
+            name === "content-length" ? "30000000" : null,
+        },
+        arrayBuffer: async () => EPUB_BYTES.buffer,
+      }),
+    );
+    const res = await get(
+      { BOOKS: fakeR2().bucket },
+      "/api/catalog/pg-1342/epub",
+      app,
+    );
+    expect(res.status).toBe(502);
+  });
+
+  it("éxito: guarda en R2 y la segunda petición no vuelve a descargar", async () => {
+    const app = await freshCatalog();
+    const r2 = fakeR2();
+    getSessionMock.mockResolvedValue({ user: { id: "u1" } });
+    installCatalogDb({ indexed: true });
+    okEpubFetch();
+    const env = { BOOKS: r2.bucket };
+    const first = await get(env, "/api/catalog/pg-1342/epub", app);
+    expect(first.status).toBe(200);
+    expect(first.headers.get("content-type")).toBe("application/epub+zip");
+    expect(r2.puts).toEqual([
+      { key: "catalog/pg-1342.epub", bytes: EPUB_BYTES.byteLength },
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // La URL es la de epub3.images; el UA identifica al catálogo.
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("https://www.gutenberg.org/ebooks/1342.epub3.images");
+    expect((init.headers as Record<string, string>)["User-Agent"]).toBe(
+      "lecta-catalog/1.0",
+    );
+
+    const second = await get(env, "/api/catalog/pg-1342/epub", app);
+    expect(second.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("cae a la URL epub.images si epub3.images falla", async () => {
+    const app = await freshCatalog();
+    getSessionMock.mockResolvedValue({ user: { id: "u1" } });
+    installCatalogDb({ indexed: true });
+    fetchMock
+      .mockImplementationOnce(() => Promise.resolve(new Response(null, { status: 404 })))
+      .mockImplementation(() =>
+        Promise.resolve(
+          new Response(EPUB_BYTES, { status: 200 }),
+        ),
+      );
+    const res = await get(
+      { BOOKS: fakeR2().bucket },
+      "/api/catalog/pg-1342/epub",
+      app,
+    );
+    expect(res.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect((fetchMock.mock.calls[1] as [string])[0]).toBe(
+      "https://www.gutenberg.org/ebooks/1342.epub.images",
+    );
+  });
+
+  it("vocab y cover de ids pg- siguen en 404 (sin rescate)", async () => {
+    const app = await freshCatalog();
+    getSessionMock.mockResolvedValue({ user: { id: "u1" } });
+    installCatalogDb({ indexed: true });
+    for (const kind of ["vocab", "cover"]) {
+      const res = await get(
+        { BOOKS: fakeR2().bucket },
+        `/api/catalog/pg-1342/${kind}`,
+        app,
+      );
+      expect(res.status).toBe(404);
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("pg- con sufijo no numérico → 404 sin tocar nada", async () => {
+    const app = await freshCatalog();
+    getSessionMock.mockResolvedValue({ user: { id: "u1" } });
+    const res = await get(
+      { BOOKS: fakeR2().bucket },
+      "/api/catalog/pg-abc/epub",
+      app,
+    );
+    expect(res.status).toBe(404);
+    expect(queryMock).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

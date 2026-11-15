@@ -59,6 +59,40 @@ export function parseRdf(xml) {
     .map((m) => tag(m[0], "rdf:value"))
     .filter(Boolean);
 
+  // Tipo de la obra (dcterms:type → rdf:value): «Text» es el valor del
+  // catálogo para libros; igual que Gutendex, la ausencia se lee como
+  // «Text» (el índice masivo solo admite ese tipo).
+  const typeBlock = work.match(
+    /<dcterms:type\b[^>]*>([\s\S]*?)<\/dcterms:type>/,
+  );
+  const typeValue = typeBlock ? tag(typeBlock[1], "rdf:value") : null;
+  const type = typeValue?.trim() || "Text";
+
+  // Descargas acumuladas (pgterms:downloads): las usa el índice para
+  // ordenar la búsqueda; 0 cuando el RDF no lo trae o viene roto.
+  const downloadsRaw = tag(work, "pgterms:downloads");
+  const downloadsNum = Number.parseInt(
+    String(downloadsRaw ?? "").replace(/<[^>]+>/g, "").trim(),
+    10,
+  );
+  const downloads =
+    Number.isFinite(downloadsNum) && downloadsNum > 0 ? downloadsNum : 0;
+
+  // Formatos disponibles: cada <pgterms:file> lleva un <dcterms:format>
+  // con <rdf:value> = tipo MIME (a veces con «; charset=…»). Se guarda
+  // en minúsculas y sin parámetros — el índice exige application/epub+zip.
+  const formats = new Set();
+  for (const file of work.matchAll(
+    /<pgterms:file\b[\s\S]*?<\/pgterms:file>/g,
+  )) {
+    for (const fmt of file[0].matchAll(
+      /<dcterms:format\b[^>]*>([\s\S]*?)<\/dcterms:format>/g,
+    )) {
+      const value = tag(fmt[1], "rdf:value");
+      if (value) formats.add(value.split(";")[0].trim().toLowerCase());
+    }
+  }
+
   const contributors = [];
   const seenAgents = new Set();
 
@@ -81,7 +115,31 @@ export function parseRdf(xml) {
     }
   }
 
-  return { title, rights, languages, issued, subjects, contributors };
+  return {
+    title,
+    rights,
+    languages,
+    issued,
+    subjects,
+    contributors,
+    type,
+    downloads,
+    formats: [...formats].sort(),
+  };
+}
+
+// Texto de búsqueda del índice Gutenberg: título + autor en
+// minúsculas y sin acentos (misma normalización que aplica el worker
+// sobre `q` antes del LIKE — las dos puntas deben coincidir).
+export function searchTextOf(...parts) {
+  return parts
+    .filter((part) => typeof part === "string" && part.trim())
+    .join(" ")
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function parseYear(v) {

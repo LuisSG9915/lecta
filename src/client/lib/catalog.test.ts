@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   catalogVocab,
+  CatalogAuthError,
   downloadCatalogEpub,
   describeCatalogBook,
   entriesByFormOf,
@@ -135,6 +136,13 @@ describe("downloadCatalogEpub", () => {
   it("404 devuelve null", async () => {
     fetchStub(async () => jsonResponse(null, 404));
     expect(await downloadCatalogEpub(INDEX.books[0])).toBeNull();
+  });
+
+  it("401 lanza CatalogAuthError (la búsqueda pg- ofrece iniciar sesión)", async () => {
+    fetchStub(async () => jsonResponse({ error: "sesión" }, 401));
+    await expect(downloadCatalogEpub(INDEX.books[0])).rejects.toBeInstanceOf(
+      CatalogAuthError,
+    );
   });
 });
 

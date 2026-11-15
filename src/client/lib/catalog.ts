@@ -292,6 +292,17 @@ export function describeCatalogBook(book: CatalogBook): string {
   return "Clásico de dominio público en el catálogo de Lecta.";
 }
 
+// La descarga de un EPUB pg- (Gutenberg) exige sesión en el worker:
+// el 401 se distingue del fallo genérico para que «Más clásicos»
+// ofrezca «Iniciar sesión» en vez del error de red. Los libros del
+// índice curado nunca lo reciben (su ruta no pide sesión).
+export class CatalogAuthError extends Error {
+  constructor() {
+    super("catalog auth required");
+    this.name = "CatalogAuthError";
+  }
+}
+
 // Descarga el EPUB del catálogo y lo devuelve como File listo para el
 // flujo normal de «Añadir libro» (misma validación y dedup por hash que
 // cualquier EPUB local).
@@ -301,6 +312,7 @@ export async function downloadCatalogEpub(
   const response = await fetch(`/api/catalog/${book.id}/epub`).catch(
     () => null,
   );
+  if (response?.status === 401) throw new CatalogAuthError();
   if (!response?.ok) return null;
   const data = await response.blob();
   const name = `${book.title} — ${book.author}.epub`;
