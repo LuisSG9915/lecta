@@ -43,3 +43,12 @@ src/shared/english-core-lexicon.generated.ts
 # Fuentes PNG de la landing (55 MB): se regeneran con
 # `node scripts/landing-art/render.mjs`; se publica marketing/landing/web/.
 /marketing/landing/*.png
+
+# Skills de agentes instaladas localmente (terceros, no código de Lecta)
+.agents/skills/
+.claude/skills/
+.devin/skills/
+skills-lock.json
+
+# Config temporal para depurar desde el teléfono por túnel
+vite.tunnel.config.ts

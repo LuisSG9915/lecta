@@ -3,9 +3,15 @@
   "configurations": [
     {
       "name": "landing",
-      "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "4317", "--directory", "marketing/landing"],
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["exec", "vite", "marketing/landing", "--port", "4317", "--strictPort"],
       "port": 4317
+    },
+    {
+      "name": "lecta-preview",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["exec", "vite", "preview", "--port", "5188", "--host"],
+      "port": 5188
     }
   ]
 }
