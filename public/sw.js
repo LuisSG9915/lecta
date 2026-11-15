@@ -361,7 +361,12 @@ self.addEventListener("fetch", function (event) {
           });
         }, NAVIGATION_TIMEOUT_MS);
 
-        var networkRequest = new Request(req.url, { cache: "no-store" });
+        // redirect "manual": el 301 del host viejo (workers.dev → lectal.app)
+        // llega como `opaqueredirect` y se entrega tal cual para que el
+        // navegador lo siga. Con "follow" el fetch a otro origen fallaba y
+        // se servía la copia vieja del caché para siempre. No es `ok`, así
+        // que nunca se guarda en caché.
+        var networkRequest = new Request(req.url, { cache: "no-store", redirect: "manual" });
 
         fetch(networkRequest)
           .then(function (res) {

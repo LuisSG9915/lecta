@@ -1,4 +1,5 @@
 import { app } from "./app";
+import { isWorkerRoute, legacyHostRedirect } from "./canonical-host";
 import { withClient, type WorkerEnv } from "./db";
 import { EnrichmentWorkflow } from "./enrichment-workflow";
 import {
@@ -11,7 +12,16 @@ import { purgeLandingEvents } from "./landing-events";
 export { EnrichmentWorkflow };
 
 const handler: ExportedHandler<WorkerEnv> = {
-  fetch: (request, env, ctx) => app.fetch(request, env, ctx),
+  // `run_worker_first` manda aquí también las páginas (para poder redirigir
+  // el host viejo); lo que no es ruta del Worker vuelve a los assets.
+  fetch: (request, env, ctx) => {
+    const redirect = legacyHostRedirect(request);
+    if (redirect) return redirect;
+    if (env.ASSETS && !isWorkerRoute(new URL(request.url).pathname)) {
+      return env.ASSETS.fetch(request);
+    }
+    return app.fetch(request, env, ctx);
+  },
   scheduled: (_controller, env, ctx) => {
     ctx.waitUntil(
       (withClient(env, async (client) => {

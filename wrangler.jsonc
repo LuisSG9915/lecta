@@ -21,15 +21,32 @@
 			"STRIPE_PRICE_YEARLY_ID"
 		]
 	},
+	// Dominio canónico lectal.app. workers.dev sigue activo solo para servir el
+	// 301 de las páginas y la API (webhook de Stripe, MCP): ver
+	// src/worker/canonical-host.ts.
+	"routes": [
+		{
+			"pattern": "lectal.app",
+			"custom_domain": true
+		}
+	],
+	"workers_dev": true,
 	"assets": {
+		"binding": "ASSETS",
 		"not_found_handling": "single-page-application",
+		// Todo pasa por el Worker (para redirigir el host viejo) salvo los
+		// directorios de archivos estáticos, que van directo a los assets.
 		"run_worker_first": [
-			"/api/*",
-			"/k",
-			"/k/*",
-			"/kindle",
-			"/kindle/*",
-			"/models/*"
+			"/*",
+			"!/assets/*",
+			"!/audio/*",
+			"!/dict/*",
+			"!/fonts/*",
+			"!/icons/*",
+			"!/lexicon/*",
+			"!/libros/*",
+			"!/inicio/web/*",
+			"!/inicio/fonts/*"
 		]
 	},
 	"r2_buckets": [

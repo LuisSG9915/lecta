@@ -21,6 +21,8 @@ export type WorkerEnv = {
   STRIPE_PRICE_MONTHLY_ID?: string;
   STRIPE_PRICE_YEARLY_ID?: string;
   BOOKS?: R2Bucket;
+  /** Assets estáticos; el Worker les devuelve lo que no es ruta suya. */
+  ASSETS?: Fetcher;
   TTS_MODEL_CDN_URL?: string;
   ENRICHMENT_WORKFLOW?: Workflow<{ forms: string[]; language?: string }>;
 };
