@@ -308,6 +308,19 @@ body.is-night .nav .brand,body.is-night .nav__links a:not(.btn){color:var(--nigh
 /* ---------- Pelajes ---------- */
 
 /* ---------- Preguntas ---------- */
+/* Por qué confiar: nota del creador + dos hechos comprobables */
+.trust{padding:clamp(3rem,7vw,5rem) 0 0}
+.trust .wrap{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:clamp(1.5rem,5vw,4rem);align-items:start}
+.note{margin:0;padding:clamp(1.4rem,3vw,2rem);background:var(--paper-raised);border:1px solid var(--rule);border-radius:var(--r-sheet)}
+.note p{font:400 clamp(1.15rem,1.8vw,1.3rem)/1.5 var(--serif);color:var(--ink)}
+.note figcaption{margin-top:1rem;display:flex;align-items:center;gap:.7rem;color:var(--ink-soft);font-size:1rem}
+.note figcaption img{width:44px;height:44px}
+.note figcaption b{color:var(--ink);font-weight:600}
+.facts-trust{list-style:none;margin:0;padding:0;display:grid;gap:1.4rem}
+.facts-trust li{display:grid;grid-template-columns:auto 1fr;gap:.2rem .8rem}
+.facts-trust svg{width:22px;height:22px;color:var(--sage);grid-row:span 2;margin-top:.2rem}
+.facts-trust b{font:600 1.15rem/1.3 var(--serif)}
+.facts-trust span{color:var(--ink-soft);font-size:1.05rem}
 .faq{padding:clamp(3rem,7vw,5rem) 0}
 .faq .wrap{display:grid;grid-template-columns:minmax(0,.8fr) minmax(0,1.2fr);gap:clamp(1.5rem,5vw,4rem)}
 .faq h2{font-size:clamp(2rem,4.2vw,3rem)}
@@ -340,7 +353,7 @@ footer a{color:var(--night-ink)}
 /* ---------- Responsivo ---------- */
 @media (max-width:60rem){
   .hero .wrap{grid-template-columns:1fr}
-  .books .wrap{grid-template-columns:1fr}
+  .books .wrap,.trust .wrap{grid-template-columns:1fr}
   .page{transform:rotate(-.6deg)}
   .trail .wrap{grid-template-columns:minmax(0,1fr)}
   .trail__aside{display:none}
@@ -602,6 +615,18 @@ footer a{color:var(--night-ink)}
     </div>
   </section>
 
+  <section class="trust" aria-label="Quién hace Lecta y cómo cuida tus datos">
+    <div class="wrap">
+      <figure class="note">
+        <p>Hice Lecta porque quería leer más sin soltar el libro cada vez que una palabra me detenía. Aquí la tocas, la entiendes ahí mismo y Lecta se encarga de que no se te olvide. La estoy construyendo con sus primeros lectores, y cada cambio sale de cómo la usan.</p>
+        <figcaption><img src="web/gato-ginger-3.webp" data-stage="3" alt="" width="44" height="44"><span><b>Luis</b>, quien hace Lecta</span></figcaption>
+      </figure>
+      <ul class="facts-trust">
+        <li><svg aria-hidden="true"><use href="#i-sync"/></svg><b>Repaso con método, no al azar.</b><span>Cada palabra vuelve justo antes de que se te olvide, con FSRS: el algoritmo de repetición espaciada que también usa Anki.</span></li>
+        <li><svg aria-hidden="true"><use href="#i-check"/></svg><b>Sin anuncios ni rastreadores.</b><span>No vendemos lo que lees. Si usas la IA, solo viaja la palabra y su oración; nunca el libro ni tu nombre.</span></li>
+      </ul>
+    </div>
+  </section>
   <section class="faq" aria-labelledby="faq-title">
     <div class="wrap">
       <h2 id="faq-title" class="reveal">Preguntas antes de empezar.</h2>
