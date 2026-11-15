@@ -358,6 +358,54 @@ describe("plan en GET /api/account/state y PUT /api/account/starter-coat", () =>
     expect(await second.json()).toEqual({ starterCoat: "calico" });
   });
 
+  const putCoatFrom = (coat: string, src: string) =>
+    app.request(
+      "/api/account/starter-coat",
+      {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ coat, src }),
+      },
+      env,
+    );
+  const landingWrites = (query: ReturnType<typeof vi.fn>) =>
+    query.mock.calls.filter(([sql]) => String(sql).includes("lecta_landing_daily"));
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  it("starter-coat con src cuenta signup de la landing solo la primera vez", async () => {
+    await mockSession();
+    const query = await mockDb((sql) => {
+      if (sql.includes("INSERT INTO lecta_user_plan")) return { rows: [{ starter_coat: "calico" }] };
+      return { rows: [] };
+    });
+    expect((await putCoatFrom("calico", "Instagram.com")).status).toBe(200);
+    await settle();
+    const writes = landingWrites(query);
+    expect(writes).toHaveLength(1);
+    expect(writes[0]?.[1]).toEqual([expect.any(String), "signup", "instagram.com"]);
+
+    vi.restoreAllMocks();
+    await mockSession();
+    const again = await mockDb((sql) => {
+      if (sql.includes("INSERT INTO lecta_user_plan")) return { rows: [] };
+      return { rows: [{ plan: "free", starter_coat: "calico" }] };
+    });
+    expect((await putCoatFrom("ginger", "instagram.com")).status).toBe(200);
+    await settle();
+    expect(landingWrites(again)).toHaveLength(0);
+  });
+
+  it("starter-coat sin src no cuenta signup", async () => {
+    await mockSession();
+    const query = await mockDb((sql) => {
+      if (sql.includes("INSERT INTO lecta_user_plan")) return { rows: [{ starter_coat: "mist" }] };
+      return { rows: [] };
+    });
+    expect((await putCoat("mist")).status).toBe(200);
+    await settle();
+    expect(landingWrites(query)).toHaveLength(0);
+  });
+
   it("starter-coat sin tabla (42P01) responde 503", async () => {
     await mockSession();
     await mockDb(() => {

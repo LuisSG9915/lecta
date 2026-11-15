@@ -35,6 +35,14 @@ renderiza `scripts/landing-art/render.mjs`; la página usa las versiones
   dibujo progresivo de tinta.
 - `landingPage()` copia solo `index.html`, `landing.js`, `fonts/` y `web/`
   (sin `*.json`); los PNG de la raíz no se publican.
+- Medición: `track()` en `landing.js` manda `{ event, source }` a
+  `POST /api/landing-events` con `sendBeacon` (texto plano). Eventos:
+  `view`, `cta:<data-cta-id>`, `demo_open`, `demo_save`, `demo_reveal`,
+  `pick_cat`, `price_toggle`. La fuente (utm_source o dominio de referencia)
+  se fija por pestaña en `sessionStorage` y viaja a la app como `?src=`;
+  la app la manda al reclamar el gato y el worker cuenta `signup`. Un CTA
+  nuevo necesita su `data-cta-id` en la allowlist de
+  `src/worker/landing-events.ts`.
 - La página es demostración: ficha, herbario y repaso usan datos fijos y no
   llaman a la API.
 

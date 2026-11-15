@@ -8,6 +8,7 @@ import {
   planStore,
   pollPlanUntilPlus,
   refreshPlan,
+  rememberLandingSource,
   rememberStarterCoat,
   resetPlanStoreForTests,
   savePlan,
@@ -98,6 +99,30 @@ describe("account-plan", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(pendingStarterCoat()).toBeNull();
     expect(planStore.get()?.starterCoat).toBe("calico");
+  });
+
+  it("claimStarterCoat manda la fuente de la landing y la borra al confirmarse", async () => {
+    await savePlan("u1", { plan: "free" });
+    rememberStarterCoat("mist");
+    rememberLandingSource("google.com");
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(jsonResponse({ starterCoat: "mist" }));
+    expect(await claimStarterCoat("u1", undefined)).toBe("mist");
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(JSON.parse(String(init.body))).toEqual({ coat: "mist", src: "google.com" });
+    expect(localStorage.getItem("lecta:src")).toBeNull();
+  });
+
+  it("claimStarterCoat sin fuente no manda src", async () => {
+    await savePlan("u1", { plan: "free" });
+    rememberStarterCoat("mist");
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(jsonResponse({ starterCoat: "mist" }));
+    await claimStarterCoat("u1", undefined);
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(JSON.parse(String(init.body))).toEqual({ coat: "mist" });
   });
 
   it("claimStarterCoat sin pelaje pendiente no llama a la red", async () => {

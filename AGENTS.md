@@ -583,6 +583,15 @@ formularios. Código: `routes.ts` (rutas), `views.ts` (HTML), `epub-reader.ts`
 - Workers Logs activo (`observability.logs.enabled` en `wrangler.jsonc`): los
   eventos estructurados (`client_error` y compañía) se consultan en el dashboard
   con retención de días, no como histórico.
+- **Embudo de la landing** (`src/worker/landing-events.ts`, migración **028**
+  `lecta_landing_daily`, una fila por día/evento/fuente con `hits`):
+  `POST /api/landing-events` sin sesión, allowlist de eventos, siempre 204 y
+  tolera la tabla ausente. `signup` solo lo escribe el worker en
+  `PUT /api/account/starter-coat` cuando el pelaje se escribe por primera vez
+  y el cliente manda `src` (guardado de `?src=` en `lecta:src`). Retención 90
+  días en el cron. Lectura: `pnpm landing:stats [--days 14] [--json]`.
+  028 aplicada en `lecta_dev` (2026-11-15, UPSERT y purga probados con SQL
+  real); **pendiente en `lecta`**.
 - `POST /api/client-errors` recibe errores del navegador **sin sesión**:
   allowlist `name`/`code`/`route`/`version`, `frames` (máx. 3, limpiados a
   `archivo.js:línea:columna`) y, opcional, `message`; tope de 30/min y 300/hora

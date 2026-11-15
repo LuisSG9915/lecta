@@ -19,6 +19,7 @@
     "check:size": "node scripts/check-bundle-budget.mjs",
     "gate": "pnpm typecheck && pnpm lint && node scripts/test-trace.mjs && pnpm run build && pnpm run check:size",
     "symbols": "node --env-file=.env scripts/symbolicate.mjs",
+    "landing:stats": "node --env-file=.env scripts/landing-stats.mjs",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "coverage:ratchet": "vitest run --coverage.thresholds.autoUpdate=true",

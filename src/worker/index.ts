@@ -6,6 +6,7 @@ import {
   purgeErrorSignatures,
   sendErrorDigest,
 } from "./error-signatures";
+import { purgeLandingEvents } from "./landing-events";
 
 export { EnrichmentWorkflow };
 
@@ -34,6 +35,7 @@ const handler: ExportedHandler<WorkerEnv> = {
     ctx.waitUntil(
       (async () => {
         await purgeErrorSignatures(env).catch(() => 0);
+        await purgeLandingEvents(env).catch(() => 0);
         const rows = await collectErrorDigest(env).catch(() => []);
         if (rows.length > 0) await sendErrorDigest(env, rows).catch(() => false);
       })(),

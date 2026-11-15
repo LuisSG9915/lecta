@@ -126,6 +126,7 @@ import {
   loadPlan,
   planStore,
   pollPlanUntilPlus,
+  rememberLandingSource,
   rememberStarterCoat,
   useUserPlan,
 } from "./lib/account-plan";
@@ -158,9 +159,11 @@ export default function App() {
     const urlError = params.get("error") ?? undefined;
     const deleted = params.get("cuenta") === "eliminada";
     const gato = params.get("gato");
+    const src = params.get("src");
     const carne = params.get("carne") === "1";
     if (gato) rememberStarterCoat(gato);
-    if (token || urlError || deleted || gato !== null || carne) {
+    rememberLandingSource(src);
+    if (token || urlError || deleted || gato !== null || src !== null || carne) {
       window.history.replaceState(null, "", window.location.pathname);
     }
     return { token, urlError, deleted, carne };

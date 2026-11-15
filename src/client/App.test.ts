@@ -498,6 +498,15 @@ describe("App · cuenta obligatoria (tabla de decisión)", () => {
     expect(window.location.search).toBe("");
   });
 
+  it("?src= de la landing se guarda antes de limpiar la URL", async () => {
+    vi.mocked(authClient.useSession).mockReturnValue({ data: null, isPending: false } as never);
+    window.history.replaceState({}, "", "/?src=google.com");
+    renderRoot();
+    await waitWelcome();
+    expect(localStorage.getItem("lecta:src")).toBe("google.com");
+    expect(window.location.search).toBe("");
+  });
+
   it("?carne=1 abre «Tú»", async () => {
     window.history.replaceState({}, "", "/?carne=1");
     renderRoot();

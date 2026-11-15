@@ -16,6 +16,8 @@ export type PlanSnapshot = {
 
 const planKey = (userId: string) => `account:plan:v1:${userId}`;
 const LANDING_COAT_KEY = "lecta:gato";
+/** Fuente de la visita a la landing (?src=), para contar la conversión. */
+const LANDING_SOURCE_KEY = "lecta:src";
 
 let current: { userId: string; snapshot: PlanSnapshot } | null = null;
 const listeners = new Set<() => void>();
@@ -138,6 +140,24 @@ export function rememberStarterCoat(value: unknown): void {
   }
 }
 
+/** Guarda la fuente que llegó por ?src= (el worker la normaliza). */
+export function rememberLandingSource(value: string | null): void {
+  if (!value) return;
+  try {
+    localStorage.setItem(LANDING_SOURCE_KEY, value.slice(0, 64));
+  } catch {
+    /* sin almacenamiento */
+  }
+}
+
+function pendingLandingSource(): string | null {
+  try {
+    return localStorage.getItem(LANDING_SOURCE_KEY);
+  } catch {
+    return null;
+  }
+}
+
 /** Pelaje pendiente de reclamar (solo si es válido). */
 export function pendingStarterCoat(): CompanionCoatId | null {
   try {
@@ -164,12 +184,15 @@ export function claimStarterCoat(
   if (claimInflight) return claimInflight;
   claimInflight = (async () => {
     try {
+      const src = pendingLandingSource();
       const response = await accountFetch(
         "/api/account/starter-coat",
         {
           method: "PUT",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ coat }),
+          // `src` solo si la cuenta llegó desde la landing: el worker cuenta
+          // `signup` la primera vez que se escribe el pelaje.
+          body: JSON.stringify({ coat, ...(src ? { src } : {}) }),
         },
         scope,
       );
@@ -179,6 +202,7 @@ export function claimStarterCoat(
       if (!saved) return null;
       try {
         localStorage.removeItem(LANDING_COAT_KEY);
+        localStorage.removeItem(LANDING_SOURCE_KEY);
       } catch {
         /* sin almacenamiento */
       }

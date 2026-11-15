@@ -7,6 +7,13 @@ import {
   parseClientErrorReport,
 } from "./client-errors";
 import { listErrorSignatures, recordErrorSignature } from "./error-signatures";
+import {
+  LANDING_EVENT_MAX_BODY_BYTES,
+  allowLandingEvent,
+  normalizeLandingSource,
+  parseLandingEvent,
+  recordLandingEvent,
+} from "./landing-events";
 import { getUserPlan, setStarterCoat, type UserPlanSnapshot } from "./plan-store";
 import { requireLectaPlus, type PlanVariables } from "./plan-middleware";
 import { billing } from "./billing";
@@ -300,6 +307,43 @@ app.post("/api/client-errors", async (context) => {
     scheduled = false;
   }
   if (!scheduled) void writing;
+  return context.body(null, 204);
+});
+
+/** Corre `work` en waitUntil si hay ExecutionContext; si no, suelto. */
+function runInBackground(context: Context, work: Promise<unknown>): void {
+  try {
+    const executionCtx = context.executionCtx;
+    if (executionCtx && typeof executionCtx.waitUntil === "function") {
+      executionCtx.waitUntil(work);
+      return;
+    }
+  } catch {
+    /* pruebas sin ExecutionContext */
+  }
+  void work;
+}
+
+// Embudo de la landing (src/worker/landing-events.ts): sin sesión, siempre
+// 204, escritura en segundo plano que se traga sus errores.
+app.post("/api/landing-events", async (context) => {
+  const raw = await context.req.text().catch(() => "");
+  if (raw.length > LANDING_EVENT_MAX_BODY_BYTES) return context.body(null, 204);
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return context.body(null, 204);
+  }
+
+  const landingEvent = parseLandingEvent(parsed);
+  if (!landingEvent) return context.body(null, 204);
+
+  const ip = context.req.header("cf-connecting-ip") ?? "local";
+  if (!allowLandingEvent(ip, Date.now())) return context.body(null, 204);
+
+  runInBackground(context, recordLandingEvent(context.env, landingEvent).catch(() => false));
   return context.body(null, 204);
 });
 
@@ -3534,7 +3578,10 @@ app.put("/api/account/starter-coat", async (context) => {
     return context.json({ error: "No autorizado" }, 401);
   }
   const userId = session.user.id;
-  const body = (await context.req.json().catch(() => null)) as { coat?: unknown } | null;
+  const body = (await context.req.json().catch(() => null)) as {
+    coat?: unknown;
+    src?: unknown;
+  } | null;
   if (!isStarterCoat(body?.coat)) {
     return context.json({ error: "Pelaje no válido" }, 400);
   }
@@ -3547,6 +3594,17 @@ app.put("/api/account/starter-coat", async (context) => {
   });
   if (!result || result.outcome === "unavailable") {
     return context.json({ error: "Servicio temporalmente no disponible" }, 503);
+  }
+  // Conversión de la landing: primera vez que la cuenta reclama el gato y
+  // el cliente trae la fuente (`src` solo existe si llegó desde /inicio/).
+  if (result.outcome === "written" && body.src !== undefined) {
+    runInBackground(
+      context,
+      recordLandingEvent(context.env, {
+        event: "signup",
+        source: normalizeLandingSource(body.src),
+      }).catch(() => false),
+    );
   }
   return context.json({ starterCoat: result.starterCoat });
 });

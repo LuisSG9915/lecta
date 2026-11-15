@@ -4,21 +4,51 @@
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
+  /* ---------- Medición (POST /api/landing-events) ---------- */
+  // Contadores por día, evento y fuente: sin cookies ni identificadores.
+  // La fuente es utm_source o el dominio que trajo la visita; se fija en la
+  // primera carga de la pestaña para que una recarga no la vuelva «direct».
+  const SRC = (() => {
+    try { const kept = sessionStorage.getItem("lecta:landing-src"); if (kept) return kept; } catch { /* sin almacenamiento */ }
+    let src = new URLSearchParams(location.search).get("utm_source") || "";
+    if (!src && document.referrer) {
+      try { const host = new URL(document.referrer).hostname; if (host !== location.hostname) src = host; } catch { /* referrer ilegible */ }
+    }
+    src = (src.trim().toLowerCase().replace(/^www\./, "").replace(/[^a-z0-9._-]/g, "").slice(0, 32)) || "direct";
+    try { sessionStorage.setItem("lecta:landing-src", src); } catch { /* sin almacenamiento */ }
+    return src;
+  })();
+  function track(event) {
+    // text/plain a propósito: sendBeacon con application/json no es un tipo
+    // simple y algunos navegadores lo rechazan. El worker parsea el texto.
+    const body = JSON.stringify({ event, source: SRC });
+    try {
+      if (navigator.sendBeacon && navigator.sendBeacon("/api/landing-events", body)) return;
+      fetch("/api/landing-events", { method: "POST", body, keepalive: true }).catch(() => {});
+    } catch { /* medir nunca rompe la página */ }
+  }
+  track("view");
+  $$("a[data-cta-id]").forEach(a => a.addEventListener("click", () => track("cta:" + a.dataset.ctaId)));
+
   /* ---------- Elegir gato ---------- */
   const APP = "/";
   const picks = $$('input[name="gato"]');
   // El pelaje solo viaja a la app (?gato= y lecta:gato) si la persona lo
-  // eligió: al cargar la página no se guarda nada ni se reescribe ningún
-  // enlace, para que la app ofrezca el selector a quien no eligió.
+  // eligió: al cargar la página no se guarda nada, para que la app ofrezca
+  // el selector a quien no eligió. La fuente (?src=) viaja siempre.
+  function syncLinks(coat) {
+    const q = (coat ? `gato=${coat}&` : "") + `src=${encodeURIComponent(SRC)}`;
+    $$("a[data-cta]").forEach(a => { a.href = `${APP}?${q}`; });
+    $$("a[data-cta-plus]").forEach(a => { a.href = `${APP}?${q}&carne=1`; });
+  }
   function setCoat(coat, announce) {
     const input = picks.find(i => i.value === coat) || picks[0];
     input.checked = true;
     const name = input.dataset.name;
     $$("img[data-stage]").forEach(im => { im.src = `web/gato-${input.value}-${im.dataset.stage}.webp`; });
     $("#pickCta").textContent = "Empezar con " + name;
+    syncLinks(announce ? input.value : null);
     if (!announce) return;
-    $$("a[data-cta]").forEach(a => { a.href = `${APP}?gato=${input.value}`; });
-    $$("a[data-cta-plus]").forEach(a => { a.href = `${APP}?gato=${input.value}&carne=1`; });
     if (announce) {
       $("#bubble").textContent = `Hola, soy ${name}. Yo te acompaño mientras lees.`;
       const tile = input.closest(".pick");
@@ -26,7 +56,7 @@
     }
     try { localStorage.setItem("lecta:gato", input.value); } catch { /* sin almacenamiento: la elección vale solo en esta visita */ }
   }
-  picks.forEach(i => i.addEventListener("change", () => setCoat(i.value, true)));
+  picks.forEach(i => i.addEventListener("change", () => { setCoat(i.value, true); track("pick_cat"); }));
   let storedCoat = null;
   try { storedCoat = localStorage.getItem("lecta:gato"); } catch { /* sin almacenamiento */ }
   setCoat(storedCoat || "ginger", Boolean(storedCoat));
@@ -75,6 +105,7 @@
     } else ficha.style.top = "";
     ficha.classList.add("is-open");
     $("#fichaSave").focus({ preventScroll: true });
+    track("demo_open");
   }
   function closeFicha() {
     if (!ficha.classList.contains("is-open")) return;
@@ -98,6 +129,7 @@
   $("#fichaSave").addEventListener("click", e => {
     if (!current || saved.has(current)) return;
     saved.add(current);
+    track("demo_save");
     opener.classList.add("is-saved");
     syncSave();
     const count = $("#savedCount");
@@ -164,6 +196,7 @@
 
   /* ---------- Repaso ---------- */
   $("#reveal").addEventListener("click", () => {
+    track("demo_reveal");
     $("#cardAnswer").hidden = false;
     const acts = $("#cardActions");
     acts.innerHTML = [["Otra vez", "10 min"], ["Bien", "4 días"], ["Fácil", "11 días"]]
@@ -181,6 +214,7 @@
   /* ---------- Precios ---------- */
   const PRICES = { anual: ["$499", "MXN al año", "Son $42 al mes: ahorras $209."], mes: ["$59", "MXN al mes", "Pagas mes con mes."] };
   $$(".toggle button").forEach(b => b.addEventListener("click", () => {
+    if (b.getAttribute("aria-pressed") !== "true") track("price_toggle");
     $$(".toggle button").forEach(x => x.setAttribute("aria-pressed", x === b));
     const [n, u, s] = PRICES[b.dataset.period];
     const pn = $("#priceN");
