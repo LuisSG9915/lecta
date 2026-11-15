@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { coverPalette } from "../lib/cover";
-import { CatalogAuthError, type CatalogBook } from "../lib/catalog";
+import {
+  CatalogAuthError,
+  catalogCoverUrl,
+  type CatalogBook,
+} from "../lib/catalog";
 import {
   searchGutenberg,
   type GutenbergSearchPage,
@@ -73,6 +77,9 @@ export default function GutenbergSearch({
   const [getting, setGetting] = useState<string | null>(null);
   const [authBook, setAuthBook] = useState<string | null>(null);
   const [errorBook, setErrorBook] = useState<string | null>(null);
+  // Portadas pg- traídas bajo demanda por el worker: si una falla se
+  // marca y esa tarjeta conserva la portada tipográfica.
+  const [coverBroken, setCoverBroken] = useState<Set<string>>(new Set());
   const abortRef = useRef<AbortController | null>(null);
 
   // El texto libre espera 350 ms; los filtros se aplican al instante.
@@ -236,27 +243,40 @@ export default function GutenbergSearch({
         <ul className="discover-rail discover-rail--grid">
           {books.map((book) => {
             const palette = coverPalette(book.id);
+            const showCover = book.cover && !coverBroken.has(book.id);
             return (
               <li key={book.id} className="discover-book">
                 <div className="discover-cover">
-                  <span
-                    className="cover cover--generated"
-                    role="img"
-                    aria-label={`Portada de ${book.title}`}
-                    style={
-                      {
-                        "--cover-paper": palette.paper,
-                        "--cover-ink": palette.ink,
-                        "--cover-accent": palette.accent,
-                      } as React.CSSProperties
-                    }
-                  >
-                    <span className="cover-frame">
-                      <span className="cover-title">{book.title}</span>
-                      <span className="cover-ornament" aria-hidden="true" />
-                      <span className="cover-author">{book.author}</span>
+                  {showCover ? (
+                    <img
+                      className="cover"
+                      src={catalogCoverUrl(book.id)}
+                      alt=""
+                      loading="lazy"
+                      onError={() =>
+                        setCoverBroken((prev) => new Set(prev).add(book.id))
+                      }
+                    />
+                  ) : (
+                    <span
+                      className="cover cover--generated"
+                      role="img"
+                      aria-label={`Portada de ${book.title}`}
+                      style={
+                        {
+                          "--cover-paper": palette.paper,
+                          "--cover-ink": palette.ink,
+                          "--cover-accent": palette.accent,
+                        } as React.CSSProperties
+                      }
+                    >
+                      <span className="cover-frame">
+                        <span className="cover-title">{book.title}</span>
+                        <span className="cover-ornament" aria-hidden="true" />
+                        <span className="cover-author">{book.author}</span>
+                      </span>
                     </span>
-                  </span>
+                  )}
                 </div>
                 <div className="discover-meta">
                   <p className="discover-title" title={book.title}>

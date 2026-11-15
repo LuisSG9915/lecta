@@ -29,7 +29,9 @@ import { consumeRateUnits } from "./rate-limit";
 // lecta_dev.gutenberg_books (la tabla es la huella de que la obra pasó
 // la regla de derechos) y la primera descarga la trae de gutenberg.org
 // para guardarla en `catalog/pg-<n>.epub` — desde ahí se sirve como
-// cualquier otro objeto inmutable del bucket.
+// cualquier otro objeto inmutable del bucket. Su portada sigue el
+// mismo patrón bajo `catalog/pg-<n>.cover.jpg`, pero sin sesión ni
+// cuota: es una imagen pública de gutenberg.org, no el libro.
 export const catalog = new Hono<{ Bindings: WorkerEnv }>();
 
 // Solo minúsculas, dígitos y guiones: los ids salen de la curación y
@@ -99,6 +101,14 @@ const SEARCH_PAGE_SIZE = 24;
 const searchCache = createTtlCache<string>({
   maxEntries: 200,
   ttlMs: 10 * 60_000,
+});
+
+// Ids que la búsqueda ya vio en la tabla: la portada pg- los acepta
+// sin repetir el SELECT a la base (la tabla solo cambia al recargar
+// el índice, así que una hora de confianza sobra).
+const indexedIdCache = createTtlCache<true>({
+  maxEntries: 2000,
+  ttlMs: 60 * 60_000,
 });
 
 // Misma normalización que searchTextOf (scripts/catalog-seed-lib.mjs):
@@ -204,15 +214,21 @@ catalog.get("/api/catalog/search", async (context) => {
   const hasMore = (rows?.length ?? 0) > SEARCH_PAGE_SIZE;
   const books = (rows ?? [])
     .slice(0, SEARCH_PAGE_SIZE)
-    .map((row) => ({
-      id: `pg-${row.gutenberg_id}`,
-      gutenbergId: row.gutenberg_id,
-      title: row.title,
-      author: row.author,
-      language: row.language,
-      subjects: row.subjects ?? [],
-      cover: false,
-    }));
+    .map((row) => {
+      // La portada existe bajo demanda (serveGutenbergCover): `cover`
+      // le dice al cliente que pida la imagen y caiga a la tipográfica
+      // si algún título no la tiene.
+      indexedIdCache.set(String(row.gutenberg_id), true);
+      return {
+        id: `pg-${row.gutenberg_id}`,
+        gutenbergId: row.gutenberg_id,
+        title: row.title,
+        author: row.author,
+        language: row.language,
+        subjects: row.subjects ?? [],
+        cover: true,
+      };
+    });
   const body = JSON.stringify({ page, hasMore, books });
   searchCache.set(cacheKey, body);
   return new Response(body, {
@@ -344,6 +360,104 @@ async function serveGutenbergEpub(
   });
 }
 
+// ---------- Portada de Gutenberg bajo demanda ----------
+//
+// gutenberg.org publica una portada por obra en una URL predecible
+// (`/cache/epub/<n>/pg<n>.cover.medium.jpg`, ~15–40 kB). La primera
+// petición la trae, la valida (JPEG real, ≤400 kB) y la guarda en
+// `catalog/pg-<n>.cover.jpg`; desde ahí el bucket la sirve como
+// cualquier portada del catálogo. Sin sesión ni cuota — es una
+// imagen pública, no el libro. La negativa «este id no tiene
+// portada» se cachea 6 h para no martillear gutenberg.org; un fallo
+// de red NO se cachea (la próxima petición lo reintenta).
+
+const GUTENBERG_COVER_URL = (id: number) =>
+  `https://www.gutenberg.org/cache/epub/${id}/pg${id}.cover.medium.jpg`;
+const GUTENBERG_COVER_MAX_BYTES = 400 * 1024;
+const GUTENBERG_COVER_TIMEOUT_MS = 10_000;
+const coverMissCache = createTtlCache<true>({
+  maxEntries: 2000,
+  ttlMs: 6 * 60 * 60_000,
+});
+
+// JPEG empieza por FF D8 FF: firma mínima para no guardar el HTML de
+// un 404 disfrazado de imagen.
+const isJpegBytes = (bytes: Uint8Array) =>
+  bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+
+async function serveGutenbergCover(
+  context: Context<{ Bindings: WorkerEnv }>,
+  bucket: CatalogBucket,
+  gutenbergId: number,
+) {
+  const notFoundCover = () =>
+    context.json({ error: "No encontrado." }, 404);
+
+  if (coverMissCache.get(String(gutenbergId)) !== undefined) {
+    return notFoundCover();
+  }
+
+  // La fila en gutenberg_books es la prueba de que la obra pasó la
+  // regla de derechos al indexarse — la misma guarda que el EPUB. La
+  // búsqueda ya poblo indexedIdCache con los ids de sus páginas, así
+  // que la mayoría de peticiones no tocan la base.
+  let indexed = indexedIdCache.get(String(gutenbergId)) === true;
+  if (!indexed) {
+    try {
+      const result = await withClient(
+        context.env,
+        (client) =>
+          client.query(
+            `SELECT 1 AS ok FROM ${CATALOG}gutenberg_books WHERE gutenberg_id = $1`,
+            [gutenbergId],
+          ),
+        true,
+      );
+      indexed = Boolean(result?.rows[0]);
+    } catch (err) {
+      if (!isMissingTableError(err)) throw err;
+    }
+    if (indexed) indexedIdCache.set(String(gutenbergId), true);
+  }
+  if (!indexed) return notFoundCover();
+
+  let res: Response | null;
+  try {
+    res = await fetch(GUTENBERG_COVER_URL(gutenbergId), {
+      headers: { "User-Agent": "lecta-catalog/1.0" },
+      signal: AbortSignal.timeout(GUTENBERG_COVER_TIMEOUT_MS),
+    });
+  } catch {
+    res = null;
+  }
+  // Respuesta definitiva «no hay portada» → negativa cacheada. Un
+  // fallo de red (res null) devuelve 404 sin cachear: gutenberg.org
+  // puede estar caído un rato y la próxima petición debe reintentar.
+  const miss = (cache: boolean) => {
+    if (cache) coverMissCache.set(String(gutenbergId), true);
+    return notFoundCover();
+  };
+  if (!res) return miss(false);
+  if (!res.ok) return miss(true);
+  const contentType = res.headers.get("content-type") ?? "";
+  if (!contentType.startsWith("image/jpeg")) return miss(true);
+  const declared = Number(res.headers.get("content-length") ?? 0);
+  if (declared > GUTENBERG_COVER_MAX_BYTES) return miss(true);
+  const buf = await res.arrayBuffer();
+  if (buf.byteLength > GUTENBERG_COVER_MAX_BYTES) return miss(true);
+  const bytes = new Uint8Array(buf);
+  if (!isJpegBytes(bytes)) return miss(true);
+
+  const objectKey = `catalog/pg-${gutenbergId}.cover.jpg`;
+  await bucket.put(objectKey, buf);
+  return new Response(buf, {
+    headers: {
+      "content-type": "image/jpeg",
+      "cache-control": IMMUTABLE,
+    },
+  });
+}
+
 // Las tres rutas de objeto comparten validación y 404 limpio.
 catalog.get("/api/catalog/:id/:kind", async (context) => {
   const bucket = context.env.BOOKS;
@@ -374,13 +488,20 @@ catalog.get("/api/catalog/:id/:kind", async (context) => {
     });
   }
 
-  // Solo el EPUB de un id pg- tiene rescate bajo demanda; vocab y cover
-  // de esos ids siguen dando 404 (el cliente analiza sin manifiesto y
-  // dibuja la portada tipográfica).
+  // Los ids pg- tienen rescate bajo demanda para epub y cover: el
+  // primero exige sesión y baja el libro; el segundo es solo la
+  // portada pública. vocab de esos ids sigue en 404 (el cliente
+  // analiza sin manifiesto).
   if (kind === "epub") {
     const gutenberg = GUTENBERG_ID.exec(id);
     if (gutenberg) {
       return serveGutenbergEpub(context, bucket, Number(gutenberg[1]));
+    }
+  }
+  if (kind === "cover") {
+    const gutenberg = GUTENBERG_ID.exec(id);
+    if (gutenberg) {
+      return serveGutenbergCover(context, bucket, Number(gutenberg[1]));
     }
   }
   return context.json({ error: "No encontrado." }, 404);

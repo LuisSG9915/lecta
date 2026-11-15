@@ -291,4 +291,26 @@ describe("GutenbergSearch", () => {
     expect(host.textContent).toContain("No se pudo descargar");
     expect(host.textContent).not.toContain("Inicia sesión para obtener");
   });
+
+  it("con cover:true pinta la imagen del worker y cae a la tipográfica si falla", async () => {
+    const target = book("pg-1342", {
+      title: "Don Quijote",
+      cover: true,
+    });
+    await render({ fetchSearch: vi.fn(async () => page([target])) });
+    const img = host.querySelector<HTMLImageElement>(
+      ".discover-cover img.cover",
+    );
+    expect(img?.getAttribute("src")).toBe("/api/catalog/pg-1342/cover");
+    expect(img?.getAttribute("loading")).toBe("lazy");
+
+    // El error de carga cambia a la portada tipográfica del mismo libro.
+    await act(async () => {
+      img!.dispatchEvent(new Event("error"));
+    });
+    expect(host.querySelector(".discover-cover img.cover")).toBeNull();
+    expect(
+      host.querySelector('.cover--generated[aria-label="Portada de Don Quijote"]'),
+    ).not.toBeNull();
+  });
 });

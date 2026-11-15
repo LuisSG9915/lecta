@@ -248,7 +248,7 @@ describe("GET /api/catalog/search", () => {
         author: "Cervantes",
         language: "es",
         subjects: ["Fiction", "Spanish literature"],
-        cover: false,
+        cover: true,
       },
       {
         id: "pg-84",
@@ -257,7 +257,7 @@ describe("GET /api/catalog/search", () => {
         author: "Shelley",
         language: "en",
         subjects: ["Gothic fiction"],
-        cover: false,
+        cover: true,
       },
     ]);
     expect(getSessionMock).not.toHaveBeenCalled();
@@ -565,18 +565,16 @@ describe("GET /api/catalog/pg-<id>/epub bajo demanda", () => {
     );
   });
 
-  it("vocab y cover de ids pg- siguen en 404 (sin rescate)", async () => {
+  it("vocab de ids pg- sigue en 404 (sin rescate ni fetch)", async () => {
     const app = await freshCatalog();
     getSessionMock.mockResolvedValue({ user: { id: "u1" } });
     installCatalogDb({ indexed: true });
-    for (const kind of ["vocab", "cover"]) {
-      const res = await get(
-        { BOOKS: fakeR2().bucket },
-        `/api/catalog/pg-1342/${kind}`,
-        app,
-      );
-      expect(res.status).toBe(404);
-    }
+    const res = await get(
+      { BOOKS: fakeR2().bucket },
+      "/api/catalog/pg-1342/vocab",
+      app,
+    );
+    expect(res.status).toBe(404);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -591,5 +589,151 @@ describe("GET /api/catalog/pg-<id>/epub bajo demanda", () => {
     expect(res.status).toBe(404);
     expect(queryMock).not.toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+// ---------- Portada de Gutenberg bajo demanda ----------
+
+const JPEG_BYTES = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]);
+
+const okCoverFetch = () =>
+  fetchMock.mockImplementation(() =>
+    Promise.resolve(
+      new Response(JPEG_BYTES, {
+        status: 200,
+        headers: {
+          "content-type": "image/jpeg",
+          "content-length": String(JPEG_BYTES.byteLength),
+        },
+      }),
+    ),
+  );
+
+describe("GET /api/catalog/pg-<id>/cover bajo demanda", () => {
+  it("cacheada en R2 se sirve sin sesión ni fetch", async () => {
+    const app = await freshCatalog();
+    const r2 = fakeR2({ "catalog/pg-1342.cover.jpg": JPEG_BYTES });
+    const res = await get(
+      { BOOKS: r2.bucket },
+      "/api/catalog/pg-1342/cover",
+      app,
+    );
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("image/jpeg");
+    expect(res.headers.get("cache-control")).toContain("immutable");
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(queryMock).not.toHaveBeenCalled();
+    expect(getSessionMock).not.toHaveBeenCalled();
+  });
+
+  it("éxito: baja de gutenberg.org, guarda en R2 y la segunda sale de R2", async () => {
+    const app = await freshCatalog();
+    const r2 = fakeR2();
+    installCatalogDb({ indexed: true });
+    okCoverFetch();
+    const e = { BOOKS: r2.bucket };
+    const first = await get(e, "/api/catalog/pg-1342/cover", app);
+    expect(first.status).toBe(200);
+    expect(first.headers.get("content-type")).toBe("image/jpeg");
+    expect(r2.puts).toEqual([
+      { key: "catalog/pg-1342.cover.jpg", bytes: JPEG_BYTES.byteLength },
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe(
+      "https://www.gutenberg.org/cache/epub/1342/pg1342.cover.medium.jpg",
+    );
+    expect((init.headers as Record<string, string>)["User-Agent"]).toBe(
+      "lecta-catalog/1.0",
+    );
+
+    const second = await get(e, "/api/catalog/pg-1342/cover", app);
+    expect(second.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("id fuera del índice → 404 sin tocar gutenberg.org", async () => {
+    const app = await freshCatalog();
+    installCatalogDb({ indexed: false });
+    const res = await get(
+      { BOOKS: fakeR2().bucket },
+      "/api/catalog/pg-1342/cover",
+      app,
+    );
+    expect(res.status).toBe(404);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("id visto por la búsqueda no repite el SELECT a la base", async () => {
+    const app = await freshCatalog();
+    installCatalogDb({ rows: [gbRow()], indexed: false });
+    const e = { BOOKS: fakeR2().bucket };
+    // La búsqueda registra el id en indexedIdCache.
+    await get(e, "/api/catalog/search?q=quijote", app);
+    queryMock.mockClear();
+    okCoverFetch();
+    const res = await get(e, "/api/catalog/pg-1342/cover", app);
+    expect(res.status).toBe(200);
+    const sqls = queryMock.mock.calls.map(([sql]) => String(sql));
+    expect(sqls.some((sql) => sql.includes(SQL_INDEXED))).toBe(false);
+  });
+
+  it.each([
+    ["404 de gutenberg.org", () => new Response("no", { status: 404 })],
+    [
+      "HTML con 200",
+      () =>
+        new Response("<html></html>", {
+          status: 200,
+          headers: { "content-type": "text/html" },
+        }),
+    ],
+    [
+      "jpeg declarado pero bytes que no son JPEG",
+      () =>
+        new Response(new TextEncoder().encode("NOTAJPEG"), {
+          status: 200,
+          headers: { "content-type": "image/jpeg" },
+        }),
+    ],
+    [
+      "content-length por encima de 400 kB",
+      () =>
+        new Response(JPEG_BYTES, {
+          status: 200,
+          headers: {
+            "content-type": "image/jpeg",
+            "content-length": String(500 * 1024),
+          },
+        }),
+    ],
+  ])("%s → 404 sin guardar y la negativa se cachea 6 h", async (_name, make) => {
+    const app = await freshCatalog();
+    const r2 = fakeR2();
+    installCatalogDb({ indexed: true });
+    fetchMock.mockImplementation(() => Promise.resolve(make()));
+    const e = { BOOKS: r2.bucket };
+    const first = await get(e, "/api/catalog/pg-1342/cover", app);
+    expect(first.status).toBe(404);
+    expect(r2.puts).toEqual([]);
+    // Segunda petición: la negativa cacheada responde sin volver a
+    // llamar a gutenberg.org.
+    const second = await get(e, "/api/catalog/pg-1342/cover", app);
+    expect(second.status).toBe(404);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("fallo de red → 404 sin cachear la negativa", async () => {
+    const app = await freshCatalog();
+    const r2 = fakeR2();
+    installCatalogDb({ indexed: true });
+    fetchMock.mockRejectedValue(new Error("timeout"));
+    const e = { BOOKS: r2.bucket };
+    const first = await get(e, "/api/catalog/pg-1342/cover", app);
+    expect(first.status).toBe(404);
+    okCoverFetch();
+    const second = await get(e, "/api/catalog/pg-1342/cover", app);
+    expect(second.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
