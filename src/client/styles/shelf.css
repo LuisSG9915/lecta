@@ -939,6 +939,76 @@
   flex: none;
 }
 
+/* «Libros gratuitos»: un solo buscador arriba; debajo el riel
+   curado y los clásicos de Gutenberg responden a la vez. */
+.free-books {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.free-books .gutenberg-search {
+  margin-block-start: 0;
+}
+
+/* «Más filtros» plegable (mismo gesto que el Cuaderno, pero en flujo:
+   en esta pestaña no hay sitio para un panel flotante). */
+.discover-more-filters {
+  position: relative;
+}
+
+.discover-more-filters summary {
+  list-style: none;
+  cursor: pointer;
+  user-select: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  min-height: 2.75rem;
+  padding: var(--s-1) var(--s-3);
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+  color: var(--ink);
+  background: var(--paper-sunken);
+  border: var(--border);
+  border-radius: var(--r-1);
+  transition:
+    color var(--dur-1) var(--ease-out),
+    border-color var(--dur-1) var(--ease-out);
+}
+
+.discover-more-filters summary::-webkit-details-marker {
+  display: none;
+}
+
+.discover-more-filters summary::after {
+  content: "▾";
+  font-size: 0.7em;
+  color: var(--ink-soft);
+  transition: transform var(--dur-1) var(--ease-out);
+}
+
+.discover-more-filters[open] summary::after {
+  transform: rotate(180deg);
+}
+
+.discover-more-filters summary:hover {
+  color: var(--vermilion);
+  border-color: var(--chip-active-border);
+}
+
+.discover-more-filters summary:focus-visible {
+  outline: 2px solid var(--vermilion);
+  outline-offset: 2px;
+}
+
+.discover-more-filters-content {
+  padding-block-start: var(--s-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
 /* «Más clásicos»: la búsqueda en el índice propio de Gutenberg va
    debajo del riel curado dentro de la pestaña Libros gratuitos. */
 .gutenberg-search {

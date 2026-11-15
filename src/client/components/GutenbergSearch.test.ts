@@ -4,6 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import GutenbergSearch from "./GutenbergSearch";
 import { CatalogAuthError, type CatalogBook } from "../lib/catalog";
+import type { ShelfItem } from "./Shelf";
 import type {
   GutenbergSearchPage,
   GutenbergSearchParams,
@@ -312,5 +313,111 @@ describe("GutenbergSearch", () => {
     expect(
       host.querySelector('.cover--generated[aria-label="Portada de Don Quijote"]'),
     ).not.toBeNull();
+  });
+
+  it("con query controlada no pinta el input propio y busca con ese texto", async () => {
+    vi.useFakeTimers();
+    try {
+      const fetchSearch = vi.fn(async () => page([]));
+      await render({ fetchSearch, query: "dickens" });
+      // El campo único vive en la pestaña: aquí no hay etiqueta ni input.
+      expect(host.querySelector("#gutenberg-search-field")).toBeNull();
+      expect(host.querySelector(".gutenberg-search-label")).toBeNull();
+      await act(async () => {
+        vi.advanceTimersByTime(400);
+      });
+      const [params] = callArgs(fetchSearch);
+      expect(params.q).toBe("dickens");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("sin búsqueda lista en riel; con texto pasa a cuadrícula", async () => {
+    const fetchSearch = vi.fn(async () =>
+      page([book("pg-1342", { title: "Don Quijote" })]),
+    );
+    await render({ fetchSearch });
+    expect(host.querySelector("ul.discover-rail")).not.toBeNull();
+    expect(host.querySelector("ul.discover-rail--grid")).toBeNull();
+
+    vi.useFakeTimers();
+    try {
+      await act(async () => {
+        root.render(
+          h(GutenbergSearch, {
+            onGet: vi.fn(async () => undefined),
+            fetchSearch,
+            query: "quijote",
+          }),
+        );
+      });
+      await act(async () => {
+        vi.advanceTimersByTime(400);
+      });
+      expect(host.querySelector("ul.discover-rail--grid")).not.toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("la portada abre la vista previa y «Obtener libro» la cierra al lograrlo", async () => {
+    const target = book("pg-1342", {
+      title: "Don Quijote",
+      author: "Miguel de Cervantes",
+      language: "es",
+      synopsis: "Un hidalgo manchego…",
+      subjects: ["Novela", "Caballería"],
+    });
+    const onGet = vi.fn(async () => "hash-quijote");
+    await render({
+      onGet,
+      fetchSearch: vi.fn(async () => page([target])),
+    });
+    const coverButton = host.querySelector<HTMLButtonElement>(
+      ".discover-cover--action",
+    )!;
+    await act(async () => coverButton.click());
+
+    const sheet = host.querySelector(".sheet")!;
+    expect(sheet.textContent).toContain("Don Quijote");
+    expect(sheet.textContent).toContain("Miguel de Cervantes");
+    expect(sheet.textContent).toContain("Español");
+    expect(sheet.textContent).toContain("Novela · Caballería");
+
+    const obtain = [...sheet.querySelectorAll("button")].find(
+      (b) => b.textContent === "Obtener libro",
+    )!;
+    await act(async () => obtain.click());
+    expect(onGet).toHaveBeenCalledWith(target);
+    expect(host.querySelector(".sheet")).toBeNull();
+  });
+
+  it("tras obtener, la tarjeta ofrece «Abrir» con el libro de la estantería", async () => {
+    const target = book("pg-1342", { title: "Don Quijote" });
+    const owned = {
+      hash: "hash-quijote",
+      name: "don-quijote.epub",
+      addedAt: 1,
+    } as ShelfItem;
+    const onOpen = vi.fn();
+    const onGet = vi.fn(async () => "hash-quijote");
+    await render({
+      onGet,
+      onOpen,
+      library: [owned],
+      fetchSearch: vi.fn(async () => page([target])),
+    });
+
+    const getButton = [...host.querySelectorAll("button")].find(
+      (b) => b.textContent === "Obtener",
+    )!;
+    await act(async () => getButton.click());
+
+    const openButton = [...host.querySelectorAll("button")].find(
+      (b) => b.textContent === "Abrir",
+    )!;
+    await act(async () => openButton.click());
+    expect(onOpen).toHaveBeenCalledWith(owned);
   });
 });

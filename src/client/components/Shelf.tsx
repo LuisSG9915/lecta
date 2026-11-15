@@ -143,9 +143,10 @@ export type ShelfProps = {
   // Contenido de la pestaña «Series y películas» de Explora: obras
   // audiovisuales preparadas + buscador OMDb/SubDL (solo con sesión).
   screenSection?: React.ReactNode;
-  // «Obtener» del riel Descubre: el padre baja el EPUB del catálogo y
-  // lo pasa al flujo normal de añadir libro.
-  onGetCatalogBook?: (item: CatalogBook) => Promise<void> | void;
+  // «Obtener» del riel Descubre y de «Más clásicos»: el padre baja el
+  // EPUB y lo pasa al flujo normal de añadir libro. Puede resolver con
+  // el hash del libro guardado (GutenbergSearch lo usa para «Abrir»).
+  onGetCatalogBook?: (item: CatalogBook) => Promise<unknown> | void;
   // Descarga un libro remoto a IndexedDB sin necesidad de abrirlo
   onDownloadBook?: (item: ShelfItem) => Promise<void> | void;
   // Hash del libro que se está descargando actualmente
@@ -640,6 +641,10 @@ export default function Shelf({
   type ShelfFilter = "all" | "reading" | "unread" | "finished";
   const [shelfFilter, setShelfFilter] = useState<ShelfFilter>("all");
   const [searchQuery, setSearchQuery] = useState("");
+  // Buscador único de «Libros gratuitos»: filtra a la vez el riel
+  // curado y los resultados de Gutenberg (una sola pregunta, dos
+  // fuentes del mismo catálogo público).
+  const [freeQuery, setFreeQuery] = useState("");
   const [sortBy, setSortBy] = useState<ShelfSortBy>("recent");
 
   const activeStrategy: StrategyPreset = useMemo(() => {
@@ -1855,22 +1860,41 @@ export default function Shelf({
           onOpenAccount={onOpenAccount}
           catalog={
             onGetCatalogBook ? (
-              <>
+              <div className="free-books">
+                <label
+                  className="gutenberg-search-label"
+                  htmlFor="free-books-search"
+                >
+                  Busca por título o autor
+                </label>
+                <input
+                  id="free-books-search"
+                  type="search"
+                  className="shelf-community-search"
+                  value={freeQuery}
+                  onChange={(event) => setFreeQuery(event.target.value)}
+                  placeholder="Título o autor"
+                />
                 <DiscoverRail
                   library={library}
                   onOpen={onOpen}
                   onGet={onGetCatalogBook}
                   vocabVersion={vocabVersion}
+                  query={freeQuery}
                 />
-                {/* Debajo del riel curado: la búsqueda en el índice
-                    propio de Gutenberg (libros pg- bajo demanda). */}
+                {/* Debajo del riel curado: los clásicos de Gutenberg
+                    (libros pg- bajo demanda) responden a la misma
+                    búsqueda. */}
                 <Suspense fallback={null}>
                   <GutenbergSearch
                     onGet={onGetCatalogBook}
                     onOpenAccount={onOpenAccount}
+                    query={freeQuery}
+                    library={library}
+                    onOpen={onOpen}
                   />
                 </Suspense>
-              </>
+              </div>
             ) : undefined
           }
         />

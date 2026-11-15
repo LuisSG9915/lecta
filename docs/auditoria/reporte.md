@@ -1,12 +1,12 @@
 # Reporte de auditoría — estrategia de aprendizaje de Lecta
 
-Generado: 2026-11-15T19:48:18.381Z
+Generado: 2026-11-15T22:59:31.660Z
 Documento auditado: `docs/estrategia-aprendizaje-2026-10-24.md`
 Registro: `docs/auditoria/claims.json`
-Commit: `f600cfb8148197a7cb071b070708439471eb297b`
+Commit: `53564757e90f5820d88d2cd65cee46492a475a2b`
 Red: no (solo forma de las referencias)
 
-**Veredicto: FAIL** — 1 afirmaciones aprobadas, 1 refutadas, 0 refutadas por auditoría, 12 sin verificar, 0 comprobaciones omitidas.
+**Veredicto: PASS_WITH_UNVERIFIED** — 1 afirmaciones aprobadas, 0 refutadas, 0 refutadas por auditoría, 13 sin verificar, 0 comprobaciones omitidas.
 
 ## Afirmaciones
 
@@ -27,7 +27,7 @@ Código: **PASS** · Referencias: **UNVERIFIED**
   - observado: `{"file":"src/client/lib/knowledge.ts","line":291,"text":"const total = forms.length;"}`
 - ✅ **PASS** · code-absent: /\btokens?\b/ no aparece en src/client/lib/coverage.ts
 - ✅ **PASS** · reachable: createCoverageInputsLoader se usa en producción (3 archivo/s)
-  - observado: `{"symbol":"createCoverageInputsLoader","callers":[{"file":"src/client/components/CommunityShelf.tsx","line":132,"text":"loader: ReturnType<typeof createCoverageInputsLoader>;"},{"file":"src/client/components/DiscoverRail.tsx","line":122,"text":"loader: ReturnType<typeof createCoverageInputsLoader>;"},{"file":"src/client/components/Shelf.tsx","line":478,"text":"const inputsFor = createCoverageInputsLoader(scope);"}]}`
+  - observado: `{"symbol":"createCoverageInputsLoader","callers":[{"file":"src/client/components/CommunityShelf.tsx","line":132,"text":"loader: ReturnType<typeof createCoverageInputsLoader>;"},{"file":"src/client/components/DiscoverRail.tsx","line":133,"text":"loader: ReturnType<typeof createCoverageInputsLoader>;"},{"file":"src/client/components/Shelf.tsx","line":479,"text":"const inputsFor = createCoverageInputsLoader(scope);"}]}`
 - ⚠️ **UNVERIFIED** · referencia laufer2010: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":null,"url":"https://eric.ed.gov/?id=EJ887873"}`
 - ⚠️ **UNVERIFIED** · referencia nation2006: forma válida; sin red no se resuelven metadatos (usar --online)
@@ -161,11 +161,11 @@ Código: **PASS** · Referencias: **UNVERIFIED**
 - ⚠️ **UNVERIFIED** · referencia kremmel2016: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":null,"url":"https://eric.ed.gov/?id=EJ1120126"}`
 
-### ❌ H5-pasiva — La exposición pasiva acota a 8 lemas por paso y respeta lápidas
+### ⚠️ H5-pasiva — La exposición pasiva acota a 8 lemas por paso y respeta lápidas
 
 > La vía viva registra hasta 8 lemas no consultados por paso de página, exige lectura por debajo de 450 ppm, no revive lápidas y mantiene «familiar» a las 3 exposiciones dentro de la sesión.
 
-Código: **FAIL** · Referencias: **UNVERIFIED**
+Código: **PASS** · Referencias: **UNVERIFIED**
 
 **Veredicto de auditoría (2026-10-26): SOSTENIDA** — El mecanismo descrito por el documento original (marcar todas las palabras de la página con tope de 12 s) era código muerto y se eliminó. La vía viva es más conservadora y ahora respeta las lápidas.
 - evidencia: `src/client/lib/reader-evidence.ts:184-250`
@@ -176,8 +176,8 @@ Código: **FAIL** · Referencias: **UNVERIFIED**
 - ✅ **PASS** · code-absent: /updateLanguageTheta/ no aparece en src/client/lib/reader-evidence.ts
 - ✅ **PASS** · code-anchor: src/client/lib/reader-evidence.ts:260 coincide con /uniqueLemmas\.size >= 8/
   - observado: `{"file":"src/client/lib/reader-evidence.ts","line":260,"text":"if (uniqueLemmas.size >= 8) break;"}`
-- ❌ **FAIL** · code-anchor: src/client/lib/idb.ts:2146-2148 no contiene /if \(!existing \|\| existing\.deleted\) return null/
-  - observado: `{"file":"src/client/lib/idb.ts","asked":2147,"excerpt":["2146: export async function recordPassiveExposure(","2147:   language: string,","2148:   lemma: string,"]}`
+- ✅ **PASS** · code-anchor: src/client/lib/idb.ts:2155 coincide con /if \(!existing \|\| existing\.deleted\) return null/
+  - observado: `{"file":"src/client/lib/idb.ts","line":2155,"text":"if (!existing || existing.deleted) return null;"}`
 - ✅ **PASS** · code-absent: /processPageTurnForPassiveKnowledge/ no aparece en src/client/lib/knowledge.ts
 - ⚠️ **UNVERIFIED** · referencia nagy1985: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":"10.2307/747758","url":null}`

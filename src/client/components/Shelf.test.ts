@@ -556,3 +556,38 @@ describe("Shelf - Tu Mesa de Lectura (Fase 5.2)", () => {
 });
 
 
+
+describe("Shelf - Libros gratuitos", () => {
+  it("muestra un solo buscador compartido en la pestaña del catálogo", async () => {
+    await act(async () => {
+      root.render(
+        h(Shelf, {
+          library: mockLibrary,
+          checking: false,
+          onOpen: vi.fn(),
+          onRemove: vi.fn(),
+          onAdd: vi.fn(),
+          onLibraryChange: vi.fn(),
+          onGetCatalogBook: vi.fn(),
+          onDownloadBook: vi.fn(),
+        }),
+      );
+      for (let i = 0; i < 6; i++) await Promise.resolve();
+    });
+
+    const tab = [...host.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find(
+      (b) => b.textContent === "Libros gratuitos",
+    )!;
+    expect(tab).toBeTruthy();
+    await act(async () => tab.click());
+    // El chunk de GutenbergSearch es lazy: darle margen al import.
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+
+    const input = host.querySelector<HTMLInputElement>("#free-books-search");
+    expect(input).toBeTruthy();
+    expect(input?.getAttribute("type")).toBe("search");
+    // Un solo campo: el panel de Gutenberg no repite el suyo cuando la
+    // búsqueda viene controlada desde la pestaña.
+    expect(host.querySelector("#gutenberg-search-field")).toBeNull();
+  });
+});

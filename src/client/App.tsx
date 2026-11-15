@@ -1428,13 +1428,17 @@ export default function App() {
     }
   };
 
-  // «Obtener» del riel Descubre: el EPUB del catálogo entra por el
-  // mismo tubo que un archivo elegido a mano — validación, dedup por
-  // hash (si ya está, abre el existente) y subida a la cuenta.
+  // «Obtener» del riel Descubre y de «Más clásicos»: el EPUB del
+  // catálogo entra por el mismo tubo que un archivo elegido a mano —
+  // validación, dedup por hash (si ya está, abre el existente) y subida
+  // a la cuenta. Devuelve el hash del libro guardado para que la
+  // tarjeta sepa ofrecer «Abrir» sin volver a descargarlo.
   const getCatalogBook = async (item: Pick<CatalogBook, "id" | "title" | "author">) => {
     const file = await downloadCatalogEpub(item);
     if (!file) throw new Error("catalog download failed");
+    const hash = await sha256Hex(file);
     await selectBook(file);
+    return hash;
   };
 
   // «Probar con un clásico»: con la base de la sesión ya activa (anónima

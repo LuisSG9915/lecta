@@ -43,7 +43,9 @@ type DiscoverRailProps = {
   onOpen: (book: ShelfItem) => void;
   // «Obtener»: el padre baja el EPUB y lo pasa al flujo normal de
   // añadir libro (misma validación, dedup y sincronización).
-  onGet: (item: CatalogBook) => Promise<void> | void;
+  // Puede resolver con el hash del libro guardado (lo ignora aquí;
+  // «Más clásicos» lo usa para ofrecer «Abrir»).
+  onGet: (item: CatalogBook) => Promise<unknown> | void;
   // Inyectables para pruebas. loadInputs puede devolver null: sin
   // perfil medible (o sin red) el riel queda sin insignias.
   fetchIndex?: typeof listCatalog;
@@ -55,6 +57,11 @@ type DiscoverRailProps = {
   // Sube al cerrar la calibración o al guardar palabras: las coberturas
   // ya medidas se recalculan con el perfil nuevo sin re-bajar manifiestos.
   vocabVersion?: number;
+  // Búsqueda controlada por el padre («Libros gratuitos» tiene un solo
+  // campo para este riel y para Gutenberg): si viene definida no se
+  // pinta el input propio y una búsqueda sin coincidencias oculta la
+  // sección entera para dejar el lugar a los clásicos.
+  query?: string;
 };
 
 // El riel muestra esta franja; «Ver todos» despliega el resto en
@@ -94,6 +101,7 @@ export default function DiscoverRail({
   fetchVocab = catalogVocab,
   loadInputs = inputsForCoverage,
   vocabVersion = 0,
+  query: controlledQuery,
 }: DiscoverRailProps) {
   const [books, setBooks] = useState<CatalogBook[] | null>(null);
   const [coverages, setCoverages] = useState<Map<string, BookCoverage>>(
@@ -112,6 +120,9 @@ export default function DiscoverRail({
   const [previewExamples, setPreviewExamples] = useState<string[]>([]);
   const [query, setQuery] = useState("");
   const [expanded, setExpanded] = useState(false);
+  // Con `query` controlada el texto viene del buscador compartido de
+  // la pestaña; sin ella se usa el estado interno de siempre.
+  const effectiveQuery = controlledQuery ?? query;
   const cancelledRef = useRef(false);
   const sourcesRef = useRef(new Map<string, CoverageSource>());
   const inputsByLangRef = useRef(new Map<string, CoverageInputs>());
@@ -167,7 +178,7 @@ export default function DiscoverRail({
   // pintar; el orden final lo decide `ordered` con las coberturas.
   const baseFiltered = useMemo(() => {
     if (!books) return [];
-    const q = normalizeSearchText(query);
+    const q = normalizeSearchText(effectiveQuery);
     return books.filter(
       (b) =>
         (activeFilter === "Todos" || getBookMoodTags(b).includes(activeFilter)) &&
@@ -176,7 +187,7 @@ export default function DiscoverRail({
           normalizeSearchText(b.title).includes(q) ||
           normalizeSearchText(b.author).includes(q)),
     );
-  }, [books, activeFilter, languageFilter, query]);
+  }, [books, activeFilter, languageFilter, effectiveQuery]);
 
   // Idiomas presentes en TODO el índice (no solo lo filtrado): las
   // píldoras de idioma solo aparecen cuando hay más de uno.
@@ -367,6 +378,16 @@ export default function DiscoverRail({
   const visible = expanded ? filtered : filtered.slice(0, DISCOVER_RAIL_LIMIT);
 
   if (!books) return null;
+  // Con búsqueda controlada y sin coincidencias en el catálogo
+  // curado, esta sección cede el lugar a «Más clásicos» en vez de
+  // mostrar un vacío redundante bajo el mismo campo de búsqueda.
+  if (
+    controlledQuery != null &&
+    controlledQuery.trim() !== "" &&
+    filtered.length === 0
+  ) {
+    return null;
+  }
 
   const get = async (book: CatalogBook, closePreview = false) => {
     if (getting) return;
@@ -462,61 +483,86 @@ export default function DiscoverRail({
         </div>
       </div>
 
-      {catalogLanguages.length > 1 ? (
-        <div
-          className="discover-filters"
-          role="group"
-          aria-label="Filtrar por idioma"
-        >
-          <button
-            type="button"
-            className={`discover-filter-pill${languageFilter === null ? " discover-filter-pill--active" : ""}`}
-            aria-pressed={languageFilter === null}
-            onClick={() => setLanguageFilter(null)}
-          >
-            Todos
-          </button>
-          {catalogLanguages.map((lang) => (
-            <button
-              key={lang}
-              type="button"
-              className={`discover-filter-pill${languageFilter === lang ? " discover-filter-pill--active" : ""}`}
-              aria-pressed={languageFilter === lang}
-              onClick={() => setLanguageFilter(lang)}
+      {/* Idioma y ritmo son filtros secundarios: viven plegados en
+          «Más filtros» para que la pestaña no apile cinco filas de
+          píldoras. El estado de ánimo queda visible porque es la
+          selección editorial principal del riel. */}
+      <details className="discover-more-filters">
+        <summary className="meta">
+          Más filtros
+          {languageFilter !== null || paceFilter !== "all"
+            ? ` · ${
+                (languageFilter !== null ? 1 : 0) +
+                (paceFilter !== "all" ? 1 : 0)
+              } activo${
+                (languageFilter !== null ? 1 : 0) +
+                  (paceFilter !== "all" ? 1 : 0) ===
+                1
+                  ? ""
+                  : "s"
+              }`
+            : ""}
+        </summary>
+        <div className="discover-more-filters-content">
+          {catalogLanguages.length > 1 ? (
+            <div
+              className="discover-filters"
+              role="group"
+              aria-label="Filtrar por idioma"
             >
-              {lang.toUpperCase()}
-            </button>
-          ))}
-        </div>
-      ) : null}
+              <button
+                type="button"
+                className={`discover-filter-pill${languageFilter === null ? " discover-filter-pill--active" : ""}`}
+                aria-pressed={languageFilter === null}
+                onClick={() => setLanguageFilter(null)}
+              >
+                Todos
+              </button>
+              {catalogLanguages.map((lang) => (
+                <button
+                  key={lang}
+                  type="button"
+                  className={`discover-filter-pill${languageFilter === lang ? " discover-filter-pill--active" : ""}`}
+                  aria-pressed={languageFilter === lang}
+                  onClick={() => setLanguageFilter(lang)}
+                >
+                  {lang.toUpperCase()}
+                </button>
+              ))}
+            </div>
+          ) : null}
 
-      <div
-        className="discover-filters"
-        role="group"
-        aria-label="Filtrar por ritmo"
-      >
-        {DISCOVER_PACE_FILTERS.map((filter) => (
-          <button
-            key={filter.value}
-            type="button"
-            className={`discover-filter-pill${paceFilter === filter.value ? " discover-filter-pill--active" : ""}`}
-            aria-pressed={paceFilter === filter.value}
-            onClick={() => setPaceFilter(filter.value)}
+          <div
+            className="discover-filters"
+            role="group"
+            aria-label="Filtrar por ritmo"
           >
-            {filter.label}
-          </button>
-        ))}
-      </div>
+            {DISCOVER_PACE_FILTERS.map((filter) => (
+              <button
+                key={filter.value}
+                type="button"
+                className={`discover-filter-pill${paceFilter === filter.value ? " discover-filter-pill--active" : ""}`}
+                aria-pressed={paceFilter === filter.value}
+                onClick={() => setPaceFilter(filter.value)}
+              >
+                {filter.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </details>
 
       <div className="discover-toolbar">
-        <input
-          type="search"
-          className="shelf-community-search"
-          placeholder="Buscar por título o autor"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          aria-label="Buscar en libros gratuitos"
-        />
+        {controlledQuery === undefined ? (
+          <input
+            type="search"
+            className="shelf-community-search"
+            placeholder="Buscar por título o autor"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            aria-label="Buscar en libros gratuitos"
+          />
+        ) : null}
         {filtered.length > DISCOVER_RAIL_LIMIT ? (
           <button
             type="button"
