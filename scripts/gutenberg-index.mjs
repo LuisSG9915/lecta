@@ -9,11 +9,15 @@
 //
 //   node --env-file=.env scripts/gutenberg-index.mjs --load
 //     UPSERT por lotes de 500 (jsonb_to_recordset) en
-//     lecta_dev.gutenberg_books. Exige current_database() = 'lecta_dev'
-//     — la misma guardia que scripts/db-migrate.mjs; nunca corre sobre
-//     `lecta`. No borra filas: un libro que deja de cumplir la regla
-//     queda en el índice hasta depurar a mano (el worker lo seguiría
-//     ofreciendo, decisión consciente del volumen).
+//     lecta_dev.gutenberg_books (usa DATABASE_URL_DEV si existe).
+//     Exige current_database() = 'lecta_dev' — la misma guardia que
+//     scripts/db-migrate.mjs.
+//
+//   node --env-file=.env scripts/gutenberg-index.mjs --load --remote
+//     Igual pero sobre `lecta` (producción): solo con autorización
+//     expresa, como las migraciones. No borra filas: un libro que deja
+//     de cumplir la regla queda en el índice hasta depurar a mano (el
+//     worker lo seguiría ofreciendo, decisión consciente del volumen).
 //
 // Regla de entrada (las cuatro, todas): tipo «Text», idioma es/en,
 // rightsCheck aprobado con el deathYearMax de catalog-curation.json y
@@ -200,8 +204,8 @@ async function build() {
   if (skipSummary) console.log(`   ${skipSummary}`);
 }
 
-const UPSERT_SQL = `
-  INSERT INTO lecta_dev.gutenberg_books
+const upsertSql = (table) => `
+  INSERT INTO ${table}
     (gutenberg_id, language, title, author, subjects, downloads, issued, search_text)
   SELECT gutenberg_id, language, title, author, subjects, downloads, issued, search_text
   FROM jsonb_to_recordset($1::jsonb) AS x(
@@ -225,7 +229,17 @@ const UPSERT_SQL = `
 `;
 
 async function load() {
-  const url = process.env.DATABASE_URL;
+  const remote =
+    process.argv.includes("--remote") || process.argv.includes("--prod");
+  const target = remote ? "lecta" : "lecta_dev";
+  // Dev prefiere DATABASE_URL_DEV; prod usa DATABASE_URL (o PROD) con
+  // el mismo reescrito /lecta_dev → /lecta que db-migrate.mjs.
+  let url = remote
+    ? (process.env.DATABASE_URL_PROD ?? process.env.DATABASE_URL)
+    : (process.env.DATABASE_URL_DEV ?? process.env.DATABASE_URL);
+  if (remote && url?.includes("/lecta_dev")) {
+    url = url.replace("/lecta_dev", "/lecta");
+  }
   if (!url) {
     console.error(
       "Falta DATABASE_URL (corre con node --env-file=.env …).",
@@ -249,20 +263,22 @@ async function load() {
       "SELECT current_database() AS db",
     );
     const db = dbRows[0]?.db;
-    if (db !== "lecta_dev") {
+    if (db !== target) {
       throw new Error(
-        `El índice de Gutenberg solo carga en lecta_dev; la conexión apunta a ${db}.`,
+        `El índice de Gutenberg solo carga en ${target}; la conexión apunta a ${db}.`,
       );
     }
-    console.log(`Cargando ${rows.length} títulos en lecta_dev.gutenberg_books`);
+    const table = `${db}.gutenberg_books`;
+    const sql = upsertSql(table);
+    console.log(`Cargando ${rows.length} títulos en ${table}`);
     for (let i = 0; i < rows.length; i += LOAD_BATCH) {
       const batch = rows.slice(i, i + LOAD_BATCH);
-      await client.query(UPSERT_SQL, [JSON.stringify(batch)]);
+      await client.query(sql, [JSON.stringify(batch)]);
       console.log(
         `  … ${Math.min(i + LOAD_BATCH, rows.length)}/${rows.length}`,
       );
     }
-    console.log(`✓ ${rows.length} títulos en lecta_dev.gutenberg_books`);
+    console.log(`✓ ${rows.length} títulos en ${table}`);
   } finally {
     await client.end();
   }
@@ -281,7 +297,7 @@ if (invokedAsScript) {
       : null;
   if (!run) {
     console.error(
-      "Uso: node scripts/gutenberg-index.mjs --build | --load",
+      "Uso: node scripts/gutenberg-index.mjs --build | --load [--remote|--prod]",
     );
     process.exit(1);
   }

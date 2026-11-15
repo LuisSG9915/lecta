@@ -944,7 +944,8 @@ decisiones de producto las tomó Luis; esto documenta las invariantes técnicas.
   bajo demanda (sesión → índice → cuota 20/h → fetch a gutenberg.org con UA
   propio, máx 25 MB, valida `PK` → R2 `catalog/pg-<id>.epub`). Importador:
   `node scripts/gutenberg-index.mjs --build` (volcado RDF oficial) y
-  `--load` (upsert por lotes, solo `lecta_dev`). La búsqueda del cliente
+  `--load` (upsert por lotes; `lecta_dev` por defecto con
+  `DATABASE_URL_DEV`, `--remote` para `lecta` solo con autorización). La búsqueda del cliente
   vive en `src/client/lib/gutenberg.ts` y `GutenbergSearch.tsx` es chunk
   lazy bajo el riel curado de «Libros gratuitos».
 - **Pantalla**: rutas `/api/screen/*` en `src/worker/screen.ts` (OMDb +
