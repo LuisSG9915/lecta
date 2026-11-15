@@ -247,3 +247,21 @@ export const matchesQuery = (haystack: string, query: string) => {
     .every((part) => haystack.includes(part));
 };
 
+// Origen de la palabra para el filtro del Cuaderno: se deduce del
+// mediaKind del libro local al que pertenece (las obras de pantalla
+// no suben a la nube, así que el mapa solo existe en este dispositivo).
+// Sin libro local o sin mediaKind → «Libros», que es el caso común.
+export type WordOrigin = "books" | "series" | "movies";
+
+export const wordOrigin = (
+  word: Pick<SavedWord, "bookHash">,
+  mediaKindByHash: ReadonlyMap<string, "movie" | "tv">,
+): WordOrigin => {
+  const kind = word.bookHash
+    ? mediaKindByHash.get(word.bookHash)
+    : undefined;
+  if (kind === "tv") return "series";
+  if (kind === "movie") return "movies";
+  return "books";
+};
+

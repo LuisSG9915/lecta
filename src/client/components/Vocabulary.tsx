@@ -88,7 +88,10 @@ export type VocabularyProps = {
   onClose?: () => void;
   // Solo se usa hash/título/nombre/idioma para nombrar y filtrar libros:
   // la estantería manda ShelfItem, que no carga el archivo.
-  books?: Pick<StoredBook, "hash" | "name" | "title" | "author" | "language">[];
+  books?: Pick<
+    StoredBook,
+    "hash" | "name" | "title" | "author" | "language" | "mediaKind"
+  >[];
   // Sube cuando la sincronización trae intervalos nuevos; la pestaña
   // de actividad relee su progreso sin remontar el panel.
   activityVersion?: number;

@@ -107,6 +107,8 @@ import { getSession, getSessionUser, SessionInfraError } from "./session";
 import { readingData } from "./reading-data";
 import { companion } from "./companion";
 import { catalog } from "./catalog";
+import { screen } from "./screen";
+import { consumeRateUnits } from "./rate-limit";
 import { admin, ownerUser } from "./admin";
 import {
   handleKindleLinkPage,
@@ -129,6 +131,7 @@ import {
   withResetGuard,
 } from "./reset-guard";
 
+export { consumeRateUnits } from "./rate-limit";
 export const app = new Hono<{ Bindings: WorkerEnv }>();
 
 // Las rutas de IA reciben texto de página/párrafo: 64 KB sobran para el
@@ -222,6 +225,7 @@ app.use("*", async (c, next) => {
 app.route("/", readingData);
 app.route("/", companion);
 app.route("/", catalog);
+app.route("/", screen);
 app.route("/", admin);
 app.route("/", billing);
 app.route("/k", kindleRoutes);
@@ -1718,7 +1722,6 @@ app.post("/api/ai/character-recap", requireLectaPlus, async (context) => {
 // Presupuestos por hora y por alcance: cada función IA gasta de su
 // propia bolsa (columna scope de lecta_rate_log), así una tanda de
 // ítems o de correcciones no consume la cuota de enriquecimiento.
-const ENRICH_UNITS_PER_HOUR = 60;
 const ITEM_UNITS_PER_HOUR = 24;
 const VERIFY_UNITS_PER_HOUR = 30;
 const EXPLAIN_UNITS_PER_HOUR = 30;
@@ -1727,37 +1730,6 @@ const STORY_UNITS_PER_HOUR = 20;
 const PAGE_RECAP_UNITS_PER_HOUR = 40;
 const TRANSLATE_UNITS_PER_HOUR = 60;
 const COMPANION_NOTE_UNITS_PER_HOUR = 12;
-const HOUR_MS = 3_600_000;
-
-// Cuota por (cuenta, alcance, hora natural). El incremento y la
-// verificación del tope ocurren en una sola sentencia: dos peticiones
-// simultáneas no pueden leer el mismo total y colarse las dos.
-// RETURNING vacío = la fila no se insertó ni actualizó porque el
-// límite ya estaba alcanzado.
-export async function consumeRateUnits(
-  env: WorkerEnv,
-  userId: string,
-  units: number,
-  limit = ENRICH_UNITS_PER_HOUR,
-  scope = "enrich",
-): Promise<boolean> {
-  const now = Date.now();
-  const bucketHour = Math.floor(now / HOUR_MS);
-  const result = await withClient(env, (client) =>
-    client.query<{ units_used: number | string }>(
-      `INSERT INTO lecta_ai_quota (user_id, scope, bucket_hour, units_used, updated_at)
-       VALUES ($1, $5, $2, $3, $4)
-       ON CONFLICT (user_id, scope, bucket_hour)
-       DO UPDATE SET
-         units_used = lecta_ai_quota.units_used + EXCLUDED.units_used,
-         updated_at = EXCLUDED.updated_at
-       WHERE lecta_ai_quota.units_used + EXCLUDED.units_used <= $6
-       RETURNING units_used`,
-      [userId, bucketHour, units, now, scope, limit],
-    ),
-  );
-  return Boolean(result?.rows[0]);
-}
 
 export const MAX_USER_STORAGE_BYTES = 500 * 1024 * 1024; // 500 MB por cuenta
 export const MAX_USER_BOOKS = 100;

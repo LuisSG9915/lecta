@@ -4,7 +4,7 @@
 // conozco) y un buscador para anotar palabras que el papel traiga y la
 // sugerencia no — sin jerga del lector digital ni «Entrar al capítulo».
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Sheet from "./Sheet";
 import { PreparationAnswerRow } from "./SectionPreview";
 import type { PreparationAnswer } from "../lib/preparation";
@@ -12,6 +12,12 @@ import type {
   ManualSaveOutcome,
   PaperSheetState,
 } from "../hooks/usePaperReading";
+import {
+  isSpeechAvailable,
+  speakWord,
+  stopSpeaking,
+} from "../lib/speech";
+import type { ScreenPhraseItem } from "../lib/screen";
 
 const MORE_PAGE = 8;
 // Toque rápido en el buscador: sugerencias del capítulo, luego del
@@ -39,6 +45,16 @@ export type PaperChapterSheetProps = {
   onAddWord: (form: string) => Promise<ManualSaveOutcome>;
   onUndoWord: (wordKey: string) => void;
   onReviewBook?: () => void;
+  // «Series y películas»: con mediaKind la hoja gana la sección de
+  // frases y el énfasis auditivo («Escuchar» por fila + «Escuchar
+  // todas»). Sin él nada de esto se pinta — la hoja de papel queda
+  // exactamente igual.
+  mediaKind?: "movie" | "tv";
+  phrases?: ScreenPhraseItem[];
+  // Inyectables para pruebas.
+  speakWordFn?: (word: string, language?: string) => Promise<void>;
+  stopSpeakFn?: () => void;
+  speechAvailable?: boolean;
 };
 
 // Confirma una alta manual y se oculta solo: si no se deshizo a
@@ -91,6 +107,7 @@ function PagedRows({
   expandedKey,
   onAnswer,
   onToggleExpand,
+  onSpeak,
 }: {
   rows: PaperSheetState["more"];
   answers: PaperSheetState["answers"];
@@ -98,6 +115,7 @@ function PagedRows({
   expandedKey: string | null;
   onAnswer: PaperChapterSheetProps["onAnswer"];
   onToggleExpand: (key: string) => void;
+  onSpeak?: (form: string) => void;
 }) {
   const [shown, setShown] = useState(MORE_PAGE);
   return (
@@ -112,6 +130,7 @@ function PagedRows({
             saving={saving}
             onAnswer={onAnswer}
             onToggleExpand={onToggleExpand}
+            onSpeak={onSpeak}
           />
         ))}
       </ol>
@@ -144,10 +163,60 @@ export default function PaperChapterSheet({
   onAddWord,
   onUndoWord,
   onReviewBook,
+  mediaKind,
+  phrases,
+  speakWordFn,
+  stopSpeakFn,
+  speechAvailable,
 }: PaperChapterSheetProps) {
   const [query, setQuery] = useState("");
   const [pending, setPending] = useState(false);
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
+  const speakFn = speakWordFn ?? speakWord;
+  const stopFn = stopSpeakFn ?? stopSpeaking;
+  const speechOk = speechAvailable ?? isSpeechAvailable();
+  const screenAudio = Boolean(mediaKind) && speechOk;
+  const playRef = useRef(false);
+  const stopFnRef = useRef(stopFn);
+  const [speaking, setSpeaking] = useState(false);
+
+  useEffect(() => {
+    stopFnRef.current = stopFn;
+  }, [stopFn]);
+  // Al cerrar la hoja se corta cualquier lectura en curso.
+  useEffect(
+    () => () => {
+      playRef.current = false;
+      stopFnRef.current();
+    },
+    [],
+  );
+
+  // «Escuchar todas»: recorre las filas principales en orden; cada
+  // speakWord resuelve al terminar la pronunciación, así que el await
+  // encadena una voz tras otra. «Detener» baja el flag y cancela la
+  // síntesis — la palabra en curso se interrumpe.
+  const toggleSpeakAll = () => {
+    if (playRef.current) {
+      playRef.current = false;
+      stopFn();
+      setSpeaking(false);
+      return;
+    }
+    playRef.current = true;
+    setSpeaking(true);
+    void (async () => {
+      try {
+        for (const row of sheet.main) {
+          if (!playRef.current) break;
+          await speakFn(row.form, language);
+        }
+      } finally {
+        playRef.current = false;
+        setSpeaking(false);
+      }
+    })();
+  };
 
   const suggestions = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -180,6 +249,7 @@ export default function PaperChapterSheet({
     onAnswer,
     onToggleExpand: (key: string) =>
       setExpandedKey((prev) => (prev === key ? null : key)),
+    onSpeak: screenAudio ? (form: string) => void speakFn(form, language) : undefined,
   };
   const totalRows =
     sheet.main.length + sheet.more.length + sheet.uncertain.length;
@@ -264,6 +334,32 @@ export default function PaperChapterSheet({
         ))}
       </section>
 
+      {mediaKind && phrases?.length ? (
+        <section className="paper-phrases" aria-label="Frases que vas a oír">
+          <h3 className="eyebrow">Frases que vas a oír</h3>
+          <ul className="paper-phrase-list">
+            {phrases.map((phrase) => (
+              <li key={phrase.key} className="paper-phrase">
+                <span className="paper-phrase-body">
+                  <strong>{phrase.text}</strong>
+                  <span className="meta"> — {phrase.meaning}</span>
+                </span>
+                {screenAudio ? (
+                  <button
+                    type="button"
+                    className="btn--quiet"
+                    aria-label={`Escuchar «${phrase.text}»`}
+                    onClick={() => void speakFn(phrase.text, language)}
+                  >
+                    Escuchar
+                  </button>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
       {sheet.analysis === "loading" ? (
         <p className="meta" role="status">
           Buscando palabras de este capítulo…
@@ -285,6 +381,17 @@ export default function PaperChapterSheet({
             Palabras que podrían costarte. Marca las que ya conoces; las
             demás van a tu Cuaderno.
           </p>
+          {screenAudio ? (
+            <p>
+              <button
+                type="button"
+                className="btn--quiet"
+                onClick={toggleSpeakAll}
+              >
+                {speaking ? "Detener" : "Escuchar todas"}
+              </button>
+            </p>
+          ) : null}
           <ol className="section-preview-list">
             {sheet.main.map((row) => (
               <PreparationAnswerRow
@@ -295,6 +402,7 @@ export default function PaperChapterSheet({
                 saving={sheet.saving}
                 onAnswer={onAnswer}
                 onToggleExpand={rowProps.onToggleExpand}
+                onSpeak={rowProps.onSpeak}
               />
             ))}
           </ol>

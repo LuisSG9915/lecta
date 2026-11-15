@@ -81,7 +81,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/lib/catalog.ts",
-          "line": 357,
+          "line": 369,
           "window": 3,
           "expect": "COVERAGE_FLUID_MIN",
           "why": "la insignia del catálogo usa el mismo umbral"
@@ -109,7 +109,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/lib/section-words.ts",
-          "line": 201,
+          "line": 185,
           "window": 1,
           "expect": "PREPARATION_ROWS_CAP = 40",
           "why": "tope global de la selección principal"
@@ -172,7 +172,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/lib/section-words.ts",
-          "line": 112,
+          "line": 96,
           "window": 1,
           "expect": "4\\.0 - opts\\.zipf",
           "why": "la utilidad viva usa la escala única"
@@ -340,7 +340,7 @@
         {
           "type": "code-anchor",
           "file": "src/client/lib/idb.ts",
-          "line": 2147,
+          "line": 2154,
           "window": 1,
           "expect": "if \\(!existing \\|\\| existing\\.deleted\\) return null",
           "why": "una inferencia pasiva no revive lo borrado ni crea filas"

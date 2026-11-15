@@ -3280,6 +3280,44 @@ mark.saved-word[data-level="settled"] {
   margin-block: var(--s-3);
 }
 
+/* «Frases que vas a oír» — solo hojas de obras de pantalla: claves
+   del banco de locuciones con su glosa, nunca citas del guion. */
+.paper-phrases {
+  margin-block: var(--s-3) var(--s-4);
+}
+
+.paper-phrase-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.paper-phrase {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-1) var(--s-3);
+  padding-block: var(--s-2);
+  border-top: var(--border);
+}
+
+.paper-phrase-body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.paper-phrase-body strong {
+  font-family: var(--font-book);
+  font-size: var(--fs-md);
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.paper-phrase .btn--quiet {
+  flex: none;
+}
+
 .paper-more > summary {
   cursor: pointer;
   padding: var(--s-2) 0;

@@ -18,9 +18,11 @@ import { bookDisplayName } from "../lib/cover";
 import {
   type FilterId,
   type OrderId,
+  type WordOrigin,
   FILTERS,
   GROUP_PAGE,
   type WordLifecycle,
+  wordOrigin,
   wordStage,
   stateOf,
   STATE_RANK,
@@ -37,7 +39,10 @@ import type { LearnExposure } from "../lib/learn";
 export type UseHerbarioViewArgs = {
   /** Todas las palabras cargadas (vacío mientras carga). */
   all: SavedWord[];
-  books: Pick<StoredBook, "hash" | "name" | "title" | "author" | "language">[];
+  books: Pick<
+    StoredBook,
+    "hash" | "name" | "title" | "author" | "language" | "mediaKind"
+  >[];
   knowledge: KnownWord[];
   exposure: LearnExposure;
   initialBookFilter?: string;
@@ -64,6 +69,7 @@ export function useHerbarioView({
   const [order, setOrder] = useState<OrderId>("fecha");
   const [languageFilter, setLanguageFilter] = useState<string>("all");
   const [bookFilter, setBookFilter] = useState<string>(initialBookFilter ?? "all");
+  const [originFilter, setOriginFilter] = useState<WordOrigin | "all">("all");
   const [query, setQuery] = useState("");
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -84,6 +90,20 @@ export function useHerbarioView({
     return books.filter((b) => (b.language || "es") === languageFilter);
   }, [books, languageFilter]);
 
+  // Obras de pantalla instaladas en este dispositivo: el origen de una
+  // palabra se deduce del mediaKind de su libro local (nunca del sync).
+  const mediaKindByHash = useMemo(() => {
+    const map = new Map<string, "movie" | "tv">();
+    for (const book of books) {
+      if (book.mediaKind) map.set(book.hash, book.mediaKind);
+    }
+    return map;
+  }, [books]);
+  const hasScreenWorks = mediaKindByHash.size > 0;
+  // Si ya no queda ninguna obra de pantalla el grupo se oculta: el
+  // filtro queda inerte en vez de vaciar la lista sin aviso.
+  const effectiveOriginFilter = hasScreenWorks ? originFilter : "all";
+
   const scopedWords = useMemo(() => {
     return all.filter((word) => {
       if (languageFilter !== "all" && (word.language || "es") !== languageFilter) {
@@ -92,9 +112,21 @@ export function useHerbarioView({
       if (bookFilter !== "all" && word.bookHash !== bookFilter) {
         return false;
       }
+      if (
+        effectiveOriginFilter !== "all" &&
+        wordOrigin(word, mediaKindByHash) !== effectiveOriginFilter
+      ) {
+        return false;
+      }
       return true;
     });
-  }, [all, languageFilter, bookFilter]);
+  }, [
+    all,
+    languageFilter,
+    bookFilter,
+    effectiveOriginFilter,
+    mediaKindByHash,
+  ]);
 
   const activeScoped = useMemo(() => scopedWords.filter((w) => !w.deleted), [scopedWords]);
 
@@ -217,6 +249,7 @@ export function useHerbarioView({
   const activeExtraFiltersCount =
     (languageFilter !== "all" ? 1 : 0) +
     (bookFilter !== "all" ? 1 : 0) +
+    (effectiveOriginFilter !== "all" ? 1 : 0) +
     (order !== "fecha" ? 1 : 0);
 
   const filterCounts = useMemo(() => {
@@ -260,6 +293,7 @@ export function useHerbarioView({
     flatWords,
     groupEntries,
     groups,
+    hasScreenWorks,
     isWordKnown,
     knownKeys,
     languageFilter,
@@ -269,6 +303,7 @@ export function useHerbarioView({
     nextDueTs,
     openWords,
     order,
+    originFilter,
     progressStats,
     query,
     scopedWords,
@@ -281,6 +316,7 @@ export function useHerbarioView({
     setListLimit,
     setOpenWords,
     setOrder,
+    setOriginFilter,
     setQuery,
     shownWords,
     stateRank,

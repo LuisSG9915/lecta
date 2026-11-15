@@ -2301,6 +2301,12 @@ mark.resolved-word:hover,
   flex: none;
 }
 
+/* «Escuchar» de las obras de pantalla: botón quieto por fila. */
+.section-preview-item .section-preview-speak {
+  flex: none;
+  align-self: center;
+}
+
 /* ---------- Concentración visual ---------- */
 
 /* Líneas sintácticas: cada unidad con sentido ocupa su propia línea

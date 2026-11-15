@@ -9,13 +9,15 @@ import {
 } from "react";
 
 // «Explora»: una sola sección para lo que no está en tu estantería —
-// las guías que otros lectores compartieron (Comunidad) y el catálogo
-// público (Libros gratuitos), en pestañas para que dos listas no se
-// apilen estirando la página. Ambos paneles quedan montados (solo se
-// ocultan con `hidden`): la búsqueda, el filtro y el desplazamiento
-// sobreviven al cambiar de pestaña.
+// las guías que otros lectores compartieron (Comunidad), el catálogo
+// público (Libros gratuitos) y las obras audiovisuales (Series y
+// películas), en pestañas para que dos listas no se apilen estirando
+// la página. Los paneles quedan montados tras abrirse por primera vez
+// (solo se ocultan con `hidden`): la búsqueda, el filtro y el
+// desplazamiento sobreviven al cambiar de pestaña, y el chunk lazy de
+// cada sección no se descarga hasta que se visita.
 
-type TabId = "community" | "catalog";
+type TabId = "community" | "catalog" | "screen";
 
 export const ExploreCommunityEmptyContext = createContext<(() => void) | null>(
   null,
@@ -24,8 +26,10 @@ export const ExploreCommunityEmptyContext = createContext<(() => void) | null>(
 type Props = {
   /** Pestaña Comunidad; null sin sesión → el panel invita a entrar. */
   community?: ReactNode;
-  /** Pestaña Libros gratuitos (el riel del catálogo). */
+  /** Pestaña Libros gratuitos (el riel del catálogo); null lo omite. */
   catalog?: ReactNode;
+  /** Pestaña Series y películas; null sin sesión → invita a entrar. */
+  screen?: ReactNode;
   /** Acción para ir a Perfil a iniciar sesión cuando no hay cuenta activa. */
   onOpenAccount?: () => void;
 };
@@ -33,19 +37,26 @@ type Props = {
 export default function ExploreShelf({
   community,
   catalog,
+  screen,
   onOpenAccount,
 }: Props) {
-  const [tab, setTab] = useState<TabId>(community ? "community" : "catalog");
+  const [tab, setTab] = useState<TabId>(
+    community ? "community" : catalog ? "catalog" : "screen",
+  );
   const userPickedTabRef = useRef(false);
-  const communityTabRef = useRef<HTMLButtonElement>(null);
-  const catalogTabRef = useRef<HTMLButtonElement>(null);
+  const tabRefs = useRef<Partial<Record<TabId, HTMLButtonElement | null>>>({});
+  // El contenido de Series y películas se monta al abrir la pestaña
+  // por primera vez y ahí se queda (oculto): el chunk lazy no se paga
+  // en cada visita a Explora y el estado interno sobrevive al cambio.
+  const [screenOpened, setScreenOpened] = useState(tab === "screen");
 
   const hasCommunity = Boolean(community);
+  const hasCatalog = catalog != null;
   useEffect(() => {
     if (!userPickedTabRef.current) {
-      setTab(hasCommunity ? "community" : "catalog");
+      setTab(hasCommunity ? "community" : hasCatalog ? "catalog" : "screen");
     }
-  }, [hasCommunity]);
+  }, [hasCommunity, hasCatalog]);
 
   // Si la comunidad termina de cargar vacía y el lector aún no eligió
   // pestaña manualmente, mostramos «Libros gratuitos» para no dejar
@@ -53,44 +64,83 @@ export default function ExploreShelf({
   // depende del nodo del catálogo ni del estado, así que no re-dispara
   // la carga de Comunidad en cada render.
   const handleCommunityEmpty = useCallback(() => {
-    if (!userPickedTabRef.current) setTab("catalog");
-  }, []);
+    if (userPickedTabRef.current) return;
+    const next = hasCatalog ? "catalog" : "screen";
+    setTab(next);
+    if (next === "screen") setScreenOpened(true);
+  }, [hasCatalog]);
 
-  if (!community && !catalog) return null;
+  if (!community && !catalog && !screen) return null;
 
-  // Sin catálogo (caso límite) la pestaña sobra: se pinta Comunidad
-  // tal cual, sin el marco de pestañas.
-  if (catalog == null) {
-    return (
-      <section className="shelf-explore" aria-label="Comunidad">
-        {community}
-      </section>
-    );
-  }
+  // Orden fijo de las pestañas; «Libros gratuitos» solo existe cuando
+  // hay índice que mostrar — las otras dos siempre (su panel puede ser
+  // la invitación a iniciar sesión).
+  const tabs: TabId[] = [
+    "community",
+    ...(hasCatalog ? (["catalog"] as const) : []),
+    "screen",
+  ];
 
   const selectTab = (next: TabId, focus = false) => {
     userPickedTabRef.current = true;
     setTab(next);
-    if (focus) {
-      const target =
-        next === "community" ? communityTabRef.current : catalogTabRef.current;
-      target?.focus();
-    }
+    if (next === "screen") setScreenOpened(true);
+    if (focus) tabRefs.current[next]?.focus();
   };
 
   const onTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
-    if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+    const at = tabs.indexOf(tab);
+    if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
       event.preventDefault();
-      const next: TabId = tab === "community" ? "catalog" : "community";
+      const step = event.key === "ArrowRight" ? 1 : -1;
+      const next = tabs[(at + step + tabs.length) % tabs.length];
       selectTab(next, true);
     } else if (event.key === "Home") {
       event.preventDefault();
-      selectTab("community", true);
+      selectTab(tabs[0], true);
     } else if (event.key === "End") {
       event.preventDefault();
-      selectTab("catalog", true);
+      selectTab(tabs[tabs.length - 1], true);
     }
   };
+
+  const invite = (text: string) => (
+    <p className="meta shelf-explore-hint">
+      {text}
+      {onOpenAccount ? (
+        <>
+          {" "}
+          <button
+            type="button"
+            className="btn--quiet"
+            onClick={onOpenAccount}
+          >
+            Iniciar sesión
+          </button>
+        </>
+      ) : null}
+    </p>
+  );
+
+  const tabButton = (id: TabId, label: string) => (
+    <button
+      key={id}
+      ref={(el) => {
+        tabRefs.current[id] = el;
+      }}
+      type="button"
+      role="tab"
+      id={`explore-tab-${id}`}
+      className="shelf-explore-tab"
+      aria-selected={tab === id}
+      aria-controls={`explore-panel-${id}`}
+      tabIndex={tab === id ? 0 : -1}
+      onClick={() => selectTab(id)}
+      onKeyDown={onTabKeyDown}
+    >
+      {label}
+    </button>
+  );
 
   return (
     <section className="shelf-explore" aria-label="Explora">
@@ -100,34 +150,9 @@ export default function ExploreShelf({
         role="tablist"
         aria-label="Secciones para descubrir"
       >
-        <button
-          ref={communityTabRef}
-          type="button"
-          role="tab"
-          id="explore-tab-community"
-          className="shelf-explore-tab"
-          aria-selected={tab === "community"}
-          aria-controls="explore-panel-community"
-          tabIndex={tab === "community" ? 0 : -1}
-          onClick={() => selectTab("community")}
-          onKeyDown={onTabKeyDown}
-        >
-          Comunidad
-        </button>
-        <button
-          ref={catalogTabRef}
-          type="button"
-          role="tab"
-          id="explore-tab-catalog"
-          className="shelf-explore-tab"
-          aria-selected={tab === "catalog"}
-          aria-controls="explore-panel-catalog"
-          tabIndex={tab === "catalog" ? 0 : -1}
-          onClick={() => selectTab("catalog")}
-          onKeyDown={onTabKeyDown}
-        >
-          Libros gratuitos
-        </button>
+        {tabButton("community", "Comunidad")}
+        {hasCatalog ? tabButton("catalog", "Libros gratuitos") : null}
+        {tabButton("screen", "Series y películas")}
       </div>
 
       <div
@@ -137,32 +162,32 @@ export default function ExploreShelf({
         hidden={tab !== "community"}
       >
         <ExploreCommunityEmptyContext.Provider value={handleCommunityEmpty}>
-          {community ?? (
-            <p className="meta shelf-explore-hint">
-              Inicia sesión para ver las guías que otros lectores compartieron.
-              {onOpenAccount ? (
-                <>
-                  {" "}
-                  <button
-                    type="button"
-                    className="btn--quiet"
-                    onClick={onOpenAccount}
-                  >
-                    Iniciar sesión
-                  </button>
-                </>
-              ) : null}
-            </p>
-          )}
+          {community ??
+            invite(
+              "Inicia sesión para ver las guías que otros lectores compartieron.",
+            )}
         </ExploreCommunityEmptyContext.Provider>
       </div>
+      {hasCatalog ? (
+        <div
+          role="tabpanel"
+          id="explore-panel-catalog"
+          aria-labelledby="explore-tab-catalog"
+          hidden={tab !== "catalog"}
+        >
+          {catalog}
+        </div>
+      ) : null}
       <div
         role="tabpanel"
-        id="explore-panel-catalog"
-        aria-labelledby="explore-tab-catalog"
-        hidden={tab !== "catalog"}
+        id="explore-panel-screen"
+        aria-labelledby="explore-tab-screen"
+        hidden={tab !== "screen"}
       >
-        {catalog}
+        {screenOpened || tab === "screen"
+          ? (screen ??
+            invite("Inicia sesión para preparar vocabulario de series y películas."))
+          : null}
       </div>
     </section>
   );

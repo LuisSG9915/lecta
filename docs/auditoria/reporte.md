@@ -1,12 +1,12 @@
 # Reporte de auditoría — estrategia de aprendizaje de Lecta
 
-Generado: 2026-11-14T20:35:40.722Z
+Generado: 2026-11-15T19:48:18.381Z
 Documento auditado: `docs/estrategia-aprendizaje-2026-10-24.md`
 Registro: `docs/auditoria/claims.json`
-Commit: `71efd96878aa96777e208c9333547c85e7a9464a`
+Commit: `f600cfb8148197a7cb071b070708439471eb297b`
 Red: no (solo forma de las referencias)
 
-**Veredicto: PASS_WITH_UNVERIFIED** — 1 afirmaciones aprobadas, 0 refutadas, 0 refutadas por auditoría, 13 sin verificar, 0 comprobaciones omitidas.
+**Veredicto: FAIL** — 1 afirmaciones aprobadas, 1 refutadas, 0 refutadas por auditoría, 12 sin verificar, 0 comprobaciones omitidas.
 
 ## Afirmaciones
 
@@ -27,7 +27,7 @@ Código: **PASS** · Referencias: **UNVERIFIED**
   - observado: `{"file":"src/client/lib/knowledge.ts","line":291,"text":"const total = forms.length;"}`
 - ✅ **PASS** · code-absent: /\btokens?\b/ no aparece en src/client/lib/coverage.ts
 - ✅ **PASS** · reachable: createCoverageInputsLoader se usa en producción (3 archivo/s)
-  - observado: `{"symbol":"createCoverageInputsLoader","callers":[{"file":"src/client/components/CommunityShelf.tsx","line":132,"text":"loader: ReturnType<typeof createCoverageInputsLoader>;"},{"file":"src/client/components/DiscoverRail.tsx","line":122,"text":"loader: ReturnType<typeof createCoverageInputsLoader>;"},{"file":"src/client/components/Shelf.tsx","line":470,"text":"const inputsFor = createCoverageInputsLoader(scope);"}]}`
+  - observado: `{"symbol":"createCoverageInputsLoader","callers":[{"file":"src/client/components/CommunityShelf.tsx","line":132,"text":"loader: ReturnType<typeof createCoverageInputsLoader>;"},{"file":"src/client/components/DiscoverRail.tsx","line":122,"text":"loader: ReturnType<typeof createCoverageInputsLoader>;"},{"file":"src/client/components/Shelf.tsx","line":478,"text":"const inputsFor = createCoverageInputsLoader(scope);"}]}`
 - ⚠️ **UNVERIFIED** · referencia laufer2010: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":null,"url":"https://eric.ed.gov/?id=EJ887873"}`
 - ⚠️ **UNVERIFIED** · referencia nation2006: forma válida; sin red no se resuelven metadatos (usar --online)
@@ -53,8 +53,8 @@ Código: **PASS** · Referencias: **UNVERIFIED**
   - observado: `{"file":"src/client/lib/coverage.ts","line":257,"text":"export const COVERAGE_IDEAL_MIN = 86;"}`
 - ✅ **PASS** · code-anchor: src/client/lib/coverage.ts:214 coincide con /reencuentrosCount: reencounterLemmas\.size/
   - observado: `{"file":"src/client/lib/coverage.ts","line":214,"text":"reencuentrosCount: reencounterLemmas.size,"}`
-- ✅ **PASS** · code-anchor: src/client/lib/catalog.ts:357 coincide con /COVERAGE_FLUID_MIN/
-  - observado: `{"file":"src/client/lib/catalog.ts","line":357,"text":"if (bookDifficultyOrLevel >= COVERAGE_FLUID_MIN) {"}`
+- ✅ **PASS** · code-anchor: src/client/lib/catalog.ts:369 coincide con /COVERAGE_FLUID_MIN/
+  - observado: `{"file":"src/client/lib/catalog.ts","line":369,"text":"if (bookDifficultyOrLevel >= COVERAGE_FLUID_MIN) {"}`
 - ⚠️ **UNVERIFIED** · referencia schmitt2011: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":null,"url":"https://eric.ed.gov/?id=EJ928357"}`
 - ⚠️ **UNVERIFIED** · referencia laufer2010: forma válida; sin red no se resuelven metadatos (usar --online)
@@ -71,8 +71,8 @@ Código: **PASS** · Referencias: **UNVERIFIED**
 - evidencia: `src/client/components/reader/ReaderNotices.tsx:101-131`
 
 - ✅ **PASS** · doc-mention: el documento contiene «hasta **40 filas**»
-- ✅ **PASS** · code-anchor: src/client/lib/section-words.ts:201 coincide con /PREPARATION_ROWS_CAP = 40/
-  - observado: `{"file":"src/client/lib/section-words.ts","line":201,"text":"export const PREPARATION_ROWS_CAP = 40;"}`
+- ✅ **PASS** · code-anchor: src/client/lib/section-words.ts:185 coincide con /PREPARATION_ROWS_CAP = 40/
+  - observado: `{"file":"src/client/lib/section-words.ts","line":185,"text":"export const PREPARATION_ROWS_CAP = 40;"}`
 - ✅ **PASS** · code-anchor: src/client/lib/settings.ts:418 coincide con /chapterPrimingMode: "auto"/
   - observado: `{"file":"src/client/lib/settings.ts","line":418,"text":"chapterPrimingMode: \"auto\","}`
 - ✅ **PASS** · code-anchor: src/client/hooks/useReaderChapterPrep.ts:54 coincide con /unknownKeyWordsCount <= 0/
@@ -98,8 +98,8 @@ Código: **PASS** · Referencias: **UNVERIFIED**
 
 - ✅ **PASS** · doc-mention: el documento contiene «sin selectores duplicados»
 - ✅ **PASS** · code-absent: /selectOptimalChapterPrimingWords|buildChapterPrimingCandidates|computePreChapterWordUtility/ no aparece en src/client/lib/section-words.ts
-- ✅ **PASS** · code-anchor: src/client/lib/section-words.ts:112 coincide con /4\.0 - opts\.zipf/
-  - observado: `{"file":"src/client/lib/section-words.ts","line":112,"text":"? Number((4.0 - opts.zipf).toFixed(2))"}`
+- ✅ **PASS** · code-anchor: src/client/lib/section-words.ts:96 coincide con /4\.0 - opts\.zipf/
+  - observado: `{"file":"src/client/lib/section-words.ts","line":96,"text":"? Number((4.0 - opts.zipf).toFixed(2))"}`
 - ⚠️ **UNVERIFIED** · referencia yanagisawa2020: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":"10.1017/S0272263119000688","url":null}`
 - ⚠️ **UNVERIFIED** · referencia nation2006: forma válida; sin red no se resuelven metadatos (usar --online)
@@ -161,11 +161,11 @@ Código: **PASS** · Referencias: **UNVERIFIED**
 - ⚠️ **UNVERIFIED** · referencia kremmel2016: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":null,"url":"https://eric.ed.gov/?id=EJ1120126"}`
 
-### ⚠️ H5-pasiva — La exposición pasiva acota a 8 lemas por paso y respeta lápidas
+### ❌ H5-pasiva — La exposición pasiva acota a 8 lemas por paso y respeta lápidas
 
 > La vía viva registra hasta 8 lemas no consultados por paso de página, exige lectura por debajo de 450 ppm, no revive lápidas y mantiene «familiar» a las 3 exposiciones dentro de la sesión.
 
-Código: **PASS** · Referencias: **UNVERIFIED**
+Código: **FAIL** · Referencias: **UNVERIFIED**
 
 **Veredicto de auditoría (2026-10-26): SOSTENIDA** — El mecanismo descrito por el documento original (marcar todas las palabras de la página con tope de 12 s) era código muerto y se eliminó. La vía viva es más conservadora y ahora respeta las lápidas.
 - evidencia: `src/client/lib/reader-evidence.ts:184-250`
@@ -176,8 +176,8 @@ Código: **PASS** · Referencias: **UNVERIFIED**
 - ✅ **PASS** · code-absent: /updateLanguageTheta/ no aparece en src/client/lib/reader-evidence.ts
 - ✅ **PASS** · code-anchor: src/client/lib/reader-evidence.ts:260 coincide con /uniqueLemmas\.size >= 8/
   - observado: `{"file":"src/client/lib/reader-evidence.ts","line":260,"text":"if (uniqueLemmas.size >= 8) break;"}`
-- ✅ **PASS** · code-anchor: src/client/lib/idb.ts:2147 coincide con /if \(!existing \|\| existing\.deleted\) return null/
-  - observado: `{"file":"src/client/lib/idb.ts","line":2147,"text":"if (!existing || existing.deleted) return null;"}`
+- ❌ **FAIL** · code-anchor: src/client/lib/idb.ts:2146-2148 no contiene /if \(!existing \|\| existing\.deleted\) return null/
+  - observado: `{"file":"src/client/lib/idb.ts","asked":2147,"excerpt":["2146: export async function recordPassiveExposure(","2147:   language: string,","2148:   lemma: string,"]}`
 - ✅ **PASS** · code-absent: /processPageTurnForPassiveKnowledge/ no aparece en src/client/lib/knowledge.ts
 - ⚠️ **UNVERIFIED** · referencia nagy1985: forma válida; sin red no se resuelven metadatos (usar --online)
   - observado: `{"doi":"10.2307/747758","url":null}`

@@ -18,6 +18,7 @@ const Vocabulary = lazy(() => import("./components/Vocabulary"));
 const Journey = lazy(() => import("./components/Journey"));
 const PaperReading = lazy(() => import("./components/PaperReading"));
 const CommunityShelf = lazy(() => import("./components/CommunityShelf"));
+const ScreenShelf = lazy(() => import("./components/ScreenShelf"));
 const Account = lazy(() => import("./components/Account"));
 const Calibration = lazy(() => import("./components/Calibration"));
 const RestoreBackupDialog = lazy(() => import("./components/RestoreBackupDialog"));
@@ -104,6 +105,10 @@ import {
 } from "./lib/cover";
 import { downloadBookWithStatus, fetchBookGuide, listRemoteBooks, shareBook, uploadBookCover } from "./lib/books";
 import { paperGuideSessionKey, sanitizePaperBookGuide } from "../shared/paper-guide";
+import type {
+  ScreenGuideObject,
+  ScreenWorkRef,
+} from "../shared/screen-guide";
 import { queueBookDelete, queueBookSync, queueBookUpload, runBookQueue } from "./lib/book-queue";
 import { getPendingPositionsCount, syncPositions, type PositionConflict } from "./lib/positions-sync";
 
@@ -270,6 +275,17 @@ export default function App() {
   // marcar «En tu estantería» sin otra consulta.
   const ownedBookHashes = useMemo(
     () => new Set(library.map((book) => book.hash)),
+    [library],
+  );
+  // Obras audiovisuales ya preparadas (mediaKind) — alimentan «Tus
+  // títulos» dentro de la pestaña Series y películas de Explora y NO
+  // se pintan en la estantería de libros.
+  const screenWorks = useMemo(
+    () => library.filter((book) => book.mediaKind),
+    [library],
+  );
+  const shelfBooks = useMemo(
+    () => library.filter((book) => !book.mediaKind),
     [library],
   );
   // Arranque optimista: la última cuenta confirmada abre su base
@@ -756,6 +772,7 @@ export default function App() {
         language: book.language,
         pendingUpload: pendingUploads.has(book.hash) || undefined,
         paperOnly: book.paperOnly || remoteByHash.get(book.hash)?.paperOnly || undefined,
+        mediaKind: book.mediaKind,
         shared: remoteByHash.get(book.hash)?.shared || undefined,
         // El género de la fila remota manda: es la elección real al
         // compartir; el detectado local del EPUB solo rellena huecos.
@@ -1700,6 +1717,142 @@ export default function App() {
     setPaperBook(null);
   };
 
+  // «Series y películas»: la guía que devuelve el worker es de UN
+  // episodio/película (ScreenGuideObject «solo palabras»). Se fusiona
+  // en la PaperBookGuide de la obra completa — un capítulo por
+  // episodio, «movie» para películas — y se guarda en la misma clave
+  // de sesión que usa el modo papel, así que usePaperReading la abre
+  // sin cambios. El StoredBook es paperOnly + mediaKind: nunca hay
+  // EPUB y jamás se sube a la cuenta.
+  const installScreenWork = async (
+    ref: ScreenWorkRef,
+    object: ScreenGuideObject,
+    title: string,
+  ): Promise<ShelfItem | null> => {
+    const scope = captureDbScope();
+    // Imports diferidos: el parser de subtítulos y el cliente /api/screen
+    // solo los usa esta zona — nada de eso paga peso en el arranque.
+    const [
+      { screenWorkHash, screenChapterId },
+      {
+        mergeScreenChapter,
+        screenPosterUrl,
+        mergeScreenChapterPhrases,
+        parseScreenPhrasesRecord,
+        screenPhrasesKey,
+      },
+    ] = await Promise.all([
+      import("../shared/screen-guide"),
+      import("./lib/screen"),
+    ]);
+    const hash = await screenWorkHash(ref.type, ref.imdbId, ref.language);
+    if (!hash) return null;
+    const guideKey = paperGuideSessionKey(hash);
+    const raw = await loadSessionValue(guideKey, scope).catch(() => null);
+    let existing: ReturnType<typeof sanitizePaperBookGuide> = null;
+    if (raw) {
+      try {
+        existing = sanitizePaperBookGuide(JSON.parse(raw), hash);
+      } catch {
+        // Sesión ilegible: se reconstruye solo con el capítulo nuevo.
+      }
+    }
+    const merged = mergeScreenChapter(existing, object, {
+      bookHash: hash,
+      title: title || existing?.title || "",
+      author: existing?.author,
+    });
+    if (!merged) return null;
+    await saveSessionValue(guideKey, JSON.stringify(merged), scope).catch(
+      () => undefined,
+    );
+    const previous = await getStoredBook(hash, scope).catch(() => undefined);
+    // Portada: la del póster del worker (proxy propio, CSP 'self'); si
+    // ya había una o la descarga falla, el libro queda sin portada.
+    let cover = previous?.cover;
+    if (!cover) {
+      cover =
+        (await fetch(screenPosterUrl(ref.imdbId))
+          .then((res) => (res.ok ? res.blob() : null))
+          .catch(() => null)) ?? undefined;
+    }
+    const stored = await saveBook(
+      {
+        hash,
+        name: title || previous?.title || hash,
+        title: title || previous?.title || undefined,
+        author: ref.type === "tv" ? "Serie" : "Película",
+        language: ref.language,
+        cover,
+        data: new Blob([]),
+        paperOnly: true,
+        mediaKind: ref.type,
+        addedAt: previous?.addedAt ?? Date.now(),
+      },
+      scope,
+    ).catch(() => undefined);
+    if (!stored) return null;
+    // Las frases del episodio (claves del banco, nunca texto) se
+    // acumulan por capítulo en `screenPhrases:v1:<hash>` para que la
+    // hoja las muestre antes que las palabras.
+    const chapterId = screenChapterId(ref);
+    if (chapterId && object.phrases.length) {
+      const phrasesKey = screenPhrasesKey(hash);
+      const rawPhrases = await loadSessionValue(phrasesKey, scope).catch(
+        () => null,
+      );
+      const record = rawPhrases
+        ? parseScreenPhrasesRecord(rawPhrases)
+        : {};
+      await saveSessionValue(
+        phrasesKey,
+        JSON.stringify(
+          mergeScreenChapterPhrases(record, chapterId, object.phrases),
+        ),
+        scope,
+      ).catch(() => undefined);
+    }
+    await refreshLibrary();
+    return {
+      hash: stored.hash,
+      name: stored.name,
+      addedAt: stored.addedAt,
+      title: stored.title,
+      author: stored.author,
+      cover: stored.cover,
+      sectionCount: stored.sectionCount,
+      language: stored.language,
+      mediaKind: stored.mediaKind,
+      paperOnly: true,
+    };
+  };
+
+  // ScreenShelf ya pidió la guía al worker; aquí solo se instala y se
+  // abre el índice de la obra (episodio/película recién preparada).
+  const handlePrepareScreenWork = async (args: {
+    ref: ScreenWorkRef;
+    guide: ScreenGuideObject;
+    title: string;
+  }): Promise<boolean> => {
+    const item = await installScreenWork(args.ref, args.guide, args.title).catch(
+      () => null,
+    );
+    if (!item) return false;
+    handlePaperBook(item);
+    return true;
+  };
+
+  // Borrar una obra de pantalla es solo local: la guía vive en la
+  // sesión de este dispositivo y el servidor nunca conoció la obra —
+  // nada que encolar. deleteStoredBook ya limpia las claves
+  // paperGuide:v1: y los análisis del libro.
+  const removeScreenWork = async (hash: string) => {
+    const scope = captureDbScope();
+    setLibrary((prev) => prev.filter((item) => item.hash !== hash));
+    await deleteStoredBook(hash, scope).catch(() => undefined);
+    void refreshLibrary();
+  };
+
   // Compartir (o retirar) la guía de papel de un libro propio. La usa
   // la hoja de opciones de la estantería y el botón «Compartir un libro
   // tuyo» de la pestaña Comunidad — una sola ruta para ambos.
@@ -2059,8 +2212,8 @@ export default function App() {
               ) : (
                 <Activity mode={activeNav === "shelf" ? "visible" : "hidden"}>
                   <Shelf
-                    library={library}
-                    books={library}
+                    library={shelfBooks}
+                    books={shelfBooks}
                     checking={checkingLibrary}
                     activeRead={lastReadBook}
                     vocabCount={library.length}
@@ -2088,6 +2241,18 @@ export default function App() {
                                 await refreshLibrary();
                               })();
                             }}
+                          />
+                        </Suspense>
+                      ) : undefined
+                    }
+                    screenSection={
+                      sessionUserId ? (
+                        <Suspense fallback={null}>
+                          <ScreenShelf
+                            works={screenWorks}
+                            onOpenWork={handlePaperBook}
+                            onRemoveWork={(hash) => void removeScreenWork(hash)}
+                            onPrepareWork={handlePrepareScreenWork}
                           />
                         </Suspense>
                       ) : undefined

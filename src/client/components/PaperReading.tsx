@@ -4,7 +4,7 @@
 // del capítulo con sus palabras. La entrada al modo queda en
 // Opciones del libro; tocar el libro sigue abriendo el lector.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useModalBehavior } from "../lib/modal";
 import { displayTitle } from "../lib/cover";
 import {
@@ -12,9 +12,24 @@ import {
   type PaperChapterEntry,
 } from "../hooks/usePaperReading";
 import PaperChapterSheet from "./PaperChapterSheet";
+import {
+  captureDbScope,
+  loadSessionValue,
+} from "../lib/idb";
+import {
+  parseScreenPhrasesRecord,
+  screenPhraseItems,
+  screenPhrasesKey,
+} from "../lib/screen";
+import { loadNativeLanguage } from "../lib/settings";
 
 export type PaperReadingProps = {
-  book: { hash: string; name: string; title?: string };
+  book: {
+    hash: string;
+    name: string;
+    title?: string;
+    mediaKind?: "movie" | "tv";
+  };
   onClose: () => void;
   // «Repasar palabras de este libro»: abre el Cuaderno filtrado.
   onOpenNotebook?: (bookHash: string) => void;
@@ -69,6 +84,25 @@ export default function PaperReading({
   const ref = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState("");
   const paper = usePaperReading(book.hash, { onStatus: setStatus });
+  // Frases de la obra de pantalla (claves del banco por capítulo):
+  // solo existen cuando el libro tiene mediaKind — los libros en
+  // papel no pagan esta lectura.
+  const [screenPhrases, setScreenPhrases] = useState<
+    Record<string, string[]> | null
+  >(null);
+  useEffect(() => {
+    if (!book.mediaKind) return;
+    let cancelled = false;
+    void loadSessionValue(screenPhrasesKey(book.hash), captureDbScope())
+      .then((raw) => {
+        if (cancelled || !raw) return;
+        setScreenPhrases(parseScreenPhrasesRecord(raw));
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [book.hash, book.mediaKind]);
   const {
     phase,
     title,
@@ -120,7 +154,19 @@ export default function PaperReading({
       target.scrollIntoView({ block: "center" });
   }, [phase, lastTargetId]);
 
+  // Frases del capítulo abierto, resueltas contra el banco (máx. 8,
+  // orden beta) — solo para obras de pantalla.
+  const chapterPhrases = useMemo(() => {
+    if (!book.mediaKind || !sheet) return [];
+    return screenPhraseItems(
+      screenPhrases?.[sheet.target.id],
+      loadNativeLanguage(),
+    );
+  }, [book.mediaKind, sheet, screenPhrases]);
+
   const display = displayTitle(book.name, title || book.title);
+  const isTv = book.mediaKind === "tv";
+  const isScreen = book.mediaKind != null;
   const readSheet = sheet
     ? (entries.find((e) => e.target.id === sheet.target.id)?.status ??
         extras.find((e) => e.target.id === sheet.target.id)?.status) ===
@@ -133,11 +179,17 @@ export default function PaperReading({
       className="paper-screen"
       role="dialog"
       aria-modal="true"
-      aria-label={`Leo este libro en papel — ${display}`}
+      aria-label={`${isScreen ? (isTv ? "Serie" : "Película") : "Leo este libro en papel"} — ${display}`}
     >
       <header className="journey-head">
         <div>
-          <p className="eyebrow">Leo este libro en papel</p>
+          <p className="eyebrow">
+            {isScreen
+              ? isTv
+                ? "Serie · vocabulario por episodio"
+                : "Película · vocabulario"
+              : "Leo este libro en papel"}
+          </p>
           <h1 className="journey-title">{display}</h1>
           {author ? <p className="meta">{author}</p> : null}
         </div>
@@ -154,8 +206,11 @@ export default function PaperReading({
 
       <main className="journey-content">
         <p className="meta">
-          Elige el capítulo que vas a leer. Te mostramos las palabras
-          que podrían costarte.
+          {isScreen
+            ? isTv
+              ? "Elige el episodio que vas a ver. Te mostramos las palabras que podrían costarte."
+              : "Toca la entrada para ver las palabras que podrían costarte."
+            : "Elige el capítulo que vas a leer. Te mostramos las palabras que podrían costarte."}
         </p>
         {status ? (
           <p className="meta" role="status" aria-live="polite">
@@ -215,6 +270,8 @@ export default function PaperReading({
           sheet={sheet}
           read={readSheet}
           language={paper.language}
+          mediaKind={book.mediaKind}
+          phrases={chapterPhrases}
           savedTerms={savedTerms}
           bookForms={bookForms}
           bookWordCount={bookWordCount}

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent } from "react";
 import {
   captureDbScope,
   loadShelfBootstrap,
@@ -56,6 +56,10 @@ import { isReviewDueWord } from "../lib/fsrs";
 import BookCover from "./BookCover";
 import DiscoverRail from "./DiscoverRail";
 import ExploreShelf from "./ExploreShelf";
+
+// «Más clásicos»: la búsqueda en el índice propio de Gutenberg carga
+// diferida — solo la pestaña «Libros gratuitos» la usa.
+const GutenbergSearch = lazy(() => import("./GutenbergSearch"));
 import Icon from "./Icon";
 import { CompanionButton } from "./CompanionButton";
 import { CompanionStage } from "./CompanionStage";
@@ -75,7 +79,7 @@ import Sheet from "./Sheet";
 // marca los que aún tienen una subida encolada.
 export type ShelfItem = Pick<
   StoredBook,
-  "hash" | "name" | "addedAt" | "title" | "author" | "cover" | "sectionCount" | "language" | "genre"
+  "hash" | "name" | "addedAt" | "title" | "author" | "cover" | "sectionCount" | "language" | "genre" | "mediaKind"
 > & {
   remoteOnly?: boolean;
   pendingUpload?: boolean;
@@ -136,6 +140,9 @@ export type ShelfProps = {
   // Contenido de la pestaña «Comunidad» de la sección Explora:
   // la monta App con su propio fetch diferido (solo con sesión).
   communitySection?: React.ReactNode;
+  // Contenido de la pestaña «Series y películas» de Explora: obras
+  // audiovisuales preparadas + buscador OMDb/SubDL (solo con sesión).
+  screenSection?: React.ReactNode;
   // «Obtener» del riel Descubre: el padre baja el EPUB del catálogo y
   // lo pasa al flujo normal de añadir libro.
   onGetCatalogBook?: (item: CatalogBook) => Promise<void> | void;
@@ -211,6 +218,7 @@ export default function Shelf({
   onLibraryChange = () => {},
   onShareBook,
   communitySection,
+  screenSection,
   onGetCatalogBook,
   onDownloadBook,
   downloadingHash,
@@ -1472,7 +1480,21 @@ export default function Shelf({
                           <Icon name={isDownloading ? "clock" : "cloud"} size={13} />
                         </span>
                       ) : null}
-                      {book.paperOnly ? (
+                      {book.mediaKind ? (
+                        <span
+                          className="shelf-paperonly-badge"
+                          title={
+                            book.mediaKind === "tv"
+                              ? "Serie · Vocabulario por episodio"
+                              : "Película · Vocabulario"
+                          }
+                          aria-label={
+                            book.mediaKind === "tv" ? "Serie" : "Película"
+                          }
+                        >
+                          {book.mediaKind === "tv" ? "Serie" : "Película"}
+                        </span>
+                      ) : book.paperOnly ? (
                         <span
                           className="shelf-paperonly-badge"
                           title="Libro de la comunidad · Solo lectura en papel"
@@ -1826,18 +1848,29 @@ export default function Shelf({
           retícula y también con la estantería vacía — es la respuesta a
           «no sé qué leer». Cada pestaña mantiene su propia búsqueda;
           el catálogo se oculta solo si no hay índice. */}
-      {communitySection || onGetCatalogBook ? (
+      {communitySection || onGetCatalogBook || screenSection ? (
         <ExploreShelf
           community={communitySection}
+          screen={screenSection}
           onOpenAccount={onOpenAccount}
           catalog={
             onGetCatalogBook ? (
-              <DiscoverRail
-                library={library}
-                onOpen={onOpen}
-                onGet={onGetCatalogBook}
-                vocabVersion={vocabVersion}
-              />
+              <>
+                <DiscoverRail
+                  library={library}
+                  onOpen={onOpen}
+                  onGet={onGetCatalogBook}
+                  vocabVersion={vocabVersion}
+                />
+                {/* Debajo del riel curado: la búsqueda en el índice
+                    propio de Gutenberg (libros pg- bajo demanda). */}
+                <Suspense fallback={null}>
+                  <GutenbergSearch
+                    onGet={onGetCatalogBook}
+                    onOpenAccount={onOpenAccount}
+                  />
+                </Suspense>
+              </>
             ) : undefined
           }
         />

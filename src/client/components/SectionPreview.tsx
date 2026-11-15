@@ -102,6 +102,7 @@ function Row({
   saving,
   onAnswer,
   onToggleExpand,
+  onSpeak,
 }: {
   row: SectionPreviewRow;
   answer: PreparationAnswer | undefined;
@@ -109,6 +110,9 @@ function Row({
   saving: boolean;
   onAnswer: (key: string, answer: PreparationAnswer) => void;
   onToggleExpand: (key: string) => void;
+  // «Escuchar» de las obras de pantalla: opcional, la preparación
+  // del lector nunca lo pasa.
+  onSpeak?: (form: string) => void;
 }) {
   return (
     <li className="section-preview-item">
@@ -155,6 +159,16 @@ function Row({
           No la conozco
         </button>
       </span>
+      {onSpeak ? (
+        <button
+          type="button"
+          className="btn--quiet section-preview-speak"
+          aria-label={`Escuchar «${row.form}»`}
+          onClick={() => onSpeak(row.form)}
+        >
+          Escuchar
+        </button>
+      ) : null}
       {expanded ? (
         <p className="section-preview-def">
           {row.meaning ?? "Sin definición todavía"}

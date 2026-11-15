@@ -15,12 +15,38 @@ export function isSpeechAvailable(): boolean {
   );
 }
 
+// Marca de parada: stopSpeaking la incrementa y speakWord la compara
+// al entrar y tras cada espera. Sin ella, un «Detener» que cae durante
+// la síntesis de KittenTTS hace fallar synthesize() y el fallback de
+// speechSynthesis termina pronunciando la palabra de todos modos.
+let stopGeneration = 0;
+
+// Detiene cualquier pronunciación en curso (síntesis del sistema y
+// KittenTTS): la usa «Detener» de la hoja de pantalla y el cierre.
+export function stopSpeaking(): void {
+  stopGeneration++;
+  try {
+    kittenTtsEngine.stop();
+  } catch {
+    /* el motor puede no estar iniciado */
+  }
+  if (typeof window !== "undefined" && "speechSynthesis" in window) {
+    try {
+      window.speechSynthesis.cancel();
+    } catch {
+      /* cancelación no disponible */
+    }
+  }
+}
+
 export async function speakWord(
   word: string,
   language = "es",
 ): Promise<void> {
   const trimmed = word.trim();
   if (!trimmed || !isSpeechAvailable()) return;
+  const generation = stopGeneration;
+  const stopped = () => stopGeneration !== generation;
 
   const isEn = language.toLowerCase().startsWith("en");
 
@@ -33,6 +59,7 @@ export async function speakWord(
       }
       const settings = loadTtsSettings();
       const buffer = await kittenTtsEngine.synthesize(trimmed, settings.kittenVoice, 0.9);
+      if (stopped()) return;
       return await new Promise<void>((resolve) => {
         kittenTtsEngine.play(buffer, 0.9, () => resolve());
       });
@@ -52,6 +79,7 @@ export async function speakWord(
   }
 
   const voices = await ensureVoices(500);
+  if (stopped()) return;
   const { voice, defaultLangTag } = pickVoiceForLanguage(voices, isEn ? "en" : "es");
 
   return new Promise<void>((resolve) => {

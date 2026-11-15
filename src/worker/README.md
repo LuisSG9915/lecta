@@ -75,6 +75,12 @@ first only for `/api/*`, `/k`, `/k/*`, `/kindle`, `/kindle/*`, `/models/*`
   `createRequireKindlePlan` (sin sesión deja pasar; rutas exentas
   `KINDLE_PLAN_EXEMPT_PATHS`; HTML 402). Se montan ruta por ruta en el
   Bloque 2 del diseño `docs/designs/2026-11-12-planes-y-landing.md`.
+- `[screen.ts:screen]` — «Series y películas»: OMDb (búsqueda, detalle de
+  serie, episodios como solo números, póster proxied con allowlist de hosts)
+  y `POST /api/screen/guide`, que baja un .srt de SubDL **solo en memoria** y
+  guarda en R2 el índice «solo palabras» (`screen-guides/v1/…`, nunca diálogo
+  ni timestamps). Exige sesión en todo; `OMDB_API_KEY`/`SUBDL_API_KEY` en
+  `WorkerEnv` ([db.ts]); sin la llave que necesita → 503.
 - `[admin.ts]` — `admin` router, `ownerUser`, `assembleOverview`,
   `assembleUserDetail`.
 - `[app.ts]` — `app`, `consumeRateUnits`, `checkUserBooksQuota`
@@ -93,7 +99,8 @@ first only for `/api/*`, `/k`, `/k/*`, `/kindle`, `/kindle/*`, `/models/*`
 | `[companion.ts:companion]` | `GET,PUT /api/companion` |
 | `[billing.ts:billing]` | `POST /api/billing/checkout`, `POST /api/billing/portal`, `POST /api/billing/webhook` |
 | `[app.ts:app]` (027) | `PUT /api/user/books/:bookId/meta` (gratis: fila solo de metadatos, `r2_key = ''`, `has_file = false`; 400 si `sha256 ≠ bookId`, 413 por tope de libros, 503 ante 42703). `GET /api/books` suma esas filas con `hasFile: false`; `GET /api/user/books` las excluye. |
-| `[catalog.ts:catalog]` | `GET /api/catalog`, `GET /api/catalog/:id/:kind` (`epub`/`vocab`/`cover`) |
+| `[catalog.ts:catalog]` | `GET /api/catalog`, `GET /api/catalog/search`, `GET /api/catalog/:id/:kind` (`epub`/`vocab`/`cover`) |
+| `[screen.ts:screen]` | `GET /api/screen/search`, `GET /api/screen/tv/:imdbId`, `GET /api/screen/tv/:imdbId/season/:n`, `GET /api/screen/poster`, `POST /api/screen/guide` — todas con sesión |
 | `[admin.ts:admin]` | `GET /api/admin/access`, `GET /api/admin/insights`, `GET /api/admin/users/:id` |
 
 ## Invariants
@@ -135,13 +142,18 @@ first only for `/api/*`, `/k`, `/k/*`, `/kindle`, `/kindle/*`, `/models/*`
   written by enrichment via `insertEnrichment`).
 - `[db.ts:resetAccountDataDb]` deletes all user progress tables, `user_books`
   and `kindle_link_codes` in one transaction and stamps `lecta_account_state`.
-- R2 `BOOKS`: `books/{userId}/`, `user-books/{userId}/`, `catalog/`, `models/`,
-  `kcache/`; `purgeUserData` deletes both user prefixes on account deletion.
+- R2 `BOOKS`: `books/{userId}/`, `user-books/{userId}/`, `catalog/`,
+  `screen-guides/v1/`, `models/`, `kcache/`; `purgeUserData` deletes both
+  user prefixes on account deletion.
 - Outbound HTTP: DeepSeek (directly or via `AI_GATEWAY_URL`), Resend
-  (magic link, password reset, delete verification, error digest).
+  (magic link, password reset, delete verification, error digest), OMDb
+  (`omdbapi.com`), SubDL (`api.subdl.com` + `dl.subdl.com`, zip ≤ 2 MB) and
+  Gutenberg (`gutenberg.org`, EPUB `pg-` ≤ 25 MB).
 - Starts `ENRICHMENT_WORKFLOW` instances (`POST /api/lexicon/enrich-batch`).
 - Per-isolate memory: AI text LRU (300), catalog index TTL cache (5 min),
-  community guides cache, client-error and Kindle status rate limiters.
+  OMDb detail/season/search caches (1 h / 1 h / 10 min), SubDL guide-miss
+  negatives (30 min), community guides cache, client-error and Kindle
+  status rate limiters.
 - `console.error` structured logs (Workers Logs enabled).
 
 ## Verification

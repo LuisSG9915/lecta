@@ -12,6 +12,30 @@ export function isWordToken(form: string): boolean {
   return WORD_TOKEN.test(form.trim());
 }
 
+// Formas que en el texto aparecen SIEMPRE con inicial mayúscula y
+// nunca en minúscula: suelen ser nombres propios o extranjerismos.
+// `surfaceForms` son las formas únicas tal como salieron del
+// segmentador (con su caja original); el resultado va en
+// minúsculas. La usa la hoja de vocabulario del lector
+// (section-words) y la guía de pantalla (screen-guide).
+export function capitalOnlyForms(surfaceForms: string[]): Set<string> {
+  const capitalized = new Set<string>();
+  const lowercased = new Set<string>();
+  for (const surface of surfaceForms) {
+    const first = surface.charAt(0);
+    if (!first) continue;
+    const lower = surface.toLowerCase();
+    // Si el primer carácter no cambia al bajar a minúsculas, la
+    // aparición cuenta como «en minúscula» (incluye dígitos y
+    // caracteres sin caja): nunca entra a capitalOnly.
+    if (first.toLowerCase() === first) lowercased.add(lower);
+    else capitalized.add(lower);
+  }
+  const result = new Set<string>();
+  for (const form of capitalized) if (!lowercased.has(form)) result.add(form);
+  return result;
+}
+
 // Raíces candidatas de un adverbio en «-mente»: la base sin el
 // sufijo («perfectamente» → «perfecta») y, si termina en -a, la forma
 // masculina del lema («perfecta» → «perfecto») por si la tabla de

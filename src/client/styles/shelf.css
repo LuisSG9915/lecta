@@ -939,6 +939,20 @@
   flex: none;
 }
 
+/* «Más clásicos»: la búsqueda en el índice propio de Gutenberg va
+   debajo del riel curado dentro de la pestaña Libros gratuitos. */
+.gutenberg-search {
+  margin-block-start: var(--s-5);
+}
+
+.gutenberg-search-label {
+  display: block;
+  margin-block-end: var(--s-2);
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+}
+
 /* Chips de género en la hoja de opciones (al compartir la guía) */
 .shelf-genre-chips {
   display: flex;
@@ -2570,4 +2584,168 @@
     width: 100%;
     justify-content: flex-end;
   }
+}
+
+/* ---------- Series y películas (pestaña de Explora) ---------- */
+.screen-shelf {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  margin-block-start: var(--s-3);
+}
+
+.screen-works {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.screen-work {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+}
+
+.screen-work-open {
+  appearance: none;
+  flex: 1;
+  min-inline-size: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.screen-work-open .cover {
+  inline-size: 3rem;
+  block-size: 4.5rem;
+  flex: none;
+  border-radius: var(--r-1);
+}
+
+.screen-work-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15em;
+  min-inline-size: 0;
+}
+
+.screen-work-meta strong {
+  font-size: var(--fs-base);
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.screen-work-remove {
+  flex: none;
+}
+
+.screen-search-label {
+  display: block;
+  margin-block-end: var(--s-2);
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+}
+
+.screen-search-input {
+  inline-size: 100%;
+  padding: var(--s-2) var(--s-3);
+  font: inherit;
+  color: var(--ink);
+  background: var(--paper-raised);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-1);
+}
+
+.screen-results {
+  list-style: none;
+  margin: var(--s-3) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.screen-result {
+  appearance: none;
+  inline-size: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-2);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-1);
+  background: var(--paper-raised);
+  font: inherit;
+  color: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.screen-result[aria-pressed="true"] {
+  border-color: var(--accent-primary);
+}
+
+.screen-result-poster {
+  inline-size: 2.25rem;
+  block-size: 3.25rem;
+  flex: none;
+  object-fit: cover;
+  border-radius: calc(var(--r-1) * 0.6);
+}
+
+.screen-result-poster--fallback {
+  display: block;
+}
+
+.screen-result-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15em;
+  min-inline-size: 0;
+}
+
+.screen-result-meta strong {
+  font-size: var(--fs-sm);
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.screen-prepare {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  max-inline-size: 22rem;
+}
+
+.screen-prepare label {
+  font-size: var(--fs-sm);
+  color: var(--ink-soft);
+}
+
+.screen-prepare select {
+  font: inherit;
+  color: var(--ink);
+  padding: var(--s-2) var(--s-3);
+  background: var(--paper-raised);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-1);
+}
+
+.screen-privacy {
+  margin: 0;
 }

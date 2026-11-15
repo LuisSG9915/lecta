@@ -32,7 +32,10 @@ type HerbarioPanelProps = {
   all: SavedWord[];
   /** true cuando ya cargó y no hay ninguna palabra guardada. */
   wordsEmpty: boolean;
-  books: Pick<StoredBook, "hash" | "name" | "title" | "author" | "language">[];
+  books: Pick<
+    StoredBook,
+    "hash" | "name" | "title" | "author" | "language" | "mediaKind"
+  >[];
   /** Palabras ya consolidadas candidatas al chequeo de 30 días. */
   retentionCheckCandidates: SavedWord[];
   retentionHorizon: RetentionHorizon;
@@ -80,10 +83,12 @@ export function HerbarioPanel({
     filtered,
     flatWords,
     groupEntries,
+    hasScreenWorks,
     languageFilter,
     lifecycle,
     openWords,
     order,
+    originFilter,
     query,
     setBookFilter,
     setCollapsed,
@@ -92,6 +97,7 @@ export function HerbarioPanel({
     setLanguageFilter,
     setListLimit,
     setOrder,
+    setOriginFilter,
     setQuery,
     shownWords,
     toggle,
@@ -289,6 +295,37 @@ export function HerbarioPanel({
                         </option>
                       ))}
                     </select>
+                  </div>
+                ) : null}
+
+                {hasScreenWorks ? (
+                  <div
+                    className="nb-filters"
+                    role="group"
+                    aria-label="Origen de las palabras"
+                  >
+                    {(
+                      [
+                        ["all", "Todos"],
+                        ["books", "Libros"],
+                        ["series", "Series"],
+                        ["movies", "Películas"],
+                      ] as const
+                    ).map(([id, label]) => (
+                      <button
+                        key={id}
+                        type="button"
+                        className="theme-option"
+                        data-active={originFilter === id || undefined}
+                        aria-pressed={originFilter === id}
+                        onClick={() => {
+                          setOriginFilter(id);
+                          setListLimit(GROUP_PAGE);
+                        }}
+                      >
+                        {label}
+                      </button>
+                    ))}
                   </div>
                 ) : null}
 

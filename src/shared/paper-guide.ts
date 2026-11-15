@@ -65,7 +65,10 @@ const CHAPTER_KINDS: ReadonlySet<string> = new Set([
   "uncertain",
 ]);
 
-const asFormList = (
+// Lista canónica de formas para las guías «solo palabras»: filtra
+// tokens no-palabra y stopwords, deduplica y ordena A–Z. La reusa
+// screen-guide.ts para sus propios sanitize.
+export const asFormList = (
   value: unknown,
   language: string,
   limit = PAPER_GUIDE_MAX_FORMS_PER_CHAPTER,

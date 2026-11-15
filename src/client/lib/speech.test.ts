@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { isSpeechAvailable, speakWord } from "./speech";
+import { isSpeechAvailable, speakWord, stopSpeaking } from "./speech";
 
 describe("speech", () => {
   let speakMock: ReturnType<typeof vi.fn>;
@@ -129,5 +129,34 @@ describe("speech", () => {
     expect(utterance.lang).toBe("es-MX");
 
     kittenTtsEngine.setReadyForTesting(false);
+  });
+
+  it("stopSpeaking cancela la síntesis del sistema y el motor KittenTTS", async () => {
+    const { kittenTtsEngine } = await import("./kittenTtsEngine");
+    const engineStop = vi
+      .spyOn(kittenTtsEngine, "stop")
+      .mockImplementation(() => undefined);
+
+    stopSpeaking();
+
+    expect(cancelMock).toHaveBeenCalled();
+    expect(engineStop).toHaveBeenCalled();
+    engineStop.mockRestore();
+  });
+
+  it("un «Detener» durante la espera aborta antes de hablar", async () => {
+    const pending = speakWord("manzana", "es");
+    stopSpeaking();
+    await pending;
+
+    // La marca de generación cortó el camino: ni síntesis ni voz.
+    expect(speakMock).not.toHaveBeenCalled();
+  });
+
+  it("una pronunciación pedida después de «Detener» sí suena", async () => {
+    stopSpeaking();
+    await speakWord("manzana", "es");
+
+    expect(speakMock).toHaveBeenCalledTimes(1);
   });
 });

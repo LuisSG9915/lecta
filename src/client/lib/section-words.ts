@@ -2,7 +2,7 @@ import type { LexiconEntry } from "./lexicon";
 import type { MarkLevel } from "./word-level";
 import type { PresentedReason } from "./idb";
 import { predictSection } from "./knowledge";
-import { isWordToken } from "../../shared/word-form";
+import { capitalOnlyForms, isWordToken } from "../../shared/word-form";
 import { isStopword } from "../../shared/stopwords";
 import { preparationAnswerKey, type PreparationRow } from "./preparation";
 import {
@@ -15,26 +15,10 @@ import {
 // Formas que en la sección aparecen SIEMPRE con inicial mayúscula y
 // nunca en minúscula: suelen ser nombres propios o extranjerismos.
 // predictSection las trata como cualquier otra, pero no gastan el
-// lote automático de definiciones con IA. `surfaceForms` son las
-// formas únicas tal como salieron del segmentador (con su caja
-// original); el resultado va en minúsculas.
-export function capitalOnlyForms(surfaceForms: string[]): Set<string> {
-  const capitalized = new Set<string>();
-  const lowercased = new Set<string>();
-  for (const surface of surfaceForms) {
-    const first = surface.charAt(0);
-    if (!first) continue;
-    const lower = surface.toLowerCase();
-    // Si el primer carácter no cambia al bajar a minúsculas, la
-    // aparición cuenta como «en minúsculas» (incluye dígitos y
-    // caracteres sin caja): nunca entra a capitalOnly.
-    if (first.toLowerCase() === first) lowercased.add(lower);
-    else capitalized.add(lower);
-  }
-  const result = new Set<string>();
-  for (const form of capitalized) if (!lowercased.has(form)) result.add(form);
-  return result;
-}
+// lote automático de definiciones con IA. La regla vive en
+// shared/word-form (la reutiliza la guía de pantalla); se reexporta
+// con su nombre histórico.
+export { capitalOnlyForms };
 
 // Primera oración del texto que contiene la forma como palabra
 // completa (sin distinguir mayúsculas). Sirve de contexto para la

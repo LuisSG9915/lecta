@@ -7,6 +7,7 @@ import {
   matchesQuery,
   searchHaystack,
   stateOf,
+  wordOrigin,
   wordStage,
   type WordLifecycle,
 } from "./notebook-model";
@@ -145,5 +146,34 @@ describe("búsqueda", () => {
   it("clozeTextFor abre el hueco sobre la forma", () => {
     expect(clozeTextFor(word({ context: "Una casa vieja." }))).toContain("_");
     expect(clozeTextFor(word())).toBeNull();
+  });
+});
+
+describe("wordOrigin", () => {
+  const kinds = new Map<string, "movie" | "tv">([
+    ["hash-serie", "tv"],
+    ["hash-pelicula", "movie"],
+  ]);
+
+  it("deduce series y películas del mediaKind del libro local", () => {
+    expect(wordOrigin(word({ bookHash: "hash-serie" }), kinds)).toBe("series");
+    expect(wordOrigin(word({ bookHash: "hash-pelicula" }), kinds)).toBe(
+      "movies",
+    );
+  });
+
+  it("libros, libros borrados y palabras sin libro caen en «books»", () => {
+    expect(wordOrigin(word({ bookHash: "hash-libro" }), kinds)).toBe("books");
+    expect(wordOrigin(word({ bookHash: "hash-borrado" }), kinds)).toBe(
+      "books",
+    );
+    expect(wordOrigin(word(), kinds)).toBe("books");
+    expect(wordOrigin(word({ bookHash: undefined }), kinds)).toBe("books");
+  });
+
+  it("sin obras de pantalla instaladas todo es «books»", () => {
+    expect(wordOrigin(word({ bookHash: "hash-serie" }), new Map())).toBe(
+      "books",
+    );
   });
 });

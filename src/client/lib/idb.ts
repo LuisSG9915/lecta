@@ -47,6 +47,10 @@ export interface StoredBook {
   // papel, jamás el lector. Se persiste local porque la restricción
   // vale también offline (el flag remoto no siempre está a mano).
   paperOnly?: boolean;
+  // «Series y películas»: la obra es audiovisual, no un EPUB. La guía
+  // papel se arma por episodios (mergeScreenChapter); viaja igual que
+  // paperOnly — opcional, sin migración de IndexedDB.
+  mediaKind?: "movie" | "tv";
 }
 
 export interface StoredBookRecord extends Omit<StoredBook, "data"> {
@@ -1279,6 +1283,7 @@ export type SaveBookInput =
       genre?: string;
       metaVersion?: number;
       paperOnly?: boolean;
+      mediaKind?: "movie" | "tv";
       name?: string;
       hash?: string;
     };
@@ -1330,6 +1335,7 @@ export async function saveBook(book: SaveBookInput, scope?: DbScope): Promise<St
   const genre = "genre" in book ? book.genre : undefined;
   const metaVersion = "metaVersion" in book ? book.metaVersion : undefined;
   const paperOnly = "paperOnly" in book ? book.paperOnly : undefined;
+  const mediaKind = "mediaKind" in book ? book.mediaKind : undefined;
 
   const stored: StoredBookRecord = {
     hash,
@@ -1343,6 +1349,7 @@ export async function saveBook(book: SaveBookInput, scope?: DbScope): Promise<St
     genre,
     metaVersion,
     paperOnly,
+    mediaKind,
     data: buffer,
   };
 
@@ -1624,6 +1631,7 @@ export function isBookScopedSessionKey(bookHash: string, key: string): boolean {
     key === `bookHelp:v1:${bookHash}` ||
     key === `paperReading:v1:${bookHash}` ||
     key === `paperGuide:v1:${bookHash}` ||
+    key === `screenPhrases:v1:${bookHash}` ||
     key.startsWith(`preparation:v1:${bookHash}:`) ||
     key.startsWith(`chapAn:${bookHash}:`) ||
     key.startsWith(`${CHAPTER_FOLLOW_PREFIX}${encodeURIComponent(bookHash)}:`) ||

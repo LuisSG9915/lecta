@@ -1,21 +1,21 @@
 {
   "tool": "audit-investigacion",
   "version": 1,
-  "generatedAt": "2026-11-14T20:35:40.722Z",
+  "generatedAt": "2026-11-15T19:48:18.381Z",
   "root": "/Users/luis/Desarrollos Devin/lecta",
-  "commit": "71efd96878aa96777e208c9333547c85e7a9464a",
+  "commit": "f600cfb8148197a7cb071b070708439471eb297b",
   "doc": "docs/estrategia-aprendizaje-2026-10-24.md",
   "registry": "docs/auditoria/claims.json",
   "online": false,
   "summary": {
     "claims": 14,
     "pass": 1,
-    "fail": 0,
-    "unverified": 13,
+    "fail": 1,
+    "unverified": 12,
     "skipped": 0,
     "refutedExpected": 0,
-    "codePass": 14,
-    "codeFail": 0,
+    "codePass": 13,
+    "codeFail": 1,
     "referencePass": 0,
     "referenceUnverified": 32,
     "referenceFail": 0,
@@ -88,7 +88,7 @@
               },
               {
                 "file": "src/client/components/Shelf.tsx",
-                "line": 470,
+                "line": 478,
                 "text": "const inputsFor = createCoverageInputsLoader(scope);"
               }
             ]
@@ -187,10 +187,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/lib/catalog.ts:357 coincide con /COVERAGE_FLUID_MIN/",
+          "detail": "src/client/lib/catalog.ts:369 coincide con /COVERAGE_FLUID_MIN/",
           "observed": {
             "file": "src/client/lib/catalog.ts",
-            "line": 357,
+            "line": 369,
             "text": "if (bookDifficultyOrLevel >= COVERAGE_FLUID_MIN) {"
           }
         },
@@ -245,10 +245,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/lib/section-words.ts:201 coincide con /PREPARATION_ROWS_CAP = 40/",
+          "detail": "src/client/lib/section-words.ts:185 coincide con /PREPARATION_ROWS_CAP = 40/",
           "observed": {
             "file": "src/client/lib/section-words.ts",
-            "line": 201,
+            "line": 185,
             "text": "export const PREPARATION_ROWS_CAP = 40;"
           }
         },
@@ -353,10 +353,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/lib/section-words.ts:112 coincide con /4\\.0 - opts\\.zipf/",
+          "detail": "src/client/lib/section-words.ts:96 coincide con /4\\.0 - opts\\.zipf/",
           "observed": {
             "file": "src/client/lib/section-words.ts",
-            "line": 112,
+            "line": 96,
             "text": "? Number((4.0 - opts.zipf).toFixed(2))"
           }
         },
@@ -618,7 +618,7 @@
       "title": "La exposición pasiva acota a 8 lemas por paso y respeta lápidas",
       "statement": "La vía viva registra hasta 8 lemas no consultados por paso de página, exige lectura por debajo de 450 ppm, no revive lápidas y mantiene «familiar» a las 3 exposiciones dentro de la sesión.",
       "section": "H5",
-      "status": "UNVERIFIED",
+      "status": "FAIL",
       "auditVerdict": {
         "status": "SOSTENIDA",
         "date": "2026-10-26",
@@ -628,7 +628,7 @@
           "src/client/lib/idb.ts:2093-2102"
         ]
       },
-      "codeStatus": "PASS",
+      "codeStatus": "FAIL",
       "refStatus": "UNVERIFIED",
       "checks": [
         {
@@ -661,12 +661,16 @@
         },
         {
           "kind": "code-anchor",
-          "status": "PASS",
-          "detail": "src/client/lib/idb.ts:2147 coincide con /if \\(!existing \\|\\| existing\\.deleted\\) return null/",
+          "status": "FAIL",
+          "detail": "src/client/lib/idb.ts:2146-2148 no contiene /if \\(!existing \\|\\| existing\\.deleted\\) return null/",
           "observed": {
             "file": "src/client/lib/idb.ts",
-            "line": 2147,
-            "text": "if (!existing || existing.deleted) return null;"
+            "asked": 2147,
+            "excerpt": [
+              "2146: export async function recordPassiveExposure(",
+              "2147:   language: string,",
+              "2148:   lemma: string,"
+            ]
           }
         },
         {
@@ -1719,5 +1723,5 @@
       }
     }
   ],
-  "verdict": "PASS_WITH_UNVERIFIED"
+  "verdict": "FAIL"
 }

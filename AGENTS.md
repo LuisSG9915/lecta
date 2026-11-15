@@ -934,3 +934,35 @@ decisiones de producto las tomó Luis; esto documenta las invariantes técnicas.
   `aria-pressed`; una mezcla manual muestra «Personalizado». Al servidor
   (`PUT /api/kindle/prefs`) viajan las prefs resueltas, nunca el id.
 
+
+## Catálogo Gutenberg y zona «Series y películas»
+
+- **Gutenberg**: tabla `gutenberg_books` (migración 029, índice
+  `(language, downloads DESC)`). Rutas del worker en `src/worker/catalog.ts`:
+  `GET /api/catalog/search` (q ≤80, caché de isolate) y el EPUB `pg-<id>`
+  bajo demanda (sesión → índice → cuota 20/h → fetch a gutenberg.org con UA
+  propio, máx 25 MB, valida `PK` → R2 `catalog/pg-<id>.epub`). Importador:
+  `node scripts/gutenberg-index.mjs --build` (volcado RDF oficial) y
+  `--load` (upsert por lotes, solo `lecta_dev`). La búsqueda del cliente
+  vive en `src/client/lib/gutenberg.ts` y `GutenbergSearch.tsx` es chunk
+  lazy bajo el riel curado de «Libros gratuitos».
+- **Pantalla**: rutas `/api/screen/*` en `src/worker/screen.ts` (OMDb +
+  SubDL; llaves `OMDB_API_KEY`/`SUBDL_API_KEY` en `.dev.vars`, nunca en el
+  repo). Guías en R2 `screen-guides/v1/<type>-<imdbId>[-sNN eNN]-<lang>.json`.
+  Sonda real: `node scripts/screen-probe.mjs --env-file=.env` (imprime solo
+  estados HTTP y nombres de campo, llaves redactadas).
+- **Regla «solo palabras»**: de los subtítulos jamás se guarda ni devuelve
+  diálogo, citas, marcas de tiempo ni orden narrativo. La guía
+  (`src/shared/screen-guide.ts`) solo lleva formas normalizadas,
+  `capitalOnly` y claves del banco `CORE_FOREIGN_IDIOMS` (compartido en
+  `src/shared/foreign-idioms.ts`). El cliente las funde en
+  `paperGuide:v1:<screenWorkHash>` y las frases por capítulo en
+  `screenPhrases:v1:<hash>`; ambas claves mueren con `deleteStoredBook`.
+- **Obras de pantalla**: `StoredBook`/`ShelfItem` llevan `mediaKind:
+  "movie" | "tv"`, `paperOnly` y Blob vacío (sin EPUB ni sync). Viven fuera
+  de la estantería (`shelfBooks` las excluye), en «Tus títulos» de la
+  pestaña «Series y películas» de Explora y en el filtro «Origen» del
+  Cuaderno (`wordOrigin` en `notebook-model.ts`).
+- **Búsqueda Gutenberg lenta**: el `LIKE '%…%'` hace FULL SCAN en
+  CockroachDB (p50 ~926 ms medido con 60k filas sintéticas). Si crece,
+  evaluar columna `search_tokens` con índice antes de tocar el plan.
