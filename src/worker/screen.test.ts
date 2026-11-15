@@ -476,6 +476,97 @@ describe("GET /api/screen/poster", () => {
       (await get(env().env, "/api/screen/poster?imdbId=nope")).status,
     ).toBe(400);
   });
+
+  it("un póster ya en R2 se sirve sin tocar OMDb ni Amazon", async () => {
+    const app = await freshScreen();
+    const { env: e } = env({
+      "screen/posters/tt05555555.jpg": "bytes-del-poster",
+    });
+    // Cualquier fetch es un fallo: el acierto en R2 no sale del worker.
+    fetchHandler = async () => {
+      throw new Error("fetch inesperado con póster en R2");
+    };
+    const res = await get(e, "/api/screen/poster?imdbId=tt05555555", app);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("cache-control")).toBe(
+      "public, max-age=31536000, immutable",
+    );
+    expect(await res.text()).toBe("bytes-del-poster");
+  });
+
+  it("la URL del póster vista en la búsqueda ahorra la llamada ?i=", async () => {
+    const app = await freshScreen();
+    const { env: e } = env();
+    const omdbCalls: string[] = [];
+    fetchHandler = async (url) => {
+      if (url.includes("omdbapi.com")) {
+        omdbCalls.push(url);
+        if (url.includes("s=")) {
+          return jsonRes({
+            Response: "true",
+            Search: [
+              {
+                Title: "Matrix",
+                Year: "1999",
+                imdbID: "tt0133093",
+                Type: "movie",
+                Poster: "https://m.media-amazon.com/images/M/matrix.jpg",
+              },
+            ],
+          });
+        }
+        // Un ?i= aquí significaría que el póster no reusó la búsqueda.
+        throw new Error(`detalle OMDb inesperado: ${url}`);
+      }
+      if (url.startsWith("https://m.media-amazon.com/")) {
+        return new Response(new Uint8Array([9, 9]), {
+          headers: { "content-type": "image/jpeg" },
+        });
+      }
+      throw new Error(`fetch inesperado: ${url}`);
+    };
+
+    const search = await get(e, "/api/screen/search?q=matrix", app);
+    expect(search.status).toBe(200);
+    const poster = await get(
+      e,
+      "/api/screen/poster?imdbId=tt0133093",
+      app,
+    );
+    expect(poster.status).toBe(200);
+    // Una sola llamada a OMDb en total: la búsqueda. El póster saltó
+    // directo a Amazon con la URL que la búsqueda ya había traído.
+    expect(omdbCalls).toHaveLength(1);
+    expect(omdbCalls[0]).toContain("s=matrix");
+  });
+
+  it("guarda el póster en R2 y la segunda petición no vuelve a salir", async () => {
+    const app = await freshScreen();
+    const { env: e, fake } = env();
+    let amazonCalls = 0;
+    fetchHandler = async (url) => {
+      if (url.includes("omdbapi.com")) {
+        return posterDetail("https://m.media-amazon.com/images/M/r2.jpg");
+      }
+      if (url.startsWith("https://m.media-amazon.com/")) {
+        amazonCalls += 1;
+        return new Response(new Uint8Array([7]), {
+          headers: { "content-type": "image/jpeg" },
+        });
+      }
+      throw new Error(`fetch inesperado: ${url}`);
+    };
+
+    const first = await get(e, "/api/screen/poster?imdbId=tt07777777", app);
+    expect(first.status).toBe(200);
+    expect(fake.puts.map((p) => p.key)).toContain(
+      "screen/posters/tt07777777.jpg",
+    );
+
+    const second = await get(e, "/api/screen/poster?imdbId=tt07777777", app);
+    expect(second.status).toBe(200);
+    expect(amazonCalls).toBe(1);
+  });
 });
 
 // ---------- POST /api/screen/guide ----------

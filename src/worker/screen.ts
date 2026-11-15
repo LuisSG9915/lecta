@@ -65,6 +65,13 @@ const omdbSearchCache = createTtlCache<string>({
   maxEntries: 100,
   ttlMs: 10 * 60_000,
 });
+// URL del póster vista en los resultados de búsqueda o en el detalle:
+// el póster de un título recién listado no debe costar una llamada
+// ?i= extra (cuota OMDb). null = el título no tiene póster.
+const posterUrlCache = createTtlCache<string | null>({
+  maxEntries: 300,
+  ttlMs: 60 * 60_000,
+});
 const guideMissCache = createTtlCache<true>({
   maxEntries: 200,
   ttlMs: 30 * 60_000,
@@ -127,6 +134,20 @@ async function fetchOmdbDetail(
     const data = (await res.json()) as OmdbPayload;
     const detail = data && typeof data === "object" ? data : null;
     omdbDetailCache.set(imdbId, detail);
+    // El detalle también enseña la URL del póster: la ruta de póster
+    // la reusa sin otra llamada a OMDb.
+    if (detail) {
+      const p = detail.Poster;
+      posterUrlCache.set(
+        imdbId,
+        detail.Response === "true" &&
+          typeof p === "string" &&
+          p !== "" &&
+          p !== "N/A"
+          ? p
+          : null,
+      );
+    }
     return detail;
   } catch {
     return null;
@@ -208,17 +229,30 @@ screen.get("/api/screen/search", async (context) => {
         (item.Type === "movie" || item.Type === "series"),
     )
     .slice(0, 10)
-    .map((item) => ({
-      imdbId: item.imdbID!,
-      // OMDb dice «series»; el contrato de Lecta lo llama «tv».
-      type: item.Type === "series" ? ("tv" as const) : ("movie" as const),
-      title: item.Title ?? "",
-      year: item.Year ?? "",
-      hasPoster:
+    .map((item) => {
+      // La búsqueda ya trae la URL del póster sin costo extra: queda
+      // en caché para que /api/screen/poster no gaste una llamada ?i=.
+      // Solo positivos: un «N/A» de búsqueda no impide que el detalle
+      // sí tenga póster.
+      if (
         typeof item.Poster === "string" &&
         item.Poster !== "" &&
-        item.Poster !== "N/A",
-    }));
+        item.Poster !== "N/A"
+      ) {
+        posterUrlCache.set(item.imdbID!, item.Poster);
+      }
+      return {
+        imdbId: item.imdbID!,
+        // OMDb dice «series»; el contrato de Lecta lo llama «tv».
+        type: item.Type === "series" ? ("tv" as const) : ("movie" as const),
+        title: item.Title ?? "",
+        year: item.Year ?? "",
+        hasPoster:
+          typeof item.Poster === "string" &&
+          item.Poster !== "" &&
+          item.Poster !== "N/A",
+      };
+    });
   const body = JSON.stringify({ results });
   omdbSearchCache.set(cacheKey, body);
   return new Response(body, { headers: jsonHeaders });
@@ -270,8 +304,13 @@ screen.get("/api/screen/tv/:imdbId/season/:season", async (context) => {
 // ---------- Póster ----------
 //
 // La CSP solo permite img-src 'self': el cliente pide el póster aquí
-// y el worker lo reenvía. La URL sale del detalle OMDb (nunca del
-// cliente) y solo pasa si es https en uno de los dos hosts conocidos.
+// y el worker lo reenvía. La URL sale de OMDb (nunca del cliente),
+// solo pasa si es https en uno de los dos hosts conocidos, y la
+// imagen queda en R2: un acierto no gasta ni cuota OMDb ni viaje a
+// Amazon. Sin bucket configurado se sirve sin cachear.
+
+const POSTER_MAX_BYTES = 2 * 1024 * 1024;
+const posterKey = (imdbId: string) => `screen/posters/${imdbId}.jpg`;
 
 screen.get("/api/screen/poster", async (context) => {
   const session = await getSession(context);
@@ -282,14 +321,33 @@ screen.get("/api/screen/poster", async (context) => {
   if (!IMDB_ID_RE.test(imdbId)) {
     return context.json({ error: "Identificador inválido." }, 400);
   }
-  const detail = await fetchOmdbDetail(context.env, imdbId);
-  const poster = detail?.Response === "true" ? detail.Poster : undefined;
-  if (typeof poster !== "string" || poster === "" || poster === "N/A") {
-    return notFound(context);
+
+  const bucket = context.env.BOOKS;
+  const key = posterKey(imdbId);
+  if (bucket) {
+    const stored = await bucket.get(key);
+    if (stored) {
+      return new Response(stored.body, {
+        headers: {
+          "content-type":
+            stored.httpMetadata?.contentType ?? "image/jpeg",
+          "cache-control": IMMUTABLE,
+        },
+      });
+    }
   }
+
+  // La URL del póster suele venir ya en la búsqueda: si no, un
+  // detalle ?i= la resuelve y la deja en posterUrlCache.
+  let posterUrl = posterUrlCache.get(imdbId);
+  if (posterUrl === undefined) {
+    await fetchOmdbDetail(context.env, imdbId);
+    posterUrl = posterUrlCache.get(imdbId) ?? null;
+  }
+  if (!posterUrl) return notFound(context);
   let url: URL;
   try {
-    url = new URL(poster);
+    url = new URL(posterUrl);
   } catch {
     return notFound(context);
   }
@@ -305,10 +363,20 @@ screen.get("/api/screen/poster", async (context) => {
     upstream = null;
   }
   if (!upstream?.ok || !upstream.body) return notFound(context);
-  return new Response(upstream.body, {
+  const contentType = upstream.headers.get("content-type") ?? "";
+  if (!contentType.startsWith("image/")) return notFound(context);
+  const bytes = await upstream.arrayBuffer().catch(() => null);
+  if (!bytes || bytes.byteLength === 0 || bytes.byteLength > POSTER_MAX_BYTES) {
+    return notFound(context);
+  }
+  if (bucket) {
+    await bucket
+      .put(key, bytes, { httpMetadata: { contentType } })
+      .catch(() => undefined);
+  }
+  return new Response(bytes, {
     headers: {
-      "content-type":
-        upstream.headers.get("content-type") ?? "image/jpeg",
+      "content-type": contentType,
       "cache-control": IMMUTABLE,
     },
   });
