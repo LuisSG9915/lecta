@@ -89,12 +89,6 @@
       "author": "Emilia Pardo Bazán"
     },
     {
-      "id": "clavo",
-      "gutenbergId": 67248,
-      "title": "El clavo",
-      "author": "Pedro Antonio de Alarcón"
-    },
-    {
       "id": "nino-bola",
       "gutenbergId": 59154,
       "title": "El Niño de la Bola",
@@ -223,18 +217,6 @@
       "author": "José Hernández"
     },
     {
-      "id": "facundo",
-      "gutenbergId": 33267,
-      "title": "Facundo",
-      "author": "Domingo Faustino Sarmiento"
-    },
-    {
-      "id": "navidad-montanas",
-      "gutenbergId": 10825,
-      "title": "La Navidad en las montañas",
-      "author": "Ignacio Manuel Altamirano"
-    },
-    {
       "id": "cecilia-valdes",
       "gutenbergId": 28281,
       "title": "Cecilia Valdés",
@@ -336,12 +318,6 @@
       "gutenbergId": 52262,
       "title": "Cuentos de la Alhambra",
       "author": "Washington Irving"
-    },
-    {
-      "id": "novelas-teatro-cervantes",
-      "gutenbergId": 15115,
-      "title": "Novelas y teatro",
-      "author": "Miguel de Cervantes"
     },
     {
       "id": "guerra-granada",

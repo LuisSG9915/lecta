@@ -229,7 +229,6 @@ export const CURATED_MOOD_TAGS: Record<string, string[]> = {
   "si-de-las-ninas": ["Ideal para sesiones de 10 min", "Comedia"],
   buscon: ["Picaresca", "Vocabulario Elevado"],
   ariel: ["Vocabulario Elevado", "Ensayo Filosófico"],
-  "navidad-montanas": ["Ideal para sesiones de 10 min", "Costumbrismo"],
   "cuentos-mi-tiempo": ["Ideal para sesiones de 10 min", "Cuentos"],
   "cuentos-ingenuos": ["Ideal para sesiones de 10 min", "Narrativa Breve"],
   "alice-wonderland": ["Fantasía", "Clásico Universal"],
