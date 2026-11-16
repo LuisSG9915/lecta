@@ -98,7 +98,7 @@ const req = (path: string) => new Request(`https://t${path}`);
 const get = (e: unknown, path: string, app = screenDiscover) =>
   app.fetch(req(path), e as never);
 
-// Filas con la forma real de Trakt (sonda 2026-11-16): trending
+// Filas con la forma real de Trakt (sonda 2026-11-15): trending
 // envuelve en movie/show; popular y related devuelven el objeto
 // directo. year viaja como número.
 const traktMovie = (imdb: string, title: string, year = 2020) => ({

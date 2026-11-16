@@ -61,7 +61,7 @@ const railsCache = createTtlCache<DiscoverPayload>({
 
 // Una lista de Trakt → items de Lecta. Parser tolerante: los
 // endpoints de trending envuelven en { movie|show: {...} } y los de
-// popular/related devuelven el objeto directo (sonda 2026-11-16).
+// popular/related devuelven el objeto directo (sonda 2026-11-15).
 // Solo sobreviven imdbId válido + título + año; cualquier fallo de
 // red/forma devuelve null y el caller decide el respaldo.
 async function traktList(

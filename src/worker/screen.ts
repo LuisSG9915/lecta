@@ -111,7 +111,7 @@ type OmdbPayload = {
 
 const IMDB_ID_RE = /^tt\d{7,9}$/;
 // OMDb responde "True"/"False" con mayúscula (la sonda real lo
-// confirmó el 2026-11-16); las pruebas de antes usaban "true" y por
+// confirmó el 2026-11-15); las pruebas de antes usaban "true" y por
 // eso el detalle de serie siempre daba 404 en producción.
 const omdbOk = (data: OmdbPayload | null | undefined) =>
   typeof data?.Response === "string" &&
