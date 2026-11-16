@@ -953,6 +953,14 @@ decisiones de producto las tomó Luis; esto documenta las invariantes técnicas.
   gutenberg.org con `CATALOG_PG_FETCH=1` (apagado: un miss → 404). Los EPUB
   del catálogo nunca suben a la sync de pago (`selectBook(..., { catalog: true })`).
   `gutenberg-index.mjs --load` exige `--gate-ok` (compuerta §4 del documento).
+- **EPUB sin la marca Project Gutenberg** (R4/M4c): el worker sirve los EPUB
+  del catálogo desde `catalog/v2/<id>.epub` y limpia los `pg-` al bajarlos
+  (`debrandGutenbergEpub`, `src/shared/gutenberg-debrand.ts`). Para el
+  curado: seed → `node scripts/catalog-debrand.mjs` (escribe
+  `catalog-seed/v2/` y actualiza `index.json`; sale 1 si queda la marca,
+  lista aparte las menciones literarias de «Gutenberg») → subir `v2/*.epub`
+  a `catalog/v2/` y luego `index.json`, **antes** de desplegar un worker que
+  lea `catalog/v2/`. El cliente pide `/api/catalog/<id>/epub?v=2`.
   Las llaves `OMDB_API_KEY`/`SUBDL_API_KEY`/`TRACKT_API_KEY` siguen como
   secrets hasta que Luis decida borrarlas.
 

@@ -47,6 +47,7 @@ las imágenes de la landing con el gato real de la app.
 | Script | Qué hace |
 | --- | --- |
 | `catalog-seed.mjs` | CLI: verifica RDF/EPUB de Gutenberg; `--seed` descarga EPUB + portada y genera manifiestos en `catalog-seed/` (gitignored). No sube a R2. |
+| `catalog-debrand.mjs` | CLI: quita la marca Project Gutenberg de los EPUB curados (`catalog-seed/v2/<id>.epub`) con `debrandGutenbergEpub` y actualiza `epubBytes`/`epubSha256` en `index.json`. Sale 1 si queda la marca. No sube a R2. |
 | `catalog-seed-lib.mjs` | Funciones puras: [`parseRdf`], [`rightsCheck`] (`deathYearMax = 1924`), [`buildVocabManifest`], [`buildResolvedManifest`], [`formsWithBases`], [`validateCurationItem`]. Datos en `catalog-curation.json`. |
 | `generate-paper-guide.mts` | Guía de papel desde un EPUB local con `buildPaperBookGuide` (solo índice + formas). |
 

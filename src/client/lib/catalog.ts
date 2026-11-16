@@ -309,7 +309,9 @@ export class CatalogAuthError extends Error {
 export async function downloadCatalogEpub(
   book: Pick<CatalogBook, "id" | "title" | "author">,
 ): Promise<File | null> {
-  const response = await fetch(`/api/catalog/${book.id}/epub`).catch(
+  // ?v=2: el EPUB sin la marca Project Gutenberg. La URL nueva evita que
+  // el navegador reuse la copia vieja (con marca) cacheada como immutable.
+  const response = await fetch(`/api/catalog/${book.id}/epub?v=2`).catch(
     () => null,
   );
   if (response?.status === 401) throw new CatalogAuthError();

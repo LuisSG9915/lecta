@@ -8,6 +8,7 @@ import { createTtlCache } from "./ai";
 import { CATALOG } from "./lexicon";
 import { getSession } from "./session";
 import { consumeRateUnits } from "./rate-limit";
+import { debrandGutenbergEpub } from "../shared/gutenberg-debrand";
 
 // Catálogo público de Lecta: clásicos en dominio público servidos desde
 // el bucket compartido bajo el prefijo `catalog/` (nada que ver con
@@ -49,6 +50,11 @@ const indexCache = createTtlCache<string>({ maxEntries: 1, ttlMs: 5 * 60_000 });
 const INDEX_CACHE_KEY = "catalog-index";
 
 const key = (id: string, suffix: string) => `catalog/${id}.${suffix}`;
+// Los EPUB se sirven sin la marca Project Gutenberg desde catalog/v2/
+// (scripts/catalog-debrand.mjs para el curado, debrandGutenbergEpub al
+// bajar un pg-). Las claves viejas catalog/<id>.epub llevan la marca y
+// ya no se leen. Ver docs/designs/2026-11-15-explora-derechos.md (R4).
+const epubKey = (id: string) => `catalog/v2/${id}.epub`;
 
 catalog.get("/api/catalog", async (context) => {
   const bucket = context.env.BOOKS;
@@ -342,7 +348,14 @@ async function serveGutenbergEpub(
     );
   }
 
-  const epub = await downloadGutenbergEpub(gutenbergId);
+  const raw = await downloadGutenbergEpub(gutenbergId);
+  const epub = raw
+    ? await debrandGutenbergEpub(new Uint8Array(raw), `pg-${gutenbergId}`)
+        .then(({ bytes, residual }) =>
+          residual.some((hit) => hit.where !== "mention") ? null : bytes,
+        )
+        .catch(() => null)
+    : null;
   if (!epub) {
     return context.json(
       { error: "No pudimos traer este libro. Intenta más tarde." },
@@ -350,7 +363,7 @@ async function serveGutenbergEpub(
     );
   }
 
-  const objectKey = `catalog/pg-${gutenbergId}.epub`;
+  const objectKey = epubKey(`pg-${gutenbergId}`);
   await bucket.put(objectKey, epub);
   return new Response(epub, {
     headers: {
@@ -471,7 +484,7 @@ catalog.get("/api/catalog/:id/:kind", async (context) => {
   }
   const file =
     kind === "epub"
-      ? { key: key(id, "epub"), type: "application/epub+zip" }
+      ? { key: epubKey(id), type: "application/epub+zip" }
       : kind === "vocab"
         ? { key: key(id, "vocab.json"), type: "application/json; charset=utf-8" }
         : kind === "cover"

@@ -13,7 +13,9 @@
 // no cumple queda en skipped.json con el motivo — no se publica.
 //
 // La subida a R2 NO es parte de este script: se hace aparte y solo con
-// autorización explícita.
+// autorización explícita. Antes de subir, `node scripts/catalog-debrand.mjs`
+// quita la marca Project Gutenberg (catalog-seed/v2/<id>.epub) y actualiza
+// index.json: el worker sirve los EPUB desde catalog/v2/.
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { createHash } from "node:crypto";

@@ -117,7 +117,7 @@ describe("catalogVocab", () => {
 describe("downloadCatalogEpub", () => {
   it("devuelve un File con nombre de título y autor", async () => {
     fetchStub(async (url) =>
-      url === "/api/catalog/quijote/epub"
+      url === "/api/catalog/quijote/epub?v=2"
         ? // Cuerpo de texto, no Blob: el Blob de jsdom no es el nativo
           // y el Response de Node 22 lo rechaza (`object.stream`).
           new Response("PK epub", { status: 200 })

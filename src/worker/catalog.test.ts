@@ -1,4 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  BlobWriter,
+  TextReader,
+  TextWriter,
+  Uint8ArrayReader,
+  ZipReader,
+  ZipWriter,
+} from "@zip.js/zip.js";
 import { catalog } from "./catalog";
 
 // El índice se cachea en memoria del isolate ~5 min: las pruebas que
@@ -119,13 +127,13 @@ describe("GET /api/catalog", () => {
 
 describe("GET /api/catalog/:id/:kind", () => {
   it("sirve el epub con tipo e inmutabilidad", async () => {
-    const { env: e, fake } = env({ "catalog/quijote.epub": "PKFAKE" });
+    const { env: e, fake } = env({ "catalog/v2/quijote.epub": "PKFAKE" });
     const res = await get(e, "/api/catalog/quijote/epub");
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("application/epub+zip");
     expect(res.headers.get("cache-control")).toContain("immutable");
     expect(await res.text()).toBe("PKFAKE");
-    expect(fake.gets).toEqual(["catalog/quijote.epub"]);
+    expect(fake.gets).toEqual(["catalog/v2/quijote.epub"]);
   });
 
   it("sirve el manifiesto de vocabulario", async () => {
@@ -402,7 +410,35 @@ function fakeR2(initial: Record<string, string | Uint8Array> = {}) {
   };
 }
 
-const EPUB_BYTES = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 1, 2, 3]);
+// EPUB mínimo de verdad, con la cabecera de PG: el worker lo limpia
+// (debrandGutenbergEpub) antes de guardarlo.
+const EPUB_BYTES = await (async () => {
+  const writer = new ZipWriter(new BlobWriter("application/epub+zip"));
+  await writer.add("mimetype", new TextReader("application/epub+zip"), { level: 0 });
+  await writer.add(
+    "OEBPS/content.opf",
+    new TextReader(
+      '<package><metadata><dc:identifier id="id">http://www.gutenberg.org/1342</dc:identifier><dc:title>Pride and Prejudice</dc:title></metadata><manifest><item href="t.xhtml" id="t" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="t"/></spine></package>',
+    ),
+  );
+  await writer.add(
+    "OEBPS/t.xhtml",
+    new TextReader(
+      '<html><head><title>Pride and Prejudice</title></head><body><header id="pg-header"><p>The Project Gutenberg eBook of Pride and Prejudice</p></header><p>It is a truth universally acknowledged.</p></body></html>',
+    ),
+  );
+  return new Uint8Array(await (await writer.close()).arrayBuffer());
+})();
+
+async function storedText(bytes: ArrayBuffer | Uint8Array): Promise<string> {
+  const reader = new ZipReader(new Uint8ArrayReader(new Uint8Array(bytes)));
+  let text = "";
+  for (const entry of await reader.getEntries()) {
+    if (!entry.directory) text += await entry.getData(new TextWriter());
+  }
+  await reader.close();
+  return text;
+}
 
 const okEpubFetch = () =>
   fetchMock.mockImplementation(() =>
@@ -417,7 +453,7 @@ const okEpubFetch = () =>
 describe("GET /api/catalog/pg-<id>/epub bajo demanda", () => {
   it("cacheado en R2 se sirve sin sesión ni fetch", async () => {
     const app = await freshCatalog();
-    const r2 = fakeR2({ "catalog/pg-1342.epub": EPUB_BYTES });
+    const r2 = fakeR2({ "catalog/v2/pg-1342.epub": EPUB_BYTES });
     const res = await get(
       { CATALOG_PG_FETCH: "1", BOOKS: r2.bucket },
       "/api/catalog/pg-1342/epub",
@@ -526,9 +562,11 @@ describe("GET /api/catalog/pg-<id>/epub bajo demanda", () => {
     const first = await get(env, "/api/catalog/pg-1342/epub", app);
     expect(first.status).toBe(200);
     expect(first.headers.get("content-type")).toBe("application/epub+zip");
-    expect(r2.puts).toEqual([
-      { key: "catalog/pg-1342.epub", bytes: EPUB_BYTES.byteLength },
-    ]);
+    expect(r2.puts.map((put) => put.key)).toEqual(["catalog/v2/pg-1342.epub"]);
+    // Se guarda y se sirve sin la marca Project Gutenberg.
+    const served = await storedText(await first.arrayBuffer());
+    expect(served).toContain("It is a truth universally acknowledged.");
+    expect(served).not.toMatch(/project gutenberg|gutenberg\.org/i);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     // La URL es la de epub3.images; el UA identifica al catálogo.
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
