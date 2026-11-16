@@ -54,9 +54,14 @@ import { BOOK_GENRES } from "../../shared/book-genres";
 import { levelProgress } from "../lib/gamification";
 import { isReviewDueWord } from "../lib/fsrs";
 import BookCover from "./BookCover";
-import DiscoverRail from "./DiscoverRail";
-import ExploreShelf from "./ExploreShelf";
 
+// Explora y sus piezas cargan diferidas: están debajo de la
+// estantería y sus chunks (~13 kB gzip) no deben pagarse en el
+// arranque. La precarga en tiempo muerto (abajo) evita que la
+// primera visita a la pestaña parpadee. El contexto vive en
+// explore-context.ts para que CommunityShelf no arrastre esto.
+const ExploreShelf = lazy(() => import("./ExploreShelf"));
+const DiscoverRail = lazy(() => import("./DiscoverRail"));
 // «Más clásicos»: la búsqueda en el índice propio de Gutenberg carga
 // diferida — solo la pestaña «Libros gratuitos» la usa.
 const GutenbergSearch = lazy(() => import("./GutenbergSearch"));
@@ -635,6 +640,37 @@ export default function Shelf({
       cancelled = true;
     };
   }, [current, positions, companion.state?.stats?.lastDayKey]);
+
+  // Precarga en tiempo muerto de los chunks de Explora: cuando el
+  // lector baje hasta la pestaña (o la abra vacía) ya están en caché.
+  // Mismo patrón que CompanionProvider; sin setState.
+  useEffect(() => {
+    const prefetch = () => {
+      void import("./ExploreShelf");
+      void import("./DiscoverRail");
+    };
+    const idle = (
+      globalThis as typeof globalThis & {
+        requestIdleCallback?: (
+          cb: () => void,
+          options?: { timeout: number },
+        ) => number;
+        cancelIdleCallback?: (handle: number) => void;
+      }
+    ).requestIdleCallback;
+    if (typeof idle === "function") {
+      const handle = idle(prefetch, { timeout: 3000 });
+      return () => {
+        (
+          globalThis as typeof globalThis & {
+            cancelIdleCallback?: (h: number) => void;
+          }
+        ).cancelIdleCallback?.(handle);
+      };
+    }
+    const timer = setTimeout(prefetch, 2500);
+    return () => clearTimeout(timer);
+  }, []);
 
   const [heroStrategy, setHeroStrategy] = useState<StrategyPreset | null>(null);
   const [catPetQuote, setCatPetQuote] = useState<string | null>(null);
@@ -1852,52 +1888,65 @@ export default function Shelf({
       {/* «Explora»: Comunidad + Libros gratuitos en pestañas, bajo la
           retícula y también con la estantería vacía — es la respuesta a
           «no sé qué leer». Cada pestaña mantiene su propia búsqueda;
-          el catálogo se oculta solo si no hay índice. */}
+          el catálogo se oculta solo si no hay índice. El contenido
+          carga diferido: el chunk no se paga en el arranque. */}
       {communitySection || onGetCatalogBook || screenSection ? (
-        <ExploreShelf
-          community={communitySection}
-          screen={screenSection}
-          onOpenAccount={onOpenAccount}
-          catalog={
-            onGetCatalogBook ? (
-              <div className="free-books">
-                <label
-                  className="gutenberg-search-label"
-                  htmlFor="free-books-search"
-                >
-                  Busca por título o autor
-                </label>
-                <input
-                  id="free-books-search"
-                  type="search"
-                  className="shelf-community-search"
-                  value={freeQuery}
-                  onChange={(event) => setFreeQuery(event.target.value)}
-                  placeholder="Título o autor"
-                />
-                <DiscoverRail
-                  library={library}
-                  onOpen={onOpen}
-                  onGet={onGetCatalogBook}
-                  vocabVersion={vocabVersion}
-                  query={freeQuery}
-                />
-                {/* Debajo del riel curado: los clásicos de Gutenberg
-                    (libros pg- bajo demanda) responden a la misma
-                    búsqueda. */}
-                <Suspense fallback={null}>
-                  <GutenbergSearch
-                    onGet={onGetCatalogBook}
-                    onOpenAccount={onOpenAccount}
-                    query={freeQuery}
-                    library={library}
-                    onOpen={onOpen}
-                  />
-                </Suspense>
-              </div>
-            ) : undefined
+        <Suspense
+          fallback={
+            <section className="shelf-explore" aria-busy="true">
+              <h2 className="eyebrow shelf-eyebrow">Explora</h2>
+            </section>
           }
-        />
+        >
+          <ExploreShelf
+            community={communitySection}
+            screen={screenSection}
+            onOpenAccount={onOpenAccount}
+            catalog={
+              onGetCatalogBook ? (
+                <div className="free-books">
+                  <label
+                    className="gutenberg-search-label"
+                    htmlFor="free-books-search"
+                  >
+                    Busca por título o autor
+                  </label>
+                  <input
+                    id="free-books-search"
+                    type="search"
+                    className="shelf-community-search"
+                    value={freeQuery}
+                    onChange={(event) => setFreeQuery(event.target.value)}
+                    placeholder="Título o autor"
+                  />
+                  {/* El riel curado también es lazy: sus ~11 kB no
+                      pesan en el arranque. */}
+                  <Suspense fallback={null}>
+                    <DiscoverRail
+                      library={library}
+                      onOpen={onOpen}
+                      onGet={onGetCatalogBook}
+                      vocabVersion={vocabVersion}
+                      query={freeQuery}
+                    />
+                  </Suspense>
+                  {/* Debajo del riel curado: los clásicos de Gutenberg
+                      (libros pg- bajo demanda) responden a la misma
+                      búsqueda. */}
+                  <Suspense fallback={null}>
+                    <GutenbergSearch
+                      onGet={onGetCatalogBook}
+                      onOpenAccount={onOpenAccount}
+                      query={freeQuery}
+                      library={library}
+                      onOpen={onOpen}
+                    />
+                  </Suspense>
+                </div>
+              ) : undefined
+            }
+          />
+        </Suspense>
       ) : null}
     </div>
   );

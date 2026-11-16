@@ -27,7 +27,7 @@ import {
   sanitizePaperBookGuide,
   type PaperBookGuide,
 } from "../../shared/paper-guide";
-import { ExploreCommunityEmptyContext } from "./ExploreShelf";
+import { ExploreCommunityEmptyContext } from "./explore-context";
 import Sheet from "./Sheet";
 import type { ShelfItem } from "./Shelf";
 import {

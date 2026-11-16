@@ -123,6 +123,39 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
+describe("Shelf - Explora diferido", () => {
+  // Debe ser la primera prueba que monta Shelf del archivo: una vez
+  // que React.lazy resuelve el chunk, el respaldo ya no se puede ver.
+  it("reserva el encabezado «Explora» mientras llega el chunk", async () => {
+    // Un solo tick tras el render: el import() de ExploreShelf sigue
+    // pendiente y el Suspense debe mostrar el respaldo con el título.
+    await act(async () => {
+      root.render(
+        h(Shelf, {
+          library: mockLibrary,
+          checking: false,
+          onOpen: vi.fn(),
+          onRemove: vi.fn(),
+          onAdd: vi.fn(),
+          onLibraryChange: vi.fn(),
+          onGetCatalogBook: vi.fn(),
+          onDownloadBook: vi.fn(),
+        }),
+      );
+      await Promise.resolve();
+    });
+    const fallback = host.querySelector(".shelf-explore[aria-busy='true']");
+    expect(fallback?.textContent).toContain("Explora");
+    expect(host.querySelector(".shelf-explore-tabs")).toBeNull();
+
+    // Al resolver el chunk aparecen las pestañas reales.
+    await act(async () => {
+      for (let i = 0; i < 10; i++) await Promise.resolve();
+    });
+    expect(host.querySelector(".shelf-explore-tabs")).toBeTruthy();
+  });
+});
+
 describe("Shelf - consejo del día", () => {
   it("recalcula el consejo cuando la base de la cuenta queda activa", async () => {
     const tipText = "Hoy volviste atrás 12 veces en 20 min.";

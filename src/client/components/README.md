@@ -44,7 +44,7 @@ logic lives in [../lib](../lib/README.md) and the stateful reader and notebook l
   [AdminInsights.tsx:AdminInsights] for the owner. Re-exports `PENDING_DELETE_KEY`.
 - [PaperReading.tsx:PaperReading] / [PaperChapterSheet.tsx:PaperChapterSheet]
   «Leo este libro en papel»: a chapter index and a per-chapter word sheet.
-- [ExploreShelf.tsx:ExploreShelf] (with [ExploreShelf.tsx:ExploreCommunityEmptyContext]),
+- [ExploreShelf.tsx:ExploreShelf] (with [explore-context.ts:ExploreCommunityEmptyContext]),
   [CommunityShelf.tsx:CommunityShelf] and [DiscoverRail.tsx:DiscoverRail] (with
   [DiscoverRail.tsx:DISCOVER_MOOD_FILTERS] and [DiscoverRail.tsx:DISCOVER_PACE_FILTERS]):
   community guides and the public catalog.

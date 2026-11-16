@@ -44,7 +44,9 @@ Inspirados en las observaciones de Andrej Karpathy sobre errores típicos de LLM
   cierre de cada fase de `docs/plan-8-fases.md`. `pnpm lint` tiene un tope duro de **0
   warnings** (bajó de 28 con la auditoría UX del 2026-10-24, que dejó de bailar el análisis
   del React Compiler y limpió los 20 que quedaban): un warning nuevo rompe el gate.
-  `check:size` va en **204.8 kB** de 215 kB gzip (avisa al 95%); en peso quedan ~10 kB de margen.
+  `check:size` va en **207.01 kB** de 215 kB gzip (avisa al 90 %, es decir a partir de
+  193.5 kB — el aviso sale siempre y hay que fijarse en el margen que imprime, no en su
+  presencia); en peso quedan ~8 kB de margen.
 - La suite (`vitest.config.ts`) corre con **4 workers** y timeouts de 15 s. Son 183 archivos con
   jsdom en un portátil de 8 GB que además corre IDE: con un worker por núcleo, un pico de memoria
   mata workers y tumba archivos que no tienen que ver con el cambio (visto el 2026-10-22: 6

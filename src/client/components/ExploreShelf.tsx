@@ -1,5 +1,4 @@
 import {
-  createContext,
   useCallback,
   useEffect,
   useRef,
@@ -7,6 +6,7 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from "react";
+import { ExploreCommunityEmptyContext } from "./explore-context";
 
 // «Explora»: una sola sección para lo que no está en tu estantería —
 // las guías que otros lectores compartieron (Comunidad), el catálogo
@@ -18,10 +18,6 @@ import {
 // cada sección no se descarga hasta que se visita.
 
 type TabId = "community" | "catalog" | "screen";
-
-export const ExploreCommunityEmptyContext = createContext<(() => void) | null>(
-  null,
-);
 
 type Props = {
   /** Pestaña Comunidad; null sin sesión → el panel invita a entrar. */
