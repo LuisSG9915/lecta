@@ -34,12 +34,6 @@
       "author": "Benito Pérez Galdós"
     },
     {
-      "id": "dona-perfecta",
-      "gutenbergId": 15725,
-      "title": "Doña Perfecta",
-      "author": "Benito Pérez Galdós"
-    },
-    {
       "id": "misericordia",
       "gutenbergId": 21831,
       "title": "Misericordia",
@@ -149,12 +143,6 @@
       "author": "José Zorrilla"
     },
     {
-      "id": "obras-becquer",
-      "gutenbergId": 53552,
-      "title": "Obras escogidas",
-      "author": "Gustavo Adolfo Bécquer"
-    },
-    {
       "id": "fuente-ovejuna",
       "gutenbergId": 60198,
       "title": "Fuente Ovejuna",
@@ -183,12 +171,6 @@
       "gutenbergId": 50027,
       "title": "El sí de las niñas",
       "author": "Leandro Fernández de Moratín"
-    },
-    {
-      "id": "verdad-sospechosa",
-      "gutenbergId": 57590,
-      "title": "La verdad sospechosa",
-      "author": "Juan Ruiz de Alarcón"
     },
     {
       "id": "paredes-oyen",
@@ -227,12 +209,6 @@
       "author": "Sor Juana Inés de la Cruz"
     },
     { "id": "poemas-dario", "gutenbergId": 25807, "title": "Poemas", "author": "Rubén Darío" },
-    {
-      "id": "amistad-funesta",
-      "gutenbergId": 18166,
-      "title": "Amistad funesta",
-      "author": "José Martí"
-    },
     { "id": "ariel", "gutenbergId": 22899, "title": "Ariel", "author": "José Enrique Rodó" },
     {
       "id": "martin-fierro",
@@ -263,12 +239,6 @@
       "gutenbergId": 28281,
       "title": "Cecilia Valdés",
       "author": "Cirilo Villaverde"
-    },
-    {
-      "id": "sab",
-      "gutenbergId": 75126,
-      "title": "Sab",
-      "author": "Gertrudis Gómez de Avellaneda"
     },
     {
       "id": "tradiciones-peruanas",
@@ -453,28 +423,12 @@
       "synopsis": "Una niña cae por una madriguera y vive aventuras con la Reina de Corazones, el Gato de Cheshire y la liebre tardía."
     },
     {
-      "id": "pride-prejudice",
-      "gutenbergId": 1342,
-      "title": "Pride and Prejudice",
-      "author": "Jane Austen",
-      "language": "en",
-      "synopsis": "Elizabeth Bennet y el señor Darcy se observan con prejuicio y orgullo en una Inglaterra de protestas matrimoniales y herencias."
-    },
-    {
       "id": "picture-dorian-gray",
       "gutenbergId": 174,
       "title": "The Picture of Dorian Gray",
       "author": "Oscar Wilde",
       "language": "en",
       "synopsis": "Dorian Gray desea que el retrato envejezca por él y su deseo lo arrastra a una vida de placer mientras la pintura revela sus pecados."
-    },
-    {
-      "id": "happy-prince-tales",
-      "gutenbergId": 902,
-      "title": "The Happy Prince, and Other Tales",
-      "author": "Oscar Wilde",
-      "language": "en",
-      "synopsis": "Cinco cuentos de sacrificio y compasión: el príncipe feliz, el ruiseñor, el gigante egoísta y los fuegos artificiales."
     },
     {
       "id": "frankenstein",
@@ -499,14 +453,6 @@
       "author": "Robert Louis Stevenson",
       "language": "en",
       "synopsis": "Un científico experimenta con el bien y el mal hasta que su otra identidad, Mr. Hyde, toma el control."
-    },
-    {
-      "id": "treasure-island",
-      "gutenbergId": 120,
-      "title": "Treasure Island",
-      "author": "Robert Louis Stevenson",
-      "language": "en",
-      "synopsis": "Jim Hawkins encuentra un mapa del tesoro y se embarca con el capitán Flint y Long John Silver en busca de oro."
     },
     {
       "id": "call-of-the-wild",

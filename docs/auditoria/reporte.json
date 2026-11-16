@@ -1,9 +1,9 @@
 {
   "tool": "audit-investigacion",
   "version": 1,
-  "generatedAt": "2026-11-15T23:30:36.067Z",
+  "generatedAt": "2026-11-16T14:53:12.206Z",
   "root": "/Users/luis/Desarrollos Devin/lecta",
-  "commit": "5a7794ae6515b58e07959aa5ba1c6be3718d20af",
+  "commit": "7d08204559b1722cd831c9595ac49a805c0efd6a",
   "doc": "docs/estrategia-aprendizaje-2026-10-24.md",
   "registry": "docs/auditoria/claims.json",
   "online": false,
@@ -78,7 +78,7 @@
             "callers": [
               {
                 "file": "src/client/components/CommunityShelf.tsx",
-                "line": 132,
+                "line": 134,
                 "text": "loader: ReturnType<typeof createCoverageInputsLoader>;"
               },
               {
@@ -88,7 +88,7 @@
               },
               {
                 "file": "src/client/components/Shelf.tsx",
-                "line": 479,
+                "line": 488,
                 "text": "const inputsFor = createCoverageInputsLoader(scope);"
               }
             ]
@@ -187,10 +187,10 @@
         {
           "kind": "code-anchor",
           "status": "PASS",
-          "detail": "src/client/lib/catalog.ts:369 coincide con /COVERAGE_FLUID_MIN/",
+          "detail": "src/client/lib/catalog.ts:365 coincide con /COVERAGE_FLUID_MIN/",
           "observed": {
             "file": "src/client/lib/catalog.ts",
-            "line": 369,
+            "line": 365,
             "text": "if (bookDifficultyOrLevel >= COVERAGE_FLUID_MIN) {"
           }
         },
