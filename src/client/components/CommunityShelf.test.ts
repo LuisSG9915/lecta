@@ -459,4 +459,70 @@ describe("CommunityShelf", () => {
       "1 activo",
     );
   });
+
+  it("ordena por afinidad: cobertura alta primero, sin medir al final en su orden", async () => {
+    // Solo «casa» y «perro» están en el vocabulario del lector: la guía
+    // que solo usa esas formas queda arriba; la de formas desconocidas
+    // baja; las guías que no cargan conservan el orden del servidor.
+    const guideWithForms = (hash: string, forms: string[]) => ({
+      ...guideFor(hash),
+      chapters: [
+        {
+          id: "c1",
+          label: "Capítulo 1",
+          depth: 0,
+          kind: "chapter" as const,
+          forms,
+          capitalOnly: [],
+        },
+      ],
+    });
+    const books = [
+      book("baja", { title: "Guía difícil", language: "es" }),
+      book("sin2", { title: "Sin guía dos", language: "es" }),
+      book("alta", { title: "Guía fácil", language: "es" }),
+      book("sin1", { title: "Sin guía uno", language: "es" }),
+    ];
+    const fetchGuide = vi.fn(async (hash: string) => {
+      if (hash === "sin1" || hash === "sin2") return null;
+      return guideWithForms(
+        hash,
+        hash === "alta" ? ["casa", "perro"] : ["x1", "x2", "x3", "x4"],
+      );
+    });
+    const fetchBooks = vi.fn(async () => okBooks(books));
+
+    await act(async () => {
+      root.render(
+        h(CommunityShelf, {
+          fetchBooks,
+          fetchGuide,
+          loadInputs: async () => ({
+            saved: new Set(["casa", "perro"]),
+            knowledge: new Map(),
+            threshold: 3,
+            confidence: "high" as const,
+            evidenceCount: 10,
+          }),
+          lookupForms: async (forms: string[]) =>
+            Object.fromEntries(forms.map((form) => [form, [entry(form)]])),
+        }),
+      );
+      await flush(40);
+    });
+    await act(async () => {
+      await flush(40);
+    });
+
+    expect(titles()).toEqual([
+      "Guía fácil",
+      "Guía difícil",
+      "Sin guía dos",
+      "Sin guía uno",
+    ]);
+    // Cada guía se pidió una sola vez: reordenar no re-mide ni
+    // re-descarga (los intentos quedan en attempted*Ref).
+    expect(fetchBooks).toHaveBeenCalledTimes(1);
+    expect(fetchGuide).toHaveBeenCalledTimes(4);
+  });
 });

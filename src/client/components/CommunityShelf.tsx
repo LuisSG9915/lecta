@@ -39,6 +39,7 @@ import {
 import { batchLookup, type LexiconEntry } from "../lib/lexicon";
 import { getBookAffinityBadge } from "../lib/catalog";
 import {
+  compareBookCoverages,
   coverageIsReliable,
   coverageLanguageOf,
   coverageOfBook,
@@ -206,9 +207,30 @@ export default function CommunityShelf({
     );
   }, [books, query, lang, genre]);
 
+  // Afinidad: las guías ya medidas se ordenan con el mismo
+  // comparador del catálogo (confiables primero, en zona ideal,
+  // más reencuentros, mayor porcentaje). Las que aún no tienen
+  // cobertura conservan el orden del servidor al final — el orden
+  // es estable, así que reordenar no vuelve a medir ni a pedir
+  // guías (los attempted*Ref lo impiden).
+  const sorted = useMemo(() => {
+    const measured = filtered.filter((b) => coverages.has(b.hash));
+    if (!measured.length) return filtered;
+    measured.sort((a, b) =>
+      compareBookCoverages(
+        coverages.get(a.hash)!,
+        coverages.get(b.hash)!,
+      ),
+    );
+    return [
+      ...measured,
+      ...filtered.filter((b) => !coverages.has(b.hash)),
+    ];
+  }, [filtered, coverages]);
+
   const visible = useMemo(
-    () => (expanded ? filtered : filtered.slice(0, COMMUNITY_RAIL_LIMIT)),
-    [filtered, expanded],
+    () => (expanded ? sorted : sorted.slice(0, COMMUNITY_RAIL_LIMIT)),
+    [sorted, expanded],
   );
 
   // Un cargador de perfil por idioma para no releer IndexedDB por cada
