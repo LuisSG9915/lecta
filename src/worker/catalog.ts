@@ -491,7 +491,12 @@ catalog.get("/api/catalog/:id/:kind", async (context) => {
   // Los ids pg- tienen rescate bajo demanda para epub y cover: el
   // primero exige sesión y baja el libro; el segundo es solo la
   // portada pública. vocab de esos ids sigue en 404 (el cliente
-  // analiza sin manifiesto).
+  // analiza sin manifiesto). Solo con CATALOG_PG_FETCH=1: apagado, un
+  // miss no toca gutenberg.org (política de robots; ver
+  // docs/designs/2026-11-15-explora-derechos.md, M6).
+  if (context.env.CATALOG_PG_FETCH !== "1") {
+    return context.json({ error: "No encontrado." }, 404);
+  }
   if (kind === "epub") {
     const gutenberg = GUTENBERG_ID.exec(id);
     if (gutenberg) {

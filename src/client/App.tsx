@@ -140,6 +140,7 @@ import {
 import { hasLectaPlus } from "../shared/plan";
 import { checkEpubFile, epubCheckMessage } from "./lib/epub-intake";
 import { authClient } from "./lib/auth";
+import { SCREEN_ZONE_ENABLED } from "./lib/screen-zone";
 
 type BookFileSelection = {
   hash: string;
@@ -1342,7 +1343,7 @@ export default function App() {
 
   const selectBook = async (
     file: File,
-    metaOverride?: { language?: string },
+    metaOverride?: { language?: string; catalog?: boolean },
   ) => {
     setError("");
     setMessage("Comprobando el archivo…");
@@ -1415,8 +1416,12 @@ export default function App() {
       // encolada y la tarjeta se marca «Pendiente de subir».
       if (sessionUserId) {
         // Free: solo metadatos (el libro aparece en otro dispositivo y ahí
-        // se adjunta); Lecta+: también el archivo a R2.
-        const withFile = hasLectaPlus(planStore.get()?.plan);
+        // se adjunta); Lecta+: también el archivo a R2. Los EPUB del
+        // catálogo nunca suben: llevan la marca Project Gutenberg y la
+        // sync es de pago (docs/designs/2026-11-15-explora-derechos.md,
+        // R4/M13); otro dispositivo los vuelve a obtener del catálogo.
+        const withFile =
+          !metaOverride?.catalog && hasLectaPlus(planStore.get()?.plan);
         void queueBookSync(hash, file.name, withFile, scope)
           .then(() => runBookQueue(scope))
           .then(() => refreshLibrary());
@@ -1449,7 +1454,7 @@ export default function App() {
     const hash = await sha256Hex(file);
     // El idioma del índice del catálogo es el que el lector vio en la
     // tarjeta: se impone sobre el que declare el EPUB.
-    await selectBook(file, { language: item.language });
+    await selectBook(file, { language: item.language, catalog: true });
     return hash;
   };
 
@@ -1888,6 +1893,19 @@ export default function App() {
     await deleteStoredBook(hash, scope).catch(() => undefined);
     void refreshLibrary();
   };
+
+  // Zona «Series y películas» apagada (docs/designs/2026-11-15-explora-
+  // derechos.md, M0/M2): las obras de pantalla que quedaron en este
+  // dispositivo se borran con sus guías derivadas de subtítulos. Corre
+  // en cada base local (cuenta o anónima) en cuanto su biblioteca carga;
+  // sin obras de pantalla no hace nada.
+  useEffect(() => {
+    if (SCREEN_ZONE_ENABLED || screenWorks.length === 0) return;
+    const scope = captureDbScope();
+    void Promise.all(
+      screenWorks.map((work) => deleteStoredBook(work.hash, scope).catch(() => undefined)),
+    ).then(() => refreshLibrary());
+  }, [screenWorks, refreshLibrary]);
 
   // Compartir (o retirar) la guía de papel de un libro propio. La usa
   // la hoja de opciones de la estantería y el botón «Compartir un libro

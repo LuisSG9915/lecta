@@ -107,7 +107,7 @@ import { getSession, getSessionUser, SessionInfraError } from "./session";
 import { readingData } from "./reading-data";
 import { companion } from "./companion";
 import { catalog } from "./catalog";
-import { screen } from "./screen";
+import { screen, screenZoneGate } from "./screen";
 import { screenDiscover } from "./screen-discover";
 import { consumeRateUnits } from "./rate-limit";
 import { admin, ownerUser } from "./admin";
@@ -226,6 +226,7 @@ app.use("*", async (c, next) => {
 app.route("/", readingData);
 app.route("/", companion);
 app.route("/", catalog);
+app.use("/api/screen/*", screenZoneGate);
 app.route("/", screen);
 app.route("/", screenDiscover);
 app.route("/", admin);

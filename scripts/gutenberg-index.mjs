@@ -7,13 +7,13 @@
 //     (carpeta ignorada por git), lo extrae con tar y escribe
 //     catalog-seed/gutenberg-index.ndjson + gutenberg-index.skipped.json.
 //
-//   node --env-file=.env scripts/gutenberg-index.mjs --load
+//   node --env-file=.env scripts/gutenberg-index.mjs --load --gate-ok
 //     UPSERT por lotes de 500 (jsonb_to_recordset) en
 //     lecta_dev.gutenberg_books (usa DATABASE_URL_DEV si existe).
 //     Exige current_database() = 'lecta_dev' — la misma guardia que
 //     scripts/db-migrate.mjs.
 //
-//   node --env-file=.env scripts/gutenberg-index.mjs --load --remote
+//   node --env-file=.env scripts/gutenberg-index.mjs --load --gate-ok --remote
 //     Igual pero sobre `lecta` (producción): solo con autorización
 //     expresa, como las migraciones. No borra filas: un libro que deja
 //     de cumplir la regla queda en el índice hasta depurar a mano (el
@@ -228,7 +228,20 @@ const upsertSql = (table) => `
     search_text = EXCLUDED.search_text
 `;
 
+// Compuerta de carga (docs/designs/2026-11-15-explora-derechos.md, §4):
+// producción lee lecta_dev.gutenberg_books, así que un --load normal
+// reactiva la búsqueda en producción. No se carga hasta tener la tabla
+// única, admitRdf (M8), el borrado de filas que ya no pasan y la siembra
+// por lotes (M7b). --gate-ok declara que eso ya está hecho.
+export function loadGateError(argv) {
+  return argv.includes("--gate-ok")
+    ? null
+    : "Carga bloqueada: falta la compuerta de docs/designs/2026-11-15-explora-derechos.md §4 (tabla única, admitRdf, borrado de filas, siembra). Usa --gate-ok solo cuando esté cumplida.";
+}
+
 async function load() {
+  const gate = loadGateError(process.argv);
+  if (gate) throw new Error(gate);
   const remote =
     process.argv.includes("--remote") || process.argv.includes("--prod");
   const target = remote ? "lecta" : "lecta_dev";
@@ -297,7 +310,7 @@ if (invokedAsScript) {
       : null;
   if (!run) {
     console.error(
-      "Uso: node scripts/gutenberg-index.mjs --build | --load [--remote|--prod]",
+      "Uso: node scripts/gutenberg-index.mjs --build | --load --gate-ok [--remote|--prod]",
     );
     process.exit(1);
   }

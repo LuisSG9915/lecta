@@ -26,6 +26,10 @@ export type WorkerEnv = {
   OMDB_API_KEY?: string;
   /** Rieles de descubrimiento (Trakt); sin llave se sirve la lista curada. */
   TRACKT_API_KEY?: string;
+  /** "1" enciende la zona «Series y películas»; sin él, /api/screen/* → 503. */
+  SCREEN_ENABLED?: string;
+  /** "1" permite bajar EPUB y portadas pg- de gutenberg.org bajo demanda. */
+  CATALOG_PG_FETCH?: string;
   /** Assets estáticos; el Worker les devuelve lo que no es ruta suya. */
   ASSETS?: Fetcher;
   TTS_MODEL_CDN_URL?: string;

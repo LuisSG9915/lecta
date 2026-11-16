@@ -81,6 +81,7 @@ import Toggle from "./Toggle";
 import Icon from "./Icon";
 import ThemeMenu from "./ThemeMenu";
 import { useCompanionSafe } from "./CompanionProvider";
+import { SCREEN_ZONE_ENABLED } from "../lib/screen-zone";
 
 export { PENDING_DELETE_KEY };
 
@@ -1329,8 +1330,10 @@ export default function Account({
               >
                 Tablas derivadas y licencias
               </a>
-              . Las listas de series y películas vienen de Trakt. Lecta usa Trakt,
-              pero no está avalada ni certificada por Trakt.
+              .
+              {SCREEN_ZONE_ENABLED
+                ? " Las listas de series y películas vienen de Trakt. Lecta usa Trakt, pero no está avalada ni certificada por Trakt."
+                : null}
             </p>
             <div style={{ display: "flex", gap: "var(--s-2)", marginTop: "var(--s-2)", flexWrap: "wrap", alignItems: "center" }}>
               <button

@@ -943,6 +943,18 @@ decisiones de producto las tomó Luis; esto documenta las invariantes técnicas.
 
 ## Catálogo Gutenberg y zona «Series y películas»
 
+- **Apagado por derechos (2026-11-16, `docs/designs/2026-11-15-explora-derechos.md`)**:
+  la zona de pantalla está apagada — el worker responde 503 en toda
+  `/api/screen/*` salvo `SCREEN_ENABLED=1` (`screenZoneGate`), el cliente
+  oculta la pestaña y el crédito a Trakt con `SCREEN_ZONE_ENABLED = false`
+  (`src/client/lib/screen-zone.ts`) y borra del dispositivo las obras de
+  pantalla guardadas. Los EPUB y portadas `pg-` solo se bajan de
+  gutenberg.org con `CATALOG_PG_FETCH=1` (apagado: un miss → 404). Los EPUB
+  del catálogo nunca suben a la sync de pago (`selectBook(..., { catalog: true })`).
+  `gutenberg-index.mjs --load` exige `--gate-ok` (compuerta §4 del documento).
+  Las llaves `OMDB_API_KEY`/`SUBDL_API_KEY`/`TRACKT_API_KEY` siguen como
+  secrets hasta que Luis decida borrarlas.
+
 - **Gutenberg**: tabla `gutenberg_books` (migración 029, índice
   `(language, downloads DESC)`). Rutas del worker en `src/worker/catalog.ts`:
   `GET /api/catalog/search` (q ≤80, caché de isolate) y el EPUB `pg-<id>`

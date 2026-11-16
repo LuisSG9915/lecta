@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { indexRowFromRdf } from "./gutenberg-index.mjs";
+import { indexRowFromRdf, loadGateError } from "./gutenberg-index.mjs";
 import { parseRdf, searchTextOf } from "./catalog-seed-lib.mjs";
 
 const AGENT = (name, birth, death) => `
@@ -159,5 +159,16 @@ describe("indexRowFromRdf", () => {
     expect(r.ok).toBe(true);
     expect(r.row.subjects).toHaveLength(8);
     for (const s of r.row.subjects) expect(s.length).toBeLessThanOrEqual(80);
+  });
+});
+
+describe("compuerta de --load", () => {
+  it("sin --gate-ok la carga se niega", () => {
+    expect(loadGateError(["node", "x", "--load"])).toContain("Carga bloqueada");
+    expect(loadGateError(["node", "x", "--load", "--remote"])).toContain("Carga bloqueada");
+  });
+
+  it("con --gate-ok deja cargar", () => {
+    expect(loadGateError(["node", "x", "--load", "--gate-ok"])).toBeNull();
   });
 });

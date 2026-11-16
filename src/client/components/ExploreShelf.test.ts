@@ -62,6 +62,18 @@ describe("ExploreShelf — pestañas", () => {
     expect(panel("screen")!.hidden).toBe(true);
   });
 
+  it("con la zona de pantalla apagada no hay pestaña ni panel de pantalla", async () => {
+    await render({ screenEnabled: false });
+    expect(tabs()).toEqual(["Comunidad", "Libros gratuitos"]);
+    expect(panel("screen")).toBeNull();
+    expect(host.textContent).not.toContain("Obras de pantalla");
+  });
+
+  it("con la zona apagada y sin Comunidad ni catálogo, Explora no se pinta", async () => {
+    await render({ community: null, catalog: undefined, screenEnabled: false });
+    expect(host.querySelector(".shelf-explore")).toBeNull();
+  });
+
   it("sin catálogo la pestaña Libros gratuitos no existe", async () => {
     await render({ catalog: undefined });
     expect(tabs()).toEqual(["Comunidad", "Series y películas"]);

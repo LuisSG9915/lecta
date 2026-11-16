@@ -1,4 +1,4 @@
-import { Hono, type Context } from "hono";
+import { Hono, type Context, type MiddlewareHandler } from "hono";
 import {
   BlobReader,
   Uint8ArrayWriter,
@@ -30,6 +30,20 @@ import type { WorkerEnv } from "./db";
 // 503 «Esta función aún no está disponible.» Un acierto en R2 no
 // necesita ninguna llave ni toca cuota.
 export const screen = new Hono<{ Bindings: WorkerEnv }>();
+
+// Zona apagada (decisión 2026-11-15, docs/designs/2026-11-15-explora-
+// derechos.md, M0): sin SCREEN_ENABLED=1, toda /api/screen/* responde
+// 503 antes de mirar sesión, llaves o R2 — también las guías y pósters
+// ya guardados y los rieles de Trakt (screen-discover.ts).
+export const screenZoneGate: MiddlewareHandler<{ Bindings: WorkerEnv }> = async (
+  context,
+  next,
+) => {
+  if (context.env.SCREEN_ENABLED !== "1") {
+    return context.json({ error: "Esta función no está disponible." }, 503);
+  }
+  await next();
+};
 
 const OMDB_BASE = "https://www.omdbapi.com/";
 const SUBDL_LIST = "https://api.subdl.com/api/v1/subtitles";

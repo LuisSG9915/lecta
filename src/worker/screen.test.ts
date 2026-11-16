@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TextReader, Uint8ArrayWriter, ZipWriter } from "@zip.js/zip.js";
-import { screen } from "./screen";
+import { Hono } from "hono";
+import { screen, screenZoneGate } from "./screen";
+import { screenDiscover } from "./screen-discover";
+import type { WorkerEnv } from "./db";
 
 // Las cachés del isolate (OMDb 1 h, búsqueda 10 min, negativa SubDL
 // 30 min) viven en el módulo: las pruebas que dependen de estado frío
@@ -909,5 +912,42 @@ describe("POST /api/screen/guide — flujo", () => {
     const res = await post(env().env, MOVIE_REF, app);
     expect(res.status).toBe(502);
     expect(await res.text()).not.toContain("subdl-test-key");
+  });
+});
+
+describe("screenZoneGate (zona apagada, M0)", () => {
+  const gated = () => {
+    const app = new Hono<{ Bindings: WorkerEnv }>();
+    app.use("/api/screen/*", screenZoneGate);
+    app.route("/", screen);
+    app.route("/", screenDiscover);
+    return app;
+  };
+  const call = (env: Partial<WorkerEnv>, path: string, init?: RequestInit) =>
+    gated().fetch(new Request(`https://t${path}`, init), env as never);
+
+  it.each([
+    ["GET", "/api/screen/search?q=dark"],
+    ["GET", "/api/screen/tv/tt0944947"],
+    ["GET", "/api/screen/tv/tt0944947/season/1"],
+    ["GET", "/api/screen/poster?imdbId=tt0944947"],
+    ["POST", "/api/screen/guide"],
+    ["GET", "/api/screen/discover"],
+    ["GET", "/api/screen/related?imdbId=tt0944947&type=tv"],
+  ])("sin SCREEN_ENABLED, %s %s → 503 sin sesión ni R2", async (method, path) => {
+    const get = vi.fn();
+    const res = await call(
+      { OMDB_API_KEY: "k", SUBDL_API_KEY: "k", TRACKT_API_KEY: "k", BOOKS: { get } as never },
+      path,
+      { method, body: method === "POST" ? "{}" : undefined },
+    );
+    expect(res.status).toBe(503);
+    expect(get).not.toHaveBeenCalled();
+  });
+
+  it("con SCREEN_ENABLED=1 deja pasar a la ruta", async () => {
+    getSessionMock.mockResolvedValue(null);
+    const res = await call({ SCREEN_ENABLED: "1" }, "/api/screen/search?q=dark");
+    expect(res.status).toBe(401);
   });
 });

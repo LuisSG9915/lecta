@@ -419,7 +419,7 @@ describe("GET /api/catalog/pg-<id>/epub bajo demanda", () => {
     const app = await freshCatalog();
     const r2 = fakeR2({ "catalog/pg-1342.epub": EPUB_BYTES });
     const res = await get(
-      { BOOKS: r2.bucket },
+      { CATALOG_PG_FETCH: "1", BOOKS: r2.bucket },
       "/api/catalog/pg-1342/epub",
       app,
     );
@@ -434,7 +434,7 @@ describe("GET /api/catalog/pg-<id>/epub bajo demanda", () => {
     const app = await freshCatalog();
     installCatalogDb({ indexed: true });
     const res = await get(
-      { BOOKS: fakeR2().bucket },
+      { CATALOG_PG_FETCH: "1", BOOKS: fakeR2().bucket },
       "/api/catalog/pg-1342/epub",
       app,
     );
@@ -451,7 +451,7 @@ describe("GET /api/catalog/pg-<id>/epub bajo demanda", () => {
     getSessionMock.mockResolvedValue({ user: { id: "u1" } });
     installCatalogDb({ indexed: false });
     const res = await get(
-      { BOOKS: fakeR2().bucket },
+      { CATALOG_PG_FETCH: "1", BOOKS: fakeR2().bucket },
       "/api/catalog/pg-1342/epub",
       app,
     );
@@ -466,7 +466,7 @@ describe("GET /api/catalog/pg-<id>/epub bajo demanda", () => {
     getSessionMock.mockResolvedValue({ user: { id: "u1" } });
     installCatalogDb({ indexed: true, quotaOk: false });
     const res = await get(
-      { BOOKS: fakeR2().bucket },
+      { CATALOG_PG_FETCH: "1", BOOKS: fakeR2().bucket },
       "/api/catalog/pg-1342/epub",
       app,
     );
@@ -487,7 +487,7 @@ describe("GET /api/catalog/pg-<id>/epub bajo demanda", () => {
       ),
     );
     const res = await get(
-      { BOOKS: fakeR2().bucket },
+      { CATALOG_PG_FETCH: "1", BOOKS: fakeR2().bucket },
       "/api/catalog/pg-1342/epub",
       app,
     );
@@ -509,7 +509,7 @@ describe("GET /api/catalog/pg-<id>/epub bajo demanda", () => {
       }),
     );
     const res = await get(
-      { BOOKS: fakeR2().bucket },
+      { CATALOG_PG_FETCH: "1", BOOKS: fakeR2().bucket },
       "/api/catalog/pg-1342/epub",
       app,
     );
@@ -522,7 +522,7 @@ describe("GET /api/catalog/pg-<id>/epub bajo demanda", () => {
     getSessionMock.mockResolvedValue({ user: { id: "u1" } });
     installCatalogDb({ indexed: true });
     okEpubFetch();
-    const env = { BOOKS: r2.bucket };
+    const env = { CATALOG_PG_FETCH: "1", BOOKS: r2.bucket };
     const first = await get(env, "/api/catalog/pg-1342/epub", app);
     expect(first.status).toBe(200);
     expect(first.headers.get("content-type")).toBe("application/epub+zip");
@@ -554,7 +554,7 @@ describe("GET /api/catalog/pg-<id>/epub bajo demanda", () => {
         ),
       );
     const res = await get(
-      { BOOKS: fakeR2().bucket },
+      { CATALOG_PG_FETCH: "1", BOOKS: fakeR2().bucket },
       "/api/catalog/pg-1342/epub",
       app,
     );
@@ -570,7 +570,7 @@ describe("GET /api/catalog/pg-<id>/epub bajo demanda", () => {
     getSessionMock.mockResolvedValue({ user: { id: "u1" } });
     installCatalogDb({ indexed: true });
     const res = await get(
-      { BOOKS: fakeR2().bucket },
+      { CATALOG_PG_FETCH: "1", BOOKS: fakeR2().bucket },
       "/api/catalog/pg-1342/vocab",
       app,
     );
@@ -582,7 +582,7 @@ describe("GET /api/catalog/pg-<id>/epub bajo demanda", () => {
     const app = await freshCatalog();
     getSessionMock.mockResolvedValue({ user: { id: "u1" } });
     const res = await get(
-      { BOOKS: fakeR2().bucket },
+      { CATALOG_PG_FETCH: "1", BOOKS: fakeR2().bucket },
       "/api/catalog/pg-abc/epub",
       app,
     );
@@ -609,12 +609,33 @@ const okCoverFetch = () =>
     ),
   );
 
+describe("CATALOG_PG_FETCH apagado (M6)", () => {
+  it("un miss de EPUB pg- responde 404 sin sesión, base ni gutenberg.org", async () => {
+    const app = await freshCatalog();
+    getSessionMock.mockResolvedValue({ user: { id: "u1" } });
+    installCatalogDb({ indexed: true });
+    const res = await get({ BOOKS: fakeR2().bucket }, "/api/catalog/pg-1342/epub", app);
+    expect(res.status).toBe(404);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(queryMock).not.toHaveBeenCalled();
+  });
+
+  it("un miss de portada pg- responde 404 sin tocar gutenberg.org", async () => {
+    const app = await freshCatalog();
+    installCatalogDb({ indexed: true });
+    const res = await get({ BOOKS: fakeR2().bucket }, "/api/catalog/pg-1342/cover", app);
+    expect(res.status).toBe(404);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(queryMock).not.toHaveBeenCalled();
+  });
+});
+
 describe("GET /api/catalog/pg-<id>/cover bajo demanda", () => {
   it("cacheada en R2 se sirve sin sesión ni fetch", async () => {
     const app = await freshCatalog();
     const r2 = fakeR2({ "catalog/pg-1342.cover.jpg": JPEG_BYTES });
     const res = await get(
-      { BOOKS: r2.bucket },
+      { CATALOG_PG_FETCH: "1", BOOKS: r2.bucket },
       "/api/catalog/pg-1342/cover",
       app,
     );
@@ -631,7 +652,7 @@ describe("GET /api/catalog/pg-<id>/cover bajo demanda", () => {
     const r2 = fakeR2();
     installCatalogDb({ indexed: true });
     okCoverFetch();
-    const e = { BOOKS: r2.bucket };
+    const e = { CATALOG_PG_FETCH: "1", BOOKS: r2.bucket };
     const first = await get(e, "/api/catalog/pg-1342/cover", app);
     expect(first.status).toBe(200);
     expect(first.headers.get("content-type")).toBe("image/jpeg");
@@ -656,7 +677,7 @@ describe("GET /api/catalog/pg-<id>/cover bajo demanda", () => {
     const app = await freshCatalog();
     installCatalogDb({ indexed: false });
     const res = await get(
-      { BOOKS: fakeR2().bucket },
+      { CATALOG_PG_FETCH: "1", BOOKS: fakeR2().bucket },
       "/api/catalog/pg-1342/cover",
       app,
     );
@@ -667,7 +688,7 @@ describe("GET /api/catalog/pg-<id>/cover bajo demanda", () => {
   it("id visto por la búsqueda no repite el SELECT a la base", async () => {
     const app = await freshCatalog();
     installCatalogDb({ rows: [gbRow()], indexed: false });
-    const e = { BOOKS: fakeR2().bucket };
+    const e = { CATALOG_PG_FETCH: "1", BOOKS: fakeR2().bucket };
     // La búsqueda registra el id en indexedIdCache.
     await get(e, "/api/catalog/search?q=quijote", app);
     queryMock.mockClear();
@@ -712,7 +733,7 @@ describe("GET /api/catalog/pg-<id>/cover bajo demanda", () => {
     const r2 = fakeR2();
     installCatalogDb({ indexed: true });
     fetchMock.mockImplementation(() => Promise.resolve(make()));
-    const e = { BOOKS: r2.bucket };
+    const e = { CATALOG_PG_FETCH: "1", BOOKS: r2.bucket };
     const first = await get(e, "/api/catalog/pg-1342/cover", app);
     expect(first.status).toBe(404);
     expect(r2.puts).toEqual([]);
@@ -728,7 +749,7 @@ describe("GET /api/catalog/pg-<id>/cover bajo demanda", () => {
     const r2 = fakeR2();
     installCatalogDb({ indexed: true });
     fetchMock.mockRejectedValue(new Error("timeout"));
-    const e = { BOOKS: r2.bucket };
+    const e = { CATALOG_PG_FETCH: "1", BOOKS: r2.bucket };
     const first = await get(e, "/api/catalog/pg-1342/cover", app);
     expect(first.status).toBe(404);
     okCoverFetch();

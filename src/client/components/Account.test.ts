@@ -441,9 +441,9 @@ describe("Account componente Tú y Login", () => {
     );
     expect(termsBtn).toBeTruthy();
 
-    // Crédito exigido por la política de Trakt.
-    expect(host.textContent).toContain("vienen de Trakt");
-    expect(host.textContent).toContain("no está avalada ni certificada por Trakt");
+    // Con la zona «Series y películas» apagada no se usa Trakt y no se
+    // le acredita (docs/designs/2026-11-15-explora-derechos.md, M0).
+    expect(host.textContent).not.toContain("Trakt");
 
     // Abrir modal de diagnóstico
     await act(async () => diagBtn!.click());

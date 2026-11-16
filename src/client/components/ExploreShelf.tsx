@@ -35,6 +35,9 @@ type Props = {
   screenCount?: number;
   /** Acción para ir a Perfil a iniciar sesión cuando no hay cuenta activa. */
   onOpenAccount?: () => void;
+  /** false oculta la pestaña Series y películas (zona apagada, ver
+   * docs/designs/2026-11-15-explora-derechos.md, M0). */
+  screenEnabled?: boolean;
 };
 
 export default function ExploreShelf({
@@ -43,12 +46,13 @@ export default function ExploreShelf({
   screen,
   screenCount,
   onOpenAccount,
+  screenEnabled = true,
 }: Props) {
   const initialTab: TabId = community
     ? "community"
     : catalog
       ? "catalog"
-      : "screen";
+      : screenEnabled ? "screen" : "community";
   const [tab, setTab] = useState<TabId>(initialTab);
   const userPickedTabRef = useRef(false);
   const tabRefs = useRef<Partial<Record<TabId, HTMLButtonElement | null>>>({});
@@ -70,9 +74,15 @@ export default function ExploreShelf({
 
   useEffect(() => {
     if (!userPickedTabRef.current) {
-      showTab(hasCommunity ? "community" : hasCatalog ? "catalog" : "screen");
+      showTab(
+        hasCommunity || (!hasCatalog && !screenEnabled)
+          ? "community"
+          : hasCatalog
+            ? "catalog"
+            : "screen",
+      );
     }
-  }, [hasCommunity, hasCatalog, showTab]);
+  }, [hasCommunity, hasCatalog, screenEnabled, showTab]);
 
   // Contador de la pestaña Comunidad: llega por el puente cuando la
   // lista termina de cargar (undefined = aún no se sabe).
@@ -88,10 +98,11 @@ export default function ExploreShelf({
     (count: number) => {
       setCommunityCount(count);
       if (count === 0 && !userPickedTabRef.current) {
-        showTab(hasCatalog ? "catalog" : "screen");
+        if (hasCatalog) showTab("catalog");
+        else if (screenEnabled) showTab("screen");
       }
     },
-    [hasCatalog, showTab],
+    [hasCatalog, screenEnabled, showTab],
   );
 
   const selectTab = useCallback(
@@ -114,15 +125,16 @@ export default function ExploreShelf({
     [onCommunityLoaded, hasCatalog, selectTab],
   );
 
-  if (!community && !catalog && !screen) return null;
+  if (!community && !catalog && !(screenEnabled && screen)) return null;
 
   // Orden fijo de las pestañas; «Libros gratuitos» solo existe cuando
-  // hay índice que mostrar — las otras dos siempre (su panel puede ser
-  // la invitación a iniciar sesión).
+  // hay índice que mostrar y «Series y películas» solo con la zona
+  // encendida; Comunidad siempre (su panel puede ser la invitación a
+  // iniciar sesión).
   const tabs: TabId[] = [
     "community",
     ...(hasCatalog ? (["catalog"] as const) : []),
-    "screen",
+    ...(screenEnabled ? (["screen"] as const) : []),
   ];
 
   const onTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
@@ -206,24 +218,24 @@ export default function ExploreShelf({
         role="tablist"
         aria-label="Secciones para descubrir"
       >
-        {tabButton(
-          "community",
-          "Comunidad",
-          communityCount !== undefined
-            ? {
-                value: communityCount,
-                singular: "guía",
-                plural: "guías",
-              }
-            : undefined,
-        )}
-        {hasCatalog ? tabButton("catalog", "Libros gratuitos") : null}
-        {tabButton(
-          "screen",
-          "Series y películas",
-          screenCount !== undefined
-            ? { value: screenCount, singular: "título", plural: "títulos" }
-            : undefined,
+        {tabs.map((id) =>
+          id === "community"
+            ? tabButton(
+                id,
+                "Comunidad",
+                communityCount !== undefined
+                  ? { value: communityCount, singular: "guía", plural: "guías" }
+                  : undefined,
+              )
+            : id === "catalog"
+              ? tabButton(id, "Libros gratuitos")
+              : tabButton(
+                  id,
+                  "Series y películas",
+                  screenCount !== undefined
+                    ? { value: screenCount, singular: "título", plural: "títulos" }
+                    : undefined,
+                ),
         )}
       </div>
 
@@ -252,20 +264,22 @@ export default function ExploreShelf({
           {opened.catalog || tab === "catalog" ? catalog : null}
         </div>
       ) : null}
-      <div
-        role="tabpanel"
-        id="explore-panel-screen"
-        aria-labelledby="explore-tab-screen"
-        tabIndex={0}
-        hidden={tab !== "screen"}
-      >
-        {opened.screen || tab === "screen"
-          ? (screen ??
-            invite(
-              "Inicia sesión para preparar vocabulario de series y películas.",
-            ))
-          : null}
-      </div>
+      {screenEnabled ? (
+        <div
+          role="tabpanel"
+          id="explore-panel-screen"
+          aria-labelledby="explore-tab-screen"
+          tabIndex={0}
+          hidden={tab !== "screen"}
+        >
+          {opened.screen || tab === "screen"
+            ? (screen ??
+              invite(
+                "Inicia sesión para preparar vocabulario de series y películas.",
+              ))
+            : null}
+        </div>
+      ) : null}
     </section>
   );
 }
