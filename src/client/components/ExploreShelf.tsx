@@ -12,10 +12,11 @@ import { ExploreCommunityEmptyContext } from "./explore-context";
 // las guías que otros lectores compartieron (Comunidad), el catálogo
 // público (Libros gratuitos) y las obras audiovisuales (Series y
 // películas), en pestañas para que dos listas no se apilen estirando
-// la página. Los paneles quedan montados tras abrirse por primera vez
-// (solo se ocultan con `hidden`): la búsqueda, el filtro y el
-// desplazamiento sobreviven al cambiar de pestaña, y el chunk lazy de
-// cada sección no se descarga hasta que se visita.
+// la página. Comunidad queda montada siempre (es la pestaña inicial y
+// su carga dispara el salto cuando está vacía); catálogo y pantalla se
+// montan en su primera visita y ahí se quedan (ocultas con `hidden`):
+// la búsqueda, el filtro y el desplazamiento sobreviven al cambiar, y
+// el chunk lazy de cada sección no se descarga hasta que se visita.
 
 type TabId = "community" | "catalog" | "screen";
 
@@ -36,23 +37,35 @@ export default function ExploreShelf({
   screen,
   onOpenAccount,
 }: Props) {
-  const [tab, setTab] = useState<TabId>(
-    community ? "community" : catalog ? "catalog" : "screen",
-  );
+  const initialTab: TabId = community
+    ? "community"
+    : catalog
+      ? "catalog"
+      : "screen";
+  const [tab, setTab] = useState<TabId>(initialTab);
   const userPickedTabRef = useRef(false);
   const tabRefs = useRef<Partial<Record<TabId, HTMLButtonElement | null>>>({});
-  // El contenido de Series y películas se monta al abrir la pestaña
-  // por primera vez y ahí se queda (oculto): el chunk lazy no se paga
-  // en cada visita a Explora y el estado interno sobrevive al cambio.
-  const [screenOpened, setScreenOpened] = useState(tab === "screen");
+  // Qué paneles ya se visitaron: se montan en su primera visita y
+  // quedan (ocultos) para conservar búsqueda, filtro y posición.
+  const [opened, setOpened] = useState<Partial<Record<TabId, true>>>(() => ({
+    [initialTab]: true,
+  }));
 
   const hasCommunity = Boolean(community);
   const hasCatalog = catalog != null;
+
+  // Único punto que cambia de pestaña: marca la visita para que el
+  // panel se monte y queda visible.
+  const showTab = useCallback((next: TabId) => {
+    setTab(next);
+    setOpened((prev) => (prev[next] ? prev : { ...prev, [next]: true }));
+  }, []);
+
   useEffect(() => {
     if (!userPickedTabRef.current) {
-      setTab(hasCommunity ? "community" : hasCatalog ? "catalog" : "screen");
+      showTab(hasCommunity ? "community" : hasCatalog ? "catalog" : "screen");
     }
-  }, [hasCommunity, hasCatalog]);
+  }, [hasCommunity, hasCatalog, showTab]);
 
   // Si la comunidad termina de cargar vacía y el lector aún no eligió
   // pestaña manualmente, mostramos «Libros gratuitos» para no dejar
@@ -61,10 +74,8 @@ export default function ExploreShelf({
   // la carga de Comunidad en cada render.
   const handleCommunityEmpty = useCallback(() => {
     if (userPickedTabRef.current) return;
-    const next = hasCatalog ? "catalog" : "screen";
-    setTab(next);
-    if (next === "screen") setScreenOpened(true);
-  }, [hasCatalog]);
+    showTab(hasCatalog ? "catalog" : "screen");
+  }, [hasCatalog, showTab]);
 
   if (!community && !catalog && !screen) return null;
 
@@ -79,8 +90,7 @@ export default function ExploreShelf({
 
   const selectTab = (next: TabId, focus = false) => {
     userPickedTabRef.current = true;
-    setTab(next);
-    if (next === "screen") setScreenOpened(true);
+    showTab(next);
     if (focus) tabRefs.current[next]?.focus();
   };
 
@@ -155,6 +165,7 @@ export default function ExploreShelf({
         role="tabpanel"
         id="explore-panel-community"
         aria-labelledby="explore-tab-community"
+        tabIndex={0}
         hidden={tab !== "community"}
       >
         <ExploreCommunityEmptyContext.Provider value={handleCommunityEmpty}>
@@ -169,20 +180,24 @@ export default function ExploreShelf({
           role="tabpanel"
           id="explore-panel-catalog"
           aria-labelledby="explore-tab-catalog"
+          tabIndex={0}
           hidden={tab !== "catalog"}
         >
-          {catalog}
+          {opened.catalog || tab === "catalog" ? catalog : null}
         </div>
       ) : null}
       <div
         role="tabpanel"
         id="explore-panel-screen"
         aria-labelledby="explore-tab-screen"
+        tabIndex={0}
         hidden={tab !== "screen"}
       >
-        {screenOpened || tab === "screen"
+        {opened.screen || tab === "screen"
           ? (screen ??
-            invite("Inicia sesión para preparar vocabulario de series y películas."))
+            invite(
+              "Inicia sesión para preparar vocabulario de series y películas.",
+            ))
           : null}
       </div>
     </section>

@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
-import { act, createElement as h } from "react";
+import { act, createElement as h, useContext } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import ExploreShelf from "./ExploreShelf";
+import { ExploreCommunityEmptyContext } from "./explore-context";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
   true;
@@ -116,5 +117,76 @@ describe("ExploreShelf — pestañas", () => {
       '[role="tab"][aria-selected="true"]',
     )!;
     expect(selected.textContent).toBe("Libros gratuitos");
+  });
+});
+
+describe("ExploreShelf — montaje diferido del catálogo", () => {
+  const catalogNode = h(
+    "p",
+    { "data-testid": "catalog-body" },
+    "Catálogo gratuito",
+  );
+  const catalogTab = () =>
+    [...host.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find(
+      (b) => b.textContent === "Libros gratuitos",
+    )!;
+  const communityTab = () =>
+    [...host.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find(
+      (b) => b.textContent === "Comunidad",
+    )!;
+
+  it("el catálogo no se monta hasta abrir su pestaña y queda montado después", async () => {
+    await render({ catalog: catalogNode });
+    // El panel existe (es el tabpanel) pero el contenido aún no.
+    expect(
+      panel("catalog")!.querySelector("[data-testid='catalog-body']"),
+    ).toBeNull();
+
+    await act(async () => catalogTab().click());
+    expect(
+      panel("catalog")!.querySelector("[data-testid='catalog-body']"),
+    ).not.toBeNull();
+
+    // Al volver a Comunidad el contenido sigue montado (solo oculto).
+    await act(async () => communityTab().click());
+    expect(panel("catalog")!.hidden).toBe(true);
+    expect(
+      panel("catalog")!.querySelector("[data-testid='catalog-body']"),
+    ).not.toBeNull();
+  });
+
+  it("sin Comunidad el catálogo es la pestaña inicial y se monta de entrada", async () => {
+    await render({ community: undefined, catalog: catalogNode });
+    expect(panel("catalog")!.hidden).toBe(false);
+    expect(
+      panel("catalog")!.querySelector("[data-testid='catalog-body']"),
+    ).not.toBeNull();
+  });
+
+  it("cuando Comunidad avisa que está vacía se monta y activa el catálogo", async () => {
+    const EmptyTrigger = () => {
+      const notify = useContext(ExploreCommunityEmptyContext);
+      return h(
+        "button",
+        { type: "button", onClick: () => notify?.() },
+        "avisar vacío",
+      );
+    };
+    await render({ community: h(EmptyTrigger), catalog: catalogNode });
+    const trigger = [...host.querySelectorAll("button")].find(
+      (b) => b.textContent === "avisar vacío",
+    )!;
+    await act(async () => trigger.click());
+    expect(panel("catalog")!.hidden).toBe(false);
+    expect(
+      panel("catalog")!.querySelector("[data-testid='catalog-body']"),
+    ).not.toBeNull();
+  });
+
+  it("los tres paneles son tabbable para que Tab entre al contenido", async () => {
+    await render();
+    for (const id of ["community", "catalog", "screen"]) {
+      expect(panel(id)!.tabIndex).toBe(0);
+    }
   });
 });

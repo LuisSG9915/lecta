@@ -1069,6 +1069,13 @@
   padding: var(--s-3) 0;
 }
 
+/* Los paneles son tabbable (tabIndex=0): Tab desde la pestaña entra
+   al contenido y el anillo bermellón marca dónde quedó el foco. */
+.shelf-explore [role="tabpanel"]:focus-visible {
+  outline: 2px solid var(--vermilion);
+  outline-offset: 2px;
+}
+
 /* Dentro del panel la pestaña ya nombra la sección: se ocultan los
    encabezados propios de cada contenido y los separadores que los
    distinguían cuando eran secciones independientes. */
